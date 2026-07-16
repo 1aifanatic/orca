@@ -1,5 +1,9 @@
 import { createMarkdownTokenizerStart } from './markdown-tokenizer-start'
-import { Node, mergeAttributes } from '@tiptap/core'
+import { Node } from '@tiptap/core'
+import {
+  rawMarkdownSourceParseRules,
+  renderRawMarkdownSourceHtml
+} from './raw-markdown-html-source-dom'
 import { isEditableDetailsHtmlBlock, matchDetailsHtmlBlock } from './details-markdown-html'
 import { formatMarkdownDocLinkBody, parseMarkdownDocLink } from './markdown-doc-links'
 import { normalizeMarkdownReferenceLinks } from './markdown-reference-link-normalization'
@@ -309,25 +313,11 @@ function createRawSourceNode({
     renderText: ({ node }) => (typeof node.attrs.value === 'string' ? node.attrs.value : ''),
 
     parseHTML() {
-      return [
-        {
-          tag: `${inline ? 'span' : 'div'}[${marker}]`,
-          getAttrs: (element: HTMLElement) => ({ value: element.textContent ?? '' })
-        }
-      ]
+      return rawMarkdownSourceParseRules({ inline, kind, marker, className })
     },
 
     renderHTML({ HTMLAttributes, node }) {
-      const value = typeof node.attrs.value === 'string' ? node.attrs.value : ''
-      return [
-        inline ? 'span' : 'div',
-        mergeAttributes(HTMLAttributes, {
-          [marker]: '',
-          contenteditable: 'false',
-          class: className
-        }),
-        inline ? value : ['pre', value]
-      ]
+      return renderRawMarkdownSourceHtml({ inline, kind, marker, className }, HTMLAttributes, node)
     }
   })
 }
