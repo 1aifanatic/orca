@@ -1,5 +1,5 @@
 import { mergeAttributes } from '@tiptap/core'
-import type { DOMOutputSpec, Node as ProseMirrorNode } from '@tiptap/pm/model'
+import type { DOMOutputSpec, Node as ProseMirrorNode, TagParseRule } from '@tiptap/pm/model'
 import type { RichMarkdownSourceKind } from './rich-markdown-source-transport'
 
 // Why: preserves the exact authored <br> spelling on the rendered break node so
@@ -14,14 +14,15 @@ type RawMarkdownSourceDomConfig = {
   className?: string
 }
 
-type RawMarkdownSourceParseRule = {
-  tag: string
-  priority?: number
-  getAttrs: (element: HTMLElement) => { value: string }
-}
-
 function isHtmlLineBreak(value: string): boolean {
   return /^<br\s*\/?>$/i.test(value.trim())
+}
+
+function parsedHtmlLineBreakValue(element: HTMLElement): string {
+  const value = element.getAttribute(HTML_LINE_BREAK_VALUE_ATTR)
+  // Why: DOM input can come from the clipboard, so only trusted break syntax
+  // may become hidden Markdown source through the internal preservation marker.
+  return value && isHtmlLineBreak(value) ? value : '<br>'
 }
 
 function nodeValue(node: ProseMirrorNode): string {
@@ -34,10 +35,8 @@ function rendersLineBreaks(config: RawMarkdownSourceDomConfig): boolean {
   return config.inline && config.kind === 'inline-html'
 }
 
-export function rawMarkdownSourceParseRules(
-  config: RawMarkdownSourceDomConfig
-): RawMarkdownSourceParseRule[] {
-  const rules: RawMarkdownSourceParseRule[] = [
+export function rawMarkdownSourceParseRules(config: RawMarkdownSourceDomConfig): TagParseRule[] {
+  const rules: TagParseRule[] = [
     {
       tag: `${config.inline ? 'span' : 'div'}[${config.marker}]`,
       getAttrs: (element: HTMLElement) => ({ value: element.textContent ?? '' })
@@ -50,9 +49,7 @@ export function rawMarkdownSourceParseRules(
     rules.push({
       tag: `br[${config.marker}]`,
       priority: 100,
-      getAttrs: (element: HTMLElement) => ({
-        value: element.getAttribute(HTML_LINE_BREAK_VALUE_ATTR) ?? '<br>'
-      })
+      getAttrs: (element: HTMLElement) => ({ value: parsedHtmlLineBreakValue(element) })
     })
   }
   return rules

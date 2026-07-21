@@ -1,3 +1,5 @@
+// @vitest-environment happy-dom
+
 import { describe, expect, it } from 'vitest'
 import { Editor } from '@tiptap/core'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
@@ -62,14 +64,37 @@ describe('raw markdown <br> line breaks in the rich editor', () => {
     }
   })
 
-  it('round-trips the verbatim <br> tags in a table cell on save', () => {
+  it('round-trips verbatim <br> tags after the rendered DOM is parsed again', () => {
     const editor = createEditor(TABLE_WITH_BREAKS)
     try {
+      const rendered = document.createElement('div')
+      rendered.innerHTML = editor.getHTML()
+      expect(rendered.querySelectorAll('br[data-raw-markdown-html-inline]')).toHaveLength(3)
+      expect(rendered.textContent).not.toContain('<br')
+
+      editor.commands.setContent(rendered.innerHTML)
       const output = (editor as Editor & { getMarkdown(): string }).getMarkdown()
-      expect(output).toContain('<br/>')
-      expect(output).toContain('<br>')
+      expect(output.match(/<br\s*\/?>/g)).toEqual(['<br/>', '<br/>', '<br>'])
       // The break must not silently collapse into a space on serialization.
       expect(output).not.toContain('`normal` `defect`')
+    } finally {
+      editor.destroy()
+    }
+  })
+
+  it('does not accept arbitrary Markdown source from a forged break marker', () => {
+    const editor = createEditor('Before<br/>after\n')
+    try {
+      const rendered = document.createElement('div')
+      rendered.innerHTML = editor.getHTML()
+      rendered
+        .querySelector('br[data-raw-markdown-html-inline]')
+        ?.setAttribute('data-raw-markdown-html-value', '<script>alert(1)</script>')
+
+      editor.commands.setContent(rendered.innerHTML)
+      const output = (editor as Editor & { getMarkdown(): string }).getMarkdown()
+      expect(output).toContain('Before<br>after')
+      expect(output).not.toContain('<script>')
     } finally {
       editor.destroy()
     }
