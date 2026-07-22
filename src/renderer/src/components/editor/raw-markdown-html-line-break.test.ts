@@ -87,9 +87,9 @@ describe('raw markdown <br> line breaks in the rich editor', () => {
     try {
       const rendered = document.createElement('div')
       rendered.innerHTML = editor.getHTML()
-      rendered
-        .querySelector('br[data-raw-markdown-html-inline]')
-        ?.setAttribute('data-raw-markdown-html-value', '<script>alert(1)</script>')
+      const breakNode = rendered.querySelector('br[data-raw-markdown-html-inline]')
+      expect(breakNode).not.toBeNull()
+      breakNode!.setAttribute('data-raw-markdown-html-value', '<script>alert(1)</script>')
 
       editor.commands.setContent(rendered.innerHTML)
       const output = (editor as Editor & { getMarkdown(): string }).getMarkdown()
