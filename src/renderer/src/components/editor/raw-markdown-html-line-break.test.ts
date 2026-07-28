@@ -82,6 +82,22 @@ describe('raw markdown <br> line breaks in the rich editor', () => {
     }
   })
 
+  it('preserves a case-insensitive break spelling through a DOM round trip', () => {
+    const editor = createEditor('Before<BR />after\n')
+    try {
+      const rendered = document.createElement('div')
+      rendered.innerHTML = editor.getHTML()
+
+      editor.commands.setContent(rendered.innerHTML)
+
+      expect((editor as Editor & { getMarkdown(): string }).getMarkdown()).toContain(
+        'Before<BR />after'
+      )
+    } finally {
+      editor.destroy()
+    }
+  })
+
   it('does not accept arbitrary Markdown source from a forged break marker', () => {
     const editor = createEditor('Before<br/>after\n')
     try {
