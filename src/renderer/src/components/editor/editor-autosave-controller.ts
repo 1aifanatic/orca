@@ -44,16 +44,31 @@ export function attachEditorAutosaveController(store: AppStoreApi): () => void {
       return
     }
 
-    flushPendingEditorChange(file.id)
-    const draft = store.getState().editorDrafts[fileId]
-    if (draft !== undefined) {
-      void queueSave(file, draft).then(
-        () => store.getState().closeFile(fileId),
-        () => {}
-      )
+    const closeAfterSave = (): void => {
+      try {
+        flushPendingEditorChange(fileId)
+      } catch {
+        return
+      }
+      const state = store.getState()
+      const currentFile = state.openFiles.find((openFile) => openFile.id === fileId)
+      if (!currentFile || currentFile.isDirty || state.editorDrafts[fileId] !== undefined) {
+        return
+      }
+      state.closeFile(fileId)
+    }
+
+    try {
+      flushPendingEditorChange(fileId)
+      const draft = store.getState().editorDrafts[fileId]
+      if (draft !== undefined) {
+        void queueSave(file, draft).then(closeAfterSave, () => {})
+        return
+      }
+      closeAfterSave()
+    } catch {
       return
     }
-    store.getState().closeFile(fileId)
   }
 
   const handleSaveFile = (event: Event): void => {
