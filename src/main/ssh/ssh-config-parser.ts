@@ -1,10 +1,21 @@
-import { existsSync } from 'node:fs'
+import { statSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
+import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
 import type { SshTarget } from '../../shared/ssh-types'
-import { expandSshConfigIncludes } from './ssh-config-include-expander'
+import {
+  describeSshConfigIncludeSkips,
+  expandSshConfigIncludes,
+  type SshConfigIncludeSkip
+} from './ssh-config-include-expander'
 import { resolveSshConfigHomePath } from './ssh-config-path-expansion'
 export { parseSshGOutput, resolveWithSshG, type SshResolvedConfig } from './ssh-g-config-resolution'
+
+/** Parsed Hosts plus the Includes that could not contribute any. */
+export type UserSshConfigLoadResult = {
+  hosts: SshConfigHost[]
+  skippedIncludes: readonly SshConfigIncludeSkip[]
+}
 
 export type SshConfigHost = {
   host: string
@@ -253,19 +264,40 @@ function splitOpenSshArguments(input: string): string[] {
   return args
 }
 
-/** Read and parse the user's ~/.ssh/config file. Returns empty array if not found. */
-export function loadUserSshConfig(): SshConfigHost[] {
+/**
+ * Read and parse the user's ~/.ssh/config file.
+ *
+ * `skippedIncludes` is the difference between "this config has no such Host" and "an Include that
+ * does have it could not be read": an empty `hosts` with a non-empty `skippedIncludes` is an
+ * unanswered question, not an empty config: failure to observe the Include is uncertainty, never
+ * evidence that no host exists.
+ */
+export function loadUserSshConfig(): UserSshConfigLoadResult {
   const configPath = join(homedir(), '.ssh', 'config')
-  if (!existsSync(configPath)) {
-    return []
+  // Not existsSync: it answers false for a config it merely could not stat, and `hosts: []` with an
+  // empty `skippedIncludes` is the one answer callers treat as authoritative -- no warning fires and
+  // the picker caches it. A tightened `~/.ssh` must report an unread target, not an empty config.
+  try {
+    statSync(configPath)
+  } catch (error) {
+    if (isDefinitiveAbsence(error)) {
+      return { hosts: [], skippedIncludes: [] }
+    }
+    console.warn(`[ssh] Could not read SSH config at ${configPath}`, { err: error })
+    return { hosts: [], skippedIncludes: [{ target: configPath, reason: 'unreadable' }] }
   }
 
   try {
-    const content = expandSshConfigIncludes(configPath)
-    return parseSshConfig(content)
+    const expansion = expandSshConfigIncludes(configPath)
+    const skipSummary = describeSshConfigIncludeSkips(expansion.skippedIncludes)
+    if (skipSummary) {
+      console.warn(`[ssh] SSH config Includes skipped; hosts may be missing: ${skipSummary}`)
+    }
+    return { hosts: parseSshConfig(expansion.content), skippedIncludes: expansion.skippedIncludes }
   } catch {
     console.warn(`[ssh] Failed to read SSH config at ${configPath}`)
-    return []
+    // The root file itself could not be read, so every Host it would have named is unanswered.
+    return { hosts: [], skippedIncludes: [{ target: configPath, reason: 'unreadable' }] }
   }
 }
 

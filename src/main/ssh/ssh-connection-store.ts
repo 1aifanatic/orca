@@ -2,6 +2,7 @@ import type { Store } from '../persistence'
 import type { SshRepoReadoption, SshTarget } from '../../shared/ssh-types'
 import { RUNTIME_OWNED_SSH_TARGET_ID_PREFIX } from '../../shared/execution-host'
 import { normalizeSshConfigAlias } from '../../shared/ssh-config-alias'
+import { describeSshConfigIncludeSkips } from './ssh-config-include-expander'
 import { loadUserSshConfig, sshConfigHostsToTargets } from './ssh-config-parser'
 import {
   buildRemovedSshTargetTombstone,
@@ -140,7 +141,14 @@ export class SshConnectionStore {
     const deletedAliases = new Set(
       this.store.getDeletedSshConfigAliases().map((alias) => normalizeSshConfigAlias(alias))
     )
-    const configHosts = loadUserSshConfig()
+    const { hosts: configHosts, skippedIncludes } = loadUserSshConfig()
+    if (skippedIncludes.length > 0) {
+      // Import reconciles against what it read; an unreadable Include means it read less than
+      // the user's config says, so say so rather than letting the short list look authoritative.
+      console.warn(
+        `[ssh] Importing from ~/.ssh/config with unread Includes: ${describeSshConfigIncludeSkips(skippedIncludes)}`
+      )
+    }
     const existingTargets = this.store.getSshTargets()
     // Map config-managed targets (and legacy targets that strongly look like
     // prior imports) by their config alias so a repeat import reconciles instead

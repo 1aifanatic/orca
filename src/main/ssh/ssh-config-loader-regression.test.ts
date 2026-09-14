@@ -41,9 +41,9 @@ async function mockOs(
   })
 }
 
-async function loadUserSshConfig() {
+async function loadUserSshConfigHosts() {
   const mod = await import('./ssh-config-parser')
-  return mod.loadUserSshConfig()
+  return (await mod.loadUserSshConfig()).hosts
 }
 
 describe('loadUserSshConfig regressions', () => {
@@ -104,7 +104,7 @@ describe('loadUserSshConfig regressions', () => {
       }
     })
 
-    const hosts = await loadUserSshConfig()
+    const hosts = await loadUserSshConfigHosts()
     expect(hosts.map((host) => host.host)).toEqual(['alpha', 'zeta', 'team', 'forward'])
   })
 
@@ -146,7 +146,7 @@ describe('loadUserSshConfig regressions', () => {
       }
     })
 
-    expect(await loadUserSshConfig()).toEqual([{ host: 'team', hostname: 'team.example.com' }])
+    expect(await loadUserSshConfigHosts()).toEqual([{ host: 'team', hostname: 'team.example.com' }])
   })
 
   it('skips non-regular include targets without reading them', async () => {
@@ -184,7 +184,7 @@ describe('loadUserSshConfig regressions', () => {
       }
     })
 
-    expect(await loadUserSshConfig()).toEqual([{ host: 'safe', hostname: 'safe.example.com' }])
+    expect(await loadUserSshConfigHosts()).toEqual([{ host: 'safe', hostname: 'safe.example.com' }])
     expect(unsafeReadSpy).not.toHaveBeenCalled()
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Skipping SSH config include'))
   })
@@ -227,7 +227,7 @@ describe('loadUserSshConfig regressions', () => {
       }
     })
 
-    const hosts = await loadUserSshConfig()
+    const hosts = await loadUserSshConfigHosts()
     expect(hosts.length).toBeGreaterThan(0)
     expect(hosts.length).toBeLessThan(includePaths.length)
     expect(readPaths.has(includePaths.at(-1)!)).toBe(false)
@@ -272,7 +272,7 @@ describe('loadUserSshConfig regressions', () => {
       }
     })
 
-    expect(await loadUserSshConfig()).toEqual([{ host: 'safe', hostname: 'safe.example.com' }])
+    expect(await loadUserSshConfigHosts()).toEqual([{ host: 'safe', hostname: 'safe.example.com' }])
     expect(oversizedReadSpy).not.toHaveBeenCalled()
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('exceeds'))
   })

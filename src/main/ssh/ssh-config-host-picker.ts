@@ -6,19 +6,25 @@ import type {
 } from '../../shared/ssh-types'
 import { SSH_CONFIG_HOST_RESULT_LIMIT } from '../../shared/ssh-types'
 import { normalizeSshConfigAlias } from '../../shared/ssh-config-alias'
-import { loadUserSshConfig, type SshConfigHost } from './ssh-config-parser'
+import {
+  loadUserSshConfig,
+  type SshConfigHost,
+  type UserSshConfigLoadResult
+} from './ssh-config-parser'
 import { resolveWithSshG, type SshResolvedConfig } from './ssh-g-config-resolution'
 
 // Why: every keystroke in the picker filter re-queries the main process. Parsing (and
 // Include-expanding) ~/.ssh/config per keystroke is the whole cost, and the file cannot
 // change between them, so hold the parse for the picker session and refresh on reopen.
-let cachedConfigHosts: SshConfigHost[] | null = null
+let cachedConfigHosts: UserSshConfigLoadResult | null = null
 
 export function invalidateUserSshConfigHostCache(): void {
   cachedConfigHosts = null
 }
 
-function getUserSshConfigHosts(refresh: boolean): SshConfigHost[] {
+// The skipped-Include list is cached with the hosts on purpose: it is the only thing that tells a
+// reader of this session-long cache that the host list is short because a file could not be read.
+function getUserSshConfig(refresh: boolean): UserSshConfigLoadResult {
   if (refresh || cachedConfigHosts === null) {
     cachedConfigHosts = loadUserSshConfig()
   }
@@ -81,12 +87,12 @@ export function listUserSshConfigHostSummaries(
   suppressedAliases?: readonly string[],
   options?: { refresh?: boolean }
 ): SshConfigHostListResult {
-  return searchSshConfigHosts(
-    getUserSshConfigHosts(options?.refresh === true),
-    existingTargets,
-    query,
-    suppressedAliases
-  )
+  const config = getUserSshConfig(options?.refresh === true)
+  const result = searchSshConfigHosts(config.hosts, existingTargets, query, suppressedAliases)
+  // A short list because an Include could not be read is not the same answer as a short config.
+  return config.skippedIncludes.length === 0
+    ? result
+    : { ...result, skippedIncludes: config.skippedIncludes.map((skip) => skip.target) }
 }
 
 export async function resolveUserSshConfigHost(
@@ -94,7 +100,7 @@ export async function resolveUserSshConfigHost(
   resolver: (host: string) => Promise<SshResolvedConfig | null> = resolveWithSshG,
   // Why: read the file again rather than the picker-session cache — the point of the check
   // below is to catch a row the user edited out of ~/.ssh/config after opening the picker.
-  loadConfigHosts: () => SshConfigHost[] = () => getUserSshConfigHosts(true)
+  loadConfigHosts: () => SshConfigHost[] = () => getUserSshConfig(true).hosts
 ): Promise<SshConfigHostResolution | null> {
   const configHosts = loadConfigHosts()
   // Why: `ssh -G` answers for unknown aliases too, echoing the alias back as the hostname.

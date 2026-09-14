@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as SshConfigParser from './ssh-config-parser'
-import type { SshConfigHost } from './ssh-config-parser'
+import type { UserSshConfigLoadResult } from './ssh-config-parser'
 
-const loadUserSshConfigMock = vi.hoisted(() => vi.fn<() => SshConfigHost[]>(() => []))
+const loadUserSshConfigMock = vi.hoisted(() =>
+  vi.fn<() => UserSshConfigLoadResult>(() => ({ hosts: [], skippedIncludes: [] }))
+)
 vi.mock('./ssh-config-parser', async (importOriginal) => ({
   ...(await importOriginal<typeof SshConfigParser>()),
   loadUserSshConfig: loadUserSshConfigMock
@@ -117,7 +119,10 @@ describe('SSH config host picker search', () => {
 describe('listUserSshConfigHostSummaries caching', () => {
   beforeEach(() => {
     loadUserSshConfigMock.mockClear()
-    loadUserSshConfigMock.mockReturnValue([{ host: 'prod' }, { host: 'stage' }])
+    loadUserSshConfigMock.mockReturnValue({
+      hosts: [{ host: 'prod' }, { host: 'stage' }],
+      skippedIncludes: []
+    })
     invalidateUserSshConfigHostCache()
   })
 
@@ -132,7 +137,10 @@ describe('listUserSshConfigHostSummaries caching', () => {
 
   it('re-reads the file when the picker reopens', () => {
     listUserSshConfigHostSummaries([], '', [], { refresh: true })
-    loadUserSshConfigMock.mockReturnValue([{ host: 'prod' }, { host: 'stage' }, { host: 'added' }])
+    loadUserSshConfigMock.mockReturnValue({
+      hosts: [{ host: 'prod' }, { host: 'stage' }, { host: 'added' }],
+      skippedIncludes: []
+    })
     const reopened = listUserSshConfigHostSummaries([], '', [], { refresh: true })
 
     expect(loadUserSshConfigMock).toHaveBeenCalledTimes(2)

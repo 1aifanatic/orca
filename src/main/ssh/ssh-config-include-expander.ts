@@ -1,24 +1,52 @@
-import { existsSync, globSync, readFileSync, realpathSync, statSync } from 'node:fs'
-import { homedir, hostname, userInfo } from 'node:os'
-import { posix, win32 } from 'node:path'
+import { globSync, readFileSync, realpathSync, statSync } from 'node:fs'
+import { homedir, hostname } from 'node:os'
+import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
+import { findUnreadableGlobDirectory } from './ssh-config-include-glob-readability'
+import {
+  expandEnvironmentVariables,
+  expandIncludeTokens,
+  getCurrentUid,
+  getCurrentUser,
+  getPathApi,
+  hasGlobPattern,
+  resolveIncludePatternPath,
+  type IncludePathContext
+} from './ssh-config-include-path-resolution'
 
-type PathApi = typeof posix | typeof win32
+/**
+ * Why an Include contributed nothing. A path that simply does not exist is NOT here: OpenSSH
+ * ignores absent Include paths, so absence is a legitimate negative answer. These are the cases
+ * where the file is there (or the pattern names files) and Orca still could not read it, which is
+ * "could not ask" and must not reach a caller as "no such host".
+ */
+export type SshConfigIncludeSkipReason =
+  | 'unreadable'
+  | 'unexpandable'
+  | 'not-a-regular-file'
+  | 'too-large'
+  | 'too-many-matches'
 
-type IncludeExpansionContext = {
+export type SshConfigIncludeSkip = {
+  /** The include path, or the pattern when no path could be resolved from it. */
+  target: string
+  reason: SshConfigIncludeSkipReason
+}
+
+export type SshConfigExpansion = {
+  content: string
+  /** Empty means the expansion is complete. Non-empty means hosts may be missing from `content`. */
+  skippedIncludes: readonly SshConfigIncludeSkip[]
+}
+
+type IncludeExpansionContext = IncludePathContext & {
   cache: Map<string, string>
-  home: string
-  pathApi: PathApi
-  rootDir: string
-  shortHostname: string
-  uid?: string
-  username: string
+  skips: Map<string, SshConfigIncludeSkip>
 }
 
 const MAX_INCLUDE_GLOB_MATCHES = 256
 const MAX_INCLUDE_FILE_BYTES = 1024 * 1024
-const TARGET_DEPENDENT_INCLUDE_TOKENS = new Set(['h', 'n', 'p', 'r', 'j', 'k', 'C'])
 
-export function expandSshConfigIncludes(configPath: string): string {
+export function expandSshConfigIncludes(configPath: string): SshConfigExpansion {
   const home = homedir()
   const pathApi = getPathApi(configPath)
   const currentUser = getCurrentUser()
@@ -30,11 +58,21 @@ export function expandSshConfigIncludes(configPath: string): string {
     pathApi,
     rootDir: pathApi.dirname(configPath),
     shortHostname: localHostname.split('.')[0] || localHostname,
+    skips: new Map(),
     uid: getCurrentUid(),
     username: currentUser
   }
 
-  return expandSshConfigFile(configPath, context, []).join('\n')
+  const lines = expandSshConfigFile(configPath, context, [])
+  return { content: lines.join('\n'), skippedIncludes: [...context.skips.values()] }
+}
+
+function recordSkip(
+  context: IncludeExpansionContext,
+  target: string,
+  reason: SshConfigIncludeSkipReason
+): void {
+  context.skips.set(`${reason}\0${target}`, { target, reason })
 }
 
 function expandSshConfigFile(
@@ -42,7 +80,7 @@ function expandSshConfigFile(
   context: IncludeExpansionContext,
   activeStack: string[]
 ): string[] {
-  const canonicalPath = getCanonicalPath(filePath)
+  const canonicalPath = getCanonicalPath(filePath, context)
   if (!canonicalPath || activeStack.includes(canonicalPath)) {
     return []
   }
@@ -86,7 +124,7 @@ function readCachedFile(filePath: string, context: IncludeExpansionContext): str
     return cached
   }
 
-  if (!isReadableRegularFile(filePath)) {
+  if (!isReadableRegularFile(filePath, context)) {
     return null
   }
 
@@ -94,7 +132,10 @@ function readCachedFile(filePath: string, context: IncludeExpansionContext): str
     const content = readFileSync(filePath, 'utf-8')
     context.cache.set(filePath, content)
     return content
-  } catch {
+  } catch (error) {
+    if (!isDefinitiveAbsence(error)) {
+      recordSkip(context, filePath, 'unreadable')
+    }
     return null
   }
 }
@@ -158,11 +199,13 @@ function splitQuotedArguments(input: string): string[] {
 function resolveIncludePaths(pattern: string, context: IncludeExpansionContext): string[] {
   const withEnv = expandEnvironmentVariables(pattern)
   if (withEnv === null) {
+    recordSkip(context, pattern, 'unexpandable')
     return []
   }
 
   const withTokens = expandIncludeTokens(withEnv, context)
   if (withTokens === null) {
+    recordSkip(context, pattern, 'unexpandable')
     return []
   }
 
@@ -170,182 +213,80 @@ function resolveIncludePaths(pattern: string, context: IncludeExpansionContext):
   if (hasGlobPattern(absolutePattern)) {
     try {
       const matches = globSync(absolutePattern).sort((left, right) => left.localeCompare(right))
+      // Unconditional, not only on an empty result: a partial expansion is exactly as unproven, and
+      // it is the half that goes on to feed a confident alias claim.
+      const unreadable = findUnreadableGlobDirectory(absolutePattern, context.pathApi)
+      if (unreadable) {
+        recordSkip(context, unreadable, 'unreadable')
+      }
       if (matches.length > MAX_INCLUDE_GLOB_MATCHES) {
         console.warn(
           `[ssh] Include pattern "${absolutePattern}" matched ${matches.length} files; processing first ${MAX_INCLUDE_GLOB_MATCHES}`
         )
+        recordSkip(context, absolutePattern, 'too-many-matches')
         return matches.slice(0, MAX_INCLUDE_GLOB_MATCHES)
       }
       return matches
     } catch {
+      // A glob that threw walked a directory it could not read; it never proved the set is empty.
+      recordSkip(context, absolutePattern, 'unreadable')
       return []
     }
   }
 
-  return existsSync(absolutePattern) ? [absolutePattern] : []
-}
-
-function expandEnvironmentVariables(input: string): string | null {
-  let missing = false
-  const expanded = input.replaceAll(/\$\{([^}]+)\}/g, (_, name: string) => {
-    const value = process.env[name]
-    if (value === undefined) {
-      missing = true
-      return ''
+  // Not existsSync: it answers false for a path it merely could not stat, which would drop an
+  // Include living behind an unreadable parent directory as if the user had never written it.
+  try {
+    statSync(absolutePattern)
+    return [absolutePattern]
+  } catch (error) {
+    if (!isDefinitiveAbsence(error)) {
+      recordSkip(context, absolutePattern, 'unreadable')
     }
-    return value
-  })
-
-  return missing ? null : expanded
-}
-
-function expandIncludeTokens(input: string, context: IncludeExpansionContext): string | null {
-  let output = ''
-
-  for (let i = 0; i < input.length; i += 1) {
-    const char = input[i]
-    if (char !== '%') {
-      output += char
-      continue
-    }
-
-    const token = input[i + 1]
-    if (!token) {
-      output += char
-      continue
-    }
-
-    if (token === '%') {
-      output += '%'
-      i += 1
-      continue
-    }
-
-    if (TARGET_DEPENDENT_INCLUDE_TOKENS.has(token)) {
-      return null
-    }
-
-    if (token === 'd') {
-      output += context.home
-      i += 1
-      continue
-    }
-
-    if (token === 'u') {
-      output += context.username
-      i += 1
-      continue
-    }
-
-    if (token === 'i') {
-      if (!context.uid) {
-        return null
-      }
-      output += context.uid
-      i += 1
-      continue
-    }
-
-    if (token === 'l') {
-      output += hostname()
-      i += 1
-      continue
-    }
-
-    if (token === 'L') {
-      output += context.shortHostname
-      i += 1
-      continue
-    }
-
-    output += `%${token}`
-    i += 1
+    return []
   }
-
-  return output
 }
 
-function resolveIncludePatternPath(input: string, context: IncludeExpansionContext): string {
-  const pathApi = context.pathApi
-  if (input === '~') {
-    return context.home
-  }
-  if (input.startsWith('~/') || input.startsWith('~\\')) {
-    return pathApi.join(context.home, input.slice(2))
-  }
-
-  if (pathApi.isAbsolute(input)) {
-    return pathApi.normalize(input)
-  }
-
-  return pathApi.normalize(pathApi.join(context.rootDir, input))
-}
-
-function hasGlobPattern(input: string): boolean {
-  return /[*?[]/.test(input)
-}
-
-function getCanonicalPath(filePath: string): string | null {
+function getCanonicalPath(filePath: string, context: IncludeExpansionContext): string | null {
   try {
     return realpathSync.native(filePath)
-  } catch {
+  } catch (error) {
+    if (!isDefinitiveAbsence(error)) {
+      recordSkip(context, filePath, 'unreadable')
+    }
     return null
   }
 }
 
-function isReadableRegularFile(filePath: string): boolean {
+function isReadableRegularFile(filePath: string, context: IncludeExpansionContext): boolean {
   try {
     const stats = statSync(filePath)
     if (!stats.isFile()) {
       console.warn(`[ssh] Skipping SSH config include "${filePath}": not a regular file`)
+      recordSkip(context, filePath, 'not-a-regular-file')
       return false
     }
     if (stats.size > MAX_INCLUDE_FILE_BYTES) {
       console.warn(
         `[ssh] Skipping SSH config include "${filePath}": size ${stats.size} exceeds ${MAX_INCLUDE_FILE_BYTES} bytes`
       )
+      recordSkip(context, filePath, 'too-large')
       return false
     }
     return true
-  } catch {
+  } catch (error) {
+    if (!isDefinitiveAbsence(error)) {
+      recordSkip(context, filePath, 'unreadable')
+    }
     return false
   }
 }
 
-function getCurrentUid(): string | undefined {
-  try {
-    const info = userInfo()
-    if (typeof info.uid === 'number' && info.uid >= 0) {
-      return String(info.uid)
-    }
-  } catch {
-    return undefined
-  }
-
-  if (typeof process.getuid === 'function') {
-    try {
-      return String(process.getuid())
-    } catch {
-      return undefined
-    }
-  }
-
-  return undefined
-}
-
-function getCurrentUser(): string {
-  try {
-    const info = userInfo()
-    if (info.username) {
-      return info.username
-    }
-  } catch {
-    // Fall back to environment variables below.
-  }
-
-  return process.env.USER ?? process.env.USERNAME ?? ''
-}
-
-function getPathApi(filePath: string): PathApi {
-  return /^[a-zA-Z]:[\\/]/.test(filePath) || filePath.startsWith('\\\\') ? win32 : posix
+/** One line per skip, for the loaders that log the gap they are reporting to the user. */
+export function describeSshConfigIncludeSkips(
+  skips: readonly SshConfigIncludeSkip[]
+): string | null {
+  return skips.length === 0
+    ? null
+    : skips.map((skip) => `${skip.target} (${skip.reason})`).join(', ')
 }
