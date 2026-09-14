@@ -1,24 +1,28 @@
 import { globSync, opendirSync } from 'node:fs'
 import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
-import {
-  GLOB_METACHARACTER,
-  getLiteralGlobParent,
-  type PathApi
-} from './ssh-config-include-path-resolution'
+import type { PathApi } from './ssh-config-include-path-resolution'
+
+const GLOB_METACHARACTER = /[*?[]/
+
+export function hasGlobPattern(input: string): boolean {
+  return GLOB_METACHARACTER.test(input)
+}
+
+/** The deepest literal directory that a glob must be able to read. */
+export function getLiteralGlobParent(pattern: string, pathApi: PathApi): string {
+  const firstGlob = pattern.search(GLOB_METACHARACTER)
+  const literal = firstGlob === -1 ? pattern : pattern.slice(0, firstGlob)
+  // Appending a filename keeps a prefix ending in a separator from stepping up a directory.
+  return pathApi.dirname(`${literal}x`)
+}
 
 /**
  * The directory whose unreadability makes a `globSync` result untrustworthy, or `null` when every
  * directory the expansion had to walk opened.
  *
  * `globSync` reports what it could see and never reports what it could not: an unreadable directory
- * yields fewer matches, not an error. So neither an empty result nor a partial one proves absence on
- * its own. An `Include` that globs a directory level rather than only a filename -- one subdirectory
- * of `~/.ssh` at mode 000, the rest readable -- silently drops that host's whole `Host` block, and
- * `sshConfigMayClaimAlias` then answers a confident `false` for an alias the config does claim.
- *
- * Walks one level per glob segment, so an unreadable directory under an earlier segment is still
- * reached: each level is globbed from a prefix whose own parents already opened. The traversal
- * mirrors the one `globSync` just did, so it costs no more than the call it is checking.
+ * yields fewer matches, not an error. Walk each globbed directory level so partial matches are not
+ * mistaken for a complete result.
  */
 export function findUnreadableGlobDirectory(pattern: string, pathApi: PathApi): string | null {
   const unopenableParent = findUnopenableDirectory(getLiteralGlobParent(pattern, pathApi))
@@ -36,11 +40,10 @@ export function findUnreadableGlobDirectory(pattern: string, pathApi: PathApi): 
   return null
 }
 
-/** `null` when the directory opened, or is definitively not there: OpenSSH includes nothing for a
- *  missing directory either, and a regular file caught by an intermediate glob answers ENOTDIR. */
+/** Missing directories and paths below regular files are definitive empty matches. */
 function findUnopenableDirectory(directory: string): string | null {
   try {
-    // opendir, not stat: a directory with no `r` bit stats fine and only fails on being read.
+    // A directory without read permission can still be statted.
     opendirSync(directory).closeSync()
     return null
   } catch (error) {
@@ -48,22 +51,18 @@ function findUnopenableDirectory(directory: string): string | null {
   }
 }
 
-/**
- * Each directory level a glob segment produced, as a pattern. A pattern globbing one level of
- * `~/.ssh` and then naming `conf.d` yields that globbed level and `<globbed>/conf.d`. The final
- * segment is excluded: it names the matches themselves, which are read as files rather than walked.
- */
+/** Glob patterns for each directory level before the final match segment. */
 function getGlobDirectoryPrefixes(pattern: string, pathApi: PathApi): string[] {
   const firstGlob = pattern.search(GLOB_METACHARACTER)
   if (firstGlob === -1) {
     return []
   }
   // Windows accepts both separators, and ssh_config is routinely written with forward slashes.
-  const isSeparator = (char: string): boolean =>
+  const isSeparator = (char: string | undefined): boolean =>
     char === '/' || (pathApi.sep === '\\' && char === '\\')
   const prefixes: string[] = []
   for (let index = firstGlob + 1; index < pattern.length; index += 1) {
-    if (isSeparator(pattern[index] as string)) {
+    if (isSeparator(pattern[index])) {
       prefixes.push(pattern.slice(0, index))
     }
   }

@@ -112,27 +112,6 @@ export function resolveIncludePatternPath(input: string, context: IncludePathCon
   return pathApi.normalize(pathApi.join(context.rootDir, input))
 }
 
-/** OpenSSH's `Include` glob syntax. One definition, because two of the three readers below decide
- *  where the literal prefix ENDS and disagreeing about that silently shifts which directory gets
- *  checked for readability. Not `g`-flagged: shared state across `test` and `search` would skip. */
-export const GLOB_METACHARACTER = /[*?[]/
-
-export function hasGlobPattern(input: string): boolean {
-  return GLOB_METACHARACTER.test(input)
-}
-
-/**
- * The deepest literal directory of a glob — the one `globSync` has to be able to read before an
- * empty match set means anything. `config.d/*` and `config.d/5*` both answer `config.d`.
- */
-export function getLiteralGlobParent(pattern: string, pathApi: PathApi): string {
-  const firstGlob = pattern.search(GLOB_METACHARACTER)
-  const literal = firstGlob === -1 ? pattern : pattern.slice(0, firstGlob)
-  // The placeholder stands in for the removed pattern segment, so a prefix ending at a separator
-  // keeps its own directory instead of dirname stepping one level too far up.
-  return pathApi.dirname(`${literal}x`)
-}
-
 export function getCurrentUid(): string | undefined {
   try {
     const info = userInfo()

@@ -136,14 +136,6 @@ export type SshConfigHostListResult = {
   newHostCount: number
   matchCount: number
   hasMore: boolean
-  /**
-   * Include paths that are present but could not be read, so `hosts` may be missing entries.
-   * Absent (not empty) when the parse was complete, and absent from hosts that predate the field.
-   *
-   * Main already logs these; surfacing them in the picker belongs to whoever owns
-   * renderer/src/components/sidebar/add-remote-host-ssh-actions.ts, the only consumer.
-   */
-  skippedIncludes?: string[]
 }
 
 /** `refresh` re-reads ~/.ssh/config; filter keystrokes reuse the cached parse. */

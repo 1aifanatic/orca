@@ -288,7 +288,7 @@ describe('Store', () => {
   })
 
   it('upserts ~/.ssh/config through the real store: rotated port updates in place and persists', async () => {
-    loadUserSshConfigMock.mockReturnValue({ hosts: [{ host: 'cluster' }], skippedIncludes: [] })
+    loadUserSshConfigMock.mockReturnValue([{ host: 'cluster' }])
     const candidate = (port: number, id: string) => [
       { id, label: 'cluster', configHost: 'cluster', host: '10.0.0.5', port, username: 'dev' }
     ]

@@ -199,7 +199,7 @@ describe('SshConnectionStore', () => {
     }
 
     it('inserts a new config host stamped as ssh-config', () => {
-      loadUserSshConfigMock.mockReturnValue({ hosts: [{ host: 'staging' }], skippedIncludes: [] })
+      loadUserSshConfigMock.mockReturnValue([{ host: 'staging' }])
       sshConfigHostsToTargetsMock.mockReturnValue([
         candidate({ configHost: 'staging', host: 'staging.example.com' })
       ])
@@ -214,7 +214,7 @@ describe('SshConnectionStore', () => {
     })
 
     it('asks the parser for all hosts — reconciliation happens in the store', () => {
-      loadUserSshConfigMock.mockReturnValue({ hosts: [{ host: 'a' }], skippedIncludes: [] })
+      loadUserSshConfigMock.mockReturnValue([{ host: 'a' }])
       sshConfigHostsToTargetsMock.mockReturnValue([])
 
       sshStore.importFromSshConfig()
@@ -234,7 +234,7 @@ describe('SshConnectionStore', () => {
         username: 'dev',
         source: 'ssh-config'
       })
-      loadUserSshConfigMock.mockReturnValue({ hosts: [{ host: 'cluster' }], skippedIncludes: [] })
+      loadUserSshConfigMock.mockReturnValue([{ host: 'cluster' }])
       sshConfigHostsToTargetsMock.mockReturnValue([
         candidate({ configHost: 'cluster', host: '10.0.0.5', port: 2222, username: 'dev' })
       ])
@@ -261,7 +261,7 @@ describe('SshConnectionStore', () => {
         username: 'old',
         source: 'ssh-config'
       })
-      loadUserSshConfigMock.mockReturnValue({ hosts: [{ host: 'box' }], skippedIncludes: [] })
+      loadUserSshConfigMock.mockReturnValue([{ host: 'box' }])
       sshConfigHostsToTargetsMock.mockReturnValue([
         candidate({
           configHost: 'box',
@@ -295,7 +295,7 @@ describe('SshConnectionStore', () => {
         username: 'dev',
         source: 'ssh-config'
       })
-      loadUserSshConfigMock.mockReturnValue({ hosts: [{ host: 'krb-box' }], skippedIncludes: [] })
+      loadUserSshConfigMock.mockReturnValue([{ host: 'krb-box' }])
       sshConfigHostsToTargetsMock.mockReturnValue([
         candidate({
           configHost: 'krb-box',
@@ -323,7 +323,7 @@ describe('SshConnectionStore', () => {
         username: 'me',
         source: 'manual'
       })
-      loadUserSshConfigMock.mockReturnValue({ hosts: [{ host: 'cluster' }], skippedIncludes: [] })
+      loadUserSshConfigMock.mockReturnValue([{ host: 'cluster' }])
       sshConfigHostsToTargetsMock.mockReturnValue([
         candidate({ configHost: 'cluster', host: '10.0.0.9', port: 2222, username: 'dev' })
       ])
@@ -346,7 +346,7 @@ describe('SshConnectionStore', () => {
         username: 'dev'
         // no source — predates the field
       })
-      loadUserSshConfigMock.mockReturnValue({ hosts: [{ host: 'cluster' }], skippedIncludes: [] })
+      loadUserSshConfigMock.mockReturnValue([{ host: 'cluster' }])
       sshConfigHostsToTargetsMock.mockReturnValue([
         candidate({ configHost: 'cluster', host: '10.0.0.5', port: 2222, username: 'dev' })
       ])
@@ -370,7 +370,7 @@ describe('SshConnectionStore', () => {
         username: 'me'
         // no source — predates the field, but does not look like a config import
       })
-      loadUserSshConfigMock.mockReturnValue({ hosts: [{ host: 'cluster' }], skippedIncludes: [] })
+      loadUserSshConfigMock.mockReturnValue([{ host: 'cluster' }])
       sshConfigHostsToTargetsMock.mockReturnValue([
         candidate({ configHost: 'cluster', host: '10.0.0.5', port: 2222, username: 'dev' })
       ])
@@ -394,7 +394,7 @@ describe('SshConnectionStore', () => {
         username: 'me',
         source: 'manual'
       })
-      loadUserSshConfigMock.mockReturnValue({ hosts: [{ host: 'prod' }], skippedIncludes: [] })
+      loadUserSshConfigMock.mockReturnValue([{ host: 'prod' }])
       sshConfigHostsToTargetsMock.mockReturnValue([candidate({ configHost: 'prod' })])
 
       const result = sshStore.importFromSshConfig()
@@ -412,7 +412,7 @@ describe('SshConnectionStore', () => {
         username: 'me'
       })
       sshStore.removeTarget(added.id)
-      loadUserSshConfigMock.mockReturnValue({ hosts: [{ host: 'prod' }], skippedIncludes: [] })
+      loadUserSshConfigMock.mockReturnValue([{ host: 'prod' }])
       sshConfigHostsToTargetsMock.mockReturnValue([candidate({ configHost: 'prod' })])
 
       const result = sshStore.importFromSshConfig()
@@ -451,7 +451,7 @@ describe('SshConnectionStore', () => {
         username: '',
         source: 'ssh-config'
       })
-      loadUserSshConfigMock.mockReturnValue({ hosts: [{ host: 'cluster' }], skippedIncludes: [] })
+      loadUserSshConfigMock.mockReturnValue([{ host: 'cluster' }])
       // Candidate is identical to the persisted target (same default fields).
       sshConfigHostsToTargetsMock.mockReturnValue([candidate({ configHost: 'cluster' })])
 
@@ -462,7 +462,7 @@ describe('SshConnectionStore', () => {
     })
 
     it('returns empty array when nothing changed', () => {
-      loadUserSshConfigMock.mockReturnValue({ hosts: [], skippedIncludes: [] })
+      loadUserSshConfigMock.mockReturnValue([])
       sshConfigHostsToTargetsMock.mockReturnValue([])
 
       const result = sshStore.importFromSshConfig()
@@ -498,7 +498,7 @@ describe('SshConnectionStore', () => {
       sshStore.removeTarget('ssh-1')
       expect(mockStore.addDeletedSshConfigAlias).toHaveBeenCalledWith('mini')
 
-      loadUserSshConfigMock.mockReturnValue({ hosts: [{ host: 'mini' }], skippedIncludes: [] })
+      loadUserSshConfigMock.mockReturnValue([{ host: 'mini' }])
       sshConfigHostsToTargetsMock.mockReturnValue([candidate({ configHost: 'mini' })])
 
       const result = sshStore.importFromSshConfig()
@@ -534,7 +534,7 @@ describe('SshConnectionStore', () => {
       })
       expect(mockStore.removeDeletedSshConfigAlias).toHaveBeenCalledWith('mini')
 
-      loadUserSshConfigMock.mockReturnValue({ hosts: [{ host: 'mini' }], skippedIncludes: [] })
+      loadUserSshConfigMock.mockReturnValue([{ host: 'mini' }])
       sshConfigHostsToTargetsMock.mockReturnValue([candidate({ configHost: 'mini' })])
       // Alias reclaimed, but it is now a manual target — still not re-inserted.
       const result = sshStore.importFromSshConfig()
@@ -559,7 +559,7 @@ describe('SshConnectionStore', () => {
 
     it('reAdopt clears all tombstones and re-imports the deleted host', () => {
       mockStore.addDeletedSshConfigAlias('mini')
-      loadUserSshConfigMock.mockReturnValue({ hosts: [{ host: 'mini' }], skippedIncludes: [] })
+      loadUserSshConfigMock.mockReturnValue([{ host: 'mini' }])
       sshConfigHostsToTargetsMock.mockReturnValue([candidate({ configHost: 'mini' })])
 
       const result = sshStore.importFromSshConfig({ reAdopt: true })
@@ -590,10 +590,7 @@ describe('SshConnectionStore', () => {
         label: 'host-b',
         removedAt: 1
       })
-      loadUserSshConfigMock.mockReturnValue({
-        hosts: [{ host: 'host-a' }, { host: 'host-b' }],
-        skippedIncludes: []
-      })
+      loadUserSshConfigMock.mockReturnValue([{ host: 'host-a' }, { host: 'host-b' }])
       sshConfigHostsToTargetsMock.mockReturnValue([
         candidate({ configHost: 'host-a' }),
         candidate({ configHost: 'host-b' })

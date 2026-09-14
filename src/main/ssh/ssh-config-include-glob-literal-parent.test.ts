@@ -1,6 +1,6 @@
 import { posix, win32 } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { getLiteralGlobParent } from './ssh-config-include-path-resolution'
+import { getLiteralGlobParent } from './ssh-config-include-glob-readability'
 
 /**
  * The directory an empty `globSync` result has to be checked against. Worth its own test because

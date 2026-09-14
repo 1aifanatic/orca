@@ -1,46 +1,26 @@
 import { globSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { homedir, hostname } from 'node:os'
 import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
-import { findUnreadableGlobDirectory } from './ssh-config-include-glob-readability'
+import { findUnreadableGlobDirectory, hasGlobPattern } from './ssh-config-include-glob-readability'
 import {
   expandEnvironmentVariables,
   expandIncludeTokens,
   getCurrentUid,
   getCurrentUser,
   getPathApi,
-  hasGlobPattern,
   resolveIncludePatternPath,
   type IncludePathContext
 } from './ssh-config-include-path-resolution'
 
-/**
- * Why an Include contributed nothing. A path that simply does not exist is NOT here: OpenSSH
- * ignores absent Include paths, so absence is a legitimate negative answer. These are the cases
- * where the file is there (or the pattern names files) and Orca still could not read it, which is
- * "could not ask" and must not reach a caller as "no such host".
- */
-export type SshConfigIncludeSkipReason =
-  | 'unreadable'
-  | 'unexpandable'
-  | 'not-a-regular-file'
-  | 'too-large'
-  | 'too-many-matches'
-
-export type SshConfigIncludeSkip = {
-  /** The include path, or the pattern when no path could be resolved from it. */
-  target: string
-  reason: SshConfigIncludeSkipReason
-}
-
-export type SshConfigExpansion = {
+type SshConfigExpansion = {
   content: string
-  /** Empty means the expansion is complete. Non-empty means hosts may be missing from `content`. */
-  skippedIncludes: readonly SshConfigIncludeSkip[]
+  /** False when an Include may have hidden config from the parser. */
+  fullyExpanded: boolean
 }
 
 type IncludeExpansionContext = IncludePathContext & {
   cache: Map<string, string>
-  skips: Map<string, SshConfigIncludeSkip>
+  fullyExpanded: boolean
 }
 
 const MAX_INCLUDE_GLOB_MATCHES = 256
@@ -49,30 +29,26 @@ const MAX_INCLUDE_FILE_BYTES = 1024 * 1024
 export function expandSshConfigIncludes(configPath: string): SshConfigExpansion {
   const home = homedir()
   const pathApi = getPathApi(configPath)
-  const currentUser = getCurrentUser()
   const localHostname = hostname()
 
   const context: IncludeExpansionContext = {
     cache: new Map(),
+    fullyExpanded: true,
     home,
     pathApi,
     rootDir: pathApi.dirname(configPath),
     shortHostname: localHostname.split('.')[0] || localHostname,
-    skips: new Map(),
     uid: getCurrentUid(),
-    username: currentUser
+    username: getCurrentUser()
   }
 
   const lines = expandSshConfigFile(configPath, context, [])
-  return { content: lines.join('\n'), skippedIncludes: [...context.skips.values()] }
+  return { content: lines.join('\n'), fullyExpanded: context.fullyExpanded }
 }
 
-function recordSkip(
-  context: IncludeExpansionContext,
-  target: string,
-  reason: SshConfigIncludeSkipReason
-): void {
-  context.skips.set(`${reason}\0${target}`, { target, reason })
+function markIncomplete(context: IncludeExpansionContext, target: string): void {
+  context.fullyExpanded = false
+  console.warn(`[ssh] Could not expand SSH config Include "${target}"; hosts may be missing`)
 }
 
 function expandSshConfigFile(
@@ -134,7 +110,7 @@ function readCachedFile(filePath: string, context: IncludeExpansionContext): str
     return content
   } catch (error) {
     if (!isDefinitiveAbsence(error)) {
-      recordSkip(context, filePath, 'unreadable')
+      markIncomplete(context, filePath)
     }
     return null
   }
@@ -199,13 +175,13 @@ function splitQuotedArguments(input: string): string[] {
 function resolveIncludePaths(pattern: string, context: IncludeExpansionContext): string[] {
   const withEnv = expandEnvironmentVariables(pattern)
   if (withEnv === null) {
-    recordSkip(context, pattern, 'unexpandable')
+    markIncomplete(context, pattern)
     return []
   }
 
   const withTokens = expandIncludeTokens(withEnv, context)
   if (withTokens === null) {
-    recordSkip(context, pattern, 'unexpandable')
+    markIncomplete(context, pattern)
     return []
   }
 
@@ -217,19 +193,19 @@ function resolveIncludePaths(pattern: string, context: IncludeExpansionContext):
       // it is the half that goes on to feed a confident alias claim.
       const unreadable = findUnreadableGlobDirectory(absolutePattern, context.pathApi)
       if (unreadable) {
-        recordSkip(context, unreadable, 'unreadable')
+        markIncomplete(context, unreadable)
       }
       if (matches.length > MAX_INCLUDE_GLOB_MATCHES) {
         console.warn(
           `[ssh] Include pattern "${absolutePattern}" matched ${matches.length} files; processing first ${MAX_INCLUDE_GLOB_MATCHES}`
         )
-        recordSkip(context, absolutePattern, 'too-many-matches')
+        context.fullyExpanded = false
         return matches.slice(0, MAX_INCLUDE_GLOB_MATCHES)
       }
       return matches
     } catch {
       // A glob that threw walked a directory it could not read; it never proved the set is empty.
-      recordSkip(context, absolutePattern, 'unreadable')
+      markIncomplete(context, absolutePattern)
       return []
     }
   }
@@ -241,7 +217,7 @@ function resolveIncludePaths(pattern: string, context: IncludeExpansionContext):
     return [absolutePattern]
   } catch (error) {
     if (!isDefinitiveAbsence(error)) {
-      recordSkip(context, absolutePattern, 'unreadable')
+      markIncomplete(context, absolutePattern)
     }
     return []
   }
@@ -252,7 +228,7 @@ function getCanonicalPath(filePath: string, context: IncludeExpansionContext): s
     return realpathSync.native(filePath)
   } catch (error) {
     if (!isDefinitiveAbsence(error)) {
-      recordSkip(context, filePath, 'unreadable')
+      markIncomplete(context, filePath)
     }
     return null
   }
@@ -263,30 +239,20 @@ function isReadableRegularFile(filePath: string, context: IncludeExpansionContex
     const stats = statSync(filePath)
     if (!stats.isFile()) {
       console.warn(`[ssh] Skipping SSH config include "${filePath}": not a regular file`)
-      recordSkip(context, filePath, 'not-a-regular-file')
       return false
     }
     if (stats.size > MAX_INCLUDE_FILE_BYTES) {
       console.warn(
         `[ssh] Skipping SSH config include "${filePath}": size ${stats.size} exceeds ${MAX_INCLUDE_FILE_BYTES} bytes`
       )
-      recordSkip(context, filePath, 'too-large')
+      context.fullyExpanded = false
       return false
     }
     return true
   } catch (error) {
     if (!isDefinitiveAbsence(error)) {
-      recordSkip(context, filePath, 'unreadable')
+      markIncomplete(context, filePath)
     }
     return false
   }
-}
-
-/** One line per skip, for the loaders that log the gap they are reporting to the user. */
-export function describeSshConfigIncludeSkips(
-  skips: readonly SshConfigIncludeSkip[]
-): string | null {
-  return skips.length === 0
-    ? null
-    : skips.map((skip) => `${skip.target} (${skip.reason})`).join(', ')
 }

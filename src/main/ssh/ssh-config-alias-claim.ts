@@ -2,7 +2,7 @@ import { existsSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { normalizeSshConfigAlias } from '../../shared/ssh-config-alias'
-import { expandSshConfigIncludes, type SshConfigIncludeSkip } from './ssh-config-include-expander'
+import { expandSshConfigIncludes } from './ssh-config-include-expander'
 import { parseSshConfigAliasClaims, type SshConfigAliasClaims } from './ssh-config-parser'
 
 /**
@@ -64,9 +64,7 @@ function matchesHostPattern(pattern: string, normalizedAlias: string): boolean {
 // command, so re-expanding Includes every time is not an option.
 const CLAIM_CACHE_TTL_MS = 5_000
 
-// The cached `claims` is nullable on purpose: doctrine remedy 2 (bound the entry) rather than
-// remedy 1 (don't pin it). A config with one permanently unreadable Include would otherwise make
-// every remote command re-walk ~/.ssh/config synchronously, forever.
+// Cache uncertainty too; otherwise a permanently unreadable Include is re-read for every command.
 let cachedClaims: { key: string; readAt: number; claims: SshConfigAliasClaims | null } | null = null
 
 export function invalidateSshConfigAliasClaimCache(): void {
@@ -83,12 +81,6 @@ export function invalidateSshConfigAliasClaimCache(): void {
 export function loadUserSshConfigAliasClaims(): SshConfigAliasClaims | null {
   const configPath = join(homedir(), '.ssh', 'config')
   try {
-    // `existsSync` conflates "absent" with "could not stat", which is harmless here and nowhere
-    // else in this sweep: both answers are `null`, the uncertainty state callers already read as
-    // "may claim". An absent config genuinely claims nothing, but saying so would buy nothing --
-    // the only consumer of a `false` claim sits behind `shouldUseOpenSshConfigHost`
-    // (system-ssh-args.ts), and with no `~/.ssh/config` there is no config-backed target to reach
-    // it. It would need a second return value nobody has a use for.
     if (!existsSync(configPath)) {
       return null
     }
@@ -100,35 +92,13 @@ export function loadUserSshConfigAliasClaims(): SshConfigAliasClaims | null {
       return cachedClaims.claims
     }
     const expansion = expandSshConfigIncludes(configPath)
-    // A skipped Include is invisible to the mtime key above, so the hosts it would have contributed
-    // are missing from `content` and a parse of it could answer "unclaimed" for an alias the user's
-    // config does claim. Cache the uncertainty under the same TTL instead of the wrong answer.
-    const claims = expansion.skippedIncludes.some(hidesHostBlocks)
-      ? null
-      : parseSshConfigAliasClaims(expansion.content)
+    // Incomplete expansion cannot prove that no hidden block claims the alias.
+    const claims = expansion.fullyExpanded ? parseSshConfigAliasClaims(expansion.content) : null
     cachedClaims = { key, readAt: now, claims }
     return claims
   } catch {
     return null
   }
-}
-
-/**
- * Whether a skip could have hidden a `Host` block from this parse.
- *
- * `not-a-regular-file` could not: the glob matched a subdirectory, and OpenSSH reads no config out of
- * one either, so the expansion is complete for the pattern as written. Counting it would make a
- * `~/.ssh/config.d/backup/` — an ordinary thing to keep — permanently answer "may claim" for every
- * alias, which is the safe direction but never proves anything, and that is the bug in the other
- * direction. The picker still reports it; only this claim proof ignores it.
- *
- * Every other reason counts, `too-large` and `too-many-matches` and `unexpandable` included. Each
- * leaves a file OpenSSH would have read unread, so a `Host` block really may be missing, and a
- * confident `false` from this proof is licence to override what OpenSSH would resolve -- much worse
- * than an over-cautious `true`.
- */
-function hidesHostBlocks(skip: SshConfigIncludeSkip): boolean {
-  return skip.reason !== 'not-a-regular-file'
 }
 
 /** Convenience wrapper over the two above; used where the caller has no claims to inject. */
