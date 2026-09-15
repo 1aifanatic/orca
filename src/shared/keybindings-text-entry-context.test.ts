@@ -145,10 +145,76 @@ describe('isChordReservedForTextEntry', () => {
   })
 
   it('reads the primary modifier per platform', () => {
-    const ctrlA = chord('a', 'KeyA', { control: true })
+    const ctrlC = chord('c', 'KeyC', { control: true })
 
-    expect(isChordReservedForTextEntry(ctrlA, SINGLE_LINE, 'linux')).toBe(true)
-    expect(isChordReservedForTextEntry(ctrlA, SINGLE_LINE, 'darwin')).toBe(false)
+    // Ctrl is the primary modifier off macOS, so Ctrl+C is the surface's copy chord there.
+    expect(isChordReservedForTextEntry(ctrlC, SINGLE_LINE, 'linux')).toBe(true)
+    // On macOS copy is Cmd+C, and AppKit binds no ^c, so Ctrl+C is not a text gesture.
+    expect(isChordReservedForTextEntry(ctrlC, SINGLE_LINE, 'darwin')).toBe(false)
+    expect(
+      isChordReservedForTextEntry(chord('c', 'KeyC', { meta: true }), SINGLE_LINE, 'darwin')
+    ).toBe(true)
+  })
+
+  // AppKit's StandardKeyBinding.dict binds these in every macOS text view, so they are
+  // text gestures there even though Ctrl is not the platform's primary modifier.
+  it.each(['a', 'b', 'd', 'e', 'f', 'h', 'k', 'o', 't', 'y'])(
+    'reserves macOS Ctrl+%s for any text surface',
+    (letter) => {
+      const ctrlLetter = chord(letter, `Key${letter.toUpperCase()}`, { control: true })
+
+      expect(isChordReservedForTextEntry(ctrlLetter, SINGLE_LINE, 'darwin')).toBe(true)
+    }
+  )
+
+  it('reserves the Shift variant that extends the selection', () => {
+    const ctrlShiftE = chord('E', 'KeyE', { control: true, shift: true })
+
+    expect(isChordReservedForTextEntry(ctrlShiftE, SINGLE_LINE, 'darwin')).toBe(true)
+  })
+
+  it.each(['n', 'p', 'v'])(
+    'reserves macOS Ctrl+%s only where the caret moves vertically',
+    (letter) => {
+      const ctrlLetter = chord(letter, `Key${letter.toUpperCase()}`, { control: true })
+
+      expect(isChordReservedForTextEntry(ctrlLetter, MULTILINE, 'darwin')).toBe(true)
+      expect(isChordReservedForTextEntry(ctrlLetter, SINGLE_LINE, 'darwin')).toBe(false)
+    }
+  )
+
+  it('leaves macOS Ctrl+L to the app: it recenters the view, not the caret', () => {
+    expect(
+      isChordReservedForTextEntry(chord('l', 'KeyL', { control: true }), RICH_TEXT, 'darwin')
+    ).toBe(false)
+  })
+
+  it('keeps the macOS Ctrl rules off Windows and Linux, where Ctrl is the primary modifier', () => {
+    const ctrlE = chord('e', 'KeyE', { control: true })
+
+    // Mod+E is Orca's dictation chord there; only macOS binds Ctrl+E to text editing.
+    expect(isChordReservedForTextEntry(ctrlE, SINGLE_LINE, 'linux')).toBe(false)
+    expect(isChordReservedForTextEntry(ctrlE, SINGLE_LINE, 'win32')).toBe(false)
+    expect(isChordReservedForTextEntry(ctrlE, SINGLE_LINE, 'darwin')).toBe(true)
+    // Ctrl+A stays reserved off macOS through the primary-modifier rule, not this one.
+    expect(
+      isChordReservedForTextEntry(chord('a', 'KeyA', { control: true }), SINGLE_LINE, 'linux')
+    ).toBe(true)
+  })
+
+  it('reserves the legacy Insert clipboard chords off macOS only', () => {
+    const ctrlInsert = chord('Insert', 'Insert', { control: true })
+    const shiftInsert = chord('Insert', 'Insert', { shift: true })
+    const bareInsert = chord('Insert', 'Insert')
+
+    for (const platform of ['linux', 'win32'] as const) {
+      expect(isChordReservedForTextEntry(ctrlInsert, SINGLE_LINE, platform)).toBe(true)
+      expect(isChordReservedForTextEntry(shiftInsert, SINGLE_LINE, platform)).toBe(true)
+      // Nothing binds Insert alone in a text field, so it stays available to the app.
+      expect(isChordReservedForTextEntry(bareInsert, SINGLE_LINE, platform)).toBe(false)
+    }
+    // macOS binds no Insert key at all.
+    expect(isChordReservedForTextEntry(shiftInsert, RICH_TEXT, 'darwin')).toBe(false)
   })
 
   it('ignores a synthetic input that carries no key', () => {
