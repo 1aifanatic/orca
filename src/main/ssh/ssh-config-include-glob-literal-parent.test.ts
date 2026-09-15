@@ -1,6 +1,21 @@
-import { posix, win32 } from 'node:path'
-import { describe, expect, it } from 'vitest'
-import { getLiteralGlobParent } from './ssh-config-include-glob-readability'
+import { Dir, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, posix, win32 } from 'node:path'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import {
+  findGlobExpansionUncertainty,
+  getLiteralGlobParent
+} from './ssh-config-include-glob-readability'
+
+const temporaryDirectories: string[] = []
+
+afterEach(() => {
+  vi.restoreAllMocks()
+  for (const directory of temporaryDirectories) {
+    rmSync(directory, { force: true, recursive: true })
+  }
+  temporaryDirectories.length = 0
+})
 
 /**
  * The directory an empty `globSync` result has to be checked against. Worth its own test because
@@ -29,5 +44,40 @@ describe('getLiteralGlobParent', () => {
     expect(getLiteralGlobParent('C:/Users/u/.ssh/config.d/*.conf', win32)).toBe(
       'C:/Users/u/.ssh/config.d'
     )
+  })
+})
+
+describe('findGlobExpansionUncertainty', () => {
+  it('returns uncertainty instead of traversing past its synchronous path budget', () => {
+    const root = mkdtempSync(join(tmpdir(), 'orca-ssh-glob-budget-'))
+    temporaryDirectories.push(root)
+    for (const name of ['one', 'two', 'three']) {
+      const directory = join(root, name)
+      mkdirSync(directory)
+      writeFileSync(join(directory, 'config'), '')
+    }
+    const pattern = join(root, '*', 'config')
+
+    expect(findGlobExpansionUncertainty(pattern, posix, 2)).toBe(pattern)
+  })
+
+  it('proves a bounded readable glob complete', () => {
+    const root = mkdtempSync(join(tmpdir(), 'orca-ssh-glob-readable-'))
+    temporaryDirectories.push(root)
+    const directory = join(root, 'one')
+    mkdirSync(directory)
+    writeFileSync(join(directory, 'config'), '')
+
+    expect(findGlobExpansionUncertainty(join(root, '*', 'config'), posix, 32)).toBeNull()
+  })
+
+  it('keeps enumeration failures uncertain after the directory opens', () => {
+    const root = mkdtempSync(join(tmpdir(), 'orca-ssh-glob-enumeration-'))
+    temporaryDirectories.push(root)
+    vi.spyOn(Dir.prototype, 'readSync').mockImplementationOnce(() => {
+      throw Object.assign(new Error('enumeration failed'), { code: 'EIO' })
+    })
+
+    expect(findGlobExpansionUncertainty(join(root, '*'), posix)).toBe(root)
   })
 })

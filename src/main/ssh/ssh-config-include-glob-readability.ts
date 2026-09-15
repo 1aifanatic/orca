@@ -3,6 +3,9 @@ import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
 import type { PathApi } from './ssh-config-include-path-resolution'
 
 const GLOB_METACHARACTER = /[*?[]/
+// Alias checks run on the main process, so uncertainty is safer than an unbounded proof scan.
+const MAX_GLOB_READABILITY_PATHS = 256
+const GLOB_READABILITY_LIMIT_REACHED = Symbol('glob-readability-limit-reached')
 
 export function hasGlobPattern(input: string): boolean {
   return GLOB_METACHARACTER.test(input)
@@ -17,20 +20,29 @@ export function getLiteralGlobParent(pattern: string, pathApi: PathApi): string 
 }
 
 /**
- * The directory whose unreadability makes a `globSync` result untrustworthy, or `null` when every
- * directory the expansion had to walk opened.
+ * The path that prevents proving a glob complete, or `null` when every traversed directory was
+ * enumerated. A proof that exceeds its path budget returns the pattern itself as the uncertainty.
  *
  * `globSync` reports what it could see and never reports what it could not: an unreadable directory
  * yields fewer matches, not an error. Walk each globbed directory level so partial matches are not
  * mistaken for a complete result.
  */
-export function findUnreadableGlobDirectory(pattern: string, pathApi: PathApi): string | null {
+export function findGlobExpansionUncertainty(
+  pattern: string,
+  pathApi: PathApi,
+  maxPaths = MAX_GLOB_READABILITY_PATHS
+): string | null {
+  const budget = { remaining: maxPaths }
   const unopenableParent = findUnopenableDirectory(getLiteralGlobParent(pattern, pathApi))
   if (unopenableParent) {
     return unopenableParent
   }
   for (const prefix of getGlobDirectoryPrefixes(pattern, pathApi)) {
-    for (const directory of globSync(prefix)) {
+    const directories = globWithinReadabilityLimit(prefix, budget)
+    if (directories === null) {
+      return pattern
+    }
+    for (const directory of directories) {
       const unopenable = findUnopenableDirectory(directory)
       if (unopenable) {
         return unopenable
@@ -43,11 +55,41 @@ export function findUnreadableGlobDirectory(pattern: string, pathApi: PathApi): 
 /** Missing directories and paths below regular files are definitive empty matches. */
 function findUnopenableDirectory(directory: string): string | null {
   try {
-    // A directory without read permission can still be statted.
-    opendirSync(directory).closeSync()
+    // Read every entry: some network filesystems open successfully but fail during enumeration.
+    const handle = opendirSync(directory)
+    try {
+      while (handle.readSync() !== null) {
+        // Exhaust the directory so a late enumeration error cannot look like a complete glob.
+      }
+    } finally {
+      handle.closeSync()
+    }
     return null
   } catch (error) {
     return isDefinitiveAbsence(error) ? null : directory
+  }
+}
+
+/** Stop a proof scan before a broad glob can synchronously walk an unbounded tree. */
+function globWithinReadabilityLimit(
+  pattern: string,
+  budget: { remaining: number }
+): string[] | null {
+  try {
+    return globSync(pattern, {
+      exclude: () => {
+        budget.remaining -= 1
+        if (budget.remaining < 0) {
+          throw GLOB_READABILITY_LIMIT_REACHED
+        }
+        return false
+      }
+    })
+  } catch (error) {
+    if (error === GLOB_READABILITY_LIMIT_REACHED) {
+      return null
+    }
+    throw error
   }
 }
 

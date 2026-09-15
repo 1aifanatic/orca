@@ -1,7 +1,7 @@
 import { globSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { homedir, hostname } from 'node:os'
 import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
-import { findUnreadableGlobDirectory, hasGlobPattern } from './ssh-config-include-glob-readability'
+import { findGlobExpansionUncertainty, hasGlobPattern } from './ssh-config-include-glob-readability'
 import {
   expandEnvironmentVariables,
   expandIncludeTokens,
@@ -189,18 +189,18 @@ function resolveIncludePaths(pattern: string, context: IncludeExpansionContext):
   if (hasGlobPattern(absolutePattern)) {
     try {
       const matches = globSync(absolutePattern).sort((left, right) => left.localeCompare(right))
-      // Unconditional, not only on an empty result: a partial expansion is exactly as unproven, and
-      // it is the half that goes on to feed a confident alias claim.
-      const unreadable = findUnreadableGlobDirectory(absolutePattern, context.pathApi)
-      if (unreadable) {
-        markIncomplete(context, unreadable)
-      }
       if (matches.length > MAX_INCLUDE_GLOB_MATCHES) {
         console.warn(
           `[ssh] Include pattern "${absolutePattern}" matched ${matches.length} files; processing first ${MAX_INCLUDE_GLOB_MATCHES}`
         )
         context.fullyExpanded = false
         return matches.slice(0, MAX_INCLUDE_GLOB_MATCHES)
+      }
+      // Unconditional, not only on an empty result: a partial expansion is exactly as unproven, and
+      // it is the half that goes on to feed a confident alias claim.
+      const uncertainTarget = findGlobExpansionUncertainty(absolutePattern, context.pathApi)
+      if (uncertainTarget) {
+        markIncomplete(context, uncertainTarget)
       }
       return matches
     } catch {
