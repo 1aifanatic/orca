@@ -249,6 +249,24 @@ describe('isChordReservedForTextEntry', () => {
     expect(isChordReservedForTextEntry(shiftInsert, RICH_TEXT, 'darwin')).toBe(false)
   })
 
+  it('leaves an Insert chord nobody binds to the app', () => {
+    for (const extra of [{ shift: true }, { alt: true }, { meta: true }]) {
+      const overloaded = chord('Insert', 'Insert', { control: true, ...extra })
+
+      expect(isChordReservedForTextEntry(overloaded, SINGLE_LINE, 'win32')).toBe(false)
+    }
+  })
+
+  it('reserves the Option deletion gestures through their named keys', () => {
+    // AppKit's ~<backspace> and ~<delete> are word deletes; they need no letter rule
+    // because Backspace and Delete are reserved under any modifier.
+    for (const named of ['Backspace', 'Delete']) {
+      expect(
+        isChordReservedForTextEntry(chord(named, named, { alt: true }), SINGLE_LINE, 'darwin')
+      ).toBe(true)
+    }
+  })
+
   it('ignores a synthetic input that carries no key', () => {
     expect(isChordReservedForTextEntry({ doubleTapModifier: 'Cmd' }, RICH_TEXT, 'darwin')).toBe(
       false

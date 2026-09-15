@@ -31,7 +31,12 @@ const RICH_TEXT_FORMATTING_KEYS = new Set(['B', 'I', 'U', 'K'])
 const MAC_CONTROL_EDITING_KEYS = new Set(['A', 'B', 'D', 'E', 'F', 'H', 'K', 'O', 'T', 'Y'])
 /** ^n/^p/^v move by line or page, so only a surface with vertical caret movement owns them. */
 const MAC_CONTROL_VERTICAL_CARET_KEYS = new Set(['N', 'P', 'V'])
-/** AppKit's only Option+Ctrl text chords: ~^b / ~^f move by word, with Shift variants. */
+/**
+ * The only Ctrl+Option *letter* chords AppKit binds: ~^b / ~^f move by word, with Shift
+ * variants that extend the selection. Option's other text gestures sit on named keys —
+ * Option+Backspace and Option+Delete delete a word — which the named-key branch already
+ * reserves under any modifier.
+ */
 const MAC_CONTROL_ALT_WORD_KEYS = new Set(['B', 'F'])
 
 /** Assumed when a caller names the text-entry context without describing the surface. */
@@ -84,7 +89,11 @@ export function isChordReservedForTextEntry(
   // on Ctrl+Insert and Shift+Insert, but nothing binds Insert alone in a text field, and
   // macOS binds no Insert key at all.
   if (namedKey === 'Insert') {
-    return !isMac && (hasModifier(input, 'control') || hasModifier(input, 'shift'))
+    const control = hasModifier(input, 'control')
+    const shift = hasModifier(input, 'shift')
+    // Exactly one of the two: Ctrl+Shift+Insert is nobody's clipboard chord, so an app
+    // action may still claim it.
+    return !isMac && control !== shift && !hasModifier(input, 'alt') && !hasModifier(input, 'meta')
   }
   // Letters go through the matcher's own resolution rather than the raw key: macOS Option
   // reports a composed character (Option+B -> the integral sign) and a non-Latin layout
