@@ -1,5 +1,6 @@
 import type { KeybindingInput, TextEntryClaim } from './types'
 import { getKeybindingPlatform } from './definitions'
+import { keyTokenFromInput } from './input'
 import { hasModifier } from './parser'
 
 /**
@@ -16,8 +17,8 @@ const CARET_AND_DELETION_KEYS = new Set([
 ])
 const VERTICAL_CARET_KEYS = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown'])
 /** Selection, clipboard and undo/redo, which every text surface owns. */
-const TEXT_COMMAND_KEYS = new Set(['a', 'c', 'v', 'x', 'z', 'y'])
-const RICH_TEXT_FORMATTING_KEYS = new Set(['b', 'i', 'u', 'k'])
+const TEXT_COMMAND_KEYS = new Set(['A', 'C', 'V', 'X', 'Z', 'Y'])
+const RICH_TEXT_FORMATTING_KEYS = new Set(['B', 'I', 'U', 'K'])
 
 /**
  * macOS binds Ctrl+letter to editing commands in every text view, so these are text
@@ -27,9 +28,11 @@ const RICH_TEXT_FORMATTING_KEYS = new Set(['b', 'i', 'u', 'k'])
  * ^l is deliberately absent — it only recenters the view, leaving caret and content
  * untouched, so an app action may claim it.
  */
-const MAC_CONTROL_EDITING_KEYS = new Set(['a', 'b', 'd', 'e', 'f', 'h', 'k', 'o', 't', 'y'])
+const MAC_CONTROL_EDITING_KEYS = new Set(['A', 'B', 'D', 'E', 'F', 'H', 'K', 'O', 'T', 'Y'])
 /** ^n/^p/^v move by line or page, so only a surface with vertical caret movement owns them. */
-const MAC_CONTROL_VERTICAL_CARET_KEYS = new Set(['n', 'p', 'v'])
+const MAC_CONTROL_VERTICAL_CARET_KEYS = new Set(['N', 'P', 'V'])
+/** AppKit's only Option+Ctrl text chords: ~^b / ~^f move by word, with Shift variants. */
+const MAC_CONTROL_ALT_WORD_KEYS = new Set(['B', 'F'])
 
 /** Assumed when a caller names the text-entry context without describing the surface. */
 export const STRICTEST_TEXT_ENTRY_CLAIM: TextEntryClaim = {
@@ -54,8 +57,8 @@ function usesPrimaryModifierOnly(
 }
 
 /** Shift is allowed: AppKit pairs every ^key with a ^$key that extends the selection. */
-function usesMacControlOnly(input: KeybindingInput): boolean {
-  return hasModifier(input, 'control') && !hasModifier(input, 'meta') && !hasModifier(input, 'alt')
+function usesMacControlWithoutCommand(input: KeybindingInput): boolean {
+  return hasModifier(input, 'control') && !hasModifier(input, 'meta')
 }
 
 /**
@@ -67,42 +70,48 @@ export function isChordReservedForTextEntry(
   claim: TextEntryClaim,
   platform: NodeJS.Platform
 ): boolean {
-  const key = input.key
-  if (!key) {
-    return false
-  }
-  if (CARET_AND_DELETION_KEYS.has(key)) {
-    return true
-  }
-  if (claim.verticalCaret && VERTICAL_CARET_KEYS.has(key)) {
-    return true
-  }
   const isMac = getKeybindingPlatform(platform) === 'darwin'
+  // Named keys are read straight off the event: no layout or Option composition rewrites
+  // them, and several (Home, End) have no token in the binding grammar at all.
+  const namedKey = input.key ?? ''
+  if (CARET_AND_DELETION_KEYS.has(namedKey)) {
+    return true
+  }
+  if (claim.verticalCaret && VERTICAL_CARET_KEYS.has(namedKey)) {
+    return true
+  }
   // Why bare Insert stays available: Windows and Linux keep the legacy clipboard chords
   // on Ctrl+Insert and Shift+Insert, but nothing binds Insert alone in a text field, and
   // macOS binds no Insert key at all.
-  if (key === 'Insert') {
+  if (namedKey === 'Insert') {
     return !isMac && (hasModifier(input, 'control') || hasModifier(input, 'shift'))
   }
-  if (key.length !== 1) {
+  // Letters go through the matcher's own resolution rather than the raw key: macOS Option
+  // reports a composed character (Option+B -> the integral sign) and a non-Latin layout
+  // reports a non-Latin letter, yet a binding still matches through the physical code.
+  const key = keyTokenFromInput(input, platform)
+  if (!key || key.length !== 1) {
     return false
   }
-  const letter = key.toLowerCase()
-  if (isMac && usesMacControlOnly(input)) {
-    if (MAC_CONTROL_EDITING_KEYS.has(letter)) {
+  if (isMac && usesMacControlWithoutCommand(input)) {
+    // Option narrows the family to AppKit's two word-movement chords.
+    if (hasModifier(input, 'alt')) {
+      return MAC_CONTROL_ALT_WORD_KEYS.has(key)
+    }
+    if (MAC_CONTROL_EDITING_KEYS.has(key)) {
       return true
     }
-    if (claim.verticalCaret && MAC_CONTROL_VERTICAL_CARET_KEYS.has(letter)) {
+    if (claim.verticalCaret && MAC_CONTROL_VERTICAL_CARET_KEYS.has(key)) {
       return true
     }
   }
   // Why Shift is allowed here but not for formatting: Mod+Shift+Z is redo, while bold stays Mod+B.
-  if (TEXT_COMMAND_KEYS.has(letter) && usesPrimaryModifierOnly(input, platform, true)) {
+  if (TEXT_COMMAND_KEYS.has(key) && usesPrimaryModifierOnly(input, platform, true)) {
     return true
   }
   return (
     claim.richTextFormatting &&
-    RICH_TEXT_FORMATTING_KEYS.has(letter) &&
+    RICH_TEXT_FORMATTING_KEYS.has(key) &&
     usesPrimaryModifierOnly(input, platform, false)
   )
 }

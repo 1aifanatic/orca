@@ -202,6 +202,38 @@ describe('isChordReservedForTextEntry', () => {
     ).toBe(true)
   })
 
+  // AppKit's only Option+Ctrl text chords: ~^b / ~^f move by word.
+  it.each([
+    ['b', 'B', '\u222b'],
+    ['f', 'F', '\u0192']
+  ])('reserves macOS Ctrl+Option+%s, which reports a composed key', (_letter, code, composed) => {
+    // macOS reports the Option-composed character, so the physical code is what identifies it.
+    const wordMove = chord(composed, `Key${code}`, { control: true, alt: true })
+    const extendSelection = chord(composed, `Key${code}`, {
+      control: true,
+      alt: true,
+      shift: true
+    })
+
+    expect(isChordReservedForTextEntry(wordMove, SINGLE_LINE, 'darwin')).toBe(true)
+    expect(isChordReservedForTextEntry(extendSelection, SINGLE_LINE, 'darwin')).toBe(true)
+  })
+
+  it('keeps Option out of the rest of the macOS Ctrl family', () => {
+    // AppKit binds no ~^a, so the chord stays available to the app.
+    const ctrlOptionA = chord('\u00e5', 'KeyA', { control: true, alt: true })
+
+    expect(isChordReservedForTextEntry(ctrlOptionA, RICH_TEXT, 'darwin')).toBe(false)
+  })
+
+  it('resolves a non-Latin layout through the physical code', () => {
+    // A Russian layout reports Cyrillic es for the physical C key; the copy chord is still
+    // the surface's, and the matcher resolves the binding the same way.
+    const cyrillicCtrlC = chord('\u0441', 'KeyC', { control: true })
+
+    expect(isChordReservedForTextEntry(cyrillicCtrlC, SINGLE_LINE, 'linux')).toBe(true)
+  })
+
   it('reserves the legacy Insert clipboard chords off macOS only', () => {
     const ctrlInsert = chord('Insert', 'Insert', { control: true })
     const shiftInsert = chord('Insert', 'Insert', { shift: true })
