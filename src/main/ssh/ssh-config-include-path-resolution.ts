@@ -63,6 +63,10 @@ export function expandIncludeTokens(input: string, context: IncludePathContext):
     }
 
     if (token === 'u') {
+      // getCurrentUser() yields '' when the username is unknown; an empty segment is not a resolution.
+      if (!context.username) {
+        return null
+      }
       output += context.username
       i += 1
       continue

@@ -58,7 +58,18 @@ describe('findGlobExpansionUncertainty', () => {
     }
     const pattern = join(root, '*', 'config')
 
-    expect(findGlobExpansionUncertainty(pattern, posix, 2)).toBe(pattern)
+    // Large enough for the literal parent's three entries, so the glob traversal is what runs out.
+    expect(findGlobExpansionUncertainty(pattern, posix, 4)).toBe(pattern)
+  })
+
+  it('charges directory entries to the same budget', () => {
+    const root = mkdtempSync(join(tmpdir(), 'orca-ssh-glob-entries-'))
+    temporaryDirectories.push(root)
+    for (const name of ['one', 'two', 'three']) {
+      writeFileSync(join(root, name), '')
+    }
+
+    expect(findGlobExpansionUncertainty(join(root, '*'), posix, 2)).toBe(root)
   })
 
   it('proves a bounded readable glob complete', () => {

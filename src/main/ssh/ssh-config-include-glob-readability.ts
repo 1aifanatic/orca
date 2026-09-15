@@ -33,7 +33,7 @@ export function findGlobExpansionUncertainty(
   maxPaths = MAX_GLOB_READABILITY_PATHS
 ): string | null {
   const budget = { remaining: maxPaths }
-  const unopenableParent = findUnopenableDirectory(getLiteralGlobParent(pattern, pathApi))
+  const unopenableParent = findUnopenableDirectory(getLiteralGlobParent(pattern, pathApi), budget)
   if (unopenableParent) {
     return unopenableParent
   }
@@ -43,7 +43,7 @@ export function findGlobExpansionUncertainty(
       return pattern
     }
     for (const directory of directories) {
-      const unopenable = findUnopenableDirectory(directory)
+      const unopenable = findUnopenableDirectory(directory, budget)
       if (unopenable) {
         return unopenable
       }
@@ -53,13 +53,18 @@ export function findGlobExpansionUncertainty(
 }
 
 /** Missing directories and paths below regular files are definitive empty matches. */
-function findUnopenableDirectory(directory: string): string | null {
+function findUnopenableDirectory(directory: string, budget: { remaining: number }): string | null {
   try {
     // Read every entry: some network filesystems open successfully but fail during enumeration.
     const handle = opendirSync(directory)
     try {
       while (handle.readSync() !== null) {
         // Exhaust the directory so a late enumeration error cannot look like a complete glob.
+        budget.remaining -= 1
+        if (budget.remaining < 0) {
+          // Entries share the scan budget: an unbounded directory stays unproven, not blocking.
+          return directory
+        }
       }
     } finally {
       handle.closeSync()
