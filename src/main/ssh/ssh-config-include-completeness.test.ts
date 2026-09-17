@@ -30,6 +30,7 @@ const lockedPaths = new Set<string>()
 const canRestrictFileAccess = process.platform !== 'win32' && (process.getuid?.() ?? 0) !== 0
 
 afterEach(() => {
+  vi.restoreAllMocks()
   vi.useRealTimers()
   vi.unstubAllEnvs()
   invalidateSshConfigAliasClaimCache()
@@ -151,6 +152,68 @@ describe('SSH config Include completeness', () => {
 
     expect(expandSshConfigIncludes(configPath).fullyExpanded).toBe(true)
   })
+
+  /**
+   * A ~/.ssh holding hundreds of keys and control sockets is ordinary. Reporting it as unopenable
+   * turned the alias claim permanently uncertain, which silently disabled endpoint restoration.
+   */
+  it('proves a glob complete under a readable directory with hundreds of entries', () => {
+    const home = makeTemporaryHome()
+    // The glob's literal parent is ~/.ssh itself, so its entries are what the scan has to walk.
+    const configPath = writeFile(home, '.ssh/config', 'Include 50-*\n')
+    writeFile(home, '.ssh/50-wildcard', 'Host *\n  ForwardAgent yes\n')
+    for (let index = 0; index < 302; index += 1) {
+      writeFile(home, `.ssh/id_key_${index}`, '')
+    }
+
+    expect(expandSshConfigIncludes(configPath).fullyExpanded).toBe(true)
+    expect(sshConfigMayClaimAlias('prod', loadUserSshConfigAliasClaims())).toBe(false)
+  })
+
+  it('proves a nested glob complete when its literal parent holds hundreds of entries', () => {
+    const home = makeTemporaryHome()
+    const configPath = writeFile(home, '.ssh/config', 'Include sub*/config\n')
+    writeFile(home, '.ssh/sub-work/config', 'Host *\n  ForwardAgent yes\n')
+    for (let index = 0; index < 302; index += 1) {
+      writeFile(home, `.ssh/id_key_${index}`, '')
+    }
+
+    expect(expandSshConfigIncludes(configPath).fullyExpanded).toBe(true)
+  })
+})
+
+describe('SSH config Include warnings', () => {
+  const SECRET_SEGMENT = 's3cr3t-vault'
+
+  it('names the pattern, not the substituted directory, when ${VAR} resolved a path', () => {
+    const home = makeTemporaryHome()
+    const configPath = writeFile(home, '.ssh/config', 'Include ${ORCA_TEST_SSH_VAULT}/50-prod\n')
+    mkdirSync(join(home, '.ssh', SECRET_SEGMENT, '50-prod'), {
+      recursive: true
+    })
+    vi.stubEnv('ORCA_TEST_SSH_VAULT', join(home, '.ssh', SECRET_SEGMENT))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    expandSshConfigIncludes(configPath)
+
+    expect(warn).toHaveBeenCalled()
+    expect(warn.mock.calls.flat().join('\n')).not.toContain(SECRET_SEGMENT)
+  })
+
+  it.runIf(canRestrictFileAccess)(
+    'keeps the substituted directory out of a glob completeness warning',
+    () => {
+      const home = makeTemporaryHome()
+      const configPath = writeFile(home, '.ssh/config', 'Include ${ORCA_TEST_SSH_VAULT}/*/config\n')
+      writeFile(home, `.ssh/${SECRET_SEGMENT}/personal/config`, 'Host personal\n')
+      lockPath(join(home, '.ssh', SECRET_SEGMENT, 'personal'))
+      vi.stubEnv('ORCA_TEST_SSH_VAULT', join(home, '.ssh', SECRET_SEGMENT))
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      expect(expandSshConfigIncludes(configPath).fullyExpanded).toBe(false)
+      expect(warn.mock.calls.flat().join('\n')).not.toContain(SECRET_SEGMENT)
+    }
+  )
 })
 
 describe('SSH config alias claim completeness', () => {

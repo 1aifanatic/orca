@@ -1,7 +1,13 @@
 import { globSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { homedir, hostname } from 'node:os'
 import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
-import { findGlobExpansionUncertainty, hasGlobPattern } from './ssh-config-include-glob-readability'
+import {
+  createGlobReadabilityProofs,
+  findGlobExpansionUncertainty,
+  hasGlobPattern,
+  type GlobExpansionUncertainty,
+  type GlobReadabilityProofs
+} from './ssh-config-include-glob-readability'
 import {
   expandEnvironmentVariables,
   expandIncludeTokens,
@@ -21,6 +27,19 @@ type SshConfigExpansion = {
 type IncludeExpansionContext = IncludePathContext & {
   cache: Map<string, string>
   fullyExpanded: boolean
+  /** Shared across every Include so one ~/.ssh is enumerated once per expansion, not once per glob. */
+  globProofs: GlobReadabilityProofs
+}
+
+type ResolvedIncludePaths = {
+  paths: string[]
+  /**
+   * What to log in place of a resolved path, or `null` when the resolved path is safe to log.
+   *
+   * `${VAR}` expansion can substitute a directory the user keeps secret, and these warnings land in
+   * local logs. The pattern as written identifies the offending Include line just as well.
+   */
+  redactedLabel: string | null
 }
 
 const MAX_INCLUDE_GLOB_MATCHES = 256
@@ -34,6 +53,7 @@ export function expandSshConfigIncludes(configPath: string): SshConfigExpansion 
   const context: IncludeExpansionContext = {
     cache: new Map(),
     fullyExpanded: true,
+    globProofs: createGlobReadabilityProofs(),
     home,
     pathApi,
     rootDir: pathApi.dirname(configPath),
@@ -46,22 +66,41 @@ export function expandSshConfigIncludes(configPath: string): SshConfigExpansion 
   return { content: lines.join('\n'), fullyExpanded: context.fullyExpanded }
 }
 
-function markIncomplete(context: IncludeExpansionContext, target: string): void {
+function markIncomplete(context: IncludeExpansionContext, target: string, detail?: string): void {
   context.fullyExpanded = false
-  console.warn(`[ssh] Could not expand SSH config Include "${target}"; hosts may be missing`)
+  const because = detail ? ` (${detail})` : ''
+  console.warn(
+    `[ssh] Could not expand SSH config Include "${target}"${because}; hosts may be missing`
+  )
 }
 
+/** An unreadable directory is the user's to fix; an unproven one is only bigger than our budget. */
+function describeGlobUncertainty(
+  uncertainty: GlobExpansionUncertainty,
+  redactedLabel: string | null
+): string {
+  const where = redactedLabel === null ? `"${uncertainty.target}"` : 'a directory it matches'
+  return uncertainty.reason === 'unreadable'
+    ? `could not enumerate ${where}`
+    : `${where} is too large to scan for completeness`
+}
+
+/**
+ * `logTarget` is what warnings about this file name; it differs from `filePath` only when the path
+ * came out of `${VAR}` expansion and so must not reach a log.
+ */
 function expandSshConfigFile(
   filePath: string,
   context: IncludeExpansionContext,
-  activeStack: string[]
+  activeStack: string[],
+  logTarget: string = filePath
 ): string[] {
-  const canonicalPath = getCanonicalPath(filePath, context)
+  const canonicalPath = getCanonicalPath(filePath, context, logTarget)
   if (!canonicalPath || activeStack.includes(canonicalPath)) {
     return []
   }
 
-  const rawContent = readCachedFile(canonicalPath, context)
+  const rawContent = readCachedFile(canonicalPath, context, logTarget)
   if (rawContent === null) {
     return []
   }
@@ -77,8 +116,17 @@ function expandSshConfigFile(
     }
 
     for (const includeArg of includeArgs) {
-      for (const matchedPath of resolveIncludePaths(includeArg, context)) {
-        appendExpandedLines(expandedLines, expandSshConfigFile(matchedPath, context, nextStack))
+      const resolved = resolveIncludePaths(includeArg, context)
+      for (const matchedPath of resolved.paths) {
+        appendExpandedLines(
+          expandedLines,
+          expandSshConfigFile(
+            matchedPath,
+            context,
+            nextStack,
+            resolved.redactedLabel ?? matchedPath
+          )
+        )
       }
     }
   }
@@ -94,13 +142,17 @@ function appendExpandedLines(target: string[], lines: readonly string[]): void {
   }
 }
 
-function readCachedFile(filePath: string, context: IncludeExpansionContext): string | null {
+function readCachedFile(
+  filePath: string,
+  context: IncludeExpansionContext,
+  logTarget: string
+): string | null {
   const cached = context.cache.get(filePath)
   if (cached !== undefined) {
     return cached
   }
 
-  if (!isReadableRegularFile(filePath, context)) {
+  if (!isReadableRegularFile(filePath, context, logTarget)) {
     return null
   }
 
@@ -110,7 +162,7 @@ function readCachedFile(filePath: string, context: IncludeExpansionContext): str
     return content
   } catch (error) {
     if (!isDefinitiveAbsence(error)) {
-      markIncomplete(context, filePath)
+      markIncomplete(context, logTarget)
     }
     return null
   }
@@ -172,17 +224,24 @@ function splitQuotedArguments(input: string): string[] {
   return args
 }
 
-function resolveIncludePaths(pattern: string, context: IncludeExpansionContext): string[] {
+function resolveIncludePaths(
+  pattern: string,
+  context: IncludeExpansionContext
+): ResolvedIncludePaths {
   const withEnv = expandEnvironmentVariables(pattern)
   if (withEnv === null) {
-    markIncomplete(context, pattern)
-    return []
+    markIncomplete(context, pattern, 'unset environment variable')
+    return { paths: [], redactedLabel: pattern }
   }
+
+  // Only a substitution that actually fired can carry a secret into a resolved path.
+  const redactedLabel = withEnv === pattern ? null : pattern
+  const logTarget = (resolved: string): string => redactedLabel ?? resolved
 
   const withTokens = expandIncludeTokens(withEnv, context)
   if (withTokens === null) {
-    markIncomplete(context, pattern)
-    return []
+    markIncomplete(context, pattern, 'token needs a connection target')
+    return { paths: [], redactedLabel }
   }
 
   const absolutePattern = resolveIncludePatternPath(withTokens, context)
@@ -191,22 +250,31 @@ function resolveIncludePaths(pattern: string, context: IncludeExpansionContext):
       const matches = globSync(absolutePattern).sort((left, right) => left.localeCompare(right))
       if (matches.length > MAX_INCLUDE_GLOB_MATCHES) {
         console.warn(
-          `[ssh] Include pattern "${absolutePattern}" matched ${matches.length} files; processing first ${MAX_INCLUDE_GLOB_MATCHES}`
+          `[ssh] Include pattern "${logTarget(absolutePattern)}" matched ${matches.length} files; processing first ${MAX_INCLUDE_GLOB_MATCHES}`
         )
         context.fullyExpanded = false
-        return matches.slice(0, MAX_INCLUDE_GLOB_MATCHES)
+        return {
+          paths: matches.slice(0, MAX_INCLUDE_GLOB_MATCHES),
+          redactedLabel
+        }
       }
       // Unconditional, not only on an empty result: a partial expansion is exactly as unproven, and
       // it is the half that goes on to feed a confident alias claim.
-      const uncertainTarget = findGlobExpansionUncertainty(absolutePattern, context.pathApi)
-      if (uncertainTarget) {
-        markIncomplete(context, uncertainTarget)
+      const uncertainty = findGlobExpansionUncertainty(absolutePattern, context.pathApi, {
+        proofs: context.globProofs
+      })
+      if (uncertainty) {
+        markIncomplete(
+          context,
+          logTarget(absolutePattern),
+          describeGlobUncertainty(uncertainty, redactedLabel)
+        )
       }
-      return matches
+      return { paths: matches, redactedLabel }
     } catch {
       // A glob that threw walked a directory it could not read; it never proved the set is empty.
-      markIncomplete(context, absolutePattern)
-      return []
+      markIncomplete(context, logTarget(absolutePattern), 'glob traversal failed')
+      return { paths: [], redactedLabel }
     }
   }
 
@@ -214,36 +282,44 @@ function resolveIncludePaths(pattern: string, context: IncludeExpansionContext):
   // Include living behind an unreadable parent directory as if the user had never written it.
   try {
     statSync(absolutePattern)
-    return [absolutePattern]
+    return { paths: [absolutePattern], redactedLabel }
   } catch (error) {
     if (!isDefinitiveAbsence(error)) {
-      markIncomplete(context, absolutePattern)
+      markIncomplete(context, logTarget(absolutePattern))
     }
-    return []
+    return { paths: [], redactedLabel }
   }
 }
 
-function getCanonicalPath(filePath: string, context: IncludeExpansionContext): string | null {
+function getCanonicalPath(
+  filePath: string,
+  context: IncludeExpansionContext,
+  logTarget: string
+): string | null {
   try {
     return realpathSync.native(filePath)
   } catch (error) {
     if (!isDefinitiveAbsence(error)) {
-      markIncomplete(context, filePath)
+      markIncomplete(context, logTarget)
     }
     return null
   }
 }
 
-function isReadableRegularFile(filePath: string, context: IncludeExpansionContext): boolean {
+function isReadableRegularFile(
+  filePath: string,
+  context: IncludeExpansionContext,
+  logTarget: string
+): boolean {
   try {
     const stats = statSync(filePath)
     if (!stats.isFile()) {
-      console.warn(`[ssh] Skipping SSH config include "${filePath}": not a regular file`)
+      console.warn(`[ssh] Skipping SSH config include "${logTarget}": not a regular file`)
       return false
     }
     if (stats.size > MAX_INCLUDE_FILE_BYTES) {
       console.warn(
-        `[ssh] Skipping SSH config include "${filePath}": size ${stats.size} exceeds ${MAX_INCLUDE_FILE_BYTES} bytes`
+        `[ssh] Skipping SSH config include "${logTarget}": size ${stats.size} exceeds ${MAX_INCLUDE_FILE_BYTES} bytes`
       )
       context.fullyExpanded = false
       return false
@@ -251,7 +327,7 @@ function isReadableRegularFile(filePath: string, context: IncludeExpansionContex
     return true
   } catch (error) {
     if (!isDefinitiveAbsence(error)) {
-      markIncomplete(context, filePath)
+      markIncomplete(context, logTarget)
     }
     return false
   }

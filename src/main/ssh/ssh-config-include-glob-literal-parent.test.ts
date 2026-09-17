@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join, posix, win32 } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  createGlobReadabilityProofs,
   findGlobExpansionUncertainty,
   getLiteralGlobParent
 } from './ssh-config-include-glob-readability'
@@ -58,18 +59,42 @@ describe('findGlobExpansionUncertainty', () => {
     }
     const pattern = join(root, '*', 'config')
 
-    // Large enough for the literal parent's three entries, so the glob traversal is what runs out.
-    expect(findGlobExpansionUncertainty(pattern, posix, 4)).toBe(pattern)
+    // Only the literal parent's own open fits, so the glob traversal is what runs out.
+    expect(findGlobExpansionUncertainty(pattern, posix, { maxPaths: 2 })).toEqual({
+      reason: 'unproven-within-budget',
+      target: pattern
+    })
   })
 
-  it('charges directory entries to the same budget', () => {
+  /**
+   * Entries get their own budget because they are batched reads inside an already-open directory.
+   * Charging them against the path budget reported a readable ~/.ssh holding a few hundred keys and
+   * control sockets as unopenable, which permanently disabled the alias claim it feeds.
+   */
+  it('proves a directory holding far more entries than the path budget complete', () => {
+    const root = mkdtempSync(join(tmpdir(), 'orca-ssh-glob-wide-'))
+    temporaryDirectories.push(root)
+    const matched = join(root, 'sub')
+    mkdirSync(matched)
+    writeFileSync(join(matched, 'config'), '')
+    for (let index = 0; index < 302; index += 1) {
+      writeFileSync(join(root, `id_key_${index}`), '')
+    }
+
+    expect(findGlobExpansionUncertainty(join(root, 'sub*', 'config'), posix)).toBeNull()
+  })
+
+  it('reports a directory past the entry budget as unproven rather than unreadable', () => {
     const root = mkdtempSync(join(tmpdir(), 'orca-ssh-glob-entries-'))
     temporaryDirectories.push(root)
     for (const name of ['one', 'two', 'three']) {
       writeFileSync(join(root, name), '')
     }
 
-    expect(findGlobExpansionUncertainty(join(root, '*'), posix, 2)).toBe(root)
+    expect(findGlobExpansionUncertainty(join(root, '*'), posix, { maxEntries: 2 })).toEqual({
+      reason: 'unproven-within-budget',
+      target: root
+    })
   })
 
   it('proves a bounded readable glob complete', () => {
@@ -79,7 +104,11 @@ describe('findGlobExpansionUncertainty', () => {
     mkdirSync(directory)
     writeFileSync(join(directory, 'config'), '')
 
-    expect(findGlobExpansionUncertainty(join(root, '*', 'config'), posix, 32)).toBeNull()
+    expect(
+      findGlobExpansionUncertainty(join(root, '*', 'config'), posix, {
+        maxPaths: 32
+      })
+    ).toBeNull()
   })
 
   it('keeps enumeration failures uncertain after the directory opens', () => {
@@ -89,6 +118,26 @@ describe('findGlobExpansionUncertainty', () => {
       throw Object.assign(new Error('enumeration failed'), { code: 'EIO' })
     })
 
-    expect(findGlobExpansionUncertainty(join(root, '*'), posix)).toBe(root)
+    expect(findGlobExpansionUncertainty(join(root, '*'), posix)).toEqual({
+      reason: 'unreadable',
+      target: root
+    })
+  })
+
+  it('walks a directory once per expansion, so sibling Includes share the proof', () => {
+    const root = mkdtempSync(join(tmpdir(), 'orca-ssh-glob-proofs-'))
+    temporaryDirectories.push(root)
+    writeFileSync(join(root, 'a-config'), '')
+    writeFileSync(join(root, 'b-config'), '')
+    const proofs = createGlobReadabilityProofs()
+
+    expect(findGlobExpansionUncertainty(join(root, 'a*'), posix, { proofs })).toBeNull()
+
+    // Any re-enumeration now fails, so a second null can only have come from the memo.
+    vi.spyOn(Dir.prototype, 'readSync').mockImplementation(() => {
+      throw Object.assign(new Error('enumeration failed'), { code: 'EIO' })
+    })
+    expect(findGlobExpansionUncertainty(join(root, 'b*'), posix, { proofs })).toBeNull()
+    expect(findGlobExpansionUncertainty(join(root, 'b*'), posix)).not.toBeNull()
   })
 })
