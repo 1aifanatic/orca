@@ -9,6 +9,10 @@ import { describe, expect, it } from 'vitest'
 
 import { mermaidSvgSanitizeConfig } from './mermaid-sanitize'
 
+declare global {
+  var DOMPurify: { sanitize: (dirty: string, config: unknown) => string } | undefined
+}
+
 const require = createRequire(import.meta.url)
 
 async function probeChromium(): Promise<boolean> {
@@ -33,12 +37,10 @@ async function sanitizeInChromium(svg: string): Promise<string> {
     await page.addScriptTag({ content: purifySrc })
     return await page.evaluate(
       ({ svg, cfg }) => {
-        const purify = (
-          globalThis as unknown as {
-            DOMPurify: { sanitize: (dirty: string, config: unknown) => string }
-          }
-        ).DOMPurify
-        return purify.sanitize(svg, cfg)
+        if (!globalThis.DOMPurify) {
+          throw new Error('DOMPurify not loaded')
+        }
+        return globalThis.DOMPurify.sanitize(svg, cfg)
       },
       { svg, cfg: mermaidSvgSanitizeConfig }
     )
