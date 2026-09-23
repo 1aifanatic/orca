@@ -19,8 +19,8 @@ const {
 } = await import('./orchestration-structured-worker-session')
 const { isUnknownWorkerStartOutcome } = await import('./orchestration/worker/worker-topology')
 const { structuredWorkerIdentities } = await import('../../structured-worker-identity')
-const { structuredWorkerChildIdentityEnv } =
-  await import('../../structured-worker-child-identity-env')
+const { structuredSessionChildIdentityEnv } =
+  await import('../../structured-session-child-identity-env')
 
 // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a host stub carrying only the members the worker start reaches.
 function installHost(location = { executionHostId: 'local', wslDistro: null as string | null }) {
@@ -82,7 +82,7 @@ describe('structured worker session', () => {
     createSpy.mockImplementation(async (args: { envelope: { sessionId: string } }) => {
       // `attach` is what spawns the provider child, and the child's env is read from the registry
       // at spawn time. Registering afterwards ships a worker with no ORCA_TERMINAL_HANDLE.
-      envAtSpawn = structuredWorkerChildIdentityEnv(args.envelope.sessionId, {})
+      envAtSpawn = structuredSessionChildIdentityEnv(args.envelope.sessionId, {})
       return { ok: true, value: { sessionId: args.envelope.sessionId } }
     })
     const created = await createStructuredWorkerSession({
