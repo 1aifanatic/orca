@@ -17,16 +17,21 @@ import { isAgentStatusHeldOpenByChildWork } from '../../../shared/agent-lead-sta
 import { AGENT_MODEL_MAX_LENGTH } from '../../../shared/agent-status-types'
 import {
   agentSessionBackgroundTasksEqual,
-  type AgentSessionBackgroundTaskState,
   type AgentSessionStatusEvent,
   type AgentSessionStatusSummary
 } from '../../../shared/agent-session-wire'
 import type { AgentChildWorkEvidence } from '../../../shared/agent-status-child-work-evidence'
+import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import { projectStructuredAgentSessionStatusState } from '../../../shared/structured-agent-session-projection'
 import { structuredAgentSessionAgentStatus } from '../../../shared/structured-agent-session-agent-status'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { StructuredAgentSessionProviderChild } from './structured-agent-session-host-types'
 import { structuredAgentSessionProviderSessionMetadata } from './structured-agent-session-history-result'
+import {
+  newestRootTurnId,
+  structuredStatusChildrenEqual,
+  structuredStatusChildWork
+} from './structured-agent-session-status-child-work'
 import {
   StructuredAgentSessionStatusOwnership,
   type StructuredAgentSessionStatusSink
@@ -57,11 +62,10 @@ export type StructuredAgentSessionStatusFeedDeps = {
    *  of state the host already knew (restore, an arriving subscriber) rather than a journal edge. */
   onStatusChanged?: (summary: AgentSessionStatusSummary, options: { replay: boolean }) => void
   /** Resolved on every call: the host builds this feed in a field initializer, before its own
-   *  deps are assigned. */
+   *  deps are assigned. The sink holds the session's child records; the summary reads them there. */
   statusSink?: () => StructuredAgentSessionStatusSink | undefined
-  /** Live provider-owned background tasks for the summary, so session lists can
-   *  render subagent children. Optional: a provider without the hook projects none. */
-  readBackgroundTasks?: (sessionId: string) => AgentSessionBackgroundTaskState | null | undefined
+  /** The session's child records changed, so every other reader of them republishes. */
+  onChildWorkChanged?: (sessionId: string) => void
   /** The session's agent proved a start: its row's phase became `ready`. */
   onAgentStarted?: (sessionId: string) => void
 }
@@ -89,6 +93,7 @@ function summariesEqual(a: AgentSessionStatusSummary, b: AgentSessionStatusSumma
     a.toolInput === b.toolInput &&
     a.lastAssistantMessage === b.lastAssistantMessage &&
     a.turnOutcome === b.turnOutcome &&
+    structuredStatusChildrenEqual(a.children, b.children) &&
     agentSessionBackgroundTasksEqual(a.backgroundTasks, b.backgroundTasks) &&
     agentProviderSessionsEqual(undefined, a.providerSession, b.providerSession)
   )
@@ -115,27 +120,32 @@ export function createStructuredAgentSessionHostStatusFeed(args: {
   now: () => number
   deps: () => {
     store: { getRecord: (sessionId: string) => AgentSessionRecord | null }
-    adapter: {
-      backgroundTaskState?: (
-        sessionId: string
-      ) => AgentSessionBackgroundTaskState | null | undefined
-    }
     onSessionStatusChanged?: StructuredAgentSessionStatusFeedDeps['onStatusChanged']
     statusSink?: StructuredAgentSessionStatusSink
   }
   onAgentStarted?: (sessionId: string) => void
+  onChildWorkChanged?: (sessionId: string) => void
 }): StructuredAgentSessionStatusFeed {
   return new StructuredAgentSessionStatusFeed({
     sessions: args.sessions,
     getRecord: (sessionId) => args.deps().store.getRecord(sessionId),
     now: args.now,
     onStatusChanged: (summary, options) => args.deps().onSessionStatusChanged?.(summary, options),
-    readBackgroundTasks: (sessionId) => args.deps().adapter.backgroundTaskState?.(sessionId),
     // Resolved per call for the same reason the other deps are: the host builds this feed in a
     // field initializer, before its constructor parameters are assigned.
     statusSink: () => args.deps().statusSink,
-    ...(args.onAgentStarted ? { onAgentStarted: args.onAgentStarted } : {})
+    ...(args.onAgentStarted ? { onAgentStarted: args.onAgentStarted } : {}),
+    ...(args.onChildWorkChanged ? { onChildWorkChanged: args.onChildWorkChanged } : {})
   })
+}
+
+type JournalProjection = {
+  epoch: string
+  sequence: number
+  readOnly: boolean
+  fence: number | undefined
+  state: StructuredAgentSessionStatusState
+  rootTurnId: string | null
 }
 
 export class StructuredAgentSessionStatusFeed {
@@ -144,17 +154,10 @@ export class StructuredAgentSessionStatusFeed {
   )
   private readonly subscribers = new Map<string, StructuredAgentSessionStatusSubscriber>()
   private readonly published = new Map<string, AgentSessionStatusSummary>()
+  /** The newest root turn each session was last projected with; a new one retires settled children. */
+  private readonly rootTurns = new Map<string, string | null>()
   // Task progress must not sort and scan an unchanged conversation. Journal identity owns cleanup.
-  private readonly journalProjections = new WeakMap<
-    AgentSessionJournal,
-    {
-      epoch: string
-      sequence: number
-      readOnly: boolean
-      fence: number | undefined
-      state: StructuredAgentSessionStatusState
-    }
-  >()
+  private readonly journalProjections = new WeakMap<AgentSessionJournal, JournalProjection>()
 
   constructor(private readonly deps: StructuredAgentSessionStatusFeedDeps) {}
 
@@ -179,6 +182,7 @@ export class StructuredAgentSessionStatusFeed {
 
   /** The sink lists what is running; a forgotten session must not be in it. */
   forget(sessionId: string): void {
+    this.rootTurns.delete(sessionId)
     try {
       this.ownership.forget(sessionId)
     } catch (error) {
@@ -205,10 +209,14 @@ export class StructuredAgentSessionStatusFeed {
     if (!previous) {
       return
     }
+    // The store forgets a closed session's child records with its row, so the retained
+    // projection must not keep listing them.
     const {
       hostExecutionOwned: _hostExecutionOwned,
       hostExecutionPhase: _hostExecutionPhase,
       hostExecutionChild: _hostExecutionChild,
+      children: _children,
+      backgroundTasks: _backgroundTasks,
       ...retained
     } = previous
     this.published.set(sessionId, retained)
@@ -227,7 +235,7 @@ export class StructuredAgentSessionStatusFeed {
   ): StructuredAgentSessionStatusState | null {
     const session = this.deps.sessions.get(sessionId)
     const source = journal ?? session?.journal
-    return source ? this.projectionFor(source, this.deps.getRecord(sessionId)) : null
+    return source ? this.projectionFor(source, this.deps.getRecord(sessionId)).state : null
   }
 
   /** Re-projects one session after its journal changed; equal projections are not re-sent. */
@@ -236,7 +244,11 @@ export class StructuredAgentSessionStatusFeed {
     if (!session) {
       return
     }
-    const summary = this.summaryFor(sessionId, session, journal ?? session.journal)
+    const source = journal ?? session.journal
+    const record = this.deps.getRecord(sessionId)
+    const projection = this.projectionFor(source, record)
+    this.retireSettledChildrenOnNewTurn(sessionId, session, projection.rootTurnId)
+    const summary = this.summaryFor(sessionId, session, source, record, projection.state)
     const previous = this.published.get(sessionId)
     if (previous && summariesEqual(previous, summary)) {
       if (!this.ownership.matchesLocation(sessionId, session.params.location)) {
@@ -258,13 +270,29 @@ export class StructuredAgentSessionStatusFeed {
     }
   }
 
+  /** Finished children stay listed, with their outcome, until the session's own next turn. */
+  private retireSettledChildrenOnNewTurn(
+    sessionId: string,
+    session: StatusFeedSession,
+    rootTurnId: string | null
+  ): void {
+    const seen = this.rootTurns.has(sessionId)
+    const previous = this.rootTurns.get(sessionId)
+    this.rootTurns.set(sessionId, rootTurnId)
+    if (!seen || rootTurnId === null || rootTurnId === previous) {
+      return
+    }
+    this.admitChildWork(sessionId, session, [{ type: 'turn-started', observedAt: this.deps.now() }])
+  }
+
   private summaryFor(
     sessionId: string,
     session: StatusFeedSession,
-    journal: AgentSessionJournal
+    journal: AgentSessionJournal,
+    record: AgentSessionRecord | null,
+    state: StructuredAgentSessionStatusState
   ): AgentSessionStatusSummary {
-    const record = this.deps.getRecord(sessionId)
-    const { summary: projected } = this.projectionFor(journal, record)
+    const projected = state.summary
     const providerSession = structuredAgentSessionProviderSessionMetadata(record)
     // The journal has no model: the record's acknowledged options are where a mid-session
     // switch lands, so the row follows whichever is in force.
@@ -272,9 +300,10 @@ export class StructuredAgentSessionStatusFeed {
     // Usage is dropped here on purpose: a `task_progress` tick would otherwise fail the
     // equality check and re-broadcast a full summary to every remote subscriber for a
     // number no session list renders. Tokens stay live on the background-task channel.
-    const backgroundTasks = this.deps
-      .readBackgroundTasks?.(sessionId)
-      ?.tasks?.map(({ totalTokens: _totalTokens, ...task }) => task)
+    const { children, backgroundTasks } = structuredStatusChildWork(
+      this.readChildWork(sessionId),
+      session.params.provider
+    )
     return {
       sessionId,
       workspaceId: session.params.location.workspaceId,
@@ -291,29 +320,59 @@ export class StructuredAgentSessionStatusFeed {
         ? { rewindBlockedReason: 'outcome-unknown' as const }
         : {}),
       ...(model ? { model } : {}),
-      ...(backgroundTasks && backgroundTasks.length > 0 ? { backgroundTasks } : {}),
+      ...(backgroundTasks && backgroundTasks.length > 0
+        ? { backgroundTasks: backgroundTasks.map(({ totalTokens: _tokens, ...task }) => task) }
+        : {}),
+      ...(children ? { children } : {}),
       ...(providerSession ? { providerSession } : {}),
       updatedAt: journal.lastActivityAt() || this.deps.now()
     }
   }
 
-  /** Child-work evidence for a session this feed publishes; a failing sink costs nothing else. */
+  /** Child-work evidence for a session this feed publishes; a failing sink costs nothing else.
+   *  The summary then re-reads the records, which is also what re-folds the parent's row. */
   publishChildWork(sessionId: string, evidence: AgentChildWorkEvidence[]): void {
     const session = this.deps.sessions.get(sessionId)
-    if (!session) {
+    if (!session || !this.admitChildWork(sessionId, session, evidence)) {
       return
     }
+    this.publish(sessionId)
+  }
+
+  /** The session's child records as views, once its parent row has landed; the one read every
+   *  surface of them shares. */
+  readChildWork(sessionId: string): AgentChildWorkView[] | undefined {
+    try {
+      return this.ownership.readChildWork(sessionId)
+    } catch (error) {
+      console.warn('[structured-session-status] child work read failed', error)
+      return undefined
+    }
+  }
+
+  private admitChildWork(
+    sessionId: string,
+    session: StatusFeedSession,
+    evidence: AgentChildWorkEvidence[]
+  ): boolean {
     try {
       this.ownership.publishChildWork(sessionId, evidence, session.params.provider)
     } catch (error) {
       console.warn('[structured-session-status] child work publish failed', error)
+      return false
     }
+    try {
+      this.deps.onChildWorkChanged?.(sessionId)
+    } catch (error) {
+      console.warn('[structured-session-status] child work observer failed', error)
+    }
+    return true
   }
 
   private projectionFor(
     journal: AgentSessionJournal,
     record: AgentSessionRecord | null
-  ): StructuredAgentSessionStatusState {
+  ): JournalProjection {
     // An unreadable journal projects as "no turn": the chat itself shows the reset.
     const cursor = journal.cursor()
     const readOnly = journal.isReadOnly
@@ -338,11 +397,12 @@ export class StructuredAgentSessionStatusFeed {
           snapshot?.items ?? [],
           snapshot?.submissions ?? [],
           fence
-        )
+        ),
+        rootTurnId: newestRootTurnId(snapshot?.items ?? [])
       }
       this.journalProjections.set(journal, projection)
     }
-    return projection.state
+    return projection
   }
 
   /** A failing sink must never cost the subscribers their status event. */

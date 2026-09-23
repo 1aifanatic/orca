@@ -425,4 +425,32 @@ describe('structured child-work reconciliation', () => {
     ).toMatchObject({ removed: 0 })
     expect(records(store)).toHaveLength(1)
   })
+
+  // Brennan's call: a finished subagent stays listed, with how it ended, until the parent's next
+  // turn begins. A finished child whose shell still runs stays so that shell keeps its owner.
+  it("keeps finished children until the session's next turn starts, then only owners of live work", () => {
+    const { store, apply } = harness()
+    const ended = (id: string, observedAt: number): AgentChildWorkEvidence => ({
+      type: 'ended',
+      observedAt,
+      handle: { idKind: 'task_id', id },
+      outcome: 'succeeded'
+    })
+    apply(live(child('finished')), ended('finished', 101))
+    apply(live(child('owner')), live(child('shell', { kind: 'command', ownerId: 'owner' })))
+    apply(ended('owner', 102), live(child('running')))
+    expect(records(store).map((record) => [record.description, record.membership])).toEqual([
+      ['Task finished', 'settled'],
+      ['Task owner', 'settled'],
+      ['Task shell', 'live'],
+      ['Task running', 'live']
+    ])
+
+    expect(apply({ type: 'turn-started', observedAt: 104 })).toMatchObject({ removed: 1 })
+    expect(records(store).map((record) => record.description)).toEqual([
+      'Task owner',
+      'Task shell',
+      'Task running'
+    ])
+  })
 })

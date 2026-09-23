@@ -2,9 +2,9 @@
 //
 // The store holds the only current record per child; evidence patches it. A child settles on its
 // own ending, or `unknown` when its session ends while it is still live; work with nothing to
-// report once it stops is removed instead. Settled children stay until the host drops the parent's
-// row. It owns only the records its own producer admitted, and never claims an outcome the
-// evidence did not report.
+// report once it stops is removed instead. Settled children stay until the session's own next turn
+// starts or the host drops the parent's row. It owns only the records its own producer admitted,
+// and never claims an outcome the evidence did not report.
 
 import type { AgentChildWorkAdmission } from './agent-status-child-work-admission'
 import type {
@@ -98,6 +98,12 @@ function settleLive(ctx: ReconcileContext, observedAt: number): void {
   }
 }
 
+function removeChildren(ctx: ReconcileContext, childWorkIds: string[]): void {
+  if (childWorkIds.length > 0 && ctx.store.applyMutation({ removeChildren: childWorkIds })) {
+    ctx.outcome.removed += childWorkIds.length
+  }
+}
+
 /** The work is gone and has no ending to keep: its record, and the handles it answered to, go. */
 function applyRemoved(ctx: ReconcileContext, edge: AgentChildWorkRemovedEvidence): void {
   const resolution = resolveAgentChildWorkHandle(ctx, [edge.handle.idKind], edge.handle.id)
@@ -109,9 +115,21 @@ function applyRemoved(ctx: ReconcileContext, edge: AgentChildWorkRemovedEvidence
   if (!existing || agentChildWorkRunVerdict(ctx, existing, edge.handle.runId) === 'previous') {
     return
   }
-  if (ctx.store.applyMutation({ removeChildren: [existing.childWorkId] })) {
-    ctx.outcome.removed += 1
-  }
+  removeChildren(ctx, [existing.childWorkId])
+}
+
+/** Settled children, less any that still owns live work: that one stays so its work keeps an
+ *  owner. */
+function removableSettled(ctx: ReconcileContext): string[] {
+  const owned = ownedStructuredChildWork(ctx)
+  const owners = new Set(
+    owned.flatMap((record) =>
+      record.membership === 'live' && record.parentChildWorkId ? [record.parentChildWorkId] : []
+    )
+  )
+  return owned
+    .filter((record) => record.membership === 'settled' && !owners.has(record.childWorkId))
+    .map((record) => record.childWorkId)
 }
 
 /** Apply one batch of evidence. The parent must already be held: the store refuses a child whose
@@ -135,6 +153,8 @@ export function reconcileAgentChildWorkEvidence(
       applyEnded(ctx, edge)
     } else if (edge.type === 'removed') {
       applyRemoved(ctx, edge)
+    } else if (edge.type === 'turn-started') {
+      removeChildren(ctx, removableSettled(ctx))
     } else {
       settleLive(ctx, edge.observedAt)
     }

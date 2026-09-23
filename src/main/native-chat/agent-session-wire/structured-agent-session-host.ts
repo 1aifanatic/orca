@@ -73,7 +73,8 @@ export class StructuredAgentSessionHost {
     () => this.now(),
     () => this.deps,
     (sessionId) => this.sessions.touch(sessionId),
-    (sessionId) => this.restartResume.onAgentStarted(sessionId)
+    (sessionId) => this.restartResume.onAgentStarted(sessionId),
+    (sessionId) => this.backgroundTasks.publish(sessionId)
   )
   private readonly subscribers = this.clientDelivery.subscribers
   private readonly tasks = new StructuredAgentSessionTaskQueue()
@@ -97,7 +98,7 @@ export class StructuredAgentSessionHost {
       this.sessions,
       this.subscribers,
       (sessionId) => this.lifetime.conversation(sessionId),
-      this.clientDelivery.publishStatus
+      this.clientDelivery.readChildWork
     )
     this.runtimeState = new StructuredAgentSessionHostRuntimeState(deps, (sessionId, error) =>
       this.eventRecovery.recoverAfterSinkFailure(sessionId, error)
@@ -319,8 +320,6 @@ export class StructuredAgentSessionHost {
     input: Parameters<typeof releaseStructuredAgentSessionUnansweredDispatches>[1]
   ) => releaseStructuredAgentSessionUnansweredDispatches(this.mutationContext(), input)
 
-  publishBackgroundTaskState: StructuredAgentSessionBackgroundTaskChannel['publish'] = (...args) =>
-    this.backgroundTasks.publish(...args)
   publishChildWorkEvidence = this.clientDelivery.publishChildWork
   unsubscribe = (sessionId: string, id: string): void => this.subscribers.close(sessionId, id)
 
