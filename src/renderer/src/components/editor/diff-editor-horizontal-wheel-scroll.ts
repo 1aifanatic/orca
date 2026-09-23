@@ -34,19 +34,25 @@ function horizontalWheelDelta(event: WheelEvent, pageWidth: number): number {
   return toWheelPixels(raw, event.deltaMode, pageWidth)
 }
 
-function canScrollHorizontally(editor: HorizontalScrollEditor): boolean {
-  return editor.getScrollWidth() > editor.getLayoutInfo().contentWidth
+function maxScrollLeft(editor: HorizontalScrollEditor): number {
+  return Math.max(0, editor.getScrollWidth() - editor.getLayoutInfo().contentWidth)
 }
 
 function installPaneHorizontalWheelScroll(editor: HorizontalScrollEditor): () => void {
   const container = editor.getContainerDomNode()
   const handleWheel = (event: WheelEvent): void => {
-    if (event.defaultPrevented || !canScrollHorizontally(editor)) {
+    const maxLeft = maxScrollLeft(editor)
+    if (event.defaultPrevented || maxLeft === 0) {
       return
     }
 
-    const delta = horizontalWheelDelta(event, container.clientWidth)
-    if (delta === 0) {
+    const currentLeft = editor.getScrollLeft()
+    const nextLeft = Math.min(
+      maxLeft,
+      Math.max(0, currentLeft + horizontalWheelDelta(event, container.clientWidth))
+    )
+    // Why: at an edge the pane can't move; let the outer combined-diff scroller handle the event.
+    if (nextLeft === currentLeft) {
       return
     }
 
@@ -55,7 +61,7 @@ function installPaneHorizontalWheelScroll(editor: HorizontalScrollEditor): () =>
       event.preventDefault()
       event.stopPropagation()
     }
-    editor.setScrollLeft(editor.getScrollLeft() + delta)
+    editor.setScrollLeft(nextLeft)
   }
 
   container.addEventListener('wheel', handleWheel, { capture: true, passive: false })

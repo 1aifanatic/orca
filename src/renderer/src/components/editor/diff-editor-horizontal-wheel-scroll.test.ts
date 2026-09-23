@@ -53,7 +53,7 @@ describe('installDiffEditorHorizontalWheelScroll', () => {
     {
       label: 'line-based input',
       init: { deltaY: -2, deltaMode: WheelEvent.DOM_DELTA_LINE },
-      expected: -22
+      expected: 0
     },
     {
       label: 'page-based input',
@@ -276,7 +276,7 @@ describe('installDiffEditorHorizontalWheelScroll', () => {
     {
       label: 'negative native horizontal',
       init: { deltaX: -24, deltaY: 0 },
-      expected: -14,
+      expected: 0,
       consumed: true
     },
     {
@@ -300,6 +300,44 @@ describe('installDiffEditorHorizontalWheelScroll', () => {
     expect(event.defaultPrevented).toBe(consumed)
     expect(original.setScrollLeft).toHaveBeenCalledWith(expected)
     expect(onDownstreamWheel).toHaveBeenCalledTimes(consumed ? 0 : 1)
+    dispose()
+  })
+
+  it.each([
+    { label: 'left', initialScrollLeft: 0, init: { deltaX: -24, deltaY: 6 } },
+    { label: 'right', initialScrollLeft: 800, init: { deltaX: 24, deltaY: 6 } },
+    { label: 'left with shift', initialScrollLeft: 0, init: { deltaY: -24, shiftKey: true } },
+    { label: 'right with shift', initialScrollLeft: 800, init: { deltaY: 24, shiftKey: true } }
+  ])('lets wheel input propagate at the $label boundary', ({ initialScrollLeft, init }) => {
+    const original = createPaneFixture(initialScrollLeft)
+    const modified = createPaneFixture(initialScrollLeft)
+    const onDownstreamWheel = vi.fn()
+    original.input.addEventListener('wheel', onDownstreamWheel)
+    const dispose = installDiffEditorHorizontalWheelScroll({
+      getOriginalEditor: () => original,
+      getModifiedEditor: () => modified
+    })
+
+    const event = dispatchWheel(original.input, init)
+
+    expect(event.defaultPrevented).toBe(false)
+    expect(original.setScrollLeft).not.toHaveBeenCalled()
+    expect(onDownstreamWheel).toHaveBeenCalledTimes(1)
+    dispose()
+  })
+
+  it('clamps overshoot to the right boundary and still consumes', () => {
+    const original = createPaneFixture(790)
+    const modified = createPaneFixture(790)
+    const dispose = installDiffEditorHorizontalWheelScroll({
+      getOriginalEditor: () => original,
+      getModifiedEditor: () => modified
+    })
+
+    const event = dispatchWheel(original.input, { deltaX: 24, deltaY: 0 })
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(original.setScrollLeft).toHaveBeenCalledWith(800)
     dispose()
   })
 
