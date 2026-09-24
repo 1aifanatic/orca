@@ -10,7 +10,7 @@ import {
   type AgentJournalSubmission
 } from './agent-session-journal-types'
 import { agentTurnVerdict, type AgentTurnOutcome } from './agent-turn-outcome'
-import { agentJournalLinkageFields } from './agent-session-journal-producer'
+import { agentJournalLinkageFields, isRootAgentJournalItem } from './agent-session-journal-producer'
 import { structuredAgentSessionStatusBlock } from './structured-agent-session-status-block'
 import { agentJournalItemRowOrigin } from './agent-session-journal-position'
 import {
@@ -183,16 +183,21 @@ export function structuredAgentSessionTabId(sessionId: string): string {
   return `structured-agent-session-${sessionId}`
 }
 
+/** `asking: 'anyone'` answers whether a human must answer; `'main-agent'` whether the session's own
+ *  agent is the one waiting, which is what its status means: a subagent's request is the subagent's
+ *  wait, carried by its own child record. */
 export function projectStructuredAgentSessionStatus(
   items: readonly AgentJournalRenderItem[],
   submissions: readonly AgentJournalSubmission[] = [],
-  currentFence?: number | null
+  currentFence?: number | null,
+  asking: 'anyone' | 'main-agent' = 'anyone'
 ): StructuredAgentSessionProjectedStatus {
   if (
     items.some(
       (item) =>
         (item.body.kind === 'approval' || item.body.kind === 'question') &&
-        item.body.resolution.state === 'pending'
+        item.body.resolution.state === 'pending' &&
+        (asking === 'anyone' || isRootAgentJournalItem(item))
     )
   ) {
     return 'attention'
@@ -246,7 +251,7 @@ export function projectStructuredAgentSessionStatusState(
   if (!hasStructuredAgentSessionRequest(items, submissions, currentFence)) {
     return { summary: { status: null, latestPrompt: '' }, latestRequest: null, owesWork: false }
   }
-  const status = projectStructuredAgentSessionStatus(items, submissions, currentFence)
+  const status = projectStructuredAgentSessionStatus(items, submissions, currentFence, 'main-agent')
   const statusToolCall = status === 'working' ? statusStructuredAgentSessionToolCall(items) : null
   const toolName = statusToolCall
     ? normalizeOptionalField(statusToolCall.name, AGENT_STATUS_TOOL_NAME_MAX_LENGTH)
