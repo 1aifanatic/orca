@@ -18071,8 +18071,7 @@
       }
     },
     "agentChildRow": {
-      "ended": "종료됨",
-      "endedAgo": "{{value0}} 전에 종료됨"
+      "ended": "종료됨"
     }
   },
   "dashboardPopout": {
