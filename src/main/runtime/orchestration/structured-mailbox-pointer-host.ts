@@ -124,8 +124,8 @@ export function createStructuredMailboxPointerHost(): StructuredMailboxPointerHo
           ? { kind: 'unattached' }
           : { kind: 'sent', state: 'rejected' }
       }
-      // `pending` is not yet an acknowledgement; only `accepted` may consume mail. Accepted is not
-      // delivered, so wait out a start; a wait that runs out parks for the next journal edge.
+      // Wait out a start so a settled verdict is seen. A turn still `pending` after the wait is
+      // queued by the host, which delivers or rejects it, so its rows count as pointed.
       const submission =
         result.value.submission.dispatchState === 'pending'
           ? ((
@@ -139,7 +139,8 @@ export function createStructuredMailboxPointerHost(): StructuredMailboxPointerHo
       const state = submission.dispatchState
       return {
         kind: 'sent',
-        state: state === 'accepted' ? 'accepted' : state === 'rejected' ? 'rejected' : 'unknown'
+        state:
+          state === 'accepted' || state === 'pending' || state === 'rejected' ? state : 'unknown'
       }
     }
   }
