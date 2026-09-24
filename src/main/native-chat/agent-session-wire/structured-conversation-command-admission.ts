@@ -3,13 +3,27 @@ import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import { agentChildWorkLiveness } from '../../../shared/agent-status-child-work-liveness'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import { activeStructuredAgentSessionTurnId } from '../../../shared/structured-agent-session-projection'
-import type { AgentSessionBackgroundTaskStops } from './structured-agent-session-adapter'
-import type { AgentSessionTurnContext } from './structured-agent-session-turns'
+import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
+import type {
+  AgentSessionBackgroundTaskStops,
+  StructuredAgentSessionAdapter
+} from './structured-agent-session-adapter'
 import {
   refuse,
   type AgentSessionRefusalReason,
   type AgentSessionWireRefusal
 } from '../../../shared/agent-session-wire-refusals'
+
+/** What admission reads of a turn: the journal, its fence, and only the provider's stop capability. */
+export type ConversationCommandAdmissionContext = {
+  sessionId: string
+  fence: number
+  journal: {
+    snapshot(): Pick<ReturnType<AgentSessionJournal['snapshot']>, 'items'>
+    submissions: AgentSessionJournal['submissions']
+  }
+  adapter: Pick<StructuredAgentSessionAdapter, 'backgroundTaskStops'>
+}
 
 function blocked(
   reason: AgentSessionRefusalReason<'agent_session_operation_invalid'>,
@@ -21,7 +35,7 @@ function blocked(
 /** `childWork` is the session's child records as the chat strip reads them: a refusal may only
  *  cite work the strip lists, and ask for a stop only when the strip offers one. */
 export function conversationCommandBlocked(
-  ctx: AgentSessionTurnContext,
+  ctx: ConversationCommandAdmissionContext,
   record: AgentSessionRecord,
   childWork: readonly AgentChildWorkView[] | undefined
 ): AgentSessionWireRefusal | null {
