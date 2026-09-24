@@ -1,5 +1,9 @@
+import { agentChildWorkViewOffersStop } from '../../../shared/agent-child-row-model'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
+import { agentChildWorkLiveness } from '../../../shared/agent-status-child-work-liveness'
+import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import { activeStructuredAgentSessionTurnId } from '../../../shared/structured-agent-session-projection'
+import type { AgentSessionBackgroundTaskStops } from './structured-agent-session-adapter'
 import type { AgentSessionTurnContext } from './structured-agent-session-turns'
 import {
   refuse,
@@ -14,9 +18,12 @@ function blocked(
   return refuse('agent_session_operation_invalid', { reason }, message)
 }
 
+/** `childWork` is the session's child records as the chat strip reads them: a refusal may only
+ *  cite work the strip lists, and ask for a stop only when the strip offers one. */
 export function conversationCommandBlocked(
   ctx: AgentSessionTurnContext,
-  record: AgentSessionRecord
+  record: AgentSessionRecord,
+  childWork: readonly AgentChildWorkView[] | undefined
 ): AgentSessionWireRefusal | null {
   const items = ctx.journal.snapshot().items
   if (record.rewind?.phase === 'prepared' || record.rewind?.phase === 'provider-succeeded') {
@@ -59,14 +66,11 @@ export function conversationCommandBlocked(
       'Resolve the pending question or approval before using this command.'
     )
   }
-  const backgroundTasks = ctx.adapter.backgroundTaskState?.(ctx.sessionId)
-  if (backgroundTasks?.state === 'monitoring') {
-    // Only ask for a stop the host can actually perform. A provider that
-    // exposes neither a targeted nor an untargeted stop would otherwise leave
-    // the command refused behind an instruction nobody can follow.
+  // The same liveness fold the strip's monitoring indicator reads: settled rows block nothing.
+  if (agentChildWorkLiveness(childWork) !== null) {
     return blocked(
       'backgroundTasksRunning',
-      backgroundTasks.supportsTaskStop || backgroundTasks.supportsStopAll !== false
+      stripOffersStop(childWork ?? [], ctx.adapter.backgroundTaskStops?.(ctx.sessionId))
         ? 'Stop background tasks before using this command.'
         : 'Wait for background tasks to finish before using this command.'
     )
@@ -85,4 +89,18 @@ export function conversationCommandBlocked(
     )
   }
   return null
+}
+
+/** The strip's own stop controls: a per-row stop where the provider can target one, else its
+ *  single untargeted stop. Asking for a stop it does not render names a control nobody can use. */
+function stripOffersStop(
+  childWork: readonly AgentChildWorkView[],
+  stops: AgentSessionBackgroundTaskStops | undefined
+): boolean {
+  if (!stops) {
+    return false
+  }
+  return stops.supportsTaskStop
+    ? childWork.some(agentChildWorkViewOffersStop)
+    : stops.supportsStopAll
 }

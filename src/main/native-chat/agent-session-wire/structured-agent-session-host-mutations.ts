@@ -27,6 +27,7 @@ import {
 } from '../../../shared/agent-session-failure-words'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import type { AgentSessionPromptRequest } from './structured-agent-session-turns-prompt'
+import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import { threadGoalPlan } from './structured-agent-session-thread-goal'
 import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
 import {
@@ -64,6 +65,8 @@ export type StructuredAgentSessionMutationContext = {
   flushStreamedEvents: (sessionId: string) => Promise<void>
   /** The host's accessor, for a caller outside the session's serialize. */
   conversation: (sessionId: string) => Promise<StructuredAgentSessionHostSession>
+  /** The session's child records, as the strip reads them; what command admission decides on. */
+  readChildWork: (sessionId: string) => AgentChildWorkView[] | undefined
   serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
   /** The session's conversation, opened when closed; inside the caller's serialize. */
   openConversation: (sessionId: string) => Promise<StructuredAgentSessionHostSession | null>

@@ -164,7 +164,8 @@ export class StructuredAgentSessionStatusFeed {
       return
     }
     // The store forgets a closed session's child records with its row, so the retained
-    // projection must not keep listing them.
+    // projection must not keep listing them — settled ones included, or the session list would
+    // show rows the strip no longer has.
     const {
       hostExecutionOwned: _hostExecutionOwned,
       hostExecutionPhase: _hostExecutionPhase,
@@ -224,7 +225,9 @@ export class StructuredAgentSessionStatusFeed {
     }
   }
 
-  /** Finished children stay listed, with their outcome, until the session's own next turn. */
+  /** Finished children stay listed, with their outcome, until the session's own next turn at the
+   *  latest; the host closing or releasing the session drops them sooner (see `revokeLive`). Nothing
+   *  caps how many settle within a turn. A command never settles: its record goes when it stops. */
   private retireSettledChildrenOnNewTurn(
     sessionId: string,
     session: StatusFeedSession,
