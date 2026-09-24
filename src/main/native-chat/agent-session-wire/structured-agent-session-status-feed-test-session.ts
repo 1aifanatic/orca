@@ -3,10 +3,10 @@ import type { AgentChildWorkView } from '../../../shared/agent-status-child-work
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { StructuredAgentSessionProviderChildIdentity } from './structured-agent-session-host-types'
 
-export function indexedStatusFeedSession(session: {
+export function indexedStatusFeedSession<P extends AgentSessionHandleProvider = 'codex'>(session: {
   journal: AgentSessionJournal
   child?: (StructuredAgentSessionProviderChildIdentity & { phase: 'starting' | 'ready' }) | null
-  provider?: AgentSessionHandleProvider
+  provider?: P
 }) {
   return {
     journal: session.journal,
