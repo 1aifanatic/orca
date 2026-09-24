@@ -9,7 +9,10 @@
 import { ORCHESTRATION_READINESS_TIMEOUT_MS } from '../../../shared/orchestration-timing-budgets'
 import { AGENT_SESSION_NOT_ATTACHED } from '../../native-chat/agent-session-wire/structured-agent-session-mutation-admission'
 import { getStructuredAgentSessionHost } from '../../native-chat/agent-session-wire/structured-agent-session-registry'
-import type { StructuredMailboxPointerHost } from './structured-mailbox-pointer-delivery'
+import type {
+  StructuredMailboxPointerHost,
+  StructuredPointerSettlement
+} from './structured-mailbox-pointer-delivery'
 import { structuredSessionCliInvocation } from './cli-command'
 import {
   structuredSessionGateFacts,
@@ -129,24 +132,29 @@ export function createStructuredMailboxPointerHost(): StructuredMailboxPointerHo
           ? { kind: 'unattached' }
           : { kind: 'sent', state: 'rejected' }
       }
-      // Wait out a start so a settled verdict is seen. A turn still `pending` after the wait is
-      // queued by the host, which delivers or rejects it, so its rows count as pointed.
-      const submission =
-        result.value.submission.dispatchState === 'pending'
-          ? ((
-              await host
-                .waitForSendSettlement(input.sessionId, result.value.clientMessageId, {
-                  budgetMs: ORCHESTRATION_READINESS_TIMEOUT_MS
-                })
-                .catch(() => undefined)
-            )?.value.submission ?? result.value.submission)
-          : result.value.submission
-      const state = submission.dispatchState
-      return {
-        kind: 'sent',
-        state:
-          state === 'accepted' || state === 'pending' || state === 'rejected' ? state : 'unknown'
+      // `pending` is admitted and awaiting its echo; its settlement says whether a turn ran. The
+      // budget covers a cold provider start.
+      const state = result.value.submission.dispatchState
+      if (state === 'pending') {
+        return {
+          kind: 'sent',
+          state,
+          settlement: host
+            .waitForSendSettlement(input.sessionId, result.value.clientMessageId, {
+              budgetMs: ORCHESTRATION_READINESS_TIMEOUT_MS
+            })
+            .then(
+              (settled) => pointerSettlement(settled?.value.submission.dispatchState),
+              () => 'unknown' as const
+            )
+        }
       }
+      return { kind: 'sent', state: pointerSettlement(state) }
     }
   }
+}
+
+/** No verdict — the wait gave up, or the generation closed with the turn unechoed — is unknown. */
+function pointerSettlement(state: string | undefined): StructuredPointerSettlement {
+  return state === 'accepted' || state === 'rejected' ? state : 'unknown'
 }
