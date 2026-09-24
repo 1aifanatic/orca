@@ -285,6 +285,12 @@ export function runStructuredConversationCommand(
             ...conversationCommandFailure(failure)
           }
           await store.setConversationCommand(sessionId, ctx.fence, completed)
+          if (completed.replacementSessionId) {
+            context.deps.onConversationReplaced?.({
+              sessionId,
+              replacementSessionId: completed.replacementSessionId
+            })
+          }
           return { ok: true, value: completed }
         }
       }
