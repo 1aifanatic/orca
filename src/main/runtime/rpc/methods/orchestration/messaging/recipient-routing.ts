@@ -5,7 +5,7 @@ import type { OrcaRuntimeService } from '../../../../orca-runtime'
 import { resolveOrchestrationParty } from '../../../../orchestration/orchestration-party'
 import { isEquivalentPaneKey } from '../../../../orchestration/db/pane-key-match'
 import { CURRENT_CONTRACT_VERSION } from '../../../../orchestration/db/contract-constants'
-import { readAgentSessionRecordStore } from '../../../../orchestration/structured-session-mail-target'
+import { readAgentSessionRecordStore } from '../../../../orchestration/structured-session-mail-address'
 import {
   readSessionRecipient,
   refuseUndeliverableSessionRecipient,
