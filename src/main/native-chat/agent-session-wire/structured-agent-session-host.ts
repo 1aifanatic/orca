@@ -151,18 +151,18 @@ export class StructuredAgentSessionHost {
       now: () => this.now(),
       onBarrierError: (sessionId, error) => deps.onEventSinkError?.({ sessionId, error })
     })
-    this.restartResume = createStructuredAgentSessionRestartResume(
-      deps,
-      this.sessions,
-      structuredAgentSessionRestartResumeSurfaces(this, this.now)
-    )
+    this.restartResume = createStructuredAgentSessionRestartResume(deps, this.sessions, {
+      ...structuredAgentSessionRestartResumeSurfaces(this, this.now),
+      readChildWork: this.clientDelivery.readChildWork
+    })
     this.lifetime = createStructuredAgentSessionConversationLifetime({
       context: () => this.lifetimeContext(),
       sessions: this.sessions,
       serialize: (sessionId, task) => this.serialize(sessionId, task),
       open: (sessionId) => this.conversationDelivery.open(sessionId),
       deliveryActive: (sessionId) => this.conversationDelivery.loop.isRunning(sessionId),
-      closeStatus: (sessionId, options) => this.clientDelivery.closeSession(sessionId, options)
+      closeStatus: (sessionId, options) => this.clientDelivery.closeSession(sessionId, options),
+      readChildWork: this.clientDelivery.readChildWork
     })
     this.runtimeState.startLeaseRenewal()
     this.lifetime.idleSweep.start()
