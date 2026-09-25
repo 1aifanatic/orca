@@ -76,7 +76,8 @@ export type AgentChildWorkEndedEvidence = {
 export type AgentChildWorkTurnStartedEvidence = { type: 'turn-started'; observedAt: number }
 
 /** The provider session is gone: a child still live can no longer end on its own, so it settles
- *  with an outcome nobody reported. Settled children stay; the parent's removal drops them. */
+ *  with an outcome nobody reported. Settled children stay until the session's next turn or the
+ *  parent's removal. */
 export type AgentChildWorkSessionEndedEvidence = { type: 'session-ended'; observedAt: number }
 
 /** Work that leaves nothing to report once it stops, such as a command whose process exited: its
