@@ -28,6 +28,8 @@ export type ClaudePendingPrompt = ClaudePromptPresentation & {
   questionIds: readonly string[]
   settle: ClaudePromptSettle
   turnId?: string | null
+  /** The subagent the provider says asked; absent when the session's own agent did. */
+  agentId?: string
 }
 
 export type ClaudePromptRegistration = ClaudePromptPresentation & {
@@ -38,6 +40,7 @@ export type ClaudePromptRegistration = ClaudePromptPresentation & {
   suggestions: PermissionUpdate[]
   settle: ClaudePromptSettle
   turnId?: string | null
+  agentId?: string
 }
 
 type PromptBinding = {
@@ -89,6 +92,7 @@ export class ClaudePromptRegistry {
     const toolUseId = readClaudePromptString(registration.toolUseId)
     const toolName = readClaudePromptString(registration.toolName)
     const input = isClaudePromptRecord(registration.input) ? registration.input : null
+    const agentId = readClaudePromptString(registration.agentId)
     if (!toolUseId || !toolName || !input) {
       return null
     }
@@ -110,10 +114,16 @@ export class ClaudePromptRegistry {
       ...(registration.subject ? { subject: registration.subject } : {}),
       questionIds: questions.map(questionId),
       settle: registration.settle,
-      turnId: registration.turnId ?? null
+      turnId: registration.turnId ?? null,
+      ...(agentId ? { agentId } : {})
     }
     this.prompts.set(prompt.promptKey, prompt)
     return prompt
+  }
+
+  /** Every request the provider is still blocked on. */
+  pending(): IterableIterator<ClaudePendingPrompt> {
+    return this.prompts.values()
   }
 
   /** True only if the prompt was still pending; lets abort and answer settle once. */

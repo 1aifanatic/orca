@@ -53,7 +53,8 @@ export function buildClaudePermissionCallbacks(deps: ClaudePermissionCallbackDep
         input,
         suggestions: options.suggestions ?? [],
         settle,
-        turnId: deps.currentTurnId?.() ?? null
+        turnId: deps.currentTurnId?.() ?? null,
+        ...(options.agentID ? { agentId: options.agentID } : {})
       })
       if (!prompt) {
         settle(denySafeResult(options.toolUseID))
