@@ -1,4 +1,4 @@
-name: NSIS process probe investigation
+name: NSIS policy negative control
 on:
   push:
     branches:
@@ -7,19 +7,11 @@ permissions:
   contents: read
 jobs:
   investigate:
-    name: PowerShell policy (${{ matrix.module_path }})
+    name: Reject unchecked policy fallthrough
     runs-on: windows-2022
     timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        module_path:
-          - inherited
-          - default
     env:
       ORCA_BACKGROUND_LAUNCH: '1'
-      ORCA_NSIS_PROBE_DIAGNOSTICS: '1'
-      ORCA_NSIS_CLEAR_MODULE_PATH: ${{ matrix.module_path == 'default' && '1' || '0' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -47,5 +39,24 @@ jobs:
         shell: pwsh
         run: node -e
           "console.log(JSON.stringify({cpus:require('node:os').availableParallelism(),memory:require('node:os').totalmem(),node:process.version,arch:process.arch,image:process.env.ImageVersion}))"
-      - name: Verify policy before running the NSIS query
-        run: pnpm exec vitest run --config config/vitest.config.ts config/scripts/nsis-process-check.test.mjs
+      - name: Restore unchecked validator and require its rejection
+        shell: pwsh
+        run: |
+          node config/scripts/nsis-policy-negative-control.mjs prepare config/scripts/nsis-process-check.test.mjs nsis-policy-negative-control.original.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node node_modules/vitest/vitest.mjs run --config config/vitest.config.ts config/scripts/nsis-process-check.test.mjs --reporter=default --reporter=json --outputFile.json=nsis-policy-negative-control.json 2>&1 | Tee-Object -FilePath nsis-policy-negative-control.log
+          $testExitCode = $LASTEXITCODE
+          node config/scripts/nsis-policy-negative-control.mjs verify nsis-policy-negative-control.json "$testExitCode"
+          exit $LASTEXITCODE
+      - name: Save negative-control evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nsis-policy-negative-control
+          path: |
+            nsis-policy-negative-control.original.txt
+            config/scripts/nsis-process-check.test.mjs
+            nsis-policy-negative-control.json
+            nsis-policy-negative-control.log
+          retention-days: 7
+          if-no-files-found: warn

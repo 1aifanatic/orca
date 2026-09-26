@@ -51,79 +51,59 @@ describe('NSIS process-check integration', () => {
 describe.runIf(process.platform === 'win32')(
   'NSIS capability probe under Restricted policy',
   () => {
+    const policyReceipt = 'orca-nsis: restricted policy verified'
+    const queryFailureReceipt = 'orca-nsis: injected query failure'
+    const policyCheck = [
+      'function Test-OrcaRestrictedPolicy { param([string]$Scope)',
+      "try { $parameters = @{ ErrorAction = 'Stop' };",
+      'if ($Scope) { $parameters.Scope = $Scope };',
+      "return ((Get-ExecutionPolicy @parameters) -eq 'Restricted')",
+      '} catch { return $false } };',
+      // A failed getter must not fall through to the query's successful exit.
+      "if ((Test-OrcaRestrictedPolicy '__orca_invalid_scope__') -ne $false) { exit 11 };",
+      "if ((Test-OrcaRestrictedPolicy 'Process') -ne $true) { exit 10 };",
+      'if ((Test-OrcaRestrictedPolicy) -ne $true) { exit 10 };',
+      `[Console]::Out.WriteLine('${policyReceipt}');`
+    ].join(' ')
+
     function runProbe(arch, prefix = '') {
       const { args, command } = readPowerShellProbe()
       if (!process.env.SystemRoot) {
         throw new Error('SystemRoot is required on Windows')
       }
-      const startedAt = Date.now()
-      const diagnostic = process.env.ORCA_NSIS_PROBE_DIAGNOSTICS === '1'
-      const stage = (name) =>
-        diagnostic
-          ? `[Console]::Error.WriteLine('[orca-nsis] ${name} ' + [DateTime]::UtcNow.ToString('o')); `
-          : ''
-      const env = {
-        ...process.env,
-        ORCA_BACKGROUND_LAUNCH: '1',
-        PSExecutionPolicyPreference: 'Restricted'
-      }
-      if (process.env.ORCA_NSIS_CLEAR_MODULE_PATH === '1') {
-        for (const key of Object.keys(env)) {
-          if (key.toLowerCase() === 'psmodulepath') {
-            delete env[key]
-          }
-        }
-      }
-      const environmentDiagnostic = diagnostic
-        ? "[Console]::Error.WriteLine('[orca-nsis] PSHOME=' + $PSHOME); " +
-          "[Console]::Error.WriteLine('[orca-nsis] PSModulePath=' + $env:PSModulePath); "
-        : ''
-      const policyFailureDiagnostic = diagnostic
-        ? "[Console]::Error.WriteLine('[orca-nsis] policy-error ' + $_.Exception.ToString()); " +
-          'try { Import-Module Microsoft.PowerShell.Security -ErrorAction Stop; ' +
-          "[Console]::Error.WriteLine('[orca-nsis] explicit import succeeded') } " +
-          "catch { [Console]::Error.WriteLine('[orca-nsis] import-error ' + $_.Exception.ToString()) }; "
-        : ''
-      const policyCheck =
-        "try { if ((Get-ExecutionPolicy -Scope Process -ErrorAction Stop) -ne 'Restricted') " +
-        "{ throw 'Expected Restricted process policy' } } " +
-        `catch { ${policyFailureDiagnostic}exit 10 }; `
-      const result = runProcessSync({
+      // The pwsh runner's module path points Windows PowerShell at incompatible PS7 modules.
+      const env = Object.fromEntries(
+        Object.entries(process.env).filter(([key]) => key.toLowerCase() !== 'psmodulepath')
+      )
+      return runProcessSync({
         program: join(process.env.SystemRoot, arch, 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
-        args: [
-          ...args,
-          '-Command',
-          `${stage('started')}${environmentDiagnostic}${policyCheck}${stage('policy-verified')}${prefix}${stage('query-started')}${command}`
-        ],
-        env,
+        args: [...args, '-Command', `${policyCheck} ${prefix}${command}`],
+        env: {
+          ...env,
+          ORCA_BACKGROUND_LAUNCH: '1',
+          PSExecutionPolicyPreference: 'Restricted'
+        },
         timeoutMs: 20_000
       })
-      if (diagnostic) {
-        console.info('[orca-nsis] result', {
-          arch,
-          failureInjected: prefix.length > 0,
-          clearedModulePath: process.env.ORCA_NSIS_CLEAR_MODULE_PATH === '1',
-          startedAt: new Date(startedAt).toISOString(),
-          elapsedMs: Date.now() - startedAt,
-          ...result
-        })
-      }
-      return result
     }
 
     it.each(['SysWOW64', 'System32'])('%s permits the real inline process query', (arch) => {
       const result = runProbe(arch)
-      expect(result.code, result.stderr).toBe(0)
+      expect(result.code, JSON.stringify(result)).toBe(0)
       expect(result.timedOut).toBe(false)
+      expect(result.stdout).toContain(policyReceipt)
     })
 
     it.each(['SysWOW64', 'System32'])('%s rejects a failed process query', (arch) => {
       const result = runProbe(
         arch,
-        "function Get-CimInstance { [CmdletBinding()] param([string]$ClassName); Write-Error 'CIM unavailable' }; "
+        'function Get-CimInstance { [CmdletBinding()] param([string]$ClassName); ' +
+          `[Console]::Out.WriteLine('${queryFailureReceipt}'); Write-Error 'CIM unavailable' }; `
       )
-      expect(result.code, result.stderr).toBe(1)
+      expect(result.code, JSON.stringify(result)).toBe(1)
       expect(result.timedOut).toBe(false)
+      expect(result.stdout).toContain(policyReceipt)
+      expect(result.stdout).toContain(queryFailureReceipt)
     })
   }
 )
