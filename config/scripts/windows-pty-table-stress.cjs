@@ -24,7 +24,10 @@ async function exerciseTable() {
     node: process.version,
     rounds
   })
-  assert.equal(native.assignCurrentProcessToJob(), true, 'Crash cleanup needs a host job')
+  // Unlike production's fallback, this crash probe requires a host that permits nested jobs.
+  const hostJobAssigned = native.assignCurrentProcessToJob()
+  report('host-job-precondition', { assigned: hostJobAssigned })
+  assert.equal(hostJobAssigned, true, 'Probe precondition: host must permit a crash-cleanup job')
 
   const spawned = []
   function spawn(round, slot) {
@@ -79,6 +82,10 @@ async function exerciseTable() {
     } finally {
       clearTimeout(timer)
     }
+    for (const { proc } of records) {
+      const members = native.listJobProcessIds(proc._pty, proc.pid)
+      assert.ok(members?.includes(proc.pid), `Ready shell ${proc.pid} must retain its job`)
+    }
     report('ready', { shellPids: records.map(({ proc }) => proc.pid) })
   }
 
@@ -88,6 +95,7 @@ async function exerciseTable() {
     record.closed = true
   }
 
+  let failure
   try {
     const survivor = spawn(-1, -1)
     await waitForReady([survivor])
@@ -110,6 +118,8 @@ async function exerciseTable() {
     }
     assert.equal(survivor.exited, false, survivor.output)
     report('overlap-complete', { terminals: spawned.length })
+  } catch (error) {
+    failure = { error }
   } finally {
     for (const record of spawned) {
       if (!record.closed) {
@@ -124,9 +134,18 @@ async function exerciseTable() {
           timer = setTimeout(() => reject(new Error('PTY exit callbacks did not drain')), 15_000)
         })
       ])
+    } catch (error) {
+      if (failure) {
+        report('drain-error', { message: error.stack })
+      } else {
+        failure = { error }
+      }
     } finally {
       clearTimeout(timer)
     }
+  }
+  if (failure) {
+    throw failure.error
   }
   report('complete', { terminals: spawned.length })
 }
