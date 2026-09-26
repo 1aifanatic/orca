@@ -62,24 +62,47 @@ describe.runIf(process.platform === 'win32')(
         diagnostic
           ? `[Console]::Error.WriteLine('[orca-nsis] ${name} ' + [DateTime]::UtcNow.ToString('o')); `
           : ''
+      const env = {
+        ...process.env,
+        ORCA_BACKGROUND_LAUNCH: '1',
+        PSExecutionPolicyPreference: 'Restricted'
+      }
+      if (process.env.ORCA_NSIS_CLEAR_MODULE_PATH === '1') {
+        for (const key of Object.keys(env)) {
+          if (key.toLowerCase() === 'psmodulepath') {
+            delete env[key]
+          }
+        }
+      }
+      const environmentDiagnostic = diagnostic
+        ? "[Console]::Error.WriteLine('[orca-nsis] PSHOME=' + $PSHOME); " +
+          "[Console]::Error.WriteLine('[orca-nsis] PSModulePath=' + $env:PSModulePath); "
+        : ''
+      const policyFailureDiagnostic = diagnostic
+        ? "[Console]::Error.WriteLine('[orca-nsis] policy-error ' + $_.Exception.ToString()); " +
+          'try { Import-Module Microsoft.PowerShell.Security -ErrorAction Stop; ' +
+          "[Console]::Error.WriteLine('[orca-nsis] explicit import succeeded') } " +
+          "catch { [Console]::Error.WriteLine('[orca-nsis] import-error ' + $_.Exception.ToString()) }; "
+        : ''
+      const policyCheck =
+        "try { if ((Get-ExecutionPolicy -Scope Process -ErrorAction Stop) -ne 'Restricted') " +
+        "{ throw 'Expected Restricted process policy' } } " +
+        `catch { ${policyFailureDiagnostic}exit 10 }; `
       const result = runProcessSync({
         program: join(process.env.SystemRoot, arch, 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
         args: [
           ...args,
           '-Command',
-          `${stage('started')}if ((Get-ExecutionPolicy -Scope Process) -ne 'Restricted') { exit 10 }; ${stage('policy-verified')}${prefix}${stage('query-started')}${command}`
+          `${stage('started')}${environmentDiagnostic}${policyCheck}${stage('policy-verified')}${prefix}${stage('query-started')}${command}`
         ],
-        env: {
-          ...process.env,
-          ORCA_BACKGROUND_LAUNCH: '1',
-          PSExecutionPolicyPreference: 'Restricted'
-        },
+        env,
         timeoutMs: 20_000
       })
       if (diagnostic) {
         console.info('[orca-nsis] result', {
           arch,
           failureInjected: prefix.length > 0,
+          clearedModulePath: process.env.ORCA_NSIS_CLEAR_MODULE_PATH === '1',
           startedAt: new Date(startedAt).toISOString(),
           elapsedMs: Date.now() - startedAt,
           ...result
