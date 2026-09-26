@@ -64,6 +64,7 @@ export function createRuntimeClientEventsSync(
   const random = deps.random ?? Math.random
   const getSubscriptionKey = deps.getSubscriptionKey ?? ((environmentId: string) => environmentId)
   let generation = 0
+  let syncInvocation = 0
 
   const clearRetryTimer = (environmentId: string): void => {
     const retryTimer = retryTimers.get(environmentId)
@@ -115,9 +116,7 @@ export function createRuntimeClientEventsSync(
 
   const stop = (): void => {
     generation += 1
-    for (const subscription of subscriptions.values()) {
-      subscription.unsubscribe()
-    }
+    const stoppedSubscriptions = [...subscriptions.values()]
     subscriptions.clear()
     pending.clear()
     for (const retryTimer of retryTimers.values()) {
@@ -125,10 +124,14 @@ export function createRuntimeClientEventsSync(
     }
     retryTimers.clear()
     consecutiveFailures.clear()
+    for (const subscription of stoppedSubscriptions) {
+      subscription.unsubscribe()
+    }
   }
 
   const sync = (): void => {
     const syncGeneration = generation
+    const currentSyncInvocation = ++syncInvocation
     const desiredIds = new Set(deps.getDesiredEnvironmentIds())
     for (const environmentId of retryTimers.keys()) {
       if (desiredIds.has(environmentId)) {
@@ -143,6 +146,9 @@ export function createRuntimeClientEventsSync(
     }
 
     for (const [environmentId, subscription] of subscriptions) {
+      if (syncGeneration !== generation || currentSyncInvocation !== syncInvocation) {
+        return
+      }
       if (desiredIds.has(environmentId) && subscription.key === getSubscriptionKey(environmentId)) {
         continue
       }
@@ -151,7 +157,7 @@ export function createRuntimeClientEventsSync(
     }
 
     for (const environmentId of desiredIds) {
-      if (syncGeneration !== generation) {
+      if (syncGeneration !== generation || currentSyncInvocation !== syncInvocation) {
         return
       }
       const subscriptionKey = getSubscriptionKey(environmentId)
@@ -245,7 +251,7 @@ export function createRuntimeClientEventsSync(
         })
     }
 
-    if (syncGeneration !== generation) {
+    if (syncGeneration !== generation || currentSyncInvocation !== syncInvocation) {
       return
     }
     for (const [environmentId, pendingSubscription] of pending) {

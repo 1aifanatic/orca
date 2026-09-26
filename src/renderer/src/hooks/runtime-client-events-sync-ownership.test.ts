@@ -55,6 +55,78 @@ async function settle(): Promise<void> {
 }
 
 describe('runtime event subscription ownership', () => {
+  it.each([{ desired: ['A'] }, { desired: ['A', 'B'] }])(
+    'keeps the nested desired set after an initial frame replaces $desired',
+    async ({ desired }) => {
+      const h = makeHarness()
+      h.setDesired(desired)
+      h.onEvent.mockImplementation((id: string) => {
+        if (id === 'A') {
+          h.setDesired(['C'])
+          h.manager.sync()
+        }
+      })
+      h.manager.sync()
+      expect(h.records.map(({ environmentId }) => environmentId)).toEqual(['A', 'C'])
+      h.onEvent.mockClear()
+      h.records.forEach((record) => record.emit())
+      expect(h.onEvent.mock.calls.map(([id]) => id)).toEqual(['C'])
+      h.records.forEach((record) => record.resolve())
+      await settle()
+      expect(h.records[0].unsubscribe).toHaveBeenCalledOnce()
+      expect(h.records[1].unsubscribe).not.toHaveBeenCalled()
+      h.manager.sync()
+      expect(h.records).toHaveLength(2)
+      h.manager.stop()
+      expect(h.records[1].unsubscribe).toHaveBeenCalledOnce()
+    }
+  )
+
+  it('keeps a retained owner when unsubscribe replaces an outer empty desired set', async () => {
+    const h = makeHarness()
+    h.manager.sync()
+    h.records.forEach((record) => record.resolve())
+    await settle()
+    h.records[0].unsubscribe.mockImplementation(() => {
+      h.setDesired(['B', 'C'])
+      h.manager.sync()
+    })
+    h.setDesired([])
+    h.manager.sync()
+    expect(h.records[0].unsubscribe).toHaveBeenCalledOnce()
+    expect(h.records[1].unsubscribe).not.toHaveBeenCalled()
+    h.onEvent.mockClear()
+    h.records.forEach((record) => record.emit())
+    expect(h.onEvent.mock.calls.map(([id]) => id)).toEqual(['B', 'C'])
+    h.records[2].resolve()
+    await settle()
+    expect(h.records[2].unsubscribe).not.toHaveBeenCalled()
+    h.manager.stop()
+    h.records.forEach((record) => expect(record.unsubscribe).toHaveBeenCalledOnce())
+  })
+
+  it('detaches stopped subscriptions before unsubscribe starts a new owner', async () => {
+    const h = makeHarness()
+    h.manager.sync()
+    h.records.forEach((record) => record.resolve())
+    await settle()
+    h.records[0].unsubscribe.mockImplementation(() => {
+      h.setDesired(['C'])
+      h.manager.sync()
+    })
+    h.manager.stop()
+    expect(h.records[0].unsubscribe).toHaveBeenCalledOnce()
+    expect(h.records[1].unsubscribe).toHaveBeenCalledOnce()
+    h.onEvent.mockClear()
+    h.records.forEach((record) => record.emit())
+    expect(h.onEvent.mock.calls.map(([id]) => id)).toEqual(['C'])
+    h.records[2].resolve()
+    await settle()
+    expect(h.records[2].unsubscribe).not.toHaveBeenCalled()
+    h.manager.stop()
+    expect(h.records[2].unsubscribe).toHaveBeenCalledOnce()
+  })
+
   it('preserves a new owner started synchronously by the last initial frame', async () => {
     let desired = ['A']
     const records: {
