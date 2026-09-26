@@ -81,14 +81,14 @@ export function formatHourlyReleaseName(version, buildNumber, commit, date) {
 // version the caller guessed.
 export function getHourlyBuildIdentity(
   now = new Date(),
-  { publishedVersions, releaseNames, packageVersion } = {}
+  { packageVersion, publishedVersions, releaseNames } = {}
 ) {
-  const resolvedPackageVersion =
+  const versionFromPackage =
     packageVersion ?? JSON.parse(readFileSync(resolve('package.json'), 'utf8')).version
   const commit = execFileSync('git', ['rev-parse', '--short=12', 'HEAD'], {
     encoding: 'utf8'
   }).trim()
-  const base = resolveDevChannelBaseVersion(resolvedPackageVersion, publishedVersions ?? [])
+  const base = resolveDevChannelBaseVersion(versionFromPackage, publishedVersions ?? [])
   const version = createHourlyBuildVersion(base, now)
   const buildNumber = nextHourlyBuildNumber(base, releaseNames ?? [])
   return {
