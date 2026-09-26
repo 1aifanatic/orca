@@ -31,6 +31,7 @@ const CREATE_LAUNCH = {
   target: { kind: 'create-worktree', create: { repo: 'id:repo-1', name: 'task' } }
 }
 const NO_LAUNCH_COMMAND = 'Could not build launch command for claude.'
+type Launch = typeof EXISTING_LAUNCH | typeof CREATE_LAUNCH
 
 /** The create throws; `afterDispatch` says whether the spawn request had already left. */
 function failingCreate(runtime: AgentLaunchRuntimeStub, error: Error, afterDispatch: boolean) {
@@ -46,8 +47,9 @@ function failingCreate(runtime: AgentLaunchRuntimeStub, error: Error, afterDispa
 }
 
 describe('a launch whose terminal fails', () => {
-  // The ledger admits against `Date.now()`, so the id must be dated now.
+  // The ledger admits against `Date.now()`, so the ids must be dated now.
   const OPERATION_ID = `${Date.now()}-000000000000000000000000000000cc`
+  const OTHER_OPERATION_ID = `${Date.now()}-000000000000000000000000000000dd`
   let directory: string
   let store: AgentSessionRecordStore
 
@@ -67,7 +69,11 @@ describe('a launch whose terminal fails', () => {
     return store.listOperationRows().find((row) => row.operationId === operationId)?.outcome
   }
 
-  async function replay(runtime: AgentLaunchRuntimeStub, launch: object) {
+  async function replay(
+    runtime: AgentLaunchRuntimeStub,
+    launch: Launch,
+    operationId: string = OPERATION_ID
+  ) {
     const dispatcher = new RpcDispatcher({
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the fixture implements every runtime method reached by agent.launch and dispatcher metadata.
       runtime: { ...runtime, getRuntimeId: () => 'runtime-1' } as unknown as OrcaRuntimeService,
@@ -77,7 +83,7 @@ describe('a launch whose terminal fails', () => {
       id: 'request-1',
       authToken: 'token',
       method: 'agent.launchReplay',
-      params: AGENT_LAUNCH_REPLAY.params.parse({ ...launch, operationId: OPERATION_ID })
+      params: AGENT_LAUNCH_REPLAY.params.parse({ ...launch, operationId })
     })
   }
 
@@ -118,6 +124,25 @@ describe('a launch whose terminal fails', () => {
     failingCreate(runtime, new Error('ssh_channel_closed'), true)
 
     const response = await replay(runtime, EXISTING_LAUNCH)
+
+    expect(response).toMatchObject({
+      ok: false,
+      error: { code: 'agent_session_operation_unknown' }
+    })
+    expect(outcomeOf(OPERATION_ID)?.status).toBe('unknown')
+  })
+
+  it('stays unknown when another launch saw the same error before its own spawn request', async () => {
+    // A failed pane spawn rejects one error into the spawner and into a create waiting on that pane.
+    const shared = new Error('ssh_channel_closed')
+    const waiting = runtimeStub({ settings: {} })
+    failingCreate(waiting, shared, false)
+    await replay(waiting, EXISTING_LAUNCH, OTHER_OPERATION_ID)
+    expect(outcomeOf(OTHER_OPERATION_ID)?.status).toBe('failed')
+
+    const spawner = runtimeStub({ settings: {} })
+    failingCreate(spawner, shared, true)
+    const response = await replay(spawner, EXISTING_LAUNCH)
 
     expect(response).toMatchObject({
       ok: false,

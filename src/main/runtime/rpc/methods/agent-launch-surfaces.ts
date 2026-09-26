@@ -36,7 +36,10 @@ import { AgentLaunchSessionAlreadyExistsError } from '../../../../shared/agent-l
 import { createStructuredAgentSessionId } from '../../../../shared/structured-agent-session-create'
 import { toAgentLaunchPreferences } from '../../../../shared/agent-launch-preferences'
 import { paneIdentity } from '../../runtime-terminal-pane-identity'
-import { trackTerminalSpawnDispatch } from '../../../agent-launch/agent-launch-not-started'
+import {
+  trackTerminalSpawnDispatch,
+  type TerminalSpawnDispatch
+} from '../../../agent-launch/agent-launch-not-started'
 
 /** Replay-safe launches keep the nested attach in the same stable caller namespace as the launch. */
 export function agentLaunchSurfaceFactory(
@@ -44,7 +47,8 @@ export function agentLaunchSurfaceFactory(
   attachOperationId?: string,
   operationCallerKey?: string,
   // False when the launch selects the chat for its paired caller instead of for everyone.
-  activateChat = true
+  activateChat = true,
+  terminalSpawn: TerminalSpawnDispatch = trackTerminalSpawnDispatch()
 ): AgentLaunchSurfaceFactory {
   return {
     createStructuredSession: async ({
@@ -121,7 +125,6 @@ export function agentLaunchSurfaceFactory(
       options
     }) => {
       const launchPreferences = toAgentLaunchPreferences(options)
-      const spawn = trackTerminalSpawnDispatch()
       const created = context.runtime.createTerminal(`id:${worktreeId}`, {
         // The agent id is not a shell command — `cursor` is the desktop app, its CLI is
         // `cursor-agent` — so the runtime builds the configured launcher.
@@ -136,9 +139,9 @@ export function agentLaunchSurfaceFactory(
         // A live reserved pane would be attached, not launched into, so the runtime refuses it.
         ...(paneKey ? { ...paneIdentity(paneKey), requireFreshPane: true } : {}),
         ...agentLaunchTelemetry(agent, launchSource),
-        onPtySpawnDispatched: spawn.onPtySpawnDispatched
+        onPtySpawnDispatched: terminalSpawn.onPtySpawnDispatched
       })
-      const terminal = await created.catch(spawn.rethrow)
+      const terminal = await created.catch(terminalSpawn.rethrow)
       return {
         handle: terminal.handle,
         // The runtime already minted this pane and baked it into the PTY's env and its own reveal;
