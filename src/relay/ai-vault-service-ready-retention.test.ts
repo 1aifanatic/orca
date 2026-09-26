@@ -150,3 +150,53 @@ it('retries an unsent lane after spawn fails while the other lane starts a child
     await disposed
   }
 })
+
+it('ignores an earlier readiness rejection after a replacement startup begins', async () => {
+  const first = new AiVaultServiceTestChild()
+  const replacement = new AiVaultServiceTestChild()
+  const processFactory = vi.fn(() => replacement.asChildProcess())
+  processFactory.mockImplementationOnce(() => first.asChildProcess())
+  const client = new RelayAiVaultServiceClient({
+    processFactory,
+    init: { remoteHome: '/home/ada', hostPlatform: getRemoteHostPlatform('linux-x64') }
+  })
+  const list = client.listSessions({})
+  void list.catch(() => undefined)
+  try {
+    first.emit('exit', 1)
+    // Start the replacement before the old readiness rejection's microtasks run.
+    vi.advanceTimersByTime(250)
+    const titles = client.resolveSessionTitles([])
+    void titles.catch(() => undefined)
+    readyAiVaultServiceChild(replacement)
+    await setImmediate()
+
+    expect(processFactory).toHaveBeenCalledTimes(2)
+    expect(first.sent).toEqual([expect.objectContaining({ type: 'init' })])
+    expect(replacement.sent).toEqual([
+      expect.objectContaining({ type: 'init' }),
+      { type: 'request', id: 1, operation: 'list', params: {} },
+      { type: 'request', id: 2, operation: 'titles', requests: [] }
+    ])
+    replacement.emit('message', {
+      type: 'result',
+      id: 1,
+      operation: 'list',
+      value: { sessions: [], issues: [], scannedAt: '2026-09-25T00:00:00.000Z' }
+    })
+    replacement.emit('message', {
+      type: 'result',
+      id: 2,
+      operation: 'titles',
+      value: { titles: [] }
+    })
+    await expect(list).resolves.toMatchObject({ sessions: [] })
+    await expect(titles).resolves.toEqual({ titles: [] })
+    expect(processFactory).toHaveBeenCalledTimes(2)
+  } finally {
+    const disposed = client.dispose()
+    replacement.emit('exit', 0)
+    await disposed
+  }
+  expect(vi.getTimerCount()).toBe(0)
+})
