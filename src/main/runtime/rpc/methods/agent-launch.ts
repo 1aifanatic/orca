@@ -36,6 +36,7 @@ import {
   trackTerminalSpawnDispatch,
   type TerminalSpawnDispatch
 } from '../../../agent-launch/agent-launch-not-started'
+import { refuseDisabledAgentForRuntime } from '../../../agent-launch/agent-launch-enablement'
 import type { OrcaRuntimeService } from '../../orca-runtime'
 import { defineMethod, type RpcContext } from '../core'
 import { admitAgentLaunchOperation, agentLaunchOperationCallerKey } from './agent-launch-replay'
@@ -137,6 +138,9 @@ async function resolveUnlaunchedIntent(
   params: AgentLaunchParams,
   runtime: OrcaRuntimeService
 ): Promise<AgentLaunchIntent> {
+  // Before the surface decision, so a disabled agent reaches neither route. The chat create checks
+  // again for its other callers; without this one, a refused chat could fall back to a terminal.
+  refuseDisabledAgentForRuntime(runtime, params.agent)
   const intent = await agentLaunchIntent(params, runtime)
   await validateReusedTerminal(intent, runtime)
   return intent
