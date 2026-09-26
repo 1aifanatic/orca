@@ -56,12 +56,18 @@ describe.runIf(process.platform === 'win32')(
       if (!process.env.SystemRoot) {
         throw new Error('SystemRoot is required on Windows')
       }
-      return runProcessSync({
+      const startedAt = Date.now()
+      const diagnostic = process.env.ORCA_NSIS_PROBE_DIAGNOSTICS === '1'
+      const stage = (name) =>
+        diagnostic
+          ? `[Console]::Error.WriteLine('[orca-nsis] ${name} ' + [DateTime]::UtcNow.ToString('o')); `
+          : ''
+      const result = runProcessSync({
         program: join(process.env.SystemRoot, arch, 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
         args: [
           ...args,
           '-Command',
-          `if ((Get-ExecutionPolicy -Scope Process) -ne 'Restricted') { exit 10 }; ${prefix}${command}`
+          `${stage('started')}if ((Get-ExecutionPolicy -Scope Process) -ne 'Restricted') { exit 10 }; ${stage('policy-verified')}${prefix}${stage('query-started')}${command}`
         ],
         env: {
           ...process.env,
@@ -70,6 +76,16 @@ describe.runIf(process.platform === 'win32')(
         },
         timeoutMs: 20_000
       })
+      if (diagnostic) {
+        console.info('[orca-nsis] result', {
+          arch,
+          failureInjected: prefix.length > 0,
+          startedAt: new Date(startedAt).toISOString(),
+          elapsedMs: Date.now() - startedAt,
+          ...result
+        })
+      }
+      return result
     }
 
     it.each(['SysWOW64', 'System32'])('%s permits the real inline process query', (arch) => {
