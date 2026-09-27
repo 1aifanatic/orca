@@ -249,7 +249,11 @@ export class OrcaRuntimeWithSyncMobileSessionTabs extends OrcaRuntimeWithWriteOr
       unheldSurfaces.length > 0
         ? removeMobileSessionSnapshotTabs(fencedSnapshot, unheldSurfaces)
         : fencedSnapshot
-    this.releaseRuntimeSessionOwnershipForRendererRetiredTabs(mergedSnapshot, existing)
+    // Why: a replay carries no new renderer decision, so a tab missing from its older frame (a
+    // phone create the desktop has not published yet) was not retired by the renderer.
+    if (!rederivedSurface) {
+      this.releaseRuntimeSessionOwnershipForRendererRetiredTabs(mergedSnapshot, existing)
+    }
     const nextSnapshot = this.mergePreservedHeadlessMobileSessionTabs(mergedSnapshot, existing)
     // Why: clients drop same-epoch frames whose version isn't strictly newer,
     // and main-local touches may already have emitted a higher version than
