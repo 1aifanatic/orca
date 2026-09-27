@@ -64,7 +64,7 @@ beforeEach(async () => {
         lifecycle.push(host.handleAdapterEvent(mapped))
       }
     },
-    openConnection: claude.openConnection,
+    openConnection: (launch, handlers) => claude.openConnection(launch, handlers),
     readProcessStartTime: async () => 1_700_000_000_000,
     now: () => NOW
   })
@@ -96,8 +96,8 @@ async function settleExits(): Promise<void> {
 }
 
 /** A view of the chat: a subscription, which reads the chat and starts nothing. */
-function view(): Promise<() => void> {
-  return host.subscribe({ id: SURFACE, sessionId: SESSION, emit: () => undefined })
+function view(id: string): Promise<() => void> {
+  return host.subscribe({ id, sessionId: SESSION, emit: () => undefined })
 }
 
 /** The chat as it renders: the user's messages and the error rows, in journal order. */
@@ -131,42 +131,58 @@ async function send(text: string): Promise<string> {
 }
 
 describe('a fresh chat whose Claude start fails', () => {
-  it('shows one row for the start a send made, and a view never starts it again', async () => {
-    await expect(
-      host.attach(
-        CALLER,
-        hostTestAttachParams(null, {
-          provider: 'claude',
-          agent: 'claude',
-          accountHome: { variable: 'CLAUDE_CONFIG_DIR', path: join(root, 'claude-home') },
-          providerHandle: { kind: 'claude', sessionId: PROVIDER_SESSION_ID, leafUuid: null }
-        })
+  // QA saw three failed starts from opening the chat alone: the create's, and the view's.
+  it.each([
+    ['after the create already died', 20],
+    ['while the create is still starting', 300]
+  ] as const)(
+    'starts once for the open and once for a send, one row each, when the view binds %s',
+    async (_when, initDelayMs) => {
+      claude = fakeClaude({ initDelayMs, exitBeforeInit: LAUNCH_FAILURE })
+      await expect(
+        host.attach(
+          CALLER,
+          hostTestAttachParams(null, {
+            provider: 'claude',
+            agent: 'claude',
+            accountHome: { variable: 'CLAUDE_CONFIG_DIR', path: join(root, 'claude-home') },
+            providerHandle: { kind: 'claude', sessionId: PROVIDER_SESSION_ID, leafUuid: null }
+          })
+        )
+      ).resolves.toMatchObject({ ok: true })
+      if (initDelayMs === 20) {
+        await settleExits()
+      }
+      // Two surfaces bind, as a pane and a second window do.
+      const unsubscribe = await view(SURFACE)
+      await view('desktop-chat:2')
+      if (initDelayMs === 300) {
+        // The views bound to the create's child itself, before it exited.
+        expect(await timeline()).toEqual([])
+      }
+      await settleExits()
+      const startFailure = `The provider stopped before it finished starting: ${LAUNCH_FAILURE}.`
+      // Opening the chat: the create's start, once, and its row.
+      expect(claude.connections).toHaveLength(1)
+      expect(await timeline()).toEqual([startFailure])
+
+      const sent = await send('reply with exactly: alpha')
+      await eventually(async () =>
+        expect(
+          (await host.journalSnapshot(SESSION)).submissions.find((s) => s.clientMessageId === sent)
+        ).toMatchObject({ dispatchState: 'rejected', reason: startFailure })
       )
-    ).resolves.toMatchObject({ ok: true })
-    await settleExits()
-    const startFailure = `The provider stopped before it finished starting: ${LAUNCH_FAILURE}.`
-    expect(await timeline()).toEqual([startFailure])
+      await settleExits()
+      // The send's own start, once, and one row for it below the message.
+      expect(claude.connections).toHaveLength(2)
+      expect(await timeline()).toEqual([startFailure, 'message', startFailure])
 
-    // The chat's view binds after the create's CLI already died.
-    const unsubscribe = await view()
-    expect(claude.connections).toHaveLength(1)
-
-    const sent = await send('reply with exactly: alpha')
-    await eventually(async () =>
-      expect(
-        (await host.journalSnapshot(SESSION)).submissions.find((s) => s.clientMessageId === sent)
-      ).toMatchObject({ dispatchState: 'rejected', reason: startFailure })
-    )
-    await settleExits()
-    // The send's own start, once, and one row for it below the message.
-    expect(claude.connections).toHaveLength(2)
-    expect(await timeline()).toEqual([startFailure, 'message', startFailure])
-
-    // Switching away and back re-subscribes; it starts nothing and adds no row.
-    unsubscribe()
-    await view()
-    await settleExits()
-    expect(claude.connections).toHaveLength(2)
-    expect(await timeline()).toEqual([startFailure, 'message', startFailure])
-  })
+      // Switching away and back re-subscribes; it starts nothing and adds no row.
+      unsubscribe()
+      await view(SURFACE)
+      await settleExits()
+      expect(claude.connections).toHaveLength(2)
+      expect(await timeline()).toEqual([startFailure, 'message', startFailure])
+    }
+  )
 })
