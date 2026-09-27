@@ -43,12 +43,13 @@ export function reduceReviewSheets(
       }
       return { ...state, open: false, next: action.sheet }
     case 'openWhenIdle':
-      if (!state.current || state.current.kind === action.sheet.kind) {
-        return { current: action.sheet, open: true, next: null }
-      }
-      // Why: a background opener waits for the user's sheet and never displaces what they asked for.
+      // Why: a background opener waits for the user's sheet and never displaces what they asked for,
+      // including one queued behind a closing sheet of the opener's own kind.
       if (state.next && state.next.kind !== action.sheet.kind) {
         return state
+      }
+      if (!state.current || state.current.kind === action.sheet.kind) {
+        return { current: action.sheet, open: true, next: null }
       }
       return { ...state, next: action.sheet }
     case 'close':

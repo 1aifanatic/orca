@@ -93,6 +93,12 @@ describe('review screen sheets', () => {
     expect(state.next).toEqual(SEND_LOADING)
   })
 
+  // Review Complete → Send Notes, then a second Mark Reviewed save lands mid-close.
+  it('openWhenIdle does not reopen its own closing kind over a sheet the user asked for', () => {
+    const state = run(open(COMPLETION), open(SEND_LOADING), openWhenIdle(COMPLETION))
+    expect(state).toEqual({ current: COMPLETION, open: false, next: SEND_LOADING })
+  })
+
   it('a later user request replaces a queued background sheet', () => {
     const state = run(open(ACTIONS), openWhenIdle(COMPLETION), open(SEND_LOADING))
     expect(state).toEqual({ current: ACTIONS, open: false, next: SEND_LOADING })
