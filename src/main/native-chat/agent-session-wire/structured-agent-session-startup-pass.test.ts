@@ -42,6 +42,11 @@ function rowsOf(sessionId: string) {
   )
 }
 
+async function turnStates(sessionId: string): Promise<string[]> {
+  const { items } = await rig.host.journalSnapshot(sessionId)
+  return items.flatMap((item) => (item.body.kind === 'turn' ? [item.body.state] : []))
+}
+
 function journalDir(sessionId: string): string {
   return journalDirectoryFor(rig.root, { workspaceId: 'workspace-1', sessionId })
 }
@@ -61,6 +66,14 @@ async function crashMidTurn(sessionId: string, text: string): Promise<void> {
   })
   await host.restoreStartupSessions()
   await rig.chat(sessionId, { message: text })
+  await rig.host
+    .collaboratorsForTests()
+    .sessions.get(sessionId)!
+    .journal.appendItem(
+      { provider: 'codex', threadId: `thread-${sessionId}`, turnId: 'turn-running', ordinal: 99 },
+      { kind: 'turn', turnId: 'turn-running', state: 'running', startedAt: 1 },
+      { fence: rig.store.getRecord(sessionId)!.lease.runtimeFence }
+    )
   // Every publish of the running turn has run, and the flush timer fired: whatever it left in the
   // saved copy is on disk.
   await new Promise((resolve) => setTimeout(resolve, 0))
@@ -164,10 +177,12 @@ describe('listing from a saved status', () => {
       status: 'idle',
       latestPrompt: 'second question'
     })
-    // Never shown in between: neither the settled turn before it nor the turn as still running.
+    // The settled turn before it is never shown.
     expect(rowsOf('session-a').filter((row) => row.latestPrompt !== 'second question')).toEqual([])
-    expect(rowsOf('session-a').filter((row) => row.status === 'working')).toEqual([])
     expect(rig.store.getRecord('session-a')?.lease.settlementRetryRequired).toBeUndefined()
+    // Settled as `unverifiable`, so no verdict; the dead-generation crash verdict is a follow-up.
+    expect(latestStatus(rig, 'session-a')?.turnOutcome).toBeUndefined()
+    expect(await turnStates('session-a')).toEqual(['unverifiable'])
   })
 
   it.each([

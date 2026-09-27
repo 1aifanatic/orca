@@ -3,6 +3,7 @@
 // settle every listed chat that owes it, not only the ones some reader happened to open.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { AgentJournalRenderItem } from '../../../shared/agent-session-journal-types'
 import type { StructuredAgentSessionHostDeps } from './structured-agent-session-host-types'
 import {
   createStartupRig,
@@ -41,6 +42,14 @@ async function crashMidTurn(sessionId: string): Promise<void> {
   await rig.crash()
 }
 
+/** Settled as `unverifiable`, so no verdict; the dead-generation crash verdict is a follow-up. */
+function expectSettledUnverifiable(snapshot: { items: readonly AgentJournalRenderItem[] }): void {
+  expect(latestStatus(rig, 'session-a')?.turnOutcome).toBeUndefined()
+  expect(
+    snapshot.items.flatMap((item) => (item.body.kind === 'turn' ? [item.body.state] : []))
+  ).toEqual(['unverifiable'])
+}
+
 /** Boots with every owner probe failing until `probe.fail` is cleared. */
 async function bootWithFailingReconcile(deps: Partial<StructuredAgentSessionHostDeps> = {}) {
   const probe = { fail: true }
@@ -68,11 +77,12 @@ describe('a startup reconcile that failed', () => {
     probe.fail = false
     await host.reconcileRestartLeases()
 
-    // The interrupted row lands before the settlement's record write clears the flag.
+    // The settled row lands before the settlement's record write clears the flag.
     await vi.waitFor(() => {
       expect(latestStatus(rig, 'session-a')?.status).toBe('idle')
       expect(owesSettlement('session-a')).toBe(false)
     })
+    expectSettledUnverifiable(await rig.host.journalSnapshot('session-a'))
   })
 
   it('retries the reconcile itself, so no attach is needed', async () => {
@@ -86,11 +96,12 @@ describe('a startup reconcile that failed', () => {
 
     probe.fail = false
 
-    // The interrupted row lands before the settlement's record write clears the flag.
+    // The settled row lands before the settlement's record write clears the flag.
     await vi.waitFor(() => {
       expect(latestStatus(rig, 'session-a')?.status).toBe('idle')
       expect(owesSettlement('session-a')).toBe(false)
     })
+    expectSettledUnverifiable(await rig.host.journalSnapshot('session-a'))
     expect(rig.acquire.mock.calls.length).toBe(acquired)
   })
 
