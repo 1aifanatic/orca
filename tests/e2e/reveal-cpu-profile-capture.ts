@@ -15,9 +15,9 @@ export async function beginRevealCpuProfile(page: Page, testInfo: TestInfo) {
       const path = testInfo.outputPath('reveal.cpuprofile')
       await writeFile(path, JSON.stringify(profile))
       await testInfo.attach('reveal.cpuprofile', { path, contentType: 'application/json' })
-      await testInfo.attach('reveal-profile-clocks.json', {
-        body: JSON.stringify({ before, after }), contentType: 'application/json'
-      })
+      const clocksPath = testInfo.outputPath('reveal-profile-clocks.json')
+      await writeFile(clocksPath, JSON.stringify({ before, after }))
+      await testInfo.attach('reveal-profile-clocks.json', { path: clocksPath, contentType: 'application/json' })
     } finally {
       await cdp.detach()
     }

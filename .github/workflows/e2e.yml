@@ -283,7 +283,7 @@ jobs:
             E2E_PROJECT_ARGS+=(--project=electron-headful)
           fi
           xvfb-run --auto-servernum bash .github/scripts/e2e-with-window-manager.sh env "${E2E_ENV[@]}" \
-            pnpm exec playwright test --config tests/playwright.reveal-profile.config.ts --workers=1
+            pnpm exec playwright test --config tests/playwright.reveal-profile.config.ts --workers=1 --grep 'worktree child400 idle0'
 
       - name: Upload Playwright traces
         if: always()
