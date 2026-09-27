@@ -7,6 +7,9 @@ import type { TerminalOwner } from '../../shared/terminal-owner'
 // flood or hang means the trigger misfired, so bail out and flush unmodified.
 const MAX_QUEUED_BYTES = 262_144
 const MAX_PENDING_MS = 750
+// Why bounded: the grounded mark is one indivisible span, and the relay never
+// sends a span wider than its 16K source frame.
+const MAX_HELD_MARK_CHARS = 4096
 
 export type TerminalShellRecoveryBarrierOptions = {
   /** Fresh execution-host proof that the spawned shell owns the PTY foreground. */
@@ -22,15 +25,17 @@ export type TerminalShellRecoveryBarrierOptions = {
  * Ordered output barrier for dead-TUI mode recovery. Sits between startup
  * ingress and the output plane. When a shell-integration command-done marker
  * (OSC 133;D) arrives while the alternate screen is still active, the stream
- * pauses at that marker's terminator, the execution host proves the shell owns
- * the PTY foreground, and on proof a mode reset is injected as in-stream output
- * so every downstream consumer (host emulator, mirrors, attached renderers,
+ * holds that marker, the execution host proves the shell owns the PTY
+ * foreground, and on proof a mode reset is injected as in-stream output so
+ * every downstream consumer (host emulator, mirrors, attached renderers,
  * history) converges — and the queued shell prompt then paints onto the normal
- * buffer instead of the discarded alternate screen. The reset rides on the held
- * terminator so every emission covers at least one raw unit: a zero-raw span is
- * never sent by credit-windowed delivery (SSH relay). Any failure (refuted proof,
- * timeout, overflow, death, disposal) flushes the queue unmodified, preserving
- * incumbent behavior. Clean alternate-screen exits prove ownership without
+ * buffer instead of the discarded alternate screen. Holding the whole marker
+ * keeps a mid-proof snapshot on an escape boundary. The reset rides on it so
+ * every emission covers at least one raw unit: a zero-raw span is never sent by
+ * credit-windowed delivery (SSH relay), and its seq would not rise above a
+ * mid-proof snapshot, so snapshot-seq dedup would drop it. Any failure (refuted
+ * proof, timeout, overflow, death, disposal) flushes the queue unmodified,
+ * preserving incumbent behavior. Clean alternate-screen exits prove ownership without
  * pausing: the model needs no correction, only snapshot metadata.
  */
 export class TerminalShellRecoveryBarrier {
@@ -188,14 +193,14 @@ export class TerminalShellRecoveryBarrier {
       this.releaseDownstream(emission)
       return
     }
-    // end >= 1 keeps the held terminator inside this emission's raw span.
+    // end >= 1 keeps the held mark inside this emission's raw span.
     const splittable =
       end >= 1 &&
       !emission.transformed &&
       emission.rawEndSeq - emission.rawStartSeq === emission.data.length
     if (!splittable) {
       // Why skip the episode: the raw-seq boundary inside a transformed emission
-      // (or a terminator outside this one) cannot be reconstructed, so release
+      // (or a mark ending outside this one) cannot be reconstructed, so release
       // everything and keep the scanner honest about the remainder — incumbent
       // behavior for this rare corner.
       try {
@@ -207,15 +212,15 @@ export class TerminalShellRecoveryBarrier {
       this.consumeForStateOnly(emission.data.slice(end))
       return
     }
-    // The trigger's last char is its terminator.
-    const terminatorSeq = emission.rawStartSeq + end - 1
-    const splitSeq = terminatorSeq + 1
-    if (end > 1) {
+    const start = Math.max(events.uncleanDeathTriggerStart ?? 0, end - MAX_HELD_MARK_CHARS)
+    const markSeq = emission.rawStartSeq + start
+    const splitSeq = emission.rawStartSeq + end
+    if (start > 0) {
       try {
         this.releaseDownstream({
-          data: emission.data.slice(0, end - 1),
+          data: emission.data.slice(0, start),
           rawStartSeq: emission.rawStartSeq,
-          rawEndSeq: terminatorSeq,
+          rawEndSeq: markSeq,
           transformed: false
         })
       } catch {
@@ -225,8 +230,8 @@ export class TerminalShellRecoveryBarrier {
       }
     }
     this.enterPending({
-      data: emission.data.slice(end - 1, end),
-      rawStartSeq: terminatorSeq,
+      data: emission.data.slice(start, end),
+      rawStartSeq: markSeq,
       rawEndSeq: splitSeq,
       transformed: false
     })
@@ -254,15 +259,15 @@ export class TerminalShellRecoveryBarrier {
     }
   }
 
-  /** Opens an episode holding `terminator` as the queue head, already scanned. */
-  private enterPending(terminator: PtyIngressEmission): void {
+  /** Opens an episode holding `mark` as the queue head, already scanned. */
+  private enterPending(mark: PtyIngressEmission): void {
     this.pending = true
     this.pendingEpisode += 1
     this.pendingGeneration = this.scanner.generation
     const episode = this.pendingEpisode
     this.bailTimer = setTimeout(() => this.finishPending(episode, false), this.maxPendingMs)
     this.bailTimer.unref?.()
-    this.enqueue(terminator)
+    this.enqueue(mark)
     // Why the guard: the callback is injected; a synchronous throw must not
     // escape after pending flipped true and strand the episode until the bail.
     let proof: Promise<boolean>
@@ -294,9 +299,9 @@ export class TerminalShellRecoveryBarrier {
     this.queue = []
     this.queuedBytes = 0
     try {
-      const terminator = queued.shift()
-      if (terminator) {
-        this.releaseTerminator(terminator, confirmed && this.isAlive())
+      const mark = queued.shift()
+      if (mark) {
+        this.releaseMark(mark, confirmed && this.isAlive())
       }
       for (let index = 0; index < queued.length; index += 1) {
         if (this.disposed) {
@@ -321,17 +326,17 @@ export class TerminalShellRecoveryBarrier {
     }
   }
 
-  private releaseTerminator(terminator: PtyIngressEmission, grounded: boolean): void {
+  private releaseMark(mark: PtyIngressEmission, grounded: boolean): void {
     try {
       this.releaseDownstream(
         grounded
           ? {
-              ...terminator,
+              ...mark,
               // Scanned before release so alt-state stays honest.
-              data: terminator.data + this.scanner.groundProcessBoundary(),
+              data: mark.data + this.scanner.groundProcessBoundary(),
               transformed: true
             }
-          : terminator
+          : mark
       )
     } catch {
       // Why swallowed: a throwing downstream client must not strand the

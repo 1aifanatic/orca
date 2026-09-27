@@ -4,10 +4,10 @@ import { TerminalShellRecoveryBarrier } from './terminal-shell-recovery-barrier'
 import type { PtyIngressEmission } from '../../shared/pty-startup-ingress'
 
 const TRIGGER = '\x1b[?1049hTUI\x1b]133;D;137\x07'
-// The barrier holds only the D marker's terminator; the ground rides on it.
-const HEAD = TRIGGER.slice(0, -1)
-const BEL = '\x07'
-const GROUNDED = `${BEL}${PROCESS_BOUNDARY_GROUND}`
+// The barrier holds the whole D mark; the ground rides on it.
+const MARK = '\x1b]133;D;137\x07'
+const HEAD = TRIGGER.slice(0, -MARK.length)
+const GROUNDED = `${MARK}${PROCESS_BOUNDARY_GROUND}`
 
 function passthrough(data: string, rawStartSeq = 0): PtyIngressEmission {
   return { data, rawStartSeq, rawEndSeq: rawStartSeq + data.length, transformed: false }
@@ -97,7 +97,7 @@ describe('TerminalShellRecoveryBarrier', () => {
     resolveConfirm?.(false)
 
     await vi.waitFor(() => expect(released).toHaveLength(3))
-    expect(released.map((emission) => emission.data)).toEqual([HEAD, BEL, 'nested-shell'])
+    expect(released.map((emission) => emission.data)).toEqual([HEAD, MARK, 'nested-shell'])
     expect(barrier.getOwner()).toBeUndefined()
   })
 
@@ -110,7 +110,7 @@ describe('TerminalShellRecoveryBarrier', () => {
 
     barrier.accept(passthrough(`${TRIGGER}prompt`))
     await vi.waitFor(() => expect(released).toHaveLength(3))
-    expect(released.map((emission) => emission.data)).toEqual([HEAD, BEL, 'prompt'])
+    expect(released.map((emission) => emission.data)).toEqual([HEAD, MARK, 'prompt'])
 
     resolveConfirm?.(true)
     await new Promise((resolve) => setTimeout(resolve, 5))
@@ -127,7 +127,7 @@ describe('TerminalShellRecoveryBarrier', () => {
     barrier.accept(passthrough(TRIGGER))
     barrier.accept(passthrough('0123456789'))
 
-    expect(released.map((emission) => emission.data)).toEqual([HEAD, BEL, '0123456789'])
+    expect(released.map((emission) => emission.data)).toEqual([HEAD, MARK, '0123456789'])
     expect(barrier.getOwner()).toBeUndefined()
   })
 
@@ -144,7 +144,7 @@ describe('TerminalShellRecoveryBarrier', () => {
     resolveConfirm?.(true)
 
     await vi.waitFor(() => expect(released).toHaveLength(3))
-    expect(released.map((emission) => emission.data)).toEqual([HEAD, BEL, 'prompt'])
+    expect(released.map((emission) => emission.data)).toEqual([HEAD, MARK, 'prompt'])
     expect(barrier.getOwner()).toBeUndefined()
   })
 
@@ -167,8 +167,8 @@ describe('TerminalShellRecoveryBarrier', () => {
         HEAD,
         GROUNDED,
         'first-prompt',
-        '\x1b[?1049hAGAIN\x1b]133;D;9',
-        GROUNDED,
+        '\x1b[?1049hAGAIN',
+        `\x1b]133;D;9\x07${PROCESS_BOUNDARY_GROUND}`,
         'second-prompt'
       ])
     )
@@ -271,11 +271,14 @@ describe('TerminalShellRecoveryBarrier', () => {
     barrier.accept(passthrough(tail, head.length))
 
     await vi.waitFor(() =>
-      expect(released.map((emission) => emission.data)).toEqual([head, '37', GROUNDED, 'PROMPT'])
+      expect(released.map((emission) => emission.data)).toEqual([
+        head,
+        `37\x07${PROCESS_BOUNDARY_GROUND}`,
+        'PROMPT'
+      ])
     )
-    expect(released[1]).toMatchObject({ rawStartSeq: head.length, rawEndSeq: head.length + 2 })
-    expect(released[2]).toMatchObject({ rawStartSeq: head.length + 2, rawEndSeq: head.length + 3 })
-    expect(released[3]).toMatchObject({
+    expect(released[1]).toMatchObject({ rawStartSeq: head.length, rawEndSeq: head.length + 3 })
+    expect(released[2]).toMatchObject({
       rawStartSeq: head.length + 3,
       rawEndSeq: head.length + tail.length
     })
@@ -341,11 +344,7 @@ describe('TerminalShellRecoveryBarrier', () => {
     barrier.accept(passthrough('\x1b]133;D;137\x07prompt'))
 
     await vi.waitFor(() => expect(barrier.getOwner()).toBe('shell'))
-    expect(released.slice(-3).map((emission) => emission.data)).toEqual([
-      '\x1b]133;D;137',
-      GROUNDED,
-      'prompt'
-    ])
+    expect(released.slice(-2).map((emission) => emission.data)).toEqual([GROUNDED, 'prompt'])
     // Grounded once: the next prompt opens no episode.
     barrier.accept(passthrough('\x1b]133;C\x07ls\x1b]133;D;0\x07'))
     expect(confirm).toHaveBeenCalledTimes(6)
@@ -366,9 +365,9 @@ describe('TerminalShellRecoveryBarrier', () => {
 
     await vi.waitFor(() => expect(barrier.getOwner()).toBe('shell'))
     expect(released.map((emission) => emission.data)).toEqual([
-      leak.slice(0, -1),
-      BEL,
-      'frame\x1b]133;D;137',
+      leak.slice(0, -'\x1b]133;D;0\x07'.length),
+      '\x1b]133;D;0\x07',
+      'frame',
       GROUNDED,
       'prompt'
     ])
@@ -422,7 +421,7 @@ describe('TerminalShellRecoveryBarrier', () => {
 
     barrier.flushPending()
 
-    expect(released.map((emission) => emission.data)).toEqual([HEAD, BEL, 'prompt'])
+    expect(released.map((emission) => emission.data)).toEqual([HEAD, MARK, 'prompt'])
     expect(barrier.getOwner()).toBeUndefined()
   })
 

@@ -963,15 +963,12 @@ export class PtyHandler {
           : {}
       )
     }
+    const isDead = (): boolean => managed.disposed === true
     const recoveryBarrier = new TerminalShellRecoveryBarrier({
       confirmShellForeground: () =>
-        confirmPtyShellForeground({
-          process: managed.pty,
-          shellPath: managed.shellPath,
-          isDead: () => managed.disposed === true
-        }),
+        confirmPtyShellForeground({ process: managed.pty, shellPath: managed.shellPath, isDead }),
       release: emitIngressData,
-      isAlive: () => !managed.disposed
+      isAlive: () => !isDead()
     })
     managed.recoveryBarrier = recoveryBarrier
     managed.startupIngress = new PtyStartupIngress({
