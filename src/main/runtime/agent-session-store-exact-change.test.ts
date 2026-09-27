@@ -32,13 +32,13 @@ const publish = vi.hoisted((): PublishFault => ({
   release: null
 }))
 
-const backupRead = vi.hoisted(() => ({ failures: 0 }))
+const backupRead = vi.hoisted(() => ({ failNext: false }))
 
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof NodeFsPromises>()
   const readFile = async (...args: Parameters<typeof actual.readFile>) => {
-    if (backupRead.failures > 0 && String(args[0]).endsWith('.bak')) {
-      backupRead.failures -= 1
+    if (backupRead.failNext && String(args[0]).endsWith('.bak')) {
+      backupRead.failNext = false
       throw Object.assign(new Error('simulated transient read failure'), { code: 'EIO' })
     }
     return actual.readFile(...args)
@@ -51,9 +51,6 @@ vi.mock('../durable-file-write', async (importOriginal) => {
   return {
     ...actual,
     renameDurable: async (tmpPath: string, finalPath: string) => {
-      if (finalPath.endsWith('.bak')) {
-        return actual.renameDurable(tmpPath, finalPath)
-      }
       publish.reached?.()
       await publish.release
       if (publish.fail) {
@@ -76,7 +73,7 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
-  backupRead.failures = 0
+  backupRead.failNext = false
   publish.fail = false
   publish.reached = null
   publish.release = null
@@ -146,18 +143,6 @@ const unprovenHead = (record: AgentSessionRecord): AgentSessionRecord => ({
   ...record,
   lease: { ...record.lease, provenHandleLinkId: 'link-never-proved' }
 })
-
-/** The primary quarantines `session-alpha`; the backup still holds a valid copy. */
-async function seedSalvageableRow(): Promise<void> {
-  const seed = await openStore()
-  await reserve(seed, 'session-alpha')
-  await reserve(seed, 'session-beta')
-  const file = JSON.parse(await readFile(storePath, 'utf-8'))
-  const raw = { ...file.records['session-alpha'], lease: 'unreadable by this build' }
-  file.unusableRecords['session-alpha'] = { reason: 'current_shape_invalid', raw }
-  delete file.records['session-alpha']
-  await writeFile(storePath, JSON.stringify(file), 'utf-8')
-}
 
 async function diskRoundTrips(): Promise<boolean> {
   const written = await readFile(storePath, 'utf-8')
@@ -308,6 +293,18 @@ describe('changes another writer made', () => {
 })
 
 describe('a primary whose rows were salvaged from the backup', () => {
+  /** The primary quarantines `session-alpha`; the backup still holds a valid copy. */
+  async function seedSalvageableRow(): Promise<void> {
+    const seed = await openStore()
+    await reserve(seed, 'session-alpha')
+    await reserve(seed, 'session-beta')
+    const file = JSON.parse(await readFile(storePath, 'utf-8'))
+    const raw = { ...file.records['session-alpha'], lease: 'unreadable by this build' }
+    file.unusableRecords['session-alpha'] = { reason: 'current_shape_invalid', raw }
+    delete file.records['session-alpha']
+    await writeFile(storePath, JSON.stringify(file), 'utf-8')
+  }
+
   it('re-derives from both files until this store writes', async () => {
     await seedSalvageableRow()
     const store = await openStore()
@@ -323,9 +320,9 @@ describe('a primary whose rows were salvaged from the backup', () => {
 
   it('looks at the backup again when it could not be read', async () => {
     await seedSalvageableRow()
-    backupRead.failures = 1
+    backupRead.failNext = true
     const store = await openStore()
-    expect(backupRead.failures).toBe(0)
+    expect(backupRead.failNext).toBe(false)
     expect(store.getRecord('session-alpha')).toBeNull()
 
     // Were the primary's hash trusted, this write would also copy the primary over the only valid row.
@@ -380,54 +377,6 @@ describe('a primary whose rows were salvaged from the backup', () => {
     expect(storeParses).toBe(0)
     expect(store.getRecord('session-alpha')?.conversationName).toBe('salvaged')
     expect((await openStore()).getRecord('session-alpha')?.conversationName).toBe('salvaged')
-  })
-})
-
-describe('a backup holding the only readable copy of a quarantined row', () => {
-  it('is not rotated away while it cannot be read', async () => {
-    await seedSalvageableRow()
-    const backup = await readFile(`${storePath}.bak`, 'utf-8')
-    backupRead.failures = 1
-    const store = await openStore()
-
-    backupRead.failures = 1
-    await expect(store.setConversationName('session-beta', 'blocked')).rejects.toThrow(
-      'agent_session_store_backup_unreadable'
-    )
-
-    expect(await readFile(`${storePath}.bak`, 'utf-8')).toBe(backup)
-    await store.setConversationName('session-beta', 'readable again')
-    expect(store.getRecord('session-alpha')).not.toBeNull()
-  })
-
-  it('still opens when the rewrite a load owes is refused, and rewrites once the backup reads', async () => {
-    const seed = await openStore()
-    await reserve(seed, 'session-alpha')
-    await reserve(seed, 'session-beta')
-    const file = JSON.parse(await readFile(storePath, 'utf-8'))
-    file.records['session-alpha'].lease.runtimeFence = 'not-a-number'
-    await writeFile(storePath, JSON.stringify(file), 'utf-8')
-    // The load's salvage and the rewrite transaction's refresh both miss the backup.
-    backupRead.failures = 2
-
-    const store = await openStore()
-
-    expect(store.getRecord('session-alpha')).toBeNull()
-    await store.setConversationName('session-beta', 'readable again')
-    expect(store.getRecord('session-alpha')).not.toBeNull()
-  })
-
-  it('survives a save that dies after rotating the backup, before the primary lands', async () => {
-    await seedSalvageableRow()
-    const store = await openStore()
-    expect(store.getRecord('session-alpha')).not.toBeNull()
-
-    publish.fail = true
-    await expect(store.setConversationName('session-beta', 'lost')).rejects.toThrow(
-      'simulated death before primary publish'
-    )
-
-    expect((await openStore()).getRecord('session-alpha')).not.toBeNull()
   })
 })
 

@@ -21,7 +21,6 @@ import {
   type AgentSessionStoreInputKey
 } from './agent-session-store-input-bytes'
 import { agentSessionStoreBackupPath } from './agent-session-record-store-write'
-import { serializeAgentSessionStoreState } from './agent-session-store-serialization'
 import { withFileTransactionLock } from '../file-transaction-lock'
 
 /** Latch fields older builds wrote. Nothing reads them, and dropping them keeps a lease this build
@@ -73,8 +72,7 @@ export class AgentSessionStoreTransactionQueue {
     private published: AgentSessionStoreState,
     private diskRevision: string,
     private needsRewrite: boolean,
-    inputKey: AgentSessionStoreInputKey | null,
-    private salvage: LoadedAgentSessionStore['salvage']
+    inputKey: AgentSessionStoreInputKey | null
   ) {
     this.diskRecoveredFromBackup = recoveredFromBackup
     this.inputKey = inputKey
@@ -95,8 +93,7 @@ export class AgentSessionStoreTransactionQueue {
       loaded.state,
       diskRevision,
       loaded.needsRewrite,
-      loaded.inputKey,
-      loaded.salvage
+      loaded.inputKey
     )
   }
 
@@ -131,32 +128,19 @@ export class AgentSessionStoreTransactionQueue {
         // Why: the primary this rotates is known loadable without a parse only because the write
         // check refuses every row a load would reject.
         const rotatesBackup = this.diskStoreFound && !recovering
-        if (rotatesBackup && this.salvage === 'backup-unreadable') {
-          // Why: the unread backup may hold the only readable copy of a quarantined row.
-          throw new Error('agent_session_store_backup_unreadable')
-        }
-        // A salvaged row's only other copy is the backup, so rotate in the state that holds it.
-        const backupText =
-          rotatesBackup && this.salvage === 'salvaged'
-            ? serializeAgentSessionStoreState(this.published)
-            : undefined
         const written = await saveAgentSessionStore(this.filePath, draft, {
-          primaryStatus: rotatesBackup ? 'validated' : 'unusable-or-absent',
-          backupText
+          primaryStatus: rotatesBackup ? 'validated' : 'unusable-or-absent'
         })
         draft.schemaVersion = AGENT_SESSION_STORE_SCHEMA_VERSION
         this.published = draft
         this.diskRevision = agentSessionStoreSerializedRevision(savedSchemaVersion, written)
         // A rotated backup holds the primary this transaction read; a kept one is unknown here.
-        const rotated =
-          backupText === undefined ? readPrimarySha256 : agentSessionStoreBytesSha256(backupText)
-        const backup = !loadReadsBackup(draft) ? 'unread' : rotatesBackup ? rotated : null
+        const backup = !loadReadsBackup(draft) ? 'unread' : rotatesBackup ? readPrimarySha256 : null
         this.inputKey =
           backup === null ? null : { primarySha256: agentSessionStoreBytesSha256(written), backup }
         this.diskRecoveredFromBackup = false
         this.diskStoreFound = true
         this.needsRewrite = false
-        this.salvage = 'none'
         return result
       })
     )
@@ -187,7 +171,6 @@ export class AgentSessionStoreTransactionQueue {
     if (diskRevision === this.diskRevision) {
       this.needsRewrite ||= loaded.needsRewrite
       this.inputKey = loaded.inputKey
-      this.salvage = loaded.salvage
       return primary?.sha256 ?? null
     }
     if (loaded.readOnly) {
@@ -198,7 +181,6 @@ export class AgentSessionStoreTransactionQueue {
     this.diskRevision = diskRevision
     this.needsRewrite = loaded.needsRewrite
     this.inputKey = loaded.inputKey
-    this.salvage = loaded.salvage
     return primary?.sha256 ?? null
   }
 }
