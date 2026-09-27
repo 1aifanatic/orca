@@ -68,8 +68,11 @@ describe('a startup reconcile that failed', () => {
     probe.fail = false
     await host.reconcileRestartLeases()
 
-    await vi.waitFor(() => expect(latestStatus(rig, 'session-a')?.status).toBe('idle'))
-    expect(owesSettlement('session-a')).toBe(false)
+    // The interrupted row lands before the settlement's record write clears the flag.
+    await vi.waitFor(() => {
+      expect(latestStatus(rig, 'session-a')?.status).toBe('idle')
+      expect(owesSettlement('session-a')).toBe(false)
+    })
   })
 
   it('retries the reconcile itself, so no attach is needed', async () => {
@@ -83,8 +86,11 @@ describe('a startup reconcile that failed', () => {
 
     probe.fail = false
 
-    await vi.waitFor(() => expect(latestStatus(rig, 'session-a')?.status).toBe('idle'))
-    expect(owesSettlement('session-a')).toBe(false)
+    // The interrupted row lands before the settlement's record write clears the flag.
+    await vi.waitFor(() => {
+      expect(latestStatus(rig, 'session-a')?.status).toBe('idle')
+      expect(owesSettlement('session-a')).toBe(false)
+    })
     expect(rig.acquire.mock.calls.length).toBe(acquired)
   })
 
