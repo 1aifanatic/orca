@@ -42,6 +42,17 @@ both Node 24 and Node 26, including relay integration. Thus PR unit architecture
 changes, while x86 unit coverage remains scheduled; this is an explicit coverage
 placement tradeoff rather than a claim of identical per-PR host coverage.
 
+PR validation exposed a WebRTC probe timeout inside a hidden renderer. Isolated
+and four-concurrent probes passed on both architectures; the original cause is
+unproven. The probe now uses Electron main for the same three-second observation
+interval. A [fault-injection comparison](https://github.com/stablyai/orca/actions/runs/36304349257)
+passed with renderer timers unavailable on both architectures, while the original
+probe failed the negative control. Packet assertions and deadlines are unchanged.
+A subsequent Windows run timed out in the installer's real CIM process query
+after verifying restricted policy. Its unchanged probe now runs before the
+concurrent native suite, removing that source of contention without relaxing
+the twenty-second process deadline or dropping either PowerShell architecture.
+
 Replacing Vitest deep comparisons with Node assertions in the status-store
 oracle saved only about one local second in an initial trial. The change was
 not retained: that evidence did not justify changing assertion semantics.
