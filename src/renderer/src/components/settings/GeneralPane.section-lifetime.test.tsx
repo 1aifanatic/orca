@@ -48,6 +48,9 @@ vi.mock('@/components/settings/DefaultWindowsProjectRuntimeSetting', () => ({
 beforeEach(() => {
   vi.clearAllMocks()
   fake.query = ''
+  fake.updates = new Map([
+    ['synthetic-host', { environmentId: 'synthetic-host', phase: 'current', name: 'Synthetic' }]
+  ])
   Object.assign(window, { api: { updater: { getVersion: fake.getVersion } } })
 })
 afterEach(() => {
@@ -65,6 +68,11 @@ it.each([false, true])(
     }
     const view = render(<GeneralPane {...props} />)
     await act(async () => {})
+    // The invariant is identity, not a magic number: the matched section keeps the same DOM
+    // node across every query edit, so editing the query cannot cost an extra read.
+    const mountedHeading = screen.getByText('Updates', { exact: true })
+    const versionReadsAfterMount = fake.getVersion.mock.calls.length
+    const remoteRefreshesAfterMount = fake.refresh.mock.calls.length
     for (const query of [
       'u',
       'up',
@@ -83,12 +91,35 @@ it.each([false, true])(
     ]) {
       fake.query = query
       await act(async () => view.rerender(<GeneralPane {...props} />))
-      expect(screen.getByText('Updates', { exact: true })).toBeTruthy()
+      expect(screen.getByText('Updates', { exact: true })).toBe(mountedHeading)
     }
-    expect(fake.getVersion).toHaveBeenCalledTimes(1)
-    expect(fake.refresh).toHaveBeenCalledTimes(1)
+    expect(fake.getVersion.mock.calls.length).toBe(versionReadsAfterMount)
+    expect(fake.refresh.mock.calls.length).toBe(remoteRefreshesAfterMount)
   }
 )
+
+it('keeps showing store-published remote update state without a remount', async () => {
+  const props = {
+    settings: getDefaultSettings('/synthetic'),
+    updateSettings: vi.fn(),
+    fontSuggestions: []
+  }
+  fake.query = 'update'
+  const view = render(<GeneralPane {...props} />)
+  await act(async () => {})
+  const mountedHeading = screen.getByText('Updates', { exact: true })
+  expect(screen.getByText('1 paired server · 1 up to date')).toBeTruthy()
+  // Remote update entries live in the store, so a retained section stays fresh through the
+  // subscription rather than through the remount a query edit used to force.
+  fake.updates = new Map([
+    ['synthetic-host', { environmentId: 'synthetic-host', phase: 'available', name: 'Synthetic' }]
+  ])
+  fake.query = 'updat'
+  await act(async () => view.rerender(<GeneralPane {...props} />))
+  expect(screen.getByText('Updates', { exact: true })).toBe(mountedHeading)
+  expect(screen.getByText('1 paired server · 1 ready to update')).toBeTruthy()
+  expect(fake.refresh.mock.calls.length).toBe(1)
+})
 it('keeps explicit remote refresh and true hide/reopen reads', async () => {
   const props = {
     settings: getDefaultSettings('/synthetic'),
