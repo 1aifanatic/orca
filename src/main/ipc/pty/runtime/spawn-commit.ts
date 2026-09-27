@@ -71,11 +71,6 @@ export async function commitRuntimePtySpawn(ctx: RuntimePtySpawnState) {
     })
   }
   if (ctx.result.agentSessionEnsure?.disposition === 'adopted') {
-    // Why here: an adoption makes no binding save, and it returns before the commit site below.
-    ctx.deps.runtime?.noteTerminalSpawnCommit?.(
-      ctx.result,
-      ctx.hostSessionBinding?.expectedSourceBinding
-    )
     // Why: an adoption is an attach to a live owner by definition, but the SSH relay's adopted
     // reply omits isReattach; derive it once so the size commit and the reservation agree.
     const adoptedResult = { ...ctx.result, isReattach: true }
@@ -97,6 +92,11 @@ export async function commitRuntimePtySpawn(ctx: RuntimePtySpawnState) {
     if (rejectedRegistration) {
       await rejectedRegistration
     }
+    // Why here: an adoption returns before the commit site below.
+    ctx.deps.runtime?.noteTerminalSpawnCommit?.(
+      ctx.result,
+      ctx.hostSessionBinding?.expectedSourceBinding
+    )
     ptyOwnership.set(ctx.result.id, args.connectionId ?? ptyOwnership.get(ctx.result.id) ?? null)
     ctx.deps.runtime?.registerPreAllocatedHandleForPty(ctx.result.id, owner.surface.terminalHandle)
     if (ctx.result.incarnationId) {
@@ -161,11 +161,6 @@ export async function commitRuntimePtySpawn(ctx: RuntimePtySpawnState) {
       })
     }
   }
-  // Why after the save: a spawn discarded for a failed save must not record facts or end a stop.
-  ctx.deps.runtime?.noteTerminalSpawnCommit?.(
-    ctx.result,
-    ctx.hostSessionBinding?.expectedSourceBinding
-  )
   if (args.worktreeId) {
     const rejectedRegistration = registerPersistedPtySpawn(
       ctx.deps.runtime,
@@ -197,6 +192,12 @@ export async function commitRuntimePtySpawn(ctx: RuntimePtySpawnState) {
     // Why: non-worktree PTYs have no later surface-registration phase to clear admission intent.
     ctx.deps.runtime?.cancelPendingPtyRegistration?.(ctx.result.id, ctx.result.incarnationId)
   }
+  // Why after registration: a spawn discarded for a failed save or rejected for exiting during
+  // start must not record facts or end a stop.
+  ctx.deps.runtime?.noteTerminalSpawnCommit?.(
+    ctx.result,
+    ctx.hostSessionBinding?.expectedSourceBinding
+  )
   if (args.preAllocatedHandle && !ctx.stablePaneOwner?.handle) {
     ctx.deps.runtime?.registerPreAllocatedHandleForPty(ctx.result.id, args.preAllocatedHandle)
   }

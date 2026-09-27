@@ -120,4 +120,25 @@ describe('runtime spawn commit: run facts', () => {
     expect(facts.read(PTY_ID, INCARNATION_ID).freshSpawn).toBe(false)
     expect(stops.claimExit(PTY_ID, INCARNATION_ID)).toEqual(['reversible'])
   })
+
+  it.each([
+    { spawn: 'new process', result: {} },
+    { spawn: 'adoption', result: { agentSessionEnsure: ADOPTED } }
+  ])('records nothing for a $spawn that exited during start', async ({ result }) => {
+    const facts = new TerminalRunFactsRegister()
+    const stops = new TerminalIntentionalStops()
+    stops.mark(PTY_ID, 'reversible', null)(true)
+
+    await expect(
+      commit(result, facts, stops, (ctx) => {
+        ctx.args.worktreeId = 'wt-1'
+        ctx.deps.runtime!.registerPty = vi.fn(() => {
+          throw new Error('agent_session_exited_during_start')
+        })
+      })
+    ).rejects.toThrow('agent_session_exited_during_start')
+
+    expect(facts.read(PTY_ID, INCARNATION_ID).freshSpawn).toBe(false)
+    expect(stops.claimExit(PTY_ID, INCARNATION_ID)).toEqual(['reversible'])
+  })
 })
