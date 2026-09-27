@@ -11,9 +11,6 @@ import {
 } from '../../shared/skill-linked-root-deletion.test-fixture'
 import { SkillUpdateRunner } from './skill-update-run'
 
-/** Windows rejects `symlink` with EPERM without elevation or Developer Mode. */
-const WINDOWS = process.platform === 'win32'
-
 const originalHome = process.env.HOME
 const originalUserProfile = process.env.USERPROFILE
 
@@ -61,7 +58,8 @@ async function mixedLinkedRootHome(): Promise<string> {
   return home
 }
 
-describe.skipIf(WINDOWS)('SkillUpdateRunner pre-flight guard', () => {
+// Runs on Windows too: the fixture links with the junction production writes there.
+describe('SkillUpdateRunner pre-flight guard', () => {
   it('keeps a name whose destination is a real directory out of the argv', async () => {
     const home = await mixedLinkedRootHome()
     const { runner, spawnCalls } = guardedRunner(home)

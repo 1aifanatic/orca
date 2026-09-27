@@ -23,9 +23,6 @@ vi.mock('../shared/node-cli-command-resolution', async (importOriginal) => ({
 
 import { SKILL_HANDLERS } from './handlers/skills'
 
-/** Windows rejects `symlink` with EPERM without elevation or Developer Mode. */
-const WINDOWS = process.platform === 'win32'
-
 // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the skills handlers never touch the client; it is only here because HandlerContext requires one, and a never-called `call` is the whole surface.
 const client = { call: vi.fn() } as unknown as RuntimeClient
 
@@ -44,7 +41,12 @@ function linkedRootHome(): void {
   mkdirSync(join(home, 'dotfiles', 'skills', 'orca-cli'), { recursive: true })
   writeFileSync(join(home, 'dotfiles', 'skills', 'orca-cli', 'SKILL.md'), '# orca-cli\n')
   mkdirSync(join(home, '.claude'), { recursive: true })
-  symlinkSync(join(home, 'dotfiles', 'skills'), join(home, '.claude', 'skills'), 'dir')
+  // A junction on Windows: what Orca writes there, and it needs no elevation.
+  symlinkSync(
+    join(home, 'dotfiles', 'skills'),
+    join(home, '.claude', 'skills'),
+    process.platform === 'win32' ? 'junction' : 'dir'
+  )
   vi.stubEnv('HOME', home)
   vi.stubEnv('USERPROFILE', home)
 }
@@ -63,7 +65,7 @@ afterEach(() => {
   process.exitCode = undefined
 })
 
-describe.skipIf(WINDOWS)('orca skills update in a linked agent skills root', () => {
+describe('orca skills update in a linked agent skills root', () => {
   it('leaves the skill out of the command and says why on stderr', async () => {
     linkedRootHome()
     const child = new EventEmitter()

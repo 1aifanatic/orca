@@ -74,72 +74,66 @@ describe('read-only skill freshness inventory', () => {
     expect(inventory.eligibleUpdateNames).toEqual(['orca-cli'])
   })
 
-  /** Windows rejects `symlink` with EPERM without elevation or Developer Mode. */
-  const WINDOWS = process.platform === 'win32'
+  /** A junction on Windows: what Orca writes there, and it needs no elevation. */
+  const DIRECTORY_LINK = process.platform === 'win32' ? 'junction' : 'dir'
 
-  it.skipIf(WINDOWS)(
-    'withholds a name whose real directory sits in a linked provider root (#22897)',
-    async () => {
-      const test = await fixture()
-      await test.writeSkill(join(test.homeDir, '.agents', 'skills'), test.oldMarkdown)
-      // The reporter's setup: the Claude provider root links at a dotfiles tree that keeps
-      // its own real `orca-cli/`, which `npx skills update` deletes.
-      await mkdir(join(test.homeDir, '.claude'), { recursive: true })
-      await test.writeSkill(join(test.homeDir, 'dotfiles', 'skills'), test.currentMarkdown)
-      await symlink(
-        join(test.homeDir, 'dotfiles', 'skills'),
-        join(test.homeDir, '.claude', 'skills'),
-        'dir'
-      )
+  it('withholds a name whose real directory sits in a linked provider root (#22897)', async () => {
+    const test = await fixture()
+    await test.writeSkill(join(test.homeDir, '.agents', 'skills'), test.oldMarkdown)
+    // The reporter's setup: the Claude provider root links at a dotfiles tree that keeps
+    // its own real `orca-cli/`, which `npx skills update` deletes.
+    await mkdir(join(test.homeDir, '.claude'), { recursive: true })
+    await test.writeSkill(join(test.homeDir, 'dotfiles', 'skills'), test.currentMarkdown)
+    await symlink(
+      join(test.homeDir, 'dotfiles', 'skills'),
+      join(test.homeDir, '.claude', 'skills'),
+      DIRECTORY_LINK
+    )
 
-      const inventory = await inventorySkillFreshness({
-        currentAppVersion: '2.0.0',
-        homeDir: test.homeDir,
-        repos: [],
-        resourceRoot: test.resourceRoot
-      })
+    const inventory = await inventorySkillFreshness({
+      currentAppVersion: '2.0.0',
+      homeDir: test.homeDir,
+      repos: [],
+      resourceRoot: test.resourceRoot
+    })
 
-      expect(inventory.eligibleUpdateNames).toEqual([])
-      expect(
-        inventory.installations.find(
-          (entry) => entry.unresolvedPath === join(test.homeDir, '.claude', 'skills', 'orca-cli')
-        )?.skillsCliWouldDeleteDirectory
-      ).toBe(true)
-    }
-  )
+    expect(inventory.eligibleUpdateNames).toEqual([])
+    expect(
+      inventory.installations.find(
+        (entry) => entry.unresolvedPath === join(test.homeDir, '.claude', 'skills', 'orca-cli')
+      )?.skillsCliWouldDeleteDirectory
+    ).toBe(true)
+  })
 
-  it.skipIf(WINDOWS)(
-    'still offers a name whose linked provider root holds the link Orca placed',
-    async () => {
-      const test = await fixture()
-      await test.writeSkill(join(test.homeDir, '.agents', 'skills'), test.oldMarkdown)
-      await mkdir(join(test.homeDir, 'dotfiles', 'skills'), { recursive: true })
-      await mkdir(join(test.homeDir, '.claude'), { recursive: true })
-      await symlink(
-        join(test.homeDir, 'dotfiles', 'skills'),
-        join(test.homeDir, '.claude', 'skills'),
-        'dir'
-      )
-      // The documented placement: docs/reference/agent-skill-provider-paths.md.
-      await symlink(
-        join(test.homeDir, '.agents', 'skills', 'orca-cli'),
-        join(test.homeDir, 'dotfiles', 'skills', 'orca-cli'),
-        'dir'
-      )
+  it('still offers a name whose linked provider root holds the link Orca placed', async () => {
+    const test = await fixture()
+    await test.writeSkill(join(test.homeDir, '.agents', 'skills'), test.oldMarkdown)
+    await mkdir(join(test.homeDir, 'dotfiles', 'skills'), { recursive: true })
+    await mkdir(join(test.homeDir, '.claude'), { recursive: true })
+    await symlink(
+      join(test.homeDir, 'dotfiles', 'skills'),
+      join(test.homeDir, '.claude', 'skills'),
+      DIRECTORY_LINK
+    )
+    // The documented placement: docs/reference/agent-skill-provider-paths.md.
+    await symlink(
+      join(test.homeDir, '.agents', 'skills', 'orca-cli'),
+      join(test.homeDir, 'dotfiles', 'skills', 'orca-cli'),
+      DIRECTORY_LINK
+    )
 
-      const inventory = await inventorySkillFreshness({
-        currentAppVersion: '2.0.0',
-        homeDir: test.homeDir,
-        repos: [],
-        resourceRoot: test.resourceRoot
-      })
+    const inventory = await inventorySkillFreshness({
+      currentAppVersion: '2.0.0',
+      homeDir: test.homeDir,
+      repos: [],
+      resourceRoot: test.resourceRoot
+    })
 
-      expect(inventory.eligibleUpdateNames).toEqual(['orca-cli'])
-      expect(
-        inventory.installations.some((entry) => entry.skillsCliWouldDeleteDirectory === true)
-      ).toBe(false)
-    }
-  )
+    expect(inventory.eligibleUpdateNames).toEqual(['orca-cli'])
+    expect(
+      inventory.installations.some((entry) => entry.skillsCliWouldDeleteDirectory === true)
+    ).toBe(false)
+  })
 
   it('does not offer an older copied bundle the external updater has never registered (#10791)', async () => {
     const test = await fixture()

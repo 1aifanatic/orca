@@ -12,6 +12,7 @@ import {
   resolveEnvironmentHermesSkillsRoot,
   resolveEnvironmentSkillProviderRoots
 } from './agent-skill-provider-root-overrides'
+import { isDefinitiveAbsence } from './definitive-filesystem-absence'
 
 /**
  * Destinations `npx skills update` would delete because their agent skills root is a link.
@@ -57,14 +58,34 @@ function isCanonicalAgentSkillsRoot(root: AgentSkillScanRoot): boolean {
 }
 
 /**
+ * Whether a root's own `lstat` cleared it, condemned it, or answered nothing at all.
+ *
+ * `undetermined` is a real outcome, not a tidy-up: `lstat` on a WSL ext4 symlink reached over
+ * the 9P redirector (`\\wsl.localhost\<distro>\...`) throws **EISDIR**, and a `catch` that
+ * returns "not a link" turns that into a clean bill of health for a root that is linked.
+ * `isDefinitiveAbsence` is the repo's one errno allowlist for "really not there".
+ */
+type AgentSkillsRootShape = 'link' | 'directory' | 'absent' | 'undetermined'
+
+/**
  * Windows junctions report BOTH `isSymbolicLink()` and `isDirectory()`, so link-ness is
  * always asked first (precedent: `src/main/pty/overlay-mirror.ts`, issue #1083).
  */
-async function isLink(path: string): Promise<boolean> {
-  return (await lstat(path).catch(() => null))?.isSymbolicLink() === true
+async function classifyRoot(path: string): Promise<AgentSkillsRootShape> {
+  try {
+    return (await lstat(path)).isSymbolicLink() ? 'link' : 'directory'
+  } catch (error) {
+    return isDefinitiveAbsence(error) ? 'absent' : 'undetermined'
+  }
 }
 
-/** A directory in its own right — not a link to one, which upstream replaces harmlessly. */
+/**
+ * A directory in its own right — not a link to one, which upstream replaces harmlessly.
+ *
+ * The asymmetry with `classifyRoot` is deliberate. An unreadable *root* widens the search;
+ * an unreadable *destination* narrows it, because only a positive answer here can cost a
+ * user their update. So no unknown errno ever invents a skip on its own.
+ */
 async function isRealDirectory(path: string): Promise<boolean> {
   const entry = await lstat(path).catch(() => null)
   return entry ? !entry.isSymbolicLink() && entry.isDirectory() : false
@@ -107,7 +128,16 @@ export async function findSkillLinkedRootDeletions(input: {
       : buildAgentSkillRepoRoots(input.cwd ?? process.cwd()))
   const found: SkillLinkedRootDeletion[] = []
   for (const root of candidateRoots) {
-    if (isCanonicalAgentSkillsRoot(root) || !(await isLink(root.path))) {
+    if (isCanonicalAgentSkillsRoot(root)) {
+      continue
+    }
+    // Why `undetermined` is judged rather than waved through: on its own it reports nothing,
+    // because a name is only reported when `isRealDirectory` *succeeds* and says real
+    // directory. So the cost is bounded to roots where the at-risk shape is positively
+    // confirmed, while clearing them would keep answering "update" for every linked
+    // \\wsl.localhost root — the wrong answer, and one no read can later correct.
+    const shape = await classifyRoot(root.path)
+    if (shape === 'directory' || shape === 'absent') {
       continue
     }
     for (const name of names) {

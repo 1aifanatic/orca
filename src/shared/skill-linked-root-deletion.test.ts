@@ -1,4 +1,4 @@
-import { mkdir, rm, symlink } from 'node:fs/promises'
+import { mkdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
@@ -8,13 +8,18 @@ import {
 } from './skill-linked-root-deletion'
 import {
   createLinkedRootHome,
+  linkDanglingPlacement,
+  linkDirectory,
   linkOrcaPlacement,
   linkProviderRoot,
   removeLinkedRootHomes,
   writeRealSkillDirectory
 } from './skill-linked-root-deletion.test-fixture'
 
-/** Windows rejects `symlink` with EPERM without elevation or Developer Mode. */
+/**
+ * Every case below runs on Windows as a junction, which is what Orca writes there and what
+ * `isSymbolicLink()` reports on. Only the one true-`mklink /D` case is skipped, below.
+ */
 const WINDOWS = process.platform === 'win32'
 
 afterEach(removeLinkedRootHomes)
@@ -24,7 +29,7 @@ function deletions(home: string, names: string[] = ['orca-cli']) {
   return findSkillLinkedRootDeletions({ names, homeDir: home, env: {} })
 }
 
-describe.skipIf(WINDOWS)('findSkillLinkedRootDeletions', () => {
+describe('findSkillLinkedRootDeletions', () => {
   it('reports a real directory inside a linked skills root', async () => {
     const home = await createLinkedRootHome()
     const root = await linkProviderRoot(home, '.claude')
@@ -38,6 +43,22 @@ describe.skipIf(WINDOWS)('findSkillLinkedRootDeletions', () => {
         destinationPath: join(root, 'orca-cli'),
         errorCategory: SKILL_LINKED_ROOT_DELETION_CODE
       }
+    ])
+  })
+
+  /**
+   * The case above runs as a junction on Windows; this one pins the other link a root can be
+   * there, a true `mklink /D` directory symlink, which a user's dotfiles setup may have used.
+   * Skipped on Windows because creating one needs elevation or Developer Mode — the only
+   * shape in this file that does, and the reason the whole suite used to skip the platform.
+   */
+  it.skipIf(WINDOWS)('reports the same for a root that is a true directory symlink', async () => {
+    const home = await createLinkedRootHome()
+    const root = await linkProviderRoot(home, '.claude', 'dir')
+    await writeRealSkillDirectory(join(home, 'dotfiles', 'skills'), 'orca-cli')
+
+    expect((await deletions(home)).map((deletion) => deletion.destinationPath)).toEqual([
+      join(root, 'orca-cli')
     ])
   })
 
@@ -59,7 +80,7 @@ describe.skipIf(WINDOWS)('findSkillLinkedRootDeletions', () => {
   it('leaves a dangling link inside a linked root alone', async () => {
     const home = await createLinkedRootHome()
     await linkProviderRoot(home, '.claude')
-    await symlink(join(home, 'gone'), join(home, 'dotfiles', 'skills', 'orca-cli'), 'dir')
+    await linkDanglingPlacement(home, 'orca-cli')
 
     expect(await deletions(home)).toEqual([])
   })
@@ -78,7 +99,7 @@ describe.skipIf(WINDOWS)('findSkillLinkedRootDeletions', () => {
     const home = await createLinkedRootHome()
     await rm(join(home, '.agents'), { recursive: true })
     await mkdir(join(home, '.agents'), { recursive: true })
-    await symlink(join(home, 'dotfiles', 'skills'), join(home, '.agents', 'skills'), 'dir')
+    await linkDirectory(join(home, 'dotfiles', 'skills'), join(home, '.agents', 'skills'))
     await writeRealSkillDirectory(join(home, 'dotfiles', 'skills'), 'orca-cli')
 
     expect(await deletions(home)).toEqual([])
@@ -98,7 +119,7 @@ describe.skipIf(WINDOWS)('findSkillLinkedRootDeletions', () => {
   it('judges the root an env var moved, not the default path nothing writes to', async () => {
     const home = await createLinkedRootHome()
     await mkdir(join(home, 'managed'), { recursive: true })
-    await symlink(join(home, 'dotfiles', 'skills'), join(home, 'managed', 'skills'), 'dir')
+    await linkDirectory(join(home, 'dotfiles', 'skills'), join(home, 'managed', 'skills'))
     await writeRealSkillDirectory(join(home, 'dotfiles', 'skills'), 'orca-cli')
 
     expect(
