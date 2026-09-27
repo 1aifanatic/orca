@@ -108,6 +108,21 @@ describe('the words written beside a failure fact', () => {
     ).toBe('The provider stopped before this message was sent.')
   })
 
+  it('says what frees a chat a terminal agent still holds, without naming its process', () => {
+    expect(
+      agentSessionFailureSentence(
+        {
+          kind: 'restartFailed',
+          refusal: { code: 'agent_session_conflict', cause: 'claimConflicted' }
+        },
+        'row',
+        { agentName: 'Codex' }
+      )
+    ).toBe(
+      "Codex couldn't restart. This chat is still open in a terminal agent. Quit that agent to continue the chat here."
+    )
+  })
+
   it('says which limit an attachment broke, in megabytes', () => {
     const sentence = (attachment: AgentSessionFailureFact['attachment']) =>
       agentSessionFailureSentence({ kind: 'attachmentInvalid', attachment }, 'rejection', {

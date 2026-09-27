@@ -96,6 +96,10 @@ function quotingPersonDetail(lead: string, detail: ProviderDiagnostic | undefine
 function couldNot(verb: string): Sentence {
   return ({ agentName }, fact) => {
     const failed = `${agentName ?? 'The agent'} couldn't ${verb}.`
+    // Only a terminal agent an older build recorded holds a claim; quitting it frees the chat.
+    if (fact.refusal?.cause === 'claimConflicted') {
+      return `${failed} This chat is still open in a terminal agent. Quit that agent to continue the chat here.`
+    }
     const code = fact.refusal?.code
     return code && !START_REFUSAL_RESUMABLE[code]
       ? `${failed} Start a new chat to continue.`

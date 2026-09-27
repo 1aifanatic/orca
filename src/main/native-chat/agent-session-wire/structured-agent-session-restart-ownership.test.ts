@@ -720,10 +720,18 @@ it('logs teardown capsule publication failure and still releases the provider', 
 // The resume ledger's reason stays the refusal code, which is what every renderer's guidance keys
 // on; the cause is filed beside it, never in its place.
 it('files a restart refused by a conflicted claim under its code, with its cause beside it', async () => {
-  const { host, store } = await interruptedRestart()
+  // The terminal agent that holds the claim is still running, so nothing may take it over.
+  const { host, store } = await interruptedRestart('turn', true, async () => ({
+    outcome: 'identity-matched',
+    matchedOn: ['spawn-token']
+  }))
   await store.transitionHandoff(SESSION, (record) => ({
     ...record,
-    lease: { ...record.lease, claimStatus: 'conflicted' }
+    lease: {
+      ...record.lease,
+      claimStatus: 'conflicted',
+      ownerProcess: { hostId: 'local', pid: 4242, processStartTimeMs: 1, spawnToken: 'terminal' }
+    }
   }))
 
   await host.restartResume.continueAfterRestart([SESSION], 'modal')
