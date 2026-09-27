@@ -140,7 +140,10 @@ async function resolveUnlaunchedIntent(
 ): Promise<AgentLaunchIntent> {
   // Before the surface decision, so a disabled agent reaches neither route. The chat create checks
   // again for its other callers; without this one, a refused chat could fall back to a terminal.
-  refuseDisabledAgentForRuntime(runtime, params.agent)
+  // A reused terminal starts nothing: its agent was already running.
+  if (!params.reuseTerminal) {
+    refuseDisabledAgentForRuntime(runtime, params.agent)
+  }
   const intent = await agentLaunchIntent(params, runtime)
   await validateReusedTerminal(intent, runtime)
   return intent

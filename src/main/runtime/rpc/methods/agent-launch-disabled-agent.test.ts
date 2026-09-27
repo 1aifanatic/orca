@@ -133,6 +133,14 @@ describe('a launch of a disabled agent', () => {
     expectNothingCreated(runtime)
   })
 
+  it('still hands a prompt to a reused terminal, whose agent is already running', async () => {
+    const runtime = claudeDisabled(true)
+    await expect(
+      launch({ agent: 'claude', target: EXISTING, reuseTerminal: { handle: 'term_live' } }, runtime)
+    ).resolves.toMatchObject({ outcome: { kind: 'terminal', handle: 'term_live' } })
+    expectNothingCreated(runtime)
+  })
+
   it('leaves an enabled agent alone', async () => {
     const runtime = claudeDisabled(true)
     await expect(launch({ agent: 'codex', target: EXISTING }, runtime)).resolves.toMatchObject({
