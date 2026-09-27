@@ -305,6 +305,30 @@ it('keeps a resume retryable when its agent started but refused the continuation
   expect(retried.continued).toMatchObject([{ sessionId: SESSION, outcome: 'continued' }])
 })
 
+// A continuation handed to the agent may have landed even with no answer yet, so a retry could send
+// it twice: the failure it files is not retryable, as for one whose dispatch is in doubt.
+it('keeps an unanswered continuation the agent was handed from being sent again', async () => {
+  const state = await offered()
+  const { host } = state
+  // The agent took it and never answered; the wait for that answer ended first (too many waited).
+  state.dispatch.mockResolvedValueOnce({ state: 'admitted' })
+  const wait = host.waitForSendSettlement
+  vi.spyOn(host, 'waitForSendSettlement').mockImplementation(async (...args) =>
+    args[2]?.until === 'handed-over' ? wait(...args) : undefined
+  )
+
+  const first = await host.restartResume.continueAfterRestart([SESSION], 'modal')
+
+  expect(first.continued).toMatchObject([{ sessionId: SESSION, outcome: 'pending' }])
+  expect(await host.restartResume.listFailures()).toMatchObject([
+    { sessionId: SESSION, outcome: 'unconfirmed', retryable: false }
+  ])
+  expect(await host.restartResume.continueAfterRestart([SESSION], 'retry')).toMatchObject({
+    continued: []
+  })
+  expect(state.dispatch).toHaveBeenCalledOnce()
+})
+
 // The rejected continuation is the chat's newest user message; the row still names the user's.
 it("names the user's prompt on a failed retry, not the rejected continuation", async () => {
   const state = await offered('submission')
@@ -401,7 +425,13 @@ describe('reading the chat against where the offer was taken', () => {
   function movedOn(
     input: {
       epoch?: string
-      submissions?: { clientMessageId: string; acceptedSequence: number; dispatchState: string }[]
+      submissions?: {
+        clientMessageId: string
+        acceptedSequence: number
+        dispatchState: string
+        handoverRecorded?: boolean
+        handedOverAt?: number
+      }[]
     },
     journalCursor: { epoch: string; sequence: number } | null = TAKEN
   ): boolean {
@@ -438,8 +468,11 @@ describe('reading the chat against where the offer was taken', () => {
   it("does not count the offer's own continuation while queued or rejected, so a retry still runs", () => {
     const own = restartContinuationId(OFFER, 'operation-1', NOW)
     const rejected = { clientMessageId: own, acceptedSequence: 7, dispatchState: 'rejected' }
+    const queued = { ...rejected, dispatchState: 'pending', handoverRecorded: true }
     expect(movedOn({ submissions: [rejected] })).toBe(false)
-    expect(movedOn({ submissions: [{ ...rejected, dispatchState: 'pending' }] })).toBe(false)
+    expect(movedOn({ submissions: [queued] })).toBe(false)
+    // Handed over, it may have reached the agent, answered or not.
+    expect(movedOn({ submissions: [{ ...queued, handedOverAt: NOW }] })).toBe(true)
     expect(movedOn({ submissions: [{ ...rejected, dispatchState: 'accepted' }] })).toBe(true)
     // Another offer's continuation, and any other message, is the chat moving on.
     const other = restartContinuationId({ ...OFFER, teardownId: 'teardown-2' }, 'operation-1', NOW)
