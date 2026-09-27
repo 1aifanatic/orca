@@ -37,7 +37,7 @@ export function useMobileNativeChatController(args: {
   /** Live socket state; the lease collapses on disconnect but one render later. */
   connState: ConnectionState
   /** Host capability fact from the shared runtime status probe. */
-  agentSessionHostSupport: StructuredAgentSessionHostSupport | null
+  agentSessionHostSupport?: StructuredAgentSessionHostSupport | null
   onSendError: (message: string) => void
   /** Retires a held failure banner. Any accepted chat write clears it — a delivered
    *  answer or permission reply must not sit under a stale "not sent". */
@@ -54,7 +54,7 @@ export function useMobileNativeChatController(args: {
     nativeChatTranscriptIsLocalReadable,
     nativeChatInputLeaseReady,
     connState,
-    agentSessionHostSupport,
+    agentSessionHostSupport = null,
     onSendError,
     onSendResolved
   } = args

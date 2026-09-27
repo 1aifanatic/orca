@@ -203,7 +203,6 @@ describe('useMobileNativeChatController handleNativeChatSend', () => {
       deviceTokenRef: { current: null },
       nativeChatTranscriptIsLocalReadable: true,
       nativeChatInputLeaseReady: inputLeaseReady,
-      agentSessionHostSupport: null,
       onSendError,
       onSendResolved
     })
@@ -550,7 +549,6 @@ describe('useMobileNativeChatController launch-draft wiring', () => {
       deviceTokenRef: { current: null },
       nativeChatTranscriptIsLocalReadable: true,
       nativeChatInputLeaseReady: true,
-      agentSessionHostSupport: null,
       onSendError: vi.fn(),
       onSendResolved: vi.fn()
     })
@@ -643,7 +641,6 @@ describe('useMobileNativeChatController ask dismissal across a transcript reload
       deviceTokenRef: { current: null },
       nativeChatTranscriptIsLocalReadable: true,
       nativeChatInputLeaseReady: true,
-      agentSessionHostSupport: null,
       onSendError: vi.fn(),
       onSendResolved: vi.fn()
     })
@@ -923,7 +920,6 @@ describe('useMobileNativeChatController streaming scope', () => {
       deviceTokenRef: { current: null },
       nativeChatTranscriptIsLocalReadable: true,
       nativeChatInputLeaseReady: true,
-      agentSessionHostSupport: null,
       onSendError: vi.fn(),
       onSendResolved: vi.fn()
     })
