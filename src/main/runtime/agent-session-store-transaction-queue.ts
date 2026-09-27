@@ -2,7 +2,6 @@ import type { AgentSessionLease } from '../../shared/agent-session-record'
 import { raiseAgentSessionFencesAfterBackupRecovery } from './agent-session-backup-recovery-fence'
 import {
   AGENT_SESSION_STORE_SCHEMA_VERSION,
-  agentSessionStoreExactPrimarySha256,
   agentSessionStoreRevision,
   agentSessionStoreSerializedRevision,
   loadAgentSessionStore,
@@ -17,8 +16,11 @@ import {
 } from './agent-session-store-draft'
 import {
   agentSessionStoreBytesSha256,
-  readAgentSessionStorePrimary
-} from './agent-session-store-primary-bytes'
+  agentSessionStoreInputsUnchanged,
+  readAgentSessionStorePrimary,
+  type AgentSessionStoreInputKey
+} from './agent-session-store-input-bytes'
+import { agentSessionStoreBackupPath } from './agent-session-record-store-write'
 import { withFileTransactionLock } from '../file-transaction-lock'
 
 /** Latch fields older builds wrote. Nothing reads them, and dropping them keeps a lease this build
@@ -45,11 +47,21 @@ function markLoadedLeasesUnreconciled(state: AgentSessionStoreState): void {
   }
 }
 
+/** Whether a load of `state` as written would read the backup to salvage a quarantined row. */
+function loadReadsBackup(state: AgentSessionStoreState): boolean {
+  for (const sessionId of state.unreadableRecords.keys()) {
+    if (!state.records.has(sessionId)) {
+      return true
+    }
+  }
+  return false
+}
+
 export class AgentSessionStoreTransactionQueue {
   private queue: Promise<unknown> = Promise.resolve()
   private diskRecoveredFromBackup: boolean
-  /** Hash of the primary bytes `diskRevision` is exactly derived from; null forces a full load. */
-  private primarySha256: string | null
+  /** The file bytes `diskRevision` is exactly derived from; null forces a full load. */
+  private inputKey: AgentSessionStoreInputKey | null
 
   constructor(
     private readonly filePath: string,
@@ -60,10 +72,10 @@ export class AgentSessionStoreTransactionQueue {
     private published: AgentSessionStoreState,
     private diskRevision: string,
     private needsRewrite: boolean,
-    primarySha256: string | null
+    inputKey: AgentSessionStoreInputKey | null
   ) {
     this.diskRecoveredFromBackup = recoveredFromBackup
-    this.primarySha256 = primarySha256
+    this.inputKey = inputKey
   }
 
   static fromLoadedStore(
@@ -81,7 +93,7 @@ export class AgentSessionStoreTransactionQueue {
       loaded.state,
       diskRevision,
       loaded.needsRewrite,
-      agentSessionStoreExactPrimarySha256(loaded)
+      loaded.inputKey
     )
   }
 
@@ -97,7 +109,7 @@ export class AgentSessionStoreTransactionQueue {
         if (this.readOnly) {
           throw new Error('agent_session_legacy_required')
         }
-        await this.refreshExternallyChangedState()
+        const readPrimarySha256 = await this.refreshExternallyChangedState()
         const draft = draftAgentSessionStoreState(this.published)
         // The lost commit may have granted a higher fence than the backup records show. Rather
         // than refuse forever, raise every recovered fence clear of anything that commit could
@@ -113,13 +125,19 @@ export class AgentSessionStoreTransactionQueue {
         }
         assertAgentSessionStoreDraftReadable(draft, changes)
         const savedSchemaVersion = draft.schemaVersion
+        // Why: the primary this rotates is known loadable without a parse only because the write
+        // check refuses every row a load would reject.
+        const rotatesBackup = this.diskStoreFound && !recovering
         const written = await saveAgentSessionStore(this.filePath, draft, {
-          primaryStatus: this.diskStoreFound && !recovering ? 'validated' : 'unusable-or-absent'
+          primaryStatus: rotatesBackup ? 'validated' : 'unusable-or-absent'
         })
         draft.schemaVersion = AGENT_SESSION_STORE_SCHEMA_VERSION
         this.published = draft
         this.diskRevision = agentSessionStoreSerializedRevision(savedSchemaVersion, written)
-        this.primarySha256 = agentSessionStoreBytesSha256(written)
+        // A rotated backup holds the primary this transaction read; a kept one is unknown here.
+        const backup = !loadReadsBackup(draft) ? 'unread' : rotatesBackup ? readPrimarySha256 : null
+        this.inputKey =
+          backup === null ? null : { primarySha256: agentSessionStoreBytesSha256(written), backup }
         this.diskRecoveredFromBackup = false
         this.diskStoreFound = true
         this.needsRewrite = false
@@ -134,12 +152,15 @@ export class AgentSessionStoreTransactionQueue {
     return this.transact(() => undefined)
   }
 
-  private async refreshExternallyChangedState(): Promise<void> {
+  /** Returns the hash of the primary it read, null when absent. */
+  private async refreshExternallyChangedState(): Promise<string | null> {
     const primary = await readAgentSessionStorePrimary(this.filePath)
-    if (primary !== null && primary.sha256 === this.primarySha256) {
+    const backupPath = agentSessionStoreBackupPath(this.filePath)
+    if (await agentSessionStoreInputsUnchanged(this.inputKey, primary, backupPath)) {
       // Why: the exact bytes the durable state was last loaded from or written as.
-      return
+      return primary?.sha256 ?? null
     }
+    this.inputKey = null
     const loaded = await loadAgentSessionStore(this.filePath, this.hostId, primary)
     if (this.diskStoreFound && !loaded.storeFound) {
       throw new Error('agent_session_store_corrupt')
@@ -149,8 +170,8 @@ export class AgentSessionStoreTransactionQueue {
     this.diskRecoveredFromBackup = loaded.recoveredFromBackup
     if (diskRevision === this.diskRevision) {
       this.needsRewrite ||= loaded.needsRewrite
-      this.primarySha256 = agentSessionStoreExactPrimarySha256(loaded)
-      return
+      this.inputKey = loaded.inputKey
+      return primary?.sha256 ?? null
     }
     if (loaded.readOnly) {
       throw new Error('agent_session_legacy_required')
@@ -159,7 +180,8 @@ export class AgentSessionStoreTransactionQueue {
     this.published = loaded.state
     this.diskRevision = diskRevision
     this.needsRewrite = loaded.needsRewrite
-    this.primarySha256 = agentSessionStoreExactPrimarySha256(loaded)
+    this.inputKey = loaded.inputKey
+    return primary?.sha256 ?? null
   }
 }
 

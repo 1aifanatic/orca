@@ -8,7 +8,6 @@
  */
 
 import { createHash } from 'node:crypto'
-import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { AgentSessionOperationRow } from '../../shared/agent-session-operation-ledger'
 import {
@@ -22,11 +21,14 @@ export { saveAgentSessionStore } from './agent-session-record-store-write'
 import { parseAgentSessionTabTable, type AgentSessionTabTable } from './agent-session-tab-table'
 import { serializeAgentSessionStoreState } from './agent-session-store-serialization'
 import {
+  readAgentSessionStoreBackup,
   readAgentSessionStorePrimary,
-  type AgentSessionStorePrimaryBytes
-} from './agent-session-store-primary-bytes'
+  type AgentSessionStoreFileBytes,
+  type AgentSessionStoreInputKey
+} from './agent-session-store-input-bytes'
 import {
   isReadableAgentSessionStoreOperation,
+  isReadableAgentSessionStoreRecord,
   isReadableAgentSessionStoreUnusableRecord,
   isReadableRetiredAgentSessionClaimKey
 } from './agent-session-store-row-rules'
@@ -60,20 +62,8 @@ export type LoadedAgentSessionStore = {
   needsRewrite: boolean
   /** True when decode mapped a lease value only the removed terminal handoff wrote. */
   legacyHandoffLeasesNormalized: boolean
-  /** sha256 of the primary bytes `state` was parsed from; null when no primary was parsed. */
-  primarySha256: string | null
-  /** True when `state` also rests on the backup: a row was salvaged from it, or it could not be read. */
-  dependsOnBackup: boolean
-}
-
-/**
- * The hash whose bytes alone determine `loaded.state`, or null when they do not. Salvage also reads
- * the backup, so the same primary bytes can load differently once the backup changes or is readable.
- */
-export function agentSessionStoreExactPrimarySha256(
-  loaded: LoadedAgentSessionStore
-): string | null {
-  return loaded.dependsOnBackup ? null : loaded.primarySha256
+  /** The bytes `state` was derived from; null when no primary was parsed or a backup read failed. */
+  inputKey: AgentSessionStoreInputKey | null
 }
 
 export function agentSessionStorePath(directory: string): string {
@@ -174,20 +164,17 @@ function parseState(
   let legacyHandoffLeasesNormalized = false
   if (typeof file.records === 'object' && file.records !== null) {
     for (const [sessionId, value] of Object.entries(file.records)) {
-      const decoded = isPersistedAgentSessionRecord(value)
-        ? normalizeLegacyHandoffRecord(value)
-        : null
-      const record = decoded?.record ?? null
-      if (record?.sessionId === sessionId) {
-        state.records.set(sessionId, record)
+      if (isReadableAgentSessionStoreRecord(sessionId, value)) {
+        const decoded = normalizeLegacyHandoffRecord(value)
+        state.records.set(sessionId, decoded.record)
         // Why: mapped while parsing, so every revision is taken over the same normalized state.
-        legacyHandoffLeasesNormalized ||= decoded?.normalized === true
+        legacyHandoffLeasesNormalized ||= decoded.normalized
       } else {
         const valueSchemaVersion =
           typeof value === 'object' &&
           value !== null &&
           (value as { schemaVersion?: unknown }).schemaVersion
-        const reason = record
+        const reason = isPersistedAgentSessionRecord(value)
           ? 'record_key_session_id_mismatch'
           : valueSchemaVersion === AGENT_SESSION_RECORD_SCHEMA_VERSION
             ? 'current_shape_invalid'
@@ -244,46 +231,42 @@ function parseState(
 
 /** A record the primary retained as unreadable may still have a valid copy in the previous
  *  committed state. Adopting it keeps the session reachable — the lease is re-adjudicated
- *  like any other — while the unreadable bytes stay quarantined verbatim. Returns whether the
- *  result rests on the backup. */
+ *  like any other — while the unreadable bytes stay quarantined verbatim. Returns the backup's
+ *  part of the input key, or null when the backup could not be read. */
 async function salvageUnreadableRecordsFromBackup(
   state: AgentSessionStoreState,
   backupFilePath: string,
   hostId: string
-): Promise<boolean> {
+): Promise<string | null> {
   const missing = [...state.unreadableRecords.keys()].filter(
     (sessionId) => !state.records.has(sessionId)
   )
   if (missing.length === 0) {
-    return false
+    return 'unread'
   }
-  let raw: string
-  try {
-    raw = await readFile(backupFilePath, 'utf-8')
-  } catch (error) {
+  const bytes = await readAgentSessionStoreBackup(backupFilePath)
+  if (bytes === null) {
+    return 'absent'
+  }
+  if (bytes === 'failed') {
     // Why: a backup that failed to read may still hold the row, so the next load must look again.
-    return !(error instanceof Error && 'code' in error && error.code === 'ENOENT')
+    return null
   }
-  const backup = parseState(raw, hostId)
-  if (!backup) {
-    return false
-  }
-  let salvaged = false
+  const backup = parseState(bytes.bytes.toString('utf-8'), hostId)
   for (const sessionId of missing) {
-    const record = backup.state.records.get(sessionId)
+    const record = backup?.state.records.get(sessionId)
     if (record) {
       state.records.set(sessionId, record)
-      salvaged = true
     }
   }
-  return salvaged
+  return bytes.sha256
 }
 
 /** `primary` is the primary's bytes when the caller already read them; omitted, they are read here. */
 export async function loadAgentSessionStore(
   filePath: string,
   hostId: string,
-  primary?: AgentSessionStorePrimaryBytes | null
+  primary?: AgentSessionStoreFileBytes | null
 ): Promise<LoadedAgentSessionStore> {
   let unusableStoreFound = false
   const primaryBytes =
@@ -291,7 +274,7 @@ export async function loadAgentSessionStore(
   if (primaryBytes) {
     const parsed = parseState(primaryBytes.bytes.toString('utf-8'), hostId)
     if (parsed) {
-      const dependsOnBackup = await salvageUnreadableRecordsFromBackup(
+      const backup = await salvageUnreadableRecordsFromBackup(
         parsed.state,
         backupPath(filePath),
         hostId
@@ -301,32 +284,25 @@ export async function loadAgentSessionStore(
         storeFound: true,
         readOnly: parsed.state.schemaVersion > AGENT_SESSION_STORE_SCHEMA_VERSION,
         recoveredFromBackup: false,
-        primarySha256: primaryBytes.sha256,
-        dependsOnBackup
+        inputKey: backup === null ? null : { primarySha256: primaryBytes.sha256, backup }
       }
     }
     unusableStoreFound = true
   }
-  let backupRaw: string | null = null
-  try {
-    backupRaw = await readFile(backupPath(filePath), 'utf-8')
-  } catch (error) {
-    unusableStoreFound ||= !(error instanceof Error && 'code' in error && error.code === 'ENOENT')
-  }
-  if (backupRaw !== null) {
-    const parsed = parseState(backupRaw, hostId)
+  const backup = await readAgentSessionStoreBackup(backupPath(filePath))
+  if (backup !== null && backup !== 'failed') {
+    const parsed = parseState(backup.bytes.toString('utf-8'), hostId)
     if (parsed) {
       return {
         ...parsed,
         storeFound: true,
         readOnly: parsed.state.schemaVersion > AGENT_SESSION_STORE_SCHEMA_VERSION,
         recoveredFromBackup: true,
-        primarySha256: null,
-        dependsOnBackup: false
+        inputKey: null
       }
     }
-    unusableStoreFound = true
   }
+  unusableStoreFound ||= backup !== null
   if (unusableStoreFound) {
     throw new Error('agent_session_store_corrupt')
   }
@@ -337,7 +313,6 @@ export async function loadAgentSessionStore(
     recoveredFromBackup: false,
     needsRewrite: false,
     legacyHandoffLeasesNormalized: false,
-    primarySha256: null,
-    dependsOnBackup: false
+    inputKey: null
   }
 }

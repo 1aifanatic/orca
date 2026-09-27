@@ -11,12 +11,16 @@ import {
   type AgentSessionOperationRow
 } from '../../shared/agent-session-operation-ledger'
 import { isAgentSessionId, isPersistedAgentSessionRecord } from '../../shared/agent-session-record'
+import type { PersistedAgentSessionRecord } from '../../shared/agent-session-legacy-handoff-lease'
 import { isAgentSessionSurfaceTabId } from '../../shared/agent-session-surface-tab-id'
 import type { RetiredAgentSessionClaimKey } from './agent-session-record-store-file'
 import type { PersistedAgentSessionTab } from './agent-session-tab-table'
 
 /** A record row a load keeps in `records` rather than quarantining. */
-export function isReadableAgentSessionStoreRecord(sessionId: string, value: unknown): boolean {
+export function isReadableAgentSessionStoreRecord(
+  sessionId: string,
+  value: unknown
+): value is PersistedAgentSessionRecord {
   return isPersistedAgentSessionRecord(value) && value.sessionId === sessionId
 }
 

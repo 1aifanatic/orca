@@ -315,6 +315,22 @@ describe('a primary whose rows were salvaged from the backup', () => {
     expect((await openStore()).getRecord('session-alpha')).not.toBeNull()
   })
 
+  it('salvages from a backup that gained the row while the primary stayed byte-identical', async () => {
+    await seedSalvageableRow()
+    const good = await readFile(`${storePath}.bak`, 'utf-8')
+    // Nothing vouches for the row yet: the backup quarantines it too.
+    await copyFile(storePath, `${storePath}.bak`)
+    const store = await openStore()
+    expect(store.getRecord('session-alpha')).toBeNull()
+    // Restored out of band; the primary's bytes are untouched.
+    await writeFile(`${storePath}.bak`, good, 'utf-8')
+
+    await store.setConversationName('session-beta', 'after the backup came back')
+
+    expect(store.getRecord('session-alpha')).not.toBeNull()
+    expect((await openStore()).getRecord('session-alpha')).not.toBeNull()
+  })
+
   it('stops depending on the backup once the salvaged row is written', async () => {
     await seedSalvageableRow()
     const store = await openStore()
