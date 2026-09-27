@@ -13,8 +13,14 @@ import type {
   AgentSessionSubscribeEvent
 } from '../../../shared/agent-session-wire'
 import { DISPATCH_REJECTED_CANCELLED } from '../../../shared/structured-agent-session-dispatch-rejection'
-import type { AgentSessionFailureFact } from '../../../shared/agent-session-failure'
-import { agentSessionFailureSentence } from '../../../shared/agent-session-failure-words'
+import {
+  agentSessionFailureFact,
+  type AgentSessionFailureFact
+} from '../../../shared/agent-session-failure'
+import {
+  agentSessionFailureSentence,
+  agentSessionFailureWords
+} from '../../../shared/agent-session-failure-words'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import { openAgentSessionJournal } from '../agent-session-journal/journal-store-factory'
 import { journalDirectoryFor } from '../agent-session-journal/journal-paths'
@@ -32,8 +38,6 @@ import {
   hostTestOperationId,
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
-import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
-import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 
 const CALLER = { callerKey: 'client-1' }
 
