@@ -1,4 +1,4 @@
-import type { Dispatch, RefObject, SetStateAction } from 'react'
+import { useState, type Dispatch, type RefObject, type SetStateAction } from 'react'
 import type { FlatList } from 'react-native'
 import type { ConnectionState } from '../transport/types'
 import type { RpcClient } from '../transport/rpc-client'
@@ -17,6 +17,7 @@ import type {
 import type { ReviewSheetIntents } from './mobile-diff-review-sheets'
 import { sourceFileDiffOpenRun } from '../source-control/mobile-source-file-open-operations'
 import { refusedRpcMessageOrFallback } from '../transport/rpc-refusal-message'
+import { isRendererUnavailableRefusal } from '../transport/renderer-unavailable-refusal'
 import { useMobileDiffReviewCommentActions } from './use-mobile-diff-review-comment-actions'
 import { useMobileDiffReviewGitActions } from './use-mobile-diff-review-git-actions'
 import { useMobileDiffReviewSendActions } from './use-mobile-diff-review-send-actions'
@@ -52,6 +53,9 @@ type InteractionInput = {
   onReconnect: ((hostId: string) => void | Promise<void>) | null
 }
 
+export const SESSION_TABS_UNAVAILABLE_MESSAGE =
+  'This host has no desktop to open tabs in. The diff is shown here instead.'
+
 export function useMobileDiffReviewInteractions(input: InteractionInput) {
   const {
     client,
@@ -82,6 +86,7 @@ export function useMobileDiffReviewInteractions(input: InteractionInput) {
     onOpenSession,
     onReconnect
   } = input
+  const [sessionTabsUnavailable, setSessionTabsUnavailable] = useState(false)
 
   const {
     closeComposer,
@@ -188,6 +193,12 @@ export function useMobileDiffReviewInteractions(input: InteractionInput) {
         relativePath: currentItem.filePath,
         staged: currentItem.scope === 'staged'
       })
+      // Why: a host with no renderer (orca serve, orcad) has no tab to open; this screen is the diff view.
+      if (isRendererUnavailableRefusal(response)) {
+        setSessionTabsUnavailable(true)
+        setActionError(SESSION_TABS_UNAVAILABLE_MESSAGE)
+        return
+      }
       try {
         sourceFileDiffOpenRun.interpret(response)
       } catch (error) {
@@ -210,6 +221,7 @@ export function useMobileDiffReviewInteractions(input: InteractionInput) {
       setCurrentIndex(0)
     },
     sendPromptToTerminal,
+    sessionTabsUnavailable,
     stageReviewedFiles
   }
 }

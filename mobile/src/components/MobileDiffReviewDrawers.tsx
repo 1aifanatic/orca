@@ -176,7 +176,10 @@ function useOverflowActions(controller: ReturnType<typeof useMobileDiffReviewCon
       {
         label: 'Open in Session',
         icon: FileText,
-        disabled: !controller.currentItem || controller.currentItem.scope === 'branch',
+        disabled:
+          !controller.currentItem ||
+          controller.currentItem.scope === 'branch' ||
+          controller.sessionTabsUnavailable,
         onPress: () => void controller.openInSession()
       }
     ],

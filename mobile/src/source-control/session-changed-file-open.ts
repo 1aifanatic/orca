@@ -50,7 +50,7 @@ export async function openSessionChangedFile(
     worktree,
     relativePath: args.relativePath
   })
-  if (chooseSessionDiffOpen(editReply) === 'device-review') {
+  if (isRendererUnavailableRefusal(editReply)) {
     return 'device-review'
   }
   interpretOrThrowRefusalMessage(
