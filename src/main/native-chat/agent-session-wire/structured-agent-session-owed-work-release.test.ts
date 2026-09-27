@@ -3,8 +3,10 @@
 //
 // A Claude chat is published before its CLI answers initialize, and a message sent in that window
 // is accepted and stays queued until it does; the delivery loop hands it over once startup lands.
-// Evicting then would reject a message the user already sent. And a lead whose turn has settled can
-// leave subagents, commands and monitors running inside the child; evicting then ends them silently.
+// Switching away from the chat starts the release clock; the clock must treat that queued message
+// as work still owed, exactly as it treats a running turn, or it evicts the session and rejects a
+// message the user already sent. And a lead whose turn has settled can leave subagents, commands
+// and monitors running inside the child; evicting then ends them silently.
 
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'

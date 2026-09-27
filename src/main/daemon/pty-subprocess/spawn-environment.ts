@@ -1,3 +1,4 @@
+import { restoreOrStripOverlayEnv } from '../../../shared/agent-overlay-env'
 import { delimiter } from 'node:path'
 import { dropInheritedOrcaFishHistory } from '../../fish-history-session'
 import { removeAppImageRuntimeEnv } from '../../pty/appimage-terminal-env'
@@ -28,7 +29,9 @@ const PANE_IDENTITY_ENV_KEYS = [
   'ORCA_PANE_KEY',
   'ORCA_TAB_ID',
   'ORCA_WORKTREE_ID',
-  'ORCA_AGENT_LAUNCH_TOKEN'
+  'ORCA_AGENT_LAUNCH_TOKEN',
+  // Not identity but equally per-spawn: an inherited copy names another launch's CLI.
+  'ORCA_WSL_CLI_DIR'
 ] as const
 const WINDOWS_PATH_ENV_KEY_RE = /^path$/i
 
@@ -55,6 +58,22 @@ function deleteRequestedDaemonEnvKeys(
     keys?.includes('ORCA_CODEX_HOME') === true &&
     env.ORCA_CODEX_HOME !== undefined &&
     env.CODEX_HOME === env.ORCA_CODEX_HOME
+  // A merged caller config can supersede the daemon's recorded overlay source.
+  if (
+    keys?.includes('ORCA_OPENCODE_CONFIG_DIR') &&
+    (env.OPENCODE_CONFIG_DIR === undefined ||
+      env.OPENCODE_CONFIG_DIR === env.ORCA_OPENCODE_CONFIG_DIR)
+  ) {
+    restoreOrStripOverlayEnv(
+      env,
+      {
+        primary: 'OPENCODE_CONFIG_DIR',
+        overlay: 'ORCA_OPENCODE_CONFIG_DIR',
+        source: 'ORCA_OPENCODE_SOURCE_CONFIG_DIR'
+      },
+      {}
+    )
+  }
   for (const key of keys ?? []) {
     delete env[key]
   }

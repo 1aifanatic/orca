@@ -740,8 +740,8 @@ describe('an unexpected provider exit', () => {
       }
     ).sessions.get(SESSION)
     expect(session).toBeDefined()
-    // The exit's settlement is never written; the handle writes again only afterwards.
-    const unwritable = vi
+    // The conversation's one handle refuses every write of the exit's settlement.
+    const refusing = vi
       .spyOn(session!.journal, 'appendLifecycleBatch')
       .mockRejectedValue(new Error('settlement still unavailable'))
     const exitedFence = store.getRecord(SESSION)?.lease.runtimeFence ?? 0
@@ -763,19 +763,20 @@ describe('an unexpected provider exit', () => {
       runtimeFence: exitedFence + 1,
       deathEvidence: { kind: 'exit-observed', detail: 'provider exited', observedAt: NOW }
     })
-    unwritable.mockRestore()
+    // Nothing retries the settlement; the journal writes again, and the next acquire re-derives it.
+    refusing.mockRestore()
 
     dispatch.mockResolvedValueOnce({
       state: 'accepted',
       providerIdentity: { provider: 'codex', threadId: THREAD, turnId: 'turn-next', ordinal: 1 }
     })
     const body = hostTestMessage('sent after a settlement that never landed')
-    const nextEnvelope = envelope('agentSession.send', { body })
-    await expect(host.send(CALLER, { envelope: nextEnvelope, body })).resolves.toMatchObject({
+    const sentEnvelope = envelope('agentSession.send', { body })
+    await expect(host.send(CALLER, { envelope: sentEnvelope, body })).resolves.toMatchObject({
       ok: true,
       value: { submission: { dispatchState: 'pending' } }
     })
-    await vi.waitFor(() => expect(submissionState(nextEnvelope.clientOperationId)).toBe('accepted'))
+    await vi.waitFor(() => expect(submissionState(sentEnvelope.clientOperationId)).toBe('accepted'))
     expect(acquire).toHaveBeenCalledTimes(2)
     // The new child's acquire settled the turn from the release's evidence: ended at the exit's
     // receipt, with the exit's own reason in the row.

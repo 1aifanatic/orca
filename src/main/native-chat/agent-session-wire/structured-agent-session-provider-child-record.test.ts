@@ -296,6 +296,28 @@ describe('Stop on a child still proving its start', () => {
   })
 })
 
+describe('settling an earlier child inside the attach for the next one', () => {
+  it("settles from the earlier child's death evidence and leaves the queued message to the new child (R1)", async () => {
+    // The earlier child exited; the released lease keeps only its death evidence.
+    await store.transitionHandoff(SESSION, (record) => ({
+      ...record,
+      lease: {
+        ...record.lease,
+        deathEvidence: { kind: 'exit-observed', detail: 'provider exited', observedAt: NOW }
+      }
+    }))
+    const releasedFence = store.getRecord(SESSION)!.lease.runtimeFence
+    const id = await accept('for the next child')
+
+    await eventually(() => expect(submission(id)?.dispatchState).toBe('accepted'))
+    // Handed over at the new child's fence, which the attach reserved after settling.
+    const newFence = store.getRecord(SESSION)!.lease.runtimeFence
+    expect(newFence).toBeGreaterThan(releasedFence)
+    expect(submission(id)?.fence).toBe(newFence)
+    expect(conversation()?.child).toMatchObject({ generation: generation(), fence: newFence })
+  })
+})
+
 describe('a published child that dies while it proves its start', () => {
   const EXIT = 'claude stream-json exited (code 1)'
   const TEXT = providerStartupFailureOutcome(EXIT)

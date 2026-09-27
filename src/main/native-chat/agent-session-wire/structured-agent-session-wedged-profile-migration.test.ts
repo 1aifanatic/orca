@@ -398,7 +398,7 @@ describe('already-wedged profiles become usable on load', () => {
     ['a restart eviction', false],
     ['a proven eviction by recovery', true]
   ] as const)(
-    'settles the turn %s left at the next start when the read restore could not write it',
+    'settles the turn %s left at the next acquire when the read restore could not write it',
     async (_origin, ownerOutlivedRestart) => {
       await seedStore(
         wedgedRecord({ claimStatus: 'live', handoffStage: null, ownerProcess: DEAD_OWNER })
@@ -415,7 +415,7 @@ describe('already-wedged profiles become usable on load', () => {
             : { outcome: 'pid-absent' },
         stopOwnerProcess
       })
-      // The read restore's settlement fails; nothing records that it is still owed.
+      // The read restore's settlement fails, and nothing retries it.
       const failing = vi
         .spyOn(AgentSessionJournal.prototype, 'appendLifecycleBatch')
         .mockRejectedValue(new Error('journal unavailable'))

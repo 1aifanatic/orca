@@ -244,24 +244,25 @@ describe('a record an older build left mid terminal handoff', () => {
       claimStatus: 'conflicted',
       handoffStage: 'recovering'
     })
-    // Sending and opening the chat both say what frees it: quitting that terminal agent.
+    // Sending and opening the chat both say what frees it: quitting that terminal agent. A send is
+    // accepted, then rejected by the start that cannot take the lease, and the chat's row says why.
     const quitTerminal =
       'This chat is still open in a terminal agent (process 4242). Quit that agent to continue the chat here.'
-    // Accepted, then rejected by the start that cannot take the lease: the chat says why.
     expect(await delivered('while the terminal still runs')).toMatchObject({
       dispatchState: 'rejected'
     })
+    expect(
+      host
+        .journalSnapshot(SESSION)
+        .items.flatMap((item) =>
+          item.body.kind === 'status' && item.body.tone === 'error' ? [item.body.text] : []
+        )
+    ).toEqual([expect.stringContaining(quitTerminal)])
     const fence = store.getRecord(SESSION)?.lease.runtimeFence ?? null
     expect(await host.attach(CALLER, hostTestAttachParams(fence))).toMatchObject({
       ok: false,
       refusal: { code: 'agent_session_conflict', message: quitTerminal }
     })
-    expect(
-      host
-        .journalSnapshot(SESSION)
-        .items.filter((item) => item.body.kind === 'status' && item.body.tone === 'error')
-        .map((item) => item.body.kind === 'status' && item.body.text)
-    ).toEqual([expect.stringContaining(quitTerminal)])
     expect(dispatch).not.toHaveBeenCalled()
     expect(stopOwnerProcess).not.toHaveBeenCalled()
     expect(acquire).not.toHaveBeenCalled()

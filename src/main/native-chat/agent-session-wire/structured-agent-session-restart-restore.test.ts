@@ -88,15 +88,8 @@ describe('restart journal restoration', () => {
       accountHome: { variable: 'CODEX_HOME', path: '/tmp/codex' },
       runtimeKind: 'native'
     }
-    // Compared by identity only; the restore passes it through untouched.
-    const restored: unknown = {
-      session: {
-        journal: {},
-        params,
-        fence: 4,
-        child: null,
-        acquisitionGeneration: null
-      },
+    const restored = {
+      session: { journal: {}, params, child: null },
       reset: null
     }
     restoreRead.mockResolvedValue(restored)
@@ -126,13 +119,7 @@ describe('restart journal restoration', () => {
   it('does not settle again when a second restore finds the session already open', async () => {
     const settleStaleState = vi.fn(async () => undefined)
     restoreRead.mockResolvedValue({
-      session: {
-        journal: {},
-        params: {},
-        fence: 4,
-        child: null,
-        acquisitionGeneration: null
-      },
+      session: { journal: {}, params: {}, child: null },
       reset: null
     })
 
