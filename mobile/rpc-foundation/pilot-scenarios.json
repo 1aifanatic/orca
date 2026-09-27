@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "baseline": "02a55944347346065453e179e071e64d9ae861dc",
+  "baseline": "af9aa6f243c38538afaeb0a14e3c05a0270f6efa",
   "scenarios": [
     {
       "id": "b1",
@@ -21266,7 +21266,7 @@
             "agent": "claude",
             "sessionId": "session-1",
             "limit": 40,
-            "subscriptionId": "claude:session-1",
+            "subscriptionId": "claude:session-1:00000000-0000-4000-8000-000000000001",
             "capabilities": {
               "transcriptPending": 1
             },
@@ -21377,7 +21377,7 @@
             "agent": "claude",
             "sessionId": "session-1",
             "limit": 40,
-            "subscriptionId": "claude:session-1",
+            "subscriptionId": "claude:session-1:00000000-0000-4000-8000-000000000001",
             "capabilities": {
               "transcriptPending": 1
             },
