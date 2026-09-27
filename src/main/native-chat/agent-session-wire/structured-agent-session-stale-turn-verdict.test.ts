@@ -5,6 +5,10 @@ import { describe, expect, it, vi } from 'vitest'
 import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import type { AgentJournalRenderItem } from '../../../shared/agent-session-journal-types'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
+import {
+  codexSubagentGroupBody,
+  codexSubagentGroupIdentity
+} from '../../codex/codex-subagent-roster'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { createTrackedJournalOpener } from '../agent-session-journal/journal-store-test-open'
 import {
@@ -407,6 +411,58 @@ describe('stale session state on a cold acquire', () => {
       expect(
         items.flatMap((item) => (item.body.kind === 'status' ? [item.body.text] : []))
       ).toEqual(['recovered', UNEXPECTED_PROVIDER_EXIT_OUTCOME])
+    } finally {
+      await journals.closeAll()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('does not count the reopen settling a roster the crashed host left working as activity', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'orca-stale-session-'))
+    const journals = createTrackedJournalOpener()
+    let now = 100
+    const identity = {
+      sessionId: 'session-1',
+      workspaceId: 'workspace-1',
+      hostId: 'local',
+      agent: 'codex' as const,
+      providerHandle: { kind: 'codex' as const, threadId: THREAD }
+    }
+    try {
+      const live = await journals.open({ identity, journalDir: root, now: () => now })
+      await live.appendItem(
+        { provider: 'codex', threadId: THREAD, turnId: 'turn-1', ordinal: 0 },
+        { kind: 'turn', turnId: 'turn-1', state: 'running', startedAt: 100 },
+        { fence: 1 }
+      )
+      now = 200
+      const groupId = `${THREAD}:turn-1`
+      await live.appendItem(
+        codexSubagentGroupIdentity(groupId),
+        codexSubagentGroupBody(groupId, [
+          { id: 'a', label: 'explore', state: 'working', startedAt: 200 }
+        ]),
+        { fence: 1 }
+      )
+      await live.close()
+      // Relaunched long after the crash: the open retires the roster, then the probe proves death.
+      now = 9_000
+      const reopened = await journals.open({ identity, journalDir: root, now: () => now })
+
+      await settleStaleStructuredAgentSessionState({
+        journal: reopened,
+        sessionId: 'session-1',
+        fence: 2,
+        acquisitionGeneration: 'generation-2',
+        deathEvidence: { kind: 'pid-absent', detail: 'gone', observedAt: 8_500 }
+      })
+
+      expect(
+        reopened
+          .snapshot()
+          .items.map((item) => readAgentJournalTurn(item.body))
+          .find(Boolean)
+      ).toMatchObject({ state: 'interrupted', completedAt: 200 })
     } finally {
       await journals.closeAll()
       await rm(root, { recursive: true, force: true })

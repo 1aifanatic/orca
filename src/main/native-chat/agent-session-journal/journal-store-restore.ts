@@ -39,7 +39,9 @@ export function restoreJournalStore(
     publishRepairEpoch: () =>
       collaborators.epochController.start('unreconcilable_prefix', host.state().highestFence),
     adopt: host.adopt,
-    appendItem: (identity, body, fence) => host.journal().appendItem(identity, body, { fence }),
+    // What an open says about a host that is gone is crash reconciliation, never the provider working.
+    appendItem: (identity, body, fence) =>
+      host.journal().appendItem(identity, body, { fence, recovered: true }),
     agent: host.identity.agent,
     highestFence: () => host.state().highestFence,
     malformedRows: host.malformedRows,
