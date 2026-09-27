@@ -20,17 +20,47 @@ export function completeMountedSidebarReveal(args: {
   complete: (landed: boolean) => void
 }): void {
   const complete = (landed: boolean): void => {
-    // Direct scroll input cancels the reveal, not the requested edit.
-    if (args.container.contains(args.element)) {
-      args.beginRename?.()
+    if (args.cancelled()) {
+      return
+    }
+    const input = args.element.querySelector<HTMLElement>('[data-worktree-title-rename-input]')
+    if (
+      !landed &&
+      args.beginRename &&
+      args.wasScrollInterrupted() &&
+      args.container.contains(args.element) &&
+      input &&
+      input.closest('[data-worktree-row-key]') === args.element &&
+      input === args.container.ownerDocument.activeElement
+    ) {
+      // Interrupted rename still exposes its editor, without reopening or reselecting it.
+      revealElementInScrollContainer(args.container, input, 'auto')
     }
     args.complete(landed)
   }
   if (args.cancelled()) {
     return
   }
-  if (!args.container.contains(args.element) || args.wasScrollInterrupted()) {
+  if (!args.container.contains(args.element)) {
     complete(false)
+    return
+  }
+  // Editing is ready at admission; native scrolling retains its own completion.
+  args.beginRename?.()
+  if (args.cancelled()) {
+    return
+  }
+  if (!args.container.contains(args.element)) {
+    complete(false)
+    return
+  }
+  if (args.wasScrollInterrupted()) {
+    // Let the admitted editor attach before preserving interrupted-rename visibility.
+    if (args.beginRename) {
+      args.scheduleFrame(() => complete(false))
+    } else {
+      complete(false)
+    }
     return
   }
   if (!args.isScrollSettling()) {

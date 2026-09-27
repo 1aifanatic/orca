@@ -119,7 +119,6 @@ describe('pending reveal continuity', () => {
     'does not clear a reentrant replacement during %s',
     (action) => {
       const f = mount('worktree')
-      act(f.frame)
       const replacement = { ...f.args.pendingRevealWorktree, worktreeId: 'other' }
       if (action === 'rename') {
         store.setRenamingWorktreeId.mockImplementationOnce(() => {
@@ -130,6 +129,7 @@ describe('pending reveal continuity', () => {
           store.pendingRevealWorktree = replacement
         })
       }
+      act(f.frame)
       f.state.settling = false
       act(f.frame)
       act(f.frame)
@@ -152,7 +152,7 @@ describe('pending reveal continuity', () => {
       expect(f.frames).toHaveLength(0)
       expect(f.scrollTo).toHaveBeenCalledOnce()
       expect(f.args.flashRevealedRow).not.toHaveBeenCalled()
-      expect(store.setRenamingWorktreeId).not.toHaveBeenCalled()
+      expect(store.setRenamingWorktreeId).toHaveBeenCalledTimes(kind === 'worktree' ? 1 : 0)
     }
   )
 
@@ -180,7 +180,7 @@ describe('pending reveal continuity', () => {
       f.hook.rerender({ ...f.args, renderRows: [...f.args.renderRows] })
       act(f.frame)
       expect(f.args.flashRevealedRow).not.toHaveBeenCalled()
-      expect(store.setRenamingWorktreeId).not.toHaveBeenCalled()
+      expect(store.setRenamingWorktreeId).toHaveBeenCalledTimes(kind === 'worktree' ? 1 : 0)
       expect(
         kind === 'worktree'
           ? f.args.clearPendingRevealWorktreeId
@@ -252,6 +252,7 @@ describe('pending reveal continuity', () => {
     f.hook.rerender({ ...f.args, scrollElement: f.container })
     act(f.frame)
     expect(f.scrollTo).toHaveBeenCalledTimes(2)
+    expect(store.setRenamingWorktreeId).toHaveBeenCalledOnce()
     f.state.settling = false
     act(f.frame)
     act(f.frame)
@@ -360,7 +361,10 @@ describe('pending reveal continuity', () => {
     })
     act(f.frame)
     expect(f.args.flashRevealedRow).toHaveBeenCalledExactlyOnceWith('remote-target')
-    expect(store.setRenamingWorktreeId).not.toHaveBeenCalled()
+    expect(store.setRenamingWorktreeId).toHaveBeenCalledExactlyOnceWith({
+      worktreeId: 'target',
+      rowKey: 'target-row'
+    })
     expect(f.scrollTo).toHaveBeenLastCalledWith({ top: 0, behavior: 'auto' })
   })
   it('keeps a folder workspace reveal alive across folder-list updates', () => {

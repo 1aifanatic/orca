@@ -303,6 +303,18 @@ export const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktr
     },
     [markDirectScrollInput]
   )
+  const handleRenameInput = useCallback(
+    (event: React.FormEvent<HTMLDivElement>) => {
+      if (
+        event.target instanceof Element &&
+        event.target.matches('[data-worktree-title-rename-input]')
+      ) {
+        // Native caret reveal owns scrolling once the user edits the title.
+        markDirectScrollInput()
+      }
+    },
+    [markDirectScrollInput]
+  )
   const handleScroll = useCallback(() => {
     markScrollMovement()
   }, [markScrollMovement])
@@ -358,6 +370,8 @@ export const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktr
           virtualItems
         })}
         onKeyDown={handleContainerKeyDown}
+        onFocusCapture={virtualization.retainFocusedRow}
+        onInputCapture={handleRenameInput}
         // Why: trackpad momentum fires sparse scroll events after the input stream quiets; suppress correction until the viewport stops.
         onScroll={handleScroll}
         onPointerDown={handleScrollPointerDown}

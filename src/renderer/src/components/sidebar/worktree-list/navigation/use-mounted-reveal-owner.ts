@@ -10,6 +10,7 @@ type MountedOwner = { request: RevealRequest; cancelled: boolean }
 
 export function useMountedSidebarRevealOwner(argsRef: RefObject<PendingSidebarRevealArgs>) {
   const ownerRef = useRef<MountedOwner | null>(null)
+  const renamedRequestRef = useRef<RevealRequest | null>(null)
   const cancel = useCallback(() => {
     if (ownerRef.current) {
       ownerRef.current.cancelled = true
@@ -68,7 +69,9 @@ export function useMountedSidebarRevealOwner(argsRef: RefObject<PendingSidebarRe
         beginRename:
           'worktreeId' in request && request.beginRename
             ? () => {
-                if (isCurrent(owner)) {
+                if (isCurrent(owner) && renamedRequestRef.current !== request) {
+                  // Root reattachment resumes motion, not an already consumed edit.
+                  renamedRequestRef.current = request
                   useAppStore.getState().setRenamingWorktreeId({
                     worktreeId: request.worktreeId,
                     rowKey: element.dataset.worktreeRowKey

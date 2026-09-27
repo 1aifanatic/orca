@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import type React from 'react'
 import {
   measureElement as measureVirtualElementSize,
@@ -32,6 +32,17 @@ export function useWorktreeListVirtualizer(args: {
   suppressMeasurementAdjustmentUntilRef: React.MutableRefObject<number>
 }) {
   const { renderRows, firstHeaderIndex, scrollRef, scrollOffsetRef } = args
+  const [focusedRowKey, setFocusedRowKey] = useState<string | null>(null)
+  const focusedRowIndex = useMemo(
+    () => renderRows.findIndex((row) => getRenderRowKey(row) === focusedRowKey),
+    [renderRows, focusedRowKey]
+  )
+  const retainFocusedRow = useCallback((event: React.FocusEvent<HTMLElement>) => {
+    const row = event.target.closest<HTMLElement>('[data-worktree-virtual-row-key]')
+    if (row) {
+      setFocusedRowKey(row.dataset.worktreeVirtualRowKey ?? null)
+    }
+  }, [])
   const stickyHeaderIndexes = useMemo(() => getStickyHeaderIndexes(renderRows), [renderRows])
   const activeStickyHeaderIndexRef = useRef<number | null>(null)
   const activeStickyHostIndexRef = useRef<number | null>(null)
@@ -118,13 +129,19 @@ export function useWorktreeListVirtualizer(args: {
     rangeExtractor: useCallback(
       (range: Range) => {
         stickyRangeStartIndexRef.current = range.startIndex
-        return extractWorktreeVirtualRowIndexes({
+        const indexes = extractWorktreeVirtualRowIndexes({
           range,
           stickyHeaderIndexes,
           rows: renderRows
         })
+        // Match descendant retention so scrolling cannot discard an active rename draft.
+        if (focusedRowIndex >= 0 && !indexes.includes(focusedRowIndex)) {
+          indexes.push(focusedRowIndex)
+          indexes.sort((a, b) => a - b)
+        }
+        return indexes
       },
-      [renderRows, stickyHeaderIndexes]
+      [renderRows, stickyHeaderIndexes, focusedRowIndex]
     ),
     overscan: 10,
     gap: WORKTREE_SIDEBAR_VIRTUAL_ROW_GAP,
@@ -153,6 +170,7 @@ export function useWorktreeListVirtualizer(args: {
 
   return {
     virtualizer,
+    retainFocusedRow,
     isCurrentVirtualRowElement,
     stickyHeaderIndexes,
     activeStickyHeaderIndexRef,

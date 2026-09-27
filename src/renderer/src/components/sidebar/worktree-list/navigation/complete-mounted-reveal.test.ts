@@ -9,6 +9,7 @@ import { completeMountedSidebarReveal } from './complete-mounted-reveal'
 function fixture() {
   const container = document.createElement('div')
   const element = document.createElement('div')
+  element.dataset.worktreeRowKey = 'target'
   container.append(element)
   Object.defineProperty(container, 'clientHeight', { value: 600, configurable: true })
   Object.defineProperty(container, 'scrollHeight', { value: 2_000, configurable: true })
@@ -82,10 +83,39 @@ describe('mounted reveal completion', () => {
     frame()
     expect(scrollTo).toHaveBeenCalledExactlyOnceWith({ top: 500, behavior: 'auto' })
     expect(args.complete).not.toHaveBeenCalled()
-    expect(args.beginRename).not.toHaveBeenCalled()
+    expect(args.beginRename).toHaveBeenCalledOnce()
     frame()
     expect(args.complete).toHaveBeenCalledExactlyOnceWith(true)
     expect(args.beginRename).toHaveBeenCalledOnce()
+  })
+
+  it('opens editing before any smooth frames without completing the reveal', () => {
+    const { args, frame } = fixture()
+    completeMountedSidebarReveal(args)
+    expect(args.beginRename).toHaveBeenCalledOnce()
+    expect(args.complete).not.toHaveBeenCalled()
+    frame()
+    expect(args.beginRename).toHaveBeenCalledOnce()
+    expect(args.complete).not.toHaveBeenCalled()
+  })
+
+  it('stops immediately when rename admission replaces its owner', () => {
+    const { args, state, frames, scrollTo } = fixture()
+    args.beginRename.mockImplementation(() => {
+      state.cancelled = true
+    })
+    completeMountedSidebarReveal(args)
+    expect(frames).toHaveLength(0)
+    expect(scrollTo).not.toHaveBeenCalled()
+    expect(args.complete).not.toHaveBeenCalled()
+  })
+
+  it('rechecks containment after rename admission', () => {
+    const { args, frames } = fixture()
+    args.beginRename.mockImplementation(() => args.element.remove())
+    completeMountedSidebarReveal(args)
+    expect(frames).toHaveLength(0)
+    expect(args.complete).toHaveBeenCalledExactlyOnceWith(false)
   })
 
   it('completes an immediate reveal without scheduling animation frames', () => {
@@ -119,9 +149,52 @@ describe('mounted reveal completion', () => {
       state.cancelled = true
       frame()
       expect(args.complete).not.toHaveBeenCalled()
-      expect(args.beginRename).not.toHaveBeenCalled()
+      expect(args.beginRename).toHaveBeenCalledOnce()
     }
   )
+
+  it.each([true, false])(
+    'only exposes the interrupted editor while it owns focus: %s',
+    (focused) => {
+      const { args, state, frame, scrollTo } = fixture()
+      document.body.append(args.container)
+      const input = document.createElement('input')
+      input.dataset.worktreeTitleRenameInput = 'true'
+      input.value = 'draft'
+      input.getBoundingClientRect = () => new DOMRect(0, 1_000, 200, 20)
+      args.element.append(input)
+      completeMountedSidebarReveal(args)
+      if (focused) {
+        input.focus()
+      }
+      state.interrupted = true
+      frame()
+      expect(scrollTo).toHaveBeenCalledTimes(focused ? 1 : 0)
+      expect(args.beginRename).toHaveBeenCalledOnce()
+      expect(input.value).toBe('draft')
+      expect(args.complete).toHaveBeenCalledExactlyOnceWith(false)
+      args.container.remove()
+    }
+  )
+
+  it('does not expose a descendant editor after the requested editor closes', () => {
+    const { args, state, frame, scrollTo } = fixture()
+    document.body.append(args.container)
+    const child = document.createElement('div')
+    child.dataset.worktreeRowKey = 'child'
+    const input = document.createElement('input')
+    input.dataset.worktreeTitleRenameInput = 'true'
+    input.getBoundingClientRect = () => new DOMRect(0, 1_000, 200, 20)
+    child.append(input)
+    args.element.append(child)
+    completeMountedSidebarReveal(args)
+    input.focus()
+    state.interrupted = true
+    frame()
+    expect(scrollTo).not.toHaveBeenCalled()
+    expect(args.complete).toHaveBeenCalledExactlyOnceWith(false)
+    args.container.remove()
+  })
 
   it('preserves rename if input interrupts the final correction frame', () => {
     const { args, state, frame } = fixture()
@@ -134,17 +207,17 @@ describe('mounted reveal completion', () => {
     expect(args.beginRename).toHaveBeenCalledOnce()
   })
 
-  it('does not rename a removed target when scrolling is interrupted', () => {
+  it('does not reopen a removed target when scrolling is interrupted', () => {
     const { args, state, frame } = fixture()
     completeMountedSidebarReveal(args)
     args.element.remove()
     state.interrupted = true
     frame()
     expect(args.complete).toHaveBeenCalledExactlyOnceWith(false)
-    expect(args.beginRename).not.toHaveBeenCalled()
+    expect(args.beginRename).toHaveBeenCalledOnce()
   })
 
-  it('does not rename an element removed before the final scroll', () => {
+  it('does not reopen an element removed before the final scroll', () => {
     const { args, state, frame } = fixture()
     completeMountedSidebarReveal(args)
     args.element.remove()
@@ -152,7 +225,7 @@ describe('mounted reveal completion', () => {
     frame()
     frame()
     expect(args.complete).toHaveBeenCalledExactlyOnceWith(false)
-    expect(args.beginRename).not.toHaveBeenCalled()
+    expect(args.beginRename).toHaveBeenCalledOnce()
   })
 
   it.each(['ignored', 'overwritten', 'shifted'])(
@@ -230,12 +303,25 @@ describe('mounted reveal completion', () => {
   })
 
   it('preserves rename without claiming a landing when input precedes immediate completion', () => {
-    const { args, state } = fixture()
+    const { args, state, frame } = fixture()
     state.settling = false
     state.interrupted = true
     completeMountedSidebarReveal(args)
+    expect(args.complete).not.toHaveBeenCalled()
+    frame()
     expect(args.complete).toHaveBeenCalledExactlyOnceWith(false)
     expect(args.beginRename).toHaveBeenCalledOnce()
+  })
+
+  it('cancels the initial interrupted completion when its owner is replaced', () => {
+    const { args, state, frame, scrollTo } = fixture()
+    state.interrupted = true
+    completeMountedSidebarReveal(args)
+    expect(args.beginRename).toHaveBeenCalledOnce()
+    state.cancelled = true
+    frame()
+    expect(args.complete).not.toHaveBeenCalled()
+    expect(scrollTo).not.toHaveBeenCalled()
   })
 
   it('does not report an already removed immediate target as landed', () => {
