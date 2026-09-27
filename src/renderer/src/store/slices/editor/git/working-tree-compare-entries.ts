@@ -1,13 +1,18 @@
 import type { GitBranchChangeEntry } from '../../../../../../shared/git-diff-compare-types'
 import type { GitStatusEntry } from '../../../../../../shared/git-status-types'
 
+export type WorkingTreeCompareEntry = GitBranchChangeEntry & { branchPath: string }
+
 /** Fold index and working-tree paths onto the branch's merge-base paths. */
 export function getWorkingTreeCompareEntries(
   branchEntries: readonly GitBranchChangeEntry[],
   statusEntries: readonly GitStatusEntry[]
-): GitBranchChangeEntry[] {
-  const entries = new Map(
-    branchEntries.map((entry) => [entry.path, { ...entry, added: undefined, removed: undefined }])
+): WorkingTreeCompareEntry[] {
+  const entries = new Map<string, WorkingTreeCompareEntry>(
+    branchEntries.map((entry) => [
+      entry.path,
+      { ...entry, branchPath: entry.path, added: undefined, removed: undefined }
+    ])
   )
   const ordered = [...statusEntries].sort(
     (a, b) => Number(a.area !== 'staged') - Number(b.area !== 'staged')
@@ -16,24 +21,29 @@ export function getWorkingTreeCompareEntries(
     if (entry.conflictStatus === 'unresolved') {
       continue
     }
-    const previous = entries.get(entry.oldPath ?? entry.path) ?? entries.get(entry.path)
+    const previous = entries.get(entry.path) ?? entries.get(entry.oldPath ?? entry.path)
     const oldPath = previous?.oldPath ?? entry.oldPath
     if (entry.status === 'renamed' && entry.oldPath) {
       entries.delete(entry.oldPath)
     }
     entries.set(entry.path, {
       path: entry.path,
+      branchPath: previous?.branchPath ?? entry.oldPath ?? entry.path,
       oldPath,
       status:
         entry.status === 'deleted'
           ? 'deleted'
           : previous?.status === 'added'
             ? 'added'
-            : oldPath
-              ? 'renamed'
-              : entry.status === 'untracked'
-                ? 'added'
-                : entry.status,
+            : entry.status === 'copied' || previous?.status === 'copied'
+              ? 'copied'
+              : previous?.status === 'deleted' && entry.status === 'untracked'
+                ? 'modified'
+                : oldPath
+                  ? 'renamed'
+                  : entry.status === 'untracked'
+                    ? 'added'
+                    : entry.status,
       added: undefined,
       removed: undefined
     })
@@ -59,12 +69,16 @@ export function getWorkingTreeCompareLineCounts(
     (a, b) => Number(a.area !== 'staged') - Number(b.area !== 'staged')
   )
   for (const entry of [...branchEntries, ...ordered]) {
-    const path = entry.oldPath ?? entry.path
+    const path = counts.has(entry.path) ? entry.path : (entry.oldPath ?? entry.path)
     const previous = counts.get(path)
+    const hadPrevious = counts.has(path)
+    if (entry.status === 'renamed' && entry.oldPath) {
+      counts.delete(entry.oldPath)
+    }
     const known =
       entry.added !== undefined &&
       entry.removed !== undefined &&
-      (!counts.has(path) || previous !== undefined)
+      (!hadPrevious || previous !== undefined)
     counts.set(
       entry.path,
       known

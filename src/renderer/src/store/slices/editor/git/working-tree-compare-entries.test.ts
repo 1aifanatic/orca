@@ -17,6 +17,7 @@ describe('working-tree comparison paths', () => {
     ).toEqual([
       {
         path: 'file.ts',
+        branchPath: 'file.ts',
         status: 'modified',
         added: undefined,
         removed: undefined,
@@ -34,7 +35,12 @@ describe('working-tree comparison paths', () => {
         ]
       )
     ).toEqual([
-      expect.objectContaining({ path: 'third.ts', oldPath: 'first.ts', status: 'renamed' })
+      expect.objectContaining({
+        path: 'third.ts',
+        oldPath: 'first.ts',
+        branchPath: 'second.ts',
+        status: 'renamed'
+      })
     ])
   })
   it('includes untracked and deleted paths but excludes unresolved branch conflicts', () => {
@@ -73,4 +79,48 @@ it('retains conservative size estimates separately from net line totals', () => 
     )
   ).toEqual({ 'file.ts': { added: 6, removed: 6 } })
   expect(getWorkingTreeCompareLineCounts([{ path: 'unknown', status: 'modified' }], [])).toEqual({})
+})
+
+it('accumulates both halves of a porcelain RM rename and preserves unknown sizes', () => {
+  const staged = {
+    path: 'new.ts',
+    oldPath: 'old.ts',
+    status: 'renamed' as const,
+    area: 'staged' as const,
+    added: 3000,
+    removed: 3000
+  }
+  const unstaged = {
+    ...staged,
+    status: 'modified' as const,
+    area: 'unstaged' as const,
+    added: 3000,
+    removed: 3000
+  }
+  expect(getWorkingTreeCompareLineCounts([], [staged, unstaged])).toEqual({
+    'new.ts': { added: 6000, removed: 6000 }
+  })
+  expect(getWorkingTreeCompareLineCounts([], [{ ...staged, added: undefined }, unstaged])).toEqual(
+    {}
+  )
+  expect(
+    getWorkingTreeCompareLineCounts(
+      [{ path: 'old.ts', status: 'modified', added: 1, removed: 1 }],
+      [staged, unstaged]
+    )
+  ).toEqual({ 'new.ts': { added: 6001, removed: 6001 } })
+})
+it('keeps copied files copied after edits and marks recreated base files modified', () => {
+  expect(
+    getWorkingTreeCompareEntries(
+      [{ path: 'copy.ts', oldPath: 'source.ts', status: 'copied' }],
+      [{ path: 'copy.ts', status: 'modified', area: 'unstaged' }]
+    )[0].status
+  ).toBe('copied')
+  expect(
+    getWorkingTreeCompareEntries(
+      [{ path: 'restored.ts', status: 'deleted' }],
+      [{ path: 'restored.ts', status: 'untracked', area: 'untracked' }]
+    )[0].status
+  ).toBe('modified')
 })

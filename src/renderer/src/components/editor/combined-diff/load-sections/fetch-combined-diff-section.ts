@@ -54,7 +54,10 @@ export function fetchCombinedDiffSection({
           headOid: branchCompare.headOid!,
           mergeBase: branchCompare.mergeBase!
         },
-        filePath: entry.path,
+        filePath:
+          file.compareWorkingTree && 'branchPath' in entry && typeof entry.branchPath === 'string'
+            ? entry.branchPath
+            : entry.path,
         oldPath: entry.oldPath
       }
     )
