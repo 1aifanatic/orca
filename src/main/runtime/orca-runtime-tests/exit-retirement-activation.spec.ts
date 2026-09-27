@@ -42,7 +42,7 @@ describe('OrcaRuntimeService', () => {
       id: options.sessionId ?? 'fresh-pty'
     }))
     const adoptStablePane = vi.fn(async () => null)
-    const runtime = new OrcaRuntimeService(runtimeStore as never)
+    const runtime = new OrcaRuntimeService(runtimeStore)
     runtime.setPtyController({
       spawn,
       adoptStablePane,
@@ -69,13 +69,25 @@ describe('OrcaRuntimeService', () => {
 
     const disk = makeDeferred()
     Object.assign(runtimeStore, { flushPendingOrThrowAsync: () => disk.promise })
+    const published = vi.fn()
+    runtime.onMobileSessionTabsChanged(published)
     // The stream end: the mirror's re-activation starts the moment the host releases it.
     let reactivation: Promise<unknown> | undefined
+    let observedAtStreamEnd: { binding?: string; publications: number } | undefined
     runtime.subscribeToPtyExit('pty-b', () => {
+      observedAtStreamEnd = {
+        binding:
+          getSession().terminalLayoutsByTabId['host-tab']?.ptyIdsByLeafId?.[
+            HEADLESS_SECOND_LEAF_ID
+          ],
+        publications: published.mock.calls.length
+      }
       reactivation = activate(HEADLESS_SECOND_LEAF_ID, 'automatic').catch((error) => error)
     })
     const exiting = runtime.onPtyExit('pty-b', 0, undefined, { providerExitObserved: true })
 
+    // Why: whatever answers the stream end, over any transport, must already see the leaf retired.
+    expect(observedAtStreamEnd).toEqual({ binding: undefined, publications: 1 })
     expect(reactivation).toBeDefined()
     // Why: the refusal must come from the lookup, before any stable-pane adoption can revive it.
     expect(await reactivation).toEqual(new Error('tab_not_found'))
