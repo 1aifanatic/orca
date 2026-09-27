@@ -177,7 +177,7 @@ describe.runIf(process.platform !== 'win32')('Claude under the POSIX provider su
     const startedAt = Date.now()
     await expect(close()).resolves.toBe(true)
 
-    // Claude's own SIGTERM reap ran, well before the supervisor's stdin-end grace would force it.
+    // Claude's own SIGTERM reap ran at once, not after the supervisor's stdin-end grace.
     expect(Date.now() - startedAt).toBeLessThan(DEFAULT_PROVIDER_SUPERVISOR_GRACE_MS)
     expect(existsSync(marker)).toBe(true)
     await expect(exit).resolves.toEqual({ code: null, signal: 'SIGTERM' })
@@ -199,7 +199,7 @@ describe.runIf(process.platform !== 'win32')('Claude under the POSIX provider su
     expect(alive(pids.claude)).toBe(false)
   })
 
-  it("stops Claude when Orca's main dies, and leaves a daemon that left its tree alone", async () => {
+  it("stops Claude and its tool when Orca's main dies, and leaves a daemon that left its tree alone", async () => {
     const specs: ProcessSpec[] = []
     createClaudeCodeProcessSpawn((spec) => {
       specs.push(spec)
@@ -216,6 +216,8 @@ describe.runIf(process.platform !== 'win32')('Claude under the POSIX provider su
 
     expect(await waitFor(() => !alive(pids.claude), PROVIDER_SUPERVISOR_MAX_STOP_MS)).toBe(true)
     expect(await waitFor(() => !alive(pids.root), PROVIDER_SUPERVISOR_MAX_STOP_MS)).toBe(true)
+    // In its own group, so only Claude's SIGTERM handler could have reaped it.
+    expect(alive(pids.tool)).toBe(false)
     // Not the conversation's writer: nothing proves it orphaned, so the stop never reaches it.
     expect(alive(pids.daemon)).toBe(true)
   })
