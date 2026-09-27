@@ -1,4 +1,5 @@
 import type { VirtualItem, Virtualizer } from '@tanstack/react-virtual'
+import type { MeasuredRowScrollAdjustment } from './use-scroll-suppression'
 
 type SidebarVirtualizer = Virtualizer<HTMLDivElement, HTMLDivElement>
 
@@ -12,13 +13,16 @@ export type LineageScrollAdjustment = (
 type OuterScrollAdjustmentOwner = {
   getVirtualItems: () => readonly VirtualItem[]
   itemSizeCache: ReadonlyMap<VirtualItem['key'], number>
-  shouldAdjustScrollPositionOnItemSizeChange: SidebarVirtualizer['shouldAdjustScrollPositionOnItemSizeChange']
 }
 
-export function createLineageScrollAdjustment(
+export function createLineageScrollAdjustment(args: {
   outer: OuterScrollAdjustmentOwner
-): LineageScrollAdjustment {
-  return (groupKey, item, delta, instance) => {
+  shouldAdjustMeasuredRowScroll: MeasuredRowScrollAdjustment
+  // The shared map records observations the instance never admitted: equal-size and transferred rows.
+  hasPriorObservation: (rowKey: string) => boolean
+}): LineageScrollAdjustment {
+  const { outer } = args
+  return (groupKey, item, _delta, instance) => {
     if (!outer.itemSizeCache.has(groupKey) || instance.scrollOffset === null) {
       return false
     }
@@ -28,6 +32,10 @@ export function createLineageScrollAdjustment(
     if (!group || group.start >= scrollOffset || group.end <= scrollOffset) {
       return false
     }
-    return outer.shouldAdjustScrollPositionOnItemSizeChange?.(item, delta, instance) ?? false
+    return args.shouldAdjustMeasuredRowScroll(
+      item,
+      instance,
+      instance.itemSizeCache.has(item.key) || args.hasPriorObservation(String(item.key))
+    )
   }
 }

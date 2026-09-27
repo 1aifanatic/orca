@@ -51,7 +51,7 @@ export function VirtualizedLineageDescendants({
     measuredHeights: ctx.lineageMeasuredHeights
   })
   const offsets = useMemo(
-    () => getLineageVirtualOffsets(tree, measurements.heights),
+    () => getLineageVirtualOffsets(tree, measurements.resolveSize),
     [tree, measurements]
   )
   const retainedIndexes = virtualItems.map((item) => item.index)

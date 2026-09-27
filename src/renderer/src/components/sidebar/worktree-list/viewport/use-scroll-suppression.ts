@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react'
 import type React from 'react'
+import type { VirtualItem, Virtualizer } from '@tanstack/react-virtual'
 import { SUPPRESS_WORKTREE_LIST_SCROLL_ADJUSTMENT_EVENT } from '../../WorktreeCardAgents'
 import {
   createPendingRevealScroll,
@@ -28,6 +29,19 @@ export function shouldAdjustWorktreeSidebarMeasuredRowScroll(args: {
     ? args.itemStart < args.scrollOffset
     : args.itemEnd <= args.scrollOffset && args.scrollDirection !== 'backward'
 }
+
+type MeasuredRow = Pick<VirtualItem, 'key' | 'start' | 'end'>
+type MeasuredRowOwner = Pick<
+  Virtualizer<HTMLDivElement, HTMLDivElement>,
+  'isScrolling' | 'itemSizeCache' | 'scrollAdjustments' | 'scrollDirection' | 'scrollOffset'
+>
+
+// hasPriorObservation is explicit: the library's size cache only records a nonzero delta.
+export type MeasuredRowScrollAdjustment = (
+  item: MeasuredRow,
+  instance: MeasuredRowOwner,
+  hasPriorObservation?: boolean
+) => boolean
 
 export type WorktreeSidebarScrollSuppression = ReturnType<
   typeof useWorktreeSidebarScrollSuppression

@@ -62,15 +62,24 @@ export function retainLineageVirtualAncestors(
   return retained
 }
 
+export type LineageRowSize = (rowKey: string) => number
+
+// Spacers must resolve a row as the virtualizer does, cache first, or the two prefixes disagree.
+export function createLineageRowSizeResolver(
+  measuredHeights: ReadonlyMap<string, number>,
+  virtualizedSizes?: ReadonlyMap<string | number | bigint, number>
+): LineageRowSize {
+  return (rowKey) =>
+    virtualizedSizes?.get(rowKey) ?? measuredHeights.get(rowKey) ?? ESTIMATED_LINEAGE_CARD_HEIGHT
+}
+
 export function getLineageVirtualOffsets(
   tree: LineageVirtualTree,
-  measuredHeights: ReadonlyMap<string, number>
+  resolveSize: LineageRowSize
 ): number[] {
   const offsets = [0]
   for (const node of tree.nodes) {
-    offsets.push(
-      offsets.at(-1)! + (measuredHeights.get(node.row.rowKey) ?? ESTIMATED_LINEAGE_CARD_HEIGHT)
-    )
+    offsets.push(offsets.at(-1)! + resolveSize(node.row.rowKey))
   }
   return offsets
 }

@@ -5,6 +5,7 @@ import type { LineageScrollAdjustment } from './lineage-scroll-adjustment'
 import { getInitialLineageMeasurements } from './lineage-measurement-cache'
 import { scrollLineageVirtualizer } from './lineage-scroll-to'
 import {
+  createLineageRowSizeResolver,
   ESTIMATED_LINEAGE_CARD_HEIGHT,
   LINEAGE_SIBLING_GAP,
   LINEAGE_VIRTUAL_OVERSCAN,
@@ -30,10 +31,6 @@ export function useLineageVirtualizer(args: {
     (revision: number) => revision + 1,
     0
   )
-  const measurements = useMemo(
-    () => ({ heights: measuredHeights, revision: measurementRevision }),
-    [measuredHeights, measurementRevision]
-  )
   const getItemKey = useCallback((index: number) => tree.nodes[index]!.row.rowKey, [tree])
   const virtualizer = useVirtualizer<HTMLDivElement, HTMLDivElement>({
     count: tree.nodes.length,
@@ -51,6 +48,14 @@ export function useLineageVirtualizer(args: {
   })
   virtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item, delta, instance) =>
     args.shouldAdjustScroll(args.groupKey, item, delta, instance)
+  // The revision covers both authorities: the instance can resize when the shared map does not.
+  const measurements = useMemo(
+    () => ({
+      resolveSize: createLineageRowSizeResolver(measuredHeights, virtualizer.itemSizeCache),
+      revision: measurementRevision
+    }),
+    [measuredHeights, measurementRevision, virtualizer]
+  )
 
   const measureRows = useCallback(() => {
     const container = childrenRef.current
@@ -80,11 +85,21 @@ export function useLineageVirtualizer(args: {
         fullHeight -
         (descendants?.getBoundingClientRect().height ?? 0) +
         (node.followingSibling ? LINEAGE_SIBLING_GAP : 0)
-      if (height <= 0 || measuredHeights.get(node.row.rowKey) === height) {
+      const publishedSize = measuredHeights.get(node.row.rowKey)
+      // The size this row occupies now, read the way resizeItem reads it, so a no-op cannot notify.
+      const occupiedSize =
+        virtualizer.itemSizeCache.get(node.row.rowKey) ??
+        virtualizer.measurementsCache[index]?.size ??
+        publishedSize ??
+        ESTIMATED_LINEAGE_CARD_HEIGHT
+      if (height <= 0 || (occupiedSize === height && publishedSize === height)) {
         continue
       }
+      if (occupiedSize !== height) {
+        // Resize before publishing, so the fold policy still reads this row's prior observation.
+        virtualizer.resizeItem(index, height)
+      }
       measuredHeights.set(node.row.rowKey, height)
-      virtualizer.resizeItem(index, height)
       changed = true
     }
     if (changed) {

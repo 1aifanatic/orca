@@ -58,7 +58,11 @@ export function buildWorktreeVirtualRowContext(args: BuildArgs): WorktreeVirtual
     renderRows: args.renderRows,
     scrollRef: args.scrollRef,
     lineageMeasuredHeights: args.lineageMeasuredHeights,
-    shouldAdjustLineageScroll: createLineageScrollAdjustment(args.virtualization.virtualizer),
+    shouldAdjustLineageScroll: createLineageScrollAdjustment({
+      outer: args.virtualization.virtualizer,
+      shouldAdjustMeasuredRowScroll: args.virtualization.shouldAdjustMeasuredRowScroll,
+      hasPriorObservation: (rowKey) => args.lineageMeasuredHeights.has(rowKey)
+    }),
     pendingRevealWorktree: props.pendingRevealWorktree,
     pendingRevealSidebarRow: props.pendingRevealSidebarRow,
     firstHeaderIndex: args.firstHeaderIndex,

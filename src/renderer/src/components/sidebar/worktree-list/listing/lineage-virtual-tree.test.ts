@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { lineageRow } from '../rows/lineage-virtualization-test-fixtures'
 import {
   buildLineageVirtualTree,
+  createLineageRowSizeResolver,
   getLineageRevealMeasurementIndexes,
   getLineageVirtualChildSpans,
   getLineageVirtualOffsets,
@@ -13,10 +14,10 @@ describe('lineage virtual tree', () => {
     const tree = buildLineageVirtualTree(
       Array.from({ length: 500 }, (_, n) => lineageRow(`child-${n}`))
     )
-    const estimated = getLineageVirtualOffsets(tree, new Map())
+    const estimated = getLineageVirtualOffsets(tree, createLineageRowSizeResolver(new Map()))
     const measured = getLineageVirtualOffsets(
       tree,
-      new Map(tree.nodes.map((node) => [node.row.rowKey, 40]))
+      createLineageRowSizeResolver(new Map(tree.nodes.map((node) => [node.row.rowKey, 40])))
     )
     expect(getLineageRevealMeasurementIndexes(400, estimated, 400)).toEqual(
       Array.from({ length: 31 }, (_, n) => n + 385)
@@ -46,7 +47,10 @@ describe('lineage virtual tree', () => {
       lineageRow('third')
     ]
     const tree = buildLineageVirtualTree(rows)
-    const offsets = getLineageVirtualOffsets(tree, new Map(rows.map((row) => [row.rowKey, 100])))
+    const offsets = getLineageVirtualOffsets(
+      tree,
+      createLineageRowSizeResolver(new Map(rows.map((row) => [row.rowKey, 100])))
+    )
     expect(getLineageVirtualChildSpans(tree, tree.roots, new Set([2]), offsets)).toEqual([
       { type: 'spacer', key: rows[0]!.rowKey, height: 196 },
       { type: 'row', index: 2 },
@@ -55,5 +59,22 @@ describe('lineage virtual tree', () => {
     expect(getLineageVirtualChildSpans(tree, tree.roots, new Set(), offsets)).toEqual([
       { type: 'spacer', key: rows[0]!.rowKey, height: 400 }
     ])
+  })
+
+  it('resolves a row size the way the virtualizer does: instance cache, shared height, estimate', () => {
+    const rows = [lineageRow('cached'), lineageRow('shared'), lineageRow('unmeasured')]
+    const tree = buildLineageVirtualTree(rows)
+    const shared = new Map([
+      [rows[0]!.rowKey, 70],
+      [rows[1]!.rowKey, 50]
+    ])
+    const instanceSizes = new Map<string | number | bigint, number>([[rows[0]!.rowKey, 56]])
+    const resolveSize = createLineageRowSizeResolver(shared, instanceSizes)
+
+    expect(rows.map((row) => resolveSize(row.rowKey))).toEqual([56, 50, 96])
+    expect(getLineageVirtualOffsets(tree, resolveSize)).toEqual([0, 56, 106, 202])
+    // A shared prune must not move a row the instance still measures.
+    shared.delete(rows[0]!.rowKey)
+    expect(resolveSize(rows[0]!.rowKey)).toBe(56)
   })
 })
