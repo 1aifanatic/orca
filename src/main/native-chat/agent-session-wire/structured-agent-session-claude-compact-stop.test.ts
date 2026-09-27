@@ -34,10 +34,13 @@ let store: AgentSessionRecordStore
 let host: StructuredAgentSessionHost
 let adapter: ClaudeStructuredSessionAdapter
 let claude: ReturnType<typeof fakeClaude>
+/** The adapter's clock, which a real child's exit reads at a different instant than the host's. */
+let adapterNow = NOW
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'orca-claude-compact-stop-'))
   resetHostTestOperationIds()
+  adapterNow = NOW + 7
   // No echo of its own: each test writes the frames Claude would.
   claude = fakeClaude({ replayUuid: null })
   adapter = new ClaudeStructuredSessionAdapter({
@@ -61,7 +64,7 @@ beforeEach(async () => {
     onDispatchSettledLate: (settlement) => void host.settleLateDispatch(settlement),
     openConnection: claude.openConnection,
     readProcessStartTime: async () => 1_700_000_000_000,
-    now: () => NOW
+    now: () => adapterNow
   })
   store = await AgentSessionRecordStore.open({ directory: join(root, 'store'), hostId: 'local' })
   host = new StructuredAgentSessionHost({
@@ -252,4 +255,32 @@ it('settles a /compact whose Claude child exits mid-command through that child, 
   await vi.waitFor(async () => expect((await commandState(cmid))?.state).toBe('interrupted'))
   const { connection } = await sent('after the exit')
   expect(connection).not.toBe(compacting)
+})
+
+it('tells why a /compact ended when its Claude child exits after taking it', async () => {
+  const cmid = await compact()
+  const { connection, uuid } = await sent('/compact')
+  // Claude echoes the command, so the send is answered; then the child dies with no end frame.
+  frame(connection, {
+    type: 'user',
+    uuid,
+    parent_tool_use_id: null,
+    message: { role: 'user', content: [{ type: 'text', text: '/compact' }] }
+  })
+  await host.flushStreamedEvents(SESSION)
+  adapterNow = NOW + 7
+  connection.handlers.onExit?.(new Error('claude stream-json exited (code 1)'))
+
+  await vi.waitFor(async () => expect((await commandState(cmid))?.state).toBe('interrupted'))
+  await vi.waitFor(async () => {
+    await host.flushStreamedEvents(SESSION)
+    const snapshot = await host.journalSnapshot(SESSION)
+    const exitRow = snapshot.items.find(
+      (item) => item.body.kind === 'status' && item.body.text.includes('claude stream-json exited')
+    )
+    expect(exitRow?.turnScope).toEqual({
+      kind: 'turn',
+      turnItemId: structuredAgentSessionCommandTurn(cmid).itemId
+    })
+  })
 })

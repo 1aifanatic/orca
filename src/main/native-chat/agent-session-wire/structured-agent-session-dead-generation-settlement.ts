@@ -1,10 +1,8 @@
 import { parseAgentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
-import { isRootAgentJournalItem } from '../../../shared/agent-session-journal-producer'
 import {
   AGENT_JOURNAL_THREAD_SCOPE,
   type AgentJournalItemBody,
-  type AgentJournalRenderItem,
-  type AgentJournalTurnScope
+  type AgentJournalRenderItem
 } from '../../../shared/agent-session-journal-types'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import { partitionJournalLifecycleMutations } from '../agent-session-journal/journal-lifecycle-batch-partition'
@@ -21,6 +19,10 @@ import {
   turnVerdictFromDeathEvidence,
   type StructuredAgentSessionTurnVerdict
 } from './structured-agent-session-stale-turn-verdict'
+import {
+  exitedRootTurnScope,
+  runningRootTurnScope
+} from './structured-agent-session-exit-turn-scope'
 
 export const UNEXPECTED_PROVIDER_EXIT_OUTCOME =
   'The provider stopped while this response was in progress. You can continue in this conversation.'
@@ -197,7 +199,7 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
           text: boundJournalStatusText(unexpectedProviderExitOutcome(input.unexpectedExitReason)),
           tone: 'error'
         },
-        turnScope: runningRootTurnScope(items)
+        turnScope: exitedRootTurnScope(items, input.verdict)
       })
     }
     for (const item of items) {
@@ -227,13 +229,6 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
     input.onError?.(input.sessionId, error)
     return false
   }
-}
-
-function runningRootTurnScope(items: readonly AgentJournalRenderItem[]): AgentJournalTurnScope {
-  const running = items.findLast(
-    (item) => isRootAgentJournalItem(item) && readAgentJournalTurn(item.body)?.state === 'running'
-  )
-  return running ? { kind: 'turn', turnItemId: running.itemId } : AGENT_JOURNAL_THREAD_SCOPE
 }
 
 /**
