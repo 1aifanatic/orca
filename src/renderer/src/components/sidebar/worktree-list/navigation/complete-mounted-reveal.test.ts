@@ -1,5 +1,9 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import {
+  createPendingRevealScroll,
+  isRevealScrollSettling
+} from '../../worktree-sidebar-reveal-scroll-settle'
 import { completeMountedSidebarReveal } from './complete-mounted-reveal'
 
 function fixture() {
@@ -36,6 +40,38 @@ function fixture() {
 afterEach(() => vi.restoreAllMocks())
 
 describe('mounted reveal completion', () => {
+  it.each([1, -1])(
+    'does not correct moving native scroll after the settle hint expires (direction %s)',
+    (direction) => {
+      const now = vi.spyOn(window.performance, 'now').mockReturnValue(0)
+      const { args, state, frame, scrollTo } = fixture()
+      args.container.scrollTop = direction === 1 ? 0 : 2_000
+      const pending = createPendingRevealScroll(direction === 1 ? 500 : 966, 0)
+      args.isScrollSettling = () =>
+        isRevealScrollSettling({
+          now: window.performance.now(),
+          pending,
+          scrollTop: args.container.scrollTop
+        })
+      completeMountedSidebarReveal(args)
+      now.mockReturnValue(1_050)
+      state.settling = false
+      args.container.scrollTop += direction * 100
+      frame()
+      expect(scrollTo).not.toHaveBeenCalled()
+      expect(args.complete).not.toHaveBeenCalled()
+      args.container.scrollTop += direction * 50
+      frame()
+      expect(scrollTo).not.toHaveBeenCalled()
+      frame()
+      expect(scrollTo).not.toHaveBeenCalled()
+      now.mockReturnValue(1_151)
+      frame()
+      frame()
+      expect(args.complete).toHaveBeenCalledExactlyOnceWith(true)
+    }
+  )
+
   it('retains the request through smooth movement and corrects the measured landing before completing', () => {
     const { args, state, frame, scrollTo } = fixture()
     completeMountedSidebarReveal(args)
@@ -239,6 +275,26 @@ describe('mounted reveal completion', () => {
     frame()
     expect(args.complete).toHaveBeenCalledExactlyOnceWith(true)
     expect(args.element.getBoundingClientRect().bottom).toBe(600)
+  })
+
+  it('rechecks the measured title when growth and viewport shrink clip it after correction', () => {
+    const { args, state, frame } = fixture()
+    const title = document.createElement('span')
+    title.dataset.worktreeTitleInlineRename = ''
+    title.getBoundingClientRect = () =>
+      new DOMRect(0, args.element.getBoundingClientRect().top, 200, 20)
+    args.element.append(title)
+    completeMountedSidebarReveal(args)
+    state.settling = false
+    frame()
+    args.element.getBoundingClientRect = () =>
+      new DOMRect(0, 1_000 - args.container.scrollTop, 200, 800)
+    Object.defineProperty(args.container, 'clientHeight', { value: 510 })
+    frame()
+    expect(args.complete).not.toHaveBeenCalled()
+    frame()
+    expect(title.getBoundingClientRect().bottom).toBeLessThanOrEqual(510)
+    expect(args.complete).toHaveBeenCalledExactlyOnceWith(true)
   })
 
   it('keeps the visible title when a corrected card grows larger than the viewport', () => {

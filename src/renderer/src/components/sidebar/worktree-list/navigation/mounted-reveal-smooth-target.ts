@@ -25,8 +25,13 @@ export function createMountedRevealSmoothTarget(
   if (initialTarget === null) {
     return null
   }
+  let oversized =
+    initialBounds.end - initialBounds.start >
+    container.clientHeight - WORKTREE_SIDEBAR_REVEAL_TOP_INSET
   const edge =
-    initialBounds.start < container.scrollTop + WORKTREE_SIDEBAR_REVEAL_TOP_INSET ? 'start' : 'end'
+    initialBounds.start < container.scrollTop + WORKTREE_SIDEBAR_REVEAL_TOP_INSET || oversized
+      ? 'start'
+      : 'end'
   let issuedTarget = Math.max(0, initialTarget)
   let previousDistance = Math.abs(issuedTarget - container.scrollTop)
   return {
@@ -34,14 +39,22 @@ export function createMountedRevealSmoothTarget(
     expiresAt: now + REVEAL_SCROLL_SETTLE_TIMEOUT_MS * 2,
     retarget: (markScroll) => {
       const bounds = getElementScrollBounds(container, element)
+      oversized ||=
+        bounds.end - bounds.start > container.clientHeight - WORKTREE_SIDEBAR_REVEAL_TOP_INSET
+      const target = Math.max(
+        0,
+        oversized
+          ? bounds.start - WORKTREE_SIDEBAR_REVEAL_TOP_INSET
+          : initialTarget + bounds[edge] - initialBounds[edge]
+      )
       if (
+        (!oversized || Math.abs(target - container.scrollTop) <= 1) &&
         getScrollTopToRevealBounds(container, bounds, WORKTREE_SIDEBAR_REVEAL_TOP_INSET) === null
       ) {
         // A fast native frame can reach the moved row before its new endpoint is issued.
         stopSidebarRevealScroll(container, markScroll)
         return
       }
-      const target = Math.max(0, initialTarget + bounds[edge] - initialBounds[edge])
       const distance = Math.abs(target - container.scrollTop)
       const closingDistance = Math.max(0, previousDistance - distance)
       previousDistance = distance

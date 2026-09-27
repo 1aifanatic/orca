@@ -1,5 +1,6 @@
 import { VIRTUALIZED_SCROLL_ANCHOR_RECORD_EVENT } from '@/hooks/useVirtualizedScrollAnchor'
 import {
+  getElementScrollBounds,
   revealElementInScrollContainer,
   WORKTREE_SIDEBAR_REVEAL_TOP_INSET
 } from '../../worktree-sidebar-reveal'
@@ -73,7 +74,15 @@ export function completeMountedSidebarReveal(args: {
       const viewportTop = args.container.getBoundingClientRect().top
       const viewportBottom = viewportTop + args.container.clientHeight
       const usableHeight = args.container.clientHeight - WORKTREE_SIDEBAR_REVEAL_TOP_INSET
-      const titleVisible = rect.top >= viewportTop - 1 && rect.top < viewportBottom
+      const titleEnd =
+        rect.height > usableHeight
+          ? getElementScrollBounds(args.container, args.element).titleEnd
+          : undefined
+      const titleVisible =
+        rect.top >= viewportTop - 1 &&
+        rect.top < viewportBottom &&
+        (titleEnd === undefined ||
+          titleEnd <= args.container.scrollTop + args.container.clientHeight + 1)
       const endVisible = rect.bottom <= viewportBottom + 1 || rect.height > usableHeight
       if (Math.abs(rect.top - expectedTop) <= 1 && titleVisible && endVisible) {
         complete(true)

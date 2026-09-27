@@ -33,6 +33,7 @@ export type PendingSidebarRevealArgs = {
   agentSendTargetWorktreeId: string | null
   renderRows: RenderRow[]
   virtualizer: Virtualizer<HTMLDivElement, HTMLDivElement>
+  scrollElement?: HTMLDivElement | null
   scrollRef: React.RefObject<HTMLDivElement | null>
   worktrees: Worktree[]
   folderWorkspaces: readonly FolderWorkspace[]

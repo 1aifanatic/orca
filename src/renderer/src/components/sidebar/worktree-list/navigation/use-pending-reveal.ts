@@ -7,7 +7,7 @@ import { getRenderRowSidebarKey, rowKeyMatchesRenderRow } from './render-row-loo
 import { revealMountedSidebarRowElement, revealMountedWorktreeElement } from './mounted-row-reveal'
 import { expandSidebarRowRevealAncestors } from './expand-sidebar-row-reveal-ancestors'
 import { sidebarWorkspaceStillExists } from './folder-reveal'
-import { completeMountedSidebarReveal } from './complete-mounted-reveal'
+import { useMountedSidebarRevealOwner } from './use-mounted-reveal-owner'
 import {
   expandGroupsForWorktreeReveal,
   findPendingWorktreeRevealIndex,
@@ -18,15 +18,22 @@ import {
 
 // Drives the store's two pending reveal requests (a worktree card, or any sidebar row)
 // from "expand the ancestors" through "scroll the mounted element into view".
-export function usePendingSidebarReveal(args: PendingSidebarRevealArgs): void {
-  const setRenamingWorktreeId = useAppStore((s) => s.setRenamingWorktreeId)
+export function usePendingSidebarReveal(args: PendingSidebarRevealArgs): () => void {
   const [pendingRevealRetryTick, setPendingRevealRetryTick] = useState(0)
-  const pendingRevealRetryRef = useRef<{ worktreeId: string; count: number } | null>(null)
-  const pendingRowRevealRetryRef = useRef<{ rowKey: string; count: number } | null>(null)
+  const pendingRevealRetryRef = useRef<{
+    request: PendingSidebarRevealArgs['pendingRevealWorktree']
+    count: number
+  } | null>(null)
+  const pendingRowRevealRetryRef = useRef<{
+    request: PendingSidebarRevealArgs['pendingRevealSidebarRow']
+    count: number
+  } | null>(null)
   const argsRef = useRef(args)
   useLayoutEffect(() => {
     argsRef.current = args
   })
+
+  const mounted = useMountedSidebarRevealOwner(argsRef)
 
   const {
     pendingRevealWorktree,
@@ -43,7 +50,7 @@ export function usePendingSidebarReveal(args: PendingSidebarRevealArgs): void {
 
   const scheduleRetryTick = useCallback(
     (cancelled: () => boolean) => {
-      schedulePendingRevealFrame(() => {
+      argsRef.current.schedulePendingRevealFrame(() => {
         if (!cancelled()) {
           setPendingRevealRetryTick((tick) => tick + 1)
         }
@@ -53,7 +60,7 @@ export function usePendingSidebarReveal(args: PendingSidebarRevealArgs): void {
   )
 
   useEffect(() => {
-    if (!pendingRevealWorktree) {
+    if (!pendingRevealWorktree || mounted.has(pendingRevealWorktree)) {
       return
     }
     const current = argsRef.current
@@ -72,83 +79,62 @@ export function usePendingSidebarReveal(args: PendingSidebarRevealArgs): void {
       if (isCancelled()) {
         return
       }
+      const current = argsRef.current
       const targetWorktreeStillExists = sidebarWorkspaceStillExists(
         pendingRevealWorktree.worktreeId,
-        argsRef.current.worktrees,
-        argsRef.current.folderWorkspaces,
+        current.worktrees,
+        current.folderWorkspaces,
         pendingRevealWorktree.executionHostId
       )
       const targetIndex = findPendingWorktreeRevealIndex(
-        renderRows,
+        current.renderRows,
         pendingRevealWorktree,
-        pinnedDisplayPolicy
+        current.pinnedDisplayPolicy
       )
       const outcome = resolvePendingSidebarReveal({ targetIndex, targetWorktreeStillExists })
       if (outcome === 'clear') {
         pendingRevealRetryRef.current = null
-        clearPendingRevealWorktreeId()
+        argsRef.current.clearPendingRevealWorktreeId()
         return
       }
       if (outcome !== 'scroll-and-clear') {
         return
       }
-      const targetRow = renderRows[targetIndex]
-      const container = argsRef.current.scrollRef.current
-      const revealedOption = container
-        ? revealMountedWorktreeElement(
-            container,
-            pendingRevealWorktree.worktreeId,
-            pendingRevealWorktree.behavior,
-            getRenderRowOptionId(
-              targetRow,
-              pendingRevealWorktree.worktreeId,
-              pendingRevealWorktree.executionHostId
-            ),
-            markRevealScroll
-          )
-        : null
-      if (revealedOption && container) {
-        completeMountedSidebarReveal({
+      const targetRow = current.renderRows[targetIndex]
+      const container = current.scrollRef.current
+      if (
+        container &&
+        mounted.start(
+          pendingRevealWorktree,
           container,
-          element: revealedOption,
-          behavior: pendingRevealWorktree.behavior,
-          cancelled: isCancelled,
-          isScrollSettling: () => argsRef.current.isRevealScrollSettling(),
-          wasScrollInterrupted: () => argsRef.current.wasRevealScrollInterrupted(),
-          markRevealScroll,
-          scheduleFrame: schedulePendingRevealFrame,
-          beginRename: pendingRevealWorktree.beginRename
-            ? () =>
-                setRenamingWorktreeId({
-                  worktreeId: pendingRevealWorktree.worktreeId,
-                  rowKey: revealedOption.dataset.worktreeRowKey
-                })
-            : undefined,
-          complete: (landed) => {
-            if (isCancelled()) {
-              return
-            }
-            if (landed && pendingRevealWorktree.highlight) {
-              const revealedRowKey =
-                revealedOption.dataset.worktreeRowKey ?? getRenderRowSidebarKey(targetRow)
-              if (revealedRowKey) {
-                flashRevealedRow(revealedRowKey)
-              }
-            }
+          () =>
+            revealMountedWorktreeElement(
+              container,
+              pendingRevealWorktree.worktreeId,
+              pendingRevealWorktree.behavior,
+              getRenderRowOptionId(
+                targetRow,
+                pendingRevealWorktree.worktreeId,
+                pendingRevealWorktree.executionHostId
+              ),
+              (top) => argsRef.current.markRevealScroll(top)
+            ),
+          getRenderRowSidebarKey(targetRow),
+          () => {
             pendingRevealRetryRef.current = null
-            clearPendingRevealWorktreeId()
           }
-        })
+        )
+      ) {
         return
       }
 
       // Why: virtual indexing can leave the card edge clipped; stage it into the window, then retry the exact DOM reveal.
-      virtualizer.scrollToIndex(targetIndex, { align: 'auto', behavior: 'auto' })
+      current.virtualizer.scrollToIndex(targetIndex, { align: 'auto', behavior: 'auto' })
       const previousRetry = pendingRevealRetryRef.current
       const nextRetryCount =
-        previousRetry?.worktreeId === pendingRevealWorktree.worktreeId ? previousRetry.count + 1 : 1
+        previousRetry?.request === pendingRevealWorktree ? previousRetry.count + 1 : 1
       pendingRevealRetryRef.current = {
-        worktreeId: pendingRevealWorktree.worktreeId,
+        request: pendingRevealWorktree,
         count: nextRetryCount
       }
       if (nextRetryCount <= MAX_REVEAL_RETRIES) {
@@ -156,12 +142,13 @@ export function usePendingSidebarReveal(args: PendingSidebarRevealArgs): void {
         return
       }
       pendingRevealRetryRef.current = null
-      clearPendingRevealWorktreeId()
+      argsRef.current.clearPendingRevealWorktreeId()
     })
     return () => {
       cancelled = true
     }
   }, [
+    mounted,
     pendingRevealWorktree,
     args.agentSendTargetWorktreeId,
     args.groupBy,
@@ -182,16 +169,16 @@ export function usePendingSidebarReveal(args: PendingSidebarRevealArgs): void {
     pinnedDisplayPolicy,
     args.projectGrouping,
     args.projectGroups,
+    args.scrollElement,
     pendingRevealRetryTick,
     flashRevealedRow,
     markRevealScroll,
-    setRenamingWorktreeId,
     schedulePendingRevealFrame,
     scheduleRetryTick
   ])
 
   useEffect(() => {
-    if (!pendingRevealSidebarRow) {
+    if (!pendingRevealSidebarRow || mounted.has(pendingRevealSidebarRow)) {
       return
     }
     const current = argsRef.current
@@ -214,9 +201,9 @@ export function usePendingSidebarReveal(args: PendingSidebarRevealArgs): void {
     const retryPendingReveal = (): boolean => {
       const previousRetry = pendingRowRevealRetryRef.current
       const nextRetryCount =
-        previousRetry?.rowKey === pendingRevealSidebarRow.rowKey ? previousRetry.count + 1 : 1
+        previousRetry?.request === pendingRevealSidebarRow ? previousRetry.count + 1 : 1
       pendingRowRevealRetryRef.current = {
-        rowKey: pendingRevealSidebarRow.rowKey,
+        request: pendingRevealSidebarRow,
         count: nextRetryCount
       }
       if (nextRetryCount <= MAX_REVEAL_RETRIES) {
@@ -229,7 +216,8 @@ export function usePendingSidebarReveal(args: PendingSidebarRevealArgs): void {
       if (isCancelled()) {
         return
       }
-      const targetIndex = renderRows.findIndex((row) =>
+      const current = argsRef.current
+      const targetIndex = current.renderRows.findIndex((row) =>
         rowKeyMatchesRenderRow(row, pendingRevealSidebarRow.rowKey)
       )
       if (targetIndex === -1) {
@@ -237,7 +225,7 @@ export function usePendingSidebarReveal(args: PendingSidebarRevealArgs): void {
           return
         }
         pendingRowRevealRetryRef.current = null
-        clearPendingRevealSidebarRow()
+        argsRef.current.clearPendingRevealSidebarRow()
         toast.error(
           translate(
             'auto.components.sidebar.WorktreeList.sidebarRowMissing',
@@ -247,51 +235,41 @@ export function usePendingSidebarReveal(args: PendingSidebarRevealArgs): void {
         return
       }
 
-      const container = argsRef.current.scrollRef.current
-      const revealedElement = container
-        ? revealMountedSidebarRowElement(
-            container,
-            pendingRevealSidebarRow.rowKey,
-            pendingRevealSidebarRow.behavior,
-            markRevealScroll
-          )
-        : null
-      if (revealedElement && container) {
-        completeMountedSidebarReveal({
+      const container = current.scrollRef.current
+      if (
+        container &&
+        mounted.start(
+          pendingRevealSidebarRow,
           container,
-          element: revealedElement,
-          behavior: pendingRevealSidebarRow.behavior,
-          cancelled: isCancelled,
-          isScrollSettling: () => argsRef.current.isRevealScrollSettling(),
-          wasScrollInterrupted: () => argsRef.current.wasRevealScrollInterrupted(),
-          markRevealScroll,
-          scheduleFrame: schedulePendingRevealFrame,
-          complete: (landed) => {
-            if (isCancelled()) {
-              return
-            }
-            if (landed && pendingRevealSidebarRow.highlight) {
-              flashRevealedRow(pendingRevealSidebarRow.rowKey)
-            }
+          () =>
+            revealMountedSidebarRowElement(
+              container,
+              pendingRevealSidebarRow.rowKey,
+              pendingRevealSidebarRow.behavior,
+              (top) => argsRef.current.markRevealScroll(top)
+            ),
+          pendingRevealSidebarRow.rowKey,
+          () => {
             pendingRowRevealRetryRef.current = null
-            clearPendingRevealSidebarRow()
           }
-        })
+        )
+      ) {
         return
       }
 
-      virtualizer.scrollToIndex(targetIndex, { align: 'auto', behavior: 'auto' })
+      current.virtualizer.scrollToIndex(targetIndex, { align: 'auto', behavior: 'auto' })
       if (retryPendingReveal()) {
         return
       }
       pendingRowRevealRetryRef.current = null
-      clearPendingRevealSidebarRow()
+      argsRef.current.clearPendingRevealSidebarRow()
     })
 
     return () => {
       cancelled = true
     }
   }, [
+    mounted,
     pendingRevealSidebarRow,
     args.repoMap,
     args.projectGroups,
@@ -301,6 +279,7 @@ export function usePendingSidebarReveal(args: PendingSidebarRevealArgs): void {
     args.toggleGroup,
     renderRows,
     virtualizer,
+    args.scrollElement,
     pendingRevealRetryTick,
     flashRevealedRow,
     markRevealScroll,
@@ -308,4 +287,5 @@ export function usePendingSidebarReveal(args: PendingSidebarRevealArgs): void {
     schedulePendingRevealFrame,
     scheduleRetryTick
   ])
+  return mounted.cancel
 }

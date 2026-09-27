@@ -8,6 +8,7 @@ export const WORKTREE_SIDEBAR_REVEAL_TOP_INSET =
 type SidebarRevealBounds = {
   start: number
   end: number
+  titleEnd?: number
 }
 
 export function getElementScrollBounds(
@@ -16,7 +17,14 @@ export function getElementScrollBounds(
 ): SidebarRevealBounds {
   const containerRect = container.getBoundingClientRect()
   const elementRect = element.getBoundingClientRect()
+  const title =
+    elementRect.height > container.clientHeight - WORKTREE_SIDEBAR_REVEAL_TOP_INSET
+      ? element.querySelector('[data-worktree-title-inline-rename]')?.getBoundingClientRect()
+      : undefined
   return {
+    ...(title && title.height > 0
+      ? { titleEnd: title.bottom - containerRect.top + container.scrollTop }
+      : {}),
     start: elementRect.top - containerRect.top + container.scrollTop,
     end: elementRect.bottom - containerRect.top + container.scrollTop
   }
@@ -32,6 +40,12 @@ export function getScrollTopToRevealBounds(
   const viewportBottom = container.scrollTop + container.clientHeight
   if (bounds.start < viewportTop) {
     return bounds.start - viewportTopInset
+  }
+  if (bounds.end - bounds.start > container.clientHeight - viewportTopInset) {
+    const titleVisible = bounds.titleEnd !== undefined && bounds.titleEnd <= viewportBottom
+    return titleVisible || Math.abs(bounds.start - viewportTop) <= 1
+      ? null
+      : bounds.start - viewportTopInset
   }
   if (bounds.end > viewportBottom) {
     return bounds.end - container.clientHeight

@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { revealElementInScrollContainer } from '../../worktree-sidebar-reveal'
 import { createMountedRevealSmoothTarget } from './mounted-reveal-smooth-target'
 
 function fixture(scrollTop = 0, top = 10_000) {
@@ -8,7 +9,7 @@ function fixture(scrollTop = 0, top = 10_000) {
   const geometry = { top, height: 55 }
   container.append(element)
   container.scrollTop = scrollTop
-  Object.defineProperty(container, 'clientHeight', { value: 600 })
+  Object.defineProperty(container, 'clientHeight', { value: 600, configurable: true })
   container.getBoundingClientRect = () => new DOMRect(0, 100, 200, 600)
   element.getBoundingClientRect = () =>
     new DOMRect(0, 100 + geometry.top - container.scrollTop, 200, geometry.height)
@@ -21,6 +22,72 @@ function fixture(scrollTop = 0, top = 10_000) {
 afterEach(() => vi.restoreAllMocks())
 
 describe('measured smooth reveal destination', () => {
+  it('aims at the title of an oversized card from the initial native write', () => {
+    const f = fixture(0, 1_000)
+    f.geometry.height = 800
+    revealElementInScrollContainer(f.container, f.element, 'smooth', f.markScroll)
+    expect(f.scrollTo).toHaveBeenCalledExactlyOnceWith({ top: 966, behavior: 'smooth' })
+    const target = createMountedRevealSmoothTarget(f.container, f.element, 'smooth', 0)!
+    f.geometry.height = 900
+    target.retarget(f.markScroll)
+    expect(f.scrollTo).toHaveBeenCalledOnce()
+    f.container.scrollTop = 401
+    target.retarget(f.markScroll)
+    expect(f.scrollTo).toHaveBeenCalledOnce()
+    f.container.scrollTop = 966
+    target.retarget(f.markScroll)
+    expect(f.scrollTo).toHaveBeenLastCalledWith({ top: 966, behavior: 'auto' })
+  })
+
+  it.each(['growth', 'shrink'] as const)(
+    'switches once to title alignment when live geometry becomes oversized (%s)',
+    (change) => {
+      const f = fixture(0, 1_000)
+      if (change === 'shrink') {
+        f.geometry.height = 500
+      }
+      const target = createMountedRevealSmoothTarget(f.container, f.element, 'smooth', 0)!
+      f.container.scrollTop = 401
+      if (change === 'growth') {
+        f.geometry.height = 800
+      } else {
+        Object.defineProperty(f.container, 'clientHeight', { value: 450 })
+      }
+      target.retarget(f.markScroll)
+      expect(f.scrollTo).toHaveBeenCalledExactlyOnceWith({ top: 966, behavior: 'smooth' })
+      f.geometry.height = 100
+      target.retarget(f.markScroll)
+      expect(f.scrollTo).toHaveBeenCalledOnce()
+    }
+  )
+
+  it.each([false, true])(
+    'does not accept an initially clipped oversized title (measured title: %s)',
+    (measured) => {
+      const f = fixture(0, 599)
+      f.geometry.height = 800
+      if (measured) {
+        const title = document.createElement('span')
+        title.dataset.worktreeTitleInlineRename = ''
+        title.getBoundingClientRect = () => new DOMRect(0, 699, 200, 20)
+        f.element.append(title)
+      }
+      revealElementInScrollContainer(f.container, f.element, 'smooth', f.markScroll)
+      expect(f.scrollTo).toHaveBeenCalledExactlyOnceWith({ top: 565, behavior: 'smooth' })
+    }
+  )
+
+  it('preserves an already readable measured title on an oversized card', () => {
+    const f = fixture(0, 500)
+    f.geometry.height = 800
+    const title = document.createElement('span')
+    title.dataset.worktreeTitleInlineRename = ''
+    title.getBoundingClientRect = () => new DOMRect(0, 600, 200, 20)
+    f.element.append(title)
+    revealElementInScrollContainer(f.container, f.element, 'smooth', f.markScroll)
+    expect(f.scrollTo).not.toHaveBeenCalled()
+  })
+
   it('accumulates distant measurement drift without repeatedly restarting native easing', () => {
     const f = fixture()
     const target = createMountedRevealSmoothTarget(f.container, f.element, 'smooth', 20)!

@@ -147,7 +147,8 @@ export const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktr
     suppressMeasurementAdjustmentUntilRef: scrollSuppression.suppressMeasurementAdjustmentUntilRef
   })
 
-  usePendingSidebarReveal({
+  const cancelMountedReveal = usePendingSidebarReveal({
+    scrollElement,
     pendingRevealWorktree: props.pendingRevealWorktree,
     pendingRevealSidebarRow: props.pendingRevealSidebarRow,
     clearPendingRevealWorktreeId: props.clearPendingRevealWorktreeId,
@@ -272,6 +273,7 @@ export const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktr
     (node: HTMLDivElement | null) => {
       if (node === null && scrollRef.current !== null) {
         // Why: drag previews, autoscroll frames, and reveal snapshots are tied to the scroll root; clear them before it unmounts.
+        cancelMountedReveal()
         cancelPendingRevealFrames()
         clearRevealHighlightFrame()
         clearRevealHighlightTimeout()
@@ -281,6 +283,7 @@ export const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktr
       setScrollElement(node)
     },
     [
+      cancelMountedReveal,
       cancelPendingRevealFrames,
       clearRevealHighlightFrame,
       clearRevealHighlightTimeout,
