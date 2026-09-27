@@ -94,14 +94,17 @@ describe('watchAgentComposerReady', () => {
     expect(w.composer.signal()).toBe('none')
   })
 
-  it('does not watch an agent that announces rest in its own title', () => {
-    // Claude arms bracketed paste before its trust and bypass-permissions dialogs.
-    const composer = watchAgentComposerReady('claude', {
-      subscribeToData: () => () => {},
-      readRecentOutput: () => undefined
-    })
-    expect(composer).toBeNull()
-  })
+  it.each(['claude', 'claude-agent-teams', 'openclaude'] as const)(
+    'does not watch %s, which runs Claude Code',
+    (agent) => {
+      // Claude Code arms bracketed paste before its trust and bypass-permissions dialogs.
+      const composer = watchAgentComposerReady(agent, {
+        subscribeToData: () => () => {},
+        readRecentOutput: () => undefined
+      })
+      expect(composer).toBeNull()
+    }
+  )
 
   it('reads output that arrived before the wait subscribed', () => {
     const w = watch(

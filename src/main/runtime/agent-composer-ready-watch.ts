@@ -12,9 +12,9 @@
  * next 133;D / 133;A (command finished / prompt drawn). A transport that emits no 133;C never arms
  * it, and the wait is exactly `tui-idle`.
  *
- * An agent that announces rest in its own title (Claude's `✳`) is read by that title alone: it arms
- * bracketed paste before its first-run dialogs (workspace trust, bypass permissions), so for it the
- * signal cannot tell a composer from a dialog.
+ * Claude Code, and every agent that runs it, is read by its `✳` title alone: it arms bracketed paste
+ * before its first-run dialogs (workspace trust, bypass permissions), so for it the signal cannot
+ * tell a composer from a dialog.
  */
 
 import {
@@ -23,7 +23,6 @@ import {
 } from '../../shared/draft-paste-ready-scanner'
 import type { TuiAgent } from '../../shared/tui-agent'
 import { TUI_AGENT_CONFIG } from '../../shared/tui-agent-config'
-import { announcesRestInOwnTitle } from './tui-idle-evidence'
 
 /** `ready`: the agent's composer marker rendered. `armed`: it enabled bracketed paste and settles
  *  once its output goes quiet. `awaiting-marker`: the agent owns the PTY and its composer has a
@@ -38,6 +37,13 @@ export type AgentComposerReadyWatch = {
 // OSC 133 marks: C = the shell handed the terminal to a command; D / A = it took it back.
 const OSC_133_PREFIX = '\x1b]133;'
 const OWNERSHIP_MARKS = new Set(['A', 'C', 'D'])
+// Why the launch mode and the fork too: both show Claude Code's dialogs, and a worker brief or an
+// Agent Teams launch text sent on a settled wait would answer the bypass-permissions prompt.
+const CLAUDE_CODE_AGENTS: ReadonlySet<TuiAgent> = new Set([
+  'claude',
+  'claude-agent-teams',
+  'openclaude'
+])
 
 export function watchAgentComposerReady(
   agent: TuiAgent,
@@ -46,7 +52,7 @@ export function watchAgentComposerReady(
     readRecentOutput: () => string | undefined
   }
 ): AgentComposerReadyWatch | null {
-  if (announcesRestInOwnTitle(agent)) {
+  if (CLAUDE_CODE_AGENTS.has(agent)) {
     return null
   }
   const readySignal =

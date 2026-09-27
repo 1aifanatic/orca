@@ -179,8 +179,8 @@ describe('launch readiness on a name-only title that arrives before the composer
 })
 
 describe("Claude's trust dialog under a launch-readiness wait", () => {
-  // Claude sets no title before this dialog, so the composer rank applies and its signal fires;
-  // the rendered-screen check on the poll is what reports the dialog instead of pasting.
+  // Claude sets no title before this dialog and gets no composer watcher; the rendered-screen check
+  // on the poll is what reports the dialog.
   it.each(['claude-dialog-trust-workspace', 'claude-dialog-trust-workspace-narrow'])(
     'reports %s as blocked, never as ready',
     async (name) => {

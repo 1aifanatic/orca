@@ -83,10 +83,6 @@ export function hasFreshWorkingFirstPartyStatus(status: FirstPartyAgentStatus): 
  *  but is not yet held to it. */
 const NATIVE_EXPLICIT_IDLE_TITLE_AGENTS: ReadonlySet<TuiAgent> = new Set(['claude'])
 
-export function announcesRestInOwnTitle(agent: TuiAgent): boolean {
-  return NATIVE_EXPLICIT_IDLE_TITLE_AGENTS.has(agent)
-}
-
 /**
  * Whether a name-only title from `agent` must be corroborated by a quiet stream.
  *
