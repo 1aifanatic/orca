@@ -293,8 +293,8 @@ describe('settled attach retry', () => {
       deathEvidence: null
     })
 
-    // The next start goes ahead as a fresh reservation.
-    await startAgent()
+    // The interrupted operation's own retry continues it as a fresh reservation.
+    await expect(host.attach(CALLER, params)).resolves.toMatchObject({ ok: true })
     expect(mintSpawnToken).toHaveBeenCalledTimes(2)
     expect(spawnTokens).toEqual(['spawn-1', 'spawn-2'])
     expect(store.getRecord(SESSION)?.lease).toMatchObject({
