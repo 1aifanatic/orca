@@ -294,7 +294,7 @@ test('deleting the active scrolled worktree preserves position and closes the ro
   )
   await expect(
     orcaPage.locator(`[data-worktree-sidebar] [data-worktree-id=${JSON.stringify(successorId)}]`)
-  ).toHaveCount(0)
+  ).not.toBeInViewport()
 })
 
 test('reduced motion removes the active row without animating its neighbor', async ({

@@ -12,7 +12,7 @@ export function createMountedRevealSmoothTarget(
   element: HTMLElement,
   behavior: ScrollBehavior,
   now: number
-): { expiresAt: number; retarget: (markScroll: (targetTop: number) => void) => void } | null {
+): { retargetUntil: number; retarget: (markScroll: (targetTop: number) => void) => void } | null {
   if (resolveSidebarRevealScrollBehavior(behavior) !== 'smooth') {
     return null
   }
@@ -35,8 +35,8 @@ export function createMountedRevealSmoothTarget(
   let issuedTarget = Math.max(0, initialTarget)
   let previousDistance = Math.abs(issuedTarget - container.scrollTop)
   return {
-    // Bound the original motion plus its measured approach even if rows keep changing.
-    expiresAt: now + REVEAL_SCROLL_SETTLE_TIMEOUT_MS * 2,
+    // Bound new destinations; the latest issued motion retains its own settle window.
+    retargetUntil: now + REVEAL_SCROLL_SETTLE_TIMEOUT_MS * 2,
     retarget: (markScroll) => {
       const bounds = getElementScrollBounds(container, element)
       oversized ||=

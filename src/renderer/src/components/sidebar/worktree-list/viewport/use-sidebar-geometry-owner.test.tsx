@@ -10,6 +10,8 @@ import {
 import type { VirtualizedScrollAnchor } from '@/hooks/useVirtualizedScrollAnchor'
 import { lineageRow } from '../rows/lineage-virtualization-test-fixtures'
 import type { RenderRow } from '../listing/render-row'
+import { revealElementInScrollContainer } from '../../worktree-sidebar-reveal'
+import { completeMountedSidebarReveal } from '../navigation/complete-mounted-reveal'
 
 vi.mock('@/store', () => ({
   useAppStore: (selector: (state: { renamingWorktreeId: null }) => unknown) =>
@@ -22,6 +24,9 @@ let current: WorktreeListVirtualizer
 let suppression: WorktreeSidebarScrollSuppression
 let height: number
 let width: number
+let rowHeight: number
+let viewportHeight: number
+let pendingReveal: { worktreeId: string; behavior: 'auto' } | null
 let committedAnchors: VirtualizedScrollAnchor[]
 let activeId: string | null
 let reads: number
@@ -59,7 +64,7 @@ function Probe({
     props: {
       activeWorktreeId: activeId,
       activeWorkspaceExecutionHostId: 'local',
-      pendingRevealWorktree: null,
+      pendingRevealWorktree: pendingReveal,
       pendingRevealSidebarRow: null,
       defaultHostId: 'local'
     }
@@ -69,6 +74,34 @@ function Probe({
     current = owner
     suppression = policy
   })
+  if (renderRows[0]?.type === 'lineage-group') {
+    return (
+      <div data-sizer="" style={{ height: owner.total }}>
+        <div data-owner-tree="" data-index="0" ref={owner.measureVirtualRowElement}>
+          <div
+            data-lineage-virtual-children=""
+            data-owner-tree-children=""
+            style={{ height: owner.total - owner.boundaries[1]! }}
+          >
+            {[...owner.selected]
+              .filter((index) => index > 0)
+              .map((index) => {
+                const node = owner.model.nodes[index]!
+                return (
+                  <div
+                    key={node.key}
+                    data-owner-tree-leaf=""
+                    data-owner-start={owner.boundaries[node.slot]}
+                    data-sidebar-geometry-node={node.key}
+                    data-worktree-id={node.row.type === 'item' ? node.row.worktree.id : undefined}
+                  />
+                )
+              })}
+          </div>
+        </div>
+      </div>
+    )
+  }
   return (
     <div data-sizer="" data-tick={tick} style={{ height: owner.total }}>
       {owner.outerItems.map((item) => (
@@ -82,6 +115,9 @@ beforeEach(() => {
   committedAnchors = []
   activeId = null
   width = 300
+  rowHeight = 116
+  viewportHeight = 100
+  pendingReveal = null
   reads = 0
   writes = []
   observers = []
@@ -94,9 +130,9 @@ beforeEach(() => {
   scrollRef = { current: element }
   Object.defineProperties(element, {
     clientWidth: { get: () => width },
-    clientHeight: { get: () => 100 },
+    clientHeight: { get: () => viewportHeight },
     offsetWidth: { get: () => 300 },
-    offsetHeight: { get: () => 100 },
+    offsetHeight: { get: () => viewportHeight },
     scrollHeight: {
       get: () =>
         Math.round(
@@ -114,12 +150,32 @@ beforeEach(() => {
   originalRect = Element.prototype.getBoundingClientRect
   Element.prototype.getBoundingClientRect = function () {
     if (this === element) {
-      return new DOMRect(0, 0, 300, 100)
+      return new DOMRect(0, 0, 300, viewportHeight)
+    }
+    if (this.hasAttribute('data-owner-tree')) {
+      const children = this.querySelector<HTMLElement>('[data-owner-tree-children]')!
+      return new DOMRect(
+        0,
+        -element.scrollTop,
+        300,
+        height + Number.parseFloat(children.style.height)
+      )
+    }
+    if (this instanceof HTMLElement && this.hasAttribute('data-owner-tree-children')) {
+      return new DOMRect(0, height - element.scrollTop, 300, Number.parseFloat(this.style.height))
+    }
+    if (this.hasAttribute('data-owner-tree-leaf')) {
+      return new DOMRect(
+        0,
+        Number(this.getAttribute('data-owner-start')) + 1 - element.scrollTop,
+        300,
+        rowHeight
+      )
     }
     const index = this.getAttribute('data-index')
     if (index !== null) {
       reads++
-      return new DOMRect(0, 0, 300, index === '0' ? height : 116)
+      return new DOMRect(0, 0, 300, index === '0' ? height : rowHeight)
     }
     return new DOMRect()
   }
@@ -294,4 +350,54 @@ it('compensates fully above-fold growth when only the following gap spans the fo
   await nativeDelivery()
   expect(element.scrollTop).toBe(157)
   expect(writes).toEqual([{ top: 157, extent: 520 }])
+})
+
+it('premeasures an end-aligned recycled lineage before the mounted auto reveal completes', async () => {
+  const tree: RenderRow[] = [
+    {
+      type: 'lineage-group',
+      key: 'root',
+      rows: [
+        lineageRow('root', 0),
+        ...Array.from({ length: 500 }, (_, index) => lineageRow(`row-${index}`, 1))
+      ]
+    }
+  ]
+  viewportHeight = 519
+  element.scrollTop = offsetRef.current = 1
+  activeId = 'root'
+  await act(async () => root.render(<Probe renderRows={tree} />))
+  rowHeight = height = 38
+  await act(async () => root.render(<Probe renderRows={tree} newCardStyle />))
+  pendingReveal = { worktreeId: 'row-400', behavior: 'auto' }
+  await act(async () => root.render(<Probe renderRows={tree} newCardStyle />))
+  const target = element.querySelector<HTMLElement>('[data-worktree-id="row-400"]')!
+  writes.length = 0
+  await act(async () => {
+    revealElementInScrollContainer(element, target, 'auto', suppression.markRevealScroll)
+    completeMountedSidebarReveal({
+      container: element,
+      element: target,
+      behavior: 'auto',
+      cancelled: () => false,
+      isScrollSettling: suppression.isRevealScrollSettling,
+      wasScrollInterrupted: suppression.wasRevealScrollInterrupted,
+      markRevealScroll: suppression.markRevealScroll,
+      scheduleFrame: () => {
+        throw new Error('Auto arrival must not need a timer')
+      },
+      complete: (landed) => {
+        expect(landed).toBe(true)
+        pendingReveal = null
+        root.render(<Probe renderRows={tree} newCardStyle />)
+      }
+    })
+    element.dispatchEvent(new Event('scroll'))
+    suppression.markScrollMovement()
+  })
+  const landed = target.getBoundingClientRect()
+  expect(landed.top).toBeGreaterThanOrEqual(0)
+  expect(landed.bottom).toBeLessThanOrEqual(viewportHeight)
+  expect(writes).toHaveLength(1)
+  expect(current.selected.size).toBeLessThan(60)
 })

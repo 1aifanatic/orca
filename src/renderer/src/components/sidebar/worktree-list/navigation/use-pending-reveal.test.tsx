@@ -65,6 +65,13 @@ describe('pending reveal continuity', () => {
       expect(f.scrollTo).toHaveBeenCalledExactlyOnceWith({ top: 9_500, behavior: 'smooth' })
       now.mockReturnValue(2_001)
       act(f.frame)
+      expect(f.scrollTo).toHaveBeenCalledOnce()
+      expect(f.args.flashRevealedRow).not.toHaveBeenCalled()
+      expect(f.args.clearPendingRevealWorktreeId).not.toHaveBeenCalled()
+      expect(f.args.clearPendingRevealSidebarRow).not.toHaveBeenCalled()
+      f.container.scrollTop = 9_500
+      f.state.settling = false
+      act(f.frame)
       act(f.frame)
       expect(f.args.flashRevealedRow).toHaveBeenCalledExactlyOnceWith('target-row')
       expect(

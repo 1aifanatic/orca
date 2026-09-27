@@ -108,7 +108,6 @@ export function useWorktreeListVirtualizer(args: {
   const stickyHeaderIndexes = useMemo(() => getStickyHeaderIndexes(renderRows), [renderRows])
   const activeStickyHeaderIndexRef = useRef<number | null>(null)
   const activeStickyHostIndexRef = useRef<number | null>(null)
-  const stickyRangeStartIndexRef = useRef(0)
   const { targets: targetNodes, retainInteraction: retainFocusedRow } = useSidebarRowRetention({
     model,
     ...args.props,
@@ -130,7 +129,6 @@ export function useWorktreeListVirtualizer(args: {
     stickyHeaderIndexes,
     rootByOuterIndex
   })
-  stickyRangeStartIndexRef.current = outerStart
   const stableSlots = useReusedArrayIdentity(selectedSlots)
   const rangeExtractor = useCallback(() => stableSlots, [stableSlots])
   const virtualizer = useVirtualizer<HTMLDivElement, HTMLDivElement>({
@@ -286,6 +284,6 @@ export function useWorktreeListVirtualizer(args: {
     stickyHeaderIndexes,
     activeStickyHeaderIndexRef,
     activeStickyHostIndexRef,
-    stickyRangeStartIndexRef
+    rangeStartIndex: outerStart
   }
 }

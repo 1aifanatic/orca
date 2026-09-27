@@ -104,7 +104,7 @@ describe('measured smooth reveal destination', () => {
     expect(f.scrollTo).toHaveBeenCalledExactlyOnceWith({ top: 6_455, behavior: 'smooth' })
     target.retarget(f.markScroll)
     expect(f.scrollTo).toHaveBeenCalledOnce()
-    expect(target.expiresAt).toBe(2_020)
+    expect(target.retargetUntil).toBe(2_020)
   })
 
   it('retargets before one fast measurement frame can cross the viewport', () => {

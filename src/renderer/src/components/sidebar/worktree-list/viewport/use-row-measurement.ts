@@ -15,7 +15,7 @@ export function useVirtualRowMeasurementSync(args: {
   const virtualItems = virtualization.outerItems
   const activeStickyIndexes = getActiveStickyIndexesForScroll({
     rows: renderRows,
-    rangeStartIndex: virtualization.stickyRangeStartIndexRef.current,
+    rangeStartIndex: virtualization.rangeStartIndex,
     scrollOffset: virtualization.presentationOffset,
     stickyHeaderIndexes: virtualization.stickyHeaderIndexes,
     virtualItems

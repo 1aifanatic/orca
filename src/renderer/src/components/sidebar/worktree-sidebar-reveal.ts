@@ -31,7 +31,7 @@ export function getElementScrollBounds(
 }
 
 export function getScrollTopToRevealBounds(
-  container: HTMLElement,
+  container: Pick<HTMLElement, 'scrollTop' | 'clientHeight'>,
   bounds: SidebarRevealBounds,
   topInset = 0
 ): number | null {

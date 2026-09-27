@@ -97,22 +97,24 @@ test('smooth reveal keeps moving while another lineage mounts', async ({ orcaPag
 
   const result = await orcaPage.evaluate(async () => {
     const scroller = document.querySelector<HTMLElement>('[data-worktree-sidebar]')!
-    const containerTop = scroller.getBoundingClientRect().top
-    const target = [
-      ...scroller.querySelectorAll<HTMLElement>('[data-worktree-id^="smooth-parent-"]')
-    ].findLast(
-      (element) => element.getBoundingClientRect().top - containerTop > scroller.clientHeight + 200
-    )
-    if (!target?.dataset.worktreeId) {
-      throw new Error('Expected a mounted overscan target below the viewport')
-    }
-    const lineageBefore = scroller.querySelectorAll('[data-lineage-virtual-children]').length
-    const samples: (SidebarScrollSample & { groups: number })[] = []
+    // Keep the destination beyond both retained endpoint windows so travel mounts new lineages.
+    const targetId = 'smooth-parent-60'
+    const readLineageIds = (): string[] =>
+      [...scroller.querySelectorAll('[data-lineage-virtual-children]')].map((element) => {
+        const key = element.closest<HTMLElement>('[data-worktree-virtual-row-key]')?.dataset
+          .worktreeVirtualRowKey
+        if (!key) {
+          throw new Error('Mounted lineage has no stable row identity')
+        }
+        return key
+      })
+    const lineageIdsBefore = readLineageIds()
+    const lineageBefore = lineageIdsBefore.length
+    const samples: (SidebarScrollSample & { groups: number; lineageIds: string[] })[] = []
     let captureTimedOut = false
     const initialOffset = scroller.scrollTop
-    const targetId = target.dataset.worktreeId
     const startedAt = performance.now()
-    window.__store!.getState().revealWorktreeInSidebar(target.dataset.worktreeId, {
+    window.__store!.getState().revealWorktreeInSidebar(targetId, {
       behavior: 'smooth',
       highlight: true
     })
@@ -139,6 +141,7 @@ test('smooth reveal keeps moving while another lineage mounts', async ({ orcaPag
       const content = row?.querySelector<HTMLElement>('[data-worktree-title-inline-rename]')
       const contentRect = content?.getBoundingClientRect()
       const viewportTop = scroller.getBoundingClientRect().top + scroller.clientTop
+      const lineageIds = readLineageIds()
       samples.push({
         time: performance.now() - startedAt,
         scrollTop: scroller.scrollTop,
@@ -157,7 +160,8 @@ test('smooth reveal keeps moving while another lineage mounts', async ({ orcaPag
                 })
               }
             : null,
-        groups: scroller.querySelectorAll('[data-lineage-virtual-children]').length
+        groups: lineageIds.length,
+        lineageIds
       })
     }
     return {
@@ -165,6 +169,7 @@ test('smooth reveal keeps moving while another lineage mounts', async ({ orcaPag
       initialOffset,
       captureTimedOut,
       lineageBefore,
+      lineageIdsBefore,
       sidebarHeight: scroller.clientHeight,
       samples
     }
@@ -174,8 +179,10 @@ test('smooth reveal keeps moving while another lineage mounts', async ({ orcaPag
   const { finalOffset, longestPause } = metrics
   const intermediateMounts = result.samples.filter(
     (sample, index) =>
-      sample.groups > result.lineageBefore &&
-      sample.groups > (result.samples[index - 1]?.groups ?? result.lineageBefore) &&
+      index > 0 &&
+      sample.lineageIds.some(
+        (id) => !(result.samples[index - 1]?.lineageIds ?? result.lineageIdsBefore).includes(id)
+      ) &&
       isSidebarScrollIntermediate(sample, metrics)
   ).length
   console.log(

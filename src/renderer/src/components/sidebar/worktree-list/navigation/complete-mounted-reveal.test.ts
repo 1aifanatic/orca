@@ -30,7 +30,7 @@ function fixture() {
     cancelled: () => state.cancelled,
     isScrollSettling: () => state.settling,
     wasScrollInterrupted: () => state.interrupted,
-    markRevealScroll: vi.fn(),
+    markRevealScroll: vi.fn<(targetTop: number) => void>(),
     scheduleFrame: (frame: FrameRequestCallback) => frames.push(frame),
     beginRename: vi.fn(),
     complete: vi.fn()
@@ -333,9 +333,19 @@ describe('mounted reveal completion', () => {
     expect(args.beginRename).not.toHaveBeenCalled()
   })
 
-  it('bounds smooth retargeting even when the settling signal keeps renewing', () => {
+  it('completes a settled retarget using the latest native target', () => {
     const now = vi.spyOn(window.performance, 'now').mockReturnValue(0)
     const { args, frame, frames, scrollTo } = fixture()
+    let pending = createPendingRevealScroll(500, 0)
+    args.markRevealScroll.mockImplementation((targetTop: number) => {
+      pending = createPendingRevealScroll(targetTop, window.performance.now())
+    })
+    args.isScrollSettling = () =>
+      isRevealScrollSettling({
+        now: window.performance.now(),
+        pending,
+        scrollTop: args.container.scrollTop
+      })
     completeMountedSidebarReveal(args)
     args.element.getBoundingClientRect = () =>
       new DOMRect(0, 900 - args.container.scrollTop, 200, 100)

@@ -131,11 +131,11 @@ export function completeMountedSidebarReveal(args: {
       complete(false)
       return
     }
-    if (
-      args.isScrollSettling() &&
-      (!smoothTarget || window.performance.now() < smoothTarget.expiresAt)
-    ) {
-      smoothTarget?.retarget(args.markRevealScroll)
+    if (args.isScrollSettling()) {
+      // Retarget expiry cannot preempt the latest native motion's settle window.
+      if (smoothTarget && window.performance.now() < smoothTarget.retargetUntil) {
+        smoothTarget.retarget(args.markRevealScroll)
+      }
       args.scheduleFrame(finish)
       return
     }

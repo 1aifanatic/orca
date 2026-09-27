@@ -37,6 +37,7 @@ export function useSidebarGeometryCommit(args: {
   const synchronized = useRef(new Map<string, number>())
   const synchronizedBoundaries = useRef<readonly number[] | null>(null)
   const previousModel = useRef<SidebarGeometry | null>(null)
+  // Convergence can require another commit with unchanged boundaries.
   useLayoutEffect(() => {
     const {
       scrollRef,
@@ -134,5 +135,5 @@ export function useSidebarGeometryCommit(args: {
     ) {
       console.error('Sidebar correction was clamped unexpectedly')
     }
-  }, [args])
+  })
 }

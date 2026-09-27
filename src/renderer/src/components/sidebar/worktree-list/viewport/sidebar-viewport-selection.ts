@@ -1,11 +1,16 @@
 import {
   retainSidebarAncestors,
+  sidebarSlotContentEnd,
   sidebarViewportNodes,
   type SidebarGeometry
 } from '../listing/sidebar-geometry-slots'
 import type { RenderRow } from '../listing/render-row'
 import { extractWorktreeVirtualRowIndexes } from './virtual-rows'
 import { clampSidebarOffset } from './sidebar-geometry-commit'
+import {
+  getScrollTopToRevealBounds,
+  WORKTREE_SIDEBAR_REVEAL_TOP_INSET
+} from '../../worktree-sidebar-reveal'
 
 export function selectSidebarViewport(args: {
   model: SidebarGeometry
@@ -38,10 +43,20 @@ export function selectSidebarViewport(args: {
   for (const { index, landing } of args.targets) {
     retained.add(index)
     if (landing) {
+      const node = model.nodes[index]!
+      const landingOffset =
+        getScrollTopToRevealBounds(
+          { scrollTop: offset, clientHeight: viewport },
+          {
+            start: boundaries[node.slot]! + inset,
+            end: sidebarSlotContentEnd(model, boundaries, node.end - 1) + inset
+          },
+          WORKTREE_SIDEBAR_REVEAL_TOP_INSET
+        ) ?? offset
       for (const child of sidebarViewportNodes(
         model,
         boundaries,
-        boundaries[model.nodes[index]!.slot]!,
+        Math.max(0, clampSidebarOffset(landingOffset, boundaries.at(-1)!, viewport, inset) - inset),
         viewport
       )) {
         retained.add(child)
