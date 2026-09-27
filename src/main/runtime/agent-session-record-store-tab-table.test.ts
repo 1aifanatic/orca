@@ -215,6 +215,50 @@ describe('chat tab table', () => {
     expect(restarted.listVisibleSessionIds()).toEqual(['session-alpha', 'session-gamma'])
   })
 
+  it('keeps the seed when another writer rewrites the legacy file before the first write', async () => {
+    const first = await open()
+    for (const [index, sessionId] of ['session-alpha', 'session-beta', 'session-gamma'].entries()) {
+      await first.reserveOwner(
+        reserveRequest({
+          sessionId,
+          operation: {
+            callerKey: 'client-1',
+            operationId: operationId(),
+            fingerprint: `fp-${index}`
+          }
+        })
+      )
+    }
+    const raw = await readFileJson()
+    delete raw.sessionTabs
+    delete raw.visibleSessionIds
+    await writeFile(filePath(), JSON.stringify(raw))
+    const seeded = await AgentSessionRecordStore.open({
+      directory,
+      hostId: 'local',
+      savedTabSessionIds: () => ['session-alpha', 'session-beta', 'session-gamma']
+    })
+    // An outgoing build, which knows no tab index, still writes the file mid-restart.
+    raw.retiredClaimKeys = [
+      ...(raw.retiredClaimKeys ?? []),
+      { keyId: 'key-outgoing', retiredAt: NOW }
+    ]
+    await writeFile(filePath(), JSON.stringify(raw))
+
+    await seeded.setSessionTabVisibility('session-beta', true)
+
+    expect(seeded.listVisibleSessionIds()).toEqual([
+      'session-alpha',
+      'session-beta',
+      'session-gamma'
+    ])
+    expect((await readFileJson()).visibleSessionIds).toEqual([
+      'session-alpha',
+      'session-beta',
+      'session-gamma'
+    ])
+  })
+
   it('seeds a chat cleared before the upgrade under the id its tab opened with', async () => {
     const first = await open()
     for (const [index, sessionId] of ['session-alpha', 'clear-one', 'clear-two'].entries()) {

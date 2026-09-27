@@ -132,8 +132,9 @@ export function setAgentSessionTabVisibility(
 
 /**
  * A store written before any tab index lists its chats only in the saved workspace session. The
- * table is seeded from that session once, at open, so no later single write can create a table
- * holding one chat and drop the rest. True when it seeded.
+ * table is seeded from that session at open, and again on any reload of a file still without one,
+ * so no later single write can create a table holding one chat and drop the rest. True when it
+ * seeded.
  */
 export function seedAgentSessionTabTable(
   state: AgentSessionStoreState,
