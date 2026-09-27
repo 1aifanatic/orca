@@ -27,7 +27,7 @@ import {
   testingTargets
 } from './ssh-connect-attempt-registry'
 import { connectTarget } from './ssh-connect-flow'
-import { recordSshConnectionIntent } from './ssh-connection-intent'
+import { isSshTargetDisconnectedByUser, recordSshConnectionIntent } from './ssh-connection-intent'
 import { connectionManager, getCurrentMainWindow, persistedStore } from './ssh-ipc-context'
 import { broadcastSshState, getPublicSshState } from './ssh-renderer-broadcast'
 import {
@@ -100,6 +100,24 @@ async function doResetRelay(targetId: string, target: SshTarget): Promise<void> 
     // Why: reset's connect() may trip onCredentialRequest; clear so a later non-prompting doConnect doesn't persist lastRequiredPassphrase=true.
     credentialRequestedForTarget.delete(targetId)
     await connectionManager!.disconnect(targetId)
+  }
+}
+
+// Why: a held-down host publishes as disconnected whatever its transport does, so a cleanup
+// connect's transport must not outlive a failed terminate; leases stay detached for a retry.
+async function closeTransportHeldDownByUser(targetId: string): Promise<void> {
+  if (
+    !isSshTargetDisconnectedByUser(targetId) ||
+    (!connectionManager!.getConnection(targetId) && !activeSessions.has(targetId))
+  ) {
+    return
+  }
+  try {
+    await disconnectRegisteredSshTarget(targetId)
+  } catch (error) {
+    console.warn(
+      `[ssh] Failed to close the cleanup transport of disconnected target ${targetId}: ${error instanceof Error ? error.message : String(error)}`
+    )
   }
 }
 
@@ -214,6 +232,9 @@ export function registerSshConnectionHandlers(): void {
         throw new Error(`Failed to terminate SSH host sessions: ${shutdownFailures.join('; ')}`)
       }
       await teardownSshTargetTransport(args.targetId, (session) => session.disposeAndPersist())
+    }).catch(async (error: unknown) => {
+      await closeTransportHeldDownByUser(args.targetId)
+      throw error
     })
     return outcome
   })

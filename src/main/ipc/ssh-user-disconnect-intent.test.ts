@@ -33,9 +33,10 @@ import { disconnectRuntimeOwnedSshTarget } from '../ephemeral-vm-runtime-ssh'
 import type { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { RpcDispatcher } from '../runtime/rpc/dispatcher'
 import { SSH_METHODS } from '../runtime/rpc/methods/ssh'
+import { getPtyIdsForConnection, getSshPtyProvider } from './pty'
 import { createSshIpcHarness } from './ssh-ipc-test-harness'
 
-const { mockSshStore, mockConnectionManager } = mocks
+const { mockSshStore, mockConnectionManager, mockPtyProvider } = mocks
 
 const TARGET: SshTarget = {
   id: 'ssh-1',
@@ -90,7 +91,7 @@ function reportTransportState(state: SshConnectionState): void {
 
 describe("SSH: the user's Disconnect holds until the user connects", () => {
   const harness = createSshIpcHarness(mocks)
-  const { handlers, mockWindow } = harness
+  const { handlers, mockWindow, mockStore } = harness
 
   const invoke = async (channel: string, targetId = TARGET.id): Promise<unknown> =>
     handlers.get(channel)!(null, { targetId })
@@ -347,6 +348,31 @@ describe("SSH: the user's Disconnect holds until the user connects", () => {
     for (const state of published) {
       expect(state).toMatchObject({ status: 'disconnected', error: null, disconnectedBy: 'user' })
     }
+    expect(persistedTargets.get(TARGET.id)?.desiredConnection).toBe('disconnected')
+  })
+
+  it('(h) a failed terminate closes the cleanup transport it needed on a held-down host', async () => {
+    await invoke('ssh:disconnect')
+    mockStore.getSshRemotePtyLeases.mockReturnValue([
+      { targetId: TARGET.id, ptyId: 'pty-1', state: 'detached' }
+    ])
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: terminate calls only shutdown, which the shared mock provider implements.
+    vi.mocked(getSshPtyProvider).mockReturnValue(mockPtyProvider as never)
+    vi.mocked(getPtyIdsForConnection).mockReturnValue(['pty-1'])
+    mockPtyProvider.shutdown.mockRejectedValue(new Error('mux down'))
+    await invoke('ssh:connectForSessionCleanup')
+    expect(mockConnectionManager.getConnection(TARGET.id)).toBeDefined()
+
+    await expect(invoke('ssh:terminateSessions')).rejects.toThrow(
+      'Failed to terminate SSH host sessions'
+    )
+
+    expect(mockConnectionManager.getConnection(TARGET.id)).toBeUndefined()
+    expect(mockStore.markSshRemotePtyLease).not.toHaveBeenCalledWith(
+      TARGET.id,
+      'pty-1',
+      'terminated'
+    )
     expect(persistedTargets.get(TARGET.id)?.desiredConnection).toBe('disconnected')
   })
 
