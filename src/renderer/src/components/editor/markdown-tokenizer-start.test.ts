@@ -1,6 +1,9 @@
 import { expect, it, vi } from 'vitest'
 import { createTiptapMarkedFacade } from './tiptap-marked-facade'
-import { createMarkdownTokenizerStart } from './markdown-tokenizer-start'
+import {
+  createMarkdownTokenizerStart,
+  registerMarkdownTokenizerStart
+} from './markdown-tokenizer-start'
 
 it.each([
   'x\n:::detailsSummary',
@@ -71,4 +74,23 @@ it('restores searches for nested generated input and later parses', () => {
   })
   expect(marked.lexer('prose\nMARKER').map((token) => token.type)).toEqual(['paragraph', 'marker'])
   expect(createTiptapMarkedFacade().lexer('MARKER')[0].type).toBe('paragraph')
+})
+
+it('skips custom searches when their required marker is absent', () => {
+  const marked = createTiptapMarkedFacade()
+  const search = vi.fn((source: string) => source.search(/<details\b/i))
+  marked.use({
+    extensions: [
+      {
+        name: 'details',
+        level: 'block',
+        start: registerMarkdownTokenizerStart('<', search),
+        tokenizer: () => undefined
+      }
+    ]
+  })
+  marked.lexer('Prose\n\n'.repeat(1000))
+  expect(search).not.toHaveBeenCalled()
+  marked.lexer('Prose\n<DETAILS>')
+  expect(search).toHaveReturnedWith(5)
 })

@@ -1,4 +1,4 @@
-import { createMarkdownTokenizerStart } from './markdown-tokenizer-start'
+import { registerMarkdownTokenizerStart } from './markdown-tokenizer-start'
 import { guardMarkdownDirectiveTokenizer } from './markdown-directive-tokenizer'
 import { decodeHtmlEntities, type AnyExtension, type Editor } from '@tiptap/core'
 import { Details, DetailsContent, DetailsSummary } from '@tiptap/extension-details'
@@ -230,7 +230,7 @@ const OrcaDetails = Details.extend({
   markdownTokenizer: {
     name: 'details',
     level: 'block',
-    start: createMarkdownTokenizerStart('<details'),
+    start: registerMarkdownTokenizerStart('<', (source) => source.search(/<details\b/i)),
     tokenize(src, _tokens, lexer) {
       const detailsBlock = matchDetailsHtmlBlock(src, 0)
       if (!detailsBlock || !isEditableDetailsHtmlBlock(detailsBlock)) {

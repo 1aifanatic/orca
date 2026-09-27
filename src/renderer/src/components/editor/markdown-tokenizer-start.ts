@@ -1,5 +1,10 @@
 const startMarkers = new WeakMap<(source: string) => number | void, string>()
 
+export function registerMarkdownTokenizerStart(marker: string, start: (source: string) => number) {
+  startMarkers.set(start, marker)
+  return start
+}
+
 /** Let a lexer skip suffix searches for markers absent from its entire input. */
 export function createMarkdownTokenizerStart(marker: string, lineStart = false) {
   const start = (source: string): number => {
@@ -9,8 +14,7 @@ export function createMarkdownTokenizerStart(marker: string, lineStart = false) 
     }
     return position
   }
-  startMarkers.set(start, marker)
-  return start
+  return registerMarkdownTokenizerStart(marker, start)
 }
 
 export function getMarkdownTokenizerStartMarker(start: (source: string) => number | void) {
