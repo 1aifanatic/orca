@@ -6,9 +6,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 // second presentation silently fails and every later tap on the screen is swallowed.
 
 vi.mock('react-native', () => ({
+  ActivityIndicator: 'ActivityIndicator',
   KeyboardAvoidingView: 'KeyboardAvoidingView',
   Platform: { OS: 'ios' },
   Pressable: 'Pressable',
+  StyleSheet: { create: <T>(styles: T) => styles, hairlineWidth: 1 },
   Text: 'Text',
   TextInput: 'TextInput',
   View: 'View'
@@ -16,6 +18,7 @@ vi.mock('react-native', () => ({
 vi.mock('lucide-react-native', () => ({
   Check: 'Check',
   Copy: 'Copy',
+  Edit3: 'Edit3',
   FileText: 'FileText',
   Plus: 'Plus',
   Send: 'Send',
@@ -27,7 +30,6 @@ vi.mock('./mobile-diff-review-screen-styles', () => ({
   mobileDiffReviewStyles: new Proxy({}, { get: () => ({}) })
 }))
 vi.mock('./ConfirmModal', () => ({ ConfirmModal: 'ConfirmModal' }))
-vi.mock('./ActionSheetModal', () => ({ ActionSheetModal: 'ActionSheetModal' }))
 vi.mock('./BottomDrawer', () => ({ BottomDrawer: 'BottomDrawer' }))
 
 const { MobileDiffReviewDrawers } = await import('./MobileDiffReviewDrawers')
@@ -61,15 +63,6 @@ function controllerStub() {
 
 let renderer: ReactTestRenderer | null = null
 
-function actionLabeled(actions: unknown, label: string): { skipAutoClose?: unknown } | undefined {
-  return Array.isArray(actions)
-    ? actions.find(
-        (action): action is { skipAutoClose?: unknown } =>
-          typeof action === 'object' && action !== null && action.label === label
-      )
-    : undefined
-}
-
 afterEach(() => {
   act(() => renderer?.unmount())
   renderer = null
@@ -88,16 +81,28 @@ function render(controller: ReturnType<typeof controllerStub>): ReactTestRendere
 }
 
 describe('opening Send Notes from another sheet', () => {
-  it('closes Review Actions before Send Unsent Notes opens the Send Notes sheet', () => {
-    const tree = render({ ...controllerStub(), showCompletion: false })
+  it('closes Review Actions first and opens Send Notes only once it has fully closed', () => {
+    const controller = { ...controllerStub(), showOverflow: true, showCompletion: false }
+    const tree = render(controller)
     const overflow = tree.root.findAll(
-      (node) => String(node.type) === 'ActionSheetModal' && node.props.title === 'Review Actions'
+      (node) => String(node.type) === 'BottomDrawer' && node.props.visible === true
     )[0]!
-    const send = actionLabeled(overflow.props.actions, 'Send Unsent Notes')
+    const sendAction = overflow.find(
+      (node) =>
+        String(node.type) === 'Pressable' &&
+        node.findAll(
+          (text) => String(text.type) === 'Text' && text.props.children === 'Send Unsent Notes'
+        ).length > 0
+    )
 
-    // The sheet runs a closeBeforePress action only after its own native window has unmounted.
-    expect(send).toMatchObject({ closeBeforePress: true })
-    expect(send?.skipAutoClose).toBeUndefined()
+    act(() => sendAction.props.onPress())
+
+    expect(controller.setShowOverflow).toHaveBeenCalledWith(false)
+    expect(controller.openSendSheet).not.toHaveBeenCalled()
+
+    act(() => overflow.props.onAfterClose?.())
+
+    expect(controller.openSendSheet).toHaveBeenCalledOnce()
   })
 
   it('closes Review Complete first and opens Send Notes only once it has fully closed', () => {
