@@ -303,25 +303,23 @@ describe('Stop on a child still proving its start', () => {
   })
 })
 
-describe('a settlement retry for an earlier child inside the attach for the next one', () => {
-  it('settles the earlier child and leaves the queued message to the new child (R1)', async () => {
-    // The earlier child's settlement is still owed; the lease is otherwise released.
+describe('settling an earlier child inside the attach for the next one', () => {
+  it("settles from the earlier child's death evidence and leaves the queued message to the new child (R1)", async () => {
+    // The earlier child exited; the released lease keeps only its death evidence.
     await store.transitionHandoff(SESSION, (record) => ({
       ...record,
       lease: {
         ...record.lease,
-        settlementRetryRequired: true,
-        settlementRetryId: `provider-exit:${SESSION}:1:generation-1`
+        deathEvidence: { kind: 'exit-observed', detail: 'provider exited', observedAt: NOW }
       }
     }))
-    const retryFence = store.getRecord(SESSION)!.lease.runtimeFence
+    const releasedFence = store.getRecord(SESSION)!.lease.runtimeFence
     const id = await accept('for the next child')
 
     await eventually(() => expect(submission(id)?.dispatchState).toBe('accepted'))
-    expect(store.getRecord(SESSION)?.lease.settlementRetryRequired).toBeUndefined()
-    // Handed over at the new child's fence, which the attach reserved after the retry.
+    // Handed over at the new child's fence, which the attach reserved after settling.
     const newFence = store.getRecord(SESSION)!.lease.runtimeFence
-    expect(newFence).toBeGreaterThan(retryFence)
+    expect(newFence).toBeGreaterThan(releasedFence)
     expect(submission(id)?.fence).toBe(newFence)
     expect(conversation()?.child).toMatchObject({ generation: generation(), fence: newFence })
   })

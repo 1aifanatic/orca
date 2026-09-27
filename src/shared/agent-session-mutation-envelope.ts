@@ -13,6 +13,7 @@ import type {
 } from './agent-session-operation-ledger'
 import { agentSessionLeaseAdmitsWriter } from './agent-session-lease-adjudication'
 import type { AgentSessionLease } from './agent-session-record'
+import { terminalOwnerRefusalMessage } from './agent-session-legacy-handoff-lease'
 import type { AgentSessionMutationEnvelope, AgentSessionWireRefusal } from './agent-session-wire'
 import { refuse } from './agent-session-wire-refusals'
 
@@ -138,6 +139,9 @@ function refuseUnlessWriterAdmitted(lease: AgentSessionLease): AgentSessionWireR
     )
   }
   if (lease.handoffStage !== null) {
+    if (lease.claimStatus === 'conflicted') {
+      return refuse('agent_session_conflict', 'claimConflicted', terminalOwnerRefusalMessage(lease))
+    }
     return lease.handoffStage === 'new-owner-proving'
       ? refuse('agent_session_conflict', 'chatStarting', 'The chat is still starting.')
       : refuse(

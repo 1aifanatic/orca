@@ -64,9 +64,6 @@ export function structuredClaudeLifecycleEvent(
       cause: event.cause,
       fence: event.fence,
       acquisitionGeneration: event.acquisitionGeneration,
-      ...(event.settlementRetryRequired
-        ? { settlementRetryRequired: event.settlementRetryRequired }
-        : {}),
       ...(event.startupUnproven ? { startupUnproven: event.startupUnproven } : {})
     }
   }

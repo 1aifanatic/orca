@@ -24,6 +24,7 @@ import {
 } from './structured-agent-session-adapter'
 import type { StructuredAgentSessionEventSink } from './structured-agent-session-event-sink'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
+import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import type { StructuredAgentSessionStatusSink } from './structured-agent-session-status-feed'
 import {
   HOST_TEST_NOW as NOW,
@@ -433,8 +434,7 @@ describe('startup', () => {
     )
     expect(store.getRecord(SESSION)?.lease).toMatchObject({
       claimStatus: 'released',
-      ownerProcess: null,
-      settlementRetryRequired: undefined
+      ownerProcess: null
     })
 
     await host.hold(SESSION, SURFACE)
@@ -738,7 +738,7 @@ describe('an unexpected provider exit', () => {
     expect(dispatch).toHaveBeenCalledTimes(2)
   })
 
-  it('latches a failed exit settlement and blocks attach until the terminal batch is written', async () => {
+  it('releases the lease when the exit settlement cannot be written, and the next send settles the turn it left', async () => {
     await attach()
     await host.hold(SESSION, SURFACE)
     emitTurnLifecycle('running', 1)
@@ -761,7 +761,8 @@ describe('an unexpected provider exit', () => {
       }
     ).sessions.get(SESSION)
     expect(session).toBeDefined()
-    const appendSettlement = vi
+    // The conversation's one handle refuses every write of the exit's settlement.
+    const refusing = vi
       .spyOn(session!.journal, 'appendLifecycleBatch')
       .mockRejectedValue(new Error('settlement still unavailable'))
     const exitedFence = store.getRecord(SESSION)?.lease.runtimeFence ?? 0
@@ -775,30 +776,43 @@ describe('an unexpected provider exit', () => {
       acquisitionGeneration: 'generation-1'
     })
 
-    expect(store.getRecord(SESSION)?.lease).toMatchObject({
+    const released = store.getRecord(SESSION)?.lease
+    expect(released).toMatchObject({
       claimStatus: 'released',
-      handoffStage: 'recovering',
-      settlementRetryRequired: true,
-      settlementRetryId: `provider-exit:${SESSION}:${exitedFence}:generation-1`,
-      ownerProcess: null,
-      runtimeFence: exitedFence + 1
-    })
-    expect(await host.attach(CALLER, hostTestAttachParams(exitedFence + 1))).toMatchObject({
-      ok: false,
-      refusal: { code: 'agent_session_ownership_unknown' }
-    })
-    expect(acquire).toHaveBeenCalledOnce()
-
-    appendSettlement.mockRestore()
-    expect(await host.attach(CALLER, hostTestAttachParams(exitedFence + 1))).toMatchObject({
-      ok: true
-    })
-    expect(store.getRecord(SESSION)?.lease).toMatchObject({
-      claimStatus: 'live',
       handoffStage: null,
-      settlementRetryRequired: undefined
+      ownerProcess: null,
+      runtimeFence: exitedFence + 1,
+      deathEvidence: { kind: 'exit-observed', detail: 'provider exited', observedAt: NOW }
     })
+    // Nothing retries the settlement; the journal writes again, and the next acquire re-derives it.
+    refusing.mockRestore()
+
+    dispatch.mockResolvedValueOnce({
+      state: 'accepted',
+      providerIdentity: { provider: 'codex', threadId: THREAD, turnId: 'turn-next', ordinal: 1 }
+    })
+    const body = hostTestMessage('sent after a settlement that never landed')
+    const sentEnvelope = envelope('agentSession.send', { body })
+    await expect(host.send(CALLER, { envelope: sentEnvelope, body })).resolves.toMatchObject({
+      ok: true,
+      value: { submission: { dispatchState: 'pending' } }
+    })
+    await vi.waitFor(() => expect(submissionState(sentEnvelope.clientOperationId)).toBe('accepted'))
     expect(acquire).toHaveBeenCalledTimes(2)
+    // The new child's acquire settled the turn from the release's evidence: ended at the exit's
+    // receipt. The evidence is Orca's log text, so the row says only that the provider stopped.
+    const history = host.history({ sessionId: SESSION, direction: 'tail' })
+    const items = history.ok ? history.page.items : []
+    expect(items.map((item) => readAgentJournalTurn(item.body)).filter(Boolean)).toContainEqual(
+      expect.objectContaining({ turnId: 'turn-1', state: 'interrupted', completedAt: NOW })
+    )
+    const statuses = items.flatMap((item) => (item.body.kind === 'status' ? [item.body] : []))
+    expect(statuses).toContainEqual({
+      kind: 'status',
+      text: UNEXPECTED_PROVIDER_EXIT_OUTCOME,
+      failure: { kind: 'providerExited' }
+    })
+    expect(statuses.map((status) => status.text).join('\n')).not.toContain('provider exited')
   })
 })
 

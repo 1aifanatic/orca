@@ -13,11 +13,13 @@ import { agentSessionRefusalError } from '../../shared/agent-session-wire-refusa
 import {
   agentSessionOperationKey,
   evaluateAgentSessionOperation,
+  pendingAgentSessionOperationRow,
   pruneAgentSessionOperationRows,
   type AgentSessionOperationDecision,
   type AgentSessionOperationRow
 } from '../../shared/agent-session-operation-ledger'
 import {
+  agentSessionLeaseIsReleased,
   agentSessionLeaseOwnerVerdict,
   evaluateAgentSessionAcquisition,
   type AgentSessionOwnerProbe
@@ -130,7 +132,7 @@ export function admitPendingAgentSessionReservationReplay(
     throw agentSessionRefusalError(decision.code, decision.cause)
   }
   if (decision.decision !== 'retry-reservation') {
-    // A replay may continue only its still-present reservation; recovery requires a fresh intent.
+    // A replay may continue only its still-present reservation.
     throw agentSessionRefusalError('agent_session_ownership_unknown', 'replaySuperseded')
   }
   return record
@@ -313,21 +315,43 @@ export function commitAgentSessionReservation(
   leaseTtlMs: number
 ): AgentSessionReserveResult {
   const decision = evaluateAgentSessionReserveOperation(state, request)
+  const existing = state.records.get(request.sessionId)
+  // An unfinished operation whose reservation recovery released continues under its own id at the
+  // next fence, as a resume does under a new id; the fence move stops the old spawn committing.
+  const continued =
+    existing && agentSessionLeaseIsReleased(existing.lease)
+      ? { ...request, expectedFence: existing.lease.runtimeFence }
+      : null
   if (decision.decision === 'refused') {
-    throw agentSessionRefusalError(decision.code, decision.cause)
+    // An aged-out row proves nothing more: a released reservation runs no effect.
+    if (decision.code !== 'agent_session_operation_expired' || !continued) {
+      throw agentSessionRefusalError(decision.code, decision.cause)
+    }
+    const row = pendingAgentSessionOperationRow({ ...request.operation, now: request.now })
+    return reserveWithOperationRow(state, continued, row, leaseTtlMs)
   }
   if (decision.decision === 'replay') {
-    let record = requireAgentSessionRecordForReplay(state, decision.row, request.sessionId)
-    if (decision.row.outcome.status === 'pending' && request.handoffOperationId !== null) {
-      record = admitPendingAgentSessionReservationReplay(record, request)
+    const record = requireAgentSessionRecordForReplay(state, decision.row, request.sessionId)
+    if (decision.row.outcome.status !== 'pending' || request.handoffOperationId === null) {
+      return { record, disposition: 'replayed', operationRow: decision.row }
     }
-    return { record, disposition: 'replayed' as const, operationRow: decision.row }
+    if (continued) {
+      return reserveWithOperationRow(state, continued, decision.row, leaseTtlMs)
+    }
+    const retried = admitPendingAgentSessionReservationReplay(record, request)
+    return { record: retried, disposition: 'replayed', operationRow: decision.row }
   }
+  return reserveWithOperationRow(state, request, decision.row, leaseTtlMs)
+}
+
+function reserveWithOperationRow(
+  state: AgentSessionStoreState,
+  request: AgentSessionReserveRequest,
+  row: AgentSessionOperationRow,
+  leaseTtlMs: number
+): AgentSessionReserveResult {
   const result = applyAgentSessionReservation(state, request, leaseTtlMs)
-  state.operations.set(
-    agentSessionOperationKey(request.operation.callerKey, request.operation.operationId),
-    decision.row
-  )
+  state.operations.set(agentSessionOperationKey(row.callerKey, row.operationId), row)
   state.records.set(result.record.sessionId, result.record)
-  return { ...result, operationRow: decision.row }
+  return { ...result, operationRow: row }
 }

@@ -18,6 +18,7 @@ import type {
   AgentSessionMutationResult,
   AgentSessionWireRefusal
 } from '../../../shared/agent-session-wire'
+import { terminalOwnerRefusalMessage } from '../../../shared/agent-session-legacy-handoff-lease'
 import type { StructuredAgentSessionAttachContext } from './structured-agent-session-attach-context'
 import {
   attachStructuredAgentSessionUnderSerialize,
@@ -44,9 +45,9 @@ export async function resumeHeldStructuredAgentSession(input: {
   attachOptions?: StructuredAgentSessionAttachOptions
 }): Promise<StructuredAgentSessionResumeOutcome> {
   const { sessionId, context, callerKey } = input
-  // The record is read only once this host has adjudicated it and exited any recovery stage a
-  // failed attempt latched — a lease left in `manual-recovery` by an unproven exit is one the
-  // resolver hands back, and the eligibility below must see it that way.
+  // The record is read only once this host has adjudicated it and recovery resolution has
+  // concluded about any owner a failed attempt left in `recovering`, so the eligibility below sees
+  // the lease the resolver handed back.
   const unreconciled = await context.reconcileLeases(sessionId)
   if (unreconciled) {
     return { ok: false, refusal: unreconciled }
@@ -82,7 +83,7 @@ export async function resumeHeldStructuredAgentSession(input: {
         ? refuseResume(
             'agent_session_conflict',
             'claimConflicted',
-            'Another process claims this session.'
+            terminalOwnerRefusalMessage(record.lease)
           )
         : refuseResume(
             'agent_session_ownership_unknown',
