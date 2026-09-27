@@ -316,14 +316,19 @@ describe('a start the chat needed and did not get', () => {
     await eventually(() => expect(submission(second)?.dispatchState).toBe('rejected'))
     const rows = errorRows()
     expect(rows).toHaveLength(1)
-    // Orca's spawn error goes to the log; the row and every message say what failed, typed.
-    expect(rows[0]).toBe('The provider stopped before it finished starting.')
-    expect(errorFailures()).toEqual([{ kind: 'providerStartFailed' }])
+    // Orca's spawn error goes to the log; the row and every message say what failed, typed. The
+    // child is gone, but no exit was observed, so nothing blames the provider.
+    expect(rows[0]).toBe("Codex couldn't restart.")
+    const failure = {
+      kind: 'restartFailed',
+      refusal: { code: 'agent_session_operation_invalid', details: { ownerVerdict: 'exited' } }
+    }
+    expect(errorFailures()).toEqual([failure])
     for (const id of [first, second]) {
       expect(submission(id)).toMatchObject({
         dispatchState: 'rejected',
         reason: rows[0],
-        rejection: { kind: 'providerStartFailed' }
+        rejection: failure
       })
     }
 
@@ -353,8 +358,11 @@ describe('a start the chat needed and did not get', () => {
       'spawn',
       () => acquire.mockRejectedValueOnce(new Error('spawn codex ENOENT')),
       {
-        text: 'The provider stopped before it finished starting.',
-        failure: { kind: 'providerStartFailed' }
+        text: "Codex couldn't restart.",
+        failure: {
+          kind: 'restartFailed',
+          refusal: { code: 'agent_session_operation_invalid', details: { ownerVerdict: 'exited' } }
+        }
       }
     ],
     [
@@ -364,8 +372,12 @@ describe('a start the chat needed and did not get', () => {
           new AgentSessionPreSpawnError(new Error('Not logged in. Please run /login.'))
         ),
       {
-        text: 'The provider stopped before it finished starting.',
-        failure: { kind: 'providerStartFailed' }
+        // No process ever started, so nothing says the provider stopped.
+        text: "Codex couldn't restart.",
+        failure: {
+          kind: 'restartFailed',
+          refusal: { code: 'agent_session_operation_invalid', details: { ownerVerdict: 'exited' } }
+        }
       }
     ]
   ])('writes one row a live chat sees for a %s refusal (W14)', async (_source, arrange, row) => {

@@ -8,6 +8,10 @@
 // readable journal for a live provider child.
 
 import {
+  providerDiagnosticOf,
+  type ProviderDiagnostic
+} from '../../../shared/agent-session-failure'
+import {
   agentSessionRefusalFromReference,
   readAgentSessionRefusalReference,
   refuse,
@@ -36,7 +40,13 @@ import {
  *  someone else is settling from an owner that will not come back. */
 export type StructuredAgentSessionResumeOutcome =
   | { ok: true }
-  | { ok: false; refusal: AgentSessionWireRefusal }
+  | {
+      ok: false
+      refusal: AgentSessionWireRefusal
+      /** What the provider said about the failed start, for the chat's own record; host-side
+       *  only, never on the refusal. */
+      diagnostic?: ProviderDiagnostic
+    }
 
 export async function resumeHeldStructuredAgentSession(input: {
   sessionId: string
@@ -93,13 +103,14 @@ export async function resumeHeldStructuredAgentSession(input: {
           )
   }
   let attached: AgentSessionMutationResult<AgentSessionAttachResult>
+  let acquisitionError: unknown
   try {
-    attached = await attachStructuredAgentSessionUnderSerialize(
-      context,
-      callerKey,
-      params,
-      input.attachOptions
-    )
+    attached = await attachStructuredAgentSessionUnderSerialize(context, callerKey, params, {
+      ...input.attachOptions,
+      onAcquisitionFailed: (error) => {
+        acquisitionError = error
+      }
+    })
   } catch (error) {
     // The attach settles an acquisition that failed — the ledger row, the released lease — before
     // it rethrows the cause. That row is the answer: a failure it recorded is this resume's
@@ -112,11 +123,19 @@ export async function resumeHeldStructuredAgentSession(input: {
       error
     )
     if (settled) {
-      return settled
+      return withDiagnostic(settled.refusal, error)
     }
     throw error
   }
-  return attached.ok ? { ok: true } : { ok: false, refusal: attached.refusal }
+  return attached.ok ? { ok: true } : withDiagnostic(attached.refusal, acquisitionError)
+}
+
+function withDiagnostic(
+  refusal: AgentSessionWireRefusal,
+  error: unknown
+): StructuredAgentSessionResumeOutcome {
+  const diagnostic = providerDiagnosticOf(error)
+  return { ok: false, refusal, ...(diagnostic ? { diagnostic } : {}) }
 }
 
 function settledResumeRefusal(
@@ -125,7 +144,7 @@ function settledResumeRefusal(
   operationId: string,
   sessionId: string,
   error: unknown
-): StructuredAgentSessionResumeOutcome | null {
+): { ok: false; refusal: AgentSessionWireRefusal } | null {
   const outcome = context.deps.store.getOperationRow(callerKey, operationId)?.outcome
   const reference =
     outcome?.status === 'failed'

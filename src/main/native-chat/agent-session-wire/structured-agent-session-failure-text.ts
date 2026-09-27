@@ -23,15 +23,22 @@ export function withObservedProviderExit<TError extends Error>(error: TError): T
   return Object.assign(error, { providerExitObserved: true })
 }
 
-function providerExitObserved(error: unknown): boolean {
-  let current: unknown = error
-  for (let depth = 0; depth < 6 && current instanceof Error; depth += 1) {
-    if ('providerExitObserved' in current && current.providerExitObserved === true) {
-      return true
-    }
-    current = current.cause
+/** Whether the adapter saw the child exit on its own. Follows `cause` and the errors a cleanup
+ *  aggregated, since the acquisition errors wrap what the adapter threw. */
+export function providerExitObserved(error: unknown, depth = 0): boolean {
+  if (depth >= 6 || !(error instanceof Error)) {
+    return false
   }
-  return false
+  if ('providerExitObserved' in error && error.providerExitObserved === true) {
+    return true
+  }
+  if (
+    error instanceof AggregateError &&
+    error.errors.some((inner) => providerExitObserved(inner, depth + 1))
+  ) {
+    return true
+  }
+  return providerExitObserved(error.cause, depth + 1)
 }
 
 /** A start that did not land. A refusal the adapter typed keeps its situation, and an exit the
@@ -61,25 +68,31 @@ function startupFailureFromExit(
   return failure
 }
 
-/** What the chat records when the delivery loop could not make the session ready. */
-function restartFailureFact(refusal: AgentSessionWireRefusal): AgentSessionFailureFact {
+/** What the chat records when a session could not be made ready. Only a refusal the host typed as
+ *  an observed exit says the provider stopped; a verdict of `exited` means only that nothing runs
+ *  now. */
+function refusedStartFailureFact(
+  cause: Extract<StructuredAgentSessionStartFailureCause, { refusal: unknown }>
+): AgentSessionFailureFact {
+  const { refusal, diagnostic } = cause
   const reason = refusal.details?.reason
   if (reason === 'notSignedIn' || reason === 'historyTooLarge') {
     return agentSessionFailureFact(reason)
   }
-  // A child that died starting reads as any start that died does.
-  if (refusal.details?.ownerVerdict === 'exited' || reason === 'providerStartFailed') {
-    return agentSessionFailureFact('providerStartFailed')
+  if (reason === 'providerStartFailed') {
+    return agentSessionFailureFact('providerStartFailed', { detail: diagnostic })
   }
   return agentSessionFailureFact('restartFailed', {
+    detail: diagnostic,
     refusal: agentSessionRefusalReference(refusal)
   })
 }
 
 /** Why a start the chat needed did not land, as the place that saw it knows it. */
 export type StructuredAgentSessionStartFailureCause =
-  /** The session could not be made ready. */
-  | { refusal: AgentSessionWireRefusal }
+  /** The session could not be made ready; the provider's words, if any, are kept host-side, off
+   *  the refusal. */
+  | { refusal: AgentSessionWireRefusal; diagnostic?: ProviderDiagnostic }
   /** A start that threw, or an adapter's own startup failure; any diagnostic it carries. */
   | { error: unknown }
   /** The child ended before it proved its start, as its ended event told it. */
@@ -98,7 +111,7 @@ export type StructuredAgentSessionStartFailureWords = AgentJournalDispatchReject
 
 function startFailureFact(cause: StructuredAgentSessionStartFailureCause): AgentSessionFailureFact {
   if ('refusal' in cause) {
-    return restartFailureFact(cause.refusal)
+    return refusedStartFailureFact(cause)
   }
   if ('error' in cause) {
     return providerStartupFailureFact(cause.error)

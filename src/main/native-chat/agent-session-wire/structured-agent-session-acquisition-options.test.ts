@@ -432,7 +432,6 @@ describe('structured session acquisition options', () => {
       ok: false,
       refusal: {
         code: 'agent_session_operation_invalid',
-        details: { reason: 'providerStartFailed' },
         message: 'model list unavailable'
       }
     })
@@ -525,14 +524,14 @@ describe('structured session acquisition options', () => {
           onAttached: () => {}
         })
 
-      // A proven exit before the journal opens is answered once, as the refusal its replay gives.
+      // A proven exit before the journal opens is answered once, as the refusal its replay gives;
+      // no exit was observed, so it names no situation.
       const failed = perform(store, CREATE_OPERATION, null)
       await (exitProven && failurePoint !== 'journal'
         ? expect(failed).resolves.toEqual({
             ok: false,
             refusal: {
               code: 'agent_session_operation_invalid',
-              details: { reason: 'providerStartFailed' },
               message: injected.message
             }
           })

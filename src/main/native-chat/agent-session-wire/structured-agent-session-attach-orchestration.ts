@@ -15,7 +15,7 @@ import type {
   AgentSessionTurnActivity
 } from '../../../shared/agent-session-wire'
 import type { AgentSessionAttachParams } from './structured-agent-session-attach'
-import { performAttach } from './structured-agent-session-attach-flow'
+import { performAttach, type AttachFlowInput } from './structured-agent-session-attach-flow'
 import { stampFailedCreateOwnerVerdict } from './structured-agent-session-failed-create-refusal'
 import {
   pinnedAgentSessionLaunchArgs,
@@ -46,6 +46,7 @@ export type StructuredAgentSessionAttachOptions = {
   /** Provider-exit recovery: refuses once the ticket the restart was issued for is stale. */
   admitRecoveryTicket?: () => boolean
   recordPhase?: AgentSessionCreatePhaseRecorder
+  onAcquisitionFailed?: AttachFlowInput['onAcquisitionFailed']
 }
 
 /**
@@ -160,6 +161,7 @@ async function runAttach(
       params,
       now: () => context.now(),
       recordPhase,
+      ...(options.onAcquisitionFailed ? { onAcquisitionFailed: options.onAcquisitionFailed } : {}),
       openConversation: async (record) => {
         const conversation = await context.openConversation(record.sessionId)
         if (!conversation) {

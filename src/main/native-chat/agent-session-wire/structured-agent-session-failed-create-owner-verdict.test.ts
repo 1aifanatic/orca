@@ -13,6 +13,7 @@ import {
   type StructuredAgentSessionAdapter
 } from './structured-agent-session-adapter'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
+import { withObservedProviderExit } from './structured-agent-session-failure-text'
 import {
   HOST_TEST_NOW as NOW,
   HOST_TEST_SESSION as SESSION,
@@ -66,53 +67,73 @@ afterEach(async () => {
 })
 
 describe('failed create owner verdict', () => {
-  it('answers an exit-proven failure as exited on the first call and its replay, and a new operation starts fresh', async () => {
-    // The cleanup's release proves the whole tree gone: the common failed start.
-    acquire.mockRejectedValueOnce(new Error(EXIT_REASON))
-    const first = hostTestAttachParams(null)
-    // The replay names the same details as the first answer: the ledger kept them beside the code,
-    // and the verdict reaches released clients at the top level exactly as before.
-    const refusal = {
-      code: 'agent_session_operation_invalid',
-      details: { reason: 'providerStartFailed', ownerVerdict: 'exited' },
-      message: EXIT_REASON,
-      ownerVerdict: 'exited'
+  it.each([
+    // The cleanup's release proves the whole tree gone, which says nothing about why it failed.
+    ['a failure the cleanup proved gone', () => new Error(EXIT_REASON), {}],
+    // Only an exit the adapter saw says the provider stopped.
+    [
+      'an exit the adapter observed',
+      () => withObservedProviderExit(new Error(EXIT_REASON)),
+      { reason: 'providerStartFailed' }
+    ]
+  ])(
+    'answers %s as exited on the first call and its replay, and a new operation starts fresh',
+    async (_case, failure, situation) => {
+      acquire.mockRejectedValueOnce(failure())
+      const first = hostTestAttachParams(null)
+      // The replay names the same details as the first answer: the ledger kept them beside the code,
+      // and the verdict reaches released clients at the top level exactly as before.
+      const refusal = {
+        code: 'agent_session_operation_invalid',
+        details: { ...situation, ownerVerdict: 'exited' },
+        message: EXIT_REASON,
+        ownerVerdict: 'exited'
+      }
+
+      await expect(host.attach(CALLER, first)).resolves.toEqual({ ok: false, refusal })
+      await expect(host.attach(CALLER, first)).resolves.toEqual({ ok: false, refusal })
+      expect(acquire).toHaveBeenCalledOnce()
+
+      const retry = hostTestAttachParams(null)
+      expect(retry.envelope.clientOperationId).not.toBe(first.envelope.clientOperationId)
+      await expect(host.attach(CALLER, retry)).resolves.toMatchObject({ ok: true })
+      expect(acquire).toHaveBeenCalledTimes(2)
+      expect(store.getRecord(SESSION)?.lease.claimStatus).toBe('live')
     }
+  )
 
-    await expect(host.attach(CALLER, first)).resolves.toEqual({ ok: false, refusal })
-    await expect(host.attach(CALLER, first)).resolves.toEqual({ ok: false, refusal })
-    expect(acquire).toHaveBeenCalledOnce()
+  it.each([
+    // A cleanup that saw the root go may have stopped it itself.
+    ['a root exit the cleanup saw', () => new Error(EXIT_REASON), {}],
+    [
+      'a root exit the adapter observed',
+      () => withObservedProviderExit(new Error(EXIT_REASON)),
+      { reason: 'providerStartFailed' }
+    ]
+  ])(
+    'answers %s as exited on the first call, in the shape its replay takes',
+    async (_case, cause, situation) => {
+      acquire.mockRejectedValueOnce(new AgentSessionAcquisitionRootExitObservedError(cause()))
+      const first = hostTestAttachParams(null)
+      // The replay names the same details as the first answer: the ledger kept them beside the code,
+      // and the verdict reaches released clients at the top level exactly as before.
+      const refusal = {
+        code: 'agent_session_operation_invalid',
+        details: { ...situation, ownerVerdict: 'exited' },
+        message: EXIT_REASON,
+        ownerVerdict: 'exited'
+      }
 
-    const retry = hostTestAttachParams(null)
-    expect(retry.envelope.clientOperationId).not.toBe(first.envelope.clientOperationId)
-    await expect(host.attach(CALLER, retry)).resolves.toMatchObject({ ok: true })
-    expect(acquire).toHaveBeenCalledTimes(2)
-    expect(store.getRecord(SESSION)?.lease.claimStatus).toBe('live')
-  })
+      await expect(host.attach(CALLER, first)).resolves.toEqual({ ok: false, refusal })
+      await expect(host.attach(CALLER, first)).resolves.toEqual({ ok: false, refusal })
+      expect(acquire).toHaveBeenCalledOnce()
 
-  it('answers a first-hand root exit as exited on the first call, in the shape its replay takes', async () => {
-    acquire.mockRejectedValueOnce(
-      new AgentSessionAcquisitionRootExitObservedError(new Error(EXIT_REASON))
-    )
-    const first = hostTestAttachParams(null)
-    // The replay names the same details as the first answer: the ledger kept them beside the code,
-    // and the verdict reaches released clients at the top level exactly as before.
-    const refusal = {
-      code: 'agent_session_operation_invalid',
-      details: { reason: 'providerStartFailed', ownerVerdict: 'exited' },
-      message: EXIT_REASON,
-      ownerVerdict: 'exited'
+      await expect(host.attach(CALLER, hostTestAttachParams(null))).resolves.toMatchObject({
+        ok: true
+      })
+      expect(acquire).toHaveBeenCalledTimes(2)
     }
-
-    await expect(host.attach(CALLER, first)).resolves.toEqual({ ok: false, refusal })
-    await expect(host.attach(CALLER, first)).resolves.toEqual({ ok: false, refusal })
-    expect(acquire).toHaveBeenCalledOnce()
-
-    await expect(host.attach(CALLER, hostTestAttachParams(null))).resolves.toMatchObject({
-      ok: true
-    })
-    expect(acquire).toHaveBeenCalledTimes(2)
-  })
+  )
 
   it('answers an acquisition refusal with its verdict directly', async () => {
     acquire.mockRejectedValueOnce(new AgentSessionAcquisitionRefusal('not signed in'))

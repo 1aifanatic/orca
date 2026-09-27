@@ -1,5 +1,6 @@
 import {
   refuse,
+  refuseUnclassified,
   withAgentSessionRefusalFacts,
   type AgentSessionAttachResult,
   type AgentSessionMutationResult,
@@ -20,6 +21,7 @@ import {
   AgentSessionAcquisitionRootExitObservedError,
   isAgentSessionPreSpawnError
 } from './structured-agent-session-adapter'
+import { providerExitObserved } from './structured-agent-session-failure-text'
 
 /** What a failed acquisition proved about its process, and the outcome its operation settles to. */
 export function failedAcquisitionSettlement(error: unknown): {
@@ -52,19 +54,24 @@ export function failedAcquisitionSettlement(error: unknown): {
   }
 }
 
-/** The situation a failed acquisition stands for: what the adapter typed, or a provider that died
- *  starting. A store refusal names its situation under its own code, which this row does not
- *  carry, and a failure before the spawn or Orca's own fault names none. */
+/** Cleanup proved the child gone after the start failed, whatever failed it. */
+function isExitProvenAcquisitionFailure(error: unknown): error is Error {
+  return (
+    error instanceof AgentSessionAcquisitionRootExitObservedError ||
+    error instanceof AgentSessionAcquisitionExitProvenError
+  )
+}
+
+/** The situation a failed acquisition stands for: what the adapter typed, or a provider the
+ *  adapter saw exit while starting. A provider refusing a request, a timeout, a store refusal or
+ *  Orca's own fault names none: the child being gone now says nothing about why. */
 function failedAcquisitionDetails(
   error: unknown
 ): AgentSessionRefusalDetailsByCode['agent_session_operation_invalid'] | undefined {
   if (error instanceof AgentSessionAcquisitionRefusal) {
     return { reason: error.reason }
   }
-  if (
-    error instanceof AgentSessionAcquisitionRootExitObservedError ||
-    error instanceof AgentSessionAcquisitionExitProvenError
-  ) {
+  if (isExitProvenAcquisitionFailure(error) && providerExitObserved(error)) {
     return { reason: 'providerStartFailed' }
   }
   return undefined
@@ -78,18 +85,14 @@ export function failedAcquisitionRefusal(
   if (error instanceof AgentSessionAcquisitionRefusal) {
     return { ok: false, refusal: refuse(error.code, { reason: error.reason }, error.message) }
   }
-  // A proven exit is a settled fact; its message is the provider's own diagnostic.
-  if (
-    error instanceof AgentSessionAcquisitionRootExitObservedError ||
-    error instanceof AgentSessionAcquisitionExitProvenError
-  ) {
+  // A proven exit is a settled failure, answered in the shape its ledger row replays.
+  if (isExitProvenAcquisitionFailure(error)) {
+    const details = failedAcquisitionDetails(error)
     return {
       ok: false,
-      refusal: refuse(
-        'agent_session_operation_invalid',
-        { reason: 'providerStartFailed' },
-        error.message
-      )
+      refusal: details
+        ? refuse('agent_session_operation_invalid', details, error.message)
+        : refuseUnclassified('agent_session_operation_invalid', error.message)
     }
   }
   return null

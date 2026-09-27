@@ -139,11 +139,12 @@ describe('attach', () => {
     })
     const params = attachParams()
 
+    // Orca's own store fault: the child is gone, but nothing blames the provider.
     const refused = {
       ok: false,
       refusal: {
         code: 'agent_session_operation_invalid',
-        details: { reason: 'providerStartFailed', ownerVerdict: 'exited' },
+        details: { ownerVerdict: 'exited' },
         message: 'agent_session_provider_handle_stale_fence',
         ownerVerdict: 'exited'
       }

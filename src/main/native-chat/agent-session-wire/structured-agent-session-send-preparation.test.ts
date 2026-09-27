@@ -13,6 +13,7 @@ import type {
 import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
+import { CodexAppServerRequestError } from '../../codex/codex-app-server-request-error'
 import {
   HOST_TEST_NOW as NOW,
   HOST_TEST_SESSION as SESSION,
@@ -424,15 +425,16 @@ describe('a send with no live owner', () => {
     await loseOwner()
     acquire.mockRejectedValue(new Error('Not signed in. Run codex login'))
     const params = sendParams('while signed out')
-    // The acquire's error is Orca's wrapper, not the provider's words: it goes to the log.
-    const cause = 'The provider stopped before it finished starting.'
+    // The acquire's error is Orca's wrapper, not the provider's words: it goes to the log. No exit
+    // was observed, so the chat does not say the provider stopped.
+    const cause = "Codex couldn't restart."
 
     const id = await accept(params)
 
     expect(await settled(id)).toMatchObject({
       dispatchState: 'rejected',
       reason: cause,
-      rejection: { kind: 'providerStartFailed' }
+      rejection: { kind: 'restartFailed' }
     })
     expect(dispatch).not.toHaveBeenCalled()
     // Accepted, so the ledger answers a resend with the rejection rather than a second attempt.
@@ -441,6 +443,36 @@ describe('a send with no live owner', () => {
     ).toMatchObject({ outcome: { status: 'succeeded' } })
     // One row, in the error tone, so the reason outlives the error strip.
     expect(errorStatuses()).toEqual([cause])
+  })
+
+  it("keeps Codex's own words behind a refused resume without saying the provider stopped", async () => {
+    await loseOwner()
+    const said = `no rollout found for thread id ${THREAD}`
+    acquire.mockRejectedValue(
+      new CodexAppServerRequestError('thread/resume', -32600, `thread/resume failed: ${said}`, said)
+    )
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    const id = await accept(sendParams('after the thread went away'))
+
+    // The sentence names no cause and quotes nothing; Codex's words ride in the fact for Details.
+    const rejection = {
+      kind: 'restartFailed',
+      detail: { text: said, audience: 'person' },
+      refusal: { code: 'agent_session_operation_invalid', details: { ownerVerdict: 'exited' } }
+    }
+    expect(await settled(id)).toMatchObject({
+      dispatchState: 'rejected',
+      reason: "Codex couldn't restart.",
+      rejection
+    })
+    expect(errorStatuses()).toEqual(["Codex couldn't restart."])
+    // Orca's own text is logged once where the start failed.
+    expect(warn).toHaveBeenCalledWith(
+      '[agent-session] provider start failed:',
+      expect.objectContaining({ message: `thread/resume failed: ${said}` })
+    )
+    warn.mockRestore()
   })
 
   it('restarts again for a Retry under a new id, and replays a resend of the same id', async () => {
@@ -732,7 +764,7 @@ describe('a write fenced to an owner the pane has not seen replaced', () => {
 
     expect(await settled(id)).toMatchObject({
       dispatchState: 'rejected',
-      rejection: { kind: 'providerStartFailed' }
+      rejection: { kind: 'restartFailed' }
     })
     expect(store.getRecord(SESSION)?.lease.runtimeFence).toBeGreaterThan(seenFence + 1)
     const published = frames.slice(subscribed)

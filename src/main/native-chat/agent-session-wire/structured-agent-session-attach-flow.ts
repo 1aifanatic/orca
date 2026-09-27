@@ -73,6 +73,9 @@ export type AttachFlowInput = {
   /** A failure after acquisition released the session's acquisition; `cause` is that failure and
    *  `rootGone` whether the release saw the provider root go. */
   onAcquisitionReleased?: (cause: unknown, verdict: { rootGone: boolean }) => void
+  /** The error an acquisition failed with, for a host-side reader of the provider's words; the
+   *  refusal never carries them. */
+  onAcquisitionFailed?: (error: unknown) => void
 }
 
 export async function performAttach(
@@ -194,8 +197,14 @@ export async function performAttach(
         )
       }
     }
+    input.onAcquisitionFailed?.(error)
+    const failed = failedAcquisitionRefusal(error)
+    if (failed && !failed.refusal.details?.reason) {
+      // The refusal names no situation, so what failed is kept here.
+      console.warn('[agent-session] provider start failed:', error)
+    }
     return (
-      failedAcquisitionRefusal(error) ?? {
+      failed ?? {
         ok: false,
         refusal: classifyStoreFailure(
           error,

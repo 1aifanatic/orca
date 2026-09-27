@@ -17,6 +17,7 @@ import {
   failedAcquisitionRefusal,
   failedAcquisitionSettlement
 } from './structured-agent-session-failed-create-refusal'
+import { withObservedProviderExit } from './structured-agent-session-failure-text'
 import { resolveAgentSessionReplayOutcome } from './structured-agent-session-replay-outcome'
 
 function replay(outcome: Parameters<typeof resolveAgentSessionReplayOutcome>[0]['outcome']) {
@@ -29,16 +30,26 @@ function replay(outcome: Parameters<typeof resolveAgentSessionReplayOutcome>[0][
 
 describe('a ledger replay names the details its first answer did', () => {
   it.each([
-    new AgentSessionAcquisitionRefusal('not signed in', 'notSignedIn'),
-    new AgentSessionAcquisitionExitProvenError(new Error('spawn codex ENOENT'))
-  ])('for a failed create: %s', (error) => {
+    [new AgentSessionAcquisitionRefusal('not signed in', 'notSignedIn'), 'notSignedIn'],
+    [
+      new AgentSessionAcquisitionExitProvenError(
+        withObservedProviderExit(new Error('exited (code 1)'))
+      ),
+      'providerStartFailed'
+    ],
+    // Gone now, with no exit observed: no situation, on the first answer or the replay.
+    [new AgentSessionAcquisitionExitProvenError(new Error('spawn codex ENOENT')), undefined]
+  ])('for a failed create: %s', (error, reason) => {
     const first = failedAcquisitionRefusal(error)
     const replayed = replay(failedAcquisitionSettlement(error).outcome)
-    expect(first?.refusal.details?.reason).toBeDefined()
+    expect(first?.refusal.details?.reason).toBe(reason)
     expect(replayed).toMatchObject({
       decision: 'refuse',
-      refusal: { code: first?.refusal.code, details: first?.refusal.details }
+      refusal: { code: first?.refusal.code, ...(reason ? { details: first?.refusal.details } : {}) }
     })
+    if (!reason) {
+      expect(replayed).not.toHaveProperty('refusal.details')
+    }
   })
 
   it('for a create whose cleanup could not prove the child gone', () => {

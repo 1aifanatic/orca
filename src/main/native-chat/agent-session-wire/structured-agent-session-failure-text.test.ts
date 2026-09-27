@@ -4,7 +4,11 @@ import {
   providerDiagnostic,
   withProviderDiagnostic
 } from '../../../shared/agent-session-failure'
-import { AgentSessionRefusalError, refuse } from '../../../shared/agent-session-wire-refusals'
+import {
+  AgentSessionRefusalError,
+  refuse,
+  refuseUnclassified
+} from '../../../shared/agent-session-wire-refusals'
 import { AgentSessionAcquisitionRefusal } from './structured-agent-session-adapter'
 import { MAX_UNEXPECTED_EXIT_REASON_CHARS } from './structured-agent-session-dead-generation-settlement'
 import {
@@ -103,16 +107,40 @@ describe('structuredAgentSessionStartFailure', () => {
   })
 
   it('says the provider stopped only when an exit was observed', () => {
-    const exited = structuredAgentSessionStartFailure({
-      refusal: refuse(
-        'agent_session_ownership_unknown',
-        { reason: 'ownerUnproven', ownerVerdict: 'exited' },
-        'probe saw an exit'
-      )
+    // An `exited` verdict says only that nothing runs now, not that the provider stopped.
+    const gone = refuseUnclassified('agent_session_operation_invalid', 'thread gone', {
+      ownerVerdict: 'exited'
     })
-    expect(exited).toEqual({
+    const person = { text: 'no rollout found for thread id T', audience: 'person' } as const
+    expect(
+      structuredAgentSessionStartFailure(
+        { refusal: gone, diagnostic: person },
+        { agentName: 'Codex' }
+      )
+    ).toEqual({
+      reason: "Codex couldn't restart.",
+      rejection: {
+        kind: 'restartFailed',
+        detail: person,
+        refusal: {
+          code: 'agent_session_operation_invalid',
+          details: { ownerVerdict: 'exited' }
+        }
+      }
+    })
+    const observed = refuse(
+      'agent_session_operation_invalid',
+      { reason: 'providerStartFailed', ownerVerdict: 'exited' },
+      'exited (code 1)'
+    )
+    expect(
+      structuredAgentSessionStartFailure({
+        refusal: observed,
+        diagnostic: { text: 'code 1', audience: 'log' }
+      })
+    ).toEqual({
       reason: 'The provider stopped before it finished starting.',
-      rejection: { kind: 'providerStartFailed' }
+      rejection: { kind: 'providerStartFailed', detail: { text: 'code 1', audience: 'log' } }
     })
     // A start that threw proves nothing about the provider: it may be Orca's, or a failed spawn.
     expect(

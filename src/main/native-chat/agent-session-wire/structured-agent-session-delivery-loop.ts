@@ -13,7 +13,6 @@ import {
   agentSessionFailureFact,
   type AgentSessionFailureFact
 } from '../../../shared/agent-session-failure'
-import type { AgentSessionWireRefusal } from '../../../shared/agent-session-wire'
 import {
   agentSessionFailureWords,
   type AgentSessionFailureWordsContext
@@ -55,7 +54,7 @@ type Step = 'continue' | 'stop'
 
 type Prepared =
   | 'stop'
-  | { ok: false; refusal: AgentSessionWireRefusal }
+  | Extract<StructuredAgentSessionResumeOutcome, { ok: false }>
   | { ok: true; awaited: StructuredAgentSessionProviderChildIdentity | null }
 
 /** A failed start before it is worded; `fail` words it once, through the one wording point. */
@@ -96,7 +95,8 @@ export class StructuredAgentSessionDeliveryLoop {
           return
         }
         if (!prepared.ok) {
-          const cause = { refusal: prepared.refusal }
+          const { refusal, diagnostic } = prepared
+          const cause = { refusal, ...(diagnostic ? { diagnostic } : {}) }
           await this.deps.serialize(sessionId, () =>
             this.fail(sessionId, { startKey: null, cause })
           )
