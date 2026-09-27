@@ -100,7 +100,8 @@ describe('editor file operation owner', () => {
         repo: [{ id: worktreeId, repoId: 'repo', path: '/local/repo' } as never]
       },
       activeWorktreeId: worktreeId,
-      activeWorkspaceExecutionHostId: 'runtime:hub-b'
+      activeWorkspaceExecutionHostId: 'runtime:hub-b',
+      settings: { activeRuntimeEnvironmentId: null } as never
     })
 
     const provenance = captureEditorFileOperationProvenance(

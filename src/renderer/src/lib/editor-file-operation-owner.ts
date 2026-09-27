@@ -89,8 +89,7 @@ function resolveLegacyEditorFileRoute(
     {
       ...state,
       activeWorktreeId: null,
-      activeWorkspaceExecutionHostId: null,
-      settings: { ...state.settings, activeRuntimeEnvironmentId: null }
+      activeWorkspaceExecutionHostId: null
     },
     worktreeId
   )
