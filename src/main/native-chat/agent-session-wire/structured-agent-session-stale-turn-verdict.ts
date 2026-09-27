@@ -17,7 +17,8 @@ import type { AgentSessionDeathEvidence } from '../../../shared/agent-session-re
 import type { JournalLifecycleMutationInput } from '../agent-session-journal/journal-row-builders'
 
 export type StructuredAgentSessionTurnVerdict =
-  | { state: 'interrupted'; completedAt: number }
+  /** `cancellation` only where the user aimed the stop at this chat; otherwise the end is news. */
+  | { state: 'interrupted'; completedAt: number; outcome?: 'cancellation' }
   | { state: 'unverifiable' }
 
 export const UNVERIFIABLE_TURN_VERDICT: StructuredAgentSessionTurnVerdict = {
@@ -70,6 +71,11 @@ function settledLifecycle(
     ...kept
   } = lifecycle
   return verdict.state === 'interrupted'
-    ? { ...kept, state: verdict.state, completedAt: verdict.completedAt }
+    ? {
+        ...kept,
+        state: verdict.state,
+        completedAt: verdict.completedAt,
+        ...(verdict.outcome ? { outcome: verdict.outcome } : {})
+      }
     : { ...kept, state: verdict.state }
 }

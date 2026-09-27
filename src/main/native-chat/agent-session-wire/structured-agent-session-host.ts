@@ -204,13 +204,17 @@ export class StructuredAgentSessionHost {
     }
   }
   /** Releases a session's resources without ending the conversation: the record and journal stay
-   *  on disk, so the same session can be attached again. */
-  close(sessionId: string): Promise<void> {
-    return this.serialize(sessionId, () => this.closeUnderSerialize(sessionId))
+   *  on disk, so the same session can be attached again. `requestedByUser` is the user closing this
+   *  chat, which makes a turn it cuts short their cancellation; every other close leaves it news. */
+  close(sessionId: string, options: { requestedByUser?: true } = {}): Promise<void> {
+    return this.serialize(sessionId, () => this.closeUnderSerialize(sessionId, options))
   }
 
-  private async closeUnderSerialize(sessionId: string): Promise<void> {
-    await evictHeldStructuredAgentSession(this.lifetimeContext(), sessionId)
+  private async closeUnderSerialize(
+    sessionId: string,
+    options: { requestedByUser?: true }
+  ): Promise<void> {
+    await evictHeldStructuredAgentSession(this.lifetimeContext(), sessionId, options)
     this.clientDelivery.closeSession(sessionId)
     // The holders now look at a session that is gone; a failed eviction throws above, keeping them.
     this.holds.forget(sessionId)

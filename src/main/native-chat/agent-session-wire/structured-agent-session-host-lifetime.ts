@@ -115,6 +115,8 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
   ending: {
     cause: Extract<StructuredAgentSessionChildEndCause, 'user-stop' | 'host-stop' | 'evict'>
     reason?: string
+    /** The user closed this chat. A quit, an idle eviction or a teardown aimed elsewhere did not. */
+    requestedByUser?: true
   } = { cause: 'user-stop' }
 ): Promise<void> {
   const session = context.sessions.get(sessionId)
@@ -163,7 +165,14 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
         fence,
         settlementId: `expected-close:${sessionId}:${fence}:${owed?.generation ?? 'unknown'}`,
         pendingSubmissionReason: 'provider_closed_before_acknowledgement',
-        verdict: { state: 'interrupted', completedAt: context.now() },
+        // A turn the user cut short from this chat is their cancellation; any other cut is news.
+        verdict: {
+          state: 'interrupted',
+          completedAt: context.now(),
+          ...(ending.cause === 'user-stop' || ending.requestedByUser
+            ? { outcome: 'cancellation' as const }
+            : {})
+        },
         showUnexpectedExitOutcome: false,
         onError: (id, error) => {
           settlementError = error
@@ -204,12 +213,16 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
  *  closes and it leaves the map. A stop that fails throws first, leaving it indexed for a retry. */
 export async function evictHeldStructuredAgentSession(
   context: StructuredAgentSessionLifetimeContext,
-  sessionId: string
+  sessionId: string,
+  options: { requestedByUser?: true } = {}
 ): Promise<void> {
   if (!context.sessions.has(sessionId)) {
     return
   }
-  await stopStructuredAgentSessionAgentUnderSerialize(context, sessionId, { cause: 'evict' })
+  await stopStructuredAgentSessionAgentUnderSerialize(context, sessionId, {
+    cause: 'evict',
+    ...options
+  })
   await forgetStructuredAgentSession(context, sessionId)
 }
 

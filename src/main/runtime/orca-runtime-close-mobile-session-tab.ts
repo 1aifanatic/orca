@@ -307,7 +307,11 @@ export class OrcaRuntimeWithCloseMobileSessionTab extends OrcaRuntimeWithRefuseU
           }
         }
       }
-      await this.closeStructuredAgentSessionTab(tab)
+      // A reasonless close is an older client's user close; a lifecycle echo is not the user's.
+      await this.closeStructuredAgentSessionTab(
+        tab,
+        options.reason === undefined || options.reason === 'user' ? { requestedByUser: true } : {}
+      )
     } else {
       if (!this.notifier?.closeSessionTab) {
         throw new Error('runtime_unavailable')

@@ -16,7 +16,10 @@ import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire
 import { retireStructuredAgentSessionTabFrom } from './structured-agent-session-tab-retirement'
 
 export class OrcaRuntimeWithCloseStructuredAgentSessionTab extends OrcaRuntimeWithCloseMobileSessionTab {
-  protected async closeStructuredAgentSessionTab(tab: RuntimeMobileSessionAgentTab): Promise<void> {
+  protected async closeStructuredAgentSessionTab(
+    tab: RuntimeMobileSessionAgentTab,
+    options: { requestedByUser?: true } = {}
+  ): Promise<void> {
     const host = getStructuredAgentSessionHost()
     if (host) {
       if (typeof host.setSessionTabVisibility === 'function') {
@@ -26,7 +29,7 @@ export class OrcaRuntimeWithCloseStructuredAgentSessionTab extends OrcaRuntimeWi
     // Retire durable visibility and the runtime snapshot before stopping the provider.
     this.retireStructuredAgentSessionTabFromSnapshot(tab.sessionId)
     if (typeof host?.close === 'function') {
-      await host.close(tab.sessionId)
+      await host.close(tab.sessionId, options)
     }
   }
 
