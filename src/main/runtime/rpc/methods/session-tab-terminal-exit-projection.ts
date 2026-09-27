@@ -67,18 +67,7 @@ export function projectSessionTabTerminalExits(
       )
     }
   }
-  // Why drop the tab's own binding: the exact match must succeed for every exited leaf, because a
-  // handle-less leaf left in an older client's view reads as a terminal starting forever.
-  let projected: RuntimeMobileSessionTabsResult = {
-    ...payload,
-    tabs: payload.tabs.map((tab) => {
-      if (!isExitedTerminalTab(tab)) {
-        return tab
-      }
-      const { ptyId: _ptyId, ...unbound } = tab
-      return unbound
-    })
-  }
+  let projected = payload
   for (const tab of exitedTabs) {
     const retired = retireTerminalSurfacesFromSnapshot({
       snapshot: projected,

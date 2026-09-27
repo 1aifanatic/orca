@@ -245,6 +245,25 @@ describe('terminal exit records', () => {
     ])
   })
 
+  it('never gives a capable client the dead process a reloaded renderer still names', async () => {
+    const { runtime } = makeRendererRuntime(
+      rendererSnapshot([
+        { tabId: TAB_ID, leafId: HEADLESS_LEAF_ID, ptyId: DEAD_PTY_ID },
+        { tabId: TAB_ID, leafId: SIBLING_LEAF_ID, ptyId: 'pty-sibling' }
+      ])
+    )
+    runtime.terminalExitRecords.record(exitRecord())
+
+    const capable = await listForClient(runtime, [
+      SESSION_TABS_TERMINAL_EXIT_STATE_RUNTIME_CAPABILITY
+    ])
+
+    const [exitedLeaf, sibling] = capable.tabs
+    expect(exitedLeaf).toMatchObject({ leafId: HEADLESS_LEAF_ID, exited: { exitCode: 3 } })
+    expect(exitedLeaf).not.toHaveProperty('ptyId')
+    expect(sibling).toMatchObject({ leafId: SIBLING_LEAF_ID, ptyId: 'pty-sibling' })
+  })
+
   it('keeps the record with the leaf when the pane moves to another tab', async () => {
     const { runtime } = makeRendererRuntime(
       rendererSnapshot([{ tabId: TAB_ID, leafId: HEADLESS_LEAF_ID }])

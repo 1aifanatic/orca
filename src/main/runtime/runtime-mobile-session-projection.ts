@@ -299,7 +299,9 @@ export function projectRuntimeMobileSessionTabs(
       parentTabId: tab.parentTabId,
       leafId: tab.leafId,
       title,
-      ...(tab.ptyId ? { ptyId: tab.ptyId } : {}),
+      // Why not when exited: a reloaded renderer still names the dead process, and a stale id
+      // would fail an older client's exact retirement of the leaf.
+      ...(tab.ptyId && !exited ? { ptyId: tab.ptyId } : {}),
       ...(tab.terminalTheme ? { terminalTheme: tab.terminalTheme } : {}),
       ...(launchAgent ? { launchAgent } : {}),
       ...clientAgentStatus,
