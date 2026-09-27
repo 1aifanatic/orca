@@ -187,7 +187,10 @@ export class AgentSessionSavedStatusStore {
         }
         db.exec('COMMIT')
       } catch (error) {
-        db.exec('ROLLBACK')
+        // SQLite may have rolled back already; a second ROLLBACK would mask a corrupt file.
+        if (db.isTransaction) {
+          db.exec('ROLLBACK')
+        }
         throw error
       }
     } catch (error) {

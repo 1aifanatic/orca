@@ -124,6 +124,35 @@ describe('saved chat status store', () => {
     expect(open(dir).read('s1')).toEqual(saved(3))
   })
 
+  it('recreates the file when a flush finds it corrupt after SQLite already rolled back', () => {
+    const dir = tempDir()
+    const store = open(dir)
+    store.record('before', saved(1))
+    store.flush()
+    const exec = Database.prototype.exec
+    let failCommit = true
+    vi.spyOn(Database.prototype, 'exec').mockImplementation(function (
+      this: Database.Database,
+      sql: string
+    ) {
+      if (sql === 'COMMIT' && failCommit) {
+        failCommit = false
+        // SQLite ends the transaction itself on a corrupt page, before the error reaches us.
+        exec.call(this, 'ROLLBACK')
+        throw Object.assign(new Error('database disk image is malformed'), {
+          code: 'SQLITE_CORRUPT'
+        })
+      }
+      return exec.call(this, sql)
+    })
+    store.record('after', saved(2))
+    expect(store.flush()).toBe(false)
+    store.close()
+    const reopened = open(dir)
+    expect(reopened.read('before')).toBeNull()
+    expect(reopened.read('after')).toEqual(saved(2))
+  })
+
   it('leaves a newer build’s file untouched and reads or writes nothing from it', () => {
     const dir = tempDir()
     const path = join(dir, AGENT_SESSION_SAVED_STATUS_FILE)
