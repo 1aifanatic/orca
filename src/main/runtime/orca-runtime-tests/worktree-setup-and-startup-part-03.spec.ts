@@ -410,14 +410,13 @@ describe('OrcaRuntimeService', () => {
     )
     expect(metaById[result.worktree.id]).toMatchObject({ createdWithAgent: 'codex' })
 
-    // The shell's command-start mark hands the PTY to the agent; only its output can prove readiness.
-    runtime.onPtyData('pty-startup-draft', '\x1b]133;C\x07\x1b[?2004h', Date.now())
+    runtime.onPtyData('pty-startup-draft', '\x1b[?2004h', Date.now())
     await vi.advanceTimersByTimeAsync(10_000)
     expect(write).not.toHaveBeenCalled()
 
     runtime.onPtyData('pty-startup-draft', '›', Date.now())
-    // Composer evidence is weak: it settles on the next tui-idle poll, after a screen read.
-    await vi.advanceTimersByTimeAsync(2_000)
+    await Promise.resolve()
+    await Promise.resolve()
 
     expect(write).toHaveBeenCalledWith('pty-startup-draft', `\x1b[200~${draftUrl}\x1b[201~`)
   })
@@ -551,8 +550,9 @@ describe('OrcaRuntimeService', () => {
 
     // Past the old 8s default, where readiness would previously have been abandoned.
     await vi.advanceTimersByTimeAsync(10_000)
-    runtime.onPtyData('pty-opencode-draft-budget', '\x1b]133;C\x07\x1b[?2004h\x1b[?25h', Date.now())
-    await vi.advanceTimersByTimeAsync(2_000)
+    runtime.onPtyData('pty-opencode-draft-budget', '\x1b[?2004h\x1b[?25h', Date.now())
+    await Promise.resolve()
+    await Promise.resolve()
 
     expect(write).toHaveBeenCalledWith('pty-opencode-draft-budget', `\x1b[200~${draftUrl}\x1b[201~`)
   })

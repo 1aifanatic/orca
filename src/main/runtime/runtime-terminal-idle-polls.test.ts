@@ -443,7 +443,7 @@ describe('RuntimeTerminalIdlePolls composer-ready evidence (launch readiness)', 
   })
 
   it('disposes the watch when the waiter is cancelled', () => {
-    const h = createPolls(null, 'none')
+    const h = createPolls(null, 'pending')
     const waiter = makeWaiter('pty', true)
     h.polls.startPty(waiter, quietPty())
 

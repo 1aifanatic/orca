@@ -189,48 +189,35 @@ describe('evaluateTuiIdle composer rank (launch readiness)', () => {
 
   it('is absent from a plain tui-idle wait, which also waits out turns', () => {
     expect(evaluateTuiIdle(input({ ...goose })).kind).toBe('pending')
-    expect(evaluateTuiIdle(input({ ...goose, ...composer('none') })).kind).toBe('pending')
+    expect(evaluateTuiIdle(input({ ...goose, ...composer('unowned') })).kind).toBe('pending')
   })
 
-  it('leaves a pane with a title-derived status to the tiers that read it', () => {
-    // A working title outranks it; a name-only idle that is not yet corroborated stays pending.
-    expect(
-      evaluateTuiIdle(
-        input({ ...goose, ...composer('ready'), record: record({ lastAgentStatus: 'working' }) })
-      ).kind
-    ).toBe('working')
-    expect(
-      evaluateTuiIdle(
-        input({
-          ...composer('ready'),
-          readMuseReadyBodyEvidence: () => false,
-          agent: 'claude',
-          record: record({ lastAgentStatus: 'idle', lastOutputAt: Date.now() })
-        })
-      ).kind
-    ).toBe('pending')
-  })
-
-  it("holds a name-only idle title until the launched agent's composer marker renders", () => {
+  it("replaces a name-only idle title while the declared agent's command owns the PTY", () => {
     // OpenCode names itself in its title before its composer mounts.
     const opencode = {
       readMuseReadyBodyEvidence: () => false,
       agent: 'opencode' as const,
       record: record({ lastAgentStatus: 'idle' })
     }
-    expect(evaluateTuiIdle(input({ ...opencode, ...composer('awaiting-marker') })).kind).toBe(
-      'pending'
-    )
-    for (const signal of ['ready', 'armed', 'none'] as const) {
-      expect(evaluateTuiIdle(input({ ...opencode, ...composer(signal) }))).toEqual({
-        kind: 'ready-weak'
-      })
-    }
-    // A plain wait has no watcher, so the title settles as before.
+    expect(evaluateTuiIdle(input({ ...opencode, ...composer('pending') })).kind).toBe('pending')
+    expect(evaluateTuiIdle(input({ ...opencode, ...composer('ready') }))).toEqual({
+      kind: 'ready-weak'
+    })
+    // Unowned (no command-start mark) and a plain wait keep the title, exactly as before.
+    expect(evaluateTuiIdle(input({ ...opencode, ...composer('unowned') }))).toEqual({
+      kind: 'ready-weak'
+    })
     expect(evaluateTuiIdle(input({ ...opencode }))).toEqual({ kind: 'ready-weak' })
   })
 
-  it('loses to a blocking prompt in the tail and to a first-party working status', () => {
+  it('loses to a working or permission title, a blocking prompt and a first-party working status', () => {
+    for (const lastAgentStatus of ['working', 'permission'] as const) {
+      expect(
+        evaluateTuiIdle(
+          input({ ...goose, ...composer('ready'), record: record({ lastAgentStatus }) })
+        ).kind
+      ).not.toBe('ready-weak')
+    }
     expect(
       evaluateTuiIdle(
         input({

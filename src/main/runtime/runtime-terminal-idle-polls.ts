@@ -42,7 +42,7 @@ type RuntimeTerminalIdlePollDependencies = TuiIdleEvidenceSource & {
   readVisibleScreen(ptyId: string): Promise<string | null> | null
   /** Re-read the record the waiter registered against; see `sample` below. */
   getLiveLeaf(leaf: RuntimeLeafRecord): RuntimeLeafRecord
-  /** The launched agent's composer-ready signal on this PTY; null when the agent is unknown. */
+  /** The launched agent's composer-ready signal; null unless it declares launch readiness. */
   watchComposerReady(ptyId: string): AgentComposerReadyWatch | null
   resolve(waiter: TerminalWaiter, result: RuntimeTerminalWait): void
 }

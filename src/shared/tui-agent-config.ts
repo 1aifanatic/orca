@@ -16,6 +16,9 @@ export type DraftPasteReadySignal =
   | 'grok-composer-prompt'
   | 'zcode-composer-prompt'
 
+/** Evidence a freshly launched agent's own composer gives a launch-readiness wait. */
+export type AgentLaunchReadiness = 'composer-marker' | 'composer-quiet'
+
 export type TuiAgentDetectionRuntime = NodeJS.Platform | 'wsl'
 
 export type TuiAgentConfig = {
@@ -43,6 +46,12 @@ export type TuiAgentConfig = {
   preflightTrust?: 'cursor' | 'copilot' | 'codex' | 'antigravity'
   /** Agent-specific signal that the composer is ready for paste, stronger than the default quiet-render window. */
   draftPasteReadySignal?: DraftPasteReadySignal
+  /** What settles a launch wait on a terminal this launch created, once the agent's command owns the
+   *  PTY (OSC 133;C): `composer-marker` = its `draftPasteReadySignal` marker rendered;
+   *  `composer-quiet` = it enabled bracketed paste, then went quiet. Declare only with a captured
+   *  screen replayed in `agent-composer-ready-transcripts.test.ts`; undeclared agents keep plain
+   *  `tui-idle`, because an uncaptured first-run question can arm paste mode just like a composer. */
+  launchReadiness?: AgentLaunchReadiness
   /** Hard deadline for the agent's composer readiness signal. */
   draftPasteReadyTimeoutMs?: number
   /** Delay before one extra blind submit Enter, for agents that render their composer before Enter is live (codex); a no-op if the first Enter landed. */
@@ -107,6 +116,7 @@ const TUI_AGENT_CONFIG_SOURCE: Record<TuiAgent, TuiAgentConfigSource> = {
     windowsInputRecordPasteNewline: 'alt-enter',
     preflightTrust: 'codex',
     draftPasteReadySignal: 'codex-composer-prompt',
+    launchReadiness: 'composer-marker',
     draftPasteReadyTimeoutMs: 20_000,
     submitRetryDelayMs: 1200
   },
@@ -134,6 +144,7 @@ const TUI_AGENT_CONFIG_SOURCE: Record<TuiAgent, TuiAgentConfigSource> = {
     promptInjectionMode: 'flag-prompt',
     // Why: opencode enables bracketed paste before its composer mounts; wait for the post-\x1b[?2004h show-cursor so paste lands.
     draftPasteReadySignal: 'render-cursor-after-bracketed-paste',
+    launchReadiness: 'composer-marker',
     // Why 20s: measured on two Windows hosts (ConPTY dll backend, as pinned by
     // local-pty-utils), opencode does not enable bracketed paste until ~4.8s and its
     // composer is not ready until ~10s — so the 8s default expired first and the draft
@@ -205,7 +216,8 @@ const TUI_AGENT_CONFIG_SOURCE: Record<TuiAgent, TuiAgentConfigSource> = {
   },
   goose: {
     detectCmd: 'goose',
-    promptInjectionMode: 'stdin-after-start'
+    promptInjectionMode: 'stdin-after-start',
+    launchReadiness: 'composer-quiet'
   },
   amp: {
     detectCmd: 'amp',

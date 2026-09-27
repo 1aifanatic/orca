@@ -1,20 +1,17 @@
 /**
  * A freshly launched agent's own composer-ready signal, as evidence for a launch-readiness wait.
  *
- * `tui-idle` alone never settles for an agent that paints no idle title and no known ready screen —
- * most `stdin-after-start` agents — so a launch prompt, a worker brief or a startup draft waited out
- * its whole budget and was never delivered. This reads the scanner the renderer's draft paste has
- * always used and hands its state to the tui-idle evaluator as one weak-ready rank; the evaluator
- * and the poll decide, including the rendered-screen blocked check.
+ * `tui-idle` alone never settles for an agent that paints no idle title and no known ready screen
+ * (goose), so a launch prompt, a worker brief or a startup draft waited out its whole budget and was
+ * never delivered. Each agent declares the evidence its composer gives (`launchReadiness` in
+ * `tui-agent-config.ts`), backed by a captured screen; this reads it with the scanner the draft paste
+ * has always used and hands its state to the tui-idle evaluator, which decides, including the
+ * rendered-screen blocked check. An undeclared agent gets no watch and a plain `tui-idle` wait.
  *
  * The signal only counts while the agent owns the PTY. The shell arms bracketed paste for its own
  * prompt, so the scanner is fed only output between the shell's OSC 133;C (command started) and its
- * next 133;D / 133;A (command finished / prompt drawn). A transport that emits no 133;C never arms
- * it, and the wait is exactly `tui-idle`.
- *
- * Claude Code, and every agent that runs it, is read by its `✳` title alone: it arms bracketed paste
- * before its first-run dialogs (workspace trust, bypass permissions), so for it the signal cannot
- * tell a composer from a dialog.
+ * next 133;D / 133;A (command finished / prompt drawn). Outside that window the watch reads
+ * `unowned`, and the wait is exactly `tui-idle`.
  */
 
 import {
@@ -22,12 +19,12 @@ import {
   draftPasteReadySignalHasMarker
 } from '../../shared/draft-paste-ready-scanner'
 import type { TuiAgent } from '../../shared/tui-agent'
-import { TUI_AGENT_CONFIG } from '../../shared/tui-agent-config'
+import { TUI_AGENT_CONFIG, type DraftPasteReadySignal } from '../../shared/tui-agent-config'
 
-/** `ready`: the agent's composer marker rendered. `armed`: it enabled bracketed paste and settles
- *  once its output goes quiet. `awaiting-marker`: the agent owns the PTY and its composer has a
- *  marker that has not rendered yet. `none`: no evidence either way. */
-export type AgentComposerSignal = 'none' | 'awaiting-marker' | 'armed' | 'ready'
+/** `unowned`: the agent's command does not own the PTY, so this is no evidence. `pending`: it owns
+ *  it and its composer has shown nothing yet. `armed`: a `composer-quiet` agent enabled bracketed
+ *  paste and is ready once quiet. `ready`: a `composer-marker` agent's marker rendered. */
+export type AgentComposerSignal = 'unowned' | 'pending' | 'armed' | 'ready'
 
 export type AgentComposerReadyWatch = {
   signal(): AgentComposerSignal
@@ -37,13 +34,21 @@ export type AgentComposerReadyWatch = {
 // OSC 133 marks: C = the shell handed the terminal to a command; D / A = it took it back.
 const OSC_133_PREFIX = '\x1b]133;'
 const OWNERSHIP_MARKS = new Set(['A', 'C', 'D'])
-// Why the launch mode and the fork too: both show Claude Code's dialogs, and a worker brief or an
-// Agent Teams launch text sent on a settled wait would answer the bypass-permissions prompt.
-const CLAUDE_CODE_AGENTS: ReadonlySet<TuiAgent> = new Set([
-  'claude',
-  'claude-agent-teams',
-  'openclaude'
-])
+
+function resolveComposerScannerSignal(agent: TuiAgent): DraftPasteReadySignal | null {
+  const config = TUI_AGENT_CONFIG[agent]
+  if (config.launchReadiness === 'composer-quiet') {
+    return 'render-quiet-after-bracketed-paste'
+  }
+  if (
+    config.launchReadiness === 'composer-marker' &&
+    config.draftPasteReadySignal &&
+    draftPasteReadySignalHasMarker(config.draftPasteReadySignal)
+  ) {
+    return config.draftPasteReadySignal
+  }
+  return null
+}
 
 export function watchAgentComposerReady(
   agent: TuiAgent,
@@ -52,16 +57,12 @@ export function watchAgentComposerReady(
     readRecentOutput: () => string | undefined
   }
 ): AgentComposerReadyWatch | null {
-  if (CLAUDE_CODE_AGENTS.has(agent)) {
+  const readySignal = resolveComposerScannerSignal(agent)
+  if (!readySignal) {
     return null
   }
-  const readySignal =
-    TUI_AGENT_CONFIG[agent].draftPasteReadySignal ?? 'render-quiet-after-bracketed-paste'
-  const commandStartSignal: AgentComposerSignal = draftPasteReadySignalHasMarker(readySignal)
-    ? 'awaiting-marker'
-    : 'none'
   let scanner: ReturnType<typeof createDraftPasteReadyScanner> | null = null
-  let signal: AgentComposerSignal = 'none'
+  let signal: AgentComposerSignal = 'unowned'
   let carry = ''
 
   const observeOwned = (segment: string): void => {
@@ -92,7 +93,7 @@ export function watchAgentComposerReady(
       cursor = index + OSC_133_PREFIX.length + 1
       // Why a fresh scanner per command: the previous command's bracketed paste proves nothing now.
       scanner = mark === 'C' ? createDraftPasteReadyScanner(readySignal) : null
-      signal = scanner ? commandStartSignal : 'none'
+      signal = scanner ? 'pending' : 'unowned'
     }
     const tail = text.slice(cursor)
     const partial = tail.lastIndexOf('\x1b')

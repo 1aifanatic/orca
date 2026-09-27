@@ -11,6 +11,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { TuiAgent } from '../../shared/tui-agent'
+import { watchAgentComposerReady } from './agent-composer-ready-watch'
 import { createTranscriptPane, TRANSCRIPT_PANE_PTY_ID } from './agent-transcript-pane-test-harness'
 
 const COMMAND_START = '\x1b]133;C\x07'
@@ -66,20 +67,14 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-describe('launch readiness on agents tui-idle cannot see', () => {
-  // Neither agent sets a title tui-idle recognises or paints a ready screen it knows, so tui-idle
-  // alone never settles; both enable bracketed paste once their composer is up.
-  it.each([
-    ['goose', 'goose-composer-ready', 'goose'],
-    ['aider', 'aider-composer-ready', 'aider']
-  ] as const)(
-    'settles on the %s composer, where a plain tui-idle wait times out',
-    async (agent, name, title) => {
-      const { launch, plain } = await replay(agent, name, title)
-      expect(launch).toEqual({ satisfied: true, blockedReason: null })
-      expect(plain).toBe('timeout')
-    }
-  )
+describe('launch readiness on a declared composer-quiet agent (goose)', () => {
+  // goose sets no title tui-idle recognises and paints no ready screen it knows, so tui-idle alone
+  // never settles; it enables bracketed paste once its composer is up.
+  it('settles on the captured goose composer, where a plain tui-idle wait times out', async () => {
+    const { launch, plain } = await replay('goose', 'goose-composer-ready', 'goose')
+    expect(launch).toEqual({ satisfied: true, blockedReason: null })
+    expect(plain).toBe('timeout')
+  })
 
   it('settles within one quiet window and two polls of the last paint', async () => {
     const { data, size } = readCapture('goose-composer-ready')
@@ -128,16 +123,52 @@ describe('launch readiness on agents tui-idle cannot see', () => {
   })
 })
 
-describe('launch readiness on agents tui-idle already reads', () => {
-  // The pane shows a title-derived status or a known ready screen, so tui-idle decides alone and
-  // the verdict is exactly the one a plain wait gives.
+describe('launch readiness on undeclared agents', () => {
+  // No launchReadiness declaration, so a launch wait is exactly a plain one. aider's capture ran with
+  // --yes-always; in manual mode its `.gitignore` (Y)es/(N)o question arms bracketed paste as well.
   it.each([
-    ['codex', 'codex-composer-ready', 'Terminal'],
-    ['opencode', 'opencode-composer-ready', 'OpenCode'],
+    ['aider', 'aider-composer-ready', 'aider'],
     ['claude', 'claude-composer-ready', '✳ Claude Code']
-  ] as const)('leaves the %s composer to tui-idle', async (agent, name, title) => {
+  ] as const)('gives the %s capture the plain verdict', async (agent, name, title) => {
     const { launch, plain } = await replay(agent, name, title)
     expect(launch).toEqual(plain)
+  })
+
+  it('leaves aider at "not ready" even with its composer on screen', async () => {
+    const { launch } = await replay('aider', 'aider-composer-ready', 'aider')
+    expect(launch).toBe('timeout')
+  })
+})
+
+describe('launch readiness on declared composer-marker agents (codex, opencode)', () => {
+  // The marker, read only while the agent owns the PTY, is what the watch reports ready on.
+  it.each([
+    ['codex', 'codex-composer-ready', '\u203a'],
+    ['opencode', 'opencode-composer-ready', '\x1b[?25h']
+  ] as const)(
+    'reads the captured %s composer marker, and nothing before it',
+    (agent, name, marker) => {
+      const { data } = readCapture(name)
+      const markerAt = data.indexOf(marker, data.indexOf('\x1b[?2004h'))
+      let emit: (chunk: string) => void = () => {}
+      const composer = watchAgentComposerReady(agent, {
+        subscribeToData: (listener) => {
+          emit = listener
+          return () => {}
+        },
+        readRecentOutput: () => undefined
+      })
+      emit(`${COMMAND_START}${data.slice(0, markerAt)}`)
+      expect(composer?.signal()).toBe('pending')
+      emit(data.slice(markerAt))
+      expect(composer?.signal()).toBe('ready')
+    }
+  )
+
+  it('settles a launch wait on the captured codex composer', async () => {
+    // Codex's `OpenAI Codex` header is also a known ready screen, so a plain wait agrees here.
+    const { launch } = await replay('codex', 'codex-composer-ready', 'Terminal')
+    expect(launch).toEqual({ satisfied: true, blockedReason: null })
   })
 })
 

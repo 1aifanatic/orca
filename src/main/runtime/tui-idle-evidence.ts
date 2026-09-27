@@ -33,11 +33,10 @@ import {
  *      inferred.
  *   3. WEAK READY — a name-only title, or a quiet non-shell foreground process. A last
  *      resort, and only once sustained.
- *   3b. COMPOSER — launch-readiness waits only, on a pane with no title-derived status: the
- *      launched agent's own composer-ready signal (`agent-composer-ready-watch.ts`). It says the
+ *   3b. COMPOSER — launch-readiness waits only, for an agent that declares its composer evidence
+ *      and whose command owns the PTY (`agent-composer-ready-watch.ts`): that evidence REPLACES
+ *      tier 3's title, which can arrive before the composer mounts (OpenCode's does). It says the
  *      composer mounted, not that a turn finished, so a plain `tui-idle` wait never reads it.
- *      While the launched agent owns the PTY and its composer marker has not rendered, tier 3
- *      is held: the marker is the direct witness that the input box is up.
  *
  * Why weak ready is a verdict class rather than a per-evidence flag: none of it can see a
  * start-up dialog the line tail lost (Claude's workspace trust), so ONLY the poll may settle
@@ -237,16 +236,12 @@ export function evaluateTuiIdle(input: TuiIdleEvaluationInput): TuiIdleVerdict {
   if (input.record.lastAgentStatus === 'working') {
     return WORKING
   }
-  const composer = input.readComposerSignal?.() ?? 'none'
-  // Why the hold: a name-only title can arrive before the composer mounts (OpenCode's does), and
-  // while the launched agent owns the PTY its own marker is the direct witness.
+  const composer = input.readComposerSignal?.() ?? 'unowned'
   if (
-    composer !== 'awaiting-marker' &&
-    hasSustainedTitleIdle(input.record, input.agent, input.quiescenceMs)
+    composer === 'unowned'
+      ? hasSustainedTitleIdle(input.record, input.agent, input.quiescenceMs)
+      : hasComposerReady(input.record, composer, input.quiescenceMs)
   ) {
-    return READY_WEAK
-  }
-  if (hasComposerReady(input.record, composer, input.quiescenceMs)) {
     return READY_WEAK
   }
   return {
@@ -257,16 +252,16 @@ export function evaluateTuiIdle(input: TuiIdleEvaluationInput): TuiIdleVerdict {
 }
 
 /**
- * Tier 3b. Only where the pane has no title-derived status; a titled pane settles through tier 3.
- * An armed composer is believed once the stream is quiet, held out without an output clock for
- * the same reason as tier 3.
+ * Tier 3b. An armed composer is believed once the stream is quiet, held out without an output
+ * clock for the same reason as tier 3.
  */
 function hasComposerReady(
   record: TuiIdleEvidenceRecord,
   signal: AgentComposerSignal,
   quiescenceMs: number
 ): boolean {
-  if (record.lastAgentStatus !== null) {
+  // Why: a title saying the agent waits on a permission answer outranks a composer on screen.
+  if (record.lastAgentStatus === 'permission') {
     return false
   }
   if (signal === 'ready') {
