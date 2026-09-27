@@ -24,6 +24,11 @@ import {
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
 
+/** Delivery runs on its own serialized steps; under a loaded runner they take more than a second. */
+function eventually(assertion: () => unknown): Promise<unknown> {
+  return vi.waitFor(assertion, { timeout: 10_000 })
+}
+
 const CALLER = { callerKey: 'client-1' }
 const SURFACE = 'desktop-chat:1'
 const LAUNCH_FAILURE =
@@ -82,7 +87,7 @@ afterEach(async () => {
 
 /** Waits until the adapter has published every exit it saw and the host settled each one. */
 async function settleExits(): Promise<void> {
-  await vi.waitFor(async () => {
+  await eventually(async () => {
     await adapter.drainObservedExits()
     await Promise.all(lifecycle)
     expect(host.journalSnapshot(SESSION).items.length).toBeGreaterThan(0)
@@ -144,7 +149,7 @@ describe('a fresh chat whose Claude start fails', () => {
     expect(claude.connections).toHaveLength(1)
 
     const sent = await send('reply with exactly: alpha')
-    await vi.waitFor(() =>
+    await eventually(() =>
       expect(
         host.journalSnapshot(SESSION).submissions.find((s) => s.clientMessageId === sent)
       ).toMatchObject({ dispatchState: 'rejected', reason: startFailure })

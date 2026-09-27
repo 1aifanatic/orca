@@ -24,6 +24,11 @@ import {
   hostTestMessage
 } from './structured-agent-session-host-test-data'
 
+/** Delivery runs on its own serialized steps; under a loaded runner they take more than a second. */
+function eventually(assertion: () => unknown): Promise<unknown> {
+  return vi.waitFor(assertion, { timeout: 10_000 })
+}
+
 const relaunchedRoots: string[] = []
 
 afterEach(async () => {
@@ -91,7 +96,7 @@ it('settles a turn a dead generation left running when a send opens the chat and
   await expect(host.send(CALLER, { envelope: sendEnvelope, body })).resolves.toMatchObject({
     ok: true
   })
-  await vi.waitFor(() =>
+  await eventually(() =>
     expect(
       host
         .journalSnapshot(SESSION)
