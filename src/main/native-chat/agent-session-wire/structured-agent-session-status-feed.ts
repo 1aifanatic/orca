@@ -286,6 +286,19 @@ export class StructuredAgentSessionStatusFeed {
     }
   }
 
+  /** Child-work evidence for a session this feed publishes; a failing sink costs nothing else. */
+  publishChildWork(sessionId: string, evidence: AgentChildWorkEvidence[]): void {
+    const session = this.deps.sessions.get(sessionId)
+    if (!session) {
+      return
+    }
+    try {
+      this.ownership.publishChildWork(sessionId, evidence, session.params.provider)
+    } catch (error) {
+      console.warn('[structured-session-status] child work publish failed', error)
+    }
+  }
+
   private projectionFor(
     journal: AgentSessionJournal,
     record: AgentSessionRecord | null
@@ -319,19 +332,6 @@ export class StructuredAgentSessionStatusFeed {
       this.journalProjections.set(journal, projection)
     }
     return projection.state
-  }
-
-  /** Child-work evidence for a session this feed publishes; a failing sink costs nothing else. */
-  publishChildWork(sessionId: string, evidence: AgentChildWorkEvidence[]): void {
-    const session = this.deps.sessions.get(sessionId)
-    if (!session) {
-      return
-    }
-    try {
-      this.ownership.publishChildWork(sessionId, evidence, session.params.provider)
-    } catch (error) {
-      console.warn('[structured-session-status] child work publish failed', error)
-    }
   }
 
   /** A failing sink must never cost the subscribers their status event. */
