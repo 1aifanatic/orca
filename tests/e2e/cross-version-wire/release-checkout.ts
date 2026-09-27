@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process'
 import { constants } from 'node:fs'
-import { access, mkdtemp, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { access, copyFile, mkdtemp, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { lock } from 'proper-lockfile'
 import {
@@ -182,19 +182,17 @@ async function assertCheckoutWireSurface(root: string, ref: string): Promise<voi
   }
 }
 
-function checkoutModulePath(checkout: ReleaseCheckout, rootRelativePath: string): string {
+function checkoutModulePath(root: string, rootRelativePath: string): string {
   const fromRoot = rootRelativePath.replace(/^[/\\]+/, '')
-  const absolute = resolve(checkout.root, fromRoot)
-  const fromCheckout = relative(checkout.root, absolute)
+  const absolute = resolve(root, fromRoot)
+  const fromCheckout = relative(root, absolute)
   if (
     !fromRoot ||
     fromCheckout === '..' ||
     fromCheckout.startsWith(`..${sep}`) ||
     isAbsolute(fromCheckout)
   ) {
-    throw new Error(
-      `Cross-version module path must stay inside the release checkout: ${rootRelativePath}`
-    )
+    throw new Error(`Cross-version module path must stay inside ${root}: ${rootRelativePath}`)
   }
   return absolute.split('\\').join('/')
 }
@@ -213,7 +211,27 @@ export function importReleaseCheckoutModule(
   importModule: (specifier: string) => Promise<Record<string, unknown>> = (specifier) =>
     import(/* @vite-ignore */ specifier) as Promise<Record<string, unknown>>
 ): Promise<Record<string, unknown>> {
-  return importModule(checkoutModulePath(checkout, rootRelativePath))
+  return importModule(checkoutModulePath(checkout.root, rootRelativePath))
+}
+
+/**
+ * Import a copy of a self-contained working-tree module placed under the cache root.
+ *
+ * Why: vite transforms a file against its nearest tsconfig, and `mobile/tsconfig.json` extends
+ * Expo's, which the root-only CI lane does not install. The copy gets the root tsconfig, as the
+ * release checkout's copy does. A relative runtime import would not resolve from the copy.
+ */
+export async function importWorkingTreeModuleCopy(
+  rootRelativePath: string,
+  cacheRoot: string = DEFAULT_CACHE_ROOT
+): Promise<Record<string, unknown>> {
+  const copy = checkoutModulePath(join(cacheRoot, 'working-tree'), rootRelativePath)
+  const staged = `${copy}.${process.pid}.tmp`
+  await mkdir(dirname(copy), { recursive: true })
+  await copyFile(checkoutModulePath(REPO_ROOT, rootRelativePath), staged)
+  // Rename so a concurrent run never imports a half-written copy.
+  await rename(staged, copy)
+  return import(/* @vite-ignore */ copy) as Promise<Record<string, unknown>>
 }
 
 /**
