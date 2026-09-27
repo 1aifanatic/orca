@@ -83,7 +83,10 @@ describe('a create that fails after its child wrote through the unbound sink', (
       const failed = host.attach(CALLER, hostTestAttachParams(null))
       await (cause instanceof AgentSessionPreSpawnError
         ? expect(failed).rejects.toThrow(EXIT_REASON)
-        : expect(failed).resolves.toMatchObject({ ok: false, refusal: { message: EXIT_REASON } }))
+        : expect(failed).resolves.toMatchObject({
+            ok: false,
+            refusal: { message: "Codex couldn't restart." }
+          }))
 
       await expect(host.attach(CALLER, hostTestAttachParams(null))).resolves.toMatchObject({
         ok: true

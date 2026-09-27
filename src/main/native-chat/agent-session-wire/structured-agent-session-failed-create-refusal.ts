@@ -1,4 +1,5 @@
 import {
+  isAgentSessionWireRefusalCode,
   refuse,
   refuseUnclassified,
   withAgentSessionRefusalFacts,
@@ -21,10 +22,38 @@ import {
   AgentSessionAcquisitionRootExitObservedError,
   isAgentSessionPreSpawnError
 } from './structured-agent-session-adapter'
-import { providerExitObserved } from './structured-agent-session-failure-text'
+import {
+  providerExitObserved,
+  structuredAgentSessionStartFailure
+} from './structured-agent-session-failure-text'
+import { structuredAgentSessionFailureWordsContext } from './structured-agent-session-send-preparation'
+
+/** Who a failed acquisition's sentence names, and whether it was the session's first start. */
+export type FailedAcquisitionWording = {
+  record: AgentSessionRecord | null
+  newSession: boolean
+}
+
+/** The refusal a failed acquisition answers with, worded as the start failure it records: its
+ *  error text is Orca's or the provider's log wording, so it goes to the log, never the wire. */
+function failedAcquisitionWireRefusal(
+  details: AgentSessionRefusalDetailsByCode['agent_session_operation_invalid'] | undefined,
+  wording: FailedAcquisitionWording
+): AgentSessionWireRefusal {
+  const code = 'agent_session_operation_invalid'
+  const refusal = details ? refuse(code, details, code) : refuseUnclassified(code, code)
+  const { reason } = structuredAgentSessionStartFailure(
+    { refusal, ...(wording.newSession ? { newSession: true as const } : {}) },
+    structuredAgentSessionFailureWordsContext(wording.record)
+  )
+  return { ...refusal, message: reason }
+}
 
 /** What a failed acquisition proved about its process, and the outcome its operation settles to. */
-export function failedAcquisitionSettlement(error: unknown): {
+export function failedAcquisitionSettlement(
+  error: unknown,
+  wording: FailedAcquisitionWording
+): {
   exitProof: AgentSessionAcquisitionExitProof
   outcome: Extract<AgentSessionOperationOutcome, { status: 'failed' }>
 } {
@@ -41,8 +70,14 @@ export function failedAcquisitionSettlement(error: unknown): {
     : error instanceof AgentSessionAcquisitionRootExitObservedError
       ? 'root-exit-observed'
       : 'exit-proven'
-  const message = error instanceof Error ? error.message : String(error)
+  const raw = error instanceof Error ? error.message : String(error)
   const details = failedAcquisitionDetails(error)
+  const message =
+    failedAcquisitionRefusal(error, wording)?.refusal.message ??
+    // A store refusal's message is its code, which its replay has always carried.
+    (isAgentSessionWireRefusalCode(raw)
+      ? raw
+      : failedAcquisitionWireRefusal(details, wording).message)
   return {
     exitProof,
     outcome: {
@@ -80,19 +115,14 @@ function failedAcquisitionDetails(
 /** A failed acquisition answered as a refusal on the first call, in the shape its replay takes;
  *  null leaves the error to the store-failure classification. */
 export function failedAcquisitionRefusal(
-  error: unknown
+  error: unknown,
+  wording: FailedAcquisitionWording
 ): { ok: false; refusal: AgentSessionWireRefusal } | null {
-  if (error instanceof AgentSessionAcquisitionRefusal) {
-    return { ok: false, refusal: refuse(error.code, { reason: error.reason }, error.message) }
-  }
   // A proven exit is a settled failure, answered in the shape its ledger row replays.
-  if (isExitProvenAcquisitionFailure(error)) {
-    const details = failedAcquisitionDetails(error)
+  if (error instanceof AgentSessionAcquisitionRefusal || isExitProvenAcquisitionFailure(error)) {
     return {
       ok: false,
-      refusal: details
-        ? refuse('agent_session_operation_invalid', details, error.message)
-        : refuseUnclassified('agent_session_operation_invalid', error.message)
+      refusal: failedAcquisitionWireRefusal(failedAcquisitionDetails(error), wording)
     }
   }
   return null

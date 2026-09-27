@@ -24,6 +24,9 @@ import {
 
 const CALLER = { callerKey: 'client-1' }
 const EXIT_REASON = 'claude stream-json exited (code 1): stderr tail'
+// The refusal says what the chat's start failure says; the error text stays in the log.
+const COULD_NOT_RESTART = "Codex couldn't restart."
+const PROVIDER_STOPPED = 'The provider stopped before it finished starting.'
 
 let root: string
 let store: AgentSessionRecordStore
@@ -69,16 +72,17 @@ afterEach(async () => {
 describe('failed create owner verdict', () => {
   it.each([
     // The cleanup's release proves the whole tree gone, which says nothing about why it failed.
-    ['a failure the cleanup proved gone', () => new Error(EXIT_REASON), {}],
+    ['a failure the cleanup proved gone', () => new Error(EXIT_REASON), {}, COULD_NOT_RESTART],
     // Only an exit the adapter saw says the provider stopped.
     [
       'an exit the adapter observed',
       () => withObservedProviderExit(new Error(EXIT_REASON)),
-      { reason: 'providerStartFailed' }
+      { reason: 'providerStartFailed' },
+      PROVIDER_STOPPED
     ]
   ])(
     'answers %s as exited on the first call and its replay, and a new operation starts fresh',
-    async (_case, failure, situation) => {
+    async (_case, failure, situation, message) => {
       acquire.mockRejectedValueOnce(failure())
       const first = hostTestAttachParams(null)
       // The replay names the same details as the first answer: the ledger kept them beside the code,
@@ -86,7 +90,7 @@ describe('failed create owner verdict', () => {
       const refusal = {
         code: 'agent_session_operation_invalid',
         details: { ...situation, ownerVerdict: 'exited' },
-        message: EXIT_REASON,
+        message,
         ownerVerdict: 'exited'
       }
 
@@ -104,15 +108,16 @@ describe('failed create owner verdict', () => {
 
   it.each([
     // A cleanup that saw the root go may have stopped it itself.
-    ['a root exit the cleanup saw', () => new Error(EXIT_REASON), {}],
+    ['a root exit the cleanup saw', () => new Error(EXIT_REASON), {}, COULD_NOT_RESTART],
     [
       'a root exit the adapter observed',
       () => withObservedProviderExit(new Error(EXIT_REASON)),
-      { reason: 'providerStartFailed' }
+      { reason: 'providerStartFailed' },
+      PROVIDER_STOPPED
     ]
   ])(
     'answers %s as exited on the first call, in the shape its replay takes',
-    async (_case, cause, situation) => {
+    async (_case, cause, situation, message) => {
       acquire.mockRejectedValueOnce(new AgentSessionAcquisitionRootExitObservedError(cause()))
       const first = hostTestAttachParams(null)
       // The replay names the same details as the first answer: the ledger kept them beside the code,
@@ -120,7 +125,7 @@ describe('failed create owner verdict', () => {
       const refusal = {
         code: 'agent_session_operation_invalid',
         details: { ...situation, ownerVerdict: 'exited' },
-        message: EXIT_REASON,
+        message,
         ownerVerdict: 'exited'
       }
 
@@ -143,7 +148,7 @@ describe('failed create owner verdict', () => {
       refusal: {
         code: 'agent_session_operation_invalid',
         details: { reason: 'providerStartFailed', ownerVerdict: 'exited' },
-        message: 'not signed in',
+        message: PROVIDER_STOPPED,
         ownerVerdict: 'exited'
       }
     })

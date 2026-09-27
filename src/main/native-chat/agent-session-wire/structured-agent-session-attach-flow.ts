@@ -177,6 +177,10 @@ export async function performAttach(
       acquiredOwner = true
     }
   } catch (error) {
+    const wording = {
+      record: reservedRecord ?? store.getRecord(sessionId),
+      newSession: !params.providerHandle
+    }
     const spawnToken = reservedRecord?.lease.reservedSpawnToken
     if (reservedRecord && spawnToken && !unsupportedReservationSettlementAttempted) {
       // Settle processless proof and failed operation atomically.
@@ -187,7 +191,7 @@ export async function performAttach(
           spawnToken,
           callerKey: input.callerKey,
           operationId: params.envelope.clientOperationId,
-          ...failedAcquisitionSettlement(error),
+          ...failedAcquisitionSettlement(error, wording),
           now: input.now()
         })
       } catch (settlementError) {
@@ -198,9 +202,9 @@ export async function performAttach(
       }
     }
     input.onAcquisitionFailed?.(error)
-    const failed = failedAcquisitionRefusal(error)
-    if (failed && !failed.refusal.details?.reason) {
-      // The refusal names no situation, so what failed is kept here.
+    const failed = failedAcquisitionRefusal(error, wording)
+    if (failed) {
+      // The refusal carries only its sentence, so what failed is kept here.
       console.warn('[agent-session] provider start failed:', error)
     }
     return (

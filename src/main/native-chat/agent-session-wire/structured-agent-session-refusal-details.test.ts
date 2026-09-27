@@ -11,7 +11,8 @@ import { classifyStoreFailure } from './structured-agent-session-attach'
 import {
   AgentSessionAcquisitionExitProvenError,
   AgentSessionAcquisitionExitUnprovenError,
-  AgentSessionAcquisitionRefusal
+  AgentSessionAcquisitionRefusal,
+  AgentSessionPreSpawnError
 } from './structured-agent-session-adapter'
 import {
   failedAcquisitionRefusal,
@@ -19,6 +20,11 @@ import {
 } from './structured-agent-session-failed-create-refusal'
 import { withObservedProviderExit } from './structured-agent-session-failure-text'
 import { resolveAgentSessionReplayOutcome } from './structured-agent-session-replay-outcome'
+
+const CLAUDE_CREATE = {
+  record: agentSessionRecordFixture(),
+  newSession: true
+}
 
 function replay(outcome: Parameters<typeof resolveAgentSessionReplayOutcome>[0]['outcome']) {
   return resolveAgentSessionReplayOutcome({
@@ -40,8 +46,8 @@ describe('a ledger replay names the details its first answer did', () => {
     // Gone now, with no exit observed: no situation, on the first answer or the replay.
     [new AgentSessionAcquisitionExitProvenError(new Error('spawn codex ENOENT')), undefined]
   ])('for a failed create: %s', (error, reason) => {
-    const first = failedAcquisitionRefusal(error)
-    const replayed = replay(failedAcquisitionSettlement(error).outcome)
+    const first = failedAcquisitionRefusal(error, CLAUDE_CREATE)
+    const replayed = replay(failedAcquisitionSettlement(error, CLAUDE_CREATE).outcome)
     expect(first?.refusal.details?.reason).toBe(reason)
     expect(replayed).toMatchObject({
       decision: 'refuse',
@@ -54,11 +60,74 @@ describe('a ledger replay names the details its first answer did', () => {
 
   it('for a create whose cleanup could not prove the child gone', () => {
     const outcome = failedAcquisitionSettlement(
-      new AgentSessionAcquisitionExitUnprovenError(new Error('probe failed'))
+      new AgentSessionAcquisitionExitUnprovenError(new Error('probe failed')),
+      CLAUDE_CREATE
     ).outcome
     expect(replay(outcome)).toMatchObject({
       refusal: { code: 'agent_session_ownership_unknown', details: { reason: 'ownerUnproven' } }
     })
+  })
+
+  it.each([
+    [
+      new AgentSessionAcquisitionExitProvenError(
+        withObservedProviderExit(
+          new Error('claude stream-json exited (code 1): claude: not signed in (rig)')
+        )
+      ),
+      'The provider stopped before it finished starting.'
+    ],
+    [
+      new AgentSessionAcquisitionExitProvenError(new Error('spawn claude ENOENT')),
+      "Claude couldn't start."
+    ],
+    [
+      new AgentSessionAcquisitionRefusal(
+        'Claude is not signed in for the selected account. Sign in with the Claude CLI for this CLAUDE_CONFIG_DIR, then retry.',
+        'notSignedIn'
+      ),
+      'Claude is not signed in for the selected account. Sign in, then send your message again.'
+    ],
+    [
+      AgentSessionAcquisitionRefusal.historyTooLarge(
+        'Codex thread history exceeds the bounded restore queue; history was not partially imported.'
+      ),
+      "This conversation's history is too large to restore here. Start a new chat to continue."
+    ]
+  ])('answers and replays %s in the sentence its start failure reads as', (error, sentence) => {
+    const first = failedAcquisitionRefusal(error, CLAUDE_CREATE)
+    const replayed = replay(failedAcquisitionSettlement(error, CLAUDE_CREATE).outcome)
+    expect(first?.refusal.message).toBe(sentence)
+    expect(replayed).toMatchObject({ decision: 'refuse', refusal: { message: sentence } })
+    for (const message of [
+      first?.refusal.message,
+      failedAcquisitionSettlement(error, CLAUDE_CREATE).outcome.message
+    ]) {
+      expect(message).not.toMatch(
+        /stream-json|exited \(code|ENOENT|CLAUDE_CONFIG_DIR|restore queue/
+      )
+    }
+  })
+
+  it('replays a spawn that failed before any process in a sentence, not its error', () => {
+    const outcome = failedAcquisitionSettlement(
+      new AgentSessionPreSpawnError(new Error('spawn claude ENOENT')),
+      CLAUDE_CREATE
+    ).outcome
+    expect(replay(outcome)).toMatchObject({ refusal: { message: "Claude couldn't start." } })
+  })
+
+  it('keeps the code a store refusal replays with, and the unproven-exit marker', () => {
+    expect(
+      failedAcquisitionSettlement(new Error('agent_session_conflict'), CLAUDE_CREATE).outcome
+        .message
+    ).toBe('agent_session_conflict')
+    expect(
+      failedAcquisitionSettlement(
+        new AgentSessionAcquisitionExitUnprovenError(new Error('probe failed')),
+        CLAUDE_CREATE
+      ).outcome.message
+    ).toBe('agent_session_acquisition_exit_unproven')
   })
 
   it('replays the facts beside the reason, and mirrors them where released clients read', () => {
