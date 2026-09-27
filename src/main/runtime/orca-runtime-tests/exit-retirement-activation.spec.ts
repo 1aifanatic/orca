@@ -10,62 +10,68 @@ import {
   makeWorkspaceSessionWithHeadlessTerminal
 } from '../orca-runtime-test-fixtures.spec'
 
+async function startSplitHost() {
+  const { runtimeStore, getSession } = makeRuntimeStoreWithWorkspaceSession(
+    makeWorkspaceSessionWithHeadlessTerminal({
+      tabsByWorktree: {
+        [TEST_WORKTREE_ID]: [
+          {
+            id: 'host-tab',
+            ptyId: 'pty-a',
+            worktreeId: TEST_WORKTREE_ID,
+            title: 'Split Terminal',
+            customTitle: null,
+            color: null,
+            sortOrder: 0,
+            createdAt: 1
+          }
+        ]
+      },
+      terminalLayoutsByTabId: {
+        'host-tab': makeHeadlessTerminalLayout({
+          [HEADLESS_LEAF_ID]: 'pty-a',
+          [HEADLESS_SECOND_LEAF_ID]: 'pty-b'
+        })
+      }
+    })
+  )
+  const spawn = vi.fn(async (options: { sessionId?: string }) => ({
+    id: options.sessionId ?? 'fresh-pty'
+  }))
+  const adoptStablePane = vi.fn(async () => null)
+  const runtime = new OrcaRuntimeService(runtimeStore)
+  runtime.setPtyController({
+    spawn,
+    adoptStablePane,
+    write: () => true,
+    kill: () => true,
+    getForegroundProcess: async () => null,
+    listProcesses: async () => []
+  })
+  runtime.syncWindowGraph(0, { tabs: [], leaves: [] })
+  const activate = (leafId: string, intent: 'user' | 'automatic') =>
+    runtime.activateMobileSessionTab(`id:${TEST_WORKTREE_ID}`, 'host-tab', leafId, {
+      notifyClients: false,
+      navigation: 'caller',
+      intent
+    })
+  const terminalLeafIds = async (): Promise<string[]> =>
+    (await runtime.listMobileSessionTabs(`id:${TEST_WORKTREE_ID}`)).tabs.flatMap((tab) =>
+      tab.type === 'terminal' ? [tab.leafId] : []
+    )
+  await activate(HEADLESS_LEAF_ID, 'user')
+  await activate(HEADLESS_SECOND_LEAF_ID, 'user')
+  expect(spawn).toHaveBeenCalledTimes(2)
+  expect(adoptStablePane).toHaveBeenCalledTimes(2)
+  return { runtime, runtimeStore, getSession, spawn, adoptStablePane, activate, terminalLeafIds }
+}
+
 describe('OrcaRuntimeService', () => {
   // Why: a paired mirror answers an exit's stream end by re-activating its pane. An activation
   // that still finds the leaf respawns the exited session, and the retirement never publishes.
   it('retires an exited split leaf before its stream end, while the durable write is pending', async () => {
-    const { runtimeStore, getSession } = makeRuntimeStoreWithWorkspaceSession(
-      makeWorkspaceSessionWithHeadlessTerminal({
-        tabsByWorktree: {
-          [TEST_WORKTREE_ID]: [
-            {
-              id: 'host-tab',
-              ptyId: 'pty-a',
-              worktreeId: TEST_WORKTREE_ID,
-              title: 'Split Terminal',
-              customTitle: null,
-              color: null,
-              sortOrder: 0,
-              createdAt: 1
-            }
-          ]
-        },
-        terminalLayoutsByTabId: {
-          'host-tab': makeHeadlessTerminalLayout({
-            [HEADLESS_LEAF_ID]: 'pty-a',
-            [HEADLESS_SECOND_LEAF_ID]: 'pty-b'
-          })
-        }
-      })
-    )
-    const spawn = vi.fn(async (options: { sessionId?: string }) => ({
-      id: options.sessionId ?? 'fresh-pty'
-    }))
-    const adoptStablePane = vi.fn(async () => null)
-    const runtime = new OrcaRuntimeService(runtimeStore)
-    runtime.setPtyController({
-      spawn,
-      adoptStablePane,
-      write: () => true,
-      kill: () => true,
-      getForegroundProcess: async () => null,
-      listProcesses: async () => []
-    })
-    runtime.syncWindowGraph(0, { tabs: [], leaves: [] })
-    const activate = (leafId: string, intent: 'user' | 'automatic') =>
-      runtime.activateMobileSessionTab(`id:${TEST_WORKTREE_ID}`, 'host-tab', leafId, {
-        notifyClients: false,
-        navigation: 'caller',
-        intent
-      })
-    const terminalLeafIds = async (): Promise<string[]> =>
-      (await runtime.listMobileSessionTabs(`id:${TEST_WORKTREE_ID}`)).tabs.flatMap((tab) =>
-        tab.type === 'terminal' ? [tab.leafId] : []
-      )
-    await activate(HEADLESS_LEAF_ID, 'user')
-    await activate(HEADLESS_SECOND_LEAF_ID, 'user')
-    expect(spawn).toHaveBeenCalledTimes(2)
-    expect(adoptStablePane).toHaveBeenCalledTimes(2)
+    const { runtime, runtimeStore, getSession, spawn, adoptStablePane, activate, terminalLeafIds } =
+      await startSplitHost()
 
     const disk = makeDeferred()
     Object.assign(runtimeStore, { flushPendingOrThrowAsync: () => disk.promise })
@@ -101,6 +107,28 @@ describe('OrcaRuntimeService', () => {
     disk.resolve()
     await exiting
     expect(await terminalLeafIds()).toEqual([HEADLESS_LEAF_ID])
+  })
+
+  // Why: the process is gone whether or not the profile admits the write (quit, maintenance).
+  it('retires the pane and ends the stream when the profile refuses the staging write', async () => {
+    const { runtime, runtimeStore, activate, terminalLeafIds } = await startSplitHost()
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    runtimeStore.setWorkspaceSession.mockImplementation(() => {
+      throw new Error('Profile maintenance or finalization is blocking new terminal snapshot work')
+    })
+    const streamEnd = vi.fn()
+    runtime.subscribeToPtyExit('pty-b', streamEnd)
+
+    await runtime.onPtyExit('pty-b', 0, undefined, { providerExitObserved: true })
+
+    expect(streamEnd).toHaveBeenCalledOnce()
+    expect(await terminalLeafIds()).toEqual([HEADLESS_LEAF_ID])
+    await expect(activate(HEADLESS_SECOND_LEAF_ID, 'automatic')).rejects.toThrow('tab_not_found')
+    expect(errorSpy).toHaveBeenCalledWith(
+      '[runtime] could not stage terminal retirement:',
+      expect.any(Error)
+    )
+    errorSpy.mockRestore()
   })
 
   // Why: the stream end now waits behind the exit cleanup; a cleanup fault must not strand it.
