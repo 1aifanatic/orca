@@ -18,8 +18,25 @@ import {
 } from '../../../shared/agent-session-wire-refusals'
 import { AgentSessionAcquisitionRefusal } from './structured-agent-session-adapter'
 
-/** A start that did not land. A refusal the adapter typed keeps its situation; anything else is a
- *  start that failed, with the provider's diagnostic when the error carried one. */
+/** Marks the error an adapter observed its child's exit with, where it observed it. */
+export function withObservedProviderExit<TError extends Error>(error: TError): TError {
+  return Object.assign(error, { providerExitObserved: true })
+}
+
+function providerExitObserved(error: unknown): boolean {
+  let current: unknown = error
+  for (let depth = 0; depth < 6 && current instanceof Error; depth += 1) {
+    if ('providerExitObserved' in current && current.providerExitObserved === true) {
+      return true
+    }
+    current = current.cause
+  }
+  return false
+}
+
+/** A start that did not land. A refusal the adapter typed keeps its situation, and an exit the
+ *  adapter observed says the provider stopped; anything else blames no one — it may be Orca's, or
+ *  a spawn that failed. Either keeps the provider's diagnostic when the error carried one. */
 export function providerStartupFailureFact(cause?: unknown): AgentSessionFailureFact {
   if (
     cause instanceof AgentSessionAcquisitionRefusal &&
@@ -27,7 +44,10 @@ export function providerStartupFailureFact(cause?: unknown): AgentSessionFailure
   ) {
     return agentSessionFailureFact(cause.refusalCause)
   }
-  return agentSessionFailureFact('providerStartFailed', { detail: providerDiagnosticOf(cause) })
+  return agentSessionFailureFact(
+    providerExitObserved(cause) ? 'providerStartFailed' : 'startFailed',
+    { detail: providerDiagnosticOf(cause) }
+  )
 }
 
 /** A child that ended before it proved its start: an exit is a start that failed, keeping the

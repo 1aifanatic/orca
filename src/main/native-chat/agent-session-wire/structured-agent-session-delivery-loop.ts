@@ -187,7 +187,8 @@ export class StructuredAgentSessionDeliveryLoop {
         startKey: awaited?.generation ?? null,
         cause: ended
           ? endedChildFailure(ended)
-          : { failure: startFailure ?? agentSessionFailureFact('providerStartFailed') }
+          : // Gone with no end observed: nothing says the provider stopped.
+            { failure: startFailure ?? agentSessionFailureFact('startFailed') }
       })
     }
     const next = oldestQueuedSubmission(session)

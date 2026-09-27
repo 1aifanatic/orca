@@ -276,11 +276,8 @@ describe('host conversation commands', () => {
         state: 'completed',
         replacementSessionId: undefined,
         // The refusal's message is Orca's log text; the result words its situation.
-        error: "Codex couldn't restart. Start a new chat to continue.",
-        failure: {
-          kind: 'restartFailed',
-          refusal: { code: 'structured_agent_session_unsupported' }
-        }
+        error: "Codex couldn't start. Start a new chat to continue.",
+        failure: { kind: 'startFailed', refusal: { code: 'structured_agent_session_unsupported' } }
       }
     })
     expect(store.listVisibleSessionIds()).toEqual([HOST_TEST_SESSION])

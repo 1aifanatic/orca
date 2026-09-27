@@ -14,7 +14,10 @@ import {
 
 /** One per situation with its own honest next step; a new one needs copy before it compiles. */
 export const AGENT_SESSION_FAILURE_KINDS = [
+  /** Only an observed exit: the provider stopped while starting. */
   'providerStartFailed',
+  /** A start that did not land, with no one to blame: Orca's fault, a failed spawn, a close. */
+  'startFailed',
   'notSignedIn',
   'historyTooLarge',
   'providerExited',
@@ -77,7 +80,7 @@ export type AgentSessionFailureFact = {
   kind: AgentSessionFailureKind
   /** Provider-authored only; absent whenever Orca wrote the words. */
   detail?: ProviderDiagnostic
-  /** On `restartFailed`: the refusal that kept the agent from starting. */
+  /** On `restartFailed` and `startFailed`: the refusal that kept the agent from starting. */
   refusal?: AgentSessionRefusalReference
   /** On `attachmentInvalid`: which check the attachment failed. */
   attachment?: AgentSessionAttachmentProblem

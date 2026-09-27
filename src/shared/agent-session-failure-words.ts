@@ -134,6 +134,7 @@ const ATTACHMENT_SENTENCES = {
 
 const FAILURE_SENTENCES = {
   providerStartFailed: () => 'The provider stopped before it finished starting.',
+  startFailed: couldNot('start'),
   notSignedIn: ({ agentName }) =>
     `${agentName ?? 'The agent'} is not signed in for the selected account. Sign in, then send your message again.`,
   historyTooLarge: () =>

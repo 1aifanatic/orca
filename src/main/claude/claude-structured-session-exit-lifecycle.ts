@@ -1,5 +1,8 @@
 import { agentSessionFailureFact, providerDiagnosticOf } from '../../shared/agent-session-failure'
-import { providerStartupFailureFact } from '../native-chat/agent-session-wire/structured-agent-session-failure-text'
+import {
+  providerStartupFailureFact,
+  withObservedProviderExit
+} from '../native-chat/agent-session-wire/structured-agent-session-failure-text'
 import { settledClaudeTurnEndLeaf } from './claude-structured-resume-point'
 import {
   claudeRootExitObserved,
@@ -34,7 +37,8 @@ export function observeClaudeSessionExit(
     return
   }
   lifecycle.sessions.delete(sessionId)
-  failClaudeStartup(session, error)
+  // Observed here: whoever meets this error later, a start it ended reads as the provider stopping.
+  failClaudeStartup(session, withObservedProviderExit(error))
   // Re-enter the provider's close ladder before publishing lifecycle recovery.
   // An exit callback is root evidence only; the retained tree proof must run
   // before the host releases and reacquires this exact child.

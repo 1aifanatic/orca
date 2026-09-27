@@ -79,6 +79,7 @@ const KIND_CATEGORY = {
   notDelivered: 'undelivered',
   providerExited: 'undelivered',
   providerStartFailed: 'startFailed',
+  startFailed: 'startFailed',
   notSignedIn: 'startFailed',
   historyTooLarge: 'startFailed',
   restartFailed: 'startFailed',

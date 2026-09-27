@@ -196,7 +196,7 @@ export function runStructuredConversationCommand(
                 phase: 'committed' as const,
                 state: 'completed' as const,
                 ...conversationCommandFailure(
-                  agentSessionFailureFact('restartFailed', {
+                  agentSessionFailureFact('startFailed', {
                     refusal: agentSessionRefusalReference(acquired.refusal)
                   }),
                   structuredAgentSessionFailureWordsContext(record)
