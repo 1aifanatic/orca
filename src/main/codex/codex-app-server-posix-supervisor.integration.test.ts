@@ -14,6 +14,7 @@ import {
 const PROVIDER = String.raw`
   const { spawn } = require('node:child_process')
   if (process.env.ORCA_TEST_PROVIDER_IGNORES_SIGTERM) process.on('SIGTERM', () => {})
+  process.stdout.on('error', () => {})
   const grandchild = spawn(
     process.execPath,
     ['-e', "process.on('SIGTERM', () => {}); process.stdout.write('armed'); setInterval(() => {}, 60000)"],
@@ -21,6 +22,7 @@ const PROVIDER = String.raw`
   )
   grandchild.stdout.once('data', () => {
     process.stdout.write(JSON.stringify({ provider: process.pid, grandchild: grandchild.pid }) + '\n')
+    if (process.env.ORCA_TEST_PROVIDER_STREAMS_OUTPUT) setInterval(() => process.stdout.write('.'), 2)
   })
   setInterval(() => {}, 60000)
 `
@@ -71,7 +73,7 @@ function readPids(child: ChildProcess, keys: readonly string[]): Promise<Record<
     const pids: Record<string, number> = {}
     let buffered = ''
     const timeout = setTimeout(() => reject(new Error(`no ${keys.join('/')} pids`)), 10_000)
-    child.stdout!.on('data', (chunk: Buffer) => {
+    const onData = (chunk: Buffer): void => {
       buffered += chunk.toString()
       const lines = buffered.split('\n')
       buffered = lines.pop() ?? ''
@@ -86,9 +88,12 @@ function readPids(child: ChildProcess, keys: readonly string[]): Promise<Record<
       }
       if (keys.every((key) => key in pids)) {
         clearTimeout(timeout)
+        // Later output is not pids; the stream keeps flowing without a listener.
+        child.stdout!.off('data', onData)
         resolve(pids)
       }
-    })
+    }
+    child.stdout!.on('data', onData)
   })
 }
 
@@ -176,10 +181,14 @@ describe.runIf(process.platform !== 'win32')('POSIX provider supervisor processe
     }
   })
 
-  it('reaps the provider group when its owner dies', async () => {
+  it.each([
+    ['', {}],
+    // Output after the owner's death meets a closed pipe, which must not end the supervisor first.
+    [' while the provider is writing output', { ORCA_TEST_PROVIDER_STREAMS_OUTPUT: '1' }]
+  ])('reaps the provider group when its owner dies%s', async (_, env) => {
     const launch = supervisedPosixLaunch(
       { command: process.execPath, args: ['-e', PROVIDER] },
-      process.env
+      { ...process.env, ...env }
     )
     const owner = spawn(process.execPath, ['-e', OWNER], {
       env: { ...launch.env, ORCA_TEST_SUPERVISOR_SCRIPT: POSIX_PROVIDER_SUPERVISOR_SCRIPT },

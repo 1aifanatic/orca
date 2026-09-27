@@ -71,7 +71,10 @@ process.stdin.once('close', scheduleOwnerShutdown)
 process.stdin.pipe(child.stdin)
 child.stdout.pipe(process.stdout)
 child.stderr.pipe(process.stderr)
-for (const stream of [process.stdin, child.stdin, child.stdout, child.stderr]) stream.on('error', () => {})
+// A dead owner's stdout pipe raises EPIPE; unhandled, it would end this pid before the group.
+for (const stream of [process.stdin, process.stdout, process.stderr, child.stdin, child.stdout, child.stderr]) {
+  stream.on('error', () => {})
+}
 const finishWithProviderOutcome = (code, signal) => {
   if (!signal) return process.exit(code ?? 1)
   // Re-raise with the default action; this supervisor's own handler would swallow it.
