@@ -159,6 +159,79 @@ describe('evaluateTuiIdle ranking', () => {
   })
 })
 
+describe('evaluateTuiIdle composer rank (launch readiness)', () => {
+  const goose = { readMuseReadyBodyEvidence: () => false, agent: 'goose' as const }
+  const composer = (signal: 'none' | 'armed' | 'ready') => ({ readComposerSignal: () => signal })
+
+  it('calls an armed composer weak once the stream is quiet', () => {
+    expect(evaluateTuiIdle(input({ ...goose, ...composer('armed') }))).toEqual({
+      kind: 'ready-weak'
+    })
+  })
+
+  it('holds an armed composer while the agent is still painting, or without an output clock', () => {
+    for (const lastOutputAt of [Date.now(), null]) {
+      expect(
+        evaluateTuiIdle(input({ ...goose, ...composer('armed'), record: record({ lastOutputAt }) }))
+          .kind
+      ).toBe('pending')
+    }
+  })
+
+  it("calls the agent's own composer marker weak without waiting for quiet", () => {
+    expect(
+      evaluateTuiIdle(
+        input({ ...goose, ...composer('ready'), record: record({ lastOutputAt: Date.now() }) })
+      )
+    ).toEqual({ kind: 'ready-weak' })
+  })
+
+  it('is absent from a plain tui-idle wait, which also waits out turns', () => {
+    expect(evaluateTuiIdle(input({ ...goose })).kind).toBe('pending')
+    expect(evaluateTuiIdle(input({ ...goose, ...composer('none') })).kind).toBe('pending')
+  })
+
+  it('leaves a pane with a title-derived status to the tiers that read it', () => {
+    // A working title outranks it; a name-only idle that is not yet corroborated stays pending.
+    expect(
+      evaluateTuiIdle(
+        input({ ...goose, ...composer('ready'), record: record({ lastAgentStatus: 'working' }) })
+      ).kind
+    ).toBe('working')
+    expect(
+      evaluateTuiIdle(
+        input({
+          ...composer('ready'),
+          readMuseReadyBodyEvidence: () => false,
+          agent: 'claude',
+          record: record({ lastAgentStatus: 'idle', lastOutputAt: Date.now() })
+        })
+      ).kind
+    ).toBe('pending')
+  })
+
+  it('loses to a blocking prompt in the tail and to a first-party working status', () => {
+    expect(
+      evaluateTuiIdle(
+        input({
+          ...goose,
+          ...composer('ready'),
+          readTailBlockedReason: () => 'agent-trust-workspace'
+        })
+      ).kind
+    ).toBe('blocked')
+    expect(
+      evaluateTuiIdle(
+        input({
+          ...goose,
+          ...composer('ready'),
+          firstPartyStatus: { state: 'working', updatedAt: Date.now() }
+        })
+      ).kind
+    ).toBe('working')
+  })
+})
+
 describe('nameOnlyIdleNeedsCorroboration', () => {
   it('holds agents that announce rest with an explicit title, native or synthesized', () => {
     expect(nameOnlyIdleNeedsCorroboration('claude')).toBe(true)

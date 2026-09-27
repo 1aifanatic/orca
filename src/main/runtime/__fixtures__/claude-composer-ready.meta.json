@@ -1,0 +1,9 @@
+{
+  "capturedAt": "2026-09-25T20:44:15.309Z",
+  "platform": "darwin",
+  "command": ["claude", "--dangerously-skip-permissions"],
+  "cols": 120,
+  "rows": 40,
+  "note": "Claude Code 2.1.280, macOS arm64, folder already trusted (ready composer)",
+  "exitCode": 129
+}

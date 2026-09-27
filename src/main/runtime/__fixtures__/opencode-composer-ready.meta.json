@@ -1,0 +1,9 @@
+{
+  "capturedAt": "2026-09-25T20:44:05.304Z",
+  "platform": "darwin",
+  "command": ["opencode"],
+  "cols": 120,
+  "rows": 40,
+  "note": "opencode v2.0.14, macOS arm64, fresh git worktree",
+  "exitCode": 0
+}

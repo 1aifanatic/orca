@@ -60,6 +60,7 @@ function createWait(options: {
     intervalMs: POLL_INTERVAL_MS,
     getForegroundProcess: () => Promise.resolve(options.foreground ?? null),
     getLiveLeaf: (leaf) => options.liveLeaf?.() ?? leaf,
+    watchComposerReady: () => null,
     resolve: (waiter, result) => waiters.resolve(waiter, result)
   })
   const wait = new RuntimeTerminalWait(

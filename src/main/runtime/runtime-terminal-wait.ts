@@ -58,6 +58,7 @@ export class RuntimeTerminalWait {
       condition?: RuntimeTerminalWaitCondition
       timeoutMs?: number
       signal?: AbortSignal
+      acceptComposerReady?: boolean
     }
   ): Promise<RuntimeTerminalWaitResult> {
     const condition = options?.condition ?? 'exit'
@@ -94,7 +95,8 @@ export class RuntimeTerminalWait {
           reject,
           timeout: null,
           cancelIdlePoll: null,
-          abortCleanup: null
+          abortCleanup: null,
+          acceptComposerReady: options?.acceptComposerReady
         }
         if (!this.waiters.bindAbort(waiter, options?.signal)) {
           reject(new Error('request_aborted'))
@@ -184,7 +186,8 @@ export class RuntimeTerminalWait {
         reject,
         timeout: null,
         cancelIdlePoll: null,
-        abortCleanup: null
+        abortCleanup: null,
+        acceptComposerReady: options?.acceptComposerReady
       }
 
       if (!this.waiters.bindAbort(waiter, options?.signal)) {

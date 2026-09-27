@@ -1,0 +1,15 @@
+[?12l[?25h[38;2;0;204;0m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[7mAider v0.86.2[0m
+Main model: gpt-4o with diff edit format
+Weak model: gpt-4o-mini
+Git repo: ../../../../orca-qa/agent-input-ready/repo/.git/worktrees/m2-aider-composer with 1 files
+Repo-map: using 4096 tokens, auto refresh
+[38;2;0;204;0m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[6n[?2004h[?1l[?25l[0m[?7l[0m[J[0;38;5;40m>  [0m
+
+
+[0;38;5;40m                                                                                                                       [119C [3A[2C[?7h[0m[?12l[?25h[2D[J[0m[?7h[?2004lWARNING: your terminal doesn't support cursor position requests (CPR).
+[?2004h[?25l[0m[?7l[0m[J[0;38;5;40m>  [0m
+
+
+[0;38;5;40m                                                                                                                       [119C [3A[2C[?7h[0m[?12l[?25h

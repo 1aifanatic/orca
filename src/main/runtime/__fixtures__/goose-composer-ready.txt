@@ -1,0 +1,7 @@
+]0;🪿 m2-goose-composer
+  [37m  __( O)>[0m  [32m●[0m [2mnew session[0m [2m·[0m [2mopenai[0m [36mgpt-4o[0m
+  [37m \____)[0m  [2m [0m [2m20260925_1[0m [2m· /Users/xxxxxxxxxxxxx/orca/workspaces/repo/m2-goose-composer[0m
+  [37m   L L[0m  [37m   goose is ready[0m
+  [2m⏳ loading extensions in background...[0m
+  [32m[2m╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌[0m [2m0%[0m [2m0/128k[0m
+[?2004h[?2026h[K> [2mEnter to send · Ctrl+J newline[0m[2C[?2026l

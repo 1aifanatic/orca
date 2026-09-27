@@ -1,5 +1,6 @@
 /**
- * Host-side delivery of a launch's initial text to the terminal agent the launch just started.
+ * Host-side delivery of a launch's initial text to the terminal agent the launch just started, for
+ * `agent.launch` and a `worktree.create` startup follow-up alike.
  *
  * The twin of `agent-launch-structured-prompt`, and it exists for the same reason: `agent.launch`
  * created a terminal and reported the text as undelivered, which was only workable while the
@@ -22,11 +23,11 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { isAgentPromptStalledError } from '../../agent-prompt-submission-verification'
-import type { OrcaRuntimeService } from '../../orca-runtime'
+import { isAgentPromptStalledError } from './agent-prompt-submission-verification'
+import type { OrcaRuntimeService } from './orca-runtime'
 
 /** The same budget orchestration gives a worker to reach its composer before dispatching to it. */
-const AGENT_READY_TIMEOUT_MS = 60_000
+export const AGENT_READY_TIMEOUT_MS = 60_000
 
 type TerminalPromptRuntime = Pick<OrcaRuntimeService, 'waitForTerminal' | 'sendTerminalAgentPrompt'>
 
@@ -55,7 +56,8 @@ export async function deliverTerminalAgentLaunchPrompt(args: {
   try {
     const wait = await args.runtime.waitForTerminal(args.handle, {
       condition: 'tui-idle',
-      timeoutMs: AGENT_READY_TIMEOUT_MS
+      timeoutMs: AGENT_READY_TIMEOUT_MS,
+      acceptComposerReady: true
     })
     // An unsatisfied wait is a composer that never opened — a trust prompt, an update prompt, a
     // dead process. Pasting anyway would answer whatever question is on screen with the prompt.

@@ -193,6 +193,8 @@ export type TerminalWaiter = {
   /** Retires this waiter from the shared idle-poll sweep; null when not polling. */
   cancelIdlePoll: (() => void) | null
   abortCleanup: (() => void) | null
+  /** A launch-readiness wait: the agent's composer-ready signal may settle it. */
+  acceptComposerReady?: boolean
 }
 
 /** How a provider-held screen should be fetched when runtime bytes are absent. */

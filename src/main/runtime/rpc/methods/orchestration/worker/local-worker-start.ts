@@ -190,7 +190,8 @@ export async function startLocalWorker(args: {
         })
       : await runtime.waitForTerminal(terminalHandle, {
           condition: 'tui-idle',
-          timeoutMs: params.timeoutMs ?? 60_000
+          timeoutMs: params.timeoutMs ?? 60_000,
+          acceptComposerReady: true
         })
     if (wait) {
       persistWorkerSetupWaitOutcome({ ...setupStage, wait })

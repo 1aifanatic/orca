@@ -8,8 +8,8 @@
  */
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
-import { deliverTerminalAgentLaunchPrompt } from './agent-launch-terminal-prompt'
-import { AGENT_PROMPT_STALLED_ERROR } from '../../agent-prompt-submission-verification'
+import { deliverTerminalAgentLaunchPrompt } from './terminal-agent-prompt-delivery'
+import { AGENT_PROMPT_STALLED_ERROR } from './agent-prompt-submission-verification'
 
 type SendResult = { handle: string; accepted: boolean; bytesWritten: number }
 type SendFn = (
@@ -54,7 +54,8 @@ describe('writing a launch prompt into a terminal agent', () => {
     expect(delivered).toBe(true)
     expect(stub.waitForTerminal).toHaveBeenCalledWith('term_1', {
       condition: 'tui-idle',
-      timeoutMs: 60_000
+      timeoutMs: 60_000,
+      acceptComposerReady: true
     })
     const [handle, text, options] = stub.sendTerminalAgentPrompt.mock.calls[0]!
     expect(handle).toBe('term_1')

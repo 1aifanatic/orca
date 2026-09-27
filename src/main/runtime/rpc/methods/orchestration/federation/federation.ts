@@ -217,7 +217,8 @@ export const ORCHESTRATION_FEDERATION_ATTACH_METHODS = [
         failedStage = 'agent_readiness'
         const wait = await runtime.waitForTerminal(terminalHandle, {
           condition: 'tui-idle',
-          timeoutMs: readinessTimeoutMs
+          timeoutMs: readinessTimeoutMs,
+          acceptComposerReady: true
         })
         persistFederatedSetupWaitOutcome({ ...setupStage, wait })
         if (!wait.satisfied) {

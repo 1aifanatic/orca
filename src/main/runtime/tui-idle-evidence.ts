@@ -5,6 +5,7 @@ import type { RuntimeTerminalWaitBlockedReason } from '../../shared/runtime-type
 import { getSyntheticAgentTerminalTitle } from '../../shared/synthetic-agent-title'
 import { resolveExplicitTerminalTitleAgentType } from '../../shared/terminal-title-agent-type'
 import type { TuiAgent } from '../../shared/tui-agent'
+import type { AgentComposerSignal } from './agent-composer-ready-watch'
 import type { RuntimeLeafRecord, RuntimePtyWorktreeRecord } from './runtime-terminal-state-records'
 import {
   detectExplicitIdleStatusFromTitle,
@@ -32,6 +33,9 @@ import {
  *      inferred.
  *   3. WEAK READY — a name-only title, or a quiet non-shell foreground process. A last
  *      resort, and only once sustained.
+ *   3b. COMPOSER — launch-readiness waits only, on a pane with no title-derived status: the
+ *      launched agent's own composer-ready signal (`agent-composer-ready-watch.ts`). It says the
+ *      composer mounted, not that a turn finished, so a plain `tui-idle` wait never reads it.
  *
  * Why weak ready is a verdict class rather than a per-evidence flag: none of it can see a
  * start-up dialog the line tail lost (Claude's workspace trust), so ONLY the poll may settle
@@ -151,6 +155,8 @@ export type TuiIdleEvaluationInput = {
   agent: TuiAgent | null | undefined
   firstPartyStatus: FirstPartyAgentStatus
   quiescenceMs: number
+  /** Tier 3b; present only for a launch-readiness wait. */
+  readComposerSignal?: () => AgentComposerSignal
 }
 
 export type TuiIdleVerdict =
@@ -232,11 +238,33 @@ export function evaluateTuiIdle(input: TuiIdleEvaluationInput): TuiIdleVerdict {
   if (hasSustainedTitleIdle(input.record, input.agent, input.quiescenceMs)) {
     return READY_WEAK
   }
+  if (hasComposerReady(input)) {
+    return READY_WEAK
+  }
   return {
     kind: 'pending',
     quietForeground:
       input.record.lastAgentStatus === null && quietForegroundProcessProvesTuiIdle(input.agent)
   }
+}
+
+/**
+ * Tier 3b. Only where the pane has no title-derived status: an agent tui-idle can already read
+ * keeps exactly its existing readiness. An armed composer is believed once the stream is quiet,
+ * held out without an output clock for the same reason as tier 3.
+ */
+function hasComposerReady(input: TuiIdleEvaluationInput): boolean {
+  if (!input.readComposerSignal || input.record.lastAgentStatus !== null) {
+    return false
+  }
+  const signal = input.readComposerSignal()
+  if (signal === 'ready') {
+    return true
+  }
+  if (signal === 'none' || input.record.lastOutputAt === null) {
+    return false
+  }
+  return Date.now() - input.record.lastOutputAt >= input.quiescenceMs
 }
 
 export function isTuiIdleReadyVerdict(verdict: TuiIdleVerdict): boolean {
@@ -261,7 +289,8 @@ function lazyWaitText(readWaitText: () => string): () => string {
 export function leafTuiIdleEvidence(
   source: TuiIdleEvidenceSource,
   leaf: RuntimeLeafRecord,
-  readWaitText: () => string
+  readWaitText: () => string,
+  readComposerSignal?: () => AgentComposerSignal
 ): TuiIdleEvaluationInput {
   const waitText = lazyWaitText(readWaitText)
   const agent = source.getPaneAgent(leaf.ptyId)
@@ -274,14 +303,16 @@ export function leafTuiIdleEvidence(
     readMuseReadyBodyEvidence: () => isMuseReadyPromptPreview(waitText()),
     agent,
     firstPartyStatus: source.getFirstPartyAgentStatus(leaf.ptyId),
-    quiescenceMs: source.quiescenceMs
+    quiescenceMs: source.quiescenceMs,
+    readComposerSignal
   }
 }
 
 export function ptyTuiIdleEvidence(
   source: TuiIdleEvidenceSource,
   pty: RuntimePtyWorktreeRecord,
-  readWaitText: () => string
+  readWaitText: () => string,
+  readComposerSignal?: () => AgentComposerSignal
 ): TuiIdleEvaluationInput {
   const waitText = lazyWaitText(readWaitText)
   const agent = source.getPaneAgent(pty.ptyId)
@@ -294,6 +325,7 @@ export function ptyTuiIdleEvidence(
     readMuseReadyBodyEvidence: () => isMuseReadyPromptPreview(waitText()),
     agent,
     firstPartyStatus: source.getFirstPartyAgentStatus(pty.ptyId),
-    quiescenceMs: source.quiescenceMs
+    quiescenceMs: source.quiescenceMs,
+    readComposerSignal
   }
 }

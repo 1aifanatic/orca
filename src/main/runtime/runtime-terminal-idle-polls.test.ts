@@ -4,6 +4,7 @@ import type { TerminalWaiter } from './runtime-terminal-contracts'
 import type { RuntimeLeafRecord, RuntimePtyWorktreeRecord } from './runtime-terminal-state-records'
 import type { RuntimeTerminalWait } from '../../shared/runtime-types'
 import type { TuiAgent } from '../../shared/tui-agent'
+import type { AgentComposerSignal } from './agent-composer-ready-watch'
 
 const INTERVAL_MS = 2000
 
@@ -39,8 +40,9 @@ function makeLeaf(tabId: string, overrides: Partial<RuntimeLeafRecord> = {}) {
   } as unknown as RuntimeLeafRecord
 }
 
-function makeWaiter(handle: string): TerminalWaiter {
+function makeWaiter(handle: string, acceptComposerReady?: boolean): TerminalWaiter {
   return {
+    acceptComposerReady,
     handle,
     condition: 'tui-idle',
     resolve: () => {},
@@ -77,6 +79,7 @@ describe('RuntimeTerminalIdlePolls timer budget', () => {
       readScreenLines: () => null,
       readVisibleScreen: () => null,
       getLiveLeaf: (leaf) => leaf,
+      watchComposerReady: () => null,
       resolve: (waiter, result) => resolved.push({ handle: waiter.handle, result })
     })
 
@@ -114,6 +117,7 @@ describe('RuntimeTerminalIdlePolls timer budget', () => {
       readScreenLines: () => null,
       readVisibleScreen: () => null,
       getLiveLeaf: (leaf) => leaf,
+      watchComposerReady: () => null,
       resolve: () => {}
     })
 
@@ -141,6 +145,7 @@ describe('RuntimeTerminalIdlePolls timer budget', () => {
       readScreenLines: () => null,
       readVisibleScreen: () => null,
       getLiveLeaf: (leaf) => leaf,
+      watchComposerReady: () => null,
       resolve: () => {}
     })
     const first = makeWaiter('a')
@@ -173,6 +178,7 @@ describe('RuntimeTerminalIdlePolls timer budget', () => {
       readScreenLines: () => null,
       readVisibleScreen: () => null,
       getLiveLeaf: (leaf) => leaf,
+      watchComposerReady: () => null,
       resolve: (waiter) => resolved.push(waiter.handle)
     })
 
@@ -231,6 +237,7 @@ describe('RuntimeTerminalIdlePolls rendered-screen blocked prompts', () => {
       readScreenLines: () => null,
       readVisibleScreen,
       getLiveLeaf: (leaf) => leaf,
+      watchComposerReady: () => null,
       resolve: (_waiter, result) => resolved.push(result)
     })
   }
@@ -352,5 +359,95 @@ describe('RuntimeTerminalIdlePolls rendered-screen blocked prompts', () => {
     await vi.advanceTimersByTimeAsync(INTERVAL_MS)
     expect(reads).toEqual([])
     expect(resolved).toEqual([expect.objectContaining({ satisfied: true })])
+  })
+})
+
+describe('RuntimeTerminalIdlePolls composer-ready evidence (launch readiness)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  const TRUST_SCREEN =
+    'Quick safety check: Is this a project you created or one you trust?\n❯ No, exit\n  Yes, I trust this folder\nEnter to confirm · Esc to cancel'
+
+  function createPolls(screen: string | null, signal: AgentComposerSignal) {
+    const resolved: RuntimeTerminalWait[] = []
+    const reads: string[] = []
+    const watched: string[] = []
+    const dispose = vi.fn()
+    const polls = new RuntimeTerminalIdlePolls({
+      intervalMs: INTERVAL_MS,
+      quiescenceMs: 1500,
+      getTabTitle: () => null,
+      getForegroundProcess: () => null,
+      getAdoptedPtyIdleStatus: () => null,
+      getPaneAgent: () => 'goose',
+      getFirstPartyAgentStatus: () => null,
+      readScreenLines: () => null,
+      readVisibleScreen: (ptyId) => {
+        reads.push(ptyId)
+        return Promise.resolve(screen)
+      },
+      getLiveLeaf: (leaf) => leaf,
+      watchComposerReady: (ptyId) => {
+        watched.push(ptyId)
+        return { signal: () => signal, dispose }
+      },
+      resolve: (_waiter, result) => resolved.push(result)
+    })
+    return { polls, resolved, reads, watched, dispose }
+  }
+
+  const quietPty = () => makePty('pty-1', { lastOutputAt: Date.now() - 10_000 })
+
+  it('settles a launch-readiness wait on the composer only after a clean screen read', async () => {
+    const h = createPolls('goose ready', 'armed')
+    h.polls.startPty(makeWaiter('pty', true), quietPty())
+    h.polls.startLeaf(
+      makeWaiter('leaf', true),
+      makeLeaf('tab-1', { lastOutputAt: Date.now() - 10_000 })
+    )
+
+    await vi.advanceTimersByTimeAsync(0)
+    expect(h.watched).toEqual(['pty-1', 'tab-1-pty'])
+    expect(h.reads).toEqual(['pty-1', 'tab-1-pty'])
+    expect(h.resolved).toEqual([
+      expect.objectContaining({ satisfied: true }),
+      expect.objectContaining({ satisfied: true })
+    ])
+    // The watch dies with the waiter.
+    expect(h.dispose).toHaveBeenCalledTimes(2)
+  })
+
+  it('reports a dialog on screen instead of settling ready on the composer', async () => {
+    const h = createPolls(TRUST_SCREEN, 'ready')
+    h.polls.startPty(makeWaiter('pty', true), quietPty())
+
+    await vi.advanceTimersByTimeAsync(0)
+    expect(h.resolved).toEqual([
+      expect.objectContaining({ satisfied: false, blockedReason: 'agent-trust-workspace' })
+    ])
+  })
+
+  it('never watches the composer for a plain tui-idle wait', async () => {
+    const h = createPolls('goose ready', 'ready')
+    h.polls.startPty(makeWaiter('pty'), quietPty())
+
+    await vi.advanceTimersByTimeAsync(INTERVAL_MS * 3)
+    expect(h.watched).toEqual([])
+    expect(h.resolved).toEqual([])
+  })
+
+  it('disposes the watch when the waiter is cancelled', () => {
+    const h = createPolls(null, 'none')
+    const waiter = makeWaiter('pty', true)
+    h.polls.startPty(waiter, quietPty())
+
+    waiter.cancelIdlePoll?.()
+    expect(h.dispose).toHaveBeenCalledTimes(1)
   })
 })

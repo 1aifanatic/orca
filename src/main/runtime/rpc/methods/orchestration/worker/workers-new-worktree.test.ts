@@ -390,6 +390,22 @@ describe('orchestration new-worktree workers', () => {
     )
   })
 
+  it('waits for the agent to take input, not only for tui-idle, before sending the brief', async () => {
+    mockCreatedWorktree({ startupPolicy: 'wait-for-setup', state: 'running' })
+    await startWorker()
+
+    // Why: `tui-idle` alone never settles for an agent with no ready title or known ready screen.
+    const inputReady = vi.mocked(runtime.waitForTerminal)
+    expect(inputReady).toHaveBeenCalledWith(expect.any(String), {
+      condition: 'tui-idle',
+      timeoutMs: expect.any(Number),
+      acceptComposerReady: true
+    })
+    expect(inputReady.mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(runtime.sendTerminalAgentPrompt).mock.invocationCallOrder[0]!
+    )
+  })
+
   it('does not inject task input when the gated setup terminal fails to start', async () => {
     mockCreatedWorktree({ startupPolicy: 'wait-for-setup', state: 'spawn_failed' })
     vi.mocked(runtime.waitForTerminal).mockResolvedValue({

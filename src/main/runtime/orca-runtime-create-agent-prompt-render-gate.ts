@@ -134,6 +134,10 @@ export class OrcaRuntimeWithCreateAgentPromptRenderGate extends OrcaRuntimeWithW
       condition?: RuntimeTerminalWaitCondition
       timeoutMs?: number
       signal?: AbortSignal
+      /** Launch readiness: the agent's composer-ready signal may settle a `tui-idle` wait. Never
+       *  set from `terminal.wait`, which also waits out turns — this says the composer mounted,
+       *  not that a turn finished. */
+      acceptComposerReady?: boolean
     }
   ): Promise<RuntimeTerminalWait> {
     return this.terminalWait.wait(handle, options)

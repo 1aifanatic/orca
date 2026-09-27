@@ -1,0 +1,9 @@
+{
+  "capturedAt": "2026-09-25T21:33:49.554Z",
+  "platform": "darwin",
+  "command": ["goose"],
+  "cols": 120,
+  "rows": 40,
+  "note": "goose 1.52.0, isolated HOME config (provider openai, model gpt-4o, unreachable OPENAI_HOST, telemetry off), dummy key via env, keyring disabled; no input sent",
+  "exitCode": 0
+}

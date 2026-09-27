@@ -93,6 +93,12 @@ describe('federated worker agent launch', () => {
       }
     })
     expect(db.getRemoteDispatchAttachment('ctx_remote')?.depth).toBe(2)
+    // Why: the brief waits for the agent to take input, not only for tui-idle.
+    expect(runtime.waitForTerminal).toHaveBeenCalledWith('term_remote_worker', {
+      condition: 'tui-idle',
+      timeoutMs: expect.any(Number),
+      acceptComposerReady: true
+    })
     expect(createTerminal).toHaveBeenCalledWith(
       'id:folder:remote-workspace',
       expect.objectContaining({

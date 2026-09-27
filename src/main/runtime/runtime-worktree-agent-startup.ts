@@ -25,7 +25,7 @@ import { markRemoteAgentWorkspaceTrusted } from '../remote-agent-trust-presets'
 import type { RuntimeStore } from './runtime-store-contract'
 
 export type WorktreeStartupDraftPaste = { agent: TuiAgent; content: string }
-export type WorktreeStartupFollowup = { expectedProcess: string; prompt: string }
+export type WorktreeStartupFollowup = { prompt: string }
 
 type StartupEnvironment = {
   repo: Repo
@@ -163,10 +163,7 @@ export function buildWorktreeStartupForAgent(
     },
     ...(startupPlan.followupPrompt
       ? {
-          followup: {
-            expectedProcess: startupPlan.expectedProcess,
-            prompt: startupPlan.followupPrompt
-          }
+          followup: { prompt: startupPlan.followupPrompt }
         }
       : {})
   }

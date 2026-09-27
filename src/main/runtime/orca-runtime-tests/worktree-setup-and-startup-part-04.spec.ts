@@ -17,74 +17,90 @@ import { TEST_REPO_ID, makeWorktreeMeta, store } from '../orca-runtime-test-fixt
 
 describe('OrcaRuntimeService', () => {
   it('sends follow-up prompts for CLI-created stdin-after-start startup agents', async () => {
-    const metaById: Record<string, WorktreeMeta> = {}
-    const runtimeStore = {
-      ...store,
-      getSettings: () => ({
-        ...store.getSettings(),
-        agentCmdOverrides: {}
-      }),
-      getAllWorktreeMeta: () => metaById,
-      getWorktreeMeta: (worktreeId: string) => metaById[worktreeId],
-      setWorktreeMeta: (worktreeId: string, meta: Partial<WorktreeMeta>) => {
-        metaById[worktreeId] = { ...(metaById[worktreeId] ?? makeWorktreeMeta()), ...meta }
-        return metaById[worktreeId]
+    vi.useFakeTimers()
+    try {
+      const metaById: Record<string, WorktreeMeta> = {}
+      const runtimeStore = {
+        ...store,
+        getSettings: () => ({
+          ...store.getSettings(),
+          agentCmdOverrides: {}
+        }),
+        getAllWorktreeMeta: () => metaById,
+        getWorktreeMeta: (worktreeId: string) => metaById[worktreeId],
+        setWorktreeMeta: (worktreeId: string, meta: Partial<WorktreeMeta>) => {
+          metaById[worktreeId] = { ...(metaById[worktreeId] ?? makeWorktreeMeta()), ...meta }
+          return metaById[worktreeId]
+        }
       }
-    }
-    const runtime = new OrcaRuntimeService(runtimeStore as never)
-    const spawn = vi.fn().mockResolvedValue({ id: 'pty-cli-aider-startup' })
-    const write = vi.fn().mockReturnValue(true)
-    runtime.setPtyController({
-      spawn,
-      write,
-      kill: () => true,
-      getForegroundProcess: async () => 'aider'
-    })
-    runtime.setNotifier({
-      worktreesChanged: vi.fn(),
-      reposChanged: vi.fn(),
-      activateWorktree: vi.fn(),
-      createTerminal: vi.fn(),
-      revealTerminalSession: vi.fn().mockResolvedValue({ tabId: 'tab-cli-aider-startup' }),
-      splitTerminal: vi.fn(),
-      renameTerminal: vi.fn(),
-      focusTerminal: vi.fn(),
-      closeTerminal: vi.fn(),
-      sleepWorktree: vi.fn(),
-      terminalFitOverrideChanged: vi.fn(),
-      terminalDriverChanged: vi.fn()
-    })
-    runtime.attachWindow(1)
-
-    computeWorktreePathMock.mockReturnValue('/tmp/workspaces/runtime-cli-aider-startup')
-    ensurePathWithinWorkspaceMock.mockReturnValue('/tmp/workspaces/runtime-cli-aider-startup')
-    vi.mocked(listWorktrees).mockResolvedValue([
-      {
-        path: '/tmp/workspaces/runtime-cli-aider-startup',
-        head: 'def',
-        branch: 'runtime-cli-aider-startup',
-        isBare: false,
-        isMainWorktree: false
-      }
-    ])
-
-    const result = await runtime.createManagedWorktree({
-      repoSelector: TEST_REPO_ID,
-      name: 'runtime-cli-aider-startup',
-      startupAgent: 'aider',
-      startupPrompt: 'fix it'
-    })
-
-    expect(spawn).toHaveBeenCalledWith(
-      expect.objectContaining({
-        cwd: '/tmp/workspaces/runtime-cli-aider-startup',
-        command: "aider '--yes-always'",
-        worktreeId: result.worktree.id
+      const runtime = new OrcaRuntimeService(runtimeStore as never)
+      const spawn = vi.fn().mockResolvedValue({ id: 'pty-cli-aider-startup' })
+      const write = vi.fn().mockReturnValue(true)
+      runtime.setPtyController({
+        spawn,
+        write,
+        kill: () => true,
+        getForegroundProcess: async () => 'aider'
       })
-    )
-    await vi.waitFor(() => {
-      expect(write).toHaveBeenCalledWith('pty-cli-aider-startup', 'fix it\r')
-    })
+      runtime.setNotifier({
+        worktreesChanged: vi.fn(),
+        reposChanged: vi.fn(),
+        activateWorktree: vi.fn(),
+        createTerminal: vi.fn(),
+        revealTerminalSession: vi.fn().mockResolvedValue({ tabId: 'tab-cli-aider-startup' }),
+        splitTerminal: vi.fn(),
+        renameTerminal: vi.fn(),
+        focusTerminal: vi.fn(),
+        closeTerminal: vi.fn(),
+        sleepWorktree: vi.fn(),
+        terminalFitOverrideChanged: vi.fn(),
+        terminalDriverChanged: vi.fn()
+      })
+      runtime.attachWindow(1)
+
+      computeWorktreePathMock.mockReturnValue('/tmp/workspaces/runtime-cli-aider-startup')
+      ensurePathWithinWorkspaceMock.mockReturnValue('/tmp/workspaces/runtime-cli-aider-startup')
+      vi.mocked(listWorktrees).mockResolvedValue([
+        {
+          path: '/tmp/workspaces/runtime-cli-aider-startup',
+          head: 'def',
+          branch: 'runtime-cli-aider-startup',
+          isBare: false,
+          isMainWorktree: false
+        }
+      ])
+
+      const result = await runtime.createManagedWorktree({
+        repoSelector: TEST_REPO_ID,
+        name: 'runtime-cli-aider-startup',
+        startupAgent: 'aider',
+        startupPrompt: 'fix it'
+      })
+
+      expect(spawn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cwd: '/tmp/workspaces/runtime-cli-aider-startup',
+          command: "aider '--yes-always'",
+          worktreeId: result.worktree.id
+        })
+      )
+      // Nothing is typed at the shell's own prompt: the follow-up waits for the agent's composer.
+      expect(write).not.toHaveBeenCalledWith(
+        'pty-cli-aider-startup',
+        expect.stringContaining('fix it')
+      )
+      runtime.onPtyData('pty-cli-aider-startup', '\x1b]133;C\x07\x1b[?2004h', Date.now())
+      // An armed composer settles once quiet (3 s), on the next tui-idle poll (2 s).
+      await vi.advanceTimersByTimeAsync(6_000)
+      // A bracketed paste, so a multi-line follow-up is one turn rather than a line per Enter.
+      expect(write).toHaveBeenCalledWith(
+        'pty-cli-aider-startup',
+        expect.stringContaining('\x1b[200~fix it\x1b[201~')
+      )
+      expect(write).not.toHaveBeenCalledWith('pty-cli-aider-startup', 'fix it\r')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('does not send stdin-after-start prompts into a shell when the agent never starts', async () => {
@@ -524,10 +540,14 @@ describe('OrcaRuntimeService', () => {
     )
     expect(metaById[result.worktree.id]).toMatchObject({ createdWithAgent: 'codex' })
 
-    runtime.onPtyData('pty-explicit-draft', '\x1b[?2004h›', Date.now())
-    await vi.waitFor(() => {
-      expect(write).toHaveBeenCalledWith('pty-explicit-draft', `\x1b[200~${draftUrl}\x1b[201~`)
-    })
+    runtime.onPtyData('pty-explicit-draft', '\x1b]133;C\x07\x1b[?2004h›', Date.now())
+    // Composer evidence settles on the next tui-idle poll (2 s), after a screen read.
+    await vi.waitFor(
+      () => {
+        expect(write).toHaveBeenCalledWith('pty-explicit-draft', `\x1b[200~${draftUrl}\x1b[201~`)
+      },
+      { timeout: 5000 }
+    )
   })
 
   it('does not auto-launch an agent for startup drafts when the default is blank', async () => {

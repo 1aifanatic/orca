@@ -1,0 +1,9 @@
+{
+  "capturedAt": "2026-09-25T21:36:19.641Z",
+  "platform": "darwin",
+  "command": ["aider", "--yes-always"],
+  "cols": 120,
+  "rows": 40,
+  "note": "aider 0.86.2, same as aider-composer-dummy-key but 120 s window",
+  "exitCode": 0
+}

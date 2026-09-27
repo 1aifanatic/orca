@@ -1,4 +1,5 @@
 import { isShellProcess } from '../../shared/agent-detection'
+import type { AgentComposerReadyWatch } from './agent-composer-ready-watch'
 import type {
   RuntimeTerminalWait,
   RuntimeTerminalWaitBlockedReason
@@ -41,6 +42,8 @@ type RuntimeTerminalIdlePollDependencies = TuiIdleEvidenceSource & {
   readVisibleScreen(ptyId: string): Promise<string | null> | null
   /** Re-read the record the waiter registered against; see `sample` below. */
   getLiveLeaf(leaf: RuntimeLeafRecord): RuntimeLeafRecord
+  /** The launched agent's composer-ready signal on this PTY; null when the agent is unknown. */
+  watchComposerReady(ptyId: string): AgentComposerReadyWatch | null
   resolve(waiter: TerminalWaiter, result: RuntimeTerminalWait): void
 }
 
@@ -48,6 +51,7 @@ type IdlePollEntry = {
   waiter: TerminalWaiter
   foregroundPollInFlight: boolean
   screenReadInFlight: boolean
+  composer: AgentComposerReadyWatch | null
 } & ({ kind: 'leaf'; leaf: RuntimeLeafRecord } | { kind: 'pty'; pty: RuntimePtyWorktreeRecord })
 
 /** One reading of a waiter's pane, and the results it would settle with. */
@@ -59,7 +63,11 @@ type IdlePollSample = {
   isQuiet(): boolean
 }
 
-const IDLE_ENTRY_FLAGS = { foregroundPollInFlight: false, screenReadInFlight: false }
+const IDLE_ENTRY_FLAGS = {
+  foregroundPollInFlight: false,
+  screenReadInFlight: false,
+  composer: null
+}
 
 export class RuntimeTerminalIdlePolls {
   private readonly entries = new Set<IdlePollEntry>()
@@ -84,6 +92,12 @@ export class RuntimeTerminalIdlePolls {
   private start(entry: IdlePollEntry, verdict: TuiIdleVerdict | undefined): void {
     this.entries.add(entry)
     entry.waiter.cancelIdlePoll = () => this.stop(entry)
+    // Why owned by the poll entry: the signal is weak, so only the poll can settle on it, and the
+    // subscription then dies with the waiter however it ends.
+    const ptyId = entry.kind === 'pty' ? entry.pty.ptyId : entry.leaf.ptyId
+    if (entry.waiter.acceptComposerReady && ptyId) {
+      entry.composer = this.deps.watchComposerReady(ptyId)
+    }
     // Why one shared timer for every waiter: a per-waiter interval multiplied idle
     // main-process wakeups by the number of concurrent `wait` calls, independent of
     // whether any terminal produced output. Same shape as the synthetic-title spinner.
@@ -92,7 +106,8 @@ export class RuntimeTerminalIdlePolls {
     }
     // Why: the evidence is already in hand and only needs its screen read; a probe that
     // times out under one interval (the automation start probe) would otherwise never see it.
-    if (verdict?.kind === 'ready-weak') {
+    // The composer's replay may hold it too.
+    if (verdict?.kind === 'ready-weak' || entry.composer) {
       void this.tick(entry)
     }
   }
@@ -109,6 +124,8 @@ export class RuntimeTerminalIdlePolls {
 
   private sample(entry: IdlePollEntry): IdlePollSample {
     const { handle } = entry.waiter
+    const composer = entry.composer
+    const readComposerSignal = composer ? () => composer.signal() : undefined
     if (entry.kind === 'pty') {
       // Why no re-read here: `ptysById` has a single create-once `set` site, so PTY
       // records are mutated in place rather than swapped, and a capture stays live.
@@ -116,7 +133,9 @@ export class RuntimeTerminalIdlePolls {
       const readWaitText = () =>
         buildTerminalWaitText(pty.tailBuffer, pty.tailPartialLine, pty.preview)
       return {
-        verdict: evaluateTuiIdle(ptyTuiIdleEvidence(this.deps, pty, readWaitText)),
+        verdict: evaluateTuiIdle(
+          ptyTuiIdleEvidence(this.deps, pty, readWaitText, readComposerSignal)
+        ),
         ptyId: pty.ptyId,
         ready: () => buildPtyTerminalWaitResult(handle, 'tui-idle', pty),
         blocked: (reason) => buildPtyTerminalWaitBlockedResult(handle, 'tui-idle', pty, reason),
@@ -132,7 +151,9 @@ export class RuntimeTerminalIdlePolls {
       buildTerminalWaitText(leaf.tailBuffer, leaf.tailPartialLine, leaf.preview)
     const live = () => this.deps.getLiveLeaf(entry.leaf)
     return {
-      verdict: evaluateTuiIdle(leafTuiIdleEvidence(this.deps, leaf, readWaitText)),
+      verdict: evaluateTuiIdle(
+        leafTuiIdleEvidence(this.deps, leaf, readWaitText, readComposerSignal)
+      ),
       ptyId: leaf.ptyId,
       ready: () => buildTerminalWaitResult(handle, 'tui-idle', live()),
       blocked: (reason) => buildTerminalWaitBlockedResult(handle, 'tui-idle', live(), reason),
@@ -225,6 +246,8 @@ export class RuntimeTerminalIdlePolls {
     if (!this.entries.delete(entry)) {
       return
     }
+    entry.composer?.dispose()
+    entry.composer = null
     entry.waiter.cancelIdlePoll = null
     if (this.entries.size === 0 && this.sweepTimer) {
       clearInterval(this.sweepTimer)

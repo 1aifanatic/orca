@@ -4,6 +4,7 @@ import { preserveTerminalRetirementProofs } from './mobile-session-terminal-reti
 import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
 import { replaceConversationInSnapshot } from './structured-conversation-tab-replacement'
 import type { TuiAgent } from '../../shared/tui-agent'
+import { watchAgentComposerReady } from './agent-composer-ready-watch'
 import type { RuntimeStore } from './runtime-store-contract'
 import type { RuntimeClientSettingsController } from './runtime-client-settings'
 import type { RuntimeAutomationController } from './runtime-automation-controller'
@@ -350,6 +351,15 @@ export class OrcaRuntimeWithRuntimeId {
           )
         : null,
     getLiveLeaf: (leaf) => this.leaves.get(this.getLeafKey(leaf.tabId, leaf.leafId)) ?? leaf,
+    watchComposerReady: (ptyId) => {
+      const agent = this.getPaneAgentForTuiIdle(ptyId)
+      return agent
+        ? watchAgentComposerReady(agent, {
+            subscribeToData: (listener) => this.subscribeToTerminalData(ptyId, listener),
+            readRecentOutput: () => this.recentPtyOutputById.get(ptyId)?.read()
+          })
+        : null
+    },
     resolve: (waiter, result) => this.terminalWaiters.resolve(waiter, result)
   })
 
