@@ -16,12 +16,18 @@ Same-runner comparisons in both orders measured:
 | Mobile preparation | 19.8–21.6s | 18.0–18.5s | [Eight measurements](https://github.com/stablyai/orca/actions/runs/36302877583) |
 | Web projection and mobile build | 17.2–17.3s | 11.7–12.1s | [Eight measurements](https://github.com/stablyai/orca/actions/runs/36302974324) |
 | Mobile verifier fixture suite | 25.47 / 25.35s | 20.04 / 19.92s | [Four full-suite runs](https://github.com/stablyai/orca/actions/runs/36302692823) |
+| E2E build outputs | 28.6–30.4s | 25.8–27.8s | [Eight measurements](https://github.com/stablyai/orca/actions/runs/36304001325) |
 
 Full mobile-job timings were dominated by first-run apt installation and browser
 test variation; the controlled preparation measurement is the scheduling evidence.
 All 1,248 web/mobile output files matched byte-for-byte in the build comparison.
 The fixture suite kept all 47 tests, isolated mutable copies, and the verifier's
 two fresh builds. No deadline, isolation, or worker-count changes were needed.
+
+E2E builds reuse the existing isolated main/preload/renderer build wrapper, now
+forwarding `--mode e2e` to each target. All 2,640 output files matched byte-for-byte
+in both execution orders, including the exposed test store and relay artifacts.
+This saves a few build seconds; it does not speed up the E2E tests themselves.
 
 The existing unit assignment was already balanced at about 919 historical
 worker-seconds per shard; fresh x86 elapsed times still ranged from 254 to 433s.
