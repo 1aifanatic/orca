@@ -28,24 +28,34 @@ export const agentSessionStoreBackupPath = (filePath: string): string => `${file
 export async function saveAgentSessionStore(
   filePath: string,
   state: AgentSessionStoreState,
-  options: { primaryStatus: 'validated' | 'unusable-or-absent' }
+  options: {
+    primaryStatus: 'validated' | 'unusable-or-absent'
+    /** Rotated in as the backup instead of the primary's bytes, which lack a row it salvaged. */
+    backupText?: string
+  }
 ): Promise<string> {
   const directory = dirname(filePath)
   await mkdir(directory, { recursive: true, mode: 0o700 })
   await chmod(directory, 0o700)
   const tmpPath = durableWriteTempPath(filePath)
+  const backupPath = agentSessionStoreBackupPath(filePath)
+  const backupTmpPath = durableWriteTempPath(backupPath)
   const serialized = serializeAgentSessionStoreState(state)
   try {
     await writeTempFileDurable(tmpPath, serialized, 0o600)
     // Only a primary parsed under the transaction lock may replace the backup. During recovery the
     // primary is corrupt or absent, so the known-good backup must survive until publication.
-    if (options.primaryStatus === 'validated') {
-      await copyFileDurable(filePath, agentSessionStoreBackupPath(filePath))
+    if (options.primaryStatus === 'validated' && options.backupText === undefined) {
+      await copyFileDurable(filePath, backupPath)
+    } else if (options.primaryStatus === 'validated' && options.backupText !== undefined) {
+      await writeTempFileDurable(backupTmpPath, options.backupText, 0o600)
+      await renameDurable(backupTmpPath, backupPath)
     }
     await renameDurable(tmpPath, filePath)
     return serialized
   } catch (error) {
     await rm(tmpPath, { force: true }).catch(() => {})
+    await rm(backupTmpPath, { force: true }).catch(() => {})
     throw error
   }
 }

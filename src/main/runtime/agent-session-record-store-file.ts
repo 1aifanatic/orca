@@ -64,6 +64,8 @@ export type LoadedAgentSessionStore = {
   legacyHandoffLeasesNormalized: boolean
   /** The bytes `state` was derived from; null when no primary was parsed or a backup read failed. */
   inputKey: AgentSessionStoreInputKey | null
+  /** What `state` owes the backup: rows it salvaged from it, or a read that failed while one was due. */
+  salvage: 'none' | 'salvaged' | 'backup-unreadable'
 }
 
 export function agentSessionStorePath(directory: string): string {
@@ -274,6 +276,7 @@ export async function loadAgentSessionStore(
   if (primaryBytes) {
     const parsed = parseState(primaryBytes.bytes.toString('utf-8'), hostId)
     if (parsed) {
+      const readable = parsed.state.records.size
       const backup = await salvageUnreadableRecordsFromBackup(
         parsed.state,
         backupPath(filePath),
@@ -284,7 +287,13 @@ export async function loadAgentSessionStore(
         storeFound: true,
         readOnly: parsed.state.schemaVersion > AGENT_SESSION_STORE_SCHEMA_VERSION,
         recoveredFromBackup: false,
-        inputKey: backup === null ? null : { primarySha256: primaryBytes.sha256, backup }
+        inputKey: backup === null ? null : { primarySha256: primaryBytes.sha256, backup },
+        salvage:
+          backup === null
+            ? 'backup-unreadable'
+            : parsed.state.records.size > readable
+              ? 'salvaged'
+              : 'none'
       }
     }
     unusableStoreFound = true
@@ -298,7 +307,8 @@ export async function loadAgentSessionStore(
         storeFound: true,
         readOnly: parsed.state.schemaVersion > AGENT_SESSION_STORE_SCHEMA_VERSION,
         recoveredFromBackup: true,
-        inputKey: null
+        inputKey: null,
+        salvage: 'none'
       }
     }
   }
@@ -313,6 +323,7 @@ export async function loadAgentSessionStore(
     recoveredFromBackup: false,
     needsRewrite: false,
     legacyHandoffLeasesNormalized: false,
-    inputKey: null
+    inputKey: null,
+    salvage: 'none'
   }
 }

@@ -96,7 +96,14 @@ export class AgentSessionRecordStore {
       diskRevision
     )
     if (loaded.needsRewrite && !loaded.readOnly && !loaded.recoveredFromBackup) {
-      await transactions.persistLoadedRewrite()
+      // Why: a backup that could not be read defers the rewrite to a later transaction, not the open.
+      await transactions.persistLoadedRewrite().catch((error: unknown) => {
+        if (
+          !(error instanceof Error && error.message === 'agent_session_store_backup_unreadable')
+        ) {
+          throw error
+        }
+      })
     }
     return new AgentSessionRecordStore(transactions)
   }
