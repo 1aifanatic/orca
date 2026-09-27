@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FlatList } from 'react-native'
 import type { DiffComment } from '../../../src/shared/diff-comment-types'
 import type { ConnectionState } from '../transport/types'
@@ -21,13 +21,11 @@ import { useMobileDiffReviewDiffLoading } from './use-mobile-diff-review-diff-lo
 import { canOpenMobileBranchCompareDiff } from '../source-control/mobile-branch-compare'
 import type { ReviewDiffLine, ReviewScreenState } from './mobile-diff-review-screen-model'
 import {
-  NO_REVIEW_SHEETS,
-  reduceReviewSheets,
   reviewComposer,
   reviewDiscardTarget,
   reviewSendSheet,
-  reviewSheetIntents,
-  shownReviewSheet
+  shownReviewSheet,
+  useReviewSheets
 } from './mobile-diff-review-sheets'
 import { useMobileDiffReviewInteractions } from './use-mobile-diff-review-interactions'
 import { useMobilePrSidebarController } from './use-mobile-pr-sidebar-controller'
@@ -65,8 +63,7 @@ export function useMobileDiffReviewController(input: ControllerInput) {
   const [filter, setFilter] = useState<MobileDiffReviewQueueFilter>(initialFilter)
   const [currentIndex, setCurrentIndex] = useState(0)
   const [activeHunkIndex, setActiveHunkIndex] = useState<number | null>(null)
-  const [sheets, dispatchSheets] = useReducer(reduceReviewSheets, NO_REVIEW_SHEETS)
-  const sheetIntents = useMemo(() => reviewSheetIntents(dispatchSheets), [])
+  const { sheets, intents: sheetIntents } = useReviewSheets()
   const composer = reviewComposer(sheets)
   const [composerBody, setComposerBody] = useState('')
   const [actionError, setActionError] = useState<string | null>(null)

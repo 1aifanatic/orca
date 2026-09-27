@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useReducer, useRef } from 'react'
 import type { MobileDiffReviewQueueItem } from './mobile-diff-review-queue'
 import type { ComposerState, SendSheetState } from './mobile-diff-review-screen-model'
 
@@ -106,3 +107,36 @@ export function reviewSheetIntents(dispatch: (action: ReviewSheetsAction) => voi
 }
 
 export type ReviewSheetIntents = ReturnType<typeof reviewSheetIntents>
+
+/** Review sheets; each drawer must render `visible` from `shownReviewSheet` in the same commit. */
+export function useReviewSheets() {
+  const [sheets, dispatch] = useReducer(reduceReviewSheets, NO_REVIEW_SHEETS)
+  // The sheet whose drawer is mounted: shown in a commit and not yet reported closed.
+  const mountedKindRef = useRef<ReviewSheetKind | null>(null)
+  const intents = useMemo(() => {
+    const base = reviewSheetIntents(dispatch)
+    return {
+      ...base,
+      sheetClosed: (kind: ReviewSheetKind) => {
+        if (mountedKindRef.current === kind) {
+          mountedKindRef.current = null
+        }
+        base.sheetClosed(kind)
+      }
+    }
+  }, [])
+  const shown = shownReviewSheet(sheets)
+  const closing = !sheets.open && sheets.current ? sheets.current.kind : null
+  useEffect(() => {
+    if (shown) {
+      mountedKindRef.current = shown
+      return
+    }
+    // Why: a sheet closed or displaced before any commit showed it never mounted a drawer, so
+    // no onAfterClose will come; waiting for one would hold every later sheet behind it.
+    if (closing && mountedKindRef.current !== closing) {
+      dispatch({ type: 'closed', kind: closing })
+    }
+  }, [shown, closing])
+  return { sheets, intents }
+}

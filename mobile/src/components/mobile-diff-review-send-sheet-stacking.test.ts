@@ -263,6 +263,48 @@ describe('review screen sheets never stack', () => {
     expect(shownSheets()).toEqual(['Review Complete'])
   })
 
+  // A drawer only mounts once a commit shows it, so a sheet displaced or closed in the same batch
+  // it opened in never sends onAfterClose; nothing may wait for one.
+  it('a sheet displaced before it was ever shown does not hold the next one', async () => {
+    await mountScreen()
+    act(() => {
+      controller.openSheet({ kind: 'completion' })
+      controller.openSheet({ kind: 'actions' })
+    })
+    expect(shownSheets()).toEqual(['Review Actions'])
+  })
+
+  it('a sheet closed before it was ever shown does not hold later sheets', async () => {
+    await mountScreen()
+    act(() => {
+      controller.openSheet({ kind: 'completion' })
+      controller.closeSheet('completion')
+    })
+    act(() => controller.openSheet({ kind: 'actions' }))
+    expect(shownSheets()).toEqual(['Review Actions'])
+  })
+
+  it('a sheet that was shown still waits for its drawer to finish closing', async () => {
+    await mountScreen()
+    act(() => controller.openSheet({ kind: 'completion' }))
+    act(() => controller.openSheet({ kind: 'actions' }))
+    expect(shownSheets()).toEqual([])
+    finishClosing('Review Complete')
+    expect(shownSheets()).toEqual(['Review Actions'])
+
+    // Review Complete has unmounted, so a later displaced-before-shown copy has no drawer either.
+    act(() => drawer('Review Actions').props.onClose())
+    finishClosing('Review Actions')
+    act(() => controller.openSheet({ kind: 'completion' }))
+    act(() => drawer('Review Complete').props.onClose())
+    finishClosing('Review Complete')
+    act(() => {
+      controller.openSheet({ kind: 'completion' })
+      controller.openSheet({ kind: 'actions' })
+    })
+    expect(shownSheets()).toEqual(['Review Actions'])
+  })
+
   it('a send list that lands after Send Notes was dismissed does not bring it back', async () => {
     await mountScreen()
     act(() => void controller.openSendSheet())
