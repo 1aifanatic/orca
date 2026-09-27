@@ -7,7 +7,8 @@ import type { AgentJournalResetReason } from '../../../shared/agent-session-jour
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import {
   openStructuredAgentSessionConversation,
-  type OpenedStructuredAgentSessionConversation
+  type OpenedStructuredAgentSessionConversation,
+  type StructuredAgentSessionConversationOpenOptions
 } from './structured-agent-session-conversation-open'
 import { StructuredAgentSessionDeliveryLoop } from './structured-agent-session-delivery-loop'
 import type { StructuredAgentSessionResumeOutcome } from './structured-agent-session-hold-resume'
@@ -23,7 +24,10 @@ import { recoverStructuredRewind } from './structured-rewind-recovery'
 export type StructuredAgentSessionConversationDelivery = {
   loop: StructuredAgentSessionDeliveryLoop
   /** For a caller inside the session's serialize. */
-  open: (sessionId: string) => Promise<StructuredAgentSessionHostSession | null>
+  open: (
+    sessionId: string,
+    options?: StructuredAgentSessionConversationOpenOptions
+  ) => Promise<StructuredAgentSessionHostSession | null>
   /** Indexes a conversation some other open produced, as `open` would have. */
   adoptOpened: (
     sessionId: string,
@@ -71,8 +75,8 @@ export function createStructuredAgentSessionConversationDelivery(input: {
   return {
     loop,
     adoptOpened,
-    open: (sessionId) =>
-      openStructuredAgentSessionConversation({ deps, sessions, adoptOpened }, sessionId)
+    open: (sessionId, options) =>
+      openStructuredAgentSessionConversation({ deps, sessions, adoptOpened }, sessionId, options)
   }
 }
 

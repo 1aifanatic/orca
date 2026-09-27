@@ -35,11 +35,6 @@ export type StructuredAgentSessionReadRestoreDeps = {
     sessionId: string,
     opened: OpenedStructuredAgentSessionConversation
   ) => Promise<void> | void
-  /** Settles what a previous generation left running. Best effort: the next acquire re-derives it. */
-  settleStaleState: (
-    sessionId: string,
-    opened: OpenedStructuredAgentSessionConversation
-  ) => Promise<void>
 }
 
 /**
@@ -66,10 +61,7 @@ export async function restoreOneStructuredAgentSessionRead(
 /** The serialized half of the restore, for a caller already inside the session's serialize — a
  *  send replaying into a session this host has closed, which needs the journal and no child. */
 export async function restoreOneStructuredAgentSessionReadUnderSerialize(
-  input: Pick<
-    StructuredAgentSessionReadRestoreDeps,
-    'openDeps' | 'hasSession' | 'onReadable' | 'settleStaleState'
-  >,
+  input: Pick<StructuredAgentSessionReadRestoreDeps, 'openDeps' | 'hasSession' | 'onReadable'>,
   sessionId: string
 ): Promise<void> {
   if (input.hasSession(sessionId)) {
@@ -80,9 +72,7 @@ export async function restoreOneStructuredAgentSessionReadUnderSerialize(
   if (!opened) {
     return
   }
-  // No child in this process writes to a journal with no map entry, so anything it shows running
-  // belongs to a generation that is gone. Settled before it is published, so no reader sees it run.
-  await input.settleStaleState(sessionId, opened)
+  // The open settled what a gone generation left running, so no reader sees it run.
   await input.onReadable(sessionId, opened)
 }
 

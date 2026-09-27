@@ -10,6 +10,9 @@ export function openTestAttachConversation(
   adapter: Pick<StructuredAgentSessionAdapter, 'historyFilePath'> = {}
 ): (record: AgentSessionRecord) => Promise<AgentSessionJournal> {
   return async (record) =>
-    (await openStructuredAgentSessionConversationJournal({ journalRoot, adapter }, record)).session
-      .journal
+    (
+      await openStructuredAgentSessionConversationJournal({ journalRoot, adapter }, record, {
+        acquisition: true
+      })
+    ).session.journal
 }
