@@ -75,12 +75,6 @@ export type AgentSessionResumeMarker = {
    */
   journalCursor?: AgentJournalCursor
   /**
-   * The client message ids of the continuations this offer's resume actions sent, newest last.
-   * A rejected one never reached the agent, so it is not the chat moving on and a retry still
-   * runs. On the offer itself, so the ids end with it. Absent until an action runs.
-   */
-  continuations?: string[]
-  /**
    * What the session was doing, captured at the same stop-time snapshot that decided the offer.
    * The dialog row, the status bar and the wire candidate read ONLY this; nothing re-reads the
    * journal after the restart for the description.
@@ -96,9 +90,6 @@ const MAX_FIELD_LENGTH = 512
 
 /** Bounded because a marker is read back from a file this process did not necessarily write. */
 const markerField = z.string().min(1).max(MAX_FIELD_LENGTH)
-
-/** Retries an offer remembers; an older rejected one past this counts as the chat moving on. */
-export const AGENT_SESSION_RESUME_MAX_CONTINUATIONS = 16
 
 const agentSessionResumeWorkSchema = z.object({
   kind: z.enum(['turn', 'submission']),
@@ -141,11 +132,6 @@ const agentSessionResumeMarkerSchema = z.object({
     .object({ epoch: markerField, sequence: z.number().int().nonnegative() })
     .optional()
     .catch(undefined),
-  continuations: z
-    .array(markerField)
-    .max(AGENT_SESSION_RESUME_MAX_CONTINUATIONS)
-    .optional()
-    .catch(undefined),
   activity: agentSessionRestartActivitySchema.optional().catch(undefined)
 })
 
@@ -156,11 +142,10 @@ export function parseAgentSessionResumeMarker(value: unknown): AgentSessionResum
   if (!parsed.success) {
     return null
   }
-  const { activity, journalCursor, continuations, ...marker } = parsed.data
+  const { activity, journalCursor, ...marker } = parsed.data
   return {
     ...marker,
     ...(journalCursor === undefined ? {} : { journalCursor }),
-    ...(continuations === undefined ? {} : { continuations }),
     ...(activity === undefined ? {} : { activity })
   }
 }

@@ -164,25 +164,20 @@ export function createStructuredAgentSessionRestartResume(
     }
     const operationId = randomUUID()
     const actionAt = surfaces.now()
-    // Recorded on the offer as it is reserved, so a rejected one is told apart for as long as the
-    // offer lasts.
+    // Tagged with its offer, so a rejected one is told apart for as long as the offer lasts.
     const continuationFor = (marker: AgentSessionResumeMarker) =>
-      restartContinuationId(marker.sessionId, marker, operationId, actionAt)
+      restartContinuationId(marker, operationId, actionAt)
     const reserved =
       (await enqueueRecoveryOperation(
         () =>
           deps.recoveryCapsule?.beginResume(
             eligible.map((candidate) => candidate.sessionId),
             operationId,
-            actionAt,
-            continuationFor
+            actionAt
           ) ?? Promise.resolve([])
       )) ?? []
     const markersBySession = new Map(reserved.map((marker) => [marker.sessionId, marker]))
     const candidates = derive(reserved, 'may-be-held').candidates
-    const releases = reserved.map((marker) =>
-      withdrawal.begin(marker.sessionId, continuationFor(marker))
-    )
     try {
       const outcomes = await resumeStructuredAgentSessionsFromRestart(
         {
@@ -201,11 +196,8 @@ export function createStructuredAgentSessionRestartResume(
         candidates,
         owner
       )
-      return { operationId, outcomes, candidates, markers: markersBySession, releases }
+      return { operationId, outcomes, candidates, markers: markersBySession }
     } catch (error) {
-      for (const release of releases) {
-        release()
-      }
       if (deps.recoveryCapsule) {
         await enqueueRecoveryOperation(() =>
           deps.recoveryCapsule!.rollbackResume(operationId, surfaces.now())
@@ -249,9 +241,6 @@ export function createStructuredAgentSessionRestartResume(
     await Promise.all(verdicts)
     const resumed = action?.outcomes ?? []
     if (action) {
-      for (const release of action.releases) {
-        release()
-      }
       await failures.settle(action.operationId, resumed, {
         candidates: action.candidates,
         markers: action.markers,
