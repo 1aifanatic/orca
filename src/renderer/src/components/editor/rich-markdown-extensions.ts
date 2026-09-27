@@ -1,5 +1,6 @@
 import type { AnyExtension } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
+import { RichMarkdownTrailingParagraph } from './rich-markdown-trailing-paragraph'
 import Link from '@tiptap/extension-link'
 import { Code } from '@tiptap/extension-code'
 import Image from '@tiptap/extension-image'
@@ -73,9 +74,11 @@ export function createRichMarkdownExtensions({
       code: false,
       codeBlock: false,
       orderedList: false,
-      paragraph: false
+      paragraph: false,
+      trailingNode: false
     }),
     RichMarkdownParagraph,
+    RichMarkdownTrailingParagraph,
     RichMarkdownCode,
     RichMarkdownCodeBlockLowlight.extend({
       addNodeView() {
