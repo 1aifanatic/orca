@@ -288,6 +288,7 @@ describe('per-job path classification', () => {
   it('runs the mobile web app job for the builder, the page source and the shell policy', () => {
     for (const file of [
       'config/scripts/build-mobile-web-app-bundle.mjs',
+      'config/scripts/run-mobile-web-app-checks.mjs',
       'config/scripts/mobile-web-app-route-manifest.mjs',
       'mobile/web-entry/index.tsx',
       'mobile/app/h/[hostId]/index.tsx',
