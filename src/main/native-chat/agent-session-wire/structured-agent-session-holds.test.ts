@@ -184,6 +184,7 @@ describe('holds', () => {
       resume,
       serialize: keyedSerialize(),
       hasProviderChild: () => child,
+      lastStartFailed: () => false,
       hasOwedWork: () => false,
       evict: async () => {},
       graceMs: 1
@@ -214,6 +215,7 @@ describe('holds', () => {
       resume,
       serialize,
       hasProviderChild: () => child,
+      lastStartFailed: () => false,
       hasOwedWork: () => false,
       evict: async () => {},
       graceMs: 1
@@ -244,6 +246,7 @@ describe('holds', () => {
       },
       serialize,
       hasProviderChild: () => child,
+      lastStartFailed: () => false,
       hasOwedWork: () => false,
       evict: async () => {},
       graceMs: 60_000
@@ -262,6 +265,7 @@ describe('holds', () => {
       resume: async () => ({ ok: true as const }),
       serialize: keyedSerialize(),
       hasProviderChild: () => false,
+      lastStartFailed: () => false,
       hasOwedWork: () => false,
       evict,
       graceMs: 1
@@ -281,6 +285,7 @@ describe('holds', () => {
       resume: async () => ({ ok: true as const }),
       serialize: keyedSerialize(),
       hasProviderChild: () => false,
+      lastStartFailed: () => false,
       hasOwedWork: () => false,
       evict: async () => {},
       graceMs: 1
