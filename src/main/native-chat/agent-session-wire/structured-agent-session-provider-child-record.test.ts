@@ -437,13 +437,15 @@ describe("a view's start that dies while a sent message waits on it", () => {
     await host.hold(SESSION, 'surface-1')
     const params = sendParams('hello')
 
-    // A second view's start lands after the first child's exit, before the loop's first step.
+    // A client's attach lands after the first child's exit, before the loop's first step: a view
+    // no longer starts a child whose last start failed, but an attach still does.
     const sent = host.send(CALLER, params)
+    const exitedFence = store.getRecord(SESSION)?.lease.runtimeFence ?? 0
     const exited = exit(currentChild(), EXIT, true)
-    const held = host.hold(SESSION, 'surface-2')
+    const attached = host.attach(CALLER, hostTestAttachParams(exitedFence + 1))
     await sent
     await exited
-    await held
+    await expect(attached).resolves.toMatchObject({ ok: true })
     const id = params.envelope.clientOperationId
 
     await eventually(() => expect(submission(id)?.dispatchState).not.toBe('pending'))
