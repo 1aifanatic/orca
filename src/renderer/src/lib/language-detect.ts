@@ -1,3 +1,5 @@
+import { detectMonacoFilenameLanguage } from './monaco-filename-language'
+
 function extname(filePath: string): string {
   const lastDot = filePath.lastIndexOf('.')
   const lastSep = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'))
@@ -42,6 +44,7 @@ const EXT_TO_LANGUAGE: Record<string, string> = {
   // Why: Monaco declares Liquid as both '.liquid' and '.html.liquid'; the final-extension
   // lookup below covers the compound form, so the single entry is enough.
   '.liquid': 'liquid',
+  '.twig': 'twig',
   '.xml': 'xml',
   '.svg': 'xml',
   '.py': 'python',
@@ -92,6 +95,8 @@ const EXT_TO_LANGUAGE: Record<string, string> = {
   '.hrl': 'erlang',
   '.hs': 'haskell',
   '.clj': 'clojure',
+  // Why: Monaco registers Solidity under the id 'sol'; 'solidity' is only an alias.
+  '.sol': 'sol',
   '.vue': 'vue',
   '.svelte': 'svelte',
   '.astro': 'astro',
@@ -102,6 +107,7 @@ const EXT_TO_LANGUAGE: Record<string, string> = {
   '.nim': 'nim',
   '.nims': 'nim',
   '.nimble': 'nim',
+  '.typ': 'typst',
   '.tf': 'hcl',
   '.hcl': 'hcl',
   '.abap': 'abap',
@@ -127,7 +133,7 @@ export function detectLanguage(filePath: string): string {
   // Check exact filename first
   const parts = filePath.split(/[\\/]/)
   const filename = parts.at(-1)!
-  if (FILENAME_TO_LANGUAGE[filename]) {
+  if (Object.hasOwn(FILENAME_TO_LANGUAGE, filename)) {
     return FILENAME_TO_LANGUAGE[filename]
   }
 
@@ -137,6 +143,7 @@ export function detectLanguage(filePath: string): string {
   // Scoped dotenv names fall back to INI only when no specific extension matches.
   return (
     EXT_TO_LANGUAGE[ext] ??
+    detectMonacoFilenameLanguage(filename) ??
     (lowerName === '.env' || lowerName.startsWith('.env.') ? 'ini' : 'plaintext')
   )
 }

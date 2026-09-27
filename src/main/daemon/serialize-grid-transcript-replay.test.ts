@@ -33,6 +33,11 @@ const KNOWN_PREEXISTING_I2_FAILURES: Record<string, number> = {
   less: 6,
   nano: 2,
   opencode: 5,
+  // Codex 0.157 header border restores with an extra attribute bit (STA-8628 fixtures).
+  'codex-0157-config-override-embedded-warning': 22,
+  'codex-0157-effort-override-embedded-warning': 4,
+  'codex-0157-no-daemon-effort-override': 16,
+  'codex-0157-plain-ready': 18,
   // DSH-TUI's whale intro paints whole rows of 24-bit background, and every one of this
   // transcript's divergences is the same shape: `visible-grid row=0`, a true-colour
   // background that the round trip does not restore to default. Verified as upstream, not a

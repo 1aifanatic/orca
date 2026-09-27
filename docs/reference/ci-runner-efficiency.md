@@ -1,5 +1,103 @@
 # CI efficiency and runner capacity
 
+## September 27 follow-up
+
+### Shared E2E CLI output
+
+E2E consumers previously compiled the CLI individually even though they downloaded
+shared Electron, web, and relay output. The producer now compiles the CLI once,
+in parallel with web projection after Electron has finished clearing `out/main`.
+Consumers repair executable permissions and install their own dev launcher with
+the same preparation script used by local CLI builds. Older refs without that
+script retain their original per-consumer compilation.
+
+An [eight-sample comparison](https://github.com/stablyai/orca/actions/runs/36307081200)
+measured producer time increasing from 26.3–27.9s to 38.8–41.0s, while consumer
+CLI compilation fell from 20.9–21.2s to 0.06–0.07s of direct preparation. All 5,519
+output files matched byte-for-byte, and every sample passed the CLI help smoke.
+A four-sample
+[final implementation comparison](https://github.com/stablyai/orca/actions/runs/36307382635)
+also passed parity and CLI smoke checks. Consumer compilation took 4.7 / 12.8s
+versus 0.08 / 0.06s of preparation; producer time increased by 0.2 / 7.1s in
+the paired trials. Across both runs this models roughly 1.1–4.7 aggregate runner
+minutes saved across 14 consumers, before artifact transfer overhead. Runner
+variation is substantial; this is not a measured workflow wall-time reduction.
+Test coverage and deadlines stay intact.
+
+
+[PR #23368](https://github.com/stablyai/orca/pull/23368) overlaps shell installation
+with dependency setup, starts localization extraction before the orcad smoke,
+and prepares mobile route snapshots while WebKit and the bundle are being built.
+Its 27 checks passed without retries; seven existing conditional checks skipped.
+
+Same-runner comparisons in both orders measured:
+
+| Work | Before | After | Evidence |
+| --- | --- | --- | --- |
+| Static block | 63.5 / 74.7s | 38.9 / 55.6s | [Full comparisons](https://github.com/stablyai/orca/actions/runs/36302208990) |
+| Shell job, downloads warmed equally | 76.8 / 70.3s | 64.4 / 64.0s | [Controlled shell runs](https://github.com/stablyai/orca/actions/runs/36302612626) |
+| Mobile preparation | 19.8–21.6s | 18.0–18.5s | [Eight measurements](https://github.com/stablyai/orca/actions/runs/36302877583) |
+| Web projection and mobile build | 17.2–17.3s | 11.7–12.1s | [Eight measurements](https://github.com/stablyai/orca/actions/runs/36302974324) |
+| Mobile verifier fixture suite | 25.47 / 25.35s | 20.04 / 19.92s | [Four full-suite runs](https://github.com/stablyai/orca/actions/runs/36302692823) |
+| E2E build outputs | 28.6–30.4s | 25.8–27.8s | [Eight measurements](https://github.com/stablyai/orca/actions/runs/36304001325) |
+
+Full mobile-job timings were dominated by first-run apt installation and browser
+test variation; the controlled preparation measurement is the scheduling evidence.
+All 1,248 web/mobile output files matched byte-for-byte in the build comparison.
+The fixture suite kept all 47 tests, isolated mutable copies, and the verifier's
+two fresh builds. No deadline, isolation, or worker-count changes were needed.
+
+E2E builds reuse the existing isolated main/preload/renderer build wrapper, now
+forwarding `--mode e2e` to each target. All 2,640 output files matched byte-for-byte
+in both execution orders, including the exposed test store and relay artifacts.
+This saves a few build seconds; it does not speed up the E2E tests themselves.
+
+The existing unit assignment was already balanced at about 919 historical
+worker-seconds per shard; fresh x86 elapsed times still ranged from 254 to 433s.
+Refreshing weights alone would encode runner variation rather than resolve it.
+An [identical-source architecture pilot](https://github.com/stablyai/orca/actions/runs/36302250920)
+ran shards 1 and 8 on both four-CPU hosted runners. Complete jobs improved from
+449 to 404s and 461 to 384s on ARM, including setup; test and skip counts matched.
+A [full ARM run](https://github.com/stablyai/orca/actions/runs/36302906752) then passed
+all eight shards in 329–373 test seconds (365–412 job seconds). Uploaded reports
+matched the same complete x86 assignment: 9,876 files, each exactly once, no
+unhandled errors. These are elapsed samples excluding queue time, not a guarantee
+that every ARM allocation is faster than every x86 allocation.
+
+PR unit shards and their cache primer now use ARM; a main-branch warmer seeds
+that architecture's existing native and pnpm cache keys. Native, package, and
+relay gates continue on x86. The daily workflow retains complete x86 coverage on
+both Node 24 and Node 26, including relay integration. Thus PR unit architecture
+changes, while x86 unit coverage remains scheduled; this is an explicit coverage
+placement tradeoff rather than a claim of identical per-PR host coverage.
+
+PR validation exposed a WebRTC probe timeout inside a hidden renderer. Isolated
+and four-concurrent probes passed on both architectures; the original cause is
+unproven. The probe now uses Electron main for the same three-second observation
+interval. A [fault-injection comparison](https://github.com/stablyai/orca/actions/runs/36304349257)
+passed with renderer timers unavailable on both architectures, while the original
+probe failed the negative control. Packet assertions and deadlines are unchanged.
+A subsequent Windows run timed out in the installer's real CIM process query
+after verifying restricted policy. Its unchanged probe now runs before the
+concurrent native suite, removing that source of contention without relaxing
+the twenty-second process deadline or dropping either PowerShell architecture.
+
+Replacing Vitest deep comparisons with Node assertions in the status-store
+oracle saved only about one local second in an initial trial. The change was
+not retained: that evidence did not justify changing assertion semantics.
+
+The combined root/mobile pnpm cache is now present on main and was restored in
+the September 27 static comparison, so another warmer for that key is unnecessary.
+
+A [fixture-warmer overlap trial](https://github.com/stablyai/orca/actions/runs/36303613587)
+ran faster after initialization but exposed a first-use action-download race:
+both background composites downloaded `actions/cache@v5` simultaneously, and
+one briefly could not find `restore/action.yml`. The existing cache fallback
+rebuilt the image and the job passed, but that recovery erased the speedup.
+Keep the dedicated warmer serial. PR package restores remain safe from this
+observed first-use race because their earlier top-level cache action is loaded
+before the composites start; the workflow contract now preserves that ordering.
+
 ## Four follow-up changes
 
 - Keep the readiness event, but reuse required checks only after an Actions API
@@ -90,13 +188,33 @@ analysis, so both fresh PRs saved another roughly 350 MiB store. Controlling tha
 cache duplication is a remaining opportunity; hourly warming alone cannot
 promise retention. Git's checksum-verified cold-build fallback remains required.
 
-The unit scheduling baseline now comes from every successful Node 24 shard in
-run 36221874572. All 9,683 measurements were checked against the eight saved
-assignments before import. Current discovery selects 9,732 files exactly once, using a 230ms
-median for 49 new files. With the same measurements applied to both assignments,
-the largest projected load falls 7.48%; total work is unchanged. See
+The unit scheduling baseline now comes from all eight successful Node 24 shards in
+[run 36294142683](https://github.com/stablyai/orca/actions/runs/36294142683).
+All 9,847 measurements match current discovery exactly once; the previous baseline
+had 165 unmeasured files and one deleted path. Applying the same measurements to
+both assignments reduces the largest projected load from 1,043.811 to 919.695
+worker-seconds (11.9%). This is a scheduling projection, not an elapsed-time claim;
+runner variation remains visible in the source run. See
 [provenance and reproduction](../../config/scripts/ci-shard-timings.md).
-This is a scheduling projection; hosted elapsed time must be measured separately.
+
+## Recording compilation reuse
+
+[Benchmark run 36295773765](https://github.com/stablyai/orca/actions/runs/36295773765)
+compared the complete mobile suite on two hosted runners in opposite orders.
+Compilation reuse reduced elapsed time from 439.002 to 138.308 seconds and from
+560.926 to 200.751 seconds (64–68%). Each run preserved all 9,629 original test
+verdicts and passed four additional cache regression tests. Compiled code is
+bounded to 512 entries; exports, dependencies, and scenario state remain fresh.
+
+Splitting family recordings across four files took 145.165 and 217.226 seconds,
+5–8% slower than compilation reuse alone, so the original suite structure stays.
+All 787 goldens were regenerated from the unchanged pinned product tree; only
+the recorder digest changed, with identical recording bodies and value pools.
+
+Desktop validation in [run 36295671576](https://github.com/stablyai/orca/actions/runs/36295671576)
+passed all eight shards. The longest test step was 419 seconds versus 429 in the
+source run; summed test time was 3,028 versus 3,031 seconds. Runner variation
+prevents attributing that small elapsed-time difference solely to the weights.
 
 ## September 25 follow-up
 
