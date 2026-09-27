@@ -1,4 +1,4 @@
-import { useState, type Dispatch, type RefObject, type SetStateAction } from 'react'
+import type { Dispatch, RefObject, SetStateAction } from 'react'
 import type { FlatList } from 'react-native'
 import type { ConnectionState } from '../transport/types'
 import type { RpcClient } from '../transport/rpc-client'
@@ -86,7 +86,6 @@ export function useMobileDiffReviewInteractions(input: InteractionInput) {
     onOpenSession,
     onReconnect
   } = input
-  const [sessionTabsUnavailable, setSessionTabsUnavailable] = useState(false)
 
   const {
     closeComposer,
@@ -194,8 +193,8 @@ export function useMobileDiffReviewInteractions(input: InteractionInput) {
         staged: currentItem.scope === 'staged'
       })
       // Why: a host with no renderer (orca serve, orcad) has no tab to open; this screen is the diff view.
+      // Not latched: a serve host can gain a window, or the client be replaced, while this screen is open.
       if (isRendererUnavailableRefusal(response)) {
-        setSessionTabsUnavailable(true)
         setActionError(SESSION_TABS_UNAVAILABLE_MESSAGE)
         return
       }
@@ -221,7 +220,6 @@ export function useMobileDiffReviewInteractions(input: InteractionInput) {
       setCurrentIndex(0)
     },
     sendPromptToTerminal,
-    sessionTabsUnavailable,
     stageReviewedFiles
   }
 }
