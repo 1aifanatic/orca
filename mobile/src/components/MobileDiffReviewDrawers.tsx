@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react'
+import { useMemo } from 'react'
 import { KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View } from 'react-native'
 import { Check, Copy, FileText, Plus, Send, Trash2, X } from 'lucide-react-native'
 import type { DiffComment } from '../../../src/shared/diff-comment-types'
@@ -22,7 +22,7 @@ export function MobileDiffReviewDrawers({ controller }: Props) {
   return (
     <>
       <ActionSheetModal
-        visible={controller.showOverflow}
+        visible={controller.shownSheet === 'actions'}
         title="Review Actions"
         message={
           controller.reviewedUnstagedCount > 0
@@ -30,17 +30,19 @@ export function MobileDiffReviewDrawers({ controller }: Props) {
             : undefined
         }
         actions={overflowActions}
-        onClose={() => controller.setShowOverflow(false)}
+        onClose={() => controller.closeSheet('actions')}
+        onAfterClose={() => controller.sheetClosed('actions')}
       />
       <ActionSheetModal
-        visible={controller.sendSheet !== null}
+        visible={controller.shownSheet === 'send'}
         title="Send Notes"
         message={sendSheetMessage(controller)}
         actions={sendActions}
-        onClose={() => controller.setSendSheet(null)}
+        onClose={() => controller.closeSheet('send')}
+        onAfterClose={() => controller.sheetClosed('send')}
       />
       <ConfirmModal
-        visible={controller.discardTarget !== null}
+        visible={controller.shownSheet === 'discard'}
         title="Discard File"
         message={
           controller.discardTarget
@@ -51,12 +53,13 @@ export function MobileDiffReviewDrawers({ controller }: Props) {
         destructive
         onConfirm={() => {
           const target = controller.discardTarget
-          controller.setDiscardTarget(null)
+          controller.closeSheet('discard')
           if (target) {
             void controller.runGitMutation('git.discard', target)
           }
         }}
-        onCancel={() => controller.setDiscardTarget(null)}
+        onCancel={() => controller.closeSheet('discard')}
+        onAfterClose={() => controller.sheetClosed('discard')}
       />
       <NoteComposerDrawer controller={controller} />
       <CompletionDrawer controller={controller} />
@@ -111,8 +114,6 @@ function useOverflowActions(controller: ReturnType<typeof useMobileDiffReviewCon
         label: 'Send Unsent Notes',
         icon: Send,
         disabled: controller.unsentComments.length === 0,
-        // Why: iOS cannot present the Send Notes sheet while this one is still on screen.
-        closeBeforePress: true,
         onPress: () => void controller.openSendSheet()
       },
       {
@@ -169,7 +170,11 @@ function NoteComposerDrawer({ controller }: Props) {
   // sends. Padding rather than a second avoiding view: the drawer owns the position.
   const keyboardPadding = useKeyboardAvoidingPadding()
   return (
-    <BottomDrawer visible={composer !== null} onClose={controller.closeComposer}>
+    <BottomDrawer
+      visible={controller.shownSheet === 'composer'}
+      onClose={controller.closeComposer}
+      onAfterClose={() => controller.sheetClosed('composer')}
+    >
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={keyboardPadding > 0 ? { paddingBottom: keyboardPadding } : undefined}
@@ -266,18 +271,11 @@ function SaveNoteButton({
 function CompletionDrawer({ controller }: Props) {
   const noteCount =
     controller.screenState.kind === 'ready' ? controller.screenState.comments.length : 0
-  const sendAfterCloseRef = useRef(false)
   return (
     <BottomDrawer
-      visible={controller.showCompletion}
-      onClose={() => controller.setShowCompletion(false)}
-      onAfterClose={() => {
-        // Why: iOS cannot present a second native sheet until this drawer has fully unmounted.
-        if (sendAfterCloseRef.current) {
-          sendAfterCloseRef.current = false
-          void controller.openSendSheet()
-        }
-      }}
+      visible={controller.shownSheet === 'completion'}
+      onClose={() => controller.closeSheet('completion')}
+      onAfterClose={() => controller.sheetClosed('completion')}
     >
       <Text style={styles.drawerTitle}>Review Complete</Text>
       <Text style={styles.drawerSubtitle}>
@@ -298,10 +296,7 @@ function CompletionDrawer({ controller }: Props) {
         <Pressable
           style={({ pressed }) => [styles.primaryButton, pressed && styles.buttonPressed]}
           disabled={controller.unsentComments.length === 0}
-          onPress={() => {
-            sendAfterCloseRef.current = true
-            controller.setShowCompletion(false)
-          }}
+          onPress={() => void controller.openSendSheet()}
           accessibilityRole="button"
           accessibilityLabel="Send notes to agent"
         >

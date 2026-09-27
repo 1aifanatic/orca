@@ -31,6 +31,9 @@ export function diffReviewActionMountAdapters(
       const useInteractions = modules.load<
         typeof import('../../../session/use-mobile-diff-review-interactions')
       >('mobile/src/session/use-mobile-diff-review-interactions.ts').useMobileDiffReviewInteractions
+      const reviewSheets = modules.load<
+        typeof import('../../../session/mobile-diff-review-sheets')
+      >('mobile/src/session/mobile-diff-review-sheets.ts')
       const staleInput = modules.load<
         typeof import('../../../session/mobile-native-chat-stale-input')
       >('mobile/src/session/mobile-native-chat-stale-input.ts')
@@ -75,7 +78,15 @@ export function diffReviewActionMountAdapters(
       }
       let actionError: string | null = null
       let busyAction: string | null = null
-      let sendSheet: SendSheetState | null = null
+      let sheets = reviewSheets.NO_REVIEW_SHEETS
+      const sheetIntents = reviewSheets.reviewSheetIntents((action) => {
+        sheets = reviewSheets.reduceReviewSheets(sheets, action)
+      })
+      // The Send Notes load only while it is on screen: no drawer runs here to finish a close.
+      const sendSheet = (): SendSheetState | null =>
+        reviewSheets.shownReviewSheet(sheets) === 'send'
+          ? reviewSheets.reviewSendSheet(sheets)
+          : null
       let interactions: ReturnType<typeof useInteractions>
       const hook = hookMount(() => {
         interactions = useInteractions(
@@ -101,7 +112,6 @@ export function diffReviewActionMountAdapters(
             setFilter: () => {},
             setCurrentIndex: () => {},
             setActiveHunkIndex: () => {},
-            setComposer: () => {},
             setComposerBody: () => {},
             setActionError: (update) => {
               actionError = typeof update === 'function' ? update(actionError) : update
@@ -109,10 +119,7 @@ export function diffReviewActionMountAdapters(
             setBusyAction: (update) => {
               busyAction = typeof update === 'function' ? update(busyAction) : update
             },
-            setSendSheet: (update) => {
-              sendSheet = typeof update === 'function' ? update(sendSheet) : update
-            },
-            setShowCompletion: () => {},
+            sheets: sheetIntents,
             loadReviewData: () => {
               effect('load-review-data', {})
               return Promise.resolve()
@@ -163,7 +170,7 @@ export function diffReviewActionMountAdapters(
             throw new Error(`Unknown review action: ${name}${String(args.unused ?? '')}`)
           })
         },
-        state: () => ({ screenState, actionError, busyAction, sendSheet }),
+        state: () => ({ screenState, actionError, busyAction, sendSheet: sendSheet() }),
         dispose: () => {
           staleInput.resetMobileNativeChatStaleInputForTests()
           hook.unmount()

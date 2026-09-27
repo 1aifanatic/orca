@@ -11,6 +11,7 @@ type Props = {
   destructive?: boolean
   onConfirm: () => void
   onCancel: () => void
+  onAfterClose?: () => void
 }
 
 export function ConfirmModal({
@@ -21,10 +22,11 @@ export function ConfirmModal({
   cancelLabel = 'Cancel',
   destructive = false,
   onConfirm,
-  onCancel
+  onCancel,
+  onAfterClose
 }: Props) {
   return (
-    <BottomDrawer visible={visible} onClose={onCancel}>
+    <BottomDrawer visible={visible} onClose={onCancel} onAfterClose={onAfterClose}>
       <View style={styles.content}>
         <Text style={styles.title}>{title}</Text>
         {message ? <Text style={styles.message}>{message}</Text> : null}
