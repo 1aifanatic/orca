@@ -1,3 +1,5 @@
+import type { AgentJournalTurnLifecycleState } from './agent-session-journal-types'
+
 /** The verdict on what became of a turn, kept separate from any lifecycle state
  *  so those stay a report on what the HOST observed. `cancellation` is a stop
  *  somebody asked for, `failure` is the provider's own error, and the two are
@@ -25,4 +27,27 @@ export type AgentTurnOutcome = (typeof AGENT_TURN_OUTCOMES)[number]
 
 export function isAgentTurnOutcome(value: unknown): value is AgentTurnOutcome {
   return AGENT_TURN_OUTCOMES.some((known) => known === value)
+}
+
+/** The verdict a settled turn reports: the provider's own, else what the host observed of its end.
+ *  Derived, never journaled: the lifecycle state is the durable fact. A null state is a send that
+ *  never became a turn. */
+export function agentTurnVerdict(turn: {
+  state: AgentJournalTurnLifecycleState | null
+  outcome: AgentJournalTurnOutcome | null
+}): AgentTurnOutcome | null {
+  if (turn.outcome) {
+    return turn.outcome
+  }
+  switch (turn.state) {
+    case 'interrupted':
+      return 'interruption'
+    case 'unverifiable':
+      return 'unconfirmed'
+    // A `completed` end without a verdict is an older provider's, or an older host's: unknown.
+    case 'completed':
+    case 'running':
+    case null:
+      return null
+  }
 }

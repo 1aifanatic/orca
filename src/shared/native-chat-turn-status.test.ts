@@ -38,6 +38,33 @@ describe('describeNativeChatTurnStatus', () => {
     ).toEqual({ key: 'workedFor', duration: '3m 4s' })
   })
 
+  it('heads a settled turn a crash cut off as interrupted, and a stopped one as worked', () => {
+    expect(
+      describeNativeChatTurnStatus({
+        thinking: false,
+        workedSeconds: 12,
+        elapsedSeconds: 0,
+        verdict: 'interruption'
+      })
+    ).toEqual({ key: 'interruptedAfter', duration: '12s' })
+    for (const verdict of [
+      'cancellation',
+      'success',
+      'failure',
+      'unconfirmed',
+      undefined
+    ] as const) {
+      expect(
+        describeNativeChatTurnStatus({
+          thinking: false,
+          workedSeconds: 12,
+          elapsedSeconds: 0,
+          verdict
+        })
+      ).toEqual({ key: 'workedFor', duration: '12s' })
+    }
+  })
+
   it('reports thinking before the turn produces output', () => {
     expect(
       describeNativeChatTurnStatus({ thinking: true, workedSeconds: null, elapsedSeconds: 9 })

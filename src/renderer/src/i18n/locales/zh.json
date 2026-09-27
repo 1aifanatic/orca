@@ -17452,6 +17452,7 @@
         "thinking": "思维",
         "workingFor": "已工作 {{value0}}",
         "workedFor": "工作了 {{value0}}",
+        "interruptedAfter": "{{value0}} 后中断",
         "toggleDetails": "切换回合详情"
       },
       "jumpToLatest": "跳到最新消息",

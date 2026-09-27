@@ -14989,7 +14989,8 @@
         "result": "Resultado"
       },
       "status": {
-        "responding": "El agente está respondiendo"
+        "responding": "El agente está respondiendo",
+        "interruptedAfter": "Interrumpido tras {{value0}}"
       },
       "jumpToLatest": "Saltar a lo último",
       "toggle": {

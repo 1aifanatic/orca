@@ -12,7 +12,6 @@ import type {
   AgentJournalTurnLifecycleState,
   AgentJournalTurnOutcome
 } from './agent-session-journal-types'
-import type { AgentTurnOutcome } from './agent-turn-outcome'
 import { agentJournalSubmissionKey } from './agent-session-journal-item-key'
 import { isRootAgentJournalItem } from './agent-session-journal-producer'
 import { readAgentJournalTurn, readAgentJournalTurnOutcome } from './agent-session-turn-record'
@@ -70,27 +69,6 @@ export function latestStructuredAgentSessionRequest(
     }
   }
   return null
-}
-
-/** The verdict a status row reports for a settled request: the provider's own, else what the host
- *  observed of the turn's end. Derived, never journaled: the lifecycle state is the durable fact. */
-export function structuredAgentSessionRequestVerdict(
-  request: Pick<StructuredAgentSessionLatestRequest, 'turnState' | 'outcome'>
-): AgentTurnOutcome | null {
-  if (request.outcome) {
-    return request.outcome
-  }
-  switch (request.turnState) {
-    case 'interrupted':
-      return 'interruption'
-    case 'unverifiable':
-      return 'unconfirmed'
-    // A `completed` end without a verdict is an older provider's, or an older host's: unknown.
-    case 'completed':
-    case 'running':
-    case null:
-      return null
-  }
 }
 
 /** Whether the session has a request to list. A send that failed nobody and never became a turn

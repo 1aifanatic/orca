@@ -7,6 +7,7 @@ import {
   NATIVE_CHAT_TURN_STATUS_COPY,
   nativeChatElapsedSeconds
 } from '../../../src/shared/native-chat-turn-status'
+import type { AgentTurnOutcome } from '../../../src/shared/agent-turn-outcome'
 import { colors, spacing, typography } from '../theme/mobile-theme'
 
 /** Seconds tick only while a turn is actually counting, so a settled transcript
@@ -28,13 +29,14 @@ function useElapsedSeconds(startedAt: number | null, counting: boolean): number 
 
 /** The per-turn status row. While the turn runs it is the one live indicator — a
  *  spinner beside what the provider says it is doing, else "Thinking", else
- *  "Working for 12s". It settles to a tappable "Worked for 3m 4s" that discloses
- *  the turn's tool activity. Desktop parity: `NativeChatTurnActivityLine` for the
+ *  "Working for 12s". It settles to a tappable "Worked for 3m 4s" ("Interrupted after
+ *  3m 4s" for a turn a crash cut off) that discloses the turn's tool activity. Desktop parity: `NativeChatTurnActivityLine` for the
  *  live row, `NativeChatWorkingStatus` for the settled one. */
 export function MobileNativeChatTurnStatus({
   startedAt,
   thinking,
   workedSeconds,
+  verdict,
   activityText,
   expanded = false,
   onToggleExpanded
@@ -42,6 +44,8 @@ export function MobileNativeChatTurnStatus({
   startedAt: number | null
   thinking: boolean
   workedSeconds?: number | null
+  /** How a settled turn ended; a death nobody asked for reads "Interrupted after N". */
+  verdict?: AgentTurnOutcome
   /** Provider activity copy for a live turn; outranks the other two labels. */
   activityText?: string | null
   expanded?: boolean
@@ -51,7 +55,7 @@ export function MobileNativeChatTurnStatus({
   const counting = !settled && !thinking && !activityText?.trim()
   const elapsedSeconds = useElapsedSeconds(startedAt, counting)
   const label = settled
-    ? formatNativeChatTurnStatusLabel({ thinking, workedSeconds, elapsedSeconds })
+    ? formatNativeChatTurnStatusLabel({ thinking, workedSeconds, elapsedSeconds, verdict })
     : formatNativeChatActiveTurnLabel({ activityText, thinking, elapsedSeconds })
 
   if (settled && onToggleExpanded) {

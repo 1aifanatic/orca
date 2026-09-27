@@ -3,10 +3,13 @@
 // and the mobile app (used directly — mobile ships English only) so the two
 // surfaces never drift. Everything here is pure; each platform owns its own clock.
 
+import type { AgentTurnOutcome } from './agent-turn-outcome'
+
 export const NATIVE_CHAT_TURN_STATUS_COPY = {
   thinking: 'Thinking',
   workingFor: 'Working for {{value0}}',
   workedFor: 'Worked for {{value0}}',
+  interruptedAfter: 'Interrupted after {{value0}}',
   toggleDetails: 'Toggle turn details',
   responding: 'Agent is responding'
 } as const
@@ -31,14 +34,24 @@ export function formatNativeChatDuration(seconds: number): string {
 export function describeNativeChatTurnStatus({
   thinking,
   workedSeconds,
-  elapsedSeconds
+  elapsedSeconds,
+  verdict
 }: {
   thinking: boolean
   workedSeconds?: number | null
   elapsedSeconds: number
-}): { key: 'thinking' | 'workingFor' | 'workedFor'; duration: string | null } {
+  /** How the settled turn ended. Only a death nobody asked for changes the folded header: a
+   *  user's stop keeps "Worked for", as it always has. */
+  verdict?: AgentTurnOutcome
+}): {
+  key: 'thinking' | 'workingFor' | 'workedFor' | 'interruptedAfter'
+  duration: string | null
+} {
   if (workedSeconds != null) {
-    return { key: 'workedFor', duration: formatNativeChatDuration(workedSeconds) }
+    return {
+      key: verdict === 'interruption' ? 'interruptedAfter' : 'workedFor',
+      duration: formatNativeChatDuration(workedSeconds)
+    }
   }
   if (thinking) {
     return { key: 'thinking', duration: null }
@@ -97,6 +110,7 @@ export function formatNativeChatTurnStatusLabel(input: {
   thinking: boolean
   workedSeconds?: number | null
   elapsedSeconds: number
+  verdict?: AgentTurnOutcome
 }): string {
   const { key, duration } = describeNativeChatTurnStatus(input)
   const copy = NATIVE_CHAT_TURN_STATUS_COPY[key]
@@ -112,6 +126,8 @@ export type NativeChatTurnStatus = {
   startedAt: number | null
   thinking: boolean
   workedSeconds: number | null
+  /** How a settled turn ended, when the host recorded it. */
+  verdict?: AgentTurnOutcome
 }
 
 export type NativeChatTurnTimingByTurn = Readonly<Record<string, NativeChatTurnTiming>>
@@ -195,7 +211,11 @@ export function reduceNativeChatTurnTiming(
 
 /** A turn duration the execution host recorded, which outranks anything this
  *  platform observed locally. */
-export type NativeChatSettledTurn = { startedAt: number; workedSeconds: number }
+export type NativeChatSettledTurn = {
+  startedAt: number
+  workedSeconds: number
+  verdict?: AgentTurnOutcome
+}
 
 /** Per turn: the host's duration, or null when the host recorded the turn but
  *  has no duration to show (still running, or its end was never observed).
@@ -238,7 +258,8 @@ export function selectNativeChatTurnStatuses(
     completedByTurn[turnKey] = {
       startedAt: settled.startedAt,
       thinking: false,
-      workedSeconds: settled.workedSeconds
+      workedSeconds: settled.workedSeconds,
+      ...(settled.verdict ? { verdict: settled.verdict } : {})
     }
   }
   return {

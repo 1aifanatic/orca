@@ -9,7 +9,7 @@ import {
   type AgentJournalRenderItem,
   type AgentJournalSubmission
 } from './agent-session-journal-types'
-import type { AgentTurnOutcome } from './agent-turn-outcome'
+import { agentTurnVerdict, type AgentTurnOutcome } from './agent-turn-outcome'
 import { isRootAgentJournalItem } from './agent-session-journal-producer'
 import {
   AGENT_STATUS_TOOL_INPUT_MAX_LENGTH,
@@ -20,7 +20,6 @@ import { statusStructuredAgentSessionToolCall } from './structured-agent-session
 import {
   hasStructuredAgentSessionRequest,
   latestStructuredAgentSessionRequest,
-  structuredAgentSessionRequestVerdict,
   type StructuredAgentSessionLatestRequest
 } from './structured-agent-session-latest-request'
 import {
@@ -328,7 +327,9 @@ export function projectStructuredAgentSessionStatusState(
   const latestRequest = latestStructuredAgentSessionRequest(items, submissions)
   // A verdict is a fact about a finished request: only an idle session has one to report.
   const request = status === 'idle' ? latestRequest : null
-  const turnOutcome = request ? structuredAgentSessionRequestVerdict(request) : null
+  const turnOutcome = request
+    ? agentTurnVerdict({ state: request.turnState, outcome: request.outcome })
+    : null
   const statusStartedAt = structuredAgentSessionStatusStartedAt(
     status,
     items,

@@ -39,6 +39,7 @@ describe('MobileNativeChatTurnStatus', () => {
     startedAt: number | null
     thinking: boolean
     workedSeconds?: number | null
+    verdict?: 'interruption' | 'cancellation'
     activityText?: string | null
     expanded?: boolean
     onToggleExpanded?: () => void
@@ -98,6 +99,26 @@ describe('MobileNativeChatTurnStatus', () => {
     expect(button.props.accessibilityState).toEqual({ expanded: false })
     act(() => button.props.onPress())
     expect(onToggleExpanded).toHaveBeenCalledOnce()
+  })
+
+  it('heads a turn a crash cut off as interrupted, and a turn the user stopped as worked', () => {
+    const crashed = render({
+      startedAt: Date.now(),
+      thinking: false,
+      workedSeconds: 12,
+      verdict: 'interruption',
+      onToggleExpanded: vi.fn()
+    })
+    expect(labels(crashed.root)).toEqual(['Interrupted after 12s'])
+    act(() => crashed.unmount())
+    const stopped = render({
+      startedAt: Date.now(),
+      thinking: false,
+      workedSeconds: 12,
+      verdict: 'cancellation',
+      onToggleExpanded: vi.fn()
+    })
+    expect(labels(stopped.root)).toEqual(['Worked for 12s'])
   })
 
   it('stays a plain row when the settled turn has nothing to disclose', () => {
