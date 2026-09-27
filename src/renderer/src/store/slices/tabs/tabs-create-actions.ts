@@ -78,9 +78,8 @@ export function createTabsCreateActions(
           placement.anchorTabId
         )
         const insertedIndex = nextOrder.indexOf(id)
-        if (insertedIndex < nextOrder.length - 1) {
-          nextTabs = applyTabOrderSortValues(nextTabs, nextOrder)
-        }
+        // Why always: preview replacement can leave a gap, so an append alone would reuse a sibling's sortOrder.
+        nextTabs = applyTabOrderSortValues(nextTabs, nextOrder)
         created = {
           id,
           entityId: init?.entityId ?? id,

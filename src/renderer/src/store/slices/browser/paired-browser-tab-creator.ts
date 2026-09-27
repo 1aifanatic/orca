@@ -4,8 +4,8 @@ type PairedBrowserTabCreator = (args: CreateWebRuntimeSessionBrowserTabArgs) => 
 
 let registeredCreator: PairedBrowserTabCreator | null = null
 
-// Why a registration slot: the runtime module imports the store, so the store cannot import it
-// statically, and a lazy import would put an await before the staged row the click must paint.
+// Why: the runtime imports the store, so its loaded module registers a synchronous creation path.
+// Cold calls use the lazy import below and stage once it resolves.
 export function registerPairedBrowserTabCreator(create: PairedBrowserTabCreator): void {
   registeredCreator = create
 }
@@ -15,6 +15,7 @@ export function getRegisteredPairedBrowserTabCreator(): PairedBrowserTabCreator 
 }
 
 export async function loadPairedBrowserTabCreator(): Promise<PairedBrowserTabCreator> {
-  const { createWebRuntimeSessionBrowserTab } = await import('@/runtime/web-runtime-session')
+  const { createWebRuntimeSessionBrowserTab } =
+    await import('@/runtime/web-runtime-browser-creation')
   return createWebRuntimeSessionBrowserTab
 }

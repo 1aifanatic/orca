@@ -30,5 +30,11 @@ export function insertUnifiedTabAfterAnchor(
     tab.isPinned === true,
     anchorTabId
   )
+  if (
+    order.length === group.tabOrder.length &&
+    order.every((id, index) => id === group.tabOrder[index])
+  ) {
+    return
+  }
   state.reorderUnifiedTabs(group.id, order, { recordInteraction: false })
 }

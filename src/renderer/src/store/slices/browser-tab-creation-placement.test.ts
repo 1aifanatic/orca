@@ -304,15 +304,16 @@ describe('browser tab creation placement', () => {
   it('appends in the partition when preview replacement removes the anchor', () => {
     seedSplit(store, {
       tabs: [
-        browserTab('A', G1),
+        browserTab('A', G1, { sortOrder: 0 }),
         makeUnifiedTab({
           id: 'P',
           worktreeId: WT,
           groupId: G1,
           contentType: 'editor',
-          isPreview: true
+          isPreview: true,
+          sortOrder: 1
         }),
-        browserTab('C', G1),
+        browserTab('C', G1, { sortOrder: 2 }),
         browserTab('X', G2)
       ],
       groups: [
@@ -325,6 +326,28 @@ describe('browser tab creation placement', () => {
       .createUnifiedTab(WT, 'editor', { afterTabId: 'P', isPreview: true, targetGroupId: G1 })
     expect(group(store, G1)?.tabOrder).toEqual(['A', 'C', created.id])
     expect(created.sortOrder).toBe(2)
+    const sortOrderById = Object.fromEntries(
+      store.getState().unifiedTabsByWorktree[WT]!.map((tab) => [tab.id, tab.sortOrder])
+    )
+    expect(sortOrderById).toMatchObject({ A: 0, C: 1, [created.id]: 2 })
+  })
+
+  it('leaves the wrapper host unset instead of stamping a substituted routing host', () => {
+    seedSplit(store)
+    // Why: no repo row and a focused runtime make the routing resolver substitute runtime:env-1.
+    store.setState({
+      activeWorktreeId: 'repo1::/elsewhere',
+      settings: { ...store.getState().settings!, activeRuntimeEnvironmentId: 'env-1' }
+    })
+    const workspace = store.getState().createBrowserTab(WT, 'https://example.com', {
+      activate: false,
+      browserRuntimeEnvironmentId: null
+    })
+    const wrapper = store
+      .getState()
+      .unifiedTabsByWorktree[WT]!.find((tab) => tab.entityId === workspace.id)
+    expect(wrapper).toBeDefined()
+    expect(wrapper?.executionHostId).toBeUndefined()
   })
 
   it('rejects an anchor owned by a foreign execution host', () => {

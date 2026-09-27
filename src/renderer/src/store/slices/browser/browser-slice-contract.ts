@@ -41,7 +41,7 @@ export type CreateBrowserTabOptions = {
   targetGroupId?: string
   /** Client-local unified tab id of the source; the new tab lands right after it when still live. */
   afterTabId?: string
-  /** Verified execution host for the new wrapper; defaults to the active workspace's host. */
+  /** Verified execution host for the new wrapper; unset keeps createUnifiedTab's active-workspace fallback. */
   executionHostId?: ExecutionHostId
   // Explicit "New Tab" focuses the address bar even with a real home URL; link-opened tabs leave it unset.
   focusAddressBar?: boolean

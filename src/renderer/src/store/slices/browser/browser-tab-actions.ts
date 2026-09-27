@@ -15,7 +15,7 @@ import {
   findPage,
   findWorkspace
 } from '../browser-page-records'
-import { getBrowserSessionProfileHostId, getBrowserWorktreeHostId } from './browser-host-state'
+import { getBrowserSessionProfileHostId } from './browser-host-state'
 import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
 import { admitBrowserPageMount } from '@/components/browser-pane/host-guest/browser-page-mount-admission'
 import {
@@ -162,7 +162,8 @@ export function createBrowserTabActions(
           label: browserTab.title,
           targetGroupId: options?.targetGroupId,
           ...(options?.afterTabId ? { afterTabId: options.afterTabId } : {}),
-          executionHostId: options?.executionHostId ?? getBrowserWorktreeHostId(state, worktreeId),
+          // Why no routing-host default: a substituted host would disown the wrapper from its worktree.
+          ...(options?.executionHostId ? { executionHostId: options.executionHostId } : {}),
           activate: shouldActivate
         })
         // Why: unified creation already selected the tab and recorded the visit; only the group moves.
@@ -193,7 +194,7 @@ export function createBrowserTabActions(
         if (!runtimeEnvironmentId) {
           throw new Error('The paired runtime browser provider is unavailable.')
         }
-        // Why no await before the call: the staged row must paint on the click.
+        // The registered path stages on the click; a cold runtime loads before staging.
         const createPairedBrowserTab =
           getRegisteredPairedBrowserTabCreator() ?? (await loadPairedBrowserTabCreator())
         try {
