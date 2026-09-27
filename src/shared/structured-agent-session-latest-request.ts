@@ -9,8 +9,10 @@ import type {
   AgentJournalRenderItem,
   AgentJournalSubmission,
   AgentJournalTurnLifecycle,
+  AgentJournalTurnLifecycleState,
   AgentJournalTurnOutcome
 } from './agent-session-journal-types'
+import type { AgentTurnOutcome } from './agent-turn-outcome'
 import { agentJournalSubmissionKey } from './agent-session-journal-item-key'
 import { isRootAgentJournalItem } from './agent-session-journal-producer'
 import { readAgentJournalTurn, readAgentJournalTurnOutcome } from './agent-session-turn-record'
@@ -21,8 +23,9 @@ export type StructuredAgentSessionLatestRequest = {
   kind: 'turn' | 'refused-send'
   /** The turn's id, or the refused send's journal item key. Unique only within its kind. */
   id: string
-  running: boolean
-  /** Null while the turn runs, and for a turn whose end carried no verdict. */
+  /** The turn's lifecycle state: what the host observed of it. Null for a refused send. */
+  turnState: AgentJournalTurnLifecycleState | null
+  /** The provider's verdict. Null while the turn runs, and for a turn whose end carried none. */
   outcome: AgentJournalTurnOutcome | null
   /** When it settled: the turn's end, or the refusal. Undefined while it runs. */
   settledAt: number | undefined
@@ -43,13 +46,12 @@ export function latestStructuredAgentSessionRequest(
     }
     const turn = readAgentJournalTurn(item.body)
     if (turn) {
-      const running = turn.state === 'running'
       return {
         kind: 'turn',
         id: turn.turnId,
-        running,
+        turnState: turn.state,
         outcome: readAgentJournalTurnOutcome(turn),
-        settledAt: running ? undefined : turnEndedAt(item, turn)
+        settledAt: turn.state === 'running' ? undefined : turnEndedAt(item, turn)
       }
     }
     const submission = rejected.get(item.itemId)
@@ -61,13 +63,34 @@ export function latestStructuredAgentSessionRequest(
       return {
         kind: 'refused-send',
         id: item.itemId,
-        running: false,
+        turnState: null,
         outcome: 'failure',
         settledAt: submission.resolvedAt ?? undefined
       }
     }
   }
   return null
+}
+
+/** The verdict a status row reports for a settled request: the provider's own, else what the host
+ *  observed of the turn's end. Derived, never journaled: the lifecycle state is the durable fact. */
+export function structuredAgentSessionRequestVerdict(
+  request: Pick<StructuredAgentSessionLatestRequest, 'turnState' | 'outcome'>
+): AgentTurnOutcome | null {
+  if (request.outcome) {
+    return request.outcome
+  }
+  switch (request.turnState) {
+    case 'interrupted':
+      return 'interruption'
+    case 'unverifiable':
+      return 'unconfirmed'
+    // A `completed` end without a verdict is an older provider's, or an older host's: unknown.
+    case 'completed':
+    case 'running':
+    case null:
+      return null
+  }
 }
 
 /** Whether the session has a request to list. A send that failed nobody and never became a turn

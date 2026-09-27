@@ -72,12 +72,18 @@ export function agentTitle(event: ActivityEvent): string {
     return 'Agent working'
   }
   if (event.state === 'done') {
-    const verdict = agentMainAgentVerdict(event.entry)
-    return verdict === 'failure'
-      ? 'Agent failed'
-      : verdict === 'cancellation'
-        ? 'Agent interrupted'
-        : 'Agent finished'
+    switch (agentMainAgentVerdict(event.entry)) {
+      case 'failure':
+        return 'Agent failed'
+      case 'cancellation':
+      case 'interruption':
+        return 'Agent interrupted'
+      case 'unconfirmed':
+        return 'Couldn’t confirm agent finished'
+      case 'success':
+      case null:
+        return 'Agent finished'
+    }
   }
   return event.state === 'waiting' ? 'Agent waiting for input' : 'Agent needs input'
 }
@@ -100,12 +106,18 @@ export function agentMeta(event: ActivityEvent): string {
     return `${agent} ${event.state}`
   }
   if (event.state === 'done') {
-    const verdict = agentMainAgentVerdict(event.entry)
-    return verdict === 'failure'
-      ? `${agent} failed`
-      : verdict === 'cancellation'
-        ? `${agent} interrupted`
-        : `${agent} completed`
+    switch (agentMainAgentVerdict(event.entry)) {
+      case 'failure':
+        return `${agent} failed`
+      case 'cancellation':
+      case 'interruption':
+        return `${agent} interrupted`
+      case 'unconfirmed':
+        return `${agent} unconfirmed`
+      case 'success':
+      case null:
+        return `${agent} completed`
+    }
   }
   return event.state === 'waiting' ? `${agent} waiting` : `${agent} blocked`
 }
@@ -204,6 +216,11 @@ export function threadAgentStateLabel(thread: AgentPaneThread): string {
       return translate(
         'auto.components.activity.ActivityPrototypePage.state.unverifiable',
         'No recent update'
+      )
+    case 'unconfirmed':
+      return translate(
+        'auto.components.activity.ActivityPrototypePage.state.unconfirmed',
+        'Couldn’t confirm'
       )
     case 'permission':
       return translate(

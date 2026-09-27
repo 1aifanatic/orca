@@ -1,5 +1,5 @@
 import type { RuntimeWorktreeAgentRow } from '../../../src/shared/runtime-types'
-import type { AgentJournalTurnOutcome } from '../../../src/shared/agent-turn-outcome'
+import type { AgentTurnOutcome } from '../../../src/shared/agent-turn-outcome'
 
 // Mirrors the desktop AGENT_STATUS_STALE_AFTER_MS (src/shared/agent-status-types.ts:
 // 30 min). Defined locally rather than imported because a runtime-value import
@@ -19,26 +19,56 @@ export type AgentDotState =
   | 'idle'
   | 'interrupted'
   | 'failed'
+  | 'unconfirmed'
 
 type AgentRowVerdictSource = Pick<RuntimeWorktreeAgentRow, 'state' | 'interrupted' | 'mainAgent'>
+
+// Mirrors AGENT_TURN_OUTCOMES (src/shared/agent-turn-outcome.ts), which mobile cannot import as a
+// value (see AGENT_STATUS_STALE_AFTER_MS above). The rows arrive unparsed, so a newer host's arm
+// has to read as no verdict here.
+const AGENT_TURN_OUTCOMES: readonly AgentTurnOutcome[] = [
+  'success',
+  'failure',
+  'cancellation',
+  'interruption',
+  'unconfirmed'
+]
 
 // Mirrors desktop agentMainAgentVerdict and agentVerdictDisplayMark
 // (src/shared/agent-main-agent-verdict.ts); a parity test runs both over one table. `mainAgent` is
 // the main agent's own status, sent also while subagents hold the row working; an old host sends none.
-export function agentRowVerdict(row: AgentRowVerdictSource): AgentJournalTurnOutcome | null {
+export function agentRowVerdict(row: AgentRowVerdictSource): AgentTurnOutcome | null {
   if (row.mainAgent && row.mainAgent.state !== 'done') {
     return null
   }
-  return row.mainAgent?.outcome ?? (row.state === 'done' && row.interrupted ? 'cancellation' : null)
+  const outcome = row.mainAgent?.outcome
+  if (outcome !== undefined) {
+    return AGENT_TURN_OUTCOMES.find((known) => known === outcome) ?? null
+  }
+  return row.state === 'done' && row.interrupted ? 'cancellation' : null
 }
 
-// A failure outranks every state; a stop marks only a row that is itself done.
-export function agentRowVerdictMark(row: AgentRowVerdictSource): 'failed' | 'interrupted' | null {
+// A failure outranks every state; every other end marks only a row that is itself done.
+export function agentRowVerdictMark(
+  row: AgentRowVerdictSource
+): 'failed' | 'interrupted' | 'unconfirmed' | null {
   const verdict = agentRowVerdict(row)
   if (verdict === 'failure') {
     return 'failed'
   }
-  return verdict === 'cancellation' && row.state === 'done' ? 'interrupted' : null
+  if (row.state !== 'done') {
+    return null
+  }
+  switch (verdict) {
+    case 'cancellation':
+    case 'interruption':
+      return 'interrupted'
+    case 'unconfirmed':
+      return 'unconfirmed'
+    case 'success':
+    case null:
+      return null
+  }
 }
 
 export function agentDotState(
@@ -85,6 +115,8 @@ export function agentStateLabel(state: AgentDotState): string {
       return 'Interrupted'
     case 'failed':
       return 'Failed'
+    case 'unconfirmed':
+      return 'Couldn’t confirm'
     case 'done':
       return 'Done'
     case 'idle':

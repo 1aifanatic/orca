@@ -76,12 +76,21 @@ function formatAgentNotificationStatusText(args: NotificationDispatchRequest): s
   if (args.agentState === 'working') {
     return translateMain('notifications.agentStatus.working', 'working')
   }
-  if (args.agentState === 'done' && args.agentTurnOutcome === 'failure') {
-    return translateMain('notifications.agentStatus.failed', 'failed')
+  if (args.agentState !== 'done') {
+    return translateMain('notifications.agentStatus.finished', 'finished')
   }
-  return args.agentState === 'done' && args.agentTurnOutcome === 'cancellation'
-    ? translateMain('notifications.agentStatus.stopped', 'stopped')
-    : translateMain('notifications.agentStatus.finished', 'finished')
+  switch (args.agentTurnOutcome) {
+    case 'failure':
+      return translateMain('notifications.agentStatus.failed', 'failed')
+    // Why: an end the user did not ask for, or one Orca cannot prove, still never reads finished.
+    case 'cancellation':
+    case 'interruption':
+    case 'unconfirmed':
+      return translateMain('notifications.agentStatus.stopped', 'stopped')
+    case 'success':
+    case undefined:
+      return translateMain('notifications.agentStatus.finished', 'finished')
+  }
 }
 
 function formatNotificationWorktreeContext(args: NotificationDispatchRequest): string {

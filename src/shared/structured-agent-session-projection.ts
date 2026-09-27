@@ -7,9 +7,9 @@ import {
   AGENT_JOURNAL_MESSAGE_SEND_MODES,
   type AgentJournalMessageSendMode,
   type AgentJournalRenderItem,
-  type AgentJournalSubmission,
-  type AgentJournalTurnOutcome
+  type AgentJournalSubmission
 } from './agent-session-journal-types'
+import type { AgentTurnOutcome } from './agent-turn-outcome'
 import { isRootAgentJournalItem } from './agent-session-journal-producer'
 import {
   AGENT_STATUS_TOOL_INPUT_MAX_LENGTH,
@@ -20,6 +20,7 @@ import { statusStructuredAgentSessionToolCall } from './structured-agent-session
 import {
   hasStructuredAgentSessionRequest,
   latestStructuredAgentSessionRequest,
+  structuredAgentSessionRequestVerdict,
   type StructuredAgentSessionLatestRequest
 } from './structured-agent-session-latest-request'
 import {
@@ -274,8 +275,9 @@ export type StructuredAgentSessionStatusProjection = {
   toolInput?: string
   lastAssistantMessage?: string
   /** The latest request's verdict: its turn's, or `failure` for a send the agent or its start
-   *  refused. Present only while `status` is idle. */
-  turnOutcome?: AgentJournalTurnOutcome
+   *  refused. A turn the provider gave none reads as its host-observed end. Present only while
+   *  `status` is idle. */
+  turnOutcome?: AgentTurnOutcome
   statusStartedAt?: number
 }
 
@@ -326,7 +328,7 @@ export function projectStructuredAgentSessionStatusState(
   const latestRequest = latestStructuredAgentSessionRequest(items, submissions)
   // A verdict is a fact about a finished request: only an idle session has one to report.
   const request = status === 'idle' ? latestRequest : null
-  const turnOutcome = request?.outcome
+  const turnOutcome = request ? structuredAgentSessionRequestVerdict(request) : null
   const statusStartedAt = structuredAgentSessionStatusStartedAt(
     status,
     items,

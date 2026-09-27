@@ -8,17 +8,14 @@ import {
   type AgentMainAgentVerdictSource
 } from './agent-main-agent-verdict'
 import type { AgentStatusState } from './agent-status-types'
-import { AGENT_JOURNAL_TURN_OUTCOMES, type AgentJournalTurnOutcome } from './agent-turn-outcome'
+import { AGENT_TURN_OUTCOMES, type AgentTurnOutcome } from './agent-turn-outcome'
 
 const STATES: AgentStatusState[] = ['working', 'blocked', 'waiting', 'done']
-const OUTCOMES: (AgentJournalTurnOutcome | undefined)[] = [
-  undefined,
-  ...AGENT_JOURNAL_TURN_OUTCOMES
-]
+const OUTCOMES: (AgentTurnOutcome | undefined)[] = [undefined, ...AGENT_TURN_OUTCOMES]
 
 // The rule as the plan states it: the main agent's own state decides when a row carries it; a row
 // without it (a legacy or old-host row) reads the legacy flag, which alone needs the combined `done`.
-function expected(row: AgentMainAgentVerdictSource): AgentJournalTurnOutcome | null {
+function expected(row: AgentMainAgentVerdictSource): AgentTurnOutcome | null {
   const legacyFlag = row.state === 'done' && row.interrupted === true ? 'cancellation' : null
   if (row.mainAgent) {
     return row.mainAgent.state === 'done' ? (row.mainAgent.outcome ?? legacyFlag) : null
@@ -49,16 +46,18 @@ describe('agentMainAgentVerdict', () => {
       const verdict = expected(row)
       const label = JSON.stringify(row)
       expect(agentMainAgentVerdict(row), label).toBe(verdict)
-      expect(agentTurnEndedUncleanly(row), label).toBe(
-        verdict === 'cancellation' || verdict === 'failure'
-      )
+      expect(agentTurnEndedUncleanly(row), label).toBe(verdict !== null && verdict !== 'success')
       expect(agentTurnStoppedByUser(row), label).toBe(verdict === 'cancellation')
       expect(agentVerdictDisplayMark(row), label).toBe(
         verdict === 'failure'
           ? 'failed'
-          : verdict === 'cancellation' && row.state === 'done'
-            ? 'interrupted'
-            : null
+          : row.state !== 'done'
+            ? null
+            : verdict === 'cancellation' || verdict === 'interruption'
+              ? 'interrupted'
+              : verdict === 'unconfirmed'
+                ? 'unconfirmed'
+                : null
       )
     }
   })
@@ -94,6 +93,33 @@ describe('agentMainAgentVerdict', () => {
       agentMainAgentVerdict({ state: 'done', interrupted: true, mainAgent: { state: 'done' } })
     ).toBe('cancellation')
     expect(agentMainAgentVerdict({ state: 'done', interrupted: true })).toBe('cancellation')
+  })
+
+  it('reads a crash-cut turn as interrupted and an unproven end as unconfirmed, neither a stop', () => {
+    for (const [outcome, mark] of [
+      ['interruption', 'interrupted'],
+      ['unconfirmed', 'unconfirmed']
+    ] as const) {
+      const row = { state: 'done' as const, mainAgent: { state: 'done' as const, outcome } }
+      expect(agentVerdictDisplayMark(row)).toBe(mark)
+      expect(agentTurnEndedUncleanly(row)).toBe(true)
+      // Nobody asked for it, so attention ranks it as news, like a completion or a failure.
+      expect(agentTurnStoppedByUser(row)).toBe(false)
+    }
+  })
+
+  it('reads an arm from a newer host as no verdict, so the row reads done as it did', () => {
+    const row = {
+      state: 'done' as const,
+      mainAgent: {
+        state: 'done' as const,
+        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a mirrored row reaches the reader unparsed, carrying an arm this build cannot name.
+        outcome: 'from-a-newer-host' as AgentTurnOutcome
+      }
+    }
+    expect(agentMainAgentVerdict(row)).toBeNull()
+    expect(agentVerdictDisplayMark(row)).toBeNull()
+    expect(agentTurnEndedUncleanly(row)).toBe(false)
   })
 
   it('prefers the recorded verdict over the legacy flag', () => {

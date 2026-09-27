@@ -23,11 +23,12 @@ const ACTIVITY_STATUS_GROUP_RANK: Record<ActivityThreadStatusId, number> = {
   permission: 2,
   failed: 3,
   interrupted: 4,
-  working: 5,
-  monitoring: 6,
-  unverifiable: 7,
-  done: 8,
-  idle: 9
+  unconfirmed: 5,
+  working: 6,
+  monitoring: 7,
+  unverifiable: 8,
+  done: 9,
+  idle: 10
 }
 
 function activityStatusRank(thread: AgentPaneThread): number {

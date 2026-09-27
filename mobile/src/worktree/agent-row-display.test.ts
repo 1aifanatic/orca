@@ -4,7 +4,7 @@ import {
   agentMainAgentVerdict,
   agentVerdictDisplayMark
 } from '../../../src/shared/agent-main-agent-verdict'
-import { AGENT_JOURNAL_TURN_OUTCOMES } from '../../../src/shared/agent-turn-outcome'
+import { AGENT_TURN_OUTCOMES } from '../../../src/shared/agent-turn-outcome'
 import {
   AGENT_STATUS_STALE_AFTER_MS,
   agentDisplayLabel,
@@ -16,7 +16,7 @@ import {
   formatTimeAgo
 } from './agent-row-display'
 
-type Outcome = (typeof AGENT_JOURNAL_TURN_OUTCOMES)[number]
+type Outcome = (typeof AGENT_TURN_OUTCOMES)[number]
 const mainAgentDone = (outcome: Outcome, stateStartedAt = 0) => ({
   mainAgent: { state: 'done' as const, outcome, stateStartedAt }
 })
@@ -59,6 +59,25 @@ describe('agentDotState', () => {
     expect(agentDotState(row({ state: 'done', ...mainAgentDone('success') }), 0)).toBe('done')
   })
 
+  it('reads a crash-cut turn as interrupted and an unproven end as unconfirmed', () => {
+    expect(agentDotState(row({ state: 'done', ...mainAgentDone('interruption') }), 0)).toBe(
+      'interrupted'
+    )
+    expect(agentDotState(row({ state: 'done', ...mainAgentDone('unconfirmed') }), 0)).toBe(
+      'unconfirmed'
+    )
+    expect(agentDisplayLabel(row({ state: 'done', ...mainAgentDone('unconfirmed') }), 0)).toBe(
+      'Couldn’t confirm'
+    )
+  })
+
+  // Rows arrive unparsed, so an arm a newer host adds must read as the done it always did.
+  it('reads a done row carrying an outcome it cannot name as done', () => {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: an arm from a newer host, which the unparsed wire row can carry.
+    const future = mainAgentDone('from-a-newer-host' as Outcome)
+    expect(agentDotState(row({ state: 'done', ...future }), 0)).toBe('done')
+  })
+
   it('shows a main agent that failed while its subagents still run as failed', () => {
     expect(agentDotState(row({ state: 'working', ...mainAgentDone('failure') }), 0)).toBe('failed')
     expect(agentDotState(row({ state: 'waiting', ...mainAgentDone('failure') }), 0)).toBe('failed')
@@ -78,7 +97,7 @@ describe('agentDotState', () => {
     const mainAgents = [
       undefined,
       ...states.flatMap((state) =>
-        [undefined, ...AGENT_JOURNAL_TURN_OUTCOMES].map((outcome) => ({
+        [undefined, ...AGENT_TURN_OUTCOMES].map((outcome) => ({
           state,
           ...(outcome ? { outcome } : {}),
           stateStartedAt: 0

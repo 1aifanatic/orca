@@ -5,7 +5,7 @@
 import type { AgentProviderSessionMetadata } from './agent-session-resume'
 import type { AgentMainAgentStatus } from './main-agent-status'
 import type { AgentStateHistoryEntry } from './agent-state-history'
-import { isAgentJournalTurnOutcome } from './agent-turn-outcome'
+import { isAgentTurnOutcome } from './agent-turn-outcome'
 import type { OrchestrationFleetAttention } from './orchestration-fleet-attention'
 import type { AgentStatusRowFacets } from './agent-status-observation'
 import type { TuiAgent } from './tui-agent'
@@ -339,7 +339,7 @@ export function normalizeMainAgentStatusField(value: unknown): AgentMainAgentSta
   return {
     state,
     // Why: a verdict belongs to a finished turn; anything riding on a live state is stale.
-    ...(state === 'done' && isAgentJournalTurnOutcome(obj.outcome) ? { outcome: obj.outcome } : {}),
+    ...(state === 'done' && isAgentTurnOutcome(obj.outcome) ? { outcome: obj.outcome } : {}),
     stateStartedAt: obj.stateStartedAt
   }
 }

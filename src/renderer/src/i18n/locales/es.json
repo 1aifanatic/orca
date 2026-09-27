@@ -14448,6 +14448,7 @@
             "done": "Completado",
             "idle": "Inactivo",
             "unverifiable": "Sin actualizaciones recientes",
+            "unconfirmed": "No se pudo confirmar",
             "permission": "Requiere atención"
           },
           "filtersSection": "Filtros",

@@ -24,6 +24,7 @@ import type {
   AgentJournalThreadGoal,
   AgentJournalTurnOutcome
 } from './agent-session-journal-types'
+import type { AgentTurnOutcome } from './agent-turn-outcome'
 import {
   agentSessionScopeKey,
   type AgentSessionExecutionLocation,
@@ -196,11 +197,12 @@ export type AgentSessionStatusSummary = {
   toolInput?: string
   /** Preview of the newest assistant prose, so a settled row says what the agent said. */
   lastAssistantMessage?: string
-  /** The provider's verdict on the newest settled root turn. Present only while `status` is
-   *  `idle`: a running or attention-blocked turn has no verdict yet, and a stale one must not
-   *  ride along. Absent means UNKNOWN, never success. Optional for mixed-version hosts; the
-   *  agent-status row publishes it as `mainAgent.outcome`. */
-  turnOutcome?: AgentJournalTurnOutcome
+  /** The verdict on the latest request: the provider's, or, when it gave none, what the host
+   *  observed of the turn's end. Present only while `status` is `idle`: a running or
+   *  attention-blocked turn has no verdict yet, and a stale one must not ride along. Absent means
+   *  UNKNOWN, never success. Optional for mixed-version hosts; an older client reads an arm it
+   *  does not know as no verdict. The agent-status row publishes it as `mainAgent.outcome`. */
+  turnOutcome?: AgentTurnOutcome
   /** Live provider-owned background tasks, so session lists can render
    *  subagent children without holding a journal reader open. Optional for
    *  mixed-version hosts. */

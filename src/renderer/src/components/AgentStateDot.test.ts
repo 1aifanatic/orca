@@ -122,6 +122,7 @@ describe('AgentStateDot', () => {
     'done',
     'idle',
     'unverifiable',
+    'unconfirmed',
     'permission'
   ] satisfies AgentDotState[]
 

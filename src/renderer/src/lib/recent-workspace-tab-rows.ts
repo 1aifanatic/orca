@@ -101,6 +101,9 @@ export function resolveRecentWorkspaceTabStatus(
   if (verdicts.has('interrupted')) {
     return 'interrupted'
   }
+  if (verdicts.has('unconfirmed')) {
+    return 'unconfirmed'
+  }
   if (explicit === 'done') {
     return explicit
   }

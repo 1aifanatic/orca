@@ -2,6 +2,7 @@ import React from 'react'
 import { Activity } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { AgentQuestionIcon } from '@/components/AgentQuestionIcon'
+import { AgentStateDot } from '@/components/AgentStateDot'
 import { AgentWorkingSpinner } from '@/components/AgentWorkingSpinner'
 import {
   StateIndicatorTooltip,
@@ -27,6 +28,7 @@ const AGENT_STATUS_TOOLTIP_STATUSES = new Set<Status>([
   'permission',
   'failed',
   'interrupted',
+  'unconfirmed',
   'done'
 ])
 
@@ -66,6 +68,16 @@ const StatusIndicator = React.memo(function StatusIndicator({
         {...rest}
       >
         <span className="block size-1.5 rounded-full bg-red-500" />
+      </span>
+    )
+  } else if (status === 'unconfirmed') {
+    // Why: AgentStateDot owns the missing-evidence glyph and tone; the tooltip stays this one's.
+    indicator = (
+      <span
+        className={cn('inline-flex h-3 w-3 shrink-0 items-center justify-center', className)}
+        {...rest}
+      >
+        <AgentStateDot state="unconfirmed" size="md" title={null} />
       </span>
     )
   } else if (status === 'permission') {
