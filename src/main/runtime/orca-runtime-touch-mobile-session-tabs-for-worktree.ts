@@ -27,8 +27,8 @@ export class OrcaRuntimeWithTouchMobileSessionTabsForWorktree extends OrcaRuntim
       snapshotVersion: snapshot.snapshotVersion + 1
     })
     if (options.immediate) {
-      // Why: readiness/lifecycle changes are structural and must not wait
-      // behind the title/status coalescing window.
+      // Why: an exit is structural and must not wait behind the title/status window. A
+      // registration's ready flip coalesces so it merges with the spawn's graph update.
       this.notifyMobileSessionTabsChanged(worktreeId)
       return
     }
