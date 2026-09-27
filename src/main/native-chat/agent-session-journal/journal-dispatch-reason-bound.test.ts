@@ -47,9 +47,10 @@ async function settle(reason: string): Promise<string | null> {
   })
   await journal.resolveDispatch({
     clientMessageId: 'msg-1',
-    state: 'rejected',
+    // A rejection's reason comes only from `agentSessionFailureWords`; an unknown's is still free
+    // text (an adapter's error), so it is what reaches the bound.
+    state: 'unknown',
     reason,
-    rejection: { kind: 'providerRejected' },
     fence: 1
   })
   return journal.snapshot().submissions[0]?.reason ?? null

@@ -1,6 +1,6 @@
 // Append-only journal store for one agent session.
 
-import type { AgentJournalDispatchRejection } from '../../../shared/structured-agent-session-dispatch-rejection'
+import type { AgentJournalDispatchRejection } from '../../../shared/agent-session-failure-words'
 import { randomUUID } from 'node:crypto'
 import type {
   AgentJournalAcceptanceReceipt,

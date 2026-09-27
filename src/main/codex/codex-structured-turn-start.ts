@@ -1,5 +1,10 @@
 import { agentSessionFailureFact, providerDiagnosticOf } from '../../shared/agent-session-failure'
-import { agentSessionFailureRejection } from '../native-chat/agent-session-wire/structured-agent-session-failure-text'
+import {
+  agentSessionFailureWords,
+  type AgentJournalDispatchRejection
+} from '../../shared/agent-session-failure-words'
+import type { AgentSessionFailureFact } from '../../shared/agent-session-failure'
+import { TUI_AGENT_DISPLAY_NAMES } from '../../shared/tui-agent-display-names'
 import type { AgentJournalMessageItem } from '../../shared/agent-session-journal-types'
 import type { NativeChatBlock } from '../../shared/native-chat-types'
 import type { AgentSessionDispatchOutcome } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
@@ -9,10 +14,6 @@ import {
 } from './codex-app-server-connection'
 import { isCodexAppServerUnsupportedError } from './codex-app-server-session'
 import type { CodexDispatchEchoes } from './codex-structured-dispatch-echo'
-import {
-  DISPATCH_REJECTED_CODEX_QUEUE_FULL,
-  dispatchQueueFullRejection
-} from '../../shared/structured-agent-session-dispatch-rejection'
 import { decodeStructuredAgentSessionOptionValue } from '../../shared/structured-agent-session-option-codec'
 
 // Writing a Codex turn and learning which message landed where, which are not
@@ -120,6 +121,15 @@ export async function startCodexTurn(
   return true
 }
 
+/** A message Codex rejected, in the words that name Codex and its legacy markers. */
+function codexDispatchRejection(failure: AgentSessionFailureFact): AgentJournalDispatchRejection {
+  return agentSessionFailureWords(failure, {
+    surface: 'rejection',
+    agentName: TUI_AGENT_DISPLAY_NAMES.codex,
+    provider: 'codex'
+  })
+}
+
 /**
  * One submission's outcome as the wire must read it: admitted means Codex owns
  * the message and its identity settles on the echo, rejected is Codex answering
@@ -133,10 +143,7 @@ export async function dispatchCodexTurn(
 ): Promise<AgentSessionDispatchOutcome> {
   try {
     if (!(await startCodexTurn(session, { ...input, timeoutMs }))) {
-      return {
-        state: 'rejected',
-        ...dispatchQueueFullRejection(DISPATCH_REJECTED_CODEX_QUEUE_FULL)
-      }
+      return { state: 'rejected', ...codexDispatchRejection(agentSessionFailureFact('queueFull')) }
     }
   } catch (error) {
     if (isCodexAppServerRequestError(error) || isCodexAppServerUnsupportedError(error)) {
@@ -145,7 +152,7 @@ export async function dispatchCodexTurn(
       // Codex's own words, when it gave any, are the one part of the error a person can use.
       return {
         state: 'rejected',
-        ...agentSessionFailureRejection(
+        ...codexDispatchRejection(
           agentSessionFailureFact('providerRejected', { detail: providerDiagnosticOf(error) })
         )
       }

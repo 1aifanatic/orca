@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { AGENT_SESSION_FAILURE_KINDS } from './agent-session-failure'
+import { AGENT_SESSION_FAILURE_KINDS, agentSessionFailureFact } from './agent-session-failure'
+import { agentSessionFailureWords } from './agent-session-failure-words'
 import {
   classifyDispatchRejection,
   DISPATCH_REJECTED_CANCELLED,
@@ -7,9 +8,6 @@ import {
   DISPATCH_REJECTED_HOST_RESTARTED,
   DISPATCH_REJECTED_PROVIDER_CLOSED,
   DISPATCH_REJECTED_QUEUE_FULL,
-  DISPATCH_REJECTION_HOST_RESTARTED,
-  DISPATCH_REJECTION_PROVIDER_CLOSED,
-  dispatchWriteFailureReason,
   isWriteFailureSubmission
 } from './structured-agent-session-dispatch-rejection'
 
@@ -21,7 +19,7 @@ describe('classifyDispatchRejection', () => {
     ['not_delivered', 'undelivered', 'failure', 'notDelivered'],
     [DISPATCH_REJECTED_QUEUE_FULL, 'transport', 'failure', 'queueFull'],
     [DISPATCH_REJECTED_CODEX_QUEUE_FULL, 'transport', 'failure', 'queueFull'],
-    [dispatchWriteFailureReason(new Error('broken pipe')), 'transport', 'failure', 'writeFailed'],
+    ['provider_write_failed: broken pipe', 'transport', 'failure', 'writeFailed'],
     ['provider_write_failed', 'transport', 'failure', 'writeFailed']
   ] as const)('reads the legacy marker %j', (reason, category, verdict, kind) => {
     expect(classifyDispatchRejection({ reason })).toEqual({ category, verdict, kind })
@@ -61,10 +59,10 @@ describe('classifyDispatchRejection', () => {
   })
 
   it('writes a sentence, not a marker released clients would print, for a restart or a close', () => {
-    for (const [written, kind] of [
-      [DISPATCH_REJECTION_HOST_RESTARTED, 'hostRestarted'],
-      [DISPATCH_REJECTION_PROVIDER_CLOSED, 'chatClosed']
-    ] as const) {
+    for (const kind of ['hostRestarted', 'chatClosed'] as const) {
+      const written = agentSessionFailureWords(agentSessionFailureFact(kind), {
+        surface: 'rejection'
+      })
       expect(written.reason).not.toMatch(/^[a-z_]+$/)
       expect(classifyDispatchRejection(written)).toEqual({
         category: 'undelivered',
@@ -84,8 +82,17 @@ describe('classifyDispatchRejection', () => {
 
 describe('isWriteFailureSubmission', () => {
   it('holds for a legacy row in any state that carries the marker', () => {
-    const reason = dispatchWriteFailureReason(new Error('closed before enqueue'))
-    expect(isWriteFailureSubmission({ reason })).toBe(true)
+    expect(
+      isWriteFailureSubmission({ reason: 'provider_write_failed: closed before enqueue' })
+    ).toBe(true)
+  })
+
+  it('holds for the bare marker a new host writes, as released clients already read it', () => {
+    const written = agentSessionFailureWords(agentSessionFailureFact('writeFailed'), {
+      surface: 'rejection'
+    })
+    expect(written.reason).toBe('provider_write_failed')
+    expect(isWriteFailureSubmission({ reason: written.reason })).toBe(true)
   })
 
   it('holds for a typed write failure and for nothing else', () => {

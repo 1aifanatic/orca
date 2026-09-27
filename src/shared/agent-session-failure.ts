@@ -22,6 +22,7 @@ export const AGENT_SESSION_FAILURE_KINDS = [
   'providerRejected',
   'attachmentInvalid',
   'attachmentUnreadable',
+  'emptyMessage',
   'queueFull',
   'writeFailed',
   'cancelled',
@@ -53,12 +54,33 @@ export type ProviderDiagnostic = {
  *  lease record keeps, so a diagnostic never outgrows what the record may store. */
 export const MAX_PROVIDER_DIAGNOSTIC_CHARS = 512
 
+/** Which of Orca's checks an image failed. A new one needs a sentence before it compiles. */
+export const AGENT_SESSION_ATTACHMENT_PROBLEM_REASONS = [
+  'empty',
+  'tooLarge',
+  'tooMany',
+  'totalTooLarge',
+  'unsupportedType',
+  'notAFile',
+  'noSource'
+] as const
+export type AgentSessionAttachmentProblemReason =
+  (typeof AGENT_SESSION_ATTACHMENT_PROBLEM_REASONS)[number]
+
+export type AgentSessionAttachmentProblem = {
+  reason: AgentSessionAttachmentProblemReason
+  /** The limit it broke: bytes for `tooLarge` and `totalTooLarge`, a count for `tooMany`. */
+  limit?: number
+}
+
 export type AgentSessionFailureFact = {
   kind: AgentSessionFailureKind
   /** Provider-authored only; absent whenever Orca wrote the words. */
   detail?: ProviderDiagnostic
   /** On `restartFailed`: the refusal that kept the agent from starting. */
   refusal?: AgentSessionRefusalReference
+  /** On `attachmentInvalid`: which check the attachment failed. */
+  attachment?: AgentSessionAttachmentProblem
 }
 
 /** Null for empty text, so a writer never records a detail with nothing in it. */
@@ -72,7 +94,11 @@ export function providerDiagnostic(
 
 export function agentSessionFailureFact(
   kind: AgentSessionFailureKind,
-  extra: { detail?: ProviderDiagnostic; refusal?: AgentSessionRefusalReference } = {}
+  extra: {
+    detail?: ProviderDiagnostic
+    refusal?: AgentSessionRefusalReference
+    attachment?: AgentSessionAttachmentProblem
+  } = {}
 ): AgentSessionFailureFact {
   // Re-bounded here, so no writer can store more than the cap however it built the detail.
   const detail = extra.detail
@@ -81,7 +107,8 @@ export function agentSessionFailureFact(
   return {
     kind,
     ...(detail ? { detail } : {}),
-    ...(extra.refusal ? { refusal: extra.refusal } : {})
+    ...(extra.refusal ? { refusal: extra.refusal } : {}),
+    ...(extra.attachment ? { attachment: extra.attachment } : {})
   }
 }
 
@@ -97,6 +124,20 @@ export function isProviderDiagnostic(value: unknown): value is ProviderDiagnosti
   )
 }
 
+function readAttachmentProblem(value: unknown): AgentSessionAttachmentProblem | undefined {
+  if (!isRecord(value)) {
+    return undefined
+  }
+  const reason = AGENT_SESSION_ATTACHMENT_PROBLEM_REASONS.find((known) => known === value.reason)
+  if (!reason) {
+    return undefined
+  }
+  const limit = value.limit
+  return typeof limit === 'number' && Number.isFinite(limit) && limit > 0
+    ? { reason, limit }
+    : { reason }
+}
+
 /** A fact as a reader meets it. Undefined for anything this build cannot place, including a kind a
  *  newer host added, so the reader falls back to what it does for a row with no fact. */
 export function readAgentSessionFailureFact(value: unknown): AgentSessionFailureFact | undefined {
@@ -110,9 +151,11 @@ export function readAgentSessionFailureFact(value: unknown): AgentSessionFailure
           ...(isAgentSessionRefusalCause(value.refusal.cause) ? { cause: value.refusal.cause } : {})
         }
       : undefined
+  const attachment = readAttachmentProblem(value.attachment)
   return agentSessionFailureFact(value.kind, {
     ...(isProviderDiagnostic(value.detail) ? { detail: value.detail } : {}),
-    ...(refusal ? { refusal } : {})
+    ...(refusal ? { refusal } : {}),
+    ...(attachment ? { attachment } : {})
   })
 }
 

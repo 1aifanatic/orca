@@ -7,7 +7,6 @@ import {
   agentSessionRecordFixture
 } from '../../../shared/agent-session-record.test-fixture'
 import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
-import { UNEXPECTED_PROVIDER_EXIT_OUTCOME } from './structured-agent-session-dead-generation-settlement'
 import { retryLoadedStructuredAgentSessionSettlement } from './structured-agent-session-settlement-retry'
 import {
   isStructuredAgentSessionRecoveryTicketCurrent,
@@ -16,6 +15,9 @@ import {
   type StructuredAgentSessionUnexpectedExitSession,
   type StructuredAgentSessionRecoveryTicket
 } from './structured-agent-session-unexpected-exit'
+
+const UNEXPECTED_PROVIDER_EXIT_OUTCOME =
+  'The provider stopped while this response was in progress. You can continue in this conversation.'
 
 const SESSION = 'session-1'
 const GENERATION = 'generation-1'

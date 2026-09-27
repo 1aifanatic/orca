@@ -14,11 +14,13 @@ import {
   type AgentSessionFailureFact
 } from '../../../shared/agent-session-failure'
 import type { AgentSessionWireRefusal } from '../../../shared/agent-session-wire'
-import { DISPATCH_REJECTION_HOST_RESTARTED } from '../../../shared/structured-agent-session-dispatch-rejection'
+import {
+  agentSessionFailureWords,
+  type AgentSessionFailureWordsContext
+} from '../../../shared/agent-session-failure-words'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import {
   structuredAgentSessionStartFailure,
-  type AgentSessionFailureTextContext,
   type StructuredAgentSessionStartFailureCause
 } from './structured-agent-session-failure-text'
 import type { StructuredAgentSessionResumeOutcome } from './structured-agent-session-hold-resume'
@@ -44,7 +46,7 @@ export type StructuredAgentSessionDeliveryLoopDeps = {
   /** The fence the conversation's own writes carry; see `structuredAgentSessionConversationFence`. */
   conversationFence: (sessionId: string) => number
   /** Who the chat's failure sentences name. */
-  failureTextContext: (sessionId: string) => AgentSessionFailureTextContext
+  failureTextContext: (sessionId: string) => AgentSessionFailureWordsContext
   onError: (sessionId: string, error: unknown) => void
 }
 
@@ -131,7 +133,7 @@ export class StructuredAgentSessionDeliveryLoop {
     }
     await session.journal.rejectQueuedSubmissions(
       this.deps.conversationFence(sessionId),
-      DISPATCH_REJECTION_HOST_RESTARTED,
+      agentSessionFailureWords(agentSessionFailureFact('hostRestarted'), { surface: 'rejection' }),
       // A handle closes only with nothing queued, so one an earlier handle wrote is a leftover.
       (submission) => session.journal.wroteBeforeOpen(submission.acceptedSequence)
     )

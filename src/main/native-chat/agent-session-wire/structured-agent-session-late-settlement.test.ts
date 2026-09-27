@@ -3,10 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
-import {
-  DISPATCH_REJECTED_CANCELLED,
-  DISPATCH_REJECTION_CANCELLED
-} from '../../../shared/structured-agent-session-dispatch-rejection'
+import { DISPATCH_REJECTED_CANCELLED } from '../../../shared/structured-agent-session-dispatch-rejection'
 import type {
   AgentSessionMutationEnvelope,
   AgentSessionSubscribeEvent
@@ -27,6 +24,8 @@ import {
   hostTestOperationId,
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
+import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
+import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 
 const CALLER = { callerKey: 'client-1' }
 
@@ -236,7 +235,7 @@ describe('settling a send the provider proves it received after the ack window',
       sessionId: SESSION,
       clientMessageId: params.envelope.clientOperationId,
       state: 'rejected',
-      ...DISPATCH_REJECTION_CANCELLED
+      ...agentSessionFailureWords(agentSessionFailureFact('cancelled'), { surface: 'rejection' })
     })
 
     expect(submissions()).toMatchObject([

@@ -6,12 +6,11 @@
 // row the next attach settles as `unknown`, whereas the reverse would lose a
 // turn the provider already accepted.
 
-import {
-  agentSessionFailureFact,
-  type AgentSessionFailureFact
-} from '../../../shared/agent-session-failure'
+import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
+import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import type {
   AgentJournalMessageItem,
+  AgentJournalStatusItem,
   AgentJournalSubmission
 } from '../../../shared/agent-session-journal-types'
 import {
@@ -29,11 +28,7 @@ import type {
   StructuredAgentSessionAdapter,
   StructuredAgentSessionProviderChildPhase
 } from './structured-agent-session-adapter'
-import {
-  agentSessionFailureRejection,
-  agentSessionFailureText,
-  structuredAgentSessionStartFailure
-} from './structured-agent-session-failure-text'
+import { structuredAgentSessionStartFailure } from './structured-agent-session-failure-text'
 import { validatePendingPrompt } from './structured-agent-session-prompt-state'
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
 export { performSetOption } from './structured-agent-session-turns-options'
@@ -89,8 +84,7 @@ async function dispatchSafely(
     })
   } catch (error) {
     if (ctx.providerChildPhase?.() === 'starting') {
-      const words = structuredAgentSessionStartFailure({ error })
-      return { state: 'rejected', reason: words.text, rejection: words.failure }
+      return { state: 'rejected', ...structuredAgentSessionStartFailure({ error }) }
     }
     return { state: 'unknown', reason: error instanceof Error ? error.message : String(error) }
   }
@@ -99,14 +93,9 @@ async function dispatchSafely(
 async function appendStatus(
   ctx: AgentSessionTurnContext,
   clientMessageId: string,
-  text: string,
-  failure?: AgentSessionFailureFact
+  body: AgentJournalStatusItem
 ): Promise<void> {
-  await ctx.journal.appendItem(
-    { provider: 'orca', clientMessageId },
-    { kind: 'status', text, ...(failure ? { failure } : {}) },
-    { fence: ctx.fence }
-  )
+  await ctx.journal.appendItem({ provider: 'orca', clientMessageId }, body, { fence: ctx.fence })
 }
 
 /**
@@ -175,7 +164,7 @@ export async function handOverSubmission(
     await ctx.journal.resolveDispatch({
       clientMessageId,
       state: 'rejected',
-      ...agentSessionFailureRejection(agentSessionFailureFact('hostFault')),
+      ...agentSessionFailureWords(agentSessionFailureFact('hostFault'), { surface: 'rejection' }),
       fence: ctx.fence
     })
     return
@@ -254,8 +243,7 @@ export async function performCancel(
     }
   }
   let cancelled = false
-  let note = 'Cancellation requested.'
-  let failure: AgentSessionFailureFact | undefined
+  let note: AgentJournalStatusItem = { kind: 'status', text: 'Cancellation requested.' }
   try {
     const dispatchStatus = latestJournalDispatchObservation(ctx.journal, ctx.fence)
     cancelled = input.scope
@@ -278,15 +266,17 @@ export async function performCancel(
           })
         ).cancelled
     if (!cancelled) {
-      note = 'The provider had already finished this turn.'
+      note = { kind: 'status', text: 'The provider had already finished this turn.' }
     }
   } catch (error) {
     if (input.prompt) {
       throw error
     }
     // The adapter's error is Orca's; the row says only that the stop is unconfirmed.
-    failure = agentSessionFailureFact('cancelUnconfirmed')
-    note = agentSessionFailureText(failure)
+    note = {
+      kind: 'status',
+      ...agentSessionFailureWords(agentSessionFailureFact('cancelUnconfirmed'), { surface: 'row' })
+    }
   }
   if (cancelled && input.prompt) {
     await ctx.flushStreamedEvents()
@@ -295,6 +285,6 @@ export async function performCancel(
     return { ok: true, value: { turnId: input.turnId, cancelled } }
   }
   // Keyed by the operation id so a replayed cancel upserts one item, not two.
-  await appendStatus(ctx, input.clientOperationId, note, failure)
+  await appendStatus(ctx, input.clientOperationId, note)
   return { ok: true, value: { turnId: input.turnId, cancelled } }
 }

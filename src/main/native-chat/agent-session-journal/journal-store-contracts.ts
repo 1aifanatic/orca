@@ -1,4 +1,4 @@
-import type { AgentSessionFailureFact } from '../../../shared/agent-session-failure'
+import type { AgentJournalDispatchRejection } from '../../../shared/agent-session-failure-words'
 import type {
   AgentJournalCursor,
   AgentJournalItemBody,
@@ -32,8 +32,9 @@ export type ResolveDispatchInput = {
 } & (
   | { state: 'accepted'; providerIdentity: AgentJournalItemIdentity }
   | { state: 'pending' }
-  /** `reason` is the sentence released clients print; `rejection` is what newer ones read. */
-  | { state: 'rejected'; reason: string; rejection: AgentSessionFailureFact }
+  /** `reason` is what released clients print, `rejection` what newer ones read: both from
+   *  `agentSessionFailureWords`, never written by hand. */
+  | ({ state: 'rejected' } & AgentJournalDispatchRejection)
   | { state: 'unknown'; reason?: string | null }
 )
 

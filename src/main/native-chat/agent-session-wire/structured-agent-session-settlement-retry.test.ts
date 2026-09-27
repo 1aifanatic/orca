@@ -13,8 +13,10 @@ import { agentSessionRecordFixture } from '../../../shared/agent-session-record.
 import { openAgentSessionJournal } from '../agent-session-journal/journal-store-factory'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { StructuredAgentSessionLeaseStore } from './structured-agent-session-lease-release'
-import { UNEXPECTED_PROVIDER_EXIT_OUTCOME } from './structured-agent-session-dead-generation-settlement'
 import { retryLoadedStructuredAgentSessionSettlement } from './structured-agent-session-settlement-retry'
+
+const UNEXPECTED_PROVIDER_EXIT_OUTCOME =
+  'The provider stopped while this response was in progress. You can continue in this conversation.'
 
 const SESSION = 'session-alpha-1'
 const THREAD = 'thread-1'

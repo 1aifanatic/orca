@@ -22,7 +22,7 @@ describe('Claude structured dispatch attachment rejections', () => {
     ).resolves.toEqual({
       state: 'rejected',
       reason: 'Claude accepts at most 20 images in one message, so this message was not sent.',
-      rejection: { kind: 'attachmentInvalid' }
+      rejection: { kind: 'attachmentInvalid', attachment: { reason: 'tooMany', limit: 20 } }
     })
     expect(session.connection.send).not.toHaveBeenCalled()
   })
@@ -46,7 +46,10 @@ describe('Claude structured dispatch attachment rejections', () => {
         state: 'rejected',
         reason:
           'The images on this message add up to more than 20 MB, so the message was not sent.',
-        rejection: { kind: 'attachmentInvalid' }
+        rejection: {
+          kind: 'attachmentInvalid',
+          attachment: { reason: 'totalTooLarge', limit: 20 * 1024 * 1024 }
+        }
       })
       expect(session.connection.send).not.toHaveBeenCalled()
     } finally {
@@ -66,11 +69,35 @@ describe('Claude structured dispatch attachment rejections', () => {
         dispatchClaudeTurn(session, { clientMessageId: 'client-1', body })
       ).resolves.toEqual({
         state: 'rejected',
-        reason:
-          'An image on this message is empty or larger than 5 MB, so the message was not sent.',
-        rejection: { kind: 'attachmentInvalid' }
+        reason: 'An image on this message is larger than 5 MB, so the message was not sent.',
+        rejection: {
+          kind: 'attachmentInvalid',
+          attachment: { reason: 'tooLarge', limit: 5 * 1024 * 1024 }
+        }
       })
       expect(session.connection.send).not.toHaveBeenCalled()
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+
+  it('names an empty image as empty, not as too large', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'orca-claude-image-'))
+    try {
+      const path = join(directory, 'empty.png')
+      await writeFile(path, Buffer.alloc(0))
+      const session = sessionFor()
+
+      await expect(
+        dispatchClaudeTurn(session, {
+          clientMessageId: 'client-1',
+          body: userMessage([{ type: 'image-ref', path }])
+        })
+      ).resolves.toEqual({
+        state: 'rejected',
+        reason: 'An image on this message is empty, so the message was not sent.',
+        rejection: { kind: 'attachmentInvalid', attachment: { reason: 'empty' } }
+      })
     } finally {
       await rm(directory, { recursive: true, force: true })
     }
@@ -92,7 +119,7 @@ describe('Claude structured dispatch attachment rejections', () => {
         state: 'rejected',
         reason:
           'Claude accepts only PNG, JPEG, GIF, and WebP images, so this message was not sent.',
-        rejection: { kind: 'attachmentInvalid' }
+        rejection: { kind: 'attachmentInvalid', attachment: { reason: 'unsupportedType' } }
       })
     } finally {
       await rm(directory, { recursive: true, force: true })
@@ -109,7 +136,7 @@ describe('Claude structured dispatch attachment rejections', () => {
     ).resolves.toEqual({
       state: 'rejected',
       reason: 'This message is empty, so it was not sent.',
-      rejection: { kind: 'hostFault' }
+      rejection: { kind: 'emptyMessage' }
     })
     await expect(
       dispatchClaudeTurn(session, {
@@ -118,7 +145,7 @@ describe('Claude structured dispatch attachment rejections', () => {
       })
     ).resolves.toEqual({
       state: 'rejected',
-      reason: "This message can't be sent to the agent.",
+      reason: "Orca ran into a problem, so this didn't go through. Try again.",
       rejection: { kind: 'hostFault' }
     })
     expect(session.connection.send).not.toHaveBeenCalled()

@@ -2,20 +2,18 @@
 //
 // The host writes each rejection twice: `reason`, a sentence (or, for the cases older clients
 // already recognise, one of the legacy markers below) that released clients print as it is, and
-// `rejection`, the typed fact newer clients read. `classifyDispatchRejection` is the only place a
-// reader judges either; the markers are exported for the writers that must keep writing them.
+// `rejection`, the typed fact newer clients read — both from `agentSessionFailureWords`.
+// `classifyDispatchRejection` is the only place a reader judges either.
 //
 // Every rejection makes the one claim that state exists to make: this message did not reach the
 // provider. None is ever re-delivered under its own id — `rejected` is terminal in the reducer — so
 // a retry rotates the client message id, which is a new message and cannot duplicate.
 
-import {
-  readAgentSessionFailureFact,
-  type AgentSessionFailureFact,
-  type AgentSessionFailureKind
-} from './agent-session-failure'
+import { readAgentSessionFailureFact, type AgentSessionFailureKind } from './agent-session-failure'
 import type { AgentJournalSubmission } from './agent-session-journal-types'
 
+/** Orca could not hand the message over. Written bare: released clients hide it, and the error
+ *  that once followed it belongs in the log. Rows from older hosts carry `: <error>` after it. */
 export const DISPATCH_REJECTED_WRITE_FAILED = 'provider_write_failed'
 
 /** Local admission refused the frame before any transport was involved. Two
@@ -34,51 +32,6 @@ export const DISPATCH_REJECTED_HOST_RESTARTED = 'host_restarted_before_delivery'
 /** Legacy marker: accepted, then the provider was closed before the message was handed to it.
  *  Read only, like the one above. */
 export const DISPATCH_REJECTED_PROVIDER_CLOSED = 'provider_closed_before_delivery'
-
-export function dispatchWriteFailureReason(error: unknown): string {
-  const detail = error instanceof Error ? error.message : String(error)
-  return `${DISPATCH_REJECTED_WRITE_FAILED}: ${detail}`
-}
-
-/** A rejection as the host writes it: the sentence (or legacy marker) released clients print, and
- *  the typed fact newer ones read. */
-export type AgentJournalDispatchRejection = {
-  reason: string
-  rejection: AgentSessionFailureFact
-}
-
-export const DISPATCH_REJECTION_CANCELLED: AgentJournalDispatchRejection = {
-  reason: DISPATCH_REJECTED_CANCELLED,
-  rejection: { kind: 'cancelled' }
-}
-
-export const DISPATCH_REJECTION_HOST_RESTARTED: AgentJournalDispatchRejection = {
-  reason: 'Orca restarted before this message was sent.',
-  rejection: { kind: 'hostRestarted' }
-}
-
-export const DISPATCH_REJECTION_PROVIDER_CLOSED: AgentJournalDispatchRejection = {
-  reason: 'The chat closed before this message was sent.',
-  rejection: { kind: 'chatClosed' }
-}
-
-/** Restart reconciliation proved the provider never took it. Released clients printed the old
- *  `not_delivered` marker as it was, so new rows carry a sentence instead. */
-export const DISPATCH_REJECTION_NOT_DELIVERED: AgentJournalDispatchRejection = {
-  reason: 'This message was not delivered. Send it again to continue.',
-  rejection: { kind: 'notDelivered' }
-}
-
-/** The marker keeps its Orca text after the prefix, as released clients expect; they hide it. */
-export function dispatchWriteFailureRejection(error: unknown): AgentJournalDispatchRejection {
-  return { reason: dispatchWriteFailureReason(error), rejection: { kind: 'writeFailed' } }
-}
-
-export function dispatchQueueFullRejection(
-  marker: typeof DISPATCH_REJECTED_QUEUE_FULL | typeof DISPATCH_REJECTED_CODEX_QUEUE_FULL
-): AgentJournalDispatchRejection {
-  return { reason: marker, rejection: { kind: 'queueFull' } }
-}
 
 /** True for the internal transport marker, false for a provider's own words. Legacy-reason half
  *  of `isWriteFailureSubmission`; readers go through that or the classifier. */
@@ -132,6 +85,7 @@ const KIND_CATEGORY = {
   providerRejected: 'content',
   attachmentInvalid: 'content',
   attachmentUnreadable: 'content',
+  emptyMessage: 'content',
   queueFull: 'transport',
   writeFailed: 'transport',
   hostFault: 'transport',

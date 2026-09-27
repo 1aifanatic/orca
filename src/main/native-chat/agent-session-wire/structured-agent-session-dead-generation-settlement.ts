@@ -14,17 +14,15 @@ import type { JournalLifecycleMutationInput } from '../agent-session-journal/jou
 import { cancelledJournalPromptBody } from '../agent-session-journal/journal-prompt-body-bounds'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import {
-  structuredAgentSessionStartFailure,
-  type AgentSessionFailureTextContext
-} from './structured-agent-session-failure-text'
+  agentSessionFailureWords,
+  type AgentSessionFailureWordsContext
+} from '../../../shared/agent-session-failure-words'
+import { structuredAgentSessionStartFailure } from './structured-agent-session-failure-text'
 import { structuredAgentSessionStartFailureRow } from './structured-agent-session-start-failure-row'
 import {
   runningTurnLifecycleRevisions,
   type StructuredAgentSessionTurnVerdict
 } from './structured-agent-session-stale-turn-verdict'
-
-export const UNEXPECTED_PROVIDER_EXIT_OUTCOME =
-  'The provider stopped while this response was in progress. You can continue in this conversation.'
 
 /** Bounds the exit reason a settlement retry keeps as the lease's log evidence; a provider
  *  diagnostic is held to the same cap. */
@@ -100,10 +98,10 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
   verdict: StructuredAgentSessionTurnVerdict
   pendingSubmissionReason: string
   showUnexpectedExitOutcome?: boolean
-  /** Why the provider stopped, as the adapter told it: recorded beside the row, never in its text. */
+  /** Why the provider stopped, as the adapter told it; the row's sentence is this fact's. */
   exitFailure?: AgentSessionFailureFact
   /** Who a failed start's sentence names. */
-  failureTextContext?: AgentSessionFailureTextContext
+  failureTextContext?: AgentSessionFailureWordsContext
   /** The provider never finished starting: the start that failed, keyed by the child's
    *  generation. Its row is the one the delivery loop writes for the same start. */
   exitedDuringStartup?: { generation: string | null }
@@ -123,10 +121,7 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
       ? structuredAgentSessionStartFailure({ exit: input.exitFailure }, input.failureTextContext)
       : null
     await (startupFailure
-      ? input.journal.rejectPendingSubmissions(input.fence, {
-          reason: startupFailure.text,
-          rejection: startupFailure.failure
-        })
+      ? input.journal.rejectPendingSubmissions(input.fence, startupFailure)
       : input.journal.markPendingSubmissionsUnknown(input.fence, input.pendingSubmissionReason))
     const items = input.journal.snapshot().items
     const mutations: JournalLifecycleMutationInput[] = []
@@ -144,8 +139,13 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
         identity: { provider: 'orca', clientMessageId: input.settlementId },
         body: {
           kind: 'status',
-          text: UNEXPECTED_PROVIDER_EXIT_OUTCOME,
-          failure: input.exitFailure ?? agentSessionFailureFact('providerExited')
+          ...agentSessionFailureWords(
+            input.exitFailure ?? agentSessionFailureFact('providerExited'),
+            {
+              ...input.failureTextContext,
+              surface: 'row'
+            }
+          )
         }
       })
     }

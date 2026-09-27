@@ -1,4 +1,4 @@
-import type { AgentJournalDispatchRejection } from '../../shared/structured-agent-session-dispatch-rejection'
+import type { AgentJournalDispatchRejection } from '../../shared/agent-session-failure-words'
 import type { AgentSessionFailureFact } from '../../shared/agent-session-failure'
 import type {
   AgentJournalItemIdentity,

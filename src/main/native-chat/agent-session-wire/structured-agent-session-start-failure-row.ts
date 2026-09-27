@@ -1,6 +1,5 @@
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import type { JournalLifecycleMutationInput } from '../agent-session-journal/journal-row-builders'
-import { boundJournalStatusText } from '../agent-session-journal/journal-prompt-body-bounds'
 import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
 import type { StructuredAgentSessionStartFailureWords } from './structured-agent-session-failure-text'
 
@@ -22,12 +21,8 @@ export function structuredAgentSessionStartFailureRow(
   return {
     kind: 'item',
     identity: { provider: 'orca', clientMessageId: `start-failure:${startKey}` },
-    body: {
-      kind: 'status',
-      text: boundJournalStatusText(words.text),
-      tone: 'error',
-      failure: words.failure
-    }
+    // The row repeats the sentence the start's rejected messages carry.
+    body: { kind: 'status', text: words.reason, tone: 'error', failure: words.rejection }
   }
 }
 
@@ -52,8 +47,8 @@ export async function recordStructuredAgentSessionStartFailure(
     mutations: [structuredAgentSessionStartFailureRow(startKey, failure)]
   })
   await session.journal.rejectQueuedSubmissions(session.fence, {
-    reason: failure.text,
-    rejection: failure.failure
+    reason: failure.reason,
+    rejection: failure.rejection
   })
 }
 

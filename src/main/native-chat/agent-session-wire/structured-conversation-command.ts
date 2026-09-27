@@ -23,8 +23,12 @@ import {
   agentSessionFailureFact,
   type AgentSessionFailureFact
 } from '../../../shared/agent-session-failure'
+import {
+  agentSessionFailureWords,
+  type AgentSessionFailureWordsContext
+} from '../../../shared/agent-session-failure-words'
 import { agentSessionRefusalReference } from '../../../shared/agent-session-wire-refusals'
-import { agentSessionFailureText } from './structured-agent-session-failure-text'
+import { structuredAgentSessionFailureWordsContext } from './structured-agent-session-send-preparation'
 import type { StructuredSessionCompactionResult } from './structured-session-compaction'
 
 /** A compaction that did not succeed, keeping only what the provider wrote for a person. */
@@ -43,15 +47,20 @@ function compactionFailure(
 
 function compactionStatusBody(failure: AgentSessionFailureFact | undefined) {
   return failure
-    ? { kind: 'status' as const, text: agentSessionFailureText(failure), failure }
+    ? { kind: 'status' as const, ...agentSessionFailureWords(failure, { surface: 'row' }) }
     : { kind: 'status' as const, text: 'Conversation compacted.' }
 }
 
-function compactionCommandFailure(failure: AgentSessionFailureFact | undefined): {
-  error?: string
-  failure?: AgentSessionFailureFact
-} {
-  return failure ? { error: agentSessionFailureText(failure).slice(0, 4096), failure } : {}
+/** A command's `error` is the sentence its row shows. */
+function conversationCommandFailure(
+  failure: AgentSessionFailureFact | undefined,
+  context: AgentSessionFailureWordsContext = {}
+) {
+  if (!failure) {
+    return {}
+  }
+  const words = agentSessionFailureWords(failure, { ...context, surface: 'row' })
+  return { error: words.text, failure: words.failure }
 }
 
 export type ConversationCommandParams = {
@@ -186,10 +195,12 @@ export function runStructuredConversationCommand(
                 replacementSessionId: undefined,
                 phase: 'committed' as const,
                 state: 'completed' as const,
-                error: "The new conversation couldn't start.",
-                failure: agentSessionFailureFact('restartFailed', {
-                  refusal: agentSessionRefusalReference(acquired.refusal)
-                })
+                ...conversationCommandFailure(
+                  agentSessionFailureFact('restartFailed', {
+                    refusal: agentSessionRefusalReference(acquired.refusal)
+                  }),
+                  structuredAgentSessionFailureWordsContext(record)
+                )
               }
               await store.setConversationCommand(sessionId, ctx.fence, failed)
               return { ok: true, value: failed }
@@ -234,7 +245,7 @@ export function runStructuredConversationCommand(
                         ...prepared,
                         phase: 'committed',
                         state: 'completed',
-                        ...compactionCommandFailure(late)
+                        ...conversationCommandFailure(late)
                       })
                       await store.recordOperationOutcome({
                         callerKey: caller.callerKey,
@@ -265,7 +276,7 @@ export function runStructuredConversationCommand(
             ...prepared,
             phase: 'committed' as const,
             state: 'completed' as const,
-            ...compactionCommandFailure(failure)
+            ...conversationCommandFailure(failure)
           }
           await store.setConversationCommand(sessionId, ctx.fence, completed)
           return { ok: true, value: completed }

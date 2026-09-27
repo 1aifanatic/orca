@@ -35,6 +35,7 @@ import {
   type AgentSessionRefusalCause
 } from '../../../shared/agent-session-wire-refusals'
 import type { AgentSessionFailureFact } from '../../../shared/agent-session-failure'
+import type { AgentJournalDispatchRejection } from '../../../shared/agent-session-failure-words'
 import type { AgentSessionPromptResponse } from '../../../shared/agent-session-question-answer'
 import type { ProviderHistoryWindow } from '../agent-session-journal/journal-submission-reconciler'
 import type { StructuredAgentSessionEventSink } from './structured-agent-session-event-sink'
@@ -132,7 +133,8 @@ export type AgentSessionDispatchOutcome =
    * anything and never promotes this to `unknown`.
    */
   | { state: 'admitted' }
-  | { state: 'rejected'; reason: string; rejection: AgentSessionFailureFact }
+  /** Words from `agentSessionFailureWords`, never written by hand. */
+  | ({ state: 'rejected' } & AgentJournalDispatchRejection)
   /** The call did not settle. Never re-send on the user's behalf. */
   | { state: 'unknown'; reason: string }
 

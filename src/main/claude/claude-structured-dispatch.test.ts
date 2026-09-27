@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { dispatchClaudeTurn, resolveClaudeReplayTurn } from './claude-structured-dispatch'
-import { readClaudeImage } from './claude-structured-dispatch-content'
+import { ClaudeDispatchContentError, readClaudeImage } from './claude-structured-dispatch-content'
 import { claudeUnwrittenUserMessageError } from './claude-agent-sdk-user-message-queue'
 import type { ClaudeSession } from './claude-structured-session-state'
 import {
@@ -381,7 +381,7 @@ describe('Claude structured dispatch image limits', () => {
       })
     ).resolves.toEqual({
       state: 'rejected',
-      reason: 'provider_write_failed: broken pipe',
+      reason: 'provider_write_failed',
       rejection: { kind: 'writeFailed' }
     })
     expect(session.dispatchWaiters).toEqual([firstWaiter])
@@ -396,6 +396,7 @@ describe('Claude structured dispatch image limits', () => {
   })
 
   it('does not let a provably unwritten attempt block retry correlation', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const send = vi
       .fn()
       .mockRejectedValueOnce(claudeUnwrittenUserMessageError(new Error('broken pipe')))
@@ -407,9 +408,15 @@ describe('Claude structured dispatch image limits', () => {
       dispatchClaudeTurn(session, { clientMessageId: 'client-1', body })
     ).resolves.toEqual({
       state: 'rejected',
-      reason: 'provider_write_failed: broken pipe',
+      reason: 'provider_write_failed',
       rejection: { kind: 'writeFailed' }
     })
+    // The row keeps only the marker; why the write failed goes to the log.
+    expect(warn).toHaveBeenCalledWith(
+      '[claude-dispatch] message could not be handed to Claude:',
+      expect.objectContaining({ message: expect.stringContaining('broken pipe') })
+    )
+    warn.mockRestore()
     expect(session.dispatchWaiters).toHaveLength(0)
     expect(session.retiredDispatchWaiters).toHaveLength(0)
 
@@ -769,8 +776,11 @@ describe('Claude structured dispatch image limits', () => {
       read,
       close: vi.fn().mockResolvedValue(undefined)
     } as never)
-    await expect(readClaudeImage('/controlled/growing.png', open)).rejects.toThrow(
-      `Claude image must be a non-empty file no larger than ${5 * 1024 * 1024} bytes`
+    // It changed while Orca read it: unreadable, never a limit the image did not break.
+    const rejected = await readClaudeImage('/controlled/growing.png', open).catch(
+      (error: unknown) => error
     )
+    expect(rejected).not.toBeInstanceOf(ClaudeDispatchContentError)
+    expect(rejected).toMatchObject({ message: 'Claude image changed while it was read' })
   })
 })

@@ -11,7 +11,7 @@ import {
   type AgentSessionWireRefusal
 } from '../../../shared/agent-session-wire'
 import { TUI_AGENT_DISPLAY_NAMES } from '../../../shared/tui-agent-display-names'
-import type { AgentSessionFailureTextContext } from './structured-agent-session-failure-text'
+import type { AgentSessionFailureWordsContext } from '../../../shared/agent-session-failure-words'
 import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
 import {
   AGENT_SESSION_NOT_ATTACHED,
@@ -76,8 +76,8 @@ export async function openConversationForWrite(
 }
 
 /** Who a failure sentence names: the chat's agent, when the record says. */
-export function structuredAgentSessionFailureTextContext(
+export function structuredAgentSessionFailureWordsContext(
   record: AgentSessionRecord | null
-): AgentSessionFailureTextContext {
+): AgentSessionFailureWordsContext {
   return record ? { agentName: TUI_AGENT_DISPLAY_NAMES[record.provider] } : {}
 }

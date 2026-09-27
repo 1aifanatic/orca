@@ -24,6 +24,8 @@ import { OrcaRuntimeService } from '../../orca-runtime'
 import type { RpcResponse } from '../core'
 import { RpcDispatcher } from '../dispatcher'
 import { STRUCTURED_AGENT_SESSION_METHODS } from './structured-agent-session'
+import { agentSessionFailureFact } from '../../../../shared/agent-session-failure'
+import { agentSessionFailureWords } from '../../../../shared/agent-session-failure-words'
 
 const CONNECTION = 'connection-1'
 const GRACE_MS = 5
@@ -84,8 +86,9 @@ beforeEach(async () => {
       closeSession,
       dispatch: async () => ({
         state: 'rejected',
-        reason: 'unused',
-        rejection: { kind: 'providerRejected' }
+        ...agentSessionFailureWords(agentSessionFailureFact('providerRejected'), {
+          surface: 'rejection'
+        })
       }),
       cancelTurn: async () => ({ cancelled: false }),
       answerPrompt: async () => undefined,

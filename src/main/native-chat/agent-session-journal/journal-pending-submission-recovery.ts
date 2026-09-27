@@ -1,4 +1,4 @@
-import type { AgentJournalDispatchRejection } from '../../../shared/structured-agent-session-dispatch-rejection'
+import type { AgentJournalDispatchRejection } from '../../../shared/agent-session-failure-words'
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import { DISPATCH_DOUBT_HOST_RESTARTED } from './journal-dispatch-doubt-reasons'

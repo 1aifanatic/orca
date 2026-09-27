@@ -1,7 +1,6 @@
 // Wiring the restart reconciler: what provider history is allowed to decide
 // about a submission the crash boundary could only doubt.
 
-import { DISPATCH_REJECTION_NOT_DELIVERED } from '../../../shared/structured-agent-session-dispatch-rejection'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -16,6 +15,8 @@ import { digestPayload } from './journal-payload-bounds'
 import { reconcileJournalSubmissionsAgainstHistory } from './journal-restart-reconciliation'
 import type { ProviderHistoryItem, ProviderHistoryWindow } from './journal-submission-reconciler'
 import { createTrackedJournalOpener } from './journal-store-test-open'
+import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
+import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 
 const IDENTITY: AgentSessionJournalIdentity = {
   sessionId: 'session-1',
@@ -124,7 +125,10 @@ describe('reconcileJournalSubmissionsAgainstHistory', () => {
     const submission = journal.submissions()[0]
     expect(submission?.dispatchState).toBe('rejected')
     // A sentence, since released clients print the reason as it is, and the fact beside it.
-    expect(submission?.reason).toBe(DISPATCH_REJECTION_NOT_DELIVERED.reason)
+    expect(submission?.reason).toBe(
+      agentSessionFailureWords(agentSessionFailureFact('notDelivered'), { surface: 'rejection' })
+        .reason
+    )
     expect(submission?.rejection).toEqual({ kind: 'notDelivered' })
   })
 

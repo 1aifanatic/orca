@@ -13,9 +13,11 @@ import type { AgentSessionJournal } from '../agent-session-journal/journal-store
 import {
   captureUnfinishedStructuredAgentSessionWork,
   settleStructuredAgentSessionDeadGeneration,
-  UNEXPECTED_PROVIDER_EXIT_OUTCOME,
   unfinishedStructuredAgentSessionWorkWasInterrupted
 } from './structured-agent-session-dead-generation-settlement'
+
+const UNEXPECTED_PROVIDER_EXIT_OUTCOME =
+  'The provider stopped while this response was in progress. You can continue in this conversation.'
 
 const SESSION = 'session-dead-generation'
 const THREAD = 'thread-1'
@@ -172,6 +174,33 @@ describe('dead structured-session generation settlement', () => {
     expect(statuses[0]?.failure?.kind).toBe('providerExited')
     expect(statuses[0]?.failure?.detail?.audience).toBe('log')
     expect(statuses[0]?.failure?.detail?.text.length).toBe(MAX_PROVIDER_DIAGNOSTIC_CHARS)
+  })
+
+  it("words Orca's own fault as Orca's, never as the provider stopping", async () => {
+    await seedUnfinishedWork()
+
+    await settleStructuredAgentSessionDeadGeneration({
+      journal,
+      sessionId: SESSION,
+      fence: 7,
+      settlementId: `provider-exit:${SESSION}:7:generation-1`,
+      pendingSubmissionReason: 'provider_exited_before_acknowledgement',
+      verdict: { state: 'interrupted', completedAt: 1_000 },
+      showUnexpectedExitOutcome: true,
+      // Orca stopped the provider because its own journal failed.
+      exitFailure: agentSessionFailureFact('hostFault')
+    })
+
+    const statuses = journal
+      .snapshot()
+      .items.flatMap((item) => (item.body.kind === 'status' ? [item.body] : []))
+    expect(statuses).toEqual([
+      {
+        kind: 'status',
+        text: "Orca ran into a problem, so this didn't go through. Try again.",
+        failure: { kind: 'hostFault' }
+      }
+    ])
   })
 
   it('retries an already settled expected close without writing through a closed journal gate', async () => {

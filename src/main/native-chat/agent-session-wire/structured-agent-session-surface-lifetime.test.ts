@@ -24,7 +24,6 @@ import {
 } from './structured-agent-session-adapter'
 import type { StructuredAgentSessionEventSink } from './structured-agent-session-event-sink'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
-import { UNEXPECTED_PROVIDER_EXIT_OUTCOME } from './structured-agent-session-dead-generation-settlement'
 import type { StructuredAgentSessionStatusSink } from './structured-agent-session-status-feed'
 import {
   HOST_TEST_NOW as NOW,
@@ -35,6 +34,11 @@ import {
   hostTestOperationId,
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
+import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
+import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
+
+const UNEXPECTED_PROVIDER_EXIT_OUTCOME =
+  'The provider stopped while this response was in progress. You can continue in this conversation.'
 
 const CALLER = { callerKey: 'client-1' }
 const SURFACE = 'desktop-chat:1'
@@ -209,8 +213,9 @@ beforeEach(async () => {
   closeSession = vi.fn(async () => true)
   dispatch = vi.fn(async () => ({
     state: 'rejected' as const,
-    reason: 'unused',
-    rejection: { kind: 'providerRejected' as const }
+    ...agentSessionFailureWords(agentSessionFailureFact('providerRejected'), {
+      surface: 'rejection'
+    })
   }))
   store = await AgentSessionRecordStore.open({ directory: join(root, 'store'), hostId: 'local' })
   openHost()

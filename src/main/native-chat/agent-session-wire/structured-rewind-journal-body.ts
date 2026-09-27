@@ -1,4 +1,3 @@
-import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { isAdmissibleAgentJournalItemBody } from '../../../shared/agent-session-journal-schemas'
 import {
   AGENT_JOURNAL_TURN_LIFECYCLE_STATES,
@@ -14,10 +13,10 @@ type StoredBody = AgentSessionRewindRecord['retained'][number]['body']
  *  and never as its stored JSON, which is Orca's record, not something a person reads. */
 export function restoreRewindJournalBody(body: StoredBody): AgentJournalItemBody {
   let normalized: unknown = body
+  // A placeholder, not a failure anyone can act on, so it carries no fact.
   const fallback = () => ({
     kind: 'status',
-    text: 'Orca could not show this item after the rewind.',
-    failure: agentSessionFailureFact('hostFault')
+    text: 'Orca could not show this item after the rewind.'
   })
   if (body.kind === 'message') {
     normalized = {

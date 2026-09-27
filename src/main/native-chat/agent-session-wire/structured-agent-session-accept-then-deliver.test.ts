@@ -10,11 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vite
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionSubscribeEvent } from '../../../shared/agent-session-wire'
-import {
-  DISPATCH_REJECTED_CANCELLED,
-  DISPATCH_REJECTION_HOST_RESTARTED,
-  DISPATCH_REJECTION_PROVIDER_CLOSED
-} from '../../../shared/structured-agent-session-dispatch-rejection'
+import { DISPATCH_REJECTED_CANCELLED } from '../../../shared/structured-agent-session-dispatch-rejection'
 import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import { journalDirectoryFor } from '../agent-session-journal/journal-paths'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
@@ -36,6 +32,8 @@ import {
   hostTestOperationId,
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
+import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
+import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 
 const CALLER = { callerKey: 'client-1' }
 
@@ -462,7 +460,9 @@ describe('what an earlier host process left behind', () => {
 
     expect(submission('queued')).toMatchObject({
       dispatchState: 'rejected',
-      ...DISPATCH_REJECTION_HOST_RESTARTED
+      ...agentSessionFailureWords(agentSessionFailureFact('hostRestarted'), {
+        surface: 'rejection'
+      })
     })
     expect(dispatch).not.toHaveBeenCalled()
   })
@@ -599,7 +599,7 @@ describe('an eviction between acceptance and handover', () => {
 
     expect(await reopened(id)).toMatchObject({
       dispatchState: 'rejected',
-      ...DISPATCH_REJECTION_PROVIDER_CLOSED
+      ...agentSessionFailureWords(agentSessionFailureFact('chatClosed'), { surface: 'rejection' })
     })
     expect(dispatch).not.toHaveBeenCalled()
   })
@@ -623,7 +623,7 @@ describe('an eviction between acceptance and handover', () => {
 
     expect(await reopened(queued)).toMatchObject({
       dispatchState: 'rejected',
-      ...DISPATCH_REJECTION_PROVIDER_CLOSED
+      ...agentSessionFailureWords(agentSessionFailureFact('chatClosed'), { surface: 'rejection' })
     })
     expect(submission(handed)).toMatchObject({ dispatchState: 'unknown' })
     expect(dispatch).toHaveBeenCalledTimes(1)

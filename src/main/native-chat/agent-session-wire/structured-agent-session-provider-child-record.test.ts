@@ -12,10 +12,7 @@ import type {
   AgentSessionStatusSummary,
   AgentSessionSubscribeEvent
 } from '../../../shared/agent-session-wire'
-import {
-  DISPATCH_REJECTED_CANCELLED,
-  DISPATCH_REJECTION_PROVIDER_CLOSED
-} from '../../../shared/structured-agent-session-dispatch-rejection'
+import { DISPATCH_REJECTED_CANCELLED } from '../../../shared/structured-agent-session-dispatch-rejection'
 import type { AgentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
@@ -30,6 +27,8 @@ import {
   hostTestOperationId,
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
+import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
+import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 
 const CALLER = { callerKey: 'client-1' }
 
@@ -568,7 +567,7 @@ describe('a quit with a message still queued', () => {
 
     expect(await afterRelaunch(id)).toMatchObject({
       dispatchState: 'rejected',
-      ...DISPATCH_REJECTION_PROVIDER_CLOSED
+      ...agentSessionFailureWords(agentSessionFailureFact('chatClosed'), { surface: 'rejection' })
     })
   })
 
@@ -596,7 +595,7 @@ describe('a quit with a message still queued', () => {
     expect(dispatch).not.toHaveBeenCalled()
     expect(await afterRelaunch(id)).toMatchObject({
       dispatchState: 'rejected',
-      ...DISPATCH_REJECTION_PROVIDER_CLOSED
+      ...agentSessionFailureWords(agentSessionFailureFact('chatClosed'), { surface: 'rejection' })
     })
   })
 })

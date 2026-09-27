@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest'
 import { AgentSessionRewindRecordSchema } from '../../../shared/agent-session-rewind'
 import { restoreRewindJournalBody } from './structured-rewind-journal-body'
 
-/** A row this build cannot place: still a row, never its stored JSON. */
+/** A row this build cannot place: still a row, never its stored JSON, and not a failure — a
+ *  hostFault's "Try again" would be false for a placeholder. */
 const UNPLACEABLE = {
   kind: 'status',
-  text: 'Orca could not show this item after the rewind.',
-  failure: { kind: 'hostFault' }
+  text: 'Orca could not show this item after the rewind.'
 }
 
 describe('rewind recovery of newer durable records', () => {

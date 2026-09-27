@@ -33,6 +33,8 @@ import {
   HOST_TEST_THREAD as THREAD,
   hostTestMessage
 } from './structured-agent-session-host-test-data'
+import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
+import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 
 afterEach(() => vi.useRealTimers())
 
@@ -457,8 +459,9 @@ it('retains acquisition through slow continuation settlement, then releases it',
   expect(closeSession).not.toHaveBeenCalled()
   settlement.resolve({
     state: 'rejected',
-    reason: 'provider refused',
-    rejection: { kind: 'providerRejected' }
+    ...agentSessionFailureWords(agentSessionFailureFact('providerRejected'), {
+      surface: 'rejection'
+    })
   })
   expect((await continuing).continued).toMatchObject([{ outcome: 'refused' }])
   expect(host.isHeld(SESSION)).toBe(false)

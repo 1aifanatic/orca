@@ -272,7 +272,16 @@ describe('host conversation commands', () => {
     })
     expect(await host.conversationCommand(caller, commandParams('clear'))).toMatchObject({
       ok: true,
-      value: { state: 'completed', replacementSessionId: undefined, error: expect.any(String) }
+      value: {
+        state: 'completed',
+        replacementSessionId: undefined,
+        // The refusal's message is Orca's log text; the result words its situation.
+        error: "Codex couldn't restart. Start a new chat to continue.",
+        failure: {
+          kind: 'restartFailed',
+          refusal: { code: 'structured_agent_session_unsupported' }
+        }
+      }
     })
     expect(store.listVisibleSessionIds()).toEqual([HOST_TEST_SESSION])
     expect(acquisitions).toBe(1)

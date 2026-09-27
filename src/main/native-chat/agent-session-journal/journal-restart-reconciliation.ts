@@ -10,7 +10,8 @@
 // through the user's Retry, which rotates the client message id; Orca still
 // never puts a message back on the wire on the user's behalf.
 
-import { DISPATCH_REJECTION_NOT_DELIVERED } from '../../../shared/structured-agent-session-dispatch-rejection'
+import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
+import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import type {
   AgentJournalMessageItem,
   AgentJournalSubmission
@@ -117,7 +118,9 @@ export async function reconcileJournalSubmissionsAgainstHistory(input: {
         : {
             clientMessageId: outcome.clientMessageId,
             state: 'rejected',
-            ...DISPATCH_REJECTION_NOT_DELIVERED,
+            ...agentSessionFailureWords(agentSessionFailureFact('notDelivered'), {
+              surface: 'rejection'
+            }),
             fence: input.fence,
             recovered: true
           }

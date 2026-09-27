@@ -22,9 +22,10 @@ import type {
   AgentSessionThreadGoalResult
 } from '../../../shared/agent-session-wire'
 import {
-  DISPATCH_REJECTION_CANCELLED,
+  agentSessionFailureWords,
   type AgentJournalDispatchRejection
-} from '../../../shared/structured-agent-session-dispatch-rejection'
+} from '../../../shared/agent-session-failure-words'
+import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import type { AgentSessionPromptRequest } from './structured-agent-session-turns-prompt'
 import { threadGoalPlan } from './structured-agent-session-thread-goal'
 import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
@@ -157,7 +158,7 @@ export function cancelStructuredAgentSessionTurn(
         // Stop withdraws every queued message first, whatever the start or the child is doing.
         const withdrawn = await ctx.journal.rejectQueuedSubmissions(
           ctx.fence,
-          DISPATCH_REJECTION_CANCELLED
+          agentSessionFailureWords(agentSessionFailureFact('cancelled'), { surface: 'rejection' })
         )
         const child = context.sessions.get(ctx.sessionId)?.child
         if (child?.phase === 'starting') {

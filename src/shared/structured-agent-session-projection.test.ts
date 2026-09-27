@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { AGENT_STATUS_MAX_FIELD_LENGTH } from './agent-status-field-normalization'
+import { agentSessionFailureWords } from './agent-session-failure-words'
 import type { AgentJournalRenderItem, AgentJournalSubmission } from './agent-session-journal-types'
 import { parsePaneKey } from './stable-pane-id'
 import {
@@ -104,15 +105,16 @@ describe('structured agent session status projection', () => {
   })
 
   it("forwards a status row's failure fact and drops one this build cannot place", () => {
-    const failure = {
-      kind: 'providerExited' as const,
-      detail: { text: 'stderr tail', audience: 'log' as const }
-    }
+    const words = agentSessionFailureWords(
+      {
+        kind: 'providerExited',
+        detail: { text: 'stderr tail', audience: 'log' }
+      },
+      { surface: 'row' }
+    )
     expect(
-      projectStructuredItemToNativeChat(
-        item('exit', 1, { kind: 'status', text: 'Stopped.', failure })
-      )?.blocks[0]
-    ).toEqual({ type: 'text', text: 'Stopped.', failure })
+      projectStructuredItemToNativeChat(item('exit', 1, { kind: 'status', ...words }))?.blocks[0]
+    ).toEqual({ type: 'text', ...words })
     const future = item('future', 2, { kind: 'status', text: 'Stopped.' })
     // A newer host's kind reads as no fact, so the row keeps its text and nothing else.
     Object.assign(future.body, { failure: { kind: 'futureKind' } })

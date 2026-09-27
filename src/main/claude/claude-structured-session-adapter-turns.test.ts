@@ -70,7 +70,7 @@ describe('ClaudeStructuredSessionAdapter turns and controls', () => {
       })
     ).resolves.toEqual({
       state: 'rejected',
-      reason: 'provider_write_failed: broken pipe',
+      reason: 'provider_write_failed',
       rejection: { kind: 'writeFailed' }
     })
   })

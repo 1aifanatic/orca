@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
-import { dispatchWriteFailureReason } from '../../../../shared/structured-agent-session-dispatch-rejection'
+import { DISPATCH_REJECTED_WRITE_FAILED } from '../../../../shared/structured-agent-session-dispatch-rejection'
 
 const hostRef: { current: unknown } = { current: null }
 const createSpy = vi.fn()
@@ -340,7 +340,7 @@ describe('structured worker dispatch preamble', () => {
     const error = await send(
       hostWithSubmission({
         dispatchState: 'rejected',
-        reason: dispatchWriteFailureReason(new Error('broken pipe'))
+        reason: DISPATCH_REJECTED_WRITE_FAILED
       })
     ).catch((thrown: unknown) => thrown)
     expect((error as { code?: string }).code).toBe('dispatch_preamble_undelivered')

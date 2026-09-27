@@ -8,7 +8,6 @@ import type { AgentSessionFailureFact } from './agent-session-failure'
 import type { AgentJournalSubmission } from './agent-session-journal-types'
 import type { AgentSessionMutationResult, AgentSessionSendResult } from './agent-session-wire'
 import {
-  dispatchWriteFailureReason,
   DISPATCH_REJECTED_CANCELLED,
   DISPATCH_REJECTED_QUEUE_FULL
 } from './structured-agent-session-dispatch-rejection'
@@ -72,7 +71,7 @@ describe('what a rejection shows the user', () => {
   })
 
   it('never puts the transport marker on screen', () => {
-    const shown = notice(dispatchWriteFailureReason(new Error('broken pipe')))
+    const shown = notice('provider_write_failed: broken pipe')
     // `provider_write_failed: broken pipe` names nothing a person can act on.
     expect(shown).not.toContain('provider_write_failed')
     expect(shown).not.toContain('broken pipe')
