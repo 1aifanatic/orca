@@ -114,8 +114,8 @@ export class StructuredAgentSessionHost {
       serialize: (sessionId, task) => this.serialize(sessionId, task),
       // Quit drains a delivery start before it evicts, so the child it produces is stopped.
       trackStart: (start) => this.tasks.trackAttach(start),
-      ensureProviderChild: (sessionId) =>
-        ensureStructuredAgentSessionAgent(this.attachContext(), sessionId),
+      ensureProviderChild: (sessionId, startedFor) =>
+        ensureStructuredAgentSessionAgent(this.attachContext(), sessionId, startedFor),
       reset: (sessionId, journal, reset) =>
         this.subscribers.reset(
           sessionId,
@@ -329,4 +329,14 @@ export class StructuredAgentSessionHost {
 
   /** Turns that settle from now on. Live-only: nothing missed is replayed. */
   subscribeTurnCompletions = this.clientDelivery.subscribeTurnCompletions
+
+  /** Test rigs only: the collaborators the host builds itself, typed, for tests that drive them. */
+  collaboratorsForTests = () => ({
+    sessions: this.sessions,
+    subscribers: this.subscribers,
+    runtimeState: this.runtimeState,
+    conversationDelivery: this.conversationDelivery,
+    lifetime: this.lifetime,
+    serialize: this.serialize
+  })
 }
