@@ -32,9 +32,9 @@ export class OrcaRuntimeWithHasExactPersistedTerminalSurfaceIdentity extends Orc
   /** The host's saved session, when it still lists `tabId` under this worktree. */
   protected getPersistedSessionListingTerminalTab(
     worktreeId: string,
-    tabId: string
+    tabId: string,
+    session = this.getWorkspaceSessionForWorktree(worktreeId)
   ): WorkspaceSessionState | null {
-    const session = this.getWorkspaceSessionForWorktree(worktreeId)
     const sessionWorktreeId = session ? resolveTerminalSessionWorktreeId(session, worktreeId) : null
     return session &&
       sessionWorktreeId &&
@@ -48,8 +48,13 @@ export class OrcaRuntimeWithHasExactPersistedTerminalSurfaceIdentity extends Orc
     tabId: string,
     leafId: string
   ): boolean {
-    const layout = this.getPersistedSessionListingTerminalTab(worktreeId, tabId)
-      ?.terminalLayoutsByTabId[tabId]
+    // Why own partition: emptying a rotated runtime partition re-routes reads to an older copy
+    // that can still list a surface retirement just removed.
+    const layout = this.getPersistedSessionListingTerminalTab(
+      worktreeId,
+      tabId,
+      this.getOwnWorkspaceSessionForWorktree(worktreeId)
+    )?.terminalLayoutsByTabId[tabId]
     return Boolean(layout && layoutContainsLeafId(layout.root, leafId))
   }
 
