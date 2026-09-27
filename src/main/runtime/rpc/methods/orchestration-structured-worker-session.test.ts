@@ -323,15 +323,17 @@ describe('structured worker dispatch preamble', () => {
         reason: 'The provider stopped before this message was sent.'
       })
     ).catch((thrown: unknown) => thrown)
-    expect((sentence as Error).message).toBe(
-      'The dispatch preamble was not delivered: The provider stopped before this message was sent.'
-    )
+    expect(sentence).toMatchObject({
+      message:
+        'The dispatch preamble was not delivered: The provider stopped before this message was sent.'
+    })
     const marker = await send(
       hostWithSubmission({ dispatchState: 'unknown', reason: 'provider child exited' })
     ).catch((thrown: unknown) => thrown)
-    expect((marker as Error).message).toBe(
-      'The dispatch preamble was submitted but not acknowledged (unknown): provider child exited.'
-    )
+    expect(marker).toMatchObject({
+      message:
+        'The dispatch preamble was submitted but not acknowledged (unknown): provider child exited.'
+    })
   })
 
   it('reports a refused transport write as undelivered, never as unknown', async () => {

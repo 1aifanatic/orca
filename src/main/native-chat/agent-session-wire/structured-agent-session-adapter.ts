@@ -52,6 +52,15 @@ export class AgentSessionAcquisitionRefusal extends Error {
     super(message)
     this.name = 'AgentSessionAcquisitionRefusal'
   }
+
+  /** The conversation's history is more than this host can restore. */
+  static historyTooLarge(message: string): AgentSessionAcquisitionRefusal {
+    return new AgentSessionAcquisitionRefusal(
+      message,
+      'agent_session_operation_invalid',
+      'historyTooLarge'
+    )
+  }
 }
 
 export class AgentSessionPromptUnavailableError extends Error {

@@ -179,26 +179,19 @@ export function agentSessionFailureSentence(
   return sentence(context, fact, surface)
 }
 
-/** The marker released clients hide, for the rejections that had one before rows carried a fact.
+/** The markers released clients hide, for the rejections that had one before rows carried a fact.
  *  A write failure is the bare marker: its error belongs in the log. */
-function legacyRejectionMarker(
-  fact: AgentSessionFailureFact,
-  context: AgentSessionFailureWordsContext
-): string | undefined {
-  switch (fact.kind) {
-    case 'cancelled':
-      return DISPATCH_REJECTED_CANCELLED
-    case 'writeFailed':
-      return DISPATCH_REJECTED_WRITE_FAILED
-    case 'queueFull':
-      return context.provider === 'codex'
-        ? DISPATCH_REJECTED_CODEX_QUEUE_FULL
-        : context.provider === 'claude'
-          ? DISPATCH_REJECTED_QUEUE_FULL
-          : undefined
-    default:
-      return undefined
-  }
+const LEGACY_REJECTION_MARKERS: Partial<
+  Record<AgentSessionFailureKind, (context: AgentSessionFailureWordsContext) => string | undefined>
+> = {
+  cancelled: () => DISPATCH_REJECTED_CANCELLED,
+  writeFailed: () => DISPATCH_REJECTED_WRITE_FAILED,
+  queueFull: ({ provider }) =>
+    provider === 'codex'
+      ? DISPATCH_REJECTED_CODEX_QUEUE_FULL
+      : provider === 'claude'
+        ? DISPATCH_REJECTED_QUEUE_FULL
+        : undefined
 }
 
 /** The words a status row reporting this fact records. */
@@ -216,8 +209,9 @@ export function agentSessionFailureWords(
   context: AgentSessionFailureWordsContext & { surface: AgentSessionFailureSurface }
 ): AgentSessionFailureRowWords | AgentJournalDispatchRejection {
   const words =
-    (context.surface === 'rejection' ? legacyRejectionMarker(fact, context) : undefined) ??
-    agentSessionFailureSentence(fact, context.surface, context)
+    (context.surface === 'rejection'
+      ? LEGACY_REJECTION_MARKERS[fact.kind]?.(context)
+      : undefined) ?? agentSessionFailureSentence(fact, context.surface, context)
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: this is the one constructor of the brand; `words` came from the table or a legacy marker for `fact`.
   const sentence = words as AgentSessionFailureSentence
   return context.surface === 'row'
