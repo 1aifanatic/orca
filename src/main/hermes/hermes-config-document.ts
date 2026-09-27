@@ -124,7 +124,7 @@ export function updateHermesPluginDocument(
     if ('disabled' in nextPlugins) {
       updateStringSequence(plugins, 'disabled', nextPlugins.disabled)
     }
-    const output = applyHermesPluginSourceEdits(content, document.toString({ lineWidth: 0 }))
+    const output = applyHermesPluginSourceEdits(content, document)
     // Re-parse to reject edits that would change any unrelated alias-resolved value.
     const verified = parseDocument(output)
     if (

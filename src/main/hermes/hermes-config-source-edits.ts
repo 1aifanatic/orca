@@ -1,6 +1,6 @@
 import { isDeepStrictEqual } from 'node:util'
-import { isMap, isNode, isSeq, parseDocument } from 'yaml'
-import type { Node, YAMLMap } from 'yaml'
+import { Document, isMap, isNode, isSeq, parseDocument } from 'yaml'
+import type { Node, YAMLMap, YAMLSeq } from 'yaml'
 
 type SourceEdit = { start: number; end: number; text: string }
 
@@ -77,7 +77,8 @@ function insertPair(
   }
 }
 
-export function applyHermesPluginSourceEdits(source: string, printed: string): string {
+export function applyHermesPluginSourceEdits(source: string, document: Document): string {
+  const printed = document.toString({ lineWidth: 0 })
   const original = parseDocument(source, { keepSourceTokens: true })
   const updated = parseDocument(printed)
   if (!isMap(original.contents)) {
@@ -107,7 +108,11 @@ export function applyHermesPluginSourceEdits(source: string, printed: string): s
       if (previous === undefined) {
         edits.push(insertPair(source, printed, plugins, updatedPlugins, key, original.contents))
       } else if (isNode(previous) && !isDeepStrictEqual(previous.toJSON(), next.toJSON())) {
-        edits.push(replaceNode(source, printed, plugins, previous, next))
+        const edited = document.createNode(document.getIn(['plugins', key], true))
+        if (!isSeq(edited)) {
+          throw new Error('Missing edited Hermes plugin list')
+        }
+        edits.push(replaceNode(source, plugins, previous, edited))
       }
     }
   }
@@ -120,27 +125,30 @@ export function applyHermesPluginSourceEdits(source: string, printed: string): s
   return result
 }
 
-function replaceNode(
-  source: string,
-  printed: string,
-  parent: YAMLMap,
-  previous: Node,
-  next: Node
-): SourceEdit {
+function replaceNode(source: string, parent: YAMLMap, previous: Node, next: YAMLSeq): SourceEdit {
   const before = requireRange(previous)
-  const after = requireRange(next)
+  // Printing only this list keeps neighboring comments out of its replacement.
+  const isolated = new Document()
+  const sequence = next.clone()
+  if (!isSeq(sequence)) {
+    throw new Error('Missing cloned Hermes plugin list')
+  }
+  isolated.contents = sequence
+  // The original leading comment remains outside the replaced source range.
+  isolated.contents.commentBefore = undefined
+  let fragment = isolated.toString({ lineWidth: 0 })
+  if (!source.slice(before[0], before[2]).endsWith('\n') && !next.comment) {
+    fragment = fragment.replace(/\n$/, '')
+  }
   const column = columnAt(source, before[0])
   // Empty flow lists cannot use a block sequence's indentless position.
   const replacementColumn =
-    isSeq(previous) && !previous.flow && isSeq(next) && next.flow
+    isSeq(previous) && !previous.flow && (next.flow || next.items.length === 0)
       ? Math.max(column, columnAt(source, requireRange(parent)[0]) + 2)
       : column
-  const difference = replacementColumn - columnAt(printed, after[0])
   return {
     start: before[0],
     end: before[2],
-    text:
-      ' '.repeat(replacementColumn - column) +
-      indentFragment(printed.slice(after[0], after[2]), difference)
+    text: ' '.repeat(replacementColumn - column) + indentFragment(fragment, replacementColumn)
   }
 }
