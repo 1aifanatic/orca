@@ -3,6 +3,7 @@ import type { CodexAppServerLaunch } from './codex-app-server-connection'
 import {
   createProviderSpawnSpec,
   DEFAULT_PROVIDER_SUPERVISOR_GRACE_MS,
+  MAX_PROVIDER_SUPERVISOR_GRACE_MS,
   POSIX_PROVIDER_SUPERVISOR_SCRIPT,
   supervisedPosixLaunch
 } from './codex-app-server-posix-supervisor'
@@ -50,6 +51,15 @@ describe('structured provider supervision', () => {
     expect(POSIX_PROVIDER_SUPERVISOR_SCRIPT).toContain('providerGroupExists()')
     expect(POSIX_PROVIDER_SUPERVISOR_SCRIPT).toContain('finishWithProviderOutcome(code, signal)')
     expect(POSIX_PROVIDER_SUPERVISOR_SCRIPT).not.toContain('process.ppid === 1')
+  })
+
+  it('refuses a grace longer than recovery waits before SIGKILL', () => {
+    expect(() =>
+      supervisedPosixLaunch(launch, {}, { graceMs: MAX_PROVIDER_SUPERVISOR_GRACE_MS })
+    ).not.toThrow()
+    expect(() =>
+      supervisedPosixLaunch(launch, {}, { graceMs: MAX_PROVIDER_SUPERVISOR_GRACE_MS + 1 })
+    ).toThrow(RangeError)
   })
 
   it('uses direct provider spawning on Windows because the job owns the tree', () => {
