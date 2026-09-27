@@ -10,6 +10,7 @@ import {
 import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
 import { callStructuredAgentSession } from '@/runtime/structured-agent-session-client'
 import {
+  stageStructuredAgentSessionOutboxEntryForSend,
   structuredAgentSessionSendRequest,
   updateStructuredAgentSessionOutboxEntry,
   type StructuredAgentSessionOutboxEntry
@@ -77,11 +78,7 @@ export function dispatchStructuredAgentSessionOutboxEntry(args: {
     const staged = updateStructuredAgentSessionOutboxEntry(
       args.persisted,
       args.next.clientMessageId,
-      ({ lastFailure: _sentAgain, ...entry }) => ({
-        ...entry,
-        state: 'dispatching' as const,
-        lastAttemptAt: Date.now()
-      })
+      (entry) => stageStructuredAgentSessionOutboxEntryForSend(entry, Date.now())
     )
     if (!writeOutbox(args.sessionId, staged)) {
       args.inFlightIdRef.current = null

@@ -103,6 +103,14 @@ export function updateStructuredAgentSessionOutboxEntry(
   })
 }
 
+/** Staged for another attempt; the last attempt's failure no longer describes it. */
+export function stageStructuredAgentSessionOutboxEntryForSend(
+  { lastFailure: _sentAgain, ...entry }: StructuredAgentSessionOutboxEntry,
+  now: number
+): StructuredAgentSessionOutboxEntry {
+  return { ...entry, state: 'dispatching', lastAttemptAt: now }
+}
+
 export function requeueStructuredAgentSessionSendRefusal(
   entry: StructuredAgentSessionOutboxEntry,
   code: AgentSessionWireRefusalCode,
