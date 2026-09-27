@@ -71,7 +71,10 @@ describe('claude agent SDK process spawn', () => {
       const spawn = createClaudeCodeProcessSpawn(process.spawnImpl, platform)
       spawn.spawn(sdkOptions())
 
-      const spec = process.specs[0] as ProcessSpec
+      const [spec] = process.specs
+      if (!spec) {
+        throw new Error('the spawner never built a spec')
+      }
       expect(spawn.supervised).toBe(true)
       expect(spawn.pid).toBe(4321)
       expect(spec.program).toBe(globalThis.process.execPath)
