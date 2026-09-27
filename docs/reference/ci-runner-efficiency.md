@@ -15,11 +15,14 @@ An [eight-sample comparison](https://github.com/stablyai/orca/actions/runs/36307
 measured producer time increasing from 26.3–27.9s to 38.8–41.0s, while consumer
 CLI compilation fell from 20.9–21.2s to 0.06–0.07s of direct preparation. All 5,519
 output files matched byte-for-byte, and every sample passed the CLI help smoke.
-The final script adds pnpm invocation overhead; a
+A four-sample
 [final implementation comparison](https://github.com/stablyai/orca/actions/runs/36307382635)
-measures that separately. The preliminary timings imply about 4.7 aggregate runner
-minutes saved across 14 consumers, before artifact transfer overhead; this is
-not a measured workflow wall-time reduction. Test coverage and deadlines stay intact.
+also passed parity and CLI smoke checks. Consumer compilation took 4.7 / 12.8s
+versus 0.08 / 0.06s of preparation; producer time increased by 0.2 / 7.1s in
+the paired trials. Across both runs this models roughly 1.1–4.7 aggregate runner
+minutes saved across 14 consumers, before artifact transfer overhead. Runner
+variation is substantial; this is not a measured workflow wall-time reduction.
+Test coverage and deadlines stay intact.
 
 
 [PR #23368](https://github.com/stablyai/orca/pull/23368) overlaps shell installation
