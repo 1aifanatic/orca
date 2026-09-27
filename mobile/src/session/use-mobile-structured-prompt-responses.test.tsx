@@ -7,10 +7,7 @@ import {
   EMPTY_STRUCTURED_AGENT_SESSION,
   type StructuredAgentSessionState
 } from '../../../src/shared/structured-agent-session-reducer'
-import {
-  AGENT_SESSION_RESPONSE_OPTION_ID_MAX_LENGTH,
-  encodeAgentSessionQuestionAnswers
-} from '../../../src/shared/agent-session-question-answer'
+import { encodeAgentSessionQuestionAnswers } from '../../../src/shared/agent-session-question-answer'
 import { formatQuestionFreeTextAnswer } from './mobile-native-chat-question'
 import {
   projectStructuredQuestion,
@@ -314,7 +311,7 @@ describe('useMobileStructuredPromptResponses', () => {
       expect(accepted).toBe(false)
       expect(sent).toEqual([])
       expect(onSendError).toHaveBeenCalledWith(
-        'Update Orca on your computer to send an answer this long'
+        'Update Orca on your computer to send answers this long'
       )
     })
 
@@ -389,7 +386,7 @@ describe('useMobileStructuredPromptResponses', () => {
       if (!expectSent) {
         expect(sent).toEqual([])
         expect(onSendError).toHaveBeenCalledWith(
-          'Update Orca on your computer to send an answer this long'
+          'Update Orca on your computer to send answers this long'
         )
         return
       }
@@ -403,7 +400,7 @@ describe('useMobileStructuredPromptResponses', () => {
       })
     })
 
-    it('refuses a too-long typed answer on an earlier grouped step for an older host', async () => {
+    it('keeps a grouped draft an older host cannot take so it sends after an update', async () => {
       const base = groupedPrompt('item-g', 1)
       if (base.body.kind !== 'question' || !base.body.questions) {
         throw new Error('expected a grouped question')
@@ -417,54 +414,46 @@ describe('useMobileStructuredPromptResponses', () => {
       const onSendError = vi.fn()
       mount(prompt, mutate, false, onSendError)
 
-      let advanced = true
+      let advanced = false
       await act(async () => {
         advanced = await hook().respondQuestion(
           formatQuestionFreeTextAnswer(projectStructuredQuestion(prompt, null)!, LONG_ANSWER)
         )
       })
-
-      // Not folded into the draft: the card keeps the text on this step so it can be shortened.
-      expect(advanced).toBe(false)
-      expect(hook().groupedDraft).toBeNull()
-      expect(sent).toEqual([])
-      expect(onSendError).toHaveBeenCalledWith(
-        'Update Orca on your computer to send an answer this long'
-      )
-    })
-
-    it('refuses a grouped step that leaves no room to answer the rest for an older host', async () => {
-      const base = groupedPrompt('item-g', 1)
-      if (base.body.kind !== 'question' || !base.body.questions) {
-        throw new Error('expected a grouped question')
-      }
-      const [first, second] = base.body.questions
-      const prompt: AgentJournalRenderItem = {
-        ...base,
-        body: { ...base.body, questions: [{ ...first!, freeTextQuestionId: 'q1' }, second!] }
-      }
-      // Fits on its own, but every option on the next step would push the packed group over.
-      const overhead = encodeAgentSessionQuestionAnswers([
-        { questionId: 'q1', optionIds: [], other: '' }
-      ]).length
-      const text = 'x'.repeat(AGENT_SESSION_RESPONSE_OPTION_ID_MAX_LENGTH - overhead)
-      const { mutate, sent } = recordingMutate()
-      const onSendError = vi.fn()
-      mount(prompt, mutate, false, onSendError)
-
-      let advanced = true
+      expect(advanced).toBe(true)
       await act(async () => {
-        advanced = await hook().respondQuestion(
-          formatQuestionFreeTextAnswer(projectStructuredQuestion(prompt, null)!, text)
-        )
+        await hook().respondQuestion(projectedResponse(prompt, hook().groupedDraft))
       })
 
-      expect(advanced).toBe(false)
-      expect(hook().groupedDraft).toBeNull()
       expect(sent).toEqual([])
       expect(onSendError).toHaveBeenCalledWith(
-        'Update Orca on your computer to send an answer this long'
+        'Update Orca on your computer to send answers this long'
       )
+      expect(hook().groupedDraft).not.toBeNull()
+
+      act(() => {
+        renderer?.update(
+          createElement(Probe, {
+            sessionKey: 'session-a',
+            state: sessionState(prompt),
+            mutate,
+            questionAnswersSupported: true,
+            onSendError
+          })
+        )
+      })
+      await act(async () => {
+        await hook().respondQuestion(projectedResponse(prompt, hook().groupedDraft))
+      })
+
+      expect(sentFields(sent)).toEqual({
+        itemId: 'item-g',
+        expectedRevision: 1,
+        answers: [
+          { questionId: 'q1', optionIds: [], other: LONG_ANSWER },
+          { questionId: 'q2', optionIds: ['q2:choice-1'] }
+        ]
+      })
     })
 
     it('names the single question an option tap answers when the prompt has no typed field', async () => {

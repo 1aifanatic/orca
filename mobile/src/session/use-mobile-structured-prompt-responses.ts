@@ -1,12 +1,8 @@
 import { useCallback, useState } from 'react'
 import type { AgentSessionPromptResult } from '../../../src/shared/agent-session-wire'
-import type {
-  AgentJournalQuestion,
-  AgentJournalQuestionItem
-} from '../../../src/shared/agent-session-journal-types'
+import type { AgentJournalQuestionItem } from '../../../src/shared/agent-session-journal-types'
 import {
   AGENT_SESSION_RESPONSE_OPTION_ID_MAX_LENGTH,
-  encodeAgentSessionQuestionAnswers,
   legacyAgentSessionSelectedOptionId,
   type AgentSessionQuestionAnswer
 } from '../../../src/shared/agent-session-question-answer'
@@ -26,30 +22,6 @@ import {
   groupedQuestionPromptKey,
   type GroupedQuestionDraft
 } from './mobile-structured-grouped-question'
-
-const ANSWER_TOO_LONG_FOR_HOST = 'Update Orca on your computer to send an answer this long'
-
-function shortestPackedAnswer(question: AgentJournalQuestion): AgentSessionQuestionAnswer[] {
-  const candidates: AgentSessionQuestionAnswer[] = [
-    ...question.options.map((option) => ({ questionId: question.id, optionIds: [option.id] })),
-    ...(question.freeTextQuestionId ? [{ questionId: question.id, optionIds: [], other: '-' }] : [])
-  ]
-  const packedLength = (answer: AgentSessionQuestionAnswer) =>
-    encodeAgentSessionQuestionAnswers([answer]).length
-  return candidates.sort((a, b) => packedLength(a) - packedLength(b)).slice(0, 1)
-}
-
-/** True once even the shortest answers to the remaining questions would overflow the packed group. */
-function packedGroupCannotFit(
-  questions: readonly AgentJournalQuestion[],
-  answers: readonly AgentSessionQuestionAnswer[]
-): boolean {
-  const completion = questions.slice(answers.length).flatMap(shortestPackedAnswer)
-  return (
-    encodeAgentSessionQuestionAnswers([...answers, ...completion]).length >
-    AGENT_SESSION_RESPONSE_OPTION_ID_MAX_LENGTH
-  )
-}
 
 /**
  * Answering the two durable prompt kinds. Kept beside the session hook rather than inside it
@@ -125,7 +97,7 @@ export function useMobileStructuredPromptResponses(args: {
         if (questionAnswersSupported === null) {
           return send({ answers })
         }
-        onSendError(ANSWER_TOO_LONG_FOR_HOST)
+        onSendError('Update Orca on your computer to send answers this long')
         return Promise.resolve(null)
       }
       return send({ optionId })
@@ -148,14 +120,6 @@ export function useMobileStructuredPromptResponses(args: {
           return false
         }
         if (grouped.kind === 'advance') {
-          // Refuse while this step's text is still editable, not on a later step that cannot fit.
-          if (
-            questionAnswersSupported === false &&
-            packedGroupCannotFit(prompt.body.questions, grouped.draft.answers)
-          ) {
-            onSendError(ANSWER_TOO_LONG_FOR_HOST)
-            return false
-          }
           setCollected({ sessionKey, draft: grouped.draft })
           return true
         }
@@ -200,7 +164,7 @@ export function useMobileStructuredPromptResponses(args: {
       }
       return result.status === 'accepted'
     },
-    [groupedDraft, onSendError, questionAnswersSupported, sendAnswers, sessionKey, stateRef]
+    [groupedDraft, onSendError, sendAnswers, sessionKey, stateRef]
   )
 
   return { groupedDraft, respondPermission, respondQuestion }
