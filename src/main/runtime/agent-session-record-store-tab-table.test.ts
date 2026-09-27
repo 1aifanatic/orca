@@ -113,13 +113,13 @@ describe('chat tab table', () => {
       (error) =>
         isAgentSessionRefusalError(error) &&
         error.message === 'agent_session_conflict' &&
-        error.refusal.cause === 'tabIdTaken'
+        error.refusal.details?.reason === 'tabIdTaken'
     )
     await expect(store.setSessionTabVisibility('session-gone', true)).rejects.toSatisfy(
       (error) =>
         isAgentSessionRefusalError(error) &&
         error.message === 'agent_session_identity_required' &&
-        error.refusal.cause === 'recordMissing'
+        error.refusal.details?.reason === 'recordMissing'
     )
   })
 

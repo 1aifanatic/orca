@@ -3,12 +3,15 @@ import { activeStructuredAgentSessionTurnId } from '../../../shared/structured-a
 import type { AgentSessionTurnContext } from './structured-agent-session-turns'
 import {
   refuse,
-  type AgentSessionRefusalCause,
+  type AgentSessionRefusalReason,
   type AgentSessionWireRefusal
 } from '../../../shared/agent-session-wire-refusals'
 
-function blocked(cause: AgentSessionRefusalCause, message: string): AgentSessionWireRefusal {
-  return refuse('agent_session_operation_invalid', cause, message)
+function blocked(
+  reason: AgentSessionRefusalReason<'agent_session_operation_invalid'>,
+  message: string
+): AgentSessionWireRefusal {
+  return refuse('agent_session_operation_invalid', { reason }, message)
 }
 
 export function conversationCommandBlocked(

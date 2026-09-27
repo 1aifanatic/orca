@@ -93,7 +93,7 @@ export class AgentSessionTabTable {
   private put(tabId: string, sessionId: string): void {
     const owner = this.sessionByTab.get(tabId)
     if (owner !== undefined && owner !== sessionId) {
-      throw agentSessionRefusalError('agent_session_conflict', 'tabIdTaken')
+      throw agentSessionRefusalError('agent_session_conflict', { reason: 'tabIdTaken' })
     }
     this.hide(sessionId)
     this.sessionByTab.set(tabId, sessionId)
@@ -121,7 +121,7 @@ export function setAgentSessionTabVisibility(
   tabId?: string
 ): void {
   if (visible && !state.records.has(sessionId)) {
-    throw agentSessionRefusalError('agent_session_identity_required', 'recordMissing')
+    throw agentSessionRefusalError('agent_session_identity_required', { reason: 'recordMissing' })
   }
   state.sessionTabs ??= new AgentSessionTabTable()
   if (visible) {

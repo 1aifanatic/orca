@@ -65,7 +65,7 @@ describe('operation admission', () => {
     expect(evaluate(rows, { fingerprint: 'fp-2' })).toEqual({
       decision: 'refused',
       code: 'agent_session_operation_conflict',
-      cause: 'operationIdReused'
+      details: { reason: 'operationIdReused' }
     })
   })
 
@@ -80,7 +80,7 @@ describe('operation admission', () => {
     expect(evaluate(rows, { operationId: 'not-an-operation-id' })).toEqual({
       decision: 'refused',
       code: 'agent_session_operation_invalid',
-      cause: 'operationIdInvalid'
+      details: { reason: 'operationIdInvalid' }
     })
     // Why: a future-dated id would look new again after its own tombstone is collected.
     expect(
@@ -90,7 +90,7 @@ describe('operation admission', () => {
     ).toEqual({
       decision: 'refused',
       code: 'agent_session_operation_invalid',
-      cause: 'operationIdInvalid'
+      details: { reason: 'operationIdInvalid' }
     })
     expect(
       evaluate(rows, { operationId: operationId(NOW + AGENT_SESSION_OPERATION_FUTURE_SKEW_MS) })
@@ -104,7 +104,7 @@ describe('operation admission', () => {
     expect(evaluate(rows, { operationId: stale })).toEqual({
       decision: 'refused',
       code: 'agent_session_operation_expired',
-      cause: 'operationExpired'
+      details: { reason: 'operationExpired' }
     })
     expect(
       evaluate(rows, { operationId: operationId(NOW - AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS) })
@@ -118,13 +118,13 @@ describe('operation admission', () => {
     expect(evaluate(rows, { perClientLimit: 1 })).toEqual({
       decision: 'refused',
       code: 'agent_session_operation_capacity',
-      cause: 'operationCapacity'
+      details: { reason: 'operationCapacity' }
     })
     // A different caller is still refused once the global cap is reached.
     expect(evaluate(rows, { callerKey: 'client-2', globalLimit: 1 })).toEqual({
       decision: 'refused',
       code: 'agent_session_operation_capacity',
-      cause: 'operationCapacity'
+      details: { reason: 'operationCapacity' }
     })
     expect(evaluate(rows, { callerKey: 'client-2', perClientLimit: 1 }).decision).toBe('admit')
   })

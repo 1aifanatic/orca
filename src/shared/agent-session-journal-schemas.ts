@@ -18,6 +18,7 @@ import { AgentSessionContextUsageSchema } from './agent-session-context-usage-sc
 import type {
   AgentJournalItemBody,
   AgentJournalMessageItem,
+  AgentJournalResolution,
   AgentJournalRenderItem,
   AgentJournalSubmission
 } from './agent-session-journal-types'
@@ -318,6 +319,10 @@ export const AgentJournalSubmissionSchema = z.object({
   handedOverAt: z.number().optional(),
   rejection: FailureFact.optional()
 })
+
+export function isAgentJournalResolution(value: unknown): value is AgentJournalResolution {
+  return Resolution.safeParse(value).success
+}
 
 export function isAdmissibleAgentJournalItemBody(value: unknown): value is AgentJournalItemBody {
   return AgentJournalItemBodySchema.safeParse(value).success

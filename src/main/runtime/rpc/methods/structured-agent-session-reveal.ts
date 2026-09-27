@@ -10,6 +10,7 @@
 // only a session id cannot aim the publication somewhere else.
 
 import {
+  agentSessionRefusalFromReference,
   isAgentSessionRefusalError,
   isAgentSessionWireRefusalCode
 } from '../../../../shared/agent-session-wire'
@@ -40,16 +41,14 @@ export const STRUCTURED_AGENT_SESSION_REVEAL_METHODS = [
         if (!isAgentSessionWireRefusalCode(code)) {
           throw error
         }
-        return refuseAgentSessionMutation({
-          code,
-          ...(isAgentSessionRefusalError(error) && error.refusal.cause
-            ? { cause: error.refusal.cause }
-            : {}),
-          message:
+        return refuseAgentSessionMutation(
+          agentSessionRefusalFromReference(
+            isAgentSessionRefusalError(error) ? error.refusal : { code },
             code === 'structured_agent_session_unsupported'
               ? 'This host cannot open that chat.'
               : 'This chat is no longer on this host.'
-        })
+          )
+        )
       }
       await ctx.runtime.publishStructuredAgentSessionTab({
         workspaceId: revealed.workspaceId,

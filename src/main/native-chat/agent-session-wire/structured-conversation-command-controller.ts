@@ -23,7 +23,7 @@ export class StructuredConversationCommandController {
           ok: false,
           refusal: refuse(
             'agent_session_operation_invalid',
-            'conversationCommandInFlight',
+            { reason: 'conversationCommandInFlight' },
             'Wait for the conversation operation to finish.'
           )
         })
@@ -37,7 +37,7 @@ export class StructuredConversationCommandController {
         ok: false as const,
         refusal: refuse(
           'agent_session_operation_invalid',
-          'conversationCommandInFlight',
+          { reason: 'conversationCommandInFlight' },
           'Wait for the conversation operation to finish.'
         )
       })

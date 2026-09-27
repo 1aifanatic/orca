@@ -166,12 +166,15 @@ describe('admitAgentSessionMutation', () => {
       ledger: {
         decision: 'refused',
         code: 'agent_session_operation_expired',
-        cause: 'operationExpired'
+        details: { reason: 'operationExpired' }
       }
     })
     expect(admission).toMatchObject({
       decision: 'refused',
-      refusal: { code: 'agent_session_operation_expired', cause: 'operationExpired' }
+      refusal: {
+        code: 'agent_session_operation_expired',
+        details: { reason: 'operationExpired' }
+      }
     })
   })
 })

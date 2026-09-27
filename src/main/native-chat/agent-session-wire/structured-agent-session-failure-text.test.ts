@@ -38,7 +38,6 @@ describe('structuredAgentSessionStartFailure', () => {
   it('keeps a start refusal the adapter typed', () => {
     const refusal = new AgentSessionAcquisitionRefusal(
       'Claude is not signed in for the selected account.',
-      'agent_session_operation_invalid',
       'notSignedIn'
     )
     expect(structuredAgentSessionStartFailure({ error: refusal }, { agentName: 'Claude' })).toEqual(
@@ -55,7 +54,7 @@ describe('structuredAgentSessionStartFailure', () => {
       {
         refusal: refuse(
           'agent_session_ownership_unknown',
-          'ownerUnproven',
+          { reason: 'ownerUnproven' },
           'Orca cannot prove that process 4242 on host-1 has exited.'
         )
       },
@@ -65,7 +64,10 @@ describe('structuredAgentSessionStartFailure', () => {
       reason: "Claude couldn't restart.",
       rejection: {
         kind: 'restartFailed',
-        refusal: { code: 'agent_session_ownership_unknown', cause: 'ownerUnproven' }
+        refusal: {
+          code: 'agent_session_ownership_unknown',
+          details: { reason: 'ownerUnproven' }
+        }
       }
     })
   })
@@ -102,10 +104,11 @@ describe('structuredAgentSessionStartFailure', () => {
 
   it('says the provider stopped only when an exit was observed', () => {
     const exited = structuredAgentSessionStartFailure({
-      refusal: {
-        ...refuse('agent_session_ownership_unknown', 'ownerUnproven', 'probe saw an exit'),
-        ownerVerdict: 'exited'
-      }
+      refusal: refuse(
+        'agent_session_ownership_unknown',
+        { reason: 'ownerUnproven', ownerVerdict: 'exited' },
+        'probe saw an exit'
+      )
     })
     expect(exited).toEqual({
       reason: 'The provider stopped before it finished starting.',
@@ -129,12 +132,16 @@ describe('structuredAgentSessionStartFailure', () => {
 
   it('reads a thrown refusal the same as a returned one', () => {
     const thrown = new AgentSessionRefusalError(
-      refuse('agent_session_conflict', 'claimConflicted', 'Another process claims this session.')
+      refuse(
+        'agent_session_conflict',
+        { reason: 'claimConflicted' },
+        'Another process claims this session.'
+      )
     )
     expect(thrown.message).toBe('agent_session_conflict')
     expect(structuredAgentSessionStartFailure({ refusal: thrown.refusal }).rejection).toEqual({
       kind: 'restartFailed',
-      refusal: { code: 'agent_session_conflict', cause: 'claimConflicted' }
+      refusal: { code: 'agent_session_conflict', details: { reason: 'claimConflicted' } }
     })
   })
 })

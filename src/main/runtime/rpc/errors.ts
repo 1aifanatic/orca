@@ -241,7 +241,7 @@ export function mapRuntimeError(id: string, meta: RpcEnvelopeMeta, error: unknow
 /**
  * A thrown agent-session refusal, mapped before any `'code' in error` passthrough so no other
  * subsystem's code set can claim it. Wire code and message are exactly what the bare `Error(code)`
- * it replaced produced — released clients classify both — and the refusal's cause rides only in
+ * it replaced produced — released clients classify both — and the refusal's details ride only in
  * `data`, which they ignore.
  */
 function agentSessionRefusalErrorResponse(

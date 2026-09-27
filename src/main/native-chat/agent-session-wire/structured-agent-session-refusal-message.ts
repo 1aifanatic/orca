@@ -10,8 +10,8 @@
 import { terminalOwnerRefusalMessage } from '../../../shared/agent-session-legacy-handoff-lease'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type {
-  AgentSessionRefusalCause,
-  AgentSessionWireRefusalCode
+  AgentSessionAnyRefusalReason,
+  AgentSessionRefusalReference
 } from '../../../shared/agent-session-wire'
 
 function ownerDescription(record: AgentSessionRecord): string {
@@ -32,7 +32,7 @@ function latchedMessage(record: AgentSessionRecord): string {
  * A situation whose own words the store's code would get wrong: each of these reaches the chat as
  * `ownership_unknown` or `conflict`, which by code alone would read as the latched-owner story.
  */
-const SITUATION_MESSAGES: Partial<Record<AgentSessionRefusalCause, string>> = {
+const SITUATION_MESSAGES: Partial<Record<AgentSessionAnyRefusalReason, string>> = {
   replaySuperseded: 'A newer start of this chat replaced this one. Try again.',
   leaseMoved: 'This chat changed hands while Orca was starting it. Try again.',
   spawnIdentityMismatch:
@@ -49,42 +49,42 @@ const SITUATION_MESSAGES: Partial<Record<AgentSessionRefusalCause, string>> = {
 }
 
 /**
- * The words and the situation for a store refusal. `cause` is what the emitter named, when it named
- * one; the latched branches name their own. Null when neither has a story to tell, and the caller
- * keeps its own wording.
+ * The words and the situation for a store refusal. The reason is what the emitter named, when it
+ * named one; the latched branches name their own. Null when neither has a story to tell, and the
+ * caller keeps its own wording.
  */
 export function structuredAgentSessionRefusalMessage(
-  code: AgentSessionWireRefusalCode,
-  cause: AgentSessionRefusalCause | undefined,
+  emitted: AgentSessionRefusalReference,
   record: AgentSessionRecord | null
-): { message: string; cause: AgentSessionRefusalCause } | null {
-  const situational = cause ? SITUATION_MESSAGES[cause] : undefined
-  if (cause && situational) {
-    return { message: situational, cause }
+): { message: string; reference: AgentSessionRefusalReference } | null {
+  const reason = emitted.details?.reason
+  const situational = reason ? SITUATION_MESSAGES[reason] : undefined
+  if (situational) {
+    return { message: situational, reference: emitted }
   }
   if (!record) {
     return null
   }
+  const { code } = emitted
   if (code === 'agent_session_ownership_unknown' || code === 'agent_session_conflict') {
-    return latchedRefusal(record, cause)
+    const message = latchedMessage(record)
+    if (record.lease.claimStatus === 'conflicted') {
+      return { message, reference: { code, details: { reason: 'claimConflicted' } } }
+    }
+    return {
+      message,
+      reference:
+        code === 'agent_session_conflict' && reason === 'ownerAlive'
+          ? { code, details: { reason: 'ownerAlive' } }
+          : { code, details: { reason: 'ownerUnproven' } }
+    }
   }
   if (code === 'execution_owner_reconciling') {
     return {
       message:
         'Orca is still working out who owns this session on this machine. Reopen the chat in a moment.',
-      cause: 'hostReconciling'
+      reference: { code, details: { reason: 'hostReconciling' } }
     }
   }
   return null
-}
-
-function latchedRefusal(
-  record: AgentSessionRecord,
-  cause: AgentSessionRefusalCause | undefined
-): { message: string; cause: AgentSessionRefusalCause } {
-  const message = latchedMessage(record)
-  if (record.lease.claimStatus === 'conflicted') {
-    return { message, cause: 'claimConflicted' }
-  }
-  return { message, cause: cause === 'ownerAlive' ? 'ownerAlive' : 'ownerUnproven' }
 }

@@ -147,7 +147,7 @@ export async function commitStructuredAgentSessionCreate(args: {
       ok: false,
       refusal: refuse(
         'agent_session_operation_unknown',
-        'tabUnconfirmed',
+        { reason: 'tabUnconfirmed' },
         'The chat may have been created, but its tab could not be confirmed.'
       )
     }

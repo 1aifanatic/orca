@@ -11,7 +11,7 @@ export function commitConversationCommandRecord(
 ): void {
   const record = state.records.get(sessionId)
   if (!record || record.lease.runtimeFence !== fence) {
-    throw agentSessionRefusalError('agent_session_checkpoint_stale', 'leaseMoved')
+    throw agentSessionRefusalError('agent_session_checkpoint_stale', { reason: 'leaseMoved' })
   }
   state.records.set(sessionId, { ...record, conversationCommand: command })
   if (
@@ -20,7 +20,7 @@ export function commitConversationCommandRecord(
     command.replacementSessionId
   ) {
     if (!state.records.has(command.replacementSessionId)) {
-      throw agentSessionRefusalError('agent_session_identity_required', 'recordMissing')
+      throw agentSessionRefusalError('agent_session_identity_required', { reason: 'recordMissing' })
     }
     state.sessionTabs ??= new AgentSessionTabTable()
     state.sessionTabs.move(sessionId, command.replacementSessionId)

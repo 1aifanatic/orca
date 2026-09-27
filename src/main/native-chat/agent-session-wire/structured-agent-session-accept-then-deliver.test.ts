@@ -342,7 +342,10 @@ describe('a start the chat needed and did not get', () => {
         text: "Codex couldn't restart. Start a new chat to continue.",
         failure: {
           kind: 'restartFailed',
-          refusal: { code: 'structured_agent_session_unsupported', cause: 'hostUnsupported' }
+          refusal: {
+            code: 'structured_agent_session_unsupported',
+            details: { reason: 'hostUnsupported' }
+          }
         }
       }
     ],

@@ -328,8 +328,8 @@ export class AgentSessionRecordStore {
       const record = this.state.records.get(sessionId)
       if (!record) {
         throw this.isSessionUnreadable(sessionId)
-          ? agentSessionRefusalError('execution_owner_reconciling', 'recordUnreadable')
-          : agentSessionRefusalError('agent_session_identity_required', 'recordMissing')
+          ? agentSessionRefusalError('execution_owner_reconciling', { reason: 'recordUnreadable' })
+          : agentSessionRefusalError('agent_session_identity_required', { reason: 'recordMissing' })
       }
       const next = apply(record)
       this.state.records.set(sessionId, next)

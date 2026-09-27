@@ -38,12 +38,12 @@ export function structuredAgentSessionSendBlock(
       refusal: command.replacementSessionId
         ? refuse(
             'agent_session_operation_invalid',
-            'conversationCleared',
+            { reason: 'conversationCleared' },
             'This conversation has been cleared. Use the current conversation.'
           )
         : refuse(
             'agent_session_operation_invalid',
-            'conversationCommandUnconfirmed',
+            { reason: 'conversationCommandUnconfirmed' },
             'The conversation operation is unconfirmed.'
           )
     }
@@ -66,7 +66,7 @@ export async function openConversationForWrite(
       ok: false,
       refusal: refuse(
         'agent_session_journal_unreadable',
-        'journalUnreadable',
+        { reason: 'journalUnreadable' },
         `The conversation could not be opened: ${
           error instanceof Error ? error.message : String(error)
         }`

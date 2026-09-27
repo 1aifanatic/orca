@@ -65,7 +65,6 @@ export function claudeInitializationAuthError(
   return readClaudeFrameString(account ?? {}, 'tokenSource') === 'none'
     ? new AgentSessionAcquisitionRefusal(
         'Claude is not signed in for the selected account. Sign in with the Claude CLI for this CLAUDE_CONFIG_DIR, then retry.',
-        'agent_session_operation_invalid',
         'notSignedIn'
       )
     : null

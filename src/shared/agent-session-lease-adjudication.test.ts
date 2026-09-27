@@ -94,7 +94,7 @@ describe('acquisition compare-and-swap', () => {
     ).toEqual({
       decision: 'refused',
       code: 'agent_session_checkpoint_stale',
-      cause: 'fenceStale'
+      details: { reason: 'fenceStale' }
     })
     expect(acquire(held, MATCHED)).toEqual({ decision: 'granted', nextFence: 8 })
   })
@@ -115,7 +115,7 @@ describe('acquisition compare-and-swap', () => {
     ).toEqual({
       decision: 'refused',
       code: 'agent_session_checkpoint_stale',
-      cause: 'fenceStale'
+      details: { reason: 'fenceStale' }
     })
   })
 
@@ -125,12 +125,12 @@ describe('acquisition compare-and-swap', () => {
     expect(acquire(expired, INDETERMINATE)).toEqual({
       decision: 'refused',
       code: 'agent_session_ownership_unknown',
-      cause: 'ownerUnproven'
+      details: { reason: 'ownerUnproven' }
     })
     expect(acquire(expired, MATCHED)).toEqual({
       decision: 'refused',
       code: 'agent_session_conflict',
-      cause: 'ownerAlive'
+      details: { reason: 'ownerAlive' }
     })
     expect(acquire(expired, { outcome: 'pid-absent' })).toEqual({
       decision: 'granted',
@@ -142,7 +142,7 @@ describe('acquisition compare-and-swap', () => {
     expect(acquire(lease({ unreconciled: true }), { outcome: 'pid-absent' })).toEqual({
       decision: 'refused',
       code: 'execution_owner_reconciling',
-      cause: 'hostReconciling'
+      details: { reason: 'hostReconciling' }
     })
   })
 
@@ -151,7 +151,7 @@ describe('acquisition compare-and-swap', () => {
     expect(acquire(lease({ claimStatus: 'conflicted' }), { outcome: 'exit-observed' })).toEqual({
       decision: 'refused',
       code: 'agent_session_conflict',
-      cause: 'claimConflicted'
+      details: { reason: 'claimConflicted' }
     })
   })
 
@@ -159,7 +159,7 @@ describe('acquisition compare-and-swap', () => {
     expect(acquire(lease({ handoffStage: 'recovering' }), { outcome: 'pid-absent' })).toEqual({
       decision: 'refused',
       code: 'agent_session_ownership_unknown',
-      cause: 'ownerUnproven'
+      details: { reason: 'ownerUnproven' }
     })
   })
 
@@ -173,7 +173,7 @@ describe('acquisition compare-and-swap', () => {
     expect(acquire(mid, { outcome: 'reservation-unused' }, 'op-2')).toEqual({
       decision: 'refused',
       code: 'agent_session_operation_conflict',
-      cause: 'handoffInFlight'
+      details: { reason: 'handoffInFlight' }
     })
     expect(acquire(mid, { outcome: 'reservation-unused' }, 'op-1')).toEqual({
       decision: 'retry-reservation',
@@ -186,7 +186,7 @@ describe('acquisition compare-and-swap', () => {
     expect(acquire(reserved, INDETERMINATE)).toEqual({
       decision: 'refused',
       code: 'agent_session_ownership_unknown',
-      cause: 'ownerUnproven'
+      details: { reason: 'ownerUnproven' }
     })
     expect(acquire(reserved, { outcome: 'reservation-unused' })).toEqual({
       decision: 'granted',

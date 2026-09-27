@@ -28,10 +28,9 @@ export function supportsStructuredSessions(ctx: RpcContext): boolean {
 
 export function requireStructuredCapability(ctx: RpcContext): void {
   if (!supportsStructuredSessions(ctx)) {
-    throw agentSessionRefusalError(
-      'structured_agent_session_unsupported',
-      'clientCapabilityMissing'
-    )
+    throw agentSessionRefusalError('structured_agent_session_unsupported', {
+      reason: 'clientCapabilityMissing'
+    })
   }
 }
 
@@ -39,7 +38,9 @@ export function requireStructuredHost(ctx: RpcContext): StructuredAgentSessionHo
   requireStructuredCapability(ctx)
   const host = getStructuredAgentSessionHost()
   if (!host) {
-    throw agentSessionRefusalError('structured_agent_session_unsupported', 'hostDisabled')
+    throw agentSessionRefusalError('structured_agent_session_unsupported', {
+      reason: 'hostDisabled'
+    })
   }
   return host
 }
@@ -68,14 +69,15 @@ export function requireStructuredHost(ctx: RpcContext): StructuredAgentSessionHo
  */
 export function requireStructuredCleanupHost(ctx: RpcContext): StructuredAgentSessionHost {
   if (!supportsStructuredAgentSessionCapability(ctx)) {
-    throw agentSessionRefusalError(
-      'structured_agent_session_unsupported',
-      'clientCapabilityMissing'
-    )
+    throw agentSessionRefusalError('structured_agent_session_unsupported', {
+      reason: 'clientCapabilityMissing'
+    })
   }
   const host = getStructuredAgentSessionHost()
   if (!host) {
-    throw agentSessionRefusalError('structured_agent_session_unsupported', 'hostDisabled')
+    throw agentSessionRefusalError('structured_agent_session_unsupported', {
+      reason: 'hostDisabled'
+    })
   }
   return host
 }

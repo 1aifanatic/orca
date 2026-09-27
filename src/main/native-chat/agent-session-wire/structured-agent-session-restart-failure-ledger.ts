@@ -184,7 +184,7 @@ export function createStructuredAgentSessionRestartFailureLedger(deps: {
         failedAt: failure.failedAt,
         outcome: failure.outcome,
         reason: failure.reason,
-        ...(failure.cause ? { cause: failure.cause } : {}),
+        ...(failure.details ? { details: failure.details } : {}),
         retryable: deps.retryable(failure.marker)
       }
     ]
@@ -256,7 +256,7 @@ export function createStructuredAgentSessionRestartFailureLedger(deps: {
         reason: resumed
           ? action.failureReason(outcome.sessionId)
           : (outcome.reason ?? 'agent_session_resume_refused'),
-        ...(!resumed && outcome.cause ? { cause: outcome.cause } : {}),
+        ...(!resumed && outcome.details ? { details: outcome.details } : {}),
         latestPrompt: promptBySession.get(outcome.sessionId) ?? '',
         latestUserItemId: action.attempts.latestUserItemId(outcome.sessionId)
       })

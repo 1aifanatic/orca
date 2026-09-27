@@ -8,10 +8,11 @@
 // readable journal for a live provider child.
 
 import {
-  isAgentSessionRefusalCause,
-  isAgentSessionWireRefusalCode,
+  agentSessionRefusalFromReference,
+  readAgentSessionRefusalReference,
   refuse,
-  type AgentSessionRefusalCause
+  type AgentSessionRefusalDetailsByCode,
+  type AgentSessionWireRefusalCode
 } from '../../../shared/agent-session-wire-refusals'
 import type {
   AgentSessionAttachResult,
@@ -57,14 +58,14 @@ export async function resumeHeldStructuredAgentSession(input: {
   if (!record) {
     return refuseResume(
       'agent_session_identity_required',
-      'recordMissing',
+      { reason: 'recordMissing' },
       'No structured session exists by that id.'
     )
   }
   if (!adapterSupportsRecord(context.deps.adapter, record)) {
     return refuseResume(
       'structured_agent_session_unsupported',
-      'hostUnsupported',
+      { reason: 'hostUnsupported' },
       'This execution host cannot resume the requested structured agent session.'
     )
   }
@@ -76,18 +77,18 @@ export async function resumeHeldStructuredAgentSession(input: {
     return record.lease.unreconciled
       ? refuseResume(
           'execution_owner_reconciling',
-          'hostReconciling',
+          { reason: 'hostReconciling' },
           'This host has not yet adjudicated the session lease.'
         )
       : record.lease.claimStatus === 'conflicted'
         ? refuseResume(
             'agent_session_conflict',
-            'claimConflicted',
+            { reason: 'claimConflicted' },
             terminalOwnerRefusalMessage(record.lease)
           )
         : refuseResume(
             'agent_session_ownership_unknown',
-            'notResumable',
+            { reason: 'notResumable' },
             'The session lease is not one this host may resume.'
           )
   }
@@ -126,24 +127,27 @@ function settledResumeRefusal(
   error: unknown
 ): StructuredAgentSessionResumeOutcome | null {
   const outcome = context.deps.store.getOperationRow(callerKey, operationId)?.outcome
-  if (outcome?.status !== 'failed' || !isAgentSessionWireRefusalCode(outcome.code)) {
+  const reference =
+    outcome?.status === 'failed'
+      ? readAgentSessionRefusalReference({ code: outcome.code, details: outcome.details })
+      : undefined
+  if (outcome?.status !== 'failed' || !reference) {
     return null
   }
   return failedCreateRefusal(
-    {
-      code: outcome.code,
-      ...(isAgentSessionRefusalCause(outcome.cause) ? { cause: outcome.cause } : {}),
-      message: outcome.message ?? (error instanceof Error ? error.message : String(error))
-    },
+    agentSessionRefusalFromReference(
+      reference,
+      outcome.message ?? (error instanceof Error ? error.message : String(error))
+    ),
     outcome.status,
     context.deps.store.getRecord(sessionId)
   )
 }
 
-function refuseResume(
-  code: AgentSessionWireRefusal['code'],
-  cause: AgentSessionRefusalCause,
+function refuseResume<C extends AgentSessionWireRefusalCode>(
+  code: C,
+  details: NoInfer<AgentSessionRefusalDetailsByCode[C]>,
   message: string
 ): StructuredAgentSessionResumeOutcome {
-  return { ok: false, refusal: refuse(code, cause, message) }
+  return { ok: false, refusal: refuse(code, details, message) }
 }

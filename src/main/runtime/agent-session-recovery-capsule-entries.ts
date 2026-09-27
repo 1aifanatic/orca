@@ -5,8 +5,8 @@
 // necessarily write, including one written by an older or newer build.
 
 import {
-  isAgentSessionRefusalCause,
-  type AgentSessionRefusalCause
+  readAgentSessionRefusalReference,
+  type AgentSessionAnyRefusalDetails
 } from '../../shared/agent-session-wire-refusals'
 import { z } from 'zod'
 import {
@@ -32,7 +32,7 @@ const failureSchema = z.object({
   failedAt: z.number().int().nonnegative(),
   outcome: z.enum(AGENT_SESSION_RESUME_FAILURE_OUTCOMES),
   reason: z.string().max(MAX_FAILURE_FIELD_LENGTH),
-  cause: z.string().min(1).optional(),
+  details: z.unknown().optional(),
   latestPrompt: z.string().max(MAX_FAILURE_FIELD_LENGTH),
   latestUserItemId: z.string().max(MAX_FAILURE_FIELD_LENGTH).nullable()
 })
@@ -54,8 +54,9 @@ export type AgentSessionResumeFailureRecord = {
   outcome: AgentSessionResumeFailureOutcome
   /** The refusal code, as it always was; the renderer's guidance keys on it. */
   reason: string
-  /** The refusal's situation beside the code; absent on older records and non-refusals. */
-  cause?: AgentSessionRefusalCause
+  /** The refusal's details beside the code; absent on older records and non-refusals. A record
+   *  an unreleased build wrote with a `cause` instead reads as having none. */
+  details?: AgentSessionAnyRefusalDetails
   /** The prompt the offer quoted, snapshotted because the session may no longer be readable. */
   latestPrompt: string
   /** The chat's newest user message when this was filed, as the marker records it at teardown. A
@@ -120,8 +121,13 @@ function parseFailures(value: unknown): AgentSessionResumeFailureRecord[] {
     if (!parsed.success || !marker) {
       return []
     }
-    const { cause, ...rest } = parsed.data
-    return [{ ...rest, marker, ...(isAgentSessionRefusalCause(cause) ? { cause } : {}) }]
+    const { details: stored, ...rest } = parsed.data
+    // `reason` is the refusal code, so the details are read against it.
+    const details = readAgentSessionRefusalReference({
+      code: rest.reason,
+      details: stored
+    })?.details
+    return [{ ...rest, marker, ...(details ? { details } : {}) }]
   })
 }
 

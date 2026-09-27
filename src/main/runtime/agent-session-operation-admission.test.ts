@@ -51,7 +51,7 @@ describe('global agent-session operation admission', () => {
     ).toEqual({
       decision: 'refused',
       code: 'agent_session_operation_conflict',
-      cause: 'operationIdReused'
+      details: { reason: 'operationIdReused' }
     })
   })
 })

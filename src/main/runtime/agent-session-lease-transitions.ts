@@ -42,10 +42,10 @@ export function withLease(
 
 export function assertFence(lease: AgentSessionLease, fence: number): void {
   if (lease.runtimeFence !== fence) {
-    throw agentSessionRefusalError('agent_session_checkpoint_stale', 'leaseMoved')
+    throw agentSessionRefusalError('agent_session_checkpoint_stale', { reason: 'leaseMoved' })
   }
   if (lease.unreconciled) {
-    throw agentSessionRefusalError('execution_owner_reconciling', 'hostReconciling')
+    throw agentSessionRefusalError('execution_owner_reconciling', { reason: 'hostReconciling' })
   }
 }
 
@@ -67,7 +67,7 @@ export function reserveAgentSessionOwner(args: {
     probe: args.probe
   })
   if (decision.decision === 'refused') {
-    throw agentSessionRefusalError(decision.code, decision.cause)
+    throw agentSessionRefusalError(decision.code, decision.details)
   }
   if (decision.decision === 'retry-reservation') {
     return { record, disposition: 'retry-reservation' }
@@ -107,11 +107,15 @@ export function commitAgentSessionProcessIdentity(
   const { record } = args
   assertFence(record.lease, args.fence)
   if (record.lease.claimStatus !== 'reserved' || record.lease.ownerProcess !== null) {
-    throw agentSessionRefusalError('agent_session_ownership_unknown', 'spawnIdentityMismatch')
+    throw agentSessionRefusalError('agent_session_ownership_unknown', {
+      reason: 'spawnIdentityMismatch'
+    })
   }
   if (record.lease.reservedSpawnToken !== args.process.spawnToken) {
     // Why: a child that cannot echo the reserved token is not the process Orca started.
-    throw agentSessionRefusalError('agent_session_ownership_unknown', 'spawnIdentityMismatch')
+    throw agentSessionRefusalError('agent_session_ownership_unknown', {
+      reason: 'spawnIdentityMismatch'
+    })
   }
   return withLease(record, {
     ...record.lease,
@@ -138,7 +142,9 @@ export function proveAgentSessionOwner(args: {
     record.lease.handoffStage !== 'new-owner-proving' ||
     record.lease.ownerProcess === null
   ) {
-    throw agentSessionRefusalError('agent_session_ownership_unknown', 'spawnIdentityMismatch')
+    throw agentSessionRefusalError('agent_session_ownership_unknown', {
+      reason: 'spawnIdentityMismatch'
+    })
   }
   if (args.link.handle.provider !== record.provider) {
     throw new Error('agent_session_provider_handle_provider_mismatch')

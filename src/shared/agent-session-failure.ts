@@ -7,9 +7,8 @@
 // tell a provider's sentence from Orca's.
 
 import {
-  isAgentSessionWireRefusalCode,
-  type AgentSessionRefusalReference,
-  isAgentSessionRefusalCause
+  readAgentSessionRefusalReference,
+  type AgentSessionRefusalReference
 } from './agent-session-wire-refusals'
 
 /** One per situation with its own honest next step; a new one needs copy before it compiles. */
@@ -147,13 +146,7 @@ export function readAgentSessionFailureFact(value: unknown): AgentSessionFailure
   if (!isRecord(value) || !isAgentSessionFailureKind(value.kind)) {
     return undefined
   }
-  const refusal =
-    isRecord(value.refusal) && isAgentSessionWireRefusalCode(value.refusal.code)
-      ? {
-          code: value.refusal.code,
-          ...(isAgentSessionRefusalCause(value.refusal.cause) ? { cause: value.refusal.cause } : {})
-        }
-      : undefined
+  const refusal = readAgentSessionRefusalReference(value.refusal)
   const attachment = readAttachmentProblem(value.attachment)
   return agentSessionFailureFact(value.kind, {
     ...(isProviderDiagnostic(value.detail) ? { detail: value.detail } : {}),

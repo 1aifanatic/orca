@@ -83,7 +83,7 @@ export async function performAttach(
     ok: false,
     refusal: refuse(
       'structured_agent_session_unsupported',
-      'hostUnsupported',
+      { reason: 'hostUnsupported' },
       'This execution host cannot create the requested structured agent session.'
     )
   })
@@ -284,7 +284,7 @@ async function settleUnsupportedReservation(
       outcome: {
         status: 'failed',
         code: 'structured_agent_session_unsupported',
-        cause: 'hostUnsupported',
+        details: { reason: 'hostUnsupported' },
         message: 'Structured session support changed before the provider could start.'
       },
       exitProof: 'processless',

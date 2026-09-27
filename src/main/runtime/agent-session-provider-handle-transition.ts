@@ -21,7 +21,7 @@ export function recordAgentSessionProviderHandle(args: {
     throw new Error('agent_session_provider_handle_invalid')
   }
   if (record.lease.claimStatus !== 'live' && record.lease.handoffStage !== 'new-owner-proving') {
-    throw agentSessionRefusalError('agent_session_ownership_unknown', 'leaseMoved')
+    throw agentSessionRefusalError('agent_session_ownership_unknown', { reason: 'leaseMoved' })
   }
   const providerHandleChain = appendAgentSessionProviderHandleLink(
     record.providerHandleChain,

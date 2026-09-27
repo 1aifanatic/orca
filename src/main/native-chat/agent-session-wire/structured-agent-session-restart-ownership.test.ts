@@ -738,7 +738,7 @@ it('files a restart refused by a conflicted claim under its code, with its cause
 
   await vi.waitFor(async () =>
     expect(await host.restartResume.listFailures()).toMatchObject([
-      { reason: 'agent_session_conflict', cause: 'claimConflicted' }
+      { reason: 'agent_session_conflict', details: { reason: 'claimConflicted' } }
     ])
   )
 })

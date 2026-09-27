@@ -113,7 +113,7 @@ export function requireAgentSessionRecordForReplay(
   if (!record) {
     // Why: the recorded effect is no longer reconstructable, and re-running it would be a second
     // spawn rather than a replay.
-    throw agentSessionRefusalError('agent_session_ownership_unknown', 'recordMissing')
+    throw agentSessionRefusalError('agent_session_ownership_unknown', { reason: 'recordMissing' })
   }
   return record
 }
@@ -129,11 +129,13 @@ export function admitPendingAgentSessionReservationReplay(
     probe: request.probe
   })
   if (decision.decision === 'refused') {
-    throw agentSessionRefusalError(decision.code, decision.cause)
+    throw agentSessionRefusalError(decision.code, decision.details)
   }
   if (decision.decision !== 'retry-reservation') {
     // A replay may continue only its still-present reservation.
-    throw agentSessionRefusalError('agent_session_ownership_unknown', 'replaySuperseded')
+    throw agentSessionRefusalError('agent_session_ownership_unknown', {
+      reason: 'replaySuperseded'
+    })
   }
   return record
 }
@@ -171,10 +173,10 @@ export function applyAgentSessionReservation(
   const existing = state.records.get(request.sessionId)
   if (!existing) {
     if (state.unreadableRecords.has(request.sessionId)) {
-      throw agentSessionRefusalError('execution_owner_reconciling', 'recordUnreadable')
+      throw agentSessionRefusalError('execution_owner_reconciling', { reason: 'recordUnreadable' })
     }
     if (request.expectedFence !== null) {
-      throw agentSessionRefusalError('agent_session_checkpoint_stale', 'recordMissing')
+      throw agentSessionRefusalError('agent_session_checkpoint_stale', { reason: 'recordMissing' })
     }
     assertReservedTabUnheld(state, request)
     return { record: createAgentSessionRecord(request, reservation), disposition: 'created' }
@@ -186,7 +188,7 @@ export function applyAgentSessionReservation(
     existing.accountHome.path !== request.accountHome.path
   ) {
     // Why: location, provider, and account are the session identity; changing one is a fork.
-    throw agentSessionRefusalError('agent_session_conflict', 'identityMismatch')
+    throw agentSessionRefusalError('agent_session_conflict', { reason: 'identityMismatch' })
   }
   // A create may take over only a record that never bound a conversation and whose last
   // attempt is proven gone: that is the same as creating it fresh, under a fresh provider id.
@@ -195,7 +197,7 @@ export function applyAgentSessionReservation(
     !request.adoptedHandleLink &&
     agentSessionLeaseOwnerVerdict(existing.lease) === 'exited'
   if (request.expectedFence === null && !recreatable) {
-    throw agentSessionRefusalError('agent_session_conflict', 'sessionExists')
+    throw agentSessionRefusalError('agent_session_conflict', { reason: 'sessionExists' })
   }
   assertReservedTabUnheld(state, request)
   const pinned = {
@@ -241,7 +243,9 @@ function assertAdoptedConversationUnowned(
       (link) => agentSessionProviderHandleRoot(link.handle) === root
     )
     if (holdsSameConversation) {
-      throw agentSessionRefusalError('agent_session_conflict', 'conversationHeldElsewhere')
+      throw agentSessionRefusalError('agent_session_conflict', {
+        reason: 'conversationHeldElsewhere'
+      })
     }
   }
 }
@@ -259,11 +263,13 @@ function assertReservedTabUnheld(
     return
   }
   if (!isAgentSessionSurfaceTabId(request.surfaceTabId)) {
-    throw agentSessionRefusalError('agent_session_operation_invalid', 'requestMalformed')
+    throw agentSessionRefusalError('agent_session_operation_invalid', {
+      reason: 'requestMalformed'
+    })
   }
   const holder = state.sessionTabs?.sessionIdFor(request.surfaceTabId)
   if (holder !== undefined && holder !== request.sessionId) {
-    throw agentSessionRefusalError('agent_session_conflict', 'tabIdTaken')
+    throw agentSessionRefusalError('agent_session_conflict', { reason: 'tabIdTaken' })
   }
 }
 
@@ -325,7 +331,7 @@ export function commitAgentSessionReservation(
   if (decision.decision === 'refused') {
     // An aged-out row proves nothing more: a released reservation runs no effect.
     if (decision.code !== 'agent_session_operation_expired' || !continued) {
-      throw agentSessionRefusalError(decision.code, decision.cause)
+      throw agentSessionRefusalError(decision.code, decision.details)
     }
     const row = pendingAgentSessionOperationRow({ ...request.operation, now: request.now })
     return reserveWithOperationRow(state, continued, row, leaseTtlMs)

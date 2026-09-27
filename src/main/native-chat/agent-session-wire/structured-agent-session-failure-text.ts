@@ -40,9 +40,9 @@ function providerExitObserved(error: unknown): boolean {
 export function providerStartupFailureFact(cause?: unknown): AgentSessionFailureFact {
   if (
     cause instanceof AgentSessionAcquisitionRefusal &&
-    (cause.refusalCause === 'notSignedIn' || cause.refusalCause === 'historyTooLarge')
+    (cause.reason === 'notSignedIn' || cause.reason === 'historyTooLarge')
   ) {
-    return agentSessionFailureFact(cause.refusalCause)
+    return agentSessionFailureFact(cause.reason)
   }
   return agentSessionFailureFact(
     providerExitObserved(cause) ? 'providerStartFailed' : 'startFailed',
@@ -63,11 +63,12 @@ function startupFailureFromExit(
 
 /** What the chat records when the delivery loop could not make the session ready. */
 function restartFailureFact(refusal: AgentSessionWireRefusal): AgentSessionFailureFact {
-  if (refusal.cause === 'notSignedIn' || refusal.cause === 'historyTooLarge') {
-    return agentSessionFailureFact(refusal.cause)
+  const reason = refusal.details?.reason
+  if (reason === 'notSignedIn' || reason === 'historyTooLarge') {
+    return agentSessionFailureFact(reason)
   }
   // A child that died starting reads as any start that died does.
-  if (refusal.ownerVerdict === 'exited' || refusal.cause === 'providerStartFailed') {
+  if (refusal.details?.ownerVerdict === 'exited' || reason === 'providerStartFailed') {
     return agentSessionFailureFact('providerStartFailed')
   }
   return agentSessionFailureFact('restartFailed', {

@@ -111,7 +111,7 @@ export function structuredAdoptionConflictError(
     agentSessionLeaseAdmitsWriter(ownership.lease)
       ? 'agent_session_conflict'
       : 'agent_session_ownership_unknown',
-    'conversationHeldElsewhere'
+    { reason: 'conversationHeldElsewhere' }
   )
 }
 
@@ -154,5 +154,7 @@ export async function resolveStructuredAgentSessionAdoption(input: {
   }
   // Refuse rather than fall back to the default home. Resuming under a home that does not hold the
   // conversation is how a "resume" silently becomes a blank chat wearing the old chat's name.
-  throw agentSessionRefusalError('agent_session_identity_required', 'transcriptNotFound')
+  throw agentSessionRefusalError('agent_session_identity_required', {
+    reason: 'transcriptNotFound'
+  })
 }

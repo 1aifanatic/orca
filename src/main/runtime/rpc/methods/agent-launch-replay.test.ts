@@ -586,7 +586,7 @@ describe('the inner attach reserves under its own id', () => {
     expect(forwarded).toEqual({
       decision: 'refused',
       code: 'agent_session_operation_conflict',
-      cause: 'operationIdReused'
+      details: { reason: 'operationIdReused' }
     })
 
     const derived = deriveAgentLaunchChildOperationId(OPERATION_ID)

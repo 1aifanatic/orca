@@ -41,7 +41,8 @@ export async function runSettledAgentSessionMutation<TValue>(input: {
         : {
             status: 'failed',
             code: outcome.refusal.code,
-            ...(outcome.refusal.cause ? { cause: outcome.refusal.cause } : {}),
+            ...(outcome.refusal.details ? { details: outcome.refusal.details } : {}),
+            // The row's own field, which builds before details read; copied from the legacy mirror.
             ...(outcome.refusal.rewindReason ? { rewindReason: outcome.refusal.rewindReason } : {})
           }
     )

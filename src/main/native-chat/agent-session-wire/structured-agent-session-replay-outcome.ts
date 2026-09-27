@@ -1,9 +1,10 @@
 import { rewindRefusal } from './structured-rewind-refusal'
 import type { AgentSessionOperationOutcome } from '../../../shared/agent-session-operation-ledger'
 import {
-  isAgentSessionRefusalCause,
-  isAgentSessionWireRefusalCode,
+  agentSessionRefusalFromReference,
+  readAgentSessionRefusalReference,
   refuse,
+  type AgentSessionRefusalReference,
   type AgentSessionWireRefusal
 } from '../../../shared/agent-session-wire'
 
@@ -24,24 +25,12 @@ export function resolveAgentSessionReplayOutcome<TValue>(input: {
     if (outcome.rewindReason) {
       return { decision: 'refuse', refusal: rewindRefusal(outcome.rewindReason).refusal }
     }
-    const code = isAgentSessionWireRefusalCode(outcome.code)
-      ? outcome.code
-      : 'agent_session_operation_invalid'
-    // The recorded situation, so a replay says what the first answer said; a code this build does
-    // not know was refused for a reason it cannot name.
-    const cause =
-      code !== outcome.code
-        ? 'operationRefusedEarlier'
-        : isAgentSessionRefusalCause(outcome.cause)
-          ? outcome.cause
-          : undefined
     return {
       decision: 'refuse',
-      refusal: {
-        code,
-        ...(cause ? { cause } : {}),
-        message: outcome.message ?? `Operation ${operationId} was already refused: ${outcome.code}.`
-      }
+      refusal: agentSessionRefusalFromReference(
+        recordedRefusal(outcome.code, outcome.details),
+        outcome.message ?? `Operation ${operationId} was already refused: ${outcome.code}.`
+      )
     }
   }
   if (outcome.status === 'unknown') {
@@ -56,7 +45,7 @@ export function resolveAgentSessionReplayOutcome<TValue>(input: {
       decision: 'refuse',
       refusal: refuse(
         'agent_session_operation_unknown',
-        'outcomeUnknown',
+        { reason: 'outcomeUnknown' },
         `The outcome of operation ${operationId} is unknown; it was not run again.`
       )
     }
@@ -73,9 +62,20 @@ export function resolveAgentSessionReplayOutcome<TValue>(input: {
         decision: 'refuse',
         refusal: refuse(
           'agent_session_operation_unknown',
-          'resultLost',
+          { reason: 'resultLost' },
           `Operation ${operationId} succeeded, but its result is no longer reconstructable.`
         )
       }
     : { decision: 'rerun' }
+}
+
+/** The refusal a failed row recorded, so a replay says what the first answer said. A code this
+ *  build does not know was refused for a reason it cannot name. */
+function recordedRefusal(code: string, details: unknown): AgentSessionRefusalReference {
+  return (
+    readAgentSessionRefusalReference({ code, details }) ?? {
+      code: 'agent_session_operation_invalid',
+      details: { reason: 'operationRefusedEarlier' }
+    }
+  )
 }

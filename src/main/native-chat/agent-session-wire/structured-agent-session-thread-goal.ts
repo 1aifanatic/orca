@@ -1,7 +1,7 @@
 // `agentSession.threadGoal`: change the provider thread's goal through the same
 // admission, ledger and journal path every other session mutation takes.
 
-import { refuse, type AgentSessionRefusalCause } from '../../../shared/agent-session-wire-refusals'
+import { refuse, type AgentSessionRefusalReason } from '../../../shared/agent-session-wire-refusals'
 import type {
   AgentJournalItemIdentity,
   AgentJournalThreadGoal
@@ -15,10 +15,10 @@ import type { MutationPlan } from './structured-agent-session-mutation-plans'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
 
 function refused(
-  cause: AgentSessionRefusalCause,
+  reason: AgentSessionRefusalReason<'agent_session_operation_invalid'>,
   message: string
 ): TurnOutcome<AgentSessionThreadGoalResult> {
-  return { ok: false, refusal: refuse('agent_session_operation_invalid', cause, message) }
+  return { ok: false, refusal: refuse('agent_session_operation_invalid', { reason }, message) }
 }
 
 /** Keyed by the operation, so a replayed set upserts its one objective row. */

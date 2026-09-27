@@ -35,7 +35,7 @@ export async function settlePostAcquisitionAttachFailure(
       outcome: {
         status: 'failed',
         code: 'agent_session_operation_invalid',
-        cause: 'hostFault',
+        details: { reason: 'attachFailed' },
         message: cause instanceof Error ? cause.message : String(cause)
       },
       exitProof,

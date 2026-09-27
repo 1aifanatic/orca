@@ -39,7 +39,7 @@ function factsFor(kind: AgentSessionFailureKind): AgentSessionFailureFact[] {
       kind,
       // A log detail and a refusal ride with the fact; neither may reach the sentence.
       detail: { text: 'Error: ENOENT /Users/me/.claude/x agent_session_conflict', audience: 'log' },
-      refusal: { code: 'agent_session_identity_required', cause: 'claimConflicted' }
+      refusal: { code: 'agent_session_identity_required', details: { reason: 'recordMissing' } }
     }
   ]
   if (kind === 'attachmentInvalid') {
@@ -113,7 +113,7 @@ describe('the words written beside a failure fact', () => {
       agentSessionFailureSentence(
         {
           kind: 'restartFailed',
-          refusal: { code: 'agent_session_conflict', cause: 'claimConflicted' }
+          refusal: { code: 'agent_session_conflict', details: { reason: 'claimConflicted' } }
         },
         'row',
         { agentName: 'Codex' }

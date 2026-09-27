@@ -27,7 +27,7 @@ export async function prepareAdoptedTranscript(
         ? error.refusal
         : refuse(
             'agent_session_identity_required',
-            'transcriptUnreadable',
+            { reason: 'transcriptUnreadable' },
             error instanceof Error ? error.message : String(error)
           )
     }
@@ -43,7 +43,9 @@ async function readAdoptedTranscript(
     return null
   }
   if (!adopt.transcriptPath) {
-    throw agentSessionRefusalError('agent_session_identity_required', 'transcriptNotFound')
+    throw agentSessionRefusalError('agent_session_identity_required', {
+      reason: 'transcriptNotFound'
+    })
   }
   const prepared = await prepareLegacyTranscriptImport({
     agent: params.agent,
@@ -57,7 +59,9 @@ async function readAdoptedTranscript(
     throw new Error(prepared.error)
   }
   if (prepared.items.length === 0) {
-    throw agentSessionRefusalError('agent_session_identity_required', 'transcriptUnreadable')
+    throw agentSessionRefusalError('agent_session_identity_required', {
+      reason: 'transcriptUnreadable'
+    })
   }
   return prepared.items
 }
@@ -89,7 +93,9 @@ async function applyAdoptedTranscript(
     return
   }
   if (!adopt.transcriptPath) {
-    throw agentSessionRefusalError('agent_session_identity_required', 'transcriptNotFound')
+    throw agentSessionRefusalError('agent_session_identity_required', {
+      reason: 'transcriptNotFound'
+    })
   }
   const imported = await importLegacyTranscriptIntoJournal({
     journal: attached.journal,
@@ -107,6 +113,8 @@ async function applyAdoptedTranscript(
   // `replaced: false` means the transcript decoded to nothing. The row promised a conversation and
   // the provider resumed one, so an empty journal here is a disagreement, not an empty chat.
   if (!imported.replaced) {
-    throw agentSessionRefusalError('agent_session_identity_required', 'transcriptUnreadable')
+    throw agentSessionRefusalError('agent_session_identity_required', {
+      reason: 'transcriptUnreadable'
+    })
   }
 }

@@ -13,7 +13,10 @@ export type PendingPromptValidation =
 
 /** The prompt the client named is not one waiting on the user: nothing to answer. */
 function promptGone(message: string): PendingPromptValidation {
-  return { ok: false, refusal: refuse('agent_session_operation_invalid', 'promptGone', message) }
+  return {
+    ok: false,
+    refusal: refuse('agent_session_operation_invalid', { reason: 'promptGone' }, message)
+  }
 }
 
 export function validatePendingPrompt(
@@ -37,25 +40,25 @@ export function validatePendingPrompt(
   if (item.revision !== input.expectedRevision) {
     return {
       ok: false,
-      refusal: {
-        code: 'agent_session_item_revision_stale',
-        cause: 'promptMoved',
-        message: `Item ${input.itemId} has moved on.`,
-        currentRevision: item.revision,
-        resolution: prompt.resolution
-      }
+      refusal: refuse(
+        'agent_session_item_revision_stale',
+        { reason: 'promptMoved', currentRevision: item.revision, resolution: prompt.resolution },
+        `Item ${input.itemId} has moved on.`
+      )
     }
   }
   if (prompt.resolution.state !== 'pending') {
     return {
       ok: false,
-      refusal: {
-        code: 'agent_session_already_resolved',
-        cause: 'promptAlreadyResolved',
-        message: `Item ${input.itemId} was already ${prompt.resolution.state}.`,
-        currentRevision: item.revision,
-        resolution: prompt.resolution
-      }
+      refusal: refuse(
+        'agent_session_already_resolved',
+        {
+          reason: 'promptAlreadyResolved',
+          currentRevision: item.revision,
+          resolution: prompt.resolution
+        },
+        `Item ${input.itemId} was already ${prompt.resolution.state}.`
+      )
     }
   }
   return { ok: true, item, prompt }

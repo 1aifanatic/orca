@@ -67,7 +67,7 @@ export function agentSessionFingerprintConflict(
     ? null
     : refuse(
         'agent_session_operation_conflict',
-        'fingerprintMismatch',
+        { reason: 'fingerprintMismatch' },
         'The payload does not match the fingerprint the client declared for this operation.'
       )
 }
@@ -107,7 +107,7 @@ export function admitAgentSessionMutation(input: {
       decision: 'refused',
       refusal: refuse(
         ledger.code,
-        ledger.cause,
+        ledger.details,
         `Operation ${envelope.clientOperationId} was refused: ${ledger.code}.`
       )
     }
@@ -134,25 +134,29 @@ function refuseUnlessWriterAdmitted(lease: AgentSessionLease): AgentSessionWireR
   if (lease.unreconciled) {
     return refuse(
       'execution_owner_reconciling',
-      'hostReconciling',
+      { reason: 'hostReconciling' },
       'This host has not yet adjudicated the session lease.'
     )
   }
   if (lease.handoffStage !== null) {
     if (lease.claimStatus === 'conflicted') {
-      return refuse('agent_session_conflict', 'claimConflicted', terminalOwnerRefusalMessage(lease))
+      return refuse(
+        'agent_session_conflict',
+        { reason: 'claimConflicted' },
+        terminalOwnerRefusalMessage(lease)
+      )
     }
     return lease.handoffStage === 'new-owner-proving'
-      ? refuse('agent_session_conflict', 'chatStarting', 'The chat is still starting.')
+      ? refuse('agent_session_conflict', { reason: 'chatStarting' }, 'The chat is still starting.')
       : refuse(
           'agent_session_conflict',
-          'ownerUnproven',
+          { reason: 'ownerUnproven' },
           "Orca has not yet confirmed that this chat's previous agent process stopped. Reopen the chat to check again."
         )
   }
   return refuse(
     'agent_session_ownership_unknown',
-    'noLiveOwner',
+    { reason: 'noLiveOwner' },
     'The session has no live owner to accept writes.'
   )
 }

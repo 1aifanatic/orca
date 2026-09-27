@@ -17,7 +17,8 @@ import {
 import { OrchestrationError } from '../orchestration/orchestration-error'
 import {
   AgentSessionRefusalError,
-  agentSessionRefusalError
+  agentSessionRefusalError,
+  refuseUnclassified
 } from '../../../shared/agent-session-wire-refusals'
 
 class LineageError extends Error {
@@ -308,27 +309,45 @@ describe('thrown agent-session refusals', () => {
   // Released clients classify a thrown refusal by its wire code and message; both must read
   // exactly as the bare `Error(code)` this replaced.
   it.each([
-    ['agent_session_ownership_unknown', 'agent_session_ownership_unknown'],
-    ['structured_agent_session_unsupported', 'runtime_error'],
-    ['agent_session_journal_unreadable', 'runtime_error']
-  ] as const)('keeps %s on the wire as it was, and adds its cause in data', (code, wire) => {
-    const before = mapRuntimeError('req_1', meta, new Error(code))
-    const after = mapRuntimeError('req_1', meta, agentSessionRefusalError(code, 'hostDisabled'))
-    expect(after.error.code).toBe(before.error.code)
-    expect(after.error.code).toBe(wire)
-    expect(after.error.message).toBe(before.error.message)
-    expect(after.error.message).toBe(code)
-    expect(after.error.data).toEqual({ refusal: { code, cause: 'hostDisabled' } })
-  })
+    [
+      'agent_session_ownership_unknown',
+      'agent_session_ownership_unknown',
+      agentSessionRefusalError('agent_session_ownership_unknown', { reason: 'noLiveOwner' })
+    ],
+    [
+      'structured_agent_session_unsupported',
+      'runtime_error',
+      agentSessionRefusalError('structured_agent_session_unsupported', { reason: 'hostDisabled' })
+    ],
+    [
+      'agent_session_checkpoint_stale',
+      'agent_session_checkpoint_stale',
+      agentSessionRefusalError('agent_session_checkpoint_stale', {
+        reason: 'fenceStale',
+        currentFence: 4
+      })
+    ]
+  ] as const)(
+    'keeps %s on the wire as it was, and adds its details in data',
+    (code, wire, error) => {
+      const before = mapRuntimeError('req_1', meta, new Error(code))
+      const after = mapRuntimeError('req_1', meta, error)
+      expect(after.error.code).toBe(before.error.code)
+      expect(after.error.code).toBe(wire)
+      expect(after.error.message).toBe(before.error.message)
+      expect(after.error.message).toBe(code)
+      expect(after.error.data).toEqual({ refusal: { code, details: error.refusal.details } })
+      expect(error.refusal.details?.reason).toBeDefined()
+    }
+  )
 
-  it('carries no cause in data when the refusal named none', () => {
+  it('carries no details in data when the refusal named none', () => {
     const response = mapRuntimeError(
       'req_1',
       meta,
-      new AgentSessionRefusalError({
-        code: 'agent_session_conflict',
-        message: 'Another process claims this session.'
-      })
+      new AgentSessionRefusalError(
+        refuseUnclassified('agent_session_conflict', 'Another process claims this session.')
+      )
     )
     expect(response.error).toEqual({
       code: 'agent_session_conflict',
@@ -338,8 +357,8 @@ describe('thrown agent-session refusals', () => {
   })
 
   it('exposes no code property another passthrough could claim', () => {
-    expect('code' in agentSessionRefusalError('agent_session_conflict', 'claimConflicted')).toBe(
-      false
-    )
+    expect(
+      'code' in agentSessionRefusalError('agent_session_conflict', { reason: 'claimConflicted' })
+    ).toBe(false)
   })
 })

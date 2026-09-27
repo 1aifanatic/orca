@@ -42,14 +42,23 @@ describe('reading a failure fact', () => {
     expect(
       readAgentSessionFailureFact({
         kind: 'restartFailed',
-        refusal: { code: 'agent_session_conflict', cause: 'claimConflicted' },
+        refusal: { code: 'agent_session_conflict', details: { reason: 'claimConflicted' } },
         detail: { text: 'x', audience: 'person' }
       })
     ).toEqual({
       kind: 'restartFailed',
-      refusal: { code: 'agent_session_conflict', cause: 'claimConflicted' },
+      refusal: { code: 'agent_session_conflict', details: { reason: 'claimConflicted' } },
       detail: { text: 'x', audience: 'person' }
     })
+  })
+
+  it('reads a row an unreleased build wrote with a cause as a refusal with no details', () => {
+    expect(
+      readAgentSessionFailureFact({
+        kind: 'restartFailed',
+        refusal: { code: 'agent_session_conflict', cause: 'claimConflicted' }
+      })
+    ).toEqual({ kind: 'restartFailed', refusal: { code: 'agent_session_conflict' } })
   })
 
   it('drops what a newer host wrote that this build cannot place', () => {
@@ -58,7 +67,7 @@ describe('reading a failure fact', () => {
     expect(
       readAgentSessionFailureFact({
         kind: 'restartFailed',
-        refusal: { code: 'agent_session_conflict', cause: 'futureCause' },
+        refusal: { code: 'agent_session_conflict', details: { reason: 'futureReason' } },
         detail: { text: 'x', audience: 'future' }
       })
     ).toEqual({ kind: 'restartFailed', refusal: { code: 'agent_session_conflict' } })

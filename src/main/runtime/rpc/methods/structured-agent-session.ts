@@ -76,7 +76,9 @@ async function resolveClientSuppliedAttach(params: z.infer<typeof AttachParams>,
   await ensureHostInstalled(ctx)
   const host = requireHost(ctx)
   if (!host.supportsCreate(params.location, params.agent)) {
-    throw agentSessionRefusalError('structured_agent_session_unsupported', 'hostUnsupported')
+    throw agentSessionRefusalError('structured_agent_session_unsupported', {
+      reason: 'hostUnsupported'
+    })
   }
   const { agent: _attachAgent, provider: _attachProvider, ...attachWithoutAgent } = params
   const attachParams = {
@@ -131,10 +133,9 @@ export const STRUCTURED_AGENT_SESSION_METHODS = [
     params: CreateSupportParams,
     handler: async (params, ctx) => {
       if (!supportsStructuredSessions(ctx)) {
-        throw agentSessionRefusalError(
-          'structured_agent_session_unsupported',
-          'clientCapabilityMissing'
-        )
+        throw agentSessionRefusalError('structured_agent_session_unsupported', {
+          reason: 'clientCapabilityMissing'
+        })
       }
       return ctx.runtime.getStructuredAgentSessionCreateSupport(params.worktree, params.agent)
     }
@@ -145,7 +146,9 @@ export const STRUCTURED_AGENT_SESSION_METHODS = [
     handler: async (params, ctx) => {
       requireStructuredCapability(ctx)
       if (params.envelope.expectedRuntimeFence !== null) {
-        throw agentSessionRefusalError('agent_session_operation_invalid', 'requestMalformed')
+        throw agentSessionRefusalError('agent_session_operation_invalid', {
+          reason: 'requestMalformed'
+        })
       }
       // Everything up to `attach` is pre-commit, and answers with a refusal rather than a throw so
       // a client can tell "nothing was created" from "the outcome is unknown".

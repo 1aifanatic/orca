@@ -31,10 +31,12 @@ export async function revealStructuredAgentSession(
 ): Promise<StructuredAgentSessionReveal> {
   const record = deps.store.getRecord(sessionId)
   if (!record) {
-    throw agentSessionRefusalError('agent_session_identity_required', 'recordMissing')
+    throw agentSessionRefusalError('agent_session_identity_required', { reason: 'recordMissing' })
   }
   if (!adapterSupportsRecord(deps.adapter, record)) {
-    throw agentSessionRefusalError('structured_agent_session_unsupported', 'hostUnsupported')
+    throw agentSessionRefusalError('structured_agent_session_unsupported', {
+      reason: 'hostUnsupported'
+    })
   }
   // Lease state is not consulted on purpose: this neither claims the lease nor spawns a child, so a
   // contested or reconciling chat still reveals and the hold that follows adjudicates it. Refusing

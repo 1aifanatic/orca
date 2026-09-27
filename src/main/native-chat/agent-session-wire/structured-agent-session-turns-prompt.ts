@@ -17,7 +17,7 @@ import type {
 import {
   refuse,
   type AgentSessionPromptResult,
-  type AgentSessionRefusalCause
+  type AgentSessionRefusalReason
 } from '../../../shared/agent-session-wire'
 import {
   AgentSessionPromptAnswerRejectedError,
@@ -35,8 +35,11 @@ export type AgentSessionPromptRequest = {
   answers?: AgentSessionQuestionAnswer[]
 }
 
-function invalid(cause: AgentSessionRefusalCause, message: string): TurnOutcome<never> {
-  return { ok: false, refusal: refuse('agent_session_operation_invalid', cause, message) }
+function invalid(
+  reason: AgentSessionRefusalReason<'agent_session_operation_invalid'>,
+  message: string
+): TurnOutcome<never> {
+  return { ok: false, refusal: refuse('agent_session_operation_invalid', { reason }, message) }
 }
 
 /** The one place a client's choice is read; an answer an older client packed into `optionId` is unpacked here, once. */

@@ -129,7 +129,7 @@ export class StructuredAgentSessionHolds {
         ok: false,
         refusal: refuse(
           'agent_session_ownership_unknown',
-          'noProviderChild',
+          { reason: 'noProviderChild' },
           'The session attached without a provider child to write to.'
         )
       }

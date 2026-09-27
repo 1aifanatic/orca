@@ -432,7 +432,7 @@ describe('structured session acquisition options', () => {
       ok: false,
       refusal: {
         code: 'agent_session_operation_invalid',
-        cause: 'providerStartFailed',
+        details: { reason: 'providerStartFailed' },
         message: 'model list unavailable'
       }
     })
@@ -532,7 +532,7 @@ describe('structured session acquisition options', () => {
             ok: false,
             refusal: {
               code: 'agent_session_operation_invalid',
-              cause: 'providerStartFailed',
+              details: { reason: 'providerStartFailed' },
               message: injected.message
             }
           })

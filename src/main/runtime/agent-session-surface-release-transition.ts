@@ -38,7 +38,7 @@ export function releaseAgentSessionOwnerAfterSurfaceClose(args: {
   const { record } = args
   assertFence(record.lease, args.expectedFence)
   if (!isSurfaceReleasableAgentSessionRecord(record)) {
-    throw agentSessionRefusalError('agent_session_ownership_unknown', 'leaseMoved')
+    throw agentSessionRefusalError('agent_session_ownership_unknown', { reason: 'leaseMoved' })
   }
   return withLease(record, {
     ...record.lease,

@@ -127,7 +127,7 @@ describe('performThreadGoalChange', () => {
       ok: false,
       refusal: {
         code: 'agent_session_operation_invalid',
-        cause: 'providerRejected',
+        details: { reason: 'providerRejected' },
         message: 'goals feature is disabled'
       }
     })

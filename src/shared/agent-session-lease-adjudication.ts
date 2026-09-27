@@ -17,7 +17,7 @@ import type {
 } from './agent-session-record'
 import type {
   AgentSessionOwnerVerdict,
-  AgentSessionRefusalCause
+  AgentSessionRefusalDetailsByCode
 } from './agent-session-wire-refusals'
 
 export type AgentSessionIdentityMatchField = 'process-start-time' | 'spawn-token'
@@ -47,7 +47,13 @@ export type AgentSessionAcquisitionDecision =
   | { decision: 'granted'; nextFence: number }
   /** The same acquisition operation re-entering its own reservation; no new fence, no new spawn. */
   | { decision: 'retry-reservation'; fence: number }
-  | { decision: 'refused'; code: AgentSessionLeaseRefusalCode; cause: AgentSessionRefusalCause }
+  | {
+      [C in AgentSessionLeaseRefusalCode]: {
+        decision: 'refused'
+        code: C
+        details: AgentSessionRefusalDetailsByCode[C]
+      }
+    }[AgentSessionLeaseRefusalCode]
 
 export type AgentSessionRestartAdjudication =
   /** Nothing is outstanding — no owner, no reservation. Clear any latched stage; the fence stays. */
@@ -134,18 +140,34 @@ export function evaluateAgentSessionAcquisition(args: {
 }): AgentSessionAcquisitionDecision {
   const { lease, expectedFence, handoffOperationId, probe } = args
   if (lease.unreconciled) {
-    return { decision: 'refused', code: 'execution_owner_reconciling', cause: 'hostReconciling' }
+    return {
+      decision: 'refused',
+      code: 'execution_owner_reconciling',
+      details: { reason: 'hostReconciling' }
+    }
   }
   if (!isAgentSessionFenceCurrent(lease, expectedFence)) {
-    return { decision: 'refused', code: 'agent_session_checkpoint_stale', cause: 'fenceStale' }
+    return {
+      decision: 'refused',
+      code: 'agent_session_checkpoint_stale',
+      details: { reason: 'fenceStale' }
+    }
   }
   if (lease.claimStatus === 'conflicted') {
     // Why: the user's own terminal agent; restart adjudication and recovery retire it once gone.
-    return { decision: 'refused', code: 'agent_session_conflict', cause: 'claimConflicted' }
+    return {
+      decision: 'refused',
+      code: 'agent_session_conflict',
+      details: { reason: 'claimConflicted' }
+    }
   }
   if (lease.handoffStage === 'recovering') {
     // Why: no stage expires into an owner; recovery resolution concludes about it first.
-    return { decision: 'refused', code: 'agent_session_ownership_unknown', cause: 'ownerUnproven' }
+    return {
+      decision: 'refused',
+      code: 'agent_session_ownership_unknown',
+      details: { reason: 'ownerUnproven' }
+    }
   }
   if (lease.handoffStage !== null && lease.handoffOperationId !== null) {
     if (handoffOperationId !== lease.handoffOperationId) {
@@ -153,7 +175,7 @@ export function evaluateAgentSessionAcquisition(args: {
       return {
         decision: 'refused',
         code: 'agent_session_operation_conflict',
-        cause: 'handoffInFlight'
+        details: { reason: 'handoffInFlight' }
       }
     }
     if (
@@ -170,15 +192,23 @@ export function evaluateAgentSessionAcquisition(args: {
       // Why: a lapsed deadline means Orca stopped hearing from the owner, not that the child
       // stopped editing files and spending tokens.
       return isProvenAliveProbe(probe)
-        ? { decision: 'refused', code: 'agent_session_conflict', cause: 'ownerAlive' }
-        : { decision: 'refused', code: 'agent_session_ownership_unknown', cause: 'ownerUnproven' }
+        ? { decision: 'refused', code: 'agent_session_conflict', details: { reason: 'ownerAlive' } }
+        : {
+            decision: 'refused',
+            code: 'agent_session_ownership_unknown',
+            details: { reason: 'ownerUnproven' }
+          }
     }
     return { decision: 'granted', nextFence: nextAgentSessionFence(lease) }
   }
   if (lease.claimStatus === 'reserved' && probe.outcome !== 'reservation-unused') {
     // Why: a reservation with no proven process is not a free lease — the crash may have lost
     // the race with the spawn rather than beaten it.
-    return { decision: 'refused', code: 'agent_session_ownership_unknown', cause: 'ownerUnproven' }
+    return {
+      decision: 'refused',
+      code: 'agent_session_ownership_unknown',
+      details: { reason: 'ownerUnproven' }
+    }
   }
   return { decision: 'granted', nextFence: nextAgentSessionFence(lease) }
 }

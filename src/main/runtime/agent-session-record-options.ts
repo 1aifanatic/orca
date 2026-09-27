@@ -9,7 +9,7 @@ export function replaceAgentSessionRecordOptions(
   replacement: AgentSessionOptionsReplacement
 ): AgentSessionRecord {
   if (record.lease.runtimeFence !== replacement.fence || record.lease.claimStatus !== 'live') {
-    throw agentSessionRefusalError('agent_session_ownership_unknown', 'leaseMoved')
+    throw agentSessionRefusalError('agent_session_ownership_unknown', { reason: 'leaseMoved' })
   }
   return { ...record, options: { ...replacement.options }, updatedAt: replacement.now }
 }

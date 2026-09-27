@@ -143,7 +143,7 @@ describe('attach', () => {
       ok: false,
       refusal: {
         code: 'agent_session_operation_invalid',
-        cause: 'providerStartFailed',
+        details: { reason: 'providerStartFailed', ownerVerdict: 'exited' },
         message: 'agent_session_provider_handle_stale_fence',
         ownerVerdict: 'exited'
       }

@@ -27,12 +27,11 @@ import type {
   AgentSessionBackgroundTaskState,
   AgentSessionOptionsResult,
   AgentSessionSlashCommand,
-  AgentSessionThreadGoalChange,
-  AgentSessionWireRefusalCode
+  AgentSessionThreadGoalChange
 } from '../../../shared/agent-session-wire'
 import {
   isAgentSessionWireRefusalCode,
-  type AgentSessionRefusalCause
+  type AgentSessionRefusalReason
 } from '../../../shared/agent-session-wire-refusals'
 import type { AgentSessionFailureFact } from '../../../shared/agent-session-failure'
 import type { AgentJournalDispatchRejection } from '../../../shared/agent-session-failure-words'
@@ -43,11 +42,13 @@ import type { StructuredSessionCompactionResult } from './structured-session-com
 import type { AgentSessionCreatePhaseRecorder } from '../../observability/agent-session-instrumentation'
 
 export class AgentSessionAcquisitionRefusal extends Error {
+  readonly code = 'agent_session_operation_invalid'
+
   constructor(
     message: string,
-    readonly code: AgentSessionWireRefusalCode = 'agent_session_operation_invalid',
-    /** The situation, so the chat can say what to do; the message is Orca's log wording. */
-    readonly refusalCause?: AgentSessionRefusalCause
+    /** The situation, so the chat can say what to do; the message is Orca's log wording. Absent,
+     *  the provider refused its own start. */
+    readonly reason: AgentSessionRefusalReason<'agent_session_operation_invalid'> = 'providerStartFailed'
   ) {
     super(message)
     this.name = 'AgentSessionAcquisitionRefusal'
@@ -55,11 +56,7 @@ export class AgentSessionAcquisitionRefusal extends Error {
 
   /** The conversation's history is more than this host can restore. */
   static historyTooLarge(message: string): AgentSessionAcquisitionRefusal {
-    return new AgentSessionAcquisitionRefusal(
-      message,
-      'agent_session_operation_invalid',
-      'historyTooLarge'
-    )
+    return new AgentSessionAcquisitionRefusal(message, 'historyTooLarge')
   }
 }
 

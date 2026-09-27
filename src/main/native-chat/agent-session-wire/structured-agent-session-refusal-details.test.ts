@@ -1,4 +1,4 @@
-// A refusal's cause names the situation, so every place that answers for a refusal — the first
+// A refusal's details name the situation, so every place that answers for a refusal — the first
 // reply, a ledger replay, the store fallback copy — must name the same one.
 
 import { describe, expect, it } from 'vitest'
@@ -27,21 +27,17 @@ function replay(outcome: Parameters<typeof resolveAgentSessionReplayOutcome>[0][
   })
 }
 
-describe('a ledger replay names the cause its first answer did', () => {
+describe('a ledger replay names the details its first answer did', () => {
   it.each([
-    new AgentSessionAcquisitionRefusal(
-      'not signed in',
-      'agent_session_operation_invalid',
-      'notSignedIn'
-    ),
+    new AgentSessionAcquisitionRefusal('not signed in', 'notSignedIn'),
     new AgentSessionAcquisitionExitProvenError(new Error('spawn codex ENOENT'))
   ])('for a failed create: %s', (error) => {
     const first = failedAcquisitionRefusal(error)
     const replayed = replay(failedAcquisitionSettlement(error).outcome)
-    expect(first?.refusal.cause).toBeDefined()
+    expect(first?.refusal.details?.reason).toBeDefined()
     expect(replayed).toMatchObject({
       decision: 'refuse',
-      refusal: { code: first?.refusal.code, cause: first?.refusal.cause }
+      refusal: { code: first?.refusal.code, details: first?.refusal.details }
     })
   })
 
@@ -50,26 +46,68 @@ describe('a ledger replay names the cause its first answer did', () => {
       new AgentSessionAcquisitionExitUnprovenError(new Error('probe failed'))
     ).outcome
     expect(replay(outcome)).toMatchObject({
-      refusal: { code: 'agent_session_ownership_unknown', cause: 'exitUnproven' }
+      refusal: { code: 'agent_session_ownership_unknown', details: { reason: 'ownerUnproven' } }
     })
   })
 
-  it('reads a row an older host wrote, with no cause, as naming none', () => {
+  it('replays the facts beside the reason, and mirrors them where released clients read', () => {
+    const resolution = {
+      state: 'resolved' as const,
+      selectedOptionId: 'allow',
+      resolvedBy: 'phone',
+      resolvedAt: 5
+    }
+    const replayed = replay({
+      status: 'failed',
+      code: 'agent_session_item_revision_stale',
+      details: { reason: 'promptMoved', currentRevision: 3, resolution }
+    })
+    expect(replayed).toMatchObject({
+      refusal: {
+        code: 'agent_session_item_revision_stale',
+        details: { reason: 'promptMoved', currentRevision: 3, resolution },
+        currentRevision: 3,
+        resolution
+      }
+    })
+  })
+
+  it('reads a row an older host wrote, with no details, as naming none', () => {
     const replayed = replay({ status: 'failed', code: 'agent_session_conflict' })
     expect(replayed).toMatchObject({ refusal: { code: 'agent_session_conflict' } })
-    expect(replayed.decision === 'refuse' && replayed.refusal).not.toHaveProperty('cause')
+    expect(replayed.decision === 'refuse' && replayed.refusal).not.toHaveProperty('details')
+  })
+
+  it('drops the cause an unreleased build wrote, and a reason the code does not list', () => {
+    for (const row of [
+      { status: 'failed' as const, code: 'agent_session_conflict', cause: 'claimConflicted' },
+      {
+        status: 'failed' as const,
+        code: 'agent_session_conflict',
+        details: { reason: 'promptGone' as const }
+      }
+    ]) {
+      const replayed = replay(row)
+      expect(replayed).toMatchObject({ refusal: { code: 'agent_session_conflict' } })
+      expect(replayed.decision === 'refuse' && replayed.refusal).not.toHaveProperty('details')
+    }
   })
 
   it('names a code this build cannot place as refused earlier', () => {
     expect(replay({ status: 'failed', code: 'agent_session_future_code' })).toMatchObject({
-      refusal: { code: 'agent_session_operation_invalid', cause: 'operationRefusedEarlier' }
+      refusal: {
+        code: 'agent_session_operation_invalid',
+        details: { reason: 'operationRefusedEarlier' }
+      }
     })
   })
 
   it('names a lost outcome and a lost result', () => {
-    expect(replay({ status: 'unknown' })).toMatchObject({ refusal: { cause: 'outcomeUnknown' } })
+    expect(replay({ status: 'unknown' })).toMatchObject({
+      refusal: { details: { reason: 'outcomeUnknown' } }
+    })
     expect(replay({ status: 'succeeded', sessionId: 's' })).toMatchObject({
-      refusal: { cause: 'resultLost' }
+      refusal: { details: { reason: 'resultLost' } }
     })
   })
 })
@@ -83,25 +121,25 @@ describe('the store fallback copy', () => {
 
   it('words a situation its code would misdescribe by the situation', () => {
     const refusal = classifyStoreFailure(
-      agentSessionRefusalError('agent_session_ownership_unknown', 'replaySuperseded'),
+      agentSessionRefusalError('agent_session_ownership_unknown', { reason: 'replaySuperseded' }),
       null,
       record
     )
     expect(refusal).toMatchObject({
       code: 'agent_session_ownership_unknown',
-      cause: 'replaySuperseded'
+      details: { reason: 'replaySuperseded' }
     })
     // Not the latched-owner story: this owner is not in doubt, the replay is just stale.
     expect(refusal.message).not.toContain('4242')
   })
 
-  it('keeps the latched-owner story, with its cause, for an owner it cannot prove gone', () => {
+  it('keeps the latched-owner story, with its reason, for an owner it cannot prove gone', () => {
     const refusal = classifyStoreFailure(
-      agentSessionRefusalError('agent_session_ownership_unknown', 'ownerUnproven'),
+      agentSessionRefusalError('agent_session_ownership_unknown', { reason: 'ownerUnproven' }),
       null,
       record
     )
-    expect(refusal.cause).toBe('ownerUnproven')
+    expect(refusal.details?.reason).toBe('ownerUnproven')
     expect(refusal.message).toContain('4242')
   })
 
@@ -109,13 +147,13 @@ describe('the store fallback copy', () => {
     // Unreadable covers a damaged record as well as one a newer build wrote.
     expect(
       classifyStoreFailure(
-        agentSessionRefusalError('execution_owner_reconciling', 'recordUnreadable'),
+        agentSessionRefusalError('execution_owner_reconciling', { reason: 'recordUnreadable' }),
         null,
         null
       )
     ).toEqual({
       code: 'execution_owner_reconciling',
-      cause: 'recordUnreadable',
+      details: { reason: 'recordUnreadable' },
       message:
         "Orca can't read this chat's saved state. If a newer version of Orca saved it, update Orca to open it; otherwise start a new chat."
     })
@@ -126,10 +164,29 @@ describe('the store fallback copy', () => {
       classifyStoreFailure(new Error('agent_session_conflict'), null, {
         ...record,
         lease: { ...record.lease, claimStatus: 'conflicted' }
-      }).cause
-    ).toBe('claimConflicted')
+      }).details
+    ).toEqual({ reason: 'claimConflicted' })
     expect(
       classifyStoreFailure(new Error('agent_session_conflict'), null, null)
-    ).not.toHaveProperty('cause')
+    ).not.toHaveProperty('details')
+  })
+
+  it('puts the current fence in the details of a stale checkpoint, and mirrors it', () => {
+    expect(
+      classifyStoreFailure(
+        agentSessionRefusalError('agent_session_checkpoint_stale', { reason: 'fenceStale' }),
+        7,
+        null
+      )
+    ).toEqual({
+      code: 'agent_session_checkpoint_stale',
+      details: { reason: 'fenceStale', currentFence: 7 },
+      currentFence: 7,
+      message: 'The session store refused this call: agent_session_checkpoint_stale.'
+    })
+    // A bare code names no reason, but the fence is still a fact.
+    expect(
+      classifyStoreFailure(new Error('agent_session_checkpoint_stale'), 7, null)
+    ).toMatchObject({ details: { currentFence: 7 }, currentFence: 7 })
   })
 })

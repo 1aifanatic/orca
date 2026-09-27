@@ -70,10 +70,11 @@ describe('failed create owner verdict', () => {
     // The cleanup's release proves the whole tree gone: the common failed start.
     acquire.mockRejectedValueOnce(new Error(EXIT_REASON))
     const first = hostTestAttachParams(null)
-    // The replay names the same cause as the first answer: the ledger kept it beside the code.
+    // The replay names the same details as the first answer: the ledger kept them beside the code,
+    // and the verdict reaches released clients at the top level exactly as before.
     const refusal = {
       code: 'agent_session_operation_invalid',
-      cause: 'providerStartFailed',
+      details: { reason: 'providerStartFailed', ownerVerdict: 'exited' },
       message: EXIT_REASON,
       ownerVerdict: 'exited'
     }
@@ -94,10 +95,11 @@ describe('failed create owner verdict', () => {
       new AgentSessionAcquisitionRootExitObservedError(new Error(EXIT_REASON))
     )
     const first = hostTestAttachParams(null)
-    // The replay names the same cause as the first answer: the ledger kept it beside the code.
+    // The replay names the same details as the first answer: the ledger kept them beside the code,
+    // and the verdict reaches released clients at the top level exactly as before.
     const refusal = {
       code: 'agent_session_operation_invalid',
-      cause: 'providerStartFailed',
+      details: { reason: 'providerStartFailed', ownerVerdict: 'exited' },
       message: EXIT_REASON,
       ownerVerdict: 'exited'
     }
@@ -119,7 +121,7 @@ describe('failed create owner verdict', () => {
       ok: false,
       refusal: {
         code: 'agent_session_operation_invalid',
-        cause: 'providerStartFailed',
+        details: { reason: 'providerStartFailed', ownerVerdict: 'exited' },
         message: 'not signed in',
         ownerVerdict: 'exited'
       }

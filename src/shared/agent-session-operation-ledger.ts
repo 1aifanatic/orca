@@ -1,4 +1,7 @@
-import type { AgentSessionRefusalCause } from './agent-session-wire-refusals'
+import type {
+  AgentSessionAnyRefusalDetails,
+  AgentSessionRefusalDetailsByCode
+} from './agent-session-refusal-details'
 import {
   isAgentSessionRewindResult,
   type AgentSessionRewindReason,
@@ -61,8 +64,9 @@ export type AgentSessionOperationOutcome =
       code: string
       message?: string
       rewindReason?: AgentSessionRewindReason
-      /** Beside the code, so a replay names the situation the first answer did. */
-      cause?: AgentSessionRefusalCause
+      /** Beside the code, so a replay says what the first answer did. Read back against the code,
+       *  since the code is a string here; a row written before details carries none. */
+      details?: AgentSessionAnyRefusalDetails
     }
   /** The effect may or may not have happened; replay this answer instead of spawning again. */
   | { status: 'unknown' }
@@ -87,13 +91,12 @@ export type AgentSessionOperationDecision =
   | { decision: 'replay'; row: AgentSessionOperationRow }
   | { decision: 'admit'; row: AgentSessionOperationRow }
   | {
-      decision: 'refused'
-      code: AgentSessionOperationRefusalCode
-      cause: Extract<
-        AgentSessionRefusalCause,
-        'operationIdInvalid' | 'operationIdReused' | 'operationExpired' | 'operationCapacity'
-      >
-    }
+      [C in AgentSessionOperationRefusalCode]: {
+        decision: 'refused'
+        code: C
+        details: AgentSessionRefusalDetailsByCode[C]
+      }
+    }[AgentSessionOperationRefusalCode]
 
 /** NUL cannot occur in a caller key or operation id, so no pair can forge another pair's key. */
 const OPERATION_KEY_SEPARATOR = '\u0000'
@@ -246,7 +249,7 @@ export function evaluateAgentSessionOperation(args: {
     return {
       decision: 'refused',
       code: 'agent_session_operation_invalid',
-      cause: 'operationIdInvalid'
+      details: { reason: 'operationIdInvalid' }
     }
   }
   const key = agentSessionOperationKey(callerKey, operationId)
@@ -257,7 +260,7 @@ export function evaluateAgentSessionOperation(args: {
       : {
           decision: 'refused',
           code: 'agent_session_operation_conflict',
-          cause: 'operationIdReused'
+          details: { reason: 'operationIdReused' }
         }
   }
   if (now - operationTimestamp > AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS) {
@@ -266,7 +269,7 @@ export function evaluateAgentSessionOperation(args: {
     return {
       decision: 'refused',
       code: 'agent_session_operation_expired',
-      cause: 'operationExpired'
+      details: { reason: 'operationExpired' }
     }
   }
   const perClientLimit = args.perClientLimit ?? AGENT_SESSION_DURABLE_OPERATION_PER_CLIENT_LIMIT
@@ -283,7 +286,7 @@ export function evaluateAgentSessionOperation(args: {
     return {
       decision: 'refused',
       code: 'agent_session_operation_capacity',
-      cause: 'operationCapacity'
+      details: { reason: 'operationCapacity' }
     }
   }
   return {

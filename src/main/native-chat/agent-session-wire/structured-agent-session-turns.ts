@@ -16,7 +16,7 @@ import type {
 import {
   refuse,
   type AgentSessionCancelResult,
-  type AgentSessionRefusalCause,
+  type AgentSessionRefusalReason,
   type AgentSessionSendResult,
   type AgentSessionWireRefusal
 } from '../../../shared/agent-session-wire'
@@ -58,10 +58,10 @@ export type TurnOutcome<TValue> =
   | { ok: false; refusal: AgentSessionWireRefusal }
 
 function invalid(
-  cause: AgentSessionRefusalCause,
+  reason: AgentSessionRefusalReason<'agent_session_operation_invalid'>,
   message: string
 ): { ok: false; refusal: AgentSessionWireRefusal } {
-  return { ok: false, refusal: refuse('agent_session_operation_invalid', cause, message) }
+  return { ok: false, refusal: refuse('agent_session_operation_invalid', { reason }, message) }
 }
 
 /** A thrown adapter error is indistinguishable from a lost reply, so it settles as `unknown`
