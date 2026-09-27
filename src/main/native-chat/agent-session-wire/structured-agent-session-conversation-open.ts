@@ -39,6 +39,10 @@ export type StructuredAgentSessionConversationOpenDeps = {
   onEventSinkError?: StructuredAgentSessionHostDeps['onEventSinkError']
 }
 
+/** An acquisition's own open: its reserve cleared the record's death evidence, so it settles
+ *  what the gone generation left running itself, from what it read before. */
+export type StructuredAgentSessionConversationOpenOptions = { acquisition?: boolean }
+
 export type StructuredAgentSessionConversationOpenContext = {
   deps: StructuredAgentSessionConversationOpenDeps
   sessions: Map<string, StructuredAgentSessionHostSession>
@@ -53,7 +57,8 @@ export type StructuredAgentSessionConversationOpenContext = {
  *  session's serialize, which is what makes "not open yet" exact. */
 export async function openStructuredAgentSessionConversation(
   context: StructuredAgentSessionConversationOpenContext,
-  sessionId: string
+  sessionId: string,
+  options: StructuredAgentSessionConversationOpenOptions = {}
 ): Promise<StructuredAgentSessionHostSession | null> {
   const open = context.sessions.get(sessionId)
   if (open) {
@@ -63,7 +68,7 @@ export async function openStructuredAgentSessionConversation(
   if (!record) {
     return null
   }
-  const opened = await openStructuredAgentSessionConversationJournal(context.deps, record)
+  const opened = await openStructuredAgentSessionConversationJournal(context.deps, record, options)
   await context.adoptOpened(sessionId, opened)
   return opened.session
 }
@@ -71,7 +76,8 @@ export async function openStructuredAgentSessionConversation(
 /** The open itself, indexed by nobody yet: the caller adopts the result. */
 export async function openStructuredAgentSessionConversationJournal(
   deps: Omit<StructuredAgentSessionConversationOpenDeps, 'store'>,
-  record: AgentSessionRecord
+  record: AgentSessionRecord,
+  options: StructuredAgentSessionConversationOpenOptions = {}
 ): Promise<OpenedStructuredAgentSessionConversation> {
   const { sessionId } = record
   const fence = record.lease.runtimeFence
@@ -98,9 +104,9 @@ export async function openStructuredAgentSessionConversationJournal(
   }
   try {
     // No child in this process writes to a journal nobody had open, so whatever it shows running
-    // belongs to a generation that is gone. Settled before any reader or child sees it — unless an
-    // acquisition holds the lease: it cleared the evidence, and settles from what it read before.
-    if (record.lease.claimStatus !== 'reserved' && record.lease.claimStatus !== 'live') {
+    // belongs to a generation that is gone, whatever the lease still claims. Settled before any
+    // reader or child sees it.
+    if (!options.acquisition) {
       await settleStaleStructuredAgentSessionState({
         journal: opened.journal,
         sessionId,

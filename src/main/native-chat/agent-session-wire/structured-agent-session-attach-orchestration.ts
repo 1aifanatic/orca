@@ -163,7 +163,9 @@ async function runAttach(
       recordPhase,
       ...(options.onAcquisitionFailed ? { onAcquisitionFailed: options.onAcquisitionFailed } : {}),
       openConversation: async (record) => {
-        const conversation = await context.openConversation(record.sessionId)
+        const conversation = await context.openConversation(record.sessionId, {
+          acquisition: true
+        })
         if (!conversation) {
           throw new Error('agent_session_identity_required')
         }
