@@ -23,6 +23,8 @@ const MAX_EDIT_PATCH_HUNKS = 40
 const MAX_EDIT_PATCH_HUNK_LINES = 400
 // Claude asks at most four questions at a time; this only bounds a malformed record.
 const MAX_ASK_ANSWERS = 16
+// Claude's stand-in answer when the reader typed a note but chose no option.
+const CLAUDE_NOTES_ONLY_ANSWER = '(notes only)'
 
 /** Claude reports an edit as a snippet pair on the call, which cannot locate the
  *  change in the file. The result record carries the hunks it resolved against
@@ -63,20 +65,35 @@ function claudeEditPatch(record: Record<string, unknown>): NativeChatEditPatch |
 
 /** An AskUserQuestion result keeps its answers as data beside the prose it hands
  *  the model, keyed by each question's exact text. The prose varies by release and
- *  quotes answers unescaped, so only this map is read. A string answer is kept
- *  whole (it may be typed text, or labels already joined); a list is per label. */
+ *  quotes answers unescaped, so only the data is read: the chosen labels, then any
+ *  note the reader typed. A string answer is kept whole (it may be typed text, or
+ *  labels already joined); a list is per label. */
 function claudeAskAnswers(record: Record<string, unknown>): NativeChatAskAnswer[] | null {
   const result = asRecord(record.toolUseResult)
   const answers = asRecord(result?.answers)
   if (!answers || !Array.isArray(result?.questions)) {
     return null
   }
+  // An idle timeout reports picks never submitted, and a typed response is sent in
+  // place of the answers (unless it asks for follow-up questions).
+  const response = typeof result.response === 'string' ? result.response.trim() : ''
+  if (result.afkTimeoutMs || (response.length > 0 && result.followUp !== true)) {
+    return null
+  }
+  const annotations = asRecord(result.annotations)
   const entries: NativeChatAskAnswer[] = []
-  for (const [question, value] of Object.entries(answers).slice(0, MAX_ASK_ANSWERS)) {
-    const parts = (Array.isArray(value) ? value : [value]).filter(
-      (part): part is string => typeof part === 'string' && part.trim().length > 0
+  for (const entry of result.questions.slice(0, MAX_ASK_ANSWERS)) {
+    const question = asRecord(entry)?.question
+    if (typeof question !== 'string' || question.trim().length === 0) {
+      continue
+    }
+    const value = answers[question]
+    const notes = asRecord(annotations?.[question])?.notes
+    const parts = [...(Array.isArray(value) ? value : [value]), notes].filter(
+      (part): part is string =>
+        typeof part === 'string' && part.trim().length > 0 && part !== CLAUDE_NOTES_ONLY_ANSWER
     )
-    if (question.trim().length > 0 && parts.length > 0) {
+    if (parts.length > 0) {
       entries.push({ question, answer: parts })
     }
   }

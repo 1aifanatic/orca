@@ -79,7 +79,8 @@ describe('Claude AskUserQuestion answers', () => {
       resultLine({
         questions: QUESTIONS.slice(0, 1),
         answers: { 'Which storage should the cache use?': typed },
-        annotations: { 'Which storage should the cache use?': { notes: 'ignored' } }
+        // A preview is the option's own content, not part of the reply.
+        annotations: { 'Which storage should the cache use?': { preview: 'Survives a restart' } }
       })
     )
     expect(block).toMatchObject({
@@ -96,6 +97,78 @@ describe('Claude AskUserQuestion answers', () => {
     )
     expect(block).toMatchObject({
       askAnswers: [{ question: 'Which checks should run?', answer: ['Lint', 'Tests'] }]
+    })
+  })
+
+  it('adds a note the reader typed after the option it annotates', () => {
+    const block = resultBlock(
+      resultLine({
+        questions: QUESTIONS,
+        answers: { 'Which storage should the cache use?': 'Disk' },
+        annotations: {
+          'Which storage should the cache use?': { notes: 'but compress it' },
+          'Which checks should run?': { notes: 'whatever is fastest' }
+        }
+      })
+    )
+    expect(block).toMatchObject({
+      askAnswers: [
+        { question: 'Which storage should the cache use?', answer: ['Disk', 'but compress it'] },
+        { question: 'Which checks should run?', answer: ['whatever is fastest'] }
+      ]
+    })
+  })
+
+  it("shows the note, not Claude's stand-in, when no option was chosen", () => {
+    const block = resultBlock(
+      resultLine({
+        questions: QUESTIONS.slice(0, 1),
+        answers: { 'Which storage should the cache use?': '(notes only)' },
+        annotations: { 'Which storage should the cache use?': { notes: 'ask the team first' } }
+      })
+    )
+    expect(block).toMatchObject({
+      askAnswers: [
+        { question: 'Which storage should the cache use?', answer: ['ask the team first'] }
+      ]
+    })
+  })
+
+  it('records no answers for picks the reader never submitted', () => {
+    const block = resultBlock(
+      resultLine({
+        questions: QUESTIONS.slice(0, 1),
+        answers: { 'Which storage should the cache use?': 'Disk' },
+        afkTimeoutMs: 60_000
+      })
+    )
+    expect(block).toMatchObject({ type: 'tool-result' })
+    expect(block).not.toHaveProperty('askAnswers')
+  })
+
+  it('records no answers when the reader typed a response in their place', () => {
+    const block = resultBlock(
+      resultLine({
+        questions: QUESTIONS.slice(0, 1),
+        answers: { 'Which storage should the cache use?': 'Disk' },
+        response: 'Neither, let me explain first.'
+      })
+    )
+    expect(block).toMatchObject({ type: 'tool-result' })
+    expect(block).not.toHaveProperty('askAnswers')
+  })
+
+  it('keeps the answers given before the reader asked for follow-up questions', () => {
+    const block = resultBlock(
+      resultLine({
+        questions: QUESTIONS.slice(0, 1),
+        answers: { 'Which storage should the cache use?': 'Disk' },
+        response: 'Also ask about eviction.',
+        followUp: true
+      })
+    )
+    expect(block).toMatchObject({
+      askAnswers: [{ question: 'Which storage should the cache use?', answer: ['Disk'] }]
     })
   })
 
