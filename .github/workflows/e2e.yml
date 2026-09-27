@@ -270,7 +270,7 @@ jobs:
             echo "Changed specs are all owned by dedicated lanes."
             exit 0
           fi
-          E2E_ENV=(SKIP_BUILD=1 ORCA_E2E_FORWARD_APP_LOGS=1 ORCA_E2E_WEB_CLIENT=1 ORCA_RELAY_PATH="$GITHUB_WORKSPACE/out/relay")
+          E2E_ENV=(ORCA_BACKGROUND_LAUNCH=1 SKIP_BUILD=1 ORCA_E2E_FORWARD_APP_LOGS=1 ORCA_E2E_WEB_CLIENT=1 ORCA_RELAY_PATH="$GITHUB_WORKSPACE/out/relay")
           # Second clause: a spec that reads ORCA_E2E_SSH_DOCKER test.skip()s itself without it, so
           # naming only one trigger silently skipped every other Docker-SSH spec in this lane.
           # The first clause stays because that spec needs Docker without referencing the variable.
@@ -283,13 +283,13 @@ jobs:
             E2E_PROJECT_ARGS+=(--project=electron-headful)
           fi
           xvfb-run --auto-servernum bash .github/scripts/e2e-with-window-manager.sh env "${E2E_ENV[@]}" \
-            pnpm run test:e2e "${TEST_FILES[@]}" --workers=1 "${E2E_PROJECT_ARGS[@]}"
+            pnpm exec playwright test --config tests/playwright.reveal-profile.config.ts --workers=1
 
       - name: Upload Playwright traces
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-traces-changed
+          name: sidebar-native-linux-profile
           path: test-results/
           retention-days: 7
           if-no-files-found: ignore
