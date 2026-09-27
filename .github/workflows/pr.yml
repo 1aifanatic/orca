@@ -1,4 +1,5 @@
 name: PR Checks
+run-name: 'PR ${{ github.event.pull_request.number }} | source ${{ github.sha }} | workflow ${{ github.workflow_sha }}'
 
 on:
   pull_request:
@@ -27,23 +28,28 @@ jobs:
     # Reuse one lightweight checkout for detection and the always-required guards.
     runs-on: ubuntu-slim
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
     outputs:
       should_run: ${{ steps.filter.outputs.should_run }}
-      native_cache_changed: ${{ steps.filter.outputs.native_cache_changed }}
+      reused_run_id: ${{ steps.readiness.outputs.run_id }}
+      # A proven success masks required work only; advisory routing still uses the full diff.
+      native_cache_changed: ${{ steps.readiness.outputs.reused != 'true' && steps.filter.outputs.native_cache_changed }}
       mobile_dependencies: ${{ steps.filter.outputs.mobile_dependencies }}
-      mobile_web_app: ${{ steps.filter.outputs.mobile_web_app }}
-      static_analysis: ${{ steps.filter.outputs.static_analysis }}
-      typecheck: ${{ steps.filter.outputs.typecheck }}
-      git_compatibility: ${{ steps.filter.outputs.git_compatibility }}
-      codex_index_heal_contract: ${{ steps.filter.outputs.codex_index_heal_contract }}
-      xterm_patch_sync: ${{ steps.filter.outputs.xterm_patch_sync }}
-      shell_contracts: ${{ steps.filter.outputs.shell_contracts }}
-      test: ${{ steps.filter.outputs.test }}
-      orcad_browser: ${{ steps.filter.outputs.orcad_browser }}
-      cross-version-wire: ${{ steps.filter.outputs.cross-version-wire }}
-      managed_hook_node18: ${{ steps.filter.outputs.managed_hook_node18 }}
-      package: ${{ steps.filter.outputs.package }}
-      package_windows: ${{ steps.filter.outputs.package_windows }}
+      mobile_web_app: ${{ steps.readiness.outputs.reused != 'true' && steps.filter.outputs.mobile_web_app }}
+      static_analysis: ${{ steps.readiness.outputs.reused != 'true' && steps.filter.outputs.static_analysis }}
+      typecheck: ${{ steps.readiness.outputs.reused != 'true' && steps.filter.outputs.typecheck }}
+      git_compatibility: ${{ steps.readiness.outputs.reused != 'true' && steps.filter.outputs.git_compatibility }}
+      codex_index_heal_contract: ${{ steps.readiness.outputs.reused != 'true' && steps.filter.outputs.codex_index_heal_contract }}
+      xterm_patch_sync: ${{ steps.readiness.outputs.reused != 'true' && steps.filter.outputs.xterm_patch_sync }}
+      shell_contracts: ${{ steps.readiness.outputs.reused != 'true' && steps.filter.outputs.shell_contracts }}
+      test: ${{ steps.readiness.outputs.reused != 'true' && steps.filter.outputs.test }}
+      orcad_browser: ${{ steps.readiness.outputs.reused != 'true' && steps.filter.outputs.orcad_browser }}
+      cross-version-wire: ${{ steps.readiness.outputs.reused != 'true' && steps.filter.outputs.cross-version-wire }}
+      managed_hook_node18: ${{ steps.readiness.outputs.reused != 'true' && steps.filter.outputs.managed_hook_node18 }}
+      package: ${{ steps.readiness.outputs.reused != 'true' && steps.filter.outputs.package }}
+      package_windows: ${{ steps.readiness.outputs.reused != 'true' && steps.filter.outputs.package_windows }}
       e2e_should_run: ${{ steps.e2e_filter.outputs.should_run }}
       test_files: ${{ steps.e2e_filter.outputs.test_files }}
       ssh_source_changed: ${{ steps.e2e_filter.outputs.ssh_source_changed }}
@@ -66,6 +72,7 @@ jobs:
             /config/scripts/check-readme-local-links.mjs
             /config/scripts/pr-code-change-scope.mjs
             /config/scripts/pr-e2e-source-routing.mjs
+            /config/scripts/pr-ready-check-reuse.mjs
           sparse-checkout-cone-mode: false
           persist-credentials: false
 
@@ -78,6 +85,15 @@ jobs:
       # The full Git index retains link targets outside the sparse working tree.
       - name: Check README local links
         run: node config/scripts/check-readme-local-links.mjs
+
+      # Readiness changes eligibility for advisory tests, not the already-tested source.
+      - name: Find identical successful required checks
+        id: readiness
+        if: github.event.action == 'ready_for_review'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_CHECK_WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: node config/scripts/pr-ready-check-reuse.mjs
 
       - name: Classify changed paths
         id: filter
@@ -152,17 +168,27 @@ jobs:
             pnpm-lock.yaml
             mobile/pnpm-lock.yaml
 
+      # Keep each check in its own log while sharing this runner.
       - name: Lint
+        id: root-lint
+        background: true
         run: pnpm exec oxlint --format github
 
       - name: Reject low-evidence patterns
         run: pnpm run audit:anti-slop
 
+      - wait: root-lint
+
       - name: Enforce focused code-quality plugins
+        id: native-code-quality
+        background: true
         run: pnpm run audit:code-quality:native
 
       - name: Enforce type-aware code-quality baseline
         run: pnpm run audit:code-quality:type-aware
+
+      # Mobile installation changes import resolution for the native cycle check.
+      - wait: native-code-quality
 
       # Why here: the changed-code gate lints mobile files too, and its type-aware pass
       # resolves types from mobile/node_modules. Without the install every mobile type
@@ -171,10 +197,14 @@ jobs:
         if: needs.code_paths.outputs.mobile_dependencies == 'true'
 
       - name: Enforce changed-code quality
+        id: changed-code-quality
+        background: true
         run: pnpm run check:code-quality:changed -- "${{ github.event.pull_request.base.sha }}"
 
       - name: Enforce React Doctor on changed lines
         run: pnpm run check:react-doctor:changed -- "${{ github.event.pull_request.base.sha }}"
+
+      - wait: changed-code-quality
 
       - name: Check Zustand selector fan-out budget
         run: pnpm run check:zustand-selector-fanout
@@ -215,11 +245,39 @@ jobs:
       - name: Enforce runtime Electron-import ratchet
         run: pnpm run check:runtime-electron-ratchet
 
+      # Why: extraction writes sorted evidence to an isolated temporary path,
+      # so feature PRs need one normalized AST pass rather than a three-OS matrix.
+      - name: Verify localization extraction
+        id: localization-extraction
+        background: true
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # Detection failures run the full check; renames retain the removed input path.
+          if git diff --name-only --no-renames -z --merge-base "$BASE_SHA" "$HEAD_SHA" > "$RUNNER_TEMP/localization-changes" &&
+            scope="$(node config/scripts/localization-extraction-change-scope.mjs "$RUNNER_TEMP/localization-changes")" && [ "$scope" = false ]; then
+            echo "Localization extraction inputs are unchanged."
+          else
+            pnpm run verify:localization-extraction
+          fi
+
       # Why both: the ratchet proves nothing reachable from the runtime imports electron,
       # which is a property of the import graph. This proves the Node artifact it enables
       # actually boots, pairs, creates a worktree and round-trips a real PTY.
       - name: Boot orcad and round-trip a terminal
-        run: pnpm run smoke:orcad-terminal
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          ORCA_BACKGROUND_LAUNCH: '1'
+        run: |
+          # Detection failures run the smoke; renames retain the removed input path.
+          if git diff --name-only --no-renames -z --merge-base "$BASE_SHA" "$HEAD_SHA" > "$RUNNER_TEMP/orcad-smoke-changes" &&
+            scope="$(node config/scripts/orcad-terminal-smoke-change-scope.mjs "$RUNNER_TEMP/orcad-smoke-changes")" && [ "$scope" = false ]; then
+            echo "Orcad terminal smoke inputs are unchanged."
+          else
+            pnpm run smoke:orcad-terminal
+          fi
 
       - name: Verify the generated RPC params catalog
         run: pnpm run verify:rpc-params-catalog
@@ -230,22 +288,15 @@ jobs:
       - name: Verify skill freshness manifest
         run: pnpm run verify:skill-bundle-manifest
 
-      - name: Verify localization catalog
-        run: pnpm run verify:localization-catalog
-
-      # Why: the renderer ships only the English entries i18next cannot rebuild
-      # from each call site's inline default, so the generated subset has to
-      # track en.json and those defaults.
-      - name: Verify runtime-required localization catalog
-        run: pnpm run verify:localization-runtime-catalog
-
-      # Why: extraction writes sorted evidence to an isolated temporary path,
-      # so feature PRs need one normalized AST pass rather than a three-OS matrix.
-      - name: Verify localization extraction
-        run: pnpm run verify:localization-extraction
+      - name: Verify localization catalogs
+        id: localization-catalogs
+        background: true
+        run: pnpm run verify:localization-catalogs
 
       - name: Verify localization coverage
         run: pnpm run verify:localization-coverage
+
+      - wait: [localization-catalogs, localization-extraction]
 
       # Why: project-owned type declarations must live in .ts so tsc
       # actually checks them. TypeScript's skipLibCheck: true (inherited
@@ -456,6 +507,8 @@ jobs:
       # fish-color-scheme-child-stdin.node-pty.test.ts (#9993) needs it. Noble ships
       # 3.7, so the PPA is what makes that lane real.
       - name: Install zsh and fish
+        id: shells
+        background: true
         run: |
           # Why the update/PPA/fish steps are tolerant: a repo the runner image already
           # ships can lack a Release file for this suite, and a failed add-apt-repository
@@ -504,6 +557,12 @@ jobs:
           # first install command in this step to prove the lane really installs them.
           timeout 300 sudo apt-get install -y zsh fish
 
+      - uses: ./.github/actions/install-node-dependencies
+        with:
+          native-runtime: node
+
+      - wait: shells
+
       # Separate from the install so the failure names the contract, not an apt error.
       # ORCA_REQUIRE_FISH re-checks this at test time; this step just fails in seconds
       # instead of after a full dependency install.
@@ -518,10 +577,6 @@ jobs:
             echo "::error::shell contracts needs fish 4+ (DECSET 2031 arming, #9993) but got '${version:-none}'. Fix the ppa:fish-shell/release-4 install rather than letting the fish lane skip." >&2
             exit 1
           fi
-
-      - uses: ./.github/actions/install-node-dependencies
-        with:
-          native-runtime: node
 
       - name: Test real shell contracts
         run: |
@@ -551,7 +606,7 @@ jobs:
     name: prepare test native cache node 24
     needs: [code_paths]
     if: needs.code_paths.outputs.native_cache_changed == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
 
     steps:
       - name: Checkout
@@ -574,6 +629,7 @@ jobs:
     uses: ./.github/workflows/unit-tests.yml
     with:
       node_versions: '["24"]'
+      runner: ubuntu-24.04-arm
 
   # Why a separate job: the test needs a real Chrome, and the sharded `test` matrix
   # would pay for it on every shard to run one file in whichever shard it landed in.
@@ -637,8 +693,21 @@ jobs:
             pnpm-lock.yaml
             mobile/pnpm-lock.yaml
 
+      # The drawer check runs on WebKit as well as Chrome, because the shell's iOS WebView is
+      # WebKit and the Chrome above cannot stand in for it. Downloaded rather than resolved from
+      # the runner: Ubuntu ships no WebKit build to point at.
+      - name: Install WebKit for the drawer check
+        id: webkit
+        background: true
+        run: pnpm exec playwright install --with-deps webkit
+
       # The entry lives in mobile/ so one React resolves; without this every RN import is nothing.
       - uses: ./.github/actions/install-mobile-dependencies
+
+      - name: Prepare mobile route snapshot
+        id: mobile-routes
+        background: true
+        run: node config/scripts/run-mobile-web-app-checks.mjs --prepare-route-snapshot "$RUNNER_TEMP/mobile-routes.json"
 
       # Why the runner's Google Chrome and not a downloaded chromium: same reason as the orcad
       # browser job -- Ubuntu 24.04 only ships an AppArmor userns profile for the Chrome .deb.
@@ -655,14 +724,11 @@ jobs:
           "$chrome" --version
           echo "ORCA_MOBILE_WEB_RENDER_BROWSER=$chrome" >> "$GITHUB_ENV"
 
-      # The drawer check runs on WebKit as well as Chrome, because the shell's iOS WebView is
-      # WebKit and the Chrome above cannot stand in for it. Downloaded rather than resolved from
-      # the runner: Ubuntu ships no WebKit build to point at.
-      - name: Install WebKit for the drawer check
-        run: pnpm exec playwright install --with-deps webkit
-
       - name: Build and verify the app bundle
         run: pnpm run build:mobile-web
+
+      # Browser checks must observe both a finished install and the built bundle.
+      - wait: [webkit, mobile-routes]
 
       # The bundling tests skip themselves where mobile dependencies are absent, which is how they
       # stay green in the sharded `test` job. This is the job that installs them, so here a missing
@@ -673,17 +739,13 @@ jobs:
       # one `pr-code-change-scope.mjs` fires this job on, so naming a test into the family is all
       # it takes to have it run. Quoted because these are vitest filename filters, matched as
       # substrings against the discovered files, and the shell must not touch them.
-      #
-      # Cost: 18 files in 25-30s wall, of which the frame-budget sweep is 2.5s. That sweep encodes
-      # 111 noise JPEGs in Chromium, so it is the one step here whose cost grows with its viewport
-      # set; adding rows to that set is a decision about this job's runtime.
+      # Route censuses share fresh dependency lists for this invocation; scratch builds stay independent.
       - name: Builder, override census and render checks
         env:
           ORCA_MOBILE_WEB_APP_DEPS_REQUIRED: '1'
+          ORCA_MOBILE_WEB_PREPARED_ROUTE_SNAPSHOT: ${{ runner.temp }}/mobile-routes.json
         run: |
-          pnpm exec vitest run --config config/vitest.config.ts \
-            'config/scripts/mobile-web-app-' \
-            'config/scripts/build-mobile-web-app-bundle.test.mjs'
+          node config/scripts/run-mobile-web-app-checks.mjs
 
   cross-version-wire:
     name: cross-version wire compatibility
@@ -800,6 +862,24 @@ jobs:
           src/main/browser/browser-route-h3-egress.electron.test.ts
           src/main/browser/browser-route-dns-prefetch.electron.test.ts
 
+      # Restore independent fixtures during builds; keep native lifecycle probes serial.
+      - uses: ./.github/actions/prepare-linux-package-fixture
+        id: shutdown-fixture-cache
+        background: true
+        with:
+          fixture: headless-serve-shutdown
+
+      - uses: ./.github/actions/prepare-linux-package-fixture
+        id: cli-fixture-cache
+        background: true
+        with:
+          fixture: cli-launch-contract
+
+      - name: Install Linux package tooling
+        id: linux-package-tools
+        background: true
+        run: sudo apt-get update && sudo apt-get install -y cpio rpm
+
       - name: Build package inputs
         run: |
           status=0
@@ -818,6 +898,8 @@ jobs:
           exit "$status"
 
       - name: Project web client from renderer build
+        id: web-client
+        background: true
         run: pnpm run build:web-from-renderer
 
       # Why here and not inside "Build package inputs": this job assembles packaging inputs step by
@@ -829,17 +911,16 @@ jobs:
       - name: Build native components
         run: pnpm run build:native
 
-      - name: Install Linux package tooling
-        run: sudo apt-get update && sudo apt-get install -y cpio rpm
+      - wait: [linux-package-tools, web-client]
 
       - name: Package unpacked app
         env:
+          ORCA_BACKGROUND_LAUNCH: '1'
           ORCA_REUSE_PREPARED_NATIVE_RUNTIME: '1'
-        # PR artifacts are only inspected locally; gzip avoids release-size xz compression.
-        run: >-
-          pnpm exec electron-builder --config config/electron-builder.config.cjs
-          --linux AppImage deb rpm --x64 --publish never
-          --config.deb.compression=gz --config.rpm.compression=gzip
+        # Prepare once with every hook, then isolate the format-specific mutations.
+        run: |
+          pnpm exec electron-builder --config config/electron-builder.config.cjs --linux dir --x64 --publish never
+          node config/scripts/package-linux-formats.mjs
 
       - name: Verify root-package marker payloads
         run: |
@@ -854,13 +935,21 @@ jobs:
           [[ "$deb_marker" == deb ]] || { echo "Expected deb marker, got: $deb_marker"; exit 1; }
           [[ "$rpm_marker" == rpm ]] || { echo "Expected rpm marker, got: $rpm_marker"; exit 1; }
 
+      - wait: shutdown-fixture-cache
+
       - name: Verify headless serve signal shutdown
+        env:
+          ORCA_SHUTDOWN_FIXTURE_CACHE_IMAGE: ${{ steps.shutdown-fixture-cache.outputs.image }}
         run: >-
           node config/scripts/run-headless-serve-shutdown-docker.mjs
           --appimage dist/orca-linux.AppImage --all-entrypoints
 
       # A default container reproduces the hostile AppImage launch environment.
+      - wait: cli-fixture-cache
+
       - name: Verify Linux CLI launch contract
+        env:
+          ORCA_CLI_FIXTURE_CACHE_IMAGE: ${{ steps.cli-fixture-cache.outputs.image }}
         run: node config/scripts/run-linux-cli-launch-contract-docker.mjs --appimage dist/orca-linux.AppImage
 
       - name: Smoke packaged CLI
@@ -883,14 +972,15 @@ jobs:
           persist-credentials: false
 
       - name: Cache electron-builder downloads
-        uses: actions/cache@v5
+        uses: actions/cache/restore@v5
         with:
           path: |
             ~\AppData\Local\electron\Cache
             ~\AppData\Local\electron-builder\Cache
-          key: electron-builder-windows-${{ hashFiles('pnpm-lock.yaml') }}
+          # Release builds seed this exact path set; PR-local copies cannot serve other PRs.
+          key: electron-builder-win-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: |
-            electron-builder-windows-
+            electron-builder-win-
 
       # Why persist-native-cache false: this job later rebuilds the same path for
       # Electron. A post-job save would store the Electron ABI under the Node key.
@@ -919,6 +1009,12 @@ jobs:
 
       # vitest runs here directly rather than through `pnpm test`, so the addon
       # assertions only hold once install-node-dependencies has rebuilt natives.
+      - name: Test Windows installer process probe
+        # Keep cold CIM startup out of the concurrent Electron/native process workload.
+        run: >-
+          pnpm exec vitest run --config config/vitest.config.ts
+          config/scripts/nsis-process-check.test.mjs
+
       - name: Test Windows-specific boundaries
         run: >-
           pnpm exec vitest run --config config/vitest.config.ts
@@ -954,6 +1050,7 @@ jobs:
           src/main/windows/windows-host-job.win32.test.ts
           src/main/windows/windows-process-tree-command-line-patch.test.ts
           src/main/windows/windows-process-table-native-addon.win32.test.ts
+          src/main/persistence/profile-state/profile-state-access-windows-native.win32.test.ts
           src/main/windows-live-tree-kill.win32.test.ts
           src/main/wsl/wsl-runner.test.ts
           src/main/wsl/wsl-guest-environment.test.ts
