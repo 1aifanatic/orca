@@ -102,4 +102,19 @@ describe('OrcaRuntimeService', () => {
     await exiting
     expect(await terminalLeafIds()).toEqual([HEADLESS_LEAF_ID])
   })
+
+  // Why: the stream end now waits behind the exit cleanup; a cleanup fault must not strand it.
+  it('still ends the stream when exit cleanup throws before the retirement', () => {
+    const runtime = new OrcaRuntimeService()
+    Object.assign(runtime, {
+      disposeHeadlessTerminal: () => {
+        throw new Error('dispose_failed')
+      }
+    })
+    const streamEnd = vi.fn()
+    runtime.subscribeToPtyExit('pty-a', streamEnd)
+
+    expect(() => runtime.onPtyExit('pty-a', 0)).toThrow('dispose_failed')
+    expect(streamEnd).toHaveBeenCalledOnce()
+  })
 })
