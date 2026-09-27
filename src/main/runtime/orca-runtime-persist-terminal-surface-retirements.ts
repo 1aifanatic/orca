@@ -51,7 +51,8 @@ export class OrcaRuntimeWithPersistTerminalSurfaceRetirements extends OrcaRuntim
       return
     }
     try {
-      await this.store.runDurableMutation(() => ({ value: undefined, persist: true }))
+      // Why if-dirty: an earlier write, or another exit's, may already carry this retirement.
+      await this.store.runDurableMutation(() => ({ value: undefined, persist: 'if-dirty' }))
     } catch (error) {
       console.error('[runtime] terminal retirement is not yet durable:', error)
     }
