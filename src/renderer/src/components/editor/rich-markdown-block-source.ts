@@ -16,7 +16,6 @@ type SourceContext = {
   codec: RichMarkdownEditorCodec
   htmlSuperscriptLinks: boolean
   baseline?: SourceDocument
-  fragments: Map<string, ProseMirrorNode>
 }
 
 const contexts = new WeakMap<Editor, SourceContext>()
@@ -26,7 +25,7 @@ export function registerRichMarkdownBlockSource(
   codec: RichMarkdownEditorCodec,
   htmlSuperscriptLinks: boolean
 ): void {
-  contexts.set(editor, { codec, htmlSuperscriptLinks, fragments: new Map() })
+  contexts.set(editor, { codec, htmlSuperscriptLinks })
 }
 
 function parse(editor: Editor, context: SourceContext, source: string): ProseMirrorNode {
@@ -42,6 +41,7 @@ function readSourceDocument(
   expected?: ProseMirrorNode
 ): SourceDocument | null {
   const normalized = source.replace(/\r\n/g, '\n')
+  const document = expected ?? parse(editor, context, normalized)
   const tokens = extractAbsorbedBlankLines(context.codec.marked.lexer(normalized))
   // Definitions and custom source owners may cross token boundaries; never guess their spans.
   if (tokens.map((token) => token.raw).join('') !== normalized) {
@@ -92,17 +92,16 @@ function readSourceDocument(
       continue
     }
     const text = raw.replace(/\n+$/, '')
-    let parsed = context.fragments.get(text)
-    if (!parsed) {
-      parsed = parse(editor, context, text)
-      context.fragments.set(text, parsed)
-    }
-    if (parsed.childCount !== 1) {
+    if (blocks.length >= document.childCount) {
       return null
     }
-    blocks.push({ node: parsed.child(0), source: text, separator: raw.slice(text.length) })
+    // These spans are provisional; the assembled document must pass the full parse proof below.
+    blocks.push({
+      node: document.child(blocks.length),
+      source: text,
+      separator: raw.slice(text.length)
+    })
   }
-  const document = expected ?? parse(editor, context, normalized)
   if (
     document.childCount !== blocks.length ||
     blocks.some((block, index) => !block.node.eq(document.child(index)))
@@ -205,15 +204,5 @@ export function reconcileRichMarkdownBlockSource(
     return result
   } catch {
     return null
-  } finally {
-    // Retain only the latest source's fragments, not every version typed in this editor.
-    const fragments = new Map<string, ProseMirrorNode>()
-    for (const block of context.baseline?.blocks ?? []) {
-      const cached = context.fragments.get(block.source)
-      if (cached) {
-        fragments.set(block.source, cached)
-      }
-    }
-    context.fragments = fragments
   }
 }
