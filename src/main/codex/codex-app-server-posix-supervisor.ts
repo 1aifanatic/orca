@@ -1,12 +1,14 @@
 import type { CodexAppServerLaunch } from './codex-app-server-connection'
 
-/**
- * Time the provider gets to exit on its own after stdin ends or an owner signal, before SIGKILL.
- * Session recovery's SIGTERM window is sized from it; a longer launch grace must widen that too.
- */
+/** Time the provider gets to exit on its own after stdin ends or an owner signal, before SIGKILL. */
 export const DEFAULT_PROVIDER_SUPERVISOR_GRACE_MS = 1250
+/** Largest grace a spec may carry; raising it widens recovery's SIGTERM stage with it. */
+export const MAX_PROVIDER_SUPERVISOR_GRACE_MS = 1250
 /** How long the supervisor waits for a SIGKILLed provider group to disappear. */
 export const PROVIDER_GROUP_REAP_TIMEOUT_MS = 1500
+/** Longest a signalled supervisor can outlive the signal; a SIGKILL sooner can orphan its group. */
+export const PROVIDER_SUPERVISOR_MAX_STOP_MS =
+  MAX_PROVIDER_SUPERVISOR_GRACE_MS + PROVIDER_GROUP_REAP_TIMEOUT_MS
 
 /** Inline supervisor source kept dependency-free for the spawned Node child. */
 export const POSIX_PROVIDER_SUPERVISOR_SCRIPT = `
@@ -131,6 +133,11 @@ export function supervisedPosixLaunch(
     graceMs = DEFAULT_PROVIDER_SUPERVISOR_GRACE_MS
   }: ProviderSupervisorOptions = {}
 ): { command: string; args: string[]; env: NodeJS.ProcessEnv } {
+  if (!(graceMs >= 0 && graceMs <= MAX_PROVIDER_SUPERVISOR_GRACE_MS)) {
+    throw new RangeError(
+      `Provider supervisor grace ${graceMs} ms is outside 0-${MAX_PROVIDER_SUPERVISOR_GRACE_MS} ms`
+    )
+  }
   const supervisorSpec = Buffer.from(
     JSON.stringify({
       command: launch.command,
