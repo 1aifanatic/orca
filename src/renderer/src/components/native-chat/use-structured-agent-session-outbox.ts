@@ -23,9 +23,10 @@ import {
 import { getStructuredAgentLaunchPromptDispatch } from '@/lib/structured-agent-session-launch-prompt'
 import { useStructuredAgentSessionOutboxOwnerChange } from '@/runtime/structured-agent-session-accepted-send-capability'
 import { useStructuredAgentSessionOutboxUnconfirmedProbe } from './use-structured-agent-session-outbox-unconfirmed-probe'
+import { createBrowserUuid } from '@/lib/browser-uuid'
 
 export function structuredSessionOperationId(): string {
-  return createStructuredAgentSessionOperationId(() => crypto.randomUUID())
+  return createStructuredAgentSessionOperationId(createBrowserUuid)
 }
 
 export function useStructuredAgentSessionOutbox(args: {

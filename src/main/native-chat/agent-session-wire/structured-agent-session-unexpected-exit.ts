@@ -1,7 +1,10 @@
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { StructuredAgentSessionEndedEvent } from './structured-agent-session-adapter'
 import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
-import { endProviderChild } from './structured-agent-session-provider-child'
+import {
+  endProviderChild,
+  failedProviderChildStart
+} from './structured-agent-session-provider-child'
 import {
   releaseStoredStructuredAgentSessionOwnerAfterUnexpectedExit,
   type StructuredAgentSessionLeaseStore
@@ -136,15 +139,9 @@ export async function settleUnexpectedStructuredAgentSessionExit<
           acquisitionGeneration: child.generation,
           now: context.now(),
           exitObservedAt: observedAt,
-          ...(settlementFailed
-            ? {
-                settlementRetry: {
-                  settlementId: stableSettlementId,
-                  // Bare cause: the retry renders it, and `exit-observed` already says the rest.
-                  detail: unexpectedEvent.reason.slice(0, MAX_UNEXPECTED_EXIT_REASON_CHARS)
-                }
-              }
-            : {})
+          // Bare cause: whatever this settlement could not write is settled from it later, by the
+          // next acquire or read restore, and `exit-observed` already says the rest.
+          exitReason: unexpectedEvent.reason.slice(0, MAX_UNEXPECTED_EXIT_REASON_CHARS)
         })
       } catch (error) {
         context.onBarrierError?.(unexpectedEvent.sessionId, error)
@@ -158,8 +155,10 @@ export async function settleUnexpectedStructuredAgentSessionExit<
     if (settlementFailed || !released) {
       return null
     }
-    // Resuming a start that failed would respawn into the same failure; the next send retries.
-    if (exitedDuringStartup || !context.hasResumeCapableHolder(unexpectedEvent.sessionId)) {
+    if (
+      failedProviderChildStart(session) ||
+      !context.hasResumeCapableHolder(unexpectedEvent.sessionId)
+    ) {
       return null
     }
     return {

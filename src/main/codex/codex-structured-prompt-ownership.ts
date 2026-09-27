@@ -1,9 +1,15 @@
 import {
+  AgentSessionPromptAnswerRejectedError,
   AgentSessionPromptUnavailableError,
   type StructuredAgentSessionAdapter
 } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import type { StructuredSessionCompaction } from '../native-chat/agent-session-wire/structured-session-compaction'
-import { answerCodexPrompt } from './codex-structured-prompt-replies'
+import {
+  answerCodexPrompt,
+  prepareCodexPromptAnswer,
+  type CodexPendingPrompt,
+  type CodexPreparedAnswer
+} from './codex-structured-prompt-replies'
 import { requireLiveCodexSession, type CodexSession } from './codex-structured-session-state'
 import type { CodexStructuredTurnCancellation } from './codex-structured-turn-cancellation'
 
@@ -104,6 +110,19 @@ export async function cancelCodexStructuredTurn(input: {
   }
 }
 
+function prepareCodexAnswer(
+  prompt: CodexPendingPrompt,
+  response: AnswerInput['response']
+): CodexPreparedAnswer {
+  try {
+    return prepareCodexPromptAnswer(prompt, response)
+  } catch (error) {
+    throw new AgentSessionPromptAnswerRejectedError(
+      error instanceof Error ? error.message : String(error)
+    )
+  }
+}
+
 export async function answerCodexStructuredPrompt(input: {
   request: AnswerInput
   sessions: Map<string, CodexSession>
@@ -119,6 +138,7 @@ export async function answerCodexStructuredPrompt(input: {
     throw new AgentSessionPromptUnavailableError(request.itemId)
   }
   try {
+    const prepared = prepareCodexAnswer(claim.prompt, request.response)
     await request.commit()
     if (
       sessions.get(request.sessionId) !== session ||
@@ -130,7 +150,7 @@ export async function answerCodexStructuredPrompt(input: {
       throw new AgentSessionPromptUnavailableError(request.itemId)
     }
     session.translator?.resolvePrompt(request.itemId)
-    answerCodexPrompt(session.prompts, session.connection, claim, request.optionId)
+    answerCodexPrompt(session.prompts, session.connection, claim, prepared)
   } catch (error) {
     session.prompts.releaseClaim(claim)
     throw error

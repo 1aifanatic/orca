@@ -58,6 +58,15 @@ export function endProviderChild(
   return true
 }
 
+/** The conversation's last start died before it proved itself, and nothing started since. Only a
+ *  send retries it: a view or an exit recovery would respawn into the same failure, adding a row. */
+export function failedProviderChildStart(
+  session: Pick<ChildBearer, 'child' | 'lastEndedChild'>
+): StructuredAgentSessionEndedChild | null {
+  const ended = session.lastEndedChild
+  return !session.child && ended?.duringStartup && ended.cause !== 'user-stop' ? ended : null
+}
+
 function matchingChild(
   session: ChildBearer,
   identity: StructuredAgentSessionProviderChildIdentity

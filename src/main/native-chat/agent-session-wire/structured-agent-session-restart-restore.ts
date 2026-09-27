@@ -19,7 +19,6 @@ import type {
   OpenedStructuredAgentSessionConversation,
   StructuredAgentSessionConversationOpenDeps
 } from './structured-agent-session-conversation-open'
-import type { AgentSessionAttachParams } from './structured-agent-session-attach'
 import { restoreStructuredAgentSessionRead } from './structured-agent-session-read-restore'
 
 const JOURNAL_RESTORE_CONCURRENCY = 4
@@ -36,7 +35,6 @@ export type StructuredAgentSessionReadRestoreDeps = {
     sessionId: string,
     opened: OpenedStructuredAgentSessionConversation
   ) => Promise<void> | void
-  retrySettlement: (sessionId: string, params: AgentSessionAttachParams) => Promise<boolean>
 }
 
 /**
@@ -63,10 +61,7 @@ export async function restoreOneStructuredAgentSessionRead(
 /** The serialized half of the restore, for a caller already inside the session's serialize — a
  *  send replaying into a session this host has closed, which needs the journal and no child. */
 export async function restoreOneStructuredAgentSessionReadUnderSerialize(
-  input: Pick<
-    StructuredAgentSessionReadRestoreDeps,
-    'openDeps' | 'hasSession' | 'onReadable' | 'retrySettlement'
-  >,
+  input: Pick<StructuredAgentSessionReadRestoreDeps, 'openDeps' | 'hasSession' | 'onReadable'>,
   sessionId: string
 ): Promise<void> {
   if (input.hasSession(sessionId)) {
@@ -77,8 +72,8 @@ export async function restoreOneStructuredAgentSessionReadUnderSerialize(
   if (!opened) {
     return
   }
+  // The open settled what a gone generation left running, so no reader sees it run.
   await input.onReadable(sessionId, opened)
-  await input.retrySettlement(sessionId, opened.session.params)
 }
 
 export async function restoreStructuredAgentSessionsOnRestart(

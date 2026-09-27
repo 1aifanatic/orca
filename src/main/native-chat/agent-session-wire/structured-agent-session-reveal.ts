@@ -16,10 +16,8 @@ import { StructuredAgentSessionReadableRestorer } from './structured-agent-sessi
 import { StructuredAgentSessionRestartRestoreGate } from './structured-agent-session-restart-restore-gate'
 import type {
   StructuredAgentSessionHostDeps,
-  StructuredAgentSessionHostSession,
   StructuredAgentSessionReveal
 } from './structured-agent-session-host-types'
-import { retryPendingStructuredAgentSessionSettlement } from './structured-agent-session-settlement-retry'
 
 /** Throws its refusal as the code itself, matching `resumeHeldStructuredAgentSession`. */
 export async function revealStructuredAgentSession(
@@ -57,11 +55,9 @@ export async function revealStructuredAgentSession(
  */
 export function createStructuredAgentSessionHostRestore(
   deps: StructuredAgentSessionHostDeps,
-  sessions: Map<string, StructuredAgentSessionHostSession>,
-  now: () => number,
   wiring: Omit<
     ConstructorParameters<typeof StructuredAgentSessionReadableRestorer>[0],
-    'openDeps' | 'supportsRecord' | 'retrySettlement'
+    'openDeps' | 'supportsRecord'
   >
 ): {
   restoreReadableSessions: (sessionIds?: readonly string[]) => Promise<void>
@@ -70,14 +66,6 @@ export function createStructuredAgentSessionHostRestore(
   const restorer = new StructuredAgentSessionReadableRestorer({
     openDeps: deps,
     supportsRecord: (record) => adapterSupportsRecord(deps.adapter, record),
-    // Runs once the restorer indexed the conversation, so it retries into that one handle.
-    retrySettlement: (sessionId) =>
-      retryPendingStructuredAgentSessionSettlement({
-        deps,
-        sessionId,
-        openJournal: async () => sessions.get(sessionId)?.journal ?? null,
-        now
-      }),
     ...wiring
   })
   const gate = new StructuredAgentSessionRestartRestoreGate()
