@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import type { AgentJournalItemBody } from '../../../shared/agent-session-journal-types'
 import {
@@ -9,6 +9,13 @@ import {
   mergeRetainedHostLifecycleRows,
   retainedRowReplacement
 } from './structured-rewind-retained-host-rows'
+import { restoreRewindJournalBody } from './structured-rewind-journal-body'
+import type * as RewindJournalBody from './structured-rewind-journal-body'
+
+vi.mock('./structured-rewind-journal-body', async (importOriginal) => {
+  const actual = await importOriginal<typeof RewindJournalBody>()
+  return { ...actual, restoreRewindJournalBody: vi.fn(actual.restoreRewindJournalBody) }
+})
 
 type Retained = AgentSessionRewindRecord['retained'][number]
 
@@ -159,5 +166,30 @@ describe('the rebuilt epoch item for a retained row', () => {
       retained: [{ itemId: codexKey('a', 1), body: prose('x'), observedAt: 1 }]
     }
     expect(AgentSessionRewindRecordSchema.safeParse(older).success).toBe(true)
+  })
+})
+
+describe('rewind merge cost', () => {
+  it('reads each merged row once to place the provider items it never held', () => {
+    const turns = 400
+    const providerItems = Array.from({ length: turns }, (_, index) =>
+      providerItem(codexKey(`t${index}`, 1), prose(`answer ${index}`))
+    )
+    const reference = Array.from({ length: turns }, (_, index) =>
+      retained(orcaKey(`turn-${index}`), {
+        kind: 'turn',
+        turnId: `t${index}`,
+        state: 'completed'
+      })
+    )
+    vi.mocked(restoreRewindJournalBody).mockClear()
+
+    const merged = mergeRetainedHostLifecycleRows(reference, providerItems)
+
+    expect(merged.find((item) => item.itemId === codexKey(`t${turns - 1}`, 1))).toMatchObject({
+      turnScope: { kind: 'turn', turnItemId: orcaKey(`turn-${turns - 1}`) }
+    })
+    // A scan per provider item reads every merged row for each one: turns² reads.
+    expect(vi.mocked(restoreRewindJournalBody).mock.calls.length).toBeLessThanOrEqual(merged.length)
   })
 })

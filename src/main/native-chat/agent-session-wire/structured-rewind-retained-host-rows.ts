@@ -48,8 +48,9 @@ export function mergeRetainedHostLifecycleRows(
   providerItems.forEach((item, index) =>
     merged.push(withHeldAttribution(item, held.get(item.itemId)), ...(rowsAfter.get(index) ?? []))
   )
+  const turnRecords = turnRecordsByProviderTurn(merged)
   return merged.map((item) =>
-    held.has(item.itemId) || item.turnScope ? item : withProviderTurnScope(item, merged)
+    held.has(item.itemId) || item.turnScope ? item : withProviderTurnScope(item, turnRecords)
   )
 }
 
@@ -92,16 +93,29 @@ function withHeldAttribution(item: RetainedRow, held: RetainedRow | undefined): 
   return { ...item, ...attribution }
 }
 
-/** A provider item the old epoch never held joins the turn record for its provider turn: the
- *  turn's own record, or the command turn that claimed it. Otherwise the rebuild places it. */
-function withProviderTurnScope(item: RetainedRow, merged: readonly RetainedRow[]): RetainedRow {
+/** Provider turn id → the item id of its turn record: the turn's own, or the command turn that
+ *  claimed it. The first record wins, as a scan from the top would find it. */
+function turnRecordsByProviderTurn(merged: readonly RetainedRow[]): ReadonlyMap<string, string> {
+  const records = new Map<string, string>()
+  for (const candidate of merged) {
+    const turn = readAgentJournalTurn(restoreRewindJournalBody(candidate.body))
+    for (const turnId of [turn?.turnId, turn?.providerTurnId]) {
+      if (turnId !== undefined && !records.has(turnId)) {
+        records.set(turnId, candidate.itemId)
+      }
+    }
+  }
+  return records
+}
+
+/** A provider item the old epoch never held joins the turn record for its provider turn.
+ *  Otherwise the rebuild places it. */
+function withProviderTurnScope(
+  item: RetainedRow,
+  turnRecords: ReadonlyMap<string, string>
+): RetainedRow {
   const identity = parseAgentJournalItemKey(item.itemId)
-  const providerTurnId = identity?.provider === 'codex' ? identity.turnId : null
-  const turnRecord = providerTurnId
-    ? merged.find((candidate) => {
-        const turn = readAgentJournalTurn(restoreRewindJournalBody(candidate.body))
-        return turn?.turnId === providerTurnId || turn?.providerTurnId === providerTurnId
-      })
-    : undefined
-  return turnRecord ? { ...item, turnScope: { kind: 'turn', turnItemId: turnRecord.itemId } } : item
+  const turnItemId =
+    identity?.provider === 'codex' && identity.turnId ? turnRecords.get(identity.turnId) : undefined
+  return turnItemId ? { ...item, turnScope: { kind: 'turn', turnItemId } } : item
 }
