@@ -243,6 +243,23 @@ describe('what a transaction writes is exactly what a load reads back', () => {
   })
 })
 
+describe('the record rule a load and a write share', () => {
+  it('quarantines only a record filed under another session id, keeping the rest', async () => {
+    const seed = await openStore()
+    await reserve(seed, 'session-alpha')
+    const file = JSON.parse(await readFile(storePath, 'utf-8'))
+    file.records['session-beta'] = file.records['session-alpha']
+    await writeFile(storePath, JSON.stringify(file), 'utf-8')
+
+    const loaded = await loadAgentSessionStore(storePath, 'local')
+
+    expect([...loaded.state.records.keys()]).toEqual(['session-alpha'])
+    expect(loaded.state.unreadableRecords.get('session-beta')?.reason).toBe(
+      'record_key_session_id_mismatch'
+    )
+  })
+})
+
 describe('changes another writer made', () => {
   it('are adopted by the next transaction', async () => {
     const first = await openStore()
@@ -329,6 +346,20 @@ describe('a primary whose rows were salvaged from the backup', () => {
 
     expect(store.getRecord('session-alpha')).not.toBeNull()
     expect((await openStore()).getRecord('session-alpha')).not.toBeNull()
+  })
+
+  it('keys its own write on the backup it rotated while a row stays quarantined', async () => {
+    await seedSalvageableRow()
+    const good = await readFile(`${storePath}.bak`, 'utf-8')
+    await rm(`${storePath}.bak`)
+    const store = await openStore()
+    await store.setConversationName('session-beta', 'rotates the backup')
+    expect(store.getRecord('session-alpha')).toBeNull()
+    await writeFile(`${storePath}.bak`, good, 'utf-8')
+
+    await store.setConversationName('session-beta', 'after the backup came back')
+
+    expect(store.getRecord('session-alpha')).not.toBeNull()
   })
 
   it('stops depending on the backup once the salvaged row is written', async () => {
