@@ -84,6 +84,7 @@ export type StructuredAgentSessionRuntimeDeps = {
   readProcessStartTime?: CodexStructuredSessionAdapterDeps['readProcessStartTime']
   resolveLaunchArgs?: (provider: AgentSessionRecord['provider']) => Promise<string[]> | string[]
   resolveLaunchEnv?: () => Promise<NodeJS.ProcessEnv>
+  isAgentEnabled?: StructuredAgentSessionHostDeps['isAgentEnabled']
   resolveLaunchEnvOverlay?: () => Promise<Record<string, string>> | Record<string, string>
   resolveClaudeLaunchEnv?: () => Promise<Record<string, string>> | Record<string, string>
   /** Required, and asserted at install time — an absent policy must not degrade to a guess. */
@@ -308,6 +309,7 @@ async function install(deps: StructuredAgentSessionRuntimeDeps): Promise<Install
             await deps.resolveLaunchArgs!(provider)
         }
       : {}),
+    ...(deps.isAgentEnabled ? { isAgentEnabled: deps.isAgentEnabled } : {}),
     onEventSinkError: ({ sessionId, error }) =>
       deps.onError?.({ scope: `structured-agent-session-journal:${sessionId}`, error }),
     ...(deps.onSessionStatusChanged ? { onSessionStatusChanged: deps.onSessionStatusChanged } : {}),

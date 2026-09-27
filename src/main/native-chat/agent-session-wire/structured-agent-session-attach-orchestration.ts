@@ -146,6 +146,7 @@ async function runAttach(
       callerKey,
       params,
       now: () => context.now(),
+      ...(context.deps.isAgentEnabled ? { isAgentEnabled: context.deps.isAgentEnabled } : {}),
       recordPhase,
       // Site 9: this closes the PRIOR map entry it drops, never the provisional
       // journal — it has no reference to that one. `onAttached` owns that.

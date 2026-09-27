@@ -40,8 +40,11 @@ function createParams(overrides: Record<string, unknown> = {}) {
 }
 
 let attach: ReturnType<typeof vi.fn>
+/** The session ids the host holds a record for. */
+let recordedSessions: Set<string>
 
 function hostStub(): StructuredAgentSessionHost {
+  recordedSessions = new Set()
   attach = vi.fn(async () => ({
     ok: true,
     replayed: false,
@@ -49,7 +52,9 @@ function hostStub(): StructuredAgentSessionHost {
     cursor: { epoch: 'epoch-a', sequence: 0 },
     value: { sessionId: SESSION, fence: 1, page: {}, unconfirmedClientMessageIds: [] }
   }))
-  return { attach } as unknown as StructuredAgentSessionHost
+  const store = { getRecord: (sessionId: string) => (recordedSessions.has(sessionId) ? {} : null) }
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: create reads only `attach` and `deps.store.getRecord`; any other member throws on call.
+  return { attach, deps: { store } } as unknown as StructuredAgentSessionHost
 }
 
 const resolvedIntent = {
@@ -169,6 +174,22 @@ describe('a create refused before it commits', () => {
     expect(attach).not.toHaveBeenCalled()
     // A policy answer, not a defect worth a warning.
     expect(console.warn).not.toHaveBeenCalled()
+  })
+
+  it('answers the retry of a committed create from its record once the agent is turned off', async () => {
+    recordedSessions.add(SESSION)
+    const response = await create({
+      getClientSettings: () => ({
+        experimentalStructuredNativeChat: true,
+        disabledTuiAgents: ['codex']
+      })
+    })
+
+    expect(response).toMatchObject({
+      ok: true,
+      result: { ok: true, value: { sessionId: SESSION } }
+    })
+    expect(attach).toHaveBeenCalledTimes(1)
   })
 
   it('answers a host that will not install as a definitive envelope', async () => {

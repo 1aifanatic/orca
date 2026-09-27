@@ -15,6 +15,7 @@ import type {
 } from '../../../shared/agent-session-wire'
 import { agentSessionLeaseAdmitsWriter } from '../../../shared/agent-session-lease-adjudication'
 import type { AgentSessionJournalIdentity } from '../../../shared/agent-session-journal-types'
+import { AgentDisabledLaunchError } from '../../../shared/agent-disabled-launch-refusal'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import {
   admitAttachOrRefuse,
@@ -50,6 +51,8 @@ export type AttachFlowInput = {
   callerKey: string
   params: AgentSessionAttachParams
   now: () => number
+  /** See `StructuredAgentSessionHostDeps.isAgentEnabled`. */
+  isAgentEnabled?: (agent: AgentSessionAttachParams['agent']) => boolean
   recordPhase?: AgentSessionCreatePhaseRecorder
   /** Publishes the journal before clients can send against the new owner. `acquiredOwner` is
    *  true only when this attach spawned the provider child, so a re-attach to a live one is not
@@ -90,6 +93,18 @@ export async function performAttach(
   if (!adapterSupportsCreateIfDeclared(input.adapter, params.location, params.agent)) {
     return unsupported()
   }
+  // Every new chat starts here (create, ensure, /clear), so none starts an agent the user turned
+  // off; a session that already has a record, including a committed create's replay, is not new.
+  const existingRecord = store.getRecord(sessionId)
+  if (!existingRecord && input.isAgentEnabled?.(params.agent) === false) {
+    return {
+      ok: false,
+      refusal: {
+        code: 'structured_agent_session_unsupported',
+        message: new AgentDisabledLaunchError(params.agent).message
+      }
+    }
+  }
 
   let record: AgentSessionRecord
   let acquisitionGeneration: string | null = null
@@ -99,7 +114,7 @@ export async function performAttach(
   let unsupportedReservationSettlementAttempted = false
   let replayed = false
   let providerHistoryWindow: ProviderHistoryWindow | null = null
-  const preparedTranscript = store.getRecord(sessionId)
+  const preparedTranscript = existingRecord
     ? { ok: true as const, items: null }
     : await prepareAdoptedTranscript(params)
   if (!preparedTranscript.ok) {

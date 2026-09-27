@@ -25,7 +25,8 @@ import {
 import type { StructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-host'
 import type { StructuredAgentSessionCaller } from '../../../native-chat/agent-session-wire/structured-agent-session-host-types'
 import type { StructuredAgentSessionResumeSource } from '../../../../shared/structured-agent-session-create'
-import { refuseDisabledAgentForRuntime } from '../../../agent-launch/agent-launch-enablement'
+import { isAgentEnabledForRuntime } from '../../../agent-launch/agent-launch-enablement'
+import { AgentDisabledLaunchError } from '../../../../shared/agent-disabled-launch-refusal'
 import type { OrcaRuntimeService } from '../../orca-runtime'
 import {
   resolveUncommittedStructuredCreate,
@@ -84,10 +85,16 @@ export async function prepareStructuredAgentSessionCreateForWorktree(args: {
    *  gets the id clients derive. Beside `options`, after the fingerprint, likewise. */
   tabId?: string
 }): Promise<PreparedStructuredAgentSessionCreate> {
-  // Every chat create passes here, so none starts an agent the user turned off.
-  refuseDisabledAgentForRuntime(args.runtime, args.agent)
   // Adoption replay may need the record loaded from disk before source discovery can be skipped.
   let host = args.resumeFrom ? await args.ensureHost() : null
+  // Attach refuses a new chat for a turned-off agent too; this runs first because intent
+  // resolution's Codex launch prep writes into the user's Codex home. A replay keeps its record.
+  if (!isAgentEnabledForRuntime(args.runtime, args.agent)) {
+    host ??= await args.ensureHost()
+    if (!host.deps.store.getRecord(args.envelope.sessionId)) {
+      throw new AgentDisabledLaunchError(args.agent)
+    }
+  }
   const resolved = await args.runtime.resolveStructuredAgentSessionCreateIntent({
     envelope: args.envelope,
     worktree: args.worktree,

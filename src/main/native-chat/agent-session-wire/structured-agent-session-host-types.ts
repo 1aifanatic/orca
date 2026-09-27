@@ -69,6 +69,9 @@ export type StructuredAgentSessionHostDeps = {
   resolveLaunchEnv?: (
     provider: AgentSessionRecord['provider']
   ) => Promise<Record<string, string> | undefined> | Record<string, string> | undefined
+  /** The user's agent on/off setting, read per attach; only a brand-new session is refused by it.
+   *  Absent enables every agent. */
+  isAgentEnabled?: (agent: AgentSessionRecord['provider']) => boolean
   now?: () => number
   /** How long a session outlives its last surface. Tests drive this; production takes the default. */
   releaseGraceMs?: number
