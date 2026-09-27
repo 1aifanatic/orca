@@ -12,7 +12,6 @@ import {
 import { withFileTransactionLock } from '../file-transaction-lock'
 import {
   MAX_FAILURE_FIELD_LENGTH,
-  markerWithContinuation,
   normalizeState,
   parseState,
   shouldReplaceMarker,
@@ -104,19 +103,14 @@ export class AgentSessionRecoveryCapsule {
   beginResume(
     sessionIds: readonly string[] | undefined,
     operationId: string,
-    now: number,
-    /** The continuation this action sends for a marker, recorded on the offer it reserves. */
-    continuationFor?: (marker: AgentSessionResumeMarker) => string
+    now: number
   ): Promise<AgentSessionResumeMarker[]> {
     return withFileTransactionLock(this.filePath, async () => {
       const state = await this.readState()
       const { entries, failed } = normalizeState(state, now)
       const requested = sessionIds === undefined ? null : new Set(sessionIds)
       const selected: AgentSessionResumeMarker[] = []
-      const reserve = (offer: AgentSessionResumeMarker): RecoveryEntry => {
-        const marker = continuationFor
-          ? markerWithContinuation(offer, continuationFor(offer))
-          : offer
+      const reserve = (marker: AgentSessionResumeMarker): RecoveryEntry => {
         selected.push(marker)
         return { state: 'in-progress', operationId, startedAt: now, marker }
       }
@@ -207,15 +201,20 @@ export class AgentSessionRecoveryCapsule {
 
   /** Forgets the named sessions whatever their state. Unlike `clearAll`, this is not a fence: a
    *  later teardown of the same chat may record a fresh offer. */
-  dismiss(sessionIds: readonly string[], now: number): Promise<number> {
+  dismiss(
+    sessionIds: readonly string[],
+    now: number,
+    /** A record this answers true for stays: read against the stored marker, under the lock. */
+    keep: (marker: AgentSessionResumeMarker) => boolean = () => false
+  ): Promise<number> {
     return withFileTransactionLock(this.filePath, async () => {
       const named = new Set(sessionIds)
       const state = await this.readState()
       const { entries, failed } = normalizeState(state, now)
       const dismissed = new Set(
         [...entries, ...failed]
+          .filter((record) => named.has(record.marker.sessionId) && !keep(record.marker))
           .map((record) => record.marker.sessionId)
-          .filter((sessionId) => named.has(sessionId))
       )
       if (dismissed.size > 0) {
         await this.publish(
