@@ -12,6 +12,7 @@ import {
   applyMobileNativeChatStreamFrame,
   type MobileNativeChatStreamFrame
 } from './mobile-native-chat-stream-frame'
+import { NativeChatStreamRecoveryBackoff } from './mobile-native-chat-stream-recovery'
 
 export type MobileNativeChatStatus =
   | 'idle'
@@ -114,6 +115,12 @@ export function useMobileNativeChatSession(args: {
   // snapshots on the same subscription are reconnect replays, not fresh bases.
   const snapshotSeenRef = useRef(false)
   const transcriptRetentionRef = useRef(createNativeChatTranscriptRetention())
+  // Bumped to rerun the subscription effect after the host ends a stream this screen still wants.
+  const [streamReopenCount, setStreamReopenCount] = useState(0)
+  const streamRecoveryRef = useRef<{
+    identity: string
+    backoff: NativeChatStreamRecoveryBackoff
+  } | null>(null)
   const settledReady = settled?.status === 'ready'
   useEffect(() => {
     if (settledReady) {
@@ -130,6 +137,7 @@ export function useMobileNativeChatSession(args: {
 
   useEffect(() => {
     let cancelled = false
+    let reopenTimer: ReturnType<typeof setTimeout> | null = null
     // Why: disconnect/agent/session loss must invalidate a page request before
     // the early idle/waiting return can clear the visible source.
     streamGenerationRef.current += 1
@@ -172,10 +180,33 @@ export function useMobileNativeChatSession(args: {
         if (applied.kind === 'ignored') {
           return
         }
+        if (applied.kind === 'ended') {
+          // Why: the host only ends a chat stream this screen didn't cancel when another consumer
+          // on the connection replaced or swept it; reopen it, paced by the recovery backoff.
+          cancelled = true
+          setRead(null)
+          if (streamRecoveryRef.current?.identity !== identity) {
+            streamRecoveryRef.current = {
+              identity,
+              backoff: new NativeChatStreamRecoveryBackoff()
+            }
+          }
+          const delayMs = streamRecoveryRef.current.backoff.nextDelayMs(Date.now())
+          const reopen = (): void => setStreamReopenCount((count) => count + 1)
+          if (delayMs === 0) {
+            reopen()
+          } else {
+            reopenTimer = setTimeout(reopen, delayMs)
+          }
+          return
+        }
         if (applied.kind === 'error') {
           setRead({ client, identity, status: 'error' })
           setError(applied.error)
           return
+        }
+        if (frame.type === 'snapshot' && streamRecoveryRef.current?.identity === identity) {
+          streamRecoveryRef.current.backoff.noteSnapshot(Date.now())
         }
         if (frame.type === 'snapshot' && !applied.pending) {
           // A pending window has no transcript behind it, so the snapshot that
@@ -217,9 +248,12 @@ export function useMobileNativeChatSession(args: {
 
     return () => {
       cancelled = true
+      if (reopenTimer !== null) {
+        clearTimeout(reopenTimer)
+      }
       unsubscribe()
     }
-  }, [client, agent, sessionId, transcriptPath, identity, setList])
+  }, [client, agent, sessionId, transcriptPath, identity, setList, streamReopenCount])
 
   const loadEarlier = useCallback(() => {
     if (!client || !agent || !sessionId || loadingEarlierRef.current || !hasMore) {

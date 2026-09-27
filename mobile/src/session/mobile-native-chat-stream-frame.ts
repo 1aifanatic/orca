@@ -17,6 +17,8 @@ export type MobileNativeChatStreamFrame = {
 
 export type AppliedMobileNativeChatFrame =
   | { kind: 'ignored' }
+  /** The host closed this subscription; nothing more arrives on it. */
+  | { kind: 'ended' }
   | { kind: 'error'; error: string }
   | {
       kind: 'messages'
@@ -77,6 +79,9 @@ export function applyMobileNativeChatStreamFrame(args: {
   const { merger, frame, limit, replaceSnapshot } = args
   if (frame.type === 'error') {
     return { kind: 'error', error: frame.message ?? frame.error ?? 'Transcript stream failed' }
+  }
+  if (frame.type === 'end') {
+    return { kind: 'ended' }
   }
   if (frame.type !== 'snapshot' && frame.type !== 'replacement' && frame.type !== 'appended') {
     return { kind: 'ignored' }
