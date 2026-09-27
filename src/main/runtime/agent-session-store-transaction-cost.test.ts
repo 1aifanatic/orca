@@ -43,6 +43,7 @@ vi.mock('node:crypto', async (importOriginal) => {
             return counted
           }
         }
+        // oxlint-disable-next-line anti-slop/no-reflect-get -- Proxy get trap: forwards every other Hash member unchanged.
         const value: unknown = Reflect.get(target, property, target)
         return typeof value === 'function' ? value.bind(target) : value
       }
