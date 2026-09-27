@@ -12,6 +12,13 @@ export function registerMouseShortcutDispatch(
     if (!key || event.defaultPrevented) {
       return
     }
+    if (pressedInputs.has(event.button)) {
+      if (consumedButtons.has(event.button)) {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+      }
+      return
+    }
     consumedButtons.delete(event.button)
     const target = document.activeElement ?? document.body
     const input = new KeyboardEvent('keydown', {

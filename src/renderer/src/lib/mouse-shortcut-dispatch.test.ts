@@ -65,6 +65,17 @@ describe('mouse shortcut dispatch', () => {
     expect(listener).not.toHaveBeenCalled()
   })
 
+  it('keeps a handled press owned until release even if a duplicate changes modifiers', () => {
+    const { listener } = setup()
+    expect(mouse('mousedown', 3).defaultPrevented).toBe(true)
+    expect(mouse('mousedown', 3, { shiftKey: true }).defaultPrevented).toBe(true)
+    expect(listener).toHaveBeenCalledOnce()
+    expect(mouse('mouseup', 3, { shiftKey: true }).defaultPrevented).toBe(true)
+    expect(mouse('auxclick', 3, { shiftKey: true }).defaultPrevented).toBe(true)
+    expect(mouse('mousedown', 3).defaultPrevented).toBe(true)
+    expect(listener).toHaveBeenCalledTimes(2)
+  })
+
   it('preserves default navigation when no handler consumes a bound gesture', () => {
     const { listener } = setup(false)
     expect(mouse('mousedown', 3).defaultPrevented).toBe(false)
