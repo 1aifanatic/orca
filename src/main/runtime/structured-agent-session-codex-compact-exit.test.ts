@@ -1,5 +1,5 @@
-// A Codex child that exits while `/compact` runs, observed the way the shipping adapter observes
-// it: the app-server connection's own exit callback, not a hand-fed compaction result.
+// A Codex child that exits, or that Stop ends, while `/compact` runs, observed the way the shipping
+// adapter observes it: the app-server connection's own exit, not a hand-fed compaction result.
 
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { readAgentJournalTurn } from '../../shared/agent-session-turn-record'
@@ -124,4 +124,31 @@ it('runs a later command after Stop named the one whose child died', async () =>
     (item) => item.itemId === structuredAgentSessionCommandTurn(later).itemId
   )
   expect(readAgentJournalTurn(turn?.body)?.state).toBe('running')
+})
+
+it('ends a command Codex has not opened a turn for by stopping its child, and the next send gets a fresh one', async () => {
+  const created = await harness.ok<{ fence: number }>(
+    'agentSession.create',
+    harness.createIntentParams()
+  )
+  const command = await startCompact(created.fence)
+  await vi.waitFor(() => expect(calls('thread/compact/start')).toHaveLength(1))
+  const first = threadChild()
+  const { itemId, turnId } = structuredAgentSessionCommandTurn(command)
+
+  // No `turn/started` yet, so there is no provider turn to interrupt.
+  await expect(
+    harness.ok('agentSession.cancel', {
+      envelope: harness.envelope('agentSession.cancel', { turnId }, null),
+      turnId
+    })
+  ).resolves.toMatchObject({ cancelled: true })
+
+  expect(first.closed).toBe(true)
+  expect(first.calls.some((entry) => entry.method === 'turn/interrupt')).toBe(false)
+  const turn = (await snapshot()).items.find((item) => item.itemId === itemId)
+  expect(readAgentJournalTurn(turn?.body)?.state).toBe('interrupted')
+  await send('after the stop')
+  await vi.waitFor(() => expect(calls('turn/start')).toHaveLength(1))
+  expect(calls('turn/start')[0]).not.toBe(first)
 })

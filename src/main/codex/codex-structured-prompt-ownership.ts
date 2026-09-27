@@ -3,7 +3,6 @@ import {
   AgentSessionPromptUnavailableError,
   type StructuredAgentSessionAdapter
 } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
-import type { StructuredSessionCompaction } from '../native-chat/agent-session-wire/structured-session-compaction'
 import {
   answerCodexPrompt,
   prepareCodexPromptAnswer,
@@ -19,12 +18,11 @@ type AnswerInput = Parameters<StructuredAgentSessionAdapter['answerPrompt']>[0]
 export async function cancelCodexStructuredTurn(input: {
   request: CancelInput
   sessions: Map<string, CodexSession>
-  compactions: StructuredSessionCompaction
   cancellation: CodexStructuredTurnCancellation
 }): Promise<{ cancelled: boolean }> {
-  const { request, sessions, compactions, cancellation } = input
+  const { request, sessions, cancellation } = input
   const session = requireLiveCodexSession(sessions, request.sessionId)
-  const turnId = compactions.providerTurnId(request.sessionId, request.turnId)
+  const turnId = session.compaction.providerTurnId(request.turnId)
   if (!turnId) {
     return { cancelled: false }
   }
@@ -49,7 +47,7 @@ export async function cancelCodexStructuredTurn(input: {
     !session.ended &&
     session.fence === request.fence &&
     session.acquisitionGeneration === acquisitionGeneration &&
-    compactions.providerTurnId(request.sessionId, request.turnId) === turnId &&
+    session.compaction.providerTurnId(request.turnId) === turnId &&
     session.prompts.ownsBoundClaim(claim, prompt.itemId, claim.prompt.threadId, promptTurnId)
   let interruptConfirmed = false
   try {

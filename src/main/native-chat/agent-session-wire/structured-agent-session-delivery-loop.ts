@@ -62,7 +62,7 @@ type Step = 'continue' | 'stop'
 /** A command handed to this child, whose end the loop waits for before handing over anything. */
 type CommandRun = StructuredAgentSessionCommandHandover & {
   child: StructuredAgentSessionProviderChildIdentity
-  /** The child's end, which ends the command however the adapter reported it. */
+  /** The child's end, which ends the command: the adapter's answer dies with the child. */
   childEnded: Promise<void>
 }
 
@@ -230,13 +230,7 @@ export class StructuredAgentSessionDeliveryLoop {
       return 'continue'
     }
     const ranOn = { generation: awaitedChild.generation, fence: awaitedChild.fence }
-    const childEnded = providerChildEnded(session, ranOn)
-    // Outlives the wait: a command Stop answered keeps its provider entry until the provider's own
-    // end, which a dead child never sends.
-    void childEnded
-      .then(() => this.deps.adapter.releaseCommand?.(sessionId))
-      .catch((error: unknown) => this.deps.onError(sessionId, error))
-    return { ...command, child: ranOn, childEnded }
+    return { ...command, child: ranOn, childEnded: providerChildEnded(session, ranOn) }
   }
 
   /** Writes the command's end only while the child it was handed to is still the session's: one

@@ -1,53 +1,53 @@
+import { randomUUID } from 'node:crypto'
 import type { ClaudeSession, ClaudeStructuredSessionEvent } from './claude-structured-session-state'
-import type {
-  StructuredSessionCompaction,
-  StructuredSessionCompactionResult
-} from '../native-chat/agent-session-wire/structured-session-compaction'
+import type { StructuredSessionCompactionResult } from '../native-chat/agent-session-wire/structured-session-compaction'
 import { dispatchClaudeTurn } from './claude-structured-dispatch'
 import type { StructuredAgentSessionAdapter } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
-/** Compaction needs no ack deadline of its own: `compactions.run` settles on Claude's terminal
- *  `result` frame, so the dispatch here only has to report a refusal to send. */
+import { isRootClaudeFrame } from './claude-turn-opening'
+/** Compaction needs no ack deadline of its own: the session's compaction settles on Claude's
+ *  terminal `result` for this input, so the dispatch here only has to report a refusal to send. */
 export function compactClaudeSession(
   session: ClaudeSession,
-  compactions: StructuredSessionCompaction,
   input: Parameters<NonNullable<StructuredAgentSessionAdapter['compact']>>[0]
 ): Promise<StructuredSessionCompactionResult> {
-  return compactions.run(
-    input.sessionId,
+  const sentUuid = randomUUID()
+  return session.compaction.run(
     session.providerSessionId,
     async () => {
       const result = await dispatchClaudeTurn(session, {
-        body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: '/compact' }] }
+        body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: '/compact' }] },
+        sentUuid
       })
       if (result.state === 'rejected') {
         return { error: result.reason }
       }
       return undefined
     },
-    { turnId: input.turnId, turnItemId: input.turnItemId }
+    { turnId: input.turnId, turnItemId: input.turnItemId, sentUuid }
   )
 }
 
 export function observeClaudeCompaction(
-  compactions: StructuredSessionCompaction,
-  event: ClaudeStructuredSessionEvent,
-  translator: ClaudeSession['translator'] | undefined
+  session: ClaudeSession | null | undefined,
+  event: ClaudeStructuredSessionEvent
 ): void {
-  if (!isClaudeCompactionContent(compactions, event)) {
-    translator?.handle(event)
+  if (!isClaudeCompactionContent(session, event)) {
+    session?.translator?.handle(event)
   }
   if (event.type === 'message') {
-    compactions.claude(event.sessionId, event.message)
+    session?.compaction.claude(event.message)
   }
 }
 
+/** The command's own output — its echo and the generated summary — while it runs on this child. */
 export function isClaudeCompactionContent(
-  compactions: StructuredSessionCompaction,
+  session: ClaudeSession | null | undefined,
   event: ClaudeStructuredSessionEvent
 ): boolean {
   return (
     event.type === 'message' &&
-    compactions.hasPending(event.sessionId) &&
+    session?.compaction.running === true &&
+    isRootClaudeFrame(event.message) &&
     ['user', 'assistant', 'stream_event'].includes(String(event.message.type))
   )
 }

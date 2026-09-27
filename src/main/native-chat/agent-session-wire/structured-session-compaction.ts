@@ -1,3 +1,6 @@
+import { claudeResultOutcome } from '../../claude/claude-result-outcome'
+import { isRootClaudeFrame } from '../../claude/claude-turn-opening'
+
 /** How a conversation command the provider ran ended, from the provider's own frames. */
 export type StructuredSessionCompactionResult = {
   outcome: 'success' | 'failure' | 'cancellation'
@@ -9,12 +12,12 @@ type PendingCompaction = {
   /** The host's command turn: its `turnId`, and its journal key. */
   commandTurnId: string
   commandTurnItemId: string
+  /** Claude: the uuid of the `/compact` input, which the result answering it names. */
+  sentUuid?: string
   /** The provider turn that carries the command out, once the provider opened one. */
   turnId?: string
   error?: string
   compacted: boolean
-  /** Stop answered the command; the provider's own end only releases the entry. */
-  abandoned: boolean
   resolve: (result: StructuredSessionCompactionResult) => void
 }
 
@@ -29,61 +32,62 @@ export function isCodexCompactionComplete(method: string, params: unknown): bool
   )
 }
 
-/** A receipt is not completion; keep listening through the provider's terminal frame. There is no
- *  deadline: the command ends by that frame, Stop, or the host's `ended` when the child ends. */
+/** The command one provider child is running. It lives on that child's session, so the child's end
+ *  ends it with no release; otherwise only the provider's terminal frame for its own input does.
+ *  There is no deadline, and Stop only asks the provider or the child to end it. */
 export class StructuredSessionCompaction {
-  private readonly pending = new Map<string, PendingCompaction>()
+  private pending: PendingCompaction | null = null
 
   /** The entry is registered before `invoke` sends anything, so the provider turn it opens is
    *  claimed as the command's. */
   async run(
-    sessionId: string,
     identity: string,
     invoke: () => Promise<unknown>,
-    command: { turnId: string; turnItemId: string }
+    command: { turnId: string; turnItemId: string; sentUuid?: string }
   ): Promise<StructuredSessionCompactionResult> {
-    if (this.pending.get(sessionId)?.abandoned === false) {
+    // The delivery loop hands nothing over while a command runs, so this never happens.
+    if (this.pending) {
       throw new Error('Compaction is already running.')
     }
     const completion = new Promise<StructuredSessionCompactionResult>((resolve) => {
-      this.pending.set(sessionId, {
+      this.pending = {
         identity,
         commandTurnId: command.turnId,
         commandTurnItemId: command.turnItemId,
+        ...(command.sentUuid ? { sentUuid: command.sentUuid } : {}),
         compacted: false,
-        abandoned: false,
         resolve
-      })
+      }
     })
     try {
       const admission = record(await invoke())
       if (typeof admission.error === 'string') {
-        this.finish(sessionId, { outcome: 'failure', error: admission.error })
+        this.finish({ outcome: 'failure', error: admission.error })
       }
     } catch (error) {
-      this.pending.delete(sessionId)
+      this.pending = null
       throw error
     }
     return completion
   }
 
-  hasPending(sessionId: string): boolean {
-    return this.pending.has(sessionId)
+  get running(): boolean {
+    return this.pending !== null
   }
 
-  ownsTurn(sessionId: string, turnId: string): boolean {
-    return this.pending.get(sessionId)?.commandTurnId === turnId
+  ownsTurn(turnId: string): boolean {
+    return this.pending?.commandTurnId === turnId
   }
 
-  providerTurnId(sessionId: string, turnId: string): string | undefined {
-    return this.ownsTurn(sessionId, turnId) ? this.pending.get(sessionId)?.turnId : turnId
+  providerTurnId(turnId: string): string | undefined {
+    return this.ownsTurn(turnId) ? this.pending?.turnId : turnId
   }
 
   /** The command's journal key when the provider turn starting on `threadId` carries it out. The
    *  single writer of the claim, and idempotent per provider turn so a refused frame's retry gets
    *  the same answer. */
-  claimTurn(sessionId: string, threadId: string, providerTurnId: string): string | null {
-    const pending = this.pending.get(sessionId)
+  claimTurn(threadId: string, providerTurnId: string): string | null {
+    const pending = this.pending
     if (!pending || pending.identity !== threadId) {
       return null
     }
@@ -91,26 +95,8 @@ export class StructuredSessionCompaction {
     return pending.turnId === providerTurnId ? pending.commandTurnItemId : null
   }
 
-  /** Stop on the command `commandTurnId` names: it ends as cancelled now, and true says it did. The
-   *  entry stays so the interrupt that follows still finds the provider turn, and the provider's end
-   *  releases it. A Stop naming an earlier command ends nothing. */
-  abandon(sessionId: string, commandTurnId: string): boolean {
-    const pending = this.pending.get(sessionId)
-    if (!pending || pending.abandoned || pending.commandTurnId !== commandTurnId) {
-      return false
-    }
-    pending.abandoned = true
-    pending.resolve({ outcome: 'cancellation' })
-    return true
-  }
-
-  /** The child ended: drop the entry whatever state it is in, so nothing later is claimed into it. */
-  ended(sessionId: string): void {
-    this.finish(sessionId, { outcome: 'failure', error: 'The provider exited during compaction.' })
-  }
-
-  codex(sessionId: string, method: string, value: unknown): void {
-    const pending = this.pending.get(sessionId)
+  codex(method: string, value: unknown): void {
+    const pending = this.pending
     const params = record(value)
     if (!pending || params.threadId !== pending.identity) {
       return
@@ -122,7 +108,6 @@ export class StructuredSessionCompaction {
     if (method === 'turn/completed' && pending.turnId !== undefined && turn.id === pending.turnId) {
       const error = record(turn.error).message
       this.finish(
-        sessionId,
         turn.status === 'interrupted'
           ? { outcome: 'cancellation' }
           : turn.status === 'completed' && pending.compacted
@@ -135,8 +120,8 @@ export class StructuredSessionCompaction {
     }
   }
 
-  claude(sessionId: string, message: Record<string, unknown>): void {
-    const pending = this.pending.get(sessionId)
+  claude(message: Record<string, unknown>): void {
+    const pending = this.pending
     if (!pending || message.session_id !== pending.identity) {
       return
     }
@@ -147,28 +132,32 @@ export class StructuredSessionCompaction {
     if (message.compact_result === 'success' || message.subtype === 'compact_boundary') {
       pending.compacted = true
     }
-    if (message.type === 'result') {
-      if (
-        message.is_error === true ||
-        (typeof message.subtype === 'string' && message.subtype.startsWith('error'))
-      ) {
-        pending.error ??= 'Compaction did not complete.'
-      }
-      const error =
-        pending.error ??
-        (pending.compacted ? undefined : 'Compaction was not confirmed by the provider.')
-      this.finish(sessionId, error ? { outcome: 'failure', error } : { outcome: 'success' })
-    }
-  }
-
-  private finish(sessionId: string, result: StructuredSessionCompactionResult): void {
-    const pending = this.pending.get(sessionId)
-    if (!pending) {
+    // A result that names another input answers that input. One without a name can only be this
+    // command's: nothing else is handed over while it runs.
+    const answers = message.user_message_uuid
+    if (
+      message.type !== 'result' ||
+      !isRootClaudeFrame(message) ||
+      (typeof answers === 'string' && answers !== pending.sentUuid)
+    ) {
       return
     }
-    this.pending.delete(sessionId)
-    if (!pending.abandoned) {
-      pending.resolve(result)
+    const outcome = claudeResultOutcome(message)
+    if (outcome === 'cancellation') {
+      this.finish({ outcome })
+      return
     }
+    const error =
+      outcome === 'failure'
+        ? (pending.error ?? 'Compaction did not complete.')
+        : (pending.error ??
+          (pending.compacted ? undefined : 'Compaction was not confirmed by the provider.'))
+    this.finish(error ? { outcome: 'failure', error } : { outcome: 'success' })
+  }
+
+  private finish(result: StructuredSessionCompactionResult): void {
+    const pending = this.pending
+    this.pending = null
+    pending?.resolve(result)
   }
 }

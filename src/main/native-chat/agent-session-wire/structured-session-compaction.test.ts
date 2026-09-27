@@ -2,55 +2,56 @@ import { describe, expect, it, vi } from 'vitest'
 import { StructuredSessionCompaction } from './structured-session-compaction'
 
 const COMMAND = { turnId: 'compact:cmd-1', turnItemId: 'orca:command-turn:cmd-1' }
+const CLAUDE_COMMAND = { ...COMMAND, sentUuid: 'compact-input' }
 
 describe('structured compaction lifecycle', () => {
   it('waits beyond the Codex acknowledgment for the claimed turn and ignores other threads', async () => {
     const tracker = new StructuredSessionCompaction()
     const finished = vi.fn()
     const result = tracker
-      .run('session', 'thread', async () => ({}), COMMAND)
+      .run('thread', async () => ({}), COMMAND)
       .then((value) => {
         finished()
         return value
       })
     await Promise.resolve()
-    expect(tracker.claimTurn('session', 'other', 'foreign')).toBeNull()
-    tracker.codex('session', 'turn/completed', {
+    expect(tracker.claimTurn('other', 'foreign')).toBeNull()
+    tracker.codex('turn/completed', {
       threadId: 'other',
       turn: { id: 'foreign', status: 'completed' }
     })
-    expect(tracker.claimTurn('session', 'thread', 'compact-turn')).toBe(COMMAND.turnItemId)
-    tracker.codex('session', 'item/completed', {
+    expect(tracker.claimTurn('thread', 'compact-turn')).toBe(COMMAND.turnItemId)
+    tracker.codex('item/completed', {
       threadId: 'thread',
       item: { type: 'contextCompaction' }
     })
     expect(finished).not.toHaveBeenCalled()
-    tracker.codex('session', 'turn/completed', {
+    tracker.codex('turn/completed', {
       threadId: 'thread',
       turn: { id: 'compact-turn', status: 'completed' }
     })
     await expect(result).resolves.toEqual({ outcome: 'success' })
+    expect(tracker.running).toBe(false)
   })
 
   it('claims one provider turn, the same one on a retry, and no other', async () => {
     const tracker = new StructuredSessionCompaction()
-    void tracker.run('s', 't', async () => ({}), COMMAND)
+    void tracker.run('t', async () => ({}), COMMAND)
     await Promise.resolve()
-    expect(tracker.claimTurn('s', 't', 'c')).toBe(COMMAND.turnItemId)
-    expect(tracker.claimTurn('s', 't', 'c')).toBe(COMMAND.turnItemId)
-    expect(tracker.claimTurn('s', 't', 'later')).toBeNull()
-    expect(tracker.providerTurnId('s', COMMAND.turnId)).toBe('c')
+    expect(tracker.claimTurn('t', 'c')).toBe(COMMAND.turnItemId)
+    expect(tracker.claimTurn('t', 'c')).toBe(COMMAND.turnItemId)
+    expect(tracker.claimTurn('t', 'later')).toBeNull()
+    expect(tracker.providerTurnId(COMMAND.turnId)).toBe('c')
   })
 
   it('observes notifications arriving before the request acknowledgment', async () => {
     const tracker = new StructuredSessionCompaction()
     await expect(
       tracker.run(
-        's',
         't',
         async () => {
-          tracker.claimTurn('s', 't', 'c')
-          tracker.codex('s', 'turn/completed', {
+          tracker.claimTurn('t', 'c')
+          tracker.codex('turn/completed', {
             threadId: 't',
             turn: { id: 'c', status: 'failed', error: { message: 'Unavailable' } }
           })
@@ -62,10 +63,10 @@ describe('structured compaction lifecycle', () => {
 
   it('reads an interrupted Codex turn as a cancellation', async () => {
     const tracker = new StructuredSessionCompaction()
-    const result = tracker.run('s', 't', async () => ({}), COMMAND)
+    const result = tracker.run('t', async () => ({}), COMMAND)
     await Promise.resolve()
-    tracker.claimTurn('s', 't', 'c')
-    tracker.codex('s', 'turn/completed', {
+    tracker.claimTurn('t', 'c')
+    tracker.codex('turn/completed', {
       threadId: 't',
       turn: { id: 'c', status: 'interrupted' }
     })
@@ -76,18 +77,19 @@ describe('structured compaction lifecycle', () => {
     'uses Claude compact_result %s rather than result subtype',
     async (state) => {
       const tracker = new StructuredSessionCompaction()
-      const result = tracker.run('s', 'provider', async () => {}, COMMAND)
-      tracker.claude('s', {
+      const result = tracker.run('provider', async () => {}, CLAUDE_COMMAND)
+      tracker.claude({
         type: 'system',
         subtype: 'status',
         session_id: 'provider',
         compact_result: state,
         compact_error: 'Not enough messages to compact.'
       })
-      tracker.claude('s', {
+      tracker.claude({
         type: 'result',
         subtype: 'success',
         session_id: 'provider',
+        user_message_uuid: CLAUDE_COMMAND.sentUuid,
         result: ''
       })
       await expect(result).resolves.toEqual(
@@ -98,69 +100,102 @@ describe('structured compaction lifecycle', () => {
     }
   )
 
-  it('cleans up on provider exit and permits another operation', async () => {
+  it('ends a Claude command only on the result that answers its own input', async () => {
     const tracker = new StructuredSessionCompaction()
-    const pending = tracker.run('s', 'p', async () => {}, COMMAND)
-    tracker.ended('s')
-    await expect(pending).resolves.toEqual({
-      outcome: 'failure',
-      error: 'The provider exited during compaction.'
+    const settled = vi.fn()
+    void tracker.run('p', async () => {}, CLAUDE_COMMAND).then(settled)
+    tracker.claude({ type: 'system', subtype: 'compact_boundary', session_id: 'p' })
+    // Another input's result, and a subagent's, answer something else.
+    tracker.claude({
+      type: 'result',
+      subtype: 'error_during_execution',
+      is_error: true,
+      session_id: 'p',
+      user_message_uuid: 'earlier-input'
     })
+    tracker.claude({
+      type: 'result',
+      subtype: 'success',
+      session_id: 'p',
+      parent_tool_use_id: 'task-1',
+      user_message_uuid: CLAUDE_COMMAND.sentUuid
+    })
+    await Promise.resolve()
+    expect(settled).not.toHaveBeenCalled()
+    expect(tracker.running).toBe(true)
+
+    tracker.claude({
+      type: 'result',
+      subtype: 'success',
+      session_id: 'p',
+      user_message_uuid: CLAUDE_COMMAND.sentUuid
+    })
+    await vi.waitFor(() => expect(settled).toHaveBeenCalledWith({ outcome: 'success' }))
+  })
+
+  it("takes a result that names no input as the command's, the only input in flight", async () => {
+    const tracker = new StructuredSessionCompaction()
+    const result = tracker.run('p', async () => {}, CLAUDE_COMMAND)
+    tracker.claude({ type: 'system', subtype: 'compact_boundary', session_id: 'p' })
+    tracker.claude({ type: 'result', subtype: 'success', session_id: 'p' })
+    await expect(result).resolves.toEqual({ outcome: 'success' })
+  })
+
+  it('reads an interrupted Claude command as a cancellation, not a failure', async () => {
+    const tracker = new StructuredSessionCompaction()
+    const result = tracker.run('p', async () => {}, CLAUDE_COMMAND)
+    tracker.claude({
+      type: 'result',
+      subtype: 'error_during_execution',
+      is_error: true,
+      terminal_reason: 'aborted_streaming',
+      session_id: 'p',
+      user_message_uuid: CLAUDE_COMMAND.sentUuid
+    })
+    await expect(result).resolves.toEqual({ outcome: 'cancellation' })
+  })
+
+  it('reads a Claude error result that was not a stop as a failure', async () => {
+    const tracker = new StructuredSessionCompaction()
+    const result = tracker.run('p', async () => {}, CLAUDE_COMMAND)
+    tracker.claude({
+      type: 'result',
+      subtype: 'error_during_execution',
+      is_error: true,
+      session_id: 'p',
+      user_message_uuid: CLAUDE_COMMAND.sentUuid
+    })
+    await expect(result).resolves.toEqual({
+      outcome: 'failure',
+      error: 'Compaction did not complete.'
+    })
+  })
+
+  it('runs another command once the first ended', async () => {
+    const tracker = new StructuredSessionCompaction()
+    const first = tracker.run('p', async () => {}, CLAUDE_COMMAND)
+    await expect(tracker.run('p', async () => {}, CLAUDE_COMMAND)).rejects.toThrow(
+      'Compaction is already running.'
+    )
+    tracker.claude({ type: 'result', subtype: 'success', session_id: 'p' })
+    await first
     const next = tracker.run(
-      's',
       'p',
       async () => {
-        tracker.claude('s', { type: 'system', subtype: 'compact_boundary', session_id: 'p' })
-        tracker.claude('s', { type: 'result', subtype: 'success', session_id: 'p' })
+        tracker.claude({ type: 'system', subtype: 'compact_boundary', session_id: 'p' })
+        tracker.claude({ type: 'result', subtype: 'success', session_id: 'p' })
       },
-      COMMAND
+      CLAUDE_COMMAND
     )
     await expect(next).resolves.toEqual({ outcome: 'success' })
   })
 
-  it('ends a command at Stop before the provider opened a turn for it', async () => {
-    const tracker = new StructuredSessionCompaction()
-    const result = tracker.run('s', 't', async () => ({}), COMMAND)
-    await Promise.resolve()
-    tracker.abandon('s', COMMAND.turnId)
-    await expect(result).resolves.toEqual({ outcome: 'cancellation' })
-    // The provider turn that opens afterwards is still the command's, so the interrupt finds it.
-    expect(tracker.claimTurn('s', 't', 'c')).toBe(COMMAND.turnItemId)
-    expect(tracker.providerTurnId('s', COMMAND.turnId)).toBe('c')
-    tracker.codex('s', 'turn/completed', {
-      threadId: 't',
-      turn: { id: 'c', status: 'interrupted' }
-    })
-    expect(tracker.hasPending('s')).toBe(false)
-  })
-
-  it('ends nothing at a Stop that names an earlier command', async () => {
-    const tracker = new StructuredSessionCompaction()
-    const result = tracker.run('s', 'p', async () => ({}), COMMAND)
-    const settled = vi.fn()
-    void result.then(settled)
-    expect(tracker.abandon('s', 'compact:cmd-0')).toBe(false)
-    await Promise.resolve()
-    expect(settled).not.toHaveBeenCalled()
-    expect(tracker.abandon('s', COMMAND.turnId)).toBe(true)
-    await expect(result).resolves.toEqual({ outcome: 'cancellation' })
-  })
-
-  it('keeps the cancellation when the provider reports an error after Stop', async () => {
-    const tracker = new StructuredSessionCompaction()
-    const result = tracker.run('s', 'p', async () => {}, COMMAND)
-    tracker.abandon('s', COMMAND.turnId)
-    tracker.claude('s', { type: 'result', subtype: 'error_during_execution', session_id: 'p' })
-    await expect(result).resolves.toEqual({ outcome: 'cancellation' })
-    expect(tracker.hasPending('s')).toBe(false)
-  })
-
   it('does not mistake an unrelated completed turn for compaction', async () => {
     const tracker = new StructuredSessionCompaction()
-    const result = tracker.run('s', 't', async () => ({}), COMMAND)
+    const result = tracker.run('t', async () => ({}), COMMAND)
     await Promise.resolve()
-    tracker.claimTurn('s', 't', 'c')
-    tracker.codex('s', 'turn/completed', { threadId: 't', turn: { id: 'c', status: 'completed' } })
+    tracker.claimTurn('t', 'c')
+    tracker.codex('turn/completed', { threadId: 't', turn: { id: 'c', status: 'completed' } })
     await expect(result).resolves.toEqual({
       outcome: 'failure',
       error: 'Compaction did not complete.'
@@ -171,7 +206,6 @@ describe('structured compaction lifecycle', () => {
     const tracker = new StructuredSessionCompaction()
     await expect(
       tracker.run(
-        's',
         'p',
         async () => {
           throw new Error('pipe closed')
@@ -179,6 +213,6 @@ describe('structured compaction lifecycle', () => {
         COMMAND
       )
     ).rejects.toThrow('pipe closed')
-    expect(tracker.hasPending('s')).toBe(false)
+    expect(tracker.running).toBe(false)
   })
 })

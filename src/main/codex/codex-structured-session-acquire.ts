@@ -11,6 +11,7 @@ import {
 import { CodexBackgroundTaskTracker } from './codex-background-task-tracker'
 import { CodexSubagentExecutions } from './codex-subagent-executions'
 import { createCodexDispatchEchoes } from './codex-structured-dispatch-echo'
+import { StructuredSessionCompaction } from '../native-chat/agent-session-wire/structured-session-compaction'
 import { createCodexJournalTranslator } from './codex-structured-journal-translation'
 import { openCodexAppServerConnection } from './codex-app-server-connection'
 import {
@@ -33,6 +34,7 @@ import {
   reportedCodexThreadOptions
 } from './codex-structured-fast-mode'
 import {
+  assertCodexConnectionOpen,
   codexSessionLifecycle,
   mintCodexAcquisitionGeneration,
   type CodexAcquisitionRegistry,
@@ -41,6 +43,7 @@ import {
   type CodexStructuredSessionAdapterDeps
 } from './codex-structured-session-state'
 import type { CodexStructuredTurnCancellation } from './codex-structured-turn-cancellation'
+import type { CodexStructuredSessionTeardown } from './codex-structured-session-teardown'
 import type { CodexStructuredNotificationRetry } from './codex-structured-notification-retry'
 import type { deliverCodexServerRequest } from './codex-structured-provider-events'
 
@@ -62,14 +65,7 @@ export async function acquireCodexStructuredSession(input: {
     request: Parameters<typeof deliverCodexServerRequest>[2]
   ) => void
   handleUnhandledFrame: (sessionId: string, kind: string, payload: unknown) => void
-  forceCloseUnexpected: (
-    sessionId: string,
-    fence: number,
-    acquisitionGeneration: string,
-    reason: Error
-  ) => Promise<boolean>
-  /** The command turn a provider turn starting now carries out, while a command is pending. */
-  claimCommandTurn: (sessionId: string, threadId: string, turnId: string) => string | null
+  forceCloseUnexpected: CodexStructuredSessionTeardown['forceCloseUnexpected']
 }): Promise<AgentSessionAcquisition> {
   const {
     input: acquireInput,
@@ -89,6 +85,7 @@ export async function acquireCodexStructuredSession(input: {
       : null
   const subagentExecutions = new CodexSubagentExecutions()
   const dispatchEchoes = createCodexDispatchEchoes()
+  const compaction = new StructuredSessionCompaction()
   const translator = acquireInput.events
     ? createCodexJournalTranslator({
         sink: acquireInput.events,
@@ -98,7 +95,7 @@ export async function acquireCodexStructuredSession(input: {
         onPrimaryThreadStoppedRunning: () => deps.onPrimaryThreadStoppedRunning?.({ sessionId }),
         dispatchRequestOrigin: (clientMessageId) => dispatchEchoes.requestOrigin(clientMessageId),
         subagentExecutions,
-        claimCommandTurn: (threadId, turnId) => input.claimCommandTurn(sessionId, threadId, turnId),
+        claimCommandTurn: (threadId, turnId) => compaction.claimTurn(threadId, turnId),
         bindPromptItemId: (journalItemId, threadId, promptKey, turnId) =>
           acquisition.prompts.bindJournalItemId(journalItemId, threadId, promptKey, turnId),
         clearPromptTurn: (threadId, turnId) => acquisition.prompts.clearTurn(threadId, turnId),
@@ -225,9 +222,7 @@ export async function acquireCodexStructuredSession(input: {
       }),
       acquisitionGeneration: mintCodexAcquisitionGeneration(deps)
     }
-    if (connection.closed) {
-      throw new Error(`codex app-server for session ${sessionId} exited while being acquired`)
-    }
+    assertCodexConnectionOpen(connection, sessionId)
     acquisitions.assertCurrent(sessionId, attempt)
     const options = restoredCodexSessionOptions(acquireInput.options)
     const catalogAccess = codexAcquireCatalogAccess(deps, launch)
@@ -239,9 +234,7 @@ export async function acquireCodexStructuredSession(input: {
       timeoutMs: deps.requestTimeoutMs
     })
     acquisitions.assertCurrent(sessionId, attempt)
-    if (connection.closed) {
-      throw new Error(`codex app-server for session ${sessionId} exited while being acquired`)
-    }
+    assertCodexConnectionOpen(connection, sessionId)
     acquisitions.deleteIfCurrent(sessionId, attempt)
     const session: CodexSession = {
       connection,
@@ -256,6 +249,7 @@ export async function acquireCodexStructuredSession(input: {
       fastModeTierByModel: fastModeCatalog?.fastModeTierByModel ?? new Map(),
       ...(catalogAccess ? { catalogAccess } : {}),
       dispatchEchoes,
+      compaction,
       translator,
       backgroundTasks: new CodexBackgroundTaskTracker(opened.threadId, subagentExecutions),
       forceCloseUnexpected: (reason) =>

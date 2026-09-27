@@ -3,7 +3,6 @@ import type {
   AgentJournalMessageItem,
   AgentSessionJournalIdentity
 } from '../../shared/agent-session-journal-types'
-import { StructuredSessionCompaction } from '../native-chat/agent-session-wire/structured-session-compaction'
 import { isCodexAppServerRequestError } from './codex-app-server-connection'
 import type {
   AgentSessionAcquisition,
@@ -49,7 +48,6 @@ export type {
 } from './codex-structured-session-state'
 
 export class CodexStructuredSessionAdapter implements StructuredAgentSessionAdapter {
-  private readonly compactions = new StructuredSessionCompaction()
   private readonly sessions = new Map<string, CodexSession>()
   private readonly acquisitions = new CodexAcquisitionRegistry()
   private readonly turnCancellation: CodexStructuredTurnCancellation
@@ -118,9 +116,7 @@ export class CodexStructuredSessionAdapter implements StructuredAgentSessionAdap
       handleUnhandledFrame: (sessionId, kind, payload) =>
         this.handleUnhandledFrame(sessionId, kind, payload),
       forceCloseUnexpected: (sessionId, fence, acquisitionGeneration, reason) =>
-        this.teardown.forceCloseUnexpected(sessionId, fence, acquisitionGeneration, reason),
-      claimCommandTurn: (sessionId, threadId, turnId) =>
-        this.compactions.claimTurn(sessionId, threadId, turnId)
+        this.teardown.forceCloseUnexpected(sessionId, fence, acquisitionGeneration, reason)
     })
 
   /** Buffers pre-publication events and drops events from superseded children. */
@@ -155,7 +151,7 @@ export class CodexStructuredSessionAdapter implements StructuredAgentSessionAdap
       return admission
     }
     if (event.type === 'notification') {
-      this.compactions.codex(event.sessionId, event.method, event.params)
+      session.compaction.codex(event.method, event.params)
       // After the admission check, so a refused frame is observed by the strip
       // only on the retry that also reaches the journal.
       if (session.backgroundTasks.observe(event)) {
@@ -228,7 +224,6 @@ export class CodexStructuredSessionAdapter implements StructuredAgentSessionAdap
     cancelCodexStructuredTurn({
       request,
       sessions: this.sessions,
-      compactions: this.compactions,
       cancellation: this.turnCancellation
     })
 
@@ -245,8 +240,7 @@ export class CodexStructuredSessionAdapter implements StructuredAgentSessionAdap
 
   compact: NonNullable<StructuredAgentSessionAdapter['compact']> = (input) => {
     const session = this.session(input.sessionId)
-    return this.compactions.run(
-      input.sessionId,
+    return session.compaction.run(
       session.threadId,
       async () => {
         await this.turnCancellation.captureBaseline(session)
@@ -266,10 +260,6 @@ export class CodexStructuredSessionAdapter implements StructuredAgentSessionAdap
       { turnId: input.turnId, turnItemId: input.turnItemId }
     )
   }
-
-  abandonCommand = (sessionId: string, turnId: string): boolean =>
-    this.compactions.abandon(sessionId, turnId)
-  releaseCommand = (sessionId: string): void => this.compactions.ended(sessionId)
 
   changeThreadGoal: NonNullable<StructuredAgentSessionAdapter['changeThreadGoal']> = (input) =>
     changeCodexThreadGoal(

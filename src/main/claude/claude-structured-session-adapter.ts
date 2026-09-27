@@ -6,7 +6,6 @@ import type {
 } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import { stopClaudeBackgroundTasks } from './claude-structured-control-actions'
 import { dispatchClaudeTurn } from './claude-structured-dispatch'
-import { StructuredSessionCompaction } from '../native-chat/agent-session-wire/structured-session-compaction'
 import { releaseClaudeAcquisition } from './claude-structured-acquisition-release'
 import { acquireClaudeSession } from './claude-structured-session-acquisition'
 import { supportsClaudeStructuredLocation } from './claude-structured-location-support'
@@ -54,7 +53,6 @@ function backgroundTaskState(session: ClaudeSession): AgentSessionBackgroundTask
 }
 
 export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAdapter {
-  private readonly compactions = new StructuredSessionCompaction()
   private readonly sessions = new Map<string, ClaudeSession>()
   private readonly acquisitions = new ClaudeAcquisitionRegistry()
   private readonly exits = new Map<string, ClaudeSessionExit>()
@@ -155,7 +153,7 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
     if (event.type === 'message' && session?.commands.observe(event.message)) {
       session.events?.publish()
     }
-    observeClaudeCompaction(this.compactions, event, session?.translator)
+    observeClaudeCompaction(session, event)
     this.deps.onEvent?.(event)
     if (backgroundTasksChanged) {
       this.deps.onBackgroundTasksChanged?.(
@@ -192,17 +190,12 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
     dispatchClaudeTurn(this.session(input.sessionId), input, input.beforeDispatch)
 
   compact: NonNullable<StructuredAgentSessionAdapter['compact']> = (input) =>
-    compactClaudeSession(this.session(input.sessionId), this.compactions, input)
-
-  abandonCommand = (sessionId: string, turnId: string): boolean =>
-    this.compactions.abandon(sessionId, turnId)
-  releaseCommand = (sessionId: string): void => this.compactions.ended(sessionId)
+    compactClaudeSession(this.session(input.sessionId), input)
 
   cancelTurn: StructuredAgentSessionAdapter['cancelTurn'] = (request) =>
     cancelClaudeStructuredTurn({
       request,
       sessions: this.sessions,
-      compactions: this.compactions,
       admitPromptCancellation: (session, promptKey) =>
         admitClaudePromptCancellation(session, promptKey),
       onDispatchSettledLate: (settlement) =>

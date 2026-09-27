@@ -235,6 +235,8 @@ export async function performCancel(
     scope?: 'background-tasks'
     taskId?: string
     prompt?: { itemId: string; expectedRevision: number }
+    /** Ends the provider child, for a running command the provider did not take the Stop on. */
+    stopChild?: () => Promise<void>
   }
 ): Promise<TurnOutcome<AgentSessionCancelResult>> {
   if (input.prompt) {
@@ -244,15 +246,9 @@ export async function performCancel(
     }
   }
   let cancelled = false
-  let note = 'Cancellation requested.'
+  let unconfirmed: string | null = null
   // The turn the Stop named, read before the cancel settles it: the note reports on that turn.
   const turnScope = ctx.journal.liveTurnScope()
-  // A conversation command ends at Stop whether or not the provider opened a turn for it yet;
-  // the interrupt below reaches a provider turn it did open.
-  const abandoned =
-    !input.scope &&
-    isStructuredAgentSessionCommandTurnId(input.turnId) &&
-    ctx.adapter.abandonCommand?.(ctx.sessionId, input.turnId) === true
   try {
     const dispatchStatus = latestJournalDispatchObservation(ctx.journal, ctx.fence)
     cancelled = input.scope
@@ -274,18 +270,28 @@ export async function performCancel(
             ...(input.prompt ? { prompt: { itemId: input.prompt.itemId } } : {})
           })
         ).cancelled
-    cancelled ||= abandoned
-    if (!cancelled) {
-      note = 'The provider had already finished this turn.'
-    }
   } catch (error) {
     if (input.prompt) {
       throw error
     }
-    note = `Cancellation was not confirmed: ${
-      error instanceof Error ? error.message : String(error)
-    }`
+    unconfirmed = error instanceof Error ? error.message : String(error)
   }
+  // A command the provider has not opened a turn for, or would not interrupt, ends with its child;
+  // that child's dead-generation settlement writes the command's verdict.
+  if (
+    !cancelled &&
+    input.stopChild &&
+    isStructuredAgentSessionCommandTurnId(input.turnId) &&
+    ctx.journal.activeTurnId() === input.turnId
+  ) {
+    await input.stopChild()
+    cancelled = true
+  }
+  const note = cancelled
+    ? 'Cancellation requested.'
+    : unconfirmed !== null
+      ? `Cancellation was not confirmed: ${unconfirmed}`
+      : 'The provider had already finished this turn.'
   if (cancelled && input.prompt) {
     await ctx.flushStreamedEvents()
   }

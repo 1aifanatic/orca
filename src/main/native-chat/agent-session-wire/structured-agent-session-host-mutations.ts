@@ -141,16 +141,19 @@ export function cancelStructuredAgentSessionTurn(
     prompt?: { itemId: string; expectedRevision: number }
   }
 ): Promise<AgentSessionMutationResult<AgentSessionCancelResult>> {
-  const plan = cancelPlan(params)
   if (params.scope || params.prompt) {
     return mutateStructuredAgentSession(
       context,
       caller,
       params.envelope,
-      plan,
+      cancelPlan(params),
       openForWrite(context, params.envelope)
     )
   }
+  const plan = cancelPlan({
+    ...params,
+    stopChild: () => context.stopAgent(params.envelope.sessionId)
+  })
   return mutateStructuredAgentSession(
     context,
     caller,

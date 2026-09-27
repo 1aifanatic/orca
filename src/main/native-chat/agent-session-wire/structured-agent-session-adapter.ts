@@ -233,21 +233,15 @@ export type StructuredAgentSessionAdapter = {
     | { ok: true; items?: { identity: AgentJournalItemIdentity; body: AgentJournalItemBody }[] }
     | { ok: false; reason: AgentSessionRewindReason }
   >
-  /** Runs a conversation compaction, settling when the provider reports its end. `turnId` and
-   *  `turnItemId` name the host's command turn, which a Stop names and a provider turn is claimed
-   *  into. */
+  /** Runs a conversation compaction, settling when the provider reports its end; a child that ends
+   *  first never settles it. `turnId` and `turnItemId` name the host's command turn, which a Stop
+   *  names and a provider turn is claimed into. */
   compact?(input: {
     turnId: string
     turnItemId: string
     sessionId: string
     fence: number
   }): Promise<StructuredSessionCompactionResult>
-  /** Stop on the running command `turnId` names: it ends as cancelled at once, before any
-   *  interrupt lands. False when that command is not the one running. */
-  abandonCommand?(sessionId: string, turnId: string): boolean
-  /** The child a command ran on ended: forget the command, so no later provider turn is claimed
-   *  into it and a later command may run. The host calls it for every ending. */
-  releaseCommand?(sessionId: string): void
   /** Cancels one turn, not the session: a session-wide interrupt would also kill
    *  a turn the client never asked to stop. */
   cancelTurn(input: {

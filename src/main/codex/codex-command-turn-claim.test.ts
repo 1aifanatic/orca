@@ -96,13 +96,13 @@ function harness(refuseRevisions = 0) {
     sink: tap.sink,
     sessionId: SESSION,
     primaryThreadId: () => THREAD,
-    claimCommandTurn: (threadId, turnId) => tracker.claimTurn(SESSION, threadId, turnId)
+    claimCommandTurn: (threadId, turnId) => tracker.claimTurn(threadId, turnId)
   })
   // The adapter's order: the translator journals first, the tracker observes second.
   const emit = (event: CodexStructuredSessionEvent) => {
     const admission = translator.handle(event)
     if (admission.accepted && event.type === 'notification') {
-      tracker.codex(event.sessionId, event.method, event.params)
+      tracker.codex(event.method, event.params)
     }
     return admission
   }
@@ -115,7 +115,7 @@ const codexTurnRecords = (writes: readonly Written[]) =>
 describe('a Codex turn a conversation command claims', () => {
   it('writes one root turn — the command turn — and scopes its content to it', async () => {
     const { writes, tracker, emit } = harness()
-    const completion = tracker.run(SESSION, THREAD, async () => ({}), COMMAND)
+    const completion = tracker.run(THREAD, async () => ({}), COMMAND)
     await Promise.resolve()
 
     emit(notification('turn/started', { turn: { id: PROVIDER_TURN } }))
@@ -154,7 +154,7 @@ describe('a Codex turn a conversation command claims', () => {
 
   it('claims the same provider turn when the refused start is retried', async () => {
     const { writes, tracker, emit } = harness(1)
-    void tracker.run(SESSION, THREAD, async () => ({}), COMMAND)
+    void tracker.run(THREAD, async () => ({}), COMMAND)
     await Promise.resolve()
     const started = notification('turn/started', { turn: { id: PROVIDER_TURN } })
 
@@ -165,7 +165,7 @@ describe('a Codex turn a conversation command claims', () => {
     expect(writes.find((write) => write.key === COMMAND_TURN_KEY)?.body).toMatchObject({
       providerTurnId: PROVIDER_TURN
     })
-    expect(tracker.providerTurnId(SESSION, COMMAND.turnId)).toBe(PROVIDER_TURN)
+    expect(tracker.providerTurnId(COMMAND.turnId)).toBe(PROVIDER_TURN)
   })
 
   it('leaves a primary turn no command claims to write its own record', () => {

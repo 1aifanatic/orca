@@ -32,7 +32,7 @@ import type { StructuredSessionCompactionResult } from './structured-session-com
 
 let state: ReturnType<typeof hostTestState>
 let compact: Mock<NonNullable<StructuredAgentSessionAdapter['compact']>>
-let abandonCommand: Mock<NonNullable<StructuredAgentSessionAdapter['abandonCommand']>>
+let closeSession: Mock<NonNullable<StructuredAgentSessionAdapter['closeSession']>>
 let finish: (result: StructuredSessionCompactionResult) => void
 
 beforeEach(() => {
@@ -43,11 +43,8 @@ beforeEach(() => {
         finish = resolve
       })
   )
-  abandonCommand = vi.fn(() => {
-    finish({ outcome: 'cancellation' })
-    return true
-  })
-  Object.assign(state.host.deps.adapter, { compact, abandonCommand })
+  closeSession = vi.fn(async () => true)
+  Object.assign(state.host.deps.adapter, { compact, closeSession })
 })
 
 function compactParams() {
@@ -239,7 +236,14 @@ it('leaves a command whose start failed not sent, beside one start-failure row (
   expect(compact).not.toHaveBeenCalled()
 })
 
-it('ends the command at Stop before the provider opened a turn for it (B4)', async () => {
+function stop(turnId: string) {
+  return state.host.cancel(CALLER, {
+    envelope: envelope('agentSession.cancel', { turnId }),
+    turnId
+  })
+}
+
+it('leaves the command to the provider when it takes the Stop, and ends it as cancelled (B4)', async () => {
   await attach()
   const params = compactParams()
   const cmid = params.envelope.clientOperationId
@@ -247,14 +251,13 @@ it('ends the command at Stop before the provider opened a turn for it (B4)', asy
   await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce())
   const { turnId } = structuredAgentSessionCommandTurn(cmid)
 
-  await expect(
-    state.host.cancel(CALLER, {
-      envelope: envelope('agentSession.cancel', { turnId }),
-      turnId
-    })
-  ).resolves.toMatchObject({ ok: true, value: { cancelled: true } })
+  await expect(stop(turnId)).resolves.toMatchObject({ ok: true, value: { cancelled: true } })
 
-  expect(abandonCommand).toHaveBeenCalledWith(SESSION, turnId)
+  // The interrupt was taken, not answered: the command runs until the provider ends it.
+  expect(state.cancelTurn).toHaveBeenCalledWith(expect.objectContaining({ turnId }))
+  expect(closeSession).not.toHaveBeenCalled()
+  expect(readAgentJournalTurn((await commandTurn(cmid))?.body)?.state).toBe('running')
+  finish({ outcome: 'cancellation' })
   await vi.waitFor(async () =>
     expect(readAgentJournalTurn((await commandTurn(cmid))?.body)).toMatchObject({
       state: 'interrupted',
@@ -263,6 +266,51 @@ it('ends the command at Stop before the provider opened a turn for it (B4)', asy
   )
   // A cancellation writes no result row.
   expect((await journal()).items.some((item) => item.itemId.includes('command-result'))).toBe(false)
+})
+
+it('ends the command by stopping the child when the provider cannot take the Stop (B4)', async () => {
+  await attach()
+  // Codex before it opened the command's turn, or Claude refusing the interrupt.
+  state.cancelTurn.mockResolvedValue({ cancelled: false })
+  const params = compactParams()
+  const cmid = params.envelope.clientOperationId
+  await state.host.conversationCommand(CALLER, params)
+  await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce())
+
+  await expect(stop(structuredAgentSessionCommandTurn(cmid).turnId)).resolves.toMatchObject({
+    ok: true,
+    value: { cancelled: true }
+  })
+
+  expect(closeSession).toHaveBeenCalledOnce()
+  expect(readAgentJournalTurn((await commandTurn(cmid))?.body)?.state).toBe('interrupted')
+  const notes = (await journal()).items.filter((item) => item.body.kind === 'status')
+  expect(notes.map((item) => item.body.kind === 'status' && item.body.text)).toEqual([
+    'Cancellation requested.'
+  ])
+  // The next message starts a child of its own.
+  await state.host.send(CALLER, sendParams('after the stop'))
+  await vi.waitFor(() => expect(state.dispatch).toHaveBeenCalledOnce())
+  expect(state.acquire).toHaveBeenCalledTimes(2)
+})
+
+it('does not stop the child for a Stop naming a command that already ended (B4)', async () => {
+  await attach()
+  state.cancelTurn.mockResolvedValue({ cancelled: false })
+  const params = compactParams()
+  await state.host.conversationCommand(CALLER, params)
+  await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce())
+  finish({ outcome: 'success' })
+  const { itemId, turnId } = structuredAgentSessionCommandTurn(params.envelope.clientOperationId)
+  await vi.waitFor(async () =>
+    expect(
+      readAgentJournalTurn((await journal()).items.find((item) => item.itemId === itemId)?.body)
+        ?.state
+    ).toBe('completed')
+  )
+
+  await expect(stop(turnId)).resolves.toMatchObject({ ok: true, value: { cancelled: false } })
+  expect(closeSession).not.toHaveBeenCalled()
 })
 
 it('settles a command whose adapter call threw after the start as unknown (B4)', async () => {

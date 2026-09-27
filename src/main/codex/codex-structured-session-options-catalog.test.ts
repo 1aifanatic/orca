@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createCodexDispatchEchoes } from './codex-structured-dispatch-echo'
+import { StructuredSessionCompaction } from '../native-chat/agent-session-wire/structured-session-compaction'
 import type { CodexAppServerConnection } from './codex-app-server-connection'
 import { CodexAcquisitionWindow } from './codex-structured-acquisition-window'
 import {
@@ -62,6 +63,7 @@ function storeSession(
     reportedOptions: { model: 'gpt-live', effort: 'high' },
     fastModeTierByModel: new Map(),
     dispatchEchoes: createCodexDispatchEchoes(),
+    compaction: new StructuredSessionCompaction(),
     translator: null,
     catalogAccess: { store, fingerprint: FINGERPRINT, accountHomePath: '/homes/a' }
   }
