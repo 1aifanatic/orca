@@ -44,12 +44,12 @@ export const detectExplicitIdleStatusFromTitle: (title: string) => AgentStatus |
 
 export function isKnownReadyPromptPreview(preview: string): boolean {
   const normalized = preview.toLowerCase()
-  return isReadyPromptLive(normalized, findKnownReadyPromptIndex(normalized))
+  return isReadyPromptUnblocked(normalized, findKnownReadyPromptIndex(normalized))
 }
 
 /**
- * Tier 1 body evidence for every tui-idle site. `screenLines` is the live emulator's visible
- * grid, or null when the runtime has no trustworthy one.
+ * Tier 1 body evidence for every tui-idle site. `readScreenLines` yields the live emulator's
+ * visible grid, or null when the runtime has no trustworthy one; a thunk so other agents skip it.
  *
  * Why the screen decides once it shows the Codex header: Codex repaints its header by cell
  * diff (`ESC[5;3Hdir ESC[5;7Hctory:`), which only a grid reassembles — the line-folded wait
@@ -58,20 +58,21 @@ export function isKnownReadyPromptPreview(preview: string): boolean {
  */
 export function isKnownReadyPromptBody(
   waitText: string,
-  screenLines: readonly string[] | null,
-  agent: TuiAgent | null
+  agent: TuiAgent | null,
+  readScreenLines: () => readonly string[] | null
 ): boolean {
   // Why the agent gate: another agent's screen can merely mention "OpenAI Codex".
-  if (screenLines !== null && (agent === null || agent === 'codex')) {
+  const screenLines = agent === null || agent === 'codex' ? readScreenLines() : null
+  if (screenLines !== null) {
     const screen = screenLines.join('\n').toLowerCase()
     if (screen.includes(CODEX_HEADER_TITLE)) {
-      return isReadyPromptLive(screen, findCodexScreenReadyPromptIndex(screen))
+      return isReadyPromptUnblocked(screen, findCodexScreenReadyPromptIndex(screen))
     }
   }
   return isKnownReadyPromptPreview(waitText)
 }
 
-function isReadyPromptLive(normalized: string, readyIndex: number | null): boolean {
+function isReadyPromptUnblocked(normalized: string, readyIndex: number | null): boolean {
   if (readyIndex === null) {
     return false
   }
@@ -83,12 +84,7 @@ function isReadyPromptLive(normalized: string, readyIndex: number | null): boole
 // a Muse ready screen only proves the TUI is up — the ranking holds it to quiescence.
 export function isMuseReadyPromptPreview(preview: string): boolean {
   const normalized = preview.toLowerCase()
-  const readyIndex = findMuseReadyPromptIndex(normalized)
-  if (readyIndex === null) {
-    return false
-  }
-  const blockedSignal = findTerminalWaitBlockedSignal(normalized)
-  return blockedSignal === null || blockedSignal.index <= readyIndex
+  return isReadyPromptUnblocked(normalized, findMuseReadyPromptIndex(normalized))
 }
 
 export function detectTerminalWaitBlockedReason(

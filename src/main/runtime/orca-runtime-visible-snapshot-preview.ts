@@ -142,7 +142,10 @@ export class OrcaRuntimeWithVisibleSnapshotPreview extends OrcaRuntimeWithCaptur
 
   /** Synchronous visible grid of the live emulator, for tui-idle body evidence. Null when the
    *  model is not the whole screen: a provider-restored partial suffix or a pending hydration. */
-  protected readLiveTerminalScreenLines(ptyId: string): string[] | null {
+  protected readLiveTerminalScreenLines(ptyId: string | null | undefined): string[] | null {
+    if (!ptyId) {
+      return null
+    }
     const state = this.headlessTerminals.get(ptyId)
     if (
       !state ||

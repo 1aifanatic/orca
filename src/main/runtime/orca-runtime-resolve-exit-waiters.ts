@@ -104,20 +104,21 @@ export class OrcaRuntimeWithResolveExitWaiters extends OrcaRuntimeWithBindPtyInc
 
   // Why: the primary OSC-title signal can't fire for daemon-hosted terminals (no PTY data through the runtime), so this fallback polls the renderer-synced tab title + foreground-process quiescence; self-cancels when the OSC path fires.
   protected isTuiIdleSatisfiedForLeaf(leaf: RuntimeLeafRecord): boolean {
+    const agent = this.getPaneAgentForTuiIdle(leaf.ptyId)
     return isTuiIdleSatisfied({
       record: leaf,
       rendererTitle: leaf.paneTitle ?? this.tabs.get(leaf.tabId)?.title ?? null,
       readPositiveBodyEvidence: () =>
         isKnownReadyPromptBody(
           buildTerminalWaitText(leaf.tailBuffer, leaf.tailPartialLine, leaf.preview),
-          leaf.ptyId ? this.readLiveTerminalScreenLines(leaf.ptyId) : null,
-          this.getPaneAgentForTuiIdle(leaf.ptyId)
+          agent,
+          () => this.readLiveTerminalScreenLines(leaf.ptyId)
         ),
       readMuseReadyBodyEvidence: () =>
         isMuseReadyPromptPreview(
           buildTerminalWaitText(leaf.tailBuffer, leaf.tailPartialLine, leaf.preview)
         ),
-      agent: this.getPaneAgentForTuiIdle(leaf.ptyId),
+      agent,
       firstPartyStatus:
         (leaf.ptyId ? this.ptysById.get(leaf.ptyId)?.lastExplicitAgentStatus : null) ?? null,
       quiescenceMs: TUI_IDLE_QUIESCENCE_MS
@@ -195,20 +196,21 @@ export class OrcaRuntimeWithResolveExitWaiters extends OrcaRuntimeWithBindPtyInc
   }
 
   protected isTuiIdleSatisfiedForPty(pty: RuntimePtyWorktreeRecord): boolean {
+    const agent = this.getPaneAgentForTuiIdle(pty.ptyId)
     return isTuiIdleSatisfied({
       record: pty,
       readPositiveBodyEvidence: () =>
         this.getAdoptedPtyExplicitIdleStatus(pty) === 'idle' ||
         isKnownReadyPromptBody(
           buildTerminalWaitText(pty.tailBuffer, pty.tailPartialLine, pty.preview),
-          this.readLiveTerminalScreenLines(pty.ptyId),
-          this.getPaneAgentForTuiIdle(pty.ptyId)
+          agent,
+          () => this.readLiveTerminalScreenLines(pty.ptyId)
         ),
       readMuseReadyBodyEvidence: () =>
         isMuseReadyPromptPreview(
           buildTerminalWaitText(pty.tailBuffer, pty.tailPartialLine, pty.preview)
         ),
-      agent: this.getPaneAgentForTuiIdle(pty.ptyId),
+      agent,
       firstPartyStatus: pty.lastExplicitAgentStatus ?? null,
       quiescenceMs: TUI_IDLE_QUIESCENCE_MS
     })

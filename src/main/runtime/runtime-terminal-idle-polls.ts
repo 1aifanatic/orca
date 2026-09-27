@@ -42,7 +42,7 @@ type RuntimeTerminalIdlePollDependencies = {
   getAdoptedPtyIdleStatus(pty: RuntimePtyWorktreeRecord): AgentStatus | null
   getPaneAgent(ptyId: string | null | undefined): TuiAgent | null
   getFirstPartyAgentStatus(ptyId: string | null | undefined): FirstPartyAgentStatus
-  readScreenLines(ptyId: string): readonly string[] | null
+  readScreenLines(ptyId: string | null | undefined): readonly string[] | null
   /** Re-read the record the waiter registered against; see `liveLeaf` below. */
   getLiveLeaf(leaf: RuntimeLeafRecord): RuntimeLeafRecord
   resolve(waiter: TerminalWaiter, result: RuntimeTerminalWait): void
@@ -130,11 +130,7 @@ export class RuntimeTerminalIdlePolls {
           record: leaf,
           rendererTitle: leaf.paneTitle ?? this.deps.getTabTitle(leaf.tabId),
           readPositiveBodyEvidence: () =>
-            isKnownReadyPromptBody(
-              waitText,
-              leaf.ptyId ? this.deps.readScreenLines(leaf.ptyId) : null,
-              agent
-            ),
+            isKnownReadyPromptBody(waitText, agent, () => this.deps.readScreenLines(leaf.ptyId)),
           readMuseReadyBodyEvidence: () => isMuseReadyPromptPreview(waitText),
           agent,
           firstPartyStatus: this.deps.getFirstPartyAgentStatus(leaf.ptyId),
@@ -202,7 +198,7 @@ export class RuntimeTerminalIdlePolls {
           record: pty,
           readPositiveBodyEvidence: () =>
             this.deps.getAdoptedPtyIdleStatus(pty) === 'idle' ||
-            isKnownReadyPromptBody(waitText, this.deps.readScreenLines(pty.ptyId), agent),
+            isKnownReadyPromptBody(waitText, agent, () => this.deps.readScreenLines(pty.ptyId)),
           readMuseReadyBodyEvidence: () => isMuseReadyPromptPreview(waitText),
           agent,
           firstPartyStatus: this.deps.getFirstPartyAgentStatus(pty.ptyId),

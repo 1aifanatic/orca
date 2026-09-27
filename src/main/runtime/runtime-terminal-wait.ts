@@ -33,7 +33,7 @@ type RuntimeTerminalWaitDependencies = {
   quiescenceMs: number
   getPaneAgent(ptyId: string | null | undefined): TuiAgent | null
   getFirstPartyAgentStatus(ptyId: string | null | undefined): FirstPartyAgentStatus
-  readScreenLines(ptyId: string): readonly string[] | null
+  readScreenLines(ptyId: string | null | undefined): readonly string[] | null
   startVisibleReadProbe(
     waiter: TerminalWaiter,
     waiterTimeoutMs: number,
@@ -56,7 +56,7 @@ export class RuntimeTerminalWait {
       record: pty,
       readPositiveBodyEvidence: () =>
         this.deps.getAdoptedPtyIdleStatus(pty) === 'idle' ||
-        isKnownReadyPromptBody(waitText, this.deps.readScreenLines(pty.ptyId), agent),
+        isKnownReadyPromptBody(waitText, agent, () => this.deps.readScreenLines(pty.ptyId)),
       readMuseReadyBodyEvidence: () => isMuseReadyPromptPreview(waitText),
       agent,
       firstPartyStatus: this.deps.getFirstPartyAgentStatus(pty.ptyId),
@@ -70,11 +70,7 @@ export class RuntimeTerminalWait {
       record: leaf,
       rendererTitle: leaf.paneTitle ?? this.deps.getTabTitle(leaf.tabId),
       readPositiveBodyEvidence: () =>
-        isKnownReadyPromptBody(
-          waitText,
-          leaf.ptyId ? this.deps.readScreenLines(leaf.ptyId) : null,
-          agent
-        ),
+        isKnownReadyPromptBody(waitText, agent, () => this.deps.readScreenLines(leaf.ptyId)),
       readMuseReadyBodyEvidence: () => isMuseReadyPromptPreview(waitText),
       agent,
       firstPartyStatus: this.deps.getFirstPartyAgentStatus(leaf.ptyId),

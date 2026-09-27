@@ -93,14 +93,16 @@ describe('Codex 0.157 header readiness from captured bytes', () => {
       for await (const frame of replay(readFixture(name), 120, 40)) {
         if (screenShowsLoadingHeader(frame.screenLines)) {
           sawLoadingHeader = true
-          expect(isKnownReadyPromptBody(frame.waitText, frame.screenLines, 'codex')).toBe(false)
+          expect(isKnownReadyPromptBody(frame.waitText, 'codex', () => frame.screenLines)).toBe(
+            false
+          )
         }
         last = frame
       }
       // Presence precondition: the loading veto was actually exercised.
       expect(sawLoadingHeader).toBe(true)
       expect(last).not.toBeNull()
-      expect(isKnownReadyPromptBody(last!.waitText, last!.screenLines, 'codex')).toBe(true)
+      expect(isKnownReadyPromptBody(last!.waitText, 'codex', () => last!.screenLines)).toBe(true)
     }
   )
 
@@ -110,7 +112,7 @@ describe('Codex 0.157 header readiness from captured bytes', () => {
         screenShowsLoadingHeader(frame.screenLines) &&
         isKnownReadyPromptPreview(frame.waitText)
       ) {
-        expect(isKnownReadyPromptBody(frame.waitText, frame.screenLines, 'codex')).toBe(false)
+        expect(isKnownReadyPromptBody(frame.waitText, 'codex', () => frame.screenLines)).toBe(false)
         return
       }
     }
@@ -119,10 +121,10 @@ describe('Codex 0.157 header readiness from captured bytes', () => {
 
   it('keeps the text rules when there is no live screen', async () => {
     const { waitText } = await finalFrame(PLAIN, 120, 40)
-    expect(isKnownReadyPromptBody(waitText, null, 'codex')).toBe(
+    expect(isKnownReadyPromptBody(waitText, 'codex', () => null)).toBe(
       isKnownReadyPromptPreview(waitText)
     )
-    expect(isKnownReadyPromptBody(waitText, null, 'codex')).toBe(true)
+    expect(isKnownReadyPromptBody(waitText, 'codex', () => null)).toBe(true)
   })
 
   it('does not read a mid-turn composer as ready', () => {
@@ -132,7 +134,7 @@ describe('Codex 0.157 header readiness from captured bytes', () => {
       '› Ask Codex to do anything',
       '  GPT-6-Sol high · ~/repo/app'
     ]
-    expect(isKnownReadyPromptBody(screenLines.join('\n'), screenLines, 'codex')).toBe(false)
+    expect(isKnownReadyPromptBody(screenLines.join('\n'), 'codex', () => screenLines)).toBe(false)
   })
 
   it('does not settle when a blocking dialog is painted below the header', () => {
@@ -143,7 +145,7 @@ describe('Codex 0.157 header readiness from captured bytes', () => {
       'Do you trust the contents of this directory?',
       'Press enter to continue'
     ]
-    expect(isKnownReadyPromptBody('', screenLines, 'codex')).toBe(false)
+    expect(isKnownReadyPromptBody('', 'codex', () => screenLines)).toBe(false)
   })
 
   it('leaves a non-codex pane on the text rules even when its screen mentions the Codex header', () => {
@@ -153,14 +155,14 @@ describe('Codex 0.157 header readiness from captured bytes', () => {
       '│ directory:   ~/repo/app                                  │'
     ]
     const waitText = 'OpenAI Codex\nmodel: gpt\ndirectory: ~/repo/app'
-    expect(isKnownReadyPromptBody(waitText, screenLines, 'claude')).toBe(true)
-    expect(isKnownReadyPromptBody(waitText, screenLines, 'codex')).toBe(false)
+    expect(isKnownReadyPromptBody(waitText, 'claude', () => screenLines)).toBe(true)
+    expect(isKnownReadyPromptBody(waitText, 'codex', () => screenLines)).toBe(false)
   })
 
   describe('at the 80x24 default grid the header garbles and today’s answer stands', () => {
     it.each(ALL_FIXTURES)('%s', async (name) => {
       const { screenLines, waitText } = await finalFrame(name, 80, 24)
-      expect(isKnownReadyPromptBody(waitText, screenLines, 'codex')).toBe(
+      expect(isKnownReadyPromptBody(waitText, 'codex', () => screenLines)).toBe(
         isKnownReadyPromptPreview(waitText)
       )
     })
