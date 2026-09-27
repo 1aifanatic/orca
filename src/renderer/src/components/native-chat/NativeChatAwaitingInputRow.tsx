@@ -40,7 +40,14 @@ export function NativeChatAwaitingInputRow({
   /** False when the caller already shows each question of a grouped prompt in full. */
   listsQuestions?: boolean
 }): React.JSX.Element {
-  const { open, setOpen } = useNativeChatDisclosure(disclosureKey, false)
+  // The list and a lone question are separate disclosures: a pending Codex group is
+  // keyed by its first question, which becomes its own row once answered.
+  const { open, setOpen } = useNativeChatDisclosure(
+    disclosureKey !== undefined && subject?.kind === 'questions'
+      ? `${disclosureKey}:questions`
+      : disclosureKey,
+    false
+  )
   // Seeded from `open`: a row remounted open was clipped when the reader opened
   // it, and dropping the toggle as it folds would drop keyboard focus with it.
   const [clipped, setClipped] = useState(open)
