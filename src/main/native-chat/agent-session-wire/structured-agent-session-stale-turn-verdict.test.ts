@@ -79,9 +79,14 @@ function promptItem(state: 'pending' | 'resolved', sequence: number): AgentJourn
 }
 
 describe('turn verdict from death evidence', () => {
+  const lastLiveAt = (at: number) => ({ lastLiveActivityAt: () => at })
+
   it('ends a watched exit at the exit', () => {
     expect(
-      turnVerdictFromDeathEvidence({ kind: 'exit-observed', detail: 'exit', observedAt: 500 }, 300)
+      turnVerdictFromDeathEvidence(
+        { kind: 'exit-observed', detail: 'exit', observedAt: 500 },
+        lastLiveAt(300)
+      )
     ).toEqual({ state: 'interrupted', completedAt: 500 })
   })
 
@@ -90,20 +95,25 @@ describe('turn verdict from death evidence', () => {
     (kind) => {
       // Probed at 9000, long after the crash: the downtime is never counted as work.
       expect(
-        turnVerdictFromDeathEvidence({ kind, detail: 'gone', observedAt: 9_000 }, 300)
+        turnVerdictFromDeathEvidence({ kind, detail: 'gone', observedAt: 9_000 }, lastLiveAt(300))
       ).toEqual({ state: 'interrupted', completedAt: 300 })
       // A live row stamped after the probe cannot outlast it, and no live row leaves only the probe.
       for (const lastLive of [9_500, 0]) {
         expect(
-          turnVerdictFromDeathEvidence({ kind, detail: 'gone', observedAt: 9_000 }, lastLive)
+          turnVerdictFromDeathEvidence(
+            { kind, detail: 'gone', observedAt: 9_000 },
+            lastLiveAt(lastLive)
+          )
         ).toEqual({ state: 'interrupted', completedAt: 9_000 })
       }
     }
   )
 
   it('leaves a release nothing proved unverifiable', () => {
-    expect(turnVerdictFromDeathEvidence(null, 300)).toEqual({ state: 'unverifiable' })
-    expect(turnVerdictFromDeathEvidence(undefined, 300)).toEqual({ state: 'unverifiable' })
+    expect(turnVerdictFromDeathEvidence(null, lastLiveAt(300))).toEqual({ state: 'unverifiable' })
+    expect(turnVerdictFromDeathEvidence(undefined, lastLiveAt(300))).toEqual({
+      state: 'unverifiable'
+    })
   })
 })
 
@@ -204,7 +214,6 @@ describe('stale session state on a cold acquire', () => {
     const journal = {
       snapshot: () => ({ items }),
       cursor: () => ({ epoch: 'epoch-1', sequence: 8 }),
-      lastLiveActivityAt: () => 2,
       appendLifecycleBatch
     } as unknown as AgentSessionJournal
     return { journal, appendLifecycleBatch }

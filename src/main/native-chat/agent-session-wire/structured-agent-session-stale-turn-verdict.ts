@@ -16,6 +16,7 @@ import {
 } from '../../../shared/agent-session-turn-record'
 import type { AgentSessionDeathEvidence } from '../../../shared/agent-session-record'
 import type { JournalLifecycleMutationInput } from '../agent-session-journal/journal-row-builders'
+import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 
 export type StructuredAgentSessionTurnVerdict =
   | { state: 'interrupted'; completedAt: number }
@@ -27,19 +28,20 @@ export const UNVERIFIABLE_TURN_VERDICT: StructuredAgentSessionTurnVerdict = {
 
 export function turnVerdictFromDeathEvidence(
   evidence: AgentSessionDeathEvidence | null | undefined,
-  lastLiveActivityAt: number
+  journal: Pick<AgentSessionJournal, 'lastLiveActivityAt'>
 ): StructuredAgentSessionTurnVerdict {
   if (!evidence) {
     return UNVERIFIABLE_TURN_VERDICT
   }
+  if (evidence.kind === 'exit-observed') {
+    return { state: 'interrupted', completedAt: evidence.observedAt }
+  }
   // A probe finds a dead child long after it died; the last row it wrote bounds its end, so the
   // turn never counts the time Orca itself was down.
+  const lastLive = journal.lastLiveActivityAt()
   return {
     state: 'interrupted',
-    completedAt:
-      evidence.kind === 'exit-observed' || lastLiveActivityAt <= 0
-        ? evidence.observedAt
-        : Math.min(lastLiveActivityAt, evidence.observedAt)
+    completedAt: lastLive > 0 ? Math.min(lastLive, evidence.observedAt) : evidence.observedAt
   }
 }
 

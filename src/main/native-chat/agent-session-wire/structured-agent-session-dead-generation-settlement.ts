@@ -219,7 +219,7 @@ export async function settleStaleStructuredAgentSessionState(input: {
 }): Promise<number> {
   const { journal } = input
   const items = journal.snapshot().items
-  const verdict = turnVerdictFromDeathEvidence(input.deathEvidence, journal.lastLiveActivityAt())
+  const verdict = turnVerdictFromDeathEvidence(input.deathEvidence, journal)
   const generation = input.acquisitionGeneration ?? `seq-${journal.cursor().sequence}`
   const settlementId = `stale-session:${input.sessionId}:${input.fence}:${generation}`
   const mutations: JournalLifecycleMutationInput[] = []
