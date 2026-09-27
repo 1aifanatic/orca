@@ -18,6 +18,9 @@ function watch(agent: TuiAgent = 'goose', replay?: string) {
     },
     readRecentOutput: () => replay
   })
+  if (!composer) {
+    throw new Error(`no composer watch for ${agent}`)
+  }
   return { composer, emit: (data: string) => emit(data), unsubscribe }
 }
 
@@ -66,12 +69,38 @@ describe('watchAgentComposerReady', () => {
 
   it("reports ready on the agent's own composer marker", () => {
     const w = watch('opencode')
+    expect(w.composer.signal()).toBe('none')
     w.emit(`${COMMAND_START}${BRACKETED_PASTE_ON}`)
     // opencode's signal carries no quiet window; only its show-cursor after 2004 counts.
-    expect(w.composer.signal()).toBe('none')
+    expect(w.composer.signal()).toBe('awaiting-marker')
 
     w.emit(SHOW_CURSOR)
     expect(w.composer.signal()).toBe('ready')
+  })
+
+  it('arms a marker agent on bracketed paste when its signal has a quiet fallback', () => {
+    // grok inline never switches to the alternate screen, so its marker never renders.
+    const w = watch('grok')
+    w.emit(COMMAND_START)
+    expect(w.composer.signal()).toBe('awaiting-marker')
+    w.emit(BRACKETED_PASTE_ON)
+    expect(w.composer.signal()).toBe('armed')
+  })
+
+  it('stops awaiting the marker once the command ends', () => {
+    const w = watch('opencode')
+    w.emit(`${COMMAND_START}${BRACKETED_PASTE_ON}`)
+    w.emit(`${COMMAND_DONE}${PROMPT_START}`)
+    expect(w.composer.signal()).toBe('none')
+  })
+
+  it('does not watch an agent that announces rest in its own title', () => {
+    // Claude arms bracketed paste before its trust and bypass-permissions dialogs.
+    const composer = watchAgentComposerReady('claude', {
+      subscribeToData: () => () => {},
+      readRecentOutput: () => undefined
+    })
+    expect(composer).toBeNull()
   })
 
   it('reads output that arrived before the wait subscribed', () => {

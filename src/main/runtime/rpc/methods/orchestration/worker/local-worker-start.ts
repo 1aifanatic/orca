@@ -191,7 +191,8 @@ export async function startLocalWorker(args: {
       : await runtime.waitForTerminal(terminalHandle, {
           condition: 'tui-idle',
           timeoutMs: params.timeoutMs ?? 60_000,
-          acceptComposerReady: true
+          // A reused terminal's agent may be mid-turn; only a fresh launch asks "composer mounted".
+          acceptComposerReady: !params.terminal
         })
     if (wait) {
       persistWorkerSetupWaitOutcome({ ...setupStage, wait })

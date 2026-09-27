@@ -141,6 +141,43 @@ describe('launch readiness on agents tui-idle already reads', () => {
   })
 })
 
+describe('launch readiness on a name-only title that arrives before the composer', () => {
+  // OpenCode paints its `OpenCode` title (byte 6814) before it mounts its composer (the first
+  // show-cursor after 2004, byte 9559). A plain wait settles on that title; a launch must not.
+  it('waits for the composer marker, then settles', async () => {
+    const { data, size } = readCapture('opencode-composer-ready')
+    const marker = data.indexOf('\x1b[?25h')
+    const { runtime, handle } = await createTranscriptPane({
+      paneTitle: 'OpenCode',
+      foregroundProcess: 'opencode',
+      launchAgent: 'opencode',
+      size,
+      data: ''
+    })
+    vi.useFakeTimers()
+    runtime.onPtyData(
+      TRANSCRIPT_PANE_PTY_ID,
+      `${COMMAND_START}${data.slice(0, marker)}`,
+      Date.now()
+    )
+    const settled = vi.fn()
+    void runtime
+      .waitForTerminal(handle, {
+        condition: 'tui-idle',
+        timeoutMs: WAIT_MS,
+        acceptComposerReady: true
+      })
+      .then(settled, () => {})
+
+    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 4)
+    expect(settled).not.toHaveBeenCalled()
+
+    runtime.onPtyData(TRANSCRIPT_PANE_PTY_ID, data.slice(marker), Date.now())
+    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS)
+    expect(settled).toHaveBeenCalledWith(expect.objectContaining({ satisfied: true }))
+  })
+})
+
 describe("Claude's trust dialog under a launch-readiness wait", () => {
   // Claude sets no title before this dialog, so the composer rank applies and its signal fires;
   // the rendered-screen check on the poll is what reports the dialog instead of pasting.

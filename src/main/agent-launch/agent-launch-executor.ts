@@ -101,7 +101,7 @@ export async function executeAgentLaunch(
       receipt: preflight,
       ...promptReceipt(
         intent,
-        await deliverTerminalLaunchPrompt(execution, intent.reuseTerminal.handle)
+        await deliverTerminalLaunchPrompt(execution, intent.reuseTerminal.handle, false)
       )
     }
   }
@@ -122,7 +122,7 @@ export async function executeAgentLaunch(
         intent,
         placed.promptRodeLaunchCommand
           ? HANDED_TO_TERMINAL
-          : await deliverTerminalLaunchPrompt(execution, placed.startupTerminalHandle)
+          : await deliverTerminalLaunchPrompt(execution, placed.startupTerminalHandle, true)
       )
     }
   }

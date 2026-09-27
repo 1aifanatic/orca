@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { AgentComposerSignal } from './agent-composer-ready-watch'
 import {
   evaluateTuiIdle,
   hasQuietMuseReadyPrompt,
@@ -161,7 +162,7 @@ describe('evaluateTuiIdle ranking', () => {
 
 describe('evaluateTuiIdle composer rank (launch readiness)', () => {
   const goose = { readMuseReadyBodyEvidence: () => false, agent: 'goose' as const }
-  const composer = (signal: 'none' | 'armed' | 'ready') => ({ readComposerSignal: () => signal })
+  const composer = (signal: AgentComposerSignal) => ({ readComposerSignal: () => signal })
 
   it('calls an armed composer weak once the stream is quiet', () => {
     expect(evaluateTuiIdle(input({ ...goose, ...composer('armed') }))).toEqual({
@@ -208,6 +209,25 @@ describe('evaluateTuiIdle composer rank (launch readiness)', () => {
         })
       ).kind
     ).toBe('pending')
+  })
+
+  it("holds a name-only idle title until the launched agent's composer marker renders", () => {
+    // OpenCode names itself in its title before its composer mounts.
+    const opencode = {
+      readMuseReadyBodyEvidence: () => false,
+      agent: 'opencode' as const,
+      record: record({ lastAgentStatus: 'idle' })
+    }
+    expect(evaluateTuiIdle(input({ ...opencode, ...composer('awaiting-marker') })).kind).toBe(
+      'pending'
+    )
+    for (const signal of ['ready', 'armed', 'none'] as const) {
+      expect(evaluateTuiIdle(input({ ...opencode, ...composer(signal) }))).toEqual({
+        kind: 'ready-weak'
+      })
+    }
+    // A plain wait has no watcher, so the title settles as before.
+    expect(evaluateTuiIdle(input({ ...opencode }))).toEqual({ kind: 'ready-weak' })
   })
 
   it('loses to a blocking prompt in the tail and to a first-party working status', () => {

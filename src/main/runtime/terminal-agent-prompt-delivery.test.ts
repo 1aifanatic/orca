@@ -48,7 +48,8 @@ describe('writing a launch prompt into a terminal agent', () => {
     const delivered = await deliverTerminalAgentLaunchPrompt({
       runtime: stub.runtime,
       handle: 'term_1',
-      text: 'do the thing'
+      text: 'do the thing',
+      terminalLaunched: true
     })
 
     expect(delivered).toBe(true)
@@ -66,12 +67,30 @@ describe('writing a launch prompt into a terminal agent', () => {
     expect(options.requestId).toEqual(expect.any(String))
   })
 
+  it("asks a reused terminal's agent for idle, not for a mounted composer", async () => {
+    const stub = runtimeStub({})
+    await deliverTerminalAgentLaunchPrompt({
+      runtime: stub.runtime,
+      handle: 'term_1',
+      text: 'do the thing',
+      terminalLaunched: false
+    })
+
+    // The agent was running before this launch and may be mid-turn; its composer proves nothing.
+    expect(stub.waitForTerminal).toHaveBeenCalledWith('term_1', {
+      condition: 'tui-idle',
+      timeoutMs: 60_000,
+      acceptComposerReady: false
+    })
+  })
+
   it('does not write when the composer never opened', async () => {
     const stub = runtimeStub({ wait: { satisfied: false, status: 'blocked' } })
     const delivered = await deliverTerminalAgentLaunchPrompt({
       runtime: stub.runtime,
       handle: 'term_1',
-      text: 'do the thing'
+      text: 'do the thing',
+      terminalLaunched: true
     })
 
     // A trust or update prompt is on screen; the text would answer whatever it asked.
@@ -88,7 +107,8 @@ describe('writing a launch prompt into a terminal agent', () => {
     const delivered = await deliverTerminalAgentLaunchPrompt({
       runtime: stub.runtime,
       handle: 'term_1',
-      text: 'do the thing'
+      text: 'do the thing',
+      terminalLaunched: true
     })
 
     // Under-claiming here would resend the whole prompt into an agent already working on it.
@@ -104,7 +124,8 @@ describe('writing a launch prompt into a terminal agent', () => {
     const delivered = await deliverTerminalAgentLaunchPrompt({
       runtime: stub.runtime,
       handle: 'term_1',
-      text: 'do the thing'
+      text: 'do the thing',
+      terminalLaunched: true
     })
 
     expect(delivered).toBe(false)
@@ -116,7 +137,8 @@ describe('writing a launch prompt into a terminal agent', () => {
     const delivered = await deliverTerminalAgentLaunchPrompt({
       runtime: stub.runtime,
       handle: 'term_1',
-      text: 'do the thing'
+      text: 'do the thing',
+      terminalLaunched: true
     })
 
     // The agent is running; a delivery failure must never become a launch failure.
@@ -129,7 +151,8 @@ describe('writing a launch prompt into a terminal agent', () => {
       await deliverTerminalAgentLaunchPrompt({
         runtime: stub.runtime,
         handle: 'term_1',
-        text: '   '
+        text: '   ',
+        terminalLaunched: true
       })
     ).toBe(false)
     expect(stub.waitForTerminal).not.toHaveBeenCalled()

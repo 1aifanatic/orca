@@ -1,8 +1,6 @@
+import { resolveDraftPasteReadyTimeoutMs } from '../../shared/draft-paste-ready-timeout'
 import type { OrcaRuntimeService } from './orca-runtime'
-import {
-  AGENT_READY_TIMEOUT_MS,
-  deliverTerminalAgentLaunchPrompt
-} from './terminal-agent-prompt-delivery'
+import { deliverTerminalAgentLaunchPrompt } from './terminal-agent-prompt-delivery'
 import type {
   WorktreeStartupDraftPaste,
   WorktreeStartupFollowup
@@ -27,7 +25,8 @@ export function pasteWorktreeStartupDraftWhenReady(
   void host
     .waitForTerminal(handle, {
       condition: 'tui-idle',
-      timeoutMs: AGENT_READY_TIMEOUT_MS,
+      // Why the draft's own budget: unsent text pasted long after start can land mid-typing.
+      timeoutMs: resolveDraftPasteReadyTimeoutMs(draft.agent),
       acceptComposerReady: true
     })
     .then((wait) => {
@@ -49,11 +48,14 @@ export function sendWorktreeStartupFollowupWhenReady(
 ): void {
   // Why the shared deliverer: a typed `prompt\r` submits at the first newline, and a process-name
   // match is not a composer that can take input.
-  void deliverTerminalAgentLaunchPrompt({ runtime: host, handle, text: followup.prompt }).then(
-    (delivered) => {
-      if (!delivered) {
-        console.warn('[worktree-create] agent did not take its startup follow-up prompt')
-      }
+  void deliverTerminalAgentLaunchPrompt({
+    runtime: host,
+    handle,
+    text: followup.prompt,
+    terminalLaunched: true
+  }).then((delivered) => {
+    if (!delivered) {
+      console.warn('[worktree-create] agent did not take its startup follow-up prompt')
     }
-  )
+  })
 }

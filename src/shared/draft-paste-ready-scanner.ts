@@ -87,6 +87,11 @@ const DRAFT_PASTE_READY_SIGNALS: Record<DraftPasteReadySignal, DraftPasteReadySi
 /** Longest anchor sequence minus one — the carry needed to rejoin one split across chunks. */
 const ANCHOR_CARRY_CHARS = 7
 
+/** Whether the signal waits for a composer marker of its own rather than only a quiet window. */
+export function draftPasteReadySignalHasMarker(readySignal: DraftPasteReadySignal): boolean {
+  return DRAFT_PASTE_READY_SIGNALS[readySignal].marker !== null
+}
+
 export type DraftPasteReadyScanResult = {
   /** The agent-specific ready signal fired — caller should deliver the paste now. */
   ready: boolean

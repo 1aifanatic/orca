@@ -82,6 +82,7 @@ export const ORCHESTRATION_FEDERATION_ATTACH_METHODS = [
       let failedStage = createsWorktree ? 'worktree_create' : 'worktree_resolve'
       let worktree
       let terminalHandle = params.terminal
+      let reusedTerminal = false
       const setupSource = createsWorktree
         ? (params.setupSource ?? (params.setup ? 'explicit_request' : 'orchestration_default'))
         : 'existing_worktree'
@@ -173,6 +174,7 @@ export const ORCHESTRATION_FEDERATION_ATTACH_METHODS = [
                 `Terminal ${terminalHandle} is not running a recognized agent.`
               )
             }
+            reusedTerminal = true
             effects.push({
               kind: 'terminal',
               role: 'agent',
@@ -218,7 +220,8 @@ export const ORCHESTRATION_FEDERATION_ATTACH_METHODS = [
         const wait = await runtime.waitForTerminal(terminalHandle, {
           condition: 'tui-idle',
           timeoutMs: readinessTimeoutMs,
-          acceptComposerReady: true
+          // A reused terminal's agent may be mid-turn; only a fresh launch asks "composer mounted".
+          acceptComposerReady: !reusedTerminal
         })
         persistFederatedSetupWaitOutcome({ ...setupStage, wait })
         if (!wait.satisfied) {

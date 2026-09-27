@@ -27,7 +27,7 @@ import { isAgentPromptStalledError } from './agent-prompt-submission-verificatio
 import type { OrcaRuntimeService } from './orca-runtime'
 
 /** The same budget orchestration gives a worker to reach its composer before dispatching to it. */
-export const AGENT_READY_TIMEOUT_MS = 60_000
+const AGENT_READY_TIMEOUT_MS = 60_000
 
 type TerminalPromptRuntime = Pick<OrcaRuntimeService, 'waitForTerminal' | 'sendTerminalAgentPrompt'>
 
@@ -49,6 +49,9 @@ export async function deliverTerminalAgentLaunchPrompt(args: {
   runtime: TerminalPromptRuntime
   handle: string
   text: string
+  /** This launch created the terminal, so its agent's composer mounting is the readiness asked for;
+   *  a reused terminal's agent may be mid-turn, where only idle will do. */
+  terminalLaunched: boolean
 }): Promise<boolean> {
   if (args.text.trim().length === 0) {
     return false
@@ -57,7 +60,7 @@ export async function deliverTerminalAgentLaunchPrompt(args: {
     const wait = await args.runtime.waitForTerminal(args.handle, {
       condition: 'tui-idle',
       timeoutMs: AGENT_READY_TIMEOUT_MS,
-      acceptComposerReady: true
+      acceptComposerReady: args.terminalLaunched
     })
     // An unsatisfied wait is a composer that never opened — a trust prompt, an update prompt, a
     // dead process. Pasting anyway would answer whatever question is on screen with the prompt.

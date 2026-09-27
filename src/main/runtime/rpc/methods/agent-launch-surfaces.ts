@@ -150,11 +150,12 @@ export function agentLaunchSurfaceFactory(
         ...(terminal.warning ? { warning: terminal.warning } : {})
       }
     },
-    deliverTerminalPrompt: async ({ handle, prompt }) =>
+    deliverTerminalPrompt: async ({ handle, prompt, terminalLaunched }) =>
       deliverTerminalAgentLaunchPrompt({
         runtime: context.runtime,
         handle,
-        text: prompt.text
+        text: prompt.text,
+        terminalLaunched
       })
   }
 }

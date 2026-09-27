@@ -329,7 +329,8 @@ describe('delivering a launch prompt to a terminal agent', () => {
     expect(result.prompt).toEqual({ delivery: 'submit', outcome: 'handed-to-terminal' })
     expect(h.deliverTerminalPrompt).toHaveBeenCalledWith({
       handle: 'term_1',
-      prompt: SUBMIT
+      prompt: SUBMIT,
+      terminalLaunched: true
     })
     // Folding it into argv would have appended it as an argument the CLI does not accept.
     expect(h.createTerminalAgent.mock.calls[0]?.[0]).not.toHaveProperty('startupPrompt')
@@ -359,9 +360,11 @@ describe('delivering a launch prompt to a terminal agent', () => {
 
     // Argv is unreachable here however argv-friendly the agent is: the process already exists.
     expect(result.prompt).toEqual({ delivery: 'submit', outcome: 'handed-to-terminal' })
+    // Its agent was running before this launch, so only idle — not a mounted composer — will do.
     expect(h.deliverTerminalPrompt).toHaveBeenCalledWith({
       handle: 'term_existing',
-      prompt: SUBMIT
+      prompt: SUBMIT,
+      terminalLaunched: false
     })
   })
 
