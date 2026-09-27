@@ -4,8 +4,7 @@
 // opens the command's turn, starts the provider on it, and waits off the session's queue for the
 // provider's end or the child's — a command turn takes no input, so nothing queued behind it is
 // handed over meanwhile. The settle re-reads the journal: a child that died in between already
-// wrote the verdict, so a turn no longer running or a message no longer in flight means there is
-// nothing left to write.
+// wrote the verdict, so a turn no longer running means there is nothing left to write.
 
 import {
   agentJournalItemKey,
@@ -145,7 +144,10 @@ export async function handOverStructuredAgentSessionCommand(
   }
 }
 
-/** Writes the command's end, unless the journal already holds one. */
+/** Writes the command's end, unless the journal already holds one. The caller checked the child is
+ *  the one the command was handed to. The message's answer goes first: a crash before the turn's
+ *  end leaves a running turn, which the stale-turn sweep settles, never an ended turn whose message
+ *  still reads as in flight. */
 export async function settleStructuredAgentSessionCommand(
   ctx: { journal: AgentSessionJournal; fence: number; now: () => number },
   clientMessageId: string,
@@ -153,12 +155,20 @@ export async function settleStructuredAgentSessionCommand(
 ): Promise<void> {
   const turn = structuredAgentSessionCommandTurn(clientMessageId)
   const running = readAgentJournalTurn(ctx.journal.itemBody(turn.itemId) ?? undefined)
-  const submission = ctx.journal
-    .submissions()
-    .find((entry) => entry.clientMessageId === clientMessageId)
-  if (running?.state !== 'running' || submission?.dispatchState !== 'pending') {
+  if (running?.state !== 'running') {
     return
   }
+  await ctx.journal.resolveDispatch(
+    'thrown' in end
+      ? {
+          clientMessageId,
+          state: end.starting ? 'rejected' : 'unknown',
+          reason: end.thrown,
+          fence: ctx.fence
+        }
+      : // The provider took the command and answered it in place; it echoes no item of its own.
+        { clientMessageId, state: 'accepted', providerIdentity: null, fence: ctx.fence }
+  )
   const completedAt = ctx.now()
   const verdict = commandVerdict(end, completedAt)
   const result = commandResultBody(end)
@@ -188,17 +198,6 @@ export async function settleStructuredAgentSessionCommand(
     fence: ctx.fence,
     mutations
   })
-  await ctx.journal.resolveDispatch(
-    'thrown' in end
-      ? {
-          clientMessageId,
-          state: end.starting ? 'rejected' : 'unknown',
-          reason: end.thrown,
-          fence: ctx.fence
-        }
-      : // The provider took the command and answered it in place; it echoes no item of its own.
-        { clientMessageId, state: 'accepted', providerIdentity: null, fence: ctx.fence }
-  )
 }
 
 function commandBlocked(

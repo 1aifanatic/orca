@@ -16,6 +16,7 @@ import type { AgentSessionSubscribeEvent } from '../../../shared/agent-session-w
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { structuredAgentSessionCommandTurn } from './structured-agent-session-command-turn'
+import { settleStaleStructuredAgentSessionState } from './structured-agent-session-dead-generation-settlement'
 import {
   attach,
   CALLER,
@@ -311,6 +312,55 @@ it('does not stop the child for a Stop naming a command that already ended (B4)'
 
   await expect(stop(turnId)).resolves.toMatchObject({ ok: true, value: { cancelled: false } })
   expect(closeSession).not.toHaveBeenCalled()
+})
+
+it("answers the command's message before its turn, so a crash between them leaves a turn the sweep settles (B4)", async () => {
+  await attach()
+  const params = compactParams()
+  const cmid = params.envelope.clientOperationId
+  await state.host.conversationCommand(CALLER, params)
+  await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce())
+  const { journal: live } = state.host['sessions'].get(SESSION)!
+  // The host dies after the settle's first write: the second one never lands.
+  const writes = { settle: 0 }
+  const crash = new Error('host crashed')
+  const resolveDispatch = live.resolveDispatch.bind(live)
+  const appendLifecycleBatch = live.appendLifecycleBatch.bind(live)
+  vi.spyOn(live, 'resolveDispatch').mockImplementation((input) =>
+    writes.settle++ > 0 ? Promise.reject(crash) : resolveDispatch(input)
+  )
+  vi.spyOn(live, 'appendLifecycleBatch').mockImplementation((input) =>
+    input.settlementId.startsWith('command-settled:') && writes.settle++ > 0
+      ? Promise.reject(crash)
+      : appendLifecycleBatch(input)
+  )
+  finish({ outcome: 'success' })
+  await vi.waitFor(() => expect(writes.settle).toBe(2))
+  vi.restoreAllMocks()
+
+  const before = await journal()
+  const turn = readAgentJournalTurn(
+    before.items.find((item) => item.itemId === structuredAgentSessionCommandTurn(cmid).itemId)
+      ?.body
+  )
+  const submission = before.submissions.find((entry) => entry.clientMessageId === cmid)
+  // Never an ended turn whose message still reads as in flight.
+  expect(turn?.state).toBe('running')
+  expect(submission?.dispatchState).toBe('accepted')
+  await settleStaleStructuredAgentSessionState({
+    journal: live,
+    sessionId: SESSION,
+    fence: state.store.getRecord(SESSION)!.lease.runtimeFence,
+    acquisitionGeneration: null,
+    deathEvidence: null
+  })
+  expect(
+    readAgentJournalTurn(
+      (await journal()).items.find(
+        (item) => item.itemId === structuredAgentSessionCommandTurn(cmid).itemId
+      )?.body
+    )?.state
+  ).toBe('unverifiable')
 })
 
 it('settles a command whose adapter call threw after the start as unknown (B4)', async () => {
