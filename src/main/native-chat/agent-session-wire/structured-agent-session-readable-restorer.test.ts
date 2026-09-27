@@ -29,8 +29,7 @@ describe('StructuredAgentSessionReadableRestorer', () => {
       resolveRecovery: async () => undefined,
       serialize: async (_sessionId, task) => task(),
       hasSession: () => false,
-      onReadable: () => undefined,
-      settleStaleState: async () => undefined
+      onReadable: () => undefined
     })
 
     await restorer.restore(['visible-a', 'visible-b', 'background-a', 'background-b'])

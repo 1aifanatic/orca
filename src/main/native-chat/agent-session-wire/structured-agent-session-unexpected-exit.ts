@@ -3,7 +3,10 @@ import { structuredAgentSessionFailureWordsContext } from './structured-agent-se
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { StructuredAgentSessionEndedEvent } from './structured-agent-session-adapter'
 import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
-import { endProviderChild } from './structured-agent-session-provider-child'
+import {
+  endProviderChild,
+  failedProviderChildStart
+} from './structured-agent-session-provider-child'
 import {
   releaseStoredStructuredAgentSessionOwnerAfterUnexpectedExit,
   type StructuredAgentSessionLeaseStore
@@ -156,8 +159,10 @@ export async function settleUnexpectedStructuredAgentSessionExit<
     if (settlementFailed || !released) {
       return null
     }
-    // Resuming a start that failed would respawn into the same failure; the next send retries.
-    if (exitedDuringStartup || !context.hasResumeCapableHolder(unexpectedEvent.sessionId)) {
+    if (
+      failedProviderChildStart(session) ||
+      !context.hasResumeCapableHolder(unexpectedEvent.sessionId)
+    ) {
       return null
     }
     return {

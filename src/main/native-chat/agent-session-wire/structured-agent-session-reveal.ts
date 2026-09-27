@@ -19,8 +19,6 @@ import type {
   StructuredAgentSessionHostDeps,
   StructuredAgentSessionReveal
 } from './structured-agent-session-host-types'
-import { settleStaleStructuredAgentSessionState } from './structured-agent-session-dead-generation-settlement'
-import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
 
 /** Throws its refusal as the code itself, matching `resumeHeldStructuredAgentSession`. */
 export async function revealStructuredAgentSession(
@@ -62,7 +60,7 @@ export function createStructuredAgentSessionHostRestore(
   deps: StructuredAgentSessionHostDeps,
   wiring: Omit<
     ConstructorParameters<typeof StructuredAgentSessionReadableRestorer>[0],
-    'openDeps' | 'supportsRecord' | 'settleStaleState'
+    'openDeps' | 'supportsRecord'
   >
 ): {
   restoreReadableSessions: (sessionIds?: readonly string[]) => Promise<void>
@@ -71,19 +69,6 @@ export function createStructuredAgentSessionHostRestore(
   const restorer = new StructuredAgentSessionReadableRestorer({
     openDeps: deps,
     supportsRecord: (record) => adapterSupportsRecord(deps.adapter, record),
-    settleStaleState: async (sessionId, opened) => {
-      try {
-        await settleStaleStructuredAgentSessionState({
-          journal: opened.session.journal,
-          sessionId,
-          fence: structuredAgentSessionConversationFence(deps.store, sessionId),
-          acquisitionGeneration: null,
-          deathEvidence: deps.store.getRecord(sessionId)?.lease.deathEvidence ?? null
-        })
-      } catch (error) {
-        deps.onEventSinkError?.({ sessionId, error })
-      }
-    },
     ...wiring
   })
   const gate = new StructuredAgentSessionRestartRestoreGate()

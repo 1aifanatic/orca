@@ -167,7 +167,8 @@ export class StructuredAgentSessionHost {
   isHeld = (sessionId: string): boolean => this.holds.isHeld(sessionId)
 
   /** A surface bound to this session and wants it live. The FIRST hold on a session with no
-   *  provider child is what resumes one; a retained hold (a subscription) only keeps it. */
+   *  provider child is what resumes one, unless its last start failed; a retained hold (a
+   *  subscription) only keeps it. */
   hold = (
     sessionId: string,
     holderId: string,
