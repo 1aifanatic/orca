@@ -7,7 +7,10 @@ import {
   EMPTY_STRUCTURED_AGENT_SESSION,
   type StructuredAgentSessionState
 } from '../../../src/shared/structured-agent-session-reducer'
-import { encodeAgentSessionQuestionAnswers } from '../../../src/shared/agent-session-question-answer'
+import {
+  AGENT_SESSION_RESPONSE_OPTION_ID_MAX_LENGTH,
+  encodeAgentSessionQuestionAnswers
+} from '../../../src/shared/agent-session-question-answer'
 import { formatQuestionFreeTextAnswer } from './mobile-native-chat-question'
 import {
   projectStructuredQuestion,
@@ -422,6 +425,40 @@ describe('useMobileStructuredPromptResponses', () => {
       })
 
       // Not folded into the draft: the card keeps the text on this step so it can be shortened.
+      expect(advanced).toBe(false)
+      expect(hook().groupedDraft).toBeNull()
+      expect(sent).toEqual([])
+      expect(onSendError).toHaveBeenCalledWith(
+        'Update Orca on your computer to send an answer this long'
+      )
+    })
+
+    it('refuses a grouped step that leaves no room to answer the rest for an older host', async () => {
+      const base = groupedPrompt('item-g', 1)
+      if (base.body.kind !== 'question' || !base.body.questions) {
+        throw new Error('expected a grouped question')
+      }
+      const [first, second] = base.body.questions
+      const prompt: AgentJournalRenderItem = {
+        ...base,
+        body: { ...base.body, questions: [{ ...first!, freeTextQuestionId: 'q1' }, second!] }
+      }
+      // Fits on its own, but every option on the next step would push the packed group over.
+      const overhead = encodeAgentSessionQuestionAnswers([
+        { questionId: 'q1', optionIds: [], other: '' }
+      ]).length
+      const text = 'x'.repeat(AGENT_SESSION_RESPONSE_OPTION_ID_MAX_LENGTH - overhead)
+      const { mutate, sent } = recordingMutate()
+      const onSendError = vi.fn()
+      mount(prompt, mutate, false, onSendError)
+
+      let advanced = true
+      await act(async () => {
+        advanced = await hook().respondQuestion(
+          formatQuestionFreeTextAnswer(projectStructuredQuestion(prompt, null)!, text)
+        )
+      })
+
       expect(advanced).toBe(false)
       expect(hook().groupedDraft).toBeNull()
       expect(sent).toEqual([])

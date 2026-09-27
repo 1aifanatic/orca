@@ -1,8 +1,12 @@
 import { useCallback, useState } from 'react'
 import type { AgentSessionPromptResult } from '../../../src/shared/agent-session-wire'
-import type { AgentJournalQuestionItem } from '../../../src/shared/agent-session-journal-types'
+import type {
+  AgentJournalQuestion,
+  AgentJournalQuestionItem
+} from '../../../src/shared/agent-session-journal-types'
 import {
   AGENT_SESSION_RESPONSE_OPTION_ID_MAX_LENGTH,
+  encodeAgentSessionQuestionAnswers,
   legacyAgentSessionSelectedOptionId,
   type AgentSessionQuestionAnswer
 } from '../../../src/shared/agent-session-question-answer'
@@ -25,12 +29,26 @@ import {
 
 const ANSWER_TOO_LONG_FOR_HOST = 'Update Orca on your computer to send an answer this long'
 
-function packedAnswerTooLong(
-  body: Pick<AgentJournalQuestionItem, 'questions'>,
+function shortestPackedAnswer(question: AgentJournalQuestion): AgentSessionQuestionAnswer[] {
+  const candidates: AgentSessionQuestionAnswer[] = [
+    ...question.options.map((option) => ({ questionId: question.id, optionIds: [option.id] })),
+    ...(question.freeTextQuestionId ? [{ questionId: question.id, optionIds: [], other: '-' }] : [])
+  ]
+  const packedLength = (answer: AgentSessionQuestionAnswer) =>
+    encodeAgentSessionQuestionAnswers([answer]).length
+  return candidates.sort((a, b) => packedLength(a) - packedLength(b)).slice(0, 1)
+}
+
+/** True once even the shortest answers to the remaining questions would overflow the packed group. */
+function packedGroupCannotFit(
+  questions: readonly AgentJournalQuestion[],
   answers: readonly AgentSessionQuestionAnswer[]
 ): boolean {
-  const optionId = legacyAgentSessionSelectedOptionId(body, answers)
-  return optionId !== null && optionId.length > AGENT_SESSION_RESPONSE_OPTION_ID_MAX_LENGTH
+  const completion = questions.slice(answers.length).flatMap(shortestPackedAnswer)
+  return (
+    encodeAgentSessionQuestionAnswers([...answers, ...completion]).length >
+    AGENT_SESSION_RESPONSE_OPTION_ID_MAX_LENGTH
+  )
 }
 
 /**
@@ -130,10 +148,10 @@ export function useMobileStructuredPromptResponses(args: {
           return false
         }
         if (grouped.kind === 'advance') {
-          // Answers only grow, so refuse on the step that overflowed while its typed text is still editable.
+          // Refuse while this step's text is still editable, not on a later step that cannot fit.
           if (
             questionAnswersSupported === false &&
-            packedAnswerTooLong(prompt.body, grouped.draft.answers)
+            packedGroupCannotFit(prompt.body.questions, grouped.draft.answers)
           ) {
             onSendError(ANSWER_TOO_LONG_FOR_HOST)
             return false
