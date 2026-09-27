@@ -41,7 +41,11 @@ export async function startLocalStructuredSessionTabsSync(args: {
     return
   }
   const supported = capabilities.includes(STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY)
-  await restoreLocalStructuredSessionTabsOnce(syncGeneration)
+  // Startup no longer waits on this restore, so its failure lands here: the subscription below
+  // re-asks the host, and its retry refreshes the inventory first.
+  await restoreLocalStructuredSessionTabsOnce(syncGeneration).catch((error: unknown) => {
+    console.warn('[structured-session-tabs] startup restore failed', error)
+  })
   if (!isCurrent()) {
     return
   }
