@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { CodexAppServerLaunch } from './codex-app-server-connection'
 import {
   createProviderSpawnSpec,
+  DEFAULT_PROVIDER_SUPERVISOR_GRACE_MS,
   POSIX_PROVIDER_SUPERVISOR_SCRIPT,
   supervisedPosixLaunch
 } from './codex-app-server-posix-supervisor'
@@ -27,7 +28,9 @@ describe('structured provider supervision', () => {
       expect.objectContaining({
         command: '/opt/codex',
         args: ['app-server', '--flag'],
-        cwd: '/work/repo'
+        cwd: '/work/repo',
+        ownerPid: process.pid,
+        graceMs: DEFAULT_PROVIDER_SUPERVISOR_GRACE_MS
       })
     )
     expect(
@@ -38,7 +41,7 @@ describe('structured provider supervision', () => {
     )
     expect(POSIX_PROVIDER_SUPERVISOR_SCRIPT).toContain('delete childEnv.ELECTRON_RUN_AS_NODE')
     expect(spec.env.ELECTRON_RUN_AS_NODE).toBe('1')
-    expect(POSIX_PROVIDER_SUPERVISOR_SCRIPT).toContain('process.ppid !== originalParent')
+    expect(POSIX_PROVIDER_SUPERVISOR_SCRIPT).toContain('process.ppid !== spec.ownerPid')
     expect(POSIX_PROVIDER_SUPERVISOR_SCRIPT).toContain(
       "process.stdin.once('close', scheduleOwnerShutdown)"
     )

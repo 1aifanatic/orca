@@ -15,6 +15,10 @@ import {
   type AgentSessionOwnerProbe
 } from '../../../shared/agent-session-lease-adjudication'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
+import {
+  DEFAULT_PROVIDER_SUPERVISOR_GRACE_MS,
+  PROVIDER_GROUP_REAP_TIMEOUT_MS
+} from '../../codex/codex-app-server-posix-supervisor'
 import { releaseUnprovenAgentSessionOwner } from '../../runtime/agent-session-lease-transitions'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 
@@ -28,8 +32,17 @@ export type StructuredSessionRecoveryResolutionDeps = {
   delay?: (ms: number) => Promise<void>
 }
 
-const STOP_PROBES_PER_SIGNAL = 4
 const STOP_PROBE_INTERVAL_MS = 250
+// A POSIX Codex owner is its provider supervisor, which exits only after its provider group. A
+// SIGKILL that lands first leaves the group running, so SIGTERM outlasts the supervisor's stop.
+const STOP_PROBES: Record<StructuredSessionRecoveryStopSignal, number> = {
+  SIGTERM:
+    Math.ceil(
+      (DEFAULT_PROVIDER_SUPERVISOR_GRACE_MS + PROVIDER_GROUP_REAP_TIMEOUT_MS) /
+        STOP_PROBE_INTERVAL_MS
+    ) + 1,
+  SIGKILL: 4
+}
 
 const UNRESOLVED_REFUSALS: ReadonlySet<string> = new Set([
   'agent_session_ownership_unknown',
@@ -94,7 +107,7 @@ async function stopOwnerAndReprobe(
   let probe: AgentSessionOwnerProbe = { outcome: 'indeterminate', reason: 'owner stop requested' }
   for (const signal of ['SIGTERM', 'SIGKILL'] as const) {
     stop(pid, signal)
-    for (let attempt = 0; attempt < STOP_PROBES_PER_SIGNAL; attempt += 1) {
+    for (let attempt = 0; attempt < STOP_PROBES[signal]; attempt += 1) {
       probe = await deps.probeRecord(record)
       if (isProvenDeadProbe(probe)) {
         return probe
