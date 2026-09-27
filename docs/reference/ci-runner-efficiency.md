@@ -99,6 +99,25 @@ worker-seconds (11.9%). This is a scheduling projection, not an elapsed-time cla
 runner variation remains visible in the source run. See
 [provenance and reproduction](../../config/scripts/ci-shard-timings.md).
 
+## Recording compilation reuse
+
+[Benchmark run 36295773765](https://github.com/stablyai/orca/actions/runs/36295773765)
+compared the complete mobile suite on two hosted runners in opposite orders.
+Compilation reuse reduced elapsed time from 439.002 to 138.308 seconds and from
+560.926 to 200.751 seconds (64–68%). Each run preserved all 9,629 original test
+verdicts and passed four additional cache regression tests. Compiled code is
+bounded to 512 entries; exports, dependencies, and scenario state remain fresh.
+
+Splitting family recordings across four files took 145.165 and 217.226 seconds,
+5–8% slower than compilation reuse alone, so the original suite structure stays.
+All 787 goldens were regenerated from the unchanged pinned product tree; only
+the recorder digest changed, with identical recording bodies and value pools.
+
+Desktop validation in [run 36295671576](https://github.com/stablyai/orca/actions/runs/36295671576)
+passed all eight shards. The longest test step was 419 seconds versus 429 in the
+source run; summed test time was 3,028 versus 3,031 seconds. Runner variation
+prevents attributing that small elapsed-time difference solely to the weights.
+
 ## September 25 follow-up
 
 The current queue is a bigger part of PR latency than setup. Successful full PR
