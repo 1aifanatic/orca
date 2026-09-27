@@ -60,6 +60,7 @@ for (const scenario of [
       let captureTimedOut = false
       const writes: { time: number; top: number; from: number; behavior?: string }[] = []
       const samples: (SidebarScrollSample & {
+        epochMs: number
         offset: number
         top: number | null
         pending: boolean
@@ -133,6 +134,7 @@ for (const scenario of [
           const viewportTop = scroller.getBoundingClientRect().top + scroller.clientTop
           samples.push({
             time,
+            epochMs: performance.timeOrigin + performance.now(),
             scrollTop: scroller.scrollTop,
             highlighted: target?.dataset.scrollRevealHighlight === 'true',
             geometry:
