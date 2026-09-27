@@ -219,17 +219,22 @@ describe('useMobileNativeChatSession host-ended stream recovery', () => {
       })
       expect(state?.status).toBe('ready')
 
-      // Another consumer on this connection replaced the host subscription.
+      // The host swept this connection's chat feeds.
       await act(async () => {
         rig.reply(streamed(first.id, { type: 'end' }))
       })
 
       const subscribes = chatSubscribes(rig)
       expect(subscribes).toHaveLength(2)
-      expect(subscribes[1]!.params).toEqual({
-        ...(first.params as object),
-        subscriptionId: expect.stringMatching(/^claude:session:/)
-      })
+      const reopenParams = {
+        agent: 'claude',
+        sessionId: 'session',
+        limit: 40,
+        subscriptionId: expect.stringMatching(/^claude:session:./),
+        capabilities: { transcriptPending: 1 }
+      }
+      expect(first.params).toEqual(reopenParams)
+      expect(subscribes[1]!.params).toEqual(reopenParams)
       expect(state?.status).toBe('loading')
       expect(state?.transcriptLoading).toBe(true)
       // The conversation stays on screen while the stream reopens.
