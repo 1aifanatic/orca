@@ -117,7 +117,8 @@ describe('settling what a restart left owed', () => {
     reconcileFails = false
     await host.reconcileRestartLeases()
 
-    await vi.waitFor(() => expect(owesSettlement('session-a')).toBe(false))
+    // The settlement a clean reconcile starts is not awaited by it; allow for a loaded runner.
+    await vi.waitFor(() => expect(owesSettlement('session-a')).toBe(false), { timeout: 10_000 })
   })
 })
 

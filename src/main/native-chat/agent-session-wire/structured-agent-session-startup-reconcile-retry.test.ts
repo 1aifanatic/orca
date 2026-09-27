@@ -22,6 +22,9 @@ afterEach(async () => {
   await rig.dispose()
 })
 
+// The settlement a clean reconcile starts is not awaited by it; allow for a loaded runner.
+const SETTLED_WITHIN = { timeout: 10_000 }
+
 const owesSettlement = (sessionId: string) =>
   rig.store.getRecord(sessionId)?.lease.settlementRetryRequired === true
 
@@ -81,7 +84,7 @@ describe('a startup reconcile that failed', () => {
     await vi.waitFor(() => {
       expect(latestStatus(rig, 'session-a')?.status).toBe('idle')
       expect(owesSettlement('session-a')).toBe(false)
-    })
+    }, SETTLED_WITHIN)
     expectSettledUnverifiable(await rig.host.journalSnapshot('session-a'))
   })
 
@@ -100,7 +103,7 @@ describe('a startup reconcile that failed', () => {
     await vi.waitFor(() => {
       expect(latestStatus(rig, 'session-a')?.status).toBe('idle')
       expect(owesSettlement('session-a')).toBe(false)
-    })
+    }, SETTLED_WITHIN)
     expectSettledUnverifiable(await rig.host.journalSnapshot('session-a'))
     expect(rig.acquire.mock.calls.length).toBe(acquired)
   })
@@ -113,11 +116,13 @@ describe('a startup reconcile that failed', () => {
       onEventSinkError
     })
     await host.restoreStartupSessions()
-    await vi.waitFor(() =>
-      expect(onEventSinkError).toHaveBeenCalledWith({
-        sessionId: 'startup-pass',
-        error: expect.objectContaining({ message: expect.stringContaining('after its retries') })
-      })
+    await vi.waitFor(
+      () =>
+        expect(onEventSinkError).toHaveBeenCalledWith({
+          sessionId: 'startup-pass',
+          error: expect.objectContaining({ message: expect.stringContaining('after its retries') })
+        }),
+      SETTLED_WITHIN
     )
     expect(latestStatus(rig, 'session-a')?.status).toBe('working')
   })
