@@ -225,6 +225,63 @@ describe("connectPanePty on a host the user's Disconnect holds down", () => {
     expect(transport.connect).toHaveBeenCalledTimes(1)
   })
 
+  it("waits when the refusal beats the Disconnect's push over an earlier failure", async () => {
+    const { connectPanePty } = await import('./pty-connection')
+    const transport = createMockTransport('fresh-ssh-pty')
+    transportFactoryQueue.push(transport)
+    // The store still holds the failure from before the Disconnect; only main knows it holds.
+    publishSshState({ status: 'error', error: 'connect ECONNREFUSED', disconnectedBy: undefined })
+    vi.mocked(window.api.ssh.ensureConnected).mockRejectedValue(
+      new Error('Dev box was disconnected on the desktop.')
+    )
+    const deps = createDeps()
+
+    connectPanePty(createPane(1) as never, createManager(1) as never, deps as never)
+    await flushAsyncTicks(20)
+
+    expect(vi.mocked(window.api.ssh.getState)).toHaveBeenCalled()
+    expect(deps.onPtyErrorRef.current).not.toHaveBeenCalled()
+
+    publishSshState({})
+    await flushAsyncTicks(5)
+    publishSshState({ status: 'connecting', disconnectedBy: undefined })
+    await flushAsyncTicks(5)
+    publishSshState({ status: 'connected', disconnectedBy: undefined })
+    await flushAsyncTicks(20)
+
+    expect(deps.onPtyErrorRef.current).not.toHaveBeenCalled()
+    expect(transport.connect).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps waiting through a Connect the user abandons, and attaches on the next one', async () => {
+    const { connectPanePty } = await import('./pty-connection')
+    const transport = createMockTransport('fresh-ssh-pty')
+    transportFactoryQueue.push(transport)
+    publishSshState({})
+    vi.mocked(window.api.ssh.ensureConnected).mockRejectedValue(
+      new Error('Dev box was disconnected on the desktop.')
+    )
+    const deps = createDeps()
+
+    connectPanePty(createPane(1) as never, createManager(1) as never, deps as never)
+    await flushAsyncTicks(20)
+    // The user clicks Connect, then dismisses its passphrase prompt.
+    publishSshState({ status: 'connecting', disconnectedBy: undefined })
+    await flushAsyncTicks(5)
+    publishSshState({ status: 'disconnected', disconnectedBy: undefined })
+    await flushAsyncTicks(20)
+    expect(transport.connect).not.toHaveBeenCalled()
+
+    publishSshState({ status: 'connecting', disconnectedBy: undefined })
+    await flushAsyncTicks(5)
+    publishSshState({ status: 'connected', disconnectedBy: undefined })
+    await flushAsyncTicks(20)
+
+    expect(vi.mocked(window.api.ssh.ensureConnected)).toHaveBeenCalledTimes(1)
+    expect(deps.onPtyErrorRef.current).not.toHaveBeenCalled()
+    expect(transport.connect).toHaveBeenCalledTimes(1)
+  })
+
   it('still reports a failed connect on a host the user did not disconnect', async () => {
     const { connectPanePty } = await import('./pty-connection')
     transportFactoryQueue.push(createMockTransport('fresh-ssh-pty'))
