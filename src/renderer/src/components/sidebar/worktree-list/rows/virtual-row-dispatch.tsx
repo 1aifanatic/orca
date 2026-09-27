@@ -27,14 +27,13 @@ import { renderWorktreeItemRow, type WorktreeItemRowContext } from './item-row'
 import { renderWorktreeSectionHeaderRow, type SectionHeaderRowContext } from './SectionHeader'
 import type { WorktreeRowDragState } from '../drag/row-state'
 import { VirtualizedLineageDescendants } from './VirtualizedLineageDescendants'
-import type { LineageScrollAdjustment } from '../viewport/lineage-scroll-adjustment'
+import type { WorktreeListVirtualizer } from '../viewport/use-virtualizer'
 import type { VirtualizedWorktreeViewportProps } from '../viewport/viewport-props'
 
 export type WorktreeVirtualRowContext = {
   renderRows: RenderRow[]
   scrollRef: React.RefObject<HTMLDivElement | null>
-  lineageMeasuredHeights: Map<string, number>
-  shouldAdjustLineageScroll: LineageScrollAdjustment
+  geometry: Pick<WorktreeListVirtualizer, 'model' | 'boundaries' | 'selected'>
   pendingRevealWorktree: VirtualizedWorktreeViewportProps['pendingRevealWorktree']
   pendingRevealSidebarRow: VirtualizedWorktreeViewportProps['pendingRevealSidebarRow']
   firstHeaderIndex: number
@@ -144,9 +143,7 @@ function renderLineageGroupVirtualRow(
               false,
               <VirtualizedLineageDescendants
                 ctx={ctx}
-                rows={row.rows}
-                groupStart={vItem.start}
-                groupKey={String(vItem.key)}
+                root={ctx.geometry.model.nodeByRowKey.get(parent.rowKey)!}
               />,
               childIsActive
             )

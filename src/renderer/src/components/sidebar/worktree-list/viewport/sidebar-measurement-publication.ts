@@ -1,0 +1,169 @@
+import { sidebarSlotContentEnd, type SidebarGeometry } from '../listing/sidebar-geometry-slots'
+import {
+  publishSidebarObservation,
+  reconcileSidebarLedger,
+  type SidebarGeometryLedger,
+  type SidebarObservation
+} from './sidebar-geometry-ledger'
+import type React from 'react'
+import type { VirtualizedScrollAnchor } from '@/hooks/useVirtualizedScrollAnchor'
+import type { SidebarGeometryCorrection } from './sidebar-geometry-commit'
+import { publishNativeSidebarGeometry } from './use-sidebar-geometry-observer'
+import type { WorktreeSidebarScrollSuppression } from './use-scroll-suppression'
+import { shouldAdjustWorktreeSidebarMeasuredRowScroll } from './use-scroll-suppression'
+
+export function applySidebarMeasurements(args: {
+  model: SidebarGeometry
+  ledger: SidebarGeometryLedger
+  boundaries: readonly number[]
+  samples: ReadonlyMap<string, SidebarObservation>
+  inset: number
+  scrollOffset: number
+  now: number
+  suppressUntil: number
+  isScrolling: boolean
+  scrollDirection: 'forward' | 'backward' | null
+  anchorOuterIndex?: number
+  skipAnchorRestore?: boolean
+}): { changed: boolean; delta: number } {
+  let changed = false
+  let delta = 0
+  for (const [key, observation] of args.samples) {
+    const index = args.model.nodeByKey.get(key)
+    if (index === undefined) {
+      continue
+    }
+    const node = args.model.nodes[index]!
+    if (node.row.type === 'header' || node.row.type === 'host-header') {
+      continue
+    }
+    if ((node.close !== null) !== (observation.closing !== null)) {
+      continue
+    }
+    const changes: [number, number][] = [
+      [node.slot, observation.prefix + (node.close === null ? node.gap : 0)]
+    ]
+    if (node.close !== null && observation.closing !== null) {
+      changes.push([node.close, observation.closing + node.gap])
+    }
+    for (const [slotIndex, size] of changes) {
+      const slot = args.model.slots[slotIndex]!
+      const previousSize =
+        args.ledger.sizes.get(slot.key) ??
+        args.boundaries[slotIndex + 1]! - args.boundaries[slotIndex]!
+      if (
+        (!args.skipAnchorRestore &&
+          args.anchorOuterIndex !== undefined &&
+          node.outerIndex < args.anchorOuterIndex) ||
+        shouldAdjustWorktreeSidebarMeasuredRowScroll({
+          isScrolling: args.isScrolling,
+          now: args.now,
+          suppressUntil: args.suppressUntil,
+          itemStart: args.boundaries[slotIndex]! + args.inset,
+          itemEnd: sidebarSlotContentEnd(args.model, args.boundaries, slotIndex) + args.inset,
+          scrollOffset: args.scrollOffset,
+          isFirstMeasurement: !args.ledger.observed.has(slot.key),
+          scrollDirection: args.scrollDirection
+        })
+      ) {
+        delta += size - previousSize
+      }
+    }
+    changed = publishSidebarObservation(args.ledger, args.model, index, observation) || changed
+  }
+  return { changed, delta }
+}
+
+export function publishSidebarMeasurements(
+  args: {
+    model: SidebarGeometry
+    ledger: SidebarGeometryLedger
+    boundaries: readonly number[]
+    newCardStyle: boolean
+    layoutContext?: string
+    scrollAnchorRef: React.MutableRefObject<VirtualizedScrollAnchor>
+    scrollRef: React.RefObject<HTMLDivElement | null>
+    correction: React.MutableRefObject<SidebarGeometryCorrection | null>
+    suppression: WorktreeSidebarScrollSuppression
+    insetRef: React.MutableRefObject<number>
+    offset: number
+    virtualizer: { isScrolling: boolean; scrollDirection: 'forward' | 'backward' | null }
+    changed: () => void
+  },
+  samples: ReadonlyMap<string, SidebarObservation>,
+  width: number,
+  native: boolean
+): void {
+  const {
+    model,
+    ledger,
+    boundaries,
+    scrollAnchorRef,
+    scrollRef,
+    correction,
+    suppression,
+    insetRef,
+    offset,
+    virtualizer,
+    changed
+  } = args
+  const invalidatedLayout =
+    ledger.width !== width ||
+    ledger.style !== args.newCardStyle ||
+    ledger.layoutContext !== (args.layoutContext ?? '')
+  if (
+    invalidatedLayout &&
+    scrollAnchorRef.current &&
+    !correction.current?.navigation &&
+    !suppression.shouldSkipScrollAnchorRestore()
+  ) {
+    correction.current = {
+      target: 0,
+      anchor: scrollAnchorRef.current,
+      epoch: suppression.scrollOwnershipEpochRef.current
+    }
+  }
+  let updated = reconcileSidebarLedger(ledger, model, args.newCardStyle, width, args.layoutContext)
+  const anchorIndex = scrollAnchorRef.current
+    ? model.nodeByKey.get(scrollAnchorRef.current.key)
+    : undefined
+  const measurement = applySidebarMeasurements({
+    model,
+    ledger,
+    boundaries,
+    samples,
+    inset: insetRef.current,
+    scrollOffset: scrollRef.current?.scrollTop ?? offset,
+    now: performance.now(),
+    suppressUntil: suppression.suppressMeasurementAdjustmentUntilRef.current,
+    isScrolling: virtualizer.isScrolling,
+    scrollDirection: virtualizer.scrollDirection,
+    anchorOuterIndex: anchorIndex === undefined ? undefined : model.nodes[anchorIndex]!.outerIndex,
+    skipAnchorRestore: suppression.shouldSkipScrollAnchorRestore()
+  })
+  const delta = measurement.delta
+  updated = measurement.changed || updated
+  if (!updated) {
+    return
+  }
+  if (
+    delta !== 0 &&
+    !correction.current?.anchor &&
+    !correction.current?.navigation &&
+    !suppression.shouldSkipScrollAnchorRestore()
+  ) {
+    correction.current = {
+      target:
+        (correction.current?.epoch === suppression.scrollOwnershipEpochRef.current
+          ? correction.current.target
+          : (scrollRef.current?.scrollTop ?? offset)) + delta,
+      epoch: suppression.scrollOwnershipEpochRef.current
+    }
+  }
+  const publishRevision = () => changed()
+  if (native) {
+    publishNativeSidebarGeometry(publishRevision)
+  } else {
+    publishRevision()
+  }
+}

@@ -22,6 +22,8 @@ test('lineage descendants keep their anchor when an ordinary card above grows du
   await seedVirtualLineage(orcaPage, false)
   await expect(worktreeRow(orcaPage, 'e2e-virtual-child-0')).toBeInViewport()
   await seedOrdinaryRowsAboveLineage(orcaPage)
+  // Keep the independent above-fold growth control mounted through production active-row retention.
+  await orcaPage.evaluate(() => window.__store!.getState().setActiveWorktree('ordinary-79'))
   await orcaPage.waitForTimeout(650)
   await orcaPage.evaluate(() => {
     window

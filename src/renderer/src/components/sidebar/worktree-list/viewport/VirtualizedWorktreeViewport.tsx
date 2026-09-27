@@ -1,4 +1,4 @@
-import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useMemo, useRef, useState } from 'react'
 import { useAppStore } from '@/store'
 import { translate } from '@/i18n/i18n'
 import { WorktreeListScrollToTopButton } from '../../WorktreeListScrollToTopButton'
@@ -28,7 +28,6 @@ import { EMPTY_PROJECT_GROUPS, type VirtualizedWorktreeViewportProps } from './v
 import { useWorktreeDropCommitContext } from '../drag/use-drop-commit-context'
 import { buildWorktreeVirtualRowContext } from './virtual-row-context'
 import { renderWorktreeVirtualRow } from '../rows/virtual-row-dispatch'
-import { getLineageMeasurementCache } from './lineage-measurement-cache'
 
 const WORKTREE_SIDEBAR_SCROLL_STYLE: React.CSSProperties = {
   // Why: TanStack Virtual owns scroll correction; native overflow anchoring fights it and causes jumps.
@@ -54,7 +53,6 @@ export const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktr
     scrollAnchorRef
   } = props
   const scrollRef = useRef<HTMLDivElement>(null)
-  const lineageMeasuredHeights = getLineageMeasurementCache(scrollAnchorRef)
   // Why: callback-ref only mutates scrollRef; state re-runs the scroll-to-top listener attach.
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null)
   const settings = useAppStore((s) => s.settings)
@@ -67,14 +65,6 @@ export const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktr
   const { markDirectScrollInput, markScrollMovement } = scrollSuppression
 
   const renderRows = useMemo(() => buildRenderableRows(rows), [rows])
-  useLayoutEffect(() => {
-    const rowKeys = new Set(rows.flatMap((row) => (row.type === 'item' ? [row.rowKey] : [])))
-    for (const key of lineageMeasuredHeights.keys()) {
-      if (!rowKeys.has(key)) {
-        lineageMeasuredHeights.delete(key)
-      }
-    }
-  }, [lineageMeasuredHeights, rows])
   const firstHeaderIndex = useMemo(
     () => renderRows.findIndex((row) => row.type === 'header' || row.type === 'host-header'),
     [renderRows]
@@ -139,12 +129,21 @@ export const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktr
     onUserScrollIntent: markDirectScrollInput
   })
 
+  const layoutContext = useMemo(
+    () => JSON.stringify([groupBy, [...folderBackedProjectGroupIds]]),
+    [groupBy, folderBackedProjectGroupIds]
+  )
   const virtualization = useWorktreeListVirtualizer({
     renderRows,
     firstHeaderIndex,
     scrollRef,
     scrollOffsetRef,
-    suppressMeasurementAdjustmentUntilRef: scrollSuppression.suppressMeasurementAdjustmentUntilRef
+    scrollAnchorRef,
+    suppression: scrollSuppression,
+    newCardStyle,
+    layoutContext,
+    props,
+    draggingWorktreeId: runtime.worktreeDragState.draggingWorktreeId
   })
 
   const cancelMountedReveal = usePendingSidebarReveal({
@@ -154,8 +153,8 @@ export const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktr
     clearPendingRevealWorktreeId: props.clearPendingRevealWorktreeId,
     clearPendingRevealSidebarRow: props.clearPendingRevealSidebarRow,
     agentSendTargetWorktreeId: props.agentSendTargetWorktreeId,
-    renderRows,
-    virtualizer: virtualization.virtualizer,
+    renderRows: virtualization.semanticRows,
+    virtualizer: virtualization.navigationVirtualizer,
     scrollRef,
     worktrees: props.worktrees,
     folderWorkspaces: props.folderWorkspaces,
@@ -182,11 +181,7 @@ export const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktr
   const { virtualItems, measureVirtualRowElement } = useVirtualRowMeasurementSync({
     renderRows,
     virtualization,
-    scrollRef,
-    scrollOffsetRef,
-    scrollAnchorRef,
-    hasDirectScrollInput: scrollSuppression.hasDirectScrollInput,
-    shouldSkipScrollAnchorRestore: scrollSuppression.shouldSkipScrollAnchorRestore
+    scrollRef
   })
 
   const { toggleGroupWithScrollAnchor, getLineageToggleHandler } = useGroupToggleWithScrollAnchor({
@@ -196,11 +191,11 @@ export const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktr
 
   const { handleContainerKeyDown } = useWorktreeListKeyboardNavigation({
     rows,
-    renderRows,
+    renderRows: virtualization.semanticRows,
     activeWorktreeId,
     activeWorkspaceExecutionHostId: props.activeWorkspaceExecutionHostId,
     pinnedDisplayPolicy,
-    virtualizer: virtualization.virtualizer,
+    virtualizer: virtualization.navigationVirtualizer,
     scrollRef,
     activeModal: props.activeModal,
     markDirectScrollInput
@@ -259,8 +254,8 @@ export const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktr
     worktreeMap,
     groupBy,
     newCardStyle,
-    renderRows,
-    virtualItems,
+    renderRows: virtualization.semanticRows,
+    virtualItems: virtualization.retainedItems,
     scrollRef
   })
 
@@ -322,7 +317,6 @@ export const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktr
   const rowContext = buildWorktreeVirtualRowContext({
     props,
     scrollRef,
-    lineageMeasuredHeights,
     renderRows,
     firstHeaderIndex,
     virtualization,
@@ -366,11 +360,13 @@ export const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktr
           activeWorkspaceExecutionHostId: props.activeWorkspaceExecutionHostId,
           primaryActiveRowKey: primaryActive.primaryActiveWorktreeRow?.rowKey,
           pinnedDisplayPolicy,
-          renderRows,
-          virtualItems
+          renderRows: virtualization.semanticRows,
+          virtualItems: virtualization.retainedItems
         })}
         onKeyDown={handleContainerKeyDown}
         onFocusCapture={virtualization.retainFocusedRow}
+        onPointerDownCapture={virtualization.retainFocusedRow}
+        onContextMenuCapture={virtualization.retainFocusedRow}
         onInputCapture={handleRenameInput}
         // Why: trackpad momentum fires sparse scroll events after the input stream quiets; suppress correction until the viewport stops.
         onScroll={handleScroll}
@@ -385,7 +381,7 @@ export const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktr
         <div
           role="presentation"
           className="relative w-full"
-          style={{ height: `${virtualization.virtualizer.getTotalSize()}px` }}
+          style={{ height: `${virtualization.total}px` }}
         >
           {renderWorktreeSidebarDropIndicators({
             headerDrag,

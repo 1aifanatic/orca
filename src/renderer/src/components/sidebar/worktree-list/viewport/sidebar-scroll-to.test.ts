@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { Virtualizer } from '@tanstack/react-virtual'
 import { describe, expect, it, vi } from 'vitest'
-import { scrollLineageVirtualizer } from './lineage-scroll-to'
+import { scrollSidebarVirtualizer } from './sidebar-scroll-to'
 
 function fixture(scrollTop = 400) {
   const element = document.createElement('div')
@@ -12,14 +12,14 @@ function fixture(scrollTop = 400) {
     getScrollElement: () => element,
     estimateSize: () => 100,
     initialOffset: () => element.scrollTop,
-    scrollToFn: scrollLineageVirtualizer,
+    scrollToFn: scrollSidebarVirtualizer,
     observeElementRect: vi.fn(),
     observeElementOffset: vi.fn()
   })
   return { element, scrollTo, instance }
 }
 
-describe('inner lineage scroll writes', () => {
+describe('sidebar scroll writes', () => {
   it('attaches at the current offset without cancelling another owner’s animation', () => {
     const { instance, scrollTo } = fixture(25_000)
 
@@ -39,7 +39,7 @@ describe('inner lineage scroll writes', () => {
     instance.scrollElement = element
     instance.scrollOffset = 0
 
-    scrollLineageVirtualizer(options.offset, { adjustments: options.adjustments }, instance)
+    scrollSidebarVirtualizer(options.offset, { adjustments: options.adjustments }, instance)
 
     expect(scrollTo).not.toHaveBeenCalled()
   })
@@ -50,7 +50,7 @@ describe('inner lineage scroll writes', () => {
       const { element, instance, scrollTo } = fixture()
       instance.scrollElement = element
 
-      scrollLineageVirtualizer(375, { adjustments: 25, behavior }, instance)
+      scrollSidebarVirtualizer(375, { adjustments: 25, behavior }, instance)
 
       expect(scrollTo).toHaveBeenCalledExactlyOnceWith({ top: 400, behavior })
     }
@@ -67,7 +67,7 @@ describe('inner lineage scroll writes', () => {
     instance.scrollElement = element
     instance.scrollOffset = options.target
 
-    scrollLineageVirtualizer(options.offset, { adjustments: options.adjustments }, instance)
+    scrollSidebarVirtualizer(options.offset, { adjustments: options.adjustments }, instance)
 
     expect(scrollTo).toHaveBeenCalledExactlyOnceWith({
       top: options.target,
@@ -79,10 +79,10 @@ describe('inner lineage scroll writes', () => {
     const { element, instance, scrollTo } = fixture()
     instance.scrollElement = element
 
-    scrollLineageVirtualizer(400, { adjustments: 100 }, instance)
-    scrollLineageVirtualizer(400, { adjustments: 100 }, instance)
+    scrollSidebarVirtualizer(400, { adjustments: 100 }, instance)
+    scrollSidebarVirtualizer(400, { adjustments: 100 }, instance)
     element.scrollTop = 500
-    scrollLineageVirtualizer(400, { adjustments: 100 }, instance)
+    scrollSidebarVirtualizer(400, { adjustments: 100 }, instance)
 
     expect(scrollTo).toHaveBeenCalledTimes(2)
     expect(scrollTo).toHaveBeenLastCalledWith({ top: 500, behavior: undefined })

@@ -1,185 +1,288 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useSidebarGeometryCommit } from './use-sidebar-geometry-commit'
+import { useReusedArrayIdentity } from '../listing/use-reused-array-identity'
+import { scrollSidebarVirtualizer } from './sidebar-scroll-to'
+import { selectSidebarViewport } from './sidebar-viewport-selection'
+import { publishSidebarMeasurements } from './sidebar-measurement-publication'
+import { useCallback, useMemo, useReducer, useRef } from 'react'
 import type React from 'react'
+import { useVirtualizer, type VirtualItem } from '@tanstack/react-virtual'
+import type { VirtualizedScrollAnchor } from '@/hooks/useVirtualizedScrollAnchor'
 import {
-  measureElement as measureVirtualElementSize,
-  useVirtualizer
-} from '@tanstack/react-virtual'
-import type { Range } from '@tanstack/react-virtual'
+  buildSidebarGeometry,
+  sidebarGeometryBoundaries,
+  sidebarSlotContentEnd
+} from '../listing/sidebar-geometry-slots'
+import { getRenderRowKey, type RenderRow } from '../listing/render-row'
+import { getStickyHeaderIndexes } from './virtual-rows'
+import { getSidebarGeometryLedger, type SidebarObservation } from './sidebar-geometry-ledger'
+import { useSidebarGeometryObserver } from './use-sidebar-geometry-observer'
 import {
-  estimateRenderRowSize,
-  extractWorktreeVirtualRowIndexes,
-  getStickyHeaderIndexes,
-  getVirtualRowIndex,
-  WORKTREE_SIDEBAR_VIRTUAL_ROW_GAP
-} from './virtual-rows'
-import { getRenderRowKey } from '../listing/render-row'
-import type { RenderRow } from '../listing/render-row'
-import { WORKTREE_SIDEBAR_REVEAL_TOP_INSET } from '../../worktree-sidebar-reveal'
+  clampSidebarOffset,
+  resolveSidebarCorrectionTarget,
+  sidebarNavigationOffset,
+  type SidebarGeometryCorrection
+} from './sidebar-geometry-commit'
+import { useSidebarGeometryAnchor } from './use-sidebar-geometry-anchor'
 import {
-  shouldAdjustWorktreeSidebarMeasuredRowScroll,
   USER_SCROLL_MEASUREMENT_ADJUSTMENT_SUPPRESS_MS,
-  type MeasuredRowScrollAdjustment
+  type WorktreeSidebarScrollSuppression
 } from './use-scroll-suppression'
+import { WORKTREE_SIDEBAR_REVEAL_TOP_INSET } from '../../worktree-sidebar-reveal'
+import type { VirtualizedWorktreeViewportProps } from './viewport-props'
+import { useSidebarRowRetention } from './use-sidebar-row-retention'
 
 export type WorktreeListVirtualizer = ReturnType<typeof useWorktreeListVirtualizer>
-
-// The TanStack virtualizer plus the row-identity guards that stop a recycled DOM node
-// from writing a stale height into the wrong slot.
 export function useWorktreeListVirtualizer(args: {
   renderRows: RenderRow[]
   firstHeaderIndex: number
   scrollRef: React.RefObject<HTMLDivElement | null>
   scrollOffsetRef: React.MutableRefObject<number>
-  suppressMeasurementAdjustmentUntilRef: React.MutableRefObject<number>
+  scrollAnchorRef: React.MutableRefObject<VirtualizedScrollAnchor>
+  suppression: WorktreeSidebarScrollSuppression
+  newCardStyle: boolean
+  layoutContext?: string
+  props: Pick<
+    VirtualizedWorktreeViewportProps,
+    | 'activeWorktreeId'
+    | 'activeWorkspaceExecutionHostId'
+    | 'pendingRevealWorktree'
+    | 'pendingRevealSidebarRow'
+    | 'defaultHostId'
+  >
+  draggingWorktreeId: string | null
 }) {
-  const { renderRows, firstHeaderIndex, scrollRef, scrollOffsetRef } = args
-  const [focusedRowKey, setFocusedRowKey] = useState<string | null>(null)
-  const focusedRowIndex = useMemo(
-    () => renderRows.findIndex((row) => getRenderRowKey(row) === focusedRowKey),
-    [renderRows, focusedRowKey]
+  const { renderRows, scrollRef, scrollOffsetRef, scrollAnchorRef, suppression } = args
+  const model = useMemo(() => buildSidebarGeometry(renderRows), [renderRows])
+  const rootByOuterIndex = useMemo(
+    () => new Map(model.roots.map((index) => [model.nodes[index]!.outerIndex, index])),
+    [model]
   )
-  const retainFocusedRow = useCallback((event: React.FocusEvent<HTMLElement>) => {
-    const row = event.target.closest<HTMLElement>('[data-worktree-virtual-row-key]')
-    if (row) {
-      setFocusedRowKey(row.dataset.worktreeVirtualRowKey ?? null)
+  const semanticRows = useMemo(() => model.nodes.map((node) => node.row), [model])
+  const ledger = getSidebarGeometryLedger(scrollAnchorRef)
+  const [, renderConverged] = useReducer((n: number) => n + 1, 0)
+  const publishedRevision = useRef(0)
+  const [revision, observationChanged] = useReducer((n: number) => n + 1, 0)
+  const changed = () => {
+    publishedRevision.current++
+    observationChanged()
+  }
+  const correction = useRef<SidebarGeometryCorrection | null>(null)
+  const insetRef = useRef(1)
+  const publication = useMemo(() => ({ revision, sizes: ledger.sizes }), [revision, ledger])
+  const boundaries = useMemo(
+    () => sidebarGeometryBoundaries(model, publication.sizes),
+    [model, publication]
+  )
+  const total = boundaries.at(-1)!
+  const viewport = scrollRef.current?.clientHeight ?? 0
+  const offset = scrollRef.current?.scrollTop ?? scrollOffsetRef.current
+  const renderedCorrection = correction.current
+  let target =
+    correction.current?.epoch === suppression.scrollOwnershipEpochRef.current
+      ? resolveSidebarCorrectionTarget(
+          correction.current,
+          model,
+          boundaries,
+          insetRef.current,
+          offset
+        )
+      : offset
+  const navigation =
+    renderedCorrection?.epoch === suppression.scrollOwnershipEpochRef.current
+      ? renderedCorrection.navigation
+      : undefined
+  if (navigation) {
+    const index = model.nodeByKey.get(navigation.key)
+    if (index !== undefined) {
+      const node = model.nodes[index]!
+      target = sidebarNavigationOffset(
+        boundaries[node.slot]! + insetRef.current,
+        sidebarSlotContentEnd(model, boundaries, node.slot) + insetRef.current,
+        offset,
+        viewport,
+        WORKTREE_SIDEBAR_REVEAL_TOP_INSET,
+        navigation.align
+      )
     }
-  }, [])
+  }
   const stickyHeaderIndexes = useMemo(() => getStickyHeaderIndexes(renderRows), [renderRows])
   const activeStickyHeaderIndexRef = useRef<number | null>(null)
   const activeStickyHostIndexRef = useRef<number | null>(null)
   const stickyRangeStartIndexRef = useRef(0)
-
-  const getVirtualItemKey = useCallback(
-    (index: number) => {
-      const row = renderRows[index]
-      if (!row) {
-        return `__stale_${index}`
-      }
-      return getRenderRowKey(row)
-    },
-    [renderRows]
-  )
-  const getExpectedVirtualRowKey = useCallback(
-    (element: Element) => {
-      const index = getVirtualRowIndex(element)
-      const row = index === null ? undefined : renderRows[index]
-      return row ? getRenderRowKey(row) : null
-    },
-    [renderRows]
-  )
-  const isCurrentVirtualRowElement = useCallback(
-    (element: Element) => {
-      const expectedKey = getExpectedVirtualRowKey(element)
-      return (
-        element.isConnected &&
-        expectedKey !== null &&
-        element.getAttribute('data-worktree-virtual-row-key') === expectedKey
-      )
-    },
-    [getExpectedVirtualRowKey]
-  )
-  const measureCurrentVirtualRowElement = useCallback(
-    (
-      element: HTMLDivElement,
-      entry: ResizeObserverEntry | undefined,
-      instance: Parameters<typeof measureVirtualElementSize<HTMLDivElement>>[2]
-    ) => {
-      if (!isCurrentVirtualRowElement(element)) {
-        const index = getVirtualRowIndex(element)
-        const measured = instance.getVirtualItems().find((item) => item.index === index)
-        // Why: a stale ResizeObserver row after remount would write a wrong height; return current size to no-op it.
-        return (
-          measured?.size ??
-          estimateRenderRowSize(
-            renderRows,
-            index ?? -1,
-            firstHeaderIndex,
-            activeStickyHeaderIndexRef.current
-          )
-        )
-      }
-      const index = getVirtualRowIndex(element)
-      if (
-        index !== null &&
-        (renderRows[index]?.type === 'header' || renderRows[index]?.type === 'host-header')
-      ) {
-        return estimateRenderRowSize(
-          renderRows,
-          index,
-          firstHeaderIndex,
-          activeStickyHeaderIndexRef.current
-        )
-      }
-      return measureVirtualElementSize(element, entry, instance)
-    },
-    [firstHeaderIndex, isCurrentVirtualRowElement, renderRows]
-  )
-
-  const virtualizer = useVirtualizer({
-    count: renderRows.length,
+  const { targets: targetNodes, retainInteraction: retainFocusedRow } = useSidebarRowRetention({
+    model,
+    ...args.props,
+    draggingWorktreeId: args.draggingWorktreeId
+  })
+  const {
+    selected,
+    slots: selectedSlots,
+    outerStart
+  } = selectSidebarViewport({
+    model,
+    boundaries,
+    rows: renderRows,
+    offset,
+    target: clampSidebarOffset(target, total, viewport, insetRef.current),
+    viewport,
+    inset: insetRef.current,
+    targets: targetNodes,
+    stickyHeaderIndexes,
+    rootByOuterIndex
+  })
+  stickyRangeStartIndexRef.current = outerStart
+  const stableSlots = useReusedArrayIdentity(selectedSlots)
+  const rangeExtractor = useCallback(() => stableSlots, [stableSlots])
+  const virtualizer = useVirtualizer<HTMLDivElement, HTMLDivElement>({
+    count: model.slots.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: (index) =>
-      estimateRenderRowSize(
-        renderRows,
-        index,
-        firstHeaderIndex,
-        activeStickyHeaderIndexRef.current
-      ),
-    measureElement: measureCurrentVirtualRowElement,
-    // Why: TanStack memoizes rangeExtractor by identity; header indexes must be deps or sticky slots go stale.
-    rangeExtractor: useCallback(
-      (range: Range) => {
-        stickyRangeStartIndexRef.current = range.startIndex
-        const indexes = extractWorktreeVirtualRowIndexes({
-          range,
-          stickyHeaderIndexes,
-          rows: renderRows
-        })
-        // Match descendant retention so scrolling cannot discard an active rename draft.
-        if (focusedRowIndex >= 0 && !indexes.includes(focusedRowIndex)) {
-          indexes.push(focusedRowIndex)
-          indexes.sort((a, b) => a - b)
-        }
-        return indexes
-      },
-      [renderRows, stickyHeaderIndexes, focusedRowIndex]
-    ),
-    overscan: 10,
-    gap: WORKTREE_SIDEBAR_VIRTUAL_ROW_GAP,
-    // Why: the sticky group header lives inside the virtual list, so scroll math needs the same top inset as the DOM reveal.
+    getItemKey: useCallback((index: number) => model.slots[index]!.key, [model]),
+    estimateSize: (index) => boundaries[index + 1]! - boundaries[index]!,
+    rangeExtractor,
+    overscan: 0,
+    gap: 0,
+    initialOffset: () => scrollOffsetRef.current,
     scrollPaddingStart: WORKTREE_SIDEBAR_REVEAL_TOP_INSET,
     isScrollingResetDelay: USER_SCROLL_MEASUREMENT_ADJUSTMENT_SUPPRESS_MS,
-    // Why: sync-flushing rich card renders in the scroll listener stalls wheel input; async + overscan keeps rows filled.
     useFlushSync: false,
-    // Why: seed scrollOffset from the ref (not 0) so the first getVirtualItems() after remount picks the right rows.
-    initialOffset: () => scrollOffsetRef.current,
-    getItemKey: getVirtualItemKey
+    scrollToFn: scrollSidebarVirtualizer
   })
-  // Why: TanStack's default correction writes scrollTop while cards remeasure mid-wheel, which feels like rubber-banding.
-  // TODO(scroll-origin-migration): wall-clock suppression misclassifies under jank; migrate to programmaticScrollMarks + restoreSignal (see CombinedDiffViewer).
-  const shouldAdjustMeasuredRowScroll: MeasuredRowScrollAdjustment = (
-    item,
-    instance,
-    hasPriorObservation = instance.itemSizeCache.has(item.key)
-  ) =>
-    shouldAdjustWorktreeSidebarMeasuredRowScroll({
-      isScrolling: instance.isScrolling,
-      now: window.performance.now(),
-      suppressUntil: args.suppressMeasurementAdjustmentUntilRef.current,
-      itemStart: item.start,
-      itemEnd: item.end,
-      scrollOffset: (instance.scrollOffset ?? scrollOffsetRef.current) + instance.scrollAdjustments,
-      isFirstMeasurement: !hasPriorObservation,
-      scrollDirection: instance.scrollDirection
+  virtualizer.shouldAdjustScrollPositionOnItemSizeChange = () => false
+  const retainedItems: VirtualItem[] = [...selected]
+    .sort((a, b) => a - b)
+    .map((index) => {
+      const node = model.nodes[index]!
+      return {
+        index,
+        key: node.key,
+        lane: 0,
+        start: boundaries[node.slot]! + insetRef.current,
+        end: sidebarSlotContentEnd(model, boundaries, node.slot) + insetRef.current,
+        size: sidebarSlotContentEnd(model, boundaries, node.slot) - boundaries[node.slot]!
+      }
     })
-  virtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item, _delta, instance) =>
-    shouldAdjustMeasuredRowScroll(item, instance)
-
+  const outerItems: VirtualItem[] = [...selected]
+    .filter((index) => model.nodes[index]!.parent === null)
+    .sort((a, b) => a - b)
+    .map((index) => {
+      const node = model.nodes[index]!
+      return {
+        index: node.outerIndex,
+        key:
+          node.row.type === 'folder-workspace'
+            ? node.key
+            : getRenderRowKey(renderRows[node.outerIndex]!),
+        lane: 0,
+        start: boundaries[node.slot]!,
+        end: sidebarSlotContentEnd(model, boundaries, node.end - 1),
+        size: boundaries[node.end]! - boundaries[node.slot]! - node.gap
+      }
+    })
+  const publish = (
+    samples: ReadonlyMap<string, SidebarObservation>,
+    width: number,
+    native: boolean
+  ) =>
+    publishSidebarMeasurements(
+      {
+        model,
+        ledger,
+        boundaries,
+        scrollAnchorRef,
+        scrollRef,
+        correction,
+        suppression,
+        insetRef,
+        offset,
+        virtualizer,
+        changed,
+        newCardStyle: args.newCardStyle,
+        layoutContext: args.layoutContext
+      },
+      samples,
+      width,
+      native
+    )
+  useSidebarGeometryObserver({ scrollRef, model, publish })
+  useSidebarGeometryCommit({
+    selectedSlots,
+    scrollRef,
+    insetRef,
+    model,
+    ledger,
+    scrollAnchorRef,
+    scrollOffsetRef,
+    correction,
+    suppression,
+    newCardStyle: args.newCardStyle,
+    layoutContext: args.layoutContext,
+    changed,
+    boundaries,
+    virtualizer,
+    renderConverged,
+    renderedCorrection,
+    publishedRevision,
+    revision,
+    total,
+    target
+  })
+  useSidebarGeometryAnchor({
+    model,
+    boundaries,
+    retained: selected,
+    scrollRef,
+    anchorRef: scrollAnchorRef,
+    scrollOffsetRef,
+    inset: insetRef.current,
+    canCapture: () => !correction.current && publishedRevision.current === revision
+  })
+  const navigationVirtualizer = useMemo(
+    () => ({
+      scrollToIndex: (index: number, options?: Parameters<typeof virtualizer.scrollToIndex>[1]) => {
+        const node = model.nodes[index]
+        if (!node) {
+          return
+        }
+        correction.current = {
+          target: 0,
+          epoch: suppression.scrollOwnershipEpochRef.current,
+          navigation: {
+            key: node.key,
+            align: options?.align ?? 'auto',
+            behavior: options?.behavior ?? 'auto'
+          }
+        }
+        renderConverged()
+      }
+    }),
+    [model, suppression.scrollOwnershipEpochRef]
+  )
+  const measureVirtualRowElement = useCallback(
+    (element: HTMLDivElement | null) => {
+      if (!element) {
+        return
+      }
+      const index = Number(element.dataset.index)
+      const root = rootByOuterIndex.get(index)
+      if (root !== undefined) {
+        element.dataset.sidebarGeometryNode = model.nodes[root]!.key
+      }
+    },
+    [model, rootByOuterIndex]
+  )
   return {
     virtualizer,
-    shouldAdjustMeasuredRowScroll,
+    navigationVirtualizer,
+    semanticRows,
+    retainedItems,
+    outerItems,
+    total,
+    presentationOffset: clampSidebarOffset(target, total, viewport, insetRef.current),
+    model,
+    boundaries,
+    selected,
     retainFocusedRow,
-    isCurrentVirtualRowElement,
+    measureVirtualRowElement,
     stickyHeaderIndexes,
     activeStickyHeaderIndexRef,
     activeStickyHostIndexRef,

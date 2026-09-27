@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react'
 import type React from 'react'
-import type { VirtualItem, Virtualizer } from '@tanstack/react-virtual'
 import { SUPPRESS_WORKTREE_LIST_SCROLL_ADJUSTMENT_EVENT } from '../../WorktreeCardAgents'
 import {
   createPendingRevealScroll,
@@ -30,19 +29,6 @@ export function shouldAdjustWorktreeSidebarMeasuredRowScroll(args: {
     : args.itemEnd <= args.scrollOffset && args.scrollDirection !== 'backward'
 }
 
-type MeasuredRow = Pick<VirtualItem, 'key' | 'start' | 'end'>
-type MeasuredRowOwner = Pick<
-  Virtualizer<HTMLDivElement, HTMLDivElement>,
-  'isScrolling' | 'itemSizeCache' | 'scrollAdjustments' | 'scrollDirection' | 'scrollOffset'
->
-
-// hasPriorObservation is explicit: the library's size cache only records a nonzero delta.
-export type MeasuredRowScrollAdjustment = (
-  item: MeasuredRow,
-  instance: MeasuredRowOwner,
-  hasPriorObservation?: boolean
-) => boolean
-
 export type WorktreeSidebarScrollSuppression = ReturnType<
   typeof useWorktreeSidebarScrollSuppression
 >
@@ -52,6 +38,7 @@ export type WorktreeSidebarScrollSuppression = ReturnType<
 export function useWorktreeSidebarScrollSuppression(
   scrollRef: React.RefObject<HTMLDivElement | null>
 ) {
+  const scrollOwnershipEpochRef = useRef(0)
   const suppressMeasurementAdjustmentUntilRef = useRef(0)
   const directScrollInputUntilRef = useRef(0)
   const pendingRevealScrollRef = useRef<PendingRevealScroll | null>(null)
@@ -62,6 +49,7 @@ export function useWorktreeSidebarScrollSuppression(
       window.performance.now() + USER_SCROLL_MEASUREMENT_ADJUSTMENT_SUPPRESS_MS
   }, [])
   const markDirectScrollInput = useCallback(() => {
+    scrollOwnershipEpochRef.current++
     revealInterruptedRef.current = true
     const suppressUntil = window.performance.now() + USER_SCROLL_MEASUREMENT_ADJUSTMENT_SUPPRESS_MS
     suppressMeasurementAdjustmentUntilRef.current = suppressUntil
@@ -72,6 +60,7 @@ export function useWorktreeSidebarScrollSuppression(
     []
   )
   const markRevealScroll = useCallback((targetTop: number) => {
+    scrollOwnershipEpochRef.current++
     revealInterruptedRef.current = false
     pendingRevealScrollRef.current = createPendingRevealScroll(targetTop, window.performance.now())
   }, [])
@@ -108,6 +97,7 @@ export function useWorktreeSidebarScrollSuppression(
   }, [])
 
   return {
+    scrollOwnershipEpochRef,
     suppressMeasurementAdjustmentUntilRef,
     directScrollInputUntilRef,
     markScrollMovement,

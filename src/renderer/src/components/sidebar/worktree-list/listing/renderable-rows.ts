@@ -13,7 +13,7 @@ export function isPinnedWorktreeRow(row: WorktreeItemRow): boolean {
   return row.sectionKey === PINNED_GROUP_KEY
 }
 
-// Keep the shared lineage surface in one outer slot; its descendants virtualize individually inside it.
+// Preserve the nested outer surface while global geometry selects individual descendant cards.
 export function buildRenderableRows(rows: HostSectionRow[]): RenderRow[] {
   const renderRows: RenderRow[] = []
   for (let index = 0; index < rows.length; index++) {

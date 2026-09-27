@@ -1,5 +1,12 @@
 // @vitest-environment happy-dom
-import { act } from 'react'
+import { act, useMemo } from 'react'
+import {
+  buildSidebarGeometry,
+  sidebarGeometryBoundaries,
+  sidebarViewportNodes,
+  retainSidebarAncestors
+} from '../listing/sidebar-geometry-slots'
+import { useSidebarRowRetention } from '../viewport/use-sidebar-row-retention'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { WorktreeCardProps } from '../../worktree-card-model'
@@ -11,17 +18,6 @@ const windowState = vi.hoisted(() => ({ start: 0, count: 20 }))
 const storeState = vi.hoisted<{
   renamingWorktreeId: { worktreeId: string; rowKey?: string } | null
 }>(() => ({ renamingWorktreeId: null }))
-vi.mock('@tanstack/react-virtual', () => ({
-  useVirtualizer: ({ count }: { count: number }) => ({
-    getVirtualItems: () =>
-      Array.from(
-        { length: Math.max(0, Math.min(windowState.count, count - windowState.start)) },
-        (_, n) => ({
-          index: windowState.start + n
-        })
-      )
-  })
-}))
 vi.mock('@/store', () => ({
   useAppStore: (selector: (state: typeof storeState) => unknown) => selector(storeState)
 }))
@@ -71,34 +67,83 @@ afterEach(async () => {
   container.remove()
 })
 
-const wideRows = () => [
+const wideRows = (count = 500) => [
   lineageRow('root', 0),
-  ...Array.from({ length: 500 }, (_, n) => lineageRow(`child-${n}`))
+  ...Array.from({ length: count }, (_, n) => lineageRow(`child-${n}`))
 ]
 const mountedIds = () =>
   [...container.querySelectorAll<HTMLElement>('[data-mounted-card]')].map(
     (element) => element.dataset.mountedCard
   )
 
-async function renderRows(rows = wideRows(), ctx = lineageContext()): Promise<void> {
-  await act(async () =>
-    root.render(
-      <VirtualizedLineageDescendants rows={rows} ctx={ctx} groupStart={0} groupKey="test-lineage" />
-    )
+function TestOwner({
+  rows,
+  ctx
+}: {
+  rows: ReturnType<typeof wideRows>
+  ctx: ReturnType<typeof lineageContext>
+}) {
+  const model = useMemo(
+    () => buildSidebarGeometry([{ type: 'lineage-group', key: 'test', rows }]),
+    [rows]
   )
+  const boundaries = useMemo(() => sidebarGeometryBoundaries(model, new Map()), [model])
+  const retention = useSidebarRowRetention({
+    model,
+    defaultHostId: 'local',
+    activeWorktreeId: ctx.activeWorktreeId,
+    activeWorkspaceExecutionHostId: ctx.item.activeWorkspaceExecutionHostId,
+    pendingRevealWorktree: ctx.pendingRevealWorktree,
+    pendingRevealSidebarRow: ctx.pendingRevealSidebarRow,
+    draggingWorktreeId: null
+  })
+  const indexes = Array.from(
+    { length: Math.min(windowState.count, rows.length - 1 - windowState.start) },
+    (_, n) => n + windowState.start + 1
+  )
+  for (const { index, landing } of retention.targets) {
+    indexes.push(index)
+    const slot = model.nodes[index]!.slot
+    if (landing) {
+      indexes.push(
+        ...sidebarViewportNodes(
+          model,
+          boundaries,
+          boundaries[slot]!,
+          boundaries[slot + 1]! - boundaries[slot]!
+        )
+      )
+    }
+  }
+  const geometry = { model, boundaries, selected: retainSidebarAncestors(model, indexes) }
+  return (
+    <div
+      onPointerDownCapture={retention.retainInteraction}
+      onFocusCapture={retention.retainInteraction}
+      onContextMenuCapture={retention.retainInteraction}
+    >
+      <VirtualizedLineageDescendants ctx={{ ...ctx, geometry }} root={0} />
+    </div>
+  )
+}
+async function renderRows(rows = wideRows(), ctx = lineageContext()): Promise<void> {
+  await act(async () => root.render(<TestOwner rows={rows} ctx={ctx} />))
 }
 
 describe('lineage card virtualization', () => {
-  it('mounts only the descendant window and advances through a 500-child lineage', async () => {
-    const rows = wideRows()
-    await renderRows(rows)
-    expect(mountedIds()).toEqual(Array.from({ length: 20 }, (_, n) => `child-${n}`))
-    expect(container.querySelectorAll('[data-lineage-virtual-spacer]')).toHaveLength(1)
-    windowState.start = 240
-    await renderRows(rows)
-    expect(mountedIds()).toEqual(Array.from({ length: 20 }, (_, n) => `child-${240 + n}`))
-    expect(container.querySelectorAll('[data-lineage-virtual-spacer]')).toHaveLength(2)
-  })
+  it.each([500, 5000])(
+    'mounts only the descendant window and advances through a %i-child lineage',
+    async (count) => {
+      const rows = wideRows(count)
+      await renderRows(rows)
+      expect(mountedIds()).toEqual(Array.from({ length: 20 }, (_, n) => `child-${n}`))
+      expect(container.querySelectorAll('[data-lineage-virtual-spacer]')).toHaveLength(1)
+      windowState.start = 240
+      await renderRows(rows)
+      expect(mountedIds()).toEqual(Array.from({ length: 20 }, (_, n) => `child-${240 + n}`))
+      expect(container.querySelectorAll('[data-lineage-virtual-spacer]')).toHaveLength(2)
+    }
+  )
 
   it('retains ancestor surfaces for visible descendants without mounting their hidden siblings', async () => {
     const rows = [
@@ -116,16 +161,7 @@ describe('lineage card virtualization', () => {
       container.querySelector('[data-mounted-card="parent"] [data-mounted-card="child-200"]')
     ).not.toBeNull()
     const ctx = lineageContext()
-    await act(async () =>
-      root.render(
-        <VirtualizedLineageDescendants
-          rows={rows}
-          ctx={ctx}
-          groupStart={0}
-          groupKey="test-lineage"
-        />
-      )
-    )
+    await renderRows(rows, ctx)
     await act(async () =>
       container.querySelector<HTMLElement>('[data-mounted-card="child-200"]')!.click()
     )

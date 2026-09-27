@@ -32,7 +32,7 @@ export type PendingSidebarRevealArgs = {
   clearPendingRevealSidebarRow: () => void
   agentSendTargetWorktreeId: string | null
   renderRows: RenderRow[]
-  virtualizer: Virtualizer<HTMLDivElement, HTMLDivElement>
+  virtualizer: Pick<Virtualizer<HTMLDivElement, HTMLDivElement>, 'scrollToIndex'>
   scrollElement?: HTMLDivElement | null
   scrollRef: React.RefObject<HTMLDivElement | null>
   worktrees: Worktree[]
