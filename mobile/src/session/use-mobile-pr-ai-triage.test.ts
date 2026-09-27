@@ -18,6 +18,13 @@ function rpcReply(result: unknown): RpcResponse {
   return { id: 'rpc', ok: true, result, _meta: { runtimeId: 'r' } }
 }
 
+const LAUNCHED_WITH_PROMPT = rpcReply({
+  outcome: { kind: 'terminal', handle: 'term-1' },
+  worktreeId: 'wt-1',
+  receipt: { mode: 'terminal', preferred: 'terminal', reason: 'user_default', detail: 'd' },
+  prompt: { delivery: 'submit', outcome: 'handed-to-terminal' }
+})
+
 const LAUNCHED_WITHOUT_PROMPT = rpcReply({
   outcome: { kind: 'terminal', handle: 'term-1' },
   worktreeId: 'wt-1',
@@ -25,7 +32,7 @@ const LAUNCHED_WITHOUT_PROMPT = rpcReply({
   prompt: { delivery: 'submit', outcome: 'not-delivered' }
 })
 
-function hostClient(): RpcClient {
+function hostClient(launchReply: RpcResponse = LAUNCHED_WITHOUT_PROMPT): RpcClient {
   const sendRequest = vi.fn(async (method: string): Promise<RpcResponse> => {
     if (method === 'repo.list') {
       return rpcReply({ repos: [{ id: 'wt-1' }] })
@@ -36,7 +43,7 @@ function hostClient(): RpcClient {
     if (method === 'preflight.detectAgents') {
       return rpcReply(['codex'])
     }
-    return LAUNCHED_WITHOUT_PROMPT
+    return launchReply
   })
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the hook reaches the client only through sendRequest.
   return { sendRequest } as unknown as RpcClient
@@ -58,6 +65,7 @@ describe('useMobilePrAiTriage', () => {
         client,
         connState,
         worktreeId: 'wt-1',
+        workspaceLabel: 'feature-login',
         hostCapabilities: LAUNCH_CAPABILITIES,
         hostStatusPending: false,
         hostStatusReadable: true
@@ -78,11 +86,27 @@ describe('useMobilePrAiTriage', () => {
       error: "The agent started, but the prompt wasn't sent."
     })
     expect(triage?.noticeFor('fix-checks').undeliveredPrompt).toContain('fix the failing checks')
+    expect(triage?.noticeFor('fix-checks').success).toBeNull()
     expect(triage?.noticeFor('resolve-conflicts')).toEqual({
+      success: null,
       error: null,
       warning: null,
       undeliveredPrompt: null
     })
+  })
+
+  it('confirms a launch that delivered its prompt under the tapped button, naming the workspace', async () => {
+    mount(hostClient(LAUNCHED_WITH_PROMPT))
+    await act(async () => {
+      await triage?.launch('resolve-conflicts', () => 'resolve the conflicts')
+    })
+    expect(triage?.noticeFor('resolve-conflicts')).toEqual({
+      success: 'Agent started in feature-login',
+      error: null,
+      warning: null,
+      undeliveredPrompt: null
+    })
+    expect(triage?.noticeFor('fix-checks').success).toBeNull()
   })
 
   it('shows a refusal before launch only under the tapped button', async () => {

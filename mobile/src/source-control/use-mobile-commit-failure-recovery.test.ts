@@ -73,6 +73,7 @@ describe('useMobileCommitFailureRecovery', () => {
         client,
         connState: 'connected',
         worktreeId: 'wt-1',
+        workspaceLabel: 'feature-login',
         failure: props.failure
       })
       return null
@@ -93,9 +94,11 @@ describe('useMobileCommitFailureRecovery', () => {
     expect(succeeded).toBe(true)
     expect(recovery?.launchError).toBeNull()
     expect(recovery?.launchWarning).toBe('the requested arguments were ignored.')
+    expect(recovery?.launchSuccess).toBe('Agent started in feature-login')
     // A new failure is a new launch; the old one's note does not carry over.
     rerender({ ...FAILURE, error: 'another hook failed' })
     expect(recovery?.launchWarning).toBeNull()
+    expect(recovery?.launchSuccess).toBeNull()
   })
 
   it('starts one agent for two taps before the first one re-renders', async () => {

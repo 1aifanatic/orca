@@ -21,6 +21,7 @@ const TRIAGE_LAUNCH = {
 
 /** What the last launch from one button left to show under that button. */
 export type PrAiTriageLaunchNotice = {
+  success: string | null
   error: string | null
   warning: string | null
   /** The agent started without its prompt; kept so the user can paste it in themselves. */
@@ -28,6 +29,7 @@ export type PrAiTriageLaunchNotice = {
 }
 
 const NO_LAUNCH_NOTICE: PrAiTriageLaunchNotice = {
+  success: null,
   error: null,
   warning: null,
   undeliveredPrompt: null
@@ -37,14 +39,23 @@ type Input = {
   client: RpcClient | null
   connState: ConnectionState
   worktreeId: string
+  /** Named in the confirmation; the screen's workspace label, else its branch. */
+  workspaceLabel: string | null
   hostCapabilities: readonly string[]
   hostStatusPending: boolean
   hostStatusReadable: boolean
 }
 
 export function useMobilePrAiTriage(input: Input) {
-  const { client, connState, worktreeId, hostCapabilities, hostStatusPending, hostStatusReadable } =
-    input
+  const {
+    client,
+    connState,
+    worktreeId,
+    workspaceLabel,
+    hostCapabilities,
+    hostStatusPending,
+    hostStatusReadable
+  } = input
   const [busyKey, setBusyKey] = useState<PrAiTriageKey | null>(null)
   // Keyed by button, so one button's launch never shows (or offers to copy) under the other.
   const [notices, setNotices] = useState<Partial<Record<PrAiTriageKey, PrAiTriageLaunchNotice>>>({})
@@ -85,13 +96,14 @@ export function useMobilePrAiTriage(input: Input) {
           prompt,
           ...TRIAGE_LAUNCH[key]
         })
-        const notice = promptedLaunchNotice(result)
+        const notice = promptedLaunchNotice(result, workspaceLabel)
         if (notice.succeeded) {
           triggerSuccess()
         } else {
           triggerError()
         }
         setNotice(key, {
+          success: notice.success,
           error: notice.error,
           warning: notice.warning,
           undeliveredPrompt: notice.undeliveredPrompt
@@ -109,7 +121,7 @@ export function useMobilePrAiTriage(input: Input) {
         setBusyKey(null)
       }
     },
-    [busyKey, client, connState, hostCapabilities, setNotice, worktreeId]
+    [busyKey, client, connState, hostCapabilities, setNotice, workspaceLabel, worktreeId]
   )
 
   return {

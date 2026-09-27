@@ -16,10 +16,18 @@ type Params = {
   client: RpcClient | null
   connState: ConnectionState
   worktreeId: string
+  /** Named in the confirmation; the screen's workspace label, else its branch. */
+  workspaceLabel: string | null
   failure: MobileCommitFailureRecovery | null
 }
 
-export function useMobileCommitFailureRecovery({ client, connState, worktreeId, failure }: Params) {
+export function useMobileCommitFailureRecovery({
+  client,
+  connState,
+  worktreeId,
+  workspaceLabel,
+  failure
+}: Params) {
   const hostStatus = useHostProtocolGates()
   const { hostCapabilities } = hostStatus
   const [launching, setLaunching] = useState(false)
@@ -40,6 +48,11 @@ export function useMobileCommitFailureRecovery({ client, connState, worktreeId, 
     text: string
   } | null>(null)
   const launchWarning = warning?.failure === failure ? warning.text : null
+  const [success, setSuccess] = useState<{
+    failure: MobileCommitFailureRecovery
+    text: string
+  } | null>(null)
+  const launchSuccess = success?.failure === failure ? success.text : null
   const summary = useMemo(() => (failure ? summarizeCommitFailure(failure.error) : null), [failure])
   const availability = resolveMobileAgentLaunchAvailability(hostStatus)
 
@@ -78,6 +91,7 @@ export function useMobileCommitFailureRecovery({ client, connState, worktreeId, 
     setLaunching(true)
     setLaunchError(null)
     setWarning(null)
+    setSuccess(null)
     setUndelivered(null)
     try {
       const result = await launchAgentWithPrompt({
@@ -88,7 +102,7 @@ export function useMobileCommitFailureRecovery({ client, connState, worktreeId, 
         actionId: 'fixCommitFailure',
         launchSource: 'source_control_recovery'
       })
-      const notice = promptedLaunchNotice(result)
+      const notice = promptedLaunchNotice(result, workspaceLabel)
       if (notice.succeeded) {
         triggerSuccess()
       } else {
@@ -96,6 +110,7 @@ export function useMobileCommitFailureRecovery({ client, connState, worktreeId, 
       }
       setLaunchError(notice.error)
       setWarning(failure && notice.warning ? { failure, text: notice.warning } : null)
+      setSuccess(failure && notice.success ? { failure, text: notice.success } : null)
       setUndelivered(
         failure && notice.undeliveredPrompt ? { failure, prompt: notice.undeliveredPrompt } : null
       )
@@ -108,7 +123,7 @@ export function useMobileCommitFailureRecovery({ client, connState, worktreeId, 
       inFlightRef.current = false
       setLaunching(false)
     }
-  }, [client, connState, failure, hostCapabilities, launching, prompt, worktreeId])
+  }, [client, connState, failure, hostCapabilities, launching, prompt, workspaceLabel, worktreeId])
 
   return {
     summary,
@@ -117,6 +132,7 @@ export function useMobileCommitFailureRecovery({ client, connState, worktreeId, 
     availability,
     launchError,
     launchWarning,
+    launchSuccess,
     undeliveredPrompt,
     launch
   }

@@ -30,6 +30,7 @@ export type PrChecksTriage = {
   fixChecks: () => void
   isBusy: boolean
   availability: MobileAgentLaunchAvailability
+  success: string | null
   error: string | null
   warning: string | null
   undeliveredPrompt: string | null
@@ -211,6 +212,7 @@ export function PRChecksSection({
       {triage ? (
         <AgentLaunchNotice
           availability={summary.failed > 0 ? triage.availability : 'available'}
+          success={triage.success}
           error={triage.error}
           warning={triage.warning}
           undeliveredPrompt={triage.undeliveredPrompt}

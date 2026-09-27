@@ -34,6 +34,7 @@ describe('AgentLaunchNotice', () => {
 
   function lines(props: {
     availability?: MobileAgentLaunchAvailability
+    success?: string | null
     error?: string | null
     warning?: string | null
   }): { text: string; isError: boolean }[] {
@@ -41,6 +42,7 @@ describe('AgentLaunchNotice', () => {
       renderer = create(
         createElement(AgentLaunchNotice, {
           availability: props.availability ?? 'available',
+          success: props.success ?? null,
           error: props.error ?? null,
           warning: props.warning ?? null,
           undeliveredPrompt: null,
@@ -73,6 +75,17 @@ describe('AgentLaunchNotice', () => {
     expect(lines({ availability: 'update-required', warning: 'w' })).toEqual([
       { text: AGENT_LAUNCH_UPDATE_REQUIRED_MESSAGE, isError: true }
     ])
+  })
+
+  it('confirms a launch that went ahead, with any host note beneath it', () => {
+    expect(lines({ success: 'Agent started in feature-login', warning: 'w' })).toEqual([
+      { text: 'Agent started in feature-login', isError: false },
+      { text: 'w', isError: false }
+    ])
+  })
+
+  it('never confirms beside an error', () => {
+    expect(lines({ success: 'Agent started', error: 'e' })).toEqual([{ text: 'e', isError: true }])
   })
 
   it('renders nothing with nothing to say', () => {

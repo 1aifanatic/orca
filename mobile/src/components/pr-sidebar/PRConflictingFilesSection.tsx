@@ -16,6 +16,7 @@ export type PrConflictsTriage = {
   resolveConflicts: () => void
   isBusy: boolean
   availability: MobileAgentLaunchAvailability
+  success: string | null
   error: string | null
   warning: string | null
   undeliveredPrompt: string | null
@@ -175,6 +176,7 @@ export function PRConflictingFilesSection({ pr, isRefreshing = false, triage }: 
           </Pressable>
           <AgentLaunchNotice
             availability={triage.availability}
+            success={triage.success}
             error={triage.error}
             warning={triage.warning}
             undeliveredPrompt={triage.undeliveredPrompt}

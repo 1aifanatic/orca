@@ -91,10 +91,20 @@ export async function launchAgentWithPrompt(args: {
   }
 }
 
+/** The confirmation under an AI button, naming the workspace when the screen knows it. */
+export function agentStartedMessage(workspaceLabel: string | null | undefined): string {
+  const label = workspaceLabel?.trim()
+  return label ? `Agent started in ${label}` : 'Agent started'
+}
+
 /** What the button shows after a launch; one mapping so every AI button reads the same.
  *  `warning` is the host's note on a launch that went ahead, so it is never shown as a failure. */
-export function promptedLaunchNotice(result: MobilePromptedAgentLaunch): {
+export function promptedLaunchNotice(
+  result: MobilePromptedAgentLaunch,
+  workspaceLabel?: string | null
+): {
   succeeded: boolean
+  success: string | null
   error: string | null
   warning: string | null
   undeliveredPrompt: string | null
@@ -103,6 +113,7 @@ export function promptedLaunchNotice(result: MobilePromptedAgentLaunch): {
     case 'sent':
       return {
         succeeded: true,
+        success: agentStartedMessage(workspaceLabel),
         error: null,
         warning: result.warning ?? null,
         undeliveredPrompt: null
@@ -110,12 +121,19 @@ export function promptedLaunchNotice(result: MobilePromptedAgentLaunch): {
     case 'prompt-not-sent':
       return {
         succeeded: false,
+        success: null,
         error: AGENT_PROMPT_NOT_SENT_MESSAGE,
         warning: result.warning ?? null,
         undeliveredPrompt: result.prompt
       }
     case 'not-started':
     case 'unconfirmed':
-      return { succeeded: false, error: result.message, warning: null, undeliveredPrompt: null }
+      return {
+        succeeded: false,
+        success: null,
+        error: result.message,
+        warning: null,
+        undeliveredPrompt: null
+      }
   }
 }

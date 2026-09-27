@@ -10,6 +10,8 @@ import { colors, spacing, typography } from '../theme/mobile-theme'
 
 type Props = {
   availability: MobileAgentLaunchAvailability
+  /** The confirmation that the agent started with its prompt. */
+  success: string | null
   error: string | null
   /** The host's note on a launch that went ahead; secondary text, not an error. */
   warning: string | null
@@ -21,6 +23,7 @@ type Props = {
 /** The status line under an AI button that starts an agent with a prompt. */
 export function AgentLaunchNotice({
   availability,
+  success,
   error,
   warning,
   undeliveredPrompt,
@@ -36,13 +39,15 @@ export function AgentLaunchNotice({
         : null
   const message = availabilityMessage ?? error
   const note = availabilityMessage ? null : warning
-  if (!message && !note) {
+  const confirmation = message ? null : success
+  if (!message && !note && !confirmation) {
     return null
   }
   const copyLabel =
     copyState && copyState.prompt === undeliveredPrompt ? copyState.label : 'Copy prompt'
   return (
     <View style={styles.notice}>
+      {confirmation ? <Text style={styles.successText}>{confirmation}</Text> : null}
       {message ? <Text style={errorStyle}>{message}</Text> : null}
       {note ? <Text style={styles.warningText}>{note}</Text> : null}
       {undeliveredPrompt ? (
@@ -67,6 +72,10 @@ export function AgentLaunchNotice({
 const styles = StyleSheet.create({
   notice: {
     gap: spacing.xs
+  },
+  successText: {
+    color: colors.statusGreen,
+    fontSize: typography.metaSize
   },
   warningText: {
     color: colors.textSecondary,

@@ -4,6 +4,7 @@ import type { RpcResponse } from '../transport/types'
 import { AGENT_LAUNCH_UPDATE_REQUIRED_MESSAGE } from './mobile-existing-agent-launch'
 import {
   AGENT_PROMPT_NOT_SENT_MESSAGE,
+  agentStartedMessage,
   launchAgentWithPrompt,
   promptedLaunchNotice
 } from './pr-ai-triage-launch'
@@ -257,18 +258,21 @@ describe('promptedLaunchNotice', () => {
   it('keeps the prompt only when the agent started without it', () => {
     expect(promptedLaunchNotice({ kind: 'prompt-not-sent', prompt: 'p' })).toEqual({
       succeeded: false,
+      success: null,
       error: AGENT_PROMPT_NOT_SENT_MESSAGE,
       warning: null,
       undeliveredPrompt: 'p'
     })
     expect(promptedLaunchNotice({ kind: 'sent' })).toEqual({
       succeeded: true,
+      success: 'Agent started',
       error: null,
       warning: null,
       undeliveredPrompt: null
     })
     expect(promptedLaunchNotice({ kind: 'unconfirmed', message: 'm' })).toEqual({
       succeeded: false,
+      success: null,
       error: 'm',
       warning: null,
       undeliveredPrompt: null
@@ -279,6 +283,7 @@ describe('promptedLaunchNotice', () => {
   it('never reports the host warning on a launch that went ahead as an error', () => {
     expect(promptedLaunchNotice({ kind: 'sent', warning: 'arguments were ignored' })).toEqual({
       succeeded: true,
+      success: 'Agent started',
       error: null,
       warning: 'arguments were ignored',
       undeliveredPrompt: null
@@ -291,9 +296,24 @@ describe('promptedLaunchNotice', () => {
       })
     ).toEqual({
       succeeded: false,
+      success: null,
       error: AGENT_PROMPT_NOT_SENT_MESSAGE,
       warning: 'arguments were ignored',
       undeliveredPrompt: 'p'
     })
+  })
+})
+
+describe('agentStartedMessage', () => {
+  // Issue #20543: a launch from the phone must say it happened, and where.
+  it('names the workspace the agent started in', () => {
+    expect(promptedLaunchNotice({ kind: 'sent' }, 'feature-login').success).toBe(
+      'Agent started in feature-login'
+    )
+  })
+
+  it('still confirms the launch when the screen knows no workspace name', () => {
+    expect(agentStartedMessage(null)).toBe('Agent started')
+    expect(agentStartedMessage('   ')).toBe('Agent started')
   })
 })
