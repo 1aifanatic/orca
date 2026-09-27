@@ -153,6 +153,35 @@ describe('saved chat status store', () => {
     expect(reopened.read('after')).toEqual(saved(2))
   })
 
+  it('backs off a flush that keeps failing instead of retrying every 250 ms', () => {
+    vi.useFakeTimers()
+    try {
+      const store = open(tempDir())
+      const exec = Database.prototype.exec
+      const begins = vi.spyOn(Database.prototype, 'exec').mockImplementation(function (
+        this: Database.Database,
+        sql: string
+      ) {
+        if (sql === 'BEGIN IMMEDIATE') {
+          throw new Error('database or disk is full')
+        }
+        return exec.call(this, sql)
+      })
+      const attempts = () => begins.mock.calls.filter(([sql]) => sql === 'BEGIN IMMEDIATE').length
+      store.record('s1', saved(1))
+      vi.advanceTimersByTime(250)
+      expect(attempts()).toBe(1)
+
+      store.record('s1', saved(2))
+      vi.advanceTimersByTime(250)
+      expect(attempts()).toBe(1)
+      vi.advanceTimersByTime(250)
+      expect(attempts()).toBe(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('leaves a newer build’s file untouched and reads or writes nothing from it', () => {
     const dir = tempDir()
     const path = join(dir, AGENT_SESSION_SAVED_STATUS_FILE)

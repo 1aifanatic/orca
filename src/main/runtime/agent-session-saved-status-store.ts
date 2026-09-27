@@ -18,6 +18,8 @@ import Database from '../sqlite/sync-database'
 export const AGENT_SESSION_SAVED_STATUS_FILE = 'agent-session-saved-status.db'
 const SCHEMA_VERSION = 1
 const FLUSH_DELAY_MS = 250
+// A flush that keeps failing waits twice as long each time, up to 250 ms × 2^6 = 16 s.
+const MAX_FLUSH_BACKOFF_STEPS = 6
 
 const CREATE_TABLE = `CREATE TABLE saved_status (
   session_id       TEXT PRIMARY KEY,
@@ -82,6 +84,7 @@ function removeDatabaseFiles(path: string): void {
 export class AgentSessionSavedStatusStore {
   private readonly dirty = new Map<string, StructuredAgentSessionSavedStatus>()
   private timer: ReturnType<typeof setTimeout> | null = null
+  private failedFlushes = 0
 
   private constructor(
     private readonly path: string,
@@ -156,10 +159,13 @@ export class AgentSessionSavedStatusStore {
       return
     }
     this.dirty.set(sessionId, saved)
-    this.timer ??= setTimeout(() => {
-      this.timer = null
-      this.flush()
-    }, FLUSH_DELAY_MS)
+    this.timer ??= setTimeout(
+      () => {
+        this.timer = null
+        this.flush()
+      },
+      FLUSH_DELAY_MS * 2 ** Math.min(this.failedFlushes, MAX_FLUSH_BACKOFF_STEPS)
+    )
     this.timer.unref?.()
   }
 
@@ -195,11 +201,13 @@ export class AgentSessionSavedStatusStore {
       }
     } catch (error) {
       warn('flush skipped; the next flush retries', error)
+      this.failedFlushes += 1
       if (isUnusableSqliteDatabaseError(error)) {
         this.recreate()
       }
       return false
     }
+    this.failedFlushes = 0
     for (const [sessionId, saved] of entries) {
       if (this.dirty.get(sessionId) === saved) {
         this.dirty.delete(sessionId)
