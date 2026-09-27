@@ -624,8 +624,8 @@
       "motivatingLinks": [
         "https://github.com/stablyai/orca/blob/main/src/main/mimo/hook-service.ts"
       ],
-      "invariant": "Building the MiMo config/plugins overlay preserves user source plugin bytes and does not install Orca files through linked config/plugins directories or a retained plugin link. Failure to detach the managed path returns the original environment without falling through to a write.",
-      "oracle": "Compare source sentinels and absent files after actual service installation with linked/ordinary/broken source directories, retained overlay links, unlink denial and a hardlink inserted after unlink; require successful overlay plugin and unchanged runtime data for healthy inputs.",
+      "invariant": "Building a MiMo or OpenCode config/plugins overlay preserves user source plugin bytes and does not install Orca files through linked config/plugins directories or a retained plugin link, including when the overlay manifest is lost and when an inherited home env var names the overlay as its own mirror source. Failure to detach the managed path returns the original environment without falling through to a write.",
+      "oracle": "Compare source sentinels and absent files after actual service installation with linked/ordinary/broken source directories, retained overlay links with and without a source plugins dir, an inherited overlay-as-source home, unlink denial and a hardlink inserted after unlink; require successful overlay plugin and unchanged runtime data for healthy inputs.",
       "commands": [
         "ORCA_BACKGROUND_LAUNCH=1 pnpm exec vitest run --config config/vitest.config.ts src/main/mimo/hook-service-overlay.test.ts src/main/mimo/hook-service.test.ts src/main/opencode/hook-service.test.ts src/main/pty/overlay-mirror.test.ts"
       ],
@@ -643,11 +643,29 @@
             "keeps a linked user directory free of an absent Orca filename",
             "replaces stale overlay links without removing source files or runtime data",
             "does not fall through to a write after unlink is denied",
-            "refuses a file link inserted after the old plugin was removed"
+            "refuses a file link inserted after the old plugin was removed",
+            "keeps the mirrored config when an inherited MIMOCODE_HOME names the overlay"
+          ]
+        },
+        {
+          "file": "src/main/opencode/hook-service.test.ts",
+          "assertions": [
+            "refuses a retained plugins link instead of mirroring the source through it",
+            "refuses a retained plugins link when the source has no plugins directory",
+            "replaces an Orca-named symlink rather than writing through it"
           ]
         }
       ],
       "evidenceRuns": [
+        {
+          "date": "2026-09-26",
+          "runner": "local",
+          "platform": "macos",
+          "command": "ORCA_BACKGROUND_LAUNCH=1 pnpm exec vitest run --config config/vitest.config.ts src/main/mimo/hook-service-overlay.test.ts src/main/mimo/hook-service.test.ts src/main/opencode/hook-service.test.ts src/main/pty/overlay-mirror.test.ts",
+          "result": "passed",
+          "durationSeconds": 0.31,
+          "summary": "Review follow-up: 57 cases pass across the four suites. Four added cases are individually red on the branch head before their fix -- the OpenCode retained-link-without-source-plugins case unlinks the user file and writes Orca's plugin into the user's real directory, and the inherited-MIMOCODE_HOME case empties the shared overlay's mirrored config."
+        },
         {
           "date": "2026-09-26",
           "runner": "local",
@@ -686,10 +704,10 @@
       "knownGaps": [
         "Native Linux/Windows and physical PTY/provider validation not run; file-symlink test skipped on Windows.",
         "Leaf checks protect config/plugins paths, not arbitrary trusted app-userData ancestors or hostile concurrent directory replacement after lstat.",
-        "Same shared home across different MiMo source homes and source-equals-overlay inputs remain outside scope.",
+        "Same shared home across different MiMo source homes remains outside scope; an inherited home that resolves to the overlay is now detected and skips teardown rather than re-mirroring.",
         "Linked plugin directories require one listing plus per-entry mirrors; large/slow catalogs may increase launch time. No latency measurement.",
         "On guard/unlink/exclusive-create failure, the launch returns original MIMOCODE_HOME or no override; Orca status plugin can be unavailable on that attempt. No retry/polling added.",
-        "OpenCode shares the extracted source resolver/mirror and adds a target-directory guard, but its unrelated manifest cleanup/global plugin writer races are outside this invariant.",
+        "OpenCode shares the extracted source resolver/mirror and now applies the same real-directory guard, absence-gated unlink and exclusive create at its own plugin write, so a lost manifest cannot leave a retained link to write through; its global config-dir writer (no overlay) shares the same replace-not-write-through step, and still overwrites a same-named user plugin by design because that mode installs into the user's own config dir.",
         "Generated plugin payloads/status ownership and remote wire unchanged. SSH/mobile flows are unaffected by this local host-env preparation; WSL/native-host integration remains unexecuted."
       ],
       "promotionCriteria": [

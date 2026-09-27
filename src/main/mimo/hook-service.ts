@@ -6,6 +6,7 @@ import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
 import { getOpenCodeFamilyPluginSource } from '../opencode/hook-service'
 import {
   ensureOverlayDirectory,
+  isSameOverlayPath,
   mirrorEntry,
   mirrorPluginDirectory,
   safeRemoveTree
@@ -64,7 +65,14 @@ export class MimoCodeHookService {
         mkdirSync(join(home, sub), { recursive: true })
       }
       const overlayConfig = join(home, 'config')
-      const sourceConfig = resolveSourceConfigDir(existingMimocodeHome)
+      const resolvedSource = resolveSourceConfigDir(existingMimocodeHome)
+      // A pane spawned from a MiMo pane inherits MIMOCODE_HOME=<overlay>, which
+      // resolves back to this shared overlay. Tearing it down and re-mirroring
+      // from itself would strip every pane's view of the user's real config.
+      const sourceConfig =
+        resolvedSource && !isSameOverlayPath(resolvedSource, overlayConfig)
+          ? resolvedSource
+          : undefined
       if (sourceConfig) {
         safeRemoveTree(overlayConfig)
       }

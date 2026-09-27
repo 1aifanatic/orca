@@ -29,6 +29,23 @@ export function ensureOverlayDirectory(path: string): void {
   }
 }
 
+// Why: an inherited env var can name the overlay itself as the mirror source.
+// Tearing down and re-mirroring a directory from itself empties it, so callers
+// need path identity that survives symlinked homes and Windows case folding.
+export function isSameOverlayPath(left: string, right: string): boolean {
+  return canonicalOverlayPath(left) === canonicalOverlayPath(right)
+}
+
+function canonicalOverlayPath(target: string): string {
+  let canonical = resolve(target)
+  try {
+    canonical = realpathSync.native(canonical)
+  } catch {
+    // Unresolvable path: the lexical form is the best available identity.
+  }
+  return process.platform === 'win32' ? canonical.toLowerCase() : canonical
+}
+
 export function mirrorPluginDirectory(
   sourcePath: string,
   targetPath: string,

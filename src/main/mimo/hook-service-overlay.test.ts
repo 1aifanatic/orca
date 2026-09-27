@@ -220,6 +220,24 @@ describe('MiMo overlay source preservation', () => {
     expect(readFileSync(target, 'utf8')).toBe(sentinel)
   })
 
+  it('keeps the mirrored config when an inherited MIMOCODE_HOME names the overlay', () => {
+    // A MiMo pane spawned from a MiMo pane inherits MIMOCODE_HOME=<overlay>.
+    // Re-mirroring the shared overlay from itself would empty it for every pane.
+    writeFileSync(join(sourceConfig, 'auth.json'), sentinel)
+    linkPlugins()
+    writeFileSync(join(userPlugins, 'user.js'), 'USER EXTENSION')
+    expectInstalled()
+
+    expect(new MimoCodeHookService().buildPtyEnv('nested', overlayHome)).toEqual({
+      MIMOCODE_HOME: overlayHome
+    })
+
+    expect(readFileSync(join(overlayConfig, 'auth.json'), 'utf8')).toBe(sentinel)
+    expect(readFileSync(join(overlayPlugins, 'user.js'), 'utf8')).toBe('USER EXTENSION')
+    expect(readFileSync(join(overlayPlugins, filename), 'utf8')).toContain('/hook/mimo-code')
+    expect(readFileSync(join(sourceConfig, 'auth.json'), 'utf8')).toBe(sentinel)
+  })
+
   it('refuses a file link inserted after the old plugin was removed', async () => {
     rmSync(sourceConfig, { recursive: true })
     mkdirSync(overlayPlugins, { recursive: true })

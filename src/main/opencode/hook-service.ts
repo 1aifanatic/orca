@@ -9,7 +9,13 @@ import {
   writeFileSync
 } from 'node:fs'
 import { createHash } from 'node:crypto'
-import { mirrorEntry, mirrorPluginDirectory, safeRemoveTree } from '../pty/overlay-mirror'
+import {
+  ensureOverlayDirectory,
+  mirrorEntry,
+  mirrorPluginDirectory,
+  safeRemoveTree
+} from '../pty/overlay-mirror'
+import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
 import { getStatusPluginEndpointSource } from './status-plugin-endpoint-source'
 import { getStatusPluginRuntimeStateSource } from './status-plugin-runtime-state-source'
 import { getStatusPluginMessagePreviewSource } from './status-plugin-message-preview-source'
@@ -139,7 +145,7 @@ export class OpenCodeHookService {
     }
     const overlayDir = this.getSourceOverlayDir(existingConfigDir)
     try {
-      mkdirSync(overlayDir, { recursive: true })
+      ensureOverlayDirectory(overlayDir)
       this.mirrorUserConfig(existingConfigDir, overlayDir)
       this.writePluginIntoOverlay(overlayDir)
       return { OPENCODE_CONFIG_DIR: overlayDir }
@@ -230,24 +236,40 @@ export class OpenCodeHookService {
     this.writeOverlayManifest(overlayDir, nextManifest)
   }
 
-  // Why: pre-write unlink guards against POSIX writeFileSync writing through a mirrored symlink and clobbering a same-named user plugin.
+  // Why: overlays persist across terminals and the manifest that tracks them can
+  // be lost, so <overlay>/plugins can still be a link into the user's real plugins
+  // dir on the next launch. Demanding a real directory is what keeps the write off
+  // the user's files; a swallowed unlink error used to let the write proceed
+  // through whatever was actually there. Deliberately not an exclusive create:
+  // panes sharing one source config share this overlay, and an EEXIST there would
+  // silently cost a concurrent pane its status plugin for no safety gain on a
+  // proven-real directory holding an Orca-owned filename.
   private writePluginIntoOverlay(overlayDir: string): void {
     const pluginsDir = join(overlayDir, 'plugins')
-    mkdirSync(pluginsDir, { recursive: true })
-    const pluginPath = join(pluginsDir, this.pluginFileName)
-    try {
-      unlinkSync(pluginPath)
-    } catch {
-      // File may not exist on a fresh overlay; a real failure surfaces on writeFileSync below.
-    }
-    writeFileSync(pluginPath, this.pluginSource())
+    ensureOverlayDirectory(pluginsDir)
+    writeOrcaPluginFile(join(pluginsDir, this.pluginFileName), this.pluginSource())
   }
 
   private writePluginToConfigDir(configDir: string): void {
     const pluginsDir = join(configDir, 'plugins')
     mkdirSync(pluginsDir, { recursive: true })
-    writeFileSync(join(pluginsDir, this.pluginFileName), this.pluginSource())
+    writeOrcaPluginFile(join(pluginsDir, this.pluginFileName), this.pluginSource())
   }
+}
+
+// Why: replace the entry rather than write into it, so an Orca-named symlink
+// cannot redirect the plugin bytes out of the directory that was just validated.
+// Only a proven absence may skip the unlink; any other failure must stop the
+// write instead of letting it travel through whatever is still at the path.
+function writeOrcaPluginFile(pluginPath: string, source: string): void {
+  try {
+    unlinkSync(pluginPath)
+  } catch (error) {
+    if (!isDefinitiveAbsence(error)) {
+      throw error
+    }
+  }
+  writeFileSync(pluginPath, source)
 }
 
 export const openCodeHookService = new OpenCodeHookService()
