@@ -4,6 +4,11 @@ import {
   nativeChatAskRunSubject,
   nativeChatAskRunBlocks
 } from './native-chat-ask-row'
+import {
+  CODEX_RECORDED_CALL_ARGUMENTS,
+  CODEX_RECORDED_OUTPUT,
+  CODEX_RECORDED_PLAIN_OUTPUTS
+} from './native-chat-ask-answers.test-fixture'
 import type {
   NativeChatBlock,
   NativeChatToolCallBlock,
@@ -228,10 +233,7 @@ describe('native chat ask row', () => {
         JSON.stringify({ questions: [{ id: 'branch', question: 'Which branch?' }] }),
         'request_user_input'
       )
-      for (const output of [
-        'request_user_input is unavailable in this mode',
-        'request_user_input was aborted by user after 3.2s'
-      ]) {
+      for (const output of CODEX_RECORDED_PLAIN_OUTPUTS) {
         expect(nativeChatAskRunSubject([{ call, result: toolResult(output) }])).toEqual({
           kind: 'question',
           id: 'branch',
@@ -245,6 +247,58 @@ describe('native chat ask row', () => {
       expect(nativeChatAskRunSubject([{ call, result: toolResult('User selected: Yes') }])).toEqual(
         { kind: 'question', text: 'Proceed?' }
       )
+    })
+
+    it('answers a recorded Codex prompt from its output', () => {
+      const call = askCall(CODEX_RECORDED_CALL_ARGUMENTS, 'request_user_input')
+      expect(
+        nativeChatAskRunSubject([{ call, result: toolResult(CODEX_RECORDED_OUTPUT) }])
+      ).toEqual({
+        kind: 'question',
+        id: 'fix_scope',
+        text: 'How wide should the fix go this time?',
+        answer: 'Only the parser'
+      })
+    })
+
+    it('shows only the question when Codex output names an id the call did not ask', () => {
+      const call = askCall(CODEX_RECORDED_CALL_ARGUMENTS, 'request_user_input')
+      const result = toolResult(
+        JSON.stringify({
+          answers: { fix_scope: { answers: ['Both'] }, other: { answers: ['x'] } }
+        })
+      )
+      expect(nativeChatAskRunSubject([{ call, result }])).toEqual({
+        kind: 'question',
+        id: 'fix_scope',
+        text: 'How wide should the fix go this time?'
+      })
+    })
+
+    it("reads another agent's output as Codex's only when the tool is Codex's", () => {
+      // Same ids and output shape as Codex, from an agent whose results are prose.
+      const call = askCall(
+        { questions: [{ id: 'branch', question: 'Which branch?' }] },
+        'ask_user_question'
+      )
+      const result = toolResult(JSON.stringify({ answers: { branch: { answers: ['main'] } } }))
+      expect(nativeChatAskRunSubject([{ call, result }])).toEqual({
+        kind: 'question',
+        id: 'branch',
+        text: 'Which branch?'
+      })
+    })
+
+    it('never reads text-keyed answers on a Codex call', () => {
+      const call = askCall(CODEX_RECORDED_CALL_ARGUMENTS, 'request_user_input')
+      const result = toolResult('aborted by user after 2.0s', {
+        askAnswers: [{ question: 'How wide should the fix go this time?', answer: ['Both'] }]
+      })
+      expect(nativeChatAskRunSubject([{ call, result }])).toEqual({
+        kind: 'question',
+        id: 'fix_scope',
+        text: 'How wide should the fix go this time?'
+      })
     })
   })
 })

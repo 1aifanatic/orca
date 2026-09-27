@@ -4,7 +4,12 @@
 
 import { isAskUserQuestionTool } from './agent-question-answered-intent'
 import { parseAskFromToolInput } from './native-chat-ask'
-import { askPayloadQuestions, codexAskAnswers } from './native-chat-ask-answers'
+import {
+  askPayloadQuestions,
+  CODEX_ASK_TOOL_NAME,
+  codexAskAnswers,
+  NATIVE_CHAT_ANSWER_PART_SEPARATOR
+} from './native-chat-ask-answers'
 import {
   isToolCallBlock,
   type NativeChatBlock,
@@ -40,9 +45,6 @@ export type NativeChatAskRun = {
   call: NativeChatToolCallBlock
   result?: NativeChatToolResultBlock
 }
-
-/** Parts of one reply, joined the way a resolved prompt's receipt joins them. */
-const ANSWER_PART_SEPARATOR = ' · '
 
 /** Whether this block is a question tool call, and so is drawn as the awaiting
  *  row rather than as an ordinary tool line. */
@@ -90,8 +92,9 @@ export function hasNativeChatAskCall(blocks: readonly NativeChatBlock[]): boolea
 }
 
 /** Each question one call names, dropping any it states blankly, with the answer
- *  its result recorded as data. Claude's answers are joined by the question's
- *  exact text, the only key it records them under; Codex's by the question's id. */
+ *  its result recorded as data. The call's tool name picks the reader: Codex's
+ *  output is read by question id; any other agent's answers come only from the
+ *  field its decoder filled, keyed by the question's exact text. */
 function askCallQuestions({ call, result }: NativeChatAskRun): NativeChatAskRowQuestion[] {
   const prompt = parseAskFromToolInput(call.name, call.input)
   if (!prompt) {
@@ -100,7 +103,14 @@ function askCallQuestions({ call, result }: NativeChatAskRun): NativeChatAskRowQ
   // The card's prompt drops each question's id and secrecy, so they are read
   // from the raw payload, matched in order by the text the prompt kept.
   const raw = askPayloadQuestions(call.input)
-  const codexAnswers = result && !result.askAnswers ? codexAskAnswers(result.output) : null
+  const isCodex = call.name === CODEX_ASK_TOOL_NAME
+  const codexAnswers =
+    result && isCodex
+      ? codexAskAnswers(
+          result.output,
+          new Set(raw.flatMap((entry) => (typeof entry.id === 'string' ? [entry.id] : [])))
+        )
+      : null
   let cursor = 0
   const questions: NativeChatAskRowQuestion[] = []
   for (const { question } of prompt.questions) {
@@ -115,12 +125,17 @@ function askCallQuestions({ call, result }: NativeChatAskRun): NativeChatAskRowQ
     const parts =
       source?.isSecret === true
         ? undefined
-        : (result?.askAnswers?.find((entry) => entry.question === question)?.answer ??
-          (id === undefined ? undefined : codexAnswers?.get(id)))
+        : isCodex
+          ? id === undefined
+            ? undefined
+            : codexAnswers?.get(id)
+          : result?.askAnswers?.find((entry) => entry.question === question)?.answer
     questions.push({
       ...(id === undefined ? {} : { id }),
       text,
-      ...(parts && parts.length > 0 ? { answer: parts.join(ANSWER_PART_SEPARATOR) } : {})
+      ...(parts && parts.length > 0
+        ? { answer: parts.join(NATIVE_CHAT_ANSWER_PART_SEPARATOR) }
+        : {})
     })
   }
   return questions
