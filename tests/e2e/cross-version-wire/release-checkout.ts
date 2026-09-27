@@ -192,7 +192,9 @@ function checkoutModulePath(root: string, rootRelativePath: string): string {
     fromCheckout.startsWith(`..${sep}`) ||
     isAbsolute(fromCheckout)
   ) {
-    throw new Error(`Cross-version module path must stay inside ${root}: ${rootRelativePath}`)
+    throw new Error(
+      `Cross-version module path must stay inside the release checkout: ${rootRelativePath}`
+    )
   }
   return absolute.split('\\').join('/')
 }
@@ -231,6 +233,7 @@ export async function importWorkingTreeModuleCopy(
   await copyFile(checkoutModulePath(REPO_ROOT, rootRelativePath), staged)
   // Rename so a concurrent run never imports a half-written copy.
   await rename(staged, copy)
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a module namespace is a plain record of its exports; callers narrow each export they read.
   return import(/* @vite-ignore */ copy) as Promise<Record<string, unknown>>
 }
 
