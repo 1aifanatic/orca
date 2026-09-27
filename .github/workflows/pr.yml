@@ -1074,6 +1074,11 @@ jobs:
       - name: Smoke packaged CLI
         run: node config/scripts/smoke-packaged-cli.mjs --app-dir=dist/win-unpacked
 
+      - name: Smoke packaged CLI profile restart and terminal
+        env:
+          ORCA_BACKGROUND_LAUNCH: '1'
+        run: node config/scripts/runtime-serve-terminal-smoke.mjs --packaged-app-dir=dist/win-unpacked --restart --folder
+
   e2e:
     name: e2e
     needs: code_paths

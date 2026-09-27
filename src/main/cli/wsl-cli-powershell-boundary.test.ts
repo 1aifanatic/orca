@@ -201,7 +201,11 @@ describe('WSL CLI PowerShell boundary', () => {
       const cliEntryPath = join(root, 'cli \u2018entry\u2019.cjs')
       const bridgePath = join(root, 'orca-wsl-bridge.ps1')
       try {
-        await writeFile(bridgePath, buildWslBridgeScript({ userDataPath, cliEntryPath }), 'utf8')
+        await writeFile(
+          bridgePath,
+          buildWslBridgeScript({ userDataPath, cliEntryPath, appExecutable: process.execPath }),
+          'utf8'
+        )
         await writeFile(
           cliEntryPath,
           'console.error("to stderr"); const e = process.env; console.log(JSON.stringify({ argv: process.argv.slice(2), owner: e.ORCA_USER_DATA_PATH, app: e.ORCA_APP_EXECUTABLE, nodeOptions: e.NODE_OPTIONS ?? null, stashed: e.ORCA_NODE_OPTIONS, cliDir: e.ORCA_WSL_CLI_DIR ?? null }))\n',
