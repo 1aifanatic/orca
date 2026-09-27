@@ -84,7 +84,6 @@ export async function settleUnexpectedStructuredAgentSessionExit<
       return
     }
 
-    let settlementFailed = false
     const stableSettlementId = providerExitSettlementId(unexpectedEvent)
     const unfinishedWork = captureUnfinishedStructuredAgentSessionWork(session.journal)
     try {
@@ -96,7 +95,7 @@ export async function settleUnexpectedStructuredAgentSessionExit<
       } catch (error) {
         context.onBarrierError?.(unexpectedEvent.sessionId, error)
       }
-      settlementFailed = !(await retryUnexpectedExitSettlement({
+      await retryUnexpectedExitSettlement({
         context,
         event: unexpectedEvent,
         journal: session.journal,
@@ -112,7 +111,7 @@ export async function settleUnexpectedStructuredAgentSessionExit<
             session.journal,
             observedAt
           )
-      }))
+      })
     } finally {
       // Provider exit was positively observed, so release the owner even when
       // terminal settlement could not be durably accepted.
@@ -128,15 +127,9 @@ export async function settleUnexpectedStructuredAgentSessionExit<
           acquisitionGeneration: child.generation,
           now: context.now(),
           exitObservedAt: observedAt,
-          ...(settlementFailed
-            ? {
-                settlementRetry: {
-                  settlementId: stableSettlementId,
-                  // Bare cause: the retry renders it, and `exit-observed` already says the rest.
-                  detail: unexpectedEvent.reason.slice(0, MAX_UNEXPECTED_EXIT_REASON_CHARS)
-                }
-              }
-            : {})
+          // Bare cause: whatever this settlement could not write is settled from it later, by the
+          // next acquire or read restore, and `exit-observed` already says the rest.
+          exitReason: unexpectedEvent.reason.slice(0, MAX_UNEXPECTED_EXIT_REASON_CHARS)
         })
       } catch (error) {
         context.onBarrierError?.(unexpectedEvent.sessionId, error)
