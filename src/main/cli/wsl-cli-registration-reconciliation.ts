@@ -112,16 +112,14 @@ export async function reconcileManagedWslCliRegistrations(
   const appVersion = options.appVersion ?? ''
   const candidates = await registry.getCandidates(availableDistros, { currentTarget, appVersion })
   // Why: discovery is speculative, so it must never boot a stopped VM (`--list --running`
-  // does not); only distros the user registered justify `wsl -d` against a stopped VM.
-  // Why: without a host launcher target a failed probe cannot be blamed on the distro, and
-  // discovery can wait for a launch where the host side works.
+  // does not, and a stale fallback list is refused); only distros the user registered
+  // justify `wsl -d` against a stopped VM. Without a host launcher target a failed probe
+  // cannot be blamed on the distro, so discovery waits for a launch where the host works.
+  const listRunning =
+    options.listRunningDistros ?? (() => listRunningWslDistrosAsync({ requireConfirmed: true }))
   const running =
     currentTarget && candidates.some((candidate) => !candidate.registered)
-      ? new Set(
-          (await (options.listRunningDistros ?? listRunningWslDistrosAsync)().catch(() => [])).map(
-            normalizeWslDistroKey
-          )
-        )
+      ? new Set((await listRunning().catch(() => [])).map(normalizeWslDistroKey))
       : null
   const discovery = new Set<string>()
   const distros = candidates.flatMap(({ distro, registered }) => {

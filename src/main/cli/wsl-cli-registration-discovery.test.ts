@@ -231,6 +231,23 @@ describe('WSL CLI registration discovery on a host that never registered the CLI
     expect(installer.wslSpawns()).toBe(firstLaunch * 2)
   })
 
+  it('retries a current Orca launcher whose bridge read failed on the next launch', async () => {
+    const bridgePath = _internals.getBridgePathFromCommandPath(COMMAND_PATH)
+    const installer = countingInstaller({
+      files: {
+        [COMMAND_PATH]: _internals.buildWslLauncher(LAUNCHER, bridgePath),
+        [bridgePath]: new Error('WSL command timed out after 10000ms.')
+      }
+    })
+
+    const [first] = await reconcile(installer.createInstaller, ['Ubuntu'])
+    const firstLaunch = installer.wslSpawns()
+    await reconcile(installer.createInstaller, ['Ubuntu'])
+
+    expect(first).toMatchObject({ outcome: 'failed' })
+    expect(installer.wslSpawns()).toBe(firstLaunch * 2)
+  })
+
   it('rejects public installer calls with the runner error unchanged', async () => {
     const installer = countingInstaller({ failHome: true }).createInstaller('Ubuntu')
 
