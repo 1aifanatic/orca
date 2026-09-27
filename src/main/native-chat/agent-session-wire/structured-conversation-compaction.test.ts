@@ -536,6 +536,52 @@ it('writes one exit row when the child dies mid-command, and the loop writes not
   )
 })
 
+it('delivers the next message after a command whose child died and whose settlement could not be written', async () => {
+  state.acquire.mockImplementation(async ({ fence, spawnToken }) => ({
+    process: { hostId: 'local', pid: 4242, processStartTimeMs: 1_700_000_000_000, spawnToken },
+    acquisitionGeneration: `generation-${fence}`,
+    link: {
+      linkId: `link-${fence}`,
+      handle: { provider: 'codex', threadId: THREAD },
+      origin: state.store.getRecord(SESSION)?.providerHandleChain.length ? 'resumed' : 'created',
+      mintedAtFence: fence,
+      observedAt: 1
+    }
+  }))
+  await attach()
+  const params = compactParams()
+  const cmid = params.envelope.clientOperationId
+  await state.host.conversationCommand(CALLER, params)
+  await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce())
+  const { journal: live } = state.host['sessions'].get(SESSION)!
+  const appendLifecycleBatch = live.appendLifecycleBatch.bind(live)
+  vi.spyOn(live, 'appendLifecycleBatch').mockImplementation((input) =>
+    input.settlementId.includes('provider-exit:')
+      ? Promise.reject(new Error('disk full'))
+      : appendLifecycleBatch(input)
+  )
+
+  const fence = state.store.getRecord(SESSION)!.lease.runtimeFence
+  await state.host.handleAdapterEvent({
+    type: 'ended',
+    sessionId: SESSION,
+    fence,
+    acquisitionGeneration: `generation-${fence}`,
+    reason: 'provider exited',
+    cause: 'unexpected-exit'
+  })
+  await vi.waitFor(() => expect(state.host['sessions'].get(SESSION)?.child).toBeNull())
+  expect(readAgentJournalTurn((await commandTurn(cmid))?.body)?.state).toBe('running')
+
+  // The next start settles what the gone child left running, so the command holds nothing.
+  await expect(state.host.send(CALLER, sendParams('after it'))).resolves.toMatchObject({
+    ok: true
+  })
+  await vi.waitFor(() => expect(state.dispatch).toHaveBeenCalledOnce())
+  expect(state.acquire).toHaveBeenCalledTimes(2)
+  expect(readAgentJournalTurn((await commandTurn(cmid))?.body)?.state).not.toBe('running')
+})
+
 it("ignores an older build's unconfirmed compaction record, and answers its operation without rerunning it (B15)", async () => {
   await attach()
   const older = compactParams()

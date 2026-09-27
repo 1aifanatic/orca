@@ -3,9 +3,9 @@
 //
 // A send is accepted on its own serialized step and returns; this loop does the rest. It exists
 // for a session exactly while a message is queued there — accepted, not yet handed over — and no
-// conversation command runs: a command's turn takes no input, and the commit that ends it wakes
-// the loop again. Every step re-reads the journal and the conversation's child record to decide, so there is no
-// loop state to disagree with them. Each step is its own serialized task. That is what lets a Stop
+// child is running a conversation command: a command's turn takes no input, and the commit that
+// ends it wakes the loop again. Every step re-reads the journal and the conversation's child
+// record to decide, so there is no loop state to disagree with them. Each step is its own serialized task. That is what lets a Stop
 // that arrives while a start holds the queue withdraw the queued messages before the handover that
 // would have written them. Stop and the conversation's close are the only other writers of a
 // queued message: a child's exit only ends the child, and this loop reads why.
@@ -141,8 +141,9 @@ export class StructuredAgentSessionDeliveryLoop {
       (submission) => session.journal.wroteBeforeOpen(submission.acceptedSequence)
     )
     const oldest = oldestQueuedSubmission(session)
-    // A running command takes no input. Its end is a commit, which wakes the loop again.
-    if (!oldest || structuredAgentSessionCommandRunning(session.journal)) {
+    // A running command takes no input while its child carries it; its end is a commit, which
+    // wakes the loop again. With no child it is a gone generation's, which the start below settles.
+    if (!oldest || (session.child && structuredAgentSessionCommandRunning(session.journal))) {
       return this.stop(sessionId)
     }
     const failedStart = startThatFailedWhileQueued(session, oldest)
