@@ -6,7 +6,10 @@ import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-ses
 import type { AgentSessionConversationCommand } from '../../../shared/agent-session-conversation-command'
 import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
-import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
+import {
+  AgentSessionAcquisitionRefusal,
+  type StructuredAgentSessionAdapter
+} from './structured-agent-session-adapter'
 import type { StructuredSessionCompactionResult } from './structured-session-compaction'
 import {
   HOST_TEST_NOW,
@@ -285,6 +288,23 @@ describe('host conversation commands', () => {
     expect(await host.conversationCommand(caller, commandParams('compact'))).toMatchObject({
       ok: true
     })
+  })
+
+  it('keeps the situation a refused replacement start named', async () => {
+    vi.mocked(adapter.acquire).mockRejectedValueOnce(
+      new AgentSessionAcquisitionRefusal('Codex is not signed in.', 'notSignedIn')
+    )
+    expect(await host.conversationCommand(caller, commandParams('clear'))).toMatchObject({
+      ok: true,
+      value: {
+        state: 'completed',
+        replacementSessionId: undefined,
+        error:
+          'Codex is not signed in for the selected account. Sign in, then send your message again.',
+        failure: { kind: 'notSignedIn' }
+      }
+    })
+    expect(store.listVisibleSessionIds()).toEqual([HOST_TEST_SESSION])
   })
 
   it('runs a command whose fence the client has not caught up to', async () => {

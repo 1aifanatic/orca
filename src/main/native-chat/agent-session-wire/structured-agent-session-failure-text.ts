@@ -82,7 +82,7 @@ function refusedStartFailureFact(
   if (reason === 'providerStartFailed') {
     return agentSessionFailureFact('providerStartFailed', { detail: diagnostic })
   }
-  return agentSessionFailureFact('restartFailed', {
+  return agentSessionFailureFact(cause.newSession ? 'startFailed' : 'restartFailed', {
     detail: diagnostic,
     refusal: agentSessionRefusalReference(refusal)
   })
@@ -91,8 +91,8 @@ function refusedStartFailureFact(
 /** Why a start the chat needed did not land, as the place that saw it knows it. */
 export type StructuredAgentSessionStartFailureCause =
   /** The session could not be made ready; the provider's words, if any, are kept host-side, off
-   *  the refusal. */
-  | { refusal: AgentSessionWireRefusal; diagnostic?: ProviderDiagnostic }
+   *  the refusal. `newSession`: one that never ran, so it failed to start rather than restart. */
+  | { refusal: AgentSessionWireRefusal; diagnostic?: ProviderDiagnostic; newSession?: true }
   /** A start that threw, or an adapter's own startup failure; any diagnostic it carries. */
   | { error: unknown }
   /** The child ended before it proved its start, as its ended event told it. */
@@ -109,7 +109,10 @@ export type StructuredAgentSessionStartFailureCause =
  *  messages the start was for. */
 export type StructuredAgentSessionStartFailureWords = AgentJournalDispatchRejection
 
-function startFailureFact(cause: StructuredAgentSessionStartFailureCause): AgentSessionFailureFact {
+/** The fact a failed start records, for a writer that words it on its own surface. */
+export function structuredAgentSessionStartFailureFact(
+  cause: StructuredAgentSessionStartFailureCause
+): AgentSessionFailureFact {
   if ('refusal' in cause) {
     return refusedStartFailureFact(cause)
   }
@@ -134,5 +137,8 @@ export function structuredAgentSessionStartFailure(
   cause: StructuredAgentSessionStartFailureCause,
   context: AgentSessionFailureWordsContext = {}
 ): StructuredAgentSessionStartFailureWords {
-  return agentSessionFailureWords(startFailureFact(cause), { ...context, surface: 'rejection' })
+  return agentSessionFailureWords(structuredAgentSessionStartFailureFact(cause), {
+    ...context,
+    surface: 'rejection'
+  })
 }

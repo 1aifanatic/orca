@@ -27,7 +27,7 @@ import {
   agentSessionFailureWords,
   type AgentSessionFailureWordsContext
 } from '../../../shared/agent-session-failure-words'
-import { agentSessionRefusalReference } from '../../../shared/agent-session-wire-refusals'
+import { structuredAgentSessionStartFailureFact } from './structured-agent-session-failure-text'
 import { structuredAgentSessionFailureWordsContext } from './structured-agent-session-send-preparation'
 import type { StructuredSessionCompactionResult } from './structured-session-compaction'
 
@@ -196,8 +196,9 @@ export function runStructuredConversationCommand(
                 phase: 'committed' as const,
                 state: 'completed' as const,
                 ...conversationCommandFailure(
-                  agentSessionFailureFact('startFailed', {
-                    refusal: agentSessionRefusalReference(acquired.refusal)
+                  structuredAgentSessionStartFailureFact({
+                    refusal: acquired.refusal,
+                    newSession: true
                   }),
                   structuredAgentSessionFailureWordsContext(record)
                 )
