@@ -381,3 +381,87 @@ describe('re-deriving a fenced frame after the host retired another surface', ()
     expect(await listedSurfaces(runtime)).toEqual([`tab::${LEFT}:ready`])
   })
 })
+
+// A phone creates a terminal while the desktop's frame still lacks it: the spawn registered and the
+// host published the tab itself, as it does for a create the desktop has not published yet.
+const PHONE_LEAF = '33333333-3333-4333-8333-333333333333'
+
+async function runtimeWithUnpublishedPhoneCreate(): Promise<OrcaRuntimeService> {
+  const session = makeColdRestoredSession()
+  const handlers = new Map<string, (event: unknown, reply: unknown) => void>()
+  let runtime: OrcaRuntimeService | null = null
+  const webContents = {
+    isDestroyed: () => false,
+    setBackgroundThrottling: () => {},
+    send: (channel: string, payload: { requestId: string }) => {
+      if (channel !== 'terminal:requestTabCreate') {
+        return
+      }
+      runtime?.registerPty('pty-phone', WORKTREE_ID, null, {
+        tabId: 'tab-phone',
+        leafId: PHONE_LEAF,
+        incarnationId: 'incarnation-phone'
+      })
+      handlers.get('terminal:tabCreateReply')?.(
+        { sender: webContents },
+        { requestId: payload.requestId, tabId: 'tab-phone', title: 'Terminal' }
+      )
+    }
+  }
+  setRuntimeDesktopSurface({
+    showNotification: () => false,
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the create path reads only liveness and these webContents members off its authoritative window.
+    findWindowById: () => ({ isDestroyed: () => false, webContents }) as never,
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: only the tab-create reply channel is registered on this path.
+    onIpc: (channel, listener) => handlers.set(channel, listener as never),
+    removeIpcListener: (channel) => handlers.delete(channel)
+  })
+  runtime = new OrcaRuntimeService(
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the list, fence and create paths read only repos and the workspace session; the rest of Store is unreached.
+    {
+      getRepos: () => [LIVE_REPO],
+      getWorkspaceSession: () => session,
+      flushOrThrow: () => {
+        throw new Error('synchronous flush')
+      }
+    } as never
+  )
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the create path focuses only when activating, which this create does not.
+  runtime.setNotifier({ focusTerminal: vi.fn() } as never)
+  Object.assign(runtime, {
+    resolveTerminalWorkspaceLaunchScope: vi.fn(async () => ({
+      id: WORKTREE_ID,
+      path: '/worktree',
+      connectionId: null,
+      repo: LIVE_REPO,
+      folderWorkspace: null
+    }))
+  })
+  runtime.attachWindow(1)
+  publishRendererFrame(runtime)
+  await runtime.createMobileSessionTerminal(`id:${WORKTREE_ID}`, {
+    activate: false,
+    clientNavigationId: 'phone'
+  })
+  return runtime
+}
+
+describe('re-deriving a fenced frame after the host added a surface', () => {
+  afterEach(() => setRuntimeDesktopSurface(null))
+
+  it('keeps a phone-created terminal listed and runtime-owned when a fenced surface registers', async () => {
+    const runtime = await runtimeWithUnpublishedPhoneCreate()
+    expect(await listedSurfaces(runtime)).toEqual([`tab-phone::${PHONE_LEAF}:ready`])
+
+    runtime.registerPty('pty-left', WORKTREE_ID, null, {
+      tabId: 'tab',
+      leafId: LEFT,
+      incarnationId: 'incarnation-restored'
+    })
+
+    expect(await listedSurfaces(runtime)).toEqual([
+      `tab::${LEFT}:ready`,
+      `tab-phone::${PHONE_LEAF}:ready`
+    ])
+  })
+})
