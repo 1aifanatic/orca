@@ -3,6 +3,9 @@ import { normalizeHookPayload } from '../../../shared/agent-hook-listener'
 import { isAgentHookSource, type AgentHookSource } from '../../../shared/agent-hook-relay'
 import type { NormalizedLocalHook } from './server-types'
 import { AgentHookServerOpenCodeBinder } from './server-opencode-binder'
+import { attributeCodexSharedDaemonHookBody } from '../../../shared/agent-hook-listener/codex-shared-daemon-attribution'
+import { lookupOpenCodePaneLaunchToken } from '../../../shared/agent-hook-listener/opencode-session-registry'
+import { listRegisteredPtys } from '../../memory/pty-registry'
 
 export abstract class AgentHookServerIngestNormalization extends AgentHookServerOpenCodeBinder {
   protected setClaudeBackgroundEvidence(
@@ -20,6 +23,13 @@ export abstract class AgentHookServerIngestNormalization extends AgentHookServer
     } else {
       this.state.claudeActiveSessionCronPaneKeys.delete(paneKey)
     }
+  }
+
+  /** Re-own a post the shared Codex daemon ran; its stamp is whichever pane started the daemon. */
+  protected attributeCodexSharedDaemonBody(body: unknown): unknown {
+    return attributeCodexSharedDaemonHookBody(body, listRegisteredPtys(), (paneKey) =>
+      lookupOpenCodePaneLaunchToken(this.state, paneKey)
+    )
   }
 
   protected normalizeLocalHookPayload(source: AgentHookSource, body: unknown): NormalizedLocalHook {
