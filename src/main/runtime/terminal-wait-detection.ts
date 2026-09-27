@@ -49,27 +49,31 @@ export function isKnownReadyPromptPreview(preview: string): boolean {
 
 /**
  * Tier 1 body evidence for every tui-idle site. `readScreenLines` yields the live emulator's
- * visible grid, or null when the runtime has no trustworthy one; a thunk so other agents skip it.
+ * visible grid, or null when the runtime has no trustworthy one.
  *
- * Why the screen decides once it shows the Codex header: Codex repaints its header by cell
- * diff (`ESC[5;3Hdir ESC[5;7Hctory:`), which only a grid reassembles — the line-folded wait
- * text reads `dirctory:` forever. The grid also shows `loading` being replaced, which the
- * append-only text keeps. Without the header on screen, the text rules apply unchanged.
+ * Why the screen: Codex repaints its header by cell diff (`ESC[5;3Hdir ESC[5;7Hctory:`), which
+ * only a grid reassembles — the line-folded wait text reads `dirctory:` forever.
+ * Why it can only add readiness: a grid out of step with the PTY (size mismatch, resize
+ * mid-paint) garbles the header, so the text rules keep every verdict they give today.
  */
 export function isKnownReadyPromptBody(
   waitText: string,
   agent: TuiAgent | null,
   readScreenLines: () => readonly string[] | null
 ): boolean {
-  // Why the agent gate: another agent's screen can merely mention "OpenAI Codex".
-  const screenLines = agent === null || agent === 'codex' ? readScreenLines() : null
-  if (screenLines !== null) {
-    const screen = screenLines.join('\n').toLowerCase()
-    if (screen.includes(CODEX_HEADER_TITLE)) {
-      return isReadyPromptUnblocked(screen, findCodexScreenReadyPromptIndex(screen))
-    }
+  if (isKnownReadyPromptPreview(waitText)) {
+    return true
   }
-  return isKnownReadyPromptPreview(waitText)
+  // Why the agent gate: another agent's screen can merely mention "OpenAI Codex".
+  if (agent !== null && agent !== 'codex') {
+    return false
+  }
+  const screenLines = readScreenLines()
+  if (screenLines === null) {
+    return false
+  }
+  const screen = screenLines.join('\n').toLowerCase()
+  return isReadyPromptUnblocked(screen, findCodexScreenReadyPromptIndex(screen))
 }
 
 function isReadyPromptUnblocked(normalized: string, readyIndex: number | null): boolean {
@@ -161,10 +165,8 @@ function findMuseReadyPromptIndex(normalized: string): number | null {
     : null
 }
 
-const CODEX_HEADER_TITLE = 'openai codex'
-
 function findCodexReadyPromptIndex(normalized: string): number | null {
-  const headerIndex = normalized.lastIndexOf(CODEX_HEADER_TITLE)
+  const headerIndex = normalized.lastIndexOf('openai codex')
   if (headerIndex === -1) {
     return null
   }
@@ -175,8 +177,7 @@ function findCodexReadyPromptIndex(normalized: string): number | null {
 
 const CODEX_HEADER_LOADING_RE = /(?:model|directory):\s+loading/
 
-// Why screen-only: the append-only wait text keeps a plain launch's `model: loading` after it
-// resolves, so this guard would strand passing launches if applied there.
+// Why: a header still reading `loading` is not ready yet; the screen must not add readiness early.
 function findCodexScreenReadyPromptIndex(screen: string): number | null {
   const headerIndex = findCodexReadyPromptIndex(screen)
   if (headerIndex === null) {

@@ -86,37 +86,41 @@ describe('Codex 0.157 header readiness from captured bytes', () => {
   )
 
   it.each(ALL_FIXTURES)(
-    '%s: not ready while the header shows loading, ready at the final screen',
+    '%s: the screen never adds readiness while loading, and is ready at the final screen',
     async (name) => {
       let sawLoadingHeader = false
       let last: ReplayFrame | null = null
       for await (const frame of replay(readFixture(name), 120, 40)) {
         if (screenShowsLoadingHeader(frame.screenLines)) {
           sawLoadingHeader = true
-          expect(isKnownReadyPromptBody(frame.waitText, 'codex', () => frame.screenLines)).toBe(
-            false
-          )
+          expect(isKnownReadyPromptBody('', 'codex', () => frame.screenLines)).toBe(false)
         }
         last = frame
       }
-      // Presence precondition: the loading veto was actually exercised.
+      // Presence precondition: a loading frame was actually exercised.
       expect(sawLoadingHeader).toBe(true)
       expect(last).not.toBeNull()
       expect(isKnownReadyPromptBody(last!.waitText, 'codex', () => last!.screenLines)).toBe(true)
     }
   )
 
-  it('vetoes the append-only text copy while the screen still shows loading', async () => {
-    for await (const frame of replay(readFixture(PLAIN), 120, 40)) {
-      if (
-        screenShowsLoadingHeader(frame.screenLines) &&
-        isKnownReadyPromptPreview(frame.waitText)
-      ) {
-        expect(isKnownReadyPromptBody(frame.waitText, 'codex', () => frame.screenLines)).toBe(false)
-        return
+  // Why these sizes: grids out of step with the 120x40 recording garble the header (review of #23475).
+  describe.each([
+    [120, 40],
+    [80, 24],
+    [30, 50],
+    [108, 30],
+    [60, 5]
+  ])('at %ix%i the screen never takes readiness away from the text rules', (cols, rows) => {
+    it.each(ALL_FIXTURES)('%s', async (name) => {
+      for await (const frame of replay(readFixture(name), cols, rows)) {
+        if (isKnownReadyPromptPreview(frame.waitText)) {
+          expect(isKnownReadyPromptBody(frame.waitText, 'codex', () => frame.screenLines)).toBe(
+            true
+          )
+        }
       }
-    }
-    throw new Error('no frame where the text copy claimed ready over a loading screen')
+    })
   })
 
   it('keeps the text rules when there is no live screen', async () => {
@@ -148,15 +152,16 @@ describe('Codex 0.157 header readiness from captured bytes', () => {
     expect(isKnownReadyPromptBody('', 'codex', () => screenLines)).toBe(false)
   })
 
-  it('leaves a non-codex pane on the text rules even when its screen mentions the Codex header', () => {
+  it('leaves a non-codex pane on the text rules even when its screen shows the Codex header', () => {
     const screenLines = [
       '│ >_ OpenAI Codex (v0.157.1)                               │',
-      '│ model:       loading   /model to change                  │',
+      '│ model:       GPT-6-Sol high   /model to change           │',
       '│ directory:   ~/repo/app                                  │'
     ]
-    const waitText = 'OpenAI Codex\nmodel: gpt\ndirectory: ~/repo/app'
-    expect(isKnownReadyPromptBody(waitText, 'claude', () => screenLines)).toBe(true)
-    expect(isKnownReadyPromptBody(waitText, 'codex', () => screenLines)).toBe(false)
+    const readScreenLines = vi.fn(() => screenLines)
+    expect(isKnownReadyPromptBody('', 'claude', readScreenLines)).toBe(false)
+    expect(readScreenLines).not.toHaveBeenCalled()
+    expect(isKnownReadyPromptBody('', 'codex', readScreenLines)).toBe(true)
   })
 
   describe('at the 80x24 default grid the header garbles and today’s answer stands', () => {
