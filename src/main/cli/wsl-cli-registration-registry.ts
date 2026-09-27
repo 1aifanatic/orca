@@ -193,19 +193,6 @@ export type WslCliRegistrationCandidate = {
   registered: boolean
 }
 
-export async function getWslCliRegistrationCandidates(
-  userDataPath: string,
-  availableDistros: string[],
-  timing: WslCliRegistrationRegistryTiming = {}
-): Promise<string[]> {
-  const candidates = await getWslCliRegistrationCandidateEntries(
-    userDataPath,
-    availableDistros,
-    timing
-  )
-  return candidates.map((candidate) => candidate.distro)
-}
-
 export async function getWslCliRegistrationCandidateEntries(
   userDataPath: string,
   availableDistros: string[],

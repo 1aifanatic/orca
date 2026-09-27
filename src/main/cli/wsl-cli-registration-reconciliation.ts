@@ -7,7 +7,7 @@ import {
   type WslCliRegistrationCandidate,
   type WslCliRegistrationObservation
 } from './wsl-cli-registration-registry'
-import { WslCliInstaller } from './wsl-cli-installer'
+import { WslCliInstaller, WslCliOwnershipProbeError } from './wsl-cli-installer'
 import {
   normalizeWslDistroKey,
   runSerializedWslCliRegistrationOperation
@@ -113,13 +113,16 @@ export async function reconcileManagedWslCliRegistrations(
   const candidates = await registry.getCandidates(availableDistros, { currentTarget, appVersion })
   // Why: discovery is speculative, so it must never boot a stopped VM (`--list --running`
   // does not); only distros the user registered justify `wsl -d` against a stopped VM.
-  const running = candidates.some((candidate) => !candidate.registered)
-    ? new Set(
-        (await (options.listRunningDistros ?? listRunningWslDistrosAsync)().catch(() => [])).map(
-          normalizeWslDistroKey
+  // Why: without a host launcher target a failed probe cannot be blamed on the distro, and
+  // discovery can wait for a launch where the host side works.
+  const running =
+    currentTarget && candidates.some((candidate) => !candidate.registered)
+      ? new Set(
+          (await (options.listRunningDistros ?? listRunningWslDistrosAsync)().catch(() => [])).map(
+            normalizeWslDistroKey
+          )
         )
-      )
-    : null
+      : null
   const discovery = new Set<string>()
   const distros = candidates.flatMap(({ distro, registered }) => {
     if (registered) {
@@ -142,9 +145,10 @@ export async function reconcileManagedWslCliRegistrations(
     try {
       repair = await createInstaller(distro).repairManagedRegistration()
     } catch (error) {
-      if (discovery.has(distro)) {
-        // Why: an unrecorded discovery failure (e.g. a cold-distro timeout) re-probed this
-        // never-registered distro on every launch; the inspection TTL now bounds it.
+      if (discovery.has(distro) && error instanceof WslCliOwnershipProbeError) {
+        // Why: an unrecorded guest failure (e.g. a cold-distro timeout) re-probed this
+        // never-registered distro on every launch. Failures after ownership is known
+        // (a stale Orca wrapper whose install failed) must retry next launch instead.
         await registry
           .recordObservations([{ distro, inspected: true, managed: null }])
           .catch(() => undefined)

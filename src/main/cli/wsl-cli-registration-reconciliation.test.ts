@@ -28,6 +28,7 @@ describe('reconcileManagedWslCliRegistrations', () => {
       userDataPath: '/user-data',
       listDistros: async () => ['Ubuntu', 'Debian', 'Fedora'],
       listRunningDistros: async () => ['Debian'],
+      getHostLauncherTarget: async () => 'C:\\Orca\\orca.exe',
       registry,
       createInstaller: (distro) => {
         if (distro === 'Ubuntu') {
@@ -38,12 +39,17 @@ describe('reconcileManagedWslCliRegistrations', () => {
     })
 
     expect(registry.getCandidates).toHaveBeenCalledWith(['Ubuntu', 'Debian', 'Fedora'], {
-      currentTarget: null,
+      currentTarget: 'C:\\Orca\\orca.exe',
       appVersion: ''
     })
     expect(registry.recordObservations).toHaveBeenCalledTimes(2)
     expect(registry.recordObservations).toHaveBeenCalledWith([
-      { distro: 'Ubuntu', inspected: true, managed: true }
+      {
+        distro: 'Ubuntu',
+        inspected: true,
+        managed: true,
+        reconciled: { target: 'C:\\Orca\\orca.exe', appVersion: '' }
+      }
     ])
     expect(registry.recordObservations).toHaveBeenCalledWith([
       { distro: 'Debian', inspected: true, managed: false, reconciled: null }
