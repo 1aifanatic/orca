@@ -13,7 +13,7 @@ import {
   supportsStructuredAgentSessionQuestionAnswers
 } from '@/runtime/structured-agent-session-client'
 import { useStructuredAgentSessionHostStopsConversation } from '@/runtime/structured-agent-session-host-capability'
-import { hasUnsettledStructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
+import { hasUnsentStructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
 import {
   legacyAgentSessionSelectedOptionId,
   type AgentSessionPromptResponse
@@ -127,7 +127,12 @@ export function useStructuredAgentSession(args: {
   const canStop =
     transportState.turnId !== null ||
     (stopsConversation &&
-      (transportState.isWorking || hasUnsettledStructuredAgentSessionOutboxEntry(outbox)))
+      (transportState.isWorking ||
+        hasUnsentStructuredAgentSessionOutboxEntry(
+          outbox,
+          transportState.submissions,
+          outboxController.blockedClientMessageId
+        )))
   const messages = useStructuredAgentSessionMessages(
     transportState.journalItems,
     outbox,

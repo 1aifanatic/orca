@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
 let items: AgentJournalRenderItem[] = []
 let submissions: AgentJournalSubmission[] = []
 let outbox: StructuredAgentSessionOutboxEntry[] = []
+let blockedClientMessageId: string | null = null
 
 vi.mock('@/runtime/structured-agent-session-client', () => ({
   callStructuredAgentSession: mocks.call,
@@ -37,7 +38,7 @@ vi.mock('./use-structured-agent-session-outbox', () => ({
   structuredSessionOperationId: () => 'operation-1',
   useStructuredAgentSessionOutbox: () => ({
     outbox,
-    blockedClientMessageId: null,
+    blockedClientMessageId,
     error: null,
     send: vi.fn(),
     retry: vi.fn(),
@@ -136,6 +137,7 @@ beforeEach(() => {
   items = []
   submissions = []
   outbox = []
+  blockedClientMessageId = null
 })
 
 describe('Stop against a host that stops the conversation', () => {
@@ -174,6 +176,27 @@ describe('Stop against a host that stops the conversation', () => {
     outbox = [entry('rejected')]
     submissions = [submission({ dispatchState: 'accepted', resolvedAt: 2 })]
     expect(render().result.current.canStop).toBe(false)
+  })
+
+  it('is hidden with only a message that waits on its Retry', () => {
+    // A send that failed holds the queue until the user retries it.
+    outbox = [entry('queued')]
+    blockedClientMessageId = 'client-1'
+    expect(render().result.current.canStop).toBe(false)
+
+    // A send the host restarted under is parked for the user, and the chat reads idle.
+    outbox = [{ ...entry('unconfirmed'), retryAfterUnknownSubmittedAt: -1 }]
+    blockedClientMessageId = null
+    submissions = [
+      submission({
+        dispatchState: 'unknown',
+        recovered: true,
+        reason: 'host_restarted_before_acknowledgement'
+      })
+    ]
+    const { result } = render()
+    expect(result.current.isWorking).toBe(false)
+    expect(result.current.canStop).toBe(false)
   })
 })
 

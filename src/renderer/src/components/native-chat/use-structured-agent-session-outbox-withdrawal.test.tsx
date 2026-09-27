@@ -7,6 +7,7 @@ import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 import {
+  hasUnsentStructuredAgentSessionOutboxEntry,
   withdrawUnsentStructuredAgentSessionOutboxEntries,
   type StructuredAgentSessionOutboxEntry
 } from '../../../../shared/structured-agent-session-outbox'
@@ -115,9 +116,49 @@ describe('a Stop withdrawing what the host does not hold', () => {
     ]
 
     expect(
-      withdrawUnsentStructuredAgentSessionOutboxEntries(entries, [pending('held')]).map(
+      withdrawUnsentStructuredAgentSessionOutboxEntries(entries, [pending('held')], null).map(
         (candidate) => candidate.clientMessageId
       )
     ).toEqual(['held', 'refused'])
+  })
+
+  it('leaves every message that waits on its Retry, not only a refused one', () => {
+    const entries = [
+      entry('blocked', 'queued'),
+      { ...entry('retried-in-doubt', 'unconfirmed'), retryAfterUnknownSubmittedAt: 10 },
+      entry('probed-in-doubt', 'unconfirmed'),
+      entry('local', 'queued')
+    ]
+
+    expect(
+      withdrawUnsentStructuredAgentSessionOutboxEntries(entries, [], 'blocked').map(
+        (candidate) => candidate.clientMessageId
+      )
+    ).toEqual(['blocked', 'retried-in-doubt'])
+    expect(hasUnsentStructuredAgentSessionOutboxEntry(entries.slice(0, 2), [], 'blocked')).toBe(
+      false
+    )
+    expect(hasUnsentStructuredAgentSessionOutboxEntry(entries, [], 'blocked')).toBe(true)
+  })
+
+  it('keeps a message whose send failed for its Retry', async () => {
+    mocks.call.mockRejectedValue(new Error('the host refused the frame'))
+    const { result } = renderHook(() =>
+      useStructuredAgentSessionOutbox({
+        sessionId: 'session-1',
+        target: { kind: 'local' },
+        fence: 1,
+        submissions: []
+      })
+    )
+    act(() => expect(result.current.send('first')).toBe(true))
+    await waitFor(() => expect(result.current.blockedClientMessageId).not.toBeNull())
+
+    act(() => result.current.withdrawUnsent())
+
+    expect(result.current.outbox.map((candidate) => candidate.body.blocks)).toEqual([
+      [{ type: 'text', text: 'first' }]
+    ])
+    expect(readOutbox('session-1')).toHaveLength(1)
   })
 })

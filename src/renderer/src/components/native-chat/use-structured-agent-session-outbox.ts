@@ -252,7 +252,11 @@ export function useStructuredAgentSessionOutbox(args: {
 
   // Before the Stop goes out, so the drain has nothing left to send after it.
   const withdrawUnsent = useCallback((): void => {
-    const next = withdrawUnsentStructuredAgentSessionOutboxEntries(outboxRef.current, submissions)
+    const next = withdrawUnsentStructuredAgentSessionOutboxEntries(
+      outboxRef.current,
+      submissions,
+      blockedIdRef.current
+    )
     if (next.length !== outboxRef.current.length) {
       outboxRef.current = next
       setOutbox(next)
