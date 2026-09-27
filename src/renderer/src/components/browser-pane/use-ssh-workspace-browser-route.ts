@@ -70,8 +70,9 @@ export function useSshWorkspaceBrowserRoute(
     targetId !== null && hostConnection.targetId === targetId ? hostConnection : null
   // Why only an unsettled route waits: a dial is a transient, so it must not unmount a ready
   // page or swap a failed route's card for "preparing". A connect (below) re-derives a failed one.
+  // Unrouted and another target's page are unsettled too: neither answers for this target.
   const routeReady = state.kind === 'ready' && state.targetId === targetId
-  const awaitingHost = routeHost?.phase === 'connecting' && state.kind === 'preparing'
+  const awaitingHost = routeHost?.phase === 'connecting' && state.kind !== 'error' && !routeReady
   const connectedHostEpoch = routeHost?.connectedEpoch ?? null
   const [seenConnectedHostEpoch, setSeenConnectedHostEpoch] = useState(connectedHostEpoch)
   if (connectedHostEpoch !== seenConnectedHostEpoch) {

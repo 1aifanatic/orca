@@ -12,11 +12,12 @@ const mocks = vi.hoisted(() => {
     publishedStatus: 'connecting',
     connectedEpoch: null
   }
-  return { hostConnection, prepare: vi.fn() }
+  const route: { executionHostId: string | null } = { executionHostId: 'ssh:target-a' }
+  return { hostConnection, ...route, prepare: vi.fn() }
 })
 
 vi.mock('@/lib/worktree-runtime-owner', () => ({
-  getExecutionHostIdForWorktree: () => 'ssh:target-a'
+  getExecutionHostIdForWorktree: () => mocks.executionHostId
 }))
 vi.mock('@/lib/worktree-host-connection-phase', () => ({
   selectWorktreeHostConnectionPhase: () => mocks.hostConnection,
@@ -56,6 +57,7 @@ function setHost(
 describe('useSshWorkspaceBrowserRoute under a reconnecting SSH host', () => {
   beforeEach(() => {
     mocks.prepare.mockReset()
+    mocks.executionHostId = 'ssh:target-a'
     Object.defineProperty(window, 'api', {
       configurable: true,
       value: { browser: { prepareSshWorkspacePartition: mocks.prepare } }
@@ -187,6 +189,28 @@ describe('useSshWorkspaceBrowserRoute under a reconnecting SSH host', () => {
     rerender()
     await settle()
     expect(mocks.prepare).toHaveBeenCalledTimes(2)
+    expect(result.current.state.kind).toBe('ready')
+  })
+
+  it('waits for a dialing host when the route becomes routed mid-dial', async () => {
+    // Why: an unrouted route is not an answer for the target it just gained.
+    mocks.executionHostId = null
+    setHost('connecting')
+    mocks.prepare.mockResolvedValue({ partition: READY_PARTITION })
+    const { result, rerender } = renderHook(() => useSshWorkspaceBrowserRoute('wt-1', null))
+    await settle()
+    expect(result.current.state).toEqual({ kind: 'unrouted' })
+
+    mocks.executionHostId = 'ssh:target-a'
+    rerender()
+    await settle()
+    expect(result.current.state).toEqual({ kind: 'preparing' })
+    expect(mocks.prepare).not.toHaveBeenCalled()
+
+    setHost('connected', 1)
+    rerender()
+    await settle()
+    expect(mocks.prepare).toHaveBeenCalledOnce()
     expect(result.current.state.kind).toBe('ready')
   })
 

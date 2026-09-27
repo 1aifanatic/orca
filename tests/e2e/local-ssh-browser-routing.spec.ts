@@ -90,6 +90,17 @@ async function readSshState(page: Page, targetId: string): Promise<SshState> {
 }
 
 /**
+ * The status the panes read. Main's `ssh:getState` drops a target's entry on disconnect and on a
+ * failed connect, so only the renderer store still holds a settled failure verdict.
+ */
+async function readRendererSshStatus(page: Page, targetId: string): Promise<string | null> {
+  return page.evaluate(
+    (targetId) => window.__store?.getState().sshConnectionStates.get(targetId)?.status ?? null,
+    targetId
+  )
+}
+
+/**
  * `ssh:connect` short-circuits for a still-live session, so an advancing generation here is proof
  * the `kill -9` actually landed rather than an artifact of asking for a reconnect.
  */
@@ -625,7 +636,7 @@ test('holds the mount and offers a working local escape hatch when the SSH host 
 
     // (d) The escape hatch, proven by an origin only this device can reach.
     await expect
-      .poll(async () => (await readSshState(orcaPage, remote.targetId)).status, {
+      .poll(() => readRendererSshStatus(orcaPage, remote.targetId), {
         timeout: 180_000,
         message: 'the redial of an unreachable host must settle as a failure, not an auth prompt'
       })
