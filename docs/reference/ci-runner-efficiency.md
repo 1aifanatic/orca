@@ -90,13 +90,14 @@ analysis, so both fresh PRs saved another roughly 350 MiB store. Controlling tha
 cache duplication is a remaining opportunity; hourly warming alone cannot
 promise retention. Git's checksum-verified cold-build fallback remains required.
 
-The unit scheduling baseline now comes from every successful Node 24 shard in
-run 36221874572. All 9,683 measurements were checked against the eight saved
-assignments before import. Current discovery selects 9,732 files exactly once, using a 230ms
-median for 49 new files. With the same measurements applied to both assignments,
-the largest projected load falls 7.48%; total work is unchanged. See
+The unit scheduling baseline now comes from all eight successful Node 24 shards in
+[run 36294142683](https://github.com/stablyai/orca/actions/runs/36294142683).
+All 9,847 measurements match current discovery exactly once; the previous baseline
+had 165 unmeasured files and one deleted path. Applying the same measurements to
+both assignments reduces the largest projected load from 1,043.811 to 919.695
+worker-seconds (11.9%). This is a scheduling projection, not an elapsed-time claim;
+runner variation remains visible in the source run. See
 [provenance and reproduction](../../config/scripts/ci-shard-timings.md).
-This is a scheduling projection; hosted elapsed time must be measured separately.
 
 ## September 25 follow-up
 
