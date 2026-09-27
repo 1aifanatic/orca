@@ -142,7 +142,7 @@ describe('process boundary ground at a proven crash', () => {
     barrier.accept({ data, rawStartSeq: 0, rawEndSeq: data.length, transformed: false })
 
     await vi.waitFor(() => expect(released).toHaveLength(3))
-    expect(released[1]).toBe(PROCESS_BOUNDARY_GROUND)
+    expect(released[1]).toBe(`\x07${PROCESS_BOUNDARY_GROUND}`)
     expect(released[2]).toBe('\x1b[?2004h$ ')
     expect(barrier.getOwner()).toBe('shell')
     const snapshot = live.getSnapshot()

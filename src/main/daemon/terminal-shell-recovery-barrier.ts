@@ -22,11 +22,13 @@ export type TerminalShellRecoveryBarrierOptions = {
  * Ordered output barrier for dead-TUI mode recovery. Sits between startup
  * ingress and the output plane. When a shell-integration command-done marker
  * (OSC 133;D) arrives while the alternate screen is still active, the stream
- * pauses at that exact byte boundary, the execution host proves the shell owns
+ * pauses at that marker's terminator, the execution host proves the shell owns
  * the PTY foreground, and on proof a mode reset is injected as in-stream output
  * so every downstream consumer (host emulator, mirrors, attached renderers,
  * history) converges — and the queued shell prompt then paints onto the normal
- * buffer instead of the discarded alternate screen. Any failure (refuted proof,
+ * buffer instead of the discarded alternate screen. The reset rides on the held
+ * terminator so every emission covers at least one raw unit: a zero-raw span is
+ * never sent by credit-windowed delivery (SSH relay). Any failure (refuted proof,
  * timeout, overflow, death, disposal) flushes the queue unmodified, preserving
  * incumbent behavior. Clean alternate-screen exits prove ownership without
  * pausing: the model needs no correction, only snapshot metadata.
@@ -43,7 +45,6 @@ export class TerminalShellRecoveryBarrier {
   private queuedBytes = 0
   private pending = false
   private pendingGeneration = 0
-  private pendingRawSeq = 0
   private pendingEpisode = 0
   private bailTimer: ReturnType<typeof setTimeout> | null = null
   private idleWaiters: (() => void)[] = []
@@ -202,20 +203,29 @@ export class TerminalShellRecoveryBarrier {
       this.consumeForStateOnly(emission.data.slice(end))
       return
     }
-    const splitSeq = emission.rawStartSeq + end
-    try {
-      this.releaseDownstream({
-        data: emission.data.slice(0, end),
-        rawStartSeq: emission.rawStartSeq,
-        rawEndSeq: splitSeq,
-        transformed: false
-      })
-    } catch {
-      // Why swallowed: the emulator and records already took the head inside
-      // emit before a client's broadcast threw; aborting here would cost the
-      // post-boundary prompt its entire recovery episode.
+    // The trigger's last char is its terminator and always lies in this emission.
+    const terminatorSeq = emission.rawStartSeq + end - 1
+    const splitSeq = terminatorSeq + 1
+    if (end > 1) {
+      try {
+        this.releaseDownstream({
+          data: emission.data.slice(0, end - 1),
+          rawStartSeq: emission.rawStartSeq,
+          rawEndSeq: terminatorSeq,
+          transformed: false
+        })
+      } catch {
+        // Why swallowed: the emulator and records already took the head inside
+        // emit before a client's broadcast threw; aborting here would cost the
+        // post-boundary prompt its entire recovery episode.
+      }
     }
-    this.enterPending(splitSeq)
+    this.enterPending({
+      data: emission.data.slice(end - 1, end),
+      rawStartSeq: terminatorSeq,
+      rawEndSeq: splitSeq,
+      transformed: false
+    })
     if (end < emission.data.length) {
       this.enqueue({
         data: emission.data.slice(end),
@@ -240,11 +250,12 @@ export class TerminalShellRecoveryBarrier {
     }
   }
 
-  private enterPending(rawSeq: number): void {
+  /** Opens an episode holding `terminator` as the queue head, already scanned. */
+  private enterPending(terminator: PtyIngressEmission): void {
     this.pending = true
     this.pendingEpisode += 1
     this.pendingGeneration = this.scanner.generation
-    this.pendingRawSeq = rawSeq
+    this.enqueue(terminator)
     const episode = this.pendingEpisode
     this.bailTimer = setTimeout(() => this.finishPending(episode, false), this.maxPendingMs)
     this.bailTimer.unref?.()
@@ -279,21 +290,9 @@ export class TerminalShellRecoveryBarrier {
     this.queue = []
     this.queuedBytes = 0
     try {
-      if (confirmed && this.isAlive()) {
-        // Scanned before release so alt-state stays honest.
-        const ground = this.scanner.groundProcessBoundary()
-        try {
-          this.releaseDownstream({
-            data: ground,
-            rawStartSeq: this.pendingRawSeq,
-            rawEndSeq: this.pendingRawSeq,
-            transformed: true
-          })
-        } catch {
-          // Why swallowed: a throwing downstream client must not strand the
-          // queued prompt bytes below.
-        }
-        this.scanner.trySetOwner(this.pendingGeneration)
+      const terminator = queued.shift()
+      if (terminator) {
+        this.releaseTerminator(terminator, confirmed && this.isAlive())
       }
       for (let index = 0; index < queued.length; index += 1) {
         if (this.disposed) {
@@ -315,6 +314,27 @@ export class TerminalShellRecoveryBarrier {
       // Why finally: an escaping throw must never orphan an attach waiting in
       // settleShellOwnershipConfirmation — that wedges createOrAttach forever.
       this.resolveIdleWaiters()
+    }
+  }
+
+  private releaseTerminator(terminator: PtyIngressEmission, grounded: boolean): void {
+    try {
+      this.releaseDownstream(
+        grounded
+          ? {
+              ...terminator,
+              // Scanned before release so alt-state stays honest.
+              data: terminator.data + this.scanner.groundProcessBoundary(),
+              transformed: true
+            }
+          : terminator
+      )
+    } catch {
+      // Why swallowed: a throwing downstream client must not strand the
+      // queued prompt bytes behind it.
+    }
+    if (grounded) {
+      this.scanner.trySetOwner(this.pendingGeneration)
     }
   }
 
