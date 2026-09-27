@@ -3,10 +3,14 @@ import type {
   AgentJournalItemBody,
   AgentJournalItemIdentity
 } from '../../shared/agent-session-journal-types'
+import { agentJournalItemKey } from '../../shared/agent-session-journal-item-key'
+import type { AgentJournalRenderItem } from '../../shared/agent-session-journal-types'
 import {
   readAgentJournalTurn,
   readAgentJournalTurnOutcome
 } from '../../shared/agent-session-turn-record'
+import { describeNativeChatTurnStatus } from '../../shared/native-chat-turn-status'
+import { selectStructuredAgentSettledTurns } from '../../shared/structured-agent-session-turn-timing'
 import type { StructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
 import { claudeResultOutcome } from './claude-result-outcome'
 import { createClaudeJournalTranslator } from './claude-structured-journal-translation'
@@ -193,5 +197,46 @@ describe('a turn end the host inferred', () => {
     expect(readAgentJournalTurn(settled?.body)).toMatchObject({ state: 'interrupted' })
     expect(settled?.body).not.toHaveProperty('outcome')
     expect(readAgentJournalTurnOutcome(readAgentJournalTurn(settled?.body))).toBeNull()
+  })
+
+  // The supersede fires for any send Orca dispatched, and nothing here says whether the user or
+  // another agent sent it, so it can never be recorded as the user's stop.
+  it('reads a turn a newer send superseded as interrupted, never as a stop', () => {
+    const state = sinkState()
+    const translator = createClaudeJournalTranslator({ sink: state.sink })
+    let observedAt = 1_000
+    translator.handle({ ...userTurn('user-1'), observedAt })
+    observedAt = 13_000
+    translator.handle({ ...userTurn('user-2'), observedAt })
+
+    // The journal as a reader holds it: each turn row at its newest revision, after the user row
+    // it names (the host journals that row, not this translator).
+    const rows = new Map<string, AgentJournalRenderItem>()
+    state.items.forEach((item, index) => {
+      const itemId = agentJournalItemKey(item.identity)
+      rows.set(itemId, { itemId, revision: index, sequence: index, observedAt, body: item.body })
+    })
+    const items = [...rows.values()].flatMap((row): AgentJournalRenderItem[] => {
+      const userItemId = readAgentJournalTurn(row.body)?.userItemId
+      return userItemId
+        ? [
+            {
+              ...row,
+              itemId: userItemId,
+              body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'go' }] }
+            },
+            row
+          ]
+        : [row]
+    })
+    const superseded = items.find((item) => readAgentJournalTurn(item.body)?.turnId === 'user-1')
+    expect(superseded?.body).not.toHaveProperty('outcome')
+    const settled = selectStructuredAgentSettledTurns(items).get(
+      readAgentJournalTurn(superseded?.body)?.userItemId ?? ''
+    )
+    expect(settled).toMatchObject({ verdict: 'interruption', workedSeconds: 12 })
+    expect(
+      settled && describeNativeChatTurnStatus({ thinking: false, elapsedSeconds: 0, ...settled })
+    ).toMatchObject({ key: 'interruptedAfter', duration: '12s' })
   })
 })
