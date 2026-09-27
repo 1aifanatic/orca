@@ -134,6 +134,27 @@ describe("SSH: the user's Disconnect holds until the user connects", () => {
     expect(mockWindow.webContents.send).not.toHaveBeenCalled()
   })
 
+  it('(a) refuses a background connect whose Disconnect landed while it waited its turn', async () => {
+    await invoke('ssh:connect')
+    let releaseTerminate!: () => void
+    mockConnectionManager.disconnect.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseTerminate = resolve
+        })
+    )
+    // A terminate holds the target's lifecycle queue, so the connect below parks behind it.
+    const terminate = invoke('ssh:terminateSessions')
+    await vi.waitFor(() => expect(mockConnectionManager.disconnect).toHaveBeenCalledTimes(1))
+    const parked = invoke('ssh:ensureConnected')
+    const disconnect = invoke('ssh:disconnect')
+    releaseTerminate()
+    await terminate
+    await disconnect
+
+    await expect(parked).rejects.toMatchObject({ code: SSH_DISCONNECTED_BY_USER_CODE })
+  })
+
   it("(b) a user's Connect records the intent and lets background connects through again", async () => {
     await invoke('ssh:disconnect')
 

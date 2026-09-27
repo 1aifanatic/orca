@@ -111,6 +111,15 @@ describe('SSH IPC handlers', () => {
     expect(mockSshStore.updateTarget).toHaveBeenCalledWith('ssh-1', { label: 'Renamed' })
   })
 
+  it("ssh:updateTarget never lets a settings save rewrite the user's connect intent", async () => {
+    await handlers.get('ssh:updateTarget')!(null, {
+      id: 'ssh-1',
+      updates: { label: 'Renamed', desiredConnection: 'connected' }
+    })
+
+    expect(mockSshStore.updateTarget).toHaveBeenCalledWith('ssh-1', { label: 'Renamed' })
+  })
+
   it('ssh:addTarget returns exact re-adoption evidence and refreshes repos', async () => {
     const target = {
       id: 'ssh-new',
