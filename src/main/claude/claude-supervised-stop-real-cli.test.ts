@@ -198,7 +198,10 @@ describe.runIf(enabled)('real Claude stopped through the POSIX supervisor', () =
         ? await until(async () => {
             const rows = await descendantsOf(supervisor)
             return rows.some((row) => row.command.includes(TOOL_MARKER)) ? rows : null
-          }, 'the Bash tool')
+          }, 'the Bash tool').catch((error: unknown) => {
+            console.log('[no tool] frames so far:', summarize(frames, 0))
+            throw error
+          })
         : await until(
             async () =>
               frames.some((frame) => frame.message.type === 'result')
