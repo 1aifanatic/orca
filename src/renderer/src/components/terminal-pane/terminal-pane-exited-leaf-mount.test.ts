@@ -25,7 +25,7 @@ const record: TerminalExitRecord = {
   exitedAt: 1
 }
 
-function mountPane() {
+function mountPane(savedBuffersByLeafId?: Record<string, string>) {
   const pane = {
     id: 7,
     leafId: LEAF_ID,
@@ -37,6 +37,14 @@ function mountPane() {
     deps: {
       managerRef: { current: {} },
       tabId: 'tab-1',
+      initialLayoutRef: {
+        current: {
+          root: null,
+          activeLeafId: null,
+          expandedLeafId: null,
+          ...(savedBuffersByLeafId ? { buffersByLeafId: savedBuffersByLeafId } : {})
+        }
+      },
       settingsRef: { current: null },
       paneCwdRef: { current: new Map() },
       paneKittyKeyboardModesRef: { current: new Map() },
@@ -73,7 +81,7 @@ describe('mounting a leaf main kept after its exit', () => {
   it('shows the exit and spawns nothing', () => {
     useAppStore.getState().replaceTerminalExitRecords([record])
 
-    const { onPaneProcessDied, panePtyBindings } = mountPane()
+    const { onPaneProcessDied, panePtyBindings } = mountPane({ [LEAF_ID]: 'saved output' })
 
     expect(connectPanePty).not.toHaveBeenCalled()
     expect(panePtyBindings.size).toBe(0)
@@ -83,6 +91,16 @@ describe('mounting a leaf main kept after its exit', () => {
       reason: 'process-failed',
       startup: null
     })
+  })
+
+  it('does not claim preserved output when the remount has no saved copy to replay', () => {
+    useAppStore.getState().replaceTerminalExitRecords([record])
+
+    const { onPaneProcessDied } = mountPane({ 'another-leaf': 'saved output' })
+
+    expect(onPaneProcessDied).toHaveBeenCalledWith(
+      expect.objectContaining({ paneId: 7, exitCode: 3, outputPreserved: false })
+    )
   })
 
   it('spawns as before for a leaf with no record', () => {
