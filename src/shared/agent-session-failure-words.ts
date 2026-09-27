@@ -166,7 +166,11 @@ const FAILURE_SENTENCES = {
   compactionUnconfirmed: () => 'Compaction completion is unconfirmed.',
   cancelUnconfirmed: () => 'Cancellation was not confirmed.',
   answerUnconfirmed: () => 'Your answer was recorded but the agent did not confirm it.',
-  hostFault: () => "Orca ran into a problem, so this didn't go through. Try again."
+  hostFault: () => "Orca ran into a problem, so this didn't go through. Try again.",
+  providerRetrying: ({ agentName }, { retry }) =>
+    retry?.error === 'rate_limit' || retry?.status === 429
+      ? `${agentName ?? 'The agent'} is rate-limited and retrying.`
+      : `${agentName ?? 'The agent'} hit a temporary problem and is retrying.`
 } satisfies Record<AgentSessionFailureKind, Sentence>
 
 /** The sentence a person reads for this fact on this surface; never a marker. */

@@ -42,6 +42,11 @@ function factsFor(kind: AgentSessionFailureKind): AgentSessionFailureFact[] {
       refusal: { code: 'agent_session_identity_required', details: { reason: 'recordMissing' } }
     }
   ]
+  if (kind === 'providerRetrying') {
+    facts.push({ kind, retry: { error: 'rate_limit', status: 429 } })
+    facts.push({ kind, retry: { error: 'overloaded', status: 529 } })
+    facts.push({ kind, retry: { status: 500 } })
+  }
   if (kind === 'attachmentInvalid') {
     for (const reason of AGENT_SESSION_ATTACHMENT_PROBLEM_REASONS) {
       facts.push({ kind, attachment: { reason } })

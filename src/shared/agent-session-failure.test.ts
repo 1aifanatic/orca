@@ -52,6 +52,18 @@ describe('reading a failure fact', () => {
     })
   })
 
+  it('keeps what a provider said it is retrying, and only that', () => {
+    expect(
+      readAgentSessionFailureFact({
+        kind: 'providerRetrying',
+        retry: { error: 'rate_limit', status: 429, attempt: 3 }
+      })
+    ).toEqual({ kind: 'providerRetrying', retry: { error: 'rate_limit', status: 429 } })
+    expect(
+      readAgentSessionFailureFact({ kind: 'providerRetrying', retry: { error: '', status: 'x' } })
+    ).toEqual({ kind: 'providerRetrying' })
+  })
+
   it('reads a row an unreleased build wrote with a cause as a refusal with no details', () => {
     expect(
       readAgentSessionFailureFact({

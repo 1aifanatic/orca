@@ -93,7 +93,8 @@ const KIND_CATEGORY = {
   compactionFailed: 'transport',
   compactionUnconfirmed: 'transport',
   cancelUnconfirmed: 'transport',
-  answerUnconfirmed: 'transport'
+  answerUnconfirmed: 'transport',
+  providerRetrying: 'transport'
 } satisfies Record<AgentSessionFailureKind, DispatchRejectionCategory>
 
 const NO_FAILURE_KINDS: ReadonlySet<AgentSessionFailureKind> = new Set([

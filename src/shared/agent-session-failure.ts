@@ -35,7 +35,9 @@ export const AGENT_SESSION_FAILURE_KINDS = [
   'compactionUnconfirmed',
   'cancelUnconfirmed',
   'answerUnconfirmed',
-  'hostFault'
+  'hostFault',
+  /** The provider is retrying a request its API refused; not a failure yet. */
+  'providerRetrying'
 ] as const
 export type AgentSessionFailureKind = (typeof AGENT_SESSION_FAILURE_KINDS)[number]
 
@@ -75,6 +77,14 @@ export type AgentSessionAttachmentProblem = {
   limit?: number
 }
 
+/** What the provider said it is retrying, in its own fields. */
+export type AgentSessionProviderRetry = {
+  /** The provider's error type, e.g. `rate_limit` or `overloaded`. */
+  error?: string
+  /** The HTTP status the request failed with. */
+  status?: number
+}
+
 export type AgentSessionFailureFact = {
   kind: AgentSessionFailureKind
   /** Provider-authored only; absent whenever Orca wrote the words. */
@@ -83,6 +93,8 @@ export type AgentSessionFailureFact = {
   refusal?: AgentSessionRefusalReference
   /** On `attachmentInvalid`: which check the attachment failed. */
   attachment?: AgentSessionAttachmentProblem
+  /** On `providerRetrying`: why the provider is retrying. */
+  retry?: AgentSessionProviderRetry
 }
 
 /** Null for empty text, so a writer never records a detail with nothing in it. */
@@ -100,6 +112,7 @@ export function agentSessionFailureFact(
     detail?: ProviderDiagnostic
     refusal?: AgentSessionRefusalReference
     attachment?: AgentSessionAttachmentProblem
+    retry?: AgentSessionProviderRetry
   } = {}
 ): AgentSessionFailureFact {
   // Re-bounded here, so no writer can store more than the cap however it built the detail.
@@ -110,7 +123,8 @@ export function agentSessionFailureFact(
     kind,
     ...(detail ? { detail } : {}),
     ...(extra.refusal ? { refusal: extra.refusal } : {}),
-    ...(extra.attachment ? { attachment: extra.attachment } : {})
+    ...(extra.attachment ? { attachment: extra.attachment } : {}),
+    ...(extra.retry ? { retry: extra.retry } : {})
   }
 }
 
@@ -140,6 +154,22 @@ function readAttachmentProblem(value: unknown): AgentSessionAttachmentProblem | 
     : { reason }
 }
 
+/** A retry as a reader meets it; undefined when it names neither field. */
+export function readProviderRetry(value: unknown): AgentSessionProviderRetry | undefined {
+  if (!isRecord(value)) {
+    return undefined
+  }
+  const error =
+    typeof value.error === 'string' && value.error.trim() ? value.error.trim() : undefined
+  const status =
+    typeof value.status === 'number' && Number.isInteger(value.status) && value.status > 0
+      ? value.status
+      : undefined
+  return error || status
+    ? { ...(error ? { error } : {}), ...(status ? { status } : {}) }
+    : undefined
+}
+
 /** A fact as a reader meets it. Undefined for anything this build cannot place, including a kind a
  *  newer host added, so the reader falls back to what it does for a row with no fact. */
 export function readAgentSessionFailureFact(value: unknown): AgentSessionFailureFact | undefined {
@@ -148,10 +178,12 @@ export function readAgentSessionFailureFact(value: unknown): AgentSessionFailure
   }
   const refusal = readAgentSessionRefusalReference(value.refusal)
   const attachment = readAttachmentProblem(value.attachment)
+  const retry = readProviderRetry(value.retry)
   return agentSessionFailureFact(value.kind, {
     ...(isProviderDiagnostic(value.detail) ? { detail: value.detail } : {}),
     ...(refusal ? { refusal } : {}),
-    ...(attachment ? { attachment } : {})
+    ...(attachment ? { attachment } : {}),
+    ...(retry ? { retry } : {})
   })
 }
 
