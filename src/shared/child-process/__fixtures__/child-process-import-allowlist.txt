@@ -130,7 +130,6 @@ src/main/providers/process-cwd.ts
 src/main/providers/windows-console-attached-processes.ts
 src/main/pty-descendant-termination.ts
 src/main/pty/posix-pty-foreground-group.ts
-src/main/pty/posix-pty-process-groups.ts
 src/main/pty/windows-environment-path.ts
 src/main/rate-limits/codex-fetcher.ts
 src/main/rate-limits/gemini-cli-oauth-extractor.ts
@@ -165,7 +164,6 @@ src/relay/ai-vault-service-spawn.ts
 src/relay/external-automations-handler.ts
 src/relay/fs-handler-git-fallback.ts
 src/relay/fs-handler-list-files.ts
-src/relay/fs-handler-utils.ts
 src/relay/fs-list-files-fallback-chain.ts
 src/relay/git-handler.ts
 src/relay/git-stdout-stream.ts
@@ -178,5 +176,4 @@ src/shared/ephemeral-vm-recipe-runner.ts
 src/shared/fish-binary-requirement.ts
 src/shared/process-table-snapshot-reader.ts
 src/shared/pty-slave-line-discipline-echo.ts
-src/shared/ripgrep-process-availability.ts
 src/shared/shell-process-readiness.ts
