@@ -144,14 +144,44 @@ describe('RepositoryPane section lifetime', () => {
   it('preserves a dirty issue-command draft without an incidental save while search matches', async () => {
     await render()
     const textarea = issueTextarea()
+    const readsAfterMount = bridge.read.mock.calls.length
     act(() => fireEvent.change(textarea, { target: { value: 'draft issue command' } }))
     expect(textarea.value).toBe('draft issue command')
     state.settingsSearchQuery = 'issue command'
     await render()
+    // The invariant is identity plus no incidental write: the node survives, the draft is
+    // neither discarded nor saved behind the user's back, and editing the query costs no read.
     expect(issueTextarea()).toBe(textarea)
     expect(issueTextarea().value).toBe('draft issue command')
-    expect(bridge.read).toHaveBeenCalledTimes(1)
+    expect(bridge.read.mock.calls.length).toBe(readsAfterMount)
     expect(bridge.write).not.toHaveBeenCalled()
+  })
+  it('still flushes a dirty issue-command draft when the section really unmounts', async () => {
+    await render()
+    act(() => fireEvent.change(issueTextarea(), { target: { value: 'draft issue command' } }))
+    state.settingsSearchQuery = 'display name'
+    await render()
+    expect(container.querySelector('textarea')).toBeNull()
+    expect(bridge.write).toHaveBeenCalledWith(
+      { activeRuntimeEnvironmentId: null },
+      local.id,
+      'draft issue command',
+      'local'
+    )
+  })
+  it('commits a dirty issue-command draft on blur while the section stays matched', async () => {
+    await render()
+    const textarea = issueTextarea()
+    act(() => fireEvent.change(textarea, { target: { value: 'blurred issue command' } }))
+    state.settingsSearchQuery = 'issue command'
+    await render()
+    await act(async () => fireEvent.blur(issueTextarea()))
+    expect(bridge.write).toHaveBeenCalledWith(
+      { activeRuntimeEnvironmentId: null },
+      local.id,
+      'blurred issue command',
+      'local'
+    )
   })
   it('unmounts and reloads hooks after the section actually hides', async () => {
     state.settingsSearchQuery = 'issue command'
@@ -185,10 +215,11 @@ describe('RepositoryPane section lifetime', () => {
     state.settingsSearchQuery = 'issue command'
     await render()
     const firstTextarea = issueTextarea()
+    const readsAfterMount = bridge.read.mock.calls.length
     state.settingsSearchQuery = 'workflow'
     await render()
     expect(issueTextarea()).toBe(firstTextarea)
-    expect(bridge.read).toHaveBeenCalledTimes(1)
+    expect(bridge.read.mock.calls.length).toBe(readsAfterMount)
     expect(bridge.write).not.toHaveBeenCalled()
   })
   it('does not mount Git hooks for a folder project', async () => {
