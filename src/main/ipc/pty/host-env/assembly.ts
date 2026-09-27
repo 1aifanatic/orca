@@ -161,8 +161,8 @@ export function buildPtyHostEnv(
         baseEnv.OPENCODE_CONFIG_DIR = opencodeOverlayDir
         baseEnv.ORCA_OPENCODE_CONFIG_DIR = opencodeOverlayDir
         delete baseEnv.ORCA_OPENCODE_SOURCE_CONFIG_DIR
-      } else if (openCodeAgent) {
-        // Why: relay not connected yet (or older guest bundle) — never cross the Windows overlay path into WSL; drop it so in-guest OpenCode uses its own config (pre-fix behavior, no status but no regression).
+      } else {
+        // Only guest overlays belong in WSL; otherwise let OpenCode use its guest config.
         delete baseEnv.OPENCODE_CONFIG_DIR
         delete baseEnv.ORCA_OPENCODE_CONFIG_DIR
         delete baseEnv.ORCA_OPENCODE_SOURCE_CONFIG_DIR

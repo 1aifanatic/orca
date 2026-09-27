@@ -342,3 +342,28 @@ it.each([true, false])(
     }
   }
 )
+
+it.each([true, false])(
+  'drops host config for disabled WSL variants with explicit primary %s',
+  (explicit) => {
+    const overlay = 'C:\\Users\\fixture\\Orca\\opencode-overlays\\old'
+    const source = 'C:\\Users\\fixture\\config\\opencode'
+    vi.stubEnv('ORCA_OPENCODE_CONFIG_DIR', overlay)
+    vi.stubEnv('ORCA_OPENCODE_SOURCE_CONFIG_DIR', source)
+    const env = buildPtyHostEnv(
+      'wsl-disabled-inherited',
+      {
+        OPENCODE_CONFIG_DIR: explicit ? source : overlay,
+        ORCA_OPENCODE_CONFIG_DIR: overlay,
+        ORCA_OPENCODE_SOURCE_CONFIG_DIR: source
+      },
+      { ...options, isWsl: true, disabledTuiAgents: ['opencode', 'opencode2'] }
+    )
+    expect(env.OPENCODE_CONFIG_DIR).toBeUndefined()
+    expect(env.ORCA_OPENCODE_CONFIG_DIR).toBeUndefined()
+    expect(env.ORCA_OPENCODE_SOURCE_CONFIG_DIR).toBeUndefined()
+    expect(env.ORCA_OPENCODE_AGENT).toBeUndefined()
+    expect(env.ORCA_AGENT_HOOK_ENDPOINT).toBe('/guest/endpoint.json')
+    expect(existsSync(config)).toBe(false)
+  }
+)
