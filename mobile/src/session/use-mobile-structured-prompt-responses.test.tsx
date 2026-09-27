@@ -355,5 +355,67 @@ describe('useMobileStructuredPromptResponses', () => {
         ...(supported ? { answers } : { optionId: encodeAgentSessionQuestionAnswers(answers) })
       })
     })
+
+    // Claude always sends a question list, so this is the path a long typed Claude answer takes.
+    it.each([
+      [true, true],
+      [null, true],
+      [false, false]
+    ])('submits a grouped long typed answer (answers: %s)', async (supported, expectSent) => {
+      const base = groupedPrompt('item-g', 1)
+      if (base.body.kind !== 'question' || !base.body.questions) {
+        throw new Error('expected a grouped question')
+      }
+      const [first, second] = base.body.questions
+      const prompt: AgentJournalRenderItem = {
+        ...base,
+        body: { ...base.body, questions: [first!, { ...second!, freeTextQuestionId: 'q2' }] }
+      }
+      const { mutate, sent } = recordingMutate()
+      const onSendError = vi.fn()
+      mount(prompt, mutate, supported, onSendError)
+
+      await act(async () => {
+        await hook().respondQuestion(projectedResponse(prompt, null))
+      })
+      const step = projectStructuredQuestion(prompt, hook().groupedDraft)!
+      await act(async () => {
+        await hook().respondQuestion(formatQuestionFreeTextAnswer(step, LONG_ANSWER))
+      })
+
+      if (!expectSent) {
+        expect(sent).toEqual([])
+        expect(onSendError).toHaveBeenCalledWith(
+          'Update Orca on your computer to send an answer this long'
+        )
+        return
+      }
+      expect(sentFields(sent)).toEqual({
+        itemId: 'item-g',
+        expectedRevision: 1,
+        answers: [
+          { questionId: 'q1', optionIds: ['q1:choice-1'] },
+          { questionId: 'q2', optionIds: [], other: LONG_ANSWER }
+        ]
+      })
+    })
+
+    it('names the single question an option tap answers when the prompt has no typed field', async () => {
+      const base = singlePrompt()
+      const { freeTextQuestionId: _omitted, ...body } = base.body
+      const prompt: StructuredQuestionItem = { ...base, body }
+      const { mutate, sent } = recordingMutate()
+      mount(prompt, mutate, true)
+
+      await act(async () => {
+        await hook().respondQuestion(projectStructuredQuestion(prompt)!.optionTokens[0]!)
+      })
+
+      expect(sentFields(sent)).toEqual({
+        itemId: 'item-s',
+        expectedRevision: 3,
+        answers: [{ questionId: 'q1', optionIds: ['yes'] }]
+      })
+    })
   })
 })
