@@ -1,3 +1,4 @@
+import { resolveBundledCliRuntimePath } from '../../shared/bundled-cli-runtime-path'
 // The SSH shim runs the bundled CLI so remote shells get the full command surface.
 import { app } from 'electron'
 import { spawn as nodeSpawn } from 'node:child_process'
@@ -144,7 +145,8 @@ export function buildHostCliEnv(args: {
       : args.artifactInput.sourceKey
     env[REMOTE_ARTIFACT_INPUT_ENV] = JSON.stringify({ ...args.artifactInput, sourceKey })
   }
-  env.ELECTRON_RUN_AS_NODE = '1'
+  delete env.ELECTRON_RUN_AS_NODE
+  delete env.BUN_OPTIONS
   return env
 }
 
@@ -154,7 +156,7 @@ export async function runHostOrcaCliPassthrough(
 ): Promise<RemoteOrcaCliResult> {
   // Why: per-field lazy defaults keep the module testable — tests inject all
   // three, so no Electron API is touched outside the production path.
-  const execPath = options.execPath ?? process.execPath
+  let execPath: string
   let cliEntryPath: string
   let userDataPath: string
   try {
@@ -169,6 +171,9 @@ export async function runHostOrcaCliPassthrough(
     // to (see index.ts OrcaRuntimeRpcServer wiring), or the CLI subprocess
     // reports "Orca is not running" against a healthy app.
     userDataPath = options.userDataPath ?? getCanonicalUserDataPath()
+    execPath =
+      options.execPath ??
+      (process.versions.bun ? process.execPath : resolveBundledCliRuntimePath(cliEntryPath))
   } catch (err) {
     // Why: no Electron app context (or broken install paths) — degrade to the
     // caller's legacy in-process fallback instead of failing the command.
@@ -198,6 +203,10 @@ export async function runHostOrcaCliPassthrough(
     runtimeAuthority: request.runtimeAuthority,
     artifactInput: request.artifactInput
   })
+
+  if (process.versions.electron && !env.ORCA_APP_EXECUTABLE) {
+    env.ORCA_APP_EXECUTABLE = process.execPath
+  }
 
   return await new Promise<RemoteOrcaCliResult>((resolve, reject) => {
     let settled = false
