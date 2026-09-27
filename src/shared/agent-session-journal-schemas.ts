@@ -200,12 +200,12 @@ const ThreadGoalState = z.union([
   z.object({ state: z.string() }).refine((value) => !['set', 'cleared'].includes(value.state))
 ])
 
-/** Open like `state`: a kind or audience a newer host writes must not turn the row malformed; the
- *  fact reader is where an unplaceable one is dropped. */
+/** Open like `state`: a kind, audience or refusal detail a newer host writes must not turn the row
+ *  malformed; the fact reader is where an unplaceable one is dropped. */
 const FailureFact = z.object({
   kind: z.string().min(1),
   detail: z.object({ text: z.string(), audience: z.string().min(1) }).optional(),
-  refusal: z.object({ code: z.string().min(1), cause: z.string().min(1).optional() }).optional()
+  refusal: z.object({ code: z.string().min(1), details: z.looseObject({}).optional() }).optional()
 })
 
 export const AgentJournalItemBodySchema = z.discriminatedUnion('kind', [

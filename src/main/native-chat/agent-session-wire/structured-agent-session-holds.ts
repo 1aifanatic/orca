@@ -91,7 +91,7 @@ export class StructuredAgentSessionHolds {
     }
     if (!resumed.ok) {
       this.releaseFailedHold(sessionId, holderId, alreadyHeld, incarnation)
-      // The RPC surface raises a refusal as its code; the refusal itself rides along for its cause.
+      // The RPC surface raises a refusal as its code; the refusal itself rides along for its details.
       throw new AgentSessionRefusalError(resumed.refusal)
     }
   }

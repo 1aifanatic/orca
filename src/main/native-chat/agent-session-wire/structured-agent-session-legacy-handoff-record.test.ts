@@ -246,7 +246,7 @@ describe('a record an older build left mid terminal handoff', () => {
     })
     // Sending and opening the chat both say what frees it: quitting that terminal agent. A send is
     // accepted, then rejected by the start that cannot take the lease, and the chat's row says why,
-    // worded from the refusal's cause; only the live refusal names the process.
+    // worded from the refusal's details; only the live refusal names the process.
     const quitTerminal =
       'This chat is still open in a terminal agent (process 4242). Quit that agent to continue the chat here.'
     expect(await delivered('while the terminal still runs')).toMatchObject({

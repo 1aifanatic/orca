@@ -717,7 +717,7 @@ describe('an unexpected provider exit', () => {
     const history = host.history({ sessionId: SESSION, direction: 'tail' })
     expect(history.ok && history.page.submissions[0]?.dispatchState).toBe('unknown')
     // A send whose delivery outcome is unknown IS work in progress, so the reassuring outcome is
-    // written — its cause beside it, and never the old bare `Provider exited: <reason>` row.
+    // written — its failure fact beside it, and never the old bare `Provider exited: <reason>` row.
     const statuses = history.ok
       ? history.page.items.flatMap((item) => (item.body.kind === 'status' ? [item.body.text] : []))
       : []

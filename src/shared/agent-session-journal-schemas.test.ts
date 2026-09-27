@@ -356,6 +356,22 @@ describe('typed failure facts', () => {
     expect(isAdmissibleAgentJournalSubmission({ ...submission, rejection: failure })).toBe(true)
   })
 
+  it("admits a refusal's details, and a row an earlier build wrote with its cause", () => {
+    const refused = (refusal: object) =>
+      isAdmissibleAgentJournalItemBody({
+        kind: 'status',
+        text: "Codex couldn't restart.",
+        failure: { kind: 'restartFailed', refusal }
+      })
+    expect(
+      refused({
+        code: 'agent_session_conflict',
+        details: { reason: 'claimConflicted', futureFact: 1 }
+      })
+    ).toBe(true)
+    expect(refused({ code: 'agent_session_conflict', cause: 'claimConflicted' })).toBe(true)
+  })
+
   it('keeps a kind or audience a newer host writes admissible', () => {
     expect(
       isAdmissibleAgentJournalItemBody({
