@@ -1,6 +1,6 @@
 import { writeFile } from 'node:fs/promises'
 import type { Page } from '@stablyai/playwright-test'
-import { test, expect } from './helpers/orca-app'
+import { test, expect } from './sidebar-animation-fixture'
 import { waitForActiveWorktree, waitForSessionReady } from './helpers/store'
 import { worktreeRow } from './worktree-row-locators'
 
