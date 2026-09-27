@@ -5,6 +5,7 @@ import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../../shared/agent-session-jou
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { computeAgentSessionPayloadFingerprint } from '../../../../shared/agent-session-mutation-envelope'
 import { STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
+import { activeStructuredAgentSessionTurnId } from '../../../../shared/structured-agent-session-projection'
 import { openJournalDatabase } from '../../../native-chat/agent-session-journal/journal-database'
 import {
   journalDatabaseFile,
@@ -325,8 +326,12 @@ describe('an agent exit', () => {
       fence: running.fence,
       acquisitionGeneration: running.generation!
     })
+    // Released with its death evidence, not latched: the next acquire settles from that evidence.
     await vi.waitFor(() =>
-      expect(rig.store.getRecord(SESSION)?.lease.settlementRetryRequired).toBe(true)
+      expect(rig.store.getRecord(SESSION)?.lease).toMatchObject({
+        claimStatus: 'released',
+        deathEvidence: { kind: 'exit-observed' }
+      })
     )
 
     const sent = await rig.host.send(
@@ -339,7 +344,9 @@ describe('an agent exit', () => {
     }
     await rig.host.waitForSendSettlement(SESSION, sent.value.clientMessageId)
     expect(rig.adapter.dispatch).toHaveBeenCalledTimes(2)
-    expect(rig.store.getRecord(SESSION)?.lease.settlementRetryRequired).toBeUndefined()
+    expect(
+      activeStructuredAgentSessionTurnId((await rig.host.journalSnapshot(SESSION)).items)
+    ).not.toBe('working')
   })
 })
 

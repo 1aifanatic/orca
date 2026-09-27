@@ -17,28 +17,40 @@ export function restartContinuationBody(marker: AgentSessionResumeMarker): Agent
   }
 }
 
-/** One resume action's continuation: the same action sends it once, and a retry is a new action
- *  with a new message, never a replay of the one that failed. Dated by the action, not the quit:
- *  the ledger refuses a new id dated more than a day back, and an offer has no expiry. */
+const hex16 = (parts: readonly unknown[]): string =>
+  createHash('sha256').update(JSON.stringify(parts)).digest('hex').slice(0, 16)
+
+/** Names the offer: every continuation any of its actions sends carries it, and nothing else does. */
+function restartOfferTag(marker: AgentSessionResumeMarker): string {
+  return hex16([marker.teardownId, marker.sessionId])
+}
+
+/** One resume action's continuation: the offer's tag, then the action's own part, so a retry is a
+ *  new message, never a replay of the one that failed. Dated by the action, not the quit: the
+ *  ledger refuses a new id dated more than a day back, and an offer has no expiry. */
 export function restartContinuationId(
-  sessionId: string,
   marker: AgentSessionResumeMarker,
   operationId: string,
   actionAt: number
 ): string {
-  return `${Math.trunc(actionAt).toString().padStart(13, '0')}-${createHash('sha256')
-    .update(
-      JSON.stringify([
-        marker.teardownId,
-        sessionId,
-        marker.work.kind,
-        marker.work.id,
-        marker.providerHandleRoot,
-        operationId
-      ])
-    )
-    .digest('hex')
-    .slice(0, 32)}`
+  return `${Math.trunc(actionAt).toString().padStart(13, '0')}-${restartOfferTag(marker)}${hex16([
+    marker.teardownId,
+    marker.sessionId,
+    marker.work.kind,
+    marker.work.id,
+    marker.providerHandleRoot,
+    operationId
+  ])}`
+}
+
+/** Whether a message is a continuation one of this offer's resume actions sent, read off its id. */
+export function isRestartContinuationOf(
+  marker: AgentSessionResumeMarker,
+  clientMessageId: string
+): boolean {
+  return /^\d{13}-[0-9a-f]{32}$/.test(clientMessageId)
+    ? clientMessageId.slice(14, 30) === restartOfferTag(marker)
+    : false
 }
 
 /** The fence only fills the envelope: admission names this send by its operation id, not a fence. */

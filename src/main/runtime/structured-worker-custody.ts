@@ -5,6 +5,10 @@
  * coordinators, never whether the worker's process runs: a worker at rest is still held, and mail
  * starts it. Routing, group addressing and `worker-show` ask whether it is addressable; the idle
  * sweep asks whether it still owes work.
+ *
+ * Two policy decisions live here and nowhere else: only `released` ends addressability (a release
+ * pending or in doubt still routes, as for a terminal worker), and a settled worker awaiting its
+ * coordinator's decision (`reclaimable`) owes no work, so it may rest.
  */
 
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
@@ -12,8 +16,6 @@ import type { OrchestrationDb } from './orchestration/db'
 import type { WorkerDispatchState } from './orchestration/types'
 import {
   deriveWorkerTerminalListState,
-  type WorkerDispatchListState,
-  type WorkerTerminalListState,
   type WorkerTerminalResourceRow
 } from './orchestration/worker-terminal-ownership'
 import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
@@ -72,17 +74,6 @@ function ownerState(
   )
 }
 
-function custodyState(
-  row: CustodyRow,
-  workerState: WorkerDispatchListState
-): WorkerTerminalListState | null {
-  return deriveWorkerTerminalListState({
-    workerState,
-    agentTerminalHandle: row.terminal_handle,
-    resource: row
-  })
-}
-
 /**
  * The user still owns the chat and orchestration has not released the worker, as with a terminal
  * worker whose terminal closed. Null when ownership cannot be read. A released worker's chat stays
@@ -94,17 +85,26 @@ export function structuredWorkerAddressable(
   row: CustodyRow | undefined
 ): boolean | null {
   const owned = structuredWorkerOwned(sessionId)
+  if (owned === null) {
+    return null
+  }
   // Release is read off the row alone, so an owner whose state is unreadable still answers.
-  return owned === null
-    ? null
-    : owned && (!row || custodyState(row, ownerState(db, row) ?? 'unsupervised') !== 'released')
+  const custody = row
+    ? deriveWorkerTerminalListState({
+        workerState: ownerState(db, row) ?? 'unsupervised',
+        agentTerminalHandle: row.terminal_handle,
+        resource: row
+      })
+    : null
+  return owned && custody !== 'released'
 }
 
 /**
- * Work orchestration still owes on this worker, read per sweep tick: a resource whose custody is
- * `active` (its worker-start dispatch has not settled, a stop in doubt included), or any unsettled
- * task later dispatched to the same incarnation on a process this host owns a terminal for.
- * A settled worker awaiting its coordinator's decision (`reclaimable`) may rest.
+ * Work orchestration still owes on this worker, read per sweep tick: any unsettled dispatch
+ * addressed to its incarnation, on a process this host owns a terminal for. That covers its own
+ * worker-start dispatch (whose context stays open while the worker is active, a stop in doubt
+ * included, because a supervised worker's context settles only with it) and any task later
+ * dispatched to it. A `reclaimable` worker's dispatch has settled, so it owes nothing.
  */
 export function structuredWorkerOwesWork(
   db: OrchestrationDb | null,
@@ -115,24 +115,19 @@ export function structuredWorkerOwesWork(
     return false
   }
   const incarnation = structuredWorkerProcessIncarnation(record.sessionId)
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: SELECT * over this table is exactly its row shape.
   const owned = db.db
     .prepare(
-      `SELECT * FROM worker_terminal_resources
-        WHERE process_incarnation = ? AND host_scope IS ? AND ownership_state = 'owned'`
+      `SELECT 1 FROM worker_terminal_resources
+        WHERE process_incarnation = ? AND host_scope IS ? AND ownership_state = 'owned' LIMIT 1`
     )
-    .all(incarnation, JSON.stringify(hostScope)) as WorkerTerminalResourceRow[]
+    .get(incarnation, JSON.stringify(hostScope))
   return (
-    owned.some((row) => {
-      const workerState = ownerState(db, row)
-      return workerState !== undefined && custodyState(row, workerState) === 'active'
-    }) ||
-    (owned.length > 0 &&
-      db.db
-        .prepare(
-          `SELECT 1 FROM dispatch_contexts
-            WHERE process_incarnation = ? AND status IN ('pending', 'dispatched') LIMIT 1`
-        )
-        .get(incarnation) !== undefined)
+    owned !== undefined &&
+    db.db
+      .prepare(
+        `SELECT 1 FROM dispatch_contexts
+          WHERE process_incarnation = ? AND status IN ('pending', 'dispatched') LIMIT 1`
+      )
+      .get(incarnation) !== undefined
   )
 }

@@ -15,8 +15,10 @@ import {
 } from '../agent-session-journal/journal-prompt-body-bounds'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { structuredAgentSessionStartFailureRow } from './structured-agent-session-start-failure-row'
+import type { AgentSessionDeathEvidence } from '../../../shared/agent-session-record'
 import {
   runningTurnLifecycleRevisions,
+  turnVerdictFromDeathEvidence,
   type StructuredAgentSessionTurnVerdict
 } from './structured-agent-session-stale-turn-verdict'
 
@@ -232,6 +234,62 @@ function runningRootTurnScope(items: readonly AgentJournalRenderItem[]): AgentJo
     (item) => isRootAgentJournalItem(item) && readAgentJournalTurn(item.body)?.state === 'running'
   )
   return running ? { kind: 'turn', turnItemId: running.itemId } : AGENT_JOURNAL_THREAD_SCOPE
+}
+
+/**
+ * Settles whatever a generation with no child in this process left running: found when a new child
+ * is acquired, or when a chat is reopened for reading. Derived from the journal and the lease's
+ * death evidence each time, so nothing is owed in between. Only an observed exit earns an end time
+ * and the exit copy. Must run before a new child's buffered events land, or a live turn would be
+ * judged.
+ */
+export async function settleStaleStructuredAgentSessionState(input: {
+  journal: AgentSessionJournal
+  sessionId: string
+  fence: number
+  acquisitionGeneration: string | null
+  deathEvidence: AgentSessionDeathEvidence | null
+}): Promise<number> {
+  const { journal } = input
+  const items = journal.snapshot().items
+  const verdict = turnVerdictFromDeathEvidence(input.deathEvidence)
+  const generation = input.acquisitionGeneration ?? `seq-${journal.cursor().sequence}`
+  const settlementId = `stale-session:${input.sessionId}:${input.fence}:${generation}`
+  const mutations: JournalLifecycleMutationInput[] = []
+  for (const item of items) {
+    const identity = parseAgentJournalItemKey(item.itemId)
+    const body = terminalDeadGenerationBody(item)
+    if (identity && body) {
+      mutations.push({
+        kind: 'item',
+        identity,
+        body,
+        turnScope: item.turnScope ?? AGENT_JOURNAL_THREAD_SCOPE
+      })
+    }
+  }
+  mutations.push(...runningTurnLifecycleRevisions(items, verdict))
+  if (verdict.state === 'interrupted' && items.some(isInProgressItem)) {
+    mutations.unshift({
+      kind: 'item',
+      identity: { provider: 'orca', clientMessageId: settlementId },
+      body: {
+        kind: 'status',
+        text: boundJournalStatusText(unexpectedProviderExitOutcome(input.deathEvidence?.detail)),
+        tone: 'error'
+      },
+      turnScope: runningRootTurnScope(items)
+    })
+  }
+  for (const chunk of partitionJournalLifecycleMutations(settlementId, mutations)) {
+    await journal.appendLifecycleBatch({
+      settlementId: chunk.settlementId,
+      fence: input.fence,
+      recovered: true,
+      mutations: chunk.mutations
+    })
+  }
+  return mutations.length
 }
 
 function terminalDeadGenerationBody(item: AgentJournalRenderItem): AgentJournalItemBody | null {

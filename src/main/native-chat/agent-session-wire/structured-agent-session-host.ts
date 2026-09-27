@@ -126,7 +126,7 @@ export class StructuredAgentSessionHost {
       publishRestored: this.clientDelivery.publishRestored,
       flushStreamedEvents: (sessionId) => this.flushStreamedEvents(sessionId)
     })
-    this.restore = createStructuredAgentSessionHostRestore(deps, this.sessions, () => this.now(), {
+    this.restore = createStructuredAgentSessionHostRestore(deps, {
       reconcile: this.reconcileLeases,
       resolveRecovery: (sessionId) => this.runtimeState.resolveRecovery(sessionId),
       serialize: (sessionId, task) => this.serialize(sessionId, task),

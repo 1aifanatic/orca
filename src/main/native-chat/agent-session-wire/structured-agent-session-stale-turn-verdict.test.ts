@@ -7,9 +7,9 @@ import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-
 import type { AgentJournalRenderItem } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { createTrackedJournalOpener } from '../agent-session-journal/journal-store-test-open'
+import { settleStaleStructuredAgentSessionState } from './structured-agent-session-dead-generation-settlement'
 import {
   runningTurnLifecycleRevisions,
-  settleStaleSessionStateOnAcquire,
   turnVerdictFromDeathEvidence,
   UNVERIFIABLE_TURN_VERDICT
 } from './structured-agent-session-stale-turn-verdict'
@@ -201,11 +201,12 @@ describe('stale session state on a cold acquire', () => {
     ])
 
     await expect(
-      settleStaleSessionStateOnAcquire({
+      settleStaleStructuredAgentSessionState({
         journal,
         sessionId: 'session-1',
         fence: 14,
-        acquisitionGeneration: 'generation-2'
+        acquisitionGeneration: 'generation-2',
+        deathEvidence: null
       })
     ).resolves.toBe(1)
 
@@ -230,11 +231,12 @@ describe('stale session state on a cold acquire', () => {
     const { journal, appendLifecycleBatch } = journalWith([pending, resolved])
 
     await expect(
-      settleStaleSessionStateOnAcquire({
+      settleStaleStructuredAgentSessionState({
         journal,
         sessionId: 'session-1',
         fence: 14,
-        acquisitionGeneration: 'generation-2'
+        acquisitionGeneration: 'generation-2',
+        deathEvidence: null
       })
     ).resolves.toBe(1)
 
@@ -300,11 +302,12 @@ describe('stale session state on a cold acquire', () => {
         turnScope: AGENT_JOURNAL_THREAD_SCOPE
       })
 
-      await settleStaleSessionStateOnAcquire({
+      await settleStaleStructuredAgentSessionState({
         journal,
         sessionId: 'session-1',
         fence: 2,
-        acquisitionGeneration: 'generation-2'
+        acquisitionGeneration: 'generation-2',
+        deathEvidence: null
       })
 
       expect(
@@ -324,21 +327,23 @@ describe('stale session state on a cold acquire', () => {
       lifecycleItem('turn-1', 'completed', 1, { startedAt: 10, completedAt: 20 })
     ])
     await expect(
-      settleStaleSessionStateOnAcquire({
+      settleStaleStructuredAgentSessionState({
         journal: idle.journal,
         sessionId: 'session-1',
         fence: 14,
-        acquisitionGeneration: null
+        acquisitionGeneration: null,
+        deathEvidence: null
       })
     ).resolves.toBe(0)
     expect(idle.appendLifecycleBatch).not.toHaveBeenCalled()
 
     const running = journalWith([lifecycleItem('turn-2', 'running', 2)])
-    await settleStaleSessionStateOnAcquire({
+    await settleStaleStructuredAgentSessionState({
       journal: running.journal,
       sessionId: 'session-1',
       fence: 14,
-      acquisitionGeneration: null
+      acquisitionGeneration: null,
+      deathEvidence: null
     })
     expect(running.appendLifecycleBatch).toHaveBeenCalledWith(
       expect.objectContaining({ settlementId: 'stale-session:session-1:14:seq-8' })
