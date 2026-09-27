@@ -159,14 +159,14 @@ function coldRestoredRuntime(host: RestoreHost = LOCAL_HOST): {
     [host.hostId, makeColdRestoredSession(host)]
   ])
   // The desktop window is live, so main must not rebuild the list from the saved session.
+  const liveWindow = {
+    isDestroyed: () => false,
+    webContents: { isDestroyed: () => false, send: () => {} }
+  }
   setRuntimeDesktopSurface({
     showNotification: () => false,
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the runtime reads only liveness and send off its authoritative window on these paths.
-    findWindowById: () =>
-      ({
-        isDestroyed: () => false,
-        webContents: { isDestroyed: () => false, send: () => {} }
-      }) as never,
+    findWindowById: () => liveWindow as never,
     onIpc: () => {},
     removeIpcListener: () => {}
   })
