@@ -63,7 +63,8 @@ export function observeClaudeCommandFrame(
     return false
   }
   if (message.type === 'system') {
-    if (message.subtype === 'compact_boundary' || message.compact_result === 'success') {
+    // Only the boundary says the history was replaced; `compact_result: 'success'` precedes it.
+    if (message.subtype === 'compact_boundary') {
       command.compacted = true
     } else if (message.compact_result === 'failed') {
       command.error = claudeText(message.compact_error) ?? 'Compaction failed.'

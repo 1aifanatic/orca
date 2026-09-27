@@ -177,6 +177,23 @@ describe('a captured /compact as the open Claude turn', () => {
     ])
   })
 
+  it('reads a stop that lands after the summary but before the boundary as a cancellation', () => {
+    const { replay, commandTurn, drawn } = harness()
+    // Only the boundary says the conversation was replaced; the status that precedes it does not.
+    replay(
+      CAPTURED_COMPACT_SUCCEEDS.flatMap((event): CapturedCompactEvent[] =>
+        'frame' in event && event.frame.subtype === 'compact_boundary'
+          ? []
+          : 'frame' in event && event.frame.compact_result === 'success'
+            ? [event, { at: event.at, interrupt: true }]
+            : [event]
+      )
+    )
+
+    expect(commandTurn()).toMatchObject({ state: 'interrupted', outcome: 'cancellation' })
+    expect(drawn().filter((row) => row.body.kind === 'status')).toEqual([])
+  })
+
   it('leaves the command running at a result that names another input', () => {
     const { begin, frame, commandTurn, translator } = harness()
     begin('compact-input')
