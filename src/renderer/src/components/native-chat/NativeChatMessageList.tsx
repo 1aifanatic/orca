@@ -223,8 +223,8 @@ export function NativeChatMessageList({
   )
   // A message waiting behind the live turn draws after that turn's live activity, not inside it.
   const { slots, waitingSlots } = useMemo(
-    () => splitNativeChatSlotsWaitingBehindLiveTurn(allSlots, currentTurnKey),
-    [allSlots, currentTurnKey]
+    () => splitNativeChatSlotsWaitingBehindLiveTurn(allSlots, journalItems),
+    [allSlots, journalItems]
   )
   const transcriptWindow = useNativeChatTranscriptWindow({
     scrollRef,

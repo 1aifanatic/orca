@@ -363,6 +363,46 @@ describe('NativeChatMessageList turns from the turn record', () => {
     expect(follows(screen.getByText('Say DONE'), activity!)).toBe(true)
   })
 
+  it("keeps a steer on its way into an ordinary running turn above that turn's activity", () => {
+    const steer = agentJournalSubmissionKey('steer')
+    const items = [
+      say('u1', 'user', 'List three fruits'),
+      item('t1', {
+        kind: 'turn',
+        turnId: 't1',
+        state: 'running',
+        userItemId: 'u1',
+        startedAt: 10_000
+      }),
+      say('t1-narration', 'assistant', 'Thinking about fruit.', inTurn('t1')),
+      say(steer, 'user', 'Make it four')
+    ]
+    const { container } = render(
+      journalList(
+        items,
+        [
+          {
+            clientMessageId: 'steer',
+            fence: 1,
+            payloadFingerprint: 'steer',
+            dispatchState: 'pending',
+            providerItemId: null,
+            reason: null,
+            submittedAt: 10_500,
+            resolvedAt: null,
+            handoverRecorded: true
+          }
+        ],
+        { isWorking: true, workingStartedAt: 10_000 }
+      )
+    )
+
+    // Handed over within moments, where it already is: it must not cross the activity line to wait.
+    const activity = container.querySelector<HTMLElement>('[data-native-chat-turn-activity]')
+    expect(activity).not.toBeNull()
+    expect(follows(activity!, screen.getByText('Make it four'))).toBe(true)
+  })
+
   it('keeps a message whose own start is pending above the activity that start reports', () => {
     const waiting = agentJournalSubmissionKey('first')
     const { container } = render(

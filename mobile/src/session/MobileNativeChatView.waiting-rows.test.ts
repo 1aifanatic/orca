@@ -74,60 +74,96 @@ function row(itemId: string, sequence: number, body: AgentJournalRenderItem['bod
   }
 }
 
-it('draws a message waiting behind a running /compact after the live status, not in the list', async () => {
-  await act(async () => {
+function renderView(
+  folded: NativeChatMessage[],
+  items: AgentJournalRenderItem[]
+): { listed: string[]; footer: string[] } {
+  act(() => {
     renderer = create(
       createElement(MobileNativeChatView, {
         messages: [],
-        folded: [user('compact', '/compact'), user('held', 'Say DONE', true)],
+        folded,
         status: 'ready',
         streaming: null,
         onSend: vi.fn().mockResolvedValue(true),
         sendSurfaceId: 'tab-a',
         getSendCompletionGeneration: () => 0,
+        getComposerEditGeneration: () => 0,
         pending: [],
         composerText: '',
         onComposerTextChange: vi.fn(),
         structuredActivityUi: true,
         agentWorking: true,
-        turnJournal: {
-          items: [
-            row('compact', 1, {
-              kind: 'message',
-              role: 'user',
-              blocks: [{ type: 'text', text: '/compact' }],
-              command: { name: 'compact' }
-            }),
-            row('command-turn', 2, {
-              kind: 'turn',
-              turnId: 'compact:1',
-              state: 'running',
-              userItemId: 'compact',
-              startedAt: 1
-            }),
-            row('held', 3, {
-              kind: 'message',
-              role: 'user',
-              blocks: [{ type: 'text', text: 'Say DONE' }]
-            })
-          ],
-          submissions: []
-        }
+        turnJournal: { items, submissions: [] }
       })
     )
   })
-
-  const list = renderer!.root.find((node) => node.type === 'FlatList')
-  expect(list.props.data.map((message: NativeChatMessage) => message.id)).toEqual(['compact'])
+  const list = renderer!.root.find((node) => String(node.type) === 'FlatList')
   let footer: ReactTestRenderer | null = null
   act(() => {
     footer = create(list.props.ListFooterComponent)
   })
-  const drawn = footer!.root.findAll(
-    (node) => node.type === 'LiveStatus' || node.type === 'ChatMessage'
-  )
-  expect(
-    drawn.map((node) => (node.type === 'LiveStatus' ? 'status' : node.props.message.id))
-  ).toEqual(['status', 'held'])
+  const drawn = footer!.root
+    .findAll((node) => String(node.type) === 'LiveStatus' || String(node.type) === 'ChatMessage')
+    .map((node) => (String(node.type) === 'LiveStatus' ? 'status' : node.props.message.id))
   act(() => footer!.unmount())
+  return {
+    listed: list.props.data.map((message: NativeChatMessage) => message.id),
+    footer: drawn
+  }
+}
+
+it('draws a message waiting behind a running /compact after the live status, not in the list', () => {
+  const drawn = renderView(
+    [user('compact', '/compact'), user('held', 'Say DONE', true)],
+    [
+      row('compact', 1, {
+        kind: 'message',
+        role: 'user',
+        blocks: [{ type: 'text', text: '/compact' }],
+        command: { name: 'compact' }
+      }),
+      row('command-turn', 2, {
+        kind: 'turn',
+        turnId: 'compact:1',
+        state: 'running',
+        userItemId: 'compact',
+        startedAt: 1
+      }),
+      row('held', 3, {
+        kind: 'message',
+        role: 'user',
+        blocks: [{ type: 'text', text: 'Say DONE' }]
+      })
+    ]
+  )
+
+  expect(drawn).toEqual({ listed: ['compact'], footer: ['status', 'held'] })
+})
+
+it('keeps a steer on its way into an ordinary running turn in the list, above the live status', () => {
+  const drawn = renderView(
+    [user('ask', 'List three fruits'), user('steer', 'Make it four', true)],
+    [
+      row('ask', 1, {
+        kind: 'message',
+        role: 'user',
+        blocks: [{ type: 'text', text: 'List three fruits' }]
+      }),
+      row('turn', 2, {
+        kind: 'turn',
+        turnId: 'turn-1',
+        state: 'running',
+        userItemId: 'ask',
+        startedAt: 1
+      }),
+      row('steer', 3, {
+        kind: 'message',
+        role: 'user',
+        blocks: [{ type: 'text', text: 'Make it four' }]
+      })
+    ]
+  )
+
+  expect(drawn).toEqual({ listed: ['ask', 'steer'], footer: ['status'] })
 })

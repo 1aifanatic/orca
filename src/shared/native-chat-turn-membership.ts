@@ -17,6 +17,7 @@ import type {
 } from './agent-session-journal-types'
 import { readAgentJournalTurn } from './agent-session-turn-record'
 import type { NativeChatRole } from './native-chat-types'
+import { isStructuredAgentSessionCommandTurn } from './structured-agent-session-command-entry'
 import { liveStructuredAgentSessionTurnScope } from './structured-agent-session-live-turn'
 
 /** Whether the host writing this journal states each row's turn. Only a host that runs `/compact`
@@ -125,17 +126,28 @@ export function nativeChatTurnMembership(
 }
 
 /**
- * The rows accepted but not yet handed over that wait behind a live turn other than their own, as
- * a message sent during `/compact` does. They are the next thing the agent takes, so they draw
- * after that turn's live activity. None waits when the live turn is itself a waiting row's.
+ * The rows accepted but not yet handed over while a conversation command's turn runs, as a message
+ * sent during `/compact` is: the host hands nothing over until the command ends, so they draw after
+ * that turn's live activity. Any other running turn takes a send within moments, so it stays put.
  */
 export function nativeChatMessagesWaitingBehindLiveTurn(
   messages: readonly { id: string; queued?: true }[],
-  liveTurnKey: string | undefined
+  items: readonly AgentJournalRenderItem[] | null | undefined
 ): ReadonlySet<string> {
   const queued = messages.filter((message) => message.queued === true)
   return new Set(
-    queued.some((message) => message.id === liveTurnKey) ? [] : queued.map((message) => message.id)
+    queued.length > 0 && items && commandTurnRunning(items)
+      ? queued.map((message) => message.id)
+      : []
+  )
+}
+
+function commandTurnRunning(items: readonly AgentJournalRenderItem[]): boolean {
+  const running = liveStructuredAgentSessionTurnScope(items)
+  const bodyOf = (itemId: string) => items.find((item) => item.itemId === itemId)?.body
+  return (
+    running.kind === 'turn' &&
+    isStructuredAgentSessionCommandTurn(readAgentJournalTurn(bodyOf(running.turnItemId)), bodyOf)
   )
 }
 

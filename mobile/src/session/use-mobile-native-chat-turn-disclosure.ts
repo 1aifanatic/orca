@@ -73,7 +73,9 @@ export function useMobileNativeChatTurnDisclosure({
   )
   // A message waiting behind the live turn draws after that turn's live status, not in the list.
   const waiting = useMemo(() => {
-    const ids = enabled ? nativeChatMessagesWaitingBehindLiveTurn(messages, liveTurnKey) : null
+    const ids = enabled
+      ? nativeChatMessagesWaitingBehindLiveTurn(messages, turnJournal?.items)
+      : null
     if (!ids?.size) {
       return NONE_WAITING
     }
@@ -82,7 +84,7 @@ export function useMobileNativeChatTurnDisclosure({
       waitingRows: messages.flatMap((item, index) => (ids.has(item.id) ? [{ item, index }] : [])),
       indexById: new Map(messages.map((message, index) => [message.id, index]))
     }
-  }, [enabled, liveTurnKey, messages])
+  }, [enabled, messages, turnJournal])
   const turnStatuses = useMobileNativeChatTurnStatus({
     turnKeys,
     liveTurnKey,
