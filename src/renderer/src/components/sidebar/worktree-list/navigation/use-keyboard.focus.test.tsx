@@ -239,6 +239,7 @@ describe('workspace list focus ownership', () => {
     press('Enter')
     expect(focusRuntime).toHaveBeenCalledWith('tab-b', null, 'b')
     expect(document.activeElement).toBe(textarea)
+    expect(list.hasAttribute('data-keyboard-navigation')).toBe(false)
   })
 
   it('uses folder workspace identity when handing focus to its terminal', () => {
@@ -246,6 +247,19 @@ describe('workspace list focus ownership', () => {
     press('Enter')
     expect(focusRuntime).toHaveBeenCalledWith('folder-tab', null, 'folder:one')
   })
+
+  it.each([false, true])(
+    'keeps ownership when Enter returns %s without moving focus',
+    (handled) => {
+      press('ArrowDown')
+      focusRuntime.mockReturnValue(handled)
+      press('Enter')
+      expect(document.activeElement).toBe(list)
+      focusPanePreservingOverlays({ container, terminal })
+      expect(document.activeElement).toBe(list)
+      expect(terminal.focus).not.toHaveBeenCalled()
+    }
+  )
 
   it.each(['editor', 'browser', 'agent', 'empty', 'unowned', 'unmounted', 'other-view'])(
     'leaves focus in the list for %s targets instead of another terminal',

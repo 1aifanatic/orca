@@ -181,7 +181,6 @@ export function useWorktreeListKeyboardNavigation(args: {
           activeTabId &&
           tabsByWorktree[activeWorktreeId]?.some((tab) => tab.id === activeTabId)
         ) {
-          e.currentTarget.removeAttribute('data-keyboard-navigation')
           // The registered manager owns the active split; unavailable surfaces keep list focus.
           focusRuntimeTerminalSurface(activeTabId, null, activeWorktreeId)
         }
