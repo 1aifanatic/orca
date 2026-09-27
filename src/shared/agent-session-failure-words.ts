@@ -47,6 +47,9 @@ export type AgentSessionFailureWordsContext = {
   agentName?: string
   /** Names the legacy queue-full marker; without it a full queue is worded as a sentence. */
   provider?: 'claude' | 'codex'
+  /** The conversation command a failed start was for, so the next step is to run it again
+   *  rather than to send a message. */
+  command?: 'clear'
 }
 
 /**
@@ -93,8 +96,19 @@ function quotingPersonDetail(lead: string, detail: ProviderDiagnostic | undefine
   return quoted ? `${lead}: ${quoted}.` : `${lead}.`
 }
 
+/** What to do once the start can work, for a sentence that ends in it. */
+function retryStep({ command }: AgentSessionFailureWordsContext): string {
+  return command === 'clear' ? 'run /clear again' : 'send your message again'
+}
+
+/** The next step a start failure with none of its own leaves: a command, run again. */
+function commandRetry({ command }: AgentSessionFailureWordsContext): string {
+  return command === 'clear' ? ' Run /clear again.' : ''
+}
+
 function couldNot(verb: string): Sentence {
-  return ({ agentName }, fact) => {
+  return (context, fact) => {
+    const { agentName } = context
     const failed = `${agentName ?? 'The agent'} couldn't ${verb}.`
     // Only a terminal agent an older build recorded holds a claim; quitting it frees the chat.
     if (fact.refusal?.details?.reason === 'claimConflicted') {
@@ -103,7 +117,7 @@ function couldNot(verb: string): Sentence {
     const code = fact.refusal?.code
     return code && !START_REFUSAL_RESUMABLE[code]
       ? `${failed} Start a new chat to continue.`
-      : failed
+      : `${failed}${commandRetry(context)}`
   }
 }
 
@@ -137,10 +151,11 @@ const ATTACHMENT_SENTENCES = {
 >
 
 const FAILURE_SENTENCES = {
-  providerStartFailed: () => 'The provider stopped before it finished starting.',
+  providerStartFailed: (context) =>
+    `The provider stopped before it finished starting.${commandRetry(context)}`,
   startFailed: couldNot('start'),
-  notSignedIn: ({ agentName }) =>
-    `${agentName ?? 'The agent'} is not signed in for the selected account. Sign in, then send your message again.`,
+  notSignedIn: (context) =>
+    `${context.agentName ?? 'The agent'} is not signed in for the selected account. Sign in, then ${retryStep(context)}.`,
   historyTooLarge: () =>
     "This conversation's history is too large to restore here. Start a new chat to continue.",
   providerExited: (_, __, surface) =>

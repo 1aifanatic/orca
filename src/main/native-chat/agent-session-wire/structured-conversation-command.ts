@@ -200,7 +200,7 @@ export function runStructuredConversationCommand(
                     refusal: acquired.refusal,
                     newSession: true
                   }),
-                  structuredAgentSessionFailureWordsContext(record)
+                  { ...structuredAgentSessionFailureWordsContext(record), command: 'clear' }
                 )
               }
               await store.setConversationCommand(sessionId, ctx.fence, failed)

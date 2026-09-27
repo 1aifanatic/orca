@@ -60,15 +60,19 @@ describe('the words written beside a failure fact', () => {
   describe.each(SURFACES)('on the %s surface', (surface) => {
     it.each(AGENT_SESSION_FAILURE_KINDS)('for %s are one sentence a person can read', (kind) => {
       for (const fact of factsFor(kind)) {
-        for (const agentName of ['Claude', undefined]) {
-          const sentence = agentSessionFailureSentence(fact, surface, { agentName })
+        for (const [agentName, command] of [
+          ['Claude', undefined],
+          [undefined, undefined],
+          ['Codex', 'clear']
+        ] as const) {
+          const sentence = agentSessionFailureSentence(fact, surface, { agentName, command })
           expect([fact, sentence]).toEqual([fact, expect.stringMatching(/[^.]\.$/)])
           expect(sentence).not.toMatch(/\.\./)
           expect(sentence).not.toMatch(ORCA_INTERNAL)
           if (surface === 'rejection' && LEGACY_MARKER_KINDS.has(kind)) {
             continue
           }
-          const context = { agentName, provider: 'claude' } as const
+          const context = { agentName, command, provider: 'claude' } as const
           const written =
             surface === 'row'
               ? agentSessionFailureWords(fact, { ...context, surface }).text
@@ -102,6 +106,22 @@ describe('the words written beside a failure fact', () => {
       )
       expect(classifyDispatchRejection({ reason: written.reason })).toMatchObject({ kind })
     }
+  })
+
+  it('names /clear as the next step for the start a /clear needed', () => {
+    const clear = (kind: AgentSessionFailureKind) =>
+      agentSessionFailureSentence({ kind }, 'row', { agentName: 'Codex', command: 'clear' })
+    expect(clear('notSignedIn')).toBe(
+      'Codex is not signed in for the selected account. Sign in, then run /clear again.'
+    )
+    expect(clear('startFailed')).toBe("Codex couldn't start. Run /clear again.")
+    expect(clear('providerStartFailed')).toBe(
+      'The provider stopped before it finished starting. Run /clear again.'
+    )
+    // A send keeps its own next step.
+    expect(
+      agentSessionFailureSentence({ kind: 'startFailed' }, 'row', { agentName: 'Codex' })
+    ).toBe("Codex couldn't start.")
   })
 
   it('names the exit a row reports differently from the message it left unsent', () => {

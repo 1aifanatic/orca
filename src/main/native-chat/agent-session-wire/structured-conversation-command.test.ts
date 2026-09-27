@@ -290,6 +290,14 @@ describe('host conversation commands', () => {
     })
   })
 
+  it('tells the user to run /clear again when the replacement could not start', async () => {
+    vi.mocked(adapter.acquire).mockRejectedValueOnce(new Error('spawn codex ENOENT'))
+    expect(await host.conversationCommand(caller, commandParams('clear'))).toMatchObject({
+      ok: true,
+      value: { state: 'completed', error: "Codex couldn't start. Run /clear again." }
+    })
+  })
+
   it('keeps the situation a refused replacement start named', async () => {
     vi.mocked(adapter.acquire).mockRejectedValueOnce(
       new AgentSessionAcquisitionRefusal('Codex is not signed in.', 'notSignedIn')
@@ -299,8 +307,8 @@ describe('host conversation commands', () => {
       value: {
         state: 'completed',
         replacementSessionId: undefined,
-        error:
-          'Codex is not signed in for the selected account. Sign in, then send your message again.',
+        // The next step is the command the user ran, not a message into the old conversation.
+        error: 'Codex is not signed in for the selected account. Sign in, then run /clear again.',
         failure: { kind: 'notSignedIn' }
       }
     })
