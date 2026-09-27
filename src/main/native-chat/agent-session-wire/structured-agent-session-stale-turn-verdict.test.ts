@@ -4,9 +4,13 @@ import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import type { AgentJournalRenderItem } from '../../../shared/agent-session-journal-types'
+import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { createTrackedJournalOpener } from '../agent-session-journal/journal-store-test-open'
-import { settleStaleStructuredAgentSessionState } from './structured-agent-session-dead-generation-settlement'
+import {
+  settleStaleStructuredAgentSessionState,
+  UNEXPECTED_PROVIDER_EXIT_OUTCOME
+} from './structured-agent-session-dead-generation-settlement'
 import {
   runningTurnLifecycleRevisions,
   turnVerdictFromDeathEvidence,
@@ -75,39 +79,31 @@ function promptItem(state: 'pending' | 'resolved', sequence: number): AgentJourn
 }
 
 describe('turn verdict from death evidence', () => {
-  // A running turn first seen at 100, a tool call at 300, and a row crash recovery wrote at 450.
-  const items: AgentJournalRenderItem[] = [
-    lifecycleItem('turn-2', 'running', 100),
-    { ...lifecycleItem('turn-tool', 'running', 300) },
-    { ...lifecycleItem('turn-recovered', 'completed', 450), recovered: true, recoveredAt: 450 }
-  ]
-
   it('ends a watched exit at the exit', () => {
     expect(
-      turnVerdictFromDeathEvidence(
-        { kind: 'exit-observed', detail: 'exit', observedAt: 500 },
-        items
-      )
+      turnVerdictFromDeathEvidence({ kind: 'exit-observed', detail: 'exit', observedAt: 500 }, 300)
     ).toEqual({ state: 'interrupted', completedAt: 500 })
   })
 
   it.each(['pid-absent', 'identity-mismatch'] as const)(
-    'ends a %s proof at the last thing the journal saw live, not at the probe',
+    'ends a %s proof at the last row the journal saw live, not at the probe',
     (kind) => {
       // Probed at 9000, long after the crash: the downtime is never counted as work.
       expect(
-        turnVerdictFromDeathEvidence({ kind, detail: 'gone', observedAt: 9_000 }, items)
+        turnVerdictFromDeathEvidence({ kind, detail: 'gone', observedAt: 9_000 }, 300)
       ).toEqual({ state: 'interrupted', completedAt: 300 })
-      // Nothing live before the probe: the probe is the only bound there is.
-      expect(turnVerdictFromDeathEvidence({ kind, detail: 'gone', observedAt: 50 }, items)).toEqual(
-        { state: 'interrupted', completedAt: 50 }
-      )
+      // A live row stamped after the probe cannot outlast it, and no live row leaves only the probe.
+      for (const lastLive of [9_500, 0]) {
+        expect(
+          turnVerdictFromDeathEvidence({ kind, detail: 'gone', observedAt: 9_000 }, lastLive)
+        ).toEqual({ state: 'interrupted', completedAt: 9_000 })
+      }
     }
   )
 
   it('leaves a release nothing proved unverifiable', () => {
-    expect(turnVerdictFromDeathEvidence(null, items)).toEqual({ state: 'unverifiable' })
-    expect(turnVerdictFromDeathEvidence(undefined, items)).toEqual({ state: 'unverifiable' })
+    expect(turnVerdictFromDeathEvidence(null, 300)).toEqual({ state: 'unverifiable' })
+    expect(turnVerdictFromDeathEvidence(undefined, 300)).toEqual({ state: 'unverifiable' })
   })
 })
 
@@ -208,6 +204,7 @@ describe('stale session state on a cold acquire', () => {
     const journal = {
       snapshot: () => ({ items }),
       cursor: () => ({ epoch: 'epoch-1', sequence: 8 }),
+      lastLiveActivityAt: () => 2,
       appendLifecycleBatch
     } as unknown as AgentSessionJournal
     return { journal, appendLifecycleBatch }
@@ -326,6 +323,81 @@ describe('stale session state on a cold acquire', () => {
         ['approval', 2, 'thread-child'],
         ['approval', 2, undefined]
       ])
+    } finally {
+      await journals.closeAll()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('ends a probe-proven turn at its last live row, which a revised item does not carry', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'orca-stale-session-'))
+    const journals = createTrackedJournalOpener()
+    let now = 100
+    try {
+      const journal = await journals.open({
+        identity: {
+          sessionId: 'session-1',
+          workspaceId: 'workspace-1',
+          hostId: 'local',
+          agent: 'codex',
+          providerHandle: { kind: 'codex', threadId: THREAD }
+        },
+        journalDir: root,
+        now: () => now
+      })
+      const command = { provider: 'codex' as const, threadId: THREAD, turnId: 'turn-1', ordinal: 1 }
+      const shell = { kind: 'tool-call' as const, name: 'shell', input: { command: 'pnpm test' } }
+      await journal.appendItem(
+        { ...command, ordinal: 0 },
+        { kind: 'turn', turnId: 'turn-1', state: 'running', startedAt: 100 },
+        { fence: 1 }
+      )
+      now = 200
+      await journal.appendItem(command, { ...shell, state: 'running' }, { fence: 1 })
+      // Output streamed until 700: a revision, so the item still reads as first seen at 200.
+      now = 700
+      await journal.appendItem(
+        command,
+        { ...shell, input: { command: 'pnpm test', streamed: 'ok' }, state: 'running' },
+        { fence: 1 }
+      )
+      // Crash reconciliation is Orca writing, not the provider working.
+      now = 900
+      await journal.appendLifecycleBatch({
+        settlementId: 'earlier-recovery',
+        fence: 1,
+        recovered: true,
+        mutations: [
+          {
+            kind: 'item',
+            identity: { provider: 'orca', clientMessageId: 'earlier-recovery' },
+            body: { kind: 'status', text: 'recovered' }
+          }
+        ]
+      })
+      now = 9_000
+
+      await settleStaleStructuredAgentSessionState({
+        journal,
+        sessionId: 'session-1',
+        fence: 2,
+        acquisitionGeneration: 'generation-2',
+        deathEvidence: {
+          kind: 'pid-absent',
+          detail: 'recorded pid absent on host',
+          observedAt: 9_000
+        }
+      })
+
+      const items = journal.snapshot().items
+      expect(items.map((item) => readAgentJournalTurn(item.body)).find(Boolean)).toMatchObject({
+        state: 'interrupted',
+        completedAt: 700
+      })
+      // The probe's detail is Orca's, so the row carries none.
+      expect(
+        items.flatMap((item) => (item.body.kind === 'status' ? [item.body.text] : []))
+      ).toEqual(['recovered', UNEXPECTED_PROVIDER_EXIT_OUTCOME])
     } finally {
       await journals.closeAll()
       await rm(root, { recursive: true, force: true })

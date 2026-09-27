@@ -35,6 +35,8 @@ export type JournalReducerState = {
   epoch: string
   lastSequence: number
   lastActivityAt: number
+  /** `lastActivityAt` over rows written live: crash reconciliation is not the provider working. */
+  lastLiveActivityAt: number
   /** Lowest sequence still individually replayable; rows below it were compacted. */
   oldestSequence: number
   highestFence: number
@@ -55,6 +57,7 @@ export function createJournalReducerState(sessionId: string, epoch: string): Jou
     epoch,
     lastSequence: 0,
     lastActivityAt: 0,
+    lastLiveActivityAt: 0,
     oldestSequence: 1,
     highestFence: 0,
     items: new Map(),
@@ -73,6 +76,7 @@ export function applyJournalRow(state: JournalReducerState, row: JournalRow): vo
     return
   }
   state.lastActivityAt = Math.max(state.lastActivityAt, row.ts)
+  state.lastLiveActivityAt = Math.max(state.lastLiveActivityAt, row.recovered ? 0 : row.ts)
   if (row.kind === 'item') {
     if (journalItemRevisionIsStale(state, row.itemId, row.revision)) {
       return

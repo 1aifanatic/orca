@@ -187,6 +187,9 @@ function isAcquirable(lease: NonNullable<ReturnType<typeof store.getRecord>>['le
   )
 }
 
+/** When the seeded turn's row was written: the last time the dead owner was seen working. */
+const SEEDED_TURN_SEEN_AT = NOW - 4_000
+
 async function seedRunningTurn(provider: 'codex' | 'claude' = 'codex'): Promise<void> {
   const journal = await openAgentSessionJournal({
     identity: {
@@ -199,7 +202,11 @@ async function seedRunningTurn(provider: 'codex' | 'claude' = 'codex'): Promise<
           ? { kind: 'codex', threadId: THREAD }
           : { kind: 'claude', sessionId: 'provider-session-alpha-1', leafUuid: null }
     },
-    journalDir: journalDirectoryFor(root, { workspaceId: LOCATION.workspaceId, sessionId: SESSION })
+    journalDir: journalDirectoryFor(root, {
+      workspaceId: LOCATION.workspaceId,
+      sessionId: SESSION
+    }),
+    now: () => SEEDED_TURN_SEEN_AT
   })
   await journal.appendItem(
     provider === 'codex'
@@ -216,17 +223,6 @@ function turnLifecycle(turnId: string) {
     .snapshot()
     .items.find((candidate) => readAgentJournalTurn(candidate.body)?.turnId === turnId)
   return item ? { ...readAgentJournalTurn(item.body), recovered: item.recovered } : null
-}
-
-/** When the journal last saw the running turn live; a probe-proven death ends the turn there. */
-function seededTurnSeenAt(): number {
-  const item = restoredJournal()
-    .snapshot()
-    .items.find((candidate) => readAgentJournalTurn(candidate.body)?.turnId === 'turn-1')
-  if (!item) {
-    throw new Error('expected the seeded turn')
-  }
-  return item.observedAt
 }
 
 function restoredJournal(): AgentSessionJournal {
@@ -313,7 +309,7 @@ describe('already-wedged profiles become usable on load', () => {
       'a quit that left the owner for a probe to prove gone',
       wedgedRecord({ claimStatus: 'live', handoffStage: null, ownerProcess: DEAD_OWNER }),
       null,
-      { state: 'interrupted', completedAt: 'when last seen live' }
+      { state: 'interrupted', completedAt: SEEDED_TURN_SEEN_AT }
     ],
     [
       'a quit that left an owner on a host this one cannot probe',
@@ -352,10 +348,7 @@ describe('already-wedged profiles become usable on load', () => {
         turnId: 'turn-1',
         startedAt: NOW - 5_000,
         recovered: true,
-        ...verdict,
-        ...('completedAt' in verdict && verdict.completedAt === 'when last seen live'
-          ? { completedAt: seededTurnSeenAt() }
-          : {})
+        ...verdict
       })
       expect(activeStructuredAgentSessionTurnId(restoredJournal().snapshot().items)).toBe(null)
       // The provider's own reason reaches the chat only from a watched exit; a probe's is Orca's.
@@ -398,7 +391,7 @@ describe('already-wedged profiles become usable on load', () => {
       turnId: 'turn-1',
       state: 'interrupted',
       startedAt: NOW - 5_000,
-      completedAt: seededTurnSeenAt(),
+      completedAt: SEEDED_TURN_SEEN_AT,
       recovered: true
     })
     expect(store.getRecord(SESSION)?.lease).toMatchObject({
@@ -494,7 +487,7 @@ describe('already-wedged profiles become usable on load', () => {
         turnId: 'turn-1',
         state: 'interrupted',
         startedAt: NOW - 5_000,
-        completedAt: seededTurnSeenAt(),
+        completedAt: SEEDED_TURN_SEEN_AT,
         recovered: true
       })
     }

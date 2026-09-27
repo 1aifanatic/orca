@@ -27,34 +27,20 @@ export const UNVERIFIABLE_TURN_VERDICT: StructuredAgentSessionTurnVerdict = {
 
 export function turnVerdictFromDeathEvidence(
   evidence: AgentSessionDeathEvidence | null | undefined,
-  items: readonly AgentJournalRenderItem[]
+  lastLiveActivityAt: number
 ): StructuredAgentSessionTurnVerdict {
   if (!evidence) {
     return UNVERIFIABLE_TURN_VERDICT
   }
+  // A probe finds a dead child long after it died; the last row it wrote bounds its end, so the
+  // turn never counts the time Orca itself was down.
   return {
     state: 'interrupted',
     completedAt:
-      evidence.kind === 'exit-observed'
+      evidence.kind === 'exit-observed' || lastLiveActivityAt <= 0
         ? evidence.observedAt
-        : lastLiveActivityAt(items, evidence.observedAt)
+        : Math.min(lastLiveActivityAt, evidence.observedAt)
   }
-}
-
-/** A probe finds a dead child long after it died; the last thing the journal saw it do bounds its
- *  end, so the turn's duration never counts the time Orca itself was down. */
-function lastLiveActivityAt(items: readonly AgentJournalRenderItem[], probedAt: number): number {
-  let latest: number | null = null
-  for (const item of items) {
-    if (
-      !item.recovered &&
-      item.observedAt <= probedAt &&
-      (latest === null || item.observedAt > latest)
-    ) {
-      latest = item.observedAt
-    }
-  }
-  return latest ?? probedAt
 }
 
 /** Revises every still-running lifecycle item in place, keeping its identity and start. */
