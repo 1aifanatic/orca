@@ -108,6 +108,12 @@ export class StructuredAgentSessionIdleSweep {
       await this.deps.stopAgent(sessionId)
       return
     }
+    // Owed work is activity, read every tick, so the agent gets a full window once it ends: a child
+    // can read done before the lead's wake-up turn writes anything.
+    if (session.child && session.child.phase !== 'starting' && this.owesWork(sessionId, session)) {
+      this.deps.sessions.touch(sessionId)
+      return
+    }
     const lastActivityAt = this.deps.sessions.lastActivityAt(sessionId) ?? this.deps.now()
     if (this.deps.now() - lastActivityAt < (this.deps.idleMs ?? STRUCTURED_AGENT_SESSION_IDLE_MS)) {
       return
@@ -116,12 +122,6 @@ export class StructuredAgentSessionIdleSweep {
       // A start that has been quiet this long is not coming: the host stops it, with its reason.
       if (session.child.phase === 'starting') {
         await this.deps.stopStartingAgent(sessionId)
-        return
-      }
-      if (this.owesWork(sessionId, session)) {
-        // Owed work is activity, so the agent gets a full window once it ends: a child can read
-        // done before the lead's wake-up turn writes anything.
-        this.deps.sessions.touch(sessionId)
         return
       }
       await this.deps.stopAgent(sessionId)

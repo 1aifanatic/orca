@@ -10,6 +10,7 @@
 
 import type { AgentSessionRecoveryCapsule } from '../../runtime/agent-session-recovery-capsule'
 import type { AgentSessionResumeMarker } from '../../../shared/agent-session-resume-marker'
+import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
 import { isRestartContinuationOf } from './structured-agent-session-restart-continuation-envelope'
 
@@ -43,9 +44,10 @@ export function createStructuredAgentSessionRestartOfferWithdrawal(deps: {
           (submission) =>
             (submission.acceptedSequence ?? 0) > taken.sequence &&
             // The offer's own continuation, still queued or rejected, never reached the agent: a
-            // retry sends a new one.
+            // retry sends a new one. One handed over may have, answered or not.
             !(
-              (submission.dispatchState === 'pending' || submission.dispatchState === 'rejected') &&
+              (isQueuedAgentJournalSubmission(submission) ||
+                submission.dispatchState === 'rejected') &&
               isRestartContinuationOf(marker, submission.clientMessageId)
             )
         ))

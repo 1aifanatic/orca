@@ -28,6 +28,7 @@ import {
   oldestQueuedSubmission,
   recordStructuredAgentSessionStartFailure
 } from './structured-agent-session-start-failure-row'
+import { failedProviderChildStart } from './structured-agent-session-provider-child'
 import { handOverSubmission } from './structured-agent-session-turns'
 import { structuredAgentSessionCommandRunning } from './structured-agent-session-command-turn'
 
@@ -235,11 +236,9 @@ function startThatFailedWhileQueued(
   session: StructuredAgentSessionHostSession,
   oldest: NonNullable<ReturnType<typeof oldestQueuedSubmission>>
 ): StartFailure | null {
-  const ended = session.lastEndedChild
+  const ended = failedProviderChildStart(session)
   if (
-    session.child ||
-    !ended?.duringStartup ||
-    ended.cause === 'user-stop' ||
+    !ended ||
     oldest.acceptedSequence === undefined ||
     ended.endedAt.epoch !== session.journal.cursor().epoch ||
     ended.endedAt.sequence < oldest.acceptedSequence

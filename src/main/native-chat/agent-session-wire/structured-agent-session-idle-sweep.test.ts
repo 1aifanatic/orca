@@ -146,6 +146,28 @@ describe('the idle sweep', () => {
     await vi.waitFor(() => expect(rig.adapter.closeSession).toHaveBeenCalledWith(SESSION))
   })
 
+  // Owed work is read every tick, not once a window: work that ends just before a window would
+  // have closed still leaves the agent a full window after it.
+  it('gives a full window after background work that ends late in a window', async () => {
+    await foundRestTestChat(rig)
+    const subagent = (state: 'working' | 'done') => ({
+      state: 'monitoring' as const,
+      tasks: [{ id: 'subagent-1', kind: 'agent' as const, state }]
+    })
+    rig.adapter.backgroundTaskState.mockReturnValue(subagent('working'))
+    rig.clock.now += IDLE_MS + 1
+    await sweepTicks()
+    rig.clock.now += IDLE_MS - 60_000
+    await sweepTicks()
+    rig.adapter.backgroundTaskState.mockReturnValue(subagent('done'))
+    rig.clock.now += 60_000 + 1
+
+    await sweepTicks()
+    expect(rig.adapter.closeSession).not.toHaveBeenCalled()
+    rig.clock.now += IDLE_MS
+    await vi.waitFor(() => expect(rig.adapter.closeSession).toHaveBeenCalledWith(SESSION))
+  })
+
   it('stops an agent whose roster holds only children that went idle or finished', async () => {
     await foundRestTestChat(rig)
     rig.adapter.backgroundTaskState.mockReturnValue({

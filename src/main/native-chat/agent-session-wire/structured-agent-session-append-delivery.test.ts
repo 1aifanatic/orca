@@ -51,8 +51,16 @@ function liveReader() {
         submissions.push(...event.page.submissions)
       }
     }
+    const rows = new Map<string, string>()
+    for (const item of items) {
+      if (item.body.kind === 'status') {
+        rows.set(item.itemId, item.body.text)
+      }
+    }
     return {
       statuses: items.flatMap((item) => (item.body.kind === 'status' ? [item.body.text] : [])),
+      /** Each status row as the chat renders it: its latest revision, once. */
+      statusRows: [...rows.values()],
       submissions,
       batches: events.slice(opened).filter((event) => event.type === 'batch').length
     }
@@ -158,9 +166,9 @@ describe('an open chat receives every row its journal commits', () => {
       )
     )
     // One row, however many of its writers reported the start.
-    expect(new Set(pane.received().statuses)).toEqual(
-      new Set([expect.stringMatching(/stopped before it finished starting: .*not signed in/)])
-    )
+    expect(pane.received().statusRows).toEqual([
+      expect.stringMatching(/stopped before it finished starting: .*not signed in/)
+    ])
   })
 
   it('shows a revision the provider queued with no publish behind it', async () => {
