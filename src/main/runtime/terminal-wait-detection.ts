@@ -5,6 +5,7 @@ import {
   type AgentStatus
 } from '../../shared/agent-detection'
 import type { RuntimeTerminalWaitBlockedReason } from '../../shared/runtime-types'
+import type { TuiAgent } from '../../shared/tui-agent'
 import { findAntigravityReadyPromptIndex } from './antigravity-terminal-readiness'
 import { startOfLastLines, startOfLastNonBlankLines } from './terminal-wait-tail-window'
 
@@ -43,15 +44,39 @@ export const detectExplicitIdleStatusFromTitle: (title: string) => AgentStatus |
 
 export function isKnownReadyPromptPreview(preview: string): boolean {
   const normalized = preview.toLowerCase()
-  const readyIndex = findKnownReadyPromptIndex(normalized)
+  return isReadyPromptLive(normalized, findKnownReadyPromptIndex(normalized))
+}
+
+/**
+ * Tier 1 body evidence for every tui-idle site. `screenLines` is the live emulator's visible
+ * grid, or null when the runtime has no trustworthy one.
+ *
+ * Why the screen decides once it shows the Codex header: Codex repaints its header by cell
+ * diff (`ESC[5;3Hdir ESC[5;7Hctory:`), which only a grid reassembles — the line-folded wait
+ * text reads `dirctory:` forever. The grid also shows `loading` being replaced, which the
+ * append-only text keeps. Without the header on screen, the text rules apply unchanged.
+ */
+export function isKnownReadyPromptBody(
+  waitText: string,
+  screenLines: readonly string[] | null,
+  agent: TuiAgent | null
+): boolean {
+  // Why the agent gate: another agent's screen can merely mention "OpenAI Codex".
+  if (screenLines !== null && (agent === null || agent === 'codex')) {
+    const screen = screenLines.join('\n').toLowerCase()
+    if (screen.includes(CODEX_HEADER_TITLE)) {
+      return isReadyPromptLive(screen, findCodexScreenReadyPromptIndex(screen))
+    }
+  }
+  return isKnownReadyPromptPreview(waitText)
+}
+
+function isReadyPromptLive(normalized: string, readyIndex: number | null): boolean {
   if (readyIndex === null) {
     return false
   }
   const blockedSignal = findTerminalWaitBlockedSignal(normalized)
-  if (blockedSignal !== null && blockedSignal.index > readyIndex) {
-    return false
-  }
-  return true
+  return blockedSignal === null || blockedSignal.index <= readyIndex
 }
 
 // Why separate from isKnownReadyPromptPreview: that one settles tier 1 immediately, while
@@ -140,14 +165,28 @@ function findMuseReadyPromptIndex(normalized: string): number | null {
     : null
 }
 
+const CODEX_HEADER_TITLE = 'openai codex'
+
 function findCodexReadyPromptIndex(normalized: string): number | null {
-  const headerIndex = normalized.lastIndexOf('openai codex')
+  const headerIndex = normalized.lastIndexOf(CODEX_HEADER_TITLE)
   if (headerIndex === -1) {
     return null
   }
   const readySegment = normalized.slice(headerIndex)
   // Why: Codex prints permissions only in YOLO mode; the stable ready header is OpenAI Codex + model + directory.
   return readySegment.includes('model:') && readySegment.includes('directory:') ? headerIndex : null
+}
+
+const CODEX_HEADER_LOADING_RE = /(?:model|directory):\s+loading/
+
+// Why screen-only: the append-only wait text keeps a plain launch's `model: loading` after it
+// resolves, so this guard would strand passing launches if applied there.
+function findCodexScreenReadyPromptIndex(screen: string): number | null {
+  const headerIndex = findCodexReadyPromptIndex(screen)
+  if (headerIndex === null) {
+    return null
+  }
+  return CODEX_HEADER_LOADING_RE.test(screen.slice(headerIndex)) ? null : headerIndex
 }
 
 export const TERMINAL_WAIT_BLOCKED_SENTINEL_RE =

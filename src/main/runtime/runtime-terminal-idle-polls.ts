@@ -2,7 +2,7 @@ import { isShellProcess, type AgentStatus } from '../../shared/agent-detection'
 import type { RuntimeTerminalWait } from '../../shared/runtime-types'
 import {
   detectTerminalWaitBlockedReason,
-  isKnownReadyPromptPreview,
+  isKnownReadyPromptBody,
   isMuseReadyPromptPreview
 } from './terminal-wait-detection'
 import {
@@ -42,6 +42,7 @@ type RuntimeTerminalIdlePollDependencies = {
   getAdoptedPtyIdleStatus(pty: RuntimePtyWorktreeRecord): AgentStatus | null
   getPaneAgent(ptyId: string | null | undefined): TuiAgent | null
   getFirstPartyAgentStatus(ptyId: string | null | undefined): FirstPartyAgentStatus
+  readScreenLines(ptyId: string): readonly string[] | null
   /** Re-read the record the waiter registered against; see `liveLeaf` below. */
   getLiveLeaf(leaf: RuntimeLeafRecord): RuntimeLeafRecord
   resolve(waiter: TerminalWaiter, result: RuntimeTerminalWait): void
@@ -128,7 +129,12 @@ export class RuntimeTerminalIdlePolls {
         isTuiIdleSatisfied({
           record: leaf,
           rendererTitle: leaf.paneTitle ?? this.deps.getTabTitle(leaf.tabId),
-          readPositiveBodyEvidence: () => isKnownReadyPromptPreview(waitText),
+          readPositiveBodyEvidence: () =>
+            isKnownReadyPromptBody(
+              waitText,
+              leaf.ptyId ? this.deps.readScreenLines(leaf.ptyId) : null,
+              agent
+            ),
           readMuseReadyBodyEvidence: () => isMuseReadyPromptPreview(waitText),
           agent,
           firstPartyStatus: this.deps.getFirstPartyAgentStatus(leaf.ptyId),
@@ -196,7 +202,7 @@ export class RuntimeTerminalIdlePolls {
           record: pty,
           readPositiveBodyEvidence: () =>
             this.deps.getAdoptedPtyIdleStatus(pty) === 'idle' ||
-            isKnownReadyPromptPreview(waitText),
+            isKnownReadyPromptBody(waitText, this.deps.readScreenLines(pty.ptyId), agent),
           readMuseReadyBodyEvidence: () => isMuseReadyPromptPreview(waitText),
           agent,
           firstPartyStatus: this.deps.getFirstPartyAgentStatus(pty.ptyId),
