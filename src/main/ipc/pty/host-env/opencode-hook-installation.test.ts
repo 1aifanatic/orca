@@ -321,10 +321,8 @@ it.each([true, false])(
         ORCA_OPENCODE_CONFIG_DIR: join(root, 'old-overlay'),
         ORCA_OPENCODE_SOURCE_CONFIG_DIR: stale
       }
-      if (inheritedFromProcess) {
-        for (const [key, value] of Object.entries(markers)) {
-          vi.stubEnv(key, value)
-        }
+      for (const [key, value] of Object.entries(markers)) {
+        vi.stubEnv(key, inheritedFromProcess ? value : undefined)
       }
       const env = buildPtyHostEnv(
         'explicit-config',
