@@ -198,6 +198,10 @@ describe('per-job path classification', () => {
 
   it('runs Linux packaging when an artifact contract changes', () => {
     for (const file of [
+      'config/scripts/package-linux-formats.mjs',
+      'config/scripts/script-child-process.mjs',
+      'config/scripts/space-sharing-copy.mjs',
+      '.github/actions/prepare-linux-package-fixture/action.yml',
       'config/docker/cli-launch-contract/Dockerfile',
       'config/docker/cli-launch-contract/run-cli-case.sh',
       'config/docker/headless-pairing/Dockerfile',
@@ -207,7 +211,10 @@ describe('per-job path classification', () => {
       'config/scripts/run-headless-linux-pairing-docker.mjs',
       'config/scripts/static-appimage-package-contract.cjs'
     ]) {
-      expectClassification([file], { package: true })
+      expectClassification([file], {
+        package: true,
+        mobile_web_app: file === 'config/scripts/script-child-process.mjs'
+      })
     }
   })
 
@@ -219,7 +226,10 @@ describe('per-job path classification', () => {
       'config/docker/daemon-shutdown-descendants/run-case.sh',
       'config/scripts/run-daemon-shutdown-descendants-docker.mjs'
     ]) {
-      expectClassification([file], { package: true })
+      expectClassification([file], {
+        package: true,
+        mobile_web_app: file === 'config/scripts/script-child-process.mjs'
+      })
     }
     for (const file of [
       'src/main/daemon/terminal-host.ts',
@@ -284,6 +294,9 @@ describe('per-job path classification', () => {
   it('runs the mobile web app job for the builder, the page source and the shell policy', () => {
     for (const file of [
       'config/scripts/build-mobile-web-app-bundle.mjs',
+      'config/scripts/run-mobile-web-app-checks.mjs',
+      'config/scripts/script-child-process.mjs',
+      'src/shared/child-process/run-process.ts',
       'config/scripts/mobile-web-app-route-manifest.mjs',
       'mobile/web-entry/index.tsx',
       'mobile/app/h/[hostId]/index.tsx',
@@ -517,9 +530,12 @@ describe('PR Checks skip wiring', () => {
     expect(classify.run).toContain('--merge-base "$BASE_SHA" "$HEAD_SHA"')
     expect(classify.run).toContain('node config/scripts/pr-code-change-scope.mjs')
     expect(classify.run).toContain('tee -a "$GITHUB_OUTPUT"')
-    for (const jobName of ['should_run', 'native_cache_changed', ...expensiveJobs]) {
+    expect(prWorkflow.jobs.code_paths.outputs.should_run).toBe(
+      '${{ steps.filter.outputs.should_run }}'
+    )
+    for (const jobName of ['native_cache_changed', ...expensiveJobs]) {
       expect(prWorkflow.jobs.code_paths.outputs[jobName], jobName).toBe(
-        `\${{ steps.filter.outputs.${jobName} }}`
+        `\${{ steps.readiness.outputs.reused != 'true' && steps.filter.outputs.${jobName} }}`
       )
     }
   })
