@@ -3,12 +3,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { CliInstallStatus } from '../../shared/cli-install-types'
-import { WslCliInstaller } from './wsl-cli-installer'
+import { _internals, WslCliInstaller } from './wsl-cli-installer'
 import { getWslLauncherMarker } from './wsl-cli-scripts'
 import { reconcileManagedWslCliRegistrations } from './wsl-cli-registration-reconciliation'
 import { recordWslCliRegistrationInstalled } from './wsl-cli-registration-registry'
 
 const LAUNCHER = 'C:\\Orca\\resources\\bin\\orca.exe'
+const COMMAND_PATH = '/home/user/.local/bin/orca-ide'
 
 function hostStatus(): CliInstallStatus {
   return {
@@ -30,6 +31,8 @@ function hostStatus(): CliInstallStatus {
 type GuestScript = {
   /** Guest command stdout, or an Error to throw, for the command-file read at the wrapper path. */
   commandFile?: string
+  /** Guest file contents by absolute path; an Error fails that path's read. */
+  files?: Record<string, string | Error>
   failHome?: boolean
   failInstall?: boolean
   hostStatus?: () => Promise<CliInstallStatus>
@@ -58,9 +61,15 @@ function countingInstaller(script: GuestScript = {}): {
       return 'yes'
     }
     if (command.includes('__ORCA_MISSING__')) {
-      return command.includes('/.local/bin/orca-ide') && script.commandFile
-        ? script.commandFile
-        : '__ORCA_MISSING__'
+      const files: Record<string, string | Error | undefined> = {
+        [COMMAND_PATH]: script.commandFile,
+        ...script.files
+      }
+      const hit = Object.entries(files).find(([path]) => command.includes(`'${path}'`))?.[1]
+      if (hit instanceof Error) {
+        throw hit
+      }
+      return hit ?? '__ORCA_MISSING__'
     }
     if (script.failInstall) {
       throw new Error('mv: Read-only file system')
@@ -202,5 +211,33 @@ describe('WSL CLI registration discovery on a host that never registered the CLI
 
     expect(firstLaunch).toBeGreaterThan(0)
     expect(installer.wslSpawns()).toBe(firstLaunch)
+  })
+
+  it('retries an installed launcher whose legacy command read failed on the next launch', async () => {
+    const bridgePath = _internals.getBridgePathFromCommandPath(COMMAND_PATH)
+    const installer = countingInstaller({
+      files: {
+        [COMMAND_PATH]: _internals.buildWslLauncher(LAUNCHER, bridgePath),
+        [bridgePath]: _internals.buildWslBridgeScript(),
+        '/home/user/.local/bin/orca': new Error('WSL command timed out after 10000ms.')
+      }
+    })
+
+    const [first] = await reconcile(installer.createInstaller, ['Ubuntu'])
+    const firstLaunch = installer.wslSpawns()
+    await reconcile(installer.createInstaller, ['Ubuntu'])
+
+    expect(first).toMatchObject({ outcome: 'failed' })
+    expect(installer.wslSpawns()).toBe(firstLaunch * 2)
+  })
+
+  it('rejects public installer calls with the runner error unchanged', async () => {
+    const installer = countingInstaller({ failHome: true }).createInstaller('Ubuntu')
+
+    for (const call of [() => installer.install(), () => installer.getStatus()]) {
+      const error = await call().catch((rejection: unknown) => rejection)
+      expect(error).toBeInstanceOf(Error)
+      expect(String(error)).toBe('Error: WSL command timed out after 10000ms.')
+    }
   })
 })

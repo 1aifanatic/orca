@@ -45,18 +45,6 @@ export class WslCliOwnershipProbeError extends Error {
   }
 }
 
-class WslGuestCommandError extends Error {
-  constructor(cause: unknown) {
-    super(cause instanceof Error ? cause.message : String(cause), { cause })
-    this.name = 'WslGuestCommandError'
-  }
-}
-
-/** Only distro-side failures qualify; a host launcher probe failure says nothing about the guest. */
-function asOwnershipProbeError(error: unknown): unknown {
-  return error instanceof WslGuestCommandError ? new WslCliOwnershipProbeError(error.cause) : error
-}
-
 export type ManagedWslCliRepairResult = {
   changed: boolean
   managed: boolean
@@ -68,6 +56,9 @@ export class WslCliInstaller {
   private readonly distro: string | null
   private readonly hostInstaller: Pick<CliInstaller, 'getStatus'>
   private readonly wslRunner: (distro: string, command: string) => Promise<string>
+  // Why: identity-tagged so repair can classify guest failures while every public
+  // method still rejects with the runner's original error (Settings IPC shows it).
+  private unownedGuestFailure: unknown = undefined
 
   constructor(options: WslCliInstallerOptions = {}) {
     this.platform = options.platform ?? process.platform
@@ -178,7 +169,7 @@ export class WslCliInstaller {
 
   async repairManagedRegistration(): Promise<ManagedWslCliRepairResult> {
     const status = await this.getStatus().catch((error: unknown) => {
-      throw asOwnershipProbeError(error)
+      throw this.asOwnershipProbeError(error)
     })
     if (!status.supported) {
       return { changed: false, managed: false, status }
@@ -202,7 +193,8 @@ export class WslCliInstaller {
 
     const legacyContent = await this.readCommandFile(this.distro, legacyCommandPath).catch(
       (error: unknown) => {
-        throw asOwnershipProbeError(error)
+        // An installed launcher already proves ownership; only a bare distro is still unknown.
+        throw status.state === 'not_installed' ? this.asOwnershipProbeError(error) : error
       }
     )
     const legacyManaged =
@@ -294,8 +286,16 @@ export class WslCliInstaller {
     try {
       return await this.readCommandFile(distro, commandPath)
     } catch (error) {
-      throw error instanceof WslGuestCommandError ? error.cause : error
+      this.unownedGuestFailure = undefined
+      throw error
     }
+  }
+
+  /** Only a distro-side failure qualifies; a host launcher probe failure says nothing about the guest. */
+  private asOwnershipProbeError(error: unknown): unknown {
+    return error !== undefined && error === this.unownedGuestFailure
+      ? new WslCliOwnershipProbeError(error)
+      : error
   }
 
   private buildStatus(args: {
@@ -314,7 +314,8 @@ export class WslCliInstaller {
     try {
       return await this.wslRunner(distro, command)
     } catch (error) {
-      throw new WslGuestCommandError(error)
+      this.unownedGuestFailure = error
+      throw error
     }
   }
 }
