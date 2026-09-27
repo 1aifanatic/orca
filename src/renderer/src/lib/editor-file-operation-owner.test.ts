@@ -6,6 +6,7 @@ import {
   getEditorFileOperationContext
 } from './editor-file-operation-owner'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../shared/constants'
+import { makeWorktree, TEST_REPO } from '../store/slices/store-test-helpers'
 
 const worktreeId = 'repo::/remote/repo'
 
@@ -95,13 +96,13 @@ describe('editor file operation owner', () => {
 
   it('keeps an unstamped local worktree local while another host is focused', () => {
     useAppStore.setState({
-      repos: [{ id: 'repo' } as never],
+      repos: [{ ...TEST_REPO, id: 'repo', path: '/local/repo', displayName: 'Local repo' }],
       worktreesByRepo: {
-        repo: [{ id: worktreeId, repoId: 'repo', path: '/local/repo' } as never]
+        repo: [makeWorktree({ id: worktreeId, repoId: 'repo', path: '/local/repo' })]
       },
       activeWorktreeId: worktreeId,
       activeWorkspaceExecutionHostId: 'runtime:hub-b',
-      settings: { activeRuntimeEnvironmentId: null } as never
+      settings: { ...useAppStore.getState().settings, activeRuntimeEnvironmentId: null }
     })
 
     const provenance = captureEditorFileOperationProvenance(

@@ -1,6 +1,7 @@
 import type { StoreApi } from 'zustand/vanilla'
 import { describe, expect, it, vi } from 'vitest'
 import { createEditorStore, createEditorTabsStore } from './editor-slice-test-harness'
+import { makeWorktree, TEST_REPO } from './store-test-helpers'
 import type { AppState } from '../types'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
 
@@ -129,14 +130,14 @@ describe('createEditorSlice editor host ownership', () => {
   it('keeps an editor tab on its local file owner while another host is focused', () => {
     const store = createEditorTabsStore()
     store.setState({
-      repos: [{ id: 'repo-1' } as never],
+      repos: [{ ...TEST_REPO, id: 'repo-1', path: '/repo', displayName: 'Repo' }],
       worktreesByRepo: {
-        'repo-1': [{ id: 'wt-1', repoId: 'repo-1', path: '/repo' } as never]
+        'repo-1': [makeWorktree({ id: 'wt-1', repoId: 'repo-1', path: '/repo' })]
       },
       activeWorktreeId: 'wt-1',
       activeWorkspaceExecutionHostId: 'runtime:hub-b',
-      settings: { activeRuntimeEnvironmentId: 'hub-b' } as never
-    } as Partial<AppState>)
+      settings: { ...store.getState().settings, activeRuntimeEnvironmentId: null }
+    })
 
     store.getState().openFile({
       filePath: '/repo/local.ts',
