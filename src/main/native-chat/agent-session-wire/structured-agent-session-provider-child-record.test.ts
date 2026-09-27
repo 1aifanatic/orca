@@ -16,12 +16,19 @@ import {
   DISPATCH_REJECTED_CANCELLED,
   DISPATCH_REJECTED_PROVIDER_CLOSED
 } from '../../../shared/structured-agent-session-dispatch-rejection'
-import { providerStartupFailureOutcome } from './structured-agent-session-dead-generation-settlement'
+import {
+  providerStartupFailureOutcome,
+  unexpectedProviderExitOutcome
+} from './structured-agent-session-dead-generation-settlement'
+import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
+import { openAgentSessionJournal } from '../agent-session-journal/journal-store-factory'
+import { journalDirectoryFor } from '../agent-session-journal/journal-paths'
 import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
 import { stopStructuredAgentSessionAgentUnderSerialize } from './structured-agent-session-host-lifetime'
 import {
+  HOST_TEST_LOCATION,
   HOST_TEST_NOW as NOW,
   HOST_TEST_SESSION as SESSION,
   HOST_TEST_THREAD as THREAD,
@@ -296,20 +303,51 @@ describe('Stop on a child still proving its start', () => {
   })
 })
 
-describe('settling an earlier child inside the attach for the next one', () => {
-  it("settles from the earlier child's death evidence and leaves the queued message to the new child (R1)", async () => {
-    // The earlier child exited; the released lease keeps only its death evidence.
+describe('settling an earlier child before the next one takes its message', () => {
+  it("settles the earlier child's turn from its death evidence and leaves the queued message to the new child (R1)", async () => {
+    // The earlier child exited mid-turn; the released lease keeps only its death evidence.
     await store.transitionHandoff(SESSION, (record) => ({
       ...record,
       lease: {
         ...record.lease,
-        deathEvidence: { kind: 'exit-observed', detail: 'provider exited', observedAt: NOW }
+        deathEvidence: { kind: 'exit-observed', detail: 'provider exited', observedAt: NOW - 1_000 }
       }
     }))
     const releasedFence = store.getRecord(SESSION)!.lease.runtimeFence
+    const journal = await openAgentSessionJournal({
+      identity: {
+        sessionId: SESSION,
+        workspaceId: HOST_TEST_LOCATION.workspaceId,
+        hostId: HOST_TEST_LOCATION.executionHostId,
+        agent: 'codex',
+        providerHandle: { kind: 'codex', threadId: THREAD }
+      },
+      journalDir: journalDirectoryFor(root, {
+        workspaceId: HOST_TEST_LOCATION.workspaceId,
+        sessionId: SESSION
+      })
+    })
+    await journal.appendItem(
+      { provider: 'codex', threadId: THREAD, turnId: 'earlier-turn', ordinal: 0 },
+      { kind: 'turn', turnId: 'earlier-turn', state: 'running', startedAt: NOW - 5_000 },
+      { fence: releasedFence }
+    )
+    await journal.close()
     const id = await accept('for the next child')
 
     await eventually(() => expect(submission(id)?.dispatchState).toBe('accepted'))
+    // The exit was observed, so its receipt ends the turn, and the chat says why it stopped.
+    const items = conversation()!.journal.snapshot().items
+    expect(items.map((item) => readAgentJournalTurn(item.body)).filter(Boolean)).toContainEqual(
+      expect.objectContaining({
+        turnId: 'earlier-turn',
+        state: 'interrupted',
+        completedAt: NOW - 1_000
+      })
+    )
+    expect(
+      items.flatMap((item) => (item.body.kind === 'status' ? [item.body.text] : []))
+    ).toContain(unexpectedProviderExitOutcome('provider exited'))
     // Handed over at the new child's fence, which the attach reserved after settling.
     const newFence = store.getRecord(SESSION)!.lease.runtimeFence
     expect(newFence).toBeGreaterThan(releasedFence)
