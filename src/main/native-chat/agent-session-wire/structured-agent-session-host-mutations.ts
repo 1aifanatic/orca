@@ -22,7 +22,7 @@ import type {
   AgentSessionThreadGoalResult
 } from '../../../shared/agent-session-wire'
 import { DISPATCH_REJECTED_CANCELLED } from '../../../shared/structured-agent-session-dispatch-rejection'
-import { hasUnansweredStructuredAgentSessionDispatch } from '../../../shared/structured-agent-session-projection'
+import { isStructuredAgentSessionMainAgentWorking } from '../../../shared/structured-agent-session-main-agent-working'
 import type { AgentSessionPromptRequest } from './structured-agent-session-turns-prompt'
 import { threadGoalPlan } from './structured-agent-session-thread-goal'
 import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
@@ -164,12 +164,15 @@ export function cancelStructuredAgentSessionTurn(
           await context.stopAgent(ctx.sessionId)
           return { ok: true, value: { ...named, cancelled: true } }
         }
-        // A Stop naming no turn ends nothing more unless the journal still reads working, as the
-        // client's own working state does: a turn, or a handed-over message still unanswered.
+        // A Stop naming no turn ends nothing more unless the session reads working, by the rule
+        // every session list and the chat's own Stop read it.
         const inFlight =
           params.turnId !== undefined ||
-          ctx.journal.activeTurnId() !== null ||
-          hasUnansweredStructuredAgentSessionDispatch(ctx.journal.submissions(), ctx.fence)
+          isStructuredAgentSessionMainAgentWorking(
+            ctx.journal.activeTurnId(),
+            ctx.journal.submissions(),
+            ctx.fence
+          )
         return child && inFlight
           ? plan.run(ctx)
           : { ok: true, value: { ...named, cancelled: withdrawn.length > 0 } }

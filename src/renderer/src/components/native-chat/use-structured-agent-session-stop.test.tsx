@@ -50,6 +50,8 @@ import {
   AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY
 } from '../../../../shared/protocol-version'
 import { setLocalRuntimeCapabilitiesForTests } from '@/runtime/local-runtime-capabilities'
+import { projectStructuredAgentSessionStatusSummary } from '../../../../shared/structured-agent-session-projection'
+import { structuredAgentSessionAgentStatus } from '../../../../shared/structured-agent-session-agent-status'
 import { useStructuredAgentSession } from './use-structured-agent-session'
 
 function entry(
@@ -172,6 +174,98 @@ describe('Stop against a host that stops the conversation', () => {
     outbox = [entry('rejected')]
     submissions = [submission({ dispatchState: 'accepted', resolvedAt: 2 })]
     expect(render().result.current.canStop).toBe(false)
+  })
+})
+
+const EARLIER_TURN: AgentJournalRenderItem[] = [
+  {
+    itemId: 'user-0',
+    revision: 1,
+    sequence: 1,
+    observedAt: 1,
+    body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'earlier' }] }
+  },
+  {
+    itemId: 'turn-0',
+    revision: 2,
+    sequence: 2,
+    observedAt: 2,
+    body: { kind: 'turn', turnId: 'turn-0', state: 'completed', outcome: 'success' }
+  }
+]
+
+/** The main agent's state as the sidebar row reads it: the host's projection of this journal,
+ *  through the same fold the row applies, or null when the session lists no agent at all. */
+function sidebarMainAgentState(): string | null {
+  const summary = projectStructuredAgentSessionStatusSummary(items, submissions, 3)
+  return summary.status
+    ? structuredAgentSessionAgentStatus({ ...summary, status: summary.status }).mainAgent.state
+    : null
+}
+
+// Claude retrying a rate-limited request (HTTP 429) writes only `api_retry` frames: it echoes the
+// message and opens a turn only once a request gets through or is interrupted, so the journal holds
+// a handed-over send, a row per retry, and no turn for as long as the retries last.
+const RATE_LIMIT_RETRY: AgentJournalRenderItem = {
+  itemId: 'provider-frame:claude:acquisition:1',
+  revision: 3,
+  sequence: 3,
+  observedAt: 3,
+  body: { kind: 'status', text: 'rate_limit', tone: 'error' }
+}
+
+const SIDEBAR_STATES = {
+  'a first message Claude is retrying after HTTP 429': () => {
+    items = [RATE_LIMIT_RETRY]
+    submissions = [submission({ handoverRecorded: true, handedOverAt: 2 })]
+  },
+  'a follow-up Claude is retrying after HTTP 429': () => {
+    items = [...EARLIER_TURN, RATE_LIMIT_RETRY]
+    submissions = [
+      submission({ clientMessageId: 'client-0', dispatchState: 'accepted', resolvedAt: 2 }),
+      submission({ handoverRecorded: true, handedOverAt: 3 })
+    ]
+  },
+  'a send whose write was ambiguous, still on the live child': () => {
+    items = EARLIER_TURN
+    submissions = [submission({ dispatchState: 'unknown', reason: 'write_outcome_unknown' })]
+  },
+  'a send an earlier child never answered': () => {
+    items = EARLIER_TURN
+    submissions = [submission({ fence: 2, handoverRecorded: true, handedOverAt: 2 })]
+  },
+  'a settled turn': () => {
+    items = EARLIER_TURN
+    submissions = [submission({ dispatchState: 'accepted', resolvedAt: 2 })]
+  }
+}
+
+describe('Stop against a host that stops the conversation, beside the sidebar', () => {
+  beforeEach(() => {
+    setLocalRuntimeCapabilitiesForTests([
+      AGENT_SESSION_ACCEPTED_SEND_RUNTIME_CAPABILITY,
+      AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY
+    ])
+  })
+
+  it.each(Object.entries(SIDEBAR_STATES))(
+    'shows exactly when the sidebar reads working, for %s',
+    (_state, arrange) => {
+      arrange()
+      const { result } = render()
+
+      expect(result.current.canStop).toBe(sidebarMainAgentState() === 'working')
+      expect(result.current.isWorking).toBe(result.current.canStop)
+    }
+  )
+
+  it('is there for a rate-limited request the sidebar reads as working', () => {
+    SIDEBAR_STATES['a follow-up Claude is retrying after HTTP 429']()
+    const { result } = render()
+
+    expect(sidebarMainAgentState()).toBe('working')
+    expect(result.current.turnId).toBeNull()
+    expect(result.current.canStop).toBe(true)
   })
 })
 
