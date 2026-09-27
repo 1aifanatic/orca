@@ -177,13 +177,20 @@ function findCodexReadyPromptIndex(normalized: string): number | null {
 
 const CODEX_HEADER_LOADING_RE = /(?:model|directory):\s+loading/
 
-// Why: a header still reading `loading` is not ready yet; the screen must not add readiness early.
+// Why the header box only: chat below it can mention "OpenAI Codex" or `model: loading`.
+// Why `loading`: a header still loading is not ready; the screen must not add readiness early.
 function findCodexScreenReadyPromptIndex(screen: string): number | null {
-  const headerIndex = findCodexReadyPromptIndex(screen)
-  if (headerIndex === null) {
+  const headerIndex = screen.indexOf('openai codex')
+  if (headerIndex === -1) {
     return null
   }
-  return CODEX_HEADER_LOADING_RE.test(screen.slice(headerIndex)) ? null : headerIndex
+  const boxEnd = screen.indexOf('╰', headerIndex)
+  const header = screen.slice(headerIndex, boxEnd === -1 ? undefined : boxEnd)
+  return header.includes('model:') &&
+    header.includes('directory:') &&
+    !CODEX_HEADER_LOADING_RE.test(header)
+    ? headerIndex
+    : null
 }
 
 export const TERMINAL_WAIT_BLOCKED_SENTINEL_RE =

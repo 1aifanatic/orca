@@ -152,6 +152,18 @@ describe('Codex 0.157 header readiness from captured bytes', () => {
     expect(isKnownReadyPromptBody('', 'codex', () => screenLines)).toBe(false)
   })
 
+  it('reads only the header box, not chat below it that mentions Codex', () => {
+    const screenLines = [
+      '╭──────────────────────────────────────────────────────────╮',
+      '│ >_ OpenAI Codex (v0.157.1)                               │',
+      '│ model:       GPT-6-Sol high   /model to change           │',
+      '│ directory:   ~/repo/app                                  │',
+      '╰──────────────────────────────────────────────────────────╯',
+      '› Why does OpenAI Codex print model: loading at startup?'
+    ]
+    expect(isKnownReadyPromptBody('', 'codex', () => screenLines)).toBe(true)
+  })
+
   it('leaves a non-codex pane on the text rules even when its screen shows the Codex header', () => {
     const screenLines = [
       '│ >_ OpenAI Codex (v0.157.1)                               │',
