@@ -17,7 +17,9 @@ export function bunProfileTestPaths({ artifact = false } = {}) {
           'src/main/providers/local-pty-bun-artifact.integration.test.ts',
           'src/main/providers/agent-foreground-process-git-bash.win32.test.ts',
           'src/main/orcad/orcad-bun-launcher.integration.test.ts',
-          'config/scripts/zip-extractor-command.test.mjs'
+          'config/scripts/zip-extractor-command.test.mjs',
+          'config/scripts/orcad-launcher-build.test.mjs',
+          'src/main/orcad/orcad-bundle-native-load-order.test.ts'
         ]
       : [])
   ]
