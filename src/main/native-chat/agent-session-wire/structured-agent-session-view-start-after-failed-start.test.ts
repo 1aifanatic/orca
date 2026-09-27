@@ -134,7 +134,8 @@ describe('a fresh chat whose Claude start fails', () => {
   // QA saw three failed starts from opening the chat alone: the create's, and the view's.
   it.each([
     ['after the create already died', 20],
-    ['while the create is still starting', 300]
+    // Long enough for both subscriptions to bind on a loaded runner before the create's child exits.
+    ['while the create is still starting', 1_000]
   ] as const)(
     'starts once for the open and once for a send, one row each, when the view binds %s',
     async (_when, initDelayMs) => {
@@ -156,7 +157,7 @@ describe('a fresh chat whose Claude start fails', () => {
       // Two surfaces bind, as a pane and a second window do.
       const unsubscribe = await view(SURFACE)
       await view('desktop-chat:2')
-      if (initDelayMs === 300) {
+      if (initDelayMs === 1_000) {
         // The views bound to the create's child itself, before it exited.
         expect(await timeline()).toEqual([])
       }
