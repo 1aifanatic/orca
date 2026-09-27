@@ -624,7 +624,7 @@
       "motivatingLinks": [
         "https://github.com/stablyai/orca/blob/main/src/main/mimo/hook-service.ts"
       ],
-      "invariant": "Building a MiMo or OpenCode config/plugins overlay preserves user source plugin bytes and does not install Orca files through linked config/plugins directories or a retained plugin link, including when the overlay manifest is lost and when an inherited home env var names the overlay as its own mirror source. Failure to detach the managed path returns the original environment without falling through to a write.",
+      "invariant": "Building a MiMo or OpenCode config/plugins overlay through the Electron main host services (src/main/mimo, src/main/opencode) preserves user source plugin bytes and does not install Orca files through linked config/plugins directories or a retained plugin link, including when the overlay manifest is lost and when an inherited home env var names the overlay as its own mirror source. Failure to detach the managed path returns the original environment without falling through to a write. The relay's parallel overlay writer is deliberately outside this invariant; see knownGaps.",
       "oracle": "Compare source sentinels and absent files after actual service installation with linked/ordinary/broken source directories, retained overlay links with and without a source plugins dir, an inherited overlay-as-source home, unlink denial and a hardlink inserted after unlink; require successful overlay plugin and unchanged runtime data for healthy inputs.",
       "commands": [
         "ORCA_BACKGROUND_LAUNCH=1 pnpm exec vitest run --config config/vitest.config.ts src/main/mimo/hook-service-overlay.test.ts src/main/mimo/hook-service.test.ts src/main/opencode/hook-service.test.ts src/main/pty/overlay-mirror.test.ts"
@@ -657,6 +657,15 @@
         }
       ],
       "evidenceRuns": [
+        {
+          "date": "2026-09-27",
+          "runner": "local",
+          "platform": "macos",
+          "command": "ORCA_BACKGROUND_LAUNCH=1 pnpm exec vitest run --config config/vitest.config.ts src/main/mimo/hook-service-overlay.test.ts src/main/mimo/hook-service.test.ts src/main/opencode/hook-service.test.ts src/main/pty/overlay-mirror.test.ts",
+          "result": "passed",
+          "durationSeconds": 0.308,
+          "summary": "Rebased onto origin/main 93d8b1f0 (twelve sibling merges): 4 files, 57 of 57 cases pass. Guard teeth re-proved by local reversion on this head: replacing ensureOverlayDirectory with mkdirSync in OpenCode writePluginIntoOverlay reds only 'refuses a retained plugins link when the source has no plugins directory' (the overlay is returned instead of the fallback and the user's real plugin is rewritten); dropping the isSameOverlayPath check in MiMo buildPtyEnv reds 'keeps the mirrored config when an inherited MIMOCODE_HOME names the overlay' with ENOENT on the overlay's mirrored auth.json, the self-wipe. Both restored and green."
+        },
         {
           "date": "2026-09-26",
           "runner": "local",
@@ -707,7 +716,8 @@
         "Same shared home across different MiMo source homes remains outside scope; an inherited home that resolves to the overlay is now detected and skips teardown rather than re-mirroring.",
         "Linked plugin directories require one listing plus per-entry mirrors; large/slow catalogs may increase launch time. No latency measurement.",
         "On guard/unlink/exclusive-create failure, the launch returns original MIMOCODE_HOME or no override; Orca status plugin can be unavailable on that attempt. No retry/polling added.",
-        "OpenCode shares the extracted source resolver/mirror and now applies the same real-directory guard, absence-gated unlink and exclusive create at its own plugin write, so a lost manifest cannot leave a retained link to write through; its global config-dir writer (no overlay) shares the same replace-not-write-through step, and still overwrites a same-named user plugin by design because that mode installs into the user's own config dir.",
+        "OpenCode shares the extracted source resolver/mirror and now applies the same real-directory guard and absence-gated unlink at its own plugin write, so a lost manifest cannot leave a retained link to write through. It deliberately does not take MiMo's exclusive-create flag: panes sharing one source config share one overlay, so EEXIST would cost a concurrent pane its status plugin for no gain on a directory already proven real and holding an Orca-owned filename. Its global config-dir writer (no overlay) shares the replace-not-write-through step but not the real-directory guard, and still overwrites a same-named user plugin by design because that mode installs into the user's own config dir.",
+        "src/relay/plugin-overlay.ts still carries a pre-extraction copy of this mirror (mirrorOpenCodeConfig plus writeOpenCodePlugin, plain mkdirSync and a swallowed unlink), as does src/relay/opencode-canonical-config.ts for the canonical writer; neither is changed here and no assertion in this gate covers them. Their exposure is narrower because materializeOpenCode calls safeRemoveOverlay first, but that teardown is best-effort, so a retained plugins link that survives a failed unlink can still be written through on an SSH host.",
         "Generated plugin payloads/status ownership and remote wire unchanged. SSH/mobile flows are unaffected by this local host-env preparation; WSL/native-host integration remains unexecuted."
       ],
       "promotionCriteria": [

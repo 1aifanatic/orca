@@ -53,6 +53,9 @@ export function mirrorPluginDirectory(
   managedPluginFile: string
 ): string[] | null {
   let resolvedSource = sourcePath
+  // isSymbolicLink MUST be tested before isDirectory: a Windows junction reports
+  // both, and only the link branch resolves to the real target. Returning null
+  // leaves a dangling/file-target link to mirrorEntry as a verbatim link.
   if (sourceEntry.isSymbolicLink()) {
     try {
       if (!statSync(sourcePath).isDirectory()) {
