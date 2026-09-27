@@ -42,8 +42,7 @@ function fence(): number {
 }
 
 function openSession(): StructuredAgentSessionHostSession | undefined {
-  const sessions: unknown = Reflect.get(rig.host, 'sessions')
-  return sessions instanceof Map ? sessions.get(SESSION) : undefined
+  return rig.host.collaboratorsForTests().sessions.get(SESSION)
 }
 
 function statusRows(): AgentSessionStatusSummary[] {
@@ -212,10 +211,7 @@ describe('the sweep and the lease (P2-20)', () => {
       lease: { ...current.lease, handoffStage: 'recovering' }
     }))
     const resolveRecovery = vi.spyOn(
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the host's private runtime state, spied to prove the sweep never resolves a lease.
-      Reflect.get(rig.host, 'runtimeState') as {
-        resolveRecovery: (id: string) => Promise<unknown>
-      },
+      rig.host.collaboratorsForTests().runtimeState,
       'resolveRecovery'
     )
     // Open, at rest, on a lease still recovering.
@@ -309,7 +305,8 @@ describe('the wind-down retry with a message queued (P2-31)', () => {
     const sweep = new StructuredAgentSessionIdleSweep({
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a session fixture carrying only the journal and child facts the sweep reads.
       sessions: Object.assign(new Map([[SESSION, session as never]]), {
-        lastActivityAt: () => 0
+        lastActivityAt: () => 0,
+        touch: () => undefined
       }),
       serialize: (_id, task) => task(),
       now: () => IDLE_MS + 1,
