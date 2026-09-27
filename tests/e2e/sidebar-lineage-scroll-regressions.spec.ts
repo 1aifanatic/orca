@@ -1,11 +1,12 @@
 import { writeFile } from 'node:fs/promises'
-import { test, expect } from './helpers/orca-app'
+import { test, expect } from './sidebar-animation-fixture'
 import { waitForActiveWorktree, waitForSessionReady } from './helpers/store'
 import {
   seedOrdinaryRowsAboveLineage,
   seedVirtualLineage
 } from './sidebar-lineage-virtualization-state'
 import { seedWorkspaceAgentStatus } from './worktree-lineage-state'
+import { expectSidebarScrollProgress, measureSidebarScroll } from './sidebar-scroll-timeline'
 import { worktreeRow } from './worktree-row-locators'
 
 test('lineage descendants keep their anchor when an ordinary card above grows during suppression', async ({
@@ -112,10 +113,13 @@ for (const requestKind of ['worktree', 'sidebar-row', 'rename'] as const) {
     await seedVirtualLineage(orcaPage, requestKind === 'sidebar-row')
     await expect(worktreeRow(orcaPage, 'e2e-virtual-child-0')).toBeVisible()
     await orcaPage.emulateMedia({ reducedMotion: 'no-preference' })
-    const frames = await orcaPage.evaluate(async (requestKind) => {
+    const result = await orcaPage.evaluate(async (requestKind) => {
       const targetId = 'e2e-virtual-child-400'
       const scroller = document.querySelector<HTMLElement>('[data-worktree-sidebar]')!
-      const samples: { mounted: boolean; top: number | null; scrollTop: number }[] = []
+      const samples: { time: number; mounted: boolean; top: number | null; scrollTop: number }[] =
+        []
+      const startedAt = performance.now()
+      const initialOffset = scroller.scrollTop
       const state = window.__store!.getState()
       if (requestKind === 'sidebar-row') {
         const firstKey = scroller.querySelector<HTMLElement>(
@@ -132,11 +136,11 @@ for (const requestKind of ['worktree', 'sidebar-row', 'rename'] as const) {
           beginRename: requestKind === 'rename'
         })
       }
-      const startedAt = performance.now()
       while (performance.now() - startedAt < 1_800) {
         await new Promise(requestAnimationFrame)
         const target = scroller.querySelector<HTMLElement>(`[data-worktree-id="${targetId}"]`)
         samples.push({
+          time: performance.now() - startedAt,
           mounted: target !== null,
           top: target
             ? target.getBoundingClientRect().top - scroller.getBoundingClientRect().top
@@ -144,12 +148,34 @@ for (const requestKind of ['worktree', 'sidebar-row', 'rename'] as const) {
           scrollTop: scroller.scrollTop
         })
       }
-      return samples
+      return { samples, initialOffset, sidebarHeight: scroller.clientHeight }
     }, requestKind)
+    const frames = result.samples
+    const metrics = measureSidebarScroll(frames, result.initialOffset)
+    const mountedIntermediate = frames.filter(
+      (frame) =>
+        frame.mounted &&
+        frame.scrollTop > result.initialOffset &&
+        frame.scrollTop < metrics.finalOffset - 2
+    ).length
+    console.log(
+      '[sidebar-smooth-retention]',
+      JSON.stringify({
+        requestKind,
+        ...metrics,
+        mountedIntermediate,
+        sidebarHeight: result.sidebarHeight
+      })
+    )
     await writeFile(
       testInfo.outputPath('smooth-reveal-frames.json'),
-      JSON.stringify(frames, null, 2)
+      JSON.stringify({ ...result, ...metrics, mountedIntermediate }, null, 2)
     )
+    expectSidebarScrollProgress(metrics)
+    expect(
+      mountedIntermediate,
+      'target retained during intermediate motion'
+    ).toBeGreaterThanOrEqual(3)
     const firstMounted = frames.findIndex((frame) => frame.mounted)
     expect(firstMounted).toBeGreaterThanOrEqual(0)
     expect(frames.slice(firstMounted).every((frame) => frame.mounted)).toBe(true)

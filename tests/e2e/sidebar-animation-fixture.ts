@@ -30,7 +30,6 @@ export const test = base.extend<{ sidebarAnimationFrames: void }>({
         const onCreated = (_event: Electron.Event, window: Electron.BrowserWindow) => watch(window)
         app.on('browser-window-created', onCreated)
         BrowserWindow.getAllWindows().forEach(watch)
-        BrowserWindow.getAllWindows()[0].webContents.setBackgroundThrottling(false)
         return {
           finish() {
             app.off('browser-window-created', onCreated)
@@ -51,6 +50,14 @@ export const test = base.extend<{ sidebarAnimationFrames: void }>({
       let frames = 0
       let acknowledged = 0
       const ackErrors: string[] = []
+      const failures: { stage: string; error: unknown }[] = []
+      const attempt = async (stage: string, operation: () => Promise<unknown>) => {
+        try {
+          await operation()
+        } catch (error) {
+          failures.push({ stage, error })
+        }
+      }
       const frameSamples: { phase: string; elapsedMs: number[]; timedOut: boolean }[] = []
       const sampleFrames = async (phase: string) => {
         const sample = await orcaPage.evaluate(
@@ -80,8 +87,16 @@ export const test = base.extend<{ sidebarAnimationFrames: void }>({
         )
         frameSamples.push({ phase, ...sample })
         expect(sample.timedOut, 'native animation frame sampling timed out').toBe(false)
+        // Allow loaded CI frames, but reject Chromium's roughly one-second hidden-frame cadence.
+        const gaps = sample.elapsedMs.map(
+          (time, index) => time - (sample.elapsedMs[index - 1] ?? 0)
+        )
+        expect(Math.max(...gaps), 'native animation frame gap').toBeLessThan(500)
       }
-      try {
+      await attempt('capture', async () => {
+        await electronApp.evaluate(({ BrowserWindow }) => {
+          BrowserWindow.getAllWindows()[0].webContents.setBackgroundThrottling(false)
+        })
         const cdp = await orcaPage.context().newCDPSession(orcaPage)
         const pending = new Set<Promise<void>>()
         const onFrame = ({ sessionId }: { sessionId: number }) => {
@@ -114,36 +129,51 @@ export const test = base.extend<{ sidebarAnimationFrames: void }>({
           await sampleFrames('before')
           await provideFixture()
           await sampleFrames('after')
+        } catch (error) {
+          failures.push({ stage: 'sampling or test', error })
         } finally {
-          try {
-            await cdp.send('Page.stopScreencast')
-          } finally {
-            cdp.off('Page.screencastFrame', onFrame)
-            await Promise.all(pending)
-            await cdp.detach()
-          }
+          await attempt('stop capture', () => cdp.send('Page.stopScreencast'))
+          cdp.off('Page.screencastFrame', onFrame)
+          await attempt('drain acknowledgements', () => Promise.all(pending))
+          await attempt('detach capture', () => cdp.detach())
         }
-      } finally {
-        const visibility = await windowGuard
-          .evaluate((guard) => guard.finish())
-          .finally(() => windowGuard.dispose())
-        const evidence = {
-          platform: process.platform,
-          frames,
-          acknowledged,
-          ackErrors,
-          frameSamples,
-          visibility
-        }
-        await testInfo.attach('sidebar-hidden-capture.json', {
-          body: JSON.stringify(evidence, null, 2),
-          contentType: 'application/json'
-        })
-        console.log('[sidebar-hidden-capture]', JSON.stringify(evidence))
+      })
+      let visibility: { showEvents: number; focusEvents: number; hidden: boolean } | null = null
+      await attempt('window visibility', async () => {
+        visibility = await windowGuard.evaluate((guard) => guard.finish())
+      })
+      await attempt('dispose window guard', () => windowGuard.dispose())
+      await attempt('capture assertions', async () => {
         expect(visibility).toEqual({ showEvents: 0, focusEvents: 0, hidden: true })
         expect(ackErrors).toEqual([])
         expect(frames, 'hidden compositor capture produced no frames').toBeGreaterThan(0)
         expect(acknowledged).toBe(frames)
+      })
+      const evidence = {
+        platform: process.platform,
+        frames,
+        acknowledged,
+        ackErrors,
+        frameSamples,
+        visibility,
+        errors: failures.map(({ stage, error }) => ({ stage, error: String(error) })),
+        testErrors: testInfo.errors.map((error) => error.message)
+      }
+      console.log('[sidebar-hidden-capture]', JSON.stringify(evidence))
+      await attempt('attach evidence', () =>
+        testInfo.attach('sidebar-hidden-capture.json', {
+          body: JSON.stringify(evidence, null, 2),
+          contentType: 'application/json'
+        })
+      )
+      if (failures.length === 1) {
+        throw failures[0].error
+      }
+      if (failures.length > 1) {
+        throw new AggregateError(
+          failures.map(({ error }) => error),
+          'Sidebar capture failed'
+        )
       }
     },
     { auto: true }

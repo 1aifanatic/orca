@@ -2,6 +2,7 @@ import { writeFile } from 'node:fs/promises'
 import type { Page } from '@stablyai/playwright-test'
 import { test, expect } from './sidebar-animation-fixture'
 import { waitForActiveWorktree, waitForSessionReady } from './helpers/store'
+import { expectSidebarScrollProgress, measureSidebarScroll } from './sidebar-scroll-timeline'
 import { worktreeRow } from './worktree-row-locators'
 
 async function seedInterleavedLineages(page: Page): Promise<void> {
@@ -115,31 +116,42 @@ test('smooth reveal keeps moving while another lineage mounts', async ({ orcaPag
         groups: scroller.querySelectorAll('[data-lineage-virtual-children]').length
       })
     }
-    return { targetId: target.dataset.worktreeId, lineageBefore, samples }
+    return {
+      targetId: target.dataset.worktreeId,
+      lineageBefore,
+      sidebarHeight: scroller.clientHeight,
+      samples
+    }
   })
 
-  const finalOffset = result.samples.at(-1)!.scrollTop
-  let lastOffset = 0
-  let stationarySince = 0
-  let longestPause = 0
-  for (const sample of result.samples) {
-    if (sample.scrollTop !== lastOffset) {
-      lastOffset = sample.scrollTop
-      stationarySince = sample.time
-    } else if (sample.scrollTop > 1 && Math.abs(sample.scrollTop - finalOffset) > 2) {
-      longestPause = Math.max(longestPause, sample.time - stationarySince)
-    }
-  }
+  const metrics = measureSidebarScroll(result.samples)
+  const { finalOffset, longestPause } = metrics
+  const intermediateMounts = result.samples.filter(
+    (sample, index) =>
+      sample.groups > result.lineageBefore &&
+      sample.groups > (result.samples[index - 1]?.groups ?? result.lineageBefore) &&
+      sample.scrollTop > 0 &&
+      sample.scrollTop < finalOffset - 2
+  ).length
+  console.log(
+    '[sidebar-smooth-mount]',
+    JSON.stringify({ ...metrics, intermediateMounts, sidebarHeight: result.sidebarHeight })
+  )
   await writeFile(
     testInfo.outputPath('smooth-mount-timeline.json'),
-    JSON.stringify({ ...result, finalOffset, longestPause }, null, 2)
+    JSON.stringify({ ...result, ...metrics, intermediateMounts }, null, 2)
   )
+  expectSidebarScrollProgress(metrics)
   expect(finalOffset).toBeGreaterThan(400)
   expect(
     result.samples.some(
-      (sample) => sample.groups > result.lineageBefore && sample.scrollTop < finalOffset - 2
+      (sample) =>
+        sample.groups > result.lineageBefore &&
+        sample.scrollTop > 0 &&
+        sample.scrollTop < finalOffset - 2
     )
   ).toBe(true)
+  expect(intermediateMounts, 'new lineage mounts during intermediate motion').toBeGreaterThan(0)
   // A timeout correction can reach the right endpoint after a visibly stalled animation.
   expect(longestPause).toBeLessThan(200)
   const target = worktreeRow(orcaPage, result.targetId)
