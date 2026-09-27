@@ -83,6 +83,7 @@ vi.mock('./use-mobile-session-view-mode', () => ({
     toggleTabChatView: vi.fn()
   })
 }))
+vi.mock('expo-router', () => ({ useIsFocused: () => true }))
 vi.mock('./use-mobile-native-chat-session', () => ({
   useMobileNativeChatSession: () => sessionState
 }))
