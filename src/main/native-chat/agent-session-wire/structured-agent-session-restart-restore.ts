@@ -8,8 +8,8 @@
 // opens when something reads it.
 //
 // One pass, kicked once after the host installs, in two phases:
-// 1. before reconcile: each listed chat's saved status is checked against its journal's position;
-//    a match publishes the row, anything else is remembered as a miss;
+// 1. before reconcile, active workspace first: each listed chat's saved status is checked against
+//    its journal's position; a match publishes the row, anything else is remembered as a miss;
 // 2. after reconcile: recovery exits, then settlement of every open conversation, then each miss
 //    and each listed record still owing settlement is opened (unless already open), settled, and
 //    closed again when closable. A startup reconcile that fails leaves that half owed: the first
@@ -145,6 +145,8 @@ export function createStructuredAgentSessionStartupPass(
   let afterFailure: Promise<void> | null = null
   const listed = (sessionId: string): boolean =>
     deps.store.listVisibleSessionIds().includes(sessionId)
+  const workspaceOf = (sessionId: string) => deps.store.getRecord(sessionId)?.location.workspaceId
+  const inOrder = (ids: readonly string[]) => orderStartupSessionIds(ids, workspaceOf, priority)
   const supportedRecord = (sessionId: string): AgentSessionRecord | null => {
     const record = deps.store.getRecord(sessionId)
     return record && deps.supportsRecord(record) ? record : null
@@ -231,12 +233,7 @@ export function createStructuredAgentSessionStartupPass(
     const owed = deps.store
       .listVisibleSessionIds()
       .filter((sessionId) => structuredAgentSessionOwesSettlement(deps.store.getRecord(sessionId)))
-    const targets = orderStartupSessionIds(
-      [...new Set([...misses, ...owed])],
-      (sessionId) => deps.store.getRecord(sessionId)?.location.workspaceId,
-      priority
-    )
-    for (const sessionId of targets) {
+    for (const sessionId of inOrder([...new Set([...misses, ...owed])])) {
       // Logged once, never retried by the pass: the first read reports it.
       await openAndSettle(sessionId).catch((error: unknown) => deps.onError(sessionId, error))
       await yieldToEventLoop()
@@ -280,7 +277,7 @@ export function createStructuredAgentSessionStartupPass(
     const startedAt = deps.now()
     const misses: string[] = []
     let seeded = 0
-    for (const sessionId of deps.store.listVisibleSessionIds()) {
+    for (const sessionId of inOrder(deps.store.listVisibleSessionIds())) {
       await deps
         .step(sessionId, async ({ session }) => {
           const record = supportedRecord(sessionId)

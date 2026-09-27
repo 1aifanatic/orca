@@ -101,6 +101,25 @@ describe('listing from a saved status', () => {
     })
   })
 
+  it('publishes saved rows for the active workspace first, then the visible ones', async () => {
+    await rig.chat('session-r', { workspaceId: 'ws-rest', message: 'rest' })
+    await rig.chat('session-v', { workspaceId: 'ws-visible', message: 'visible' })
+    await rig.chat('session-x', { workspaceId: 'ws-active', message: 'active' })
+    await rig.quit()
+    const host = await rig.boot()
+
+    await host.restoreStartupSessions({
+      activeWorkspaceId: 'ws-active',
+      visibleWorkspaceIds: new Set(['ws-visible'])
+    })
+
+    expect(['session-r', 'session-v', 'session-x'].map((id) => rig.opensOf(id))).toEqual([0, 0, 0])
+    const firstRows = rig.statusEvents.flatMap((event) =>
+      event.type === 'status' ? [event.session.sessionId] : []
+    )
+    expect([...new Set(firstRows)]).toEqual(['session-x', 'session-v', 'session-r'])
+  })
+
   it('opens a chat whose saved copy an older projection version wrote (C3)', async () => {
     await rig.chat('session-a', { message: 'first question' })
     await rig.quit()
