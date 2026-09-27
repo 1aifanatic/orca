@@ -11,7 +11,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentSessionOwnerProbe } from '../../../shared/agent-session-lease-adjudication'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
-import { completedStructuredAgentTurnSeconds } from '../../../shared/structured-agent-session-turn-timing'
+import {
+  completedStructuredAgentTurnSeconds,
+  selectStructuredAgentTurnTimings
+} from '../../../shared/structured-agent-session-turn-timing'
 import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import { AGENT_SESSION_STORE_FILE_NAME } from '../../runtime/agent-session-record-store-file'
 import { journalDirectoryFor } from '../agent-session-journal/journal-paths'
@@ -115,6 +118,11 @@ async function seedClaudeToolTurn(): Promise<void> {
     now: () => now
   })
   await journal.appendItem(
+    { provider: 'claude', sessionId: PROVIDER_SESSION, uuid: 'uuid-user' },
+    { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'run the loop' }] },
+    { fence: 13 }
+  )
+  await journal.appendItem(
     { provider: 'claude', sessionId: PROVIDER_SESSION, uuid: 'uuid-turn' },
     { kind: 'turn', turnId: 'turn-1', state: 'running', startedAt: now },
     { fence: 13 }
@@ -184,7 +192,8 @@ describe('a turn a crash cut short mid-tool', () => {
     })
     expect(settledTurn()).toMatchObject({ state: 'interrupted', completedAt: LAST_RENEWED_AT })
     // "Worked for 27s", where the tool call's row alone reads 2s.
-    expect(completedStructuredAgentTurnSeconds(settledTurn())).toBe(27)
+    const [timing] = selectStructuredAgentTurnTimings(host.journalSnapshot(SESSION).items).values()
+    expect(completedStructuredAgentTurnSeconds(timing)).toBe(27)
   })
 
   it('ends at the pre-crash renewal when the child outlived Orca and recovery stopped it', async () => {
