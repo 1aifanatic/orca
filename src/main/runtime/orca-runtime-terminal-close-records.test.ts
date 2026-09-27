@@ -6,6 +6,7 @@ import { getDefaultWorkspaceSession } from '../../shared/constants'
 import { MAX_CLOSED_TERMINAL_TAB_TOMBSTONES } from '../../shared/closed-terminal-tab-tombstones'
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
 import { Store } from '../persistence/loading-store/store'
+import { closeTestStores, createSqliteTestStore } from '../persistence-test-harness'
 import { OrcaRuntimeService } from './orca-runtime'
 import {
   LEAF_ID,
@@ -23,7 +24,8 @@ const SSH_WORKTREE_ID = `${SSH_REPO_ID}::/srv/app`
 const LATE_TAB_ID = '6f0a5c8e-2b1d-4c3e-9f7a-1d2e3f4a5b6c'
 
 const directories: string[] = []
-afterEach(() => {
+afterEach(async () => {
+  await closeTestStores()
   for (const directory of directories.splice(0)) {
     rmSync(directory, { recursive: true, force: true })
   }
@@ -33,7 +35,7 @@ function createPersistedRuntime(session: WorkspaceSessionState = makeSession()) 
   const directory = mkdtempSync(join(tmpdir(), 'orca-close-records-'))
   directories.push(directory)
   const dataFile = join(directory, 'orca-data.json')
-  const store = new Store({ dataFile })
+  const store = createSqliteTestStore(Store, { dataFile })
   store.addRepo({
     id: REPO_ID,
     path: WORKTREE_PATH,
@@ -58,7 +60,7 @@ function createPersistedRuntime(session: WorkspaceSessionState = makeSession()) 
       store.flush()
       store.freezeWrites()
       await store.waitForPendingWrite()
-      return new Store({ dataFile })
+      return createSqliteTestStore(Store, { dataFile })
     }
   }
 }

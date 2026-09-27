@@ -20,6 +20,22 @@ describe('detectLanguage', () => {
     expect(detectLanguage('packages/app.nimble')).toBe('nim')
   })
 
+  it.each([
+    'documents/report.typ',
+    'C:\\documents\\REPORT.TYP',
+    '\\\\server\\share\\report.typ',
+    '/home/user/folder workspace/Report.TyP'
+  ])('maps Typst source %s to the typst language id', (filePath) => {
+    expect(detectLanguage(filePath)).toBe('typst')
+  })
+
+  it.each(['report.typ.bak', 'report.typx', 'documents.typ/README', 'documents.typ\\README'])(
+    'keeps non-Typst file %s on plaintext',
+    (filePath) => {
+      expect(detectLanguage(filePath)).toBe('plaintext')
+    }
+  )
+
   it('maps exact filenames from Windows paths', () => {
     expect(detectLanguage('C:\\Users\\alice\\repo\\Dockerfile')).toBe('dockerfile')
     expect(detectLanguage('C:\\Users\\alice\\repo\\CMakeLists.txt')).toBe('cmake')
@@ -96,12 +112,34 @@ describe('detectLanguage', () => {
     expect(detectLanguage('C:\\theme\\snippets\\CART.LIQUID')).toBe('liquid')
   })
 
+  it('maps .sol files to the Monaco built-in sol language id, not the solidity alias', () => {
+    expect(detectLanguage('contracts/Vault.sol')).toBe('sol')
+    expect(detectLanguage('C:\\repo\\contracts\\TOKEN.SOL')).toBe('sol')
+  })
+
   it('maps Salesforce Apex sources to the apex language id (case-insensitive)', () => {
     expect(detectLanguage('force-app/main/default/classes/AccountService.cls')).toBe('apex')
     expect(detectLanguage('force-app/main/default/triggers/AccountTrigger.trigger')).toBe('apex')
     expect(detectLanguage('scripts/apex/seed.apex')).toBe('apex')
     expect(detectLanguage('C:\\repo\\force-app\\classes\\ACCOUNTSERVICE.CLS')).toBe('apex')
   })
+
+  it.each([
+    'templates/base.twig',
+    'templates/node--article.html.twig',
+    'C:\\theme\\templates\\PAGE.HTML.TWIG',
+    '\\\\server\\share\\templates\\PAGE.TWIG',
+    '/home/user/folder workspace/templates/Base.TwIg'
+  ])('maps Twig template %s to the Monaco built-in twig language id', (filePath) => {
+    expect(detectLanguage(filePath)).toBe('twig')
+  })
+
+  it.each(['base.twig.bak', 'base.twigx', 'templates.twig/README', 'templates.twig\\README'])(
+    'keeps non-Twig file %s on plaintext',
+    (filePath) => {
+      expect(detectLanguage(filePath)).toBe('plaintext')
+    }
+  )
 
   it('keeps .json/.jsonc on the built-in json language and unknown on plaintext', () => {
     expect(detectLanguage('config/settings.json')).toBe('json')

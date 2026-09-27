@@ -11,7 +11,7 @@ import { createLiveProfileStateStore } from './profile-state-live-store-factory'
 import {
   profileStateJsonExportPath,
   profileStateJsonExportPaths
-} from './profile-state-export-path'
+} from './legacy-json/profile-state-export-path'
 
 vi.mock('../../telemetry/client', () => ({ track: vi.fn() }))
 vi.mock('../../telemetry/cohort-classifier', () => ({
@@ -61,8 +61,7 @@ function options() {
   return {
     dataFile: join(root, 'orca-data.json'),
     databaseFile: join(root, 'profile-state.db'),
-    profileId: 'live-profile-test',
-    authorityMode: 'sqlite-candidate' as const
+    profileId: 'live-profile-test'
   }
 }
 

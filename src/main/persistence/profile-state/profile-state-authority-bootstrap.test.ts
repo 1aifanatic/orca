@@ -13,9 +13,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import Database from '../../sqlite/sync-database'
 import { openProfileStateDatabase, profileStateDatabaseFile } from './profile-state-database'
 import * as profileStateDocuments from './profile-state-documents'
-import { profileStateJsonExportPath } from './profile-state-export-path'
+import { profileStateJsonExportPath } from './legacy-json/profile-state-export-path'
 import { acquireProfileStateMaintenance } from './profile-state-access'
-import { restoreProfileStateJsonExport } from './profile-state-recovery'
+import { restoreProfileStateJsonExport } from './legacy-json/profile-state-recovery'
 import {
   bootstrapProfileStateAuthority as bootstrapProfileStateAuthorityImpl,
   classifyProfileStateStorage,
@@ -470,7 +470,10 @@ describe('profile state authority bootstrap', () => {
 
     writeFileSync(options.databaseFile, 'corrupt sqlite primary')
     writeFileSync(options.dataFile, readFileSync(exportPath))
-    const rollbackStore = new Store({ dataFile: options.dataFile })
+    const rollbackStore = new Store({
+      dataFile: options.dataFile,
+      serializedState: readFileSync(options.dataFile, 'utf8')
+    })
     expect(rollbackStore.getSettings().theme).toBe('dark')
     rollbackStore.freezeWrites()
   })
@@ -508,7 +511,10 @@ describe('profile state authority bootstrap', () => {
       'corrupt wal sidecar'
     )
 
-    const rollbackStore = new Store({ dataFile: options.dataFile })
+    const rollbackStore = new Store({
+      dataFile: options.dataFile,
+      serializedState: readFileSync(options.dataFile, 'utf8')
+    })
     expect(rollbackStore.getSettings().theme).toBe('dark')
     rollbackStore.freezeWrites()
   })

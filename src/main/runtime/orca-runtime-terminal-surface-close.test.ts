@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { makePaneKey } from '../../shared/stable-pane-id'
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
 import { Store } from '../persistence/loading-store/store'
+import { closeTestStores, createSqliteTestStore } from '../persistence-test-harness'
 import { OrcaRuntimeService } from './orca-runtime'
 import {
   LEAF_ID,
@@ -62,7 +63,8 @@ function withPinnedTab(session: WorkspaceSessionState): WorkspaceSessionState {
 }
 
 const directories: string[] = []
-afterEach(() => {
+afterEach(async () => {
+  await closeTestStores()
   for (const directory of directories.splice(0)) {
     rmSync(directory, { recursive: true, force: true })
   }
@@ -73,7 +75,7 @@ function createPersistedRuntime(session: WorkspaceSessionState) {
   const directory = mkdtempSync(join(tmpdir(), 'orca-surface-close-'))
   directories.push(directory)
   const dataFile = join(directory, 'orca-data.json')
-  const store = new Store({ dataFile })
+  const store = createSqliteTestStore(Store, { dataFile })
   store.addRepo({
     id: REPO_ID,
     path: WORKTREE_PATH,
@@ -90,7 +92,7 @@ function createPersistedRuntime(session: WorkspaceSessionState) {
       store.flush()
       store.freezeWrites()
       await store.waitForPendingWrite()
-      return new Store({ dataFile }).getWorkspaceSession()
+      return createSqliteTestStore(Store, { dataFile }).getWorkspaceSession()
     }
   }
 }

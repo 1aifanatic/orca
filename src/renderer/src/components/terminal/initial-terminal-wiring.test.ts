@@ -15,9 +15,10 @@ function readSource(relativePath: string): string {
 describe('Terminal auto-create wiring', () => {
   const source = readSource(TERMINAL_PATH)
 
-  it('derives the tombstone from the active worktree row and its close records', () => {
+  it('derives the tombstone from the active worktree row and its close records at decision time', () => {
+    // Why the live store: a render-captured row goes stale while the activation check runs.
     expect(source).toMatch(
-      /isTerminalWorkspaceEmptiedOnPurpose\(\s*\{ tabsByWorktree, closedTerminalTabTombstonesByTabId \},\s*activeWorktreeId\s*\)/
+      /isTerminalWorkspaceEmptiedOnPurpose\(\s*useAppStore\.getState\(\),\s*activeWorktreeId\s*\)/
     )
   })
 
@@ -32,11 +33,5 @@ describe('Terminal auto-create wiring', () => {
     expect(source).toContain(
       'shouldAutoCreateInitialTerminal(renderableTabCount, activeWorktreeHasTerminalState)'
     )
-  })
-
-  it('keeps that derivation in the effect dependencies', () => {
-    // Why: without the dep the effect never re-runs when the row appears or disappears.
-    // Anchored to the neighbouring dep so a stray trailing comma elsewhere can't satisfy it.
-    expect(source).toContain('activeWorktreeId,\n    activeWorktreeHasTerminalState,')
   })
 })
