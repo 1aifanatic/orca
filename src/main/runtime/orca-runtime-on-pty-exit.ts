@@ -218,6 +218,7 @@ export class OrcaRuntimeWithOnPtyExit extends OrcaRuntimeWithOnClientDisconnecte
     }
     // Why: a leaf main kept after this process died stays listed; a later exit notice for the same
     // process (a failed reattach while it restarts) must not retire it.
+    // The record is the durable keep decision; the exit decision writes it before this check.
     const keptLeafIds = new Set(
       this.terminalExitRecords
         .list()
