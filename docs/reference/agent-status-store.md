@@ -241,8 +241,9 @@ even while subagents run; a stop marks it interrupted only on a `done` row, so
 a stopped or finished main agent with live child work still reads working.
 Each subagent keeps its own row and state. Container rollups (worktree card,
 terminal tab, Cmd+J) rank a pending question first, then a failure, then live
-work, then a stop, then done. Lifecycle waiters keep reading the combined
-`state`.
+work, then a stop, then done. On the worktree card, a failure retained after its
+agent's pane went away has no expiry, so it ranks below live work and above a
+stop. Lifecycle waiters keep reading the combined `state`.
 
 Policy splits the verdict two ways. Clean-finish policy (hibernation, pane
 ownership, the star-nag value moment) treats a failure like a cancellation
