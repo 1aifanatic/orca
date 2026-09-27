@@ -61,8 +61,7 @@ function harness(
     hasSession: (sessionId) => live.has(sessionId),
     onReadable: (sessionId, restored) => {
       live.set(sessionId, restored)
-    },
-    settleStaleState: async () => undefined
+    }
   })
   return { restorer, live, serializedIds }
 }

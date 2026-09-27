@@ -2,7 +2,8 @@
 // for an attach that finds none open.
 //
 // It opens with recovery, so an unusable journal is rebuilt rather than refused, and it marks what
-// an earlier host process handed over and left unanswered as in doubt — the crash boundary. That
+// an earlier host process handed over and left unanswered as in doubt, and settles what it left
+// running — the crash boundary. That
 // needs no lease: provider history decides such a row later, under a won lease, in the attach. A
 // row an earlier process accepted and never handed over is the delivery loop's, which the open
 // wakes. Nothing here starts a provider child.
@@ -19,6 +20,7 @@ import {
 } from './structured-agent-session-attach'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
+import { settleStaleStructuredAgentSessionState } from './structured-agent-session-dead-generation-settlement'
 import type {
   StructuredAgentSessionHostDeps,
   StructuredAgentSessionHostSession
@@ -92,6 +94,23 @@ export async function openStructuredAgentSessionConversationJournal(
     // one is only doubt, which provider history decides under a won lease.
     await opened.journal.markPendingSubmissionsUnknown(fence)
   } catch (error) {
+    deps.onEventSinkError?.({ sessionId, error })
+  }
+  try {
+    // No child in this process writes to a journal nobody had open, so whatever it shows running
+    // belongs to a generation that is gone. Settled before any reader or child sees it — unless an
+    // acquisition holds the lease: it cleared the evidence, and settles from what it read before.
+    if (record.lease.claimStatus !== 'reserved' && record.lease.claimStatus !== 'live') {
+      await settleStaleStructuredAgentSessionState({
+        journal: opened.journal,
+        sessionId,
+        fence,
+        acquisitionGeneration: null,
+        deathEvidence: record.lease.deathEvidence ?? null
+      })
+    }
+  } catch (error) {
+    // Best effort: the next acquire re-derives it.
     deps.onEventSinkError?.({ sessionId, error })
   }
   return {
