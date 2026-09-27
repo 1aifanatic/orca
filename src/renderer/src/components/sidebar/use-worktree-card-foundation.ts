@@ -34,7 +34,10 @@ export function useWorktreeCardFoundation({
   const updateWorktreeMeta = useAppStore((s) => s.updateWorktreeMeta)
   const deleteFolderWorkspace = useAppStore((s) => s.deleteFolderWorkspace)
   const setActiveWorktree = useAppStore((s) => s.setActiveWorktree)
-  const renamingWorktreeId = useAppStore((s) => s.renamingWorktreeId)
+  // Why narrowed: this request is app-global, so any row's rename re-rendered every mounted card.
+  const renamingWorktreeId = useAppStore((s) =>
+    s.renamingWorktreeId?.worktreeId === worktree.id ? s.renamingWorktreeId : null
+  )
   const setRenamingWorktreeId = useAppStore((s) => s.setRenamingWorktreeId)
   const fetchHostedReviewForBranch = useAppStore((s) => s.fetchHostedReviewForBranch)
   const settings = useAppStore((s) => s.settings)
