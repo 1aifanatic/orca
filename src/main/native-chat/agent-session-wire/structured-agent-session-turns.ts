@@ -229,7 +229,7 @@ export async function performCancel(
     }
   }
   let cancelled = false
-  let note = 'Cancellation requested.'
+  let note: string | null = 'Cancellation requested.'
   try {
     const dispatchStatus = latestJournalDispatchObservation(ctx.journal, ctx.fence)
     cancelled = input.scope
@@ -252,7 +252,8 @@ export async function performCancel(
           })
         ).cancelled
     if (!cancelled) {
-      note = 'The provider had already finished this turn.'
+      // Only a named turn can have finished; a Stop naming none found nothing left to stop.
+      note = input.turnId === undefined ? null : 'The provider had already finished this turn.'
     }
   } catch (error) {
     if (input.prompt) {
@@ -266,7 +267,7 @@ export async function performCancel(
     await ctx.flushStreamedEvents()
   }
   const value = { ...(input.turnId !== undefined ? { turnId: input.turnId } : {}), cancelled }
-  if (input.scope) {
+  if (input.scope || note === null) {
     return { ok: true, value }
   }
   // Keyed by the operation id so a replayed cancel upserts one item, not two.

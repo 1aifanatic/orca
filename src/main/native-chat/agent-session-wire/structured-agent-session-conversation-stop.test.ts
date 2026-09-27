@@ -199,6 +199,18 @@ describe('a Stop that names no turn', () => {
     expect(dispatch).not.toHaveBeenCalled()
   })
 
+  it('says nothing of a finished turn when the provider had nothing left to stop', async () => {
+    const { id, result } = send('hello')
+    await result
+    await eventually(() => expect(submission(id)?.handedOverAt).toBeDefined())
+    cancelTurn.mockResolvedValueOnce({ cancelled: false })
+
+    expect(await stop()).toMatchObject({ ok: true, value: { cancelled: false } })
+
+    expect(cancelTurn).toHaveBeenCalledOnce()
+    expect(statusRows()).toEqual([])
+  })
+
   it('is a quiet no-op with nothing in flight', async () => {
     expect(await stop()).toMatchObject({ ok: true, value: { cancelled: false } })
     expect(cancelTurn).not.toHaveBeenCalled()
