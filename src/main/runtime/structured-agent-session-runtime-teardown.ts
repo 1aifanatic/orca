@@ -36,7 +36,13 @@ export async function tearDownRuntime(
 ): Promise<void> {
   // Drain an in-flight recovery before stopping children; recovery may still
   // be writing lifecycle rows or acquiring a replacement child.
-  await installed.waitForRecovery()
+  try {
+    await installed.waitForRecovery()
+  } catch (error) {
+    // Teardown stops here, but the settled statuses already recorded still reach disk.
+    installed.savedStatus?.close()
+    throw error
+  }
   const failures: unknown[] = []
   // Host teardown runs FIRST, which inverts the older order. It is what stops this host's
   // provider children now: it evicts each owned session through the adapter, and that eviction
