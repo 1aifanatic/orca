@@ -3,8 +3,7 @@
 
 import {
   AGENT_JOURNAL_THREAD_SCOPE,
-  type AgentJournalSubmission,
-  type AgentJournalTurnScope
+  type AgentJournalSubmission
 } from '../../../shared/agent-session-journal-types'
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
 import { journalRenderItem } from './journal-render-item'
@@ -54,7 +53,7 @@ export function applyJournalDispatch(
   submission.resolvedAt = row.state === 'pending' ? null : row.ts
   if (row.state === 'pending') {
     submission.handedOverAt = row.ts
-    scopeHandedOverMessage(state, submission, row.turnScope)
+    placeHandedOverMessage(state, submission, row)
   }
   if (row.recovered) {
     submission.recovered = row.recovered
@@ -73,12 +72,14 @@ export function applyJournalDispatch(
   })
 }
 
-/** A queued message joins the turn it was handed into — a steer — or none. Rows from hosts that
- *  predate the stated scope are placed at the handover, as their creation would have been. */
-function scopeHandedOverMessage(
+/** A queued message joins the conversation where it was handed over, not where it was accepted:
+ *  what the agent did meanwhile — a command it waited behind, say — happened before it. It joins
+ *  the turn that handover delivered it into — a steer — or none. Rows from hosts that predate the
+ *  stated scope are scoped at the handover, as their creation would have been. */
+function placeHandedOverMessage(
   state: JournalReducerState,
   submission: AgentJournalSubmission,
-  stated: AgentJournalTurnScope | undefined
+  row: Extract<JournalRow, { kind: 'dispatch' }>
 ): void {
   const itemId = agentJournalSubmissionKey(submission.clientMessageId)
   const item = state.items.get(itemId)
@@ -87,7 +88,9 @@ function scopeHandedOverMessage(
   }
   state.items.set(itemId, {
     ...item,
-    turnScope: stated ?? state.derivedTurnScope.scopeFor(item.body)
+    sequence: row.seq,
+    observedAt: row.ts,
+    turnScope: row.turnScope ?? state.derivedTurnScope.scopeFor(item.body)
   })
 }
 

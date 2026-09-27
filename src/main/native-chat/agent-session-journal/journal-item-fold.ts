@@ -1,6 +1,6 @@
 // Folding one item write into the render model: the revision, tombstone and creating-write rules
 // the reducer header states. Turn scope is the creating write's too, with one exception, which the
-// submission fold owns: a queued message's scope is the turn its handover delivered it into.
+// submission fold owns: a queued message's scope and position are its handover's.
 
 import type {
   AgentJournalItemBody,

@@ -5,8 +5,9 @@
 // Rules: highest revision wins, a tombstone removes, a late lower revision is
 // dropped rather than resurrecting stale content, and ordering is by the
 // sequence of the row that CREATED an item (a later revision updates the body,
-// it does not move the bubble). Producer linkage is likewise the creating
-// write's: a revision naming no producer keeps it, one naming any replaces it.
+// it does not move the bubble) — except a queued message, which sits where its
+// handover put it. Producer linkage is likewise the creating write's: a
+// revision naming no producer keeps it, one naming any replaces it.
 
 import type {
   AgentJournalAcceptanceReceipt,

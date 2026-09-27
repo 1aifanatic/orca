@@ -9,6 +9,8 @@ import {
   type AgentJournalItemIdentity,
   type AgentJournalTurnScope
 } from '../../../shared/agent-session-journal-types'
+import { projectNativeChatTranscriptMessages } from '../../../shared/native-chat-transcript-projection'
+import { projectStructuredAgentSessionMessages } from '../../../shared/structured-agent-session-message-projection'
 import {
   applyJournalRow,
   createJournalReducerState,
@@ -163,9 +165,21 @@ describe('stated turn scope', () => {
     item(COMMAND_TURN, turn('compact:cmd-1', 'running'), AGENT_JOURNAL_THREAD_SCOPE)
     submission('held')
     expect(submissionScope(state, 'held')).toEqual(AGENT_JOURNAL_THREAD_SCOPE)
+    item(row('result'), prose('compacted'), inTurn(COMMAND_TURN))
     item(COMMAND_TURN, turn('compact:cmd-1', 'completed'), AGENT_JOURNAL_THREAD_SCOPE)
     handover('held', AGENT_JOURNAL_THREAD_SCOPE)
     expect(submissionScope(state, 'held')).toEqual(AGENT_JOURNAL_THREAD_SCOPE)
+    // Drawn where it was handed over, after the command it waited behind: the phone and paging
+    // order by sequence, the desktop transcript by timestamp.
+    const { items, submissions } = renderJournalState(state)
+    const drawn = (messages: readonly { id: string }[]) =>
+      messages
+        .map((message) => message.id)
+        .filter((id) => id === agentJournalItemKey(row('result')) || id.includes('held'))
+    const expected = [agentJournalItemKey(row('result')), agentJournalSubmissionKey('held')]
+    const bySequence = projectStructuredAgentSessionMessages(items, [], submissions)
+    expect(drawn(bySequence)).toEqual(expected)
+    expect(drawn(projectNativeChatTranscriptMessages(bySequence))).toEqual(expected)
   })
 })
 
