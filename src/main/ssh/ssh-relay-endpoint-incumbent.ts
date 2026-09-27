@@ -68,7 +68,6 @@ const PROBE_BEGIN = 'ORCA-INCUMBENT-BEGIN'
 const PROBE_END = 'ORCA-INCUMBENT-END'
 const CONNECT_PROBE_TIMEOUT_MS = 1000
 
-// Why ES5 syntax: nodePath may be a host-resolved system node, not the bundled one.
 const CONNECT_PROBE_JS = [
   'var s=require("net").connect(process.argv[1]);',
   'var done=false;',

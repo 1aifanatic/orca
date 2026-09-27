@@ -45,7 +45,7 @@ internal static class OrcaRemoteCliLauncher
 
             if (!File.Exists(nodePath))
             {
-                Console.Error.WriteLine("Orca SSH CLI bridge cannot find Node.js at \"{0}\"", nodePath);
+                Console.Error.WriteLine("Orca SSH CLI bridge cannot find its runtime at \"{0}\"", nodePath);
                 return 1;
             }
             if (!File.Exists(relayPath))
