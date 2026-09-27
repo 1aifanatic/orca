@@ -239,3 +239,17 @@ it('ends a stopped /compact on its own interrupted result, and a late copy of th
     expect(await commandState(second)).toMatchObject({ state: 'completed', outcome: 'success' })
   )
 })
+
+it('settles a /compact whose Claude child exits mid-command through that child, and delivers what waited', async () => {
+  const cmid = await compact()
+  const { connection: compacting } = await sent('/compact')
+  const body = hostTestMessage('after the exit')
+  await host.send(CALLER, { envelope: envelope('agentSession.send', { body }), body })
+
+  // Claude sends no end frame at all: its child is gone.
+  compacting.handlers.onExit?.(new Error('claude stream-json exited (code 1): crashed'))
+
+  await vi.waitFor(async () => expect((await commandState(cmid))?.state).toBe('interrupted'))
+  const { connection } = await sent('after the exit')
+  expect(connection).not.toBe(compacting)
+})

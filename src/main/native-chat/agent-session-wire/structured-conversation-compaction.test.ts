@@ -218,6 +218,62 @@ it('holds messages sent during the command and delivers them after it, in order 
   expect(error?.body).toMatchObject({ text: 'Not enough messages to compact.' })
 })
 
+it('hands over a message held behind the command when the command ends just as the loop stops for it', async () => {
+  await attach()
+  await state.host.conversationCommand(CALLER, compactParams())
+  await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce())
+  const { journal: live } = state.host['sessions'].get(SESSION)!
+  const activeTurnId = live.activeTurnId
+  let ended = false
+  vi.spyOn(live, 'activeTurnId').mockImplementation(() => {
+    const read = activeTurnId()
+    // The provider's end lands the moment the loop's own step reads the command as running and
+    // stops; no other reader's view of it matters here.
+    if (
+      !ended &&
+      read?.startsWith('compact:') &&
+      new Error('who reads').stack?.includes('StructuredAgentSessionDeliveryLoop.prepare')
+    ) {
+      ended = true
+      finish({ outcome: 'success' })
+    }
+    return read
+  })
+
+  await expect(state.host.send(CALLER, sendParams('held'))).resolves.toMatchObject({ ok: true })
+
+  await vi.waitFor(() => expect(state.dispatch).toHaveBeenCalledOnce())
+  expect(ended).toBe(true)
+})
+
+it('settles a command the provider refused as a failure with its reason, and moves on (B3)', async () => {
+  await attach()
+  compact.mockResolvedValue({ state: 'rejected', reason: 'Not enough messages to compact.' })
+  const params = compactParams()
+  const cmid = params.envelope.clientOperationId
+  await state.host.conversationCommand(CALLER, params)
+  await state.host.send(CALLER, sendParams('after the refusal'))
+
+  await vi.waitFor(() => expect(state.dispatch).toHaveBeenCalledOnce())
+  expect(readAgentJournalTurn((await commandTurn(cmid))?.body)).toMatchObject({
+    state: 'completed',
+    outcome: 'failure'
+  })
+  const snapshot = await journal()
+  expect(snapshot.submissions.find((entry) => entry.clientMessageId === cmid)).toMatchObject({
+    dispatchState: 'rejected',
+    reason: 'Not enough messages to compact.'
+  })
+  expect(
+    snapshot.items.filter((item) => item.body.kind === 'status' && item.body.tone === 'error')
+  ).toEqual([
+    expect.objectContaining({
+      body: expect.objectContaining({ text: 'Not enough messages to compact.' }),
+      turnScope: { kind: 'turn', turnItemId: structuredAgentSessionCommandTurn(cmid).itemId }
+    })
+  ])
+})
+
 it('refuses the command at handover when the provider opened a turn meanwhile (B3)', async () => {
   await attach()
   const events = state.acquire.mock.calls.at(-1)?.[0].events
