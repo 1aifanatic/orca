@@ -1,0 +1,93 @@
+import { describe, expect, it, vi } from 'vitest'
+import { OrcaRuntimeService } from '../orca-runtime-test-mocks.spec'
+import {
+  HEADLESS_LEAF_ID,
+  HEADLESS_SECOND_LEAF_ID,
+  TEST_WORKTREE_ID,
+  makeDeferred,
+  makeHeadlessTerminalLayout,
+  makeRuntimeStoreWithWorkspaceSession,
+  makeWorkspaceSessionWithHeadlessTerminal
+} from '../orca-runtime-test-fixtures.spec'
+
+describe('OrcaRuntimeService', () => {
+  // Why: a paired mirror answers an exit's stream end by re-activating its pane. An activation
+  // that still finds the leaf respawns the exited session, and the retirement never publishes.
+  it('retires an exited split leaf before its stream end, while the durable write is pending', async () => {
+    const { runtimeStore, getSession } = makeRuntimeStoreWithWorkspaceSession(
+      makeWorkspaceSessionWithHeadlessTerminal({
+        tabsByWorktree: {
+          [TEST_WORKTREE_ID]: [
+            {
+              id: 'host-tab',
+              ptyId: 'pty-a',
+              worktreeId: TEST_WORKTREE_ID,
+              title: 'Split Terminal',
+              customTitle: null,
+              color: null,
+              sortOrder: 0,
+              createdAt: 1
+            }
+          ]
+        },
+        terminalLayoutsByTabId: {
+          'host-tab': makeHeadlessTerminalLayout({
+            [HEADLESS_LEAF_ID]: 'pty-a',
+            [HEADLESS_SECOND_LEAF_ID]: 'pty-b'
+          })
+        }
+      })
+    )
+    const spawn = vi.fn(async (options: { sessionId?: string }) => ({
+      id: options.sessionId ?? 'fresh-pty'
+    }))
+    const adoptStablePane = vi.fn(async () => null)
+    const runtime = new OrcaRuntimeService(runtimeStore as never)
+    runtime.setPtyController({
+      spawn,
+      adoptStablePane,
+      write: () => true,
+      kill: () => true,
+      getForegroundProcess: async () => null,
+      listProcesses: async () => []
+    })
+    runtime.syncWindowGraph(0, { tabs: [], leaves: [] })
+    const activate = (leafId: string, intent: 'user' | 'automatic') =>
+      runtime.activateMobileSessionTab(`id:${TEST_WORKTREE_ID}`, 'host-tab', leafId, {
+        notifyClients: false,
+        navigation: 'caller',
+        intent
+      })
+    const terminalLeafIds = async (): Promise<string[]> =>
+      (await runtime.listMobileSessionTabs(`id:${TEST_WORKTREE_ID}`)).tabs.flatMap((tab) =>
+        tab.type === 'terminal' ? [tab.leafId] : []
+      )
+    await activate(HEADLESS_LEAF_ID, 'user')
+    await activate(HEADLESS_SECOND_LEAF_ID, 'user')
+    expect(spawn).toHaveBeenCalledTimes(2)
+    expect(adoptStablePane).toHaveBeenCalledTimes(2)
+
+    const disk = makeDeferred()
+    Object.assign(runtimeStore, { flushPendingOrThrowAsync: () => disk.promise })
+    // The stream end: the mirror's re-activation starts the moment the host releases it.
+    let reactivation: Promise<unknown> | undefined
+    runtime.subscribeToPtyExit('pty-b', () => {
+      reactivation = activate(HEADLESS_SECOND_LEAF_ID, 'automatic').catch((error) => error)
+    })
+    const exiting = runtime.onPtyExit('pty-b', 0, undefined, { providerExitObserved: true })
+
+    expect(reactivation).toBeDefined()
+    // Why: the refusal must come from the lookup, before any stable-pane adoption can revive it.
+    expect(await reactivation).toEqual(new Error('tab_not_found'))
+    expect(adoptStablePane).toHaveBeenCalledTimes(2)
+    expect(spawn).toHaveBeenCalledTimes(2)
+    expect(await terminalLeafIds()).toEqual([HEADLESS_LEAF_ID])
+    expect(
+      getSession().terminalLayoutsByTabId['host-tab']?.ptyIdsByLeafId?.[HEADLESS_SECOND_LEAF_ID]
+    ).toBeUndefined()
+
+    disk.resolve()
+    await exiting
+    expect(await terminalLeafIds()).toEqual([HEADLESS_LEAF_ID])
+  })
+})

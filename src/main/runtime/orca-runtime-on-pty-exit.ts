@@ -68,7 +68,6 @@ export class OrcaRuntimeWithOnPtyExit extends OrcaRuntimeWithOnClientDisconnecte
       pty?.incarnationId ??
       `runtime:${this.runtimeId}:${this.getPtyLifecycleGeneration(ptyId)}`
     this.advancePtyLifecycleGeneration(ptyId)
-    this.notifyPtyExitListeners(ptyId)
     const exactSurfaceByKey = new Map<
       string,
       Pick<RetiredTerminalSurface, 'worktreeId' | 'parentTabId' | 'leafId'>
@@ -143,7 +142,6 @@ export class OrcaRuntimeWithOnPtyExit extends OrcaRuntimeWithOnClientDisconnecte
     this.providerVisibleRetryAtByPtyId.delete(ptyId)
     this.agentPromptExplicitStatusFloorByPtyId.delete(ptyId)
     this.ptyLifecycleGenerationById.delete(ptyId)
-    this.pendingPtySurfaceRetirementsByPtyId.delete(ptyId)
     this.agentStatusOscProcessorsByPtyId.delete(ptyId)
     this.terminalSpawnCommandsByPtyId.delete(ptyId)
     this.disposePtyTitleTracker(ptyId)
@@ -223,18 +221,14 @@ export class OrcaRuntimeWithOnPtyExit extends OrcaRuntimeWithOnClientDisconnecte
     } else {
       // Why: permanent process exit is absence, not a starting/sleeping tab.
       // Retire before publishing so paired clients never persist a ghost.
-      const pendingRetirement = {}
-      this.pendingPtySurfaceRetirementsByPtyId.set(ptyId, pendingRetirement)
-      retirement = this.retireMobileSessionSurfacesForPty(ptyId, incarnationId, exactSurfaces)
-        .catch((error) => {
-          console.error('[runtime] failed to publish terminal retirement:', error)
-        })
-        .finally(() => {
-          if (this.pendingPtySurfaceRetirementsByPtyId.get(ptyId) === pendingRetirement) {
-            this.pendingPtySurfaceRetirementsByPtyId.delete(ptyId)
-          }
-        })
+      try {
+        retirement = this.retireMobileSessionSurfacesForPty(ptyId, incarnationId, exactSurfaces)
+      } catch (error) {
+        console.error('[runtime] failed to publish terminal retirement:', error)
+      }
     }
+    // Why after the retirement: a stream end cues clients to re-activate the pane it ended.
+    this.notifyPtyExitListeners(ptyId)
 
     const exitedSurfaces: { handle: string; paneKey: string | null }[] = []
     for (const leaf of this.getLeavesForPty(ptyId)) {

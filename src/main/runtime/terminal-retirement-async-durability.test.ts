@@ -35,7 +35,7 @@ it('withholds the acknowledged close until its host retirement is durable', asyn
   expect(f.hasTab()).toBe(false)
 })
 
-it('publishes physical-exit retirement only after durability', async () => {
+it('publishes physical-exit retirement before its durable write completes', async () => {
   const f = fixture()
   await f.store.flushPendingOrThrowAsync()
   const published = vi.fn()
@@ -43,7 +43,8 @@ it('publishes physical-exit retirement only after durability', async () => {
   const gate = f.authority.pause()
   const exiting = f.runtime.onPtyExit('pty-a', 0, ACK_INCARNATION, { providerExitObserved: true })
   await gate.started.promise
-  expect(published).not.toHaveBeenCalled()
+  // Why: a client re-activating the exited pane in this window must already find it retired.
+  expect(published).toHaveBeenCalled()
   gate.finish.resolve()
   await exiting
   expect(published).toHaveBeenCalled()
