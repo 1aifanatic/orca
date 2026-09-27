@@ -739,7 +739,8 @@
         "59718b120b": "El espacio de trabajo de destino ya no está disponible.",
         "16a21d6413": "La reconexión SSH requiere credenciales interactivas.",
         "386db94f3e": "El proyecto de destino ya no está disponible.",
-        "3ad7d77f57": "El espacio de trabajo de destino está en un host distinto al destino de ejecución de esta automatización."
+        "3ad7d77f57": "El espacio de trabajo de destino está en un host distinto al destino de ejecución de esta automatización.",
+        "sshDisconnectedByUser": "Omitido: desconectaste {{host}}. Vuelve a conectarlo para reanudar."
       },
       "useComposerState": {
         "7eb3f44ff7": "El agente seleccionado está deshabilitado. Elige un agente habilitado antes de crear.",
@@ -2919,7 +2920,8 @@
             "connectButton": "Conectar",
             "removedTitle": "Host SSH eliminado",
             "removedBody": "El host SSH de este espacio de trabajo fue eliminado, por lo que ya no puede conectarse. Elimina el espacio de trabajo para limpiarlo — los archivos remotos permanecen intactos.",
-            "removeWorkspaceButton": "Eliminar espacio de trabajo"
+            "removeWorkspaceButton": "Eliminar espacio de trabajo",
+            "disconnectedByUser": "Desconectaste {{value0}}. Conéctate para continuar esta sesión de terminal."
           },
           "TerminalRemoteRuntimeReconnectBanner": {
             "retryingTitle": "Reconnecting to remote runtime",

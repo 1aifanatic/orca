@@ -88,7 +88,10 @@
       "sshUnavailableTitle": "SSH connection unavailable",
       "forwardingBlockedDescription": "This server refuses TCP forwarding (often “AllowTcpForwarding no” in its sshd config), which browsing through it requires. Ask its administrator to allow forwarding, or browse from this device instead.",
       "sshUnavailableDescription": "Pages in this workspace browse through its SSH host, and that connection isn't available right now. Reconnect the host, then retry.",
-      "showDetails": "Show details"
+      "showDetails": "Show details",
+      "userDisconnectedTitle": "You disconnected {{host}}",
+      "userDisconnectedDescription": "Pages in this workspace browse through this host. Connect it to load them.",
+      "connect": "Connect"
     },
     "sshEgress": {
       "routedTooltip": "Browsing through {{value0}}",
@@ -120,7 +123,9 @@
       "openAnyway": "Open anyway"
     },
     "fileLoad": {
-      "hostUnresolved": "The host couldn't find this file's workspace. It may have been removed, or the host may not know about it yet. Retry, or close this tab from the tab strip."
+      "hostUnresolved": "The host couldn't find this file's workspace. It may have been removed, or the host may not know about it yet. Retry, or close this tab from the tab strip.",
+      "userDisconnectedHost": "You disconnected {{host}}. Connect it to load this file.",
+      "connect": "Connect"
     }
   },
   "githubChecks": {
@@ -1017,7 +1022,8 @@
         "16a21d6413": "SSH reconnect requires interactive credentials.",
         "386db94f3e": "The target project is no longer available.",
         "3ad7d77f57": "The target workspace is on a different host than this automation run target.",
-        "workspaceHostUnresolved": "The target workspace spans more than one host, so this run has no single host to use."
+        "workspaceHostUnresolved": "The target workspace spans more than one host, so this run has no single host to use.",
+        "sshDisconnectedByUser": "Skipped: you disconnected {{host}}. Connect it again to resume."
       },
       "useComposerState": {
         "7eb3f44ff7": "Selected agent is disabled. Choose an enabled agent before creating.",
@@ -3385,7 +3391,8 @@
             "connectButton": "Connect",
             "removedTitle": "SSH host removed",
             "removedBody": "The SSH host for this workspace was removed, so it can no longer connect. Remove the workspace to clear it — remote files are left untouched.",
-            "removeWorkspaceButton": "Remove workspace"
+            "removeWorkspaceButton": "Remove workspace",
+            "disconnectedByUser": "You disconnected {{value0}}. Connect to continue this terminal session."
           },
           "TerminalRemoteRuntimeReconnectBanner": {
             "retryingTitle": "Reconnecting to remote runtime",

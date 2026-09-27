@@ -901,7 +901,8 @@
         "16a21d6413": "SSH の再接続には対話型の認証情報が必要です。",
         "386db94f3e": "対象のプロジェクトは利用できなくなりました。",
         "3ad7d77f57": "対象ワークスペースは、この自動化実行ターゲットとは別のホスト上にあります。",
-        "workspaceHostUnresolved": "ターゲットワークスペースは複数のホストにまたがっているため、この実行では使用する単一のホストがありません。"
+        "workspaceHostUnresolved": "ターゲットワークスペースは複数のホストにまたがっているため、この実行では使用する単一のホストがありません。",
+        "sshDisconnectedByUser": "スキップしました: {{host}} を切断しました。再開するにはもう一度接続してください。"
       },
       "useComposerState": {
         "7eb3f44ff7": "選択した Agent は無効です。作成する前に、有効な Agent を選択してください。",
@@ -3210,7 +3211,8 @@
             "connectButton": "接続",
             "removedTitle": "SSH ホストが削除されました",
             "removedBody": "このワークスペースの SSH ホストが削除されたため、接続できません。ワークスペースを削除してクリアしてください — リモートファイルはそのまま残ります。",
-            "removeWorkspaceButton": "ワークスペースを削除"
+            "removeWorkspaceButton": "ワークスペースを削除",
+            "disconnectedByUser": "{{value0}} を切断しました。このターミナルセッションを続行するには接続してください。"
           },
           "TerminalRemoteRuntimeReconnectBanner": {
             "retryingTitle": "リモートランタイムに再接続中",
@@ -18177,7 +18179,10 @@
       "sshUnavailableTitle": "SSH 接続が利用できません",
       "forwardingBlockedDescription": "このサーバーは、ブラウジングに必要な TCP 転送 (多くの場合、sshd 設定で「AllowTcpForwarding no」) を拒否します。管理者に転送を許可するか、代わりにこのデバイスから参照するよう依頼してください。",
       "sshUnavailableDescription": "このワークスペース内のページは SSH ホストを介して参照されますが、現在その接続は利用できません。ホストに再接続してから、再試行してください。",
-      "showDetails": "詳細を表示"
+      "showDetails": "詳細を表示",
+      "userDisconnectedTitle": "{{host}} を切断しました",
+      "userDisconnectedDescription": "このワークスペースのページはこのホストを経由して閲覧します。読み込むには接続してください。",
+      "connect": "接続"
     },
     "sshEgress": {
       "routedTooltip": "{{value0}} を参照する",
@@ -18256,7 +18261,9 @@
       "openAnyway": "とにかく開ける"
     },
     "fileLoad": {
-      "hostUnresolved": "ホストはこのファイルのワークスペースを見つけることができませんでした。削除されたか、ホストがまだそれを認識していない可能性があります。再試行するか、タブストリップからこのタブを閉じてください。"
+      "hostUnresolved": "ホストはこのファイルのワークスペースを見つけることができませんでした。削除されたか、ホストがまだそれを認識していない可能性があります。再試行するか、タブストリップからこのタブを閉じてください。",
+      "userDisconnectedHost": "{{host}} を切断しました。このファイルを読み込むには接続してください。",
+      "connect": "接続"
     }
   },
   "featureTips": {

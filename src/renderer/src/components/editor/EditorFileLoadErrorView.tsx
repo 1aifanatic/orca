@@ -1,6 +1,8 @@
 import { AlertCircle, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { translate } from '@/i18n/i18n'
+import { useWorktreeHostConnection } from '@/lib/worktree-host-connection-phase'
+import { useUserDisconnectedHostConnect } from '@/ssh/use-user-disconnected-host-connect'
 import { WORKTREE_HOST_UNRESOLVED_CODE } from './editor-panel-content-types'
 
 // Why: `loadError` is stored as English so logs and non-view consumers stay readable; the
@@ -23,12 +25,16 @@ function localizeFileLoadError(message: string, code: string | undefined): strin
 export function EditorFileLoadErrorView({
   message,
   code,
+  worktreeId = null,
   onRetry
 }: {
   message: string
   code?: string
+  /** The file's workspace; lets the view say when the user's Disconnect holds its host down. */
+  worktreeId?: string | null
   onRetry: () => void
 }): React.JSX.Element {
+  const userDisconnectedHost = useUserDisconnectedHostConnect(useWorktreeHostConnection(worktreeId))
   return (
     <div className="flex h-full items-center justify-center bg-editor-surface p-6 text-sm text-muted-foreground">
       <div className="flex max-w-xl items-start gap-3 rounded-md border border-border bg-background p-4">
@@ -37,11 +43,36 @@ export function EditorFileLoadErrorView({
           <div className="font-medium text-foreground">
             {translate('auto.components.editor.EditorContent.39f018b052', 'Unable to load file')}
           </div>
-          <div className="mt-1 break-words">{localizeFileLoadError(message, code)}</div>
-          <Button type="button" variant="outline" size="sm" className="mt-3" onClick={onRetry}>
-            <RefreshCw className="size-3.5" />
-            {translate('auto.components.editor.EditorContent.2a512bb46a', 'Retry')}
-          </Button>
+          {userDisconnectedHost ? (
+            // Why Connect replaces Retry: a read cannot succeed until the user connects the host,
+            // and the file reloads on its own once it does.
+            <>
+              <div className="mt-1 break-words">
+                {translate(
+                  'editor.fileLoad.userDisconnectedHost',
+                  'You disconnected {{host}}. Connect it to load this file.',
+                  { host: userDisconnectedHost.hostLabel }
+                )}
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                className="mt-3"
+                disabled={userDisconnectedHost.connecting}
+                onClick={userDisconnectedHost.connect}
+              >
+                {translate('editor.fileLoad.connect', 'Connect')}
+              </Button>
+            </>
+          ) : (
+            <>
+              <div className="mt-1 break-words">{localizeFileLoadError(message, code)}</div>
+              <Button type="button" variant="outline" size="sm" className="mt-3" onClick={onRetry}>
+                <RefreshCw className="size-3.5" />
+                {translate('auto.components.editor.EditorContent.2a512bb46a', 'Retry')}
+              </Button>
+            </>
+          )}
         </div>
       </div>
     </div>
