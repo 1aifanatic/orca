@@ -87,6 +87,8 @@ export async function waitForRemoteWorkspaceSessionReady(
     }
   })
   unsubscribe = subscribedUnsubscribe
+  // Re-check after subscribing: readiness or abort landing in the window above would otherwise
+  // never wake this wait. `settled` covers a listener that fired before the disposer existed.
   if (settled) {
     subscribedUnsubscribe()
   } else if (signal?.aborted) {

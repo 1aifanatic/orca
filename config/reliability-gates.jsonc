@@ -50,6 +50,9 @@
             "cleans a subscription that reports readiness before returning its disposer",
             "cleans a subscription when canceled while its disposer is being installed",
             "does not restart the deadline on unrelated publications",
+            "gives every concurrent waiter its own subscription and deadline",
+            "settles once when a reentrant subscriber republishes during notification",
+            "stays settled and unsubscribed when readiness never arrives",
             "starts no remote request when readiness is followed by a %s owner"
           ]
         }
@@ -79,7 +82,7 @@
       },
       "performanceBudget": {
         "required": true,
-        "evidence": "Trade-off candidate: pending subscribable waits replace100 polling wakeups/10s with one deadline but add one O(1) readiness callback per active wait per store publication. Independent64-waiter/256-write probe counts16,384 callbacks, then32 listeners/timers after half abort and zero after ready. Paired timing delta+0.0197ms/1,000 publications may include noise; no throughput/startup/frame gain claimed. Earlier ready-then-abort observation can retain true; installed timer uses elapsed time instead of repeated wall-clock checks. Caller authority remains separately checked. GetState-only legacy callers retain polling."
+        "evidence": "Trade-off candidate: pending subscribable waits replace100 polling wakeups/10s with one deadline but add one O(1) readiness callback per active wait per store publication. A committed 64-waiter case asserts one subscription and one deadline per wait, 32 of each after half abort and zero after readiness. Paired timing delta+0.0197ms/1,000 publications may include noise; no throughput/startup/frame gain claimed. Earlier ready-then-abort observation can retain true; installed timer uses elapsed time instead of repeated wall-clock checks. Caller authority remains separately checked. GetState-only legacy callers retain polling."
       },
       "knownGaps": [
         "No live SSH/WSL or native Windows/Linux execution, rendered first-paint/frame measurement, or CI soak.",

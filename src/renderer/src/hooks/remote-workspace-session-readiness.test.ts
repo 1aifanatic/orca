@@ -43,14 +43,9 @@ describe('waitForRemoteWorkspaceSessionReady', () => {
   it('uses one deadline timer for ten seconds of unchanged readiness', async () => {
     const { store, activeListeners } = readinessStore()
     const timers = vi.spyOn(globalThis, 'setTimeout')
-    const getState = vi.spyOn(store, 'getState')
     const pending = waitForRemoteWorkspaceSessionReady(store)
     await vi.advanceTimersByTimeAsync(10_000)
     await expect(pending).resolves.toBe(false)
-    console.info('readiness deadline cost', {
-      scheduledTimers: timers.mock.calls.length,
-      readinessReads: getState.mock.calls.length
-    })
     expect(timers).toHaveBeenCalledTimes(1)
     expect(activeListeners()).toBe(0)
     expect(vi.getTimerCount()).toBe(0)
@@ -63,6 +58,9 @@ describe('waitForRemoteWorkspaceSessionReady', () => {
     const resolved = vi.fn()
     const pending = waitForRemoteWorkspaceSessionReady(store, controller.signal).then(resolved)
     await vi.advanceTimersByTimeAsync(37)
+    // The deadline is still pending, so settling here can only come from the publication.
+    expect(vi.getTimerCount()).toBe(1)
+    expect(resolved).not.toHaveBeenCalled()
     store.setState({ workspaceSessionReady: true })
     await flush()
     expect(resolved).toHaveBeenCalledWith(true)
@@ -196,6 +194,85 @@ describe('waitForRemoteWorkspaceSessionReady', () => {
     controller.abort()
     await expect(canceled).resolves.toBe(false)
     expect(subscribe).not.toHaveBeenCalled()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('gives every concurrent waiter its own subscription and deadline', async () => {
+    const { store, activeListeners } = readinessStore()
+    const controllers = Array.from({ length: 64 }, () => new AbortController())
+    const waits = controllers.map((controller) =>
+      waitForRemoteWorkspaceSessionReady(store, controller.signal)
+    )
+    expect(activeListeners()).toBe(64)
+    expect(vi.getTimerCount()).toBe(64)
+    for (let index = 0; index < controllers.length; index += 2) {
+      controllers[index]!.abort()
+    }
+    // Cancelling one waiter must release only its own resources.
+    expect(activeListeners()).toBe(32)
+    expect(vi.getTimerCount()).toBe(32)
+    store.setState({ workspaceSessionReady: true })
+    const results = await Promise.all(waits)
+    expect(results.filter((ready) => ready)).toHaveLength(32)
+    expect(results.filter((ready) => !ready)).toHaveLength(32)
+    expect(activeListeners()).toBe(0)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('settles once when a reentrant subscriber republishes during notification', async () => {
+    const store = createStore(() => appState({ workspaceSessionReady: false }))
+    let depth = 0
+    let maxDepth = 0
+    const offReentrant = store.subscribe((state) => {
+      depth += 1
+      maxDepth = Math.max(maxDepth, depth)
+      if (state.workspaceSessionReady && depth < 3) {
+        store.setState({ sortEpoch: depth })
+      }
+      depth -= 1
+    })
+    const originalSubscribe = store.subscribe
+    let listeners = 0
+    vi.spyOn(store, 'subscribe').mockImplementation((listener) => {
+      listeners += 1
+      const unsubscribe = originalSubscribe(listener)
+      let disposed = false
+      return () => {
+        if (disposed) {
+          return
+        }
+        disposed = true
+        listeners -= 1
+        unsubscribe()
+      }
+    })
+    const settled = [vi.fn(), vi.fn()]
+    const waits = settled.map((observe) => waitForRemoteWorkspaceSessionReady(store).then(observe))
+    store.setState({ workspaceSessionReady: true })
+    await Promise.all(waits)
+    expect(maxDepth).toBeGreaterThan(1)
+    for (const observe of settled) {
+      expect(observe).toHaveBeenCalledTimes(1)
+      expect(observe).toHaveBeenCalledWith(true)
+    }
+    expect(listeners).toBe(0)
+    expect(vi.getTimerCount()).toBe(0)
+    offReentrant()
+  })
+
+  it('stays settled and unsubscribed when readiness never arrives', async () => {
+    const { store, activeListeners } = readinessStore()
+    const resolved = vi.fn()
+    const pending = waitForRemoteWorkspaceSessionReady(store).then(resolved)
+    await vi.advanceTimersByTimeAsync(9_999)
+    expect(resolved).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(resolved).toHaveBeenCalledWith(false)
+    await vi.advanceTimersByTimeAsync(600_000)
+    store.setState({ workspaceSessionReady: true })
+    await pending
+    expect(resolved).toHaveBeenCalledTimes(1)
+    expect(activeListeners()).toBe(0)
     expect(vi.getTimerCount()).toBe(0)
   })
 
