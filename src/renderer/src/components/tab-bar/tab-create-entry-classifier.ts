@@ -234,6 +234,7 @@ export function getTabEntryOptions(
     } else if (!hostUrl && newFile) {
       options.push(search)
     }
+    options.push(...existingFiles.filter((file) => file.matchKind === 'literal-basename'))
     return toOptions(options, actionLimit)
   }
   if (hostUrl?.kind === 'blocked') {

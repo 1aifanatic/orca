@@ -212,6 +212,18 @@ describe('tab create entry classification', () => {
     ])
   })
 
+  it('keeps literal filename matches after an exact basename match', () => {
+    expect(
+      getTabEntryOptions('Makefile', readyFiles(['build/Makefile', 'build/Makefile.am'])).map(
+        (option) => option.classification
+      )
+    ).toEqual([
+      { kind: 'existing-file', matchKind: 'exact-basename', relativePath: 'build/Makefile' },
+      { kind: 'search', engine: 'google', query: 'Makefile' },
+      { kind: 'existing-file', matchKind: 'literal-basename', relativePath: 'build/Makefile.am' }
+    ])
+  })
+
   it('prefers creating typed file paths over fuzzy matches', () => {
     expect(
       getTabEntryOptions('read.md', readyFiles(['README.md'])).map(
