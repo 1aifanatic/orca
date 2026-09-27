@@ -11,6 +11,7 @@
 import type { AgentSessionRecoveryCapsule } from '../../runtime/agent-session-recovery-capsule'
 import type { AgentSessionResumeMarker } from '../../../shared/agent-session-resume-marker'
 import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
+import { isRestartContinuationOf } from './structured-agent-session-restart-continuation-envelope'
 
 export type StructuredAgentSessionRestartOfferWithdrawal = ReturnType<
   typeof createStructuredAgentSessionRestartOfferWithdrawal
@@ -28,15 +29,11 @@ export function createStructuredAgentSessionRestartOfferWithdrawal(deps: {
   /** The capsule's single mutation lane, shared with the offer's own operations. */
   enqueue: <T>(operation: () => Promise<T>) => Promise<T>
 }) {
-  /** The continuation each running resume action sends, by chat. */
-  const actions = new Map<string, string>()
-
   const movedOn = (marker: AgentSessionResumeMarker): boolean => {
     const session = deps.sessions.get(marker.sessionId)
     if (!session) {
       return false
     }
-    const own = actions.get(marker.sessionId)
     const taken = marker.journalCursor
     // An older build's offer recorded no position: only a start withdraws it.
     const accepted =
@@ -44,13 +41,12 @@ export function createStructuredAgentSessionRestartOfferWithdrawal(deps: {
       (session.journal.cursor().epoch !== taken.epoch ||
         session.journal.submissions().some(
           (submission) =>
-            submission.clientMessageId !== own &&
             (submission.acceptedSequence ?? 0) > taken.sequence &&
-            // A continuation the offer sent that was rejected never reached the agent: a retry
-            // sends a new one.
+            // The offer's own continuation, still queued or rejected, never reached the agent: a
+            // retry sends a new one.
             !(
-              submission.dispatchState === 'rejected' &&
-              marker.continuations?.includes(submission.clientMessageId)
+              (submission.dispatchState === 'pending' || submission.dispatchState === 'rejected') &&
+              isRestartContinuationOf(marker, submission.clientMessageId)
             )
         ))
     // Proven, not merely spawned: a start that failed during startup never ran the agent. Whose
@@ -61,34 +57,31 @@ export function createStructuredAgentSessionRestartOfferWithdrawal(deps: {
         : session.lastEndedChild?.duringStartup === false
           ? session.lastEndedChild
           : undefined
-    const ownStart =
-      started?.startedFor !== undefined &&
-      (started.startedFor === own || marker.continuations?.includes(started.startedFor) === true)
-    return accepted || (started !== undefined && !ownStart)
+    return (
+      accepted ||
+      (started !== undefined &&
+        !(started.startedFor !== undefined && isRestartContinuationOf(marker, started.startedFor)))
+    )
   }
 
   return {
     movedOn,
-    /** A resume action holds the chat from its reservation until it settles. */
-    begin: (sessionId: string, continuationId: string): (() => void) => {
-      actions.set(sessionId, continuationId)
-      return () => {
-        if (actions.get(sessionId) === continuationId) {
-          actions.delete(sessionId)
-        }
-      }
-    },
-    /** The chat's agent proved a start: unless it is a resume action's own, the offer and any
-     *  failure record go from the recovery file. Advisory: a failed write is logged, never raised. */
+    /** The chat's agent proved a start: the offer and any failure record go from the recovery file,
+     *  unless the start was for one of that offer's own continuations. Advisory: a failed write is
+     *  logged, never raised. */
     onAgentStarted: (sessionId: string): void => {
       const session = deps.sessions.get(sessionId)
       const capsule = deps.capsule
-      const own = actions.get(sessionId)
-      if (!capsule || !session || (own !== undefined && session.child?.startedFor === own)) {
+      if (!capsule || !session) {
         return
       }
+      const startedFor = session.child?.startedFor
       void deps
-        .enqueue(() => capsule.dismiss([sessionId], deps.now()))
+        .enqueue(() =>
+          capsule.dismiss([sessionId], deps.now(), (marker) =>
+            startedFor === undefined ? false : isRestartContinuationOf(marker, startedFor)
+          )
+        )
         .catch(() => {
           console.warn('[structured-agent-session] withdrawing a restart offer failed')
         })

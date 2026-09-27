@@ -2,7 +2,8 @@
 // agent started, other than by the offer's own continuation. Each case reads the offer list and the
 // capsule, never only an in-memory set.
 
-import { readFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -19,6 +20,7 @@ import {
 import { CALLER, envelope } from './structured-agent-session-host-test-harness'
 import { STRUCTURED_AGENT_SESSION_IDLE_MS } from './structured-agent-session-idle-sweep'
 import { createStructuredAgentSessionRestartOfferWithdrawal } from './structured-agent-session-restart-offer-withdrawal'
+import { restartContinuationId } from './structured-agent-session-restart-continuation-envelope'
 import { sweepOnce } from './structured-agent-session-rest-test-rig'
 import {
   HOST_TEST_NOW as NOW,
@@ -95,7 +97,10 @@ it("does not let the offer's own continuation withdraw it (R-03)", async () => {
 
   expect(result.continued).toMatchObject([{ outcome: 'continued' }])
   expect(dispatch).toHaveBeenCalledOnce()
-  expect(dismiss).not.toHaveBeenCalled()
+  // The start was the continuation's own: whatever asked, it withdrew nothing.
+  for (const call of dismiss.mock.results) {
+    expect(await call.value).toBe(0)
+  }
   // Ended by the success path instead.
   expect(await offersIn(root)).toEqual([])
 })
@@ -384,11 +389,19 @@ it('delivers a clicked continuation and a message sent right after it, in the or
 describe('reading the chat against where the offer was taken', () => {
   const TAKEN = { epoch: 'epoch-1', sequence: 5 }
 
+  const OFFER = {
+    sessionId: SESSION,
+    work: { kind: 'turn' as const, id: 'turn-1' },
+    recordedAt: NOW,
+    trigger: 'quit' as const,
+    providerHandleRoot: 'codex:"thread"',
+    teardownId: 'teardown-1'
+  }
+
   function movedOn(
     input: {
       epoch?: string
       submissions?: { clientMessageId: string; acceptedSequence: number; dispatchState: string }[]
-      continuations?: string[]
     },
     journalCursor: { epoch: string; sequence: number } | null = TAKEN
   ): boolean {
@@ -405,16 +418,7 @@ describe('reading the chat against where the offer was taken', () => {
       now: () => NOW,
       enqueue: (operation) => operation()
     })
-    return withdrawal.movedOn({
-      sessionId: SESSION,
-      work: { kind: 'turn', id: 'turn-1' },
-      recordedAt: NOW,
-      trigger: 'quit',
-      providerHandleRoot: 'codex:"thread"',
-      teardownId: 'teardown-1',
-      ...(journalCursor ? { journalCursor } : {}),
-      ...(input.continuations ? { continuations: input.continuations } : {})
-    })
+    return withdrawal.movedOn({ ...OFFER, ...(journalCursor ? { journalCursor } : {}) })
   }
 
   it('counts a message accepted after that position, and nothing before it', () => {
@@ -431,12 +435,70 @@ describe('reading the chat against where the offer was taken', () => {
     expect(movedOn({ epoch: 'epoch-2' })).toBe(true)
   })
 
-  it('does not count a rejected continuation, so a retry still runs', () => {
-    const rejected = { clientMessageId: 'c-1', acceptedSequence: 7, dispatchState: 'rejected' }
-    expect(movedOn({ submissions: [rejected], continuations: ['c-1'] })).toBe(false)
-    expect(
-      movedOn({ submissions: [{ ...rejected, dispatchState: 'accepted' }], continuations: ['c-1'] })
-    ).toBe(true)
+  it("does not count the offer's own continuation while queued or rejected, so a retry still runs", () => {
+    const own = restartContinuationId(OFFER, 'operation-1', NOW)
+    const rejected = { clientMessageId: own, acceptedSequence: 7, dispatchState: 'rejected' }
+    expect(movedOn({ submissions: [rejected] })).toBe(false)
+    expect(movedOn({ submissions: [{ ...rejected, dispatchState: 'pending' }] })).toBe(false)
+    expect(movedOn({ submissions: [{ ...rejected, dispatchState: 'accepted' }] })).toBe(true)
+    // Another offer's continuation, and any other message, is the chat moving on.
+    const other = restartContinuationId({ ...OFFER, teardownId: 'teardown-2' }, 'operation-1', NOW)
+    expect(movedOn({ submissions: [{ ...rejected, clientMessageId: other }] })).toBe(true)
+  })
+
+  // The retry's reservation lapses with the app, and the capsule hands back the failure's marker,
+  // written before the retry ran. The next launch rejects the retry's queued continuation.
+  it('keeps a failure retryable after the app crashed during its retry', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'orca-crash-during-retry-'))
+    try {
+      const capsule = new AgentSessionRecoveryCapsule(root)
+      await capsule.record([{ ...OFFER, journalCursor: TAKEN }], NOW)
+      await capsule.beginResume([SESSION], 'operation-a', NOW)
+      await capsule.failResume(
+        'operation-a',
+        [
+          {
+            sessionId: SESSION,
+            failedAt: NOW,
+            outcome: 'refused',
+            reason: 'x',
+            latestPrompt: '',
+            latestUserItemId: null
+          }
+        ],
+        NOW
+      )
+      const [retrying] = await capsule.beginResume([SESSION], 'operation-b', NOW + 1)
+      if (!retrying) {
+        throw new Error('the retry reserved nothing')
+      }
+      const retry = restartContinuationId(retrying, 'operation-b', NOW + 1)
+      const afterCrash = NOW + 60 * 60_000
+      expect(await capsule.list(afterCrash)).toEqual([])
+      const [failed] = await capsule.listFailed(afterCrash)
+
+      const session = {
+        child: null,
+        journal: {
+          cursor: () => ({ epoch: TAKEN.epoch, sequence: 9 }),
+          submissions: () => [
+            { clientMessageId: retry, acceptedSequence: 7, dispatchState: 'rejected' }
+          ]
+        }
+      }
+      const withdrawal = createStructuredAgentSessionRestartOfferWithdrawal({
+        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the fact reads only the journal's cursor and submissions and the child fields given here.
+        sessions: new Map([[SESSION, session as never]]),
+        now: () => afterCrash,
+        enqueue: (operation) => operation()
+      })
+      if (!failed) {
+        throw new Error('the failure did not outlive the crash')
+      }
+      expect(withdrawal.movedOn(failed.marker)).toBe(false)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
   })
 
   it('leaves an older build’s offer, which recorded no position, to a start', () => {
