@@ -17,7 +17,7 @@ describe('spawnRelayAiVaultService', () => {
     forkMock.mockReturnValue({ pid: undefined, unref: vi.fn() } as unknown as ChildProcess)
   })
 
-  it('keeps NODE_OPTIONS out of the sidecar so the heap cap and loader stand', () => {
+  it('keeps parent runtime flags and loaders out of the Bun sidecar', () => {
     vi.stubEnv('NODE_OPTIONS', '--max-old-space-size=8192 --require=/tmp/evil.js')
     spawnRelayAiVaultService()
     const options = forkOptions()
@@ -26,7 +26,7 @@ describe('spawnRelayAiVaultService', () => {
     // leave the NODE_OPTIONS assertion below passing for the wrong reason.
     expect(options.env).toBeDefined()
     expect(options.env?.NODE_OPTIONS).toBeUndefined()
-    expect(options.execArgv).toEqual(['--max-old-space-size=384'])
+    expect(options.execArgv).toEqual([])
     vi.unstubAllEnvs()
   })
 

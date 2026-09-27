@@ -10,7 +10,7 @@ export function relayAiVaultServiceEntryPath(baseDir = __dirname): string {
 export function spawnRelayAiVaultService(): ChildProcess {
   const child = fork(relayAiVaultServiceEntryPath(), [], {
     stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
-    execArgv: ['--max-old-space-size=384'],
+    execArgv: [],
     env: buildRelayAiVaultServiceEnv(),
     ...(process.platform === 'win32' ? { windowsHide: true } : {})
   })
