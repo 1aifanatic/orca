@@ -20,7 +20,8 @@ import {
   clampSidebarOffset,
   resolveSidebarCorrectionTarget,
   sidebarNavigationOffset,
-  type SidebarGeometryCorrection
+  type SidebarGeometryCorrection,
+  type SidebarScrollRounding
 } from './sidebar-geometry-commit'
 import { useSidebarGeometryAnchor } from './use-sidebar-geometry-anchor'
 import {
@@ -67,6 +68,7 @@ export function useWorktreeListVirtualizer(args: {
     observationChanged()
   }
   const correction = useRef<SidebarGeometryCorrection | null>(null)
+  const rounding = useRef<SidebarScrollRounding | null>(null)
   const insetRef = useRef(1)
   const publication = useMemo(() => ({ revision, sizes: ledger.sizes }), [revision, ledger])
   const boundaries = useMemo(
@@ -189,6 +191,7 @@ export function useWorktreeListVirtualizer(args: {
         scrollAnchorRef,
         scrollRef,
         correction,
+        rounding,
         suppression,
         insetRef,
         offset,
@@ -211,6 +214,7 @@ export function useWorktreeListVirtualizer(args: {
     scrollAnchorRef,
     scrollOffsetRef,
     correction,
+    rounding,
     suppression,
     newCardStyle: args.newCardStyle,
     layoutContext: args.layoutContext,
@@ -241,6 +245,7 @@ export function useWorktreeListVirtualizer(args: {
         if (!node) {
           return
         }
+        rounding.current = null
         correction.current = {
           target: 0,
           epoch: suppression.scrollOwnershipEpochRef.current,

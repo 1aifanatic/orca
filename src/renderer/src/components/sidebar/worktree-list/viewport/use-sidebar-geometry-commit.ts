@@ -3,12 +3,17 @@ import type React from 'react'
 import type { Virtualizer } from '@tanstack/react-virtual'
 import type { VirtualizedScrollAnchor } from '@/hooks/useVirtualizedScrollAnchor'
 import type { SidebarGeometry } from '../listing/sidebar-geometry-slots'
-import { reconcileSidebarLedger, type SidebarGeometryLedger } from './sidebar-geometry-ledger'
+import {
+  reconcileSidebarLedger,
+  sidebarGeometryLayoutMatches,
+  type SidebarGeometryLedger
+} from './sidebar-geometry-ledger'
 import { synchronizeSidebarSizes } from './sidebar-size-synchronization'
 import {
   sidebarGeometryConverged,
   clampSidebarOffset,
-  type SidebarGeometryCorrection
+  type SidebarGeometryCorrection,
+  type SidebarScrollRounding
 } from './sidebar-geometry-commit'
 import type { WorktreeSidebarScrollSuppression } from './use-scroll-suppression'
 
@@ -20,6 +25,7 @@ export function useSidebarGeometryCommit(args: {
   scrollAnchorRef: React.MutableRefObject<VirtualizedScrollAnchor>
   scrollOffsetRef: React.MutableRefObject<number>
   correction: React.MutableRefObject<SidebarGeometryCorrection | null>
+  rounding: React.MutableRefObject<SidebarScrollRounding | null>
   suppression: WorktreeSidebarScrollSuppression
   newCardStyle: boolean
   layoutContext?: string
@@ -46,6 +52,7 @@ export function useSidebarGeometryCommit(args: {
       ledger,
       scrollAnchorRef,
       correction,
+      rounding,
       suppression,
       changed,
       boundaries,
@@ -64,6 +71,10 @@ export function useSidebarGeometryCommit(args: {
     }
     insetRef.current = Number.parseFloat(getComputedStyle(element).paddingTop) || 0
     if (previousModel.current !== model) {
+      const layoutChanged = !sidebarGeometryLayoutMatches(previousModel.current, model)
+      if (layoutChanged) {
+        rounding.current = null
+      }
       previousModel.current = model
       reconcileSidebarLedger(
         ledger,
@@ -74,6 +85,7 @@ export function useSidebarGeometryCommit(args: {
       )
       const anchor = scrollAnchorRef.current
       if (
+        layoutChanged &&
         anchor &&
         !correction.current?.navigation &&
         !suppression.shouldSkipScrollAnchorRestore()
@@ -113,6 +125,7 @@ export function useSidebarGeometryCommit(args: {
       return
     }
     correction.current = null
+    rounding.current = null
     if (
       pending.epoch !== suppression.scrollOwnershipEpochRef.current ||
       (!pending.navigation && suppression.shouldSkipScrollAnchorRestore())
@@ -129,6 +142,16 @@ export function useSidebarGeometryCommit(args: {
       virtualizer.scrollToOffset(destination, { behavior: pending.navigation?.behavior })
     }
     scrollOffsetRef.current = element.scrollTop
+    const remainder = destination - element.scrollTop
+    if (
+      !pending.anchor &&
+      !pending.navigation &&
+      target === destination &&
+      Math.abs(remainder) <= 0.5
+    ) {
+      // Carry only browser rounding, never an input change or a clamp deficit.
+      rounding.current = { offset: element.scrollTop, remainder, epoch: pending.epoch }
+    }
     if (
       pending.navigation?.behavior !== 'smooth' &&
       Math.abs(element.scrollTop - destination) > 1

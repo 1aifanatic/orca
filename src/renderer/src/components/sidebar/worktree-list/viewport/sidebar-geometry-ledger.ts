@@ -1,6 +1,6 @@
 import type { MutableRefObject } from 'react'
 import type { VirtualizedScrollAnchor } from '@/hooks/useVirtualizedScrollAnchor'
-import type { SidebarGeometry } from '../listing/sidebar-geometry-slots'
+import type { SidebarGeometry, SidebarGeometrySlot } from '../listing/sidebar-geometry-slots'
 
 export type SidebarObservation = { prefix: number; closing: number | null; width: number }
 export type SidebarGeometryLedger = {
@@ -14,6 +14,42 @@ export type SidebarGeometryLedger = {
 const reconciledModels = new WeakMap<SidebarGeometryLedger, SidebarGeometry>()
 export type SidebarGeometryOwner = MutableRefObject<VirtualizedScrollAnchor>
 const ledgers = new WeakMap<SidebarGeometryOwner, SidebarGeometryLedger>()
+function sidebarSlotLayoutContext(model: SidebarGeometry, slot: SidebarGeometrySlot): string {
+  const node = model.nodes[slot.node]!
+  return JSON.stringify([
+    node.gap,
+    node.parent === null ? null : model.nodes[node.parent]!.key,
+    'depth' in node.row ? node.row.depth : 0,
+    'groupDepth' in node.row ? node.row.groupDepth : 0
+  ])
+}
+
+export function sidebarGeometryLayoutMatches(
+  previous: SidebarGeometry | null,
+  next: SidebarGeometry
+): boolean {
+  return (
+    previous !== null &&
+    previous.slots.length === next.slots.length &&
+    next.slots.every((slot, index) => {
+      const before = previous.slots[index]!
+      const beforeNode = previous.nodes[before.node]!
+      const node = next.nodes[slot.node]!
+      return (
+        slot.key === before.key &&
+        slot.estimate === before.estimate &&
+        node.gap === beforeNode.gap &&
+        (node.parent === null ? null : next.nodes[node.parent]!.key) ===
+          (beforeNode.parent === null ? null : previous.nodes[beforeNode.parent]!.key) &&
+        ('depth' in node.row ? node.row.depth : 0) ===
+          ('depth' in beforeNode.row ? beforeNode.row.depth : 0) &&
+        ('groupDepth' in node.row ? node.row.groupDepth : 0) ===
+          ('groupDepth' in beforeNode.row ? beforeNode.row.groupDepth : 0)
+      )
+    })
+  )
+}
+
 export function getSidebarGeometryLedger(owner: SidebarGeometryOwner): SidebarGeometryLedger {
   let ledger = ledgers.get(owner)
   if (!ledger) {
@@ -61,14 +97,7 @@ export function reconcileSidebarLedger(
   }
   const keys = new Set(model.slots.map((slot) => slot.key))
   for (const slot of model.slots) {
-    const node = model.nodes[slot.node]!
-    const depth = 'depth' in node.row ? node.row.depth : 0
-    const context = JSON.stringify([
-      node.gap,
-      node.parent === null ? null : model.nodes[node.parent]!.key,
-      depth,
-      'groupDepth' in node.row ? node.row.groupDepth : 0
-    ])
+    const context = sidebarSlotLayoutContext(model, slot)
     if (ledger.contexts.has(slot.key) && ledger.contexts.get(slot.key) !== context) {
       ledger.sizes.delete(slot.key)
       ledger.observed.delete(slot.key)

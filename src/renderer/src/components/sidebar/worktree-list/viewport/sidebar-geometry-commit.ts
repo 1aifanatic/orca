@@ -12,6 +12,8 @@ export type SidebarGeometryCorrection = {
     behavior: 'auto' | 'smooth' | 'instant'
   }
 }
+export type SidebarScrollRounding = { offset: number; remainder: number; epoch: number }
+
 export function sidebarGeometryConverged(
   model: SidebarGeometry,
   boundaries: readonly number[],

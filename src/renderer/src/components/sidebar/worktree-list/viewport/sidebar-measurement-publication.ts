@@ -7,7 +7,7 @@ import {
 } from './sidebar-geometry-ledger'
 import type React from 'react'
 import type { VirtualizedScrollAnchor } from '@/hooks/useVirtualizedScrollAnchor'
-import type { SidebarGeometryCorrection } from './sidebar-geometry-commit'
+import type { SidebarGeometryCorrection, SidebarScrollRounding } from './sidebar-geometry-commit'
 import { publishNativeSidebarGeometry } from './use-sidebar-geometry-observer'
 import type { WorktreeSidebarScrollSuppression } from './use-scroll-suppression'
 import { shouldAdjustWorktreeSidebarMeasuredRowScroll } from './use-scroll-suppression'
@@ -84,6 +84,7 @@ export function publishSidebarMeasurements(
     scrollAnchorRef: React.MutableRefObject<VirtualizedScrollAnchor>
     scrollRef: React.RefObject<HTMLDivElement | null>
     correction: React.MutableRefObject<SidebarGeometryCorrection | null>
+    rounding: React.MutableRefObject<SidebarScrollRounding | null>
     suppression: WorktreeSidebarScrollSuppression
     insetRef: React.MutableRefObject<number>
     offset: number
@@ -101,6 +102,7 @@ export function publishSidebarMeasurements(
     scrollAnchorRef,
     scrollRef,
     correction,
+    rounding,
     suppression,
     insetRef,
     offset,
@@ -111,6 +113,16 @@ export function publishSidebarMeasurements(
     ledger.width !== width ||
     ledger.style !== args.newCardStyle ||
     ledger.layoutContext !== (args.layoutContext ?? '')
+  const physicalOffset = scrollRef.current?.scrollTop ?? offset
+  if (
+    invalidatedLayout ||
+    rounding.current?.epoch !== suppression.scrollOwnershipEpochRef.current ||
+    rounding.current?.offset !== physicalOffset ||
+    correction.current?.anchor ||
+    correction.current?.navigation
+  ) {
+    rounding.current = null
+  }
   if (
     invalidatedLayout &&
     scrollAnchorRef.current &&
@@ -127,13 +139,23 @@ export function publishSidebarMeasurements(
   const anchorIndex = scrollAnchorRef.current
     ? model.nodeByKey.get(scrollAnchorRef.current.key)
     : undefined
+  const pending = correction.current
+  const effectiveOffset = physicalOffset + (rounding.current?.remainder ?? 0)
+  // Mounted destination measurements precede the matching commit's physical scroll.
+  const measurementOffset =
+    pending &&
+    pending.epoch === suppression.scrollOwnershipEpochRef.current &&
+    !pending.anchor &&
+    !pending.navigation
+      ? pending.target
+      : effectiveOffset
   const measurement = applySidebarMeasurements({
     model,
     ledger,
     boundaries,
     samples,
     inset: insetRef.current,
-    scrollOffset: scrollRef.current?.scrollTop ?? offset,
+    scrollOffset: measurementOffset,
     now: performance.now(),
     suppressUntil: suppression.suppressMeasurementAdjustmentUntilRef.current,
     isScrolling: virtualizer.isScrolling,
@@ -156,9 +178,10 @@ export function publishSidebarMeasurements(
       target:
         (correction.current?.epoch === suppression.scrollOwnershipEpochRef.current
           ? correction.current.target
-          : (scrollRef.current?.scrollTop ?? offset)) + delta,
+          : effectiveOffset) + delta,
       epoch: suppression.scrollOwnershipEpochRef.current
     }
+    rounding.current = null
   }
   const publishRevision = () => changed()
   if (native) {

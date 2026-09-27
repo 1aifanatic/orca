@@ -24,6 +24,7 @@ let current: WorktreeListVirtualizer
 let suppression: WorktreeSidebarScrollSuppression
 let height: number
 let width: number
+let independentHeight: number
 let rowHeight: number
 let viewportHeight: number
 let pendingReveal: { worktreeId: string; behavior: 'auto' } | null
@@ -33,7 +34,7 @@ let reads: number
 let writes: { top: number; extent: number }[]
 let observers: { callback: ResizeObserverCallback; targets: Set<Element> }[]
 let originalRect: typeof Element.prototype.getBoundingClientRect
-const anchorRef: React.MutableRefObject<VirtualizedScrollAnchor> = { current: null }
+let anchorRef: React.MutableRefObject<VirtualizedScrollAnchor> = { current: null }
 const offsetRef = { current: 200 }
 let scrollRef: React.RefObject<HTMLDivElement | null>
 const rows: RenderRow[] = [
@@ -74,17 +75,36 @@ function Probe({
     current = owner
     suppression = policy
   })
-  if (renderRows[0]?.type === 'lineage-group') {
+  const treeIndex = renderRows.findIndex((row) => row.type === 'lineage-group')
+  const treeRoot = owner.model.roots[treeIndex]
+  if (treeIndex !== -1 && treeRoot !== undefined) {
+    const treeNode = owner.model.nodes[treeRoot]!
+    const treeStart = owner.boundaries[treeNode.slot]!
+    const childrenHeight =
+      owner.boundaries[treeNode.end - 1]! - owner.boundaries[treeNode.slot + 1]!
     return (
       <div data-sizer="" style={{ height: owner.total }}>
-        <div data-owner-tree="" data-index="0" ref={owner.measureVirtualRowElement}>
+        {treeIndex > 0 && (
+          <div
+            data-owner-independent=""
+            data-owner-start="0"
+            data-index="0"
+            ref={owner.measureVirtualRowElement}
+          />
+        )}
+        <div
+          data-owner-tree=""
+          data-owner-start={treeStart}
+          data-index={treeIndex}
+          ref={owner.measureVirtualRowElement}
+        >
           <div
             data-lineage-virtual-children=""
             data-owner-tree-children=""
-            style={{ height: owner.total - owner.boundaries[1]! }}
+            style={{ height: childrenHeight }}
           >
             {[...owner.selected]
-              .filter((index) => index > 0)
+              .filter((index) => index > treeRoot)
               .map((index) => {
                 const node = owner.model.nodes[index]!
                 return (
@@ -115,13 +135,14 @@ beforeEach(() => {
   committedAnchors = []
   activeId = null
   width = 300
+  independentHeight = 55
   rowHeight = 116
   viewportHeight = 100
   pendingReveal = null
   reads = 0
   writes = []
   observers = []
-  anchorRef.current = null
+  anchorRef = { current: null }
   offsetRef.current = 200
   element = document.createElement('div')
   element.style.paddingTop = '1px'
@@ -152,17 +173,28 @@ beforeEach(() => {
     if (this === element) {
       return new DOMRect(0, 0, 300, viewportHeight)
     }
+    if (this.hasAttribute('data-owner-independent')) {
+      return new DOMRect(0, 1 - element.scrollTop, 300, independentHeight)
+    }
     if (this.hasAttribute('data-owner-tree')) {
       const children = this.querySelector<HTMLElement>('[data-owner-tree-children]')!
       return new DOMRect(
         0,
-        -element.scrollTop,
+        Number(this.getAttribute('data-owner-start')) + 1 - element.scrollTop,
         300,
         height + Number.parseFloat(children.style.height)
       )
     }
     if (this instanceof HTMLElement && this.hasAttribute('data-owner-tree-children')) {
-      return new DOMRect(0, height - element.scrollTop, 300, Number.parseFloat(this.style.height))
+      return new DOMRect(
+        0,
+        Number(this.parentElement!.getAttribute('data-owner-start')) +
+          1 +
+          height -
+          element.scrollTop,
+        300,
+        Number.parseFloat(this.style.height)
+      )
     }
     if (this.hasAttribute('data-owner-tree-leaf')) {
       return new DOMRect(
@@ -220,6 +252,14 @@ async function nativeDelivery() {
     observer!.callback([], {} as ResizeObserver)
   })
 }
+function roundScrollWrites() {
+  element.scrollTo = (options) => {
+    const top = typeof options === 'object' ? (options.top ?? 0) : (options ?? 0)
+    writes.push({ top, extent: element.scrollHeight })
+    element.scrollTop = Math.round(top)
+    queueMicrotask(() => element.dispatchEvent(new Event('scroll')))
+  }
+}
 describe('single sidebar geometry owner', () => {
   it('writes once only after changed native observations have matching committed sizer geometry', async () => {
     await render()
@@ -239,6 +279,74 @@ describe('single sidebar geometry owner', () => {
     await act(async () => root.render(<Probe tick={1} />))
     expect(writes).toHaveLength(1)
     expect(writes[0]!.extent).toBe(520)
+  })
+  it.each([false, true])(
+    'keeps repeated fractional corrections bounded with model recreation %s',
+    async (recreate) => {
+      roundScrollWrites()
+      await render()
+      const readingPosition = () => current.retainedItems[1]!.start - element.scrollTop
+      const baseline = readingPosition()
+      for (let cycle = 0; cycle < 8; cycle++) {
+        for (const delta of [37.5, -37.5]) {
+          height += delta
+          await nativeDelivery()
+          await act(async () => element.dispatchEvent(new Event('scroll')))
+          if (recreate) {
+            await act(async () =>
+              root.render(<Probe renderRows={rows.map((row) => ({ ...row }))} />)
+            )
+          }
+          expect(Math.abs(readingPosition() - baseline)).toBeLessThanOrEqual(0.5)
+        }
+        expect(readingPosition()).toBe(baseline)
+      }
+      expect(writes).toHaveLength(16)
+    }
+  )
+  it.each(['input', 'navigation', 'offset', 'layout', 'structure'] as const)(
+    'discards a previous fractional remainder after %s takes ownership',
+    async (interruption) => {
+      roundScrollWrites()
+      await render()
+      height += 37.5
+      await nativeDelivery()
+      if (interruption === 'input') {
+        suppression.markDirectScrollInput()
+        await act(async () => new Promise((resolve) => setTimeout(resolve, 550)))
+      } else if (interruption === 'navigation') {
+        await act(async () => current.navigationVirtualizer.scrollToIndex(2, { align: 'start' }))
+      } else if (interruption === 'offset') {
+        element.scrollTop += 10
+        await act(async () => element.dispatchEvent(new Event('scroll')))
+      } else if (interruption === 'layout') {
+        width -= 10
+        await nativeDelivery()
+      } else {
+        await act(async () => root.render(<Probe renderRows={[...rows, lineageRow('e', 0)]} />))
+      }
+      const before = element.scrollTop
+      writes.length = 0
+      height -= 37.5
+      await nativeDelivery()
+      expect(writes).toEqual([{ top: before - 37.5, extent: element.scrollHeight }])
+      expect(element.scrollTop).toBe(Math.round(before - 37.5))
+    }
+  )
+  it('never carries a clamped deficit into the next numeric resize correction', async () => {
+    roundScrollWrites()
+    await render()
+    height += 37.5
+    await nativeDelivery()
+    viewportHeight = 300
+    height -= 37.5
+    await nativeDelivery()
+    expect(element.scrollTop).toBe(element.scrollHeight - viewportHeight)
+    const clamped = element.scrollTop
+    writes.length = 0
+    height += 37.5
+    await nativeDelivery()
+    expect(writes).toEqual([{ top: clamped + 37.5, extent: element.scrollHeight }])
   })
   it('preserves real input cancellation and observed fold eligibility', async () => {
     await render()
@@ -401,3 +509,52 @@ it('premeasures an end-aligned recycled lineage before the mounted auto reveal c
   expect(writes).toHaveLength(1)
   expect(current.selected.size).toBeLessThan(60)
 })
+
+it.each([2458.5, -2458.5])(
+  'preserves a nested reading position through independent above-fold resize %s',
+  async (delta) => {
+    const tree: RenderRow[] = [
+      lineageRow('independent', 0),
+      {
+        type: 'lineage-group',
+        key: 'root',
+        rows: [
+          lineageRow('root', 0),
+          ...Array.from({ length: 500 }, (_, index) => lineageRow(`row-${index}`, 1))
+        ]
+      }
+    ]
+    independentHeight = delta < 0 ? 2513.5 : 55
+    viewportHeight = 743
+    rowHeight = 55
+    height = 88
+    element.scrollTop = offsetRef.current = 1
+    activeId = 'independent'
+    await act(async () => root.render(<Probe renderRows={tree} />))
+    await act(async () => {
+      current.navigationVirtualizer.scrollToIndex(202, { align: 'start', behavior: 'auto' })
+    })
+    await act(async () => {
+      const target = element.querySelector<HTMLElement>('[data-worktree-id="row-200"]')!
+      element.scrollTop += target.getBoundingClientRect().top - 40
+      element.dispatchEvent(new Event('scroll'))
+      suppression.markScrollMovement()
+    })
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 550))
+    })
+    const target = () =>
+      element.querySelector<HTMLElement>('[data-worktree-id="row-200"]')!.getBoundingClientRect()
+        .top
+    expect(target()).toBe(40)
+    writes.length = 0
+    independentHeight += delta
+    await nativeDelivery()
+    expect(target()).toBe(40)
+    expect(writes).toHaveLength(1)
+    await act(async () => element.dispatchEvent(new Event('scroll')))
+    expect(target()).toBe(40)
+    expect(writes).toHaveLength(1)
+    expect(current.selected.size).toBeLessThan(60)
+  }
+)

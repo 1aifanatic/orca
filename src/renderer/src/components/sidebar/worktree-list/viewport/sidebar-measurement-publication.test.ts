@@ -1,8 +1,15 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { lineageRow } from '../rows/lineage-virtualization-test-fixtures'
 import { buildSidebarGeometry, sidebarGeometryBoundaries } from '../listing/sidebar-geometry-slots'
-import { getSidebarGeometryLedger, publishSidebarObservation } from './sidebar-geometry-ledger'
-import { applySidebarMeasurements } from './sidebar-measurement-publication'
+import {
+  getSidebarGeometryLedger,
+  publishSidebarObservation,
+  reconcileSidebarLedger
+} from './sidebar-geometry-ledger'
+import {
+  applySidebarMeasurements,
+  publishSidebarMeasurements
+} from './sidebar-measurement-publication'
 
 function fixture() {
   const model = buildSidebarGeometry([lineageRow('a', 0), lineageRow('b', 0), lineageRow('c', 0)])
@@ -23,6 +30,58 @@ function fixture() {
   }
 }
 describe('sidebar measurement publication', () => {
+  it.each([false, true])(
+    'uses the carried fold for fractional first-observation eligibility %s',
+    (first) => {
+      for (const remainder of [-0.5, 0.5]) {
+        const { model, ledger } = fixture()
+        reconcileSidebarLedger(ledger, model, false, 300)
+        const prefix = remainder < 0 ? 99.75 : 99.25
+        publishSidebarObservation(ledger, model, 0, { prefix, closing: null, width: 300 })
+        publishSidebarObservation(ledger, model, 1, { prefix: 100, closing: null, width: 300 })
+        const node = model.nodes[first ? 1 : 0]!
+        if (first) {
+          ledger.observed.delete(model.slots[node.slot]!.key)
+        }
+        const physicalOffset = first ? (remainder < 0 ? 107 : 106) : remainder < 0 ? 101 : 100
+        const args: Parameters<typeof publishSidebarMeasurements>[0] = {
+          model,
+          ledger,
+          boundaries: sidebarGeometryBoundaries(model, ledger.sizes),
+          newCardStyle: false,
+          scrollAnchorRef: { current: null },
+          scrollRef: { current: null },
+          correction: { current: null },
+          rounding: { current: { offset: physicalOffset, remainder, epoch: 0 } },
+          suppression: {
+            scrollOwnershipEpochRef: { current: 0 },
+            suppressMeasurementAdjustmentUntilRef: { current: 0 },
+            directScrollInputUntilRef: { current: 0 },
+            markScrollMovement: vi.fn(),
+            markDirectScrollInput: vi.fn(),
+            hasDirectScrollInput: () => false,
+            markRevealScroll: vi.fn(),
+            isRevealScrollSettling: () => false,
+            wasRevealScrollInterrupted: () => false,
+            shouldSkipScrollAnchorRestore: () => false
+          },
+          insetRef: { current: 1 },
+          offset: physicalOffset,
+          virtualizer: { isScrolling: false, scrollDirection: null },
+          changed: vi.fn()
+        }
+        publishSidebarMeasurements(
+          args,
+          new Map([[node.key, { prefix: (first ? 100 : prefix) + 50, closing: null, width: 300 }]]),
+          300,
+          false
+        )
+        expect(args.correction.current?.target ?? null).toBe(
+          remainder < 0 ? null : physicalOffset + remainder + 50
+        )
+      }
+    }
+  )
   it('counts two publications against the last published observation, not the old committed size twice', () => {
     const args = fixture()
     const a = args.model.nodes[0]!.key
