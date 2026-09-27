@@ -11,8 +11,10 @@ export function restoreOrStripOverlayEnv(
 ): void {
   const sourceValue = baseEnv[keys.source] ?? inheritedEnv[keys.source]
   const overlayValue = baseEnv[keys.overlay] ?? inheritedEnv[keys.overlay]
+  // Source-only markers from older launches still identify an inherited overlay.
   const preservePrimary =
     keys.preserveExplicitPrimary &&
+    Boolean(overlayValue) &&
     baseEnv[keys.primary] !== undefined &&
     baseEnv[keys.primary] !== overlayValue
   if (sourceValue && !preservePrimary) {

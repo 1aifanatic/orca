@@ -168,3 +168,21 @@ it.each([true, false])(
     expect(existsSync(plugin(stale, 'opencode'))).toBe(false)
   }
 )
+
+it.each([true, false])(
+  'restores legacy source-only overlay markers with hooks %s',
+  async (enabled) => {
+    await install('// v1', '')
+    const parent = await spawn({ env: { OPENCODE_CONFIG_DIR: custom } })
+    delete parent.ORCA_OPENCODE_CONFIG_DIR
+    if (!enabled) {
+      await install('', '')
+    }
+    const env = await spawn({ env: parent })
+    expect(env.OPENCODE_CONFIG_DIR).toEqual(enabled ? expect.any(String) : custom)
+    expect(readFileSync(join(env.OPENCODE_CONFIG_DIR, 'opencode.json'), 'utf8')).toBe(
+      '{"model":"fixture"}'
+    )
+    expect(env.ORCA_OPENCODE_SOURCE_CONFIG_DIR).toBe(enabled ? custom : undefined)
+  }
+)

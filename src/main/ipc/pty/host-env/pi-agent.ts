@@ -174,7 +174,7 @@ export function resolveOpenCodeSourceConfigDir(
 ): string | undefined {
   const configDir = baseEnv.OPENCODE_CONFIG_DIR ?? process.env.OPENCODE_CONFIG_DIR
   const orcaConfigDir = baseEnv.ORCA_OPENCODE_CONFIG_DIR ?? process.env.ORCA_OPENCODE_CONFIG_DIR
-  if (configDir && configDir !== orcaConfigDir) {
+  if (configDir && orcaConfigDir && configDir !== orcaConfigDir) {
     return configDir
   }
   const sourceDir =
