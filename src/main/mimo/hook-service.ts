@@ -1,9 +1,9 @@
 import { getAppEnvironment } from '../../shared/app-environment'
 import { join } from 'node:path'
-import { existsSync, mkdirSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
 import { getOpenCodeFamilyPluginSource } from '../opencode/hook-service'
+import { writeManagedConfigFile } from '../pty/managed-config-file'
 import {
   ensureOverlayDirectory,
   isSameOverlayPath,
@@ -82,18 +82,12 @@ export class MimoCodeHookService {
       }
       const pluginsDir = join(home, 'config', 'plugins')
       ensureOverlayDirectory(pluginsDir)
-      const pluginPath = join(pluginsDir, ORCA_MIMOCODE_PLUGIN_FILE)
-      try {
-        unlinkSync(pluginPath)
-      } catch (error) {
-        if (!isDefinitiveAbsence(error)) {
-          throw error
-        }
-      }
-      writeFileSync(
-        pluginPath,
+      // Exclusive create: MiMo's overlay is a single shared home, so a losing
+      // concurrent write is a no-op rather than a pane left without its plugin.
+      writeManagedConfigFile(
+        join(pluginsDir, ORCA_MIMOCODE_PLUGIN_FILE),
         getOpenCodeFamilyPluginSource('/hook/mimo-code', { emitSessionStart: false }),
-        { flag: 'wx' }
+        { exclusive: true }
       )
     } catch {
       return existingMimocodeHome ? { MIMOCODE_HOME: existingMimocodeHome } : {}

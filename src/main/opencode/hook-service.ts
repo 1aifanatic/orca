@@ -1,21 +1,14 @@
 import { getAppEnvironment } from '../../shared/app-environment'
 import { join } from 'node:path'
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  unlinkSync,
-  writeFileSync
-} from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
+import { writeManagedConfigFile } from '../pty/managed-config-file'
 import {
   ensureOverlayDirectory,
   mirrorEntry,
   mirrorPluginDirectory,
   safeRemoveTree
 } from '../pty/overlay-mirror'
-import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
 import { getStatusPluginEndpointSource } from './status-plugin-endpoint-source'
 import { getStatusPluginRuntimeStateSource } from './status-plugin-runtime-state-source'
 import { getStatusPluginMessagePreviewSource } from './status-plugin-message-preview-source'
@@ -247,29 +240,17 @@ export class OpenCodeHookService {
   private writePluginIntoOverlay(overlayDir: string): void {
     const pluginsDir = join(overlayDir, 'plugins')
     ensureOverlayDirectory(pluginsDir)
-    writeOrcaPluginFile(join(pluginsDir, this.pluginFileName), this.pluginSource())
+    writeManagedConfigFile(join(pluginsDir, this.pluginFileName), this.pluginSource())
   }
 
+  // Why: this mode installs into the user's own config dir, so that directory is
+  // legitimately theirs and gets no real-directory guard; only the
+  // replace-not-write-through step applies.
   private writePluginToConfigDir(configDir: string): void {
     const pluginsDir = join(configDir, 'plugins')
     mkdirSync(pluginsDir, { recursive: true })
-    writeOrcaPluginFile(join(pluginsDir, this.pluginFileName), this.pluginSource())
+    writeManagedConfigFile(join(pluginsDir, this.pluginFileName), this.pluginSource())
   }
-}
-
-// Why: replace the entry rather than write into it, so an Orca-named symlink
-// cannot redirect the plugin bytes out of the directory that was just validated.
-// Only a proven absence may skip the unlink; any other failure must stop the
-// write instead of letting it travel through whatever is still at the path.
-function writeOrcaPluginFile(pluginPath: string, source: string): void {
-  try {
-    unlinkSync(pluginPath)
-  } catch (error) {
-    if (!isDefinitiveAbsence(error)) {
-      throw error
-    }
-  }
-  writeFileSync(pluginPath, source)
 }
 
 export const openCodeHookService = new OpenCodeHookService()
