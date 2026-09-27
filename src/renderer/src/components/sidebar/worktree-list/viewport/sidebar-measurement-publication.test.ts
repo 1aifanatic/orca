@@ -6,7 +6,7 @@ import { applySidebarMeasurements } from './sidebar-measurement-publication'
 
 function fixture() {
   const model = buildSidebarGeometry([lineageRow('a', 0), lineageRow('b', 0), lineageRow('c', 0)])
-  const ledger = getSidebarGeometryLedger({})
+  const ledger = getSidebarGeometryLedger({ current: null })
   for (let index = 0; index < 3; index++) {
     publishSidebarObservation(ledger, model, index, { prefix: 100, closing: null, width: 300 })
   }
@@ -69,7 +69,7 @@ describe('sidebar measurement publication', () => {
         rows: [lineageRow('root', 0), lineageRow('a', 1), lineageRow('b', 1)]
       }
     ])
-    const ledger = getSidebarGeometryLedger({})
+    const ledger = getSidebarGeometryLedger({ current: null })
     publishSidebarObservation(ledger, model, 0, { prefix: 100, closing: 10, width: 300 })
     publishSidebarObservation(ledger, model, 1, { prefix: 100, closing: null, width: 280 })
     publishSidebarObservation(ledger, model, 2, { prefix: 100, closing: null, width: 280 })
@@ -128,7 +128,7 @@ it('excludes the following gap when checking fully above-fold leaf and closing m
         : [lineageRow('a', 0)]),
       lineageRow('b', 0)
     ])
-    const ledger = getSidebarGeometryLedger({})
+    const ledger = getSidebarGeometryLedger({ current: null })
     const observation = { prefix: 100, closing: expanded ? 10 : null, width: 300 }
     publishSidebarObservation(ledger, model, 0, observation)
     const boundaries = sidebarGeometryBoundaries(model, ledger.sizes)

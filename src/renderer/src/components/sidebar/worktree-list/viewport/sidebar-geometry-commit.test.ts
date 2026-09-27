@@ -15,7 +15,7 @@ describe('matching sidebar commit geometry', () => {
       b = lineageRow('b', 1),
       c = lineageRow('c', 0)
     const old = buildSidebarGeometry([{ type: 'lineage-group', key: 'p', rows: [p, a, b] }, c])
-    const ledger = getSidebarGeometryLedger({})
+    const ledger = getSidebarGeometryLedger({ current: null })
     reconcileSidebarLedger(ledger, old, false, 300)
     publishSidebarObservation(ledger, old, 1, { prefix: 40, closing: null, width: 290 })
     const model = buildSidebarGeometry([{ type: 'lineage-group', key: 'p', rows: [p, a] }, c])

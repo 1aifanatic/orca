@@ -6,12 +6,13 @@ import {
   getSidebarGeometryLedger,
   publishSidebarObservation,
   reconcileSidebarLedger,
-  readSidebarObservation
+  readSidebarObservation,
+  type SidebarGeometryOwner
 } from './sidebar-geometry-ledger'
 
 describe('sidebar geometry ledger', () => {
   it('preserves observed-at-estimate across remount and invalidates width, style and shape', () => {
-    const owner = {}
+    const owner: SidebarGeometryOwner = { current: null }
     const ledger = getSidebarGeometryLedger(owner)
     const leaf = buildSidebarGeometry([lineageRow('root', 0)])
     reconcileSidebarLedger(ledger, leaf, false, 300)
@@ -21,7 +22,9 @@ describe('sidebar geometry ledger', () => {
     expect(
       publishSidebarObservation(ledger, leaf, 0, { prefix: 116, closing: null, width: 300 })
     ).toBe(false)
+    owner.current = { key: leaf.nodes[0]!.key, offset: 10, scrollTop: 10 }
     expect(getSidebarGeometryLedger(owner)).toBe(ledger)
+    expect(getSidebarGeometryLedger({ current: owner.current })).not.toBe(ledger)
     expect(ledger.observed.has(leaf.slots[0]!.key)).toBe(true)
     reconcileSidebarLedger(ledger, leaf, false, 301)
     expect(ledger.observed.size).toBe(0)
@@ -40,7 +43,7 @@ describe('sidebar geometry ledger', () => {
     const model = buildSidebarGeometry([
       { type: 'lineage-group', key: 'root', rows: [lineageRow('root', 0), lineageRow('child', 1)] }
     ])
-    const ledger = getSidebarGeometryLedger({})
+    const ledger = getSidebarGeometryLedger({ current: null })
     expect(
       publishSidebarObservation(ledger, model, 0, { prefix: 100, closing: null, width: 300 })
     ).toBe(false)
@@ -74,7 +77,7 @@ describe('sidebar geometry ledger', () => {
   })
 
   it('invalidates an unmounted folder when group depth changes at the same scroller width', () => {
-    const ledger = getSidebarGeometryLedger({})
+    const ledger = getSidebarGeometryLedger({ current: null })
     const first = buildSidebarGeometry([geometryFolderRow(1)])
     reconcileSidebarLedger(ledger, first, false, 300)
     publishSidebarObservation(ledger, first, 0, { prefix: 100, closing: null, width: 300 })

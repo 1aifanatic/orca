@@ -62,12 +62,17 @@ test('remounted measured descendants grow below the fold without shifting the re
   await reveal()
   await expect(target).toBeInViewport()
   await orcaPage.waitForTimeout(700)
+  const originalTarget = await target.elementHandle()
+  expect(originalTarget).not.toBeNull()
   const scroller = orcaPage.locator('[data-worktree-sidebar]')
   await scroller.evaluate((element) => {
     element.dispatchEvent(new WheelEvent('wheel', { deltaY: -1, bubbles: true }))
     element.scrollTop = 0
   })
-  await expect(orcaPage.locator('[data-lineage-virtual-children]')).toHaveCount(0)
+  await expect.poll(() => originalTarget!.evaluate((element) => element.isConnected)).toBe(false)
+  await expect(target).toHaveCount(0)
+  await expect(orcaPage.locator('[data-lineage-virtual-item]')).toHaveCount(0)
+  await originalTarget!.dispose()
   await orcaPage.waitForTimeout(700)
   await reveal()
   await expect(target).toBeInViewport()

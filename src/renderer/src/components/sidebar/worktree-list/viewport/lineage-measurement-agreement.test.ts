@@ -22,7 +22,7 @@ const rows = [
 function modelFor(members = rows) {
   return buildSidebarGeometry([{ type: 'lineage-group', key: 'parent', rows: members }])
 }
-function fixture(ledger = getSidebarGeometryLedger({})) {
+function fixture(ledger = getSidebarGeometryLedger({ current: null })) {
   const synchronized = new Map<string, number>()
   const options = (model: SidebarGeometry): VirtualizerOptions<HTMLDivElement, HTMLDivElement> => ({
     count: model.slots.length,

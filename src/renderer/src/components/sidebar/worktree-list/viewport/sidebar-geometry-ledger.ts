@@ -1,3 +1,5 @@
+import type { MutableRefObject } from 'react'
+import type { VirtualizedScrollAnchor } from '@/hooks/useVirtualizedScrollAnchor'
 import type { SidebarGeometry } from '../listing/sidebar-geometry-slots'
 
 export type SidebarObservation = { prefix: number; closing: number | null; width: number }
@@ -10,8 +12,9 @@ export type SidebarGeometryLedger = {
   contexts: Map<string, string>
 }
 const reconciledModels = new WeakMap<SidebarGeometryLedger, SidebarGeometry>()
-const ledgers = new WeakMap<object, SidebarGeometryLedger>()
-export function getSidebarGeometryLedger(owner: object): SidebarGeometryLedger {
+export type SidebarGeometryOwner = MutableRefObject<VirtualizedScrollAnchor>
+const ledgers = new WeakMap<SidebarGeometryOwner, SidebarGeometryLedger>()
+export function getSidebarGeometryLedger(owner: SidebarGeometryOwner): SidebarGeometryLedger {
   let ledger = ledgers.get(owner)
   if (!ledger) {
     ledger = {
