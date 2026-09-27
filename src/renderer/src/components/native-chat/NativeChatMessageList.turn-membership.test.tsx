@@ -310,4 +310,83 @@ describe('NativeChatMessageList turns from the turn record', () => {
     rerender(journalList(woken, [], { ...local, isWorking: true, workingStartedAt: Date.now() }))
     expect(screen.getByText('Worked for 7s')).toBeInTheDocument()
   })
+
+  it('draws a message waiting behind a running /compact after its live activity', () => {
+    const compactEntry = agentJournalSubmissionKey('cmd-1')
+    const commandTurn = agentJournalItemKey({
+      provider: 'orca',
+      clientMessageId: 'command-turn:cmd-1'
+    })
+    const held = agentJournalSubmissionKey('held')
+    const items = [
+      ...fruitTurn(),
+      item(compactEntry, {
+        kind: 'message',
+        role: 'user',
+        blocks: [{ type: 'text', text: '/compact' }],
+        command: { name: 'compact' }
+      }),
+      item(commandTurn, {
+        kind: 'turn',
+        turnId: 'compact:cmd-1',
+        state: 'running',
+        userItemId: compactEntry,
+        startedAt: 10_000
+      }),
+      say(held, 'user', 'Say DONE')
+    ]
+    const submission = (
+      clientMessageId: string,
+      handedOverAt?: number
+    ): AgentJournalSubmission => ({
+      clientMessageId,
+      fence: 1,
+      payloadFingerprint: clientMessageId,
+      dispatchState: handedOverAt === undefined ? 'pending' : 'accepted',
+      providerItemId: null,
+      reason: null,
+      submittedAt: 9_000,
+      resolvedAt: null,
+      handoverRecorded: true,
+      ...(handedOverAt !== undefined ? { handedOverAt } : {})
+    })
+    const { container } = render(
+      journalList(items, [submission('cmd-1', 9_500), submission('held')], {
+        isWorking: true,
+        workingStartedAt: 10_000
+      })
+    )
+
+    const activity = container.querySelector<HTMLElement>('[data-native-chat-turn-activity]')
+    expect(activity).not.toBeNull()
+    expect(follows(activity!, screen.getByText('/compact'))).toBe(true)
+    expect(follows(screen.getByText('Say DONE'), activity!)).toBe(true)
+  })
+
+  it('keeps a message whose own start is pending above the activity that start reports', () => {
+    const waiting = agentJournalSubmissionKey('first')
+    const { container } = render(
+      journalList(
+        [say(waiting, 'user', 'Hello there')],
+        [
+          {
+            clientMessageId: 'first',
+            fence: 1,
+            payloadFingerprint: 'first',
+            dispatchState: 'pending',
+            providerItemId: null,
+            reason: null,
+            submittedAt: 9_000,
+            resolvedAt: null,
+            handoverRecorded: true
+          }
+        ],
+        { isWorking: true, workingStartedAt: 9_000 }
+      )
+    )
+
+    const activity = container.querySelector<HTMLElement>('[data-native-chat-turn-activity]')
+    expect(activity).not.toBeNull()
+    expect(follows(activity!, screen.getByText('Hello there'))).toBe(true)
+  })
 })

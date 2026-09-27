@@ -124,6 +124,21 @@ export function nativeChatTurnMembership(
   return { turnKeys, liveTurnKey: runningKey ?? newestUserTurnKey(messages, turnKeys) }
 }
 
+/**
+ * The rows accepted but not yet handed over that wait behind a live turn other than their own, as
+ * a message sent during `/compact` does. They are the next thing the agent takes, so they draw
+ * after that turn's live activity. None waits when the live turn is itself a waiting row's.
+ */
+export function nativeChatMessagesWaitingBehindLiveTurn(
+  messages: readonly { id: string; queued?: true }[],
+  liveTurnKey: string | undefined
+): ReadonlySet<string> {
+  const queued = messages.filter((message) => message.queued === true)
+  return new Set(
+    queued.some((message) => message.id === liveTurnKey) ? [] : queued.map((message) => message.id)
+  )
+}
+
 function newestUserTurnKey(
   messages: readonly { role: NativeChatRole }[],
   turnKeys: readonly (string | undefined)[]

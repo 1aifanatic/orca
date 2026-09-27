@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react'
 import type { NativeChatMessage } from '../../../src/shared/native-chat-types'
 import type { NativeChatSettledTurns } from '../../../src/shared/native-chat-turn-status'
 import {
+  nativeChatMessagesWaitingBehindLiveTurn,
   nativeChatTurnMembership,
   type NativeChatTurnJournal,
   type NativeChatTurnMembership
@@ -13,6 +14,7 @@ import {
 } from './use-mobile-native-chat-turn-status'
 
 const EMPTY_TURN_IDS: ReadonlySet<string> = new Set()
+const NONE_WAITING = { listMessages: null, waitingRows: [], indexById: null } as const
 const NO_MEMBERSHIP: NativeChatTurnMembership = { turnKeys: [], liveTurnKey: undefined }
 const MAX_EXPANDED_TURNS = 128
 
@@ -58,6 +60,10 @@ export function useMobileNativeChatTurnDisclosure({
   activeActivityText: string | null
   onToggleTurn: (turnKey: string) => void
   resolveRow: (index: number, message: NativeChatMessage) => MobileNativeChatTurnRow
+  /** The list's rows: `messages` less those waiting behind the live turn. */
+  listMessages: readonly NativeChatMessage[]
+  /** Rows waiting behind the live turn, drawn after its live status; `index` is in `messages`. */
+  waitingRows: readonly { item: NativeChatMessage; index: number }[]
 } {
   // Resolve each row's turn, and which turn is live, once from the turn record when the host
   // states scopes.
@@ -65,6 +71,18 @@ export function useMobileNativeChatTurnDisclosure({
     () => (enabled ? nativeChatTurnMembership(messages, turnJournal) : NO_MEMBERSHIP),
     [enabled, messages, turnJournal]
   )
+  // A message waiting behind the live turn draws after that turn's live status, not in the list.
+  const waiting = useMemo(() => {
+    const ids = enabled ? nativeChatMessagesWaitingBehindLiveTurn(messages, liveTurnKey) : null
+    if (!ids?.size) {
+      return NONE_WAITING
+    }
+    return {
+      listMessages: messages.filter((message) => !ids.has(message.id)),
+      waitingRows: messages.flatMap((item, index) => (ids.has(item.id) ? [{ item, index }] : [])),
+      indexById: new Map(messages.map((message, index) => [message.id, index]))
+    }
+  }, [enabled, liveTurnKey, messages])
   const turnStatuses = useMobileNativeChatTurnStatus({
     turnKeys,
     liveTurnKey,
@@ -113,7 +131,8 @@ export function useMobileNativeChatTurnDisclosure({
   const { active, activeTurnKey, completedByTurn } = turnStatuses
   const activeActivityText = enabled && isWorking ? (activityText ?? null) : null
   const resolveRow = useCallback(
-    (index: number, _message: NativeChatMessage): MobileNativeChatTurnRow => {
+    (listIndex: number, message: NativeChatMessage): MobileNativeChatTurnRow => {
+      const index = waiting.indexById?.get(message.id) ?? listIndex
       const turnKey = turnKeys[index]
       const turnStatus =
         enabled && turnKey !== undefined && firstRowOfTurn.get(turnKey) === index
@@ -138,6 +157,7 @@ export function useMobileNativeChatTurnDisclosure({
     },
     [
       turnKeys,
+      waiting,
       firstRowOfTurn,
       liveTurnKey,
       enabled,
@@ -153,6 +173,8 @@ export function useMobileNativeChatTurnDisclosure({
     activeActivityText,
     /** Stable for a given chat scope, so it never disturbs a row's memo. */
     onToggleTurn: toggleExpandedTurn,
-    resolveRow
+    resolveRow,
+    listMessages: waiting.listMessages ?? messages,
+    waitingRows: waiting.waitingRows
   }
 }

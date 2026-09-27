@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { Fragment, useCallback, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
   FlatList,
@@ -292,6 +292,16 @@ export function MobileNativeChatView({
     [toolsExpanded, fontScale, onOpenFile, structuredActivityUi, turns]
   )
 
+  const liveStatus =
+    structuredActivityUi && agentWorking && !hasPendingStructuredInteraction && turns.active ? (
+      <MobileNativeChatTurnStatus
+        startedAt={turns.active.startedAt}
+        thinking={turns.active.thinking}
+        workedSeconds={turns.active.workedSeconds}
+        activityText={turns.activeActivityText}
+      />
+    ) : null
+
   const emptyState = mobileNativeChatEmptyState(status, agent ?? null, error)
   const showLoading = status === 'loading' && messages.length === 0
 
@@ -308,7 +318,7 @@ export function MobileNativeChatView({
           <GestureDetector gesture={pinchGesture}>
             <FlatList
               ref={listRef}
-              data={data}
+              data={turns.listMessages}
               keyExtractor={(item) => item.id}
               renderItem={renderItem}
               contentContainerStyle={styles.listContent}
@@ -339,17 +349,16 @@ export function MobileNativeChatView({
                 ) : null
               }
               ListFooterComponent={
-                structuredActivityUi &&
-                agentWorking &&
-                !hasPendingStructuredInteraction &&
-                turns.active ? (
-                  <MobileNativeChatTurnStatus
-                    startedAt={turns.active.startedAt}
-                    thinking={turns.active.thinking}
-                    workedSeconds={turns.active.workedSeconds}
-                    activityText={turns.activeActivityText}
-                  />
-                ) : null
+                turns.waitingRows.length === 0 ? (
+                  liveStatus
+                ) : (
+                  <>
+                    {liveStatus}
+                    {turns.waitingRows.map((row) => (
+                      <Fragment key={row.item.id}>{renderItem(row)}</Fragment>
+                    ))}
+                  </>
+                )
               }
               ListEmptyComponent={
                 emptyState ? (

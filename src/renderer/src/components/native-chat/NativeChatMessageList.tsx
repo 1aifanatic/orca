@@ -20,10 +20,14 @@ import {
   NativeChatDisclosureContext,
   useNativeChatDisclosures
 } from './native-chat-disclosure-store'
-import { NativeChatTranscriptItems } from './NativeChatTranscriptItems'
+import {
+  NativeChatTranscriptItems,
+  NativeChatWaitingTranscriptItems
+} from './NativeChatTranscriptItems'
 import type { NativeChatTranscriptRowContext } from './NativeChatTranscriptRow'
 import {
   buildNativeChatTranscriptSlots,
+  splitNativeChatSlotsWaitingBehindLiveTurn,
   nativeChatSlotIndexOf
 } from './native-chat-transcript-slots'
 import { useNativeChatTranscriptWindow } from './use-native-chat-transcript-window'
@@ -190,7 +194,7 @@ export function NativeChatMessageList({
     thinking
   })
   const lifecycleWorking = session.transcriptLifecycle?.state === 'working'
-  const slots = useMemo(
+  const allSlots = useMemo(
     () =>
       buildNativeChatTranscriptSlots({
         messages,
@@ -216,6 +220,11 @@ export function NativeChatMessageList({
       turnKeys,
       turnStatuses
     ]
+  )
+  // A message waiting behind the live turn draws after that turn's live activity, not inside it.
+  const { slots, waitingSlots } = useMemo(
+    () => splitNativeChatSlotsWaitingBehindLiveTurn(allSlots, currentTurnKey),
+    [allSlots, currentTurnKey]
   )
   const transcriptWindow = useNativeChatTranscriptWindow({
     scrollRef,
@@ -399,6 +408,7 @@ export function NativeChatMessageList({
                   />
                 ) : null}
                 {!showTurnStatus && showTypingIndicator ? <NativeChatTypingIndicatorRow /> : null}
+                <NativeChatWaitingTranscriptItems slots={waitingSlots} context={rowContext} />
               </div>
             </div>
           </div>

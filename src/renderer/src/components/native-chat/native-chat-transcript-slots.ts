@@ -14,6 +14,7 @@ import {
   type NativeChatMessage
 } from '../../../../shared/native-chat-types'
 import type { NativeChatTurnStatus } from '../../../../shared/native-chat-turn-status'
+import { nativeChatMessagesWaitingBehindLiveTurn } from '../../../../shared/native-chat-turn-membership'
 import {
   nativeChatTurnFold,
   type NativeChatTurnFoldRow
@@ -195,4 +196,20 @@ export function nativeChatSlotIndexOf(
     return -1
   }
   return slots.findIndex((slot) => slot.message.id === messageId)
+}
+
+/** Splits off the slots of messages waiting behind the live turn: they draw after its live
+ *  activity, not inside it. */
+export function splitNativeChatSlotsWaitingBehindLiveTurn(
+  slots: readonly NativeChatTranscriptSlot[],
+  liveTurnKey: string | undefined
+): { slots: NativeChatTranscriptSlot[]; waitingSlots: NativeChatTranscriptSlot[] } {
+  const waiting = nativeChatMessagesWaitingBehindLiveTurn(
+    slots.map((slot) => slot.message),
+    liveTurnKey
+  )
+  return {
+    slots: slots.filter((slot) => !waiting.has(slot.message.id)),
+    waitingSlots: slots.filter((slot) => waiting.has(slot.message.id))
+  }
 }
