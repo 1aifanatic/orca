@@ -176,31 +176,28 @@ describe('one chat at a time, readers first', () => {
     expect(isOpen(rig, 'session-y')).toBe(true)
   })
 
-  it('closes what it opened only for status, never what a reader reached (L21)', async () => {
-    await rig.chat('session-p', { message: 'pass only' })
-    await rig.chat('session-r', { message: 'reached' })
+  it('leaves no journal open that only it opened, on a first boot where every chat misses (L21)', async () => {
+    const passOnly = ['session-p1', 'session-p2', 'session-p3', 'session-p4']
+    for (const sessionId of passOnly) {
+      await rig.chat(sessionId, { message: sessionId })
+    }
     await rig.chat('session-u', { message: 'user first' })
     await rig.quit()
     const host = await rig.boot({ savedStatus: undefined })
     await host.history({ sessionId: 'session-u', direction: 'tail' })
-    const gate = gateOpens()
 
-    const pass = host.restoreStartupSessions()
-    await vi.waitFor(() => expect(gate.held.has('session-p')).toBe(true))
-    gate.release('session-p')
-    await vi.waitFor(() => expect(gate.held.has('session-r')).toBe(true))
-    const read = host.history({ sessionId: 'session-r', direction: 'tail' })
-    gate.holding = false
-    gate.release('session-r')
-    await Promise.all([pass, read])
+    await host.restoreStartupSessions()
 
-    expect(isOpen(rig, 'session-p')).toBe(false)
-    expect(isOpen(rig, 'session-r')).toBe(true)
+    for (const sessionId of passOnly) {
+      expect(rig.opensOf(sessionId)).toBe(1)
+      expect(isOpen(rig, sessionId)).toBe(false)
+      expect(rig.sink.publish).toHaveBeenCalledWith(
+        expect.objectContaining({ sessionId, latestPrompt: sessionId }),
+        expect.anything()
+      )
+    }
+    // Opened by a reader before its step, so not the pass's to close.
     expect(isOpen(rig, 'session-u')).toBe(true)
-    expect(rig.sink.publish).toHaveBeenCalledWith(
-      expect.objectContaining({ sessionId: 'session-p', latestPrompt: 'pass only' }),
-      expect.anything()
-    )
     expect(rig.sink.forget).not.toHaveBeenCalled()
   })
 })

@@ -36,8 +36,6 @@ export function createStructuredAgentSessionConversationLifetime(host: {
   closeStatus: (sessionId: string, options: { listed: boolean }) => void
 }) {
   let disposed = false
-  // Sessions inside a startup step, and whether any `conversation()` caller reached one meanwhile.
-  const reachedDuringStartupStep = new Map<string, boolean>()
   const { sessions, serialize } = host
   const deps = () => host.context().deps
   // The sweep's stop puts an idle agent to rest: nothing is queued, so no loop reads its cause.
@@ -93,9 +91,6 @@ export function createStructuredAgentSessionConversationLifetime(host: {
      * drop it after.
      */
     conversation: async (sessionId: string): Promise<StructuredAgentSessionHostSession> => {
-      if (reachedDuringStartupStep.has(sessionId)) {
-        reachedDuringStartupStep.set(sessionId, true)
-      }
       const open = sessions.get(sessionId)
       if (open) {
         return open
@@ -124,29 +119,15 @@ export function createStructuredAgentSessionConversationLifetime(host: {
         return session
       })
     },
+    isDisposed: (): boolean => disposed,
     /** The startup pass's per-chat step, under the session's lock and never after quit began. A
-     *  conversation the step opens only to derive status is closed again unless a reader reached
-     *  it meanwhile or it has a child. */
+     *  conversation the step opens only to derive status closes again as the idle sweep's would. */
     startupStep: ((sessionId, step) =>
-      serialize(sessionId, async () => {
-        if (disposed) {
-          return undefined
-        }
-        reachedDuringStartupStep.set(sessionId, false)
-        try {
-          return await step({
-            session: sessions.get(sessionId),
-            closeIfUnreached: async () => {
-              const session = sessions.get(sessionId)
-              if (session && !session.child && !reachedDuringStartupStep.get(sessionId)) {
-                await closeConversation(sessionId)
-              }
-            }
-          })
-        } finally {
-          reachedDuringStartupStep.delete(sessionId)
-        }
-      })) satisfies StructuredAgentSessionStartupStep,
+      serialize(sessionId, async () =>
+        disposed
+          ? undefined
+          : step({ session: sessions.get(sessionId), close: () => closeConversation(sessionId) })
+      )) satisfies StructuredAgentSessionStartupStep,
     /** Ends a chat's resources, not the chat: its record and journal stay on disk, and what is
      *  still queued will not be sent. */
     close: (sessionId: string): Promise<void> =>

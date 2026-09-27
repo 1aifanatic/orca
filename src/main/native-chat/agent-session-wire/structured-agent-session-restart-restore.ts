@@ -12,7 +12,8 @@
 //    a match publishes the row, anything else is remembered as a miss;
 // 2. after reconcile: recovery exits, then settlement of every open conversation, then each miss
 //    and each listed record still owing settlement is opened (unless already open), settled, and
-//    closed again if nothing but this pass wanted it open.
+//    closed again when closable. A startup reconcile that fails leaves that half owed: the first
+//    clean reconcile after it, a bounded retry's or anyone's, runs it once more.
 // Every step runs under its own session's lock with a yield between chats, so a read or a send
 // jumps the queue and waits for one chat at most.
 
@@ -49,14 +50,17 @@ export type StructuredAgentSessionStartupPriority = {
 }
 
 /** One chat's share of the pass, run under its lock. `session` is the conversation open when the
- *  step began; `closeIfUnreached` drops it again unless a reader reached it during the step. */
+ *  step began; `close` drops it again by the idle sweep's rule, so one still owing work stays. */
 export type StructuredAgentSessionStartupStep = <T>(
   sessionId: string,
   step: (context: {
     session: StructuredAgentSessionHostSession | undefined
-    closeIfUnreached: () => Promise<void>
+    close: () => Promise<unknown>
   }) => Promise<T>
 ) => Promise<T | undefined>
+
+/** Waits before each retry of a startup reconcile that did not complete. */
+const STARTUP_RECONCILE_RETRY_DELAYS_MS = [1_000, 4_000, 15_000]
 
 export type StructuredAgentSessionStartupPassDeps = {
   store: Pick<AgentSessionRecordStore, 'getRecord' | 'listRecords' | 'listVisibleSessionIds'>
@@ -76,12 +80,16 @@ export type StructuredAgentSessionStartupPassDeps = {
   settle: (sessionId: string, journal: AgentSessionJournal) => Promise<boolean>
   onError: (sessionId: string, error: unknown) => void
   now: () => number
+  /** Quit has begun: no retry starts after this. */
+  disposed: () => boolean
+  reconcileRetryDelaysMs?: readonly number[] | undefined
 }
 
 export type StructuredAgentSessionStartupPass = {
   /** Latched: every later call is the same pass, retried only after a failure. */
   run: (priority?: StructuredAgentSessionStartupPriority) => Promise<void>
-  /** A later reconcile settled every lease: settle what it flagged on open conversations. */
+  /** A later reconcile settled every lease: settle what it flagged on open conversations, or, after
+   *  a failed startup reconcile, run the whole post-reconcile half once. */
   onReconciled: () => void
 }
 
@@ -130,6 +138,11 @@ export function createStructuredAgentSessionStartupPass(
 ): StructuredAgentSessionStartupPass {
   let running: Promise<void> | null = null
   let settledOpenOnce = false
+  let priority: StructuredAgentSessionStartupPriority | undefined
+  // A failed startup reconcile left recovery and settlement owed until a clean one lands.
+  let startupReconcileFailed = false
+  let cleanReconcileSinceFailure = false
+  let afterFailure: Promise<void> | null = null
   const listed = (sessionId: string): boolean =>
     deps.store.listVisibleSessionIds().includes(sessionId)
   const supportedRecord = (sessionId: string): AgentSessionRecord | null => {
@@ -173,9 +186,9 @@ export function createStructuredAgentSessionStartupPass(
     }
   }
 
-  /** Phase 2.3's step: open unless open, always settle, and close what only this pass wanted. */
+  /** Phase 2.3's step: open unless open, always settle, and close what only this pass opened. */
   const openAndSettle = async (sessionId: string): Promise<void> => {
-    await deps.step(sessionId, async ({ session, closeIfUnreached }) => {
+    await deps.step(sessionId, async ({ session, close }) => {
       const record = supportedRecord(sessionId)
       if (!record || !listed(sessionId)) {
         return
@@ -193,47 +206,16 @@ export function createStructuredAgentSessionStartupPass(
       }
       await deps.settle(sessionId, open.journal)
       if (!session) {
-        await closeIfUnreached()
+        await close()
       }
     })
   }
 
-  const runOnce = async (priority?: StructuredAgentSessionStartupPriority): Promise<void> => {
-    const startedAt = deps.now()
-    const misses: string[] = []
-    let seeded = 0
-    for (const sessionId of deps.store.listVisibleSessionIds()) {
-      await deps
-        .step(sessionId, async ({ session }) => {
-          const record = supportedRecord(sessionId)
-          if (session || !record || !listed(sessionId)) {
-            return
-          }
-          if (seedFromSavedStatus(record)) {
-            seeded += 1
-          } else {
-            misses.push(sessionId)
-          }
-        })
-        .catch((error: unknown) => deps.onError(sessionId, error))
-      await yieldToEventLoop()
-    }
-    try {
-      deps.savedStatus?.prune((sessionId) => deps.store.getRecord(sessionId) !== null)
-    } catch (error) {
-      deps.onError('startup-pass', error)
-    }
-    console.info(
-      `[structured-agent-session] startup status: ${seeded} from saved copies, ${misses.length} to open, ${deps.now() - startedAt} ms`
-    )
-    // Settled either way: a failed reconcile still leaves the opens and settlements below owed.
-    const reconciled = await deps.reconcile().then(
-      (refusal) => refusal === null,
-      (error: unknown) => {
-        deps.onError('startup-pass', error)
-        return false
-      }
-    )
+  /** Everything a restart owes once reconcile has answered; `reconciled` gates recovery exits. */
+  const settleAfterReconcile = async (
+    reconciled: boolean,
+    misses: readonly string[]
+  ): Promise<void> => {
     if (reconciled) {
       // Every record, hidden ones too: an orphaned owner of a closed tab is still this host's.
       for (const record of deps.store.listRecords()) {
@@ -261,16 +243,99 @@ export function createStructuredAgentSessionStartupPass(
     }
   }
 
+  /** At most once per failed startup: the misses were already opened, so only what reconcile
+   *  flagged is left. */
+  const settleAfterFailedStartup = (): Promise<void> => {
+    afterFailure ??= settleAfterReconcile(true, []).catch((error: unknown) =>
+      deps.onError('startup-pass', error)
+    )
+    return afterFailure
+  }
+
+  const reconcileClean = (): Promise<boolean> =>
+    deps.reconcile().then(
+      (refusal) => refusal === null,
+      (error: unknown) => {
+        deps.onError('startup-pass', error)
+        return false
+      }
+    )
+
+  /** Retries the startup reconcile a few times, then leaves the rest to each chat's own attach. */
+  const retryStartupReconcile = async (): Promise<void> => {
+    for (const delay of deps.reconcileRetryDelaysMs ?? STARTUP_RECONCILE_RETRY_DELAYS_MS) {
+      await new Promise((resolve) => setTimeout(resolve, delay).unref?.())
+      if (deps.disposed() || afterFailure) {
+        return
+      }
+      if (await reconcileClean()) {
+        await settleAfterFailedStartup()
+        return
+      }
+    }
+    deps.onError('startup-pass', new Error('startup reconcile still failing after its retries'))
+  }
+
+  const runOnce = async (): Promise<void> => {
+    const startedAt = deps.now()
+    const misses: string[] = []
+    let seeded = 0
+    for (const sessionId of deps.store.listVisibleSessionIds()) {
+      await deps
+        .step(sessionId, async ({ session }) => {
+          const record = supportedRecord(sessionId)
+          if (session || !record || !listed(sessionId)) {
+            return
+          }
+          if (seedFromSavedStatus(record)) {
+            seeded += 1
+          } else {
+            misses.push(sessionId)
+          }
+        })
+        .catch((error: unknown) => deps.onError(sessionId, error))
+      await yieldToEventLoop()
+    }
+    try {
+      deps.savedStatus?.prune((sessionId) => deps.store.getRecord(sessionId) !== null)
+    } catch (error) {
+      deps.onError('startup-pass', error)
+    }
+    console.info(
+      `[structured-agent-session] startup status: ${seeded} from saved copies, ${misses.length} to open, ${deps.now() - startedAt} ms`
+    )
+    // Settled either way: a failed reconcile still leaves the misses to open and publish.
+    const reconciled = await reconcileClean()
+    startupReconcileFailed = !reconciled
+    await settleAfterReconcile(reconciled, misses)
+    if (reconciled) {
+      return
+    }
+    if (cleanReconcileSinceFailure) {
+      await settleAfterFailedStartup()
+      return
+    }
+    void retryStartupReconcile()
+  }
+
   return {
-    run: (priority) => {
-      running ??= runOnce(priority).catch((error: unknown) => {
+    run: (startupPriority) => {
+      priority ??= startupPriority
+      running ??= runOnce().catch((error: unknown) => {
         running = null
         throw error
       })
       return running
     },
     onReconciled: () => {
-      if (settledOpenOnce) {
+      if (startupReconcileFailed && !afterFailure) {
+        if (settledOpenOnce) {
+          void settleAfterFailedStartup()
+        } else {
+          // The failed startup's own half is still settling; it runs the rest when it finishes.
+          cleanReconcileSinceFailure = true
+        }
+      } else if (settledOpenOnce) {
         void settleOpenConversations()
       }
     }
@@ -282,7 +347,7 @@ export function createStructuredAgentSessionHostStartupPass(
   deps: StructuredAgentSessionHostDeps,
   wiring: Pick<
     StructuredAgentSessionStartupPassDeps,
-    'sessions' | 'step' | 'seed' | 'reconcile' | 'resolveRecovery' | 'open' | 'now'
+    'sessions' | 'step' | 'seed' | 'reconcile' | 'resolveRecovery' | 'open' | 'now' | 'disposed'
   >
 ): StructuredAgentSessionStartupPass {
   return createStructuredAgentSessionStartupPass({
@@ -290,6 +355,7 @@ export function createStructuredAgentSessionHostStartupPass(
     store: deps.store,
     journalRoot: deps.journalRoot,
     ...(deps.savedStatus ? { savedStatus: deps.savedStatus } : {}),
+    reconcileRetryDelaysMs: deps.startupReconcileRetryDelaysMs,
     supportsRecord: (record) => adapterSupportsRecord(deps.adapter, record),
     settle: (sessionId, journal) =>
       retryLoadedStructuredAgentSessionSettlement({ deps, sessionId, journal, now: wiring.now }),

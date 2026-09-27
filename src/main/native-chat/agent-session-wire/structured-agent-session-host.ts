@@ -164,7 +164,8 @@ export class StructuredAgentSessionHost {
       reconcile: () => this.reconcileLeases('startup'),
       resolveRecovery: (sessionId) => this.runtimeState.resolveRecovery(sessionId),
       open: (sessionId) => this.conversationDelivery.open(sessionId),
-      now: () => this.now()
+      now: () => this.now(),
+      disposed: this.lifetime.isDisposed
     })
     this.runtimeState.startLeaseRenewal()
     this.lifetime.idleSweep.start()

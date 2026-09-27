@@ -113,6 +113,8 @@ export type StructuredAgentSessionHostDeps = {
   now?: () => number
   /** The idle sweep's period and window. Tests drive these; production takes the defaults. */
   idleSweep?: { intervalMs?: number; idleMs?: number }
+  /** Waits before each retry of a startup reconcile that did not complete; tests shorten them. */
+  startupReconcileRetryDelaysMs?: readonly number[]
   /** Whether an orchestration dispatch still owns this session's worker; absent answers no. */
   hasOpenDispatch?: (record: AgentSessionRecord) => boolean
   onEventSinkError?: (input: { sessionId: string; error: unknown }) => void
