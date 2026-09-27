@@ -12,7 +12,6 @@ import {
   applyMobileNativeChatStreamFrame,
   type MobileNativeChatStreamFrame
 } from './mobile-native-chat-stream-frame'
-import { NativeChatStreamRecoveryBackoff } from './mobile-native-chat-stream-recovery'
 import { structuredSessionRandomUuid } from './structured-session-operation-id'
 
 export type MobileNativeChatStatus =
@@ -116,14 +115,6 @@ export function useMobileNativeChatSession(args: {
   // snapshots on the same subscription are reconnect replays, not fresh bases.
   const snapshotSeenRef = useRef(false)
   const transcriptRetentionRef = useRef(createNativeChatTranscriptRetention())
-  // Bumped to rerun the subscription effect after the host ends a stream this screen still wants.
-  const [streamReopenCount, setStreamReopenCount] = useState(0)
-  const streamRecoveryRef = useRef<{
-    identity: string
-    backoff: NativeChatStreamRecoveryBackoff
-  } | null>(null)
-  // Set when the host ended the live feed unasked; the next effect run consumes it to reopen in place.
-  const streamLostRef = useRef<{ client: RpcClient; identity: string } | null>(null)
   const settledReady = settled?.status === 'ready'
   useEffect(() => {
     if (settledReady) {
@@ -140,24 +131,17 @@ export function useMobileNativeChatSession(args: {
 
   useEffect(() => {
     let cancelled = false
-    let reopenTimer: ReturnType<typeof setTimeout> | null = null
-    const lost = streamLostRef.current
-    streamLostRef.current = null
-    // A recovery reopen keeps the paged-in window, so its snapshot merges in as a replay.
-    const reopening = lost !== null && lost.client === client && lost.identity === identity
     // Why: disconnect/agent/session loss must invalidate a page request before
     // the early idle/waiting return can clear the visible source.
     streamGenerationRef.current += 1
+    limitRef.current = INITIAL_LIMIT
     loadingEarlierRef.current = false
+    snapshotSeenRef.current = false
     setLoadingEarlier(false)
-    if (!reopening) {
-      limitRef.current = INITIAL_LIMIT
-      snapshotSeenRef.current = false
-      setList([])
-      setError(undefined)
-      setHasMore(false)
-      beforeOffsetRef.current = null
-    }
+    setList([])
+    setError(undefined)
+    setHasMore(false)
+    beforeOffsetRef.current = null
     if (!client || !agent) {
       return
     }
@@ -170,8 +154,7 @@ export function useMobileNativeChatSession(args: {
       {
         agent,
         sessionId,
-        // A reopen asks for the first page too; the kept window absorbs it as a replay.
-        limit: INITIAL_LIMIT,
+        limit: limitRef.current,
         // Why: a token of its own, so another screen on this chat never evicts this feed on the host.
         subscriptionId: buildNativeChatSubscriptionId(
           agent,
@@ -195,34 +178,10 @@ export function useMobileNativeChatSession(args: {
         if (applied.kind === 'ignored') {
           return
         }
-        if (applied.kind === 'ended') {
-          // Why: this feed's token is its own, so an unasked end is the host's connection-wide chat
-          // sweep; reopen it, paced by the backoff.
-          cancelled = true
-          setRead(null)
-          streamLostRef.current = { client, identity }
-          if (streamRecoveryRef.current?.identity !== identity) {
-            streamRecoveryRef.current = {
-              identity,
-              backoff: new NativeChatStreamRecoveryBackoff()
-            }
-          }
-          const delayMs = streamRecoveryRef.current.backoff.nextDelayMs(Date.now())
-          const reopen = (): void => setStreamReopenCount((count) => count + 1)
-          if (delayMs === 0) {
-            reopen()
-          } else {
-            reopenTimer = setTimeout(reopen, delayMs)
-          }
-          return
-        }
         if (applied.kind === 'error') {
           setRead({ client, identity, status: 'error' })
           setError(applied.error)
           return
-        }
-        if (frame.type === 'snapshot' && streamRecoveryRef.current?.identity === identity) {
-          streamRecoveryRef.current.backoff.noteSnapshot(Date.now())
         }
         if (frame.type === 'snapshot' && !applied.pending) {
           // A pending window has no transcript behind it, so the snapshot that
@@ -238,9 +197,8 @@ export function useMobileNativeChatSession(args: {
         }
         if (applied.windowReplaced) {
           // Only a genuinely fresh window resets the grown read window — an
-          // overlapping replay keeps the paged-in history and limit. Never below what it delivered,
-          // or the next live append trims rows already on screen.
-          limitRef.current = Math.max(INITIAL_LIMIT, applied.messages.length)
+          // overlapping reconnect replay keeps the paged-in history and limit.
+          limitRef.current = INITIAL_LIMIT
           beforeOffsetRef.current = applied.beforeOffset ?? null
           setHasMore(applied.hasMore ?? applied.messages.length >= INITIAL_LIMIT)
         }
@@ -265,12 +223,9 @@ export function useMobileNativeChatSession(args: {
 
     return () => {
       cancelled = true
-      if (reopenTimer !== null) {
-        clearTimeout(reopenTimer)
-      }
       unsubscribe()
     }
-  }, [client, agent, sessionId, transcriptPath, identity, setList, streamReopenCount])
+  }, [client, agent, sessionId, transcriptPath, identity, setList])
 
   const loadEarlier = useCallback(() => {
     if (!client || !agent || !sessionId || loadingEarlierRef.current || !hasMore) {
