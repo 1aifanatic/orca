@@ -458,8 +458,8 @@
       "motivatingLinks": [
         "https://github.com/stablyai/orca/blob/main/src/renderer/src/components/settings/TerminalPane.tsx"
       ],
-      "invariant": "A matching settings section retains its state when preceding sections are filtered away; a section removed from search releases its owner and refreshes when shown again. Diagnostic inventory never becomes authority for process death.",
-      "oracle": "Initial mount plus15matched search edits performs one inventory read and one health read instead of six each. A draft and pending target survive matched search; actual hide/reopen reloads, explicit Refresh still reads, and hidden/unmounted health listeners do not fire.",
+      "invariant": "A matching settings section retains its state when preceding sections are filtered away; a section removed from search releases its owner and refreshes when shown again. A retained section still refreshes when another surface invalidates the session inventory. Diagnostic inventory never becomes authority for process death.",
+      "oracle": "Across 15 matched search edits the matched section keeps the same DOM node and the inventory/health read counts do not grow, instead of six reads each. A foreign inventory invalidation still reads once on the retained section and not after unmount. A draft and pending target survive matched search; actual hide/reopen reloads, explicit Refresh still reads, and hidden/unmounted health listeners do not fire.",
       "commands": [
         "ORCA_BACKGROUND_LAUNCH=1 pnpm exec vitest run --config config/vitest.config.ts src/renderer/src/components/settings/TerminalPane.section-lifetime.test.tsx src/renderer/src/components/settings/TerminalTccAttributionNotice.test.tsx"
       ],
@@ -471,6 +471,7 @@
         {
           "file": "src/renderer/src/components/settings/TerminalPane.section-lifetime.test.tsx",
           "assertions": [
+            "refreshes a retained section when another surface invalidates the inventory",
             "refreshes explicitly, reloads genuinely hidden sections, and removes focus listeners",
             "preserves an uncommitted scrollback draft while its section remains visible",
             "retains a pending action target only while its section remains visible"
@@ -484,8 +485,8 @@
           "platform": "macos",
           "command": "ORCA_BACKGROUND_LAUNCH=1 pnpm exec vitest run --config config/vitest.config.ts src/renderer/src/components/settings/TerminalPane.section-lifetime.test.tsx src/renderer/src/components/settings/TerminalTccAttributionNotice.test.tsx",
           "result": "passed",
-          "durationSeconds": 0.701,
-          "summary": "Independent rerun11tests/2suites pass; author68tests/5suites pass. New6pass versus original5fail/1control. Separate actual-child-search independent5pass versus original4fail/1control."
+          "durationSeconds": 1.48,
+          "summary": "12 tests/2 suites pass after the shared SettingsSectionStack adoption and the inventory-invalidation subscription. Read-count oracles restated as node identity plus non-growing read counts; original main fails all three simulated platform cases, the draft, the pending target and the foreign-invalidation refresh."
         }
       ],
       "runtimeBudget": {
@@ -502,12 +503,12 @@
       },
       "performanceBudget": {
         "required": true,
-        "evidence": "Actual child inventory and health reads6to1 across15matched search edits. Fixed small section filter/map unchanged; no new polling, cache, listener or subprocess. Retains existing inventory/draft/pending state longer; removes incidental search refresh, with no bounded automatic inventory freshness deadline. No packaged CPU/frame/heap claim."
+        "evidence": "Actual child inventory and health reads 6 to 1 across 15 matched search edits. Fixed small section filter/map now lives in the shared SettingsSectionStack; no new polling, cache or subprocess. One added in-renderer invalidation listener replaces the incidental search-driven refresh, so a retained section stays as fresh as the signal every other inventory reader already uses. No packaged CPU/frame/heap claim."
       },
       "knownGaps": [
         "CI soak pending.",
         "No physical local/daemon/SSH/WSL/remote-runtime provider, native Linux/Windows or process-stop behavior exercised; routing, PTY ownership, commands and wire formats unchanged.",
-        "Matched searches keep the loaded snapshot until existing Refresh, completed mutation or genuine hide/reopen; health also refreshes on focus/revision.",
+        "Matched searches keep the loaded snapshot until existing Refresh, completed mutation, a foreign inventory invalidation or genuine hide/reopen; health also refreshes on focus/revision.",
         "Pending action target and drafts remain while their parent section matches, including individual controls hidden inside a retained section.",
         "No packaged app latency, heap, real focus or pending destructive-mutation completion evidence. Hidden Electron component visual proof is separate from the gate."
       ],

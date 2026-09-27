@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { getDefaultSettings } from '../../../../shared/constants'
 import type { PtyManagementSession } from '../../../../preload/api-types'
+import { notifyDaemonSessionInventoryInvalidated } from '../status-bar/daemon-session-inventory-invalidation'
 import { TerminalPane } from './TerminalPane'
 
 const fake = vi.hoisted(() => ({
@@ -132,6 +133,11 @@ it.each([
   const props = { ...paneProps(), isWindowsTerminalHost: platform.hostIsWindows }
   const view = render(<TerminalPane {...props} />)
   await act(async () => {})
+  // The invariant is identity, not a magic number: the matched section keeps the same DOM
+  // node across every query edit, so editing the query cannot cost an extra read.
+  const mountedButton = screen.getByRole('button', { name: 'Refresh sessions' })
+  const inventoryReadsAfterMount = fake.listSessions.mock.calls.length
+  const healthReadsAfterMount = fake.attribution.mock.calls.length
   for (const query of [
     'm',
     'ma',
@@ -151,10 +157,29 @@ it.each([
   ]) {
     fake.query = query
     await act(async () => view.rerender(<TerminalPane {...props} />))
-    expect(screen.getByRole('button', { name: 'Refresh sessions' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Refresh sessions' })).toBe(mountedButton)
   }
-  expect(fake.listSessions).toHaveBeenCalledTimes(1)
-  expect(fake.attribution).toHaveBeenCalledTimes(1)
+  expect(fake.listSessions.mock.calls.length).toBe(inventoryReadsAfterMount)
+  expect(fake.attribution.mock.calls.length).toBe(healthReadsAfterMount)
+})
+
+it('refreshes a retained section when another surface invalidates the inventory', async () => {
+  const props = paneProps()
+  const view = render(<TerminalPane {...props} />)
+  await act(async () => {})
+  const mountedButton = screen.getByRole('button', { name: 'Refresh sessions' })
+  const readsAfterMount = fake.listSessions.mock.calls.length
+
+  fake.query = 'manage'
+  await act(async () => view.rerender(<TerminalPane {...props} />))
+  await act(async () => notifyDaemonSessionInventoryInvalidated())
+  expect(screen.getByRole('button', { name: 'Refresh sessions' })).toBe(mountedButton)
+  expect(fake.listSessions.mock.calls.length).toBe(readsAfterMount + 1)
+
+  view.unmount()
+  const readsBeforeUnmountedNotify = fake.listSessions.mock.calls.length
+  await act(async () => notifyDaemonSessionInventoryInvalidated())
+  expect(fake.listSessions.mock.calls.length).toBe(readsBeforeUnmountedNotify)
 })
 
 it('refreshes explicitly, reloads genuinely hidden sections, and removes focus listeners', async () => {
