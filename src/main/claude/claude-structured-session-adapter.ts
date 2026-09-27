@@ -1,4 +1,4 @@
-import { compactClaudeSession, observeClaudeCompaction } from './claude-structured-compaction'
+import { dispatchClaudeCommand } from './claude-structured-command-dispatch'
 import type {
   AgentSessionAcquisition,
   StructuredAgentSessionAcquireInput,
@@ -153,7 +153,7 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
     if (event.type === 'message' && session?.commands.observe(event.message)) {
       session.events?.publish()
     }
-    observeClaudeCompaction(session, event)
+    session?.translator?.handle(event)
     this.deps.onEvent?.(event)
     if (backgroundTasksChanged) {
       this.deps.onBackgroundTasksChanged?.(
@@ -190,7 +190,7 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
     dispatchClaudeTurn(this.session(input.sessionId), input, input.beforeDispatch)
 
   compact: NonNullable<StructuredAgentSessionAdapter['compact']> = (input) =>
-    compactClaudeSession(this.session(input.sessionId), input)
+    dispatchClaudeCommand(this.session(input.sessionId), input.command)
 
   cancelTurn: StructuredAgentSessionAdapter['cancelTurn'] = (request) =>
     cancelClaudeStructuredTurn({

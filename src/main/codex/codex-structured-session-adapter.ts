@@ -151,7 +151,6 @@ export class CodexStructuredSessionAdapter implements StructuredAgentSessionAdap
       return admission
     }
     if (event.type === 'notification') {
-      session.compaction.codex(event.method, event.params)
       // After the admission check, so a refused frame is observed by the strip
       // only on the retry that also reaches the journal.
       if (session.backgroundTasks.observe(event)) {
@@ -238,27 +237,25 @@ export class CodexStructuredSessionAdapter implements StructuredAgentSessionAdap
   recoverRewind: NonNullable<StructuredAgentSessionAdapter['recoverRewind']> = (input) =>
     codexRewind.recoverCodexRewind(this.session(input.sessionId), input, this.deps.requestTimeoutMs)
 
-  compact: NonNullable<StructuredAgentSessionAdapter['compact']> = (input) => {
+  /** The ack is Codex's receipt; the translator ends the command's turn from the turn it opens. */
+  compact: NonNullable<StructuredAgentSessionAdapter['compact']> = async (input) => {
     const session = this.session(input.sessionId)
-    return session.compaction.run(
-      session.threadId,
-      async () => {
-        await this.turnCancellation.captureBaseline(session)
-        return session.connection
-          .request(
-            'thread/compact/start',
-            { threadId: session.threadId },
-            { timeoutMs: this.deps.requestTimeoutMs }
-          )
-          .catch((error) => {
-            if (isCodexAppServerRequestError(error)) {
-              return { error: error.message }
-            }
-            throw error
-          })
-      },
-      { turnId: input.turnId, turnItemId: input.turnItemId }
-    )
+    session.translator?.beginCommand(input.command)
+    try {
+      await this.turnCancellation.captureBaseline(session)
+      await session.connection.request(
+        'thread/compact/start',
+        { threadId: session.threadId },
+        { timeoutMs: this.deps.requestTimeoutMs }
+      )
+      return { state: 'accepted', providerIdentity: null }
+    } catch (error) {
+      session.translator?.forgetCommand(input.command.turnId)
+      if (isCodexAppServerRequestError(error)) {
+        return { state: 'rejected', reason: error.message }
+      }
+      throw error
+    }
   }
 
   changeThreadGoal: NonNullable<StructuredAgentSessionAdapter['changeThreadGoal']> = (input) =>

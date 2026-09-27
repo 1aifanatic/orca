@@ -2,7 +2,10 @@ import type {
   AgentJournalTurnLifecycle,
   AgentJournalTurnOutcome
 } from '../../shared/agent-session-journal-types'
-import { agentJournalSubmissionKey } from '../../shared/agent-session-journal-item-key'
+import {
+  agentJournalItemKey,
+  agentJournalSubmissionKey
+} from '../../shared/agent-session-journal-item-key'
 import type { StructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
 import {
   CODEX_JOURNAL_ADMITTED,
@@ -28,7 +31,8 @@ import {
   readCodexTurnStatus
 } from './codex-structured-thread-facts'
 import type { CodexRowAttribution } from './codex-subagent-linkage'
-import type { CodexJournalTurnScopes } from './codex-journal-turn-scopes'
+import type { CodexJournalCommandTurn } from './codex-journal-command-turn'
+import { readRecord, readString } from './codex-item-field-readers'
 import { recordCodexCommandTurnClaim } from './codex-command-turn-claim'
 
 type TurnBoundaryEvent = {
@@ -54,9 +58,7 @@ export class CodexJournalTurnBoundaries {
       flushSuppression: () => CodexJournalTranslationAdmission
       resetActivity: (threadId: string) => void
       attributionFor: CodexRowAttribution
-      turnScopes: CodexJournalTurnScopes
-      /** The command turn's journal key when a pending conversation command owns this turn. */
-      claimCommandTurn?: (threadId: string, turnId: string) => string | null
+      commands: CodexJournalCommandTurn
       now?: () => number
     }
   ) {}
@@ -70,13 +72,11 @@ export class CodexJournalTurnBoundaries {
       return { accepted: false, reason: 'backpressure' }
     }
     const startedAt = this.receiptTime(event)
-    const commandTurnItemId =
-      event.threadId === this.deps.primaryThreadId()
-        ? (this.deps.claimCommandTurn?.(event.threadId, turnId) ?? null)
-        : null
+    const command =
+      event.threadId === this.deps.primaryThreadId() ? this.deps.commands.claim(turnId) : null
     // The command's turn is the record: this turn writes none, and its rows join the command's.
-    const admission = commandTurnItemId
-      ? recordCodexCommandTurnClaim(this.deps.sink, commandTurnItemId, turnId)
+    const admission = command
+      ? recordCodexCommandTurnClaim(this.deps.sink, agentJournalItemKey(command.identity), turnId)
       : publishCodexTurnLifecycle({
           sink: this.deps.sink,
           primaryThreadId: this.deps.primaryThreadId(),
@@ -87,9 +87,6 @@ export class CodexJournalTurnBoundaries {
           startedAt
         })
     if (admission.accepted) {
-      if (commandTurnItemId) {
-        this.deps.turnScopes.claim(turnId, commandTurnItemId)
-      }
       this.deps.activeTurns.remember(
         event.threadId,
         turnId,
@@ -161,11 +158,17 @@ export class CodexJournalTurnBoundaries {
     // turn boundary is no evidence contact was lost. Only `settleSession` may
     // write `unverifiable`.
     const status = readCodexTurnStatus(event.params)
+    const completedAt = this.receiptTime(event)
+    const commandEnd = this.deps.commands.end(turnId, {
+      status,
+      error: readString(readRecord(readRecord(readRecord(event.params).turn).error), 'message'),
+      completedAt
+    })
     const turnLifecycle = this.ownsRecord(event.threadId, turnId)
       ? this.settled(event.threadId, turnId, {
           state: codexTurnLifecycleState(status),
           outcome: codexTurnOutcome(status),
-          completedAt: this.receiptTime(event),
+          completedAt,
           durationMs: readCodexTurnDurationMs(event.params)
         })
       : null
@@ -184,7 +187,8 @@ export class CodexJournalTurnBoundaries {
       activeItems: this.deps.items.activeItems,
       pendingPrompts: this.deps.pendingPrompts,
       ...(this.deps.clearPromptTurn ? { clearPromptTurn: this.deps.clearPromptTurn } : {}),
-      attributionFor: this.deps.attributionFor
+      attributionFor: this.deps.attributionFor,
+      commandEnd
     })
     if (admission.accepted) {
       if (turnLifecycle) {
@@ -197,7 +201,7 @@ export class CodexJournalTurnBoundaries {
       }
       this.deps.items.ordinals.forgetTurn(event.threadId, turnId)
       this.deps.activeTurns.forget(event.threadId, turnId)
-      this.deps.turnScopes.forget(turnId)
+      this.deps.commands.settled(turnId)
       this.deps.resetActivity(event.threadId)
     }
     return admission
@@ -224,11 +228,19 @@ export class CodexJournalTurnBoundaries {
     if (!turnId || !this.deps.activeTurns.isActive(event.threadId, turnId)) {
       return CODEX_JOURNAL_ADMITTED
     }
+    const completedAt = this.receiptTime(event)
+    // The error's own row already landed inside the command's turn.
+    const commandEnd = this.deps.commands.end(turnId, {
+      status: 'failed',
+      error: null,
+      failureShown: true,
+      completedAt
+    })
     const turnLifecycle = this.ownsRecord(event.threadId, turnId)
       ? this.settled(event.threadId, turnId, {
           state: 'completed',
           outcome: 'failure',
-          completedAt: this.receiptTime(event)
+          completedAt
         })
       : null
     const requestOrigin = this.deps.activeTurns.requestOrigin(event.threadId, turnId)
@@ -246,7 +258,8 @@ export class CodexJournalTurnBoundaries {
       activeItems: this.deps.items.activeItems,
       pendingPrompts: this.deps.pendingPrompts,
       ...(this.deps.clearPromptTurn ? { clearPromptTurn: this.deps.clearPromptTurn } : {}),
-      attributionFor: this.deps.attributionFor
+      attributionFor: this.deps.attributionFor,
+      commandEnd
     })
     if (admission.accepted) {
       if (turnLifecycle) {
@@ -259,7 +272,7 @@ export class CodexJournalTurnBoundaries {
       }
       this.deps.items.ordinals.forgetTurn(event.threadId, turnId)
       this.deps.activeTurns.forget(event.threadId, turnId)
-      this.deps.turnScopes.forget(turnId)
+      this.deps.commands.settled(turnId)
       this.deps.resetActivity(event.threadId)
     }
     return admission
@@ -295,13 +308,13 @@ export class CodexJournalTurnBoundaries {
 
   /** Whether this translator writes the turn's record: a primary turn no command claimed. */
   ownsRecord(threadId: string, turnId: string): boolean {
-    return threadId === this.deps.primaryThreadId() && !this.deps.turnScopes.claimed(turnId)
+    return threadId === this.deps.primaryThreadId() && !this.deps.commands.isCarrying(turnId)
   }
 
   clear(): void {
     this.deps.activeTurns.clear()
     this.recentTurns.clear()
-    this.deps.turnScopes.clear()
+    this.deps.commands.clear()
   }
 
   private receiptTime(event: TurnBoundaryEvent): number {

@@ -13,15 +13,14 @@ import {
 import { codexTurnLifecycleIdentity } from './codex-structured-journal-translation-turns'
 
 export class CodexJournalTurnScopes {
-  /** Primary turns a conversation command claimed, to the command turn's journal key. */
-  private readonly claims = new Map<string, string>()
-
   constructor(
     private readonly deps: {
       /** Without it no turn record is keyed, so every row reads as the thread's. */
       sessionId: string | undefined
       primaryThreadId: () => string | null
       activeTurn: (threadId: string) => string | null
+      /** The command turn's scope, for a primary turn carrying a conversation command. */
+      commandScope: (turnId: string) => AgentJournalTurnScope | null
     }
   ) {}
 
@@ -29,34 +28,18 @@ export class CodexJournalTurnScopes {
     const primary = this.deps.primaryThreadId()
     const primaryTurnId =
       primary === null ? null : threadId === primary ? turnId : this.deps.activeTurn(primary)
-    const turnItemId = primaryTurnId === null ? null : this.turnItemId(primaryTurnId)
-    return turnItemId === null ? AGENT_JOURNAL_THREAD_SCOPE : { kind: 'turn', turnItemId }
-  }
-
-  claim(turnId: string, commandTurnItemId: string): void {
-    this.claims.set(turnId, commandTurnItemId)
-  }
-
-  claimed(turnId: string): boolean {
-    return this.claims.has(turnId)
-  }
-
-  forget(turnId: string): void {
-    this.claims.delete(turnId)
-  }
-
-  clear(): void {
-    this.claims.clear()
-  }
-
-  private turnItemId(turnId: string): string | null {
-    const claimed = this.claims.get(turnId)
-    if (claimed !== undefined) {
-      return claimed
+    if (primaryTurnId === null) {
+      return AGENT_JOURNAL_THREAD_SCOPE
     }
     const { sessionId } = this.deps
-    return sessionId === undefined
-      ? null
-      : agentJournalItemKey(codexTurnLifecycleIdentity(sessionId, turnId))
+    return (
+      this.deps.commandScope(primaryTurnId) ??
+      (sessionId === undefined
+        ? AGENT_JOURNAL_THREAD_SCOPE
+        : {
+            kind: 'turn',
+            turnItemId: agentJournalItemKey(codexTurnLifecycleIdentity(sessionId, primaryTurnId))
+          })
+    )
   }
 }

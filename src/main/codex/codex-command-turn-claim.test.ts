@@ -11,7 +11,6 @@ import type {
   StructuredAgentSessionRevisionJournal,
   StructuredAgentSessionSinkAdmission
 } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
-import { StructuredSessionCompaction } from '../native-chat/agent-session-wire/structured-session-compaction'
 import { createCodexJournalTranslator } from './codex-structured-journal-translation'
 import type { CodexStructuredSessionEvent } from './codex-structured-session-adapter'
 
@@ -23,7 +22,21 @@ const COMMAND_TURN_IDENTITY: AgentJournalItemIdentity = {
   clientMessageId: 'command-turn:cmd-1'
 }
 const COMMAND_TURN_KEY = agentJournalItemKey(COMMAND_TURN_IDENTITY)
-const COMMAND = { turnId: 'compact:cmd-1', turnItemId: COMMAND_TURN_KEY }
+const RUNNING = {
+  kind: 'turn' as const,
+  turnId: 'compact:cmd-1',
+  state: 'running' as const,
+  userItemId: 'orca:submission:cmd-1',
+  requestedAt: 1,
+  startedAt: 1
+}
+const COMMAND = {
+  clientMessageId: 'cmd-1',
+  turnId: RUNNING.turnId,
+  identity: COMMAND_TURN_IDENTITY,
+  resultIdentity: { provider: 'orca' as const, clientMessageId: 'command-result:cmd-1' },
+  running: RUNNING
+}
 const ACCEPTED: StructuredAgentSessionSinkAdmission = { accepted: true }
 
 type Written = { key: string; body: AgentJournalItemBody; turnScope?: AgentJournalTurnScope }
@@ -36,12 +49,7 @@ function recorder(refuseRevisions = 0) {
     body: AgentJournalItemBody,
     turnScope?: AgentJournalTurnScope
   ) => writes.push({ key: agentJournalItemKey(identity), body, turnScope })
-  const commandTurn: AgentJournalItemBody = {
-    kind: 'turn',
-    turnId: COMMAND.turnId,
-    state: 'running',
-    startedAt: 1
-  }
+  const commandTurn: AgentJournalItemBody = RUNNING
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the claim resolver reads only `itemBody`.
   const journal = {
     itemBody: (itemId: string) => (itemId === COMMAND_TURN_KEY ? commandTurn : null)
@@ -91,34 +99,36 @@ function notification(method: string, params: object): CodexStructuredSessionEve
 
 function harness(refuseRevisions = 0) {
   const tap = recorder(refuseRevisions)
-  const tracker = new StructuredSessionCompaction()
   const translator = createCodexJournalTranslator({
     sink: tap.sink,
     sessionId: SESSION,
-    primaryThreadId: () => THREAD,
-    claimCommandTurn: (threadId, turnId) => tracker.claimTurn(threadId, turnId)
+    primaryThreadId: () => THREAD
   })
-  // The adapter's order: the translator journals first, the tracker observes second.
-  const emit = (event: CodexStructuredSessionEvent) => {
-    const admission = translator.handle(event)
-    if (admission.accepted && event.type === 'notification') {
-      tracker.codex(event.method, event.params)
-    }
-    return admission
+  return {
+    ...tap,
+    translator,
+    emit: (event: CodexStructuredSessionEvent) => translator.handle(event)
   }
-  return { ...tap, tracker, emit }
 }
 
 const codexTurnRecords = (writes: readonly Written[]) =>
   writes.filter((write) => write.key !== COMMAND_TURN_KEY && readAgentJournalTurn(write.body))
 
+/** The command turn's newest body, as the journal would hold it. */
+const commandTurn = (writes: readonly Written[]) =>
+  readAgentJournalTurn(writes.findLast((write) => write.key === COMMAND_TURN_KEY)?.body)
+
+const resultRows = (writes: readonly Written[]) =>
+  writes.filter((write) => write.body.kind === 'status')
+
 describe('a Codex turn a conversation command claims', () => {
-  it('writes one root turn — the command turn — and scopes its content to it', async () => {
-    const { writes, tracker, emit } = harness()
-    const completion = tracker.run(THREAD, async () => ({}), COMMAND)
-    await Promise.resolve()
+  it('is the command turn: writes no root turn, scopes its content there, and ends it', () => {
+    const { writes, translator, emit } = harness()
+    translator.beginCommand(COMMAND)
 
     emit(notification('turn/started', { turn: { id: PROVIDER_TURN } }))
+    // The claim is persisted on the command turn: nothing else re-derives it later.
+    expect(commandTurn(writes)).toMatchObject({ state: 'running', providerTurnId: PROVIDER_TURN })
     emit(
       notification('item/completed', {
         turnId: PROVIDER_TURN,
@@ -134,42 +144,79 @@ describe('a Codex turn a conversation command claims', () => {
     emit(notification('turn/completed', { turn: { id: PROVIDER_TURN, status: 'completed' } }))
 
     expect(codexTurnRecords(writes)).toEqual([])
-    // The claim is persisted on the command turn: nothing else re-derives it later.
-    expect(writes.find((write) => write.key === COMMAND_TURN_KEY)?.body).toMatchObject({
-      kind: 'turn',
-      state: 'running',
-      providerTurnId: PROVIDER_TURN
-    })
+    const scope = { kind: 'turn', turnItemId: COMMAND_TURN_KEY }
     const summary = writes.find(
       (write) => write.body.kind === 'message' && write.body.role === 'assistant'
     )
-    expect(summary?.turnScope).toEqual({ kind: 'turn', turnItemId: COMMAND_TURN_KEY })
-    expect(
-      writes.some(
-        (write) => write.body.kind === 'status' && write.body.text === 'Context compacted'
-      )
-    ).toBe(false)
-    await expect(completion).resolves.toEqual({ outcome: 'success' })
+    expect(summary?.turnScope).toEqual(scope)
+    // Codex's own marker is the command's result row.
+    expect(resultRows(writes)).toEqual([
+      expect.objectContaining({
+        body: { kind: 'status', text: 'Context compacted', presentation: 'compaction' },
+        turnScope: scope
+      })
+    ])
+    expect(commandTurn(writes)).toMatchObject({
+      state: 'completed',
+      outcome: 'success',
+      providerTurnId: PROVIDER_TURN,
+      userItemId: RUNNING.userItemId,
+      requestedAt: RUNNING.requestedAt
+    })
   })
 
-  it('claims the same provider turn when the refused start is retried', async () => {
-    const { writes, tracker, emit } = harness(1)
-    void tracker.run(THREAD, async () => ({}), COMMAND)
-    await Promise.resolve()
+  it('reads an interrupted turn as the command cancelled, with no result row', () => {
+    const { writes, translator, emit } = harness()
+    translator.beginCommand(COMMAND)
+    emit(notification('turn/started', { turn: { id: PROVIDER_TURN } }))
+    emit(notification('turn/completed', { turn: { id: PROVIDER_TURN, status: 'interrupted' } }))
+
+    expect(commandTurn(writes)).toMatchObject({ state: 'interrupted', outcome: 'cancellation' })
+    expect(resultRows(writes)).toEqual([])
+  })
+
+  it('reads a turn that completed without compacting as a failure, with the reason', () => {
+    const { writes, translator, emit } = harness()
+    translator.beginCommand(COMMAND)
+    emit(notification('turn/started', { turn: { id: PROVIDER_TURN } }))
+    emit(
+      notification('turn/completed', {
+        turn: { id: PROVIDER_TURN, status: 'failed', error: { message: 'Unavailable' } }
+      })
+    )
+
+    expect(commandTurn(writes)).toMatchObject({ state: 'completed', outcome: 'failure' })
+    expect(resultRows(writes).map((write) => write.body)).toEqual([
+      { kind: 'status', text: 'Unavailable', tone: 'error' }
+    ])
+  })
+
+  it('names no provider turn for a Stop until Codex opens one, then the one it opened', () => {
+    const { translator, emit } = harness()
+    translator.beginCommand(COMMAND)
+    expect(translator.commandProviderTurnId(COMMAND.turnId)).toBeUndefined()
+    emit(notification('turn/started', { turn: { id: PROVIDER_TURN } }))
+    expect(translator.commandProviderTurnId(COMMAND.turnId)).toBe(PROVIDER_TURN)
+    expect(translator.commandProviderTurnId('ordinary')).toBe('ordinary')
+  })
+
+  it('claims the same provider turn when the refused start is retried', () => {
+    const { writes, translator, emit } = harness(1)
+    translator.beginCommand(COMMAND)
     const started = notification('turn/started', { turn: { id: PROVIDER_TURN } })
 
     expect(emit(started)).toEqual({ accepted: false, reason: 'backpressure' })
     expect(emit(started)).toEqual(ACCEPTED)
 
     expect(codexTurnRecords(writes)).toEqual([])
-    expect(writes.find((write) => write.key === COMMAND_TURN_KEY)?.body).toMatchObject({
-      providerTurnId: PROVIDER_TURN
-    })
-    expect(tracker.providerTurnId(COMMAND.turnId)).toBe(PROVIDER_TURN)
+    expect(commandTurn(writes)).toMatchObject({ providerTurnId: PROVIDER_TURN })
+    expect(translator.commandProviderTurnId(COMMAND.turnId)).toBe(PROVIDER_TURN)
   })
 
   it('leaves a primary turn no command claims to write its own record', () => {
-    const { writes, emit } = harness()
+    const { writes, translator, emit } = harness()
+    translator.beginCommand(COMMAND)
+    translator.forgetCommand(COMMAND.turnId)
     emit(notification('turn/started', { turn: { id: 'ordinary' } }))
     emit(notification('turn/completed', { turn: { id: 'ordinary', status: 'completed' } }))
     expect(

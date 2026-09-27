@@ -15,6 +15,11 @@ import type { CodexStructuredTurnCancellation } from './codex-structured-turn-ca
 type CancelInput = Parameters<StructuredAgentSessionAdapter['cancelTurn']>[0]
 type AnswerInput = Parameters<StructuredAgentSessionAdapter['answerPrompt']>[0]
 
+/** A command's Stop interrupts the provider turn carrying it; any other turn is its own. */
+function providerTurnId(session: CodexSession, turnId: string): string | undefined {
+  return session.translator ? session.translator.commandProviderTurnId(turnId) : turnId
+}
+
 export async function cancelCodexStructuredTurn(input: {
   request: CancelInput
   sessions: Map<string, CodexSession>
@@ -22,7 +27,7 @@ export async function cancelCodexStructuredTurn(input: {
 }): Promise<{ cancelled: boolean }> {
   const { request, sessions, cancellation } = input
   const session = requireLiveCodexSession(sessions, request.sessionId)
-  const turnId = session.compaction.providerTurnId(request.turnId)
+  const turnId = providerTurnId(session, request.turnId)
   if (!turnId) {
     return { cancelled: false }
   }
@@ -47,7 +52,7 @@ export async function cancelCodexStructuredTurn(input: {
     !session.ended &&
     session.fence === request.fence &&
     session.acquisitionGeneration === acquisitionGeneration &&
-    session.compaction.providerTurnId(request.turnId) === turnId &&
+    providerTurnId(session, request.turnId) === turnId &&
     session.prompts.ownsBoundClaim(claim, prompt.itemId, claim.prompt.threadId, promptTurnId)
   let interruptConfirmed = false
   try {

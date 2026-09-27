@@ -11,7 +11,6 @@ import {
 import { CodexBackgroundTaskTracker } from './codex-background-task-tracker'
 import { CodexSubagentExecutions } from './codex-subagent-executions'
 import { createCodexDispatchEchoes } from './codex-structured-dispatch-echo'
-import { StructuredSessionCompaction } from '../native-chat/agent-session-wire/structured-session-compaction'
 import { createCodexJournalTranslator } from './codex-structured-journal-translation'
 import { openCodexAppServerConnection } from './codex-app-server-connection'
 import {
@@ -85,7 +84,6 @@ export async function acquireCodexStructuredSession(input: {
       : null
   const subagentExecutions = new CodexSubagentExecutions()
   const dispatchEchoes = createCodexDispatchEchoes()
-  const compaction = new StructuredSessionCompaction()
   const translator = acquireInput.events
     ? createCodexJournalTranslator({
         sink: acquireInput.events,
@@ -95,7 +93,6 @@ export async function acquireCodexStructuredSession(input: {
         onPrimaryThreadStoppedRunning: () => deps.onPrimaryThreadStoppedRunning?.({ sessionId }),
         dispatchRequestOrigin: (clientMessageId) => dispatchEchoes.requestOrigin(clientMessageId),
         subagentExecutions,
-        claimCommandTurn: (threadId, turnId) => compaction.claimTurn(threadId, turnId),
         bindPromptItemId: (journalItemId, threadId, promptKey, turnId) =>
           acquisition.prompts.bindJournalItemId(journalItemId, threadId, promptKey, turnId),
         clearPromptTurn: (threadId, turnId) => acquisition.prompts.clearTurn(threadId, turnId),
@@ -249,7 +246,6 @@ export async function acquireCodexStructuredSession(input: {
       fastModeTierByModel: fastModeCatalog?.fastModeTierByModel ?? new Map(),
       ...(catalogAccess ? { catalogAccess } : {}),
       dispatchEchoes,
-      compaction,
       translator,
       backgroundTasks: new CodexBackgroundTaskTracker(opened.threadId, subagentExecutions),
       forceCloseUnexpected: (reason) =>

@@ -57,6 +57,8 @@ beforeEach(async () => {
         void host.handleAdapterEvent(mapped)
       }
     },
+    // The runtime's own wiring: the provider's answer is what settles a send it took.
+    onDispatchSettledLate: (settlement) => void host.settleLateDispatch(settlement),
     openConnection: claude.openConnection,
     readProcessStartTime: async () => 1_700_000_000_000,
     now: () => NOW

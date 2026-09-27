@@ -11,6 +11,7 @@ import { CodexJournalPrompts } from './codex-structured-journal-prompts'
 import { createCodexOversizedNotificationSettler } from './codex-structured-journal-translation-frames'
 import { CodexJournalActiveTurns } from './codex-structured-journal-translation-turn-state'
 import { CodexJournalTurnScopes } from './codex-journal-turn-scopes'
+import { CodexJournalCommandTurn } from './codex-journal-command-turn'
 import { CodexSubagentRoster } from './codex-subagent-roster'
 import type { CodexRowAttribution } from './codex-subagent-linkage'
 
@@ -18,10 +19,12 @@ export function createCodexJournalTranslatorWriters(deps: CodexJournalTranslator
   const activeTurns = new CodexJournalActiveTurns()
   const activeTurn = (threadId: string): string | null => activeTurns.current(threadId)
   const primaryThreadId = (): string | null => deps.primaryThreadId?.() ?? null
+  const commands = new CodexJournalCommandTurn()
   const turnScopes = new CodexJournalTurnScopes({
     sessionId: deps.sessionId,
     primaryThreadId,
-    activeTurn
+    activeTurn,
+    commandScope: (turnId) => commands.scopeFor(turnId)
   })
   const subagents = new CodexSubagentRoster({
     sink: deps.sink,
@@ -42,13 +45,13 @@ export function createCodexJournalTranslatorWriters(deps: CodexJournalTranslator
   )
   return {
     activeTurns,
-    turnScopes,
+    commands,
     subagents,
     attributionFor,
     genericFrames,
     items,
     compactions: new CodexJournalCompactions(deps.sink, activeTurn, attributionFor, (turnId) =>
-      turnScopes.claimed(turnId)
+      commands.compacted(turnId)
     ),
     goals: new CodexJournalGoals(deps.sink, attributionFor),
     prompts: new CodexJournalPrompts(

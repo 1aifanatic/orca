@@ -28,6 +28,11 @@ import {
 } from './claude-turn-opening'
 import { claudeTurnEndForResult } from './claude-turn-lifecycle-item'
 import { ClaudeOpenTurn } from './claude-open-turn'
+import {
+  claudeCommandCurrentTurn,
+  claudeCommandResultEnd,
+  observeClaudeCommandFrame
+} from './claude-command-turn'
 import { ClaudeContextFacts } from './claude-context-facts'
 import { claudeSessionStateEndsTurn } from './claude-session-state-turn-over'
 import { ClaudeJournalPrompts } from './claude-structured-journal-prompts'
@@ -189,6 +194,9 @@ export function createClaudeJournalTranslator(
       if (event.type === 'message') {
         context.observe(event.message, event.observedAt ?? Date.now())
       }
+      if (event.type === 'message' && observeClaudeCommandFrame(turn.command, event.message)) {
+        return
+      }
       if (event.type === 'message' && handleStream(event.message, event.observedAt ?? Date.now())) {
         return
       }
@@ -212,6 +220,13 @@ export function createClaudeJournalTranslator(
         // diagnostic below still runs: a child's failure is reportable even when
         // it ends no turn.
         const settlesTurn = isRootClaudeFrame(event.message)
+        const observedAt = event.observedAt ?? Date.now()
+        const commandEnd = settlesTurn
+          ? claudeCommandResultEnd(turn, deps.sink, event.message, observedAt)
+          : null
+        if (commandEnd === 'another-input') {
+          return
+        }
         // Read before the settle below closes it: the result reports that turn's end.
         const endedTurnScope = turn.turnScope
         if (settlesTurn) {
@@ -222,7 +237,7 @@ export function createClaudeJournalTranslator(
           subagents.settleTurn(turn.groupKey)
           context.settle(
             event.message,
-            claudeTurnEndForResult(event.message, event.observedAt ?? Date.now())
+            commandEnd ?? claudeTurnEndForResult(event.message, observedAt)
           )
           // The turn is over. A block still awaiting its final keeps the text the
           // flush above journaled, but its live state goes: an interrupted turn
@@ -289,6 +304,12 @@ export function createClaudeJournalTranslator(
     get currentTurnId() {
       return turn.id
     },
+    get commandTurnId() {
+      return turn.command ? turn.id : null
+    },
+    beginCommand: (start) => turn.beginCommand(claudeCommandCurrentTurn(start)),
+    forgetCommand: (turnId) => turn.forgetCommand(turnId),
+    commandInterruptRequested: (turnId) => turn.commandInterruptRequested(turnId),
     flush: streamedText.flush,
     childToolOwner: childQueries.childToolOwner,
     childActivity: childQueries.childActivity,

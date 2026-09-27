@@ -26,7 +26,6 @@ import type { ClaudeBackgroundTaskTracker } from './claude-background-task-track
 import type { ClaudeChildWorkDecoder } from './claude-child-work-decoder'
 import type { ClaudeSlashCommandCatalog } from './claude-slash-command-catalog'
 import type { ClaudeSessionStartup } from './claude-structured-session-startup-state'
-import type { StructuredSessionCompaction } from '../native-chat/agent-session-wire/structured-session-compaction'
 
 export type ClaudeAuthDiagnostic = {
   apiKeySourceConfigured: boolean
@@ -175,8 +174,6 @@ export type ClaudeSession = {
   backgroundTasks: ClaudeBackgroundTaskTracker
   /** Each child's own task frames, as evidence for the host's child records. */
   childWork: ClaudeChildWorkDecoder
-  /** The conversation command this child is running; it ends with the child. */
-  compaction: StructuredSessionCompaction
   /** The `/` surface the CLI reports for itself; seeded from init, kept current
    *  by later init and `commands_changed` frames. */
   commands: ClaudeSlashCommandCatalog

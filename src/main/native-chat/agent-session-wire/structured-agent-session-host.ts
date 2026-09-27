@@ -63,7 +63,10 @@ export class StructuredAgentSessionHost {
     this
   )
   private readonly sessions = new StructuredAgentSessionConversations({
-    deliver: (sessionId, journal) => this.subscribers.publish(sessionId, journal),
+    deliver: (sessionId, journal) => {
+      this.subscribers.publish(sessionId, journal)
+      this.conversationDelivery.afterCommit(sessionId, journal)
+    },
     onDeliveryError: (sessionId, error) => this.deps.onEventSinkError?.({ sessionId, error }),
     now: () => this.now()
   })

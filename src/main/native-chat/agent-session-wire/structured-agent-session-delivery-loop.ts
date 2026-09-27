@@ -2,8 +2,9 @@
 // it, and the one thing that settles a queued message because of a start, a child or a leftover.
 //
 // A send is accepted on its own serialized step and returns; this loop does the rest. It exists
-// for a session exactly while a message is queued there — accepted, not yet handed over — and
-// every step re-reads the journal and the conversation's child record to decide, so there is no
+// for a session exactly while a message is queued there — accepted, not yet handed over — and no
+// conversation command runs: a command's turn takes no input, and the commit that ends it wakes
+// the loop again. Every step re-reads the journal and the conversation's child record to decide, so there is no
 // loop state to disagree with them. Each step is its own serialized task. That is what lets a Stop
 // that arrives while a start holds the queue withdraw the queued messages before the handover that
 // would have written them. Stop and the conversation's close are the only other writers of a
@@ -27,13 +28,8 @@ import {
   oldestQueuedSubmission,
   recordStructuredAgentSessionStartFailure
 } from './structured-agent-session-start-failure-row'
-import { providerChildEnded } from './structured-agent-session-provider-child'
 import { handOverSubmission } from './structured-agent-session-turns'
-import {
-  settleStructuredAgentSessionCommand,
-  type StructuredAgentSessionCommandEnd,
-  type StructuredAgentSessionCommandHandover
-} from './structured-agent-session-command-turn'
+import { structuredAgentSessionCommandRunning } from './structured-agent-session-command-turn'
 
 export type StructuredAgentSessionDeliveryLoopDeps = {
   sessions: ReadonlyMap<string, StructuredAgentSessionHostSession>
@@ -58,13 +54,6 @@ export type StructuredAgentSessionDeliveryLoopDeps = {
 }
 
 type Step = 'continue' | 'stop'
-
-/** A command handed to this child, whose end the loop waits for before handing over anything. */
-type CommandRun = StructuredAgentSessionCommandHandover & {
-  child: StructuredAgentSessionProviderChildIdentity
-  /** The child's end, which ends the command: the adapter's answer dies with the child. */
-  childEnded: Promise<void>
-}
 
 type Prepared =
   | 'stop'
@@ -121,14 +110,6 @@ export class StructuredAgentSessionDeliveryLoop {
         if (handed === 'stop') {
           return
         }
-        if (handed !== 'continue') {
-          // Off the queue, so a Stop reaches the command meanwhile. The child's end ends the wait
-          // too, and its dead-generation settlement already wrote the command's verdict.
-          const end = await Promise.race([handed.completion, handed.childEnded.then(() => null)])
-          if (end) {
-            await this.deps.serialize(sessionId, () => this.settleCommand(sessionId, handed, end))
-          }
-        }
       }
     } catch (error) {
       this.deps.onError(sessionId, error)
@@ -159,7 +140,8 @@ export class StructuredAgentSessionDeliveryLoop {
       (submission) => session.journal.wroteBeforeOpen(submission.acceptedSequence)
     )
     const oldest = oldestQueuedSubmission(session)
-    if (!oldest) {
+    // A running command takes no input. Its end is a commit, which wakes the loop again.
+    if (!oldest || structuredAgentSessionCommandRunning(session.journal)) {
       return this.stop(sessionId)
     }
     const failedStart = startThatFailedWhileQueued(session, oldest)
@@ -182,7 +164,7 @@ export class StructuredAgentSessionDeliveryLoop {
     sessionId: string,
     awaited: StructuredAgentSessionProviderChildIdentity | null,
     startFailure: string | null
-  ): Promise<Step | CommandRun> {
+  ): Promise<Step> {
     const session = this.deps.sessions.get(sessionId)
     if (!session || this.disposed) {
       return this.stop(sessionId)
@@ -213,7 +195,7 @@ export class StructuredAgentSessionDeliveryLoop {
     if (!next) {
       return this.stop(sessionId)
     }
-    const command = await handOverSubmission(
+    await handOverSubmission(
       {
         sessionId,
         journal: session.journal,
@@ -226,30 +208,7 @@ export class StructuredAgentSessionDeliveryLoop {
       },
       next
     )
-    if (!command) {
-      return 'continue'
-    }
-    const ranOn = { generation: awaitedChild.generation, fence: awaitedChild.fence }
-    return { ...command, child: ranOn, childEnded: providerChildEnded(session, ranOn) }
-  }
-
-  /** Writes the command's end only while the child it was handed to is still the session's: one
-   *  that ended meanwhile settled the command with its own verdict. */
-  private async settleCommand(
-    sessionId: string,
-    run: CommandRun,
-    end: StructuredAgentSessionCommandEnd
-  ): Promise<void> {
-    const session = this.deps.sessions.get(sessionId)
-    const child = session?.child
-    if (!session || child?.generation !== run.child.generation || child.fence !== run.child.fence) {
-      return
-    }
-    await settleStructuredAgentSessionCommand(
-      { journal: session.journal, fence: child.fence, now: this.deps.now },
-      run.clientMessageId,
-      end
-    )
+    return 'continue'
   }
 
   private async fail(sessionId: string, failure: StartFailure): Promise<'stop'> {

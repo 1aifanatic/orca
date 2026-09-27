@@ -10,6 +10,7 @@ import {
 import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import {
   AGENT_JOURNAL_THREAD_SCOPE,
+  type AgentJournalItemBody,
   type AgentJournalRenderItem
 } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionSubscribeEvent } from '../../../shared/agent-session-wire'
@@ -29,24 +30,53 @@ import {
   HOST_TEST_THREAD as THREAD,
   hostTestMessage
 } from './structured-agent-session-host-test-data'
-import type { StructuredSessionCompactionResult } from './structured-session-compaction'
+import type { StructuredConversationCommandOutcome } from './structured-conversation-command-outcome'
 
 let state: ReturnType<typeof hostTestState>
 let compact: Mock<NonNullable<StructuredAgentSessionAdapter['compact']>>
 let closeSession: Mock<NonNullable<StructuredAgentSessionAdapter['closeSession']>>
-let finish: (result: StructuredSessionCompactionResult) => void
 
 beforeEach(() => {
   state = hostTestState()
-  compact = vi.fn(
-    () =>
-      new Promise<StructuredSessionCompactionResult>((resolve) => {
-        finish = resolve
-      })
-  )
+  // Codex's ack: the provider took the command, which its translator ends later.
+  compact = vi.fn(async () => ({ state: 'accepted' as const, providerIdentity: null }))
   closeSession = vi.fn(async () => true)
   Object.assign(state.host.deps.adapter, { compact, closeSession })
 })
+
+/** What the child's journal translator writes when the provider ends the command: the command's
+ *  one result row and its turn's end, in one batch. */
+function finish(result: StructuredConversationCommandOutcome): void {
+  const { command } = compact.mock.calls.at(-1)![0]
+  const events = state.acquire.mock.calls.at(-1)![0].events!
+  const turnScope = { kind: 'turn' as const, turnItemId: agentJournalItemKey(command.identity) }
+  const row: AgentJournalItemBody | null =
+    result.outcome === 'success'
+      ? { kind: 'status', text: 'Context compacted', presentation: 'compaction' }
+      : result.outcome === 'failure'
+        ? { kind: 'status', text: result.error ?? 'Compaction failed.', tone: 'error' }
+        : null
+  events.appendLifecycleBatch!(
+    `turn-completed:${command.clientMessageId}`,
+    [
+      ...(row
+        ? [{ kind: 'item' as const, identity: command.resultIdentity, body: row, turnScope }]
+        : []),
+      {
+        kind: 'item',
+        identity: command.identity,
+        body: {
+          ...command.running,
+          state: result.outcome === 'cancellation' ? 'interrupted' : 'completed',
+          outcome: result.outcome,
+          completedAt: HOST_TEST_NOW
+        },
+        turnScope: AGENT_JOURNAL_THREAD_SCOPE
+      }
+    ],
+    { lifecycle: true }
+  )
+}
 
 function compactParams() {
   return {
@@ -124,7 +154,7 @@ it('answers at handover, then journals its own entry, turn and result (B1, B16)'
   const ended = facts.indexOf('turn:completed:success')
   expect(running, facts.join('\n')).toBeGreaterThanOrEqual(0)
   expect(ended).toBeGreaterThan(running)
-  expect(facts.indexOf('status:Conversation compacted.')).toBeGreaterThan(running)
+  expect(facts.indexOf('status:Context compacted')).toBeGreaterThan(running)
   // No turn row was ever overwritten by another body kind.
   const turnKey = structuredAgentSessionCommandTurn(cmid).itemId
   for (const event of events) {
@@ -332,39 +362,31 @@ it('does not stop the child for a Stop naming a command that already ended (B4)'
   expect(closeSession).not.toHaveBeenCalled()
 })
 
-it("answers the command's message before its turn, so a crash between them leaves a turn the sweep settles (B4)", async () => {
+it("answers a refused command's message before ending its turn, so a crash between them leaves a turn the sweep settles (B4)", async () => {
   await attach()
+  // The one command end the host still writes: the provider refused it. A provider's own end is
+  // one batch its translator writes, with nothing to split.
+  compact.mockResolvedValue({ state: 'rejected', reason: 'Not enough messages to compact.' })
+  const { journal: live } = state.host['sessions'].get(SESSION)!
+  const appendLifecycleBatch = live.appendLifecycleBatch.bind(live)
+  const crash = vi
+    .spyOn(live, 'appendLifecycleBatch')
+    .mockImplementation((input) =>
+      input.settlementId.startsWith('command-settled:')
+        ? Promise.reject(new Error('host crashed'))
+        : appendLifecycleBatch(input)
+    )
   const params = compactParams()
   const cmid = params.envelope.clientOperationId
   await state.host.conversationCommand(CALLER, params)
-  await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce())
-  const { journal: live } = state.host['sessions'].get(SESSION)!
-  // The host dies after the settle's first write: the second one never lands.
-  const writes = { settle: 0 }
-  const crash = new Error('host crashed')
-  const resolveDispatch = live.resolveDispatch.bind(live)
-  const appendLifecycleBatch = live.appendLifecycleBatch.bind(live)
-  vi.spyOn(live, 'resolveDispatch').mockImplementation((input) =>
-    writes.settle++ > 0 ? Promise.reject(crash) : resolveDispatch(input)
-  )
-  vi.spyOn(live, 'appendLifecycleBatch').mockImplementation((input) =>
-    input.settlementId.startsWith('command-settled:') && writes.settle++ > 0
-      ? Promise.reject(crash)
-      : appendLifecycleBatch(input)
-  )
-  finish({ outcome: 'success' })
-  await vi.waitFor(() => expect(writes.settle).toBe(2))
-  vi.restoreAllMocks()
+  await vi.waitFor(() => expect(crash).toHaveBeenCalled())
+  crash.mockRestore()
 
-  const before = await journal()
-  const turn = readAgentJournalTurn(
-    before.items.find((item) => item.itemId === structuredAgentSessionCommandTurn(cmid).itemId)
-      ?.body
-  )
-  const submission = before.submissions.find((entry) => entry.clientMessageId === cmid)
   // Never an ended turn whose message still reads as in flight.
-  expect(turn?.state).toBe('running')
-  expect(submission?.dispatchState).toBe('accepted')
+  expect(readAgentJournalTurn((await commandTurn(cmid))?.body)?.state).toBe('running')
+  expect(
+    (await journal()).submissions.find((entry) => entry.clientMessageId === cmid)?.dispatchState
+  ).toBe('rejected')
   await settleStaleStructuredAgentSessionState({
     journal: live,
     sessionId: SESSION,
@@ -372,13 +394,7 @@ it("answers the command's message before its turn, so a crash between them leave
     acquisitionGeneration: null,
     deathEvidence: null
   })
-  expect(
-    readAgentJournalTurn(
-      (await journal()).items.find(
-        (item) => item.itemId === structuredAgentSessionCommandTurn(cmid).itemId
-      )?.body
-    )?.state
-  ).toBe('unverifiable')
+  expect(readAgentJournalTurn((await commandTurn(cmid))?.body)?.state).toBe('unverifiable')
 })
 
 it('counts a message held behind the command from its handover, not its send', async () => {
@@ -458,8 +474,9 @@ it('writes one exit row when the child dies mid-command, and the loop writes not
     snapshot.items.filter((item) => item.body.kind === 'status' && item.body.tone === 'error')
   ).toHaveLength(1)
   expect(snapshot.items.some((item) => item.itemId.includes('command-result'))).toBe(false)
+  // Codex acknowledged the command, so the message was delivered; only its turn was cut short.
   expect(snapshot.submissions.find((entry) => entry.clientMessageId === cmid)?.dispatchState).toBe(
-    'unknown'
+    'accepted'
   )
 })
 

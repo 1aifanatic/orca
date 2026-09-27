@@ -43,7 +43,7 @@ function commandParams(command: AgentSessionConversationCommand) {
 beforeEach(async () => {
   resetHostTestOperationIds()
   acquisitions = 0
-  compact.mockReset().mockResolvedValue({ outcome: 'success' })
+  compact.mockReset().mockResolvedValue({ state: 'accepted', providerIdentity: null })
   directory = await mkdtemp(join(tmpdir(), 'orca-conversation-command-'))
   store = await AgentSessionRecordStore.open({
     directory: join(directory, 'store'),

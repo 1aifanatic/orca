@@ -10,7 +10,6 @@ import {
 } from './claude-agent-sdk-control-requests'
 import { ClaudeBackgroundTaskTracker } from './claude-background-task-tracker'
 import { ClaudeChildWorkDecoder } from './claude-child-work-decoder'
-import { StructuredSessionCompaction } from '../native-chat/agent-session-wire/structured-session-compaction'
 import { ClaudeSlashCommandCatalog } from './claude-slash-command-catalog'
 import { createClaudeSessionStartup } from './claude-structured-session-startup-state'
 import {
@@ -38,7 +37,6 @@ function sessionFor(setModel: ClaudeSession['connection']['setModel']): ClaudeSe
     replayContentFallbackBlocked: false,
     backgroundTasks: new ClaudeBackgroundTaskTracker(),
     childWork: new ClaudeChildWorkDecoder(),
-    compaction: new StructuredSessionCompaction(),
     commands: new ClaudeSlashCommandCatalog(),
     dispatchSequence: 0,
     optionMutationSequence: 0,

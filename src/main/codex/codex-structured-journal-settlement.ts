@@ -121,6 +121,8 @@ export function settleCodexJournalTurn(input: {
   pendingPrompts?: Map<string, CodexPendingJournalPrompt>
   clearPromptTurn?: (threadId: string, turnId: string) => void
   attributionFor: CodexRowAttribution
+  /** The end of a conversation command the turn carried, which settles with it. */
+  commandEnd?: readonly JournalLifecycleMutationInput[]
 }): StructuredAgentSessionSinkAdmission {
   const mutations: JournalLifecycleMutationInput[] = []
   const activeItemsToForget: { key: string; threadId: string; itemId: string }[] = []
@@ -162,6 +164,7 @@ export function settleCodexJournalTurn(input: {
       turnScope: AGENT_JOURNAL_THREAD_SCOPE
     })
   }
+  mutations.push(...(input.commandEnd ?? []))
   const admission = appendCodexLifecycleMutations(
     input.sink,
     `turn-completed:${input.sessionId}:${input.threadId}:${input.turnId}`,

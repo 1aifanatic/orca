@@ -10,7 +10,6 @@ import type {
 } from './codex-app-server-connection'
 import { CodexAcquisitionWindow } from './codex-structured-acquisition-window'
 import type { CodexDispatchEchoes } from './codex-structured-dispatch-echo'
-import type { StructuredSessionCompaction } from '../native-chat/agent-session-wire/structured-session-compaction'
 import type { AgentSessionBackgroundTaskState } from '../../shared/agent-session-wire'
 import type { CodexBackgroundTaskTracker } from './codex-background-task-tracker'
 import type { CodexJournalTranslator } from './codex-structured-journal-translation'
@@ -127,8 +126,6 @@ export type CodexSession = {
   catalogAccess?: CodexSessionCatalogAccess
   /** Sends whose identity is still to be settled by the provider echo. */
   dispatchEchoes: CodexDispatchEchoes
-  /** The conversation command this child is running; it ends with the child. */
-  compaction: StructuredSessionCompaction
   translator: CodexJournalTranslator | null
   /** Ephemeral roster behind the background-tasks strip; never durable state. */
   backgroundTasks: CodexBackgroundTaskTracker

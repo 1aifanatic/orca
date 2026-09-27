@@ -7,7 +7,6 @@ import { ClaudeBackgroundTaskTracker } from './claude-background-task-tracker'
 import { ClaudeChildWorkDecoder } from './claude-child-work-decoder'
 import { ClaudeSlashCommandCatalog } from './claude-slash-command-catalog'
 import { createClaudeSessionStartup } from './claude-structured-session-startup-state'
-import { StructuredSessionCompaction } from '../native-chat/agent-session-wire/structured-session-compaction'
 
 /** The session as published at spawn: nothing the CLI reports at init is assumed yet. */
 export function createClaudeSessionPublication(input: {
@@ -55,7 +54,6 @@ export function createClaudeSessionPublication(input: {
       replayContentFallbackBlocked: false,
       backgroundTasks: new ClaudeBackgroundTaskTracker(),
       childWork: new ClaudeChildWorkDecoder(),
-      compaction: new StructuredSessionCompaction(),
       // Undefined until init: an unread catalog is unavailable, not empty.
       commands: new ClaudeSlashCommandCatalog(),
       dispatchSequence: 0,

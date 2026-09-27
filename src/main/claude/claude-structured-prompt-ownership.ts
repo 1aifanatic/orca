@@ -141,7 +141,8 @@ export async function cancelClaudeStructuredTurn(input: {
   const dispatchAdmissionAllowsCancellation = (): boolean =>
     dispatchAdmissionIsCurrent() ||
     (Boolean(prompt) && supportsClaudeQueuedInterruptCancellation(session))
-  const compactionOwnsTurn = (): boolean => session.compaction.ownsTurn(request.turnId)
+  const compactionOwnsTurn = (): boolean =>
+    session.translator !== null && session.translator.commandTurnId === request.turnId
   const currentDispatchHasRetiredWaiter = (): boolean =>
     session.retiredDispatchWaiters.some(
       (waiter) => waiter.dispatchSequence === session.dispatchSequence
@@ -173,7 +174,14 @@ export async function cancelClaudeStructuredTurn(input: {
     const result = await cancelClaudeTurn(
       session,
       timeoutMs,
-      isCurrent,
+      () => {
+        const current = isCurrent()
+        // Read with the result that ends it: a stopped command reports no compaction.
+        if (current && compactionOwnsTurn()) {
+          session.translator?.commandInterruptRequested(request.turnId)
+        }
+        return current
+      },
       input.onDispatchSettledLate
     )
     if (result.cancelled && claim && cancellationObserved) {

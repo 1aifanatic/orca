@@ -38,7 +38,7 @@ export function createCodexJournalTranslator(
 ): CodexJournalTranslator {
   const {
     activeTurns,
-    turnScopes,
+    commands,
     subagents,
     attributionFor,
     genericFrames,
@@ -67,8 +67,7 @@ export function createCodexJournalTranslator(
     flushSuppression: () => genericFrames.flush(),
     resetActivity,
     attributionFor,
-    turnScopes,
-    ...(deps.claimCommandTurn ? { claimCommandTurn: deps.claimCommandTurn } : {}),
+    commands,
     ...(deps.now ? { now: deps.now } : {})
   })
   let primaryThreadStoppedRunning = false
@@ -278,6 +277,9 @@ export function createCodexJournalTranslator(
       }
       return publishActivity(event, unhandled)
     },
+    beginCommand: (command) => commands.begin(command),
+    forgetCommand: (turnId) => commands.forget(turnId),
+    commandProviderTurnId: (turnId) => commands.providerTurnId(turnId),
     cancelPrompt: (journalItemId) => prompts.cancel(journalItemId),
     resolvePrompt: (journalItemId) => prompts.resolve(journalItemId),
     flush: () => {

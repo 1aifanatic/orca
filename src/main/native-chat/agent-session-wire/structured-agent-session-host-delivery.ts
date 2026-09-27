@@ -10,6 +10,7 @@ import {
   type OpenedStructuredAgentSessionConversation
 } from './structured-agent-session-conversation-open'
 import { StructuredAgentSessionDeliveryLoop } from './structured-agent-session-delivery-loop'
+import { structuredAgentSessionCommandRunning } from './structured-agent-session-command-turn'
 import type { StructuredAgentSessionResumeOutcome } from './structured-agent-session-agent-start'
 import type {
   StructuredAgentSessionHostDeps,
@@ -23,6 +24,10 @@ export type StructuredAgentSessionConversationDelivery = {
   loop: StructuredAgentSessionDeliveryLoop
   /** For a caller inside the session's serialize. */
   open: (sessionId: string) => Promise<StructuredAgentSessionHostSession | null>
+  /** Every commit a conversation's journal makes: one may have ended the command that held its
+   *  queue. Enqueued through the session's serialize, never read here, so a commit that lands while
+   *  a step is deciding to stop wakes the loop after that step rather than being lost to it. */
+  afterCommit: (sessionId: string, journal: AgentSessionJournal) => void
   /** Indexes a conversation some other open produced, as `open` would have. */
   adoptOpened: (
     sessionId: string,
@@ -75,8 +80,29 @@ export function createStructuredAgentSessionConversationDelivery(input: {
       loop.wake(sessionId)
     }
   }
+  const wakesQueued = new Set<string>()
+  const afterCommit = (sessionId: string, journal: AgentSessionJournal): void => {
+    if (
+      wakesQueued.has(sessionId) ||
+      structuredAgentSessionCommandRunning(journal) ||
+      !journal.submissions().some(isQueuedAgentJournalSubmission)
+    ) {
+      return
+    }
+    wakesQueued.add(sessionId)
+    void input
+      .serialize(sessionId, async () => {
+        wakesQueued.delete(sessionId)
+        loop.wake(sessionId)
+      })
+      .catch((error: unknown) => {
+        wakesQueued.delete(sessionId)
+        deps.onEventSinkError?.({ sessionId, error })
+      })
+  }
   return {
     loop,
+    afterCommit,
     adoptOpened,
     open: (sessionId) =>
       openStructuredAgentSessionConversation({ deps, sessions, adoptOpened }, sessionId)

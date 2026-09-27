@@ -32,7 +32,6 @@ import {
   structuredAgentSessionCommandWasStopped,
   structuredAgentSessionHandoverOrigin,
   structuredAgentSessionStopNoteIdentity,
-  type StructuredAgentSessionCommandHandover,
   type StructuredAgentSessionCommandHandoverContext
 } from './structured-agent-session-command-turn'
 export { performSetOption } from './structured-agent-session-turns-options'
@@ -140,12 +139,11 @@ export type AgentSessionHandoverContext = StructuredAgentSessionCommandHandoverC
 /**
  * Hands one queued submission to the provider. The `dispatch{pending}` row goes first: a crash
  * after it leaves a message in doubt, never one that reads as queued and so provably unwritten.
- * A conversation command answers with the run the caller waits on before handing over more.
  */
 export async function handOverSubmission(
   ctx: AgentSessionHandoverContext,
   submission: AgentJournalSubmission
-): Promise<StructuredAgentSessionCommandHandover | null> {
+): Promise<void> {
   const { clientMessageId } = submission
   const body = ctx.journal.itemBody(agentJournalSubmissionKey(clientMessageId))
   if (body?.kind !== 'message') {
@@ -155,10 +153,11 @@ export async function handOverSubmission(
       reason: 'The message could not be read back and was not sent.',
       fence: ctx.fence
     })
-    return null
+    return
   }
   if (body.command) {
-    return handOverStructuredAgentSessionCommand(ctx, submission, body)
+    await handOverStructuredAgentSessionCommand(ctx, submission, body)
+    return
   }
   // The message joins the turn running at handover, a steer, or opens its own.
   await ctx.journal.resolveDispatch({
@@ -177,7 +176,7 @@ export async function handOverSubmission(
   )
   // An admission needs no dispatch row: the submission is already pending.
   if (outcome.state === 'admitted') {
-    return null
+    return
   }
   try {
     await ctx.journal.resolveDispatch(
@@ -205,7 +204,6 @@ export async function handOverSubmission(
     }
     throw error
   }
-  return null
 }
 
 function requireSubmission(
