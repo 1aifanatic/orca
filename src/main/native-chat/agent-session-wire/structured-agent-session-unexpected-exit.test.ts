@@ -129,6 +129,7 @@ describe('provider-exit recovery tickets', () => {
         snapshot: () => ({
           items: [lifecycleItem('turn-1', 1, { state: 'running', startedAt: 1_000 })]
         }),
+        lastLiveActivityAt: () => 1_000,
         appendLifecycleBatch,
         markPendingSubmissionsUnknown: vi.fn(async () => [])
       }
