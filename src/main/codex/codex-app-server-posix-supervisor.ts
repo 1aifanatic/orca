@@ -108,9 +108,10 @@ timer = setInterval(() => {
   if (ownerGone()) terminateOwnedGroup()
 }, 100)
 timer.unref()
-child.once('error', () => {
+child.once('error', (error) => {
   clearInterval(timer)
-  process.exit(127)
+  // The owner sees only this pid's exit; stderr is where a missing provider binary can say so.
+  process.stderr.write(String(error && error.message) + '\\n', () => process.exit(127))
 })
 child.once('exit', (code, signal) => {
   void reapProviderExit(code, signal)

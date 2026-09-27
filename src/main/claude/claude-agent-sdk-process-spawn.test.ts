@@ -43,7 +43,7 @@ function sdkOptions(overrides: Partial<SdkSpawnOptions> = {}): SdkSpawnOptions {
 describe('claude agent SDK process spawn', () => {
   it('routes the SDK spawn through Orca and retains the pid the lease adjudicates on', () => {
     const process = fakeSpawn()
-    const spawn = createClaudeCodeProcessSpawn(process.spawnImpl)
+    const spawn = createClaudeCodeProcessSpawn(process.spawnImpl, 'win32')
 
     expect(spawn.pid).toBeUndefined()
     expect(spawn.child).toBeNull()
@@ -52,14 +52,45 @@ describe('claude agent SDK process spawn', () => {
     expect(child).toBe(process.child)
     expect(spawn.child).toBe(process.child)
     expect(spawn.pid).toBe(4321)
+    // Windows has no supervisor: Claude itself is the child.
+    expect(spawn.supervised).toBe(false)
     expect(process.specs[0]).toEqual({
       program: '/usr/local/bin/claude',
       args: ['--output-format', 'stream-json'],
       cwd: '/work/repo',
       env: { PATH: '/usr/bin', CLAUDE_CONFIG_DIR: '/accounts/one' },
+      detached: false,
       stdio: ['pipe', 'pipe', 'pipe']
     })
   })
+
+  it.each(['darwin', 'linux'] as const)(
+    'starts Claude under the provider supervisor on %s, which is then the pid the lease records',
+    (platform) => {
+      const process = fakeSpawn()
+      const spawn = createClaudeCodeProcessSpawn(process.spawnImpl, platform)
+      spawn.spawn(sdkOptions())
+
+      const spec = process.specs[0] as ProcessSpec
+      expect(spawn.supervised).toBe(true)
+      expect(spawn.pid).toBe(4321)
+      expect(spec.program).toBe(globalThis.process.execPath)
+      expect(spec.args?.[0]).toBe('-e')
+      expect(spec.detached).toBe(true)
+      expect(spec.cwd).toBe('/work/repo')
+      const supervisorSpec = JSON.parse(
+        Buffer.from(String(spec.env?.ORCA_PROVIDER_SUPERVISOR_SPEC), 'base64').toString()
+      )
+      expect(supervisorSpec).toMatchObject({
+        command: '/usr/local/bin/claude',
+        args: ['--output-format', 'stream-json'],
+        cwd: '/work/repo',
+        ownerPid: globalThis.process.pid
+      })
+      // The supervisor passes its env to Claude minus its own two keys.
+      expect(spec.env).toMatchObject({ PATH: '/usr/bin', CLAUDE_CONFIG_DIR: '/accounts/one' })
+    }
+  )
 
   it('keeps the child out of the SDK abort path so exit proof stays Orca-owned', () => {
     const process = fakeSpawn()
@@ -86,7 +117,7 @@ describe('claude agent SDK process spawn', () => {
 
   it('hands a Windows .cmd shim to Orca\u2019s argument encoder', () => {
     const process = fakeSpawn()
-    createClaudeCodeProcessSpawn(process.spawnImpl).spawn(
+    createClaudeCodeProcessSpawn(process.spawnImpl, 'win32').spawn(
       sdkOptions({
         command: 'C:\\Users\\dev\\AppData\\npm\\claude.cmd',
         args: ['--setting-sources=user,project,local', '--session-id', 'a b&c']
