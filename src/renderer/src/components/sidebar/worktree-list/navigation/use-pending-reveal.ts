@@ -5,7 +5,7 @@ import { translate } from '@/i18n/i18n'
 import { getRenderRowOptionId } from './active-descendant-option'
 import { getRenderRowSidebarKey, rowKeyMatchesRenderRow } from './render-row-lookup'
 import { revealMountedSidebarRowElement, revealMountedWorktreeElement } from './mounted-row-reveal'
-import { getSidebarRowRevealAncestorKeys } from './reveal-ancestors'
+import { expandSidebarRowRevealAncestors } from './expand-sidebar-row-reveal-ancestors'
 import { sidebarWorkspaceStillExists } from './folder-reveal'
 import { completeMountedSidebarReveal } from './complete-mounted-reveal'
 import {
@@ -66,8 +66,10 @@ export function usePendingSidebarReveal(args: PendingSidebarRevealArgs): void {
     }
 
     let cancelled = false
+    const isCancelled = () =>
+      cancelled || useAppStore.getState().pendingRevealWorktree !== pendingRevealWorktree
     schedulePendingRevealFrame(() => {
-      if (cancelled) {
+      if (isCancelled()) {
         return
       }
       const targetWorktreeStillExists = sidebarWorkspaceStillExists(
@@ -109,8 +111,8 @@ export function usePendingSidebarReveal(args: PendingSidebarRevealArgs): void {
         completeMountedSidebarReveal({
           container,
           element: revealedOption,
-          cancelled: () =>
-            cancelled || argsRef.current.pendingRevealWorktree !== pendingRevealWorktree,
+          behavior: pendingRevealWorktree.behavior,
+          cancelled: isCancelled,
           isScrollSettling: () => argsRef.current.isRevealScrollSettling(),
           wasScrollInterrupted: () => argsRef.current.wasRevealScrollInterrupted(),
           markRevealScroll,
@@ -123,6 +125,9 @@ export function usePendingSidebarReveal(args: PendingSidebarRevealArgs): void {
                 })
             : undefined,
           complete: (landed) => {
+            if (isCancelled()) {
+              return
+            }
             if (landed && pendingRevealWorktree.highlight) {
               const revealedRowKey =
                 revealedOption.dataset.worktreeRowKey ?? getRenderRowSidebarKey(targetRow)
@@ -147,7 +152,7 @@ export function usePendingSidebarReveal(args: PendingSidebarRevealArgs): void {
         count: nextRetryCount
       }
       if (nextRetryCount <= MAX_REVEAL_RETRIES) {
-        scheduleRetryTick(() => cancelled)
+        scheduleRetryTick(isCancelled)
         return
       }
       pendingRevealRetryRef.current = null
@@ -199,23 +204,13 @@ export function usePendingSidebarReveal(args: PendingSidebarRevealArgs): void {
       return
     }
 
-    let toggledAncestor = false
-    for (const groupKey of getSidebarRowRevealAncestorKeys({
-      rowKey: pendingRevealSidebarRow.rowKey,
-      repoMap: current.repoMap,
-      projectGroups: current.projectGroups,
-      projectGrouping: current.projectGrouping
-    })) {
-      if (current.collapsedGroups.has(groupKey)) {
-        current.toggleGroup(groupKey)
-        toggledAncestor = true
-      }
-    }
-    if (toggledAncestor) {
+    if (expandSidebarRowRevealAncestors(current, pendingRevealSidebarRow.rowKey)) {
       return
     }
 
     let cancelled = false
+    const isCancelled = () =>
+      cancelled || useAppStore.getState().pendingRevealSidebarRow !== pendingRevealSidebarRow
     const retryPendingReveal = (): boolean => {
       const previousRetry = pendingRowRevealRetryRef.current
       const nextRetryCount =
@@ -225,13 +220,13 @@ export function usePendingSidebarReveal(args: PendingSidebarRevealArgs): void {
         count: nextRetryCount
       }
       if (nextRetryCount <= MAX_REVEAL_RETRIES) {
-        scheduleRetryTick(() => cancelled)
+        scheduleRetryTick(isCancelled)
         return true
       }
       return false
     }
     schedulePendingRevealFrame(() => {
-      if (cancelled) {
+      if (isCancelled()) {
         return
       }
       const targetIndex = renderRows.findIndex((row) =>
@@ -265,13 +260,16 @@ export function usePendingSidebarReveal(args: PendingSidebarRevealArgs): void {
         completeMountedSidebarReveal({
           container,
           element: revealedElement,
-          cancelled: () =>
-            cancelled || argsRef.current.pendingRevealSidebarRow !== pendingRevealSidebarRow,
+          behavior: pendingRevealSidebarRow.behavior,
+          cancelled: isCancelled,
           isScrollSettling: () => argsRef.current.isRevealScrollSettling(),
           wasScrollInterrupted: () => argsRef.current.wasRevealScrollInterrupted(),
           markRevealScroll,
           scheduleFrame: schedulePendingRevealFrame,
           complete: (landed) => {
+            if (isCancelled()) {
+              return
+            }
             if (landed && pendingRevealSidebarRow.highlight) {
               flashRevealedRow(pendingRevealSidebarRow.rowKey)
             }

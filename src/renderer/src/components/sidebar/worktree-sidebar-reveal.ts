@@ -1,3 +1,4 @@
+import { VIRTUALIZED_SCROLL_ANCHOR_RECORD_EVENT } from '@/hooks/useVirtualizedScrollAnchor'
 import { GROUP_HEADER_ROW_HEIGHT } from './worktree-list/viewport/virtual-rows'
 
 const WORKTREE_REVEAL_TOP_CLEARANCE = 6
@@ -9,7 +10,10 @@ type SidebarRevealBounds = {
   end: number
 }
 
-function getElementScrollBounds(container: HTMLElement, element: Element): SidebarRevealBounds {
+export function getElementScrollBounds(
+  container: HTMLElement,
+  element: Element
+): SidebarRevealBounds {
   const containerRect = container.getBoundingClientRect()
   const elementRect = element.getBoundingClientRect()
   return {
@@ -54,16 +58,25 @@ export function revealElementInScrollContainer(
   if (nextScrollTop === null) {
     return true
   }
-  // Why: honor the user's reduced-motion preference by jumping instantly instead of
-  // animating a smooth scroll (also makes the reveal deterministic in headless
-  // environments that never tick the smooth-scroll animation).
-  const prefersReducedMotion =
-    typeof window !== 'undefined' &&
-    window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
-  const resolvedBehavior: ScrollBehavior =
-    behavior === 'smooth' && prefersReducedMotion ? 'auto' : behavior
+  const resolvedBehavior = resolveSidebarRevealScrollBehavior(behavior)
   const targetTop = Math.max(0, nextScrollTop)
   onScrollIssued?.(targetTop)
   container.scrollTo({ top: targetTop, behavior: resolvedBehavior })
   return true
+}
+
+export function resolveSidebarRevealScrollBehavior(behavior: ScrollBehavior): ScrollBehavior {
+  const prefersReducedMotion =
+    typeof window !== 'undefined' &&
+    window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
+  return behavior === 'smooth' && prefersReducedMotion ? 'auto' : behavior
+}
+
+export function stopSidebarRevealScroll(
+  container: HTMLElement,
+  onScrollIssued?: (targetTop: number) => void
+): void {
+  onScrollIssued?.(container.scrollTop)
+  container.scrollTo({ top: container.scrollTop, behavior: 'auto' })
+  container.dispatchEvent(new Event(VIRTUALIZED_SCROLL_ANCHOR_RECORD_EVENT))
 }

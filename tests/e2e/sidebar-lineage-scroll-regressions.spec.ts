@@ -104,52 +104,74 @@ test('ordinary rows keep their anchor during measurement suppression with a dist
     .toBeLessThan(2)
 })
 
-for (const requestKind of ['worktree', 'sidebar-row', 'rename'] as const) {
-  test(`smooth ${requestKind} reveal keeps the inactive descendant mounted until its title lands`, async ({
+const revealScenarios = (['worktree', 'sidebar-row', 'rename'] as const).flatMap((requestKind) =>
+  [100, 150, 400].flatMap((targetIndex) =>
+    [0, 800].map((idleMs) => ({ requestKind, targetIndex, idleMs }))
+  )
+)
+
+for (const { requestKind, targetIndex, idleMs } of revealScenarios) {
+  test(`smooth ${requestKind} reveal child ${targetIndex} after ${idleMs}ms idle keeps the inactive descendant mounted until its title lands`, async ({
     orcaPage
   }, testInfo) => {
     await waitForSessionReady(orcaPage)
     await waitForActiveWorktree(orcaPage)
     await seedVirtualLineage(orcaPage, requestKind === 'sidebar-row')
     await expect(worktreeRow(orcaPage, 'e2e-virtual-child-0')).toBeVisible()
+    await orcaPage.waitForTimeout(idleMs)
     await orcaPage.emulateMedia({ reducedMotion: 'no-preference' })
-    const result = await orcaPage.evaluate(async (requestKind) => {
-      const targetId = 'e2e-virtual-child-400'
-      const scroller = document.querySelector<HTMLElement>('[data-worktree-sidebar]')!
-      const samples: { time: number; mounted: boolean; top: number | null; scrollTop: number }[] =
-        []
-      const startedAt = performance.now()
-      const initialOffset = scroller.scrollTop
-      const state = window.__store!.getState()
-      if (requestKind === 'sidebar-row') {
-        const firstKey = scroller.querySelector<HTMLElement>(
-          '[data-worktree-id="e2e-virtual-child-0"]'
-        )!.dataset.worktreeRowKey!
-        state.revealSidebarRow(firstKey.replace('e2e-virtual-child-0', targetId), {
-          behavior: 'smooth',
-          highlight: false
-        })
-      } else {
-        state.revealWorktreeInSidebar(targetId, {
-          behavior: 'smooth',
-          highlight: true,
-          beginRename: requestKind === 'rename'
-        })
-      }
-      while (performance.now() - startedAt < 1_800) {
-        await new Promise(requestAnimationFrame)
-        const target = scroller.querySelector<HTMLElement>(`[data-worktree-id="${targetId}"]`)
-        samples.push({
-          time: performance.now() - startedAt,
-          mounted: target !== null,
-          top: target
-            ? target.getBoundingClientRect().top - scroller.getBoundingClientRect().top
-            : null,
-          scrollTop: scroller.scrollTop
-        })
-      }
-      return { samples, initialOffset, sidebarHeight: scroller.clientHeight }
-    }, requestKind)
+    const result = await orcaPage.evaluate(
+      async ({ requestKind, targetIndex }) => {
+        const targetId = `e2e-virtual-child-${targetIndex}`
+        const scroller = document.querySelector<HTMLElement>('[data-worktree-sidebar]')!
+        const samples: {
+          time: number
+          mounted: boolean
+          top: number | null
+          height: number | null
+          scrollTop: number
+        }[] = []
+        const startedAt = performance.now()
+        const initialOffset = scroller.scrollTop
+        const state = window.__store!.getState()
+        if (requestKind === 'sidebar-row') {
+          const firstKey = scroller.querySelector<HTMLElement>(
+            '[data-worktree-id="e2e-virtual-child-0"]'
+          )!.dataset.worktreeRowKey!
+          state.revealSidebarRow(firstKey.replace('e2e-virtual-child-0', targetId), {
+            behavior: 'smooth',
+            highlight: false
+          })
+        } else {
+          state.revealWorktreeInSidebar(targetId, {
+            behavior: 'smooth',
+            highlight: true,
+            beginRename: requestKind === 'rename'
+          })
+        }
+        while (performance.now() - startedAt < 1_800) {
+          await new Promise(requestAnimationFrame)
+          const target = scroller.querySelector<HTMLElement>(`[data-worktree-id="${targetId}"]`)
+          samples.push({
+            time: performance.now() - startedAt,
+            mounted: target !== null,
+            height: target?.getBoundingClientRect().height ?? null,
+            top: target
+              ? target.getBoundingClientRect().top - scroller.getBoundingClientRect().top
+              : null,
+            scrollTop: scroller.scrollTop
+          })
+        }
+        return {
+          samples,
+          initialOffset,
+          requestKind,
+          targetIndex,
+          sidebarHeight: scroller.clientHeight
+        }
+      },
+      { requestKind, targetIndex }
+    )
     const frames = result.samples
     const metrics = measureSidebarScroll(frames, result.initialOffset)
     const mountedIntermediate = frames.filter(
@@ -162,6 +184,8 @@ for (const requestKind of ['worktree', 'sidebar-row', 'rename'] as const) {
       '[sidebar-smooth-retention]',
       JSON.stringify({
         requestKind,
+        targetIndex,
+        idleMs,
         ...metrics,
         mountedIntermediate,
         sidebarHeight: result.sidebarHeight
@@ -169,9 +193,29 @@ for (const requestKind of ['worktree', 'sidebar-row', 'rename'] as const) {
     )
     await writeFile(
       testInfo.outputPath('smooth-reveal-frames.json'),
-      JSON.stringify({ ...result, ...metrics, mountedIntermediate }, null, 2)
+      JSON.stringify({ ...result, idleMs, ...metrics, mountedIntermediate }, null, 2)
     )
     expectSidebarScrollProgress(metrics)
+    expect(metrics.longestPause, 'no stalled approach').toBeLessThan(200)
+    expect(metrics.arrivalMs, 'landing within the measured base latency envelope').toBeLessThan(
+      1_700
+    )
+    const backwardStep = Math.max(
+      ...frames.map(
+        (frame, index) => (frames[index - 1]?.scrollTop ?? frame.scrollTop) - frame.scrollTop
+      )
+    )
+    expect(backwardStep, 'no backtracking toward the measured target').toBeLessThanOrEqual(2)
+    const firstVisible = frames.findIndex(
+      (frame) => frame.top !== null && frame.top >= 0 && frame.top < result.sidebarHeight
+    )
+    expect(firstVisible).toBeGreaterThanOrEqual(0)
+    expect(
+      frames
+        .slice(firstVisible)
+        .every((frame) => frame.top !== null && frame.top >= 0 && frame.top < result.sidebarHeight),
+      'target stays in view after first arrival'
+    ).toBe(true)
     expect(
       mountedIntermediate,
       'target retained during intermediate motion'
@@ -179,16 +223,22 @@ for (const requestKind of ['worktree', 'sidebar-row', 'rename'] as const) {
     const firstMounted = frames.findIndex((frame) => frame.mounted)
     expect(firstMounted).toBeGreaterThanOrEqual(0)
     expect(frames.slice(firstMounted).every((frame) => frame.mounted)).toBe(true)
-    const target = worktreeRow(orcaPage, 'e2e-virtual-child-400')
+    const target = worktreeRow(orcaPage, `e2e-virtual-child-${targetIndex}`)
     if (requestKind === 'rename') {
       await expect(target.getByRole('textbox')).toBeInViewport()
-      await expect(target.getByRole('textbox')).toHaveValue('Virtual child 400')
+      await expect(target.getByRole('textbox')).toHaveValue(`Virtual child ${targetIndex}`)
     } else {
-      await expect(target.getByText('Virtual child 400', { exact: true })).toBeInViewport()
+      await expect(
+        target.getByText(`Virtual child ${targetIndex}`, { exact: true })
+      ).toBeInViewport()
     }
     if (requestKind === 'worktree') {
       await expect(target).toHaveAttribute('data-scroll-reveal-highlight', 'true')
     }
+    const landedTop = (await target.boundingBox())!.y
+    await orcaPage.waitForTimeout(350)
+    await expect(target).toBeInViewport()
+    expect(Math.abs((await target.boundingBox())!.y - landedTop)).toBeLessThan(2)
     await orcaPage.screenshot({ path: testInfo.outputPath('smooth-reveal-landed.png') })
   })
 }
