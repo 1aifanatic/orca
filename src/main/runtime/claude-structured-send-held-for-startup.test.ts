@@ -18,7 +18,7 @@ import {
 const SESSION = 'claude-send-held'
 const CALLER = { callerKey: 'client-1' }
 const DIAGNOSTIC = 'claude stream-json exited (code 1): claude: not signed in (rig)'
-const STARTUP_TEXT = 'The provider stopped before it finished starting.'
+const STARTUP_TEXT = 'Claude stopped before it finished starting.'
 
 let claude = createScriptedClaudeRuntime([SESSION])
 let operations = 0

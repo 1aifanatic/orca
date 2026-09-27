@@ -75,11 +75,11 @@ describe('a ledger replay names the details its first answer did', () => {
           new Error('claude stream-json exited (code 1): claude: not signed in (rig)')
         )
       ),
-      'The provider stopped before it finished starting.'
+      'Claude stopped before it finished starting.'
     ],
     [
       new AgentSessionAcquisitionExitProvenError(new Error('spawn claude ENOENT')),
-      "Claude couldn't start."
+      "Claude couldn't start. Send your message to try again."
     ],
     [
       new AgentSessionAcquisitionRefusal(
@@ -114,7 +114,9 @@ describe('a ledger replay names the details its first answer did', () => {
       new AgentSessionPreSpawnError(new Error('spawn claude ENOENT')),
       CLAUDE_CREATE
     ).outcome
-    expect(replay(outcome)).toMatchObject({ refusal: { message: "Claude couldn't start." } })
+    expect(replay(outcome)).toMatchObject({
+      refusal: { message: "Claude couldn't start. Send your message to try again." }
+    })
   })
 
   it('keeps the code a store refusal replays with, and the unproven-exit marker', () => {

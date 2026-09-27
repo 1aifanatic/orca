@@ -202,7 +202,8 @@ export class StructuredAgentSessionDeliveryLoop {
         journal: session.journal,
         fence: awaitedChild.fence,
         adapter: this.deps.adapter,
-        providerChildPhase: () => this.deps.sessions.get(sessionId)?.child?.phase
+        providerChildPhase: () => this.deps.sessions.get(sessionId)?.child?.phase,
+        failureTextContext: this.deps.failureTextContext(sessionId)
       },
       next
     )

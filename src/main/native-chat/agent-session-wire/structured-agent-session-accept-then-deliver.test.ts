@@ -318,7 +318,7 @@ describe('a start the chat needed and did not get', () => {
     expect(rows).toHaveLength(1)
     // Orca's spawn error goes to the log; the row and every message say what failed, typed. The
     // child is gone, but no exit was observed, so nothing blames the provider.
-    expect(rows[0]).toBe("Codex couldn't restart.")
+    expect(rows[0]).toBe("Codex couldn't restart. Send your message to try again.")
     const failure = {
       kind: 'restartFailed',
       refusal: { code: 'agent_session_operation_invalid', details: { ownerVerdict: 'exited' } }
@@ -358,7 +358,7 @@ describe('a start the chat needed and did not get', () => {
       'spawn',
       () => acquire.mockRejectedValueOnce(new Error('spawn codex ENOENT')),
       {
-        text: "Codex couldn't restart.",
+        text: "Codex couldn't restart. Send your message to try again.",
         failure: {
           kind: 'restartFailed',
           refusal: { code: 'agent_session_operation_invalid', details: { ownerVerdict: 'exited' } }
@@ -373,7 +373,7 @@ describe('a start the chat needed and did not get', () => {
         ),
       {
         // No process ever started, so nothing says the provider stopped.
-        text: "Codex couldn't restart.",
+        text: "Codex couldn't restart. Send your message to try again.",
         failure: {
           kind: 'restartFailed',
           refusal: { code: 'agent_session_operation_invalid', details: { ownerVerdict: 'exited' } }

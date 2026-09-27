@@ -25,8 +25,8 @@ import {
 const CALLER = { callerKey: 'client-1' }
 const EXIT_REASON = 'claude stream-json exited (code 1): stderr tail'
 // The refusal says what the chat's start failure says; the error text stays in the log.
-const COULD_NOT_RESTART = "Codex couldn't restart."
-const PROVIDER_STOPPED = 'The provider stopped before it finished starting.'
+const COULD_NOT_RESTART = "Codex couldn't restart. Send your message to try again."
+const PROVIDER_STOPPED = 'Codex stopped before it finished starting.'
 
 let root: string
 let store: AgentSessionRecordStore

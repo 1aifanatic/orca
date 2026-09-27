@@ -145,7 +145,7 @@ describe('attach', () => {
       refusal: {
         code: 'agent_session_operation_invalid',
         details: { ownerVerdict: 'exited' },
-        message: "Codex couldn't restart.",
+        message: "Codex couldn't restart. Send your message to try again.",
         ownerVerdict: 'exited'
       }
     }
@@ -163,7 +163,10 @@ describe('attach', () => {
 
     await expect(host.attach(CALLER, attachParams())).resolves.toMatchObject({
       ok: false,
-      refusal: { message: "Codex couldn't restart.", ownerVerdict: 'exited' }
+      refusal: {
+        message: "Codex couldn't restart. Send your message to try again.",
+        ownerVerdict: 'exited'
+      }
     })
 
     expect(releaseAcquisition).toHaveBeenCalledWith({ sessionId: SESSION })

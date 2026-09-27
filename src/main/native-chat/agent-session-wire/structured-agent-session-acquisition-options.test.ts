@@ -432,7 +432,7 @@ describe('structured session acquisition options', () => {
       ok: false,
       refusal: {
         code: 'agent_session_operation_invalid',
-        message: "Codex couldn't restart."
+        message: "Codex couldn't restart. Send your message to try again."
       }
     })
     expect(releaseAcquisition).toHaveBeenCalledOnce()
@@ -532,7 +532,7 @@ describe('structured session acquisition options', () => {
             ok: false,
             refusal: {
               code: 'agent_session_operation_invalid',
-              message: "Codex couldn't restart."
+              message: "Codex couldn't restart. Send your message to try again."
             }
           })
         : expect(failed).rejects.toThrow(

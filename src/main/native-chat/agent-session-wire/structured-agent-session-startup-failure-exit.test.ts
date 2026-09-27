@@ -13,7 +13,7 @@ import {
 const SESSION = 'session-1'
 const GENERATION = 'generation-1'
 const REASON = 'claude stream-json exited (code 1): session limit reached'
-const STARTUP_TEXT = 'The provider stopped before it finished starting.'
+const STARTUP_TEXT = 'Claude stopped before it finished starting.'
 
 function startedSession(): StructuredAgentSessionUnexpectedExitSession & {
   journal: { appendLifecycleBatch: ReturnType<typeof vi.fn> }

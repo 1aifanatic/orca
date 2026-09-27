@@ -410,7 +410,7 @@ describe('a structured Claude session over agentSession.*', () => {
           refusal: {
             code: 'agent_session_operation_invalid',
             // The CLI's stderr is log text; the person reads what the chat's start failure says.
-            message: 'The provider stopped before it finished starting.',
+            message: 'Claude stopped before it finished starting.',
             ownerVerdict: 'exited'
           }
         }
@@ -445,7 +445,7 @@ describe('a structured Claude session over agentSession.*', () => {
         ok: false,
         refusal: {
           code: 'agent_session_operation_invalid',
-          message: 'The provider stopped before it finished starting.',
+          message: 'Claude stopped before it finished starting.',
           ownerVerdict: 'exited'
         }
       }

@@ -85,7 +85,7 @@ describe('a create that fails after its child wrote through the unbound sink', (
         ? expect(failed).rejects.toThrow(EXIT_REASON)
         : expect(failed).resolves.toMatchObject({
             ok: false,
-            refusal: { message: "Codex couldn't restart." }
+            refusal: { message: "Codex couldn't restart. Send your message to try again." }
           }))
 
       await expect(host.attach(CALLER, hostTestAttachParams(null))).resolves.toMatchObject({

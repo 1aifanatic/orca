@@ -427,7 +427,7 @@ describe('a send with no live owner', () => {
     const params = sendParams('while signed out')
     // The acquire's error is Orca's wrapper, not the provider's words: it goes to the log. No exit
     // was observed, so the chat does not say the provider stopped.
-    const cause = "Codex couldn't restart."
+    const cause = "Codex couldn't restart. Send your message to try again."
 
     const id = await accept(params)
 
@@ -463,10 +463,10 @@ describe('a send with no live owner', () => {
     }
     expect(await settled(id)).toMatchObject({
       dispatchState: 'rejected',
-      reason: "Codex couldn't restart.",
+      reason: "Codex couldn't restart. Send your message to try again.",
       rejection
     })
-    expect(errorStatuses()).toEqual(["Codex couldn't restart."])
+    expect(errorStatuses()).toEqual(["Codex couldn't restart. Send your message to try again."])
     // Orca's own text is logged once where the start failed.
     expect(warn).toHaveBeenCalledWith(
       '[agent-session] provider start failed:',
@@ -551,7 +551,7 @@ describe('a send with no live owner', () => {
     const id = await accept(sendParams('owner being settled'))
 
     // The refusal's prose stays out of the chat; its code rides in the fact.
-    const cause = "Codex couldn't restart."
+    const cause = "Codex couldn't restart. Send your message to try again."
     expect(await settled(id)).toMatchObject({
       dispatchState: 'rejected',
       reason: cause,

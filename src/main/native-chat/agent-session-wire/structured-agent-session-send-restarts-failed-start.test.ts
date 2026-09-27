@@ -203,7 +203,7 @@ describe('a send into a published session whose child ended before startup', () 
     // host admitted, so nothing pins the session and Retry stays offered, and one row names the cause.
     expect(submission(held)).toMatchObject({
       dispatchState: 'rejected',
-      reason: 'The provider stopped before it finished starting.',
+      reason: 'Codex stopped before it finished starting.',
       rejection: STARTUP_FAILURE,
       recovered: true
     })
@@ -211,7 +211,7 @@ describe('a send into a published session whose child ended before startup', () 
       host.journalSnapshot(SESSION).submissions.filter((e) => e.dispatchState === 'pending')
     ).toEqual([])
     expect(journalStatuses().slice(rowsBefore)).toEqual([
-      'The provider stopped before it finished starting.'
+      'Codex stopped before it finished starting.'
     ])
     // The failed restart moved the fence twice: the acquisition, and the exit that released it.
     expect(store.getRecord(SESSION)?.lease.runtimeFence).toBe(releasedFence + 2)
@@ -248,12 +248,12 @@ describe('a send while the child of the first start is still proving itself', ()
 
     expect(submission(held)).toMatchObject({
       dispatchState: 'rejected',
-      reason: 'The provider stopped before it finished starting.',
+      reason: 'Codex stopped before it finished starting.',
       rejection: STARTUP_FAILURE,
       recovered: true
     })
     expect(acquire).toHaveBeenCalledOnce()
-    expect(journalStatuses()).toEqual(['The provider stopped before it finished starting.'])
+    expect(journalStatuses()).toEqual(['Codex stopped before it finished starting.'])
     expect(store.getRecord(SESSION)?.lease.runtimeFence).toBe(fence + 1)
   })
 

@@ -115,13 +115,36 @@ describe('the words written beside a failure fact', () => {
       'Codex is not signed in for the selected account. Sign in, then run /clear again.'
     )
     expect(clear('startFailed')).toBe("Codex couldn't start. Run /clear again.")
+    expect(clear('restartFailed')).toBe("Codex couldn't restart. Run /clear again.")
     expect(clear('providerStartFailed')).toBe(
-      'The provider stopped before it finished starting. Run /clear again.'
+      'Codex stopped before it finished starting. Run /clear again.'
     )
-    // A send keeps its own next step.
+  })
+
+  it('names the agent that stopped starting, and a failed start or restart gives a next step', () => {
+    const sentence = (kind: AgentSessionFailureKind, agentName?: string) =>
+      agentSessionFailureSentence({ kind }, 'rejection', { agentName })
+    expect(sentence('providerStartFailed', 'Claude')).toBe(
+      'Claude stopped before it finished starting.'
+    )
+    expect(sentence('providerStartFailed')).toBe('The agent stopped before it finished starting.')
+    expect(sentence('startFailed', 'Codex')).toBe(
+      "Codex couldn't start. Send your message to try again."
+    )
+    expect(sentence('restartFailed')).toBe(
+      "The agent couldn't restart. Send your message to try again."
+    )
+    // Nothing to restart from: a new chat is the only step, so no retry is offered.
     expect(
-      agentSessionFailureSentence({ kind: 'startFailed' }, 'row', { agentName: 'Codex' })
-    ).toBe("Codex couldn't start.")
+      agentSessionFailureSentence(
+        {
+          kind: 'startFailed',
+          refusal: { code: 'agent_session_identity_required', details: { reason: 'recordMissing' } }
+        },
+        'row',
+        { agentName: 'Codex' }
+      )
+    ).toBe("Codex couldn't start. Start a new chat to continue.")
   })
 
   it('names the exit a row reports differently from the message it left unsent', () => {

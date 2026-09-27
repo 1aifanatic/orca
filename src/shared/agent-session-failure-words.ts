@@ -106,6 +106,11 @@ function commandRetry({ command }: AgentSessionFailureWordsContext): string {
   return command === 'clear' ? ' Run /clear again.' : ''
 }
 
+/** The next step after a start or restart that failed: the command, or the message, again. */
+function startRetry({ command }: AgentSessionFailureWordsContext): string {
+  return command === 'clear' ? ' Run /clear again.' : ' Send your message to try again.'
+}
+
 function couldNot(verb: string): Sentence {
   return (context, fact) => {
     const { agentName } = context
@@ -117,7 +122,7 @@ function couldNot(verb: string): Sentence {
     const code = fact.refusal?.code
     return code && !START_REFUSAL_RESUMABLE[code]
       ? `${failed} Start a new chat to continue.`
-      : `${failed}${commandRetry(context)}`
+      : `${failed}${startRetry(context)}`
   }
 }
 
@@ -152,7 +157,7 @@ const ATTACHMENT_SENTENCES = {
 
 const FAILURE_SENTENCES = {
   providerStartFailed: (context) =>
-    `The provider stopped before it finished starting.${commandRetry(context)}`,
+    `${context.agentName ?? 'The agent'} stopped before it finished starting.${commandRetry(context)}`,
   startFailed: couldNot('start'),
   notSignedIn: (context) =>
     `${context.agentName ?? 'The agent'} is not signed in for the selected account. Sign in, then ${retryStep(context)}.`,

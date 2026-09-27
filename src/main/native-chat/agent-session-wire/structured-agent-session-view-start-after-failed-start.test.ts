@@ -181,7 +181,7 @@ describe('a fresh chat whose Claude start fails', () => {
       }
       await settleExits()
       // The row says the provider stopped; its stderr stays out of the sentence.
-      const startFailure = 'The provider stopped before it finished starting.'
+      const startFailure = 'Claude stopped before it finished starting.'
       // Opening the chat: the create's start, once, and its row.
       expect(claude.connections).toHaveLength(1)
       expect(timeline()).toEqual([startFailure])

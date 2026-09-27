@@ -7,7 +7,10 @@
 // turn the provider already accepted.
 
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
-import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
+import {
+  agentSessionFailureWords,
+  type AgentSessionFailureWordsContext
+} from '../../../shared/agent-session-failure-words'
 import type {
   AgentJournalMessageItem,
   AgentJournalStatusItem,
@@ -84,7 +87,10 @@ async function dispatchSafely(
     })
   } catch (error) {
     if (ctx.providerChildPhase?.() === 'starting') {
-      return { state: 'rejected', ...structuredAgentSessionStartFailure({ error }) }
+      return {
+        state: 'rejected',
+        ...structuredAgentSessionStartFailure({ error }, ctx.failureTextContext)
+      }
     }
     return { state: 'unknown', reason: error instanceof Error ? error.message : String(error) }
   }
@@ -148,7 +154,10 @@ export async function performSend(
 export type AgentSessionHandoverContext = Pick<
   AgentSessionTurnContext,
   'sessionId' | 'journal' | 'fence' | 'adapter' | 'providerChildPhase'
->
+> & {
+  /** Who a start failure met at dispatch names, as the start's own row does. */
+  failureTextContext?: AgentSessionFailureWordsContext
+}
 
 /**
  * Hands one queued submission to the provider. The `dispatch{pending}` row goes first: a crash

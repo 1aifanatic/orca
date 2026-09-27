@@ -28,7 +28,7 @@ describe('structuredAgentSessionStartFailure', () => {
     )
     expect(structuredAgentSessionStartFailure({ error: carried }, { agentName: 'Claude' })).toEqual(
       {
-        reason: "Claude couldn't start.",
+        reason: "Claude couldn't start. Send your message to try again.",
         rejection: { kind: 'startFailed', detail: { text: 'code 1\nboom', audience: 'log' } }
       }
     )
@@ -65,7 +65,7 @@ describe('structuredAgentSessionStartFailure', () => {
       { agentName: 'Claude' }
     )
     expect(words).toEqual({
-      reason: "Claude couldn't restart.",
+      reason: "Claude couldn't restart. Send your message to try again.",
       rejection: {
         kind: 'restartFailed',
         refusal: {
@@ -118,7 +118,7 @@ describe('structuredAgentSessionStartFailure', () => {
         { agentName: 'Codex' }
       )
     ).toEqual({
-      reason: "Codex couldn't restart.",
+      reason: "Codex couldn't restart. Send your message to try again.",
       rejection: {
         kind: 'restartFailed',
         detail: person,
@@ -139,13 +139,16 @@ describe('structuredAgentSessionStartFailure', () => {
         diagnostic: { text: 'code 1', audience: 'log' }
       })
     ).toEqual({
-      reason: 'The provider stopped before it finished starting.',
+      reason: 'The agent stopped before it finished starting.',
       rejection: { kind: 'providerStartFailed', detail: { text: 'code 1', audience: 'log' } }
     })
     // A start that threw proves nothing about the provider: it may be Orca's, or a failed spawn.
     expect(
       structuredAgentSessionStartFailure({ error: new Error('spawn claude ENOENT') }, {})
-    ).toEqual({ reason: "The agent couldn't start.", rejection: { kind: 'startFailed' } })
+    ).toEqual({
+      reason: "The agent couldn't start. Send your message to try again.",
+      rejection: { kind: 'startFailed' }
+    })
     // The same error, once the adapter that observed the child's exit marked it, blames the provider.
     const exit = withObservedProviderExit(
       withProviderDiagnostic(new Error('exited (code 1)'), providerDiagnostic('code 1', 'log'))
@@ -153,7 +156,7 @@ describe('structuredAgentSessionStartFailure', () => {
     expect(
       structuredAgentSessionStartFailure({ error: new Error('wrapped', { cause: exit }) })
     ).toEqual({
-      reason: 'The provider stopped before it finished starting.',
+      reason: 'The agent stopped before it finished starting.',
       rejection: { kind: 'providerStartFailed', detail: { text: 'code 1', audience: 'log' } }
     })
   })

@@ -320,7 +320,7 @@ describe('dead structured-session generation settlement', () => {
       expect.objectContaining({
         clientMessageId: 'client-held',
         dispatchState: 'rejected',
-        reason: 'The provider stopped before it finished starting.',
+        reason: 'The agent stopped before it finished starting.',
         rejection: {
           kind: 'providerStartFailed',
           detail: { text: 'code 1\nnot signed in', audience: 'log' }
