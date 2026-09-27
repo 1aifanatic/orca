@@ -23,6 +23,16 @@ import {
   type GroupedQuestionDraft
 } from './mobile-structured-grouped-question'
 
+const ANSWER_TOO_LONG_FOR_HOST = 'Update Orca on your computer to send an answer this long'
+
+function packedAnswerTooLong(
+  body: Pick<AgentJournalQuestionItem, 'questions'>,
+  answers: readonly AgentSessionQuestionAnswer[]
+): boolean {
+  const optionId = legacyAgentSessionSelectedOptionId(body, answers)
+  return optionId !== null && optionId.length > AGENT_SESSION_RESPONSE_OPTION_ID_MAX_LENGTH
+}
+
 /**
  * Answering the two durable prompt kinds. Kept beside the session hook rather than inside it
  * because grouped questions carry their own multi-step draft, which is state the rest of the
@@ -97,7 +107,7 @@ export function useMobileStructuredPromptResponses(args: {
         if (questionAnswersSupported === null) {
           return send({ answers })
         }
-        onSendError('Update Orca on your computer to send an answer this long')
+        onSendError(ANSWER_TOO_LONG_FOR_HOST)
         return Promise.resolve(null)
       }
       return send({ optionId })
@@ -120,6 +130,14 @@ export function useMobileStructuredPromptResponses(args: {
           return false
         }
         if (grouped.kind === 'advance') {
+          // Answers only grow, so refuse on the step that overflowed while its typed text is still editable.
+          if (
+            questionAnswersSupported === false &&
+            packedAnswerTooLong(prompt.body, grouped.draft.answers)
+          ) {
+            onSendError(ANSWER_TOO_LONG_FOR_HOST)
+            return false
+          }
           setCollected({ sessionKey, draft: grouped.draft })
           return true
         }
@@ -164,7 +182,7 @@ export function useMobileStructuredPromptResponses(args: {
       }
       return result.status === 'accepted'
     },
-    [groupedDraft, onSendError, sendAnswers, sessionKey, stateRef]
+    [groupedDraft, onSendError, questionAnswersSupported, sendAnswers, sessionKey, stateRef]
   )
 
   return { groupedDraft, respondPermission, respondQuestion }

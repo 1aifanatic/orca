@@ -400,6 +400,36 @@ describe('useMobileStructuredPromptResponses', () => {
       })
     })
 
+    it('refuses a too-long typed answer on an earlier grouped step for an older host', async () => {
+      const base = groupedPrompt('item-g', 1)
+      if (base.body.kind !== 'question' || !base.body.questions) {
+        throw new Error('expected a grouped question')
+      }
+      const [first, second] = base.body.questions
+      const prompt: AgentJournalRenderItem = {
+        ...base,
+        body: { ...base.body, questions: [{ ...first!, freeTextQuestionId: 'q1' }, second!] }
+      }
+      const { mutate, sent } = recordingMutate()
+      const onSendError = vi.fn()
+      mount(prompt, mutate, false, onSendError)
+
+      let advanced = true
+      await act(async () => {
+        advanced = await hook().respondQuestion(
+          formatQuestionFreeTextAnswer(projectStructuredQuestion(prompt, null)!, LONG_ANSWER)
+        )
+      })
+
+      // Not folded into the draft: the card keeps the text on this step so it can be shortened.
+      expect(advanced).toBe(false)
+      expect(hook().groupedDraft).toBeNull()
+      expect(sent).toEqual([])
+      expect(onSendError).toHaveBeenCalledWith(
+        'Update Orca on your computer to send an answer this long'
+      )
+    })
+
     it('names the single question an option tap answers when the prompt has no typed field', async () => {
       const base = singlePrompt()
       const { freeTextQuestionId: _omitted, ...body } = base.body
