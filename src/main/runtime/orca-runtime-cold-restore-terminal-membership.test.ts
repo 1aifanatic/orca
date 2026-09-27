@@ -132,23 +132,21 @@ function makeRendererFrame(
   }
 }
 
+const RENDERER_TABS = [
+  {
+    tabId: 'tab',
+    worktreeId: WORKTREE_ID,
+    title: 'Terminal',
+    activeLeafId: LEFT,
+    layout: SPLIT_ROOT
+  }
+]
+
 function publishRendererFrame(
   runtime: OrcaRuntimeService,
   frame: RuntimeMobileSessionTabsSnapshot
 ): ReturnType<OrcaRuntimeService['syncWindowGraph']> {
-  return runtime.syncWindowGraph(1, {
-    tabs: [
-      {
-        tabId: 'tab',
-        worktreeId: WORKTREE_ID,
-        title: 'Terminal',
-        activeLeafId: LEFT,
-        layout: SPLIT_ROOT
-      }
-    ],
-    leaves: [],
-    mobileSessionTabs: [frame]
-  })
+  return runtime.syncWindowGraph(1, { tabs: RENDERER_TABS, leaves: [], mobileSessionTabs: [frame] })
 }
 
 function coldRestoredRuntime(host: RestoreHost = LOCAL_HOST): {
@@ -212,25 +210,34 @@ async function listedSurfaces(runtime: OrcaRuntimeService): Promise<string[]> {
   return surfaces(await runtime.listMobileSessionTabs(`id:${WORKTREE_ID}`))
 }
 
+// The session-tabs notify coalescer's max wait (mobile-session-tabs-notify-coalescer.ts).
+const COALESCED_PUSH_MS = 250
+
 describe('a restored terminal published before its PTY registers', () => {
-  afterEach(() => setRuntimeDesktopSurface(null))
+  afterEach(() => {
+    setRuntimeDesktopSurface(null)
+    vi.useRealTimers()
+  })
 
   it.each([
     ['local', LOCAL_HOST],
     ['SSH without a saved PTY binding', SSH_HOST]
   ])('%s: is listed pending, then pushed ready when its PTY registers', async (_label, host) => {
+    vi.useFakeTimers()
     const { runtime } = coldRestoredRuntime(host)
     publishRendererFrame(runtime, makeRendererFrame(host))
     expect(await listedSurfaces(runtime)).toEqual([
       `tab::${LEFT}:pending-handle`,
       `tab::${RIGHT}:pending-handle`
     ])
+    vi.advanceTimersByTime(COALESCED_PUSH_MS)
     const published: RuntimeMobileSessionTabsResult[] = []
     const unsubscribe = runtime.onMobileSessionTabsChanged((event) => published.push(event))
 
     registerLeaf(runtime, host, 'left')
+    vi.advanceTimersByTime(COALESCED_PUSH_MS)
 
-    // Pushed at once: the renderer never resends an unchanged frame to carry readiness.
+    // Registration alone reaches clients: no renderer frame or graph change follows it here.
     expect(surfaces(published.at(-1))).toEqual([
       `tab::${LEFT}:ready`,
       `tab::${RIGHT}:pending-handle`
@@ -238,13 +245,14 @@ describe('a restored terminal published before its PTY registers', () => {
     const pushes = published.length
     expect(
       runtime.syncWindowGraph(1, {
-        tabs: [],
+        tabs: RENDERER_TABS,
         leaves: [],
         mobileSessionTabs: [],
         unchangedMobileSessionWorktrees: [WORKTREE_ID]
       }).mobileSessionResyncWorktrees
     ).toBeUndefined()
     publishRendererFrame(runtime, makeRendererFrame(host))
+    vi.advanceTimersByTime(COALESCED_PUSH_MS)
     expect(published).toHaveLength(pushes)
     expect(await listedSurfaces(runtime)).toEqual([
       `tab::${LEFT}:ready`,
@@ -252,8 +260,25 @@ describe('a restored terminal published before its PTY registers', () => {
     ])
 
     registerLeaf(runtime, host, 'right')
+    vi.advanceTimersByTime(COALESCED_PUSH_MS)
 
     expect(surfaces(published.at(-1))).toEqual([`tab::${LEFT}:ready`, `tab::${RIGHT}:ready`])
+    unsubscribe()
+  })
+
+  it('pushes a restore of several panes once, not once per registering pane', () => {
+    vi.useFakeTimers()
+    const { runtime } = coldRestoredRuntime()
+    publishRendererFrame(runtime, makeRendererFrame(LOCAL_HOST))
+    vi.advanceTimersByTime(COALESCED_PUSH_MS)
+    const published: RuntimeMobileSessionTabsResult[] = []
+    const unsubscribe = runtime.onMobileSessionTabsChanged((event) => published.push(event))
+
+    registerLeaf(runtime, LOCAL_HOST, 'left')
+    registerLeaf(runtime, LOCAL_HOST, 'right')
+    vi.advanceTimersByTime(COALESCED_PUSH_MS)
+
+    expect(published.map(surfaces)).toEqual([[`tab::${LEFT}:ready`, `tab::${RIGHT}:ready`]])
     unsubscribe()
   })
 

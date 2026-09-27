@@ -128,8 +128,8 @@ export class OrcaRuntimeWithTouchMobileSessionTabsForWorktree extends OrcaRuntim
           tab.ptyId
         ) ||
         // Why: after a cold restore the saved session is the only membership record until the PTY
-        // registers. Not in the shared predicate: leaves passing it are recorded as live PTYs.
-        // Host-side single-writer membership absorbs this.
+        // registers. Frame-only; once listed, the surface's graph leaves pass the shared predicate
+        // like any listed surface's. Host-side single-writer membership absorbs this.
         this.hasPersistedTerminalSurfaceMembership(snapshot.worktree, tab.parentTabId, tab.leafId)
       ) {
         continue
