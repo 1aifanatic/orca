@@ -75,17 +75,39 @@ function promptItem(state: 'pending' | 'resolved', sequence: number): AgentJourn
 }
 
 describe('turn verdict from death evidence', () => {
-  it('earns an end time only from an observed exit', () => {
+  // A running turn first seen at 100, a tool call at 300, and a row crash recovery wrote at 450.
+  const items: AgentJournalRenderItem[] = [
+    lifecycleItem('turn-2', 'running', 100),
+    { ...lifecycleItem('turn-tool', 'running', 300) },
+    { ...lifecycleItem('turn-recovered', 'completed', 450), recovered: true, recoveredAt: 450 }
+  ]
+
+  it('ends a watched exit at the exit', () => {
     expect(
-      turnVerdictFromDeathEvidence({ kind: 'exit-observed', detail: 'exit', observedAt: 500 })
+      turnVerdictFromDeathEvidence(
+        { kind: 'exit-observed', detail: 'exit', observedAt: 500 },
+        items
+      )
     ).toEqual({ state: 'interrupted', completedAt: 500 })
-    expect(
-      turnVerdictFromDeathEvidence({ kind: 'pid-absent', detail: 'gone', observedAt: 500 })
-    ).toEqual({ state: 'unverifiable' })
-    expect(
-      turnVerdictFromDeathEvidence({ kind: 'identity-mismatch', detail: 'pid', observedAt: 500 })
-    ).toEqual({ state: 'unverifiable' })
-    expect(turnVerdictFromDeathEvidence(null)).toEqual({ state: 'unverifiable' })
+  })
+
+  it.each(['pid-absent', 'identity-mismatch'] as const)(
+    'ends a %s proof at the last thing the journal saw live, not at the probe',
+    (kind) => {
+      // Probed at 9000, long after the crash: the downtime is never counted as work.
+      expect(
+        turnVerdictFromDeathEvidence({ kind, detail: 'gone', observedAt: 9_000 }, items)
+      ).toEqual({ state: 'interrupted', completedAt: 300 })
+      // Nothing live before the probe: the probe is the only bound there is.
+      expect(turnVerdictFromDeathEvidence({ kind, detail: 'gone', observedAt: 50 }, items)).toEqual(
+        { state: 'interrupted', completedAt: 50 }
+      )
+    }
+  )
+
+  it('leaves a release nothing proved unverifiable', () => {
+    expect(turnVerdictFromDeathEvidence(null, items)).toEqual({ state: 'unverifiable' })
+    expect(turnVerdictFromDeathEvidence(undefined, items)).toEqual({ state: 'unverifiable' })
   })
 })
 

@@ -1,8 +1,9 @@
 // What the host may durably say about a turn whose provider child is gone.
 //
-// `interrupted` requires the host to have seen the child exit; that receipt is the only end time it
-// is allowed to record. Everything weaker — a pid probe, an identity mismatch, a journal found
-// running with no observed exit on the record — is `unverifiable` and carries no end at all.
+// `interrupted` requires proof the child is gone, which is exactly when a lease carries death
+// evidence: a watched exit, or a local probe that found the recorded pid gone or reused. A release
+// nothing proved — lost contact, an unverifiable identity, a stop that outlived the ladder — carries
+// none, and its turn is `unverifiable` with no end at all.
 
 import { parseAgentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import type {
@@ -25,11 +26,35 @@ export const UNVERIFIABLE_TURN_VERDICT: StructuredAgentSessionTurnVerdict = {
 }
 
 export function turnVerdictFromDeathEvidence(
-  evidence: AgentSessionDeathEvidence | null | undefined
+  evidence: AgentSessionDeathEvidence | null | undefined,
+  items: readonly AgentJournalRenderItem[]
 ): StructuredAgentSessionTurnVerdict {
-  return evidence?.kind === 'exit-observed'
-    ? { state: 'interrupted', completedAt: evidence.observedAt }
-    : UNVERIFIABLE_TURN_VERDICT
+  if (!evidence) {
+    return UNVERIFIABLE_TURN_VERDICT
+  }
+  return {
+    state: 'interrupted',
+    completedAt:
+      evidence.kind === 'exit-observed'
+        ? evidence.observedAt
+        : lastLiveActivityAt(items, evidence.observedAt)
+  }
+}
+
+/** A probe finds a dead child long after it died; the last thing the journal saw it do bounds its
+ *  end, so the turn's duration never counts the time Orca itself was down. */
+function lastLiveActivityAt(items: readonly AgentJournalRenderItem[], probedAt: number): number {
+  let latest: number | null = null
+  for (const item of items) {
+    if (
+      !item.recovered &&
+      item.observedAt <= probedAt &&
+      (latest === null || item.observedAt > latest)
+    ) {
+      latest = item.observedAt
+    }
+  }
+  return latest ?? probedAt
 }
 
 /** Revises every still-running lifecycle item in place, keeping its identity and start. */

@@ -36,6 +36,7 @@ import type { StructuredAgentSessionAdapter } from './structured-agent-session-a
 import { openAgentSessionJournal } from '../agent-session-journal/journal-store-factory'
 import { journalDirectoryFor } from '../agent-session-journal/journal-paths'
 import { AgentSessionJournal } from '../agent-session-journal/journal-store'
+import { UNEXPECTED_PROVIDER_EXIT_OUTCOME } from './structured-agent-session-dead-generation-settlement'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
 import type { StructuredAgentSessionHostDeps } from './structured-agent-session-host-types'
 import {
@@ -217,6 +218,17 @@ function turnLifecycle(turnId: string) {
   return item ? { ...readAgentJournalTurn(item.body), recovered: item.recovered } : null
 }
 
+/** When the journal last saw the running turn live; a probe-proven death ends the turn there. */
+function seededTurnSeenAt(): number {
+  const item = restoredJournal()
+    .snapshot()
+    .items.find((candidate) => readAgentJournalTurn(candidate.body)?.turnId === 'turn-1')
+  if (!item) {
+    throw new Error('expected the seeded turn')
+  }
+  return item.observedAt
+}
+
 function restoredJournal(): AgentSessionJournal {
   const restored = (
     host as unknown as { sessions: Map<string, { journal: AgentSessionJournal }> }
@@ -301,6 +313,16 @@ describe('already-wedged profiles become usable on load', () => {
       'a quit that left the owner for a probe to prove gone',
       wedgedRecord({ claimStatus: 'live', handoffStage: null, ownerProcess: DEAD_OWNER }),
       null,
+      { state: 'interrupted', completedAt: 'when last seen live' }
+    ],
+    [
+      'a quit that left an owner on a host this one cannot probe',
+      wedgedRecord({
+        claimStatus: 'live',
+        handoffStage: null,
+        ownerProcess: { ...DEAD_OWNER, hostId: 'remote-host' }
+      }),
+      null,
       { state: 'unverifiable' }
     ]
   ] as const)(
@@ -309,8 +331,18 @@ describe('already-wedged profiles become usable on load', () => {
       await seedStore({ ...seeded, lease: { ...seeded.lease, deathEvidence } })
       await seedRunningTurn()
       const published: AgentSessionStatusSummary[] = []
+      const remote = seeded.lease.ownerProcess?.hostId === 'remote-host'
       openHost({
-        statusSink: { publish: (summary) => published.push(summary), forget: () => {} }
+        statusSink: { publish: (summary) => published.push(summary), forget: () => {} },
+        // Loss of contact is never proof of death: a remote owner only ever probes indeterminate.
+        ...(remote
+          ? {
+              probeOwner: async () => ({
+                outcome: 'indeterminate' as const,
+                reason: 'owner runs on remote-host, which this host cannot probe'
+              })
+            }
+          : {})
       })
 
       await host.restoreReadableSessions()
@@ -320,12 +352,33 @@ describe('already-wedged profiles become usable on load', () => {
         turnId: 'turn-1',
         startedAt: NOW - 5_000,
         recovered: true,
-        ...verdict
+        ...verdict,
+        ...('completedAt' in verdict && verdict.completedAt === 'when last seen live'
+          ? { completedAt: seededTurnSeenAt() }
+          : {})
       })
       expect(activeStructuredAgentSessionTurnId(restoredJournal().snapshot().items)).toBe(null)
+      // The provider's own reason reaches the chat only from a watched exit; a probe's is Orca's.
+      const statusRows = restoredJournal()
+        .snapshot()
+        .items.flatMap((item) => (item.body.kind === 'status' ? [item.body.text] : []))
+      expect(statusRows).toEqual(
+        remote
+          ? []
+          : [
+              deathEvidence
+                ? 'The provider stopped while this response was in progress: provider exited: transport closed. You can continue in this conversation.'
+                : UNEXPECTED_PROVIDER_EXIT_OUTCOME
+            ]
+      )
       // What the sidebar reads: every status this restart published says the chat is not working.
       expect(published.filter((summary) => summary.sessionId === SESSION)).not.toEqual([])
       expect(published.map((summary) => summary.status)).not.toContain('working')
+      // A crash is not something the user did: no outcome is claimed, so no reader files it as a
+      // cancellation the user already knows about.
+      expect(published.map((summary) => summary.turnOutcome)).toEqual(
+        published.map(() => undefined)
+      )
     }
   )
 
@@ -340,11 +393,12 @@ describe('already-wedged profiles become usable on load', () => {
 
     expect(acquire).toHaveBeenCalledOnce()
     expect(activeStructuredAgentSessionTurnId(restoredJournal().snapshot().items)).toBe(null)
-    // A pid probe proved the owner gone; nobody saw it exit, so the turn has no end.
+    // A pid probe proved the owner gone, so the turn was cut short when it was last seen working.
     expect(turnLifecycle('turn-1')).toEqual({
       turnId: 'turn-1',
-      state: 'unverifiable',
+      state: 'interrupted',
       startedAt: NOW - 5_000,
+      completedAt: seededTurnSeenAt(),
       recovered: true
     })
     expect(store.getRecord(SESSION)?.lease).toMatchObject({
@@ -435,11 +489,12 @@ describe('already-wedged profiles become usable on load', () => {
 
       expect(acquire).toHaveBeenCalledOnce()
       expect(store.getRecord(SESSION)?.lease).toMatchObject({ claimStatus: 'live' })
-      // A pid probe proved the owner gone; nobody saw it exit, so the turn has no end.
+      // A pid probe proved the owner gone, so the turn was cut short when it was last seen working.
       expect(turnLifecycle('turn-1')).toEqual({
         turnId: 'turn-1',
-        state: 'unverifiable',
+        state: 'interrupted',
         startedAt: NOW - 5_000,
+        completedAt: seededTurnSeenAt(),
         recovered: true
       })
     }

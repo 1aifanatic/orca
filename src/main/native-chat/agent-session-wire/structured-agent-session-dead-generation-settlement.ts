@@ -206,9 +206,9 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
 /**
  * Settles whatever a generation with no child in this process left running: found when a new child
  * is acquired, or when a chat is reopened for reading. Derived from the journal and the lease's
- * death evidence each time, so nothing is owed in between. Only an observed exit earns an end time
- * and the exit copy. Must run before a new child's buffered events land, or a live turn would be
- * judged.
+ * death evidence each time, so nothing is owed in between. Proven death ends the turn interrupted,
+ * and only a watched exit carries its reason into the copy. Must run before a new child's buffered
+ * events land, or a live turn would be judged.
  */
 export async function settleStaleStructuredAgentSessionState(input: {
   journal: AgentSessionJournal
@@ -219,7 +219,7 @@ export async function settleStaleStructuredAgentSessionState(input: {
 }): Promise<number> {
   const { journal } = input
   const items = journal.snapshot().items
-  const verdict = turnVerdictFromDeathEvidence(input.deathEvidence)
+  const verdict = turnVerdictFromDeathEvidence(input.deathEvidence, items)
   const generation = input.acquisitionGeneration ?? `seq-${journal.cursor().sequence}`
   const settlementId = `stale-session:${input.sessionId}:${input.fence}:${generation}`
   const mutations: JournalLifecycleMutationInput[] = []
@@ -237,7 +237,12 @@ export async function settleStaleStructuredAgentSessionState(input: {
       identity: { provider: 'orca', clientMessageId: settlementId },
       body: {
         kind: 'status',
-        text: boundJournalStatusText(unexpectedProviderExitOutcome(input.deathEvidence?.detail))
+        // Only a watched exit carries the provider's own reason; a probe's detail is Orca's.
+        text: boundJournalStatusText(
+          unexpectedProviderExitOutcome(
+            input.deathEvidence?.kind === 'exit-observed' ? input.deathEvidence.detail : undefined
+          )
+        )
       }
     })
   }
