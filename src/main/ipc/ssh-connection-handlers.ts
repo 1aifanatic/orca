@@ -27,8 +27,9 @@ import {
   testingTargets
 } from './ssh-connect-attempt-registry'
 import { connectTarget } from './ssh-connect-flow'
-import { connectionManager, persistedStore } from './ssh-ipc-context'
-import { getPublicSshState } from './ssh-renderer-broadcast'
+import { recordSshConnectionIntent } from './ssh-connection-intent'
+import { connectionManager, getCurrentMainWindow, persistedStore } from './ssh-ipc-context'
+import { broadcastSshState, getPublicSshState } from './ssh-renderer-broadcast'
 import {
   disconnectRegisteredSshTarget,
   teardownActiveSshSession,
@@ -109,11 +110,32 @@ export function registerSshConnectionHandlers(): void {
   })
 
   ipcMain.handle('ssh:connect', async (_event, args: { targetId: string }) => {
-    return connectTarget(args.targetId)
+    return connectTarget(args.targetId, 'user')
+  })
+
+  ipcMain.handle('ssh:ensureConnected', async (_event, args: { targetId: string }) => {
+    return connectTarget(args.targetId, 'background')
+  })
+
+  ipcMain.handle('ssh:connectForSessionCleanup', async (_event, args: { targetId: string }) => {
+    return connectTarget(args.targetId, 'session-cleanup')
   })
 
   ipcMain.handle('ssh:disconnect', async (_event, args: { targetId: string }) => {
+    // Why only here and not in disconnectRegisteredSshTarget: VM teardown shares that path, and
+    // only this handler is a user's Disconnect. Written first so every state published during
+    // the teardown already says the user holds the host down.
+    recordSshConnectionIntent(args.targetId, 'disconnected')
+    const hadConnection = connectionManager!.getConnection(args.targetId) !== undefined
     await disconnectRegisteredSshTarget(args.targetId)
+    if (!hadConnection) {
+      // Why: with no connection object nothing emits 'disconnected', so a failed connect's
+      // 'error' would otherwise stay published over the user's Disconnect.
+      const state = getPublicSshState(args.targetId)
+      if (state) {
+        broadcastSshState(getCurrentMainWindow, args.targetId, state)
+      }
+    }
   })
 
   ipcMain.handle('ssh:terminateSessions', async (_event, args: { targetId: string }) => {

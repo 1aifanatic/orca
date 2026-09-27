@@ -14,6 +14,7 @@ import {
 } from '../ports/ssh-advertised-url-enrichment'
 import { getSshProviderAuthority } from '../ssh/ssh-provider-authority'
 import { activeSessions } from './ssh-active-relay-sessions'
+import { isSshTargetDisconnectedByUser } from './ssh-connection-intent'
 import {
   connectionManager,
   currentRuntime,
@@ -43,15 +44,19 @@ export function broadcastSshState(
   currentRuntime?.notifySshStateChanged?.(targetId, enrichedState)
 }
 
+// Why the one enrichment point: the renderer broadcast, getPublicSshState and the paired-client
+// relay all pass through here, so every reader sees the same authority and the same intent.
 function withSshRemotePlatform(targetId: string, state: SshConnectionState): SshConnectionState {
   const remotePlatform = activeSessions.get(targetId)?.getHostPlatform()?.os
   const authority = getSshProviderAuthority(targetId)
+  const { disconnectedBy: _staleDisconnectedBy, ...current } = state
   return {
-    ...state,
+    ...current,
     targetId,
     providerEpoch: authority.providerEpoch,
     connectionGeneration: authority.connectionGeneration,
-    ...(remotePlatform ? { remotePlatform } : {})
+    ...(remotePlatform ? { remotePlatform } : {}),
+    ...(isSshTargetDisconnectedByUser(targetId) ? { disconnectedBy: 'user' as const } : {})
   }
 }
 
@@ -77,7 +82,13 @@ export function connectionSupportsFolderDownload(targetId: string): boolean {
 }
 
 export function getPublicSshState(targetId: string): SshConnectionState | undefined {
-  const state = relayStateOverrides.get(targetId) ?? connectionManager!.getState(targetId)
+  const state =
+    relayStateOverrides.get(targetId) ??
+    connectionManager!.getState(targetId) ??
+    // Why: after a restart no connection object exists, yet the user's Disconnect still holds.
+    (isSshTargetDisconnectedByUser(targetId)
+      ? { targetId, status: 'disconnected' as const, error: null, reconnectAttempt: 0 }
+      : null)
   return state ? withSshRemotePlatform(targetId, state) : undefined
 }
 

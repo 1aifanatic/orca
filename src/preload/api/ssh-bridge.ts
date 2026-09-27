@@ -49,6 +49,18 @@ export const sshApi = {
     return state ? admitSshConnectionStateForAuthorityReconciliation(state, args.targetId) : null
   },
 
+  ensureConnected: async (args: { targetId: string }): Promise<SshConnectionState | null> => {
+    const state: unknown = await ipcRenderer.invoke('ssh:ensureConnected', args)
+    return state ? admitSshConnectionStateForAuthorityReconciliation(state, args.targetId) : null
+  },
+
+  connectForSessionCleanup: async (args: {
+    targetId: string
+  }): Promise<SshConnectionState | null> => {
+    const state: unknown = await ipcRenderer.invoke('ssh:connectForSessionCleanup', args)
+    return state ? admitSshConnectionStateForAuthorityReconciliation(state, args.targetId) : null
+  },
+
   disconnect: (args: { targetId: string }): Promise<void> =>
     ipcRenderer.invoke('ssh:disconnect', args),
 
