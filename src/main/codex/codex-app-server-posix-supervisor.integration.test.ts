@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process'
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -14,6 +14,12 @@ import {
 const PROVIDER = String.raw`
   const { spawn } = require('node:child_process')
   if (process.env.ORCA_TEST_PROVIDER_IGNORES_SIGTERM) process.on('SIGTERM', () => {})
+  if (process.env.ORCA_TEST_PROVIDER_SIGNAL_FILE) {
+    process.on('SIGTERM', () => {
+      require('node:fs').writeFileSync(process.env.ORCA_TEST_PROVIDER_SIGNAL_FILE, 'SIGTERM')
+      process.exit(0)
+    })
+  }
   process.stdout.on('error', () => {})
   const grandchild = spawn(
     process.execPath,
@@ -46,7 +52,26 @@ const OWNER = String.raw`
   setInterval(() => {}, 60000)
 `
 
+// Preloaded into the supervisor: signals it the instant its provider exists, the spawn window.
+const SIGNAL_AFTER_SPAWN_PRELOAD = String.raw`
+  const childProcess = require('node:child_process')
+  const spawn = childProcess.spawn
+  childProcess.spawn = (...args) => {
+    const child = spawn(...args)
+    require('node:fs').writeFileSync(process.env.ORCA_TEST_PROVIDER_PID_FILE, String(child.pid))
+    process.kill(process.pid, 'SIGTERM')
+    return child
+  }
+`
+
 const recordedPids = new Set<number>()
+const tempDirs: string[] = []
+
+function tempDir(): string {
+  const dir = mkdtempSync(join(tmpdir(), 'orca-supervisor-'))
+  tempDirs.push(dir)
+  return dir
+}
 
 function alive(pid: number): boolean {
   try {
@@ -103,10 +128,11 @@ function launchSupervisor(
   provider: { command: string; args: string[] } = {
     command: process.execPath,
     args: ['-e', PROVIDER]
-  }
+  },
+  nodeArgs: string[] = []
 ): { supervisor: ChildProcess; exit: Promise<{ code: number | null; signal: string | null }> } {
   const launch = supervisedPosixLaunch(provider, { ...process.env, ...env }, options)
-  const supervisor = spawn(launch.command, launch.args, {
+  const supervisor = spawn(launch.command, [...nodeArgs, ...launch.args], {
     env: launch.env,
     stdio: ['pipe', 'pipe', 'ignore'],
     detached: true
@@ -118,6 +144,24 @@ function launchSupervisor(
   return { supervisor, exit }
 }
 
+async function launchUnderOwner(
+  options: ProviderSupervisorOptions,
+  env: Record<string, string> = {}
+): Promise<{ owner: ChildProcess; pids: Record<string, number> }> {
+  const launch = supervisedPosixLaunch(
+    { command: process.execPath, args: ['-e', PROVIDER] },
+    { ...process.env, ...env },
+    options
+  )
+  const owner = spawn(process.execPath, ['-e', OWNER], {
+    env: { ...launch.env, ORCA_TEST_SUPERVISOR_SCRIPT: POSIX_PROVIDER_SUPERVISOR_SCRIPT },
+    stdio: ['ignore', 'pipe', 'ignore']
+  })
+  recordedPids.add(owner.pid!)
+  const pids = await readPids(owner, ['supervisor', 'holder', 'provider', 'grandchild'])
+  return { owner, pids }
+}
+
 afterEach(() => {
   for (const pid of recordedPids) {
     if (alive(pid)) {
@@ -125,6 +169,9 @@ afterEach(() => {
     }
   }
   recordedPids.clear()
+  for (const dir of tempDirs.splice(0)) {
+    rmSync(dir, { recursive: true, force: true })
+  }
 })
 
 describe.runIf(process.platform !== 'win32')('POSIX provider supervisor processes', () => {
@@ -163,22 +210,35 @@ describe.runIf(process.platform !== 'win32')('POSIX provider supervisor processe
     expect(alive(grandchild)).toBe(false)
   })
 
-  it('never spawns the provider when its owner is not its parent at start', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'orca-supervisor-owner-'))
-    try {
-      const marker = join(dir, 'provider-started')
-      const { exit } = launchSupervisor(
-        { ownerPid: process.pid === 1 ? 2 : 1 },
-        {},
-        { command: 'touch', args: [marker] }
-      )
+  it('reaps a provider spawned in the instant before a stop arrives', async () => {
+    const dir = tempDir()
+    const preload = join(dir, 'signal-after-spawn.js')
+    const pidFile = join(dir, 'provider-pid')
+    writeFileSync(preload, SIGNAL_AFTER_SPAWN_PRELOAD)
+    const { exit } = launchSupervisor(
+      { graceMs: 300 },
+      { ORCA_TEST_PROVIDER_PID_FILE: pidFile },
+      { command: process.execPath, args: ['-e', 'setInterval(() => {}, 60000)'] },
+      ['--require', preload]
+    )
 
-      await expect(exit).resolves.toEqual({ code: 1, signal: null })
-      await new Promise((resolve) => setTimeout(resolve, 200))
-      expect(existsSync(marker)).toBe(false)
-    } finally {
-      rmSync(dir, { recursive: true, force: true })
-    }
+    await expect(exit).resolves.toEqual({ code: null, signal: 'SIGTERM' })
+    const provider = Number(readFileSync(pidFile, 'utf8'))
+    recordedPids.add(provider)
+    expect(await waitFor(() => !alive(provider), 3_000)).toBe(true)
+  })
+
+  it('never spawns the provider when its owner is not its parent at start', async () => {
+    const marker = join(tempDir(), 'provider-started')
+    const { exit } = launchSupervisor(
+      { ownerPid: process.pid === 1 ? 2 : 1 },
+      {},
+      { command: 'touch', args: [marker] }
+    )
+
+    await expect(exit).resolves.toEqual({ code: 1, signal: null })
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    expect(existsSync(marker)).toBe(false)
   })
 
   it.each([
@@ -186,26 +246,29 @@ describe.runIf(process.platform !== 'win32')('POSIX provider supervisor processe
     // Output after the owner's death meets a closed pipe, which must not end the supervisor first.
     [' while the provider is writing output', { ORCA_TEST_PROVIDER_STREAMS_OUTPUT: '1' }]
   ])('reaps the provider group when its owner dies%s', async (_, env) => {
-    const launch = supervisedPosixLaunch(
-      { command: process.execPath, args: ['-e', PROVIDER] },
-      { ...process.env, ...env }
+    const graceMs = 300
+    const { owner, pids } = await launchUnderOwner({ graceMs }, env)
+
+    const killedAt = Date.now()
+    owner.kill('SIGKILL')
+
+    expect(await waitFor(() => !alive(-pids.provider), 3_000)).toBe(true)
+    // The grandchild ignores SIGTERM, so the group lasts until the grace ends in SIGKILL.
+    expect(Date.now() - killedAt).toBeGreaterThanOrEqual(graceMs)
+    expect(await waitFor(() => !alive(pids.supervisor), 3_000)).toBe(true)
+    expect(alive(pids.grandchild)).toBe(false)
+  })
+
+  it('asks the provider to stop with SIGTERM when its owner dies', async () => {
+    const signalFile = join(tempDir(), 'provider-signal')
+    const { owner, pids } = await launchUnderOwner(
+      { graceMs: 300 },
+      { ORCA_TEST_PROVIDER_SIGNAL_FILE: signalFile }
     )
-    const owner = spawn(process.execPath, ['-e', OWNER], {
-      env: { ...launch.env, ORCA_TEST_SUPERVISOR_SCRIPT: POSIX_PROVIDER_SUPERVISOR_SCRIPT },
-      stdio: ['ignore', 'pipe', 'ignore']
-    })
-    recordedPids.add(owner.pid!)
-    const { supervisor, provider, grandchild } = await readPids(owner, [
-      'supervisor',
-      'holder',
-      'provider',
-      'grandchild'
-    ])
 
     owner.kill('SIGKILL')
 
-    expect(await waitFor(() => !alive(-provider), 3_000)).toBe(true)
-    expect(await waitFor(() => !alive(supervisor), 3_000)).toBe(true)
-    expect(alive(grandchild)).toBe(false)
+    expect(await waitFor(() => !alive(-pids.provider), 3_000)).toBe(true)
+    expect(existsSync(signalFile) && readFileSync(signalFile, 'utf8')).toBe('SIGTERM')
   })
 })
