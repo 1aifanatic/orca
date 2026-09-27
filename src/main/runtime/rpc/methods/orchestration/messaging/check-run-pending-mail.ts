@@ -118,7 +118,13 @@ export async function checkRunPendingMail(args: {
       }
       throw error
     }
-    if (result && result.count > 0) {
+    const inspectingHistory =
+      params.all === true || (params.unread === false && params.peek !== true)
+    if (
+      result &&
+      result.count > 0 &&
+      (!inspectingHistory || db.getUnreadMessages(`dispatch:${residual.id}`).length > 0)
+    ) {
       return {
         acknowledged: acknowledged?.delivery.id,
         result: { ...result, acknowledged: acknowledged?.delivery.id ?? null }
