@@ -3,7 +3,6 @@
 // settle every listed chat that owes it, not only the ones some reader happened to open.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { StructuredAgentSessionHostDeps } from './structured-agent-session-host-types'
 import {
   createStartupRig,
@@ -32,17 +31,13 @@ async function crashMidTurn(sessionId: string): Promise<void> {
   const host = await rig.boot()
   await host.restoreStartupSessions()
   await rig.chat(sessionId, { message: 'second' })
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the host's session map, reached only to journal the provider's running turn as its event path would.
-  const sessions = (
-    rig.host as unknown as { sessions: Map<string, { journal: AgentSessionJournal }> }
-  ).sessions
-  await sessions
-    .get(sessionId)!
-    .journal.appendItem(
-      { provider: 'codex', threadId: `thread-${sessionId}`, turnId: 'turn-running', ordinal: 99 },
-      { kind: 'turn', turnId: 'turn-running', state: 'running', startedAt: 1 },
-      { fence: rig.store.getRecord(sessionId)!.lease.runtimeFence }
-    )
+  const { journal } = rig.host.collaboratorsForTests().sessions.get(sessionId)!
+  // The provider's turn is still running when the app dies.
+  await journal.appendItem(
+    { provider: 'codex', threadId: `thread-${sessionId}`, turnId: 'turn-running', ordinal: 99 },
+    { kind: 'turn', turnId: 'turn-running', state: 'running', startedAt: 1 },
+    { fence: rig.store.getRecord(sessionId)!.lease.runtimeFence }
+  )
   await rig.crash()
 }
 
