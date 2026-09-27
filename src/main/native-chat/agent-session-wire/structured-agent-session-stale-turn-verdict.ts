@@ -36,12 +36,12 @@ export function turnVerdictFromDeathEvidence(
   if (evidence.kind === 'exit-observed') {
     return { state: 'interrupted', completedAt: evidence.observedAt }
   }
-  // A probe finds a dead child long after it died; the last row it wrote bounds its end, so the
-  // turn never counts the time Orca itself was down.
-  const lastLive = journal.lastLiveActivityAt()
+  // A probe finds a dead child long after it died. The later of the last renewal and the last row
+  // it wrote bounds its end, so the turn never counts the time Orca itself was down.
+  const lastSeen = Math.max(evidence.lastProvenAliveAt ?? 0, journal.lastLiveActivityAt())
   return {
     state: 'interrupted',
-    completedAt: lastLive > 0 ? Math.min(lastLive, evidence.observedAt) : evidence.observedAt
+    completedAt: lastSeen > 0 ? Math.min(lastSeen, evidence.observedAt) : evidence.observedAt
   }
 }
 

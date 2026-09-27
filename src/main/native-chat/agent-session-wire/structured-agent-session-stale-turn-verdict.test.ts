@@ -95,7 +95,7 @@ describe('turn verdict from death evidence', () => {
   })
 
   it.each(['pid-absent', 'identity-mismatch'] as const)(
-    'ends a %s proof at the last row the journal saw live, not at the probe',
+    'ends a %s proof an older build recorded at the last row the journal saw live, not at the probe',
     (kind) => {
       // Probed at 9000, long after the crash: the downtime is never counted as work.
       expect(
@@ -112,6 +112,43 @@ describe('turn verdict from death evidence', () => {
       }
     }
   )
+
+  it('ends a probe-proven death at the later of the last renewal and the last live row', () => {
+    const proof = (lastProvenAliveAt: number) => ({
+      kind: 'pid-absent' as const,
+      detail: 'gone',
+      observedAt: 9_000,
+      lastProvenAliveAt
+    })
+    // A silent tool run: the renewal saw the child working long after its last row.
+    expect(turnVerdictFromDeathEvidence(proof(8_000), lastLiveAt(300))).toEqual({
+      state: 'interrupted',
+      completedAt: 8_000
+    })
+    expect(turnVerdictFromDeathEvidence(proof(8_000), lastLiveAt(0))).toEqual({
+      state: 'interrupted',
+      completedAt: 8_000
+    })
+    // A chatty provider: its last row is the tighter bound.
+    expect(turnVerdictFromDeathEvidence(proof(200), lastLiveAt(300))).toEqual({
+      state: 'interrupted',
+      completedAt: 300
+    })
+    // Neither bound outlasts the probe.
+    expect(turnVerdictFromDeathEvidence(proof(9_500), lastLiveAt(300))).toEqual({
+      state: 'interrupted',
+      completedAt: 9_000
+    })
+  })
+
+  it('ends a watched exit at the exit even when a renewal is recorded', () => {
+    expect(
+      turnVerdictFromDeathEvidence(
+        { kind: 'exit-observed', detail: 'exit', observedAt: 500, lastProvenAliveAt: 400 },
+        lastLiveAt(300)
+      )
+    ).toEqual({ state: 'interrupted', completedAt: 500 })
+  })
 
   it('leaves a release nothing proved unverifiable', () => {
     expect(turnVerdictFromDeathEvidence(null, lastLiveAt(300))).toEqual({ state: 'unverifiable' })

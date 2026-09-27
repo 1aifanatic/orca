@@ -208,12 +208,25 @@ describe('restart reconciliation', () => {
     expect(result).toEqual({
       disposition: 'evicted',
       nextFence: 8,
+      // The death happened between the last renewal and the probe.
       evidence: {
         kind: 'identity-mismatch',
         detail: 'mismatched process-start-time',
-        observedAt: 9_000
+        observedAt: 9_000,
+        lastProvenAliveAt: 500
       }
     })
+  })
+
+  it('never records the owner alive after the probe that found it gone', () => {
+    // A clock stepped back across the restart would otherwise write an interval load rejects.
+    expect(
+      adjudicateAgentSessionRestart({
+        lease: lease({ lastRenewedAt: 9_500 }),
+        probe: { outcome: 'pid-absent' },
+        observedAt: 9_000
+      })
+    ).toMatchObject({ evidence: { observedAt: 9_000, lastProvenAliveAt: 9_000 } })
   })
 
   it('hands an unverifiable owner to recovery resolution instead of evicting it', () => {
@@ -255,7 +268,12 @@ describe('restart reconciliation', () => {
     ).toEqual({
       disposition: 'evicted',
       nextFence: 8,
-      evidence: { kind: 'pid-absent', detail: 'recorded pid absent on host', observedAt: 9_000 }
+      evidence: {
+        kind: 'pid-absent',
+        detail: 'recorded pid absent on host',
+        observedAt: 9_000,
+        lastProvenAliveAt: 500
+      }
     })
   })
 

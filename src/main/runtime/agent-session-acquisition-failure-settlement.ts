@@ -86,12 +86,14 @@ export function settleFailedAgentSessionPostAcquisitionAttachment(
   }
   const next =
     args.exitProof === 'unproven'
-      ? withLease(record, {
-          ...record.lease,
-          handoffStage: 'recovering',
-          handoffOperationId: null,
-          lastRenewedAt: args.now
-        })
+      ? {
+          ...withLease(record, {
+            ...record.lease,
+            handoffStage: 'recovering',
+            handoffOperationId: null
+          }),
+          updatedAt: args.now
+        }
       : withLease(record, {
           ...record.lease,
           runtimeFence: nextAgentSessionFence(record.lease),
@@ -133,14 +135,17 @@ function settleFailedLease(
     throw new Error('agent_session_ownership_unknown')
   }
   if (args.exitProof === 'unproven' && record.lease.ownerProcess) {
-    return withLease(record, {
-      ...record.lease,
-      handoffStage: 'recovering',
-      // The operation is durably settled failed below; a lease still naming it would
-      // read as an in-flight transfer to every consumer that keys on the stage + id pair.
-      handoffOperationId: null,
-      lastRenewedAt: args.now
-    })
+    // Parking in recovery proves nothing alive, so `lastRenewedAt` keeps the spawn's proof.
+    return {
+      ...withLease(record, {
+        ...record.lease,
+        handoffStage: 'recovering',
+        // The operation is durably settled failed below; a lease still naming it would
+        // read as an in-flight transfer to every consumer that keys on the stage + id pair.
+        handoffOperationId: null
+      }),
+      updatedAt: args.now
+    }
   }
   return withLease(record, {
     ...record.lease,
