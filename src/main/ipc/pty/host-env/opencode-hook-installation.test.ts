@@ -309,3 +309,36 @@ it.each(['opencode', 'opencode2'] as const)(
     expect(result.ORCA_OPENCODE_AGENT).toBe(agent)
   }
 )
+
+it.each([true, false])(
+  'preserves explicit host config over inherited markers with hooks %s',
+  (enabled) => {
+    const stale = join(root, 'stale-source')
+    mkdirSync(stale)
+    writeFileSync(join(stale, 'opencode.json'), '{"model":"stale"}')
+    for (const inheritedFromProcess of [true, false]) {
+      const markers = {
+        ORCA_OPENCODE_CONFIG_DIR: join(root, 'old-overlay'),
+        ORCA_OPENCODE_SOURCE_CONFIG_DIR: stale
+      }
+      if (inheritedFromProcess) {
+        for (const [key, value] of Object.entries(markers)) {
+          vi.stubEnv(key, value)
+        }
+      }
+      const env = buildPtyHostEnv(
+        'explicit-config',
+        {
+          ...(inheritedFromProcess ? {} : markers),
+          OPENCODE_CONFIG_DIR: custom
+        },
+        { ...options, agentStatusHooksEnabled: enabled }
+      )
+      expect(readFileSync(join(env.OPENCODE_CONFIG_DIR, 'opencode.json'), 'utf8')).toBe(
+        '{"model":"fixture"}'
+      )
+      expect(env.ORCA_OPENCODE_SOURCE_CONFIG_DIR).toBe(enabled ? custom : undefined)
+      expect(existsSync(plugin(stale, 'opencode'))).toBe(false)
+    }
+  }
+)

@@ -5,12 +5,17 @@ export function restoreOrStripOverlayEnv(
     primary: string
     overlay: string
     source: string
+    preserveExplicitPrimary?: boolean
   },
   inheritedEnv: NodeJS.ProcessEnv = process.env
 ): void {
   const sourceValue = baseEnv[keys.source] ?? inheritedEnv[keys.source]
   const overlayValue = baseEnv[keys.overlay] ?? inheritedEnv[keys.overlay]
-  if (sourceValue) {
+  const preservePrimary =
+    keys.preserveExplicitPrimary &&
+    baseEnv[keys.primary] !== undefined &&
+    baseEnv[keys.primary] !== overlayValue
+  if (sourceValue && !preservePrimary) {
     baseEnv[keys.primary] = sourceValue
   } else if (overlayValue && baseEnv[keys.primary] === overlayValue) {
     delete baseEnv[keys.primary]

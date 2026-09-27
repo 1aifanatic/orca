@@ -150,3 +150,21 @@ describe('relay OpenCode source selection on real fixture files', () => {
     expect(env.ORCA_AGENT_HOOK_PORT).toBe('12345')
   })
 })
+
+it.each([true, false])(
+  'preserves explicit config over inherited relay markers with hooks %s',
+  async (enabled) => {
+    await install(enabled ? '// v1' : '', '')
+    const stale = join(root, 'stale-source')
+    mkdirSync(stale)
+    writeFileSync(join(stale, 'opencode.json'), '{"model":"stale"}')
+    vi.stubEnv('ORCA_OPENCODE_CONFIG_DIR', join(root, 'old-overlay'))
+    vi.stubEnv('ORCA_OPENCODE_SOURCE_CONFIG_DIR', stale)
+    const env = await spawn({ env: { OPENCODE_CONFIG_DIR: custom } })
+    expect(readFileSync(join(env.OPENCODE_CONFIG_DIR, 'opencode.json'), 'utf8')).toBe(
+      '{"model":"fixture"}'
+    )
+    expect(env.ORCA_OPENCODE_SOURCE_CONFIG_DIR).toBe(enabled ? custom : undefined)
+    expect(existsSync(plugin(stale, 'opencode'))).toBe(false)
+  }
+)

@@ -90,7 +90,8 @@ export function buildPtyHostEnv(
   restoreOrStripOverlayEnv(baseEnv, {
     primary: 'OPENCODE_CONFIG_DIR',
     overlay: 'ORCA_OPENCODE_CONFIG_DIR',
-    source: 'ORCA_OPENCODE_SOURCE_CONFIG_DIR'
+    source: 'ORCA_OPENCODE_SOURCE_CONFIG_DIR',
+    preserveExplicitPrimary: true
   })
   delete baseEnv.ORCA_OPENCODE_AGENT
   if (openCodeAgent) {
