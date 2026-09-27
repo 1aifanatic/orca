@@ -4,6 +4,7 @@ import { OrcaRuntimeWithWriteOrchestrationPointerPty } from './orca-runtime-writ
 import type { RuntimeMobileSessionTabsSnapshot } from '../../shared/runtime-types'
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
 import { getMobileSessionSnapshotTabIdentityKeys } from './mobile-session-tab-merge'
+import { removeMobileSessionSnapshotTabs } from './mobile-session-terminal-retirement'
 
 export class OrcaRuntimeWithSyncMobileSessionTabs extends OrcaRuntimeWithWriteOrchestrationPointerPty {
   // Returns the worktrees whose stored snapshot object changed during this
@@ -217,17 +218,39 @@ export class OrcaRuntimeWithSyncMobileSessionTabs extends OrcaRuntimeWithWriteOr
     ) {
       return
     }
-    this.mergeRendererMobileSnapshot(accepted.frame)
+    this.mergeRendererMobileSnapshot(accepted.frame, { parentTabId: tabId, leafId })
     this.notifyMobileSessionTabsChanged(worktreeId)
   }
 
-  protected mergeRendererMobileSnapshot(snapshot: RuntimeMobileSessionTabsSnapshot): void {
+  protected mergeRendererMobileSnapshot(
+    snapshot: RuntimeMobileSessionTabsSnapshot,
+    rederivedSurface?: { parentTabId: string; leafId: string }
+  ): void {
     const existing = this.mobileSessionTabsByWorktree.get(snapshot.worktree)
     this.nativeChatDraftResolutions.reconcile(snapshot)
     const launchDraftFencedSnapshot = this.nativeChatDraftResolutions.applyFence(snapshot)
     const fencedSnapshot = this.applyMobileSessionRetirementFences(launchDraftFencedSnapshot)
-    this.releaseRuntimeSessionOwnershipForRendererRetiredTabs(fencedSnapshot, existing)
-    const nextSnapshot = this.mergePreservedHeadlessMobileSessionTabs(fencedSnapshot, existing)
+    // Why: a replay re-derives only the registering surface; every other surface keeps the host's
+    // current decision, so one the host retired after accept (its PTY may still be exiting) stays out.
+    const heldKeys = new Set(
+      existing?.tabs.flatMap((tab) => getMobileSessionSnapshotTabIdentityKeys(tab)) ?? []
+    )
+    const unheldSurfaces = rederivedSurface
+      ? fencedSnapshot.tabs.filter(
+          (tab) =>
+            !(
+              tab.type === 'terminal' &&
+              tab.parentTabId === rederivedSurface.parentTabId &&
+              tab.leafId === rederivedSurface.leafId
+            ) && !getMobileSessionSnapshotTabIdentityKeys(tab).some((key) => heldKeys.has(key))
+        )
+      : []
+    const mergedSnapshot =
+      unheldSurfaces.length > 0
+        ? removeMobileSessionSnapshotTabs(fencedSnapshot, unheldSurfaces)
+        : fencedSnapshot
+    this.releaseRuntimeSessionOwnershipForRendererRetiredTabs(mergedSnapshot, existing)
+    const nextSnapshot = this.mergePreservedHeadlessMobileSessionTabs(mergedSnapshot, existing)
     // Why: clients drop same-epoch frames whose version isn't strictly newer,
     // and main-local touches may already have emitted a higher version than
     // the renderer's counter — keep the stored version strictly monotonic so
