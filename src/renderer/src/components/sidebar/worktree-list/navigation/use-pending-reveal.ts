@@ -3,14 +3,17 @@ import { toast } from 'sonner'
 import { useAppStore } from '@/store'
 import { translate } from '@/i18n/i18n'
 import { getRenderRowOptionId } from './active-descendant-option'
-import { getRenderRowSidebarKey, rowKeyMatchesRenderRow } from './render-row-lookup'
+import {
+  findPreferredRenderRowIndexForWorktree,
+  findPreferredRenderRowIndexForWorktreeIdentity,
+  getRenderRowSidebarKey,
+  rowKeyMatchesRenderRow
+} from './render-row-lookup'
 import { revealMountedSidebarRowElement, revealMountedWorktreeElement } from './mounted-row-reveal'
-import { expandSidebarRowRevealAncestors } from './expand-sidebar-row-reveal-ancestors'
+import { getSidebarRowRevealAncestorKeys } from './reveal-ancestors'
 import { sidebarWorkspaceStillExists } from './folder-reveal'
-import { completeMountedSidebarReveal } from './complete-mounted-reveal'
 import {
   expandGroupsForWorktreeReveal,
-  findPendingWorktreeRevealIndex,
   MAX_REVEAL_RETRIES,
   resolvePendingSidebarReveal,
   type PendingSidebarRevealArgs
@@ -36,6 +39,7 @@ export function usePendingSidebarReveal(args: PendingSidebarRevealArgs): void {
     renderRows,
     virtualizer,
     schedulePendingRevealFrame,
+    cancelPendingRevealFrames,
     flashRevealedRow,
     markRevealScroll,
     pinnedDisplayPolicy
@@ -66,10 +70,8 @@ export function usePendingSidebarReveal(args: PendingSidebarRevealArgs): void {
     }
 
     let cancelled = false
-    const isCancelled = () =>
-      cancelled || useAppStore.getState().pendingRevealWorktree !== pendingRevealWorktree
     schedulePendingRevealFrame(() => {
-      if (isCancelled()) {
+      if (cancelled) {
         return
       }
       const targetWorktreeStillExists = sidebarWorkspaceStillExists(
@@ -78,11 +80,20 @@ export function usePendingSidebarReveal(args: PendingSidebarRevealArgs): void {
         argsRef.current.folderWorkspaces,
         pendingRevealWorktree.executionHostId
       )
-      const targetIndex = findPendingWorktreeRevealIndex(
-        renderRows,
-        pendingRevealWorktree,
-        pinnedDisplayPolicy
-      )
+      const targetIndex = pendingRevealWorktree.executionHostId
+        ? findPreferredRenderRowIndexForWorktreeIdentity(
+            renderRows,
+            {
+              id: pendingRevealWorktree.worktreeId,
+              hostId: pendingRevealWorktree.executionHostId
+            },
+            pinnedDisplayPolicy
+          )
+        : findPreferredRenderRowIndexForWorktree(
+            renderRows,
+            pendingRevealWorktree.worktreeId,
+            pinnedDisplayPolicy
+          )
       const outcome = resolvePendingSidebarReveal({ targetIndex, targetWorktreeStillExists })
       if (outcome === 'clear') {
         pendingRevealRetryRef.current = null
@@ -107,38 +118,22 @@ export function usePendingSidebarReveal(args: PendingSidebarRevealArgs): void {
             markRevealScroll
           )
         : null
-      if (revealedOption && container) {
-        completeMountedSidebarReveal({
-          container,
-          element: revealedOption,
-          behavior: pendingRevealWorktree.behavior,
-          cancelled: isCancelled,
-          isScrollSettling: () => argsRef.current.isRevealScrollSettling(),
-          wasScrollInterrupted: () => argsRef.current.wasRevealScrollInterrupted(),
-          markRevealScroll,
-          scheduleFrame: schedulePendingRevealFrame,
-          beginRename: pendingRevealWorktree.beginRename
-            ? () =>
-                setRenamingWorktreeId({
-                  worktreeId: pendingRevealWorktree.worktreeId,
-                  rowKey: revealedOption.dataset.worktreeRowKey
-                })
-            : undefined,
-          complete: (landed) => {
-            if (isCancelled()) {
-              return
-            }
-            if (landed && pendingRevealWorktree.highlight) {
-              const revealedRowKey =
-                revealedOption.dataset.worktreeRowKey ?? getRenderRowSidebarKey(targetRow)
-              if (revealedRowKey) {
-                flashRevealedRow(revealedRowKey)
-              }
-            }
-            pendingRevealRetryRef.current = null
-            clearPendingRevealWorktreeId()
+      if (revealedOption) {
+        if (pendingRevealWorktree.highlight) {
+          const revealedRowKey =
+            revealedOption.dataset.worktreeRowKey ?? getRenderRowSidebarKey(targetRow)
+          if (revealedRowKey) {
+            flashRevealedRow(revealedRowKey)
           }
-        })
+        }
+        if (pendingRevealWorktree.beginRename) {
+          setRenamingWorktreeId({
+            worktreeId: pendingRevealWorktree.worktreeId,
+            rowKey: revealedOption.dataset.worktreeRowKey
+          })
+        }
+        pendingRevealRetryRef.current = null
+        clearPendingRevealWorktreeId()
         return
       }
 
@@ -152,7 +147,7 @@ export function usePendingSidebarReveal(args: PendingSidebarRevealArgs): void {
         count: nextRetryCount
       }
       if (nextRetryCount <= MAX_REVEAL_RETRIES) {
-        scheduleRetryTick(isCancelled)
+        scheduleRetryTick(() => cancelled)
         return
       }
       pendingRevealRetryRef.current = null
@@ -160,6 +155,7 @@ export function usePendingSidebarReveal(args: PendingSidebarRevealArgs): void {
     })
     return () => {
       cancelled = true
+      cancelPendingRevealFrames()
     }
   }, [
     pendingRevealWorktree,
@@ -187,6 +183,7 @@ export function usePendingSidebarReveal(args: PendingSidebarRevealArgs): void {
     markRevealScroll,
     setRenamingWorktreeId,
     schedulePendingRevealFrame,
+    cancelPendingRevealFrames,
     scheduleRetryTick
   ])
 
@@ -204,13 +201,23 @@ export function usePendingSidebarReveal(args: PendingSidebarRevealArgs): void {
       return
     }
 
-    if (expandSidebarRowRevealAncestors(current, pendingRevealSidebarRow.rowKey)) {
+    let toggledAncestor = false
+    for (const groupKey of getSidebarRowRevealAncestorKeys({
+      rowKey: pendingRevealSidebarRow.rowKey,
+      repoMap: current.repoMap,
+      projectGroups: current.projectGroups,
+      projectGrouping: current.projectGrouping
+    })) {
+      if (current.collapsedGroups.has(groupKey)) {
+        current.toggleGroup(groupKey)
+        toggledAncestor = true
+      }
+    }
+    if (toggledAncestor) {
       return
     }
 
     let cancelled = false
-    const isCancelled = () =>
-      cancelled || useAppStore.getState().pendingRevealSidebarRow !== pendingRevealSidebarRow
     const retryPendingReveal = (): boolean => {
       const previousRetry = pendingRowRevealRetryRef.current
       const nextRetryCount =
@@ -220,13 +227,13 @@ export function usePendingSidebarReveal(args: PendingSidebarRevealArgs): void {
         count: nextRetryCount
       }
       if (nextRetryCount <= MAX_REVEAL_RETRIES) {
-        scheduleRetryTick(isCancelled)
+        scheduleRetryTick(() => cancelled)
         return true
       }
       return false
     }
     schedulePendingRevealFrame(() => {
-      if (isCancelled()) {
+      if (cancelled) {
         return
       }
       const targetIndex = renderRows.findIndex((row) =>
@@ -256,27 +263,12 @@ export function usePendingSidebarReveal(args: PendingSidebarRevealArgs): void {
             markRevealScroll
           )
         : null
-      if (revealedElement && container) {
-        completeMountedSidebarReveal({
-          container,
-          element: revealedElement,
-          behavior: pendingRevealSidebarRow.behavior,
-          cancelled: isCancelled,
-          isScrollSettling: () => argsRef.current.isRevealScrollSettling(),
-          wasScrollInterrupted: () => argsRef.current.wasRevealScrollInterrupted(),
-          markRevealScroll,
-          scheduleFrame: schedulePendingRevealFrame,
-          complete: (landed) => {
-            if (isCancelled()) {
-              return
-            }
-            if (landed && pendingRevealSidebarRow.highlight) {
-              flashRevealedRow(pendingRevealSidebarRow.rowKey)
-            }
-            pendingRowRevealRetryRef.current = null
-            clearPendingRevealSidebarRow()
-          }
-        })
+      if (revealedElement) {
+        if (pendingRevealSidebarRow.highlight) {
+          flashRevealedRow(pendingRevealSidebarRow.rowKey)
+        }
+        pendingRowRevealRetryRef.current = null
+        clearPendingRevealSidebarRow()
         return
       }
 
@@ -290,6 +282,7 @@ export function usePendingSidebarReveal(args: PendingSidebarRevealArgs): void {
 
     return () => {
       cancelled = true
+      cancelPendingRevealFrames()
     }
   }, [
     pendingRevealSidebarRow,
@@ -306,6 +299,7 @@ export function usePendingSidebarReveal(args: PendingSidebarRevealArgs): void {
     markRevealScroll,
     clearPendingRevealSidebarRow,
     schedulePendingRevealFrame,
+    cancelPendingRevealFrames,
     scheduleRetryTick
   ])
 }

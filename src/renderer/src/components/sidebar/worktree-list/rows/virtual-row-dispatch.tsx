@@ -23,20 +23,16 @@ import {
   renderNewExternalWorktreesInboxVirtualRow,
   renderPendingCreationVirtualRow
 } from './notice-rows'
-import { renderWorktreeItemRow, type WorktreeItemRowContext } from './item-row'
+import {
+  renderWorktreeItemRow,
+  renderWorktreeLineageDescendants,
+  type WorktreeItemRowContext
+} from './item-row'
 import { renderWorktreeSectionHeaderRow, type SectionHeaderRowContext } from './SectionHeader'
 import type { WorktreeRowDragState } from '../drag/row-state'
-import { VirtualizedLineageDescendants } from './VirtualizedLineageDescendants'
-import type { LineageScrollAdjustment } from '../viewport/lineage-scroll-adjustment'
-import type { VirtualizedWorktreeViewportProps } from '../viewport/viewport-props'
 
 export type WorktreeVirtualRowContext = {
   renderRows: RenderRow[]
-  scrollRef: React.RefObject<HTMLDivElement | null>
-  lineageMeasuredHeights: Map<string, number>
-  shouldAdjustLineageScroll: LineageScrollAdjustment
-  pendingRevealWorktree: VirtualizedWorktreeViewportProps['pendingRevealWorktree']
-  pendingRevealSidebarRow: VirtualizedWorktreeViewportProps['pendingRevealSidebarRow']
   firstHeaderIndex: number
   activeStickyHeaderIndexRef: React.MutableRefObject<number | null>
   activeStickyHostIndexRef: React.MutableRefObject<number | null>
@@ -112,10 +108,8 @@ function renderLineageGroupVirtualRow(
   row: Extract<RenderRow, { type: 'lineage-group' }>,
   vItem: VirtualItem
 ): React.JSX.Element {
-  const parent = row.rows[0]
-  const childIsActive = row.rows.some(
-    (child, index) => index > 0 && child.worktree.id === ctx.activeWorktreeId
-  )
+  const [parent, ...children] = row.rows
+  const childIsActive = children.some((child) => child.worktree.id === ctx.activeWorktreeId)
   const parentPreviewOffset = parent
     ? (ctx.worktreeDragState.previewOffsetsByWorktreeId.get(parent.worktree.id) ?? 0)
     : 0
@@ -142,12 +136,7 @@ function renderLineageGroupVirtualRow(
               ctx.item,
               parent,
               false,
-              <VirtualizedLineageDescendants
-                ctx={ctx}
-                rows={row.rows}
-                groupStart={vItem.start}
-                groupKey={String(vItem.key)}
-              />,
+              renderWorktreeLineageDescendants(ctx.item, parent, children),
               childIsActive
             )
           : null}

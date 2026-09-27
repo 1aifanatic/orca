@@ -1,4 +1,4 @@
-import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useMemo, useRef, useState } from 'react'
 import { useAppStore } from '@/store'
 import { translate } from '@/i18n/i18n'
 import { WorktreeListScrollToTopButton } from '../../WorktreeListScrollToTopButton'
@@ -28,7 +28,6 @@ import { EMPTY_PROJECT_GROUPS, type VirtualizedWorktreeViewportProps } from './v
 import { useWorktreeDropCommitContext } from '../drag/use-drop-commit-context'
 import { buildWorktreeVirtualRowContext } from './virtual-row-context'
 import { renderWorktreeVirtualRow } from '../rows/virtual-row-dispatch'
-import { getLineageMeasurementCache } from './lineage-measurement-cache'
 
 const WORKTREE_SIDEBAR_SCROLL_STYLE: React.CSSProperties = {
   // Why: TanStack Virtual owns scroll correction; native overflow anchoring fights it and causes jumps.
@@ -54,7 +53,6 @@ export const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktr
     scrollAnchorRef
   } = props
   const scrollRef = useRef<HTMLDivElement>(null)
-  const lineageMeasuredHeights = getLineageMeasurementCache(scrollAnchorRef)
   // Why: callback-ref only mutates scrollRef; state re-runs the scroll-to-top listener attach.
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null)
   const settings = useAppStore((s) => s.settings)
@@ -67,14 +65,6 @@ export const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktr
   const { markDirectScrollInput, markScrollMovement } = scrollSuppression
 
   const renderRows = useMemo(() => buildRenderableRows(rows), [rows])
-  useLayoutEffect(() => {
-    const rowKeys = new Set(rows.flatMap((row) => (row.type === 'item' ? [row.rowKey] : [])))
-    for (const key of lineageMeasuredHeights.keys()) {
-      if (!rowKeys.has(key)) {
-        lineageMeasuredHeights.delete(key)
-      }
-    }
-  }, [lineageMeasuredHeights, rows])
   const firstHeaderIndex = useMemo(
     () => renderRows.findIndex((row) => row.type === 'header' || row.type === 'host-header'),
     [renderRows]
@@ -173,9 +163,8 @@ export const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktr
     projectGrouping: props.projectGrouping,
     flashRevealedRow: reveal.flashRevealedRow,
     markRevealScroll: scrollSuppression.markRevealScroll,
-    isRevealScrollSettling: scrollSuppression.isRevealScrollSettling,
-    wasRevealScrollInterrupted: scrollSuppression.wasRevealScrollInterrupted,
-    schedulePendingRevealFrame: reveal.schedulePendingRevealFrame
+    schedulePendingRevealFrame: reveal.schedulePendingRevealFrame,
+    cancelPendingRevealFrames: reveal.cancelPendingRevealFrames
   })
 
   const { virtualItems, measureVirtualRowElement } = useVirtualRowMeasurementSync({
@@ -306,8 +295,6 @@ export const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktr
 
   const rowContext = buildWorktreeVirtualRowContext({
     props,
-    scrollRef,
-    lineageMeasuredHeights,
     renderRows,
     firstHeaderIndex,
     virtualization,
