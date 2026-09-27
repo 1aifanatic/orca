@@ -118,7 +118,7 @@ export async function handOverStructuredAgentSessionCommand(
       turnId: turn.turnId,
       state: 'running',
       userItemId: agentJournalSubmissionKey(clientMessageId),
-      requestedAt: submission.submittedAt,
+      requestedAt: structuredAgentSessionHandoverOrigin(ctx.journal, submission),
       startedAt
     }),
     { fence: ctx.fence, observedAt: startedAt, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
@@ -142,6 +142,18 @@ export async function handOverStructuredAgentSessionCommand(
       starting: ctx.providerChildPhase?.() === 'starting'
     }))
   }
+}
+
+/** Where the turn a handed-over submission runs in starts counting: its handover, so time spent
+ *  held behind a command or a start is not counted as the agent's work. */
+export function structuredAgentSessionHandoverOrigin(
+  journal: AgentSessionJournal,
+  submission: AgentJournalSubmission
+): number {
+  const handedOver = journal
+    .submissions()
+    .find((entry) => entry.clientMessageId === submission.clientMessageId)
+  return handedOver?.handedOverAt ?? submission.submittedAt
 }
 
 /** Writes the command's end, unless the journal already holds one. The caller checked the child is

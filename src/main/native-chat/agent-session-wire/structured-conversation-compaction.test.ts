@@ -363,6 +363,24 @@ it("answers the command's message before its turn, so a crash between them leave
   ).toBe('unverifiable')
 })
 
+it('counts a message held behind the command from its handover, not its send', async () => {
+  await attach()
+  await state.host.conversationCommand(CALLER, compactParams())
+  await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce())
+  const sent = await state.host.send(CALLER, sendParams('held'))
+  expect(sent.ok).toBe(true)
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  finish({ outcome: 'success' })
+
+  await vi.waitFor(() => expect(state.dispatch).toHaveBeenCalledOnce())
+  const [dispatched] = state.dispatch.mock.calls[0]!
+  const submission = (await journal()).submissions.find(
+    (entry) => entry.clientMessageId === dispatched.clientMessageId
+  )
+  expect(submission?.handedOverAt).toBeGreaterThan(submission!.submittedAt)
+  expect(dispatched.requestedAt).toBe(submission?.handedOverAt)
+})
+
 it('settles a command whose adapter call threw after the start as unknown (B4)', async () => {
   await attach()
   compact.mockImplementation(() => {

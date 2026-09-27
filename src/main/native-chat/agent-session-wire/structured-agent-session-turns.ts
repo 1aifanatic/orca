@@ -30,6 +30,7 @@ import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal
 import {
   handOverStructuredAgentSessionCommand,
   isStructuredAgentSessionCommandTurnId,
+  structuredAgentSessionHandoverOrigin,
   type StructuredAgentSessionCommandHandover,
   type StructuredAgentSessionCommandHandoverContext
 } from './structured-agent-session-command-turn'
@@ -178,9 +179,14 @@ export async function handOverSubmission(
     fence: ctx.fence,
     turnScope: ctx.journal.liveTurnScope()
   })
-  // The row written at acceptance is the send's instant on the host clock; the turn this
-  // dispatch opens records it so the live counter never re-anchors at turn-open.
-  const outcome = await dispatchSafely(ctx, clientMessageId, body, submission.submittedAt)
+  // The handover row's instant on the host clock; the turn this dispatch opens records it so the
+  // live counter never re-anchors at turn-open.
+  const outcome = await dispatchSafely(
+    ctx,
+    clientMessageId,
+    body,
+    structuredAgentSessionHandoverOrigin(ctx.journal, submission)
+  )
   // An admission needs no dispatch row: the submission is already pending.
   if (outcome.state === 'admitted') {
     return null
