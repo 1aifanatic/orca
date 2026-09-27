@@ -167,19 +167,23 @@ describe('stated turn scope', () => {
     expect(submissionScope(state, 'held')).toEqual(AGENT_JOURNAL_THREAD_SCOPE)
     item(row('result'), prose('compacted'), inTurn(COMMAND_TURN))
     item(COMMAND_TURN, turn('compact:cmd-1', 'completed'), AGENT_JOURNAL_THREAD_SCOPE)
-    handover('held', AGENT_JOURNAL_THREAD_SCOPE)
-    expect(submissionScope(state, 'held')).toEqual(AGENT_JOURNAL_THREAD_SCOPE)
-    // Drawn where it was handed over, after the command it waited behind: the phone and paging
-    // order by sequence, the desktop transcript by timestamp.
-    const { items, submissions } = renderJournalState(state)
     const drawn = (messages: readonly { id: string }[]) =>
       messages
         .map((message) => message.id)
         .filter((id) => id === agentJournalItemKey(row('result')) || id.includes('held'))
     const expected = [agentJournalItemKey(row('result')), agentJournalSubmissionKey('held')]
-    const bySequence = projectStructuredAgentSessionMessages(items, [], submissions)
-    expect(drawn(bySequence)).toEqual(expected)
-    expect(drawn(projectNativeChatTranscriptMessages(bySequence))).toEqual(expected)
+    const onPhone = () => {
+      const { items, submissions } = renderJournalState(state)
+      return projectStructuredAgentSessionMessages(items, [], submissions)
+    }
+    // Still waiting: drawn after everything the agent did, the command's result included.
+    expect(drawn(onPhone())).toEqual(expected)
+    handover('held', AGENT_JOURNAL_THREAD_SCOPE)
+    expect(submissionScope(state, 'held')).toEqual(AGENT_JOURNAL_THREAD_SCOPE)
+    // Delivered: placed where it was handed over, by sequence for paging and the phone, and by
+    // timestamp for the desktop transcript.
+    expect(drawn(onPhone())).toEqual(expected)
+    expect(drawn(projectNativeChatTranscriptMessages(onPhone()))).toEqual(expected)
   })
 })
 

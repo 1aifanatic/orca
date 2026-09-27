@@ -166,6 +166,57 @@ describe('NativeChatMessageList turns from the turn record', () => {
     expect(screen.getByRole('separator', { name: 'Context compacted' })).toBeInTheDocument()
   })
 
+  it('draws a message waiting behind /compact after the compaction, never above it', () => {
+    const compactEntry = agentJournalSubmissionKey('cmd-1')
+    const commandTurn = agentJournalItemKey({
+      provider: 'orca',
+      clientMessageId: 'command-turn:cmd-1'
+    })
+    const held = agentJournalSubmissionKey('held')
+    const items = [
+      ...fruitTurn(),
+      item(compactEntry, {
+        kind: 'message',
+        role: 'user',
+        blocks: [{ type: 'text', text: '/compact' }],
+        command: { name: 'compact' }
+      }),
+      settledTurn(commandTurn, compactEntry, 2, 10_000),
+      // Accepted while the command ran, so written before the command's result.
+      say(held, 'user', 'Say DONE'),
+      item(
+        'command-result',
+        { kind: 'status', text: 'Conversation compacted.', presentation: 'compaction' },
+        inTurn(commandTurn)
+      )
+    ]
+    const submission = (
+      clientMessageId: string,
+      handedOverAt?: number
+    ): AgentJournalSubmission => ({
+      clientMessageId,
+      fence: 1,
+      payloadFingerprint: clientMessageId,
+      dispatchState:
+        handedOverAt === undefined && clientMessageId === 'held' ? 'pending' : 'accepted',
+      providerItemId: null,
+      reason: null,
+      submittedAt: 9_000,
+      resolvedAt: null,
+      handoverRecorded: true,
+      ...(handedOverAt !== undefined ? { handedOverAt } : {})
+    })
+    // The command settled; the loop has not yet handed the held message over.
+    renderJournal(items, [submission('cmd-1', 9_500), submission('held')])
+
+    expect(
+      follows(
+        screen.getByText('Say DONE'),
+        screen.getByRole('separator', { name: 'Context compacted' })
+      )
+    ).toBe(true)
+  })
+
   it('keeps the row that says why a turn stopped visible in its folded turn', () => {
     const items = [
       ...fruitTurn(),

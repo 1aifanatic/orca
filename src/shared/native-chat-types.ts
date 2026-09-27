@@ -199,6 +199,8 @@ export type NativeChatMessage = {
   turnId?: string
   /** How a user message was delivered when it was not an ordinary prompt. */
   sentAs?: AgentJournalMessageSendMode
+  /** Accepted but not yet handed to the agent: drawn after everything the agent has done. */
+  queued?: true
 }
 
 export const NATIVE_CHAT_TURN_LIFECYCLE_STATES = ['working', 'completed', 'interrupted'] as const
