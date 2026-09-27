@@ -57,6 +57,18 @@ Replacing Vitest deep comparisons with Node assertions in the status-store
 oracle saved only about one local second in an initial trial. The change was
 not retained: that evidence did not justify changing assertion semantics.
 
+The combined root/mobile pnpm cache is now present on main and was restored in
+the September 27 static comparison, so another warmer for that key is unnecessary.
+
+A [fixture-warmer overlap trial](https://github.com/stablyai/orca/actions/runs/36303613587)
+ran faster after initialization but exposed a first-use action-download race:
+both background composites downloaded `actions/cache@v5` simultaneously, and
+one briefly could not find `restore/action.yml`. The existing cache fallback
+rebuilt the image and the job passed, but that recovery erased the speedup.
+Keep the dedicated warmer serial. PR package restores remain safe from this
+observed first-use race because their earlier top-level cache action is loaded
+before the composites start; the workflow contract now preserves that ordering.
+
 ## Four follow-up changes
 
 - Keep the readiness event, but reuse required checks only after an Actions API
