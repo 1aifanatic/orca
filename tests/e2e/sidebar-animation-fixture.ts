@@ -1,4 +1,8 @@
 import { test as base, expect } from './helpers/orca-app'
+import {
+  presentSidebarMotionWindow,
+  type SidebarMotionPresentation
+} from './sidebar-motion-presentation'
 
 export { expect }
 
@@ -59,6 +63,7 @@ export const test = base.extend<{ sidebarAnimationFrames: void }>({
         }
       }
       const frameSamples: { phase: string; elapsedMs: number[]; timedOut: boolean }[] = []
+      let presentation: SidebarMotionPresentation = { presented: false, windows: 0, visible: 0 }
       const sampleFrames = async (phase: string) => {
         const sample = await orcaPage.evaluate(
           () =>
@@ -116,6 +121,9 @@ export const test = base.extend<{ sidebarAnimationFrames: void }>({
         }
         try {
           await orcaPage.setViewportSize({ width: 1280, height: 1024 })
+          // Present before sampling: on the hosted Linux lane an unpresented window starves
+          // requestAnimationFrame once the page goes idle, which the screencast alone does not fix.
+          presentation = await presentSidebarMotionWindow(electronApp, testInfo)
           cdp.on('Page.screencastFrame', onFrame)
           await cdp.send('Page.enable')
           // Consume compositor output to test Chromium's hidden undrawn-frame throttle.
@@ -144,13 +152,25 @@ export const test = base.extend<{ sidebarAnimationFrames: void }>({
       })
       await attempt('dispose window guard', () => windowGuard.dispose())
       await attempt('capture assertions', async () => {
-        expect(visibility).toEqual({ showEvents: 0, focusEvents: 0, hidden: true })
+        if (presentation.presented) {
+          expect(presentation.windows).toBeGreaterThan(0)
+          expect(presentation.visible).toBe(presentation.windows)
+          // One show per presented window, still no focus, and no longer hidden.
+          expect(visibility).toEqual({
+            showEvents: presentation.windows,
+            focusEvents: 0,
+            hidden: false
+          })
+        } else {
+          expect(visibility).toEqual({ showEvents: 0, focusEvents: 0, hidden: true })
+        }
         expect(ackErrors).toEqual([])
         expect(frames, 'hidden compositor capture produced no frames').toBeGreaterThan(0)
         expect(acknowledged).toBe(frames)
       })
       const evidence = {
         platform: process.platform,
+        presentation,
         frames,
         acknowledged,
         ackErrors,
