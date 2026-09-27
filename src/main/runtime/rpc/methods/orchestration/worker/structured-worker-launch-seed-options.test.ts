@@ -69,7 +69,8 @@ describe('the create the seed options land in', () => {
       runtime: {
         resolveStructuredAgentSessionCreateIntent: async () => settingsResolved
       } as never,
-      ensureHost: async () => ({}) as never,
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: prepare reads only `disabledAgentRefusal` from the host before returning it.
+      ensureHost: async () => ({ disabledAgentRefusal: () => null }) as never,
       envelope: {
         sessionId: 'sess_1',
         clientOperationId: 'op_1',

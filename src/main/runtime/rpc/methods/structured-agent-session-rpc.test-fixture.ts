@@ -185,6 +185,7 @@ export function hostStub(): StructuredAgentSessionHost {
     setOption: vi.fn(async () => ({ ok: true, replayed: false })),
     changeThreadGoal: vi.fn(async () => ({ ok: true, replayed: false })),
     supportsCreate: vi.fn(() => true),
+    disabledAgentRefusal: vi.fn(() => null),
     handoffStatus: vi.fn(async () => ({ owner: 'native' })),
     readOptions: vi.fn(async () => ({
       models: [{ id: 'gpt-live', label: 'GPT Live', isDefault: true, efforts: [] }],

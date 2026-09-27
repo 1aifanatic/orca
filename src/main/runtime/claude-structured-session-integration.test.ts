@@ -242,6 +242,7 @@ beforeEach(async () => {
         resolveEnvironment: async () => shellEnv,
         resolveShellEnvironmentPolicy: () => shellEnvironmentPolicy,
         resolveClaudeAuthPolicy: () => claudeAuthPolicy,
+        isAgentEnabled: () => true,
         openClaudeConnection: claude.openConnection,
         statusSink: {
           publish: () => {},

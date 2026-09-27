@@ -5,7 +5,10 @@ import { StructuredConversationCommandController } from './structured-conversati
 // Mutations share one durable admission path and serialize per session.
 
 import type { AgentJournalSnapshot } from '../../../shared/agent-session-journal-types'
-import type { AgentSessionExecutionLocation } from '../../../shared/agent-session-record'
+import type {
+  AgentSessionExecutionLocation,
+  AgentSessionRecord
+} from '../../../shared/agent-session-record'
 import type * as SessionWire from '../../../shared/agent-session-wire'
 import type { AgentSessionAttachParams } from './structured-agent-session-attach'
 import { AGENT_SESSION_NOT_ATTACHED } from './structured-agent-session-mutation-admission'
@@ -15,6 +18,7 @@ import { StructuredAgentSessionTaskQueue } from './structured-agent-session-task
 import * as providerSupport from './structured-agent-session-provider-support'
 import { createStructuredAgentSessionHostRestore } from './structured-agent-session-reveal'
 import { structuredAgentSessionOwnerStatus } from './structured-agent-session-owner-status'
+import { structuredAgentSessionDisabledAgentRefusal } from './structured-agent-session-disabled-agent-refusal'
 import { StructuredAgentSessionHostRuntimeState } from './structured-agent-session-host-runtime-state'
 import { attachStructuredAgentSession } from './structured-agent-session-attach-orchestration'
 import {
@@ -190,6 +194,9 @@ export class StructuredAgentSessionHost {
 
   supportsCreate = (location: AgentSessionExecutionLocation, agent: string): boolean =>
     providerSupport.adapterSupportsCreate(this.deps.adapter, location, agent)
+  /** Why this session may not start, if it is a new one for an agent the user turned off. */
+  disabledAgentRefusal = (sessionId: string, agent: AgentSessionRecord['provider']) =>
+    structuredAgentSessionDisabledAgentRefusal(this.deps, sessionId, agent)
 
   listSessionTabs = () => sessionTabs.listStructuredAgentSessionTabs(this.sessions)
   getPersistedVisibleSessionTabIndex = () => this.deps.store.getVisibleSessionTabIndex()

@@ -220,6 +220,7 @@ describe('structured agent-session runtime install', () => {
         claimKeyId: 'key-1',
         resolveWorkspacePath: async () => stateDirectory!,
         resolveClaudeAuthPolicy: () => ({ stripAuthEnv: true }),
+        isAgentEnabled: () => true,
         resolveEnvironment: async () => ({}),
         reapOrphanChildren,
         onError
@@ -243,6 +244,7 @@ describe('structured agent-session runtime install', () => {
       claimKeyId: 'key-1',
       resolveWorkspacePath: async () => stateDirectory!,
       resolveClaudeAuthPolicy: () => ({ stripAuthEnv: true }),
+      isAgentEnabled: () => true,
       resolveEnvironment: async () => ({}),
       reapOrphanChildren: async () => []
     })
@@ -277,6 +279,7 @@ describe('structured agent-session runtime install', () => {
         claimKeyId: 'key-1',
         resolveWorkspacePath: async () => stateDirectory!,
         resolveClaudeAuthPolicy: () => ({ stripAuthEnv: true }),
+        isAgentEnabled: () => true,
         resolveEnvironment: async () => ({}),
         reapOrphanChildren: async () => {
           throw failure
@@ -311,6 +314,7 @@ describe('structured agent-session runtime install', () => {
         resolveWorkspacePath: async () => stateDirectory!,
         resolveEnvironment: async () => ({}),
         resolveClaudeAuthPolicy: () => ({ stripAuthEnv: true }),
+        isAgentEnabled: () => true,
         readProcessStartTime: async () => 1_700_000_000_000
       })
 
@@ -356,7 +360,8 @@ describe('a teardown that fails is retried by the next stop', () => {
       resolveWorkspacePath: async () => directory!,
       resolveEnvironment: async () => ({}),
       reapOrphanChildren: async () => [],
-      resolveClaudeAuthPolicy: () => ({ stripAuthEnv: true })
+      resolveClaudeAuthPolicy: () => ({ stripAuthEnv: true }),
+      isAgentEnabled: () => true
     })
 
     const journalDir = join(directory, 'stubborn-journal')

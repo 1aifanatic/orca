@@ -84,7 +84,8 @@ export type StructuredAgentSessionRuntimeDeps = {
   readProcessStartTime?: CodexStructuredSessionAdapterDeps['readProcessStartTime']
   resolveLaunchArgs?: (provider: AgentSessionRecord['provider']) => Promise<string[]> | string[]
   resolveLaunchEnv?: () => Promise<NodeJS.ProcessEnv>
-  isAgentEnabled?: StructuredAgentSessionHostDeps['isAgentEnabled']
+  /** Required, and asserted at install time — an absent reader must not enable every agent. */
+  isAgentEnabled: NonNullable<StructuredAgentSessionHostDeps['isAgentEnabled']>
   resolveLaunchEnvOverlay?: () => Promise<Record<string, string>> | Record<string, string>
   resolveClaudeLaunchEnv?: () => Promise<Record<string, string>> | Record<string, string>
   /** Required, and asserted at install time — an absent policy must not degrade to a guess. */
@@ -116,6 +117,10 @@ let installing: Promise<InstalledRuntime> | null = null
 /** Thrown when the host is installed without a Claude auth policy resolver. */
 export const CLAUDE_STRUCTURED_AUTH_POLICY_REQUIRED =
   'structured agent-session host requires a Claude auth policy resolver'
+
+/** Thrown when the host is installed without a reader of the user's agent on/off setting. */
+export const STRUCTURED_AGENT_ENABLEMENT_READER_REQUIRED =
+  'structured agent-session host requires an agent enablement reader'
 
 /**
  * Runtimes whose teardown did not finish. `installing` is cleared regardless so
@@ -191,6 +196,10 @@ async function install(deps: StructuredAgentSessionRuntimeDeps): Promise<Install
   // policy is the silent under-strip this assertion exists to prevent.
   if (typeof deps.resolveClaudeAuthPolicy !== 'function') {
     throw new Error(CLAUDE_STRUCTURED_AUTH_POLICY_REQUIRED)
+  }
+  // Same reason: a dropped reader would silently let a new chat start an agent the user turned off.
+  if (typeof deps.isAgentEnabled !== 'function') {
+    throw new Error(STRUCTURED_AGENT_ENABLEMENT_READER_REQUIRED)
   }
   const envResolvers = createStructuredAgentEnvironmentResolvers(deps)
   const { resolveCodexEnvironment, resolveClaudeInheritedEnv } = envResolvers
@@ -309,7 +318,7 @@ async function install(deps: StructuredAgentSessionRuntimeDeps): Promise<Install
             await deps.resolveLaunchArgs!(provider)
         }
       : {}),
-    ...(deps.isAgentEnabled ? { isAgentEnabled: deps.isAgentEnabled } : {}),
+    isAgentEnabled: deps.isAgentEnabled,
     onEventSinkError: ({ sessionId, error }) =>
       deps.onError?.({ scope: `structured-agent-session-journal:${sessionId}`, error }),
     ...(deps.onSessionStatusChanged ? { onSessionStatusChanged: deps.onSessionStatusChanged } : {}),

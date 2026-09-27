@@ -331,6 +331,7 @@ beforeEach(async () => {
         resolveWorkspacePath: async (workspaceId) => `/repos/${workspaceId}`,
         resolveCodexCommand: () => '/usr/local/bin/codex',
         resolveClaudeAuthPolicy: () => ({ stripAuthEnv: true }),
+        isAgentEnabled: () => true,
         resolveEnvironment: async () => {
           bootEnvironmentReads += 1
           return {

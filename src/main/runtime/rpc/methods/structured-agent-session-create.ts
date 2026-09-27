@@ -25,8 +25,6 @@ import {
 import type { StructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-host'
 import type { StructuredAgentSessionCaller } from '../../../native-chat/agent-session-wire/structured-agent-session-host-types'
 import type { StructuredAgentSessionResumeSource } from '../../../../shared/structured-agent-session-create'
-import { isAgentEnabledForRuntime } from '../../../agent-launch/agent-launch-enablement'
-import { AgentDisabledLaunchError } from '../../../../shared/agent-disabled-launch-refusal'
 import type { OrcaRuntimeService } from '../../orca-runtime'
 import {
   resolveUncommittedStructuredCreate,
@@ -70,7 +68,7 @@ export function structuredAgentSessionCreateIntentFingerprint(params: {
  *  `resolveUncommittedStructuredCreate` so a failure reaches the client as a refusal. */
 export async function prepareStructuredAgentSessionCreateForWorktree(args: {
   runtime: OrcaRuntimeService
-  /** Installs the host lazily; called at the same point the RPC handler always installed it. */
+  /** Installs the host lazily; called first, since the host decides whether this create may start. */
   ensureHost: () => Promise<StructuredAgentSessionHost>
   envelope: AgentSessionMutationEnvelope
   worktree: string
@@ -85,15 +83,12 @@ export async function prepareStructuredAgentSessionCreateForWorktree(args: {
    *  gets the id clients derive. Beside `options`, after the fingerprint, likewise. */
   tabId?: string
 }): Promise<PreparedStructuredAgentSessionCreate> {
-  // Adoption replay may need the record loaded from disk before source discovery can be skipped.
-  let host = args.resumeFrom ? await args.ensureHost() : null
-  // Attach refuses a new chat for a turned-off agent too; this runs first because intent
-  // resolution's Codex launch prep writes into the user's Codex home. A replay keeps its record.
-  if (!isAgentEnabledForRuntime(args.runtime, args.agent)) {
-    host ??= await args.ensureHost()
-    if (!host.deps.store.getRecord(args.envelope.sessionId)) {
-      throw new AgentDisabledLaunchError(args.agent)
-    }
+  // Before intent resolution, whose Codex launch prep writes into the user's Codex home: the host
+  // owns the turned-off-agent rule, which attach applies again, and adoption replay needs its record.
+  const host = await args.ensureHost()
+  const disabled = host.disabledAgentRefusal(args.envelope.sessionId, args.agent)
+  if (disabled) {
+    throw disabled
   }
   const resolved = await args.runtime.resolveStructuredAgentSessionCreateIntent({
     envelope: args.envelope,
@@ -107,7 +102,6 @@ export async function prepareStructuredAgentSessionCreateForWorktree(args: {
     sessionId: args.envelope.sessionId,
     fields: attachFingerprintFields({ ...resolved, envelope: args.envelope })
   })
-  host ??= await args.ensureHost()
   const { agent: _resolvedAgent, provider: _resolvedProvider, ...resolvedAttach } = resolved
   return {
     host,

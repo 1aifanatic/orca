@@ -213,6 +213,7 @@ export function createScriptedClaudeRuntime(sessionIds: readonly string[]) {
         resolveWorkspacePath: async () => directory,
         resolveClaudeCommand: () => '/usr/local/bin/claude',
         resolveClaudeAuthPolicy: () => ({ stripAuthEnv: false }),
+        isAgentEnabled: () => true,
         openClaudeConnection: openConnection,
         readProcessStartTime
       })

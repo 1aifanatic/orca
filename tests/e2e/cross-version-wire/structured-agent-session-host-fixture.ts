@@ -28,6 +28,8 @@ export function structuredHostStub(
     // supports creating there. A real host always answers; leaving it unstubbed made every
     // `ensure` refuse for the harness's own reason rather than the location's.
     supportsCreate: vi.fn(() => true),
+    // A create asks the host whether it is a new session for a turned-off agent before resolving.
+    disabledAgentRefusal: vi.fn(() => null),
     conversationCommand: vi.fn(async () => ({
       ok: true,
       value: { command: 'compact', state: 'completed' }

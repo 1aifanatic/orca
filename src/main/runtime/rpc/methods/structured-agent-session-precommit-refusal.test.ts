@@ -4,6 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { StructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-host'
 import { setStructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-registry'
+import { structuredAgentSessionDisabledAgentRefusal } from '../../../native-chat/agent-session-wire/structured-agent-session-disabled-agent-refusal'
 import { computeAgentSessionPayloadFingerprint } from '../../../../shared/agent-session-mutation-envelope'
 import { isDefinitiveAgentSessionCreateRefusal } from '../../../../shared/agent-session-definitive-refusal'
 import { STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
@@ -42,9 +43,12 @@ function createParams(overrides: Record<string, unknown> = {}) {
 let attach: ReturnType<typeof vi.fn>
 /** The session ids the host holds a record for. */
 let recordedSessions: Set<string>
+/** The agents the host's enablement reader reports as turned off. */
+let disabledAgents: Set<string>
 
 function hostStub(): StructuredAgentSessionHost {
   recordedSessions = new Set()
+  disabledAgents = new Set()
   attach = vi.fn(async () => ({
     ok: true,
     replayed: false,
@@ -53,8 +57,15 @@ function hostStub(): StructuredAgentSessionHost {
     value: { sessionId: SESSION, fence: 1, page: {}, unconfirmedClientMessageIds: [] }
   }))
   const store = { getRecord: (sessionId: string) => (recordedSessions.has(sessionId) ? {} : null) }
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: create reads only `attach` and `deps.store.getRecord`; any other member throws on call.
-  return { attach, deps: { store } } as unknown as StructuredAgentSessionHost
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the rule reads only `store.getRecord` and `isAgentEnabled`.
+  const deps = {
+    store,
+    isAgentEnabled: (agent: string) => !disabledAgents.has(agent)
+  } as unknown as Parameters<typeof structuredAgentSessionDisabledAgentRefusal>[0]
+  const disabledAgentRefusal = (sessionId: string, agent: 'claude' | 'codex') =>
+    structuredAgentSessionDisabledAgentRefusal(deps, sessionId, agent)
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: create reads only `attach` and `disabledAgentRefusal`; any other member throws on call.
+  return { attach, disabledAgentRefusal } as unknown as StructuredAgentSessionHost
 }
 
 const resolvedIntent = {
@@ -158,14 +169,9 @@ describe('a create refused before it commits', () => {
   })
 
   it("refuses a chat for an agent the user turned off, with the user's reason", async () => {
+    disabledAgents.add('codex')
     const resolveIntent = vi.fn()
-    const response = await create({
-      getClientSettings: () => ({
-        experimentalStructuredNativeChat: true,
-        disabledTuiAgents: ['codex']
-      }),
-      resolveStructuredAgentSessionCreateIntent: resolveIntent
-    })
+    const response = await create({ resolveStructuredAgentSessionCreateIntent: resolveIntent })
 
     const refusal = refusalOf(response)
     expect(isDefinitiveAgentSessionCreateRefusal(refusal?.code)).toBe(true)
@@ -178,12 +184,8 @@ describe('a create refused before it commits', () => {
 
   it('answers the retry of a committed create from its record once the agent is turned off', async () => {
     recordedSessions.add(SESSION)
-    const response = await create({
-      getClientSettings: () => ({
-        experimentalStructuredNativeChat: true,
-        disabledTuiAgents: ['codex']
-      })
-    })
+    disabledAgents.add('codex')
+    const response = await create()
 
     expect(response).toMatchObject({
       ok: true,

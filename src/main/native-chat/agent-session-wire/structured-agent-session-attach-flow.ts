@@ -15,7 +15,6 @@ import type {
 } from '../../../shared/agent-session-wire'
 import { agentSessionLeaseAdmitsWriter } from '../../../shared/agent-session-lease-adjudication'
 import type { AgentSessionJournalIdentity } from '../../../shared/agent-session-journal-types'
-import { AgentDisabledLaunchError } from '../../../shared/agent-disabled-launch-refusal'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import {
   admitAttachOrRefuse,
@@ -29,6 +28,7 @@ import {
 } from './structured-agent-session-attach'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import { adapterSupportsCreateIfDeclared } from './structured-agent-session-provider-support'
+import { structuredAgentSessionDisabledAgentRefusal } from './structured-agent-session-disabled-agent-refusal'
 import type { StructuredAgentSessionEventSink } from './structured-agent-session-event-sink'
 import { resolveAgentSessionReplayOutcome } from './structured-agent-session-replay-outcome'
 import { readAgentSessionHydrationPage } from './agent-session-history-page'
@@ -93,16 +93,12 @@ export async function performAttach(
   if (!adapterSupportsCreateIfDeclared(input.adapter, params.location, params.agent)) {
     return unsupported()
   }
-  // Every new chat starts here (create, ensure, /clear), so none starts an agent the user turned
-  // off; a session that already has a record, including a committed create's replay, is not new.
-  const existingRecord = store.getRecord(sessionId)
-  if (!existingRecord && input.isAgentEnabled?.(params.agent) === false) {
+  // Every new chat starts here (create, ensure, /clear), so none starts an agent the user turned off.
+  const disabled = structuredAgentSessionDisabledAgentRefusal(input, sessionId, params.agent)
+  if (disabled) {
     return {
       ok: false,
-      refusal: {
-        code: 'structured_agent_session_unsupported',
-        message: new AgentDisabledLaunchError(params.agent).message
-      }
+      refusal: { code: 'structured_agent_session_unsupported', message: disabled.message }
     }
   }
 
@@ -114,7 +110,7 @@ export async function performAttach(
   let unsupportedReservationSettlementAttempted = false
   let replayed = false
   let providerHistoryWindow: ProviderHistoryWindow | null = null
-  const preparedTranscript = existingRecord
+  const preparedTranscript = store.getRecord(sessionId)
     ? { ok: true as const, items: null }
     : await prepareAdoptedTranscript(params)
   if (!preparedTranscript.ok) {
