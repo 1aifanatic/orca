@@ -2,10 +2,12 @@
 
 import {
   NATIVE_CHAT_INTERRUPTED_STATUS_TEXT,
+  type NativeChatAskAnswer,
   type NativeChatBlock,
   type NativeChatEditPatch,
   type NativeChatEditPatchHunk,
-  type NativeChatMessage
+  type NativeChatMessage,
+  type NativeChatToolResultBlock
 } from '../../shared/native-chat-types'
 import {
   asRecord,
@@ -19,6 +21,8 @@ import { claudeInterruptedMessageId } from './transcript-turn-markers'
 
 const MAX_EDIT_PATCH_HUNKS = 40
 const MAX_EDIT_PATCH_HUNK_LINES = 400
+// Claude asks at most four questions at a time; this only bounds a malformed record.
+const MAX_ASK_ANSWERS = 16
 
 /** Claude reports an edit as a snippet pair on the call, which cannot locate the
  *  change in the file. The result record carries the hunks it resolved against
@@ -57,16 +61,41 @@ function claudeEditPatch(record: Record<string, unknown>): NativeChatEditPatch |
   return { ...(filePath ? { filePath } : {}), hunks }
 }
 
-/** Attaches the resolved hunks to the record's tool result, which is the only
+/** An AskUserQuestion result keeps its answers as data beside the prose it hands
+ *  the model, keyed by each question's exact text. The prose varies by release and
+ *  quotes answers unescaped, so only this map is read. A string answer is kept
+ *  whole (it may be typed text, or labels already joined); a list is per label. */
+function claudeAskAnswers(record: Record<string, unknown>): NativeChatAskAnswer[] | null {
+  const result = asRecord(record.toolUseResult)
+  const answers = asRecord(result?.answers)
+  if (!answers || !Array.isArray(result?.questions)) {
+    return null
+  }
+  const entries: NativeChatAskAnswer[] = []
+  for (const [question, value] of Object.entries(answers).slice(0, MAX_ASK_ANSWERS)) {
+    const parts = (Array.isArray(value) ? value : [value]).filter(
+      (part): part is string => typeof part === 'string' && part.trim().length > 0
+    )
+    if (question.trim().length > 0 && parts.length > 0) {
+      entries.push({ question, answer: parts })
+    }
+  }
+  return entries.length > 0 ? entries : null
+}
+
+/** Attaches data from the result record to its tool result, which is the only
  *  block in a Claude result turn. */
-function withEditPatch(blocks: NativeChatBlock[], patch: NativeChatEditPatch): NativeChatBlock[] {
+function withResultData(
+  blocks: NativeChatBlock[],
+  data: Pick<NativeChatToolResultBlock, 'editPatch' | 'askAnswers'>
+): NativeChatBlock[] {
   let attached = false
   return blocks.map((block) => {
     if (attached || block.type !== 'tool-result') {
       return block
     }
     attached = true
-    return { ...block, editPatch: patch }
+    return { ...block, ...data }
   })
 }
 
@@ -97,8 +126,15 @@ export function decodeClaudeTranscriptLine(
   }
   const message = asRecord(record.message)
   const editPatch = claudeEditPatch(record)
+  const askAnswers = claudeAskAnswers(record)
   const contentBlocks = claudeContentBlocks(message?.content)
-  const decodedBlocks = editPatch ? withEditPatch(contentBlocks, editPatch) : contentBlocks
+  const decodedBlocks =
+    editPatch || askAnswers
+      ? withResultData(contentBlocks, {
+          ...(editPatch ? { editPatch } : {}),
+          ...(askAnswers ? { askAnswers } : {})
+        })
+      : contentBlocks
   if (decodedBlocks.length === 0) {
     return null
   }
