@@ -127,6 +127,10 @@ export function applyHermesPluginSourceEdits(source: string, document: Document)
 
 function replaceNode(source: string, parent: YAMLMap, previous: Node, next: YAMLSeq): SourceEdit {
   const before = requireRange(previous)
+  // YAML ranges can include the next key's indentation after a trailing comment.
+  const trailingIndent =
+    /(?:^|\n)([ \t]+)$/.exec(source.slice(before[0], before[2]))?.[1].length ?? 0
+  const end = before[2] - trailingIndent
   // Printing only this list keeps neighboring comments out of its replacement.
   const isolated = new Document()
   const sequence = next.clone()
@@ -137,7 +141,7 @@ function replaceNode(source: string, parent: YAMLMap, previous: Node, next: YAML
   // The original leading comment remains outside the replaced source range.
   isolated.contents.commentBefore = undefined
   let fragment = isolated.toString({ lineWidth: 0 })
-  if (!source.slice(before[0], before[2]).endsWith('\n') && !next.comment) {
+  if (!source.slice(before[0], end).endsWith('\n') && !next.comment) {
     fragment = fragment.replace(/\n$/, '')
   }
   const column = columnAt(source, before[0])
@@ -148,7 +152,7 @@ function replaceNode(source: string, parent: YAMLMap, previous: Node, next: YAML
       : column
   return {
     start: before[0],
-    end: before[2],
+    end,
     text: ' '.repeat(replacementColumn - column) + indentFragment(fragment, replacementColumn)
   }
 }

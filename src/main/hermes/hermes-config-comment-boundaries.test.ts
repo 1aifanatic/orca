@@ -8,6 +8,13 @@ import { disablePlugin, enablePlugin, updateConfigContent } from './hermes-confi
 import { HermesHookService } from './hook-service'
 
 const fixtures = [
+  ...['  ', '    '].flatMap((indent) =>
+    [true, false].map((retained) => ({
+      name: `trailing list comment (${indent.length} spaces, retained: ${retained})`,
+      list: `${indent}# list head\n${retained ? `${indent}- keep\n` : ''}${indent}- orca-status # managed entry\n${indent}# list tail\n`,
+      suffix: '  custom: "off"\nmodel: "001"\n'
+    }))
+  ),
   {
     name: 'comment before the next root setting',
     list: '    - keep\n    - orca-status # managed entry\n',
