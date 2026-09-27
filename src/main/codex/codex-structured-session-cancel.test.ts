@@ -368,4 +368,60 @@ describe('Codex Stop that names no turn', () => {
     })
     expect(codex.connections[0].calls.some((call) => call.method === 'turn/interrupt')).toBe(false)
   })
+
+  it('interrupts no earlier turn when the latest turn/start went unanswered', async () => {
+    const codex = fakeCodex()
+    codex.routes['turn/start'] = () => ({ turn: { id: 'turn-earlier' } })
+    const adapter = await acquired(codex)
+    const send = (clientMessageId: string) =>
+      adapter.dispatch({ sessionId: 'session-1', clientMessageId, body: USER_MESSAGE, fence: 7 })
+    await send('client-1')
+    codex.routes['turn/start'] = () => {
+      throw new Error('codex app-server request timed out')
+    }
+    await expect(send('client-2')).rejects.toThrow('timed out')
+
+    await expect(adapter.cancelTurn({ sessionId: 'session-1', fence: 7 })).resolves.toEqual({
+      cancelled: false
+    })
+    expect(codex.connections[0].calls.some((call) => call.method === 'turn/interrupt')).toBe(false)
+  })
+
+  it('interrupts no earlier turn while a compaction the journal shows has not started', async () => {
+    const codex = fakeCodex()
+    codex.routes['turn/start'] = () => ({ turn: { id: 'turn-earlier' } })
+    const adapter = await acquired(codex)
+    await adapter.dispatch({
+      sessionId: 'session-1',
+      clientMessageId: 'client-1',
+      body: USER_MESSAGE,
+      fence: 7
+    })
+    const compaction = adapter.compact({
+      turnId: 'compact:operation-1',
+      sessionId: 'session-1',
+      fence: 7
+    })
+    await vi.waitFor(() =>
+      expect(codex.connections[0].calls.at(-1)?.method).toBe('thread/compact/start')
+    )
+
+    await expect(
+      adapter.cancelTurn({
+        sessionId: 'session-1',
+        fence: 7,
+        resolveLiveTurnId: () => 'compact:operation-1'
+      })
+    ).resolves.toEqual({ cancelled: false })
+    expect(codex.connections[0].calls.some((call) => call.method === 'turn/interrupt')).toBe(false)
+
+    const notify = codex.connections[0].handlers.onNotification!
+    notify('turn/started', { threadId: THREAD_ID, turn: { id: 'turn-compact' } })
+    notify('thread/compacted', { threadId: THREAD_ID })
+    notify('turn/completed', {
+      threadId: THREAD_ID,
+      turn: { id: 'turn-compact', status: 'completed' }
+    })
+    await expect(compaction).resolves.toEqual({})
+  })
 })

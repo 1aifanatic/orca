@@ -28,9 +28,11 @@ function cancelCodexConversation(
 ): Promise<{ cancelled: boolean }> {
   const { request, sessions, compactions, cancellation } = input
   const liveTurnId = request.resolveLiveTurnId?.() ?? null
+  // A turn the journal shows that Codex has not started yet (a compaction's) has nothing to stop.
   const turnId =
-    (liveTurnId === null ? null : compactions.providerTurnId(request.sessionId, liveTurnId)) ??
-    session.startedTurnId
+    liveTurnId === null
+      ? session.startedTurnId
+      : compactions.providerTurnId(request.sessionId, liveTurnId)
   if (!turnId) {
     return Promise.resolve({ cancelled: false })
   }

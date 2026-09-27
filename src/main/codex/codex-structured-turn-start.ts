@@ -104,6 +104,8 @@ export async function startCodexTurn(
   if (!host.dispatchEchoes.arm(input.clientMessageId, input.requestedAt)) {
     return false
   }
+  // Only this start's answer may name what a Stop interrupts; an earlier turn is not this one.
+  host.startedTurnId = undefined
   const response = await host.connection.request(
     'turn/start',
     {
@@ -114,7 +116,7 @@ export async function startCodexTurn(
     },
     { timeoutMs: input.timeoutMs }
   )
-  host.startedTurnId = readCodexTurnId(response) ?? host.startedTurnId
+  host.startedTurnId = readCodexTurnId(response) ?? undefined
   return true
 }
 
