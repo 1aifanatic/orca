@@ -37,10 +37,10 @@ import {
   observeStructuredWorker,
   resolveStructuredWorkerIdentity,
   structuredWorkerAgent,
-  structuredWorkerOwned,
   structuredWorkerTerminalState,
   type StructuredWorkerObservation
 } from '../../structured-worker-authority'
+import { structuredWorkerOwned } from '../../structured-worker-custody'
 import type { StructuredWorkerIdentity } from '../../structured-worker-identity'
 import type { WorkerTerminalReleaseState } from '../../orchestration/worker-terminal-ownership'
 import { releaseStructuredWorkerSession } from './orchestration-structured-worker-session'
@@ -84,7 +84,7 @@ export async function stopStructuredWorker(
   return closeStructuredAgentSessionChild(identity.sessionId, {
     ...(runtime ? { runtime } : {}),
     // Between the close and the proof, never after: an unsettled close returns early, and a
-    // surviving hold keeps the provider child un-evictable for the life of the app.
+    // surviving redrive subscription keeps nudging a session no dispatch owns.
     afterClose: () => releaseStructuredWorkerSession(dispatchId, runtime)
   })
 }
