@@ -3,7 +3,7 @@ import {
   getScrollTopToRevealBounds,
   resolveSidebarRevealScrollBehavior,
   stopSidebarRevealScroll,
-  WORKTREE_SIDEBAR_REVEAL_TOP_INSET
+  getElementSidebarRevealTopInset
 } from '../../worktree-sidebar-reveal'
 import { REVEAL_SCROLL_SETTLE_TIMEOUT_MS } from '../../worktree-sidebar-reveal-scroll-settle'
 
@@ -16,22 +16,14 @@ export function createMountedRevealSmoothTarget(
   if (resolveSidebarRevealScrollBehavior(behavior) !== 'smooth') {
     return null
   }
+  const topInset = getElementSidebarRevealTopInset(element)
   const initialBounds = getElementScrollBounds(container, element)
-  const initialTarget = getScrollTopToRevealBounds(
-    container,
-    initialBounds,
-    WORKTREE_SIDEBAR_REVEAL_TOP_INSET
-  )
+  const initialTarget = getScrollTopToRevealBounds(container, initialBounds, topInset)
   if (initialTarget === null) {
     return null
   }
-  let oversized =
-    initialBounds.end - initialBounds.start >
-    container.clientHeight - WORKTREE_SIDEBAR_REVEAL_TOP_INSET
-  const edge =
-    initialBounds.start < container.scrollTop + WORKTREE_SIDEBAR_REVEAL_TOP_INSET || oversized
-      ? 'start'
-      : 'end'
+  let oversized = initialBounds.end - initialBounds.start > container.clientHeight - topInset
+  const edge = initialBounds.start < container.scrollTop + topInset || oversized ? 'start' : 'end'
   let issuedTarget = Math.max(0, initialTarget)
   let previousDistance = Math.abs(issuedTarget - container.scrollTop)
   return {
@@ -39,17 +31,14 @@ export function createMountedRevealSmoothTarget(
     retargetUntil: now + REVEAL_SCROLL_SETTLE_TIMEOUT_MS * 2,
     retarget: (markScroll) => {
       const bounds = getElementScrollBounds(container, element)
-      oversized ||=
-        bounds.end - bounds.start > container.clientHeight - WORKTREE_SIDEBAR_REVEAL_TOP_INSET
+      oversized ||= bounds.end - bounds.start > container.clientHeight - topInset
       const target = Math.max(
         0,
-        oversized
-          ? bounds.start - WORKTREE_SIDEBAR_REVEAL_TOP_INSET
-          : initialTarget + bounds[edge] - initialBounds[edge]
+        oversized ? bounds.start - topInset : initialTarget + bounds[edge] - initialBounds[edge]
       )
       if (
         (!oversized || Math.abs(target - container.scrollTop) <= 1) &&
-        getScrollTopToRevealBounds(container, bounds, WORKTREE_SIDEBAR_REVEAL_TOP_INSET) === null
+        getScrollTopToRevealBounds(container, bounds, topInset) === null
       ) {
         // A fast native frame can reach the moved row before its new endpoint is issued.
         stopSidebarRevealScroll(container, markScroll)

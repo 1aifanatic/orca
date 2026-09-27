@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { addHostSectionRows } from '../../host-section-rows'
 import React, { act, useLayoutEffect } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -8,7 +9,7 @@ import {
   type WorktreeSidebarScrollSuppression
 } from './use-scroll-suppression'
 import type { VirtualizedScrollAnchor } from '@/hooks/useVirtualizedScrollAnchor'
-import { lineageRow } from '../rows/lineage-virtualization-test-fixtures'
+import { geometryFolderRow, lineageRow } from '../rows/lineage-virtualization-test-fixtures'
 import type { RenderRow } from '../listing/render-row'
 import { revealElementInScrollContainer } from '../../worktree-sidebar-reveal'
 import { completeMountedSidebarReveal } from '../navigation/complete-mounted-reveal'
@@ -48,13 +49,13 @@ function Probe({
   tick = 0,
   renderRows = rows,
   newCardStyle = false,
-  resolveCardShape,
+  resolveCardGeometry,
   layoutContext
 }: {
   tick?: number
   renderRows?: RenderRow[]
   newCardStyle?: boolean
-  resolveCardShape?: SidebarCardGeometryResolver
+  resolveCardGeometry?: SidebarCardGeometryResolver
   layoutContext?: string
 }) {
   const policy = useWorktreeSidebarScrollSuppression(scrollRef)
@@ -66,7 +67,7 @@ function Probe({
     scrollAnchorRef: anchorRef,
     suppression: policy,
     newCardStyle,
-    resolveCardShape,
+    resolveCardGeometry,
     layoutContext,
     draggingWorktreeId: null,
     props: {
@@ -268,6 +269,78 @@ function roundScrollWrites() {
   }
 }
 describe('single sidebar geometry owner', () => {
+  it('mounts collapsed same-ID project owners with distinct React and measurement identities', async () => {
+    const group = geometryFolderRow().projectGroup
+    const renderRows = addHostSectionRows({
+      rows: (['local', 'ssh:box'] as const).map((executionHostId) => ({
+        type: 'header',
+        key: 'project-group:group',
+        label: executionHostId,
+        count: 1,
+        tone: 'text-foreground',
+        projectGroup: { ...group, executionHostId }
+      })),
+      hostOptions: [],
+      workspaceHostScope: 'all',
+      defaultHostId: 'local'
+    })
+    await act(async () => root.render(<Probe renderRows={renderRows} />))
+    const keys = [...element.querySelectorAll<HTMLElement>('[data-sidebar-geometry-node]')].map(
+      (node) => node.dataset.sidebarGeometryNode
+    )
+    expect(keys).toEqual(['hdr:local:project-group:group', 'hdr:ssh:box:project-group:group'])
+    expect(current.outerItems.map((item) => item.key)).toEqual(keys)
+    expect(current.model.nodeByKey.size).toBe(2)
+  })
+
+  it('keeps host header occurrences distinct through outer DOM remounts and navigation', async () => {
+    const local = lineageRow('local', 0)
+    const remote = lineageRow('remote', 0)
+    remote.worktree.hostId = 'ssh:box'
+    const sectioned = addHostSectionRows({
+      rows: [
+        { type: 'header', key: 'all', label: 'All', count: 2, tone: 'text-foreground' },
+        local,
+        remote
+      ],
+      hostOptions: [
+        { id: 'local', kind: 'local', label: 'Local', detail: '', health: 'local' },
+        { id: 'ssh:box', kind: 'ssh', label: 'Remote', detail: '', health: 'available' }
+      ],
+      workspaceHostScope: 'all',
+      defaultHostId: 'local'
+    })
+    const assertMountedKeys = () => {
+      const nodes = [...element.querySelectorAll<HTMLElement>('[data-sidebar-geometry-node]')]
+      const keys = nodes.map((node) => node.dataset.sidebarGeometryNode)
+      expect(new Set(keys).size).toBe(nodes.length)
+      expect(keys).toContain('hdr:local:all')
+      expect(keys).toContain('hdr:ssh:box:all')
+      expect(current.outerItems.map((item) => item.key)).toEqual(keys)
+      expect(
+        nodes.every(
+          (node) =>
+            node.dataset.sidebarRevealTopInset ===
+            (node.dataset.sidebarGeometryNode?.startsWith('host:') ? '34' : '70')
+        )
+      ).toBe(true)
+    }
+    await act(async () => root.render(<Probe renderRows={sectioned} />))
+    assertMountedKeys()
+    const target = current.model.nodes.findIndex(
+      (node) => node.row.type === 'item' && node.row.worktree.id === 'remote'
+    )
+    await act(async () => current.navigationVirtualizer.scrollToIndex(target, { align: 'start' }))
+    expect(element.scrollTop).toBe(current.boundaries[current.model.nodes[target]!.slot]! + 1 - 70)
+    await act(async () => root.render(<Probe renderRows={[]} />))
+    await act(async () => root.render(<Probe renderRows={sectioned} />))
+    assertMountedKeys()
+    await nativeDelivery()
+    for (const observer of observers) {
+      expect([...observer.targets].every((node) => node.isConnected)).toBe(true)
+    }
+  })
+
   it('writes once only after changed native observations have matching committed sizer geometry', async () => {
     await render()
     const before = element.scrollTop
@@ -575,16 +648,16 @@ it('keeps reading position bounded when measured card shapes enter and leave col
     fingerprint: 'known'
   })
   const unknown: SidebarCardGeometryResolver = () => null
-  await act(async () => root.render(<Probe resolveCardShape={known} />))
+  await act(async () => root.render(<Probe resolveCardGeometry={known} />))
   const readingPosition = () => current.retainedItems[1]!.start - element.scrollTop
   const baseline = readingPosition()
   for (let cycle = 0; cycle < 4; cycle++) {
     height += 37.5
-    await act(async () => root.render(<Probe resolveCardShape={unknown} />))
+    await act(async () => root.render(<Probe resolveCardGeometry={unknown} />))
     await nativeDelivery()
     expect(Math.abs(readingPosition() - baseline)).toBeLessThanOrEqual(0.5)
     height -= 37.5
-    await act(async () => root.render(<Probe resolveCardShape={known} />))
+    await act(async () => root.render(<Probe resolveCardGeometry={known} />))
     await nativeDelivery()
     expect(Math.abs(readingPosition() - baseline)).toBeLessThanOrEqual(0.5)
   }
@@ -601,7 +674,7 @@ it.each(['width', 'style', 'context', 'input', 'navigation', 'structure'] as con
       fingerprint: 'known'
     })
     const unknown: SidebarCardGeometryResolver = () => null
-    await act(async () => root.render(<Probe resolveCardShape={known} />))
+    await act(async () => root.render(<Probe resolveCardGeometry={known} />))
     height += 37.5
     await nativeDelivery()
     if (kind === 'width') {
@@ -616,7 +689,7 @@ it.each(['width', 'style', 'context', 'input', 'navigation', 'structure'] as con
     await act(async () =>
       root.render(
         <Probe
-          resolveCardShape={unknown}
+          resolveCardGeometry={unknown}
           newCardStyle={kind === 'style'}
           layoutContext={kind === 'context' ? 'changed' : undefined}
           renderRows={kind === 'structure' ? [...rows, lineageRow('e', 0)] : rows}
@@ -642,10 +715,10 @@ it('does not compensate a partly visible card when its known shape becomes unkno
     closing: 7,
     fingerprint: 'known'
   })
-  await act(async () => root.render(<Probe resolveCardShape={known} />))
+  await act(async () => root.render(<Probe resolveCardGeometry={known} />))
   writes.length = 0
   height += 37.5
-  await act(async () => root.render(<Probe resolveCardShape={() => null} />))
+  await act(async () => root.render(<Probe resolveCardGeometry={() => null} />))
   expect(element.scrollTop).toBe(40)
   expect(writes).toHaveLength(0)
 })

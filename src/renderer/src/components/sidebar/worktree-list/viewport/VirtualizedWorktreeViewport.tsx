@@ -138,7 +138,7 @@ export const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktr
     () => renderRows.some((row) => row.type === 'item' || row.type === 'lineage-group'),
     [renderRows]
   )
-  const resolveCardShape = useSidebarCardGeometryInputs({
+  const resolveCardGeometry = useSidebarCardGeometryInputs({
     hasCardCandidates,
     newCardStyle,
     compactPreference: settings?.compactWorktreeCards === true,
@@ -146,7 +146,7 @@ export const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktr
     hideRepoBadge: groupBy === 'repo'
   })
   const virtualization = useWorktreeListVirtualizer({
-    resolveCardShape,
+    resolveCardGeometry,
     renderRows,
     firstHeaderIndex,
     scrollRef,

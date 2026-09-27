@@ -41,6 +41,20 @@ function fixture() {
 afterEach(() => vi.restoreAllMocks())
 
 describe('mounted reveal completion', () => {
+  it('completes above the stacked target headers while opening rename immediately', () => {
+    const { args, state, frame, scrollTo } = fixture()
+    args.element.dataset.sidebarRevealTopInset = '70'
+    args.container.scrollTop = 1_200
+    completeMountedSidebarReveal(args)
+    expect(args.beginRename).toHaveBeenCalledOnce()
+    state.settling = false
+    frame()
+    expect(scrollTo).toHaveBeenCalledExactlyOnceWith({ top: 930, behavior: 'auto' })
+    frame()
+    expect(args.element.getBoundingClientRect().top).toBe(70)
+    expect(args.complete).toHaveBeenCalledExactlyOnceWith(true)
+  })
+
   it.each([1, -1])(
     'does not correct moving native scroll after the settle hint expires (direction %s)',
     (direction) => {

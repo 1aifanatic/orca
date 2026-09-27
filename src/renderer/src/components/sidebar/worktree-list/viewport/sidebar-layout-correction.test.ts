@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { lineageRow } from '../rows/lineage-virtualization-test-fixtures'
 import { buildSidebarGeometry, sidebarGeometryBoundaries } from '../listing/sidebar-geometry-slots'
 import { getSidebarGeometryLedger, publishSidebarObservation } from './sidebar-geometry-ledger'
-import { createSidebarShapeCorrection } from './sidebar-shape-correction'
+import { createSidebarLayoutCorrection } from './sidebar-layout-correction'
 import { resolveSidebarCorrectionTarget } from './sidebar-geometry-commit'
 
 function fixture() {
@@ -18,7 +18,7 @@ function fixture() {
   previous.nodes.forEach((_, index) =>
     publishSidebarObservation(ledger, previous, index, { prefix: 116, closing: null, width: 300 })
   )
-  const args: Parameters<typeof createSidebarShapeCorrection>[0] = {
+  const args: Parameters<typeof createSidebarLayoutCorrection>[0] = {
     previous,
     model,
     ledger,
@@ -29,7 +29,7 @@ function fixture() {
     epoch: 3,
     inset: 1
   }
-  const resolve = (correction: ReturnType<typeof createSidebarShapeCorrection>) =>
+  const resolve = (correction: ReturnType<typeof createSidebarLayoutCorrection>) =>
     resolveSidebarCorrectionTarget(
       correction,
       model,
@@ -43,8 +43,8 @@ function fixture() {
 describe('same-topology card shape correction', () => {
   it('captures fractional logical position before invalidating measured sizes', () => {
     const { args, resolve } = fixture()
-    const correction = createSidebarShapeCorrection(args)
-    expect(correction?.shapeAnchor).toBe(true)
+    const correction = createSidebarLayoutCorrection(args)
+    expect(correction?.layoutAnchor).toBe(true)
     expect(resolve(correction)).toBe(199.5)
     publishSidebarObservation(args.ledger, args.model, 0, {
       prefix: 153.5,
@@ -61,7 +61,7 @@ describe('same-topology card shape correction', () => {
       closing: null,
       width: 300
     })
-    const correction = createSidebarShapeCorrection(args)
+    const correction = createSidebarLayoutCorrection(args)
     expect(resolve(correction)).toBe(237.5)
     publishSidebarObservation(args.ledger, args.model, 0, {
       prefix: 116,
@@ -72,9 +72,9 @@ describe('same-topology card shape correction', () => {
   })
   it('keeps a pending shape anchor identity even if the capture ref changes', () => {
     const { args, resolve } = fixture()
-    args.pending = createSidebarShapeCorrection(args)
+    args.pending = createSidebarLayoutCorrection(args)
     args.anchor = { key: args.model.nodes[2]!.key, offset: 0, scrollTop: 200 }
-    const correction = createSidebarShapeCorrection(args)
+    const correction = createSidebarLayoutCorrection(args)
     expect(correction?.anchor?.key).toBe(args.model.nodes[1]!.key)
     expect(resolve(correction)).toBe(199.5)
   })
@@ -97,7 +97,7 @@ describe('same-topology card shape correction', () => {
       if (kind === 'semantic') {
         args.pending.anchor = args.anchor
       }
-      expect(createSidebarShapeCorrection(args)).toBeNull()
+      expect(createSidebarLayoutCorrection(args)).toBeNull()
     }
   )
   it.each(['order', 'identity', 'depth'] as const)(
@@ -112,7 +112,7 @@ describe('same-topology card shape correction', () => {
               ...rows.slice(1)
             ]
       )
-      expect(createSidebarShapeCorrection(args)).toBeNull()
+      expect(createSidebarLayoutCorrection(args)).toBeNull()
     }
   )
   it.each(['epoch', 'physical'] as const)(
@@ -124,12 +124,12 @@ describe('same-topology card shape correction', () => {
         remainder: -0.5,
         epoch: kind === 'epoch' ? 2 : 3
       }
-      expect(resolve(createSidebarShapeCorrection(args))).toBe(200)
+      expect(resolve(createSidebarLayoutCorrection(args))).toBe(200)
     }
   )
   it('cannot transfer a missing reading key', () => {
     const { args } = fixture()
     args.anchor = { key: 'missing', offset: 0, scrollTop: 200 }
-    expect(createSidebarShapeCorrection(args)).toBeNull()
+    expect(createSidebarLayoutCorrection(args)).toBeNull()
   })
 })

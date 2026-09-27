@@ -44,7 +44,7 @@ export function useWorktreeListVirtualizer(args: {
   suppression: WorktreeSidebarScrollSuppression
   newCardStyle: boolean
   layoutContext?: string
-  resolveCardShape?: SidebarCardGeometryResolver
+  resolveCardGeometry?: SidebarCardGeometryResolver
   props: Pick<
     VirtualizedWorktreeViewportProps,
     | 'activeWorktreeId'
@@ -57,8 +57,8 @@ export function useWorktreeListVirtualizer(args: {
 }) {
   const { renderRows, scrollRef, scrollOffsetRef, scrollAnchorRef, suppression } = args
   const model = useMemo(
-    () => buildSidebarGeometry(renderRows, args.resolveCardShape),
-    [renderRows, args.resolveCardShape]
+    () => buildSidebarGeometry(renderRows, args.resolveCardGeometry),
+    [renderRows, args.resolveCardGeometry]
   )
   const rootByOuterIndex = useMemo(
     () => new Map(model.roots.map((index) => [model.nodes[index]!.outerIndex, index])),
@@ -109,7 +109,7 @@ export function useWorktreeListVirtualizer(args: {
         sidebarSlotContentEnd(model, boundaries, node.slot) + insetRef.current,
         offset,
         viewport,
-        WORKTREE_SIDEBAR_REVEAL_TOP_INSET,
+        node.revealTopInset,
         navigation.align
       )
     }
@@ -272,6 +272,7 @@ export function useWorktreeListVirtualizer(args: {
       const root = rootByOuterIndex.get(index)
       if (root !== undefined) {
         element.dataset.sidebarGeometryNode = model.nodes[root]!.key
+        element.dataset.sidebarRevealTopInset = String(model.nodes[root]!.revealTopInset)
       }
     },
     [model, rootByOuterIndex]

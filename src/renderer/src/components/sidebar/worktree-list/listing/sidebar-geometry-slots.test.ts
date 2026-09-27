@@ -25,6 +25,29 @@ function nested() {
 }
 
 describe('sidebar global geometry', () => {
+  it('carries target host clearance to nested semantic cards without changing no-host rows', () => {
+    expect(nested().nodes.every((node) => node.revealTopInset === 34)).toBe(true)
+    const model = buildSidebarGeometry([
+      {
+        type: 'host-header',
+        key: 'host:ssh:box',
+        hostId: 'ssh:box',
+        kind: 'ssh',
+        label: 'Remote',
+        detail: '',
+        health: 'available',
+        collapsed: false,
+        count: 2
+      },
+      {
+        type: 'lineage-group',
+        key: 'tree',
+        rows: [lineageRow('parent', 0), lineageRow('child', 1)]
+      }
+    ])
+    expect(model.nodes.map((node) => node.revealTopInset)).toEqual([34, 70, 70])
+  })
+
   it('places closing chrome after children and conserves nested spacers', () => {
     const model = nested()
     expect(model.slots.map((slot) => slot.kind)).toEqual([

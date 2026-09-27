@@ -5,6 +5,15 @@ const WORKTREE_REVEAL_TOP_CLEARANCE = 6
 export const WORKTREE_SIDEBAR_REVEAL_TOP_INSET =
   GROUP_HEADER_ROW_HEIGHT + WORKTREE_REVEAL_TOP_CLEARANCE
 
+export function getElementSidebarRevealTopInset(element: Element): number {
+  const inset = Number(
+    element.closest<HTMLElement>('[data-sidebar-reveal-top-inset]')?.dataset.sidebarRevealTopInset
+  )
+  return Number.isFinite(inset) && inset >= WORKTREE_SIDEBAR_REVEAL_TOP_INSET
+    ? inset
+    : WORKTREE_SIDEBAR_REVEAL_TOP_INSET
+}
+
 type SidebarRevealBounds = {
   start: number
   end: number
@@ -18,7 +27,7 @@ export function getElementScrollBounds(
   const containerRect = container.getBoundingClientRect()
   const elementRect = element.getBoundingClientRect()
   const title =
-    elementRect.height > container.clientHeight - WORKTREE_SIDEBAR_REVEAL_TOP_INSET
+    elementRect.height > container.clientHeight - getElementSidebarRevealTopInset(element)
       ? element.querySelector('[data-worktree-title-inline-rename]')?.getBoundingClientRect()
       : undefined
   return {
@@ -67,7 +76,7 @@ export function revealElementInScrollContainer(
   const nextScrollTop = getScrollTopToRevealBounds(
     container,
     getElementScrollBounds(container, element),
-    WORKTREE_SIDEBAR_REVEAL_TOP_INSET
+    getElementSidebarRevealTopInset(element)
   )
   if (nextScrollTop === null) {
     return true

@@ -132,63 +132,108 @@ for (const interruption of ['wheel', 'cancel'] as const) {
     const result = await orcaPage.evaluate(async (interruption) => {
       const scroller = document.querySelector<HTMLElement>('[data-worktree-sidebar]')!
       const originalScrollTo = scroller.scrollTo.bind(scroller)
+      const startedAt = performance.now()
+      const writes: { time: number; from: number; top: number; behavior?: string }[] = []
       let smoothWrites = 0
       scroller.scrollTo = (options?: ScrollToOptions | number, y?: number) => {
         if (typeof options === 'number') {
           originalScrollTo(options, y ?? 0)
         } else {
+          writes.push({
+            time: performance.now() - startedAt,
+            from: scroller.scrollTop,
+            top: options?.top ?? scroller.scrollTop,
+            behavior: options?.behavior
+          })
           if (options?.behavior === 'smooth') {
             smoothWrites++
           }
           originalScrollTo(options)
         }
       }
-      window.__store!.getState().revealWorktreeInSidebar('e2e-virtual-child-150', {
-        behavior: 'smooth',
-        highlight: true
-      })
-      const startedAt = performance.now()
-      let previousOffset = scroller.scrollTop
-      let moving = false
-      while (performance.now() - startedAt < 1_500) {
-        await new Promise(requestAnimationFrame)
-        moving = Math.abs(scroller.scrollTop - previousOffset) > 1
-        if (smoothWrites >= 2 && moving) {
-          break
-        }
-        previousOffset = scroller.scrollTop
+      const geometry = (element: HTMLElement) => {
+        const bounds = element.getBoundingClientRect()
+        const top = bounds.top - scroller.getBoundingClientRect().top + scroller.scrollTop
+        return { top, end: top + bounds.height, height: bounds.height }
       }
-      const atInterruption = {
-        smoothWrites,
-        moving,
-        offset: scroller.scrollTop,
-        pending: window.__store!.getState().pendingRevealWorktree?.worktreeId
-      }
-      if (interruption === 'wheel') {
-        scroller.dispatchEvent(new WheelEvent('wheel', { deltaY: -200, bubbles: true }))
-      } else {
-        window.__store!.getState().clearPendingRevealWorktreeId()
-      }
-      scroller.scrollTo({ top: scroller.scrollTop - 200, behavior: 'instant' })
-      await new Promise(requestAnimationFrame)
-      const offset = scroller.scrollTop
-      const start = performance.now()
-      const samples: { time: number; scrollTop: number; highlighted: boolean }[] = []
-      while (performance.now() - start < 1_200) {
-        await new Promise(requestAnimationFrame)
-        const target = scroller.querySelector('[data-worktree-id="e2e-virtual-child-150"]')
-        samples.push({
-          time: performance.now() - start,
-          scrollTop: scroller.scrollTop,
-          highlighted: target?.getAttribute('data-scroll-reveal-highlight') === 'true'
+      let grownTarget: HTMLElement | null = null
+      let originalMinHeight = ''
+      let growth: {
+        time: number
+        before: ReturnType<typeof geometry>
+        after: ReturnType<typeof geometry>
+        viewportHeight: number
+      } | null = null
+      try {
+        window.__store!.getState().revealWorktreeInSidebar('e2e-virtual-child-150', {
+          behavior: 'smooth',
+          highlight: true
         })
-      }
-      scroller.scrollTo = originalScrollTo
-      return {
-        offset,
-        samples,
-        atInterruption,
-        pending: window.__store!.getState().pendingRevealWorktree
+        let previousOffset = scroller.scrollTop
+        let moving = false
+        while (performance.now() - startedAt < 1_500) {
+          await new Promise(requestAnimationFrame)
+          moving = Math.abs(scroller.scrollTop - previousOffset) > 1
+          if (!growth && smoothWrites === 1 && moving) {
+            const target = scroller.querySelector<HTMLElement>(
+              '[data-worktree-id="e2e-virtual-child-150"]'
+            )!
+            const before = geometry(target)
+            grownTarget = target
+            originalMinHeight = target.style.minHeight
+            // Real layout growth exercises retargeting even when initial estimates are exact.
+            target.style.minHeight = `${before.height + 80}px`
+            growth = {
+              time: performance.now() - startedAt,
+              before,
+              after: geometry(target),
+              viewportHeight: scroller.clientHeight
+            }
+          }
+          if (growth && smoothWrites >= 2 && moving) {
+            break
+          }
+          previousOffset = scroller.scrollTop
+        }
+        const atInterruption = {
+          time: performance.now() - startedAt,
+          smoothWrites,
+          moving,
+          offset: scroller.scrollTop,
+          pending: window.__store!.getState().pendingRevealWorktree?.worktreeId
+        }
+        if (interruption === 'wheel') {
+          scroller.dispatchEvent(new WheelEvent('wheel', { deltaY: -200, bubbles: true }))
+        } else {
+          window.__store!.getState().clearPendingRevealWorktreeId()
+        }
+        scroller.scrollTo({ top: scroller.scrollTop - 200, behavior: 'instant' })
+        await new Promise(requestAnimationFrame)
+        const offset = scroller.scrollTop
+        const start = performance.now()
+        const samples: { time: number; scrollTop: number; highlighted: boolean }[] = []
+        while (performance.now() - start < 1_200) {
+          await new Promise(requestAnimationFrame)
+          const target = scroller.querySelector('[data-worktree-id="e2e-virtual-child-150"]')
+          samples.push({
+            time: performance.now() - start,
+            scrollTop: scroller.scrollTop,
+            highlighted: target?.getAttribute('data-scroll-reveal-highlight') === 'true'
+          })
+        }
+        return {
+          growth,
+          writes,
+          offset,
+          samples,
+          atInterruption,
+          pending: window.__store!.getState().pendingRevealWorktree
+        }
+      } finally {
+        scroller.scrollTo = originalScrollTo
+        if (grownTarget) {
+          grownTarget.style.minHeight = originalMinHeight
+        }
       }
     }, interruption)
     await writeFile(
@@ -198,6 +243,17 @@ for (const interruption of ['wheel', 'cancel'] as const) {
     expect(result.atInterruption.pending).toBe('e2e-virtual-child-150')
     expect(result.atInterruption.smoothWrites).toBeGreaterThanOrEqual(2)
     expect(result.atInterruption.moving).toBe(true)
+    expect(result.growth).not.toBeNull()
+    const growth = result.growth!
+    expect(growth.after.height - growth.before.height).toBeGreaterThan(70)
+    expect(growth.after.height).toBeLessThan(growth.viewportHeight - 34)
+    const smoothWrites = result.writes.filter((write) => write.behavior === 'smooth')
+    expect(smoothWrites[1]!.time).toBeGreaterThan(growth.time)
+    expect(smoothWrites[1]!.time).toBeLessThan(1_500)
+    expect(smoothWrites[1]!.time).toBeLessThanOrEqual(result.atInterruption.time)
+    expect(
+      Math.abs(smoothWrites[1]!.top - smoothWrites[0]!.top - (growth.after.end - growth.before.end))
+    ).toBeLessThan(2)
     expect(result.pending).toBeNull()
     expect(result.samples.every((sample) => !sample.highlighted)).toBe(true)
     expect(

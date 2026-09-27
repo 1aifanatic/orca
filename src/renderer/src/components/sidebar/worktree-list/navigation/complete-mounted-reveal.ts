@@ -2,7 +2,7 @@ import { VIRTUALIZED_SCROLL_ANCHOR_RECORD_EVENT } from '@/hooks/useVirtualizedSc
 import {
   getElementScrollBounds,
   revealElementInScrollContainer,
-  WORKTREE_SIDEBAR_REVEAL_TOP_INSET
+  getElementSidebarRevealTopInset
 } from '../../worktree-sidebar-reveal'
 import { createMountedRevealSmoothTarget } from './mounted-reveal-smooth-target'
 import { MAX_REVEAL_RETRIES } from './pending-reveal-inputs'
@@ -103,7 +103,8 @@ export function completeMountedSidebarReveal(args: {
       const rect = args.element.getBoundingClientRect()
       const viewportTop = args.container.getBoundingClientRect().top
       const viewportBottom = viewportTop + args.container.clientHeight
-      const usableHeight = args.container.clientHeight - WORKTREE_SIDEBAR_REVEAL_TOP_INSET
+      const usableHeight =
+        args.container.clientHeight - getElementSidebarRevealTopInset(args.element)
       const titleEnd =
         rect.height > usableHeight
           ? getElementScrollBounds(args.container, args.element).titleEnd

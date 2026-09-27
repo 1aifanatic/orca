@@ -84,7 +84,8 @@ export function usePendingSidebarReveal(args: PendingSidebarRevealArgs): () => v
         pendingRevealWorktree.worktreeId,
         current.worktrees,
         current.folderWorkspaces,
-        pendingRevealWorktree.executionHostId
+        pendingRevealWorktree.executionHostId,
+        { projectGroups: current.projectGroups, defaultHostId: current.defaultHostId }
       )
       const targetIndex = findPendingWorktreeRevealIndex(
         current.renderRows,

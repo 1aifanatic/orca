@@ -10,7 +10,7 @@ import {
   type SidebarScrollRounding
 } from './sidebar-geometry-commit'
 
-export function createSidebarShapeCorrection(args: {
+export function createSidebarLayoutCorrection(args: {
   previous: SidebarGeometry | null
   model: SidebarGeometry
   ledger: SidebarGeometryLedger
@@ -30,7 +30,7 @@ export function createSidebarShapeCorrection(args: {
     (pending &&
       (pending.epoch !== epoch ||
         pending.navigation ||
-        (pending.anchor && !pending.shapeAnchor) ||
+        (pending.anchor && !pending.layoutAnchor) ||
         pending.sourceOffset !== physicalOffset))
   ) {
     return null
@@ -49,7 +49,7 @@ export function createSidebarShapeCorrection(args: {
     target: 0,
     epoch,
     sourceOffset: physicalOffset,
-    shapeAnchor: true,
+    layoutAnchor: true,
     anchor: { ...anchor, offset: logicalOffset - boundaries[previous.nodes[index]!.slot]! - inset }
   }
 }

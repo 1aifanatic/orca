@@ -149,17 +149,14 @@ function retainClosingAnimation(): void {
     if (node.getAttribute('data-slot') !== 'hover-card-content') {
       return style
     }
-    return new Proxy(style, {
-      get(target, key) {
-        if (key === 'animationName') {
-          return node.getAttribute('data-state') === 'closed' ? 'exit' : 'enter'
-        }
-        if (key === 'display') {
-          return 'block'
-        }
-        return Reflect.get(target, key, target)
-      }
+    Object.defineProperties(style, {
+      animationName: {
+        configurable: true,
+        get: () => (node.getAttribute('data-state') === 'closed' ? 'exit' : 'enter')
+      },
+      display: { configurable: true, value: 'block' }
     })
+    return style
   })
 }
 

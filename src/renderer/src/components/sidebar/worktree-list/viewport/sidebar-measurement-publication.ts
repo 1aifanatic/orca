@@ -1,4 +1,4 @@
-import { createSidebarShapeCorrection } from './sidebar-shape-correction'
+import { createSidebarLayoutCorrection } from './sidebar-layout-correction'
 import { sidebarSlotContentEnd, type SidebarGeometry } from '../listing/sidebar-geometry-slots'
 import {
   sidebarGeometryLayoutMatches,
@@ -123,7 +123,7 @@ export function publishSidebarMeasurements(
     invalidatedLayout ||
     rounding.current?.epoch !== suppression.scrollOwnershipEpochRef.current ||
     rounding.current?.offset !== physicalOffset ||
-    (correction.current?.anchor && !correction.current.shapeAnchor) ||
+    (correction.current?.anchor && !correction.current.layoutAnchor) ||
     correction.current?.navigation
   ) {
     rounding.current = null
@@ -154,9 +154,9 @@ export function publishSidebarMeasurements(
         pending?.epoch === suppression.scrollOwnershipEpochRef.current
           ? (pending.anchor ?? scrollAnchorRef.current)
           : scrollAnchorRef.current
-      const shapeCorrection =
+      const layoutCorrection =
         !invalidatedLayout &&
-        createSidebarShapeCorrection({
+        createSidebarLayoutCorrection({
           previous: previousModel,
           model,
           ledger,
@@ -173,7 +173,7 @@ export function publishSidebarMeasurements(
         !correction.current?.navigation &&
         !suppression.shouldSkipScrollAnchorRestore()
       ) {
-        correction.current = shapeCorrection || {
+        correction.current = layoutCorrection || {
           target: 0,
           anchor,
           epoch: suppression.scrollOwnershipEpochRef.current

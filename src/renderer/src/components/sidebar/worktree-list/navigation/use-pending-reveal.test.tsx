@@ -419,66 +419,96 @@ describe('pending reveal continuity', () => {
     })
     expect(f.scrollTo).toHaveBeenLastCalledWith({ top: 0, behavior: 'auto' })
   })
-  it('keeps a folder workspace reveal alive across folder-list updates', () => {
-    const f = pendingRevealFixture('worktree')
-    const folder = {
-      id: 'folder',
-      projectGroupId: 'project',
-      name: 'Folder',
-      folderPath: '/workspace/folder',
-      linkedTask: null,
-      comment: '',
-      isArchived: false,
-      isUnread: false,
-      isPinned: false,
-      sortOrder: 0,
-      lastActivityAt: 0,
-      createdAt: 0,
-      updatedAt: 0
-    }
-    const project = {
-      id: 'project',
-      name: 'Project',
-      parentPath: '/workspace',
-      parentGroupId: null,
-      createdFrom: 'manual' as const,
-      tabOrder: 0,
-      isCollapsed: false,
-      color: null,
-      createdAt: 0,
-      updatedAt: 0
-    }
-    const key = folderWorkspaceKey(folder.id)
-    f.element.id = getWorktreeOptionId(key)
-    f.element.dataset.worktreeRowKey = key
-    f.args.pendingRevealWorktree = { worktreeId: key, behavior: 'smooth', highlight: true }
-    f.args.worktrees = []
-    f.args.folderWorkspaces = [folder]
-    f.args.projectGroups = [project]
-    f.args.renderRows = [
-      {
-        type: 'folder-workspace',
-        key,
-        folderWorkspace: folder,
-        projectGroup: project,
-        depth: 0,
-        groupDepth: 0
+  it.each([undefined, 'ssh:box'] as const)(
+    'keeps a folder workspace reveal alive across folder-list updates (%s)',
+    (executionHostId) => {
+      const f = pendingRevealFixture('worktree')
+      const folder = {
+        id: 'folder',
+        executionHostId,
+        projectGroupId: 'project',
+        name: 'Folder',
+        folderPath: '/workspace/folder',
+        linkedTask: null,
+        comment: '',
+        isArchived: false,
+        isUnread: false,
+        isPinned: false,
+        sortOrder: 0,
+        lastActivityAt: 0,
+        createdAt: 0,
+        updatedAt: 0
       }
-    ]
-    store.pendingRevealWorktree = f.args.pendingRevealWorktree
-    store.pendingRevealSidebarRow = null
-    const hook = renderHook(usePendingSidebarReveal, { initialProps: f.args })
-    act(f.frame)
-    hook.rerender({
-      ...f.args,
-      folderWorkspaces: [{ ...folder }],
-      renderRows: [...f.args.renderRows]
-    })
-    act(f.frame)
-    expect(f.scrollTo).toHaveBeenCalledOnce()
-    f.state.settling = false
-    act(f.frame)
-    act(f.frame)
-    expect(f.args.flashRevealedRow).toHaveBeenCalledExactlyOnceWith(key)
-  })
+      const project = {
+        id: 'project',
+        name: 'Project',
+        parentPath: '/workspace',
+        parentGroupId: null,
+        createdFrom: 'manual' as const,
+        tabOrder: 0,
+        isCollapsed: false,
+        color: null,
+        createdAt: 0,
+        updatedAt: 0
+      }
+      const key = folderWorkspaceKey(folder.id)
+      const rowKey = `${executionHostId ?? 'local'}|${key}`
+      f.element.id = getWorktreeOptionId(rowKey)
+      f.element.dataset.worktreeRowKey = rowKey
+      f.args.pendingRevealWorktree = {
+        worktreeId: key,
+        executionHostId,
+        behavior: 'smooth',
+        highlight: true
+      }
+      f.args.worktrees = []
+      f.args.folderWorkspaces = [folder]
+      f.args.projectGroups = [project]
+      f.args.renderRows = [
+        {
+          type: 'folder-workspace',
+          key,
+          folderWorkspace: folder,
+          projectGroup: project,
+          depth: 0,
+          groupDepth: 0
+        }
+      ]
+      if (executionHostId) {
+        const localFolder = { ...folder, executionHostId: 'local' as const }
+        f.args.folderWorkspaces = [localFolder, ...f.args.folderWorkspaces]
+        f.args.renderRows = [
+          {
+            type: 'folder-workspace',
+            key,
+            folderWorkspace: localFolder,
+            projectGroup: project,
+            depth: 0,
+            groupDepth: 0
+          },
+          ...f.args.renderRows
+        ]
+        const localElement = document.createElement('div')
+        localElement.id = getWorktreeOptionId(`local|${key}`)
+        localElement.getBoundingClientRect = () => new DOMRect(0, 0, 200, 100)
+        f.container.prepend(localElement)
+      }
+      store.pendingRevealWorktree = f.args.pendingRevealWorktree
+      store.pendingRevealSidebarRow = null
+      const hook = renderHook(usePendingSidebarReveal, { initialProps: f.args })
+      act(f.frame)
+      hook.rerender({
+        ...f.args,
+        folderWorkspaces: f.args.folderWorkspaces.map((workspace) => ({ ...workspace })),
+        renderRows: [...f.args.renderRows]
+      })
+      act(f.frame)
+      expect(f.scrollTo).toHaveBeenCalledOnce()
+      expect(f.scrollTo).toHaveBeenCalledWith({ top: 9500, behavior: 'smooth' })
+      f.state.settling = false
+      act(f.frame)
+      act(f.frame)
+      expect(f.args.flashRevealedRow).toHaveBeenCalledExactlyOnceWith(rowKey)
+    }
+  )
 })

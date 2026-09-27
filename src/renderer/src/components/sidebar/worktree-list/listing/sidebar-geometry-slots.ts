@@ -1,8 +1,14 @@
-import type { SidebarCardGeometryResolver, SidebarCardGeometryShape } from './sidebar-card-geometry'
+import { WORKTREE_SIDEBAR_REVEAL_TOP_INSET } from '../../worktree-sidebar-reveal'
+import { getFolderRowKey } from './folder-row-identity'
+import type { SidebarCardGeometryResolver, SidebarCardDimensions } from './sidebar-card-geometry'
 import { buildLineageVirtualTree, LINEAGE_SIBLING_GAP } from './lineage-virtual-tree'
 import { getRenderRowKey, type RenderRow } from './render-row'
 import type { WorktreeItemRow } from './renderable-rows'
-import { estimateRenderRowSize, WORKTREE_SIDEBAR_VIRTUAL_ROW_GAP } from '../viewport/virtual-rows'
+import {
+  estimateRenderRowSize,
+  HOST_STICKY_PINNED_HEIGHT,
+  WORKTREE_SIDEBAR_VIRTUAL_ROW_GAP
+} from '../viewport/virtual-rows'
 
 export type SidebarGeometryNode = {
   key: string
@@ -14,7 +20,8 @@ export type SidebarGeometryNode = {
   close: number | null
   end: number
   gap: number
-  cardShape?: SidebarCardGeometryShape | null
+  revealTopInset: number
+  cardGeometry?: SidebarCardDimensions | null
 }
 export type SidebarGeometrySlot = {
   key: string
@@ -34,7 +41,7 @@ export type SidebarGeometry = {
 // Semantic rows and numeric slots deliberately have separate indexes.
 export function buildSidebarGeometry(
   rows: readonly RenderRow[],
-  resolveCardShape?: SidebarCardGeometryResolver
+  resolveCardGeometry?: SidebarCardGeometryResolver
 ): SidebarGeometry {
   const nodes: SidebarGeometryNode[] = []
   const roots: number[] = []
@@ -43,13 +50,27 @@ export function buildSidebarGeometry(
   const nodeByRowKey = new Map<string, number>()
   const firstHeader = rows.findIndex((row) => row.type === 'header' || row.type === 'host-header')
   let hostSection = 'local'
+  let hasHostHeader = false
   const appendNode = (row: RenderRow, outerIndex: number, parent: number | null, gap: number) => {
     const index = nodes.length
     const key =
       row.type === 'folder-workspace'
-        ? `folder-workspace:${hostSection}:${row.key}`
+        ? `folder-workspace:${hostSection}:${getFolderRowKey(row)}`
         : getRenderRowKey(row)
-    nodes.push({ key, row, outerIndex, parent, children: [], slot: -1, close: null, end: -1, gap })
+    nodes.push({
+      key,
+      row,
+      outerIndex,
+      parent,
+      children: [],
+      slot: -1,
+      close: null,
+      end: -1,
+      gap,
+      revealTopInset:
+        WORKTREE_SIDEBAR_REVEAL_TOP_INSET +
+        (hasHostHeader && row.type !== 'host-header' ? HOST_STICKY_PINNED_HEIGHT : 0)
+    })
     nodeByKey.set(key, index)
     if (row.type === 'item') {
       nodeByRowKey.set(row.rowKey, index)
@@ -64,6 +85,7 @@ export function buildSidebarGeometry(
   for (const [outerIndex, row] of rows.entries()) {
     if (row.type === 'host-header') {
       hostSection = row.hostId
+      hasHostHeader = true
     }
     const gap = outerIndex < rows.length - 1 ? WORKTREE_SIDEBAR_VIRTUAL_ROW_GAP : 0
     if (row.type !== 'lineage-group') {
@@ -93,19 +115,20 @@ export function buildSidebarGeometry(
         key: `${node.key}:closing`,
         node: index,
         kind: 'closing',
-        estimate: (node.cardShape?.closing ?? 0) + node.gap,
-        geometryContext: node.cardShape?.fingerprint ?? ''
+        estimate: (node.cardGeometry?.closing ?? 0) + node.gap,
+        geometryContext: node.cardGeometry?.fingerprint ?? ''
       })
       node.end = slots.length
       continue
     }
     node.slot = slots.length
     const expanded = node.children.length > 0
-    node.cardShape = node.row.type === 'item' ? resolveCardShape?.(node.row, expanded) : undefined
-    const estimate = node.cardShape
+    node.cardGeometry =
+      node.row.type === 'item' ? resolveCardGeometry?.(node.row, expanded) : undefined
+    const estimate = node.cardGeometry
       ? expanded
-        ? node.cardShape.prefix
-        : node.cardShape.own
+        ? node.cardGeometry.prefix
+        : node.cardGeometry.own
       : node.parent !== null || expanded
         ? 96
         : estimateRenderRowSize(rows, node.outerIndex, firstHeader, null)
@@ -113,7 +136,7 @@ export function buildSidebarGeometry(
       key: `${node.key}:${expanded ? 'prefix' : 'row'}`,
       node: index,
       kind: expanded ? 'prefix' : 'row',
-      geometryContext: node.cardShape?.fingerprint ?? '',
+      geometryContext: node.cardGeometry?.fingerprint ?? '',
       estimate: estimate + (expanded ? 0 : node.gap)
     })
     if (expanded) {

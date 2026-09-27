@@ -6,7 +6,7 @@ export type SidebarGeometryCorrection = {
   target: number
   epoch: number
   sourceOffset?: number
-  shapeAnchor?: boolean
+  layoutAnchor?: boolean
   anchor?: VirtualizedScrollAnchor
   navigation?: {
     key: string

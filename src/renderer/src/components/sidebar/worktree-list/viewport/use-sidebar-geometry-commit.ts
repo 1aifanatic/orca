@@ -100,7 +100,7 @@ export function useSidebarGeometryCommit(args: {
     scrollOffsetRef.current = element.scrollTop
     const remainder = destination - element.scrollTop
     if (
-      (!pending.anchor || pending.shapeAnchor) &&
+      (!pending.anchor || pending.layoutAnchor) &&
       !pending.navigation &&
       target === destination &&
       Math.abs(remainder) <= 0.5

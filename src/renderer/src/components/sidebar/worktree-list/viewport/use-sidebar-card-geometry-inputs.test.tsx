@@ -91,7 +91,7 @@ describe('memoized sidebar shape inputs', () => {
     const initialBuilds = builds
     await act(async () => useGeometryStore.setState({ agentStatusByPaneKey: { [pane]: entry } }))
     expect(builds).toBe(initialBuilds + 1)
-    expect(model.nodes[0]!.cardShape).toBeNull()
+    expect(model.nodes[0]!.cardGeometry).toBeNull()
     for (let index = 0; index < 10; index++) {
       await act(async () =>
         useGeometryStore.setState({

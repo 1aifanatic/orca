@@ -125,14 +125,32 @@ describe('measured smooth reveal destination', () => {
     expect(f.scrollTo).toHaveBeenCalledExactlyOnceWith({ top: 9_555, behavior: 'smooth' })
   })
 
-  it('preserves the inset and start edge on an upward approach', () => {
-    const f = fixture(10_000, 5_000)
-    const target = createMountedRevealSmoothTarget(f.container, f.element, 'smooth', 0)!
-    f.container.scrollTop = 7_000
-    f.geometry.top = 6_000
-    f.geometry.height = 155
-    target.retarget(f.markScroll)
-    expect(f.scrollTo).toHaveBeenCalledExactlyOnceWith({ top: 5_966, behavior: 'smooth' })
+  it.each([34, 70])(
+    'preserves target clearance %i for nested upward reveals and retargets',
+    (inset) => {
+      const f = fixture(10_000, 5_000)
+      const outer = document.createElement('div')
+      outer.dataset.sidebarRevealTopInset = String(inset)
+      f.container.append(outer)
+      outer.append(f.element)
+      revealElementInScrollContainer(f.container, f.element, 'smooth', f.markScroll)
+      expect(f.scrollTo).toHaveBeenCalledExactlyOnceWith({ top: 5_000 - inset, behavior: 'smooth' })
+      f.scrollTo.mockClear()
+      const target = createMountedRevealSmoothTarget(f.container, f.element, 'smooth', 0)!
+      f.container.scrollTop = 7_000
+      f.geometry.top = 6_000
+      f.geometry.height = 155
+      target.retarget(f.markScroll)
+      expect(f.scrollTo).toHaveBeenCalledExactlyOnceWith({ top: 6_000 - inset, behavior: 'smooth' })
+    }
+  )
+
+  it('uses stacked target headers when deciding whether a card is oversized', () => {
+    const f = fixture(0, 1_000)
+    f.element.dataset.sidebarRevealTopInset = '70'
+    f.geometry.height = 540
+    revealElementInScrollContainer(f.container, f.element, 'smooth', f.markScroll)
+    expect(f.scrollTo).toHaveBeenCalledExactlyOnceWith({ top: 930, behavior: 'smooth' })
   })
 
   it('does not retarget an unchanged destination or an already visible element', () => {

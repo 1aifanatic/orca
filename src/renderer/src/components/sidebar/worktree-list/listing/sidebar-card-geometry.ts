@@ -7,7 +7,7 @@ import {
 } from '../../worktree-card-layout'
 import { isPinnedWorktreeRow, type WorktreeItemRow } from './renderable-rows'
 
-export type SidebarCardGeometryShape = {
+export type SidebarCardDimensions = {
   fingerprint: string
   own: number
   prefix: number
@@ -16,7 +16,7 @@ export type SidebarCardGeometryShape = {
 export type SidebarCardGeometryResolver = (
   row: WorktreeItemRow,
   expanded: boolean
-) => SidebarCardGeometryShape | null
+) => SidebarCardDimensions | null
 export type SidebarCardGeometryInputs = {
   newCardStyle: boolean
   compactPreference: boolean
@@ -31,7 +31,7 @@ export function resolveSidebarCardGeometry(
   row: WorktreeItemRow,
   expanded: boolean,
   inputs: SidebarCardGeometryInputs
-): SidebarCardGeometryShape | null {
+): SidebarCardDimensions | null {
   if (
     inputs.agentCandidateIds.has(row.worktree.id) ||
     inputs.blockedIds.has(row.worktree.id) ||
