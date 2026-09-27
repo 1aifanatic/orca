@@ -1,4 +1,5 @@
-import type { BrowserWindow, IpcMainEvent, IpcMainInvokeEvent, WebContents } from 'electron'
+import type { IpcMainEvent, IpcMainInvokeEvent } from 'electron'
+import type { PtyRendererDelivery } from '../session'
 import type { OrcaRuntimeService } from '../../../runtime/orca-runtime'
 import type { IPtyProvider } from '../../../providers/types'
 import { isPtyWriteUnavailableError } from '../../../providers/pty-write-unavailable-error'
@@ -13,10 +14,12 @@ import { interactiveOutputCharsByPty, lastInputAtByPty } from '../delivery/visib
 
 export function isMainWindowPtyIpcEvent(
   event: IpcMainEvent | IpcMainInvokeEvent,
-  mainWindow: BrowserWindow,
-  mainWebContents: WebContents
+  mainWindow: PtyRendererDelivery | undefined
 ): boolean {
+  const mainWebContents = mainWindow?.webContents
   return (
+    !!mainWindow &&
+    !!mainWebContents &&
     event.sender === mainWebContents &&
     !mainWindow.isDestroyed() &&
     !(typeof mainWebContents.isDestroyed === 'function' && mainWebContents.isDestroyed())
@@ -27,23 +30,21 @@ export type PtyWritePayload = { id: string; data: string; inputKind: TerminalInp
 export type PtyViewportClaimPayload = { id: string; cols: number; rows: number }
 
 export function createPtyWriteInput(deps: {
-  mainWindow: BrowserWindow
+  mainWindow?: PtyRendererDelivery
   runtime?: OrcaRuntimeService
 }): {
   writePtyInput: (args: PtyWritePayload) => boolean | Promise<boolean>
   writePtyInputAccepted: (args: PtyWritePayload) => boolean | Promise<boolean>
   isPtyWritePayload: (value: unknown) => value is PtyWritePayload
   isPtyViewportClaimPayload: (value: unknown) => value is PtyViewportClaimPayload
-  isPtyWriteEventFromMainWindow: (
-    event: IpcMainEvent | IpcMainInvokeEvent,
-    mainWebContents: WebContents
-  ) => boolean
+  isPtyWriteEventFromMainWindow: (event: IpcMainEvent | IpcMainInvokeEvent) => boolean
 } {
   const { mainWindow, runtime } = deps
 
   const reportUnavailablePtyWrite = (id: string, error: unknown): void => {
     if (
       !isPtyWriteUnavailableError(error) ||
+      !mainWindow ||
       mainWindow.isDestroyed() ||
       (typeof mainWindow.webContents.isDestroyed === 'function' &&
         mainWindow.webContents.isDestroyed())
@@ -145,10 +146,8 @@ export function createPtyWriteInput(deps: {
     (value as { cols: number }).cols > 0 &&
     (value as { rows: number }).rows > 0
 
-  const isPtyWriteEventFromMainWindow = (
-    event: IpcMainEvent | IpcMainInvokeEvent,
-    mainWebContents: WebContents
-  ): boolean => isMainWindowPtyIpcEvent(event, mainWindow, mainWebContents)
+  const isPtyWriteEventFromMainWindow = (event: IpcMainEvent | IpcMainInvokeEvent): boolean =>
+    isMainWindowPtyIpcEvent(event, mainWindow)
 
   const noteRendererPtyInput = (args: PtyWritePayload): void => {
     lastInputAtByPty.set(args.id, performance.now())
