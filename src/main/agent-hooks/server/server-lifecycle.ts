@@ -94,7 +94,7 @@ export abstract class AgentHookServerLifecycle extends AgentHookServerRuntimeEnv
         // Why: merge transport headers before normalization so relay-compatible fields have one canonical path.
         const hookBody = mergeAgentHookRequestHeaders(body, req.headers)
         trackEmptyPaneKeyHook(hookBody)
-        const aliasedBody = this.attributeCodexSharedDaemonBody(
+        const aliasedBody = await this.attributeCodexSharedDaemonBody(
           this.normalizeHookBodyPaneKeyAlias(hookBody)
         )
         const normalized = this.normalizeLocalHookPayload(source, aliasedBody)

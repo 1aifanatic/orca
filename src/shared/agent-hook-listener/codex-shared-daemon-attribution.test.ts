@@ -21,17 +21,19 @@ function decide(cwd: string | undefined, panes: CodexDaemonHookPane[] | null, st
   })
 }
 
+/** A pane running a Codex client, or (codex=false) a shell / dev server with none. */
+function pane(paneKey: string | null, worktreeId: string, codex = true): CodexDaemonHookPane {
+  return { paneKey, worktreeId, runsCodexClient: codex }
+}
+
 describe('attributeCodexDaemonHook', () => {
-  const twoWorktrees = [
-    { paneKey: A, worktreeId: WT_A },
-    { paneKey: B, worktreeId: WT_B }
-  ]
+  const twoWorktrees = [pane(A, WT_A), pane(B, WT_B)]
 
   it('keeps the stamp when the session runs in the stamped pane worktree', () => {
     expect(decide('/work/a/src', twoWorktrees)).toEqual({ kind: 'keep' })
   })
 
-  it('moves a session in another worktree to that worktree pane', () => {
+  it('moves a session in another worktree to that worktree Codex pane', () => {
     expect(decide('/work/b', twoWorktrees)).toEqual({
       kind: 'rebind',
       paneKey: B,
@@ -39,15 +41,37 @@ describe('attributeCodexDaemonHook', () => {
     })
   })
 
+  it('ignores shell splits beside the Codex pane of the session worktree', () => {
+    const panes = [pane(A, WT_A), pane(B, WT_B), pane(C, WT_B, false)]
+    expect(decide('/work/b', panes)).toEqual({ kind: 'rebind', paneKey: B, worktreeId: WT_B })
+  })
+
+  it('never rebinds to a shell pane; the only Codex pane keeps a session run elsewhere', () => {
+    expect(decide('/work/b', [pane(A, WT_A), pane(B, WT_B, false)])).toEqual({ kind: 'keep' })
+  })
+
+  it('keeps the only Codex session when it was launched outside every worktree', () => {
+    expect(decide('/Users/me/proj', [pane(A, WT_A)])).toEqual({ kind: 'keep' })
+  })
+
+  it('moves a session to the only Codex pane when the daemon starter no longer runs Codex', () => {
+    expect(decide('/Users/me/proj', [pane(A, WT_A, false), pane(B, WT_B)])).toEqual({
+      kind: 'rebind',
+      paneKey: B,
+      worktreeId: WT_B
+    })
+  })
+
+  it('drops a session outside every worktree when several Codex panes could own it', () => {
+    expect(decide('/Users/me/proj', twoWorktrees)).toEqual({ kind: 'drop' })
+  })
+
   it('does not match a sibling directory that only shares a prefix', () => {
     expect(decide('/work/bb', twoWorktrees)).toEqual({ kind: 'drop' })
   })
 
   it('prefers the deepest worktree for a linked worktree nested in the main checkout', () => {
-    const panes = [
-      { paneKey: A, worktreeId: 'repo::/work/a' },
-      { paneKey: B, worktreeId: 'repo::/work/a/.worktrees/feature' }
-    ]
+    const panes = [pane(A, 'repo::/work/a'), pane(B, 'repo::/work/a/.worktrees/feature')]
     expect(decide('/work/a/.worktrees/feature/src', panes)).toEqual({
       kind: 'rebind',
       paneKey: B,
@@ -55,19 +79,29 @@ describe('attributeCodexDaemonHook', () => {
     })
   })
 
-  it('drops when several panes share the session worktree and none is the stamp', () => {
-    const panes = [...twoWorktrees, { paneKey: C, worktreeId: WT_B }]
-    expect(decide('/work/b', panes)).toEqual({ kind: 'drop' })
+  it('drops when several Codex panes share the session worktree and none is the stamp', () => {
+    expect(decide('/work/b', [...twoWorktrees, pane(C, WT_B)])).toEqual({ kind: 'drop' })
   })
 
-  it('keeps the stamp among several panes of the same worktree', () => {
-    const panes = [...twoWorktrees, { paneKey: C, worktreeId: WT_A }]
-    expect(decide('/work/a', panes)).toEqual({ kind: 'keep' })
+  it('keeps the stamp among several Codex panes of the same worktree', () => {
+    expect(decide('/work/a', [...twoWorktrees, pane(C, WT_A)])).toEqual({ kind: 'keep' })
+  })
+
+  describe('after a restart, before panes re-register their keys', () => {
+    const unkeyed = [pane(null, WT_A, false), pane(null, WT_B, false)]
+
+    it('keeps the daemon starter session in its own worktree', () => {
+      expect(decide('/work/a', unkeyed)).toEqual({ kind: 'keep' })
+    })
+
+    it('drops a session from another worktree instead of filing it on the starter', () => {
+      expect(decide('/work/b', unkeyed)).toEqual({ kind: 'drop' })
+    })
   })
 
   it('matches a folder workspace by its directory', () => {
     const folder = 'folder-repo::/work/notes::workspace:12345678-1234-4234-8234-123456789012'
-    expect(decide('/work/notes', [{ paneKey: B, worktreeId: folder }])).toEqual({
+    expect(decide('/work/notes', [pane(A, WT_A), pane(B, folder)])).toEqual({
       kind: 'rebind',
       paneKey: B,
       worktreeId: folder
@@ -76,7 +110,7 @@ describe('attributeCodexDaemonHook', () => {
 
   it('matches a WSL pane worktree against the Linux cwd Codex reports', () => {
     const wsl = 'repo::\\\\wsl.localhost\\Ubuntu\\home\\me\\proj'
-    expect(decide('/home/me/proj', [{ paneKey: B, worktreeId: wsl }])).toEqual({
+    expect(decide('/home/me/proj', [pane(A, WT_A), pane(B, wsl)])).toEqual({
       kind: 'rebind',
       paneKey: B,
       worktreeId: wsl
@@ -102,10 +136,7 @@ describe('attributeCodexSharedDaemonHookBody', () => {
     executor: 'codex-shared-daemon',
     payload: JSON.stringify({ cwd: '/work/b', session_id: 's' })
   }
-  const panes = [
-    { paneKey: A, worktreeId: WT_A },
-    { paneKey: B, worktreeId: WT_B }
-  ]
+  const panes = [pane(A, WT_A), pane(B, WT_B)]
 
   it('rewrites the stamp to the owning pane with that pane token', () => {
     expect(attributeCodexSharedDaemonHookBody(body, panes, () => 'b-token')).toMatchObject({
@@ -122,7 +153,8 @@ describe('attributeCodexSharedDaemonHookBody', () => {
   })
 
   it('blanks the pane key of an unattributable post', () => {
-    expect(attributeCodexSharedDaemonHookBody(body, [], () => undefined)).toMatchObject({
+    const tied = [...panes, pane(C, WT_B)]
+    expect(attributeCodexSharedDaemonHookBody(body, tied, () => undefined)).toMatchObject({
       paneKey: ''
     })
   })

@@ -6,8 +6,15 @@ import { attachRuntimeWorktreeAgentRows } from '../runtime/runtime-worktree-agen
 import { collectRuntimeWorktreeAgentSources } from '../runtime/runtime-worktree-agent-sources'
 import { buildRuntimeWorktreeSummaryPathIndex } from '../runtime/runtime-worktree-summary-paths'
 import type { RuntimeWorktreePsSummary } from '../../shared/runtime-types'
+import type { ProcessIdentityRow } from '../opencode/opencode-client-sweep'
 
 vi.mock('../telemetry/client', () => ({ track: vi.fn() }))
+// Why mock the sweep: the fake host process table decides which panes run a Codex TUI.
+let hostProcesses: ProcessIdentityRow[] = []
+vi.mock('../opencode/opencode-client-sweep', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  sweepProcessIdentities: vi.fn(async () => hostProcesses)
+}))
 vi.mock('../telemetry/cohort-classifier', () => ({
   getCohortAtEmit: vi.fn(() => ({ nth_repo_added: 2 }))
 }))
@@ -19,6 +26,7 @@ type Pane = {
   cwd: string
   sessionId: string
   ptyId: string
+  shellPid: number
 }
 
 // Two Orca panes in two worktrees, each running its own Codex TUI on one shared daemon.
@@ -28,7 +36,8 @@ const SR: Pane = {
   paneKey: makePaneKey('tab-sr', '11111111-1111-4111-8111-111111111111'),
   cwd: '/work/StudentRegistration',
   sessionId: '01a0e331-a60e-7ba2-0000-000000000001',
-  ptyId: 'pty-sr'
+  ptyId: 'pty-sr',
+  shellPid: 1100
 }
 const MAC: Pane = {
   worktreeId: 'repo::/work/MacOS',
@@ -36,7 +45,45 @@ const MAC: Pane = {
   paneKey: makePaneKey('tab-mac', '22222222-2222-4222-8222-222222222222'),
   cwd: '/work/MacOS',
   sessionId: '01a0e331-d459-7a92-0000-000000000002',
-  ptyId: 'pty-mac'
+  ptyId: 'pty-mac',
+  shellPid: 2200
+}
+// A plain shell split next to StudentRegistration's Codex pane (dev server, git, ...).
+const SR_SHELL: Pane = {
+  ...SR,
+  paneKey: makePaneKey('tab-sr', '33333333-3333-4333-8333-333333333333'),
+  ptyId: 'pty-sr-shell',
+  shellPid: 3300
+}
+
+/** Host process table: a `codex` TUI under each listed pane's shell, plus the shared daemon. */
+function runCodexIn(panes: Pane[]): void {
+  hostProcesses = [
+    ...panes.map((pane) => ({
+      pid: pane.shellPid + 1,
+      ppid: pane.shellPid,
+      startedAtMs: 0,
+      executable: '/opt/homebrew/bin/codex',
+      argv: ['codex']
+    })),
+    {
+      pid: 9000,
+      ppid: 1,
+      startedAtMs: 0,
+      executable: '/opt/homebrew/bin/codex',
+      argv: ['codex', 'app-server', '--managed-daemon']
+    }
+  ]
+}
+
+function registerPane(pane: Pane, paneKey: string | null = pane.paneKey): void {
+  registerPty({
+    ptyId: pane.ptyId,
+    worktreeId: pane.worktreeId,
+    sessionId: pane.ptyId,
+    paneKey,
+    pid: pane.shellPid
+  })
 }
 
 /** Post the way the managed script does when Codex's shared daemon runs it. */
@@ -138,50 +185,64 @@ describe('Codex hooks run by the shared app-server daemon', () => {
 
   beforeEach(async () => {
     _internals.resetCachesForTests()
-    for (const pane of [SR, MAC]) {
-      registerPty({
-        ptyId: pane.ptyId,
-        worktreeId: pane.worktreeId,
-        sessionId: pane.ptyId,
-        paneKey: pane.paneKey,
-        pid: null
-      })
+    for (const pane of [SR, SR_SHELL, MAC]) {
+      registerPane(pane)
     }
     server = new AgentHookServer()
+    runCodexIn([SR, MAC])
     await server.start({ env: 'production' })
   })
 
   afterEach(() => {
     server.stop()
-    unregisterPty(SR.ptyId)
-    unregisterPty(MAC.ptyId)
+    for (const pane of [SR, SR_SHELL, MAC]) {
+      unregisterPty(pane.ptyId)
+    }
   })
 
   it('files each session under its own worktree, not the daemon starter pane', async () => {
-    // StudentRegistration started Codex first, so the daemon carries its ORCA_* env.
-    await postDaemonCodexHook(server, SR, SR, { hook_event_name: 'SessionStart' })
-    await postDaemonCodexHook(server, SR, SR, {
+    // MacOS started Codex first, so the daemon carries its ORCA_* env for every session.
+    await postDaemonCodexHook(server, MAC, MAC, { hook_event_name: 'SessionStart' })
+    await postDaemonCodexHook(server, MAC, MAC, {
       hook_event_name: 'UserPromptSubmit',
-      prompt: 'previous StudentRegistration task'
+      prompt: 'previous MacOS task'
     })
-    await postDaemonCodexHook(server, SR, SR, { hook_event_name: 'Stop' })
+    await postDaemonCodexHook(server, MAC, MAC, { hook_event_name: 'Stop' })
 
-    await postDaemonCodexHook(server, SR, MAC, { hook_event_name: 'SessionStart' })
-    await postDaemonCodexHook(server, SR, MAC, {
+    await postDaemonCodexHook(server, MAC, SR, { hook_event_name: 'SessionStart' })
+    await postDaemonCodexHook(server, MAC, SR, {
       hook_event_name: 'UserPromptSubmit',
-      prompt: 'LATEST MacOS prompt'
+      prompt: 'LATEST StudentRegistration prompt'
     })
 
     const ps = worktreePs(server)
-    expect(agentsOf(ps, MAC)).toEqual([
-      { paneKey: MAC.paneKey, state: 'working', prompt: 'LATEST MacOS prompt' }
-    ])
+    // Why SR has a shell split too: only the pane running Codex may inherit the session.
     expect(agentsOf(ps, SR)).toEqual([
-      { paneKey: SR.paneKey, state: 'done', prompt: 'previous StudentRegistration task' }
+      { paneKey: SR.paneKey, state: 'working', prompt: 'LATEST StudentRegistration prompt' }
+    ])
+    expect(agentsOf(ps, MAC)).toEqual([
+      { paneKey: MAC.paneKey, state: 'done', prompt: 'previous MacOS task' }
     ])
   })
 
-  it('drops a daemon post whose session sits outside every known worktree', async () => {
+  it('keeps the only Codex session when it was launched outside its worktree', async () => {
+    runCodexIn([MAC])
+    await postDaemonCodexHook(
+      server,
+      MAC,
+      MAC,
+      { hook_event_name: 'UserPromptSubmit', prompt: 'codex -C ~/other' },
+      '/Users/me/other'
+    )
+
+    const ps = worktreePs(server)
+    expect(agentsOf(ps, MAC)).toEqual([
+      { paneKey: MAC.paneKey, state: 'working', prompt: 'codex -C ~/other' }
+    ])
+    expect(agentsOf(ps, SR)).toEqual([])
+  })
+
+  it('drops a session outside every worktree when two Codex panes could own it', async () => {
     await postDaemonCodexHook(
       server,
       SR,
@@ -193,5 +254,26 @@ describe('Codex hooks run by the shared app-server daemon', () => {
     const ps = worktreePs(server)
     expect(agentsOf(ps, SR)).toEqual([])
     expect(agentsOf(ps, MAC)).toEqual([])
+  })
+
+  it('after an Orca restart, keeps the starter session before panes re-register', async () => {
+    // Boot hydration registers the surviving terminal-daemon PTYs without pane keys.
+    for (const pane of [SR, SR_SHELL, MAC]) {
+      registerPane(pane, null)
+    }
+    await postDaemonCodexHook(server, MAC, MAC, {
+      hook_event_name: 'UserPromptSubmit',
+      prompt: 'MacOS after restart'
+    })
+    await postDaemonCodexHook(server, MAC, SR, {
+      hook_event_name: 'UserPromptSubmit',
+      prompt: 'StudentRegistration after restart'
+    })
+
+    const ps = worktreePs(server)
+    expect(agentsOf(ps, MAC)).toEqual([
+      { paneKey: MAC.paneKey, state: 'working', prompt: 'MacOS after restart' }
+    ])
+    expect(agentsOf(ps, SR)).toEqual([])
   })
 })

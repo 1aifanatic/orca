@@ -17,8 +17,11 @@ import { parseAgentHookJson } from './request-body'
 
 /** A live local pane that could own a daemon-run Codex session. */
 export type CodexDaemonHookPane = {
+  /** Null until the renderer re-registers a daemon-hosted PTY after an Orca restart. */
   paneKey: string | null
   worktreeId: string | null
+  /** A live Codex client process sits in this pane's process tree (from a host sweep). */
+  runsCodexClient: boolean
 }
 
 export type CodexDaemonHookAttribution =
@@ -42,12 +45,25 @@ function containsDirectory(root: string, target: string): boolean {
   return target === root || target.startsWith(root.endsWith('/') ? root : `${root}/`)
 }
 
+type CodexClientPane = { paneKey: string; worktreeId: string | null }
+
+function ownedBy(pane: CodexClientPane, stampedPaneKey: string): CodexDaemonHookAttribution {
+  if (pane.paneKey === stampedPaneKey) {
+    return { kind: 'keep' }
+  }
+  return pane.worktreeId
+    ? { kind: 'rebind', paneKey: pane.paneKey, worktreeId: pane.worktreeId }
+    : { kind: 'drop' }
+}
+
 /**
- * Owner of one daemon-run Codex post. The stamp is only kept when the
- * session's cwd sits in the stamped pane's worktree; otherwise the post moves
- * to the one pane in the session's (deepest) worktree, or is dropped when no
- * single pane qualifies. `panes` is null where no pane inventory exists (the
- * SSH relay), which can then only keep or drop.
+ * Owner of one daemon-run Codex post. Only panes with a live Codex client are
+ * rebind targets, so a shell or dev-server split never inherits a session.
+ * In order: the Codex pane of the session's deepest worktree; the stamp when
+ * its worktree holds the cwd; the only Codex pane on the host; a drop when
+ * the cwd belongs to a worktree (or one of several Codex panes) that cannot
+ * be pinned down; otherwise the stamp. `panes` is null where no pane
+ * inventory exists (the SSH relay), which can only keep or drop.
  */
 export function attributeCodexDaemonHook(args: {
   cwd: string | undefined
@@ -61,46 +77,74 @@ export function attributeCodexDaemonHook(args: {
     return { kind: 'keep' }
   }
   const target = normalizeAgentSessionDirectory(cwd)
+  const stampedRoot = worktreeRoot(args.stampedWorktreeId)
+  // Why keep an unreadable stamp: without a worktree path there is no evidence against it.
+  const stampHoldsCwd = stampedRoot === null || containsDirectory(stampedRoot, target)
+  if (args.panes === null) {
+    return stampHoldsCwd ? { kind: 'keep' } : { kind: 'drop' }
+  }
+
+  const codexPanes = new Map<string, CodexClientPane>()
+  let cwdInAnyPaneWorktree = false
   let deepest = -1
-  let candidates: { paneKey: string | null; worktreeId: string }[] = []
-  const seen = new Set<string>()
-  for (const pane of args.panes ?? []) {
-    const root = pane.worktreeId ? worktreeRoot(pane.worktreeId) : null
-    if (!pane.worktreeId || root === null || !containsDirectory(root, target)) {
+  let candidates: CodexClientPane[] = []
+  for (const pane of args.panes) {
+    const root = worktreeRoot(pane.worktreeId)
+    const holdsCwd = root !== null && containsDirectory(root, target)
+    cwdInAnyPaneWorktree ||= holdsCwd
+    if (!pane.paneKey || !pane.runsCodexClient || codexPanes.has(pane.paneKey)) {
       continue
     }
-    const dedupeKey = pane.paneKey ?? `\0${pane.worktreeId}`
-    if (seen.has(dedupeKey)) {
+    const codexPane = { paneKey: pane.paneKey, worktreeId: pane.worktreeId }
+    codexPanes.set(pane.paneKey, codexPane)
+    if (root === null || !holdsCwd) {
       continue
     }
-    seen.add(dedupeKey)
     // Why deepest: a linked worktree nested inside the main checkout owns its own sessions.
     if (root.length > deepest) {
       deepest = root.length
       candidates = []
     }
     if (root.length === deepest) {
-      candidates.push({ paneKey: pane.paneKey, worktreeId: pane.worktreeId })
+      candidates.push(codexPane)
     }
   }
+
   if (candidates.some((candidate) => candidate.paneKey === args.stampedPaneKey)) {
     return { kind: 'keep' }
   }
-  if (candidates.length === 1) {
-    const [only] = candidates
-    return only?.paneKey
-      ? { kind: 'rebind', paneKey: only.paneKey, worktreeId: only.worktreeId }
+  const [onlyCandidate, ...otherCandidates] = candidates
+  if (onlyCandidate) {
+    // Why drop on a tie: several Codex panes share the worktree and none is provably the owner.
+    return otherCandidates.length === 0
+      ? ownedBy(onlyCandidate, args.stampedPaneKey)
       : { kind: 'drop' }
   }
-  if (candidates.length > 1) {
-    // Why drop: several panes share the session's worktree and none is provably its owner.
+  if (stampHoldsCwd) {
+    return { kind: 'keep' }
+  }
+  const [onlyCodexPane, ...otherCodexPanes] = codexPanes.values()
+  if (onlyCodexPane && otherCodexPanes.length === 0) {
+    // Why: with one Codex TUI on the host, every daemon post is its own, wherever it cd'd to.
+    return ownedBy(onlyCodexPane, args.stampedPaneKey)
+  }
+  if (cwdInAnyPaneWorktree || codexPanes.size > 1) {
+    // Why drop: the stamp is only the daemon starter; keeping it would file a session from
+    // another worktree (or another Codex pane) on the starter's row, which is the original bug.
     return { kind: 'drop' }
   }
-  const stampedRoot = worktreeRoot(args.stampedWorktreeId)
-  // Why keep an unreadable stamp: without a worktree path there is no evidence against it.
-  return stampedRoot === null || containsDirectory(stampedRoot, target)
-    ? { kind: 'keep' }
-    : { kind: 'drop' }
+  // Why keep: no worktree claims the cwd and no rival Codex pane was seen; this is the
+  // single-TUI `codex -C <dir>` case or a sweep blind to the client (a WSL pane's Linux tree).
+  return { kind: 'keep' }
+}
+
+/** True for a body the managed Codex script marked as run by the shared daemon. */
+export function isCodexSharedDaemonHookBody(body: unknown): boolean {
+  return (
+    typeof body === 'object' &&
+    body !== null &&
+    Reflect.get(body, 'executor') === ORCA_HOOK_EXECUTOR_CODEX_SHARED_DAEMON
+  )
 }
 
 function readPayloadCwd(payload: unknown): string | undefined {

@@ -3,9 +3,16 @@ import { normalizeHookPayload } from '../../../shared/agent-hook-listener'
 import { isAgentHookSource, type AgentHookSource } from '../../../shared/agent-hook-relay'
 import type { NormalizedLocalHook } from './server-types'
 import { AgentHookServerOpenCodeBinder } from './server-opencode-binder'
-import { attributeCodexSharedDaemonHookBody } from '../../../shared/agent-hook-listener/codex-shared-daemon-attribution'
+import {
+  attributeCodexSharedDaemonHookBody,
+  isCodexSharedDaemonHookBody
+} from '../../../shared/agent-hook-listener/codex-shared-daemon-attribution'
 import { lookupOpenCodePaneLaunchToken } from '../../../shared/agent-hook-listener/opencode-session-registry'
 import { listRegisteredPtys } from '../../memory/pty-registry'
+import {
+  CodexClientProcessSnapshot,
+  listCodexDaemonHookPanes
+} from '../../codex/codex-client-panes'
 
 export abstract class AgentHookServerIngestNormalization extends AgentHookServerOpenCodeBinder {
   protected setClaudeBackgroundEvidence(
@@ -25,10 +32,18 @@ export abstract class AgentHookServerIngestNormalization extends AgentHookServer
     }
   }
 
+  private readonly codexClientProcesses = new CodexClientProcessSnapshot()
+
   /** Re-own a post the shared Codex daemon ran; its stamp is whichever pane started the daemon. */
-  protected attributeCodexSharedDaemonBody(body: unknown): unknown {
-    return attributeCodexSharedDaemonHookBody(body, listRegisteredPtys(), (paneKey) =>
-      lookupOpenCodePaneLaunchToken(this.state, paneKey)
+  protected async attributeCodexSharedDaemonBody(body: unknown): Promise<unknown> {
+    if (!isCodexSharedDaemonHookBody(body)) {
+      return body
+    }
+    const processes = await this.codexClientProcesses.read()
+    return attributeCodexSharedDaemonHookBody(
+      body,
+      listCodexDaemonHookPanes(listRegisteredPtys(), processes),
+      (paneKey) => lookupOpenCodePaneLaunchToken(this.state, paneKey)
     )
   }
 
