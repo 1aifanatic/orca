@@ -11,10 +11,12 @@ const store = vi.hoisted(() => {
   const state: {
     pendingRevealWorktree: unknown
     pendingRevealSidebarRow: unknown
+    renamingWorktreeId: unknown
     setRenamingWorktreeId: ReturnType<typeof vi.fn>
   } = {
     pendingRevealWorktree: null,
     pendingRevealSidebarRow: null,
+    renamingWorktreeId: null,
     setRenamingWorktreeId: vi.fn()
   }
   return state
@@ -27,6 +29,10 @@ vi.mock('@/store', () => ({
 afterEach(() => {
   cleanup()
   document.body.replaceChildren()
+  store.pendingRevealWorktree = null
+  store.pendingRevealSidebarRow = null
+  store.renamingWorktreeId = null
+  store.setRenamingWorktreeId.mockReset()
   vi.restoreAllMocks()
   vi.clearAllMocks()
 })
@@ -155,6 +161,45 @@ describe('pending reveal continuity', () => {
       expect(store.setRenamingWorktreeId).toHaveBeenCalledTimes(kind === 'worktree' ? 1 : 0)
     }
   )
+
+  it('does not replay a dismissed rename when a new reveal owner mounts', () => {
+    const f = mount('worktree')
+    const request = f.args.pendingRevealWorktree
+    store.setRenamingWorktreeId.mockImplementation((next) => {
+      store.renamingWorktreeId = next
+    })
+    act(f.frame)
+    expect(store.setRenamingWorktreeId).toHaveBeenCalledOnce()
+    store.renamingWorktreeId = null
+
+    f.hook.unmount()
+    f.frames.splice(0)
+    expect(store.pendingRevealWorktree).toBe(request)
+
+    const remounted = renderHook(usePendingSidebarReveal, { initialProps: f.args })
+    act(f.frame)
+    expect(store.setRenamingWorktreeId).toHaveBeenCalledOnce()
+    expect(store.renamingWorktreeId).toBeNull()
+    f.state.settling = false
+    act(f.frame)
+    act(f.frame)
+    expect(f.args.clearPendingRevealWorktreeId).toHaveBeenCalledOnce()
+    remounted.unmount()
+  })
+
+  it('admits a fresh rename request after an earlier request was consumed', () => {
+    const f = mount('worktree')
+    act(f.frame)
+    const current = f.args.pendingRevealWorktree
+    if (!current) {
+      throw new Error('expected rename request')
+    }
+    const replacement = { ...current }
+    store.pendingRevealWorktree = replacement
+    f.hook.rerender({ ...f.args, pendingRevealWorktree: replacement })
+    act(f.frame)
+    expect(store.setRenamingWorktreeId).toHaveBeenCalledTimes(2)
+  })
 
   it('does not revive old frames under StrictMode replay', () => {
     const f = pendingRevealFixture('worktree')

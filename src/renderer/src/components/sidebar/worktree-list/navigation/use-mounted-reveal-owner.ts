@@ -8,9 +8,10 @@ import type { PendingSidebarRevealArgs } from './pending-reveal-inputs'
 type RevealRequest = PendingSidebarWorktreeReveal | PendingSidebarRowReveal
 type MountedOwner = { request: RevealRequest; cancelled: boolean }
 
+const consumedRenameRequests = new WeakSet<PendingSidebarWorktreeReveal>()
+
 export function useMountedSidebarRevealOwner(argsRef: RefObject<PendingSidebarRevealArgs>) {
   const ownerRef = useRef<MountedOwner | null>(null)
-  const renamedRequestRef = useRef<RevealRequest | null>(null)
   const cancel = useCallback(() => {
     if (ownerRef.current) {
       ownerRef.current.cancelled = true
@@ -69,9 +70,9 @@ export function useMountedSidebarRevealOwner(argsRef: RefObject<PendingSidebarRe
         beginRename:
           'worktreeId' in request && request.beginRename
             ? () => {
-                if (isCurrent(owner) && renamedRequestRef.current !== request) {
-                  // Root reattachment resumes motion, not an already consumed edit.
-                  renamedRequestRef.current = request
+                if (isCurrent(owner) && !consumedRenameRequests.has(request)) {
+                  // Owner remounts resume motion without reopening a consumed edit.
+                  consumedRenameRequests.add(request)
                   useAppStore.getState().setRenamingWorktreeId({
                     worktreeId: request.worktreeId,
                     rowKey: element.dataset.worktreeRowKey
