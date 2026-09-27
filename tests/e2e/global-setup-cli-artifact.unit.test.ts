@@ -45,10 +45,8 @@ describe('E2E shared CLI artifact', () => {
   it('repairs downloaded permissions and installs the local launcher without recompiling', () => {
     vi.stubEnv('SKIP_BUILD', '1')
     globalSetup()
-    const prepare = commands().find((command) => command.includes('verify-cli-bin.mjs'))
-    expect(prepare).toBe(
-      'node config/scripts/verify-cli-bin.mjs --fix-executable --fix-package-json && node config/scripts/install-dev-cli.mjs'
-    )
+    const prepare = commands().find((command) => command.includes('prepare:cli-output'))
+    expect(prepare).toBe('pnpm run prepare:cli-output')
     expect(commands()).not.toContain('pnpm run build:cli')
     expect(commands()).toContain('git init')
     expect(fixture.exec.mock.calls.find(([command]) => command === prepare)?.[1]).toEqual({
@@ -65,7 +63,7 @@ describe('E2E shared CLI artifact', () => {
     )
     globalSetup()
     expect(commands()).toContain('pnpm run build:cli')
-    expect(commands().some((command) => command.includes('verify-cli-bin.mjs'))).toBe(false)
+    expect(commands().some((command) => command.includes('prepare:cli-output'))).toBe(false)
   })
 
   it('rebuilds existing artifacts when reuse is not requested', () => {
@@ -77,7 +75,7 @@ describe('E2E shared CLI artifact', () => {
   it('fails setup if the downloaded CLI cannot be verified', () => {
     vi.stubEnv('SKIP_BUILD', '1')
     fixture.exec.mockImplementation((command) => {
-      if (command.includes('verify-cli-bin.mjs')) {
+      if (command.includes('prepare:cli-output')) {
         throw new Error('Invalid CLI artifact')
       }
     })

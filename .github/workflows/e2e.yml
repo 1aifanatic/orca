@@ -70,7 +70,12 @@ jobs:
       - name: Build shared E2E CLI
         id: e2e-cli
         background: true
-        run: pnpm run build:cli
+        run: |
+          if node -e 'process.exit(require("./package.json").scripts["prepare:cli-output"] ? 0 : 1)'; then
+            pnpm run build:cli
+          else
+            echo "Older ref: let each consumer build and install its CLI."
+          fi
 
       - name: Project shared E2E web client
         run: pnpm run build:web-from-renderer
