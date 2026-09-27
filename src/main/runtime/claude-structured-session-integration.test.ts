@@ -393,7 +393,7 @@ describe('a structured Claude session over agentSession.*', () => {
   // The root's death is first-hand. Its descendants were never snapshottable, or one was seen
   // alive; either way the lease follows the root, so the reservation goes with it.
   it.each(['unverifiable', 'live'] as const)(
-    'releases a session whose CLI self-exited during create with its tree %s, with its diagnostic intact',
+    'releases a session whose CLI self-exited during create with its tree %s, refused in a sentence',
     async (tree) => {
       claude.setSelfExit({
         message: 'claude stream-json exited (code 1): claude: not signed in',
@@ -409,7 +409,8 @@ describe('a structured Claude session over agentSession.*', () => {
           ok: false,
           refusal: {
             code: 'agent_session_operation_invalid',
-            message: expect.stringContaining('claude: not signed in'),
+            // The CLI's stderr is log text; the person reads what the chat's start failure says.
+            message: 'The provider stopped before it finished starting.',
             ownerVerdict: 'exited'
           }
         }
@@ -444,7 +445,7 @@ describe('a structured Claude session over agentSession.*', () => {
         ok: false,
         refusal: {
           code: 'agent_session_operation_invalid',
-          message: expect.stringContaining('claude: not signed in'),
+          message: 'The provider stopped before it finished starting.',
           ownerVerdict: 'exited'
         }
       }
