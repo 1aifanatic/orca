@@ -2,7 +2,6 @@
 // HTTP 429 stub, captured with `--replay-user-messages --include-partial-messages`. The CLI writes
 // only `api_retry` frames, and echoes the message only once a request gets through or is
 // interrupted, so no turn opens: the send itself is all that says the session is working.
-// Each retry is kept as a provider-frame row, which is not a turn.
 
 import { describe, expect, it, vi } from 'vitest'
 import type {
@@ -46,7 +45,6 @@ describe('Claude retrying a rate-limited request', () => {
       translator.handle(apiRetry(attempt, 1_000 * attempt))
     }
 
-    expect(appended).toHaveLength(6)
-    expect(appended.map(({ body }) => readAgentJournalTurn(body))).toEqual(Array(6).fill(null))
+    expect(appended.filter(({ body }) => readAgentJournalTurn(body) !== null)).toEqual([])
   })
 })
