@@ -110,7 +110,7 @@ function usageScalars(config: GrokBillingConfig): (GrokMoneyVal | undefined)[] {
 }
 
 function omittedPercentIsUnreported(config: GrokBillingConfig): boolean {
-  // Only a confirmed zero cap makes the money zeros structural (#20657).
+  // A strict zero cap rejects numeric prefixes like "0invalid" accepted by parseMoneyVal.
   if (parseMoneyVal(config.onDemandCap) === 0 && Number(config.onDemandCap?.val) === 0) {
     return [config.onDemandUsed, config.used].some((value) => (parseMoneyVal(value) ?? 0) > 0)
   }
