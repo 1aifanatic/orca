@@ -1,0 +1,138 @@
+{
+  "purpose": "diagnostic-only probe for the child-400 forward jump and late landing; no product change",
+  "baseCommit": "7a64ac65ef413f56b246abf27828c772cb67f2c1",
+  "publishAs": "diagnostic ref, child commit of baseCommit; root publishes, this worker did not",
+  "gitObjectsCreatedByWorker": false,
+  "productSourceGuard": "the workflow fails the job if git diff HEAD^ HEAD -- src/ is non-empty",
+  "gatesUnchanged": {
+    "initialDelayMs": 200,
+    "maxFrameGapMs": 200,
+    "longestPauseMs": 200,
+    "arrivalMs": 1700,
+    "landingProofMs": 350,
+    "assertions": "all 14 expects of the maintained case, copied verbatim"
+  },
+  "noContentTracing": true,
+  "noHeartbeat": true,
+  "recorder": {
+    "hookLevel": "Element.prototype",
+    "matches": "data-worktree-sidebar attribute at call time, O(1), so a replacement scroller is captured on its first write",
+    "entryPoints": [
+      "scrollTo",
+      "scroll",
+      "scrollBy",
+      "scrollTop="
+    ],
+    "preserves": "this, argument overloads, return value, thrown errors; descriptors restored on stop",
+    "missingScroller": "scroller() returns null; the sample is skipped, recorded in missingSamples, and invalidates metrics",
+    "immediateOffsetUnchanged": "normal for a smooth initiation; no dropped or cancelled inference anywhere",
+    "sequence": "one monotonic counter across all entries; nested entries carry nestedInSeq and are counted separately",
+    "validation": "tests/e2e/sidebar-arrival-write-recorder.unit.test.ts, 10 cases, no app launch"
+  },
+  "presentationGuard": {
+    "flag": "ORCA_E2E_SIDEBAR_MOTION_XVFB",
+    "setOnlyIn": "the six-case script inside the owned xvfb-run",
+    "terminalFlagNeverSet": "ORCA_E2E_TERMINAL_PERF_XVFB"
+  },
+  "protocol": {
+    "builds": 1,
+    "apps": 6,
+    "xvfbInstances": 1,
+    "retries": 0,
+    "repeatEach": 1,
+    "captureVerification": "the job asserts six recorded cases and six present artifacts; a green exit alone is not accepted"
+  },
+  "cases": [
+    {
+      "label": "case-1-I-child400-worktree-0ms",
+      "arm": "I",
+      "spec": "tests/e2e/sidebar-lineage-arrival-probe.spec.ts",
+      "expectedTitle": "arrival probe: smooth worktree reveal child 400 after 0ms idle keeps the inactive descendant mounted until its title lands",
+      "artifact": "arrival-probe-frames.json"
+    },
+    {
+      "label": "case-2-U-child400-worktree-0ms",
+      "arm": "U",
+      "spec": "tests/e2e/sidebar-lineage-scroll-regressions.spec.ts",
+      "expectedTitle": "smooth worktree reveal child 400 after 0ms idle keeps the inactive descendant mounted until its title lands",
+      "artifact": "smooth-reveal-frames.json"
+    },
+    {
+      "label": "case-3-U-child400-worktree-0ms",
+      "arm": "U",
+      "spec": "tests/e2e/sidebar-lineage-scroll-regressions.spec.ts",
+      "expectedTitle": "smooth worktree reveal child 400 after 0ms idle keeps the inactive descendant mounted until its title lands",
+      "artifact": "smooth-reveal-frames.json"
+    },
+    {
+      "label": "case-4-I-child400-worktree-0ms",
+      "arm": "I",
+      "spec": "tests/e2e/sidebar-lineage-arrival-probe.spec.ts",
+      "expectedTitle": "arrival probe: smooth worktree reveal child 400 after 0ms idle keeps the inactive descendant mounted until its title lands",
+      "artifact": "arrival-probe-frames.json"
+    },
+    {
+      "label": "case-5-I-child100-worktree-0ms",
+      "arm": "I",
+      "spec": "tests/e2e/sidebar-lineage-arrival-probe.spec.ts",
+      "expectedTitle": "arrival probe: smooth worktree reveal child 100 after 0ms idle keeps the inactive descendant mounted until its title lands",
+      "artifact": "arrival-probe-frames.json"
+    },
+    {
+      "label": "case-6-I-child400-worktree-800ms",
+      "arm": "I",
+      "spec": "tests/e2e/sidebar-lineage-arrival-probe.spec.ts",
+      "expectedTitle": "arrival probe: smooth worktree reveal child 400 after 800ms idle keeps the inactive descendant mounted until its title lands",
+      "artifact": "arrival-probe-frames.json"
+    }
+  ],
+  "hostRecordedHashes": {
+    "sourcePerFile": "probe-evidence/source-sha256.txt (sha256sum of every changed file)",
+    "buildPerFile": "probe-evidence/build-sha256.txt (out/main, out/preload, out/cli, out/renderer/index.html)",
+    "commits": "probe-evidence/diagnostic-commit.txt and product-commit.txt"
+  },
+  "files": {
+    ".github/scripts/sidebar-arrival-probe-analyze.mjs": {
+      "sha256": "7b71a033983978025fbfb1751599811582fc83d204298952d2d6061f7d1e27e0",
+      "gitBlobId": "44ad660811e618f284279754982e0bfd27b443e1",
+      "bytes": 5747,
+      "mode": "100755"
+    },
+    ".github/scripts/sidebar-arrival-probe-cases.sh": {
+      "sha256": "17abd85b9e9a1bff7d3cac91bbad77d0a068b875bf032101e707701a7d16ced3",
+      "gitBlobId": "aaf88de973cc77f8992ba55eb62fa5f0b7dda4d1",
+      "bytes": 2169,
+      "mode": "100755"
+    },
+    ".github/workflows/e2e.yml": {
+      "sha256": "7a8f62e0de2e8f912d70d7c3c86b0a74a6fab5a613c8b24e99b30b27efdd1d38",
+      "gitBlobId": "84858997d7e97c3f571e7b24fe9b2d492d9f7552",
+      "bytes": 7952,
+      "mode": "100644"
+    },
+    "tests/e2e/sidebar-arrival-write-recorder.ts": {
+      "sha256": "48d8a89c6b5adcb433ebe7bf8a2c7bcdf337e80316b7c531ff9d68925583a876",
+      "gitBlobId": "ab56c12848cf643fda2140ef578eda045e08e88c",
+      "bytes": 11700,
+      "mode": "100644"
+    },
+    "tests/e2e/sidebar-arrival-write-recorder.unit.test.ts": {
+      "sha256": "b9e76f5c876b70f54b5c8cb16a05d57e1106f12ede9d6ca542f915b05f2a183f",
+      "gitBlobId": "49c97af7ca6a474b803de548da96d17f1f2899a2",
+      "bytes": 7793,
+      "mode": "100644"
+    },
+    "tests/e2e/sidebar-lineage-arrival-probe.spec.ts": {
+      "sha256": "c5180e67152a3a1209c01ac543ddf3351f622c6930232107cfe9def0e6f3cacf",
+      "gitBlobId": "1f3257c5a6cec3329e422c48a1ac0c046cdab0f0",
+      "bytes": 9527,
+      "mode": "100644"
+    }
+  },
+  "ref": "diagnostic/sidebar-arrival-20260927",
+  "recorderCorrections": {
+    "methodDescriptors": "original configurable/enumerable/writable carried through the wrapper and restored verbatim",
+    "rendererBuildIdentity": "out/renderer/assets JS and CSS hashed in addition to index.html",
+    "captureVerification": "writes capture_complete then fails the job when the capture is incomplete"
+  }
+}
