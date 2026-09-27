@@ -1,5 +1,9 @@
 import { beforeAll, describe, expect, it } from 'vitest'
-import { importReleaseCheckoutModule, materializeReleaseCheckout } from './release-checkout'
+import {
+  importReleaseCheckoutModule,
+  importWorkingTreeModuleCopy,
+  materializeReleaseCheckout
+} from './release-checkout'
 
 /**
  * The verdict on a `worktree ps` agent row, paired across two builds.
@@ -14,6 +18,8 @@ import { importReleaseCheckoutModule, materializeReleaseCheckout } from './relea
  */
 const PRE_CHANGE_REF = 'v1.4.212'
 const SUITE_TIMEOUT_MS = 180_000
+// Both builds load a copy in the checkout cache, out of reach of `mobile/tsconfig.json`.
+const PHONE_ROW_READER = 'mobile/src/worktree/agent-row-display.ts'
 
 const WORKTREE_ID = 'repo::/worktree'
 const NOW = 1_000_000
@@ -120,13 +126,13 @@ async function loadBuild(ref: string | null): Promise<Build> {
     const [sources, rows, display] = await Promise.all([
       import('../../../src/main/runtime/runtime-worktree-agent-sources'),
       import('../../../src/main/runtime/runtime-worktree-agent-rows'),
-      import('../../../mobile/src/worktree/agent-row-display')
+      importWorkingTreeModuleCopy(PHONE_ROW_READER)
     ])
     return {
       label: 'current',
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a dynamic import is typed by its module; this spec drives both builds through one untyped surface.
       host: { ...sources, ...rows } as unknown as HostRowModules,
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: same surface as the old build's export, read without either build's row type.
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a dynamic import of a copy is typed unknown; this is the current phone's row reader by path.
       agentDotState: display.agentDotState as unknown as DotState
     }
   }
@@ -134,7 +140,7 @@ async function loadBuild(ref: string | null): Promise<Build> {
   const [sources, rows, display] = await Promise.all([
     importReleaseCheckoutModule(checkout, 'src/main/runtime/runtime-worktree-agent-sources.ts'),
     importReleaseCheckoutModule(checkout, 'src/main/runtime/runtime-worktree-agent-rows.ts'),
-    importReleaseCheckoutModule(checkout, 'mobile/src/worktree/agent-row-display.ts')
+    importReleaseCheckoutModule(checkout, PHONE_ROW_READER)
   ])
   return {
     label: ref,
@@ -151,7 +157,7 @@ let agentRowTimeAt: (row: AgentRow) => number
 
 beforeAll(async () => {
   ;[oldBuild, newBuild] = await Promise.all([loadBuild(PRE_CHANGE_REF), loadBuild(null)])
-  const display = await import('../../../mobile/src/worktree/agent-row-display')
+  const display = await importWorkingTreeModuleCopy(PHONE_ROW_READER)
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the rows are JSON the current host published, so the current reader's row type holds.
   agentRowTimeAt = display.agentRowTimeAt as unknown as (row: AgentRow) => number
 }, SUITE_TIMEOUT_MS)
