@@ -1,0 +1,35 @@
+{
+  "baselineProduct": "66817c598bc3c3bdb0adc8812e03d68e9c63e76c",
+  "candidateProduct": "ad67956211562764404daf8eca0a53810b209b65",
+  "changedProductionPath": "src/renderer/src/components/sidebar/use-worktree-context-menu-model.tsx",
+  "baselineHookSha256": "f2fd8440d365cd359c2f1adc56585684fac1f1af641a0da4a27166dd509d0923",
+  "candidateHookSha256": "fce75518129c00045cf6448a9f505772e73b4a93091fd5ea9019e59145f28288",
+  "order": [
+    "A",
+    "B",
+    "B",
+    "A",
+    "A",
+    "B",
+    "B",
+    "A"
+  ],
+  "legsPerArmPerCase": 4,
+  "expectedCaseRecords": 40,
+  "statisticalSampleCount": "n=4 per arm per case; case records are not 40 independent samples",
+  "probeHashes": {
+    "playwright.matched-motion.config.ts": "79ede0e972f5856b290eef809c99d1c15caa1c2ad8b7e406a1a3b23b93e4ce72",
+    "sidebar-matched-motion.spec.ts": "4b142c8d0c310e4cee92928027d82934a739c2d80ed7632df0c232c6debcf051",
+    "PLAN.md": "c4d5ea3efd8b8c254c43b7a2356109ebd6378ae986319f2aedffc2c8de286bb3",
+    "menu-product.patch": "31169269b9ec785cffba9155ffd75401fc5f6923b818e39fe32a0ab9af8ebe9f"
+  },
+  "sharedBlobs": {
+    "pnpm-lock.yaml": "c5c11c4490b2443c9d2770e6b8c8d174286a0f6f",
+    "package.json": "c75470b0e898bdce1ae1078b4a5b86b76668ddff",
+    "pnpm-workspace.yaml": "1cf67829478466ec8775b469f663145809a744ab",
+    "tests/e2e/sidebar-animation-fixture.ts": "cfbf15760d7ac3e2dcdd6aca8cb9c3922d220f46",
+    "tests/e2e/sidebar-lineage-virtualization-state.ts": "8854f9932a91016d4da4738574b27e083e5e32d7",
+    "tests/e2e/sidebar-scroll-timeline.ts": "40928e027f79ae9e2357e01b5e245235998d8ef7",
+    "tests/playwright.config.ts": "c583b8fd2227ff9b9244e67e9ba531ce359032a2"
+  }
+}
