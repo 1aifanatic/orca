@@ -70,10 +70,12 @@ export async function commitRuntimePtySpawn(ctx: RuntimePtySpawnState) {
       agentSessionOperationOutcome: 'unknown' as const
     })
   }
-  // Why here: every runtime spawn, the adopted return included, commits once through this point.
-  const expectedSource = ctx.hostSessionBinding?.expectedSourceBinding
-  ctx.deps.runtime?.noteTerminalSpawnCommit?.(ctx.result, expectedSource)
   if (ctx.result.agentSessionEnsure?.disposition === 'adopted') {
+    // Why here: an adoption makes no binding save, and it returns before the commit site below.
+    ctx.deps.runtime?.noteTerminalSpawnCommit?.(
+      ctx.result,
+      ctx.hostSessionBinding?.expectedSourceBinding
+    )
     // Why: an adoption is an attach to a live owner by definition, but the SSH relay's adopted
     // reply omits isReattach; derive it once so the size commit and the reservation agree.
     const adoptedResult = { ...ctx.result, isReattach: true }
@@ -159,6 +161,11 @@ export async function commitRuntimePtySpawn(ctx: RuntimePtySpawnState) {
       })
     }
   }
+  // Why after the save: a spawn discarded for a failed save must not record facts or end a stop.
+  ctx.deps.runtime?.noteTerminalSpawnCommit?.(
+    ctx.result,
+    ctx.hostSessionBinding?.expectedSourceBinding
+  )
   if (args.worktreeId) {
     const rejectedRegistration = registerPersistedPtySpawn(
       ctx.deps.runtime,

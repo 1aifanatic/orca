@@ -5,6 +5,7 @@ import type { BrowserWindow } from 'electron'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { makePaneKey } from '../../shared/stable-pane-id'
 import { Store } from '../persistence/loading-store/store'
+import { ProfileStateSqliteAuthority } from '../persistence/profile-state/profile-state-sqlite-authority'
 import { wirePtyIpcSession } from '../ipc/pty/delivery/wire-session'
 import { SYNTHETIC_KILL_EXIT_DUPLICATE_WINDOW_MS } from '../ipc/pty/delivery/visibility-state'
 import { bindProviderListeners } from '../ipc/pty/provider/bind-listeners'
@@ -35,12 +36,16 @@ const REPLACEMENT_INCARNATION_ID = '77777777-7777-4777-8777-777777777777'
 const LATER_INCARNATION_ID = '88888888-8888-4888-8888-888888888888'
 
 const directories: string[] = []
+const stores: Store[] = []
 const priorProvider = getLocalPtyProvider()
 afterEach(() => {
   vi.useRealTimers()
   setLocalPtyProvider(priorProvider)
   ptyOwnership.delete(PTY_ID)
   ptyIncarnationById.delete(PTY_ID)
+  for (const store of stores.splice(0)) {
+    store.freezeWrites()
+  }
   for (const directory of directories.splice(0)) {
     rmSync(directory, { recursive: true, force: true })
   }
@@ -52,7 +57,14 @@ afterEach(() => {
 function createHarness(opts: { lateProviderExit?: boolean; folder?: boolean } = {}) {
   const directory = mkdtempSync(join(tmpdir(), 'orca-intentional-stop-'))
   directories.push(directory)
-  const store = new Store({ dataFile: join(directory, 'orca-data.json') })
+  const store = new Store({
+    dataFile: join(directory, 'orca-data.json'),
+    profileStateAuthority: new ProfileStateSqliteAuthority(
+      join(directory, 'profile-state.db'),
+      'intentional-stop'
+    )
+  })
+  stores.push(store)
   store.addRepo({
     id: REPO_ID,
     path: WORKTREE_PATH,
@@ -154,7 +166,7 @@ describe('intentional stops keep the pane through the exit', () => {
 
     await stopReplacedPanePty(harness.deps, PTY_ID)
     expect(harness.boundPtyId()).toBe(PTY_ID)
-    harness.store.persistPtyBinding({
+    await harness.store.persistPtyBinding({
       worktreeId: WORKTREE_ID,
       tabId: TAB_ID,
       leafId: LEAF_ID,
@@ -220,7 +232,7 @@ describe('intentional stops keep the pane through the exit', () => {
       incarnationId: LATER_INCARNATION_ID
     })
     ptyIncarnationById.set(PTY_ID, LATER_INCARNATION_ID)
-    harness.store.persistPtyBinding({
+    await harness.store.persistPtyBinding({
       worktreeId: WORKTREE_ID,
       tabId: TAB_ID,
       leafId: LEAF_ID,
@@ -231,7 +243,8 @@ describe('intentional stops keep the pane through the exit', () => {
 
     harness.emitProviderExit(LATER_INCARNATION_ID)
 
-    expect(harness.boundPtyId()).toBeNull()
+    // Why wait: an unstopped exit retires the pane through an async durable save.
+    await vi.waitFor(() => expect(harness.boundPtyId()).toBeNull())
     expect(harness.rendererExits().at(-1)).toEqual({
       id: PTY_ID,
       code: 0,
