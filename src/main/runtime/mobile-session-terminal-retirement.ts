@@ -216,34 +216,15 @@ export function retireTerminalSurfacesFromSnapshot(args: {
   if (retiredTabs.length === 0) {
     return null
   }
-  return {
-    snapshot: removeMobileSessionSnapshotTabs(args.snapshot, retiredTabs, args.retirementProofs),
-    retired: retiredTabs.map((tab) => ({
-      worktreeId: args.snapshot.worktree,
-      parentTabId: tab.parentTabId,
-      leafId: tab.leafId,
-      ptyId: args.ptyId
-    }))
-  }
-}
 
-/** The snapshot without `removedTabs`, repairing split layouts, tab groups and the active surface. */
-export function removeMobileSessionSnapshotTabs(
-  snapshot: RuntimeMobileSessionTabsSnapshot,
-  removedTabs: readonly RuntimeMobileSessionSnapshotTab[],
-  retirementProofs?: readonly RuntimeMobileSessionRetiredTerminalSurface[]
-): RuntimeMobileSessionTabsSnapshot {
-  const removedTerminals = removedTabs.filter(
-    (tab): tab is RuntimeMobileSessionTerminalTab => tab.type === 'terminal'
-  )
   const retiredLeafIdsByParent = new Map<string, Set<string>>()
-  for (const tab of removedTerminals) {
+  for (const tab of retiredTabs) {
     const leafIds = retiredLeafIdsByParent.get(tab.parentTabId) ?? new Set<string>()
     leafIds.add(tab.leafId)
     retiredLeafIdsByParent.set(tab.parentTabId, leafIds)
   }
-  const removedIds = new Set(removedTabs.map((tab) => tab.id))
-  let tabs = snapshot.tabs.filter((tab) => !removedIds.has(tab.id))
+  const retiredIds = new Set(retiredTabs.map((tab) => tab.id))
+  let tabs = args.snapshot.tabs.filter((tab) => !retiredIds.has(tab.id))
   tabs = tabs.map((tab) => {
     if (tab.type !== 'terminal') {
       return tab
@@ -254,7 +235,7 @@ export function removeMobileSessionSnapshotTabs(
     }
     const sourceLayout =
       tab.parentLayout ??
-      removedTerminals.find((retired) => retired.parentTabId === tab.parentTabId)?.parentLayout
+      retiredTabs.find((retired) => retired.parentTabId === tab.parentTabId)?.parentLayout
     const parentLayout = sourceLayout
       ? retireLeavesFromTerminalLayout(sourceLayout, retiredLeafIds)
       : undefined
@@ -263,18 +244,21 @@ export function removeMobileSessionSnapshotTabs(
       ...(parentLayout ? { parentLayout } : {}),
       isActive:
         tab.isActive ||
-        removedTerminals.some(
-          (retired) => retired.parentTabId === tab.parentTabId && retired.isActive
-        )
+        retiredTabs.some((retired) => retired.parentTabId === tab.parentTabId && retired.isActive)
     }
   })
 
   const validTopLevelIds = new Set(tabs.map(topLevelTabId))
   const tabGroups = repairMobileSessionTabGroupsAfterRetirement(
-    snapshot.tabGroups,
+    args.snapshot.tabGroups,
     validTopLevelIds
   )
-  const active = chooseActiveSurface(tabs, snapshot.activeTabId, tabGroups, snapshot.activeGroupId)
+  const active = chooseActiveSurface(
+    tabs,
+    args.snapshot.activeTabId,
+    tabGroups,
+    args.snapshot.activeGroupId
+  )
   tabs = tabs.map((tab) => ({ ...tab, isActive: tab.id === active?.id }))
   const activeTopLevelId = active ? topLevelTabId(active) : null
   const activeGroupId =
@@ -285,29 +269,38 @@ export function removeMobileSessionSnapshotTabs(
     null
   const retainedGroupIds = new Set(tabGroups?.map((group) => group.id) ?? [])
 
+  const retired = retiredTabs.map((tab) => ({
+    worktreeId: args.snapshot.worktree,
+    parentTabId: tab.parentTabId,
+    leafId: tab.leafId,
+    ptyId: args.ptyId
+  }))
   return {
-    ...snapshot,
-    snapshotVersion: snapshot.snapshotVersion + 1,
-    activeGroupId,
-    activeTabId: active?.id ?? null,
-    activeTabType: active?.type ?? null,
-    ...(tabGroups ? { tabGroups } : { tabGroups: undefined }),
-    ...(snapshot.tabGroupLayout
-      ? {
-          tabGroupLayout: pruneTabGroupLayoutAfterRetirement(
-            snapshot.tabGroupLayout,
-            retainedGroupIds
-          )
-        }
-      : {}),
-    ...(retirementProofs && retirementProofs.length > 0
-      ? {
-          retiredTerminalSurfaces: appendRetiredTerminalSurfaceProofs(
-            snapshot.retiredTerminalSurfaces,
-            retirementProofs
-          )
-        }
-      : {}),
-    tabs
+    snapshot: {
+      ...args.snapshot,
+      snapshotVersion: args.snapshot.snapshotVersion + 1,
+      activeGroupId,
+      activeTabId: active?.id ?? null,
+      activeTabType: active?.type ?? null,
+      ...(tabGroups ? { tabGroups } : { tabGroups: undefined }),
+      ...(args.snapshot.tabGroupLayout
+        ? {
+            tabGroupLayout: pruneTabGroupLayoutAfterRetirement(
+              args.snapshot.tabGroupLayout,
+              retainedGroupIds
+            )
+          }
+        : {}),
+      ...(args.retirementProofs && args.retirementProofs.length > 0
+        ? {
+            retiredTerminalSurfaces: appendRetiredTerminalSurfaceProofs(
+              args.snapshot.retiredTerminalSurfaces,
+              args.retirementProofs
+            )
+          }
+        : {}),
+      tabs
+    },
+    retired
   }
 }

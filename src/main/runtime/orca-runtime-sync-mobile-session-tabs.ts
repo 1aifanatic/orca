@@ -4,7 +4,6 @@ import { OrcaRuntimeWithWriteOrchestrationPointerPty } from './orca-runtime-writ
 import type { RuntimeMobileSessionTabsSnapshot } from '../../shared/runtime-types'
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
 import { getMobileSessionSnapshotTabIdentityKeys } from './mobile-session-tab-merge'
-import { removeMobileSessionSnapshotTabs } from './mobile-session-terminal-retirement'
 
 export class OrcaRuntimeWithSyncMobileSessionTabs extends OrcaRuntimeWithWriteOrchestrationPointerPty {
   // Returns the worktrees whose stored snapshot object changed during this
@@ -156,7 +155,32 @@ export class OrcaRuntimeWithSyncMobileSessionTabs extends OrcaRuntimeWithWriteOr
       ) {
         continue
       }
-      this.mergeRendererMobileSnapshot(snapshot)
+      this.nativeChatDraftResolutions.reconcile(snapshot)
+      const launchDraftFencedSnapshot = this.nativeChatDraftResolutions.applyFence(snapshot)
+      const fencedSnapshot = this.applyMobileSessionRetirementFences(launchDraftFencedSnapshot)
+      this.releaseRuntimeSessionOwnershipForRendererRetiredTabs(fencedSnapshot, existing)
+      const nextSnapshot = this.mergePreservedHeadlessMobileSessionTabs(fencedSnapshot, existing)
+      // Why: clients drop same-epoch frames whose version isn't strictly newer,
+      // and main-local touches may already have emitted a higher version than
+      // the renderer's counter — keep the stored version strictly monotonic so
+      // the accepted content is never discarded as stale downstream.
+      const storedVersion = existing
+        ? Math.max(nextSnapshot.snapshotVersion, existing.snapshotVersion + 1)
+        : nextSnapshot.snapshotVersion
+      this.storeMobileSessionSnapshot(
+        snapshot.worktree,
+        storedVersion === nextSnapshot.snapshotVersion
+          ? nextSnapshot
+          : { ...nextSnapshot, snapshotVersion: storedVersion }
+      )
+      this.acceptedRendererMobileSnapshotByWorktree.set(snapshot.worktree, {
+        publicationEpoch: snapshot.publicationEpoch,
+        rendererVersion: snapshot.snapshotVersion,
+        rendererTabCount: fencedSnapshot.tabs.length,
+        rendererTabIdentityKeys: new Set(
+          fencedSnapshot.tabs.flatMap((tab) => getMobileSessionSnapshotTabIdentityKeys(tab))
+        )
+      })
     }
     for (const [worktreeId, existing] of [...this.mobileSessionTabsByWorktree.entries()]) {
       if (!nextWorktrees.has(worktreeId)) {
@@ -193,89 +217,5 @@ export class OrcaRuntimeWithSyncMobileSessionTabs extends OrcaRuntimeWithWriteOr
       }
     }
     return changedWorktreeIds
-  }
-
-  // Why: a surface fenced out of the accepted frame before its PTY registered stays out, because the
-  // renderer never resends unchanged content; re-merge the frame once that PTY binds. D1 (main as the
-  // single membership writer) absorbs this gate.
-  protected rederiveFencedRendererSurface(
-    worktreeId: string,
-    ptyId: string,
-    tabId: string,
-    leafId: string
-  ): void {
-    const accepted = this.acceptedRendererMobileSnapshotByWorktree.get(worktreeId)
-    if (
-      !accepted ||
-      accepted.rendererTabIdentityKeys.has(`${tabId}::${leafId}`) ||
-      !accepted.frame.tabs.some(
-        (tab) =>
-          tab.type === 'terminal' &&
-          tab.parentTabId === tabId &&
-          tab.leafId === leafId &&
-          tab.ptyId === ptyId
-      )
-    ) {
-      return
-    }
-    this.mergeRendererMobileSnapshot(accepted.frame, { parentTabId: tabId, leafId })
-    this.notifyMobileSessionTabsChanged(worktreeId)
-  }
-
-  protected mergeRendererMobileSnapshot(
-    snapshot: RuntimeMobileSessionTabsSnapshot,
-    rederivedSurface?: { parentTabId: string; leafId: string }
-  ): void {
-    const existing = this.mobileSessionTabsByWorktree.get(snapshot.worktree)
-    this.nativeChatDraftResolutions.reconcile(snapshot)
-    const launchDraftFencedSnapshot = this.nativeChatDraftResolutions.applyFence(snapshot)
-    const fencedSnapshot = this.applyMobileSessionRetirementFences(launchDraftFencedSnapshot)
-    // Why: a replay re-derives only the registering surface; every other surface keeps the host's
-    // current decision, so one the host retired after accept (its PTY may still be exiting) stays out.
-    const heldKeys = new Set(
-      existing?.tabs.flatMap((tab) => getMobileSessionSnapshotTabIdentityKeys(tab)) ?? []
-    )
-    const unheldSurfaces = rederivedSurface
-      ? fencedSnapshot.tabs.filter(
-          (tab) =>
-            !(
-              tab.type === 'terminal' &&
-              tab.parentTabId === rederivedSurface.parentTabId &&
-              tab.leafId === rederivedSurface.leafId
-            ) && !getMobileSessionSnapshotTabIdentityKeys(tab).some((key) => heldKeys.has(key))
-        )
-      : []
-    const mergedSnapshot =
-      unheldSurfaces.length > 0
-        ? removeMobileSessionSnapshotTabs(fencedSnapshot, unheldSurfaces)
-        : fencedSnapshot
-    // Why: a replay carries no new renderer decision, so a tab missing from its older frame (a
-    // phone create the desktop has not published yet) was not retired by the renderer.
-    if (!rederivedSurface) {
-      this.releaseRuntimeSessionOwnershipForRendererRetiredTabs(mergedSnapshot, existing)
-    }
-    const nextSnapshot = this.mergePreservedHeadlessMobileSessionTabs(mergedSnapshot, existing)
-    // Why: clients drop same-epoch frames whose version isn't strictly newer,
-    // and main-local touches may already have emitted a higher version than
-    // the renderer's counter — keep the stored version strictly monotonic so
-    // the accepted content is never discarded as stale downstream.
-    const storedVersion = existing
-      ? Math.max(nextSnapshot.snapshotVersion, existing.snapshotVersion + 1)
-      : nextSnapshot.snapshotVersion
-    this.storeMobileSessionSnapshot(
-      snapshot.worktree,
-      storedVersion === nextSnapshot.snapshotVersion
-        ? nextSnapshot
-        : { ...nextSnapshot, snapshotVersion: storedVersion }
-    )
-    this.acceptedRendererMobileSnapshotByWorktree.set(snapshot.worktree, {
-      frame: snapshot,
-      publicationEpoch: snapshot.publicationEpoch,
-      rendererVersion: snapshot.snapshotVersion,
-      rendererTabCount: fencedSnapshot.tabs.length,
-      rendererTabIdentityKeys: new Set(
-        fencedSnapshot.tabs.flatMap((tab) => getMobileSessionSnapshotTabIdentityKeys(tab))
-      )
-    })
   }
 }
