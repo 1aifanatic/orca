@@ -6,7 +6,12 @@ import {
   seedVirtualLineage
 } from './sidebar-lineage-virtualization-state'
 import { seedWorkspaceAgentStatus } from './worktree-lineage-state'
-import { expectSidebarScrollProgress, measureSidebarScroll } from './sidebar-scroll-timeline'
+import {
+  expectSidebarScrollProgress,
+  isSidebarScrollIntermediate,
+  measureSidebarScroll,
+  type SidebarScrollSample
+} from './sidebar-scroll-timeline'
 import { worktreeRow } from './worktree-row-locators'
 
 test('lineage descendants keep their anchor when an ordinary card above grows during suppression', async ({
@@ -124,13 +129,15 @@ for (const { requestKind, targetIndex, idleMs } of revealScenarios) {
       async ({ requestKind, targetIndex }) => {
         const targetId = `e2e-virtual-child-${targetIndex}`
         const scroller = document.querySelector<HTMLElement>('[data-worktree-sidebar]')!
-        const samples: {
+        const samples: (SidebarScrollSample & {
           time: number
           mounted: boolean
           top: number | null
           height: number | null
           scrollTop: number
-        }[] = []
+          pending: boolean
+        })[] = []
+        let captureTimedOut = false
         const startedAt = performance.now()
         const initialOffset = scroller.scrollTop
         const state = window.__store!.getState()
@@ -149,21 +156,62 @@ for (const { requestKind, targetIndex, idleMs } of revealScenarios) {
             beginRename: requestKind === 'rename'
           })
         }
-        while (performance.now() - startedAt < 1_800) {
-          await new Promise(requestAnimationFrame)
+        while (performance.now() - startedAt < 4_000) {
+          const observed = await new Promise<boolean>((resolve) => {
+            const frame = requestAnimationFrame(() => {
+              clearTimeout(timeout)
+              resolve(true)
+            })
+            const timeout = setTimeout(
+              () => {
+                cancelAnimationFrame(frame)
+                resolve(false)
+              },
+              Math.max(0, 4_500 - (performance.now() - startedAt))
+            )
+          })
+          if (!observed) {
+            captureTimedOut = true
+            break
+          }
           const target = scroller.querySelector<HTMLElement>(`[data-worktree-id="${targetId}"]`)
+          const viewportTop = scroller.getBoundingClientRect().top + scroller.clientTop
+          const rect = target?.getBoundingClientRect()
+          const content = target?.querySelector<HTMLElement>(
+            requestKind === 'rename'
+              ? '[data-worktree-title-rename-input]'
+              : '[data-worktree-title-inline-rename]'
+          )
+          const contentRect = content?.getBoundingClientRect()
+          const current = window.__store!.getState()
           samples.push({
             time: performance.now() - startedAt,
+            pending:
+              current.pendingRevealWorktree !== null || current.pendingRevealSidebarRow !== null,
+            highlighted: target?.dataset.scrollRevealHighlight === 'true',
+            geometry:
+              rect && contentRect && content
+                ? {
+                    top: rect.top - viewportTop,
+                    height: rect.height,
+                    viewportHeight: scroller.clientHeight,
+                    contentTop: contentRect.top - viewportTop,
+                    contentHeight: contentRect.height,
+                    contentVisible: content.checkVisibility({
+                      checkOpacity: true,
+                      checkVisibilityCSS: true
+                    })
+                  }
+                : null,
             mounted: target !== null,
-            height: target?.getBoundingClientRect().height ?? null,
-            top: target
-              ? target.getBoundingClientRect().top - scroller.getBoundingClientRect().top
-              : null,
+            height: rect?.height ?? null,
+            top: rect ? rect.top - viewportTop : null,
             scrollTop: scroller.scrollTop
           })
         }
         return {
           samples,
+          captureTimedOut,
           initialOffset,
           requestKind,
           targetIndex,
@@ -173,12 +221,9 @@ for (const { requestKind, targetIndex, idleMs } of revealScenarios) {
       { requestKind, targetIndex }
     )
     const frames = result.samples
-    const metrics = measureSidebarScroll(frames, result.initialOffset)
+    const metrics = measureSidebarScroll(frames, result.initialOffset, result)
     const mountedIntermediate = frames.filter(
-      (frame) =>
-        frame.mounted &&
-        frame.scrollTop > result.initialOffset &&
-        frame.scrollTop < metrics.finalOffset - 2
+      (frame) => frame.mounted && isSidebarScrollIntermediate(frame, metrics)
     ).length
     console.log(
       '[sidebar-smooth-retention]',
@@ -197,15 +242,12 @@ for (const { requestKind, targetIndex, idleMs } of revealScenarios) {
     )
     expectSidebarScrollProgress(metrics)
     expect(metrics.longestPause, 'no stalled approach').toBeLessThan(200)
-    expect(metrics.arrivalMs, 'landing within the measured base latency envelope').toBeLessThan(
-      1_700
-    )
-    const backwardStep = Math.max(
-      ...frames.map(
-        (frame, index) => (frames[index - 1]?.scrollTop ?? frame.scrollTop) - frame.scrollTop
-      )
-    )
-    expect(backwardStep, 'no backtracking toward the measured target').toBeLessThanOrEqual(2)
+    expect(metrics.arrivalMs, 'stable visible landing latency').toBeLessThan(1_700)
+    expect(
+      metrics.maxReverseStep,
+      'no backtracking toward the measured target'
+    ).toBeLessThanOrEqual(2)
+    expect(metrics.maxOvershoot, 'no overshoot beyond the observed endpoint').toBeLessThanOrEqual(2)
     const firstVisible = frames.findIndex(
       (frame) => frame.top !== null && frame.top >= 0 && frame.top < result.sidebarHeight
     )
@@ -233,7 +275,7 @@ for (const { requestKind, targetIndex, idleMs } of revealScenarios) {
       ).toBeInViewport()
     }
     if (requestKind === 'worktree') {
-      await expect(target).toHaveAttribute('data-scroll-reveal-highlight', 'true')
+      expect(metrics.highlightedAfterArrival, 'target highlighted at visible landing').toBe(true)
     }
     const landedTop = (await target.boundingBox())!.y
     await orcaPage.waitForTimeout(350)

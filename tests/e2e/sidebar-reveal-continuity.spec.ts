@@ -3,6 +3,11 @@ import { test, expect } from './sidebar-animation-fixture'
 import { waitForActiveWorktree, waitForSessionReady } from './helpers/store'
 import { seedVirtualLineage } from './sidebar-lineage-virtualization-state'
 import { worktreeRow } from './worktree-row-locators'
+import {
+  expectSidebarScrollProgress,
+  measureSidebarScroll,
+  type SidebarScrollSample
+} from './sidebar-scroll-timeline'
 
 for (const scenario of [
   'churn-worktree',
@@ -51,8 +56,14 @@ for (const scenario of [
       const original = Object.getOwnPropertyDescriptor(scroller, 'scrollTo')
       const scrollTo = scroller.scrollTo.bind(scroller)
       const start = performance.now()
+      const initialOffset = scroller.scrollTop
+      let captureTimedOut = false
       const writes: { time: number; top: number; from: number; behavior?: string }[] = []
-      const samples: { time: number; offset: number; top: number | null; pending: boolean }[] = []
+      const samples: (SidebarScrollSample & {
+        offset: number
+        top: number | null
+        pending: boolean
+      })[] = []
       scroller.scrollTo = (options?: ScrollToOptions | number, y?: number) => {
         if (typeof options === 'number') {
           scrollTo(options, y ?? 0)
@@ -86,7 +97,23 @@ for (const scenario of [
             .revealWorktreeInSidebar(targetId, { behavior: 'smooth', highlight: true })
         }
         while (performance.now() - start < 4_000) {
-          await new Promise(requestAnimationFrame)
+          const observed = await new Promise<boolean>((resolve) => {
+            const frame = requestAnimationFrame(() => {
+              clearTimeout(timeout)
+              resolve(true)
+            })
+            const timeout = setTimeout(
+              () => {
+                cancelAnimationFrame(frame)
+                resolve(false)
+              },
+              Math.max(0, 4_500 - (performance.now() - start))
+            )
+          })
+          if (!observed) {
+            captureTimedOut = true
+            break
+          }
           const time = performance.now() - start
           if (scenario.startsWith('churn') && updates < 12 && time >= 300 + updates * 120) {
             const state = store.getState()
@@ -100,26 +127,46 @@ for (const scenario of [
           const pending =
             store.getState().pendingRevealWorktree !== null ||
             store.getState().pendingRevealSidebarRow !== null
+          const rect = target?.getBoundingClientRect()
+          const content = target?.querySelector<HTMLElement>('[data-worktree-title-inline-rename]')
+          const contentRect = content?.getBoundingClientRect()
+          const viewportTop = scroller.getBoundingClientRect().top + scroller.clientTop
           samples.push({
             time,
+            scrollTop: scroller.scrollTop,
+            highlighted: target?.dataset.scrollRevealHighlight === 'true',
+            geometry:
+              rect && contentRect && content
+                ? {
+                    top: rect.top - viewportTop,
+                    height: rect.height,
+                    viewportHeight: scroller.clientHeight,
+                    contentTop: contentRect.top - viewportTop,
+                    contentHeight: contentRect.height,
+                    contentVisible: content.checkVisibility({
+                      checkOpacity: true,
+                      checkVisibilityCSS: true
+                    })
+                  }
+                : null,
             offset: scroller.scrollTop,
             pending,
-            top: target
-              ? target.getBoundingClientRect().top - scroller.getBoundingClientRect().top
-              : null
+            top: rect ? rect.top - viewportTop : null
           })
           if (!pending && completedAt === null) {
             completedAt = time
           }
-          if (
-            completedAt !== null &&
-            time > completedAt + 350 &&
-            (!scenario.startsWith('churn') || updates === 12)
-          ) {
-            break
-          }
         }
-        return { writes, samples, updates, completedAt, targetId }
+        return {
+          writes,
+          samples,
+          updates,
+          completedAt,
+          lifecycleClearMs: completedAt,
+          targetId,
+          initialOffset,
+          captureTimedOut
+        }
       } finally {
         if (original) {
           Object.defineProperty(scroller, 'scrollTo', original)
@@ -128,11 +175,19 @@ for (const scenario of [
         }
       }
     }, scenario)
-    await writeFile(testInfo.outputPath('continuity.json'), JSON.stringify(result, null, 2))
+    const metrics = measureSidebarScroll(result.samples, result.initialOffset, {
+      captureTimedOut: result.captureTimedOut,
+      allowOversized: scenario === 'oversized'
+    })
+    await writeFile(
+      testInfo.outputPath('continuity.json'),
+      JSON.stringify({ ...result, ...metrics }, null, 2)
+    )
     console.log(
       '[reveal-continuity]',
       JSON.stringify({
         scenario,
+        ...metrics,
         completedAt: result.completedAt,
         smoothWrites: result.writes.filter((write) => write.behavior === 'smooth').length,
         maxAutoJump: Math.max(
@@ -143,13 +198,18 @@ for (const scenario of [
         )
       })
     )
+    expectSidebarScrollProgress(metrics)
+    expect(metrics.longestPause, 'no stalled approach').toBeLessThan(200)
+    expect(metrics.maxReverseStep, 'no backtracking').toBeLessThanOrEqual(2)
+    expect(metrics.maxOvershoot, 'no overshoot').toBeLessThanOrEqual(2)
     expect(result.completedAt).not.toBeNull()
     expect(result.samples.at(-1)?.pending).toBe(false)
     if (scenario.startsWith('churn')) {
       expect(result.updates).toBe(12)
       // Geometry retargets remain allowed; twelve unchanged-data updates cannot restart easing.
       expect(result.writes.filter((write) => write.behavior === 'smooth').length).toBeLessThan(8)
-      expect(result.completedAt).toBeLessThan(1_700)
+      expect(result.completedAt, 'request lifecycle clearance latency').toBeLessThan(1_700)
+      expect(metrics.arrivalMs, 'stable visible landing latency').toBeLessThan(1_700)
     } else {
       const finalAutoWrites = result.writes.filter(
         (write) => write.behavior === 'auto' && write.time > 300

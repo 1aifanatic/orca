@@ -2,7 +2,12 @@ import { writeFile } from 'node:fs/promises'
 import type { Page } from '@stablyai/playwright-test'
 import { test, expect } from './sidebar-animation-fixture'
 import { waitForActiveWorktree, waitForSessionReady } from './helpers/store'
-import { expectSidebarScrollProgress, measureSidebarScroll } from './sidebar-scroll-timeline'
+import {
+  expectSidebarScrollProgress,
+  isSidebarScrollIntermediate,
+  measureSidebarScroll,
+  type SidebarScrollSample
+} from './sidebar-scroll-timeline'
 import { worktreeRow } from './worktree-row-locators'
 
 async function seedInterleavedLineages(page: Page): Promise<void> {
@@ -102,36 +107,76 @@ test('smooth reveal keeps moving while another lineage mounts', async ({ orcaPag
       throw new Error('Expected a mounted overscan target below the viewport')
     }
     const lineageBefore = scroller.querySelectorAll('[data-lineage-virtual-children]').length
-    const samples: { time: number; scrollTop: number; groups: number }[] = []
+    const samples: (SidebarScrollSample & { groups: number })[] = []
+    let captureTimedOut = false
+    const initialOffset = scroller.scrollTop
+    const targetId = target.dataset.worktreeId
     const startedAt = performance.now()
     window.__store!.getState().revealWorktreeInSidebar(target.dataset.worktreeId, {
       behavior: 'smooth',
       highlight: true
     })
-    while (performance.now() - startedAt < 1_800) {
-      await new Promise(requestAnimationFrame)
+    while (performance.now() - startedAt < 4_000) {
+      const observed = await new Promise<boolean>((resolve) => {
+        const frame = requestAnimationFrame(() => {
+          clearTimeout(timeout)
+          resolve(true)
+        })
+        const timeout = setTimeout(
+          () => {
+            cancelAnimationFrame(frame)
+            resolve(false)
+          },
+          Math.max(0, 4_500 - (performance.now() - startedAt))
+        )
+      })
+      if (!observed) {
+        captureTimedOut = true
+        break
+      }
+      const row = scroller.querySelector<HTMLElement>(`[data-worktree-id="${targetId}"]`)
+      const rect = row?.getBoundingClientRect()
+      const content = row?.querySelector<HTMLElement>('[data-worktree-title-inline-rename]')
+      const contentRect = content?.getBoundingClientRect()
+      const viewportTop = scroller.getBoundingClientRect().top + scroller.clientTop
       samples.push({
         time: performance.now() - startedAt,
         scrollTop: scroller.scrollTop,
+        highlighted: row?.dataset.scrollRevealHighlight === 'true',
+        geometry:
+          rect && contentRect && content
+            ? {
+                top: rect.top - viewportTop,
+                height: rect.height,
+                viewportHeight: scroller.clientHeight,
+                contentTop: contentRect.top - viewportTop,
+                contentHeight: contentRect.height,
+                contentVisible: content.checkVisibility({
+                  checkOpacity: true,
+                  checkVisibilityCSS: true
+                })
+              }
+            : null,
         groups: scroller.querySelectorAll('[data-lineage-virtual-children]').length
       })
     }
     return {
-      targetId: target.dataset.worktreeId,
+      targetId,
+      initialOffset,
+      captureTimedOut,
       lineageBefore,
       sidebarHeight: scroller.clientHeight,
       samples
     }
   })
 
-  const metrics = measureSidebarScroll(result.samples)
+  const metrics = measureSidebarScroll(result.samples, result.initialOffset, result)
   const { finalOffset, longestPause } = metrics
   const intermediateMounts = result.samples.filter(
     (sample, index) =>
       sample.groups > result.lineageBefore &&
       sample.groups > (result.samples[index - 1]?.groups ?? result.lineageBefore) &&
-      sample.scrollTop > 0 &&
-      sample.scrollTop < finalOffset - 2
+      isSidebarScrollIntermediate(sample, metrics)
   ).length
   console.log(
     '[sidebar-smooth-mount]',
@@ -146,16 +191,16 @@ test('smooth reveal keeps moving while another lineage mounts', async ({ orcaPag
   expect(
     result.samples.some(
       (sample) =>
-        sample.groups > result.lineageBefore &&
-        sample.scrollTop > 0 &&
-        sample.scrollTop < finalOffset - 2
+        sample.groups > result.lineageBefore && isSidebarScrollIntermediate(sample, metrics)
     )
   ).toBe(true)
   expect(intermediateMounts, 'new lineage mounts during intermediate motion').toBeGreaterThan(0)
   // A timeout correction can reach the right endpoint after a visibly stalled animation.
   expect(longestPause).toBeLessThan(200)
+  expect(metrics.maxReverseStep, 'no backtracking').toBeLessThanOrEqual(2)
+  expect(metrics.maxOvershoot, 'no overshoot').toBeLessThanOrEqual(2)
   const target = worktreeRow(orcaPage, result.targetId)
   await expect(target.getByText(/^Smooth parent \d+$/, { exact: true })).toBeInViewport()
-  await expect(target).toHaveAttribute('data-scroll-reveal-highlight', 'true')
+  expect(metrics.highlightedAfterArrival, 'target highlighted at visible landing').toBe(true)
   await scroller.screenshot({ path: testInfo.outputPath('smooth-mount-landed.png') })
 })
