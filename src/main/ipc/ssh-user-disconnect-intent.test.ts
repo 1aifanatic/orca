@@ -326,6 +326,30 @@ describe("SSH: the user's Disconnect holds until the user connects", () => {
     })
   })
 
+  it('(h) a Reset Relay or session cleanup transport never publishes the held-down host as up', async () => {
+    await invoke('ssh:disconnect')
+    // The transport reports its own states, as the real one does while it opens and closes.
+    const connect = mockConnectionManager.connect.getMockImplementation()!
+    mockConnectionManager.connect.mockImplementation(async (...args: unknown[]) => {
+      reportTransportState({ ...connectedState(), status: 'connecting' })
+      const conn = await connect(...args)
+      reportTransportState(connectedState())
+      return conn
+    })
+    mockWindow.webContents.send.mockClear()
+
+    await invoke('ssh:resetRelay')
+    await invoke('ssh:connectForSessionCleanup')
+
+    expect(mockConnectionManager.getState(TARGET.id)).toMatchObject({ status: 'connected' })
+    const published = [...sentStates(mockWindow.webContents.send), await invoke('ssh:getState')]
+    expect(published.length).toBeGreaterThan(2)
+    for (const state of published) {
+      expect(state).toMatchObject({ status: 'disconnected', error: null, disconnectedBy: 'user' })
+    }
+    expect(persistedTargets.get(TARGET.id)?.desiredConnection).toBe('disconnected')
+  })
+
   it('(h) publishes the Disconnect even when a failed connect left no connection object', async () => {
     mockConnectionManager.connect.mockRejectedValueOnce(new Error('connect ECONNREFUSED'))
     await expect(invoke('ssh:connect')).rejects.toThrow('ECONNREFUSED')

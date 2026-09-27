@@ -203,7 +203,8 @@ export type SshConnectionState = {
   /** Remote OS detected by the SSH relay once available. */
   remotePlatform?: SshRemotePlatform
   /** Present while the user's own Disconnect holds this host down; nothing reconnects it until
-   *  the user connects again. Absent on older hosts, which never hold a host down. */
+   *  the user connects again, and `status` is then always 'disconnected'. Absent on older hosts,
+   *  which never hold a host down. */
   disconnectedBy?: 'user'
 }
 

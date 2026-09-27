@@ -35,7 +35,7 @@ export function broadcastSshState(
     currentRuntime?.invalidateSshWorktreeScanCache?.(targetId)
     return
   }
-  const enrichedState = withSshRemotePlatform(targetId, state)
+  const enrichedState = withUserConnectionIntent(targetId, withSshRemotePlatform(targetId, state))
   const win = getMainWindow()
   if (win && !win.isDestroyed()) {
     win.webContents.send('ssh:state-changed', { targetId, state: enrichedState })
@@ -44,19 +44,33 @@ export function broadcastSshState(
   currentRuntime?.notifySshStateChanged?.(targetId, enrichedState)
 }
 
-// Why the one enrichment point: the renderer broadcast, getPublicSshState and the paired-client
-// relay all pass through here, so every reader sees the same authority and the same intent.
 function withSshRemotePlatform(targetId: string, state: SshConnectionState): SshConnectionState {
   const remotePlatform = activeSessions.get(targetId)?.getHostPlatform()?.os
   const authority = getSshProviderAuthority(targetId)
-  const { disconnectedBy: _staleDisconnectedBy, ...current } = state
   return {
-    ...current,
+    ...state,
     targetId,
     providerEpoch: authority.providerEpoch,
     connectionGeneration: authority.connectionGeneration,
-    ...(remotePlatform ? { remotePlatform } : {}),
-    ...(isSshTargetDisconnectedByUser(targetId) ? { disconnectedBy: 'user' as const } : {})
+    ...(remotePlatform ? { remotePlatform } : {})
+  }
+}
+
+// Why applied at each publication, never stored: the renderer broadcast, getPublicSshState and the
+// paired-client relay all see the intent current at read time. While the user's Disconnect holds,
+// a transport opened for Reset Relay or a session cleanup is not the host coming back, so every
+// reader sees it disconnected and no pane attaches to it.
+function withUserConnectionIntent(targetId: string, state: SshConnectionState): SshConnectionState {
+  const { disconnectedBy: _staleDisconnectedBy, ...current } = state
+  if (!isSshTargetDisconnectedByUser(targetId)) {
+    return current
+  }
+  return {
+    ...current,
+    status: 'disconnected',
+    error: null,
+    reconnectAttempt: 0,
+    disconnectedBy: 'user'
   }
 }
 
@@ -89,7 +103,9 @@ export function getPublicSshState(targetId: string): SshConnectionState | undefi
     (isSshTargetDisconnectedByUser(targetId)
       ? { targetId, status: 'disconnected' as const, error: null, reconnectAttempt: 0 }
       : null)
-  return state ? withSshRemotePlatform(targetId, state) : undefined
+  return state
+    ? withUserConnectionIntent(targetId, withSshRemotePlatform(targetId, state))
+    : undefined
 }
 
 export function broadcastPortForwards(
