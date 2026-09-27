@@ -269,6 +269,24 @@ it('leaves the command to the provider when it takes the Stop, and ends it as ca
   expect((await journal()).items.some((item) => item.itemId.includes('command-result'))).toBe(false)
 })
 
+it('ends the command by stopping the child at a second Stop the provider never answered (B4)', async () => {
+  await attach()
+  const params = compactParams()
+  const cmid = params.envelope.clientOperationId
+  await state.host.conversationCommand(CALLER, params)
+  await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce())
+  const { turnId } = structuredAgentSessionCommandTurn(cmid)
+
+  // The provider takes the interrupt and then never answers it.
+  await expect(stop(turnId)).resolves.toMatchObject({ ok: true, value: { cancelled: true } })
+  expect(closeSession).not.toHaveBeenCalled()
+  await expect(stop(turnId)).resolves.toMatchObject({ ok: true, value: { cancelled: true } })
+
+  expect(state.cancelTurn).toHaveBeenCalledOnce()
+  expect(closeSession).toHaveBeenCalledOnce()
+  expect(readAgentJournalTurn((await commandTurn(cmid))?.body)?.state).toBe('interrupted')
+})
+
 it('ends the command by stopping the child when the provider cannot take the Stop (B4)', async () => {
   await attach()
   // Codex before it opened the command's turn, or Claude refusing the interrupt.

@@ -8,7 +8,8 @@
 
 import {
   agentJournalItemKey,
-  agentJournalSubmissionKey
+  agentJournalSubmissionKey,
+  parseAgentJournalItemKey
 } from '../../../shared/agent-session-journal-item-key'
 import {
   AGENT_JOURNAL_THREAD_SCOPE,
@@ -62,6 +63,33 @@ export function structuredAgentSessionCommandTurn(clientMessageId: string): {
 
 export function isStructuredAgentSessionCommandTurnId(turnId: string): boolean {
   return turnId.startsWith('compact:')
+}
+
+const STOP_NOTE_PREFIX = 'stop:'
+
+/** A Stop's note, on the turn it named. The key says what it is, so a later Stop can read it. */
+export function structuredAgentSessionStopNoteIdentity(
+  clientOperationId: string
+): AgentJournalItemIdentity {
+  return { provider: 'orca', clientMessageId: `${STOP_NOTE_PREFIX}${clientOperationId}` }
+}
+
+/** Whether an earlier Stop already asked the running command `turnId` names to end. Read from the
+ *  journal, so nothing is held that could outlive the command. */
+export function structuredAgentSessionCommandWasStopped(
+  journal: Pick<AgentSessionJournal, 'snapshot'>,
+  turnId: string
+): boolean {
+  const { itemId } = structuredAgentSessionCommandTurn(turnId.slice('compact:'.length))
+  return journal.snapshot().items.some((item) => {
+    const identity = parseAgentJournalItemKey(item.itemId)
+    return (
+      item.turnScope?.kind === 'turn' &&
+      item.turnScope.turnItemId === itemId &&
+      identity?.provider === 'orca' &&
+      identity.clientMessageId.startsWith(STOP_NOTE_PREFIX)
+    )
+  })
 }
 
 /** How the provider's run ended, or the adapter's throw and whether the child had proven its start. */

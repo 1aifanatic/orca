@@ -8,8 +8,7 @@
 
 import type {
   AgentJournalMessageItem,
-  AgentJournalSubmission,
-  AgentJournalTurnScope
+  AgentJournalSubmission
 } from '../../../shared/agent-session-journal-types'
 import type {
   AgentSessionCancelResult,
@@ -30,7 +29,9 @@ import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal
 import {
   handOverStructuredAgentSessionCommand,
   isStructuredAgentSessionCommandTurnId,
+  structuredAgentSessionCommandWasStopped,
   structuredAgentSessionHandoverOrigin,
+  structuredAgentSessionStopNoteIdentity,
   type StructuredAgentSessionCommandHandover,
   type StructuredAgentSessionCommandHandoverContext
 } from './structured-agent-session-command-turn'
@@ -88,19 +89,6 @@ async function dispatchSafely(
     }
     return { state: 'unknown', reason: error instanceof Error ? error.message : String(error) }
   }
-}
-
-async function appendStatus(
-  ctx: AgentSessionTurnContext,
-  clientMessageId: string,
-  text: string,
-  turnScope: AgentJournalTurnScope
-): Promise<void> {
-  await ctx.journal.appendItem(
-    { provider: 'orca', clientMessageId },
-    { kind: 'status', text },
-    { fence: ctx.fence, turnScope }
-  )
 }
 
 /**
@@ -255,42 +243,46 @@ export async function performCancel(
   let unconfirmed: string | null = null
   // The turn the Stop named, read before the cancel settles it: the note reports on that turn.
   const turnScope = ctx.journal.liveTurnScope()
+  // Only the provider's end or the child's ends a command. A command the provider has not opened a
+  // turn for, would not interrupt, or was already asked to stop, ends with its child; that child's
+  // dead-generation settlement writes the command's verdict.
+  const runningCommand =
+    input.stopChild !== undefined &&
+    isStructuredAgentSessionCommandTurnId(input.turnId) &&
+    ctx.journal.activeTurnId() === input.turnId
+  const stoppedBefore =
+    runningCommand && structuredAgentSessionCommandWasStopped(ctx.journal, input.turnId)
   try {
     const dispatchStatus = latestJournalDispatchObservation(ctx.journal, ctx.fence)
-    cancelled = input.scope
-      ? (
-          await ctx.adapter.stopBackgroundTasks?.({
-            sessionId: ctx.sessionId,
-            fence: ctx.fence,
-            ...(input.taskId ? { taskId: input.taskId } : {})
-          })
-        )?.cancelled === true
-      : (
-          await ctx.adapter.cancelTurn({
-            sessionId: ctx.sessionId,
-            turnId: input.turnId,
-            fence: ctx.fence,
-            // The journal is what the client read to name a turn, so it is what judges the request.
-            resolveLiveTurnId: () => ctx.journal.activeTurnId(),
-            ...(dispatchStatus ? { dispatchStatus } : {}),
-            ...(input.prompt ? { prompt: { itemId: input.prompt.itemId } } : {})
-          })
-        ).cancelled
+    cancelled = stoppedBefore
+      ? false
+      : input.scope
+        ? (
+            await ctx.adapter.stopBackgroundTasks?.({
+              sessionId: ctx.sessionId,
+              fence: ctx.fence,
+              ...(input.taskId ? { taskId: input.taskId } : {})
+            })
+          )?.cancelled === true
+        : (
+            await ctx.adapter.cancelTurn({
+              sessionId: ctx.sessionId,
+              turnId: input.turnId,
+              fence: ctx.fence,
+              // The journal is what the client read to name a turn, so it is what judges the request.
+              resolveLiveTurnId: () => ctx.journal.activeTurnId(),
+              ...(dispatchStatus ? { dispatchStatus } : {}),
+              ...(input.prompt ? { prompt: { itemId: input.prompt.itemId } } : {})
+            })
+          ).cancelled
   } catch (error) {
     if (input.prompt) {
       throw error
     }
     unconfirmed = error instanceof Error ? error.message : String(error)
   }
-  // A command the provider has not opened a turn for, or would not interrupt, ends with its child;
-  // that child's dead-generation settlement writes the command's verdict.
-  if (
-    !cancelled &&
-    input.stopChild &&
-    isStructuredAgentSessionCommandTurnId(input.turnId) &&
-    ctx.journal.activeTurnId() === input.turnId
-  ) {
-    await input.stopChild()
+  if (runningCommand && !cancelled) {
+    await input.stopChild?.()
     cancelled = true
   }
   const note = cancelled
@@ -305,6 +297,10 @@ export async function performCancel(
     return { ok: true, value: { turnId: input.turnId, cancelled } }
   }
   // Keyed by the operation id so a replayed cancel upserts one item, not two.
-  await appendStatus(ctx, input.clientOperationId, note, turnScope)
+  await ctx.journal.appendItem(
+    structuredAgentSessionStopNoteIdentity(input.clientOperationId),
+    { kind: 'status', text: note },
+    { fence: ctx.fence, turnScope }
+  )
   return { ok: true, value: { turnId: input.turnId, cancelled } }
 }
