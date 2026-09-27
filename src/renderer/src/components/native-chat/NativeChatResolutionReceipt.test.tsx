@@ -1,11 +1,15 @@
 // @vitest-environment happy-dom
 import '@testing-library/jest-dom/vitest'
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { i18n } from '@/i18n/i18n'
 import type { AgentJournalQuestionItem } from '../../../../shared/agent-session-journal-types'
 import { encodeAgentSessionQuestionAnswers } from '../../../../shared/agent-session-question-answer'
 import { NativeChatResolutionReceipt } from './NativeChatResolutionReceipt'
+import {
+  NativeChatDisclosureContext,
+  useNativeChatDisclosures
+} from './native-chat-disclosure-store'
 import {
   nativeChatReceiptAnswers,
   type NativeChatResolvedPrompt
@@ -210,6 +214,48 @@ describe('resolution receipts', () => {
     expect(screen.queryByText('1 grouped question from Claude')).toBeNull()
   })
 
+  it('keeps an opened question open once it is answered', () => {
+    const scrollWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollWidth')
+    Object.defineProperty(HTMLElement.prototype, 'scrollWidth', {
+      configurable: true,
+      get: () => 400
+    })
+    const pendingBody: AgentJournalQuestionItem = {
+      kind: 'question',
+      question: 'Which of the three migration strategies should I use?',
+      options: [{ id: 'a', label: 'Strategy A' }],
+      resolution: { ...approval.resolution, state: 'pending', selectedOptionId: null }
+    }
+    function Harness({ body }: { body: AgentJournalQuestionItem }): React.JSX.Element {
+      const disclosures = useNativeChatDisclosures()
+      return (
+        <NativeChatDisclosureContext.Provider value={disclosures}>
+          <NativeChatResolutionReceipt body={body} disclosureId="message-1" />
+        </NativeChatDisclosureContext.Provider>
+      )
+    }
+    try {
+      const { rerender } = render(<Harness body={pendingBody} />)
+      fireEvent.click(screen.getByRole('button', { name: /Awaiting user input:/ }))
+
+      rerender(
+        <Harness
+          body={{ ...pendingBody, resolution: { ...approval.resolution, selectedOptionId: 'a' } }}
+        />
+      )
+      expect(screen.getByRole('button', { name: /Asked:/ })).toHaveAttribute(
+        'aria-expanded',
+        'true'
+      )
+    } finally {
+      if (scrollWidth) {
+        Object.defineProperty(HTMLElement.prototype, 'scrollWidth', scrollWidth)
+      } else {
+        Reflect.deleteProperty(HTMLElement.prototype, 'scrollWidth')
+      }
+    }
+  })
+
   it('decodes single free-text answers only for the declared question', () => {
     const body: AgentJournalQuestionItem = {
       kind: 'question',
@@ -224,5 +270,23 @@ describe('resolution receipts', () => {
         nativeChatReceiptAnswers({ ...body, resolution: { ...body.resolution, selectedOptionId } })
       ).toEqual([{ question: null, answer: null }])
     }
+  })
+
+  it('reads the recorded structured answers before the packed form', () => {
+    const typed = 'Wait for the capture to finish. '.repeat(50).trim()
+    const body: AgentJournalQuestionItem = {
+      kind: 'question',
+      question: 'Name?',
+      options: [{ id: 'q1:choice-1', label: 'Default' }],
+      freeTextQuestionId: 'q1',
+      resolution: {
+        ...approval.resolution,
+        // The packed copy only older clients read; it must not win over the recorded answer.
+        selectedOptionId: 'q1:choice-1',
+        answers: [{ questionId: 'q1', optionIds: [], other: typed }]
+      }
+    }
+
+    expect(nativeChatReceiptAnswers(body)).toEqual([{ question: null, answer: typed }])
   })
 })
