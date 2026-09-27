@@ -83,8 +83,8 @@ export function createStructuredAgentSessionConversationDelivery(input: {
 /**
  * A compaction or rewind found prepared when the conversation opens was started under a child
  * this process no longer has — the open runs only when none is indexed — so nothing will finish
- * it, and left alone it refuses every send until a view attaches. Settled here instead of by a
- * start inside acceptance. A Codex rewind only its provider can prove stays for the attach.
+ * it, and left alone it refuses every send, so no agent would ever start to. Settled here instead
+ * of by a start inside acceptance. A Codex rewind only its provider can prove stays for the attach.
  */
 async function settleInterruptedCommands(
   deps: StructuredAgentSessionHostDeps,
