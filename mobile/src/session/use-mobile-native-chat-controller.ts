@@ -1,5 +1,4 @@
 import { useLayoutEffect, useRef, type MutableRefObject } from 'react'
-import { useIsFocused } from 'expo-router'
 import type { RpcClient } from '../transport/rpc-client'
 import type { ConnectionState } from '../transport/types'
 import type { MobileNativeChatTab } from './mobile-native-chat-eligibility'
@@ -82,8 +81,6 @@ export function useMobileNativeChatController(args: {
     nativeChatTranscriptIsLocalReadable
   })
 
-  // A session screen retained under a pushed one is unfocused.
-  const focused = useIsFocused()
   const { structuredSession: structuredNativeChat, session: nativeChatSession } =
     useMobileNativeChatSessionLane({
       client,
@@ -95,7 +92,6 @@ export function useMobileNativeChatController(args: {
       sourceIdentity,
       callerIdentity: deviceTokenRef.current ?? '',
       enabled: showNativeChat,
-      focused,
       connState,
       promptCancelSupported: agentSessionPromptCancelSupported,
       onSendError

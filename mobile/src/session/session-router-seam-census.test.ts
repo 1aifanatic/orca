@@ -30,16 +30,16 @@ const ROUTER_HOLDERS = [
 /**
  * The expo-router names this domain may still import, and why each one is not a router.
  *
- * `useFocusEffect` and `useIsFocused` read whether this screen is the focused one in the document's
- * own stack and `useLocalSearchParams` reads the params of the route already mounted. None takes a
- * target, so none can put a screen in front of the page; each is the page's own router answering
- * about the page's own route, which is exactly what it is for.
+ * `useFocusEffect` reads whether this screen is the focused one in the document's own stack and
+ * `useLocalSearchParams` reads the params of the route already mounted. Neither takes a target, so
+ * neither can put a screen in front of the page; both are the page's own router answering about the
+ * page's own route, which is exactly what it is for.
  *
  * A closed list rather than a ban on `useRouter`: the hazard is anything that navigates, and
  * expo-router exports a module-singleton `router` that does it from a plain function. A rule written
  * against the one spelling would have read that as clean.
  */
-const NON_NAVIGATING_ROUTER_NAMES = ['useFocusEffect', 'useIsFocused', 'useLocalSearchParams']
+const NON_NAVIGATING_ROUTER_NAMES = ['useFocusEffect', 'useLocalSearchParams']
 
 describe('the session domain reaches the router through the handoff seam', () => {
   const files = productFiles(SESSION_ROOT)
@@ -68,7 +68,7 @@ describe('the session domain reaches the router through the handoff seam', () =>
     )
   })
 
-  it('still reaches expo-router for the names that answer about its own route', () => {
+  it('still reaches expo-router for the two names that answer about its own route', () => {
     // The completeness half: the rule above also passes over a domain that imports nothing at all,
     // which is what it would read as if someone moved these hooks and left the list behind.
     const imported = new Set(

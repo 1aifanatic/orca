@@ -17,7 +17,6 @@ export function useMobileNativeChatSessionLane({
   callerIdentity,
   promptCancelSupported,
   enabled,
-  focused,
   connState,
   onSendError
 }: {
@@ -33,8 +32,6 @@ export function useMobileNativeChatSessionLane({
   callerIdentity: string
   promptCancelSupported?: boolean | null
   enabled: boolean
-  /** Whether the session screen is focused; a screen retained under a pushed one is not. */
-  focused: boolean
   connState: ConnectionState
   onSendError: (message: string) => void
 }): {
@@ -46,8 +43,7 @@ export function useMobileNativeChatSessionLane({
     sourceIdentity,
     agent: structured ? null : resolvedAgent,
     sessionId: structured ? null : sessionId,
-    transcriptPath: structured ? null : transcriptPath,
-    focused
+    transcriptPath: structured ? null : transcriptPath
   })
   const structuredSession = useMobileStructuredAgentSession({
     client,

@@ -1,8 +1,8 @@
-// Why: two screens holding one chat on the same connection evict each other on the host, so an
-// unconditional immediate reopen would bounce the chat stream between them forever.
+// Why: a reopen the host keeps ending (a repeated connection-wide sweep) must not spin, so repeats
+// back off.
 const NATIVE_CHAT_RESUBSCRIBE_FIRST_BACKOFF_MS = 1_000
 const NATIVE_CHAT_RESUBSCRIBE_MAX_BACKOFF_MS = 30_000
-// Longer than the cap, so a peer that evicts every capped retry never earns a reset.
+// Longer than the cap, so a sweep that ends every capped retry never earns a reset.
 const NATIVE_CHAT_STREAM_STABLE_MS = 60_000
 
 /** Paces reopening a chat stream the host ended while the screen still wanted it: the first

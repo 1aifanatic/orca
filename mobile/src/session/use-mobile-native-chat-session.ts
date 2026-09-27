@@ -13,6 +13,7 @@ import {
   type MobileNativeChatStreamFrame
 } from './mobile-native-chat-stream-frame'
 import { NativeChatStreamRecoveryBackoff } from './mobile-native-chat-stream-recovery'
+import { structuredSessionRandomUuid } from './structured-session-operation-id'
 
 export type MobileNativeChatStatus =
   | 'idle'
@@ -62,11 +63,8 @@ export function useMobileNativeChatSession(args: {
   agent: string | null
   sessionId: string | null
   transcriptPath: string | null
-  /** Whether this screen is the navigator's focused one; only it takes back a feed the host ended.
-   *  Defaults to true for a mount outside a navigator. */
-  focused?: boolean
 }): MobileNativeChatSession {
-  const { client, sourceIdentity, agent, sessionId, transcriptPath, focused = true } = args
+  const { client, sourceIdentity, agent, sessionId, transcriptPath } = args
   const [messages, setMessages] = useState<NativeChatMessage[]>([])
   const identity = encodeNativeChatTranscriptIdentity([
     sourceIdentity,
@@ -126,7 +124,6 @@ export function useMobileNativeChatSession(args: {
   } | null>(null)
   // Set when the host ended the live feed unasked; the next effect run consumes it to reopen in place.
   const streamLostRef = useRef<{ client: RpcClient; identity: string } | null>(null)
-  const focusedRef = useRef(focused)
   const settledReady = settled?.status === 'ready'
   useEffect(() => {
     if (settledReady) {
@@ -142,26 +139,12 @@ export function useMobileNativeChatSession(args: {
   }, [])
 
   useEffect(() => {
-    focusedRef.current = focused
-    // Why: a hidden screen that lost its feed takes it back, unpaced, as soon as it is shown.
-    if (focused && streamLostRef.current !== null) {
-      streamRecoveryRef.current = null
-      setStreamReopenCount((count) => count + 1)
-    }
-  }, [focused])
-
-  useEffect(() => {
     let cancelled = false
     let reopenTimer: ReturnType<typeof setTimeout> | null = null
     const lost = streamLostRef.current
     streamLostRef.current = null
     // A recovery reopen keeps the paged-in window, so its snapshot merges in as a replay.
     const reopening = lost !== null && lost.client === client && lost.identity === identity
-    if (reopening && !focusedRef.current) {
-      // Why: only the focused screen takes the feed back, so stacked screens never trade it.
-      streamLostRef.current = lost
-      return
-    }
     // Why: disconnect/agent/session loss must invalidate a page request before
     // the early idle/waiting return can clear the visible source.
     streamGenerationRef.current += 1
@@ -187,8 +170,14 @@ export function useMobileNativeChatSession(args: {
       {
         agent,
         sessionId,
-        limit: limitRef.current,
-        subscriptionId: buildNativeChatSubscriptionId(agent, sessionId),
+        // A reopen asks for the first page too; the kept window absorbs it as a replay.
+        limit: INITIAL_LIMIT,
+        // Why: a token of its own, so another screen on this chat never evicts this feed on the host.
+        subscriptionId: buildNativeChatSubscriptionId(
+          agent,
+          sessionId,
+          structuredSessionRandomUuid()
+        ),
         capabilities: { transcriptPending: 1 },
         ...(transcriptPath ? { transcriptPath } : {})
       },
@@ -207,8 +196,8 @@ export function useMobileNativeChatSession(args: {
           return
         }
         if (applied.kind === 'ended') {
-          // Why: an unasked end is another consumer taking the same token, or this screen's own late
-          // unsubscribe ending its newer feed after a quick switch; reopen it, paced by the backoff.
+          // Why: this feed's token is its own, so an unasked end is the host's connection-wide chat
+          // sweep; reopen it, paced by the backoff.
           cancelled = true
           setRead(null)
           streamLostRef.current = { client, identity }
@@ -249,8 +238,9 @@ export function useMobileNativeChatSession(args: {
         }
         if (applied.windowReplaced) {
           // Only a genuinely fresh window resets the grown read window — an
-          // overlapping reconnect replay keeps the paged-in history and limit.
-          limitRef.current = INITIAL_LIMIT
+          // overlapping replay keeps the paged-in history and limit. Never below what it delivered,
+          // or the next live append trims rows already on screen.
+          limitRef.current = Math.max(INITIAL_LIMIT, applied.messages.length)
           beforeOffsetRef.current = applied.beforeOffset ?? null
           setHasMore(applied.hasMore ?? applied.messages.length >= INITIAL_LIMIT)
         }

@@ -73,8 +73,9 @@ function listenerClient(): {
   return { client: testClient(subscribe), subscribe, listeners }
 }
 
-/** A host that, like the runtime, ends the feed a same-token subscribe replaces. Frames queue
- *  until `deliver`, so each end lands a round trip after the subscribe that caused it. */
+/** A host that, like the runtime, keys each feed by its token: a same-token subscribe ends the feed
+ *  it replaces, and an unsubscribe ends whatever holds the token. Frames queue until `deliver`, so
+ *  each end lands a round trip after the request that caused it. */
 function evictingHost(): {
   client: RpcClient
   subscribe: ReturnType<typeof vi.fn<RpcClient['subscribe']>>
@@ -94,8 +95,10 @@ function evictingHost(): {
     }
     queued.push(() => onData({ type: 'snapshot', messages: [message('a')], hasMore: false }))
     return () => {
-      if (live.get(token) === onData) {
-        live.delete(token)
+      const holder = live.get(token)
+      live.delete(token)
+      if (holder && holder !== onData) {
+        queued.push(() => holder({ type: 'end' }))
       }
     }
   })
@@ -119,6 +122,8 @@ type TransportRig = {
   client: RpcClient
   sent: SentRequest[]
   reply: (response: RpcResponse) => void
+  /** Drops and re-authenticates the socket; only the direct transport replays its streams. */
+  reconnect?: () => void
 }
 
 function directRig(): TransportRig {
@@ -136,7 +141,11 @@ function directRig(): TransportRig {
   return {
     client: testClient(registry.subscribe.bind(registry)),
     sent,
-    reply: (response) => registry.handleResponse(response)
+    reply: (response) => registry.handleResponse(response),
+    reconnect: () => {
+      registry.markForReplay()
+      registry.replayAfterAuthentication()
+    }
   }
 }
 
@@ -179,8 +188,7 @@ describe('useMobileNativeChatSession host-ended stream recovery', () => {
       sourceIdentity: 'host-a\0workspace-a',
       agent: 'claude',
       sessionId,
-      transcriptPath: null,
-      focused: true
+      transcriptPath: null
     })
     return null
   }
@@ -218,7 +226,10 @@ describe('useMobileNativeChatSession host-ended stream recovery', () => {
 
       const subscribes = chatSubscribes(rig)
       expect(subscribes).toHaveLength(2)
-      expect(subscribes[1]!.params).toEqual(first.params)
+      expect(subscribes[1]!.params).toEqual({
+        ...(first.params as object),
+        subscriptionId: expect.stringMatching(/^claude:session:/)
+      })
       expect(state?.status).toBe('loading')
       expect(state?.transcriptLoading).toBe(true)
       // The conversation stays on screen while the stream reopens.
@@ -330,7 +341,7 @@ describe('useMobileNativeChatSession host-ended stream recovery', () => {
   })
 })
 
-describe('useMobileNativeChatSession recovery across stacked screens', () => {
+describe('useMobileNativeChatSession feeds across stacked screens', () => {
   let renderer: ReactTestRenderer | null = null
   const states = new Map<string, MobileNativeChatSession>()
 
@@ -345,15 +356,7 @@ describe('useMobileNativeChatSession recovery across stacked screens', () => {
     vi.useRealTimers()
   })
 
-  function Screen({
-    name,
-    client,
-    focused
-  }: {
-    name: string
-    client: RpcClient
-    focused: boolean
-  }): null {
+  function Screen({ name, client }: { name: string; client: RpcClient }): null {
     states.set(
       name,
       useMobileNativeChatSession({
@@ -361,23 +364,21 @@ describe('useMobileNativeChatSession recovery across stacked screens', () => {
         sourceIdentity: 'host-a\0workspace-a',
         agent: 'claude',
         sessionId: 'session',
-        transcriptPath: null,
-        focused
+        transcriptPath: null
       })
     )
     return null
   }
 
-  type ScreenProps = { name: string; focused: boolean }
-  function Stack({ client, screens }: { client: RpcClient; screens: ScreenProps[] }): ReactElement {
+  function Stack({ client, screens }: { client: RpcClient; screens: string[] }): ReactElement {
     return createElement(
       Fragment,
       null,
-      ...screens.map((screen) => createElement(Screen, { key: screen.name, client, ...screen }))
+      ...screens.map((name) => createElement(Screen, { key: name, name, client }))
     )
   }
 
-  async function render(client: RpcClient, screens: ScreenProps[]): Promise<void> {
+  async function render(client: RpcClient, screens: string[]): Promise<void> {
     await act(async () => {
       if (renderer) {
         renderer.update(createElement(Stack, { client, screens }))
@@ -387,67 +388,78 @@ describe('useMobileNativeChatSession recovery across stacked screens', () => {
     })
   }
 
-  it('leaves the feed with the focused screen when a pushed screen takes the same chat', async () => {
+  function tokenOf(request: SentRequest | unknown[]): unknown {
+    const params = Array.isArray(request) ? request[1] : request.params
+    return typeof params === 'object' && params !== null && 'subscriptionId' in params
+      ? params.subscriptionId
+      : undefined
+  }
+
+  it('keeps both feeds live when a pushed screen opens the same chat, and after it pops', async () => {
     const host = evictingHost()
-    await render(host.client, [{ name: 'under', focused: true }])
+    await render(host.client, ['under'])
     await host.deliver()
     expect(states.get('under')?.status).toBe('ready')
 
     // Resuming from agent history pushes a second screen for the same chat.
-    await render(host.client, [
-      { name: 'under', focused: false },
-      { name: 'top', focused: true }
-    ])
+    await render(host.client, ['under', 'top'])
     await host.deliver()
     for (let second = 0; second < 120; second += 1) {
       await act(async () => {
         vi.advanceTimersByTime(1_000)
       })
       await host.deliver()
+      expect(states.get('under')?.status).toBe('ready')
       expect(states.get('top')?.status).toBe('ready')
     }
     expect(host.subscribe).toHaveBeenCalledTimes(2)
-    expect(states.get('under')?.status).toBe('loading')
-    expect(states.get('under')?.messages.map((entry) => entry.id)).toEqual(['a'])
-  })
+    const [under, top] = host.subscribe.mock.calls
+    expect(tokenOf(under!)).not.toBe(tokenOf(top!))
 
-  it('reopens at once, with the backoff reset, when the screen that lost its feed is shown again', async () => {
-    const host = evictingHost()
-    await render(host.client, [{ name: 'under', focused: true }])
+    // Popping the pushed screen releases its own feed only.
+    await render(host.client, ['under'])
     await host.deliver()
-    await render(host.client, [
-      { name: 'under', focused: false },
-      { name: 'top', focused: true }
-    ])
-    await host.deliver()
-    expect(host.subscribe).toHaveBeenCalledTimes(2)
-
-    // Popping the pushed screen focuses the one underneath, with no timer needed.
-    await render(host.client, [{ name: 'under', focused: true }])
-    expect(host.subscribe).toHaveBeenCalledTimes(3)
-    await host.deliver()
-    expect(states.get('under')?.status).toBe('ready')
-  })
-
-  it('does not reopen from a backoff timer that fires while the screen is hidden', async () => {
-    const { client, subscribe, listeners } = listenerClient()
-    await render(client, [{ name: 'only', focused: true }])
-    await act(async () => listeners[0]!({ type: 'end' }))
-    expect(subscribe).toHaveBeenCalledTimes(2)
-    await act(async () => listeners[1]!({ type: 'end' }))
-
-    await render(client, [{ name: 'only', focused: false }])
     await act(async () => {
       vi.advanceTimersByTime(120_000)
     })
-    expect(subscribe).toHaveBeenCalledTimes(2)
-
-    await render(client, [{ name: 'only', focused: true }])
-    expect(subscribe).toHaveBeenCalledTimes(3)
-    // The backoff restarted, so the next end reopens immediately again.
-    await act(async () => listeners[2]!({ type: 'end' }))
-    expect(subscribe).toHaveBeenCalledTimes(4)
+    await host.deliver()
+    expect(host.subscribe).toHaveBeenCalledTimes(2)
+    expect(states.get('under')?.status).toBe('ready')
   })
+
+  it.each([
+    ['direct', directRig],
+    ['relay', relayRig]
+  ])(
+    'names each %s chat feed by its own token on replay and unsubscribe',
+    async (_label, makeRig) => {
+      const rig = makeRig()
+      await render(rig.client, ['under', 'top'])
+      const [under, top] = rig.sent.filter((request) => request.method === 'nativeChat.subscribe')
+      expect(tokenOf(under!)).toMatch(/^claude:session:/)
+      expect(tokenOf(top!)).toMatch(/^claude:session:/)
+      expect(tokenOf(under!)).not.toBe(tokenOf(top!))
+
+      if (rig.reconnect) {
+        rig.reconnect()
+        const replayed = rig.sent
+          .filter((request) => request.method === 'nativeChat.subscribe')
+          .slice(2)
+        expect(replayed.map((request) => [request.id, tokenOf(request)])).toEqual([
+          [under!.id, tokenOf(under!)],
+          [top!.id, tokenOf(top!)]
+        ])
+      }
+
+      // The older screen leaves while the newer one stays: its unsubscribe must still be sent.
+      await render(rig.client, ['top'])
+      expect(
+        rig.sent
+          .filter((request) => request.method === 'nativeChat.unsubscribe')
+          .map((request) => request.params)
+      ).toEqual([{ subscriptionId: tokenOf(under!) }])
+    }
+  )
 })
 
 describe('useMobileNativeChatSession history across a recovery reopen', () => {
@@ -471,8 +483,7 @@ describe('useMobileNativeChatSession history across a recovery reopen', () => {
       sourceIdentity: 'host-a\0workspace-a',
       agent: 'claude',
       sessionId,
-      transcriptPath: null,
-      focused: true
+      transcriptPath: null
     })
     return null
   }
@@ -513,20 +524,20 @@ describe('useMobileNativeChatSession history across a recovery reopen', () => {
     return { client, subscribe, listeners }
   }
 
-  it('keeps paged-in older history and the grown window when the stream reopens', async () => {
+  it('reopens with the first-page window and keeps paged-in older history', async () => {
     const { subscribe, listeners } = await mountWithPagedHistory()
 
     await act(async () => listeners[0]!({ type: 'end' }))
     expect(subscribe).toHaveBeenCalledTimes(2)
-    expect(subscribe.mock.calls[1]![1]).toMatchObject({ limit: 100 })
+    expect(subscribe.mock.calls[1]![1]).toMatchObject({ limit: 40 })
     expect(state?.messages).toHaveLength(100)
     expect(state?.messages[0]?.id).toBe('paged-0')
 
-    // The reopened snapshot merges in as a replay, carrying one message that arrived meanwhile.
+    // The reopened first page merges in as a replay, carrying one message that arrived meanwhile.
     await act(async () =>
       listeners[1]!({
         type: 'snapshot',
-        messages: [...window, message('live-1')],
+        messages: [...window.slice(1), message('live-1')],
         hasMore: true,
         beforeOffset: 100
       })
@@ -536,6 +547,25 @@ describe('useMobileNativeChatSession history across a recovery reopen', () => {
     expect(state?.messages[0]?.id).toBe('paged-1')
     expect(state?.messages.at(-1)?.id).toBe('live-1')
     expect(state?.hasMore).toBe(true)
+
+    await act(async () => listeners[1]!({ type: 'appended', messages: [message('live-2')] }))
+    expect(state?.messages).toHaveLength(100)
+    expect(state?.messages.at(-1)?.id).toBe('live-2')
+  })
+
+  it('keeps every row of a disjoint reopened window when the next live message lands', async () => {
+    const { listeners } = await mountWithPagedHistory()
+    await act(async () => listeners[0]!({ type: 'end' }))
+
+    const fresh = Array.from({ length: 100 }, (_unused, index) => message(`fresh-${index}`))
+    await act(async () =>
+      listeners[1]!({ type: 'snapshot', messages: fresh, hasMore: true, beforeOffset: 500 })
+    )
+    expect(state?.messages.map((entry) => entry.id)).toEqual(fresh.map((entry) => entry.id))
+
+    await act(async () => listeners[1]!({ type: 'appended', messages: [message('live-1')] }))
+    expect(state?.messages.length).toBeGreaterThanOrEqual(100)
+    expect(state?.messages.at(-1)?.id).toBe('live-1')
   })
 
   it('still resets to a fresh window when the chat changes while a reopen is pending', async () => {
