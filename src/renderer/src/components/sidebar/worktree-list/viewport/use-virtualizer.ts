@@ -20,6 +20,7 @@ import { getSidebarGeometryLedger, type SidebarObservation } from './sidebar-geo
 import { useSidebarGeometryObserver } from './use-sidebar-geometry-observer'
 import {
   clampSidebarOffset,
+  getSidebarNavigationTitleEnd,
   resolveSidebarCorrectionTarget,
   sidebarNavigationOffset,
   type SidebarGeometryCorrection,
@@ -104,13 +105,15 @@ export function useWorktreeListVirtualizer(args: {
     const index = model.nodeByKey.get(navigation.key)
     if (index !== undefined) {
       const node = model.nodes[index]!
+      const start = boundaries[node.slot]! + insetRef.current
       target = sidebarNavigationOffset(
-        boundaries[node.slot]! + insetRef.current,
-        sidebarSlotContentEnd(model, boundaries, node.slot) + insetRef.current,
+        start,
+        sidebarSlotContentEnd(model, boundaries, node.end - 1) + insetRef.current,
         offset,
         viewport,
         node.revealTopInset,
-        navigation.align
+        navigation.align,
+        getSidebarNavigationTitleEnd(scrollRef.current, node.row, start)
       )
     }
   }

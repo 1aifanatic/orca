@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { getWorktreeOptionId } from '../rows/option-dom'
 import { addHostSectionRows } from '../../host-section-rows'
 import React, { act, useLayoutEffect } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
@@ -11,7 +12,11 @@ import {
 import type { VirtualizedScrollAnchor } from '@/hooks/useVirtualizedScrollAnchor'
 import { geometryFolderRow, lineageRow } from '../rows/lineage-virtualization-test-fixtures'
 import type { RenderRow } from '../listing/render-row'
-import { revealElementInScrollContainer } from '../../worktree-sidebar-reveal'
+import {
+  getElementScrollBounds,
+  getScrollTopToRevealBounds,
+  revealElementInScrollContainer
+} from '../../worktree-sidebar-reveal'
 import { completeMountedSidebarReveal } from '../navigation/complete-mounted-reveal'
 import type { SidebarCardGeometryResolver } from '../listing/sidebar-card-geometry'
 
@@ -269,6 +274,83 @@ function roundScrollWrites() {
   }
 }
 describe('single sidebar geometry owner', () => {
+  it('keeps an oversized expanded parent with a measured visible title at its current offset', async () => {
+    viewportHeight = 600
+    independentHeight = 1_000
+    height = 55
+    rowHeight = 100
+    element.scrollTop = 700
+    offsetRef.current = 700
+    const parentRow = lineageRow('parent', 0)
+    const renderRows: RenderRow[] = [
+      lineageRow('before', 0),
+      {
+        type: 'lineage-group',
+        key: 'parent',
+        rows: [
+          parentRow,
+          ...Array.from({ length: 8 }, (_, index) => lineageRow(`child-${index}`, 1))
+        ]
+      }
+    ]
+    await act(async () => root.render(<Probe renderRows={renderRows} />))
+    const parent = element.querySelector<HTMLElement>('[data-owner-tree]')!
+    parent.id = getWorktreeOptionId(parentRow.rowKey)
+    const title = document.createElement('span')
+    title.dataset.worktreeTitleInlineRename = ''
+    title.getBoundingClientRect = () =>
+      new DOMRect(0, parent.getBoundingClientRect().top + 6, 100, 20)
+    parent.prepend(title)
+    await act(async () => {
+      element.scrollTop = 700
+      element.dispatchEvent(new Event('scroll'))
+    })
+    expect(
+      getScrollTopToRevealBounds(element, getElementScrollBounds(element, parent), 34)
+    ).toBeNull()
+    writes.length = 0
+    await act(async () => current.navigationVirtualizer.scrollToIndex(1, { align: 'auto' }))
+    expect(element.scrollTop).toBe(700)
+    expect(writes.map((write) => write.top)).toEqual([700])
+  })
+
+  it.each([1, 8])(
+    'numeric auto reveal agrees with mounted expanded-parent bounds (%i children)',
+    async (count) => {
+      viewportHeight = 600
+      independentHeight = 1_000
+      height = 55
+      rowHeight = 100
+      element.scrollTop = 0
+      offsetRef.current = 0
+      const renderRows: RenderRow[] = [
+        lineageRow('before', 0),
+        {
+          type: 'lineage-group',
+          key: 'parent',
+          rows: [
+            lineageRow('parent', 0),
+            ...Array.from({ length: count }, (_, index) => lineageRow(`child-${index}`, 1))
+          ]
+        }
+      ]
+      await act(async () => root.render(<Probe renderRows={renderRows} />))
+      const parent = element.querySelector<HTMLElement>('[data-owner-tree]')!
+      const target = getScrollTopToRevealBounds(
+        element,
+        getElementScrollBounds(element, parent),
+        34
+      )
+      expect(target).not.toBeNull()
+      writes.length = 0
+      await act(async () => current.navigationVirtualizer.scrollToIndex(1, { align: 'auto' }))
+      expect(element.scrollTop).toBe(target)
+      expect(writes).toHaveLength(1)
+      revealElementInScrollContainer(element, parent, 'smooth')
+      expect(writes).toHaveLength(1)
+    }
+  )
+
   it('mounts collapsed same-ID project owners with distinct React and measurement identities', async () => {
     const group = geometryFolderRow().projectGroup
     const renderRows = addHostSectionRows({

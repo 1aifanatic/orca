@@ -6,9 +6,27 @@ import {
   reconcileSidebarLedger,
   publishSidebarObservation
 } from './sidebar-geometry-ledger'
-import { resolveSidebarCorrectionTarget, clampSidebarOffset } from './sidebar-geometry-commit'
+import {
+  resolveSidebarCorrectionTarget,
+  clampSidebarOffset,
+  sidebarNavigationOffset
+} from './sidebar-geometry-commit'
 
 describe('matching sidebar commit geometry', () => {
+  it.each([160, 900])('preserves explicit subtree alignments for height %i', (height) => {
+    const start = 1_000,
+      end = start + height
+    expect(sidebarNavigationOffset(start, end, 0, 600, 34, 'start')).toBe(966)
+    expect(sidebarNavigationOffset(start, end, 0, 600, 34, 'center')).toBe((start + end - 600) / 2)
+    expect(sidebarNavigationOffset(start, end, 0, 600, 34, 'end')).toBe(end - 600)
+  })
+  it('keeps auto fitting, oversized and measured readable-title policies consistent', () => {
+    expect(sidebarNavigationOffset(1_000, 1_160, 0, 600, 34, 'auto')).toBe(560)
+    expect(sidebarNavigationOffset(1_000, 1_900, 0, 600, 34, 'auto')).toBe(966)
+    expect(sidebarNavigationOffset(1_000, 1_900, 700, 600, 34, 'auto', 1_026)).toBe(700)
+    expect(sidebarNavigationOffset(1_000, 1_900, 990, 600, 34, 'auto', 1_026)).toBe(966)
+  })
+
   it('resolves structural anchors again after an unmounted cached sibling loses its following gap', () => {
     const p = lineageRow('p', 0),
       a = lineageRow('a', 1),

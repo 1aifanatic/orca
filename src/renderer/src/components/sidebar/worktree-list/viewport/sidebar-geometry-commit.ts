@@ -1,3 +1,6 @@
+import type { RenderRow } from '../listing/render-row'
+import { getRenderRowOptionId } from '../navigation/active-descendant-option'
+import { getElementScrollBounds, getScrollTopToRevealBounds } from '../../worktree-sidebar-reveal'
 import type { VirtualizedScrollAnchor } from '@/hooks/useVirtualizedScrollAnchor'
 import type { VirtualItem } from '@tanstack/react-virtual'
 import type { SidebarGeometry } from '../listing/sidebar-geometry-slots'
@@ -81,7 +84,8 @@ export function sidebarNavigationOffset(
   offset: number,
   viewport: number,
   topInset: number,
-  align: 'start' | 'center' | 'end' | 'auto'
+  align: 'start' | 'center' | 'end' | 'auto',
+  titleEnd?: number
 ): number {
   if (align === 'center') {
     return (start + end - viewport) / 2
@@ -89,8 +93,28 @@ export function sidebarNavigationOffset(
   if (align === 'end') {
     return end - viewport
   }
-  if (align === 'start' || start < offset + topInset) {
+  if (align === 'start') {
     return start - topInset
   }
-  return end > offset + viewport ? end - viewport : offset
+  return (
+    getScrollTopToRevealBounds(
+      { scrollTop: offset, clientHeight: viewport },
+      { start, end, titleEnd },
+      topInset
+    ) ?? offset
+  )
+}
+
+export function getSidebarNavigationTitleEnd(
+  scroller: HTMLElement | null,
+  row: RenderRow,
+  start: number
+): number | undefined {
+  const optionId = getRenderRowOptionId(row)
+  const element = optionId ? scroller?.ownerDocument.getElementById(optionId) : null
+  if (!scroller || !element || !scroller.contains(element)) {
+    return undefined
+  }
+  const bounds = getElementScrollBounds(scroller, element)
+  return bounds.titleEnd === undefined ? undefined : start + bounds.titleEnd - bounds.start
 }
