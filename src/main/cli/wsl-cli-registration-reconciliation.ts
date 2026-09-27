@@ -1,13 +1,17 @@
 import type { CliInstallState, CliInstallStatus } from '../../shared/cli-install-types'
-import { listWslDistrosAsync } from '../wsl'
+import { listRunningWslDistrosAsync, listWslDistrosAsync } from '../wsl'
 import { CliInstaller } from './cli-installer'
 import {
-  getWslCliRegistrationCandidates,
+  getWslCliRegistrationCandidateEntries,
   recordWslCliRegistrationObservations,
+  type WslCliRegistrationCandidate,
   type WslCliRegistrationObservation
 } from './wsl-cli-registration-registry'
 import { WslCliInstaller } from './wsl-cli-installer'
-import { runSerializedWslCliRegistrationOperation } from './wsl-cli-registration-operation'
+import {
+  normalizeWslDistroKey,
+  runSerializedWslCliRegistrationOperation
+} from './wsl-cli-registration-operation'
 
 // Why: candidate distros can each boot a stopped WSL VM; a small cap staggers
 // those boots instead of spiking RAM/CPU for every distro at once at startup.
@@ -30,7 +34,7 @@ type WslCliRegistrationRegistry = {
   getCandidates: (
     availableDistros: string[],
     context?: WslCliRegistrationCandidateContext
-  ) => Promise<string[]>
+  ) => Promise<WslCliRegistrationCandidate[]>
   recordObservations: (observations: WslCliRegistrationObservation[]) => Promise<void>
 }
 
@@ -40,6 +44,7 @@ type WslCliRegistrationReconciliationOptions = {
   userDataPath: string
   appVersion?: string
   listDistros?: () => Promise<string[]>
+  listRunningDistros?: () => Promise<string[]>
   createInstaller?: (distro: string) => ManagedWslCliInstaller
   getHostLauncherTarget?: () => Promise<string | null>
   registry?: WslCliRegistrationRegistry
@@ -70,7 +75,11 @@ export async function reconcileManagedWslCliRegistrations(
     options.registry ??
     ({
       getCandidates: (availableDistros, context) =>
-        getWslCliRegistrationCandidates(options.userDataPath, availableDistros, context ?? {}),
+        getWslCliRegistrationCandidateEntries(
+          options.userDataPath,
+          availableDistros,
+          context ?? {}
+        ),
       recordObservations: (observations) =>
         recordWslCliRegistrationObservations(options.userDataPath, observations)
     } satisfies WslCliRegistrationRegistry)
@@ -101,7 +110,27 @@ export async function reconcileManagedWslCliRegistrations(
     ? await getHostLauncherTarget().catch(() => null)
     : null
   const appVersion = options.appVersion ?? ''
-  const distros = await registry.getCandidates(availableDistros, { currentTarget, appVersion })
+  const candidates = await registry.getCandidates(availableDistros, { currentTarget, appVersion })
+  // Why: discovery is speculative, so it must never boot a stopped VM (`--list --running`
+  // does not); only distros the user registered justify `wsl -d` against a stopped VM.
+  const running = candidates.some((candidate) => !candidate.registered)
+    ? new Set(
+        (await (options.listRunningDistros ?? listRunningWslDistrosAsync)().catch(() => [])).map(
+          normalizeWslDistroKey
+        )
+      )
+    : null
+  const discovery = new Set<string>()
+  const distros = candidates.flatMap(({ distro, registered }) => {
+    if (registered) {
+      return [distro]
+    }
+    if (!running?.has(normalizeWslDistroKey(distro))) {
+      return []
+    }
+    discovery.add(distro)
+    return [distro]
+  })
   if (distros.length === 0) {
     return []
   }
@@ -113,6 +142,13 @@ export async function reconcileManagedWslCliRegistrations(
     try {
       repair = await createInstaller(distro).repairManagedRegistration()
     } catch (error) {
+      if (discovery.has(distro)) {
+        // Why: an unrecorded discovery failure (e.g. a cold-distro timeout) re-probed this
+        // never-registered distro on every launch; the inspection TTL now bounds it.
+        await registry
+          .recordObservations([{ distro, inspected: true, managed: null }])
+          .catch(() => undefined)
+      }
       return {
         distro,
         outcome: 'failed',
