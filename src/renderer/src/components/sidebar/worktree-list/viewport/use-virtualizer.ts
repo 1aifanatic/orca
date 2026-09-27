@@ -1,3 +1,4 @@
+import type { SidebarCardGeometryResolver } from '../listing/sidebar-card-geometry'
 import { useSidebarGeometryCommit } from './use-sidebar-geometry-commit'
 import { useReusedArrayIdentity } from '../listing/use-reused-array-identity'
 import { scrollSidebarVirtualizer } from './sidebar-scroll-to'
@@ -8,6 +9,7 @@ import type React from 'react'
 import { useVirtualizer, type VirtualItem } from '@tanstack/react-virtual'
 import type { VirtualizedScrollAnchor } from '@/hooks/useVirtualizedScrollAnchor'
 import {
+  type SidebarGeometry,
   buildSidebarGeometry,
   sidebarGeometryBoundaries,
   sidebarSlotContentEnd
@@ -42,6 +44,7 @@ export function useWorktreeListVirtualizer(args: {
   suppression: WorktreeSidebarScrollSuppression
   newCardStyle: boolean
   layoutContext?: string
+  resolveCardShape?: SidebarCardGeometryResolver
   props: Pick<
     VirtualizedWorktreeViewportProps,
     | 'activeWorktreeId'
@@ -53,7 +56,10 @@ export function useWorktreeListVirtualizer(args: {
   draggingWorktreeId: string | null
 }) {
   const { renderRows, scrollRef, scrollOffsetRef, scrollAnchorRef, suppression } = args
-  const model = useMemo(() => buildSidebarGeometry(renderRows), [renderRows])
+  const model = useMemo(
+    () => buildSidebarGeometry(renderRows, args.resolveCardShape),
+    [renderRows, args.resolveCardShape]
+  )
   const rootByOuterIndex = useMemo(
     () => new Map(model.roots.map((index) => [model.nodes[index]!.outerIndex, index])),
     [model]
@@ -67,6 +73,7 @@ export function useWorktreeListVirtualizer(args: {
     publishedRevision.current++
     observationChanged()
   }
+  const publishedModel = useRef<SidebarGeometry | null>(null)
   const correction = useRef<SidebarGeometryCorrection | null>(null)
   const rounding = useRef<SidebarScrollRounding | null>(null)
   const insetRef = useRef(1)
@@ -186,6 +193,7 @@ export function useWorktreeListVirtualizer(args: {
     publishSidebarMeasurements(
       {
         model,
+        publishedModel,
         ledger,
         boundaries,
         scrollAnchorRef,
@@ -210,15 +218,10 @@ export function useWorktreeListVirtualizer(args: {
     scrollRef,
     insetRef,
     model,
-    ledger,
-    scrollAnchorRef,
     scrollOffsetRef,
     correction,
     rounding,
     suppression,
-    newCardStyle: args.newCardStyle,
-    layoutContext: args.layoutContext,
-    changed,
     boundaries,
     virtualizer,
     renderConverged,

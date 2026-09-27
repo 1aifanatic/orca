@@ -1,5 +1,8 @@
+import { createSidebarShapeCorrection } from './sidebar-shape-correction'
 import { sidebarSlotContentEnd, type SidebarGeometry } from '../listing/sidebar-geometry-slots'
 import {
+  sidebarGeometryLayoutMatches,
+  sidebarGeometryTopologyMatches,
   publishSidebarObservation,
   reconcileSidebarLedger,
   type SidebarGeometryLedger,
@@ -25,6 +28,7 @@ export function applySidebarMeasurements(args: {
   scrollDirection: 'forward' | 'backward' | null
   anchorOuterIndex?: number
   skipAnchorRestore?: boolean
+  previouslyObserved?: ReadonlySet<string>
 }): { changed: boolean; delta: number } {
   let changed = false
   let delta = 0
@@ -62,7 +66,7 @@ export function applySidebarMeasurements(args: {
           itemStart: args.boundaries[slotIndex]! + args.inset,
           itemEnd: sidebarSlotContentEnd(args.model, args.boundaries, slotIndex) + args.inset,
           scrollOffset: args.scrollOffset,
-          isFirstMeasurement: !args.ledger.observed.has(slot.key),
+          isFirstMeasurement: !(args.previouslyObserved ?? args.ledger.observed).has(slot.key),
           scrollDirection: args.scrollDirection
         })
       ) {
@@ -76,6 +80,7 @@ export function applySidebarMeasurements(args: {
 
 export function publishSidebarMeasurements(
   args: {
+    publishedModel: React.MutableRefObject<SidebarGeometry | null>
     model: SidebarGeometry
     ledger: SidebarGeometryLedger
     boundaries: readonly number[]
@@ -118,7 +123,7 @@ export function publishSidebarMeasurements(
     invalidatedLayout ||
     rounding.current?.epoch !== suppression.scrollOwnershipEpochRef.current ||
     rounding.current?.offset !== physicalOffset ||
-    correction.current?.anchor ||
+    (correction.current?.anchor && !correction.current.shapeAnchor) ||
     correction.current?.navigation
   ) {
     rounding.current = null
@@ -135,7 +140,51 @@ export function publishSidebarMeasurements(
       epoch: suppression.scrollOwnershipEpochRef.current
     }
   }
-  let updated = reconcileSidebarLedger(ledger, model, args.newCardStyle, width, args.layoutContext)
+  const previousModel = args.publishedModel.current
+  const modelChanged = previousModel !== model
+  const previouslyObserved =
+    modelChanged && !invalidatedLayout && sidebarGeometryTopologyMatches(previousModel, model)
+      ? new Set(ledger.observed)
+      : undefined
+  if (modelChanged) {
+    const layoutChanged = !sidebarGeometryLayoutMatches(previousModel, model)
+    if (layoutChanged) {
+      const pending = correction.current
+      const anchor =
+        pending?.epoch === suppression.scrollOwnershipEpochRef.current
+          ? (pending.anchor ?? scrollAnchorRef.current)
+          : scrollAnchorRef.current
+      const shapeCorrection =
+        !invalidatedLayout &&
+        createSidebarShapeCorrection({
+          previous: previousModel,
+          model,
+          ledger,
+          anchor,
+          pending: correction.current,
+          rounding: rounding.current,
+          physicalOffset,
+          epoch: suppression.scrollOwnershipEpochRef.current,
+          inset: insetRef.current
+        })
+      rounding.current = null
+      if (
+        anchor &&
+        !correction.current?.navigation &&
+        !suppression.shouldSkipScrollAnchorRestore()
+      ) {
+        correction.current = shapeCorrection || {
+          target: 0,
+          anchor,
+          epoch: suppression.scrollOwnershipEpochRef.current
+        }
+      }
+    }
+    args.publishedModel.current = model
+  }
+  let updated =
+    reconcileSidebarLedger(ledger, model, args.newCardStyle, width, args.layoutContext) ||
+    modelChanged
   const anchorIndex = scrollAnchorRef.current
     ? model.nodeByKey.get(scrollAnchorRef.current.key)
     : undefined
@@ -154,6 +203,7 @@ export function publishSidebarMeasurements(
     ledger,
     boundaries,
     samples,
+    previouslyObserved,
     inset: insetRef.current,
     scrollOffset: measurementOffset,
     now: performance.now(),
@@ -175,6 +225,7 @@ export function publishSidebarMeasurements(
     !suppression.shouldSkipScrollAnchorRestore()
   ) {
     correction.current = {
+      sourceOffset: physicalOffset,
       target:
         (correction.current?.epoch === suppression.scrollOwnershipEpochRef.current
           ? correction.current.target

@@ -46,6 +46,7 @@ describe('sidebar measurement publication', () => {
         const physicalOffset = first ? (remainder < 0 ? 107 : 106) : remainder < 0 ? 101 : 100
         const args: Parameters<typeof publishSidebarMeasurements>[0] = {
           model,
+          publishedModel: { current: model },
           ledger,
           boundaries: sidebarGeometryBoundaries(model, ledger.sizes),
           newCardStyle: false,

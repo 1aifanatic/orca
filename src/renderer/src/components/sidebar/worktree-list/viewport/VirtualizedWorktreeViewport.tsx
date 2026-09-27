@@ -1,3 +1,4 @@
+import { useSidebarCardGeometryInputs } from './use-sidebar-card-geometry-inputs'
 import React, { useCallback, useMemo, useRef, useState } from 'react'
 import { useAppStore } from '@/store'
 import { translate } from '@/i18n/i18n'
@@ -133,7 +134,19 @@ export const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktr
     () => JSON.stringify([groupBy, [...folderBackedProjectGroupIds]]),
     [groupBy, folderBackedProjectGroupIds]
   )
+  const hasCardCandidates = useMemo(
+    () => renderRows.some((row) => row.type === 'item' || row.type === 'lineage-group'),
+    [renderRows]
+  )
+  const resolveCardShape = useSidebarCardGeometryInputs({
+    hasCardCandidates,
+    newCardStyle,
+    compactPreference: settings?.compactWorktreeCards === true,
+    hasProjectGroups: projectGroups.length > 0,
+    hideRepoBadge: groupBy === 'repo'
+  })
   const virtualization = useWorktreeListVirtualizer({
+    resolveCardShape,
     renderRows,
     firstHeaderIndex,
     scrollRef,

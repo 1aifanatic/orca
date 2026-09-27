@@ -12,6 +12,7 @@ import { lineageRow } from '../rows/lineage-virtualization-test-fixtures'
 import type { RenderRow } from '../listing/render-row'
 import { revealElementInScrollContainer } from '../../worktree-sidebar-reveal'
 import { completeMountedSidebarReveal } from '../navigation/complete-mounted-reveal'
+import type { SidebarCardGeometryResolver } from '../listing/sidebar-card-geometry'
 
 vi.mock('@/store', () => ({
   useAppStore: (selector: (state: { renamingWorktreeId: null }) => unknown) =>
@@ -46,11 +47,15 @@ const rows: RenderRow[] = [
 function Probe({
   tick = 0,
   renderRows = rows,
-  newCardStyle = false
+  newCardStyle = false,
+  resolveCardShape,
+  layoutContext
 }: {
   tick?: number
   renderRows?: RenderRow[]
   newCardStyle?: boolean
+  resolveCardShape?: SidebarCardGeometryResolver
+  layoutContext?: string
 }) {
   const policy = useWorktreeSidebarScrollSuppression(scrollRef)
   const owner = useWorktreeListVirtualizer({
@@ -61,6 +66,8 @@ function Probe({
     scrollAnchorRef: anchorRef,
     suppression: policy,
     newCardStyle,
+    resolveCardShape,
+    layoutContext,
     draggingWorktreeId: null,
     props: {
       activeWorktreeId: activeId,
@@ -558,3 +565,87 @@ it.each([2458.5, -2458.5])(
     expect(current.selected.size).toBeLessThan(60)
   }
 )
+
+it('keeps reading position bounded when measured card shapes enter and leave cold estimates', async () => {
+  roundScrollWrites()
+  const known: SidebarCardGeometryResolver = () => ({
+    own: 116,
+    prefix: 121,
+    closing: 7,
+    fingerprint: 'known'
+  })
+  const unknown: SidebarCardGeometryResolver = () => null
+  await act(async () => root.render(<Probe resolveCardShape={known} />))
+  const readingPosition = () => current.retainedItems[1]!.start - element.scrollTop
+  const baseline = readingPosition()
+  for (let cycle = 0; cycle < 4; cycle++) {
+    height += 37.5
+    await act(async () => root.render(<Probe resolveCardShape={unknown} />))
+    await nativeDelivery()
+    expect(Math.abs(readingPosition() - baseline)).toBeLessThanOrEqual(0.5)
+    height -= 37.5
+    await act(async () => root.render(<Probe resolveCardShape={known} />))
+    await nativeDelivery()
+    expect(Math.abs(readingPosition() - baseline)).toBeLessThanOrEqual(0.5)
+  }
+})
+
+it.each(['width', 'style', 'context', 'input', 'navigation', 'structure'] as const)(
+  'discards fractional carry when a shape transition coincides with %s ownership',
+  async (kind) => {
+    roundScrollWrites()
+    const known: SidebarCardGeometryResolver = () => ({
+      own: 116,
+      prefix: 121,
+      closing: 7,
+      fingerprint: 'known'
+    })
+    const unknown: SidebarCardGeometryResolver = () => null
+    await act(async () => root.render(<Probe resolveCardShape={known} />))
+    height += 37.5
+    await nativeDelivery()
+    if (kind === 'width') {
+      width -= 10
+    }
+    if (kind === 'input') {
+      suppression.markDirectScrollInput()
+    }
+    if (kind === 'navigation') {
+      await act(async () => current.navigationVirtualizer.scrollToIndex(2, { align: 'start' }))
+    }
+    await act(async () =>
+      root.render(
+        <Probe
+          resolveCardShape={unknown}
+          newCardStyle={kind === 'style'}
+          layoutContext={kind === 'context' ? 'changed' : undefined}
+          renderRows={kind === 'structure' ? [...rows, lineageRow('e', 0)] : rows}
+        />
+      )
+    )
+    if (kind === 'input') {
+      await act(async () => new Promise((resolve) => setTimeout(resolve, 550)))
+    }
+    const before = element.scrollTop
+    writes.length = 0
+    height -= 37.5
+    await nativeDelivery()
+    expect(writes).toEqual([{ top: before - 37.5, extent: element.scrollHeight }])
+  }
+)
+
+it('does not compensate a partly visible card when its known shape becomes unknown', async () => {
+  element.scrollTop = offsetRef.current = 40
+  const known: SidebarCardGeometryResolver = () => ({
+    own: 116,
+    prefix: 121,
+    closing: 7,
+    fingerprint: 'known'
+  })
+  await act(async () => root.render(<Probe resolveCardShape={known} />))
+  writes.length = 0
+  height += 37.5
+  await act(async () => root.render(<Probe resolveCardShape={() => null} />))
+  expect(element.scrollTop).toBe(40)
+  expect(writes).toHaveLength(0)
+})

@@ -1,3 +1,4 @@
+import type { SidebarCardGeometryResolver, SidebarCardGeometryShape } from './sidebar-card-geometry'
 import { buildLineageVirtualTree, LINEAGE_SIBLING_GAP } from './lineage-virtual-tree'
 import { getRenderRowKey, type RenderRow } from './render-row'
 import type { WorktreeItemRow } from './renderable-rows'
@@ -13,12 +14,14 @@ export type SidebarGeometryNode = {
   close: number | null
   end: number
   gap: number
+  cardShape?: SidebarCardGeometryShape | null
 }
 export type SidebarGeometrySlot = {
   key: string
   node: number
   kind: 'row' | 'prefix' | 'closing'
   estimate: number
+  geometryContext?: string
 }
 export type SidebarGeometry = {
   nodes: SidebarGeometryNode[]
@@ -29,7 +32,10 @@ export type SidebarGeometry = {
 }
 
 // Semantic rows and numeric slots deliberately have separate indexes.
-export function buildSidebarGeometry(rows: readonly RenderRow[]): SidebarGeometry {
+export function buildSidebarGeometry(
+  rows: readonly RenderRow[],
+  resolveCardShape?: SidebarCardGeometryResolver
+): SidebarGeometry {
   const nodes: SidebarGeometryNode[] = []
   const roots: number[] = []
   const slots: SidebarGeometrySlot[] = []
@@ -83,20 +89,31 @@ export function buildSidebarGeometry(rows: readonly RenderRow[]): SidebarGeometr
     const node = nodes[index]!
     if (closing) {
       node.close = slots.length
-      slots.push({ key: `${node.key}:closing`, node: index, kind: 'closing', estimate: node.gap })
+      slots.push({
+        key: `${node.key}:closing`,
+        node: index,
+        kind: 'closing',
+        estimate: (node.cardShape?.closing ?? 0) + node.gap,
+        geometryContext: node.cardShape?.fingerprint ?? ''
+      })
       node.end = slots.length
       continue
     }
     node.slot = slots.length
     const expanded = node.children.length > 0
-    const estimate =
-      node.parent !== null || expanded
+    node.cardShape = node.row.type === 'item' ? resolveCardShape?.(node.row, expanded) : undefined
+    const estimate = node.cardShape
+      ? expanded
+        ? node.cardShape.prefix
+        : node.cardShape.own
+      : node.parent !== null || expanded
         ? 96
         : estimateRenderRowSize(rows, node.outerIndex, firstHeader, null)
     slots.push({
       key: `${node.key}:${expanded ? 'prefix' : 'row'}`,
       node: index,
       kind: expanded ? 'prefix' : 'row',
+      geometryContext: node.cardShape?.fingerprint ?? '',
       estimate: estimate + (expanded ? 0 : node.gap)
     })
     if (expanded) {

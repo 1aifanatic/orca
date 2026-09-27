@@ -5,6 +5,8 @@ import type { SidebarGeometry } from '../listing/sidebar-geometry-slots'
 export type SidebarGeometryCorrection = {
   target: number
   epoch: number
+  sourceOffset?: number
+  shapeAnchor?: boolean
   anchor?: VirtualizedScrollAnchor
   navigation?: {
     key: string

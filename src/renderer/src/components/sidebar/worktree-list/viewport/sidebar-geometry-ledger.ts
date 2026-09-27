@@ -20,11 +20,12 @@ function sidebarSlotLayoutContext(model: SidebarGeometry, slot: SidebarGeometryS
     node.gap,
     node.parent === null ? null : model.nodes[node.parent]!.key,
     'depth' in node.row ? node.row.depth : 0,
-    'groupDepth' in node.row ? node.row.groupDepth : 0
+    'groupDepth' in node.row ? node.row.groupDepth : 0,
+    slot.geometryContext ?? ''
   ])
 }
 
-export function sidebarGeometryLayoutMatches(
+export function sidebarGeometryTopologyMatches(
   previous: SidebarGeometry | null,
   next: SidebarGeometry
 ): boolean {
@@ -37,7 +38,6 @@ export function sidebarGeometryLayoutMatches(
       const node = next.nodes[slot.node]!
       return (
         slot.key === before.key &&
-        slot.estimate === before.estimate &&
         node.gap === beforeNode.gap &&
         (node.parent === null ? null : next.nodes[node.parent]!.key) ===
           (beforeNode.parent === null ? null : previous.nodes[beforeNode.parent]!.key) &&
@@ -45,6 +45,22 @@ export function sidebarGeometryLayoutMatches(
           ('depth' in beforeNode.row ? beforeNode.row.depth : 0) &&
         ('groupDepth' in node.row ? node.row.groupDepth : 0) ===
           ('groupDepth' in beforeNode.row ? beforeNode.row.groupDepth : 0)
+      )
+    })
+  )
+}
+
+export function sidebarGeometryLayoutMatches(
+  previous: SidebarGeometry | null,
+  next: SidebarGeometry
+): boolean {
+  return (
+    sidebarGeometryTopologyMatches(previous, next) &&
+    next.slots.every((slot, index) => {
+      const before = previous!.slots[index]!
+      return (
+        slot.estimate === before.estimate &&
+        (slot.geometryContext ?? '') === (before.geometryContext ?? '')
       )
     })
   )

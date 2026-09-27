@@ -1,13 +1,7 @@
 import { useLayoutEffect, useRef } from 'react'
 import type React from 'react'
 import type { Virtualizer } from '@tanstack/react-virtual'
-import type { VirtualizedScrollAnchor } from '@/hooks/useVirtualizedScrollAnchor'
 import type { SidebarGeometry } from '../listing/sidebar-geometry-slots'
-import {
-  reconcileSidebarLedger,
-  sidebarGeometryLayoutMatches,
-  type SidebarGeometryLedger
-} from './sidebar-geometry-ledger'
 import { synchronizeSidebarSizes } from './sidebar-size-synchronization'
 import {
   sidebarGeometryConverged,
@@ -21,15 +15,10 @@ export function useSidebarGeometryCommit(args: {
   scrollRef: React.RefObject<HTMLDivElement | null>
   insetRef: React.MutableRefObject<number>
   model: SidebarGeometry
-  ledger: SidebarGeometryLedger
-  scrollAnchorRef: React.MutableRefObject<VirtualizedScrollAnchor>
   scrollOffsetRef: React.MutableRefObject<number>
   correction: React.MutableRefObject<SidebarGeometryCorrection | null>
   rounding: React.MutableRefObject<SidebarScrollRounding | null>
   suppression: WorktreeSidebarScrollSuppression
-  newCardStyle: boolean
-  layoutContext?: string
-  changed: () => void
   selectedSlots: readonly number[]
   boundaries: readonly number[]
   virtualizer: Virtualizer<HTMLDivElement, HTMLDivElement>
@@ -42,19 +31,15 @@ export function useSidebarGeometryCommit(args: {
 }) {
   const synchronized = useRef(new Map<string, number>())
   const synchronizedBoundaries = useRef<readonly number[] | null>(null)
-  const previousModel = useRef<SidebarGeometry | null>(null)
   // Convergence can require another commit with unchanged boundaries.
   useLayoutEffect(() => {
     const {
       scrollRef,
       insetRef,
       model,
-      ledger,
-      scrollAnchorRef,
       correction,
       rounding,
       suppression,
-      changed,
       boundaries,
       virtualizer,
       renderConverged,
@@ -70,35 +55,6 @@ export function useSidebarGeometryCommit(args: {
       return
     }
     insetRef.current = Number.parseFloat(getComputedStyle(element).paddingTop) || 0
-    if (previousModel.current !== model) {
-      const layoutChanged = !sidebarGeometryLayoutMatches(previousModel.current, model)
-      if (layoutChanged) {
-        rounding.current = null
-      }
-      previousModel.current = model
-      reconcileSidebarLedger(
-        ledger,
-        model,
-        args.newCardStyle,
-        element.clientWidth,
-        args.layoutContext
-      )
-      const anchor = scrollAnchorRef.current
-      if (
-        layoutChanged &&
-        anchor &&
-        !correction.current?.navigation &&
-        !suppression.shouldSkipScrollAnchorRestore()
-      ) {
-        correction.current = {
-          target: 0,
-          anchor,
-          epoch: suppression.scrollOwnershipEpochRef.current
-        }
-      }
-      changed()
-      return
-    }
     if (synchronizedBoundaries.current !== boundaries) {
       synchronizedBoundaries.current = boundaries
       const resized = synchronizeSidebarSizes(model, boundaries, synchronized.current, virtualizer)
@@ -144,7 +100,7 @@ export function useSidebarGeometryCommit(args: {
     scrollOffsetRef.current = element.scrollTop
     const remainder = destination - element.scrollTop
     if (
-      !pending.anchor &&
+      (!pending.anchor || pending.shapeAnchor) &&
       !pending.navigation &&
       target === destination &&
       Math.abs(remainder) <= 0.5
