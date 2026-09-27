@@ -188,12 +188,16 @@ export class TerminalShellRecoveryBarrier {
       this.releaseDownstream(emission)
       return
     }
+    // end >= 1 keeps the held terminator inside this emission's raw span.
     const splittable =
-      !emission.transformed && emission.rawEndSeq - emission.rawStartSeq === emission.data.length
+      end >= 1 &&
+      !emission.transformed &&
+      emission.rawEndSeq - emission.rawStartSeq === emission.data.length
     if (!splittable) {
       // Why skip the episode: the raw-seq boundary inside a transformed emission
-      // cannot be reconstructed, so release everything and keep the scanner
-      // honest about the remainder — incumbent behavior for this rare corner.
+      // (or a terminator outside this one) cannot be reconstructed, so release
+      // everything and keep the scanner honest about the remainder — incumbent
+      // behavior for this rare corner.
       try {
         this.releaseDownstream(emission)
       } catch {
@@ -203,7 +207,7 @@ export class TerminalShellRecoveryBarrier {
       this.consumeForStateOnly(emission.data.slice(end))
       return
     }
-    // The trigger's last char is its terminator and always lies in this emission.
+    // The trigger's last char is its terminator.
     const terminatorSeq = emission.rawStartSeq + end - 1
     const splitSeq = terminatorSeq + 1
     if (end > 1) {
@@ -255,10 +259,10 @@ export class TerminalShellRecoveryBarrier {
     this.pending = true
     this.pendingEpisode += 1
     this.pendingGeneration = this.scanner.generation
-    this.enqueue(terminator)
     const episode = this.pendingEpisode
     this.bailTimer = setTimeout(() => this.finishPending(episode, false), this.maxPendingMs)
     this.bailTimer.unref?.()
+    this.enqueue(terminator)
     // Why the guard: the callback is injected; a synchronous throw must not
     // escape after pending flipped true and strand the episode until the bail.
     let proof: Promise<boolean>

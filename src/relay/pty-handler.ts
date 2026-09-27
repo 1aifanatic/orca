@@ -974,7 +974,7 @@ export class PtyHandler {
       isAlive: () => !managed.disposed
     })
     managed.recoveryBarrier = recoveryBarrier
-    managed.startupIngress ??= new PtyStartupIngress({
+    managed.startupIngress = new PtyStartupIngress({
       ...(managed.startupIngressIntent ? { intent: managed.startupIngressIntent } : {}),
       ownerBackend: managed.ownerBackend,
       write: (data) => managed.pty.write(data),
