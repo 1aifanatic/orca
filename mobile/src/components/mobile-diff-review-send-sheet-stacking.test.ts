@@ -7,7 +7,8 @@ import type { ReviewScreenState } from '../session/mobile-diff-review-screen-mod
 
 // iOS cannot present a review sheet while another is still on screen (even mid-close): the second
 // presentation silently fails and every later tap on the screen is swallowed. These drive the real
-// controller and drawers; the drawer's native close is played by calling its `onAfterClose`.
+// controller and keyed drawer; only the native drawer is mocked, and its finished hide animation is
+// played by calling its `onHidden`.
 
 vi.mock('react-native', () => ({
   ActivityIndicator: 'ActivityIndicator',
@@ -43,7 +44,7 @@ vi.mock('../platform/keyboard-occlusion', () => ({ useKeyboardAvoidingPadding: (
 vi.mock('./mobile-diff-review-screen-styles', () => ({
   mobileDiffReviewStyles: new Proxy({}, { get: () => ({}) })
 }))
-vi.mock('./BottomDrawer', () => ({ BottomDrawer: 'BottomDrawer' }))
+vi.mock('./mounted-bottom-drawer', () => ({ MountedBottomDrawer: 'MountedBottomDrawer' }))
 const loadSnapshot = vi.hoisted(() => vi.fn())
 vi.mock('../session/mobile-diff-review-loaders', () => ({
   loadMobileDiffReviewSnapshot: loadSnapshot,
@@ -151,16 +152,23 @@ function textOf(node: ReactTestInstance): string[] {
     .flatMap((text) => text.children.filter((child) => typeof child === 'string'))
 }
 
-/** A sheet by its title, the first text it renders. */
+/** Every mounted native drawer: each is its own Modal, so there must never be two. */
+function mountedDrawers(): ReactTestInstance[] {
+  return renderer!.root.findAll((node) => String(node.type) === 'MountedBottomDrawer')
+}
+
+/** The mounted sheet, which must carry this title (the first text it renders). */
 function drawer(title: string): ReactTestInstance {
-  return renderer!.root.find(
-    (node) => String(node.type) === 'BottomDrawer' && textOf(node)[0] === title
-  )
+  const [mounted, ...others] = mountedDrawers()
+  expect(others).toEqual([])
+  expect(mounted && textOf(mounted)[0]).toBe(title)
+  return mounted!
 }
 
 function shownSheets(): string[] {
-  const titles = ['Review Actions', 'Send Notes', 'Discard File', 'Add Note', 'Review Complete']
-  return titles.filter((title) => drawer(title).props.visible === true)
+  const mounted = mountedDrawers()
+  expect(mounted.length).toBeLessThanOrEqual(1)
+  return mounted.filter((node) => node.props.visible === true).map((node) => textOf(node)[0]!)
 }
 
 function press(within: ReactTestInstance, label: string): void {
@@ -172,9 +180,11 @@ function press(within: ReactTestInstance, label: string): void {
   act(() => target.props.onPress())
 }
 
-/** The drawer's native close animation finished and it unmounted. */
+/** The drawer's native hide animation finished. */
 function finishClosing(title: string): void {
-  act(() => drawer(title).props.onAfterClose())
+  const closing = drawer(title)
+  expect(closing.props.visible).toBe(false)
+  act(() => closing.props.onHidden())
 }
 
 /** Marks the only file reviewed; the save stays in flight until `answer('worktree.set')`. */
@@ -202,13 +212,6 @@ afterEach(() => {
 })
 
 describe('review screen sheets never stack', () => {
-  it('every review sheet reports when it has finished closing', async () => {
-    await mountScreen()
-    for (const node of renderer!.root.findAll((n) => String(n.type) === 'BottomDrawer')) {
-      expect(node.props.onAfterClose).toBeTypeOf('function')
-    }
-  })
-
   it('Send Unsent Notes shows Send Notes only after Review Actions has closed', async () => {
     await mountScreen()
     act(() => controller.openSheet({ kind: 'actions' }))
@@ -263,46 +266,21 @@ describe('review screen sheets never stack', () => {
     expect(shownSheets()).toEqual(['Review Complete'])
   })
 
-  // A drawer only mounts once a commit shows it, so a sheet displaced or closed in the same batch
-  // it opened in never sends onAfterClose; nothing may wait for one.
-  it('a sheet displaced before it was ever shown does not hold the next one', async () => {
+  it('a sheet replaced before it was ever shown is never mounted', async () => {
     await mountScreen()
     act(() => {
       controller.openSheet({ kind: 'completion' })
       controller.openSheet({ kind: 'actions' })
     })
     expect(shownSheets()).toEqual(['Review Actions'])
-  })
 
-  it('a sheet closed before it was ever shown does not hold later sheets', async () => {
-    await mountScreen()
     act(() => {
       controller.openSheet({ kind: 'completion' })
       controller.closeSheet('completion')
     })
-    act(() => controller.openSheet({ kind: 'actions' }))
-    expect(shownSheets()).toEqual(['Review Actions'])
-  })
-
-  it('a sheet that was shown still waits for its drawer to finish closing', async () => {
-    await mountScreen()
-    act(() => controller.openSheet({ kind: 'completion' }))
-    act(() => controller.openSheet({ kind: 'actions' }))
     expect(shownSheets()).toEqual([])
-    finishClosing('Review Complete')
-    expect(shownSheets()).toEqual(['Review Actions'])
-
-    // Review Complete has unmounted, so a later displaced-before-shown copy has no drawer either.
-    act(() => drawer('Review Actions').props.onClose())
     finishClosing('Review Actions')
-    act(() => controller.openSheet({ kind: 'completion' }))
-    act(() => drawer('Review Complete').props.onClose())
-    finishClosing('Review Complete')
-    act(() => {
-      controller.openSheet({ kind: 'completion' })
-      controller.openSheet({ kind: 'actions' })
-    })
-    expect(shownSheets()).toEqual(['Review Actions'])
+    expect(mountedDrawers()).toEqual([])
   })
 
   it('a send list that lands after Send Notes was dismissed does not bring it back', async () => {
@@ -311,10 +289,21 @@ describe('review screen sheets never stack', () => {
     expect(shownSheets()).toEqual(['Send Notes'])
 
     act(() => drawer('Send Notes').props.onClose())
-    finishClosing('Send Notes')
-    act(() => controller.openSheet({ kind: 'actions' }))
-
     await answer('session.tabs.list', TABS_REPLY)
+    finishClosing('Send Notes')
+    expect(mountedDrawers()).toEqual([])
+
+    act(() => controller.openSheet({ kind: 'actions' }))
     expect(shownSheets()).toEqual(['Review Actions'])
+  })
+
+  it('Discard keeps its file through the close and discards the file it showed', async () => {
+    await mountScreen()
+    const target = controller.currentItem!
+    act(() => controller.openSheet({ kind: 'discard', target }))
+    press(drawer('Discard File'), 'Discard')
+    expect(shownSheets()).toEqual([])
+    expect(textOf(drawer('Discard File')).join(' ')).toContain(target.filePath)
+    expect(replies.has('git.discard')).toBe(true)
   })
 })

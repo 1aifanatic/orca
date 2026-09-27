@@ -82,11 +82,8 @@ export function diffReviewActionMountAdapters(
       const sheetIntents = reviewSheets.reviewSheetIntents((action) => {
         sheets = reviewSheets.reduceReviewSheets(sheets, action)
       })
-      // The Send Notes load only while it is on screen: no drawer runs here to finish a close.
       const sendSheet = (): SendSheetState | null =>
-        reviewSheets.shownReviewSheet(sheets) === 'send'
-          ? reviewSheets.reviewSendSheet(sheets)
-          : null
+        sheets.requested?.kind === 'send' ? sheets.requested.load : null
       let interactions: ReturnType<typeof useInteractions>
       const hook = hookMount(() => {
         interactions = useInteractions(

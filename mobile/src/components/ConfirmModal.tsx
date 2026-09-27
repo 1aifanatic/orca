@@ -2,8 +2,7 @@ import { View, Text, Pressable, StyleSheet } from 'react-native'
 import { colors, spacing, radii, typography } from '../theme/mobile-theme'
 import { BottomDrawer } from './BottomDrawer'
 
-type Props = {
-  visible: boolean
+type ContentProps = {
   title: string
   message?: string
   confirmLabel?: string
@@ -11,22 +10,29 @@ type Props = {
   destructive?: boolean
   onConfirm: () => void
   onCancel: () => void
-  onAfterClose?: () => void
 }
 
-export function ConfirmModal({
-  visible,
+type Props = ContentProps & { visible: boolean }
+
+export function ConfirmModal({ visible, ...content }: Props) {
+  return (
+    <BottomDrawer visible={visible} onClose={content.onCancel}>
+      <ConfirmContent {...content} />
+    </BottomDrawer>
+  )
+}
+
+export function ConfirmContent({
   title,
   message,
   confirmLabel = 'Confirm',
   cancelLabel = 'Cancel',
   destructive = false,
   onConfirm,
-  onCancel,
-  onAfterClose
-}: Props) {
+  onCancel
+}: ContentProps) {
   return (
-    <BottomDrawer visible={visible} onClose={onCancel} onAfterClose={onAfterClose}>
+    <>
       <View style={styles.content}>
         <Text style={styles.title}>{title}</Text>
         {message ? <Text style={styles.message}>{message}</Text> : null}
@@ -54,7 +60,7 @@ export function ConfirmModal({
           </Text>
         </Pressable>
       </View>
-    </BottomDrawer>
+    </>
   )
 }
 

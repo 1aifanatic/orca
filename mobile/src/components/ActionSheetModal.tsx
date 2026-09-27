@@ -23,8 +23,6 @@ type Props = {
   message?: string
   actions: ActionSheetAction[]
   onClose: () => void
-  /** Runs once the sheet has fully unmounted, after any `closeBeforePress` action. */
-  onAfterClose?: () => void
 }
 
 function iconForAction(label: string, destructive?: boolean, icon?: LucideIcon): LucideIcon {
@@ -109,14 +107,7 @@ export function ActionSheetContent({ title, message, actions, onClose }: Content
   )
 }
 
-export function ActionSheetModal({
-  visible,
-  title,
-  message,
-  actions,
-  onClose,
-  onAfterClose
-}: Props) {
+export function ActionSheetModal({ visible, title, message, actions, onClose }: Props) {
   const pendingActionRef = useRef<(() => void) | null>(null)
   const sequencedActions = actions.map((action) =>
     action.closeBeforePress
@@ -139,7 +130,6 @@ export function ActionSheetModal({
         const pendingAction = pendingActionRef.current
         pendingActionRef.current = null
         pendingAction?.()
-        onAfterClose?.()
       }}
       dragContentToDismiss
     >
