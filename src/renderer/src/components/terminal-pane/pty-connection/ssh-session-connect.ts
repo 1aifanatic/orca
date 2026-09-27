@@ -2,7 +2,7 @@ import { useAppStore } from '@/store'
 import type { ConnectPanePtySession } from './connect-pane-pty-session'
 
 // Why: when multiple panes/tabs need the same deferred SSH connection,
-// the first one calls ssh.connect() and subsequent ones must wait for it
+// the first one calls ssh.ensureConnected() and subsequent ones must wait for it
 // rather than returning early (which would leave them disconnected). This
 // helper either connects or waits for an in-flight connect to finish.
 export type SshConnectResult = { connected: true } | { connected: false; error: string }
@@ -95,7 +95,7 @@ export async function waitForSshConnection(connectionId: string): Promise<SshCon
 
   const promise: Promise<SshConnectResult> = (async (): Promise<SshConnectResult> => {
     try {
-      await window.api.ssh.connect({ targetId: connectionId })
+      await window.api.ssh.ensureConnected({ targetId: connectionId })
       return { connected: true }
     } catch (err) {
       console.warn(`Deferred SSH reconnect failed for ${connectionId}:`, err)
@@ -110,4 +110,51 @@ export async function waitForSshConnection(connectionId: string): Promise<SshCon
 
   sshConnectPromises.set(connectionId, promise)
   return promise
+}
+
+// Why ask main when the store is silent: the refusal can reach this pane before the push that
+// publishes the Disconnect, and the host's own answer is the fact either way.
+async function isSshHostHeldDownByUser(connectionId: string): Promise<boolean> {
+  if (useAppStore.getState().sshConnectionStates.get(connectionId)?.disconnectedBy === 'user') {
+    return true
+  }
+  try {
+    const published = await window.api.ssh.getState({ targetId: connectionId })
+    return published?.disconnectedBy === 'user'
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Connects the pane's host, unless the user's own Disconnect holds it down: then the pane
+ * reports nothing and dials nothing, and waits for the user to connect it again. Decided from
+ * the published state, not the error, because a connect already in flight when the user
+ * disconnects fails as a cancellation.
+ */
+export async function connectPaneSshHost(
+  session: ConnectPanePtySession
+): Promise<SshConnectResult | 'cancelled'> {
+  const result = await waitForSshConnection(session.connectionId)
+  if (result.connected || session.disposed) {
+    return result
+  }
+  if (!(await isSshHostHeldDownByUser(session.connectionId))) {
+    return result
+  }
+  while (!session.disposed) {
+    const outcome = await waitForUserInitiatedSshConnect(session)
+    if (outcome === 'connected') {
+      return { connected: true }
+    }
+    if (outcome === 'failed') {
+      const published = useAppStore.getState().sshConnectionStates.get(session.connectionId)
+      return { connected: false, error: published?.error ?? published?.status ?? 'unknown error' }
+    }
+    // Why loop: a Connect the user abandoned by disconnecting again leaves the pane waiting.
+    if (!(await isSshHostHeldDownByUser(session.connectionId))) {
+      return 'cancelled'
+    }
+  }
+  return 'cancelled'
 }

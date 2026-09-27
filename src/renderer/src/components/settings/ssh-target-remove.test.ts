@@ -5,7 +5,7 @@ import { removeSshTargetWithBestEffortCleanup, type SshTargetRemoveApi } from '.
 function createApi(overrides: Partial<SshTargetRemoveApi> = {}): SshTargetRemoveApi {
   return {
     terminateSessions: vi.fn().mockResolvedValue(undefined),
-    connect: vi.fn().mockResolvedValue(undefined),
+    connectForSessionCleanup: vi.fn().mockResolvedValue(undefined),
     removeTarget: vi.fn().mockResolvedValue(undefined),
     ...overrides
   }
@@ -25,7 +25,7 @@ describe('removeSshTargetWithBestEffortCleanup', () => {
     const api = createApi()
     await removeSshTargetWithBestEffortCleanup(api, 'ssh-1')
     expect(api.terminateSessions).toHaveBeenCalledWith({ targetId: 'ssh-1' })
-    expect(api.connect).not.toHaveBeenCalled()
+    expect(api.connectForSessionCleanup).not.toHaveBeenCalled()
     expect(api.removeTarget).toHaveBeenCalledWith({ id: 'ssh-1' })
   })
 
@@ -39,7 +39,7 @@ describe('removeSshTargetWithBestEffortCleanup', () => {
     await removeSshTargetWithBestEffortCleanup(api, 'ssh-1')
 
     expect(terminateSessions).toHaveBeenCalledTimes(2)
-    expect(api.connect).toHaveBeenCalledWith({ targetId: 'ssh-1' })
+    expect(api.connectForSessionCleanup).toHaveBeenCalledWith({ targetId: 'ssh-1' })
     expect(api.removeTarget).toHaveBeenCalledWith({ id: 'ssh-1' })
   })
 
@@ -49,19 +49,19 @@ describe('removeSshTargetWithBestEffortCleanup', () => {
     const terminateSessions = vi
       .fn()
       .mockRejectedValueOnce(new Error(`${SSH_TERMINATE_RECONNECT_REQUIRED}: relay detached`))
-    const connect = vi
+    const connectForSessionCleanup = vi
       .fn()
       .mockRejectedValue(
         new Error(
-          "Error invoking remote method 'ssh:connect': Timed out while waiting for handshake"
+          "Error invoking remote method 'ssh:connectForSessionCleanup': Timed out while waiting for handshake"
         )
       )
-    const api = createApi({ terminateSessions, connect })
+    const api = createApi({ terminateSessions, connectForSessionCleanup })
 
     await removeSshTargetWithBestEffortCleanup(api, 'ssh-1')
 
     expect(terminateSessions).toHaveBeenCalledTimes(1)
-    expect(connect).toHaveBeenCalledTimes(1)
+    expect(connectForSessionCleanup).toHaveBeenCalledTimes(1)
     expect(api.removeTarget).toHaveBeenCalledWith({ id: 'ssh-1' })
   })
 
@@ -75,7 +75,7 @@ describe('removeSshTargetWithBestEffortCleanup', () => {
     await removeSshTargetWithBestEffortCleanup(api, 'ssh-1')
 
     expect(terminateSessions).toHaveBeenCalledTimes(2)
-    expect(api.connect).toHaveBeenCalledWith({ targetId: 'ssh-1' })
+    expect(api.connectForSessionCleanup).toHaveBeenCalledWith({ targetId: 'ssh-1' })
     expect(api.removeTarget).toHaveBeenCalledWith({ id: 'ssh-1' })
   })
 
@@ -85,7 +85,7 @@ describe('removeSshTargetWithBestEffortCleanup', () => {
 
     await removeSshTargetWithBestEffortCleanup(api, 'ssh-1')
 
-    expect(api.connect).not.toHaveBeenCalled()
+    expect(api.connectForSessionCleanup).not.toHaveBeenCalled()
     expect(api.removeTarget).toHaveBeenCalledWith({ id: 'ssh-1' })
   })
 

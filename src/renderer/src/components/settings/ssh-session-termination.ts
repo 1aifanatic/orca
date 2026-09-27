@@ -14,7 +14,8 @@ export async function terminateSshSessionsWithReconnect(
     }
     // Why: disconnect is now non-destructive, so preserved remote PTYs may
     // require a fresh relay attachment before they can be explicitly killed.
-    await window.api.ssh.connect({ targetId })
+    // The cleanup connect leaves a user's Disconnect in place; terminate closes it again.
+    await window.api.ssh.connectForSessionCleanup({ targetId })
     return await window.api.ssh.terminateSessions({ targetId })
   }
 }
