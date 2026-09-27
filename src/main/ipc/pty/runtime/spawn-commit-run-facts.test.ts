@@ -86,11 +86,14 @@ describe('runtime spawn commit: run facts', () => {
     })
   })
 
-  it('lets the new process supersede a landed stop that no exit pinned', async () => {
+  it.each([
+    { spawn: 'new process', result: {} },
+    { spawn: 'adoption', result: { agentSessionEnsure: ADOPTED } }
+  ])('lets a committed $spawn supersede a landed stop that no exit pinned', async ({ result }) => {
     const stops = new TerminalIntentionalStops()
     stops.mark(PTY_ID, 'reversible', null)(true)
 
-    await commit({}, new TerminalRunFactsRegister(), stops)
+    await commit(result, new TerminalRunFactsRegister(), stops)
 
     expect(stops.claimExit(PTY_ID, INCARNATION_ID)).toEqual([])
   })
