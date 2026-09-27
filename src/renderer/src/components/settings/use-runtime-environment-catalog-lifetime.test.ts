@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { act, cleanup, renderHook } from '@testing-library/react'
+import { StrictMode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PublicKnownRuntimeEnvironment } from '../../../../shared/runtime-environments'
 import type { RuntimeRpcResponse } from '../../../../shared/runtime-rpc-envelope'
@@ -58,6 +59,12 @@ function verifiedStatus(): RuntimeStatus {
     throw new Error('Expected a successful runtime status fixture')
   }
   return response.result
+}
+
+async function flush(): Promise<void> {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0))
+  })
 }
 
 beforeEach(() => {
@@ -153,7 +160,8 @@ describe('runtime environment catalog pane lifetime', () => {
       selector: 'other',
       timeoutMs: 10_000
     })
-    expect(store.readRuntimeHostStatusSnapshots).toHaveBeenCalledTimes(2)
+    // Shared status is synchronized; coalescing those reads is not a regression.
+    expect(store.readRuntimeHostStatusSnapshots).toHaveBeenCalled()
     expect(result.current.environments).toEqual(environments.slice(0, 2))
     expect(result.current.detailsByEnvironmentId.verified.status).toBe('ready')
     expect(result.current.detailsByEnvironmentId.other.status).toBe('ready')
@@ -173,6 +181,54 @@ describe('runtime environment catalog pane lifetime', () => {
     await act(async () => status.resolve(createCompatibleRuntimeStatusResponse()))
 
     expect(store.readRuntimeHostStatusSnapshots).toHaveBeenCalledOnce()
+  })
+
+  it("probes again on reopen instead of inheriting the closed pane's suppression", async () => {
+    const api = installBridge()
+    const firstList = Promise.withResolvers<PublicKnownRuntimeEnvironment[]>()
+    const environments = [environment('host-a'), environment('host-b')]
+    api.list.mockReturnValueOnce(firstList.promise).mockResolvedValue(environments)
+    const closed = renderHook(() => useRuntimeEnvironmentCatalog())
+
+    closed.unmount()
+    await act(async () => firstList.resolve(environments))
+
+    expect(api.getStatus).not.toHaveBeenCalled()
+    // A probe that never ran is not evidence a host is unreachable.
+    expect(Object.values(closed.result.current.detailsByEnvironmentId)).not.toContainEqual(
+      expect.objectContaining({ status: 'error' })
+    )
+
+    const status = Promise.withResolvers<RuntimeRpcResponse<RuntimeStatus>>()
+    api.getStatus.mockReturnValue(status.promise)
+    const reopened = renderHook(() => useRuntimeEnvironmentCatalog())
+    await flush()
+
+    expect(api.getStatus).toHaveBeenCalledTimes(2)
+    expect(
+      Object.values(reopened.result.current.detailsByEnvironmentId).map((details) => details.status)
+    ).toEqual(['loading', 'loading'])
+
+    await act(async () => status.resolve(createCompatibleRuntimeStatusResponse()))
+    await flush()
+
+    expect(reopened.result.current.environments).toEqual(environments)
+    expect(reopened.result.current.detailsByEnvironmentId['host-a'].status).toBe('ready')
+    expect(reopened.result.current.detailsByEnvironmentId['host-b'].status).toBe('ready')
+    expect(reopened.result.current.isLoading).toBe(false)
+  })
+
+  it('still finishes the initial load under StrictMode double-invoked effects', async () => {
+    const api = installBridge()
+    api.list.mockResolvedValue([environment('host-a')])
+
+    const { result } = renderHook(() => useRuntimeEnvironmentCatalog(), { wrapper: StrictMode })
+    await flush()
+
+    // React's simulated unmount/remount reuses the mounted ref; suppression must not stick.
+    expect(api.getStatus).toHaveBeenCalled()
+    expect(result.current.detailsByEnvironmentId['host-a'].status).toBe('ready')
+    expect(result.current.isLoading).toBe(false)
   })
 
   it('does not report a late catalog error after close', async () => {
