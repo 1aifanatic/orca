@@ -13,6 +13,8 @@ import type {
   WorktreeStartupFollowup
 } from './runtime-worktree-agent-startup'
 
+const FOLLOWUP_POLL_ATTEMPTS = 30
+const FOLLOWUP_POLL_INTERVAL_MS = 150
 const BRACKETED_PASTE_BEGIN = '\x1b[200~'
 const BRACKETED_PASTE_END = '\x1b[201~'
 const BRACKETED_PASTE_QUIET_MS = 1500
@@ -36,8 +38,9 @@ export type WorktreeStartupReadinessHost = Pick<
 /**
  * Each startup delivery has one decision point: when its base mechanism fires, the launch-readiness
  * wait decides instead only if the agent declares its composer evidence and its command owns the
- * PTY (OSC 133;C seen). That wait can prove nothing else, so undeclared agents and shells that mark
- * no commands (fish, zsh on SSH hosts, bash < 5.1 startup commands) keep the base delivery exactly.
+ * PTY (OSC 133;C). A shell that writes OSC 133 marks gets until the end of the base budget for that
+ * mark, then the base delivery. Undeclared agents and shells that write no OSC 133 marks at all
+ * keep the base delivery exactly.
  */
 function watchLaunchOwnership(
   host: WorktreeStartupReadinessHost,
@@ -53,8 +56,20 @@ function watchLaunchOwnership(
     : null
 }
 
-function launchWaitDecides(ownership: AgentComposerReadyWatch | null): boolean {
-  return ownership !== null && ownership.signal() !== 'unowned'
+/** `deadlineAt`: the end of the base mechanism's own budget. */
+async function launchWaitDecides(
+  ownership: AgentComposerReadyWatch | null,
+  deadlineAt: number
+): Promise<boolean> {
+  if (ownership === null || ownership.signal() !== 'unowned') {
+    return ownership !== null
+  }
+  if (!ownership.shellMarksCommands()) {
+    return false
+  }
+  // Why wait: a shell that marked its prompt marks the command start too, and daemon output can reach
+  // Orca after the OS already reports the agent in the foreground.
+  return ownership.waitForOwnership(deadlineAt - Date.now())
 }
 
 export function pasteWorktreeStartupDraftWhenReady(
@@ -70,7 +85,9 @@ export function pasteWorktreeStartupDraftWhenReady(
         console.warn('[worktree-create] agent did not become ready for draft paste')
         return
       }
-      if (launchWaitDecides(ownership)) {
+      if (
+        await launchWaitDecides(ownership, startedAt + resolveDraftPasteReadyTimeoutMs(draft.agent))
+      ) {
         const wait = await host.waitForTerminal(handle, {
           condition: 'tui-idle',
           // Why the draft's own budget: unsent text pasted long after start can land mid-typing.
@@ -97,6 +114,7 @@ export function sendWorktreeStartupFollowupWhenReady(
   handle: string,
   followup: WorktreeStartupFollowup
 ): void {
+  const startedAt = Date.now()
   const ownership = watchLaunchOwnership(host, handle, followup.agent)
   void waitForWorktreeStartupFollowup(host, handle, followup.expectedProcess)
     .then(async (ptyId) => {
@@ -104,7 +122,8 @@ export function sendWorktreeStartupFollowupWhenReady(
         console.warn('[worktree-create] agent did not become ready for follow-up prompt')
         return
       }
-      if (!launchWaitDecides(ownership)) {
+      const deadlineAt = startedAt + FOLLOWUP_POLL_ATTEMPTS * FOLLOWUP_POLL_INTERVAL_MS
+      if (!(await launchWaitDecides(ownership, deadlineAt))) {
         host.write(ptyId, `${followup.prompt}\r`)
         return
       }
@@ -135,9 +154,9 @@ export async function waitForWorktreeStartupFollowup(
   if (!ptyId) {
     return null
   }
-  for (let attempt = 0; attempt < 30; attempt += 1) {
+  for (let attempt = 0; attempt < FOLLOWUP_POLL_ATTEMPTS; attempt += 1) {
     if (attempt > 0) {
-      await new Promise((resolve) => setTimeout(resolve, 150))
+      await new Promise((resolve) => setTimeout(resolve, FOLLOWUP_POLL_INTERVAL_MS))
     }
     try {
       const foregroundProcess = await host.getForegroundProcess(ptyId)

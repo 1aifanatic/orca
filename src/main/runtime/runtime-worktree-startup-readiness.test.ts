@@ -7,6 +7,7 @@ import {
 } from './runtime-worktree-startup-readiness'
 
 const COMMAND_START = '\x1b]133;C\x07'
+const PROMPT_START = '\x1b]133;A\x07'
 const BRACKETED_PASTE_ON = '\x1b[?2004h'
 
 function host(waitSatisfied = true) {
@@ -88,6 +89,21 @@ describe('worktree-create startup draft', () => {
     }
   )
 
+  it("pastes as before at the draft budget when a marking shell never marks the agent's start", async () => {
+    const h = host()
+    pasteWorktreeStartupDraftWhenReady(h.readinessHost, 'term_1', {
+      agent: 'goose',
+      content: 'draft'
+    })
+    h.emit(`${PROMPT_START}$ ${BRACKETED_PASTE_ON}`)
+    await vi.advanceTimersByTimeAsync(7_999)
+    expect(h.write).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+
+    expect(h.write).toHaveBeenCalledWith('pty-1', '\x1b[200~draft\x1b[201~')
+    expect(h.waitForTerminal).not.toHaveBeenCalled()
+  })
+
   it('drops the draft when the launch-readiness wait does not settle ready', async () => {
     const h = host(false)
     pasteWorktreeStartupDraftWhenReady(h.readinessHost, 'term_1', {
@@ -141,5 +157,44 @@ describe('worktree-create startup follow-up', () => {
     })
     expect(h.sendTerminalAgentPrompt).toHaveBeenCalledWith('term_1', 'fix it', expect.anything())
     expect(h.write).not.toHaveBeenCalled()
+  })
+
+  it("hands a marking shell's agent to the deliverer once its late command-start mark arrives", async () => {
+    const h = host()
+    sendWorktreeStartupFollowupWhenReady(h.readinessHost, 'term_1', {
+      agent: 'goose',
+      expectedProcess: 'goose',
+      prompt: 'line one\nline two'
+    })
+    h.emit(`${PROMPT_START}$ `)
+    await vi.advanceTimersByTimeAsync(400)
+    expect(h.write).not.toHaveBeenCalled()
+
+    h.emit(`${COMMAND_START}goose banner`)
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(h.sendTerminalAgentPrompt).toHaveBeenCalledWith(
+      'term_1',
+      'line one\nline two',
+      expect.anything()
+    )
+    expect(h.write).not.toHaveBeenCalled()
+  })
+
+  it("types as before at the poll budget when a marking shell never marks the agent's start", async () => {
+    const h = host()
+    sendWorktreeStartupFollowupWhenReady(h.readinessHost, 'term_1', {
+      agent: 'goose',
+      expectedProcess: 'goose',
+      prompt: 'fix it'
+    })
+    h.emit(`${PROMPT_START}$ `)
+    await vi.advanceTimersByTimeAsync(4_499)
+    expect(h.write).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+
+    expect(h.write).toHaveBeenCalledWith('pty-1', 'fix it\r')
+    expect(h.sendTerminalAgentPrompt).not.toHaveBeenCalled()
+    expect(h.listeners.size).toBe(0)
   })
 })

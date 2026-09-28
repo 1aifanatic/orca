@@ -11,6 +11,8 @@ import { TEST_REPO_ID, makeWorktreeMeta, store } from '../orca-runtime-test-fixt
 // Startup draft and follow-up for goose, which declares `composer-quiet` launch readiness: with the
 // shell's command-start mark the launch-readiness wait decides; without it, the base delivery does.
 const COMMAND_START = '\x1b]133;C\x07'
+const PROMPT_START = '\x1b]133;A\x07'
+const TWO_LINE_PROMPT = 'QA follow-up line one\nQA follow-up line two'
 const BRACKETED_PASTE_ON = '\x1b[?2004h'
 
 async function createGooseWorktree(
@@ -66,9 +68,13 @@ async function createGooseWorktree(
   const paint = (output: string): void => {
     runtime.onPtyData(ptyId, output, Date.now())
   }
+  // The OS reports the agent in the foreground before its command-start mark reaches Orca.
+  const execGooseAheadOfItsOutput = (): void => {
+    foreground = 'goose'
+  }
   const wrote = (text: string) =>
     write.mock.calls.filter(([id, data]) => id === ptyId && String(data).includes(text))
-  return { startGoose, paint, write, wrote, ptyId }
+  return { startGoose, paint, execGooseAheadOfItsOutput, write, wrote, ptyId }
 }
 
 describe('OrcaRuntimeService worktree startup delivery for a declared agent', () => {
@@ -100,6 +106,22 @@ describe('OrcaRuntimeService worktree startup delivery for a declared agent', ()
     expect(pane.wrote('draft')).toEqual([[pane.ptyId, '\x1b[200~draft text\x1b[201~']])
   })
 
+  it("waits past the shell's own quiet prompt for a marking shell's late command-start mark", async () => {
+    const pane = await createGooseWorktree('runtime-goose-draft-late-mark', {
+      startupDraft: 'draft text'
+    })
+    // The shell arms bracketed paste for its own prompt, so the base 1.5 s quiet window fires first.
+    pane.paint(`${PROMPT_START}~/repo % ${BRACKETED_PASTE_ON}`)
+    pane.execGooseAheadOfItsOutput()
+    await vi.advanceTimersByTimeAsync(2_000)
+    expect(pane.wrote('draft')).toEqual([])
+
+    pane.paint(`${COMMAND_START}${BRACKETED_PASTE_ON}`)
+    await vi.advanceTimersByTimeAsync(6_000)
+
+    expect(pane.wrote('draft')).toEqual([[pane.ptyId, '\x1b[200~draft text\x1b[201~']])
+  })
+
   it('pastes a startup draft after the base 1.5 s quiet window when the pane marks no commands', async () => {
     const pane = await createGooseWorktree('runtime-goose-draft-unmarked', {
       startupDraft: 'draft text'
@@ -125,6 +147,38 @@ describe('OrcaRuntimeService worktree startup delivery for a declared agent', ()
     await vi.advanceTimersByTimeAsync(6_000)
     expect(pane.wrote('\x1b[200~fix it\x1b[201~')).toHaveLength(1)
     expect(pane.wrote('fix it\r')).toEqual([])
+  })
+
+  it("waits for a marking shell's late command-start mark, then pastes the whole follow-up", async () => {
+    const pane = await createGooseWorktree('runtime-goose-followup-late-mark', {
+      startupPrompt: TWO_LINE_PROMPT
+    })
+    pane.paint(`${PROMPT_START}~/repo % `)
+    pane.execGooseAheadOfItsOutput()
+    await vi.advanceTimersByTimeAsync(300)
+    expect(pane.wrote('line one')).toEqual([])
+
+    pane.paint(`${COMMAND_START}goose banner`)
+    await vi.advanceTimersByTimeAsync(1_000)
+    pane.paint(BRACKETED_PASTE_ON)
+    await vi.advanceTimersByTimeAsync(6_000)
+
+    expect(pane.wrote(`\x1b[200~${TWO_LINE_PROMPT}\x1b[201~`)).toHaveLength(1)
+    expect(pane.wrote(`${TWO_LINE_PROMPT}\r`)).toEqual([])
+  })
+
+  it('types a startup follow-up at the end of its budget when a marking shell never marks the command', async () => {
+    const pane = await createGooseWorktree('runtime-goose-followup-mark-never', {
+      startupPrompt: TWO_LINE_PROMPT
+    })
+    pane.paint(`${PROMPT_START}~/repo % `)
+    pane.execGooseAheadOfItsOutput()
+    // The base follow-up polls 30 times, 150 ms apart.
+    await vi.advanceTimersByTimeAsync(4_400)
+    expect(pane.wrote('line one')).toEqual([])
+    await vi.advanceTimersByTimeAsync(100)
+
+    expect(pane.wrote('line one')).toEqual([[pane.ptyId, `${TWO_LINE_PROMPT}\r`]])
   })
 
   it('types a startup follow-up on the process match when the pane marks no commands', async () => {
