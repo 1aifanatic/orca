@@ -101,7 +101,7 @@ describe('mobile relay subscription cancellation', () => {
       'terminal.subscribe',
       { terminal: 'term', client: { id: 'phone' } },
       'terminal.unsubscribe',
-      { subscriptionId: 'term:phone', client: { id: 'phone' } }
+      { subscriptionId: 'term:phone', client: { id: 'phone' }, requestId: 'request-1' }
     ],
     [
       'session.tabs.subscribe',
@@ -293,7 +293,26 @@ describe('mobile relay subscription cancellation', () => {
     expect(sendFrame).toHaveBeenLastCalledWith({
       id: 'request-3',
       method: 'terminal.unsubscribe',
-      params: { subscriptionId: 'term:phone', client: { id: 'phone' } }
+      params: { subscriptionId: 'term:phone', client: { id: 'phone' }, requestId: 'request-1' }
+    })
+  })
+
+  it('keeps skipping for a live newer terminal sibling though each unsubscribe names its request', async () => {
+    const { streams, sendFrame } = createStreams()
+    const params = { terminal: 'term', client: { id: 'phone' } }
+    const cancelOlder = streams.subscribe('terminal.subscribe', params, vi.fn())
+    const cancelNewer = streams.subscribe('terminal.subscribe', { ...params }, vi.fn())
+    await Promise.resolve()
+
+    // A host without request addressing ends the slot, which the newer stream now owns.
+    cancelOlder()
+    expect(sendFrame).toHaveBeenCalledTimes(2)
+
+    cancelNewer()
+    expect(sendFrame).toHaveBeenLastCalledWith({
+      id: 'request-3',
+      method: 'terminal.unsubscribe',
+      params: { subscriptionId: 'term:phone', client: { id: 'phone' }, requestId: 'request-2' }
     })
   })
 
