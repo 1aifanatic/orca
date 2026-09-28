@@ -41,9 +41,14 @@ import { configureHostReadableTranscriptPathSources } from '../native-chat/host-
 import { createEphemeralAgentSessionClaimSigner } from './agent-session-claim-identity'
 import { registerConptyDa1OverrideInstaller } from './terminal-model-query-authority'
 import { registerTerminalViewAttributesApplier } from './terminal-view-attribute-store'
+import { RuntimeMachineName } from './runtime-machine-name'
 
 export class OrcaRuntimeWithStateFields extends OrcaRuntimeWithLinearCommands {
   protected readonly prepareClaudeAuth?: PrepareClaudeAuth
+
+  protected readonly machineName = new RuntimeMachineName(
+    () => this.store?.getSettings?.().machineName
+  )
 
   constructor(
     store: RuntimeStore | null = null,
@@ -98,6 +103,13 @@ export class OrcaRuntimeWithStateFields extends OrcaRuntimeWithLinearCommands {
         workspacePath: string
         launchEnv: NodeJS.ProcessEnv
       }) => string | null | Promise<string | null>
+      // Why a sibling of prepare: record-less catalog reads must resolve the
+      // same launch home with none of launch prep's side effects (no sync, no
+      // bridge, no cleared selection).
+      resolveCodexStructuredLaunchHome?: (input: {
+        workspacePath: string
+        launchEnv: NodeJS.ProcessEnv
+      }) => string | null | Promise<string | null>
       buildAgentHookPtyEnv?: () => Record<string, string>
       getDesktopWindowStatus?: () => RuntimeDesktopWindowStatus
       agentSessionClaimSigner?: AgentSessionClaimSigner
@@ -111,6 +123,7 @@ export class OrcaRuntimeWithStateFields extends OrcaRuntimeWithLinearCommands {
   ) {
     super()
     this.store = store
+    this.machineName.start()
     this.prepareClaudeAuth = deps?.prepareClaudeAuth
     store?.onSettingsChanged?.((updates) => {
       if ('experimentalStructuredNativeChat' in updates) {
@@ -252,6 +265,7 @@ export class OrcaRuntimeWithStateFields extends OrcaRuntimeWithLinearCommands {
     this.getDesktopWindowStatusFn = deps?.getDesktopWindowStatus ?? (() => 'openable')
     this.prepareAiVaultSessionResumeFn = deps?.prepareAiVaultSessionResume ?? null
     this.prepareCodexStructuredLaunchFn = deps?.prepareCodexStructuredLaunch ?? null
+    this.resolveCodexStructuredLaunchHomeFn = deps?.resolveCodexStructuredLaunchHome ?? null
     this.agentSessionClaimSigner =
       deps?.agentSessionClaimSigner ?? createEphemeralAgentSessionClaimSigner(this.runtimeId)
     this.onTerminalSideEffects = deps?.onTerminalSideEffects ?? null
