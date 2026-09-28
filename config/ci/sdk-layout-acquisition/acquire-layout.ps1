@@ -18,11 +18,11 @@ if ($LASTEXITCODE -ne 0 -or !(Test-Path $mount)) { throw 'Bounded scratch volume
 $layout = Join-Path $mount 'layout'
 $temp = Join-Path $mount 'temp'
 New-Item -ItemType Directory -Path $temp,$layout | Out-Null
+$originalTemp = $env:TEMP
 $env:TEMP = $temp
 $env:TMP = $temp
 $components = @('Microsoft.VisualStudio.Component.Windows11SDK.26100','Microsoft.VisualStudio.Component.VC.14.44.17.14.x86.x64','Microsoft.VisualStudio.Component.VC.14.44.17.14.ARM64','Microsoft.VisualStudio.Component.VC.14.44.17.14.ATL','Microsoft.VisualStudio.Component.VC.14.44.17.14.ATL.ARM64')
-$channel = 'https://download.visualstudio.microsoft.com/download/pr/bc92e2cb-33de-4a0c-995d-efa817f16b16/0dbdfd40c17757e64fc9f72cd9954ec8471c04fd8461a77806e5291e23239ac0/VisualStudio.17.Release.chman'
-$arguments = @('--layout', $layout, '--lang', 'en-US', '--quiet', '--wait', '--channelUri', $channel)
+$arguments = @('--layout', $layout, '--lang', 'en-US', '--quiet', '--wait')
 foreach ($component in $components) { $arguments += @('--add', $component) }
 $arguments | ConvertTo-Json | Set-Content (Join-Path $ReceiptRoot 'arguments.json')
 $cache = Join-Path $env:ProgramData 'Microsoft\VisualStudio\Packages'
@@ -34,7 +34,7 @@ $initialCacheBytes = Get-CacheBytes
 $process = $null
 $started = [DateTime]::UtcNow
 try {
-  $process = Start-Process -FilePath $bootstrapper -ArgumentList $arguments -PassThru -WindowStyle Hidden
+  $process = Start-Process -FilePath $bootstrapper -ArgumentList $arguments -PassThru -WindowStyle Hidden -RedirectStandardOutput (Join-Path $ReceiptRoot 'bootstrapper-stdout.txt') -RedirectStandardError (Join-Path $ReceiptRoot 'bootstrapper-stderr.txt')
   while (!$process.WaitForExit(2000)) {
     $files = @(Get-ChildItem -LiteralPath $temp,$layout -File -Recurse -Force -ErrorAction Stop)
     $bytes = [long]($files | Measure-Object Length -Sum).Sum
@@ -63,6 +63,20 @@ try {
     @{taskkillExitCode=$killCode;bootstrapperExited=$exited;descendantExitVerified=$false} | ConvertTo-Json | Set-Content (Join-Path $ReceiptRoot 'termination.json')
     if ($killCode -ne 0 -or !$exited) { Write-Warning 'Process cleanup unverified; discard disposable runner' }
   }
-  Get-ChildItem -LiteralPath $temp -Filter 'dd_*' -File -ErrorAction SilentlyContinue | Copy-Item -Destination $ReceiptRoot
+  $logRoot = Join-Path $ReceiptRoot 'setup-logs'
+  New-Item -ItemType Directory -Force -Path $logRoot | Out-Null
+  $logIndex = @()
+  $logBytes = 0L
+  foreach ($root in (@($temp, $originalTemp, (Join-Path $env:WINDIR 'Temp')) | Select-Object -Unique)) {
+    if (!(Test-Path -LiteralPath $root)) { continue }
+    foreach ($file in Get-ChildItem -LiteralPath $root -Filter 'dd_*' -File -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTimeUtc -ge $started }) {
+      if ($logIndex.Count -ge 100 -or ($logBytes + $file.Length) -gt 64MB) { Write-Warning 'Setup log retention budget reached'; break }
+      $name = '{0:D3}-{1}' -f $logIndex.Count, $file.Name
+      Copy-Item -LiteralPath $file.FullName -Destination (Join-Path $logRoot $name) -ErrorAction Continue
+      $logIndex += @{source=$file.FullName;receipt=$name;bytes=$file.Length}
+      $logBytes += $file.Length
+    }
+  }
+  $logIndex | ConvertTo-Json | Set-Content (Join-Path $ReceiptRoot 'setup-log-index.json')
   "layout_path=$layout" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 }
