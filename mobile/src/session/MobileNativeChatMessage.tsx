@@ -148,7 +148,6 @@ function MobileNativeChatMessageImpl({
       {turnStatus ? (
         <MobileNativeChatTurnStatus
           startedAt={turnStatus.startedAt}
-          thinking={turnStatus.thinking}
           workedSeconds={turnStatus.workedSeconds}
           verdict={turnStatus.verdict}
           expanded={turnExpanded ?? false}

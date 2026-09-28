@@ -236,7 +236,7 @@ describe('a turn end the host inferred', () => {
     )
     expect(settled).toMatchObject({ verdict: 'interruption', workedSeconds: 12 })
     expect(
-      settled && describeNativeChatTurnStatus({ thinking: false, elapsedSeconds: 0, ...settled })
+      settled && describeNativeChatTurnStatus({ elapsedSeconds: 0, ...settled })
     ).toMatchObject({ key: 'interruptedAfter', duration: '12s' })
   })
 })

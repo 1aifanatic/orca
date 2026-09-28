@@ -10,10 +10,7 @@ import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import { describeNativeChatTurnStatus } from '../../../shared/native-chat-turn-status'
 import { selectStructuredAgentSettledTurns } from '../../../shared/structured-agent-session-turn-timing'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
-import {
-  evictHeldStructuredAgentSession,
-  type stopStructuredAgentSessionAgentUnderSerialize
-} from './structured-agent-session-host-lifetime'
+import type { stopStructuredAgentSessionAgentUnderSerialize } from './structured-agent-session-host-lifetime'
 import {
   adapter,
   attach,
@@ -114,7 +111,7 @@ async function runningTurn(): Promise<AgentSessionStatusEvent[]> {
 /** What the settle wrote, read back from the journal the next reader opens. */
 async function settledTurn() {
   await host.restoreReadableSessions([SESSION])
-  const items = host.journalSnapshot(SESSION).items
+  const { items } = await host.journalSnapshot(SESSION)
   const turn = items.map((item) => readAgentJournalTurn(item.body)).find(Boolean)
   const [settled] = [...selectStructuredAgentSettledTurns(items).values()]
   return { turn, settled }
@@ -136,7 +133,7 @@ describe('a turn cut short by closing its provider', () => {
     expect(turn).toMatchObject({ state: 'interrupted', outcome: 'cancellation' })
     // A stop the user asked for folds like any other finished turn.
     expect(
-      settled && describeNativeChatTurnStatus({ thinking: false, elapsedSeconds: 0, ...settled })
+      settled && describeNativeChatTurnStatus({ elapsedSeconds: 0, ...settled })
     ).toMatchObject({ key: 'workedFor' })
   })
 
@@ -151,7 +148,7 @@ describe('a turn cut short by closing its provider', () => {
     expect(turn).toMatchObject({ state: 'interrupted' })
     expect(turn).not.toHaveProperty('outcome')
     expect(
-      settled && describeNativeChatTurnStatus({ thinking: false, elapsedSeconds: 0, ...settled })
+      settled && describeNativeChatTurnStatus({ elapsedSeconds: 0, ...settled })
     ).toMatchObject({ key: 'interruptedAfter' })
   })
 
@@ -272,21 +269,13 @@ describe('a turn cut short by closing its provider', () => {
   })
 
   it.each(['user-close', 'evict'] as const)(
-    'drops the status row of a chat a %s ends, rather than republishing it',
+    'closes the conversation of a chat a %s ends, as any close does',
     async (cause) => {
       await runningTurn()
-      const context = host['lifetimeContext']()
-      const forgetStatus = vi.fn(context.forgetStatus)
-      const publishStatus = vi.fn()
 
-      await evictHeldStructuredAgentSession(
-        { ...context, forgetStatus, publishStatus },
-        SESSION,
-        cause
-      )
+      await host.close(SESSION, cause)
 
-      expect(forgetStatus).toHaveBeenCalledWith(SESSION)
-      expect(publishStatus).not.toHaveBeenCalled()
+      expect(host.hasSession(SESSION)).toBe(false)
     }
   )
 })

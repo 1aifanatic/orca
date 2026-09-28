@@ -17,7 +17,7 @@ import {
   providerExitBeforeDeliveryRejection,
   providerStartupFailureOutcome
 } from './structured-agent-session-dead-generation-settlement'
-import type { StructuredAgentSessionResumeOutcome } from './structured-agent-session-hold-resume'
+import type { StructuredAgentSessionResumeOutcome } from './structured-agent-session-agent-start'
 import type {
   StructuredAgentSessionEndedChild,
   StructuredAgentSessionHostSession,
@@ -40,7 +40,11 @@ export type StructuredAgentSessionDeliveryLoopDeps = {
   /** A start step, tracked from enqueue so quit waits for the child it may produce. */
   trackStart: <T>(start: Promise<T>) => Promise<T>
   /** Gives the session a provider child if it has none; for a caller inside `serialize`. */
-  ensureProviderChild: (sessionId: string) => Promise<StructuredAgentSessionResumeOutcome>
+  /** Starts a child for `startedFor`, the queued message at the head, if the session has none. */
+  ensureProviderChild: (
+    sessionId: string,
+    startedFor: string
+  ) => Promise<StructuredAgentSessionResumeOutcome>
   /** The fence the conversation's own writes carry; see `structuredAgentSessionConversationFence`. */
   conversationFence: (sessionId: string) => number
   /** Rejects queued messages as a completed close of the chat does; false when that failed. */
@@ -151,7 +155,7 @@ export class StructuredAgentSessionDeliveryLoop {
     if (failedStart) {
       return this.fail(sessionId, failedStart)
     }
-    const ready = await this.deps.ensureProviderChild(sessionId)
+    const ready = await this.deps.ensureProviderChild(sessionId, oldest.clientMessageId)
     if (!ready.ok) {
       return ready
     }
