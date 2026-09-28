@@ -39,19 +39,21 @@ export function hasStructuredAgentSessionStartFailureRow(
 }
 
 /**
- * A start the delivery loop needed and did not get: the start's row, and every queued message
- * rejected with the same words. Writes nothing when nothing is still queued: a start whose
- * messages Stop withdrew did not fail anyone.
+ * A start the delivery loop needed and did not get: the start's row, and every message it was for
+ * rejected with the same words — each queued one, and `handedOver`, the one handed to a child that
+ * could not take it. Writes nothing when neither is left: a start whose messages Stop withdrew did
+ * not fail anyone.
  */
 export async function recordStructuredAgentSessionStartFailure(
   session: Pick<StructuredAgentSessionHostSession, 'journal'> & { fence: number },
-  failure: StructuredAgentSessionStartFailure
+  failure: StructuredAgentSessionStartFailure,
+  handedOver?: string
 ): Promise<void> {
-  const oldest = oldestQueuedSubmission(session)
+  const oldest = handedOver ?? oldestQueuedSubmission(session)?.clientMessageId
   if (!oldest) {
     return
   }
-  const startKey = failure.startKey ?? oldest.clientMessageId
+  const startKey = failure.startKey ?? oldest
   // The row and each message it rejects name this start, so a reader pairs them by identity.
   const words = { reason: failure.reason, rejection: { ...failure.rejection, startKey } }
   await session.journal.appendLifecycleBatch({
@@ -60,6 +62,14 @@ export async function recordStructuredAgentSessionStartFailure(
     recovered: true,
     mutations: [structuredAgentSessionStartFailureRow(startKey, words)]
   })
+  if (handedOver) {
+    await session.journal.resolveDispatch({
+      clientMessageId: handedOver,
+      state: 'rejected',
+      ...words,
+      fence: session.fence
+    })
+  }
   await session.journal.rejectQueuedSubmissions(session.fence, words)
 }
 

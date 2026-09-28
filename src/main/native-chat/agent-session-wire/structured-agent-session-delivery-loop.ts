@@ -201,21 +201,32 @@ export class StructuredAgentSessionDeliveryLoop {
     if (!next) {
       return this.stop(sessionId)
     }
-    await handOverSubmission(
+    const unstarted = await handOverSubmission(
       {
         sessionId,
         journal: session.journal,
         fence: awaitedChild.fence,
         adapter: this.deps.adapter,
-        providerChildPhase: () => this.deps.sessions.get(sessionId)?.child?.phase,
-        failureTextContext: this.deps.failureTextContext(sessionId)
+        providerChildPhase: () => this.deps.sessions.get(sessionId)?.child?.phase
       },
       next
     )
+    if (unstarted) {
+      // The start failed for this message and every one behind it, not for this one alone.
+      return this.fail(
+        sessionId,
+        { startKey: awaitedChild.generation, cause: unstarted },
+        next.clientMessageId
+      )
+    }
     return 'continue'
   }
 
-  private async fail(sessionId: string, failure: StartFailure): Promise<'stop'> {
+  private async fail(
+    sessionId: string,
+    failure: StartFailure,
+    handedOver?: string
+  ): Promise<'stop'> {
     const session = this.deps.sessions.get(sessionId)
     if (session) {
       await recordStructuredAgentSessionStartFailure(
@@ -226,7 +237,8 @@ export class StructuredAgentSessionDeliveryLoop {
             failure.cause,
             this.deps.failureTextContext(sessionId)
           )
-        }
+        },
+        handedOver
       )
     }
     return this.stop(sessionId)

@@ -7,10 +7,7 @@
 // turn the provider already accepted.
 
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
-import {
-  agentSessionFailureWords,
-  type AgentSessionFailureWordsContext
-} from '../../../shared/agent-session-failure-words'
+import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import type {
   AgentJournalMessageItem,
   AgentJournalStatusItem,
@@ -31,7 +28,6 @@ import type {
   StructuredAgentSessionAdapter,
   StructuredAgentSessionProviderChildPhase
 } from './structured-agent-session-adapter'
-import { structuredAgentSessionStartFailure } from './structured-agent-session-failure-text'
 import { validatePendingPrompt } from './structured-agent-session-prompt-state'
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
 export { performSetOption } from './structured-agent-session-turns-options'
@@ -70,13 +66,13 @@ function invalid(
 /** A thrown adapter error is indistinguishable from a lost reply, so it settles as `unknown`
  *  rather than as a rejection — unless the child had not proven its start. Such a child has
  *  accepted nothing (input is written only after it initializes), so a dispatch it could not
- *  take is provably unwritten and is rejected with the cause the adapter gave. */
+ *  take is provably unwritten: its start failed, with the cause the adapter gave. */
 async function dispatchSafely(
   ctx: AgentSessionHandoverContext,
   clientMessageId: string,
   body: AgentJournalMessageItem,
   requestedAt: number
-): Promise<AgentSessionDispatchOutcome> {
+): Promise<AgentSessionDispatchOutcome | { state: 'startFailed'; cause: { error: unknown } }> {
   try {
     return await ctx.adapter.dispatch({
       sessionId: ctx.sessionId,
@@ -87,10 +83,7 @@ async function dispatchSafely(
     })
   } catch (error) {
     if (ctx.providerChildPhase?.() === 'starting') {
-      return {
-        state: 'rejected',
-        ...structuredAgentSessionStartFailure({ error }, ctx.failureTextContext)
-      }
+      return { state: 'startFailed', cause: { error } }
     }
     return { state: 'unknown', reason: error instanceof Error ? error.message : String(error) }
   }
@@ -154,19 +147,18 @@ export async function performSend(
 export type AgentSessionHandoverContext = Pick<
   AgentSessionTurnContext,
   'sessionId' | 'journal' | 'fence' | 'adapter' | 'providerChildPhase'
-> & {
-  /** Who a start failure met at dispatch names, as the start's own row does. */
-  failureTextContext?: AgentSessionFailureWordsContext
-}
+>
 
 /**
  * Hands one queued submission to the provider. The `dispatch{pending}` row goes first: a crash
  * after it leaves a message in doubt, never one that reads as queued and so provably unwritten.
+ * Returns the cause when the child's start failed at the handover, leaving the message pending for
+ * the caller to record that start's failure for it and everything queued behind it.
  */
 export async function handOverSubmission(
   ctx: AgentSessionHandoverContext,
   submission: AgentJournalSubmission
-): Promise<void> {
+): Promise<{ error: unknown } | null> {
   const { clientMessageId } = submission
   const body = ctx.journal.itemBody(agentJournalSubmissionKey(clientMessageId))
   if (body?.kind !== 'message') {
@@ -176,15 +168,18 @@ export async function handOverSubmission(
       ...agentSessionFailureWords(agentSessionFailureFact('hostFault'), { surface: 'rejection' }),
       fence: ctx.fence
     })
-    return
+    return null
   }
   await ctx.journal.resolveDispatch({ clientMessageId, state: 'pending', fence: ctx.fence })
   // The row written at acceptance is the send's instant on the host clock; the turn this
   // dispatch opens records it so the live counter never re-anchors at turn-open.
   const outcome = await dispatchSafely(ctx, clientMessageId, body, submission.submittedAt)
+  if (outcome.state === 'startFailed') {
+    return outcome.cause
+  }
   // An admission needs no dispatch row: the submission is already pending.
   if (outcome.state === 'admitted') {
-    return
+    return null
   }
   try {
     await ctx.journal.resolveDispatch(
@@ -220,6 +215,7 @@ export async function handOverSubmission(
     }
     throw error
   }
+  return null
 }
 
 function requireSubmission(

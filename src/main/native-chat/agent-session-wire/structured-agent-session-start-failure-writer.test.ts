@@ -1,7 +1,7 @@
 // A start a queued message waited on can be seen failing twice: by the delivery loop, when the
-// adapter settles the start without proving it, and by the exit settlement, when the child's exit
-// lands. The chat gets one row for that start, the loop's, in the words the message was rejected
-// with — whichever of the two reports first.
+// adapter settles the start without proving it or cannot take the message it was handed, and by
+// the exit settlement, when the child's exit lands. The chat gets one row for that start, the
+// loop's, in the words the message was rejected with — whichever of the two reports first.
 
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -49,6 +49,7 @@ let host: StructuredAgentSessionHost
 let generation = 0
 let settleStart: (failure: SubmissionRejectionFact | undefined) => void = () => {}
 let awaitStarted = vi.fn<() => Promise<SubmissionRejectionFact | undefined>>()
+let dispatch = vi.fn<() => Promise<{ state: 'admitted' }>>()
 let frames: AgentSessionSubscribeEvent[] = []
 
 function exitBeforeProof(): Promise<void> {
@@ -116,6 +117,7 @@ beforeEach(async () => {
   awaitStarted = vi.fn(
     () => new Promise<SubmissionRejectionFact | undefined>((resolve) => (settleStart = resolve))
   )
+  dispatch = vi.fn(async () => ({ state: 'admitted' as const }))
   store = await AgentSessionRecordStore.open({ directory: join(root, 'store'), hostId: 'local' })
   host = new StructuredAgentSessionHost({
     store,
@@ -135,7 +137,7 @@ beforeEach(async () => {
       awaitStarted,
       releaseAcquisition: vi.fn(async () => true),
       closeSession: vi.fn(async () => true),
-      dispatch: vi.fn(async () => ({ state: 'admitted' as const })),
+      dispatch,
       cancelTurn: vi.fn(async () => ({ cancelled: true })),
       answerPrompt: vi.fn(async () => undefined),
       setOption: vi.fn(async () => undefined)
@@ -190,5 +192,46 @@ describe('a queued message whose start fails and whose child then exits', () => 
     expect(await startRows()).toEqual([EXIT_TEXT])
     // Written once, after the message was settled, not first by the exit and again by the loop.
     expect(publishedStartRows()).toEqual([EXIT_TEXT])
+  })
+})
+
+// The adapter's session is gone before the host has seen the exit: the start settles with no
+// reason, and the child the host still holds as starting cannot take the message handed to it.
+describe('a start whose child cannot take the message it was handed', () => {
+  it('rejects every message it was for with the one row the exit then leaves alone', async () => {
+    const first = await sendQueued('first')
+    const second = await sendQueued('second')
+    dispatch.mockImplementation(() => {
+      throw new Error(`no live claude stream-json session for ${SESSION}`)
+    })
+    awaitStarted.mockImplementation(async () => undefined)
+
+    settleStart(undefined)
+    await eventually(async () => {
+      expect(await submission(first)).toMatchObject({ dispatchState: 'rejected' })
+      expect(await submission(second)).toMatchObject({ dispatchState: 'rejected' })
+    })
+    await exitBeforeProof()
+    await host.flushStreamedEvents(SESSION)
+
+    const row = (await host.journalSnapshot(SESSION)).items.find(
+      (item) => item.itemId === START_ROW
+    )
+    const firstRejected = await submission(first)
+    const secondRejected = await submission(second)
+    // Nothing saw the provider stop when the handover failed; the row names the start it keys.
+    expect(firstRejected?.rejection).toEqual({ kind: 'startFailed', startKey: 'generation-2' })
+    expect(row?.body).toMatchObject({
+      kind: 'status',
+      text: firstRejected?.reason,
+      failure: firstRejected?.rejection
+    })
+    expect(secondRejected).toMatchObject({
+      reason: firstRejected?.reason,
+      rejection: firstRejected?.rejection
+    })
+    expect(publishedStartRows()).toEqual([firstRejected?.reason])
+    // One start failed, so one handover tried it.
+    expect(dispatch).toHaveBeenCalledOnce()
   })
 })
