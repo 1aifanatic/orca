@@ -3,21 +3,58 @@
 // needs to learn it did not finish. The decision is written where the host settles the turn.
 
 import { beforeEach, describe, expect, it } from 'vitest'
+import type { AgentJournalTurnLifecycle } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionStatusEvent } from '../../../shared/agent-session-wire'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import { describeNativeChatTurnStatus } from '../../../shared/native-chat-turn-status'
 import { selectStructuredAgentSettledTurns } from '../../../shared/structured-agent-session-turn-timing'
-import type { StructuredAgentSessionHost } from './structured-agent-session-host'
-import { attach, hostTestState } from './structured-agent-session-host-test-harness'
+import { StructuredAgentSessionHost } from './structured-agent-session-host'
 import {
+  adapter,
+  attach,
+  hostTestState,
+  replaceHostTestState
+} from './structured-agent-session-host-test-harness'
+import {
+  HOST_TEST_NOW,
   HOST_TEST_SESSION as SESSION,
   HOST_TEST_THREAD as THREAD
 } from './structured-agent-session-host-test-data'
 
+const CUT_TURN = { provider: 'codex' as const, threadId: THREAD, turnId: 'cut-turn', ordinal: 1 }
+
 let host: StructuredAgentSessionHost
+/** What the provider writes on the open turn as it exits; null writes nothing. */
+let providerEnd: Pick<AgentJournalTurnLifecycle, 'state' | 'outcome' | 'completedAt'> | null
 
 beforeEach(() => {
-  host = hostTestState().host
+  const state = hostTestState()
+  // The Codex and Claude adapters settle their open turn, verdict-less, before the close resolves.
+  providerEnd = { state: 'interrupted', completedAt: 1_500 }
+  host = new StructuredAgentSessionHost({
+    store: state.store,
+    adapter: {
+      ...adapter(),
+      closeSession: async () => {
+        const events = state.acquire.mock.calls.at(-1)?.[0].events
+        if (providerEnd) {
+          events?.appendItem(CUT_TURN, {
+            kind: 'turn',
+            turnId: 'cut-turn',
+            startedAt: 1_000,
+            requestedAt: 1_000,
+            ...providerEnd
+          })
+        }
+        return true
+      }
+    },
+    journalRoot: state.root,
+    claimKeyId: 'key-1',
+    mintSpawnToken: () => 'spawn-a',
+    now: () => HOST_TEST_NOW
+  })
+  replaceHostTestState({ store: state.store, host })
 })
 
 /** A running turn, anchored to its user row, with a status list watching the session. */
@@ -31,10 +68,13 @@ async function runningTurn(): Promise<AgentSessionStatusEvent[]> {
     { provider: 'codex', threadId: THREAD, turnId: 'cut-turn', ordinal: 0 },
     { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'long job' }] }
   )
-  events.appendItem(
-    { provider: 'codex', threadId: THREAD, turnId: 'cut-turn', ordinal: 1 },
-    { kind: 'turn', turnId: 'cut-turn', state: 'running', startedAt: 1_000, requestedAt: 1_000 }
-  )
+  events.appendItem(CUT_TURN, {
+    kind: 'turn',
+    turnId: 'cut-turn',
+    state: 'running',
+    startedAt: 1_000,
+    requestedAt: 1_000
+  })
   await host.flushStreamedEvents(SESSION)
   const statuses: AgentSessionStatusEvent[] = []
   host.subscribeStatus({ id: 'list', emit: (event) => statuses.push(event) })
@@ -83,6 +123,28 @@ describe('a turn cut short by closing its provider', () => {
     expect(
       settled && describeNativeChatTurnStatus({ thinking: false, elapsedSeconds: 0, ...settled })
     ).toMatchObject({ key: 'interruptedAfter' })
+  })
+
+  it("records the user's close on a turn the provider left running", async () => {
+    providerEnd = null
+    const statuses = await runningTurn()
+
+    await host.close(SESSION, { requestedByUser: true })
+
+    expect(lastSummary(statuses)).toMatchObject({ status: 'idle', turnOutcome: 'cancellation' })
+    const { turn } = await settledTurn()
+    expect(turn).toMatchObject({ state: 'interrupted', outcome: 'cancellation' })
+  })
+
+  it('keeps a verdict the provider gave on its way out', async () => {
+    // How Codex records a turn it reports failed.
+    providerEnd = { state: 'interrupted', outcome: 'failure', completedAt: 1_500 }
+    await runningTurn()
+
+    await host.close(SESSION, { requestedByUser: true })
+
+    const { turn } = await settledTurn()
+    expect(turn).toMatchObject({ state: 'interrupted', outcome: 'failure' })
   })
 
   it('leaves a quit as news', async () => {

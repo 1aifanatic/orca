@@ -31,7 +31,11 @@ import {
 import { releaseStoredStructuredAgentSessionOwner } from './structured-agent-session-lease-release'
 import { resumeHeldStructuredAgentSession } from './structured-agent-session-hold-resume'
 import type { StructuredAgentSessionAttachContext } from './structured-agent-session-attach-context'
-import { settleStructuredAgentSessionDeadGeneration } from './structured-agent-session-dead-generation-settlement'
+import {
+  settleStructuredAgentSessionDeadGeneration,
+  settleUserStoppedTurns
+} from './structured-agent-session-dead-generation-settlement'
+import { runningTurnItemIds } from './structured-agent-session-stale-turn-verdict'
 
 export type StructuredAgentSessionLifetimeContext = {
   deps: StructuredAgentSessionHostDeps
@@ -130,6 +134,11 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
   const owed = owedProviderChildWindDown(session)
   session.owesProviderChildWindDown = owed
   const stopping = session.child
+  // Read before the stop: the provider settles its open turn on the way out, with no verdict.
+  const cutTurnItemIds =
+    ending.cause === 'user-stop' || ending.requestedByUser
+      ? runningTurnItemIds(session.journal.snapshot().items)
+      : new Set<string>()
   let settlementError: unknown
   const eviction: StructuredAgentSessionEvictionContext = {
     sessionId,
@@ -160,20 +169,23 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
     settleWork: async () => {
       const fence =
         owed?.fence ?? structuredAgentSessionConversationFence(context.deps.store, sessionId)
+      const settlementId = `expected-close:${sessionId}:${fence}:${owed?.generation ?? 'unknown'}`
+      // A turn the user cut short from this chat is their cancellation; any other cut is news.
+      await settleUserStoppedTurns({
+        journal: session.journal,
+        fence,
+        settlementId: `user-stop:${settlementId}`,
+        cutTurnItemIds,
+        completedAt: context.now(),
+        onError: (error) => context.deps.onEventSinkError?.({ sessionId, error })
+      })
       const settled = await settleStructuredAgentSessionDeadGeneration({
         journal: session.journal,
         sessionId,
         fence,
-        settlementId: `expected-close:${sessionId}:${fence}:${owed?.generation ?? 'unknown'}`,
+        settlementId,
         pendingSubmissionReason: 'provider_closed_before_acknowledgement',
-        // A turn the user cut short from this chat is their cancellation; any other cut is news.
-        verdict: {
-          state: 'interrupted',
-          completedAt: context.now(),
-          ...(ending.cause === 'user-stop' || ending.requestedByUser
-            ? { outcome: 'cancellation' as const }
-            : {})
-        },
+        verdict: { state: 'interrupted', completedAt: context.now() },
         showUnexpectedExitOutcome: false,
         onError: (id, error) => {
           settlementError = error

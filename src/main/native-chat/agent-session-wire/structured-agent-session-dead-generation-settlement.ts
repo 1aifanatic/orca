@@ -16,6 +16,7 @@ import type { AgentSessionDeathEvidence } from '../../../shared/agent-session-re
 import {
   runningTurnLifecycleRevisions,
   turnVerdictFromDeathEvidence,
+  userStoppedTurnRevisions,
   type StructuredAgentSessionTurnVerdict
 } from './structured-agent-session-stale-turn-verdict'
 
@@ -141,6 +142,35 @@ export function unfinishedStructuredAgentSessionWorkWasInterrupted(
   )
   const outcomeItems = runningTurns.length > 0 ? runningTurns : inProgressBefore
   return outcomeItems.some((item) => !isCleanlySettled(currentItems.get(item.itemId)))
+}
+
+/** Records a user's stop on the turns it cut short. Only what the turn reads as: a failed write is
+ *  reported and never holds the close. */
+export async function settleUserStoppedTurns(input: {
+  journal: DeadGenerationJournal
+  fence: number
+  settlementId: string
+  cutTurnItemIds: ReadonlySet<string>
+  completedAt: number
+  onError: (error: unknown) => void
+}): Promise<void> {
+  try {
+    const revisions = userStoppedTurnRevisions(
+      input.journal.snapshot().items,
+      input.cutTurnItemIds,
+      input.completedAt
+    )
+    for (const chunk of partitionJournalLifecycleMutations(input.settlementId, revisions)) {
+      await input.journal.appendLifecycleBatch({
+        settlementId: chunk.settlementId,
+        fence: input.fence,
+        recovered: true,
+        mutations: chunk.mutations
+      })
+    }
+  } catch (error) {
+    input.onError(error)
+  }
 }
 
 export async function settleStructuredAgentSessionDeadGeneration(input: {

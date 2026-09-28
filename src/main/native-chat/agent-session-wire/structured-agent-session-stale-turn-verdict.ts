@@ -11,14 +11,14 @@ import type {
 } from '../../../shared/agent-session-journal-types'
 import {
   agentJournalTurnBody,
-  readAgentJournalTurn
+  readAgentJournalTurn,
+  readAgentJournalTurnOutcome
 } from '../../../shared/agent-session-turn-record'
 import type { AgentSessionDeathEvidence } from '../../../shared/agent-session-record'
 import type { JournalLifecycleMutationInput } from '../agent-session-journal/journal-row-builders'
 
 export type StructuredAgentSessionTurnVerdict =
-  /** `cancellation` only where the user aimed the stop at this chat; otherwise the end is news. */
-  | { state: 'interrupted'; completedAt: number; outcome?: 'cancellation' }
+  | { state: 'interrupted'; completedAt: number }
   | { state: 'unverifiable' }
 
 export const UNVERIFIABLE_TURN_VERDICT: StructuredAgentSessionTurnVerdict = {
@@ -71,11 +71,52 @@ function settledLifecycle(
     ...kept
   } = lifecycle
   return verdict.state === 'interrupted'
-    ? {
-        ...kept,
-        state: verdict.state,
-        completedAt: verdict.completedAt,
-        ...(verdict.outcome ? { outcome: verdict.outcome } : {})
-      }
+    ? { ...kept, state: verdict.state, completedAt: verdict.completedAt }
     : { ...kept, state: verdict.state }
+}
+
+/** The turns a stop can cut short, read before it reaches the provider. */
+export function runningTurnItemIds(items: readonly AgentJournalRenderItem[]): ReadonlySet<string> {
+  return new Set(
+    items
+      .filter((item) => readAgentJournalTurn(item.body)?.state === 'running')
+      .map((item) => item.itemId)
+  )
+}
+
+/**
+ * A stop the user aimed at this chat is their cancellation, on every turn it cut short: one still
+ * running, or one the provider settled on its way out with no verdict of its own. A verdict the
+ * provider did give stands.
+ */
+export function userStoppedTurnRevisions(
+  items: readonly AgentJournalRenderItem[],
+  cutTurnItemIds: ReadonlySet<string>,
+  completedAt: number
+): JournalLifecycleMutationInput[] {
+  const revisions: JournalLifecycleMutationInput[] = []
+  for (const item of items) {
+    if (!cutTurnItemIds.has(item.itemId)) {
+      continue
+    }
+    const turn = readAgentJournalTurn(item.body)
+    const identity = parseAgentJournalItemKey(item.itemId)
+    if (!turn || !identity || readAgentJournalTurnOutcome(turn)) {
+      continue
+    }
+    const ended =
+      turn.state === 'running'
+        ? settledLifecycle(turn, { state: 'interrupted', completedAt })
+        : turn.state === 'interrupted'
+          ? turn
+          : null
+    if (ended) {
+      revisions.push({
+        kind: 'item',
+        identity,
+        body: agentJournalTurnBody({ ...ended, outcome: 'cancellation' })
+      })
+    }
+  }
+  return revisions
 }
