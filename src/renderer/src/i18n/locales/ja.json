@@ -3033,6 +3033,7 @@
           },
           "TerminalContextMenu": {
             "b4cdd9314e": "クリアスクリーン",
+            "resetTerminal": "ターミナルをリセット",
             "8c17d6786d": "ペインを閉じる",
             "copyTerminalId": "ターミナル ID をコピー",
             "2cf85a6a55": "ペインIDのコピー",
@@ -3674,7 +3675,8 @@
             "floatingTerminalNewActivity": "{{label}}、新規アクティビティ",
             "codexSignInSuccess": "Codex にサインインしました",
             "codexSignInError": "Codex のサインインに失敗しました。もう一度お試しください。",
-            "cursorUsageMenu": "Cursor の使用状況"
+            "cursorUsageMenu": "Cursor の使用状況",
+            "hiddenUsageProviders": "ほかに: {{value0}}"
           },
           "StatusBarUsageEmptyCta": {
             "828c764a79": "アカウントを接続する",
@@ -17555,6 +17557,7 @@
           "subtitle": "トランスクリプトを読み取ることができませんでした。作業を続けるには、ターミナルに切り替えてください。",
           "retryingSubtitle": "トランスクリプトを読み取ることができませんでした。Orca は読み込みを再試行し続けます。"
         },
+        "reconnecting": "このチャットに再接続しています…",
         "pairHost": "ホストをペアリングして、Agent のチャット履歴を表示します。",
         "notAgent": {
           "title": "ここでは会話はありません",
