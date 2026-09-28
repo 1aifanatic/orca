@@ -24,5 +24,6 @@ export type ReattachPayloadSession = Pick<
   | 'suppressStructuralReplayPtyResize'
   | 'transport'
   | 'writeFreshShellViewportBlanking'
+  | 'writeInputModeGround'
   | 'writeReplayData'
 >

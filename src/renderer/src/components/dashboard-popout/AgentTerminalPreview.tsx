@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { readAppliedKittyKeyboardFlags } from '@/lib/pane-manager/terminal-keyboard-protocol'
 import { Terminal, type ITheme } from '@xterm/xterm'
 import { useShallow } from 'zustand/react/shallow'
 import '@xterm/xterm/css/xterm.css'
@@ -196,7 +197,8 @@ export function AgentTerminalPreview({
         // Why a live getter: kitty state can change between keydown and commit,
         // and the tracker outlives every reconnect inside this effect.
         imeBridge = installPreviewImeBridge(terminal, {
-          getKittyKeyboardFlags: () => kittyKeyboardModes.flags
+          getKittyKeyboardFlags: () =>
+            terminal ? readAppliedKittyKeyboardFlags(terminal, kittyKeyboardModes) : 0
         })
       }
     }
@@ -217,7 +219,8 @@ export function AgentTerminalPreview({
           macOptionAsAlt: macOptionAsAltRef.current,
           keybindings: useAppStore.getState().keybindings,
           terminalInput: terminalInputRef.current,
-          getKittyKeyboardFlags: () => kittyKeyboardModes.flags,
+          getKittyKeyboardFlags: () =>
+            terminal ? readAppliedKittyKeyboardFlags(terminal, kittyKeyboardModes) : 0,
           terminalShortcutPolicy: settingsRef.current?.terminalShortcutPolicy
         })
       })

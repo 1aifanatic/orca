@@ -1,4 +1,5 @@
-import type { ITerminalOptions } from '@xterm/xterm'
+import type { ITerminalOptions, Terminal } from '@xterm/xterm'
+import type { TerminalKittyKeyboardModeTracker } from '../../../../shared/terminal-kitty-keyboard-mode-tracker'
 import type { ExecutionHostId } from '../../../../shared/execution-host'
 import type { TuiAgent } from '../../../../shared/tui-agent'
 import {
@@ -64,4 +65,15 @@ export function buildTerminalKeyboardProtocolOptions(
     return {}
   }
   return { vtExtensions: { kittyKeyboard: false } }
+}
+
+/**
+ * Kitty flags xterm's encoder is actually applying. With the protocol withheld
+ * xterm ignores `CSI u`, but the mirror scans it anyway, so its flags don't apply.
+ */
+export function readAppliedKittyKeyboardFlags(
+  terminal: Pick<Terminal, 'options'>,
+  mirror: Pick<TerminalKittyKeyboardModeTracker, 'flags'> | undefined
+): number {
+  return terminal.options.vtExtensions?.kittyKeyboard === true ? (mirror?.flags ?? 0) : 0
 }

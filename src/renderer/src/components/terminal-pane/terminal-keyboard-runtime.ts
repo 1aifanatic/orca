@@ -1,4 +1,5 @@
 import type { IDisposable } from '@xterm/xterm'
+import { readAppliedKittyKeyboardFlags } from '@/lib/pane-manager/terminal-keyboard-protocol'
 import type { PaneManager } from '@/lib/pane-manager/pane-manager'
 import type { PtyTransport } from './pty-transport'
 import type { PaneCwdMap } from './resolve-split-cwd'
@@ -174,7 +175,12 @@ export function createTerminalKeyboardRuntime(options: RuntimeOptions) {
   const getKittyKeyboardFlagsActivePane = (): number => {
     const manager = managerRef.current
     const pane = manager?.getActivePane() ?? manager?.getPanes()[0]
-    return pane ? (paneKittyKeyboardModesRef?.current.get(pane.id)?.flags ?? 0) : 0
+    return pane
+      ? readAppliedKittyKeyboardFlags(
+          pane.terminal,
+          paneKittyKeyboardModesRef?.current.get(pane.id)
+        )
+      : 0
   }
   const hasActivePaneCtrlEnterCsiUAuthority = (): boolean => {
     const manager = managerRef.current

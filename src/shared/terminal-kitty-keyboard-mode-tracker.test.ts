@@ -1,7 +1,7 @@
 import { Terminal } from '@xterm/headless'
 import { describe, expect, it } from 'vitest'
 import { TerminalKittyKeyboardModeTracker } from './terminal-kitty-keyboard-mode-tracker'
-import { POST_REPLAY_REATTACH_RESET } from './terminal-mode-reset-profiles'
+import { CONFIRMED_SHELL_MODE_RESET } from './terminal-mode-reset-profiles'
 
 describe('TerminalKittyKeyboardModeTracker', () => {
   it('starts inactive and ignores non-kitty sequences', () => {
@@ -71,7 +71,7 @@ describe('TerminalKittyKeyboardModeTracker', () => {
   })
 
   // Why: a confirmed-shell reset lands between live chunks in both records, so they must agree.
-  it('agrees with xterm when the reattach reset interrupts a split live sequence', async () => {
+  it('agrees with xterm when the confirmed-shell reset interrupts a split live sequence', async () => {
     const term = new Terminal({ allowProposedApi: true, vtExtensions: { kittyKeyboard: true } })
     const tracker = new TerminalKittyKeyboardModeTracker()
     const replies: string[] = []
@@ -87,7 +87,7 @@ describe('TerminalKittyKeyboardModeTracker', () => {
     }
 
     await feed('\x1b[>5u\x1b[?1049h\x1b[>3u\x1b[>')
-    await feed(POST_REPLAY_REATTACH_RESET)
+    await feed(CONFIRMED_SHELL_MODE_RESET)
     await feed('1u')
     expect(tracker.flags).toBe(0)
     expect(await xtermReport()).toBe('\x1b[?0u')

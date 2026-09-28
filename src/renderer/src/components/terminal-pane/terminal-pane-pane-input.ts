@@ -1,4 +1,5 @@
 import type { IDisposable } from '@xterm/xterm'
+import { readAppliedKittyKeyboardFlags } from '@/lib/pane-manager/terminal-keyboard-protocol'
 import type { ManagedPane, PaneManager } from '@/lib/pane-manager/pane-manager'
 import type { UseTerminalPaneLifecycleDeps } from './terminal-pane-lifecycle-types'
 import {
@@ -30,7 +31,6 @@ import {
 } from './xterm-bypass-policy'
 import { markTerminalPinnedViewport } from '@/lib/pane-manager/terminal-scroll-intent'
 import { syncTerminalScrollIntentSoon } from '@/lib/pane-manager/terminal-scroll-intent-settle'
-import { resetTerminalKeyboardProtocolAfterInterrupt } from './terminal-pane-lifecycle-primitives'
 
 type PaneInputContext = {
   pane: Pick<ManagedPane, 'id' | 'terminal'>
@@ -87,7 +87,11 @@ export function installTerminalPaneInputHandling(context: PaneInputContext): voi
           terminalElement: pane.terminal.element,
           isComposing: () => imeCompositionTracker.isActive(),
           sendInput: (data) => pane.terminal.input(data),
-          getKittyKeyboardFlags: () => paneKittyKeyboardModesRef.current.get(pane.id)?.flags ?? 0
+          getKittyKeyboardFlags: () =>
+            readAppliedKittyKeyboardFlags(
+              pane.terminal,
+              paneKittyKeyboardModesRef.current.get(pane.id)
+            )
         })
       : { claimKeyEvent: () => false, dispose: () => undefined }
   imeNativeTextForwarderDisposablesRef.current.set(pane.id, imeNativeTextForwarder)
@@ -141,7 +145,6 @@ export function installTerminalPaneInputHandling(context: PaneInputContext): voi
       if (event.type === 'keydown') {
         pendingTerminalInterruptKeyup = true
         pane.terminal.input(TERMINAL_INTERRUPT_INPUT)
-        resetTerminalKeyboardProtocolAfterInterrupt(pane.terminal)
       } else {
         pendingTerminalInterruptKeyup = false
       }
@@ -197,7 +200,10 @@ export function installTerminalPaneInputHandling(context: PaneInputContext): voi
       isMac,
       isIosWeb,
       hasSelection: pane.terminal.hasSelection(),
-      kittyKeyboardFlags: paneKittyKeyboardModesRef.current.get(pane.id)?.flags ?? 0
+      kittyKeyboardFlags: readAppliedKittyKeyboardFlags(
+        pane.terminal,
+        paneKittyKeyboardModesRef.current.get(pane.id)
+      )
     })
     observeLinuxCandidateEvent()
     return !shouldBypass

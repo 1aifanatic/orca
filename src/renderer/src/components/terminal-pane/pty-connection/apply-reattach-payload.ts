@@ -305,7 +305,7 @@ export function createReattachPayloadHandlers(
         session.clearSleepingRecordAfterColdRestoreSpawn(preparedStartup)
       }
       // Why: cold-restore spawned a fresh shell; reset mode bytes a crashed TUI (e.g. Claude's \e[?1004h) left in scrollback that no live TUI now consumes.
-      session.writeReplayData(POST_REPLAY_MODE_RESET)
+      session.writeInputModeGround(POST_REPLAY_MODE_RESET)
       // Why: the dead run's kitty flags died with it and its scrollback was never scanned — the fresh shell starts at zero.
       session.kittyKeyboardModes.reset()
       session.consumeRestoredViewportBlankingMarker()

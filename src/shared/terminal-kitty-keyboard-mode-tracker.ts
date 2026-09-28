@@ -19,13 +19,10 @@ type KittyStackFrame = { flags: number; known: boolean }
  * DECSET/DECRST 47/1047/1049, the full reset on RIS, and the soft reset on
  * DECSTR (CSI ! p).
  *
- * Why a mirror instead of reading xterm's internal state: Orca defensively
- * wipes the renderer terminal's kitty flags at moments when the TUI may have
- * died (Ctrl+C interrupts, reattach resets) while the TUI is usually still
- * alive and expecting protocol-encoded input. This tracker is fed by
- * application output, snapshot restores, and the Orca resets that also reach
- * xterm (ConPTY agent-idle, confirmed shell), never by the renderer's other
- * defensive xterm writes, so it reflects what the live application negotiated.
+ * Why a mirror instead of reading xterm's internal state: xterm's public API
+ * exposes no kitty flags. The renderer feeds it every byte it writes to xterm
+ * that can change kitty state (application output, snapshot restores, and
+ * Orca's own grounds), so their active-screen flags agree.
  * The daemon reuses it to carry flags into snapshots (xterm's SerializeAddon does
  * not serialize kitty state).
  */

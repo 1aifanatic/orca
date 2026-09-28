@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildTerminalKeyboardProtocolOptions,
   prefersKittyKeyboardDespiteWindowsConpty,
+  readAppliedKittyKeyboardFlags,
   shouldDisableKittyKeyboardForTerminal
 } from './terminal-keyboard-protocol'
 
@@ -181,5 +182,28 @@ describe('buildTerminalKeyboardProtocolOptions', () => {
         })
       ).toEqual({})
     }
+  })
+})
+
+describe('readAppliedKittyKeyboardFlags', () => {
+  const mirror = { flags: 1 }
+
+  it('reads the mirror while the protocol is advertised', () => {
+    expect(
+      readAppliedKittyKeyboardFlags({ options: { vtExtensions: { kittyKeyboard: true } } }, mirror)
+    ).toBe(1)
+    expect(
+      readAppliedKittyKeyboardFlags(
+        { options: { vtExtensions: { kittyKeyboard: true } } },
+        undefined
+      )
+    ).toBe(0)
+  })
+
+  // Why: xterm ignores CSI u while withheld, so a stray push must not make shortcuts encode CSI-u.
+  it('reads 0 while the protocol is withheld', () => {
+    expect(
+      readAppliedKittyKeyboardFlags({ options: { vtExtensions: { kittyKeyboard: false } } }, mirror)
+    ).toBe(0)
   })
 })

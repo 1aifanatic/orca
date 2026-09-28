@@ -72,6 +72,7 @@ vi.mock('@xterm/xterm', () => ({
     resize = vi.fn()
     reset = vi.fn()
     modes = { bracketedPasteMode: false }
+    options = { vtExtensions: { kittyKeyboard: true } }
     paste = vi.fn((data: string) => {
       terminalHarness.userInputListener?.()
       this.onDataListener?.(data)

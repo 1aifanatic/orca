@@ -156,7 +156,7 @@ export function bindHiddenOutputRestoreSnapshot(session: ConnectPanePtySession):
               : hasLiveAgent
                 ? POST_REPLAY_LIVE_AGENT_SNAPSHOT_RESET
                 : POST_REPLAY_LIVE_SNAPSHOT_RESET
-          session.writeReplayData(postReplayReset)
+          session.writeReplayData(session.replayEpilogue(postReplayReset))
           if (snapshot.pendingEscapeTailAnsi) {
             // Why last: snapshot taken mid-escape; re-arm as the FINAL replay write (any later ESC aborts it) so the live tail completes it, not render literally (Bug E / #7329).
             session.writeReplayData(snapshot.pendingEscapeTailAnsi)
