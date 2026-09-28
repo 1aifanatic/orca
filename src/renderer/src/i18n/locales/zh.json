@@ -17682,6 +17682,7 @@
         "steer": "立即发送",
         "send": "发送",
         "steerHint": "立即发送，无需等待本轮结束",
+        "sendHint": "立即发送此消息",
         "delete": "删除",
         "moreActions": "更多操作",
         "editMessage": "编辑消息",

@@ -17781,6 +17781,7 @@
         "steer": "Envoyer maintenant",
         "send": "Envoyer",
         "steerHint": "Envoyer maintenant sans attendre la fin du tour",
+        "sendHint": "Envoyer ce message maintenant",
         "delete": "Supprimer",
         "moreActions": "Plus d'actions",
         "editMessage": "Modifier le message",

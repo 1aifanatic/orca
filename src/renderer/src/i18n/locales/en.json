@@ -17844,6 +17844,7 @@
         "steer": "Steer",
         "send": "Send",
         "steerHint": "Send now without waiting for the turn to end",
+        "sendHint": "Send this message now",
         "delete": "Delete",
         "moreActions": "More actions",
         "editMessage": "Edit message",

@@ -69,6 +69,27 @@ export function queuedMessageCardCaption(card: QueuedMessageCard): string | null
   }
 }
 
+/** Steer names the mid-turn jump; a paused or returned card is not waiting on the
+ *  turn anymore, so its action and tooltip are plainly Send. */
+export function queuedMessageCardSendNow(card: QueuedMessageCard): {
+  label: string
+  hint: string
+} {
+  if (card.hold === 'paused' || card.hold === 'returned') {
+    return {
+      label: translate('components.native-chat.queuedMessages.send', 'Send'),
+      hint: translate('components.native-chat.queuedMessages.sendHint', 'Send this message now')
+    }
+  }
+  return {
+    label: translate('components.native-chat.queuedMessages.steer', 'Steer'),
+    hint: translate(
+      'components.native-chat.queuedMessages.steerHint',
+      'Send now without waiting for the turn to end'
+    )
+  }
+}
+
 export function NativeChatQueuedMessageCard({
   card,
   showsSteerShortcut,
@@ -87,12 +108,7 @@ export function NativeChatQueuedMessageCard({
 }): React.JSX.Element {
   const caption = queuedMessageCardCaption(card)
   const returned = card.state === 'returned'
-  // Steer names the mid-turn jump; a paused or returned card is not waiting on the
-  // turn anymore, so its action is plainly Send.
-  const sendNowLabel =
-    card.hold === 'turn' || card.hold === 'awaiting-answer' || card.hold === 'behind-returned'
-      ? translate('components.native-chat.queuedMessages.steer', 'Steer')
-      : translate('components.native-chat.queuedMessages.send', 'Send')
+  const sendNow = queuedMessageCardSendNow(card)
   const isMac = isMacPlatform()
   return (
     <li
@@ -125,14 +141,11 @@ export function NativeChatQueuedMessageCard({
         <TooltipTrigger asChild>
           <Button type="button" variant="ghost" size="xs" onClick={onSteer}>
             <Send className="size-3" />
-            {sendNowLabel}
+            {sendNow.label}
           </Button>
         </TooltipTrigger>
         <TooltipContent side="top" sideOffset={4}>
-          {translate(
-            'components.native-chat.queuedMessages.steerHint',
-            'Send now without waiting for the turn to end'
-          )}
+          {sendNow.hint}
           {showsSteerShortcut ? (
             <ShortcutKeyCombo keys={[isMac ? '⌘' : 'Ctrl', isMac ? '⏎' : 'Enter']} />
           ) : null}

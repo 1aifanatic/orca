@@ -17717,6 +17717,7 @@
         "steer": "今すぐ送信",
         "send": "送信",
         "steerHint": "ターンの終了を待たずに今すぐ送信します",
+        "sendHint": "このメッセージを今すぐ送信します",
         "delete": "削除",
         "moreActions": "その他の操作",
         "editMessage": "メッセージを編集",

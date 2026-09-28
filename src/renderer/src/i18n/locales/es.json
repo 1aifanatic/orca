@@ -15080,6 +15080,7 @@
         "steer": "Enviar ahora",
         "send": "Enviar",
         "steerHint": "Enviar ahora sin esperar a que termine el turno",
+        "sendHint": "Enviar este mensaje ahora",
         "delete": "Eliminar",
         "moreActions": "Más acciones",
         "editMessage": "Editar mensaje",

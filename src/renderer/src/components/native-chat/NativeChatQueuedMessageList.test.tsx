@@ -22,6 +22,7 @@ vi.mock('../../store', () => {
 import { TooltipProvider } from '@/components/ui/tooltip'
 import type { QueuedMessageCard } from './structured-agent-session-queued-cards'
 import { NativeChatQueuedMessageList } from './NativeChatQueuedMessageList'
+import { queuedMessageCardSendNow } from './NativeChatQueuedMessageCard'
 import type { StructuredAgentSessionQueuedMessagesController } from './use-structured-agent-session-queued-messages'
 
 function renderList(owner: StructuredAgentSessionQueuedMessagesController) {
@@ -164,6 +165,21 @@ describe('NativeChatQueuedMessageList', () => {
       'Paused — sends after your next message'
     )
     expect(screen.getByRole('button', { name: 'Send' })).toBeTruthy()
+  })
+
+  it('only a card still waiting on the turn promises to skip the wait', () => {
+    for (const hold of ['turn', 'awaiting-answer', 'behind-returned'] as const) {
+      expect(queuedMessageCardSendNow(card({ messageId: hold, hold }))).toEqual({
+        label: 'Steer',
+        hint: 'Send now without waiting for the turn to end'
+      })
+    }
+    for (const hold of ['paused', 'returned'] as const) {
+      expect(queuedMessageCardSendNow(card({ messageId: hold, hold }))).toEqual({
+        label: 'Send',
+        hint: 'Send this message now'
+      })
+    }
   })
 
   it("the host's pause and withdrawal markers localize instead of rendering raw", () => {
