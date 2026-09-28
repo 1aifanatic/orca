@@ -7,6 +7,7 @@ import { expect, it, vi } from 'vitest'
 vi.mock('electron', () => ({ app: { getAppPath: () => process.cwd(), getPath: () => process.env.ORCA_SSH_PROBE_STATE } }))
 import { ORCAD_BUN_RELEASE_ASSETS } from '../../shared/orcad-bun-runtime'
 import { SshConnection } from './ssh-connection'
+import { decodeRemotePowerShellScript, powerShellCommand } from './ssh-remote-powershell'
 import { deployAndLaunchRelay } from './ssh-relay-deploy'
 import { SshChannelMultiplexer } from './ssh-channel-multiplexer'
 import { readWindowsProcessTableFresh } from '../windows/windows-process-table'
@@ -20,12 +21,40 @@ function textField(value: Record<string, unknown>, key: string): string {
   if (typeof text !== 'string' || !text) throw new Error(`Missing ${key}`)
   return text
 }
+function diagnosticErrorText(output: string): string {
+  const serialized = [...output.matchAll(/<S\b[^>]*\bS="Error"[^>]*>([^<]*)<\/S>/gu)]
+  const text = output.trimStart().startsWith('#< CLIXML')
+    ? serialized.map(match => match[1]
+      .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'").replace(/&amp;/g, '&')
+      .replace(/_x([0-9a-f]{4})_/gi, (_, hex: string) => String.fromCharCode(Number.parseInt(hex, 16))))
+      .join('')
+    : output
+  // PowerShell source/location echoes contain command text, not failure evidence.
+  return text.replace(/^[ \t]*\+[ \t]*(CategoryInfo|FullyQualifiedErrorId)[ \t]*:/gmu, '$1:').split(/\r?\n/).filter(line => !/^\s*(?:\+|At (?:line:|.+:line\s))/u.test(line)).join('\n')
+}
+function structuredCimFailure(output: string): Record<string, unknown> {
+  const identifiers = ['MI RESULT 2', 'MI RESULT 5', 'MI RESULT 6', 'MI RESULT 7',
+    'HRESULT 0x80070005', 'HRESULT 0x80041003', 'AccessDenied', 'PermissionDenied'] as const
+  const identifier = /^\s*FullyQualifiedErrorId\s*:\s*([^,\r\n]+),Microsoft\.Management\.Infrastructure\.CimCmdlets\.InvokeCimMethodCommand\s*$/mu.exec(output)?.[1]
+  const category = /^\s*CategoryInfo\s*:\s*(PermissionDenied|NotSpecified|InvalidOperation|ResourceUnavailable|ObjectNotFound)\s*:/mu.exec(output)?.[1]
+  const identifierHresult = /^HRESULT (0x[0-9a-f]{8})$/iu.exec(identifier ?? '')?.[1]
+  const codes: Record<string, number> = identifierHresult ? { hresult: Number(identifierHresult) } : {}
+  for (const match of output.matchAll(/\b(HResult|NativeErrorCode|ErrorCode)\s*[:=]\s*(0x[0-9a-f]{1,8}|-?\d{1,10})(?![\da-z])/giu)) {
+    const key = match[1].toLowerCase() === 'hresult' ? 'hresult'
+      : match[1].toLowerCase() === 'nativeerrorcode' ? 'nativeErrorCode' : 'errorCode'
+    codes[key] = Number(match[2])
+  }
+  return { ...(identifier && identifiers.some(known => known === identifier) ? { cimErrorId: identifier } : {}),
+    ...(category ? { powerShellCategory: category } : {}), ...codes }
+}
 function classifyFailure(error: unknown): Record<string, unknown> {
-  const message = error instanceof Error ? error.message : ''
+  const message = error instanceof Error && error.message.length <= 262144 ? error.message : ''
   // execCommand includes the command before the output; never classify that script as an error.
   const commandFailure = /^Command "([\s\S]*)" failed \(exit (-?\d{1,10})\): ([\s\S]*)$/.exec(message)
-  const output = (commandFailure?.[3] ?? (message.startsWith('Command "') ? '' : message)).slice(0, 16384)
-  const command = commandFailure?.[1] ?? ''
+  const output = diagnosticErrorText((commandFailure?.[3] ?? (message.startsWith('Command "') ? '' : message)).slice(0, 16384))
+  let command = ''
+  try { command = decodeRemotePowerShellScript(commandFailure?.[1] ?? '') } catch { /* Malformed diagnostics have no command phase. */ }
   const wmiCreateFailure = /Win32_Process\.Create failed with (\d{1,10})/.exec(output)
   const commandPhase = command.includes('--detached') ? 'detached-launch'
     : command.includes('--connect') ? 'relay-connect'
@@ -43,6 +72,7 @@ function classifyFailure(error: unknown): Record<string, unknown> {
     ['cim', /CimException|Invoke-CimMethod|Win32_Process\.Create/i]
   ] as const
   return {
+    ...structuredCimFailure(output),
     ...((error && typeof error === 'object' && 'code' in error && typeof error.code === 'number' && Number.isInteger(error.code)) ? { nativeExitCode: error.code } : {}),
     ...(wmiCreateFailure ? { wmiCreateReturnCode: Number(wmiCreateFailure[1]) } : {}),
     ...(commandFailure ? { remoteExitCode: Number(commandFailure[2]), commandPhase, outputCharacters: output.length,
@@ -50,7 +80,7 @@ function classifyFailure(error: unknown): Record<string, unknown> {
         categories: categories.filter(([,pattern]) => pattern.test(line)).map(([label]) => label) })) } : {}),
     kind: error instanceof Error ? error.constructor.name.replace(/[^a-zA-Z0-9_]/g, '').slice(0,64) : typeof error,
     categories: categories.filter(([,pattern]) => pattern.test(output)).map(([label]) => label),
-    frames: error instanceof Error ? [...(error.stack ?? '').matchAll(/([a-zA-Z0-9_-]+\.(?:ts|js|mjs|cjs)):(\d+):(\d+)/g)].slice(0,8).map(match => `${match[1]}:${match[2]}:${match[3]}`) : []
+    frames: error instanceof Error ? [...(error.stack ?? '').split('\n').filter(line => /^\s+at /u.test(line)).slice(0, 8).join('\n').slice(0, 16384).matchAll(/([a-zA-Z0-9_-]+\.(?:ts|js|mjs|cjs)):(\d+):(\d+)/g)].slice(0,8).map(match => `${match[1]}:${match[2]}:${match[3]}`) : []
   }
 }
 it('retains numeric remote failure evidence without leaking command or output text', () => {
@@ -65,6 +95,42 @@ it('preserves the numeric WMI creation verdict', () => {
   expect(classifyFailure(new Error('Command "bun --detached" failed (exit 1): Win32_Process.Create failed with 2'))).toMatchObject({
     remoteExitCode: 1, wmiCreateReturnCode: 2, commandPhase: 'detached-launch', categories: ['cim']
   })
+})
+it('decodes compressed command phase without classifying its private command text', () => {
+  const command = powerShellCommand('bun.exe --detached secret-token permission-test; ' + '# private\n'.repeat(1000))
+  const result = classifyFailure(new Error(`Command "${command}" failed (exit 1): Nothing classified`))
+  expect(result).toMatchObject({ commandPhase: 'detached-launch', categories: [] })
+  expect(JSON.stringify(result)).not.toMatch(/secret|private|bun.exe|permission-test/)
+})
+it('extracts only allowlisted CIM metadata from serialized PowerShell errors', () => {
+  const output = '#< CLIXML\n<Objs><S S="Error">Invoke-CimMethod : Access is denied._x000D__x000A_' +
+    'At line:1 char:2_x000D__x000A_+ bun.exe --detached secret-token_x000D__x000A_' +
+    '+ CategoryInfo : PermissionDenied: (Win32_Process:String) [Invoke-CimMethod], CimException_x000D__x000A_' +
+    '+ FullyQualifiedErrorId : HRESULT 0x80070005,Microsoft.Management.Infrastructure.CimCmdlets.InvokeCimMethodCommand_x000D__x000A_' +
+    'HResult: -2147024891_x000D__x000A_NativeErrorCode: 5_x000D__x000A_' +
+    '</S><S S="Verbose">bun.exe private secret-token</S></Objs>'
+  const result = classifyFailure(new Error(`Command "private" failed (exit 1): ${output}`))
+  expect(result).toMatchObject({ categories: ['permission', 'cim'],
+    cimErrorId: 'HRESULT 0x80070005', powerShellCategory: 'PermissionDenied',
+    hresult: -2147024891, nativeErrorCode: 5 })
+  expect(result).not.toHaveProperty('wmiCreateReturnCode')
+  expect(JSON.stringify(result)).not.toMatch(/secret|private|bun.exe|Win32_Process|InvokeCimMethodCommand/)
+})
+it('does not retain unknown identifiers, paths, numeric source echoes or incomplete XML', () => {
+  const output = '+ secret-token HResult: 123\n' +
+    'FullyQualifiedErrorId : C:\\Users\\secret-token,Microsoft.Management.Infrastructure.CimCmdlets.InvokeCimMethodCommand\n' +
+    'CategoryInfo : secret-token: unknown\nHResult: 0x80041003\nNativeErrorCode: 12345678901234'
+  const result = classifyFailure(new Error(output))
+  expect(result).toMatchObject({ hresult: 2147749891 })
+  expect(result).not.toHaveProperty('cimErrorId')
+  expect(result).not.toHaveProperty('powerShellCategory')
+  expect(result).not.toHaveProperty('nativeErrorCode')
+  const unknownHresult = classifyFailure(new Error('FullyQualifiedErrorId : HRESULT 0x80041001,Microsoft.Management.Infrastructure.CimCmdlets.InvokeCimMethodCommand'))
+  expect(unknownHresult).toMatchObject({ hresult: 2147749889 })
+  expect(unknownHresult).not.toHaveProperty('cimErrorId')
+  expect(JSON.stringify(result)).not.toMatch(/secret|Users/)
+  expect(classifyFailure(new Error('#< CLIXML\n<S S="Error">permission'))).toMatchObject({ categories: [] })
+  expect(classifyFailure(new Error('Command "private" failed (exit 1): ' + 'x'.repeat(262144)))).toMatchObject({ categories: [] })
 })
 const configPath = process.env.ORCA_SSH_PROBE_CONFIG
 it.skipIf(!configPath)('native ARM OpenSSH deploy preserves the owned shell across transport loss', { timeout: 600_000 }, async () => {
