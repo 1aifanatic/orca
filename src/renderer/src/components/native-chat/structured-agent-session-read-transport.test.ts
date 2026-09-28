@@ -431,4 +431,70 @@ describe('structured agent-session read transport unattached refusals', () => {
       vi.useRealTimers()
     }
   })
+
+  it('waits twice as long after each failed open, up to 30 s, and starts over once a read lands', async () => {
+    vi.useFakeTimers()
+    try {
+      const unavailable = {
+        code: 'runtime_error',
+        message: 'agent_session_journal_unreadable',
+        data: {
+          refusal: {
+            code: 'agent_session_journal_unreadable',
+            details: { reason: 'journalUnavailable' }
+          }
+        }
+      }
+      const transport = startWithHydration(async () => undefined, vi.fn())
+      await flushPromises()
+      // As a local subscribe does: the open resolves, then the host's refusal arrives.
+      const refuseLatest = async (): Promise<void> => {
+        const attempt = attempts.at(-1)!
+        attempt.closed.resolve({ unsubscribe: attempt.unsubscribe })
+        await flushPromises()
+        attempt.onError(unavailable)
+      }
+      const expectReopenAfter = async (delay: number): Promise<void> => {
+        const opened = attempts.length
+        await vi.advanceTimersByTimeAsync(delay - 1)
+        expect(attempts).toHaveLength(opened)
+        await vi.advanceTimersByTimeAsync(1)
+        expect(attempts).toHaveLength(opened + 1)
+      }
+
+      for (const delay of [750, 1_500, 3_000, 6_000, 12_000, 24_000, 30_000, 30_000]) {
+        await refuseLatest()
+        await expectReopenAfter(delay)
+      }
+
+      // A read that delivers is the success the next failure starts over from.
+      attempts.at(-1)!.closed.resolve({ unsubscribe: attempts.at(-1)!.unsubscribe })
+      await flushPromises()
+      attempts.at(-1)!.onEvent(snapshot(1))
+      attempts.at(-1)!.onError(unavailable)
+      await expectReopenAfter(750)
+      await refuseLatest()
+      await expectReopenAfter(1_500)
+
+      // Damage still ends reconnecting, however far the wait has grown.
+      const latest = attempts.at(-1)!
+      latest.closed.resolve({ unsubscribe: latest.unsubscribe })
+      await flushPromises()
+      latest.onError({
+        ...unavailable,
+        data: {
+          refusal: {
+            code: 'agent_session_journal_unreadable',
+            details: { reason: 'journalCorrupt' }
+          }
+        }
+      })
+      const opened = attempts.length
+      await vi.advanceTimersByTimeAsync(120_000)
+      expect(attempts).toHaveLength(opened)
+      transport.dispose()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })

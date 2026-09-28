@@ -30,19 +30,30 @@ function readFailureText(error: unknown): string {
   return 'Something went wrong.'
 }
 
+const RECONNECT_FIRST_DELAY_MS = 750
+const RECONNECT_MAX_DELAY_MS = 30_000
+
+/** Each reconnect waits twice the last, up to the cap, until a read delivers. */
 function createReconnectScheduler(args: { shouldStop: () => boolean; reconnect: () => void }) {
   let timer: ReturnType<typeof setTimeout> | null = null
+  let nextDelay = RECONNECT_FIRST_DELAY_MS
   return {
-    schedule(delay = 750): void {
+    schedule(): void {
       if (args.shouldStop() || timer) {
         return
       }
+      const delay = nextDelay
+      nextDelay = Math.min(delay * 2, RECONNECT_MAX_DELAY_MS)
       timer = setTimeout(() => {
         timer = null
         if (!args.shouldStop()) {
           args.reconnect()
         }
       }, delay)
+    },
+    /** A read delivered, so the next failure is retried soon again. */
+    reset(): void {
+      nextDelay = RECONNECT_FIRST_DELAY_MS
     },
     dispose(): void {
       if (timer) {
@@ -133,6 +144,10 @@ export function startStructuredAgentSessionReadTransport(args: {
       return
     }
     clearUnattachedReadGrace()
+    // Not on connect: a local subscribe resolves before the host's open refuses.
+    if (event.type !== 'end') {
+      reconnectScheduler.reset()
+    }
     if (event.type === 'snapshot' || event.type === 'reset') {
       coalescer.flush()
       if (!isCurrentOpenGeneration(eventOpenGeneration)) {
