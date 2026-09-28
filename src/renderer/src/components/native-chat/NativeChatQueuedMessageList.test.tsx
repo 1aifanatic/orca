@@ -98,19 +98,22 @@ describe('NativeChatQueuedMessageList', () => {
     expect(owner.remove).toHaveBeenCalledWith('draft-2')
   })
 
-  it('Delete hands focus to the composer once the focused card is gone', async () => {
-    const focusComposer = vi.fn()
-    const owner = controller([card({ messageId: 'draft-1', position: 1 })])
-    render(
-      <TooltipProvider delayDuration={0}>
-        <NativeChatQueuedMessageList controller={owner} focusComposer={focusComposer} />
-      </TooltipProvider>
-    )
-    const remove = screen.getByRole('button', { name: 'Delete' })
-    remove.focus()
-    fireEvent.click(remove)
-    await waitFor(() => expect(focusComposer).toHaveBeenCalledTimes(1))
-  })
+  it.each(['Delete', 'Steer'])(
+    '%s hands focus to the composer once the focused card is gone',
+    async (name) => {
+      const focusComposer = vi.fn()
+      const owner = controller([card({ messageId: 'draft-1', position: 1 })])
+      render(
+        <TooltipProvider delayDuration={0}>
+          <NativeChatQueuedMessageList controller={owner} focusComposer={focusComposer} />
+        </TooltipProvider>
+      )
+      const action = screen.getByRole('button', { name })
+      action.focus()
+      fireEvent.click(action)
+      await waitFor(() => expect(focusComposer).toHaveBeenCalledTimes(1))
+    }
+  )
 
   it('a returned card shows the stored reason and offers Send instead of Steer', () => {
     const owner = controller([

@@ -14,7 +14,7 @@ export function NativeChatQueuedMessageList({
   focusComposer
 }: {
   controller: StructuredAgentSessionQueuedMessagesController
-  /** Where focus goes once Edit or Delete takes the focused card away. */
+  /** Where focus goes once Steer, Edit or Delete takes the focused card away. */
   focusComposer?: () => void
 }): React.JSX.Element | null {
   const updateSettings = useAppStore((store) => store.updateSettings)
@@ -45,7 +45,7 @@ export function NativeChatQueuedMessageList({
           key={card.messageId}
           card={card}
           showsSteerShortcut={card === newest}
-          onSteer={() => void controller.steer(card.messageId)}
+          onSteer={() => refocusAfter(controller.steer(card.messageId))}
           onDelete={() => refocusAfter(controller.remove(card.messageId))}
           onEdit={() => refocusAfter(controller.edit(card.messageId))}
           onTurnOffQueueing={() => void updateSettings({ nativeChatQueueFollowUps: false })}
