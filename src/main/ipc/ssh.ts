@@ -89,7 +89,6 @@ const SSH_IPC_CHANNELS = [
   'ssh:resolveConfigHost',
   'ssh:connect',
   'ssh:ensureConnected',
-  'ssh:connectForSessionCleanup',
   'ssh:disconnect',
   'ssh:terminateSessions',
   'ssh:resetRelay',

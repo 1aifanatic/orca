@@ -1,24 +1,5 @@
-import { SSH_TERMINATE_RECONNECT_REQUIRED } from '../../../../shared/constants'
 import type { SshTerminateSessionsResult } from '../../../../shared/ssh-types'
 import { translate } from '../../i18n/i18n'
-
-export async function terminateSshSessionsWithReconnect(
-  targetId: string
-): Promise<SshTerminateSessionsResult> {
-  try {
-    return await window.api.ssh.terminateSessions({ targetId })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    if (!message.includes(SSH_TERMINATE_RECONNECT_REQUIRED)) {
-      throw err
-    }
-    // Why: disconnect is now non-destructive, so preserved remote PTYs may
-    // require a fresh relay attachment before they can be explicitly killed.
-    // The cleanup connect leaves a user's Disconnect in place; terminate closes it again.
-    await window.api.ssh.connectForSessionCleanup({ targetId })
-    return await window.api.ssh.terminateSessions({ targetId })
-  }
-}
 
 /**
  * An offline sweep only tears down local transport, so its remote shells are `unverifiable`, never

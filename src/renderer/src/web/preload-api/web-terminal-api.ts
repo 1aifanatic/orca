@@ -154,8 +154,6 @@ export function createSshApi(): NonNullable<Partial<PreloadApi>['ssh']> {
       )
       return state
     },
-    // Why: the web client never terminates remote sessions, so nothing calls this there.
-    connectForSessionCleanup: () => Promise.resolve(null),
     disconnect: () => Promise.resolve(),
     terminateSessions: () => Promise.resolve({ terminated: 0, unverifiable: 0 }),
     resetRelay: () => Promise.resolve(),

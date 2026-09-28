@@ -3,6 +3,7 @@ import { rotateSshProviderAuthority } from '../ssh/ssh-provider-authority'
 import { getSshTargetRegistryStore } from '../ssh/ssh-target-registry'
 import { activeSessions } from './ssh-active-relay-sessions'
 import { testingTargets } from './ssh-connect-attempt-registry'
+import { isSshTargetDisconnectedByUser } from './ssh-connection-intent'
 import { relayGracePeriodForTarget } from './ssh-connection-state-callbacks'
 import {
   connectionManager,
@@ -174,6 +175,12 @@ export function configureRelaySessionCallbacks(session: SshRelaySession): void {
         reconnectAttempt: 0,
         supportsFolderDownload: connectionSupportsFolderDownload(tid)
       })
+    }
+    // Why derived here and not from the connect's admission: a relay reconnect fires this too.
+    // While the user's Disconnect holds, only a session cleanup's relay can reach ready, and it
+    // exists only to end sessions — so it restores no forwards and republishes no phone tabs.
+    if (isSshTargetDisconnectedByUser(tid)) {
+      return
     }
     currentRuntime?.notifySshRelayReady?.(tid)
     void restorePortForwards(tid, getCurrentMainWindow)

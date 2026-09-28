@@ -22,7 +22,6 @@ vi.mock('../providers/ssh-git-dispatch', () => mocks.sshGitDispatch)
 vi.mock('../ssh/ssh-port-forward', () => mocks.sshPortForward)
 vi.mock('../ssh/ssh-port-scanner', () => mocks.sshPortScanner)
 
-import { SSH_TERMINATE_RECONNECT_REQUIRED } from '../../shared/constants'
 import type { SshConnectionState, SshTarget } from '../../shared/ssh-types'
 import {
   clearProviderPtyState,
@@ -213,7 +212,15 @@ describe('SSH IPC handlers', () => {
   // An `expired` lease carrying neither retirement mark is an orphan, not a corpse: it records only
   // that this client lost its route. Answering `unverifiable` there strands a remote shell the user
   // just ordered stopped, when a reconnect is exactly what would reach it.
-  it('ssh:terminateSessions demands a reconnect for an unmarked expired lease', async () => {
+  it('ssh:terminateSessions dials the relay for an unmarked expired lease', async () => {
+    mockSshStore.getTarget.mockReturnValue({
+      id: 'ssh-1',
+      label: 'Server',
+      host: 'example.com',
+      port: 22,
+      username: 'deploy'
+    })
+    mockConnectionManager.connect.mockRejectedValue(new Error('connect ECONNREFUSED'))
     mockStore.getSshRemotePtyLeases.mockReturnValue([
       { targetId: 'ssh-1', ptyId: 'pty-orphan', state: 'expired' }
     ])
@@ -222,8 +229,9 @@ describe('SSH IPC handlers', () => {
 
     await expect(
       handlers.get('ssh:terminateSessions')!(null, { targetId: 'ssh-1' })
-    ).rejects.toThrow(SSH_TERMINATE_RECONNECT_REQUIRED)
+    ).rejects.toThrow('ECONNREFUSED')
 
+    expect(mockConnectionManager.connect).toHaveBeenCalledTimes(1)
     expect(mockPtyProvider.shutdown).not.toHaveBeenCalled()
     expect(mockStore.markSshRemotePtyLease).not.toHaveBeenCalledWith(
       'ssh-1',

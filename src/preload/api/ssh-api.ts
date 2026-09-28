@@ -29,8 +29,6 @@ export type SshApi = {
   connect: (args: { targetId: string }) => Promise<SshConnectionState | null>
   /** A connect nobody clicked. Refused while the user's Disconnect holds the host down. */
   ensureConnected: (args: { targetId: string }) => Promise<SshConnectionState | null>
-  /** A terminate/remove that needs the relay once; leaves the user's Disconnect in place. */
-  connectForSessionCleanup: (args: { targetId: string }) => Promise<SshConnectionState | null>
   disconnect: (args: { targetId: string }) => Promise<void>
   terminateSessions: (args: { targetId: string }) => Promise<SshTerminateSessionsResult>
   resetRelay: (args: { targetId: string }) => Promise<void>
