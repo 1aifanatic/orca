@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { i18n, translate } from '@/i18n/i18n'
 import type * as I18nModule from '@/i18n/i18n'
 import en from '@/i18n/locales/en.json'
+import zh from '@/i18n/locales/zh.json'
 import {
   AGENT_SESSION_ATTACHMENT_PROBLEM_REASONS,
   AGENT_SESSION_FAILURE_KINDS,
@@ -37,6 +38,8 @@ const NOTICE_PIECES: readonly AgentSessionFailureCopyId[] = [
   'quitTerminalAgent',
   'startNewChat'
 ]
+// Kana, and kanji whose simplified Chinese form differs (続 is 续, 読 is 读, ...).
+const JAPANESE_ONLY = /[\u3040-\u30ff続読変済図気帰戻検択転権単圧応対発処実証覧関専]/u
 const VALUES = { agent: 'Claude', detail: 'Image type .bmp', limit: '20', size: '5 MB' }
 
 function factsFor(kind: AgentSessionFailureFact['kind']): AgentSessionFailureFact[] {
@@ -152,5 +155,12 @@ describe('desktop words for a failure fact', () => {
         structuredAgentSessionRejectionParts('Claude does not support .bmp images', 'send')
       )
     ).toBe('Claude does not support .bmp images')
+  })
+
+  it('keeps Japanese-only characters out of the Chinese words', () => {
+    const chat = zh.components['native-chat']
+    for (const words of [...Object.values(chat.failureWords), chat.state.error.keepsTrying]) {
+      expect(words).not.toMatch(JAPANESE_ONLY)
+    }
   })
 })
