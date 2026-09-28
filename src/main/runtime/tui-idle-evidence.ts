@@ -253,7 +253,7 @@ export function evaluateTuiIdle(input: TuiIdleEvaluationInput): TuiIdleVerdict {
     }
     return input.readPositiveBodyEvidence()
       ? READY_STRONG
-      : { kind: 'pending', quietForeground: false }
+      : { kind: 'pending', quietForeground: 'closed' }
   }
   // Why the title before the body: both are tier 1, so either settles, but the title is a
   // memoized lookup and the body is a fresh multi-KB scan. Same verdict, cheaper order.

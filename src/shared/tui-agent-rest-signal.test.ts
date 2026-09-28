@@ -28,6 +28,7 @@ const EXPECTED_REST_SIGNALS: Record<TuiAgent, TuiAgentRestSignal> = {
   copilot: 'title',
   grok: 'title',
   muse: 'ready-body',
+  qoder: 'ready-body',
   autohand: 'none',
   ante: 'none',
   trae: 'none',

@@ -196,16 +196,22 @@ describe('rest signal agrees with the lanes that can settle a wait', () => {
     const signal = getTuiAgentRestSignal(agent)
     const hookDone = hasFreshDoneFirstPartyStatus(agent, { state: 'done', updatedAt: Date.now() })
     expect(hookDone).toBe(signal === 'hook-done')
-    const museBody = hasQuietMuseReadyPrompt(record(), agent, () => true, QUIESCENCE_MS)
-    expect(museBody).toBe(signal === 'ready-body')
-    if (signal !== 'none') {
-      return
-    }
     let screenRead = false
     isKnownReadyPromptBody('', agent, () => {
       screenRead = true
       return null
     })
+    const museBody = hasQuietMuseReadyPrompt(record(), agent, () => true, QUIESCENCE_MS)
+    if (museBody) {
+      expect(signal).toBe('ready-body')
+    }
+    // Why a screen read also counts: Qoder's ready body is its composer, read by identity.
+    if (signal === 'ready-body') {
+      expect(museBody || screenRead).toBe(true)
+    }
+    if (signal !== 'none') {
+      return
+    }
     expect({
       screenRead,
       syntheticTitle: getSyntheticAgentTerminalTitle(agent, 'done'),
