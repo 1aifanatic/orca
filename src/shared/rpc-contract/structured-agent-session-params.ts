@@ -305,7 +305,10 @@ export const ModelCatalogParams = z.strictObject({
 export const ConversationCommandParams = z
   .object({
     envelope: MutationEnvelope,
-    command: z.enum(['clear', 'compact'])
+    command: z.enum(['clear', 'compact']),
+    /** Clear only (ignored on compact): withdraw the source's drafts and return their text.
+     *  Capability-gated like Stop's; without it the source keeps its cards. */
+    withdrawQueued: z.literal(true).optional()
   })
   .strict()
 

@@ -4,6 +4,7 @@
 // each draft's `host_instance` differing from this process's instance id.
 
 import { randomUUID } from 'node:crypto'
+import type { AgentSessionQueuedMessagePausedReason } from '../../../shared/agent-session-wire'
 
 /** A per-process id, minted once per host process like the runtime's own
  *  `runtimeId` (`orca-runtime-runtime-id.ts`); a draft written by another
@@ -21,8 +22,8 @@ export function rotateStructuredAgentSessionHostInstanceForTests(): string {
 }
 
 type QueuedMessagePause = {
-  /** Copy for the card when the hold came from a failure; a Stop's pause has none. */
-  reason?: string
+  /** Set when the hold came from a failure; a Stop's pause has none. */
+  reason?: AgentSessionQueuedMessagePausedReason
 }
 
 /** NUL cannot occur in either id, so no pair can forge another pair's key. */
@@ -36,7 +37,11 @@ function pauseKey(sessionId: string, messageId: string): string {
   return `${sessionId}${PAUSE_KEY_SEPARATOR}${messageId}`
 }
 
-export function pauseQueuedMessage(sessionId: string, messageId: string, reason?: string): void {
+export function pauseQueuedMessage(
+  sessionId: string,
+  messageId: string,
+  reason?: AgentSessionQueuedMessagePausedReason
+): void {
   pausedDrafts.set(pauseKey(sessionId, messageId), reason === undefined ? {} : { reason })
   pauseRevision++
 }

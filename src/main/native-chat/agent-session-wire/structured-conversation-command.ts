@@ -28,6 +28,8 @@ import {
 export type ConversationCommandParams = {
   envelope: AgentSessionMutationEnvelope
   command: AgentSessionConversationCommand
+  /** Only a capable caller receives withdrawn text; without it the source keeps its cards. */
+  withdrawQueued?: true
 }
 export type ConversationReplacement = {
   sourceSessionId: string
@@ -43,6 +45,8 @@ export function runStructuredConversationCommand(
   params: ConversationCommandParams
 ): Promise<AgentSessionMutationResult<AgentSessionConversationCommandResult>> {
   const { envelope, command } = params
+  // Clear only; the caller can receive withdrawn text.
+  const withdrawQueued = command === 'clear' && params.withdrawQueued === true
   const { sessionId, clientOperationId } = envelope
   const store = context.deps.store
   const matching = () => {
@@ -65,7 +69,7 @@ export function runStructuredConversationCommand(
       now: context.now,
       plan: {
         method: 'agentSession.conversationCommand',
-        fields: { command },
+        fields: { command, ...(params.withdrawQueued ? { withdrawQueued: true } : {}) },
         recoverUnknownFromDurableState: true,
         settledOutcome: (value) => {
           // Withdrawn bodies never enter the ledger (it caps result payloads);
@@ -93,7 +97,7 @@ export function runStructuredConversationCommand(
               ? { command, state: 'completed' as const }
               : null
           })()
-          if (!replayed || command !== 'clear') {
+          if (!replayed || !withdrawQueued) {
             return replayed
           }
           const withdrawnQueued = replayWithdrawnQueuedMessages(
@@ -259,13 +263,14 @@ export function runStructuredConversationCommand(
             ...(error ? { error: error.slice(0, 4096) } : {})
           }
           await store.setConversationCommand(sessionId, ctx.fence, completed)
-          if (command !== 'clear') {
+          if (!withdrawQueued) {
+            // An old client could not receive withdrawn text: the source keeps its
+            // cards, the supersession fence blocks the drain, and Delete still works.
             return { ok: true, value: completed }
           }
-          // The cleared source keeps its session, but nothing will ever act on a
-          // superseded source's drafts: withdraw them — returned cards included —
-          // and hand their text back for the composer. On failure the committed
-          // supersession fence already blocks the drain; the cards keep Delete.
+          // The capable caller's composer takes the text back: withdraw the source's
+          // drafts — returned cards included. On failure the committed supersession
+          // fence already blocks the drain; the cards keep Delete.
           const withdrawnQueued = await withdrawClearedSourceQueuedMessages(ctx, {
             callerKey: caller.callerKey,
             operationId: clientOperationId

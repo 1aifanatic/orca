@@ -9,11 +9,13 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
-import type {
-  AgentSessionQueuedMessage,
-  AgentSessionSubscribeEvent
+import {
+  QUEUED_MESSAGE_PAUSED_SEND_FAILED,
+  type AgentSessionQueuedMessage,
+  type AgentSessionSubscribeEvent
 } from '../../../shared/agent-session-wire'
 import { DISPATCH_REJECTED_CANCELLED } from '../../../shared/structured-agent-session-dispatch-rejection'
+import { ConversationCommandParams } from '../../../shared/rpc-contract/structured-agent-session-params'
 import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
@@ -390,7 +392,10 @@ describe('held drafts', () => {
     }
     expect(AgentSessionJournal.prototype.appendSubmission).toBe(original)
     const page = await host.history({ sessionId: SESSION, direction: 'tail' })
-    expect(page.ok && page.page.queuedMessages?.[0]?.pausedReason).toMatch(/Send to retry/)
+    // A marker the client localizes, never host-authored copy.
+    expect(page.ok && page.page.queuedMessages?.[0]?.pausedReason).toBe(
+      QUEUED_MESSAGE_PAUSED_SEND_FAILED
+    )
     expect(await submission(draftId)).toBeUndefined()
     expect(await sendNow(draftId)).toMatchObject({
       ok: true,
@@ -544,6 +549,59 @@ describe('Stop and Delete', () => {
 })
 
 describe('/clear', () => {
+  function clear(clientOperationId: string, withdrawQueued?: true) {
+    const fields = { command: 'clear' as const, ...(withdrawQueued ? { withdrawQueued } : {}) }
+    return host.conversationCommand(CALLER, {
+      envelope: envelope(fields, 'agentSession.conversationCommand', clientOperationId),
+      ...fields
+    })
+  }
+
+  /** Two drafts paused by an old-client Stop, then the work settled so command
+   *  admission has nothing pending. */
+  async function pausedDrafts(): Promise<[string, string]> {
+    const working = await workingSend()
+    const first = await send('first text', 'queue-if-active').result
+    const second = await send('second text', 'queue-if-active').result
+    if (!first.ok || !('queued' in first.value) || !second.ok || !('queued' in second.value)) {
+      throw new Error('expected queued receipts')
+    }
+    await stop()
+    await settleAccepted(working, 'a')
+    return [first.value.queued.messageId, second.value.queued.messageId]
+  }
+
+  it('the clear schema accepts the withdraw opt-in', () => {
+    const base = { envelope: envelope({}, 'agentSession.conversationCommand', 'op-schema') }
+    expect(
+      ConversationCommandParams.safeParse({ ...base, command: 'clear', withdrawQueued: true })
+        .success
+    ).toBe(true)
+  })
+
+  it("an old client's clear never withdraws text it cannot receive: the cards stay on the source", async () => {
+    const [firstId, secondId] = await pausedDrafts()
+    const operationId = hostTestOperationId()
+    const cleared = await clear(operationId)
+    expect(cleared).toMatchObject({ ok: true, value: { command: 'clear', state: 'completed' } })
+    expect(cleared.ok && 'withdrawnQueued' in cleared.value).toBe(false)
+    expect(await drafts()).toMatchObject([
+      { messageId: firstId, state: 'waiting' },
+      { messageId: secondId, state: 'waiting' }
+    ])
+    const replayed = await clear(operationId)
+    expect(replayed).toMatchObject({ ok: true, replayed: true })
+    expect(replayed.ok && 'withdrawnQueued' in replayed.value).toBe(false)
+    // The superseded source never drains them; Delete still hands the text back.
+    await new Promise((resolve) => setTimeout(resolve, 250))
+    expect(await submission(firstId)).toBeUndefined()
+    expect(await deleteQueued(firstId)).toMatchObject({
+      ok: true,
+      value: { deleted: true, body: hostTestMessage('first text') }
+    })
+    expect(await drafts()).toMatchObject([{ messageId: secondId, state: 'waiting' }])
+  })
+
   it('withdraws waiting drafts from the superseded source and returns their text', async () => {
     const working = await workingSend()
     const first = await send('first text', 'queue-if-active').result
@@ -557,10 +615,7 @@ describe('/clear', () => {
     await stop()
     await settleAccepted(working, 'a')
     const operationId = hostTestOperationId()
-    const cleared = await host.conversationCommand(CALLER, {
-      envelope: envelope({ command: 'clear' }, 'agentSession.conversationCommand', operationId),
-      command: 'clear'
-    })
+    const cleared = await clear(operationId, true)
     if (!cleared.ok) {
       throw new Error(`clear refused: ${JSON.stringify(cleared.refusal)}`)
     }
@@ -577,26 +632,16 @@ describe('/clear', () => {
     })
     expect(await drafts()).toHaveLength(0)
     // A lost acknowledgement replays the bodies from the tombstones, never the ledger.
-    expect(
-      await host.conversationCommand(CALLER, {
-        envelope: envelope({ command: 'clear' }, 'agentSession.conversationCommand', operationId),
-        command: 'clear'
-      })
-    ).toMatchObject({
+    const replayed = await clear(operationId, true)
+    expect(replayed).toMatchObject({
       ok: true,
       replayed: true,
       value: { withdrawnQueued: [{ body: hostTestMessage('first text') }, expect.anything()] }
     })
+    expect(replayed.ok && replayed.value.withdrawnQueued).toHaveLength(2)
   })
   it('a clear with no drafts answers exactly as before: no withdrawnQueued field', async () => {
-    const cleared = await host.conversationCommand(CALLER, {
-      envelope: envelope(
-        { command: 'clear' },
-        'agentSession.conversationCommand',
-        hostTestOperationId()
-      ),
-      command: 'clear'
-    })
+    const cleared = await clear(hostTestOperationId(), true)
     expect(cleared).toMatchObject({ ok: true, value: { command: 'clear', state: 'completed' } })
     expect(cleared.ok && 'withdrawnQueued' in cleared.value).toBe(false)
   })

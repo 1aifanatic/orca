@@ -10,7 +10,10 @@ import type {
   AgentJournalMessageItem,
   AgentJournalRenderItem
 } from '../../../shared/agent-session-journal-types'
-import type { AgentSessionWireRefusal } from '../../../shared/agent-session-wire'
+import {
+  QUEUED_MESSAGE_PAUSED_SEND_FAILED,
+  type AgentSessionWireRefusal
+} from '../../../shared/agent-session-wire'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import { isStructuredAgentSessionMainAgentWorking } from '../../../shared/structured-agent-session-main-agent-working'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
@@ -304,7 +307,7 @@ export class StructuredAgentSessionQueuedMessageDrain {
       }
       // Pre-consume failure: the draft stays waiting, held with the error on the
       // card. An explicit Send retries; no automatic retry loop.
-      pauseQueuedMessage(sessionId, next.messageId, "Couldn't send — press Send to retry.")
+      pauseQueuedMessage(sessionId, next.messageId, QUEUED_MESSAGE_PAUSED_SEND_FAILED)
       throw error
     }
     this.deps.wakeDelivery(sessionId)

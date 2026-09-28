@@ -358,6 +358,11 @@ export type AgentSessionCancelResult = {
   withdrawnQueued?: AgentSessionWithdrawnQueuedMessage[]
 }
 
+/** The draft could not be converted into a send; an explicit Send retries it. */
+export const QUEUED_MESSAGE_PAUSED_SEND_FAILED = 'send_failed' as const
+
+export type AgentSessionQueuedMessagePausedReason = typeof QUEUED_MESSAGE_PAUSED_SEND_FAILED
+
 /** One draft the host holds for this conversation, published whole-list on the
  *  subscribe stream and on history pages. Text-only v1. */
 export type AgentSessionQueuedMessage = {
@@ -367,8 +372,10 @@ export type AgentSessionQueuedMessage = {
   state: 'waiting' | 'returned'
   /** Derived at publish: a Stop, a pre-consume failure, or a host restart holds it. */
   paused?: true
-  /** Copy for a paused card when the hold came from a failure; absent otherwise. */
-  pausedReason?: string
+  /** Why a failure holds it, as a marker the client localizes; absent for a
+   *  Stop's or a restart's hold. A client must treat an unknown marker as a
+   *  plain pause, so a newer host can add one. */
+  pausedReason?: AgentSessionQueuedMessagePausedReason
   /** The stored effective rejection. Clients decide showability with
    *  `dispatchRejectionReasonIsInternal`, exactly as for rejected submissions;
    *  `dispatchWasWithdrawn` marks one a Stop withdrew before it reached the agent. */
