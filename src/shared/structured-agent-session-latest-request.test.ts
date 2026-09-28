@@ -8,6 +8,7 @@ import { agentJournalSubmissionKey } from './agent-session-journal-item-key'
 import {
   DISPATCH_REJECTED_CANCELLED,
   DISPATCH_REJECTED_HOST_RESTARTED,
+  DISPATCH_REJECTED_NOT_DELIVERED,
   DISPATCH_REJECTED_PROVIDER_CLOSED
 } from './structured-agent-session-dispatch-rejection'
 import { latestStructuredAgentSessionRequest } from './structured-agent-session-latest-request'
@@ -100,6 +101,37 @@ const ROWS: Row[] = [
     submissions: [rejected('m1', DISPATCH_REJECTED_PROVIDER_CLOSED)],
     outcome: null,
     listed: false
+  },
+  {
+    name: 'a send crash recovery found the provider never received (no verdict)',
+    items: [userEntry('m1', 1)],
+    submissions: [
+      sent('m1', {
+        dispatchState: 'rejected',
+        reason: DISPATCH_REJECTED_NOT_DELIVERED,
+        recovered: true
+      })
+    ],
+    outcome: null,
+    listed: false
+  },
+  {
+    name: 'a turn that succeeded, then a send crash recovery found the provider never received',
+    items: [
+      userEntry('m1', 1),
+      turn('t1', 2, { state: 'completed', outcome: 'success', completedAt: 15 }),
+      userEntry('m2', 3)
+    ],
+    submissions: [
+      sent('m1', { dispatchState: 'accepted' }),
+      sent('m2', {
+        dispatchState: 'rejected',
+        reason: DISPATCH_REJECTED_NOT_DELIVERED,
+        recovered: true
+      })
+    ],
+    outcome: 'success',
+    listed: true
   },
   {
     name: 'a send crash recovery left unknown',
