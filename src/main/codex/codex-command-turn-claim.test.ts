@@ -190,7 +190,49 @@ describe('a Codex turn a conversation command claims', () => {
 
     expect(commandTurn(writes)).toMatchObject({ state: 'completed', outcome: 'failure' })
     expect(resultRows(writes).map((write) => write.body)).toEqual([
-      { kind: 'status', text: 'Unavailable', tone: 'error' }
+      {
+        kind: 'status',
+        text: 'Compaction failed: Unavailable.',
+        failure: {
+          kind: 'compactionFailed',
+          detail: { text: 'Unavailable', audience: 'person' }
+        },
+        tone: 'error'
+      }
+    ])
+  })
+
+  it('says only that the compaction failed when a turn that did not complete gave no words', () => {
+    const { writes, translator, emit } = harness()
+    translator.beginCommand(COMMAND)
+    emit(notification('turn/started', { turn: { id: PROVIDER_TURN } }))
+    emit(notification('turn/completed', { turn: { id: PROVIDER_TURN, status: 'failed' } }))
+
+    expect(commandTurn(writes)).toMatchObject({ state: 'completed', outcome: 'failure' })
+    expect(resultRows(writes).map((write) => write.body)).toEqual([
+      {
+        kind: 'status',
+        text: 'Compaction failed.',
+        failure: { kind: 'compactionFailed' },
+        tone: 'error'
+      }
+    ])
+  })
+
+  it('reports a turn that completed without Codex reporting a compaction as unconfirmed', () => {
+    const { writes, translator, emit } = harness()
+    translator.beginCommand(COMMAND)
+    emit(notification('turn/started', { turn: { id: PROVIDER_TURN } }))
+    emit(notification('turn/completed', { turn: { id: PROVIDER_TURN, status: 'completed' } }))
+
+    expect(commandTurn(writes)).toMatchObject({ state: 'completed', outcome: 'failure' })
+    expect(resultRows(writes).map((write) => write.body)).toEqual([
+      {
+        kind: 'status',
+        text: 'Compaction completion is unconfirmed.',
+        failure: { kind: 'compactionUnconfirmed' },
+        tone: 'error'
+      }
     ])
   })
 

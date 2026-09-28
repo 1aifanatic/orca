@@ -10,6 +10,7 @@ import {
   type AgentJournalSubmission,
   type AgentJournalTurnOutcome
 } from './agent-session-journal-types'
+import { structuredAgentSessionStatusBlock } from './structured-agent-session-status-block'
 import { agentJournalItemRowOrigin } from './agent-session-journal-position'
 import {
   AGENT_STATUS_TOOL_INPUT_MAX_LENGTH,
@@ -123,18 +124,7 @@ function itemBlocks(item: AgentJournalRenderItem): {
   if (body.kind !== 'status' || body.turnLifecycle) {
     return null
   }
-  return {
-    role: 'system',
-    blocks: [
-      {
-        type: 'text',
-        text: body.text,
-        ...(body.presentation !== undefined ? { presentation: body.presentation } : {}),
-        ...(body.tone !== undefined ? { tone: body.tone } : {}),
-        ...(body.providerFrame ? { providerFrame: body.providerFrame } : {})
-      }
-    ]
-  }
+  return { role: 'system', blocks: [structuredAgentSessionStatusBlock(body)] }
 }
 
 function isAgentJournalMessageSendMode(value: string): value is AgentJournalMessageSendMode {

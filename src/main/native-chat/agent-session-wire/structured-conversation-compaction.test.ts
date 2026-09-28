@@ -14,6 +14,8 @@ import {
   type AgentJournalRenderItem
 } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionSubscribeEvent } from '../../../shared/agent-session-wire'
+import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
+import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { structuredAgentSessionCommandTurn } from './structured-agent-session-command-turn'
@@ -54,7 +56,14 @@ function finish(result: StructuredConversationCommandOutcome): void {
     result.outcome === 'success'
       ? { kind: 'status', text: 'Context compacted', presentation: 'compaction' }
       : result.outcome === 'failure'
-        ? { kind: 'status', text: result.error ?? 'Compaction failed.', tone: 'error' }
+        ? {
+            kind: 'status',
+            ...agentSessionFailureWords(
+              result.failure ?? agentSessionFailureFact('compactionUnconfirmed'),
+              { surface: 'row' }
+            ),
+            tone: 'error'
+          }
         : null
   events.appendLifecycleBatch!(
     `turn-completed:${command.clientMessageId}`,
@@ -77,6 +86,9 @@ function finish(result: StructuredConversationCommandOutcome): void {
     { lifecycle: true }
   )
 }
+
+/** Claude's words for a compaction it refused, as its frames carry them. */
+const NOT_ENOUGH = { text: 'Not enough messages to compact.', audience: 'person' as const }
 
 function compactParams() {
   return {
@@ -202,7 +214,10 @@ it('holds messages sent during the command and delivers them after it, in order 
   await new Promise((resolve) => setTimeout(resolve, 50))
   expect(state.dispatch).not.toHaveBeenCalled()
 
-  finish({ outcome: 'failure', error: 'Not enough messages to compact.' })
+  finish({
+    outcome: 'failure',
+    failure: agentSessionFailureFact('compactionFailed', { detail: NOT_ENOUGH })
+  })
 
   // Delivered even though the command failed.
   await vi.waitFor(() => expect(state.dispatch).toHaveBeenCalledTimes(2))
@@ -215,7 +230,10 @@ it('holds messages sent during the command and delivers them after it, in order 
   const error = (await journal()).items.find(
     (item) => item.body.kind === 'status' && item.body.tone === 'error'
   )
-  expect(error?.body).toMatchObject({ text: 'Not enough messages to compact.' })
+  expect(error?.body).toMatchObject({
+    text: 'Compaction failed: Not enough messages to compact.',
+    failure: { kind: 'compactionFailed', detail: NOT_ENOUGH }
+  })
 })
 
 it('hands over a message held behind the command when the command ends just as the loop stops for it', async () => {
@@ -248,7 +266,15 @@ it('hands over a message held behind the command when the command ends just as t
 
 it('settles a command the provider refused as a failure with its reason, and moves on (B3)', async () => {
   await attach()
-  compact.mockResolvedValue({ state: 'rejected', reason: 'Not enough messages to compact.' })
+  compact.mockResolvedValue({
+    state: 'rejected',
+    ...agentSessionFailureWords(
+      agentSessionFailureFact('providerRejected', { detail: NOT_ENOUGH }),
+      {
+        surface: 'rejection'
+      }
+    )
+  })
   const params = compactParams()
   const cmid = params.envelope.clientOperationId
   await state.host.conversationCommand(CALLER, params)
@@ -260,18 +286,50 @@ it('settles a command the provider refused as a failure with its reason, and mov
     outcome: 'failure'
   })
   const snapshot = await journal()
+  // The message was not sent, in the provider's words; the command's row says the compaction failed.
   expect(snapshot.submissions.find((entry) => entry.clientMessageId === cmid)).toMatchObject({
     dispatchState: 'rejected',
-    reason: 'Not enough messages to compact.'
+    reason: 'The provider did not accept this message: Not enough messages to compact.',
+    rejection: { kind: 'providerRejected', detail: NOT_ENOUGH }
   })
   expect(
     snapshot.items.filter((item) => item.body.kind === 'status' && item.body.tone === 'error')
   ).toEqual([
     expect.objectContaining({
-      body: expect.objectContaining({ text: 'Not enough messages to compact.' }),
+      body: {
+        kind: 'status',
+        text: 'Compaction failed: Not enough messages to compact.',
+        failure: { kind: 'compactionFailed', detail: NOT_ENOUGH },
+        tone: 'error'
+      },
       turnScope: { kind: 'turn', turnItemId: structuredAgentSessionCommandTurn(cmid).itemId }
     })
   ])
+})
+
+it('says only that the compaction failed when the provider refused it without words', async () => {
+  await attach()
+  compact.mockResolvedValue({
+    state: 'rejected',
+    ...agentSessionFailureWords(agentSessionFailureFact('writeFailed'), { surface: 'rejection' })
+  })
+  const params = compactParams()
+  await state.host.conversationCommand(CALLER, params)
+
+  await vi.waitFor(async () =>
+    expect(
+      (await journal()).items
+        .filter((item) => item.body.kind === 'status' && item.body.tone === 'error')
+        .map((item) => item.body)
+    ).toEqual([
+      {
+        kind: 'status',
+        text: 'Compaction failed.',
+        failure: { kind: 'compactionFailed' },
+        tone: 'error'
+      }
+    ])
+  )
 })
 
 it('refuses the command at handover when the provider opened a turn meanwhile (B3)', async () => {
@@ -289,12 +347,13 @@ it('refuses the command at handover when the provider opened a turn meanwhile (B
   })
   const params = compactParams()
 
+  const refused = {
+    kind: 'commandRefused',
+    refusal: { code: 'agent_session_operation_invalid', details: { reason: 'turnActive' } }
+  }
   await expect(state.host.conversationCommand(CALLER, params)).resolves.toMatchObject({
     ok: true,
-    value: {
-      state: 'completed',
-      error: 'Wait for the current turn to finish before using this command.'
-    }
+    value: { state: 'completed', error: "This command didn't run. Try it again.", failure: refused }
   })
   expect(compact).not.toHaveBeenCalled()
   expect(await commandTurn(params.envelope.clientOperationId)).toBeUndefined()
@@ -302,7 +361,11 @@ it('refuses the command at handover when the provider opened a turn meanwhile (B
     (await journal()).submissions.find(
       (entry) => entry.clientMessageId === params.envelope.clientOperationId
     )
-  ).toMatchObject({ dispatchState: 'rejected' })
+  ).toMatchObject({
+    dispatchState: 'rejected',
+    reason: "This command didn't run. Try it again.",
+    rejection: refused
+  })
 })
 
 it('leaves a command whose start failed not sent, beside one start-failure row (B3)', async () => {
@@ -313,13 +376,27 @@ it('leaves a command whose start failed not sent, beside one start-failure row (
 
   await expect(state.host.conversationCommand(CALLER, params)).resolves.toMatchObject({
     ok: true,
-    value: { state: 'completed', error: expect.stringContaining('not signed in') }
+    value: {
+      state: 'completed',
+      error: "Codex couldn't restart. Send your message to try again.",
+      failure: { kind: 'restartFailed' }
+    }
   })
   const snapshot = await journal()
   expect(snapshot.items.filter((item) => readAgentJournalTurn(item.body))).toEqual([])
+  // The start's own row, in the words the command's message was refused with.
   expect(
-    snapshot.items.filter((item) => item.body.kind === 'status' && item.body.tone === 'error')
-  ).toHaveLength(1)
+    snapshot.items
+      .filter((item) => item.body.kind === 'status' && item.body.tone === 'error')
+      .map((item) => item.body)
+  ).toEqual([
+    {
+      kind: 'status',
+      text: "Codex couldn't restart. Send your message to try again.",
+      failure: expect.objectContaining({ kind: 'restartFailed' }),
+      tone: 'error'
+    }
+  ])
   expect(compact).not.toHaveBeenCalled()
 })
 
@@ -422,7 +499,15 @@ it("answers a refused command's message before ending its turn, so a crash betwe
   await attach()
   // The one command end the host still writes: the provider refused it. A provider's own end is
   // one batch its translator writes, with nothing to split.
-  compact.mockResolvedValue({ state: 'rejected', reason: 'Not enough messages to compact.' })
+  compact.mockResolvedValue({
+    state: 'rejected',
+    ...agentSessionFailureWords(
+      agentSessionFailureFact('providerRejected', { detail: NOT_ENOUGH }),
+      {
+        surface: 'rejection'
+      }
+    )
+  })
   const { journal: live } = state.host['sessions'].get(SESSION)!
   const appendLifecycleBatch = live.appendLifecycleBatch.bind(live)
   const crash = vi
@@ -628,7 +713,8 @@ it("ignores an older build's unconfirmed compaction record, and answers its oper
     ok: true,
     value: {
       state: 'unknown',
-      error: 'Compaction completion is unconfirmed; it was not run again.'
+      error: 'Compaction completion is unconfirmed.',
+      failure: { kind: 'compactionUnconfirmed' }
     }
   })
   expect(compact).toHaveBeenCalledOnce()

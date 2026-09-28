@@ -13,22 +13,34 @@ describe('structuredCompactionOutcome', () => {
       structuredCompactionOutcome({
         compacted: false,
         interruptRequested: true,
-        error: 'API Error: Request was aborted.'
+        failed: { detail: { text: 'API Error: Request was aborted.', audience: 'person' } }
       })
     ).toEqual({ outcome: 'cancellation' })
   })
 
-  it('reads any other missing compaction as a failure, with the reason the provider gave', () => {
+  it("reads a failure the provider reported as a failed compaction, keeping the provider's words", () => {
     expect(
       structuredCompactionOutcome({
         compacted: false,
         interruptRequested: false,
-        error: 'Not enough messages to compact.'
+        failed: { detail: { text: 'Not enough messages to compact.', audience: 'person' } }
       })
-    ).toEqual({ outcome: 'failure', error: 'Not enough messages to compact.' })
+    ).toEqual({
+      outcome: 'failure',
+      failure: {
+        kind: 'compactionFailed',
+        detail: { text: 'Not enough messages to compact.', audience: 'person' }
+      }
+    })
+    expect(
+      structuredCompactionOutcome({ compacted: false, interruptRequested: false, failed: {} })
+    ).toEqual({ outcome: 'failure', failure: { kind: 'compactionFailed' } })
+  })
+
+  it('reads a compaction the provider never reported as a failure it did not confirm', () => {
     expect(structuredCompactionOutcome({ compacted: false, interruptRequested: false })).toEqual({
       outcome: 'failure',
-      error: 'Compaction was not confirmed by the provider.'
+      failure: { kind: 'compactionUnconfirmed' }
     })
   })
 })

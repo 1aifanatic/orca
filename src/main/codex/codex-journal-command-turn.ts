@@ -8,7 +8,9 @@ import {
 } from '../../shared/agent-session-journal-types'
 import { agentJournalItemKey } from '../../shared/agent-session-journal-item-key'
 import { agentJournalTurnBody } from '../../shared/agent-session-turn-record'
-import { boundJournalStatusText } from '../native-chat/agent-session-journal/journal-prompt-body-bounds'
+import { providerDiagnostic } from '../../shared/agent-session-failure'
+import { agentSessionFailureWords } from '../../shared/agent-session-failure-words'
+import { TUI_AGENT_DISPLAY_NAMES } from '../../shared/tui-agent-display-names'
 import type { JournalLifecycleMutationInput } from '../native-chat/agent-session-journal/journal-row-builders'
 import type { StructuredAgentSessionCommandRun } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import { structuredCompactionOutcome } from '../native-chat/agent-session-wire/structured-conversation-command-outcome'
@@ -98,23 +100,28 @@ export class CodexJournalCommandTurn {
       return []
     }
     const { command } = carried
+    const detail = ended.error === null ? undefined : providerDiagnostic(ended.error, 'person')
     const verdict = structuredCompactionOutcome({
       compacted: carried.compacted,
       // Codex reports the user's stop as the turn's own status.
       interruptRequested: ended.status === 'interrupted',
-      error: ended.error
+      // A turn that did not complete failed, not merely went unconfirmed.
+      failed: ended.status !== 'completed' || detail ? (detail ? { detail } : {}) : null
     })
     const turnScope = { kind: 'turn' as const, turnItemId: agentJournalItemKey(command.identity) }
     return [
       // A success already drew Codex's own compaction marker inside the command's turn.
-      ...(verdict.outcome === 'failure' && !ended.failureShown
+      ...(verdict.failure && !ended.failureShown
         ? [
             {
               kind: 'item' as const,
               identity: command.resultIdentity,
               body: {
                 kind: 'status' as const,
-                text: boundJournalStatusText(verdict.error ?? 'Compaction did not complete.'),
+                ...agentSessionFailureWords(verdict.failure, {
+                  surface: 'row',
+                  agentName: TUI_AGENT_DISPLAY_NAMES.codex
+                }),
                 tone: 'error' as const
               },
               turnScope

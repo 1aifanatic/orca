@@ -27,12 +27,9 @@ import { JournalDerivedTurnScope } from './journal-derived-turn-scope'
 import { removeJournalItem, statedOrDerivedTurnScope, upsertJournalItem } from './journal-item-fold'
 import { journalItemRevisionIsStale } from './journal-item-revision'
 import type { JournalRow } from './journal-row-schema'
-import {
-  acceptSubmissionFromProviderItem,
-  applyJournalDispatch,
-  applyJournalSubmission
-} from './journal-submission-fold'
-import { dispatchRejectionWasTransportWriteFailure } from '../../../shared/structured-agent-session-dispatch-rejection'
+import { acceptSubmissionFromProviderItem, applyJournalSubmission } from './journal-submission-fold'
+import { applyJournalDispatchRow } from './journal-dispatch-reducer'
+import { isWriteFailureSubmission } from '../../../shared/structured-agent-session-dispatch-rejection'
 
 export const MAX_JOURNAL_APPLIED_SETTLEMENT_IDS = 4_096
 
@@ -127,7 +124,7 @@ export function applyJournalRow(state: JournalReducerState, row: JournalRow): vo
     applyJournalSubmission(state, row)
     return
   }
-  applyJournalDispatch(state, row)
+  applyJournalDispatchRow(state, row)
 }
 
 export function rememberAppliedSettlementId(
@@ -179,7 +176,7 @@ export function resolveJournalItemId(
     .find(
       (candidate) =>
         candidate.dispatchState !== 'rejected' &&
-        !dispatchRejectionWasTransportWriteFailure(candidate.reason) &&
+        !isWriteFailureSubmission(candidate) &&
         candidate.payloadFingerprint === fingerprint &&
         state.items.get(agentJournalSubmissionKey(candidate.clientMessageId))?.revision === 0
     )

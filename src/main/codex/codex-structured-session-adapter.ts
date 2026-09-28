@@ -12,7 +12,12 @@ import type {
   StructuredAgentSessionSetOptionInput
 } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import type { CodexJournalTranslationAdmission } from './codex-structured-journal-translation'
-import { dispatchCodexTurn, isCodexTurnOptionKey } from './codex-structured-turn-start'
+import {
+  codexDispatchRejection,
+  dispatchCodexTurn,
+  isCodexTurnOptionKey
+} from './codex-structured-turn-start'
+import { agentSessionFailureFact, providerDiagnosticOf } from '../../shared/agent-session-failure'
 import { supportsCodexStructuredLocation } from './codex-structured-location-support'
 import { CodexStructuredSessionTeardown } from './codex-structured-session-teardown'
 import {
@@ -252,7 +257,13 @@ export class CodexStructuredSessionAdapter implements StructuredAgentSessionAdap
     } catch (error) {
       session.translator?.forgetCommand(input.command.turnId)
       if (isCodexAppServerRequestError(error)) {
-        return { state: 'rejected', reason: error.message }
+        // Codex's own words, when it gave any, are the one part of the error a person can use.
+        return {
+          state: 'rejected',
+          ...codexDispatchRejection(
+            agentSessionFailureFact('providerRejected', { detail: providerDiagnosticOf(error) })
+          )
+        }
       }
       throw error
     }

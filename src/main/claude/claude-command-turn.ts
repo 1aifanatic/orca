@@ -8,7 +8,9 @@ import type {
   AgentJournalItemIdentity
 } from '../../shared/agent-session-journal-types'
 import { agentJournalItemKey } from '../../shared/agent-session-journal-item-key'
-import { boundJournalStatusText } from '../native-chat/agent-session-journal/journal-prompt-body-bounds'
+import { providerDiagnostic, type ProviderDiagnostic } from '../../shared/agent-session-failure'
+import { agentSessionFailureWords } from '../../shared/agent-session-failure-words'
+import { TUI_AGENT_DISPLAY_NAMES } from '../../shared/tui-agent-display-names'
 import type { StructuredAgentSessionCommandRun } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import { structuredCompactionOutcome } from '../native-chat/agent-session-wire/structured-conversation-command-outcome'
 import { claudeText } from './claude-structured-item-translation'
@@ -26,7 +28,8 @@ export type ClaudeCommandTurn = {
   compacted: boolean
   /** Orca asked Claude to stop the command. */
   interruptRequested: boolean
-  error: string | null
+  /** Claude reported the compaction failed, with its words for a person when it gave any. */
+  failed: { detail?: ProviderDiagnostic } | null
 }
 
 export type ClaudeCommandStart = StructuredAgentSessionCommandRun & {
@@ -48,7 +51,7 @@ export function claudeCommandCurrentTurn(start: ClaudeCommandStart): ClaudeCurre
       sentUuid: start.sentUuid,
       compacted: false,
       interruptRequested: false,
-      error: null
+      failed: null
     }
   }
 }
@@ -67,7 +70,9 @@ export function observeClaudeCommandFrame(
     if (message.subtype === 'compact_boundary') {
       command.compacted = true
     } else if (message.compact_result === 'failed') {
-      command.error = claudeText(message.compact_error) ?? 'Compaction failed.'
+      const words = claudeText(message.compact_error)
+      const detail = words === null ? undefined : providerDiagnostic(words, 'person')
+      command.failed = detail ? { detail } : {}
     }
     return false
   }
@@ -94,7 +99,7 @@ export function claudeCommandEnd(
   const verdict = structuredCompactionOutcome({
     compacted: command.compacted,
     interruptRequested: command.interruptRequested,
-    error: command.error ?? shown?.text
+    failed: command.failed ?? (shown ? {} : null)
   })
   const durationMs = message.duration_ms
   const end: ClaudeTurnEnd = {
@@ -109,12 +114,15 @@ export function claudeCommandEnd(
     return { end, row: { kind: 'status', text: 'Context compacted', presentation: 'compaction' } }
   }
   // An error result already draws its own row through the provider fallback.
-  return verdict.outcome === 'failure' && !shown
+  return verdict.failure && !shown
     ? {
         end,
         row: {
           kind: 'status',
-          text: boundJournalStatusText(verdict.error ?? 'Compaction did not complete.'),
+          ...agentSessionFailureWords(verdict.failure, {
+            surface: 'row',
+            agentName: TUI_AGENT_DISPLAY_NAMES.claude
+          }),
           tone: 'error'
         }
       }

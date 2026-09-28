@@ -7,15 +7,15 @@ import {
   agentSessionRecordFixture
 } from '../../../shared/agent-session-record.test-fixture'
 import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
-import {
-  settleStaleStructuredAgentSessionState,
-  unexpectedProviderExitOutcome
-} from './structured-agent-session-dead-generation-settlement'
+import { settleStaleStructuredAgentSessionState } from './structured-agent-session-dead-generation-settlement'
 import {
   settleUnexpectedStructuredAgentSessionExit,
   type StructuredAgentSessionUnexpectedExitContext,
   type StructuredAgentSessionUnexpectedExitSession
 } from './structured-agent-session-unexpected-exit'
+
+const exitOutcome = (agent: string): string =>
+  `${agent} stopped while this response was in progress. You can continue in this conversation.`
 
 const SESSION = 'session-1'
 const GENERATION = 'generation-1'
@@ -221,7 +221,8 @@ describe('provider-exit settlement', () => {
           },
           body: {
             kind: 'status',
-            text: unexpectedProviderExitOutcome('provider exited'),
+            text: exitOutcome('The agent'),
+            failure: { kind: 'providerExited' },
             tone: 'error'
           },
           // The exit belongs to the turn it ended.
@@ -322,7 +323,8 @@ describe('provider-exit settlement', () => {
           expect.objectContaining({
             body: {
               kind: 'status',
-              text: unexpectedProviderExitOutcome('provider exited after completing the turn'),
+              text: exitOutcome('Claude'),
+              failure: { kind: 'providerExited' },
               tone: 'error'
             }
           })
@@ -373,7 +375,8 @@ describe('provider-exit settlement', () => {
           expect.objectContaining({
             body: {
               kind: 'status',
-              text: unexpectedProviderExitOutcome('provider exited'),
+              text: exitOutcome('Claude'),
+              failure: { kind: 'providerExited' },
               tone: 'error'
             }
           })

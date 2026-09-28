@@ -18,7 +18,7 @@ import type {
   StructuredAgentSessionHostSession
 } from './structured-agent-session-host-types'
 import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
-import { structuredAgentSessionStartFailureText } from './structured-agent-session-send-preparation'
+import { structuredAgentSessionFailureWordsContext } from './structured-agent-session-send-preparation'
 import { recoverStructuredRewind } from './structured-rewind-recovery'
 
 export type StructuredAgentSessionConversationDelivery = {
@@ -62,8 +62,8 @@ export function createStructuredAgentSessionConversationDelivery(input: {
     ensureProviderChild: input.ensureProviderChild,
     conversationFence: (sessionId) =>
       structuredAgentSessionConversationFence(deps.store, sessionId),
-    startFailureText: (sessionId, cause) =>
-      structuredAgentSessionStartFailureText(deps.store.getRecord(sessionId), cause),
+    failureTextContext: (sessionId) =>
+      structuredAgentSessionFailureWordsContext(deps.store.getRecord(sessionId)),
     onError: (sessionId, error) => deps.onEventSinkError?.({ sessionId, error }),
     record: (sessionId) => deps.store.getRecord(sessionId),
     flushStreamedEvents: input.flushStreamedEvents,

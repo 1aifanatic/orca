@@ -18,9 +18,9 @@ import {
   type JournalReducerState
 } from './journal-reducer'
 import {
-  buildJournalDispatchRow,
   buildJournalItemRow,
-  buildJournalSubmissionRow
+  buildJournalSubmissionRow,
+  journalRowBase
 } from './journal-row-builders'
 import type { JournalRow } from './journal-row-schema'
 
@@ -102,19 +102,16 @@ function rows() {
     },
     handover(clientMessageId: string, scope?: AgentJournalTurnScope) {
       seq += 1
-      push(
-        buildJournalDispatchRow({
-          state,
-          clientMessageId,
-          dispatchState: 'pending',
-          providerItemId: null,
-          reason: null,
-          seq,
-          fence: 1,
-          ts: 1_000 + seq,
-          ...(scope ? { turnScope: scope } : {})
-        })
-      )
+      // Built by hand: a row from an older host carries no scope, which the builder never writes.
+      push({
+        kind: 'dispatch',
+        clientMessageId,
+        state: 'pending',
+        providerItemId: null,
+        reason: null,
+        ...journalRowBase(state.epoch, seq, 1, 1_000 + seq),
+        ...(scope ? { turnScope: scope } : {})
+      })
     }
   }
 }
