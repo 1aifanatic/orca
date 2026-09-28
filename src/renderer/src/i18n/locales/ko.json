@@ -17709,8 +17709,9 @@
       },
       "queuedMessages": {
         "alreadySent": "이 메시지는 이미 전송되었습니다.",
+        "editAlreadySent": "이미 전송되었습니다 — 텍스트는 입력창에 남아 있습니다.",
         "listLabel": "대기 중인 메시지",
-        "pausedHold": "일시 중지됨",
+        "pausedHold": "일시 중지됨 — 다음 메시지 이후에 전송됩니다",
         "behindReturnedHold": "대기 중 — 앞의 메시지에 확인이 필요합니다",
         "awaitingAnswerHold": "답변을 기다리는 중",
         "steer": "지금 보내기",

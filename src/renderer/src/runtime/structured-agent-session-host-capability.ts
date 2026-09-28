@@ -63,8 +63,8 @@ export function useStructuredAgentSessionHostStopsConversation(
   )
 }
 
-/** Whether the host holds mid-turn sends as drafts: only then may a client send `delivery`,
- *  call the queuedMessage RPCs, or ask a Stop to withdraw drafts. */
+/** Whether the host holds mid-turn sends as drafts: only then may a client send `delivery`
+ *  or call the queuedMessage RPCs. */
 export function useStructuredAgentSessionHostQueuesMessages(target: RuntimeClientTarget): boolean {
   return useStructuredAgentSessionHostCapability(
     target,

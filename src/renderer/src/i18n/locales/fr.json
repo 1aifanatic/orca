@@ -17773,8 +17773,9 @@
       },
       "queuedMessages": {
         "alreadySent": "Ce message a déjà été envoyé.",
+        "editAlreadySent": "Déjà envoyé — votre texte reste dans la zone de saisie.",
         "listLabel": "Messages en file d'attente",
-        "pausedHold": "En pause",
+        "pausedHold": "En pause — envoyé après votre prochain message",
         "behindReturnedHold": "En attente — un message précédent nécessite votre attention",
         "awaitingAnswerHold": "En attente de votre réponse",
         "steer": "Envoyer maintenant",

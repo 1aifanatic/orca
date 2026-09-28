@@ -271,7 +271,7 @@ export function useStructuredAgentSessionOutbox(args: {
     [queueDelivery, sessionId]
   )
 
-  const { retire, withdrawUnsent } = useStructuredAgentSessionOutboxOwnership({
+  const { withdrawUnsent } = useStructuredAgentSessionOutboxOwnership({
     sessionId,
     submissions,
     queuedMessageIds,
@@ -303,7 +303,6 @@ export function useStructuredAgentSessionOutbox(args: {
     blockedClientMessageId: blockedIdRef.current,
     send,
     retry,
-    retire,
     withdrawUnsent
   }
 }

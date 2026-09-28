@@ -17838,7 +17838,7 @@
         "estimated": "Estimated from the last response."
       },
       "queuedMessages": {
-        "pausedHold": "Paused",
+        "pausedHold": "Paused — sends after your next message",
         "behindReturnedHold": "Waiting — a message ahead needs attention",
         "awaitingAnswerHold": "Waiting for your answer",
         "steer": "Steer",
@@ -17850,6 +17850,7 @@
         "turnOffQueueing": "Turn off queueing",
         "listLabel": "Queued messages",
         "alreadySent": "This message was already sent.",
+        "editAlreadySent": "Already sent — your text is still in the composer.",
         "withdrawnHold": "Stopped before it was sent",
         "pausedSendFailed": "Couldn't send — press Send to retry."
       }

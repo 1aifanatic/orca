@@ -15072,8 +15072,9 @@
       },
       "queuedMessages": {
         "alreadySent": "Este mensaje ya se envió.",
+        "editAlreadySent": "Ya se envió — tu texto sigue en el cuadro de mensaje.",
         "listLabel": "Mensajes en cola",
-        "pausedHold": "En pausa",
+        "pausedHold": "En pausa — se enviará después de tu próximo mensaje",
         "behindReturnedHold": "En espera: un mensaje anterior necesita atención",
         "awaitingAnswerHold": "Esperando tu respuesta",
         "steer": "Enviar ahora",

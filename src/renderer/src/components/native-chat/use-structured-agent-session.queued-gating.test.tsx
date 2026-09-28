@@ -1,9 +1,11 @@
 // @vitest-environment happy-dom
 
 // Capability gating for mid-turn queueing at the session controller: only a
-// host advertising `agent-session.queued-messages.v1` gets `delivery`,
-// `withdrawQueued`, or card RPCs — anything older sees exactly today's client.
-// And a host-held draft is a card above the composer, never a transcript bubble.
+// host advertising `agent-session.queued-messages.v1` gets `delivery` or the
+// card RPCs — anything older sees exactly today's client. Stop and /clear are
+// today's plain writes for every host: drafts are never withdrawn by either,
+// and no draft text ever rides an answer. A host-held draft is a card above
+// the composer, never a transcript bubble.
 
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -54,8 +56,7 @@ vi.mock('./use-structured-agent-session-outbox', () => ({
       error: null,
       send: vi.fn(),
       retry: vi.fn(),
-      retire: vi.fn(),
-      withdrawUnsent: vi.fn(() => [])
+      withdrawUnsent: vi.fn()
     }
   }
 }))
@@ -67,7 +68,10 @@ import {
 import { setLocalRuntimeCapabilitiesForTests } from '@/runtime/local-runtime-capabilities'
 import { ConversationCommandParams } from '../../../../shared/rpc-contract/structured-agent-session-params'
 import { structuredAgentSessionPayloadFingerprint } from '../../../../shared/structured-agent-session-mutation'
-import { clearQueuedWithdrawalsForTests } from './structured-agent-session-queued-restore'
+import {
+  clearNativeChatDraftCacheForTests,
+  readNativeChatDraftCache
+} from './native-chat-draft-cache'
 import { useStructuredAgentSession } from './use-structured-agent-session'
 
 const RUNNING_TURN: AgentJournalRenderItem = {
@@ -125,12 +129,11 @@ beforeEach(() => {
   queuedMessages = undefined
   outboxEntries = []
   localStorage.clear()
-  clearQueuedWithdrawalsForTests()
+  clearNativeChatDraftCacheForTests()
 })
 
 afterEach(() => {
   setLocalRuntimeCapabilitiesForTests(null)
-  clearQueuedWithdrawalsForTests()
 })
 
 describe('against a capable host', () => {
@@ -149,15 +152,23 @@ describe('against a capable host', () => {
     expect(mocks.outboxArgs.at(-1)?.queueDelivery).toBe(false)
   })
 
-  it('Stop withdraws queued drafts, setting on or off', async () => {
+  it('Stop is a plain cancel: drafts stay as cards and no text lands in the composer', async () => {
+    queuedMessages = [{ ...draft('draft-1'), paused: true }]
     const { result } = render(false)
     await act(async () => {
       await result.current.stop()
     })
-    expect(cancels()).toEqual([expect.objectContaining({ withdrawQueued: true })])
+    const [params] = cancels()
+    expect(params).toBeDefined()
+    expect(params).not.toHaveProperty('withdrawQueued')
+    // The host still owns the draft; the client shows it paused and restores nothing.
+    expect(result.current.queuedMessages.cards).toMatchObject([
+      { messageId: 'draft-1', hold: 'paused' }
+    ])
+    expect(readNativeChatDraftCache('scope-1')).toBe('')
   })
 
-  it('/clear opts into withdrawing drafts and their text comes back in the result', async () => {
+  it("/clear is exactly today's command — drafts are the host's to carry", async () => {
     items = []
     mocks.call.mockImplementation(async (_target, method) =>
       method === 'agentSession.conversationCommand'
@@ -177,21 +188,18 @@ describe('against a capable host', () => {
     const clearCall = mocks.call.mock.calls.find(
       ([, method]) => method === 'agentSession.conversationCommand'
     )
-    // The host's REAL strict schema accepts the request as sent.
+    // The host's REAL strict schema accepts the request as sent — and it carries
+    // no withdraw key: the host moves the drafts to the replacement session itself.
     const parsed = ConversationCommandParams.parse(clearCall?.[2])
     expect(parsed.command).toBe('clear')
-    expect(parsed.withdrawQueued).toBe(true)
-    // Fingerprint parity with the host's digest (structured-conversation-command.ts
-    // digests `{ command, ...(params.withdrawQueued ? { withdrawQueued: true } : {}) }`);
-    // a mismatch would refuse the operation at admission.
+    expect('withdrawQueued' in parsed).toBe(false)
+    // Fingerprint parity with the host's digest; a mismatch would refuse the
+    // operation at admission.
     expect(parsed.envelope.payloadFingerprint).toBe(
       structuredAgentSessionPayloadFingerprint({
         method: 'agentSession.conversationCommand',
         sessionId: 'session-1',
-        fields: {
-          command: parsed.command,
-          ...(parsed.withdrawQueued ? { withdrawQueued: true } : {})
-        }
+        fields: { command: parsed.command }
       })
     )
   })

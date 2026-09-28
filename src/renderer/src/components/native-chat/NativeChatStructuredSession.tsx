@@ -49,7 +49,6 @@ export function NativeChatStructuredSession(
   const controller = useStructuredAgentSession({
     ...props,
     composerScopeKey: paneKey,
-    tabId: props.tabId,
     queueFollowUps,
     providerStarting: startupPhase === 'starting',
     transportEnabled: provisionalLaunch.transportEnabled,

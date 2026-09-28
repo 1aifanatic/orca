@@ -8,8 +8,10 @@ import {
   createStructuredAgentSessionOutboxEntry,
   parseStructuredAgentSessionOutboxEntry,
   structuredAgentSessionSendMutation,
-  structuredAgentSessionSendRequest
+  structuredAgentSessionSendRequest,
+  type StructuredAgentSessionOutboxState
 } from './structured-agent-session-outbox'
+import { withdrawUnsentStructuredAgentSessionOutboxEntries } from './structured-agent-session-outbox-stop'
 
 function entry(delivery?: 'queue-if-active') {
   return createStructuredAgentSessionOutboxEntry({
@@ -64,5 +66,36 @@ describe('outbox queue delivery', () => {
       'session-1'
     )
     expect(foreign !== null && 'delivery' in foreign).toBe(false)
+  })
+
+  it('Stop withdraws a queue send that never left, but never one whose answer is still out', () => {
+    // An issued queue send may already be a host-held draft: withdrawing it locally too
+    // would put the same text in the composer AND on a card. Its answer settles it.
+    const at = (
+      id: string,
+      state: StructuredAgentSessionOutboxState,
+      delivery?: 'queue-if-active'
+    ) => ({
+      ...createStructuredAgentSessionOutboxEntry({
+        clientMessageId: id,
+        sessionId: 'session-1',
+        text: `text of ${id}`,
+        attachments: [],
+        queuedAt: 1,
+        ...(delivery ? { delivery } : {})
+      }),
+      state
+    })
+    const next = withdrawUnsentStructuredAgentSessionOutboxEntries(
+      [
+        at('never-left', 'queued', 'queue-if-active'),
+        at('in-flight', 'dispatching', 'queue-if-active'),
+        at('in-doubt', 'unconfirmed', 'queue-if-active'),
+        at('plain-in-flight', 'dispatching')
+      ],
+      [],
+      null
+    )
+    expect(next.map((entry) => entry.clientMessageId)).toEqual(['in-flight', 'in-doubt'])
   })
 })

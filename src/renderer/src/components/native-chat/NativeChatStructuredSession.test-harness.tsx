@@ -161,9 +161,7 @@ export function createStructuredSessionMocks() {
               steer: mocks.queuedSteer,
               remove: mocks.queuedRemove,
               edit: mocks.queuedEdit,
-              steerNewest: mocks.queuedSteerNewest,
-              stopWithdrawing: vi.fn<() => Promise<null>>(async () => null),
-              writeConversationCommand: vi.fn(async () => ({ kind: 'dropped' as const }))
+              steerNewest: mocks.queuedSteerNewest
             },
             threadGoal: mocks.threadGoal,
             cancel: mocks.cancel,

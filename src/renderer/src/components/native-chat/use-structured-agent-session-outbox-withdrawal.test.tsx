@@ -6,11 +6,11 @@
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
+import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
 import {
   hasUnsentStructuredAgentSessionOutboxEntry,
-  withdrawUnsentStructuredAgentSessionOutboxEntries,
-  type StructuredAgentSessionOutboxEntry
-} from '../../../../shared/structured-agent-session-outbox'
+  withdrawUnsentStructuredAgentSessionOutboxEntries
+} from '../../../../shared/structured-agent-session-outbox-stop'
 
 type SendRequest = { body?: { blocks?: { text?: string }[] } }
 

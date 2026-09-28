@@ -20,8 +20,8 @@ import type { QueuedMessageCard } from './structured-agent-session-queued-cards'
 export function queuedMessageCardCaption(card: QueuedMessageCard): string | null {
   switch (card.hold) {
     case 'returned':
-      // A card an old client's Stop (or a post-finisher cancellation) withdrew is not a
-      // failure of the message — say what happened rather than "not sent".
+      // A consumed draft whose submission a Stop withdrew is not a failure of the
+      // message — say what happened rather than "not sent".
       if (card.returnedReason === DISPATCH_REJECTED_CANCELLED) {
         return translate(
           'components.native-chat.queuedMessages.withdrawnHold',
@@ -42,7 +42,10 @@ export function queuedMessageCardCaption(card: QueuedMessageCard): string | null
             'components.native-chat.queuedMessages.pausedSendFailed',
             "Couldn't send — press Send to retry."
           )
-        : translate('components.native-chat.queuedMessages.pausedHold', 'Paused')
+        : translate(
+            'components.native-chat.queuedMessages.pausedHold',
+            'Paused — sends after your next message'
+          )
     case 'behind-returned':
       return translate(
         'components.native-chat.queuedMessages.behindReturnedHold',

@@ -5,9 +5,13 @@
 // `queued` answer spends the entry, and everything else is byte-for-byte
 // today's request — an older host must never see the key at all.
 
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { structuredAgentSessionPayloadFingerprint } from '../../../../shared/structured-agent-session-mutation'
+import {
+  clearNativeChatDraftCacheForTests,
+  readNativeChatDraftCache
+} from './native-chat-draft-cache'
 
 type SentParams = {
   envelope: { clientOperationId: string; sessionId: string; payloadFingerprint: string }
@@ -65,11 +69,13 @@ async function sentParams(): Promise<SentParams> {
 
 beforeEach(() => {
   localStorage.clear()
+  clearNativeChatDraftCacheForTests()
   mocks.call.mockReset()
 })
 
 afterEach(() => {
   localStorage.clear()
+  clearNativeChatDraftCacheForTests()
 })
 
 describe('outbox queue delivery selection', () => {
@@ -163,5 +169,39 @@ describe('outbox queue delivery selection', () => {
     // The held draft answered the send, so the next one goes without waiting on the lost reply.
     expect(first.result.current.send('next')).toBe(true)
     await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(2))
+  })
+
+  it("Stop's local step never restores a queued send already in flight — its answer settles it", async () => {
+    // The send is on its way; the Stop lands behind it, so the host may already hold
+    // it as a paused card. Restoring it locally too would double the text.
+    mocks.call.mockImplementation(() => new Promise(() => {}))
+    const view = renderHook(
+      (props: { queuedMessageIds: string[] }) =>
+        useStructuredAgentSessionOutbox({
+          sessionId: 'session-1',
+          target: LOCAL_TARGET,
+          fence: 1,
+          submissions: [],
+          composerScopeKey: 'stop-scope',
+          queueDelivery: true,
+          queuedMessageIds: props.queuedMessageIds
+        }),
+      { initialProps: { queuedMessageIds: Array.of<string>() } }
+    )
+    expect(view.result.current.send('issued text')).toBe(true)
+    await waitFor(() => expect(mocks.call).toHaveBeenCalled())
+    // A second send waits behind single-flight: the Stop still owns ITS text locally.
+    expect(view.result.current.send('never left')).toBe(true)
+    act(() => {
+      view.result.current.withdrawUnsent()
+    })
+    // The unissued entry came back to the composer; the issued one stayed put.
+    expect(readNativeChatDraftCache('stop-scope')).toBe('never left')
+    expect(view.result.current.outbox.map((entry) => entry.state)).toEqual(['dispatching'])
+    // The host publishes the issued send as a card: retired, still nothing restored.
+    const entryId = mocks.call.mock.calls[0]?.[2]?.envelope.clientOperationId
+    view.rerender({ queuedMessageIds: [entryId ?? ''] })
+    await waitFor(() => expect(view.result.current.outbox).toHaveLength(0))
+    expect(readNativeChatDraftCache('stop-scope')).toBe('never left')
   })
 })

@@ -27,7 +27,7 @@ export type QueuedMessageCard = {
   returnedReason?: string | null
 }
 
-export function queuedMessageCardText(body: AgentSessionQueuedMessage['body']): string {
+function queuedMessageCardText(body: AgentSessionQueuedMessage['body']): string {
   return body.blocks.flatMap((block) => (block.type === 'text' ? [block.text] : [])).join('\n')
 }
 

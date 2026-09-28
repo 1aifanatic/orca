@@ -1,15 +1,13 @@
 // Who owns an outbox entry's text when it leaves this client's queue without a
-// send answer. A Stop hands unsent text back to the composer; a host that
-// visibly holds the entry as a queued draft (same id), or that returned its
-// text through `withdrawnQueued`, owns it — those entries retire with no local
-// restore, so the same words can never come back twice.
+// send answer. A Stop hands unsent text back to the composer — a local move; no
+// text crosses a wire. A host that visibly holds the entry as a queued draft
+// (same id) owns it: those entries retire with no local restore, so the same
+// words can never come back twice.
 
 import { useCallback, useEffect } from 'react'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
-import {
-  withdrawUnsentStructuredAgentSessionOutboxEntries,
-  type StructuredAgentSessionOutboxEntry
-} from '../../../../shared/structured-agent-session-outbox'
+import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
+import { withdrawUnsentStructuredAgentSessionOutboxEntries } from '../../../../shared/structured-agent-session-outbox-stop'
 import { writeOutbox } from './structured-agent-session-outbox-storage'
 import type { useStructuredAgentSessionWithdrawnRestore } from './structured-agent-session-withdrawn-message-restore'
 
@@ -26,33 +24,29 @@ export function useStructuredAgentSessionOutboxOwnership(args: {
   setOutbox: (entries: StructuredAgentSessionOutboxEntry[]) => void
   restoreWithdrawn: ReturnType<typeof useStructuredAgentSessionWithdrawnRestore>
 }): {
-  /** Stop's local step, before its RPC, so the drain has nothing left to send after it.
-   *  Returns the withdrawn ids: a capable Stop's `withdrawnQueued` restore must skip
-   *  text this client already put back in the composer. */
-  withdrawUnsent: () => string[]
-  /** Drop host-owned entries without a restore. */
-  retire: (ids: readonly string[]) => void
+  /** Stop's local step, before its RPC, so the drain has nothing left to send after it. */
+  withdrawUnsent: () => void
 } {
   const { blockedIdRef, outboxRef, queuedMessageIds, restoreWithdrawn, sessionId, setOutbox } = args
   const { dispatchGenerationRef, inFlightIdRef, submissions } = args
 
-  const withdrawUnsent = useCallback((): string[] => {
+  const withdrawUnsent = useCallback((): void => {
     const next = withdrawUnsentStructuredAgentSessionOutboxEntries(
       outboxRef.current,
       submissions,
       blockedIdRef.current
     )
     if (next.length === outboxRef.current.length) {
-      return []
+      return
     }
     const withdrawn = outboxRef.current.filter((entry) => !next.includes(entry))
     restoreWithdrawn.byStop(withdrawn)
     outboxRef.current = next
     setOutbox(next)
     writeOutbox(sessionId, next)
-    return withdrawn.map((entry) => entry.clientMessageId)
   }, [blockedIdRef, outboxRef, restoreWithdrawn, sessionId, setOutbox, submissions])
 
+  // Drop host-owned entries without a restore: the published card is the text now.
   const retire = useCallback(
     (ids: readonly string[]): void => {
       const owned = new Set(ids)
@@ -77,5 +71,5 @@ export function useStructuredAgentSessionOutboxOwnership(args: {
     }
   }, [queuedMessageIds, retire])
 
-  return { withdrawUnsent, retire }
+  return { withdrawUnsent }
 }

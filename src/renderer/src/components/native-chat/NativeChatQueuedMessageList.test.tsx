@@ -53,9 +53,7 @@ function controller(cards: QueuedMessageCard[]): StructuredAgentSessionQueuedMes
     steer: vi.fn(async () => {}),
     remove: vi.fn(async () => {}),
     edit: vi.fn(async () => {}),
-    steerNewest: vi.fn(() => false),
-    stopWithdrawing: vi.fn(async () => null),
-    writeConversationCommand: vi.fn(async () => ({ kind: 'dropped' as const }))
+    steerNewest: vi.fn(() => false)
   }
 }
 
@@ -148,9 +146,11 @@ describe('NativeChatQueuedMessageList', () => {
     )
   })
 
-  it('a paused card is captioned and offers Send', () => {
+  it('a paused card says the queue resumes with the next message and offers Send', () => {
     renderList(controller([card({ messageId: 'held', hold: 'paused' })]))
-    expect(screen.getByRole('listitem').textContent).toContain('Paused')
+    expect(screen.getByRole('listitem').textContent).toContain(
+      'Paused — sends after your next message'
+    )
     expect(screen.getByRole('button', { name: 'Send' })).toBeTruthy()
   })
 
