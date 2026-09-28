@@ -387,7 +387,7 @@ describe('codex turn lifecycle rows', () => {
   it.each([
     ['interrupted', 'interrupted', 'cancellation'],
     ['failed', 'completed', 'failure'],
-    ['cancelled', 'completed', undefined],
+    ['someFutureStatus', 'completed', undefined],
     ['inProgress', 'completed', undefined]
   ] as const)(
     'maps a %s turn status to a %s lifecycle with outcome %s',
