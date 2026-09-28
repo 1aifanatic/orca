@@ -187,7 +187,7 @@ jobs:
             -v "$GITHUB_WORKSPACE:/work" -w /work \
             node:24-alpine3.23 sh -s <<'BUN_QUALIFICATION'
           set -eu
-          apk add --no-cache bash git libstdc++ python3 make g++
+          apk add --no-cache bash git libstdc++ python3 make g++ procps
           git config --global --add safe.directory /work
           npm install -g "$(node -p "require('./package.json').packageManager.split('+')[0]")"
           pnpm install --frozen-lockfile --ignore-scripts

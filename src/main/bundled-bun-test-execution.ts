@@ -25,7 +25,7 @@ export async function runBundledBunFixture(
     const args = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
     const fixture = require(${JSON.stringify(modulePath)});
     Promise.resolve(fixture[${JSON.stringify(exportName)}](args)).then(
-      result => process.stdout.write(JSON.stringify(result)),
+      result => process.stdout.write(JSON.stringify(result ?? null)),
       error => { console.error(error); process.exitCode = 1 }
     );
   `

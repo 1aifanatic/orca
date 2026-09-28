@@ -89,6 +89,9 @@ jobs:
       - uses: ./.github/actions/install-node-dependencies
         with:
           native-runtime: node
+      - name: Prepare pinned Bun for Windows shell fixtures
+        if: runner.os == 'Windows'
+        run: node --input-type=module -e "import { buildCliRuntime } from './config/scripts/build-cli-runtime.mjs'; await buildCliRuntime(process.platform, process.arch)"
       # Why: without --config, bare vitest ignores config/vitest.config.ts (there
       # is no root config) and falls back to the 5s default timeout with no
       # Windows worker cap, so the real csc.exe launcher-compile tests time out
