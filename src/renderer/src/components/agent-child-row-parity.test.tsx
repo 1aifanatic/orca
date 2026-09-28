@@ -352,6 +352,42 @@ describe('a child reads the same in the sidebar and the chat strip', () => {
   })
 })
 
+describe('a child running a shell in its turn', () => {
+  // The host records the running shell both as the child's operation and as a live command it owns.
+  const children = [
+    view('child', {
+      operation: { toolName: 'Bash', input: 'npm run dev', basis: 'open', observedAt: NOW }
+    }),
+    {
+      ...OWNED_SHELL,
+      state: 'working' as const,
+      stoppable: false,
+      firstObservedAt: NOW - MINUTE
+    }
+  ]
+  const childRow: RenderedRow = {
+    dot: 'Working',
+    lead: 'Audit the parser',
+    trail: 'Bash: npm run dev'
+  }
+
+  it('reads as the child working its shell, with the shell nested beneath it in the strip', () => {
+    const groups = buildBackgroundTaskGroupsFromViews(children)
+    expect(groups.map((group) => group.kind)).toEqual(['agent'])
+    expect(groups[0].tasks.map((entry) => entry.row.owned.map((owned) => owned.id))).toEqual([
+      ['shell']
+    ])
+    expect(stripRows(children)).toEqual([
+      childRow,
+      { dot: 'Working', lead: 'npm run dev', trail: '' }
+    ])
+  })
+
+  it('shows the sidebar only the child, saying what the strip says of it', () => {
+    expect(sidebarRows(parentWith(children))).toEqual([childRow])
+  })
+})
+
 describe('one child reads the same from every shape a host publishes', () => {
   it('names and details it identically from views, the subagents snapshot and the task roster', () => {
     // A placeholder description falls through to the child's real label on every path.
