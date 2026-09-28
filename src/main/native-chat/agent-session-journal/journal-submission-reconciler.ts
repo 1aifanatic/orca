@@ -191,24 +191,39 @@ export function reconcileSubmissions(input: {
   )
 }
 
-/** Copies of each text left once every send found by its id takes its own: a leftover copy may be
- *  a send whose id the history does not hold. */
+/**
+ * The copies of each text left once every id known to be a send takes ONE copy: its own text. A
+ * row can hold other sends' text too (Claude merges frames queued together into the last one's
+ * row), so an id never takes the whole row, or the only copy of a merged send would go with it.
+ */
+export function withoutOwnCopies(
+  itemIdsByFingerprint: ReadonlyMap<string, readonly string[]>,
+  owners: ReadonlyMap<string, string>
+): Map<string, string[]> {
+  const copies = new Map([...itemIdsByFingerprint].map(([key, itemIds]) => [key, [...itemIds]]))
+  for (const [itemId, fingerprint] of owners) {
+    const sameText = copies.get(fingerprint)
+    const at = sameText?.indexOf(itemId) ?? -1
+    if (sameText && at >= 0) {
+      sameText.splice(at, 1)
+    }
+  }
+  return copies
+}
+
+/** Copies of each text no send found by its id accounts for: one may be a send whose id the
+ *  history does not hold. */
 function unclaimedCopies(
   recorded: ProviderRecordedHistory | null | undefined,
   submissions: readonly AgentJournalSubmission[],
   identified: ReadonlySet<string>
 ): Map<string, number> {
-  const copies = new Map(
-    [...(recorded?.itemIdsByFingerprint ?? [])].map(([key, itemIds]) => [key, [...itemIds]])
+  const owners = new Map(
+    submissions.flatMap(({ handedOverItemId: own, payloadFingerprint }) =>
+      own && identified.has(own) ? [[own, payloadFingerprint] as const] : []
+    )
   )
-  for (const submission of submissions) {
-    const own = submission.handedOverItemId
-    const sameText =
-      own && identified.has(own) ? copies.get(submission.payloadFingerprint) : undefined
-    if (own && sameText?.includes(own)) {
-      sameText.splice(sameText.indexOf(own), 1)
-    }
-  }
+  const copies = withoutOwnCopies(recorded?.itemIdsByFingerprint ?? new Map(), owners)
   return new Map([...copies].map(([key, itemIds]) => [key, itemIds.length]))
 }
 

@@ -11,7 +11,6 @@ import type {
   AgentJournalMessageItem,
   AgentSessionJournalIdentity
 } from '../../../shared/agent-session-journal-types'
-import { digestPayload } from './journal-payload-bounds'
 import { reconcileJournalSubmissionsAgainstHistory } from './journal-restart-reconciliation'
 import type {
   ProviderHistoryItem,
@@ -23,6 +22,7 @@ import { createTrackedJournalOpener } from './journal-store-test-open'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import { classifyDispatchRejection } from '../../../shared/structured-agent-session-dispatch-rejection'
+import { structuredAgentSessionPayloadFingerprint } from '../../../shared/structured-agent-session-mutation'
 
 const IDENTITY: AgentSessionJournalIdentity = {
   sessionId: 'session-1',
@@ -48,6 +48,15 @@ function userMessage(text: string): AgentJournalMessageItem {
   return { kind: 'message', role: 'user', blocks: [{ type: 'text', text }] }
 }
 
+/** The fingerprint a send of this text carries, and the key history indexes its copies by. */
+function sendFingerprint(text: string): string {
+  return structuredAgentSessionPayloadFingerprint({
+    method: 'agentSession.send',
+    sessionId: IDENTITY.sessionId,
+    fields: { body: userMessage(text) }
+  })
+}
+
 const journals = createTrackedJournalOpener()
 
 async function open() {
@@ -63,7 +72,7 @@ function history(uuid: string, text: string): ProviderHistoryItem {
   return {
     providerItemId: uuid,
     clientMessageId: null,
-    payloadFingerprint: digestPayload(text),
+    payloadFingerprint: sendFingerprint(text),
     identity: claudeIdentity(uuid)
   }
 }
@@ -86,8 +95,8 @@ function wholeHistory(records: [string, string][]): ProviderRecordedHistory {
   const itemIdsByFingerprint = new Map<string, string[]>()
   for (const [uuid, text] of records) {
     const key = agentJournalItemKey(claudeIdentity(uuid))
-    itemIdsByFingerprint.set(digestPayload(text), [
-      ...(itemIdsByFingerprint.get(digestPayload(text)) ?? []),
+    itemIdsByFingerprint.set(sendFingerprint(text), [
+      ...(itemIdsByFingerprint.get(sendFingerprint(text)) ?? []),
       key
     ])
   }
@@ -108,7 +117,7 @@ async function appendSend(
 ): Promise<void> {
   await journal.appendSubmission({
     clientMessageId,
-    payloadFingerprint: digestPayload(text),
+    payloadFingerprint: sendFingerprint(text),
     body,
     fence: 1
   })
@@ -284,7 +293,7 @@ describe('reconcileJournalSubmissionsAgainstHistory', () => {
     const journal = await open()
     await journal.appendSubmission({
       clientMessageId: 'cm_old',
-      payloadFingerprint: digestPayload('deploy the thing'),
+      payloadFingerprint: sendFingerprint('deploy the thing'),
       body: userMessage('deploy the thing'),
       fence: 1
     })
@@ -313,12 +322,50 @@ describe('reconcileJournalSubmissionsAgainstHistory', () => {
     expect(restarted.submissions()[1]?.rejection).toEqual({ kind: 'notDelivered' })
   })
 
+  it.each([
+    ['a different text', 'ship it', 'and test it'],
+    ['the same text', 'yes', 'yes']
+  ])(
+    'leaves a send unknown when merged into the row of an accepted later send with %s',
+    async (_case, first, second) => {
+      // Frames queued together share the later frame's row; that frame settled live.
+      const journal = await open()
+      await appendSend(journal, 'cm_first', 'uuid-first', userMessage(first), first)
+      await appendSend(journal, 'cm_second', 'uuid-second', userMessage(second), second)
+      await journal.resolveDispatch({
+        clientMessageId: 'cm_second',
+        state: 'accepted',
+        providerIdentity: claudeIdentity('uuid-second'),
+        fence: 1
+      })
+      const restarted = await open()
+      await restarted.markPendingSubmissionsUnknown(2)
+
+      const settled = await reconcileJournalSubmissionsAgainstHistory({
+        journal: restarted,
+        fence: 2,
+        history: window([], {
+          recorded: wholeHistory([
+            ['uuid-second', first],
+            ['uuid-second', second]
+          ])
+        })
+      })
+
+      expect(settled).toEqual([])
+      expect(restarted.submissions().map((entry) => entry.dispatchState)).toEqual([
+        'unknown',
+        'accepted'
+      ])
+    }
+  )
+
   it('leaves two identical unsettled sends unknown rather than guessing between them', async () => {
     const journal = await open()
     for (const id of ['cm_1', 'cm_2']) {
       await journal.appendSubmission({
         clientMessageId: id,
-        payloadFingerprint: digestPayload('ping'),
+        payloadFingerprint: sendFingerprint('ping'),
         body: userMessage('ping'),
         fence: 1
       })

@@ -21,9 +21,11 @@ import {
   agentJournalSubmissionKey
 } from '../../../shared/agent-session-journal-item-key'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
+import { structuredAgentSessionPayloadFingerprint } from '../../../shared/structured-agent-session-mutation'
 import type { AgentSessionJournal } from './journal-store'
 import {
   reconcileSubmissions,
+  withoutOwnCopies,
   type ProviderHistorySource,
   type ProviderHistoryWindow
 } from './journal-submission-reconciler'
@@ -61,6 +63,15 @@ function comparableSubmissions(journal: AgentSessionJournal): AgentJournalSubmis
   })
 }
 
+/** The fingerprint a send of this body carries, the key the reducer aliases an echo by. */
+function sendFingerprint(sessionId: string, body: AgentJournalMessageItem): string {
+  return structuredAgentSessionPayloadFingerprint({
+    method: 'agentSession.send',
+    sessionId,
+    fields: { body }
+  })
+}
+
 /** Items the journal already committed are not new evidence: leaving them
  *  claimable would let an undelivered message match an older identical one. */
 function unseenHistory(
@@ -68,25 +79,37 @@ function unseenHistory(
   history: ProviderHistoryWindow
 ): ProviderHistoryWindow {
   const snapshot = journal.snapshot()
-  const committed = new Set(snapshot.items.map((item) => item.itemId))
   // Accepted submissions alias their provider item to the optimistic `orca:*`
   // row, so the rendered item id alone does not identify the provider history
   // already consumed by the journal.
-  for (const submission of snapshot.submissions) {
-    if (submission.dispatchState === 'accepted' && submission.providerItemId) {
-      committed.add(submission.providerItemId)
-    }
-  }
+  const accepted = snapshot.submissions.flatMap(
+    ({ dispatchState, providerItemId, payloadFingerprint }) =>
+      dispatchState === 'accepted' && providerItemId
+        ? [[providerItemId, payloadFingerprint] as const]
+        : []
+  )
+  const committed = new Set([
+    ...snapshot.items.map((item) => item.itemId),
+    ...accepted.map(([itemId]) => itemId)
+  ])
   const recorded = history.recorded
   return {
     ...history,
     items: history.items.filter((item) => !committed.has(agentJournalItemKey(item.identity))),
+    // A committed id takes only the copy of the text it was committed with, never its whole row:
+    // Claude records frames queued together in the last one's row, which then holds the only
+    // copy of an earlier send's text.
     recorded: recorded && {
       ...recorded,
-      itemIdsByFingerprint: new Map(
-        [...recorded.itemIdsByFingerprint].map(([fingerprint, itemIds]) => [
-          fingerprint,
-          itemIds.filter((itemId) => !committed.has(itemId))
+      itemIdsByFingerprint: withoutOwnCopies(
+        recorded.itemIdsByFingerprint,
+        new Map([
+          ...snapshot.items.flatMap(({ itemId, body }) =>
+            recorded.itemIds.has(itemId) && body.kind === 'message' && body.role === 'user'
+              ? [[itemId, sendFingerprint(snapshot.sessionId, body)] as const]
+              : []
+          ),
+          ...accepted
         ])
       )
     }
