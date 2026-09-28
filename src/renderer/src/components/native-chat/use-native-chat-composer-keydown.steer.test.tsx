@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 
-// Cmd/Ctrl+Enter in the composer: steer the newest queued draft when one
-// exists; with nothing queued the chord stays what it always was — a send.
+// Cmd/Ctrl+Enter in an empty composer: steer the newest queued draft when one
+// exists; with nothing queued, or with text or images in the composer, the
+// chord stays what it always was — a send.
 // The primary modifier follows the platform (⌘ on Mac, Ctrl elsewhere).
 
 import { renderHook } from '@testing-library/react'
@@ -15,7 +16,10 @@ vi.mock('./native-chat-shortcut', () => ({
 
 import { useNativeChatComposerKeyDown } from './use-native-chat-composer-keydown'
 
-function setup(steerQueued?: () => boolean) {
+function setup(
+  steerQueued?: () => boolean,
+  composer: { draft?: string; hasAttachments?: boolean } = {}
+) {
   const callbacks = {
     completePickerItem: vi.fn(),
     dispatchPickerCommand: vi.fn(),
@@ -31,7 +35,8 @@ function setup(steerQueued?: () => boolean) {
     useNativeChatComposerKeyDown({
       autocomplete: { mode: 'none' as const },
       activeSuggestion: 0,
-      draft: 'typed text',
+      draft: composer.draft ?? '',
+      hasAttachments: composer.hasAttachments ?? false,
       history: EMPTY_HISTORY,
       isComposing: () => false,
       ...(steerQueued ? { steerQueued } : {}),
@@ -90,6 +95,19 @@ describe('composer steer chord', () => {
     const { handler, callbacks } = setup(vi.fn(() => false))
     press(handler, enter({ metaKey: true }))
     expect(callbacks.send).toHaveBeenCalledTimes(1)
+  })
+
+  it('with text or an image in the composer the chord sends it, never a card past it', () => {
+    platform.isMac = true
+    const steerQueued = vi.fn(() => true)
+    const typed = setup(steerQueued, { draft: 'typed text' })
+    press(typed.handler, enter({ metaKey: true }))
+    expect(steerQueued).not.toHaveBeenCalled()
+    expect(typed.callbacks.send).toHaveBeenCalledTimes(1)
+    const image = setup(steerQueued, { hasAttachments: true })
+    press(image.handler, enter({ metaKey: true }))
+    expect(steerQueued).not.toHaveBeenCalled()
+    expect(image.callbacks.send).toHaveBeenCalledTimes(1)
   })
 
   it('plain Enter never steers', () => {

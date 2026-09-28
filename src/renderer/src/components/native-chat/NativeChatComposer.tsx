@@ -343,6 +343,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       dismissPicker: dismiss,
       interrupt,
       send,
+      hasAttachments: imageAttachments.length > 0,
       ...(steerQueued ? { steerQueued } : {}),
       setActiveSuggestion,
       setDraft,

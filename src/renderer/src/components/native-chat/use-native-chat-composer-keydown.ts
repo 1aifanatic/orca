@@ -12,6 +12,8 @@ export type UseNativeChatComposerKeyDownArgs = {
   autocomplete: ComposerAutocomplete
   activeSuggestion: number
   draft: string
+  /** Image chips count as composer content, like typed text. */
+  hasAttachments?: boolean
   history: HistoryState
   isComposing: () => boolean
   completePickerItem: (item: NativeChatPickerItem) => void
@@ -19,7 +21,8 @@ export type UseNativeChatComposerKeyDownArgs = {
   dismissPicker: (triggerKey: string) => void
   interrupt: () => void
   send: () => void
-  /** Cmd/Ctrl+Enter: send the newest queued draft now; false falls through to send. */
+  /** Cmd/Ctrl+Enter from an empty composer: send the newest queued draft now; false falls
+   *  through to send. */
   steerQueued?: (() => boolean) | undefined
   setActiveSuggestion: Dispatch<SetStateAction<number>>
   setDraft: Dispatch<SetStateAction<string>>
@@ -31,6 +34,7 @@ export function useNativeChatComposerKeyDown({
   autocomplete,
   activeSuggestion,
   draft,
+  hasAttachments = false,
   history,
   isComposing,
   completePickerItem,
@@ -98,7 +102,9 @@ export function useNativeChatComposerKeyDown({
       if (event.key === 'Enter' && !event.shiftKey) {
         // Platform primary modifier only (AGENTS.md): ⌘ on Mac, Ctrl elsewhere.
         const steerChord = isMacPlatform() ? event.metaKey : event.ctrlKey
-        if (steerChord && steerQueued?.()) {
+        // Only from an empty composer: the chord never sends a card past what the user just wrote.
+        const composerEmpty = draft.trim() === '' && !hasAttachments
+        if (steerChord && composerEmpty && steerQueued?.()) {
           event.preventDefault()
           return
         }
@@ -133,6 +139,7 @@ export function useNativeChatComposerKeyDown({
       dismissPicker,
       dispatchPickerCommand,
       draft,
+      hasAttachments,
       history,
       interrupt,
       isComposing,

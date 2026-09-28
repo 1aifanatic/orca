@@ -156,13 +156,15 @@ const WITHDRAWAL_REPLAY_DELAYS_MS = [1_000, 2_000, 4_000]
  * A withdrawal whose answer was lost (the call threw) is replayed under the SAME
  * operation id: the host answers one it already applied from the drafts' tombstones,
  * so the text still comes back even though the card has gone. In-session and
- * bounded; a refusal or a fence move is final.
+ * bounded; a refusal or a fence move is final. `mayReplay` vetoes a replay that
+ * the host would execute against work other than what the press saw.
  */
 export async function writeQueuedWithdrawal<T>(
   write: StructuredAgentSessionWrite,
   method: string,
   fields: Record<string, unknown>,
-  operationId: string
+  operationId: string,
+  mayReplay: () => boolean = () => true
 ): Promise<StructuredAgentSessionWriteOutcome<T>> {
   let outcome = await write<T>(method, method, fields, operationId)
   for (const delayMs of WITHDRAWAL_REPLAY_DELAYS_MS) {
@@ -170,6 +172,9 @@ export async function writeQueuedWithdrawal<T>(
       break
     }
     await new Promise((resolve) => setTimeout(resolve, delayMs))
+    if (!mayReplay()) {
+      break
+    }
     outcome = await write<T>(method, method, fields, operationId)
   }
   return outcome

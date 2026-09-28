@@ -57,6 +57,19 @@ export type StructuredAgentSessionQueuedMessagesController = {
   ) => Promise<StructuredAgentSessionWriteOutcome<AgentSessionConversationCommandResult>>
 }
 
+type PressedWork = { turnId: string | null; submissions: readonly AgentJournalSubmission[] }
+
+/** A Stop names no turn, so a replay the host never saw runs against whatever is in flight when
+ *  it lands: only while that is still what the press saw — no other turn, no newer send. Else the
+ *  Stop is reported unconfirmed rather than interrupting work begun after it. */
+function isStillPressedWork(pressed: PressedWork, now: PressedWork): boolean {
+  if (pressed.turnId !== null && now.turnId !== null && now.turnId !== pressed.turnId) {
+    return false
+  }
+  const known = new Set(pressed.submissions.map((submission) => submission.clientMessageId))
+  return now.submissions.every((submission) => known.has(submission.clientMessageId))
+}
+
 function alreadySentNotice(): void {
   toast.error(
     translate('components.native-chat.queuedMessages.alreadySent', 'This message was already sent.')
@@ -69,6 +82,8 @@ export function useStructuredAgentSessionQueuedMessages(args: {
   enabled: boolean
   queuedMessages: readonly AgentSessionQueuedMessage[] | null
   submissions: readonly AgentJournalSubmission[]
+  /** The turn in flight; with `submissions`, what a Stop press was aimed at. */
+  turnId: string | null
   hasPendingPrompt: boolean
   composerScopeKey: string | undefined
   /** Scope for a clear's restore, which lands in the replacement session's pane. */
@@ -88,6 +103,7 @@ export function useStructuredAgentSessionQueuedMessages(args: {
     queuedMessages,
     sessionId,
     submissions,
+    turnId,
     write
   } = args
 
@@ -99,6 +115,10 @@ export function useStructuredAgentSessionQueuedMessages(args: {
   useEffect(() => {
     cardsRef.current = cards
   }, [cards])
+  const workRef = useRef({ turnId, submissions })
+  useEffect(() => {
+    workRef.current = { turnId, submissions }
+  }, [submissions, turnId])
 
   const restore = useCallback(
     (
@@ -215,11 +235,13 @@ export function useStructuredAgentSessionQueuedMessages(args: {
     async (alreadyRestored: readonly string[] = []): Promise<AgentSessionCancelResult | null> => {
       const operationId = structuredSessionOperationId()
       beginQueuedWithdrawal(sessionId, { operationId, kind: 'stop', beganAt: Date.now() })
+      const pressed = workRef.current
       const outcome = await writeQueuedWithdrawal<AgentSessionCancelResult>(
         write,
         'agentSession.cancel',
         { withdrawQueued: true },
-        operationId
+        operationId,
+        () => isStillPressedWork(pressed, workRef.current)
       )
       if (outcome.kind === 'done') {
         restore(operationId, outcome.value.withdrawnQueued ?? [], composerScopeKey, alreadyRestored)

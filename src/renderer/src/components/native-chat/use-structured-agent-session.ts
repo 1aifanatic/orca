@@ -157,8 +157,14 @@ export function useStructuredAgentSession(args: {
   // A queued send is a card, never a transcript bubble.
   const isWorking = transportState.isWorking
   const transcriptOutbox = useMemo(
-    () => outboxOutsideQueuedCards(outbox, queuedMessageIds, isWorking),
-    [isWorking, outbox, queuedMessageIds]
+    () =>
+      outboxOutsideQueuedCards(
+        outbox,
+        queuedMessageIds,
+        isWorking,
+        outboxController.blockedClientMessageId
+      ),
+    [isWorking, outbox, outboxController.blockedClientMessageId, queuedMessageIds]
   )
   const messages = useStructuredAgentSessionMessages(
     transportState.journalItems,
@@ -170,6 +176,7 @@ export function useStructuredAgentSession(args: {
     enabled: queueCapable && transportState.fence !== null,
     queuedMessages: transportState.queuedMessages,
     submissions: transportState.submissions,
+    turnId: transportState.turnId,
     hasPendingPrompt: prompts.length > 0,
     composerScopeKey,
     composerScopeKeyForSession: tabId

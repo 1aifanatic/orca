@@ -5,8 +5,10 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 import type { AgentSessionQueuedMessage } from '../../../../shared/agent-session-wire'
+import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
 import {
   newestSteerableQueuedMessageCard,
+  outboxOutsideQueuedCards,
   projectQueuedMessageCards
 } from './structured-agent-session-queued-cards'
 
@@ -96,5 +98,41 @@ describe('queued message cards', () => {
     const cards = projectQueuedMessageCards([draft('a', 1), draft('b', 2)], [], IDLE)
     expect(newestSteerableQueuedMessageCard(cards)?.messageId).toBe('b')
     expect(newestSteerableQueuedMessageCard([])).toBeNull()
+  })
+
+  it('a mid-turn queue send on its way is no bubble; one that stalled stays visible', () => {
+    const entry = (
+      clientMessageId: string,
+      overrides: Partial<StructuredAgentSessionOutboxEntry> = {}
+    ): StructuredAgentSessionOutboxEntry => ({
+      clientMessageId,
+      sessionId: 'session-1',
+      body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: clientMessageId }] },
+      previewUris: [],
+      state: 'queued',
+      queuedAt: 1,
+      lastAttemptAt: null,
+      retryAfterUnknownSubmittedAt: null,
+      delivery: 'queue-if-active',
+      ...overrides
+    })
+    const ids = (entries: readonly StructuredAgentSessionOutboxEntry[]): string[] =>
+      entries.map((candidate) => candidate.clientMessageId)
+    const inFlight = [entry('a', { state: 'dispatching' }), entry('b')]
+    expect(ids(outboxOutsideQueuedCards(inFlight, [], true, null))).toEqual([])
+    expect(ids(outboxOutsideQueuedCards(inFlight, [], false, null))).toEqual(['a', 'b'])
+    // Refused and held for Retry: its text, and everything waiting behind it, stays in view.
+    const refused = [entry('a', { lastFailure: { kind: 'failed' } }), entry('b')]
+    expect(ids(outboxOutsideQueuedCards(refused, [], true, 'a'))).toEqual(['a', 'b'])
+    // A rejected send holds nothing up: what follows it is still on its way to a card.
+    const rejected = [
+      entry('a', { state: 'rejected', lastFailure: { kind: 'rejected', reason: null } }),
+      entry('b')
+    ]
+    expect(ids(outboxOutsideQueuedCards(rejected, [], true, null))).toEqual(['a'])
+    const unconfirmed = [entry('a', { state: 'unconfirmed' }), entry('b')]
+    expect(ids(outboxOutsideQueuedCards(unconfirmed, [], true, null))).toEqual(['a', 'b'])
+    // Once the host visibly holds it, it is a card whatever this queue last heard.
+    expect(ids(outboxOutsideQueuedCards(unconfirmed, ['a'], true, null))).toEqual(['b'])
   })
 })

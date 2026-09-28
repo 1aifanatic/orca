@@ -8,6 +8,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentSessionQueuedMessage } from '../../../../shared/agent-session-wire'
+import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }))
 vi.mock('@/i18n/i18n', () => ({ translate: (_key: string, fallback: string) => fallback }))
@@ -39,6 +40,10 @@ function draft(id: string, position: number): AgentSessionQueuedMessage {
 }
 
 const SCOPE = 'tab-1:pane-scope'
+const PRESSED_WORK: { turnId: string | null; submissions: AgentJournalSubmission[] } = {
+  turnId: 'turn-1',
+  submissions: []
+}
 
 function createHarness(
   overrides: {
@@ -53,21 +58,24 @@ function createHarness(
     writeCalls.push(call)
     return overrides.writeResult ? overrides.writeResult(call) : { kind: 'dropped' }
   })
-  const rendered = renderHook(() =>
-    useStructuredAgentSessionQueuedMessages({
-      sessionId: 'session-1',
-      enabled: overrides.enabled ?? true,
-      queuedMessages: overrides.queuedMessages ?? [draft('draft-1', 1), draft('draft-2', 2)],
-      submissions: [],
-      hasPendingPrompt: false,
-      composerScopeKey: SCOPE,
-      composerScopeKeyForSession: (sessionId) => `tab-1:${sessionId}`,
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the stub answers every mutate with null, a valid outcome for any T.
-      mutate: mutate as StructuredAgentSessionMutate,
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: each scripted answer is the outcome shape of the one write it responds to; generic erasure cannot express that.
-      write: write as StructuredAgentSessionWrite,
-      operationIdFor: () => 'operation-clear'
-    })
+  const rendered = renderHook(
+    (work: { turnId: string | null; submissions: AgentJournalSubmission[] }) =>
+      useStructuredAgentSessionQueuedMessages({
+        sessionId: 'session-1',
+        enabled: overrides.enabled ?? true,
+        queuedMessages: overrides.queuedMessages ?? [draft('draft-1', 1), draft('draft-2', 2)],
+        submissions: work.submissions,
+        turnId: work.turnId,
+        hasPendingPrompt: false,
+        composerScopeKey: SCOPE,
+        composerScopeKeyForSession: (sessionId) => `tab-1:${sessionId}`,
+        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the stub answers every mutate with null, a valid outcome for any T.
+        mutate: mutate as StructuredAgentSessionMutate,
+        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: each scripted answer is the outcome shape of the one write it responds to; generic erasure cannot express that.
+        write: write as StructuredAgentSessionWrite,
+        operationIdFor: () => 'operation-clear'
+      }),
+    { initialProps: PRESSED_WORK }
   )
   return { ...rendered, mutate, write, writeCalls }
 }
@@ -315,6 +323,58 @@ describe('queued message actions', () => {
       expect(harness.writeCalls).toHaveLength(2)
       expect(harness.writeCalls[1]?.[3]).toBe(harness.writeCalls[0]?.[3])
       expect(readNativeChatDraftCache(SCOPE)).toBe('edit me')
+      expect(pendingQueuedWithdrawals('session-1')).toHaveLength(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("a lost Stop answer is replayed only while the pressed turn is still what's in flight", async () => {
+    vi.useFakeTimers()
+    try {
+      let calls = 0
+      const harness = createHarness({
+        writeResult: () =>
+          ++calls === 1
+            ? { kind: 'not-done', notice: 'lost', answerLost: true }
+            : { kind: 'done', value: { cancelled: true, withdrawnQueued: [] } }
+      })
+      const stopped = harness.result.current.stopWithdrawing()
+      await vi.advanceTimersByTimeAsync(1_000)
+      await expect(stopped).resolves.toEqual({ cancelled: true, withdrawnQueued: [] })
+      expect(harness.writeCalls).toHaveLength(2)
+      expect(harness.writeCalls[1]?.[3]).toBe(harness.writeCalls[0]?.[3])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a lost Stop is never replayed onto work begun after the press', async () => {
+    vi.useFakeTimers()
+    try {
+      const harness = createHarness({
+        writeResult: () => ({ kind: 'not-done', notice: 'lost', answerLost: true })
+      })
+      const stopped = harness.result.current.stopWithdrawing()
+      // The turn ended on its own and a newer send opened another one before the replay.
+      harness.rerender({
+        turnId: 'turn-2',
+        submissions: [
+          {
+            clientMessageId: 'sent-after-stop',
+            fence: 1,
+            payloadFingerprint: 'fingerprint',
+            dispatchState: 'accepted',
+            providerItemId: null,
+            reason: null,
+            submittedAt: 1,
+            resolvedAt: 1
+          }
+        ]
+      })
+      await vi.advanceTimersByTimeAsync(10_000)
+      await expect(stopped).resolves.toBeNull()
+      expect(harness.writeCalls).toHaveLength(1)
       expect(pendingQueuedWithdrawals('session-1')).toHaveLength(0)
     } finally {
       vi.useRealTimers()
