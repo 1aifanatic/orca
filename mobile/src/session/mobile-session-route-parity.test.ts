@@ -137,7 +137,8 @@ const HEAD_CALLBACK_IDENTITY_SHA256 =
 // Again when an init took one options object.
 // Again when the frame's layout became one `notifyTerminalFrame`.
 // Again when the init option took the message's name, `initialData`.
-const HEAD_CALLBACK_BODY_SHA256 = '4848e925f478f1656f26031c1bdebbb9f2da60811c7e91cfd732fc9da9764079'
+// Again when the document readers mapped refusal codes through one function and kept truncation.
+const HEAD_CALLBACK_BODY_SHA256 = 'ff818790399c8532ead38d047d072caf715070b21311538932da2dc811312b06'
 // Refreshed for the startup effect: both `worktree.activate` sends became `worktreeActivate`, and
 // the sleeping-agent check reads that operation's verdict instead of the reply envelope. Refreshed
 // again when the reporter took the reply and interpreted it itself, retiring the hand-built
@@ -200,14 +201,19 @@ const HEAD_TIMER_CLEANUP_SHA256 = 'c73f1d1c2cc89642f3d727d6f3b6b81860a9d6f342345
 // 47 rows before and after; native was measured only on main's bundle (47), and the wrapper is a
 // flex:1 View around the same flex:1 frame, so its box is the frame's.
 // Count unchanged: `'frame-not-laid-out'`, the gate awaiting the frame's first layout, replaced `'measuring-viewport'`.
+// 530 -> 532, and the host-JSX hash: the tab bar and the accessory bar take a ref that gives the
+// page `keyboardShouldPersistTaps` ('handled', 'always'), which react-native-web ignores. Natively
+// the ref is undefined. 532 -> 531: the live input's reopen flag reads the host OS, not an 'android' literal.
+// 531 -> 529: the markdown status line moved to `markdownReaderStatusText`.
 const HEAD_RUNTIME_STRING_SHA256 =
-  '83ae65d5c5ae056504f4d08bb4aa524b42d82f70d8e44035ccdd6a2d9021a387'
-// Moved by both of the dock's fields: their refs, and the live one's submit handler, are the seam's now.
+  '4ab2f316f60c234480615136c02273675543f24d653eb76a62b76f6bc986d985'
+// Moved by both of the dock's fields: their refs, and the live one's submit handler, are the seam's now;
+// their keyboard type and remount key read the host OS.
 // Moved again when the terminal frame kept its laid-out width unrounded, for every fit.
 // Again when the frame's onLayout wrote one frame ref and notified a new width imperatively.
 // Again when the frame's first laid-out layout alone subscribes a held-back document.
 // Again when the frame's onLayout made one `notifyTerminalFrame` call.
-const HEAD_HOST_JSX_SHA256 = '8ab32926fff2e610ab92bde8437283a11ad2328c6343cd862a1c00b2ed8ed5a6'
+const HEAD_HOST_JSX_SHA256 = 'f71b1ee495f67a6e389abf597948ffdff1f9a4a10cde6abefd2611ea4dd94245'
 const HEAD_LEAF_JSX_SHA256 = '62eb05c6e2ac0be6d553a141fc8aa1641fcb0c678777d5d539f490aab8648417'
 const HEAD_STYLE_REFERENCE_SHA256 =
   '56a005a1f65b30c11092e3422caef67810e1ec50f66fdd06471c370138b1eeb6'
@@ -650,7 +656,7 @@ describe('mobile session route extraction parity', () => {
 
   it('preserves runtime strings, styles, and the expanded JSX tree', () => {
     const strings = readRuntimeStrings()
-    expect(strings).toHaveLength(530)
+    expect(strings).toHaveLength(529)
     expect(hash(strings)).toBe(HEAD_RUNTIME_STRING_SHA256)
     const jsx = readJsxFacts(readDefinitions())
     expect(jsx.host).toHaveLength(125)
