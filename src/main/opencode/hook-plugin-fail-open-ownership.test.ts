@@ -316,18 +316,22 @@ describe('OpenCode plugin fail-open ownership', () => {
     expect(names()).toEqual(['AskUserQuestion', 'SessionIdle'])
   })
 
-  it('disposes only its provisional Busy owner and reasserts the survivor', async () => {
+  it('disposes only its provisional Busy owner without publishing', async () => {
     const first = await loadHooksWithContext(undefined)
     const second = await loadHooksWithContext(undefined)
 
     await first.event({ event: status('busy', 'unknown-a') })
     await second.event({ event: status('busy', 'unknown-b') })
     await second.dispose?.()
-    expect(names()).toEqual(['SessionBusy', 'SessionBusy', 'SessionBusy'])
+    expect(names()).toEqual(['SessionBusy', 'SessionBusy'])
+
+    // Released: unknown-b no longer holds the pane Busy once unknown-a finishes.
+    await first.event({ event: status('idle', 'unknown-a') })
+    expect(names()).toEqual(['SessionBusy', 'SessionBusy', 'SessionIdle'])
     expect(posts.at(-1)?.sessionID).toBe('unknown-a')
 
     await first.dispose?.()
-    expect(names()).toEqual(['SessionBusy', 'SessionBusy', 'SessionBusy', 'SessionIdle'])
+    expect(names()).toEqual(['SessionBusy', 'SessionBusy', 'SessionIdle'])
   })
 
   it('lets exact unknown-session Idle clear a blocker without SDK lookup', async () => {

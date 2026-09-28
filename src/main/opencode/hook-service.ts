@@ -3,6 +3,7 @@ import { getAppEnvironment } from '../../shared/app-environment'
 import { join } from 'node:path'
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   readFileSync,
   readdirSync,
@@ -53,6 +54,17 @@ function isUsableId(id: string): boolean {
 function toSafeDirName(id: string): string {
   // Why: 32 hex chars (128 bits) makes collisions negligible and stays filesystem-portable (no base64 padding or `/`).
   return createHash('sha256').update(id).digest('hex').slice(0, 32)
+}
+
+// Why: OpenCode 2 hot-reloads every plugin when its plugins dir changes, so rewriting identical
+// bytes on each PTY spawn restarted every plugin in the shared server mid-turn.
+function isCurrentPluginFile(pluginPath: string, source: string): boolean {
+  try {
+    // lstat: a mirrored symlink is the user's file, never Orca's, even when the bytes match.
+    return lstatSync(pluginPath).isFile() && readFileSync(pluginPath, 'utf8') === source
+  } catch {
+    return false
+  }
 }
 
 // Both major versions install as `opencode`; let the loader choose server() or setup().
@@ -278,18 +290,26 @@ export class OpenCodeHookService {
     const pluginsDir = join(overlayDir, 'plugins')
     mkdirSync(pluginsDir, { recursive: true })
     const pluginPath = join(pluginsDir, this.pluginFileName)
+    const source = this.pluginSource()
+    if (isCurrentPluginFile(pluginPath, source)) {
+      return
+    }
     try {
       unlinkSync(pluginPath)
     } catch {
       // File may not exist on a fresh overlay; a real failure surfaces on writeFileSync below.
     }
-    writeFileSync(pluginPath, this.pluginSource())
+    writeFileSync(pluginPath, source)
   }
 
   private writePluginToConfigDir(configDir: string): void {
     const pluginsDir = join(configDir, 'plugins')
     mkdirSync(pluginsDir, { recursive: true })
-    writeFileSync(join(pluginsDir, this.pluginFileName), this.pluginSource())
+    const pluginPath = join(pluginsDir, this.pluginFileName)
+    const source = this.pluginSource()
+    if (!isCurrentPluginFile(pluginPath, source)) {
+      writeFileSync(pluginPath, source)
+    }
   }
 }
 

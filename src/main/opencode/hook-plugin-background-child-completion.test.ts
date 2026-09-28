@@ -209,7 +209,10 @@ describe('OpenCode plugin background child completion', () => {
     expect(names()).not.toContain('SessionIdle')
 
     await first.dispose?.()
+    expect(names()).not.toContain('SessionIdle')
 
+    // Released: the root's next Idle through a surviving factory is no longer pinned.
+    await second.event({ event: status('idle', 'root') })
     expect(names().at(-1)).toBe('SessionIdle')
     await second.dispose?.()
   })

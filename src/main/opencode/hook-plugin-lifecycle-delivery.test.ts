@@ -592,16 +592,21 @@ describe('OpenCode plugin lifecycle delivery', () => {
     expect(names()).toEqual(['SessionBusy'])
   })
 
-  it('publishes final Idle when the last busy factory is disposed', async () => {
+  // OpenCode 2 disposes and re-sets-up every plugin on a hot reload while the turn keeps running.
+  it('keeps the pane Busy when OpenCode reloads the plugin mid-turn', async () => {
     const hooks = await loadHooks()
 
     await hooks.event({ event: status('busy') })
     await hooks.dispose?.()
+    expect(names()).toEqual(['SessionBusy'])
 
+    const reloaded = await loadHooks()
+    await reloaded.event({ event: status('busy') })
+    await reloaded.event({ event: status('idle') })
     expect(names()).toEqual(['SessionBusy', 'SessionIdle'])
   })
 
-  it('publishes final Idle when MessagePart alone made the disposed factory Working', async () => {
+  it('leaves MessagePart-only Working to the next lifecycle event after disposal', async () => {
     const hooks = await loadHooks()
     await hooks.event({
       event: {
@@ -620,11 +625,14 @@ describe('OpenCode plugin lifecycle delivery', () => {
     })
 
     await hooks.dispose?.()
+    expect(names()).toEqual(['MessagePart'])
 
+    const reloaded = await loadHooks()
+    await reloaded.event({ event: status('idle') })
     expect(names()).toEqual(['MessagePart', 'SessionIdle'])
   })
 
-  it('reasserts an already-delivered Idle after a later MessagePart', async () => {
+  it('lets a reloaded factory reassert an Idle a later MessagePart overwrote', async () => {
     const hooks = await loadHooks()
     await hooks.event({ event: status('busy') })
     await hooks.event({ event: status('idle') })
@@ -645,7 +653,10 @@ describe('OpenCode plugin lifecycle delivery', () => {
     })
 
     await hooks.dispose?.()
+    expect(names()).toEqual(['SessionBusy', 'SessionIdle', 'MessagePart'])
 
+    const reloaded = await loadHooks()
+    await reloaded.event({ event: { type: 'session.idle', properties: { sessionID: 'root' } } })
     expect(names()).toEqual(['SessionBusy', 'SessionIdle', 'MessagePart', 'SessionIdle'])
   })
 
@@ -769,7 +780,7 @@ describe('OpenCode plugin lifecycle delivery', () => {
     await vi.advanceTimersByTimeAsync(1_000)
     await second.dispose?.()
 
-    expect(names()).toEqual(['MessagePart', 'SessionIdle'])
+    expect(names()).toEqual(['MessagePart'])
   })
 
   it('keeps the pane Busy until every concurrent root session is idle', async () => {

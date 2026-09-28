@@ -485,13 +485,11 @@ describe('OpenCode plugin child attention', () => {
     await second.event({ event: status('busy', 'root-b') })
     await first.event({ event: attention('question.asked', 'first-id', 'child-a') })
     await second.event({ event: attention('question.asked', 'second-id', 'child-b') })
+    const postsBeforeDispose = posts.length
     await second.dispose?.()
-    expect(posts.at(-1)).toMatchObject({
-      hook_event_name: 'AskUserQuestion',
-      id: 'first-id',
-      sessionID: 'root-a'
-    })
+    expect(posts).toHaveLength(postsBeforeDispose)
 
+    // Released: the surviving factory's next change no longer reports second's blocker.
     await first.event({
       event: resolution('question.replied', 'first-id', 'child-a')
     })
