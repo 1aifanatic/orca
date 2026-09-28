@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { PROVIDER_SUPERVISOR_MAX_STOP_MS } from '../../codex/codex-app-server-posix-supervisor'
+import { SNAPSHOT_DRAIN_TIMEOUT_MS } from './structured-agent-session-eviction'
 import {
   CHILD_EVICTION_TIMEOUT_MS,
   structuredAgentSessionHostTeardownPhases
@@ -31,10 +32,13 @@ describe('structured agent-session host teardown', () => {
   })
 
   it("fits the Codex supervisor's longest stop inside quit's child-eviction bound", () => {
-    // A quit that times out first leaves the provider running and its lease unreleased.
-    expect(PROVIDER_SUPERVISOR_MAX_STOP_MS + SUPERVISOR_EXIT_OBSERVATION_HEADROOM_MS).toBeLessThan(
-      CHILD_EVICTION_TIMEOUT_MS
-    )
+    // A quit that times out first leaves the provider running and its lease unreleased. Eviction
+    // drains the sink for the resume offer before it stops the child, inside the same bound.
+    expect(
+      SNAPSHOT_DRAIN_TIMEOUT_MS +
+        PROVIDER_SUPERVISOR_MAX_STOP_MS +
+        SUPERVISOR_EXIT_OBSERVATION_HEADROOM_MS
+    ).toBeLessThan(CHILD_EVICTION_TIMEOUT_MS)
   })
 
   it('bounds stalled recovery publication without preventing later cleanup', async () => {
