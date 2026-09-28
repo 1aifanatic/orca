@@ -11,7 +11,10 @@ import { restoreCodexJournalThread } from './codex-structured-journal-translatio
 import { CodexJournalTurnBoundaries } from './codex-structured-journal-translation-turn-boundaries'
 import { createCodexJournalTranslatorWriters } from './codex-structured-journal-translation-writers'
 import { publishCodexTurnLifecycle } from './codex-structured-journal-translation-turns'
-import { readCodexProviderVerdict } from './codex-structured-journal-provider-verdicts'
+import {
+  CODEX_THREAD_STATUS_METHOD,
+  readCodexProviderVerdict
+} from './codex-structured-journal-provider-verdicts'
 import { createCodexThreadItemRouter } from './codex-structured-journal-thread-item-routing'
 import { readCodexTurnId } from './codex-structured-thread-facts'
 import type { CodexStructuredSessionEvent } from './codex-structured-session-adapter'
@@ -256,6 +259,10 @@ export function createCodexJournalTranslator(
       ) {
         primaryThreadStoppedRunning = true
         reportPrimaryThreadStoppedRunning()
+      }
+      // Owned here, not by the fallback: its payload sniffer reads `systemError` as a failure to print.
+      if (event.method === CODEX_THREAD_STATUS_METHOD) {
+        return publishActivity(event, CODEX_JOURNAL_ADMITTED)
       }
       // The row carries the provider's sentence and is written first, so it lands
       // inside the turn this same frame is about to end.

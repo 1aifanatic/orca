@@ -1,9 +1,12 @@
-// What Codex's own verdict frames mean beyond the row they print.
+// What Codex's own verdict frames mean for the session's state.
 //
-// Both are decoration to the transcript and load-bearing to the session's state,
-// which is why they are read here rather than left to the generic-frame fallback.
+// `error` also prints a row; a thread status prints none. Both are load-bearing
+// to state, which is why they are read here rather than left to the generic-frame fallback.
 
 import { codexThreadStoppedRunning, readCodexErrorWillRetry } from './codex-structured-thread-facts'
+
+/** Every arm of this frame is thread state; a fault's sentence arrives on `error`. */
+export const CODEX_THREAD_STATUS_METHOD = 'thread/status/changed'
 
 export type CodexProviderVerdict =
   /**
@@ -33,7 +36,7 @@ export function readCodexProviderVerdict(method: string, params: unknown): Codex
   if (method === 'error') {
     return readCodexErrorWillRetry(params) ? null : 'turn-failed'
   }
-  if (method === 'thread/status/changed') {
+  if (method === CODEX_THREAD_STATUS_METHOD) {
     return codexThreadStoppedRunning(params) ? 'thread-stopped-running' : null
   }
   return null
