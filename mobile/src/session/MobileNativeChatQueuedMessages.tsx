@@ -6,7 +6,7 @@ import type { MobileQueuedMessageCard } from './mobile-structured-queued-message
 
 export type MobileNativeChatQueuedMessagesProps = {
   cards?: MobileQueuedMessageCard[]
-  /** Send-now (Steer) for a waiting card; retry-send for a returned one. */
+  /** Send-now (Steer) for a waiting card; plain Send for a paused or returned one. */
   onSend?: (messageId: string) => Promise<boolean>
   onDelete?: (messageId: string) => Promise<boolean>
   /** Copy the card's text into the composer, then delete the card. */
@@ -46,6 +46,8 @@ export function MobileNativeChatQueuedMessages({
       {cards.map((card) => {
         const busy = busyIds.has(card.messageId)
         const returned = card.state === 'returned'
+        // "Send now" names jumping the running turn; a paused or returned card waits on none.
+        const sendLabel = returned || card.paused ? 'Send' : 'Send now'
         return (
           <View key={card.messageId} style={[styles.card, returned && styles.cardReturned]}>
             <View style={styles.header}>
@@ -65,12 +67,18 @@ export function MobileNativeChatQueuedMessages({
               <Pressable
                 accessibilityRole="button"
                 accessibilityState={{ disabled: busy }}
-                accessibilityLabel={returned ? 'Send this message again' : 'Send this message now'}
+                accessibilityLabel={
+                  returned
+                    ? 'Send this message again'
+                    : card.paused
+                      ? 'Send this message'
+                      : 'Send this message now'
+                }
                 style={({ pressed }) => [styles.action, pressed && styles.pressed]}
                 disabled={busy}
                 onPress={() => void run(card.messageId, onSend)}
               >
-                <Text style={styles.actionLabel}>{returned ? 'Send' : 'Send now'}</Text>
+                <Text style={styles.actionLabel}>{sendLabel}</Text>
               </Pressable>
               {/* A returned card most needs Edit: its text is what has to change. */}
               <Pressable

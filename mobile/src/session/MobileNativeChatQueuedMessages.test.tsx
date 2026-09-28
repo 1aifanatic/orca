@@ -49,4 +49,41 @@ describe('MobileNativeChatQueuedMessages', () => {
     await act(async () => edit.props.onPress())
     expect(onEdit).toHaveBeenCalledWith('returned-1')
   })
+
+  it('reads plain Send on a paused card, since no turn is running for it to jump', async () => {
+    const mounted = create(createElement('View'))
+    renderer = mounted
+    await act(async () => {
+      mounted.update(
+        createElement(MobileNativeChatQueuedMessages, {
+          cards: [
+            {
+              messageId: 'paused-1',
+              text: 'later',
+              state: 'waiting',
+              paused: true,
+              label: 'Paused — sends after your next message'
+            },
+            {
+              messageId: 'waiting-1',
+              text: 'next',
+              state: 'waiting',
+              paused: false,
+              label: 'Queued — sends when the current turn ends'
+            }
+          ],
+          onSend: vi.fn(async () => true),
+          onDelete: vi.fn(async () => true),
+          onEdit: vi.fn(async () => true)
+        })
+      )
+    })
+    expect(mounted.root.findByProps({ accessibilityLabel: 'Send this message' })).toBeTruthy()
+    expect(mounted.root.findByProps({ accessibilityLabel: 'Send this message now' })).toBeTruthy()
+    const labels = mounted.root
+      .findAllByType('Text')
+      .map((node) => node.props.children)
+      .filter((child) => child === 'Send' || child === 'Send now')
+    expect(labels).toEqual(['Send', 'Send now'])
+  })
 })
