@@ -23,17 +23,12 @@ import type { SshConnectionState, SshTarget } from '../../shared/ssh-types'
  * - `user`: a Connect the user clicked. Records that they want the host connected, then dials.
  * - `background`: anything the user did not click (a pane attach, startup restore, an
  *   automation, a VM). Refused while the user's Disconnect holds the host down.
- * - `session-cleanup`: the dial a user's terminate or remove makes from inside its own lifecycle
- *   operation. Dials past a Disconnect without changing it; that operation closes it again.
  */
-export type SshConnectAdmission = 'user' | 'background' | 'session-cleanup'
-
-// Why not session-cleanup: it skips the lifecycle queue, so only the terminate operation may use it.
-type RegisteredSshConnectAdmission = Exclude<SshConnectAdmission, 'session-cleanup'>
+export type SshConnectAdmission = 'user' | 'background'
 
 type ConnectSshTarget = (
   targetId: string,
-  admission: RegisteredSshConnectAdmission
+  admission: SshConnectAdmission
 ) => Promise<SshConnectionState>
 
 let sshStore: SshConnectionStore | null = null
@@ -58,7 +53,7 @@ export function setSshTargetRegistryHandlers(handlers: {
 
 export async function connectRegisteredSshTarget(
   targetId: string,
-  admission: RegisteredSshConnectAdmission
+  admission: SshConnectAdmission
 ): Promise<SshConnectionState> {
   if (!registeredConnectSshTarget) {
     // Why this still throws: a headless host that never registered handlers must fail

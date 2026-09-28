@@ -15,6 +15,7 @@ import {
   testingTargets
 } from './ssh-connect-attempt-registry'
 import { connectTarget } from './ssh-connect-flow'
+import { withSshMaintenanceTransport } from './ssh-maintenance-channel'
 import { recordSshConnectionIntent } from './ssh-connection-intent'
 import { connectionManager, getCurrentMainWindow, persistedStore } from './ssh-ipc-context'
 import { broadcastSshState, getPublicSshState } from './ssh-renderer-broadcast'
@@ -43,16 +44,13 @@ async function doResetRelay(targetId: string, target: SshTarget): Promise<void> 
   }
 
   const existingConn = connectionManager!.getConnection(targetId)
-  let conn = existingConn
-  if (!conn) {
-    // Why re-check: admission fenced this reset before it parked on the in-flight connect, so shutdown
-    // may have started (and drained) while we waited — opening a transport now would outlive the drain.
-    assertSshConnectsNotFenced()
-    conn = await connectionManager!.connect(target)
-  }
   let relayStopAcknowledged = false
   try {
-    await forceStopRelayForTarget(conn, targetId)
+    // Why a maintenance transport when none is registered: registering one would publish the
+    // host as up, and a Disconnect the user made must hold through their Reset.
+    await (existingConn
+      ? forceStopRelayForTarget(existingConn, targetId)
+      : withSshMaintenanceTransport(target, (conn) => forceStopRelayForTarget(conn, targetId)))
     relayStopAcknowledged = true
   } finally {
     const ptyIds = new Set(getPtyIdsForConnection(targetId))
@@ -82,9 +80,9 @@ async function doResetRelay(targetId: string, target: SshTarget): Promise<void> 
       clearProviderPtyState(appPtyId)
       deletePtyOwnership(appPtyId)
     }
-    // Why: reset's connect() may trip onCredentialRequest; clear so a later non-prompting doConnect doesn't persist lastRequiredPassphrase=true.
-    credentialRequestedForTarget.delete(targetId)
-    await connectionManager!.disconnect(targetId)
+    if (existingConn) {
+      await connectionManager!.disconnect(targetId)
+    }
   }
 }
 

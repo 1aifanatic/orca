@@ -56,10 +56,11 @@ function withSshRemotePlatform(targetId: string, state: SshConnectionState): Ssh
   }
 }
 
-// Why applied at each publication, never stored: the renderer broadcast, getPublicSshState and the
-// paired-client relay all see the intent current at read time. While the user's Disconnect holds,
-// a transport opened for Reset Relay or a session cleanup is not the host coming back, so every
-// reader sees it disconnected and no pane attaches to it.
+// Why derived at each publication, never stored: the renderer broadcast, getPublicSshState and the
+// paired-client relay all read the intent current at that moment. While the user's Disconnect holds,
+// no registered transport may exist, so 'disconnected' is the only true status; anything else can
+// only be a late state from the connection that Disconnect is still tearing down, such as a drop
+// while it waits its turn in the lifecycle queue.
 function withUserConnectionIntent(targetId: string, state: SshConnectionState): SshConnectionState {
   const { disconnectedBy: _staleDisconnectedBy, ...current } = state
   if (!isSshTargetDisconnectedByUser(targetId)) {

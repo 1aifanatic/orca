@@ -10,6 +10,10 @@ vi.mock('electron', () => mocks.electron)
 vi.mock('./ssh-pty-output-intake-registry', () => mocks.sshPtyOutputIntakeRegistry)
 vi.mock('../ssh/ssh-connection-store', () => mocks.sshConnectionStore)
 vi.mock('../ssh/ssh-connection-manager', () => mocks.sshConnectionManager)
+vi.mock('../ssh/ssh-connection', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  ...mocks.sshConnection
+}))
 vi.mock('../ssh/ssh-relay-deploy', () => mocks.sshRelayDeploy)
 vi.mock('../ssh/ssh-relay-reset', () => mocks.sshRelayReset)
 vi.mock('../ssh/ssh-channel-multiplexer', () => mocks.sshChannelMultiplexer)
@@ -37,9 +41,16 @@ import { getSshPtyProvider } from './pty'
 import { registerSshHandlers } from './ssh'
 import { activeSessions } from './ssh-active-relay-sessions'
 import { createSshIpcHarness } from './ssh-ipc-test-harness'
-import { relayLostBackoff } from './ssh-relay-lost-backoff'
 
-const { mockSshStore, mockConnectionManager, mockPtyProvider, mockPortForwardManager } = mocks
+const {
+  mockSshStore,
+  mockConnectionManager,
+  mockMaintenanceConnection,
+  mockForceStopRelayForTarget,
+  mockMux,
+  mockPtyProvider,
+  mockPortForwardManager
+} = mocks
 
 const TARGET: SshTarget = {
   id: 'ssh-1',
@@ -92,6 +103,20 @@ function reportTransportState(state: SshConnectionState): void {
     throw new Error('SSH connection callbacks were not installed')
   }
   callbacks.onStateChange(state.targetId, state)
+}
+
+// The maintenance connection reports through the callbacks it was constructed with.
+function reportMaintenanceState(status: SshConnectionState['status']): void {
+  const callbacks = mockMaintenanceConnection.callbacksRef.current
+  if (
+    !callbacks ||
+    typeof callbacks !== 'object' ||
+    !('onStateChange' in callbacks) ||
+    typeof callbacks.onStateChange !== 'function'
+  ) {
+    throw new Error('The maintenance connection was never constructed')
+  }
+  callbacks.onStateChange(TARGET.id, { ...connectedState(), status })
 }
 
 describe("SSH: the user's Disconnect holds until the user connects", () => {
@@ -356,157 +381,201 @@ describe("SSH: the user's Disconnect holds until the user connects", () => {
     })
   })
 
-  it('(h) a Reset Relay or session cleanup transport never publishes the held-down host as up', async () => {
-    await invoke('ssh:disconnect')
-    holdSessionsThatNeedTheRelay()
-    // The transport reports its own states, as the real one does while it opens and closes.
-    const connect = mockConnectionManager.connect.getMockImplementation()!
-    mockConnectionManager.connect.mockImplementation(async (...args: unknown[]) => {
-      reportTransportState({ ...connectedState(), status: 'connecting' })
-      const conn = await connect(...args)
-      reportTransportState(connectedState())
-      return conn
-    })
-    mockWindow.webContents.send.mockClear()
+  // The invariant the user's Disconnect rests on: nothing is registered for the host while it holds.
+  const expectNothingRegistered = (): void => {
+    expect(mockConnectionManager.getConnection(TARGET.id)).toBeUndefined()
+    expect(activeSessions.has(TARGET.id)).toBe(false)
+  }
 
-    await invoke('ssh:resetRelay')
-    await invoke('ssh:terminateSessions')
+  // The relay's pty.shutdown stays pending until the test settles it or the mux is disposed.
+  const holdRelayShutdown = (): PromiseWithResolvers<unknown> => {
+    const shutdown = Promise.withResolvers<unknown>()
+    const request = mockMux.request.getMockImplementation()!
+    mockMux.request.mockImplementation((method: string, ...rest: unknown[]) =>
+      method === 'pty.shutdown' ? shutdown.promise : request(method, ...rest)
+    )
+    mockMux.dispose.mockImplementation(() => shutdown.reject(new Error('Multiplexer disposed')))
+    return shutdown
+  }
 
-    expect(mockConnectionManager.connect).toHaveBeenCalledTimes(2)
-    const published = [...sentStates(mockWindow.webContents.send), await invoke('ssh:getState')]
-    expect(published.length).toBeGreaterThan(2)
-    for (const state of published) {
-      expect(state).toMatchObject({ status: 'disconnected', error: null, disconnectedBy: 'user' })
-    }
-    expect(persistedTargets.get(TARGET.id)?.desiredConnection).toBe('disconnected')
-  })
-
-  it('(i) a session cleanup on a held-down host restores no forwards and republishes nothing', async () => {
+  it('(i) End Terminals on a held-down host ends them over a channel nothing can see', async () => {
     const runtime = useRuntime()
     await invoke('ssh:disconnect')
     holdSessionsThatNeedTheRelay()
+    mockConnectionManager.connect.mockClear()
+    mockWindow.webContents.send.mockClear()
+    mockMux.request.mockImplementation(async () => {
+      expectNothingRegistered()
+      return {}
+    })
 
     await expect(invoke('ssh:terminateSessions')).resolves.toEqual({
       terminated: 1,
       unverifiable: 0
     })
 
-    expect(mockConnectionManager.connect).toHaveBeenCalledTimes(1)
-    expect(mockPortForwardManager.addForward).not.toHaveBeenCalled()
+    expect(mockConnectionManager.connect).not.toHaveBeenCalled()
+    expect(mockMux.request).toHaveBeenCalledWith('pty.shutdown', {
+      id: 'pty-1',
+      immediate: true,
+      keepHistory: false
+    })
+    expect(mockStore.markSshRemotePtyLease).toHaveBeenCalledWith(TARGET.id, 'pty-1', 'terminated')
+    expect(sentStates(mockWindow.webContents.send)).toEqual([])
     expect(runtime.notifySshRelayReady).not.toHaveBeenCalled()
-    expect(relayLostBackoff.has(TARGET.id)).toBe(false)
-    expect(mockConnectionManager.getConnection(TARGET.id)).toBeUndefined()
+    expect(mockPortForwardManager.addForward).not.toHaveBeenCalled()
+    expect(mockMaintenanceConnection.disconnect).toHaveBeenCalled()
+    expect(mockMux.dispose).toHaveBeenCalled()
+    expectNothingRegistered()
     expect(persistedTargets.get(TARGET.id)?.desiredConnection).toBe('disconnected')
   })
 
-  it('(iii) ssh:terminateSessions alone dials, ends the sessions and closes its transport', async () => {
+  it('(i) a failed pty.shutdown still closes the channel and keeps the lease for a retry', async () => {
     await invoke('ssh:disconnect')
     holdSessionsThatNeedTheRelay()
-
-    await expect(invoke('ssh:terminateSessions')).resolves.toEqual({
-      terminated: 1,
-      unverifiable: 0
-    })
-
-    expect(handlers.has('ssh:connectForSessionCleanup')).toBe(false)
-    expect(mockPtyProvider.shutdown).toHaveBeenCalledTimes(1)
-    expect(mockStore.markSshRemotePtyLease).toHaveBeenCalledWith(TARGET.id, 'pty-1', 'terminated')
-    expect(mockConnectionManager.getConnection(TARGET.id)).toBeUndefined()
-    expect(activeSessions.has(TARGET.id)).toBe(false)
-  })
-
-  it('(iv) a failed terminate on a held-down host closes its transport and relay retries', async () => {
-    await invoke('ssh:disconnect')
-    holdSessionsThatNeedTheRelay()
-    let failShutdown!: (error: Error) => void
-    mockPtyProvider.shutdown.mockReturnValue(
-      new Promise((_resolve, reject) => {
-        failShutdown = reject
-      })
-    )
+    const shutdown = holdRelayShutdown()
     const terminate = invoke('ssh:terminateSessions')
-    await vi.waitFor(() => expect(mockPtyProvider.shutdown).toHaveBeenCalled())
-    // The relay drops mid-cleanup, which arms its redeploy retry.
-    harness.getLatestRelayDisposeCallback()('connection_lost')
-    expect(relayLostBackoff.has(TARGET.id)).toBe(true)
+    await vi.waitFor(() =>
+      expect(mockMux.request).toHaveBeenCalledWith('pty.shutdown', expect.anything())
+    )
 
-    failShutdown(new Error('mux down'))
+    shutdown.reject(new Error('relay refused'))
 
     await expect(terminate).rejects.toThrow('Failed to terminate SSH host sessions')
-    expect(mockConnectionManager.getConnection(TARGET.id)).toBeUndefined()
-    expect(activeSessions.has(TARGET.id)).toBe(false)
-    expect(relayLostBackoff.has(TARGET.id)).toBe(false)
+    await expect(terminate).rejects.toThrow('relay refused')
+    expect(mockMaintenanceConnection.disconnect).toHaveBeenCalled()
+    expect(mockMux.dispose).toHaveBeenCalled()
     expect(mockStore.markSshRemotePtyLease).not.toHaveBeenCalledWith(
       TARGET.id,
       'pty-1',
       'terminated'
     )
-    expect(persistedTargets.get(TARGET.id)?.desiredConnection).toBe('disconnected')
+    expectNothingRegistered()
   })
 
-  it("(ii) a user's Connect during a failed cleanup ends on a full session of its own", async () => {
+  it('(i) a drop mid-operation rejects it instead of letting the transport reconnect', async () => {
+    await invoke('ssh:disconnect')
+    holdSessionsThatNeedTheRelay()
+    holdRelayShutdown()
+    const terminate = invoke('ssh:terminateSessions')
+    await vi.waitFor(() =>
+      expect(mockMux.request).toHaveBeenCalledWith('pty.shutdown', expect.anything())
+    )
+
+    // What the transport reports when its socket drops and its reconnect ladder arms.
+    reportMaintenanceState('reconnecting')
+
+    // Closing the connection is what disarms the ladder's timer.
+    await vi.waitFor(() => expect(mockMaintenanceConnection.disconnect).toHaveBeenCalled())
+    await expect(terminate).rejects.toThrow('dropped (reconnecting)')
+    expect(mockMux.dispose).toHaveBeenCalled()
+    expect(mockStore.markSshRemotePtyLease).not.toHaveBeenCalledWith(
+      TARGET.id,
+      'pty-1',
+      'terminated'
+    )
+    expect(mockConnectionManager.connect).not.toHaveBeenCalled()
+    expectNothingRegistered()
+  })
+
+  it("(ii) a user's Connect during End Terminals waits, then dials a full session of its own", async () => {
     const runtime = useRuntime()
     await invoke('ssh:disconnect')
     holdSessionsThatNeedTheRelay()
-    let failShutdown!: (error: Error) => void
-    mockPtyProvider.shutdown.mockReturnValue(
-      new Promise((_resolve, reject) => {
-        failShutdown = reject
-      })
-    )
+    const shutdown = holdRelayShutdown()
+    mockConnectionManager.connect.mockClear()
     const terminate = invoke('ssh:terminateSessions')
-    await vi.waitFor(() => expect(mockPtyProvider.shutdown).toHaveBeenCalled())
+    await vi.waitFor(() =>
+      expect(mockMux.request).toHaveBeenCalledWith('pty.shutdown', expect.anything())
+    )
 
     const connect = invoke('ssh:connect')
-    failShutdown(new Error('mux down'))
-
-    await expect(terminate).rejects.toThrow('Failed to terminate SSH host sessions')
-    await expect(connect).resolves.toMatchObject({ status: 'connected' })
-    expect(mockConnectionManager.getConnection(TARGET.id)).toBeDefined()
-    expect(persistedTargets.get(TARGET.id)?.desiredConnection).toBe('connected')
-    // The cleanup's relay skipped these; the user's own session restores them.
-    expect(runtime.notifySshRelayReady).toHaveBeenCalledWith(TARGET.id)
-    expect(mockPortForwardManager.addForward).toHaveBeenCalled()
-  })
-
-  it("(ii) a user's Connect during the cleanup's dial is not torn down by the terminate", async () => {
-    await invoke('ssh:disconnect')
-    holdSessionsThatNeedTheRelay()
-    mockPtyProvider.shutdown.mockResolvedValue(undefined)
-    let finishCleanupDial!: () => void
-    const connect = mockConnectionManager.connect.getMockImplementation()!
-    mockConnectionManager.connect.mockImplementationOnce(
-      (...args: unknown[]) =>
-        new Promise((resolve) => {
-          finishCleanupDial = () => resolve(connect(...args))
-        })
-    )
-    const terminate = invoke('ssh:terminateSessions')
-    await vi.waitFor(() => expect(mockConnectionManager.connect).toHaveBeenCalledTimes(1))
-
-    const userConnect = invoke('ssh:connect')
-    finishCleanupDial()
+    await Promise.resolve()
+    expect(mockConnectionManager.connect).not.toHaveBeenCalled()
+    shutdown.resolve(undefined)
 
     await expect(terminate).resolves.toEqual({ terminated: 1, unverifiable: 0 })
-    await expect(userConnect).resolves.toMatchObject({ status: 'connected' })
-    expect(mockConnectionManager.connect).toHaveBeenCalledTimes(2)
-    expect(mockConnectionManager.getConnection(TARGET.id)).toBeDefined()
+    await expect(connect).resolves.toMatchObject({ status: 'connected' })
+    expect(mockConnectionManager.connect).toHaveBeenCalledTimes(1)
     expect(activeSessions.has(TARGET.id)).toBe(true)
+    expect(mockConnectionManager.getConnection(TARGET.id)).toBeDefined()
+    expect(runtime.notifySshRelayReady).toHaveBeenCalledWith(TARGET.id)
+    expect(mockPortForwardManager.addForward).toHaveBeenCalled()
+    expect(persistedTargets.get(TARGET.id)?.desiredConnection).toBe('connected')
   })
 
-  it('(v) a host the user did not disconnect keeps the cleanup connection for a retry', async () => {
-    const runtime = useRuntime()
+  it('(iii) Reset Relay on a held-down host force-stops over a channel nothing can see', async () => {
+    await invoke('ssh:disconnect')
+    mockConnectionManager.connect.mockClear()
+    mockWindow.webContents.send.mockClear()
+    mockForceStopRelayForTarget.mockImplementation(async () => expectNothingRegistered())
+
+    await invoke('ssh:resetRelay')
+
+    expect(mockForceStopRelayForTarget).toHaveBeenCalledWith(mockMaintenanceConnection, TARGET.id)
+    expect(mockMaintenanceConnection.disconnect).toHaveBeenCalled()
+    expect(mockConnectionManager.connect).not.toHaveBeenCalled()
+    expect(sentStates(mockWindow.webContents.send)).toEqual([])
+    expectNothingRegistered()
+  })
+
+  it('(iv) while the Disconnect holds, nothing registers a transport or session for the host', async () => {
+    await invoke('ssh:connect')
+    await invoke('ssh:disconnect')
+    expectNothingRegistered()
     holdSessionsThatNeedTheRelay()
-    mockPtyProvider.shutdown.mockRejectedValue(new Error('mux down'))
+    const openMaintenance = mockMaintenanceConnection.connect.getMockImplementation()!
+    mockMaintenanceConnection.connect.mockImplementation(async () => {
+      expectNothingRegistered()
+      await openMaintenance()
+    })
 
-    await expect(invoke('ssh:terminateSessions')).rejects.toThrow(
-      'Failed to terminate SSH host sessions'
+    await expect(invoke('ssh:ensureConnected')).rejects.toMatchObject({
+      code: SSH_DISCONNECTED_BY_USER_CODE
+    })
+    expectNothingRegistered()
+    await invoke('ssh:resetRelay')
+    expectNothingRegistered()
+    await invoke('ssh:terminateSessions')
+    expectNothingRegistered()
+    await connectRegisteredSshTarget(TARGET.id, 'background').catch(() => undefined)
+    expectNothingRegistered()
+
+    expect(mockMaintenanceConnection.connect).toHaveBeenCalledTimes(2)
+    expect(await invoke('ssh:getState')).toMatchObject({
+      status: 'disconnected',
+      disconnectedBy: 'user'
+    })
+  })
+
+  it("(h) a drop while the user's Disconnect waits its turn still publishes it disconnected", async () => {
+    await invoke('ssh:connect')
+    holdSessionsThatNeedTheRelay()
+    let finishShutdown!: () => void
+    mockPtyProvider.shutdown.mockReturnValue(
+      new Promise<void>((resolve) => {
+        finishShutdown = resolve
+      })
     )
+    // A live-session terminate holds the lifecycle queue, so the Disconnect parks behind it.
+    const terminate = invoke('ssh:terminateSessions')
+    await vi.waitFor(() => expect(mockPtyProvider.shutdown).toHaveBeenCalled())
+    const disconnect = invoke('ssh:disconnect')
+    mockWindow.webContents.send.mockClear()
 
-    expect(mockConnectionManager.connect).toHaveBeenCalledTimes(1)
-    expect(mockConnectionManager.getConnection(TARGET.id)).toBeDefined()
-    expect(activeSessions.has(TARGET.id)).toBe(true)
-    expect(runtime.notifySshRelayReady).toHaveBeenCalledWith(TARGET.id)
+    reportTransportState({
+      targetId: TARGET.id,
+      status: 'reconnecting',
+      error: 'socket closed',
+      reconnectAttempt: 1
+    })
+
+    expect(sentStates(mockWindow.webContents.send)).toEqual([
+      expect.objectContaining({ status: 'disconnected', error: null, disconnectedBy: 'user' })
+    ])
+    finishShutdown()
+    await terminate
+    await disconnect
   })
 
   it('(h) publishes the Disconnect even when a failed connect left no connection object', async () => {

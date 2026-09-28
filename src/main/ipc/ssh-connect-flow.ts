@@ -64,16 +64,13 @@ export async function connectTarget(
   assertConnectAdmitted(targetId, admission)
   // Why: fence callers that entered before a same-turn disconnect/reset but resume after its cleanup.
   const admissionAuthority = getSshProviderAuthority(targetId)
-  // Why: a session cleanup dials from inside the target's lifecycle operation; waiting would deadlock.
-  if (admission !== 'session-cleanup') {
-    await awaitTargetLifecycle(targetId)
-    const reset = resetRelayInFlight.get(targetId)
-    if (reset) {
-      await reset
-    }
-    // Why again: a Disconnect may have landed while this connect waited on the lifecycle queue.
-    assertConnectAdmitted(targetId, admission)
+  await awaitTargetLifecycle(targetId)
+  const reset = resetRelayInFlight.get(targetId)
+  if (reset) {
+    await reset
   }
+  // Why again: a Disconnect may have landed while this connect waited on the lifecycle queue.
+  assertConnectAdmitted(targetId, admission)
 
   // Why: serialize concurrent ssh:connect for the same target; interleaved connects otherwise leak the first session.
   const existing = connectInFlight.get(targetId)
