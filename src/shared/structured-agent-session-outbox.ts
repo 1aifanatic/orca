@@ -5,7 +5,10 @@ import {
   type AgentSessionWriteFailure,
   type AgentSessionWriteRefusal
 } from './agent-session-write-failure'
-import { agentSessionRefusalOperationState } from './agent-session-refusal-retry'
+import {
+  agentSessionOwnerVerdictAllowsFreshOperationId,
+  agentSessionRefusalOperationState
+} from './agent-session-refusal-retry'
 import type { AgentSessionMutationEnvelope } from './agent-session-wire'
 import { structuredAgentSessionPayloadFingerprint } from './structured-agent-session-mutation'
 import { classifyDispatchRejection } from './structured-agent-session-dispatch-rejection'
@@ -153,8 +156,12 @@ export function requeueStructuredAgentSessionSendRefusal(
   createOperationId: () => string,
   retainOperationId = false
 ): StructuredAgentSessionOutboxEntry {
+  const refusalSettled =
+    agentSessionRefusalOperationState(refusal.code) === 'settled-rejected' ||
+    (refusal.code === 'agent_session_ownership_unknown' &&
+      agentSessionOwnerVerdictAllowsFreshOperationId(refusal.details?.ownerVerdict))
   if (
-    agentSessionRefusalOperationState(refusal.code) !== 'settled-rejected' ||
+    !refusalSettled ||
     retainOperationId ||
     entry.state === 'unconfirmed' ||
     entry.retryAfterUnknownSubmittedAt !== null
