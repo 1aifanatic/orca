@@ -59,3 +59,14 @@ it('restores download fallback only on a miss and preserves its established key 
   expect(fallback.with).toEqual(save.with)
   expect(save.if).toBe("steps.cache.outputs.cache-hit != 'true'")
 })
+
+it('runs the standalone generator without installing unrelated Orca dependencies', () => {
+  const steps = readYaml('../../.github/workflows/pr.yml').jobs.xterm_patch_sync.steps
+  expect(steps.some((step) => step.uses === './.github/actions/install-node-dependencies')).toBe(
+    false
+  )
+  expect(steps.find((step) => step.uses === 'actions/setup-node@v6').with).toEqual({
+    'node-version-file': 'package.json',
+    'package-manager-cache': false
+  })
+})

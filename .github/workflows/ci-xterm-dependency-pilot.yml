@@ -18,7 +18,10 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: package.json
+          package-manager-cache: false
       - uses: ./.github/actions/prepare-xterm-dependencies
         id: cache
       - name: Restore baseline downloads
@@ -54,6 +57,12 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/install-node-dependencies
+        if: matrix.cache == false
+      - uses: actions/setup-node@v6
+        if: matrix.cache == true
+        with:
+          node-version-file: package.json
+          package-manager-cache: false
       - name: Restore baseline downloads
         if: matrix.cache == false
         uses: actions/cache/restore@v5
