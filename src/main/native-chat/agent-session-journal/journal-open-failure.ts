@@ -35,10 +35,46 @@ export function journalOpenReadRefusal(error: unknown): AgentSessionRefusalError
   if (isAgentSessionRefusalError(error)) {
     return error
   }
-  console.warn('[agent-session] opening the conversation for a read failed:', error)
+  return unreadableRefusal(error, classifyJournalOpenFailure(error), true)
+}
+
+const MAX_LOGGED_SESSIONS = 256
+
+/**
+ * The read door's refusals for one host. A reader reconnects on a timer while an open can clear,
+ * so a session's failure is logged once until that session opens or the failure changes.
+ */
+export function createJournalOpenReadRefusals() {
+  const logged = new Map<string, string>()
+  return {
+    refusal: (sessionId: string, error: unknown): AgentSessionRefusalError => {
+      if (isAgentSessionRefusalError(error)) {
+        return error
+      }
+      const reason = classifyJournalOpenFailure(error)
+      const failure = `${reason}:${error instanceof Error ? error.message : String(error)}`
+      const repeat = logged.get(sessionId) === failure
+      // Past the cap a new session logs every failure rather than evict another's.
+      if (!repeat && (logged.has(sessionId) || logged.size < MAX_LOGGED_SESSIONS)) {
+        logged.set(sessionId, failure)
+      }
+      return unreadableRefusal(error, reason, !repeat)
+    },
+    /** The session opened or closed: its next failure is news. */
+    forget: (sessionId: string): void => {
+      logged.delete(sessionId)
+    }
+  }
+}
+
+function unreadableRefusal(
+  error: unknown,
+  reason: JournalOpenFailure,
+  log: boolean
+): AgentSessionRefusalError {
+  if (log) {
+    console.warn('[agent-session] opening the conversation for a read failed:', error)
+  }
   const code = 'agent_session_journal_unreadable'
-  return new AgentSessionRefusalError(
-    refuse(code, { reason: classifyJournalOpenFailure(error) }, code),
-    { cause: error }
-  )
+  return new AgentSessionRefusalError(refuse(code, { reason }, code), { cause: error })
 }

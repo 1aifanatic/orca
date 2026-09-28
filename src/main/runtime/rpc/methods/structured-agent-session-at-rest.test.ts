@@ -281,6 +281,33 @@ describe('the accessor', () => {
     }
   })
 
+  it('logs a reader reconnecting to a journal that will not open once per failure', async () => {
+    await restingChat()
+    const open = vi.spyOn(rig.host.collaboratorsForTests().conversationDelivery, 'open')
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const logged = (): unknown[] =>
+      warn.mock.calls
+        .filter(([line]) => line === '[agent-session] opening the conversation for a read failed:')
+        .map(([, error]) => error)
+    const reconnect = async (): Promise<RpcResponse[]> => [
+      ...(await call('agentSession.subscribe', { sessionId: SESSION })),
+      ...(await call('agentSession.history', { sessionId: SESSION, direction: 'tail' }))
+    ]
+    const denied = new Error('EACCES: permission denied')
+    const exhausted = new Error('EMFILE: too many open files')
+
+    open.mockRejectedValue(denied)
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      // Every attempt is still refused with its reason; only the log is quiet.
+      expect((await reconnect()).filter((reply) => !reply.ok)).toHaveLength(2)
+    }
+    expect(logged()).toEqual([denied])
+    open.mockRejectedValue(exhausted)
+    await reconnect()
+    await reconnect()
+    expect(logged()).toEqual([denied, exhausted])
+  })
+
   it('opens a corrupt journal through the recovering open and still accepts a send (P2-03)', async () => {
     await foundRestTestChat(rig)
     await rig.host.flushAllStreamedEvents()

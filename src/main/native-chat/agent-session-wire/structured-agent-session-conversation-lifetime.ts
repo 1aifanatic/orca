@@ -9,7 +9,7 @@ import {
   AgentSessionRefusalError,
   agentSessionRefusalError
 } from '../../../shared/agent-session-wire-refusals'
-import { journalOpenReadRefusal } from '../agent-session-journal/journal-open-failure'
+import { createJournalOpenReadRefusals } from '../agent-session-journal/journal-open-failure'
 import type { StructuredAgentSessionConversations } from './structured-agent-session-conversations'
 import {
   abandonQueuedStructuredAgentSessionMessages,
@@ -40,6 +40,7 @@ export function createStructuredAgentSessionConversationLifetime(host: {
   let disposed = false
   const { sessions, serialize } = host
   const deps = () => host.context().deps
+  const readRefusals = createJournalOpenReadRefusals()
   // The sweep's stop puts an idle agent to rest: nothing is queued, so no loop reads its cause.
   const stopAgent = (sessionId: string) =>
     stopStructuredAgentSessionAgentUnderSerialize(host.context(), sessionId)
@@ -97,6 +98,7 @@ export function createStructuredAgentSessionConversationLifetime(host: {
     conversation: async (sessionId: string): Promise<StructuredAgentSessionHostSession> => {
       const open = sessions.get(sessionId)
       if (open) {
+        readRefusals.forget(sessionId)
         return open
       }
       const record = deps().store.getRecord(sessionId)
@@ -116,13 +118,14 @@ export function createStructuredAgentSessionConversationLifetime(host: {
           throw new AgentSessionRefusalError(AGENT_SESSION_NOT_ATTACHED)
         }
         const session = await host.open(sessionId).catch((error: unknown) => {
-          throw journalOpenReadRefusal(error)
+          throw readRefusals.refusal(sessionId, error)
         })
         if (!session) {
           throw agentSessionRefusalError('agent_session_identity_required', {
             reason: 'recordMissing'
           })
         }
+        readRefusals.forget(sessionId)
         return session
       })
     },
@@ -130,6 +133,7 @@ export function createStructuredAgentSessionConversationLifetime(host: {
      *  still queued will not be sent. */
     close: (sessionId: string): Promise<void> =>
       serialize(sessionId, async () => {
+        readRefusals.forget(sessionId)
         const session = sessions.get(sessionId)
         if (session) {
           // Abandoned before the stop, so no start delivers it.
