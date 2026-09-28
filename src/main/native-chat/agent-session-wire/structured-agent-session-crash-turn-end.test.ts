@@ -24,6 +24,7 @@ import {
   AgentSessionAcquisitionExitUnprovenError,
   type StructuredAgentSessionAdapter
 } from './structured-agent-session-adapter'
+import { resettleOpenStructuredAgentSessionConversation } from './structured-agent-session-conversation-open'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
 import { STRUCTURED_AGENT_SESSION_IDLE_MS } from './structured-agent-session-idle-sweep'
 import type { StructuredAgentSessionHostDeps } from './structured-agent-session-host-types'
@@ -262,7 +263,7 @@ function drainSession(): Promise<void> {
 }
 
 // On desktop the chat on screen at relaunch opens before the startup reconcile has probed its owner,
-// so the open can only call the turn unverifiable; the reconcile's proof then revises it.
+// so the open can only call the turn unverifiable; the proof, whoever writes it, then revises it.
 describe('a turn a read reached before the reconcile proved its owner dead', () => {
   it('reads unverifiable, then interrupted at the last renewal, and a subscriber is sent both', async () => {
     openHost({ probeOwner: async () => ({ outcome: 'pid-absent' }) })
@@ -298,11 +299,55 @@ describe('a turn a read reached before the reconcile proved its owner dead', () 
     await drainSession()
     const settled = await host.journalSnapshot(SESSION)
 
-    host.collaboratorsForTests().conversationDelivery.resettleOpen()
-    await drainSession()
+    await host
+      .collaboratorsForTests()
+      .serialize(SESSION, () =>
+        resettleOpenStructuredAgentSessionConversation(
+          host.deps,
+          SESSION,
+          host.collaboratorsForTests().sessions.get(SESSION)
+        )
+      )
     await host.restoreReadableSessions()
 
     expect(await host.journalSnapshot(SESSION)).toEqual(settled)
+  })
+
+  it('revises it when recovery stops a child that outlived Orca, with no send', async () => {
+    let alive = true
+    const probeOwner = async (): Promise<AgentSessionOwnerProbe> =>
+      alive
+        ? { outcome: 'identity-matched', matchedOn: ['spawn-token'] }
+        : { outcome: 'pid-absent' }
+    const stopOwnerProcess = vi.fn(() => {
+      alive = false
+    })
+    const acquire = vi.fn<StructuredAgentSessionAdapter['acquire']>()
+    openHost({
+      adapter: {
+        acquire,
+        dispatch: vi.fn(),
+        cancelTurn: vi.fn(),
+        answerPrompt: vi.fn(),
+        setOption: vi.fn(),
+        supportsCreate: () => true
+      },
+      probeOwner,
+      stopOwnerProcess
+    })
+    await host.history({ sessionId: SESSION, direction: 'tail' })
+    expect(await settledTurn()).toEqual(UNVERIFIABLE_TURN)
+
+    // The reconcile only parks the live orphan in recovery; recovery's stop is what proves it gone.
+    await host.restoreReadableSessions()
+    await drainSession()
+
+    expect(stopOwnerProcess).toHaveBeenCalledOnce()
+    expect(acquire).not.toHaveBeenCalled()
+    expect(await settledTurn()).toMatchObject({
+      state: 'interrupted',
+      completedAt: LAST_RENEWED_AT
+    })
   })
 
   it('never touches the turn a start after the crash is writing', async () => {

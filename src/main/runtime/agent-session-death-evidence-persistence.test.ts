@@ -1,7 +1,7 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentSessionDeathEvidence } from '../../shared/agent-session-record'
 import {
   agentSessionLeaseFixture,
@@ -85,6 +85,32 @@ describe('death evidence on disk', () => {
   ])('quarantines evidence that %s', async (_why, field) => {
     await seed({ kind: 'pid-absent', detail: 'gone', observedAt: 90_000, ...field })
     expect((await open()).isSessionUnreadable(SESSION)).toBe(true)
+  })
+})
+
+describe('who is told a proof of death landed', () => {
+  it('tells a listener once the proof is committed, and never for a write that proves nothing', async () => {
+    await seed(null)
+    const store = await open()
+    const told: unknown[] = []
+    store.onDeathEvidence((sessionId) => told.push(store.getRecord(sessionId)?.lease.deathEvidence))
+    const unsubscribed = vi.fn()
+    store.onDeathEvidence(unsubscribed)()
+
+    await expect(
+      store.evictProvenDeadOwner({
+        sessionId: SESSION,
+        expectedFence: 6,
+        probe: { outcome: 'pid-absent' },
+        now: 80_000
+      })
+    ).rejects.toThrow()
+    await store.reconcileOnRestart({ probe: async () => ({ outcome: 'pid-absent' }), now: 90_000 })
+    // The proof already on the record is not news to a later write.
+    await store.setSessionTabVisibility(SESSION, true)
+
+    expect(told).toEqual([expect.objectContaining({ kind: 'pid-absent', ownerFence: 7 })])
+    expect(unsubscribed).not.toHaveBeenCalled()
   })
 })
 

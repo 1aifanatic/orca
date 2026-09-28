@@ -117,8 +117,8 @@ export async function openStructuredAgentSessionConversationJournal(
 
 /**
  * The open's settle again, for a conversation already open: a proof of death written since it
- * opened (the startup reconcile) revises what the open could only call `unverifiable`. A record
- * holds a proof only while released, so no child here is writing. A no-op once it has revised.
+ * opened (the startup reconcile, a recovery) revises what the open could only call `unverifiable`.
+ * A record holds a proof only while released, so no child here is writing. A no-op once revised.
  */
 export async function resettleOpenStructuredAgentSessionConversation(
   deps: StructuredAgentSessionConversationOpenDeps,

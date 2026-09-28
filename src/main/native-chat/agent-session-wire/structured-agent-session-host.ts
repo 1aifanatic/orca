@@ -106,9 +106,7 @@ export class StructuredAgentSessionHost {
       store: deps.store,
       probe: (record) => this.runtimeState.probeRecord(record),
       ...(deps.probeOwners ? { probeMany: deps.probeOwners } : {}),
-      now: () => this.now(),
-      // A read can open a chat before the reconcile proves its owner dead; this revises its turn.
-      onReconciled: () => this.conversationDelivery.resettleOpen()
+      now: () => this.now()
     })
     this.conversationDelivery = createStructuredAgentSessionConversationDelivery({
       deps,
@@ -249,7 +247,7 @@ export class StructuredAgentSessionHost {
   // Trigger inlined rather than imported: `AgentSessionResumeTrigger` in shared is the canonical
   // type, and this file has no line budget left for the import.
   async flushAllStreamedEvents(options?: { trigger?: 'quit' | 'update' }): Promise<void> {
-    this.conversationDelivery.loop.dispose()
+    this.conversationDelivery.dispose()
     await flushStructuredAgentSessionHost({
       ...this.lifetimeContext(),
       idleSweep: this.lifetime,

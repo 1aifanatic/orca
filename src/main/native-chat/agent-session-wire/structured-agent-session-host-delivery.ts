@@ -29,8 +29,8 @@ export type StructuredAgentSessionConversationDelivery = {
     sessionId: string,
     options?: StructuredAgentSessionConversationOpenOptions
   ) => Promise<StructuredAgentSessionHostSession | null>
-  /** Re-runs the open's settle for every open conversation no child here drives. */
-  resettleOpen: () => void
+  /** Stops the loop and the resettle on a proof of death; quit's first step. */
+  dispose: () => void
   /** Indexes a conversation some other open produced, as `open` would have. */
   adoptOpened: (
     sessionId: string,
@@ -79,18 +79,25 @@ export function createStructuredAgentSessionConversationDelivery(input: {
       loop.wake(sessionId)
     }
   }
+  // A chat open before its owner's death was proven revises what its open settled. Queued, never
+  // awaited: the writer can hold this session's serialize (an attach recovering its lease).
+  const stopResettling = deps.store.onDeathEvidence((sessionId) => {
+    if (sessions.has(sessionId)) {
+      void input
+        .trackStart(
+          input.serialize(sessionId, () =>
+            resettleOpenStructuredAgentSessionConversation(deps, sessionId, sessions.get(sessionId))
+          )
+        )
+        .catch((error: unknown) => deps.onEventSinkError?.({ sessionId, error }))
+    }
+  })
   return {
     loop,
     adoptOpened,
-    // Queued, never awaited: an attach holding a session's serialize waits on the reconcile.
-    resettleOpen: () => {
-      for (const sessionId of sessions.keys()) {
-        void input
-          .serialize(sessionId, () =>
-            resettleOpenStructuredAgentSessionConversation(deps, sessionId, sessions.get(sessionId))
-          )
-          .catch((error: unknown) => deps.onEventSinkError?.({ sessionId, error }))
-      }
+    dispose: () => {
+      loop.dispose()
+      stopResettling()
     },
     open: (sessionId, options) =>
       openStructuredAgentSessionConversation({ deps, sessions, adoptOpened }, sessionId, options)

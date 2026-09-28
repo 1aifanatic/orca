@@ -20,8 +20,6 @@ export function createRestartReconciler(deps: {
     records: readonly AgentSessionRecord[]
   ) => Promise<Map<string, AgentSessionOwnerProbe>>
   now: () => number
-  /** Told once a run has written what it proved, even a run that then gave up. Must not throw. */
-  onReconciled?: () => void
 }): (sessionId: string) => Promise<AgentSessionWireRefusal | null> {
   let pending: Promise<void> | null = null
   return async (sessionId) => {
@@ -29,7 +27,7 @@ export function createRestartReconciler(deps: {
       return null
     }
     if (!pending) {
-      const run = reconcileCurrentLeases(deps).finally(() => deps.onReconciled?.())
+      const run = reconcileCurrentLeases(deps)
       pending = run.finally(() => {
         pending = null
       })
