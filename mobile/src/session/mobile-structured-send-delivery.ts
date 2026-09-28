@@ -25,7 +25,7 @@
 import type { AgentSessionSendResult } from '../../../src/shared/agent-session-wire'
 import { agentSessionRefusalOperationState } from '../../../src/shared/agent-session-refusal-retry'
 import { structuredAgentSessionRejectionNotice } from '../../../src/shared/structured-agent-session-send-disposition'
-import { structuredAgentSessionSubmissionDrawsAsSent } from '../../../src/shared/structured-agent-session-dispatch-rejection'
+import { structuredAgentSessionSubmissionSettledAsSent } from '../../../src/shared/structured-agent-session-dispatch-rejection'
 import type { MobileNativeChatSendOutcome } from './mobile-native-chat-send'
 import type { StructuredAgentSessionMutationCallResult } from './mobile-structured-agent-session-rpc'
 
@@ -68,7 +68,7 @@ export function mobileStructuredSendDelivery(
   }
   if (
     submission.dispatchState === 'rejected' &&
-    !structuredAgentSessionSubmissionDrawsAsSent(submission)
+    !structuredAgentSessionSubmissionSettledAsSent(submission)
   ) {
     return {
       outcome: 'rejected',

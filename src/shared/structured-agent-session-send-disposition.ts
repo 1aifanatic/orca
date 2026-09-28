@@ -18,7 +18,7 @@ import type { AgentSessionWriteNoticePart } from './agent-session-write-notice-c
 import { agentSessionRefusalFailure } from './agent-session-write-failure'
 import {
   classifyDispatchRejection,
-  structuredAgentSessionSubmissionDrawsAsSent
+  structuredAgentSessionSubmissionSettledAsSent
 } from './structured-agent-session-dispatch-rejection'
 import {
   classifyStructuredAgentSessionSendFailure,
@@ -169,9 +169,9 @@ export function disposeStructuredAgentSessionSendResult(
     }
   }
   const submission = result.value.submission
-  // Sent, or in doubt after a crash or a dead agent: either way the journal draws the message, and
+  // Sent, or left in doubt for good by a crash or a dead agent: the journal draws the message, and
   // sending a new one is how the chat continues.
-  if (structuredAgentSessionSubmissionDrawsAsSent(submission)) {
+  if (structuredAgentSessionSubmissionSettledAsSent(submission)) {
     return {
       entries: dropEntry(input),
       error: null,
@@ -208,8 +208,8 @@ export function disposeStructuredAgentSessionSendResult(
   // provider's acknowledgement, which cannot arrive until the turn ahead of it
   // ends. That is not doubt, and keeping order is no longer the reason to hold
   // the entry -- the host fixed the order when it wrote the row. It stays
-  // because a `pending` can still settle `rejected`, and only the entry carries
-  // the retry state that answer needs.
+  // because a `pending`, or a live `unknown`, can still settle `rejected`, and
+  // only the entry carries the retry state that answer needs.
   return {
     entries: replaceEntryState(input, 'dispatching'),
     error: null,

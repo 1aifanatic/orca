@@ -451,9 +451,9 @@ describe('useStructuredAgentSessionOutbox', () => {
     expect(mocks.call).toHaveBeenCalledOnce()
   })
 
-  it('draws a host unknown as sent and sends the queued message behind it, with no Retry', async () => {
-    // Doubt the host recorded is never a barrier: the entry leaves, nothing says it is
-    // unconfirmed, and the next message goes out on its own.
+  it('holds a live host unknown like a pending: the next message goes out, with no Retry', async () => {
+    // Doubt the host recorded is never a barrier and never asks for a Retry. The entry stays,
+    // because a live `unknown` can still settle `rejected`, and then it keeps the text for Retry.
     mocks.call.mockImplementation(async (_target, _method, params) => {
       const request = params as {
         envelope: { clientOperationId: string }
@@ -463,27 +463,45 @@ describe('useStructuredAgentSessionOutbox', () => {
         ? acceptedResultFor(request.envelope.clientOperationId, 11)
         : unknownResultFor(request.envelope.clientOperationId, 10)
     })
-    const { result } = renderHook(() =>
-      useStructuredAgentSessionOutbox({
-        sessionId: 'session-1',
-        target: LOCAL_TARGET,
-        fence: 1,
-        submissions: []
-      })
+    const { result, rerender } = renderHook(
+      ({ submissions }: { submissions: readonly AgentJournalSubmission[] }) =>
+        useStructuredAgentSessionOutbox({
+          sessionId: 'session-1',
+          target: LOCAL_TARGET,
+          fence: 1,
+          submissions
+        }),
+      { initialProps: { submissions: [] as readonly AgentJournalSubmission[] } }
     )
 
     act(() => expect(result.current.send('first')).toBe(true))
     await waitFor(() => expect(mocks.call).toHaveBeenCalledOnce())
     act(() => expect(result.current.send('second')).toBe(true))
     await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(2))
-    await waitFor(() => expect(result.current.outbox).toHaveLength(0))
+    await waitFor(() => expect(result.current.outbox).toHaveLength(1))
 
     const sent = mocks.call.mock.calls.map(
       (call) => (call[2] as { body?: { blocks?: { text?: string }[] } })?.body?.blocks?.[0]?.text
     )
     expect(sent).toEqual(['first', 'second'])
+    expect(result.current.outbox[0]).toMatchObject({ state: 'dispatching' })
     expect(result.current.error).toBeNull()
     expect(result.current.blockedClientMessageId).toBeNull()
+
+    // The agent then fails to start, which proves the send was never written: the text stays.
+    const firstId = result.current.outbox[0]!.clientMessageId
+    rerender({
+      submissions: [
+        {
+          ...unknownResultFor(firstId, 10).value.submission,
+          dispatchState: 'rejected',
+          reason: "Claude couldn't start.",
+          rejection: { kind: 'providerStartFailed' }
+        }
+      ]
+    })
+    await waitFor(() => expect(result.current.outbox[0]).toMatchObject({ state: 'rejected' }))
+    expect(result.current.outbox[0]?.body.blocks[0]).toMatchObject({ text: 'first' })
   })
 
   it('releases an entry the journal settles unknown, whatever its last reply said', async () => {

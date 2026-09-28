@@ -167,17 +167,20 @@ export function classifyDispatchRejection(
 }
 
 /**
- * A send drawn as an ordinary sent message: the provider took it, or Orca cannot tell — a crash,
- * a dead agent or an unproven write left it in doubt, and the next message is how the chat
- * continues. An older host's `notDelivered` was only ever that same doubt, inferred from the
- * transcript, so it is drawn the same way rather than dropped from history.
+ * A send settled as sent, so a client has nothing left to hold or retry: the provider took it, or
+ * a crash or a dead agent left it in doubt for good and the next message is how the chat
+ * continues. A live `unknown` is not settled — it can still turn `rejected` — so a client keeps it
+ * like a `pending`. An older host's `notDelivered` was only ever that same doubt, inferred from
+ * the transcript, so it is drawn as sent rather than dropped from history.
  */
-export function structuredAgentSessionSubmissionDrawsAsSent(
-  submission: Pick<AgentJournalSubmission, 'dispatchState' | 'reason'> & { rejection?: unknown }
+export function structuredAgentSessionSubmissionSettledAsSent(
+  submission: Pick<AgentJournalSubmission, 'dispatchState' | 'reason' | 'recovered'> & {
+    rejection?: unknown
+  }
 ): boolean {
   return (
     submission.dispatchState === 'accepted' ||
-    submission.dispatchState === 'unknown' ||
+    (submission.dispatchState === 'unknown' && submission.recovered === true) ||
     (submission.dispatchState === 'rejected' &&
       classifyDispatchRejection(submission).kind === 'notDelivered')
   )

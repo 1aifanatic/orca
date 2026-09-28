@@ -10,7 +10,7 @@ import {
 } from '../../../shared/structured-agent-session-outbox'
 import { agentSessionRefusalFailure } from '../../../shared/agent-session-write-failure'
 import { createStructuredAgentSessionOperationId } from '../../../shared/structured-agent-session-mutation'
-import { structuredAgentSessionSubmissionDrawsAsSent } from '../../../shared/structured-agent-session-dispatch-rejection'
+import { structuredAgentSessionSubmissionSettledAsSent } from '../../../shared/structured-agent-session-dispatch-rejection'
 import {
   mutateStructuredAgentSessionLaunchPrompt,
   type StructuredAgentSessionLaunchPromptMutation
@@ -121,17 +121,13 @@ async function dispatchStructuredLaunchPrompt(
       return false
     }
     const { submission } = result.value
-    // An `unknown` is drawn as sent: the journal shows it, and a new message continues the chat.
-    const sent = structuredAgentSessionSubmissionDrawsAsSent(submission)
+    // A recovered `unknown` is settled as sent; a live one is held like a `pending`.
+    const sent = structuredAgentSessionSubmissionSettledAsSent(submission)
+    const held = submission.dispatchState === 'pending' || submission.dispatchState === 'unknown'
     mutateEntry(entry, (current) =>
-      sent
-        ? null
-        : {
-            ...current,
-            state: submission.dispatchState === 'pending' ? 'dispatching' : 'queued'
-          }
+      sent ? null : { ...current, state: held ? 'dispatching' : 'queued' }
     )
-    return sent || submission.dispatchState === 'pending'
+    return sent || held
   } catch {
     mutateEntry(entry, (current) => ({ ...current, state: 'unconfirmed' }))
     return false

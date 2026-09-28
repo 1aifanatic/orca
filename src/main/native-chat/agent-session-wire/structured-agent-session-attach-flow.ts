@@ -234,7 +234,7 @@ export async function performAttach(
       sessionId,
       fence,
       page: readAgentSessionHydrationPage(attached.journal, fence),
-      // No host decides delivery after a restart any more; kept for older clients' parsers.
+      // No host decides delivery after a restart any more; kept because the wire type requires it.
       unconfirmedClientMessageIds: [],
       ...(tabId ? { tabId } : {})
     }

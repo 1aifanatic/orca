@@ -7,7 +7,7 @@ import {
   type StructuredAgentSessionOutboxEntry
 } from './structured-agent-session-outbox'
 import { projectStructuredItemsToNativeChat } from './structured-agent-session-projection'
-import { structuredAgentSessionSubmissionDrawsAsSent } from './structured-agent-session-dispatch-rejection'
+import { structuredAgentSessionSubmissionSettledAsSent } from './structured-agent-session-dispatch-rejection'
 
 export function projectStructuredAgentSessionMessages(
   items: readonly AgentJournalRenderItem[],
@@ -23,7 +23,7 @@ export function projectStructuredAgentSessionMessages(
       .filter(
         (submission) =>
           submission.dispatchState === 'rejected' &&
-          !structuredAgentSessionSubmissionDrawsAsSent(submission)
+          !structuredAgentSessionSubmissionSettledAsSent(submission)
       )
       .map((submission) => agentJournalSubmissionKey(submission.clientMessageId))
   )

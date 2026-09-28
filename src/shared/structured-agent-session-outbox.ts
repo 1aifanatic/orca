@@ -13,7 +13,7 @@ import type { AgentSessionMutationEnvelope } from './agent-session-wire'
 import { structuredAgentSessionPayloadFingerprint } from './structured-agent-session-mutation'
 import {
   classifyDispatchRejection,
-  structuredAgentSessionSubmissionDrawsAsSent
+  structuredAgentSessionSubmissionSettledAsSent
 } from './structured-agent-session-dispatch-rejection'
 
 /** `unconfirmed`: this client cannot tell whether the host recorded the send (a lost reply, a
@@ -196,8 +196,8 @@ export function reconcileStructuredAgentSessionOutbox(
   const settled = new Map(submissions.map((entry) => [entry.clientMessageId, entry]))
   return entries.flatMap((entry) => {
     const submission = settled.get(entry.clientMessageId)
-    // The journal draws it as sent, so the entry has nothing left to hold or retry.
-    if (submission && structuredAgentSessionSubmissionDrawsAsSent(submission)) {
+    // Settled as sent: the journal draws it, and the entry has nothing left to hold or retry.
+    if (submission && structuredAgentSessionSubmissionSettledAsSent(submission)) {
       return []
     }
     if (
@@ -206,7 +206,8 @@ export function reconcileStructuredAgentSessionOutbox(
     ) {
       return []
     }
-    if (submission?.dispatchState === 'pending') {
+    // The host holds it and may still reject it: kept, not a barrier, for a Retry that answer needs.
+    if (submission?.dispatchState === 'pending' || submission?.dispatchState === 'unknown') {
       return entry.state === 'dispatching' ? [entry] : [{ ...entry, state: 'dispatching' as const }]
     }
     // Accepted, then not delivered — the agent never started, or its start was refused. The text

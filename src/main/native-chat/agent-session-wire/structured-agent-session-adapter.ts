@@ -7,8 +7,9 @@ import type {
 // Phase 2 implements this over the Codex app-server and the Claude Agent SDK;
 // nothing here starts, resumes, or talks to a process. The wire owns the
 // journal and the lease, so an adapter only has to answer "did the provider
-// take this?" — and it answers `unknown` rather than guessing, because the
-// journal renders that as delivery unconfirmed instead of as failure.
+// take this?" — and it answers `unknown` rather than guessing: an `unknown` is
+// never re-sent, where a guess could deliver it twice or report a failure that
+// did not happen.
 
 import type {
   AgentJournalItemIdentity,

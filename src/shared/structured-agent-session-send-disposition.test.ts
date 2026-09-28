@@ -337,7 +337,7 @@ describe('ambiguous operation refusals', () => {
     expect(disposition).toMatchObject({ entries: [], error: null, blockedClientMessageId: null })
   })
 
-  it('draws a live unknown as sent, and holds nothing behind it', () => {
+  it('holds a live unknown like a pending, with nothing behind it held', () => {
     const tail = { ...entry, clientMessageId: 'client-2', queuedAt: 2 }
     const result = rejectedWith(null)
     if (!result.ok) {
@@ -357,8 +357,9 @@ describe('ambiguous operation refusals', () => {
       createOperationId: () => 'unused'
     })
 
+    // It can still settle `rejected`; only the entry keeps the text a Retry would need.
     expect(disposition).toMatchObject({
-      entries: [tail],
+      entries: [{ clientMessageId: entry.clientMessageId, state: 'dispatching' }, tail],
       error: null,
       blockedClientMessageId: null
     })
