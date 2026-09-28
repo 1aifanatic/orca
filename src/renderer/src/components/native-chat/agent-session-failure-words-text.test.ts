@@ -32,11 +32,11 @@ const IDS = Object.keys(AGENT_SESSION_FAILURE_COPY).filter(
   (id): id is AgentSessionFailureCopyId => id in AGENT_SESSION_FAILURE_COPY
 )
 // Said by a refusal notice too, so they keep the notice's keys.
-const NOTICE_PIECES = new Set<string>([
+const NOTICE_PIECES: readonly AgentSessionFailureCopyId[] = [
   'terminalAgentHoldsChat',
   'quitTerminalAgent',
   'startNewChat'
-])
+]
 const VALUES = { agent: 'Claude', detail: 'Image type .bmp', limit: '20', size: '5 MB' }
 
 function factsFor(kind: AgentSessionFailureFact['kind']): AgentSessionFailureFact[] {
@@ -81,7 +81,7 @@ describe('desktop words for a failure fact', () => {
     for (const id of IDS) {
       vi.mocked(translate).mockClear()
       sayAgentSessionFailureTranslated(id, VALUES)
-      const section = NOTICE_PIECES.has(id) ? 'writeNotice' : 'failureWords'
+      const section = NOTICE_PIECES.includes(id) ? 'writeNotice' : 'failureWords'
       expect(vi.mocked(translate).mock.calls.map(([key, fallback]) => [key, fallback])).toEqual([
         [`components.native-chat.${section}.${id}`, AGENT_SESSION_FAILURE_COPY[id]]
       ])
@@ -90,7 +90,10 @@ describe('desktop words for a failure fact', () => {
 
   it('keeps the English catalog in step with the shared copy', () => {
     const own = Object.fromEntries(
-      Object.entries(AGENT_SESSION_FAILURE_COPY).filter(([id]) => !NOTICE_PIECES.has(id))
+      IDS.filter((id) => !NOTICE_PIECES.includes(id)).map((id) => [
+        id,
+        AGENT_SESSION_FAILURE_COPY[id]
+      ])
     )
     expect(en.components['native-chat'].failureWords).toEqual(own)
     for (const id of NOTICE_PIECES) {
