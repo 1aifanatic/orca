@@ -1,0 +1,138 @@
+name: Signed macOS client artifact continuity diagnostic
+on:
+  push:
+    branches: [OrcaWin/np-mac-client-transition-diagnostic]
+    paths:
+      - '.github/workflows/mac-transition-diagnostic.yml'
+      - '.build/integration-audit/mac-app-transition-qualification/**'
+  workflow_dispatch: {}
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: mac-client-transition-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 35
+    env:
+      ORCA_BACKGROUND_LAUNCH: '1'
+      ORCA_ISOLATED_CI_USER: '1'
+      A_SHA: 02e7f7ba71594fcecbb12c38df07c73fa661cf08
+      B_SHA: 04d9099d8ca9acecafa020b812a682caf7d1dcc5
+      B_PACKAGE_RUN: '36456329488'
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      ARCH: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.B_SHA }}
+          persist-credentials: false
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          path: diagnostic
+          persist-credentials: false
+          sparse-checkout: .build/integration-audit/mac-app-transition-qualification
+      - name: Resolve retained A artifact producer; validate both successful signed jobs
+        shell: bash
+        run: |
+          set -euo pipefail
+          # This known retained arm64 artifact identifies the A producer; matrix selects its native sibling.
+          gh api "repos/$GH_REPO/actions/artifacts/10982937051" > "$RUNNER_TEMP/a-artifact.json"
+          A_PACKAGE_RUN=$(python3 -c 'import json,os; print(json.load(open(os.environ["RUNNER_TEMP"]+"/a-artifact.json"))["workflow_run"]["id"])')
+          echo "A_PACKAGE_RUN=$A_PACKAGE_RUN" >> "$GITHUB_ENV"
+          for label in A B; do
+            if [ "$label" = A ]; then run_id="$A_PACKAGE_RUN"; else run_id="$B_PACKAGE_RUN"; fi
+            gh api "repos/$GH_REPO/actions/runs/$run_id" > "$RUNNER_TEMP/$label-run.json"
+            gh api "repos/$GH_REPO/actions/runs/$run_id/jobs?per_page=100" > "$RUNNER_TEMP/$label-jobs.json"
+          done
+          python3 - <<'PY'
+          import json,os,pathlib,subprocess
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])
+          assert subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()==os.environ['B_SHA']
+          for label in ('A','B'):
+            run=json.loads((root/(label+'-run.json')).read_text())
+            assert run['head_sha']==os.environ[label+'_SHA'], 'Source mismatch'
+            assert run['path']=='.github/workflows/bun-profile-tests.yml', 'Wrong producer workflow'
+            assert run['status']=='completed', 'Package run incomplete'
+            jobs=json.loads((root/(label+'-jobs.json')).read_text())
+            assert jobs['total_count']<=100, 'Truncated jobs response'
+            matches=[j for j in jobs['jobs'] if j['name'].startswith('signed_mac_package') and os.environ['ARCH'] in j['name']]
+            assert len(matches)==1 and matches[0]['status']=='completed' and matches[0]['conclusion']=='success', 'Signed native package job not successful'
+          PY
+      - uses: actions/download-artifact@v8
+        with:
+          name: bun-signed-mac-${{ matrix.arch }}
+          run-id: ${{ env.A_PACKAGE_RUN }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/artifact-A
+      - uses: actions/download-artifact@v8
+        with:
+          name: bun-signed-mac-${{ matrix.arch }}
+          run-id: ${{ env.B_PACKAGE_RUN }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/artifact-B
+      - name: Record archives and extract exact signed apps
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib,json,os,pathlib,subprocess
+          root=pathlib.Path(os.environ['RUNNER_TEMP']); receipts={}
+          for label in ('A','B'):
+            candidates=list((root/('artifact-'+label)).rglob('*.zip'))
+            assert len(candidates)==1, 'Expected one native signed archive'
+            archive=candidates[0]; digest=hashlib.sha256()
+            with archive.open('rb') as f:
+              for chunk in iter(lambda:f.read(1024*1024),b''): digest.update(chunk)
+            target=root/('app-'+label); target.mkdir()
+            subprocess.run(['/usr/bin/ditto','-x','-k',str(archive),str(target)],check=True,timeout=120)
+            apps=list(target.glob('*.app')); assert len(apps)==1
+            receipts[label]={'archive':archive.name,'sha256':digest.hexdigest(),'source':os.environ[label+'_SHA']}
+            with open(os.environ['GITHUB_ENV'],'a') as f:f.write('APP_'+label+'='+str(apps[0])+'\n')
+          assert receipts['A']['sha256']!=receipts['B']['sha256'], 'A and B archives unexpectedly identical'
+          (root/'archive-receipts.json').write_text(json.dumps(receipts,indent=2))
+          PY
+      - uses: ./.github/actions/install-node-dependencies
+        with:
+          native-runtime: none
+      - name: Prepare isolated diagnostic probes
+        shell: bash
+        run: |
+          set -euo pipefail
+          fixture=.build/integration-audit/mac-app-transition-qualification
+          mkdir -p "$fixture"
+          cp diagnostic/"$fixture"/* "$fixture/"
+          node "$fixture/prepare.mjs"
+      - name: Verify live shell and owner across A B A client transitions
+        shell: bash
+        run: |
+          set -euo pipefail
+          fixture=.build/integration-audit/mac-app-transition-qualification
+          node "$fixture/run.mjs" --app-a="$APP_A" --app-b="$APP_B" --receipt="$RUNNER_TEMP/transition-receipt.json" --probe="$fixture/daemon-owner-probe.cjs" --cleanup="$fixture/daemon-cleanup.cjs" --folder-rpc="$fixture/folder-registration.cjs"
+      - name: Retain sanitized evidence only
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mac-client-transition-${{ matrix.arch }}-${{ github.run_id }}
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/transition-receipt.json
+            ${{ runner.temp }}/archive-receipts.json
+            ${{ runner.temp }}/a-artifact.json
+            ${{ runner.temp }}/A-run.json
+            ${{ runner.temp }}/A-jobs.json
+            ${{ runner.temp }}/B-run.json
+            ${{ runner.temp }}/B-jobs.json
