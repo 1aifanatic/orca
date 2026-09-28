@@ -122,7 +122,6 @@ async function attach(
   return performAttach({
     store,
     adapter: sessionAdapter,
-    journalDatabase: openTestJournalHostDatabase(root!),
     openConversation: openTestAttachConversation(openTestJournalHostDatabase(root!)),
     authority: {
       spawnToken: 'spawn-a',

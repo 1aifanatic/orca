@@ -155,7 +155,6 @@ describe('structured session acquisition options', () => {
     const first = await performAttach({
       store: initialStore,
       adapter: withHistory('created'),
-      journalDatabase: openTestJournalHostDatabase(root),
       openConversation: openTestAttachConversation(openTestJournalHostDatabase(root!)),
       authority: {
         spawnToken: 'spawn-a',
@@ -196,7 +195,6 @@ describe('structured session acquisition options', () => {
     const second = await performAttach({
       store,
       adapter: withHistory('resumed'),
-      journalDatabase: openTestJournalHostDatabase(root),
       openConversation: openTestAttachConversation(openTestJournalHostDatabase(root!)),
       authority: {
         spawnToken: 'spawn-b',
@@ -231,7 +229,6 @@ describe('structured session acquisition options', () => {
     const created = await performAttach({
       store,
       adapter: sessionAdapter,
-      journalDatabase: openTestJournalHostDatabase(root),
       openConversation: openTestAttachConversation(openTestJournalHostDatabase(root!)),
       authority: {
         spawnToken: 'spawn-a',
@@ -264,7 +261,6 @@ describe('structured session acquisition options', () => {
       performAttach({
         store,
         adapter: sessionAdapter,
-        journalDatabase: openTestJournalHostDatabase(root!),
         openConversation: openTestAttachConversation(openTestJournalHostDatabase(root!)),
         authority: {
           spawnToken,
@@ -296,7 +292,6 @@ describe('structured session acquisition options', () => {
     const created = await performAttach({
       store,
       adapter: adapter({ origin: 'created' }),
-      journalDatabase: openTestJournalHostDatabase(root),
       openConversation: openTestAttachConversation(openTestJournalHostDatabase(root!)),
       authority: {
         spawnToken: 'spawn-a',
@@ -336,7 +331,6 @@ describe('structured session acquisition options', () => {
           models: []
         }
       }),
-      journalDatabase: openTestJournalHostDatabase(root),
       openConversation: openTestAttachConversation(openTestJournalHostDatabase(root!)),
       authority: {
         spawnToken: 'spawn-b',
@@ -376,7 +370,6 @@ describe('structured session acquisition options', () => {
     const created = await performAttach({
       store,
       adapter: sessionAdapter,
-      journalDatabase: openTestJournalHostDatabase(root),
       openConversation: openTestAttachConversation(openTestJournalHostDatabase(root!)),
       authority: {
         spawnToken: 'spawn-a',
@@ -416,7 +409,6 @@ describe('structured session acquisition options', () => {
       performAttach({
         store,
         adapter: failingAdapter,
-        journalDatabase: openTestJournalHostDatabase(root),
         openConversation: openTestAttachConversation(openTestJournalHostDatabase(root!)),
         authority: {
           spawnToken: 'spawn-a',
@@ -511,7 +503,6 @@ describe('structured session acquisition options', () => {
         performAttach({
           store: target,
           adapter: failingAdapter,
-          journalDatabase: openTestJournalHostDatabase(root!),
           openConversation: openTestAttachConversation(
             openTestJournalHostDatabase(root!),
             failingAdapter
@@ -616,7 +607,6 @@ describe('the tab a create reserves', () => {
     return performAttach({
       store,
       adapter: adapter({ origin: 'created' }),
-      journalDatabase: openTestJournalHostDatabase(root!),
       openConversation: openTestAttachConversation(openTestJournalHostDatabase(root!)),
       authority: {
         spawnToken: 'spawn-a',

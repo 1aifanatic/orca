@@ -1,13 +1,27 @@
-import { describe, expect, it, vi } from 'vitest'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterAll, describe, expect, it, vi } from 'vitest'
 import {
   AGENT_SESSION_RECORD_SCHEMA_VERSION,
   type AgentSessionRecord
 } from '../../../shared/agent-session-record'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
+import {
+  closeTestJournalHostDatabases,
+  openTestJournalHostDatabase
+} from '../agent-session-journal/journal-host-database-test-support'
 import { StructuredAgentSessionHostRuntimeState } from './structured-agent-session-host-runtime-state'
 import type { StructuredAgentSessionHostDeps } from './structured-agent-session-host'
 
 const NOW = 1_800_000_000_000
+
+// The runtime state never reads the journal database; it only fills the deps' shape.
+const stateDirectory = mkdtempSync(join(tmpdir(), 'orca-host-runtime-state-'))
+afterAll(() => {
+  closeTestJournalHostDatabases()
+  rmSync(stateDirectory, { recursive: true, force: true })
+})
 
 function reservedRecord(): AgentSessionRecord {
   return {
@@ -51,7 +65,7 @@ function runtimeState(
   const deps = {
     store: { getRecord: () => record } as unknown as AgentSessionRecordStore,
     adapter: {},
-    journalRoot: '/tmp',
+    journalDatabase: openTestJournalHostDatabase(stateDirectory),
     claimKeyId: 'key-1',
     probeOwner
   } as StructuredAgentSessionHostDeps
@@ -125,7 +139,7 @@ describe('host runtime-state owner probe', () => {
         getRecord: () => record
       },
       adapter: {},
-      journalRoot: '/tmp',
+      journalDatabase: openTestJournalHostDatabase(stateDirectory),
       claimKeyId: 'key-1',
       probeOwner,
       onEventSinkError

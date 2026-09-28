@@ -1,6 +1,13 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { AgentSessionAttachParams } from './structured-agent-session-attach'
+import {
+  closeTestJournalHostDatabases,
+  openTestJournalHostDatabase
+} from '../agent-session-journal/journal-host-database-test-support'
 
 const { restoreRead } = vi.hoisted(() => ({
   restoreRead: vi.fn()
@@ -12,9 +19,16 @@ vi.mock('./structured-agent-session-read-restore', () => ({
 
 import { restoreStructuredAgentSessionsOnRestart } from './structured-agent-session-restart-restore'
 
+// The restore under test is mocked; the host database only fills the deps' shape.
+const stateDirectory = mkdtempSync(join(tmpdir(), 'orca-restart-restore-'))
+afterAll(() => {
+  closeTestJournalHostDatabases()
+  rmSync(stateDirectory, { recursive: true, force: true })
+})
+
 const NO_OPEN_DEPS = {
   store: { getRecord: () => null, listRecords: () => [] },
-  journalRoot: '/tmp/journals',
+  journalDatabase: openTestJournalHostDatabase(stateDirectory),
   adapter: {}
 }
 

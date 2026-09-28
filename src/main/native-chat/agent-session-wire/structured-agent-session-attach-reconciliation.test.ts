@@ -85,7 +85,6 @@ async function attach(adapter: StructuredAgentSessionAdapter) {
   const attached = await attachJournal({
     record: RECORD,
     params: PARAMS,
-    journalDatabase: openTestJournalHostDatabase(root),
     openConversation: openTestAttachConversation(openTestJournalHostDatabase(root)),
     adapter
   })
@@ -181,8 +180,6 @@ describe('attachJournal restart reconciliation', () => {
     const attached = await attachJournal({
       record: RECORD,
       params: PARAMS,
-      journalDatabase: openTestJournalHostDatabase(root),
-
       adapter,
       openConversation: async () => journal
     })

@@ -87,7 +87,6 @@ describe('processless structured session reservation', () => {
       performAttach({
         store,
         adapter,
-        journalDatabase: openTestJournalHostDatabase(root),
         openConversation: openTestAttachConversation(openTestJournalHostDatabase(root!)),
         authority: {
           spawnToken: 'spawn-a',
@@ -228,7 +227,6 @@ describe('processless structured session reservation', () => {
       performAttach({
         store,
         adapter,
-        journalDatabase: openTestJournalHostDatabase(root),
         openConversation: openTestAttachConversation(openTestJournalHostDatabase(root!)),
         authority: {
           spawnToken: 'spawn-a',
