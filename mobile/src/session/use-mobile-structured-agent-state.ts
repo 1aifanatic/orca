@@ -14,6 +14,10 @@ import {
 } from '../../../src/shared/structured-agent-session-reducer'
 import type { RpcClient } from '../transport/rpc-client'
 import { callAgentSession } from './mobile-structured-agent-session-rpc'
+import {
+  reduceMobileQueuedMessageFeed,
+  type MobileQueuedMessageFeed
+} from './mobile-structured-queued-message-feed'
 
 const MAX_RETAINED_SESSION_STATES = 32
 /** Bounded so a busy stream cannot turn one Load-earlier tap into an endless read chain. */
@@ -65,6 +69,8 @@ export function useMobileStructuredAgentState(args: {
 }): {
   state: StructuredAgentSessionState
   stateRef: { readonly current: StructuredAgentSessionState }
+  /** Host-held queued drafts from the live stream; null until the host claims any. */
+  queuedMessages: MobileQueuedMessageFeed
   loadingOlder: boolean
   loadEarlier: () => void
 } {
@@ -74,10 +80,14 @@ export function useMobileStructuredAgentState(args: {
   const [sessionStates, setSessionStates] = useState<Map<string, StructuredAgentSessionState>>(
     () => new Map()
   )
+  const [queuedBySession, setQueuedBySession] = useState<Map<string, MobileQueuedMessageFeed>>(
+    () => new Map()
+  )
   const state =
     enabled && sessionKey
       ? (sessionStates.get(sessionKey) ?? EMPTY_STRUCTURED_AGENT_SESSION)
       : EMPTY_STRUCTURED_AGENT_SESSION
+  const queuedMessages = enabled && sessionKey ? (queuedBySession.get(sessionKey) ?? null) : null
   const [loadingOlder, setLoadingOlder] = useState(false)
   const stateRef = useRef(state)
   const sessionKeyRef = useRef(sessionKey)
@@ -95,6 +105,33 @@ export function useMobileStructuredAgentState(args: {
       setSessionStates((current) => {
         const previous = current.get(sessionKey) ?? EMPTY_STRUCTURED_AGENT_SESSION
         const next = reduceStructuredAgentSession(previous, action, Date.now())
+        if (next === previous) {
+          return current
+        }
+        const updated = new Map(current)
+        updated.delete(sessionKey)
+        updated.set(sessionKey, next)
+        while (updated.size > MAX_RETAINED_SESSION_STATES) {
+          const oldest = updated.keys().next().value
+          if (oldest === undefined) {
+            break
+          }
+          updated.delete(oldest)
+        }
+        return updated
+      })
+    },
+    [sessionKey]
+  )
+
+  const applyQueued = useCallback(
+    (event: AgentSessionSubscribeEvent) => {
+      if (!sessionKey) {
+        return
+      }
+      setQueuedBySession((current) => {
+        const previous = current.get(sessionKey) ?? null
+        const next = reduceMobileQueuedMessageFeed(previous, event)
         if (next === previous) {
           return current
         }
@@ -139,6 +176,7 @@ export function useMobileStructuredAgentState(args: {
       }
       if (isSubscribeEvent(raw)) {
         apply({ type: 'event', event: raw })
+        applyQueued(raw)
       }
     })
     return () => {
@@ -158,7 +196,7 @@ export function useMobileStructuredAgentState(args: {
         )
         .catch(() => undefined)
     }
-  }, [apply, client, connected, enabled, sessionId, sessionKey])
+  }, [apply, applyQueued, client, connected, enabled, sessionId, sessionKey])
 
   const loadEarlier = useCallback(() => {
     const current = stateRef.current
@@ -209,5 +247,5 @@ export function useMobileStructuredAgentState(args: {
       })
   }, [apply, client, loadingOlder, sessionId, sessionKey])
 
-  return { state, stateRef, loadingOlder, loadEarlier }
+  return { state, stateRef, queuedMessages, loadingOlder, loadEarlier }
 }

@@ -17,7 +17,10 @@ const OperationEntrySchema = z
     operationId: z.string().max(128),
     callerFingerprint: z.string().regex(/^[0-9a-f]{64}$/),
     payloadFingerprint: z.string().regex(/^[0-9a-f]{64}$/),
-    attachmentPaths: z.array(z.string().max(4096)).max(128)
+    attachmentPaths: z.array(z.string().max(4096)).max(128),
+    /** The `delivery` field the first attempt sent. Recorded so a replay keeps the
+     *  operation fingerprint stable even if the capability answer changed meanwhile. */
+    delivery: z.literal('queue-if-active').optional()
   })
   .strict()
 const OperationJournalSchema = z
@@ -111,12 +114,14 @@ export async function getOrCreateMobileStructuredSendOperation(input: {
   payloadFingerprint: string
   attachmentPaths: readonly string[]
   createOperationId: () => string
+  delivery?: 'queue-if-active'
   now?: number
 }): Promise<{
   operationId: string
   retained: boolean
   payloadFingerprint: string
   attachmentPaths: string[]
+  delivery: 'queue-if-active' | undefined
 }> {
   return serialize(async () => {
     const now = input.now ?? Date.now()
@@ -132,7 +137,10 @@ export async function getOrCreateMobileStructuredSendOperation(input: {
         operationId: existing.operationId,
         retained: true,
         payloadFingerprint: existing.payloadFingerprint,
-        attachmentPaths: [...existing.attachmentPaths]
+        attachmentPaths: [...existing.attachmentPaths],
+        // A retained id must replay the recorded request exactly; the current
+        // capability answer never changes an in-doubt operation's fingerprint.
+        delivery: existing.delivery
       }
     }
     // Ambiguity has no TTL. At the fixed capacity, refusing a new send is safer
@@ -149,14 +157,16 @@ export async function getOrCreateMobileStructuredSendOperation(input: {
       operationId,
       callerFingerprint,
       payloadFingerprint: input.payloadFingerprint,
-      attachmentPaths: [...input.attachmentPaths]
+      attachmentPaths: [...input.attachmentPaths],
+      ...(input.delivery ? { delivery: input.delivery } : {})
     })
     await writeEntries([...entries, entry])
     return {
       operationId,
       retained: false,
       payloadFingerprint: input.payloadFingerprint,
-      attachmentPaths: [...input.attachmentPaths]
+      attachmentPaths: [...input.attachmentPaths],
+      delivery: input.delivery
     }
   })
 }

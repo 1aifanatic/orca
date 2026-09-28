@@ -39,8 +39,10 @@ describe('mobileStructuredSendDelivery', () => {
     }
   })
 
-  it('classifies a queued draft answer as accepted and spends its id, replays included', () => {
+  it('classifies a queued draft answer as spent, card-rendered, never a bubble', () => {
     // The host holds the message now; a later identical send is a new message.
+    // Only a dispatched replay reads as a plain accepted send — its submission
+    // exists, so the transcript echo retires the optimistic bubble.
     for (const state of ['waiting', 'dispatched', 'returned', 'withdrawn'] as const) {
       const queued: StructuredAgentSessionMutationCallResult<AgentSessionSendResult> = {
         status: 'accepted',
@@ -49,13 +51,14 @@ describe('mobileStructuredSendDelivery', () => {
           queued: { messageId: 'client-1', position: 1, state }
         }
       }
+      const outcome = state === 'dispatched' ? 'accepted' : 'queued'
       expect(mobileStructuredSendDelivery(queued)).toEqual({
-        outcome: 'accepted',
+        outcome,
         operationIdSpent: true,
         error: null
       })
       expect(mobileStructuredSendDelivery(queued, true)).toEqual({
-        outcome: 'accepted',
+        outcome,
         operationIdSpent: true,
         error: null
       })

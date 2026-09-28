@@ -29,6 +29,8 @@ export async function sendMobileStructuredAgentSessionMessage(input: {
   expectedRuntimeFence: number
   text: string
   attachments: readonly (StructuredAgentSessionAttachment & { contentFingerprint?: string })[]
+  /** Sent only when the host advertises `agent-session.queued-messages.v1`. */
+  delivery?: 'queue-if-active'
   deadline?: number
   onError: (message: string) => void
 }): Promise<MobileNativeChatSendOutcome> {
@@ -70,7 +72,8 @@ export async function sendMobileStructuredAgentSessionMessage(input: {
       callerIdentity: input.callerIdentity,
       payloadFingerprint: requestedPayloadFingerprint,
       attachmentPaths: input.attachments.map((attachment) => attachment.path),
-      createOperationId: structuredSessionOperationId
+      createOperationId: structuredSessionOperationId,
+      ...(input.delivery ? { delivery: input.delivery } : {})
     })
   } catch {
     input.onError('Message not sent')
@@ -95,7 +98,9 @@ export async function sendMobileStructuredAgentSessionMessage(input: {
     fingerprintMethod: 'agentSession.send',
     sessionId: input.sessionId,
     expectedRuntimeFence: input.expectedRuntimeFence,
-    fields: { body },
+    // `delivery` joins the wire fields — and so the operation fingerprint — but
+    // never the journal's body-only fingerprint the submission echo recomputes.
+    fields: { body, ...(operation.delivery ? { delivery: operation.delivery } : {}) },
     clientOperationId: operation.operationId,
     timeoutMs
   })

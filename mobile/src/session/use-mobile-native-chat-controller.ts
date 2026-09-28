@@ -82,21 +82,26 @@ export function useMobileNativeChatController(args: {
     nativeChatTranscriptIsLocalReadable
   })
 
-  const { structuredSession: structuredNativeChat, session: nativeChatSession } =
-    useMobileNativeChatSessionLane({
-      client,
-      structured: activeChatStructured,
-      agent: activeChatAgent,
-      resolvedAgent: activeChatResolution?.agent ?? null,
-      transcriptPath: activeChatResolution?.transcriptPath ?? null,
-      sessionId: activeChatSessionId,
-      sourceIdentity,
-      callerIdentity: deviceTokenRef.current ?? '',
-      enabled: showNativeChat,
-      connState,
-      hostSupport: agentSessionHostSupport,
-      onSendError
-    })
+  const {
+    structuredSession: structuredNativeChat,
+    session: nativeChatSession,
+    seatAppendDraftText
+  } = useMobileNativeChatSessionLane({
+    client,
+    structured: activeChatStructured,
+    agent: activeChatAgent,
+    resolvedAgent: activeChatResolution?.agent ?? null,
+    transcriptPath: activeChatResolution?.transcriptPath ?? null,
+    sessionId: activeChatSessionId,
+    sourceIdentity,
+    callerIdentity: deviceTokenRef.current ?? '',
+    enabled: showNativeChat,
+    connState,
+    hostSupport: agentSessionHostSupport,
+    composerScope: { hostId, worktreeId, tabId: activeSessionTabId },
+    onSendError,
+    onActionResolved: onSendResolved
+  })
   const {
     composerText: chatComposerText,
     setComposerText: setChatComposerText,
@@ -123,7 +128,8 @@ export function useMobileNativeChatController(args: {
     // terminal view would permanently decline the prefill.
     chatActive: showNativeChat,
     transcriptLoading: nativeChatSession.transcriptLoading,
-    transcriptSettled: nativeChatSession.status === 'ready'
+    transcriptSettled: nativeChatSession.status === 'ready',
+    seatAppendDraftText
   })
 
   // Deliberately not gated on the chat view being visible: the streaming gate
@@ -308,6 +314,11 @@ export function useMobileNativeChatController(args: {
     handleNativeChatCancelPrompt: activeChatStructured ? structuredCancelPrompt : undefined,
     handleNativeChatRespondPermission: respond,
     handleNativeChatStop: activeChatStructured ? structuredNativeChat.cancel : handleNativeChatStop,
+    // The inactive lane's session is starved of identity, so its cards stay empty.
+    nativeChatQueuedMessages: structuredNativeChat.queued.cards,
+    handleQueuedMessageSend: structuredNativeChat.queued.send,
+    handleQueuedMessageDelete: structuredNativeChat.queued.delete,
+    handleQueuedMessageEdit: structuredNativeChat.queued.edit,
     nativeChatFilePaths,
     loadNativeChatFiles,
     handleNativeChatQuestionAnswer: activeChatStructured

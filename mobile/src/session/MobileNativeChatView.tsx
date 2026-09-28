@@ -33,6 +33,10 @@ import { MobileAgentWorkingIndicator } from './MobileAgentWorkingIndicator'
 import type { PendingNativeChatImage } from './mobile-native-chat-image-attachment'
 import { MobileNativeChatComposer } from './MobileNativeChatComposer'
 import { MobileNativeChatPromptCard } from './MobileNativeChatPromptCard'
+import {
+  MobileNativeChatQueuedMessages,
+  type MobileNativeChatQueuedMessagesProps
+} from './MobileNativeChatQueuedMessages'
 import type { MobileChatPermission } from './mobile-native-chat-permission'
 import type { MobileChatQuestion } from './mobile-native-chat-question'
 import type { MobileNativeChatSessionOptionPickersProps } from './MobileNativeChatSessionOptionPickers'
@@ -128,6 +132,8 @@ type Props = {
   onAnswerQuestion?: (text: string) => Promise<boolean>
   permission?: MobileChatPermission | null
   onRespondPermission?: (send: string) => Promise<boolean>
+  /** Host-held queued drafts rendered as cards between transcript and composer. */
+  queuedMessages?: MobileNativeChatQueuedMessagesProps
   /** Open a worktree file tapped in agent markdown. */
   onOpenFile?: (relativePath: string) => void
   /** Pixels to lift the composer by when the soft keyboard is open. The route
@@ -185,6 +191,7 @@ export function MobileNativeChatView({
   onAnswerQuestion,
   permission,
   onRespondPermission,
+  queuedMessages,
   onOpenFile,
   keyboardInset = 0
 }: Props): React.JSX.Element {
@@ -366,6 +373,7 @@ export function MobileNativeChatView({
           ) : null}
         </GestureHandlerRootView>
       )}
+      <MobileNativeChatQueuedMessages {...queuedMessages} />
       <MobileNativeChatPromptCard
         ask={ask}
         askKey={askKey}

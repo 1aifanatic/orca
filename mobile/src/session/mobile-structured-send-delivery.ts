@@ -65,7 +65,14 @@ export function mobileStructuredSendDelivery(
     // The host holds (or already settled) the draft: the send is spent — a
     // later identical message is a new message. A withdrawn replay is spent
     // too, never unknown: its card was deleted or carried by a /clear.
-    return { outcome: 'accepted', operationIdSpent: true, error: null }
+    // Only a dispatched replay reads as a plain accepted send: its submission
+    // exists, so the transcript echo retires the optimistic bubble. Every other
+    // state renders as a card, never a bubble.
+    return {
+      outcome: result.value.queued.state === 'dispatched' ? 'accepted' : 'queued',
+      operationIdSpent: true,
+      error: null
+    }
   }
   const submission: AgentJournalSubmission | undefined =
     'submission' in result.value ? result.value.submission : undefined

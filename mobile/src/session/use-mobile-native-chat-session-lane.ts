@@ -1,6 +1,7 @@
 import type { RpcClient } from '../transport/rpc-client'
 import type { ConnectionState } from '../transport/types'
 import type { StructuredAgentSessionHostSupport } from './mobile-structured-agent-session-host-support'
+import { useMobileNativeChatQueuedComposerRestore } from './use-mobile-native-chat-queued-composer-restore'
 import { useMobileNativeChatSession } from './use-mobile-native-chat-session'
 import { useMobileStructuredAgentSession } from './use-mobile-structured-agent-session'
 
@@ -17,9 +18,11 @@ export function useMobileNativeChatSessionLane({
   sourceIdentity,
   callerIdentity,
   hostSupport,
+  composerScope,
   enabled,
   connState,
-  onSendError
+  onSendError,
+  onActionResolved
 }: {
   client: RpcClient | null
   structured: boolean
@@ -32,13 +35,22 @@ export function useMobileNativeChatSessionLane({
   sourceIdentity: Parameters<typeof useMobileNativeChatSession>[0]['sourceIdentity']
   callerIdentity: string
   hostSupport: StructuredAgentSessionHostSupport | null
+  /** Composer scope for queued-draft restoration; the drafts hook mounts after
+   *  this lane, so the seam is seated through `seatAppendDraftText`. */
+  composerScope: { hostId: string; worktreeId: string; tabId: string | null }
   enabled: boolean
   connState: ConnectionState
   onSendError: (message: string) => void
+  /** Called on any accepted queued-card action; retires the route's failure banner. */
+  onActionResolved?: () => void
 }): {
   structuredSession: ReturnType<typeof useMobileStructuredAgentSession>
   session: ReturnType<typeof useMobileNativeChatSession>
+  /** Seat the drafts hook's keyed append once it exists. */
+  seatAppendDraftText: (append: (draftKey: string, text: string) => void) => void
 } {
+  const { composerRestore, seatAppendDraftText } =
+    useMobileNativeChatQueuedComposerRestore(composerScope)
   const bridgeSession = useMobileNativeChatSession({
     client,
     sourceIdentity,
@@ -52,15 +64,18 @@ export function useMobileNativeChatSessionLane({
     sourceIdentity,
     callerIdentity,
     hostSupport,
+    composerRestore,
     enabled,
     // Holds are connection-scoped; dropping this on transport loss lets the hook
     // reacquire the provider without clearing the cached transcript.
     connected: connState === 'connected',
     agent: structured ? agent : null,
-    onSendError
+    onSendError,
+    ...(onActionResolved ? { onActionResolved } : {})
   })
   return {
     structuredSession,
-    session: structured ? structuredSession.session : bridgeSession
+    session: structured ? structuredSession.session : bridgeSession,
+    seatAppendDraftText
   }
 }
