@@ -3,9 +3,9 @@ import { compareAppVersions } from '../../shared/app-version'
 import fixture from './__fixtures__/claude-hook-event-enums.json'
 import {
   CLAUDE_HOOK_EVENT_FIRST_VERSIONS,
-  CLAUDE_HOOK_EVENT_TABLE_FLOOR,
   claudeKnowsHookEvent,
   parseClaudeCliVersion,
+  UNRESOLVED_CLAUDE_VERSION,
   type ClaudeHookEventName
 } from './claude-hook-event-versions'
 
@@ -19,10 +19,6 @@ const tableEntries = Object.keys(CLAUDE_HOOK_EVENT_FIRST_VERSIONS)
   .map((event): [ClaudeHookEventName, string] => [event, CLAUDE_HOOK_EVENT_FIRST_VERSIONS[event]])
 
 describe('Claude hook event version table', () => {
-  it('starts at the oldest release the fixture covers', () => {
-    expect(versions[0]).toBe(CLAUDE_HOOK_EVENT_TABLE_FLOOR)
-  })
-
   it.each(tableEntries)('pins %s to the first release whose enum knows it', (event, first) => {
     expect(versions.find((version) => enums[version].includes(event))).toBe(first)
     for (const version of versions) {
@@ -30,12 +26,10 @@ describe('Claude hook event version table', () => {
         compareAppVersions(version, first) >= 0
       )
     }
-    if (first !== CLAUDE_HOOK_EVENT_TABLE_FLOOR) {
-      // Why: the release published just before `first` lacks the event, so the table is exact, not just safe.
-      const before = previousPublished[first]
-      expect(enums[before], `enum for ${before}`).toBeDefined()
-      expect(enums[before]).not.toContain(event)
-    }
+    // Why: the release published just before `first` lacks the event, so the table is exact, not just safe.
+    const before = previousPublished[first]
+    expect(enums[before], `enum for ${before}`).toBeDefined()
+    expect(enums[before]).not.toContain(event)
   })
 })
 
@@ -50,25 +44,34 @@ describe('claudeKnowsHookEvent', () => {
     ['2.0.44', 'PermissionRequest', false],
     ['2.0.42', 'SubagentStart', false],
     ['1.0.84', 'SessionEnd', false],
-    ['1.0.81', 'SessionStart', true]
+    ['1.0.61', 'SessionStart', false],
+    ['1.0.62', 'SessionStart', true],
+    ['1.0.52', 'UserPromptSubmit', false],
+    ['1.0.40', 'SubagentStop', false],
+    ['1.0.30', 'Stop', false],
+    ['1.0.22', 'PreToolUse', false]
   ] as const)('%s knows %s: %s', (version, event, expected) => {
     expect(claudeKnowsHookEvent(version, event)).toBe(expected)
   })
 
   it.each([undefined, null, 'unknown'])(
-    'grants an unresolved version (%s) only the events every tabled Claude knows',
+    'grants an unresolved version (%s) only the events its assumed release knows',
     (version) => {
       const known = tableEntries
         .filter(([event]) => claudeKnowsHookEvent(version, event))
         .map(([event]) => event)
       expect(known.sort()).toEqual(
-        tableEntries
-          .filter(([, first]) => first === CLAUDE_HOOK_EVENT_TABLE_FLOOR)
-          .map(([event]) => event)
-          .sort()
+        [
+          'PostToolUse',
+          'PreToolUse',
+          'SessionStart',
+          'Stop',
+          'SubagentStop',
+          'UserPromptSubmit'
+        ].sort()
       )
       for (const event of known) {
-        expect(enums[CLAUDE_HOOK_EVENT_TABLE_FLOOR]).toContain(event)
+        expect(enums[UNRESOLVED_CLAUDE_VERSION]).toContain(event)
       }
     }
   )

@@ -78,7 +78,7 @@ describe('Claude managed hook events by resolved version', () => {
   })
 
   it.each([undefined, 'unknown'])(
-    'writes only the events every supported Claude knows when the version is %s',
+    'writes only the core lifecycle events when the version is %s',
     (version) => {
       expect(managedEvents(install({ hooks: {} }, version))).toEqual(
         [
@@ -144,7 +144,15 @@ describe('Claude managed hook events by resolved version', () => {
     }
   })
 
-  it.each(['1.0.81', '2.1.32', '2.1.77', '2.1.78', '2.1.261', undefined])(
+  it('gates a known Claude older than the unresolved-version set by its own enum', () => {
+    expect(managedEvents(install({ hooks: {} }, '1.0.52'))).toEqual(
+      ['PostToolUse', 'PreToolUse', 'Stop', 'SubagentStop'].sort()
+    )
+    const downgraded = install(install({ hooks: {} }, '2.1.261'), '1.0.22')
+    expect(managedEvents(downgraded)).toEqual([])
+  })
+
+  it.each(['1.0.22', '1.0.52', '1.0.81', '2.1.32', '2.1.77', '2.1.78', '2.1.261', undefined])(
     'keeps every user-written entry and setting when installing for %s',
     (version) => {
       const fresh = install(userOwnedSettings(), version)

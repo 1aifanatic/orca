@@ -1,6 +1,11 @@
 {
-  "source": "Hook event enum read from cli.js of each @anthropic-ai/claude-code npm release; hooks keys outside it make 1.0.81-2.1.100 discard the whole settings file.",
+  "source": "Hook event enum read from cli.js of each @anthropic-ai/claude-code npm release; hooks keys outside it make 1.0.23-2.1.100 discard the whole user settings file.",
   "previousPublishedVersion": {
+    "1.0.23": "1.0.22",
+    "1.0.31": "1.0.30",
+    "1.0.41": "1.0.40",
+    "1.0.53": "1.0.52",
+    "1.0.62": "1.0.61",
     "1.0.85": "1.0.84",
     "2.0.43": "2.0.42",
     "2.0.45": "2.0.44",
@@ -10,6 +15,54 @@
     "2.1.78": "2.1.77"
   },
   "enums": {
+    "1.0.22": [
+      "PreTask",
+      "PreBash",
+      "PreGlob",
+      "PreGrep",
+      "PreRead",
+      "PreEdit",
+      "PreMultiEdit",
+      "PreWrite",
+      "PreNotebookRead",
+      "PreNotebookEdit",
+      "PreWebFetch",
+      "PreWebSearch"
+    ],
+    "1.0.23": ["PreToolUse", "PostToolUse", "Notification"],
+    "1.0.30": ["PreToolUse", "PostToolUse", "Notification"],
+    "1.0.31": ["PreToolUse", "PostToolUse", "Notification", "Stop"],
+    "1.0.40": ["PreToolUse", "PostToolUse", "Notification", "Stop"],
+    "1.0.41": ["PreToolUse", "PostToolUse", "Notification", "Stop", "SubagentStop"],
+    "1.0.52": ["PreToolUse", "PostToolUse", "Notification", "Stop", "SubagentStop", "PreCompact"],
+    "1.0.53": [
+      "PreToolUse",
+      "PostToolUse",
+      "Notification",
+      "UserPromptSubmit",
+      "Stop",
+      "SubagentStop",
+      "PreCompact"
+    ],
+    "1.0.61": [
+      "PreToolUse",
+      "PostToolUse",
+      "Notification",
+      "UserPromptSubmit",
+      "Stop",
+      "SubagentStop",
+      "PreCompact"
+    ],
+    "1.0.62": [
+      "PreToolUse",
+      "PostToolUse",
+      "Notification",
+      "UserPromptSubmit",
+      "SessionStart",
+      "Stop",
+      "SubagentStop",
+      "PreCompact"
+    ],
     "1.0.81": [
       "PreToolUse",
       "PostToolUse",
