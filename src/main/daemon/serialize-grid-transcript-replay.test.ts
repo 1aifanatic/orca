@@ -45,7 +45,10 @@ const KNOWN_PREEXISTING_I2_FAILURES: Record<string, number> = {
   // background that the round trip does not restore to default. Verified as upstream, not a
   // regression, by replaying it against the previous build
   // (`build-serialize-addon-at-ref.mjs --ref origin/main`): I1 and I3 both hold.
-  'dsh-tui-ready-no-key': 10
+  'dsh-tui-ready-no-key': 10,
+  // Freebuff resize replay differences also occur at base 6835b9b4e3ea; differential I1/I3 pass.
+  'freebuff-lifecycle': 12,
+  'freebuff-login': 10
 }
 
 type Transcript = { name: string; data: string; cols: number; rows: number }
