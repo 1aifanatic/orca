@@ -21,7 +21,9 @@ env['CARGO_HOME']=str(work/'cargo-home')
 tools=work/'tools';tools.mkdir()
 def run(argv,cwd=work,output=None):
     with (output.open('w') if output else (receipts/'commands.log').open('a')) as log:
-        subprocess.run(argv,cwd=cwd,env=env,stdout=log,stderr=None if output else subprocess.STDOUT,check=True,timeout=1200)
+        with (receipts/'commands.log').open('a') as errors:
+            errors.write(json.dumps(argv) + '\n'); errors.flush()
+            subprocess.run(argv,cwd=cwd,env=env,stdout=log,stderr=errors if output else subprocess.STDOUT,check=True,timeout=1200)
 def extract(archive,dest):
     dest.mkdir()
     with tarfile.open(archive) as t:t.extractall(dest,filter='data')
@@ -29,7 +31,12 @@ for a in plan['tools']:
     name=a['filename'];stage=tools/name.replace('.tar.xz','').replace('.tar.gz','').replace('.zip','')
     if name.endswith('.zip'):
         stage.mkdir()
-        with zipfile.ZipFile(inputs/name) as z:z.extractall(stage)
+        with zipfile.ZipFile(inputs/name) as z:
+            for entry in z.infolist():
+                path=Path(entry.filename)
+                if path.is_absolute() or '..' in path.parts or (entry.external_attr >> 16) & 0o170000 == 0o120000:
+                    raise ValueError('Unsafe bootstrap ZIP member')
+            z.extractall(stage)
         bun=next(stage.glob('*/bun'));bun.chmod(0o755)
         env['PATH']=str(bun.parent)+os.pathsep+env['PATH']
     elif name.startswith('node-'):
