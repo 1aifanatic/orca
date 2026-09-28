@@ -157,10 +157,12 @@ export function resolveClaudeReplayTurn(
 
 /** The send-time turn relation: the turn open at write time is still the open
  *  turn now, so Claude folded this send into the running turn and its replay is
- *  a delivery receipt, not a turn boundary. A folded replay ADOPTS the client
- *  uuid; a fresh replay uuid is the CLI starting the queued send's own turn.
- *  Any other relation — idle-time write, no open turn, a replaced or
- *  provider-resumed turn — keeps the opener path. */
+ *  a delivery receipt, not a turn boundary. Only the measured fold shape
+ *  qualifies — a replay that ADOPTS the client uuid; a fresh replay uuid is
+ *  unmeasured (adoption alone does not tell a fold from a later turn — the miss
+ *  case adopts too), so it keeps the opener path it always had. Any other
+ *  relation — idle-time write, no open turn, a replaced or provider-resumed
+ *  turn — keeps the opener path. */
 function claudeReplayIsFoldReceipt(
   session: ClaudeSession,
   waiter: ClaudeDispatchWaiter,

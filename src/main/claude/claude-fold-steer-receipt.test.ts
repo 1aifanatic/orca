@@ -362,13 +362,13 @@ describe('Claude fold receipt boundaries (synthetic orders)', () => {
     expect(replayEventFor(rig.events, uuidB)).toMatchObject({ startsTurn: true })
   })
 
-  it('a fresh replay uuid with user_message_uuid correlation is a queued turn start, not a fold receipt', async () => {
+  it('a fresh replay uuid with user_message_uuid correlation keeps the opener path, not a fold receipt', async () => {
     const rig = await riggedAdapter()
     const uuidA = await rig.dispatchAt(10, 'client-a', 'first prompt')
     rig.deliver(userReplay(1_000, PROVIDER_SESSION_ID, uuidA, 'first prompt'))
     const uuidB = await rig.dispatchAt(1_500, 'client-b', STEER_PROMPT)
-    // The CLI minted its own replay uuid: it started the queued send's own
-    // turn rather than folding it, whatever became of the previous result.
+    // A replay that did not adopt the client uuid is not the measured fold
+    // shape, so it keeps the opener path it had before the receipt existed.
     const fresh = userReplay(2_000, PROVIDER_SESSION_ID, 'fresh-turn-2', STEER_PROMPT)
     rig.deliver({ ...fresh, frame: { ...fresh.frame, user_message_uuid: uuidB } })
 
