@@ -8,7 +8,8 @@ import { resolveHooksJsonWritePath } from '../agent-hooks/hook-config-write-path
 import { createCodexHookTrustEntry } from './codex-hook-identity'
 import type { RealHomeCodexHookSlotWrite } from './codex-real-home-hook-entry-plan'
 import { getRealHomeConfigTomlPath, getRealHomeHooksJsonPath } from './codex-real-home-hooks-json'
-import { computeTrustedHash, computeTrustKey, readHookTrustEntries } from './config-toml-trust'
+import { readHookTrustEntries } from './config-toml-trust'
+import { readOrcaEntryTrust } from './codex-real-home-entry-trust'
 
 function findHandler(
   definitions: HookDefinition[],
@@ -79,10 +80,8 @@ export function withdrawUntrustedRealHomeWrites(
       definition,
       definition.hooks![location.handlerIndex]!
     )
-    if (
-      entry &&
-      trustStates.get(computeTrustKey(entry))?.trustedHash === computeTrustedHash(entry)
-    ) {
+    const trust = entry ? readOrcaEntryTrust(entry, trustStates) : 'untrusted'
+    if (trust === 'trusted' || trust === 'disabled') {
       continue
     }
     const next = withdrawHandler(definitions, location, replaced)
