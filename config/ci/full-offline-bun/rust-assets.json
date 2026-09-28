@@ -1,0 +1,56 @@
+{
+  "manifestSha256": "1bf70a4f1406732dd79957ccc0d0afc78bdc69cdfa3b5f57857ab56727e05d56",
+  "sourceCommit": "9f36de775bc636c8e88c31a173c2bcb6995956a0",
+  "components": [
+    {
+      "package": "rustc",
+      "target": "x86_64-unknown-linux-gnu",
+      "url": "https://static.rust-lang.org/dist/2026-07-20/rustc-nightly-x86_64-unknown-linux-gnu.tar.xz",
+      "filename": "rustc-nightly-x86_64-unknown-linux-gnu.tar.xz",
+      "sha256": "a0e461ac8f2ec75b38cd9590188db2d90e0acde3279434194a0ecebd7c099fa0",
+      "size": 80585304
+    },
+    {
+      "package": "cargo",
+      "target": "x86_64-unknown-linux-gnu",
+      "url": "https://static.rust-lang.org/dist/2026-07-20/cargo-nightly-x86_64-unknown-linux-gnu.tar.xz",
+      "filename": "cargo-nightly-x86_64-unknown-linux-gnu.tar.xz",
+      "sha256": "4e5500fc62034d3b42450a921f408ee9e4aacd5e6de52a78fd736d6215889a38",
+      "size": 11627936
+    },
+    {
+      "package": "rust-std",
+      "target": "x86_64-unknown-linux-gnu",
+      "url": "https://static.rust-lang.org/dist/2026-07-20/rust-std-nightly-x86_64-unknown-linux-gnu.tar.xz",
+      "filename": "rust-std-nightly-x86_64-unknown-linux-gnu.tar.xz",
+      "sha256": "4b746e74f07cc3e3a16e1c0d367183eb5ca5374d6e87b9ab2002bbd463b3f8f0",
+      "size": 31035624
+    },
+    {
+      "package": "rust-std",
+      "target": "x86_64-pc-windows-msvc",
+      "url": "https://static.rust-lang.org/dist/2026-07-20/rust-std-nightly-x86_64-pc-windows-msvc.tar.xz",
+      "filename": "rust-std-nightly-x86_64-pc-windows-msvc.tar.xz",
+      "sha256": "ba96f3a8c48c40cb401e51e527a27e250a55122f169dfc5258174506bb62a896",
+      "size": 23122248
+    },
+    {
+      "package": "rust-std",
+      "target": "aarch64-pc-windows-msvc",
+      "url": "https://static.rust-lang.org/dist/2026-07-20/rust-std-nightly-aarch64-pc-windows-msvc.tar.xz",
+      "filename": "rust-std-nightly-aarch64-pc-windows-msvc.tar.xz",
+      "sha256": "6342c210441433253dfc3f99964778931ed172df9dfc14bfe0ebcc7887749790",
+      "size": 23126456
+    },
+    {
+      "package": "rust-src",
+      "target": "*",
+      "url": "https://static.rust-lang.org/dist/2026-07-20/rust-src-nightly.tar.xz",
+      "filename": "rust-src-nightly.tar.xz",
+      "sha256": "d4ffe57cc99d8846761bdbefc631bfd8f06fc001d7208576887e381c5709341a",
+      "size": 5804680
+    }
+  ],
+  "executed": false,
+  "signatureVerified": false
+}

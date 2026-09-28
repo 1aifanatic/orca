@@ -1,0 +1,183 @@
+--- a/src/runtime/api/bun/Terminal.rs
++++ b/src/runtime/api/bun/Terminal.rs
+@@ -121,6 +121,8 @@
+     /// uv_process_options_t.pseudoconsole.
+     #[cfg(windows)]
+     hpcon: Cell<Option<windows::HPCON>>,
++    #[cfg(windows)]
++    conpty_api: ConptyApi,
+ 
+     /// Current terminal size
+     cols: Cell<u16>,
+@@ -419,6 +421,8 @@
+             slave_fd: Cell::new(pty_result.slave),
+             #[cfg(windows)]
+             hpcon: Cell::new(Some(pty_result.hpcon)),
++            #[cfg(windows)]
++            conpty_api: pty_result.conpty_api,
+             cols: Cell::new(if cfg!(windows) {
+                 u16::try_from(clamp_to_coord(options.cols)).expect("int cast")
+             } else {
+@@ -716,6 +720,11 @@
+         let Some(hpcon) = self.hpcon.get() else {
+             return;
+         };
++        if let Some(release) = self.conpty_api.release {
++            // The bundled provider owns this opaque HPCON; never inspect its fields.
++            unsafe { let _ = release(hpcon); };
++            return;
++        }
+         // SAFETY: `hpcon` was returned from inbox `CreatePseudoConsole`, which
+         // heap-allocates a `PseudoConsole` and returns it as HPCON.
+         // `ClosePseudoConsole` later skips the field when it reads null.
+@@ -740,10 +749,11 @@
+         // PORTING.md bans std::process but not std::thread; a raw detached OS
+         // thread is intentional here (no event-loop integration needed).
+         let hpcon_addr = hpcon as usize;
++        let close = self.conpty_api.close;
+         match std::thread::Builder::new().spawn(move || {
+             // SAFETY: hpcon was a valid HPCON when taken; ClosePseudoConsole is
+             // safe to call from any thread per Win32 docs.
+-            unsafe { windows::ClosePseudoConsole(hpcon_addr as windows::HPCON) };
++            unsafe { close(hpcon_addr as windows::HPCON) };
+         }) {
+             Ok(_t) => {
+                 // detached: JoinHandle dropped without join → thread runs to completion.
+@@ -771,6 +781,8 @@
+     pub(crate) slave: Fd,
+     #[cfg(windows)]
+     pub(crate) hpcon: windows::HPCON,
++    #[cfg(windows)]
++    conpty_api: ConptyApi,
+ }
+ 
+ #[derive(thiserror::Error, Debug, strum::IntoStaticStr)]
+@@ -1152,6 +1164,7 @@
+ 
+ #[cfg(windows)]
+ fn create_pty_windows(cols: u16, rows: u16) -> Result<PtyResult, CreatePtyError> {
++    let conpty_api = ConptyApi::selected()?;
+     // Track ownership explicitly: handles are nulled out as they are closed or
+     // transferred so the errdefer cleanup never double-closes.
+     let mut out_server: Option<windows::HANDLE> = None;
+@@ -1171,7 +1184,7 @@
+             // safe on those values.
+             unsafe {
+                 if let Some(h) = hpcon {
+-                    windows::ClosePseudoConsole(h);
++                    (conpty_api.close)(h);
+                 }
+                 if let Some(h) = out_server {
+                     let _ = windows::CloseHandle(h);
+@@ -1223,7 +1236,7 @@
+         let mut pc: windows::HPCON = core::ptr::null_mut();
+         // SAFETY: in_client/out_client are valid open HANDLEs; pc is a valid out-ptr.
+         if unsafe {
+-            windows::CreatePseudoConsole(size, in_client.unwrap(), out_client.unwrap(), 0, &mut pc)
++            (conpty_api.create)(size, in_client.unwrap(), out_client.unwrap(), 0, &mut pc)
+         } < 0
+         {
+             cleanup!();
+@@ -1274,6 +1287,7 @@
+         write_fd,
+         slave: Fd::INVALID,
+         hpcon: result_hpcon,
++        conpty_api,
+     })
+ }
+ 
+@@ -1549,7 +1563,7 @@
+                     Y: clamp_to_coord(new_rows),
+                 };
+                 // SAFETY: hpcon is a valid open HPCON.
+-                let hr = unsafe { windows::ResizePseudoConsole(hpcon, size) };
++                let hr = unsafe { (self.conpty_api.resize)(hpcon, size) };
+                 if hr < 0 && hr != HR_NO_DATA && hr != HR_BROKEN_PIPE {
+                     return Err(global_object.throw(format_args!("Failed to resize terminal")));
+                 }
+@@ -2060,3 +2074,75 @@
+         Self::from_parent_ptr(this).on_writer_close();
+     }
+ }
++
++// Local prototype: not compiled or ready to ship.
++#[cfg(windows)]
++#[derive(Clone, Copy)]
++struct ConptyApi {
++    create: unsafe extern "system" fn(windows::COORD, windows::HANDLE, windows::HANDLE, u32, *mut windows::HPCON) -> i32,
++    resize: unsafe extern "system" fn(windows::HPCON, windows::COORD) -> i32,
++    close: unsafe extern "system" fn(windows::HPCON),
++    release: Option<unsafe extern "system" fn(windows::HPCON) -> i32>,
++}
++
++#[cfg(windows)]
++impl ConptyApi {
++    fn selected() -> Result<Self, CreatePtyError> {
++        static API: std::sync::OnceLock<Result<ConptyApi, ()>> = std::sync::OnceLock::new();
++        API.get_or_init(Self::load).as_ref().copied().map_err(|_| CreatePtyError::OpenPtyFailed)
++    }
++
++    fn load() -> Result<Self, ()> {
++        let Some(bytes) = bun_core::env_var::BUN_CONPTY_LIBRARY::get() else {
++            return Ok(Self {
++                create: windows::CreatePseudoConsole,
++                resize: windows::ResizePseudoConsole,
++                close: windows::ClosePseudoConsole,
++                release: None,
++            });
++        };
++        let path = core::str::from_utf8(bytes).map_err(|_| ())?;
++        if path.contains('\0') || !std::path::Path::new(path).is_absolute() {
++            return Err(());
++        }
++        use std::os::windows::ffi::OsStrExt;
++        let wide: Vec<u16> = std::ffi::OsStr::new(path).encode_wide().chain(Some(0)).collect();
++        // Limit dependency lookup to the selected DLL's directory and System32.
++        let library = unsafe { windows::kernel32::LoadLibraryExW(wide.as_ptr(), core::ptr::null_mut(), 0x100 | 0x800) };
++        if library.is_null() {
++            return Err(());
++        }
++        struct LibraryGuard(windows::HMODULE);
++        impl Drop for LibraryGuard {
++            fn drop(&mut self) {
++                unsafe { FreeLibrary(self.0); }
++            }
++        }
++        let guard = LibraryGuard(library);
++        macro_rules! symbol {
++            ($name:literal, $ty:ty) => {{
++                let address = unsafe { windows::GetProcAddress(library, concat!($name, "\0").as_ptr().cast()) };
++                if address.is_null() {
++                    return Err(());
++                }
++                // All names use the pinned Microsoft ConPTY ABI; the module stays resident.
++                unsafe { core::mem::transmute::<*mut core::ffi::c_void, $ty>(address) }
++            }};
++        }
++        // Keep one module resident for process lifetime, including off-thread closes.
++        let api = Self {
++            create: symbol!("ConptyCreatePseudoConsole", unsafe extern "system" fn(windows::COORD, windows::HANDLE, windows::HANDLE, u32, *mut windows::HPCON) -> i32),
++            resize: symbol!("ConptyResizePseudoConsole", unsafe extern "system" fn(windows::HPCON, windows::COORD) -> i32),
++            close: symbol!("ConptyClosePseudoConsole", unsafe extern "system" fn(windows::HPCON)),
++            release: Some(symbol!("ConptyReleasePseudoConsole", unsafe extern "system" fn(windows::HPCON) -> i32)),
++        };
++        core::mem::forget(guard);
++        Ok(api)
++    }
++}
++
++#[cfg(windows)]
++#[link(name = "kernel32")]
++unsafe extern "system" {
++    fn FreeLibrary(module: windows::HMODULE) -> i32;
++}
+--- a/src/bun_core/env_var.rs
++++ b/src/bun_core/env_var.rs
+@@ -58,6 +58,7 @@
+ // A peer that accepts the TCP connection but never answers the upgrade fails
+ // with error + close(1006). 0 disables; uSockets' 4 s sweep rounds small values up.
+ new!(pub BUN_CONFIG_WS_HANDSHAKE_TIMEOUT: unsigned, "BUN_CONFIG_WS_HANDSHAKE_TIMEOUT", { default: 120 });
++new!(pub BUN_CONPTY_LIBRARY: string, "BUN_CONPTY_LIBRARY", {});
+ new!(pub BUN_CRASH_REPORT_URL: string, "BUN_CRASH_REPORT_URL", {});
+ new!(pub BUN_DEBUG: string, "BUN_DEBUG", {});
+ new!(pub BUN_DEBUG_ALL: boolean, "BUN_DEBUG_ALL", {});

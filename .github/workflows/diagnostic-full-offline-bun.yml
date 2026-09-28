@@ -1,0 +1,112 @@
+name: Diagnostic full offline patched Bun build
+on:
+  push:
+    branches: [OrcaWin/np-full-offline-bun-diagnostic]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: diagnostic-full-offline-bun
+  cancel-in-progress: false
+jobs:
+  build:
+    if: github.repository == 'stablyai/orca' && github.ref == 'refs/heads/OrcaWin/np-full-offline-bun-diagnostic'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    env:
+      BASE: ubuntu@sha256:8feb4d8ca5354def3d8fce243717141ce31e2c428701f6682bd2fafe15388214
+      ORCA_BACKGROUND_LAUNCH: '1'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          sparse-checkout: config/ci/full-offline-bun
+      - name: Allocate bounded diagnostic storage
+        run: |
+          set -euo pipefail
+          test "$(df -B1 --output=avail "$RUNNER_TEMP" | tail -n 1)" -ge 17179869184
+          truncate -s 60G "$RUNNER_TEMP/offline-bun.ext4"
+          mkfs.ext4 -F "$RUNNER_TEMP/offline-bun.ext4"
+          mkdir "$RUNNER_TEMP/offline-bun"
+          sudo mount -o loop,nodev,nosuid "$RUNNER_TEMP/offline-bun.ext4" "$RUNNER_TEMP/offline-bun"
+          sudo chown "$(id -u):$(id -g)" "$RUNNER_TEMP/offline-bun"
+      - uses: actions/download-artifact@v5
+        with:
+          run-id: 36489759004
+          name: offline-xwin-extracted-sdk
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/offline-bun/sdk-artifact
+      - name: Stage verified inputs and exact source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/offline-bun"
+          probe="$GITHUB_WORKSPACE/config/ci/full-offline-bun"
+          timeout --kill-after=30s 600s gh api repos/stablyai/orca/actions/artifacts/10990426637/zip > llvm.zip
+          timeout --kill-after=30s 600s gh api repos/stablyai/orca/actions/artifacts/11000172185/zip > dependencies.zip
+          timeout --kill-after=30s 600s gh api repos/stablyai/orca/actions/artifacts/11001660901/zip > host-tools.zip
+          timeout --kill-after=30s 900s python3 "$probe/stage-link-inputs.py" llvm llvm.zip inputs
+          python3 "$probe/stage-link-inputs.py" sdk sdk-artifact/xwin-output.tar.gz winsysroot
+          python3 "$probe/stage-host-tools.py" host-tools.zip host-tools
+          python3 "$probe/stage-combined-vendor.py" dependencies.zip inputs/rust vendors
+          timeout --kill-after=30s 1800s python3 "$probe/download-inputs.py" retained
+          mkdir work results
+          git init work/source
+          timeout --kill-after=30s 600s git -C work/source fetch --depth=1 https://github.com/oven-sh/bun.git 744846f844374847c902b5e7fd59b4342a51ef99
+          git -C work/source checkout --detach FETCH_HEAD
+          python3 "$probe/test_cache_links.py"
+          python3 "$probe/stage-source-cache.py" dependencies.zip work
+          docker pull --platform linux/amd64 "$BASE"
+          docker image inspect "$BASE" > results/base-image.json
+      - name: Build patched Bun without networking
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/offline-bun"
+          name="orca-offline-bun-$GITHUB_RUN_ID"
+          docker create --name "$name" --network none --platform linux/amd64 --cpus 2 --memory 8g --pids-limit 512 \
+            -v "$root/inputs/metadata:/metadata:ro" -v "$root/inputs/packages:/packages:ro" \
+            -v "$root/inputs/rust:/rust:ro" -v "$root/vendors/combined/vendor:/vendor:ro" \
+            -v "$root/host-tools/inputs:/supplement:ro" -v "$root/retained/bootstrap:/bootstrap:ro" \
+            -v "$root/retained/prefetch:/prefetch:ro" -v "$root/winsysroot:/opt/winsysroot:ro" \
+            -v "$root/work:/work" -v "$root/results:/results" \
+            -v "$GITHUB_WORKSPACE/config/ci/full-offline-bun:/probe:ro" \
+            "$BASE" bash /probe/install-and-build.sh
+          trap 'docker rm -f "$name" >/dev/null 2>&1 || true' EXIT
+          docker inspect "$name" > "$root/results/container.json"
+          docker start -a "$name" > "$root/results/execution.log" 2>&1 &
+          attached=$!
+          started=$SECONDS
+          while kill -0 "$attached" 2>/dev/null; do
+            bytes=$(docker inspect --size --format '{{.SizeRw}}' "$name")
+            available=$(df -B1 --output=avail "$RUNNER_TEMP" | tail -n 1)
+            if test "$bytes" -gt 4294967296 || test "$available" -lt 4294967296 || test "$((SECONDS-started))" -gt 11100; then
+              echo "Resource budget exceeded: layer=$bytes hostAvailable=$available elapsed=$((SECONDS-started))" > "$root/results/BUDGET_EXCEEDED"
+              docker kill "$name"
+              wait "$attached" || true
+              exit 1
+            fi
+            sleep 10
+          done
+          wait "$attached"
+          test "$(docker inspect --format '{{.State.ExitCode}}' "$name")" = 0
+          test -s "$root/results/SUCCESS"
+      - name: Permit receipt retention
+        if: always()
+        run: sudo chown -R "$(id -u):$(id -g)" "$RUNNER_TEMP/offline-bun/results" || true
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: full-offline-patched-bun
+          path: |
+            ${{ runner.temp }}/offline-bun/results/
+            ${{ runner.temp }}/offline-bun/retained/acquisition.json
+            ${{ runner.temp }}/offline-bun/work/source-cache-receipt.json
+            ${{ runner.temp }}/offline-bun/vendors/combined/receipt.json
+          retention-days: 7
+      - name: Unmount diagnostic storage
+        if: always()
+        run: |
+          docker rm -f "orca-offline-bun-$GITHUB_RUN_ID" >/dev/null 2>&1 || true
+          if mountpoint -q "$RUNNER_TEMP/offline-bun"; then sudo umount "$RUNNER_TEMP/offline-bun"; fi

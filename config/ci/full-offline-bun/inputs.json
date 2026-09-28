@@ -1,0 +1,401 @@
+{
+  "source": "744846f844374847c902b5e7fd59b4342a51ef99",
+  "baseImage": "ubuntu@sha256:8feb4d8ca5354def3d8fce243717141ce31e2c428701f6682bd2fafe15388214",
+  "patchSha256": "cac551c0518164b6c2ab386227efc87c13b1641883d23c9d185e67b157ef9a97",
+  "artifacts": {
+    "llvm": {
+      "id": 10990426637,
+      "bytes": 219107903,
+      "sha256": "06b70d04c2b445f55eca428a7cccb16b5877c78ff28886d52b61f30efde7e4e4"
+    },
+    "dependencies": {
+      "id": 11000172185,
+      "bytes": 114257418,
+      "sha256": "79c1c4aa8d9a57658f5636787287757f9bfa4b5ab0fb74054e6a52b9642cee60"
+    },
+    "sdk": {
+      "id": 11000567331,
+      "run": 36489759004,
+      "name": "offline-xwin-extracted-sdk",
+      "tarBytes": 301121470,
+      "tarSha256": "bd027d161f2acf29f6c61a89b6af0e25b10976348bbf9cb8cea7cbf97085ebf9"
+    },
+    "hostTools": {
+      "id": 11001660901,
+      "run": 36491872268,
+      "bytes": 46974924,
+      "sha256": "fdb13a56fa7deca3ee41f541f9d5b51f24a2ca4578b0daaa95aee0e32b7efa3a"
+    }
+  },
+  "bootstrap": [
+    {
+      "id": "bun-bootstrap-x86_64",
+      "url": "https://pub-5e11e972747a44bf9aaf9394f185a982.r2.dev/releases/bun-v1.3.13/bun-linux-x64.zip",
+      "license": "MIT; bundled third-party notices",
+      "provenance": "Exact pinned upstream Dockerfile mirror URL",
+      "filename": "bun-bootstrap-x86_64-bun-linux-x64.zip",
+      "sha256": "79c0771fa8b92c33aae41e15a0e0d307ea99d0e2f00317c71c6c53237a78e25a",
+      "size": 39125828,
+      "downloadedAt": "2026-09-28",
+      "trust": "Observed TLS download hash; no detached-signature verification claimed"
+    },
+    {
+      "id": "cmake-x86_64",
+      "url": "https://github.com/Kitware/CMake/releases/download/v3.30.5/cmake-3.30.5-linux-x86_64.sh",
+      "license": "BSD-3-Clause; bundled third-party notices",
+      "provenance": "Exact pinned upstream Dockerfile URL",
+      "filename": "cmake-x86_64-cmake-3.30.5-linux-x86_64.sh",
+      "sha256": "83de8839f3fb0d9caf982a0435da3fa8c4fbe2c817dfec99def310dc7e6a8404",
+      "size": 53659384,
+      "downloadedAt": "2026-09-28",
+      "trust": "Observed TLS download hash; no detached-signature verification claimed",
+      "publishedChecksum": {
+        "url": "https://github.com/Kitware/CMake/releases/download/v3.30.5/cmake-3.30.5-SHA-256.txt",
+        "matches": true,
+        "signatureVerified": false
+      }
+    },
+    {
+      "filename": "node-v24.3.0-linux-x64.tar.gz",
+      "url": "https://nodejs.org/dist/v24.3.0/node-v24.3.0-linux-x64.tar.gz",
+      "sha256": "bbeb5fb8113b44fc30f5a5887dbc0ab66af8e56139f5f9fbe7c7a1aa056246dc",
+      "size": 56874210
+    }
+  ],
+  "native": [
+    {
+      "name": "lolhtml",
+      "url": "https://github.com/oven-sh/lol-html/archive/725ce499aa9b71e38b7a2d0a9fbb6d7294a4079e.tar.gz",
+      "sourceIdentity": "725ce499aa9b71e38b7a2d0a9fbb6d7294a4079e",
+      "platforms": [
+        "x64",
+        "arm64"
+      ],
+      "cacheKey": "d63099fc6ce4f6e5281d442e8feb24e9",
+      "bytes": 570130,
+      "sha256": "afd83edbe1a2d4accb72e869cd4218bb8665fda2b7cb2c5106fc4be80001a748",
+      "executed": false
+    },
+    {
+      "name": "rust-argon2",
+      "url": "https://github.com/sru-systems/rust-argon2/archive/ed81866f163f0c7026aa6fd8388adf37242eb32a.tar.gz",
+      "sourceIdentity": "ed81866f163f0c7026aa6fd8388adf37242eb32a",
+      "platforms": [
+        "x64",
+        "arm64"
+      ],
+      "cacheKey": "87c5404c7fc9aa9ce3a44b8b1929b357",
+      "bytes": 30025,
+      "sha256": "e77c797444f191faf488d49c76c4f45c10b3d9275e0364ee10b6d05cfbe57baf",
+      "executed": false
+    },
+    {
+      "name": "picohttpparser",
+      "url": "https://github.com/h2o/picohttpparser/archive/066d2b1e9ab820703db0837a7255d92d30f0c9f5.tar.gz",
+      "sourceIdentity": "066d2b1e9ab820703db0837a7255d92d30f0c9f5",
+      "platforms": [
+        "x64",
+        "arm64"
+      ],
+      "cacheKey": "fad59b16ad4752cc63c8a23339da36f5",
+      "bytes": 15163,
+      "sha256": "637ff2ab6f5c7f7e05a5b5dc393d5cf2fea8d4754fcaceaaf935ffff5c1323ee",
+      "executed": false
+    },
+    {
+      "name": "nodejs",
+      "url": "https://nodejs.org/dist/v26.3.0/node-v26.3.0-headers.tar.gz",
+      "sourceIdentity": "26.3.0",
+      "platforms": [
+        "x64",
+        "arm64"
+      ],
+      "expectedSha256": "fca113c5d5add8bfb1aa31129a24acb8d49aa69ab3c22a2cc569aec88960526d",
+      "hashSource": "official Node checksum manifest",
+      "cacheKey": "45e9cfbefdc7f69b2e025785c7bd7616",
+      "bytes": 9957179,
+      "sha256": "fca113c5d5add8bfb1aa31129a24acb8d49aa69ab3c22a2cc569aec88960526d",
+      "executed": false
+    },
+    {
+      "name": "zlib",
+      "url": "https://github.com/zlib-ng/zlib-ng/archive/12731092979c6d07f42da27da673a9f6c7b13586.tar.gz",
+      "sourceIdentity": "12731092979c6d07f42da27da673a9f6c7b13586",
+      "platforms": [
+        "x64",
+        "arm64"
+      ],
+      "cacheKey": "655c6ecdb6fc9cd5621eb37cad3758da",
+      "bytes": 2450038,
+      "sha256": "a0d2a5d122c84b56a793a1553a9c3327fb2eb7469bf7a86b79e3c7be5d92e8d6",
+      "executed": false
+    },
+    {
+      "name": "zstd",
+      "url": "https://github.com/facebook/zstd/archive/f8745da6ff1ad1e7bab384bd1f9d742439278e99.tar.gz",
+      "sourceIdentity": "f8745da6ff1ad1e7bab384bd1f9d742439278e99",
+      "platforms": [
+        "x64",
+        "arm64"
+      ],
+      "cacheKey": "e010993a240724688a560d14f80491f4",
+      "bytes": 2453329,
+      "sha256": "4b0bd1f0cfb25e61b9103c35f27395530ff5b4c0d2513a00fd745849e85ea52c",
+      "executed": false
+    },
+    {
+      "name": "libdeflate",
+      "url": "https://github.com/ebiggers/libdeflate/archive/c8c56a20f8f621e6a966b716b31f1dedab6a41e3.tar.gz",
+      "sourceIdentity": "c8c56a20f8f621e6a966b716b31f1dedab6a41e3",
+      "platforms": [
+        "x64",
+        "arm64"
+      ],
+      "cacheKey": "ce0e2d9805b30dcc2686113111c1dfba",
+      "bytes": 197522,
+      "sha256": "1e5cc06bdbf3e1245d8b89c9e3588f507e3c8bc53fe8b8229770a9e8661dea81",
+      "executed": false
+    },
+    {
+      "name": "libarchive",
+      "url": "https://github.com/libarchive/libarchive/archive/ded82291ab41d5e355831b96b0e1ff49e24d8939.tar.gz",
+      "sourceIdentity": "ded82291ab41d5e355831b96b0e1ff49e24d8939",
+      "platforms": [
+        "x64",
+        "arm64"
+      ],
+      "cacheKey": "4296b191210d6b1b3f6c85bbce59eddf",
+      "bytes": 6134289,
+      "sha256": "042f0efe7147063ff9ba10f1a38ed080e949bcbd04bdbf3592b8846dd11b1da2",
+      "executed": false
+    },
+    {
+      "name": "libjpeg-turbo",
+      "url": "https://github.com/libjpeg-turbo/libjpeg-turbo/archive/e352b02f794f701407b39af08576035ba3360d60.tar.gz",
+      "sourceIdentity": "e352b02f794f701407b39af08576035ba3360d60",
+      "platforms": [
+        "x64",
+        "arm64"
+      ],
+      "cacheKey": "297099166a01f75e9a0caaa17f7b74f3",
+      "bytes": 2529165,
+      "sha256": "440f3a94390c78eab88f74b92944d2f6b248e592e984412e389885dfb5796bf0",
+      "executed": false
+    },
+    {
+      "name": "libspng",
+      "url": "https://github.com/randy408/libspng/archive/fb768002d4288590083a476af628e51c3f1d47cd.tar.gz",
+      "sourceIdentity": "fb768002d4288590083a476af628e51c3f1d47cd",
+      "platforms": [
+        "x64",
+        "arm64"
+      ],
+      "cacheKey": "e6aca86c593b51adc54a86edcb58b3ce",
+      "bytes": 159282,
+      "sha256": "d656813290d70a750b69e768323ff3b3875adf8c2e8c2fdb4e57ca1467abf86a",
+      "executed": false
+    },
+    {
+      "name": "libwebp",
+      "url": "https://github.com/webmproject/libwebp/archive/b7e29b9d75bd31422b00c2a446d49d7af06c328d.tar.gz",
+      "sourceIdentity": "b7e29b9d75bd31422b00c2a446d49d7af06c328d",
+      "platforms": [
+        "x64",
+        "arm64"
+      ],
+      "cacheKey": "2ced709f169b40bd84b3e0dc2765aff8",
+      "bytes": 3834595,
+      "sha256": "76fb89b4454ff2161bb0cca2cf832e19b8b4001b0ef42fbcc2b4a437c945b2b6",
+      "executed": false
+    },
+    {
+      "name": "cares",
+      "url": "https://github.com/c-ares/c-ares/archive/c7a3138dcfe3bb0eaaf10c0c24c36dc66dc790ab.tar.gz",
+      "sourceIdentity": "c7a3138dcfe3bb0eaaf10c0c24c36dc66dc790ab",
+      "platforms": [
+        "x64",
+        "arm64"
+      ],
+      "cacheKey": "1685a3355527fdec398ccf10f79b3f75",
+      "bytes": 608129,
+      "sha256": "c9ea1b3029b23b04376c229bd519489cee180874ec48cd863a5dcba628c0fe03",
+      "executed": false
+    },
+    {
+      "name": "hdrhistogram",
+      "url": "https://github.com/HdrHistogram/HdrHistogram_c/archive/be60a9987ee48d0abf0d7b6a175bad8d6c1585d1.tar.gz",
+      "sourceIdentity": "be60a9987ee48d0abf0d7b6a175bad8d6c1585d1",
+      "platforms": [
+        "x64",
+        "arm64"
+      ],
+      "cacheKey": "97084f213075a65efe2e2346b2ee6c5c",
+      "bytes": 306742,
+      "sha256": "811c5e5ae5303a75ade50688880af6aad5d2f951ec5785f68186bd18635cdfc9",
+      "executed": false
+    },
+    {
+      "name": "highway",
+      "url": "https://github.com/google/highway/archive/2607d3b5b0113992fe84d3848859eae13b3b52c1.tar.gz",
+      "sourceIdentity": "2607d3b5b0113992fe84d3848859eae13b3b52c1",
+      "platforms": [
+        "x64",
+        "arm64"
+      ],
+      "cacheKey": "b2dcc6002e95cc474624da9a4aaea204",
+      "bytes": 3692133,
+      "sha256": "741d705781e0b3e406beda8f1f994fbae01321237ce8023a1ad90fbaf7940c25",
+      "executed": false
+    },
+    {
+      "name": "lshpack",
+      "url": "https://github.com/litespeedtech/ls-hpack/archive/8905c024b6d052f083a3d11d0a169b3c2735c8a1.tar.gz",
+      "sourceIdentity": "8905c024b6d052f083a3d11d0a169b3c2735c8a1",
+      "platforms": [
+        "x64",
+        "arm64"
+      ],
+      "cacheKey": "73e0c55d12ea4fc2665ba0e3b1461100",
+      "bytes": 952726,
+      "sha256": "07d8bf901bb1b15543f38eabd23938519e1210eebadb52f3d651d6ef130ef973",
+      "executed": false
+    },
+    {
+      "name": "lsqpack",
+      "url": "https://github.com/litespeedtech/ls-qpack/archive/1e9c5b8e59f8161c54f168a570c8bfdc59ded0c3.tar.gz",
+      "sourceIdentity": "1e9c5b8e59f8161c54f168a570c8bfdc59ded0c3",
+      "platforms": [
+        "x64",
+        "arm64"
+      ],
+      "cacheKey": "ceeb8e315778b9385bcaa3d3cd60390b",
+      "bytes": 710309,
+      "sha256": "e9d8abe5b7c1e35b9908a9521e2acd7c1d17547babc01d73c7297e02aebbcc2d",
+      "executed": false
+    },
+    {
+      "name": "mimalloc",
+      "url": "https://github.com/oven-sh/mimalloc/archive/6a64e1ba7f5b2130d4efccb67ec87fd0003f0f6a.tar.gz",
+      "sourceIdentity": "6a64e1ba7f5b2130d4efccb67ec87fd0003f0f6a",
+      "platforms": [
+        "x64",
+        "arm64"
+      ],
+      "cacheKey": "46af79b3cf5b69771234ee14b41700ca",
+      "bytes": 1582650,
+      "sha256": "f36343416ad823dfcca61bd18ad4bb7f0d8814ab77e0fd5ef169f4a9cddeb8b8",
+      "executed": false
+    },
+    {
+      "name": "tinycc",
+      "url": "https://github.com/oven-sh/tinycc/archive/05f0fafaa3be31e31d7b4b5c17dc60f62c991171.tar.gz",
+      "sourceIdentity": "05f0fafaa3be31e31d7b4b5c17dc60f62c991171",
+      "platforms": [
+        "x64",
+        "arm64"
+      ],
+      "cacheKey": "e715321533b32b832912e41f2813ea01",
+      "bytes": 1036641,
+      "sha256": "50750680312923a59fdd36ae41f7091d8e35e51909d0e0b25b0b33ea9534bc08",
+      "executed": false
+    },
+    {
+      "name": "boringssl",
+      "url": "https://github.com/oven-sh/boringssl/archive/41bf9b59c2ebf277a7aa427e1ecad5cc80dd4d4f.tar.gz",
+      "sourceIdentity": "41bf9b59c2ebf277a7aa427e1ecad5cc80dd4d4f",
+      "platforms": [
+        "x64",
+        "arm64"
+      ],
+      "cacheKey": "ce854d7300ee8a356e6889a0f6a965ee",
+      "bytes": 74564872,
+      "sha256": "a5028d5475f1eaf0ad785c18666b330027a923121d601129f4a61e7bfc89a1dd",
+      "executed": false
+    },
+    {
+      "name": "lsquic",
+      "url": "https://github.com/litespeedtech/lsquic/archive/3181911301b1aa4f54c1ed690901abc674ee08fb.tar.gz",
+      "sourceIdentity": "3181911301b1aa4f54c1ed690901abc674ee08fb",
+      "platforms": [
+        "x64",
+        "arm64"
+      ],
+      "cacheKey": "d3ef6cf1fbedd7f9d706da665bc05f6b",
+      "bytes": 1952886,
+      "sha256": "f8cb90fb327eb91597c23163bf596c0d1882560be35b661d9ba84891cc461735",
+      "executed": false
+    },
+    {
+      "name": "WebKit",
+      "url": "https://github.com/oven-sh/WebKit/releases/download/autobuild-2e2aa2290fac856d6f451ceacb58f7f5b44dd057/bun-webkit-windows-amd64.tar.gz",
+      "sourceIdentity": "2e2aa2290fac856d6f451ceacb58f7f5b44dd057",
+      "platforms": [
+        "x64"
+      ],
+      "expectedSha256": "692315885cf2d1e426da22ff031c6ade9c4a8e1be989ff7f70e0cb7390c53b17",
+      "expectedBytes": 373632255,
+      "hashSource": "GitHub release383046785 asset545003729",
+      "cacheKey": "29e73e9597f3291ec497db9fc8c63b62",
+      "bytes": 373632255,
+      "sha256": "692315885cf2d1e426da22ff031c6ade9c4a8e1be989ff7f70e0cb7390c53b17",
+      "executed": false
+    },
+    {
+      "name": "WebKit",
+      "url": "https://github.com/oven-sh/WebKit/releases/download/autobuild-2e2aa2290fac856d6f451ceacb58f7f5b44dd057/bun-webkit-windows-arm64.tar.gz",
+      "sourceIdentity": "2e2aa2290fac856d6f451ceacb58f7f5b44dd057",
+      "platforms": [
+        "arm64"
+      ],
+      "expectedSha256": "9186a6a09d56e3d5e40db99f662aff0cfd029ed601021bf198a5f1267a051f0a",
+      "expectedBytes": 355949843,
+      "hashSource": "GitHub release383046785 asset545005095",
+      "cacheKey": "7d6434e7f4b9f780b46c257e131d4cfb",
+      "bytes": 355949843,
+      "sha256": "9186a6a09d56e3d5e40db99f662aff0cfd029ed601021bf198a5f1267a051f0a",
+      "executed": false
+    },
+    {
+      "name": "serviced-ucrt-x64",
+      "url": "https://api.nuget.org/v3-flatcontainer/microsoft.windows.sdk.cpp.x64/10.0.26100.8249/microsoft.windows.sdk.cpp.x64.10.0.26100.8249.nupkg",
+      "sourceIdentity": "10.0.26100.8249",
+      "platforms": [
+        "x64"
+      ],
+      "cacheKey": "59802de6a97c66f65289e4fd6003e0f7",
+      "bytes": 52951912,
+      "sha256": "dba411916afdd47c99fecdf7d5558df7679d291dc338746590ae9adf5fd0511b",
+      "executed": false
+    },
+    {
+      "name": "serviced-ucrt-arm64",
+      "url": "https://api.nuget.org/v3-flatcontainer/microsoft.windows.sdk.cpp.arm64/10.0.26100.8249/microsoft.windows.sdk.cpp.arm64.10.0.26100.8249.nupkg",
+      "sourceIdentity": "10.0.26100.8249",
+      "platforms": [
+        "arm64"
+      ],
+      "cacheKey": "8955a841c4a124aa003295f424dae11e",
+      "bytes": 105709246,
+      "sha256": "bae2af84725fb943385712a8a3e160d25be4ef0fdf7e5cccbd56c1daed7e36bf",
+      "executed": false
+    }
+  ],
+  "targets": [
+    {
+      "arch": "x64",
+      "baseline": true
+    },
+    {
+      "arch": "aarch64",
+      "baseline": false
+    }
+  ],
+  "lto": "off",
+  "sourceLockPins": {
+    "Cargo.lock": "5c3a9f56eef147f4110114694f44797d66290813513add281a5403f633c1e381",
+    "bun.lock": "cbf7580281d42a634da110c60541cccdc91f3ef563f37c15684a6f15ade0ed38",
+    "packages/bun-error/bun.lock": "e5f358227dd67c5c14ddbe5fe3348e2fbffb1399382909eda00e606b178a313d",
+    "src/node-fallbacks/bun.lock": "f2694f1fbc8689075bf005d90cecaeb393967cf96b735a8315198144278ea11d"
+  },
+  "fullBuildQualified": false
+}
