@@ -13,6 +13,7 @@ import type {
   AgentSessionQueuedMessage,
   AgentSessionSubscribeEvent
 } from '../../../shared/agent-session-wire'
+import { DISPATCH_REJECTED_CANCELLED } from '../../../shared/structured-agent-session-dispatch-rejection'
 import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
@@ -34,6 +35,7 @@ let root: string
 let store: AgentSessionRecordStore
 let host: StructuredAgentSessionHost
 let dispatch: Mock<StructuredAgentSessionAdapter['dispatch']>
+let awaitStarted: Mock<NonNullable<StructuredAgentSessionAdapter['awaitStarted']>>
 
 function eventually(assertion: () => void | Promise<void>): Promise<void> {
   return vi.waitFor(assertion, { timeout: 10_000 })
@@ -45,6 +47,7 @@ beforeEach(async () => {
   // Admitted: the message is written and unanswered, so the session owes work
   // until the test settles it.
   dispatch = vi.fn(async () => ({ state: 'admitted' as const }))
+  awaitStarted = vi.fn(async () => undefined)
   store = await AgentSessionRecordStore.open({ directory: join(root, 'store'), hostId: 'local' })
   host = new StructuredAgentSessionHost({
     store,
@@ -61,7 +64,7 @@ beforeEach(async () => {
         }
       }),
       dispatch,
-      awaitStarted: vi.fn(async () => undefined),
+      awaitStarted,
       closeSession: vi.fn(async () => true),
       releaseAcquisition: vi.fn(async () => true),
       cancelTurn: vi.fn(async () => ({ cancelled: true })),
@@ -412,6 +415,66 @@ describe('Stop and Delete', () => {
         ]
       }
     })
+  })
+
+  /** A draft consumed into a submission the delivery loop has not handed over:
+   *  the loop is held at the child's start proof until the returned release. */
+  async function consumedButNotHandedOver(): Promise<{ draftId: string; release: () => void }> {
+    const working = await workingSend()
+    const queued = await send('stopped in flight', 'queue-if-active').result
+    if (!queued.ok || !('queued' in queued.value)) {
+      throw new Error('expected a queued receipt')
+    }
+    let release: () => void = () => undefined
+    awaitStarted.mockImplementationOnce(
+      () => new Promise<undefined>((resolve) => (release = () => resolve(undefined)))
+    )
+    await settleAccepted(working, 'a')
+    const draftId = queued.value.queued.messageId
+    await eventually(async () => expect(await submission(draftId)).toBeDefined())
+    expect((await submission(draftId))?.handedOverAt).toBeUndefined()
+    return { draftId, release: () => release() }
+  }
+
+  it("a capable Stop between consume and the agent's receipt hands the text back once, and replays it", async () => {
+    const { draftId, release } = await consumedButNotHandedOver()
+    const operationId = hostTestOperationId()
+    const stopped = await stop(true, operationId)
+    release()
+    expect(stopped).toMatchObject({
+      ok: true,
+      value: {
+        withdrawnQueued: [{ messageId: draftId, body: hostTestMessage('stopped in flight') }]
+      }
+    })
+    if (!stopped.ok) {
+      throw new Error('stop refused')
+    }
+    expect(stopped.value.withdrawnQueued).toHaveLength(1)
+    expect(await drafts()).toHaveLength(0)
+    expect((await submission(draftId))?.dispatchState).toBe('rejected')
+    expect(dispatch).toHaveBeenCalledTimes(1)
+    expect(await stop(true, operationId)).toMatchObject({
+      ok: true,
+      replayed: true,
+      value: {
+        withdrawnQueued: [{ messageId: draftId, body: hostTestMessage('stopped in flight') }]
+      }
+    })
+  })
+
+  it("an old client's Stop in that window leaves the text as a returned card", async () => {
+    const { draftId, release } = await consumedButNotHandedOver()
+    const stopped = await stop()
+    release()
+    expect(stopped).toMatchObject({ ok: true })
+    expect(stopped.ok && 'withdrawnQueued' in stopped.value).toBe(false)
+    expect(await drafts()).toMatchObject([{ messageId: draftId, state: 'returned' }])
+    const page = await host.history({ sessionId: SESSION, direction: 'tail' })
+    expect(page.ok && page.page.queuedMessages?.[0]?.returnedReason).toBe(
+      DISPATCH_REJECTED_CANCELLED
+    )
+    expect(dispatch).toHaveBeenCalledTimes(1)
   })
 
   it("an old client's Stop pauses the drafts, and the pause survives eviction and reopen", async () => {

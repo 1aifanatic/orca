@@ -4,7 +4,6 @@
 // disagree: a row the reducer ignores must not alter a draft.
 
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
-import { dispatchWasWithdrawn } from '../../../shared/structured-agent-session-dispatch-rejection'
 import type { JournalDispatchRow } from './journal-row-schema'
 
 /** `rejected` and `accepted` are terminal; a late row for an absent or settled
@@ -19,24 +18,21 @@ export function journalDispatchRowApplies(
   )
 }
 
-/** A settled submission whose refusal returns the draft that produced it: a
- *  non-withdrawn rejection. A withdrawn send is the user's own Stop, not a
- *  refusal to surface. */
-export function submissionRefusalReturnsDraft(
-  submission: Pick<AgentJournalSubmission, 'dispatchState' | 'reason'> | undefined
+/** A consumed draft's submission that settled `rejected` — refused, or withdrawn
+ *  by a Stop before it reached the agent — returns the draft: its text has no
+ *  other holder once it left the sender's outbox as a draft. The stored reason
+ *  tells the two apart (`dispatchWasWithdrawn`). */
+export function submissionRejectionReturnsDraft(
+  submission: Pick<AgentJournalSubmission, 'dispatchState'> | undefined
 ): boolean {
-  return submission?.dispatchState === 'rejected' && !dispatchWasWithdrawn(submission)
+  return submission?.dispatchState === 'rejected'
 }
 
-/** True when committing this row NEWLY settles the submission to a non-withdrawn
- *  rejection — the only transition that returns a consumed draft. */
+/** True when committing this row NEWLY settles the submission to `rejected` —
+ *  the only transition that returns a consumed draft. */
 export function journalDispatchRowNewlyRejects(
   submission: Pick<AgentJournalSubmission, 'dispatchState'> | undefined,
-  row: Pick<JournalDispatchRow, 'state' | 'reason'>
+  row: Pick<JournalDispatchRow, 'state'>
 ): boolean {
-  return (
-    row.state === 'rejected' &&
-    journalDispatchRowApplies(submission) &&
-    submissionRefusalReturnsDraft({ dispatchState: 'rejected', reason: row.reason })
-  )
+  return row.state === 'rejected' && journalDispatchRowApplies(submission)
 }

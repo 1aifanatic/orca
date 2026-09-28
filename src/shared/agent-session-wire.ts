@@ -369,8 +369,9 @@ export type AgentSessionQueuedMessage = {
   paused?: true
   /** Copy for a paused card when the hold came from a failure; absent otherwise. */
   pausedReason?: string
-  /** The stored effective refusal. Clients decide showability with
-   *  `dispatchRejectionReasonIsInternal`, exactly as for rejected submissions. */
+  /** The stored effective rejection. Clients decide showability with
+   *  `dispatchRejectionReasonIsInternal`, exactly as for rejected submissions;
+   *  `dispatchWasWithdrawn` marks one a Stop withdrew before it reached the agent. */
   returnedReason?: string | null
 }
 

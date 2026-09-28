@@ -247,17 +247,42 @@ describe('returned transition (D1/N4)', () => {
     expect(journal.queuedMessages.get('draft-1')?.state).toBe('dispatched')
   })
 
-  it('a withdrawn (cancelled) rejection is not a refusal and returns no card', async () => {
-    const journal = await open()
+  it("a Stop's withdrawal before the agent received it returns the card, and it survives a restart", async () => {
+    let journal = await open()
     await queueDraft(journal, 'draft-1')
     await consumeDraft(journal, 'draft-1')
-    await journal.resolveDispatch({
-      clientMessageId: 'draft-1',
-      state: 'rejected',
-      reason: DISPATCH_REJECTED_CANCELLED,
-      fence: 0
+    // The Stop's own withdrawal path: the queued (not handed over) submission.
+    expect(await journal.rejectQueuedSubmissions(0, DISPATCH_REJECTED_CANCELLED)).toEqual([
+      'draft-1'
+    ])
+    expect(journal.queuedMessages.get('draft-1')).toMatchObject({
+      state: 'returned',
+      returnedReason: DISPATCH_REJECTED_CANCELLED
     })
+    // Atomic with the rejection row: a crash before the Stop answered keeps the text.
+    await journal.close()
+    clock += QUEUED_MESSAGE_REPLAY_WINDOW_MS + 1_000
+    journal = await open()
+    expect(journal.queuedMessages.get('draft-1')).toMatchObject({
+      state: 'returned',
+      returnedReason: DISPATCH_REJECTED_CANCELLED
+    })
+  })
+
+  it('a restart between consume and handover returns the card through the leftover rejection', async () => {
+    let journal = await open()
+    await queueDraft(journal, 'draft-1')
+    await consumeDraft(journal, 'draft-1')
+    await journal.close()
+    journal = await open()
     expect(journal.queuedMessages.get('draft-1')?.state).toBe('dispatched')
+    await journal.rejectQueuedSubmissions(0, DISPATCH_REJECTED_HOST_RESTARTED, (submission) =>
+      journal.wroteBeforeOpen(submission.acceptedSequence)
+    )
+    expect(journal.queuedMessages.get('draft-1')).toMatchObject({
+      state: 'returned',
+      returnedReason: DISPATCH_REJECTED_HOST_RESTARTED
+    })
   })
 
   it('refuse → Send under a fresh id → refuse again returns the card again; a late duplicate of the first refusal never touches the re-send (N4)', async () => {
@@ -423,6 +448,25 @@ describe('open-time repair and retention', () => {
     const row = journal.queuedMessages.get('draft-1')
     expect(row?.state).toBe('returned')
     expect(row?.returnedReason).toBe('refused while downgraded')
+  })
+
+  it('returns a dispatched row whose submission a Stop withdrew with no hook, never leaving it dispatched', async () => {
+    let journal = await open()
+    await queueDraft(journal, 'draft-1')
+    await consumeDraft(journal, 'draft-1')
+    await journal.rejectQueuedSubmissions(0, DISPATCH_REJECTED_CANCELLED)
+    await journal.close()
+    const db = new Database(journalDatabaseFile(root))
+    db.prepare(
+      "UPDATE queued_messages SET state = 'dispatched', returned_reason = NULL WHERE message_id = ?"
+    ).run('draft-1')
+    db.close()
+    clock += QUEUED_MESSAGE_REPLAY_WINDOW_MS + 1_000
+    journal = await open()
+    expect(journal.queuedMessages.get('draft-1')).toMatchObject({
+      state: 'returned',
+      returnedReason: DISPATCH_REJECTED_CANCELLED
+    })
   })
 
   it('keeps a dispatched row while its submission is still pending, even past the window, so a late refusal still returns it (N5)', async () => {

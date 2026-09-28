@@ -45,7 +45,7 @@ import {
   type MutationPlan
 } from './structured-agent-session-mutation-plans'
 import { maybeQueueStructuredAgentSessionSend } from './structured-agent-session-queued-messages'
-import { stopQueuedWithdrawalFinisher } from './structured-agent-session-queued-mutations'
+import { stopQueuedWithdrawalFinisher } from './structured-agent-session-queued-stop'
 import type {
   StructuredAgentSessionCaller,
   StructuredAgentSessionHostDeps,

@@ -12,9 +12,8 @@ import {
 } from '../../../shared/agent-session-host-authority'
 import {
   journalDispatchRowNewlyRejects,
-  submissionRefusalReturnsDraft
+  submissionRejectionReturnsDraft
 } from './journal-dispatch-settlement'
-import { dispatchWasWithdrawn } from '../../../shared/structured-agent-session-dispatch-rejection'
 import type { JournalReducerState } from './journal-reducer'
 import type { JournalRow } from './journal-row-schema'
 import {
@@ -133,9 +132,10 @@ export class JournalQueuedMessages {
   /**
    * The standing writer hook: within the append's transaction, transition a
    * `dispatched` draft to `returned` only when the row being committed NEWLY
-   * settles the draft's current consumed submission to a non-withdrawn
-   * rejection. Decided by the same function the reducer folds rows through, so
-   * a row the journal's settlement rules ignore never alters a draft.
+   * settles the draft's current consumed submission to `rejected` — a refusal,
+   * or a Stop's withdrawal (a capable Stop then withdraws the card and hands
+   * its text back). Decided by the same function the reducer folds rows
+   * through, so a row the journal's settlement rules ignore never alters a draft.
    */
   onRowInTransaction(db: Database.Database, row: JournalRow): void {
     if (row.kind !== 'dispatch' || row.state !== 'rejected') {
@@ -197,8 +197,8 @@ export class JournalQueuedMessages {
 
   /**
    * Open-time reconciliation, a re-derivation behind the stored fact: any
-   * `dispatched` row whose loaded current submission is effectively rejected
-   * becomes `returned` (covers consume → crash → downgrade → upgrade, where the
+   * `dispatched` row whose loaded current submission is rejected (refused or
+   * withdrawn) becomes `returned` (covers consume → crash → downgrade → upgrade, where the
    * old build rejected the leftover with no hook), then retention runs.
    */
   repairAndPrune(): Promise<void> {
@@ -216,7 +216,7 @@ export class JournalQueuedMessages {
             continue
           }
           const submission = submissions.get(row.consumedAs ?? row.messageId)
-          if (submissionRefusalReturnsDraft(submission)) {
+          if (submissionRejectionReturnsDraft(submission)) {
             returnDispatchedQueuedMessage(db, {
               sessionId: this.deps.sessionId,
               consumedRef: row.consumedAs ?? row.messageId,
@@ -237,13 +237,8 @@ export class JournalQueuedMessages {
             if (submission.dispatchState === 'accepted' || submission.dispatchState === 'unknown') {
               return 'terminal-not-refused'
             }
-            if (submission.dispatchState !== 'rejected') {
-              return 'pending'
-            }
-            // The repair above already returned every effectively-refused row, so
-            // a still-dispatched rejected one was withdrawn by its user's Stop —
-            // settled, owed to nobody, and releasable once the window passes.
-            return dispatchWasWithdrawn(submission) ? 'terminal-not-refused' : 'rejected'
+            // The repair above already returned every rejected row.
+            return submission.dispatchState === 'rejected' ? 'rejected' : 'pending'
           }
         })
         db.exec('COMMIT')
