@@ -82,7 +82,7 @@ export function readFreebuffScreenStatus(
     return { state: 'working' }
   }
   if (status === '' && text.includes('Your first message starts the session.')) {
-    return { state: 'done' }
+    return { state: 'done', sessionBoundary: true }
   }
   if (/^(?:\d+[hms]\s*)+left\b|^unlimited\b/.test(status) && /End session/.test(status)) {
     return { state: 'done' }
@@ -128,6 +128,10 @@ export class FreebuffScreenStatusTracker {
     const result = readFreebuffScreenStatus(lines, alternate)
     if (!result) {
       return null
+    }
+    if (result.sessionBoundary) {
+      this.prompt = ''
+      this.worked = false
     }
     const payload: ParsedAgentStatusPayload = {
       ...result,

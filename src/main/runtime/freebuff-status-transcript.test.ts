@@ -84,7 +84,7 @@ describe('Freebuff execution-host status', () => {
     }
   })
 
-  it('clears a startup block when the captured first-message composer becomes ready', async () => {
+  it('clears startup blocks and starts a fresh session after an earlier completed turn', async () => {
     const wiring = makeAgentStatusStoreWiring()
     const { runtime } = await createTranscriptPane(
       {
@@ -97,7 +97,7 @@ describe('Freebuff execution-host status', () => {
       wiring.deps
     )
     try {
-      for (const name of ['trust', 'ready']) {
+      for (const name of ['trust', 'ready', 'lifecycle', 'ready']) {
         runtime.onPtyData(
           TRANSCRIPT_PANE_PTY_ID,
           readFileSync(join(import.meta.dirname, `__fixtures__/freebuff-${name}.txt`), 'utf8'),
@@ -107,6 +107,15 @@ describe('Freebuff execution-host status', () => {
         expect(wiring.statusStore.getStatusSnapshot()[0]?.state).toBe(
           name === 'trust' ? 'blocked' : 'done'
         )
+        if (name === 'ready') {
+          expect(wiring.statusStore.getStatusSnapshot()[0]).toMatchObject({
+            sessionBoundary: true,
+            prompt: ''
+          })
+        }
+        if (name === 'lifecycle') {
+          expect(wiring.statusStore.getStatusSnapshot()[0]?.sessionBoundary).not.toBe(true)
+        }
       }
       expect(wiring.statusStore.getStatusSnapshot()[0]?.toolInput).toBeUndefined()
     } finally {
