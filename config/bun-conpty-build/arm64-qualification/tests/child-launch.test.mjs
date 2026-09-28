@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test'
-import { mkdtempSync, realpathSync, copyFileSync, writeFileSync, readFileSync, mkdirSync, rmSync } from 'node:fs'
+import { mkdtempSync, realpathSync, statSync, copyFileSync, writeFileSync, readFileSync, mkdirSync, rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
@@ -28,7 +28,9 @@ describe.skipIf(process.platform!=='win32')('production Windows preflight child 
    const response=JSON.parse(stdout);expect(response.nonce).toBe(nonce);expect(response.runtime).toBe('bun')
    const parent=JSON.parse(readFileSync(join(root,'parent-proof.json'),'utf8'));const native=JSON.parse(readFileSync(join(root,'child-proof.json'),'utf8'))
    expect(parent.pid).not.toBe(native.pid);expect(native.ppid).toBe(parent.pid)
-   expect(native.inherited).toBe(join(root,'conpty','conpty.dll'));expect(native.selected).toBe(native.inherited)
+   expect(native.inherited).toBe(parent.selected);expect(native.selected).toBe(native.inherited)
+   const actualFile=statSync(native.inherited,{bigint:true});const expectedFile=statSync(join(root,'conpty','conpty.dll'),{bigint:true})
+   expect(actualFile.ino).toBe(expectedFile.ino);expect(actualFile.dev).toBe(expectedFile.dev)
    expect(native.answered).toBe(true);expect(native.exit).toBe(0);expect(native.arch).toBe(process.arch)
    if(mode==='unset')expect(parent.inherited).toBeNull()
    else if(mode==='invalid')expect(parent.inherited).toBe('not-an-absolute-provider.dll')

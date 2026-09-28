@@ -7,7 +7,7 @@
   "tests/orcad.js": "f1423a6c1e272e43487fad6a5288ab5409a00b0dfa6081e4d55ac6584767266d",
   "tests/wide-bytes.test.mjs": "71b6ecb39fd24bdaf46307e5652a90a3a46574db1bf6090511215f48958a614b",
   "tests/windows-pty-job.test.mjs": "bfb7571fc33fba52639930793307975f7266a01178077a2e440fb4fd840ee9af",
-  "tests/child-launch.test.mjs": "da603fc66b715e293a941d0c8c47c22f7c867d544c875d6cb5e34d3409599d51",
+  "tests/child-launch.test.mjs": "c1d5d82f94e74bc52edd9d2212ed253408466513a58144db7a892dfc66a777cc",
   "tests/windows-msys-job.test.mjs": "5726d5728134e792be17692b5582551fb9318645e524a8f9b3c95e16b2317930",
   "tests/provider-selection-child.mjs": "c51c5e1d65d94034876c023b0b1d1704b70b8907fd001f6f44eb314362a59413",
   "tests/wide-repaint.test.mjs": "bf51550d8ddc9cf982cd1782d55319cbc91d774b1dc0f05c8a2ac913b03f8e89",
