@@ -118,8 +118,8 @@ it('shares Electron archives with PRs without uploading PR-local copies', () => 
   const restore = action.runs.steps.find(
     (step) => step.name === 'Restore Electron package archive without saving'
   )
-  expect(save.if).toContain("github.event_name != 'pull_request'")
-  expect(restore.if).toContain("github.event_name == 'pull_request'")
+  expect(save.if).toContain("github.event_name != 'pull_request' || runner.os != 'Linux'")
+  expect(restore.if).toContain("github.event_name == 'pull_request' && runner.os == 'Linux'")
   expect(save.if).toContain("steps.electron-package-cache.outputs.version != ''")
   expect(restore.if).toContain("steps.electron-package-cache.outputs.version != ''")
   expect(save.uses).toBe('actions/cache@v5')
