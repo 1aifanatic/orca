@@ -9,6 +9,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { z } from 'zod'
+import { persistMirrored } from '../storage/mirrored-storage-keys'
 import {
   AGENT_SESSION_MAX_OPERATION_REPLAY_AGE_MS,
   parseAgentSessionOperationTimestamp
@@ -111,11 +112,12 @@ async function readEntries(now: number): Promise<QueuedRestoreEntry[]> {
 }
 
 async function writeEntries(entries: readonly QueuedRestoreEntry[]): Promise<void> {
-  if (entries.length === 0) {
-    await AsyncStorage.removeItem(STORAGE_KEY)
-    return
-  }
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ v: 1, entries }))
+  // Mirrored and page-allowlisted like the send journal: inside the page an
+  // unlisted key reads back empty, so the settle would find no entry and drop the text.
+  await persistMirrored(
+    STORAGE_KEY,
+    entries.length === 0 ? null : JSON.stringify({ v: 1, entries })
+  )
 }
 
 /** Persist-before-request. A retained entry replays the recorded operation id. */
@@ -138,6 +140,11 @@ export function getOrCreateQueuedRestoreOperation(
     const { createOperationId, now: _now, ...held } = input
     const entry = RestoreEntrySchema.parse({ ...held, operationId: createOperationId() })
     await writeEntries([...entries, entry])
+    // A write the store dropped without rejecting (the page's `not-delivered`)
+    // would leave a handle the settle cannot find, and the text would be lost.
+    if (!(await readEntries(now)).some((stored) => stored.entryKey === entry.entryKey)) {
+      throw new Error('Structured restore journal did not keep the entry')
+    }
     return { operationId: entry.operationId, retained: false }
   })
 }
@@ -162,6 +169,29 @@ export function settleQueuedRestoreOperation(input: {
     await writeEntries(entries.filter((entry) => entry !== existing))
     return true
   })
+}
+
+/**
+ * Put withdrawn text back once: through the handle when there is one, directly
+ * when there is none or the journal failed before restoring — never again after
+ * the restore ran, even if removing the entry then failed.
+ */
+export async function restoreQueuedTextOnce(
+  handle: { entryKey: string; operationId: string } | null,
+  restore: () => void
+): Promise<void> {
+  let ran = false
+  const once = (): void => {
+    if (!ran) {
+      ran = true
+      restore()
+    }
+  }
+  if (!handle) {
+    once()
+    return
+  }
+  await settleQueuedRestoreOperation({ ...handle, restore: once }).catch(once)
 }
 
 /** Drop an entry whose operation the host definitively answered without owing text. */

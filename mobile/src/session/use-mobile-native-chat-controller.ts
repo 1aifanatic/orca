@@ -129,6 +129,7 @@ export function useMobileNativeChatController(args: {
     chatActive: showNativeChat,
     transcriptLoading: nativeChatSession.transcriptLoading,
     transcriptSettled: nativeChatSession.status === 'ready',
+    queuedCards: structuredNativeChat.queued.cards,
     seatAppendDraftText
   })
 

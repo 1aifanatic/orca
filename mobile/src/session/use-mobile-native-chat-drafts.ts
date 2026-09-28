@@ -56,6 +56,8 @@ export function useMobileNativeChatDrafts(args: {
    *  is an empty conversation, not a read that failed or never ran. Only then
    *  does a send's captured tail describe a real boundary. */
   transcriptSettled: boolean
+  /** The active pane's host-held queued-draft cards (structured lane only). */
+  queuedCards?: readonly { messageId: string; text: string }[]
   /** Seats `appendDraftText` on the session lane's composer-restore seam. */
   seatAppendDraftText?: (append: (draftKey: string, text: string) => void) => void
 }): {
@@ -98,6 +100,7 @@ export function useMobileNativeChatDrafts(args: {
     chatActive = true,
     transcriptLoading,
     transcriptSettled,
+    queuedCards,
     seatAppendDraftText
   } = args
   const draftKey = mobileNativeChatScopeKey(hostId, worktreeId, tabId)
@@ -116,6 +119,11 @@ export function useMobileNativeChatDrafts(args: {
   const draftEditGenerationsRef = useRef(new MobileNativeChatDraftEditGenerations())
   const messagesRef = useRef(messages)
   messagesRef.current = messages
+  const queuedCardsRef = useRef(queuedCards)
+  // Read only by captureSendOrigin, which runs from a send after this commit.
+  useLayoutEffect(() => {
+    queuedCardsRef.current = queuedCards
+  }, [queuedCards])
 
   const { readSeededLaunchDraft, readSeededLaunchDraftSeed } = useMobileNativeChatLaunchDraftSeed({
     draftKey,
@@ -169,7 +177,10 @@ export function useMobileNativeChatDrafts(args: {
         // Only a settled read makes this a boundary. Anything else — hydrating,
         // or a read that failed — hands back an empty list that reads as "the
         // conversation was empty", which lets any row claim this send later.
-        baselineResolved: transcriptSettled
+        baselineResolved: transcriptSettled,
+        ...(queuedCardsRef.current?.length
+          ? { baselineQueuedMessageIds: queuedCardsRef.current.map((card) => card.messageId) }
+          : {})
       }
     },
     [draftKey, pendingKey, transcriptSettled]
@@ -225,7 +236,8 @@ export function useMobileNativeChatDrafts(args: {
   const { holdUnconfirmedSend } = useMobileNativeChatUnconfirmedSends({
     draftKey,
     pendingKey,
-    messages
+    messages,
+    ...(queuedCards ? { queuedCards } : {})
   })
 
   const waitingForSession = draftKey

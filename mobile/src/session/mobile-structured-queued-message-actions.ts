@@ -14,6 +14,7 @@ import {
   discardQueuedRestoreOperation,
   getOrCreateQueuedRestoreOperation,
   queuedRestoreEntryKey,
+  restoreQueuedTextOnce,
   settleQueuedRestoreOperation,
   takeRelaunchQueuedRestoreOperations,
   type QueuedRestoreEntry
@@ -90,11 +91,7 @@ export async function editMobileQueuedMessage(input: {
     const value = result.value
     if (value.deleted) {
       const apply = (): void => input.appendText(input.draftKey, queuedMessageBodyText(value.body))
-      if (handle) {
-        await settleQueuedRestoreOperation({ ...handle, restore: apply }).catch(apply)
-      } else {
-        apply()
-      }
+      await restoreQueuedTextOnce(handle, apply)
       return true
     }
     if (handle) {

@@ -216,6 +216,29 @@ export async function clearMobileStructuredSettledSendOperations(input: {
   })
 }
 
+/**
+ * Spend the ids the host publishes as queued drafts. A draft is named by the
+ * operation id of the send that created it, so seeing one is the host's own
+ * receipt of that send — the `queued` answer a lost acknowledgement never
+ * brought. Without this, a draft another device later withdraws leaves an entry
+ * that no submission will ever settle.
+ */
+export async function clearMobileStructuredQueuedSendOperations(input: {
+  queuedMessageIds: readonly string[]
+}): Promise<void> {
+  if (input.queuedMessageIds.length === 0) {
+    return
+  }
+  const held = new Set(input.queuedMessageIds)
+  return serialize(async () => {
+    const journal = parseJournal(await AsyncStorage.getItem(STORAGE_KEY))
+    const entries = journal.entries.filter((entry) => !held.has(entry.operationId))
+    if (entries.length !== journal.entries.length) {
+      await writeEntries(entries)
+    }
+  })
+}
+
 /** Test-only: drain in-memory serialization while preserving durable storage. */
 export function resetMobileStructuredSendOperationJournalForTests(): void {
   mutations.tail = Promise.resolve()

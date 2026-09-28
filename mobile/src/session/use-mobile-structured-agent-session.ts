@@ -104,7 +104,7 @@ export function useMobileStructuredAgentSession(args: {
   const stateArgs = { client, sessionId, sessionKey, enabled, connected }
   const { state, stateRef, queuedMessages, loadingOlder, loadEarlier } =
     useMobileStructuredAgentState(stateArgs)
-  useMobileStructuredSendOperationReconciliation(state.submissions)
+  useMobileStructuredSendOperationReconciliation(state.submissions, queuedMessages)
 
   const mutate = useMobileStructuredAgentMutate({
     client,

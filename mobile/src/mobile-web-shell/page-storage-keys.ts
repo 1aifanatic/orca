@@ -31,6 +31,8 @@ export const PAGE_STORAGE_EXACT_KEYS = [
   'orca:defaultSessionView',
   /** The durable send journal: which `agentSession.send` operation ids are still unsettled. */
   'orca:mobileStructuredSendOperations:v1',
+  /** The queued-draft restore journal: Stop/clear/Edit ids still owing withdrawn text back. */
+  'orca:mobileStructuredQueuedRestore:v1',
   /** The terminal's text scale, which pinch-to-zoom writes. */
   'orca:terminalTextScale',
   /** Whether the terminal's command inputs offer autocorrect. */

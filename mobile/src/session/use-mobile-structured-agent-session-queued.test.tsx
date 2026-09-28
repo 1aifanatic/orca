@@ -323,6 +323,43 @@ describe('mobile structured queued messages', () => {
     })
   })
 
+  it('an ack-lost send is spent once the host publishes it as a draft, even one later withdrawn', async () => {
+    const journalKey = 'orca:mobileStructuredSendOperations:v1'
+    let attempts = 0
+    sendRequest.mockImplementation(async (method) => {
+      if (method === 'agentSession.send') {
+        attempts += 1
+        if (attempts === 1) {
+          throw markRpcDeliveryUnknown(new Error('Connection closed'))
+        }
+        return mutationOk({
+          clientMessageId: `client-${attempts}`,
+          queued: { messageId: `client-${attempts}`, position: 1, state: 'waiting' }
+        })
+      }
+      return method === 'agentSession.options' ? ok({ models: [], current: {} }) : ok({})
+    })
+    await mountSession(CAPABLE, snapshotEvent({ runningTurn: true }))
+    await act(async () => {
+      expect(await hook!.sendWithOutcome('held')).toBe('unknown')
+    })
+    const operationId = String(requestOf('agentSession.send').envelope.clientOperationId)
+    expect(stored.get(journalKey)).toContain(operationId)
+    // Someone else's draft proves nothing about this send.
+    act(() => listener?.(batchEvent([queuedDraft({ messageId: 'other-device' })])))
+    await act(async () => {})
+    expect(stored.get(journalKey)).toContain(operationId)
+    // The host names the draft by this send's operation id: that is its receipt.
+    act(() => listener?.(batchEvent([queuedDraft({ messageId: operationId })])))
+    await vi.waitFor(() => expect(stored.has(journalKey)).toBe(false))
+    // Withdrawn elsewhere: no submission will ever settle it, and nothing has to.
+    act(() => listener?.(batchEvent(null)))
+    await act(async () => {
+      expect(await hook!.sendWithOutcome('held')).toBe('queued')
+    })
+    expect(requestOf('agentSession.send', 1).envelope.clientOperationId).not.toBe(operationId)
+  })
+
   it('an identical send whose retained id replays as withdrawn goes out fresh', async () => {
     let attempts = 0
     sendRequest.mockImplementation(async (method) => {

@@ -74,18 +74,17 @@ export function MobileNativeChatQueuedMessages({
               >
                 <Text style={styles.actionLabel}>{returned ? 'Send' : 'Send now'}</Text>
               </Pressable>
-              {returned ? null : (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityState={{ disabled: busy }}
-                  accessibilityLabel="Edit this queued message"
-                  style={({ pressed }) => [styles.action, pressed && styles.pressed]}
-                  disabled={busy}
-                  onPress={() => void run(card.messageId, onEdit)}
-                >
-                  <Text style={styles.actionLabel}>Edit</Text>
-                </Pressable>
-              )}
+              {/* A returned card most needs Edit: its text is what has to change. */}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ disabled: busy }}
+                accessibilityLabel="Edit this queued message"
+                style={({ pressed }) => [styles.action, pressed && styles.pressed]}
+                disabled={busy}
+                onPress={() => void run(card.messageId, onEdit)}
+              >
+                <Text style={styles.actionLabel}>Edit</Text>
+              </Pressable>
               <Pressable
                 accessibilityRole="button"
                 accessibilityState={{ disabled: busy }}

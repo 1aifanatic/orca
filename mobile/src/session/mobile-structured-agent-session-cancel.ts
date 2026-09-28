@@ -14,7 +14,7 @@ import {
   discardQueuedRestoreOperation,
   getOrCreateQueuedRestoreOperation,
   queuedRestoreEntryKey,
-  settleQueuedRestoreOperation
+  restoreQueuedTextOnce
 } from './mobile-structured-queued-restore-journal'
 import { structuredSessionOperationId } from './structured-session-operation-id'
 
@@ -126,12 +126,8 @@ export async function requestMobileStructuredAgentSessionCancel(args: {
           withdraw.appendText(withdraw.draftKey, text)
         }
       }
-      if (restoreHandle) {
-        // Settled through the journal so the bodies are restored exactly once.
-        await settleQueuedRestoreOperation({ ...restoreHandle, restore: apply }).catch(apply)
-      } else {
-        apply()
-      }
+      // Settled through the journal so the bodies are restored exactly once.
+      await restoreQueuedTextOnce(restoreHandle, apply)
     }
     return true
   }

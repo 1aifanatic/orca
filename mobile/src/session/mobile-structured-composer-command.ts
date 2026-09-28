@@ -16,7 +16,7 @@ import {
   discardQueuedRestoreOperation,
   getOrCreateQueuedRestoreOperation,
   queuedRestoreEntryKey,
-  settleQueuedRestoreOperation
+  restoreQueuedTextOnce
 } from './mobile-structured-queued-restore-journal'
 import { structuredSessionOperationId } from './structured-session-operation-id'
 
@@ -126,12 +126,8 @@ export async function dispatchMobileStructuredCommand(input: {
               withdrawal.appendText(withdrawal.draftKey, text)
             }
           }
-          if (handle) {
-            // Settled through the journal so the bodies are restored exactly once.
-            await settleQueuedRestoreOperation({ ...handle, restore: apply }).catch(apply)
-          } else {
-            apply()
-          }
+          // Settled through the journal so the bodies are restored exactly once.
+          await restoreQueuedTextOnce(handle, apply)
         } else if (handle) {
           // The host answered definitively without owing text; the handle is dead.
           await discardQueuedRestoreOperation(handle).catch(() => undefined)
