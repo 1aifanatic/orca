@@ -11,12 +11,16 @@ import {
   admitStructuredAgentSessionOutboxEntry,
   type StructuredAgentSessionOutboxEntry
 } from '../../../../shared/structured-agent-session-outbox'
+import type { AgentSessionFailureWordsContext } from '../../../../shared/agent-session-failure-words'
 import { structuredAgentSessionAttemptFailureParts } from '../../../../shared/structured-agent-session-send-disposition'
 import { translate } from '@/i18n/i18n'
 import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
 import type { NativeChatDeliveryNotice } from './NativeChatMessageRow'
 
-function deliveryNoticeText(entry: StructuredAgentSessionOutboxEntry): string {
+function deliveryNoticeText(
+  entry: StructuredAgentSessionOutboxEntry,
+  context: AgentSessionFailureWordsContext
+): string {
   if (entry.state === 'unconfirmed') {
     return translate(
       'auto.components.native.chat.NativeChatStructuredSession.1f772bb5d0',
@@ -24,7 +28,9 @@ function deliveryNoticeText(entry: StructuredAgentSessionOutboxEntry): string {
     )
   }
   return entry.lastFailure
-    ? agentSessionWriteNoticeText(structuredAgentSessionAttemptFailureParts(entry.lastFailure))
+    ? agentSessionWriteNoticeText(
+        structuredAgentSessionAttemptFailureParts(entry.lastFailure, context)
+      )
     : translate(
         'auto.components.native.chat.NativeChatStructuredSession.93ef441197',
         'Message was not sent.'
@@ -32,10 +38,11 @@ function deliveryNoticeText(entry: StructuredAgentSessionOutboxEntry): string {
 }
 
 /** Keyed by the message id the transcript renders each entry under. `blockedClientMessageId` is
- *  the entry a refusal stopped the queue on. */
+ *  the entry a refusal stopped the queue on; `agentName` is the chat's agent, for the words. */
 export function structuredAgentSessionDeliveryNotices(
   outbox: readonly StructuredAgentSessionOutboxEntry[],
   blockedClientMessageId: string | null,
+  agentName: string,
   retry: (clientMessageId: string) => void
 ): ReadonlyMap<string, NativeChatDeliveryNotice> {
   const admission = admitStructuredAgentSessionOutboxEntry(outbox, blockedClientMessageId)
@@ -43,12 +50,12 @@ export function structuredAgentSessionDeliveryNotices(
   const notices = new Map<string, NativeChatDeliveryNotice>()
   for (const entry of outbox) {
     if (entry.state === 'rejected' || entry.clientMessageId === held) {
-      const text = deliveryNoticeText(entry)
+      // Its own Retry is the step, so the words leave out sending again.
+      const retryControl = held === null || entry.clientMessageId === held
+      const text = deliveryNoticeText(entry, { agentName, retryControl })
       notices.set(
         agentJournalSubmissionKey(entry.clientMessageId),
-        held === null || entry.clientMessageId === held
-          ? { text, onRetry: () => retry(entry.clientMessageId) }
-          : { text }
+        retryControl ? { text, onRetry: () => retry(entry.clientMessageId) } : { text }
       )
     }
   }

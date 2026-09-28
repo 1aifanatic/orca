@@ -109,16 +109,17 @@ export function NativeChatStructuredSession(
   const retryDelivery = useCallback((clientMessageId: string) => {
     retryRef.current(clientMessageId)
   }, [])
+  const agentLabel = structuredAgentLabel(props.agent === 'codex' ? 'codex' : 'claude')
   const deliveryNotices = useMemo(
     () =>
       structuredAgentSessionDeliveryNotices(
         controller.outbox,
         controller.blockedClientMessageId,
+        agentLabel,
         retryDelivery
       ),
-    [controller.outbox, controller.blockedClientMessageId, retryDelivery]
+    [controller.outbox, controller.blockedClientMessageId, agentLabel, retryDelivery]
   )
-  const agentLabel = structuredAgentLabel(props.agent === 'codex' ? 'codex' : 'claude')
   const viewState = selectNativeChatViewState(session, { readRetries: true })
   const readFailure =
     controller.status === 'error'

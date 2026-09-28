@@ -53,7 +53,7 @@ export type AgentSessionFailureWordsContext = {
   /** The conversation command a failed start was for, so the next step is to run it again
    *  rather than to send a message. */
   command?: 'clear'
-  /** The surface shows its own Retry beside the words, so they leave out sending again. */
+  /** The surface shows its own Retry beside the words, so they leave out sending or trying again. */
   retryControl?: boolean
 }
 
@@ -198,12 +198,16 @@ const FAILURE_SENTENCES = {
   cancelled: () => 'This message was withdrawn before the agent started it.',
   chatClosed: () => 'The chat closed before this message was sent.',
   hostRestarted: () => 'Orca restarted before this message was sent.',
-  notDelivered: () => 'This message was not delivered. Send it again to continue.',
+  notDelivered: ({ retryControl }) =>
+    retryControl
+      ? 'This message was not delivered.'
+      : 'This message was not delivered. Send it again to continue.',
   compactionFailed: (_, fact) => quotingPersonDetail('Compaction failed', fact.detail),
   compactionUnconfirmed: () => 'Compaction completion is unconfirmed.',
   cancelUnconfirmed: () => 'Cancellation was not confirmed.',
   answerUnconfirmed: () => 'Your answer was recorded but the agent did not confirm it.',
-  hostFault: () => "Orca ran into a problem, so this didn't go through. Try again.",
+  hostFault: ({ retryControl }) =>
+    `Orca ran into a problem, so this didn't go through.${retryControl ? '' : ' Try again.'}`,
   hostStopped: ({ agentName }) =>
     `${agentName ?? 'The agent'} never finished starting, so Orca stopped it.`,
   providerRetrying: ({ agentName }, { retry }) =>

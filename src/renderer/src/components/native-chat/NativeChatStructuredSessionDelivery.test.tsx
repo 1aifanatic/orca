@@ -333,6 +333,41 @@ describe('NativeChatStructuredSession delivery', () => {
     expect(mocks.call).toHaveBeenCalledOnce()
   })
 
+  it("words a failed start on each message by the chat's agent, leaving the resend to its Retry", async () => {
+    mocks.mode = 'outbox'
+    mocks.submissions = []
+    const startFailed = (clientMessageId: string, text: string) => ({
+      ...seededEntry('session-start-failed', clientMessageId, text, 'queued'),
+      state: 'rejected' as const,
+      lastFailure: {
+        kind: 'rejected' as const,
+        reason: 'Codex stopped before it finished starting. Send your message to try again.',
+        rejection: { kind: 'providerStartFailed' as const }
+      }
+    })
+    seedOutbox('session-start-failed', [
+      startFailed('op-first', 'first'),
+      startFailed('op-second', 'second')
+    ])
+
+    render(
+      <NativeChatStructuredSession
+        isVisible
+        isFocusedGroup
+        tabId="structured-tab-start-failed"
+        sessionId="session-start-failed"
+        target={{ kind: 'local' }}
+        agent="codex"
+      />
+    )
+
+    await waitFor(() =>
+      expect(screen.getAllByText('Codex stopped before it finished starting.')).toHaveLength(2)
+    )
+    expect(screen.getAllByRole('button', { name: /Retry/ })).toHaveLength(2)
+    expect(screen.queryByText(/Send your message to try again/)).toBeNull()
+  })
+
   it('names the stuck message behind an admitted head, and its Retry sends that one', async () => {
     mocks.mode = 'outbox'
     mocks.submissions = []
