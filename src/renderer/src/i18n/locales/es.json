@@ -2751,6 +2751,7 @@
           },
           "TerminalContextMenu": {
             "b4cdd9314e": "Borrar pantalla",
+            "resetTerminal": "Restablecer terminal",
             "8c17d6786d": "Cerrar panel",
             "copyTerminalId": "Copiar ID de terminal",
             "2cf85a6a55": "Copiar ID del panel",
@@ -15058,6 +15059,7 @@
           "subtitle": "No se pudo leer la transcripción. Vuelva a la terminal para seguir trabajando.",
           "retryingSubtitle": "No se pudo leer la transcripción. Orca sigue intentando cargarla."
         },
+        "reconnecting": "Reconectando con este chat…",
         "pairHost": "Empareje un host para ver el historial de chat del agente.",
         "notAgent": {
           "title": "No hay conversación aquí",
