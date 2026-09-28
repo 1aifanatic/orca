@@ -221,7 +221,8 @@ async function copyLegacyJournal(
     if (block !== null) {
       await yieldToEventLoop()
     }
-    block = input.database.transaction((db) => {
+    // Unsynced: no reader follows the reserved block, and the publish's synced commit covers it.
+    block = input.database.unsyncedTransaction((db) => {
       const target = block ?? reserveImportBlock(db, sessionId)
       const insert = db.prepare(INSERT_ROW)
       for (const row of batch.rows) {

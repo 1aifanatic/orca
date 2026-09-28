@@ -73,6 +73,21 @@ export class JournalHostDatabase {
     return result
   }
 
+  /**
+   * The same transaction, committed without an fsync: for rows no reader follows until a later
+   * synced commit, which under WAL makes every earlier frame durable too. The setting is restored
+   * in the same task, so no other chat's commit runs under it.
+   */
+  unsyncedTransaction<T>(run: (db: Database.Database) => T): T {
+    const synchronous = Number(this.db.pragma('synchronous', { simple: true }))
+    this.db.pragma('synchronous = NORMAL')
+    try {
+      return this.transaction(run)
+    } finally {
+      this.db.pragma(`synchronous = ${synchronous}`)
+    }
+  }
+
   /** Where this chat's history lived before the journal was one database per host. */
   legacyDirectoryFor(
     identity: Pick<AgentSessionJournalIdentity, 'workspaceId' | 'sessionId'>

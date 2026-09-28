@@ -313,6 +313,48 @@ describe('importing a per-chat journal', () => {
     expect(rowCount(database.db)).toBe(rows.length)
   })
 
+  // Only the copy's own batches skip the fsync: a live chat's write between them, and the publish
+  // that makes the batches durable, commit fully synced.
+  it('commits copy batches unsynced, and every other commit synced', async () => {
+    const { epoch, rows } = await historyRows()
+    await writeLegacyJournal(epoch, rows)
+    const database = openTestJournalHostDatabase(root)
+    const synchronous = () => Number(database.db.pragma('synchronous', { simple: true }))
+    const transaction = database.transaction.bind(database)
+    const commits: number[] = []
+    vi.spyOn(database, 'transaction').mockImplementation((run) =>
+      transaction((db) => {
+        commits.push(synchronous())
+        return run(db)
+      })
+    )
+    const between: number[] = []
+    let copying = true
+    const tick = (): void => {
+      // What a live chat's append would commit under, between two copy batches.
+      between.push(synchronous())
+      if (copying) {
+        setImmediate(tick)
+      }
+    }
+
+    setImmediate(tick)
+    await importPerSessionJournal({
+      database,
+      identity: IDENTITY,
+      legacyDirectory: legacyDir(),
+      batchRows: 1
+    })
+    copying = false
+
+    // 2 is FULL, 1 is NORMAL.
+    expect(commits.slice(0, rows.length)).toEqual(rows.map(() => 1))
+    expect(commits.at(-1)).toBe(2)
+    expect(between.length).toBeGreaterThan(0)
+    expect(between.every((value) => value === 2)).toBe(true)
+    expect(synchronous()).toBe(2)
+  })
+
   it('ends a copy on a turn of its own, so the open that replays it starts a new task', async () => {
     const { epoch, rows } = await historyRows()
     await writeLegacyJournal(epoch, rows)
