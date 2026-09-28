@@ -29,6 +29,7 @@ function classifyFailure(error: unknown): Record<string, unknown> {
     ['connection', /connection|channel|socket/i], ['mock-contract', /not a function|mock/i]
   ] as const
   return {
+    ...((error && typeof error === 'object' && 'code' in error && typeof error.code === 'number' && Number.isInteger(error.code)) ? { nativeExitCode: error.code } : {}),
     kind: error instanceof Error ? error.constructor.name.replace(/[^a-zA-Z0-9_]/g, '').slice(0,64) : typeof error,
     categories: categories.filter(([,pattern]) => pattern.test(message)).map(([label]) => label),
     frames: error instanceof Error ? [...(error.stack ?? '').matchAll(/([a-zA-Z0-9_-]+\.(?:ts|js|mjs|cjs)):(\d+):(\d+)/g)].slice(0,8).map(match => `${match[1]}:${match[2]}:${match[3]}`) : []

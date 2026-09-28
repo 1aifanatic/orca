@@ -66,6 +66,10 @@ function Invoke-Bounded([string]$Program,[string[]]$Arguments,[int]$Seconds=20,[
       $report.sshClient=@{timedOut=$timedOut;exitCode=$process.ExitCode;stderrBytes=$errorText.Length;categories=@(Diagnostic-Categories $errorText)}
       Write-Stage 'ssh-client-result'
     }
+    if([IO.Path]::GetFileName($Program) -eq 'sftp.exe'){
+      $report.sftpClient=@{timedOut=$timedOut;exitCode=$process.ExitCode;stderrBytes=$errorText.Length;categories=@(Diagnostic-Categories $errorText)}
+      Write-Stage 'sftp-client-result'
+    }
     if($timedOut){throw 'Owned command deadline exceeded'}
     if($process.ExitCode -ne 0 -and -not $AllowFailure){throw "Owned command failed: $([IO.Path]::GetFileName($Program)) exit $($process.ExitCode)"}
     Write-Stage ('command-'+[IO.Path]::GetFileName($Program)+'-complete')
@@ -183,7 +187,7 @@ AllowTcpForwarding no
 AllowAgentForwarding no
 PermitTunnel no
 PermitTTY no
-Subsystem sftp internal-sftp
+Subsystem sftp sftp-server.exe
 LogLevel VERBOSE
 "@ | Set-Content -LiteralPath $config -Encoding ascii
   Write-Stage 'server-config-validate-start'
@@ -230,6 +234,15 @@ LogLevel VERBOSE
   if(-not $listeners -or @($listeners|Where-Object {$_.LocalAddress -ne '127.0.0.1' -or $_.OwningProcess -ne $ownedServerPid}).Count){throw 'Listener escaped private loopback owner'}
   $report.observations=@{serverMachine=(Machine $sshd);clientMachine=(Machine $ssh);publisherVerified=$true;serviceAccount='LocalSystem';dedicatedUser=$true;pinnedHostKey=$true;stockCmdDispatch=$true;loopbackOnly=$true;port=$port;servicePid=$ownedServerPid}
   if ($ProductionRouteProbe) {
+    Write-Stage 'sftp-preflight-start'
+    $sftpBatch=Join-Path $root 'sftp-probe.txt'
+    "pwd`nquit" | Set-Content -LiteralPath $sftpBatch -Encoding ascii
+    $sftp=Join-Path $sshDir 'sftp.exe'
+    $sftpArgs=@('-v','-S',$ssh,'-F','NUL','-P',[string]$port,'-i',$clientKey,'-b',$sftpBatch,'-o','BatchMode=yes','-o','IdentitiesOnly=yes','-o','StrictHostKeyChecking=yes','-o',"UserKnownHostsFile=$known",'-o','ConnectTimeout=5',"$name@127.0.0.1")
+    $sftpProof=Invoke-Bounded $sftp $sftpArgs 30 -AllowFailure
+    if($sftpProof.code -ne 0){throw 'Pinned native SFTP subsystem preflight failed'}
+    $report.sftpSubsystem=@{implementation='pinned external sftp-server.exe';authenticatedBatchPassed=$true}
+    Write-Stage 'sftp-preflight-complete'
     Write-Stage 'production-route-start'
     & $ProductionRouteProbe $name $port $clientKey $known
     $report.productionRoute='passed-authenticated-cleanup'
