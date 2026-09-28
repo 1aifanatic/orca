@@ -9,7 +9,7 @@
       "ordinal": 7,
       "value": false
     },
-    "48a9b4deaa5b": {
+    "17b97af91ff8": {
       "draft": "",
       "error": "",
       "item": {
@@ -18,7 +18,10 @@
           "id": "gitlab:issue:4",
           "labels": ["bug"],
           "number": 4,
-          "projectRef": "group/project",
+          "projectRef": {
+            "host": "gitlab.com",
+            "path": "group/project"
+          },
           "repoId": "repo-1",
           "state": "opened",
           "type": "issue"
@@ -78,7 +81,20 @@
         "provider": "gitlab"
       }
     },
-    "6d3492ac42bc": {
+    "8ab635fff625": {
+      "name": "gitlab.addIssueComment#1",
+      "ordinal": 4,
+      "json": "{\"id\":\"frame-1\",\"deviceToken\":\"recording-device\",\"method\":\"gitlab.addIssueComment\",\"params\":{\"repo\":\"id:repo-1\",\"number\":4,\"body\":\"a comment\",\"projectRef\":{\"host\":\"gitlab.com\",\"path\":\"group/project\"}}}"
+    },
+    "eb79a9b3682a": {
+      "status": "fulfilled",
+      "startedAt": 0,
+      "settledAt": 0,
+      "value": {
+        "$rpc": "undefined"
+      }
+    },
+    "ebbbaa5649f1": {
       "name": "gitlab.addIssueComment#1",
       "ordinal": 3,
       "args": [
@@ -91,7 +107,10 @@
           "value": {
             "body": "a comment",
             "number": 4,
-            "projectRef": "group/project",
+            "projectRef": {
+              "host": "gitlab.com",
+              "path": "group/project"
+            },
             "repo": "id:repo-1"
           }
         },
@@ -121,19 +140,6 @@
         }
       }
     },
-    "bc28ca26b0ad": {
-      "name": "gitlab.addIssueComment#1",
-      "ordinal": 4,
-      "json": "{\"id\":\"frame-1\",\"deviceToken\":\"recording-device\",\"method\":\"gitlab.addIssueComment\",\"params\":{\"repo\":\"id:repo-1\",\"number\":4,\"body\":\"a comment\",\"projectRef\":\"group/project\"}}"
-    },
-    "eb79a9b3682a": {
-      "status": "fulfilled",
-      "startedAt": 0,
-      "settledAt": 0,
-      "value": {
-        "$rpc": "undefined"
-      }
-    },
     "ed3a7d6bc894": {
       "name": "error",
       "ordinal": 2,
@@ -151,13 +157,13 @@
       {
         "id": "comment-settled",
         "observation": {
-          "sender": ["6d3492ac42bc"],
-          "payloads": ["bc28ca26b0ad"],
+          "sender": ["ebbbaa5649f1"],
+          "payloads": ["8ab635fff625"],
           "settlements": {
             "mount": "eb79a9b3682a",
             "comment-0": "eb79a9b3682a"
           },
-          "state": "48a9b4deaa5b",
+          "state": "17b97af91ff8",
           "effects": [
             "fd2fad47bec2",
             "ed3a7d6bc894",

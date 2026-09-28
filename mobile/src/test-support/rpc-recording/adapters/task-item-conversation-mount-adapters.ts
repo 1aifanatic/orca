@@ -46,7 +46,7 @@ const GITLAB_ISSUE_ITEM = {
     type: 'issue',
     state: 'opened',
     labels: ['bug'],
-    projectRef: 'group/project'
+    projectRef: { host: 'gitlab.com', path: 'group/project' }
   }
 } as const
 
@@ -60,7 +60,7 @@ const GITLAB_MR_ITEM = {
     type: 'mr',
     state: 'opened',
     labels: [],
-    projectRef: 'group/project'
+    projectRef: { host: 'gitlab.com', path: 'group/project' }
   }
 } as const
 

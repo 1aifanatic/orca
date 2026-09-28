@@ -311,7 +311,7 @@
           "action": "write",
           "id": "write",
           "args": {
-            "preset": "assigned"
+            "preset": "my-issues"
           }
         },
         {
@@ -320,7 +320,7 @@
         {
           "complete": "settings.update#1",
           "params": {
-            "defaultTaskViewPreset": "assigned"
+            "defaultTaskViewPreset": "my-issues"
           },
           "reject": {
             "message": "write disconnected",
@@ -9592,10 +9592,10 @@
             "result": {
               "summary": {
                 "baseRef": "origin/main",
-                "baseOid": "base-oid",
+                "baseOid": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
                 "compareRef": "feature",
-                "headOid": "head-oid",
-                "mergeBase": "merge-base",
+                "headOid": "f0e1d2c3b4a5968778695a4b3c2d1e0f98765432",
+                "mergeBase": "0123456789abcdef0123456789abcdef01234567",
                 "changedFiles": 1,
                 "status": "ready"
               },
@@ -9760,10 +9760,10 @@
             "result": {
               "summary": {
                 "baseRef": "origin/main",
-                "baseOid": "base-oid",
+                "baseOid": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
                 "compareRef": "feature",
-                "headOid": "head-oid",
-                "mergeBase": "merge-base",
+                "headOid": "f0e1d2c3b4a5968778695a4b3c2d1e0f98765432",
+                "mergeBase": "0123456789abcdef0123456789abcdef01234567",
                 "changedFiles": 1,
                 "status": "ready"
               },
@@ -10000,9 +10000,9 @@
             "filePath": "src/app.ts",
             "compare": {
               "baseRef": "origin/main",
-              "baseOid": "base-oid",
-              "headOid": "head-oid",
-              "mergeBase": "merge-base"
+              "baseOid": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+              "headOid": "f0e1d2c3b4a5968778695a4b3c2d1e0f98765432",
+              "mergeBase": "0123456789abcdef0123456789abcdef01234567"
             }
           },
           "reply": {
@@ -10254,10 +10254,10 @@
             "result": {
               "summary": {
                 "baseRef": "origin/main",
-                "baseOid": "base-oid",
+                "baseOid": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
                 "compareRef": "feature",
-                "headOid": "head-oid",
-                "mergeBase": "merge-base",
+                "headOid": "f0e1d2c3b4a5968778695a4b3c2d1e0f98765432",
+                "mergeBase": "0123456789abcdef0123456789abcdef01234567",
                 "changedFiles": 1,
                 "status": "ready"
               },
@@ -11512,7 +11512,7 @@
           "complete": "gitlab.workItemDetails#1",
           "params": {
             "iid": 4,
-            "projectRef": "group/project",
+            "projectRef": { "host": "gitlab.com", "path": "group/project" },
             "repo": "id:repo-1",
             "type": "issue"
           },
@@ -11555,7 +11555,7 @@
           "complete": "gitlab.workItemDetails#1",
           "params": {
             "iid": 4,
-            "projectRef": "group/project",
+            "projectRef": { "host": "gitlab.com", "path": "group/project" },
             "repo": "id:repo-1",
             "type": "issue"
           },
@@ -12390,7 +12390,7 @@
           "params": {
             "body": "a comment",
             "number": 4,
-            "projectRef": "group/project",
+            "projectRef": { "host": "gitlab.com", "path": "group/project" },
             "repo": "id:repo-1"
           },
           "reply": {
@@ -12431,7 +12431,7 @@
           "params": {
             "body": "a comment",
             "iid": 7,
-            "projectRef": "group/project",
+            "projectRef": { "host": "gitlab.com", "path": "group/project" },
             "repo": "id:repo-1"
           },
           "reply": {
@@ -12727,7 +12727,7 @@
           "params": {
             "iid": 7,
             "method": "squash",
-            "projectRef": "group/project",
+            "projectRef": { "host": "gitlab.com", "path": "group/project" },
             "repo": "id:repo-1"
           },
           "reply": {
@@ -12761,7 +12761,7 @@
           "complete": "gitlab.updateIssue#1",
           "params": {
             "number": 4,
-            "projectRef": "group/project",
+            "projectRef": { "host": "gitlab.com", "path": "group/project" },
             "repo": "id:repo-1",
             "updates": {
               "state": "closed"
@@ -12823,7 +12823,7 @@
           "complete": "gitlab.updateMRState#1",
           "params": {
             "iid": 7,
-            "projectRef": "group/project",
+            "projectRef": { "host": "gitlab.com", "path": "group/project" },
             "repo": "id:repo-1",
             "state": "closed"
           },
@@ -12895,7 +12895,7 @@
           "complete": "gitlab.updateIssue#1",
           "params": {
             "number": 4,
-            "projectRef": "group/project",
+            "projectRef": { "host": "gitlab.com", "path": "group/project" },
             "repo": "id:repo-1",
             "updates": {
               "addLabels": ["triage"],
@@ -12933,7 +12933,7 @@
           "complete": "gitlab.updateMR#1",
           "params": {
             "iid": 7,
-            "projectRef": "group/project",
+            "projectRef": { "host": "gitlab.com", "path": "group/project" },
             "repo": "id:repo-1",
             "updates": {
               "addLabels": ["triage"],
@@ -14897,6 +14897,7 @@
               "onlyWhenDesktopAway": true,
               "sound": true
             },
+            "apnsEnvironment": "production",
             "platform": "ios",
             "token": "apns-token-1"
           },
@@ -14945,6 +14946,7 @@
               "onlyWhenDesktopAway": true,
               "sound": true
             },
+            "apnsEnvironment": "production",
             "platform": "ios",
             "token": "apns-token-1"
           },
@@ -20637,10 +20639,10 @@
             "result": {
               "summary": {
                 "baseRef": "origin/dev",
-                "baseOid": "base-oid",
+                "baseOid": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
                 "compareRef": "feature",
-                "headOid": "head-oid",
-                "mergeBase": "merge-base",
+                "headOid": "f0e1d2c3b4a5968778695a4b3c2d1e0f98765432",
+                "mergeBase": "0123456789abcdef0123456789abcdef01234567",
                 "changedFiles": 1,
                 "status": "ready"
               },
@@ -20758,9 +20760,9 @@
             "filePath": "src/app.ts",
             "compare": {
               "baseRef": "origin/main",
-              "baseOid": "base-oid",
-              "headOid": "head-oid",
-              "mergeBase": "merge-base"
+              "baseOid": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+              "headOid": "f0e1d2c3b4a5968778695a4b3c2d1e0f98765432",
+              "mergeBase": "0123456789abcdef0123456789abcdef01234567"
             }
           },
           "reply": {
@@ -22545,9 +22547,9 @@
             "filePath": "src/app.ts",
             "compare": {
               "baseRef": "origin/main",
-              "baseOid": "base-oid",
-              "headOid": "head-oid",
-              "mergeBase": "merge-base"
+              "baseOid": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+              "headOid": "f0e1d2c3b4a5968778695a4b3c2d1e0f98765432",
+              "mergeBase": "0123456789abcdef0123456789abcdef01234567"
             }
           },
           "reply": {

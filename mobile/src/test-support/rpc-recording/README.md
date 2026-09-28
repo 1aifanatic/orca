@@ -348,6 +348,23 @@ measurements of the change they describe and are not restatements of this one. F
 answers one question — does the rewritten call site produce the same sender calls, settlements,
 state and effects as the base branch did? A pull request that moves no golden says yes.
 
+### Recorded requests against the host's params contract
+
+The goldens script the host's replies, so nothing in a replay stops a scenario from recording a
+success for a request the real host would refuse. `recorded-request-params.test.ts` parses every
+distinct request the corpus puts on the wire with the host dispatcher's own
+`parseRpcRequestParams` and the schema `rpc-params-catalog.generated.ts` binds to that method. It
+fails on a method the host does not have, params the host refuses, params sent to a method that
+takes none (the dispatcher never reads them), and keys the schema silently strips, unless an entry
+in its inventory gives the reason; an entry nothing strips fails too. It runs in the Mobile Checks
+suite and in the recording replay a desktop pull request to `src/shared/` triggers, so tightening a
+host schema that today's phone requests do not satisfy fails there. It checks against the current
+host only, and it does not check the scripted replies against real host results.
+
+When it landed it found twelve requests the host would refuse, all from invented fixture values
+rather than product code: git object ids that were not ids, an iOS push token without its APNs
+environment, a Linear filter passed as a GitHub preset, and a GitLab project reference as a string.
+
 It is not a substitute for reading the diff. Five facts bound it, all learned the hard way:
 
 - **It was blind to refusal ordering.** Reordering the settings and sibling refusal checks in
@@ -445,8 +462,8 @@ a product change with its own re-record.
 - **Behaviour change.** Change the product, run the suite, read each failure, then
   `pnpm --dir mobile rpc:record` and commit. The pull request diff is exactly the goldens whose
   recorded behaviour moved; say why in the pull request. Nothing is owed after the merge.
-- **New scenario.** Add it to `pilot-scenarios.json`. The suite fails with `No golden recorded for
-  <id>`; record it with the command the failure prints and commit the new files.
+- **New scenario.** Add it to `pilot-scenarios.json`. The suite fails naming each missing golden
+  and the command that records it; run that command and commit the new files.
 - **Recorder change.** Re-record. The diff is exactly what the recorder now observes differently;
   if there is none, there is nothing to commit.
 - **Review.** Read the "RPC recording changes" section of the Mobile Checks job summary, which is
