@@ -102,6 +102,22 @@ describe('buildWorktreeStartupForAgent host resolution', () => {
       request_kind: 'new'
     })
   })
+
+  it('attributes a startup agent whose caller named no surface as unknown', () => {
+    const result = buildWorktreeStartupForAgent({
+      repo: makeRepo({}),
+      settings,
+      agent: 'claude',
+      getLaunchPlatform: () => 'linux',
+      toSessionOptions: () => undefined
+    })
+
+    expect(result.startup.telemetry).toEqual({
+      agent_kind: 'claude-code',
+      launch_source: 'unknown',
+      request_kind: 'new'
+    })
+  })
 })
 
 describe('buildWorktreeStartupForDraft agent detection', () => {
