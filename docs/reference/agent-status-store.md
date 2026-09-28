@@ -330,8 +330,8 @@ the roster, the rollout state and the turn; only a real session start
 the rollout state on its own. The record lives only on the execution host's
 listener and is not persisted: hydration seeds it from the row's `mainAgent`
 without a turn id, then reads the row's saved rollout (`providerSession.transcriptPath`)
-once, adopting the rollout's latest turn whatever became of it, so a turn that
-ended while Orca was down settles on the watch's first tick. For a
+once from the start; that read adopts the rollout's latest turn whatever became
+of it, so a turn that ended while Orca was down settles on the watch's first tick. For a
 relayed pane the relay applies that rule to the raw hooks and its own rollout;
 main mirrors the relay's `mainAgent` and, for the relay's rollout observations
 (source `codex`, no hook name), its whole roster, and keeps its copy only to

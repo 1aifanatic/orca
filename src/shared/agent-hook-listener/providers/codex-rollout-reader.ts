@@ -20,15 +20,13 @@ import {
 
 /** Catches the pane up on its parent rollout, then applies what it records to the root: a running
  *  root with no turn id adopts the rollout's latest turn if it is open or started in this read
- *  (SessionStart carries no id, nor do some Codex builds' hooks), and a turn the rollout records
- *  ended settles. A child's hook names its own rollout, so it reads the parent a root event named
- *  earlier. `restored` is a root seeded from a row saved before a restart, which describes the
- *  rollout's latest turn whatever became of it. */
+ *  (SessionStart carries no id, nor do some Codex builds' hooks, nor a root restored from disk,
+ *  whose first read starts from nothing), and a turn the rollout records ended settles. A child's
+ *  hook names its own rollout, so it reads the parent a root event named earlier. */
 export function catchUpOnCodexParentRollout(
   state: HookListenerState,
   paneKey: string,
-  rootTranscriptPath: string | undefined,
-  options: { restored?: boolean } = {}
+  rootTranscriptPath: string | undefined
 ): void {
   const transcriptState = rootTranscriptPath
     ? getOrCreateCodexSubagentTranscriptState(state, paneKey)
@@ -45,10 +43,7 @@ export function catchUpOnCodexParentRollout(
   )
   const lead = state.codexLeadStateByPaneKey.get(paneKey)
   const turns = transcriptState.mainTurns
-  const adoptable =
-    turns.openTurnId !== undefined ||
-    options.restored === true ||
-    turns.latestTurnId !== latestBefore
+  const adoptable = turns.openTurnId !== undefined || turns.latestTurnId !== latestBefore
   // Why only a root still running: a settled root with no id did not describe a later turn.
   const turnId =
     lead?.turnId ?? (lead?.state !== 'done' && adoptable ? turns.latestTurnId : undefined)

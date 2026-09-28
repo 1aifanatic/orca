@@ -126,9 +126,7 @@ export abstract class AgentHookServerHydration extends AgentHookServerReaping {
           const rolloutPath = entry.providerSession?.transcriptPath
           // Why: a turn can end while Orca is down; the rollout this host reads still records it.
           if (!entry.connectionId && entry.payload.state !== 'done' && rolloutPath) {
-            catchUpOnCodexParentRollout(this.state, resolvedPaneKey, rolloutPath, {
-              restored: true
-            })
+            catchUpOnCodexParentRollout(this.state, resolvedPaneKey, rolloutPath)
             this.armCodexRolloutWatch(resolvedPaneKey)
           }
         } else if (entry.payload.agentType === 'claude') {
