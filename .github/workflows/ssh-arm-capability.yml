@@ -1,0 +1,29 @@
+name: Windows ARM SSH capability observation
+on:
+  push:
+    branches: [OrcaWin/np-arm-ssh-diagnostic]
+    paths: ['.github/workflows/ssh-arm-capability.yml', '.build/integration-audit/windows-arm-ssh-qualification/preflight.ps1']
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  observe:
+    if: github.repository == 'stablyai/orca' && github.ref == 'refs/heads/OrcaWin/np-arm-ssh-diagnostic'
+    runs-on: windows-11-arm
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          sparse-checkout: .build/integration-audit/windows-arm-ssh-qualification
+      - name: Observe optional server and native architecture without changing the host
+        shell: pwsh
+        run: |
+          & .build/integration-audit/windows-arm-ssh-qualification/preflight.ps1 | Out-File -LiteralPath "$env:RUNNER_TEMP\arm-ssh-capability.json" -Encoding utf8
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: arm-ssh-capability-${{ github.run_id }}
+          path: ${{ runner.temp }}/arm-ssh-capability.json
+          if-no-files-found: error
+          retention-days: 7
