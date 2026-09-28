@@ -76,9 +76,10 @@ function readTiming(
 type StructuredAgentJournalTurn = {
   timing: StructuredAgentTurnTiming | null
   /** The transcript key that anchors this turn's bar and owns its rows: the
-   *  opener user item when the host names one it can resolve, else the turn
-   *  record's own item (a turn the provider opened, or an opener outside the
-   *  loaded window). Null only for an older host that names nothing. */
+   *  opener user item when the host names one it can resolve (or the send still
+   *  in flight ahead of the record), else the turn record's own item (a turn the
+   *  provider opened, or an opener outside the loaded window). Null only for an
+   *  older host that names nothing. */
   key: string | null
 }
 
@@ -107,13 +108,24 @@ function readStructuredAgentJournalTurns(
       aliases.set(submission.providerItemId, agentJournalSubmissionKey(submission.clientMessageId))
     }
   }
+  // Sends not yet matched to a provider item. Codex reports a turn open before it
+  // echoes the send, so for that gap the turn names a key no alias resolves yet.
+  const inFlight = new Set(
+    submissions
+      .filter((submission) => submission.dispatchState === 'pending' && !submission.providerItemId)
+      .map((submission) => agentJournalSubmissionKey(submission.clientMessageId))
+  )
   const byUserItem = new Map<string, StructuredAgentTurnTiming | null>()
   const byTurnId = new Map<string, StructuredAgentJournalTurn>()
   let precedingUserItemId: string | null = null
+  let inFlightSinceLastTurn: string | null = null
   let precedingTurnEndedAt: number | undefined
   for (const item of items) {
     if (item.body.kind === 'message' && item.body.role === 'user') {
       precedingUserItemId = item.itemId
+      if (inFlightSinceLastTurn === null && inFlight.has(item.itemId)) {
+        inFlightSinceLastTurn = item.itemId
+      }
       continue
     }
     const turn = readAgentJournalTurn(item.body)
@@ -124,16 +136,16 @@ function readStructuredAgentJournalTurns(
     precedingTurnEndedAt = timing?.completedAt ?? item.observedAt
     const key = turn.userItemId
     const named = key === undefined ? null : itemIds.has(key) ? key : (aliases.get(key) ?? null)
-    // A named opener the window cannot resolve anchors to the record itself, like a
-    // provider-opened turn — never to a preceding prompt that did not open it.
-    byTurnId.set(turn.turnId, {
-      timing,
-      key: key === undefined ? null : (named ?? item.itemId)
-    })
+    // An unresolved opener is the send still in flight ahead of this record; with none,
+    // it is outside the window, and the turn anchors to its own record like a
+    // provider-opened one — never to a preceding prompt that did not open it.
+    const turnKey = key === undefined ? null : (named ?? inFlightSinceLastTurn ?? item.itemId)
+    inFlightSinceLastTurn = null
+    byTurnId.set(turn.turnId, { timing, key: turnKey })
     if (!timing && turn.state !== 'unverifiable') {
       continue
     }
-    const userItemId = key === undefined ? precedingUserItemId : (named ?? item.itemId)
+    const userItemId = key === undefined ? precedingUserItemId : turnKey
     if (userItemId !== null) {
       byUserItem.set(userItemId, timing)
     }

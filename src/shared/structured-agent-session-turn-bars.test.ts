@@ -347,6 +347,36 @@ describe('turns whose host names no opener', () => {
     expect(selectStructuredAgentTurnBars(items, [], 'resumed').activeTurnOpenedBy).toBe(self)
   })
 
+  it('keeps the running bar on the send Codex opened a turn for before it echoes it', () => {
+    // Codex reports turn/started before hooks and prewarm run, so the turn names its
+    // provider key while the send that opened it is still pending (no alias yet).
+    const key = 'codex:thread:t2:0'
+    const items: AgentJournalRenderItem[] = [
+      user(1, 'first', 1_000),
+      turn(2, 1_100, {
+        turnId: 't1',
+        state: 'completed',
+        userItemId: 'orca:first',
+        startedAt: 1_100,
+        completedAt: 2_000
+      }),
+      tool(3, 1_500),
+      user(4, 'second', 3_000),
+      turn(5, 3_100, { turnId: 't2', state: 'running', startedAt: 3_100, userItemId: key })
+    ]
+    const submissions = [accepted('first', 'claude:first'), accepted('second', null)]
+    const bars = selectStructuredAgentTurnBars(items, submissions, 't2')
+    expect(bars.activeTurnOpenedBy).toBe('orca:second')
+    expect(bars.turnKeysByItemId.get('orca:second')).toBe('orca:second')
+    // A turn with no send in flight still anchors to its own record.
+    const selfOpened = selectStructuredAgentTurnBars(
+      items,
+      [accepted('first', 'claude:first'), accepted('second', 'claude:second')],
+      't2'
+    )
+    expect(selfOpened.activeTurnOpenedBy).toBe('legacy:claude:55368cfb:turn-lifecycle%3At2')
+  })
+
   it('names nothing for the unanchored transcript', () => {
     expect(selectNativeChatActiveTurnKey([message('a', 'assistant')], null)).toBe('__unanchored__')
   })
