@@ -16,7 +16,7 @@ while IFS= read -r component; do
   bash "/tmp/pinned-rust/$component/install.sh" --prefix=/opt/orca-rust --disable-ldconfig
 done < /rust/components.txt
 bash /probe/install-bootstrap.sh
-export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0=/work/source
+git config --global --add safe.directory /work/source
 dpkg-query -W > /results/installed-packages.txt
 cp /rust/decoded-components.json /results/rust-inputs.json
 bash /probe/build-patched-bun.sh
