@@ -1,4 +1,8 @@
-import { parseAgentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
+import {
+  agentJournalItemKey,
+  parseAgentJournalItemKey
+} from '../../../shared/agent-session-journal-item-key'
+import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import {
   AGENT_JOURNAL_THREAD_SCOPE,
   type AgentJournalItemBody,
@@ -182,13 +186,18 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
     const items = input.journal.snapshot().items
     const mutations: JournalLifecycleMutationInput[] = []
     if (showUnexpectedExitOutcome && input.exitedDuringStartup) {
-      // A start for a command, goal change or rewind can die with nothing queued for the loop.
-      mutations.push(
-        structuredAgentSessionStartFailureRow(
-          input.exitedDuringStartup.generation ?? input.settlementId,
-          providerStartupFailureOutcome(input.unexpectedExitReason)
-        )
+      const row = structuredAgentSessionStartFailureRow(
+        input.exitedDuringStartup.generation ?? input.settlementId,
+        providerStartupFailureOutcome(input.unexpectedExitReason)
       )
+      // A start a message waited on is the delivery loop's to record, before or after this exit,
+      // in the words it rejected the message with; this row is for a command, goal or rewind start.
+      const recordedByDeliveryLoop =
+        input.journal.submissions?.().some(isQueuedAgentJournalSubmission) ||
+        items.some((item) => item.itemId === agentJournalItemKey(row.identity))
+      if (!recordedByDeliveryLoop) {
+        mutations.push(row)
+      }
     } else if (showUnexpectedExitOutcome) {
       // The turn the exit ended, and an error so no fold ever hides why it stopped.
       mutations.push({

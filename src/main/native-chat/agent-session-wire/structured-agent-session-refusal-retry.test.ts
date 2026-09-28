@@ -107,6 +107,8 @@ async function abandonHost(host: StructuredAgentSessionHost): Promise<void> {
   host['runtimeState'].stopLeaseRenewal()
   host['lifetime'].dispose()
   host['conversationDelivery'].loop.dispose()
+  // An accepted send starts the agent in the background; its lease write must land before rm.
+  await host['tasks'].drainAttaches()
   await Promise.all([...host['sessions'].values()].map((session) => session.journal.close()))
   host['sessions'].clear()
 }
