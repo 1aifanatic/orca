@@ -41,20 +41,17 @@ describe('isRetiredCodexHookCommand', () => {
     expect(isRetiredCodexHookCommand(command)).toBe(true)
   })
 
-  // Why: every build and instance still writes the current form, so sweeping
-  // it would strip a live entry and restart the rewrite fight between builds.
+  // Why: every build writes the frozen form and older builds still write theirs;
+  // sweeping either would strip a live entry another Orca relies on.
   it.each([
     ["this build's command", getManagedCommand(getManagedScriptPath())],
+    ["an older build's command", wrapPosixHookCommand('/other/.orca/agent-hooks/codex-hook.sh')],
     [
-      "another HOME's current command",
-      wrapPosixHookCommand('/other/.orca/agent-hooks/codex-hook.sh')
-    ],
-    [
-      "today's Windows launcher",
+      "an older build's Windows launcher",
       buildWindowsHookPowerShellCommand('C:\\Users\\Jo Smith\\.orca\\agent-hooks\\codex-hook.cmd')
     ],
     [
-      "today's shared encoded launcher",
+      'the shared encoded launcher',
       wrapWindowsHookCommand('C:\\Users\\Jo Smith\\.orca\\agent-hooks\\codex-hook.cmd')
     ],
     ['a user script with the same name', '/bin/sh "/u/bin/codex-hook.sh"'],

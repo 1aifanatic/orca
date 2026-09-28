@@ -10,8 +10,8 @@ const DOUBLE_QUOTED_SH = /^\/bin\/sh "([^"]+)"$/
 // #1536 until hooks left ~/.codex (#2350): `if [ -x '<p>' ]; then /bin/sh '<p>'; fi`.
 const EXEC_GUARDED_SH = /^if \[ -x ('(?:[^']|'\\'')*') \]; then \/bin\/sh \1; fi$/
 // Real-home lane (#9501 until #10885): the file-guarded form draining with a
-// bare `cat`. Frozen, and never the current `command -p cat` drain, which every
-// build still writes and so must never be swept.
+// bare `cat`. Never the `command -p cat` drain, which builds from before the
+// frozen command still write and so must never be swept.
 const BARE_CAT_FILE_GUARDED_SH =
   /^if \[ -f ('(?:[^']|'\\'')*') \] && \[ -r \1 \] && \[ -x \1 \]; then \/bin\/sh \1; else cat >\/dev\/null 2>&1 \|\| :; fi$/
 // Windows' real-home lane (#9501 until #10221 took Windows off it) wrapped the
@@ -62,7 +62,7 @@ export function isRetiredCodexHookCommand(command: string | undefined): boolean 
     )
   }
   // Why: before #1546 Windows wrote a bare per-userData script path; the bare
-  // shared path is still today's form for cmd-safe paths, so it never matches.
+  // shared path, in either slash direction, is still written, so it never matches.
   return (
     win32.isAbsolute(command) &&
     isAgentHooksScript(command, 'codex-hook.cmd') &&

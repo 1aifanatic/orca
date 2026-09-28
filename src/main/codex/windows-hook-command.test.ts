@@ -23,20 +23,19 @@ describe('Codex Windows hook command', () => {
       const path = `C:\\Users\\${profile}\\.orca\\agent-hooks\\codex-hook.cmd`
       const command = getManagedCommand(path)
       expect(command).not.toMatch(/powershell\.exe|EncodedCommand|Set-ExecutionPolicy/)
-      expect(command).toContain(`-LiteralPath '${path.replaceAll("'", "''")}' -PathType Leaf`)
+      expect(command).toContain(
+        `-LiteralPath '${path.replaceAll('\\', '/').replaceAll("'", "''")}' -PathType Leaf`
+      )
       expect(command).toContain(`[Console]::In.ReadToEnd()`)
       expect(createManagedCommandMatcher('codex-hook.cmd')(command)).toBe(true)
       expect(wrapWindowsCmdHookCommand(path)).toContain('-EncodedCommand')
     }
   )
 
-  it('preserves the existing ASCII command and POSIX launcher', () => {
+  it('writes a bare forward-slash path when the profile is one token', () => {
     vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
-    const path = 'C:\\Users\\alice\\.orca\\agent-hooks\\codex-hook.cmd'
-    expect(getManagedCommand(path)).toBe(path)
-    vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
-    expect(getManagedCommand('/home/测试/.orca/agent-hooks/codex-hook.sh')).toContain(
-      "[ -x '/home/测试/.orca/agent-hooks/codex-hook.sh' ]"
+    expect(getManagedCommand('C:\\Users\\alice\\.orca\\agent-hooks\\codex-hook.cmd')).toBe(
+      'C:/Users/alice/.orca/agent-hooks/codex-hook.cmd'
     )
   })
 })

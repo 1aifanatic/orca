@@ -122,6 +122,7 @@
     "../src/main/codex/codex-config-settings-upsert.ts",
     "../src/main/codex/codex-daemon-socket-path-guard.ts",
     "../src/main/codex/codex-home-paths.ts",
+    "../src/main/codex/codex-hook-command-form.ts",
     "../src/main/codex/codex-hook-definition.ts",
     "../src/main/codex/codex-managed-home-resource-copy-marker.ts",
     "../src/main/codex/codex-managed-trust-grant-plan.ts",
