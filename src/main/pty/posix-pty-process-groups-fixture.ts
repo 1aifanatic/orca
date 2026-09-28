@@ -13,7 +13,12 @@ function readPs(args: string[]): string {
 }
 
 function findTaggedProcesses(token: string): TaggedProcess[] {
-  const output = readPs(['-axo', 'pid=,pgid=,state=,command='])
+  const output = readPs([
+    '-e',
+    '-w',
+    '-o',
+    'pid=PROCESS_ID,pgid=PROCESS_GID,stat=PROCESS_STATE,args=COMMAND'
+  ])
   const matches: TaggedProcess[] = []
   for (const line of output.split(/\r?\n/)) {
     if (!line.includes(token)) {
@@ -52,7 +57,14 @@ function cleanupTaggedProcesses(token: string): void {
 }
 
 function readProcessGroup(pid: number): number {
-  return Number(readPs(['-p', String(pid), '-o', 'pgid=']).trim())
+  const rows = readPs(['-e', '-o', 'pid=PROCESS_ID,pgid=PROCESS_GID'])
+  for (const row of rows.split(/\r?\n/)) {
+    const match = /^\s*(\d+)\s+(\d+)\s*$/.exec(row)
+    if (match && Number(match[1]) === pid) {
+      return Number(match[2])
+    }
+  }
+  throw new Error('PTY fixture root process group is unavailable')
 }
 
 export async function reapPosixForegroundJob(): Promise<{
