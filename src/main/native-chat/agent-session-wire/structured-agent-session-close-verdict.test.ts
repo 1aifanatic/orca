@@ -10,6 +10,7 @@ import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import { describeNativeChatTurnStatus } from '../../../shared/native-chat-turn-status'
 import { selectStructuredAgentSettledTurns } from '../../../shared/structured-agent-session-turn-timing'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
+import { evictHeldStructuredAgentSession } from './structured-agent-session-host-lifetime'
 import {
   adapter,
   attach,
@@ -266,4 +267,23 @@ describe('a turn cut short by closing its provider', () => {
     expect(turn).toMatchObject({ state: 'interrupted' })
     expect(turn).not.toHaveProperty('outcome')
   })
+
+  it.each(['user-close', 'evict'] as const)(
+    'drops the status row of a chat a %s ends, rather than republishing it',
+    async (cause) => {
+      await runningTurn()
+      const context = host['lifetimeContext']()
+      const forgetStatus = vi.fn(context.forgetStatus)
+      const publishStatus = vi.fn()
+
+      await evictHeldStructuredAgentSession(
+        { ...context, forgetStatus, publishStatus },
+        SESSION,
+        cause
+      )
+
+      expect(forgetStatus).toHaveBeenCalledWith(SESSION)
+      expect(publishStatus).not.toHaveBeenCalled()
+    }
+  )
 })
