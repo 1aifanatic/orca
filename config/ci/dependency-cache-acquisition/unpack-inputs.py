@@ -2,10 +2,12 @@
 from pathlib import Path
 import hashlib, json, sys, tarfile
 
-archive, destination, expected_sha256 = map(Path, sys.argv[1:])
 if len(sys.argv) != 4:
     raise SystemExit("usage: unpack-inputs.py ARCHIVE DESTINATION SHA256")
-if hashlib.sha256(archive.read_bytes()).hexdigest() != str(expected_sha256):
+archive = Path(sys.argv[1])
+destination = Path(sys.argv[2])
+expected_sha256 = sys.argv[3]
+if hashlib.sha256(archive.read_bytes()).hexdigest() != expected_sha256:
     raise ValueError("retained-input archive hash mismatch")
 if destination.exists():
     raise ValueError("destination must not exist")
