@@ -82,6 +82,32 @@ describe('the notice on each message that did not go through', () => {
     })
   })
 
+  // The same rule as a rejected row's: its own Retry is the resend step, and any other step stays.
+  it('leaves a retry step to the Retry beside the message the queue stopped on', () => {
+    const held = (lastFailure: StructuredAgentSessionOutboxEntry['lastFailure']) =>
+      texts([entry('held', { lastFailure })], 'held')
+    expect(
+      held({
+        kind: 'refused',
+        code: 'agent_session_journal_unreadable',
+        details: { reason: 'journalUnavailable' }
+      })
+    ).toEqual({
+      [agentJournalSubmissionKey('held')]:
+        "Orca couldn't open this chat's history right now. Your message was not sent."
+    })
+    expect(
+      held({
+        kind: 'refused',
+        code: 'agent_session_operation_invalid',
+        details: { reason: 'notSignedIn' }
+      })
+    ).toEqual({
+      [agentJournalSubmissionKey('held')]:
+        'Your message was not sent. Claude is not signed in for the selected account. Sign in first.'
+    })
+  })
+
   it('says a message is unconfirmed, and only that it was not sent when nothing more is known', () => {
     expect(texts([entry('doubt', { state: 'unconfirmed' })])).toEqual({
       [agentJournalSubmissionKey('doubt')]: 'Message delivery is unconfirmed.'

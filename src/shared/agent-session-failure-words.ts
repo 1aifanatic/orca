@@ -53,7 +53,8 @@ export type AgentSessionFailureWordsContext = {
   /** The conversation command a failed start was for, so the next step is to run it again
    *  rather than to send a message. */
   command?: 'clear'
-  /** The surface shows its own Retry beside the words, so they leave out sending or trying again. */
+  /** The surface retries for the person — its own Retry beside the words, or a read that reconnects
+   *  on its own — so they leave out sending or trying again. */
   retryControl?: boolean
 }
 

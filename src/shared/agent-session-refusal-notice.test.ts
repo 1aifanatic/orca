@@ -369,6 +369,45 @@ describe('the notice for every reason a host names', () => {
     }
   })
 
+  // Beside a Retry, that Retry is the step for a reason whose action is to retry, and only for it.
+  it('leaves out only a retry step when a Retry stands beside the words', () => {
+    const beside = { agentName: 'Codex', retryControl: true }
+    for (const { failure, write, parts, words, cell } of cells) {
+      if (words && 'cause' in words) {
+        const retried = words.action === 'retry' ? words.step : undefined
+        expect(agentSessionWriteNoticeParts(failure, write, beside), cell).toEqual(
+          parts.filter((part) => part !== retried)
+        )
+      }
+    }
+    const send = (failure: AgentSessionWriteRefusal) =>
+      agentSessionWriteNoticeParts(failure, 'send', beside)
+    expect(
+      send({
+        kind: 'refused',
+        code: 'agent_session_journal_unreadable',
+        details: { reason: 'journalUnavailable' }
+      })
+    ).toEqual(['historyUnavailable', 'notDoneSend'])
+    expect(
+      send({
+        kind: 'refused',
+        code: 'agent_session_operation_invalid',
+        details: { reason: 'notSignedIn' }
+      })
+    ).toEqual([
+      'notDoneSend',
+      { text: 'Codex is not signed in for the selected account. Sign in first.' }
+    ])
+    expect(
+      send({
+        kind: 'refused',
+        code: 'agent_session_operation_invalid',
+        details: { reason: 'providerStartFailed' }
+      })
+    ).toEqual(['notDoneSend', { text: 'Codex stopped before it finished starting.' }])
+  })
+
   it('says the write did not happen, once, and never shows the host message', () => {
     for (const { failure, write, parts, cell } of cells) {
       const english = agentSessionWriteNoticeEnglish(parts)

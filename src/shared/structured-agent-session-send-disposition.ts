@@ -189,7 +189,7 @@ export function structuredAgentSessionAttemptFailureParts(
 ): AgentSessionWriteNoticePart[] {
   return failure.kind === 'rejected'
     ? structuredAgentSessionRejectionParts(failure.reason, 'send', failure.rejection, context)
-    : agentSessionWriteNoticeParts(failure, 'send')
+    : agentSessionWriteNoticeParts(failure, 'send', context)
 }
 
 export function disposeStructuredAgentSessionSendResult(

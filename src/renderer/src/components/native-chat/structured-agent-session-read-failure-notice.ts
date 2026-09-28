@@ -20,12 +20,12 @@ export type StructuredAgentSessionReadFailureNotice = {
 export function structuredAgentSessionReadFailureNotice(
   refusal: AgentSessionRefusalReference | undefined
 ): StructuredAgentSessionReadFailureNotice {
+  // The pane reconnects on its own, so it is the Retry beside the words.
   const parts = refusal
-    ? agentSessionReadHistoryRefusalParts(refusal.code, refusal.details)
+    ? agentSessionReadHistoryRefusalParts(refusal.code, refusal.details, { retryControl: true })
     : agentSessionWriteNotDoneParts('read-history')
   return {
-    // The pane reconnects on its own, so a "try again" step would ask for what already happens.
-    text: agentSessionWriteNoticeText(parts.filter((part) => part !== 'tryAgain')),
+    text: agentSessionWriteNoticeText(parts),
     named: refusal?.details?.reason !== undefined,
     final: isFinalAgentSessionReadRefusal(refusal)
   }
