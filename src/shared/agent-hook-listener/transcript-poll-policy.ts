@@ -14,8 +14,8 @@ export function shouldPollHookTranscript(
   event: AgentHookEventPayload
 ): boolean {
   if (source === 'codex') {
-    // Why: Codex records a turn's end in its rollout before it runs the Interrupt or Stop hook, so
-    // polling while the turn is open recovers a lost hook within one tick; it stops once it ends.
+    // Why: Codex records a turn's end in its rollout even when its Interrupt or Stop hook is lost,
+    // so polling while the turn is open recovers that hook within a tick; it stops once it ends.
     return (
       hasCodexTranscriptSubagents(state, event.paneKey) ||
       codexRolloutCanSettleMainAgent(state, event.paneKey)

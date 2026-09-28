@@ -48,10 +48,27 @@ export function hasCodexTranscriptSubagents(state: HookListenerState, paneKey: s
   return hasTrackedCodexTranscriptSubagents(state.codexSubagentTranscriptByPaneKey.get(paneKey))
 }
 
+/** Whether Codex ended this turn for good. Stop alone does not: a Stop hook that blocks makes
+ *  Codex continue the same turn. Its abort does, and so does the completion its rollout records. */
+function codexTurnIsOver(
+  state: HookListenerState,
+  paneKey: string,
+  record: CodexLeadTurnState
+): boolean {
+  if (record.state !== 'done' || record.turnId === undefined) {
+    return false
+  }
+  const recorded = state.codexSubagentTranscriptByPaneKey.get(paneKey)?.mainTurn
+  return (
+    record.outcome === 'cancellation' ||
+    (recorded?.turnId === record.turnId && recorded.state === 'completed')
+  )
+}
+
 /** The only writer of the root record; the root's clock keeps continuity across same-state writes.
- *  A turn ends once: after it ends, a fact for that same turn (a hook the cancel overtook, a
- *  replayed body, a Stop racing Interrupt) restates it and changes nothing. A fact for any other
- *  turn is Codex working again, whether or not a prompt started it. */
+ *  Once a turn is over, a fact for that same turn (a hook the cancel overtook, a replayed body, a
+ *  Stop racing Interrupt) restates it and changes nothing. A fact for any other turn is Codex
+ *  working again, whether or not a prompt started it. */
 export function setCodexMainAgentTurnState(
   state: HookListenerState,
   paneKey: string,
@@ -59,7 +76,12 @@ export function setCodexMainAgentTurnState(
   now = Date.now()
 ): CodexLeadTurnState {
   const previous = state.codexLeadStateByPaneKey.get(paneKey)
-  if (previous?.state === 'done' && next.turnId !== undefined && previous.turnId === next.turnId) {
+  if (
+    previous &&
+    next.turnId !== undefined &&
+    previous.turnId === next.turnId &&
+    codexTurnIsOver(state, paneKey, previous)
+  ) {
     return previous
   }
   const continued = continueMainAgentStatus(previous, next, now)
@@ -96,8 +118,9 @@ export function catchUpOnCodexParentRollout(
   )
   const ended = transcriptState.mainTurn
   const lead = state.codexLeadStateByPaneKey.get(paneKey)
-  // Why: Codex writes a turn's end to its rollout before it runs the Interrupt or Stop hook, so
-  // this settles the turn when that hook is lost (Interrupt is capped at 3s) or never registered.
+  // Why: Codex records a turn's end in its rollout whether or not its Interrupt or Stop hook is
+  // delivered, so this settles the turn when that hook is lost (Interrupt is capped at 3s) or
+  // never registered.
   if (ended?.turnId && ended.state !== 'working' && lead?.turnId === ended.turnId) {
     setCodexMainAgentTurnState(state, paneKey, {
       state: 'done',

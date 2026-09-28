@@ -227,8 +227,9 @@ background" cancels nothing (captured in
 `src/shared/__fixtures__/codex-interrupt-hooks.jsonl`), so the renderer and the
 server's re-check both refuse a Codex keypress inference
 (`isInconclusiveInterruptIntent`). Codex writes `turn_aborted` (or
-`task_complete`) to its rollout before it runs the Interrupt (or Stop) hook,
-and it kills a slow Interrupt hook at 3 seconds, so the execution host's
+`task_complete`) to its rollout right after it runs the Interrupt (or Stop)
+hook, whether or not the hook was delivered, and it kills a slow Interrupt hook
+at 3 seconds, so the execution host's
 listener also reads the pane's parent rollout: every Codex event, and a
 one-second poll while the main agent's turn is open, settles that turn from the
 rollout when its hook was lost or never registered (Codex before 0.150).
@@ -304,10 +305,12 @@ with their own child evidence.
 Codex rows bypass that hold, because Codex names the turn every fact belongs
 to. The Codex main agent record carries Codex's `turn_id` (on every root hook
 but `SessionStart`, and on the rollout's turn markers), and a turn ends once:
-after Interrupt or Stop for turn X, a later fact for X (a hook the cancel
-overtook, a poll's replayed body, a Stop racing the Interrupt) restates it and
-changes nothing, while any root hook for another turn is Codex working again,
-including a turn Codex starts without a prompt. The record lives only on the
+after Interrupt for turn X, or once the rollout records X complete, a later
+fact for X (a hook the cancel overtook, a poll's replayed body, a Stop racing
+the Interrupt) restates it and changes nothing, while any root hook for another
+turn is Codex working again, including a turn Codex starts without a prompt.
+Stop alone does not end X for good: a Stop hook that blocks makes Codex
+continue the same turn, so a later root hook for X reads working again. The record lives only on the
 execution host's listener and is not persisted: hydration seeds it from the
 row's `mainAgent` without a turn id, and the next root hook teaches the id
 again. For a relayed pane the relay applies that rule to the raw hooks and its

@@ -1,6 +1,7 @@
 // A Codex turn ends once. Codex's own report of the end (its Interrupt or Stop hook, or the marker
-// it writes to its rollout first) settles the turn it names; a later fact for that same turn is a
-// restatement, and a fact for any other turn is Codex working again.
+// it writes to its rollout) settles the turn it names; once the turn is over, a later fact for it
+// is a restatement, and a fact for any other turn is Codex working again. A Stop alone is not the
+// end: a Stop hook that blocks makes Codex continue the same turn.
 import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -55,12 +56,18 @@ describe('the Codex main agent turn, decided by turn id', () => {
     })
   })
 
-  it('keeps a completed turn completed against a late Interrupt for it', () => {
+  it('reads a turn a blocking Stop hook continued as working, then cancelled on its Interrupt', () => {
     hook({ hook_event_name: 'UserPromptSubmit', prompt: 'go', turn_id: 'turn-1' })
     hook({ hook_event_name: 'Stop', turn_id: 'turn-1' })
-    const late = hook({ hook_event_name: 'Interrupt', turn_id: 'turn-1' })
+    // Another Stop hook blocked, so Codex continues turn-1 without a new prompt or turn id.
+    const continued = hook({ hook_event_name: 'PreToolUse', turn_id: 'turn-1', tool_name: 'Bash' })
+    expect(continued?.payload).toMatchObject({ state: 'working', mainAgent: { state: 'working' } })
 
-    expect(late?.payload.mainAgent).toEqual({ state: 'done', stateStartedAt: expect.any(Number) })
+    expect(hook({ hook_event_name: 'Interrupt', turn_id: 'turn-1' })?.payload).toMatchObject({
+      state: 'done',
+      interrupted: true,
+      mainAgent: { state: 'done', outcome: 'cancellation' }
+    })
   })
 
   it('does not clear the roster on Interrupt: the subagent it left running holds the row', () => {
@@ -132,6 +139,22 @@ describe("the Codex main agent turn, settled from Codex's rollout", () => {
       state: 'done',
       stateStartedAt: expect.any(Number)
     })
+  })
+
+  it('keeps a turn its rollout records complete against a later fact for it', () => {
+    hook({ hook_event_name: 'UserPromptSubmit', prompt: 'go', turn_id: 'turn-1' })
+    hook({ hook_event_name: 'Stop', turn_id: 'turn-1' })
+    appendFileSync(rollout, marker('task_complete', 'turn-1'))
+
+    for (const late of [
+      { hook_event_name: 'PostToolUse', turn_id: 'turn-1', tool_name: 'Bash' },
+      { hook_event_name: 'Interrupt', turn_id: 'turn-1' }
+    ]) {
+      expect(hook(late)?.payload.mainAgent).toEqual({
+        state: 'done',
+        stateStartedAt: expect.any(Number)
+      })
+    }
   })
 
   it("ignores another turn's end", () => {

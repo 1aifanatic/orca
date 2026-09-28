@@ -84,7 +84,7 @@ describe('RelayAgentHookServer Codex subagent transcript polling', () => {
   })
 
   // Why: the relay is the execution host, so it reads the remote rollout; Codex writes the turn's
-  // end there before it runs Interrupt, which it kills at 3s under load.
+  // end there even when it kills the Interrupt hook at 3s under load.
   it('forwards the cancel it reads from turn_aborted when the Interrupt hook is lost', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'relay-hook-codex-interrupt-'))
     dirs.push(dir)
