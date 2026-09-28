@@ -114,7 +114,8 @@ function owedProviderChildWindDown(
 export async function stopStructuredAgentSessionAgentUnderSerialize(
   context: StructuredAgentSessionLifetimeContext,
   sessionId: string,
-  ending: { cause: StructuredAgentSessionStopCause; reason?: string } = { cause: 'user-stop' }
+  // Required: an omitted cause must not default to the user's cancellation.
+  ending: { cause: StructuredAgentSessionStopCause; reason?: string }
 ): Promise<void> {
   const session = context.sessions.get(sessionId)
   if (!session) {

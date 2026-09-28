@@ -10,7 +10,10 @@ import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import { describeNativeChatTurnStatus } from '../../../shared/native-chat-turn-status'
 import { selectStructuredAgentSettledTurns } from '../../../shared/structured-agent-session-turn-timing'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
-import { evictHeldStructuredAgentSession } from './structured-agent-session-host-lifetime'
+import {
+  evictHeldStructuredAgentSession,
+  type stopStructuredAgentSessionAgentUnderSerialize
+} from './structured-agent-session-host-lifetime'
 import {
   adapter,
   attach,
@@ -286,4 +289,11 @@ describe('a turn cut short by closing its provider', () => {
       expect(publishStatus).not.toHaveBeenCalled()
     }
   )
+})
+
+it('requires every stop to name its cause', () => {
+  type StopArgs = Parameters<typeof stopStructuredAgentSessionAgentUnderSerialize>
+  // @ts-expect-error a stop that names no cause must not compile, or it would default to one
+  const omitted: StopArgs = [host['lifetimeContext'](), SESSION]
+  expect(omitted).toHaveLength(2)
 })
