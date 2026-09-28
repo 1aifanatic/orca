@@ -90,9 +90,9 @@ export async function initializeReadyRuntimeServices(): Promise<void> {
   }, WORKTREE_TRASH_SWEEP_FALLBACK_MS)
   nativeTheme.themeSource = store.getSettings().theme ?? 'system'
   // Why (#16441): the real-home grant runs a codex app-server session. It stays
-  // ordered before managed-hook reconciliation — an incapable host must re-arm
-  // and complete the legacy real-home sweep first — but awaiting it inline
-  // stalled app init behind that session, so chain instead of blocking.
+  // ordered before managed-hook reconciliation — its in-slot upgrade must land
+  // before the managed install's legacy sweep retires the prior command — but
+  // awaiting it inline stalled app init behind that session, so chain instead of blocking.
   const startupManagedHookSettings = store.getSettings()
   const shouldReconcileStartupManagedHooks =
     shouldInstallManagedHooks(is.dev) &&

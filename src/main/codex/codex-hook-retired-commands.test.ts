@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { wrapPosixHookCommand } from '../agent-hooks/installer-utils'
+import {
+  buildWindowsHookPowerShellCommand,
+  wrapPosixHookCommand
+} from '../agent-hooks/installer-utils'
 import { getManagedCommand, getManagedScriptPath } from './codex-hook-definition'
 import { isRetiredCodexHookCommand } from './codex-hook-retired-commands'
+
+// Frozen from the real-home lane's Windows launcher before Windows left that lane.
+function encodedLauncher(scriptPath: string): string {
+  const quoted = `'${scriptPath.replaceAll("'", "''")}'`
+  const script = `if (Test-Path -LiteralPath ${quoted} -PathType Leaf) { & ${quoted}; exit $LASTEXITCODE }; [Console]::In.ReadToEnd() | Out-Null; exit 0`
+  return `C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -NoProfile -ExecutionPolicy Bypass -EncodedCommand ${Buffer.from(script, 'utf16le').toString('base64')}`
+}
 
 describe('isRetiredCodexHookCommand', () => {
   it.each([
@@ -17,19 +27,36 @@ describe('isRetiredCodexHookCommand', () => {
     [
       'a per-userData Windows path',
       'C:\\Users\\u\\AppData\\Roaming\\orca\\agent-hooks\\codex-hook.cmd'
+    ],
+    [
+      "the real-home lane's first file-guarded form",
+      "if [ -f '/u/.orca/agent-hooks/codex-hook.sh' ] && [ -r '/u/.orca/agent-hooks/codex-hook.sh' ] && [ -x '/u/.orca/agent-hooks/codex-hook.sh' ]; then /bin/sh '/u/.orca/agent-hooks/codex-hook.sh'; else cat >/dev/null 2>&1 || :; fi"
+    ],
+    [
+      "the real-home lane's encoded Windows launcher",
+      encodedLauncher("C:\\Users\\Jo O'Neil\\.orca\\agent-hooks\\codex-hook.cmd")
     ]
   ])('matches %s', (_case, command) => {
     expect(isRetiredCodexHookCommand(command)).toBe(true)
   })
 
-  // Why: every build and instance still writes these, so sweeping them strips a live entry.
+  // Why: every build and instance still writes the current form, so sweeping
+  // it would strip a live entry and restart the rewrite fight between builds.
   it.each([
     ["this build's command", getManagedCommand(getManagedScriptPath())],
     [
       "another HOME's current command",
       wrapPosixHookCommand('/other/.orca/agent-hooks/codex-hook.sh')
     ],
+    [
+      "today's Windows launcher",
+      buildWindowsHookPowerShellCommand('C:\\Users\\Jo Smith\\.orca\\agent-hooks\\codex-hook.cmd')
+    ],
     ['a user script with the same name', '/bin/sh "/u/bin/codex-hook.sh"'],
+    [
+      "another agent's encoded launcher",
+      encodedLauncher('C:\\Users\\Jo Smith\\.orca\\agent-hooks\\claude-hook.cmd')
+    ],
     ['a user hook', 'my-stop-hook.sh'],
     ['no command', undefined]
   ])('leaves %s alone', (_case, command) => {
