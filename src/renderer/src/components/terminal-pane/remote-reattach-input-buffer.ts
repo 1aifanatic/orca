@@ -35,6 +35,7 @@ export function withRemoteReattachInputBuffer(transport: PtyTransport): PtyTrans
   const wrapped: PtyTransport = {
     ...transport,
     async connect(options) {
+      console.warn('[remote-reattach-debug] connect', options.sessionId)
       clear()
       connectionReady = false
       const expectedId = options.sessionId
@@ -44,6 +45,11 @@ export function withRemoteReattachInputBuffer(transport: PtyTransport): PtyTrans
       pendingExpectedId = expectedId ?? null
       try {
         const result = await transport.connect(options)
+        console.warn('[remote-reattach-debug] connected', {
+          id: transport.getPtyId(),
+          expectedId,
+          connected: transport.isConnected()
+        })
         if (buffer && expectedId) {
           await flush(buffer, expectedId)
         }
