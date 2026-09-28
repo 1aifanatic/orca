@@ -40,6 +40,7 @@ import { startDesktopPushService } from './main-process-push-startup'
 import { mainProcessState as state } from './main-process-state'
 import { logStartupMilestone } from './startup-diagnostics'
 import { emitServeBrowserIdentityActionLine } from '../server/serve-stdout-boundary'
+import { configureServeAutoUpdater } from './main-process-updater'
 import { getBrowserIdentityModeStatus } from '../browser/browser-identity-mode-store'
 
 type RuntimeService = NonNullable<typeof state.runtime>
@@ -51,12 +52,11 @@ export type MainProcessRuntimeLaunchOptions = {
 
 function settleDesktopActivation(): void {
   const gate = state.desktopActivationGate
-  if (!gate) {
-    return
+  if (gate) {
+    settleServeDesktopActivation(gate, {
+      hasPersistentPtyProvider: daemonOwnsFreshPersistentPtys()
+    })
   }
-  settleServeDesktopActivation(gate, {
-    hasPersistentPtyProvider: daemonOwnsFreshPersistentPtys()
-  })
 }
 
 function installRuntimeRpc(
@@ -125,9 +125,9 @@ async function launchServeMode(
   runtimeRpc: OrcaRuntimeRpcServer,
   serveOptions: NonNullable<ReturnType<typeof getServeOptions>>
 ): Promise<void> {
-  // Why here: headless serve has no window to unblock, so keep the persisted proxy strictly
-  // ahead of every fetcher this phase can reach (relay, CLI install, RPC clients).
+  // Apply the persisted proxy before starting fetchers, including the updater.
   await state.initialProxyApplicationReady
+  configureServeAutoUpdater()
   // Why: give managed WSL launchers a brief chance to migrate before headless PTYs go live, without slow repairs withholding all RPC readiness.
   logStartupMilestone('wsl-cli-barrier-start')
   await state.managedWslCliStartupBarrierReady

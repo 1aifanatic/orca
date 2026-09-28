@@ -111,7 +111,7 @@ export class UpdaterSetup extends UpdaterDownloadInstall {
     super.dismissAvailableUpdate()
   }
 
-  setupAutoUpdater(mainWindow: BrowserWindow, opts?: UpdaterSetupOptions): void {
+  setupAutoUpdater(mainWindow: BrowserWindow | null, opts?: UpdaterSetupOptions): void {
     this.mainWindowRef = mainWindow
     this.onBeforeQuitCleanup = opts?.onBeforeQuit ?? null
     this.onBeforeQuitFailure = opts?.onBeforeQuitFailure ?? 'continue'
