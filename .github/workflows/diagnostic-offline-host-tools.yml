@@ -1,0 +1,72 @@
+name: Diagnostic offline Bun host tools
+on:
+  push:
+    branches: [OrcaWin/np-offline-host-tools-diagnostic]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  qualify:
+    if: github.repository == 'stablyai/orca' && github.ref == 'refs/heads/OrcaWin/np-offline-host-tools-diagnostic'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      BASE: ubuntu@sha256:8feb4d8ca5354def3d8fce243717141ce31e2c428701f6682bd2fafe15388214
+      ORCA_BACKGROUND_LAUNCH: '1'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            config/ci/offline-xwin
+            config/ci/offline-host-tools
+      - name: Acquire retained inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir "$RUNNER_TEMP/inputs"
+          timeout 600s gh api repos/stablyai/orca/actions/artifacts/10990426637/zip > "$RUNNER_TEMP/inputs/llvm.zip"
+          timeout 600s gh api repos/stablyai/orca/actions/artifacts/10988628982/zip > "$RUNNER_TEMP/inputs/indexes.zip"
+          python3 config/ci/offline-host-tools/stage.py prepare "$RUNNER_TEMP/inputs"
+          docker pull --platform linux/amd64 "$BASE"
+      - name: Resolve only missing host tools offline
+        run: |
+          set -euo pipefail
+          mkdir "$RUNNER_TEMP/inputs/results"
+          docker run --rm --network none --platform linux/amd64 --cpus 2 --memory 3g --pids-limit 256 \
+            -v "$RUNNER_TEMP/inputs:/inputs:ro" -v "$RUNNER_TEMP/inputs/llvm/metadata:/metadata:ro" \
+            -v "$RUNNER_TEMP/inputs/llvm/packages:/packages:ro" \
+            -v "$GITHUB_WORKSPACE/config/ci/offline-xwin:/probe:ro" \
+            -v "$GITHUB_WORKSPACE/config/ci/offline-host-tools:/supplement-probe:ro" \
+            -v "$RUNNER_TEMP/inputs/results:/results" \
+            "$BASE" bash /supplement-probe/resolve.sh 2>&1 | tee "$RUNNER_TEMP/resolution.log"
+          sudo chown -R "$(id -u):$(id -g)" "$RUNNER_TEMP/inputs/results"
+          python3 config/ci/offline-host-tools/stage.py download "$RUNNER_TEMP/inputs"
+      - name: Fresh offline supplement installation and execution
+        run: |
+          set -euo pipefail
+          mkdir "$RUNNER_TEMP/qualification"
+          docker run --rm --network none --platform linux/amd64 --cpus 2 --memory 3g --pids-limit 256 \
+            -v "$RUNNER_TEMP/inputs:/inputs:ro" -v "$RUNNER_TEMP/inputs/llvm/metadata:/metadata:ro" \
+            -v "$RUNNER_TEMP/inputs/llvm/packages:/packages:ro" \
+            -v "$GITHUB_WORKSPACE/config/ci/offline-xwin:/probe:ro" \
+            -v "$GITHUB_WORKSPACE/config/ci/offline-host-tools:/supplement-probe:ro" \
+            -v "$RUNNER_TEMP/qualification:/results" \
+            "$BASE" bash /supplement-probe/qualify.sh 2>&1 | tee "$RUNNER_TEMP/qualification.log"
+          test -s "$RUNNER_TEMP/qualification/SUPPLEMENT-SUCCESS"
+      - name: Permit receipt retention
+        if: always()
+        run: sudo chown -R "$(id -u):$(id -g)" "$RUNNER_TEMP/inputs/results" "$RUNNER_TEMP/qualification" || true
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: offline-host-tools
+          path: |
+            ${{ runner.temp }}/inputs/supplement
+            ${{ runner.temp }}/inputs/results
+            ${{ runner.temp }}/qualification
+            ${{ runner.temp }}/resolution.log
+            ${{ runner.temp }}/qualification.log
+          retention-days: 7
