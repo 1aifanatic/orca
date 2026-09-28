@@ -69,6 +69,7 @@ describe('cancelClaudeTurn', () => {
       sentUuid,
       dispatchSequence: index + 1,
       requestedAt: null,
+      sentDuringTurnId: null,
       replayContentKey: `content-${index}`,
       resolve: resolutions[index]!
     }))

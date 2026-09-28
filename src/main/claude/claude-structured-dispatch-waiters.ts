@@ -10,11 +10,11 @@ export function forgetRetiredWaiter(session: ClaudeSession, waiter: ClaudeDispat
 }
 
 /**
- * A waiter with no deadline. The echo Claude sends is emitted when the provider
- * STARTS the turn, so a message queued behind a running turn cannot be echoed
- * until that turn ends — an interval bounded only by the previous turn. Elapsed
- * time is therefore not evidence about delivery, and nothing here expires.
- * Waiters are retired by process facts instead: a failed write, or child exit.
+ * A waiter with no deadline. A mid-turn send Claude folds into the running turn
+ * is replayed mid-turn; one it runs later is replayed only when its own turn
+ * starts — an interval bounded only by the previous turn. Elapsed time is
+ * therefore not evidence about delivery, and nothing here expires. Waiters are
+ * retired by process facts instead: a failed write, or child exit.
  */
 export function waitForReplay(
   session: ClaudeSession,
@@ -32,6 +32,8 @@ export function waitForReplay(
       sentUuid,
       dispatchSequence: session.dispatchSequence,
       requestedAt,
+      // Captured at write time: the send-time turn relation a fold receipt needs.
+      sentDuringTurnId: session.translator?.currentTurnId ?? null,
       replayContentKey,
       resolve
     }

@@ -2,7 +2,8 @@
 // completes, and nothing about elapsed time ever puts a message in doubt.
 
 import { describe, expect, it, vi } from 'vitest'
-import { dispatchClaudeTurn, resolveClaudeReplayTurn } from './claude-structured-dispatch'
+import { dispatchClaudeTurn } from './claude-structured-dispatch'
+import { resolveClaudeReplayTurn } from './claude-replay-turn-resolution'
 import {
   childExited,
   sessionFor,

@@ -1,0 +1,429 @@
+// A mid-turn send the CLI folds into the running turn: its replay is a delivery
+// receipt for the send-time turn, never a new turn boundary. Everything else —
+// the measured miss, a replaced turn, provider output opening a root — keeps the
+// replay-driven opener path. Captured orders from Claude CLI 2.1.280
+// (`claude-captured-fold-steer-frames.test-fixture.ts`).
+
+import { describe, expect, it, vi, type Mock } from 'vitest'
+import type {
+  AgentJournalItemBody,
+  AgentJournalItemIdentity,
+  AgentJournalMessageItem
+} from '../../shared/agent-session-journal-types'
+import type { StructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
+import { readAgentJournalTurn } from '../../shared/agent-session-turn-record'
+import { ClaudeStructuredSessionAdapter } from './claude-structured-session-adapter'
+import type {
+  ClaudeStructuredSessionAdapterDeps,
+  ClaudeStructuredSessionEvent
+} from './claude-structured-session-state'
+import type { ClaudeStructuredLaunch } from './claude-structured-launch-resolution'
+import {
+  fakeClaude,
+  identityFor,
+  PROVIDER_SESSION_ID
+} from './claude-structured-session-test-support'
+import {
+  assistantText,
+  cancelCapture,
+  CANCEL_SEND_AT,
+  FIRST_PROMPT,
+  foldFreshCapture,
+  FOLD_FRESH_SEND_AT,
+  foldResumedCapture,
+  FOLD_RESUMED_SEND_AT,
+  missCapture,
+  MISS_SEND_AT,
+  resultFrame,
+  SECOND_STEER_PROMPT,
+  STEER_PROMPT,
+  twoSteersCapture,
+  TWO_STEERS_SEND_AT,
+  userReplay,
+  type CapturedFoldFrame
+} from './claude-captured-fold-steer-frames.test-fixture'
+
+const T0 = 1_700_000_100_000
+
+type Rig = {
+  adapter: ClaudeStructuredSessionAdapter
+  claude: ReturnType<typeof fakeClaude>
+  events: ClaudeStructuredSessionEvent[]
+  settled: Mock
+  /** Every revision of every turn lifecycle row, in append order. */
+  turns: () => NonNullable<ReturnType<typeof readAgentJournalTurn>>[]
+  deliver: (captured: CapturedFoldFrame) => void
+  /** Dispatches at the captured send offset and returns the client uuid the CLI adopts. */
+  dispatchAt: (at: number, clientMessageId: string, text: string) => Promise<string>
+}
+
+async function riggedAdapter(launch: Partial<ClaudeStructuredLaunch> = {}): Promise<Rig> {
+  let nowMs = T0
+  const appended: { identity: AgentJournalItemIdentity; body: AgentJournalItemBody }[] = []
+  const sink: StructuredAgentSessionEventSink = {
+    appendItem: (identity, body) => appended.push({ identity, body }),
+    appendTombstone: () => {},
+    publish: () => {}
+  }
+  const events: ClaudeStructuredSessionEvent[] = []
+  const settled = vi.fn()
+  const claude = fakeClaude({ replayUuid: null })
+  const deps: ClaudeStructuredSessionAdapterDeps = {
+    resolveLaunch: async () => ({
+      pathToClaudeCodeExecutable: 'claude',
+      options: {},
+      cwd: '/work/repo',
+      claudeConfigDir: '/accounts/claude',
+      providerSessionId: PROVIDER_SESSION_ID,
+      resumeLeafUuid: null,
+      resumesTranscript: false,
+      continuesChain: false,
+      ...launch
+    }),
+    onEvent: (event) => events.push(event),
+    openConnection: claude.openConnection,
+    readProcessStartTime: async () => T0 - 1_000,
+    now: () => nowMs,
+    persistHandle: async () => {},
+    onDispatchSettledLate: settled
+  }
+  const adapter = new ClaudeStructuredSessionAdapter(deps)
+  await adapter.acquire({ identity: identityFor(), fence: 7, spawnToken: 'spawn-9', events: sink })
+  await adapter.awaitStarted('session-1')
+  return {
+    adapter,
+    claude,
+    events,
+    settled,
+    turns: () =>
+      appended.flatMap((item) => {
+        const turn = readAgentJournalTurn(item.body)
+        return turn ? [turn] : []
+      }),
+    deliver: (captured) => {
+      nowMs = T0 + captured.at
+      claude.connections[0]!.handlers.onMessage?.(captured.frame)
+    },
+    dispatchAt: async (at, clientMessageId, text) => {
+      nowMs = T0 + at
+      const body: AgentJournalMessageItem = {
+        kind: 'message',
+        role: 'user',
+        blocks: [{ type: 'text', text }]
+      }
+      const outcome = await adapter.dispatch({
+        sessionId: 'session-1',
+        clientMessageId,
+        body,
+        requestedAt: nowMs,
+        fence: 7
+      })
+      expect(outcome).toEqual({ state: 'admitted' })
+      const sentUuid = claude.connections[0]!.sent.at(-1)?.uuid
+      if (typeof sentUuid !== 'string') {
+        throw new Error('the fake connection recorded no sent uuid')
+      }
+      return sentUuid
+    }
+  }
+}
+
+function replayEventFor(events: ClaudeStructuredSessionEvent[], uuid: string) {
+  return events.find(
+    (event) =>
+      event.type === 'message' && event.message.type === 'user' && event.message.uuid === uuid
+  )
+}
+
+describe('Claude fold receipt for a mid-turn send (captured orders)', () => {
+  it('fold-fresh: the folded steer settles as a receipt inside the one turn it was sent during', async () => {
+    const rig = await riggedAdapter()
+    const first = await rig.dispatchAt(FOLD_FRESH_SEND_AT.first, 'client-first', FIRST_PROMPT)
+    const framesFor = (steerUuid: string) =>
+      foldFreshCapture({ sessionId: PROVIDER_SESSION_ID, first, steer: steerUuid })
+    for (const captured of framesFor('pending')) {
+      if (captured.at < FOLD_FRESH_SEND_AT.steer) {
+        rig.deliver(captured)
+      }
+    }
+    const steer = await rig.dispatchAt(FOLD_FRESH_SEND_AT.steer, 'client-steer', STEER_PROMPT)
+    for (const captured of framesFor(steer)) {
+      if (captured.at > FOLD_FRESH_SEND_AT.steer) {
+        rig.deliver(captured)
+      }
+    }
+
+    // ONE turn record for the whole run, never marked interrupted.
+    const turnIds = [...new Set(rig.turns().map((turn) => turn.turnId))]
+    expect(turnIds).toEqual([first])
+    expect(rig.turns().every((turn) => turn.state !== 'interrupted')).toBe(true)
+    // The settled duration is the single turn's, spanning both sends' work.
+    expect(rig.turns().at(-1)).toMatchObject({
+      turnId: first,
+      state: 'completed',
+      outcome: 'success',
+      startedAt: T0 + 2_094,
+      completedAt: T0 + 23_048,
+      durationMs: 22_845
+    })
+    // The steer's replay is a receipt: delivery settles under the steer's own
+    // provider identity, which is what attributes the user item inside the turn.
+    expect(rig.settled).toHaveBeenCalledWith({
+      sessionId: 'session-1',
+      clientMessageId: 'client-steer',
+      providerIdentity: { provider: 'claude', sessionId: PROVIDER_SESSION_ID, uuid: steer }
+    })
+    // And it opens no boundary: the replay event carries no startsTurn.
+    expect(replayEventFor(rig.events, steer)).not.toHaveProperty('startsTurn')
+    expect(replayEventFor(rig.events, first)).toMatchObject({ startsTurn: true })
+  })
+
+  it('fold-resumed: the receipt holds on a resumed provider session', async () => {
+    const rig = await riggedAdapter({
+      resumeLeafUuid: 'leaf-1',
+      resumesTranscript: true,
+      continuesChain: true
+    })
+    const first = await rig.dispatchAt(FOLD_RESUMED_SEND_AT.first, 'client-first', FIRST_PROMPT)
+    const framesFor = (steerUuid: string) =>
+      foldResumedCapture({ sessionId: PROVIDER_SESSION_ID, first, steer: steerUuid })
+    for (const captured of framesFor('pending')) {
+      if (captured.at < FOLD_RESUMED_SEND_AT.steer) {
+        rig.deliver(captured)
+      }
+    }
+    const steer = await rig.dispatchAt(FOLD_RESUMED_SEND_AT.steer, 'client-steer', STEER_PROMPT)
+    for (const captured of framesFor(steer)) {
+      if (captured.at > FOLD_RESUMED_SEND_AT.steer) {
+        rig.deliver(captured)
+      }
+    }
+    expect(rig.settled).toHaveBeenCalledWith({
+      sessionId: 'session-1',
+      clientMessageId: 'client-steer',
+      providerIdentity: { provider: 'claude', sessionId: PROVIDER_SESSION_ID, uuid: steer }
+    })
+
+    expect([...new Set(rig.turns().map((turn) => turn.turnId))]).toEqual([first])
+    expect(rig.turns().every((turn) => turn.state !== 'interrupted')).toBe(true)
+    expect(rig.turns().at(-1)).toMatchObject({
+      turnId: first,
+      state: 'completed',
+      durationMs: 23_367
+    })
+  })
+
+  it('two-steers: both folded sends settle individually inside the one turn', async () => {
+    const rig = await riggedAdapter()
+    const first = await rig.dispatchAt(TWO_STEERS_SEND_AT.first, 'client-first', FIRST_PROMPT)
+    const framesFor = (steerUuid: string, secondSteerUuid: string) =>
+      twoSteersCapture({
+        sessionId: PROVIDER_SESSION_ID,
+        first,
+        steer: steerUuid,
+        secondSteer: secondSteerUuid
+      })
+    for (const captured of framesFor('pending', 'pending-2')) {
+      if (captured.at < TWO_STEERS_SEND_AT.steer) {
+        rig.deliver(captured)
+      }
+    }
+    // Both steers go out mid-turn, before the next captured frame at 7949.
+    const steer = await rig.dispatchAt(TWO_STEERS_SEND_AT.steer, 'client-steer', STEER_PROMPT)
+    const secondSteer = await rig.dispatchAt(
+      TWO_STEERS_SEND_AT.secondSteer,
+      'client-steer-2',
+      SECOND_STEER_PROMPT
+    )
+    for (const captured of framesFor(steer, secondSteer)) {
+      if (captured.at > TWO_STEERS_SEND_AT.secondSteer) {
+        rig.deliver(captured)
+      }
+    }
+
+    expect([...new Set(rig.turns().map((turn) => turn.turnId))]).toEqual([first])
+    expect(rig.turns().every((turn) => turn.state !== 'interrupted')).toBe(true)
+    expect(rig.settled).toHaveBeenCalledWith({
+      sessionId: 'session-1',
+      clientMessageId: 'client-steer',
+      providerIdentity: { provider: 'claude', sessionId: PROVIDER_SESSION_ID, uuid: steer }
+    })
+    expect(rig.settled).toHaveBeenCalledWith({
+      sessionId: 'session-1',
+      clientMessageId: 'client-steer-2',
+      providerIdentity: { provider: 'claude', sessionId: PROVIDER_SESSION_ID, uuid: secondSteer }
+    })
+  })
+
+  it('miss: a steer whose replay trails the result keeps the opener path and its own turn', async () => {
+    const rig = await riggedAdapter()
+    const first = await rig.dispatchAt(MISS_SEND_AT.first, 'client-first', FIRST_PROMPT)
+    const { beforeSteerSend } = missCapture({
+      sessionId: PROVIDER_SESSION_ID,
+      first,
+      steer: 'pending'
+    })
+    for (const captured of beforeSteerSend) {
+      rig.deliver(captured)
+    }
+    const steer = await rig.dispatchAt(MISS_SEND_AT.steer, 'client-steer', STEER_PROMPT)
+    for (const captured of missCapture({ sessionId: PROVIDER_SESSION_ID, first, steer })
+      .afterSteerSend) {
+      rig.deliver(captured)
+    }
+
+    // Two real turns: the first completed by its result — not interrupted —
+    // and the late steer's own turn opened by its replay.
+    expect([...new Set(rig.turns().map((turn) => turn.turnId))]).toEqual([first, steer])
+    expect(rig.turns().every((turn) => turn.state !== 'interrupted')).toBe(true)
+    const finalByTurn = new Map(rig.turns().map((turn) => [turn.turnId, turn]))
+    expect(finalByTurn.get(first)).toMatchObject({
+      state: 'completed',
+      completedAt: T0 + 25_556,
+      durationMs: 25_241
+    })
+    expect(finalByTurn.get(steer)).toMatchObject({
+      state: 'completed',
+      startedAt: T0 + 28_703,
+      completedAt: T0 + 29_275,
+      durationMs: 3_711
+    })
+    expect(replayEventFor(rig.events, steer)).toMatchObject({ startsTurn: true })
+  })
+
+  it('cancel: a cancelled steer settles nothing and the receipt path changes none of it', async () => {
+    const rig = await riggedAdapter()
+    const first = await rig.dispatchAt(CANCEL_SEND_AT.first, 'client-first', FIRST_PROMPT)
+    const { beforeSteerSend, afterInterrupt } = cancelCapture({
+      sessionId: PROVIDER_SESSION_ID,
+      first,
+      steer: 'never-replayed'
+    })
+    for (const captured of beforeSteerSend) {
+      rig.deliver(captured)
+    }
+    await rig.dispatchAt(CANCEL_SEND_AT.steer, 'client-steer', STEER_PROMPT)
+    for (const captured of afterInterrupt) {
+      rig.deliver(captured)
+    }
+
+    // One turn, ended by the interrupt's error result exactly as before.
+    expect([...new Set(rig.turns().map((turn) => turn.turnId))]).toEqual([first])
+    expect(rig.turns().at(-1)).toMatchObject({
+      turnId: first,
+      state: 'interrupted',
+      outcome: 'cancellation'
+    })
+    // The steer was never replayed and its result never named it: no settlement.
+    expect(rig.settled).not.toHaveBeenCalledWith(
+      expect.objectContaining({ clientMessageId: 'client-steer' })
+    )
+    // The interrupt's synthetic user text opens no turn either.
+    expect(replayEventFor(rig.events, 'interrupt-notice-1')).not.toHaveProperty('startsTurn')
+  })
+})
+
+describe('Claude fold receipt boundaries (synthetic orders)', () => {
+  it('missing-result: a replay for a send written during a since-replaced turn opens its own turn', async () => {
+    const rig = await riggedAdapter()
+    // A and C are written idle; B is written during A's turn, which C's replay
+    // then replaces because A's result never arrives.
+    const uuidA = await rig.dispatchAt(10, 'client-a', 'first prompt')
+    const uuidC = await rig.dispatchAt(20, 'client-c', 'second prompt')
+    rig.deliver(userReplay(1_000, PROVIDER_SESSION_ID, uuidA, 'first prompt'))
+    const uuidB = await rig.dispatchAt(1_500, 'client-b', STEER_PROMPT)
+    rig.deliver(userReplay(2_000, PROVIDER_SESSION_ID, uuidC, 'second prompt'))
+    rig.deliver(userReplay(3_000, PROVIDER_SESSION_ID, uuidB, STEER_PROMPT))
+
+    // B's send-time turn (A) is gone, so B's replay is a boundary, not a receipt.
+    expect([...new Set(rig.turns().map((turn) => turn.turnId))]).toEqual([uuidA, uuidC, uuidB])
+    expect(replayEventFor(rig.events, uuidB)).toMatchObject({ startsTurn: true })
+  })
+
+  it('intervening provider output: a root the provider opened is not the send-time turn', async () => {
+    const rig = await riggedAdapter()
+    const uuidA = await rig.dispatchAt(10, 'client-a', 'first prompt')
+    rig.deliver(userReplay(1_000, PROVIDER_SESSION_ID, uuidA, 'first prompt'))
+    const uuidB = await rig.dispatchAt(1_500, 'client-b', STEER_PROMPT)
+    // A's turn ends; the provider then resumes on its own and opens a root.
+    rig.deliver(
+      resultFrame(2_000, PROVIDER_SESSION_ID, 'result-1', {
+        userMessageUuids: [uuidA],
+        durationMs: 1_990,
+        numTurns: 1
+      })
+    )
+    rig.deliver(assistantText(3_000, PROVIDER_SESSION_ID, 'provider-resumed-1', 'background done'))
+    rig.deliver(userReplay(4_000, PROVIDER_SESSION_ID, uuidB, STEER_PROMPT))
+
+    // The open turn is the provider's, not B's send-time turn: opener path.
+    const turnIds = [...new Set(rig.turns().map((turn) => turn.turnId))]
+    expect(turnIds).toEqual([uuidA, 'provider-resumed-1', uuidB])
+    expect(replayEventFor(rig.events, uuidB)).toMatchObject({ startsTurn: true })
+  })
+
+  it('a fresh replay uuid with user_message_uuid correlation is a queued turn start, not a fold receipt', async () => {
+    const rig = await riggedAdapter()
+    const uuidA = await rig.dispatchAt(10, 'client-a', 'first prompt')
+    rig.deliver(userReplay(1_000, PROVIDER_SESSION_ID, uuidA, 'first prompt'))
+    const uuidB = await rig.dispatchAt(1_500, 'client-b', STEER_PROMPT)
+    // The CLI minted its own replay uuid: it started the queued send's own
+    // turn rather than folding it, whatever became of the previous result.
+    const fresh = userReplay(2_000, PROVIDER_SESSION_ID, 'fresh-turn-2', STEER_PROMPT)
+    rig.deliver({ ...fresh, frame: { ...fresh.frame, user_message_uuid: uuidB } })
+
+    expect([...new Set(rig.turns().map((turn) => turn.turnId))]).toEqual([uuidA, 'fresh-turn-2'])
+    expect(replayEventFor(rig.events, 'fresh-turn-2')).toMatchObject({ startsTurn: true })
+    expect(rig.settled).toHaveBeenCalledWith({
+      sessionId: 'session-1',
+      clientMessageId: 'client-b',
+      providerIdentity: { provider: 'claude', sessionId: PROVIDER_SESSION_ID, uuid: 'fresh-turn-2' }
+    })
+  })
+
+  it('plural result uuids: an unsettled folded waiter settles under its own uuid, never a shared result alias', async () => {
+    const rig = await riggedAdapter()
+    const uuidA = await rig.dispatchAt(10, 'client-a', 'first prompt')
+    rig.deliver(userReplay(1_000, PROVIDER_SESSION_ID, uuidA, 'first prompt'))
+    const uuidB = await rig.dispatchAt(1_500, 'client-b', STEER_PROMPT)
+    // B's replay never arrives; the folded turn's one result still names it.
+    rig.deliver(
+      resultFrame(5_000, PROVIDER_SESSION_ID, 'result-1', {
+        userMessageUuids: [uuidA, uuidB],
+        durationMs: 4_990,
+        numTurns: 2
+      })
+    )
+
+    expect(rig.settled).toHaveBeenCalledWith({
+      sessionId: 'session-1',
+      clientMessageId: 'client-b',
+      providerIdentity: { provider: 'claude', sessionId: PROVIDER_SESSION_ID, uuid: uuidB }
+    })
+    expect(rig.settled).not.toHaveBeenCalledWith(
+      expect.objectContaining({ providerIdentity: expect.objectContaining({ uuid: 'result-1' }) })
+    )
+    // The correlated result opened nothing and the one turn completed normally.
+    expect([...new Set(rig.turns().map((turn) => turn.turnId))]).toEqual([uuidA])
+    expect(rig.turns().at(-1)).toMatchObject({ turnId: uuidA, state: 'completed' })
+  })
+
+  it('plural result uuids: a retired folded waiter does not shift an unrelated live waiter by queue order', async () => {
+    const rig = await riggedAdapter()
+    const uuidA = await rig.dispatchAt(10, 'client-a', 'first prompt')
+    rig.deliver(userReplay(1_000, PROVIDER_SESSION_ID, uuidA, 'first prompt'))
+    await rig.dispatchAt(1_500, 'client-b', STEER_PROMPT)
+    // A result that names only sends already settled must not fall back to
+    // queue order and claim B, the still-live waiter it did not name.
+    rig.deliver(
+      resultFrame(5_000, PROVIDER_SESSION_ID, 'result-1', {
+        userMessageUuids: [uuidA],
+        durationMs: 4_990,
+        numTurns: 1
+      })
+    )
+    expect(rig.settled).not.toHaveBeenCalledWith(
+      expect.objectContaining({ clientMessageId: 'client-b' })
+    )
+  })
+})

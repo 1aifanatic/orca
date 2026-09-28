@@ -42,7 +42,9 @@ export type ClaudeStructuredSessionEvent =
       type: 'message'
       sessionId: string
       message: Record<string, unknown>
-      /** Present only when this replay acknowledged Orca's in-flight dispatch. */
+      /** Present only when this replay acknowledged Orca's in-flight dispatch
+       *  AND opens a turn; a replay folded into the still-open turn it was sent
+       *  during settles delivery without one. */
       startsTurn?: true
       /** Submission instant of the dispatch this replay acknowledged; the origin
        *  of the turn it opens. Absent when the host cannot name a send. */
@@ -133,6 +135,10 @@ export type ClaudeDispatchWaiter = {
   dispatchSequence: number
   /** Host submission instant owned by this exact dispatch. */
   requestedAt: number | null
+  /** The open turn at write time, or null for an idle-time write. Volatile,
+   *  adapter-local: a replay arriving while this exact turn is still open means
+   *  Claude folded the send into it — a receipt, never a turn boundary. */
+  sentDuringTurnId: string | null
   /** Set when the provider replay settled this waiter before send returned. */
   settledUuid?: string
   /** The write failed or the child died, but a replay may still name it. */

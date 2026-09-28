@@ -296,6 +296,7 @@ describe('Claude turn ownership', () => {
           sentUuid: 'uncertain',
           dispatchSequence: 1,
           requestedAt: null,
+          sentDuringTurnId: null,
           replayContentKey: 'ship-it',
           resolve: vi.fn(),
           retired: true
