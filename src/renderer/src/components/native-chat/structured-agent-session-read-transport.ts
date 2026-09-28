@@ -5,9 +5,27 @@ import {
   AGENT_SESSION_UNATTACHED_READ_GRACE_MS,
   isUnattachedAgentSessionReadRefusal
 } from '../../../../shared/structured-agent-session-read-refusal'
-import { agentSessionErrorText } from '../../../../shared/agent-session-error-text'
 import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
 import { subscribeStructuredAgentSession } from '@/runtime/structured-agent-session-client'
+
+// A stream hands its failure over as the raw `{ code, message }` payload; `String()` of that is `[object Object]`.
+function readFailureText(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message || 'Something went wrong.'
+  }
+  if (typeof error === 'string') {
+    return error || 'Something went wrong.'
+  }
+  if (typeof error === 'object' && error !== null) {
+    if ('message' in error && typeof error.message === 'string' && error.message.length > 0) {
+      return error.message
+    }
+    if ('code' in error && typeof error.code === 'string' && error.code.length > 0) {
+      return error.code
+    }
+  }
+  return 'Something went wrong.'
+}
 
 function createReconnectScheduler(args: { shouldStop: () => boolean; reconnect: () => void }) {
   let timer: ReturnType<typeof setTimeout> | null = null
@@ -80,13 +98,13 @@ export function startStructuredAgentSessionReadTransport(args: {
   const reportReadFailure = (error: unknown): void => {
     if (!isUnattachedAgentSessionReadRefusal(error)) {
       clearUnattachedReadGrace()
-      args.applyError(agentSessionErrorText(error))
+      args.applyError(readFailureText(error))
       return
     }
     const now = Date.now()
     unattachedSince ??= now
     if (now - unattachedSince >= AGENT_SESSION_UNATTACHED_READ_GRACE_MS) {
-      args.applyError(agentSessionErrorText(error))
+      args.applyError(readFailureText(error))
     }
   }
   const captureHistoryReadGuard = (): (() => boolean) => {
