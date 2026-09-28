@@ -81,7 +81,6 @@ async function relaunchAfterCrashMidTurn(probe: AgentSessionOwnerProbe) {
   return { host, acquire }
 }
 
-/** Neither proof of the old owner's death is an observed exit, so the turn ends `unverifiable`. */
 function turnStates(host: StructuredAgentSessionHost) {
   return host
     .journalSnapshot(SESSION)
@@ -90,18 +89,20 @@ function turnStates(host: StructuredAgentSessionHost) {
 }
 
 // A host that cannot prove the old owner gone leaves its lease in recovery, still claimed, until
-// the next acquire resolves it: the open is not that acquire, and the turn is no less gone.
+// the next acquire resolves it: the open is not that acquire, and the turn is no less gone. Only
+// the proof decides whether it reads interrupted.
 const PROBES = [
-  ['the old owner is proven gone', { outcome: 'pid-absent' }],
+  ['the old owner is proven gone', { outcome: 'pid-absent' }, 'interrupted'],
   [
     'nothing proves the old owner gone',
-    { outcome: 'indeterminate', reason: 'This host cannot probe structured session owners.' }
+    { outcome: 'indeterminate', reason: 'This host cannot probe structured session owners.' },
+    'unverifiable'
   ]
-] as const satisfies readonly (readonly [string, AgentSessionOwnerProbe])[]
+] as const satisfies readonly (readonly [string, AgentSessionOwnerProbe, string])[]
 
 it.each(PROBES)(
   'settles a turn a dead generation left running when a send opens the chat and its start fails, when %s',
-  async (_when, probe) => {
+  async (_when, probe, settled) => {
     const { host, acquire } = await relaunchAfterCrashMidTurn(probe)
     expect(host.hasSession(SESSION)).toBe(false)
 
@@ -119,19 +120,19 @@ it.each(PROBES)(
     )
 
     expect(acquire).toHaveBeenCalledOnce()
-    expect(turnStates(host)).toEqual(['unverifiable'])
+    expect(turnStates(host)).toEqual([settled])
     await host.flushAllStreamedEvents()
   }
 )
 
 it.each(PROBES)(
   'settles the same turn when a reader opens the chat, when %s',
-  async (_when, probe) => {
+  async (_when, probe, settled) => {
     const { host } = await relaunchAfterCrashMidTurn(probe)
 
     await host.revealSession(SESSION)
 
-    expect(turnStates(host)).toEqual(['unverifiable'])
+    expect(turnStates(host)).toEqual([settled])
     await host.flushAllStreamedEvents()
   }
 )
