@@ -198,10 +198,13 @@ const FAILURE_SENTENCES = {
   hostFault: () => "Orca ran into a problem, so this didn't go through. Try again.",
   hostStopped: ({ agentName }) =>
     `${agentName ?? 'The agent'} never finished starting, so Orca stopped it.`,
-  providerRetrying: ({ agentName }, { retry }) =>
-    retry?.error === 'rate_limit' || retry?.status === 429
-      ? `${agentName ?? 'The agent'} is rate-limited and retrying.`
-      : `${agentName ?? 'The agent'} hit a temporary problem and is retrying.`
+  // A provider that says how its retry is going, for a person, is quoted: that is the progress.
+  providerRetrying: ({ agentName }, { retry, detail }) =>
+    detail?.audience === 'person'
+      ? quotingPersonDetail(`${agentName ?? 'The agent'} is reconnecting`, detail)
+      : retry?.error === 'rate_limit' || retry?.status === 429
+        ? `${agentName ?? 'The agent'} is rate-limited and retrying.`
+        : `${agentName ?? 'The agent'} hit a temporary problem and is retrying.`
 } satisfies Record<AgentSessionFailureKind, Sentence>
 
 /** The sentence a person reads for this fact on this surface; never a marker. */
