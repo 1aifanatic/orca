@@ -17345,6 +17345,7 @@
     },
     "native-chat": {
       "writeNotice": {
+        "notDoneReadHistory": "このチャットの履歴を読み込めませんでした。",
         "notDoneSend": "メッセージは送信されませんでした。",
         "tryAgainComposerSend": "もう一度送信してください。",
         "notDoneStop": "Agent は停止されませんでした。",
@@ -17359,6 +17360,7 @@
         "outcomeUnknown": "Orca は何が起きたかを確認できませんでした。チャットを確認してください。",
         "questionChanged": "この質問はすでに回答済みか、変更されています。",
         "historyUnreadable": "Orca はこのチャットの保存済み履歴を読み取れませんでした。",
+        "historyUnusable": "このチャットの履歴を読み取れなかったため、ここでは続けられません。",
         "unsupported": "このチャットを実行している Orca はこの操作に対応していません。Orca を更新してから、もう一度お試しください。",
         "unreachable": "Orca は Agent に接続できませんでした。",
         "recordFailed": "Orca はこのチャットの履歴に記録できませんでした。",

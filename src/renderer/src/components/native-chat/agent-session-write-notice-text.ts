@@ -2,18 +2,20 @@
 // shared English as its fallback so desktop and mobile never say it differently.
 
 import { translate } from '@/i18n/i18n'
+import { agentSessionWriteNoticeParts } from '../../../../shared/agent-session-refusal-notice'
 import {
   AGENT_SESSION_WRITE_NOTICE_COPY as COPY,
-  agentSessionWriteNoticeParts,
   type AgentSessionWriteNoticePart,
   type AgentSessionWriteNoticeSentence
-} from '../../../../shared/agent-session-refusal-notice'
+} from '../../../../shared/agent-session-write-notice-copy'
 import type {
   AgentSessionWriteFailure,
   AgentSessionWriteKind
 } from '../../../../shared/agent-session-write-failure'
 
 const SENTENCES: Record<AgentSessionWriteNoticeSentence, () => string> = {
+  notDoneReadHistory: () =>
+    translate('components.native-chat.writeNotice.notDoneReadHistory', COPY.notDoneReadHistory),
   notDoneSend: () => translate('components.native-chat.writeNotice.notDoneSend', COPY.notDoneSend),
   tryAgainComposerSend: () =>
     translate('components.native-chat.writeNotice.tryAgainComposerSend', COPY.tryAgainComposerSend),
@@ -38,6 +40,8 @@ const SENTENCES: Record<AgentSessionWriteNoticeSentence, () => string> = {
     translate('components.native-chat.writeNotice.questionChanged', COPY.questionChanged),
   historyUnreadable: () =>
     translate('components.native-chat.writeNotice.historyUnreadable', COPY.historyUnreadable),
+  historyUnusable: () =>
+    translate('components.native-chat.writeNotice.historyUnusable', COPY.historyUnusable),
   unsupported: () => translate('components.native-chat.writeNotice.unsupported', COPY.unsupported),
   unreachable: () => translate('components.native-chat.writeNotice.unreachable', COPY.unreachable),
   recordFailed: () =>

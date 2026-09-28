@@ -10,78 +10,27 @@
 // nothing saved carries copy.
 
 import type { AgentSessionFailureKind } from './agent-session-failure'
-import {
-  agentSessionFailureSentence,
-  QUIT_TERMINAL_AGENT,
-  START_NEW_CHAT,
-  TERMINAL_AGENT_HOLDS_CHAT
-} from './agent-session-failure-words'
+import { agentSessionFailureSentence } from './agent-session-failure-words'
 import type { AgentSessionRefusalReason } from './agent-session-refusal-details'
+import {
+  AGENT_SESSION_WRITE_NOTICE_COPY,
+  type AgentSessionWriteNoticePart,
+  type AgentSessionWriteNoticeSentence
+} from './agent-session-write-notice-copy'
 import type {
   AgentSessionWireRefusal,
   AgentSessionWireRefusalCode
 } from './agent-session-wire-refusals'
 import {
   agentSessionRefusalFailure,
+  parseAgentSessionWriteFailure,
   type AgentSessionWriteFailure,
   type AgentSessionWriteKind,
   type AgentSessionWriteRefusal
 } from './agent-session-write-failure'
 
-/** Every sentence a notice is made of. Desktop translates each whole sentence with this as its
- *  fallback; mobile shows it as is. */
-export const AGENT_SESSION_WRITE_NOTICE_COPY = {
-  notDoneSend: 'Your message was not sent.',
-  tryAgainComposerSend: 'Send it again.',
-  notDoneStop: "The agent wasn't stopped.",
-  notDoneStopTask: "The background task wasn't stopped.",
-  notDoneStopTasks: "The background tasks weren't stopped.",
-  notDoneAnswer: 'Your answer was not sent.',
-  notDoneOption: "The setting wasn't changed.",
-  notDoneCommand: "The command didn't run.",
-  notDoneGoal: "The goal wasn't changed.",
-  restartFailed: "The agent couldn't restart.",
-  capacity: 'Orca has received too many requests in the last day.',
-  outcomeUnknown: "Orca couldn't confirm what happened. Check the chat.",
-  questionChanged: 'This question was already answered or has changed.',
-  historyUnreadable: "Orca couldn't read this chat's saved history.",
-  unsupported: "The Orca running this chat doesn't support this. Update Orca, then try again.",
-  unreachable: "Orca couldn't reach the agent.",
-  recordFailed: "Orca couldn't record it in this chat's history.",
-  conversationCleared: 'This conversation has been cleared.',
-  openCurrentConversation: 'Open the current conversation to continue.',
-  clearUnfinished: "The last /clear didn't finish.",
-  commandRunning: 'A /compact or /clear is still running.',
-  waitForCommand: 'Wait for the /compact or /clear to finish.',
-  agentStarting: 'The agent is still starting.',
-  waitForStart: 'Wait for the agent to finish starting.',
-  turnActive: 'The agent is still responding.',
-  waitForTurn: 'Wait for the agent to finish responding, or stop it.',
-  promptPending: 'The agent is waiting for an answer to a question or approval.',
-  answerFirst: 'Answer the question or approval first.',
-  backgroundTasksRunning: 'Background tasks are still running.',
-  waitForBackgroundTasks: 'Wait for the background tasks to finish.',
-  messagesUnsettled: "A message you sent earlier hasn't been confirmed yet.",
-  settleEarlierMessage: 'Wait for your earlier message to go through, or retry it.',
-  optionRejected: "The agent didn't accept this setting.",
-  goalsUnsupported: "This agent doesn't support goals.",
-  agentRefused: 'The agent turned this down.',
-  ownerUnproven: "Orca hasn't confirmed that this chat's previous agent stopped.",
-  reopenChat: 'Reopen the chat to check again.',
-  terminalAgentHoldsChat: TERMINAL_AGENT_HOLDS_CHAT,
-  quitTerminalAgent: QUIT_TERMINAL_AGENT,
-  hostReconciling: 'Orca is still checking on this chat after restarting.',
-  waitMoment: 'Wait a moment.',
-  recordUnreadable: "Orca couldn't read this chat's saved state.",
-  chatNotFound: 'The Orca running this chat has no record of it.',
-  startNewChat: START_NEW_CHAT
-} as const
-
-export type AgentSessionWriteNoticeSentence = keyof typeof AGENT_SESSION_WRITE_NOTICE_COPY
-/** A notice as whole sentences, each translated on its own; `text` is a provider's own words. */
-export type AgentSessionWriteNoticePart = AgentSessionWriteNoticeSentence | { text: string }
-
 const NOT_DONE: Record<AgentSessionWriteKind, AgentSessionWriteNoticeSentence> = {
+  'read-history': 'notDoneReadHistory',
   send: 'notDoneSend',
   'composer-send': 'notDoneSend',
   stop: 'notDoneStop',
@@ -131,6 +80,8 @@ export type AgentSessionRefusalReasonWords =
   /** A start that failed: the sentence that failure has everywhere, whose next step is a send. */
   | { fact: AgentSessionFailureKind; action: AgentSessionRefusalAction }
 
+type AgentSessionRefusalCauseWords = Extract<AgentSessionRefusalReasonWords, { cause: unknown }>
+
 function codeWords(action: AgentSessionRefusalAction): AgentSessionRefusalReasonWords {
   return { words: 'code', action }
 }
@@ -141,6 +92,18 @@ function causeWords(
   step?: AgentSessionWriteNoticeSentence
 ): AgentSessionRefusalReasonWords {
   return step ? { cause, step, action } : { cause, action }
+}
+
+/** A reason whose honest words differ when it refuses a read of the chat's history. */
+type AgentSessionRefusalReasonRow =
+  | AgentSessionRefusalReasonWords
+  | { readHistory: AgentSessionRefusalReasonWords; write: AgentSessionRefusalReasonWords }
+
+// A read raises it only for a journal file no retry can read, so only a new chat continues.
+const HISTORY_UNUSABLE: AgentSessionRefusalCauseWords = {
+  cause: 'historyUnusable',
+  step: 'startNewChat',
+  action: 'goElsewhere'
 }
 
 const AGENT_STARTING = causeWords('agentStarting', 'wait', 'waitForStart')
@@ -243,7 +206,10 @@ const REASON_WORDS = {
   },
   agent_session_item_revision_stale: { promptMoved: codeWords('nothingLeft') },
   agent_session_already_resolved: { promptAlreadyResolved: codeWords('nothingLeft') },
-  agent_session_journal_unreadable: { journalUnreadable: codeWords('hostFinding') },
+  agent_session_journal_unreadable: {
+    // A write's covers any open that failed, which can clear.
+    journalUnreadable: { readHistory: HISTORY_UNUSABLE, write: codeWords('hostFinding') }
+  },
   // Thrown, so a client meets these only as an RPC error; the code's words stand.
   structured_agent_session_unsupported: {
     clientCapabilityMissing: codeWords('updateOrca'),
@@ -254,22 +220,41 @@ const REASON_WORDS = {
 } satisfies {
   [C in AgentSessionWireRefusalCode]: Record<
     AgentSessionRefusalReason<C>,
-    AgentSessionRefusalReasonWords
+    AgentSessionRefusalReasonRow
   >
 }
 
-/** The words and next step a reason gets; the code's row when the refusal names none. */
+/** The words and next step a reason gets on this request; undefined when the refusal names none. */
 export function agentSessionRefusalReasonWords(
-  failure: AgentSessionWriteRefusal
+  failure: AgentSessionWriteRefusal,
+  request: AgentSessionWriteKind
 ): AgentSessionRefusalReasonWords | undefined {
   const reason = failure.details?.reason
-  const byReason: Partial<Record<string, AgentSessionRefusalReasonWords>> | undefined =
+  const byReason: Partial<Record<string, AgentSessionRefusalReasonRow>> | undefined =
     REASON_WORDS[failure.code]
-  return reason === undefined ? undefined : byReason?.[reason]
+  const row = reason === undefined ? undefined : byReason?.[reason]
+  if (!row || !('readHistory' in row)) {
+    return row
+  }
+  return request === 'read-history' ? row.readHistory : row.write
 }
 
-function questionChangedParts(write: AgentSessionWriteKind): AgentSessionWriteNoticeSentence[] {
-  return write === 'answer' ? ['questionChanged'] : ['questionChanged', NOT_DONE[write]]
+/** A cause, and that the request did not happen unless the cause already says so. */
+function causeParts(
+  cause: AgentSessionWriteNoticeSentence,
+  write: AgentSessionWriteKind
+): AgentSessionWriteNoticeSentence[] {
+  const saysNotDone =
+    cause === 'historyUnusable' || (cause === 'questionChanged' && write === 'answer')
+  return saysNotDone ? [cause] : [cause, NOT_DONE[write]]
+}
+
+function causeWordsParts(
+  words: AgentSessionRefusalCauseWords,
+  write: AgentSessionWriteKind
+): AgentSessionWriteNoticeSentence[] {
+  const said = causeParts(words.cause, write)
+  return words.step ? [...said, words.step] : said
 }
 
 /** The notice a named reason has of its own; undefined leaves the code's words. */
@@ -277,7 +262,7 @@ function reasonParts(
   failure: AgentSessionWriteRefusal,
   write: AgentSessionWriteKind
 ): AgentSessionWriteNoticePart[] | undefined {
-  const words = agentSessionRefusalReasonWords(failure)
+  const words = agentSessionRefusalReasonWords(failure, write)
   if (!words || 'words' in words) {
     return undefined
   }
@@ -286,9 +271,7 @@ function reasonParts(
       ? [NOT_DONE[write], { text: agentSessionFailureSentence({ kind: words.fact }, 'rejection') }]
       : undefined
   }
-  const said =
-    words.cause === 'questionChanged' ? questionChangedParts(write) : [words.cause, NOT_DONE[write]]
-  return words.step ? [...said, words.step] : said
+  return causeWordsParts(words, write)
 }
 
 export function agentSessionWriteNoticeParts(
@@ -335,9 +318,12 @@ export function agentSessionWriteNoticeParts(
     // A Stop names the prompt it was pressed under, so it can be refused this way too.
     case 'agent_session_item_revision_stale':
     case 'agent_session_already_resolved':
-      return questionChangedParts(write)
+      return causeParts('questionChanged', write)
+    // A read raises it with no reason, and only for a file no retry can read.
     case 'agent_session_journal_unreadable':
-      return ['historyUnreadable', notDone]
+      return write === 'read-history'
+        ? causeWordsParts(HISTORY_UNUSABLE, write)
+        : ['historyUnreadable', notDone]
     case 'structured_agent_session_unsupported':
       return ['unsupported']
   }
@@ -367,4 +353,16 @@ export function agentSessionRefusalNotice(
 /** English, for a write whose request failed without a refusal. */
 export function agentSessionWriteFailureNotice(write: AgentSessionWriteKind): string {
   return agentSessionWriteNoticeEnglish(agentSessionWriteNoticeParts({ kind: 'failed' }, write))
+}
+
+/** The notice for a refused read of a chat's history, from the refusal's code and any details a
+ *  host sent; a code this build does not know says only that the history did not load. */
+export function agentSessionReadHistoryRefusalParts(
+  code: string,
+  details?: unknown
+): AgentSessionWriteNoticePart[] {
+  const failure = parseAgentSessionWriteFailure({ kind: 'refused', code, details })
+  return failure
+    ? agentSessionWriteNoticeParts(failure, 'read-history')
+    : agentSessionWriteNotDoneParts('read-history')
 }

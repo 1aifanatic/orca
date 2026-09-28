@@ -16,8 +16,9 @@ import {
 
 /** What the person was doing, which decides what the notice says did not happen. `send` keeps
  *  the message behind a Retry control; `composer-send` puts it back in the composer, as the phone
- *  does. */
+ *  does. `read-history` is opening the chat to show its history, which writes nothing. */
 export type AgentSessionWriteKind =
+  | 'read-history'
   | 'send'
   | 'composer-send'
   | 'stop'

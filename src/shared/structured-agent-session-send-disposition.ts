@@ -12,9 +12,9 @@ import type { AgentSessionMutationResult, AgentSessionSendResult } from './agent
 import {
   agentSessionWriteNoticeEnglish,
   agentSessionWriteNoticeParts,
-  agentSessionWriteNotDoneParts,
-  type AgentSessionWriteNoticePart
+  agentSessionWriteNotDoneParts
 } from './agent-session-refusal-notice'
+import type { AgentSessionWriteNoticePart } from './agent-session-write-notice-copy'
 import { agentSessionRefusalFailure } from './agent-session-write-failure'
 import { classifyDispatchRejection } from './structured-agent-session-dispatch-rejection'
 import {

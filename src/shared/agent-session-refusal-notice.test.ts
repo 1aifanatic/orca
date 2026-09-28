@@ -4,14 +4,17 @@ import {
   type AgentSessionWireRefusalCode
 } from './agent-session-wire-refusals'
 import {
-  AGENT_SESSION_WRITE_NOTICE_COPY,
+  agentSessionReadHistoryRefusalParts,
   agentSessionRefusalNotice,
   agentSessionRefusalReasonWords,
   agentSessionWriteFailureNotice,
   agentSessionWriteNoticeEnglish,
-  agentSessionWriteNoticeParts,
-  type AgentSessionWriteNoticeSentence
+  agentSessionWriteNoticeParts
 } from './agent-session-refusal-notice'
+import {
+  AGENT_SESSION_WRITE_NOTICE_COPY,
+  type AgentSessionWriteNoticeSentence
+} from './agent-session-write-notice-copy'
 import { AGENT_SESSION_REFUSAL_REASONS } from './agent-session-refusal-details'
 import { agentSessionFailureSentence } from './agent-session-failure-words'
 import {
@@ -29,6 +32,7 @@ import {
 import { structuredAgentSessionRejectionParts } from './structured-agent-session-send-disposition'
 
 const WRITES: AgentSessionWriteKind[] = [
+  'read-history',
   'send',
   'composer-send',
   'stop',
@@ -75,6 +79,7 @@ const FAILURES: AgentSessionWriteFailure[] = [
   FUTURE_CODE
 ]
 const NOT_DONE: Record<AgentSessionWriteKind, AgentSessionWriteNoticeSentence> = {
+  'read-history': 'notDoneReadHistory',
   send: 'notDoneSend',
   'composer-send': 'notDoneSend',
   stop: 'notDoneStop',
@@ -103,6 +108,7 @@ function causeSaysNotDone(
   const code = codeOf(failure)
   return (
     code === 'structured_agent_session_unsupported' ||
+    (write === 'read-history' && code === 'agent_session_journal_unreadable') ||
     (write === 'answer' &&
       (code === 'agent_session_item_revision_stale' || code === 'agent_session_already_resolved'))
   )
@@ -163,7 +169,11 @@ describe('the notice for every failure and write', () => {
   })
 
   it('names a cause only for a code on the allowlist', () => {
-    for (const { failure, parts, cell } of cells) {
+    for (const { failure, write, parts, cell } of cells) {
+      if (write === 'read-history' && codeOf(failure) === 'agent_session_journal_unreadable') {
+        expect(parts, cell).toEqual(['historyUnusable', 'startNewChat'])
+        continue
+      }
       const cause =
         failure.kind === 'unconfirmed'
           ? 'outcomeUnknown'
@@ -318,7 +328,7 @@ describe('the notice for every reason a host names', () => {
       failure,
       write,
       parts: agentSessionWriteNoticeParts(failure, write),
-      words: agentSessionRefusalReasonWords(failure),
+      words: agentSessionRefusalReasonWords(failure, write),
       cell: `${reasonOf(failure)} x ${write}`
     }))
   )
@@ -363,7 +373,10 @@ describe('the notice for every reason a host names', () => {
       const notDone = parts.filter((part) => typeof part === 'string' && part.startsWith('notDone'))
       const answeredAway = write === 'answer' && parts.includes('questionChanged')
       const unsupported = failure.code === 'structured_agent_session_unsupported'
-      expect(notDone, cell).toEqual(answeredAway || unsupported ? [] : [NOT_DONE[write]])
+      const saysNotDone = parts.includes('historyUnusable')
+      expect(notDone, cell).toEqual(
+        answeredAway || unsupported || saysNotDone ? [] : [NOT_DONE[write]]
+      )
     }
   })
 
@@ -447,4 +460,50 @@ it('keeps a sentence the failure rows share word for word', () => {
   expect(agentSessionFailureSentence({ kind: 'historyTooLarge' }, 'row')).toContain(
     AGENT_SESSION_WRITE_NOTICE_COPY.startNewChat
   )
+})
+
+// A read of a chat's history is refused this way only for a journal file no retry can read.
+describe('a read of a chat history whose journal cannot be read', () => {
+  const FINAL =
+    "This chat's history couldn't be read, so it can't continue here. Start a new chat to continue."
+
+  it.each([
+    ['a host that names the reason', { reason: 'journalUnreadable' }],
+    ['a read that raises the bare code', undefined]
+  ] as const)(
+    'says the chat cannot continue here and to start a new one: %s',
+    (_label, details) => {
+      const parts = agentSessionReadHistoryRefusalParts('agent_session_journal_unreadable', details)
+      expect(parts).toEqual(['historyUnusable', 'startNewChat'])
+      expect(agentSessionWriteNoticeEnglish(parts)).toBe(FINAL)
+      expect(
+        agentSessionRefusalNotice(
+          { code: 'agent_session_journal_unreadable', message: HOST_TEXT, details },
+          'read-history'
+        )
+      ).toBe(FINAL)
+    }
+  )
+
+  it('keeps the words a write refused the same way has, whose cause can clear', () => {
+    expect(
+      agentSessionRefusalNotice(
+        {
+          code: 'agent_session_journal_unreadable',
+          message: HOST_TEXT,
+          details: { reason: 'journalUnreadable' }
+        },
+        'send'
+      )
+    ).toBe("Orca couldn't read this chat's saved history. Your message was not sent.")
+  })
+
+  it('says only that the history did not load for any other read refusal', () => {
+    expect(agentSessionReadHistoryRefusalParts('agent_session_ownership_unknown')).toEqual([
+      'notDoneReadHistory'
+    ])
+    expect(agentSessionReadHistoryRefusalParts('agent_session_from_the_future')).toEqual([
+      'notDoneReadHistory'
+    ])
+  })
 })
