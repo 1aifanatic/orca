@@ -17,10 +17,7 @@ import {
   hasTrackedCodexTranscriptSubagents,
   type CodexSubagentTranscriptState
 } from '../../codex-subagent-transcript'
-import {
-  codexRolloutTurnEndIsCancellation,
-  type CodexRolloutTurnEnd
-} from '../../codex-rollout-turn-lifecycle'
+import type { CodexRolloutTurnEnd } from '../../codex-rollout-turn-lifecycle'
 import type { CodexLeadTurnState, HookListenerState } from '../listener-state'
 
 export function getOrCreateCodexSubagentRoster(
@@ -94,7 +91,7 @@ export function setCodexMainAgentTurnState(
   const settled: Pick<CodexLeadTurnState, 'state' | 'outcome'> = recordedEnd
     ? {
         state: 'done',
-        outcome: codexRolloutTurnEndIsCancellation(recordedEnd) ? 'cancellation' : undefined
+        outcome: recordedEnd === 'interrupted' ? 'cancellation' : undefined
       }
     : next
   const continued = continueMainAgentStatus(

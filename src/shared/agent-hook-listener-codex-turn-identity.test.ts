@@ -108,7 +108,11 @@ describe("the Codex main agent turn, settled from Codex's rollout", () => {
   })
 
   // Shapes as Codex writes them: `turn_aborted` carries its `TurnAbortReason` in snake_case.
-  function marker(type: string, turnId: string, reason = 'interrupted'): string {
+  function marker(
+    type: string,
+    turnId: string,
+    reason: string | undefined = 'interrupted'
+  ): string {
     const payload =
       type === 'turn_aborted' ? { type, turn_id: turnId, reason } : { type, turn_id: turnId }
     return `${JSON.stringify({ type: 'event_msg', payload })}\n`
@@ -152,18 +156,21 @@ describe("the Codex main agent turn, settled from Codex's rollout", () => {
     })
   })
 
-  it.each([
+  // Codex's app-server reports every abort as an interrupted turn, whatever its reason.
+  it.each<[string | undefined, string]>([
     ['replaced', 'a new task took the turn over'],
     ['review_ended', 'review mode ended'],
-    ['budget_limited', 'the token budget ran out']
-  ])('reads an abort for %s (%s) as an end nobody cancelled', (reason) => {
+    ['budget_limited', 'the token budget ran out'],
+    [undefined, 'no reason recorded']
+  ])('reads an abort for %s (%s) as the same cancel an Interrupt hook reports', (reason) => {
     hook({ hook_event_name: 'UserPromptSubmit', prompt: 'go', turn_id: 'turn-1' })
     appendFileSync(rollout, marker('turn_aborted', 'turn-1', reason))
 
-    const observed = observeCodexRollout(state, PANE_KEY)
-    expect(observed?.payload).toMatchObject({ state: 'done', mainAgent: { state: 'done' } })
-    expect(observed?.payload.mainAgent?.outcome).toBeUndefined()
-    expect(observed?.payload.interrupted).toBeUndefined()
+    expect(observeCodexRollout(state, PANE_KEY)?.payload).toMatchObject({
+      state: 'done',
+      interrupted: true,
+      mainAgent: { state: 'done', outcome: 'cancellation' }
+    })
   })
 
   it("reads the current turn's end when a later turn's start lands in the same read", () => {

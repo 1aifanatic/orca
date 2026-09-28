@@ -238,10 +238,11 @@ It rebuilds the row from the current records and publishes it with no hook name
 or explicit prompt, so it restates the row rather than starting a turn, and its
 life follows the pane's records, not the identity of the row it last published.
 The rollout's turns are tracked by id: the open turn, plus a bounded window of
-ended turns with how each ended. Only a `turn_aborted` whose reason is
-`interrupted` is a cancellation; `replaced`, `review_ended` and `budget_limited`
-end the turn with no verdict. This settles the turn when its hook was lost or
-never registered (Codex before 0.150).
+ended turns with how each ended. Every `turn_aborted` is a cancellation,
+whatever its reason (`interrupted`, `replaced`, `review_ended`, `budget_limited`,
+or none), because Codex's own app-server reports every aborted turn as
+interrupted. This settles the turn when its hook was lost or never registered
+(Codex before 0.150).
 
 Admission is one function, `normalizeAgentStatusPayload`, on the relay wire,
 IPC and disk. A malformed `mainAgent` drops the field and keeps the row. Old hosts

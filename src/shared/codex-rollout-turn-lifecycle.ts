@@ -9,10 +9,6 @@ export const CODEX_EVENT_TURN_STARTED = 'task_started'
 export const CODEX_EVENT_TURN_COMPLETE = 'task_complete'
 export const CODEX_EVENT_TURN_ABORTED = 'turn_aborted'
 
-/** Codex's `TurnAbortReason` for a cancel the user asked for; `replaced`, `review_ended` and
- *  `budget_limited` end a turn nobody cancelled. */
-const CODEX_ABORT_REASON_INTERRUPTED = 'interrupted'
-
 // Why: a hook trails its turn's rollout markers by at most a turn or two; this bounds memory on a
 // long session while still recognising any hook that plausibly arrives late.
 const CODEX_ENDED_TURNS_MAX = 32
@@ -21,12 +17,11 @@ export type CodexRolloutTurnLifecycle = {
   state: NativeChatTurnLifecycleState
   /** The turn's `turn_id`, the same id Codex puts on that turn's hooks. */
   turnId?: string
-  /** `reason` on `turn_aborted`: Codex's `TurnAbortReason`, snake_case. */
-  abortReason?: string
 }
 
-/** How Codex's rollout recorded a turn's end. */
-export type CodexRolloutTurnEnd = Pick<CodexRolloutTurnLifecycle, 'state' | 'abortReason'>
+/** How Codex's rollout recorded a turn's end. Codex reports every `turn_aborted`, whatever its
+ *  `TurnAbortReason`, as an interrupted turn, so no reason is kept. */
+export type CodexRolloutTurnEnd = Exclude<NativeChatTurnLifecycleState, 'working'>
 
 /** The main agent's turns as its rollout recorded them: the one Codex has open, the latest one it
  *  started (open or not; or ended, when the read began after its start), and a bounded window of
@@ -56,13 +51,7 @@ export function decodeCodexRolloutTurnLifecycle(
     return undefined
   }
   const turnId = typeof payload.turn_id === 'string' ? payload.turn_id.trim() : ''
-  const abortReason =
-    state === 'interrupted' && typeof payload.reason === 'string' ? payload.reason : undefined
-  return {
-    state,
-    ...(turnId ? { turnId } : {}),
-    ...(abortReason ? { abortReason } : {})
-  }
+  return { state, ...(turnId ? { turnId } : {}) }
 }
 
 export function createCodexRolloutTurns(): CodexRolloutTurns {
@@ -89,19 +78,11 @@ export function recordCodexRolloutTurn(
   // Why: a first read begins at most one read back, so a long turn's start can precede it.
   turns.latestTurnId ??= turnId
   turns.ended.delete(turnId)
-  turns.ended.set(turnId, {
-    state: lifecycle.state,
-    ...(lifecycle.abortReason ? { abortReason: lifecycle.abortReason } : {})
-  })
+  turns.ended.set(turnId, lifecycle.state)
   if (turns.ended.size > CODEX_ENDED_TURNS_MAX) {
     const oldest = turns.ended.keys().next().value
     if (oldest !== undefined) {
       turns.ended.delete(oldest)
     }
   }
-}
-
-/** Only an abort the user asked for is a cancellation; any other end carries no verdict. */
-export function codexRolloutTurnEndIsCancellation(end: CodexRolloutTurnEnd): boolean {
-  return end.state === 'interrupted' && end.abortReason === CODEX_ABORT_REASON_INTERRUPTED
 }
