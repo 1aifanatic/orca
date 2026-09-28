@@ -9,11 +9,13 @@ describe('structured agent-session host teardown', () => {
       runtimeState: { stopLeaseRenewal: () => undefined, flushAllEventSinks: noop },
       tasks: { drainAttaches: noop },
       evictOwnedSessions: noop,
+      releaseHandoverHolds: () => {},
       beginResumeMarkers: () => {},
       recordResumeMarkers: noop
     })
     expect(phases.map((phase) => phase.name)).toEqual([
       'begin-resume-markers',
+      'release-handover-holds',
       'dispose-idle-sweep',
       'stop-lease-renewal',
       'drain-attaches',
@@ -34,6 +36,7 @@ describe('structured agent-session host teardown', () => {
       runtimeState: { stopLeaseRenewal: () => {}, flushAllEventSinks: flush },
       tasks: { drainAttaches: cleaned },
       evictOwnedSessions: cleaned,
+      releaseHandoverHolds: () => {},
       beginResumeMarkers: () => {},
       recordResumeMarkers: () => pending.promise
     })

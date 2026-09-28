@@ -1,5 +1,6 @@
 // A send's handover waits for the turn Codex answered it into to open, or provably not to: it
-// ended, the thread stopped running, or the child is gone. Held in memory only.
+// ended, the thread stopped running, or the child is gone. A close or quit abandons the wait, and
+// the request deadline bounds it. Held in memory only.
 
 import { readCodexProviderVerdict } from './codex-structured-journal-provider-verdicts'
 import { readCodexThreadId, readCodexTurnId } from './codex-structured-thread-facts'
@@ -9,7 +10,7 @@ export type CodexTurnOpenHolds = {
   hold: (turnId: string, deadlineAt: number) => Promise<void>
   /** Releases the holds a notification on the session's own thread answers. */
   observe: (threadId: string, method: string, params: unknown) => void
-  /** Releases every hold: the child that would open their turns is gone. */
+  /** Releases every hold: the child is going or gone, or a close or quit must not wait on it. */
   releaseAll: () => void
 }
 

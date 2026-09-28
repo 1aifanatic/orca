@@ -127,8 +127,10 @@ export function createStructuredAgentSessionConversationLifetime(host: {
     },
     /** Ends a chat's resources, not the chat: its record and journal stay on disk, and what is
      *  still queued will not be sent. */
-    close: (sessionId: string): Promise<void> =>
-      serialize(sessionId, async () => {
+    close: (sessionId: string): Promise<void> => {
+      // Ahead of the queue: a handover's wait is bookkeeping and must never hold a close.
+      deps().adapter.releaseHandoverHolds?.(sessionId)
+      return serialize(sessionId, async () => {
         const session = sessions.get(sessionId)
         if (session) {
           // Abandoned before the stop, so no start delivers it.
@@ -139,5 +141,6 @@ export function createStructuredAgentSessionConversationLifetime(host: {
         })
         await closeConversation(sessionId)
       })
+    }
   }
 }

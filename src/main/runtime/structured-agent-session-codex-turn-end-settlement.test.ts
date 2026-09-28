@@ -241,3 +241,30 @@ describe('a Stop sent after Codex answered a cold send, before it opened the tur
     expect((await settled()).owesWork).toBe(false)
   })
 })
+
+describe('a held cold send is bookkeeping: it never delays a close or a quit', () => {
+  /** Well inside one eviction step's budget, and far inside the hold's own deadline. */
+  const PROMPTLY_MS = 2_000
+
+  async function holdASendWithAStopBehindIt(): Promise<{ stopping: Promise<void> }> {
+    await send('look around')
+    await vi.waitFor(() => expect(answers).toBe(1))
+    const stopping = stop()
+    expect(await settledWithin(stopping, 200)).toBe('held')
+    return { stopping }
+  }
+
+  it('lets the chat close at once', async () => {
+    const { stopping } = await holdASendWithAStopBehindIt()
+
+    expect(await settledWithin(host.close(SESSION), PROMPTLY_MS)).not.toBe('held')
+    expect(await settledWithin(stopping, PROMPTLY_MS)).not.toBe('held')
+  })
+
+  it('lets the app quit at once', async () => {
+    const { stopping } = await holdASendWithAStopBehindIt()
+
+    expect(await settledWithin(stopStructuredAgentSessionRuntime(), PROMPTLY_MS)).not.toBe('held')
+    expect(await settledWithin(stopping, PROMPTLY_MS)).not.toBe('held')
+  })
+})
