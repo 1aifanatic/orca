@@ -20,6 +20,7 @@ import {
 import { JOURNAL_NEWER_SCHEMA_MESSAGE } from '../native-chat/agent-session-journal/journal-open-failure'
 import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
 import Database from '../sqlite/sync-database'
+import type { RuntimeMobileSessionTabsResult } from '../../shared/runtime-types'
 import { OrcaRuntimeService } from './orca-runtime'
 import { requireStructuredCleanupHost } from './rpc/methods/structured-agent-session-gate'
 import { assertLegacyAiVaultResumeCommandAllowed } from '../ai-vault/structured-session-ownership'
@@ -39,6 +40,8 @@ import {
 
 let root: string
 let holder: JournalOwnerLockHolder | null = null
+// A refused startup waits for ownership; a later test's claim must not wake an earlier runtime.
+const stopAwaitingOwnership: (() => void)[] = []
 
 // An in-process caller: the same build as the host, so the gate asks it for no capability.
 // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the cleanup gate reads only `clientKind` and `clientCapabilities`.
@@ -80,6 +83,7 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
+  stopAwaitingOwnership.splice(0).forEach((stop) => stop())
   await holder?.kill()
   holder = null
   await stopStructuredAgentSessionRuntime().catch(() => undefined)
@@ -221,12 +225,14 @@ describe('startup and other non-chat work without a structured host', () => {
       refreshMobileSessionPtyRecords(): Promise<Set<string> | null>
       getKnownWorkspaceSessionWorktreeIds(): Set<string>
       hydrateHeadlessMobileSessionTabsFromWorkspaceSession(): Set<string>
+      stopAwaitingStructuredAgentSessionJournal: (() => void) | null
     }
     internal.hasPersistedStructuredAgentSessionStore = () => true
     internal.ensureStructuredAgentSessionHost = ensureHost
     internal.refreshMobileSessionPtyRecords = refreshPtyRecords
     internal.getKnownWorkspaceSessionWorktreeIds = () => new Set(['workspace-1'])
     internal.hydrateHeadlessMobileSessionTabsFromWorkspaceSession = hydrateTabs
+    stopAwaitingOwnership.push(() => internal.stopAwaitingStructuredAgentSessionJournal?.())
     return { runtime, refreshPtyRecords, hydrateTabs }
   }
 
@@ -289,20 +295,22 @@ describe('startup and other non-chat work without a structured host', () => {
   // and the desktop then saves its chat tabs away.
   describe('the session-tabs inventory', () => {
     /** The worktree's frame as the renderer's own graph publication leaves it: no chat rows. */
+    const WORKTREE_FRAME: RuntimeMobileSessionTabsResult = {
+      worktree: 'workspace-1',
+      publicationEpoch: 'renderer-epoch',
+      snapshotVersion: 1,
+      activeGroupId: null,
+      activeTabId: null,
+      activeTabType: null,
+      tabs: []
+    }
+
     function publishWorktreeFrame(runtime: OrcaRuntimeService): void {
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the runtime's own protected store, called as its graph publication does.
       const internal = runtime as unknown as {
         storeMobileSessionSnapshot(worktreeId: string, snapshot: unknown): unknown
       }
-      internal.storeMobileSessionSnapshot('workspace-1', {
-        worktree: 'workspace-1',
-        publicationEpoch: 'renderer-epoch',
-        snapshotVersion: 1,
-        activeGroupId: null,
-        activeTabId: null,
-        activeTabType: null,
-        tabs: []
-      })
+      internal.storeMobileSessionSnapshot('workspace-1', WORKTREE_FRAME)
     }
 
     async function listInventory(runtime: OrcaRuntimeService) {
@@ -347,33 +355,45 @@ describe('startup and other non-chat work without a structured host', () => {
       expect(getStructuredAgentSessionHost()).not.toBeNull()
     })
 
-    it('restores again after a takeover, publishing the chats and clearing the mark', async () => {
+    it('restores on its own after a takeover, pushing the chats without the mark', async () => {
       holder = await holdJournalOwnerLockInChild(root)
       vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-      const { runtime } = startupRuntime()
+      const reconciled = vi.fn(async () => undefined)
+      // The real install; its host's open conversations stand in for the chats its readable
+      // restore reopens.
+      const { runtime, refreshPtyRecords } = startupRuntime(async () => {
+        const host = await install()
+        vi.spyOn(host, 'listSessionTabs').mockReturnValue([
+          { workspaceId: 'workspace-1', sessionId: 'claude-1', agent: 'claude' },
+          { workspaceId: 'workspace-1', sessionId: 'codex-1', agent: 'codex' }
+        ])
+        vi.spyOn(host, 'setSessionTabVisibility').mockResolvedValue(undefined)
+        vi.spyOn(host, 'reconcileRestartLeases').mockImplementation(reconciled)
+        return host
+      })
       publishWorktreeFrame(runtime)
       expect((await listInventory(runtime))[0]).toMatchObject({ agentSessionsUnverifiable: true })
+      // A paired phone's subscription: nothing on the desktop lists or opens a chat after this.
+      const pushed: RuntimeMobileSessionTabsResult[] = []
+      const unsubscribe = runtime.onMobileSessionTabsChanged((frame) => pushed.push(frame))
 
       await holder.kill()
       holder = null
-      await vi.waitFor(() => expect(gateRefusal().reason).toBe('hostDisabled'), { timeout: 10_000 })
-      // The first chat request after the takeover installs the host, as the read RPCs do.
-      const host = await install()
-      // The host's open conversations stand in for the chats its readable restore reopens.
-      vi.spyOn(host, 'listSessionTabs').mockReturnValue([
-        { workspaceId: 'workspace-1', sessionId: 'claude-1', agent: 'claude' },
-        { workspaceId: 'workspace-1', sessionId: 'codex-1', agent: 'codex' }
-      ])
-      vi.spyOn(host, 'setSessionTabVisibility').mockResolvedValue(undefined)
 
-      const frames = await listInventory(runtime)
-
-      expect(frames).toHaveLength(1)
-      expect(frames[0]).not.toHaveProperty('agentSessionsUnverifiable')
-      expect(frames[0]?.tabs).toEqual([
+      const chats = [
         expect.objectContaining({ type: 'agent-session', sessionId: 'claude-1', agent: 'claude' }),
         expect.objectContaining({ type: 'agent-session', sessionId: 'codex-1', agent: 'codex' })
-      ])
+      ]
+      await vi.waitFor(() => expect(pushed.at(-1)?.tabs).toEqual(chats), { timeout: 10_000 })
+      unsubscribe()
+      expect(pushed.at(-1)).not.toHaveProperty('agentSessionsUnverifiable')
+      expect(getStructuredAgentSessionHost()).not.toBeNull()
+      expect(reconciled).toHaveBeenCalledOnce()
+      expect(refreshPtyRecords).toHaveBeenCalledTimes(2)
+      const frames = await runtime.listAllMobileSessionTabs()
+      expect(frames).toEqual([expect.objectContaining({ tabs: chats })])
+      expect(frames[0]).not.toHaveProperty('agentSessionsUnverifiable')
+      expect(reconciled).toHaveBeenCalledOnce()
     })
   })
 

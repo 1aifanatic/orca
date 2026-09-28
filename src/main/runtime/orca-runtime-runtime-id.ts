@@ -125,6 +125,8 @@ export class OrcaRuntimeWithRuntimeId {
 
   protected structuredAgentSessionStartupRestorePromise: Promise<void> | null = null
 
+  protected stopAwaitingStructuredAgentSessionJournal: (() => void) | null = null
+
   protected mobileSessionTabsChangeSequence = 0
 
   protected sessionTabsInventoryPublicationEpoch: number | null = null

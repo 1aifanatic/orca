@@ -19,7 +19,11 @@ import {
 } from './structured-agent-account-home'
 import { resolveStructuredLaunchSeedOptions } from '../../shared/native-chat-session-option-defaults'
 import { hasPersistedStructuredAgentSessionStore as hasPersistedStructuredAgentSessionStoreOnDisk } from './structured-agent-session-runtime'
-import { ensureStructuredAgentSessionHostUnlessRefused } from './structured-agent-session-journal-ownership'
+import {
+  ensureStructuredAgentSessionHostUnlessRefused,
+  onStructuredAgentSessionJournalOwned,
+  structuredAgentSessionJournalOwnerRefusal
+} from './structured-agent-session-journal-ownership'
 import { getProfileUserDataPath } from '../orca-profiles/profile-storage-paths'
 import { parseWslUncPath } from '../../shared/wsl-paths'
 import { parseWorkspaceKey } from '../../shared/workspace-scope'
@@ -272,8 +276,44 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
     await ensureStructuredAgentSessionHostUnlessRefused(() =>
       this.ensureStructuredAgentSessionHost()
     )
+    // Read now: a host a chat request installs later is reconciled by the takeover's own run.
+    const host = getStructuredAgentSessionHost()
+    if (!host && structuredAgentSessionJournalOwnerRefusal()) {
+      this.restoreAgainOnceJournalOwned()
+    }
     await this.refreshMobileSessionPtyRecords()
-    await getStructuredAgentSessionHost()?.reconcileRestartLeases()
+    await host?.reconcileRestartLeases()
+  }
+
+  /** A takeover makes this process the owner: startup restoration runs once more, now with a
+   *  host, and a client told "cannot tell" gets the chats pushed, since nothing lists on its own. */
+  protected restoreAgainOnceJournalOwned(): void {
+    this.stopAwaitingStructuredAgentSessionJournal?.()
+    this.stopAwaitingStructuredAgentSessionJournal = onStructuredAgentSessionJournalOwned(() => {
+      this.stopAwaitingStructuredAgentSessionJournal?.()
+      this.stopAwaitingStructuredAgentSessionJournal = null
+      this.restoreStructuredAgentSessionsAfterTakeover().catch((error) => {
+        console.error(
+          '[structured-agent-session] restoring chats after taking ownership failed',
+          error
+        )
+      })
+    })
+  }
+
+  protected async restoreStructuredAgentSessionsAfterTakeover(): Promise<void> {
+    const refusedStartup = this.structuredAgentSessionStartupRestorePromise
+    await Promise.allSettled([refusedStartup, this.structuredAgentSessionTabRestorePromise])
+    if (this.structuredAgentSessionStartupRestorePromise === refusedStartup) {
+      this.structuredAgentSessionStartupRestorePromise = null
+    }
+    if (!this.structuredAgentSessionInventoryUnverifiable) {
+      await this.prepareStructuredAgentSessionStartupRestoration()
+      return
+    }
+    await this.restoreStructuredAgentSessionTabs()
+    // The restore publishes quietly; subscribers still hold the frames that said "cannot tell".
+    this.notifyMobileSessionTabSnapshots()
   }
 
   protected hasPersistedStructuredAgentSessionStore(): boolean {
