@@ -77,16 +77,11 @@ function launchResult(prompt: Record<string, unknown> | undefined, extra = {}) {
 }
 
 function rpcRefusal(code: string, message = code): RuntimeRpcCallError {
-  return new RuntimeRpcCallError({
-    id: 'r',
-    ok: false,
-    error: { code, message },
-    _meta: { runtimeId: 'rt' }
-  } as never)
+  return new RuntimeRpcCallError({ id: 'r', ok: false, error: { code, message } })
 }
 
 function sentParams(call = 0): Record<string, unknown> {
-  return mocks.callRuntimeRpc.mock.calls[call]?.[2] as Record<string, unknown>
+  return mocks.callRuntimeRpc.mock.calls[call]?.[2]
 }
 
 beforeEach(() => {

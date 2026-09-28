@@ -114,7 +114,6 @@ describe('a source-control action started through the host', () => {
     mocks.launchSourceControlAgent.mockResolvedValue({ kind: 'unsupported' })
     mocks.launchAgentInNewTab.mockReturnValue({
       surface: { kind: 'local-terminal', tabId: 'tab-1' },
-      startupPlan: {} as never,
       pasteDraftAfterLaunch: true,
       promptDeliveryResult: Promise.resolve({ delivered: true, failureNotified: false })
     })

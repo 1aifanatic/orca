@@ -23,12 +23,14 @@ vi.mock('sonner', () => ({
   toast: { success: mocks.toastSuccess, error: mocks.toastError, warning: vi.fn() }
 }))
 
+import type { TuiAgent } from '../../../../../../shared/tui-agent'
 import {
   getDefaultSourceControlRecoveryLaunchCopy,
   launchSourceControlRecoveryAgentWithDefault
 } from './recovery-launch'
 
 const COPY = getDefaultSourceControlRecoveryLaunchCopy('commit')
+const DETECTED: TuiAgent[] = ['claude']
 
 function launch() {
   return launchSourceControlRecoveryAgentWithDefault({
@@ -38,12 +40,11 @@ function launch() {
     actionId: 'fixCommitFailure',
     basePrompt: 'The commit failed:\nhook output',
     getLaunchActionRecipe: () => ({ agentArgs: '--model opus' }),
-    getStoreState: () =>
-      ({
-        settings: { defaultTuiAgent: 'claude' },
-        ensureDetectedAgents: async () => ['claude'],
-        ensureRemoteDetectedAgents: async () => ['claude']
-      }) as never,
+    getStoreState: () => ({
+      settings: null,
+      ensureDetectedAgents: async () => DETECTED,
+      ensureRemoteDetectedAgents: async () => DETECTED
+    }),
     copy: COPY
   })
 }
