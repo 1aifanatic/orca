@@ -276,6 +276,103 @@ describe('Codex cancels replayed from the Interrupt capture', () => {
   )
 })
 
+describe("a subagent outlives the main agent's turn", () => {
+  let server: AgentHookServer
+
+  beforeEach(async () => {
+    server = new AgentHookServer()
+    await server.start({ env: 'production' })
+  })
+
+  afterEach(() => {
+    server.stop()
+  })
+
+  const row = () => server.getStatusSnapshot()[0]!
+  async function post(payload: Record<string, unknown>): Promise<void> {
+    await expect(postHookEvent(server, buildBody(payload), '/hook/codex')).resolves.toMatchObject({
+      status: 204
+    })
+  }
+
+  // "Run in background" exits the TUI to the shell while the shared server keeps running the turn
+  // and its subagent, still posting hooks to this pane; the TUI's exit leaves a Codex row that
+  // still shows work in place (`cliExitEndsAgentRow`).
+  it('run-d3bg-0.157.0 (Run in background): the turn reads working with its prompt, and its Stop leaves the running subagent holding the row', async () => {
+    const hooks = hooksOf('run-d3bg-0.157.0')
+    const stopAt = hooks.findIndex((hook) => isMainAgent(hook) && eventOf(hook) === 'Stop')
+    const subagentStopAt = hooks.findIndex((hook) => eventOf(hook) === 'SubagentStop')
+    // The capture itself: the main agent's turn ends while its subagent is still working.
+    expect(stopAt).toBeGreaterThan(0)
+    expect(subagentStopAt).toBeGreaterThan(stopAt)
+    expect(hooks.slice(stopAt + 1, subagentStopAt).every((hook) => !isMainAgent(hook))).toBe(true)
+
+    for (const hook of hooks.slice(0, stopAt)) {
+      await post(hook.payload)
+    }
+    const prompt = row().prompt
+    expect(prompt.length).toBeGreaterThan(0)
+    expect(row()).toMatchObject({ state: 'working', mainAgent: { state: 'working' } })
+
+    await post(hooks[stopAt]!.payload)
+    expect(row()).toMatchObject({
+      state: 'working',
+      prompt,
+      mainAgent: { state: 'done' },
+      subagents: [expect.objectContaining({ state: 'working' })]
+    })
+    for (const hook of hooks.slice(stopAt + 1, subagentStopAt)) {
+      await post(hook.payload)
+      expect(row()).toMatchObject({ state: 'working', mainAgent: { state: 'done' } })
+    }
+    await post(hooks[subagentStopAt]!.payload)
+    expect(row()).toMatchObject({ state: 'done', prompt, mainAgent: { state: 'done' } })
+    expect(row().subagents).toBeUndefined()
+    expect(row().interrupted).toBeUndefined()
+  })
+
+  // Measured live on 0.157.1: a new prompt while a cancel's subagent still ran, whose turn ended
+  // with Stop about a minute before the subagent's SubagentStop. The follow-up turn is built from
+  // the run's own main-agent hook shape, under a turn id the capture does not use.
+  it("run-esc-0.157.0: a new turn that ends while the cancelled turn's subagent still runs leaves it holding the row", async () => {
+    const hooks = hooksOf('run-esc-0.157.0')
+    const interruptAt = hooks.findIndex((hook) => eventOf(hook) === 'Interrupt')
+    const subagentStopAt = hooks.findIndex((hook) => eventOf(hook) === 'SubagentStop')
+    const { turn_id: _cancelledTurn, ...mainHook } = hooks[interruptAt]!.payload
+    for (const hook of hooks.slice(0, interruptAt + 1)) {
+      await post(hook.payload)
+    }
+
+    await post({
+      ...mainHook,
+      hook_event_name: 'UserPromptSubmit',
+      turn_id: 'next-turn',
+      prompt: 'next'
+    })
+    expect(row()).toMatchObject({
+      state: 'working',
+      prompt: 'next',
+      mainAgent: { state: 'working' }
+    })
+    await post({ ...mainHook, hook_event_name: 'Stop', turn_id: 'next-turn' })
+    expect(row()).toMatchObject({
+      state: 'working',
+      mainAgent: { state: 'done' },
+      subagents: [expect.objectContaining({ state: 'working' })]
+    })
+    expect(row().mainAgent?.outcome).toBeUndefined()
+
+    for (const hook of hooks.slice(interruptAt + 1, subagentStopAt)) {
+      await post(hook.payload)
+      expect(row()).toMatchObject({ state: 'working', mainAgent: { state: 'done' } })
+    }
+    await post(hooks[subagentStopAt]!.payload)
+    // The latest turn completed, so the settled row carries no cancel.
+    expect(row()).toMatchObject({ state: 'done', mainAgent: { state: 'done' } })
+    expect(row().interrupted).toBeUndefined()
+  })
+})
+
 describe('a lost Codex Interrupt, settled from the turn_aborted Codex writes after it', () => {
   // Captured in run-d-0.157.0: Codex killed the Esc cancel's Interrupt hook at its 3s cap, so it
   // never arrived; Codex still wrote `turn_aborted` for the turn to its rollout once the hook ended.

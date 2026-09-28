@@ -248,6 +248,17 @@ own rollout (named by its thread id), and it leaves the row on its own
 `SubagentStop`, once that rollout records its turn's end (Codex aborts a child
 without a `SubagentStop`), or when the session ends. The main agent's `Stop` or
 `Interrupt` never drops a child.
+The Codex TUI leaving the pane does not end a Codex row that still shows work
+and names its rollout (`cliExitEndsAgentRow`). Codex's turn and children run in
+its app-server, and a shared background server keeps running them after the TUI
+exits ("Run in background", or "Exit" with a subagent still running), still
+posting hooks to the pane. So the renderer's command-finished cleanup neither
+drops that row nor asks the host to clear the pane's records, and the host's
+reads end it. An embedded Codex that exits aborts its open turns and children,
+which their rollouts record, so its row settles the same way; only a Codex
+killed mid-turn leaves the row working (and the watch reading its rollout once a
+second) until the display's staleness cutoff, the pane's next Codex session
+replaces it, or the pane closes.
 
 Admission is one function, `normalizeAgentStatusPayload`, on the relay wire,
 IPC and disk. A malformed `mainAgent` drops the field and keeps the row. Old hosts

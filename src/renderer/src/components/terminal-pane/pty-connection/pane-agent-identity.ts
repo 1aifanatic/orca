@@ -3,6 +3,7 @@ import { useAppStore } from '@/store'
 import { getConnectionId } from '@/lib/connection-context'
 import { replayIntoTerminal } from '../replay-guard'
 import { POST_REPLAY_REATTACH_RESET } from '../../../../../shared/terminal-mode-reset-profiles'
+import { cliExitEndsAgentRow } from '../../../../../shared/agent-row-cli-exit'
 import {
   isLocalNativeWindowsConpty,
   resolveWindowsShellOverride
@@ -105,7 +106,10 @@ export function installPaneAgentIdentity(session: ConnectPanePtySession): void {
    *  onCommandStarted, and the cost is retiring a pane the process table just proved is a shell. */
   const reconcileEndedProcessIfPaneQuiet = (armedAcceptedStatusSeq: number | undefined): void => {
     const current = useAppStore.getState().agentStatusByPaneKey[session.cacheKey]
-    if (current && current.acceptedStatusSeq !== armedAcceptedStatusSeq) {
+    if (
+      current &&
+      (current.acceptedStatusSeq !== armedAcceptedStatusSeq || !cliExitEndsAgentRow(current))
+    ) {
       return
     }
     // Why: main-side only. The renderer row and launch config are already owned by the deferred
