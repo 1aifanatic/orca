@@ -10,157 +10,20 @@
 // own turn starts, after the first result. A cancelled mid-turn send is never
 // replayed at all.
 
-export type CapturedFoldFrame = { at: number; frame: Record<string, unknown> }
+import {
+  assistant,
+  assistantText,
+  assistantToolUse,
+  initFrame,
+  resultFrame,
+  sessionIdle,
+  toolResult,
+  userReplay,
+  type CapturedFoldFrame,
+  type FoldCaptureIds
+} from './claude-fold-steer-frame-builders.test-fixture'
 
-export type FoldCaptureIds = {
-  /** The provider session every frame names. */
-  sessionId: string
-  /** Client uuid of the turn-opening send; the CLI adopts it on the replay. */
-  first: string
-  /** Client uuid of the mid-turn send. */
-  steer: string
-  /** Client uuid of the second mid-turn send (two-steers only). */
-  secondSteer?: string
-}
-
-export function userReplay(
-  at: number,
-  sessionId: string,
-  uuid: string,
-  text: string
-): CapturedFoldFrame {
-  return {
-    at,
-    frame: {
-      type: 'user',
-      session_id: sessionId,
-      parent_tool_use_id: null,
-      uuid,
-      isReplay: true,
-      message: { role: 'user', content: [{ type: 'text', text }] }
-    }
-  }
-}
-
-function assistant(
-  at: number,
-  sessionId: string,
-  uuid: string,
-  content: unknown[],
-  userMessageUuids?: string[]
-): CapturedFoldFrame {
-  return {
-    at,
-    frame: {
-      type: 'assistant',
-      session_id: sessionId,
-      parent_tool_use_id: null,
-      uuid,
-      message: { id: `msg-${uuid}`, role: 'assistant', content },
-      // Only the reply that directly answers a send carries the correlation.
-      ...(userMessageUuids && userMessageUuids.length > 0
-        ? { user_message_uuid: userMessageUuids[0], user_message_uuids: userMessageUuids }
-        : {})
-    }
-  }
-}
-
-export function assistantToolUse(
-  at: number,
-  sessionId: string,
-  uuid: string,
-  toolUseId: string,
-  userMessageUuids?: string[]
-): CapturedFoldFrame {
-  return assistant(
-    at,
-    sessionId,
-    uuid,
-    [{ type: 'tool_use', id: toolUseId, name: 'Bash', input: { command: 'sleep 5' } }],
-    userMessageUuids
-  )
-}
-
-export function assistantText(
-  at: number,
-  sessionId: string,
-  uuid: string,
-  text: string,
-  userMessageUuids?: string[]
-): CapturedFoldFrame {
-  return assistant(at, sessionId, uuid, [{ type: 'text', text }], userMessageUuids)
-}
-
-export function toolResult(
-  at: number,
-  sessionId: string,
-  uuid: string,
-  toolUseId: string,
-  content = '(Bash completed with no output)',
-  isError = false
-): CapturedFoldFrame {
-  return {
-    at,
-    frame: {
-      type: 'user',
-      session_id: sessionId,
-      parent_tool_use_id: null,
-      uuid,
-      message: {
-        role: 'user',
-        content: [{ type: 'tool_result', tool_use_id: toolUseId, content, is_error: isError }]
-      }
-    }
-  }
-}
-
-export function resultFrame(
-  at: number,
-  sessionId: string,
-  uuid: string,
-  fields: {
-    userMessageUuids: string[]
-    durationMs: number
-    numTurns: number
-    subtype?: string
-    isError?: boolean
-    terminalReason?: string
-  }
-): CapturedFoldFrame {
-  return {
-    at,
-    frame: {
-      type: 'result',
-      subtype: fields.subtype ?? 'success',
-      session_id: sessionId,
-      uuid,
-      is_error: fields.isError ?? false,
-      terminal_reason: fields.terminalReason ?? 'completed',
-      duration_ms: fields.durationMs,
-      num_turns: fields.numTurns,
-      result: 'FIRST DONE',
-      ...(fields.userMessageUuids.length > 0
-        ? {
-            user_message_uuid: fields.userMessageUuids[0],
-            user_message_uuids: fields.userMessageUuids
-          }
-        : {})
-    }
-  }
-}
-
-export function sessionIdle(at: number, sessionId: string): CapturedFoldFrame {
-  return {
-    at,
-    frame: {
-      type: 'system',
-      subtype: 'session_state_changed',
-      state: 'idle',
-      session_id: sessionId,
-      uuid: `ssc-idle-${at}`
-    }
-  }
-}
+export type { CapturedFoldFrame, FoldCaptureIds }
 
 export const FIRST_PROMPT = 'Run the sleep command three times, then reply: FIRST DONE'
 export const STEER_PROMPT = 'Also say the word banana at the end of your reply.'
@@ -170,6 +33,7 @@ export const SECOND_STEER_PROMPT = 'And also say the word mango at the very end.
 export const FOLD_FRESH_SEND_AT = { first: 12, steer: 3_878 }
 export function foldFreshCapture({ sessionId, first, steer }: FoldCaptureIds): CapturedFoldFrame[] {
   return [
+    initFrame(222, sessionId),
     userReplay(2_094, sessionId, first, FIRST_PROMPT),
     assistantToolUse(2_676, sessionId, 'reply-tool-1', 'toolu_sleep_1', [first]),
     toolResult(7_890, sessionId, 'tool-result-1', 'toolu_sleep_1'),
@@ -194,6 +58,7 @@ export function foldResumedCapture({
   steer
 }: FoldCaptureIds): CapturedFoldFrame[] {
   return [
+    initFrame(218, sessionId),
     userReplay(2_057, sessionId, first, FIRST_PROMPT),
     assistant(
       3_229,
@@ -226,6 +91,7 @@ export function twoSteersCapture({
   secondSteer
 }: Required<FoldCaptureIds>): CapturedFoldFrame[] {
   return [
+    initFrame(351, sessionId),
     userReplay(1_169, sessionId, first, FIRST_PROMPT),
     assistantToolUse(2_412, sessionId, 'reply-tool-1', 'toolu_sleep_1', [first]),
     toolResult(7_949, sessionId, 'tool-result-1', 'toolu_sleep_1'),
@@ -252,6 +118,7 @@ export function missCapture({ sessionId, first, steer }: FoldCaptureIds): {
 } {
   return {
     beforeSteerSend: [
+      initFrame(333, sessionId),
       userReplay(2_118, sessionId, first, FIRST_PROMPT),
       assistantToolUse(2_793, sessionId, 'reply-tool-1', 'toolu_sleep_1', [first]),
       toolResult(8_258, sessionId, 'tool-result-1', 'toolu_sleep_1'),
@@ -267,6 +134,7 @@ export function missCapture({ sessionId, first, steer }: FoldCaptureIds): {
         durationMs: 25_241,
         numTurns: 4
       }),
+      initFrame(25_584, sessionId),
       userReplay(28_703, sessionId, steer, STEER_PROMPT),
       assistantText(29_239, sessionId, 'reply-text-2', 'banana'),
       resultFrame(29_275, sessionId, 'result-2', {
@@ -289,6 +157,7 @@ export function cancelCapture({ sessionId, first, steer: _steer }: FoldCaptureId
 } {
   return {
     beforeSteerSend: [
+      initFrame(354, sessionId),
       userReplay(1_329, sessionId, first, FIRST_PROMPT),
       assistantToolUse(2_366, sessionId, 'reply-tool-1', 'toolu_sleep_1', [first])
     ],
@@ -323,6 +192,65 @@ export function cancelCapture({ sessionId, first, steer: _steer }: FoldCaptureId
         terminalReason: 'aborted_tools'
       }),
       sessionIdle(3_941, sessionId)
+    ]
+  }
+}
+
+/** p3-early-steer: the steer is written BEFORE the first send's replay arrives
+ *  (send at 312, first replay at 1208) and the CLI still folds it — one init,
+ *  one turn, one result naming both sends. */
+export const EARLY_STEER_SEND_AT = { first: 11, steer: 312 }
+export function earlySteerCapture({
+  sessionId,
+  first,
+  steer
+}: FoldCaptureIds): CapturedFoldFrame[] {
+  return [
+    initFrame(205, sessionId),
+    userReplay(1_208, sessionId, first, FIRST_PROMPT),
+    assistantToolUse(2_190, sessionId, 'reply-tool-1', 'toolu_sleep_1', [first]),
+    toolResult(6_316, sessionId, 'tool-result-1', 'toolu_sleep_1'),
+    userReplay(6_318, sessionId, steer, STEER_PROMPT),
+    assistantText(7_336, sessionId, 'reply-text-1', 'FIRST DONE banana'),
+    resultFrame(7_340, sessionId, 'result-1', {
+      userMessageUuids: [first, steer],
+      durationMs: 7_155,
+      numTurns: 2
+    }),
+    sessionIdle(7_341, sessionId)
+  ]
+}
+
+/** p3-background-wake: after the turn's result, the finished background task
+ *  wakes the CLI — a NEW cycle: its own init, output with no user replay, and a
+ *  result that names no send at all (`user_message_uuids` absent). */
+export function backgroundWakeCapture({ sessionId, first }: FoldCaptureIds): {
+  firstTurn: CapturedFoldFrame[]
+  wake: CapturedFoldFrame[]
+} {
+  return {
+    firstTurn: [
+      initFrame(252, sessionId),
+      userReplay(1_193, sessionId, first, FIRST_PROMPT),
+      assistantToolUse(2_372, sessionId, 'reply-tool-1', 'toolu_bg_1', [first]),
+      toolResult(2_532, sessionId, 'tool-result-1', 'toolu_bg_1'),
+      assistantText(3_403, sessionId, 'reply-text-1', 'STARTED'),
+      resultFrame(3_406, sessionId, 'result-1', {
+        userMessageUuids: [first],
+        durationMs: 3_177,
+        numTurns: 2
+      }),
+      sessionIdle(3_407, sessionId)
+    ],
+    wake: [
+      initFrame(17_626, sessionId),
+      assistantText(19_721, sessionId, 'wake-text-1', 'The background command finished.'),
+      resultFrame(19_729, sessionId, 'result-2', {
+        userMessageUuids: [],
+        durationMs: 2_105,
+        numTurns: 1
+      }),
+      sessionIdle(19_730, sessionId)
     ]
   }
 }

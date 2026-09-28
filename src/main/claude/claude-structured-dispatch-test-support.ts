@@ -30,6 +30,7 @@ export function sessionFor(send: Mock = vi.fn().mockResolvedValue(undefined)): C
     confirmedOptions: new Set(),
     restoreSkippedOptions: new Set(),
     capabilities: [],
+    cliVersion: null,
     events: undefined,
     translator: null,
     startup: { ...createClaudeSessionStartup(), state: 'proven' }

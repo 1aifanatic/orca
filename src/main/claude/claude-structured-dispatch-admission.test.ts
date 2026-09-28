@@ -62,8 +62,9 @@ describe('Claude structured dispatch admission', () => {
         true
       )
 
-      // Queued while turn one is still running: Claude cannot echo it until that
-      // turn ends, so nothing about the wait is evidence of a delivery problem.
+      // Queued while turn one is still running: a fold is echoed mid-turn, a
+      // queued send only when its own turn starts — either way elapsed time is
+      // not evidence of a delivery problem.
       const queued = await dispatchClaudeTurn(session, {
         clientMessageId: 'client-2',
         body: userMessage([{ type: 'text', text: 'two' }])

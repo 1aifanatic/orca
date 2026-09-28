@@ -32,8 +32,6 @@ export function waitForReplay(
       sentUuid,
       dispatchSequence: session.dispatchSequence,
       requestedAt,
-      // Captured at write time: the send-time turn relation a fold receipt needs.
-      sentDuringTurnId: session.translator?.currentTurnId ?? null,
       replayContentKey,
       resolve
     }

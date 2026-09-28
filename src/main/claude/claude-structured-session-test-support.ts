@@ -56,6 +56,8 @@ export function fakeClaude(
     initCommands?: unknown
     /** The initialize result's `models`, which the SDK also answers `list_models` from. */
     initModels?: unknown[]
+    /** `claude_code_version` on the init frame; null omits it, as a CLI predating the field. */
+    initClaudeCodeVersion?: string | null
     /** What `get_context_usage` answers; defaults to an empty, unusable report. */
     contextUsage?: unknown
     exitBeforeInit?: string
@@ -121,6 +123,9 @@ export function fakeClaude(
             uuid: options.initUuid ?? 'init-uuid',
             model: options.initModel ?? 'claude-sonnet-5',
             apiKeySource: 'none',
+            ...(options.initClaudeCodeVersion === null
+              ? {}
+              : { claude_code_version: options.initClaudeCodeVersion ?? '2.1.280' }),
             ...(options.capabilities ? { capabilities: options.capabilities } : {})
           })
         }
@@ -296,30 +301,4 @@ export function recordingJournalSink(): StructuredAgentSessionEventSink {
 
 export function tick(): Promise<void> {
   return new Promise((resolve) => setImmediate(resolve))
-}
-
-export function invokeCanUseTool(
-  connection: FakeConnection,
-  toolName: string,
-  requestId: string,
-  toolUseID: string,
-  extra: {
-    input?: Record<string, unknown>
-    suggestions?: unknown[]
-    signal?: AbortSignal
-  } = {}
-): { promise: Promise<unknown>; settled: () => boolean } {
-  const options = {
-    requestId,
-    toolUseID,
-    signal: extra.signal ?? new AbortController().signal,
-    ...(extra.suggestions ? { suggestions: extra.suggestions } : {})
-  } as unknown as Parameters<NonNullable<ClaudeStreamJsonConnectionHandlers['canUseTool']>>[2]
-  let done = false
-  const promise = Promise.resolve(
-    connection.handlers.canUseTool?.(toolName, extra.input ?? {}, options)
-  ).finally(() => {
-    done = true
-  })
-  return { promise, settled: () => done }
 }

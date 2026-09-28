@@ -1,8 +1,10 @@
-// A mid-turn send the CLI folds into the running turn: its replay is a delivery
-// receipt for the send-time turn, never a new turn boundary. Everything else —
-// the measured miss, a replaced turn, provider output opening a root — keeps the
-// replay-driven opener path. Captured orders from Claude CLI 2.1.280
-// (`claude-captured-fold-steer-frames.test-fixture.ts`).
+// A send the CLI folds into the running request cycle: its adopted replay is a
+// delivery receipt, never a new turn boundary. The provider's own cycle state
+// decides — a root init announces each new cycle, and a result's
+// `user_message_uuids` names every send the cycle ran. The measured miss, a
+// lost result followed by a new cycle, fresh replay uuids, and CLIs below the
+// per-turn-init floor all keep the replay-driven opener path. Captured orders
+// from Claude CLI 2.1.280 (`claude-captured-fold-steer-frames.test-fixture.ts`).
 
 import { describe, expect, it, vi, type Mock } from 'vitest'
 import type {
@@ -25,8 +27,17 @@ import {
 } from './claude-structured-session-test-support'
 import {
   assistantText,
+  initFrame,
+  resultFrame,
+  userReplay,
+  type CapturedFoldFrame
+} from './claude-fold-steer-frame-builders.test-fixture'
+import {
+  backgroundWakeCapture,
   cancelCapture,
   CANCEL_SEND_AT,
+  earlySteerCapture,
+  EARLY_STEER_SEND_AT,
   FIRST_PROMPT,
   foldFreshCapture,
   FOLD_FRESH_SEND_AT,
@@ -34,13 +45,10 @@ import {
   FOLD_RESUMED_SEND_AT,
   missCapture,
   MISS_SEND_AT,
-  resultFrame,
   SECOND_STEER_PROMPT,
   STEER_PROMPT,
   twoSteersCapture,
-  TWO_STEERS_SEND_AT,
-  userReplay,
-  type CapturedFoldFrame
+  TWO_STEERS_SEND_AT
 } from './claude-captured-fold-steer-frames.test-fixture'
 
 const T0 = 1_700_000_100_000
@@ -57,7 +65,10 @@ type Rig = {
   dispatchAt: (at: number, clientMessageId: string, text: string) => Promise<string>
 }
 
-async function riggedAdapter(launch: Partial<ClaudeStructuredLaunch> = {}): Promise<Rig> {
+async function riggedAdapter(
+  launch: Partial<ClaudeStructuredLaunch> = {},
+  claudeOptions: Parameters<typeof fakeClaude>[0] = {}
+): Promise<Rig> {
   let nowMs = T0
   const appended: { identity: AgentJournalItemIdentity; body: AgentJournalItemBody }[] = []
   const sink: StructuredAgentSessionEventSink = {
@@ -67,7 +78,7 @@ async function riggedAdapter(launch: Partial<ClaudeStructuredLaunch> = {}): Prom
   }
   const events: ClaudeStructuredSessionEvent[] = []
   const settled = vi.fn()
-  const claude = fakeClaude({ replayUuid: null })
+  const claude = fakeClaude({ replayUuid: null, ...claudeOptions })
   const deps: ClaudeStructuredSessionAdapterDeps = {
     resolveLaunch: async () => ({
       pathToClaudeCodeExecutable: 'claude',
@@ -255,6 +266,58 @@ describe('Claude fold receipt for a mid-turn send (captured orders)', () => {
     })
   })
 
+  it('early-steer: a steer written before the first replay arrives still folds into the one turn', async () => {
+    const rig = await riggedAdapter()
+    const first = await rig.dispatchAt(EARLY_STEER_SEND_AT.first, 'client-first', FIRST_PROMPT)
+    const framesFor = (steerUuid: string) =>
+      earlySteerCapture({ sessionId: PROVIDER_SESSION_ID, first, steer: steerUuid })
+    for (const captured of framesFor('pending')) {
+      if (captured.at < EARLY_STEER_SEND_AT.steer) {
+        rig.deliver(captured)
+      }
+    }
+    const steer = await rig.dispatchAt(EARLY_STEER_SEND_AT.steer, 'client-steer', STEER_PROMPT)
+    for (const captured of framesFor(steer)) {
+      if (captured.at > EARLY_STEER_SEND_AT.steer) {
+        rig.deliver(captured)
+      }
+    }
+
+    // No turn was open when the steer was written, and it still folded.
+    expect([...new Set(rig.turns().map((turn) => turn.turnId))]).toEqual([first])
+    expect(rig.turns().every((turn) => turn.state !== 'interrupted')).toBe(true)
+    expect(rig.turns().at(-1)).toMatchObject({
+      turnId: first,
+      state: 'completed',
+      durationMs: 7_155
+    })
+    expect(replayEventFor(rig.events, steer)).not.toHaveProperty('startsTurn')
+    expect(rig.settled).toHaveBeenCalledWith({
+      sessionId: 'session-1',
+      clientMessageId: 'client-steer',
+      providerIdentity: { provider: 'claude', sessionId: PROVIDER_SESSION_ID, uuid: steer }
+    })
+  })
+
+  it('background-wake: the wake cycle opens from its output and its result settles no waiter', async () => {
+    const rig = await riggedAdapter()
+    const first = await rig.dispatchAt(13, 'client-first', FIRST_PROMPT)
+    const { firstTurn, wake } = backgroundWakeCapture({
+      sessionId: PROVIDER_SESSION_ID,
+      first,
+      steer: 'unused'
+    })
+    for (const captured of [...firstTurn, ...wake]) {
+      rig.deliver(captured)
+    }
+
+    const finalByTurn = new Map(rig.turns().map((turn) => [turn.turnId, turn]))
+    expect([...finalByTurn.keys()]).toEqual([first, 'wake-text-1'])
+    expect(finalByTurn.get('wake-text-1')).toMatchObject({ state: 'completed' })
+    // The wake result names no send; only the first send ever settled.
+    expect(rig.settled).toHaveBeenCalledTimes(1)
+  })
+
   it('miss: a steer whose replay trails the result keeps the opener path and its own turn', async () => {
     const rig = await riggedAdapter()
     const first = await rig.dispatchAt(MISS_SEND_AT.first, 'client-first', FIRST_PROMPT)
@@ -324,28 +387,26 @@ describe('Claude fold receipt for a mid-turn send (captured orders)', () => {
 })
 
 describe('Claude fold receipt boundaries (synthetic orders)', () => {
-  it('missing-result: a replay for a send written during a since-replaced turn opens its own turn', async () => {
+  it('lost result: a root init marks the open turn stale, so the next adopted replay is a boundary', async () => {
     const rig = await riggedAdapter()
-    // A and C are written idle; B is written during A's turn, which C's replay
-    // then replaces because A's result never arrives.
     const uuidA = await rig.dispatchAt(10, 'client-a', 'first prompt')
-    const uuidC = await rig.dispatchAt(20, 'client-c', 'second prompt')
     rig.deliver(userReplay(1_000, PROVIDER_SESSION_ID, uuidA, 'first prompt'))
     const uuidB = await rig.dispatchAt(1_500, 'client-b', STEER_PROMPT)
-    rig.deliver(userReplay(2_000, PROVIDER_SESSION_ID, uuidC, 'second prompt'))
+    // A's result never arrives, but the CLI announces its next request cycle:
+    // the open turn stops folding, so B's replay opens its own turn.
+    rig.deliver(initFrame(2_000, PROVIDER_SESSION_ID))
     rig.deliver(userReplay(3_000, PROVIDER_SESSION_ID, uuidB, STEER_PROMPT))
 
-    // B's send-time turn (A) is gone, so B's replay is a boundary, not a receipt.
-    expect([...new Set(rig.turns().map((turn) => turn.turnId))]).toEqual([uuidA, uuidC, uuidB])
+    expect([...new Set(rig.turns().map((turn) => turn.turnId))]).toEqual([uuidA, uuidB])
     expect(replayEventFor(rig.events, uuidB)).toMatchObject({ startsTurn: true })
   })
 
-  it('intervening provider output: a root the provider opened is not the send-time turn', async () => {
+  it('provider wake: an adopted replay during the live wake cycle folds into the wake turn', async () => {
+    // Cycle semantics: a wake is its own init-led cycle (p3-background-wake) and
+    // a replay the CLI emits mid-cycle was folded into that cycle (p3-early-steer).
     const rig = await riggedAdapter()
     const uuidA = await rig.dispatchAt(10, 'client-a', 'first prompt')
     rig.deliver(userReplay(1_000, PROVIDER_SESSION_ID, uuidA, 'first prompt'))
-    const uuidB = await rig.dispatchAt(1_500, 'client-b', STEER_PROMPT)
-    // A's turn ends; the provider then resumes on its own and opens a root.
     rig.deliver(
       resultFrame(2_000, PROVIDER_SESSION_ID, 'result-1', {
         userMessageUuids: [uuidA],
@@ -353,13 +414,39 @@ describe('Claude fold receipt boundaries (synthetic orders)', () => {
         numTurns: 1
       })
     )
-    rig.deliver(assistantText(3_000, PROVIDER_SESSION_ID, 'provider-resumed-1', 'background done'))
+    const uuidB = await rig.dispatchAt(2_500, 'client-b', STEER_PROMPT)
+    rig.deliver(initFrame(3_000, PROVIDER_SESSION_ID))
+    rig.deliver(assistantText(3_500, PROVIDER_SESSION_ID, 'provider-resumed-1', 'background done'))
     rig.deliver(userReplay(4_000, PROVIDER_SESSION_ID, uuidB, STEER_PROMPT))
 
-    // The open turn is the provider's, not B's send-time turn: opener path.
-    const turnIds = [...new Set(rig.turns().map((turn) => turn.turnId))]
-    expect(turnIds).toEqual([uuidA, 'provider-resumed-1', uuidB])
+    expect([...new Set(rig.turns().map((turn) => turn.turnId))]).toEqual([
+      uuidA,
+      'provider-resumed-1'
+    ])
+    expect(replayEventFor(rig.events, uuidB)).not.toHaveProperty('startsTurn')
+    expect(rig.settled).toHaveBeenCalledWith({
+      sessionId: 'session-1',
+      clientMessageId: 'client-b',
+      providerIdentity: { provider: 'claude', sessionId: PROVIDER_SESSION_ID, uuid: uuidB }
+    })
+  })
+
+  it('capability floor: with no reported CLI version, every adopted replay keeps the opener path', async () => {
+    const rig = await riggedAdapter({}, { initClaudeCodeVersion: null })
+    const uuidA = await rig.dispatchAt(10, 'client-a', 'first prompt')
+    rig.deliver(userReplay(1_000, PROVIDER_SESSION_ID, uuidA, 'first prompt'))
+    const uuidB = await rig.dispatchAt(1_500, 'client-b', STEER_PROMPT)
+    rig.deliver(userReplay(2_000, PROVIDER_SESSION_ID, uuidB, STEER_PROMPT))
+
+    // Below the per-turn-init floor the cycle signal is not trusted: today's
+    // opener behavior, with delivery still settled by the replay.
+    expect([...new Set(rig.turns().map((turn) => turn.turnId))]).toEqual([uuidA, uuidB])
     expect(replayEventFor(rig.events, uuidB)).toMatchObject({ startsTurn: true })
+    expect(rig.settled).toHaveBeenCalledWith({
+      sessionId: 'session-1',
+      clientMessageId: 'client-b',
+      providerIdentity: { provider: 'claude', sessionId: PROVIDER_SESSION_ID, uuid: uuidB }
+    })
   })
 
   it('a fresh replay uuid with user_message_uuid correlation keeps the opener path, not a fold receipt', async () => {

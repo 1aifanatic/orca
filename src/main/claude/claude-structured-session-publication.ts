@@ -60,6 +60,7 @@ export function createClaudeSessionPublication(input: {
       optionMutationSequence: 0,
       options: new Map(input.options),
       capabilities: [],
+      cliVersion: null,
       reportedOptions: {},
       reportedModelMutation: 0,
       confirmedOptions: new Set(),

@@ -184,6 +184,16 @@ export function createClaudeJournalTranslator(
       }
       if (event.type === 'message') {
         context.observe(event.message, event.observedAt ?? Date.now())
+        // A root init is the CLI starting a new request cycle (measured per turn,
+        // per queued turn, per background wake, per /compact); an open turn stops
+        // folding sends. Subagent frames name a parent and never carry one.
+        if (
+          event.message.type === 'system' &&
+          event.message.subtype === 'init' &&
+          isRootClaudeFrame(event.message)
+        ) {
+          turn.observeProviderCycleStart()
+        }
       }
       if (event.type === 'message' && handleStream(event.message, event.observedAt ?? Date.now())) {
         return
@@ -280,6 +290,9 @@ export function createClaudeJournalTranslator(
     journalPrompts: prompts,
     get currentTurnId() {
       return turn.id
+    },
+    get openTurnInLiveProviderCycle() {
+      return turn.openedInLiveProviderCycle
     },
     flush: streamedText.flush,
     childToolOwner: childQueries.childToolOwner,

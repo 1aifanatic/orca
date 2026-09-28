@@ -30,6 +30,9 @@ export class ClaudeOpenTurn {
    *  failed: nothing would ever close the turn it opened, and the row would read
    *  working for the life of the session. Only an accepted send lifts it. */
   private reopenSuppressed = false
+  /** Set when a root init arrives while this turn is open: the CLI began a new
+   *  request cycle, so sends no longer fold into the open turn. */
+  private cycleStartObserved = false
   private readonly opener: (
     frame: Record<string, unknown>,
     source: ClaudeTurnSource | null,
@@ -63,6 +66,17 @@ export class ClaudeOpenTurn {
     return this.current !== null
   }
 
+  /** Whether the open turn's provider request cycle is still the live one — the
+   *  state in which the CLI folds an arriving send into the turn. */
+  get openedInLiveProviderCycle(): boolean {
+    return this.current !== null && !this.cycleStartObserved
+  }
+
+  /** A root init frame: the CLI is starting a new request cycle. */
+  observeProviderCycleStart(): void {
+    this.cycleStartObserved = true
+  }
+
   /** Open a turn, ending whichever one was still open. A new turn starting is the
    *  only end the previous one gets when its result never arrives; settling it
    *  later would sweep THIS turn. */
@@ -73,6 +87,8 @@ export class ClaudeOpenTurn {
       this.publish(this.current, { state: 'interrupted', completedAt: observedAt })
     }
     this.current = turn
+    // The turn just opened belongs to the newest cycle by construction.
+    this.cycleStartObserved = false
     this.publish(turn)
     this.deps.sink.setActivity?.(null)
   }

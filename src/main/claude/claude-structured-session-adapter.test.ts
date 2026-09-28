@@ -18,12 +18,12 @@ import {
   adapterFor,
   fakeClaude,
   identityFor,
-  invokeCanUseTool,
   PROVIDER_SESSION_ID,
   tick,
   USER_MESSAGE,
   type FakeConnection
 } from './claude-structured-session-test-support'
+import { invokeCanUseTool } from './claude-can-use-tool-test-support'
 
 describe('ClaudeStructuredSessionAdapter.acquire', () => {
   it('pins the account and proves init without treating the system-frame uuid as a chain leaf', async () => {

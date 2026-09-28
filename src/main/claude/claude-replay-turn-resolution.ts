@@ -1,9 +1,9 @@
 // Which dispatch a provider frame settles, and whether it opens a turn.
 //
 // A replay or result is joined to its waiter by the client uuid Claude echoes.
-// A mid-turn send Claude FOLDS into the running turn is replayed while that
-// turn is still open: when the open turn is exactly the one the send was
-// written during, the replay is a delivery receipt and opens no boundary.
+// A send Claude FOLDS into the running request cycle is replayed mid-cycle with
+// the client uuid adopted: while the open turn's cycle is still live, that
+// replay is a delivery receipt and opens no boundary.
 
 import { forgetRetiredWaiter } from './claude-structured-dispatch-waiters'
 import {
@@ -17,6 +17,7 @@ import type {
 } from './claude-structured-session-state'
 import { readClaudeFrameString } from './claude-structured-init-proof'
 import { claudeDispatchContentKey } from './claude-structured-dispatch-content'
+import { hasReachedAppVersion, isValidAppVersion } from '../../shared/app-version'
 
 /** Settles a provider-proven late outcome; replay rows independently reconcile acceptance. */
 export type ClaudeLateDispatchSettlement = (input: ClaudeLateDispatchOutcome) => void
@@ -155,14 +156,30 @@ export function resolveClaudeReplayTurn(
   return null
 }
 
-/** The send-time turn relation: the turn open at write time is still the open
- *  turn now, so Claude folded this send into the running turn and its replay is
- *  a delivery receipt, not a turn boundary. Only the measured fold shape
- *  qualifies — a replay that ADOPTS the client uuid; a fresh replay uuid is
- *  unmeasured (adoption alone does not tell a fold from a later turn — the miss
- *  case adopts too), so it keeps the opener path it always had. Any other
- *  relation — idle-time write, no open turn, a replaced or provider-resumed
- *  turn — keeps the opener path. */
+/** Oldest CLI whose per-turn root init is recorded in this repo (the measured
+ *  per-turn system/init shape in `claude-structured-model-confirmation.test.ts`);
+ *  2.1.280 re-measured first-hand across sequential turns, queued turns,
+ *  background wakes and /compact (p3 captures). Below it, or with no reported
+ *  version, every replay keeps the opener path. */
+export const CLAUDE_PER_TURN_INIT_VERSION_FLOOR = '2.1.258'
+
+function claudeCliEmitsPerTurnInit(session: ClaudeSession): boolean {
+  const version = session.cliVersion
+  return (
+    version !== null &&
+    isValidAppVersion(version) &&
+    hasReachedAppVersion(version, CLAUDE_PER_TURN_INIT_VERSION_FLOOR)
+  )
+}
+
+/** The provider's own cycle state decides a fold: the CLI folds a send into the
+ *  request cycle that is running when the send arrives, and it replays a folded
+ *  send mid-cycle with the client uuid ADOPTED (measured: fold-fresh/-resumed,
+ *  two-steers, early-steer). So an adopted replay while the open turn's cycle is
+ *  still live is a delivery receipt, not a turn boundary. A new cycle announces
+ *  itself with a root init (per-turn, measured — gated by the floor above), so a
+ *  lost result cannot leave a stale turn swallowing the next turn's replay. A
+ *  fresh replay uuid is not the measured fold shape and keeps the opener path. */
 function claudeReplayIsFoldReceipt(
   session: ClaudeSession,
   waiter: ClaudeDispatchWaiter,
@@ -170,8 +187,8 @@ function claudeReplayIsFoldReceipt(
 ): boolean {
   return (
     replayUuid === waiter.sentUuid &&
-    waiter.sentDuringTurnId !== null &&
-    session.translator?.currentTurnId === waiter.sentDuringTurnId
+    claudeCliEmitsPerTurnInit(session) &&
+    session.translator?.openTurnInLiveProviderCycle === true
   )
 }
 
