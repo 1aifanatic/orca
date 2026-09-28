@@ -4,23 +4,21 @@
 // `journal_imports` records which file each chat was copied from — its epoch and tip — in the
 // transaction that publishes the verified copy. A file still at that epoch and tip was already
 // copied (only its delete failed, or a crash came first, across any number of restarts): it is
-// deleted, never copied again. A file at that epoch past it carried the copied history on: it is
-// the newer history, copied again, and the chat says so. When both builds advanced one epoch from
-// the recorded tip, the copy takes a fresh epoch, so every reader resets instead of silently
-// skipping rows.
+// deleted, never copied again. A file at that epoch past it carried the copied history on, and
+// while this build's history still stands exactly as copied, the file is that history plus the
+// older build's rows: it is copied again, and the chat says so.
 //
-// A file at any other epoch, or one beside a chat this build founded itself, never held this
-// build's history: an older build started it over (the copy deleted what it had), or rolled the
-// epoch of a file it kept, and either way copying it would replace everything this build has. It
-// is set aside, left on disk as it is, and recorded in `journal_set_aside`, so no later open reads
-// it again: whatever an older build writes there later grows from that same file.
+// Anything else would replace history this build holds: a file at any other epoch, or beside a
+// chat this build founded itself, never held it (an older build started it over, or rolled the
+// epoch of a file it kept); and once this build has written past the copy, or rolled its own
+// epoch, the file no longer carries what this build has. Such a file is set aside, left on disk as
+// it is, and recorded in `journal_set_aside`, so no later open reads it again.
 
-import { randomUUID } from 'node:crypto'
 import type Database from '../../sqlite/sync-database'
 import { boundJournalStatusText } from './journal-prompt-body-bounds'
 import { applyJournalRow, createJournalReducerState } from './journal-reducer'
 import { buildJournalItemRow } from './journal-row-builders'
-import { parseJournalRow, serializeJournalRow, type JournalRow } from './journal-row-schema'
+import { parseJournalRow, serializeJournalRow } from './journal-row-schema'
 import { readJournalTip, type JournalBlockPointer } from './journal-row-table'
 
 export type PerSessionJournalHead = { epoch: string; tip: number }
@@ -35,7 +33,7 @@ export const JOURNAL_OLDER_BUILD_DISCLOSURE_IDENTITY = {
 } as const
 
 const OLDER_BUILD_DISCLOSURE =
-  'This chat was continued in an older version of Orca. Its history now comes from that version; anything this version recorded before then was replaced.'
+  'This chat was continued in an older version of Orca. Its history includes what was recorded there.'
 
 export function readPerSessionImportMarker(
   db: Database.Database,
@@ -55,7 +53,7 @@ export function isPerSessionJournalSetAside(db: Database.Database, sessionId: st
   return db.prepare(SELECT_SET_ASIDE).get(sessionId) !== undefined
 }
 
-/** Records the file an older build started over, as it was when set aside. */
+/** Records a file that is not this build's history, as it was when set aside. */
 export function setAsidePerSessionJournal(
   db: Database.Database,
   sessionId: string,
@@ -77,8 +75,8 @@ export type PerSessionImportPlan =
   | { kind: 'copied' }
   /** Not this build's history: set aside, neither copied nor deleted. */
   | { kind: 'kept' }
-  /** The file is newer history: copied again, as `epoch`, with a row saying so. */
-  | { kind: 'again'; epoch: string }
+  /** The copied history carried on: copied again, with a row saying so. */
+  | { kind: 'again' }
 
 /** What a present per-chat file owes this chat, judged against what was last copied from it. */
 export function planPerSessionImport(input: {
@@ -94,43 +92,32 @@ export function planPerSessionImport(input: {
   if (!marker && !input.current) {
     return { kind: 'first' }
   }
-  if (input.legacy.epoch !== marker?.epoch) {
-    return { kind: 'kept' }
-  }
-  // Both sides wrote past the recorded tip under one epoch: replacing it in place would leave a
-  // reader at this build's tip skipping the older build's rows.
-  const bothAdvanced =
+  // Copied again only while this build's history is exactly what was copied: past that, the copy
+  // would replace rows this build wrote.
+  const continued =
     marker !== null &&
+    input.legacy.epoch === marker.epoch &&
     input.current?.epoch === marker.epoch &&
-    input.legacy.tip > marker.tip &&
-    readJournalTip(input.db, input.current.block) > marker.tip
-  return { kind: 'again', epoch: bothAdvanced ? randomUUID() : input.legacy.epoch }
+    readJournalTip(input.db, input.current.block) === marker.tip
+  return continued ? { kind: 'again' } : { kind: 'kept' }
 }
 
-/**
- * The rows a second copy writes: the file's rows under `epoch` — byte-identical when the epoch is
- * the file's own — then the row that says the chat continued in an older Orca.
- */
+/** The rows a second copy writes: the file's rows as stored, then the row that says the chat
+ *  continued in an older Orca. */
 export function reimportedJournalRows(input: {
   sessionId: string
-  legacyEpoch: string
   epoch: string
   rows: readonly { seq: number; ts: number; rowJson: string }[]
   now: number
 }): { seq: number; ts: number; rowJson: string }[] {
   const state = createJournalReducerState(input.sessionId, input.epoch)
-  const copied = input.rows.map((stored) => {
+  for (const stored of input.rows) {
     const parsed = parseJournalRow(stored.rowJson)
     if (!parsed.ok) {
       throw new Error(`per-chat journal row ${stored.seq} of ${input.sessionId} is unreadable`)
     }
-    const row: JournalRow =
-      input.epoch === input.legacyEpoch ? parsed.row : { ...parsed.row, epoch: input.epoch }
-    applyJournalRow(state, row)
-    return input.epoch === input.legacyEpoch
-      ? stored
-      : { seq: stored.seq, ts: stored.ts, rowJson: serializeJournalRow(row) }
-  })
+    applyJournalRow(state, parsed.row)
+  }
   const disclosure = buildJournalItemRow({
     state,
     identity: JOURNAL_OLDER_BUILD_DISCLOSURE_IDENTITY,
@@ -140,7 +127,7 @@ export function reimportedJournalRows(input: {
     ts: input.now
   })
   return [
-    ...copied,
+    ...input.rows,
     { seq: disclosure.seq, ts: disclosure.ts, rowJson: serializeJournalRow(disclosure) }
   ]
 }

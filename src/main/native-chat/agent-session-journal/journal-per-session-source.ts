@@ -128,7 +128,7 @@ export function retireLegacyJournal(
   const file = legacyJournalDatabaseFile(legacyDirectory)
   try {
     // The database first: a WAL left without it is never read, but a database left without its WAL
-    // would read back short of the tip it was copied at, and be copied again as newer history.
+    // would read back short of the tip it was copied at, and be copied again.
     for (const path of [file, `${file}-wal`, `${file}-shm`]) {
       remove(path)
     }

@@ -4,8 +4,8 @@
 // earlier `<legacyDir>/journal.db`, verbatim: the same epoch UUID and every sequence number, so a
 // cursor, an `acceptedSequence` or a restart offer taken before the upgrade still points at the
 // same row after it. A file that reappears after a downgrade is copied again only when it carried
-// the copied history on; any other is set aside, never read again (see
-// journal-per-session-reimport.ts).
+// the copied history on and this build has not written past the copy; any other is set aside,
+// never read again (see journal-per-session-reimport.ts).
 //
 // The copy runs in bounded batches, each its own transaction, yielding the event loop between them.
 // The rows go into a block `journal_import_blocks` reserves, which no reader follows. Once the
@@ -207,15 +207,14 @@ async function copyLegacyJournal(
   plan: Extract<PerSessionImportPlan, { kind: 'first' | 'again' }>
 ): Promise<void> {
   const { sessionId } = input.identity
-  const epoch = plan.kind === 'again' ? plan.epoch : legacy.epoch
+  const { epoch } = legacy
   const repair = readLegacyRepair(source, sessionId)
   const batchRows = input.batchRows ?? IMPORT_BATCH_ROWS
-  // A second copy is read whole: it is rewritten under a fresh epoch or gains a disclosure row.
-  const rewritten =
+  // A second copy is read whole, to follow its rows with the disclosure row.
+  const reimported =
     plan.kind === 'again'
       ? reimportedJournalRows({
           sessionId,
-          legacyEpoch: legacy.epoch,
           epoch,
           rows: [...legacyRowBatches(source, sessionId, legacy.epoch, batchRows)].flatMap(
             (batch) => batch.rows
@@ -223,8 +222,8 @@ async function copyLegacyJournal(
           now: (input.now ?? Date.now)()
         })
       : null
-  const batches = rewritten
-    ? arrayBatches(rewritten, batchRows)
+  const batches = reimported
+    ? arrayBatches(reimported, batchRows)
     : legacyRowBatches(source, sessionId, legacy.epoch, batchRows)
   let block: number | null = null
   for (const batch of batches) {
@@ -245,8 +244,8 @@ async function copyLegacyJournal(
   const target = block ?? input.database.transaction((db) => reserveImportBlock(db, sessionId))
   await verifyCopiedJournal(
     input,
-    rewritten
-      ? arrayBatches(rewritten, batchRows)
+    reimported
+      ? arrayBatches(reimported, batchRows)
       : legacyRowBatches(source, sessionId, legacy.epoch, batchRows),
     { epoch, block: target }
   )
@@ -260,7 +259,7 @@ async function copyLegacyJournal(
     if (repair) {
       db.prepare(UPSERT_REPAIR).run(
         sessionId,
-        repair.epoch === legacy.epoch ? epoch : repair.epoch,
+        repair.epoch,
         repair.content_from,
         repair.repaired_at
       )
