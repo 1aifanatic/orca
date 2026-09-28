@@ -453,6 +453,30 @@ describe('markCodexProjectTrusted keeps the answer the user already gave', () =>
     expect(existsSync(runtimeConfigPath())).toBe(false)
   })
 
+  it('follows the subdirectory’s own answer over its repository root’s, as Codex does', async () => {
+    const repository = join(workspace, 'repo')
+    const subdirectory = join(repository, 'packages', 'app')
+    mkdirSync(join(repository, '.git'), { recursive: true })
+    writeFileSync(join(repository, '.git', 'HEAD'), 'ref: refs/heads/main\n', 'utf-8')
+    mkdirSync(subdirectory, { recursive: true })
+    const original = [
+      projectHeader(repository),
+      'trust_level = "untrusted"',
+      '',
+      projectHeader(subdirectory),
+      'trust_level = "trusted"',
+      ''
+    ].join('\n')
+    seedSystemConfig(original)
+
+    await markCodexProjectTrusted(subdirectory)
+
+    expect(readFileSync(systemConfigPath(), 'utf-8')).toBe(original)
+    expect(readFileSync(runtimeConfigPath(), 'utf-8')).toBe(
+      `${projectHeader(subdirectory)}\ntrust_level = "trusted"\n`
+    )
+  })
+
   it('keeps an explicit untrusted answer on a linked worktree’s own path', async () => {
     const repository = join(workspace, 'repo')
     const worktree = join(workspace, 'worktrees', 'feature')
