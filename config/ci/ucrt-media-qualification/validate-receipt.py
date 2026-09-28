@@ -16,6 +16,21 @@ def validate(plan, receipt):
     aliases = receipt.get('cabinetAliases', [])
     if not aliases or len(aliases) > 300:
         raise ValueError('Cabinet alias budget exceeded or empty')
+    raw_rows = receipt.get('mediaRows', [])
+    if not raw_rows or len(raw_rows) > 300 * len(inputs):
+        raise ValueError('Missing or excessive raw Media rows')
+    expected = []
+    row_counts = {}
+    for row in raw_rows:
+        item = inputs.get(row['msiSha256'])
+        if item is None or not isinstance(row['cabinet'], str):
+            raise ValueError('Invalid raw Media identity')
+        row_counts[item['sha256']] = row_counts.get(item['sha256'], 0) + 1
+        if row['cabinet']:
+            expected.append((item['sha256'], row['lastSequence'], row['cabinet']))
+    actual = [(a['msiSha256'], a['lastSequence'], PurePosixPath(a['cachePath']).name) for a in aliases]
+    if sorted(actual) != sorted(expected):
+        raise ValueError('Cabinet aliases do not cover raw Media rows')
     paths = set()
     unique = {}
     counts = {}
@@ -46,7 +61,9 @@ def validate(plan, receipt):
         item = inputs[database['sha256']]
         if database['cachePath'] != item['cachePath'] or database['cabinets'] != counts.get(database['sha256'], 0):
             raise ValueError('Database receipt mismatch')
-        if not 0 < database['cabinets'] <= database['mediaRows'] <= 300:
+        if database['mediaRows'] != row_counts.get(database['sha256'], 0):
+            raise ValueError('Raw Media row count mismatch')
+        if not 0 <= database['cabinets'] <= database['mediaRows'] <= 300:
             raise ValueError('Invalid Media counts')
     if sum(unique.values()) > 1024 ** 3 or receipt['uniqueCabinetBytes'] != sum(unique.values()):
         raise ValueError('Cabinet byte budget or receipt mismatch')
