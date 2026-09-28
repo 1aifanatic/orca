@@ -29,7 +29,7 @@ import { getSystemCodexHomePath } from './codex-home-paths'
 import type { CodexTrustEntry } from './config-toml-trust'
 import { restoreCodexTrustConfig } from './codex-trust-config-rollback'
 import { mutateRealHomeHooksPreservingUserTrust } from './codex-user-hook-trust-rebase'
-import { runExclusivelyForCodexTrustConfig } from './codex-trust-config-mutation-queue'
+import { runExclusivelyForSystemTrustConfig } from './codex-hook-trust-queue'
 
 /**
  * Real-home Codex hook lane for the system-default selection (flag ON).
@@ -96,7 +96,7 @@ async function runRealHomeCodexHookEnsure(args: {
   try {
     // Why inside the try: resolving the real home can throw too, and this
     // function is the module's "never throws" boundary.
-    currentLane = await runExclusivelyForCodexTrustConfig(getRealHomeConfigTomlPath(), () =>
+    currentLane = await runExclusivelyForSystemTrustConfig(() =>
       args.hooksEnabled ? installRealHomeCodexHook(args.userDataPath) : sweepRealHomeCodexHook()
     )
     if (!args.hooksEnabled || currentLane === 'installed') {

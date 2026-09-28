@@ -22,7 +22,7 @@ import {
   removeSystemManagedHookTrustEntries
 } from './codex-hook-trust-cleanup'
 import { readCodexTrustGrantLedgerHomeForReconciliation } from './codex-managed-trust-reconciliation'
-import { runExclusivelyForCodexTrustConfig } from './codex-trust-config-mutation-queue'
+import { runExclusivelyForSystemTrustConfig } from './codex-hook-trust-queue'
 import { mutateRealHomeHooksPreservingUserTrust } from './codex-user-hook-trust-rebase'
 import { restoreRealHomeHooksJson, writeRealHomeHooksJson } from './codex-real-home-hooks-json'
 
@@ -48,10 +48,7 @@ function getLegacyCodexProfileTomlPath(): string {
 export function cleanupLegacySystemManagedHooks(): Promise<void> {
   // Why: shares the real-home lane with ensureRealHomeCodexHookState — both
   // capture, mutate and roll back the user's ~/.codex/config.toml.
-  return runExclusivelyForCodexTrustConfig(
-    getSystemCodexConfigTomlPath(),
-    sweepLegacySystemManagedHooks
-  )
+  return runExclusivelyForSystemTrustConfig(sweepLegacySystemManagedHooks)
 }
 
 async function sweepLegacySystemManagedHooks(): Promise<void> {

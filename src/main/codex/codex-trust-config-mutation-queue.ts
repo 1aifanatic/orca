@@ -19,7 +19,9 @@ const heldKeys = new AsyncLocalStorage<ReadonlySet<string>>()
  */
 export function runExclusivelyForCodexTrustConfig<T>(
   tomlPath: string,
-  run: () => Promise<T>
+  run: () => Promise<T>,
+  // Why: held by the outermost acquire only; the lock file is not reentrant.
+  crossProcessLock?: <R>(locked: () => Promise<R>) => Promise<R>
 ): Promise<T> {
   const key = normalizeRuntimePathForComparison(tomlPath)
   const held = heldKeys.getStore()
@@ -28,7 +30,8 @@ export function runExclusivelyForCodexTrustConfig<T>(
   }
   const owned = new Set(held ?? [])
   owned.add(key)
-  const enter = (): Promise<T> => heldKeys.run(owned, run)
+  const enter = (): Promise<T> =>
+    heldKeys.run(owned, crossProcessLock ? () => crossProcessLock(run) : run)
   const previous = tailByTomlPath.get(key) ?? Promise.resolve()
   // Why both handlers: a rejected predecessor must not cancel the queue.
   const result = previous.then(enter, enter)
