@@ -41,8 +41,7 @@ const SELECT_LEGACY_TIP =
   'SELECT max(seq) AS tip FROM journal_rows WHERE session_id = ? AND epoch = ?'
 const SELECT_LEGACY_ROWS = `SELECT seq, ts, row_json FROM journal_rows
 WHERE session_id = ? AND epoch = ? AND seq > ? ORDER BY seq ASC LIMIT ?`
-const HAS_LEGACY_REPAIRS =
-  "SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'journal_repairs'"
+const HAS_LEGACY_TABLE = "SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = ?"
 const SELECT_LEGACY_REPAIR =
   'SELECT epoch, content_from, repaired_at FROM journal_repairs WHERE session_id = ?'
 const INSERT_ROW = 'INSERT INTO journal_rows (id, ts, row_json) VALUES (?, ?, ?)'
@@ -127,6 +126,10 @@ function readLegacyHead(
   source: Database.Database,
   sessionId: string
 ): PerSessionJournalHead | null {
+  // Created but never given its schema (a crash between the two): no history, as an empty file.
+  if (!source.prepare(HAS_LEGACY_TABLE).get('journal_sessions')) {
+    return null
+  }
   const epoch = source.prepare(SELECT_LEGACY_EPOCH).get(sessionId)?.epoch
   if (typeof epoch !== 'string' || epoch.length === 0) {
     return null
@@ -207,7 +210,7 @@ function copyLegacyJournal(
 
 /** The per-chat repair marker, as stored; v1 files predate the table. */
 function readLegacyRepair(source: Database.Database, sessionId: string): SqliteRow | null {
-  if (!source.prepare(HAS_LEGACY_REPAIRS).get()) {
+  if (!source.prepare(HAS_LEGACY_TABLE).get('journal_repairs')) {
     return null
   }
   return source.prepare(SELECT_LEGACY_REPAIR).get(sessionId) ?? null

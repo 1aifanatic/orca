@@ -260,6 +260,31 @@ describe('importing a per-chat journal', () => {
     expect(existsSync(legacyDir())).toBe(false)
   })
 
+  // A crash between creating the file and giving it the schema: the chat opens with no history, as
+  // it did when each chat opened its own file, and the file retires like any never-written one.
+  it.each([
+    ['empty', async (path: string) => writeFile(path, '')],
+    [
+      'schema-less',
+      async (path: string) => {
+        const db = new Database(path)
+        db.pragma('journal_mode = WAL')
+        db.close()
+      }
+    ]
+  ])('opens a chat whose per-chat file is %s as having no history', async (_shape, create) => {
+    await mkdir(legacyDir(), { recursive: true })
+    await create(legacyJournalDatabaseFile(legacyDir()))
+
+    const journal = await openChat()
+
+    expect(journal.snapshot().items).toEqual([])
+    await journals.closeAll()
+    await openChat()
+    expect(existsSync(legacyDir())).toBe(false)
+    expect(await retired()).toHaveLength(1)
+  })
+
   // T-B5: a downgrade, an older build writing the chat's history to a new per-chat file, and a
   // re-upgrade — twice. The newer history wins each time, says so, and each file retires to its
   // own name.
