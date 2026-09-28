@@ -8,7 +8,6 @@ import {
 import { mainAgentTurnInterrupted } from '../../agent-lead-status-fold'
 import { codexRosterToSnapshots } from '../../codex-subagent-roster'
 import { reconcileCodexSubagentTranscript } from '../../codex-subagent-transcript'
-import { latestEndedCodexRolloutTurnId } from '../../codex-rollout-turn-lifecycle'
 import type { AgentHookEventPayload } from '../listener-event'
 import type { HookListenerState } from '../listener-state'
 import {
@@ -19,11 +18,12 @@ import {
   setCodexMainAgentTurnState
 } from './codex-state'
 
-/** Catches the pane up on its parent rollout, then applies what it records to the root: a root
- *  with no turn id adopts the turn the rollout shows open (SessionStart carries none), and a turn
- *  the rollout records ended settles. A child's hook names its own rollout, so it reads the parent
- *  a root event named earlier. `restored` is a root seeded from a row saved before a restart: with
- *  no turn open, the rollout's latest turn is the one that row described. */
+/** Catches the pane up on its parent rollout, then applies what it records to the root: a running
+ *  root with no turn id adopts the rollout's latest turn if it is open or started in this read
+ *  (SessionStart carries no id, nor do some Codex builds' hooks), and a turn the rollout records
+ *  ended settles. A child's hook names its own rollout, so it reads the parent a root event named
+ *  earlier. `restored` is a root seeded from a row saved before a restart, which describes the
+ *  rollout's latest turn whatever became of it. */
 export function catchUpOnCodexParentRollout(
   state: HookListenerState,
   paneKey: string,
@@ -37,6 +37,7 @@ export function catchUpOnCodexParentRollout(
   if (!transcriptState || !parentPath) {
     return
   }
+  const latestBefore = transcriptState.mainTurns.latestTurnId
   reconcileCodexSubagentTranscript(
     transcriptState,
     getOrCreateCodexSubagentRoster(state, paneKey),
@@ -44,12 +45,13 @@ export function catchUpOnCodexParentRollout(
   )
   const lead = state.codexLeadStateByPaneKey.get(paneKey)
   const turns = transcriptState.mainTurns
-  // Why only a root still running: a settled root with no id did not describe the open turn.
+  const adoptable =
+    turns.openTurnId !== undefined ||
+    options.restored === true ||
+    turns.latestTurnId !== latestBefore
+  // Why only a root still running: a settled root with no id did not describe a later turn.
   const turnId =
-    lead?.turnId ??
-    (lead?.state === 'done'
-      ? undefined
-      : (turns.openTurnId ?? (options.restored ? latestEndedCodexRolloutTurnId(turns) : undefined)))
+    lead?.turnId ?? (lead?.state !== 'done' && adoptable ? turns.latestTurnId : undefined)
   if (!lead || turnId === undefined) {
     return
   }

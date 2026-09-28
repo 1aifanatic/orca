@@ -321,16 +321,17 @@ ended, while a root hook for any other turn is Codex working again, including a
 turn Codex starts without a prompt. Stop alone does not end X for good: a Stop
 hook that blocks makes Codex continue the same turn, so a later root hook for X
 reads working again. A root hook with no turn id (`SessionStart`, or a Codex
-build that omits it) belongs to the turn the rollout shows open, and a record
-with no id adopts that turn when the rollout shows it. `SessionStart` with
+build that omits it) belongs to the turn the rollout shows open, and a running
+record with no id adopts the rollout's latest turn once the rollout shows it
+open or started since the last read. `SessionStart` with
 source `compact` fires mid-turn in the same session and rollout, so it keeps
 the roster, the rollout state and the turn; only a real session start
 (startup, resume, clear, fork) drops them, and a changed rollout path resets
 the rollout state on its own. The record lives only on the execution host's
 listener and is not persisted: hydration seeds it from the row's `mainAgent`
 without a turn id, then reads the row's saved rollout (`providerSession.transcriptPath`)
-once, adopting the rollout's open turn or, with none open, its latest one, so a
-turn that ended while Orca was down settles on the watch's first tick. For a
+once, adopting the rollout's latest turn whatever became of it, so a turn that
+ended while Orca was down settles on the watch's first tick. For a
 relayed pane the relay applies that rule to the raw hooks and its own rollout;
 main mirrors the relay's `mainAgent` and, for the relay's rollout observations
 (source `codex`, no hook name), its whole roster, and keeps its copy only to

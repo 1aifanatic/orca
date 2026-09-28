@@ -225,6 +225,18 @@ describe("the Codex main agent turn, settled from Codex's rollout", () => {
     })
   })
 
+  it('adopts a turn that started and ended within one read when its hooks carried no turn id', () => {
+    rmSync(rollout)
+    writeFileSync(rollout, '')
+    hook({ hook_event_name: 'SessionStart', source: 'startup' })
+    appendFileSync(rollout, marker('task_started', 'turn-1') + marker('turn_aborted', 'turn-1'))
+
+    expect(observeCodexRollout(state, PANE_KEY)?.payload.mainAgent).toMatchObject({
+      state: 'done',
+      outcome: 'cancellation'
+    })
+  })
+
   it('keeps the roster and the turn through a mid-turn compaction', () => {
     hook({ hook_event_name: 'UserPromptSubmit', prompt: 'go', turn_id: 'turn-1' })
     hook({ hook_event_name: 'SubagentStart', agent_id: 'agent-1' })

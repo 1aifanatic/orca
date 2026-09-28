@@ -28,10 +28,11 @@ export type CodexRolloutTurnLifecycle = {
 /** How Codex's rollout recorded a turn's end. */
 export type CodexRolloutTurnEnd = Pick<CodexRolloutTurnLifecycle, 'state' | 'abortReason'>
 
-/** The main agent's turns as its rollout recorded them: the one Codex has open, and a bounded
- *  window of ended ones (oldest first). */
+/** The main agent's turns as its rollout recorded them: the one Codex has open, the latest one it
+ *  started (open or not), and a bounded window of ended ones (oldest first). */
 export type CodexRolloutTurns = {
   openTurnId?: string
+  latestTurnId?: string
   ended: Map<string, CodexRolloutTurnEnd>
 }
 
@@ -73,6 +74,7 @@ export function recordCodexRolloutTurn(
 ): void {
   if (lifecycle.state === 'working') {
     turns.openTurnId = lifecycle.turnId
+    turns.latestTurnId = lifecycle.turnId
     return
   }
   // Why: `turn_aborted.turn_id` is optional in Codex; an end without one ends the open turn.
@@ -94,14 +96,6 @@ export function recordCodexRolloutTurn(
       turns.ended.delete(oldest)
     }
   }
-}
-
-export function latestEndedCodexRolloutTurnId(turns: CodexRolloutTurns): string | undefined {
-  let latest: string | undefined
-  for (const turnId of turns.ended.keys()) {
-    latest = turnId
-  }
-  return latest
 }
 
 /** Only an abort the user asked for is a cancellation; any other end carries no verdict. */
