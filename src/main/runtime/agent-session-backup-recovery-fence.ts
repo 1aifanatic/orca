@@ -24,6 +24,7 @@
 // session; the fence protects the store, not the provider session.
 
 import { nextAgentSessionFence } from '../../shared/agent-session-next-fence'
+import type { AgentSessionLease, AgentSessionRecord } from '../../shared/agent-session-record'
 import type { AgentSessionStoreState } from './agent-session-record-store-file'
 
 export function raiseAgentSessionFencesAfterBackupRecovery(state: AgentSessionStoreState): void {
@@ -40,4 +41,16 @@ export function raiseAgentSessionFencesAfterBackupRecovery(state: AgentSessionSt
       }
     })
   }
+}
+
+/** Keep `record`, but never grant a fence a superseded copy of the same session may already hold. */
+export function raiseAgentSessionFenceAboveSupersededCopy(
+  record: AgentSessionRecord,
+  superseded: AgentSessionLease
+): AgentSessionRecord {
+  const floor = nextAgentSessionFence(superseded)
+  if (floor <= nextAgentSessionFence(record.lease)) {
+    return record
+  }
+  return { ...record, lease: { ...record.lease, minimumNextFence: floor } }
 }

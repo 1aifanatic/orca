@@ -252,4 +252,36 @@ describe('unreadable session records', () => {
     })
     expect(persisted.unusableRecords).not.toHaveProperty('session-alpha')
   })
+  it('never re-grants a fence a newer quarantined copy already holds', async () => {
+    await establishOwner(await open())
+    const filePath = agentSessionStorePath(directory)
+    // The row an older build salvaged from the backup, before the commit it could not read.
+    const salvaged = JSON.parse(await readFile(filePath, 'utf-8')).records['session-alpha']
+    const second = await open()
+    await second.reconcileOnRestart({
+      probe: async () => ({ outcome: 'pid-absent' }),
+      now: NOW + 1
+    })
+    await second.reserveOwner(reserveRequest({ expectedFence: 2, spawnToken: 'spawn-b' }))
+    const raw = JSON.parse(await readFile(filePath, 'utf-8'))
+    const newer = raw.records['session-alpha']
+    expect(newer.lease.runtimeFence).toBe(3)
+    raw.records['session-alpha'] = salvaged
+    raw.unusableRecords['session-alpha'] = { reason: 'current_shape_invalid', raw: newer }
+    await writeFile(filePath, JSON.stringify(raw))
+
+    const reopened = await open()
+    expect(reopened.getRecord('session-alpha')?.lease.provenHandleLinkId).toBe('link-1')
+    await reopened.reconcileOnRestart({
+      probe: async () => ({ outcome: 'pid-absent' }),
+      now: NOW + 2
+    })
+    const reserved = await reopened.reserveOwner(
+      reserveRequest({
+        expectedFence: reopened.getRecord('session-alpha')?.lease.runtimeFence ?? null,
+        spawnToken: 'spawn-c'
+      })
+    )
+    expect(reserved.record.lease.runtimeFence).toBeGreaterThan(3)
+  })
 })

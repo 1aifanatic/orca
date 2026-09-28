@@ -112,7 +112,8 @@ export type AgentSessionLease = {
   unreconciled: boolean
   /**
    * Lowest fence a future grant may use. Set only after the store recovers from its backup, where
-   * the commit that never landed may already have granted a fence the backup cannot show. The
+   * the commit that never landed may already have granted a fence the backup cannot show, or keeps
+   * a salvaged row over a newer quarantined copy of it. The
    * CURRENT fence is deliberately left alone: `live` means a handle proven at exactly that number,
    * so rewriting it would invalidate the record it is trying to save.
    */

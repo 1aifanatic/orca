@@ -17,6 +17,7 @@ import {
 } from '../../shared/agent-session-operation-ledger'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import { decodeStoredAgentSessionRecord } from './agent-session-stored-record-decode'
+import { raiseAgentSessionFenceAboveSupersededCopy } from './agent-session-backup-recovery-fence'
 import { agentSessionStoreBackupPath as backupPath } from './agent-session-record-store-write'
 export { saveAgentSessionStore } from './agent-session-record-store-write'
 import { parseAgentSessionTabTable, type AgentSessionTabTable } from './agent-session-tab-table'
@@ -173,9 +174,15 @@ function parseState(
         state.unreadableRecords.set(sessionId, { reason: unusable.reason, raw: unusable.raw })
         continue
       }
-      // A live row wins: nothing admits a new record under a quarantined id, so a live one is a
-      // salvaged successor that may already carry later fences the quarantined bytes predate.
-      if (!state.records.has(sessionId)) {
+      const live = state.records.get(sessionId)
+      if (live) {
+        // A live row is the backup copy an older build salvaged and may have advanced since; the
+        // quarantined bytes are the newer commit it could not read, so their fence still counts.
+        state.records.set(
+          sessionId,
+          raiseAgentSessionFenceAboveSupersededCopy(live, requalified.record.lease)
+        )
+      } else {
         state.records.set(sessionId, requalified.record)
         legacyHandoffLeasesNormalized ||= requalified.normalized
       }
