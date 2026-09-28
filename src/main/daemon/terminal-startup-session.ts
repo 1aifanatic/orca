@@ -17,11 +17,9 @@ export class TerminalStartupSession {
   constructor(
     private readonly id: string,
     private readonly pending: Map<string, TerminalStartupSession>,
-    private readonly create: (
-      handle: SubprocessHandle,
-      onExit: () => void,
-      synchronous: boolean
-    ) => Session,
+    private create:
+      | ((handle: SubprocessHandle, onExit: () => void, synchronous: boolean) => Session)
+      | undefined,
     private readonly onExit: () => void
   ) {}
 
@@ -40,6 +38,9 @@ export class TerminalStartupSession {
     synchronous: boolean,
     discardNative?: () => Promise<void>
   ): Session {
+    if (!this.create) {
+      throw new Error('Terminal startup attempt is already published')
+    }
     if (this.current) {
       throw new Error('Previous terminal spawn attempt still owns its process')
     }
@@ -126,6 +127,9 @@ export class TerminalStartupSession {
     if (this.pending.get(this.id) === this) {
       this.pending.delete(this.id)
     }
+    this.create = undefined
+    this.handle = undefined
+    this.discardNative = undefined
     this.published = true
     if (this.exited) {
       this.onExit()

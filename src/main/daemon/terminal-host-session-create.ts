@@ -121,7 +121,7 @@ async function spawnAndPublishSession(
     deps.startupSessions,
     (subprocess, onExit, requireSynchronousOutput) =>
       createSession(opts, deps, ctx, subprocess, onExit, requireSynchronousOutput),
-    () => deps.onSessionExit(opts.sessionId, opts.agentSessionGeneration)
+    createSessionExitHandler(deps.onSessionExit, opts.sessionId, opts.agentSessionGeneration)
   )
   await startup.clearPreviousAttempt()
   const subprocess = await deps.spawnSubprocess({
@@ -261,4 +261,13 @@ function supportsStartupBarrier(
     (opts.shellReadySupported ?? false) &&
     (subprocess.shellPath === undefined || shellPathSupportsPtyStartupBarrier(subprocess.shellPath))
   )
+}
+
+// Keep request buffers out of the live session's exit closure.
+function createSessionExitHandler(
+  onSessionExit: TerminalHostSessionCreateDependencies['onSessionExit'],
+  sessionId: string,
+  generation: string | undefined
+): () => void {
+  return () => onSessionExit(sessionId, generation)
 }

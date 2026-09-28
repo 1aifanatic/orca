@@ -131,12 +131,11 @@ export async function spawnNativeDaemonPty(
       reportsChildExitStatus
     }
   } catch (primaryErr) {
+    if (primaryErr instanceof PtySpawnCleanupError) {
+      throw primaryErr
+    }
     args.signal?.throwIfAborted()
-    if (
-      process.platform !== 'win32' ||
-      primaryErr instanceof WindowsBunPtySpawnUnconfirmedError ||
-      primaryErr instanceof PtySpawnCleanupError
-    ) {
+    if (process.platform !== 'win32' || primaryErr instanceof WindowsBunPtySpawnUnconfirmedError) {
       throw primaryErr
     }
     for (const attempt of args.windowsFallbackAttempts.slice(1)) {
@@ -159,11 +158,11 @@ export async function spawnNativeDaemonPty(
           reportsChildExitStatus
         }
       } catch (error) {
+        if (error instanceof PtySpawnCleanupError) {
+          throw error
+        }
         args.signal?.throwIfAborted()
-        if (
-          error instanceof WindowsBunPtySpawnUnconfirmedError ||
-          error instanceof PtySpawnCleanupError
-        ) {
+        if (error instanceof WindowsBunPtySpawnUnconfirmedError) {
           throw error
         }
         // This fallback shell also failed -- try the next link in the chain.

@@ -1,3 +1,4 @@
+import { TerminalAttachCanceledError } from './daemon-errors'
 import type { BunPtySpawnArgs } from './pty-subprocess/bun-pty-process-contract'
 // Native Windows shell launch: PowerShell implementations, cmd.exe and Git Bash.
 import { describe, expect, it, vi } from 'vitest'
@@ -91,6 +92,40 @@ describe('createPtySubprocess', () => {
     resolveUnixShellPathMock,
     resolveAgentForegroundProcessMock,
     validateWorkingDirectoryMock
+  })
+
+  it('preserves cancellation identity while a Windows shell receipt is pending', async () => {
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform')!
+    const abort = new AbortController()
+    const destroy = vi.fn()
+    let awaitingReceipt = false
+    spawnMock.mockReturnValue({
+      ...mockPtyProcess(),
+      destroy,
+      waitForSpawn: () => {
+        awaitingReceipt = true
+        return new Promise<void>(() => {})
+      }
+    })
+    Object.defineProperty(process, 'platform', { value: 'win32' })
+    try {
+      const pending = createPtySubprocess({
+        sessionId: 'receipt-canceled',
+        cols: 80,
+        rows: 24,
+        env: { COMSPEC: CMD_ABS },
+        cancelSignal: abort.signal
+      })
+      const rejected = expect(pending).rejects.toThrow(TerminalAttachCanceledError)
+      await vi.waitFor(() => expect(awaitingReceipt).toBe(true))
+      abort.abort()
+      await rejected
+      expect(destroy).toHaveBeenCalledOnce()
+      expect(spawnMock).toHaveBeenCalledOnce()
+    } finally {
+      abort.abort()
+      Object.defineProperty(process, 'platform', platform)
+    }
   })
 
   it('keeps powershell.exe when the inbox PowerShell implementation is selected on Windows', async () => {

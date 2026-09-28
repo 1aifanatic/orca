@@ -5,7 +5,11 @@ import { TerminalAttachCanceledError } from './daemon-errors'
 import { waitForTerminalAttachOperation } from './terminal-attach-cancellation'
 import { createDaemonPtyEnvironment } from './pty-subprocess/spawn-environment'
 import { createPtyShellLaunchPlan } from './pty-subprocess/shell-launch-plan'
-import { spawnNativeDaemonPty, type SpawnedDaemonPty } from './pty-subprocess/native-pty-spawn'
+import {
+  spawnNativeDaemonPty,
+  PtySpawnCleanupError,
+  type SpawnedDaemonPty
+} from './pty-subprocess/native-pty-spawn'
 import {
   formatPtySpawnError,
   preflightPtySpawn,
@@ -127,6 +131,9 @@ export async function createPtySubprocess(opts: PtySubprocessOptions): Promise<S
         : {})
     })
   } catch (error) {
+    if (opts.cancelSignal?.aborted && !(error instanceof PtySpawnCleanupError)) {
+      throw new TerminalAttachCanceledError(opts.sessionId)
+    }
     if (process.platform === 'win32') {
       throw formatPtySpawnError(error, launch.shellPath, launch.spawnCwd)
     }
