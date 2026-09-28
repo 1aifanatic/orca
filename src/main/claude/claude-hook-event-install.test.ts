@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { HooksConfig } from '../agent-hooks/installer-utils'
 import fixture from './__fixtures__/claude-hook-event-enums.json'
 import { CLAUDE_HOOK_EVENT_FIRST_VERSIONS } from './claude-hook-event-versions'
-import { getClaudeManagedHookEvents } from './claude-managed-hook-events'
+import { getClaudeManagedHookPlan } from './claude-managed-hook-events'
 import { applyManagedHooks } from './hook-settings'
 
 const SCRIPT_FILE_NAME = 'claude-hook.sh'
@@ -15,7 +15,7 @@ function install(config: HooksConfig, claudeVersion: string | undefined): HooksC
     config,
     managedHook,
     SCRIPT_FILE_NAME,
-    getClaudeManagedHookEvents(claudeVersion)
+    getClaudeManagedHookPlan(claudeVersion)
   )
 }
 
@@ -81,6 +81,35 @@ describe('Claude managed hook events by resolved version', () => {
     'writes only the events every supported Claude knows when the version is %s',
     (version) => {
       expect(managedEvents(install({ hooks: {} }, version))).toEqual(
+        [
+          'PostToolUse',
+          'PreToolUse',
+          'SessionStart',
+          'Stop',
+          'SubagentStop',
+          'UserPromptSubmit'
+        ].sort()
+      )
+    }
+  )
+
+  it.each([undefined, 'unknown'])(
+    'leaves Orca entries a version-aware install wrote untouched when the version is %s',
+    (version) => {
+      const current = install(userOwnedSettings(), '2.1.261')
+      expect(JSON.stringify(install(current, version))).toBe(JSON.stringify(current))
+
+      // Why: even an entry from an older hook command stays byte-identical; only a known version may rewrite it.
+      const staleHook = {
+        type: 'command' as const,
+        command: '/old/.orca/agent-hooks/claude-hook.sh'
+      }
+      const stale = { hooks: { StopFailure: [{ hooks: [staleHook] }] } }
+      const written = install(stale, version)
+      expect(JSON.stringify(written.hooks?.StopFailure)).toBe(
+        JSON.stringify(stale.hooks.StopFailure)
+      )
+      expect(managedEvents(written)).toEqual(
         [
           'PostToolUse',
           'PreToolUse',

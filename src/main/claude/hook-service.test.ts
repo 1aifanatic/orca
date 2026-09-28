@@ -296,6 +296,27 @@ describe('ClaudeHookService.install', () => {
     }
   })
 
+  it('keeps newer Orca events and reports installed when a later probe cannot resolve the version', () => {
+    const tmpHome = mkdtempSync(join(tmpdir(), 'orca-claude-unknown-version-'))
+    vi.stubEnv('HOME', tmpHome)
+    vi.stubEnv('USERPROFILE', tmpHome)
+    try {
+      const service = new ClaudeHookService()
+      const settingsPath = join(tmpHome, '.claude', 'settings.json')
+      expect(service.install(CURRENT_CLAUDE).state).toBe('installed')
+      const known = JSON.parse(readFileSync(settingsPath, 'utf-8'))
+
+      expect(service.install().state).toBe('installed')
+
+      const unknown = JSON.parse(readFileSync(settingsPath, 'utf-8'))
+      expect(unknown.hooks).toEqual(known.hooks)
+      expect(service.getStatus().state).toBe('installed')
+    } finally {
+      vi.unstubAllEnvs()
+      rmSync(tmpHome, { recursive: true, force: true })
+    }
+  })
+
   it('installs the managed statusLine command and forwards rate_limits posts', () => {
     const tmpHome = mkdtempSync(join(tmpdir(), 'orca-claude-statusline-'))
     vi.stubEnv('HOME', tmpHome)

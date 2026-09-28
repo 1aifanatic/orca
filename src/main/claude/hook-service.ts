@@ -40,9 +40,9 @@ import {
   type ClaudeCompatibleHookSettings
 } from './hook-settings'
 import {
-  CLAUDE_EVENTS,
-  getClaudeManagedHookEvents,
-  type ClaudeManagedHookEvent
+  getClaudeManagedHookPlan,
+  OPENCLAUDE_MANAGED_HOOK_PLAN,
+  type ClaudeManagedHookPlan
 } from './claude-managed-hook-events'
 
 type ClaudeHookServiceOptions = {
@@ -68,12 +68,12 @@ export class ClaudeHookService {
     this.options = options
   }
 
-  // Why: Claude's settings loader rejects events newer than the running CLI, so its set follows the
-  // resolved version; OpenClaude reads its own settings file and accepts every event Orca writes.
-  private managedEvents(options: ClaudeHookInstallOptions): readonly ClaudeManagedHookEvent[] {
+  // Why: Claude's settings loader rejects events newer than the running CLI, so its plan follows the
+  // resolved version; OpenClaude reads its own settings file.
+  private managedHookPlan(options: ClaudeHookInstallOptions): ClaudeManagedHookPlan {
     return this.options.agent === 'claude'
-      ? getClaudeManagedHookEvents(options.claudeVersion)
-      : CLAUDE_EVENTS
+      ? getClaudeManagedHookPlan(options.claudeVersion)
+      : OPENCLAUDE_MANAGED_HOOK_PLAN
   }
 
   getStatus(options: ClaudeHookInstallOptions = {}): AgentHookInstallStatus {
@@ -94,7 +94,7 @@ export class ClaudeHookService {
     const expectedHook = getManagedLifecycleHook(scriptPath, this.options.settings)
     const missing: string[] = []
     let presentCount = 0
-    for (const event of this.managedEvents(options)) {
+    for (const event of this.managedHookPlan(options).install) {
       const definitions = Array.isArray(config.hooks?.[event.eventName])
         ? config.hooks![event.eventName]!
         : []
@@ -157,7 +157,7 @@ export class ClaudeHookService {
       config,
       hook,
       getManagedScriptFileName(this.options.settings),
-      this.managedEvents(options)
+      this.managedHookPlan(options)
     )
     writeManagedScript(
       scriptPath,
@@ -227,7 +227,7 @@ export class ClaudeHookService {
         config,
         hook,
         remoteScriptFileName,
-        this.managedEvents(options)
+        this.managedHookPlan(options)
       )
 
       // Why: write scripts before settings to avoid settings pointing to missing scripts.

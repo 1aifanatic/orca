@@ -1,4 +1,8 @@
-import { claudeKnowsHookEvent, claudeVersionReaches } from './claude-hook-event-versions'
+import {
+  claudeKnowsHookEvent,
+  claudeVersionReaches,
+  parseClaudeCliVersion
+} from './claude-hook-event-versions'
 
 export const CLAUDE_EVENTS = [
   // Why: SessionStart is the only event a resumed/idle session emits before the
@@ -76,13 +80,32 @@ export const CLAUDE_MANAGED_EVENTS = [...CLAUDE_EVENTS, CLAUDE_SESSION_END_EVENT
 
 export type ClaudeManagedHookEvent = (typeof CLAUDE_MANAGED_EVENTS)[number]
 
-/** The managed events a Claude of this version accepts; see claude-hook-event-versions.ts. */
-export function getClaudeManagedHookEvents(
+export type ClaudeManagedHookPlan = {
+  install: readonly ClaudeManagedHookEvent[]
+  /** Events whose Orca entry must go; user entries under them always stay. */
+  retire: readonly ClaudeManagedHookEvent[]
+}
+
+/** What to write for a Claude of this version; see claude-hook-event-versions.ts. */
+export function getClaudeManagedHookPlan(
   claudeVersion: string | null | undefined
-): ClaudeManagedHookEvent[] {
-  return CLAUDE_MANAGED_EVENTS.filter(
+): ClaudeManagedHookPlan {
+  const install = CLAUDE_MANAGED_EVENTS.filter(
     (event) =>
       claudeKnowsHookEvent(claudeVersion, event.eventName) &&
       (!('installFrom' in event) || claudeVersionReaches(claudeVersion, event.installFrom))
   )
+  // Why: an unresolved version (e.g. a probe timeout) is no evidence of an old Claude, so it must
+  // not strip entries an install that knew the version wrote; only a known version retires events.
+  const retire =
+    parseClaudeCliVersion(claudeVersion) === null
+      ? []
+      : CLAUDE_MANAGED_EVENTS.filter((event) => !install.includes(event))
+  return { install, retire }
+}
+
+// Why: OpenClaude reads its own settings file and accepts every event Orca writes.
+export const OPENCLAUDE_MANAGED_HOOK_PLAN: ClaudeManagedHookPlan = {
+  install: CLAUDE_EVENTS,
+  retire: [CLAUDE_SESSION_END_EVENT]
 }

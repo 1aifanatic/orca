@@ -16,7 +16,7 @@ import { quotePowerShellLiteral } from '../../shared/powershell-native-argument'
 import { wrapRuntimeHomeHookCommand } from '../agent-hooks/runtime-home-hook-command'
 import { wrapWindowsDirectCmdHookCommand } from '../agent-hooks/windows-direct-cmd-hook-command'
 import { isGitBashAvailable } from '../git-bash'
-import { CLAUDE_MANAGED_EVENTS, type ClaudeManagedHookEvent } from './claude-managed-hook-events'
+import type { ClaudeManagedHookPlan } from './claude-managed-hook-events'
 
 export type ClaudeCompatibleHookSettings = {
   configDirName: '.claude' | '.openclaude'
@@ -144,26 +144,24 @@ export function getRemoteManagedCommand(scriptPath: string): string {
   return getManagedCommand(scriptPath, { neutralJsonWhenMissing: true })
 }
 
-// Why: Orca's entry is also removed from every managed event NOT in `events`, so a Claude
-// downgrade stops carrying an event it would reject; user-written entries are always kept.
 export function applyManagedHooks(
   config: HooksConfig,
   hook: HookCommandConfig,
   scriptFileName: string,
-  events: readonly ClaudeManagedHookEvent[]
+  plan: ClaudeManagedHookPlan
 ): HooksConfig {
   const nextHooks = { ...config.hooks }
   const isManagedCommand = createManagedCommandMatcher(scriptFileName)
-  const installed = new Set<string>(events.map((event) => event.eventName))
 
-  for (const event of CLAUDE_MANAGED_EVENTS) {
+  for (const event of plan.install) {
     const current = nextHooks[event.eventName]
-    if (installed.has(event.eventName)) {
-      const cleaned = Array.isArray(current) ? removeManagedCommands(current, isManagedCommand) : []
-      const definition: HookDefinition = { ...event.definition, hooks: [hook] }
-      nextHooks[event.eventName] = [...cleaned, definition]
-      continue
-    }
+    const cleaned = Array.isArray(current) ? removeManagedCommands(current, isManagedCommand) : []
+    const definition: HookDefinition = { ...event.definition, hooks: [hook] }
+    nextHooks[event.eventName] = [...cleaned, definition]
+  }
+
+  for (const event of plan.retire) {
+    const current = nextHooks[event.eventName]
     if (!Array.isArray(current) || current.length === 0) {
       continue
     }
