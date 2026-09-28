@@ -8,14 +8,10 @@ const ORIGINAL_ID = 'remote:environment@@term_original'
 function createHarness() {
   const connected = createDeferred<PtyConnectResult | undefined>()
   let ptyId: string | null = null
-  let connectionReady: (() => void) | undefined
   const writes: string[] = []
   const delegate: PtyTransport = {
     connect: vi.fn(() => connected.promise),
     attach: vi.fn(),
-    setConnectionReady: (onReady) => {
-      connectionReady = onReady
-    },
     disconnect: vi.fn(),
     detach: vi.fn(),
     destroy: vi.fn(),
@@ -46,15 +42,33 @@ function createHarness() {
     finish(id: string | null = ORIGINAL_ID) {
       ptyId = id
       connected.resolve(id ? { id, isReattach: true } : undefined)
-    },
-    ready(id: string | null = ORIGINAL_ID) {
-      ptyId = id
-      connectionReady?.()
     }
   }
 }
 
 describe('remote reattach type-ahead', () => {
+  it('preserves typing from the restored screen before connect starts', async () => {
+    const harness = createHarness()
+    expect(harness.transport.sendInput('before', 'driving')).toBe(true)
+    const accepted = harness.transport.sendInputAccepted?.('\x03', 'driving')
+    const connecting = harness.transport.connect({ url: '', sessionId: ORIGINAL_ID, callbacks: {} })
+    expect(harness.transport.sendInput('after\r', 'driving')).toBe(true)
+    harness.finish()
+    await connecting
+    await expect(accepted).resolves.toBe(true)
+    expect(harness.writes).toEqual(['before', '\x03', 'after\r'])
+  })
+
+  it('discards pre-entry typing when the first connection creates a fresh terminal', async () => {
+    const harness = createHarness()
+    const accepted = harness.transport.sendInputAccepted?.('old tail\r', 'driving')
+    const connecting = harness.transport.connect({ url: '', callbacks: {} })
+    await expect(accepted).resolves.toBe(false)
+    harness.finish('remote:environment@@fresh')
+    await connecting
+    expect(harness.writes).toEqual([])
+  })
+
   it('delivers typing and an acknowledged interrupt once the original endpoint reattaches', async () => {
     const harness = createHarness()
     const connecting = harness.transport.connect({ url: '', sessionId: ORIGINAL_ID, callbacks: {} })
@@ -68,16 +82,6 @@ describe('remote reattach type-ahead', () => {
     expect(harness.writes).toEqual(['partial', '\x03', 'next\r'])
     expect(harness.transport.sendInput('later', 'driving')).toBe(true)
     expect(harness.writes.at(-1)).toBe('later')
-  })
-
-  it('holds attach type-ahead until the stream subscription is ready', async () => {
-    const harness = createHarness()
-    harness.transport.attach({ existingPtyId: ORIGINAL_ID, callbacks: {} })
-    expect(harness.transport.sendInput('partial', 'driving')).toBe(true)
-    expect(harness.writes).toEqual([])
-    harness.ready()
-    await flushAsyncTicks()
-    expect(harness.writes).toEqual(['partial'])
   })
 
   it.each(['remote:environment@@term_replacement', null])(

@@ -214,8 +214,6 @@ export type PtyTransport = {
   retryRecovery?: () => boolean
   /** Lets a wrapper retain input when recovery re-enters connect internally. */
   setConnectForRecovery?: (connect: PtyTransport['connect']) => void
-  /** Lets wrappers flush retained input when an asynchronous attach becomes writable. */
-  setConnectionReady?: (onReady: () => void) => void
   /** The user dismissed the error surface; the next occurrence of the same message must surface again. */
   notifyErrorSurfaceDismissed?: () => void
   getPtyId: () => string | null

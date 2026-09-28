@@ -5,129 +5,86 @@ import type { PtyTransport } from './pty-transport-types'
 /** Keeps type-ahead on a restored screen bound to its original remote terminal. */
 export function withRemoteReattachInputBuffer(transport: PtyTransport): PtyTransport {
   const sendAccepted = transport.sendInputAccepted?.bind(transport)
-  let pending: ReturnType<typeof createPtyPreconnectInputBuffer> | null = null
-  let pendingExpectedId: string | null = null
-  let connectionReady = false
+  let pending: ReturnType<typeof createPtyPreconnectInputBuffer> | null =
+    createPtyPreconnectInputBuffer()
+  let entered = false
   const clear = (): void => {
     pending?.clear()
     pending = null
-    pendingExpectedId = null
-    connectionReady = false
-  }
-  const flush = (
-    buffer: ReturnType<typeof createPtyPreconnectInputBuffer>,
-    expectedId: string
-  ): Promise<void> => {
-    return buffer.flush({
-      isCurrent: () => pending === buffer && transport.getPtyId() === expectedId,
-      sendInput: (data, kind) => transport.sendInput(data, kind),
-      sendInputImmediate: (data) => transport.sendInputImmediate(data),
-      ...(sendAccepted ? { sendInputAccepted: sendAccepted } : {})
-    })
-  }
-  const ensurePending = (): ReturnType<typeof createPtyPreconnectInputBuffer> => {
-    if (!pending) {
-      pending = createPtyPreconnectInputBuffer()
-      pendingExpectedId = transport.getPtyId()
-    }
-    return pending
   }
   const wrapped: PtyTransport = {
     ...transport,
     async connect(options) {
-      console.warn('[remote-reattach-debug] connect', options.sessionId)
-      clear()
-      connectionReady = false
       const expectedId = options.sessionId
+      const initialBuffer = entered ? null : pending
+      entered = true
       const buffer =
-        expectedId && parseRemoteRuntimePtyId(expectedId) ? createPtyPreconnectInputBuffer() : null
+        expectedId && parseRemoteRuntimePtyId(expectedId)
+          ? (initialBuffer ?? createPtyPreconnectInputBuffer())
+          : null
+      // Restored pixels can accept typing before the first connect call begins.
+      if (pending !== buffer) {
+        clear()
+      }
       pending = buffer
-      pendingExpectedId = expectedId ?? null
       try {
         const result = await transport.connect(options)
-        console.warn('[remote-reattach-debug] connected', {
-          id: transport.getPtyId(),
-          expectedId,
-          connected: transport.isConnected()
-        })
-        if (buffer && expectedId) {
-          await flush(buffer, expectedId)
+        if (buffer) {
+          await buffer.flush({
+            // A replacement endpoint must never receive the old terminal's unfinished command.
+            isCurrent: () => pending === buffer && transport.getPtyId() === expectedId,
+            sendInput: (data, kind) => transport.sendInput(data, kind),
+            sendInputImmediate: (data) => transport.sendInputImmediate(data),
+            ...(sendAccepted ? { sendInputAccepted: sendAccepted } : {})
+          })
         }
         return result
       } finally {
         buffer?.clear()
         if (pending === buffer) {
           pending = null
-          pendingExpectedId = null
         }
       }
     },
     sendInput(data, kind) {
-      console.warn('[remote-reattach-debug] send', {
-        kind,
-        connected: transport.isConnected(),
-        ready: connectionReady,
-        buffering: pending?.isBuffering() ?? null,
-        length: data.length
-      })
-      if (
-        kind !== 'query-reply' &&
-        (pending?.isBuffering() === true || (!connectionReady && !transport.isConnected()))
-      ) {
-        return ensurePending().enqueue(data, 'ordinary', kind)
-      }
-      return transport.sendInput(data, kind)
+      return kind !== 'query-reply' && pending?.isBuffering()
+        ? pending.enqueue(data, 'ordinary', kind)
+        : transport.sendInput(data, kind)
     },
     // Emulator replies stay on the immediate path; replay must not retain them as user input.
     ...(sendAccepted
       ? {
           sendInputAccepted: (data, kind) =>
-            kind !== 'query-reply' &&
-            (pending?.isBuffering() === true || (!connectionReady && !transport.isConnected()))
-              ? ensurePending().enqueueAccepted(data, kind)
+            kind !== 'query-reply' && pending?.isBuffering()
+              ? pending.enqueueAccepted(data, kind)
               : sendAccepted(data, kind)
         }
       : {}),
     attach(options) {
-      console.warn('[remote-reattach-debug] attach', options.existingPtyId)
+      entered = true
       clear()
-      connectionReady = false
-      const expectedId = options.existingPtyId
-      const buffer = parseRemoteRuntimePtyId(expectedId) ? createPtyPreconnectInputBuffer() : null
-      pending = buffer
-      pendingExpectedId = expectedId
       transport.attach(options)
     },
     disconnect() {
+      entered = true
       clear()
       transport.disconnect()
     },
     ...(transport.detach
       ? {
           detach: (options) => {
+            entered = true
             clear()
             transport.detach?.(options)
           }
         }
       : {}),
     destroy(options) {
+      entered = true
       clear()
       return transport.destroy?.(options)
     }
   }
   transport.setConnectForRecovery?.((options) => wrapped.connect(options))
-  transport.setConnectionReady?.(() => {
-    console.warn('[remote-reattach-debug] ready', {
-      id: transport.getPtyId(),
-      buffering: pending?.isBuffering() ?? null
-    })
-    connectionReady = true
-    if (pending) {
-      const expectedId = pendingExpectedId ?? transport.getPtyId()
-      if (expectedId) {
-        void flush(pending, expectedId)
-      }
-    }
-  })
   return wrapped
 }

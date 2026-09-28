@@ -362,11 +362,6 @@ test('paired client keeps revealed remote terminals interactive', async ({
   const previousParkDelay = process.env.ORCA_E2E_TERMINAL_PARKING_DELAY_MS
   process.env.ORCA_E2E_TERMINAL_PARKING_DELAY_MS = String(PARK_DELAY_MS)
   const client = await launchPairedElectronClient(offer, testInfo, 'parked-reveal')
-  client.page.on('console', (message) => {
-    if (message.text().includes('remote-reattach-debug')) {
-      console.log(message.text())
-    }
-  })
   const createdTerminals: string[] = []
   const results: ScenarioResult[] = []
   try {

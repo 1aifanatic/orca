@@ -41,6 +41,7 @@ it('sends typing from a restored screen after the host finishes resolving its or
     leafId: 'pane:1'
   })
   try {
+    expect(transport.sendInput('probe-', 'driving')).toBe(true)
     const connecting = transport.connect({
       url: '',
       sessionId: 'remote:env-1@@terminal-1',
@@ -52,7 +53,7 @@ it('sends typing from a restored screen after the host finishes resolving its or
       )
     })
     expect(transport.getPtyId()).toBeNull()
-    expect(transport.sendInput('probe-cold-parked\r', 'driving')).toBe(true)
+    expect(transport.sendInput('cold-parked\r', 'driving')).toBe(true)
     expect(latestFrameForOpcode(TerminalStreamOpcode.Input)).toBeUndefined()
     resolution.resolve()
     await connecting

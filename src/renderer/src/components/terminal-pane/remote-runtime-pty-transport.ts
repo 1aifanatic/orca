@@ -1006,7 +1006,6 @@ export function createRemoteRuntimePtyTransport(
 
     try {
       await subscribeToHandle()
-      notifyConnectionReady()
     } catch (error) {
       if (!recoverAfterSubscribeFailure(error, hostHandle, remotePtyId)) {
         throw error
@@ -1294,7 +1293,6 @@ export function createRemoteRuntimePtyTransport(
     emitRecoveryState()
     try {
       await subscribeToHandle()
-      notifyConnectionReady()
     } catch (error) {
       if (!recoverAfterSubscribeFailure(error, handle, remotePtyId)) {
         throw error
@@ -1358,7 +1356,6 @@ export function createRemoteRuntimePtyTransport(
           }
         }
         await subscribeToHandle()
-        notifyConnectionReady()
       })
       .catch((error) => {
         if (!destroyed && handle === expiredHandle) {
@@ -2178,8 +2175,6 @@ export function createRemoteRuntimePtyTransport(
   }
 
   let connectForRecovery: PtyTransport['connect'] = (options) => transport.connect(options)
-  let onConnectionReady: (() => void) | null = null
-  const notifyConnectionReady = (): void => onConnectionReady?.()
   const transport: PtyTransport = {
     async connect(options) {
       cancelTerminalCreateRetryWait()
@@ -2394,7 +2389,6 @@ export function createRemoteRuntimePtyTransport(
 
         try {
           await subscribeToHandle()
-          notifyConnectionReady()
         } catch (error) {
           if (!recoverAfterSubscribeFailure(error, handle, remotePtyId)) {
             throw error
@@ -2795,9 +2789,6 @@ export function createRemoteRuntimePtyTransport(
 
     setConnectForRecovery(connect) {
       connectForRecovery = connect
-    },
-    setConnectionReady(onReady) {
-      onConnectionReady = onReady
     },
     destroy() {
       destroyed = true
