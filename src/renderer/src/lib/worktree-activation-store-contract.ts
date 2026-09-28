@@ -77,4 +77,7 @@ export type InitialTerminalOptions = {
    *  Setup/issue work still runs, but work that needs no host terminal must not seed a shell
    *  beside the chat the caller is about to create. */
   callerProvidesSurface?: boolean
+  /** Nothing chose this workspace's first surface (plain navigation, not a Blank Terminal pick or a
+   *  target directory), so it may open the user's default agent chat instead of a bare shell. */
+  seedUserDefaultSurface?: boolean
 }
