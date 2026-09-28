@@ -379,46 +379,56 @@ describe('headless serve update install handoff', () => {
     }
   )
 
-  it('recovers a supervised install rejected after native staging begins', async () => {
-    autoUpdaterMock.checkForUpdates.mockImplementation(() => {
-      autoUpdaterMock.emit('checking-for-update')
-      queueMicrotask(() => autoUpdaterMock.emit('update-available', { version: '1.0.61' }))
-      return Promise.resolve(null)
-    })
-    const updater = await loadUpdaterModule()
-    updater.setupAutoUpdater(null, {
-      getLastUpdateCheckAt: () => Date.now(),
-      installMode: 'supervised-headless-serve'
-    })
-    updater.checkForUpdatesFromMenu()
-    await vi.advanceTimersByTimeAsync(0)
-    updater.downloadUpdate()
-    autoUpdaterMock.emit('update-downloaded', { version: '1.0.61' })
-    expect(updater.installRemoteServerUpdate('runtime').accepted).toBe(true)
-    await vi.advanceTimersByTimeAsync(100)
-    expect(requestServeUpdateHandoffMock).toHaveBeenCalledOnce()
-    expect(nativeUpdaterMock.checkForUpdates).toHaveBeenCalledOnce()
-    expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled()
-    expect(updater.isQuittingForUpdate()).toBe(true)
-    autoUpdaterMock.emit('error', new Error('JS check failed'))
-    expect(updater.isQuittingForUpdate()).toBe(true)
-    expect(failServeUpdateHandoffMock).not.toHaveBeenCalled()
-    nativeUpdaterMock.emit('error', new Error('Native staging failed'))
-    expect(updater.isQuittingForUpdate()).toBe(false)
-    expect(failServeUpdateHandoffMock).toHaveBeenCalledOnce()
-    expect(updater.getUpdateStatus()).toMatchObject({ state: 'error' })
-    expect(appMock.quit).not.toHaveBeenCalled()
-    nativeUpdaterMock.emit('update-downloaded')
-    expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled()
-    updater.downloadUpdate()
-    autoUpdaterMock.emit('update-downloaded', { version: '1.0.61' })
-    updater.installRemoteServerUpdate('runtime')
-    await vi.advanceTimersByTimeAsync(100)
-    expect(requestServeUpdateHandoffMock).toHaveBeenCalledTimes(2)
-    nativeUpdaterMock.emit('update-downloaded')
-    expect(autoUpdaterMock.quitAndInstall).toHaveBeenCalledOnce()
-    expect(armWatchdog).toHaveBeenCalledOnce()
-  })
+  it.each(['error', 'update-not-available'])(
+    'recovers a supervised install after native %s',
+    async (nativeEvent) => {
+      autoUpdaterMock.checkForUpdates.mockImplementation(() => {
+        autoUpdaterMock.emit('checking-for-update')
+        queueMicrotask(() => autoUpdaterMock.emit('update-available', { version: '1.0.61' }))
+        return Promise.resolve(null)
+      })
+      const updater = await loadUpdaterModule()
+      updater.setupAutoUpdater(null, {
+        getLastUpdateCheckAt: () => Date.now(),
+        installMode: 'supervised-headless-serve'
+      })
+      nativeUpdaterMock.emit(nativeEvent)
+      expect(failServeUpdateHandoffMock).not.toHaveBeenCalled()
+      updater.checkForUpdatesFromMenu()
+      await vi.advanceTimersByTimeAsync(0)
+      updater.downloadUpdate()
+      autoUpdaterMock.emit('update-downloaded', { version: '1.0.61' })
+      expect(updater.installRemoteServerUpdate('runtime').accepted).toBe(true)
+      await vi.advanceTimersByTimeAsync(100)
+      expect(requestServeUpdateHandoffMock).toHaveBeenCalledOnce()
+      expect(nativeUpdaterMock.checkForUpdates).toHaveBeenCalledOnce()
+      expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled()
+      expect(updater.isQuittingForUpdate()).toBe(true)
+      autoUpdaterMock.emit('error', new Error('JS check failed'))
+      expect(updater.isQuittingForUpdate()).toBe(true)
+      expect(failServeUpdateHandoffMock).not.toHaveBeenCalled()
+      nativeUpdaterMock.emit(nativeEvent, new Error('Native staging failed'))
+      expect(updater.isQuittingForUpdate()).toBe(false)
+      expect(failServeUpdateHandoffMock).toHaveBeenCalledOnce()
+      expect(updater.getUpdateStatus()).toMatchObject({ state: 'error' })
+      const terminalFailure = updater.getUpdateStatus()
+      await vi.advanceTimersByTimeAsync(120_001)
+      expect(updater.getUpdateStatus()).toEqual(terminalFailure)
+      expect(appMock.quit).not.toHaveBeenCalled()
+      nativeUpdaterMock.emit('update-downloaded')
+      expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled()
+      updater.downloadUpdate()
+      autoUpdaterMock.emit('update-downloaded', { version: '1.0.61' })
+      updater.installRemoteServerUpdate('runtime')
+      await vi.advanceTimersByTimeAsync(100)
+      expect(requestServeUpdateHandoffMock).toHaveBeenCalledTimes(2)
+      nativeUpdaterMock.emit('update-downloaded')
+      expect(autoUpdaterMock.quitAndInstall).toHaveBeenCalledOnce()
+      expect(armWatchdog).toHaveBeenCalledOnce()
+      nativeUpdaterMock.emit(nativeEvent)
+      expect(failServeUpdateHandoffMock).toHaveBeenCalledOnce()
+    }
+  )
 
   it.each([false, true])(
     'retains handoff through staging timeout and committed quit failure=%s',
