@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import type * as Os from 'node:os'
 import { join } from 'node:path'
@@ -8,8 +8,8 @@ import { CodexAppServerTimeoutError } from './codex-app-server-session'
 import { _internals as grantInternals } from './codex-hook-trust-grant'
 import {
   computeTrustedHash,
-  normalizeHookTrustKeyForLookup,
   computeTrustKey,
+  normalizeHookTrustKeyForLookup,
   parseTrustKey,
   readHookTrustEntries,
   upsertHookTrustEntries
@@ -31,13 +31,16 @@ vi.mock('../codex-cli/command', () => ({ resolveCodexCommand: resolveCodexComman
 
 import {
   _internals as realHomeInternals,
-  ensureRealHomeCodexHookState
+  awaitRealHomeCodexHookTrust,
+  ensureRealHomeCodexHookState,
+  isRealHomeCodexHookLaneUsable
 } from './codex-real-home-hook-install'
 import { cleanupLegacySystemManagedHooks } from './codex-hook-legacy-cleanup'
+import { getCodexManagedHookInstallMaterial } from './codex-hook-definition'
 
 // Why this file (QA case 4): a cold `codex app-server` on a loaded Mac took over
-// 10 s. That start must still grant, and a session that does time out must not
-// block the grant for minutes afterwards.
+// 10 s. A launch must never wait on that approval, the approval must still land,
+// and a failed one must not block the next try for minutes.
 
 const homes = setupCodexHookHomes(homedirMock, getPathMock)
 const USER_HOOK: HookDefinition = { hooks: [{ type: 'command', command: 'user-hook.sh' }] }
@@ -64,15 +67,28 @@ function orcaHandlerCount(): number {
     .filter((hook) => isCodexManagedCommand(hook.command)).length
 }
 
-/** An app-server whose start takes `coldStartMs`; past the session deadline it times out, as the real session does. */
-function installAppServerWithColdStart(coldStartMs: number): { sessions: number } {
-  const counts = { sessions: 0 }
+type AppServer = { sessions: number; start: () => void }
+
+/**
+ * An app-server whose start takes `coldStartMs`, ending when `start()` is called.
+ * Past the session deadline it times out, as the real session does.
+ */
+function installAppServer(coldStartMs: number, failure?: Error): AppServer {
+  let start: () => void = () => {}
+  const started = new Promise<void>((resolve) => {
+    start = resolve
+  })
+  const server: AppServer = { sessions: 0, start: () => start() }
   grantInternals.setGrantSessionRunner(async (request: CodexHookTrustGrantRequest) => {
-    counts.sessions += 1
+    server.sessions += 1
+    await started
     if (coldStartMs > request.invocation.timeoutMs) {
       throw new CodexAppServerTimeoutError(
         `codex app-server session exceeded ${request.invocation.timeoutMs}ms`
       )
+    }
+    if (failure) {
+      throw failure
     }
     const entries = request.expectedTrustKeys.map((key) => {
       const entry = { ...parseTrustKey(key)!, command: request.managedCommand, timeoutSec: 10 }
@@ -92,10 +108,10 @@ function installAppServerWithColdStart(coldStartMs: number): { sessions: number 
       }))
     }
   })
-  return counts
+  return server
 }
 
-function ensureOnLaunch(): ReturnType<typeof ensureRealHomeCodexHookState> {
+function launch(): ReturnType<typeof ensureRealHomeCodexHookState> {
   return ensureRealHomeCodexHookState({
     hooksEnabled: true,
     userDataPath: homes.userDataDir,
@@ -103,69 +119,99 @@ function ensureOnLaunch(): ReturnType<typeof ensureRealHomeCodexHookState> {
   })
 }
 
+let warn: ReturnType<typeof vi.spyOn>
+
 beforeEach(() => {
   realHomeInternals.setLaneForTesting('pending')
   resolveCodexCommandMock.mockReturnValue(process.execPath)
   mkdirSync(join(homes.tmpHome, '.codex'), { recursive: true })
   writeFileSync(hooksPath(), `${JSON.stringify({ hooks: { Stop: [USER_HOOK] } }, null, 2)}\n`)
-  vi.spyOn(console, 'warn').mockImplementation(() => {})
+  warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  vi.spyOn(console, 'log').mockImplementation(() => {})
+})
+
+afterEach(() => {
+  vi.useRealTimers()
 })
 
 describe('a slow codex app-server start', () => {
-  it('still grants when the cold start takes 15 s, and the entry stays added', async () => {
-    const counts = installAppServerWithColdStart(15_000)
+  it('never holds up a launch: a 15 s start grants in the background for the next launch', async () => {
+    const server = installAppServer(15_000)
 
-    expect(await ensureOnLaunch()).toBe('installed')
+    const startedAt = performance.now()
+    expect(await launch()).toBe('granting')
+    expect(await launch()).toBe('granting')
+    expect(performance.now() - startedAt).toBeLessThan(1_000)
+    // Why: a launch that finds trust not ready uses the managed home.
+    expect(isRealHomeCodexHookLaneUsable()).toBe(false)
+    expect(orcaHandlerCount()).toBe(getCodexManagedHookInstallMaterial().events.length)
 
-    expect(counts.sessions).toBe(1)
-    expect(orcaHandlerCount()).toBeGreaterThan(0)
-    expect(readHookTrustEntries(configPath()).size).toBe(orcaHandlerCount())
+    server.start()
+    expect(await realHomeInternals.settledLaneForTesting()).toBe('installed')
+
+    expect(await launch()).toBe('installed')
+    expect(isRealHomeCodexHookLaneUsable()).toBe(true)
+    expect(server.sessions).toBe(1)
   })
 
-  it('retries on the next launch after a session times out, with no cooldown', async () => {
-    const counts = installAppServerWithColdStart(10 * 60_000)
+  it('lets a resume into the real home wait for the grant, but only as long as allowed', async () => {
+    const server = installAppServer(15_000)
+    expect(await launch()).toBe('granting')
 
-    expect(await ensureOnLaunch()).toBe('unavailable')
-    // Why: a withdrawn entry leaves nothing for Codex to list for review.
+    const startedAt = performance.now()
+    expect(await awaitRealHomeCodexHookTrust(50)).toBe('granting')
+    expect(performance.now() - startedAt).toBeLessThan(1_000)
+
+    server.start()
+    expect(await awaitRealHomeCodexHookTrust(60_000)).toBe('installed')
+  })
+
+  it('starts no cooldown after a timeout: the next launch tries again at once', async () => {
+    const hung = installAppServer(10 * 60_000)
+    hung.start()
+
+    expect(await launch()).toBe('granting')
+    expect(await realHomeInternals.settledLaneForTesting()).toBe('unavailable')
+    // Why: the failed attempt takes back its own unapproved adds, so nothing asks for review.
     expect(orcaHandlerCount()).toBe(0)
+    const events = getCodexManagedHookInstallMaterial().events.length
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringMatching(
+        new RegExp(`withdrew ${events} unapproved entries .*retrying on the next launch$`)
+      )
+    )
 
-    const retry = installAppServerWithColdStart(0)
-    expect(await ensureOnLaunch()).toBe('installed')
-
-    expect(counts.sessions).toBe(1)
-    expect(retry.sessions).toBe(1)
-    expect(orcaHandlerCount()).toBeGreaterThan(0)
+    const recovered = installAppServer(0)
+    recovered.start()
+    expect(await launch()).toBe('granting')
+    expect(await realHomeInternals.settledLaneForTesting()).toBe('installed')
+    expect(recovered.sessions).toBe(1)
   })
 
-  it('runs one follow-up session for launches that queue behind a slow one', async () => {
-    let finishFirst: () => void = () => {}
-    const counts = { sessions: 0 }
-    grantInternals.setGrantSessionRunner(async (request: CodexHookTrustGrantRequest) => {
-      counts.sessions += 1
-      if (counts.sessions === 1) {
-        await new Promise<void>((resolve) => {
-          finishFirst = resolve
-        })
-      }
-      throw new CodexAppServerTimeoutError(
-        `codex app-server session exceeded ${request.invocation.timeoutMs}ms`
-      )
-    })
+  it('backs off for seconds, not minutes, after any other failure', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    const failing = installAppServer(
+      0,
+      new Error('codex app-server exited before completing the session')
+    )
+    failing.start()
 
-    const first = ensureOnLaunch()
-    await vi.waitFor(() => expect(counts.sessions).toBe(1))
-    const queued = [ensureOnLaunch(), ensureOnLaunch(), ensureOnLaunch()]
-    finishFirst()
+    expect(await launch()).toBe('granting')
+    expect(await realHomeInternals.settledLaneForTesting()).toBe('unavailable')
+    expect(await launch()).toBe('unavailable')
+    expect(failing.sessions).toBe(1)
 
-    expect(await first).toBe('unavailable')
-    expect(await Promise.all(queued)).toEqual(['unavailable', 'unavailable', 'unavailable'])
-    expect(counts.sessions).toBe(2)
+    vi.setSystemTime(Date.now() + 10_001)
+    expect(await launch()).toBe('granting')
+    await realHomeInternals.settledLaneForTesting()
+    expect(failing.sessions).toBe(2)
   })
 
   it.skipIf(process.platform === 'win32')(
-    'removes a retired entry and moves the user trust behind it while every session times out',
+    'removes a retired entry and moves the user trust behind it with no Codex session',
     async () => {
-      const counts = installAppServerWithColdStart(10 * 60_000)
+      const hung = installAppServer(10 * 60_000)
+      hung.start()
       const script = `'${join(homes.tmpHome, '.orca', 'agent-hooks', 'codex-hook.sh')}'`
       const retired = {
         hooks: [{ type: 'command', command: `if [ -x ${script} ]; then /bin/sh ${script}; fi` }]
@@ -183,13 +229,15 @@ describe('a slow codex app-server start', () => {
       })
       upsertHookTrustEntries(configPath(), [{ ...userAt(1), trustedHash: 'sha256:user-approved' }])
 
-      expect(await ensureOnLaunch()).toBe('unavailable')
+      expect(await launch()).toBe('granting')
+      expect(await realHomeInternals.settledLaneForTesting()).toBe('unavailable')
       await cleanupLegacySystemManagedHooks()
 
       expect(readHooks().Stop).toEqual([USER_HOOK])
       const trust = readHookTrustEntries(configPath())
       expect(trust.get(computeTrustKey(userAt(0)))?.trustedHash).toBe('sha256:user-approved')
-      expect(counts.sessions).toBe(1)
+      // Why: the one session is the launch's grant; the removal started none.
+      expect(hung.sessions).toBe(1)
     }
   )
 })

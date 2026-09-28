@@ -89,10 +89,9 @@ export async function initializeReadyRuntimeServices(): Promise<void> {
     })
   }, WORKTREE_TRASH_SWEEP_FALLBACK_MS)
   nativeTheme.themeSource = store.getSettings().theme ?? 'system'
-  // Why (#16441): the real-home grant runs a codex app-server session. It stays
-  // ordered before managed-hook reconciliation — its in-slot conversion must land
-  // before the managed install's retired-form sweep removes the prior command — but
-  // awaiting it inline stalled app init behind that session, so chain instead of blocking.
+  // Why: the real-home ensure stays ordered before managed-hook reconciliation, so its
+  // in-slot conversion lands before the managed install's retired-form sweep removes
+  // the prior command. Codex's approval then runs in the background (#16441).
   const startupManagedHookSettings = store.getSettings()
   const shouldReconcileStartupManagedHooks =
     shouldInstallManagedHooks(is.dev) &&

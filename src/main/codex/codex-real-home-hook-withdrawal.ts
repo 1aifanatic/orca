@@ -54,18 +54,18 @@ function withdrawHandler(
 export function withdrawUntrustedRealHomeWrites(
   writes: readonly RealHomeCodexHookSlotWrite[],
   command: string
-): void {
+): number {
   if (writes.length === 0) {
-    return
+    return 0
   }
   const hooksJsonPath = getRealHomeHooksJsonPath()
   const { config } = readHooksJsonWithRaw(hooksJsonPath)
   if (!config?.hooks) {
-    return
+    return 0
   }
   const trustStates = readHookTrustEntries(getRealHomeConfigTomlPath())
   const nextHooks: Record<string, HookDefinition[]> = { ...config.hooks }
-  let withdrew = false
+  let withdrew = 0
   for (const { eventName, replaced } of writes) {
     const definitions = nextHooks[eventName]
     const location = Array.isArray(definitions) ? findHandler(definitions, command) : null
@@ -91,9 +91,9 @@ export function withdrawUntrustedRealHomeWrites(
     } else {
       nextHooks[eventName] = next
     }
-    withdrew = true
+    withdrew += 1
   }
-  if (withdrew) {
+  if (withdrew > 0) {
     // Why: a hook appended after this entry meanwhile moves up a slot; its trust moves with it.
     mutateRealHomeHooksPreservingUserTrust({
       sourcePath: hooksJsonPath,
@@ -108,4 +108,5 @@ export function withdrawUntrustedRealHomeWrites(
         )
     })
   }
+  return withdrew
 }

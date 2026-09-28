@@ -35,15 +35,24 @@ vi.mock('node:os', async () => {
 
 vi.mock('./codex-hook-trust-grant', () => ({
   CODEX_TRUST_GRANT_TRANSIENT_RETRY_INTERVAL_MS: 300_000,
+  findCurrentManagedCodexHookTrust: async () => null,
   grantManagedCodexHookTrust: grantMock
 }))
 
 import {
-  ensureRealHomeCodexHookState,
+  ensureRealHomeCodexHookState as startRealHomeCodexHookEnsure,
   getRealHomeCodexHookLane,
   removeRealHomeCodexHookForOptOut,
   _internals
 } from './codex-real-home-hook-install'
+
+/** The lane once Codex's background approval, if any, has settled. */
+async function ensureRealHomeCodexHookState(
+  args: Parameters<typeof startRealHomeCodexHookEnsure>[0]
+): ReturnType<typeof startRealHomeCodexHookEnsure> {
+  await startRealHomeCodexHookEnsure(args)
+  return _internals.settledLaneForTesting()
+}
 import { getCodexManagedHookInstallMaterial } from './hook-service'
 import {
   readCodexTrustGrantLedgerHome,
@@ -367,7 +376,7 @@ describe('ensureRealHomeCodexHookState (install)', () => {
       }
 
       expect(warning).toHaveBeenCalledWith(
-        '[codex-real-home-hooks] ensure failed; staying on managed lane:',
+        '[codex-real-home-hooks] background trust grant failed:',
         expect.any(Error)
       )
     }

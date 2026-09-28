@@ -27,6 +27,8 @@ export type CodexManagedTrustGrantPlan = {
   telemetryLane: CodexTrustGrantTelemetryLane
   /** Match a pane where CODEX_HOME is absent instead of an explicit managed home. */
   useDefaultCodexHome?: boolean
+  /** Off the launch path: a cold-start budget, and a timeout starts no cooldown. */
+  background?: boolean
 }
 
 export type ExpectedManagedEntry = {

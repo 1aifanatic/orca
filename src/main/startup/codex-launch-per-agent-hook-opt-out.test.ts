@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => {
     installForLaunchPrep: vi.fn(async () => {}),
     refreshRuntimeUserHooksForLaunchPrep: vi.fn(async () => {}),
     ensureRealHomeCodexHookState: vi.fn(async () => 'installed' as const),
+    awaitRealHomeCodexHookTrust: vi.fn(async () => 'installed' as const),
     prepareCodexSessionResume: vi.fn()
   }
 })
@@ -34,6 +35,7 @@ vi.mock('../codex/hook-service', () => ({
   }
 }))
 vi.mock('../codex/codex-real-home-hook-install', () => ({
+  awaitRealHomeCodexHookTrust: mocks.awaitRealHomeCodexHookTrust,
   ensureRealHomeCodexHookState: mocks.ensureRealHomeCodexHookState
 }))
 // Why: the real predicate, without loading every agent's hook service.
@@ -164,6 +166,8 @@ describe('Codex launch prep honours the per-agent hook opt-out', () => {
       expect(mocks.ensureRealHomeCodexHookState).toHaveBeenCalledWith(
         expect.objectContaining({ hooksEnabled: codexHooksOn, writePolicy: 'add-missing-only' })
       )
+      // Why: a resume has no managed home to fall back to, so it waits, bounded as before.
+      expect(mocks.awaitRealHomeCodexHookTrust).toHaveBeenCalledExactlyOnceWith(10_000)
       expect(mocks.installForLaunchPrep).not.toHaveBeenCalled()
       expect(mocks.refreshRuntimeUserHooksForLaunchPrep).not.toHaveBeenCalled()
     }

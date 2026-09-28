@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import type * as Os from 'node:os'
 import { join } from 'node:path'
@@ -6,6 +6,7 @@ import { wrapPosixHookCommand, type HookDefinition } from '../agent-hooks/instal
 import { _internals as grantInternals } from './codex-hook-trust-grant'
 import { createCodexHookTrustEntry } from './codex-hook-identity'
 import { computeTrustKey, computeTrustedHash, readHookTrustEntries } from './config-toml-trust'
+import { getCodexManagedHookInstallMaterial } from './codex-hook-definition'
 import { isCodexManagedCommand, setupCodexHookHomes } from './hook-service-test-harness'
 
 const { getPathMock, homedirMock, resolveCodexCommandMock } = vi.hoisted(() => ({
@@ -23,14 +24,25 @@ vi.mock('../codex-cli/command', () => ({ resolveCodexCommand: resolveCodexComman
 
 import {
   _internals as realHomeInternals,
-  ensureRealHomeCodexHookState
+  ensureRealHomeCodexHookState as startRealHomeCodexHookEnsure
 } from './codex-real-home-hook-install'
+
+/** The lane once Codex's background approval, if any, has settled. */
+async function ensureRealHomeCodexHookState(
+  args: Parameters<typeof startRealHomeCodexHookEnsure>[0]
+): ReturnType<typeof startRealHomeCodexHookEnsure> {
+  await startRealHomeCodexHookEnsure(args)
+  return realHomeInternals.settledLaneForTesting()
+}
 
 // Why this file (QA case 9): a trust session that fails while someone else edits
 // ~/.codex must keep that edit in both files, and must leave no Orca entry that
 // Codex would list as "needs review".
 
 const homes = setupCodexHookHomes(homedirMock, getPathMock)
+afterEach(() => {
+  vi.useRealTimers()
+})
 beforeEach(() => {
   realHomeInternals.setLaneForTesting('pending')
   vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -60,14 +72,17 @@ function seed(file: HooksFile): void {
 }
 
 /** Codex fails the session after another writer saved both files meanwhile. */
-function failSessionAfterConcurrentEdits(): void {
+function failSessionAfterConcurrentEdits(): { sessions: number } {
+  const counts = { sessions: 0 }
   grantInternals.setGrantSessionRunner(async () => {
+    counts.sessions += 1
     const hooks = readHooks()
     hooks.hooks.Stop = [...(hooks.hooks.Stop ?? []), SAVED_HOOK]
     writeFileSync(hooksPath(), `${JSON.stringify(hooks, null, 2)}\n`)
     appendFileSync(configPath(), SAVED_PROJECT)
     throw new Error('codex app-server exited with code 1')
   })
+  return counts
 }
 
 function untrustedOrcaHandlers(): string[] {
@@ -101,9 +116,10 @@ function untrustedOrcaHandlers(): string[] {
 
 describe('a failed real-home trust session with a concurrent edit', () => {
   it('keeps the concurrent edits to both files and leaves no untrusted Orca entry', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
     resolveCodexCommandMock.mockReturnValue(process.execPath)
     seed({ hooks: { Stop: [USER_HOOK] } })
-    failSessionAfterConcurrentEdits()
+    const counts = failSessionAfterConcurrentEdits()
 
     expect(
       await ensureRealHomeCodexHookState({
@@ -116,6 +132,20 @@ describe('a failed real-home trust session with a concurrent edit', () => {
     expect(readHooks().hooks.Stop).toEqual([USER_HOOK, SAVED_HOOK])
     expect(readFileSync(configPath(), 'utf-8')).toContain(SAVED_PROJECT)
     expect(untrustedOrcaHandlers()).toEqual([])
+    // Why: the log says what happened, including when the next try comes.
+    const events = getCodexManagedHookInstallMaterial().events.length
+    expect(vi.mocked(console.warn)).toHaveBeenCalledWith(
+      `[codex-real-home-hooks] Codex did not approve Orca's entry (error); withdrew ${events} ` +
+        'unapproved entries this attempt added; managed lane kept, retrying in 10 s'
+    )
+
+    vi.setSystemTime(Date.now() + 10_001)
+    await ensureRealHomeCodexHookState({
+      hooksEnabled: true,
+      userDataPath: homes.userDataDir,
+      writePolicy: 'add-missing-only'
+    })
+    expect(counts.sessions).toBe(2)
   })
 
   it.skipIf(process.platform === 'win32')(

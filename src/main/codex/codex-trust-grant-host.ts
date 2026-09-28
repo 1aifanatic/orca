@@ -15,9 +15,9 @@ import {
   type CodexTrustGrantLedgerHome
 } from './codex-trust-grant-ledger'
 
-// Why: warm native sessions finish in ~100ms, but a cold start on a loaded Mac
-// took over 10 s. WSL also pays cold-distro and login-shell startup.
-const NATIVE_GRANT_TIMEOUT_MS = 30_000
+// Why: native sessions finish in ~100ms; WSL also pays cold-distro and
+// login-shell startup, but both stay hard-bounded on launch prep.
+const NATIVE_GRANT_TIMEOUT_MS = 10_000
 const WSL_GRANT_TIMEOUT_MS = 30_000
 
 export type CodexTrustGrantHost =
@@ -29,6 +29,8 @@ type CodexTrustGrantRequestInput = {
   managedCommand: string
   expectedTrustKeys: string[]
   useDefaultCodexHome?: boolean
+  /** Overrides the native deadline; WSL keeps its own. */
+  timeoutMs?: number
 }
 
 export type ResolvedCodexTrustGrantHost = {
@@ -83,7 +85,7 @@ export function resolveNativeCodexTrustGrantHost(): ResolvedCodexTrustGrantHost 
           ...(useDefaultCodexHome
             ? { envToDelete: ['CODEX_HOME'] }
             : { env: { CODEX_HOME: input.runtimeHomePath } }),
-          timeoutMs: NATIVE_GRANT_TIMEOUT_MS
+          timeoutMs: input.timeoutMs ?? NATIVE_GRANT_TIMEOUT_MS
         },
         hooksListCwd: input.runtimeHomePath,
         expectedTrustKeys: input.expectedTrustKeys,

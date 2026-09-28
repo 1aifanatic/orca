@@ -7,6 +7,11 @@ const tailByTomlPath = new Map<string, Promise<void>>()
 // one and pass through instead of queueing behind itself forever.
 const heldKeys = new AsyncLocalStorage<ReadonlySet<string>>()
 
+/** Runs `run` holding no lane, so work it starts queues like any new caller. */
+export function runOutsideCodexTrustConfigLanes<T>(run: () => T): T {
+  return heldKeys.exit(run)
+}
+
 /**
  * Serializes everything that mutates one Codex `config.toml` — hook installs,
  * trust grants, and user-hook rebases — as a single lane per file.

@@ -6,13 +6,18 @@ import { prepareCodexSessionResume } from '../codex/codex-session-resume-prepara
 import { prepareLegacySharedCodexSessionResume } from '../codex/codex-legacy-session-resume'
 import { ManagedCodexHomeTemporarilyUnavailableError } from '../codex-accounts/host-codex-managed-home-ownership'
 import { codexHookService } from '../codex/hook-service'
-import { ensureRealHomeCodexHookState } from '../codex/codex-real-home-hook-install'
+import {
+  awaitRealHomeCodexHookTrust,
+  ensureRealHomeCodexHookState
+} from '../codex/codex-real-home-hook-install'
 import { isAgentStatusHooksEnabledForAgent } from '../agent-hooks/managed-agent-hook-controls'
 import { markCodexProjectTrusted } from '../agent-trust-presets'
 import { awaitAgentTrustWriteWithinDeadline } from '../agent-trust-write-deadline'
 import { getOrcaManagedCodexHomePath, getSystemCodexHomePath } from '../codex/codex-home-paths'
 import { normalizeRuntimePathForComparison } from '../../shared/cross-platform-path'
 import { mainProcessState as state } from './main-process-state'
+
+const REAL_HOME_RESUME_TRUST_WAIT_MS = 10_000
 
 export async function prepareCodexSessionResumeForLaunch(args: {
   providerSession: AgentProviderSessionMetadata
@@ -103,6 +108,9 @@ export async function prepareCodexSessionResumeForLaunch(args: {
             userDataPath: app.getPath('userData'),
             writePolicy: 'add-missing-only'
           })
+          // Why bounded: a resume has no managed home to fall back to, so it waits
+          // for Codex's approval as long as a launch always has, and no longer.
+          await awaitRealHomeCodexHookTrust(REAL_HOME_RESUME_TRUST_WAIT_MS)
         } else if (hooksEnabled) {
           await codexHookService.installForLaunchPrep(resumeHome)
         } else {

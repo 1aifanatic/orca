@@ -37,9 +37,12 @@ import {
 } from './codex-managed-trust-grant-plan'
 import { isCodexStateDbBackfillPending } from './codex-state-db'
 
-// Why: a failing app-server must not cost a session on every pane launch. A
-// timeout is exempt: a slow cold start retries on the next launch.
-export const CODEX_TRUST_GRANT_TRANSIENT_RETRY_INTERVAL_MS = 5 * 60_000
+// Why seconds: a failing app-server must not cost a session on every pane
+// launch, but a long latch at boot blocks the grant long after it recovers.
+export const CODEX_TRUST_GRANT_TRANSIENT_RETRY_INTERVAL_MS = 10_000
+// Why: a cold `codex app-server` on a loaded Mac took over 10 s; a background
+// grant blocks no launch, so it can wait for one.
+const BACKGROUND_GRANT_TIMEOUT_MS = 30_000
 const MAX_TRANSIENT_TRUST_COOLDOWNS = 256
 
 /** Ops escape hatch (not a setting): forces the fallback lane for every trust grant. */
@@ -216,7 +219,8 @@ async function runGrantAttempt(
               runtimeHomePath: plan.runtimeHomePath,
               managedCommand: plan.managedCommand,
               expectedTrustKeys: expected.map(({ normalizedKey }) => normalizedKey),
-              useDefaultCodexHome: plan.useDefaultCodexHome
+              useDefaultCodexHome: plan.useDefaultCodexHome,
+              ...(plan.background ? { timeoutMs: BACKGROUND_GRANT_TIMEOUT_MS } : {})
             })
           )
         )
@@ -239,12 +243,29 @@ async function runGrantAttempt(
       }
     )
   } catch (error) {
-    // Why no cooldown for a timeout: a slow cold start is retried on the next
-    // launch rather than blocking the grant for minutes.
-    if (classifyCodexTrustGrantError(error) !== 'timeout') {
+    // Why: a background grant that timed out is retried on the next launch.
+    if (!plan.background || classifyCodexTrustGrantError(error) !== 'timeout') {
       startTransientCooldown(hostKey)
     }
     return fallback(plan, 'error', error)
+  }
+}
+
+/**
+ * The session-free half of a grant: Codex's recorded hashes for these entries
+ * when the ledger shows they are still current, or null.
+ */
+export async function findCurrentManagedCodexHookTrust(
+  plan: CodexManagedTrustGrantPlan
+): Promise<CodexTrustEntry[] | null> {
+  try {
+    if (process.env[DISABLE_ENV_FLAG] === '1' || plan.managedEntries.length === 0) {
+      return null
+    }
+    const resolvedHost = await resolveCodexTrustGrantHost(plan.host)
+    return findLedgerGrant(plan, buildExpectedEntries(plan), resolvedHost.binaryStamp)
+  } catch {
+    return null
   }
 }
 

@@ -18,10 +18,22 @@ vi.mock('node:os', async () => {
 })
 vi.mock('./codex-hook-trust-grant', () => ({
   CODEX_TRUST_GRANT_TRANSIENT_RETRY_INTERVAL_MS: 300_000,
+  findCurrentManagedCodexHookTrust: async () => null,
   grantManagedCodexHookTrust: grantMock
 }))
 
-import { ensureRealHomeCodexHookState, _internals } from './codex-real-home-hook-install'
+import {
+  ensureRealHomeCodexHookState as startRealHomeCodexHookEnsure,
+  _internals
+} from './codex-real-home-hook-install'
+
+/** The lane once Codex's background approval, if any, has settled. */
+async function ensureRealHomeCodexHookState(
+  args: Parameters<typeof startRealHomeCodexHookEnsure>[0]
+): ReturnType<typeof startRealHomeCodexHookEnsure> {
+  await startRealHomeCodexHookEnsure(args)
+  return _internals.settledLaneForTesting()
+}
 import { getCodexManagedHookInstallMaterial } from './codex-hook-definition'
 
 // Why these tests: a failed trust session withdraws only what that call wrote and

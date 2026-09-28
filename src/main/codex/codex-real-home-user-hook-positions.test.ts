@@ -33,9 +33,17 @@ vi.mock('../codex-cli/command', () => ({ resolveCodexCommand: resolveCodexComman
 
 import {
   _internals as realHomeInternals,
-  ensureRealHomeCodexHookState,
+  ensureRealHomeCodexHookState as startRealHomeCodexHookEnsure,
   type RealHomeCodexHookWritePolicy
 } from './codex-real-home-hook-install'
+
+/** The lane once Codex's background approval, if any, has settled. */
+async function ensureRealHomeCodexHookState(
+  args: Parameters<typeof startRealHomeCodexHookEnsure>[0]
+): ReturnType<typeof startRealHomeCodexHookEnsure> {
+  await startRealHomeCodexHookEnsure(args)
+  return realHomeInternals.settledLaneForTesting()
+}
 import { getCodexManagedHookInstallMaterial } from './codex-hook-definition'
 
 // Why this file: Codex keys a hook's trust by its position. Orca's automatic
