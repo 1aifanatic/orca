@@ -63,6 +63,14 @@ export type JournalSubmissionInput = {
   handoverRecorded?: true
 }
 
+/** A submission append that converts a queued draft, in one transaction. */
+export type JournalSubmissionConsume = {
+  messageId: string
+  expect: 'waiting' | 'returned'
+  /** The operation ledger's caller-scoped key; null for the host's own drain. */
+  settledByOp: string | null
+}
+
 export type JournalItemAppendInput = {
   identity: AgentJournalItemIdentity
   body: AgentJournalItemBody

@@ -49,10 +49,12 @@ import type {
   JournalItemAppendOptions,
   JournalLifecycleBatchInput,
   JournalReadSince,
+  JournalSubmissionConsume,
   JournalSubmissionInput,
   JournalTombstoneInput,
   ResolveDispatchInput
 } from './journal-store-contracts'
+import { queuedMessageConsumeHook, type JournalQueuedMessages } from './journal-queued-messages'
 import type { AgentJournalEpochReason, JournalRow } from './journal-row-schema'
 import { AgentSessionJournalError } from './journal-write-guards'
 import type { JournalRowWriter } from './journal-row-writer'
@@ -86,6 +88,8 @@ export class AgentSessionJournal {
   private readonly itemAppender: JournalItemAppender
   private readonly lifecycleBatchAppender: JournalLifecycleBatchAppender
   private readonly restore: () => Promise<void>
+  /** Draft rows queued while the agent works; never reducer input or owed work. */
+  readonly queuedMessages: JournalQueuedMessages
 
   constructor(options: AgentSessionJournalOptions) {
     this.identity = options.identity
@@ -134,6 +138,7 @@ export class AgentSessionJournal {
     this.epochController = collaborators.epochController
     this.itemAppender = collaborators.itemAppender
     this.lifecycleBatchAppender = collaborators.lifecycleBatchAppender
+    this.queuedMessages = collaborators.queuedMessages
     this.restore = collaborators.restore
   }
 
@@ -169,6 +174,9 @@ export class AgentSessionJournal {
     this.database = openJournalDatabase(this.dbPath)
     try {
       await this.restore()
+      // Behind the stored fact: returns drafts whose consumed submission the
+      // loaded journal shows refused (a downgrade wrote no hook), then prunes.
+      await this.queuedMessages.repairAndPrune()
       this.openedThrough = this.cursor()
     } catch (error) {
       // Nothing else holds a reference to this connection, so a throw here is
@@ -293,10 +301,20 @@ export class AgentSessionJournal {
    * anything, and it doubles as the optimistic user bubble so an accepted echo
    * reconciles into an existing slot instead of appending a second copy.
    */
-  appendSubmission(input: JournalSubmissionInput): Promise<AgentJournalCursor> {
-    return this.enqueue(
-      journalSubmissionRowBuilder(() => this.state, this.identity.providerHandle, input)
-    ).then((row) => ({ epoch: row.epoch, sequence: row.seq }))
+  appendSubmission(
+    input: JournalSubmissionInput,
+    /** Present: this submission is a queued draft's conversion, and the draft's
+     *  state transition commits in the SAME transaction — exactly-once consume. */
+    consume?: JournalSubmissionConsume
+  ): Promise<AgentJournalCursor> {
+    return this.rowWriter
+      .enqueue(
+        journalSubmissionRowBuilder(() => this.state, this.identity.providerHandle, input),
+        consume
+          ? queuedMessageConsumeHook(this.queuedMessages, input.clientMessageId, consume)
+          : undefined
+      )
+      .then((row) => ({ epoch: row.epoch, sequence: row.seq }))
   }
 
   /**

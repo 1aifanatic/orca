@@ -29,6 +29,7 @@ import { structuredAgentSessionPayloadFingerprint } from '../../../shared/struct
 import { journalItemRevisionIsStale } from './journal-item-revision'
 import type { JournalRow } from './journal-row-schema'
 import { dispatchRejectionWasTransportWriteFailure } from '../../../shared/structured-agent-session-dispatch-rejection'
+import { journalDispatchRowApplies } from './journal-dispatch-settlement'
 
 export const MAX_JOURNAL_APPLIED_SETTLEMENT_IDS = 4_096
 
@@ -262,11 +263,9 @@ function applyDispatch(
   row: Extract<JournalRow, { kind: 'dispatch' }>
 ): void {
   const submission = state.submissions.get(row.clientMessageId)
-  if (!submission) {
-    return
-  }
-  // `rejected` is terminal; a late `unknown` must not reopen a settled answer.
-  if (submission.dispatchState === 'rejected' || submission.dispatchState === 'accepted') {
+  // Shared with the queued-draft returned hook: a row this reducer ignores —
+  // absent submission, or a late row after a terminal answer — settles nothing.
+  if (!submission || !journalDispatchRowApplies(submission)) {
     return
   }
   submission.fence = row.fence
@@ -306,11 +305,7 @@ function acceptSubmissionFromProviderItem(
   const submission = [...state.submissions.values()].find(
     (candidate) => agentJournalSubmissionKey(candidate.clientMessageId) === resolvedItemId
   )
-  if (
-    !submission ||
-    submission.dispatchState === 'accepted' ||
-    submission.dispatchState === 'rejected'
-  ) {
+  if (!submission || !journalDispatchRowApplies(submission)) {
     return
   }
   submission.fence = row.fence

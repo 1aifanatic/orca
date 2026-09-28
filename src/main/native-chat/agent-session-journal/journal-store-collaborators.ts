@@ -12,6 +12,7 @@ import { JournalEpochController } from './journal-epoch-controller'
 import { JournalItemAppender } from './journal-item-appender'
 import { JournalLifecycleBatchAppender } from './journal-lifecycle-batch-appender'
 import type { JournalLoad } from './journal-open'
+import { JournalQueuedMessages } from './journal-queued-messages'
 import type { JournalReducerState } from './journal-reducer'
 import { JournalRowWriter } from './journal-row-writer'
 import { restoreJournalStore } from './journal-store-restore'
@@ -44,6 +45,7 @@ export type JournalStoreCollaborators = {
   epochController: JournalEpochController
   itemAppender: JournalItemAppender
   lifecycleBatchAppender: JournalLifecycleBatchAppender
+  queuedMessages: JournalQueuedMessages
   /** Restores the store's state from disk. Owned here because it needs the same
    *  collaborators the constructor just built. */
   restore: () => Promise<void>
@@ -62,8 +64,17 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
     cursor: host.cursor,
     adopt: host.adopt
   })
+  const queuedMessages = new JournalQueuedMessages({
+    sessionId: host.identity.sessionId,
+    now: host.now,
+    serialize: host.serialize,
+    database: host.database,
+    readOnly: host.readOnly,
+    state: host.state
+  })
   return {
     epochController,
+    queuedMessages,
     restore: () => restoreJournalStore(host, { epochController }),
     rowWriter: new JournalRowWriter({
       sessionId: host.identity.sessionId,
@@ -73,7 +84,10 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
       readOnly: host.readOnly,
       highestFence: () => host.state().highestFence,
       nextSequence: () => host.state().lastSequence + 1,
-      commit: host.commit
+      commit: host.commit,
+      // Every rejection is a dispatch row through this one writer; the draft
+      // returned-transition rides it so no path can bypass the hook.
+      inTransaction: (db, row) => queuedMessages.onRowInTransaction(db, row)
     }),
     itemAppender: new JournalItemAppender({
       state: host.state,
