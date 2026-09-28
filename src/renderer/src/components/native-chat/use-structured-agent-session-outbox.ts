@@ -10,7 +10,6 @@ import {
 } from '../../../../shared/structured-agent-session-outbox'
 import {
   journalAnswersInFlightSend,
-  reconciledRejectionNotice,
   type StructuredAgentSessionSendDisposition
 } from '../../../../shared/structured-agent-session-send-disposition'
 import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
@@ -116,10 +115,7 @@ export function useStructuredAgentSessionOutbox(args: {
       dispatchGenerationRef.current += 1
       inFlightIdRef.current = null
     }
-    const rejection = reconciledRejectionNotice(current, next, submissions)
-    if (rejection) {
-      setError(rejection)
-    } else if (blockedIdRef.current !== null && hostOwns.has(blockedIdRef.current)) {
+    if (blockedIdRef.current !== null && hostOwns.has(blockedIdRef.current)) {
       blockedIdRef.current = null
       setError(null)
     } else if (
