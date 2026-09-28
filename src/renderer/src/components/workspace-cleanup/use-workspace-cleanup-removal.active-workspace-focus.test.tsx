@@ -157,6 +157,25 @@ describe('workspace cleanup removal of the active workspace', () => {
     expect(useAppStore.getState().activeWorktreeId).toBe(worktreeId('keep'))
   })
 
+  it('leaves an empty screen the user chose while later rows are still deleting', async () => {
+    seed('active')
+    const pending = deferRemovals()
+    const { result } = renderRemoval()
+    act(() => result.current.openConfirmRemove(['c', 'active', 'longer-name'].map(candidateFor)))
+    act(() => result.current.confirmRemove())
+    await settleNext(pending, 0)
+    await settleNext(pending, 1)
+    expect(activateAndRevealWorktree).toHaveBeenCalledTimes(1)
+
+    // Closing the successor's last tab leaves no workspace selected on purpose.
+    act(() => useAppStore.setState({ activeWorktreeId: null }))
+    await settleNext(pending, 2)
+    await waitFor(() => expect(result.current.removalInFlight).toBe(false))
+
+    expect(activateAndRevealWorktree).toHaveBeenCalledTimes(1)
+    expect(useAppStore.getState().activeWorktreeId).toBeNull()
+  })
+
   it('keeps deleting later rows when the focus handoff throws', async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.mocked(activateAndRevealWorktree).mockImplementationOnce(() => {
