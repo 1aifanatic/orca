@@ -1,0 +1,62 @@
+name: Unit worker count pilot
+on:
+  push:
+    branches: [nwparker/ci-next-optimizations]
+    paths: ['.github/workflows/ci-worker-count-pilot.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: worker-count-pilot-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  ORCA_BACKGROUND_LAUNCH: '1'
+jobs:
+  measure:
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - shard: 2
+            workers: '3 4'
+          - shard: 4
+            workers: '4 3'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/install-node-dependencies
+        with:
+          native-runtime: node
+          node-version: '24'
+          cache-electron-package: 'true'
+      - run: node config/scripts/install-electron-package-binary.mjs
+      - name: Compare worker counts on the same runner
+        env:
+          ORCA_BALANCE_UNIT_SHARDS: '1'
+          SHARD: ${{ matrix.shard }}
+          WORKER_COUNTS: ${{ matrix.workers }}
+        run: |
+          set -euo pipefail
+          unset NODE_COMPILE_CACHE NODE_DISABLE_COMPILE_CACHE
+          ORCA_SHARD_SOURCE_SHA="$(git rev-parse HEAD)"
+          export ORCA_SHARD_SOURCE_SHA
+          node -e 'console.log(JSON.stringify({node:process.version,cpus:require("node:os").availableParallelism()}))'
+          for workers in $WORKER_COUNTS; do
+            node -e 'require("node:fs").rmSync("node_modules/.vite",{recursive:true,force:true})'
+            start=$(date +%s)
+            pnpm exec vitest run --config config/vitest.config.ts --shard="$SHARD/8" --maxWorkers="$workers"
+            elapsed=$(($(date +%s)-start))
+            echo "WORKER_MEASUREMENT shard=$SHARD workers=$workers seconds=$elapsed"
+            mkdir -p "worker-evidence/workers-$workers"
+            cp ci-shards/*.json "worker-evidence/workers-$workers/"
+          done
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: workers-shard-${{ matrix.shard }}
+          path: worker-evidence/
+          retention-days: 7
