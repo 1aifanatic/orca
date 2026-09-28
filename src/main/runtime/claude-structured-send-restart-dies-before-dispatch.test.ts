@@ -19,7 +19,7 @@ import {
 const SESSION = 'claude-send-restart-dies-first'
 const CALLER = { callerKey: 'client-1' }
 const DIAGNOSTIC = 'claude stream-json exited (code 1): claude: not signed in (rig)'
-const STARTUP_TEXT = 'Claude stopped before it finished starting.'
+const STARTUP_TEXT = 'Claude stopped before it finished starting. Send your message to try again.'
 
 /** Delivery runs on its own serialized steps; under a loaded runner they take more than a second. */
 function eventually(assertion: () => void): Promise<void> {

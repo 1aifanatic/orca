@@ -166,7 +166,9 @@ describe('an open chat receives every row its journal commits', () => {
       )
     )
     // One row, however many of its writers reported the start.
-    expect(pane.received().statusRows).toEqual(['Codex stopped before it finished starting.'])
+    expect(pane.received().statusRows).toEqual([
+      'Codex stopped before it finished starting. Send your message to try again.'
+    ])
   })
 
   it('shows a revision the provider queued with no publish behind it', async () => {

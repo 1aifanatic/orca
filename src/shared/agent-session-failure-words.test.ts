@@ -125,9 +125,11 @@ describe('the words written beside a failure fact', () => {
     const sentence = (kind: AgentSessionFailureKind, agentName?: string) =>
       agentSessionFailureSentence({ kind }, 'rejection', { agentName })
     expect(sentence('providerStartFailed', 'Claude')).toBe(
-      'Claude stopped before it finished starting.'
+      'Claude stopped before it finished starting. Send your message to try again.'
     )
-    expect(sentence('providerStartFailed')).toBe('The agent stopped before it finished starting.')
+    expect(sentence('providerStartFailed')).toBe(
+      'The agent stopped before it finished starting. Send your message to try again.'
+    )
     expect(sentence('startFailed', 'Codex')).toBe(
       "Codex couldn't start. Send your message to try again."
     )

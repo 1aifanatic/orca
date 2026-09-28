@@ -366,7 +366,7 @@ describe('settling an earlier child before the next one takes its message', () =
 })
 
 const START_EXIT = 'claude stream-json exited (code 1)'
-const START_TEXT = 'Codex stopped before it finished starting.'
+const START_TEXT = 'Codex stopped before it finished starting. Send your message to try again.'
 const START_FAILURE: AgentSessionFailureFact = {
   kind: 'providerStartFailed',
   detail: { text: START_EXIT, audience: 'log' }

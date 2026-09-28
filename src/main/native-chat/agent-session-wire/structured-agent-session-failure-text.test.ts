@@ -158,7 +158,7 @@ describe('structuredAgentSessionStartFailure', () => {
         diagnostic: { text: 'code 1', audience: 'log' }
       })
     ).toEqual({
-      reason: 'The agent stopped before it finished starting.',
+      reason: 'The agent stopped before it finished starting. Send your message to try again.',
       rejection: { kind: 'providerStartFailed', detail: { text: 'code 1', audience: 'log' } }
     })
     // A start that threw proves nothing about the provider: it may be Orca's, or a failed spawn.
@@ -175,7 +175,7 @@ describe('structuredAgentSessionStartFailure', () => {
     expect(
       structuredAgentSessionStartFailure({ error: new Error('wrapped', { cause: exit }) })
     ).toEqual({
-      reason: 'The agent stopped before it finished starting.',
+      reason: 'The agent stopped before it finished starting. Send your message to try again.',
       rejection: { kind: 'providerStartFailed', detail: { text: 'code 1', audience: 'log' } }
     })
   })

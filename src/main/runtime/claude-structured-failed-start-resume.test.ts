@@ -66,7 +66,7 @@ describe('a Claude chat whose CLI exits the moment it is spawned', () => {
       expect(created).toMatchObject({
         ok: false,
         refusal: {
-          message: 'Claude stopped before it finished starting.',
+          message: 'Claude stopped before it finished starting. Send your message to try again.',
           ownerVerdict: 'exited'
         }
       })

@@ -101,11 +101,6 @@ function retryStep({ command }: AgentSessionFailureWordsContext): string {
   return command === 'clear' ? 'run /clear again' : 'send your message again'
 }
 
-/** The next step a start failure with none of its own leaves: a command, run again. */
-function commandRetry({ command }: AgentSessionFailureWordsContext): string {
-  return command === 'clear' ? ' Run /clear again.' : ''
-}
-
 /** The next step after a start or restart that failed: the command, or the message, again. */
 function startRetry({ command }: AgentSessionFailureWordsContext): string {
   return command === 'clear' ? ' Run /clear again.' : ' Send your message to try again.'
@@ -157,7 +152,7 @@ const ATTACHMENT_SENTENCES = {
 
 const FAILURE_SENTENCES = {
   providerStartFailed: (context) =>
-    `${context.agentName ?? 'The agent'} stopped before it finished starting.${commandRetry(context)}`,
+    `${context.agentName ?? 'The agent'} stopped before it finished starting.${startRetry(context)}`,
   startFailed: couldNot('start'),
   notSignedIn: (context) =>
     `${context.agentName ?? 'The agent'} is not signed in for the selected account. Sign in, then ${retryStep(context)}.`,

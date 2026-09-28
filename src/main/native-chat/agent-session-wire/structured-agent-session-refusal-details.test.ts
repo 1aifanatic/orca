@@ -75,7 +75,7 @@ describe('a ledger replay names the details its first answer did', () => {
           new Error('claude stream-json exited (code 1): claude: not signed in (rig)')
         )
       ),
-      'Claude stopped before it finished starting.'
+      'Claude stopped before it finished starting. Send your message to try again.'
     ],
     [
       new AgentSessionAcquisitionExitProvenError(new Error('spawn claude ENOENT')),
