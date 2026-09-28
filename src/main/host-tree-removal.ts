@@ -1,12 +1,13 @@
 // Why: every recursive host delete Orca performs (worktrees, terminal history, quarantined recovery
-// generations) hits the same two hazards, so one helper exists so no call site forgets either.
+// generations) hits the same three hazards, so one helper exists so no call site forgets any.
 // Windows stickiness — AV/indexers/late handle releases surface transient EBUSY/ENOTEMPTY/EPERM on a
-// tree Node just emptied — and Electron's asar shim, which strands any tree holding a `*.asar`
-// (see `asar-transparent-fs`).
+// tree Node just emptied. Electron's asar shim, which strands any tree holding a `*.asar`. And the
+// async fs thread pool, which a worktree's ~100k entries held for minutes, stalling chat sends
+// behind the agent-session store (see `tree-removal-worker`).
 
 import { win32 } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
-import { rm } from './asar-transparent-fs'
+import { removeTreeOffThreadPool } from './tree-removal-worker'
 import { isWindowsAbsolutePathLike } from '../shared/cross-platform-path'
 import { isWslUncPath } from '../shared/wsl-paths'
 import { transientLockRemovalOptions } from '../shared/windows-transient-lock-removal'
@@ -53,7 +54,7 @@ export async function removeHostTree(targetPath: string): Promise<void> {
 
   while (true) {
     try {
-      await rm(removalPath, rmOptions)
+      await removeTreeOffThreadPool(removalPath, rmOptions)
       return
     } catch (error) {
       if (attempt >= retryDelays.length || !isTransientWindowsRemovalError(error)) {

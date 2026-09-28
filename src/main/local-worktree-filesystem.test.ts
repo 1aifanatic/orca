@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { runProcessMock, lstatMock, readFileMock, rmMock } = vi.hoisted(() => ({
+const { runProcessMock, lstatMock, readFileMock, removeTreeMock } = vi.hoisted(() => ({
   runProcessMock: vi.fn(),
   lstatMock: vi.fn(),
   readFileMock: vi.fn(),
-  rmMock: vi.fn()
+  removeTreeMock: vi.fn()
 }))
 
 // Why mock the chokepoint: encoding, timeout and the hidden console are its
@@ -15,8 +15,11 @@ vi.mock('../shared/child-process/run-process', () => ({
 
 vi.mock('node:fs/promises', () => ({
   lstat: lstatMock,
-  readFile: readFileMock,
-  rm: rmMock
+  readFile: readFileMock
+}))
+
+vi.mock('./tree-removal-worker', () => ({
+  removeTreeOffThreadPool: removeTreeMock
 }))
 
 import {
@@ -56,7 +59,7 @@ describe('local worktree filesystem runtime access', () => {
     runProcessMock.mockReset()
     lstatMock.mockReset()
     readFileMock.mockReset()
-    rmMock.mockReset()
+    removeTreeMock.mockReset()
     completeExecFile()
   })
 
@@ -76,7 +79,7 @@ describe('local worktree filesystem runtime access', () => {
 
     expect(lstatMock).toHaveBeenCalledWith('C:\\repo\\.git')
     expect(readFileMock).toHaveBeenCalledWith('C:\\repo\\.git', 'utf8')
-    expect(rmMock).toHaveBeenCalledWith(
+    expect(removeTreeMock).toHaveBeenCalledWith(
       toHostRemovalPath('C:\\repo\\feature'),
       expect.objectContaining({
         recursive: true,
@@ -93,7 +96,7 @@ describe('local worktree filesystem runtime access', () => {
       await removeLocalWorktreePath(longPath)
 
       expect(toHostRemovalPath(longPath)).toBe(`\\\\?\\${longPath}`)
-      expect(rmMock).toHaveBeenCalledWith(
+      expect(removeTreeMock).toHaveBeenCalledWith(
         `\\\\?\\${longPath}`,
         expect.objectContaining({
           recursive: true,
@@ -130,14 +133,14 @@ describe('local worktree filesystem runtime access', () => {
     vi.useFakeTimers()
     await withPlatform('win32', async () => {
       const error = Object.assign(new Error('Directory not empty'), { code: 'ENOTEMPTY' })
-      rmMock.mockRejectedValueOnce(error).mockResolvedValueOnce(undefined)
+      removeTreeMock.mockRejectedValueOnce(error).mockResolvedValueOnce(undefined)
 
       const removal = removeLocalWorktreePath('C:\\repo\\feature')
       await vi.advanceTimersByTimeAsync(250)
 
       await expect(removal).resolves.toBeUndefined()
-      expect(rmMock).toHaveBeenCalledTimes(2)
-      expect(rmMock).toHaveBeenNthCalledWith(
+      expect(removeTreeMock).toHaveBeenCalledTimes(2)
+      expect(removeTreeMock).toHaveBeenNthCalledWith(
         1,
         toHostRemovalPath('C:\\repo\\feature'),
         expect.objectContaining({
@@ -147,7 +150,7 @@ describe('local worktree filesystem runtime access', () => {
           retryDelay: expect.any(Number)
         })
       )
-      expect(rmMock).toHaveBeenNthCalledWith(
+      expect(removeTreeMock).toHaveBeenNthCalledWith(
         2,
         toHostRemovalPath('C:\\repo\\feature'),
         expect.objectContaining({
@@ -163,10 +166,10 @@ describe('local worktree filesystem runtime access', () => {
   it('does not retry host removal failures outside Windows', async () => {
     await withPlatform('linux', async () => {
       const error = Object.assign(new Error('Directory not empty'), { code: 'ENOTEMPTY' })
-      rmMock.mockRejectedValue(error)
+      removeTreeMock.mockRejectedValue(error)
 
       await expect(removeLocalWorktreePath('/repo/feature')).rejects.toBe(error)
-      expect(rmMock).toHaveBeenCalledTimes(1)
+      expect(removeTreeMock).toHaveBeenCalledTimes(1)
     })
   })
 
@@ -199,7 +202,7 @@ describe('local worktree filesystem runtime access', () => {
       const removeArgs = runProcessMock.mock.calls[2]?.[0].args as string[]
       expect(removeArgs.at(-1)).toContain('rm -rf --')
       expect(removeArgs.at(-1)).toContain(String.raw`rm -rf -- '/mnt/c/Users/me/repo feature'`)
-      expect(rmMock).not.toHaveBeenCalled()
+      expect(removeTreeMock).not.toHaveBeenCalled()
     })
   })
 

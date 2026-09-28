@@ -77,11 +77,8 @@ async function bundleHostTreeRemoval(outFile: string): Promise<void> {
       ssr: true,
       rollupOptions: {
         input: 'src/main/host-tree-removal.ts',
-        // Why mirror `isExternalMainModule` from electron.vite.config.ts exactly — CJS, and
-        // `original-fs` deliberately *not* externalized: the shipped bundle does not list it either,
-        // so if the archive-aware `rm` ever became a static import (or the bundler learned to fold
-        // `createRequire(...)('original-fs')`) production would silently degrade to the shimmed `fs`
-        // while a test that pre-externalized it kept passing.
+        // Why mirror `isExternalMainModule` from electron.vite.config.ts exactly: the removal worker
+        // is evaluated inside the shipped bundle, so the probe must load the same CJS shape.
         output: { format: 'cjs' },
         external: (id: string) => isBuiltin(id) || id === 'electron' || id.startsWith('electron/')
       }
@@ -123,7 +120,7 @@ describe('removeHostTree against a tree holding an asar archive', () => {
       expect(run.status, run.stderr?.slice(-2000)).toBe(0)
 
       const probe = JSON.parse(readFileSync(resultPath, 'utf8')) as ProbeResult
-      // Without an asar-transparent `rm` this is `ENOTEMPTY` and the residue stops at the archive,
+      // With the shimmed `fs.promises.rm` this is `ENOTEMPTY` and the residue stops at the archive,
       // on every attempt, forever — it is not a race a retry can win.
       expect(probe).toEqual({ failure: null, residue: [] })
     },
