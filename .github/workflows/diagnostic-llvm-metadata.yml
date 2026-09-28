@@ -32,6 +32,12 @@ jobs:
           docker run --rm --platform linux/amd64 --cpus 2 --memory 3g --pids-limit 256 --volume "$GITHUB_WORKSPACE/config/ci/offline-llvm-probe:/probe:ro" --volume "$RUNNER_TEMP/llvm-receipts:/receipts" ubuntu@sha256:8feb4d8ca5354def3d8fce243717141ce31e2c428701f6682bd2fafe15388214 bash /probe/resolve.sh 2>&1 | tee "$RUNNER_TEMP/llvm-receipts/resolution.log"
           test -s "$RUNNER_TEMP/llvm-receipts/closure.json"
           test -s "$RUNNER_TEMP/llvm-receipts/provenance.json"
+      - name: Make private container receipts readable by the runner
+        if: always()
+        run: |
+          if test -d "$RUNNER_TEMP/llvm-receipts"; then
+            sudo chown -R "$(id -u):$(id -g)" "$RUNNER_TEMP/llvm-receipts"
+          fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
