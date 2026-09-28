@@ -16,6 +16,8 @@ import type {
 import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
+import { AgentSessionJournal } from '../agent-session-journal/journal-store'
+import { rotateStructuredAgentSessionHostInstanceForTests } from './structured-agent-session-queued-pause'
 import {
   HOST_TEST_NOW as NOW,
   HOST_TEST_SESSION as SESSION,
@@ -324,6 +326,61 @@ describe('drain', () => {
   })
 })
 
+describe('held drafts', () => {
+  it('a draft written by another host instance is held across a restart, never auto-sent', async () => {
+    const working = await workingSend()
+    const queued = await send('written before the restart', 'queue-if-active').result
+    if (!queued.ok || !('queued' in queued.value)) {
+      throw new Error('expected a queued receipt')
+    }
+    const draftId = queued.value.queued.messageId
+    rotateStructuredAgentSessionHostInstanceForTests()
+    await settleAccepted(working, 'a')
+    await host.close(SESSION)
+    expect(await drafts()).toMatchObject([{ messageId: draftId, state: 'waiting', paused: true }])
+    await new Promise((resolve) => setTimeout(resolve, 250))
+    expect(await submission(draftId)).toBeUndefined()
+    expect(await sendNow(draftId)).toMatchObject({
+      ok: true,
+      value: { submission: expect.anything() }
+    })
+  })
+
+  it('a failed conversion leaves the draft waiting and paused with its error; Send retries', async () => {
+    const working = await workingSend()
+    const queued = await send('conversion fails once', 'queue-if-active').result
+    if (!queued.ok || !('queued' in queued.value)) {
+      throw new Error('expected a queued receipt')
+    }
+    const draftId = queued.value.queued.messageId
+    const original = AgentSessionJournal.prototype.appendSubmission
+    const append = vi
+      .spyOn(AgentSessionJournal.prototype, 'appendSubmission')
+      .mockImplementationOnce(async () => {
+        throw new Error('disk full')
+      })
+    try {
+      await settleAccepted(working, 'a')
+      await eventually(async () =>
+        expect(await drafts()).toMatchObject([
+          { messageId: draftId, state: 'waiting', paused: true }
+        ])
+      )
+    } finally {
+      append.mockRestore()
+    }
+    expect(AgentSessionJournal.prototype.appendSubmission).toBe(original)
+    const page = await host.history({ sessionId: SESSION, direction: 'tail' })
+    expect(page.ok && page.page.queuedMessages?.[0]?.pausedReason).toMatch(/Send to retry/)
+    expect(await submission(draftId)).toBeUndefined()
+    expect(await sendNow(draftId)).toMatchObject({
+      ok: true,
+      value: { submission: expect.anything() }
+    })
+    expect(await drafts()).toHaveLength(0)
+  })
+})
+
 describe('Stop and Delete', () => {
   it('withdraws waiting and returned drafts with their text in the answer, and replays from tombstones', async () => {
     await workingSend()
@@ -451,6 +508,18 @@ describe('/clear', () => {
       replayed: true,
       value: { withdrawnQueued: [{ body: hostTestMessage('first text') }, expect.anything()] }
     })
+  })
+  it('a clear with no drafts answers exactly as before: no withdrawnQueued field', async () => {
+    const cleared = await host.conversationCommand(CALLER, {
+      envelope: envelope(
+        { command: 'clear' },
+        'agentSession.conversationCommand',
+        hostTestOperationId()
+      ),
+      command: 'clear'
+    })
+    expect(cleared).toMatchObject({ ok: true, value: { command: 'clear', state: 'completed' } })
+    expect(cleared.ok && 'withdrawnQueued' in cleared.value).toBe(false)
   })
 })
 

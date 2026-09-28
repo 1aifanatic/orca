@@ -10,10 +10,7 @@ import type {
   AgentJournalMessageItem,
   AgentJournalRenderItem
 } from '../../../shared/agent-session-journal-types'
-import type {
-  AgentSessionQueuedMessage,
-  AgentSessionWireRefusal
-} from '../../../shared/agent-session-wire'
+import type { AgentSessionWireRefusal } from '../../../shared/agent-session-wire'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import { isStructuredAgentSessionMainAgentWorking } from '../../../shared/structured-agent-session-main-agent-working'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
@@ -23,8 +20,7 @@ import type { StructuredAgentSessionHostSession } from './structured-agent-sessi
 import { structuredAgentSessionSendBlock } from './structured-agent-session-send-preparation'
 import {
   pauseQueuedMessage,
-  queuedMessagePause,
-  queuedMessagePauseRevision,
+  queuedMessageHeld,
   structuredAgentSessionHostInstance
 } from './structured-agent-session-queued-pause'
 import { structuredAgentSessionPayloadFingerprint } from '../../../shared/structured-agent-session-mutation'
@@ -39,7 +35,7 @@ export function queuedMessageBodyIsTextOnly(body: AgentJournalMessageItem): bool
   return body.blocks.every((block) => block.type === 'text')
 }
 
-function pendingPromptExists(items: Iterable<AgentJournalRenderItem>): boolean {
+export function pendingPromptExists(items: Iterable<AgentJournalRenderItem>): boolean {
   for (const item of items) {
     const body = item.body
     if (
@@ -50,13 +46,6 @@ function pendingPromptExists(items: Iterable<AgentJournalRenderItem>): boolean {
     }
   }
   return false
-}
-
-function pausedByProcessOrRestart(row: QueuedMessageRow): boolean {
-  return (
-    queuedMessagePause(row.sessionId, row.messageId) !== undefined ||
-    row.hostInstance !== structuredAgentSessionHostInstance()
-  )
 }
 
 /** Waiting, unpaused, and not positioned behind a returned card. The admission
@@ -70,7 +59,7 @@ function oldestActionableQueuedMessage(rows: readonly QueuedMessageRow[]): Queue
     if (row.state !== 'waiting') {
       continue
     }
-    if (pausedByProcessOrRestart(row)) {
+    if (queuedMessageHeld(row)) {
       continue
     }
     return row
@@ -130,56 +119,6 @@ export function queuedMessageBudgetRefusal(
     }
   }
   return null
-}
-
-/** The published whole-list view: waiting and returned rows only, with `paused`
- *  derived at publish time from the process pause set and the host instance. */
-function computePublishedQueuedMessages(journal: AgentSessionJournal): AgentSessionQueuedMessage[] {
-  const published: AgentSessionQueuedMessage[] = []
-  for (const row of journal.queuedMessages.list()) {
-    if (row.state !== 'waiting' && row.state !== 'returned') {
-      continue
-    }
-    const pause = queuedMessagePause(row.sessionId, row.messageId)
-    const paused = row.state === 'waiting' && pausedByProcessOrRestart(row)
-    published.push({
-      messageId: row.messageId,
-      position: row.position,
-      body: row.body,
-      state: row.state,
-      ...(paused ? { paused: true as const } : {}),
-      ...(paused && pause?.reason !== undefined ? { pausedReason: pause.reason } : {}),
-      ...(row.state === 'returned' ? { returnedReason: row.returnedReason } : {})
-    })
-  }
-  return published
-}
-
-type PublicationMemo = { key: string; serialized: string; list: AgentSessionQueuedMessage[] }
-
-/** Reference-stable per journal handle: an unchanged list is never re-serialized
- *  onto token-stream frames, and any draft-table write — the returned transition
- *  included — changes the reference by construction. */
-const publicationMemos = new WeakMap<AgentSessionJournal, PublicationMemo>()
-
-export function readPublishedQueuedMessages(
-  journal: AgentSessionJournal
-): AgentSessionQueuedMessage[] {
-  const key = `${journal.queuedMessages.revision()}:${queuedMessagePauseRevision()}`
-  const memo = publicationMemos.get(journal)
-  if (memo && memo.key === key) {
-    return memo.list
-  }
-  const list = computePublishedQueuedMessages(journal)
-  // Belt for the identity dedup: recomputed content that is structurally equal
-  // keeps the previous reference, so subscribers do not re-send an equal list.
-  const serialized = JSON.stringify(list)
-  if (memo && memo.serialized === serialized) {
-    publicationMemos.set(journal, { key, serialized, list: memo.list })
-    return memo.list
-  }
-  publicationMemos.set(journal, { key, serialized, list })
-  return list
 }
 
 /**

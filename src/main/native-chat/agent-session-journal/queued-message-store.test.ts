@@ -5,7 +5,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   AgentJournalMessageItem,
   AgentSessionJournalIdentity
@@ -17,6 +17,7 @@ import {
 import Database from '../../sqlite/sync-database'
 import { journalDatabaseFile } from './journal-paths'
 import {
+  JournalQueuedMessages,
   QUEUED_MESSAGE_REPLAY_WINDOW_MS,
   QueuedMessageNotConsumableError
 } from './journal-queued-messages'
@@ -381,6 +382,25 @@ describe('withdraw', () => {
 })
 
 describe('open-time repair and retention', () => {
+  it('a failed repair is reported and skipped, never failing the open', async () => {
+    const repair = vi
+      .spyOn(JournalQueuedMessages.prototype, 'repairAndPrune')
+      .mockRejectedValueOnce(new Error('SQLITE_FULL'))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    try {
+      const journal = await open()
+      expect(warn).toHaveBeenCalledWith(
+        '[journal-open] queued-message repair skipped:',
+        expect.objectContaining({ error: 'SQLITE_FULL' })
+      )
+      await queueDraft(journal, 'draft-1')
+      expect(journal.queuedMessages.list()).toHaveLength(1)
+    } finally {
+      repair.mockRestore()
+      warn.mockRestore()
+    }
+  })
+
   it('returns a dispatched row whose loaded submission is effectively rejected (downgrade wrote no hook)', async () => {
     let journal = await open()
     await queueDraft(journal, 'draft-1')

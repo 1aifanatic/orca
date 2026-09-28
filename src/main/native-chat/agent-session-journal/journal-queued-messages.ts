@@ -46,6 +46,7 @@ export type JournalQueuedMessagesDeps = {
 export class JournalQueuedMessages {
   /** Bumped on every draft-table write, so publication memos recompute only when they must. */
   private changeRevision = 0
+  private listed: { revision: number; rows: readonly QueuedMessageRow[] } | null = null
 
   constructor(private readonly deps: JournalQueuedMessagesDeps) {}
 
@@ -53,8 +54,16 @@ export class JournalQueuedMessages {
     return this.changeRevision
   }
 
-  list(): QueuedMessageRow[] {
-    return listQueuedMessages(this.deps.database().db, this.deps.sessionId)
+  /** Cached per revision: the drain re-checks on every journal publish, so an
+   *  unchanged table must cost no SQL read or body parse on token streams. */
+  list(): readonly QueuedMessageRow[] {
+    if (this.listed?.revision !== this.changeRevision) {
+      this.listed = {
+        revision: this.changeRevision,
+        rows: listQueuedMessages(this.deps.database().db, this.deps.sessionId)
+      }
+    }
+    return this.listed.rows
   }
 
   get(messageId: string): QueuedMessageRow | null {
@@ -173,6 +182,17 @@ export class JournalQueuedMessages {
       throw new QueuedMessageNotConsumableError(input.messageId, input.expect)
     }
     this.changeRevision++
+  }
+
+  /** Bookkeeping at open: a failure is reported and retried at the next open,
+   *  never allowed to fail opening the chat. */
+  repairAndPruneAtOpen(): Promise<void> {
+    return this.repairAndPrune().catch((error: unknown) => {
+      console.warn('[journal-open] queued-message repair skipped:', {
+        sessionId: this.deps.sessionId,
+        error: error instanceof Error ? error.message : String(error)
+      })
+    })
   }
 
   /**

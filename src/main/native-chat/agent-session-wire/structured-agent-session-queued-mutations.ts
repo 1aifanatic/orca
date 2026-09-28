@@ -18,6 +18,7 @@ import { QueuedMessageNotConsumableError } from '../agent-session-journal/journa
 import type { QueuedMessageRow } from '../agent-session-journal/queued-message-table'
 import { admitAndRunAgentSessionMutation } from './structured-agent-session-mutation-admission'
 import type { MutationPlan } from './structured-agent-session-mutation-plans'
+import { pendingPromptExists } from './structured-agent-session-queued-messages'
 import type { StructuredAgentSessionMutationContext } from './structured-agent-session-host-mutations'
 import type { StructuredAgentSessionCaller } from './structured-agent-session-host-types'
 import {
@@ -42,16 +43,6 @@ function submissionFor(
   clientMessageId: string
 ): AgentJournalSubmission | undefined {
   return ctx.journal.submissions().find((entry) => entry.clientMessageId === clientMessageId)
-}
-
-function pendingPromptBlocks(ctx: AgentSessionTurnContext): boolean {
-  return ctx.journal
-    .snapshot()
-    .items.some(
-      (item) =>
-        (item.body.kind === 'approval' || item.body.kind === 'question') &&
-        item.body.resolution.state === 'pending'
-    )
 }
 
 /** The one withdrawable-card predicate Stop and /clear share: definitively
@@ -82,6 +73,33 @@ export async function withdrawQueuedMessagesForOperation(
     releaseQueuedMessagePause(input.sessionId, row.messageId)
   }
   return rows.map((row) => ({ messageId: row.messageId, body: row.body }))
+}
+
+/** /clear's withdrawal of the superseded source's cards. Bookkeeping after the
+ *  committed clear: a failure leaves the cards for Delete (the supersession
+ *  fence already blocks the drain), and a source with no drafts answers
+ *  exactly as before — no write, no publish, no result field. */
+export async function withdrawClearedSourceQueuedMessages(
+  ctx: AgentSessionTurnContext,
+  input: { callerKey: string; operationId: string }
+): Promise<AgentSessionWithdrawnQueuedMessage[]> {
+  try {
+    const messageIds = withdrawableQueuedMessages(ctx.journal).map((row) => row.messageId)
+    if (messageIds.length === 0) {
+      return []
+    }
+    const withdrawn = await withdrawQueuedMessagesForOperation(ctx.journal, {
+      sessionId: ctx.sessionId,
+      messageIds,
+      ...input
+    })
+    if (withdrawn.length > 0) {
+      ctx.publish()
+    }
+    return withdrawn
+  } catch {
+    return []
+  }
 }
 
 /** Stop step (1): pause the withdrawable frontier at the serialized stop step —
@@ -232,7 +250,7 @@ export function sendQueuedStructuredAgentMessage(
           ? { ok: true, value: { clientMessageId: submission.clientMessageId, submission } }
           : invalid('This queued message was already sent.')
       }
-      if (pendingPromptBlocks(ctx)) {
+      if (pendingPromptExists(ctx.journal.snapshot().items)) {
         return invalid('Answer the pending request before sending this message.')
       }
       const submissionId = row.state === 'returned' ? operationId : row.messageId

@@ -176,7 +176,7 @@ export class AgentSessionJournal {
       await this.restore()
       // Behind the stored fact: returns drafts whose consumed submission the
       // loaded journal shows refused (a downgrade wrote no hook), then prunes.
-      await this.queuedMessages.repairAndPrune()
+      await this.queuedMessages.repairAndPruneAtOpen()
       this.openedThrough = this.cursor()
     } catch (error) {
       // Nothing else holds a reference to this connection, so a throw here is

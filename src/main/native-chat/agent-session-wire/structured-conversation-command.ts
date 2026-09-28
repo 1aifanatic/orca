@@ -22,8 +22,7 @@ import type { StructuredAgentSessionHost } from './structured-agent-session-host
 import { conversationCommandBlocked } from './structured-conversation-command-admission'
 import {
   replayWithdrawnQueuedMessages,
-  withdrawQueuedMessagesForOperation,
-  withdrawableQueuedMessages
+  withdrawClearedSourceQueuedMessages
 } from './structured-agent-session-queued-mutations'
 
 export type ConversationCommandParams = {
@@ -267,18 +266,15 @@ export function runStructuredConversationCommand(
           // superseded source's drafts: withdraw them — returned cards included —
           // and hand their text back for the composer. On failure the committed
           // supersession fence already blocks the drain; the cards keep Delete.
-          const withdrawnQueued = await withdrawQueuedMessagesForOperation(ctx.journal, {
-            sessionId,
-            messageIds: withdrawableQueuedMessages(ctx.journal).map((row) => row.messageId),
+          const withdrawnQueued = await withdrawClearedSourceQueuedMessages(ctx, {
             callerKey: caller.callerKey,
             operationId: clientOperationId
-          }).catch(() => undefined)
-          ctx.publish()
+          })
           return {
             ok: true,
             // Bodies ride the RESULT only; the ledger's recorded outcome stays
             // capped, and replays re-read the drafts' own tombstones.
-            value: withdrawnQueued !== undefined ? { ...completed, withdrawnQueued } : completed
+            value: withdrawnQueued.length > 0 ? { ...completed, withdrawnQueued } : completed
           }
         }
       }

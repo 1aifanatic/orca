@@ -55,17 +55,19 @@ export function queuedMessagePause(
   return pausedDrafts.get(pauseKey(sessionId, messageId))
 }
 
-/** Session deletion only — NOT handle close, which the pause must survive. */
-export function releaseQueuedMessagePausesForSession(sessionId: string): void {
-  const prefix = `${sessionId}${PAUSE_KEY_SEPARATOR}`
-  for (const key of pausedDrafts.keys()) {
-    if (key.startsWith(prefix)) {
-      pausedDrafts.delete(key)
-      pauseRevision++
-    }
-  }
-}
-
 export function queuedMessagePauseRevision(): number {
   return pauseRevision
+}
+
+/** Held from auto-sending: a pause in this process, or written by another host
+ *  instance (a restart) — derived at read time, never stored. */
+export function queuedMessageHeld(row: {
+  sessionId: string
+  messageId: string
+  hostInstance: string
+}): boolean {
+  return (
+    queuedMessagePause(row.sessionId, row.messageId) !== undefined ||
+    row.hostInstance !== hostInstance
+  )
 }
