@@ -39,6 +39,8 @@ export const AGENT_SESSION_FAILURE_KINDS = [
   'cancelUnconfirmed',
   'answerUnconfirmed',
   'hostFault',
+  /** Orca stopped an agent whose start never finished. */
+  'hostStopped',
   /** The provider is retrying a request its API refused; not a failure yet. */
   'providerRetrying'
 ] as const

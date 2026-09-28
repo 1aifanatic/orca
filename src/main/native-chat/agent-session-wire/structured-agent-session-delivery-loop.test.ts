@@ -31,11 +31,14 @@ describe('what a child end means for the messages queued behind it', () => {
     expect(structuredAgentSessionEndedChildFailure(ended('user-stop', starting))).toBeNull()
   })
 
-  it.each([false, true])("is Orca's fault after a host stop (during startup: %s)", (starting) => {
-    expect(structuredAgentSessionEndedChildFailure(ended('host-stop', starting))).toEqual({
-      hostFault: true
-    })
-  })
+  it.each([false, true])(
+    'is a start Orca stopped after a host stop (during startup: %s)',
+    (starting) => {
+      expect(structuredAgentSessionEndedChildFailure(ended('host-stop', starting))).toEqual({
+        failure: { kind: 'hostStopped' }
+      })
+    }
+  )
 
   it.each(['exit', 'attach-failed', 'evict'] as const)(
     'carries the recorded failure of a %s, as a failed start while starting',

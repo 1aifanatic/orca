@@ -196,6 +196,8 @@ const FAILURE_SENTENCES = {
   cancelUnconfirmed: () => 'Cancellation was not confirmed.',
   answerUnconfirmed: () => 'Your answer was recorded but the agent did not confirm it.',
   hostFault: () => "Orca ran into a problem, so this didn't go through. Try again.",
+  hostStopped: ({ agentName }) =>
+    `${agentName ?? 'The agent'} never finished starting, so Orca stopped it.`,
   providerRetrying: ({ agentName }, { retry }) =>
     retry?.error === 'rate_limit' || retry?.status === 429
       ? `${agentName ?? 'The agent'} is rate-limited and retrying.`

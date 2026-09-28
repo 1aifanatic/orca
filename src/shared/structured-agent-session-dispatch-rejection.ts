@@ -82,6 +82,7 @@ const KIND_CATEGORY = {
   chatClosed: 'undelivered',
   notDelivered: 'undelivered',
   providerExited: 'undelivered',
+  hostStopped: 'undelivered',
   providerStartFailed: 'startFailed',
   startFailed: 'startFailed',
   notSignedIn: 'startFailed',
@@ -120,7 +121,9 @@ const KIND_VERDICT = {
   emptyMessage: 'failure',
   queueFull: 'failure',
   writeFailed: 'failure',
-  hostFault: 'failure'
+  hostFault: 'failure',
+  // Orca stopped a start that hung: the agent failed.
+  hostStopped: 'failure'
 } satisfies Record<SubmissionRejectionKind, 'failure' | null>
 
 /** The legacy markers, by the kind each stands for. */
