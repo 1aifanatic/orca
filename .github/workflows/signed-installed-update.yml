@@ -1,0 +1,146 @@
+name: Isolated signed installed macOS update diagnostic
+on:
+  workflow_dispatch: {}
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: installed-mac-diagnostic-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  windows_watcher:
+    if: github.repository == 'stablyai/orca' && github.ref == 'refs/heads/OrcaWin/np-installed-mac-update-diagnostic'
+    uses: ./.github/workflows/windows-watcher-artifacts.yml
+  package:
+    needs: windows_watcher
+    environment: adhoc-mac-build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {label: A, source: 02e7f7ba71594fcecbb12c38df07c73fa661cf08, version: 1.4.214-local.1790614800000.02e7f7ba7159, arch: arm64, runner: macos-15}
+          - {label: B, source: 04d9099d8ca9acecafa020b812a682caf7d1dcc5, version: 1.4.214-local.1790614800001.04d9099d8ca9, arch: arm64, runner: macos-15}
+          - {label: A, source: 02e7f7ba71594fcecbb12c38df07c73fa661cf08, version: 1.4.214-local.1790614800000.02e7f7ba7159, arch: x64, runner: macos-15-intel}
+          - {label: B, source: 04d9099d8ca9acecafa020b812a682caf7d1dcc5, version: 1.4.214-local.1790614800001.04d9099d8ca9, arch: x64, runner: macos-15-intel}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    env:
+      ORCA_BACKGROUND_LAUNCH: '1'
+      NODE_OPTIONS: --max-old-space-size=4096
+      BASE_SHA: ${{ matrix.source }}
+      BUILD_VERSION: ${{ matrix.version }}
+      PACKAGE_ARCH: ${{ matrix.arch }}
+      ORCA_BUILD_COMMIT: ${{ matrix.source }}
+      ORCA_MAC_RELEASE: '1'
+      OVERLAY_SHA256: 48ef8a01affc1bac0dfb34f0f3cd29cdfd87abda60aeed9232f7ca7b94d49cb5
+    steps:
+      - uses: actions/checkout@v6
+        with: {ref: '${{ matrix.source }}', persist-credentials: false}
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          path: diagnostic
+          sparse-checkout: .build/integration-audit
+          persist-credentials: false
+      - uses: ./.github/actions/install-node-dependencies
+        with:
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            mobile/pnpm-lock.yaml
+      - uses: ./.github/actions/load-windows-watcher-artifacts
+      - run: pnpm install:release
+      - uses: ./.github/actions/install-mobile-dependencies
+      - name: Apply only reviewed diagnostic overlay and pre-sign version
+        shell: bash
+        run: |
+          set -euo pipefail
+          fixture=diagnostic/.build/integration-audit/mac-installed-update-qualification
+          python3 "$fixture/prepare-overlay.py" --source "$GITHUB_WORKSPACE" --ref "$BASE_SHA" --output "$RUNNER_TEMP/overlay"
+          python3 - <<'PY'
+          import hashlib,json,os,pathlib,subprocess
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])/'overlay'
+          assert subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()==os.environ['BASE_SHA']
+          assert hashlib.sha256((root/'diagnostic-overlay.patch').read_bytes()).hexdigest()==os.environ['OVERLAY_SHA256']
+          subprocess.run(['git','apply','--check',str(root/'diagnostic-overlay.patch')],check=True)
+          subprocess.run(['git','apply',str(root/'diagnostic-overlay.patch')],check=True)
+          p=pathlib.Path('package.json');data=json.loads(p.read_text());data['version']=os.environ['BUILD_VERSION'];p.write_text(json.dumps(data,indent=2)+'\n')
+          files=['package.json','src/main/index.ts','src/main/local-builds/local-build-switch.ts','src/main/local-builds/diagnostic-update-selection.ts']
+          (root/'expected-inputs.json').write_text(json.dumps({name:hashlib.sha256(pathlib.Path(name).read_bytes()).hexdigest() for name in files},sort_keys=True))
+          PY
+      - run: pnpm build:release
+      - name: Sign and notarize diagnostic builds without publishing
+        env:
+          ORCA_MAC_RELEASE: '1'
+          CSC_LINK: ${{ secrets.MAC_CERTS }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTS_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          node config/scripts/verify-macos-release-env.mjs
+          node config/scripts/ensure-native-runtime.mjs --runtime=electron
+          pnpm exec electron-builder --config config/electron-builder.config.cjs --mac zip --"$PACKAGE_ARCH" --publish never
+      - name: Validate and receipt signed artifacts and exact manifest
+        run: python3 diagnostic/.build/integration-audit/mac-installed-update-qualification/receipt-signed-package.py --dist dist --output "$RUNNER_TEMP/signed-input" --source "$BASE_SHA" --version "$BUILD_VERSION" --arch "$PACKAGE_ARCH" --overlay "$OVERLAY_SHA256" --expected-inputs "$RUNNER_TEMP/overlay/expected-inputs.json"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: installed-update-${{ matrix.label }}-${{ matrix.arch }}
+          path: ${{ runner.temp }}/signed-input/*
+          if-no-files-found: error
+          retention-days: 7
+  qualify:
+    needs: package
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {arch: arm64, runner: macos-15}
+          - {arch: x64, runner: macos-15-intel}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    env:
+      ORCA_BACKGROUND_LAUNCH: '1'
+      ORCA_ISOLATED_CI_USER: '1'
+      ARCH: ${{ matrix.arch }}
+      OVERLAY_SHA256: 48ef8a01affc1bac0dfb34f0f3cd29cdfd87abda60aeed9232f7ca7b94d49cb5
+    steps:
+      - uses: actions/checkout@v6
+        with: {ref: 04d9099d8ca9acecafa020b812a682caf7d1dcc5, persist-credentials: false}
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          path: diagnostic
+          sparse-checkout: .build/integration-audit
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with: {name: 'installed-update-A-${{ matrix.arch }}', path: '${{ runner.temp }}/input-A'}
+      - uses: actions/download-artifact@v8
+        with: {name: 'installed-update-B-${{ matrix.arch }}', path: '${{ runner.temp }}/input-B'}
+      - uses: ./.github/actions/install-node-dependencies
+        with: {native-runtime: none}
+      - name: Validate receipts and stage diagnostic components
+        run: |
+          set -euo pipefail
+          mkdir -p .build/integration-audit
+          cp -R diagnostic/.build/integration-audit/mac-installed-update-qualification .build/integration-audit/
+          cp -R diagnostic/.build/integration-audit/mac-app-transition-qualification .build/integration-audit/
+          python3 .build/integration-audit/mac-installed-update-qualification/verify-signed-inputs.py
+          node .build/integration-audit/mac-app-transition-qualification/prepare.mjs
+          node .build/integration-audit/mac-installed-update-qualification/prepare-updater-control.mjs
+      - name: Native installed update and downgrade through production updater
+        run: |
+          set -euo pipefail
+          fixture=.build/integration-audit/mac-installed-update-qualification
+          base=.build/integration-audit/mac-app-transition-qualification
+          node "$fixture/run-installed.mjs" --app-a="$RUNNER_TEMP/app-A/Orca.app" --app-b="$RUNNER_TEMP/app-B/Orca.app" --manifest-a="$RUNNER_TEMP/input-A/latest-mac.yml" --manifest-b="$RUNNER_TEMP/input-B/latest-mac.yml" --receipt="$RUNNER_TEMP/installed-update-receipt.json" --probe="$base/daemon-owner-probe.cjs" --cleanup="$base/daemon-cleanup.cjs" --folder-rpc="$base/folder-registration.cjs" --updater-control="$fixture/updater-control.cjs"
+      - name: Retain sanitized evidence only
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: installed-update-result-${{ matrix.arch }}-${{ github.run_id }}
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/installed-update-receipt.json
+            ${{ runner.temp }}/input-A/build-receipt.json
+            ${{ runner.temp }}/input-B/build-receipt.json
