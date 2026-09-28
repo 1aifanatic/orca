@@ -170,6 +170,13 @@ export class UpdaterSetup extends UpdaterDownloadInstall {
     this.autoUpdaterInitialized = true
 
     registerAutoUpdaterHandlers({
+      onNativeInstallEvent: (event, error) => {
+        if (event === 'ready') {
+          this.handleMacNativeInstallReady()
+        } else {
+          this.handleMacNativeInstallError(error)
+        }
+      },
       autoUpdater,
       clearBackgroundCheckLaunchPending: () => this.clearBackgroundCheckLaunchPending(),
       clearAvailableUpdateContext: () => this.clearAvailableUpdateContext(),
