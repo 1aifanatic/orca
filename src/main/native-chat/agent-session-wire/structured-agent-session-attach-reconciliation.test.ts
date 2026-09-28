@@ -67,10 +67,9 @@ function adapterWith(providerHistory?: () => Promise<ProviderHistorySource | nul
   dispatch: ReturnType<typeof vi.fn>
 } {
   const dispatch = vi.fn()
-  const adapter = {
-    dispatch,
-    ...(providerHistory ? { providerHistory } : {})
-  } as unknown as StructuredAgentSessionAdapter
+  const surface = { dispatch, ...(providerHistory ? { providerHistory } : {}) }
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: attachJournal reads only these members.
+  const adapter = surface as unknown as StructuredAgentSessionAdapter
   return { adapter, dispatch }
 }
 
