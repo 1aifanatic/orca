@@ -14,6 +14,7 @@ import type {
 import { startWorkspaceCleanupBackgroundRemoval } from './workspace-cleanup-background-removal'
 import type { WorkspaceCleanupDeletionPhase } from './workspace-cleanup-candidate-row'
 import { createWorkspaceCleanupSnapshotPruneBatch } from './workspace-cleanup-snapshot-prune-batch'
+import { prepareWorkspaceCleanupActiveWorkspaceFocus } from './workspace-cleanup-active-workspace-focus'
 
 type UnverifiedRemovalArgs = {
   setRowFailures: Dispatch<SetStateAction<Record<string, WorkspaceCleanupFailure>>>
@@ -49,6 +50,7 @@ export function useWorkspaceCleanupUnverifiedRemoval({
       setRowFailures((current) => withoutIdentity(current, identity))
       setDeletionPhaseByIdentity((current) => ({ ...current, [identity]: 'queued' }))
       markQueued([hostId ? { id: candidate.worktreeId, hostId } : candidate.worktreeId])
+      const commitActiveWorkspaceFocus = prepareWorkspaceCleanupActiveWorkspaceFocus([candidate])
       startWorkspaceCleanupBackgroundRemoval({
         candidates: [candidate],
         removeCandidates,
@@ -71,11 +73,13 @@ export function useWorkspaceCleanupUnverifiedRemoval({
         },
         onResult: (result) => {
           clearQueuedDeleteState(candidate.worktreeId, hostId ?? undefined)
+          commitActiveWorkspaceFocus()
           if (mountedRef.current) {
             applyResult(result, identity, setRowFailures, setDeletionPhaseByIdentity, onDeselect)
           }
         },
         onLateResult: (result) => {
+          commitActiveWorkspaceFocus()
           if (mountedRef.current) {
             setDeletionPhaseByIdentity((current) => withoutIdentity(current, identity))
             applyLateResult(result, setRowFailures, onDeselect)
@@ -83,6 +87,7 @@ export function useWorkspaceCleanupUnverifiedRemoval({
         },
         onError: () => {
           clearQueuedDeleteState(candidate.worktreeId, hostId ?? undefined)
+          commitActiveWorkspaceFocus()
           if (mountedRef.current) {
             setDeletionPhaseByIdentity((current) => withoutIdentity(current, identity))
           }

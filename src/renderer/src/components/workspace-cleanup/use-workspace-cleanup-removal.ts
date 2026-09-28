@@ -15,6 +15,7 @@ import {
 } from './workspace-cleanup-background-removal'
 import { filterWorkspaceCleanupRemovalCandidates } from './workspace-cleanup-removal-candidates'
 import { createWorkspaceCleanupSnapshotPruneBatch } from './workspace-cleanup-snapshot-prune-batch'
+import { prepareWorkspaceCleanupActiveWorkspaceFocus } from './workspace-cleanup-active-workspace-focus'
 import { useWorkspaceCleanupUnverifiedRemoval } from './use-workspace-cleanup-unverified-removal'
 
 export type WorkspaceCleanupRemovalController = {
@@ -170,6 +171,8 @@ export function useWorkspaceCleanupRemoval({
       Object.fromEntries(removableIdentities.map((identity) => [identity, 'queued' as const]))
     )
     markWorktreesQueuedForDeletion(removableDeleteStateTargets)
+    const commitActiveWorkspaceFocus =
+      prepareWorkspaceCleanupActiveWorkspaceFocus(removableCandidates)
     const handleRemovalError = (): void => {
       for (const target of removableDeleteStateTargets) {
         if (typeof target === 'string') {
@@ -178,6 +181,7 @@ export function useWorkspaceCleanupRemoval({
           clearWorktreeDeleteState(target.id, target.hostId)
         }
       }
+      commitActiveWorkspaceFocus()
       if (mountedRef.current) {
         settle()
       }
@@ -216,6 +220,8 @@ export function useWorkspaceCleanupRemoval({
             // Why: defensively covers failures that never reached onRowFailed.
             clearQueuedDeleteState(failure.worktreeId, failure.executionHostId)
           }
+          // After the queued marks clear, so a row that failed to delete can take focus.
+          commitActiveWorkspaceFocus()
           if (mountedRef.current) {
             setRowFailures(nextFailures)
             onDeselect(result.removedIdentities)
@@ -229,6 +235,7 @@ export function useWorkspaceCleanupRemoval({
             // reached 'deleting'; clear its queued overlay like every other path.
             clearQueuedDeleteState(failure.worktreeId, failure.executionHostId)
           }
+          commitActiveWorkspaceFocus()
           if (!mountedRef.current || removalBatchIdRef.current !== removalBatchId) {
             return
           }
