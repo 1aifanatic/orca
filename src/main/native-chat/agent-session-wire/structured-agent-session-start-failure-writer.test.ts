@@ -1,7 +1,9 @@
 // A start a queued message waited on can be seen failing twice: by the delivery loop, when the
 // adapter settles the start without proving it or cannot take the message it was handed, and by
-// the exit settlement, when the child's exit lands. The chat gets one row for that start, the
-// loop's, in the words the message was rejected with — whichever of the two reports first.
+// the exit settlement, when the child's exit lands. Both key the start by the child's generation, so
+// the chat gets one row for it, in the words every message it was for was rejected with. The exit
+// writes it only when it rejected a message handed to the child and no row is there yet; else the
+// loop does.
 
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'

@@ -474,25 +474,6 @@ describe('dead structured-session generation settlement', () => {
       )
     })
 
-    // With no generation the loop keys the start by its oldest queued message, not the exit's id,
-    // so the exit leaves the row to it rather than write a second one.
-    it('leaves the row to the delivery loop when the exit has no generation to key it by', async () => {
-      await handedOverAndQueued()
-
-      await settleStructuredAgentSessionDeadGeneration({
-        journal,
-        sessionId: SESSION,
-        fence: 7,
-        settlementId: `provider-exit:${SESSION}:7:null`,
-        pendingSubmissionReason: 'provider_closed_before_acknowledgement',
-        verdict: { state: 'interrupted', completedAt: 1_000 },
-        exitFailure: agentSessionFailureFact('notSignedIn'),
-        exitedDuringStartup: { generation: null }
-      })
-
-      expect(startRows()).toEqual([])
-    })
-
     // Its messages were never handed to this child, so the start is the loop's to report.
     it('leaves the row to the delivery loop when the exit rejected nothing it was handed', async () => {
       await journal.appendSubmission({

@@ -119,7 +119,7 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
   failureTextContext?: AgentSessionFailureWordsContext
   /** The provider never finished starting: the start that failed, keyed by the child's
    *  generation, as the delivery loop keys the same start's one row. */
-  exitedDuringStartup?: { generation: string | null }
+  exitedDuringStartup?: { generation: string }
   onError?: (sessionId: string, error: unknown) => void
 }): Promise<boolean> {
   try {
@@ -132,9 +132,7 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
     // child that never proved its start accepted nothing either — input is written only after it
     // initializes — so every send it was handed is rejected with the child's own diagnostic. A
     // proven child's handed-over sends stay in doubt.
-    const startKey = input.exitedDuringStartup
-      ? (input.exitedDuringStartup.generation ?? input.settlementId)
-      : null
+    const startKey = input.exitedDuringStartup?.generation ?? null
     const startupFailure =
       startKey === null
         ? null
@@ -154,14 +152,12 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
     if (showUnexpectedExitOutcome && startKey !== null && startupFailure) {
       // A row already written stays: rejected is terminal, so its words are not reworded. A start
       // that rejected what it was handed writes its row now, beside those messages; the delivery
-      // loop's later report of it rejects what is queued in the row's words. Only a generation
-      // keys both alike: without one the loop keys by the oldest queued message, so the row for a
-      // start messages still wait on is the loop's. With nothing queued, this is a command, goal or
-      // rewind start, and the row is this settlement's.
+      // loop keys the same start by the same generation, so its later report rejects what is queued
+      // in the row's words. A start that was handed nothing leaves the row to the loop's report.
+      // With nothing queued, this is a command, goal or rewind start, and the row is this
+      // settlement's.
       const queued = input.journal.submissions?.().some(isQueuedAgentJournalSubmission)
-      const keyedLikeDeliveryLoop =
-        rejected.length > 0 && input.exitedDuringStartup?.generation != null
-      if (!startupFailure.written && (!queued || keyedLikeDeliveryLoop)) {
+      if (!startupFailure.written && (!queued || rejected.length > 0)) {
         mutations.push(structuredAgentSessionStartFailureRow(startKey, startupFailure.words))
       }
     } else if (showUnexpectedExitOutcome) {
