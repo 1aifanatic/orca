@@ -125,20 +125,20 @@ function renderComposer(structuredTransport: NativeChatStructuredComposerTranspo
   )
 }
 
-describe('structured send racing the next IME composition', () => {
-  beforeEach(() => {
-    Object.defineProperty(window, 'api', {
-      configurable: true,
-      value: {
-        git: { discoverCommitMessageModels: vi.fn().mockResolvedValue({ success: false }) },
-        pty: { getMainBufferSnapshot: vi.fn().mockResolvedValue(null) },
-        ui: { onFileDrop: () => vi.fn() }
-      }
-    })
+beforeEach(() => {
+  Object.defineProperty(window, 'api', {
+    configurable: true,
+    value: {
+      git: { discoverCommitMessageModels: vi.fn().mockResolvedValue({ success: false }) },
+      pty: { getMainBufferSnapshot: vi.fn().mockResolvedValue(null) },
+      ui: { onFileDrop: () => vi.fn() }
+    }
   })
+})
 
-  afterEach(() => cleanup())
+afterEach(() => cleanup())
 
+describe('structured send racing the next IME composition', () => {
   // The regression: the RPC's clear lands while the NEXT composition is live, so the DOM sync
   // drops it and settlement used to adopt the sent text back into the composer (#17359).
   it('does not resurrect the sent message when the clear lands mid-composition', async () => {
@@ -243,8 +243,6 @@ describe('structured send racing the next IME composition', () => {
 })
 
 describe('a withdrawn message put back during an IME composition', () => {
-  afterEach(() => cleanup())
-
   // The field ignores a programmatic draft while the IME owns it, and the next composed keystroke
   // wrote the draft without the text, after its outbox entry had already been dropped.
   it('shows the text once the composition settles, after what was composed', () => {
