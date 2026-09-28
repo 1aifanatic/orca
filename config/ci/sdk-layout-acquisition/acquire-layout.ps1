@@ -17,7 +17,7 @@ if ($LASTEXITCODE -ne 0 -or !(Test-Path $mount)) { throw 'Bounded scratch volume
 @{vhd=$vhd;mount=$mount} | ConvertTo-Json | Set-Content (Join-Path $ReceiptRoot 'mount.json')
 $layout = Join-Path $mount 'layout'
 $temp = Join-Path $mount 'temp'
-New-Item -ItemType Directory -Path $temp | Out-Null
+New-Item -ItemType Directory -Path $temp,$layout | Out-Null
 $env:TEMP = $temp
 $env:TMP = $temp
 $components = @('Microsoft.VisualStudio.Component.Windows11SDK.26100','Microsoft.VisualStudio.Component.VC.14.44.17.14.x86.x64','Microsoft.VisualStudio.Component.VC.14.44.17.14.ARM64','Microsoft.VisualStudio.Component.VC.14.44.17.14.ATL','Microsoft.VisualStudio.Component.VC.14.44.17.14.ATL.ARM64')
@@ -36,14 +36,14 @@ $started = [DateTime]::UtcNow
 try {
   $process = Start-Process -FilePath $bootstrapper -ArgumentList $arguments -PassThru -WindowStyle Hidden
   while (!$process.WaitForExit(2000)) {
-    $files = @(Get-ChildItem -LiteralPath $mount -File -Recurse -Force -ErrorAction Stop)
+    $files = @(Get-ChildItem -LiteralPath $temp,$layout -File -Recurse -Force -ErrorAction Stop)
     $bytes = [long]($files | Measure-Object Length -Sum).Sum
     $externalGrowth = [Math]::Max(0, (Get-CacheBytes) - $initialCacheBytes)
     if (($bytes + $externalGrowth) -gt 4GB -or $files.Count -gt 1000 -or ([DateTime]::UtcNow - $started).TotalMinutes -gt 45) { throw 'Layout acquisition budget exceeded' }
   }
   $process.Refresh()
   if ($process.ExitCode -ne 0) { throw "Layout acquisition failed: $($process.ExitCode)" }
-  $files = @(Get-ChildItem -LiteralPath $mount -File -Recurse -Force)
+  $files = @(Get-ChildItem -LiteralPath $temp,$layout -File -Recurse -Force)
   if ($files.Count -gt 1000 -or (([long]($files | Measure-Object Length -Sum).Sum) + [Math]::Max(0, (Get-CacheBytes)-$initialCacheBytes)) -gt 4GB) { throw 'Final layout budget exceeded' }
   $catalog = Join-Path $layout 'Catalog.json'
   if (!(Test-Path $catalog)) { throw 'Supported layout omitted Catalog.json' }
