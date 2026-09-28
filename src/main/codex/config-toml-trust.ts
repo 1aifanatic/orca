@@ -144,11 +144,19 @@ export function addProjectTrustLevelInContent(
   return addProjectTrustContent(existingContent, projectPath, trustLevel, options)
 }
 
+/** The first answer among `projectPaths`, in the order Codex consults them. */
 export function readProjectTrustDecision(
   configPath: string,
-  projectPath: string
+  projectPaths: readonly string[]
 ): CodexProjectTrustDecision | null {
-  return readProjectTrustDecisionFromContent(readTomlForMutation(configPath), projectPath)
+  const content = readTomlForMutation(configPath)
+  for (const projectPath of projectPaths) {
+    const decision = readProjectTrustDecisionFromContent(content, projectPath)
+    if (decision !== null) {
+      return decision
+    }
+  }
+  return null
 }
 
 export function escapeTomlString(value: string): string {

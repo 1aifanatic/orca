@@ -442,6 +442,53 @@ describe('markCodexProjectTrusted keeps the answer the user already gave', () =>
     expect(existsSync(runtimeConfigPath())).toBe(false)
   })
 
+  // Why: Codex reads the cwd first, so a cwd entry Orca adds would outrank the root's answer.
+  it('keeps an untrusted repository root for a folder workspace opened on a subdirectory', async () => {
+    const repository = join(workspace, 'repo')
+    const subdirectory = join(repository, 'packages', 'app')
+    mkdirSync(join(repository, '.git'), { recursive: true })
+    writeFileSync(join(repository, '.git', 'HEAD'), 'ref: refs/heads/main\n', 'utf-8')
+    mkdirSync(subdirectory, { recursive: true })
+    const original = [projectHeader(repository), 'trust_level = "untrusted"', ''].join('\n')
+    seedSystemConfig(original)
+
+    await markCodexProjectTrusted(subdirectory)
+
+    expect(readFileSync(systemConfigPath(), 'utf-8')).toBe(original)
+    expect(existsSync(runtimeConfigPath())).toBe(false)
+  })
+
+  it('keeps an explicit untrusted answer on a linked worktree’s own path', async () => {
+    const repository = join(workspace, 'repo')
+    const worktree = join(workspace, 'worktrees', 'feature')
+    const worktreeGitDir = join(repository, '.git', 'worktrees', 'feature')
+    mkdirSync(worktreeGitDir, { recursive: true })
+    mkdirSync(worktree, { recursive: true })
+    writeFileSync(join(worktree, '.git'), `gitdir: ${worktreeGitDir}\n`, 'utf-8')
+    writeFileSync(join(worktreeGitDir, 'gitdir'), join(worktree, '.git'), 'utf-8')
+    const original = [projectHeader(worktree), 'trust_level = "untrusted"', ''].join('\n')
+    seedSystemConfig(original)
+
+    await markCodexProjectTrusted(worktree)
+
+    expect(readFileSync(systemConfigPath(), 'utf-8')).toBe(original)
+    expect(existsSync(runtimeConfigPath())).toBe(false)
+  })
+
+  it('trusts only the subdirectory when its repository has no answer', async () => {
+    const repository = join(workspace, 'repo')
+    const subdirectory = join(repository, 'packages', 'app')
+    mkdirSync(join(repository, '.git'), { recursive: true })
+    writeFileSync(join(repository, '.git', 'HEAD'), 'ref: refs/heads/main\n', 'utf-8')
+    mkdirSync(subdirectory, { recursive: true })
+
+    await markCodexProjectTrusted(subdirectory)
+
+    const written = readFileSync(systemConfigPath(), 'utf-8')
+    expect(written).toBe(`${projectHeader(subdirectory)}\ntrust_level = "trusted"\n`)
+    expect(readFileSync(runtimeConfigPath(), 'utf-8')).toBe(written)
+  })
+
   it('keeps an explicit untrusted answer on a folder workspace', async () => {
     const folder = join(workspace, 'notes')
     mkdirSync(folder)
