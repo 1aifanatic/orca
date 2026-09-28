@@ -52,4 +52,35 @@ describe('committed agent hooks at terminal intake', () => {
 
     expect(order[0]).toBe('drain')
   })
+
+  it('applies a committed Stop before the shell output that follows the agent exiting', () => {
+    // The Stop's listener drives a synthetic "done" title into this same pane, as the real
+    // main-window listener does for agents with a synthetic title. Applied at intake, that lands
+    // before the shell's title and finished-command marker, so the agent exit is still recognised.
+    let runtime!: InstanceType<typeof OrcaRuntimeService>
+    let pendingStop = false
+    const facts: string[] = []
+    runtime = new OrcaRuntimeService(store, undefined, {
+      drainCommittedAgentHooks: () => {
+        if (pendingStop) {
+          pendingStop = false
+          runtime.ingestSyntheticTitleFrame('pty-1', '\x1b]0;Codex ready\x07')
+        }
+      },
+      onTerminalSideEffects: (batch: { facts: { kind: string }[] }) =>
+        facts.push(...batch.facts.map((fact) => fact.kind))
+    })
+    syncSinglePty(runtime)
+    runtime.onPtyData('pty-1', '\x1b]0;Codex working\x07', 50)
+    facts.length = 0
+
+    pendingStop = true
+    runtime.onPtyData('pty-1', '\x1b]0;~/repo\x07\x1b]133;D;0\x07$ ', 100)
+
+    expect(facts).toContain('agent-exited')
+    expect(facts).toContain('command-finished')
+    expect(runtime.getTerminalSideEffectSnapshot('pty-1')?.facts[0]).toMatchObject({
+      normalizedTitle: '~/repo'
+    })
+  })
 })
