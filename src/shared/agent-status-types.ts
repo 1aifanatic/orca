@@ -6,7 +6,6 @@ import type { AgentProviderSessionMetadata } from './agent-session-resume'
 import type { AgentMainAgentStatus } from './main-agent-status'
 import type { AgentStateHistoryEntry } from './agent-state-history'
 import { isAgentJournalTurnOutcome } from './agent-turn-outcome'
-import { normalizeAgentSessionRunner, type AgentSessionRunner } from './agent-session-runner'
 import type { OrchestrationFleetAttention } from './orchestration-fleet-attention'
 import type { AgentStatusRowFacets } from './agent-status-observation'
 import type { TuiAgent } from './tui-agent'
@@ -134,9 +133,6 @@ export type AgentStatusEntry = {
   interrupted?: boolean
   /** True when this `done` is a session boundary, not a completed turn. See AgentStatusPayload. */
   sessionBoundary?: boolean
-  /** Where the session runs when that is not the CLI in this pane; absent: the CLI itself, or
-   *  unknown. See AgentSessionRunner. */
-  sessionRunner?: AgentSessionRunner
   /** Orchestration dispatch context for panes spawned by another agent.
    *  Why: parent/child hierarchy is pane-level state, not worktree lineage — workers often share the coordinator's worktree. */
   orchestration?: AgentStatusOrchestrationContext
@@ -184,8 +180,6 @@ export type AgentStatusPayload = {
    *  completions (notifications, automation runs, unread badges, finished timestamps)
    *  must ignore it. Only meaningful on `done`. */
   sessionBoundary?: boolean
-  /** See the AgentStatusEntry field. */
-  sessionRunner?: AgentSessionRunner
   /** Wall-clock ms when the lead turn ended while Claude background inventory kept the pane `working`.
    *  `stateStartedAt` stays pinned for that whole working run, so this is the per-turn identity.
    *  Present on the gated `working` row and that turn's later all-clear `done`. Event-only — not stored on AgentStatusEntry. */
@@ -231,7 +225,6 @@ export function pickParsedAgentStatusPayload(
       : {}),
     ...(row.interrupted !== undefined ? { interrupted: row.interrupted } : {}),
     ...(row.sessionBoundary !== undefined ? { sessionBoundary: row.sessionBoundary } : {}),
-    ...(row.sessionRunner !== undefined ? { sessionRunner: row.sessionRunner } : {}),
     ...(row.turnCompletedAt !== undefined ? { turnCompletedAt: row.turnCompletedAt } : {}),
     ...(row.subagents !== undefined ? { subagents: row.subagents } : {}),
     ...(row.mainAgent !== undefined ? { mainAgent: row.mainAgent } : {})
@@ -426,7 +419,6 @@ function normalizeAgentStatusObject(parsed: unknown): ParsedAgentStatusPayload |
     // Why: only meaningful on `done`; coerce to undefined elsewhere so it can't leak stale truth across transitions.
     interrupted: obj.interrupted === true && state === 'done' ? true : undefined,
     sessionBoundary: obj.sessionBoundary === true && state === 'done' ? true : undefined,
-    ...normalizeAgentSessionRunner(obj.sessionRunner, state),
     turnCompletedAt: normalizeTurnCompletedAtField(obj.turnCompletedAt, state),
     subagents: normalizeSubagentsField(obj.subagents),
     mainAgent: normalizeMainAgentStatusField(obj.mainAgent)

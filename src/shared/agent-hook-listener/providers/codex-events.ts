@@ -29,7 +29,6 @@ import {
   codexMainAgentStatusForPayload,
   codexRolloutOpenTurnId,
   codexRolloutTurnEnd,
-  codexSessionRunner,
   getOrCreateCodexSubagentRoster,
   getOrCreateCodexSubagentTranscriptState,
   resolveCodexPaneStatus,
@@ -65,7 +64,6 @@ export function buildCodexStatusPayload(
     lastAssistantMessage: snapshot.lastAssistantMessage,
     lastAssistantMessageIsToolOutput: snapshot.lastAssistantMessageIsToolOutput,
     interrupted: mainAgentTurnInterrupted(lead),
-    sessionRunner: codexSessionRunner(state, paneKey, options.stateName),
     subagents: codexRosterToSnapshots(state.codexSubagentRosterByPaneKey.get(paneKey)),
     mainAgent: codexMainAgentStatusForPayload(lead)
   })

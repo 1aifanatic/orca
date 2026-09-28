@@ -1,10 +1,4 @@
-import type {
-  AgentMainAgentStatus,
-  AgentStatusState,
-  ParsedAgentStatusPayload
-} from '../../agent-status-types'
-import type { AgentSessionRunner } from '../../agent-session-runner'
-import { codexBackgroundServerRunning } from '../../codex-background-server'
+import type { AgentMainAgentStatus, ParsedAgentStatusPayload } from '../../agent-status-types'
 import {
   continueMainAgentStatus,
   foldAgentLeadStatus,
@@ -122,20 +116,6 @@ export function resolveCodexPaneStatus(
     leadState: record.state,
     childWorkLiveness: codexRosterChildWorkLiveness(state.codexSubagentRosterByPaneKey.get(paneKey))
   })
-}
-
-/** Where a Codex row that shows work has its session run: Codex's shared background server while
- *  the one for the pane's Codex home is running (a TUI started then connects to it), else the TUI
- *  itself. Only work in that server outlives the TUI. */
-export function codexSessionRunner(
-  state: HookListenerState,
-  paneKey: string,
-  rowState: AgentStatusState
-): AgentSessionRunner | undefined {
-  const rolloutPath = state.codexSubagentTranscriptByPaneKey.get(paneKey)?.parent.filePath
-  return rowState !== 'done' && rolloutPath && codexBackgroundServerRunning(rolloutPath)
-    ? 'background-server'
-    : undefined
 }
 
 /** The `mainAgent` fact a Codex row publishes, straight from the root record. */

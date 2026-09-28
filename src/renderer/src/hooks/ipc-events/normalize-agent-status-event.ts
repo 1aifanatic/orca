@@ -21,7 +21,6 @@ export function normalizeAgentStatusEvent(
     lastAssistantMessageIsToolOutput: data.lastAssistantMessageIsToolOutput,
     interrupted: data.interrupted,
     sessionBoundary: data.sessionBoundary,
-    sessionRunner: data.sessionRunner,
     turnCompletedAt: data.turnCompletedAt,
     subagents: data.subagents,
     mainAgent: data.mainAgent
