@@ -44,9 +44,9 @@ describe('structured agent session message projection', () => {
   })
 
   it.each([
-    ['in doubt after a restart', { dispatchState: 'unknown' as const, recovered: true as const }],
+    ['left in doubt by a restart', { dispatchState: 'unknown' as const, recovered: true as const }],
     [
-      "an older host's not-delivered verdict",
+      "rejected by an older host's not-delivered verdict",
       { dispatchState: 'rejected' as const, reason: 'not_delivered' }
     ]
   ])('draws a send %s as an ordinary sent message, with no outbox entry left', (_label, state) => {
