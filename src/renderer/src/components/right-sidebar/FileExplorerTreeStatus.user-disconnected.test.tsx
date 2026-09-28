@@ -19,6 +19,17 @@ vi.mock('@/lib/worktree-host-connection-phase', () => ({
 
 import { FileExplorerTreeStatus } from './FileExplorerTreeStatus'
 
+function hostConnecting() {
+  mocks.host.connection = {
+    phase: 'connecting',
+    targetId: 'ssh-a',
+    environmentId: null,
+    publishedStatus: 'connecting',
+    connectedEpoch: null,
+    unavailableReason: null
+  }
+}
+
 function hostDown(unavailableReason: WorktreeHostConnection['unavailableReason']) {
   mocks.host.connection = {
     phase: 'unavailable',
@@ -62,6 +73,14 @@ describe('FileExplorerTreeStatus on an SSH host that is down', () => {
 
     expect(mocks.connect).toHaveBeenCalledWith({ targetId: 'ssh-a' })
     expect(mocks.ensureConnected).not.toHaveBeenCalled()
+  })
+
+  it('does not bring the read error back while the Connect is under way', () => {
+    hostConnecting()
+    renderStatus()
+
+    expect(screen.queryByText(READ_ERROR, { exact: false })).toBeNull()
+    expect(screen.queryByText('You disconnected devbox')).toBeNull()
   })
 
   it('keeps the read error for a host that dropped on its own', () => {

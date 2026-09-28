@@ -21,8 +21,11 @@ export function FileExplorerTreeStatus({
   isEmpty,
   emptyMessage
 }: FileExplorerTreeStatusProps): React.JSX.Element | null {
-  const userDisconnectedHost = useUserDisconnectedHostConnect(useWorktreeHostConnection(worktreeId))
-  if (isLoading) {
+  const host = useWorktreeHostConnection(worktreeId)
+  const userDisconnectedHost = useUserDisconnectedHostConnect(host)
+  // Why a connecting host shows as loading: its read error belongs to the connection it is
+  // replacing, and the tree reloads once it connects.
+  if (isLoading || (error && host.phase === 'connecting')) {
     return (
       <div className="flex h-full items-center justify-center text-[11px] text-muted-foreground">
         <Loader2 className="size-4 animate-spin" />
