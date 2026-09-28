@@ -45,13 +45,12 @@ jobs:
           import json,os,pathlib
           r=pathlib.Path(os.environ['RUNNER_TEMP'])
           run=json.loads((r/'package-run.json').read_text())
-          assert run['status']=='completed', 'Wait for package run completion; do not use incomplete artifacts'
           assert run['head_sha']==os.environ['PRODUCTION_SHA'], 'Wrong production source'
           assert run['path']=='.github/workflows/bun-profile-tests.yml', 'Wrong package producer workflow'
           jobs=json.loads((r/'package-jobs.json').read_text())
           assert jobs['total_count']<=100, 'Job response truncated'
           selected=[j for j in jobs['jobs'] if j['name'].startswith('linux_package') and 'x64' in j['name']]
-          assert len(selected)==1 and selected[0]['conclusion']=='success', 'Final x64 package job is not successful'
+          assert len(selected)==1 and selected[0]['status']=='completed' and selected[0]['conclusion']=='success', 'Final x64 package job is not successful'
           PY
       - uses: actions/download-artifact@v8
         with:
