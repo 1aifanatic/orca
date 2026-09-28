@@ -167,11 +167,9 @@ const FAILURE_SENTENCES = {
   providerStartFailed: (context) =>
     `${context.agentName ?? 'The agent'} stopped before it finished starting.${startRetry(context)}`,
   startFailed: couldNot('start'),
+  // Beside a Retry the resend is the button, but signing in is still a step to take first.
   notSignedIn: (context) =>
-    // "Not signed in" already says what to do; beside a Retry the resend step is the button.
-    context.retryControl
-      ? `${context.agentName ?? 'The agent'} is not signed in for the selected account.`
-      : `${context.agentName ?? 'The agent'} is not signed in for the selected account. Sign in, then ${retryStep(context)}.`,
+    `${context.agentName ?? 'The agent'} is not signed in for the selected account. ${context.retryControl ? 'Sign in first.' : `Sign in, then ${retryStep(context)}.`}`,
   historyTooLarge: () =>
     `This conversation's history is too large to restore here. ${START_NEW_CHAT}`,
   managedAccountEnvOverride: () =>

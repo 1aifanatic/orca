@@ -565,7 +565,7 @@ describe('agentSessionRefusalCauseParts', () => {
         },
         { agentName: 'Claude' }
       )
-    ).toEqual([{ text: 'Claude is not signed in for the selected account.' }])
+    ).toEqual([{ text: 'Claude is not signed in for the selected account. Sign in first.' }])
     expect(
       agentSessionRefusalCauseParts({
         kind: 'refused',
