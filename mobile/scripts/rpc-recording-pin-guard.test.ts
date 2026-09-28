@@ -161,6 +161,40 @@ describe('recording pin reachability', () => {
     await git(clone, 'cat-file', '-e', `${branchPin}^{commit}`)
   })
 
+  it('passes a branch opened after that squash, judged against its merge preview', async () => {
+    const { remote, branchPin } = await squashMergedPin('two')
+    const clone = await cloneMain(remote)
+    await git(clone, 'switch', '--quiet', '--create', 'later-branch')
+    await commitAt(clone, 'mobile/src/later.ts', 'later branch change')
+    await git(clone, 'switch', '--quiet', '--detach', 'main')
+    await commit(clone, 'main moved on')
+    await git(clone, 'merge', '--quiet', '--no-ff', '--no-edit', 'later-branch')
+    expect(await checkPinReachable(clone, branchPin, 'HEAD')).toMatchObject({
+      ok: true,
+      pullRequest: 7
+    })
+  })
+
+  it('fails the merge preview of a branch whose rebase dropped the commit it pinned', async () => {
+    const { remote } = await squashMergedPin('two')
+    const clone = await cloneMain(remote)
+    await git(clone, 'switch', '--quiet', '--create', 'rebased')
+    const droppedPin = await commit(clone, 'three')
+    await commitAt(clone, PIN_MANIFEST, pinManifest(droppedPin))
+    // A `(#n)` subject off the first-parent chain must not be read as the landing pull request.
+    await git(clone, 'commit', '--quiet', '--amend', '--no-verify', '--message', 'pin (#7)')
+    await git(clone, 'switch', '--quiet', 'main')
+    await commitAt(clone, 'mobile/src/moved.ts', 'main moved on')
+    // The rebase rewrites both commits; the manifest still names the one that is gone.
+    await git(clone, 'rebase', '--quiet', 'main', 'rebased')
+    await git(clone, 'switch', '--quiet', '--detach', 'main')
+    await git(clone, 'merge', '--quiet', '--no-ff', '--no-edit', 'rebased')
+    // Caught on the pull request: after the squash its head would not hold the pin either.
+    const verdict = await checkPinReachable(clone, droppedPin, 'HEAD')
+    expect(verdict).toMatchObject({ ok: false, failure: 'not-an-ancestor' })
+    expect(verdict.ok ? '' : verdict.message).toContain('names no pull request')
+  })
+
   it("fails when the pull request's head no longer holds the pin", async () => {
     const { remote, branchPin, work } = await squashMergedPin('two')
     // A force-push after pinning: the pin is left in no ref the host keeps.

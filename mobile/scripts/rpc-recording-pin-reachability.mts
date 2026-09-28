@@ -6,14 +6,21 @@ import { runProcess } from '../../src/shared/child-process/run-process.ts'
 
 export const PIN_MANIFEST = 'mobile/rpc-foundation/pilot-scenarios.json'
 const PIN_REMOTE = 'origin'
+// A blobless clone fetches the manifest's blobs one commit at a time, a few seconds each, so the
+// 30 s process default kills the walk after a handful of commits that touched the manifest.
+const PIN_LOOKUP_TIMEOUT_MS = 600_000
+const PIN_FETCH_TIMEOUT_MS = 180_000
 
 export type PinReachabilityFailure = 'shallow' | 'unreachable' | 'not-an-ancestor'
 export type PinReachabilityVerdict =
   | { ok: true; baseline: string; ref: string; pullRequest: number | null }
   | { ok: false; baseline: string; ref: string; failure: PinReachabilityFailure; message: string }
 
-async function git(cwd: string, args: readonly string[]) {
-  return await runProcess({ program: 'git', args: [...args], cwd })
+async function git(cwd: string, args: readonly string[], timeoutMs?: number) {
+  return await runProcess({ program: 'git', args: [...args], cwd, timeoutMs })
+}
+function failureDetail(result: { stderr: string; timedOut: boolean }, timeoutMs: number): string {
+  return result.timedOut ? `timed out after ${timeoutMs / 1000}s` : result.stderr.trim()
 }
 export function repinInstruction(baseline: string, ref: string, cause: string): string {
   return [
@@ -58,18 +65,24 @@ async function isAncestor(root: string, commit: string, of: string): Promise<boo
  * First-parent, so a merge preview resolves through the base branch the squash will land on.
  */
 async function landingPullRequest(root: string, baseline: string, ref: string) {
-  const landed = await git(root, [
-    'log',
-    '--first-parent',
-    '--max-count=1',
-    '--format=%s',
-    `-S${baseline}`,
-    ref,
-    '--',
-    PIN_MANIFEST
-  ])
+  const landed = await git(
+    root,
+    [
+      'log',
+      '--first-parent',
+      '--max-count=1',
+      '--format=%s',
+      `-S${baseline}`,
+      ref,
+      '--',
+      PIN_MANIFEST
+    ],
+    PIN_LOOKUP_TIMEOUT_MS
+  )
   if (landed.code !== 0) {
-    throw new Error(`Could not find the commit that pinned ${baseline}: ${landed.stderr.trim()}`)
+    throw new Error(
+      `Could not find the commit that pinned ${baseline}: ${failureDetail(landed, PIN_LOOKUP_TIMEOUT_MS)}`
+    )
   }
   const number = /\(#(\d+)\)\s*$/.exec(landed.stdout.trim())?.[1]
   return number ? Number(number) : null
@@ -78,17 +91,15 @@ async function landingPullRequest(root: string, baseline: string, ref: string) {
 /** Fetches a pull request's head into a ref of our own, so no other fetch can move it under us. */
 async function fetchPullRequestHead(root: string, pullRequest: number): Promise<string> {
   const local = `refs/rpc-recording-pin/pull/${pullRequest}`
-  const fetched = await git(root, [
-    'fetch',
-    '--quiet',
-    '--no-tags',
-    PIN_REMOTE,
-    `+refs/pull/${pullRequest}/head:${local}`
-  ])
+  const fetched = await git(
+    root,
+    ['fetch', '--quiet', '--no-tags', PIN_REMOTE, `+refs/pull/${pullRequest}/head:${local}`],
+    PIN_FETCH_TIMEOUT_MS
+  )
   if (fetched.code !== 0) {
     throw new Error(
-      `Could not fetch refs/pull/${pullRequest}/head from ${PIN_REMOTE}, which holds the recording ` +
-        `pin: ${fetched.stderr.trim()}`
+      `Could not fetch refs/pull/${pullRequest}/head from ${PIN_REMOTE}, the head of the pull ` +
+        `request that pinned the recording corpus: ${failureDetail(fetched, PIN_FETCH_TIMEOUT_MS)}`
     )
   }
   return local
@@ -144,7 +155,10 @@ export async function checkPinReachable(
     message: repinInstruction(
       baseline,
       resolved,
-      'is neither an ancestor of this commit nor in the head of the pull request that pinned it'
+      pullRequest === null
+        ? 'is not an ancestor of this commit, and the commit that pinned it names no pull request'
+        : `is neither an ancestor of this commit nor in refs/pull/${pullRequest}/head, the pull ` +
+            'request that pinned it'
     )
   }
 }
