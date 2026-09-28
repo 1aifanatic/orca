@@ -19,10 +19,9 @@ jobs:
     runs-on: ubuntu-slim
     timeout-minutes: 5
     steps:
-      # Why: run the policy from the default branch; the release tag is never checked out.
+      # Why: release events run this file from the tagged commit, so load the module from the same commit.
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.repository.default_branch }}
           sparse-checkout: config/scripts/release-policy.mjs
           sparse-checkout-cone-mode: false
           persist-credentials: false
