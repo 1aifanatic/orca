@@ -1,9 +1,10 @@
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { agentSessionRefusalError } from '../../../shared/agent-session-wire-refusals'
 import { openJournalDatabase } from './journal-database'
-import { classifyJournalOpenFailure } from './journal-open-failure'
+import { classifyJournalOpenFailure, journalOpenReadRefusal } from './journal-open-failure'
 import { loadJournal } from './journal-open'
 import { journalDatabaseFile } from './journal-paths'
 
@@ -102,5 +103,27 @@ describe('classifyJournalOpenFailure', () => {
     const second = new Error('second', { cause: first })
     Object.assign(first, { cause: second })
     expect(classifyJournalOpenFailure(first)).toBe('journalUnavailable')
+  })
+})
+
+describe('journalOpenReadRefusal', () => {
+  it('names the reason, keeps the message the code and the storage text only as the cause', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const storage = nodeSqliteError(26)
+    const refusal = journalOpenReadRefusal(storage)
+    expect(refusal.message).toBe('agent_session_journal_unreadable')
+    expect(refusal.refusal).toMatchObject({
+      code: 'agent_session_journal_unreadable',
+      details: { reason: 'journalCorrupt' }
+    })
+    expect(refusal.cause).toBe(storage)
+    vi.restoreAllMocks()
+  })
+
+  it('passes a refusal the open already raised through unchanged', () => {
+    const raised = agentSessionRefusalError('agent_session_identity_required', {
+      reason: 'recordMissing'
+    })
+    expect(journalOpenReadRefusal(raised)).toBe(raised)
   })
 })

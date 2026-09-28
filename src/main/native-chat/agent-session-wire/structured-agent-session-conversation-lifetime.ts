@@ -10,6 +10,7 @@ import {
   AgentSessionRefusalError,
   agentSessionRefusalError
 } from '../../../shared/agent-session-wire-refusals'
+import { journalOpenReadRefusal } from '../agent-session-journal/journal-open-failure'
 import type { StructuredAgentSessionConversations } from './structured-agent-session-conversations'
 import {
   abandonQueuedStructuredAgentSessionMessages,
@@ -116,7 +117,9 @@ export function createStructuredAgentSessionConversationLifetime(host: {
         if (disposed) {
           throw new AgentSessionRefusalError(AGENT_SESSION_NOT_ATTACHED)
         }
-        const session = await host.open(sessionId)
+        const session = await host.open(sessionId).catch((error: unknown) => {
+          throw journalOpenReadRefusal(error)
+        })
         if (!session) {
           throw agentSessionRefusalError('agent_session_identity_required', {
             reason: 'recordMissing'

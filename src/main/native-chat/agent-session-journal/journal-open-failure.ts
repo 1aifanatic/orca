@@ -2,6 +2,11 @@
 // past, or the open failed in a way that can clear (a lock, permissions, too many open files).
 
 import type { AgentSessionRefusalReason } from '../../../shared/agent-session-refusal-details'
+import {
+  AgentSessionRefusalError,
+  isAgentSessionRefusalError,
+  refuse
+} from '../../../shared/agent-session-wire-refusals'
 import { isSqliteCorruption } from '../../sqlite/sqlite-read-failure'
 
 export type JournalOpenFailure = AgentSessionRefusalReason<'agent_session_journal_unreadable'>
@@ -19,4 +24,21 @@ export function classifyJournalOpenFailure(error: unknown): JournalOpenFailure {
     current = current instanceof Error ? current.cause : undefined
   }
   return 'journalUnavailable'
+}
+
+/**
+ * What a read throws when the conversation it reaches cannot be opened. The storage's own text
+ * (a path, "file is not a database") goes to the log only; the reader gets the classified refusal,
+ * whose message stays the bare code.
+ */
+export function journalOpenReadRefusal(error: unknown): AgentSessionRefusalError {
+  if (isAgentSessionRefusalError(error)) {
+    return error
+  }
+  console.warn('[agent-session] opening the conversation for a read failed:', error)
+  const code = 'agent_session_journal_unreadable'
+  return new AgentSessionRefusalError(
+    refuse(code, { reason: classifyJournalOpenFailure(error) }, code),
+    { cause: error }
+  )
 }
