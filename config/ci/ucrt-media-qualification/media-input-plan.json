@@ -1,0 +1,117 @@
+{
+  "catalogSha256": "f0a50ea157222c29abd5ea6ff01bfc3c33b04e011c5e45ee2ca38ef0778e5643",
+  "primaryInputs": [
+    {
+      "package": "Microsoft.Windows.UniversalCRT.HeadersLibsSources.Msi",
+      "fileName": "Universal CRT Headers Libraries and Sources-x86_en-us.msi",
+      "sha256": "54448641eef058318b540188245a62982f97ccc462c0c1c1cf3c6d771e26f214",
+      "size": 405504,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/fb762014-2a36-4840-8a24-7ff61d1ee019/975874342d151b32b3f4e0eac90db7c8/universal%20crt%20headers%20libraries%20and%20sources-x86_en-us.msi",
+      "retainedBytes": 405504,
+      "layoutPath": "Universal CRT Headers Libraries and Sources-x86_en-us.msi",
+      "cachePath": "dl/ucrt.msi"
+    }
+  ],
+  "cabCandidates": [
+    {
+      "package": "Microsoft.Windows.UniversalCRT.HeadersLibsSources.Msi",
+      "fileName": "16ab2ea2187acffa6435e334796c8c89.cab",
+      "sha256": "fd8099addd4b177bc38e1c25ead2f1237a3b92979c2b7083eb756c7ff4549f83",
+      "size": 581313,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/8c0441e7-98ee-40ae-9a5a-127bcd5f4c52/a4e7a0a15baf966e92c612347f058e7d/16ab2ea2187acffa6435e334796c8c89.cab",
+      "retainedBytes": 581313,
+      "layoutPath": "16ab2ea2187acffa6435e334796c8c89.cab"
+    },
+    {
+      "package": "Microsoft.Windows.UniversalCRT.HeadersLibsSources.Msi",
+      "fileName": "2868a02217691d527e42fe0520627bfa.cab",
+      "sha256": "351c9fb52417528084206c13fde01992031e2a79fbbe94e808963ed6470610af",
+      "size": 501482,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/8c0441e7-98ee-40ae-9a5a-127bcd5f4c52/0c73cc42594f36fcb900543d5ae1c5d4/2868a02217691d527e42fe0520627bfa.cab",
+      "retainedBytes": 501482,
+      "layoutPath": "2868a02217691d527e42fe0520627bfa.cab"
+    },
+    {
+      "package": "Microsoft.Windows.UniversalCRT.HeadersLibsSources.Msi",
+      "fileName": "6ee7bbee8435130a869cf971694fd9e2.cab",
+      "sha256": "96d28a324939c9a6bbceb3acfa1061525a0e63ad95ae286a5778ed3e8ae366fa",
+      "size": 34999208,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/fa0c8bc3-bd08-4c37-a465-4d6b8c951bf6/65b6615dbccc5ab984a6602bccc2fddf/6ee7bbee8435130a869cf971694fd9e2.cab",
+      "retainedBytes": 34999208,
+      "layoutPath": "6ee7bbee8435130a869cf971694fd9e2.cab"
+    },
+    {
+      "package": "Microsoft.Windows.UniversalCRT.HeadersLibsSources.Msi",
+      "fileName": "78fa3c824c2c48bd4a49ab5969adaaf7.cab",
+      "sha256": "f4737a26feb8b380788379b2a7710ad306bfb1bf13f5177361f2a0b29dc25737",
+      "size": 35534891,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/7d9e4bde-cfb6-4a65-9cf1-8c013670a545/c83ab50003c24faecb1712c036583913/78fa3c824c2c48bd4a49ab5969adaaf7.cab",
+      "retainedBytes": 35534891,
+      "layoutPath": "78fa3c824c2c48bd4a49ab5969adaaf7.cab"
+    },
+    {
+      "package": "Microsoft.Windows.UniversalCRT.HeadersLibsSources.Msi",
+      "fileName": "7afc7b670accd8e3cc94cfffd516f5cb.cab",
+      "sha256": "495312c864a202eb3301cc63e919f5e83d14c8cde07bf9ebf8054332fa9c7c25",
+      "size": 518298,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/4a925113-4714-47d1-8e22-1d149bb57d9f/f0aa309e7ce05004accdc494ea5be759/7afc7b670accd8e3cc94cfffd516f5cb.cab",
+      "retainedBytes": 518298,
+      "layoutPath": "7afc7b670accd8e3cc94cfffd516f5cb.cab"
+    },
+    {
+      "package": "Microsoft.Windows.UniversalCRT.HeadersLibsSources.Msi",
+      "fileName": "80dcdb79b8a5960a384abe5a217a7e3a.cab",
+      "sha256": "37af50386bf3b5afc2f4117af9988c0bec85e65ae5a9c3a6f0e83eda3a1cd168",
+      "size": 35673422,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/7d9e4bde-cfb6-4a65-9cf1-8c013670a545/bb8935c38f52f40c6ff4499e5ce22636/80dcdb79b8a5960a384abe5a217a7e3a.cab",
+      "retainedBytes": 35673422,
+      "layoutPath": "80dcdb79b8a5960a384abe5a217a7e3a.cab"
+    },
+    {
+      "package": "Microsoft.Windows.UniversalCRT.HeadersLibsSources.Msi",
+      "fileName": "96076045170fe5db6d5dcf14b6f6688e.cab",
+      "sha256": "a8ec9e2ff216856ad9fdcd6516092c08f33adefbfdc696113f6f31552e7cf138",
+      "size": 592236,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/8c0441e7-98ee-40ae-9a5a-127bcd5f4c52/c01c850a877e91acdac97a613c6ba339/96076045170fe5db6d5dcf14b6f6688e.cab",
+      "retainedBytes": 592236,
+      "layoutPath": "96076045170fe5db6d5dcf14b6f6688e.cab"
+    },
+    {
+      "package": "Microsoft.Windows.UniversalCRT.HeadersLibsSources.Msi",
+      "fileName": "a1e2a83aa8a71c48c742eeaff6e71928.cab",
+      "sha256": "c777aea86b4126c90b7ae9017a2bf753f57b9dd450761db7d312d5bd8f5874fa",
+      "size": 36296724,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/7d9e4bde-cfb6-4a65-9cf1-8c013670a545/c1b2fdd6a1d50f343b8ed11484250233/a1e2a83aa8a71c48c742eeaff6e71928.cab",
+      "retainedBytes": 36296724,
+      "layoutPath": "a1e2a83aa8a71c48c742eeaff6e71928.cab"
+    },
+    {
+      "package": "Microsoft.Windows.UniversalCRT.HeadersLibsSources.Msi",
+      "fileName": "b2f03f34ff83ec013b9e45c7cd8e8a73.cab",
+      "sha256": "d0edd2447f7314f283f61b3db56eb65e01ca2b6f24bd4be52aaa285466fbc1ff",
+      "size": 140191,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/4a925113-4714-47d1-8e22-1d149bb57d9f/6d97f0ae0c61820e66c6ac988de5f096/b2f03f34ff83ec013b9e45c7cd8e8a73.cab",
+      "retainedBytes": 140191,
+      "layoutPath": "b2f03f34ff83ec013b9e45c7cd8e8a73.cab"
+    },
+    {
+      "package": "Microsoft.Windows.UniversalCRT.HeadersLibsSources.Msi",
+      "fileName": "beb5360d2daaa3167dea7ad16c28f996.cab",
+      "sha256": "3120fb967c9bd33edf5e44370a52708f27c1e249e39bad07f9cb745d094de7fb",
+      "size": 551478,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/4a925113-4714-47d1-8e22-1d149bb57d9f/8ab6a768c40050b35631171e8506e5e2/beb5360d2daaa3167dea7ad16c28f996.cab",
+      "retainedBytes": 551478,
+      "layoutPath": "beb5360d2daaa3167dea7ad16c28f996.cab"
+    },
+    {
+      "package": "Microsoft.Windows.UniversalCRT.HeadersLibsSources.Msi",
+      "fileName": "f9ff50431335056fb4fbac05b8268204.cab",
+      "sha256": "212c2e08ca3aafb8111f780de5b97d5d921b7e0c4346f1455434907c263eb414",
+      "size": 14203,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/7d9e4bde-cfb6-4a65-9cf1-8c013670a545/e30af4713083de082115ef655cc31621/f9ff50431335056fb4fbac05b8268204.cab",
+      "retainedBytes": 14203,
+      "layoutPath": "f9ff50431335056fb4fbac05b8268204.cab"
+    }
+  ],
+  "historicalUcrtMissing": false
+}

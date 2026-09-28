@@ -50,3 +50,44 @@ jobs:
           path: ${{ runner.temp }}/msi-media.json
           if-no-files-found: error
           retention-days: 7
+  ucrt:
+    if: github.repository == 'stablyai/orca' && github.ref == 'refs/heads/OrcaWin/np-sdk-msi-media-diagnostic'
+    runs-on: windows-2022
+    timeout-minutes: 8
+    env:
+      ORCA_BACKGROUND_LAUNCH: '1'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          sparse-checkout: config/ci/ucrt-media-qualification
+      - name: Parse read-only query
+        shell: pwsh
+        run: |
+          $errors=$null; $tokens=$null
+          [Management.Automation.Language.Parser]::ParseFile((Join-Path $pwd 'config/ci/ucrt-media-qualification/read-msi-media.ps1'),[ref]$tokens,[ref]$errors) | Out-Null
+          if($errors.Count){throw 'PowerShell parse failed'}
+      - name: Acquire exact historical MSI
+        timeout-minutes: 3
+        shell: pwsh
+        run: |
+          python config/ci/ucrt-media-qualification/fetch-msi.py "$env:RUNNER_TEMP\ucrt-inputs"
+          if($LASTEXITCODE -ne 0){throw 'Pinned MSI acquisition failed'}
+      - name: Read Media without installation
+        timeout-minutes: 3
+        shell: pwsh
+        run: ./config/ci/ucrt-media-qualification/read-msi-media.ps1 -Inputs "$env:RUNNER_TEMP\ucrt-inputs" -Receipt "$env:RUNNER_TEMP\ucrt-media.json"
+      - name: Validate complete cabinet associations
+        shell: pwsh
+        run: |
+          python -c "import importlib.util,json,pathlib; p=pathlib.Path('config/ci/ucrt-media-qualification'); s=importlib.util.spec_from_file_location('v',p/'validate-receipt.py'); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); m.validate(json.loads((p/'media-input-plan.json').read_text()),json.loads(pathlib.Path(r'$env:RUNNER_TEMP\ucrt-media.json').read_text(encoding='utf-8-sig')))"
+          if($LASTEXITCODE -ne 0){throw 'Incomplete or invalid cabinet associations'}
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: historical-ucrt-media
+          path: |
+            ${{ runner.temp }}/ucrt-media.json
+            ${{ runner.temp }}/ucrt-inputs/acquisition.json
+          if-no-files-found: error
+          retention-days: 7
