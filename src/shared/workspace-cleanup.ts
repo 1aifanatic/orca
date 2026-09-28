@@ -172,10 +172,10 @@ const WORKSPACE_CLEANUP_QUEUE_BLOCKERS: ReadonlySet<WorkspaceCleanupBlocker> = n
 export const WORKSPACE_CLEANUP_FORCE_REMOVE_BLOCKERS: ReadonlySet<WorkspaceCleanupBlocker> =
   new Set(['dirty-files', 'unpushed-commits', 'unknown-base'])
 
-// Why (STA-4686): the workspace you are in is just a label, and removal hands focus to a sibling.
-// A live agent stays out: removal stops it with no running-agent confirmation on this path.
+// Why (STA-4686): the active workspace hands focus off before deletion, and a live agent gets
+// an explicit stop confirmation at delete time, so both are plain labels here.
 export const WORKSPACE_CLEANUP_BULK_SELECT_EXCLUSIONS: ReadonlySet<WorkspaceCleanupBlocker> =
-  new Set(['live-agent', 'dismissed'])
+  new Set(['dismissed'])
 
 export function canQueueWorkspaceCleanupCandidate(
   candidate: Pick<WorkspaceCleanupCandidate, 'blockers'>

@@ -450,7 +450,8 @@
             "hostUnresolved": "Orca cannot tell which host owns this workspace. Refresh projects and review it again.",
             "gitStatusUnavailable": "Orca couldn't check this workspace's git status. Try again, or delete it from its host-specific sidebar or project list.",
             "gitStatusUnavailableOlderPeer": "Orca couldn't match this git-status failure to a host. Update the older connected peer, or delete the workspace from its host-specific sidebar or project list.",
-            "forceNeedsApproval": "Review and confirm this workspace before force deleting it."
+            "forceNeedsApproval": "Review and confirm this workspace before force deleting it.",
+            "agentStartedSinceConfirmation": "An agent started in this workspace after you confirmed. Delete it again to review stopping the agent."
           }
         },
         "worktrees": {
@@ -18089,6 +18090,12 @@
           "label": "Host: {{value0}}",
           "unknown": "Unknown host",
           "candidateName": "{{value0}} on {{value1}}"
+        },
+        "stopAgents": {
+          "titleOne": "An agent is running in 1 workspace",
+          "titleMany": "Agents are running in {{count}} workspaces",
+          "description": "Deleting stops these agents. Work they are doing right now will be lost.",
+          "confirm": "Stop agents and delete"
         }
       }
     },

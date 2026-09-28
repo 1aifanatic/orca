@@ -549,9 +549,10 @@ describe('query pipeline', () => {
       .filter((row) => result.selectableIdentities.includes(row.identity))
       .map((row) => row.worktreeId)
 
-    // STA-4686: the workspace you are in is a label like any other; a live agent stays out.
+    // STA-4686: the active workspace and a live agent are labels like any other.
     expect([...selectableIds].sort()).toEqual([
       'repo-1::/active',
+      'repo-1::/agent',
       'repo-1::/dirty',
       'repo-1::/pinned',
       'repo-1::/unknown'

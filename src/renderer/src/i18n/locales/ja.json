@@ -333,7 +333,8 @@
             "hostUnresolved": "Orca は、どのホストがこのワークスペースを所有しているかを知ることができません。プロジェクトを更新して再度確認します。",
             "gitStatusUnavailable": "Orca はこのワークスペースの git ステータスを確認できませんでした。再試行するか、ホスト固有のサイドバーまたはプロジェクトリストから削除してください。",
             "gitStatusUnavailableOlderPeer": "Orca は、この git-status エラーをホストと照合できませんでした。古い接続ピアを更新するか、ホスト固有のサイドバーまたはプロジェクトリストからワークスペースを削除します。",
-            "forceNeedsApproval": "ワークスペースを強制的に削除する前に、このワークスペースを確認してください。"
+            "forceNeedsApproval": "ワークスペースを強制的に削除する前に、このワークスペースを確認してください。",
+            "agentStartedSinceConfirmation": "確認後にこのワークスペースで Agent が開始されました。Agent の停止を確認するには、もう一度削除してください。"
           }
         },
         "worktrees": {
@@ -17959,6 +17960,12 @@
           "label": "ホスト: {{value0}}",
           "unknown": "不明なホスト",
           "candidateName": "{{value0}}、{{value1}}"
+        },
+        "stopAgents": {
+          "titleOne": "1 個のワークスペースで Agent が実行中です",
+          "titleMany": "{{count}} 個のワークスペースで Agent が実行中です",
+          "description": "削除するとこれらの Agent は停止します。現在実行中の作業は失われます。",
+          "confirm": "Agent を停止して削除"
         }
       }
     },
