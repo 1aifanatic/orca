@@ -187,6 +187,26 @@ describe('what a rejection with a typed fact shows the user', () => {
     )
   })
 
+  // The message's copy drops the detail and the refusal these kinds are worded from, so the
+  // sentence the host wrote for the person stands in for them; with none, the table's words.
+  it("shows the host's sentence for a kind whose words its copy cannot rebuild", () => {
+    expect(
+      notice('The provider did not accept this message: Image type .bmp.', {
+        kind: 'providerRejected',
+        detail: { text: 'Image type .bmp', audience: 'person' }
+      })
+    ).toBe('The provider did not accept this message: Image type .bmp.')
+    expect(
+      notice("Claude couldn't start. Start a new chat to continue.", {
+        kind: 'startFailed',
+        refusal: { code: 'agent_session_identity_required' }
+      })
+    ).toBe("Claude couldn't start. Start a new chat to continue.")
+    expect(notice(null, { kind: 'providerRejected' })).toBe(
+      'The provider did not accept this message.'
+    )
+  })
+
   it('says only that the message was not sent for a fact no message can carry', () => {
     expect(notice('Compaction failed.', { kind: 'compactionFailed' })).toBe(
       'Your message was not sent.'

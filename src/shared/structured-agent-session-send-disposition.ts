@@ -167,6 +167,11 @@ function rejectionFactParts(
     : agentSessionWriteNotDoneParts(write)
 }
 
+/** Kinds whose words need what the message's copy drops: the provider's detail, or the refusal. */
+const WORDED_FROM_WHOLE_FACT: ReadonlySet<AgentSessionFailureFact['kind']> = new Set<
+  AgentSessionFailureFact['kind']
+>(['providerRejected', 'startFailed', 'restartFailed'])
+
 /** What the Retry row says about why its message did not go through. */
 export function structuredAgentSessionAttemptFailureParts(
   failure: StructuredAgentSessionAttemptFailure,
@@ -175,14 +180,15 @@ export function structuredAgentSessionAttemptFailureParts(
    *  message's own copy keeps only its kind and attachment. */
   recorded?: AgentSessionFailureFact
 ): AgentSessionWriteNoticePart[] {
-  return failure.kind === 'rejected'
-    ? structuredAgentSessionRejectionParts(
-        failure.reason,
-        'send',
-        recorded ?? failure.rejection,
-        context
-      )
-    : agentSessionWriteNoticeParts(failure, 'send', context)
+  if (failure.kind !== 'rejected') {
+    return agentSessionWriteNoticeParts(failure, 'send', context)
+  }
+  const fact = recorded ?? failure.rejection
+  // Without the journal's fact, the host's sentence still holds what the copy dropped.
+  if (!recorded && fact && WORDED_FROM_WHOLE_FACT.has(fact.kind) && failure.reason !== null) {
+    return [{ text: failure.reason }]
+  }
+  return structuredAgentSessionRejectionParts(failure.reason, 'send', fact, context)
 }
 
 export function disposeStructuredAgentSessionSendResult(

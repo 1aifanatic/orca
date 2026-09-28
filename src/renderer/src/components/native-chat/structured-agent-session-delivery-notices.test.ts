@@ -275,9 +275,33 @@ describe('the notice on each message that did not go through', () => {
     ).toEqual(
       Object.fromEntries(facts.map(([id, , shown]) => [agentJournalSubmissionKey(id), shown]))
     )
-    // Not loaded (older than the loaded page): the message's own copy, which has no refusal.
-    expect(texts([rejected('gone')])).toEqual({
-      [agentJournalSubmissionKey('gone')]: "Claude couldn't start."
+    // Not loaded (older than the loaded page): the message's copy has no refusal or detail, so the
+    // host's sentence, which holds them, is shown for those kinds; the table words the rest.
+    expect(
+      texts([
+        rejected('gone'),
+        entry('provider', {
+          state: 'rejected',
+          lastFailure: {
+            kind: 'rejected',
+            reason: 'The provider did not accept this message: Image type .bmp.',
+            rejection: { kind: 'providerRejected' }
+          }
+        }),
+        entry('stopped', {
+          state: 'rejected',
+          lastFailure: {
+            kind: 'rejected',
+            reason: 'The agent stopped before this message was sent.',
+            rejection: { kind: 'providerExited' }
+          }
+        })
+      ])
+    ).toEqual({
+      [agentJournalSubmissionKey('gone')]: "The agent couldn't be started.",
+      [agentJournalSubmissionKey('provider')]:
+        'The provider did not accept this message: Image type .bmp.',
+      [agentJournalSubmissionKey('stopped')]: 'Claude stopped before this message was sent.'
     })
   })
 
