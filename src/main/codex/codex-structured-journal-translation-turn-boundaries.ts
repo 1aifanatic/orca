@@ -272,7 +272,8 @@ export class CodexJournalTurnBoundaries {
       }
       this.deps.items.ordinals.forgetTurn(event.threadId, turnId)
       this.deps.activeTurns.forget(event.threadId, turnId)
-      this.deps.commands.settled(turnId)
+      // Codex completes the failed turn after the error; the claim is released then.
+      this.deps.commands.failed(turnId)
       this.deps.resetActivity(event.threadId)
     }
     return admission

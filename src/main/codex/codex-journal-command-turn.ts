@@ -13,7 +13,12 @@ import type { JournalLifecycleMutationInput } from '../native-chat/agent-session
 import type { StructuredAgentSessionCommandRun } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import { structuredCompactionOutcome } from '../native-chat/agent-session-wire/structured-conversation-command-outcome'
 
-type CarriedCommand = { command: StructuredAgentSessionCommandRun; compacted: boolean }
+type CarriedCommand = {
+  command: StructuredAgentSessionCommandRun
+  compacted: boolean
+  /** Codex's error already ended the command; the provider turn's completion adds nothing. */
+  failed: boolean
+}
 
 export class CodexJournalCommandTurn {
   /** Sent, and not yet carried by a provider turn. */
@@ -41,7 +46,7 @@ export class CodexJournalCommandTurn {
     }
     const command = this.awaiting
     this.awaiting = null
-    this.carried.set(providerTurnId, { command, compacted: false })
+    this.carried.set(providerTurnId, { command, compacted: false, failed: false })
     return command
   }
 
@@ -89,7 +94,7 @@ export class CodexJournalCommandTurn {
     }
   ): JournalLifecycleMutationInput[] {
     const carried = this.carried.get(providerTurnId)
-    if (!carried) {
+    if (!carried || carried.failed) {
       return []
     }
     const { command } = carried
@@ -129,6 +134,15 @@ export class CodexJournalCommandTurn {
         turnScope: AGENT_JOURNAL_THREAD_SCOPE
       }
     ]
+  }
+
+  /** An error ended the command. The provider turn stays its until Codex completes that turn,
+   *  so the completion is not read as a turn of its own. */
+  failed(providerTurnId: string): void {
+    const carried = this.carried.get(providerTurnId)
+    if (carried) {
+      carried.failed = true
+    }
   }
 
   settled(providerTurnId: string): void {

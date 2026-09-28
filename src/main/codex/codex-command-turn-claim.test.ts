@@ -194,6 +194,56 @@ describe('a Codex turn a conversation command claims', () => {
     ])
   })
 
+  it('ends a compaction Codex failed with an error once, however late its completion', () => {
+    const { writes, translator, emit } = harness()
+    translator.beginCommand(COMMAND)
+    emit(notification('turn/started', { turn: { id: PROVIDER_TURN } }))
+    emit(
+      notification('error', {
+        turnId: PROVIDER_TURN,
+        willRetry: false,
+        error: { message: 'Unavailable' }
+      })
+    )
+    // Codex still completes the turn it failed, as status failed.
+    emit(
+      notification('turn/completed', {
+        turn: { id: PROVIDER_TURN, status: 'failed', error: { message: 'Unavailable' } }
+      })
+    )
+
+    expect(codexTurnRecords(writes)).toEqual([])
+    expect(commandTurn(writes)).toMatchObject({ state: 'completed', outcome: 'failure' })
+    expect(
+      writes.filter(
+        (write) => write.key === COMMAND_TURN_KEY && readAgentJournalTurn(write.body)?.completedAt
+      )
+    ).toHaveLength(1)
+    // Codex's own error row, in the command's turn; the completion adds none.
+    expect(resultRows(writes)).toEqual([
+      expect.objectContaining({
+        body: expect.objectContaining({ kind: 'status', text: 'Unavailable', tone: 'error' }),
+        turnScope: { kind: 'turn', turnItemId: COMMAND_TURN_KEY }
+      })
+    ])
+  })
+
+  it('leaves the next turn to write its own record after a failed compaction', () => {
+    const { writes, translator, emit } = harness()
+    translator.beginCommand(COMMAND)
+    emit(notification('turn/started', { turn: { id: PROVIDER_TURN } }))
+    emit(
+      notification('error', { turnId: PROVIDER_TURN, willRetry: false, error: { message: 'x' } })
+    )
+    emit(notification('turn/completed', { turn: { id: PROVIDER_TURN, status: 'failed' } }))
+    emit(notification('turn/started', { turn: { id: 'ordinary' } }))
+    emit(notification('turn/completed', { turn: { id: 'ordinary', status: 'completed' } }))
+
+    expect(
+      codexTurnRecords(writes).map((write) => readAgentJournalTurn(write.body)?.turnId)
+    ).toEqual(['ordinary', 'ordinary'])
+  })
+
   it('names no provider turn for a Stop until Codex opens one, then the one it opened', () => {
     const { translator, emit } = harness()
     translator.beginCommand(COMMAND)
