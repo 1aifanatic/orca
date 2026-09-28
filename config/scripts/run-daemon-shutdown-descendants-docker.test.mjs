@@ -2,7 +2,14 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-const state = vi.hoisted(() => ({ target: '', builds: [], runs: [], gitReads: [] }))
+const state = vi.hoisted(() => ({
+  target: '',
+  builds: [],
+  runs: [],
+  gitReads: [],
+  commands: [],
+  timeout: ''
+}))
 vi.mock('./build-orcad-bun.mjs', () => ({
   materializeRuntime: async (target, destination) => {
     state.target = target
@@ -10,7 +17,8 @@ vi.mock('./build-orcad-bun.mjs', () => ({
   }
 }))
 vi.mock('./script-child-process.mjs', () => ({
-  runProcessSync: ({ program, args }) => {
+  runProcessSync: ({ program, args, timeoutMs }) => {
+    state.commands.push({ program, args, timeoutMs })
     if (program === 'git') {
       state.gitReads.push(args[1])
       return {
@@ -33,7 +41,12 @@ vi.mock('./script-child-process.mjs', () => ({
     if (args[0] === 'run') {
       state.runs.push(args)
     }
-    return { code: 0, stdout: '', stderr: '' }
+    return {
+      code: state.timeout === args[0] ? 255 : 0,
+      timedOut: state.timeout === args[0],
+      stdout: '',
+      stderr: ''
+    }
   }
 }))
 
@@ -50,6 +63,8 @@ afterEach(() => {
   state.runs.length = 0
   state.gitReads.length = 0
   state.target = ''
+  state.commands.length = 0
+  state.timeout = ''
   vi.resetModules()
 })
 
@@ -82,6 +97,28 @@ describe('Bun daemon descendant shutdown oracle', () => {
     expect(state.gitReads.every((source) => source.startsWith('baseline-ref:'))).toBe(true)
     expect(state.builds[0].baseline).toBe(true)
     expect(state.runs.map((args) => args.at(-1))).toEqual(['baseline', 'candidate'])
+  })
+
+  it('gives image builds their own budget and reports timeouts', async () => {
+    state.timeout = 'build'
+    await expect(run('linux/amd64')).rejects.toThrow('docker build failed: exit=255 timeout=true')
+    expect(state.commands.find((command) => command.args[0] === 'build').timeoutMs).toBe(300_000)
+    expect(state.runs).toEqual([])
+    expect(existsSync(state.builds[0].context)).toBe(false)
+  })
+
+  it('removes the exact owned container after a timed-out Docker client', async () => {
+    state.timeout = 'run'
+    await expect(run('linux/amd64')).rejects.toThrow('candidate daemon-shutdown oracle failed')
+    const launch = state.commands.find((command) => command.args[0] === 'run')
+    const containerName = launch.args[launch.args.indexOf('--name') + 1]
+    expect(launch.timeoutMs).toBe(60_000)
+    expect(state.commands).toContainEqual({
+      program: expect.any(String),
+      args: ['rm', '--force', containerName],
+      timeoutMs: 10_000
+    })
+    expect(existsSync(state.builds[0].context)).toBe(false)
   })
 
   it('rejects unsupported architectures before materializing a runtime', async () => {

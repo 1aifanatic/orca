@@ -94,18 +94,19 @@ async function bundle(outfile, plugin) {
   })
 }
 
-function runDocker(args, allowFailure = false) {
+function runDocker(args, allowFailure = false, timeoutMs = 60_000) {
   const result = runProcessSync({
     program: docker,
     args,
     cwd: repo,
     maxOutputBytes: 16 * 1024 * 1024,
+    timeoutMs,
     env: dockerEnv
   })
-  if (result.code !== 0 && !allowFailure) {
+  if ((result.code !== 0 || result.timedOut) && !allowFailure) {
     process.stdout.write(result.stdout ?? '')
     process.stderr.write(result.stderr ?? '')
-    throw new Error(`docker ${args[0]} failed with ${result.code}`)
+    throw new Error(`docker ${args[0]} failed: exit=${result.code} timeout=${result.timedOut}`)
   }
   return result
 }
@@ -131,29 +132,46 @@ try {
     bundles.unshift(['baseline', baseline])
   }
 
-  runDocker(['build', '--platform', platform, '-t', image, temp])
+  runDocker(['build', '--platform', platform, '-t', image, temp], false, 300_000)
   imageBuilt = true
   for (const [mode, bundlePath] of bundles) {
-    const result = runDocker(
-      [
-        'run',
-        '--rm',
-        '--platform',
-        platform,
-        '-e',
-        'ORCA_BACKGROUND_LAUNCH=1',
-        '-v',
-        `${bundlePath}:/fixtures/${mode}.cjs:ro`,
-        image,
-        `/fixtures/${mode}.cjs`,
-        mode
-      ],
-      true
-    )
+    const containerName = `${image.replace(':', '-')}-${mode}`
+    let result
+    let cleanup
+    try {
+      result = runDocker(
+        [
+          'run',
+          '--rm',
+          '--name',
+          containerName,
+          '--platform',
+          platform,
+          '-e',
+          'ORCA_BACKGROUND_LAUNCH=1',
+          '-v',
+          `${bundlePath}:/fixtures/${mode}.cjs:ro`,
+          image,
+          `/fixtures/${mode}.cjs`,
+          mode
+        ],
+        true
+      )
+    } finally {
+      // Killing the Docker client does not stop its container.
+      cleanup = runDocker(['rm', '--force', containerName], true, 10_000)
+    }
+    if (cleanup.timedOut || (cleanup.code !== 0 && !cleanup.stderr.includes('No such container'))) {
+      throw new Error(
+        `Could not remove qualification container ${containerName}: ${cleanup.stderr}`
+      )
+    }
     process.stdout.write(result.stdout ?? '')
     process.stderr.write(result.stderr ?? '')
-    if (result.code !== 0) {
-      throw new Error(`${mode} daemon-shutdown oracle failed with ${result.code}`)
+    if (result.code !== 0 || result.timedOut) {
+      throw new Error(
+        `${mode} daemon-shutdown oracle failed: exit=${result.code} timeout=${result.timedOut}`
+      )
     }
   }
   console.log(
