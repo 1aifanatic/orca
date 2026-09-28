@@ -6,6 +6,7 @@ import { shouldForwardHeadlessTerminalQueryReply } from './headless-terminal-que
 import { isNativeWindowsConptyPty } from './terminal-model-query-authority'
 import { getTerminalViewAttributes } from './terminal-view-attribute-store'
 import { PtyShellOwnershipMirror } from './pty-shell-ownership-mirror'
+import { PROCESS_BOUNDARY_GROUND } from '../../shared/terminal-mode-reset-profiles'
 
 export class OrcaRuntimeWithCreatePtyHeadlessTerminalState extends OrcaRuntimeWithMaybeHydrateHeadlessFromRenderer {
   /** Shared factory for the per-PTY runtime emulators (seed, hydration, and
@@ -198,15 +199,16 @@ export class OrcaRuntimeWithCreatePtyHeadlessTerminalState extends OrcaRuntimeWi
 
   // Public: Reset Terminal must ground this model too; park/reveal and mobile restore from it.
   async resetHeadlessTerminalInputModes(ptyId: string): Promise<void> {
+    // Why now, not on the chain: onPtyData scans live bytes into this tracker on arrival.
+    // Focus is outside its model, so the plain ground is exact.
+    this.providerModeTrackersByPtyId.get(ptyId)?.scan(PROCESS_BOUNDARY_GROUND)
     const state = this.headlessTerminals.get(ptyId)
     if (!state) {
       return
     }
     // Why on the chain: the ground must land after every PTY chunk already queued.
     const completion = state.writeChain.then(async () => {
-      const ground = state.ownership.groundInputModes()
-      this.providerModeTrackersByPtyId.get(ptyId)?.scan(ground)
-      await state.emulator.write(ground)
+      await state.emulator.write(state.ownership.groundInputModes())
     })
     state.writeChain = completion.catch(() => {})
     await completion

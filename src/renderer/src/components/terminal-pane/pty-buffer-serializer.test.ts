@@ -126,7 +126,7 @@ describe('pty buffer serializer registry', () => {
   it("routes a host's Reset Terminal request to the pane that owns the PTY", async () => {
     const { registerPtySerializer } = await import('./pty-buffer-serializer')
     const resetInputModes = vi.fn()
-    registerPtySerializer('pty-1', () => null, undefined, resetInputModes)
+    registerPtySerializer('pty-1', () => null, { resetInputModes })
     const [[onRequest]] = vi.mocked(window.api.pty.onResetInputModesRequest).mock.calls
 
     onRequest({ ptyId: 'pty-2' })

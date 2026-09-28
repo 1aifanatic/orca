@@ -73,15 +73,17 @@ export function bindRegisterPaneSerializer(session: ConnectPanePtySession): void
           return null
         }
       },
-      () => {
-        session.clearHiddenOutputRestoreState()
-        discardTerminalOutput(session.pane.terminal)
-        clearTerminalScrollbackAndFollowOutput(session.pane.terminal)
-      },
-      () =>
-        session.writeInputModeGround(
-          buildProcessBoundaryGround({ keepFocusReporting: session.isNativeWindowsConpty })
-        )
+      {
+        clear: () => {
+          session.clearHiddenOutputRestoreState()
+          discardTerminalOutput(session.pane.terminal)
+          clearTerminalScrollbackAndFollowOutput(session.pane.terminal)
+        },
+        resetInputModes: () =>
+          session.writeInputModeGround(
+            buildProcessBoundaryGround({ keepFocusReporting: session.isNativeWindowsConpty })
+          )
+      }
     )
     const unregisterTitleSource = registerPtyTitleSource(ptyId, (handler) =>
       session.pane.terminal.onTitleChange(handler)

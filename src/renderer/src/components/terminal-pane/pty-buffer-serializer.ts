@@ -51,11 +51,10 @@ let listenerAttached = false
 export function registerPtySerializer(
   ptyId: string,
   serialize: SerializeFn,
-  clear?: () => void,
-  resetInputModes?: () => void
+  actions: Pick<SerializerEntry, 'clear' | 'resetInputModes'> = {}
 ): () => void {
   const owner = Symbol(ptyId)
-  serializersByPtyId.set(ptyId, { fn: serialize, clear, resetInputModes, owner })
+  serializersByPtyId.set(ptyId, { fn: serialize, ...actions, owner })
   ensureSerializerListener()
   return () => {
     const current = serializersByPtyId.get(ptyId)

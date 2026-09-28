@@ -206,7 +206,7 @@ export type GetCwdRequest = {
   }
 }
 
-// Why resetInputModes is its own type: an older daemon rejects it instead of clearing.
+// Why resetInputModes is a type, not a clear flag: an older daemon rejects it instead of clearing.
 export type TerminalBufferActionRequest = {
   id: string
   type: 'clearScrollback' | 'resetInputModes'

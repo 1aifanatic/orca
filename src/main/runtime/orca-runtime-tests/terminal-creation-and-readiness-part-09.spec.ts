@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { OrcaRuntimeService } from '../orca-runtime-test-mocks.spec'
+import { TerminalKittyKeyboardModeTracker } from '../../../shared/terminal-kitty-keyboard-mode-tracker'
 import {
   HEADLESS_LEAF_ID,
   TEST_WORKTREE_ID,
@@ -225,6 +226,23 @@ describe('OrcaRuntimeService', () => {
     expect(snapshot?.kittyKeyboardFlags).toBe(0)
     expect(snapshot?.data).not.toContain('\x1b[?1000h')
     expect(snapshot?.data).not.toContain('\x1b[?2004h')
+  })
+
+  it('grounds the provider mode tracker before a later chunk, in the emulator order', async () => {
+    const runtime = new OrcaRuntimeService(store)
+    syncSinglePty(runtime, 'pty-1')
+    runtime.onPtyData('pty-1', 'prompt$ ', 123)
+    const tracker = new TerminalKittyKeyboardModeTracker()
+    runtime['providerModeTrackersByPtyId'].set('pty-1', tracker)
+
+    // A TUI starts while the reset still waits on the headless write chain.
+    const reset = runtime.resetHeadlessTerminalInputModes('pty-1')
+    runtime.onPtyData('pty-1', '\x1b[?1049h', 124)
+    await reset
+    await runtime['headlessTerminals'].get('pty-1')?.writeChain
+
+    expect(runtime['headlessTerminals'].get('pty-1')?.emulator.isAlternateScreen).toBe(true)
+    expect(tracker.isAlternateScreen).toBe(true)
   })
 
   it('waits for terminal exit and resolves with the exit status', async () => {
