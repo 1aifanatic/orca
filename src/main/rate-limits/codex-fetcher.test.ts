@@ -1,3 +1,4 @@
+import { makeDisposable, makePtyTerm } from './codex-rate-limit-test-pty'
 import { EventEmitter } from 'node:events'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -54,10 +55,6 @@ import { getActiveHiddenRateLimitPtyCount } from './hidden-pty-cleanup'
 import { getCmdExePath } from '../win32-utils'
 import { CODEX_SHORT_LIVED_PROBE_APP_SERVER_ARGS } from '../codex-cli/codex-read-only-app-server-args'
 
-function makeDisposable() {
-  return { dispose: vi.fn() }
-}
-
 function makeRpcChild() {
   const child = new EventEmitter() as EventEmitter & {
     stdout: EventEmitter
@@ -107,26 +104,6 @@ function respondToRpcRateLimitRead(
       }, 0)
     }
   })
-}
-
-function makePtyTerm() {
-  let dataHandler: ((data: string) => void) | null = null
-  let exitHandler: (() => void) | null = null
-  return {
-    onData: vi.fn((callback: (data: string) => void) => {
-      dataHandler = callback
-      return makeDisposable()
-    }),
-    onError: vi.fn(() => ({ dispose: vi.fn() })),
-    onExit: vi.fn((callback: () => void) => {
-      exitHandler = callback
-      return makeDisposable()
-    }),
-    write: vi.fn(),
-    kill: vi.fn(),
-    emitData: (data: string) => dataHandler?.(data),
-    emitExit: () => exitHandler?.()
-  }
 }
 
 describe('fetchCodexRateLimits', () => {

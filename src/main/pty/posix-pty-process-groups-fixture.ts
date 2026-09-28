@@ -7,7 +7,9 @@ type TaggedProcess = { pid: number; pgid: number }
 function readPs(args: string[]): string {
   const result = runProcessSync({ program: 'ps', args, timeoutMs: 2_000 })
   if (result.code !== 0 || result.timedOut || result.outputTruncated) {
-    throw new Error('PTY fixture process table is unavailable')
+    throw new Error(
+      `PTY fixture process table is unavailable (exit=${result.code}, timeout=${result.timedOut}, truncated=${result.outputTruncated}): ${result.stderr}`
+    )
   }
   return result.stdout
 }
@@ -15,7 +17,6 @@ function readPs(args: string[]): string {
 function findTaggedProcesses(token: string): TaggedProcess[] {
   const output = readPs([
     '-e',
-    '-w',
     '-o',
     'pid=PROCESS_ID,pgid=PROCESS_GID,stat=PROCESS_STATE,args=COMMAND'
   ])
