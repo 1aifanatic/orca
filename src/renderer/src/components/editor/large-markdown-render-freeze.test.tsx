@@ -31,7 +31,9 @@ vi.mock('./editor-lazy-views', () => {
     MonacoEditor: view('source'),
     CombinedDiffViewer: view('combined-diff'),
     RichMarkdownEditor: view('rich-editor'),
-    MarkdownPreview: view('preview')
+    MarkdownPreview: view('preview'),
+    DiffViewer: view('diff'),
+    ImageDiffViewer: view('image-diff')
   }
 })
 
@@ -49,6 +51,9 @@ vi.mock('./useEditorConflictNavigation', () => ({
 }))
 
 import { EditorContent } from './EditorContent'
+import { EditorDiffFileSurface } from './EditorDiffFileSurface'
+import type { useMarkdownDocuments } from './useMarkdownDocuments'
+import type { GitDiffResult } from '../../../../shared/git-diff-compare-types'
 import { MARKDOWN_RENDER_OVERRIDE_MAX_SIZE_BYTES } from './markdown-rich-size-limit'
 import { getEditorPanelRenderModel } from './editor-panel-render-model'
 
@@ -124,6 +129,54 @@ function renderPreviewTab(content: string) {
   }
 }
 
+const diffTab: OpenFile = {
+  ...sourceFile,
+  id: 'diff::unstaged::/repo/BIG.md',
+  mode: 'diff',
+  diffSource: 'unstaged'
+}
+
+const markdownDocumentsStub: ReturnType<typeof useMarkdownDocuments> = {
+  markdownDocuments: [],
+  openMarkdownDocument: async () => {},
+  onOpenDocLink: () => {},
+  previewProps: { markdownDocuments: [], onOpenDocument: async () => {} },
+  mdSave: async () => true
+}
+
+function renderDiffPreview(content: string) {
+  const diffContent: GitDiffResult = {
+    kind: 'text',
+    originalContent: '',
+    modifiedContent: content,
+    originalIsBinary: false,
+    modifiedIsBinary: false
+  }
+  const props = {
+    activeFile: diffTab,
+    diffContent,
+    editBuffer: undefined,
+    resolvedLanguage: 'markdown',
+    sideBySide: false,
+    viewStateScopeId: diffTab.id,
+    diffViewStateKey: diffTab.id,
+    mdViewMode: 'preview' as const,
+    isMarkdown: true,
+    showMarkdownTableOfContents: false,
+    onCloseMarkdownTableOfContents: vi.fn(),
+    markdownAnnotationsEnabled: false,
+    markdownDocuments: markdownDocumentsStub,
+    onContentChange: vi.fn(),
+    onSave: vi.fn(),
+    reloadContent: vi.fn()
+  }
+  const view = render(<EditorDiffFileSurface {...props} />)
+  return {
+    rerender: () => view.rerender(<EditorDiffFileSurface {...props} />),
+    isPreviewRendered: () => view.container.querySelector('[data-editor-view="preview"]') !== null
+  }
+}
+
 afterEach(() => {
   cleanup()
   store.markdownRichModeSizeOverride = {}
@@ -156,6 +209,22 @@ describe('large markdown render guard', () => {
     store.markdownRichModeSizeOverride = { [previewTab.id]: true }
     const tab = renderPreviewTab(hugeDoc)
     expect(tab.isPreviewRendered()).toBe(false)
+    expect(screen.queryByRole('button', { name: 'Render anyway' })).toBeNull()
+  })
+
+  it('diff preview toggle gates the modified side over the preview limit', () => {
+    expect(renderDiffPreview('# Small').isPreviewRendered()).toBe(true)
+    cleanup()
+    const diff = renderDiffPreview(mediumDoc)
+    expect(diff.isPreviewRendered()).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: 'Render anyway' }))
+    diff.rerender()
+    expect(diff.isPreviewRendered()).toBe(true)
+  })
+
+  it('diff preview toggle never renders a modified side over the hard cap', () => {
+    store.markdownRichModeSizeOverride = { [diffTab.id]: true }
+    expect(renderDiffPreview(hugeDoc).isPreviewRendered()).toBe(false)
     expect(screen.queryByRole('button', { name: 'Render anyway' })).toBeNull()
   })
 })

@@ -14,10 +14,12 @@ import {
 export function MarkdownPreviewSizeGate({
   previewTabId,
   content,
+  isDiff = false,
   children
 }: {
   previewTabId: string
   content: string
+  isDiff?: boolean
   children: React.ReactNode
 }): React.JSX.Element {
   const sizeOverridden = useAppStore((s) => s.markdownRichModeSizeOverride[previewTabId] === true)
@@ -29,11 +31,17 @@ export function MarkdownPreviewSizeGate({
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-sm text-muted-foreground">
       <span>
-        {translate(
-          'editor.markdownPreview.tooLarge',
-          'File is larger than the {{limit}} preview limit. Open the file to view its source.',
-          { limit: formatBytes(RICH_MARKDOWN_MAX_SIZE_BYTES) }
-        )}
+        {isDiff
+          ? translate(
+              'editor.markdownPreview.tooLargeInDiff',
+              'File is larger than the {{limit}} preview limit. Switch to source mode to view the diff.',
+              { limit: formatBytes(RICH_MARKDOWN_MAX_SIZE_BYTES) }
+            )
+          : translate(
+              'editor.markdownPreview.tooLarge',
+              'File is larger than the {{limit}} preview limit. Open the file to view its source.',
+              { limit: formatBytes(RICH_MARKDOWN_MAX_SIZE_BYTES) }
+            )}
       </span>
       {canOverrideSize ? (
         <Button
