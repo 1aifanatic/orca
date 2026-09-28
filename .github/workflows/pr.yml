@@ -482,7 +482,11 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: ./.github/actions/install-node-dependencies
+      # The generator uses Node built-ins and installs its own upstream toolchain.
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: package.json
+          package-manager-cache: false
 
       # Rebuild both pristine and patched bundles; reuse only the pinned toolchain.
       - uses: ./.github/actions/prepare-xterm-dependencies
