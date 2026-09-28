@@ -536,6 +536,56 @@ describe('a child that exits before its message is handed over', () => {
   })
 })
 
+describe('a start whose failure the delivery loop settles before the exit is published', () => {
+  it('keeps one row in the words its rejected messages carry', async () => {
+    // The adapter's startup answer and its later exit event word the same start differently.
+    const awaitStarted = vi.fn(async () => agentSessionFailureFact('startFailed'))
+    adapterExtras = { awaitStarted }
+    acquire.mockImplementation(async (input) => ({
+      ...(await spawnChild(input)),
+      providerChildPhase: 'starting' as const
+    }))
+    await host.close(SESSION)
+    await startHost()
+
+    const first = await accept('first')
+    const second = await accept('second')
+    await eventually(() => expect(submission(second)?.dispatchState).toBe('rejected'))
+    await host.handleAdapterEvent({
+      type: 'ended',
+      sessionId: SESSION,
+      fence: store.getRecord(SESSION)!.lease.runtimeFence,
+      acquisitionGeneration: `generation-${acquire.mock.calls.length}`,
+      reason: 'codex app-server exited with code 1',
+      failure: agentSessionFailureFact('providerStartFailed', {
+        detail: { text: 'codex: config.toml is invalid', audience: 'person' }
+      }),
+      cause: 'unexpected-exit',
+      startupUnproven: true
+    })
+    await host.flushAllStreamedEvents()
+    await host.revealSession(SESSION)
+
+    const rows = host
+      .journalSnapshot(SESSION)
+      .items.filter((item) => item.itemId.includes('start-failure'))
+    expect(rows).toHaveLength(1)
+    const words = agentSessionFailureWords(agentSessionFailureFact('startFailed'), {
+      surface: 'rejection',
+      agentName: 'Codex',
+      provider: 'codex'
+    })
+    expect(rows[0].body).toMatchObject({ text: words.reason, failure: words.rejection })
+    for (const id of [first, second]) {
+      expect(submission(id)).toMatchObject({
+        dispatchState: 'rejected',
+        reason: words.reason,
+        rejection: words.rejection
+      })
+    }
+  })
+})
+
 describe('Stop withdraws what is queued', () => {
   it('withdraws a crash leftover ahead of any delivery step (W17a)', async () => {
     await writeAsEarlierProcess(async (journal, fence) => {

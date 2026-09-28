@@ -1,3 +1,4 @@
+import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import type { JournalLifecycleMutationInput } from '../agent-session-journal/journal-row-builders'
 import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
@@ -12,7 +13,7 @@ export type StructuredAgentSessionStartFailure = StructuredAgentSessionStartFail
  * The one row a start that failed leaves in the chat, whoever saw it fail: an error row, so the
  * reason outlives any error strip. Keyed by the start — the child's generation, or the oldest
  * message it was for when no child was ever published — so a second report of the same failure
- * revises the row instead of adding one.
+ * lands on the same row instead of adding one.
  */
 export function structuredAgentSessionStartFailureRow(
   startKey: string,
@@ -20,10 +21,24 @@ export function structuredAgentSessionStartFailureRow(
 ): JournalLifecycleMutationInput {
   return {
     kind: 'item',
-    identity: { provider: 'orca', clientMessageId: `start-failure:${startKey}` },
+    identity: startFailureRowIdentity(startKey),
     // The row repeats the sentence the start's rejected messages carry.
     body: { kind: 'status', text: words.reason, tone: 'error', failure: words.rejection }
   }
+}
+
+/** Whether the start's row is already written. Its words are the ones its rejected messages carry,
+ *  and rejected is terminal, so the exit's later report of the same start must not reword it. */
+export function hasStructuredAgentSessionStartFailureRow(
+  items: readonly { itemId: string }[],
+  startKey: string
+): boolean {
+  const itemId = agentJournalItemKey(startFailureRowIdentity(startKey))
+  return items.some((item) => item.itemId === itemId)
+}
+
+function startFailureRowIdentity(startKey: string) {
+  return { provider: 'orca' as const, clientMessageId: `start-failure:${startKey}` }
 }
 
 /**

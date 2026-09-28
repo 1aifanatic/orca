@@ -18,7 +18,10 @@ import {
   type AgentSessionFailureWordsContext
 } from '../../../shared/agent-session-failure-words'
 import { structuredAgentSessionStartFailure } from './structured-agent-session-failure-text'
-import { structuredAgentSessionStartFailureRow } from './structured-agent-session-start-failure-row'
+import {
+  hasStructuredAgentSessionStartFailureRow,
+  structuredAgentSessionStartFailureRow
+} from './structured-agent-session-start-failure-row'
 import type { AgentSessionDeathEvidence } from '../../../shared/agent-session-record'
 import {
   runningTurnLifecycleRevisions,
@@ -128,13 +131,12 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
     const items = input.journal.snapshot().items
     const mutations: JournalLifecycleMutationInput[] = []
     if (showUnexpectedExitOutcome && input.exitedDuringStartup && startupFailure) {
-      // Until views stop starting children, a start can die with nothing queued for the loop.
-      mutations.push(
-        structuredAgentSessionStartFailureRow(
-          input.exitedDuringStartup.generation ?? input.settlementId,
-          startupFailure
-        )
-      )
+      // Until views stop starting children, a start can die with nothing queued for the loop. A
+      // row the loop already wrote stays: its words are the ones its rejected messages carry.
+      const startKey = input.exitedDuringStartup.generation ?? input.settlementId
+      if (!hasStructuredAgentSessionStartFailureRow(items, startKey)) {
+        mutations.push(structuredAgentSessionStartFailureRow(startKey, startupFailure))
+      }
     } else if (showUnexpectedExitOutcome) {
       mutations.push({
         kind: 'item',
