@@ -179,13 +179,19 @@ export function markCodexProjectTrusted(workspacePath: string): Promise<void> {
     runExclusivelyForCodexTrustConfig(systemTomlPath, async () => {
       // Why compare first: every Codex launch lands here, and the real-home lock is only for writes.
       if (readProjectTrustDecision(systemTomlPath, absPath) === null) {
-        // The locked add re-reads, so a choice another instance wrote while this waited is honoured.
-        await withRealHomeWriteLock(async () =>
-          addProjectTrustLevel(systemTomlPath, absPath, 'trusted')
-        )
+        try {
+          // The locked add re-reads, so a choice another instance wrote while this waited is honoured.
+          await withRealHomeWriteLock(async () =>
+            addProjectTrustLevel(systemTomlPath, absPath, 'trusted')
+          )
+        } catch (error) {
+          // Why: a failed ~/.codex write or lock is bookkeeping; it must not cost the runtime home its trust.
+          console.warn('[codex-project-trust] could not record trust in ~/.codex:', error)
+        }
       }
       // Why: the ~/.codex answer is the user's; never give the runtime home trust it withholds.
-      if (readProjectTrustDecision(systemTomlPath, absPath) === 'trusted') {
+      const answer = readProjectTrustDecision(systemTomlPath, absPath)
+      if (answer === null || answer === 'trusted') {
         addProjectTrustLevel(runtimeTomlPath, absPath, 'trusted')
       }
     })

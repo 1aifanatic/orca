@@ -454,6 +454,25 @@ describe('markCodexProjectTrusted keeps the answer the user already gave', () =>
     expect(existsSync(runtimeConfigPath())).toBe(false)
   })
 
+  it('still trusts an unanswered project in the runtime home when the ~/.codex lock fails', async () => {
+    const original = 'model = "gpt-5.5"\n'
+    seedSystemConfig(original)
+    vi.mocked(withManagedHookInstallLock).mockRejectedValueOnce(
+      new Error('Managed-hook install lock belongs to another host')
+    )
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    try {
+      await markCodexProjectTrusted(workspace)
+    } finally {
+      warn.mockRestore()
+    }
+
+    expect(readFileSync(systemConfigPath(), 'utf-8')).toBe(original)
+    expect(readFileSync(runtimeConfigPath(), 'utf-8')).toBe(
+      `${projectHeader(workspace)}\ntrust_level = "trusted"\n`
+    )
+  })
+
   it('keeps an untrusted answer the runtime home already holds', async () => {
     const runtimeOriginal = [projectHeader(workspace), 'trust_level = "untrusted"', ''].join('\n')
     mkdirSync(dirname(runtimeConfigPath()), { recursive: true })
