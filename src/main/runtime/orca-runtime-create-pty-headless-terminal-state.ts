@@ -199,9 +199,9 @@ export class OrcaRuntimeWithCreatePtyHeadlessTerminalState extends OrcaRuntimeWi
 
   // Public: Reset Terminal must ground this model too; park/reveal and mobile restore from it.
   async resetHeadlessTerminalInputModes(ptyId: string): Promise<void> {
-    // Why now, not on the chain: onPtyData scans live bytes into this tracker on arrival.
-    // Focus is outside its model, so the plain ground is exact.
-    this.providerModeTrackersByPtyId.get(ptyId)?.scan(PROCESS_BOUNDARY_GROUND)
+    // Why now, not on the chain: onPtyData scans live bytes into these on arrival.
+    // Focus is outside their model, so the plain ground is exact.
+    this.scanProviderModeTrackers(ptyId, PROCESS_BOUNDARY_GROUND)
     const state = this.headlessTerminals.get(ptyId)
     if (!state) {
       return
