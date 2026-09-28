@@ -135,6 +135,13 @@ export const getAgentCatalog = createLocalizedCatalog((): AgentCatalogEntry[] =>
     homepageUrl: 'https://deepseek-harness.github.io/deepseek-harness/'
   },
   {
+    id: 'qoder',
+    label: translate('auto.lib.agent.catalog.qoder_label', 'Qoder CLI'),
+    cmd: 'qodercli',
+    faviconDomain: 'qoder.com',
+    homepageUrl: 'https://docs.qoder.com/cli/overview'
+  },
+  {
     id: 'zcode',
     label: translate('auto.lib.agent.catalog.zcode_label', 'ZCode'),
     cmd: 'zcode',
@@ -248,6 +255,13 @@ export const getAgentCatalog = createLocalizedCatalog((): AgentCatalogEntry[] =>
     cmd: 'codebuff',
     faviconDomain: 'codebuff.com',
     homepageUrl: 'https://www.codebuff.com/docs/help/quick-start'
+  },
+  {
+    id: 'freebuff',
+    label: translate('auto.lib.agent.catalog.freebuff_label', 'Freebuff'),
+    cmd: 'freebuff',
+    faviconDomain: 'freebuff.com',
+    homepageUrl: 'https://freebuff.com/cli'
   },
   {
     id: 'command-code',
