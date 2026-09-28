@@ -59,6 +59,7 @@ import {
   RespondParams,
   RespondToQuestionParams,
   RewindParams,
+  QueuedMessageActionParams,
   SendParams,
   SetOptionParams,
   SubscribeParams,
@@ -198,6 +199,17 @@ export const STRUCTURED_AGENT_SESSION_METHODS = [
     name: 'agentSession.cancel',
     params: CancelParams,
     handler: async (params, ctx) => requireStructuredCleanupHost(ctx).cancel(callerFor(ctx), params)
+  }),
+  defineMethod({
+    // Send-now on a host-held draft; gated on agent-session.queued-messages.v1.
+    name: 'agentSession.queuedMessageSend',
+    params: QueuedMessageActionParams,
+    handler: async (params, ctx) => requireHost(ctx).queuedMessageSend(callerFor(ctx), params)
+  }),
+  defineMethod({
+    name: 'agentSession.queuedMessageDelete',
+    params: QueuedMessageActionParams,
+    handler: async (params, ctx) => requireHost(ctx).queuedMessageDelete(callerFor(ctx), params)
   }),
   defineMethod({
     // Releasing a chat view, not ending a conversation: the record and journal stay on disk so the

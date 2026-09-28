@@ -15,6 +15,8 @@ import type {
   AgentSessionSendResult
 } from '../../../shared/agent-session-wire'
 import { DISPATCH_DOUBT_SUBMISSION_MISSING } from '../agent-session-journal/journal-dispatch-doubt-reasons'
+import { structuredAgentSessionPayloadFingerprint } from '../../../shared/structured-agent-session-mutation'
+import { replayWithdrawnQueuedMessages } from './structured-agent-session-queued-mutations'
 import {
   performCancel,
   performPrompt,
@@ -24,6 +26,16 @@ import {
   type TurnOutcome
 } from './structured-agent-session-turns'
 import type { AgentSessionPromptRequest } from './structured-agent-session-turns-prompt'
+
+/** The body-only hash: what the reducer recomputes to alias a provider echo
+ *  onto its submission, so the stored value must never include control fields. */
+function sendBodyFingerprint(sessionId: string, body: AgentJournalMessageItem): string {
+  return structuredAgentSessionPayloadFingerprint({
+    method: 'agentSession.send',
+    sessionId,
+    fields: { body }
+  })
+}
 
 export type MutationPlan<TValue> = {
   method: string
@@ -43,6 +55,7 @@ export function sendPlan(params: {
   envelope: AgentSessionMutationEnvelope
   body: AgentJournalMessageItem
   retryUnknown?: true
+  delivery?: 'queue-if-active'
   beforeRun?: () => void
 }): MutationPlan<AgentSessionSendResult> {
   // The operation id IS the client message id: one send, one durable row, one
@@ -53,8 +66,9 @@ export function sendPlan(params: {
     operationIdScope: 'global',
     conversationWrite: true,
     markUnknownBeforeRun: true,
-    // A control signal is not payload; it cannot alter durable replay.
-    fields: { body: params.body },
+    // `delivery` joins the OPERATION fingerprint only; the submission row keeps
+    // the body-only fingerprint the reducer's echo-aliasing recomputes.
+    fields: { body: params.body, ...(params.delivery ? { delivery: params.delivery } : {}) },
     recoverUnknownFromDurableState: true,
     // `retryUnknown` is a compatibility-only client signal. A recorded send
     // always replays and never reaches the provider twice.
@@ -63,7 +77,7 @@ export function sendPlan(params: {
       params.beforeRun?.()
       return performSend(ctx, {
         clientMessageId,
-        payloadFingerprint: params.envelope.payloadFingerprint,
+        payloadFingerprint: sendBodyFingerprint(params.envelope.sessionId, params.body),
         body: params.body
       })
     },
@@ -73,6 +87,23 @@ export function sendPlan(params: {
         .find((entry) => entry.clientMessageId === clientMessageId)
       if (submission) {
         return { clientMessageId, submission }
+      }
+      // A send this host queued answers from the draft or its tombstone: a
+      // withdrawn draft replays as spent — never as missing-submission doubt.
+      const draft = ctx.journal.queuedMessages.get(clientMessageId)
+      if (draft) {
+        if (draft.state === 'dispatched') {
+          const consumed = ctx.journal
+            .submissions()
+            .find((entry) => entry.clientMessageId === (draft.consumedAs ?? draft.messageId))
+          if (consumed) {
+            return { clientMessageId, submission: consumed }
+          }
+        }
+        return {
+          clientMessageId,
+          queued: { messageId: draft.messageId, position: draft.position, state: draft.state }
+        }
       }
       if (outcome.status === 'failed') {
         return null
@@ -101,6 +132,7 @@ export function cancelPlan(params: {
   turnId?: string
   scope?: 'background-tasks'
   taskId?: string
+  withdrawQueued?: true
   prompt?: { itemId: string; expectedRevision: number }
 }): MutationPlan<AgentSessionCancelResult> {
   return {
@@ -111,6 +143,7 @@ export function cancelPlan(params: {
       ...(params.turnId !== undefined ? { turnId: params.turnId } : {}),
       ...(params.scope ? { scope: params.scope } : {}),
       ...(params.taskId ? { taskId: params.taskId } : {}),
+      ...(params.withdrawQueued ? { withdrawQueued: params.withdrawQueued } : {}),
       ...(params.prompt ? { prompt: params.prompt } : {})
     },
     run: (ctx) =>
@@ -122,10 +155,20 @@ export function cancelPlan(params: {
         ...(params.prompt ? { prompt: params.prompt } : {})
       }),
     // Interrupting twice would kill a turn the client never asked to stop, so a
-    // replay reports the turn as already handled instead.
-    replay: () => ({
+    // replay reports the turn as already handled — but the withdrawn drafts'
+    // bodies still come back, from their op-stamped tombstones.
+    replay: (ctx) => ({
       ...(params.turnId !== undefined ? { turnId: params.turnId } : {}),
-      cancelled: false
+      cancelled: false,
+      ...(params.withdrawQueued
+        ? {
+            withdrawnQueued: replayWithdrawnQueuedMessages(
+              ctx.journal,
+              ctx.resolvedBy,
+              params.envelope.clientOperationId
+            )
+          }
+        : {})
     })
   }
 }

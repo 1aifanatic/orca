@@ -218,6 +218,8 @@ export const MOBILE_RPC_METHOD_ALLOWLIST = new Set([
   'agentSession.reveal',
   'agentSession.send',
   'agentSession.cancel',
+  'agentSession.queuedMessageSend',
+  'agentSession.queuedMessageDelete',
   'agentSession.close',
   'agentSession.respondToApproval',
   'agentSession.respondToQuestion',

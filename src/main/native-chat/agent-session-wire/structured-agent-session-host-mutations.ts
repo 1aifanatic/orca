@@ -44,6 +44,8 @@ import {
   setOptionPlan,
   type MutationPlan
 } from './structured-agent-session-mutation-plans'
+import { maybeQueueStructuredAgentSessionSend } from './structured-agent-session-queued-messages'
+import { stopQueuedWithdrawalFinisher } from './structured-agent-session-queued-mutations'
 import type {
   StructuredAgentSessionCaller,
   StructuredAgentSessionHostDeps,
@@ -70,6 +72,8 @@ export type StructuredAgentSessionMutationContext = {
   wakeDelivery: (sessionId: string) => void
   /** Stops the session's provider child, keeping its conversation; inside the caller's serialize. */
   stopAgent: (sessionId: string) => Promise<void>
+  /** A draft was inserted, withdrawn or unblocked: the queued-message drain re-derives. */
+  wakeQueuedDrain?: (sessionId: string) => void
   now: () => number
 }
 
@@ -104,6 +108,7 @@ export function sendStructuredAgentSessionTurn(
     envelope: AgentSessionMutationEnvelope
     body: AgentJournalMessageItem
     retryUnknown?: true
+    delivery?: 'queue-if-active'
     beforeRun?: () => void
   }
 ): Promise<AgentSessionMutationResult<AgentSessionSendResult>> {
@@ -118,6 +123,10 @@ export function sendStructuredAgentSessionTurn(
         const blocked = structuredAgentSessionSendBlock(context.deps.store.getRecord(ctx.sessionId))
         if (blocked) {
           return blocked
+        }
+        const queued = await maybeQueueStructuredAgentSessionSend(context, ctx, params)
+        if (queued) {
+          return queued
         }
         const accepted = await plan.run(ctx)
         if (accepted.ok) {
@@ -138,6 +147,7 @@ export function cancelStructuredAgentSessionTurn(
     turnId?: string
     scope?: 'background-tasks'
     taskId?: string
+    withdrawQueued?: true
     prompt?: { itemId: string; expectedRevision: number }
   }
 ): Promise<AgentSessionMutationResult<AgentSessionCancelResult>> {
@@ -168,6 +178,13 @@ export function cancelStructuredAgentSessionTurn(
     {
       ...plan,
       run: async (ctx) => {
+        // Pauses the withdrawable frontier now; `finish` withdraws it after the
+        // interrupt, for the capable clients that asked.
+        const finish = stopQueuedWithdrawalFinisher(ctx, {
+          withdrawQueued: params.withdrawQueued,
+          operationId: params.envelope.clientOperationId,
+          wake: context.wakeQueuedDrain
+        })
         // Stop withdraws every queued message first, whatever the start or the child is doing.
         const withdrawn = await ctx.journal.rejectQueuedSubmissions(
           ctx.fence,
@@ -178,7 +195,7 @@ export function cancelStructuredAgentSessionTurn(
         if (child?.phase === 'starting') {
           // A start that may never land is the one thing here Stop has to end; the chat stays.
           await context.stopAgent(ctx.sessionId)
-          return { ok: true, value: { ...named, cancelled: true } }
+          return finish({ ...named, cancelled: true })
         }
         // A Stop naming no turn ends nothing more unless the session reads working, by the rule
         // every session list and the chat's own Stop read it.
@@ -189,9 +206,11 @@ export function cancelStructuredAgentSessionTurn(
             ctx.journal.submissions(),
             ctx.fence
           )
-        return child && inFlight
-          ? plan.run(ctx)
-          : { ok: true, value: { ...named, cancelled: withdrawn.length > 0 } }
+        if (child && inFlight) {
+          const interrupted = await plan.run(ctx)
+          return interrupted.ok ? finish(interrupted.value) : interrupted
+        }
+        return finish({ ...named, cancelled: withdrawn.length > 0 })
       }
     },
     openForWrite(context, params.envelope)

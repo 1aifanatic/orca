@@ -20,6 +20,11 @@ import { openWithAgent } from './structured-agent-session-send-preparation'
 import type { StructuredAgentSessionCaller } from './structured-agent-session-host-types'
 import type { StructuredAgentSessionHost } from './structured-agent-session-host'
 import { conversationCommandBlocked } from './structured-conversation-command-admission'
+import {
+  replayWithdrawnQueuedMessages,
+  withdrawQueuedMessagesForOperation,
+  withdrawableQueuedMessages
+} from './structured-agent-session-queued-mutations'
 
 export type ConversationCommandParams = {
   envelope: AgentSessionMutationEnvelope
@@ -63,25 +68,41 @@ export function runStructuredConversationCommand(
         method: 'agentSession.conversationCommand',
         fields: { command },
         recoverUnknownFromDurableState: true,
-        settledOutcome: (value) => ({ status: 'succeeded', sessionId, conversationCommand: value }),
-        replay: (_ctx, outcome) => {
-          if (outcome.status === 'succeeded' && outcome.conversationCommand) {
-            return outcome.conversationCommand
-          }
-          const prior = matching()
-          if (prior?.phase === 'committed') {
-            return prior
-          }
-          if (command === 'compact' && prior && outcome.status !== 'unknown') {
-            return {
-              command,
-              state: 'unknown',
-              error: 'Compaction completion is unconfirmed; it was not run again.'
+        settledOutcome: (value) => {
+          // Withdrawn bodies never enter the ledger (it caps result payloads);
+          // replays re-read the drafts' own op-stamped tombstones instead.
+          const { withdrawnQueued: _bodies, ...recorded } = value
+          return { status: 'succeeded', sessionId, conversationCommand: recorded }
+        },
+        replay: (ctx, outcome) => {
+          const replayed = (() => {
+            if (outcome.status === 'succeeded' && outcome.conversationCommand) {
+              return outcome.conversationCommand
             }
+            const prior = matching()
+            if (prior?.phase === 'committed') {
+              return prior
+            }
+            if (command === 'compact' && prior && outcome.status !== 'unknown') {
+              return {
+                command,
+                state: 'unknown' as const,
+                error: 'Compaction completion is unconfirmed; it was not run again.'
+              }
+            }
+            return outcome.status === 'succeeded' && command === 'compact'
+              ? { command, state: 'completed' as const }
+              : null
+          })()
+          if (!replayed || command !== 'clear') {
+            return replayed
           }
-          return outcome.status === 'succeeded' && command === 'compact'
-            ? { command, state: 'completed' }
-            : null
+          const withdrawnQueued = replayWithdrawnQueuedMessages(
+            ctx.journal,
+            caller.callerKey,
+            clientOperationId
+          )
+          return withdrawnQueued.length > 0 ? { ...replayed, withdrawnQueued } : replayed
         },
         rerunWhenReplayMissing: () => command === 'clear' && matching()?.phase === 'prepared',
         run: async (ctx) => {
@@ -239,7 +260,26 @@ export function runStructuredConversationCommand(
             ...(error ? { error: error.slice(0, 4096) } : {})
           }
           await store.setConversationCommand(sessionId, ctx.fence, completed)
-          return { ok: true, value: completed }
+          if (command !== 'clear') {
+            return { ok: true, value: completed }
+          }
+          // The cleared source keeps its session, but nothing will ever act on a
+          // superseded source's drafts: withdraw them — returned cards included —
+          // and hand their text back for the composer. On failure the committed
+          // supersession fence already blocks the drain; the cards keep Delete.
+          const withdrawnQueued = await withdrawQueuedMessagesForOperation(ctx.journal, {
+            sessionId,
+            messageIds: withdrawableQueuedMessages(ctx.journal).map((row) => row.messageId),
+            callerKey: caller.callerKey,
+            operationId: clientOperationId
+          }).catch(() => undefined)
+          ctx.publish()
+          return {
+            ok: true,
+            // Bodies ride the RESULT only; the ledger's recorded outcome stays
+            // capped, and replays re-read the drafts' own tombstones.
+            value: withdrawnQueued !== undefined ? { ...completed, withdrawnQueued } : completed
+          }
         }
       }
     })

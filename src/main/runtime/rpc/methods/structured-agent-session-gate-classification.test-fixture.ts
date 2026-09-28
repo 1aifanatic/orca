@@ -57,6 +57,14 @@ export const ADMISSION_METHODS = [
   { method: 'agentSession.ensure', params: attachParams() },
   { method: 'agentSession.send', params: sendParams() },
   {
+    method: 'agentSession.queuedMessageSend',
+    params: { envelope: envelope(), messageId: 'queued-1' }
+  },
+  {
+    method: 'agentSession.queuedMessageDelete',
+    params: { envelope: envelope(), messageId: 'queued-1' }
+  },
+  {
     method: 'agentSession.rewind',
     params: { envelope: envelope(), itemId: 'chosen', expectedEpoch: 'epoch' }
   },

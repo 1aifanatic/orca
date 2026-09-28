@@ -16,6 +16,7 @@ export {
   ModelCatalogParams,
   MutationEnvelope,
   OptionsParams,
+  QueuedMessageActionParams,
   RespondParams,
   RespondToQuestionParams,
   RestartResumableParams,

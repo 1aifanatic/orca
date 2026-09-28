@@ -4,6 +4,7 @@ import type {
   AgentSessionHistoryResult
 } from '../../../shared/agent-session-wire'
 import { readStructuredAgentSessionHistoryResult } from './structured-agent-session-history-result'
+import { readPublishedQueuedMessages } from './structured-agent-session-queued-messages'
 import type {
   AgentSessionSubscribers,
   AgentSessionSubscribeInput
@@ -29,8 +30,9 @@ export class StructuredAgentSessionBackgroundTaskChannel {
   ) {}
 
   async history(request: AgentSessionHistoryRequest): Promise<AgentSessionHistoryResult> {
+    const journal = (await this.conversation(request.sessionId)).journal
     const result = readStructuredAgentSessionHistoryResult({
-      journal: (await this.conversation(request.sessionId)).journal,
+      journal,
       record: this.deps.store.getRecord(request.sessionId),
       request
     })
@@ -41,6 +43,9 @@ export class StructuredAgentSessionBackgroundTaskChannel {
       page: {
         ...result.page,
         hostNow,
+        // A stale history answer never replaces newer live subscription state;
+        // the client's reducer keeps live-over-history precedence.
+        queuedMessages: readPublishedQueuedMessages(journal),
         ...(backgroundTasks !== undefined ? { backgroundTasks } : {})
       }
     }

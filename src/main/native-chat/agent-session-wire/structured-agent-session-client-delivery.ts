@@ -1,6 +1,7 @@
 import type { AgentChildWorkEvidence } from '../../../shared/agent-status-child-work-evidence'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { AgentSessionSubscribers } from './structured-agent-session-subscribers'
+import { readPublishedQueuedMessages } from './structured-agent-session-queued-messages'
 import type {
   StructuredAgentSessionHostDeps,
   StructuredAgentSessionHostSession
@@ -48,6 +49,15 @@ export class StructuredAgentSessionClientDelivery {
     this.waitForSendSettlement = this.sendSettlement.wait
     this.subscribers = new AgentSessionSubscribers({
       readCommands: (sessionId) => deps().adapter.readCommands?.(sessionId),
+      readQueuedMessages: (sessionId) => {
+        const journal = sessions.get(sessionId)?.journal
+        try {
+          return journal ? readPublishedQueuedMessages(journal) : undefined
+        } catch {
+          // A closing handle must not cost the subscriber its stream.
+          return undefined
+        }
+      },
       onJournalPublished: (sessionId, journal) => this.publishJournal(sessionId, journal)
     })
   }
