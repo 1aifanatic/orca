@@ -349,6 +349,32 @@ describe('Stop against a host that stops the conversation', () => {
     expect(ids[1]).toBe(ids[0])
   })
 
+  it('sends a new cancel of a named turn after the host could not settle the last one', async () => {
+    const answers: (() => unknown)[] = [
+      () => ({
+        ok: false,
+        refusal: { code: 'agent_session_operation_unknown', message: 'Outcome unknown.' }
+      })
+    ]
+    mocks.call.mockImplementation(async (_target, method) =>
+      method === 'agentSession.cancel'
+        ? (answers.shift()?.() ?? { ok: true, value: { cancelled: true } })
+        : null
+    )
+    const { result } = render()
+
+    for (let press = 0; press < 2; press += 1) {
+      await act(async () => {
+        await result.current.cancel('provider-turn')
+      })
+    }
+
+    // Cancel recovers nothing from an unknown row, so the same id would earn the same refusal.
+    const ids = cancelOperationIds()
+    expect(ids).toHaveLength(2)
+    expect(ids[1]).not.toBe(ids[0])
+  })
+
   it('is hidden at rest, and with only a message that will not run', () => {
     expect(render().result.current.canStop).toBe(false)
     outbox = [entry('rejected')]
