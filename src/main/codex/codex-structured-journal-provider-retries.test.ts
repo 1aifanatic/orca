@@ -82,11 +82,19 @@ describe('a Codex stream error it is about to retry', () => {
     expect(firstRun[0]?.body).toEqual({
       kind: 'status',
       tone: 'warning',
-      text: 'Codex is reconnecting: Reconnecting... 3/5.',
+      text: 'Codex is retrying: Reconnecting... 3/5.',
       failure: {
         kind: 'providerRetrying',
         detail: { text: 'Reconnecting... 3/5', audience: 'person' },
         retry: { error: 'responseStreamDisconnected', status: 502 }
+      },
+      // The whole frame stays behind the row's details, as it did on the generic row.
+      providerFrame: {
+        provider: 'codex',
+        kind: 'notification:error',
+        payload: expect.objectContaining({
+          head: expect.stringContaining('stream disconnected before completion')
+        })
       }
     })
     // No per-attempt error row is written beside it.
@@ -106,8 +114,8 @@ describe('a Codex stream error it is about to retry', () => {
 
     const runs = retryRows(rows)
     expect(runs).toHaveLength(2)
-    expect(runs[0]?.body).toMatchObject({ text: 'Codex is reconnecting: Reconnecting... 3/5.' })
-    expect(runs[1]?.body).toMatchObject({ text: 'Codex is reconnecting: Reconnecting... 2/5.' })
+    expect(runs[0]?.body).toMatchObject({ text: 'Codex is retrying: Reconnecting... 3/5.' })
+    expect(runs[1]?.body).toMatchObject({ text: 'Codex is retrying: Reconnecting... 2/5.' })
     const order = reduced(rows)
     expect(order.findIndex((row) => row.key === runs[1]?.key)).toBeGreaterThan(
       order.findIndex((row) => JSON.stringify(row.body).includes('Partial answer'))
@@ -137,7 +145,7 @@ describe('a Codex stream error it is about to retry', () => {
     expect(run).toHaveLength(1)
     expect(run[0]?.body).toMatchObject({
       tone: 'warning',
-      text: 'Codex is reconnecting: Reconnecting... waiting for network.',
+      text: 'Codex is retrying: Reconnecting... waiting for network.',
       failure: { retry: { error: 'responseStreamDisconnected' } }
     })
   })

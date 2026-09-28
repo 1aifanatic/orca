@@ -13,6 +13,10 @@ import {
 import { agentSessionFailureWords } from '../../shared/agent-session-failure-words'
 import type { AgentJournalStatusItem } from '../../shared/agent-session-journal-types'
 import { TUI_AGENT_DISPLAY_NAMES } from '../../shared/tui-agent-display-names'
+import {
+  boundPayload,
+  DEFAULT_JOURNAL_PAYLOAD_LIMITS
+} from '../native-chat/agent-session-journal/journal-payload-bounds'
 import { classifyProviderFrame } from '../native-chat/agent-session-wire/provider-frame-disposition'
 import type { StructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
 import type { CodexJournalTranslationAdmission } from './codex-structured-journal-contracts'
@@ -46,7 +50,17 @@ export function codexProviderRetryRowBody(payload: unknown): AgentJournalStatusI
     }),
     { surface: 'row', agentName: TUI_AGENT_DISPLAY_NAMES.codex }
   )
-  return { kind: 'status', tone: 'warning', ...words }
+  return {
+    kind: 'status',
+    tone: 'warning',
+    ...words,
+    // Codex's `additionalDetails` is diagnostic, so it stays behind the row's details, not in it.
+    providerFrame: {
+      provider: 'codex',
+      kind: 'notification:error',
+      payload: boundPayload(JSON.stringify(payload), DEFAULT_JOURNAL_PAYLOAD_LIMITS)
+    }
+  }
 }
 
 /** Whether a frame can put a row in its thread's timeline. Chrome, such as the thread status

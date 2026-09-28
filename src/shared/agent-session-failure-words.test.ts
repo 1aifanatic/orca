@@ -190,7 +190,7 @@ describe('the words written beside a failure fact', () => {
         agentName: 'Codex'
       })
     expect(retrying({ detail: { text: 'Reconnecting... 2/5', audience: 'person' } })).toBe(
-      'Codex is reconnecting: Reconnecting... 2/5.'
+      'Codex is retrying: Reconnecting... 2/5.'
     )
     expect(
       retrying({

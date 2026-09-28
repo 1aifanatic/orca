@@ -201,7 +201,7 @@ const FAILURE_SENTENCES = {
   // A provider that says how its retry is going, for a person, is quoted: that is the progress.
   providerRetrying: ({ agentName }, { retry, detail }) =>
     detail?.audience === 'person'
-      ? quotingPersonDetail(`${agentName ?? 'The agent'} is reconnecting`, detail)
+      ? quotingPersonDetail(`${agentName ?? 'The agent'} is retrying`, detail)
       : retry?.error === 'rate_limit' || retry?.status === 429
         ? `${agentName ?? 'The agent'} is rate-limited and retrying.`
         : `${agentName ?? 'The agent'} hit a temporary problem and is retrying.`
