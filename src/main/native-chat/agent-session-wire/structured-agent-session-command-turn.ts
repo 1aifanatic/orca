@@ -27,6 +27,7 @@ import {
   type AgentJournalMessageItem,
   type AgentJournalSubmission
 } from '../../../shared/agent-session-journal-types'
+import type { AgentSessionConversationCommand } from '../../../shared/agent-session-conversation-command'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import { agentSessionRefusalReference } from '../../../shared/agent-session-wire-refusals'
 import {
@@ -53,6 +54,37 @@ export function structuredAgentSessionCompactBody(): AgentJournalMessageItem {
     blocks: [{ type: 'text', text: '/compact' }],
     command: { name: STRUCTURED_AGENT_SESSION_COMPACT_COMMAND }
   }
+}
+
+type AwaitedSubmission = Pick<
+  AgentJournalSubmission,
+  'clientMessageId' | 'dispatchState' | 'acceptedSequence'
+>
+
+/** Optional `submissions` as the dead-generation journal reads it. */
+export type StructuredAgentSessionAwaitedCommandJournal = {
+  submissions?: () => readonly AwaitedSubmission[]
+  itemBody: AgentSessionJournal['itemBody']
+}
+
+/** The command the oldest message still waiting on the provider names: a start that fails now
+ *  fails that message first, so its next step is to run the command again. */
+export function structuredAgentSessionAwaitedCommand(
+  journal: StructuredAgentSessionAwaitedCommandJournal
+): AgentSessionConversationCommand | undefined {
+  let oldest: AwaitedSubmission | undefined
+  for (const submission of journal.submissions?.() ?? []) {
+    if (
+      submission.dispatchState === 'pending' &&
+      (oldest === undefined || (submission.acceptedSequence ?? 0) < (oldest.acceptedSequence ?? 0))
+    ) {
+      oldest = submission
+    }
+  }
+  const body = oldest && journal.itemBody(agentJournalSubmissionKey(oldest.clientMessageId))
+  return body?.kind === 'message' && body.command?.name === STRUCTURED_AGENT_SESSION_COMPACT_COMMAND
+    ? STRUCTURED_AGENT_SESSION_COMPACT_COMMAND
+    : undefined
 }
 
 /** The command's turn: its record and the `turnId` a Stop names. The `compact:` prefix is how the

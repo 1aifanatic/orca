@@ -16,6 +16,7 @@ import {
   type SubmissionRejectionFact,
   type SubmissionRejectionKind
 } from './agent-session-failure'
+import type { AgentSessionConversationCommand } from './agent-session-conversation-command'
 import type { AgentSessionWireRefusalCode } from './agent-session-wire-refusals'
 import {
   DISPATCH_REJECTED_CANCELLED,
@@ -52,7 +53,7 @@ export type AgentSessionFailureWordsContext = {
   provider?: 'claude' | 'codex'
   /** The conversation command a failed start was for, so the next step is to run it again
    *  rather than to send a message. */
-  command?: 'clear'
+  command?: AgentSessionConversationCommand
 }
 
 /**
@@ -106,12 +107,12 @@ function quotingPersonDetail(lead: string, detail: ProviderDiagnostic | undefine
 
 /** What to do once the start can work, for a sentence that ends in it. */
 function retryStep({ command }: AgentSessionFailureWordsContext): string {
-  return command === 'clear' ? 'run /clear again' : 'send your message again'
+  return command ? `run /${command} again` : 'send your message again'
 }
 
 /** The next step after a start or restart that failed: the command, or the message, again. */
 function startRetry({ command }: AgentSessionFailureWordsContext): string {
-  return command === 'clear' ? ' Run /clear again.' : ' Send your message to try again.'
+  return command ? ` Run /${command} again.` : ' Send your message to try again.'
 }
 
 function couldNot(verb: string): Sentence {

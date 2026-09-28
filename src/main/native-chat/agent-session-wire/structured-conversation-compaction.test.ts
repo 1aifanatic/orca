@@ -374,11 +374,12 @@ it('leaves a command whose start failed not sent, beside one start-failure row (
   state.acquire.mockRejectedValue(new Error('not signed in'))
   const params = compactParams()
 
+  // The next step is the command again, not a message.
   await expect(state.host.conversationCommand(CALLER, params)).resolves.toMatchObject({
     ok: true,
     value: {
       state: 'completed',
-      error: "Codex couldn't restart. Send your message to try again.",
+      error: "Codex couldn't restart. Run /compact again.",
       failure: { kind: 'restartFailed' }
     }
   })
@@ -392,11 +393,19 @@ it('leaves a command whose start failed not sent, beside one start-failure row (
   ).toEqual([
     {
       kind: 'status',
-      text: "Codex couldn't restart. Send your message to try again.",
+      text: "Codex couldn't restart. Run /compact again.",
       failure: expect.objectContaining({ kind: 'restartFailed' }),
       tone: 'error'
     }
   ])
+  expect(
+    snapshot.submissions.find(
+      (entry) => entry.clientMessageId === params.envelope.clientOperationId
+    )
+  ).toMatchObject({
+    dispatchState: 'rejected',
+    reason: "Codex couldn't restart. Run /compact again."
+  })
   expect(compact).not.toHaveBeenCalled()
 })
 

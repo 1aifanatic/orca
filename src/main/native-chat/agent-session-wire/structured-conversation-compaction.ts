@@ -75,10 +75,10 @@ export async function runStructuredCompaction(
   return {
     ...accepted,
     ...(settled ? { cursor: settled.cursor } : {}),
-    value: compactionReply(
-      settled?.value.submission,
-      structuredAgentSessionFailureWordsContext(context.deps.store.getRecord(sessionId))
-    )
+    value: compactionReply(settled?.value.submission, {
+      ...structuredAgentSessionFailureWordsContext(context.deps.store.getRecord(sessionId)),
+      command: 'compact'
+    })
   }
 }
 

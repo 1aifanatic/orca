@@ -63,7 +63,10 @@ export function createStructuredAgentSessionConversationDelivery(input: {
     conversationFence: (sessionId) =>
       structuredAgentSessionConversationFence(deps.store, sessionId),
     failureTextContext: (sessionId) =>
-      structuredAgentSessionFailureWordsContext(deps.store.getRecord(sessionId)),
+      structuredAgentSessionFailureWordsContext(
+        deps.store.getRecord(sessionId),
+        sessions.get(sessionId)?.journal
+      ),
     onError: (sessionId, error) => deps.onEventSinkError?.({ sessionId, error }),
     record: (sessionId) => deps.store.getRecord(sessionId),
     flushStreamedEvents: input.flushStreamedEvents,

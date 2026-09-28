@@ -17,6 +17,10 @@ import {
   classifyJournalOpenFailure,
   type JournalOpenFailure
 } from '../agent-session-journal/journal-open-failure'
+import {
+  structuredAgentSessionAwaitedCommand,
+  type StructuredAgentSessionAwaitedCommandJournal
+} from './structured-agent-session-command-turn'
 import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
 import {
   AGENT_SESSION_NOT_ATTACHED,
@@ -120,9 +124,15 @@ export function sendPreparation(
   }
 }
 
-/** Who a failure sentence names: the chat's agent, when the record says. */
+/** Who a failure sentence names: the chat's agent, when the record says; and, given the journal,
+ *  the command a failed start leaves to run again. */
 export function structuredAgentSessionFailureWordsContext(
-  record: AgentSessionRecord | null
+  record: AgentSessionRecord | null,
+  journal?: StructuredAgentSessionAwaitedCommandJournal
 ): AgentSessionFailureWordsContext {
-  return record ? { agentName: TUI_AGENT_DISPLAY_NAMES[record.provider] } : {}
+  const command = journal && structuredAgentSessionAwaitedCommand(journal)
+  return {
+    ...(record ? { agentName: TUI_AGENT_DISPLAY_NAMES[record.provider] } : {}),
+    ...(command ? { command } : {})
+  }
 }
