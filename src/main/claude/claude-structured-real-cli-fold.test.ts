@@ -108,7 +108,7 @@ describe.skipIf(!realClaudeAvailable)('Claude structured real CLI fold', () => {
           events: sink
         })
         await adapter.awaitStarted(SESSION_ID)
-        // Startup proved from the SessionStart hook frame, with no init (so no version) yet.
+        // Startup proved from the SessionStart hook frame, with no init yet.
         expect(
           events.some(
             (event) =>

@@ -51,19 +51,20 @@ export function fakeClaude(
     initSessionId?: string
     initUuid?: string
     initModel?: string
+    /** 'session-start' (default) mirrors live: a SessionStart hook frame proves the
+     *  session and system/init arrives only when the first command starts a cycle.
+     *  'init' emits init at startup — an UNMEASURED shape, opt-in only. */
+    initProof?: 'init' | 'session-start' | 'none'
     initAccount?: unknown
     initCommands?: unknown
     /** The initialize result's `models`, which the SDK also answers `list_models` from. */
     initModels?: unknown[]
-    /** 'session-start' (default) mirrors live: a SessionStart hook frame proves the
-     *  session and system/init arrives only when the first command starts a cycle.
-     *  'init' emits init at startup — an UNMEASURED shape, opt-in only. */
+    /** What `get_context_usage` answers; defaults to an empty, unusable report. */
     contextUsage?: unknown
     exitBeforeInit?: string
     /** Host-clock delay before the CLI answers initialize, as on a loaded machine. */
     initDelayMs?: number
     settings?: unknown
-    initProof?: 'init' | 'session-start' | 'none'
     replayUuid?: string | null
     replayUuids?: (string | null)[]
     capabilities?: string[]

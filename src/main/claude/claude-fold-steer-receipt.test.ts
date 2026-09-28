@@ -2,8 +2,8 @@
 // delivery receipt, never a new turn boundary. The provider's own cycle state
 // decides — a root init announces each new cycle, and a result's
 // `user_message_uuids` names every send the cycle ran. The measured miss, a
-// lost result followed by a new cycle, fresh replay uuids, and CLIs below the
-// per-turn-init floor all keep the replay-driven opener path. Captured orders
+// lost result followed by a new cycle, and fresh replay uuids all keep the
+// replay-driven opener path. Captured orders
 // from Claude CLI 2.1.280 (`claude-captured-fold-steer-frames.test-fixture.ts`).
 
 import { describe, expect, it, vi, type Mock } from 'vitest'
@@ -601,7 +601,7 @@ describe('Claude fold receipt boundaries (synthetic orders)', () => {
     expect(rig.turns().at(-1)).toMatchObject({ turnId: uuidA, state: 'completed' })
   })
 
-  it('plural result uuids: a retired folded waiter does not shift an unrelated live waiter by queue order', async () => {
+  it('plural result uuids: a result naming only settled sends does not claim an unnamed live waiter by queue order', async () => {
     const rig = await riggedAdapter()
     const uuidA = await rig.dispatchAt(10, 'client-a', 'first prompt')
     rig.deliver(userReplay(1_000, PROVIDER_SESSION_ID, uuidA, 'first prompt'))
