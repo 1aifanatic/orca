@@ -30,7 +30,7 @@ const ESCAPE_ALSO_NAVIGATES_AGENT_TYPES: ReadonlySet<AgentType> = new Set([
 ])
 
 // Why: Codex reports its own cancel (its Interrupt hook, backed by the `turn_aborted` it writes to
-// its rollout first), and no key it receives proves one: Ctrl+C with a draft only clears the draft,
+// its rollout), and no key it receives proves one: Ctrl+C with a draft only clears the draft,
 // Esc with a popup open only closes it, and in shared-server mode Ctrl+C opens a chooser whose
 // "Run in background" cancels nothing.
 const PROVIDER_REPORTS_CANCEL_AGENT_TYPES: ReadonlySet<AgentType> = new Set(['codex'])
