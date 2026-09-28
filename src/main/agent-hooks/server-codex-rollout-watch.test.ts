@@ -283,5 +283,31 @@ describe('the Codex rollout watch on an SSH host', () => {
       },
       { timeout: 3_000, interval: 50 }
     )
+
+    // A restarted relay knows nothing: its first child event carries no main agent and only its
+    // own child, so the desktop's copy fills the rest and must match what the relay last read.
+    const LATER_CHILD = 'child-after-relay-restart'
+    desktop.ingestRemote(
+      {
+        paneKey: PANE,
+        tabId: 'tab-1',
+        worktreeId: 'wt-1',
+        source: 'codex',
+        hookEventName: 'SubagentStart',
+        toolAgentId: LATER_CHILD,
+        payload: {
+          state: 'working',
+          prompt: '',
+          agentType: 'codex',
+          subagents: [{ id: LATER_CHILD, state: 'working', startedAt: Date.now() }]
+        }
+      },
+      'conn-1'
+    )
+    expect(desktop.getStatusSnapshot()[0]).toMatchObject({
+      state: 'working',
+      mainAgent: { state: 'done', outcome: 'cancellation' },
+      subagents: [expect.objectContaining({ id: LATER_CHILD })]
+    })
   })
 })
