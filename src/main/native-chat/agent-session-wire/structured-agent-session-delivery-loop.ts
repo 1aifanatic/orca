@@ -10,6 +10,7 @@
 // queued message: a child's exit only ends the child, and this loop reads why.
 
 import type { AgentSessionWireRefusal } from '../../../shared/agent-session-wire'
+import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import { DISPATCH_REJECTED_HOST_RESTARTED } from '../../../shared/structured-agent-session-dispatch-rejection'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import {
@@ -27,7 +28,7 @@ import {
   recordStructuredAgentSessionStartFailure
 } from './structured-agent-session-start-failure-row'
 import {
-  childEndFailsItsStart,
+  childEndDisposition,
   failedProviderChildStart
 } from './structured-agent-session-provider-child'
 import { handOverSubmission } from './structured-agent-session-turns'
@@ -42,6 +43,11 @@ export type StructuredAgentSessionDeliveryLoopDeps = {
   ensureProviderChild: (sessionId: string) => Promise<StructuredAgentSessionResumeOutcome>
   /** The fence the conversation's own writes carry; see `structuredAgentSessionConversationFence`. */
   conversationFence: (sessionId: string) => number
+  /** Rejects queued messages as a completed close of the chat does. */
+  abandonQueued: (
+    sessionId: string,
+    which: (submission: AgentJournalSubmission) => boolean
+  ) => Promise<void>
   /** What the chat says when the session could not be made ready. */
   startFailureText: (sessionId: string, cause: AgentSessionWireRefusal) => string
   onError: (sessionId: string, error: unknown) => void
@@ -133,6 +139,7 @@ export class StructuredAgentSessionDeliveryLoop {
       // A handle closes only with nothing queued, so one an earlier handle wrote is a leftover.
       (submission) => session.journal.wroteBeforeOpen(submission.acceptedSequence)
     )
+    await this.closeWhatTheUserClosed(sessionId, session)
     const oldest = oldestQueuedSubmission(session)
     if (!oldest) {
       return this.stop(sessionId)
@@ -174,10 +181,15 @@ export class StructuredAgentSessionDeliveryLoop {
     if (!awaitedChild || (awaitedChild.phase === 'starting' && startFailure !== null)) {
       // The child waited on is gone, replaced by another, or settled its start without proving it.
       const ended = awaitedChild ? undefined : session.lastEndedChild
-      // A user's Stop or close is not a failure: the next step starts, or waits on, a child for
-      // what is queued. A host stop is: its cause is why the start did not land.
-      if (ended && !childEndFailsItsStart(ended.cause)) {
-        return 'continue'
+      switch (ended ? childEndDisposition(ended.cause) : 'failed') {
+        // A user's Stop or close is not a failure: the next step starts, or waits on, a child for
+        // what is queued, after closing what a close of the chat closed.
+        case 'continue':
+        case 'closed':
+          return 'continue'
+        // A host stop is: its cause is why the start did not land.
+        case 'failed':
+          break
       }
       return this.fail(sessionId, {
         startKey: awaited?.generation ?? null,
@@ -210,6 +222,26 @@ export class StructuredAgentSessionDeliveryLoop {
       )
     }
     return this.stop(sessionId)
+  }
+
+  /** A close of this chat that stopped its child and then did not complete still closed what was
+   *  queued before it, so no child starts for those. Ordered, not latched: a later send goes on. */
+  private async closeWhatTheUserClosed(
+    sessionId: string,
+    session: StructuredAgentSessionHostSession
+  ): Promise<void> {
+    const ended = session.lastEndedChild
+    if (session.child || !ended || childEndDisposition(ended.cause) !== 'closed') {
+      return
+    }
+    const { epoch } = session.journal.cursor()
+    await this.deps.abandonQueued(
+      sessionId,
+      (submission) =>
+        ended.endedAt.epoch === epoch &&
+        submission.acceptedSequence !== undefined &&
+        submission.acceptedSequence <= ended.endedAt.sequence
+    )
   }
 
   /** Inside the serialized step that found nothing to do, so an accept after it wakes anew. */

@@ -8,6 +8,7 @@
 import { agentChildWorkLiveness } from '../../../shared/agent-status-child-work-liveness'
 import { activeStructuredAgentSessionTurnId } from '../../../shared/structured-agent-session-projection'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
+import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import { DISPATCH_REJECTED_PROVIDER_CLOSED } from '../../../shared/structured-agent-session-dispatch-rejection'
 import {
   evictStructuredAgentSession,
@@ -56,16 +57,18 @@ type ConversationCloseDeps = Pick<StructuredAgentSessionHostDeps, 'onEventSinkEr
 
 /** A conversation's handle closes with nothing queued: what is still queued when the chat closes,
  *  or the app quits, will not be handed over. Best effort: the next open's delivery loop rejects a
- *  leftover itself. */
+ *  leftover itself. `which` narrows it to the messages a close that did not complete closed. */
 export async function abandonQueuedStructuredAgentSessionMessages(
   deps: ConversationCloseDeps,
   sessionId: string,
-  journal: StructuredAgentSessionHostSession['journal']
+  journal: StructuredAgentSessionHostSession['journal'],
+  which?: (submission: AgentJournalSubmission) => boolean
 ): Promise<void> {
   await journal
     .rejectQueuedSubmissions(
       structuredAgentSessionConversationFence(deps.store, sessionId),
-      DISPATCH_REJECTED_PROVIDER_CLOSED
+      DISPATCH_REJECTED_PROVIDER_CLOSED,
+      which
     )
     .catch((error: unknown) => deps.onEventSinkError?.({ sessionId, error }))
 }

@@ -65,21 +65,29 @@ export function failedProviderChildStart(
   session: Pick<ChildBearer, 'child' | 'lastEndedChild'>
 ): StructuredAgentSessionEndedChild | null {
   const ended = session.lastEndedChild
-  return !session.child && ended?.duringStartup && childEndFailsItsStart(ended.cause) ? ended : null
+  return !session.child && ended?.duringStartup && childEndDisposition(ended.cause) === 'failed'
+    ? ended
+    : null
 }
 
-/** Whether a child that ended this way, still starting, failed its start. A stop the user aimed at
- *  this chat is their cancellation, never a failure; a host's own stop is why the start did not land. */
-export function childEndFailsItsStart(cause: StructuredAgentSessionChildEndCause): boolean {
+/** What a child's end means for the messages queued behind it. A user's Stop lets them go on to a
+ *  new child; the user closing this chat closes them with it, as a completed close would; any other
+ *  end failed them, a host's own stop included, since it is why the start did not land. */
+export type StructuredAgentSessionChildEndDisposition = 'continue' | 'closed' | 'failed'
+
+export function childEndDisposition(
+  cause: StructuredAgentSessionChildEndCause
+): StructuredAgentSessionChildEndDisposition {
   switch (cause) {
     case 'user-stop':
+      return 'continue'
     case 'user-close':
-      return false
+      return 'closed'
     case 'exit':
     case 'attach-failed':
     case 'host-stop':
     case 'evict':
-      return true
+      return 'failed'
   }
 }
 

@@ -672,19 +672,44 @@ describe('how a stopped child ends the start its loop was waiting on', () => {
     expect(statusRows()).toEqual([])
   })
 
-  it('records no failure when the user closed the chat while its child started', async () => {
-    // The close's stop alone: a close that aborts after it leaves the conversation indexed.
-    const second = await stoppedWhileStarting(() =>
-      host['serialize'](SESSION, () =>
-        stopStructuredAgentSessionAgentUnderSerialize(host['lifetimeContext'](), SESSION, {
-          cause: 'user-close'
-        })
-      )
+  /** The close's stop alone: a close that aborts after it leaves the conversation indexed. */
+  function closeStopOnly() {
+    return host['serialize'](SESSION, () =>
+      stopStructuredAgentSessionAgentUnderSerialize(host['lifetimeContext'](), SESSION, {
+        cause: 'user-close'
+      })
     )
+  }
+
+  it('closes what was queued when the user closed the chat, and starts no child for it', async () => {
+    const start = deferred<void>()
+    adapterExtras = {
+      awaitStarted: vi.fn(() => start.promise),
+      closeSession: vi.fn(async () => true)
+    }
+    await restartHost()
+    acquire.mockImplementationOnce(spawnStartingChild)
+    const first = await accept('first')
+    await eventually(() => expect(adapterExtras.awaitStarted).toHaveBeenCalledTimes(1))
+    await closeStopOnly()
+    const starts = acquire.mock.calls.length
+    start.resolve()
 
     await settleLoop()
+    expect(submission(first)).toMatchObject({
+      dispatchState: 'rejected',
+      reason: DISPATCH_REJECTED_PROVIDER_CLOSED
+    })
+    expect(acquire).toHaveBeenCalledTimes(starts)
+    expect(dispatch).not.toHaveBeenCalled()
+    expect(statusRows()).toEqual([])
+  })
+
+  it('goes on with a message sent after the close, never failing it', async () => {
+    const second = await stoppedWhileStarting(closeStopOnly)
+
+    await eventually(() => expect(submission(second)?.dispatchState).toBe('accepted'))
     expect(conversation()?.lastEndedChild).toMatchObject({ cause: 'user-close' })
-    expect(submission(second)?.dispatchState).not.toBe('rejected')
     expect(statusRows()).toEqual([])
   })
 
