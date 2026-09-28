@@ -28,10 +28,13 @@ function terminalDescriptors(): number {
     .filter((line) => /\/dev\/(ptmx|ttys[0-9])|\(revoked\)/.test(line)).length
 }
 
-async function waitUntil(predicate: () => boolean): Promise<void> {
+async function waitUntil(
+  predicate: () => boolean,
+  message = 'PTY lifecycle deadline exceeded'
+): Promise<void> {
   const deadline = Date.now() + 3000
   while (!predicate()) {
-    assert.ok(Date.now() < deadline, 'PTY lifecycle deadline exceeded')
+    assert.ok(Date.now() < deadline, message)
     await new Promise((resolve) => setTimeout(resolve, 10))
   }
 }
@@ -117,6 +120,8 @@ export async function runNativeIoFailureFixture({
       await host.dispose()
       native.destroy()
     }
+    // Bun closes its duplicated POSIX reader/writer fds off-thread after the exit callback.
+    await waitUntil(() => terminalDescriptors() === before, 'native terminal descriptor leaked')
     assert.equal(terminalDescriptors(), before, 'native terminal descriptor leaked')
   }
   return 4
