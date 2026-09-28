@@ -9,6 +9,14 @@ git -C "$bun_build_root/bun" checkout 744846f844374847c902b5e7fd59b4342a51ef99
 git -C "$bun_build_root/bun" submodule update --init --recursive --depth 1
 git -C "$bun_build_root/bun" apply --check "$fixture_dir/bundled-conpty.patch"
 git -C "$bun_build_root/bun" apply "$fixture_dir/bundled-conpty.patch"
+# Hosted containers have no IPv6 route; keep upstream downloads on IPv4.
+python3 - "$bun_build_root/bun/.buildkite/Dockerfile" <<'PYDOCKER'
+from pathlib import Path
+import sys
+p = Path(sys.argv[1])
+s = p.read_text().replace('RUN apt-get update', 'RUN echo "inet4_only = on" >> /etc/wgetrc && echo "ipv4" >> /root/.curlrc && echo \'Acquire::ForceIPv4 "true";\' > /etc/apt/apt.conf.d/99-force-ipv4 && apt-get update', 1)
+p.write_text(s)
+PYDOCKER
 docker build --target base --tag bun-conpty-toolchain-base --file "$bun_build_root/bun/.buildkite/Dockerfile" "$bun_build_root/bun"
 docker build --tag bun-conpty-toolchain --file "$fixture_dir/Dockerfile" "$fixture_dir"
 for bun_target_arch in x64 arm64; do
