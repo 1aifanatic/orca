@@ -3,6 +3,7 @@ from pathlib import Path
 import importlib.util
 import hashlib
 import json
+import lzma
 import stat
 import sys
 import time
@@ -44,7 +45,25 @@ def stage(archive, destination):
             raise ValueError('unexpected Rust source')
         with urllib.request.urlopen(item['url'], timeout=30) as response:
             acquire.retain(response, verify.checked_path(rust, item['filename']), item, time.monotonic()+180)
-    (rust / 'SHA256SUMS').write_text(''.join(f"{item['sha256']}  {item['filename']}\n" for item in pins['components']))
+    sums = []
+    decoded = []
+    for item in pins['components']:
+        sums.append(f"{item['sha256']}  {item['filename']}\n")
+        target = rust / item['filename'].removesuffix('.xz')
+        digest = hashlib.sha256()
+        count = 0
+        with lzma.open(rust / item['filename'], 'rb') as source, target.open('xb') as output:
+            while data := source.read(1024 * 1024):
+                count += len(data)
+                if count > 1024**3:
+                    raise ValueError('decoded Rust component exceeds 1 GiB')
+                output.write(data)
+                digest.update(data)
+        sums.append(f"{digest.hexdigest()}  {target.name}\n")
+        decoded.append({'sourceSha256': item['sha256'], 'tar': target.name,
+                        'tarSha256': digest.hexdigest(), 'tarBytes': count})
+    (rust / 'SHA256SUMS').write_text(''.join(sums))
+    (rust / 'decoded-components.json').write_text(json.dumps(decoded, indent=2) + '\n')
     (rust / 'components.txt').write_text(''.join(item['filename'].removesuffix('.tar.xz')+'\n' for item in pins['components']))
 
 
