@@ -83,8 +83,8 @@ jobs:
         if: matrix.cache == 'true'
         run: |
           set -o pipefail
-          turbo run build:electron-vite --cache=local:rw -- --config config/electron-vite-target.config.cts --ignoreConfigWarning | tee turbo-result.log
-          rg 'cache hit' turbo-result.log
+          turbo run build:electron-vite --cache=local:rw -- --config config/electron-vite-target.config.cts --ignoreConfigWarning 2>&1 | tee turbo-result.log
+          node -e "require('node:assert/strict').match(require('node:fs').readFileSync('turbo-result.log', 'utf8'), /cache hit/)"
       - uses: actions/download-artifact@v8
         with:
           name: renderer-reference-${{ github.run_attempt }}
