@@ -108,7 +108,7 @@ describe('the notice on each message that did not go through', () => {
     })
   })
 
-  // Its Retry would release the stopped queue and send the stopped message too, or wait unseen.
+  // Its Retry would put it back in the queue to wait unseen behind the stopped message.
   it('keeps a rejected message its words but not its Retry while the queue is stopped', () => {
     const retry = vi.fn()
     for (const [outbox, blocked] of [
