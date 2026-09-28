@@ -5926,13 +5926,11 @@
           }
         },
         "LinearAgentSkillSetupPrompt": {
-          "missingCliAndSkill": "Orca CLI と Linear Agent スキルがありません。",
           "modalTitle": "Linear チケットアクセスを有効にする",
           "modalDescription": "ターミナルから Linear スキルをインストールします。",
           "modalPrompt": "Agent が添付された Linear チケットを読み書きできるようにします。",
           "dontShowAgain": "今後表示しない",
           "missingBoth": "Orca CLI と Linear Agent スキルがありません。",
-          "missingCli": "Orca CLI がありません。",
           "missingSkill": "Linear Agent スキルがありません。",
           "title": "Linear Agent スキルを設定",
           "remoteCopy": "これはホスト側の設定をインストールします。リモート Agent 環境では別途設定が必要な場合があります。",
@@ -5944,7 +5942,6 @@
           "panelDescription": "リンクされた Linear タスクの引き継ぎ用にホスト Agent スキルをインストールします。",
           "terminalTitle": "Linear Agent スキルをインストール",
           "terminalAria": "Linear Agent スキルのインストールターミナル",
-          "install": "CLI とスキルをインストール",
           "successTitle": "Linear チケットアクセスの準備ができました",
           "successDescription": "Agent はこのワークスペースからリンクされた Linear チケットを読み取り、更新できるようになりました。",
           "successDescriptionWsl": "WSL Agent はこのワークスペースからリンクされた Linear チケットを使用できるようになりました。",
@@ -5953,11 +5950,7 @@
           "done": "完了",
           "wslCopy": "リンクされた Linear 作業からの WSL Agent 引き継ぎ用にインストールします。",
           "wslLabel": "WSL のデフォルト",
-          "toastMissingCliAndSkill": "Orca CLI と Linear スキルがありません",
-          "toastMissingCli": "Orca CLI がありません",
           "toastMissingSkill": "Linear スキルがありません",
-          "toastInstallCliAndSkillDescription": "Orca CLI と Linear スキルをインストールして、Agent が Linear タスクを読み書きできるようにします。",
-          "toastInstallCliDescription": "Orca CLI をインストールして、Agent が Linear タスクを読み書きできるようにします。",
           "toastInstallSkillDescription": "Linear スキルをインストールして、Agent が Orca CLI を通じて Linear タスクを読み書きできるようにします。",
           "toastRemoteDescription": "{{value0}} リモート Agent 環境では独自の設定が必要な場合があります。",
           "toastWslDescription": "{{value0}} この設定は選択した WSL Agent ランタイムで実行されます。"
@@ -6832,21 +6825,12 @@
           "af8c83ed61": "Chrome、Edge、またはその他のブラウザから Cookie をインポートすると、Agent がログインを再利用できるようになります。",
           "68ea76eb71": "Browser Use スキルをインストールすると、Agent が Orca のブラウザを操作できるようになります。",
           "2d6ead9ab2": "ブラウザ使用スキルをインストールする",
-          "e9f3f3b488": "設置場所",
-          "9fca1f7f5d": "Orca CLI コマンドを登録して、Agent がシェルからブラウザを調整できるようにします。",
-          "c6065d205d": "Orca CLI を有効化",
-          "c79eff0213": "Agent がブラウザを操作できるように Orca CLI を登録します。",
           "b8a1f2d84d": "Agent ブラウザの使用",
           "96b91c6349": "コーディング Agent がログイン情報を使用してこのブラウザを操作できるようにします。",
           "2ea4617e3a": "{{value1}}{{value2}} から {{value0}} Cookie をインポートしました。",
-          "721aee31b4": "Orca CLI を PATH に登録しました。",
-          "180a9abf3a": "CLI ステータスの読み込みに失敗しました。",
           "2ccfc9cff8": "インポート",
           "0462565413": "再インポート",
           "de9b2f32f3": "有効化",
-          "ad8cb0ee22": "PATH を修正",
-          "0289434ed6": "有効",
-          "8b3054dac7": "登録中…",
           "8f2675c2f3": "ファイルから {{value0}} 個の Cookie をインポートしました。",
           "5301857d88": "{{value0}} から"
         },
@@ -9351,16 +9335,7 @@
               "9d97446873": "Agent",
               "a2d489263e": "スキル",
               "a7e82445fa": "Browser Use スキルをインストールすると、Agent が Orca のブラウザを操作できるようになります。",
-              "a1414dcefb": "ブラウザ使用スキルをインストールする",
-              "e56c7b55c9": "セットアップ",
-              "034c5e8d7f": "有効化",
-              "7e0dcb257a": "シェル",
-              "3ffafc9b95": "コマンド",
-              "30c74aaa1f": "パス",
-              "ff05cbc344": "orca",
-              "85fab5e12c": "CLI",
-              "890ddf943d": "Agent がブラウザを操作できるように Orca CLI を登録します。",
-              "50f0860e18": "Orca CLI を有効化"
+              "a1414dcefb": "ブラウザ使用スキルをインストールする"
             }
           }
         },
@@ -14204,8 +14179,7 @@
             "e9eb197e12": "開かれたコンピュータ操作許可",
             "3a59452a67": "スキルコマンドをコピーし、確認用に以下へ挿入しました。",
             "c605f51f2b": "機能セットアップの準備完了",
-            "1aa657d8f4": "一部の機能の設定には注意が必要です",
-            "c89534cbe9": "CLIとスキルのインストール"
+            "1aa657d8f4": "一部の機能の設定には注意が必要です"
           },
           "AiCommitPrSettingsCard": {
             "8d4152701a": "例: ollama run llama3.1 {{value0}}",
@@ -14556,8 +14530,7 @@
             "d6d15077df": "スキルコマンドをコピーし、確認用に以下へ挿入しました。",
             "78e65f19d9": "ブラウザのセットアップに失敗しました",
             "b7345c18db": "予期しないエラーが発生しました。",
-            "5f97caf76b": "インストール中…",
-            "c2df599513": "CLI とスキルをインストール"
+            "5f97caf76b": "インストール中…"
           },
           "ConnectIntegrationsList": {
             "3dddb2d565": "タスク用に接続済み",

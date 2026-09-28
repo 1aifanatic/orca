@@ -5926,13 +5926,11 @@
           }
         },
         "LinearAgentSkillSetupPrompt": {
-          "missingCliAndSkill": "缺少 Orca CLI 和 Linear 智能体技能。",
           "modalTitle": "启用 Linear ticket 访问",
           "modalDescription": "从终端安装 Linear 技能。",
           "modalPrompt": "允许智能体读取和编辑已附加的 Linear ticket。",
           "dontShowAgain": "不再显示",
           "missingBoth": "缺少 Orca CLI 和 Linear 智能体技能。",
-          "missingCli": "缺少 Orca CLI。",
           "missingSkill": "缺少 Linear 智能体技能。",
           "title": "设置 Linear 智能体技能",
           "remoteCopy": "这会安装主机设置；远程智能体环境可能需要单独设置。",
@@ -5944,7 +5942,6 @@
           "panelDescription": "安装主机智能体技能，用于已链接 Linear 任务交接。",
           "terminalTitle": "安装 Linear 智能体技能",
           "terminalAria": "Linear 智能体技能安装终端",
-          "install": "安装 CLI 和技能",
           "successTitle": "Linear 议题访问已就绪",
           "successDescription": "智能体现在可以从此工作区读取和更新已链接的 Linear 议题。",
           "successDescriptionWsl": "WSL 智能体现在可以从此工作区使用已链接的 Linear 议题。",
@@ -5953,11 +5950,7 @@
           "done": "完成",
           "wslCopy": "为已链接 Linear 工作的 WSL 智能体交接安装此项。",
           "wslLabel": "WSL 默认值",
-          "toastMissingCliAndSkill": "缺少 Orca CLI 和 Linear 技能",
-          "toastMissingCli": "缺少 Orca CLI",
           "toastMissingSkill": "缺少 Linear 技能",
-          "toastInstallCliAndSkillDescription": "安装 Orca CLI 和 Linear 技能，让智能体可以读取并编辑 Linear 任务。",
-          "toastInstallCliDescription": "安装 Orca CLI，让智能体可以读取并编辑 Linear 任务。",
           "toastInstallSkillDescription": "安装 Linear 技能，让智能体可以通过 Orca CLI 读取并编辑 Linear 任务。",
           "toastRemoteDescription": "{{value0}} 远程智能体环境可能仍需要自己的设置。",
           "toastWslDescription": "{{value0}} 此设置会在所选 WSL 智能体运行时中执行。"
@@ -6832,21 +6825,12 @@
           "af8c83ed61": "从 Chrome、Edge 或其他浏览器导入 cookie，以便智能体可以重复使用您的登录信息。",
           "68ea76eb71": "安装浏览器使用技能，以便智能体可以操作 Orca 的浏览器。",
           "2d6ead9ab2": "安装浏览器使用技能",
-          "e9f3f3b488": "安装于",
-          "9fca1f7f5d": "注册 Orca CLI 命令，以便智能体可以从其 shell 编排浏览器。",
-          "c6065d205d": "启用 Orca CLI",
-          "c79eff0213": "注册 Orca CLI，以便智能体可以驱动浏览器。",
           "b8a1f2d84d": "智能体浏览器使用",
           "96b91c6349": "让编码智能体通过您的登录来驱动此浏览器。",
           "2ea4617e3a": "从 {{value1}}{{value2}} 导入 {{value0}} cookie。",
-          "721aee31b4": "在 PATH 中注册 Orca CLI。",
-          "180a9abf3a": "无法加载 CLI 状态。",
           "2ccfc9cff8": "导入",
           "0462565413": "重新导入",
           "de9b2f32f3": "启用",
-          "ad8cb0ee22": "修复路径",
-          "0289434ed6": "启用",
-          "8b3054dac7": "注册...",
           "8f2675c2f3": "已从文件导入 {{value0}} 个 Cookie。",
           "5301857d88": "从 {{value0}}"
         },
@@ -9314,16 +9298,7 @@
               "9d97446873": "智能体",
               "a2d489263e": "技能",
               "a7e82445fa": "安装浏览器使用技能，以便智能体可以操作 Orca 的浏览器。",
-              "a1414dcefb": "安装浏览器使用技能",
-              "e56c7b55c9": "设置",
-              "034c5e8d7f": "启用",
-              "7e0dcb257a": "Shell",
-              "3ffafc9b95": "命令",
-              "30c74aaa1f": "路径",
-              "ff05cbc344": "orca",
-              "85fab5e12c": "CLI",
-              "890ddf943d": "注册 Orca CLI，以便智能体可以驱动浏览器。",
-              "50f0860e18": "启用 Orca CLI"
+              "a1414dcefb": "安装浏览器使用技能"
             }
           }
         },
@@ -14204,8 +14179,7 @@
             "e9eb197e12": "打开计算机使用权限",
             "3a59452a67": "技能命令已复制并插入到下方以供评审。",
             "c605f51f2b": "能力设置就绪",
-            "1aa657d8f4": "一些能力设置需要注意",
-            "c89534cbe9": "安装 CLI 和技能"
+            "1aa657d8f4": "一些能力设置需要注意"
           },
           "AiCommitPrSettingsCard": {
             "8d4152701a": "例如llama 运行 llama3.1 {{value0}}",
@@ -14556,8 +14530,7 @@
             "d6d15077df": "技能命令已复制并插入到下方供查看。",
             "78e65f19d9": "浏览器设置失败",
             "b7345c18db": "发生了意外错误。",
-            "5f97caf76b": "正在安装…",
-            "c2df599513": "安装 CLI 和技能"
+            "5f97caf76b": "正在安装…"
           },
           "ConnectIntegrationsList": {
             "3dddb2d565": "已连接，可用于任务",

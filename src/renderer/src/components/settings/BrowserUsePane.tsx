@@ -83,12 +83,14 @@ export function BrowserUseSetup({
     browserSessionImportState?.profileId === 'default' &&
     browserSessionImportState.status === 'importing'
 
-  const showStep2 = matchesSettingsSearch(searchQuery, [getBrowserUsePaneSearchEntries()[0]])
-  const showStep3 = matchesSettingsSearch(searchQuery, [getBrowserUsePaneSearchEntries()[1]])
+  const showSkillStep = matchesSettingsSearch(searchQuery, [getBrowserUsePaneSearchEntries()[0]])
+  const showCookieImportStep = matchesSettingsSearch(searchQuery, [
+    getBrowserUsePaneSearchEntries()[1]
+  ])
   const steps = [skillDetected, cookiesImported]
   const completedCount = steps.filter(Boolean).length
-  const step2Blocked = Boolean(activeSkillRuntime.installDisabledReason)
-  const step3Blocked = !cookiesImported && !skillDetected
+  const skillDisabled = Boolean(activeSkillRuntime.installDisabledReason)
+  const cookieImportDisabled = !cookiesImported && !skillDetected
 
   const sourceLabel = defaultProfile?.source
     ? `${BROWSER_FAMILY_LABELS[defaultProfile.source.browserFamily] ?? defaultProfile.source.browserFamily}${defaultProfile.source.profileName ? ` (${defaultProfile.source.profileName})` : ''}`
@@ -151,7 +153,7 @@ export function BrowserUseSetup({
         <BrowserUseComputerUseNotice onOpenComputerUse={onOpenComputerUse} />
       ) : null}
 
-      {showStep2 ? (
+      {showSkillStep ? (
         <SearchableSetting
           title={translate(
             'auto.components.settings.BrowserUsePane.2d6ead9ab2',
@@ -164,20 +166,19 @@ export function BrowserUseSetup({
           keywords={getBrowserUsePaneSearchEntries()[0].keywords}
           className={cn(
             'rounded-xl border border-border/60 bg-card/50 p-4',
-            step2Blocked && 'opacity-60'
+            skillDisabled && 'opacity-60'
           )}
         >
           <BrowserUseSkillStep
-            stepIndex={1}
             command={browserUseInstallCommand}
             installedCommand={browserUseUpdateCommand}
             skillDetected={skillDetected}
             skillLoading={skillLoading}
             skillError={activeSkillRuntime.installDisabledReason ?? skillError}
-            disabled={step2Blocked}
+            disabled={skillDisabled}
             terminalShellOverride={activeSkillRuntime.terminalShellOverride}
             terminalRuntime={activeSkillRuntime.agentRuntime}
-            onBeforeOpenTerminal={async () => {
+            onBeforeOpenTerminal={() => {
               useAppStore.getState().recordFeatureInteraction('agent-browser-setup')
             }}
             onRecheck={refreshSkill}
@@ -185,12 +186,11 @@ export function BrowserUseSetup({
         </SearchableSetting>
       ) : null}
 
-      {showStep3 ? (
+      {showCookieImportStep ? (
         <BrowserUseCookieImportStep
-          stepIndex={2}
           cookiesImported={cookiesImported}
           isImportingDefault={isImportingDefault}
-          step3Blocked={step3Blocked}
+          disabled={cookieImportDisabled}
           sourceLabel={sourceLabel}
           onConfigureMoreBrowsers={onConfigureMoreBrowsers}
         />

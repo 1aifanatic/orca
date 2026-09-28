@@ -124,7 +124,7 @@ export function OrchestrationPane({
         error={activeSkillRuntime.installDisabledReason ?? orchestrationSkillError}
         installDisabled={Boolean(activeSkillRuntime.installDisabledReason)}
         icon={<Workflow className="size-5" />}
-        onBeforeOpenTerminal={async () => {
+        onBeforeOpenTerminal={() => {
           useAppStore.getState().recordFeatureInteraction('agent-orchestration-setup')
         }}
         actionHint={

@@ -3,7 +3,6 @@
 import { act, type ComponentProps, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { toast } from 'sonner'
-import type { CliInstallStatus } from '../../../../shared/cli-install-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LINEAR_AGENT_SKILL_NAMES } from '@/lib/agent-feature-install-commands'
 import {
@@ -41,9 +40,7 @@ const mocks = vi.hoisted(() => ({
   },
   useInstalledAgentSkillNames: vi.fn(),
   getCliStatus: vi.fn(),
-  getWslCliStatus: vi.fn<(request?: { distro: string }) => Promise<CliInstallStatus>>(),
-  ensureCli: vi.fn(async () => null as CliInstallStatus | null),
-  ensureWslCli: vi.fn(async (_runtime?: unknown): Promise<CliInstallStatus | null> => null),
+  getWslCliStatus: vi.fn(),
   toastDismiss: vi.fn(),
   toastWarning: vi.fn(() => 'linear-setup-toast-id'),
   panelProps: [] as Record<string, unknown>[]
@@ -68,12 +65,7 @@ vi.mock('../settings/CliSkillRuntimeSetup', () => ({
   ) =>
     runtime.runtime === 'wsl'
       ? `wsl.exe${runtime.wslDistro ? ` -d '${runtime.wslDistro}'` : ''} --exec bash -lc '${command}'`
-      : command,
-  ensureWslCliAvailableForAgentSkillTerminal: mocks.ensureWslCli,
-  getWslCliDistroRequest: (runtime?: { runtime: string; wslDistro?: string | null }) =>
-    runtime?.runtime === 'wsl' && runtime.wslDistro?.trim()
-      ? { distro: runtime.wslDistro.trim() }
-      : undefined
+      : command
 }))
 
 vi.mock('../settings/AgentSkillSetupPanel', () => ({
@@ -104,24 +96,6 @@ vi.mock('../settings/AgentSkillSetupPanel', () => ({
 
 let root: Root | null = null
 let container: HTMLDivElement | null = null
-
-function cliStatus(overrides: Partial<CliInstallStatus>): CliInstallStatus {
-  return {
-    platform: 'darwin',
-    commandName: 'orca',
-    commandPath: '/usr/local/bin/orca',
-    pathDirectory: '/usr/local/bin',
-    pathConfigured: true,
-    launcherPath: '/Applications/Orca.app/Contents/MacOS/Orca',
-    installMethod: 'symlink',
-    supported: true,
-    state: 'installed',
-    currentTarget: '/Applications/Orca.app/Contents/MacOS/Orca',
-    unsupportedReason: null,
-    detail: null,
-    ...overrides
-  }
-}
 
 async function renderPrompt(
   props: ComponentProps<typeof LinearAgentSkillSetupPrompt>
@@ -186,15 +160,7 @@ describe('LinearAgentSkillSetupPrompt reminder toast', () => {
     mocks.useInstalledAgentSkillNames.mockReset()
     mocks.useInstalledAgentSkillNames.mockReturnValue(mocks.skillState)
     mocks.getCliStatus.mockReset()
-    mocks.getCliStatus.mockResolvedValue(
-      cliStatus({ state: 'not_installed', pathConfigured: false })
-    )
     mocks.getWslCliStatus.mockReset()
-    mocks.getWslCliStatus.mockResolvedValue(
-      cliStatus({ state: 'not_installed', pathConfigured: false })
-    )
-    mocks.ensureCli.mockClear()
-    mocks.ensureWslCli.mockClear()
     mocks.toastDismiss.mockClear()
     mocks.toastWarning.mockClear()
     mocks.toastWarning.mockReturnValue('linear-setup-toast-id')

@@ -54,7 +54,7 @@ export function OrchestrationSetupCard(props: {
       error={activeSkillRuntime.installDisabledReason ?? skill.error}
       installDisabled={Boolean(activeSkillRuntime.installDisabledReason)}
       terminalHeightPx={terminalHeightPx}
-      onBeforeOpenTerminal={async () => {
+      onBeforeOpenTerminal={() => {
         useAppStore.getState().recordFeatureInteraction('agent-orchestration-setup')
       }}
       onRecheck={skill.refresh}

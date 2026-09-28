@@ -73,7 +73,6 @@ export type OnboardingFeatureSetupWarning = {
 
 export type OnboardingFeatureSetupResult = {
   selectedIds: OnboardingFeatureSetupId[]
-  cliTouched: boolean
   skillCommandsCopied: boolean
   skillInstallCommand: string | null
   computerUsePermissionsOpened: boolean
@@ -153,7 +152,7 @@ export function onboardingFeatureSetupRunTelemetry(
 ): EventProps<'onboarding_feature_setup_run'> {
   return {
     ...onboardingFeatureSetupTelemetrySelection(selection),
-    cli_touched: result.cliTouched,
+    cli_touched: false,
     skill_commands_copied: result.skillCommandsCopied,
     skill_install_command_prepared: result.skillInstallCommand !== null,
     computer_use_permissions_opened: result.computerUsePermissionsOpened,
@@ -198,7 +197,6 @@ export async function runOnboardingFeatureSetup(
   const deps = explicitDeps ?? createOnboardingFeatureSetupDeps()
   const selectedIds = selectedOnboardingFeatureSetupIds(selection)
   const warnings: OnboardingFeatureSetupWarning[] = []
-  const cliTouched = false
   let skillCommandsCopied = false
   const skillInstallCommand = buildOnboardingFeatureSetupSkillCommand(selection)
   let computerUsePermissionsOpened = false
@@ -213,7 +211,6 @@ export async function runOnboardingFeatureSetup(
   if (selectedIds.length === 0) {
     return {
       selectedIds,
-      cliTouched,
       skillCommandsCopied,
       skillInstallCommand,
       computerUsePermissionsOpened,
@@ -255,7 +252,6 @@ export async function runOnboardingFeatureSetup(
 
   return {
     selectedIds,
-    cliTouched,
     skillCommandsCopied,
     skillInstallCommand,
     computerUsePermissionsOpened,

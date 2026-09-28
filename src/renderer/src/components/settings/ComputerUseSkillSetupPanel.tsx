@@ -57,7 +57,7 @@ export function ComputerUseSkillSetupPanel(): React.JSX.Element {
       error={activeSkillRuntime.installDisabledReason ?? computerUseSkillError}
       installDisabled={Boolean(activeSkillRuntime.installDisabledReason)}
       icon={<MonitorCog className="size-5" />}
-      onBeforeOpenTerminal={async () => {
+      onBeforeOpenTerminal={() => {
         useAppStore.getState().recordFeatureInteraction('computer-use-setup')
       }}
       onRecheck={refreshComputerUseSkill}

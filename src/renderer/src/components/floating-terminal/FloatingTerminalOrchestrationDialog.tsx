@@ -149,7 +149,7 @@ export function FloatingTerminalOrchestrationDialog({
             'auto.components.skills.SkillInstallDialog.39acb9e8f4',
             'Install skill'
           )}
-          onBeforeOpenTerminal={async () => {
+          onBeforeOpenTerminal={() => {
             useAppStore.getState().recordFeatureInteraction('agent-orchestration-setup')
           }}
           onRecheck={recheckOrchestrationSkill}

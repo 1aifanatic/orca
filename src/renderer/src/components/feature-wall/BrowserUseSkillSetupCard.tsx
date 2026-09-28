@@ -26,7 +26,7 @@ export function BrowserUseSkillSetupCard(props: {
     ? buildSkillCommandForRuntime(ORCA_CLI_SKILL_UPDATE_COMMAND, activeSkillRuntime.agentRuntime)
     : ORCA_CLI_SKILL_UPDATE_COMMAND
 
-  const handleBeforeOpenTerminal = async (): Promise<void> => {
+  const handleBeforeOpenTerminal = (): void => {
     useAppStore.getState().recordFeatureInteraction('agent-browser-setup')
     localStorage.setItem(BROWSER_USE_ENABLED_STORAGE_KEY, '1')
   }

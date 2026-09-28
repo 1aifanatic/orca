@@ -3,7 +3,6 @@
 import { join } from 'node:path'
 import { act, type ComponentProps, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import type { CliInstallStatus } from '../../../../shared/cli-install-types'
 import type { ProjectExecutionRuntimeResolution } from '../../../../shared/project-execution-runtime'
 import type { DiscoveredSkill } from '../../../../shared/skills'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -32,9 +31,7 @@ vi.mock('@/hooks/useInstalledAgentSkills', async (importOriginal) => ({
 }))
 
 vi.mock('../settings/CliSkillRuntimeSetup', () => ({
-  buildSkillCommandForRuntime: (command: string) => command,
-  ensureWslCliAvailableForAgentSkillTerminal: vi.fn(async () => null),
-  getWslCliDistroRequest: () => undefined
+  buildSkillCommandForRuntime: (command: string) => command
 }))
 
 vi.mock('../settings/AgentSkillSetupPanel', () => ({
@@ -60,23 +57,6 @@ const projectWslRuntime: ProjectExecutionRuntimeResolution = {
 
 let root: Root | null = null
 let container: HTMLDivElement | null = null
-
-function cliStatus(): CliInstallStatus {
-  return {
-    platform: 'darwin',
-    commandName: 'orca',
-    commandPath: null,
-    pathDirectory: null,
-    pathConfigured: false,
-    launcherPath: '/Applications/Orca.app/Contents/MacOS/Orca',
-    installMethod: null,
-    supported: true,
-    state: 'not_installed',
-    currentTarget: null,
-    unsupportedReason: null,
-    detail: null
-  }
-}
 
 function discoveredSkill(overrides: Partial<DiscoveredSkill>): DiscoveredSkill {
   return {
@@ -136,9 +116,7 @@ describe('LinearAgentSkillSetupPrompt update command', () => {
     mocks.useInstalledAgentSkillNames.mockReset()
     mocks.useInstalledAgentSkillNames.mockReturnValue(mocks.skillState)
     mocks.getCliStatus.mockReset()
-    mocks.getCliStatus.mockResolvedValue(cliStatus())
     mocks.getWslCliStatus.mockReset()
-    mocks.getWslCliStatus.mockResolvedValue(cliStatus())
     mocks.panelProps.length = 0
     Object.defineProperty(window, 'api', {
       configurable: true,

@@ -6133,13 +6133,11 @@
           "6e7f8a9b0c": "Remove host…"
         },
         "LinearAgentSkillSetupPrompt": {
-          "missingCliAndSkill": "Orca CLI and Linear agent skill are missing.",
           "modalTitle": "Enable Linear ticket access",
           "modalDescription": "Install the Linear skill from a terminal.",
           "modalPrompt": "Enable agents to read and edit the attached Linear ticket.",
           "dontShowAgain": "Don't show again",
           "missingBoth": "Orca CLI and Linear agent skill are missing.",
-          "missingCli": "Orca CLI is missing.",
           "missingSkill": "Linear agent skill is missing.",
           "title": "Set up Linear agent skill",
           "remoteCopy": "This installs host setup; remote agent environments may need separate setup.",
@@ -6151,7 +6149,6 @@
           "panelDescription": "Install the host agent skill for linked Linear task handoffs.",
           "terminalTitle": "Install Linear agent skill",
           "terminalAria": "Linear agent skill installer terminal",
-          "install": "Install CLI & Skill",
           "successTitle": "Linear ticket access is ready",
           "successDescription": "Agents can now read and update linked Linear tickets from this workspace.",
           "successDescriptionWsl": "WSL agents can now use linked Linear tickets from this workspace.",
@@ -6160,11 +6157,7 @@
           "done": "Done",
           "wslCopy": "Install it for WSL agent handoffs from linked Linear work.",
           "wslLabel": "WSL default",
-          "toastMissingCliAndSkill": "Orca CLI and Linear skill are missing",
-          "toastMissingCli": "Orca CLI is missing",
           "toastMissingSkill": "Linear skill is missing",
-          "toastInstallCliAndSkillDescription": "Install the Orca CLI and the Linear skill to enable your agents to read and edit Linear tasks.",
-          "toastInstallCliDescription": "Install the Orca CLI to enable your agents to read and edit Linear tasks.",
           "toastInstallSkillDescription": "Install the Linear skill to enable your agents to read and edit Linear tasks through the Orca CLI.",
           "toastRemoteDescription": "{{value0}} Remote agent environments may need their own setup.",
           "toastWslDescription": "{{value0}} This setup runs in the selected WSL agent runtime."
@@ -7015,21 +7008,12 @@
           "af8c83ed61": "Import cookies from Chrome, Edge, or other browsers so agents can reuse your logins.",
           "68ea76eb71": "Install the Browser Use skill so agents can operate Orca's browser.",
           "2d6ead9ab2": "Install Browser Use Skill",
-          "e9f3f3b488": "Installed at",
-          "9fca1f7f5d": "Registers the Orca CLI command so agents can orchestrate the browser from their shell.",
-          "c6065d205d": "Enable Orca CLI",
-          "c79eff0213": "Register the Orca CLI so agents can drive the browser.",
           "b8a1f2d84d": "Agent Browser Use",
           "96b91c6349": "Let coding agents drive this browser with your logins.",
           "2ea4617e3a": "Imported {{value0}} cookies from {{value1}}{{value2}}.",
-          "721aee31b4": "Registered the Orca CLI in PATH.",
-          "180a9abf3a": "Failed to load CLI status.",
           "2ccfc9cff8": "Import",
           "0462565413": "Re-import",
           "de9b2f32f3": "Enable",
-          "ad8cb0ee22": "Fix PATH",
-          "0289434ed6": "Enabled",
-          "8b3054dac7": "Registering...",
           "8f2675c2f3": "Imported {{value0}} cookies from file.",
           "5301857d88": "From {{value0}}",
           "finishSteps": "Let coding agents drive this browser with your logins. Finish the steps below."
@@ -9555,16 +9539,7 @@
               "9d97446873": "agent",
               "a2d489263e": "skill",
               "a7e82445fa": "Install the Browser Use skill so agents can operate Orca's browser.",
-              "a1414dcefb": "Install Browser Use Skill",
-              "e56c7b55c9": "setup",
-              "034c5e8d7f": "enable",
-              "7e0dcb257a": "shell",
-              "3ffafc9b95": "command",
-              "30c74aaa1f": "path",
-              "ff05cbc344": "orca",
-              "85fab5e12c": "cli",
-              "890ddf943d": "Register the Orca CLI so agents can drive the browser.",
-              "50f0860e18": "Enable Orca CLI"
+              "a1414dcefb": "Install Browser Use Skill"
             }
           }
         },
@@ -14384,9 +14359,7 @@
             "3a59452a67": "Skill command copied and inserted below for review.",
             "c605f51f2b": "Capability setup ready",
             "1aa657d8f4": "Some capability setup needs attention",
-            "c89534cbe9": "Install CLI & Skills",
             "allInstalled": "All skills installed",
-            "updateSkills": "Update skills",
             "installSkills": "Install Skills"
           },
           "AiCommitPrSettingsCard": {
@@ -14596,7 +14569,6 @@
                   "9b33e7fb13": "Checking install",
                   "6d2b0a84e1": "Unavailable in this build",
                   "notInstalled": "Not installed",
-                  "openDesktopOnMac": "Open Orca Desktop on this Mac to use",
                   "needsMacAccess": "Needs macOS access",
                   "requiresOrcaDesktop": "Requires Orca Desktop"
                 }
@@ -14744,8 +14716,7 @@
             "d6d15077df": "Skill command copied and inserted below for review.",
             "78e65f19d9": "Browser setup failed",
             "b7345c18db": "An unexpected error occurred.",
-            "5f97caf76b": "Installing…",
-            "c2df599513": "Install CLI & Skill"
+            "5f97caf76b": "Installing…"
           },
           "ConnectIntegrationsList": {
             "3dddb2d565": "connected for tasks",

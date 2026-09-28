@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { CliInstallStatus } from '../../../../shared/cli-install-types'
 import type {
   ComputerUsePermissionSetupResult,
   ComputerUsePermissionStatusResult
@@ -38,21 +37,6 @@ const ORCHESTRATION_ONLY_SKILL_INSTALL_COMMAND = buildAgentFeatureSkillInstallCo
   ORCHESTRATION_SKILL_NAME
 ])
 
-const INSTALLED_CLI_STATUS: CliInstallStatus = {
-  platform: 'darwin',
-  commandName: 'orca',
-  commandPath: '/usr/local/bin/orca',
-  pathDirectory: '/usr/local/bin',
-  pathConfigured: true,
-  launcherPath: '/Applications/Orca.app/Contents/MacOS/Orca',
-  installMethod: 'symlink',
-  supported: true,
-  state: 'installed',
-  currentTarget: '/Applications/Orca.app/Contents/MacOS/Orca',
-  unsupportedReason: null,
-  detail: null
-}
-
 const GRANTED_COMPUTER_USE_STATUS: ComputerUsePermissionStatusResult = {
   platform: 'darwin',
   helperAppPath: '/Applications/Orca Computer Use.app',
@@ -75,18 +59,12 @@ function createDeps(
 ): OnboardingFeatureSetupDeps & {
   storage: Map<string, string>
   clipboardWrites: string[]
-  getCliStatus: ReturnType<typeof vi.fn>
-  installCli: ReturnType<typeof vi.fn>
-  showCliRegistrationPrompt: ReturnType<typeof vi.fn>
 } {
   const storage = new Map<string, string>()
   const clipboardWrites: string[] = []
   return {
     storage,
     clipboardWrites,
-    getCliStatus: vi.fn(async () => INSTALLED_CLI_STATUS),
-    showCliRegistrationPrompt: vi.fn(async () => undefined),
-    installCli: vi.fn(async () => INSTALLED_CLI_STATUS),
     writeClipboardText: vi.fn(async (text: string) => {
       clipboardWrites.push(text)
     }),
@@ -197,7 +175,6 @@ describe('onboarding feature setup runner', () => {
     expect(
       onboardingFeatureSetupRunTelemetry(selection, {
         selectedIds: ['browserUse', 'orchestration', 'linearTickets'],
-        cliTouched: true,
         skillCommandsCopied: false,
         skillInstallCommand: ORCHESTRATION_ONLY_SKILL_INSTALL_COMMAND,
         computerUsePermissionsOpened: false,
@@ -209,7 +186,7 @@ describe('onboarding feature setup runner', () => {
       linear_tickets: true,
       orchestration: true,
       selected_count: 2,
-      cli_touched: true,
+      cli_touched: false,
       skill_commands_copied: false,
       skill_install_command_prepared: true,
       computer_use_permissions_opened: false,
@@ -239,16 +216,11 @@ describe('onboarding feature setup runner', () => {
 
     expect(result).toEqual({
       selectedIds: ['browserUse', 'computerUse', 'orchestration', 'linearTickets'],
-      cliTouched: false,
       skillCommandsCopied: true,
       skillInstallCommand: ALL_SKILL_INSTALL_COMMAND,
       computerUsePermissionsOpened: true,
       warnings: []
     })
-    // Host terminals already have the bundled CLI on PATH, so setup leaves registration alone.
-    expect(deps.getCliStatus).not.toHaveBeenCalled()
-    expect(deps.showCliRegistrationPrompt).not.toHaveBeenCalled()
-    expect(deps.installCli).not.toHaveBeenCalled()
     expect(deps.getComputerUsePermissionStatus).toHaveBeenCalledTimes(1)
     expect(deps.openComputerUsePermissionSetup).toHaveBeenCalledTimes(1)
     expect(deps.storage.get(BROWSER_USE_ENABLED_STORAGE_KEY)).toBe('1')
@@ -265,11 +237,7 @@ describe('onboarding feature setup runner', () => {
       deps,
       WSL_RUNTIME_CONTEXT
     )
-    expect(result.cliTouched).toBe(false)
     expect(result.skillInstallCommand).toBe(ORCHESTRATION_ONLY_SKILL_INSTALL_COMMAND)
-    expect(deps.getCliStatus).not.toHaveBeenCalled()
-    expect(deps.installCli).not.toHaveBeenCalled()
-    expect(deps.showCliRegistrationPrompt).not.toHaveBeenCalled()
   })
 
   it('keeps invasive Browser Use and Computer Use setup untouched when only Orchestration is selected', async () => {
@@ -287,10 +255,6 @@ describe('onboarding feature setup runner', () => {
     expect(result.skillCommandsCopied).toBe(true)
     expect(result.skillInstallCommand).toBe(ORCHESTRATION_ONLY_SKILL_INSTALL_COMMAND)
     expect(result.computerUsePermissionsOpened).toBe(false)
-    // Host terminals already have the bundled CLI on PATH, so setup leaves registration alone.
-    expect(deps.getCliStatus).not.toHaveBeenCalled()
-    expect(deps.showCliRegistrationPrompt).not.toHaveBeenCalled()
-    expect(deps.installCli).not.toHaveBeenCalled()
     expect(deps.getComputerUsePermissionStatus).not.toHaveBeenCalled()
     expect(deps.openComputerUsePermissionSetup).not.toHaveBeenCalled()
     expect(deps.storage.get(BROWSER_USE_ENABLED_STORAGE_KEY)).toBe('0')
@@ -308,7 +272,6 @@ describe('onboarding feature setup runner', () => {
 
     expect(result).toEqual({
       selectedIds: [],
-      cliTouched: false,
       skillCommandsCopied: false,
       skillInstallCommand: null,
       computerUsePermissionsOpened: false,
@@ -316,8 +279,6 @@ describe('onboarding feature setup runner', () => {
     })
     expect(deps.storage.get(BROWSER_USE_ENABLED_STORAGE_KEY)).toBe('0')
     expect(deps.storage.get(ORCHESTRATION_ENABLED_STORAGE_KEY)).toBe('0')
-    expect(deps.getCliStatus).not.toHaveBeenCalled()
-    expect(deps.showCliRegistrationPrompt).not.toHaveBeenCalled()
     expect(deps.getComputerUsePermissionStatus).not.toHaveBeenCalled()
     expect(deps.clipboardWrites).toEqual([])
   })

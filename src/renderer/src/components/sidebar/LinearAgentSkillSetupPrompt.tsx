@@ -71,7 +71,6 @@ export function LinearAgentSkillSetupPrompt({
   className
 }: LinearAgentSkillSetupPromptProps): React.JSX.Element | null {
   const [setupDialogOpen, setSetupDialogOpen] = useState(false)
-  const [refreshingSkill, setRefreshingSkill] = useState(false)
   const [setupCheckResult, setSetupCheckResult] = useState<SetupCheckResult>('idle')
   const [activeSetupCheckIdentity, setActiveSetupCheckIdentity] = useState<string | null>(null)
   const agentRuntime = useMemo(
@@ -141,7 +140,7 @@ export function LinearAgentSkillSetupPrompt({
   const showSetupModal = setupDialogOpen && (missingSetup || showCheckingModal || showSuccessModal)
 
   useEffect(() => {
-    if (setupCheckResult === 'idle' || refreshingSkill) {
+    if (setupCheckResult === 'idle') {
       return
     }
     if (!explicitCheckMatchesContext) {
@@ -157,7 +156,7 @@ export function LinearAgentSkillSetupPrompt({
     if (missingSetup) {
       setSetupCheckResult('idle')
     }
-  }, [explicitCheckMatchesContext, missingSetup, refreshingSkill, setupCheckResult, setupReady])
+  }, [explicitCheckMatchesContext, missingSetup, setupCheckResult, setupReady])
   const dismissPermanently = (): void => {
     localStorage.setItem(localDismissStorageKey, '1')
     setLocalDismissed(true)
@@ -226,18 +225,13 @@ export function LinearAgentSkillSetupPrompt({
         terminalShellOverride={terminalShellOverride}
         terminalRuntime={agentRuntime}
         installed={skill.installed}
-        loading={refreshingSkill || showCheckingModal || skill.loading}
+        loading={showCheckingModal || skill.loading}
         error={skill.error}
         onRecheck={async () => {
           if (surface === 'modal') {
             setActiveSetupCheckIdentity(setupCheckIdentity)
             setSetupCheckResult('checking')
-            setRefreshingSkill(true)
-            try {
-              await skill.refresh()
-            } finally {
-              setRefreshingSkill(false)
-            }
+            await skill.refresh()
             return
           }
           await skill.refresh()

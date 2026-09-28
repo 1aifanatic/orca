@@ -5926,13 +5926,11 @@
           }
         },
         "LinearAgentSkillSetupPrompt": {
-          "missingCliAndSkill": "Orca CLI와 Linear agent 스킬이 없습니다.",
           "modalTitle": "Linear 티켓 접근 활성화",
           "modalDescription": "terminal에서 Linear 스킬을 설치합니다.",
           "modalPrompt": "agents가 첨부된 Linear 티켓을 읽고 편집할 수 있게 합니다.",
           "dontShowAgain": "다시 표시하지 않음",
           "missingBoth": "Orca CLI와 Linear agent 스킬이 없습니다.",
-          "missingCli": "Orca CLI가 없습니다.",
           "missingSkill": "Linear agent 스킬이 없습니다.",
           "title": "Linear agent 스킬 설정",
           "remoteCopy": "호스트 설정을 설치합니다. 원격 agent 환경에는 별도 설정이 필요할 수 있습니다.",
@@ -5944,7 +5942,6 @@
           "panelDescription": "연결된 Linear 작업 인계를 위해 호스트 agent 스킬을 설치합니다.",
           "terminalTitle": "Linear agent 스킬 설치",
           "terminalAria": "Linear agent 스킬 설치 terminal",
-          "install": "CLI 및 스킬 설치",
           "successTitle": "Linear 티켓 접근이 준비되었습니다",
           "successDescription": "이제 agents가 이 워크스페이스에서 연결된 Linear 티켓을 읽고 업데이트할 수 있습니다.",
           "successDescriptionWsl": "이제 WSL agents가 이 워크스페이스에서 연결된 Linear 티켓을 사용할 수 있습니다.",
@@ -5953,11 +5950,7 @@
           "done": "완료",
           "wslCopy": "연결된 Linear 작업에서 WSL agent 인계를 위해 설치합니다.",
           "wslLabel": "WSL 기본값",
-          "toastMissingCliAndSkill": "Orca CLI와 Linear 스킬이 없습니다",
-          "toastMissingCli": "Orca CLI가 없습니다",
           "toastMissingSkill": "Linear 스킬이 없습니다",
-          "toastInstallCliAndSkillDescription": "Orca CLI와 Linear 스킬을 설치하여 agents가 Linear 작업을 읽고 편집할 수 있게 하세요.",
-          "toastInstallCliDescription": "Orca CLI를 설치하여 agents가 Linear 작업을 읽고 편집할 수 있게 하세요.",
           "toastInstallSkillDescription": "Linear 스킬을 설치하여 agents가 Orca CLI를 통해 Linear 작업을 읽고 편집할 수 있게 하세요.",
           "toastRemoteDescription": "{{value0}} 원격 agent 환경에는 자체 설정이 필요할 수 있습니다.",
           "toastWslDescription": "{{value0}} 이 설정은 선택한 WSL agent 런타임에서 실행됩니다."
@@ -6832,21 +6825,12 @@
           "af8c83ed61": "agents가 로그인을 재사용할 수 있도록 Chrome, Edge 또는 기타 브라우저에서 쿠키를 가져옵니다.",
           "68ea76eb71": "agents가 Orca의 브라우저를 작동할 수 있도록 브라우저 사용 스킬을 설치하세요.",
           "2d6ead9ab2": "브라우저 사용 스킬 설치",
-          "e9f3f3b488": "설치 위치",
-          "9fca1f7f5d": "agents가 셸에서 브라우저를 조정할 수 있도록 Orca CLI 명령을 등록합니다.",
-          "c6065d205d": "Orca CLI 활성화",
-          "c79eff0213": "agents가 브라우저를 구동할 수 있도록 Orca CLI를 등록하세요.",
           "b8a1f2d84d": "Agent 브라우저 사용",
           "96b91c6349": "코딩 agents가 로그인을 통해 이 브라우저를 구동하게 하세요.",
           "2ea4617e3a": "{{value1}}{{value2}}에서 {{value0}} 쿠키를 가져왔습니다.",
-          "721aee31b4": "PATH에 Orca CLI를 등록했습니다.",
-          "180a9abf3a": "CLI 상태를 로드하지 못했습니다.",
           "2ccfc9cff8": "가져오기",
           "0462565413": "다시 가져오기",
           "de9b2f32f3": "활성화",
-          "ad8cb0ee22": "경로 수정",
-          "0289434ed6": "활성화됨",
-          "8b3054dac7": "등록 중...",
           "8f2675c2f3": "파일에서 {{value0}}개의 쿠키를 가져왔습니다.",
           "5301857d88": "{{value0}}에서"
         },
@@ -9314,16 +9298,7 @@
               "9d97446873": "agent",
               "a2d489263e": "스킬",
               "a7e82445fa": "agents가 Orca의 브라우저를 작동할 수 있도록 브라우저 사용 스킬을 설치하세요.",
-              "a1414dcefb": "브라우저 사용 스킬 설치",
-              "e56c7b55c9": "설정",
-              "034c5e8d7f": "활성화",
-              "7e0dcb257a": "셸",
-              "3ffafc9b95": "명령",
-              "30c74aaa1f": "경로",
-              "ff05cbc344": "orca",
-              "85fab5e12c": "CLI",
-              "890ddf943d": "agents가 브라우저를 구동할 수 있도록 Orca CLI를 등록하세요.",
-              "50f0860e18": "Orca CLI 활성화"
+              "a1414dcefb": "브라우저 사용 스킬 설치"
             }
           }
         },
@@ -14204,8 +14179,7 @@
             "e9eb197e12": "열린 컴퓨터 사용 권한",
             "3a59452a67": "리뷰를 위해 스킬 명령을 아래에 복사하여 삽입했습니다.",
             "c605f51f2b": "기능 설정 준비 완료",
-            "1aa657d8f4": "일부 기능 설정에 주의가 필요합니다.",
-            "c89534cbe9": "CLI 및 스킬 설치"
+            "1aa657d8f4": "일부 기능 설정에 주의가 필요합니다."
           },
           "AiCommitPrSettingsCard": {
             "8d4152701a": "예: ollama run llama3.1 {{value0}}",
@@ -14558,8 +14532,7 @@
             "d6d15077df": "리뷰를 위해 스킬 명령을 아래에 복사하여 삽입했습니다.",
             "78e65f19d9": "브라우저 설정에 실패했습니다",
             "b7345c18db": "예기치 않은 오류가 발생했습니다.",
-            "5f97caf76b": "설치 중…",
-            "c2df599513": "CLI 및 스킬 설치"
+            "5f97caf76b": "설치 중…"
           },
           "ConnectIntegrationsList": {
             "3dddb2d565": "작업용으로 연결됨",
