@@ -35,6 +35,7 @@ export const DISPATCH_REJECTED_CANCELLED = 'provider_cancelled_before_start'
 export function dispatchWasWithdrawn(
   submission: Pick<AgentJournalSubmission, 'dispatchState' | 'reason'> | undefined
 ): boolean {
+  // Why: legacy reason until the typed withdrawn category lands; then read that instead.
   return (
     submission?.dispatchState === 'rejected' && submission.reason === DISPATCH_REJECTED_CANCELLED
   )
