@@ -1,5 +1,8 @@
 name: Isolated signed installed macOS update diagnostic
 on:
+  push:
+    branches: [OrcaWin/np-installed-mac-update-diagnostic]
+    paths: ['.github/workflows/signed-installed-update.yml']
   workflow_dispatch: {}
 permissions:
   contents: read
