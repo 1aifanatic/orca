@@ -180,6 +180,19 @@ describe('SSH config Include completeness', () => {
 
     expect(expandSshConfigIncludes(configPath).fullyExpanded).toBe(true)
   })
+
+  it('stops a glob that walks too many directories and marks it incomplete', () => {
+    const home = makeTemporaryHome()
+    const configPath = writeFile(home, '.ssh/config', 'Include conf.d/*/config\n')
+    writeFile(home, '.ssh/conf.d/aaa/config', 'Host early\n  HostName early.example.com\n')
+    for (let index = 0; index < 1100; index += 1) {
+      mkdirSync(join(home, '.ssh', 'conf.d', `dir-${index}`))
+    }
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    expect(expandSshConfigIncludes(configPath).fullyExpanded).toBe(false)
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('walks more than'))
+  })
 })
 
 describe('SSH config Include warnings', () => {
