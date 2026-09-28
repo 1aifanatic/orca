@@ -17,7 +17,10 @@ import {
   AgentSessionAcquisitionRootExitObservedError,
   type StructuredAgentSessionAdapter
 } from './structured-agent-session-adapter'
-import { providerStartupFailureOutcome } from './structured-agent-session-dead-generation-settlement'
+import {
+  providerStartupFailureOutcome,
+  unexpectedProviderExitOutcome
+} from './structured-agent-session-dead-generation-settlement'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
 import { STRUCTURED_AGENT_SESSION_IDLE_MS } from './structured-agent-session-idle-sweep'
 import {
@@ -706,6 +709,50 @@ describe('bookkeeping that fails after the child ended', () => {
     expect((await item(OPEN_TURN))?.body).toMatchObject({ state: 'interrupted' })
     expect((await item(OPEN_QUESTION))?.body).toMatchObject({ resolution: { state: 'cancelled' } })
     expect(hostActivity()).toEqual(before)
+  })
+
+  it('lets the handle go once a send an exited child left is marked, and the reopen tells the exit', async () => {
+    const handed = await childLeftWorkOpen()
+    const open = conversation()
+    const child = open?.child
+    if (!open || !child?.generation) {
+      throw new Error('no live child')
+    }
+    const acquired = acquire.mock.calls.length
+    // The exit's own settlement never lands.
+    vi.spyOn(open.journal, 'markPendingSubmissionsUnknown').mockRejectedValueOnce(
+      new Error('disk full')
+    )
+    await host.handleAdapterEvent({
+      type: 'ended',
+      sessionId: SESSION,
+      reason: 'killed',
+      cause: 'unexpected-exit',
+      fence: child.fence,
+      acquisitionGeneration: child.generation
+    })
+    await eventually(() => expect(conversation()?.child).toBeNull())
+    expect((await submission(handed))?.dispatchState).toBe('pending')
+    expect((await item(OPEN_TURN))?.body).toMatchObject({ state: 'running' })
+    const sweep = () => {
+      clock += STRUCTURED_AGENT_SESSION_IDLE_MS + 1
+      return host['lifetime'].idleSweep.tick()
+    }
+
+    await sweep()
+    expect(host.hasSession(SESSION)).toBe(true)
+    expect(await submission(handed)).toMatchObject({ dispatchState: 'unknown' })
+
+    await sweep()
+    expect(host.hasSession(SESSION)).toBe(false)
+    const reopened = (await host.journalSnapshot(SESSION)).items
+    expect((await item(OPEN_TURN))?.body).toMatchObject({ state: 'interrupted', completedAt: NOW })
+    expect((await item(OPEN_QUESTION))?.body).toMatchObject({ resolution: { state: 'cancelled' } })
+    expect(
+      reopened.flatMap((entry) => (entry.body.kind === 'status' ? [entry.body.text] : []))
+    ).toContain(unexpectedProviderExitOutcome('killed'))
+    // No send and no relaunch did any of it.
+    expect(acquire).toHaveBeenCalledTimes(acquired)
   })
 
   it('publishes the ended child even when the release after it cannot be written', async () => {
