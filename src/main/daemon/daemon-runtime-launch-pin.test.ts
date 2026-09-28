@@ -77,6 +77,20 @@ describe('daemon runtime launch pin', () => {
     )
     expect(mocks.release).toHaveBeenCalledTimes(1)
   })
+  it('releases the prepared runtime pin when replacement preflight fails', async () => {
+    mocks.replace.mockImplementation(
+      async (options: { prepareReplacementRuntime: () => Promise<void> }) => {
+        await options.prepareReplacementRuntime()
+        throw new Error('replacement failed')
+      }
+    )
+    await expect(createOutOfProcessLauncher('/profile')('/socket', '/token')).rejects.toThrow(
+      'replacement failed'
+    )
+    expect(mocks.resolve).toHaveBeenCalledTimes(1)
+    expect(mocks.launch).not.toHaveBeenCalled()
+    expect(mocks.release).toHaveBeenCalledTimes(1)
+  })
   it('never resolves or pins runtime files when adopting a live daemon', async () => {
     const handle = { adopted: true, shutdown: vi.fn() }
     mocks.replace.mockResolvedValue(handle)

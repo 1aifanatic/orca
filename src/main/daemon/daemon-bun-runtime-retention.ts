@@ -1,4 +1,5 @@
-import { lstat, readdir, realpath, rm } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
+import { lstat, readdir, realpath, rename, rm } from 'node:fs/promises'
 import { join, win32 } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import {
@@ -17,6 +18,7 @@ import {
 export const MANAGED_DAEMON_RUNTIME_DIRECTORY = 'managed-v1'
 const GENERATION = /^bun-[a-f0-9]{64}(?:\.repair-[1-9][0-9]*)?$/u
 const STAGING = /^\.bun-staging-[a-f0-9-]{36}$/u
+const TRASH = /^\.bun-trash-[a-f0-9-]{36}$/u
 const RETAIN_UNUSED = 2
 const DELETE_LIMIT = 4
 
@@ -88,9 +90,9 @@ export async function collectPinnedDaemonRuntimeDirectories(
           canonicalImage = normalized(await resolveExecutablePath(image))
           canonicalImages.set(image, canonicalImage)
         } catch (error) {
-          // Unpublished staging may lack images; unknown or published identities still veto deletion.
+          // Staging and retired trees may lack images; unknown published identities veto deletion.
           if (
-            !STAGING.test(win32.basename(directory)) ||
+            (!STAGING.test(win32.basename(directory)) && !TRASH.test(win32.basename(directory))) ||
             !(error instanceof Error) ||
             !('code' in error) ||
             error.code !== 'ENOENT'
@@ -115,6 +117,7 @@ export async function pruneDaemonBunRuntimes(hostRoot: string): Promise<void> {
     return
   }
   const requestedRoot = join(hostRoot, MANAGED_DAEMON_RUNTIME_DIRECTORY)
+  const retired: string[] = []
   let admission: ProfileStateRuntimeAdmission | undefined
   try {
     if ((await lstat(requestedRoot)).isSymbolicLink()) {
@@ -124,7 +127,10 @@ export async function pruneDaemonBunRuntimes(hostRoot: string): Promise<void> {
     admission = acquireProfileStateMaintenance(root)
     const candidates: { path: string; modified: number; staging: boolean }[] = []
     for (const entry of await readdir(root, { withFileTypes: true })) {
-      if (!entry.isDirectory() || (!GENERATION.test(entry.name) && !STAGING.test(entry.name))) {
+      if (
+        !entry.isDirectory() ||
+        (!GENERATION.test(entry.name) && !STAGING.test(entry.name) && !TRASH.test(entry.name))
+      ) {
         continue
       }
       const path = join(root, entry.name)
@@ -132,7 +138,11 @@ export async function pruneDaemonBunRuntimes(hostRoot: string): Promise<void> {
       if (!stat.isDirectory() || stat.isSymbolicLink() || (await realpath(path)) !== path) {
         continue
       }
-      candidates.push({ path, modified: stat.mtimeMs, staging: STAGING.test(entry.name) })
+      candidates.push({
+        path,
+        modified: stat.mtimeMs,
+        staging: STAGING.test(entry.name) || TRASH.test(entry.name)
+      })
     }
     const pinned = await collectPinnedDaemonRuntimeDirectories(
       await readWindowsProcessTableFresh(),
@@ -151,7 +161,9 @@ export async function pruneDaemonBunRuntimes(hostRoot: string): Promise<void> {
       if ((await lstat(candidate.path)).isSymbolicLink()) {
         continue
       }
-      await rm(candidate.path, { recursive: true, force: true })
+      const trash = join(root, `.bun-trash-${randomUUID()}`)
+      await rename(candidate.path, trash)
+      retired.push(trash)
     }
   } catch {
     // Retention is optional; missing identity, busy admissions and disk errors preserve files.
@@ -161,6 +173,10 @@ export async function pruneDaemonBunRuntimes(hostRoot: string): Promise<void> {
     } catch (error) {
       console.warn('[daemon] Could not release runtime retention ownership', error)
     }
+  }
+  // Detached names cannot be launched; slow antivirus deletion must not block launch pins.
+  for (const path of retired) {
+    await rm(path, { recursive: true, force: true }).catch(() => {})
   }
 }
 

@@ -101,6 +101,9 @@ export function createOutOfProcessLauncher(
       )
     }
     let bunHost: DaemonBunRuntime | null = null
+    let runtimePromise: ReturnType<typeof resolveDesktopDaemonBunRuntime> | undefined
+    const getReplacementRuntime = (): ReturnType<typeof resolveDesktopDaemonBunRuntime> =>
+      (runtimePromise ??= resolveDesktopDaemonBunRuntime())
     try {
       const preservedHandle = await prepareDaemonReplacement({
         runtimeDir,
@@ -109,6 +112,9 @@ export function createOutOfProcessLauncher(
         entryPath,
         recoveryDeadlineMs,
         attributedReason,
+        prepareReplacementRuntime: async () => {
+          bunHost = await getReplacementRuntime()
+        },
         releaseAdoptionClient,
         preserveDaemon,
         launchNonce
@@ -118,8 +124,7 @@ export function createOutOfProcessLauncher(
       }
 
       const userDataPath = getAppEnvironment().getPath('userData')
-      // Resolve only after adoption: an existing owner must not depend on new runtime files.
-      bunHost = await resolveDesktopDaemonBunRuntime()
+      bunHost = await getReplacementRuntime()
       // Windows Bun artifacts are immutable copies outside the installer kill zone.
       const forkEntryPath = bunHost?.entryPath ?? entryPath
       let launched

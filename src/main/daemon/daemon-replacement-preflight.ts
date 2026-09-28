@@ -33,6 +33,7 @@ type ReplacementPreflightOptions = {
   /** Absolute deadline for the whole adopt-or-replace decision; see DAEMON_RECOVERY_BUDGET_MS. */
   recoveryDeadlineMs: number
   attributedReason: DaemonReplaceReason | null
+  prepareReplacementRuntime: () => Promise<void>
   releaseAdoptionClient: () => void
   preserveDaemon: PreserveDaemon
   launchNonce: string
@@ -48,6 +49,7 @@ export async function prepareDaemonReplacement(
     entryPath,
     recoveryDeadlineMs,
     attributedReason,
+    prepareReplacementRuntime,
     releaseAdoptionClient,
     preserveDaemon,
     launchNonce
@@ -59,6 +61,7 @@ export async function prepareDaemonReplacement(
       }
     | undefined
   let confirmedReplacement = false
+  let cleanupProtocol = false
   const health = await checkDaemonHealth(socketPath, tokenPath)
   if (health === 'healthy') {
     const pidRecord = readDaemonPidRecord(getDaemonPidPath(runtimeDir))
@@ -87,7 +90,7 @@ export async function prepareDaemonReplacement(
         reason: 'unhealthy_resolver',
         liveSessionCount
       }
-      confirmedReplacement = (await cleanupDaemonForProtocol(runtimeDir, PROTOCOL_VERSION)).cleaned
+      cleanupProtocol = true
     } else {
       // Why: a protocol-healthy daemon can outlive its launching app bundle (dev worktree rebuild, or packaged update replacing the app path).
       const identity = await getDaemonLaunchIdentity(runtimeDir, socketPath, tokenPath, entryPath)
@@ -124,8 +127,7 @@ export async function prepareDaemonReplacement(
           reason: stalePackagedBundle ? 'stale_bundle' : 'different_app_path',
           liveSessionCount: 0
         }
-        confirmedReplacement = (await cleanupDaemonForProtocol(runtimeDir, PROTOCOL_VERSION))
-          .cleaned
+        cleanupProtocol = true
       } else {
         const attributionHealth = await getMacDaemonTccAttributionHealth(
           runtimeDir,
@@ -145,8 +147,7 @@ export async function prepareDaemonReplacement(
               '[daemon] Replacing daemon whose macOS TCC attribution is severed (spawning app binary no longer exists)'
             )
             pendingReplacement = { reason: 'severed_tcc_attribution', liveSessionCount }
-            confirmedReplacement = (await cleanupDaemonForProtocol(runtimeDir, PROTOCOL_VERSION))
-              .cleaned
+            cleanupProtocol = true
           } else {
             return preserveDaemon()
           }
@@ -209,6 +210,24 @@ export async function prepareDaemonReplacement(
       reason: 'failed_health_check',
       liveSessionCount
     }
+  }
+
+  // Adoption needs no new artifacts; replacement must be ready before stopping its owner.
+  await prepareReplacementRuntime()
+  // Copying a runtime may take seconds; another client may have spawned during preparation.
+  const currentSessionCount = await getAliveDaemonSessionCount(
+    socketPath,
+    tokenPath,
+    recoveryDeadlineMs
+  )
+  if (
+    (currentSessionCount !== null && currentSessionCount > 0) ||
+    (cleanupProtocol && currentSessionCount === null)
+  ) {
+    return preserveDaemon(health === 'pty-spawn-unhealthy' ? 'fresh-spawns-unavailable' : undefined)
+  }
+  if (cleanupProtocol) {
+    confirmedReplacement = (await cleanupDaemonForProtocol(runtimeDir, PROTOCOL_VERSION)).cleaned
   }
 
   // Why: a raw socket can outlive a broken daemon; kill by PID before respawn so the new daemon doesn't race the stale one.

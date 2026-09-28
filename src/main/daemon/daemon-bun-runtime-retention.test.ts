@@ -1,3 +1,4 @@
+import type * as FileSystem from 'node:fs/promises'
 import {
   mkdtemp,
   mkdir,
@@ -19,6 +20,19 @@ import {
   pruneDaemonBunRuntimes
 } from './daemon-bun-runtime-retention'
 
+const { removingTrash } = vi.hoisted(() => ({ removingTrash: vi.fn() }))
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const fs = await importOriginal<typeof FileSystem>()
+  return {
+    ...fs,
+    rm: async (...args: Parameters<typeof fs.rm>) => {
+      if (String(args[0]).includes('.bun-trash-')) {
+        await removingTrash()
+      }
+      return fs.rm(...args)
+    }
+  }
+})
 const { snapshot, available, identities } = vi.hoisted(() => ({
   snapshot: vi.fn(),
   available: vi.fn(),
@@ -32,6 +46,7 @@ vi.mock('../windows/windows-process-table', () => ({
 }))
 const roots: string[] = []
 beforeEach(() => {
+  removingTrash.mockReset().mockResolvedValue(undefined)
   snapshot.mockReset().mockResolvedValue([])
   available.mockReturnValue(true)
   identities.mockReturnValue(true)
@@ -78,7 +93,7 @@ describe('managed Windows daemon runtime retention', () => {
     await pruneDaemonBunRuntimes(host)
     expect(await generations(root)).toHaveLength(4)
   })
-  it('a launch waits for the exclusive snapshot and deletion to finish', async () => {
+  it('a launch waits for the exclusive snapshot to finish', async () => {
     const { host, root } = await fixture()
     let finish: (() => void) | undefined
     snapshot.mockImplementation(
@@ -99,6 +114,36 @@ describe('managed Windows daemon runtime retention', () => {
     finish?.()
     await pruning
     ;(await launching).release()
+  })
+  it('admits launches while retired files are still being deleted', async () => {
+    const { host, root } = await fixture()
+    let finish: (() => void) | undefined
+    removingTrash.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve
+        })
+    )
+    const pruning = pruneDaemonBunRuntimes(host)
+    await vi.waitFor(() => expect(removingTrash).toHaveBeenCalled())
+    const pin = await acquireDaemonRuntimeLaunchPin(root)
+    try {
+      expect(await generations(root)).toHaveLength(4)
+      expect((await readdir(root)).some((name) => name.startsWith('.bun-trash-'))).toBe(true)
+    } finally {
+      pin.release()
+      finish?.()
+      await pruning
+    }
+    expect((await readdir(root)).some((name) => name.startsWith('.bun-trash-'))).toBe(false)
+  })
+  it('retries deletion of retired directories left by interrupted pruning', async () => {
+    const { host, root } = await fixture(0)
+    const trash = join(root, '.bun-trash-12345678-1234-1234-1234-123456789abc')
+    await mkdir(trash)
+    await writeFile(join(trash, 'daemon-entry.js'), 'entry')
+    await pruneDaemonBunRuntimes(host)
+    expect((await readdir(root)).filter((name) => name.startsWith('.bun-trash-'))).toEqual([])
   })
   it.each(['bun-runtime.exe', 'bun.exe', 'OpenConsole.exe'])(
     'retains live %s closures',
