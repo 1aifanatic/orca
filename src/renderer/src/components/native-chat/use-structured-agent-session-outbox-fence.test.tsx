@@ -110,7 +110,8 @@ describe('an outbox on a host that accepts a send before any agent has it', () =
     rerender({ fence: 2 })
     await settle()
     expect(mocks.call).toHaveBeenCalledTimes(1)
-    expect(result.current.error).toBe('Error: send failed')
+    // The failure stays on the message; the fence change neither clears nor resends it.
+    expect(result.current.outbox[0]?.lastFailure).toEqual({ kind: 'failed' })
 
     act(() => result.current.retry(result.current.outbox[0]!.clientMessageId))
     await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(2))
