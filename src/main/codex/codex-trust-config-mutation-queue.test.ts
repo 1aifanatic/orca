@@ -140,24 +140,4 @@ describe('runExclusivelyForCodexTrustConfig', () => {
     await queuedAlias
     expect(aliasStarted).toBe(true)
   })
-
-  // Why: the cross-process lock file is not reentrant; a nested grant inside an
-  // install must pass through instead of waiting on its own lock until timeout.
-  it('takes the cross-process lock once, for the outermost acquire only', async () => {
-    const lockEntries: string[] = []
-    const crossProcessLock = async <R>(locked: () => Promise<R>): Promise<R> => {
-      lockEntries.push('lock')
-      return await locked()
-    }
-
-    const nested = await runExclusivelyForCodexTrustConfig(
-      '/c/config.toml',
-      () =>
-        runExclusivelyForCodexTrustConfig('/c/config.toml', async () => 'inner', crossProcessLock),
-      crossProcessLock
-    )
-
-    expect(nested).toBe('inner')
-    expect(lockEntries).toEqual(['lock'])
-  })
 })

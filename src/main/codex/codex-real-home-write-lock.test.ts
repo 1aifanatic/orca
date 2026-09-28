@@ -1,5 +1,14 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import type * as InstallLock from '../agent-hooks/managed-hook-install-lock'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync
+} from 'node:fs'
 import type * as NodeOs from 'node:os'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -18,9 +27,23 @@ vi.mock('./codex-hook-trust-grant', () => ({
   CODEX_TRUST_GRANT_TRANSIENT_RETRY_INTERVAL_MS: 300_000,
   grantManagedCodexHookTrust: grantMock
 }))
+// Why: a bare `codex` has no binary stamp, so no real binary is ever stat'ed.
+vi.mock('../codex-cli/command', () => ({ resolveCodexCommand: () => 'codex' }))
+vi.mock('../agent-hooks/managed-hook-install-lock', async (importOriginal) => {
+  const actual = await importOriginal<typeof InstallLock>()
+  return { withManagedHookInstallLock: vi.fn(actual.withManagedHookInstallLock) }
+})
 
 import { withManagedHookInstallLock } from '../agent-hooks/managed-hook-install-lock'
 import { ensureRealHomeCodexHookState, _internals } from './codex-real-home-hook-install'
+import type { CodexManagedTrustGrantPlan } from './codex-hook-trust-grant'
+import {
+  computeTrustKey,
+  normalizeHookTrustKeyForLookup,
+  upsertHookTrustEntries
+} from './config-toml-trust'
+import { getCodexHookTrustSignature } from './codex-hook-identity'
+import { writeCodexTrustGrantLedgerHome } from './codex-trust-grant-ledger'
 
 let homeDir: string
 let userDataDir: string
@@ -32,10 +55,22 @@ beforeEach(() => {
   homedirMock.mockReturnValue(homeDir)
   mkdirSync(join(homeDir, '.codex'), { recursive: true })
   _internals.setLaneForTesting('pending')
-  grantMock.mockImplementation((plan: { managedEntries: object[] }) => ({
-    lane: 'rpc',
-    entries: plan.managedEntries.map((entry) => ({ ...entry, trustedHash: 'codex-hash' }))
-  }))
+  // Like a real grant: Codex writes the trust, and Orca records it in the ledger.
+  grantMock.mockImplementation((plan: CodexManagedTrustGrantPlan) => {
+    const entries = plan.managedEntries.map((entry) => ({ ...entry, trustedHash: 'codex-hash' }))
+    upsertHookTrustEntries(plan.tomlPath, entries)
+    writeCodexTrustGrantLedgerHome(plan.runtimeHomePath, {
+      binary: null,
+      entries: Object.fromEntries(
+        entries.map((entry) => [
+          normalizeHookTrustKeyForLookup(computeTrustKey(entry)),
+          { signature: getCodexHookTrustSignature(entry), trustedHash: 'codex-hash' }
+        ])
+      )
+    })
+    return { lane: 'rpc', entries }
+  })
+  vi.mocked(withManagedHookInstallLock).mockClear()
 })
 
 afterEach(() => {
@@ -71,4 +106,64 @@ it('waits for another holder of the real-home lock before writing ~/.codex', asy
   await other
   await expect(ensure).resolves.toBe('installed')
   expect(existsSync(hooksJsonPath)).toBe(true)
+})
+
+// Why: every pane spawn on this lane reaches the ensure; one that writes
+// nothing must not probe the lock owner or wait behind another instance.
+it('takes no lock once the real home already holds the trusted entry', async () => {
+  const hooksJsonPath = join(homeDir, '.codex', 'hooks.json')
+  await expect(
+    ensureRealHomeCodexHookState({ hooksEnabled: true, userDataPath: userDataDir })
+  ).resolves.toBe('installed')
+  expect(withManagedHookInstallLock).toHaveBeenCalled()
+  vi.mocked(withManagedHookInstallLock).mockClear()
+  grantMock.mockClear()
+  const before = {
+    bytes: readFileSync(hooksJsonPath, 'utf-8'),
+    mtimeMs: statSync(hooksJsonPath).mtimeMs
+  }
+
+  await expect(
+    ensureRealHomeCodexHookState({ hooksEnabled: true, userDataPath: userDataDir })
+  ).resolves.toBe('installed')
+
+  expect(withManagedHookInstallLock).not.toHaveBeenCalled()
+  expect(grantMock).not.toHaveBeenCalled()
+  expect({
+    bytes: readFileSync(hooksJsonPath, 'utf-8'),
+    mtimeMs: statSync(hooksJsonPath).mtimeMs
+  }).toEqual(before)
+})
+
+it('re-reads under the lock, keeping a save made while it waited', async () => {
+  const hooksJsonPath = join(homeDir, '.codex', 'hooks.json')
+  const savedMeanwhile = { type: 'command', command: 'saved-meanwhile.sh' }
+  let releaseOther!: () => void
+  const otherHeld = new Promise<void>((resolve) => {
+    releaseOther = resolve
+  })
+  let otherAcquired!: () => void
+  const acquired = new Promise<void>((resolve) => {
+    otherAcquired = resolve
+  })
+  const other = withManagedHookInstallLock(homeDir, undefined, async () => {
+    otherAcquired()
+    await otherHeld
+  })
+  await acquired
+
+  const ensure = ensureRealHomeCodexHookState({ hooksEnabled: true, userDataPath: userDataDir })
+  await delay(300)
+  // Another instance writes ~/.codex while it holds the lock.
+  writeFileSync(
+    hooksJsonPath,
+    `${JSON.stringify({ hooks: { Stop: [{ hooks: [savedMeanwhile] }] } }, null, 2)}\n`
+  )
+  releaseOther()
+  await other
+
+  await expect(ensure).resolves.toBe('installed')
+  const stop = JSON.parse(readFileSync(hooksJsonPath, 'utf-8')).hooks.Stop
+  expect(stop[0]).toEqual({ hooks: [savedMeanwhile] })
+  expect(stop).toHaveLength(2)
 })

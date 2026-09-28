@@ -7,6 +7,7 @@ import {
   type HookDefinition
 } from '../agent-hooks/installer-utils'
 import { getOrcaManagedCodexHomePath, getSystemCodexHomePath } from './codex-home-paths'
+import { withRealHomeWriteLock } from './codex-hook-trust-queue'
 import {
   codexHookSourcePathsEqual,
   getCodexExplicitHomeHookSourcePath,
@@ -143,11 +144,22 @@ export function snapshotCodexRuntimeHookTrustProvenance(
  * the user's own hooks.json. Runs before the config mirror so the promoted
  * trust is mirrored back on the same launch.
  */
-export function promoteCodexRuntimeHookApprovalsToSystem(
+export async function promoteCodexRuntimeHookApprovalsToSystem(
   runtimeHomePath: string = getOrcaManagedCodexHomePath()
-): void {
+): Promise<void> {
   try {
-    promoteCodexRuntimeHookApprovalsToSystemUnsafe(runtimeHomePath)
+    // Why compare first: a steady-state launch has nothing new to promote, and
+    // the real-home lock is only for writes.
+    if (collectCodexRuntimeHookPromotions(runtimeHomePath).length === 0) {
+      return
+    }
+    await withRealHomeWriteLock(async () => {
+      // Why re-read: another instance may have written ~/.codex while this waited.
+      const promotions = collectCodexRuntimeHookPromotions(runtimeHomePath)
+      if (promotions.length > 0) {
+        upsertHookTrustEntries(join(getSystemCodexHomePath(), 'config.toml'), promotions)
+      }
+    })
   } catch (error) {
     // Why: promotion is best-effort launch prep; a malformed runtime file
     // must not block hook install or the Codex launch itself.
@@ -155,17 +167,17 @@ export function promoteCodexRuntimeHookApprovalsToSystem(
   }
 }
 
-function promoteCodexRuntimeHookApprovalsToSystemUnsafe(runtimeHomePath: string): void {
+function collectCodexRuntimeHookPromotions(runtimeHomePath: string): CodexTrustEntry[] {
   const systemHomePath = getSystemCodexHomePath()
   const runtimeHooksPath = join(runtimeHomePath, 'hooks.json')
   const systemHooksPath = join(systemHomePath, 'hooks.json')
   const canonicalRuntimeHooksPath = getCodexExplicitHomeHookSourcePath(runtimeHooksPath)
   if (canonicalRuntimeHooksPath === normalizeCodexHookSourcePath(systemHooksPath)) {
-    return
+    return []
   }
   const runtimeTomlPath = join(runtimeHomePath, 'config.toml')
   if (!existsSync(runtimeTomlPath)) {
-    return
+    return []
   }
   // Why: without a snapshot of what Orca last wrote (first launch after
   // upgrading to a build with promotion, or a corrupted snapshot), a mirrored
@@ -175,11 +187,11 @@ function promoteCodexRuntimeHookApprovalsToSystemUnsafe(runtimeHomePath: string)
   // promotion starts on the next one.
   const provenance = readHookTrustProvenance(runtimeHomePath)
   if (!provenance) {
-    return
+    return []
   }
   const runtimeTrust = readHookTrustEntries(runtimeTomlPath)
   if (runtimeTrust.size === 0) {
-    return
+    return []
   }
   // Why: promotion inspects the hooks.json layout Codex actually approved
   // against — the one still on disk from the previous launch — so it must run
@@ -187,7 +199,7 @@ function promoteCodexRuntimeHookApprovalsToSystemUnsafe(runtimeHomePath: string)
   const runtimeConfig = readHooksJson(runtimeHooksPath)
   const systemConfig = readHooksJson(systemHooksPath)
   if (!runtimeConfig?.hooks || !systemConfig?.hooks) {
-    return
+    return []
   }
   const isManagedCommand = createManagedCommandMatcher(getCodexManagedScriptFileName())
 
@@ -245,9 +257,7 @@ function promoteCodexRuntimeHookApprovalsToSystemUnsafe(runtimeHomePath: string)
       state.enabled ?? true
     )
   }
-  if (promotions.length > 0) {
-    upsertHookTrustEntries(join(systemHomePath, 'config.toml'), promotions)
-  }
+  return promotions
 }
 
 // Why: the runtime layout differs from the system one (managed hook

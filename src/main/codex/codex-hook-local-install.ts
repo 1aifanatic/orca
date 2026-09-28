@@ -5,7 +5,6 @@ import {
   MANAGED_HOOK_TIMEOUT_SECONDS,
   readHooksJson,
   removeManagedCommands,
-  writeManagedScript,
   type HookDefinition
 } from '../agent-hooks/installer-utils'
 import { syncSystemConfigIntoManagedCodexHome } from './codex-config-mirror'
@@ -38,6 +37,7 @@ import {
   moveMirroredRuntimeUserTrustAfterManagedStatusHook
 } from './codex-hook-user-mirroring'
 import { getSystemCodexHomePath } from './codex-home-paths'
+import { writeSharedCodexScriptIfChanged } from './codex-shared-script-write'
 
 export async function installCodexHooksExclusively(
   runtimeHomePath: string,
@@ -52,7 +52,7 @@ export async function installCodexHooksExclusively(
   // approvals the user made inside Orca-launched Codex are keyed to the
   // previous launch's runtime layout, and stale-trust cleanup below would
   // delete them once the system config stops backing them.
-  promoteCodexRuntimeHookApprovalsToSystem(runtimeHomePath)
+  await promoteCodexRuntimeHookApprovalsToSystem(runtimeHomePath)
   const config = readHooksJson(configPath)
   if (!config) {
     return {
@@ -129,7 +129,7 @@ export async function installCodexHooksExclusively(
   let recentGrantEntries: readonly CodexTrustEntry[] = []
 
   config.hooks = nextHooks
-  writeManagedScript(scriptPath, getManagedScript())
+  await writeSharedCodexScriptIfChanged(scriptPath, getManagedScript())
   writeCodexHooksJson(configPath, nextHooks)
   // Why: trust entries write last so a half-write can't leave a hash pointing at a nonexistent hook.
   // Why: surface trust-write failures — otherwise getStatus reports green for a hook Codex won't fire.
