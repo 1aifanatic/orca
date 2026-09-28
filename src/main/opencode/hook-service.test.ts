@@ -720,11 +720,12 @@ describe('OpenCodeHookService overlay mode (user OPENCODE_CONFIG_DIR set)', () =
     const service = new OpenCodeHookService()
     const overlayDir = service.buildPtyEnv(ptyId, userConfigDir).OPENCODE_CONFIG_DIR!
     const pluginPath = join(overlayDir, 'plugins', 'orca-opencode-status.js')
-    const firstInode = statSync(pluginPath).ino
+    const past = new Date('2020-01-01T00:00:00Z')
+    utimesSync(pluginPath, past, past)
 
     service.buildPtyEnv(ptyId, userConfigDir)
 
-    expect(statSync(pluginPath).ino).toBe(firstInode)
+    expect(statSync(pluginPath).mtimeMs).toBe(past.getTime())
     expect(readFileSync(pluginPath, 'utf8')).toBe(_internals.getOpenCodePluginSource())
   })
 

@@ -6,7 +6,9 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
+  statSync,
   symlinkSync,
+  utimesSync,
   writeFileSync
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -72,6 +74,23 @@ describe('PluginOverlayManager', () => {
     expect(
       readFileSync(join(homeDir, 'xdg', 'opencode', 'plugins', 'orca-opencode2-status.js'), 'utf8')
     ).toBe('v2 plugin')
+  })
+
+  // Why: OpenCode 2 hot-reloads every plugin when a plugins-dir file is rewritten, even unchanged.
+  it('leaves a current canonical plugin untouched and replaces a stale one', () => {
+    const env = { XDG_CONFIG_HOME: join(homeDir, 'xdg') }
+    const pluginPath = join(homeDir, 'xdg', 'opencode', 'plugins', 'orca-opencode2-status.js')
+    manager.setSources({ opencode2PluginSource: 'v2 plugin' })
+    manager.installOpenCodePlugin('opencode2', env)
+    const past = new Date('2020-01-01T00:00:00Z')
+    utimesSync(pluginPath, past, past)
+
+    expect(manager.installOpenCodePlugin('opencode2', env)).toBe(true)
+    expect(statSync(pluginPath).mtimeMs).toBe(past.getTime())
+
+    manager.setSources({ opencode2PluginSource: 'v2 plugin, next release' })
+    expect(manager.installOpenCodePlugin('opencode2', env)).toBe(true)
+    expect(readFileSync(pluginPath, 'utf8')).toBe('v2 plugin, next release')
   })
 
   it('mirrors a preexisting remote OpenCode config dir before adding Orca plugin', () => {
