@@ -23,6 +23,9 @@ export function reduceMobileQueuedMessageFeed(
     return previous
   }
   const list = event.queuedMessages ?? []
+  if (list.length === 0 && previous !== null && previous.length === 0) {
+    return previous
+  }
   // Host order is authoritative; sort defensively so card order never depends
   // on publication order.
   return [...list].sort((left, right) => left.position - right.position)
