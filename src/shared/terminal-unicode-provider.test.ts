@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { Terminal } from '@xterm/headless'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
 import type { IUnicodeVersionProvider } from '@xterm/xterm'
@@ -67,10 +68,7 @@ it('preserves Unicode11 and ZWJ properties across the Bun ASCII specialization',
 
 it('pins the headless fast-path identity and ASCII invariant for both providers', () => {
   const source = readFileSync(
-    new URL(
-      '../../config/patches/xterm-src/@xterm__headless@6.1.0-beta.302.src.patch',
-      import.meta.url
-    ),
+    join(__dirname, '../../config/patches/xterm-src/@xterm__headless@6.1.0-beta.302.src.patch'),
     'utf8'
   )
   const literal = /activeVersion === '([^']+)'/.exec(source)?.[1]
