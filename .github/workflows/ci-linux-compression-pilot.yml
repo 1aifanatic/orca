@@ -163,6 +163,7 @@ jobs:
       - name: Compare extracted package payloads
         run: python3 config/scripts/compare-linux-package-payloads.py
       - uses: actions/upload-artifact@v7
+        if: always()
         with:
           name: compression-measurements
           path: ${{ runner.temp }}/linux-compression-benchmark/measurements.json

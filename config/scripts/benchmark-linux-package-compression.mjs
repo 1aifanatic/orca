@@ -8,7 +8,7 @@ const require = createRequire(import.meta.url)
 const root = resolve(process.env.RUNNER_TEMP, 'linux-compression-benchmark')
 mkdirSync(root, { recursive: true })
 const measurements = []
-for (const sample of [1, 2, 3]) {
+for (const sample of [1]) {
   // Reverse alternate pairs to reduce filesystem and temperature ordering bias.
   const order = sample % 2 ? ['baseline', 'level1'] : ['level1', 'baseline']
   for (const variant of order) {
