@@ -111,7 +111,7 @@ describe('a Codex send its turn ended without echoing', () => {
     ])
   })
 
-  it('stays pending when the turn completes, and its echo still accepts it with its key', async () => {
+  it('stays pending, still armed, when its turn completes without echoing it', async () => {
     const rig = await turnEndRig()
     await rig.send('client-1')
     rig.turns.start()
@@ -119,6 +119,7 @@ describe('a Codex send its turn ended without echoing', () => {
     rig.turns.end('completed')
     expect(rig.settlements).toEqual([])
 
+    // Codex echoes before a completed end; this late one only proves the send is still armed.
     rig.turns.echo('client-1')
     expect(rig.settlements).toEqual([
       expect.objectContaining({

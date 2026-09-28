@@ -21,7 +21,7 @@ import { decodeStructuredAgentSessionOptionValue } from '../../shared/structured
 // turn id comes back, no second `turn/started` fires, and the user message is
 // echoed only when the running turn reaches it. So the response proves
 // admission and nothing about identity, which the echo settles later. The turn
-// it names is kept with the send, so a turn that ends without the echo settles it.
+// it names is kept with the send, so that turn's end can settle it.
 
 /** Keys Codex accepts as per-turn overrides. An unlisted key would otherwise
  *  become an arbitrary client-controlled `turn/start` parameter. Permission posture is owned by

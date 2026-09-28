@@ -40,7 +40,7 @@ export type CodexDispatchEchoes = {
   bindTurn: (clientMessageId: string, threadId: string, turnId: string) => CodexTurnEnd | null
   /**
    * Records a turn's end and returns the sends bound to it that it settles: all of them unless it
-   * completed, when Codex records pending input and their echoes are still due.
+   * completed, which echoes its pending input first, so one it never echoed waits for recovery.
    */
   endTurn: (threadId: string, turnId: string, end: CodexTurnEnd) => string[]
   /** Submission origin for this exact send, retained until its echo settles it. */
