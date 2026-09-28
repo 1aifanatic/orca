@@ -94,6 +94,11 @@ export function useStructuredAgentSessionMutate(args: {
           ...fields
         })
       } catch (error) {
+        // A Stop naming no turn has one key per session, so a kept id would replay into every
+        // later Stop; it stops whatever is in flight, so sending it afresh is safe.
+        if (fingerprintMethod === 'agentSession.cancel' && fields.turnId === undefined) {
+          operationIds.current.delete(key)
+        }
         return enabledRef.current && stateRef.current.fence === targetFence
           ? {
               kind: 'not-done',

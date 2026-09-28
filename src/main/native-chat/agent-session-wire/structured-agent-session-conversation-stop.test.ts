@@ -99,12 +99,12 @@ function send(text: string) {
   return { id: clientOperationId, result }
 }
 
-function stop(turnId?: string) {
+function stop(turnId?: string, clientOperationId = hostTestOperationId()) {
   const fields = turnId === undefined ? {} : { turnId }
   return host.cancel(CALLER, {
     envelope: {
       sessionId: SESSION,
-      clientOperationId: hostTestOperationId(),
+      clientOperationId,
       expectedRuntimeFence: null,
       payloadFingerprint: computeAgentSessionPayloadFingerprint({
         method: 'agentSession.cancel',
@@ -209,6 +209,24 @@ describe('a Stop that names no turn', () => {
 
     expect(cancelTurn).toHaveBeenCalledOnce()
     expect(statusRows()).toEqual([])
+  })
+
+  it('stops nothing when it reuses the id of a Stop the host already ran', async () => {
+    const operationId = hostTestOperationId()
+    expect(await stop(undefined, operationId)).toMatchObject({ ok: true, replayed: false })
+    const { id, result } = send('hello')
+    await result
+    await eventually(() => expect(submission(id)?.handedOverAt).toBeDefined())
+
+    // Why the client never keeps a no-turn Stop's id past its answer: the same id is the same Stop.
+    expect(await stop(undefined, operationId)).toMatchObject({
+      ok: true,
+      replayed: true,
+      value: { cancelled: false }
+    })
+    expect(cancelTurn).not.toHaveBeenCalled()
+    expect(await stop()).toMatchObject({ ok: true, value: { cancelled: true } })
+    expect(cancelTurn).toHaveBeenCalledOnce()
   })
 
   it('is a quiet no-op with nothing in flight', async () => {

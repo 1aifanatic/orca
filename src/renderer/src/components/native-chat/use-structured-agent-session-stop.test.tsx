@@ -172,11 +172,17 @@ describe('Stop against a host that stops the conversation', () => {
     }
   )
 
-  it('does not let a Stop the host could not settle refuse every later one', async () => {
+  function cancelOperationIds(): string[] {
+    return mocks.call.mock.calls
+      .filter(([, method]) => method === 'agentSession.cancel')
+      .map(([, , params]) => params.envelope.clientOperationId)
+  }
+
+  it('does not let a Stop whose answer never came back replay into every later one', async () => {
     submissions = [submission({ handoverRecorded: true, handedOverAt: 2 })]
     const answers: (() => unknown)[] = [
       () => {
-        throw new Error('the host threw while stopping')
+        throw new Error('the connection dropped before the host answered')
       },
       () => ({
         ok: false,
@@ -196,13 +202,33 @@ describe('Stop against a host that stops the conversation', () => {
       })
     }
 
-    const ids: string[] = mocks.call.mock.calls
-      .filter(([, method]) => method === 'agentSession.cancel')
-      .map(([, , params]) => params.envelope.clientOperationId)
-    // A press after transport doubt replays the same id; once the host answers that it cannot
-    // know that id's outcome, the next press is a new Stop.
+    // One key serves every Stop in this chat, so a kept id would replay into a later Stop, which the
+    // host answers as already handled and stops nothing for up to a day.
+    const ids = cancelOperationIds()
+    expect(new Set(ids).size).toBe(3)
+  })
+
+  it('sends one Stop for a second press while the first is still on its way', async () => {
+    submissions = [submission({ handoverRecorded: true, handedOverAt: 2 })]
+    const pending: ((value: unknown) => void)[] = []
+    mocks.call.mockImplementation((_target, method) =>
+      method === 'agentSession.cancel'
+        ? new Promise((resolve) => pending.push(resolve))
+        : Promise.resolve(null)
+    )
+    const { result } = render()
+
+    await act(async () => {
+      const presses = [result.current.stop(), result.current.stop()]
+      for (const resolve of pending) {
+        resolve({ ok: true, value: { cancelled: true } })
+      }
+      await Promise.all(presses)
+    })
+
+    const ids = cancelOperationIds()
+    expect(ids).toHaveLength(2)
     expect(ids[1]).toBe(ids[0])
-    expect(ids[2]).not.toBe(ids[0])
   })
 
   it('is hidden at rest, and with only a message that will not run', () => {
