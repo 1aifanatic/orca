@@ -6,7 +6,7 @@ import type { MobileQueuedMessageCard } from './mobile-structured-queued-message
 
 export type MobileNativeChatQueuedMessagesProps = {
   cards?: MobileQueuedMessageCard[]
-  /** Send-now (Steer) for a waiting card; plain Send for a paused or returned one. */
+  /** Steer for a waiting card; plain Send for a paused or returned one. */
   onSend?: (messageId: string) => Promise<boolean>
   onDelete?: (messageId: string) => Promise<boolean>
   /** Copy the card's text into the composer, then delete the card. */
@@ -46,8 +46,8 @@ export function MobileNativeChatQueuedMessages({
       {cards.map((card) => {
         const busy = busyIds.has(card.messageId)
         const returned = card.state === 'returned'
-        // "Send now" names jumping the running turn; a paused or returned card waits on none.
-        const sendLabel = returned || card.paused ? 'Send' : 'Send now'
+        // "Steer" names jumping the running turn; a paused or returned card waits on none.
+        const sendLabel = returned || card.paused ? 'Send' : 'Steer'
         return (
           <View key={card.messageId} style={[styles.card, returned && styles.cardReturned]}>
             <View style={styles.header}>
@@ -72,7 +72,7 @@ export function MobileNativeChatQueuedMessages({
                     ? 'Send this message again'
                     : card.paused
                       ? 'Send this message'
-                      : 'Send this message now'
+                      : 'Send now without waiting for the turn to end'
                 }
                 style={({ pressed }) => [styles.action, pressed && styles.pressed]}
                 disabled={busy}

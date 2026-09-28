@@ -50,7 +50,7 @@ describe('MobileNativeChatQueuedMessages', () => {
     expect(onEdit).toHaveBeenCalledWith('returned-1')
   })
 
-  it('reads plain Send on a paused card, since no turn is running for it to jump', async () => {
+  it('reads Steer on a waiting card and plain Send on a paused one, which has no turn to jump', async () => {
     const mounted = create(createElement('View'))
     renderer = mounted
     await act(async () => {
@@ -79,12 +79,16 @@ describe('MobileNativeChatQueuedMessages', () => {
       )
     })
     expect(mounted.root.findByProps({ accessibilityLabel: 'Send this message' })).toBeTruthy()
-    expect(mounted.root.findByProps({ accessibilityLabel: 'Send this message now' })).toBeTruthy()
+    expect(
+      mounted.root.findByProps({
+        accessibilityLabel: 'Send now without waiting for the turn to end'
+      })
+    ).toBeTruthy()
     const labels = mounted.root
       .findAll((node) => String(node.type) === 'Text')
       .map((node) => node.props.children)
-      .filter((child) => child === 'Send' || child === 'Send now')
-    expect(labels).toEqual(['Send', 'Send now'])
+      .filter((child) => child === 'Send' || child === 'Steer' || child === 'Send now')
+    expect(labels).toEqual(['Send', 'Steer'])
   })
 
   it('gives every card action at least a 44pt touch target', async () => {
