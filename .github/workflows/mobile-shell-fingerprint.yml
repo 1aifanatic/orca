@@ -72,13 +72,15 @@ jobs:
             done
             [ "$hit" = true ]
           }
-          changed_files="$(git diff --name-only --no-renames HEAD^1 HEAD)"
-          while IFS= read -r file; do
-            if [ -n "$file" ] && touches_shell "$file"; then
+          # -z: git otherwise quotes non-ASCII paths, and a quoted path matches no pattern.
+          changes="$RUNNER_TEMP/shell-scope-changes"
+          git diff -z --name-only --no-renames HEAD^1 HEAD > "$changes"
+          while IFS= read -r -d '' file; do
+            if touches_shell "$file"; then
               echo 'shell_inputs=true' >> "$GITHUB_OUTPUT"
               exit 0
             fi
-          done <<< "$changed_files"
+          done < "$changes"
           echo 'shell_inputs=false' >> "$GITHUB_OUTPUT"
 
       - uses: ./.github/actions/install-node-dependencies

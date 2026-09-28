@@ -1,5 +1,7 @@
 import { spawnSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { parse } from 'yaml'
 
@@ -26,6 +28,36 @@ describe('mobile shell fingerprint workflow', () => {
   it('matches pull requests against the same shell paths main filters on', () => {
     expect(bashShellPaths()).toEqual(workflow.on.push.paths)
   })
+
+  // Git quotes non-ASCII paths by default, which would hide `mobile/…` from every pattern.
+  it.skipIf(process.platform === 'win32')(
+    'detects a PR touching only a non-ASCII shell path',
+    () => {
+      const repo = mkdtempSync(join(tmpdir(), 'shell-scope-'))
+      try {
+        const git = (...args) =>
+          spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd: repo })
+        git('init', '-q')
+        writeFileSync(join(repo, 'README.md'), 'base\n')
+        git('add', '.')
+        git('commit', '-qm', 'base')
+        mkdirSync(join(repo, 'mobile'))
+        writeFileSync(join(repo, 'mobile', 'caf\u00e9.ts'), 'export {}\n')
+        git('add', '.')
+        git('commit', '-qm', 'head')
+        const output = join(repo, 'github-output')
+        const result = spawnSync('bash', ['-c', scopeScript], {
+          cwd: repo,
+          encoding: 'utf8',
+          env: { ...process.env, GITHUB_OUTPUT: output, RUNNER_TEMP: repo }
+        })
+        expect(result.status, result.stderr).toBe(0)
+        expect(readFileSync(output, 'utf8')).toBe('shell_inputs=true\n')
+      } finally {
+        rmSync(repo, { recursive: true, force: true })
+      }
+    }
+  )
 
   it.skipIf(process.platform === 'win32')('matches files the way the paths filter does', () => {
     expect(matcher).toBeDefined()
