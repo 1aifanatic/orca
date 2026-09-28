@@ -265,6 +265,7 @@ describe('structured agent session outbox admission', () => {
       result.current.blockedClientMessageId,
       'Claude',
       () => {},
+      [],
       []
     )
     expect(notices.get(agentJournalSubmissionKey(c!.clientMessageId))?.onRetry).toBeDefined()
