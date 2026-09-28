@@ -202,70 +202,13 @@ for (const closeMode of ['terminal-close-cli', 'worker-release'] as const) {
       throw new Error('Background worker did not receive its dispatch capability')
     }
 
-    const transcriptPath = seedCurrentCodexTranscript(
-      isolatedHome,
-      PROVIDER_SESSION_ID,
-      targetWorktreePath
-    )
+    seedCurrentCodexTranscript(isolatedHome, PROVIDER_SESSION_ID, targetWorktreePath)
 
-    await orcaPage.evaluate(
-      ({
-        agentCommand,
-        paneKey,
-        providerSessionId,
-        tabId,
-        terminalHandle,
-        transcriptPath,
-        worktreeId
-      }) => {
-        const state = window.__store?.getState()
-        if (!state) {
-          throw new Error('Renderer store unavailable')
-        }
-        const providerSession = {
-          key: 'session_id' as const,
-          id: providerSessionId,
-          transcriptPath
-        }
-        const metadata = { tabId, worktreeId, terminalHandle }
-        const recovery = {
-          providerSession,
-          launchConfig: {
-            // Why not bare 'codex': resume prefers the captured command over
-            // agentCmdOverrides, so a bare name would resolve the machine's real
-            // Codex off PATH and unpin the adoption leg this spec exercises.
-            agentCommand,
-            agentArgs: '--dangerously-bypass-approvals-and-sandbox',
-            agentEnv: {}
-          }
-        }
-        state.setAgentStatus(
-          paneKey,
-          { state: 'working', prompt: 'Report completion, then exit normally', agentType: 'codex' },
-          'Completed background worker',
-          undefined,
-          metadata,
-          recovery
-        )
-        state.setAgentStatus(
-          paneKey,
-          { state: 'done', prompt: 'Report completion, then exit normally', agentType: 'codex' },
-          'Completed background worker',
-          undefined,
-          metadata,
-          recovery
-        )
-      },
-      {
-        agentCommand: completedWorkerFakeCodexCommand,
-        paneKey: workerPaneKey,
-        providerSessionId: PROVIDER_SESSION_ID,
-        tabId: worker.tabId,
-        terminalHandle: workerHandle,
-        transcriptPath,
-        worktreeId: targetWorktreeId
-      }
-    )
+    await client.call('terminal.send', {
+      terminal: workerHandle,
+      text: 'ORCA_E2E_PUBLISH_DONE',
+      enter: true
+    })
 
     const expectedRecovery = {
       origin: 'live',
