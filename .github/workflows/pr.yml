@@ -471,7 +471,10 @@ jobs:
     name: xterm patch sync
     needs: [code_paths]
     if: needs.code_paths.outputs.xterm_patch_sync == 'true'
-    runs-on: ubuntu-latest
+    # Why ARM: the patch check rebuilds 4 packages x 2 builds and byte-compares against the
+    # checked-in bundles. Those were generated on Linux x64 and reproduce byte-for-byte on
+    # darwin-arm64, so the output is neither host-arch nor host-OS dependent.
+    runs-on: ubuntu-24.04-arm
 
     steps:
       - name: Checkout
