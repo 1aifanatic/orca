@@ -59,10 +59,6 @@ export class StructuredAgentSessionAdapterRouter implements StructuredAgentSessi
     return released
   }
 
-  mintDispatchIdentity: NonNullable<StructuredAgentSessionAdapter['mintDispatchIdentity']> = (
-    input
-  ) => this.liveOwnerOrNull(input.sessionId)?.mintDispatchIdentity?.(input) ?? null
-
   dispatch: StructuredAgentSessionAdapter['dispatch'] = (input) =>
     this.owner(input.sessionId).dispatch(input)
 
@@ -144,10 +140,10 @@ export class StructuredAgentSessionAdapterRouter implements StructuredAgentSessi
   historyFilePath = (input: { identity: AgentSessionJournalIdentity }) =>
     this.requireAgent(input.identity).historyFilePath?.(input) ?? Promise.resolve(null)
 
-  providerHistory = (input: {
+  providerHistoryWindow = (input: {
     identity: AgentSessionJournalIdentity
     accountHome: AgentSessionAccountHome
-  }) => this.requireAgent(input.identity).providerHistory?.(input) ?? Promise.resolve(null)
+  }) => this.requireAgent(input.identity).providerHistoryWindow?.(input) ?? Promise.resolve(null)
 
   closeSession = (sessionId: string): Promise<boolean> =>
     this.stopSession(sessionId, (adapter) => adapter.closeSession)

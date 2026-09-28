@@ -42,7 +42,7 @@ import {
   withAgentSessionCreatePhase,
   type AgentSessionCreatePhaseRecorder
 } from '../../observability/agent-session-instrumentation'
-import type { ProviderHistorySource } from '../agent-session-journal/journal-submission-reconciler'
+import type { ProviderHistoryWindow } from '../agent-session-journal/journal-submission-reconciler'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 
 export type AttachFlowInput = {
@@ -108,7 +108,7 @@ export async function performAttach(
   let reservedRecord: AgentSessionRecord | null = null
   let unsupportedReservationSettlementAttempted = false
   let replayed = false
-  let providerHistory: ProviderHistorySource | null = null
+  let providerHistoryWindow: ProviderHistoryWindow | null = null
   const preparedTranscript = store.getRecord(sessionId)
     ? { ok: true as const, items: null }
     : await prepareAdoptedTranscript(params)
@@ -159,11 +159,10 @@ export async function performAttach(
         return { ok: false, refusal: replay.refusal }
       }
     }
-    // Sample provider history before a new child is acquired, so liveness describes
-    // the child the crash left, not the one this attach starts. The transcript is
-    // read later, and only for a stranded send: the new child is sent nothing
-    // first, so nothing it appends can be one.
-    providerHistory = await sampleProviderHistory({
+    // Sample provider history before a new child is acquired. Once acquireOwner
+    // starts the child, the adapter's liveness signal intentionally becomes
+    // conservative and an absent prompt can no longer prove non-delivery.
+    providerHistoryWindow = await readProviderHistoryWindow({
       adapter: input.adapter,
       identity: journalIdentityFor(record, params),
       accountHome: record.accountHome,
@@ -231,7 +230,7 @@ export async function performAttach(
       journalRoot: input.journalRoot,
       adapter: input.adapter,
       openConversation: input.openConversation,
-      providerHistory
+      providerHistoryWindow
     })
     await importAdoptedTranscript(params, attached, record, preparedTranscript.items)
     await input.onAttached(attached, acquisitionGeneration, acquiredOwner, providerChildPhase)
@@ -261,19 +260,19 @@ export async function performAttach(
   }
 }
 
-async function sampleProviderHistory(input: {
+async function readProviderHistoryWindow(input: {
   adapter: StructuredAgentSessionAdapter
   identity: AgentSessionJournalIdentity
   accountHome: AgentSessionRecord['accountHome']
   ownerAlreadyAdmitted: boolean
-}): Promise<ProviderHistorySource | null> {
-  const sample = input.adapter.providerHistory
-  if (!sample) {
+}): Promise<ProviderHistoryWindow | null> {
+  const read = input.adapter.providerHistoryWindow
+  if (!read) {
     return null
   }
-  let history: ProviderHistorySource | null
+  let history: ProviderHistoryWindow | null
   try {
-    history = await sample({ identity: input.identity, accountHome: input.accountHome })
+    history = await read({ identity: input.identity, accountHome: input.accountHome })
   } catch {
     return null
   }

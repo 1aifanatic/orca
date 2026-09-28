@@ -1,17 +1,22 @@
 // Provider history for restart reconciliation, read from the Claude project JSONL.
 //
 // Why this file is the source of truth for "did Claude take it": a resume replays
-// this transcript by session id, so a message found in it is in the conversation
-// Orca is about to resume.
+// this transcript by session id, so a message absent from it is absent from the
+// conversation Orca is about to resume. Absence here is not an inference about a
+// dead child — it is the content of the next turn's context.
 //
 // The window is anchored on the leaf uuid Orca durably recorded for the session
 // and walks back to it from the file's last transcript row, which is where a
 // resume by session id continues; Claude's marker lags a crash mid-turn.
 // Without that anchor the read has no proven start, and the branch proof is what
 // decides whether the file we just read still descends from it: a fork, a
-// compaction, a sibling branch, or a torn tail all fail the proof, and report an
-// inconsistent boundary rather than an empty window.
+// compaction, a sibling branch, or a torn tail all fail the proof, and every one
+// of those makes absence meaningless. Failing it reports an inconsistent
+// boundary rather than an empty window, because the two decide opposite things.
 
+import { join } from 'node:path'
+import type { AgentSessionJournalIdentity } from '../../shared/agent-session-journal-types'
+import { resolveSessionFilePath } from '../native-chat/session-file-resolver'
 import type {
   ProviderHistoryItem,
   ProviderHistoryWindow
@@ -28,7 +33,7 @@ import {
 /** The legacy-import bound, now applied PER RECORD rather than per file. The
  *  line framer buffers one record at a time, so this is the only thing standing
  *  between a pathological row and the whole file being resident. */
-export const MAX_HISTORY_WINDOW_RECORD_BYTES = 16 * 1024 * 1024
+const MAX_HISTORY_WINDOW_RECORD_BYTES = 16 * 1024 * 1024
 
 const INCONSISTENT: ProviderHistoryWindow = {
   items: [],
@@ -146,12 +151,13 @@ function promptFingerprint(sessionId: string, blocks: NativeChatBlock[]): string
   })
 }
 
-export type HistoryWindowInput = {
+type HistoryWindowInput = {
   providerSessionId: string
   previousLeafUuid: string | null
   /** Orca session id: the fingerprint a submission carries is scoped to it. */
   sessionId: string
-  /** A provider child may still be appending to the file. */
+  /** The caller must PROVE no provider child can be appending; absence proves
+   *  nothing while a turn is running. */
   turnInFlight: boolean
 }
 
@@ -222,6 +228,36 @@ export function claudeProviderHistoryWindowFromJsonl(
     // cursor, torn tail — is a boundary we cannot vouch for.
     return INCONSISTENT
   }
+}
+
+/**
+ * The window for one attached session: resolve the provider's transcript, then
+ * read it against the handle's durable leaf. A live child means a send queued
+ * behind its running turn is not in the file yet, so liveness is carried in
+ * rather than assumed — only the adapter's session map can answer it.
+ */
+export async function resolveClaudeProviderHistoryWindow(input: {
+  identity: AgentSessionJournalIdentity
+  accountHomePath: string
+  hasLiveSession: boolean
+}): Promise<ProviderHistoryWindow | null> {
+  const handle = input.identity.providerHandle
+  if (handle.kind !== 'claude') {
+    return null
+  }
+  const transcriptPath = await resolveSessionFilePath('claude', handle.sessionId, {
+    claudeProjectsDir: join(input.accountHomePath, 'projects')
+  })
+  if (!transcriptPath) {
+    return null
+  }
+  return readClaudeProviderHistoryWindow({
+    transcriptPath,
+    providerSessionId: handle.sessionId,
+    previousLeafUuid: handle.leafUuid,
+    sessionId: input.identity.sessionId,
+    turnInFlight: input.hasLiveSession
+  })
 }
 
 export async function readClaudeProviderHistoryWindow(

@@ -9,13 +9,10 @@ import { structuredAgentSessionSendBody } from '../../shared/structured-agent-se
 import { structuredAgentSessionPayloadFingerprint } from '../../shared/structured-agent-session-mutation'
 import { computeAgentSessionPayloadFingerprint } from '../../shared/agent-session-mutation-envelope'
 import { reconcileSubmissions } from '../native-chat/agent-session-journal/journal-submission-reconciler'
-import { agentJournalItemKey } from '../../shared/agent-session-journal-item-key'
-import type { AgentJournalSubmission } from '../../shared/agent-session-journal-types'
-import { claudeProviderHistoryWindowFromJsonl } from './claude-structured-history-window'
 import {
-  claudeRecordedHistoryFromJsonl,
-  openClaudeProviderHistory
-} from './claude-structured-provider-history'
+  claudeProviderHistoryWindowFromJsonl,
+  resolveClaudeProviderHistoryWindow
+} from './claude-structured-history-window'
 
 const PROVIDER_SESSION = 'provider-1'
 const ORCA_SESSION = 'session-1'
@@ -79,7 +76,7 @@ describe('claudeProviderHistoryWindowFromJsonl', () => {
       'utf8'
     )
 
-    const history = openClaudeProviderHistory({
+    const window = await resolveClaudeProviderHistoryWindow({
       identity: {
         sessionId: ORCA_SESSION,
         workspaceId: 'workspace-1',
@@ -91,13 +88,7 @@ describe('claudeProviderHistoryWindowFromJsonl', () => {
       hasLiveSession: false
     })
 
-    expect((await history?.readWindow())?.items.map((item) => item.providerItemId)).toEqual(['u-1'])
-    const recorded = await history?.readRecorded()
-    expect(
-      recorded?.itemIds.has(
-        agentJournalItemKey({ provider: 'claude', sessionId: PROVIDER_SESSION, uuid: 'u-1' })
-      )
-    ).toBe(true)
+    expect(window?.items.map((item) => item.providerItemId)).toEqual(['u-1'])
   })
 
   it('pins the renderer and host fingerprint functions to the same digest', () => {
@@ -356,159 +347,5 @@ describe('a crash between Claude saving a prompt and Orca recording its echo', (
     const subagent = row('assistant', 'subagent-reply', null, { isSidechain: true })
     const window = read(`${CRASHED_MID_TURN}\n${JSON.stringify(subagent)}\n`, 'alpha-reply')
     expect(window.items.map((item) => item.providerItemId)).toEqual(['bravo'])
-  })
-})
-
-describe('a send handed over under its own frame id', () => {
-  const key = (uuid: string) =>
-    agentJournalItemKey({ provider: 'claude', sessionId: PROVIDER_SESSION, uuid })
-  const sentKey = key('sent')
-
-  function handedOver(text: string, uuid = 'sent'): AgentJournalSubmission {
-    return {
-      clientMessageId: `cm-${uuid}`,
-      fence: 1,
-      payloadFingerprint: sendFingerprint(text),
-      dispatchState: 'unknown',
-      providerItemId: null,
-      reason: null,
-      submittedAt: 0,
-      resolvedAt: null,
-      handedOverItemId: key(uuid)
-    }
-  }
-
-  function verdicts(
-    contents: string,
-    previousLeafUuid: string | null,
-    submissions: AgentJournalSubmission[]
-  ) {
-    const input = {
-      contents,
-      providerSessionId: PROVIDER_SESSION,
-      previousLeafUuid,
-      sessionId: ORCA_SESSION,
-      turnInFlight: false
-    }
-    return reconcileSubmissions({
-      history: {
-        ...read(contents, previousLeafUuid),
-        recorded: claudeRecordedHistoryFromJsonl(input)
-      },
-      submissions
-    })
-  }
-
-  function verdict(contents: string, previousLeafUuid: string | null, text: string) {
-    return verdicts(contents, previousLeafUuid, [handedOver(text)])[0]
-  }
-
-  /** What Claude writes for a frame it folds into a running turn instead of a row of its own. */
-  function folded(rowUuid: string, parentUuid: string, sourceUuid: string, text: string): Row {
-    return {
-      type: 'attachment',
-      uuid: rowUuid,
-      parentUuid,
-      sessionId: PROVIDER_SESSION,
-      attachment: {
-        type: 'queued_command',
-        prompt: [{ type: 'text', text }],
-        source_uuid: sourceUuid
-      }
-    }
-  }
-
-  it('is accepted when Claude holds it before the anchor a later turn advanced', () => {
-    // The send stayed unconfirmed while a later turn completed and moved the durable leaf.
-    const contents = jsonl(
-      [
-        ANCHOR,
-        prompt('sent', 'anchor', 'ship it'),
-        prompt('later', 'sent', 'and then this'),
-        prompt('leaf', 'later', 'latest')
-      ],
-      'leaf'
-    )
-
-    expect(read(contents, 'later').items.map((item) => item.providerItemId)).toEqual(['leaf'])
-    expect(verdict(contents, 'later', 'ship it')).toMatchObject({
-      outcome: 'accepted',
-      providerItemId: sentKey
-    })
-  })
-
-  it('is accepted when its text starts with a harness tag', () => {
-    const text = '<system-reminder>why does this parse wrong</system-reminder>'
-    const contents = jsonl([ANCHOR, prompt('sent', 'anchor', [{ type: 'text', text }])], 'sent')
-
-    expect(verdict(contents, 'anchor', text)).toMatchObject({
-      outcome: 'accepted',
-      providerItemId: sentKey
-    })
-  })
-
-  it('is accepted before any turn completed, when there is no anchor at all', () => {
-    const contents = jsonl([prompt('sent', null, 'ship it')], 'sent')
-
-    expect(verdict(contents, null, 'ship it')).toMatchObject({ outcome: 'accepted' })
-  })
-
-  it('is accepted when Claude folded it into a running turn under a row id of its own', () => {
-    const contents = jsonl(
-      [
-        ANCHOR,
-        prompt('turn', 'anchor', 'run the tests'),
-        folded('fold-row', 'turn', 'sent', 'ship it')
-      ],
-      'fold-row'
-    )
-
-    expect(verdict(contents, 'anchor', 'ship it')).toMatchObject({
-      outcome: 'accepted',
-      providerItemId: sentKey
-    })
-  })
-
-  it('stays unknown when Claude merged it into the record of a send queued after it', () => {
-    const merged = [
-      { type: 'text', text: 'ship it' },
-      { type: 'text', text: 'and test it' }
-    ]
-    const contents = jsonl([ANCHOR, prompt('next', 'anchor', merged)], 'next')
-
-    expect(
-      verdicts(contents, 'anchor', [handedOver('ship it'), handedOver('and test it', 'next')])
-    ).toMatchObject([
-      { outcome: 'unknown', reason: 'not_found' },
-      { outcome: 'accepted', providerItemId: key('next') }
-    ])
-  })
-
-  it('stays unknown, never not delivered, when the whole file lacks it', () => {
-    const contents = jsonl([ANCHOR, prompt('u-1', 'anchor', 'something else')], 'u-1')
-
-    expect(verdict(contents, 'anchor', 'ship it')).toEqual({
-      clientMessageId: 'cm-sent',
-      outcome: 'unknown',
-      reason: 'not_found'
-    })
-  })
-
-  it('is found past a line that does not parse', () => {
-    const contents = `${jsonl([ANCHOR], 'anchor')}{"type":"user","uuid":"torn"\n${jsonl(
-      [prompt('sent', 'anchor', 'ship it')],
-      'sent'
-    )}`
-
-    expect(verdict(contents, 'anchor', 'ship it')).toMatchObject({ outcome: 'accepted' })
-  })
-
-  it('is not accepted by a record of its text under another id', () => {
-    const contents = jsonl([ANCHOR, prompt('minted', 'anchor', 'ship it')], 'minted')
-
-    expect(verdict(contents, 'anchor', 'ship it')).toMatchObject({
-      outcome: 'unknown',
-      reason: 'not_found'
-    })
   })
 })

@@ -85,9 +85,6 @@ export function journalDispatchRowBuilder(
     providerItemId,
     reason: boundedDispatchReason(input),
     ...(input.state === 'rejected' ? { rejection: input.rejection } : {}),
-    ...(input.state === 'pending' && input.providerIdentity
-      ? { handedOverItemId: agentJournalItemKey(input.providerIdentity) }
-      : {}),
     ...journalRowBase(state().epoch, seq, input.fence, ts),
     ...(input.recovered ? { recovered: input.recovered } : {})
   })

@@ -22,8 +22,7 @@ import { digestPayload } from './journal-payload-bounds'
 import {
   reconcileSubmissions,
   type ProviderHistoryItem,
-  type ProviderHistoryWindow,
-  type ProviderRecordedHistory
+  type ProviderHistoryWindow
 } from './journal-submission-reconciler'
 import { createTrackedJournalOpener } from './journal-store-test-open'
 
@@ -82,11 +81,6 @@ function history(input: {
     payloadFingerprint: digestPayload(input.text),
     identity: { provider: 'codex', threadId: 'thread-1', turnId: TURN_ID, ordinal: input.ordinal }
   }
-}
-
-/** A history read whole, holding exactly these item keys. */
-function wholeHistory(itemIds: string[]): ProviderRecordedHistory {
-  return { itemIds: new Set(itemIds) }
 }
 
 function window(
@@ -233,7 +227,7 @@ describe('crash between provider accept and journal commit', () => {
     })
   })
 
-  it('leaves a handed-over send unconfirmed when history lacks it, and never re-sends it', async () => {
+  it('reports a rejected submission as never delivered, and never re-sends it', async () => {
     const journal = await open()
     await journal.appendSubmission({
       clientMessageId: 'cm_1',
@@ -241,25 +235,33 @@ describe('crash between provider accept and journal commit', () => {
       body: userMessage('never landed'),
       fence: 1
     })
-    // Handed over under an id the provider would have recorded it by.
-    await journal.resolveDispatch({
-      clientMessageId: 'cm_1',
-      state: 'pending',
-      providerIdentity: ACCEPTED_IDENTITY,
-      fence: 1
-    })
 
     const restarted = await open()
     await restarted.markPendingSubmissionsUnknown(2)
     const [outcome] = reconcileSubmissions({
       submissions: restarted.submissions(),
-      history: window([], { recorded: wholeHistory([]) })
+      history: window([])
     })
-    // A merged frame leaves no record under its own id, so a missing id is not proof of loss.
-    expect(outcome).toEqual({ clientMessageId: 'cm_1', outcome: 'unknown', reason: 'not_found' })
-    // The bubble survives, unconfirmed: the message is not silently retried or dropped.
+    expect(outcome).toEqual({
+      clientMessageId: 'cm_1',
+      outcome: 'rejected',
+      reason: 'not_delivered'
+    })
+
+    await restarted.resolveDispatch({
+      clientMessageId: 'cm_1',
+      state: 'rejected',
+      ...agentSessionFailureWords(agentSessionFailureFact('notDelivered'), {
+        surface: 'rejection'
+      }),
+      fence: 2,
+      recovered: true
+    })
+    // The bubble survives with an explicit terminal state — the message is not
+    // silently retried and not silently dropped.
     expect(restarted.snapshot().items).toHaveLength(1)
-    expect(restarted.snapshot().submissions[0]?.dispatchState).toBe('unknown')
+    expect(restarted.snapshot().submissions[0]?.dispatchState).toBe('rejected')
+    expect(restarted.receiptFor('cm_1')).toBeNull()
   })
 
   it('survives replay of an already-reconciled journal without changing the answer', async () => {
@@ -395,8 +397,7 @@ describe('reconciliation matching', () => {
         }
       ])
     })
-    // Absent from a window that starts at the last completed turn, not at this send.
-    expect(outcome).toMatchObject({ outcome: 'unknown', reason: 'not_found' })
+    expect(outcome).toMatchObject({ outcome: 'rejected', reason: 'not_delivered' })
   })
 
   it('lets a strong client-id match win an item a weaker fingerprint would have claimed', () => {
@@ -407,7 +408,7 @@ describe('reconciliation matching', () => {
       ])
     })
     expect(outcomes).toEqual([
-      expect.objectContaining({ clientMessageId: 'cm_1', outcome: 'unknown' }),
+      expect.objectContaining({ clientMessageId: 'cm_1', outcome: 'rejected' }),
       expect.objectContaining({ clientMessageId: 'cm_2', providerItemId: 'item-1' })
     ])
   })
@@ -437,7 +438,7 @@ describe('reconciliation matching', () => {
     })
     expect(outcomes).toEqual([
       expect.objectContaining({ clientMessageId: 'cm_1', providerItemId: 'item-7' }),
-      expect.objectContaining({ clientMessageId: 'cm_2', outcome: 'unknown' })
+      expect.objectContaining({ clientMessageId: 'cm_2', outcome: 'rejected' })
     ])
   })
 

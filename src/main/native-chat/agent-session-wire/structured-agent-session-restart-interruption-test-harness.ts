@@ -124,13 +124,10 @@ export async function interruptedRestart(
       closeSession,
       ...(work === 'submission' || work === 'send-after-reply'
         ? {
-            providerHistory: async () => ({
-              turnInFlight: false,
-              readWindow: async () => ({
-                items: [],
-                boundaryConsistent: historyBoundaryConsistent
-              }),
-              readRecorded: async () => null
+            providerHistoryWindow: async () => ({
+              items: [],
+              boundaryConsistent: historyBoundaryConsistent,
+              turnInFlight: false
             })
           }
         : {})

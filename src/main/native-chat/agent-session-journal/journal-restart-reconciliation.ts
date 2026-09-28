@@ -1,12 +1,17 @@
 // The production caller for `reconcileSubmissions`.
 //
 // Runs once per journal open, after the crash boundary has already settled every
-// survivor to `unknown`. It only ever narrows that answer, to `accepted` when the
-// provider's own history holds the message. It never decides `rejected`: history
-// cannot show a send never arrived, and a wrong "not delivered" invites a Retry
-// that sends a delivered message twice. Anything the reconciler leaves `unknown`
-// is left exactly as the crash boundary wrote it, and nothing here dispatches.
+// survivor to `unknown`. It only ever narrows that answer: `accepted` when the
+// provider's own history holds the message, `rejected` when a boundary we can
+// vouch for proves it never arrived. Anything the reconciler leaves `unknown`
+// is left exactly as the crash boundary wrote it.
+//
+// Nothing here dispatches. A `rejected` submission becomes re-sendable only
+// through the user's Retry, which rotates the client message id; Orca still
+// never puts a message back on the wire on the user's behalf.
 
+import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
+import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import type {
   AgentJournalMessageItem,
   AgentJournalSubmission
@@ -17,17 +22,14 @@ import {
 } from '../../../shared/agent-session-journal-item-key'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import type { AgentSessionJournal } from './journal-store'
-import {
-  reconcileSubmissions,
-  type ProviderHistorySource,
-  type ProviderHistoryWindow
-} from './journal-submission-reconciler'
+import { reconcileSubmissions, type ProviderHistoryWindow } from './journal-submission-reconciler'
 
 /**
  * Only a text-only body can be compared against provider content. A submission
  * carrying an attachment was fingerprinted over an `image-ref` path the
- * transcript does not keep, so matching it against history would test the
- * encoding rather than the message. Those stay `unknown`.
+ * transcript does not keep, so its absence from history would be an artefact of
+ * the encoding rather than evidence — and `rejected` is the one outcome that
+ * costs the user a duplicate if it is wrong. Those stay `unknown`.
  */
 function comparableBody(body: AgentJournalMessageItem | undefined): boolean {
   return (
@@ -77,25 +79,6 @@ function unseenHistory(
   }
 }
 
-const UNREAD_WINDOW = { items: [], boundaryConsistent: false } as const
-
-/** Read only what these sends are decided by: the recorded history for a send handed over under
- *  an id, the anchored window for one without. A failed read decides nothing. */
-async function readHistoryFor(
-  history: ProviderHistorySource,
-  submissions: readonly AgentJournalSubmission[]
-): Promise<ProviderHistoryWindow> {
-  const [window, recorded] = await Promise.all([
-    submissions.some((submission) => !submission.handedOverItemId)
-      ? history.readWindow().catch(() => UNREAD_WINDOW)
-      : UNREAD_WINDOW,
-    submissions.some((submission) => submission.handedOverItemId)
-      ? history.readRecorded().catch(() => null)
-      : null
-  ])
-  return { ...window, turnInFlight: history.turnInFlight, recorded }
-}
-
 /**
  * Decide what the crash boundary could only doubt. Returns the client message
  * ids this pass settled, so the attach result stops reporting them unconfirmed.
@@ -103,17 +86,16 @@ async function readHistoryFor(
 export async function reconcileJournalSubmissionsAgainstHistory(input: {
   journal: AgentSessionJournal
   fence: number
-  history: ProviderHistorySource
+  history: ProviderHistoryWindow
 }): Promise<string[]> {
   const submissions = comparableSubmissions(input.journal)
   if (submissions.length === 0) {
     return []
   }
-  const history = await readHistoryFor(input.history, submissions)
   const settled: string[] = []
   for (const outcome of reconcileSubmissions({
     submissions,
-    history: unseenHistory(input.journal, history)
+    history: unseenHistory(input.journal, input.history)
   })) {
     if (outcome.outcome === 'unknown') {
       // Narrowing failed: the submission stays unconfirmed, so record why.
@@ -124,13 +106,25 @@ export async function reconcileJournalSubmissionsAgainstHistory(input: {
       })
       continue
     }
-    await input.journal.resolveDispatch({
-      clientMessageId: outcome.clientMessageId,
-      state: 'accepted',
-      providerIdentity: outcome.identity,
-      fence: input.fence,
-      recovered: true
-    })
+    await input.journal.resolveDispatch(
+      outcome.outcome === 'accepted'
+        ? {
+            clientMessageId: outcome.clientMessageId,
+            state: 'accepted',
+            providerIdentity: outcome.identity,
+            fence: input.fence,
+            recovered: true
+          }
+        : {
+            clientMessageId: outcome.clientMessageId,
+            state: 'rejected',
+            ...agentSessionFailureWords(agentSessionFailureFact('notDelivered'), {
+              surface: 'rejection'
+            }),
+            fence: input.fence,
+            recovered: true
+          }
+    )
     settled.push(outcome.clientMessageId)
   }
   return settled

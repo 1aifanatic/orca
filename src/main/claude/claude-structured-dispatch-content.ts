@@ -1,10 +1,7 @@
-import { createHash, randomUUID } from 'node:crypto'
+import { createHash } from 'node:crypto'
 import { open } from 'node:fs/promises'
 import { extname } from 'node:path'
-import type {
-  AgentJournalItemIdentity,
-  AgentJournalMessageItem
-} from '../../shared/agent-session-journal-types'
+import type { AgentJournalMessageItem } from '../../shared/agent-session-journal-types'
 import type { NativeChatBlock } from '../../shared/native-chat-types'
 import {
   agentSessionFailureFact,
@@ -259,32 +256,4 @@ export function claudeDispatchContentKey(content: readonly unknown[]): string {
   }
   const key = `v1:${summary.slice(0, 128)}:${digest.digest('hex')}`
   return key.slice(0, MAX_REPLAY_CONTENT_KEY_BYTES)
-}
-
-/**
- * Claude records a user frame under the frame's own `uuid` — its row's, or for a frame folded into
- * a running turn its attachment's `source_uuid` — so the id is chosen before the hand-over is
- * journaled. A command is left to content: what Claude writes for one is not the prompt Orca sent.
- */
-export function mintClaudeDispatchIdentity(
-  providerSessionId: string,
-  body: AgentJournalMessageItem
-): AgentJournalItemIdentity | null {
-  const prompt = body.blocks.flatMap((block) =>
-    block.type === 'text' && block.text ? [block.text] : []
-  )
-  if (claudeDispatchInvokesSlashCommand([{ type: 'text', text: prompt.join('\n') }])) {
-    return null
-  }
-  return { provider: 'claude', sessionId: providerSessionId, uuid: randomUUID() }
-}
-
-/** The recorded id's uuid when it names this session; a stale one names a record Claude never wrote. */
-export function claudeRecordedFrameUuid(
-  providerSessionId: string,
-  identity: AgentJournalItemIdentity | undefined
-): string | undefined {
-  return identity?.provider === 'claude' && identity.sessionId === providerSessionId
-    ? identity.uuid
-    : undefined
 }

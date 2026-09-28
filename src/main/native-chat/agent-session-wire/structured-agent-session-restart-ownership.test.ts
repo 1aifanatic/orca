@@ -91,14 +91,16 @@ it.each(['turn', 'submission'] as const)(
   }
 )
 
-// Teardown judged the chat working. A send history cannot confirm is still the chat Orca stopped;
-// the continuation asks the agent to check what finished rather than refusing.
-it('still continues a chat whose last send history cannot confirm', async () => {
+// Teardown judged the chat working. A send the provider proves it never received is still the chat
+// Orca stopped; the continuation asks the agent
+// to check what finished rather than refusing.
+it('still continues a chat whose last send acquisition proves was never delivered', async () => {
   const { host, acquire, dispatch } = await interruptedRestart('submission')
   expect(await host.restartResume.list()).toHaveLength(1)
   const result = await host.restartResume.continueAfterRestart([SESSION], 'modal')
   expect((await host.journalSnapshot(SESSION)).submissions[0]).toMatchObject({
-    dispatchState: 'unknown'
+    dispatchState: 'rejected',
+    rejection: { kind: 'notDelivered' }
   })
   expect(acquire).toHaveBeenCalledTimes(1)
   expect(dispatch).toHaveBeenCalledTimes(1)

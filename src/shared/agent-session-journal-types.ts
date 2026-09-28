@@ -396,9 +396,6 @@ export type AgentJournalSubmission = {
   handoverRecorded?: true
   /** When the host handed it to the provider (its `dispatch{pending}` row). */
   handedOverAt?: number
-  /** Host-only: the provider item key the hand-over stamped on the frame, so a restart can look
-   *  the send up by identity. Absent for providers that choose their own ids, and on older rows. */
-  handedOverItemId?: string
   /** Host-only: the submission row's sequence, which tells which host process accepted it. */
   acceptedSequence?: number
 }

@@ -7,11 +7,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { agentSessionRecordFixture } from '../../../shared/agent-session-record.test-fixture'
-import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
+import { projectStructuredAgentSessionStatusState } from '../../../shared/structured-agent-session-projection'
 import { digestPayload } from '../agent-session-journal/journal-payload-bounds'
 import { journalDirectoryFor } from '../agent-session-journal/journal-paths'
-import type { ProviderHistorySource } from '../agent-session-journal/journal-submission-reconciler'
+import type { ProviderHistoryWindow } from '../agent-session-journal/journal-submission-reconciler'
 import { createTrackedJournalOpener } from '../agent-session-journal/journal-store-test-open'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { openTestAttachConversation } from './structured-agent-session-attach-test-conversation'
@@ -46,28 +46,21 @@ function userMessage(text: string): AgentJournalMessageItem {
   return { kind: 'message', role: 'user', blocks: [{ type: 'text', text }] }
 }
 
-const SENT_FRAME = { provider: 'claude', sessionId: 'provider-1', uuid: 'cm_1-frame' } as const
-
-/** A transcript that holds `cm_1`'s frame and nothing else. */
-function window(overrides: Partial<ProviderHistorySource> = {}): ProviderHistorySource {
-  return {
-    turnInFlight: false,
-    readWindow: async () => ({ items: [], boundaryConsistent: true }),
-    readRecorded: async () => ({ itemIds: new Set([agentJournalItemKey(SENT_FRAME)]) }),
-    ...overrides
-  }
+function window(overrides: Partial<ProviderHistoryWindow> = {}): ProviderHistoryWindow {
+  return { items: [], boundaryConsistent: true, turnInFlight: false, ...overrides }
 }
 
 /** Only the surface `attachJournal` touches; every send-shaped method is a spy
  *  so a re-delivery would be visible rather than silent. */
-function adapterWith(providerHistory?: () => Promise<ProviderHistorySource | null>): {
+function adapterWith(providerHistoryWindow?: () => Promise<ProviderHistoryWindow | null>): {
   adapter: StructuredAgentSessionAdapter
   dispatch: ReturnType<typeof vi.fn>
 } {
   const dispatch = vi.fn()
-  const surface = { dispatch, ...(providerHistory ? { providerHistory } : {}) }
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: attachJournal reads only these members.
-  const adapter = surface as unknown as StructuredAgentSessionAdapter
+  const adapter = {
+    dispatch,
+    ...(providerHistoryWindow ? { providerHistoryWindow } : {})
+  } as unknown as StructuredAgentSessionAdapter
   return { adapter, dispatch }
 }
 
@@ -84,16 +77,6 @@ async function crashedJournal(clientMessageId = 'cm_1', text = 'deploy the thing
     clientMessageId,
     payloadFingerprint: digestPayload(text),
     body: userMessage(text),
-    fence: RECORD.lease.runtimeFence
-  })
-  await journal.resolveDispatch({
-    clientMessageId,
-    state: 'pending',
-    providerIdentity: {
-      provider: 'claude',
-      sessionId: 'provider-1',
-      uuid: `${clientMessageId}-frame`
-    },
     fence: RECORD.lease.runtimeFence
   })
   await journal.close()
@@ -121,28 +104,40 @@ afterEach(async () => {
 })
 
 describe('attachJournal restart reconciliation', () => {
-  it('settles a send found by its frame id and stops reporting it unconfirmed', async () => {
+  it('settles a provably undelivered submission and stops reporting it unconfirmed', async () => {
     await crashedJournal()
     const { adapter, dispatch } = adapterWith(async () => window())
 
     const attached = await attach(adapter)
 
     expect(attached.unconfirmedClientMessageIds).toEqual([])
-    expect(attached.journal.submissions()[0]).toMatchObject({
-      dispatchState: 'accepted',
-      providerItemId: agentJournalItemKey(SENT_FRAME)
-    })
+    const submission = attached.journal.submissions()[0]
+    expect(submission?.dispatchState).toBe('rejected')
+    expect(submission?.rejection).toEqual({ kind: 'notDelivered' })
     // Deciding is not sending: nothing here puts the message back on the wire.
     expect(dispatch).not.toHaveBeenCalled()
   })
 
-  it('still reports a submission unconfirmed when history does not hold it', async () => {
-    await crashedJournal('cm_2')
-    const { adapter, dispatch } = adapterWith(async () => window())
+  it('gives a send the provider never received no verdict and no listing', async () => {
+    await crashedJournal()
+    const { adapter } = adapterWith(async () => window())
 
     const attached = await attach(adapter)
 
-    expect(attached.unconfirmedClientMessageIds).toEqual(['cm_2'])
+    // Nobody failed: the crash stranded it, so the chat must not read Failed or be listed by it.
+    const { items, submissions } = attached.journal.snapshot()
+    expect(
+      projectStructuredAgentSessionStatusState(items, submissions, RECORD.lease.runtimeFence)
+    ).toMatchObject({ summary: { status: null }, latestRequest: null })
+  })
+
+  it('still reports a submission unconfirmed when the window cannot decide it', async () => {
+    await crashedJournal()
+    const { adapter, dispatch } = adapterWith(async () => window({ turnInFlight: true }))
+
+    const attached = await attach(adapter)
+
+    expect(attached.unconfirmedClientMessageIds).toEqual(['cm_1'])
     expect(attached.journal.submissions()[0]?.dispatchState).toBe('unknown')
     expect(dispatch).not.toHaveBeenCalled()
   })
@@ -184,6 +179,7 @@ describe('attachJournal restart reconciliation', () => {
       fence: RECORD.lease.runtimeFence,
       handoverRecorded: true
     })
+    // History that holds nothing: absence would prove a handed-over message undelivered.
     const { adapter, dispatch } = adapterWith(async () => window())
 
     const attached = await attachJournal({

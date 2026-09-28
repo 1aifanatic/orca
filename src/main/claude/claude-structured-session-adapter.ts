@@ -7,10 +7,6 @@ import type {
 } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import { stopClaudeBackgroundTasks } from './claude-structured-control-actions'
 import { dispatchClaudeTurn } from './claude-structured-dispatch'
-import {
-  claudeRecordedFrameUuid,
-  mintClaudeDispatchIdentity
-} from './claude-structured-dispatch-content'
 import { StructuredSessionCompaction } from '../native-chat/agent-session-wire/structured-session-compaction'
 import { releaseClaudeAcquisition } from './claude-structured-acquisition-release'
 import { acquireClaudeSession } from './claude-structured-session-acquisition'
@@ -38,7 +34,7 @@ import {
   type ClaudeExitLifecycle
 } from './claude-structured-session-exit-lifecycle'
 import type { AgentSessionBackgroundTaskState } from '../../shared/agent-session-wire'
-import { openClaudeProviderHistory } from './claude-structured-provider-history'
+import { resolveClaudeProviderHistoryWindow } from './claude-structured-history-window'
 import { drainClaudeChildWork } from './claude-child-work-evidence'
 import {
   admitClaudePromptCancellation,
@@ -135,8 +131,10 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
   }
 
   /** Restart reconciliation reads the transcript a resume replays; these maps track liveness. */
-  providerHistory: NonNullable<StructuredAgentSessionAdapter['providerHistory']> = async (input) =>
-    openClaudeProviderHistory({
+  providerHistoryWindow: NonNullable<StructuredAgentSessionAdapter['providerHistoryWindow']> = (
+    input
+  ) =>
+    resolveClaudeProviderHistoryWindow({
       identity: input.identity,
       accountHomePath: input.accountHome.path,
       hasLiveSession:
@@ -191,18 +189,8 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
     )
   }
 
-  mintDispatchIdentity: NonNullable<StructuredAgentSessionAdapter['mintDispatchIdentity']> = (
-    input
-  ) => {
-    const session = this.sessions.get(input.sessionId)
-    return session ? mintClaudeDispatchIdentity(session.providerSessionId, input.body) : null
-  }
-
-  dispatch: StructuredAgentSessionAdapter['dispatch'] = (input) => {
-    const session = this.session(input.sessionId)
-    const sentUuid = claudeRecordedFrameUuid(session.providerSessionId, input.providerIdentity)
-    return dispatchClaudeTurn(session, { ...input, sentUuid }, input.beforeDispatch)
-  }
+  dispatch: StructuredAgentSessionAdapter['dispatch'] = (input) =>
+    dispatchClaudeTurn(this.session(input.sessionId), input, input.beforeDispatch)
 
   compact: NonNullable<StructuredAgentSessionAdapter['compact']> = (input) =>
     compactClaudeSession(this.session(input.sessionId), this.compactions, input)

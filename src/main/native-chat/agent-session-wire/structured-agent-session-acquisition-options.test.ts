@@ -10,7 +10,7 @@ import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { digestPayload } from '../agent-session-journal/journal-payload-bounds'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
-import type { ProviderHistorySource } from '../agent-session-journal/journal-submission-reconciler'
+import type { ProviderHistoryWindow } from '../agent-session-journal/journal-submission-reconciler'
 import {
   attachFingerprintFields,
   type AgentSessionAttachParams
@@ -120,15 +120,11 @@ describe('structured session acquisition options', () => {
       hostId: 'local'
     })
     let childAcquired = false
-    const sampledWithChild: boolean[] = []
-    const historyWindow = (): ProviderHistorySource => {
-      sampledWithChild.push(childAcquired)
-      return {
-        turnInFlight: childAcquired,
-        readWindow: async () => ({ items: [], boundaryConsistent: true }),
-        readRecorded: async () => null
-      }
-    }
+    const historyWindow = (): ProviderHistoryWindow => ({
+      items: [],
+      boundaryConsistent: true,
+      turnInFlight: childAcquired
+    })
     const withHistory = (origin: 'created' | 'resumed'): StructuredAgentSessionAdapter => {
       const sessionAdapter = adapter({ origin })
       const acquire = vi.mocked(sessionAdapter.acquire)
@@ -150,7 +146,7 @@ describe('structured session acquisition options', () => {
           }
         }
       })
-      sessionAdapter.providerHistory = vi.fn(async () => historyWindow())
+      sessionAdapter.providerHistoryWindow = vi.fn(async () => historyWindow())
       return sessionAdapter
     }
 
@@ -213,12 +209,12 @@ describe('structured session acquisition options', () => {
       onAttached: () => {}
     })
 
+    expect(second).toMatchObject({ ok: true, value: { unconfirmedClientMessageIds: [] } })
     expect(second).toMatchObject({
-      ok: true,
-      value: { unconfirmedClientMessageIds: ['crashed-send'] }
+      value: {
+        page: { submissions: [{ clientMessageId: 'crashed-send', dispatchState: 'rejected' }] }
+      }
     })
-    // Both attaches sampled liveness before their own child started.
-    expect(sampledWithChild).toEqual([false, false])
   })
 
   it('persists create defaults before the first provider acquisition', async () => {
