@@ -1,4 +1,3 @@
-import { getDaemonRestartInFlight } from '../../../daemon/daemon-restart-state'
 import { parseAppWslPtyId, type WslPtyOwner } from '../../../../shared/wsl-pty-id'
 import { wslPtyOwnerKey } from '../../../../shared/wsl-pty-consumer-recovery'
 import { relayProvidersByGeneration } from '../../../providers/relay-pty-generation-registry'
@@ -44,23 +43,6 @@ export function getProvider(connectionId: string | null | undefined): IPtyProvid
   return provider
 }
 
-let rebindDeferred = false
-function requestWslProviderListenerRebind(): void {
-  const restart = getDaemonRestartInFlight()
-  if (!restart) {
-    rebindLocalProviderListeners()
-  } else if (!rebindDeferred) {
-    rebindDeferred = true
-    const settled = (): void => {
-      rebindDeferred = false
-      requestWslProviderListenerRebind()
-    }
-    void restart.then(settled, settled).catch((error) => {
-      console.warn('[pty] Could not rebind guest terminal listeners after restart', error)
-    })
-  }
-}
-
 export function registerWslPtyProvider(owner: WslPtyOwner, provider: IPtyProvider): () => void {
   const key = wslPtyOwnerKey(owner)
   const previous = wslProviders.get(key)
@@ -68,11 +50,11 @@ export function registerWslPtyProvider(owner: WslPtyOwner, provider: IPtyProvide
     throw new Error('WSL terminal owner already registered')
   }
   wslProviders.set(key, provider)
-  requestWslProviderListenerRebind()
+  rebindLocalProviderListeners()
   return () => {
     if (wslProviders.get(key) === provider) {
       wslProviders.delete(key)
-      requestWslProviderListenerRebind()
+      rebindLocalProviderListeners()
     }
   }
 }

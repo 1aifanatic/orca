@@ -26,9 +26,16 @@ afterEach(() => {
 })
 function provider() {
   const listeners = new Set<Parameters<IPtyProvider['onData']>[0]>()
+  const exits = new Set<Parameters<IPtyProvider['onExit']>[0]>()
   return {
     value: {
       ...createUnavailablePtyProvider(),
+      onExit(listener: Parameters<IPtyProvider['onExit']>[0]) {
+        exits.add(listener)
+        return () => {
+          exits.delete(listener)
+        }
+      },
       onData(listener: Parameters<IPtyProvider['onData']>[0]) {
         listeners.add(listener)
         return () => {
@@ -37,6 +44,8 @@ function provider() {
       }
     },
     listeners,
+    exits,
+    exit: (id: string) => exits.forEach((listener) => listener({ id, code: 7 })),
     emit: (id: string) => listeners.forEach((listener) => listener({ id, data: 'output' }))
   }
 }
@@ -72,9 +81,18 @@ it('binds added guests once, excludes SSH and removes listeners across reload an
   expect(native.listeners.size).toBe(0)
 })
 
-it('does not rebind a retiring local provider when guests change during restart', async () => {
-  const rebind = vi.fn()
-  setRebindProviderListeners(rebind)
+it('delivers new guest data and exit before a pending restart settles', async () => {
+  const native = provider(),
+    guest = provider()
+  setLocalPtyProvider(native.value)
+  const session = {
+    acceptPtyDataForRenderer: vi.fn(),
+    sendModelRestoreNeededMarker: vi.fn(),
+    consumeSyntheticKillExit: vi.fn(),
+    sendPtyExitToRenderer: vi.fn()
+  }
+  setRebindProviderListeners(() => bindProviderListeners(session))
+  bindProviderListeners(session)
   let finish!: () => void
   const pending = runCoalescedDaemonRestart(async () => {
     await new Promise<void>((resolve) => {
@@ -85,21 +103,27 @@ it('does not rebind a retiring local provider when guests change during restart'
   try {
     const release = registerWslPtyProvider(
       { distro: 'Ubuntu', relayBuildId: 'during-restart' },
-      provider().value
+      guest.value
     )
     releases.push(release)
+    expect(isDaemonRestartInFlight()).toBe(true)
+    native.emit('native')
+    guest.emit('guest')
+    guest.exit('guest')
+    expect(session.acceptPtyDataForRenderer).toHaveBeenCalledTimes(2)
+    expect(session.sendPtyExitToRenderer).toHaveBeenCalledWith({ id: 'guest', code: 7 })
+    expect(native.listeners.size).toBe(1)
     release()
-    expect(rebind).not.toHaveBeenCalled()
+    expect(guest.listeners.size).toBe(0)
+    expect(guest.exits.size).toBe(0)
+    guest.emit('retired')
+    guest.exit('retired')
+    expect(session.acceptPtyDataForRenderer).toHaveBeenCalledTimes(2)
+    expect(session.sendPtyExitToRenderer).toHaveBeenCalledTimes(1)
   } finally {
     finish()
     await pending
   }
-  expect(rebind).toHaveBeenCalledOnce()
-  rebind.mockClear()
-  releases.push(
-    registerWslPtyProvider({ distro: 'Ubuntu', relayBuildId: 'after-restart' }, provider().value)
-  )
-  expect(rebind).toHaveBeenCalledOnce()
 })
 
 it.each([false, true])(
@@ -125,7 +149,9 @@ it.each([false, true])(
         releases.push(
           registerWslPtyProvider({ distro: 'Ubuntu', relayBuildId: 'late' }, guest.value)
         )
-        expect(guest.listeners.size).toBe(0)
+        expect(guest.listeners.size).toBe(1)
+        guest.emit('during-settlement')
+        guest.exit('during-settlement')
         lateRegistered = true
       })
       if (failed) {
@@ -138,12 +164,13 @@ it.each([false, true])(
     expect(lateRegistered).toBe(true)
     expect(native.listeners.size).toBe(1)
     guest.emit('guest')
-    expect(session.acceptPtyDataForRenderer).toHaveBeenCalledOnce()
+    expect(session.acceptPtyDataForRenderer).toHaveBeenCalledTimes(2)
+    expect(session.sendPtyExitToRenderer).toHaveBeenCalledWith({ id: 'during-settlement', code: 7 })
     expect(rebind).toHaveBeenCalledTimes(2)
   }
 )
 
-it('rebinds once after a failed restart with registrations and removals in flight', async () => {
+it('updates guest subscriptions immediately despite a later failed restart', async () => {
   const rebind = vi.fn()
   setRebindProviderListeners(rebind)
   let fail!: (error: Error) => void
@@ -163,8 +190,8 @@ it('rebinds once after a failed restart with registrations and removals in fligh
   releases.push(
     registerWslPtyProvider({ distro: 'Ubuntu', relayBuildId: 'survivor' }, provider().value)
   )
-  expect(rebind).not.toHaveBeenCalled()
+  expect(rebind).toHaveBeenCalledTimes(3)
   fail(new Error('failed'))
   await rejection
-  await vi.waitFor(() => expect(rebind).toHaveBeenCalledOnce())
+  expect(rebind).toHaveBeenCalledTimes(3)
 })
