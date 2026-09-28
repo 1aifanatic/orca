@@ -18,6 +18,7 @@ import type { AgentSessionJournal } from '../agent-session-journal/journal-store
 import { structuredAgentSessionStartFailureRow } from './structured-agent-session-start-failure-row'
 import type { AgentSessionDeathEvidence } from '../../../shared/agent-session-record'
 import {
+  provenUnverifiableTurnRevisions,
   runningTurnLifecycleRevisions,
   turnVerdictFromDeathEvidence,
   type StructuredAgentSessionTurnVerdict
@@ -231,8 +232,9 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
  * Settles whatever a generation with no child in this process left running: found when a new child
  * is acquired, or when a chat is reopened for reading. Derived from the journal and the lease's
  * death evidence each time, so nothing is owed in between. Proven death ends the turn interrupted,
- * and only a watched exit carries its reason into the copy. Must run before a new child's buffered
- * events land, or a live turn would be judged.
+ * and only a watched exit carries its reason into the copy; a proof written after an earlier settle
+ * revises what that settle left `unverifiable`. Must run before a new child's buffered events land,
+ * or a live turn would be judged.
  */
 export async function settleStaleStructuredAgentSessionState(input: {
   journal: AgentSessionJournal
@@ -256,10 +258,15 @@ export async function settleStaleStructuredAgentSessionState(input: {
       mutations.push({ kind: 'item', identity, body })
     }
   }
+  const proven = provenUnverifiableTurnRevisions(items, input.deathEvidence, journal)
   mutations.push(
-    ...items.flatMap((item) => runningTurnLifecycleRevisions([item], verdictFor(item)))
+    ...items.flatMap((item) => runningTurnLifecycleRevisions([item], verdictFor(item))),
+    ...proven
   )
-  if (items.some((item) => isInProgressItem(item) && verdictFor(item).state === 'interrupted')) {
+  if (
+    proven.length > 0 ||
+    items.some((item) => isInProgressItem(item) && verdictFor(item).state === 'interrupted')
+  ) {
     mutations.unshift({
       kind: 'item',
       identity: { provider: 'orca', clientMessageId: settlementId },

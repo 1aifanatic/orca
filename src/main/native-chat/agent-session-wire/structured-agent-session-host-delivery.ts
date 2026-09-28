@@ -7,6 +7,7 @@ import type { AgentJournalResetReason } from '../../../shared/agent-session-jour
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import {
   openStructuredAgentSessionConversation,
+  resettleOpenStructuredAgentSessionConversation,
   type OpenedStructuredAgentSessionConversation,
   type StructuredAgentSessionConversationOpenOptions
 } from './structured-agent-session-conversation-open'
@@ -28,6 +29,8 @@ export type StructuredAgentSessionConversationDelivery = {
     sessionId: string,
     options?: StructuredAgentSessionConversationOpenOptions
   ) => Promise<StructuredAgentSessionHostSession | null>
+  /** Re-runs the open's settle for every open conversation no child here drives. */
+  resettleOpen: () => void
   /** Indexes a conversation some other open produced, as `open` would have. */
   adoptOpened: (
     sessionId: string,
@@ -79,6 +82,16 @@ export function createStructuredAgentSessionConversationDelivery(input: {
   return {
     loop,
     adoptOpened,
+    // Queued, never awaited: an attach holding a session's serialize waits on the reconcile.
+    resettleOpen: () => {
+      for (const sessionId of sessions.keys()) {
+        void input
+          .serialize(sessionId, () =>
+            resettleOpenStructuredAgentSessionConversation(deps, sessionId, sessions.get(sessionId))
+          )
+          .catch((error: unknown) => deps.onEventSinkError?.({ sessionId, error }))
+      }
+    },
     open: (sessionId, options) =>
       openStructuredAgentSessionConversation({ deps, sessions, adoptOpened }, sessionId, options)
   }

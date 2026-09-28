@@ -4,7 +4,7 @@
 // that turn's owner by fence — a watched exit, or a local probe that found the recorded pid gone or
 // reused. A release nothing proved — lost contact, an unverifiable identity, a stop that outlived the
 // ladder — carries none, and neither does a later owner's death; the turn is then `unverifiable`
-// with no end at all.
+// with no end at all, until a proof naming its owner is written and revises it.
 
 import { parseAgentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import type {
@@ -62,23 +62,47 @@ export function runningTurnLifecycleRevisions(
   items: readonly AgentJournalRenderItem[],
   verdict: StructuredAgentSessionTurnVerdict
 ): JournalLifecycleMutationInput[] {
-  const revisions: JournalLifecycleMutationInput[] = []
-  for (const item of items) {
+  return items.flatMap((item) => {
     const turn = readAgentJournalTurn(item.body)
-    if (turn?.state !== 'running') {
-      continue
-    }
-    const identity = parseAgentJournalItemKey(item.itemId)
-    if (!identity) {
-      continue
-    }
-    revisions.push({
-      kind: 'item',
-      identity,
-      body: agentJournalTurnBody(settledLifecycle(turn, verdict))
-    })
+    return turn?.state === 'running' ? turnLifecycleRevision(item, turn, verdict) : []
+  })
+}
+
+/**
+ * A turn an earlier settle could only call `unverifiable`, because the proof had not been written
+ * yet, revised once a proof names the owner that wrote it. Only ever upward, and never from an
+ * older build's proof, which names no owner.
+ */
+export function provenUnverifiableTurnRevisions(
+  items: readonly AgentJournalRenderItem[],
+  evidence: AgentSessionDeathEvidence | null | undefined,
+  journal: Pick<AgentSessionJournal, 'lastLiveActivityAt' | 'itemFence'>
+): JournalLifecycleMutationInput[] {
+  const ownerFence = evidence?.ownerFence
+  if (ownerFence === undefined) {
+    return []
   }
-  return revisions
+  return items.flatMap((item) => {
+    const turn = readAgentJournalTurn(item.body)
+    return turn?.state === 'unverifiable' && journal.itemFence(item.itemId) === ownerFence
+      ? turnLifecycleRevision(
+          item,
+          turn,
+          turnVerdictFromDeathEvidence(evidence, journal, ownerFence)
+        )
+      : []
+  })
+}
+
+function turnLifecycleRevision(
+  item: AgentJournalRenderItem,
+  turn: AgentJournalTurnLifecycle,
+  verdict: StructuredAgentSessionTurnVerdict
+): JournalLifecycleMutationInput[] {
+  const identity = parseAgentJournalItemKey(item.itemId)
+  return identity
+    ? [{ kind: 'item', identity, body: agentJournalTurnBody(settledLifecycle(turn, verdict)) }]
+    : []
 }
 
 /** The verdict owns the turn's end and nothing else; every other field the row

@@ -106,7 +106,9 @@ export class StructuredAgentSessionHost {
       store: deps.store,
       probe: (record) => this.runtimeState.probeRecord(record),
       ...(deps.probeOwners ? { probeMany: deps.probeOwners } : {}),
-      now: () => this.now()
+      now: () => this.now(),
+      // A read can open a chat before the reconcile proves its owner dead; this revises its turn.
+      onReconciled: () => this.conversationDelivery.resettleOpen()
     })
     this.conversationDelivery = createStructuredAgentSessionConversationDelivery({
       deps,
