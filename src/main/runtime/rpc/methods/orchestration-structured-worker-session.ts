@@ -1,13 +1,13 @@
 /**
- * Starting, holding and retiring a worker that IS a structured agent session.
+ * Starting and retiring a worker that IS a structured agent session.
  *
  * Three things make this different from the PTY worker path, and all three live here:
  *
  * - The session is created directly as structured, so readiness is the attach returning ok. There
  *   is no boot-to-idle gap to wait on and no `tui-idle` edge to read.
- * - A structured session's provider child is evicted 15s after its last HOLDER leaves, and holds
- *   come only from bound surfaces. A dispatched worker parked on mail is exactly that state, so
- *   the dispatch takes its own resume-capable hold and keeps it until the worker settles.
+ * - Nothing here keeps its agent running. The idle sweep leaves it running while its dispatch is
+ *   open, reading that from the orchestration database; once the dispatch settles the agent rests
+ *   like any chat's, and the next mail starts it.
  * - The dispatch preamble is a turn, not keystrokes.
  */
 
@@ -39,23 +39,16 @@ import { createStructuredAgentSessionForWorktree } from './structured-agent-sess
 type StructuredWorkerBinding = {
   sessionId: string
   handle: string
-  holderId: string
   disposeSubscription: () => void
 }
 
 const bindingsByDispatchId = new Map<string, StructuredWorkerBinding>()
 
-export function structuredWorkerHoldId(dispatchId: string): string {
-  return `orchestration:dispatch:${dispatchId}`
-}
-
 /**
- * Drops the dispatch's hold, its redrive subscription and its parked mail; the release clock takes
- * it from here.
+ * Drops the dispatch's redrive subscription, its registry entry and its parked mail.
  *
- * EVERY settlement has to reach this — stop, release AND abandon. A surviving hold does not just
- * leak: it keeps the provider child un-evictable for the life of the app, and makes host crash
- * recovery respawn a child for a worker that was settled long ago.
+ * EVERY settlement has to reach this — stop, release AND abandon. A surviving subscription keeps
+ * nudging a session no dispatch owns.
  */
 export function releaseStructuredWorkerSession(
   dispatchId: string,
@@ -69,11 +62,6 @@ export function releaseStructuredWorkerSession(
   binding.disposeSubscription()
   structuredWorkerIdentities.forget(binding.handle)
   runtime?.forgetStructuredSessionMail?.(binding.sessionId)
-  try {
-    getStructuredAgentSessionHost()?.release(binding.sessionId, binding.holderId)
-  } catch (error) {
-    console.warn('[orchestration] structured worker hold release failed', dispatchId, error)
-  }
 }
 
 export async function createStructuredWorkerSession(args: {
@@ -93,7 +81,7 @@ export async function createStructuredWorkerSession(args: {
   // resolves to whatever single leaf sits in the worktree — by default the COORDINATOR's pane.
   //
   // The scope is provisionally local; the record's own location is asserted local below, and a
-  // session that resolves anywhere else never reaches a hold.
+  // session that resolves anywhere else is discarded.
   const identity = structuredWorkerIdentities.register({
     handle: mintStructuredWorkerHandle(),
     sessionId,
@@ -142,13 +130,10 @@ export async function createStructuredWorkerSession(args: {
         'A structured worker must run on the local execution host outside WSL.'
       )
     }
-    const holderId = structuredWorkerHoldId(args.dispatchId)
-    await host.hold(sessionId, holderId)
-    const disposeSubscription = subscribeForRedrive(host, sessionId, args.onJournalActivity)
+    const disposeSubscription = await subscribeForRedrive(host, sessionId, args.onJournalActivity)
     bindingsByDispatchId.set(args.dispatchId, {
       sessionId,
       handle: identity.handle,
-      holderId,
       disposeSubscription
     })
     return { identity, host }
@@ -168,8 +153,8 @@ export async function createStructuredWorkerSession(args: {
  *
  * `ok` is not the test. `commit` answers `agent_session_operation_unknown` when `attach` SUCCEEDED
  * and only the tab publish failed, and a throw out of the commit half is past `attach` too — the
- * pre-commit half never throws, it refuses. Both leave a live provider child that took no hold and
- * has no binding, so nothing else in the runtime will ever retire it. Only a DEFINITIVE refusal
+ * pre-commit half never throws, it refuses. Both leave a session with a published tab and no
+ * binding, so nothing else in the runtime will ever retire it. Only a DEFINITIVE refusal
  * proves there is nothing to discard; everything else gets the best-effort close.
  */
 function structuredCreateMayHaveCommitted(
@@ -212,6 +197,11 @@ export async function discardStructuredWorkerSession(
     return
   }
   retireSettledStructuredWorkerTab(sessionId, runtime)
+}
+
+/** A submission reason as a clause: host sentences end in a period, legacy markers do not. */
+function reasonClause(reason: string | null | undefined): string {
+  return (reason ?? 'no reason given').replace(/[.\s]+$/, '')
 }
 
 /** What a preamble send reads of the host. */
@@ -276,7 +266,9 @@ export async function sendStructuredWorkerPreamble(args: {
     // pending receipt; only this one lets the caller retry knowing nothing landed.
     throw new OrchestrationError(
       'dispatch_preamble_undelivered',
-      `The dispatch preamble was not delivered: ${submission.reason ?? 'no reason given'}.`
+      `The dispatch preamble was not delivered${
+        submission.rejection ? ` (${submission.rejection.kind})` : ''
+      }: ${reasonClause(submission.reason)}.`
     )
   }
   // Only `accepted` is an acknowledgement — the same rule the mail lane already applies. A thrown
@@ -285,7 +277,7 @@ export async function sendStructuredWorkerPreamble(args: {
   // `outcome_unknown` receipt whose nextCommands send the coordinator to look.
   throw new OrchestrationError(
     'operation_unknown',
-    `The dispatch preamble was submitted but not acknowledged (${submission.dispatchState}): ${submission.reason ?? 'no reason given'}.`
+    `The dispatch preamble was submitted but not acknowledged (${submission.dispatchState}): ${reasonClause(submission.reason)}.`
   )
 }
 
@@ -324,17 +316,17 @@ const REDRIVE_MAX_WAIT_MS = 2_000
  * idle worker — that is `deliverForHandle`, called when the message is enqueued and untouched
  * here. This is only the retry for mail already parked because the worker was busy.
  */
-function subscribeForRedrive(
+async function subscribeForRedrive(
   host: StructuredAgentSessionHost,
   sessionId: string,
   onJournalActivity: (sessionId: string) => void
-): () => void {
+): Promise<() => void> {
   const coalescer = createKeyedTrailingEdgeCoalescer(onJournalActivity, {
     flushMs: REDRIVE_FLUSH_MS,
     maxWaitMs: REDRIVE_MAX_WAIT_MS
   })
   try {
-    const unsubscribe = host.subscribe({
+    const unsubscribe = await host.subscribe({
       id: `orchestration:redrive:${sessionId}`,
       sessionId,
       emit: (event) => {
@@ -344,7 +336,7 @@ function subscribeForRedrive(
       }
     })
     // Disposal drops the pending timer rather than flushing it: every settlement reaches here, and
-    // a redrive that fires after the hold is gone would nudge a session no dispatch owns.
+    // a redrive that fires after it would nudge a session no dispatch owns.
     return () => {
       coalescer.dispose()
       unsubscribe()

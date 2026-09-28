@@ -11,13 +11,13 @@ import {
   type StructuredAgentSessionConversationOpenOptions
 } from './structured-agent-session-conversation-open'
 import { StructuredAgentSessionDeliveryLoop } from './structured-agent-session-delivery-loop'
-import type { StructuredAgentSessionResumeOutcome } from './structured-agent-session-hold-resume'
+import type { StructuredAgentSessionResumeOutcome } from './structured-agent-session-agent-start'
 import type {
   StructuredAgentSessionHostDeps,
   StructuredAgentSessionHostSession
 } from './structured-agent-session-host-types'
 import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
-import { structuredAgentSessionStartFailureText } from './structured-agent-session-send-preparation'
+import { structuredAgentSessionFailureWordsContext } from './structured-agent-session-send-preparation'
 import { settleInterruptedCompaction } from './structured-compaction-recovery'
 import { recoverStructuredRewind } from './structured-rewind-recovery'
 
@@ -40,7 +40,11 @@ export function createStructuredAgentSessionConversationDelivery(input: {
   sessions: Map<string, StructuredAgentSessionHostSession>
   serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
   trackStart: <T>(start: Promise<T>) => Promise<T>
-  ensureProviderChild: (sessionId: string) => Promise<StructuredAgentSessionResumeOutcome>
+  /** Starts a child for `startedFor`, the queued message at the head, if the session has none. */
+  ensureProviderChild: (
+    sessionId: string,
+    startedFor: string
+  ) => Promise<StructuredAgentSessionResumeOutcome>
   reset: (sessionId: string, journal: AgentSessionJournal, reset: AgentJournalResetReason) => void
   publishRestored: (sessionId: string) => void
 }): StructuredAgentSessionConversationDelivery {
@@ -53,8 +57,8 @@ export function createStructuredAgentSessionConversationDelivery(input: {
     ensureProviderChild: input.ensureProviderChild,
     conversationFence: (sessionId) =>
       structuredAgentSessionConversationFence(deps.store, sessionId),
-    startFailureText: (sessionId, cause) =>
-      structuredAgentSessionStartFailureText(deps.store.getRecord(sessionId), cause),
+    failureTextContext: (sessionId) =>
+      structuredAgentSessionFailureWordsContext(deps.store.getRecord(sessionId)),
     onError: (sessionId, error) => deps.onEventSinkError?.({ sessionId, error })
   })
   const adoptOpened = async (
@@ -83,8 +87,8 @@ export function createStructuredAgentSessionConversationDelivery(input: {
 /**
  * A compaction or rewind found prepared when the conversation opens was started under a child
  * this process no longer has — the open runs only when none is indexed — so nothing will finish
- * it, and left alone it refuses every send until a view attaches. Settled here instead of by a
- * start inside acceptance. A Codex rewind only its provider can prove stays for the attach.
+ * it, and left alone it refuses every send, so no agent would ever start to. Settled here instead
+ * of by a start inside acceptance. A Codex rewind only its provider can prove stays for the attach.
  */
 async function settleInterruptedCommands(
   deps: StructuredAgentSessionHostDeps,

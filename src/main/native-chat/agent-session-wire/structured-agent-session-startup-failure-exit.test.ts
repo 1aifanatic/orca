@@ -4,7 +4,6 @@ import {
   agentSessionLeaseFixture,
   agentSessionRecordFixture
 } from '../../../shared/agent-session-record.test-fixture'
-import { providerStartupFailureOutcome } from './structured-agent-session-dead-generation-settlement'
 import {
   settleUnexpectedStructuredAgentSessionExit,
   type StructuredAgentSessionUnexpectedExitContext,
@@ -13,7 +12,8 @@ import {
 
 const SESSION = 'session-1'
 const GENERATION = 'generation-1'
-const REASON = 'Claude Code is not signed in. Sign in with the Claude CLI'
+const REASON = 'claude stream-json exited (code 1): session limit reached'
+const STARTUP_TEXT = 'Claude stopped before it finished starting. Send your message to try again.'
 
 function startedSession(): StructuredAgentSessionUnexpectedExitSession & {
   journal: { appendLifecycleBatch: ReturnType<typeof vi.fn> }
@@ -55,7 +55,6 @@ function contextFor(session: StructuredAgentSessionUnexpectedExitSession) {
     sessions: new Map([[SESSION, session]]),
     flushLifecycle: async () => ({ ok: true }),
     publishFence: vi.fn(),
-    hasResumeCapableHolder: () => true,
     serialize: async <T>(_sessionId: string, task: () => Promise<T>) => task(),
     now: () => 1
   }
@@ -72,35 +71,40 @@ const ended = {
 }
 
 describe('a provider that ends before it finished starting', () => {
-  it('tells the user why, even with no response in progress, and does not auto-resume', async () => {
+  it('tells the user why, even with no response in progress', async () => {
     const session = startedSession()
 
-    const ticket = await settleUnexpectedStructuredAgentSessionExit(contextFor(session), {
+    await settleUnexpectedStructuredAgentSessionExit(contextFor(session), {
       ...ended,
+      // The adapter typed the start's own failure; the host keeps it rather than reword it.
+      failure: { kind: 'notSignedIn' },
       startupUnproven: true
     })
 
-    expect(ticket).toBeNull()
     expect(session.journal.appendLifecycleBatch).toHaveBeenCalledWith(
       expect.objectContaining({
         mutations: [
           expect.objectContaining({
             // The same row the delivery loop writes for a failed start: an error, keyed by it.
             identity: { provider: 'orca', clientMessageId: `start-failure:${GENERATION}` },
-            body: { kind: 'status', text: providerStartupFailureOutcome(REASON), tone: 'error' }
+            body: {
+              kind: 'status',
+              text: 'Claude is not signed in for the selected account. Sign in, then send your message again.',
+              tone: 'error',
+              failure: { kind: 'notSignedIn' }
+            }
           })
         ]
       })
     )
-    expect(providerStartupFailureOutcome(REASON)).toContain('not signed in')
   })
 
-  it('keeps an ordinary idle exit silent and resumable', async () => {
+  it('keeps an ordinary idle exit silent', async () => {
     const session = startedSession()
 
-    const ticket = await settleUnexpectedStructuredAgentSessionExit(contextFor(session), ended)
+    await settleUnexpectedStructuredAgentSessionExit(contextFor(session), ended)
 
-    expect(ticket).not.toBeNull()
+    expect(session.child).toBeNull()
     expect(session.journal.appendLifecycleBatch).not.toHaveBeenCalled()
   })
 
@@ -110,16 +114,27 @@ describe('a provider that ends before it finished starting', () => {
       child: { generation: GENERATION, fence: 7, phase: 'starting' as const }
     }
 
-    const ticket = await settleUnexpectedStructuredAgentSessionExit(contextFor(session), ended)
+    await settleUnexpectedStructuredAgentSessionExit(contextFor(session), {
+      ...ended,
+      failure: { kind: 'providerExited', detail: { text: REASON, audience: 'log' } }
+    })
 
-    expect(ticket).toBeNull()
     expect(session.journal.appendLifecycleBatch).toHaveBeenCalledWith(
       expect.objectContaining({
         mutations: [
           expect.objectContaining({
             // The same row the delivery loop writes for a failed start: an error, keyed by it.
             identity: { provider: 'orca', clientMessageId: `start-failure:${GENERATION}` },
-            body: { kind: 'status', text: providerStartupFailureOutcome(REASON), tone: 'error' }
+            // The exit's stderr stays out of the sentence, as a log detail beside it.
+            body: {
+              kind: 'status',
+              text: STARTUP_TEXT,
+              tone: 'error',
+              failure: {
+                kind: 'providerStartFailed',
+                detail: { text: REASON, audience: 'log' }
+              }
+            }
           })
         ]
       })
