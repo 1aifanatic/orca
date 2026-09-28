@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -45,11 +46,13 @@ const KNOWN_PREEXISTING_I2_FAILURES: Record<string, number> = {
   // background that the round trip does not restore to default. Verified as upstream, not a
   // regression, by replaying it against the previous build
   // (`build-serialize-addon-at-ref.mjs --ref origin/main`): I1 and I3 both hold.
-  'dsh-tui-ready-no-key': 10,
-  // Freebuff resize replay differences also occur at base 6835b9b4e3ea; differential I1/I3 pass.
-  'freebuff-lifecycle': 12,
-  'freebuff-login': 10
+  'dsh-tui-ready-no-key': 10
 }
+
+// Exact resize checkpoints and full GridDiff hashes from base 6835b9b4e3ea, not this branch.
+const FREEBUFF_BASELINE: Record<string, readonly string[]> = JSON.parse(
+  readFileSync(join(__dirname, '__fixtures__/freebuff-serialize-baseline.json'), 'utf8')
+)
 
 type Transcript = { name: string; data: string; cols: number; rows: number }
 type Schedule = 'none' | 'shrink' | 'shrink-grow' | 'jitter'
@@ -142,6 +145,7 @@ describe('serialize round trip over captured PTY transcripts', () => {
     async (_name, transcript) => {
       const counts: Partial<Record<Verdict | 'checks', number>> = {}
       const blocking: string[] = []
+      const failureSignatures: string[] = []
       for (const schedule of SCHEDULES) {
         for (const conpty of [false, true]) {
           for (let seed = 1; seed <= SEEDS; seed++) {
@@ -154,6 +158,14 @@ describe('serialize round trip over captured PTY transcripts', () => {
                 const d = check.gridDiff.new
                 console.log(
                   `  ${transcript.name} ${schedule} conpty=${conpty} seed=${seed}: ${d.stage} row=${d.row} ${JSON.stringify(d.expected)?.slice(0, 160)} -> ${JSON.stringify(d.actual)?.slice(0, 160)}`
+                )
+              }
+              if (check.gridDiff.new) {
+                const signature = createHash('sha256')
+                  .update(JSON.stringify(check.gridDiff.new))
+                  .digest('hex')
+                failureSignatures.push(
+                  `${schedule}/${conpty}/${seed}/${check.stepIndex}:${signature}`
                 )
               }
               for (const verdict of verdicts(check, serializers.length > 1)) {
@@ -172,7 +184,9 @@ describe('serialize round trip over captured PTY transcripts', () => {
         console.log(`${transcript.name} ${JSON.stringify(counts)}`)
       }
       expect(blocking).toEqual([])
-      if (!OLD_ADDON_PATH && SEEDS === 2) {
+      if (SEEDS === 2 && transcript.name.startsWith('freebuff-')) {
+        expect(failureSignatures).toEqual(FREEBUFF_BASELINE[transcript.name] ?? [])
+      } else if (!OLD_ADDON_PATH && SEEDS === 2) {
         expect(counts['new-fail'] ?? 0).toBe(KNOWN_PREEXISTING_I2_FAILURES[transcript.name] ?? 0)
       }
     },
