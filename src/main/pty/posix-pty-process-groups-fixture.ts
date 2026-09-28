@@ -15,11 +15,8 @@ function readPs(args: string[]): string {
 }
 
 function findTaggedProcesses(token: string): TaggedProcess[] {
-  const output = readPs([
-    '-e',
-    '-o',
-    'pid=PROCESS_ID,pgid=PROCESS_GID,stat=PROCESS_STATE,args=COMMAND'
-  ])
+  // BusyBox uses nonempty headers as exact widths; retain the default command width.
+  const output = readPs(['-e', '-o', 'pid=PROCESS_ID,pgid=PROCESS_GID,stat=PROCESS_STATE,args='])
   const matches: TaggedProcess[] = []
   for (const line of output.split(/\r?\n/)) {
     if (!line.includes(token)) {

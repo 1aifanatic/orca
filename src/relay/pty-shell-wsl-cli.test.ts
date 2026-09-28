@@ -15,7 +15,8 @@ afterEach(() => {
 describe.each(['bash', 'zsh'])('guest relay %s CLI environment', (shell) => {
   const available =
     process.platform !== 'win32' &&
-    runProcessSync({ program: shell, args: ['--version'] }).code === 0
+    runProcessSync({ program: 'sh', args: ['-c', 'command -v "$1"', 'orca-shell-probe', shell] })
+      .code === 0
 
   it.skipIf(!available)('restores the managed CLI after user startup replaces PATH', async () => {
     const root = mkdtempSync(join(tmpdir(), 'orca guest cli '))

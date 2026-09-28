@@ -33,10 +33,10 @@ describe('independent daemon terminal Pi ownership', () => {
     expect(env).toMatchObject(terminal)
   })
   it('scrubs owners reintroduced by shell launch preparation', () => {
-    const env = { ...terminal, ...owners, APP_ENV: 'kept' }
+    const env: Record<string, string> = { ...terminal, ...owners, APP_ENV: 'kept' }
     finalizeDaemonPtyEnvironment(env, terminal)
     for (const key of Object.keys(owners)) {
-      expect(Reflect.get(env, key)).toBeUndefined()
+      expect(env[key]).toBeUndefined()
     }
     expect(env).toMatchObject({ ...terminal, APP_ENV: 'kept' })
   })
