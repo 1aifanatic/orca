@@ -11,6 +11,7 @@ import { restoreCodexJournalThread } from './codex-structured-journal-translatio
 import { CodexJournalTurnBoundaries } from './codex-structured-journal-translation-turn-boundaries'
 import { createCodexJournalTranslatorWriters } from './codex-structured-journal-translation-writers'
 import { publishCodexTurnLifecycle } from './codex-structured-journal-translation-turns'
+import { isCodexProviderRetryFrame } from './codex-structured-journal-provider-retries'
 import { readCodexProviderVerdict } from './codex-structured-journal-provider-verdicts'
 import { createCodexThreadItemRouter } from './codex-structured-journal-thread-item-routing'
 import { readCodexTurnId } from './codex-structured-thread-facts'
@@ -45,6 +46,7 @@ export function createCodexJournalTranslator(
     compactions,
     goals,
     prompts,
+    providerRetries,
     settleOversizedNotification
   } = createCodexJournalTranslatorWriters(deps)
   const flushStreams = (): CodexJournalTranslationAdmission =>
@@ -181,7 +183,12 @@ export function createCodexJournalTranslator(
         turnBoundaries.clear()
         compactions.clear()
         goals.clear()
+        providerRetries.clear()
         return CODEX_JOURNAL_ADMITTED
+      }
+      const retrying = isCodexProviderRetryFrame(event)
+      if (!retrying) {
+        providerRetries.observe(event)
       }
       if (event.type === 'notification') {
         const streamResult = items.streams.handle(event.threadId, event.method, event.params)
@@ -249,6 +256,9 @@ export function createCodexJournalTranslator(
           return publishActivity(event, routed)
         }
       }
+      if (retrying) {
+        return publishActivity(event, providerRetries.append(event.threadId, event.params))
+      }
       const verdict = readCodexProviderVerdict(event.method, event.params)
       if (
         verdict === 'thread-stopped-running' &&
@@ -287,6 +297,7 @@ export function createCodexJournalTranslator(
       turnBoundaries.clear()
       compactions.clear()
       goals.dispose()
+      providerRetries.clear()
     }
   }
 }
