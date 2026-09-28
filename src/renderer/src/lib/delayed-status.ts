@@ -59,6 +59,10 @@ export function createDelayedStatus<A>(
           hide()
         }
       }
+      if (shown !== null && latest === null && value !== null) {
+        clearTimer()
+        hide()
+      }
       latest = value
 
       if (shown === null) {

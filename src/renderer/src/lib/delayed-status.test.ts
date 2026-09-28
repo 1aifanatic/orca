@@ -55,6 +55,20 @@ describe('createDelayedStatus', () => {
     expect(changes).toEqual([{ key: 'a', value: 'starting' }, null])
   })
 
+  it('restarts the show delay when an unkeyed status clears and returns during its hold', () => {
+    const { status, changes } = track()
+    status.update('a', 'starting')
+    vi.advanceTimersByTime(SHOW_DELAY_MS)
+    status.update('a', null)
+    vi.advanceTimersByTime(100)
+    status.update('a', 'starting')
+    expect(changes).toEqual([{ key: 'a', value: 'starting' }, null])
+    vi.advanceTimersByTime(SHOW_DELAY_MS - 1)
+    expect(changes).toHaveLength(2)
+    vi.advanceTimersByTime(1)
+    expect(changes.at(-1)).toEqual({ key: 'a', value: 'starting' })
+  })
+
   it('drops the shown status at once for a new key, which waits its own delay', () => {
     const { status, changes } = track()
     status.update('a', 'starting')

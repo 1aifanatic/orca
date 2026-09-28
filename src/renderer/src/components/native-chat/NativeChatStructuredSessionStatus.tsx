@@ -21,6 +21,7 @@ export function NativeChatStructuredSessionStatus(props: {
   agentLabel: string
   /** The host's word on the provider child; `starting` is published but not yet answering. */
   startupPhase: 'starting' | 'ready' | null
+  startupChildKey: string | number | null
   error: string | null
   /** A read the pane is reconnecting on its own: said plainly, not as an error. */
   reconnecting?: boolean
@@ -33,7 +34,7 @@ export function NativeChatStructuredSessionStatus(props: {
   const [expanded, setExpanded] = useState<{ sessionId: string; expanded: boolean } | null>(null)
   const activeStopping = stopping?.sessionId === props.sessionId ? stopping : null
   const shownStartupPhase = useDelayedStatus(
-    props.sessionId,
+    JSON.stringify([props.sessionId, typeof props.startupChildKey, props.startupChildKey]),
     props.startupPhase === 'starting' ? 'starting' : null,
     SLOW_STARTUP_NOTICE_DELAY_MS
   )
