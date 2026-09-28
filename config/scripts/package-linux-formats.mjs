@@ -35,7 +35,11 @@ export function linuxFormatArguments({ format, appDirectory, outputDirectory }) 
     '--config.directories.output',
     outputDirectory,
     '--config.deb.compression=gz',
-    '--config.rpm.compression=gzip'
+    '--config.rpm.compression=gzip',
+    '--config.deb.fpm=--deb-compression-level',
+    '--config.deb.fpm=1',
+    '--config.rpm.fpm=--rpm-compression-level',
+    '--config.rpm.fpm=1'
   ]
 }
 

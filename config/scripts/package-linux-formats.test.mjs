@@ -66,7 +66,11 @@ it('preserves configured hooks, architecture, names, and PR compression with exa
     '--config.directories.output',
     '/out with spaces',
     '--config.deb.compression=gz',
-    '--config.rpm.compression=gzip'
+    '--config.rpm.compression=gzip',
+    '--config.deb.fpm=--deb-compression-level',
+    '--config.deb.fpm=1',
+    '--config.rpm.fpm=--rpm-compression-level',
+    '--config.rpm.fpm=1'
   ])
   expect(() => linuxFormatArguments({ format: 'zip' })).toThrow('Unsupported Linux package format')
 })
