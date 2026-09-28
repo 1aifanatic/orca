@@ -10,6 +10,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentSessionOwnerProbe } from '../../../shared/agent-session-lease-adjudication'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
+import type { AgentSessionSubscribeEvent } from '../../../shared/agent-session-wire'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import {
   completedStructuredAgentTurnSeconds,
@@ -24,6 +25,7 @@ import {
   type StructuredAgentSessionAdapter
 } from './structured-agent-session-adapter'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
+import { STRUCTURED_AGENT_SESSION_IDLE_MS } from './structured-agent-session-idle-sweep'
 import type { StructuredAgentSessionHostDeps } from './structured-agent-session-host-types'
 import {
   hostTestAttachParams,
@@ -233,6 +235,158 @@ describe('a turn a crash cut short mid-tool', () => {
   })
 })
 
+/** Every turn state a subscriber was sent, in order: snapshots, then live batches. */
+function turnStatesSent(events: readonly AgentSessionSubscribeEvent[]) {
+  return events
+    .flatMap((event) =>
+      event.type === 'snapshot' ? event.page.items : event.type === 'batch' ? event.batch.items : []
+    )
+    .flatMap((item) => readAgentJournalTurn(item.body) ?? [])
+}
+
+function attach(fence: number) {
+  return host.attach(
+    { callerKey: 'client-1' },
+    hostTestAttachParams(fence, {
+      provider: 'claude',
+      agent: 'claude',
+      accountHome: { variable: 'CLAUDE_CONFIG_DIR', path: '/home/dev/.claude' },
+      providerHandle: { kind: 'claude', sessionId: PROVIDER_SESSION, leafUuid: null }
+    })
+  )
+}
+
+/** Runs whatever this session's serialize already has queued. */
+function drainSession(): Promise<void> {
+  return host.collaboratorsForTests().serialize(SESSION, async () => {})
+}
+
+// On desktop the chat on screen at relaunch opens before the startup reconcile has probed its owner,
+// so the open can only call the turn unverifiable; the reconcile's proof then revises it.
+describe('a turn a read reached before the reconcile proved its owner dead', () => {
+  it('reads unverifiable, then interrupted at the last renewal, and a subscriber is sent both', async () => {
+    openHost({ probeOwner: async () => ({ outcome: 'pid-absent' }) })
+    const events: AgentSessionSubscribeEvent[] = []
+    const unsubscribe = await host.subscribe({
+      id: 'reader-1',
+      sessionId: SESSION,
+      emit: (event) => events.push(event)
+    })
+    expect(await settledTurn()).toEqual(UNVERIFIABLE_TURN)
+
+    await host.reconcileRestartLeases()
+    await drainSession()
+
+    // A paired or phone client learns of the revision through the ordinary journal publish.
+    await vi.waitFor(() =>
+      expect(turnStatesSent(events)).toMatchObject([
+        { state: 'unverifiable' },
+        { state: 'interrupted', completedAt: LAST_RENEWED_AT }
+      ])
+    )
+    const { items } = await host.journalSnapshot(SESSION)
+    const [timing] = selectStructuredAgentTurnTimings(items).values()
+    expect(completedStructuredAgentTurnSeconds(timing)).toBe(27)
+    expect(items.filter((item) => item.body.kind === 'status')).toHaveLength(1)
+    unsubscribe()
+  })
+
+  it('revises nothing twice, whoever re-runs the settle', async () => {
+    openHost({ probeOwner: async () => ({ outcome: 'pid-absent' }) })
+    await host.history({ sessionId: SESSION, direction: 'tail' })
+    await host.reconcileRestartLeases()
+    await drainSession()
+    const settled = await host.journalSnapshot(SESSION)
+
+    host.collaboratorsForTests().conversationDelivery.resettleOpen()
+    await drainSession()
+    await host.restoreReadableSessions()
+
+    expect(await host.journalSnapshot(SESSION)).toEqual(settled)
+  })
+
+  it('never touches the turn a start after the crash is writing', async () => {
+    const acquire = vi.fn<StructuredAgentSessionAdapter['acquire']>(
+      async ({ fence, spawnToken, onSpawned, events }) => {
+        const process = {
+          hostId: 'local',
+          pid: 8_000,
+          processStartTimeMs: RELAUNCHED_AT,
+          spawnToken
+        }
+        await onSpawned?.(process)
+        // The new child is already working when its start lands, ahead of the queued revision.
+        events?.appendItem(
+          { provider: 'claude', sessionId: PROVIDER_SESSION, uuid: 'uuid-turn-2' },
+          { kind: 'turn', turnId: 'turn-2', state: 'running', startedAt: RELAUNCHED_AT }
+        )
+        return {
+          process,
+          link: {
+            linkId: `claude-${fence}-link`,
+            handle: { provider: 'claude', sessionId: PROVIDER_SESSION, leafUuid: null },
+            origin: 'resumed',
+            mintedAtFence: fence,
+            observedAt: RELAUNCHED_AT
+          }
+        }
+      }
+    )
+    openHost({
+      adapter: {
+        acquire,
+        dispatch: vi.fn(),
+        cancelTurn: vi.fn(),
+        answerPrompt: vi.fn(),
+        setOption: vi.fn(),
+        supportsCreate: () => true
+      },
+      probeOwner: async () => ({ outcome: 'pid-absent' })
+    })
+    await host.history({ sessionId: SESSION, direction: 'tail' })
+
+    // The start runs the reconcile itself, so the revision it queues waits behind the start.
+    await expect(attach(14)).resolves.toMatchObject({ ok: true })
+    await host.flushStreamedEvents(SESSION)
+    await drainSession()
+
+    const turns = (await host.journalSnapshot(SESSION)).items.flatMap(
+      (item) => readAgentJournalTurn(item.body) ?? []
+    )
+    expect(turns).toMatchObject([
+      { turnId: 'turn-1', state: 'interrupted', completedAt: LAST_RENEWED_AT },
+      { turnId: 'turn-2', state: 'running' }
+    ])
+  })
+
+  it('stays unverifiable when the revision cannot be written, and a later open revises it', async () => {
+    let now = RELAUNCHED_AT
+    const onEventSinkError = vi.fn()
+    openHost({
+      probeOwner: async () => ({ outcome: 'pid-absent' }),
+      now: () => now,
+      onEventSinkError
+    })
+    await host.history({ sessionId: SESSION, direction: 'tail' })
+    const { journal } = host.collaboratorsForTests().sessions.get(SESSION)!
+    vi.spyOn(journal, 'appendLifecycleBatch').mockRejectedValueOnce(new Error('disk full'))
+
+    await host.reconcileRestartLeases()
+    await drainSession()
+
+    expect(onEventSinkError).toHaveBeenCalledOnce()
+    expect(await settledTurn()).toEqual(UNVERIFIABLE_TURN)
+    // The proof is durable on the record, so the next open converges.
+    now += STRUCTURED_AGENT_SESSION_IDLE_MS + 1
+    await host.collaboratorsForTests().lifetime.idleSweep.tick()
+    expect(host.hasSession(SESSION)).toBe(false)
+    expect(await settledTurn()).toMatchObject({
+      state: 'interrupted',
+      completedAt: LAST_RENEWED_AT
+    })
+  })
+})
+
 /** A relaunched host whose first start after the crash, at fence 15, fails with `failure`; every
  *  later start succeeds. The crashed owner, and any child left behind, probe gone. */
 async function hostWithFailingFirstStart(failure: Error) {
@@ -271,16 +425,7 @@ async function hostWithFailingFirstStart(failure: Error) {
   })
   await host.reconcileRestartLeases()
   return {
-    attach: (fence: number) =>
-      host.attach(
-        { callerKey: 'client-1' },
-        hostTestAttachParams(fence, {
-          provider: 'claude',
-          agent: 'claude',
-          accountHome: { variable: 'CLAUDE_CONFIG_DIR', path: '/home/dev/.claude' },
-          providerHandle: { kind: 'claude', sessionId: PROVIDER_SESSION, leafUuid: null }
-        })
-      ),
+    attach,
     advance: (ms: number) => {
       now += ms
     }

@@ -141,15 +141,17 @@ it.each(PROBES)(
   }
 )
 
-// On desktop the chat on screen at relaunch reads before startup reconciles the leases.
-it('settles it when a read reaches the chat before the startup reconcile', async () => {
+// On desktop the chat on screen at relaunch reads before startup reconciles the leases: nothing
+// has proved its owner gone yet, and the reconcile's proof then revises what the open settled.
+it('settles it when a read reaches the chat before the startup reconcile, then revises it', async () => {
   const { host } = await relaunchAfterCrashMidTurn({ outcome: 'pid-absent' }, { reconcile: false })
   expect(hostTestState().store.getRecord(SESSION)?.lease.claimStatus).toBe('live')
 
   await host.history({ sessionId: SESSION, direction: 'tail' })
+  expect(await turnStates(host)).toEqual(['unverifiable'])
   await host.reconcileRestartLeases()
   await host.restoreReadableSessions([SESSION])
 
-  expect(await turnStates(host)).toEqual(['unverifiable'])
+  expect(await turnStates(host)).toEqual(['interrupted'])
   await host.flushAllStreamedEvents()
 })

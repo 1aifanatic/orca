@@ -280,6 +280,14 @@ describe('running turn lifecycle revisions', () => {
   })
 })
 
+/** A probe that found the fence-1 owner gone at 9000. */
+const PROVEN: AgentSessionDeathEvidence = {
+  kind: 'pid-absent',
+  detail: 'recorded pid absent on host',
+  observedAt: 9_000,
+  ownerFence: 1
+}
+
 describe('stale session state on a cold acquire', () => {
   function journalWith(items: AgentJournalRenderItem[]) {
     const appendLifecycleBatch = vi.fn(async () => ({ epoch: 'epoch-1', sequence: 9 }))
@@ -534,6 +542,66 @@ describe('stale session state on a cold acquire', () => {
           .items.map((item) => readAgentJournalTurn(item.body))
           .find(Boolean)
       ).toMatchObject({ state: 'interrupted', completedAt: 200 })
+    } finally {
+      await journals.closeAll()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('revises an unverifiable turn only from a proof naming its own owner, and only once', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'orca-stale-session-'))
+    const journals = createTrackedJournalOpener()
+    let now = 100
+    try {
+      const journal = await journals.open({
+        identity: {
+          sessionId: 'session-1',
+          workspaceId: 'workspace-1',
+          hostId: 'local',
+          agent: 'codex',
+          providerHandle: { kind: 'codex', threadId: THREAD }
+        },
+        journalDir: root,
+        now: () => now
+      })
+      await journal.appendItem(
+        RUNNING_IDENTITY,
+        { kind: 'turn', turnId: 'turn-2', state: 'running', startedAt: 100 },
+        { fence: 1 }
+      )
+      now = 400
+      // The open, before anything proved the fence-1 owner gone.
+      const settle = (deathEvidence: AgentSessionDeathEvidence | null) =>
+        settleStaleStructuredAgentSessionState({
+          journal,
+          sessionId: 'session-1',
+          fence: 2,
+          acquisitionGeneration: null,
+          deathEvidence
+        })
+      await settle(null)
+      now = 9_000
+      const turn = () => journal.snapshot().items.map((item) => readAgentJournalTurn(item.body))[0]
+      expect(turn()).toMatchObject({ state: 'unverifiable' })
+
+      const unrevised = journal.cursor()
+      await expect(settle({ ...PROVEN, ownerFence: 2 })).resolves.toBe(0)
+      const { ownerFence: _ownerFence, ...olderBuildProof } = PROVEN
+      await expect(settle({ ...olderBuildProof, kind: 'exit-observed' })).resolves.toBe(0)
+      expect(journal.cursor()).toEqual(unrevised)
+      expect(turn()).toMatchObject({ state: 'unverifiable' })
+
+      await expect(settle(PROVEN)).resolves.toBe(2)
+      expect(turn()).toEqual({
+        turnId: 'turn-2',
+        state: 'interrupted',
+        startedAt: 100,
+        completedAt: 100
+      })
+      const revised = journal.cursor()
+      await expect(settle(PROVEN)).resolves.toBe(0)
+      expect(journal.cursor()).toEqual(revised)
+      expect(journal.snapshot().items.filter((item) => item.body.kind === 'status')).toHaveLength(1)
     } finally {
       await journals.closeAll()
       await rm(root, { recursive: true, force: true })
