@@ -64,6 +64,7 @@ describe('death evidence on disk', () => {
       kind: 'pid-absent',
       detail: 'recorded pid absent on host',
       observedAt: 90_000,
+      ownerFence: 7,
       lastProvenAliveAt: LAST_RENEWED_AT
     }
     expect(crashed.getRecord(SESSION)?.lease.deathEvidence).toEqual(evidence)
@@ -78,13 +79,11 @@ describe('death evidence on disk', () => {
     expect(store.getRecord(SESSION)?.lease.deathEvidence).toEqual(olderBuild)
   })
 
-  it('quarantines evidence that proves the owner alive after the probe found it gone', async () => {
-    await seed({
-      kind: 'pid-absent',
-      detail: 'gone',
-      observedAt: 90_000,
-      lastProvenAliveAt: 90_001
-    })
+  it.each([
+    ['proves the owner alive after the probe found it gone', { lastProvenAliveAt: 90_001 }],
+    ['names no possible owner', { ownerFence: -1 }]
+  ])('quarantines evidence that %s', async (_why, field) => {
+    await seed({ kind: 'pid-absent', detail: 'gone', observedAt: 90_000, ...field })
     expect((await open()).isSessionUnreadable(SESSION)).toBe(true)
   })
 })

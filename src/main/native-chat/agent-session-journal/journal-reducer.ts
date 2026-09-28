@@ -41,12 +41,12 @@ export type JournalReducerState = {
   lastActivityAt: number
   /** `lastActivityAt` over rows written live: crash reconciliation is not the provider working. */
   lastLiveActivityAt: number
-  /** Fence of the newest live writer: the generation a live bound describes. */
-  lastLiveFence: number
   /** Lowest sequence still individually replayable; rows below it were compacted. */
   oldestSequence: number
   highestFence: number
   items: Map<string, AgentJournalRenderItem>
+  /** Fence of the writer that created each item: the generation a running turn belongs to. */
+  itemFences: Map<string, number>
   /** Revision of a removed item, so a late lower revision cannot resurrect it. */
   tombstones: Map<string, number>
   submissions: Map<string, AgentJournalSubmission>
@@ -64,10 +64,10 @@ export function createJournalReducerState(sessionId: string, epoch: string): Jou
     lastSequence: 0,
     lastActivityAt: 0,
     lastLiveActivityAt: 0,
-    lastLiveFence: 0,
     oldestSequence: 1,
     highestFence: 0,
     items: new Map(),
+    itemFences: new Map(),
     tombstones: new Map(),
     submissions: new Map(),
     receipts: new Map(),
@@ -83,17 +83,20 @@ export function applyJournalRow(state: JournalReducerState, row: JournalRow): vo
     return
   }
   state.lastActivityAt = Math.max(state.lastActivityAt, row.ts)
-  if (!row.recovered) {
-    state.lastLiveActivityAt = Math.max(state.lastLiveActivityAt, row.ts)
-    state.lastLiveFence = Math.max(state.lastLiveFence, row.fence)
-  }
+  state.lastLiveActivityAt = Math.max(state.lastLiveActivityAt, row.recovered ? 0 : row.ts)
   if (row.kind === 'item') {
     if (journalItemRevisionIsStale(state, row.itemId, row.revision)) {
       return
     }
     const itemId = resolveJournalItemId(state, row.itemId, row.body)
     acceptJournalSubmissionFromProviderItem(state, row.itemId, itemId, row)
-    upsertItem(state, itemId, row.revision, journalRenderItem(itemId, row.revision, row.body, row))
+    upsertItem(
+      state,
+      itemId,
+      row.revision,
+      journalRenderItem(itemId, row.revision, row.body, row),
+      row.fence
+    )
     return
   }
   if (row.kind === 'tombstone') {
@@ -121,7 +124,8 @@ export function applyJournalRow(state: JournalReducerState, row: JournalRow): vo
             mutation.body,
             row,
             journalBatchMutationProducer(row, mutation)
-          )
+          ),
+          row.fence
         )
       } else {
         removeItem(state, resolveItemId(state, mutation.itemId), mutation.revision)
@@ -206,7 +210,8 @@ function upsertItem(
   state: JournalReducerState,
   itemId: string,
   revision: number,
-  next: AgentJournalRenderItem
+  next: AgentJournalRenderItem,
+  fence: number
 ): void {
   const tombstoned = state.tombstones.get(itemId)
   if (tombstoned !== undefined && revision <= tombstoned) {
@@ -218,6 +223,7 @@ function upsertItem(
   }
   if (!existing) {
     state.items.set(itemId, next)
+    state.itemFences.set(itemId, fence)
     state.tombstones.delete(itemId)
     return
   }
@@ -254,6 +260,7 @@ function removeItem(state: JournalReducerState, itemId: string, revision: number
   }
   state.tombstones.set(itemId, revision)
   state.items.delete(itemId)
+  state.itemFences.delete(itemId)
 }
 
 function applySubmission(
@@ -272,7 +279,7 @@ function applySubmission(
     ...(row.handoverRecorded ? { handoverRecorded: true, acceptedSequence: row.seq } : {})
   })
   const itemId = agentJournalSubmissionKey(row.clientMessageId)
-  upsertItem(state, itemId, 0, journalRenderItem(itemId, 0, row.body, row))
+  upsertItem(state, itemId, 0, journalRenderItem(itemId, 0, row.body, row), row.fence)
 }
 
 /** Project the folded state into the client-facing snapshot. */

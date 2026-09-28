@@ -12,10 +12,10 @@ import {
 } from '../agent-session-journal/journal-prompt-body-bounds'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { structuredAgentSessionStartFailureRow } from './structured-agent-session-start-failure-row'
+import type { AgentSessionDeathEvidence } from '../../../shared/agent-session-record'
 import {
   runningTurnLifecycleRevisions,
   turnVerdictFromDeathEvidence,
-  type StructuredAgentSessionDeathRecord,
   type StructuredAgentSessionTurnVerdict
 } from './structured-agent-session-stale-turn-verdict'
 
@@ -230,13 +230,13 @@ export async function settleStaleStructuredAgentSessionState(input: {
   sessionId: string
   fence: number
   acquisitionGeneration: string | null
-  /** The lease as it stood before any new owner reserved it. */
-  deathRecord: StructuredAgentSessionDeathRecord | null
+  deathEvidence: AgentSessionDeathEvidence | null
 }): Promise<number> {
   const { journal } = input
   const items = journal.snapshot().items
-  const deathEvidence = input.deathRecord?.deathEvidence ?? null
-  const verdict = turnVerdictFromDeathEvidence(input.deathRecord, journal)
+  // Each turn is judged by the evidence only if it names that turn's owner.
+  const verdictFor = (item: AgentJournalRenderItem) =>
+    turnVerdictFromDeathEvidence(input.deathEvidence, journal, journal.itemFence(item.itemId))
   const generation = input.acquisitionGeneration ?? `seq-${journal.cursor().sequence}`
   const settlementId = `stale-session:${input.sessionId}:${input.fence}:${generation}`
   const mutations: JournalLifecycleMutationInput[] = []
@@ -247,8 +247,10 @@ export async function settleStaleStructuredAgentSessionState(input: {
       mutations.push({ kind: 'item', identity, body })
     }
   }
-  mutations.push(...runningTurnLifecycleRevisions(items, verdict))
-  if (verdict.state === 'interrupted' && items.some(isInProgressItem)) {
+  mutations.push(
+    ...items.flatMap((item) => runningTurnLifecycleRevisions([item], verdictFor(item)))
+  )
+  if (items.some((item) => isInProgressItem(item) && verdictFor(item).state === 'interrupted')) {
     mutations.unshift({
       kind: 'item',
       identity: { provider: 'orca', clientMessageId: settlementId },
@@ -257,7 +259,7 @@ export async function settleStaleStructuredAgentSessionState(input: {
         // Only a watched exit carries the provider's own reason; a probe's detail is Orca's.
         text: boundJournalStatusText(
           unexpectedProviderExitOutcome(
-            deathEvidence?.kind === 'exit-observed' ? deathEvidence.detail : undefined
+            input.deathEvidence?.kind === 'exit-observed' ? input.deathEvidence.detail : undefined
           )
         )
       }

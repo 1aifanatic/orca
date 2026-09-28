@@ -87,6 +87,9 @@ export type AgentSessionDeathEvidence = {
   kind: 'exit-observed' | 'pid-absent' | 'identity-mismatch'
   detail: string
   observedAt: number
+  /** Fence of the owner (or reservation) this death is about; a fence names exactly one. Absent on
+   *  evidence older builds wrote, which then speaks for no turn. */
+  ownerFence?: number
   /** The death interval's lower bound: the last time the runtime holding the owner's transport
    *  proved it alive. Only a probe's proof records it: absent on a surface-release exit, a failed
    *  start, and evidence older builds wrote. */
@@ -282,7 +285,7 @@ function isAgentSessionDeathEvidence(value: unknown): value is AgentSessionDeath
     return false
   }
   const evidence = value as Partial<AgentSessionDeathEvidence>
-  const { observedAt, lastProvenAliveAt } = evidence
+  const { observedAt, lastProvenAliveAt, ownerFence } = evidence
   return (
     (evidence.kind === 'exit-observed' ||
       evidence.kind === 'pid-absent' ||
@@ -291,6 +294,7 @@ function isAgentSessionDeathEvidence(value: unknown): value is AgentSessionDeath
     typeof observedAt === 'number' &&
     Number.isSafeInteger(observedAt) &&
     observedAt >= 0 &&
+    (ownerFence === undefined || (Number.isSafeInteger(ownerFence) && ownerFence >= 0)) &&
     (lastProvenAliveAt === undefined ||
       (Number.isSafeInteger(lastProvenAliveAt) &&
         lastProvenAliveAt >= 0 &&

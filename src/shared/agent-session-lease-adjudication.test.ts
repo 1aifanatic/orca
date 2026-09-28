@@ -213,6 +213,7 @@ describe('restart reconciliation', () => {
         kind: 'identity-mismatch',
         detail: 'mismatched process-start-time',
         observedAt: 9_000,
+        ownerFence: 7,
         lastProvenAliveAt: 500
       }
     })
@@ -272,6 +273,7 @@ describe('restart reconciliation', () => {
         kind: 'pid-absent',
         detail: 'recorded pid absent on host',
         observedAt: 9_000,
+        ownerFence: 7,
         lastProvenAliveAt: 500
       }
     })
@@ -312,7 +314,13 @@ describe('restart reconciliation', () => {
       ).toEqual({
         disposition: 'evicted',
         nextFence: 8,
-        evidence: { kind: 'pid-absent', detail: 'reservation never spawned', observedAt: 9_000 }
+        // The proof is about this reservation's own fence.
+        evidence: {
+          kind: 'pid-absent',
+          detail: 'reservation never spawned',
+          observedAt: 9_000,
+          ownerFence: 7
+        }
       })
     }
   )

@@ -75,7 +75,11 @@ function deathEvidenceFor(
   lease: AgentSessionLease
 ): AgentSessionDeathEvidence | null {
   // Capped so a clock that stepped back across the restart still writes a valid interval.
-  const interval = { observedAt, lastProvenAliveAt: Math.min(lease.lastRenewedAt, observedAt) }
+  const interval = {
+    observedAt,
+    ownerFence: lease.runtimeFence,
+    lastProvenAliveAt: Math.min(lease.lastRenewedAt, observedAt)
+  }
   if (probe.outcome === 'exit-observed') {
     return { kind: 'exit-observed', detail: 'observed process exit', ...interval }
   }
@@ -209,7 +213,12 @@ export function adjudicateAgentSessionRestart(args: {
       nextFence: nextAgentSessionFence(lease),
       evidence:
         probe.outcome === 'reservation-unused'
-          ? { kind: 'pid-absent', detail: 'reservation never spawned', observedAt }
+          ? {
+              kind: 'pid-absent',
+              detail: 'reservation never spawned',
+              observedAt,
+              ownerFence: lease.runtimeFence
+            }
           : null
     }
   }

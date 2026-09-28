@@ -50,7 +50,8 @@ export function releaseAgentSessionOwnerAfterSurfaceClose(args: {
     deathEvidence: {
       kind: 'exit-observed',
       detail: args.exitReason ?? 'the last surface holding this session released it',
-      observedAt: args.exitObservedAt ?? args.now
+      observedAt: args.exitObservedAt ?? args.now,
+      ownerFence: record.lease.runtimeFence
     }
   })
 }

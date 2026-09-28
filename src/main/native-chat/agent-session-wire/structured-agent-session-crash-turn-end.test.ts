@@ -224,54 +224,76 @@ describe('a turn a crash cut short mid-tool', () => {
     })
     expect(settledTurn()).toMatchObject({ state: 'interrupted', completedAt: LAST_RENEWED_AT })
   })
+})
 
-  it('never takes a proof of life from a newer owner a failed start left for recovery', async () => {
-    // A start after the relaunch spawned a child and failed without proving it gone, so it was
-    // parked; a later start found that child gone. Its proof of life is from after the crash.
-    let now = RELAUNCHED_AT
-    const claudeHandle = { kind: 'claude' as const, sessionId: PROVIDER_SESSION, leafUuid: null }
-    const acquire = vi.fn<StructuredAgentSessionAdapter['acquire']>(
-      async ({ fence, spawnToken, onSpawned }) => {
-        const process = { hostId: 'local', pid: 7_000 + fence, processStartTimeMs: now, spawnToken }
-        await onSpawned?.(process)
-        if (fence === 15) {
-          throw new AgentSessionAcquisitionExitUnprovenError(new Error('hung'))
-        }
-        return {
-          process,
-          link: {
-            linkId: `claude-${fence}-link`,
-            handle: { provider: 'claude', sessionId: PROVIDER_SESSION, leafUuid: null },
-            origin: 'resumed',
-            mintedAtFence: fence,
-            observedAt: now
-          }
+/** A relaunched host whose first start after the crash, at fence 15, fails with `failure`; every
+ *  later start succeeds. The crashed owner, and any child left behind, probe gone. */
+async function hostWithFailingFirstStart(failure: Error) {
+  let now = RELAUNCHED_AT
+  const acquire = vi.fn<StructuredAgentSessionAdapter['acquire']>(
+    async ({ fence, spawnToken, onSpawned }) => {
+      const process = { hostId: 'local', pid: 7_000 + fence, processStartTimeMs: now, spawnToken }
+      await onSpawned?.(process)
+      if (fence === 15) {
+        throw failure
+      }
+      return {
+        process,
+        link: {
+          linkId: `claude-${fence}-link`,
+          handle: { provider: 'claude', sessionId: PROVIDER_SESSION, leafUuid: null },
+          origin: 'resumed',
+          mintedAtFence: fence,
+          observedAt: now
         }
       }
-    )
-    openHost({
-      adapter: {
-        acquire,
-        dispatch: vi.fn(),
-        cancelTurn: vi.fn(),
-        answerPrompt: vi.fn(),
-        setOption: vi.fn(),
-        supportsCreate: () => true
-      },
-      probeOwner: async () => ({ outcome: 'pid-absent' }),
-      now: () => now
-    })
-    await host.reconcileRestartLeases()
-    const attach = (fence: number) =>
+    }
+  )
+  openHost({
+    adapter: {
+      acquire,
+      releaseAcquisition: async () => true,
+      dispatch: vi.fn(),
+      cancelTurn: vi.fn(),
+      answerPrompt: vi.fn(),
+      setOption: vi.fn(),
+      supportsCreate: () => true
+    },
+    probeOwner: async () => ({ outcome: 'pid-absent' }),
+    now: () => now
+  })
+  await host.reconcileRestartLeases()
+  return {
+    attach: (fence: number) =>
       host.attach(
         { callerKey: 'client-1' },
         hostTestAttachParams(fence, {
           provider: 'claude',
           agent: 'claude',
           accountHome: { variable: 'CLAUDE_CONFIG_DIR', path: '/home/dev/.claude' },
-          providerHandle: claudeHandle
+          providerHandle: { kind: 'claude', sessionId: PROVIDER_SESSION, leafUuid: null }
         })
-      )
+      ),
+    advance: (ms: number) => {
+      now += ms
+    }
+  }
+}
+
+/** The turn as the crashed owner left it, with no end: nothing proves when that owner stopped. */
+const UNVERIFIABLE_TURN = {
+  turnId: 'turn-1',
+  state: 'unverifiable',
+  startedAt: TOOL_STARTED_AT - 2_000
+}
+
+// The relaunch proved the fence-13 owner gone, but a start reserving fence 15 clears that proof
+// before the turn is settled; what the record holds afterwards is about the start's own child.
+describe('a turn a newer start could not settle before it failed', () => {
+  it('is not judged by the death of the child it left for recovery', async () => {
+    const { attach, advance } = await hostWithFailingFirstStart(
+      new AgentSessionAcquisitionExitUnprovenError(new Error('hung'))
+    )
 
     await attach(14).catch(() => undefined)
     expect(store.getRecord(SESSION)?.lease).toMatchObject({
@@ -279,15 +301,31 @@ describe('a turn a crash cut short mid-tool', () => {
       handoffStage: 'recovering',
       lastRenewedAt: RELAUNCHED_AT
     })
-    now = RELAUNCHED_AT + 60_000
+    advance(60_000)
     // Recovery records that child's death, then the client retries at the fence it was told.
     await expect(attach(15)).resolves.toMatchObject({ refusal: { currentFence: 16 } })
     expect(store.getRecord(SESSION)?.lease.deathEvidence).toMatchObject({
+      ownerFence: 15,
       lastProvenAliveAt: RELAUNCHED_AT
     })
     await expect(attach(16)).resolves.toMatchObject({ ok: true })
 
-    // The owner that wrote the turn left no proof of life to use, so its last row bounds it.
-    expect(settledTurn()).toMatchObject({ state: 'interrupted', completedAt: TOOL_STARTED_AT })
+    expect(settledTurn()).toEqual(UNVERIFIABLE_TURN)
+  })
+
+  it('is not judged by the watched exit of a start that failed', async () => {
+    const { attach, advance } = await hostWithFailingFirstStart(new Error('claude exited (code 1)'))
+
+    await expect(attach(14)).resolves.toMatchObject({ ok: false })
+    expect(store.getRecord(SESSION)?.lease.deathEvidence).toMatchObject({
+      kind: 'exit-observed',
+      ownerFence: 15,
+      observedAt: RELAUNCHED_AT
+    })
+    advance(60_000)
+    await expect(attach(16)).resolves.toMatchObject({ ok: true })
+
+    // Main ended it at the failed start, an hour after the crash, with the start's reason.
+    expect(settledTurn()).toEqual(UNVERIFIABLE_TURN)
   })
 })

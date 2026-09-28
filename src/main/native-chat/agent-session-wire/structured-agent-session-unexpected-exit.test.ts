@@ -136,6 +136,7 @@ describe('provider-exit recovery tickets', () => {
         snapshot: () => ({
           items: [lifecycleItem('turn-1', 1, { state: 'running', startedAt: 1_000 })]
         }),
+        itemFence: () => 7,
         appendLifecycleBatch,
         markPendingSubmissionsUnknown: vi.fn(async () => [])
       }
@@ -179,7 +180,7 @@ describe('provider-exit recovery tickets', () => {
       sessionId: SESSION,
       fence: 8,
       acquisitionGeneration: 'generation-2',
-      deathRecord: record.lease
+      deathEvidence: record.lease.deathEvidence
     })
     expect(appendLifecycleBatch.mock.calls.at(-1)?.[0].mutations).toContainEqual(
       expect.objectContaining({

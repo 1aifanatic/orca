@@ -236,7 +236,8 @@ export class AgentSessionJournal {
   /** The same over rows written live, so crash reconciliation never reads as activity; 0 if none. */
   lastLiveActivityAt = (): number => this.state.lastLiveActivityAt
 
-  lastLiveFence = (): number => this.state.lastLiveFence
+  /** Fence of the writer that created the item, while it is in the timeline. */
+  itemFence = (itemId: string): number | undefined => this.state.itemFences.get(itemId)
 
   submissions = (): AgentJournalSubmission[] => [...this.state.submissions.values()]
 

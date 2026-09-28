@@ -103,18 +103,15 @@ export function settleFailedAgentSessionPostAcquisitionAttachment(
           claimStatus: 'released',
           lastRenewedAt: args.now,
           handoffOperationId: null,
-          deathEvidence:
-            args.exitProof === 'root-exit-observed'
-              ? {
-                  kind: 'exit-observed',
-                  detail: 'the provider process exited; its descendants were not proven gone',
-                  observedAt: args.now
-                }
-              : {
-                  kind: 'exit-observed',
-                  detail: 'post-acquisition cleanup proved no provider child remains',
-                  observedAt: args.now
-                }
+          deathEvidence: {
+            kind: 'exit-observed',
+            detail:
+              args.exitProof === 'root-exit-observed'
+                ? 'the provider process exited; its descendants were not proven gone'
+                : 'post-acquisition cleanup proved no provider child remains',
+            observedAt: args.now,
+            ownerFence: record.lease.runtimeFence
+          }
         })
   state.records.set(args.sessionId, next)
   state.operations = settleAgentSessionOperation(state.operations, args)
@@ -156,7 +153,7 @@ function settleFailedLease(
     claimStatus: 'released',
     lastRenewedAt: args.now,
     handoffOperationId: null,
-    deathEvidence: acquisitionDeathEvidence(args.exitProof, args.now)
+    deathEvidence: acquisitionDeathEvidence(args.exitProof, args.now, record.lease.runtimeFence)
   })
 }
 
@@ -164,25 +161,27 @@ function settleFailedLease(
  *  when nothing was. */
 function acquisitionDeathEvidence(
   exitProof: AgentSessionAcquisitionExitProof,
-  observedAt: number
+  observedAt: number,
+  ownerFence: number
 ): AgentSessionDeathEvidence | null {
   if (exitProof === 'unproven') {
     return null
   }
+  const proof = { observedAt, ownerFence }
   if (exitProof === 'processless') {
-    return { kind: 'pid-absent', detail: 'reservation failed before spawn', observedAt }
+    return { kind: 'pid-absent', detail: 'reservation failed before spawn', ...proof }
   }
   if (exitProof === 'root-exit-observed') {
     return {
       kind: 'exit-observed',
       detail: 'the provider process exited; its descendants were not proven gone',
-      observedAt
+      ...proof
     }
   }
   // Cleanup proved no child of this attempt remains; it may never have spawned.
   return {
     kind: 'exit-observed',
     detail: 'acquisition cleanup proved no provider child remains',
-    observedAt
+    ...proof
   }
 }
