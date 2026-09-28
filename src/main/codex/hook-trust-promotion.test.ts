@@ -44,6 +44,7 @@ import {
   stubCodexTrustSessionsForTests
 } from './hook-service-test-harness'
 import { CodexHookService } from './hook-service'
+import { withManagedHookInstallLock } from '../agent-hooks/managed-hook-install-lock'
 
 let tmpHome: string
 let userDataDir: string
@@ -186,6 +187,50 @@ describe('codex hook trust write-back promotion', () => {
     await service.install()
     expect(readSystemToml()).toBe(systemTomlAfterPromotion)
     expect(readFileSync(runtimeTomlPath, 'utf-8')).toBe(runtimeTomlAfterPromotion)
+  })
+
+  // Why: this install then drops runtime trust the system config does not back,
+  // so a promotion skipped for want of the lock would lose the approval for good.
+  it('still promotes an in-Orca approval while another host holds the real-home lock', async () => {
+    writeSystemUserHook()
+    const service = new CodexHookService()
+    await service.install()
+    simulateCodexApproval(runtimeUserStopEntry())
+    const approvedHash = computeTrustedHash(runtimeUserStopEntry())
+    let releaseOther!: () => void
+    const otherHeld = new Promise<void>((resolve) => {
+      releaseOther = resolve
+    })
+    let otherAcquired!: () => void
+    const acquired = new Promise<void>((resolve) => {
+      otherAcquired = resolve
+    })
+    const other = withManagedHookInstallLock(
+      tmpHome,
+      undefined,
+      async () => {
+        otherAcquired()
+        await otherHeld
+      },
+      'another-host'
+    )
+    await acquired
+
+    try {
+      await service.install()
+    } finally {
+      releaseOther()
+      await other
+    }
+
+    const runtimeState = readHookTrustEntries(join(runtimeHomeDir(), 'config.toml')).get(
+      computeTrustKey(runtimeUserStopEntry())
+    )
+    expect(runtimeState?.trustedHash).toBe(approvedHash)
+    const systemState = readHookTrustEntries(join(systemCodexDir(), 'config.toml')).get(
+      computeTrustKey(systemUserStopEntry())
+    )
+    expect(systemState?.trustedHash).toBe(approvedHash)
   })
 
   it('never promotes trust for the Orca-managed status hook into ~/.codex', async () => {

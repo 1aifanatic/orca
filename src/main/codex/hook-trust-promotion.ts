@@ -153,17 +153,33 @@ export async function promoteCodexRuntimeHookApprovalsToSystem(
     if (collectCodexRuntimeHookPromotions(runtimeHomePath).length === 0) {
       return
     }
-    await withRealHomeWriteLock(async () => {
-      // Why re-read: another instance may have written ~/.codex while this waited.
-      const promotions = collectCodexRuntimeHookPromotions(runtimeHomePath)
-      if (promotions.length > 0) {
-        upsertHookTrustEntries(join(getSystemCodexHomePath(), 'config.toml'), promotions)
+    let locked = false
+    try {
+      await withRealHomeWriteLock(async () => {
+        locked = true
+        // Why re-read: another instance may have written ~/.codex while this waited.
+        writeCodexRuntimeHookPromotions(runtimeHomePath)
+      })
+    } catch (error) {
+      if (locked) {
+        throw error
       }
-    })
+      // Why unlocked: the install then drops runtime trust the system config does
+      // not back, so skipping this write would lose the approval for good.
+      console.warn('[codex-hook-promotion] real-home lock unavailable; promoting without it', error)
+      writeCodexRuntimeHookPromotions(runtimeHomePath)
+    }
   } catch (error) {
     // Why: promotion is best-effort launch prep; a malformed runtime file
     // must not block hook install or the Codex launch itself.
     console.warn('[codex-hook-promotion] failed to promote runtime hook approvals', error)
+  }
+}
+
+function writeCodexRuntimeHookPromotions(runtimeHomePath: string): void {
+  const promotions = collectCodexRuntimeHookPromotions(runtimeHomePath)
+  if (promotions.length > 0) {
+    upsertHookTrustEntries(join(getSystemCodexHomePath(), 'config.toml'), promotions)
   }
 }
 
