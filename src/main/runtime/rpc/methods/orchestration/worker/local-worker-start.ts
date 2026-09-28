@@ -190,7 +190,7 @@ export async function startLocalWorker(args: {
           timeoutMs: params.timeoutMs ?? 60_000
         })
       : // A caller-supplied terminal was not freshly launched, so its composer marker may be long gone.
-        params.terminal
+        params.terminal || !agent
         ? await runtime.waitForTerminal(terminalHandle, {
             condition: 'tui-idle',
             timeoutMs: params.timeoutMs ?? 60_000

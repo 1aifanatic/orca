@@ -21,7 +21,8 @@ type SendFn = (
 function runtimeStub(overrides: { wait?: unknown; waits?: unknown[]; send?: SendFn }) {
   const queued = [...(overrides.waits ?? [])]
   const waitForTerminal = vi.fn(
-    async () => queued.shift() ?? overrides.wait ?? { satisfied: true, status: 'idle' }
+    async (_handle: string, _options?: { condition?: string; timeoutMs?: number }) =>
+      queued.shift() ?? overrides.wait ?? { satisfied: true, status: 'idle' }
   )
   const waitForFreshWorkerComposer = vi.fn(async () => undefined)
   const sendTerminalAgentPrompt = vi.fn<SendFn>(
