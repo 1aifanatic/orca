@@ -1,7 +1,8 @@
 export const FINGERPRINT_FORMAT = 1
 export const PLATFORMS = ['android', 'ios']
 export const VARIANTS = ['native', 'ota']
-const LISTED_FILE_LIMIT = 40
+const LISTED_LINE_LIMIT = 40
+const NAMED_INPUT_LIMIT = 5
 
 function diffKeyedDigests(base, head) {
   const added = Object.keys(head).filter((key) => !(key in base))
@@ -11,7 +12,36 @@ function diffKeyedDigests(base, head) {
 }
 
 function sourcesById(sources) {
-  return Object.fromEntries(sources.map((source) => [`${source.type} ${source.id}`, source.hash]))
+  return Object.fromEntries(sources.map((source) => [source.id, source.hash]))
+}
+
+const NATIVE_INPUT_NAMES = {
+  expoConfig: 'app config',
+  'package:react-native': 'react-native version',
+  'packageJson:scripts': 'package.json scripts',
+  patches: 'patches/'
+}
+
+/** Plain-words name for an @expo/fingerprint source id. */
+export function nativeInputName(id) {
+  if (NATIVE_INPUT_NAMES[id]) {
+    return NATIVE_INPUT_NAMES[id]
+  }
+  if (id.startsWith('expoAutolinkingConfig:')) {
+    return 'Expo autolinking config'
+  }
+  if (id.startsWith('rncoreAutolinkingConfig:')) {
+    return 'React Native autolinking config'
+  }
+  const dependency = /(?:^|\/)node_modules\/((?:@[^/]+\/)?[^/]+)\/(?:android|ios)$/.exec(id)
+  if (dependency) {
+    return `native module ${dependency[1]}`
+  }
+  const local = /^modules\/([^/]+)\/(?:android|ios)$/.exec(id)
+  if (local) {
+    return `native module ${local[1]} (local)`
+  }
+  return id.startsWith('plugins/') ? `config plugin ${id}` : `file ${id}`
 }
 
 /** Pure verdict over two `compute` records; `changed` is null when they cannot be compared. */
@@ -22,11 +52,12 @@ export function compareShellFingerprints(base, head) {
   const parts = []
   for (const platform of PLATFORMS) {
     if (base.native[platform].hash !== head.native[platform].hash) {
-      const inputs = diffKeyedDigests(
+      const diff = diffKeyedDigests(
         sourcesById(base.native[platform].sources),
         sourcesById(head.native[platform].sources)
       )
-      parts.push({ kind: 'native', platform, inputs })
+      const inputs = [...diff.changed, ...diff.added, ...diff.removed].map(nativeInputName)
+      parts.push({ kind: 'native', platform, inputs: [...new Set(inputs)] })
     }
   }
   const files = { added: new Set(), removed: new Set(), changed: new Set() }
@@ -37,8 +68,9 @@ export function compareShellFingerprints(base, head) {
       if (before.hash === after.hash) {
         continue
       }
-      parts.push({ kind: 'shellJs', variant, platform })
       const diff = diffKeyedDigests(before.modules, after.modules)
+      const modules = diff.added.length + diff.removed.length + diff.changed.length
+      parts.push({ kind: 'shellJs', variant, platform, modules })
       for (const kind of ['added', 'removed', 'changed']) {
         diff[kind].forEach((file) => files[kind].add(file))
       }
@@ -57,11 +89,18 @@ export function compareShellFingerprints(base, head) {
   }
 }
 
-export function partLabel(part) {
+/** Names the part that moved and why, e.g. `native (android): app config`. */
+export function describePart(part) {
   if (part.kind === 'native') {
-    return `native project (${part.platform})`
+    const shown = part.inputs.slice(0, NAMED_INPUT_LIMIT)
+    const more = part.inputs.length - shown.length
+    return `native (${part.platform}): ${shown.join(', ')}${more > 0 ? `, +${more} more` : ''}`
   }
-  return `${part.variant === 'ota' ? 'OTA-shell' : 'native-shell'} JS (${part.platform})`
+  const what =
+    part.modules === 0
+      ? 'bundle only, no source module differs (an inlined constant, a transform or a bundler change)'
+      : `${part.modules} module${part.modules === 1 ? '' : 's'} differ`
+  return `shell JS (${part.variant}, ${part.platform}): ${what}`
 }
 
 const PACKAGE_FILE = /^(mobile\/node_modules\/(?:@[^/]+\/)?[^/]+)\//
@@ -86,24 +125,19 @@ export function explainingFiles(files) {
   return lines
 }
 
-function bulletList(lines) {
-  const shown = lines.slice(0, LISTED_FILE_LIMIT).map((line) => `- \`${line}\``)
-  if (lines.length > LISTED_FILE_LIMIT) {
-    shown.push(`- … and ${lines.length - LISTED_FILE_LIMIT} more`)
+function cappedList(lines) {
+  const shown = lines.slice(0, LISTED_LINE_LIMIT).map((line) => `- \`${line}\``)
+  if (lines.length > LISTED_LINE_LIMIT) {
+    shown.push(`- +${lines.length - LISTED_LINE_LIMIT} more`)
   }
   return shown
 }
 
 function headline(verdict, since) {
-  const parts = verdict.parts.map(partLabel).join(', ')
   if (since) {
-    return verdict.changed
-      ? `Mobile release needed since ${since}: yes — ${parts}`
-      : `Mobile release needed since ${since}: no — OTA delivers everything since`
+    return `Mobile release needed since ${since}: ${verdict.changed ? 'yes' : 'no'}`
   }
-  return verdict.changed
-    ? `Mobile shell: changed — ${parts}`
-    : 'Mobile shell: unchanged — OTA delivers this'
+  return verdict.changed ? 'Mobile shell: changed' : 'Mobile shell: unchanged — OTA delivers this'
 }
 
 /** `since` names the release tag the base record was computed at; empty for a pull request. */
@@ -112,17 +146,17 @@ export function renderShellVerdictMarkdown(verdict, since = '') {
     return `### Mobile shell: verdict unknown — ${verdict.reason}\n`
   }
   const lines = [`### ${headline(verdict, since)}`]
-  for (const part of verdict.parts.filter((entry) => entry.kind === 'native')) {
-    lines.push('', `Native inputs (${part.platform}):`)
-    lines.push(...bulletList(explainingFiles(part.inputs)))
-  }
-  if (verdict.parts.some((part) => part.kind === 'shellJs')) {
+  if (verdict.changed) {
+    lines.push('', ...verdict.parts.map((part) => `- ${describePart(part)}`))
     const files = explainingFiles(verdict.files)
-    lines.push('', 'Sources that differ inside the changed bundles:')
+    if (files.length > 0) {
+      lines.push('', 'Sources that differ inside the changed bundles:', ...cappedList(files))
+    }
+  }
+  if (since) {
     lines.push(
-      ...(files.length > 0
-        ? bulletList(files)
-        : ['- no source module differs: an inlined constant, a transform, or a bundler change'])
+      '',
+      'No iOS release anchor: iOS parts are compared with this Android release commit.'
     )
   }
   return `${lines.join('\n')}\n`

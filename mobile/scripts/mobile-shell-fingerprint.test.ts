@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 
 import {
   compareShellFingerprints,
+  describePart,
   explainingFiles,
+  nativeInputName,
   renderShellVerdictMarkdown
 } from './mobile-shell-fingerprint-compare.mjs'
 import {
@@ -55,10 +57,11 @@ describe('compareShellFingerprints', () => {
     })
     const verdict = compareShellFingerprints(record(), head)
     expect(verdict.changed).toBe(true)
-    expect(verdict.parts).toEqual([{ kind: 'shellJs', variant: 'ota', platform: 'android' }])
     expect(renderShellVerdictMarkdown(verdict)).toBe(
       [
-        '### Mobile shell: changed — OTA-shell JS (android)',
+        '### Mobile shell: changed',
+        '',
+        '- shell JS (ota, android): 3 modules differ',
         '',
         'Sources that differ inside the changed bundles:',
         '- `changed: mobile/src/a.ts`',
@@ -73,27 +76,42 @@ describe('compareShellFingerprints', () => {
       record(),
       record({ otaAndroid: bundle('j-oa2', { 'mobile/src/a.ts': '1' }) })
     )
-    expect(renderShellVerdictMarkdown(verdict)).toContain('no source module differs')
+    expect(renderShellVerdictMarkdown(verdict)).toContain(
+      '- shell JS (ota, android): bundle only, no source module differs'
+    )
   })
 
-  it('explains a native change by its fingerprint sources', () => {
+  it('names native inputs in plain words and states the missing iOS anchor', () => {
     const head = record({ nativeAndroid: 'n-a2' })
     head.native.android.sources = [
       { type: 'contents', id: 'expoConfig', hash: 'c2' },
-      { type: 'dir', id: 'modules/orca-mobile-web-shell/android', hash: 'd1' }
-    ]
-    const verdict = compareShellFingerprints(record(), head)
-    expect(verdict.parts[0]).toEqual({
-      kind: 'native',
-      platform: 'android',
-      inputs: {
-        added: ['dir modules/orca-mobile-web-shell/android'],
-        removed: [],
-        changed: ['contents expoConfig']
+      { type: 'dir', id: 'modules/orca-mobile-web-shell/android', hash: 'd1' },
+      {
+        type: 'dir',
+        id: 'node_modules/.pnpm/expo-camera@55_x/node_modules/expo-camera/android',
+        hash: 'd2'
       }
-    })
-    expect(renderShellVerdictMarkdown(verdict, 'mobile-android-v0.0.50')).toContain(
-      '### Mobile release needed since mobile-android-v0.0.50: yes — native project (android)'
+    ]
+    const markdown = renderShellVerdictMarkdown(
+      compareShellFingerprints(record(), head),
+      'mobile-android-v0.0.50'
+    )
+    expect(markdown).toBe(
+      [
+        '### Mobile release needed since mobile-android-v0.0.50: yes',
+        '',
+        '- native (android): app config, native module orca-mobile-web-shell (local), native module expo-camera',
+        '',
+        'No iOS release anchor: iOS parts are compared with this Android release commit.',
+        ''
+      ].join('\n')
+    )
+  })
+
+  it('caps named native inputs', () => {
+    const inputs = ['a', 'b', 'c', 'd', 'e', 'f', 'g']
+    expect(describePart({ kind: 'native', platform: 'ios', inputs })).toBe(
+      'native (ios): a, b, c, d, e, +2 more'
     )
   })
 
@@ -104,16 +122,30 @@ describe('compareShellFingerprints', () => {
     )
   })
 
-  it('caps the explaining list', () => {
+  it('caps the explaining list at 40 lines', () => {
     const changed = Array.from({ length: 45 }, (_, index) => `mobile/src/f${index}.ts`)
     const lines = renderShellVerdictMarkdown({
       changed: true,
       reason: null,
-      parts: [{ kind: 'shellJs', variant: 'native', platform: 'ios' }],
+      parts: [{ kind: 'shellJs', variant: 'native', platform: 'ios', modules: 45 }],
       files: { added: [], removed: [], changed }
     }).split('\n')
     expect(lines.filter((line) => line.startsWith('- `'))).toHaveLength(40)
-    expect(lines).toContain('- … and 5 more')
+    expect(lines).toContain('- +5 more')
+  })
+})
+
+describe('nativeInputName', () => {
+  it.each([
+    ['package:react-native', 'react-native version'],
+    ['rncoreAutolinkingConfig:ios', 'React Native autolinking config'],
+    [
+      'plugins/android-respect-rotation-lock.js',
+      'config plugin plugins/android-respect-rotation-lock.js'
+    ],
+    ['google-services.json', 'file google-services.json']
+  ])('%s reads as %s', (id, name) => {
+    expect(nativeInputName(id)).toBe(name)
   })
 })
 

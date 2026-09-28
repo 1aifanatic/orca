@@ -2,7 +2,8 @@
 
 With OTA, most mobile changes ship from the desktop inside the page bundle. A change to the
 **shell**, the binary a user installs from a store, needs a store release instead. The
-`Mobile shell fingerprint` check in `.github/workflows/mobile.yml` says which one a change is.
+`Mobile shell fingerprint` check in `.github/workflows/mobile-shell-fingerprint.yml` says which one a
+change is.
 
 ## What counts as the shell
 
@@ -28,7 +29,7 @@ shell. The desktop delivers it.
 turns two records into a verdict.
 
 - **Pull request.** The base is the merge commit's first parent. The summary reads
-  `Mobile shell: unchanged — OTA delivers this` or `Mobile shell: changed — <parts>`.
+  `Mobile shell: unchanged — OTA delivers this` or `Mobile shell: changed` with one line per part.
 - **Push to main.** The base is the newest `mobile-android-v*` tag by version. The Android release
   workflow creates that tag when it publishes an APK, and it lives on a side branch, so it is found
   by name, not ancestry. The summary reads `Mobile release needed since mobile-android-vX.Y.Z:
@@ -41,15 +42,17 @@ The base gets its own frozen install, so a dependency bump is fingerprinted with
 
 ## Reading the summary
 
-Each changed part is named: `native project (<platform>)`, `native-shell JS (<platform>)` or
-`OTA-shell JS (<platform>)`. Below it:
+Each part that moved gets one line that names it in plain words:
 
-- **Native inputs** lists the fingerprint sources that moved, such as `contents expoConfig` or a
-  native module directory.
-- **Sources that differ inside the changed bundles** lists every module whose source differs. A
-  listed file did not necessarily move the bundle: a comment-only edit is listed beside the edit
-  that did. Dependency files collapse to one line per package. `no source module differs` means the
-  bundle moved through something no module shows, such as an inlined constant or a transform.
+- `native (android): app config, native module expo-camera` names the fingerprint inputs that
+  moved, up to five, then `+N more`.
+- `shell JS (ota, android): 3 modules differ` counts the source modules whose content differs in
+  that bundle. `bundle only, no source module differs` means the bundle moved through something no
+  module shows, such as an inlined constant or a transform.
+
+Below the parts, `Sources that differ inside the changed bundles` lists those modules, capped at 40
+lines. Dependency files collapse to one line per package. A listed file did not necessarily move
+the bundle: a comment-only edit is listed beside the edit that did.
 
 ## False positives
 
@@ -67,8 +70,9 @@ The verdict is exact about the artifacts, so a "changed" can still need no relea
 Same-repository pull requests whose shell changed get `needs-mobile-release`. The label is removed
 when a later push makes the shell unchanged. It is left alone on forks and on unknown verdicts.
 
-## Known gap
+## When it runs
 
-The workflow's `paths` filters list only a few `src/shared/**` files, but the shell bundle imports
-more of them. A pull request that changes only such a file gets no verdict. The next mobile
-change on main reports it against the release tag.
+The workflow runs for changes under `mobile/` and `src/shared/`, which are the only places the
+shell bundles draw modules from. It skips `mobile/rpc-foundation/`, test files and Markdown, which
+never enter a bundle. The root lockfile and `config/patches/` are left out because mobile is its
+own pnpm project and no bundle module resolves from the root `node_modules`.
