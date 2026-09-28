@@ -34,10 +34,17 @@ function deferred<T>() {
   return { promise, resolve }
 }
 
-type SendRequest = { body?: { blocks?: { text?: string }[] } }
+type SendRequest = {
+  body?: { blocks?: { text?: string }[] }
+  envelope?: { clientOperationId?: string }
+}
 
 function requestText(params: SendRequest | undefined): string | undefined {
   return params?.body?.blocks?.[0]?.text
+}
+
+function requestId(params: SendRequest | undefined): string {
+  return String(params?.envelope?.clientOperationId)
 }
 
 function sentTexts(): (string | undefined)[] {
@@ -228,7 +235,7 @@ describe('structured agent session outbox admission', () => {
     mocks.call.mockImplementation((_target, _method, params) => {
       const text = requestText(params)
       const attempt = sentTexts().filter((sent) => sent === text).length
-      const id = (params as { envelope: { clientOperationId: string } }).envelope.clientOperationId
+      const id = requestId(params)
       if (text === 'held') {
         return Promise.resolve(refusedResult('agent_session_ownership_unknown'))
       }
@@ -271,8 +278,9 @@ describe('structured agent session outbox admission', () => {
   })
 
   it('keeps a refused message held when an unconfirmed message ahead of it is retried', async () => {
+    const none: readonly AgentJournalSubmission[] = []
     mocks.call.mockImplementation((_target, _method, params) => {
-      const id = (params as { envelope: { clientOperationId: string } }).envelope.clientOperationId
+      const id = requestId(params)
       if (requestText(params) === 'held') {
         return Promise.resolve(refusedResult('agent_session_ownership_unknown'))
       }
@@ -287,7 +295,7 @@ describe('structured agent session outbox admission', () => {
           fence: 1,
           submissions
         }),
-      { initialProps: { submissions: [] as readonly AgentJournalSubmission[] } }
+      { initialProps: { submissions: none } }
     )
     act(() => expect(result.current.send('first')).toBe(true))
     await waitFor(() => expect(result.current.outbox[0]?.state).toBe('dispatching'))
