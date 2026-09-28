@@ -178,7 +178,9 @@ function clickSteps(x: number, y: number, button = 'left'): RpcStep[] {
   ]
 }
 
-test('dispatches coordinate pointer input fast enough for real gestures', async ({ orcaPage }) => {
+test('dispatches coordinate pointer input fast enough for real gestures @headful', async ({
+  orcaPage
+}) => {
   // Why: the measurement loop plus the gesture checks drive a few hundred serialized RPCs;
   // a loaded CI runner needs more than the default budget even when each one is fast.
   test.setTimeout(240_000)
