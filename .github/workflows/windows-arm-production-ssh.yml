@@ -70,6 +70,7 @@ jobs:
             [Management.Automation.Language.Parser]::ParseFile($file,[ref]$tokens,[ref]$errors)|Out-Null
             if($errors.Count){throw "PowerShell parse failed: $file"}
           }
+          & (Join-Path $root 'test-preview-diagnostics.ps1')
           Copy-Item (Join-Path $root 'production-route/windows-arm-production-route.test.ts') src/main/ssh/windows-arm-production-route.test.ts
           node node_modules/typescript/bin/tsc --noEmit -p config/tsconfig.node.json
           if($LASTEXITCODE -ne 0){throw 'Fixture typecheck failed'}

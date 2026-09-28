@@ -1,7 +1,7 @@
 # Ephemeral CI only. Preview ZIP server qualification, not inbox capability coverage.
 param([Parameter(Mandatory=$true)][string]$Receipt,[Parameter(Mandatory=$true)][string]$Archive,[scriptblock]$ProductionRouteProbe)
 $ErrorActionPreference = 'Stop'
-$report = @{scope='Microsoft Win32-OpenSSH 10.0.0.0p2-Preview ARM64 private loopback authentication and stock cmd.exe dispatch; NOT inbox server or relay deployment'; status='running'; imageVersion=$env:ImageVersion; cleanup=@('not-confirmed'); globalBootstrapCleanup='Not qualified: service bootstrap may create ProgramData SSH and OpenSSH registry entries; disposable CI VM destruction is the boundary'; observations=@(); stages=@()}
+$report = @{scope='Microsoft Win32-OpenSSH 10.0.0.0p2-Preview ARM64 private loopback authentication and stock cmd.exe dispatch; NOT inbox server or relay deployment'; status='running'; imageVersion=$env:ImageVersion; cleanup=@('not-confirmed'); globalBootstrapCleanup='Not qualified: service bootstrap may create ProgramData SSH and OpenSSH registry entries; disposable CI VM destruction is the boundary'; observations=@(); stages=@(); diagnosticCaptureFailures=@()}
 $script:receiptWritten=$false
 function Write-Stage([string]$Stage) {
   $timestamp=[DateTime]::UtcNow.ToString('o')
@@ -47,6 +47,11 @@ function Diagnostic-Categories([string]$Text) {
   }
   return $categories
 }
+function Diagnostic-ExitStatuses([string]$Text) {
+  $bounded=$Text.Substring(0,[Math]::Min($Text.Length,16384))
+  $matches=[regex]::Matches($bounded,'(?im)\b(?:exit status|exit code|error(?: code)?)\s*[:=]?\s*(-?\d{1,10})\b')
+  return @($matches | Select-Object -First 8 | ForEach-Object {[long]$_.Groups[1].Value})
+}
 function Invoke-Bounded([string]$Program,[string[]]$Arguments,[int]$Seconds=20,[switch]$AllowFailure) {
   Write-Stage ('command-'+[IO.Path]::GetFileName($Program)+'-start')
   $start=[Diagnostics.ProcessStartInfo]::new($Program)
@@ -63,11 +68,11 @@ function Invoke-Bounded([string]$Program,[string[]]$Arguments,[int]$Seconds=20,[
     $output=$stdout.GetAwaiter().GetResult();$errorText=$stderr.GetAwaiter().GetResult()
     if($output.Length+$errorText.Length -gt 1048576){throw 'Owned command output limit exceeded'}
     if([IO.Path]::GetFileName($Program) -eq 'ssh.exe'){
-      $report.sshClient=@{timedOut=$timedOut;exitCode=$process.ExitCode;stderrBytes=$errorText.Length;categories=@(Diagnostic-Categories $errorText)}
+      $report.sshClient=@{timedOut=$timedOut;exitCode=$process.ExitCode;stderrBytes=$errorText.Length;categories=@(Diagnostic-Categories $errorText);reportedExitStatuses=@(Diagnostic-ExitStatuses $errorText)}
       Write-Stage 'ssh-client-result'
     }
     if([IO.Path]::GetFileName($Program) -eq 'sftp.exe'){
-      $report.sftpClient=@{timedOut=$timedOut;exitCode=$process.ExitCode;stderrBytes=$errorText.Length;categories=@(Diagnostic-Categories $errorText)}
+      $report.sftpClient=@{timedOut=$timedOut;exitCode=$process.ExitCode;stderrBytes=$errorText.Length;categories=@(Diagnostic-Categories $errorText);reportedExitStatuses=@(Diagnostic-ExitStatuses $errorText)}
       Write-Stage 'sftp-client-result'
     }
     if($timedOut){throw 'Owned command deadline exceeded'}
@@ -78,6 +83,7 @@ function Invoke-Bounded([string]$Program,[string[]]$Arguments,[int]$Seconds=20,[
 }
 function Record-PrivateServiceDiagnostics([switch]$AfterStop) {
   Write-Stage 'private-service-diagnostics-start'
+  $captureStage='service-query'
   try {
     $state=Get-CimInstance Win32_Service -Filter "Name='$serviceName'"
     if($state){
@@ -90,17 +96,20 @@ function Record-PrivateServiceDiagnostics([switch]$AfterStop) {
         $report.serviceEvents=@($events | ForEach-Object {@{id=$_.Id;utc=$_.TimeCreated.ToUniversalTime().ToString('o');level=$_.Level}})
       } catch {$report.serviceEventsUnavailable=$true}
     }
+    $captureStage='private-log'
     if(Test-Path -LiteralPath $sshdLog){
       $file=[IO.FileStream]::new($sshdLog,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::ReadWrite)
       try {
         $buffer=[byte[]]::new(16384)
+        $file.Position=[Math]::Max(0,$file.Length-$buffer.Length)
+        $offset=$file.Position
         $count=$file.Read($buffer,0,$buffer.Length)
         $text=[Text.Encoding]::UTF8.GetString($buffer,0,$count)
         $classes=@(Diagnostic-Categories $text)
-        $report.privateLog=@{exists=$true;bytes=$file.Length;examinedBytes=$count;errorClasses=$classes}
+        $report.privateLog=@{exists=$true;bytes=$file.Length;examinedBytes=$count;offset=$offset;errorClasses=$classes;reportedExitStatuses=@(Diagnostic-ExitStatuses $text)}
       } finally {$file.Dispose()}
     } else {$report.privateLog=@{exists=$false}}
-  } catch {$report.diagnosticCaptureFailed=$true}
+  } catch {$report.diagnosticCaptureFailures+=@{stage=$captureStage;afterStop=[bool]$AfterStop;hresult=$_.Exception.HResult;kind=$_.Exception.GetType().Name}}
   Write-Stage 'private-service-diagnostics-complete'
 }
 
@@ -172,6 +181,9 @@ try {
   $listener=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,0);$listener.Start();$port=$listener.LocalEndpoint.Port;$listener.Stop()
   $config=Join-Path $root 'sshd_config'
   $hostPosix=$hostKey.Replace('\','/');$authPosix=$authorized.Replace('\','/');$pidPosix=(Join-Path $root 'sshd.pid').Replace('\','/')
+  $sftpServer=Join-Path $sshDir 'sftp-server.exe'
+  $sftpServerPosix=$sftpServer.Replace('\','/')
+  $report.sftpServer=@{pinnedPath=$true;sha256=(Get-FileHash -LiteralPath $sftpServer -Algorithm SHA256).Hash.ToLowerInvariant();acl=(Get-Acl -LiteralPath $sftpServer).Sddl}
   @"
 Port $port
 ListenAddress 127.0.0.1
@@ -187,8 +199,8 @@ AllowTcpForwarding no
 AllowAgentForwarding no
 PermitTunnel no
 PermitTTY no
-Subsystem sftp sftp-server.exe
-LogLevel VERBOSE
+Subsystem sftp "$sftpServerPosix"
+LogLevel DEBUG1
 "@ | Set-Content -LiteralPath $config -Encoding ascii
   Write-Stage 'server-config-validate-start'
   Invoke-Bounded $sshd @('-t','-f',$config) | Out-Null
