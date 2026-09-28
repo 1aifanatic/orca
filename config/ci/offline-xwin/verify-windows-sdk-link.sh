@@ -34,7 +34,7 @@ for arch in x64 arm64; do
   test -s "${libs[0]}/libcmt.lib"
   test -s "${libs[1]}/libucrt.lib"
   test -s "${libs[2]}/kernel32.lib"
-  clang-cl-21 "--target=$target" /MT /c "$receipt/probe.c" \
+  clang-21 --driver-mode=cl "--target=$target" /MT /c "$receipt/probe.c" \
     "/imsvc$crt/include" "/imsvc$sdk_include/ucrt" "/imsvc$sdk_include/shared" "/imsvc$sdk_include/um" \
     "/Fo$receipt/$arch.obj"
   lld-link-21 /subsystem:console "/machine:$arch" "/out:$receipt/$arch.exe" \
