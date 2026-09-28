@@ -73,6 +73,7 @@ describe("EditorFileLoadErrorView on a host the user's Disconnect holds down", (
       <EditorFileLoadErrorView
         message="SSH connection is not available"
         worktreeId="wt-ssh"
+        reloadsWhenHostConnects
         onRetry={vi.fn()}
       />
     )
@@ -92,11 +93,31 @@ describe("EditorFileLoadErrorView on a host the user's Disconnect holds down", (
       <EditorFileLoadErrorView
         message="ENOENT: no such file or directory"
         worktreeId="wt-ssh"
+        reloadsWhenHostConnects
         onRetry={vi.fn()}
       />
     )
 
     screen.getByText('ENOENT: no such file or directory')
+    expect(screen.queryByText(WORKTREE_OWNER_NOT_READY_ERROR)).toBeNull()
+  })
+
+  it('keeps the read error on a file the retry gate does not reload, such as a conflict row', () => {
+    mocks.host.connection = {
+      ...USER_DISCONNECTED_HOST,
+      phase: 'connecting',
+      publishedStatus: 'connecting',
+      unavailableReason: null
+    }
+    render(
+      <EditorFileLoadErrorView
+        message="SSH connection is not available"
+        worktreeId="wt-ssh"
+        onRetry={vi.fn()}
+      />
+    )
+
+    screen.getByText('SSH connection is not available')
     expect(screen.queryByText(WORKTREE_OWNER_NOT_READY_ERROR)).toBeNull()
   })
 })

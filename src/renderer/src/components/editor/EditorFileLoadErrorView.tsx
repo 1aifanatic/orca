@@ -30,12 +30,15 @@ export function EditorFileLoadErrorView({
   message,
   code,
   worktreeId = null,
+  reloadsWhenHostConnects = false,
   onRetry
 }: {
   message: string
   code?: string
   /** The file's workspace; lets the view say when the user's Disconnect holds its host down. */
   worktreeId?: string | null
+  /** The panel's retry gate reloads this file when its host connects; only its active file. */
+  reloadsWhenHostConnects?: boolean
   onRetry: () => void
 }): React.JSX.Element {
   const host = useWorktreeHostConnection(worktreeId)
@@ -43,6 +46,7 @@ export function EditorFileLoadErrorView({
   // Why: while the host connects, a failure its connection caused is replaced by that connection
   // and reloads once it lands, so show the connecting state rather than the stale raw error.
   const shownMessage =
+    reloadsWhenHostConnects &&
     host.phase === 'connecting' &&
     isReloadedWhenHostConnects({ loadError: message, loadErrorCode: code })
       ? WORKTREE_OWNER_NOT_READY_ERROR

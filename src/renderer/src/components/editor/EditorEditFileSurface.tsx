@@ -106,6 +106,7 @@ export function EditorEditFileSurface({
         message={fileContent.loadError}
         code={fileContent.loadErrorCode}
         worktreeId={activeFile.worktreeId}
+        reloadsWhenHostConnects
         onRetry={() => reloadContent(activeFile)}
       />
     )
