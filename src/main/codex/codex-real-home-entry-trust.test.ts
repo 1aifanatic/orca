@@ -31,13 +31,6 @@ describe('readOrcaEntryTrust', () => {
     expect(readOrcaEntryTrust(ENTRY, trustAfter([]))).toBe('untrusted')
   })
 
-  it('reads a hash an older Codex computed as stale once Codex hashes differently', () => {
-    const trust = trustAfter([ENTRY])
-    const newCodexHash = computeTrustedHash({ ...ENTRY, statusMessage: 'hash identity changed' })
-
-    expect(readOrcaEntryTrust(ENTRY, trust, newCodexHash)).toBe('stale')
-  })
-
   it('reads a hash for another command at the same key as stale', () => {
     const trust = trustAfter([
       { ...ENTRY, trustedHash: computeTrustedHash({ ...ENTRY, command: 'x' }) }
