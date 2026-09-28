@@ -55,7 +55,7 @@ it('publishes physical-exit retirement before its durable write completes', asyn
   unsubscribe()
 })
 
-it('does not publish a delayed exit over a newly admitted incarnation', async () => {
+it('publishes nothing when the exit write lands after a replacement is admitted', async () => {
   const f = fixture()
   await f.store.flushPendingOrThrowAsync()
   const published = vi.fn()

@@ -95,16 +95,16 @@ export class OrcaRuntimeWithPersistTerminalSurfaceRetirements extends OrcaRuntim
     if (retiredSurfaces.length === 0) {
       return undefined
     }
-    const persisted = this.stageTerminalSurfaceRetirements(retiredSurfaces)
-    for (const surface of persisted.unpersisted) {
+    const staged = this.stageTerminalSurfaceRetirements(retiredSurfaces)
+    for (const surface of staged.unpersisted) {
       const repoId = getRepoIdFromWorktreeId(surface.worktreeId)
       this.terminalTopologyRevisionByRepoId.set(
         repoId,
         (this.terminalTopologyRevisionByRepoId.get(repoId) ?? 0) + 1
       )
     }
-    // Why: one repo epoch can cover multiple exits, but only surfaces individually accepted by persistence may disappear.
-    const removableRetiredSurfaces = [...persisted.accepted, ...persisted.unpersisted]
+    // Why: one repo epoch can cover multiple exits; a surface the session binds to another PTY or incarnation stays.
+    const removableRetiredSurfaces = [...staged.accepted, ...staged.unpersisted]
     for (const [worktreeId, snapshot] of this.mobileSessionTabsByWorktree) {
       // Why proofs aren't gated on `removable`: the exit is the attestation, and a surface the
       // renderer already de-persisted leaves persistence nothing to accept. Withholding the proof
@@ -141,9 +141,7 @@ export class OrcaRuntimeWithPersistTerminalSurfaceRetirements extends OrcaRuntim
       }
       this.publishRetiredTerminalSurfaceProofs(worktreeId, retirementProofs)
     }
-    return persisted.accepted.length > 0
-      ? this.persistStagedTerminalSurfaceRetirements()
-      : undefined
+    return staged.accepted.length > 0 ? this.persistStagedTerminalSurfaceRetirements() : undefined
   }
 
   /** Ships durable retirement proofs on their own frame when no surface removal carries them. */
