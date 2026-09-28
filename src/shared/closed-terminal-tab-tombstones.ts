@@ -53,11 +53,6 @@ export function recordClosedTerminalTabTombstone(
   record: Omit<ClosedTerminalTabTombstone, 'closedAt'>,
   now: number
 ): ClosedTerminalTabTombstonesByTabId {
-  // Why first writer wins: an echo of the same close (the renderer acknowledging a close main
-  // made) must not replace the reason or restart the TTL.
-  if (hasClosedTerminalTabRecord(map, tabId, undefined, now)) {
-    return pruneClosedTerminalTabTombstones(map, now)
-  }
   return pruneClosedTerminalTabTombstones({ ...map, [tabId]: { ...record, closedAt: now } }, now)
 }
 

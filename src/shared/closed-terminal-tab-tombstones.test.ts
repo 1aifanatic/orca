@@ -20,32 +20,11 @@ describe('closed terminal tab records', () => {
     ).toEqual({ 'tab-1': { closedAt: NOW, worktreeId: WT, reason: 'cleanup' } })
   })
 
-  // Why: the renderer's acknowledgement of a close main made echoes it back as 'user'.
-  it('keeps the first close of a tab: an echo changes neither the reason nor the time', () => {
-    const first = recordClosedTerminalTabTombstone(
-      {},
-      'tab-1',
-      { worktreeId: WT, reason: 'cleanup' },
-      NOW
-    )
-    expect(
-      recordClosedTerminalTabTombstone(
-        first,
-        'tab-1',
-        { worktreeId: WT, reason: 'user' },
-        NOW + 5_000
-      )
-    ).toEqual({ 'tab-1': { closedAt: NOW, worktreeId: WT, reason: 'cleanup' } })
-  })
-
   it('treats a record past the TTL as absent, even before its partition prunes it', () => {
     const stale = {
       'tab-1': { closedAt: NOW - CLOSED_TERMINAL_TAB_TOMBSTONE_TTL_MS - 1, worktreeId: WT }
     }
     expect(hasClosedTerminalTabRecord(stale, 'tab-1', undefined, NOW)).toBe(false)
-    expect(
-      recordClosedTerminalTabTombstone(stale, 'tab-1', { worktreeId: WT, reason: 'user' }, NOW)
-    ).toEqual({ 'tab-1': { closedAt: NOW, worktreeId: WT, reason: 'user' } })
   })
 
   it('prunes past the TTL and caps at the newest entries', () => {
