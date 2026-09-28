@@ -70,9 +70,12 @@ describe('a Codex stream error it is about to retry', () => {
 
     for (let attempt = 1; attempt <= 3; attempt += 1) {
       translator.handle(retrying(`Reconnecting... ${attempt}/5`))
-      // Codex reports the thread not running beside each retry; that journals nothing.
+      // A status-only frame between attempts journals nothing, so it does not split the run.
       translator.handle(
-        notification('thread/status/changed', { threadId: THREAD_ID, status: { type: 'idle' } })
+        notification('thread/status/changed', {
+          threadId: THREAD_ID,
+          status: { type: 'active', activeFlags: [] }
+        })
       )
     }
 
@@ -132,6 +135,30 @@ describe('a Codex stream error it is about to retry', () => {
     translator.handle(retrying('Reconnecting... 3/5'))
 
     expect(publishes() - before).toBe(3)
+  })
+
+  it('revises the row it already wrote when an attempt is re-handled after backpressure', () => {
+    const rows: Row[] = []
+    let refusePublish = false
+    const sink: StructuredAgentSessionEventSink = {
+      appendItem: (identity, body) => rows.push({ key: agentJournalItemKey(identity), body }),
+      appendTombstone: () => undefined,
+      publish: () => undefined,
+      tryPublish: () =>
+        refusePublish ? { accepted: false, reason: 'backpressure' } : { accepted: true }
+    }
+    const translator = createCodexJournalTranslator({ sink, primaryThreadId: () => THREAD_ID })
+    translator.handle(notification('turn/started', { turn: { id: TURN_ID } }))
+
+    // The row lands but its publish is refused, so the host hands the same frame back.
+    refusePublish = true
+    const frame = retrying('Reconnecting... 1/5')
+    expect(translator.handle(frame)).toEqual({ accepted: false, reason: 'backpressure' })
+    refusePublish = false
+    expect(translator.handle(frame)).toEqual({ accepted: true })
+    translator.handle(retrying('Reconnecting... 2/5'))
+
+    expect(retryRows(rows)).toHaveLength(1)
   })
 
   it('is still one row when Codex names no attempt count', () => {
