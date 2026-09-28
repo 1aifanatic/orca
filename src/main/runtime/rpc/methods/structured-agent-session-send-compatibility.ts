@@ -18,7 +18,8 @@ export async function sendStructuredAgentSessionForClient(
   context: RpcContext
 ) {
   const host = requireStructuredHost(context)
-  const result = await host.send(structuredCallerFor(context), params)
+  // Only a client's own send lifts a Stop's queue pause; host-internal senders never do.
+  const result = await host.send(structuredCallerFor(context), { ...params, userSend: true })
   const capabilities = context.clientCapabilities ?? []
   if (
     !result.ok ||

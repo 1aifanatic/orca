@@ -114,6 +114,10 @@ export function sendStructuredAgentSessionTurn(
     body: AgentJournalMessageItem
     retryUnknown?: true
     delivery?: 'queue-if-active'
+    /** Host-local, set only by the client-facing `agentSession.send` RPC: the
+     *  user's own send. Orchestration mail, a restart continuation and a launch
+     *  prompt never lift a Stop's or a restart's queue pause. */
+    userSend?: true
     beforeRun?: () => void
   }
 ): Promise<AgentSessionMutationResult<AgentSessionSendResult>> {
@@ -142,7 +146,9 @@ export function sendStructuredAgentSessionTurn(
           // The user started a turn, which supersedes any Stop that paused the
           // queue: its holds lift in this same serialized step, so the held
           // drafts drain after this turn. A queued accept above never lifts.
-          await releaseStopHeldQueuedMessages(ctx)
+          if (params.userSend) {
+            await releaseStopHeldQueuedMessages(ctx)
+          }
         }
         return accepted
       }

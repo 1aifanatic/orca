@@ -425,6 +425,23 @@ describe('Stop and Delete', () => {
     await eventually(async () => expect(await submission(draftId)).toBeDefined())
   })
 
+  it('a host-internal send (orchestration mail, a restart continuation) never lifts the pause', async () => {
+    const working = await workingSend()
+    const queued = await send('paused by stop', 'queue-if-active').result
+    if (!queued.ok || !('queued' in queued.value)) {
+      throw new Error('expected a queued receipt')
+    }
+    const draftId = queued.value.queued.messageId
+    await stop()
+    await settleAccepted(working, 'a')
+    const mail = send('coordinator mail', undefined, { internal: true })
+    expect(await mail.result).toMatchObject({ ok: true, value: { submission: expect.anything() } })
+    expect(await drafts()).toEqual([{ messageId: draftId, state: 'waiting', paused: true }])
+    await settleAccepted(mail.id, 'b')
+    await new Promise((resolve) => setTimeout(resolve, 250))
+    expect(await submission(draftId)).toBeUndefined()
+  })
+
   it("a user send lifts nothing from a 'send_failed' hold — that card waits for its explicit Send", async () => {
     const working = await workingSend()
     const queued = await send('conversion fails once', 'queue-if-active').result

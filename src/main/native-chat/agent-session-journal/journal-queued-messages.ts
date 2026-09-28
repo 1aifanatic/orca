@@ -218,9 +218,9 @@ export class JournalQueuedMessages {
    * The standing writer hook: within the append's transaction, transition a
    * `dispatched` draft to `returned` only when the row being committed NEWLY
    * settles the draft's current consumed submission to `rejected` — a refusal,
-   * or a Stop's withdrawal (a capable Stop then withdraws the card and hands
-   * its text back). Decided by the same function the reducer folds rows
-   * through, so a row the journal's settlement rules ignore never alters a draft.
+   * or a Stop withdrawing it before it reached the agent. Decided by the same
+   * function the reducer folds rows through, so a row the journal's settlement
+   * rules ignore never alters a draft.
    */
   onRowInTransaction(db: Database.Database, row: JournalRow): void {
     if (row.kind !== 'dispatch' || row.state !== 'rejected') {

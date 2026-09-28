@@ -96,14 +96,17 @@ export async function createQueuedMessageTestRig() {
     }
   }
 
-  function send(text: string, delivery?: 'queue-if-active') {
+  /** A client's send, as the `agentSession.send` RPC hands it to the host;
+   *  `internal` is a host-side sender (orchestration mail, a restart continuation). */
+  function send(text: string, delivery?: 'queue-if-active', options?: { internal?: true }) {
     const body = hostTestMessage(text)
     const clientOperationId = hostTestOperationId()
     const fields = { body, ...(delivery ? { delivery } : {}) }
     const result = host.send(QUEUED_RIG_CALLER, {
       envelope: envelope(fields, 'agentSession.send', clientOperationId),
       body,
-      ...(delivery ? { delivery } : {})
+      ...(delivery ? { delivery } : {}),
+      ...(options?.internal ? {} : { userSend: true as const })
     })
     return { id: clientOperationId, result }
   }

@@ -64,7 +64,7 @@ export function mobileStructuredSendDelivery(
   if ('queued' in result.value && result.value.queued) {
     // The host holds (or already settled) the draft: the send is spent — a
     // later identical message is a new message. A withdrawn replay is spent
-    // too, never unknown; its text came back through the withdrawing Stop.
+    // too, never unknown: its card was deleted or carried by a /clear.
     return { outcome: 'accepted', operationIdSpent: true, error: null }
   }
   const submission: AgentJournalSubmission | undefined =

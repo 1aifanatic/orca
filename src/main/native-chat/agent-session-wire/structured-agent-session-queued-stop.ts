@@ -2,8 +2,9 @@
 // draft and no text ever travels back over the wire: the waiting frontier is
 // held with `hold_reason='stopped'` — the SAME for every client — the cards
 // stay published as paused, and Send-now overrides the hold per card. The
-// pause dies when the user next STARTS a turn (an ordinary send that
-// dispatches, never a queued draft's conversion): the held cards then drain
+// pause dies when the user next STARTS a turn (a client's own ordinary send —
+// never a queued draft's conversion, orchestration mail or a restart
+// continuation): the held cards then drain
 // after that turn. Both writes go through the draft store, whose commit
 // notification publishes and wakes the drain; and both are bookkeeping —
 // a failure is reported and never gates the interrupt or the send.
