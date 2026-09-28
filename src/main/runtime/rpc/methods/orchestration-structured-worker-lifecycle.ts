@@ -70,8 +70,8 @@ export type StructuredWorkerStopOutcome = {
  * Stopping a structured worker.
  *
  * `host.close` returns void and keeps a failed close indexed for retry, so the only settlement
- * evidence is the observation AFTER it: a session the host no longer holds and whose lease is no
- * longer live is proven gone. Anything else is retained rather than settled.
+ * evidence is the observation AFTER it: only a session observed `exited` settles. Anything else is
+ * retained rather than settled.
  */
 export async function stopStructuredWorker(
   identity: StructuredWorkerIdentity,

@@ -132,14 +132,17 @@ describe('structured worker stop', () => {
     })
   })
 
-  it('settles a released lease whose stop was unproven: nothing is left running to close', async () => {
-    // A release that could not prove its stop sent no signal and left the verdict `unverifiable`;
-    // closing the chat is the user's action, so that bookkeeping does not refuse it.
+  it('retires but never settles a released lease whose stop was unproven', async () => {
+    // A release that could not prove its stop sent no signal and left the verdict `unverifiable`:
+    // the close has nothing left to act on, but the process may still run, so it is not stopped.
     installHost({ claimStatus: 'released', close: async () => {} })
-    await expect(stopStructuredWorker(IDENTITY, 'd1')).resolves.toEqual({
-      stopped: true,
-      closeAttempted: true
+    const retireStructuredAgentSessionTabFromSnapshot = vi.fn()
+    const result = await stopStructuredWorker(IDENTITY, 'd1', {
+      forgetStructuredSessionMail: vi.fn(),
+      retireStructuredAgentSessionTabFromSnapshot
     })
+    expect(result).toMatchObject({ stopped: false, closeAttempted: true })
+    expect(retireStructuredAgentSessionTabFromSnapshot).toHaveBeenCalled()
   })
 
   it.each([{ hasSession: false }, { claimStatus: 'conflicted' }, { record: null }])(

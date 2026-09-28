@@ -7,6 +7,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { AgentSessionOwnerProbe } from '../../../../shared/agent-session-lease-adjudication'
 import { computeAgentSessionPayloadFingerprint } from '../../../../shared/agent-session-mutation-envelope'
 import {
   CLAUDE_STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
@@ -46,6 +47,8 @@ let dispatcher: RpcDispatcher
 let acquisitions = 0
 let acquireFails = false
 let closeSession: ReturnType<typeof vi.fn<() => Promise<boolean>>>
+/** Unset, the host cannot probe an owner, so recovery can only release it unproven. */
+let probeOwner: (() => Promise<AgentSessionOwnerProbe>) | undefined
 
 function providerAdapter(): StructuredAgentSessionAdapter {
   return {
@@ -96,7 +99,8 @@ async function openHost(): Promise<void> {
     journalRoot: directory,
     claimKeyId: 'key',
     now: () => HOST_TEST_NOW,
-    mintSpawnToken: () => `spawn-${acquisitions}`
+    mintSpawnToken: () => `spawn-${acquisitions}`,
+    ...(probeOwner ? { probeOwner } : {})
   })
   setStructuredAgentSessionHost(host)
 }
@@ -176,6 +180,7 @@ beforeEach(async () => {
   acquisitions = 0
   acquireFails = false
   closeSession = vi.fn(async () => true)
+  probeOwner = undefined
   directory = await mkdtemp(join(tmpdir(), 'orca-chat-tab-table-'))
   runtime = new OrcaRuntimeService()
   vi.spyOn(runtime, 'getClientSettings').mockReturnValue(
@@ -262,12 +267,40 @@ describe('a chat tab across /clear', () => {
   it('puts a cleared chat back under the tab id it had when its close does not land', async () => {
     await createChat(HOST_TEST_SESSION)
     const replacement = await clear(HOST_TEST_SESSION)
-    closeSession.mockResolvedValue(false)
+    closeSession.mockRejectedValueOnce(new Error('provider close failed'))
 
     const outcome = await closeStructuredAgentSessionChild(replacement)
-    expect(outcome).toMatchObject({ stopped: false })
+    expect(outcome).toMatchObject({ stopped: false, closeAttempted: true })
     expect(store.getSessionTabId(replacement)).toBe(SOURCE_TAB)
-    closeSession.mockResolvedValue(true)
+  })
+
+  it('never reports stopped for an unproven close whose owner recovery could not verify', async () => {
+    // Recovery releases an owner it cannot probe without signalling it, so the process may run on.
+    await createChat(HOST_TEST_SESSION)
+    const replacement = await clear(HOST_TEST_SESSION)
+    closeSession.mockResolvedValueOnce(false)
+
+    const outcome = await closeStructuredAgentSessionChild(replacement)
+    expect(outcome).toMatchObject({ stopped: false, closeAttempted: true })
+    expect(store.getRecord(replacement)!.lease).toMatchObject({
+      claimStatus: 'released',
+      deathEvidence: null
+    })
+    // Nothing is left for a retry to act on, so the close still finishes and the tab stays retired.
+    expect(store.getSessionTabId(replacement)).toBeNull()
+  })
+
+  it('reports stopped once recovery proves the owner of an unproven close gone', async () => {
+    probeOwner = async () => ({ outcome: 'pid-absent' })
+    await openHost()
+    await createChat(HOST_TEST_SESSION)
+    const replacement = await clear(HOST_TEST_SESSION)
+    closeSession.mockResolvedValueOnce(false)
+
+    const outcome = await closeStructuredAgentSessionChild(replacement)
+    expect(outcome).toEqual({ stopped: true, closeAttempted: true })
+    expect(store.getRecord(replacement)!.lease.deathEvidence).not.toBeNull()
+    expect(store.getSessionTabId(replacement)).toBeNull()
   })
 
   it('keeps the tab id and its pointer across a restart', async () => {

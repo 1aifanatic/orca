@@ -1,6 +1,7 @@
 // A structured worker whose agent is at rest: its dispatch keeps it running while open, and once it
 // rests it is still this runtime's worker — mail reaches it — until its chat tab is gone. Whether
-// its process runs is a separate answer, and a close counts a released lease as done.
+// its process runs is a separate answer: a close finishes on a released lease, but only a proven
+// exit is a stop.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
@@ -263,7 +264,8 @@ describe('a close whose stop could not be proven (P2-30)', () => {
     expect(observeStructuredWorker({ sessionId: SESSION }).status).toBe('unverifiable')
 
     const outcome = await closeStructuredAgentSessionChild(SESSION)
-    expect(outcome).toMatchObject({ stopped: true, closeAttempted: true })
+    // Finished, but not a stop: nothing proved the process exited.
+    expect(outcome).toMatchObject({ stopped: false, closeAttempted: true })
     expect(host.close).toHaveBeenCalledOnce()
     expect(tabs).toEqual([])
     expect(host.setSessionTabVisibility).not.toHaveBeenCalledWith(SESSION, true)

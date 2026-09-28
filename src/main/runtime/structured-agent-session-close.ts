@@ -7,8 +7,9 @@
  * stays with the caller that has a dispatch; this is only the child.
  *
  * `host.close` returns void and keeps a failed close indexed for retry, so the only settlement
- * evidence is the observation AFTER it: a session the host no longer holds and whose lease is no
- * longer live is proven gone. Anything else is retained rather than settled.
+ * evidence is the observation AFTER it. Only an `exited` session is stopped. A lease released
+ * without that proof finishes the close — nothing is left for a retry to act on, so its tab stays
+ * retired — but is reported not stopped: the process may still run. Anything else is retained.
  */
 
 import type { StructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-host'
@@ -101,6 +102,14 @@ export async function closeStructuredAgentSessionChild(
   // Only past the proof, and structurally unable to throw: the session's chat tab is retired from
   // the live snapshot, which `setSessionTabVisibility(false)` above does not do.
   retireSettledStructuredWorkerTab(sessionId, options.runtime)
+  if (observeStructuredWorker({ sessionId }).status !== 'exited') {
+    return {
+      stopped: false,
+      closeAttempted: true,
+      reason:
+        'The session was released, but its agent process could not be confirmed to have exited.'
+    }
+  }
   return { stopped: true, closeAttempted: true }
 }
 

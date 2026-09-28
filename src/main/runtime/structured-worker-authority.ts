@@ -126,9 +126,10 @@ export type StructuredWorkerObservation = {
 }
 
 /**
- * Whether a close left nothing running: `exited`, or `unverifiable` on a released lease — a release
- * whose stop could not be proven, which sent no signal and is left as it is. Closing a chat is the
- * user's action, and bookkeeping about a process already released must not refuse it.
+ * Whether a close has nothing left to act on: `exited`, or `unverifiable` on a released lease — a
+ * release whose stop could not be proven, which nothing here can drive again. Closing a chat is the
+ * user's action, and bookkeeping about a process already released must not refuse it. This settles
+ * the CLOSE, not the verdict: only `exited` may be reported as stopped.
  */
 export function structuredSessionCloseSettled(sessionId: string): boolean {
   const status = observeStructuredWorker({ sessionId }).status

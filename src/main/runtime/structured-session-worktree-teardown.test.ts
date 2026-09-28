@@ -51,6 +51,8 @@ function installHost(options: {
   stuck?: Set<string>
   /** Sessions the host drops without death evidence, so the observation is `unverifiable`. */
   unverifiable?: Set<string>
+  /** Sessions whose close releases the lease without death evidence, as unproven recovery does. */
+  releasedUnproven?: Set<string>
   /** Sessions whose child dies and is recorded dead, but whose close then fails past that point. */
   settledThenThrows?: Set<string>
   /** Blocks every close, to exercise the shared sweep budget without fake timers. */
@@ -117,6 +119,11 @@ function installHost(options: {
       }
       held.delete(sessionId)
       if (options.unverifiable?.has(sessionId)) {
+        return
+      }
+      if (options.releasedUnproven?.has(sessionId)) {
+        const entry = options.records.find((candidate) => candidate.sessionId === sessionId)
+        entry!.lease.claimStatus = 'released'
         return
       }
       if (!options.exitsDuringTabRestore?.has(sessionId)) {
@@ -214,6 +221,15 @@ describe('worktree teardown and structured agent sessions', () => {
     installHost({ records: [record('s1', WORKTREE)], stuck: new Set(['s1']) })
     await expect(killAllProcessesForWorktree(WORKTREE, destructiveDeps())).rejects.toThrow(
       /still live: 1 agent session \(claude\)/
+    )
+  })
+
+  it('refuses over a close whose lease was released without proof of exit', async () => {
+    // Recovery releases an owner it could not verify without signalling it; deleting the checkout
+    // under a process that may still run is what this sweep refuses over.
+    installHost({ records: [record('s1', WORKTREE)], releasedUnproven: new Set(['s1']) })
+    await expect(killAllProcessesForWorktree(WORKTREE, destructiveDeps())).rejects.toThrow(
+      /could not confirm these closed: 1 agent session \(claude\)/
     )
   })
 

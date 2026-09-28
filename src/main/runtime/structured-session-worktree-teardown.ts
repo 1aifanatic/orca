@@ -27,10 +27,7 @@ import {
 } from '../../shared/execution-host'
 import { STILL_LIVE_DETAIL_PREFIX } from '../../shared/worktree/removal'
 import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
-import {
-  observeStructuredWorker,
-  structuredSessionCloseSettled
-} from './structured-worker-authority'
+import { observeStructuredWorker } from './structured-worker-authority'
 import { closeStructuredAgentSessionChild } from './structured-agent-session-close'
 import { retireSettledStructuredWorkerTab } from './structured-agent-session-tab-retirement'
 import type { WorktreePtyHostFence } from './worktree-pty-host-fence'
@@ -278,7 +275,8 @@ export async function closeStructuredSessionsForWorktree(
       // Re-observed rather than reusing the close's own reason string: what the user is asked to
       // waive is the state AFTER the attempt, and a close that threw never reached an observation.
       const status = observeStructuredWorker({ sessionId: session.sessionId }).status
-      if (status === 'exited' || structuredSessionCloseSettled(session.sessionId)) {
+      // A lease released without proof is `unverifiable`, never closed: it may still be running.
+      if (status === 'exited') {
         // The re-read can PROVE the exit a failed close could not — it threw past its own
         // observation, or the record's death evidence landed after it read. Refusing on a child
         // that is demonstrably gone is the defect this sweep exists to remove, so take the proof
