@@ -71,6 +71,9 @@ export class RelayAgentHookRuntime {
     this.ptyHandler.setOutputPublishBarrier(() => this.hookServer.drainCommittedHooks())
     this.ptyHandler.setExitListener(({ paneKey, id }) => {
       if (paneKey) {
+        // Why: a full send queue (or a reap) can reach teardown before any publish ran the
+        // barrier; apply what the agent committed first, or a later drain recreates the row.
+        this.hookServer.drainCommittedHooks()
         this.hookServer.clearPaneState(paneKey)
       }
       this.pluginOverlay.clearOverlay(paneKey ?? id)

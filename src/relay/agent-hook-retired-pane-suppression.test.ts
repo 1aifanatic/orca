@@ -251,4 +251,52 @@ describe('RelayAgentHookRuntime wiring', () => {
       runtime.stop()
     }
   })
+
+  it('applies committed hook events before an exited pane is torn down', async () => {
+    let onExit: ((event: { id: string; paneKey?: string }) => void) | null = null
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the runtime calls only the PtyHandler members this fixture implements.
+    const ptyHandler = {
+      addEnvAugmenter: vi.fn(),
+      setOutputPublishBarrier: vi.fn(),
+      setExitListener: vi.fn((listener: (event: { id: string; paneKey?: string }) => void) => {
+        onExit = listener
+      }),
+      setSurfaceRetiredListener: vi.fn(),
+      isPaneSurfaceRetired: () => false
+    } as unknown as PtyHandler
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: zero attached clients, so hook publication returns before touching any other dispatcher member.
+    const dispatcher = {
+      onRequest: vi.fn(),
+      activeClientIds: () => [] as number[]
+    } as unknown as RelayDispatcher
+    const runtime = new RelayAgentHookRuntime(
+      dispatcher,
+      ptyHandler,
+      join(dir, 'relay.sock'),
+      join(dir, 'hooks')
+    )
+    await runtime.start()
+    try {
+      const server = (runtime as unknown as { hookServer: RelayAgentHookServer }).hookServer
+      const inbox = join(server.getCoordinates().endpointFilePath, '..', 'hook-inbox')
+      writeFileSync(
+        join(inbox, '1.0.rec'),
+        [
+          JSON.stringify({ hook_event_name: 'UserPromptSubmit', prompt: 'hi' }),
+          'orca-hook-record v1',
+          'source=claude',
+          `paneKey=${PANE_KEY}`,
+          'orca-hook-end',
+          ''
+        ].join('\n')
+      )
+      // The shell exits while the relay's send queue is full: teardown runs before any publish.
+      onExit!({ id: 'pty-1', paneKey: PANE_KEY })
+      server.drainCommittedHooks()
+      // Nothing is left for a reconnecting client to be handed as a replay of a dead pane.
+      expect(cachedPaneKeys(server)).toEqual([])
+    } finally {
+      runtime.stop()
+    }
+  })
 })
