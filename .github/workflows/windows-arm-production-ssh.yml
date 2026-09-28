@@ -1,0 +1,96 @@
+name: Diagnostic native ARM production SSH route
+on:
+  push:
+    branches: [OrcaWin/np-arm-ssh-production-diagnostic]
+    paths:
+      - '.github/workflows/windows-arm-production-ssh.yml'
+      - '.build/integration-audit/windows-arm-ssh-qualification/**'
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact qualified production source commit
+        required: true
+        default: a88eb0980039ac7a69e73667b9280e142e15f022
+permissions:
+  contents: read
+concurrency:
+  group: arm-production-ssh-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  windows_watcher:
+    if: github.repository == 'stablyai/orca' && github.ref == 'refs/heads/OrcaWin/np-arm-ssh-production-diagnostic'
+    uses: ./.github/workflows/windows-watcher-artifacts.yml
+    with:
+      ref: ${{ inputs.source_sha || 'a88eb0980039ac7a69e73667b9280e142e15f022' }}
+  qualify:
+    needs: windows_watcher
+    runs-on: windows-11-arm
+    timeout-minutes: 35
+    env:
+      ORCA_BACKGROUND_LAUNCH: '1'
+      ORCA_ISOLATED_SSH_CI: '1'
+      QUALIFICATION_SOURCE_SHA: ${{ inputs.source_sha || 'a88eb0980039ac7a69e73667b9280e142e15f022' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_sha || 'a88eb0980039ac7a69e73667b9280e142e15f022' }}
+          persist-credentials: false
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          path: diagnostic
+          sparse-checkout: .build/integration-audit/windows-arm-ssh-qualification
+      - name: Require exact native producer source
+        shell: pwsh
+        env:
+          WATCHER_SOURCE_SHA: ${{ needs.windows_watcher.outputs.source_sha }}
+        run: |
+          if($env:QUALIFICATION_SOURCE_SHA -notmatch '^[a-f0-9]{40}$'){throw 'Exact source SHA required'}
+          if((git rev-parse HEAD).Trim() -ne $env:QUALIFICATION_SOURCE_SHA -or $env:WATCHER_SOURCE_SHA -ne $env:QUALIFICATION_SOURCE_SHA){throw 'Source mismatch'}
+      - uses: ./.github/actions/load-windows-watcher-artifacts
+      - uses: ./.github/actions/install-node-dependencies
+        with:
+          native-runtime: node
+      - name: Build real relay and owned runtime artifacts
+        shell: pwsh
+        run: |
+          node config/scripts/build-cli-runtime.mjs --platform win32 --arch arm64
+          if($LASTEXITCODE -ne 0){throw 'Runtime build failed'}
+          node config/scripts/build-windows-process-tree-relay-addon.mjs --arch=arm64
+          if($LASTEXITCODE -ne 0){throw 'Native process-table build failed'}
+          $env:ORCA_REQUIRE_RELAY_NATIVE_ADDONS='arm64'
+          node config/scripts/build-relay.mjs
+          if($LASTEXITCODE -ne 0){throw 'Relay build failed'}
+      - name: Parse and typecheck fixture before provisioning
+        shell: pwsh
+        run: |
+          $root=Join-Path $pwd 'diagnostic/.build/integration-audit/windows-arm-ssh-qualification'
+          foreach($file in @((Join-Path $root 'prove-preview-openssh.ps1'),(Join-Path $root 'production-route/invoke-production-route.ps1'))){
+            $errors=$null;$tokens=$null
+            [Management.Automation.Language.Parser]::ParseFile($file,[ref]$tokens,[ref]$errors)|Out-Null
+            if($errors.Count){throw "PowerShell parse failed: $file"}
+          }
+          Copy-Item (Join-Path $root 'production-route/windows-arm-production-route.test.ts') src/main/ssh/windows-arm-production-route.test.ts
+          node node_modules/typescript/bin/tsc --noEmit -p config/tsconfig.node.json
+          if($LASTEXITCODE -ne 0){throw 'Fixture typecheck failed'}
+      - name: Prove full authenticated deploy and reconnect under native sshd
+        shell: pwsh
+        timeout-minutes: 18
+        run: |
+          $root=Join-Path $pwd 'diagnostic/.build/integration-audit/windows-arm-ssh-qualification'
+          $sourceRoot=$pwd.Path
+          $archive=Join-Path $env:RUNNER_TEMP 'preview-OpenSSH-ARM64.zip'
+          & "$env:WINDIR\System32\curl.exe" --fail --location --connect-timeout 15 --max-time 90 --output $archive 'https://github.com/PowerShell/Win32-OpenSSH/releases/download/10.0.0.0p2-Preview/OpenSSH-ARM64.zip'
+          if($LASTEXITCODE -ne 0){throw 'SSH archive fetch failed'}
+          $callback={param($user,$port,$identity,$known)
+            & (Join-Path $root 'production-route/invoke-production-route.ps1') -SourceRoot $sourceRoot -SourceCommit $env:QUALIFICATION_SOURCE_SHA -Username $user -Port $port -IdentityFile $identity -KnownHosts $known -ReceiptRoot "$env:RUNNER_TEMP\arm-production-route"
+          }.GetNewClosure()
+          & (Join-Path $root 'prove-preview-openssh.ps1') -Archive $archive -Receipt "$env:RUNNER_TEMP\arm-production-server.json" -ProductionRouteProbe $callback
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: native-arm-production-ssh-receipts
+          path: |
+            ${{ runner.temp }}/arm-production-server.json
+            ${{ runner.temp }}/arm-production-route/production-route.json
+          retention-days: 7
