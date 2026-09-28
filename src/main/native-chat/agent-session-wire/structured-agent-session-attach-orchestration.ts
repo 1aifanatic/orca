@@ -129,7 +129,7 @@ async function runAttach(
   const attemptSink = context.runtimeState.mintEventSink(sessionId)
   // Read before the reserve clears it: how the previous generation ended decides how whatever it
   // left running is settled.
-  const priorDeathEvidence = context.deps.store.getRecord(sessionId)?.lease.deathEvidence ?? null
+  const priorDeathRecord = context.deps.store.getRecord(sessionId)?.lease ?? null
   const attempt: { candidate: AttachCandidate | null; committed: boolean } = {
     candidate: null,
     committed: false
@@ -185,7 +185,7 @@ async function runAttach(
             sessionId,
             fence,
             acquisitionGeneration,
-            deathEvidence: priorDeathEvidence
+            deathRecord: priorDeathRecord
           })
         }
         await bindAndDrain(eventSink, attached.journal, fence, (activity) =>

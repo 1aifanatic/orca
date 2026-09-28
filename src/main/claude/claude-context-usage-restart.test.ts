@@ -217,7 +217,7 @@ describe('context usage across a restart', () => {
       sessionId: 'orca-session',
       fence: 2,
       acquisitionGeneration: 'next',
-      deathEvidence: null
+      deathRecord: null
     })
     const turns = journal.snapshot().items.map((item) => readAgentJournalTurn(item.body)?.state)
     expect(turns).toContain('unverifiable')
@@ -239,7 +239,7 @@ describe('context usage across a restart', () => {
       sessionId: 'orca-session',
       fence: 1,
       acquisitionGeneration: 'next',
-      deathEvidence: null
+      deathRecord: null
     })
     live.reattach()
     await live.settle()

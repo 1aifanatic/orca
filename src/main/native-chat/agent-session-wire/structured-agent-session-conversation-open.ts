@@ -112,7 +112,7 @@ export async function openStructuredAgentSessionConversationJournal(
         sessionId,
         fence,
         acquisitionGeneration: null,
-        deathEvidence: record.lease.deathEvidence ?? null
+        deathRecord: record.lease
       })
     }
   } catch (error) {

@@ -19,9 +19,14 @@ import { AgentSessionRecordStore } from '../../runtime/agent-session-record-stor
 import { AGENT_SESSION_STORE_FILE_NAME } from '../../runtime/agent-session-record-store-file'
 import { journalDirectoryFor } from '../agent-session-journal/journal-paths'
 import { openAgentSessionJournal } from '../agent-session-journal/journal-store-factory'
+import {
+  AgentSessionAcquisitionExitUnprovenError,
+  type StructuredAgentSessionAdapter
+} from './structured-agent-session-adapter'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
 import type { StructuredAgentSessionHostDeps } from './structured-agent-session-host-types'
 import {
+  hostTestAttachParams,
   HOST_TEST_LOCATION as LOCATION,
   HOST_TEST_SESSION as SESSION
 } from './structured-agent-session-host-test-data'
@@ -216,5 +221,71 @@ describe('a turn a crash cut short mid-tool', () => {
       lastProvenAliveAt: LAST_RENEWED_AT
     })
     expect(settledTurn()).toMatchObject({ state: 'interrupted', completedAt: LAST_RENEWED_AT })
+  })
+
+  it('never takes a proof of life from a newer owner a failed start left for recovery', async () => {
+    // A start after the relaunch spawned a child and failed without proving it gone, so it was
+    // parked; a later start found that child gone. Its proof of life is from after the crash.
+    let now = RELAUNCHED_AT
+    const claudeHandle = { kind: 'claude' as const, sessionId: PROVIDER_SESSION, leafUuid: null }
+    const acquire = vi.fn<StructuredAgentSessionAdapter['acquire']>(
+      async ({ fence, spawnToken, onSpawned }) => {
+        const process = { hostId: 'local', pid: 7_000 + fence, processStartTimeMs: now, spawnToken }
+        await onSpawned?.(process)
+        if (fence === 15) {
+          throw new AgentSessionAcquisitionExitUnprovenError(new Error('hung'))
+        }
+        return {
+          process,
+          link: {
+            linkId: `claude-${fence}-link`,
+            handle: { provider: 'claude', sessionId: PROVIDER_SESSION, leafUuid: null },
+            origin: 'resumed',
+            mintedAtFence: fence,
+            observedAt: now
+          }
+        }
+      }
+    )
+    openHost({
+      adapter: {
+        acquire,
+        dispatch: vi.fn(),
+        cancelTurn: vi.fn(),
+        answerPrompt: vi.fn(),
+        setOption: vi.fn(),
+        supportsCreate: () => true
+      },
+      probeOwner: async () => ({ outcome: 'pid-absent' }),
+      now: () => now
+    })
+    await host.reconcileRestartLeases()
+    const attach = (fence: number) =>
+      host.attach(
+        { callerKey: 'client-1' },
+        hostTestAttachParams(fence, {
+          provider: 'claude',
+          agent: 'claude',
+          accountHome: { variable: 'CLAUDE_CONFIG_DIR', path: '/home/dev/.claude' },
+          providerHandle: claudeHandle
+        })
+      )
+
+    await attach(14).catch(() => undefined)
+    expect(store.getRecord(SESSION)?.lease).toMatchObject({
+      runtimeFence: 15,
+      handoffStage: 'recovering',
+      lastRenewedAt: RELAUNCHED_AT
+    })
+    now = RELAUNCHED_AT + 60_000
+    // Recovery records that child's death, then the client retries at the fence it was told.
+    await expect(attach(15)).resolves.toMatchObject({ refusal: { currentFence: 16 } })
+    expect(store.getRecord(SESSION)?.lease.deathEvidence).toMatchObject({
+      lastProvenAliveAt: RELAUNCHED_AT
+    })
+    await expect(attach(16)).resolves.toMatchObject({ ok: true })
+
+    // The owner that wrote the turn left no proof of life to use, so its last row bounds it.
+    expect(settledTurn()).toMatchObject({ state: 'interrupted', completedAt: TOOL_STARTED_AT })
   })
 })

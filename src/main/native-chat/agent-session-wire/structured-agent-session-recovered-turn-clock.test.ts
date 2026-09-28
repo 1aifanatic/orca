@@ -162,7 +162,7 @@ describe('a turn recovery settled after its host went away', () => {
       sessionId: SESSION,
       fence: 2,
       acquisitionGeneration: 'generation-2',
-      deathEvidence: null
+      deathRecord: null
     })
     session.publish()
 

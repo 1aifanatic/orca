@@ -179,7 +179,7 @@ describe('provider-exit recovery tickets', () => {
       sessionId: SESSION,
       fence: 8,
       acquisitionGeneration: 'generation-2',
-      deathEvidence: record.lease.deathEvidence
+      deathRecord: record.lease
     })
     expect(appendLifecycleBatch.mock.calls.at(-1)?.[0].mutations).toContainEqual(
       expect.objectContaining({

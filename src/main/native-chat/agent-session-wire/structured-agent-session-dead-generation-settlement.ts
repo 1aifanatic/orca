@@ -12,10 +12,10 @@ import {
 } from '../agent-session-journal/journal-prompt-body-bounds'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { structuredAgentSessionStartFailureRow } from './structured-agent-session-start-failure-row'
-import type { AgentSessionDeathEvidence } from '../../../shared/agent-session-record'
 import {
   runningTurnLifecycleRevisions,
   turnVerdictFromDeathEvidence,
+  type StructuredAgentSessionDeathRecord,
   type StructuredAgentSessionTurnVerdict
 } from './structured-agent-session-stale-turn-verdict'
 
@@ -230,11 +230,13 @@ export async function settleStaleStructuredAgentSessionState(input: {
   sessionId: string
   fence: number
   acquisitionGeneration: string | null
-  deathEvidence: AgentSessionDeathEvidence | null
+  /** The lease as it stood before any new owner reserved it. */
+  deathRecord: StructuredAgentSessionDeathRecord | null
 }): Promise<number> {
   const { journal } = input
   const items = journal.snapshot().items
-  const verdict = turnVerdictFromDeathEvidence(input.deathEvidence, journal)
+  const deathEvidence = input.deathRecord?.deathEvidence ?? null
+  const verdict = turnVerdictFromDeathEvidence(input.deathRecord, journal)
   const generation = input.acquisitionGeneration ?? `seq-${journal.cursor().sequence}`
   const settlementId = `stale-session:${input.sessionId}:${input.fence}:${generation}`
   const mutations: JournalLifecycleMutationInput[] = []
@@ -255,7 +257,7 @@ export async function settleStaleStructuredAgentSessionState(input: {
         // Only a watched exit carries the provider's own reason; a probe's detail is Orca's.
         text: boundJournalStatusText(
           unexpectedProviderExitOutcome(
-            input.deathEvidence?.kind === 'exit-observed' ? input.deathEvidence.detail : undefined
+            deathEvidence?.kind === 'exit-observed' ? deathEvidence.detail : undefined
           )
         )
       }

@@ -236,6 +236,8 @@ export class AgentSessionJournal {
   /** The same over rows written live, so crash reconciliation never reads as activity; 0 if none. */
   lastLiveActivityAt = (): number => this.state.lastLiveActivityAt
 
+  lastLiveFence = (): number => this.state.lastLiveFence
+
   submissions = (): AgentJournalSubmission[] => [...this.state.submissions.values()]
 
   pendingSubmissions = (): AgentJournalSubmission[] =>

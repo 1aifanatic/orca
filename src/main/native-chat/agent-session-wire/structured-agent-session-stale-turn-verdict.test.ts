@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import type { AgentJournalRenderItem } from '../../../shared/agent-session-journal-types'
+import type { AgentSessionDeathEvidence } from '../../../shared/agent-session-record'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import {
   codexSubagentGroupBody,
@@ -82,13 +83,19 @@ function promptItem(state: 'pending' | 'resolved', sequence: number): AgentJourn
   }
 }
 
+/** The lease a release of the fence-1 owner leaves behind: its fence moved one past. */
+function released(deathEvidence: AgentSessionDeathEvidence | null, runtimeFence = 2) {
+  return { deathEvidence, runtimeFence }
+}
+
 describe('turn verdict from death evidence', () => {
-  const lastLiveAt = (at: number) => ({ lastLiveActivityAt: () => at })
+  /** A journal whose last live row, written by the fence-1 owner, is at `at`. */
+  const lastLiveAt = (at: number) => ({ lastLiveActivityAt: () => at, lastLiveFence: () => 1 })
 
   it('ends a watched exit at the exit', () => {
     expect(
       turnVerdictFromDeathEvidence(
-        { kind: 'exit-observed', detail: 'exit', observedAt: 500 },
+        released({ kind: 'exit-observed', detail: 'exit', observedAt: 500 }),
         lastLiveAt(300)
       )
     ).toEqual({ state: 'interrupted', completedAt: 500 })
@@ -99,13 +106,16 @@ describe('turn verdict from death evidence', () => {
     (kind) => {
       // Probed at 9000, long after the crash: the downtime is never counted as work.
       expect(
-        turnVerdictFromDeathEvidence({ kind, detail: 'gone', observedAt: 9_000 }, lastLiveAt(300))
+        turnVerdictFromDeathEvidence(
+          released({ kind, detail: 'gone', observedAt: 9_000 }),
+          lastLiveAt(300)
+        )
       ).toEqual({ state: 'interrupted', completedAt: 300 })
       // A live row stamped after the probe cannot outlast it, and no live row leaves only the probe.
       for (const lastLive of [9_500, 0]) {
         expect(
           turnVerdictFromDeathEvidence(
-            { kind, detail: 'gone', observedAt: 9_000 },
+            released({ kind, detail: 'gone', observedAt: 9_000 }),
             lastLiveAt(lastLive)
           )
         ).toEqual({ state: 'interrupted', completedAt: 9_000 })
@@ -114,12 +124,8 @@ describe('turn verdict from death evidence', () => {
   )
 
   it('ends a probe-proven death at the later of the last renewal and the last live row', () => {
-    const proof = (lastProvenAliveAt: number) => ({
-      kind: 'pid-absent' as const,
-      detail: 'gone',
-      observedAt: 9_000,
-      lastProvenAliveAt
-    })
+    const proof = (lastProvenAliveAt: number) =>
+      released({ kind: 'pid-absent', detail: 'gone', observedAt: 9_000, lastProvenAliveAt })
     // A silent tool run: the renewal saw the child working long after its last row.
     expect(turnVerdictFromDeathEvidence(proof(8_000), lastLiveAt(300))).toEqual({
       state: 'interrupted',
@@ -141,10 +147,32 @@ describe('turn verdict from death evidence', () => {
     })
   })
 
+  it('ignores a renewal recorded for a newer owner than the one that wrote the turn', () => {
+    // Fence 1 wrote the turn and was released to 2; a start reserved 3 and proved its child alive
+    // at 8000, long after the crash, and the release that recorded its death moved to 4.
+    const newer = released(
+      { kind: 'pid-absent', detail: 'gone', observedAt: 9_000, lastProvenAliveAt: 8_000 },
+      4
+    )
+    expect(turnVerdictFromDeathEvidence(newer, lastLiveAt(300))).toEqual({
+      state: 'interrupted',
+      completedAt: 300
+    })
+    // A fence floor from a store recovered from its backup is still one move.
+    expect(
+      turnVerdictFromDeathEvidence({ ...newer, minimumNextFence: 4 }, lastLiveAt(300))
+    ).toEqual({ state: 'interrupted', completedAt: 8_000 })
+  })
+
   it('ends a watched exit at the exit even when a renewal is recorded', () => {
     expect(
       turnVerdictFromDeathEvidence(
-        { kind: 'exit-observed', detail: 'exit', observedAt: 500, lastProvenAliveAt: 400 },
+        released({
+          kind: 'exit-observed',
+          detail: 'exit',
+          observedAt: 500,
+          lastProvenAliveAt: 400
+        }),
         lastLiveAt(300)
       )
     ).toEqual({ state: 'interrupted', completedAt: 500 })
@@ -152,6 +180,9 @@ describe('turn verdict from death evidence', () => {
 
   it('leaves a release nothing proved unverifiable', () => {
     expect(turnVerdictFromDeathEvidence(null, lastLiveAt(300))).toEqual({ state: 'unverifiable' })
+    expect(turnVerdictFromDeathEvidence(released(null), lastLiveAt(300))).toEqual({
+      state: 'unverifiable'
+    })
     expect(turnVerdictFromDeathEvidence(undefined, lastLiveAt(300))).toEqual({
       state: 'unverifiable'
     })
@@ -272,7 +303,7 @@ describe('stale session state on a cold acquire', () => {
         sessionId: 'session-1',
         fence: 14,
         acquisitionGeneration: 'generation-2',
-        deathEvidence: null
+        deathRecord: null
       })
     ).resolves.toBe(1)
 
@@ -301,7 +332,7 @@ describe('stale session state on a cold acquire', () => {
         sessionId: 'session-1',
         fence: 14,
         acquisitionGeneration: 'generation-2',
-        deathEvidence: null
+        deathRecord: null
       })
     ).resolves.toBe(1)
 
@@ -364,7 +395,7 @@ describe('stale session state on a cold acquire', () => {
         sessionId: 'session-1',
         fence: 2,
         acquisitionGeneration: 'generation-2',
-        deathEvidence: null
+        deathRecord: null
       })
 
       expect(
@@ -432,11 +463,11 @@ describe('stale session state on a cold acquire', () => {
         sessionId: 'session-1',
         fence: 2,
         acquisitionGeneration: 'generation-2',
-        deathEvidence: {
+        deathRecord: released({
           kind: 'pid-absent',
           detail: 'recorded pid absent on host',
           observedAt: 9_000
-        }
+        })
       })
 
       const items = journal.snapshot().items
@@ -491,7 +522,7 @@ describe('stale session state on a cold acquire', () => {
         sessionId: 'session-1',
         fence: 2,
         acquisitionGeneration: 'generation-2',
-        deathEvidence: { kind: 'pid-absent', detail: 'gone', observedAt: 8_500 }
+        deathRecord: released({ kind: 'pid-absent', detail: 'gone', observedAt: 8_500 })
       })
 
       expect(
@@ -516,7 +547,7 @@ describe('stale session state on a cold acquire', () => {
         sessionId: 'session-1',
         fence: 14,
         acquisitionGeneration: null,
-        deathEvidence: null
+        deathRecord: null
       })
     ).resolves.toBe(0)
     expect(idle.appendLifecycleBatch).not.toHaveBeenCalled()
@@ -527,7 +558,7 @@ describe('stale session state on a cold acquire', () => {
       sessionId: 'session-1',
       fence: 14,
       acquisitionGeneration: null,
-      deathEvidence: null
+      deathRecord: null
     })
     expect(running.appendLifecycleBatch).toHaveBeenCalledWith(
       expect.objectContaining({ settlementId: 'stale-session:session-1:14:seq-8' })
