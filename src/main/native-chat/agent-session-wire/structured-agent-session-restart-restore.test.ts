@@ -55,8 +55,7 @@ describe('restart journal restoration', () => {
       resolveRecovery: async () => undefined,
       serialize: async (_sessionId, task) => task(),
       hasSession: () => false,
-      onReadable: () => undefined,
-      settleStaleState: async () => undefined
+      onReadable: () => undefined
     })
 
     await vi.waitFor(() => expect(active).toBe(4))
@@ -92,7 +91,11 @@ describe('restart journal restoration', () => {
       session: { journal: {}, params, child: null },
       reset: null
     }
-    restoreRead.mockResolvedValue(restored)
+    // The open is what settles: it runs after recovery resolution and before the publish.
+    restoreRead.mockImplementation(async () => {
+      calls.push('open')
+      return restored
+    })
 
     await restoreOneStructuredAgentSessionRead(
       {
@@ -103,21 +106,17 @@ describe('restart journal restoration', () => {
         },
         serialize: async (_sessionId, task) => task(),
         hasSession: () => false,
-        onReadable: () => {
-          calls.push('onReadable')
-        },
-        settleStaleState: async (_sessionId, settled) => {
-          calls.push(settled === restored ? 'settleStaleState:restored' : 'settleStaleState')
+        onReadable: (_sessionId, readable) => {
+          calls.push(readable === restored ? 'onReadable:restored' : 'onReadable')
         }
       },
       'session-1'
     )
 
-    expect(calls).toEqual(['resolveRecovery', 'settleStaleState:restored', 'onReadable'])
+    expect(calls).toEqual(['resolveRecovery', 'open', 'onReadable:restored'])
   })
 
   it('does not settle again when a second restore finds the session already open', async () => {
-    const settleStaleState = vi.fn(async () => undefined)
     restoreRead.mockResolvedValue({
       session: { journal: {}, params: {}, child: null },
       reset: null
@@ -130,12 +129,12 @@ describe('restart journal restoration', () => {
         resolveRecovery: async () => undefined,
         serialize: async (_sessionId, task) => task(),
         hasSession: () => true,
-        onReadable: () => undefined,
-        settleStaleState
+        onReadable: () => undefined
       },
       'session-1'
     )
 
-    expect(settleStaleState).not.toHaveBeenCalled()
+    // The open is where the settlement runs, and a session already open is not opened again.
+    expect(restoreRead).not.toHaveBeenCalled()
   })
 })

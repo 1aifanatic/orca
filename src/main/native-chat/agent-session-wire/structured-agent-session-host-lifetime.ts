@@ -25,6 +25,7 @@ import type {
 } from './structured-agent-session-host-types'
 import {
   endProviderChild,
+  failedProviderChildStart,
   structuredAgentSessionConversationFence
 } from './structured-agent-session-provider-child'
 import { releaseStoredStructuredAgentSessionOwner } from './structured-agent-session-lease-release'
@@ -306,6 +307,10 @@ export function createStructuredAgentSessionHolds(
     },
     evict: close,
     hasProviderChild: (sessionId) => hasProviderChild(context, sessionId),
+    lastStartFailed: (sessionId) => {
+      const session = context.sessions.get(sessionId)
+      return session !== undefined && failedProviderChildStart(session) !== null
+    },
     // A message accepted and not yet handed over is owed to this child, and so is one pending while
     // the child still starts. Any other pending send may wait on an echo that never comes, so
     // eviction retires it. Subagents, commands and monitors outlive the lead's turn inside the
