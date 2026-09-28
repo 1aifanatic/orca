@@ -356,11 +356,15 @@ describe('headless serve update install handoff', () => {
         expect(disconnectPairedClients).not.toHaveBeenCalled()
         return
       }
-      if (!synchronousReady) {
-        expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled()
+      if (process.platform === 'darwin') {
+        if (!synchronousReady) {
+          expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled()
+        }
+        expect(nativeUpdaterMock.checkForUpdates).toHaveBeenCalledOnce()
+        nativeUpdaterMock.emit('update-downloaded')
+      } else {
+        expect(nativeUpdaterMock.checkForUpdates).not.toHaveBeenCalled()
       }
-      expect(nativeUpdaterMock.checkForUpdates).toHaveBeenCalledOnce()
-      nativeUpdaterMock.emit('update-downloaded')
       expect(armWatchdog).toHaveBeenCalledOnce()
       expect(requestServeUpdateHandoffMock).toHaveBeenCalledWith('1.0.61')
       expect(autoUpdaterMock.autoInstallOnAppQuit).toBe(false)
@@ -372,14 +376,15 @@ describe('headless serve update install handoff', () => {
       expect(lifecycle).toEqual([
         'pre-quit-checkpoint',
         'handoff-persisted',
-        'native-staging-started',
+        ...(process.platform === 'darwin' ? ['native-staging-started'] : []),
         'native-quit-and-install',
-        'paired-clients-disconnected'
+        'paired-clients-disconnected',
+        ...(process.platform !== 'darwin' ? ['in-process-pty-cleanup'] : [])
       ])
     }
   )
 
-  it.each(['error', 'update-not-available'])(
+  it.runIf(process.platform === 'darwin').each(['error', 'update-not-available'])(
     'recovers a supervised install after native %s',
     async (nativeEvent) => {
       autoUpdaterMock.checkForUpdates.mockImplementation(() => {
@@ -430,7 +435,7 @@ describe('headless serve update install handoff', () => {
     }
   )
 
-  it.each([false, true])(
+  it.runIf(process.platform === 'darwin').each([false, true])(
     'retains handoff through staging timeout and committed quit failure=%s',
     async (quitThrows) => {
       autoUpdaterMock.checkForUpdates.mockImplementation(() => {
