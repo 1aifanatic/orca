@@ -53,21 +53,13 @@ export function useStructuredAgentSession(args: {
     target,
     transportEnabled = true
   } = args
-  const {
-    state,
-    loadingOlder,
-    olderHistoryGeneration,
-    loadOlder,
-    mutate,
-    writeError,
-    reportWriteError,
-    providerVisible
-  } = useStructuredAgentSessionTransport({
-    sessionId,
-    target,
-    isVisible,
-    enabled: transportEnabled
-  })
+  const { state, loadingOlder, olderHistoryGeneration, loadOlder, mutate, write, providerVisible } =
+    useStructuredAgentSessionTransport({
+      sessionId,
+      target,
+      isVisible,
+      enabled: transportEnabled
+    })
   const commandPending = useRef(false)
   const transportState = useStructuredAgentSessionTransportState(state, transportEnabled)
   const {
@@ -89,7 +81,6 @@ export function useStructuredAgentSession(args: {
     turnId: transportState.turnId,
     unloadedTurnRevisions: state.unloadedTurnRevisions,
     mutate,
-    reportWriteError,
     ...(launch ? { launch } : {})
   })
   const outboxController = useStructuredAgentSessionOutbox({
@@ -136,7 +127,7 @@ export function useStructuredAgentSession(args: {
           outbox.length
         ),
         send: (command) =>
-          mutate<AgentSessionConversationCommandResult>(
+          write<AgentSessionConversationCommandResult>(
             'agentSession.conversationCommand',
             'agentSession.conversationCommand',
             { command }
@@ -145,9 +136,10 @@ export function useStructuredAgentSession(args: {
     journalItems: transportState.journalItems,
     messages,
     status: transportEnabled ? state.status : 'ready',
-    error: transportEnabled
-      ? (state.error ?? writeError ?? outboxController.error)
-      : outboxController.error,
+    /** The outbox's own line; a failed read is worded from `readRefusal`, never its text. */
+    error: outboxController.error,
+    /** The refusal the failed read met, while `status` is `error`. */
+    readRefusal: transportEnabled ? state.readRefusal : undefined,
     hasOlder: transportEnabled && state.hasOlder,
     railOutline: transportEnabled ? railOutline : null,
     loadingOlder: transportEnabled && loadingOlder,
@@ -155,6 +147,8 @@ export function useStructuredAgentSession(args: {
     loadOlder,
     prompts,
     outbox,
+    /** The journal's rows for sent messages, which carry a rejected message's whole fact. */
+    submissions: transportState.submissions,
     blockedClientMessageId: outboxController.blockedClientMessageId,
     send: (...input: Parameters<typeof outboxController.send>) =>
       !commandPending.current && outboxController.send(...input),
