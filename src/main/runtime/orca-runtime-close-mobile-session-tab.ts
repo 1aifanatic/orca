@@ -20,6 +20,7 @@ import { getRuntimeBrowserPageRegistry } from './runtime-browser-page-registry'
 import type { RuntimeCommandSurfaceHost } from './orca-runtime-core'
 import { SESSION_TAB_NOT_FOUND_ERROR } from '../../shared/session-tab-close'
 import { rendererPublicationThrottle } from '../window/renderer-publication-throttle'
+import { structuredAgentSessionTabCloseCause } from './structured-agent-session-tab-close-cause'
 
 export class OrcaRuntimeWithCloseMobileSessionTab extends OrcaRuntimeWithRefuseUnattributedMobileSessionTabClose {
   async closeMobileSessionTab(
@@ -299,10 +300,9 @@ export class OrcaRuntimeWithCloseMobileSessionTab extends OrcaRuntimeWithRefuseU
           }
         }
       }
-      // A reasonless close is an older client's user close; a lifecycle echo is not the user's.
       await this.closeStructuredAgentSessionTab(
         tab,
-        options.reason === undefined || options.reason === 'user' ? 'user-close' : 'evict'
+        structuredAgentSessionTabCloseCause(options.reason)
       )
     } else {
       if (!this.notifier?.closeSessionTab) {
