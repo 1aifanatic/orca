@@ -26,7 +26,7 @@ import { useStructuredAgentSessionHostExecutionPhase } from './StructuredAgentSe
 import { structuredAgentLabel } from '@/lib/structured-agent-session-launch-label'
 import { NativeChatThreadGoalBanner } from './NativeChatThreadGoalBanner'
 import { structuredAgentSessionReadFailureNotice } from './structured-agent-session-read-failure-notice'
-import { useStructuredAgentSessionStartFailureFacts } from './use-structured-agent-session-start-failure-facts'
+import { useStructuredAgentSessionStartFailureKeys } from './use-structured-agent-session-start-failure-keys'
 import { structuredAgentSessionDeliveryNotices } from './structured-agent-session-delivery-notices'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 
@@ -117,7 +117,7 @@ export function NativeChatStructuredSession(
   // Only a rejected message reads the journal's rows, so a new batch of them re-renders no row else.
   const hasRejected = controller.outbox.some((entry) => entry.state === 'rejected')
   const rejectionRows = hasRejected ? controller.submissions : NO_SUBMISSIONS
-  const startFailures = useStructuredAgentSessionStartFailureFacts(
+  const startFailureKeys = useStructuredAgentSessionStartFailureKeys(
     controller.journalItems,
     hasRejected
   )
@@ -129,7 +129,7 @@ export function NativeChatStructuredSession(
         agentLabel,
         retryDelivery,
         rejectionRows,
-        startFailures
+        startFailureKeys
       ),
     [
       controller.outbox,
@@ -137,7 +137,7 @@ export function NativeChatStructuredSession(
       agentLabel,
       retryDelivery,
       rejectionRows,
-      startFailures
+      startFailureKeys
     ]
   )
   const viewState = selectNativeChatViewState(session, { readRetries: true })

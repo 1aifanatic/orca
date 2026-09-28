@@ -11,7 +11,11 @@ export function structuredAgentSessionStartFailureRowIdentity(
   return { provider: 'orca', clientMessageId: `${START_FAILURE_ROW}${startKey}` }
 }
 
-export function isStructuredAgentSessionStartFailureRow(itemId: string): boolean {
+/** The start a start-failure row is for; null for any other row. */
+export function structuredAgentSessionStartFailureRowStartKey(itemId: string): string | null {
   const identity = parseAgentJournalItemKey(itemId)
-  return identity?.provider === 'orca' && identity.clientMessageId.startsWith(START_FAILURE_ROW)
+  if (identity?.provider !== 'orca' || !identity.clientMessageId.startsWith(START_FAILURE_ROW)) {
+    return null
+  }
+  return identity.clientMessageId.slice(START_FAILURE_ROW.length) || null
 }

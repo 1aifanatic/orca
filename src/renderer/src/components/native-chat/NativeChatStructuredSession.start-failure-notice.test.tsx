@@ -37,13 +37,14 @@ afterEach(() => {
 })
 
 const SESSION_ID = 'start-failure-session'
-const START_FAILED: AgentSessionFailureFact = { kind: 'providerStartFailed' }
+const START_KEY = 'generation-1'
+const START_FAILED: AgentSessionFailureFact = { kind: 'providerStartFailed', startKey: START_KEY }
 const START_FAILED_REASON =
   'Claude stopped before it finished starting. Send your message to try again.'
 
 function startFailureRow(fact: AgentSessionFailureFact): AgentJournalRenderItem {
   return {
-    itemId: agentJournalItemKey(structuredAgentSessionStartFailureRowIdentity('generation-1')),
+    itemId: agentJournalItemKey(structuredAgentSessionStartFailureRowIdentity(START_KEY)),
     revision: 1,
     sequence: 1,
     observedAt: 1,
@@ -151,6 +152,17 @@ it('keeps the full notice on a message rejected for a reason no start-failure ro
     within(await notice('other')).getByText(
       'The provider did not accept this message: Image type .bmp.'
     )
+  ).toBeTruthy()
+})
+
+// A host from before starts were named writes the same failure with no start on it.
+it('keeps the full notice on a rejection that names no start, beside an equal start row', async () => {
+  mocks.journalItems = [startFailureRow(START_FAILED)]
+
+  renderPane([rejected('older', START_FAILED_REASON, { kind: 'providerStartFailed' })])
+
+  expect(
+    within(await notice('older')).getByText('Claude stopped before it finished starting.')
   ).toBeTruthy()
 })
 

@@ -16,7 +16,7 @@ import {
 import { structuredAgentSessionStartFailureRowIdentity } from '../../../../shared/structured-agent-session-start-failure-row-key'
 import {
   structuredAgentSessionDeliveryNotices,
-  structuredAgentSessionStartFailureFacts
+  structuredAgentSessionStartFailureKeys
 } from './structured-agent-session-delivery-notices'
 
 function entry(
@@ -39,7 +39,7 @@ function texts(
   outbox: StructuredAgentSessionOutboxEntry[],
   blocked: string | null = null,
   submissions: readonly AgentJournalSubmission[] = [],
-  startFailures: readonly AgentSessionFailureFact[] = []
+  startFailureKeys: readonly string[] = []
 ): Record<string, string> {
   const notices = structuredAgentSessionDeliveryNotices(
     outbox,
@@ -47,7 +47,7 @@ function texts(
     'Claude',
     () => {},
     submissions,
-    startFailures
+    startFailureKeys
   )
   return Object.fromEntries([...notices].map(([id, notice]) => [id, notice.text]))
 }
@@ -324,12 +324,14 @@ describe('the notice on each message that did not go through', () => {
     expect(texts([entry('queued'), entry('sending', { state: 'dispatching' })])).toEqual({})
   })
 
-  // Matched on the typed fact of a row found by its identity, never on either sentence.
+  // Matched on the start the rejection names and a loaded row keyed by it, never on either sentence
+  // or on the failure the two state.
   describe('a message rejected by a start whose row already says why', () => {
     const startFailed: AgentSessionFailureFact = {
       kind: 'startFailed',
       refusal: { code: 'agent_session_identity_required', details: { reason: 'recordMissing' } }
     }
+    const byStart = (startKey: string): AgentSessionFailureFact => ({ ...startFailed, startKey })
     const rejected = (id: string, fact: AgentSessionFailureFact) =>
       entry(id, {
         state: 'rejected',
@@ -361,15 +363,17 @@ describe('the notice on each message that did not go through', () => {
         ...agentSessionFailureWords(fact, { agentName: 'Claude', surface: 'row' })
       }
     })
-    const startRowKey = agentJournalItemKey(structuredAgentSessionStartFailureRowIdentity('gen'))
+    const startRowKey = (startKey: string) =>
+      agentJournalItemKey(structuredAgentSessionStartFailureRowIdentity(startKey))
+    const shown = "Claude couldn't start. Start a new chat to continue."
 
     it('reads only the start-failure rows', () => {
       expect(
-        structuredAgentSessionStartFailureFacts([
-          statusRow(startRowKey, startFailed),
+        structuredAgentSessionStartFailureKeys([
+          statusRow(startRowKey('gen'), byStart('gen')),
           statusRow(agentJournalSubmissionKey('exit-row'), { kind: 'providerExited' })
         ])
-      ).toEqual([startFailed])
+      ).toEqual(['gen'])
     })
 
     it('says only that each was not sent, and words any other rejection in full', () => {
@@ -377,7 +381,9 @@ describe('the notice on each message that did not go through', () => {
         kind: 'startFailed',
         refusal: { code: 'agent_session_conflict', details: { reason: 'claimConflicted' } }
       }
-      const facts = structuredAgentSessionStartFailureFacts([statusRow(startRowKey, startFailed)])
+      const keys = structuredAgentSessionStartFailureKeys([
+        statusRow(startRowKey('gen'), byStart('gen'))
+      ])
       expect(
         texts(
           [
@@ -387,11 +393,11 @@ describe('the notice on each message that did not go through', () => {
           ],
           null,
           [
-            recorded('first', startFailed),
-            recorded('second', startFailed),
+            recorded('first', byStart('gen')),
+            recorded('second', byStart('gen')),
             recorded('other', otherRefusal)
           ],
-          facts
+          keys
         )
       ).toEqual({
         [agentJournalSubmissionKey('first')]: 'Your message was not sent.',
@@ -401,13 +407,28 @@ describe('the notice on each message that did not go through', () => {
       })
     })
 
-    it('keeps the full notice when the rejection is not loaded, or no start row states it', () => {
-      const shown = "Claude couldn't start. Start a new chat to continue."
-      expect(texts([rejected('first', startFailed)], null, [], [startFailed])).toEqual({
+    // A rejection no start named — from a host before starts were named, or another writer — may
+    // state the same failure as a loaded start's row; the row does not explain it.
+    it('keeps the full notice on an equal failure that names no start, or another start', () => {
+      expect(
+        texts(
+          [rejected('unnamed', startFailed), rejected('elsewhere', startFailed)],
+          null,
+          [recorded('unnamed', startFailed), recorded('elsewhere', byStart('earlier'))],
+          ['gen']
+        )
+      ).toEqual({
+        [agentJournalSubmissionKey('unnamed')]: shown,
+        [agentJournalSubmissionKey('elsewhere')]: shown
+      })
+    })
+
+    it('keeps the full notice when the rejection is not loaded, or its start row is not', () => {
+      expect(texts([rejected('first', startFailed)], null, [], ['gen'])).toEqual({
         [agentJournalSubmissionKey('first')]: 'Written by the host.'
       })
       expect(
-        texts([rejected('first', startFailed)], null, [recorded('first', startFailed)], [])
+        texts([rejected('first', startFailed)], null, [recorded('first', byStart('gen'))], [])
       ).toEqual({ [agentJournalSubmissionKey('first')]: shown })
     })
   })
