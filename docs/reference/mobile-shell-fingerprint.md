@@ -20,6 +20,10 @@ source rule would miss them.
   The hash covers the bundle, `metadata.json` and the content-addressed assets. Source maps and
   `assetmap.json`, which carries absolute paths, are excluded.
 
+The record does not depend on where the tree is checked out. Computing one commit in two worktrees
+at different absolute paths gave byte-identical records. Expo Router's route-context module embeds
+absolute paths in its source, so module digests strip the repository root first.
+
 The OTA page bundle built by `config/scripts/build-mobile-web-app-bundle.mjs` is not part of the
 shell. The desktop delivers it.
 
@@ -32,10 +36,11 @@ turns two records into a verdict.
   `Mobile shell: unchanged — OTA delivers this` or `Mobile shell: changed` with one line per part.
 - **Push to main.** The base is the newest `mobile-android-v*` tag by version. The Android release
   workflow creates that tag when it publishes an APK, and it lives on a side branch, so it is found
-  by name, not ancestry. The summary reads `Mobile release needed since mobile-android-vX.Y.Z:
-yes/no`. iOS releases create no tag, so there is no iOS anchor.
-- **Unknown.** A failed install or export at either end, or records from different script
-  versions, report `verdict unknown` rather than a guess.
+  by name, not ancestry. The summary reads `Mobile release needed since <tag>: yes` or `no`. iOS
+  releases create no tag, so the summary adds `No iOS release anchor` and compares the iOS parts
+  with the Android release commit.
+- **Unknown.** A failed install, export or fingerprint at either end leaves its record missing. A
+  missing, unreadable or malformed record reports `verdict unknown` rather than a guess.
 
 The base gets its own frozen install, so a dependency bump is fingerprinted with the right
 `node_modules`. The check never fails the run.
@@ -63,17 +68,24 @@ The verdict is exact about the artifacts, so a "changed" can still need no relea
 - **Bundler and toolchain bumps.** A Metro, Babel or Hermes-adjacent upgrade rewrites the bundle
   with no source change. These show as package lines or `no source module differs`.
 - **Whole-config hashing.** The app config is hashed as one input, so an Android-only field such as
-  a permission also marks `native project (ios)` as changed.
+  a permission also marks `native (ios)` as changed.
+- **Version bumps.** The app version and build numbers are part of the app config, so a version
+  bump moves the native hash on its own.
+- **`.gitignore` edits.** `@expo/fingerprint` hashes `mobile/.gitignore`, because it decides which
+  files count, so any edit to it moves the native hash.
 
 ## The label
 
 Same-repository pull requests whose shell changed get `needs-mobile-release`. The label is removed
-when a later push makes the shell unchanged. It is left alone on forks and on unknown verdicts.
+when a later push makes the shell unchanged. It is left alone on forks and on unknown verdicts. The
+label must already exist in the repository; it is created once by hand, not by the job. When a
+label API call fails, the step prints GitHub's response and the job still passes.
 
 ## When it runs
 
-The workflow runs for changes under `mobile/` and `src/shared/`, the root `pnpm-lock.yaml` and
-`patches/`, and its own scripts and workflow. Covering all of `src/shared/` closes the gap
-`mobile.yml` has, whose paths list only a few shared files although the shell bundles import many.
-It skips `mobile/rpc-foundation/` and test files: no module in any exported shell bundle comes from
-either.
+The workflow runs for changes under `mobile/` and `src/shared/` and to its own workflow file.
+Covering all of `src/shared/` closes the gap `mobile.yml` has, whose paths list only a few shared
+files although the shell bundles import many. It skips `mobile/rpc-foundation/` and test files: no
+module in any exported shell bundle comes from either. The root lockfile and `config/patches/` are
+left out because mobile is its own pnpm project and no bundle module resolves from the root
+`node_modules`.

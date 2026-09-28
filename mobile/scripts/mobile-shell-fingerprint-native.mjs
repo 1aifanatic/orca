@@ -35,6 +35,8 @@ export function computeNativeFingerprint(projectDir, platform) {
     [cli, 'fingerprint:generate', '--platform', platform, '--source-skips', SOURCE_SKIPS],
     { cwd: projectDir, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 2] }
   )
-  const sources = JSON.parse(stdout).sources.map(nativeSourceEntry)
+  const sources = JSON.parse(stdout)
+    .sources.map(nativeSourceEntry)
+    .filter((entry) => entry.hash !== null)
   return { hash: nativeSourcesDigest(sources), sources }
 }

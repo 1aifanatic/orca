@@ -176,24 +176,40 @@ describe('bundle module explainer', () => {
   })
 
   it('digests module contents and folds two installed versions into one key', () => {
-    const modules = moduleDigestsFromSourceMap({
-      sources: [
-        '/src/a.ts',
-        '/node_modules/.pnpm/pkg@1/node_modules/pkg/i.js',
-        '/node_modules/.pnpm/pkg@2/node_modules/pkg/i.js'
-      ],
-      sourcesContent: ['a', 'one', 'two']
-    })
-    const swapped = moduleDigestsFromSourceMap({
-      sources: [
-        '/node_modules/.pnpm/pkg@2/node_modules/pkg/i.js',
-        '/node_modules/.pnpm/pkg@1/node_modules/pkg/i.js',
-        '/src/a.ts'
-      ],
-      sourcesContent: ['two', 'one', 'a']
-    })
+    const modules = moduleDigestsFromSourceMap(
+      {
+        sources: [
+          '/src/a.ts',
+          '/node_modules/.pnpm/pkg@1/node_modules/pkg/i.js',
+          '/node_modules/.pnpm/pkg@2/node_modules/pkg/i.js'
+        ],
+        sourcesContent: ['a', 'one', 'two']
+      },
+      '/repo/mobile'
+    )
+    const swapped = moduleDigestsFromSourceMap(
+      {
+        sources: [
+          '/node_modules/.pnpm/pkg@2/node_modules/pkg/i.js',
+          '/node_modules/.pnpm/pkg@1/node_modules/pkg/i.js',
+          '/src/a.ts'
+        ],
+        sourcesContent: ['two', 'one', 'a']
+      },
+      '/repo/mobile'
+    )
     expect(Object.keys(modules)).toEqual(['mobile/node_modules/pkg/i.js', 'mobile/src/a.ts'])
     expect(swapped).toEqual(modules)
+  })
+
+  it('ignores the checkout path embedded in generated module sources', () => {
+    const routeContext = (root: string) => ({
+      sources: ['/app?ctx=e6a1'],
+      sourcesContent: [`get() { return require("${root}/mobile/app/_layout.tsx") }`]
+    })
+    expect(moduleDigestsFromSourceMap(routeContext('/work/orca'), '/work/orca/mobile')).toEqual(
+      moduleDigestsFromSourceMap(routeContext('/runner/tmp/base'), '/runner/tmp/base/mobile')
+    )
   })
 
   it('collapses dependency files per package', () => {
@@ -271,6 +287,24 @@ describe('compare command', () => {
       const json = runCompare(files, ['--json'])
       expect(json.status).toBe(0)
       expect(JSON.parse(json.stdout).changed).toBeNull()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('answers unknown, exit 0, for a parseable record without native or shellJs', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'shell-fingerprint-test-'))
+    try {
+      const base = join(dir, 'base.json')
+      const head = join(dir, 'head.json')
+      writeFileSync(base, JSON.stringify({ format: 1, native: record().native }))
+      writeFileSync(head, JSON.stringify(record()))
+      const markdown = runCompare([base, head])
+      expect(markdown.status).toBe(0)
+      expect(markdown.stdout).toBe(
+        '### Mobile shell: verdict unknown — a fingerprint record is malformed\n'
+      )
+      expect(JSON.parse(runCompare([head, base], ['--json']).stdout).changed).toBeNull()
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

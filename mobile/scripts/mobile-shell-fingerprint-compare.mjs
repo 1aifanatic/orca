@@ -18,7 +18,6 @@ function sourcesById(sources) {
 const NATIVE_INPUT_NAMES = {
   expoConfig: 'app config',
   'package:react-native': 'react-native version',
-  'packageJson:scripts': 'package.json scripts',
   patches: 'patches/'
 }
 
@@ -44,18 +43,30 @@ export function nativeInputName(id) {
   return id.startsWith('plugins/') ? `config plugin ${id}` : `file ${id}`
 }
 
+function unknownVerdict(reason) {
+  return { changed: null, reason, parts: [], files: null }
+}
+
+function isShellRecord(record) {
+  const hashed = (entry, field) =>
+    typeof entry?.hash === 'string' && typeof entry[field] === 'object'
+  return PLATFORMS.every(
+    (platform) =>
+      hashed(record.native?.[platform], 'sources') &&
+      VARIANTS.every((variant) => hashed(record.shellJs?.[variant]?.[platform], 'modules'))
+  )
+}
+
 /** Pure verdict over two `compute` records; `changed` is null when they cannot be compared. */
 export function compareShellFingerprints(base, head) {
   if (!base || !head) {
-    return {
-      changed: null,
-      reason: 'a fingerprint record is missing or unreadable',
-      parts: [],
-      files: null
-    }
+    return unknownVerdict('a fingerprint record is missing or unreadable')
   }
   if (base.format !== FINGERPRINT_FORMAT || head.format !== FINGERPRINT_FORMAT) {
-    return { changed: null, reason: 'fingerprint format differs', parts: [], files: null }
+    return unknownVerdict('fingerprint format differs')
+  }
+  if (!isShellRecord(base) || !isShellRecord(head)) {
+    return unknownVerdict('a fingerprint record is malformed')
   }
   const parts = []
   for (const platform of PLATFORMS) {

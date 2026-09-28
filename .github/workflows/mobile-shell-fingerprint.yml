@@ -3,8 +3,9 @@ name: Mobile shell fingerprint
 # Informative, never failing: does this change need a mobile store release, or does OTA deliver it?
 # See docs/reference/mobile-shell-fingerprint.md.
 #
-# Why the exclusions: every module in the four exported shell bundles comes from mobile/ or
-# src/shared/, and none is a test file or anything under mobile/rpc-foundation/.
+# Why these paths: every module in the four exported shell bundles comes from mobile/ or
+# src/shared/, and none is a test file or anything under mobile/rpc-foundation/. Mobile is its own
+# pnpm project, so the root lockfile never reaches the shell.
 on:
   pull_request:
     types:
@@ -14,9 +15,6 @@ on:
     paths: &shell-paths
       - 'mobile/**'
       - 'src/shared/**'
-      - 'pnpm-lock.yaml'
-      - 'patches/**'
-      - 'mobile/scripts/mobile-shell-fingerprint*'
       - '.github/workflows/mobile-shell-fingerprint.yml'
       - '!mobile/rpc-foundation/**'
       - '!**/*.test.*'
@@ -130,8 +128,13 @@ jobs:
           PR_LABELS_URL: repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/labels
         run: |
           set -euo pipefail
+          # gh prints the API's error body on failure; keep it visible and let the step fail.
           if [ "$CHANGED" = true ]; then
             gh api -X POST "$PR_LABELS_URL" -f 'labels[]=needs-mobile-release' > /dev/null
-          elif ! gh api -X DELETE "$PR_LABELS_URL/needs-mobile-release" > /dev/null 2>&1; then
-            echo 'needs-mobile-release not removed: absent or not permitted'
+          elif ! response="$(gh api -X DELETE "$PR_LABELS_URL/needs-mobile-release" 2>&1)"; then
+            if [[ "$response" != *'Label does not exist'* ]]; then
+              echo "$response"
+              exit 1
+            fi
+            echo 'needs-mobile-release was not set'
           fi

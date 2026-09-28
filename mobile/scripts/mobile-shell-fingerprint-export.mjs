@@ -51,10 +51,13 @@ export function repoPathOfBundleSource(source) {
     .replace(/^mobile\/node_modules\/\.pnpm\/[^/]+\/node_modules\//, 'mobile/node_modules/')
 }
 
-export function moduleDigestsFromSourceMap(sourceMap) {
+/** Expo Router's route-context module requires absolute paths; strip the checkout's repo root. */
+export function moduleDigestsFromSourceMap(sourceMap, projectDir) {
+  const repoRoot = `${path.dirname(projectDir)}${path.sep}`
   const digestsByPath = new Map()
   sourceMap.sources.forEach((source, index) => {
-    const content = sourceMap.sourcesContent?.[index]
+    const raw = sourceMap.sourcesContent?.[index]
+    const content = typeof raw === 'string' ? raw.split(repoRoot).join('<repo>/') : raw
     const key = repoPathOfBundleSource(source)
     const digests = digestsByPath.get(key) ?? []
     digests.push(typeof content === 'string' ? sha256(content) : 'no-content')
@@ -90,6 +93,9 @@ export function exportShellBundle(projectDir, variant, platform, outputDir) {
       `expo export ${variant}/${platform} exited with ${result.status ?? result.signal}`
     )
   }
-  const modules = Object.assign({}, ...readSourceMaps(outputDir).map(moduleDigestsFromSourceMap))
+  const modules = Object.assign(
+    {},
+    ...readSourceMaps(outputDir).map((map) => moduleDigestsFromSourceMap(map, projectDir))
+  )
   return { hash: hashExportOutput(outputDir), modules }
 }
