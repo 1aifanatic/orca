@@ -996,7 +996,6 @@ export function createRemoteRuntimePtyTransport(
     remotePtyId = toRemoteRuntimePtyId(hostHandle, currentRuntimeEnvironmentId)
     registerShutdownHandlers(remotePtyId)
     connected = true
-    notifyConnectionReady()
     desiredViewport = {
       cols: options.cols ?? 80,
       rows: options.rows ?? 24
@@ -1007,6 +1006,7 @@ export function createRemoteRuntimePtyTransport(
 
     try {
       await subscribeToHandle()
+      notifyConnectionReady()
     } catch (error) {
       if (!recoverAfterSubscribeFailure(error, hostHandle, remotePtyId)) {
         throw error
@@ -1284,7 +1284,6 @@ export function createRemoteRuntimePtyTransport(
     unregisterShutdownHandlers(previousPtyId)
     registerShutdownHandlers(remotePtyId)
     connected = true
-    notifyConnectionReady()
     desiredViewport = {
       cols: options.cols ?? 80,
       rows: options.rows ?? 24
@@ -1295,6 +1294,7 @@ export function createRemoteRuntimePtyTransport(
     emitRecoveryState()
     try {
       await subscribeToHandle()
+      notifyConnectionReady()
     } catch (error) {
       if (!recoverAfterSubscribeFailure(error, handle, remotePtyId)) {
         throw error
@@ -1343,7 +1343,6 @@ export function createRemoteRuntimePtyTransport(
         unregisterShutdownHandlers(replacedPtyId)
         registerShutdownHandlers(remotePtyId)
         connected = true
-        notifyConnectionReady()
         if (
           replacedPtyId &&
           (replacedPtyId !== remotePtyId || previousIncarnationId !== authoritativePtyIncarnationId)
@@ -1359,6 +1358,7 @@ export function createRemoteRuntimePtyTransport(
           }
         }
         await subscribeToHandle()
+        notifyConnectionReady()
       })
       .catch((error) => {
         if (!destroyed && handle === expiredHandle) {
@@ -2383,7 +2383,6 @@ export function createRemoteRuntimePtyTransport(
         remotePtyId = toRemoteRuntimePtyId(handle, currentRuntimeEnvironmentId)
         registerShutdownHandlers(remotePtyId)
         connected = true
-        notifyConnectionReady()
         desiredViewport = {
           cols: options.cols ?? 80,
           rows: options.rows ?? 24
@@ -2395,6 +2394,7 @@ export function createRemoteRuntimePtyTransport(
 
         try {
           await subscribeToHandle()
+          notifyConnectionReady()
         } catch (error) {
           if (!recoverAfterSubscribeFailure(error, handle, remotePtyId)) {
             throw error
