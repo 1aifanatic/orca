@@ -196,9 +196,9 @@ describe('Stop against a host that stops the conversation', () => {
       })
     }
 
-    const ids = cancels().map(
-      (params) => (params as { envelope: { clientOperationId: string } }).envelope.clientOperationId
-    )
+    const ids: string[] = mocks.call.mock.calls
+      .filter(([, method]) => method === 'agentSession.cancel')
+      .map(([, , params]) => params.envelope.clientOperationId)
     // A press after transport doubt replays the same id; once the host answers that it cannot
     // know that id's outcome, the next press is a new Stop.
     expect(ids[1]).toBe(ids[0])
