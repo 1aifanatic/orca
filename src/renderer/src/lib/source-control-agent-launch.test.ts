@@ -85,7 +85,7 @@ function sentParams(call = 0): Record<string, unknown> {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks()
+  vi.resetAllMocks()
   mocks.getRuntimeEnvironmentIdForWorktree.mockReturnValue(null)
   mocks.isWebRuntimeSessionActive.mockReturnValue(false)
   mocks.ensureLocalRuntimeCapabilities.mockResolvedValue(HOST_CAPABILITIES)
