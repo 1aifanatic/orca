@@ -358,7 +358,7 @@ describe('a clear that never committed', () => {
     await clearCommits()
   })
 
-  /** A clear whose replacement started but whose commit never landed; answers that replacement. */
+  /** A clear whose replacement started but whose commit never landed. */
   async function clearThatDiesBeforeItsCommit(params = commandParams('clear')): Promise<string> {
     const commit = store.setConversationCommand.bind(store)
     let crashed = false

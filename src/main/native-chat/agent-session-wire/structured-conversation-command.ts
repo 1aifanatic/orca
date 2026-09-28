@@ -86,7 +86,7 @@ export function runStructuredConversationCommand(
           return prior?.phase === 'committed' ? prior : null
         },
         // Nothing durable is written before the commit, so a clear with no committed answer
-        // changed nothing and runs again; its replacement's id and start are the same each time.
+        // changed nothing and runs again under the same replacement id.
         rerunWhenReplayMissing: () => command === 'clear',
         run: async (ctx) => {
           await host.flushStreamedEvents(sessionId)
