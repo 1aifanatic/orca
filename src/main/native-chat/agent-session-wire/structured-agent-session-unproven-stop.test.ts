@@ -703,7 +703,7 @@ describe('bookkeeping that fails after the child ended', () => {
     // Nothing pins the handle now; the reopen settles the turn and the card the child left.
     await sweep()
     expect(host.hasSession(SESSION)).toBe(false)
-    expect((await item(OPEN_TURN))?.body).not.toMatchObject({ state: 'running' })
+    expect((await item(OPEN_TURN))?.body).toMatchObject({ state: 'interrupted' })
     expect((await item(OPEN_QUESTION))?.body).toMatchObject({ resolution: { state: 'cancelled' } })
     expect(hostActivity()).toEqual(before)
   })
