@@ -15,21 +15,31 @@ import {
   evaluateTuiIdle,
   leafTuiIdleEvidence,
   ptyTuiIdleEvidence,
+  type QuietForegroundLane,
   type TuiIdleEvidenceSource,
   type TuiIdleVerdict
 } from './tui-idle-evidence'
 
 /**
- * Why null counts as quiet: a record with no output timestamp has produced nothing the
- * RUNTIME OBSERVED since it was created. That is not the same as silence — the reachable
- * case is a daemon-hosted pane whose bytes never reach the runtime, which may still be
- * streaming. The trade is deliberate: "never settles" becomes "settles uncorroborated",
+ * Why null counts as quiet on an `open` lane: a record with no output timestamp has produced
+ * nothing the RUNTIME OBSERVED since it was created. That is not the same as silence — the
+ * reachable case is a daemon-hosted pane whose bytes never reach the runtime, which may still
+ * be streaming. The trade is deliberate: "never settles" becomes "settles uncorroborated",
  * the caller keeps its timeout, and delivery cannot reach this lane. Reading it as `0ms since output`
  * inverted that — `0 >= quiescenceMs` is false forever, so an adopted pane that never
  * emitted could not settle no matter how long the caller waited.
+ * Why not on `after-paint`: that pane runs a known agent, whose TUI must paint before it can
+ * take input, so no output yet means it is still booting.
  */
-function isQuietForQuiescence(lastOutputAt: number | null, quiescenceMs: number): boolean {
-  return lastOutputAt === null ? true : Date.now() - lastOutputAt >= quiescenceMs
+function isQuietForQuiescence(
+  lastOutputAt: number | null,
+  quiescenceMs: number,
+  lane: QuietForegroundLane
+): boolean {
+  if (lastOutputAt === null) {
+    return lane === 'open'
+  }
+  return Date.now() - lastOutputAt >= quiescenceMs
 }
 import type { TerminalWaiter } from './runtime-terminal-contracts'
 import type { RuntimeLeafRecord, RuntimePtyWorktreeRecord } from './runtime-terminal-state-records'
@@ -56,7 +66,7 @@ type IdlePollSample = {
   ptyId: string | null
   ready(): RuntimeTerminalWait
   blocked(reason: RuntimeTerminalWaitBlockedReason): RuntimeTerminalWait
-  isQuiet(): boolean
+  isQuiet(lane: QuietForegroundLane): boolean
 }
 
 const IDLE_ENTRY_FLAGS = { foregroundPollInFlight: false, screenReadInFlight: false }
@@ -120,7 +130,7 @@ export class RuntimeTerminalIdlePolls {
         ptyId: pty.ptyId,
         ready: () => buildPtyTerminalWaitResult(handle, 'tui-idle', pty),
         blocked: (reason) => buildPtyTerminalWaitBlockedResult(handle, 'tui-idle', pty, reason),
-        isQuiet: () => isQuietForQuiescence(pty.lastOutputAt, this.deps.quiescenceMs)
+        isQuiet: (lane) => isQuietForQuiescence(pty.lastOutputAt, this.deps.quiescenceMs, lane)
       }
     }
     // Why re-read: `syncWindowGraph` rebuilds `this.leaves` with fresh objects on every
@@ -136,7 +146,7 @@ export class RuntimeTerminalIdlePolls {
       ptyId: leaf.ptyId,
       ready: () => buildTerminalWaitResult(handle, 'tui-idle', live()),
       blocked: (reason) => buildTerminalWaitBlockedResult(handle, 'tui-idle', live(), reason),
-      isQuiet: () => isQuietForQuiescence(live().lastOutputAt, this.deps.quiescenceMs)
+      isQuiet: (lane) => isQuietForQuiescence(live().lastOutputAt, this.deps.quiescenceMs, lane)
     }
   }
 
@@ -177,7 +187,7 @@ export class RuntimeTerminalIdlePolls {
         this.settle(entry, sample.ready())
         return
       }
-      if (verdict.quietForeground && ptyId && !entry.foregroundPollInFlight) {
+      if (verdict.quietForeground !== 'closed' && ptyId && !entry.foregroundPollInFlight) {
         const foregroundRead = this.deps.getForegroundProcess(ptyId)
         if (!foregroundRead) {
           return
@@ -185,7 +195,7 @@ export class RuntimeTerminalIdlePolls {
         entry.foregroundPollInFlight = true
         startedForegroundPoll = true
         const foreground = await foregroundRead
-        if (foreground && !isShellProcess(foreground) && sample.isQuiet()) {
+        if (foreground && !isShellProcess(foreground) && sample.isQuiet(verdict.quietForeground)) {
           this.settle(entry, sample.ready())
         }
       }

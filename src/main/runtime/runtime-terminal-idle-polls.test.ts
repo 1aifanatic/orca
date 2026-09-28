@@ -4,6 +4,7 @@ import type { TerminalWaiter } from './runtime-terminal-contracts'
 import type { RuntimeLeafRecord, RuntimePtyWorktreeRecord } from './runtime-terminal-state-records'
 import type { RuntimeTerminalWait } from '../../shared/runtime-types'
 import type { TuiAgent } from '../../shared/tui-agent'
+import { TUI_AGENT_CONFIG } from '../../shared/tui-agent-config'
 
 const INTERVAL_MS = 2000
 
@@ -352,5 +353,68 @@ describe('RuntimeTerminalIdlePolls rendered-screen blocked prompts', () => {
     await vi.advanceTimersByTimeAsync(INTERVAL_MS)
     expect(reads).toEqual([])
     expect(resolved).toEqual([expect.objectContaining({ satisfied: true })])
+  })
+})
+
+describe('RuntimeTerminalIdlePolls quiet foreground for a launched agent', () => {
+  const QUIESCENCE_MS = 1500
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  function createPolls(agent: TuiAgent, resolved: string[]): RuntimeTerminalIdlePolls {
+    return new RuntimeTerminalIdlePolls({
+      intervalMs: INTERVAL_MS,
+      quiescenceMs: QUIESCENCE_MS,
+      getTabTitle: () => null,
+      getForegroundProcess: () => Promise.resolve(TUI_AGENT_CONFIG[agent].expectedProcess),
+      getAdoptedPtyIdleStatus: () => null,
+      getPaneAgent: () => agent,
+      getFirstPartyAgentStatus: () => null,
+      readScreenLines: () => null,
+      readVisibleScreen: () => null,
+      getLiveLeaf: (leaf) => leaf,
+      resolve: (waiter) => resolved.push(waiter.handle)
+    })
+  }
+
+  // Why: amp's title never classifies, so this lane is its only rest signal; closing it for
+  // every launched agent failed `worker start` at agent_readiness after 60s (STA-7440).
+  it('settles an agent with no other rest signal once it has painted and gone quiet', async () => {
+    const resolved: string[] = []
+    const polls = createPolls('amp', resolved)
+    const pty = makePty('pty-amp')
+    const leaf = makeLeaf('tab-amp')
+    polls.startPty(makeWaiter('pty'), pty)
+    polls.startLeaf(makeWaiter('leaf'), leaf)
+
+    // Booting: the agent owns the foreground but has painted nothing (#9976).
+    await vi.advanceTimersByTimeAsync(INTERVAL_MS * 5)
+    expect(resolved).toEqual([])
+
+    await vi.advanceTimersByTimeAsync(INTERVAL_MS / 2)
+    pty.lastOutputAt = Date.now()
+    leaf.lastOutputAt = Date.now()
+    // The next sweep lands inside the quiet window measured from that paint.
+    await vi.advanceTimersByTimeAsync(INTERVAL_MS / 2)
+    expect(resolved).toEqual([])
+
+    await vi.advanceTimersByTimeAsync(INTERVAL_MS)
+    expect(resolved).toEqual(['pty', 'leaf'])
+    expect(polls.activeTimerCount).toBe(0)
+  })
+
+  it('does not settle an agent that will announce rest itself on a quiet foreground', async () => {
+    const resolved: string[] = []
+    const polls = createPolls('claude', resolved)
+    polls.startPty(makeWaiter('pty'), makePty('pty-claude', { lastOutputAt: Date.now() }))
+
+    await vi.advanceTimersByTimeAsync(INTERVAL_MS * 5)
+    expect(resolved).toEqual([])
   })
 })
