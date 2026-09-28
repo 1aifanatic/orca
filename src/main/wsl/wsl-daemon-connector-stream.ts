@@ -10,7 +10,9 @@ export function openWslDaemonConnectorStream(
 ): Promise<Duplex> {
   signal.throwIfAborted()
   const child = spawnProcess(spec)
-  const stream = Duplex.from({ readable: child.stdout, writable: child.stdin })
+  const pair = { readable: child.stdout, writable: child.stdin }
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Node supports Node-stream pairs; current typings omit them. Byte/EOF tests cover this path.
+  const stream = Duplex.from(pair as unknown as Parameters<typeof Duplex.from>[0])
   // A child can fail before the awaiting protocol consumer has installed its listener.
   stream.on('error', () => {})
   stream.once('close', () => child.kill())
