@@ -842,7 +842,21 @@ export class PtyHandler {
   }
 
   /** Wire onData/onExit listeners for a managed PTY and store it. */
-  private wireAndStore(managed: ManagedPty): void {
+  private async wireAndStore(managed: ManagedPty): Promise<void> {
+    try {
+      this.wireManagedPty(managed)
+    } catch (error) {
+      // Failed listener admission must not orphan the already-spawned native owner.
+      try {
+        await this.disposePtyForRelayShutdown(managed, false)
+      } catch (cleanupError) {
+        throw new AggregateError([error, cleanupError], 'PTY listener admission and cleanup failed')
+      }
+      throw error
+    }
+  }
+
+  private wireManagedPty(managed: ManagedPty): void {
     managed.physicalExit = new PhysicalExitTracker()
     this.ptys.set(managed.id, managed)
     // Why: a PTY joining the pool under this paneKey means the surface exists again (reopened pane
@@ -1966,7 +1980,7 @@ export class PtyHandler {
     this.sourcePublication?.activate(id, managed.incarnationId, context)
     const sourceActivation =
       context && this.sourcePublication?.receivingActivation?.(id, context.clientId)
-    this.wireAndStore(managed)
+    await this.wireAndStore(managed)
     if (context?.isStale() && !params.agentSessionEnsure && !params.agentSessionCreateOperationId) {
       // Why: if the client reconnected while pty.spawn was in flight, the
       // response is discarded and no renderer can own this PTY. Shut it down
@@ -3021,7 +3035,7 @@ export class PtyHandler {
       }
       return
     }
-    this.wireAndStore({
+    await this.wireAndStore({
       id: entry.id,
       incarnationId: randomUUID(),
       pty: term,
