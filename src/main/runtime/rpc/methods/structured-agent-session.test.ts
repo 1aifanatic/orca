@@ -340,7 +340,9 @@ describe('capability gating', () => {
         ok: false,
         error: { message: expect.stringContaining('structured_agent_session_unsupported') }
       })
-      expect(hostCalls[hostCall]).not.toHaveBeenCalled()
+      if (hostCall !== null) {
+        expect(hostCalls[hostCall]).not.toHaveBeenCalled()
+      }
     }
   )
 

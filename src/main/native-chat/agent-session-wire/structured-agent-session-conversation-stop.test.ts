@@ -116,14 +116,16 @@ function stop(turnId?: string, clientOperationId = hostTestOperationId()) {
   })
 }
 
-function submission(id: string): AgentJournalSubmission | undefined {
-  return host.journalSnapshot(SESSION).submissions.find((entry) => entry.clientMessageId === id)
+async function submission(id: string): Promise<AgentJournalSubmission | undefined> {
+  return (await host.journalSnapshot(SESSION)).submissions.find(
+    (entry) => entry.clientMessageId === id
+  )
 }
 
-function statusRows(): string[] {
-  return host
-    .journalSnapshot(SESSION)
-    .items.flatMap((item) => (item.body.kind === 'status' ? [item.body.text] : []))
+async function statusRows(): Promise<string[]> {
+  return (await host.journalSnapshot(SESSION)).items.flatMap((item) =>
+    item.body.kind === 'status' ? [item.body.text] : []
+  )
 }
 
 describe('a Stop that names no turn', () => {
@@ -145,10 +147,10 @@ describe('a Stop that names no turn', () => {
   it('interrupts a handed-over message before its turn opens, as a cancellation', async () => {
     const { id, result } = send('hello')
     await result
-    await eventually(() => expect(submission(id)?.handedOverAt).toBeDefined())
-    expect(host.journalSnapshot(SESSION).items.some((item) => item.body.kind === 'turn')).toBe(
-      false
-    )
+    await eventually(async () => expect((await submission(id))?.handedOverAt).toBeDefined())
+    expect(
+      (await host.journalSnapshot(SESSION)).items.some((item) => item.body.kind === 'turn')
+    ).toBe(false)
 
     const stopped = await stop()
 
@@ -162,7 +164,7 @@ describe('a Stop that names no turn', () => {
     expect(cancelTurn).toHaveBeenCalledTimes(1)
     expect(cancelTurn.mock.calls[0]![0]).not.toHaveProperty('turnId')
     expect(cancelTurn.mock.calls[0]![0]).toMatchObject({ sessionId: SESSION, fence: 1 })
-    expect(statusRows()).toEqual(['Cancellation requested.'])
+    expect(await statusRows()).toEqual(['Cancellation requested.'])
   })
 
   it('withdraws what is queued on a ready child and asks the provider for nothing more', async () => {
@@ -175,14 +177,14 @@ describe('a Stop that names no turn', () => {
     expect(await stop()).toMatchObject({ ok: true, value: { cancelled: true } })
     started.resolve(undefined)
 
-    expect(submission(id)).toMatchObject({
+    expect(await submission(id)).toMatchObject({
       dispatchState: 'rejected',
       reason: DISPATCH_REJECTED_CANCELLED
     })
     expect(cancelTurn).not.toHaveBeenCalled()
     await host.flushStreamedEvents(SESSION)
     expect(dispatch).not.toHaveBeenCalled()
-    expect(statusRows()).toEqual([])
+    expect(await statusRows()).toEqual([])
   })
 
   it('withdraws a send still on its way in, which the host takes first', async () => {
@@ -191,7 +193,7 @@ describe('a Stop that names no turn', () => {
 
     expect(await result).toMatchObject({ ok: true })
     expect(await stopped).toMatchObject({ ok: true, value: { cancelled: true } })
-    expect(submission(id)).toMatchObject({
+    expect(await submission(id)).toMatchObject({
       dispatchState: 'rejected',
       reason: DISPATCH_REJECTED_CANCELLED
     })
@@ -202,13 +204,13 @@ describe('a Stop that names no turn', () => {
   it('says nothing of a finished turn when the provider had nothing left to stop', async () => {
     const { id, result } = send('hello')
     await result
-    await eventually(() => expect(submission(id)?.handedOverAt).toBeDefined())
+    await eventually(async () => expect((await submission(id))?.handedOverAt).toBeDefined())
     cancelTurn.mockResolvedValueOnce({ cancelled: false })
 
     expect(await stop()).toMatchObject({ ok: true, value: { cancelled: false } })
 
     expect(cancelTurn).toHaveBeenCalledOnce()
-    expect(statusRows()).toEqual([])
+    expect(await statusRows()).toEqual([])
   })
 
   it('stops nothing when it reuses the id of a Stop the host already ran', async () => {
@@ -216,7 +218,7 @@ describe('a Stop that names no turn', () => {
     expect(await stop(undefined, operationId)).toMatchObject({ ok: true, replayed: false })
     const { id, result } = send('hello')
     await result
-    await eventually(() => expect(submission(id)?.handedOverAt).toBeDefined())
+    await eventually(async () => expect((await submission(id))?.handedOverAt).toBeDefined())
 
     // Why the client never reuses a no-turn Stop's id: the same id is the same Stop.
     expect(await stop(undefined, operationId)).toMatchObject({
@@ -232,7 +234,7 @@ describe('a Stop that names no turn', () => {
   it('is a quiet no-op with nothing in flight', async () => {
     expect(await stop()).toMatchObject({ ok: true, value: { cancelled: false } })
     expect(cancelTurn).not.toHaveBeenCalled()
-    expect(statusRows()).toEqual([])
+    expect(await statusRows()).toEqual([])
   })
 })
 
@@ -245,6 +247,6 @@ describe('a Stop that names its turn, as an older client sends it', () => {
       value: { turnId: 'turn-1', cancelled: false }
     })
     expect(cancelTurn).toHaveBeenCalledWith(expect.objectContaining({ turnId: 'turn-1' }))
-    expect(statusRows()).toEqual([ALREADY_FINISHED])
+    expect(await statusRows()).toEqual([ALREADY_FINISHED])
   })
 })

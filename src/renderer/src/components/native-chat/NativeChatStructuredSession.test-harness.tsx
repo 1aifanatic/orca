@@ -49,6 +49,7 @@ export function createStructuredSessionMocks() {
     controllerProps: nullable<{ transportEnabled?: boolean }>(),
     mode: 'static' as 'static' | 'outbox',
     status: 'ready' as 'idle' | 'loading' | 'ready' | 'error',
+    readError: nullable<string>(),
     messages: null as null | unknown[],
     messageListProps: initialMessageListProps,
     composerProps: nullable<{
@@ -127,7 +128,7 @@ export function createStructuredSessionMocks() {
                     }
                   ]),
             status: mocks.status,
-            error: outbox.error,
+            error: mocks.readError ?? outbox.error,
             hasOlder: mocks.hasOlder,
             loadingOlder: mocks.loadingOlder,
             olderHistoryGeneration: mocks.olderHistoryGeneration,
@@ -249,6 +250,7 @@ export function createStructuredSessionMocks() {
     mocks.controllerProps = null
     mocks.mode = 'static'
     mocks.status = 'ready'
+    mocks.readError = null
     mocks.messages = null
     mocks.messageListProps = null
     mocks.composerProps = null

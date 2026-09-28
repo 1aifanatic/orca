@@ -165,8 +165,8 @@ function listReads(): { mainAgent: string; row: string } {
 describe('the main agent read by the chat and by a session list', () => {
   it('agrees while a rate-limited request retries with no turn open', async () => {
     const id = await send('hello')
-    await vi.waitFor(() =>
-      expect(host.journalSnapshot(SESSION).submissions[0]?.handedOverAt).toBeDefined()
+    await vi.waitFor(async () =>
+      expect((await host.journalSnapshot(SESSION)).submissions[0]?.handedOverAt).toBeDefined()
     )
     // What Claude writes for an HTTP 429 retry: a status row, no echo, no turn.
     await provider(1, { kind: 'status', text: 'rate_limit', tone: 'error' })
@@ -184,8 +184,8 @@ describe('the main agent read by the chat and by a session list', () => {
       providerIdentity: { provider: 'codex', threadId: THREAD, turnId: 'turn-1', ordinal: 0 }
     })
     await send('fan out')
-    await vi.waitFor(() =>
-      expect(host.journalSnapshot(SESSION).submissions[0]?.dispatchState).toBe('accepted')
+    await vi.waitFor(async () =>
+      expect((await host.journalSnapshot(SESSION)).submissions[0]?.dispatchState).toBe('accepted')
     )
     await provider(1, { kind: 'turn', turnId: 'turn-1', state: 'running' })
     expect(chatReadsWorking()).toBe(true)
@@ -207,8 +207,8 @@ describe('the main agent read by the chat and by a session list', () => {
 
   it('agrees when the child that was handed the message exits', async () => {
     await send('hello')
-    await vi.waitFor(() =>
-      expect(host.journalSnapshot(SESSION).submissions[0]?.handedOverAt).toBeDefined()
+    await vi.waitFor(async () =>
+      expect((await host.journalSnapshot(SESSION)).submissions[0]?.handedOverAt).toBeDefined()
     )
     expect(chatReadsWorking()).toBe(true)
 
