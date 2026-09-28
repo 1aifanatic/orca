@@ -105,15 +105,19 @@ try {
   @{offset=$byteOffset;before=$originalCatalog[$byteOffset];after=$mutant[$byteOffset];sha256=(Get-FileHash $catalog -Algorithm SHA256).Hash} | ConvertTo-Json | Set-Content (Join-Path $Receipts 'catalog-mutation.json')
   try { $result = Run-Verify 'catalog-mutated'; $results += $result } finally { [IO.File]::WriteAllBytes($catalog,$originalCatalog) }
   if ($result.exitCode -eq 0) { throw 'Catalog mutation was accepted; signature verification not established' }
+  if($payload.Length -gt 134217728){throw 'Negative-control payload exceeds128MiB backup budget'}
+  $originalPayload=[IO.File]::ReadAllBytes($payload.FullName)
   $stream = [IO.File]::Open($payload.FullName,[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
   try { $first = $stream.ReadByte(); $stream.Position=0; $stream.WriteByte($first -bxor 1) } finally { $stream.Dispose() }
   try { $result=Run-Verify 'payload-mutated'; $results += $result } finally {
-    $stream=[IO.File]::OpenWrite($payload.FullName)
-    try { $stream.WriteByte($first) } finally { $stream.Dispose() }
+    $beforeRestore=Get-Item -LiteralPath $payload.FullName -ErrorAction SilentlyContinue
+    @{exists=($null -ne $beforeRestore);bytes=$(if($beforeRestore){$beforeRestore.Length}else{$null});originalBytes=$originalPayload.Length;originalFirstByte=$originalPayload[0]} | ConvertTo-Json | Set-Content (Join-Path $Receipts 'payload-before-restoration.json')
+    [IO.File]::WriteAllBytes($payload.FullName,$originalPayload)
   }
   if ($result.exitCode -eq 0) { throw 'Corrupt payload accepted by verifier' }
   if ((Get-FileHash -LiteralPath $catalog -Algorithm SHA256).Hash.ToLowerInvariant() -ne 'f0a50ea157222c29abd5ea6ff01bfc3c33b04e011c5e45ee2ca38ef0778e5643') { throw 'Catalog restoration mismatch' }
   if ((Get-FileHash -LiteralPath $payload.FullName -Algorithm SHA256).Hash -ne $payloadHash) { throw 'Payload restoration mismatch' }
+  Assert-LayoutUnchanged 'after-negative-controls'
 } finally {
   try {
     [IO.File]::WriteAllBytes($catalog,$originalCatalog)
