@@ -15,17 +15,19 @@ import type {
 } from '../../../shared/agent-session-wire'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { QueuedMessageNotConsumableError } from '../agent-session-journal/journal-queued-messages'
-import type { QueuedMessageRow } from '../agent-session-journal/queued-message-table'
+import {
+  isUnsettledQueuedMessage,
+  type QueuedMessageRow
+} from '../agent-session-journal/queued-message-table'
 import { admitAndRunAgentSessionMutation } from './structured-agent-session-mutation-admission'
 import type { MutationPlan } from './structured-agent-session-mutation-plans'
-import { pendingPromptExists } from './structured-agent-session-queued-messages'
+import { structuredQueueHold } from './structured-agent-session-queued-messages'
 import type { StructuredAgentSessionMutationContext } from './structured-agent-session-host-mutations'
 import type { StructuredAgentSessionCaller } from './structured-agent-session-host-types'
 import {
   openForWrite,
   structuredAgentSessionSendBlock
 } from './structured-agent-session-send-preparation'
-import { releaseQueuedMessagePause } from './structured-agent-session-queued-pause'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
 
 function invalid(message: string): {
@@ -46,13 +48,12 @@ function submissionFor(
  *  unsettled drafts — waiting or returned. Pending/unknown/accepted deliveries
  *  stay outside it. */
 export function withdrawableQueuedMessages(journal: AgentSessionJournal): QueuedMessageRow[] {
-  return journal.queuedMessages
-    .list()
-    .filter((row) => row.state === 'waiting' || row.state === 'returned')
+  return journal.queuedMessages.list().filter(isUnsettledQueuedMessage)
 }
 
-/** One transaction, stamped with the operation's caller-scoped key; pauses the
- *  rows held are released because withdrawal retires the hold. */
+/** One transaction, stamped with the operation's caller-scoped key. Withdrawal
+ *  retires any hold in the same UPDATE, and the store's commit notification
+ *  publishes the change. */
 export async function withdrawQueuedMessagesForOperation(
   journal: AgentSessionJournal,
   input: {
@@ -66,9 +67,6 @@ export async function withdrawQueuedMessagesForOperation(
     messageIds: input.messageIds,
     settledByOp: agentSessionOperationKey(input.callerKey, input.operationId)
   })
-  for (const row of rows) {
-    releaseQueuedMessagePause(input.sessionId, row.messageId)
-  }
   return rows.map((row) => ({ messageId: row.messageId, body: row.body }))
 }
 
@@ -80,13 +78,12 @@ export async function withdrawClearedSourceQueuedMessages(
   ctx: AgentSessionTurnContext,
   input: { callerKey: string; operationId: string }
 ): Promise<AgentSessionWithdrawnQueuedMessage[]> {
-  let withdrawn: AgentSessionWithdrawnQueuedMessage[]
   try {
     const messageIds = withdrawableQueuedMessages(ctx.journal).map((row) => row.messageId)
     if (messageIds.length === 0) {
       return []
     }
-    withdrawn = await withdrawQueuedMessagesForOperation(ctx.journal, {
+    return await withdrawQueuedMessagesForOperation(ctx.journal, {
       sessionId: ctx.sessionId,
       messageIds,
       ...input
@@ -94,15 +91,6 @@ export async function withdrawClearedSourceQueuedMessages(
   } catch {
     return []
   }
-  if (withdrawn.length > 0) {
-    // A failed publish must not drop bodies that were already withdrawn.
-    try {
-      ctx.publish()
-    } catch {
-      // The next journal commit carries the list.
-    }
-  }
-  return withdrawn
 }
 
 /** A replay's answer, from the tombstones the original withdrawal stamped. */
@@ -159,9 +147,18 @@ export function sendQueuedStructuredAgentMessage(
     fields: { messageId },
     conversationWrite: true,
     run: async (ctx): Promise<TurnOutcome<AgentSessionSendResult>> => {
-      const blocked = structuredAgentSessionSendBlock(context.deps.store.getRecord(ctx.sessionId))
-      if (blocked) {
-        return blocked
+      // The one queue gate; Send-now's override set is exactly `working` (plus
+      // FIFO order and the stored hold, which the consume below clears).
+      const record = context.deps.store.getRecord(ctx.sessionId)
+      const hold = structuredQueueHold({ journal: ctx.journal, record, fence: ctx.fence })
+      if (hold === 'blocked') {
+        return structuredAgentSessionSendBlock(record) ?? invalid('This conversation cannot send.')
+      }
+      if (hold === 'command') {
+        return invalid('Wait for the conversation operation to finish.')
+      }
+      if (hold === 'prompt') {
+        return invalid('Answer the pending request before sending this message.')
       }
       const row = ctx.journal.queuedMessages.get(messageId)
       if (!row) {
@@ -176,9 +173,6 @@ export function sendQueuedStructuredAgentMessage(
         return submission
           ? { ok: true, value: { clientMessageId: submission.clientMessageId, submission } }
           : invalid('This queued message was already sent.')
-      }
-      if (pendingPromptExists(ctx.journal.snapshot().items)) {
-        return invalid('Answer the pending request before sending this message.')
       }
       const submissionId = row.state === 'returned' ? operationId : row.messageId
       try {
@@ -202,7 +196,6 @@ export function sendQueuedStructuredAgentMessage(
         }
         throw error
       }
-      releaseQueuedMessagePause(ctx.sessionId, messageId)
       context.wakeDelivery(ctx.sessionId)
       const submission = submissionFor(ctx, submissionId)
       if (!submission) {
@@ -248,16 +241,15 @@ export function deleteQueuedStructuredAgentMessage(
       if (row.state === 'withdrawn') {
         return { ok: true, value: { deleted: false, messageId, disposition: 'withdrawn' } }
       }
+      // The withdrawal notifies through the journal's commit listener, which
+      // also re-derives the drain — deleting a returned card can unblock the
+      // drafts behind it.
       const withdrawn = await withdrawQueuedMessagesForOperation(ctx.journal, {
         sessionId: ctx.sessionId,
         messageIds: [messageId],
         callerKey: ctx.resolvedBy,
         operationId
       })
-      // A withdrawal writes no journal row; publish it, and re-derive the drain
-      // — deleting a returned card can unblock the drafts behind it.
-      ctx.publish()
-      context.wakeQueuedDrain?.(ctx.sessionId)
       const body = withdrawn[0]?.body
       return body
         ? { ok: true, value: { deleted: true, messageId, body } }

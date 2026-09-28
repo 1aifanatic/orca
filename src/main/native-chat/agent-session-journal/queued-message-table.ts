@@ -12,6 +12,19 @@ import type { AgentJournalMessageItem } from '../../../shared/agent-session-jour
 
 export type QueuedMessageState = 'waiting' | 'dispatched' | 'returned' | 'withdrawn'
 
+/** Why a waiting draft is held from auto-sending. Stored on the row — the hold
+ *  must survive handle eviction and restart, and it dies with the session's
+ *  journal. Values are wire markers (`send_failed` maps to `pausedReason`);
+ *  a reader treats an unknown value as a plain hold. */
+export type QueuedMessageHoldReason = 'stopped' | 'send_failed'
+
+/** Definitively unsettled: what Stop, /clear, Edit and the budget count, and
+ *  what the published list shows. Pending/unknown/accepted deliveries and
+ *  tombstones stay outside it. */
+export function isUnsettledQueuedMessage(row: Pick<QueuedMessageRow, 'state'>): boolean {
+  return row.state === 'waiting' || row.state === 'returned'
+}
+
 export type QueuedMessageRow = {
   sessionId: string
   messageId: string
@@ -21,6 +34,9 @@ export type QueuedMessageRow = {
   createdAt: number
   hostInstance: string
   state: QueuedMessageState
+  /** Non-null holds a waiting draft from auto-sending; typed values in
+   *  `QueuedMessageHoldReason`, unknown strings read as a plain hold. */
+  holdReason: string | null
   returnedReason: string | null
   settledAt: number | null
   /** The operation ledger's caller-scoped key, making settled rows mutation receipts. */
@@ -46,6 +62,7 @@ CREATE TABLE IF NOT EXISTS queued_messages (
   created_at      INTEGER NOT NULL,
   host_instance   TEXT    NOT NULL,
   state           TEXT    NOT NULL,
+  hold_reason     TEXT,
   returned_reason TEXT,
   settled_at      INTEGER,
   settled_by_op   TEXT,
@@ -58,7 +75,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS queued_messages_consumed_as
 }
 
 const COLUMNS =
-  'session_id, message_id, position, body_json, fingerprint, created_at, host_instance, state, returned_reason, settled_at, settled_by_op, consumed_as'
+  'session_id, message_id, position, body_json, fingerprint, created_at, host_instance, state, hold_reason, returned_reason, settled_at, settled_by_op, consumed_as'
 
 export function insertQueuedMessage(
   db: Database.Database,
@@ -78,7 +95,7 @@ export function insertQueuedMessage(
   const position = Number(highest?.p ?? 0) + 1
   db.prepare(
     `INSERT INTO queued_messages (${COLUMNS})
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'waiting', NULL, NULL, NULL, NULL)`
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'waiting', NULL, NULL, NULL, NULL, NULL)`
   ).run(
     input.sessionId,
     input.messageId,
@@ -97,11 +114,37 @@ export function insertQueuedMessage(
     createdAt: input.now,
     hostInstance: input.hostInstance,
     state: 'waiting',
+    holdReason: null,
     returnedReason: null,
     settledAt: null,
     settledByOp: null,
     consumedAs: null
   }
+}
+
+/** Hold waiting drafts from auto-sending (a Stop, a failed conversion). The
+ *  hold retires with the row: consume and withdraw clear it in their own
+ *  UPDATE. Returns how many rows the hold newly reached. */
+export function holdQueuedMessages(
+  db: Database.Database,
+  input: {
+    sessionId: string
+    messageIds: readonly string[]
+    reason: QueuedMessageHoldReason
+  }
+): number {
+  let held = 0
+  for (const messageId of input.messageIds) {
+    const changed = db
+      .prepare(
+        `UPDATE queued_messages SET hold_reason = ?
+         WHERE session_id = ? AND message_id = ? AND state = 'waiting'
+           AND (hold_reason IS NULL OR hold_reason <> ?)`
+      )
+      .run(input.reason, input.sessionId, messageId, input.reason)
+    held += Number(changed.changes ?? 0)
+  }
+  return held
 }
 
 export function listQueuedMessages(db: Database.Database, sessionId: string): QueuedMessageRow[] {
@@ -153,7 +196,7 @@ export function consumeQueuedMessageInTransaction(
   const changed = db
     .prepare(
       `UPDATE queued_messages
-       SET state = 'dispatched', settled_at = ?, settled_by_op = ?, consumed_as = ?
+       SET state = 'dispatched', hold_reason = NULL, settled_at = ?, settled_by_op = ?, consumed_as = ?
        WHERE session_id = ? AND message_id = ? AND state = ?`
     )
     .run(input.now, input.settledByOp, consumedAs, input.sessionId, input.messageId, input.expect)
@@ -170,17 +213,18 @@ export function withdrawQueuedMessages(
   const withdrawn: QueuedMessageRow[] = []
   for (const messageId of input.messageIds) {
     const row = getQueuedMessage(db, input.sessionId, messageId)
-    if (!row || (row.state !== 'waiting' && row.state !== 'returned')) {
+    if (!row || !isUnsettledQueuedMessage(row)) {
       continue
     }
     db.prepare(
       `UPDATE queued_messages
-       SET state = 'withdrawn', settled_at = ?, settled_by_op = ?
+       SET state = 'withdrawn', hold_reason = NULL, settled_at = ?, settled_by_op = ?
        WHERE session_id = ? AND message_id = ? AND state IN ('waiting', 'returned')`
     ).run(input.now, input.settledByOp, input.sessionId, messageId)
     withdrawn.push({
       ...row,
       state: 'withdrawn',
+      holdReason: null,
       settledAt: input.now,
       settledByOp: input.settledByOp
     })
@@ -254,12 +298,15 @@ export function pruneQueuedMessages(
     replayWindowMs: number
     submissionVerdict: (consumedRef: string) => QueuedMessageSubmissionVerdict
   }
-): void {
+): number {
   const cutoff = input.now - input.replayWindowMs
-  db.prepare(
-    `DELETE FROM queued_messages
+  const tombstones = db
+    .prepare(
+      `DELETE FROM queued_messages
      WHERE session_id = ? AND state = 'withdrawn' AND settled_at IS NOT NULL AND settled_at < ?`
-  ).run(input.sessionId, cutoff)
+    )
+    .run(input.sessionId, cutoff)
+  let pruned = Number(tombstones.changes ?? 0)
   for (const row of listQueuedMessages(db, input.sessionId)) {
     if (row.state !== 'dispatched' || row.settledAt === null || row.settledAt >= cutoff) {
       continue
@@ -270,8 +317,10 @@ export function pruneQueuedMessages(
         input.sessionId,
         row.messageId
       )
+      pruned += 1
     }
   }
+  return pruned
 }
 
 function toStoredRow(row: unknown): QueuedMessageRow | null {
@@ -285,6 +334,7 @@ function toStoredRow(row: unknown): QueuedMessageRow | null {
     created_at: number
     host_instance: string
     state: string
+    hold_reason: string | null
     returned_reason: string | null
     settled_at: number | null
     settled_by_op: string | null
@@ -317,6 +367,7 @@ function toStoredRow(row: unknown): QueuedMessageRow | null {
     createdAt: record.created_at,
     hostInstance: record.host_instance,
     state,
+    holdReason: record.hold_reason,
     returnedReason: record.returned_reason,
     settledAt: record.settled_at,
     settledByOp: record.settled_by_op,

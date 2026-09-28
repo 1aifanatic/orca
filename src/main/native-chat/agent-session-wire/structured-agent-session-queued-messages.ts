@@ -14,15 +14,14 @@ import {
   QUEUED_MESSAGE_PAUSED_SEND_FAILED,
   type AgentSessionWireRefusal
 } from '../../../shared/agent-session-wire'
+import { isUnsettledQueuedMessage } from '../agent-session-journal/queued-message-table'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import { isStructuredAgentSessionMainAgentWorking } from '../../../shared/structured-agent-session-main-agent-working'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { QueuedMessageNotConsumableError } from '../agent-session-journal/journal-queued-messages'
 import type { QueuedMessageRow } from '../agent-session-journal/queued-message-table'
 import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
-import { structuredAgentSessionSendBlock } from './structured-agent-session-send-preparation'
 import {
-  pauseQueuedMessage,
   queuedMessageHeld,
   structuredAgentSessionHostInstance
 } from './structured-agent-session-queued-pause'
@@ -71,19 +70,48 @@ function oldestActionableQueuedMessage(rows: readonly QueuedMessageRow[]): Queue
 }
 
 /**
- * Whether a `queue-if-active` send becomes a draft: the session owes work, a
- * prompt waits on the user, a conversation command is prepared or in doubt, or
- * an actionable draft already exists (FIFO backlog — an ADMISSION rule only,
- * never a drain gate). A lone returned card, or only paused drafts, does not
- * trap a new send: the user acting now wins — Orca's own queue policy, a stated
- * deviation from held-head backlog counting.
+ * Why the queue is not sending right now — ONE decision for admission, the
+ * drain step and Send-now, so the lists cannot drift. Each caller's override
+ * policy sits next to its use:
+ *
+ *   admission: `blocked` refuses (the immediate path's own refusal); any other
+ *     hold, or an actionable backlog, queues the send as a draft.
+ *   drain step: any hold returns early; whatever clears it publishes or
+ *     commits, which re-derives.
+ *   Send-now: overrides only `working` (plus FIFO order and the stored hold);
+ *     `blocked`, `command` and `prompt` refuse readably.
+ *
+ * `blocked` is permanent-shaped (an uncertain rewind, a cleared or clearing
+ * source); the rest are waits. Host-local vocabulary — never on the wire.
  */
-export function shouldQueueStructuredAgentSessionSend(input: {
+export type StructuredQueueHold = 'blocked' | 'command' | 'working' | 'prompt'
+
+export function structuredQueueHold(input: {
   journal: AgentSessionJournal
   record: AgentSessionRecord | null
   fence: number
-}): boolean {
+}): StructuredQueueHold | null {
+  const rewind = input.record?.rewind
+  if (rewind?.phase === 'prepared' || rewind?.phase === 'provider-succeeded') {
+    return 'blocked'
+  }
+  const command = input.record?.conversationCommand
+  if (command?.command === 'clear' && command.replacementSessionId !== undefined) {
+    // Superseded, or mid-supersession: the fence, not a wait.
+    return 'blocked'
+  }
+  if (command?.phase === 'prepared') {
+    // A /compact in flight (a prepared command is always `state: 'unknown'`);
+    // its settlement re-derives the drain — the command controller's wake,
+    // because a command can settle on the record alone, with no commit.
+    return 'command'
+  }
   const { journal } = input
+  // `prompt` outranks `working`: it is the one wait Send-now may not override,
+  // so a prompt raised mid-turn must not read as merely `working`.
+  if (pendingPromptExists(journal.snapshot().items)) {
+    return 'prompt'
+  }
   if (
     isStructuredAgentSessionMainAgentWorking(
       journal.activeTurnId(),
@@ -91,16 +119,33 @@ export function shouldQueueStructuredAgentSessionSend(input: {
       input.fence
     )
   ) {
+    return 'working'
+  }
+  return null
+}
+
+/**
+ * Whether a `queue-if-active` send becomes a draft: any queue hold short of
+ * `blocked`, or an actionable draft already exists (FIFO backlog — an
+ * ADMISSION rule only, never a drain gate). A lone returned card, or only
+ * paused drafts, does not trap a new send: the user acting now wins — Orca's
+ * own queue policy, a stated deviation from held-head backlog counting.
+ */
+export function shouldQueueStructuredAgentSessionSend(input: {
+  journal: AgentSessionJournal
+  record: AgentSessionRecord | null
+  fence: number
+}): boolean {
+  const hold = structuredQueueHold(input)
+  if (hold === 'blocked') {
+    // The immediate path's own refusal (`structuredAgentSessionSendBlock`)
+    // answers; queueing behind a fence would strand the draft.
+    return false
+  }
+  if (hold !== null) {
     return true
   }
-  if (pendingPromptExists(journal.snapshot().items)) {
-    return true
-  }
-  // A prepared /clear or /compact is in flight; its settlement wakes the drain.
-  if (input.record?.conversationCommand?.phase === 'prepared') {
-    return true
-  }
-  return oldestActionableQueuedMessage(journal.queuedMessages.list()) !== null
+  return oldestActionableQueuedMessage(input.journal.queuedMessages.list()) !== null
 }
 
 /** The accept-side budget refusal, or null when the draft fits. */
@@ -108,9 +153,7 @@ export function queuedMessageBudgetRefusal(
   journal: AgentSessionJournal,
   body: AgentJournalMessageItem
 ): AgentSessionWireRefusal | null {
-  const unsettled = journal.queuedMessages
-    .list()
-    .filter((row) => row.state === 'waiting' || row.state === 'returned')
+  const unsettled = journal.queuedMessages.list().filter(isUnsettledQueuedMessage)
   const bytes = unsettled.reduce(
     (sum, row) => sum + Buffer.byteLength(JSON.stringify(row.body.blocks), 'utf8'),
     Buffer.byteLength(JSON.stringify(body.blocks), 'utf8')
@@ -133,13 +176,11 @@ export function queuedMessageBudgetRefusal(
 export async function maybeQueueStructuredAgentSessionSend(
   context: {
     deps: { store: { getRecord: (sessionId: string) => AgentSessionRecord | null } }
-    wakeQueuedDrain?: (sessionId: string) => void
   },
   ctx: {
     sessionId: string
     journal: AgentSessionJournal
     fence: number
-    publish: () => void
   },
   params: {
     envelope: { clientOperationId: string }
@@ -178,6 +219,8 @@ export async function maybeQueueStructuredAgentSessionSend(
   if (refusal) {
     return { ok: false, refusal }
   }
+  // The insert notifies through the journal's commit listener: publication and
+  // the drain re-derive with no call here to forget.
   const row = await ctx.journal.queuedMessages.insert({
     messageId: clientMessageId,
     body: params.body,
@@ -188,10 +231,6 @@ export async function maybeQueueStructuredAgentSessionSend(
     }),
     hostInstance: structuredAgentSessionHostInstance()
   })
-  // A draft writes no journal row, so publish explicitly; the caught-up path
-  // detects the changed list.
-  ctx.publish()
-  context.wakeQueuedDrain?.(ctx.sessionId)
   return {
     ok: true,
     value: {
@@ -211,8 +250,6 @@ export type QueuedMessageDrainDeps = {
   conversationFence: (sessionId: string) => number
   /** The consumed submission is ordinary #22821 work from here on. */
   wakeDelivery: (sessionId: string) => void
-  /** A pause writes no journal row, so the drain publishes it itself. */
-  publish: (sessionId: string, journal: AgentSessionJournal) => void
   onError: (sessionId: string, error: unknown) => void
 }
 
@@ -278,17 +315,10 @@ export class StructuredAgentSessionQueuedMessageDrain {
     }
     const record = this.deps.getRecord(sessionId)
     const fence = this.deps.conversationFence(sessionId)
-    // Live facts only; the backlog is never a gate, so a lone draft drains.
-    if (
-      structuredAgentSessionSendBlock(record) !== null ||
-      isStructuredAgentSessionMainAgentWorking(
-        journal.activeTurnId(),
-        journal.submissions(),
-        fence
-      ) ||
-      pendingPromptExists(journal.snapshot().items) ||
-      record?.conversationCommand?.phase === 'prepared'
-    ) {
+    // Live facts only, through the one gate; the backlog is never a gate, so a
+    // lone draft drains. Whatever clears a hold publishes or commits, which
+    // re-derives this step.
+    if (structuredQueueHold({ journal, record, fence }) !== null) {
       return
     }
     try {
@@ -307,10 +337,13 @@ export class StructuredAgentSessionQueuedMessageDrain {
         // Lost a race with a Send-now, Delete or Stop; their transition stands.
         return
       }
-      // Pre-consume failure: the draft stays waiting, held with the error on the
-      // card. An explicit Send retries; no automatic retry loop.
-      pauseQueuedMessage(sessionId, next.messageId, QUEUED_MESSAGE_PAUSED_SEND_FAILED)
-      this.deps.publish(sessionId, journal)
+      // Pre-consume failure: the draft stays waiting, held with the marker on
+      // the card (a stored fact, so it survives eviction and restart). The
+      // hold's own commit notification publishes it. An explicit Send retries;
+      // no automatic retry loop.
+      await journal.queuedMessages
+        .hold({ messageIds: [next.messageId], reason: QUEUED_MESSAGE_PAUSED_SEND_FAILED })
+        .catch(() => {})
       throw error
     }
     this.deps.wakeDelivery(sessionId)

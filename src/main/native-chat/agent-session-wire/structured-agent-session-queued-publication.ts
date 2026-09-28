@@ -2,31 +2,37 @@
 // `commands` precedent: read per emit, reference-stable while unchanged, so the
 // subscribers' identity dedup keeps token streams from re-sending it.
 
-import type { AgentSessionQueuedMessage } from '../../../shared/agent-session-wire'
+import {
+  QUEUED_MESSAGE_PAUSED_SEND_FAILED,
+  type AgentSessionQueuedMessage
+} from '../../../shared/agent-session-wire'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import {
   queuedMessageHeld,
-  queuedMessagePause,
-  queuedMessagePauseRevision
+  structuredAgentSessionHostInstance
 } from './structured-agent-session-queued-pause'
 
 /** The published whole-list view: waiting and returned rows only, with `paused`
- *  derived at publish time from the process pause set and the host instance. */
+ *  derived at publish time from the stored hold and the host instance. */
 function computePublishedQueuedMessages(journal: AgentSessionJournal): AgentSessionQueuedMessage[] {
   const published: AgentSessionQueuedMessage[] = []
   for (const row of journal.queuedMessages.list()) {
     if (row.state !== 'waiting' && row.state !== 'returned') {
       continue
     }
-    const pause = queuedMessagePause(row.sessionId, row.messageId)
     const paused = row.state === 'waiting' && queuedMessageHeld(row)
+    // The stored reason is a typed marker; an unknown one reads as a plain hold.
+    const pausedReason =
+      paused && row.holdReason === QUEUED_MESSAGE_PAUSED_SEND_FAILED
+        ? QUEUED_MESSAGE_PAUSED_SEND_FAILED
+        : undefined
     published.push({
       messageId: row.messageId,
       position: row.position,
       body: row.body,
       state: row.state,
       ...(paused ? { paused: true as const } : {}),
-      ...(paused && pause?.reason !== undefined ? { pausedReason: pause.reason } : {}),
+      ...(pausedReason !== undefined ? { pausedReason } : {}),
       ...(row.state === 'returned' ? { returnedReason: row.returnedReason } : {})
     })
   }
@@ -36,14 +42,16 @@ function computePublishedQueuedMessages(journal: AgentSessionJournal): AgentSess
 type PublicationMemo = { key: string; serialized: string; list: AgentSessionQueuedMessage[] }
 
 /** Reference-stable per journal handle: an unchanged list is never re-serialized
- *  onto token-stream frames, and any draft-table write — the returned transition
- *  included — changes the reference by construction. */
+ *  onto token-stream frames, and any draft-table write — holds and the returned
+ *  transition included — changes the reference by construction. */
 const publicationMemos = new WeakMap<AgentSessionJournal, PublicationMemo>()
 
 export function readPublishedQueuedMessages(
   journal: AgentSessionJournal
 ): AgentSessionQueuedMessage[] {
-  const key = `${journal.queuedMessages.revision()}:${queuedMessagePauseRevision()}`
+  // The instance id joins the key so a restart (or its test rotation) re-derives
+  // the held flags; within one process it never changes.
+  const key = `${journal.queuedMessages.revision()}:${structuredAgentSessionHostInstance()}`
   const memo = publicationMemos.get(journal)
   if (memo && memo.key === key) {
     return memo.list

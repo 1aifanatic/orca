@@ -19,12 +19,14 @@ import type { JournalRow } from './journal-row-schema'
 import {
   consumeQueuedMessageInTransaction,
   getQueuedMessage,
+  holdQueuedMessages,
   insertQueuedMessage,
   listQueuedMessages,
   pruneQueuedMessages,
   queuedMessagesSettledByOp,
   returnDispatchedQueuedMessage,
   withdrawQueuedMessages,
+  type QueuedMessageHoldReason,
   type QueuedMessageRow
 } from './queued-message-table'
 import { AgentSessionJournalError, assertJournalWritable } from './journal-write-guards'
@@ -40,6 +42,12 @@ export type JournalQueuedMessagesDeps = {
   database: () => { db: Database.Database }
   readOnly: () => boolean
   state: () => JournalReducerState
+  /** The journal's own commit notification. Every standalone draft-table
+   *  transaction that changed rows fires it after COMMIT, so a draft or hold
+   *  change publishes and wakes the drain through the same path a journal row
+   *  does — no call site can forget. In-transaction consume and the returned
+   *  transition already ride their row's own commit. */
+  committed: () => void
 }
 
 export class JournalQueuedMessages {
@@ -95,7 +103,36 @@ export class JournalQueuedMessages {
         now: this.deps.now()
       })
       this.changeRevision++
+      this.deps.committed()
       return row
+    })
+  }
+
+  /** Hold waiting drafts from auto-sending — a Stop's frontier, a failed
+   *  conversion. Stored on the rows, so it survives handle eviction and
+   *  restart and dies with the session's journal; withdraw and consume clear
+   *  it in their own UPDATE. */
+  hold(input: { messageIds: readonly string[]; reason: QueuedMessageHoldReason }): Promise<void> {
+    return this.deps.serialize(async () => {
+      assertJournalWritable(this.deps.readOnly(), this.deps.sessionId)
+      const { db } = this.deps.database()
+      db.exec('BEGIN IMMEDIATE')
+      let held: number
+      try {
+        held = holdQueuedMessages(db, {
+          sessionId: this.deps.sessionId,
+          messageIds: input.messageIds,
+          reason: input.reason
+        })
+        db.exec('COMMIT')
+      } catch (error) {
+        db.exec('ROLLBACK')
+        throw error
+      }
+      if (held > 0) {
+        this.changeRevision++
+        this.deps.committed()
+      }
     })
   }
 
@@ -124,6 +161,7 @@ export class JournalQueuedMessages {
       }
       if (withdrawn.length > 0) {
         this.changeRevision++
+        this.deps.committed()
       }
       return withdrawn
     })
@@ -209,6 +247,7 @@ export class JournalQueuedMessages {
       const { db } = this.deps.database()
       const submissions = this.deps.state().submissions
       const now = this.deps.now()
+      let changed = 0
       db.exec('BEGIN IMMEDIATE')
       try {
         for (const row of listQueuedMessages(db, this.deps.sessionId)) {
@@ -217,15 +256,19 @@ export class JournalQueuedMessages {
           }
           const submission = submissions.get(row.consumedAs ?? row.messageId)
           if (submissionRejectionReturnsDraft(submission)) {
-            returnDispatchedQueuedMessage(db, {
-              sessionId: this.deps.sessionId,
-              consumedRef: row.consumedAs ?? row.messageId,
-              reason: submission?.reason ?? null,
-              now
-            })
+            if (
+              returnDispatchedQueuedMessage(db, {
+                sessionId: this.deps.sessionId,
+                consumedRef: row.consumedAs ?? row.messageId,
+                reason: submission?.reason ?? null,
+                now
+              })
+            ) {
+              changed += 1
+            }
           }
         }
-        pruneQueuedMessages(db, {
+        changed += pruneQueuedMessages(db, {
           sessionId: this.deps.sessionId,
           now,
           replayWindowMs: QUEUED_MESSAGE_REPLAY_WINDOW_MS,
@@ -246,7 +289,10 @@ export class JournalQueuedMessages {
         db.exec('ROLLBACK')
         throw error
       }
-      this.changeRevision++
+      if (changed > 0) {
+        this.changeRevision++
+        this.deps.committed()
+      }
     })
   }
 }

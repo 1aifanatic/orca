@@ -1,0 +1,200 @@
+// One real-host rig for the mid-turn queue suites: store, journal, adapter
+// mocks, and the send/stop/draft helpers every suite shares.
+
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { expect, vi, type Mock } from 'vitest'
+import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
+import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
+import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
+import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
+import { StructuredAgentSessionHost } from './structured-agent-session-host'
+import {
+  HOST_TEST_NOW as NOW,
+  HOST_TEST_SESSION as SESSION,
+  HOST_TEST_THREAD as THREAD,
+  hostTestAttachParams,
+  hostTestMessage,
+  hostTestOperationId,
+  resetHostTestOperationIds
+} from './structured-agent-session-host-test-data'
+
+export const QUEUED_RIG_CALLER = { callerKey: 'client-1' }
+
+export function eventually(assertion: () => void | Promise<void>): Promise<void> {
+  return vi.waitFor(assertion, { timeout: 10_000 })
+}
+
+export type QueuedMessageTestRig = Awaited<ReturnType<typeof createQueuedMessageTestRig>>
+
+export async function createQueuedMessageTestRig() {
+  const root = await mkdtemp(join(tmpdir(), 'orca-queued-messages-'))
+  resetHostTestOperationIds()
+  // Admitted: the message is written and unanswered, so the session owes work
+  // until the test settles it.
+  const dispatch: Mock<StructuredAgentSessionAdapter['dispatch']> = vi.fn(async () => ({
+    state: 'admitted' as const
+  }))
+  const awaitStarted: Mock<NonNullable<StructuredAgentSessionAdapter['awaitStarted']>> = vi.fn(
+    async () => undefined
+  )
+  const compact: Mock<NonNullable<StructuredAgentSessionAdapter['compact']>> = vi.fn(
+    async () => ({})
+  )
+  const store = await AgentSessionRecordStore.open({
+    directory: join(root, 'store'),
+    hostId: 'local'
+  })
+  const host = new StructuredAgentSessionHost({
+    store,
+    adapter: {
+      acquire: async ({ fence, spawnToken }) => ({
+        process: { hostId: 'local', pid: 4242, processStartTimeMs: 1_700_000_000_000, spawnToken },
+        acquisitionGeneration: 'generation-1',
+        link: {
+          linkId: `link-${fence}`,
+          handle: { provider: 'codex' as const, threadId: THREAD },
+          origin: 'created' as const,
+          mintedAtFence: fence,
+          observedAt: NOW
+        }
+      }),
+      dispatch,
+      awaitStarted,
+      closeSession: vi.fn(async () => true),
+      releaseAcquisition: vi.fn(async () => true),
+      compact,
+      cancelTurn: vi.fn(async () => ({ cancelled: true })),
+      answerPrompt: vi.fn(async () => undefined),
+      setOption: vi.fn(async () => undefined)
+    },
+    journalRoot: root,
+    claimKeyId: 'key-1',
+    mintSpawnToken: () => 'spawn-1',
+    now: () => NOW
+  })
+  expect(await host.attach(QUEUED_RIG_CALLER, hostTestAttachParams(null))).toMatchObject({
+    ok: true
+  })
+
+  function envelope(fields: Record<string, unknown>, method: string, clientOperationId: string) {
+    return {
+      sessionId: SESSION,
+      clientOperationId,
+      expectedRuntimeFence: 1,
+      payloadFingerprint: computeAgentSessionPayloadFingerprint({
+        method,
+        sessionId: SESSION,
+        fields
+      })
+    }
+  }
+
+  function send(text: string, delivery?: 'queue-if-active') {
+    const body = hostTestMessage(text)
+    const clientOperationId = hostTestOperationId()
+    const fields = { body, ...(delivery ? { delivery } : {}) }
+    const result = host.send(QUEUED_RIG_CALLER, {
+      envelope: envelope(fields, 'agentSession.send', clientOperationId),
+      body,
+      ...(delivery ? { delivery } : {})
+    })
+    return { id: clientOperationId, result }
+  }
+
+  function stop(withdrawQueued?: true, clientOperationId = hostTestOperationId()) {
+    const fields = withdrawQueued ? { withdrawQueued } : {}
+    return host.cancel(QUEUED_RIG_CALLER, {
+      envelope: envelope(fields, 'agentSession.cancel', clientOperationId),
+      ...(withdrawQueued ? { withdrawQueued } : {})
+    })
+  }
+
+  function sendNow(messageId: string, clientOperationId = hostTestOperationId()) {
+    return host.queuedMessageSend(QUEUED_RIG_CALLER, {
+      envelope: envelope({ messageId }, 'agentSession.queuedMessageSend', clientOperationId),
+      messageId
+    })
+  }
+
+  function deleteQueued(messageId: string, clientOperationId = hostTestOperationId()) {
+    return host.queuedMessageDelete(QUEUED_RIG_CALLER, {
+      envelope: envelope({ messageId }, 'agentSession.queuedMessageDelete', clientOperationId),
+      messageId
+    })
+  }
+
+  async function submission(id: string): Promise<AgentJournalSubmission | undefined> {
+    return (await host.journalSnapshot(SESSION)).submissions.find(
+      (entry) => entry.clientMessageId === id
+    )
+  }
+
+  async function drafts(): Promise<{ messageId: string; state: string }[]> {
+    const page = await host.history({ sessionId: SESSION, direction: 'tail' })
+    if (!page.ok) {
+      throw new Error('history refused')
+    }
+    return (page.page.queuedMessages ?? []).map(({ messageId, state, paused }) => ({
+      messageId,
+      state,
+      ...(paused ? { paused } : {})
+    }))
+  }
+
+  /** A first send that keeps the session working until the test settles it. */
+  async function workingSend(): Promise<string> {
+    const { id, result } = send('work on this')
+    await result
+    await eventually(async () => expect((await submission(id))?.handedOverAt).toBeDefined())
+    return id
+  }
+
+  async function settleAccepted(id: string, itemId: string): Promise<void> {
+    await host.settleLateDispatch({
+      sessionId: SESSION,
+      clientMessageId: id,
+      providerIdentity: {
+        provider: 'codex',
+        threadId: THREAD,
+        turnId: `turn-${itemId}`,
+        ordinal: 0
+      }
+    })
+  }
+
+  async function settleRejected(id: string, reason: string): Promise<void> {
+    await host.settleLateDispatch({
+      sessionId: SESSION,
+      clientMessageId: id,
+      state: 'rejected',
+      reason
+    })
+  }
+
+  async function dispose(): Promise<void> {
+    await host.flushAllStreamedEvents()
+    await rm(root, { recursive: true, force: true })
+  }
+
+  return {
+    root,
+    store,
+    host,
+    dispatch,
+    awaitStarted,
+    compact,
+    envelope,
+    send,
+    stop,
+    sendNow,
+    deleteQueued,
+    submission,
+    drafts,
+    workingSend,
+    settleAccepted,
+    settleRejected,
+    dispose
+  }
+}

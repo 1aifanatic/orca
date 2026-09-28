@@ -531,3 +531,71 @@ describe('open-time repair and retention', () => {
     expect(journal.queuedMessages.get('withdrawn-1')?.state).toBe('withdrawn')
   })
 })
+
+describe('holds', () => {
+  it('a hold is stored on the row, survives reopen, and withdraw clears it', async () => {
+    let journal = await open()
+    await queueDraft(journal, 'draft-1')
+    await journal.queuedMessages.hold({ messageIds: ['draft-1'], reason: 'stopped' })
+    expect(journal.queuedMessages.get('draft-1')?.holdReason).toBe('stopped')
+    await journal.close()
+    journal = await open()
+    expect(journal.queuedMessages.get('draft-1')?.holdReason).toBe('stopped')
+    await journal.queuedMessages.withdraw({ messageIds: ['draft-1'], settledByOp: 'c\u0000op' })
+    expect(journal.queuedMessages.get('draft-1')).toMatchObject({
+      state: 'withdrawn',
+      holdReason: null
+    })
+  })
+
+  it('consume clears the hold in the same transaction (Send-now overrides it)', async () => {
+    const journal = await open()
+    await queueDraft(journal, 'draft-1')
+    await journal.queuedMessages.hold({ messageIds: ['draft-1'], reason: 'send_failed' })
+    await consumeDraft(journal, 'draft-1')
+    expect(journal.queuedMessages.get('draft-1')).toMatchObject({
+      state: 'dispatched',
+      holdReason: null
+    })
+  })
+
+  it('holds reach only waiting rows', async () => {
+    const journal = await open()
+    await queueDraft(journal, 'draft-1')
+    await consumeDraft(journal, 'draft-1')
+    await journal.resolveDispatch({
+      clientMessageId: 'draft-1',
+      state: 'rejected',
+      reason: 'refused',
+      fence: 0
+    })
+    await journal.queuedMessages.hold({ messageIds: ['draft-1'], reason: 'stopped' })
+    expect(journal.queuedMessages.get('draft-1')).toMatchObject({
+      state: 'returned',
+      holdReason: null
+    })
+  })
+})
+
+describe('the commit listener', () => {
+  it('draft-table writes fire it exactly when rows changed, so no caller publishes by hand', async () => {
+    const journal = await open()
+    let commits = 0
+    journal.observeCommits(() => {
+      commits += 1
+    })
+    await queueDraft(journal, 'draft-1')
+    expect(commits).toBe(1)
+    // An idempotent replay changes nothing and stays silent.
+    await queueDraft(journal, 'draft-1')
+    expect(commits).toBe(1)
+    await journal.queuedMessages.hold({ messageIds: ['draft-1'], reason: 'stopped' })
+    expect(commits).toBe(2)
+    await journal.queuedMessages.hold({ messageIds: ['draft-1'], reason: 'stopped' })
+    expect(commits).toBe(2)
+    await journal.queuedMessages.withdraw({ messageIds: ['draft-1'], settledByOp: 'c\u0000op' })
+    expect(commits).toBe(3)
+    await journal.queuedMessages.withdraw({ messageIds: ['draft-1'], settledByOp: 'c\u0000op-2' })
+    expect(commits).toBe(3)
+  })
+})

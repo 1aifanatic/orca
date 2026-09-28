@@ -82,14 +82,11 @@ export function sendPlan(params: {
       })
     },
     replay: (ctx, outcome) => {
-      const submission = ctx.journal
-        .submissions()
-        .find((entry) => entry.clientMessageId === clientMessageId)
-      if (submission) {
-        return { clientMessageId, submission }
-      }
-      // A send this host queued answers from the draft or its tombstone: a
-      // withdrawn draft replays as spent — never as missing-submission doubt.
+      // A send this host queued answers from the DRAFT first: a refused
+      // conversion is a returned card holding the text, and a replay answering
+      // with the rejected submission instead would put the same text on a
+      // Retry row AND the card. A withdrawn draft replays as spent — never as
+      // missing-submission doubt.
       const draft = ctx.journal.queuedMessages.get(clientMessageId)
       if (draft) {
         if (draft.state === 'dispatched') {
@@ -104,6 +101,12 @@ export function sendPlan(params: {
           clientMessageId,
           queued: { messageId: draft.messageId, position: draft.position, state: draft.state }
         }
+      }
+      const submission = ctx.journal
+        .submissions()
+        .find((entry) => entry.clientMessageId === clientMessageId)
+      if (submission) {
+        return { clientMessageId, submission }
       }
       if (outcome.status === 'failed') {
         return null

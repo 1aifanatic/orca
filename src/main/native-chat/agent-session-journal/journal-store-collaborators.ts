@@ -20,6 +20,10 @@ import type { JournalRow } from './journal-row-schema'
 import type { AgentSessionJournal } from './journal-store'
 
 export type JournalStoreHost = {
+  /** Fires the journal's commit listener for a durable change that appended no
+   *  row — a standalone draft-table transaction — so readers learn of it the
+   *  same way they learn of a row. */
+  notifyCommitted: () => void
   identity: AgentSessionJournalIdentity
   journalDir: string
   now: () => number
@@ -70,7 +74,8 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
     serialize: host.serialize,
     database: host.database,
     readOnly: host.readOnly,
-    state: host.state
+    state: host.state,
+    committed: host.notifyCommitted
   })
   return {
     epochController,

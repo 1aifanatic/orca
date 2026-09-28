@@ -72,7 +72,9 @@ export type StructuredAgentSessionMutationContext = {
   wakeDelivery: (sessionId: string) => void
   /** Stops the session's provider child, keeping its conversation; inside the caller's serialize. */
   stopAgent: (sessionId: string) => Promise<void>
-  /** A draft was inserted, withdrawn or unblocked: the queued-message drain re-derives. */
+  /** Only for gate inputs living in the RECORD store, which can settle with no
+   *  journal commit (a conversation command). Draft-table changes need no call:
+   *  the draft store notifies through the journal's own commit listener. */
   wakeQueuedDrain?: (sessionId: string) => void
   now: () => number
 }
@@ -120,13 +122,16 @@ export function sendStructuredAgentSessionTurn(
     {
       ...plan,
       run: async (ctx) => {
-        const blocked = structuredAgentSessionSendBlock(context.deps.store.getRecord(ctx.sessionId))
-        if (blocked) {
-          return blocked
-        }
+        // The queue decision runs first: a capable send during a transient hold
+        // (a /compact in flight) queues rather than being refused; only a
+        // `blocked` hold — which never queues — falls through to the refusal.
         const queued = await maybeQueueStructuredAgentSessionSend(context, ctx, params)
         if (queued) {
           return queued
+        }
+        const blocked = structuredAgentSessionSendBlock(context.deps.store.getRecord(ctx.sessionId))
+        if (blocked) {
+          return blocked
         }
         const accepted = await plan.run(ctx)
         if (accepted.ok) {
@@ -178,12 +183,11 @@ export function cancelStructuredAgentSessionTurn(
     {
       ...plan,
       run: async (ctx) => {
-        // Pauses the withdrawable frontier now; `finish` withdraws it after the
+        // Holds the withdrawable frontier now; `finish` withdraws it after the
         // interrupt, for the capable clients that asked.
-        const finish = stopQueuedWithdrawalFinisher(ctx, {
+        const finish = await stopQueuedWithdrawalFinisher(ctx, {
           withdrawQueued: params.withdrawQueued,
-          operationId: params.envelope.clientOperationId,
-          wake: context.wakeQueuedDrain
+          operationId: params.envelope.clientOperationId
         })
         // Stop withdraws every queued message first, whatever the start or the child is doing.
         const withdrawn = await ctx.journal.rejectQueuedSubmissions(

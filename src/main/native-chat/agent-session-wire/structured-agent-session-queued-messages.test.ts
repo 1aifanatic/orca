@@ -3,12 +3,7 @@
 // draft when the work settles, Stop pauses-then-withdraws with the text in the
 // answer, and a refused conversion comes back as a returned card.
 
-import { mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
-import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
-import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   QUEUED_MESSAGE_PAUSED_SEND_FAILED,
   type AgentSessionQueuedMessage,
@@ -16,171 +11,46 @@ import {
 } from '../../../shared/agent-session-wire'
 import { DISPATCH_REJECTED_CANCELLED } from '../../../shared/structured-agent-session-dispatch-rejection'
 import { ConversationCommandParams } from '../../../shared/rpc-contract/structured-agent-session-params'
-import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
-import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
-import { StructuredAgentSessionHost } from './structured-agent-session-host'
 import { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { JournalQueuedMessages } from '../agent-session-journal/journal-queued-messages'
+import { rotateStructuredAgentSessionHostInstanceForTests } from './structured-agent-session-queued-pause'
 import {
-  resetQueuedMessagePausesForTests,
-  rotateStructuredAgentSessionHostInstanceForTests
-} from './structured-agent-session-queued-pause'
+  createQueuedMessageTestRig,
+  eventually,
+  QUEUED_RIG_CALLER as CALLER,
+  type QueuedMessageTestRig
+} from './structured-agent-session-queued-message-rig.test-fixture'
 import {
-  HOST_TEST_NOW as NOW,
   HOST_TEST_SESSION as SESSION,
-  HOST_TEST_THREAD as THREAD,
-  hostTestAttachParams,
   hostTestMessage,
-  hostTestOperationId,
-  resetHostTestOperationIds
+  hostTestOperationId
 } from './structured-agent-session-host-test-data'
 
-const CALLER = { callerKey: 'client-1' }
-
-let root: string
-let store: AgentSessionRecordStore
-let host: StructuredAgentSessionHost
-let dispatch: Mock<StructuredAgentSessionAdapter['dispatch']>
-let awaitStarted: Mock<NonNullable<StructuredAgentSessionAdapter['awaitStarted']>>
-
-function eventually(assertion: () => void | Promise<void>): Promise<void> {
-  return vi.waitFor(assertion, { timeout: 10_000 })
-}
+let rig: QueuedMessageTestRig
+let host: QueuedMessageTestRig['host']
+let store: QueuedMessageTestRig['store']
+let dispatch: QueuedMessageTestRig['dispatch']
+let awaitStarted: QueuedMessageTestRig['awaitStarted']
 
 beforeEach(async () => {
-  root = await mkdtemp(join(tmpdir(), 'orca-queued-messages-'))
-  resetHostTestOperationIds()
-  // Operation ids repeat per test, so a pause left by an earlier test would hold this one's drafts.
-  resetQueuedMessagePausesForTests()
-  // Admitted: the message is written and unanswered, so the session owes work
-  // until the test settles it.
-  dispatch = vi.fn(async () => ({ state: 'admitted' as const }))
-  awaitStarted = vi.fn(async () => undefined)
-  store = await AgentSessionRecordStore.open({ directory: join(root, 'store'), hostId: 'local' })
-  host = new StructuredAgentSessionHost({
-    store,
-    adapter: {
-      acquire: async ({ fence, spawnToken }) => ({
-        process: { hostId: 'local', pid: 4242, processStartTimeMs: 1_700_000_000_000, spawnToken },
-        acquisitionGeneration: 'generation-1',
-        link: {
-          linkId: `link-${fence}`,
-          handle: { provider: 'codex' as const, threadId: THREAD },
-          origin: 'created' as const,
-          mintedAtFence: fence,
-          observedAt: NOW
-        }
-      }),
-      dispatch,
-      awaitStarted,
-      closeSession: vi.fn(async () => true),
-      releaseAcquisition: vi.fn(async () => true),
-      cancelTurn: vi.fn(async () => ({ cancelled: true })),
-      answerPrompt: vi.fn(async () => undefined),
-      setOption: vi.fn(async () => undefined)
-    },
-    journalRoot: root,
-    claimKeyId: 'key-1',
-    mintSpawnToken: () => 'spawn-1',
-    now: () => NOW
-  })
-  expect(await host.attach(CALLER, hostTestAttachParams(null))).toMatchObject({ ok: true })
+  rig = await createQueuedMessageTestRig()
+  ;({ host, store, dispatch, awaitStarted } = rig)
 })
 
-afterEach(async () => {
-  await host.flushAllStreamedEvents()
-  await rm(root, { recursive: true, force: true })
-})
+afterEach(() => rig.dispose())
 
-function envelope(fields: Record<string, unknown>, method: string, clientOperationId: string) {
-  return {
-    sessionId: SESSION,
-    clientOperationId,
-    expectedRuntimeFence: 1,
-    payloadFingerprint: computeAgentSessionPayloadFingerprint({
-      method,
-      sessionId: SESSION,
-      fields
-    })
-  }
-}
-
-function send(text: string, delivery?: 'queue-if-active') {
-  const body = hostTestMessage(text)
-  const clientOperationId = hostTestOperationId()
-  const fields = { body, ...(delivery ? { delivery } : {}) }
-  const result = host.send(CALLER, {
-    envelope: envelope(fields, 'agentSession.send', clientOperationId),
-    body,
-    ...(delivery ? { delivery } : {})
-  })
-  return { id: clientOperationId, result }
-}
-
-function stop(withdrawQueued?: true, clientOperationId = hostTestOperationId()) {
-  const fields = withdrawQueued ? { withdrawQueued } : {}
-  return host.cancel(CALLER, {
-    envelope: envelope(fields, 'agentSession.cancel', clientOperationId),
-    ...(withdrawQueued ? { withdrawQueued } : {})
-  })
-}
-
-function sendNow(messageId: string, clientOperationId = hostTestOperationId()) {
-  return host.queuedMessageSend(CALLER, {
-    envelope: envelope({ messageId }, 'agentSession.queuedMessageSend', clientOperationId),
-    messageId
-  })
-}
-
-function deleteQueued(messageId: string, clientOperationId = hostTestOperationId()) {
-  return host.queuedMessageDelete(CALLER, {
-    envelope: envelope({ messageId }, 'agentSession.queuedMessageDelete', clientOperationId),
-    messageId
-  })
-}
-
-async function submission(id: string): Promise<AgentJournalSubmission | undefined> {
-  return (await host.journalSnapshot(SESSION)).submissions.find(
-    (entry) => entry.clientMessageId === id
-  )
-}
-
-async function drafts(): Promise<{ messageId: string; state: string }[]> {
-  const page = await host.history({ sessionId: SESSION, direction: 'tail' })
-  if (!page.ok) {
-    throw new Error('history refused')
-  }
-  return (page.page.queuedMessages ?? []).map(({ messageId, state, paused }) => ({
-    messageId,
-    state,
-    ...(paused ? { paused } : {})
-  }))
-}
-
-/** A first send that keeps the session working until the test settles it. */
-async function workingSend(): Promise<string> {
-  const { id, result } = send('work on this')
-  await result
-  await eventually(async () => expect((await submission(id))?.handedOverAt).toBeDefined())
-  return id
-}
-
-async function settleAccepted(id: string, itemId: string): Promise<void> {
-  await host.settleLateDispatch({
-    sessionId: SESSION,
-    clientMessageId: id,
-    providerIdentity: { provider: 'codex', threadId: THREAD, turnId: `turn-${itemId}`, ordinal: 0 }
-  })
-}
-
-async function settleRejected(id: string, reason: string): Promise<void> {
-  await host.settleLateDispatch({
-    sessionId: SESSION,
-    clientMessageId: id,
-    state: 'rejected',
-    reason
-  })
-}
+const envelope: QueuedMessageTestRig['envelope'] = (...args) => rig.envelope(...args)
+const send: QueuedMessageTestRig['send'] = (...args) => rig.send(...args)
+const stop: QueuedMessageTestRig['stop'] = (...args) => rig.stop(...args)
+const sendNow: QueuedMessageTestRig['sendNow'] = (...args) => rig.sendNow(...args)
+const deleteQueued: QueuedMessageTestRig['deleteQueued'] = (...args) => rig.deleteQueued(...args)
+const submission: QueuedMessageTestRig['submission'] = (...args) => rig.submission(...args)
+const drafts: QueuedMessageTestRig['drafts'] = () => rig.drafts()
+const workingSend: QueuedMessageTestRig['workingSend'] = () => rig.workingSend()
+const settleAccepted: QueuedMessageTestRig['settleAccepted'] = (...args) =>
+  rig.settleAccepted(...args)
+const settleRejected: QueuedMessageTestRig['settleRejected'] = (...args) =>
+  rig.settleRejected(...args)
 
 describe('accept', () => {
   it('queues a capable send while the session owes work; an ordinary send still dispatches', async () => {
@@ -400,6 +270,13 @@ describe('held drafts', () => {
     const page = await host.history({ sessionId: SESSION, direction: 'tail' })
     // A marker the client localizes, never host-authored copy.
     expect(page.ok && page.page.queuedMessages?.[0]?.pausedReason).toBe(
+      QUEUED_MESSAGE_PAUSED_SEND_FAILED
+    )
+    // The marker is stored on the row, so a host restart keeps "Couldn't send"
+    // instead of downgrading the card to a plain pause.
+    rotateStructuredAgentSessionHostInstanceForTests()
+    const restarted = await host.history({ sessionId: SESSION, direction: 'tail' })
+    expect(restarted.ok && restarted.page.queuedMessages?.[0]?.pausedReason).toBe(
       QUEUED_MESSAGE_PAUSED_SEND_FAILED
     )
     expect(await submission(draftId)).toBeUndefined()
