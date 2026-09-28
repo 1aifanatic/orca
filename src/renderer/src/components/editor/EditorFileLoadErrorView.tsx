@@ -3,7 +3,11 @@ import { Button } from '@/components/ui/button'
 import { translate } from '@/i18n/i18n'
 import { useWorktreeHostConnection } from '@/lib/worktree-host-connection-phase'
 import { useUserDisconnectedHostConnect } from '@/ssh/use-user-disconnected-host-connect'
-import { WORKTREE_HOST_UNRESOLVED_CODE } from './editor-panel-content-types'
+import {
+  WORKTREE_HOST_UNRESOLVED_CODE,
+  WORKTREE_OWNER_NOT_READY_ERROR
+} from './editor-panel-content-types'
+import { isReloadedWhenHostConnects } from './useEditorPanelFileLoadRetry'
 
 // Why: `loadError` is stored as English so logs and non-view consumers stay readable; the
 // user-facing copy is keyed by the machine sentinel, never by the text, so localization
@@ -34,7 +38,15 @@ export function EditorFileLoadErrorView({
   worktreeId?: string | null
   onRetry: () => void
 }): React.JSX.Element {
-  const userDisconnectedHost = useUserDisconnectedHostConnect(useWorktreeHostConnection(worktreeId))
+  const host = useWorktreeHostConnection(worktreeId)
+  const userDisconnectedHost = useUserDisconnectedHostConnect(host)
+  // Why: while the host connects, a failure its connection caused is replaced by that connection
+  // and reloads once it lands, so show the connecting state rather than the stale raw error.
+  const shownMessage =
+    host.phase === 'connecting' &&
+    isReloadedWhenHostConnects({ loadError: message, loadErrorCode: code })
+      ? WORKTREE_OWNER_NOT_READY_ERROR
+      : localizeFileLoadError(message, code)
   return (
     <div className="flex h-full items-center justify-center bg-editor-surface p-6 text-sm text-muted-foreground">
       <div className="flex max-w-xl items-start gap-3 rounded-md border border-border bg-background p-4">
@@ -75,7 +87,7 @@ export function EditorFileLoadErrorView({
             </>
           ) : (
             <>
-              <div className="mt-1 break-words">{localizeFileLoadError(message, code)}</div>
+              <div className="mt-1 break-words">{shownMessage}</div>
               <Button type="button" variant="outline" size="sm" className="mt-3" onClick={onRetry}>
                 <RefreshCw className="size-3.5" />
                 {translate('auto.components.editor.EditorContent.2a512bb46a', 'Retry')}

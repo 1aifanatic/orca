@@ -5,29 +5,33 @@ import { useAppStore } from '@/store'
 import { resetSshConnectInFlightForTests } from '@/ssh/ssh-connect-in-flight'
 import type { WorktreeHostConnection } from '@/lib/worktree-host-connection-phase'
 
+const USER_DISCONNECTED_HOST: WorktreeHostConnection = {
+  phase: 'unavailable',
+  targetId: 'ssh-a',
+  environmentId: null,
+  publishedStatus: 'disconnected',
+  connectedEpoch: null,
+  unavailableReason: 'user-disconnected'
+}
+
 const mocks = vi.hoisted(() => {
-  const hostConnection: WorktreeHostConnection = {
-    phase: 'unavailable',
-    targetId: 'ssh-a',
-    environmentId: null,
-    publishedStatus: 'disconnected',
-    connectedEpoch: null,
-    unavailableReason: 'user-disconnected'
-  }
-  return { connect: vi.fn(), ensureConnected: vi.fn(), hostConnection }
+  const host: { connection: WorktreeHostConnection | null } = { connection: null }
+  return { connect: vi.fn(), ensureConnected: vi.fn(), host }
 })
 
 vi.mock('@/lib/worktree-host-connection-phase', () => ({
-  useWorktreeHostConnection: () => mocks.hostConnection
+  useWorktreeHostConnection: () => mocks.host.connection
 }))
 
 import { EditorFileLoadErrorView } from './EditorFileLoadErrorView'
+import { WORKTREE_OWNER_NOT_READY_ERROR } from './editor-panel-content-types'
 
 describe("EditorFileLoadErrorView on a host the user's Disconnect holds down", () => {
   beforeEach(() => {
     useAppStore.setState(useAppStore.getInitialState(), true)
     useAppStore.setState({ sshTargetLabels: new Map([['ssh-a', 'devbox']]) })
     resetSshConnectInFlightForTests()
+    mocks.host.connection = USER_DISCONNECTED_HOST
     mocks.connect.mockReset().mockResolvedValue(null)
     mocks.ensureConnected.mockReset()
     Object.defineProperty(window, 'api', {
@@ -56,5 +60,43 @@ describe("EditorFileLoadErrorView on a host the user's Disconnect holds down", (
     expect(mocks.connect).toHaveBeenCalledWith({ targetId: 'ssh-a' })
     expect(mocks.ensureConnected).not.toHaveBeenCalled()
     expect(onRetry).not.toHaveBeenCalled()
+  })
+
+  it('shows the connecting state, not the dropped read error, once the user connects', () => {
+    mocks.host.connection = {
+      ...USER_DISCONNECTED_HOST,
+      phase: 'connecting',
+      publishedStatus: 'connecting',
+      unavailableReason: null
+    }
+    render(
+      <EditorFileLoadErrorView
+        message="SSH connection is not available"
+        worktreeId="wt-ssh"
+        onRetry={vi.fn()}
+      />
+    )
+
+    screen.getByText(WORKTREE_OWNER_NOT_READY_ERROR)
+    expect(screen.queryByText('SSH connection is not available')).toBeNull()
+  })
+
+  it('keeps a failure the connection cannot fix while the host connects', () => {
+    mocks.host.connection = {
+      ...USER_DISCONNECTED_HOST,
+      phase: 'connecting',
+      publishedStatus: 'connecting',
+      unavailableReason: null
+    }
+    render(
+      <EditorFileLoadErrorView
+        message="ENOENT: no such file or directory"
+        worktreeId="wt-ssh"
+        onRetry={vi.fn()}
+      />
+    )
+
+    screen.getByText('ENOENT: no such file or directory')
+    expect(screen.queryByText(WORKTREE_OWNER_NOT_READY_ERROR)).toBeNull()
   })
 })
