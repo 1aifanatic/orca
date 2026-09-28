@@ -211,6 +211,8 @@ export type QueuedMessageDrainDeps = {
   conversationFence: (sessionId: string) => number
   /** The consumed submission is ordinary #22821 work from here on. */
   wakeDelivery: (sessionId: string) => void
+  /** A pause writes no journal row, so the drain publishes it itself. */
+  publish: (sessionId: string, journal: AgentSessionJournal) => void
   onError: (sessionId: string, error: unknown) => void
 }
 
@@ -308,6 +310,7 @@ export class StructuredAgentSessionQueuedMessageDrain {
       // Pre-consume failure: the draft stays waiting, held with the error on the
       // card. An explicit Send retries; no automatic retry loop.
       pauseQueuedMessage(sessionId, next.messageId, QUEUED_MESSAGE_PAUSED_SEND_FAILED)
+      this.deps.publish(sessionId, journal)
       throw error
     }
     this.deps.wakeDelivery(sessionId)

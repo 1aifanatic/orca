@@ -34,6 +34,7 @@ export function wireStructuredAgentSessionQueuedMessages(host: {
     conversationFence: (sessionId) =>
       structuredAgentSessionConversationFence(host.deps().store, sessionId),
     wakeDelivery: host.wakeDelivery,
+    publish: (sessionId, journal) => host.mutationContext().publish(sessionId, journal),
     onError: (sessionId, error) => host.deps().onEventSinkError?.({ sessionId, error })
   })
   return {

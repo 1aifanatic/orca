@@ -83,18 +83,24 @@ export function stopQueuedWithdrawalFinisher(
   }
 ): <TValue extends object>(value: TValue) => Promise<{ ok: true; value: TValue }> {
   const frontier = pauseWithdrawableQueuedMessages(ctx.journal, ctx.sessionId)
-  return async (value) =>
-    input.withdrawQueued
-      ? {
-          ok: true,
-          value: {
-            ...value,
-            ...(await settleStopQueuedWithdrawal(ctx, {
-              operationId: input.operationId,
-              frontier,
-              wake: input.wake
-            }))
-          }
+  return async (value) => {
+    if (input.withdrawQueued) {
+      return {
+        ok: true,
+        value: {
+          ...value,
+          ...(await settleStopQueuedWithdrawal(ctx, {
+            operationId: input.operationId,
+            frontier,
+            wake: input.wake
+          }))
         }
-      : { ok: true, value }
+      }
+    }
+    if (frontier.length > 0) {
+      // The pause writes no journal row; a Stop that committed none either must still show it.
+      ctx.publish()
+    }
+    return { ok: true, value }
+  }
 }

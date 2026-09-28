@@ -695,6 +695,62 @@ describe('publication', () => {
     }
   })
 
+  it('a failed conversion reaches live subscribers as a paused card, with no further journal commit', async () => {
+    const working = await workingSend()
+    const events = await subscribeEvents()
+    const queued = await send('conversion fails once', 'queue-if-active').result
+    if (!queued.ok || !('queued' in queued.value)) {
+      throw new Error('expected a queued receipt')
+    }
+    const draftId = queued.value.queued.messageId
+    const append = vi
+      .spyOn(AgentSessionJournal.prototype, 'appendSubmission')
+      .mockImplementationOnce(async () => {
+        throw new Error('disk full')
+      })
+    try {
+      await settleAccepted(working, 'a')
+      await eventually(() =>
+        expect(queuedFrames(events).at(-1)).toMatchObject([
+          { messageId: draftId, paused: true, pausedReason: QUEUED_MESSAGE_PAUSED_SEND_FAILED }
+        ])
+      )
+    } finally {
+      append.mockRestore()
+    }
+    // Send releases the process-level pause, which later tests' reused ids would otherwise inherit.
+    expect(await sendNow(draftId)).toMatchObject({ ok: true })
+  })
+
+  it("an old client's Stop that commits no journal row still publishes the pause", async () => {
+    const working = await workingSend()
+    const first = await send('to be refused', 'queue-if-active').result
+    const second = await send('waits behind the card', 'queue-if-active').result
+    if (!first.ok || !('queued' in first.value) || !second.ok || !('queued' in second.value)) {
+      throw new Error('expected queued receipts')
+    }
+    const firstId = first.value.queued.messageId
+    const secondId = second.value.queued.messageId
+    await settleAccepted(working, 'a')
+    await eventually(async () => expect(await submission(firstId)).toBeDefined())
+    await settleRejected(firstId, 'refused')
+    await eventually(async () =>
+      expect(await drafts()).toMatchObject([
+        { messageId: firstId, state: 'returned' },
+        { messageId: secondId, state: 'waiting' }
+      ])
+    )
+    // Idle, nothing in flight: the Stop interrupts nothing and writes no journal row.
+    const events = await subscribeEvents()
+    expect(await stop()).toMatchObject({ ok: true, value: { cancelled: false } })
+    await eventually(() =>
+      expect(queuedFrames(events).at(-1)).toMatchObject([
+        { messageId: firstId, state: 'returned' },
+        { messageId: secondId, state: 'waiting', paused: true }
+      ])
+    )
+  })
+
   it('an unchanged list is not re-sent on later frames', async () => {
     await workingSend()
     const events = await subscribeEvents()
