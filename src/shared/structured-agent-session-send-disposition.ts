@@ -37,8 +37,6 @@ export type StructuredAgentSessionSendDisposition = {
   /** The entry the queue is stuck on, or null when nothing blocks it. Always the
    *  next value, never "unchanged": the caller assigns it verbatim. */
   blockedClientMessageId: string | null
-  /** A rejected result arrived before the journal snapshot; Retry must rotate this id. */
-  retryWithFreshClientMessageId: string | null
 }
 
 type SendDispositionInput = {
@@ -222,8 +220,7 @@ export function disposeStructuredAgentSessionSendResult(
       blockedClientMessageId:
         !refused || refused.state === 'rejected'
           ? input.blockedClientMessageId
-          : refused.clientMessageId,
-      retryWithFreshClientMessageId: null
+          : refused.clientMessageId
     }
   }
   const submission = result.value.submission
@@ -231,16 +228,14 @@ export function disposeStructuredAgentSessionSendResult(
     return {
       entries: dropEntry(input),
       error: 'Message delivery is unconfirmed and Orca will not send it again',
-      blockedClientMessageId: input.blockedClientMessageId,
-      retryWithFreshClientMessageId: null
+      blockedClientMessageId: input.blockedClientMessageId
     }
   }
   if (submission.dispatchState === 'accepted') {
     return {
       entries: dropEntry(input),
       error: null,
-      blockedClientMessageId: input.blockedClientMessageId,
-      retryWithFreshClientMessageId: null
+      blockedClientMessageId: input.blockedClientMessageId
     }
   }
   // A Stop's withdrawal failed nothing, first reply or replay: the entry leaves as the reconcile
@@ -252,8 +247,7 @@ export function disposeStructuredAgentSessionSendResult(
     return {
       entries: dropEntry(input),
       error: null,
-      blockedClientMessageId: input.blockedClientMessageId,
-      retryWithFreshClientMessageId: null
+      blockedClientMessageId: input.blockedClientMessageId
     }
   }
   if (submission.dispatchState === 'rejected') {
@@ -264,8 +258,7 @@ export function disposeStructuredAgentSessionSendResult(
         structuredAgentSessionRejectedFailure(submission)
       ),
       error: null,
-      blockedClientMessageId: input.blockedClientMessageId,
-      retryWithFreshClientMessageId: input.entry.clientMessageId
+      blockedClientMessageId: input.blockedClientMessageId
     }
   }
   if (submission.dispatchState === 'unknown' && submission.recovered) {
@@ -276,8 +269,7 @@ export function disposeStructuredAgentSessionSendResult(
           : candidate
       ),
       error: null,
-      blockedClientMessageId: input.blockedClientMessageId,
-      retryWithFreshClientMessageId: null
+      blockedClientMessageId: input.blockedClientMessageId
     }
   }
   // `pending` is the host saying the message was written and is awaiting the
@@ -292,8 +284,7 @@ export function disposeStructuredAgentSessionSendResult(
       submission.dispatchState === 'unknown' ? 'unconfirmed' : 'dispatching'
     ),
     error: null,
-    blockedClientMessageId: input.blockedClientMessageId,
-    retryWithFreshClientMessageId: null
+    blockedClientMessageId: input.blockedClientMessageId
   }
 }
 
@@ -313,7 +304,6 @@ export function disposeStructuredAgentSessionSendFailure(
     error: null,
     blockedClientMessageId: deliveryUnknown
       ? input.blockedClientMessageId
-      : input.entry.clientMessageId,
-    retryWithFreshClientMessageId: null
+      : input.entry.clientMessageId
   }
 }

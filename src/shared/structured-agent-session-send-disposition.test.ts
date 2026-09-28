@@ -121,8 +121,7 @@ describe('what a rejection shows the user', () => {
       expect(disposition).toEqual({
         entries: [],
         error: null,
-        blockedClientMessageId: null,
-        retryWithFreshClientMessageId: null
+        blockedClientMessageId: null
       })
     }
   })
