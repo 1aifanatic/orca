@@ -1,0 +1,264 @@
+{
+  "schema": 1,
+  "sourceArchive": {
+    "sha256": "1e772b3917f75a5102d637462236d2b0b628142de3cc52c4e748c9f3228934f8",
+    "bytes": 1778892124
+  },
+  "catalogTrust": {
+    "run": 36482063593,
+    "actualSha256": "f0a50ea157222c29abd5ea6ff01bfc3c33b04e011c5e45ee2ca38ef0778e5643",
+    "channelAdvertisedSha256": "6e470016e4324c84c255ffd0beb3767d17ec89cc8561e9409ee3e1f6d29400f5",
+    "channelAdvertisedBytes": 30443537,
+    "scope": "Authenticated retained Catalog.json from connected/offline Windows trust qualification; advertised channel digest is not the catalog content digest."
+  },
+  "channel": {
+    "sha256": "fca418ba94ffbcfb7a2b25f10f16f39dd09660568d21eef4bd3f274cb0b27b8c",
+    "bytes": 91781
+  },
+  "toolArchive": {
+    "sha256": "31e1033f30608ba6b821d17f1461042bd54c23424813c9b4e9ae15b6d32fa4cd",
+    "bytes": 3419452,
+    "member": "xwin-0.9.0-x86_64-unknown-linux-musl/xwin"
+  },
+  "tool": {
+    "sha256": "0767d311a73af67ef9bd5204ad728d7e01f1b22721d51aac5568b7cb98404d5a",
+    "bytes": 7901024
+  },
+  "cache": {
+    "dl/Microsoft.VC.14.44.17.14.ATL.Headers.base.vsix": {
+      "sha256": "f8d375a254b6cfdbe0e7dc4fe7342d6212052068eb6394070dd932c815adb500",
+      "bytes": 585841,
+      "source": "Microsoft.VC.14.44.17.14.ATL.Headers.base,version=14.44.35208/payload.vsix"
+    },
+    "dl/Microsoft.VC.14.44.17.14.ATL.X64.base.vsix": {
+      "sha256": "6dd0b7f8079c654db2b8fdaebc74900e8418b5204914a77bde93a5b01ac0998c",
+      "bytes": 809804,
+      "source": "Microsoft.VC.14.44.17.14.ATL.X64.base,version=14.44.35208/payload.vsix"
+    },
+    "dl/Microsoft.VC.14.44.17.14.ATL.arm64.base.vsix": {
+      "sha256": "1c60a604821a3f4cd59a0da8f8a800ff79f6d8feb6fe13b8d482dd562aa84591",
+      "bytes": 1352172,
+      "source": "Microsoft.VC.14.44.17.14.ATL.ARM64.base,version=14.44.35208/payload.vsix"
+    },
+    "dl/Microsoft.VC.14.44.17.14.CRT.Headers.base.vsix": {
+      "sha256": "852382a9aa73502b7849c1bcadfb603ba7175c4e8b60e6aba03c7de711d4ece5",
+      "bytes": 2116223,
+      "source": "Microsoft.VC.14.44.17.14.CRT.Headers.base,version=14.44.35220/payload.vsix"
+    },
+    "dl/Microsoft.VC.14.44.17.14.CRT.arm64.Desktop.base.vsix": {
+      "sha256": "ba1aeca6d6470d2b3b318ec7bffb3e61f9a736cfb76d8a7d18e004a8e7c26651",
+      "bytes": 48504922,
+      "source": "Microsoft.VC.14.44.17.14.CRT.ARM64.Desktop.base,version=14.44.35226/payload.vsix"
+    },
+    "dl/Microsoft.VC.14.44.17.14.CRT.arm64.Store.base.vsix": {
+      "sha256": "57ece91747be72fdd9ed0c39b83225011c8afba6b6f616a23ace54d0522f79e9",
+      "bytes": 60875826,
+      "source": "Microsoft.VC.14.44.17.14.CRT.ARM64.Store.base,version=14.44.35226/payload.vsix"
+    },
+    "dl/Microsoft.VC.14.44.17.14.CRT.x64.Desktop.base.vsix": {
+      "sha256": "f01f701a7bcd9587a340898c851424f6a52bb913a70c185ff0d5bf0288c5831a",
+      "bytes": 50776097,
+      "source": "Microsoft.VC.14.44.17.14.CRT.x64.Desktop.base,version=14.44.35226/payload.vsix"
+    },
+    "dl/Microsoft.VC.14.44.17.14.CRT.x64.Store.base.vsix": {
+      "sha256": "9135b03c0df53c7a0aa9bef7230a1c2ff4263a0ee7baa7e419d034f484f6bb56",
+      "bytes": 27596908,
+      "source": "Microsoft.VC.14.44.17.14.CRT.x64.Store.base,version=14.44.35226/payload.vsix"
+    },
+    "dl/Win11SDK_10.0.26100_arm64_headers.msi": {
+      "sha256": "bd2c39e59c62e9f81382f843f7df2d47a6f2cc865ee612f7ed42d27086895552",
+      "bytes": 446464,
+      "source": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/Windows SDK Desktop Headers arm64-x86_en-us.msi"
+    },
+    "dl/Win11SDK_10.0.26100_headers.msi": {
+      "sha256": "f1e5159feb948ce90a81dcc6a427dde844610230cb6ed787e35d422de527a5f8",
+      "bytes": 790528,
+      "source": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/Windows SDK Desktop Headers x86-x86_en-us.msi"
+    },
+    "dl/Win11SDK_10.0.26100_headers/07a57cdb41ba28cced14005f087267be.cab": {
+      "sha256": "1f350449f6f598a4d9b316e69ad9b845db8e8d919b8b34f5c07b32598f6de319",
+      "bytes": 103680,
+      "source": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/07a57cdb41ba28cced14005f087267be.cab"
+    },
+    "dl/Win11SDK_10.0.26100_headers/2e876dd22fa5e6785f137e3422dd50ec.cab": {
+      "sha256": "bd490c2da3b5837261d43791a02ea3bb6aef1de787f52bec5e7dd638bfb77f51",
+      "bytes": 9216010,
+      "source": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/2e876dd22fa5e6785f137e3422dd50ec.cab"
+    },
+    "dl/Win11SDK_10.0.26100_headers/4fe4c8b88812f5339018c0eef95acdb9.cab": {
+      "sha256": "cadd61caab00b5ad3ef449efb54f8a7b1a43a7cfb85f321b544ca578b14e179b",
+      "bytes": 26653,
+      "source": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/4fe4c8b88812f5339018c0eef95acdb9.cab"
+    },
+    "dl/Win11SDK_10.0.26100_libs_aarch64.msi": {
+      "sha256": "21f16dd88e22467ac0663520426f972f2bd1d9925ae7d8c2baf9e5288bf9ec6c",
+      "bytes": 528384,
+      "source": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/Windows SDK Desktop Libs arm64-x86_en-us.msi"
+    },
+    "dl/Win11SDK_10.0.26100_libs_aarch64/3e2f7be479e3679d700ce0782e4cc318.cab": {
+      "sha256": "0ae0ea0d8c43d3ecf0cfe69b31cb19f6ea1f8323f3bef2521ef9a8e4ed08d343",
+      "bytes": 32793626,
+      "source": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/3e2f7be479e3679d700ce0782e4cc318.cab"
+    },
+    "dl/Win11SDK_10.0.26100_libs_x86_64.msi": {
+      "sha256": "2e956ca1cf17800b0f9811a6249b945f045addf18ee85ffe7aea99ec6c27243a",
+      "bytes": 528384,
+      "source": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/Windows SDK Desktop Libs x64-x86_en-us.msi"
+    },
+    "dl/Win11SDK_10.0.26100_libs_x86_64/58314d0646d7e1a25e97c902166c3155.cab": {
+      "sha256": "ec209a224c9b2d31f3409208d30f5a6335c55217ad384d6212c833ac83360eba",
+      "bytes": 16603242,
+      "source": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/58314d0646d7e1a25e97c902166c3155.cab"
+    },
+    "dl/Win11SDK_10.0.26100_store_headers.msi": {
+      "sha256": "c9f78ae3e730ea1789a37001e204a970099d2acc555cc537fb45ea0bb23b347c",
+      "bytes": 1060864,
+      "source": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/Windows SDK for Windows Store Apps Headers-x86_en-us.msi"
+    },
+    "dl/Win11SDK_10.0.26100_store_headers/766c0ffd568bbb31bf7fb6793383e24a.cab": {
+      "sha256": "c590f816f3bb15a79a0bf815ca942aeec4a36c08fd66fa35a243c86b4f8bac7d",
+      "bytes": 8176880,
+      "source": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/766c0ffd568bbb31bf7fb6793383e24a.cab"
+    },
+    "dl/Win11SDK_10.0.26100_store_headers/8125ee239710f33ea485965f76fae646.cab": {
+      "sha256": "afca62a1e32f28fad347f7610c6ef663506a798db78ac4e4cf545aeaa4c5d1d3",
+      "bytes": 5779649,
+      "source": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/8125ee239710f33ea485965f76fae646.cab"
+    },
+    "dl/Win11SDK_10.0.26100_store_headers/c0aa6d435b0851bf34365aadabd0c20f.cab": {
+      "sha256": "b9e05d77c4e719d4f394b5a66328cfb2df2a80914785545eeb049a69fcb11d3c",
+      "bytes": 4951894,
+      "source": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/c0aa6d435b0851bf34365aadabd0c20f.cab"
+    },
+    "dl/Win11SDK_10.0.26100_store_headers_onecoreuap.msi": {
+      "sha256": "be5ee13ccc98b87211b4f3686972b00fa16f20f266fe9dc5572d62f001e0547c",
+      "bytes": 471040,
+      "source": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/Windows SDK for Windows Store Apps Headers OnecoreUap-x86_en-us.msi"
+    },
+    "dl/Win11SDK_10.0.26100_store_headers_onecoreuap/e89e3dcbb016928c7e426238337d69eb.cab": {
+      "sha256": "4e5f0346d59faae3742c79d48df74f221b202da347f5751cc3e53156941368f1",
+      "bytes": 920606,
+      "source": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/e89e3dcbb016928c7e426238337d69eb.cab"
+    },
+    "dl/Win11SDK_10.0.26100_store_libs.msi": {
+      "sha256": "1381535d2f6b1894a092da67f8a8fb048a4dfe8060ce75b3275affa81b02586e",
+      "bytes": 528384,
+      "source": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/Windows SDK for Windows Store Apps Libs-x86_en-us.msi"
+    },
+    "dl/Win11SDK_10.0.26100_store_libs/05047a45609f311645eebcac2739fc4c.cab": {
+      "sha256": "902003e4976c7bc4bcda9f31f1d835b8072235532412770f66b0bc9f0882cb7e",
+      "bytes": 230296,
+      "source": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/05047a45609f311645eebcac2739fc4c.cab"
+    },
+    "dl/Win11SDK_10.0.26100_store_libs/13d68b8a7b6678a368e2d13ff4027521.cab": {
+      "sha256": "0b26ede2d22ea531d921269dfffcd14cc71d6932cac0f2720fcec37079286643",
+      "bytes": 390500,
+      "source": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/13d68b8a7b6678a368e2d13ff4027521.cab"
+    },
+    "dl/Win11SDK_10.0.26100_store_libs/463ad1b0783ebda908fd6c16a4abfe93.cab": {
+      "sha256": "43c40559098a2c1efbef6af16f97a44fd80b3bb9fe8ae117c4e6f9f3f852b8e8",
+      "bytes": 218021,
+      "source": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/463ad1b0783ebda908fd6c16a4abfe93.cab"
+    },
+    "dl/Win11SDK_10.0.26100_store_libs/5a22e5cde814b041749fb271547f4dd5.cab": {
+      "sha256": "57e7e309413d05b781ae76d1b5c54dc7aff350b6a460920f1f358e8003aabdfb",
+      "bytes": 15542250,
+      "source": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/5a22e5cde814b041749fb271547f4dd5.cab"
+    },
+    "dl/Win11SDK_10.0.26100_store_libs/e10768bb6e9d0ea730280336b697da66.cab": {
+      "sha256": "46e21578a4cfce3bd6e4eacc10b92121a825ce443cc2f6cce84b07e37b9d21bc",
+      "bytes": 7328808,
+      "source": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/e10768bb6e9d0ea730280336b697da66.cab"
+    },
+    "dl/Win11SDK_10.0.26100_store_libs/f9b24c8280986c0683fbceca5326d806.cab": {
+      "sha256": "154f4a24ec22ea0c932709f0e1a2c443946b42c14291a49a280ab4ea0eaa504d",
+      "bytes": 7245228,
+      "source": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/f9b24c8280986c0683fbceca5326d806.cab"
+    },
+    "dl/Win11SDK_10.0.26100_uap_headers.msi": {
+      "sha256": "09725127b70e645fd0c86f004a1b0204ae72d685d70b2e3856efc00533aaeec3",
+      "bytes": 495616,
+      "source": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/Windows SDK OnecoreUap Headers x86-x86_en-us.msi"
+    },
+    "dl/Win11SDK_10.0.26100_uap_headers/f2e05dfd38ed343d3de77209cf3ecdae.cab": {
+      "sha256": "c536e6742d56a05c47310c23e09a9e5a5552d914f5752ff9050eee88e009bcf9",
+      "bytes": 1240695,
+      "source": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/f2e05dfd38ed343d3de77209cf3ecdae.cab"
+    },
+    "dl/Win11SDK_10.0.26100_x64_headers.msi": {
+      "sha256": "d189ca50e5632b546795922e2262794c068d6ff301860feb4522b8b93cbb3ba8",
+      "bytes": 450560,
+      "source": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/Windows SDK Desktop Headers x64-x86_en-us.msi"
+    },
+    "dl/Win11SDK_10.0.26100_x64_headers/d1de88680a8e53fe75e01e94dc0ed767.cab": {
+      "sha256": "9d88fa269dc02fd3fde50a056c04d6dfcc5b8a15739ae0f3e7ac51cc1c88f5b8",
+      "bytes": 46971,
+      "source": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/d1de88680a8e53fe75e01e94dc0ed767.cab"
+    },
+    "dl/pkg_manifest_6e470016e4324c84c255ffd0beb3767d17ec89cc8561e9409ee3e1f6d29400f5.vsman": {
+      "sha256": "f0a50ea157222c29abd5ea6ff01bfc3c33b04e011c5e45ee2ca38ef0778e5643",
+      "bytes": 17954732,
+      "source": "Catalog.json"
+    },
+    "dl/ucrt.msi": {
+      "sha256": "54448641eef058318b540188245a62982f97ccc462c0c1c1cf3c6d771e26f214",
+      "bytes": 405504,
+      "source": "historical-ucrt-retained/Universal CRT Headers Libraries and Sources-x86_en-us.msi"
+    },
+    "dl/ucrt/16ab2ea2187acffa6435e334796c8c89.cab": {
+      "sha256": "fd8099addd4b177bc38e1c25ead2f1237a3b92979c2b7083eb756c7ff4549f83",
+      "bytes": 581313,
+      "source": "16ab2ea2187acffa6435e334796c8c89.cab"
+    },
+    "dl/ucrt/2868a02217691d527e42fe0520627bfa.cab": {
+      "sha256": "351c9fb52417528084206c13fde01992031e2a79fbbe94e808963ed6470610af",
+      "bytes": 501482,
+      "source": "2868a02217691d527e42fe0520627bfa.cab"
+    },
+    "dl/ucrt/6ee7bbee8435130a869cf971694fd9e2.cab": {
+      "sha256": "96d28a324939c9a6bbceb3acfa1061525a0e63ad95ae286a5778ed3e8ae366fa",
+      "bytes": 34999208,
+      "source": "6ee7bbee8435130a869cf971694fd9e2.cab"
+    },
+    "dl/ucrt/78fa3c824c2c48bd4a49ab5969adaaf7.cab": {
+      "sha256": "f4737a26feb8b380788379b2a7710ad306bfb1bf13f5177361f2a0b29dc25737",
+      "bytes": 35534891,
+      "source": "78fa3c824c2c48bd4a49ab5969adaaf7.cab"
+    },
+    "dl/ucrt/7afc7b670accd8e3cc94cfffd516f5cb.cab": {
+      "sha256": "495312c864a202eb3301cc63e919f5e83d14c8cde07bf9ebf8054332fa9c7c25",
+      "bytes": 518298,
+      "source": "7afc7b670accd8e3cc94cfffd516f5cb.cab"
+    },
+    "dl/ucrt/80dcdb79b8a5960a384abe5a217a7e3a.cab": {
+      "sha256": "37af50386bf3b5afc2f4117af9988c0bec85e65ae5a9c3a6f0e83eda3a1cd168",
+      "bytes": 35673422,
+      "source": "80dcdb79b8a5960a384abe5a217a7e3a.cab"
+    },
+    "dl/ucrt/96076045170fe5db6d5dcf14b6f6688e.cab": {
+      "sha256": "a8ec9e2ff216856ad9fdcd6516092c08f33adefbfdc696113f6f31552e7cf138",
+      "bytes": 592236,
+      "source": "96076045170fe5db6d5dcf14b6f6688e.cab"
+    },
+    "dl/ucrt/a1e2a83aa8a71c48c742eeaff6e71928.cab": {
+      "sha256": "c777aea86b4126c90b7ae9017a2bf753f57b9dd450761db7d312d5bd8f5874fa",
+      "bytes": 36296724,
+      "source": "a1e2a83aa8a71c48c742eeaff6e71928.cab"
+    },
+    "dl/ucrt/b2f03f34ff83ec013b9e45c7cd8e8a73.cab": {
+      "sha256": "d0edd2447f7314f283f61b3db56eb65e01ca2b6f24bd4be52aaa285466fbc1ff",
+      "bytes": 140191,
+      "source": "b2f03f34ff83ec013b9e45c7cd8e8a73.cab"
+    },
+    "dl/ucrt/beb5360d2daaa3167dea7ad16c28f996.cab": {
+      "sha256": "3120fb967c9bd33edf5e44370a52708f27c1e249e39bad07f9cb745d094de7fb",
+      "bytes": 551478,
+      "source": "beb5360d2daaa3167dea7ad16c28f996.cab"
+    },
+    "dl/ucrt/f9ff50431335056fb4fbac05b8268204.cab": {
+      "sha256": "212c2e08ca3aafb8111f780de5b97d5d921b7e0c4346f1455434907c263eb414",
+      "bytes": 14203,
+      "source": "f9ff50431335056fb4fbac05b8268204.cab"
+    }
+  }
+}

@@ -1,0 +1,71 @@
+name: Diagnostic connected preparation and offline xwin
+on:
+  push:
+    branches: [OrcaWin/np-offline-xwin-extraction-diagnostic]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  qualify:
+    if: github.repository == 'stablyai/orca' && github.ref == 'refs/heads/OrcaWin/np-offline-xwin-extraction-diagnostic'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          sparse-checkout: config/ci/offline-xwin
+      - name: Fetch exact previously qualified layout archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact_id=$(gh api repos/stablyai/orca/actions/runs/36476269793/artifacts --jq '[.artifacts[] | select(.name == "sdk-layout-retained-inputs" and .expired == false)] | if length == 1 then .[0].id else error("expected exactly one retained SDK artifact") end')
+          timeout --kill-after=30s 600s gh api "repos/stablyai/orca/actions/artifacts/$artifact_id/zip" > "$RUNNER_TEMP/sdk-layout.zip"
+      - name: Stage pinned cache and tool without executing downloaded code
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s config/ci/offline-xwin -p test_offline_xwin.py
+          python3 config/ci/offline-xwin/stage-offline-xwin-inputs.py --layout-archive "$RUNNER_TEMP/sdk-layout.zip" --destination "$RUNNER_TEMP/xwin-stage"
+      - name: Allocate bounded extraction filesystem
+        shell: bash
+        run: |
+          set -euo pipefail
+          truncate -s 4G "$RUNNER_TEMP/xwin.ext4"
+          mkfs.ext4 -F "$RUNNER_TEMP/xwin.ext4"
+          mkdir "$RUNNER_TEMP/xwin"
+          sudo mount -o loop,nodev,nosuid "$RUNNER_TEMP/xwin.ext4" "$RUNNER_TEMP/xwin"
+          sudo chown "$(id -u):$(id -g)" "$RUNNER_TEMP/xwin"
+          cp -R "$RUNNER_TEMP/xwin-stage/inputs/." "$RUNNER_TEMP/xwin/"
+      - name: Extract with networking disabled and dropped root privileges
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo timeout --kill-after=30s 900s unshare --net -- setpriv --reuid="$(id -u)" --regid="$(id -g)" --init-groups -- bash config/ci/offline-xwin/run-offline-xwin.sh "$RUNNER_TEMP/xwin"
+      - name: Retain verified extraction for link and runtime build gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -czf "$RUNNER_TEMP/xwin/xwin-output.tar.gz" -C "$RUNNER_TEMP/xwin/output" .
+          sha256sum "$RUNNER_TEMP/xwin/xwin-output.tar.gz" > "$RUNNER_TEMP/xwin/receipt/output-archive.sha256"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: offline-xwin-extracted-sdk
+          path: ${{ runner.temp }}/xwin/xwin-output.tar.gz
+          compression-level: 0
+          retention-days: 7
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: offline-xwin-qualification-receipts
+          path: |
+            ${{ runner.temp }}/xwin-stage/inputs/receipt
+            ${{ runner.temp }}/xwin/receipt
+          retention-days: 7
+      - name: Unmount extraction filesystem
+        if: always()
+        shell: bash
+        run: if mountpoint -q "$RUNNER_TEMP/xwin"; then sudo umount "$RUNNER_TEMP/xwin"; fi
