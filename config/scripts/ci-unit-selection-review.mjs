@@ -64,6 +64,8 @@ export function reviewUnitSelection(records) {
       nodeVersion: first.nodeVersion,
       mode: plan.mode,
       completeFullRun: complete && plan.mode === 'shadow',
+      selectionEvaluated: complete && plan.mode === 'shadow' && plan.selectionAvailable === true,
+      reason: plan.reason,
       missedFailures,
       files: files.size,
       candidateFiles: selected.size,
@@ -98,7 +100,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     '',
     ...review.map(
       (row) =>
-        `- Node ${row.nodeVersion}: ${row.completeFullRun ? 'complete full reference' : 'incomplete or selected evidence'}; ${row.candidateFiles}/${row.files} candidate files; ${row.missedFailures.length} failures outside selection; ${(row.potentiallyOmittedWorkerMs / 60_000).toFixed(1)} potentially omitted worker-minutes.`
+        `- Node ${row.nodeVersion}: ${row.completeFullRun ? 'complete full reference' : 'incomplete or selected evidence'}; ${row.selectionEvaluated ? 'selection evaluated' : 'not selection-validation evidence'}; ${row.candidateFiles}/${row.files} candidate files; ${row.missedFailures.length} failures outside selection; ${(row.potentiallyOmittedWorkerMs / 60_000).toFixed(1)} potentially omitted worker-minutes. ${row.reason ?? ''}`
     ),
     '',
     'Worker time overlaps across processes; it is not runner time. Promote only after representative complete references show no missed failures.',

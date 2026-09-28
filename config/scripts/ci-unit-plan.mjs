@@ -14,12 +14,12 @@ export function prepareUnitPlan(env = process.env) {
     if (env.GITHUB_EVENT_NAME !== 'pull_request') {
       throw new Error('Full reference run')
     }
-    const diff = runProcessSync(
-      'git',
-      ['diff', '--name-only', '--no-renames', '-z', 'HEAD^1', 'HEAD'],
-      { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }
-    )
-    if (diff.status !== 0) {
+    const diff = runProcessSync({
+      program: 'git',
+      args: ['diff', '--name-only', '--no-renames', '-z', 'HEAD^1', 'HEAD'],
+      maxOutputBytes: 16 * 1024 * 1024
+    })
+    if (diff.code !== 0 || diff.timedOut) {
       throw new Error('Changed paths unavailable')
     }
     plan = planUnitSelection({
@@ -34,6 +34,7 @@ export function prepareUnitPlan(env = process.env) {
     plan = {
       version: 1,
       mode: 'shadow',
+      selectionAvailable: false,
       reason: String(error),
       files,
       candidateFiles: files,

@@ -38,6 +38,7 @@ export function planUnitSelection({ files, changed, graph, timings, event, mode 
   return {
     version: 1,
     mode: selected ? 'selected' : 'shadow',
+    selectionAvailable: !candidate.full,
     reason: candidate.reason,
     files,
     candidateFiles: candidate.files,

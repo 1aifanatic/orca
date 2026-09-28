@@ -1,7 +1,24 @@
 import { expect, it } from 'vitest'
 import { reviewUnitSelection } from './ci-unit-selection-review.mjs'
 
-const plan = { sourceSha: 'sha', mode: 'shadow', files: ['a', 'b'], candidateFiles: ['a'] }
+const plan = {
+  sourceSha: 'sha',
+  mode: 'shadow',
+  selectionAvailable: true,
+  files: ['a', 'b'],
+  candidateFiles: ['a']
+}
+
+it('does not present full fallback runs as selection-validation evidence', () => {
+  const records = [record(1, 'a', 'passed'), record(2, 'b', 'passed')].map((row) => ({
+    ...row,
+    plan: { ...plan, selectionAvailable: false }
+  }))
+  expect(reviewUnitSelection(records)[0]).toMatchObject({
+    completeFullRun: true,
+    selectionEvaluated: false
+  })
+})
 const record = (index, file, state) => ({
   plan,
   timing: {
