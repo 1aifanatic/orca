@@ -26,6 +26,7 @@ import {
   type AgentSessionWriteRefusal
 } from './agent-session-write-failure'
 import {
+  DISPATCH_REJECTED_NOT_DELIVERED,
   DISPATCH_REJECTED_QUEUE_FULL,
   DISPATCH_REJECTED_WRITE_FAILED
 } from './structured-agent-session-dispatch-rejection'
@@ -211,6 +212,14 @@ describe('the notice for every failure and write', () => {
         ).not.toContain('fence')
       }
     }
+  })
+})
+
+describe('structuredAgentSessionRejectionParts', () => {
+  it('never shows the crash-recovery marker as the reason', () => {
+    expect(structuredAgentSessionRejectionParts(DISPATCH_REJECTED_NOT_DELIVERED, 'send')).toEqual([
+      'notDoneSend'
+    ])
   })
 })
 

@@ -37,6 +37,10 @@ export const DISPATCH_REJECTED_HOST_RESTARTED = 'host_restarted_before_delivery'
  *  Read only, like the one above. */
 export const DISPATCH_REJECTED_PROVIDER_CLOSED = 'provider_closed_before_delivery'
 
+/** Restart reconciliation found the send absent from a provider history it could trust. Rows
+ *  written before rows carried a fact hold it as their reason; released clients printed it. */
+export const DISPATCH_REJECTED_NOT_DELIVERED = 'not_delivered'
+
 /** True for the internal transport marker, false for a provider's own words. Legacy-reason half
  *  of `isWriteFailureSubmission`; readers go through that or the classifier. */
 function dispatchRejectionWasTransportWriteFailure(reason: string | null | undefined): boolean {
@@ -45,9 +49,6 @@ function dispatchRejectionWasTransportWriteFailure(reason: string | null | undef
     reason?.startsWith(`${DISPATCH_REJECTED_WRITE_FAILED}: `) === true
   )
 }
-
-/** Written by restart reconciliation before rows carried a fact; released clients printed it. */
-const LEGACY_NOT_DELIVERED = 'not_delivered'
 
 /**
  * What a rejection means for the chat, whatever wrote it:
@@ -129,7 +130,7 @@ const LEGACY_MARKER_KINDS: ReadonlyMap<string, SubmissionRejectionKind> = new Ma
   [DISPATCH_REJECTED_PROVIDER_CLOSED, 'chatClosed'],
   [DISPATCH_REJECTED_QUEUE_FULL, 'queueFull'],
   [DISPATCH_REJECTED_CODEX_QUEUE_FULL, 'queueFull'],
-  [LEGACY_NOT_DELIVERED, 'notDelivered']
+  [DISPATCH_REJECTED_NOT_DELIVERED, 'notDelivered']
 ])
 
 /** The kind a legacy marker stands for; undefined for any other reason, which is a sentence. */
