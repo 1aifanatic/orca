@@ -189,6 +189,31 @@ describe('Claude fold receipt for a mid-turn send (captured orders)', () => {
     expect(replayEventFor(rig.events, first)).toMatchObject({ startsTurn: true })
   })
 
+  it('session-start proof: the version adopted from the later init frame still enables the fold', async () => {
+    // Live sessions prove the session from a SessionStart hook frame BEFORE
+    // system/init arrives (measured against the real CLI), so the version gate
+    // must read the version off whichever init frame carries it.
+    const rig = await riggedAdapter({}, { initProof: 'session-start' })
+    const first = await rig.dispatchAt(FOLD_FRESH_SEND_AT.first, 'client-first', FIRST_PROMPT)
+    const framesFor = (steerUuid: string) =>
+      foldFreshCapture({ sessionId: PROVIDER_SESSION_ID, first, steer: steerUuid })
+    for (const captured of framesFor('pending')) {
+      if (captured.at < FOLD_FRESH_SEND_AT.steer) {
+        rig.deliver(captured)
+      }
+    }
+    const steer = await rig.dispatchAt(FOLD_FRESH_SEND_AT.steer, 'client-steer', STEER_PROMPT)
+    for (const captured of framesFor(steer)) {
+      if (captured.at > FOLD_FRESH_SEND_AT.steer) {
+        rig.deliver(captured)
+      }
+    }
+
+    expect([...new Set(rig.turns().map((turn) => turn.turnId))]).toEqual([first])
+    expect(rig.turns().every((turn) => turn.state !== 'interrupted')).toBe(true)
+    expect(replayEventFor(rig.events, steer)).not.toHaveProperty('startsTurn')
+  })
+
   it('fold-resumed: the receipt holds on a resumed provider session', async () => {
     const rig = await riggedAdapter({
       resumeLeafUuid: 'leaf-1',

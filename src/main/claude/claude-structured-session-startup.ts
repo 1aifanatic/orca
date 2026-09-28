@@ -140,7 +140,10 @@ function applyClaudeStartupFacts(session: ClaudeSession, facts: ClaudeStartupFac
   session.fastModeDisabledReason ??= published.fastModeDisabledReason
   session.options = prepared.options
   session.capabilities = readClaudeCapabilities(init, initialization)
-  session.cliVersion = readClaudeFrameString(init.message, 'claude_code_version')
+  // The proof observation may be a SessionStart hook frame with no version;
+  // never clobber a version a real init frame already reported.
+  session.cliVersion =
+    readClaudeFrameString(init.message, 'claude_code_version') ?? session.cliVersion
   // A catalog frame that streamed in after publish is newer than the initialize answer.
   if (session.commands.commands === undefined) {
     session.commands = new ClaudeSlashCommandCatalog(init.message, initialization)

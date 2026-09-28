@@ -101,6 +101,12 @@ export async function acquireClaudeSession({
         liveSession.reportedOptions.model = init.model
         liveSession.reportedModelMutation = liveSession.optionMutationSequence
       }
+      // A SessionStart hook frame can prove the session before system/init
+      // arrives, so the version is adopted from whichever init frame carries it.
+      if (liveSession) {
+        liveSession.cliVersion =
+          readClaudeFrameString(init.message, 'claude_code_version') ?? liveSession.cliVersion
+      }
     }
     observedLeafUuid = readClaudeTranscriptEntryUuid(message) ?? observedLeafUuid
     if (liveSession) {
