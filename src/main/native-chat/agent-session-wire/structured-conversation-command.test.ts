@@ -121,7 +121,7 @@ describe('host conversation commands', () => {
     })
     expect(compact).toHaveBeenCalledTimes(1)
     expect(adapter.dispatch).not.toHaveBeenCalled()
-    const history = host.history({ sessionId: HOST_TEST_SESSION, direction: 'tail' })
+    const history = await host.history({ sessionId: HOST_TEST_SESSION, direction: 'tail' })
     expect(history.page.submissions).toEqual([])
     expect(
       history.page.items.some(
@@ -143,7 +143,7 @@ describe('host conversation commands', () => {
       }
     })
     expect(store.getRecord(HOST_TEST_SESSION)?.conversationCommand?.state).toBe('completed')
-    const rows = host.history({ sessionId: HOST_TEST_SESSION, direction: 'tail' })
+    const rows = await host.history({ sessionId: HOST_TEST_SESSION, direction: 'tail' })
     expect(rows.ok && rows.page.items.map((item) => item.body)).toContainEqual({
       kind: 'status',
       text: 'Compaction failed: Not enough messages to compact.',
@@ -166,7 +166,7 @@ describe('host conversation commands', () => {
       ok: true,
       value: { error: 'Compaction completion is unconfirmed.', failure }
     })
-    const rows = host.history({ sessionId: HOST_TEST_SESSION, direction: 'tail' })
+    const rows = await host.history({ sessionId: HOST_TEST_SESSION, direction: 'tail' })
     expect(rows.ok && rows.page.items.map((item) => item.body)).toContainEqual({
       kind: 'status',
       text: 'Compaction completion is unconfirmed.',
@@ -243,7 +243,7 @@ describe('host conversation commands', () => {
     })
     expect(store.getRecord(HOST_TEST_SESSION)).not.toBeNull()
     expect(store.listVisibleSessionIds()).toEqual([nextId])
-    expect(host.history({ sessionId: nextId, direction: 'tail' }).page.items).toEqual([])
+    expect((await host.history({ sessionId: nextId, direction: 'tail' })).page.items).toEqual([])
     expect(await host.conversationCommand(caller, params)).toMatchObject({
       ok: true,
       replayed: true,

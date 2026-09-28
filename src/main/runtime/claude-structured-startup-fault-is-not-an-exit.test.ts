@@ -53,20 +53,18 @@ async function send(host: StructuredAgentSessionHost, text: string): Promise<str
   return sent.ok ? sent.value.clientMessageId : ''
 }
 
-function failureRows(host: StructuredAgentSessionHost) {
-  return host
-    .journalSnapshot(SESSION)
-    .items.flatMap((item) =>
-      item.body.kind === 'status' && item.body.failure
-        ? [{ text: item.body.text, kind: item.body.failure.kind }]
-        : []
-    )
+async function failureRows(host: StructuredAgentSessionHost) {
+  return (await host.journalSnapshot(SESSION)).items.flatMap((item) =>
+    item.body.kind === 'status' && item.body.failure
+      ? [{ text: item.body.text, kind: item.body.failure.kind }]
+      : []
+  )
 }
 
-function submission(host: StructuredAgentSessionHost, clientMessageId: string) {
-  return host
-    .journalSnapshot(SESSION)
-    .submissions.find((entry) => entry.clientMessageId === clientMessageId)
+async function submission(host: StructuredAgentSessionHost, clientMessageId: string) {
+  return (await host.journalSnapshot(SESSION)).submissions.find(
+    (entry) => entry.clientMessageId === clientMessageId
+  )
 }
 
 async function released(host: StructuredAgentSessionHost): Promise<void> {
@@ -89,7 +87,7 @@ describe('a Claude start that Orca fails while the CLI is still running', () => 
     await released(host)
 
     expect(claude.child(SESSION).calls).toContain('set_permission_mode')
-    expect(failureRows(host)).toEqual([
+    expect(await failureRows(host)).toEqual([
       { text: expect.stringMatching(/^Claude couldn't start\./), kind: 'startFailed' }
     ])
   })
@@ -105,14 +103,14 @@ describe('a Claude start that Orca fails while the CLI is still running', () => 
     claude.child(SESSION).answerInit()
     await released(host)
 
-    await vi.waitFor(() =>
-      expect(submission(host, held)).toMatchObject({
+    await vi.waitFor(async () =>
+      expect(await submission(host, held)).toMatchObject({
         dispatchState: 'rejected',
         reason: expect.stringMatching(/^Claude couldn't start\./),
         rejection: { kind: 'startFailed' }
       })
     )
-    expect(failureRows(host)).toEqual([
+    expect(await failureRows(host)).toEqual([
       { text: expect.stringMatching(/^Claude couldn't start\./), kind: 'startFailed' }
     ])
     expect(claude.child(SESSION).calls).not.toContain('send')
@@ -129,13 +127,13 @@ describe('a Claude start that Orca fails while the CLI is still running', () => 
     claude.child(SESSION).exit(scriptedClaudeExitError(DIAGNOSTIC))
     await released(host)
 
-    await vi.waitFor(() =>
-      expect(submission(host, held)).toMatchObject({
+    await vi.waitFor(async () =>
+      expect(await submission(host, held)).toMatchObject({
         dispatchState: 'rejected',
         reason: STOPPED_TEXT,
         rejection: { kind: 'providerStartFailed' }
       })
     )
-    expect(failureRows(host)).toEqual([{ text: STOPPED_TEXT, kind: 'providerStartFailed' }])
+    expect(await failureRows(host)).toEqual([{ text: STOPPED_TEXT, kind: 'providerStartFailed' }])
   })
 })

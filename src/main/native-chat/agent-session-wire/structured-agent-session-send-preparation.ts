@@ -23,6 +23,7 @@ import {
   type AgentSessionMutationSessionPreparation
 } from './structured-agent-session-mutation-admission'
 import { rewindRefusal } from './structured-rewind-refusal'
+import type { StructuredAgentSessionMutationContext } from './structured-agent-session-host-mutations'
 
 /** Why the record refuses any send right now, whoever owns it; null when a send may run. */
 export function structuredAgentSessionSendBlock(
@@ -88,6 +89,40 @@ export async function openConversationForWrite(
 const JOURNAL_OPEN_MESSAGE: Record<JournalOpenFailure, string> = {
   journalCorrupt: agentSessionWriteNoticeEnglish(['historyUnusable']),
   journalUnavailable: agentSessionWriteNoticeEnglish(['historyUnavailable', 'tryAgain'])
+}
+
+/** The conversation a write lands in, opened when this host holds it closed. */
+export function openForWrite(
+  context: Pick<StructuredAgentSessionMutationContext, 'openConversation'>,
+  envelope: AgentSessionMutationEnvelope
+): () => Promise<AgentSessionMutationSessionPreparation> {
+  return () => openConversationForWrite(context.openConversation, envelope)
+}
+
+/** For an operation only the provider can perform: the conversation, then its agent. */
+export function openWithAgent(
+  context: Pick<StructuredAgentSessionMutationContext, 'openConversation' | 'ensureAgent'>,
+  envelope: AgentSessionMutationEnvelope
+): () => Promise<AgentSessionMutationSessionPreparation> {
+  return async () => {
+    const opened = await openConversationForWrite(context.openConversation, envelope)
+    return opened.ok ? context.ensureAgent(envelope.sessionId) : opened
+  }
+}
+
+/** A rewind still in doubt once the conversation is open is one only its provider can settle —
+ *  the open settles every other — so a send starts the agent, whose attach recovers it. */
+export function sendPreparation(
+  context: Pick<StructuredAgentSessionMutationContext, 'openConversation' | 'ensureAgent' | 'deps'>,
+  envelope: AgentSessionMutationEnvelope
+): () => Promise<AgentSessionMutationSessionPreparation> {
+  return async () => {
+    const opened = await openConversationForWrite(context.openConversation, envelope)
+    const phase = context.deps.store.getRecord(envelope.sessionId)?.rewind?.phase
+    return opened.ok && (phase === 'prepared' || phase === 'provider-succeeded')
+      ? context.ensureAgent(envelope.sessionId)
+      : opened
+  }
 }
 
 /** Who a failure sentence names: the chat's agent, when the record says. */

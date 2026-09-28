@@ -11,7 +11,10 @@ import type {
   AgentSessionBackgroundTaskRunState
 } from './agent-session-background-task-wire'
 import type { AgentSessionFailureFact } from './agent-session-failure'
-import type { AgentJournalMessageSendMode } from './agent-session-journal-types'
+import type {
+  AgentJournalMessageSendMode,
+  AgentJournalPosition
+} from './agent-session-journal-types'
 import type { AgentType } from './agent-status-types'
 import type { NativeChatToolMetadata } from './native-chat-tool-identity'
 
@@ -202,6 +205,9 @@ export type NativeChatMessage = {
   turnId?: string
   /** How a user message was delivered when it was not an ordinary prompt. */
   sentAs?: AgentJournalMessageSendMode
+  /** Set only by the structured projection, on rows the journal holds, and ranks
+   *  them ahead of time. Terminal-backed messages never carry it, and worker reads strip it. */
+  journalPosition?: AgentJournalPosition
 }
 
 export const NATIVE_CHAT_TURN_LIFECYCLE_STATES = ['working', 'completed', 'interrupted'] as const

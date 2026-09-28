@@ -54,15 +54,13 @@ describe('a started Claude CLI that exits while a response is in progress', () =
     claude.child(SESSION).exit(scriptedClaudeExitError('claude stream-json exited (code 137)'))
     await waitForStructuredAgentSessionRecovery()
 
-    await vi.waitFor(() =>
+    await vi.waitFor(async () =>
       expect(
-        host
-          .journalSnapshot(SESSION)
-          .items.flatMap((item) =>
-            item.body.kind === 'status' && item.body.failure
-              ? [{ text: item.body.text, kind: item.body.failure.kind }]
-              : []
-          )
+        (await host.journalSnapshot(SESSION)).items.flatMap((item) =>
+          item.body.kind === 'status' && item.body.failure
+            ? [{ text: item.body.text, kind: item.body.failure.kind }]
+            : []
+        )
       ).toEqual([
         {
           text: 'Claude stopped while this response was in progress. You can continue in this conversation.',

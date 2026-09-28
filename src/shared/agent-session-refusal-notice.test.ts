@@ -192,10 +192,10 @@ describe('the notice for every failure and write', () => {
   // - checkpoint_stale, conflict, identity_required, execution_owner_reconciling, unsupported: the
   //   bare code thrown as the message (lease-release, reservation-admission, tab-table,
   //   claim-identity, lease-transitions, reveal)
-  // - ownership_unknown: "The session attached without a provider child to write to." (holds)
+  // - ownership_unknown: "The session attached without a provider child to write to." (agent-start)
   // - item_revision_stale / already_resolved: "Item <id> has moved on." (prompt-state)
   // - owner_restart_failed: "<agent> couldn't restart: <cause>.", where the cause is the resume's
-  //   own refusal message, including the ledger's (send-preparation, hold-resume)
+  //   own refusal message, including the ledger's (dead-generation-settlement, agent-start)
   // - journal_unreadable: "The conversation could not be opened: <error>" (send preparation, before
   //   it named a reason)
   it('is never empty and never shows the host message', () => {

@@ -4,6 +4,7 @@ import {
   type SubmissionRejectionFact
 } from '../../../shared/agent-session-failure'
 import { parseAgentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
+import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import type {
   AgentJournalItemBody,
   AgentJournalRenderItem
@@ -131,10 +132,14 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
     const items = input.journal.snapshot().items
     const mutations: JournalLifecycleMutationInput[] = []
     if (showUnexpectedExitOutcome && input.exitedDuringStartup && startupFailure) {
-      // Until views stop starting children, a start can die with nothing queued for the loop. A
-      // row the loop already wrote stays: its words are the ones its rejected messages carry.
       const startKey = input.exitedDuringStartup.generation ?? input.settlementId
-      if (!hasStructuredAgentSessionStartFailureRow(items, startKey)) {
+      // A start a message waited on is the delivery loop's to record, before or after this exit,
+      // in the words it rejected the message with; this row is for a command, goal or rewind start.
+      // A row already written stays: rejected is terminal, so its words are not reworded.
+      const recordedByDeliveryLoop =
+        input.journal.submissions?.().some(isQueuedAgentJournalSubmission) ||
+        hasStructuredAgentSessionStartFailureRow(items, startKey)
+      if (!recordedByDeliveryLoop) {
         mutations.push(structuredAgentSessionStartFailureRow(startKey, startupFailure))
       }
     } else if (showUnexpectedExitOutcome) {

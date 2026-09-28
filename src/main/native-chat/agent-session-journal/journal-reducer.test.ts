@@ -9,10 +9,6 @@ import type {
   AgentJournalItemIdentity,
   AgentJournalMessageItem
 } from '../../../shared/agent-session-journal-types'
-import {
-  classifyDispatchRejection,
-  DISPATCH_REJECTED_QUEUE_FULL
-} from '../../../shared/structured-agent-session-dispatch-rejection'
 import { structuredAgentSessionPayloadFingerprint } from '../../../shared/structured-agent-session-mutation'
 import {
   applyJournalRow,
@@ -120,6 +116,39 @@ describe('ordering', () => {
       { kind: 'item', itemId: 'earlier', revision: 1, body: text('earlier'), ...base(3) }
     ])
     expect(renderJournalState(state).items.map((item) => item.itemId)).toEqual(['earlier', 'later'])
+  })
+
+  it("places a batch's writes by their order in it, and keeps that place on revision", () => {
+    // One Codex ask writes all its questions in one batch; their ids are not their order.
+    const state = fold([
+      {
+        kind: 'lifecycle-batch',
+        settlementId: 'ask',
+        mutations: [
+          { kind: 'item', itemId: 'scope', revision: 1, body: text('first') },
+          { kind: 'item', itemId: 'priority', revision: 1, body: text('second') },
+          { kind: 'item', itemId: 'deadline', revision: 1, body: text('third') }
+        ],
+        ...base(1)
+      },
+      {
+        kind: 'lifecycle-batch',
+        settlementId: 'answer',
+        mutations: [{ kind: 'item', itemId: 'deadline', revision: 2, body: text('answered') }],
+        ...base(2)
+      }
+    ])
+    expect(
+      renderJournalState(state).items.map(({ itemId, sequence, sequenceIndex }) => ({
+        itemId,
+        sequence,
+        sequenceIndex
+      }))
+    ).toEqual([
+      { itemId: 'scope', sequence: 1, sequenceIndex: undefined },
+      { itemId: 'priority', sequence: 1, sequenceIndex: 1 },
+      { itemId: 'deadline', sequence: 1, sequenceIndex: 2 }
+    ])
   })
 
   it('orders by sequence even when the observed timestamp runs backwards', () => {
@@ -287,68 +316,6 @@ describe('submission and dispatch state machine', () => {
     })
     expect(state.receipts.has('cm_1')).toBe(false)
     expect(state.receipts.get('cm_2')?.providerItemId).toBe('claude:session-1:user-1')
-  })
-
-  it("copies a rejection's typed fact onto the submission, and only on `rejected`", () => {
-    const rejection = { kind: 'providerRejected', detail: { text: 'Too long', audience: 'person' } }
-    const state = fold([
-      submission,
-      {
-        kind: 'dispatch',
-        clientMessageId: 'cm_1',
-        state: 'rejected',
-        providerItemId: null,
-        reason: 'The provider did not accept this message.',
-        rejection: { kind: 'providerRejected', detail: { text: 'Too long', audience: 'person' } },
-        ...base(2)
-      }
-    ])
-    expect(state.submissions.get('cm_1')).toMatchObject({
-      dispatchState: 'rejected',
-      reason: 'The provider did not accept this message.',
-      rejection
-    })
-
-    const doubt = fold([
-      { ...submission, clientMessageId: 'cm_2' },
-      {
-        kind: 'dispatch',
-        clientMessageId: 'cm_2',
-        state: 'unknown',
-        providerItemId: null,
-        reason: 'provider_exited_before_acknowledgement',
-        rejection: { kind: 'writeFailed' },
-        ...base(2)
-      }
-    ])
-    expect(doubt.submissions.get('cm_2')).not.toHaveProperty('rejection')
-  })
-
-  it('keeps only the kind of a rejection fact it cannot place, so it reads as no verdict', () => {
-    const rejected = (rejection: unknown): JournalRow => {
-      const row: JournalRow = {
-        kind: 'dispatch',
-        clientMessageId: 'cm_1',
-        state: 'rejected',
-        providerItemId: null,
-        reason: DISPATCH_REJECTED_QUEUE_FULL,
-        ...base(2)
-      }
-      // A row read from disk carries whatever the host that wrote it did.
-      return Object.assign(row, { rejection })
-    }
-    // A newer host's kind: the marker beside it must not decide.
-    const newer = fold([submission, rejected({ kind: 'futureKind', detail: 'x' })])
-    const settled = newer.submissions.get('cm_1')
-    expect(settled).toMatchObject({ dispatchState: 'rejected', rejection: { kind: 'futureKind' } })
-    expect(settled && classifyDispatchRejection(settled)).toEqual({
-      category: 'undelivered',
-      verdict: null
-    })
-    // Not a fact at all: dropped, leaving the reason.
-    const malformed = fold([submission, rejected('queueFull')]).submissions.get('cm_1')
-    expect(malformed).not.toHaveProperty('rejection')
-    expect(malformed && classifyDispatchRejection(malformed)).toMatchObject({ kind: 'queueFull' })
   })
 
   it('does not give a newer identical echo to a legacy unknown write failure', () => {
