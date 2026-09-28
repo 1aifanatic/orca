@@ -1,3 +1,4 @@
+import { buildProcessBoundaryGround } from '../../../../../shared/terminal-mode-reset-profiles'
 import { serializeWithAbsoluteCursor } from '../../../../../shared/terminal-serialize-absolute-cursor'
 import { isTerminalWritePipelineCertifiedDead } from '@/lib/pane-manager/terminal-write-pipeline-health'
 import { registerPtySerializer, registerPtyTitleSource } from '../pty-buffer-serializer'
@@ -76,7 +77,11 @@ export function bindRegisterPaneSerializer(session: ConnectPanePtySession): void
         session.clearHiddenOutputRestoreState()
         discardTerminalOutput(session.pane.terminal)
         clearTerminalScrollbackAndFollowOutput(session.pane.terminal)
-      }
+      },
+      () =>
+        session.writeInputModeGround(
+          buildProcessBoundaryGround({ keepFocusReporting: session.isNativeWindowsConpty })
+        )
     )
     const unregisterTitleSource = registerPtyTitleSource(ptyId, (handler) =>
       session.pane.terminal.onTitleChange(handler)

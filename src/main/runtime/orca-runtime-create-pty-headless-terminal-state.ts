@@ -195,4 +195,20 @@ export class OrcaRuntimeWithCreatePtyHeadlessTerminalState extends OrcaRuntimeWi
     state.writeChain = state.writeChain.then(() => state.emulator.clearScrollback())
     await state.writeChain
   }
+
+  // Public: Reset Terminal must ground this model too; park/reveal and mobile restore from it.
+  async resetHeadlessTerminalInputModes(ptyId: string): Promise<void> {
+    const state = this.headlessTerminals.get(ptyId)
+    if (!state) {
+      return
+    }
+    // Why on the chain: the ground must land after every PTY chunk already queued.
+    const completion = state.writeChain.then(async () => {
+      const ground = state.ownership.groundInputModes()
+      this.providerModeTrackersByPtyId.get(ptyId)?.scan(ground)
+      await state.emulator.write(ground)
+    })
+    state.writeChain = completion.catch(() => {})
+    await completion
+  }
 }

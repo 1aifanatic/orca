@@ -199,6 +199,34 @@ describe('OrcaRuntimeService', () => {
     expect(snapshot?.data).not.toContain('line-0')
   })
 
+  it('resets input modes through the PTY controller and the headless model', async () => {
+    const resetInputModes = vi.fn().mockResolvedValue(undefined)
+    const runtime = new OrcaRuntimeService(store)
+    runtime.setPtyController({
+      write: () => true,
+      kill: () => true,
+      getForegroundProcess: async () => null,
+      resetInputModes
+    })
+    syncSinglePty(runtime, 'pty-1')
+    // An app armed these and crashed with no command end.
+    runtime.onPtyData('pty-1', 'prompt$ app\r\n\x1b[>31u\x1b[?1000h\x1b[?2004h', 123)
+    const [terminal] = (await runtime.listTerminals()).terminals
+    const armed = await runtime.serializeTerminalBuffer('pty-1')
+    expect(armed?.kittyKeyboardFlags).toBe(31)
+
+    await expect(runtime.resetTerminalInputModes(terminal.handle)).resolves.toEqual({
+      handle: terminal.handle,
+      reset: true
+    })
+
+    expect(resetInputModes).toHaveBeenCalledWith('pty-1')
+    const snapshot = await runtime.serializeTerminalBuffer('pty-1')
+    expect(snapshot?.kittyKeyboardFlags ?? 0).toBe(0)
+    expect(snapshot?.data).not.toContain('\x1b[?1000h')
+    expect(snapshot?.data).not.toContain('\x1b[?2004h')
+  })
+
   it('waits for terminal exit and resolves with the exit status', async () => {
     const runtime = new OrcaRuntimeService(store)
 
