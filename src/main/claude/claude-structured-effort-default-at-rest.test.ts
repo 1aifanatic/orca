@@ -14,6 +14,7 @@ import { agentModelCatalogFingerprintForRecord } from '../native-chat/agent-mode
 import { AgentModelCatalogStore } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
 import type { StructuredAgentSessionMutationContext } from '../native-chat/agent-session-wire/structured-agent-session-host-mutations'
 import { readStructuredAgentSessionOptions } from '../native-chat/agent-session-wire/structured-agent-session-options-read'
+import { nativeSessionOptionsFromReport } from '../native-chat/agent-session-wire/structured-agent-session-option-restoration'
 import {
   ClaudeStructuredSessionAdapter,
   type ClaudeStructuredSessionEvent
@@ -236,17 +237,20 @@ describe('Claude effort default at rest', () => {
     expect(result.current).toEqual({ model: 'gpt-5.5' })
   })
 
-  it("never saves the applied effort as the chat's own pick", async () => {
+  it("never saves the applied effort as the chat's pick, yet shows it at rest", async () => {
     const store = new AgentModelCatalogStore()
     const events: ClaudeStructuredSessionEvent[] = []
     await startChild(store, undefined, events)
 
     const started = events.find((event) => event.type === 'started')
-    expect(started?.type === 'started' ? started.reportedOptions : null).not.toHaveProperty(
-      'effort'
+    const reported = started?.type === 'started' ? started.reportedOptions : null
+    expect(reported).not.toHaveProperty('effort')
+    // The record the start persists names the listed row the catalog learned under.
+    const record = restingRecord(
+      nativeSessionOptionsFromReport({ reported: reported!, restoreSkipped: [] })
     )
-    const record = restingRecord({ model: 'opus[1m]' })
-    await readAtRest(store, record)
+    expect(record.options).toEqual({ model: 'opus[1m]' })
+    expect((await readAtRest(store, record)).current.effort).toBe('medium')
     expect(record.options).toEqual({ model: 'opus[1m]' })
   })
 })
