@@ -168,6 +168,12 @@ export abstract class AgentHookServerState {
     this.hookInbox?.drain()
   }
 
+  /** Applies every hook event already committed to the inbox. Main's PTY delivery calls this
+   *  before it sends a pane's output or exit to the renderer. */
+  drainCommittedHooks(): void {
+    this.absorbCommittedHookRecords()
+  }
+
   protected abstract withdrawReplayObservation(paneKey: string): void
   protected abstract emitPaneStatusCleared(clear: AgentStatusClearIpcPayload): void
   protected abstract buildStatusChangeNotification(): {

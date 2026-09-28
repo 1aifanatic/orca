@@ -22,9 +22,9 @@ import {
 export const AGENT_HOOK_INBOX_SWEEP_MS = 1_000
 /** Without a watcher (inotify limits exhausted, say) the sweep is the only wake-up. */
 export const AGENT_HOOK_INBOX_UNWATCHED_SWEEP_MS = 100
-/** Records a background drain applies per turn of the event loop; a backlog left while Orca was
- *  closed is replayed in slices instead of one long main-thread stall. */
-export const AGENT_HOOK_INBOX_BACKGROUND_SLICE = 200
+/** Time a background drain may hold the event loop per turn; a backlog left while Orca was closed
+ *  is replayed in slices instead of one long main-thread stall. */
+export const AGENT_HOOK_INBOX_BACKGROUND_SLICE_MS = 8
 /** A record still unterminated this long after its last write belongs to a killed writer. */
 export const AGENT_HOOK_INBOX_TORN_RECORD_MAX_AGE_MS = 10 * 60 * 1000
 /** Same replay horizon as the legacy spool and last-status hydration. */
@@ -116,6 +116,7 @@ export class AgentHookInbox {
   private drainAgain = false
   private replayNames = new Set<string>()
   private sorted: PendingRecord[] = []
+  private unfinishedRecordStamps = new Map<string, string>()
   private sortedCursor = 0
   private isOpen = false
 
@@ -165,13 +166,14 @@ export class AgentHookInbox {
     this.replayNames.clear()
     this.sorted = []
     this.sortedCursor = 0
+    this.unfinishedRecordStamps.clear()
   }
 
   /** Synchronously ingests every complete record in commit order and returns how many it applied.
    *  Callers that decide a pane's fate (process exit, retirement, interrupt inference) call this
    *  first, so an event the agent committed before that moment is applied before it, as the old
    *  blocking POST guaranteed. */
-  drain(limit = Number.POSITIVE_INFINITY): number {
+  drain(deadline = Number.POSITIVE_INFINITY): number {
     if (!this.isOpen) {
       return 0
     }
@@ -185,8 +187,8 @@ export class AgentHookInbox {
     try {
       do {
         this.drainAgain = false
-        applied += this.drainOnce(limit - applied)
-      } while (this.drainAgain && this.isOpen && applied < limit)
+        applied += this.drainOnce(deadline)
+      } while (this.drainAgain && this.isOpen && performance.now() < deadline)
     } finally {
       this.draining = false
     }
@@ -212,7 +214,8 @@ export class AgentHookInbox {
     this.wakeScheduled = true
     setImmediate(() => {
       this.wakeScheduled = false
-      if (this.drain(AGENT_HOOK_INBOX_BACKGROUND_SLICE) >= AGENT_HOOK_INBOX_BACKGROUND_SLICE) {
+      this.drain(performance.now() + AGENT_HOOK_INBOX_BACKGROUND_SLICE_MS)
+      if (this.sortedCursor < this.sorted.length) {
         this.scheduleDrain()
       }
     })
@@ -229,10 +232,11 @@ export class AgentHookInbox {
 
   /** One pass: finish the sorted remainder a sliced drain left, then list the directory once for
    *  anything newer. Listing once per pass keeps a sliced replay linear in the backlog. */
-  private drainOnce(limit: number): number {
+  private drainOnce(deadline: number): number {
     let applied = 0
     let listed = false
-    while (this.isOpen && applied < limit) {
+    // Why a deadline, not a count: every record visited costs I/O, applied or not.
+    while (this.isOpen && performance.now() < deadline) {
       if (this.sortedCursor >= this.sorted.length) {
         if (listed) {
           break
@@ -240,6 +244,14 @@ export class AgentHookInbox {
         this.sorted = listPendingRecords(this.dir)
         this.sortedCursor = 0
         listed = true
+        if (this.unfinishedRecordStamps.size > 0) {
+          const listedNames = new Set(this.sorted.map(({ name }) => name))
+          for (const name of this.unfinishedRecordStamps.keys()) {
+            if (!listedNames.has(name)) {
+              this.unfinishedRecordStamps.delete(name)
+            }
+          }
+        }
         if (this.sorted.length === 0) {
           break
         }
@@ -255,14 +267,25 @@ export class AgentHookInbox {
 
   /** Returns whether the record was handed to ingest. */
   private admit(entry: PendingRecord, now: number): boolean {
+    const torn = now - entry.mtimeMs > AGENT_HOOK_INBOX_TORN_RECORD_MAX_AGE_MS
+    const stamp = `${entry.size}:${entry.mtimeMs}`
+    // Why: a writer still mid-record (or killed mid-write) must not be re-read on every drain;
+    // publish barriers drain per output chunk.
+    if (!torn && this.unfinishedRecordStamps.get(entry.name) === stamp) {
+      return false
+    }
     const bytes = readCompleteRecord(entry.path)
     if (bytes === 'incomplete') {
-      if (now - entry.mtimeMs > AGENT_HOOK_INBOX_TORN_RECORD_MAX_AGE_MS) {
+      if (torn) {
         claim(entry.path)
         this.replayNames.delete(entry.name)
+        this.unfinishedRecordStamps.delete(entry.name)
+      } else {
+        this.unfinishedRecordStamps.set(entry.name, stamp)
       }
       return false
     }
+    this.unfinishedRecordStamps.delete(entry.name)
     if (!claim(entry.path)) {
       return false
     }

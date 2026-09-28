@@ -13,7 +13,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import {
-  AGENT_HOOK_INBOX_BACKGROUND_SLICE,
   AGENT_HOOK_INBOX_MAX_RECORD_AGE_MS,
   AGENT_HOOK_INBOX_TORN_RECORD_MAX_AGE_MS,
   AgentHookInbox,
@@ -228,7 +227,7 @@ describe('AgentHookInbox', () => {
     const endpointDir = mkdtempSync(join(tmpdir(), 'orca-hook-inbox-backlog-'))
     const dir = join(endpointDir, 'hook-inbox')
     mkdirSync(dir, { recursive: true, mode: 0o700 })
-    const total = AGENT_HOOK_INBOX_BACKGROUND_SLICE * 3 + 7
+    const total = 1_207
     const at = Date.now() / 1000 - 60
     for (let index = 0; index < total; index += 1) {
       writeFileSync(join(dir, `1.${index}.rec`), record(JSON.stringify({ index })))

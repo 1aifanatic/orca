@@ -19,6 +19,7 @@ import { reconcileRetainedCodexHookHomes } from '../codex/retained-codex-hook-st
 import { codexHookService } from '../codex/hook-service'
 import { isAgentStatusHooksEnabled } from '../agent-hooks/managed-agent-hook-controls'
 import { agentHookServer } from '../agent-hooks/server'
+import { setRendererPublishBarrier } from '../ipc/pty/delivery/renderer-publish-barrier'
 import {
   indexPersistedPaneKeyPtyIds,
   isLocalExecutionHost,
@@ -179,6 +180,7 @@ export function startTerminalRuntimeStartupServices(): WindowsDesktopStartupServ
         userDataPath: app.getPath('userData'),
         endpointNamespace: state.devAgentHookEndpointNamespace
       })
+      setRendererPublishBarrier(() => agentHookServer.drainCommittedHooks())
       logStartupMilestone('startup-service-done', { service: 'agent-hook-server' })
     },
     onDaemonError: (error) => {

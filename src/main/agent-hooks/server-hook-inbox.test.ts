@@ -175,6 +175,21 @@ describe('hook inbox', () => {
     expect(paneState(server)).toBe('done')
   })
 
+  it('applies a committed hook before a status the agent printed after it', async () => {
+    const server = await startServer()
+    const seen: string[] = []
+    server.subscribeEnrichedStatus((status) => seen.push(status.payload.state))
+    commitRecord('400.0.rec', { hook_event_name: 'UserPromptSubmit', prompt: 'ship it' })
+    server.ingestTerminalStatus({
+      paneKey: PANE,
+      tabId: 'tab-1',
+      worktreeId: 'wt-1',
+      connectionId: null,
+      payload: { state: 'done', prompt: 'ship it', agentType: 'codex' }
+    })
+    expect(seen).toEqual(['working', 'done'])
+  })
+
   it('replays what agents committed while Orca was closed, fenced to the current launch', async () => {
     const first = await startServer()
     first.ingestRemote(

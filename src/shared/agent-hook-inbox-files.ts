@@ -28,6 +28,7 @@ export type PendingRecord = {
   name: string
   path: string
   mtimeMs: number
+  size: number
   pid: number
   seq: number
 }
@@ -46,6 +47,7 @@ export function listPendingRecords(dir: string): PendingRecord[] {
         name,
         path,
         mtimeMs: stat.mtimeMs,
+        size: stat.size,
         pid: match ? Number(match[1]) : 0,
         seq: match ? Number(match[2]) : 0
       })

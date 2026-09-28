@@ -534,7 +534,7 @@ export class PtyHandler {
   private lastPtyLoadError: unknown = null
   // Why: single optional slot is intentional — callers compose externally; a throw is swallowed so it can't block cleanup.
   private exitListener: PtyExitListener | null = null
-  private outputPublishBarrier: (() => number) | null = null
+  private outputPublishBarrier: (() => void) | null = null
   private surfaceRetiredListener: PtySurfaceRetiredListener | null = null
   private readonly retiredPaneSurfaces = new RetiredPaneSurfaceRegistry()
   private ptyPoolEmptyListener: (() => void) | null = null
@@ -708,20 +708,18 @@ export class PtyHandler {
   }
 
   /** Runs before this handler publishes PTY output or an exit, so anything an agent committed
-   *  before it printed or exited (a hook event) reaches the client ahead of that output. Returns
-   *  how many frames it queued. */
-  setOutputPublishBarrier(barrier: (() => number) | null): void {
+   *  before it printed or exited (a hook event) is queued to the client ahead of that output. */
+  setOutputPublishBarrier(barrier: (() => void) | null): void {
     this.outputPublishBarrier = barrier
   }
 
-  private runOutputPublishBarrier(): number {
+  private runOutputPublishBarrier(): void {
     try {
-      return this.outputPublishBarrier?.() ?? 0
+      this.outputPublishBarrier?.()
     } catch (err) {
       process.stderr.write(
         `[pty-handler] output publish barrier threw: ${err instanceof Error ? err.message : String(err)}\n`
       )
-      return 0
     }
   }
 
@@ -1425,11 +1423,9 @@ export class PtyHandler {
   private publishPtyOutput(
     id: string,
     output: RelayPtySourceOutput,
-    requestedInteractive: boolean
+    interactive: boolean
   ): boolean {
-    // Why the lane drop: a hook frame the barrier just queued rides the ordinary lane, and an
-    // interactive chunk may overtake it there.
-    const interactive = this.runOutputPublishBarrier() === 0 && requestedInteractive
+    this.runOutputPublishBarrier()
     if (this.sourcePublication?.accepts(id)) {
       return this.sourcePublication.publish(id, output, interactive)
     }

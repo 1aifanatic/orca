@@ -202,9 +202,9 @@ export class RelayAgentHookServer {
     this.lastEnvelopeMetaByPaneKey.clear()
   }
 
-  /** Applies and forwards every hook event already committed to the inbox; returns how many. */
-  drainCommittedHooks(): number {
-    return this.hookInbox?.drain() ?? 0
+  /** Applies and forwards every hook event already committed to the inbox. */
+  drainCommittedHooks(): void {
+    this.hookInbox?.drain()
   }
 
   /** Request-driven replay: re-forwards each cached paneKey payload as a fresh notification. Forwards are

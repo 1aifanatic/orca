@@ -69,11 +69,10 @@ describe('PtyHandler output publish barrier', () => {
     return callbacks
   }
 
-  function recordWire(queued = 0): string[] {
+  function recordWire(): string[] {
     const wire: string[] = []
     handler.setOutputPublishBarrier(() => {
       wire.push('barrier')
-      return queued
     })
     dispatcher.notify.mockImplementation((method: string) => {
       if (method === 'pty.data' || method === 'pty.exit') {
@@ -106,29 +105,5 @@ describe('PtyHandler output publish barrier', () => {
     vi.advanceTimersByTime(8)
 
     expect(wire).toEqual(['barrier', 'pty.data'])
-  })
-
-  it('keeps output behind the hook frames it queued instead of letting it overtake them', async () => {
-    const pty = spawnCallbacks()
-    const lanes: boolean[] = []
-    Object.assign(dispatcher, {
-      tryNotifyPtyData: vi.fn((_params: unknown, options: { interactive: boolean }) => {
-        lanes.push(options.interactive)
-        return true
-      })
-    })
-    let queued = 1
-    handler.setOutputPublishBarrier(() => queued)
-    await dispatcher.callRequest('pty.spawn', {})
-
-    dispatcher.callNotification('pty.data', { id: testPtyId(1), data: '\x1b' })
-    pty.onData!('$ ')
-    queued = 0
-    dispatcher.callNotification('pty.data', { id: testPtyId(1), data: '\x1b' })
-    pty.onData!('$ ')
-
-    // A hook frame was queued first: the echo rides the ordinary lane behind it. Nothing queued:
-    // the echo keeps its interactive priority.
-    expect(lanes).toEqual([false, true])
   })
 })
