@@ -276,9 +276,9 @@ describe('Codex cancels replayed from the Interrupt capture', () => {
   )
 })
 
-describe('a lost Codex Interrupt, settled from the rollout Codex wrote first', () => {
+describe('a lost Codex Interrupt, settled from the turn_aborted Codex writes after it', () => {
   // Captured in run-d-0.157.0: Codex killed the Esc cancel's Interrupt hook at its 3s cap, so it
-  // never arrived, although Codex had already written `turn_aborted` for the turn to its rollout.
+  // never arrived; Codex still wrote `turn_aborted` for the turn to its rollout once the hook ended.
   const RUN = 'run-d-0.157.0'
   const dirs: string[] = []
   let server: AgentHookServer
