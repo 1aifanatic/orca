@@ -242,7 +242,7 @@ export function evaluateTuiIdle(input: TuiIdleEvaluationInput): TuiIdleVerdict {
   // Why beside the title lane, not after the veto: both are tier 1, and a first-party `done`
   // and a fresh `working` cannot both hold — the same row carries one state.
   if (hasFreshDoneFirstPartyStatus(input.agent, input.firstPartyStatus)) {
-    return true
+    return READY_STRONG
   }
   if (hasFreshWorkingFirstPartyStatus(input.firstPartyStatus)) {
     // Why blocked/waiting stays pending: the agent says it is waiting on the user, which is
