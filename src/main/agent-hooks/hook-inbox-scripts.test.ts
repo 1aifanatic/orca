@@ -25,6 +25,7 @@ import { getManagedScript as copilotScript } from '../copilot/copilot-managed-sc
 import { getManagedScript as cursorScript } from '../cursor/hook-script'
 import { _internals as devin } from '../devin/hook-service'
 import { _internals as droid } from '../droid/hook-service'
+import { _internals as dsh } from '../dsh/hook-service'
 import { _internals as gemini } from '../gemini/hook-service'
 import { getGrokManagedScript } from '../grok/grok-hook-script'
 import { _internals as kimi } from '../kimi/hook-service'
@@ -45,6 +46,7 @@ type Case = {
 
 const CASES: Case[] = [
   { source: 'claude', script: () => claudeScript('posix'), stdout: '{}\n' },
+  { source: 'qoder', script: () => claudeScript('posix', { source: 'qoder' }), stdout: '{}\n' },
   { source: 'codex', script: () => codexScript('posix') },
   {
     source: 'grok',
@@ -73,7 +75,8 @@ const CASES: Case[] = [
     stdout: '{"decision":""}\n'
   },
   { source: 'muse', script: () => muse.getManagedScript('posix') },
-  { source: 'zcode', script: () => zcode.getManagedScript('posix') }
+  { source: 'zcode', script: () => zcode.getManagedScript('posix') },
+  { source: 'dsh', script: () => dsh.getManagedScript('posix') }
 ]
 
 function runScript(testCase: Case, options: { inbox: boolean }) {
