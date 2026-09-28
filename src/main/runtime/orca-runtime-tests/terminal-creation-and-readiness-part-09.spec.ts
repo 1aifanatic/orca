@@ -222,7 +222,7 @@ describe('OrcaRuntimeService', () => {
 
     expect(resetInputModes).toHaveBeenCalledWith('pty-1')
     const snapshot = await runtime.serializeTerminalBuffer('pty-1')
-    expect(snapshot?.kittyKeyboardFlags ?? 0).toBe(0)
+    expect(snapshot?.kittyKeyboardFlags).toBe(0)
     expect(snapshot?.data).not.toContain('\x1b[?1000h')
     expect(snapshot?.data).not.toContain('\x1b[?2004h')
   })
