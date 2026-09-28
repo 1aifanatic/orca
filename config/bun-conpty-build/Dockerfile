@@ -17,4 +17,5 @@ RUN XWIN_ARCH=$(if [ "$TARGETARCH" = "arm64" ]; then echo "aarch64"; else echo "
     && ln -s lib "/opt/winsysroot/Windows Kits/10/Lib" \
     && rm -rf /tmp/xwin.tar.gz /tmp/xwin-${XWIN_VERSION}-${XWIN_ARCH}-unknown-linux-musl /tmp/xwin-cache
 ENV WINDOWS_SYSROOT=/opt/winsysroot
+RUN git config --global --add safe.directory /work/bun
 WORKDIR /work/bun
