@@ -15,15 +15,16 @@ import {
   type StructuredAgentSessionSubmissionSettlement
 } from './structured-agent-session-submission-settlement'
 
-type Shape = Pick<AgentJournalSubmission, 'dispatchState' | 'reason'> &
+// The host-written submission record, as far as the classifier reads it.
+type SubmissionRecord = Pick<AgentJournalSubmission, 'dispatchState' | 'reason'> &
   Partial<Pick<AgentJournalSubmission, 'recovered' | 'handoverRecorded' | 'handedOverAt'>> & {
     rejection?: unknown
   }
 
-const firstHandRejections: [string, Shape][] = [
+const firstHandRejections: [string, SubmissionRecord][] = [
   ...AGENT_SESSION_FAILURE_KINDS.filter(isSubmissionRejectionKind)
     .filter((kind) => kind !== 'notDelivered')
-    .map((kind): [string, Shape] => [
+    .map((kind): [string, SubmissionRecord] => [
       `typed ${kind}`,
       { dispatchState: 'rejected', reason: 'The message was not sent.', rejection: { kind } }
     ]),
@@ -35,7 +36,10 @@ const firstHandRejections: [string, Shape][] = [
     DISPATCH_REJECTED_CODEX_QUEUE_FULL,
     DISPATCH_REJECTED_WRITE_FAILED,
     'Claude does not support .bmp'
-  ].map((reason): [string, Shape] => [`legacy ${reason}`, { dispatchState: 'rejected', reason }]),
+  ].map((reason): [string, SubmissionRecord] => [
+    `legacy ${reason}`,
+    { dispatchState: 'rejected', reason }
+  ]),
   [
     'a fact this build cannot place',
     { dispatchState: 'rejected', reason: 'x', rejection: { kind: 'someFutureKind' } }
@@ -47,7 +51,7 @@ const firstHandRejections: [string, Shape][] = [
   ]
 ]
 
-const CASES: [string, Shape, StructuredAgentSessionSubmissionSettlement][] = [
+const CASES: [string, SubmissionRecord, StructuredAgentSessionSubmissionSettlement][] = [
   ['pending', { dispatchState: 'pending', reason: null }, 'open'],
   ['queued', { dispatchState: 'pending', reason: null, handoverRecorded: true }, 'open'],
   ['accepted', { dispatchState: 'accepted', reason: null }, 'sent'],
@@ -77,22 +81,22 @@ const CASES: [string, Shape, StructuredAgentSessionSubmissionSettlement][] = [
     'sent'
   ],
   ...firstHandRejections.map(
-    ([name, shape]): [string, Shape, StructuredAgentSessionSubmissionSettlement] => [
-      name,
-      shape,
-      'refused'
-    ]
+    ([name, submission]): [
+      string,
+      SubmissionRecord,
+      StructuredAgentSessionSubmissionSettlement
+    ] => [name, submission, 'refused']
   )
 ]
 
 describe('structuredAgentSessionSubmissionSettlement', () => {
-  it.each(CASES)('%s', (_name, shape, expected) => {
-    expect(structuredAgentSessionSubmissionSettlement(shape)).toBe(expected)
+  it.each(CASES)('%s', (_name, submission, expected) => {
+    expect(structuredAgentSessionSubmissionSettlement(submission)).toBe(expected)
   })
 
   it('draws a state a newer host wrote as sent, never as nothing', () => {
     // The wire schema admits any dispatch state string.
-    const future: Shape = JSON.parse('{"dispatchState":"superseded","reason":null}')
+    const future: SubmissionRecord = JSON.parse('{"dispatchState":"superseded","reason":null}')
     expect(structuredAgentSessionSubmissionSettlement(future)).toBe('sent')
   })
 })
