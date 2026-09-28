@@ -109,6 +109,9 @@ function Screen({ client }: { client: RpcClient }) {
   controller = useMobileDiffReviewController({
     client,
     connState: 'connected',
+    hostCapabilities: [],
+    hostStatusPending: false,
+    hostStatusReadable: true,
     hostId: 'host-1',
     worktreeId: 'wt-1',
     name: 'review',
