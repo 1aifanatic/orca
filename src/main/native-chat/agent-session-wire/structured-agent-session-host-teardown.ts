@@ -28,7 +28,7 @@ const RESUME_MARKER_RECORD_TIMEOUT_MS = 2_000
 /** Eight steps at ten seconds each would outlast the global quit deadline, and a quit that dies
  *  mid-eviction leaves the lease unreleased — the exact state restart has to clean up. Bounded
  *  well below that deadline so the phases after this one still get to run. */
-const CHILD_EVICTION_TIMEOUT_MS = 8_000
+export const CHILD_EVICTION_TIMEOUT_MS = 8_000
 
 /** Bounds a phase without swallowing its failure, which `withTimeout` alone would. */
 async function withPhaseTimeout(run: () => Promise<void>, timeoutMs: number): Promise<void> {
@@ -54,8 +54,6 @@ export function structuredAgentSessionHostTeardownPhases(collaborators: {
   }
   tasks: { drainAttaches: () => Promise<void> }
   evictOwnedSessions: () => Promise<void>
-  /** Ends the waits handovers hold session queues for, which every later phase would queue behind. */
-  releaseHandoverHolds: () => void
   /** Opens this teardown's witnesses; each session's own is taken as eviction stops its child. */
   beginResumeMarkers: () => void
   recordResumeMarkers: () => Promise<void>
@@ -71,7 +69,6 @@ export function structuredAgentSessionHostTeardownPhases(collaborators: {
         }
       }
     },
-    { name: 'release-handover-holds', run: () => collaborators.releaseHandoverHolds() },
     { name: 'dispose-idle-sweep', run: () => collaborators.idleSweep.dispose() },
     { name: 'stop-lease-renewal', run: () => collaborators.runtimeState.stopLeaseRenewal() },
     { name: 'drain-attaches', run: () => collaborators.tasks.drainAttaches() },
@@ -165,11 +162,6 @@ export async function flushStructuredAgentSessionHost(
           },
           retainSessionIds
         ),
-      releaseHandoverHolds: () => {
-        for (const sessionId of context.sessions.keys()) {
-          context.deps.adapter.releaseHandoverHolds?.(sessionId)
-        }
-      },
       beginResumeMarkers: () => context.restartResume.beginTeardown(context.trigger),
       recordResumeMarkers: context.restartResume.recordMarkers
     }),

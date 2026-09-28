@@ -132,11 +132,6 @@ describe('structured session runtime provider-exit wiring', () => {
     // The send answers at acceptance; the delivery loop starts a new child and hands it over.
     await vi.waitFor(() => expect(connections).toHaveLength(2))
     await vi.waitFor(() => expect(turn).toBe(1))
-    // Codex opens the turn it answered, which ends the send's handover.
-    connections[1]?.handlers.onNotification?.('turn/started', {
-      threadId: 'thread-runtime-exit',
-      turn: { id: 'turn-1' }
-    })
   })
 
   it('does not reacquire when the production exit callback comes from a requested close', async () => {

@@ -321,8 +321,6 @@ describe('a structured codex session over agentSession.*', () => {
     await ok('agentSession.send', params)
     // Accepted first; the delivery loop hands it over once.
     await vi.waitFor(() => expect(turnStarts()).toHaveLength(1))
-    // Codex opens the turn it answered, which ends the send's handover the replay queues behind.
-    codex.notify('turn/started', { threadId: THREAD, turn: { id: TURN } })
     const replay = await call('agentSession.send', params)
 
     expect(replay).toMatchObject({ ok: true, result: { ok: true, replayed: true } })

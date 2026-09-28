@@ -143,7 +143,7 @@ export function startTurn(connection: Pick<FakeConnection, 'handlers'>, turnId: 
   })
 }
 
-/** Runs `open` once `count` sends reached Codex: a cold send's dispatch waits for its turn to open. */
+/** Runs `open` once `count` sends reached Codex, which opens a turn only after it answers. */
 export async function openAfterTurnStarts(
   connection: Pick<FakeConnection, 'calls'>,
   count: number,

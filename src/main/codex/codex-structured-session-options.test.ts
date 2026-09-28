@@ -1,5 +1,5 @@
 import { createCodexDispatchEchoes } from './codex-structured-dispatch-echo'
-import { createCodexTurnOpenHolds } from './codex-structured-turn-open-hold'
+import { createCodexTurnOpenWaits } from './codex-structured-turn-open-wait'
 import { describe, expect, it, vi } from 'vitest'
 import type { CodexAppServerConnection } from './codex-app-server-connection'
 import { CodexAcquisitionWindow } from './codex-structured-acquisition-window'
@@ -37,7 +37,7 @@ function optionSession(request: CodexAppServerConnection['request']): CodexSessi
     reportedOptions: { model: 'gpt-live', effort: 'high' },
     fastModeTierByModel: new Map(),
     dispatchEchoes: createCodexDispatchEchoes(),
-    turnOpenHolds: createCodexTurnOpenHolds(),
+    turnOpenWaits: createCodexTurnOpenWaits(),
     translator: null
   }
 }

@@ -1,5 +1,5 @@
 import { createCodexDispatchEchoes } from './codex-structured-dispatch-echo'
-import { createCodexTurnOpenHolds } from './codex-structured-turn-open-hold'
+import { createCodexTurnOpenWaits } from './codex-structured-turn-open-wait'
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentSessionJournalIdentity } from '../../shared/agent-session-journal-types'
 import type {
@@ -12,7 +12,6 @@ import {
   type CodexStructuredSessionEvent
 } from './codex-structured-session-adapter'
 import { handleCodexSessionExit } from './codex-structured-session-close'
-import { settledWithin } from './codex-structured-dispatch-test-support'
 import { CodexBackgroundTaskTracker } from './codex-background-task-tracker'
 import { CodexPromptRegistry } from './codex-structured-prompt-replies'
 import type { CodexSession } from './codex-structured-session-state'
@@ -107,7 +106,7 @@ describe('Codex structured session close lifecycle', () => {
       reportedOptions: {},
       fastModeTierByModel: new Map(),
       dispatchEchoes: createCodexDispatchEchoes(),
-      turnOpenHolds: createCodexTurnOpenHolds(),
+      turnOpenWaits: createCodexTurnOpenWaits(),
       translator
     }
     return { connection, prompts, translator, session, sessions: new Map([['session-1', session]]) }
@@ -136,10 +135,10 @@ describe('Codex structured session close lifecycle', () => {
     expect(translator.handle).toHaveBeenCalledOnce()
   })
 
-  it('releases a held handover when a requested close cannot publish its end yet', async () => {
+  it("ends a Stop's wait for its turn to open when a requested close cannot publish its end yet", async () => {
     const { connection, prompts, session, sessions } = backpressuredSession(true)
     let released = false
-    void session.turnOpenHolds.hold('turn-1', Date.now() + 60_000).then(() => {
+    void session.turnOpenWaits.wait('turn-1', 60_000).then(() => {
       released = true
     })
 
@@ -190,30 +189,6 @@ describe('Codex structured session close lifecycle', () => {
         acquisitionGeneration: 'generation-2'
       }
     ])
-  })
-
-  it('releases a held handover as soon as its child is asked to close, before the child exits', async () => {
-    const { adapter, connections } = adapterFixture()
-    await adapter.acquire({ identity: identity('session-1'), fence: 7, spawnToken: 'spawn-1' })
-    const current = connections[0]
-    if (!current) {
-      throw new Error('missing connection')
-    }
-    // Codex answers into a turn it never opens, and the child outlives the close.
-    current.connection.request = async (method) =>
-      method === 'turn/start' ? { turn: { id: 'turn-1', status: 'inProgress' } } : {}
-    current.connection.close = async () => false
-    const dispatched = adapter.dispatch({
-      sessionId: 'session-1',
-      clientMessageId: 'message-1',
-      body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'hello' }] },
-      fence: 7
-    })
-    expect(await settledWithin(dispatched, 200)).toBe('held')
-
-    expect(await adapter.closeSession('session-1')).toBe(false)
-
-    expect(await settledWithin(dispatched, 200)).toEqual({ state: 'admitted' })
   })
 
   it('force-close preserves unexpected-exit evidence when the adapter reports exit during close', async () => {

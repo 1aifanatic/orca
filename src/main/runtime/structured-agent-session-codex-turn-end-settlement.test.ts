@@ -15,6 +15,7 @@ import type {
 } from '../codex/codex-app-server-connection'
 import { codexTurnLifecycleFake } from '../codex/codex-turn-lifecycle-fake'
 import { settledWithin } from '../codex/codex-structured-dispatch-test-support'
+import { CODEX_STOP_TURN_OPEN_WAIT_MS } from '../codex/codex-structured-prompt-ownership'
 import { computeAgentSessionPayloadFingerprint } from '../../shared/agent-session-mutation-envelope'
 import type { AgentJournalSubmission } from '../../shared/agent-session-journal-types'
 import { classifyDispatchRejection } from '../../shared/structured-agent-session-dispatch-rejection'
@@ -26,6 +27,7 @@ import {
   hostTestMessage
 } from '../native-chat/agent-session-wire/structured-agent-session-host-test-data'
 import type { StructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-host'
+import { CHILD_EVICTION_TIMEOUT_MS } from '../native-chat/agent-session-wire/structured-agent-session-host-teardown'
 import {
   ensureStructuredAgentSessionHost,
   stopStructuredAgentSessionRuntime
@@ -53,6 +55,7 @@ let fence: number
 let handlers: CodexAppServerConnectionHandlers | undefined
 let answers: number
 let interrupts: number
+let childCloses: number
 let turns: ReturnType<typeof codexTurnLifecycleFake>
 let operations = 0
 
@@ -115,6 +118,7 @@ beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'orca-codex-turn-end-'))
   answers = 0
   interrupts = 0
+  childCloses = 0
   turns = codexTurnLifecycleFake(
     THREAD,
     () => (method, params) => handlers?.onNotification?.(method, params)
@@ -147,7 +151,10 @@ beforeEach(async () => {
       notify: () => {},
       respond: () => {},
       respondWithError: () => {},
-      close: async () => true
+      close: async () => {
+        childCloses += 1
+        return true
+      }
     }
     return connection
   }
@@ -227,7 +234,7 @@ describe('a Stop sent after Codex answered a cold send, before it opened the tur
     await vi.waitFor(() => expect(answers).toBe(1))
 
     const stopping = stop()
-    // Unheld, it would reach Codex now, which would refuse it, and be done.
+    // Without the wait, it would reach Codex now, which would refuse it, and be done.
     expect(await settledWithin(stopping, 1_000)).toBe('held')
     expect(interrupts).toBe(0)
     turns.start()
@@ -242,11 +249,14 @@ describe('a Stop sent after Codex answered a cold send, before it opened the tur
   })
 })
 
-describe('a held cold send is bookkeeping: it never delays a close or a quit', () => {
-  /** Well inside one eviction step's budget, and far inside the hold's own deadline. */
-  const PROMPTLY_MS = 2_000
+describe('a Stop in that window that the turn never opens for', () => {
+  async function statusRows(): Promise<string[]> {
+    return (await host.journalSnapshot(SESSION)).items.flatMap((item) =>
+      item.body.kind === 'status' ? [item.body.text] : []
+    )
+  }
 
-  async function holdASendWithAStopBehindIt(): Promise<{ stopping: Promise<void> }> {
+  async function waitingStop(): Promise<{ stopping: Promise<void> }> {
     await send('look around')
     await vi.waitFor(() => expect(answers).toBe(1))
     const stopping = stop()
@@ -254,17 +264,61 @@ describe('a held cold send is bookkeeping: it never delays a close or a quit', (
     return { stopping }
   }
 
-  it('lets the chat close at once', async () => {
-    const { stopping } = await holdASendWithAStopBehindIt()
+  it('says Codex had no turn running when that turn ends first', async () => {
+    const { stopping } = await waitingStop()
 
-    expect(await settledWithin(host.close(SESSION), PROMPTLY_MS)).not.toBe('held')
-    expect(await settledWithin(stopping, PROMPTLY_MS)).not.toBe('held')
+    turns.end('interrupted')
+    await stopping
+
+    expect(interrupts).toBe(0)
+    expect(await statusRows()).toContain('Codex had no turn running to stop.')
   })
 
-  it('lets the app quit at once', async () => {
-    const { stopping } = await holdASendWithAStopBehindIt()
+  it('lets a chat closed behind it close within its bound and one eviction', async () => {
+    const { stopping } = await waitingStop()
+
+    const closing = host.close(SESSION)
+
+    expect(
+      await settledWithin(closing, CODEX_STOP_TURN_OPEN_WAIT_MS + CHILD_EVICTION_TIMEOUT_MS)
+    ).not.toBe('held')
+    expect(await settledWithin(stopping, 0)).not.toBe('held')
+    expect(childCloses).toBe(1)
+    expect(interrupts).toBe(0)
+    expect(await statusRows()).toContain('Codex had no turn running to stop.')
+  })
+
+  it('lets the app quit behind it within the eviction budget, and still close the child', async () => {
+    await waitingStop()
+
+    expect(
+      await settledWithin(stopStructuredAgentSessionRuntime(), CHILD_EVICTION_TIMEOUT_MS)
+    ).not.toBe('held')
+    expect(childCloses).toBe(1)
+  })
+})
+
+describe('a cold send with no Stop behind it', () => {
+  /** Well inside one eviction step's budget, and far inside the bound a Stop waits. */
+  const PROMPTLY_MS = 1_000
+
+  async function answeredColdSend(): Promise<void> {
+    await send('look around')
+    await vi.waitFor(() => expect(answers).toBe(1))
+    expect(turns.turnId).toBe('turn-1')
+  }
+
+  it('never delays closing the chat', async () => {
+    await answeredColdSend()
+
+    expect(await settledWithin(host.close(SESSION), PROMPTLY_MS)).not.toBe('held')
+    expect(childCloses).toBe(1)
+  })
+
+  it('never delays quitting the app', async () => {
+    await answeredColdSend()
 
     expect(await settledWithin(stopStructuredAgentSessionRuntime(), PROMPTLY_MS)).not.toBe('held')
-    expect(await settledWithin(stopping, PROMPTLY_MS)).not.toBe('held')
+    expect(childCloses).toBe(1)
   })
 })

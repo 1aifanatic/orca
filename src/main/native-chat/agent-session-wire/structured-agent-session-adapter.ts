@@ -338,9 +338,6 @@ export type StructuredAgentSessionAdapter = {
    *  closed; at once for any other. A start that did not land resolves with the chat's words for
    *  why. Never rejects. */
   awaitStarted?(sessionId: string): Promise<void | SubmissionRejectionFact>
-  /** Ends every wait a handover holds the session's queue for, ahead of a close or quit that would
-   *  otherwise queue behind it. The handover then returns as if its wait had ended on its own. */
-  releaseHandoverHolds?(sessionId: string): void
   readOptions?(input: { sessionId: string; fence: number }): Promise<AgentSessionOptionsResult>
   /** Option keys skipped after a provider rejected their persisted restore value. */
   readOptionRestoreFailures?(sessionId: string): readonly string[]

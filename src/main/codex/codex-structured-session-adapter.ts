@@ -230,9 +230,6 @@ export class CodexStructuredSessionAdapter implements StructuredAgentSessionAdap
     }
   }
 
-  releaseHandoverHolds = (sessionId: string): void =>
-    this.sessions.get(sessionId)?.turnOpenHolds.releaseAll()
-
   cancelTurn: StructuredAgentSessionAdapter['cancelTurn'] = (request) =>
     cancelCodexStructuredTurn({
       request,

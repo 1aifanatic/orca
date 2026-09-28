@@ -36,7 +36,7 @@ async function turnEndRig() {
       body: CODEX_TEST_USER_MESSAGE,
       fence: 7
     })
-  // Codex answers a cold send before it opens the turn, and the send's dispatch waits for that.
+  // Codex answers a cold send before it opens the turn.
   const sendAndOpen = async (clientMessageId: string) => {
     const sending = send(clientMessageId)
     await vi.waitFor(() => expect(turns.turnId).not.toBeNull())
