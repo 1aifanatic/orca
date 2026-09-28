@@ -7,7 +7,7 @@ const hooks = readFileSync(new URL('../nsis/orca-installer-hooks.nsh', import.me
 const source = readFileSync(
   new URL('../nsis/orca-bun-terminal-uninstall.nsh', import.meta.url),
   'utf8'
-)
+).replaceAll('\r\n', '\n')
 const command = source.match(/-Command "([^"\n]+)"`/)?.[1]?.replaceAll('$$', '$')
 if (!command) {
   throw new Error('Missing fixed Bun terminal uninstall command')

@@ -272,28 +272,27 @@ if (graphErrors.length > 0) {
   }
 }
 
-try {
-  if (targetIsCurrent) {
-    await smokeProfileStateWorkers(OUT_DIR, { runtimePath: bunRuntimeOutput })
-  }
-} catch (error) {
-  console.error('[build-orcad] profile state worker check failed:', error)
-  process.exitCode = 1
-}
-
-// Why a content hash and not ORCAD_VERSION alone: the remote install directory is keyed on
-// this string, so two different builds carrying one version would share a directory — and an
-// already-`.install-complete` dir is never re-uploaded. The deploy would silently run stale
-// bytes while reporting the new version.
+// Remote install directories are keyed by content, including every shipped companion.
 if (process.exitCode !== 1) {
   const fullVersion = computeOrcadFullVersion(OUT_DIR, {
     target: BUILD_TARGET,
     agentBrowserFilename: AGENT_BROWSER_NAME
   })
-  writeFileSync(join(OUT_DIR, ORCAD_VERSION_FILENAME), fullVersion)
-  console.log(
-    `[build-orcad] ok — ${fullVersion}, ${(output.bytes / 1024 / 1024).toFixed(2)} MB, ${Object.keys(output.inputs).length} modules, zero electron and node:sqlite imports, Bun ${ORCAD_BUN_VERSION} included.`
-  )
+  const versionPath = join(OUT_DIR, ORCAD_VERSION_FILENAME)
+  writeFileSync(versionPath, fullVersion)
+  try {
+    // Windows preflight verifies the installed version before launching its native child.
+    if (targetIsCurrent) {
+      await smokeProfileStateWorkers(OUT_DIR, { runtimePath: bunRuntimeOutput })
+    }
+    console.log(
+      `[build-orcad] ok — ${fullVersion}, ${(output.bytes / 1024 / 1024).toFixed(2)} MB, ${Object.keys(output.inputs).length} modules, zero electron and node:sqlite imports, Bun ${ORCAD_BUN_VERSION} included.`
+    )
+  } catch (error) {
+    rmSync(versionPath, { force: true })
+    console.error('[build-orcad] profile state worker check failed:', error)
+    process.exitCode = 1
+  }
 }
 
 // Verify the shipped native watcher actually subscribes under the bundled runtime.

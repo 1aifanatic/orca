@@ -1,3 +1,5 @@
+import { join } from 'node:path'
+import { createWindowsBunPtyLaunch } from './pty-subprocess/windows-bun-pty-launch'
 import { spawnBunPty } from './pty-subprocess/bun-pty-process'
 
 export async function runWindowsShellPreflight(options: {
@@ -14,14 +16,22 @@ export async function runWindowsShellPreflight(options: {
       env[key] = value
     }
   }
-  const proc = spawnBunPty({
-    file: options.shellPath,
-    args: options.shellArgs,
-    cols: 100,
-    rows: 30,
-    cwd: options.cwd,
-    env
-  })
+  const proc = spawnBunPty(
+    {
+      file: options.shellPath,
+      args: options.shellArgs,
+      cols: 100,
+      rows: 30,
+      cwd: options.cwd,
+      env
+    },
+    {
+      createWindowsLaunch: (args) =>
+        createWindowsBunPtyLaunch(args, {
+          workerPath: join(process.cwd(), 'out', 'terminal-daemon', 'windows-bun-pty-gate-entry.js')
+        })
+    }
+  )
   let output = ''
   proc.onData((data) => {
     output += data

@@ -977,7 +977,7 @@ jobs:
       # Keep cold PowerShell probes out of concurrent native and renderer tests.
       - name: Test installer PowerShell capability
         run: >-
-          pnpm exec vitest run --config config/vitest.config.ts
+          pnpm exec vitest run --config config/vitest.config.ts --fileParallelism=false
           config/scripts/nsis-process-check.test.mjs
           config/scripts/nsis-bun-terminal-uninstall.test.mjs
 

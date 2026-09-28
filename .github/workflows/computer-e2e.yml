@@ -92,6 +92,8 @@ jobs:
       - name: Prepare pinned Bun for Windows shell fixtures
         if: runner.os == 'Windows'
         run: node --input-type=module -e "import { buildCliRuntime } from './config/scripts/build-cli-runtime.mjs'; await buildCliRuntime(process.platform, process.arch)"
+      - name: Build terminal service and Windows gate for shell fixtures
+        run: pnpm run build:terminal-daemon
       # Why: without --config, bare vitest ignores config/vitest.config.ts (there
       # is no root config) and falls back to the 5s default timeout with no
       # Windows worker cap, so the real csc.exe launcher-compile tests time out
@@ -137,7 +139,6 @@ jobs:
       - run: pnpm verify:computer-native
       - run: pnpm build:cli
       - run: pnpm run build:electron-vite:parallel
-      - run: pnpm run build:terminal-daemon
       - run: pnpm exec vitest run --config config/vitest.config.ts config/scripts/daemon-smoke-launch.test.mjs
       # Exercise the shipped Bun runtime and standalone daemon bundle together.
       - name: Daemon boot smoke

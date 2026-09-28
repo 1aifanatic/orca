@@ -92,6 +92,9 @@ describe('computer-use e2e workflow', () => {
     expect(preparation).toBeGreaterThan(-1)
     expect(steps[preparation].if).toBe("runner.os == 'Windows'")
     expect(preparation).toBeLessThan(fixtures)
+    const gateBuild = steps.findIndex((step) => step.run === 'pnpm run build:terminal-daemon')
+    expect(gateBuild).toBeGreaterThan(-1)
+    expect(gateBuild).toBeLessThan(fixtures)
   })
 
   it('runs focused computer-use regression tests in the PR native-smoke job', () => {
