@@ -369,6 +369,50 @@ describe('NativeChatStructuredSession delivery', () => {
     expect(screen.queryByText(/Send your message to try again/)).toBeNull()
   })
 
+  it("words a rejected message from its loaded journal row, not the message's own copy", async () => {
+    mocks.mode = 'outbox'
+    const reason = "Claude couldn't start. Send your message to try again."
+    mocks.submissions = [
+      {
+        clientMessageId: 'op-recorded',
+        fence: 1,
+        payloadFingerprint: 'fingerprint',
+        dispatchState: 'rejected',
+        providerItemId: null,
+        reason,
+        rejection: {
+          kind: 'startFailed',
+          refusal: { code: 'agent_session_identity_required', details: { reason: 'recordMissing' } }
+        },
+        submittedAt: 1,
+        resolvedAt: 1
+      }
+    ]
+    seedOutbox('session-recorded', [
+      {
+        ...seededEntry('session-recorded', 'op-recorded', 'first', 'queued'),
+        state: 'rejected',
+        lastFailure: { kind: 'rejected', reason, rejection: { kind: 'startFailed' } }
+      }
+    ])
+
+    render(
+      <NativeChatStructuredSession
+        isVisible
+        isFocusedGroup
+        tabId="structured-tab-recorded"
+        sessionId="session-recorded"
+        target={{ kind: 'local' }}
+        agent="codex"
+      />
+    )
+
+    await waitFor(() =>
+      expect(screen.getByText("Codex couldn't start. Start a new chat to continue.")).toBeTruthy()
+    )
+    expect(screen.queryByText(reason)).toBeNull()
+  })
+
   it('names the stuck message behind an admitted head, and its Retry sends that one', async () => {
     mocks.mode = 'outbox'
     mocks.submissions = []
