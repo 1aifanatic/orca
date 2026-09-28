@@ -106,6 +106,20 @@ export function isStructuredAgentSessionHostRefusal(error: unknown): boolean {
   )
 }
 
+/** For work that goes on without chats: the refusal chats are getting leaves this process with no
+ *  host, and any other install failure still throws. */
+export async function ensureStructuredAgentSessionHostUnlessRefused(
+  ensureHost: () => Promise<unknown>
+): Promise<void> {
+  try {
+    await ensureHost()
+  } catch (error) {
+    if (!isStructuredAgentSessionHostRefusal(error)) {
+      throw error
+    }
+  }
+}
+
 /** Set when the owner could not open its journal database; cleared by a later install. The
  *  install retries on the next call, so a refusal that can clear does. */
 export function recordStructuredAgentSessionHostInstallRefusal(

@@ -21,6 +21,7 @@ import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire
 import Database from '../sqlite/sync-database'
 import { OrcaRuntimeService } from './orca-runtime'
 import { requireStructuredCleanupHost } from './rpc/methods/structured-agent-session-gate'
+import { assertLegacyAiVaultResumeCommandAllowed } from '../ai-vault/structured-session-ownership'
 import type { RpcContext } from './rpc/core'
 import { readRuntimeMetadata } from './runtime-metadata'
 import { OrcaRuntimeRpcServer } from './runtime-rpc'
@@ -207,7 +208,7 @@ describe('the owner, when its journal will not open', () => {
 
 // A refused host is a no-host state for startup: the app restores terminals and tabs as usual,
 // and only structured requests are refused.
-describe('startup restoration without a structured host', () => {
+describe('startup and other non-chat work without a structured host', () => {
   function startupRuntime(ensureHost: () => Promise<unknown> = install) {
     const runtime = new OrcaRuntimeService()
     const refreshPtyRecords = vi.fn(async () => new Set<string>())
@@ -266,6 +267,24 @@ describe('startup restoration without a structured host', () => {
       reason: 'journalCorrupt',
       message: 'Unable to load this chat.'
     })
+  })
+
+  it('lets a terminal resume command through while another process owns the chats', async () => {
+    holder = await holdJournalOwnerLockInChild(root)
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    // The check `terminal.send` and `session.tabs.createTerminal` run before typing a resume.
+    await expect(
+      assertLegacyAiVaultResumeCommandAllowed('claude --resume 0f9c1d2e', async () => {
+        await install()
+      })
+    ).resolves.toBeUndefined()
+    await expect(
+      assertLegacyAiVaultResumeCommandAllowed('claude --resume 0f9c1d2e', async () => {
+        throw new Error('the record store would not open')
+      })
+    ).rejects.toThrow('the record store would not open')
+    expect(gateRefusal().reason).toBe('journalUnavailable')
   })
 
   it('still fails on an install error that refuses nothing', async () => {

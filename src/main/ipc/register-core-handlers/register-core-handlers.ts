@@ -93,6 +93,7 @@ import {
   scanRuntimeAiVaultSessions
 } from '../../ai-vault/runtime-session-scanner'
 import { callRuntimeSessionSearch } from '../../ai-vault/runtime-session-search-call'
+import { ensureStructuredAgentSessionHostUnlessRefused } from '../../runtime/structured-agent-session-journal-ownership'
 import type { PluginService } from '../../plugins/plugin-service'
 import type { PluginMarketplaceHandlerServices } from '../plugin-marketplaces'
 
@@ -225,7 +226,11 @@ export function registerCoreHandlers(
       callRuntimeSessionSearch(app.getPath('userData'), environmentId, method, params)
   })
   registerAiVaultHandlers({
-    ensureStructuredSessionOwnership: () => runtime.ensureStructuredAgentSessionHost(),
+    // Session history and terminal resume are not chats; a refused host leaves nothing to check.
+    ensureStructuredSessionOwnership: () =>
+      ensureStructuredAgentSessionHostUnlessRefused(() =>
+        runtime.ensureStructuredAgentSessionHost()
+      ),
     getAdditionalCodexHomePaths: lifecycleOptions.getAdditionalAiVaultCodexHomePaths,
     prepareSessionResume: lifecycleOptions.prepareAiVaultSessionResume,
     getActiveRuntimeAiVaultHostInfos: () =>
