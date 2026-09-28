@@ -219,7 +219,7 @@ function deferred<T>() {
 async function writeAsEarlierProcess(
   write: (journal: AgentSessionJournal, fence: number) => Promise<void>
 ): Promise<void> {
-  await host.close(SESSION)
+  await host.close(SESSION, 'evict')
   const record = store.getRecord(SESSION)!
   const params = attachParamsForRecord(record, {
     clientOperationId: 'earlier',
@@ -252,7 +252,7 @@ function earlierSubmission(id: string, text: string, handoverRecorded?: true) {
 
 describe('a send is answered at acceptance', () => {
   it('answers before the child starts, then an open chat sees the handover and the reply (W2)', async () => {
-    await host.close(SESSION)
+    await host.close(SESSION, 'evict')
     const starting = deferred<void>()
     acquire.mockImplementationOnce(async (input) => {
       await starting.promise
@@ -278,7 +278,7 @@ describe('a send is answered at acceptance', () => {
   })
 
   it('accepts a second send while the first one starts the child, before handing either over (W6)', async () => {
-    await host.close(SESSION)
+    await host.close(SESSION, 'evict')
     const starting = deferred<void>()
     acquire.mockImplementationOnce(async (input) => {
       await starting.promise
@@ -305,7 +305,7 @@ describe('a send is answered at acceptance', () => {
 
 describe('a start the chat needed and did not get', () => {
   it('writes one error row and rejects every queued message with it; the next send starts (W3)', async () => {
-    await host.close(SESSION)
+    await host.close(SESSION, 'evict')
     acquire.mockRejectedValueOnce(new Error('spawn codex ENOENT'))
     const first = await accept('first')
     const second = await accept('second')
@@ -323,7 +323,7 @@ describe('a start the chat needed and did not get', () => {
   })
 
   it('notifies failed once for the queued messages one start failure refused', async () => {
-    await host.close(SESSION)
+    await host.close(SESSION, 'evict')
     acquire.mockRejectedValueOnce(new Error('spawn codex ENOENT'))
     const completions: AgentSessionTurnCompletionEvent[] = []
     host.subscribeTurnCompletions({ id: 'dot-1', emit: (event) => completions.push(event) })
@@ -366,7 +366,7 @@ describe('a start the chat needed and did not get', () => {
       'Not logged in'
     ]
   ])('writes one row a live chat sees for a %s refusal (W14)', async (_source, arrange, cause) => {
-    await host.close(SESSION)
+    await host.close(SESSION, 'evict')
     arrange()
     await host.flushAllStreamedEvents()
     await startHost()
@@ -387,7 +387,7 @@ describe('a start the chat needed and did not get', () => {
   })
 
   it('names the start failure on queued messages when the attach fails after acquiring (W4′a)', async () => {
-    await host.close(SESSION)
+    await host.close(SESSION, 'evict')
     const id = await accept('hello')
     // The attach's own success record is the post-acquisition step that fails.
     const record = vi.spyOn(store, 'recordOperationOutcome')
@@ -417,7 +417,7 @@ describe('a start the chat needed and did not get', () => {
 
 describe('an attach that fails after indexing its child', () => {
   it('leaves no child behind, so the next send starts one and is delivered', async () => {
-    await host.close(SESSION)
+    await host.close(SESSION, 'evict')
     const owned: boolean[] = []
     host.subscribeStatus({
       id: 'list-1',
@@ -501,7 +501,7 @@ describe('a child that exits before its message is handed over', () => {
       })
     })
     adapterExtras = { awaitStarted }
-    await host.close(SESSION)
+    await host.close(SESSION, 'evict')
     await startHost()
 
     const id = await accept('hello')
@@ -530,7 +530,7 @@ describe('Stop withdraws what is queued', () => {
   })
 
   it('withdraws a message whose start holds the queue: nothing is handed over (W17b)', async () => {
-    await host.close(SESSION)
+    await host.close(SESSION, 'evict')
     const starting = deferred<void>()
     acquire.mockImplementationOnce(async (input) => {
       await starting.promise
@@ -556,7 +556,7 @@ describe('Stop withdraws what is queued', () => {
       return true
     })
     adapterExtras = { awaitStarted, closeSession }
-    await host.close(SESSION)
+    await host.close(SESSION, 'evict')
     await startHost()
     acquire.mockImplementationOnce(async (input) => ({
       ...(await spawnChild(input)),
@@ -584,13 +584,13 @@ describe('an eviction between acceptance and handover', () => {
   it('rejects the message as not sent, never leaves it in doubt (W24)', async () => {
     const started = deferred<void>()
     adapterExtras = { awaitStarted: () => started.promise }
-    await host.close(SESSION)
+    await host.close(SESSION, 'evict')
     await startHost()
     await host.hold(SESSION, 'surface-1')
     const id = await accept('hello')
     await eventually(() => expect(acquire).toHaveBeenCalledTimes(2))
     // Between the delivery loop's start step and its handover step.
-    await host.close(SESSION)
+    await host.close(SESSION, 'evict')
     started.resolve()
 
     expect(await reopened(id)).toMatchObject({
@@ -604,7 +604,7 @@ describe('an eviction between acceptance and handover', () => {
     const second = deferred<void>()
     const awaitStarted = vi.fn(async (): Promise<void> => undefined)
     adapterExtras = { awaitStarted }
-    await host.close(SESSION)
+    await host.close(SESSION, 'evict')
     await startHost()
     await host.hold(SESSION, 'surface-1')
     dispatch.mockResolvedValueOnce({ state: 'admitted' })
@@ -614,7 +614,7 @@ describe('an eviction between acceptance and handover', () => {
     const queued = await accept('still queued')
     await eventually(() => expect(awaitStarted).toHaveBeenCalledTimes(2))
 
-    await host.close(SESSION)
+    await host.close(SESSION, 'evict')
     second.resolve()
 
     expect(await reopened(queued)).toMatchObject({
@@ -629,7 +629,7 @@ describe('an eviction between acceptance and handover', () => {
     releaseGraceMs = 0
     const started = deferred<void>()
     adapterExtras = { awaitStarted: () => started.promise }
-    await host.close(SESSION)
+    await host.close(SESSION, 'evict')
     await startHost()
     await host.hold(SESSION, 'surface-1')
     const id = await accept('hello')
@@ -647,7 +647,7 @@ describe('an eviction between acceptance and handover', () => {
 
 describe('a compaction or rewind an earlier child left prepared', () => {
   async function leftPrepared(prepare: (fence: number) => Promise<unknown>): Promise<void> {
-    await host.close(SESSION)
+    await host.close(SESSION, 'evict')
     await prepare(store.getRecord(SESSION)!.lease.runtimeFence)
     // A new process: nothing is open and no view attaches.
     await host.flushAllStreamedEvents()

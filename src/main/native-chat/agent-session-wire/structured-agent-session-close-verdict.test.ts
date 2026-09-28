@@ -1,8 +1,9 @@
 // A turn the host cuts short by closing its provider is the user's cancellation only when the user
 // closed this chat. A quit, an idle eviction or a teardown aimed elsewhere leaves it news: the user
-// needs to learn it did not finish. The decision is written where the host settles the turn.
+// needs to learn it did not finish. The adapter settles its own open turn with the cause the host
+// hands its close, and the host's fallback settles any turn no adapter did, through one mapping.
 
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentJournalTurnLifecycle } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionStatusEvent } from '../../../shared/agent-session-wire'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
@@ -20,32 +21,57 @@ import {
   HOST_TEST_SESSION as SESSION,
   HOST_TEST_THREAD as THREAD
 } from './structured-agent-session-host-test-data'
+import {
+  childEndCauseOfEndedEvent,
+  turnVerdictForChildEnd
+} from './structured-agent-session-stale-turn-verdict'
 
 const CUT_TURN = { provider: 'codex' as const, threadId: THREAD, turnId: 'cut-turn', ordinal: 1 }
 
 let host: StructuredAgentSessionHost
-/** What the provider writes on the open turn as it exits; null writes nothing. */
-let providerEnd: Pick<AgentJournalTurnLifecycle, 'state' | 'outcome' | 'completedAt'> | null
+/** What the provider writes on the open turn as it exits: settled through the mapping with the
+ *  cause its close was handed, as both adapters do, or its own verdict; null writes nothing. */
+let providerEnd:
+  | 'mapped'
+  | Pick<AgentJournalTurnLifecycle, 'state' | 'outcome' | 'completedAt'>
+  | null
+/** The provider already saw its own exit when the close arrived. */
+let exitObservedFirst: boolean
+let closeCalls = 0
 
 beforeEach(() => {
   const state = hostTestState()
-  // The Codex and Claude adapters settle their open turn, verdict-less, before the close resolves.
-  providerEnd = { state: 'interrupted', completedAt: 1_500 }
+  providerEnd = 'mapped'
+  exitObservedFirst = false
+  closeCalls = 0
   host = new StructuredAgentSessionHost({
     store: state.store,
     adapter: {
       ...adapter(),
-      closeSession: async () => {
+      closeSession: async (_sessionId, cause) => {
+        closeCalls += 1
         const events = state.acquire.mock.calls.at(-1)?.[0].events
-        if (providerEnd) {
-          events?.appendItem(CUT_TURN, {
-            kind: 'turn',
-            turnId: 'cut-turn',
-            startedAt: 1_000,
-            requestedAt: 1_000,
-            ...providerEnd
-          })
+        if (providerEnd === null) {
+          return true
         }
+        const end =
+          providerEnd === 'mapped'
+            ? turnVerdictForChildEnd(
+                childEndCauseOfEndedEvent({
+                  type: 'ended',
+                  cause: exitObservedFirst ? 'unexpected-exit' : 'requested-close',
+                  ...(cause ? { stopCause: cause } : {})
+                }),
+                1_500
+              )
+            : providerEnd
+        events?.appendItem(CUT_TURN, {
+          kind: 'turn',
+          turnId: 'cut-turn',
+          startedAt: 1_000,
+          requestedAt: 1_000,
+          ...end
+        })
         return true
       }
     },
@@ -99,7 +125,7 @@ describe('a turn cut short by closing its provider', () => {
   it("records the user's close of this chat as their cancellation", async () => {
     const statuses = await runningTurn()
 
-    await host.close(SESSION, { requestedByUser: true })
+    await host.close(SESSION, 'user-close')
 
     expect(lastSummary(statuses)).toMatchObject({ status: 'idle', turnOutcome: 'cancellation' })
     const { turn, settled } = await settledTurn()
@@ -114,7 +140,7 @@ describe('a turn cut short by closing its provider', () => {
     const statuses = await runningTurn()
 
     // What an idle eviction, a worktree teardown or an orchestration stop issues.
-    await host.close(SESSION)
+    await host.close(SESSION, 'evict')
 
     expect(lastSummary(statuses)).toMatchObject({ status: 'idle', turnOutcome: 'interruption' })
     const { turn, settled } = await settledTurn()
@@ -125,11 +151,11 @@ describe('a turn cut short by closing its provider', () => {
     ).toMatchObject({ key: 'interruptedAfter' })
   })
 
-  it("records the user's close on a turn the provider left running", async () => {
+  it("records the user's close on a turn no adapter settled, through the host's fallback", async () => {
     providerEnd = null
     const statuses = await runningTurn()
 
-    await host.close(SESSION, { requestedByUser: true })
+    await host.close(SESSION, 'user-close')
 
     expect(lastSummary(statuses)).toMatchObject({ status: 'idle', turnOutcome: 'cancellation' })
     const { turn } = await settledTurn()
@@ -141,7 +167,7 @@ describe('a turn cut short by closing its provider', () => {
     await attach()
     await host.flushStreamedEvents(SESSION)
 
-    await host.close(SESSION, { requestedByUser: true })
+    await host.close(SESSION, 'user-close')
 
     const { turn } = await settledTurn()
     expect(turn).toMatchObject({ state: 'interrupted', outcome: 'cancellation' })
@@ -162,7 +188,7 @@ describe('a turn cut short by closing its provider', () => {
     })
     await host.flushStreamedEvents(SESSION)
 
-    await host.close(SESSION, { requestedByUser: true })
+    await host.close(SESSION, 'user-close')
 
     const { turn } = await settledTurn()
     expect(turn).toMatchObject({ state: 'interrupted', completedAt: 1_200 })
@@ -173,7 +199,7 @@ describe('a turn cut short by closing its provider', () => {
     providerEnd = { state: 'completed', outcome: 'success', completedAt: 1_500 }
     await runningTurn()
 
-    await host.close(SESSION, { requestedByUser: true })
+    await host.close(SESSION, 'user-close')
 
     const { turn } = await settledTurn()
     expect(turn).toMatchObject({ state: 'completed', outcome: 'success' })
@@ -184,7 +210,7 @@ describe('a turn cut short by closing its provider', () => {
     providerEnd = { state: 'interrupted', outcome: 'failure', completedAt: 1_500 }
     await runningTurn()
 
-    await host.close(SESSION, { requestedByUser: true })
+    await host.close(SESSION, 'user-close')
 
     const { turn } = await settledTurn()
     expect(turn).toMatchObject({ state: 'interrupted', outcome: 'failure' })
@@ -198,5 +224,46 @@ describe('a turn cut short by closing its provider', () => {
     expect(statuses.findLast((event) => event.type === 'status')).toMatchObject({
       session: { status: 'idle', turnOutcome: 'interruption' }
     })
+  })
+
+  it("keeps the user's cancellation when a close aborts after the provider settled, then retries", async () => {
+    await runningTurn()
+    const sink = host['runtimeState'].eventSinkFor(SESSION)
+    const drained = sink.drained.bind(sink)
+    let failed = false
+    vi.spyOn(sink, 'drained').mockImplementation(async () => {
+      if (closeCalls > 0 && !failed) {
+        failed = true
+        return { ok: false, error: new Error('drain failed') }
+      }
+      return drained()
+    })
+    // The adapter settled the turn, then the close aborted at the drain after it.
+    await expect(host.close(SESSION, 'user-close')).rejects.toThrow()
+    expect(closeCalls).toBe(1)
+    await host.close(SESSION, 'user-close')
+    const { turn } = await settledTurn()
+    expect(turn).toMatchObject({ state: 'interrupted', outcome: 'cancellation' })
+  })
+
+  it("leaves a quit's cut on a turn no adapter settled as news", async () => {
+    providerEnd = null
+    await runningTurn()
+
+    await host.flushAllStreamedEvents({ trigger: 'quit' })
+
+    const { turn } = await settledTurn()
+    expect(turn).toMatchObject({ state: 'interrupted' })
+    expect(turn).not.toHaveProperty('outcome')
+  })
+
+  it('leaves a crash the provider saw before the user closed the chat as news', async () => {
+    exitObservedFirst = true
+    await runningTurn()
+    // The provider reports its own exit, which it saw first, as it closes: no verdict.
+    await host.close(SESSION, 'user-close')
+    const { turn } = await settledTurn()
+    expect(turn).toMatchObject({ state: 'interrupted' })
+    expect(turn).not.toHaveProperty('outcome')
   })
 })

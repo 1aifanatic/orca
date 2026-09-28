@@ -124,7 +124,8 @@ describe('Claude root-exit eviction', () => {
           now: () => NOW + 30 * 60_000,
           forgetStatus: vi.fn()
         },
-        'session-1'
+        'session-1',
+        'evict'
       )
     ).resolves.toBeUndefined()
 

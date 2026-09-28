@@ -11,14 +11,18 @@ import type {
 } from '../../../shared/agent-session-journal-types'
 import {
   agentJournalTurnBody,
-  readAgentJournalTurn,
-  readAgentJournalTurnOutcome
+  readAgentJournalTurn
 } from '../../../shared/agent-session-turn-record'
 import type { AgentSessionDeathEvidence } from '../../../shared/agent-session-record'
+import type {
+  StructuredAgentSessionChildEndCause,
+  StructuredAgentSessionEndedEvent
+} from './structured-agent-session-adapter'
 import type { JournalLifecycleMutationInput } from '../agent-session-journal/journal-row-builders'
 
 export type StructuredAgentSessionTurnVerdict =
-  | { state: 'interrupted'; completedAt: number }
+  /** `cancellation` only for a stop the user aimed at this chat: every other cut is news. */
+  | { state: 'interrupted'; completedAt: number; outcome?: 'cancellation' }
   | { state: 'unverifiable' }
 
 export const UNVERIFIABLE_TURN_VERDICT: StructuredAgentSessionTurnVerdict = {
@@ -31,6 +35,38 @@ export function turnVerdictFromDeathEvidence(
   return evidence?.kind === 'exit-observed'
     ? { state: 'interrupted', completedAt: evidence.observedAt }
     : UNVERIFIABLE_TURN_VERDICT
+}
+
+/**
+ * The one mapping from why a provider child ended to what the turn it cut reads as. Each adapter
+ * settles its own open turn through it on `ended`, and the host's fallback settles through it any
+ * turn no adapter did. Only a stop the user aimed at this chat is their cancellation.
+ */
+export function turnVerdictForChildEnd(
+  cause: StructuredAgentSessionChildEndCause,
+  completedAt: number
+): Extract<StructuredAgentSessionTurnVerdict, { state: 'interrupted' }> {
+  switch (cause) {
+    case 'user-stop':
+    case 'user-close':
+      return { state: 'interrupted', completedAt, outcome: 'cancellation' }
+    case 'host-stop':
+    case 'evict':
+    case 'exit':
+    case 'attach-failed':
+      return { state: 'interrupted', completedAt }
+  }
+}
+
+/** Why the child an `ended` event reports ended: who asked for a close, else an exit it had. A
+ *  requested close with no cause named is the host's own. */
+export function childEndCauseOfEndedEvent(
+  event: { type: 'ended' } & Partial<Pick<StructuredAgentSessionEndedEvent, 'cause' | 'stopCause'>>
+): StructuredAgentSessionChildEndCause {
+  if (event.cause === 'unexpected-exit') {
+    return 'exit'
+  }
+  return event.stopCause ?? 'host-stop'
 }
 
 /** Revises every still-running lifecycle item in place, keeping its identity and start. */
@@ -71,55 +107,11 @@ function settledLifecycle(
     ...kept
   } = lifecycle
   return verdict.state === 'interrupted'
-    ? { ...kept, state: verdict.state, completedAt: verdict.completedAt }
+    ? {
+        ...kept,
+        state: verdict.state,
+        completedAt: verdict.completedAt,
+        ...(verdict.outcome ? { outcome: verdict.outcome } : {})
+      }
     : { ...kept, state: verdict.state }
-}
-
-/** The turns already over before a stop reaches the provider: the only ones it cannot have cut. */
-export function endedTurnItemIds(items: readonly AgentJournalRenderItem[]): ReadonlySet<string> {
-  return new Set(
-    items
-      .filter((item) => {
-        const state = readAgentJournalTurn(item.body)?.state
-        return state !== undefined && state !== 'running'
-      })
-      .map((item) => item.itemId)
-  )
-}
-
-/**
- * A stop the user aimed at this chat is their cancellation, on every turn it cut short: one still
- * running, or one the provider settled on its way out with no verdict of its own. That includes a
- * turn whose start landed only as the provider stopped. A verdict the provider did give stands.
- */
-export function userStoppedTurnRevisions(
-  items: readonly AgentJournalRenderItem[],
-  endedBeforeStop: ReadonlySet<string>,
-  completedAt: number
-): JournalLifecycleMutationInput[] {
-  const revisions: JournalLifecycleMutationInput[] = []
-  for (const item of items) {
-    if (endedBeforeStop.has(item.itemId)) {
-      continue
-    }
-    const turn = readAgentJournalTurn(item.body)
-    const identity = parseAgentJournalItemKey(item.itemId)
-    if (!turn || !identity || readAgentJournalTurnOutcome(turn)) {
-      continue
-    }
-    const ended =
-      turn.state === 'running'
-        ? settledLifecycle(turn, { state: 'interrupted', completedAt })
-        : turn.state === 'interrupted'
-          ? turn
-          : null
-    if (ended) {
-      revisions.push({
-        kind: 'item',
-        identity,
-        body: agentJournalTurnBody({ ...ended, outcome: 'cancellation' })
-      })
-    }
-  }
-  return revisions
 }

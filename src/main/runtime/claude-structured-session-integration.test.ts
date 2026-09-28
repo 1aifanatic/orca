@@ -484,7 +484,7 @@ describe('a structured Claude session over agentSession.*', () => {
       }
       const host = getStructuredAgentSessionHost()
       // The idle release clock's eviction: the lease follows the root, so the host lets go.
-      await host?.close(SESSION)
+      await host?.close(SESSION, 'evict')
       expect(host?.hasSession(SESSION)).toBe(false)
 
       // What the chat surface's `agentSession.hold` does when the user comes back to it.

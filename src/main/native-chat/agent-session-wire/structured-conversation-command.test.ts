@@ -331,7 +331,7 @@ describe('host conversation commands', () => {
     compact.mockRejectedValue(new Error('lost response'))
     const params = commandParams('compact')
     await expect(host.conversationCommand(caller, params)).rejects.toThrow()
-    await host.close(HOST_TEST_SESSION)
+    await host.close(HOST_TEST_SESSION, 'evict')
     const fence = store.getRecord(HOST_TEST_SESSION)!.lease.runtimeFence
     expect(await host.attach(caller, hostTestAttachParams(fence))).toMatchObject({ ok: true })
     expect(store.getRecord(HOST_TEST_SESSION)?.conversationCommand).toMatchObject({

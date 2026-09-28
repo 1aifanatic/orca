@@ -129,11 +129,29 @@ export type AgentSessionDispatchOutcome =
   /** The call did not settle. Never re-send on the user's behalf. */
   | { state: 'unknown'; reason: string }
 
+/** Why a provider child ended. In memory only: never journaled, persisted or sent. */
+export type StructuredAgentSessionChildEndCause =
+  | 'user-stop'
+  /** The user closed this chat: its tab, its launch, or a `/clear` that replaces it. */
+  | 'user-close'
+  | 'host-stop'
+  | 'exit'
+  | 'attach-failed'
+  | 'evict'
+
+/** Why the host asked a child to stop. The adapter carries it onto the `ended` it settles with. */
+export type StructuredAgentSessionStopCause = Extract<
+  StructuredAgentSessionChildEndCause,
+  'user-stop' | 'user-close' | 'host-stop' | 'evict'
+>
+
 export type StructuredAgentSessionEndedEvent = {
   type: 'ended'
   sessionId: string
   reason: string
   cause: 'unexpected-exit' | 'requested-close'
+  /** With `requested-close`: who asked for it. Absent when the host named no cause. */
+  stopCause?: StructuredAgentSessionStopCause
   fence: number
   acquisitionGeneration: string
   /** Host receipt of the child exit: the end time of a turn it interrupted. */
@@ -311,11 +329,11 @@ export type StructuredAgentSessionAdapter = {
   /** Gracefully stops the structured owner after its event stream is drained. */
   /** Returns true only after the provider child exit is proven. A root-exit or processless verdict
    *  is thrown only once the session is finalized; read it through `stopAgentSessionProviderRoot`. */
-  closeSession?(sessionId: string): Promise<boolean>
+  closeSession?(sessionId: string, cause?: StructuredAgentSessionStopCause): Promise<boolean>
   /** Stops a provider after a sink failure; the resulting exit is recovered as unexpected. */
   forceCloseSession?(sessionId: string): Promise<boolean>
   /** Stops a provider child for teardown without requiring a future-resume cursor. */
-  disposeSession?(sessionId: string): Promise<boolean>
+  disposeSession?(sessionId: string, cause?: StructuredAgentSessionStopCause): Promise<boolean>
   /** Host acknowledgement that the proven-dead child, lease and journal owner are released. */
   acknowledgeSessionRelease?(sessionId: string): void
 }

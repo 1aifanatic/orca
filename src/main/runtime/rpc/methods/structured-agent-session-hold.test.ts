@@ -134,7 +134,7 @@ describe('a client that holds a session', () => {
     ).toMatchObject({ ok: true })
 
     await vi.waitFor(() => expect(host.hasSession(SESSION)).toBe(false))
-    expect(closeSession).toHaveBeenCalledWith(SESSION)
+    expect(closeSession).toHaveBeenCalledWith(SESSION, 'evict')
   })
 
   it('releases its hold and cleanup after the setting is disabled', async () => {
@@ -151,7 +151,7 @@ describe('a client that holds a session', () => {
     expect(releaseCallsAfterRpc).toBe(2)
     expect(release).toHaveBeenCalledTimes(releaseCallsAfterRpc)
     await vi.waitFor(() => expect(host.hasSession(SESSION)).toBe(false))
-    expect(closeSession).toHaveBeenCalledWith(SESSION)
+    expect(closeSession).toHaveBeenCalledWith(SESSION, 'evict')
   })
 
   it('does not report success when no provider child can be acquired', async () => {
@@ -170,7 +170,7 @@ describe('a client that holds a session', () => {
 
 describe('a client that disappears without cleanup', () => {
   it('shares one child with a same-ID replacement that arrives while the first hold resumes', async () => {
-    await host.close(SESSION)
+    await host.close(SESSION, 'evict')
     await host.restoreReadableSessions()
     closeSession.mockClear()
     acquire.mockClear()
@@ -200,14 +200,14 @@ describe('a client that disappears without cleanup', () => {
 
       runtime.cleanupSubscriptionsForConnection(CONNECTION)
       await vi.waitFor(() => expect(host.hasSession(SESSION)).toBe(false))
-      expect(closeSession).toHaveBeenCalledExactlyOnceWith(SESSION)
+      expect(closeSession).toHaveBeenCalledExactlyOnceWith(SESSION, 'evict')
     } finally {
       gate.resolve()
     }
   })
 
   it('lets a same-ID replacement make its own attempt when the first hold fails to acquire', async () => {
-    await host.close(SESSION)
+    await host.close(SESSION, 'evict')
     await host.restoreReadableSessions()
     closeSession.mockClear()
     acquire.mockClear()
@@ -235,7 +235,7 @@ describe('a client that disappears without cleanup', () => {
 
       runtime.cleanupSubscriptionsForConnection(CONNECTION)
       await vi.waitFor(() => expect(host.hasSession(SESSION)).toBe(false))
-      expect(closeSession).toHaveBeenCalledExactlyOnceWith(SESSION)
+      expect(closeSession).toHaveBeenCalledExactlyOnceWith(SESSION, 'evict')
     } finally {
       gate.resolve()
     }
@@ -247,7 +247,7 @@ describe('a client that disappears without cleanup', () => {
     runtime.cleanupSubscriptionsForConnection(CONNECTION)
 
     await vi.waitFor(() => expect(host.hasSession(SESSION)).toBe(false))
-    expect(closeSession).toHaveBeenCalledWith(SESSION)
+    expect(closeSession).toHaveBeenCalledWith(SESSION, 'evict')
   })
 
   it('does not release a hold another connection is still holding', async () => {
@@ -315,7 +315,7 @@ describe('a client that disappears without cleanup', () => {
     transport.abort()
 
     await vi.waitFor(() => expect(host.hasSession(SESSION)).toBe(false))
-    expect(closeSession).toHaveBeenCalledWith(SESSION)
+    expect(closeSession).toHaveBeenCalledWith(SESSION, 'evict')
   })
 
   it('unsubscribes and releases stream retention after the setting is disabled', async () => {
@@ -340,11 +340,11 @@ describe('a client that disappears without cleanup', () => {
     ).toMatchObject({ ok: true })
 
     await vi.waitFor(() => expect(host.hasSession(SESSION)).toBe(false))
-    expect(closeSession).toHaveBeenCalledWith(SESSION)
+    expect(closeSession).toHaveBeenCalledWith(SESSION, 'evict')
   })
 
   it('does not let a stream alone resume a released session', async () => {
-    await host.close(SESSION)
+    await host.close(SESSION, 'evict')
     expect(host.hasSession(SESSION)).toBe(false)
     await host.restoreReadableSessions()
     expect(store.getRecord(SESSION)?.lease.claimStatus).toBe('released')

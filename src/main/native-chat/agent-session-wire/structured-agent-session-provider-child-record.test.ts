@@ -118,7 +118,7 @@ beforeEach(async () => {
   store = await AgentSessionRecordStore.open({ directory: join(root, 'store'), hostId: 'local' })
   startHost()
   expect(await host.attach(CALLER, hostTestAttachParams(null))).toMatchObject({ ok: true })
-  await host.close(SESSION)
+  await host.close(SESSION, 'evict')
 })
 
 afterEach(async () => {
@@ -599,7 +599,7 @@ describe('a quit with a message still queued', () => {
     starting.resolve()
     await quit
 
-    expect(closeSession).toHaveBeenCalledWith(SESSION)
+    expect(closeSession).toHaveBeenCalledWith(SESSION, 'evict')
     expect(store.getRecord(SESSION)?.lease).toMatchObject({ claimStatus: 'released' })
     expect(dispatch).not.toHaveBeenCalled()
     expect(await afterRelaunch(id)).toMatchObject({

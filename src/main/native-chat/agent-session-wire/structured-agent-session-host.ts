@@ -20,6 +20,7 @@ import { attachStructuredAgentSession } from './structured-agent-session-attach-
 import {
   createStructuredAgentSessionHolds,
   evictHeldStructuredAgentSession,
+  type StructuredAgentSessionCloseCause,
   stopStructuredAgentSessionAgentUnderSerialize,
   type StructuredAgentSessionLifetimeContext
 } from './structured-agent-session-host-lifetime'
@@ -121,7 +122,7 @@ export class StructuredAgentSessionHost {
     })
     this.holds = createStructuredAgentSessionHolds(
       () => this.attachContext(),
-      (sessionId) => this.close(sessionId),
+      (sessionId) => this.close(sessionId, 'evict'),
       (sessionId) => this.conversationDelivery.loop.isRunning(sessionId)
     )
     this.restore = createStructuredAgentSessionHostRestore(deps, {
@@ -205,17 +206,17 @@ export class StructuredAgentSessionHost {
     }
   }
   /** Releases a session's resources without ending the conversation: the record and journal stay
-   *  on disk, so the same session can be attached again. `requestedByUser` is the user closing this
-   *  chat, which makes a turn it cuts short their cancellation; every other close leaves it news. */
-  close(sessionId: string, options: { requestedByUser?: true } = {}): Promise<void> {
-    return this.serialize(sessionId, () => this.closeUnderSerialize(sessionId, options))
+   *  on disk, so the same session can be attached again. `user-close` is the user closing this chat,
+   *  which makes a turn it cuts short their cancellation; an `evict` leaves it news. */
+  close(sessionId: string, cause: StructuredAgentSessionCloseCause): Promise<void> {
+    return this.serialize(sessionId, () => this.closeUnderSerialize(sessionId, cause))
   }
 
   private async closeUnderSerialize(
     sessionId: string,
-    options: { requestedByUser?: true }
+    cause: StructuredAgentSessionCloseCause
   ): Promise<void> {
-    await evictHeldStructuredAgentSession(this.lifetimeContext(), sessionId, options)
+    await evictHeldStructuredAgentSession(this.lifetimeContext(), sessionId, cause)
     this.clientDelivery.closeSession(sessionId)
     // The holders now look at a session that is gone; a failed eviction throws above, keeping them.
     this.holds.forget(sessionId)

@@ -128,7 +128,7 @@ describe('a publish-first Claude create whose init is slow', () => {
     await host.attach(CALLER, { ...params, options: { model: 'opus' } })
     await adapter.awaitStarted(SESSION)
     await Promise.all(lifecycle)
-    await host.close(SESSION)
+    await host.close(SESSION, 'evict')
     const releasedFence = store.getRecord(SESSION)?.lease.runtimeFence ?? 0
 
     // Reopening the chat: the surface's first hold resumes the session.

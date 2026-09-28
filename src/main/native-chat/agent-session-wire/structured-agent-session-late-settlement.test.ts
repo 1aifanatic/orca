@@ -124,7 +124,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await host.flushAllStreamedEvents()
-  await host.close(SESSION)
+  await host.close(SESSION, 'evict')
   await rm(root, { recursive: true, force: true })
 })
 
@@ -195,7 +195,7 @@ describe('settling a send the provider proves it received after the ack window',
       return true
     })
 
-    await host.close(SESSION)
+    await host.close(SESSION, 'evict')
     await expect(settlement).resolves.toBeUndefined()
     await host.revealSession(SESSION)
     expect(submissions()).toMatchObject([{ dispatchState: 'accepted' }])

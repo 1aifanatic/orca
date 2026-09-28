@@ -147,7 +147,7 @@ function errorStatuses(): string[] {
 
 /** The child timed out or exited: its lease is handed back and the host holds no session. */
 async function loseOwner(): Promise<void> {
-  await host.close(SESSION)
+  await host.close(SESSION, 'evict')
   expect(store.getRecord(SESSION)?.lease).toMatchObject({
     claimStatus: 'released',
     ownerProcess: null
@@ -233,7 +233,7 @@ describe('a send with no live owner', () => {
     await accept(sendParams('nobody is watching'))
     await eventually(() => expect(host['holds'].isReleasePending(SESSION)).toBe(true))
 
-    await host.close(SESSION)
+    await host.close(SESSION, 'evict')
     // A reading surface that does not itself restart the agent.
     await host.hold(SESSION, 'desktop-chat:1', { resume: false })
     await accept(sendParams('the chat is open'))
@@ -610,7 +610,7 @@ describe('a send with no live owner', () => {
       await gate.promise
       return true
     })
-    const closing = host.close(SESSION)
+    const closing = host.close(SESSION, 'evict')
     const hold = host.hold(SESSION, 'desktop-chat:1')
     let drained = false
     void host['tasks'].drainAttaches().then(() => {

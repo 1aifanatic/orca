@@ -14,7 +14,10 @@ import type { AgentSessionBackgroundTaskState } from '../../shared/agent-session
 import type { CodexBackgroundTaskTracker } from './codex-background-task-tracker'
 import type { CodexJournalTranslator } from './codex-structured-journal-translation'
 import type { CodexTurnProcessSnapshot } from './codex-structured-turn-processes'
-import type { StructuredAgentSessionEndedEvent } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
+import type {
+  StructuredAgentSessionEndedEvent,
+  StructuredAgentSessionStopCause
+} from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import type { CodexStructuredPermissionPolicy } from './codex-structured-permission-policy'
 import type {
   AgentModelCatalogSessionAccess,
@@ -105,6 +108,8 @@ export type CodexSession = {
   /** First observed child exit survives rejected settlement admission. */
   exitObservedAt?: number
   requestedClose: boolean
+  /** Who asked for the requested close in flight, carried onto its `ended`. */
+  closeStopCause?: StructuredAgentSessionStopCause
   fence: number
   acquisitionGeneration: string
   threadId: string

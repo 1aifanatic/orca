@@ -8,6 +8,7 @@ import type { AgentSessionSpawnTokenScan } from '../../runtime/agent-session-spa
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type {
   StructuredAgentSessionAdapter,
+  StructuredAgentSessionChildEndCause,
   StructuredAgentSessionProviderChildPhase
 } from './structured-agent-session-adapter'
 import type { AgentSessionAttachParams } from './structured-agent-session-attach'
@@ -45,12 +46,7 @@ export type StructuredAgentSessionProviderChild = StructuredAgentSessionProvider
  *  `stopAgentSessionProviderRoot`; an observed exit's root is gone by definition. */
 export type StructuredAgentSessionStopVerdict = { rootGone: boolean }
 
-export type StructuredAgentSessionChildEndCause =
-  | 'user-stop'
-  | 'host-stop'
-  | 'exit'
-  | 'attach-failed'
-  | 'evict'
+export type { StructuredAgentSessionChildEndCause }
 
 /** How the conversation's last child ended. In memory only: the delivery loop reads it to tell a
  *  Stop from a failure. */
