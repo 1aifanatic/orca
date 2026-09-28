@@ -44,7 +44,7 @@ type Props = {
   // Hub chrome already shows open-on-web; hide the in-body icon there.
   showOpenOnWeb?: boolean
   /** Named when an AI button's agent starts; the branch stands in when absent. */
-  workspaceLabel?: string | null
+  workspaceLabel: string | null
 }
 
 // Mutation hooks run unconditionally here and gate internally until a PR is ready.
@@ -60,7 +60,7 @@ export function MobilePRSidebar({
   headSha,
   bottomInset = 0,
   showOpenOnWeb = true,
-  workspaceLabel = null
+  workspaceLabel
 }: Props) {
   const launchWorkspaceLabel = workspaceLabel || gitBranch
   const branch = prSidebarRenderBranch(state)
