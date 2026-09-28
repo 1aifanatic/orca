@@ -264,6 +264,7 @@ describe('a send the host rejected because the agent never started', () => {
     )
 
     await waitFor(() => expect(result.current.outbox[0]?.state).toBe('rejected'))
+    expect(shownFailure(result.current.outbox[0])).toBe(reason)
     act(() => expect(result.current.send('second')).toBe(true))
     await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(2))
   })
