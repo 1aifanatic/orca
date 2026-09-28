@@ -149,10 +149,7 @@ describe('nativeInputName', () => {
   it.each([
     ['package:react-native', 'react-native version'],
     ['rncoreAutolinkingConfig:ios', 'React Native autolinking config'],
-    [
-      'plugins/android-respect-rotation-lock.js',
-      'config plugin plugins/android-respect-rotation-lock.js'
-    ],
+    ['plugins/android-respect-rotation-lock.js', 'plugins/android-respect-rotation-lock.js'],
     ['google-services.json', 'file google-services.json']
   ])('%s reads as %s', (id, name) => {
     expect(nativeInputName(id)).toBe(name)
@@ -287,6 +284,30 @@ describe('compare command', () => {
       const json = runCompare(files, ['--json'])
       expect(json.status).toBe(0)
       expect(JSON.parse(json.stdout).changed).toBeNull()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('answers unknown, exit 0, when native sources are null', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'shell-fingerprint-test-'))
+    try {
+      const base = join(dir, 'base.json')
+      const head = join(dir, 'head.json')
+      const nulled = record()
+      writeFileSync(
+        base,
+        JSON.stringify({
+          ...nulled,
+          native: { ...nulled.native, ios: { hash: 'n-i', sources: null } }
+        })
+      )
+      writeFileSync(head, JSON.stringify(record()))
+      const markdown = runCompare([base, head])
+      expect(markdown.status).toBe(0)
+      expect(markdown.stdout).toBe(
+        '### Mobile shell: verdict unknown — a fingerprint record is malformed\n'
+      )
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

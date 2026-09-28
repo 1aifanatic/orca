@@ -3,25 +3,26 @@ name: Mobile shell fingerprint
 # Informative, never failing: does this change need a mobile store release, or does OTA deliver it?
 # See docs/reference/mobile-shell-fingerprint.md.
 #
-# Why these paths: every module in the four exported shell bundles comes from mobile/ or
+# Why these shell paths: every module in the four exported shell bundles comes from mobile/ or
 # src/shared/, and none is a test file or anything under mobile/rpc-foundation/. Mobile is its own
 # pnpm project, so the root lockfile never reaches the shell.
+# Why no paths on pull_request: a push that reverts the last shell edit must still run, or the
+# needs-mobile-release label outlives the change. The first step skips the work instead.
 on:
   pull_request:
     types:
       - opened
       - synchronize
       - reopened
-    paths: &shell-paths
+  push:
+    branches:
+      - main
+    paths:
       - 'mobile/**'
       - 'src/shared/**'
       - '.github/workflows/mobile-shell-fingerprint.yml'
       - '!mobile/rpc-foundation/**'
       - '!**/*.test.*'
-  push:
-    branches:
-      - main
-    paths: *shell-paths
 
 concurrency:
   group: mobile-shell-fingerprint-${{ github.ref }}
@@ -41,17 +42,58 @@ jobs:
         with:
           # A PR checks out its merge commit; HEAD^1 is the base it merges into.
           fetch-depth: 2
+          # The repository is public: the tag lookup needs no token, and the label step brings its own.
+          persist-credentials: false
+
+      # Last matching pattern wins, as in GitHub's `paths` filter.
+      - name: Detect shell inputs
+        id: scope
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Mirrors on.push.paths; config/scripts/mobile-shell-fingerprint-workflow.test.mjs pins both.
+          shell_paths=(
+            'mobile/**'
+            'src/shared/**'
+            '.github/workflows/mobile-shell-fingerprint.yml'
+            '!mobile/rpc-foundation/**'
+            '!**/*.test.*'
+          )
+          # shellcheck disable=SC2053 # the right-hand side is a glob on purpose
+          touches_shell() {
+            local hit=false pattern
+            for pattern in "${shell_paths[@]}"; do
+              if [[ $pattern == '!'* ]]; then
+                if [[ $1 == ${pattern#!} ]]; then hit=false; fi
+              elif [[ $1 == $pattern ]]; then
+                hit=true
+              fi
+            done
+            [ "$hit" = true ]
+          }
+          changed_files="$(git diff --name-only --no-renames HEAD^1 HEAD)"
+          while IFS= read -r file; do
+            if [ -n "$file" ] && touches_shell "$file"; then
+              echo 'shell_inputs=true' >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done <<< "$changed_files"
+          echo 'shell_inputs=false' >> "$GITHUB_OUTPUT"
 
       - uses: ./.github/actions/install-node-dependencies
+        if: steps.scope.outputs.shell_inputs != 'false'
         with:
           cache-dependency-path: |
             pnpm-lock.yaml
             mobile/pnpm-lock.yaml
 
       - uses: ./.github/actions/install-mobile-dependencies
+        if: steps.scope.outputs.shell_inputs != 'false'
 
       - name: Fingerprint this commit
         id: head
+        if: steps.scope.outputs.shell_inputs != 'false'
         continue-on-error: true
         shell: bash
         run: |
@@ -64,6 +106,7 @@ jobs:
       # publishes an APK, and it lives on a side branch, so ancestry cannot find it.
       - name: Resolve comparison base
         id: base
+        if: steps.scope.outputs.shell_inputs != 'false'
         continue-on-error: true
         shell: bash
         env:
@@ -103,8 +146,14 @@ jobs:
         shell: bash
         env:
           SINCE_TAG: ${{ steps.base.outputs.tag }}
+          SHELL_INPUTS: ${{ steps.scope.outputs.shell_inputs }}
         run: |
           set -euo pipefail
+          if [ "$SHELL_INPUTS" = false ]; then
+            echo '### Mobile shell: no shell inputs in this change — OTA delivers this' >> "$GITHUB_STEP_SUMMARY"
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           script=mobile/scripts/mobile-shell-fingerprint.mjs
           since=()
           if [ -n "$SINCE_TAG" ]; then since=(--since "$SINCE_TAG"); fi
@@ -125,9 +174,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           CHANGED: ${{ steps.verdict.outputs.changed }}
+          EVENT_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_URL: repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}
           PR_LABELS_URL: repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/labels
         run: |
           set -euo pipefail
+          # A newer push's run owns the label; never let this older verdict overwrite it.
+          if [ "$(gh api "$PR_URL" --jq .head.sha)" != "$EVENT_HEAD" ]; then
+            echo 'head moved, label left for the newer run'
+            exit 0
+          fi
           # gh prints the API's error body on failure; keep it visible and let the step fail.
           if [ "$CHANGED" = true ]; then
             gh api -X POST "$PR_LABELS_URL" -f 'labels[]=needs-mobile-release' > /dev/null

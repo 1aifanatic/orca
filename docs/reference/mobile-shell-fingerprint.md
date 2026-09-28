@@ -77,15 +77,22 @@ The verdict is exact about the artifacts, so a "changed" can still need no relea
 ## The label
 
 Same-repository pull requests whose shell changed get `needs-mobile-release`. The label is removed
-when a later push makes the shell unchanged. It is left alone on forks and on unknown verdicts. The
-label must already exist in the repository; it is created once by hand, not by the job. When a
-label API call fails, the step prints GitHub's response and the job still passes.
+when a later push makes the shell unchanged or leaves no shell input in the change. It is left
+alone on forks and on unknown verdicts. A run whose pull request head has moved on leaves the label
+to the newer run. The label must already exist in the repository; it is created once by hand, not
+by the job. When a label API call fails, the step prints GitHub's response and the job still
+passes.
 
 ## When it runs
 
-The workflow runs for changes under `mobile/` and `src/shared/` and to its own workflow file.
-Covering all of `src/shared/` closes the gap `mobile.yml` has, whose paths list only a few shared
-files although the shell bundles import many. It skips `mobile/rpc-foundation/` and test files: no
-module in any exported shell bundle comes from either. The root lockfile and `config/patches/` are
-left out because mobile is its own pnpm project and no bundle module resolves from the root
-`node_modules`.
+The shell inputs are `mobile/` and `src/shared/` and the workflow file itself. Covering all of
+`src/shared/` closes the gap `mobile.yml` has, whose paths list only a few shared files although
+the shell bundles import many. `mobile/rpc-foundation/` and test files are not inputs: no module in
+any exported shell bundle comes from either. The root lockfile and `config/patches/` are left out
+because mobile is its own pnpm project and no bundle module resolves from the root `node_modules`.
+
+On main, the push `paths` filter applies this list. Pull requests run on every push instead, so a
+push that reverts the last shell edit still clears the label. Their first step matches the changed
+files against the same list and, when nothing matches, reports `Mobile shell: no shell inputs in
+this change — OTA delivers this` without fingerprinting. A test in `config/scripts` keeps the two
+copies of the list equal.

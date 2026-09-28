@@ -40,7 +40,8 @@ export function nativeInputName(id) {
   if (local) {
     return `native module ${local[1]} (local)`
   }
-  return id.startsWith('plugins/') ? `config plugin ${id}` : `file ${id}`
+  // A plugin's path already says what it is.
+  return id.startsWith('plugins/') ? id : `file ${id}`
 }
 
 function unknownVerdict(reason) {
@@ -48,12 +49,14 @@ function unknownVerdict(reason) {
 }
 
 function isShellRecord(record) {
-  const hashed = (entry, field) =>
-    typeof entry?.hash === 'string' && typeof entry[field] === 'object'
+  const isObject = (value) => typeof value === 'object' && value !== null
+  const hashed = (entry, isValid) => typeof entry?.hash === 'string' && isValid(entry)
   return PLATFORMS.every(
     (platform) =>
-      hashed(record.native?.[platform], 'sources') &&
-      VARIANTS.every((variant) => hashed(record.shellJs?.[variant]?.[platform], 'modules'))
+      hashed(record.native?.[platform], (entry) => Array.isArray(entry.sources)) &&
+      VARIANTS.every((variant) =>
+        hashed(record.shellJs?.[variant]?.[platform], (entry) => isObject(entry.modules))
+      )
   )
 }
 
