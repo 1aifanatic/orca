@@ -9,11 +9,7 @@ import {
   useInstalledAgentSkillNames
 } from '@/hooks/useInstalledAgentSkills'
 import { useActiveProjectSkillRuntime } from '@/hooks/useActiveProjectSkillRuntime'
-import {
-  buildSkillCommandForRuntime,
-  getAgentSkillCliPrerequisite,
-  type LocalAgentRuntime
-} from './CliSkillRuntimeSetup'
+import { buildSkillCommandForRuntime, type LocalAgentRuntime } from './CliSkillRuntimeSetup'
 
 // Shared install/update wiring for Task Sources + Linear settings.
 export function useLinearAgentSkillSetup(): {
@@ -31,12 +27,7 @@ export function useLinearAgentSkillSetup(): {
   error: string | null
   terminalShellOverride: string | undefined
   terminalRuntime: LocalAgentRuntime | undefined
-  preInstallNotice: string | undefined
   refreshSkill: () => Promise<boolean>
-  getPrerequisiteStatus:
-    | (() => Promise<Awaited<ReturnType<typeof window.api.cli.getInstallStatus>>>)
-    | undefined
-  onBeforeOpenTerminal: () => Promise<void>
 } {
   const activeSkillRuntime = useActiveProjectSkillRuntime()
   const {
@@ -73,11 +64,6 @@ export function useLinearAgentSkillSetup(): {
     ? updateTarget.skillName
     : undefined
 
-  const cliPrerequisite = useMemo(
-    () => getAgentSkillCliPrerequisite(activeSkillRuntime.agentRuntime),
-    [activeSkillRuntime.agentRuntime]
-  )
-
   const installDisabled = Boolean(activeSkillRuntime.installDisabledReason)
 
   return {
@@ -92,9 +78,6 @@ export function useLinearAgentSkillSetup(): {
     error: activeSkillRuntime.installDisabledReason ?? skillError,
     terminalShellOverride: activeSkillRuntime.terminalShellOverride,
     terminalRuntime: activeSkillRuntime.agentRuntime,
-    preInstallNotice: cliPrerequisite.preInstallNotice,
-    refreshSkill,
-    getPrerequisiteStatus: cliPrerequisite.getPrerequisiteStatus,
-    onBeforeOpenTerminal: cliPrerequisite.ensureCli
+    refreshSkill
   }
 }

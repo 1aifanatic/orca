@@ -448,6 +448,7 @@
         },
         "wall": {
           "AgentCapabilitiesSetupAction": {
+            "c89534cbe9": "Install CLI & Skills",
             "updateSkills": "Update skills"
           },
           "ComputerUseAnimatedVisual": {
@@ -464,6 +465,9 @@
             "c11dda000b": "Approved",
             "d8401975b1": "approved",
             "f27676a92c": "status:"
+          },
+          "FeatureWallBrowserAction": {
+            "c2df599513": "Install CLI & Skill"
           },
           "FeatureWallSetupChecklist": {
             "b1f1981c5e": "See tasks"
@@ -1163,7 +1167,17 @@
           "d420c43729": "Imported {{value0}} cookies from {{value1}}{{value2}} into {{value3}}."
         },
         "BrowserUsePane": {
-          "e44c5d681e": "From"
+          "0289434ed6": "Enabled",
+          "180a9abf3a": "Failed to load CLI status.",
+          "721aee31b4": "Registered the Orca CLI in PATH.",
+          "8b3054dac7": "Registering...",
+          "9fca1f7f5d": "Registers the Orca CLI command so agents can orchestrate the browser from their shell.",
+          "ad8cb0ee22": "Fix PATH",
+          "c6065d205d": "Enable Orca CLI",
+          "c79eff0213": "Register the Orca CLI so agents can drive the browser.",
+          "de9b2f32f3": "Enable",
+          "e44c5d681e": "From",
+          "e9f3f3b488": "Installed at"
         },
         "CliSection": {
           "4c7e3e4c5f": "install",
@@ -1671,6 +1685,21 @@
             }
           }
         },
+        "browser": {
+          "use": {
+            "search": {
+              "034c5e8d7f": "enable",
+              "30c74aaa1f": "path",
+              "3ffafc9b95": "command",
+              "50f0860e18": "Enable Orca CLI",
+              "7e0dcb257a": "shell",
+              "85fab5e12c": "cli",
+              "890ddf943d": "Register the Orca CLI so agents can drive the browser.",
+              "e56c7b55c9": "setup",
+              "ff05cbc344": "orca"
+            }
+          }
+        },
         "computerUseSkillRuntime": {
           "thisDevice": "This device"
         },
@@ -1899,9 +1928,16 @@
           "63f36455cc": "Reconnect"
         },
         "LinearAgentSkillSetupPrompt": {
+          "install": "Install CLI & Skill",
           "missingBoth": "Orca CLI and Linear agent skill are missing.",
+          "missingCli": "Orca CLI is missing.",
+          "missingCliAndSkill": "Orca CLI and Linear agent skill are missing.",
           "panelDescription": "Install the host agent skill for linked Linear task handoffs.",
-          "panelTitle": "Linear agent skill"
+          "panelTitle": "Linear agent skill",
+          "toastInstallCliAndSkillDescription": "Install the Orca CLI and the Linear skill to enable your agents to read and edit Linear tasks.",
+          "toastInstallCliDescription": "Install the Orca CLI to enable your agents to read and edit Linear tasks.",
+          "toastMissingCli": "Orca CLI is missing",
+          "toastMissingCliAndSkill": "Orca CLI and Linear skill are missing"
         },
         "NewExternalWorktreesInboxLine": {
           "5e1b8d3f62": "Hide external worktrees permanently"

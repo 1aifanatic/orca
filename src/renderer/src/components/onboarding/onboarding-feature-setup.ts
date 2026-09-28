@@ -1,4 +1,3 @@
-import type { CliInstallStatus } from '../../../../shared/cli-install-types'
 import type {
   ComputerUsePermissionSetupResult,
   ComputerUsePermissionStatusResult
@@ -12,14 +11,9 @@ import {
 } from '@/lib/agent-feature-install-commands'
 import { BROWSER_USE_ENABLED_STORAGE_KEY } from '@/lib/browser-use-setup-state'
 import { e2eConfig } from '@/lib/e2e-config'
-import { showOrcaCliRegistrationPromptToast } from '@/lib/agent-skill-cli-prerequisite'
 import type { ProjectAgentSkillRuntime } from '@/lib/project-skill-runtime'
 import type { OnboardingFeatureSetupRuntimeContext } from './onboarding-feature-setup-runtime'
-import { registerOnboardingCliIfRequired } from './onboarding-cli-registration'
-import {
-  buildSkillCommandForRuntime,
-  getWslCliDistroRequest
-} from '../settings/CliSkillRuntimeSetup'
+import { buildSkillCommandForRuntime } from '../settings/CliSkillRuntimeSetup'
 import {
   ORCHESTRATION_ENABLED_STORAGE_KEY,
   ORCHESTRATION_SETUP_DISMISSED_STORAGE_KEY,
@@ -73,7 +67,7 @@ const FEATURE_TELEMETRY_IDS: Record<
 }
 
 export type OnboardingFeatureSetupWarning = {
-  featureId: OnboardingFeatureSetupId | 'cli' | 'skills'
+  featureId: OnboardingFeatureSetupId | 'skills'
   message: string
 }
 
@@ -87,9 +81,6 @@ export type OnboardingFeatureSetupResult = {
 }
 
 export type OnboardingFeatureSetupDeps = {
-  getCliStatus: () => Promise<CliInstallStatus>
-  showCliRegistrationPrompt?: () => Promise<void>
-  installCli: () => Promise<CliInstallStatus>
   writeClipboardText: (text: string) => Promise<void>
   getComputerUsePermissionStatus: () => Promise<ComputerUsePermissionStatusResult>
   openComputerUsePermissionSetup: () => Promise<ComputerUsePermissionSetupResult>
@@ -170,20 +161,13 @@ export function onboardingFeatureSetupRunTelemetry(
   }
 }
 
-export function createOnboardingFeatureSetupDeps(
-  agentRuntime?: ProjectAgentSkillRuntime
-): OnboardingFeatureSetupDeps {
+export function createOnboardingFeatureSetupDeps(): OnboardingFeatureSetupDeps {
   const e2eDeps = getE2EOnboardingFeatureSetupDeps()
   if (e2eDeps) {
     return e2eDeps
   }
 
-  // Only WSL registers the CLI (isOrcaCliRegistrationRequired), on the distro the skill installs into (#12103).
-  const wslDistroRequest = getWslCliDistroRequest(agentRuntime)
   return {
-    getCliStatus: () => window.api.cli.getWslInstallStatus(wslDistroRequest),
-    showCliRegistrationPrompt: showOrcaCliRegistrationPromptToast,
-    installCli: () => window.api.cli.installWsl(wslDistroRequest),
     writeClipboardText: (text) => window.api.ui.writeClipboardText(text),
     getComputerUsePermissionStatus: () => window.api.computerUsePermissions.getStatus(),
     openComputerUsePermissionSetup: () => window.api.computerUsePermissions.openSetup(),
@@ -211,10 +195,10 @@ export async function runOnboardingFeatureSetup(
   const agentRuntime = runtimeContext?.installDisabledReason
     ? undefined
     : runtimeContext?.agentRuntime
-  const deps = explicitDeps ?? createOnboardingFeatureSetupDeps(agentRuntime)
+  const deps = explicitDeps ?? createOnboardingFeatureSetupDeps()
   const selectedIds = selectedOnboardingFeatureSetupIds(selection)
   const warnings: OnboardingFeatureSetupWarning[] = []
-  let cliTouched = false
+  const cliTouched = false
   let skillCommandsCopied = false
   const skillInstallCommand = buildOnboardingFeatureSetupSkillCommand(selection)
   let computerUsePermissionsOpened = false
@@ -235,12 +219,6 @@ export async function runOnboardingFeatureSetup(
       computerUsePermissionsOpened,
       warnings
     }
-  }
-
-  const registration = await registerOnboardingCliIfRequired(agentRuntime, deps)
-  cliTouched = registration.touched
-  if (registration.warning) {
-    warnings.push({ featureId: 'cli', message: registration.warning })
   }
 
   if (selection.computerUse) {

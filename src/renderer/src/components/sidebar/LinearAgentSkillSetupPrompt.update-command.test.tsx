@@ -31,24 +31,7 @@ vi.mock('@/hooks/useInstalledAgentSkills', async (importOriginal) => ({
   useInstalledAgentSkillNames: mocks.useInstalledAgentSkillNames
 }))
 
-vi.mock('@/lib/agent-skill-cli-prerequisite', () => ({
-  isOrcaCliRegistrationRequired: (runtime?: { runtime: string } | null) =>
-    runtime?.runtime === 'wsl',
-  AGENT_SKILL_CLI_PREREQUISITE_NOTICE: 'CLI registration notice',
-  ensureOrcaCliAvailableForAgentSkillTerminal: vi.fn(async () => null),
-  isOrcaCliAvailableOnPath: (status: CliInstallStatus | null | undefined) =>
-    status?.state === 'installed' && status.pathConfigured
-}))
-
 vi.mock('../settings/CliSkillRuntimeSetup', () => ({
-  getAgentSkillCliPrerequisite: (runtime?: { runtime: string }) =>
-    runtime?.runtime === 'wsl'
-      ? {
-          preInstallNotice: 'CLI registration notice',
-          getPrerequisiteStatus: () => mocks.getWslCliStatus(),
-          ensureCli: async () => {}
-        }
-      : { ensureCli: async () => {} },
   buildSkillCommandForRuntime: (command: string) => command,
   ensureWslCliAvailableForAgentSkillTerminal: vi.fn(async () => null),
   getWslCliDistroRequest: () => undefined
@@ -187,33 +170,30 @@ describe('LinearAgentSkillSetupPrompt update command', () => {
     _linearAgentSkillSetupPromptInternalsForTests.resetSessionReminders()
   })
 
-  it('uses the canonical update command when the canonical Linear skill is installed', async () => {
+  it('does not request setup when the canonical Linear skill is installed', async () => {
     mocks.skillState.skills = [discoveredSkill({ name: 'orca-linear' })]
 
     await renderPrompt()
 
-    expect(mocks.panelProps.at(-1)).toEqual(
-      expect.objectContaining({ installedCommand: 'npx skills update orca-linear --global' })
-    )
+    expect(mocks.panelProps).toHaveLength(0)
+    expect(mocks.getWslCliStatus).not.toHaveBeenCalled()
   })
 
-  it('uses the legacy update command when only the legacy Linear skill is installed', async () => {
+  it('does not request setup when the legacy Linear skill is installed', async () => {
     mocks.skillState.skills = [legacyLinearSkillPath()]
 
     await renderPrompt()
 
-    expect(mocks.panelProps.at(-1)).toEqual(
-      expect.objectContaining({ installedCommand: 'npx skills update linear-tickets --global' })
-    )
+    expect(mocks.panelProps).toHaveLength(0)
+    expect(mocks.getWslCliStatus).not.toHaveBeenCalled()
   })
 
-  it('prefers the canonical update command when both Linear skill names are installed', async () => {
+  it('does not request setup when both Linear skill names are installed', async () => {
     mocks.skillState.skills = [discoveredSkill({ name: 'orca-linear' }), legacyLinearSkillPath()]
 
     await renderPrompt()
 
-    expect(mocks.panelProps.at(-1)).toEqual(
-      expect.objectContaining({ installedCommand: 'npx skills update orca-linear --global' })
-    )
+    expect(mocks.panelProps).toHaveLength(0)
+    expect(mocks.getWslCliStatus).not.toHaveBeenCalled()
   })
 })

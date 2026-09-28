@@ -7,10 +7,7 @@ import { useActiveProjectSkillRuntime } from '@/hooks/useActiveProjectSkillRunti
 import { useAppStore } from '@/store'
 import { AgentCapabilityStatusNote, AgentCapabilityStatusPill } from './AgentCapabilityStatusBadges'
 import { FeatureSetupInlineTerminal } from '../onboarding/FeatureSetupInlineTerminal'
-import {
-  getOnboardingFeatureSetupAgentRuntime,
-  type OnboardingFeatureSetupRuntimeContext
-} from '../onboarding/onboarding-feature-setup-runtime'
+import type { OnboardingFeatureSetupRuntimeContext } from '../onboarding/onboarding-feature-setup-runtime'
 import {
   DEFAULT_ONBOARDING_FEATURE_SETUP_SELECTION,
   hasSelectedOnboardingFeatureSetup,
@@ -25,7 +22,6 @@ import {
   useAgentCapabilitySetupStatus,
   type AgentCapabilityInstallStatus
 } from './agent-capability-setup-status'
-import { isOrcaCliRegistrationRequired } from '@/lib/agent-skill-cli-prerequisite'
 import { translate } from '@/i18n/i18n'
 
 export function AgentCapabilitiesSetupAction(props: {
@@ -146,9 +142,6 @@ export function AgentCapabilitiesSetupAction(props: {
         onStartFeatureSetup={() => void handleStartFeatureSetup()}
         allReady={isAgentCapabilityReadinessComplete(readiness)}
         installStatus={capabilitySetupStatus.installStatus}
-        cliRequired={isOrcaCliRegistrationRequired(
-          getOnboardingFeatureSetupAgentRuntime(activeSkillRuntime)
-        )}
       />
     </div>
   )
@@ -222,7 +215,6 @@ function AgentCapabilitySetupControls(props: {
   onStartFeatureSetup: () => void
   allReady: boolean
   installStatus: Record<OnboardingFeatureSetupId, AgentCapabilityInstallStatus>
-  cliRequired: boolean
 }): React.JSX.Element {
   const hasSelectedFeatures = hasSelectedOnboardingFeatureSetup(props.featureSetup)
   const showSetupAction = !props.featureSetupCommand
@@ -259,15 +251,10 @@ function AgentCapabilitySetupControls(props: {
               <Terminal className="size-4" />
             )}
             {props.setupBusyLabel ??
-              (props.cliRequired
-                ? translate(
-                    'auto.components.feature.wall.AgentCapabilitiesSetupAction.c89534cbe9',
-                    'Install CLI & Skills'
-                  )
-                : translate(
-                    'auto.components.feature.wall.AgentCapabilitiesSetupAction.installSkills',
-                    'Install Skills'
-                  ))}
+              translate(
+                'auto.components.feature.wall.AgentCapabilitiesSetupAction.installSkills',
+                'Install Skills'
+              )}
           </Button>
         </div>
       ) : null}

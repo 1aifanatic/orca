@@ -97,7 +97,7 @@ export function BrowserUseCookieImportStep({
         'auto.components.settings.BrowserUsePane.af8c83ed61',
         'Import cookies from Chrome, Edge, or other browsers so agents can reuse your logins.'
       )}
-      keywords={getBrowserUsePaneSearchEntries()[2].keywords}
+      keywords={getBrowserUsePaneSearchEntries()[1].keywords}
       className={cn(
         'rounded-xl border border-border/60 bg-card/50 p-4',
         step3Blocked && 'opacity-60'

@@ -12,10 +12,6 @@ import {
   DialogHeader,
   DialogTitle
 } from '@/components/ui/dialog'
-import {
-  isOrcaCliAvailableOnPath,
-  isOrcaCliRegistrationRequired
-} from '@/lib/agent-skill-cli-prerequisite'
 import { translate } from '@/i18n/i18n'
 
 type AgentSkillSetupPanelProps = ComponentProps<typeof AgentSkillSetupPanel>
@@ -32,9 +28,6 @@ type LinearAgentSkillSetupDialogProps = {
   installed: boolean
   loading: boolean
   error: string | null
-  preInstallNotice?: AgentSkillSetupPanelProps['preInstallNotice']
-  getPrerequisiteStatus?: AgentSkillSetupPanelProps['getPrerequisiteStatus']
-  onBeforeOpenTerminal: AgentSkillSetupPanelProps['onBeforeOpenTerminal']
   onRecheck: AgentSkillSetupPanelProps['onRecheck']
   onOpenChange: (open: boolean) => void
   onDismissPermanently: () => void
@@ -53,9 +46,6 @@ export function LinearAgentSkillSetupDialog({
   installed,
   loading,
   error,
-  preInstallNotice,
-  getPrerequisiteStatus,
-  onBeforeOpenTerminal,
   onRecheck,
   onOpenChange,
   onDismissPermanently,
@@ -145,24 +135,13 @@ export function LinearAgentSkillSetupDialog({
               installed={installed}
               loading={loading}
               error={error}
-              installLabel={
-                isOrcaCliRegistrationRequired(terminalRuntime)
-                  ? translate(
-                      'auto.components.sidebar.LinearAgentSkillSetupPrompt.install',
-                      'Install CLI & Skill'
-                    )
-                  : translate(
-                      'auto.components.skills.SkillInstallDialog.39acb9e8f4',
-                      'Install skill'
-                    )
-              }
+              installLabel={translate(
+                'auto.components.skills.SkillInstallDialog.39acb9e8f4',
+                'Install skill'
+              )}
               // Why: Install is this modal's sole CTA, so make it the filled primary —
               // matching the other setup surfaces (filled primary + muted dismiss).
               installVariant="default"
-              preInstallNotice={preInstallNotice}
-              getPrerequisiteStatus={getPrerequisiteStatus}
-              isPrerequisiteAvailable={isOrcaCliAvailableOnPath}
-              onBeforeOpenTerminal={onBeforeOpenTerminal}
               onRecheck={onRecheck}
             />
             {/* Why: permanent opt-out as a quiet EyeOff icon next to the × — matching

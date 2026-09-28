@@ -7,7 +7,7 @@ import { ORCHESTRATION_SKILL_NAME } from '@/lib/agent-feature-install-commands'
 import type { InstalledAgentSkillState } from '@/hooks/useInstalledAgentSkills'
 import { useActiveProjectSkillRuntime } from '@/hooks/useActiveProjectSkillRuntime'
 import { AgentSkillSetupPanel } from './AgentSkillSetupPanel'
-import { buildSkillCommandForRuntime, getAgentSkillCliPrerequisite } from './CliSkillRuntimeSetup'
+import { buildSkillCommandForRuntime } from './CliSkillRuntimeSetup'
 import { useAppStore } from '@/store'
 import { translate } from '@/i18n/i18n'
 
@@ -18,7 +18,6 @@ export function OrchestrationSetupCard(props: {
 }): JSX.Element {
   const { compact, terminalHeightPx, skill } = props
   const activeSkillRuntime = useActiveProjectSkillRuntime()
-  const cliPrerequisite = getAgentSkillCliPrerequisite(activeSkillRuntime.agentRuntime)
   const installCommand = !activeSkillRuntime.installDisabledReason
     ? buildSkillCommandForRuntime(
         ORCHESTRATION_SKILL_INSTALL_COMMAND,
@@ -55,11 +54,8 @@ export function OrchestrationSetupCard(props: {
       error={activeSkillRuntime.installDisabledReason ?? skill.error}
       installDisabled={Boolean(activeSkillRuntime.installDisabledReason)}
       terminalHeightPx={terminalHeightPx}
-      preInstallNotice={cliPrerequisite.preInstallNotice}
-      getPrerequisiteStatus={cliPrerequisite.getPrerequisiteStatus}
       onBeforeOpenTerminal={async () => {
         useAppStore.getState().recordFeatureInteraction('agent-orchestration-setup')
-        await cliPrerequisite.ensureCli()
       }}
       onRecheck={skill.refresh}
       freshnessSkillName={

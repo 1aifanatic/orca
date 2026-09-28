@@ -19,13 +19,9 @@ import {
   useInstalledAgentSkill
 } from '@/hooks/useInstalledAgentSkills'
 import { useActiveProjectSkillRuntime } from '@/hooks/useActiveProjectSkillRuntime'
-import { isOrcaCliRegistrationRequired } from '@/lib/agent-skill-cli-prerequisite'
 import { refreshSkillFreshness } from '@/hooks/useSkillFreshness'
 import { useAppStore } from '@/store'
-import {
-  buildSkillCommandForRuntime,
-  getAgentSkillCliPrerequisite
-} from '@/components/settings/CliSkillRuntimeSetup'
+import { buildSkillCommandForRuntime } from '@/components/settings/CliSkillRuntimeSetup'
 import { translate } from '@/i18n/i18n'
 
 type FloatingTerminalOrchestrationDialogProps = {
@@ -40,7 +36,6 @@ export function FloatingTerminalOrchestrationDialog({
   onSetupStateChange
 }: FloatingTerminalOrchestrationDialogProps): React.JSX.Element {
   const activeSkillRuntime = useActiveProjectSkillRuntime()
-  const cliPrerequisite = getAgentSkillCliPrerequisite(activeSkillRuntime.agentRuntime)
   const installCommand = !activeSkillRuntime.installDisabledReason
     ? buildSkillCommandForRuntime(
         ORCHESTRATION_SKILL_INSTALL_COMMAND,
@@ -150,19 +145,12 @@ export function FloatingTerminalOrchestrationDialog({
           installDisabled={Boolean(activeSkillRuntime.installDisabledReason)}
           variant="inline"
           hideHeader
-          installLabel={
-            isOrcaCliRegistrationRequired(activeSkillRuntime.agentRuntime)
-              ? translate(
-                  'auto.components.sidebar.LinearAgentSkillSetupPrompt.install',
-                  'Install CLI & Skill'
-                )
-              : translate('auto.components.skills.SkillInstallDialog.39acb9e8f4', 'Install skill')
-          }
-          preInstallNotice={cliPrerequisite.preInstallNotice}
-          getPrerequisiteStatus={cliPrerequisite.getPrerequisiteStatus}
+          installLabel={translate(
+            'auto.components.skills.SkillInstallDialog.39acb9e8f4',
+            'Install skill'
+          )}
           onBeforeOpenTerminal={async () => {
             useAppStore.getState().recordFeatureInteraction('agent-orchestration-setup')
-            await cliPrerequisite.ensureCli()
           }}
           onRecheck={recheckOrchestrationSkill}
         />

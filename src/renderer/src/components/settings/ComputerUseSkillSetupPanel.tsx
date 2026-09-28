@@ -11,12 +11,11 @@ import {
 import { useActiveProjectSkillRuntime } from '@/hooks/useActiveProjectSkillRuntime'
 import { useAppStore } from '@/store'
 import { AgentSkillSetupPanel } from './AgentSkillSetupPanel'
-import { buildSkillCommandForRuntime, getAgentSkillCliPrerequisite } from './CliSkillRuntimeSetup'
+import { buildSkillCommandForRuntime } from './CliSkillRuntimeSetup'
 import { translate } from '@/i18n/i18n'
 
 export function ComputerUseSkillSetupPanel(): React.JSX.Element {
   const activeSkillRuntime = useActiveProjectSkillRuntime()
-  const cliPrerequisite = getAgentSkillCliPrerequisite(activeSkillRuntime.agentRuntime)
   const installCommand = !activeSkillRuntime.installDisabledReason
     ? buildSkillCommandForRuntime(
         COMPUTER_USE_SKILL_INSTALL_COMMAND,
@@ -58,11 +57,8 @@ export function ComputerUseSkillSetupPanel(): React.JSX.Element {
       error={activeSkillRuntime.installDisabledReason ?? computerUseSkillError}
       installDisabled={Boolean(activeSkillRuntime.installDisabledReason)}
       icon={<MonitorCog className="size-5" />}
-      preInstallNotice={cliPrerequisite.preInstallNotice}
-      getPrerequisiteStatus={cliPrerequisite.getPrerequisiteStatus}
       onBeforeOpenTerminal={async () => {
         useAppStore.getState().recordFeatureInteraction('computer-use-setup')
-        await cliPrerequisite.ensureCli()
       }}
       onRecheck={refreshComputerUseSkill}
       freshnessSkillName={

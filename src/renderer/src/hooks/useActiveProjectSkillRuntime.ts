@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react'
-import { useManagedWslCliAvailability } from './useManagedWslCliAvailability'
 import { useShallow } from 'zustand/react/shallow'
 import type { ProjectExecutionRuntimeResolution } from '../../../shared/project-execution-runtime'
 import type { SkillDiscoveryTarget } from '../../../shared/skills'
@@ -135,25 +134,15 @@ export function useActiveProjectSkillRuntime(): ActiveProjectSkillRuntime {
     }
   }, [currentPlatform, runtimeState, runtimeTarget, windowsCapabilities])
 
-  const managedCliAvailable = useManagedWslCliAvailability(
-    runtimeTarget,
-    resolved.agentRuntime?.runtime === 'wsl' && !resolved.installDisabledReason,
-    resolved.agentRuntime?.wslDistro
-  )
-  const withCliAvailability =
-    resolved.agentRuntime?.runtime === 'wsl' && managedCliAvailable
-      ? { ...resolved, agentRuntime: { ...resolved.agentRuntime, managedCliAvailable } }
-      : resolved
-
   // Content-equal runtimes keep one reference so effect keys do not thrash.
   // Adjust during render (not a ref write) when serialized identity changes.
-  const [stable, setStable] = useState(withCliAvailability)
+  const [stable, setStable] = useState(resolved)
   const stableIdentity = activeProjectSkillRuntimeIdentity(stable)
-  const resolvedIdentity = activeProjectSkillRuntimeIdentity(withCliAvailability)
+  const resolvedIdentity = activeProjectSkillRuntimeIdentity(resolved)
   if (stableIdentity !== resolvedIdentity) {
-    setStable(withCliAvailability)
+    setStable(resolved)
   }
-  return stableIdentity === resolvedIdentity ? stable : withCliAvailability
+  return stableIdentity === resolvedIdentity ? stable : resolved
 }
 
 function getCurrentPlatform(): NodeJS.Platform {

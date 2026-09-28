@@ -18,7 +18,7 @@ import {
   useInstalledAgentSkill
 } from '@/hooks/useInstalledAgentSkills'
 import { useActiveProjectSkillRuntime } from '@/hooks/useActiveProjectSkillRuntime'
-import { buildSkillCommandForRuntime, getAgentSkillCliPrerequisite } from './CliSkillRuntimeSetup'
+import { buildSkillCommandForRuntime } from './CliSkillRuntimeSetup'
 
 type RecipeCatalogEntry = Awaited<
   ReturnType<typeof window.api.ephemeralVm.listRecipeCatalog>
@@ -32,7 +32,6 @@ const AGENT_PROMPT =
 export function EphemeralVmsPane(): React.JSX.Element {
   const openModal = useAppStore((state) => state.openModal)
   const activeSkillRuntime = useActiveProjectSkillRuntime()
-  const cliPrerequisite = getAgentSkillCliPrerequisite(activeSkillRuntime.agentRuntime)
   const [catalog, setCatalog] = useState<RecipeCatalogEntry[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [promptCopied, setPromptCopied] = useState(false)
@@ -180,11 +179,6 @@ export function EphemeralVmsPane(): React.JSX.Element {
         error={activeSkillRuntime.installDisabledReason ?? skillError}
         installDisabled={Boolean(activeSkillRuntime.installDisabledReason)}
         icon={<Server className="size-5" />}
-        preInstallNotice={cliPrerequisite.preInstallNotice}
-        getPrerequisiteStatus={cliPrerequisite.getPrerequisiteStatus}
-        onBeforeOpenTerminal={async () => {
-          await cliPrerequisite.ensureCli()
-        }}
         onRecheck={refreshSkill}
         freshnessSkillName={
           activeSkillRuntime.canUseLocalSkillFreshness ? EPHEMERAL_VMS_SKILL_NAME : undefined

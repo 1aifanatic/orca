@@ -149,7 +149,6 @@ export class DaemonClientConnections {
           ? {
               daemonIdentity: {
                 pid: process.pid,
-                managedWslCli: true,
                 startedAtMs: identity.startedAtMs,
                 launchNonce: identity.launchNonce,
                 ...(identity.entryPath ? { entryPath: identity.entryPath } : {}),
