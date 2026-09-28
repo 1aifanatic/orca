@@ -14,6 +14,21 @@ import {
   type CodexTrustEntry
 } from './config-toml-trust'
 
+/**
+ * Ops escape hatch (not a setting): forces the unchanged fallback lane for the
+ * *managed* grant only.
+ *
+ * Scope, because the name reads broader than it is: the real-home rebase
+ * (`mutateRealHomeHooksPreservingUserTrust`) still runs its own inspect/repair
+ * app-server sessions when Orca's insertion shifts a user's hook positions, and
+ * does not read this flag. That is unchanged from before the grant went async —
+ * those sessions simply used to block the main thread instead. Widening the flag
+ * to cover the rebase is a follow-up, not something this flag already does.
+ */
+export function isCodexTrustRpcDisabled(): boolean {
+  return process.env.ORCA_DISABLE_CODEX_TRUST_RPC === '1'
+}
+
 export type CodexManagedTrustGrantPlan = {
   /** Host-visible runtime home path (UNC for WSL) — ledger key + config reads. */
   runtimeHomePath: string

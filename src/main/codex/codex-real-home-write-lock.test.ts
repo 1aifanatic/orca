@@ -137,6 +137,19 @@ it('takes no lock once the real home already holds the trusted entry', async () 
   }).toEqual(before)
 })
 
+// Why: the ops escape hatch must keep the managed lane even after a grant was recorded.
+it('leaves the real-home lane when the trust RPC is disabled after a recorded grant', async () => {
+  await expect(
+    ensureRealHomeCodexHookState({ hooksEnabled: true, userDataPath: userDataDir })
+  ).resolves.toBe('installed')
+  vi.stubEnv('ORCA_DISABLE_CODEX_TRUST_RPC', '1')
+  grantMock.mockReturnValue({ lane: 'fallback', reason: 'disabled' })
+
+  await expect(
+    ensureRealHomeCodexHookState({ hooksEnabled: true, userDataPath: userDataDir })
+  ).resolves.toBe('unavailable')
+})
+
 it('re-reads under the lock, keeping a save made while it waited', async () => {
   const hooksJsonPath = join(homeDir, '.codex', 'hooks.json')
   const savedMeanwhile = { type: 'command', command: 'saved-meanwhile.sh' }

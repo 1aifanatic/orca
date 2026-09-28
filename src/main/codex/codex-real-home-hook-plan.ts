@@ -14,7 +14,11 @@ import {
 } from './codex-real-home-hooks-json'
 import { getCodexManagedScriptFileName } from './codex-hook-identity'
 import type { CodexManagedTrustGrantPlan } from './codex-hook-trust-grant'
-import { buildExpectedEntries, findLedgerGrant } from './codex-managed-trust-grant-plan'
+import {
+  buildExpectedEntries,
+  findLedgerGrant,
+  isCodexTrustRpcDisabled
+} from './codex-managed-trust-grant-plan'
 import { resolveCodexTrustGrantHost } from './codex-trust-grant-host'
 import { sharedCodexScriptMatches } from './codex-shared-script-write'
 import {
@@ -102,6 +106,8 @@ export async function isRealHomeCodexHookCurrent(
   plan: RealHomeCodexHookInstallPlan
 ): Promise<boolean> {
   if (
+    // Why: the grant refuses before its ledger check, so a recorded grant is not current here.
+    isCodexTrustRpcDisabled() ||
     plan.previousRaw !== serializeRealHomeHooksJson({ ...plan.config, hooks: plan.nextHooks }) ||
     !sharedCodexScriptMatches(plan.material.scriptPath, plan.material.script)
   ) {
