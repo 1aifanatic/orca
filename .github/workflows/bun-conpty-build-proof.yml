@@ -40,7 +40,8 @@ jobs:
           node-version: '24'
       - name: Prepare pinned private package layout
         run: |
-          npm install --ignore-scripts --no-audit --no-fund
+          npm ci --ignore-scripts --no-audit --no-fund
+          tar -xzf fixture-dependencies.tar.gz
           bash prepare-package.sh '${{ matrix.arch }}' '${{ matrix.bunArch }}' '${{ matrix.zipSha }}' '${{ matrix.binarySha }}'
       - name: Run unchanged production floor runner
         run: |
