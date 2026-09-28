@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type * as InstallLock from '../agent-hooks/managed-hook-install-lock'
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -44,6 +45,7 @@ import {
 } from './config-toml-trust'
 import { getCodexHookTrustSignature } from './codex-hook-identity'
 import { writeCodexTrustGrantLedgerHome } from './codex-trust-grant-ledger'
+import { getManagedScriptPath } from './codex-hook-definition'
 
 let homeDir: string
 let userDataDir: string
@@ -167,3 +169,21 @@ it('re-reads under the lock, keeping a save made while it waited', async () => {
   expect(stop[0]).toEqual({ hooks: [savedMeanwhile] })
   expect(stop).toHaveLength(2)
 })
+
+// Why: the POSIX hook guard skips a script that is not executable, so a script
+// with the right bytes but no exec bit is not the steady state.
+it.skipIf(process.platform === 'win32')(
+  'restores the shared script exec bit even when its bytes match',
+  async () => {
+    await expect(
+      ensureRealHomeCodexHookState({ hooksEnabled: true, userDataPath: userDataDir })
+    ).resolves.toBe('installed')
+    chmodSync(getManagedScriptPath(), 0o644)
+
+    await expect(
+      ensureRealHomeCodexHookState({ hooksEnabled: true, userDataPath: userDataDir })
+    ).resolves.toBe('installed')
+
+    expect(statSync(getManagedScriptPath()).mode & 0o777).toBe(0o755)
+  }
+)

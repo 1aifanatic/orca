@@ -1,10 +1,14 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
 import { writeManagedScript } from '../agent-hooks/installer-utils'
 import { withRealHomeWriteLock } from './codex-hook-trust-queue'
 
 export function sharedCodexScriptMatches(scriptPath: string, script: string): boolean {
   try {
-    return readFileSync(scriptPath, 'utf-8') === script
+    // Why the mode: the POSIX hook guard skips a non-executable script, and only a write restores it.
+    return (
+      readFileSync(scriptPath, 'utf-8') === script &&
+      (process.platform === 'win32' || (statSync(scriptPath).mode & 0o777) === 0o755)
+    )
   } catch {
     return false
   }
