@@ -123,6 +123,9 @@ async function runAttach(
   await withAgentSessionCreatePhase('resolve_recovery', recordPhase, () =>
     context.runtimeState.resolveRecovery(sessionId)
   )
+  // Read after resolution: a lease still `recovering` here is not one this attempt wrote.
+  const recoveringBefore =
+    context.deps.store.getRecord(sessionId)?.lease.handoffStage === 'recovering'
   const probe = await withAgentSessionCreatePhase('probe_owner', recordPhase, () =>
     context.runtimeState.probeOwner(sessionId)
   )
@@ -137,6 +140,7 @@ async function runAttach(
     candidate: null,
     committed: false
   }
+  let succeeded = false
   try {
     const attached = await performAttach({
       store: context.deps.store,
@@ -219,6 +223,7 @@ async function runAttach(
         }
       }
     })
+    succeeded = attached.ok
     const { candidate } = attempt
     const conversation = context.sessions.get(sessionId)
     if (attached.ok && candidate && conversation) {
@@ -232,6 +237,23 @@ async function runAttach(
     if (!attempt.committed) {
       attemptSink.close()
     }
+    if (!succeeded && !recoveringBefore) {
+      await resolveRecoveryAfterFailedAttach(context, sessionId)
+    }
+  }
+}
+
+/** A failed attempt that could not prove its child gone left the lease `recovering`; this concludes
+ *  it in the same step rather than at the chat's next start. Bookkeeping: the attach's own outcome
+ *  stands whatever this does, and its failure is only reported. */
+async function resolveRecoveryAfterFailedAttach(
+  context: StructuredAgentSessionAttachContext,
+  sessionId: string
+): Promise<void> {
+  try {
+    await context.runtimeState.resolveRecovery(sessionId)
+  } catch (error) {
+    context.deps.onEventSinkError?.({ sessionId, error })
   }
 }
 

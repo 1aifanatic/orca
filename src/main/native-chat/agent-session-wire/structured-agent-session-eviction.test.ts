@@ -91,7 +91,8 @@ describe('structured agent session eviction', () => {
       'close-sink',
       'discard-sink',
       'release-lease',
-      'acknowledge-release'
+      'acknowledge-release',
+      'resolve-recovery'
     ])
   })
 
@@ -168,6 +169,27 @@ describe('structured agent session eviction', () => {
       step: 'release-lease'
     })
     expect(ctx.acknowledgeRelease).not.toHaveBeenCalled()
+  })
+
+  it('runs recovery last, only for a wind-down it owes, and only reports its failure', async () => {
+    const ctx = context()
+    const reported = vi.fn()
+    ctx.onBestEffortStepFailure = reported
+    ctx.resolveRecovery = vi.fn(async () => {
+      ctx.order.push('resolveRecovery')
+      throw new Error('owner probe crashed')
+    })
+
+    await evictStructuredAgentSession(ctx)
+
+    expect(ctx.order.slice(-2)).toEqual(['acknowledgeRelease', 'resolveRecovery'])
+    expect(reported).toHaveBeenCalledWith(expect.objectContaining({ step: 'resolve-recovery' }))
+
+    const unowed = context()
+    unowed.owesProviderChildWindDown = false
+    unowed.resolveRecovery = vi.fn(async () => {})
+    await evictStructuredAgentSession(unowed)
+    expect(unowed.resolveRecovery).not.toHaveBeenCalled()
   })
 })
 

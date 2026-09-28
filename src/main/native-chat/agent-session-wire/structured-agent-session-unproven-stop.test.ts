@@ -47,6 +47,8 @@ let adapterExtras: Partial<StructuredAgentSessionAdapter>
 /** What the recorded owner's probe answers; recovery's stop flips it to gone. */
 let ownerProbe: AgentSessionOwnerProbe
 let stopOwnerProcess: Mock<(pid: number, signal: 'SIGTERM' | 'SIGKILL') => void>
+/** Thrown by the next owner probe, once. */
+let ownerProbeFailure: Error | null
 let hostErrors: unknown[]
 
 function eventually(assertion: () => void | Promise<void>): Promise<void> {
@@ -89,7 +91,14 @@ function startHost(): void {
     journalRoot: root,
     claimKeyId: 'key-1',
     mintSpawnToken: () => `spawn-${acquire.mock.calls.length}`,
-    probeOwner: async () => ownerProbe,
+    probeOwner: async () => {
+      const failure = ownerProbeFailure
+      ownerProbeFailure = null
+      if (failure) {
+        throw failure
+      }
+      return ownerProbe
+    },
     stopOwnerProcess,
     releaseGraceMs: 60_000,
     now: () => NOW,
@@ -108,6 +117,7 @@ beforeEach(async () => {
   adapterExtras = {}
   hostErrors = []
   ownerProbe = GONE
+  ownerProbeFailure = null
   stopOwnerProcess = vi.fn(() => {
     ownerProbe = GONE
   })
@@ -199,33 +209,40 @@ async function deliveredOnce(): Promise<void> {
   ownerProbe = ALIVE
 }
 
-/** The next send starts only after recovery stopped the recorded owner by identity. */
-async function expectNextSendStartsAfterRecovery(): Promise<void> {
-  const starts = acquire.mock.calls.length
+type HostActivity = { starts: number; sends: number }
+
+function hostActivity(): HostActivity {
+  return { starts: acquire.mock.calls.length, sends: dispatch.mock.calls.length }
+}
+
+const CONCLUDED = { claimStatus: 'released', handoffStage: null, ownerProcess: null } as const
+
+/** Recovery concluded in the step that wrote it: the recorded owner was stopped by identity and the
+ *  lease released, with no send and no new child since `before`. The next send starts plainly. */
+async function expectRecoveryConcludedWithoutASend(before: HostActivity): Promise<void> {
+  expect(stopOwnerProcess).toHaveBeenCalledWith(OWNER_PID, 'SIGTERM')
+  expect(lease()).toMatchObject(CONCLUDED)
+  expect(hostActivity()).toEqual(before)
   const next = await accept('next')
   await eventually(() => expect(submission(next)?.dispatchState).toBe('accepted'))
-  expect(stopOwnerProcess).toHaveBeenCalledWith(OWNER_PID, 'SIGTERM')
-  expect(acquire).toHaveBeenCalledTimes(starts + 1)
+  expect(acquire).toHaveBeenCalledTimes(before.starts + 1)
+  expect(stopOwnerProcess).toHaveBeenCalledTimes(1)
   expect(lease()).toMatchObject({ claimStatus: 'live', handoffStage: null })
 }
 
 describe('a stop that cannot prove its child exited (C′ trigger 1)', () => {
-  it('at an idle eviction: the child ends, the lease goes to recovery, and the next send starts (W40)', async () => {
+  it('at an idle eviction: the child ends, and its wind-down concludes the lease before any send (W40)', async () => {
     await deliveredOnce()
     closeSession.mockResolvedValueOnce(false)
+    const before = hostActivity()
 
     await host.close(SESSION)
 
     expect(host.hasSession(SESSION)).toBe(false)
-    expect(lease()).toMatchObject({
-      claimStatus: 'live',
-      handoffStage: 'recovering',
-      ownerProcess: { pid: OWNER_PID }
-    })
-    await expectNextSendStartsAfterRecovery()
+    await expectRecoveryConcludedWithoutASend(before)
   })
 
-  it("at a user's Stop of a starting child: the conversation stays, and the next send starts (W40)", async () => {
+  it("at a user's Stop of a starting child: the conversation stays, and the lease concludes before any send (W40)", async () => {
     // The close ends the start the loop waits on, as the adapter's does, but proves no exit.
     const started = deferred<void>()
     adapterExtras = {
@@ -242,6 +259,7 @@ describe('a stop that cannot prove its child exited (C′ trigger 1)', () => {
       started.resolve()
       return false
     })
+    const before = hostActivity()
 
     expect(await stop()).toMatchObject({ ok: true, value: { cancelled: true } })
 
@@ -251,11 +269,10 @@ describe('a stop that cannot prove its child exited (C′ trigger 1)', () => {
       dispatchState: 'rejected',
       reason: DISPATCH_REJECTED_CANCELLED
     })
-    expect(lease()).toMatchObject({ claimStatus: 'live', handoffStage: 'recovering' })
-    await expectNextSendStartsAfterRecovery()
+    await expectRecoveryConcludedWithoutASend(before)
   })
 
-  it('after a journal sink failure: the force-closed child ends and its lease goes to recovery', async () => {
+  it('after a journal sink failure: the force-closed child ends and its lease concludes before any send', async () => {
     const acknowledgeSessionRelease = vi.fn()
     adapterExtras = { acknowledgeSessionRelease }
     await restartHost()
@@ -270,6 +287,7 @@ describe('a stop that cannot prove its child exited (C′ trigger 1)', () => {
     await host.flushStreamedEvents(SESSION)
     const forceCloseSession = vi.fn(async () => false)
     host['deps'].adapter.forceCloseSession = forceCloseSession
+    const before = hostActivity()
 
     host['eventRecovery'].recoverAfterSinkFailure(SESSION, new Error('disk full'))
 
@@ -280,14 +298,14 @@ describe('a stop that cannot prove its child exited (C′ trigger 1)', () => {
       reason: 'journal sink failure: disk full',
       rootGone: false
     })
-    await eventually(() => expect(lease()).toMatchObject({ handoffStage: 'recovering' }))
+    await eventually(() => expect(lease()).toMatchObject(CONCLUDED))
     // Settled like every other end: no card is left open with no agent behind it.
     const question = host
       .journalSnapshot(SESSION)
       .items.find((item) => item.itemId === agentJournalItemKey(identity))
     expect(question?.body).toMatchObject({ resolution: { state: 'cancelled' } })
     await eventually(() => expect(acknowledgeSessionRelease).toHaveBeenCalledWith(SESSION))
-    await expectNextSendStartsAfterRecovery()
+    await expectRecoveryConcludedWithoutASend(before)
   })
 
   it('leaves a stop that saw the root exit to the release it already takes (W41)', async () => {
@@ -406,17 +424,39 @@ describe('a start the child was seen to die in (C′ trigger 2)', () => {
     expect(lease()).toMatchObject({ claimStatus: 'released', runtimeFence: startedAt + 1 })
   })
 
-  it('hands the lease to recovery when that close is unproven, and the next send starts (W43)', async () => {
+  it('concludes the lease before any send when that close is unproven (W43)', async () => {
     closeSession.mockResolvedValueOnce(false)
-    const first = await diedStarting()
+    let before = hostActivity()
+    const first = await diedStarting(EXIT, () => {
+      before = hostActivity()
+    })
 
     await eventually(() => expect(conversation()?.child).toBeNull())
     expect(submission(first)).toMatchObject({ dispatchState: 'rejected', reason: TEXT })
     expect(conversation()?.lastEndedChild).toMatchObject({ cause: 'exit', rootGone: false })
-    await eventually(() =>
-      expect(lease()).toMatchObject({ claimStatus: 'live', handoffStage: 'recovering' })
-    )
-    await expectNextSendStartsAfterRecovery()
+    await eventually(() => expect(lease()).toMatchObject(CONCLUDED))
+    await expectRecoveryConcludedWithoutASend(before)
+  })
+
+  it('tells a reader open throughout the fence that concluding its recovery moved the lease to', async () => {
+    closeSession.mockResolvedValueOnce(false)
+    const fences: number[] = []
+    let startedAt = 0
+    await diedStarting(EXIT, () => {
+      startedAt = lease()?.runtimeFence ?? 0
+      host.subscribe({
+        id: 'pane',
+        sessionId: SESSION,
+        emit: (event) => {
+          if (event.type !== 'end' && event.fence !== undefined) {
+            fences.push(event.fence)
+          }
+        }
+      })
+    })
+
+    await eventually(() => expect(fences.at(-1)).toBe(startedAt + 1))
+    expect(lease()).toMatchObject({ ...CONCLUDED, runtimeFence: startedAt + 1 })
   })
 })
 
@@ -447,6 +487,86 @@ describe('a re-attach that fails after it bound the live child', () => {
     expect(acquire).toHaveBeenCalledTimes(2)
     expect(conversation()?.lastEndedChild).toMatchObject({ cause: 'attach-failed' })
     expect(question()?.body).toMatchObject({ resolution: { state: 'cancelled' } })
+  })
+})
+
+describe('an attach that fails after acquiring and cannot prove its child gone (C′ trigger 3)', () => {
+  /** A re-attach starts a child, then fails before it commits; the cleanup proves no exit. */
+  async function failedAttachWithUnprovenExit(duringCleanup?: () => void): Promise<void> {
+    const releaseAcquisition = vi.fn(async () => {
+      // The recorded owner is the child this attach started, alive until recovery stops it.
+      ownerProbe = ALIVE
+      duringCleanup?.()
+      return false
+    })
+    host['deps'].adapter.releaseAcquisition = releaseAcquisition
+    vi.spyOn(store, 'recordOperationOutcome').mockRejectedValueOnce(new Error('disk full'))
+
+    await expect(
+      host.attach(CALLER, hostTestAttachParams(lease()?.runtimeFence ?? null))
+    ).rejects.toBeDefined()
+
+    expect(releaseAcquisition).toHaveBeenCalledWith({ sessionId: SESSION })
+  }
+
+  it('concludes the lease in the same step, with no send and no new child', async () => {
+    const before = hostActivity()
+
+    await failedAttachWithUnprovenExit()
+
+    await expectRecoveryConcludedWithoutASend({ ...before, starts: before.starts + 1 })
+  })
+
+  it('reports a recovery that throws, and the attach keeps its own failure', async () => {
+    const crash = new Error('owner probe crashed')
+
+    await failedAttachWithUnprovenExit(() => {
+      ownerProbeFailure = crash
+    })
+
+    expect(hostErrors).toContain(crash)
+    // Nothing concluded, so the latch stays for the next start to re-derive.
+    expect(lease()).toMatchObject({ claimStatus: 'live', handoffStage: 'recovering' })
+    const next = await accept('next')
+    await eventually(() => expect(submission(next)?.dispatchState).toBe('accepted'))
+    expect(stopOwnerProcess).toHaveBeenCalledWith(OWNER_PID, 'SIGTERM')
+  })
+})
+
+describe("a stop's recovery whose owner probe cannot answer", () => {
+  it('releases an owner it cannot verify, and signals nothing', async () => {
+    await deliveredOnce()
+    ownerProbe = { outcome: 'indeterminate', reason: 'the process table could not be read' }
+    closeSession.mockResolvedValueOnce(false)
+    const before = hostActivity()
+
+    await host.close(SESSION)
+
+    expect(lease()).toMatchObject({ ...CONCLUDED, deathEvidence: null })
+    expect(stopOwnerProcess).not.toHaveBeenCalled()
+    expect(hostActivity()).toEqual(before)
+  })
+
+  it('reports a probe that throws, finishes the stop, and lets the next send through', async () => {
+    await deliveredOnce()
+    closeSession.mockResolvedValueOnce(false)
+    const crash = new Error('owner probe crashed')
+    ownerProbeFailure = crash
+
+    await host.close(SESSION)
+
+    expect(host.hasSession(SESSION)).toBe(false)
+    expect(hostErrors).toContainEqual(
+      expect.objectContaining({ step: 'resolve-recovery', cause: crash })
+    )
+    expect(lease()).toMatchObject({
+      claimStatus: 'live',
+      handoffStage: 'recovering',
+      ownerProcess: { pid: OWNER_PID }
+    })
+    const next = await accept('next')
+    await eventually(() => expect(submission(next)?.dispatchState).toBe('accepted'))
+    expect(stopOwnerProcess).toHaveBeenCalledWith(OWNER_PID, 'SIGTERM')
   })
 })
 
@@ -497,12 +617,14 @@ describe('a new child never inherits a wait on the one before it', () => {
     vi.spyOn(journal, 'markPendingSubmissionsUnknown').mockRejectedValueOnce(new Error('disk full'))
     host['deps'].adapter.forceCloseSession = vi.fn(async () => false)
 
+    const before = hostActivity()
+
     host['eventRecovery'].recoverAfterSinkFailure(SESSION, new Error('disk full'))
 
-    await eventually(() => expect(lease()).toMatchObject({ handoffStage: 'recovering' }))
+    await eventually(() => expect(lease()).toMatchObject(CONCLUDED))
     expect(submission(handed)?.dispatchState).toBe('pending')
     expect(item(OPEN_QUESTION)?.body).toMatchObject({ resolution: { state: 'pending' } })
-    await expectNextSendStartsAfterRecovery()
+    await expectRecoveryConcludedWithoutASend(before)
     expect(submission(handed)).toMatchObject({ dispatchState: 'unknown', recovered: true })
     expect(item(OPEN_TURN)?.body).toMatchObject({ state: 'unverifiable' })
     expect(item(OPEN_QUESTION)?.body).toMatchObject({ resolution: { state: 'cancelled' } })
@@ -523,7 +645,7 @@ describe('a new child never inherits a wait on the one before it', () => {
 })
 
 describe('bookkeeping that fails after the child ended', () => {
-  it('never keeps an unproven stop from handing the lease to recovery', async () => {
+  it('never keeps an unproven stop from concluding its lease', async () => {
     const acknowledgeSessionRelease = vi.fn()
     adapterExtras = { acknowledgeSessionRelease }
     await restartHost()
@@ -534,18 +656,14 @@ describe('bookkeeping that fails after the child ended', () => {
     }
     vi.spyOn(journal, 'markPendingSubmissionsUnknown').mockRejectedValueOnce(new Error('disk full'))
     closeSession.mockResolvedValueOnce(false)
+    const before = hostActivity()
 
     await host.close(SESSION)
 
     expect(hostErrors).toContainEqual(expect.objectContaining({ step: 'settle-dead-generation' }))
     expect(host.hasSession(SESSION)).toBe(false)
     expect(acknowledgeSessionRelease).toHaveBeenCalledWith(SESSION)
-    expect(lease()).toMatchObject({
-      claimStatus: 'live',
-      handoffStage: 'recovering',
-      ownerProcess: { pid: OWNER_PID }
-    })
-    await expectNextSendStartsAfterRecovery()
+    await expectRecoveryConcludedWithoutASend(before)
     expect(submission(handed)).toMatchObject({ dispatchState: 'unknown', recovered: true })
   })
 
@@ -562,7 +680,7 @@ describe('bookkeeping that fails after the child ended', () => {
     // The retry repeats only what is still owed: no second close, and the lease moves.
     await host.close(SESSION)
     expect(closeSession).toHaveBeenCalledTimes(2)
-    expect(lease()).toMatchObject({ claimStatus: 'live', handoffStage: 'recovering' })
+    expect(lease()).toMatchObject(CONCLUDED)
   })
 
   it("retries a sink failure's release that could not be written at the next close", async () => {
@@ -584,7 +702,7 @@ describe('bookkeeping that fails after the child ended', () => {
 
     await host.close(SESSION)
 
-    expect(lease()).toMatchObject({ claimStatus: 'live', handoffStage: 'recovering' })
+    expect(lease()).toMatchObject(CONCLUDED)
     expect(acknowledgeSessionRelease).toHaveBeenCalledWith(SESSION)
     // The child was already force-closed; the retry only finishes its wind-down.
     expect(closeSession).toHaveBeenCalledTimes(1)

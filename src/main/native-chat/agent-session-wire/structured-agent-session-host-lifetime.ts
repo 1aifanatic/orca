@@ -109,10 +109,10 @@ function owedProviderChildWindDown(
 /**
  * The agent goes to rest; the conversation stays. Runs the eviction steps under a deadline. A step
  * that fails — or runs out of time — aborts the rest and leaves the wind-down owed, so the next
- * stop is a real retry; a failed drain or settlement is only reported. A stop that cannot prove the
- * exit still ends the child, and hands the lease to recovery. `ending` is how the child's end is
- * told: a user's Stop, the host stopping it for a cause (with its text), a start the child was seen
- * to die in, or an eviction whose close forgets the conversation next.
+ * stop is a real retry; a failed drain, settlement or recovery is only reported. A stop that cannot
+ * prove the exit still ends the child, and runs recovery on its lease. `ending` is how the child's
+ * end is told: a user's Stop, the host stopping it for a cause (with its text), a start the child
+ * was seen to die in, or an eviction whose close forgets the conversation next.
  */
 export async function stopStructuredAgentSessionAgentUnderSerialize(
   context: StructuredAgentSessionLifetimeContext,
@@ -211,6 +211,13 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
         context.publishFence?.(sessionId, session)
       }
       context.publishStatus?.(sessionId)
+    },
+    resolveRecovery: async () => {
+      // Concluding moves the fence as a proven release would, so it tells the same readers.
+      const resolved = await context.runtimeState.resolveRecovery(sessionId)
+      if (resolved === 'resolved' && ending.cause === 'exit') {
+        context.publishFence?.(sessionId, session)
+      }
     }
   }
   await evictStructuredAgentSession(

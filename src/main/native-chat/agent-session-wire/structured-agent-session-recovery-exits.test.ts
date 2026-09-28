@@ -150,6 +150,29 @@ describe('recovery exits', () => {
     expect(acquire).toHaveBeenCalledTimes(2)
   })
 
+  it('concludes an unproven acquisition in the attach that failed, before any next start', async () => {
+    expect((await host.attach(CALLER, hostTestAttachParams(null))).ok).toBe(true)
+    await reopenStore()
+    vi.spyOn(store, 'proveOwner').mockRejectedValueOnce(new Error('handle proof lost'))
+    openHost({
+      mintSpawnToken: () => 'spawn-b',
+      probeOwner: async () => ({ outcome: 'pid-absent' })
+    })
+
+    await expect(host.attach(CALLER, hostTestAttachParams(2))).rejects.toThrow(
+      'agent_session_acquisition_exit_unproven'
+    )
+
+    expect(acquire).toHaveBeenCalledTimes(2)
+    expect(store.getRecord(SESSION)?.lease).toMatchObject({
+      claimStatus: 'released',
+      handoffStage: null,
+      ownerProcess: null,
+      reservedSpawnToken: null,
+      runtimeFence: 4
+    })
+  })
+
   it('releases an unproven acquisition whose owner later dies, without replaying it as a handoff', async () => {
     // A real session first, so restart restore has a journal to read and runs the
     // handoff restorer over the residue instead of skipping the record.
@@ -157,11 +180,17 @@ describe('recovery exits', () => {
     await reopenStore()
 
     // The resume fails at owner proof and cleanup cannot prove exit: the settlement
-    // keeps the reservation latched at `recovering` with its committed owner identity.
+    // keeps the reservation latched at `recovering` with its committed owner identity. The
+    // attach's own recovery cannot conclude it, as a crash right after the settlement would not.
     vi.spyOn(store, 'proveOwner').mockRejectedValueOnce(new Error('handle proof lost'))
     openHost({
       mintSpawnToken: () => 'spawn-b',
-      probeOwner: async () => ({ outcome: 'pid-absent' })
+      probeOwner: async (record) => {
+        if (record.lease.handoffStage === 'recovering') {
+          throw new Error('owner probe unavailable')
+        }
+        return { outcome: 'pid-absent' }
+      }
     })
     await expect(host.attach(CALLER, hostTestAttachParams(2))).rejects.toThrow(
       'agent_session_acquisition_exit_unproven'

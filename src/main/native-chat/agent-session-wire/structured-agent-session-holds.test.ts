@@ -344,7 +344,7 @@ describe('the teardown deadline', () => {
       .filter((step) => step.bestEffort)
       .map((step) => step.name)
 
-    expect(bestEffort).toEqual(['drain-published', 'settle-dead-generation'])
+    expect(bestEffort).toEqual(['drain-published', 'settle-dead-generation', 'resolve-recovery'])
   })
 
   it('does not delay a step that finishes', async () => {

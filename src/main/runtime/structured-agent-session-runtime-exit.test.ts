@@ -315,9 +315,9 @@ describe('structured session runtime provider-exit wiring', () => {
     await stopping
     expect(stopped).toBe(true)
   })
-  it('hands an unproven quit stop to recovery and drains the exit callback the adapter backstop delivers', async () => {
+  it('concludes an unproven quit stop and drains the exit callback the adapter backstop delivers', async () => {
     // The first stop refuses, so host eviction cannot prove the child gone: it ends the child and
-    // hands the lease to recovery. What finally stops it is `closeAll`, which delivers the exit
+    // runs recovery on the lease. What finally stops it is `closeAll`, which delivers the exit
     // callback AFTER host teardown has already run.
     root = await mkdtemp(join(tmpdir(), 'orca-runtime-backstop-exit-'))
     operations = 0
@@ -397,11 +397,11 @@ describe('structured session runtime provider-exit wiring', () => {
     expect(closeAttempts).toBeGreaterThanOrEqual(2)
     // The callback it delivered did not reacquire.
     expect(connections).toHaveLength(1)
-    // Nothing proved the exit to the host, so the next start's recovery concludes about the owner.
+    // Quit's own recovery concluded about the owner: no process here carries its recorded identity.
     expect(host.deps.store.getRecord(SESSION)?.lease).toMatchObject({
-      claimStatus: 'live',
-      ownerProcess: { pid: 4321 },
-      handoffStage: 'recovering'
+      claimStatus: 'released',
+      ownerProcess: null,
+      handoffStage: null
     })
   })
 })

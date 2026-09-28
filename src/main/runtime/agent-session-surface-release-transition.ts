@@ -56,8 +56,8 @@ export function releaseAgentSessionOwnerAfterSurfaceClose(args: {
 }
 
 /** The host stopped its own owner and could not prove the root gone. It no longer drives that
- *  process, so the lease goes to recovery, which concludes about the recorded owner at the next
- *  start; the owner stays recorded so recovery can stop it by identity. */
+ *  process, so the lease goes to recovery, which the stop then runs; the owner stays recorded so
+ *  recovery can stop it by identity, and a crash before it runs leaves the next start to. */
 export function recoverAgentSessionOwnerAfterUnprovenStop(args: {
   record: AgentSessionRecord
   expectedFence: number

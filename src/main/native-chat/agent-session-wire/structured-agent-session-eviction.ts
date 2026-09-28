@@ -15,11 +15,11 @@
 // FAILURE. A failed stop ABORTS the rest, leaving the session in place so the next close is a real
 // retry instead of a no-op. A stop that could not prove the exit is not a failure: the child is
 // closing and cannot take writes, so the host ends it all the same, and only the lease hears the
-// verdict — handed to recovery, which stops the recorded owner by identity at the next start. Past
-// the stop, draining and settling are bookkeeping, which never keeps the lease from moving: a
-// failure there is reported and the wind-down goes on, since the next child's attach re-derives
-// what they would have written. The rest still abort, and a failed release leaves the wind-down
-// owed for the next close to repeat.
+// verdict — handed to recovery, which the wind-down's last step then runs, stopping the recorded
+// owner by identity. Past the stop, draining, settling and that recovery are bookkeeping, which
+// never keeps the lease from moving or the stop from finishing: a failure there is reported and the
+// wind-down goes on, since the next child's attach re-derives what they would have written. The
+// rest still abort, and a failed release leaves the wind-down owed for the next close to repeat.
 
 import {
   stopAgentSessionProviderRoot,
@@ -55,6 +55,9 @@ export type StructuredAgentSessionEvictionContext = {
   /** Hands the lease back now that this host's child is stopped: released on proof, otherwise to
    *  recovery. No-ops when the record is not this host's to release. */
   releaseLease: () => Promise<void>
+  /** Concludes the `recovering` lease an unproven stop left, instead of leaving it latched until
+   *  the chat's next start. */
+  resolveRecovery?: () => Promise<void>
 }
 
 /** The resume offer is advisory; a stalled sink must not hold the child's stop behind it. */
@@ -127,7 +130,15 @@ export const STRUCTURED_AGENT_SESSION_EVICTION_STEPS: readonly StructuredAgentSe
     // session it may not acquire. Placed BEFORE the acknowledgement so a release that cannot be
     // written aborts while the adapter still routes the session, which is what makes the retry real.
     { name: 'release-lease', run: (context) => context.releaseLease() },
-    { name: 'acknowledge-release', run: (context) => context.acknowledgeRelease() }
+    { name: 'acknowledge-release', run: (context) => context.acknowledgeRelease() },
+    // Last, once the adapter no longer routes the session, so the owner it may stop has no route
+    // left that could report its exit against the lease.
+    {
+      name: 'resolve-recovery',
+      bestEffort: true,
+      run: (context) =>
+        context.owesProviderChildWindDown === false ? undefined : context.resolveRecovery?.()
+    }
   ]
 
 export class StructuredAgentSessionEvictionError extends Error {
