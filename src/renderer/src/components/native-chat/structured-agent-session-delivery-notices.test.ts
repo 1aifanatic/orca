@@ -90,9 +90,9 @@ describe('the notice on each message that did not go through', () => {
     })
   })
 
-  // The drain's own rule: a Retry on a message behind the one the queue stopped on would send
-  // nothing, so only the stopped one offers it. A rejected message holds nothing up.
-  it('gives a Retry only to the message the queue stopped on, beside every rejected one', () => {
+  // The drain's own rule: a message behind the one the queue stopped on is only waiting, so it says
+  // nothing. A rejected message holds nothing up and keeps its words.
+  it('says why on the message the queue stopped on and on every rejected one', () => {
     expect(
       texts([
         entry('sent', { state: 'dispatching' }),
@@ -105,6 +105,20 @@ describe('the notice on each message that did not go through', () => {
       [agentJournalSubmissionKey('rejected')]: 'Message was not sent.',
       [agentJournalSubmissionKey('stuck')]: 'Message delivery is unconfirmed.'
     })
+  })
+
+  // Its Retry would release the stopped queue and send the stopped message too, or wait unseen.
+  it('keeps a rejected message its words but not its Retry while the queue is stopped', () => {
+    const retry = vi.fn()
+    for (const [outbox, blocked] of [
+      [[entry('stuck', { state: 'unconfirmed' }), entry('rejected', { state: 'rejected' })], null],
+      [[entry('rejected', { state: 'rejected' }), entry('held')], 'held']
+    ] as const) {
+      const notices = structuredAgentSessionDeliveryNotices([...outbox], blocked, retry)
+      expect(notices.get(agentJournalSubmissionKey('rejected'))).toEqual({
+        text: 'Message was not sent.'
+      })
+    }
   })
 
   it('says nothing on a message that is only waiting its turn or on its way', () => {

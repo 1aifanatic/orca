@@ -1,9 +1,10 @@
 // Which of the structured chat's own messages say, on their row, that they did not go through.
 //
 // Derived from the outbox on every render and never stored: each failed or held message carries
-// its own typed failure, so each row words its own reason and offers its own Retry. Read through
-// the drain's own rule, so of the messages still to be sent only the one the queue stopped on has a
-// Retry; one waiting behind it says nothing. A rejected message holds nothing and keeps its own.
+// its own typed failure, so each row words its own reason. Read through the drain's own rule: while
+// the queue is stopped, only the message it stopped on has a Retry. Another's would release the
+// queue and send the stopped message too, or wait unseen behind it. One waiting behind says nothing;
+// a rejected message holds nothing up, so it keeps its words and gets its Retry once the queue moves.
 
 import { agentJournalSubmissionKey } from '../../../../shared/agent-session-journal-item-key'
 import {
@@ -42,10 +43,13 @@ export function structuredAgentSessionDeliveryNotices(
   const notices = new Map<string, NativeChatDeliveryNotice>()
   for (const entry of outbox) {
     if (entry.state === 'rejected' || entry.clientMessageId === held) {
-      notices.set(agentJournalSubmissionKey(entry.clientMessageId), {
-        text: deliveryNoticeText(entry),
-        onRetry: () => retry(entry.clientMessageId)
-      })
+      const text = deliveryNoticeText(entry)
+      notices.set(
+        agentJournalSubmissionKey(entry.clientMessageId),
+        held === null || entry.clientMessageId === held
+          ? { text, onRetry: () => retry(entry.clientMessageId) }
+          : { text }
+      )
     }
   }
   return notices

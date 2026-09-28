@@ -290,6 +290,49 @@ describe('NativeChatStructuredSession delivery', () => {
     expect(request.envelope.clientOperationId).toBe('op-head')
   })
 
+  it('offers a rejected message no Retry while the queue is stopped, and gives it back once it moves', async () => {
+    mocks.mode = 'outbox'
+    mocks.submissions = []
+    mocks.call.mockResolvedValue({
+      ok: true,
+      value: { submission: { clientMessageId: 'op-head', dispatchState: 'accepted' } }
+    })
+    seedOutbox('session-held-rejected', [
+      seededEntry('session-held-rejected', 'op-head', 'first', 'unconfirmed'),
+      {
+        ...seededEntry('session-held-rejected', 'op-rejected', 'second', 'queued'),
+        state: 'rejected',
+        lastFailure: { kind: 'rejected', reason: 'Claude messages support at most 20 images' }
+      }
+    ])
+
+    render(
+      <NativeChatStructuredSession
+        isVisible
+        isFocusedGroup
+        tabId="structured-tab-held-rejected"
+        sessionId="session-held-rejected"
+        target={{ kind: 'local' }}
+        agent="codex"
+      />
+    )
+
+    await waitFor(() => expect(screen.getByText('Message delivery is unconfirmed.')).toBeTruthy())
+    expect(screen.getByText('Claude messages support at most 20 images')).toBeTruthy()
+    // One Retry, the stopped message's: it sends only that one.
+    fireEvent.click(screen.getByRole('button', { name: /Retry/ }))
+    await waitFor(() => expect(mocks.call).toHaveBeenCalledOnce())
+    expect(mocks.call.mock.calls[0]?.[2]).toMatchObject({
+      envelope: { clientOperationId: 'op-head' }
+    })
+
+    // The queue moved, so the rejected message offers its own Retry again.
+    await waitFor(() => expect(screen.queryByText('Message delivery is unconfirmed.')).toBeNull())
+    expect(screen.getByText('Claude messages support at most 20 images')).toBeTruthy()
+    expect(screen.getAllByRole('button', { name: /Retry/ })).toHaveLength(1)
+    expect(mocks.call).toHaveBeenCalledOnce()
+  })
+
   it('names the stuck message behind an admitted head, and its Retry sends that one', async () => {
     mocks.mode = 'outbox'
     mocks.submissions = []
