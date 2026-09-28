@@ -359,7 +359,7 @@ describe('a clear that never committed', () => {
   })
 
   /** A clear whose replacement started but whose commit never landed; answers that replacement. */
-  async function clearThatDiesBeforeItsCommit(): Promise<string> {
+  async function clearThatDiesBeforeItsCommit(params = commandParams('clear')): Promise<string> {
     const commit = store.setConversationCommand.bind(store)
     let crashed = false
     vi.spyOn(store, 'setConversationCommand').mockImplementation(async (...args) => {
@@ -369,7 +369,7 @@ describe('a clear that never committed', () => {
       }
       return commit(...args)
     })
-    await expect(host.conversationCommand(caller, commandParams('clear'))).rejects.toThrow(
+    await expect(host.conversationCommand(caller, params)).rejects.toThrow(
       'crash before the commit'
     )
     const [orphan] = store
@@ -391,6 +391,23 @@ describe('a clear that never committed', () => {
     await host.collaboratorsForTests().lifetime.idleSweep.tick()
     expect(host.collaboratorsForTests().sessions.has(orphan)).toBe(false)
     expect(store.getRecord(orphan)?.lease).toMatchObject({ claimStatus: 'released' })
+  })
+
+  // The replacement's start cannot be replayed once the crash released it, so the retry clears
+  // nothing; what matters here is that it starts no second replacement and latches nothing.
+  it('retried under the same operation id after a crash, starts no second replacement and leaves the chat usable', async () => {
+    const params = commandParams('clear')
+    const orphan = await clearThatDiesBeforeItsCommit(params)
+    await restartHost()
+    await host.restoreReadableSessions(store.listVisibleSessionIds())
+    expect(await host.conversationCommand(caller, params)).toMatchObject({ ok: true })
+    expect(
+      store
+        .listRecords()
+        .map((record) => record.sessionId)
+        .toSorted()
+    ).toEqual([orphan, HOST_TEST_SESSION].toSorted())
+    expect(await host.send(caller, sendParams('after the retry'))).toMatchObject({ ok: true })
   })
 
   it('starts nothing for that replacement after a crash, and releases what it held', async () => {
