@@ -4,6 +4,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { SshPtyProvider } from './ssh-pty-provider'
 import { createMockMux } from './ssh-pty-provider-mock-multiplexer'
 import { DaemonPtyRouter } from '../daemon/daemon-pty-router'
+import { WslDaemonPtyProvider } from '../wsl/wsl-daemon-pty-provider'
+import { createUnavailablePtyProvider } from './unavailable-pty-provider'
 import { DaemonPtyAdapter } from '../daemon/daemon-pty-adapter'
 
 vi.mock('electron', () => ({
@@ -24,7 +26,8 @@ const REPO_ROOT = join(__dirname, '..', '..', '..')
 const SETTLED_PTY_WRITER_FILES = [
   'src/main/providers/relay-pty-provider.ts',
   'src/main/daemon/daemon-pty-router.ts',
-  'src/main/daemon/daemon-pty-adapter.ts'
+  'src/main/daemon/daemon-pty-adapter.ts',
+  'src/main/wsl/wsl-daemon-pty-provider.ts'
 ]
 
 /** Where the provider-side settlement is actually decided; the adapter inherits its own. */
@@ -32,7 +35,9 @@ const SETTLED_WRITER_DECLARATIONS = [
   'src/main/providers/relay-pty-provider.ts',
   'src/main/providers/ssh-pty-provider-rpc-operations.ts',
   'src/main/daemon/daemon-pty-router.ts',
-  'src/main/daemon/daemon-pty-session-input.ts'
+  'src/main/daemon/daemon-pty-session-input.ts',
+  'src/main/wsl/wsl-daemon-pty-provider.ts',
+  'src/main/providers/unavailable-pty-provider.ts'
 ]
 
 function declaredProviderFiles(directory = join(REPO_ROOT, 'src/main')): string[] {
@@ -64,12 +69,16 @@ describe('settled PTY writer census', () => {
   })
 
   it('exposes a settled writer on every production provider instance', () => {
-    const daemonClient = { isConnected: () => false, onEvent: vi.fn(() => vi.fn()) }
-    const adapter = new DaemonPtyAdapter(daemonClient as never)
+    const adapter = new DaemonPtyAdapter({
+      socketPath: join(__dirname, 'census.sock'),
+      tokenPath: join(__dirname, 'census.token')
+    })
     const instances = [
       new SshPtyProvider('conn-census', createMockMux() as never),
       new DaemonPtyRouter({ current: adapter, legacy: [] }),
-      adapter
+      adapter,
+      new WslDaemonPtyProvider({ distro: 'Ubuntu', relayBuildId: 'census-build' }, adapter),
+      createUnavailablePtyProvider()
     ]
     for (const provider of instances) {
       expect(typeof provider.writeWithSettlement, provider.constructor.name).toBe('function')

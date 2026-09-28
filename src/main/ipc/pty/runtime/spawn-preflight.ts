@@ -71,24 +71,7 @@ export async function prepareRuntimePtySpawn(
           terminalWindowsWslDistro: null
         }
   ctx.daemonShellOverride = ctx.terminalRuntimeOptions.shellOverride
-  ctx.isDaemonHostSpawn = !args.connectionId && !routesFreshSpawnsToLocalProvider(ctx.provider)
-  ctx.callerRequestedSessionId = args.sessionId?.trim()
-  ctx.requestedSessionId =
-    ctx.callerRequestedSessionId ??
-    (ctx.isDaemonHostSpawn && args.agentSessionCreateOperationId
-      ? ptySessionIdForAgentCreateOperation(args.worktreeId, args.agentSessionCreateOperationId)
-      : undefined)
-  ctx.sessionId =
-    ctx.requestedSessionId ??
-    (ctx.isDaemonHostSpawn ? mintPtySessionId(args.worktreeId) : undefined)
-  ctx.effectiveSessionRelayId =
-    ctx.sessionId !== undefined ? getRelayPtyId(args.connectionId, ctx.sessionId) : undefined
-  ctx.effectiveSessionAppId =
-    ctx.sessionId !== undefined ? getAppPtyId(args.connectionId, ctx.sessionId) : undefined
-  ctx.isNewDaemonSession =
-    !ctx.preAdoptedStablePane &&
-    ctx.isDaemonHostSpawn &&
-    (ctx.callerRequestedSessionId === undefined || args.isNewSession === true)
+  prepareRuntimeSessionIdentity(ctx)
   ctx.expectedWslDistro = !args.connectionId
     ? (resolveWslSessionContext({
         cwd: ctx.cwd,
@@ -135,6 +118,7 @@ export async function prepareRuntimePtySpawn(
         )
     if (freshSpawnRecovery) {
       await freshSpawnRecovery
+      prepareRuntimeSessionIdentity(ctx)
     }
   }
   ctx.codexSelectionTarget = getCodexSelectionTargetForPty(
@@ -277,4 +261,26 @@ export async function prepareRuntimePtySpawn(
   await prepareRuntimeHostSpawnEnvironment(ctx)
 
   return null
+}
+
+function prepareRuntimeSessionIdentity(ctx: RuntimePtySpawnState): void {
+  const args = ctx.args
+  ctx.isDaemonHostSpawn = !args.connectionId && !routesFreshSpawnsToLocalProvider(ctx.provider)
+  ctx.callerRequestedSessionId = args.sessionId?.trim()
+  ctx.requestedSessionId =
+    ctx.callerRequestedSessionId ??
+    (ctx.isDaemonHostSpawn && args.agentSessionCreateOperationId
+      ? ptySessionIdForAgentCreateOperation(args.worktreeId, args.agentSessionCreateOperationId)
+      : undefined)
+  ctx.sessionId =
+    ctx.requestedSessionId ??
+    (ctx.isDaemonHostSpawn ? mintPtySessionId(args.worktreeId) : undefined)
+  ctx.effectiveSessionRelayId =
+    ctx.sessionId !== undefined ? getRelayPtyId(args.connectionId, ctx.sessionId) : undefined
+  ctx.effectiveSessionAppId =
+    ctx.sessionId !== undefined ? getAppPtyId(args.connectionId, ctx.sessionId) : undefined
+  ctx.isNewDaemonSession =
+    !ctx.preAdoptedStablePane &&
+    ctx.isDaemonHostSpawn &&
+    (ctx.callerRequestedSessionId === undefined || args.isNewSession === true)
 }
