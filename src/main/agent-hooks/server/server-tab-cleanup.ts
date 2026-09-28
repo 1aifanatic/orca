@@ -6,6 +6,7 @@ import type { EnrichedAgentHookEventPayload } from './server-types'
 export abstract class AgentHookServerTabCleanup extends AgentHookServerCleanup {
   /** Drop every status/cache claim attributable to a closed tab prefix. */
   dropStatusEntriesByTabPrefix(tabId: string): void {
+    this.absorbCommittedHookRecords()
     this.markTabClosedForAgentStatus(tabId)
     const paneKeysToClear = new Set<string>()
     const statusPaneKeysToClear = new Set<string>()
@@ -101,6 +102,7 @@ export abstract class AgentHookServerTabCleanup extends AgentHookServerCleanup {
   }
 
   clearPaneState(paneKey: string, options?: { emitStatusRowMutation?: boolean }): void {
+    this.absorbCommittedHookRecords()
     const resolvedPaneKey = this.resolvePaneKeyAlias(paneKey)
     const paneKeys = new Set([paneKey, resolvedPaneKey])
     // Why: only persist when a status entry was actually evicted; dropping prompt/tool caches doesn't change the file.

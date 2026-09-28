@@ -4,7 +4,6 @@ import { chmodSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { _internals as codexInternals } from '../codex/hook-service'
-import { buildPosixHookSpoolLines } from './hook-stdin-contract'
 
 /** Managed hooks are installed into the user's agent config, so they also run when the
  *  agent is launched from a plain terminal. There they must be inert and silent. */
@@ -54,7 +53,7 @@ describe('managed hook outside an Orca terminal', () => {
     expect(res.status).toBe(0)
     expect(res.stdout).toBe('')
     expect(res.stderr).toBe('')
-    // a stale env var must not create a spool tree for an Orca that is not installed here
+    // a stale env var must not create an inbox for an Orca that is not installed here
     expect(readdirSync(dir)).toEqual(['codex-hook.sh'])
   })
 
@@ -67,16 +66,5 @@ describe('managed hook outside an Orca terminal', () => {
     expect(res.stdout).toBe('')
     expect(res.stderr).toBe('')
     expect(readdirSync(dir).sort()).toEqual(['codex-hook.sh', 'endpoint.env'])
-  })
-})
-
-describe('antigravity out-of-band event name', () => {
-  it('records hookEventName and filters tool progress on it', () => {
-    const lines = buildPosixHookSpoolLines('antigravity', 'ORCA_ANTIGRAVITY_EVENT').join('\n')
-    expect(lines).toContain('"hookEventName":"%s"')
-    expect(lines).toContain('${ORCA_ANTIGRAVITY_EVENT:-}')
-    expect(lines).toContain('in PreToolUse|PostToolUse|PostToolUseFailure) return 0')
-    // payload-based filtering stays the default for every other provider
-    expect(buildPosixHookSpoolLines('codex').join('\n')).toContain('case "$payload" in')
   })
 })

@@ -13,10 +13,10 @@ import {
 } from '../agent-hooks/installer-utils-remote'
 import {
   buildPosixHookPayloadCapture,
-  buildPosixHookSpoolLines,
   buildWindowsHookEnvironmentGuardLines,
   buildWindowsHookStdinDrainEpilogue
 } from '../agent-hooks/hook-stdin-contract'
+import { buildPosixHookInboxCommitLines } from '../agent-hooks/hook-inbox-commit'
 import {
   applyDevinManagedHooks,
   DEVIN_EVENTS,
@@ -56,14 +56,15 @@ function getManagedScript(target: 'local' | 'posix' = 'local'): string {
   return [
     '#!/bin/sh',
     ...buildPosixHookPayloadCapture(),
-    ...buildPosixHookSpoolLines('devin'),
+    ...buildPosixHookInboxCommitLines('devin'),
+    // Why before the endpoint/POST: a committed event survives the agent killing this hook.
+    'orca_hook_commit && exit 0',
     // Why: endpoint file holds the live port/token; PTYs that outlive an Orca restart carry stale env, so source it to reach the new server (else PTY env).
     // Why: silence the `.` builtin (2>/dev/null + `|| :`) so a TOCTOU race or CRLF-mangled line can't leak shell parse errors into agent transcripts (fail-open).
     'if [ -n "$ORCA_AGENT_HOOK_ENDPOINT" ] && [ -r "$ORCA_AGENT_HOOK_ENDPOINT" ]; then',
     '  . "$ORCA_AGENT_HOOK_ENDPOINT" 2>/dev/null || :',
     'fi',
     'if [ -z "$ORCA_AGENT_HOOK_PORT" ] || [ -z "$ORCA_AGENT_HOOK_TOKEN" ] || [ -z "$ORCA_PANE_KEY" ]; then',
-    '  spool_hook_event',
     '  exit 0',
     'fi',
     // Why: worktreeId embeds a filesystem path, so hand-building JSON in shell is unsafe (quotes/newlines); post as form fields instead.
@@ -78,7 +79,7 @@ function getManagedScript(target: 'local' | 'posix' = 'local'): string {
     '  --data-urlencode "worktreeId=${ORCA_WORKTREE_ID}" \\',
     '  --data-urlencode "env=${ORCA_AGENT_HOOK_ENV}" \\',
     '  --data-urlencode "version=${ORCA_AGENT_HOOK_VERSION}" \\',
-    '  --data-urlencode "payload@-" >/dev/null 2>&1 || spool_hook_event',
+    '  --data-urlencode "payload@-" >/dev/null 2>&1',
     'exit 0',
     ''
   ].join('\n')
@@ -246,3 +247,6 @@ export class DevinHookService {
 }
 
 export const devinHookService = new DevinHookService()
+
+// Test seam: the generated POSIX script, run end to end by hook-inbox-scripts.test.ts.
+export const _internals = { getManagedScript }

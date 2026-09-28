@@ -13,10 +13,10 @@ import {
 } from '../agent-hooks/installer-utils-remote'
 import {
   buildPosixHookPayloadCapture,
-  buildPosixHookSpoolLines,
   buildWindowsHookEnvironmentGuardLines,
   buildWindowsHookStdinDrainEpilogue
 } from '../agent-hooks/hook-stdin-contract'
+import { buildPosixHookInboxCommitLines } from '../agent-hooks/hook-inbox-commit'
 import { buildPosixAgentHookPostCommand } from '../agent-hooks/hook-post-command'
 import {
   applyZCodeManagedHooks,
@@ -57,18 +57,19 @@ function getManagedScript(target: 'local' | 'posix' = 'local'): string {
   return [
     '#!/bin/sh',
     ...buildPosixHookPayloadCapture(),
-    ...buildPosixHookSpoolLines('zcode'),
+    ...buildPosixHookInboxCommitLines('zcode'),
+    // Why before the endpoint/POST: a committed event survives the agent killing this hook.
+    'orca_hook_commit && exit 0',
     // Why: endpoint file holds the live port/token; PTYs that outlive an Orca restart carry stale env, so source it to reach the new server (else PTY env).
     // Why: silence the `.` builtin (2>/dev/null + `|| :`) so a TOCTOU race can't leak shell parse errors into agent transcripts (fail-open).
     'if [ -n "$ORCA_AGENT_HOOK_ENDPOINT" ] && [ -r "$ORCA_AGENT_HOOK_ENDPOINT" ]; then',
     '  . "$ORCA_AGENT_HOOK_ENDPOINT" 2>/dev/null || :',
     'fi',
     'if [ -z "$ORCA_AGENT_HOOK_PORT" ] || [ -z "$ORCA_AGENT_HOOK_TOKEN" ] || [ -z "$ORCA_PANE_KEY" ]; then',
-    '  spool_hook_event',
     '  exit 0',
     'fi',
     ...buildPosixAgentHookPostCommand('zcode').map((line, index, lines) =>
-      index === lines.length - 1 ? `${line} >/dev/null 2>&1 || spool_hook_event` : line
+      index === lines.length - 1 ? `${line} >/dev/null 2>&1` : line
     ),
     'exit 0',
     ''
@@ -189,3 +190,6 @@ export class ZCodeHookService {
 }
 
 export const zcodeHookService = new ZCodeHookService()
+
+// Test seam: the generated POSIX script, run end to end by hook-inbox-scripts.test.ts.
+export const _internals = { getManagedScript }

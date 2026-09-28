@@ -34,13 +34,13 @@ function expectGuardBeforeTransport(
   script: string,
   guard: string,
   response: string,
-  spool?: string
+  commit?: string
 ): void {
   const guardIndex = script.indexOf(guard)
   expect(guardIndex).toBeGreaterThan(script.indexOf(response))
   expect(guardIndex).toBeLessThan(script.indexOf('curl'))
-  if (spool) {
-    expect(guardIndex).toBeLessThan(script.indexOf(spool))
+  if (commit) {
+    expect(guardIndex).toBeLessThan(script.indexOf(commit))
   }
 }
 
@@ -88,12 +88,22 @@ function runPosixHook(
 }
 
 describe('Grok vendor hook replay guard', () => {
-  it('precedes spooling and HTTP in the generated POSIX Claude and Cursor scripts', () => {
+  it('precedes the inbox commit and HTTP in the generated POSIX Claude and Cursor scripts', () => {
     const claude = getClaudeManagedScript('posix', CLAUDE_SCRIPT_OPTIONS)
     const cursor = getCursorManagedScript('posix')
 
-    expectGuardBeforeTransport(claude, POSIX_GROK_GUARD, 'printf "{}\\n"', 'spool_hook_event')
-    expectGuardBeforeTransport(cursor, POSIX_GROK_GUARD, 'printf "{}\\n"', 'spool_hook_event')
+    expectGuardBeforeTransport(
+      claude,
+      POSIX_GROK_GUARD,
+      'printf "{}\\n"',
+      'orca_hook_commit && exit 0'
+    )
+    expectGuardBeforeTransport(
+      cursor,
+      POSIX_GROK_GUARD,
+      'printf "{}\\n"',
+      'orca_hook_commit && exit 0'
+    )
   })
 
   it('precedes HTTP while preserving fail-open output in generated Windows scripts', () => {

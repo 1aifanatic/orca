@@ -1,15 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
   appendFileSync,
-  chmodSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
-  readdirSync,
   statSync,
   writeFileSync
 } from 'node:fs'
-import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -21,20 +18,11 @@ import {
 } from '../../shared/agent-hook-spool'
 import { AgentHookServer, _internals } from './server'
 import { buildBody } from './server.test-fixtures'
-import { _internals as codexInternals } from '../codex/hook-service'
 import { makePaneKey } from '../../shared/stable-pane-id'
-import { buildPosixHookSpoolLines } from './hook-stdin-contract'
 
+// The spool is what hook scripts from an older Orca still write when a POST fails; current
+// scripts commit to the hook inbox instead (hook-inbox-*.test.ts).
 describe('agent hook spool', () => {
-  it('appends each record with one printf write to prevent concurrent field interleaving', () => {
-    const spoolLine = buildPosixHookSpoolLines('codex').find((line) =>
-      line.includes('>> "$spool_file"')
-    )
-    expect(spoolLine).toBeDefined()
-    expect(spoolLine!.match(/printf/g)).toHaveLength(1)
-    expect(spoolLine).toContain('"$spool_now" "$payload"')
-  })
-
   it('drops torn lines while retaining complete records', () => {
     const dir = mkdtempSync(join(tmpdir(), 'orca-spool-'))
     const file = join(dir, 'pane.jsonl')
@@ -217,36 +205,6 @@ describe('agent hook spool', () => {
       first.stop()
       second.stop()
     }
-  })
-
-  it('spools when the endpoint is present but the receiver is unavailable', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'orca-spool-failure-'))
-    const endpointDir = join(dir, 'agent-hooks')
-    mkdirSync(endpointDir, { recursive: true })
-    const endpoint = join(endpointDir, 'endpoint.env')
-    writeFileSync(
-      endpoint,
-      'ORCA_AGENT_HOOK_PORT=9\nORCA_AGENT_HOOK_TOKEN=stale\nORCA_AGENT_HOOK_ENV=production\nORCA_AGENT_HOOK_VERSION=1\n'
-    )
-    const script = join(dir, 'codex-hook.sh')
-    writeFileSync(script, codexInternals.getManagedScript('posix'))
-    chmodSync(script, 0o755)
-    execFileSync('/bin/sh', [script], {
-      input: '{"hook_event_name":"SubagentStop","agent_id":"child"}\n',
-      env: {
-        ...process.env,
-        ORCA_AGENT_HOOK_ENDPOINT: endpoint,
-        ORCA_PANE_KEY: 'tab-failure:0',
-        ORCA_TAB_ID: 'tab-failure',
-        ORCA_AGENT_LAUNCH_TOKEN: 'generation-token'
-      },
-      timeout: 5000
-    })
-    const spoolFiles = readdirSync(join(endpointDir, 'spool'))
-    expect(spoolFiles).toHaveLength(1)
-    expect(readFileSync(join(endpointDir, 'spool', spoolFiles[0]!), 'utf8')).toContain(
-      'SubagentStop'
-    )
   })
 
   it('does not mark a non-terminal downtime replay as runtime-observed', async () => {

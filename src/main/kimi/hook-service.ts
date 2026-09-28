@@ -27,10 +27,8 @@ import {
   writeManagedScriptRemote,
   writeTextFileRemoteAtomic
 } from '../agent-hooks/installer-utils-remote'
-import {
-  buildPosixHookPayloadCapture,
-  buildPosixHookSpoolLines
-} from '../agent-hooks/hook-stdin-contract'
+import { buildPosixHookPayloadCapture } from '../agent-hooks/hook-stdin-contract'
+import { buildPosixHookInboxCommitLines } from '../agent-hooks/hook-inbox-commit'
 import {
   applyManagedKimiHooks,
   KIMI_HOOK_EVENTS,
@@ -81,23 +79,19 @@ function getManagedScript(target: 'local' | 'posix' = 'local'): string {
     '  . "$ORCA_AGENT_HOOK_ENDPOINT" 2>/dev/null || :',
     'fi',
     'if [ -z "$ORCA_AGENT_HOOK_PORT" ] || [ -z "$ORCA_AGENT_HOOK_TOKEN" ] || [ -z "$ORCA_PANE_KEY" ]; then',
-    // Why: the windows-local ordering runs this guard before stdin is read and before
-    // spool_hook_event is defined, so only the payload-first ordering may spool here.
-    ...(windowsLocal ? [] : ['  spool_hook_event']),
     '  exit 0',
     'fi'
   ]
   return [
     '#!/bin/sh',
     ...(windowsLocal
-      ? [
-          ...endpointRefreshAndGuard,
-          ...buildPosixHookPayloadCapture(),
-          ...buildPosixHookSpoolLines('kimi')
-        ]
+      ? // Why no inbox commit: Git Bash sources endpoint.cmd, which never advertises it here.
+        [...endpointRefreshAndGuard, ...buildPosixHookPayloadCapture()]
       : [
           ...buildPosixHookPayloadCapture(),
-          ...buildPosixHookSpoolLines('kimi'),
+          ...buildPosixHookInboxCommitLines('kimi'),
+          // Why before the endpoint/POST: a committed event survives the agent killing this hook.
+          'orca_hook_commit && exit 0',
           ...endpointRefreshAndGuard
         ]),
     // Why: worktreeId embeds a filesystem path, so hand-building JSON in POSIX
@@ -116,7 +110,7 @@ function getManagedScript(target: 'local' | 'posix' = 'local'): string {
     '  --data-urlencode "worktreeId=${ORCA_WORKTREE_ID}" \\',
     '  --data-urlencode "env=${ORCA_AGENT_HOOK_ENV}" \\',
     '  --data-urlencode "version=${ORCA_AGENT_HOOK_VERSION}" \\',
-    '  --data-urlencode "payload@-" >/dev/null 2>&1 || spool_hook_event',
+    '  --data-urlencode "payload@-" >/dev/null 2>&1',
     'exit 0',
     ''
   ].join('\n')
@@ -296,3 +290,6 @@ export class KimiHookService {
 }
 
 export const kimiHookService = new KimiHookService()
+
+// Test seam: the generated POSIX script, run end to end by hook-inbox-scripts.test.ts.
+export const _internals = { getManagedScript }

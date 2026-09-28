@@ -21,7 +21,7 @@ import type { AgentHookEventPayload } from '../../../shared/agent-hook-listener/
 import type { AgentHookSource } from '../../../shared/agent-hook-relay'
 import type { AgentStatusClearIpcPayload } from '../../../shared/agent-status-types'
 import type { LegacyPaneKeyAliasEntry } from '../../../shared/persisted-state-types'
-import type { SpoolRecord } from '../../../shared/agent-hook-spool'
+import type { AgentHookInbox } from '../../../shared/agent-hook-inbox'
 import { createAgentStatusStore, type AgentStatusStore } from '../../../shared/agent-status-store'
 import { AGENT_STATUS_2A_CURRENT_PRODUCER_MODE } from '../../../shared/agent-status-legacy-adapter'
 import type { AgentStatusStructuredSessionSubject } from '../../../shared/agent-status-subject'
@@ -158,8 +158,17 @@ export abstract class AgentHookServerState {
     createAgentStatusAuthorityId('main-agent-hooks')
   )
 
+  protected hookInbox: AgentHookInbox | null = null
+
+  /** Applies every hook event already committed to the inbox. Runs first wherever the server
+   *  decides a pane's fate from outside the hook stream (process exit, retirement, inference), so
+   *  an event committed before that moment still lands before it — the order the blocking POST
+   *  used to guarantee. */
+  protected absorbCommittedHookRecords(): void {
+    this.hookInbox?.drain()
+  }
+
   protected abstract withdrawReplayObservation(paneKey: string): void
-  protected abstract ingestSpoolRecord(record: SpoolRecord): void
   protected abstract emitPaneStatusCleared(clear: AgentStatusClearIpcPayload): void
   protected abstract buildStatusChangeNotification(): {
     statuses: AgentHookStatusChangeEntry[]

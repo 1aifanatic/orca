@@ -1,10 +1,10 @@
 import {
   buildPosixHookPayloadCapture,
-  buildPosixHookSpoolLines,
   buildWindowsHookEnvironmentGuardLines,
   buildWindowsHookStdinDrainEpilogue,
   WINDOWS_HOOK_STDIN_DRAIN_COMMAND
 } from '../agent-hooks/hook-stdin-contract'
+import { buildPosixHookInboxCommitLines } from '../agent-hooks/hook-inbox-commit'
 import { buildWindowsAgentHookPostCommand } from '../agent-hooks/installer-utils'
 import { ANTIGRAVITY_PRE_TOOL_USE_DECISION } from './hook-events'
 
@@ -56,12 +56,16 @@ export function getManagedScript(target: 'local' | 'posix' = 'local'): string {
     // Why: some Antigravity events arrive without stdin but still need a
     // status post, so the shared capture maps empty input to an object.
     ...buildPosixHookPayloadCapture('empty-object'),
-    ...buildPosixHookSpoolLines('antigravity', 'ORCA_ANTIGRAVITY_EVENT'),
+    ...buildPosixHookInboxCommitLines('antigravity', {
+      extraFields: [{ key: 'hook_event_name', value: '${ORCA_ANTIGRAVITY_EVENT:-}' }],
+      eventNameVar: 'ORCA_ANTIGRAVITY_EVENT'
+    }),
+    // Why before the endpoint/POST: a committed event survives the agent killing this hook.
+    'orca_hook_commit && exit 0',
     'if [ -n "$ORCA_AGENT_HOOK_ENDPOINT" ] && [ -r "$ORCA_AGENT_HOOK_ENDPOINT" ]; then',
     '  . "$ORCA_AGENT_HOOK_ENDPOINT" 2>/dev/null || :',
     'fi',
     'if [ -z "$ORCA_AGENT_HOOK_PORT" ] || [ -z "$ORCA_AGENT_HOOK_TOKEN" ] || [ -z "$ORCA_PANE_KEY" ]; then',
-    '  spool_hook_event',
     '  exit 0',
     'fi',
     // Timeout caps best-effort hook posts if the local listener stalls.
@@ -79,7 +83,7 @@ export function getManagedScript(target: 'local' | 'posix' = 'local'): string {
     '  --data-urlencode "env=${ORCA_AGENT_HOOK_ENV}" \\',
     '  --data-urlencode "version=${ORCA_AGENT_HOOK_VERSION}" \\',
     '  --data-urlencode "hook_event_name=${ORCA_ANTIGRAVITY_EVENT}" \\',
-    '  --data-urlencode "payload@-" >/dev/null 2>&1 || spool_hook_event',
+    '  --data-urlencode "payload@-" >/dev/null 2>&1',
     'exit 0',
     ''
   ].join('\n')

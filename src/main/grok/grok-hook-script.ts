@@ -5,9 +5,9 @@ import {
 } from '../agent-hooks/installer-utils'
 import {
   buildPosixHookPayloadCapture,
-  buildPosixHookSpoolLines,
   POSIX_HOOK_JSON_STDIN
 } from '../agent-hooks/hook-stdin-contract'
+import { buildPosixHookInboxCommitLines } from '../agent-hooks/hook-inbox-commit'
 import {
   buildWindowsGrokHookScript,
   GROK_HOME_ENVELOPE_MAX_LENGTH
@@ -37,17 +37,20 @@ export function getGrokManagedScript(target: 'local' | 'posix' = 'local'): strin
   return [
     '#!/bin/sh',
     ...buildPosixHookPayloadCapture('exit', POSIX_HOOK_JSON_STDIN),
-    ...buildPosixHookSpoolLines('grok'),
+    'grok_home=',
+    `if [ -n "\${GROK_HOME:-}" ] && [ "\${#GROK_HOME}" -le ${GROK_HOME_ENVELOPE_MAX_LENGTH} ]; then`,
+    '  grok_home=$GROK_HOME',
+    'fi',
+    ...buildPosixHookInboxCommitLines('grok', {
+      extraFields: [{ key: 'grokHome', value: '$grok_home' }]
+    }),
+    // Why before the endpoint/POST: a committed event survives the agent killing this hook.
+    'orca_hook_commit && exit 0',
     'if [ -n "$ORCA_AGENT_HOOK_ENDPOINT" ] && [ -r "$ORCA_AGENT_HOOK_ENDPOINT" ]; then',
     '  . "$ORCA_AGENT_HOOK_ENDPOINT" 2>/dev/null || :',
     'fi',
     'if [ -z "$ORCA_AGENT_HOOK_PORT" ] || [ -z "$ORCA_AGENT_HOOK_TOKEN" ] || [ -z "$ORCA_PANE_KEY" ]; then',
-    '  spool_hook_event',
     '  exit 0',
-    'fi',
-    'grok_home=',
-    `if [ -n "\${GROK_HOME:-}" ] && [ "\${#GROK_HOME}" -le ${GROK_HOME_ENVELOPE_MAX_LENGTH} ]; then`,
-    '  grok_home=$GROK_HOME',
     'fi',
     'printf \'%s\' "$payload" | curl -sS -X POST "http://127.0.0.1:${ORCA_AGENT_HOOK_PORT}/hook/grok" \\',
     '  --connect-timeout 0.5 --max-time 1.5 \\',
@@ -60,7 +63,7 @@ export function getGrokManagedScript(target: 'local' | 'posix' = 'local'): strin
     '  --data-urlencode "env=${ORCA_AGENT_HOOK_ENV}" \\',
     '  --data-urlencode "version=${ORCA_AGENT_HOOK_VERSION}" \\',
     '  --data-urlencode "grokHome=${grok_home}" \\',
-    '  --data-urlencode "payload@-" >/dev/null 2>&1 || spool_hook_event',
+    '  --data-urlencode "payload@-" >/dev/null 2>&1',
     'exit 0',
     ''
   ].join('\n')

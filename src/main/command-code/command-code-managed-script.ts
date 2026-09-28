@@ -1,10 +1,10 @@
 import { buildWindowsAgentHookPostCommand } from '../agent-hooks/installer-utils'
 import {
   buildPosixHookPayloadCapture,
-  buildPosixHookSpoolLines,
   buildWindowsHookEnvironmentGuardLines,
   buildWindowsHookStdinDrainEpilogue
 } from '../agent-hooks/hook-stdin-contract'
+import { buildPosixHookInboxCommitLines } from '../agent-hooks/hook-inbox-commit'
 
 export type CommandCodeManagedScriptTarget = 'local' | 'posix'
 
@@ -37,7 +37,10 @@ export function buildCommandCodeManagedScript(
   return [
     '#!/bin/sh',
     ...buildPosixHookPayloadCapture(),
-    ...buildPosixHookSpoolLines('command-code'),
+    ...buildPosixHookInboxCommitLines('command-code'),
+    // Why first: the env recovery below forks per ancestor; commit before it when the pane env
+    // survived, and again after recovery when it did not.
+    'orca_hook_commit && exit 0',
     '__orca_read_ancestor_var() {',
     '  __orca_name="$1"',
     '  __orca_pid="${PPID:-}"',
@@ -115,13 +118,14 @@ export function buildCommandCodeManagedScript(
     '    [ -r "$endpoint" ] || continue',
     '    endpoint_port=$(sed -n "s/^ORCA_AGENT_HOOK_PORT=//p" "$endpoint" | head -n 1)',
     '    if [ "$endpoint_port" = "$ORCA_AGENT_HOOK_PORT" ]; then',
+    '      ORCA_AGENT_HOOK_ENDPOINT=${ORCA_AGENT_HOOK_ENDPOINT:-$endpoint}',
     '      __orca_fill_from_endpoint_file "$endpoint"',
     '      break',
     '    fi',
     '  done',
     'fi',
+    'orca_hook_commit && exit 0',
     'if [ -z "$ORCA_AGENT_HOOK_PORT" ] || [ -z "$ORCA_AGENT_HOOK_TOKEN" ] || [ -z "$ORCA_PANE_KEY" ]; then',
-    '  spool_hook_event',
     '  exit 0',
     'fi',
     // Timeout caps best-effort hook posts if the local listener stalls.
@@ -138,7 +142,7 @@ export function buildCommandCodeManagedScript(
     '  --data-urlencode "worktreeId=${ORCA_WORKTREE_ID}" \\',
     '  --data-urlencode "env=${ORCA_AGENT_HOOK_ENV}" \\',
     '  --data-urlencode "version=${ORCA_AGENT_HOOK_VERSION}" \\',
-    '  --data-urlencode "payload@-" >/dev/null 2>&1 || spool_hook_event',
+    '  --data-urlencode "payload@-" >/dev/null 2>&1',
     'exit 0',
     ''
   ].join('\n')

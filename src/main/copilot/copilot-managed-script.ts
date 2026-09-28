@@ -1,9 +1,9 @@
 import { getSharedManagedScriptPath } from '../agent-hooks/installer-utils'
 import {
   buildPosixHookPayloadCapture,
-  buildPosixHookSpoolLines,
   WINDOWS_POWERSHELL_HOOK_ENVIRONMENT_GUARD
 } from '../agent-hooks/hook-stdin-contract'
+import { buildPosixHookInboxCommitLines } from '../agent-hooks/hook-inbox-commit'
 
 export function getManagedScriptFileName(): string {
   return process.platform === 'win32' ? 'copilot-hook.ps1' : 'copilot-hook.sh'
@@ -57,14 +57,18 @@ export function getManagedScript(target: 'local' | 'posix' = 'local'): string {
     '#!/bin/sh',
     "printf '{}\\n'",
     ...buildPosixHookPayloadCapture(),
-    ...buildPosixHookSpoolLines('copilot'),
+    ...buildPosixHookInboxCommitLines('copilot', {
+      extraFields: [{ key: 'hookEventName', value: '${ORCA_COPILOT_HOOK_EVENT:-}' }],
+      eventNameVar: 'ORCA_COPILOT_HOOK_EVENT'
+    }),
+    // Why before the endpoint/POST: a committed event survives the agent killing this hook.
+    'orca_hook_commit && exit 0',
     // Why: Copilot consumes stdout for some hooks, so stdout is emitted before
     // endpoint refresh, stdin parsing, or the network POST can fail.
     'if [ -n "$ORCA_AGENT_HOOK_ENDPOINT" ] && [ -r "$ORCA_AGENT_HOOK_ENDPOINT" ]; then',
     '  . "$ORCA_AGENT_HOOK_ENDPOINT" 2>/dev/null || :',
     'fi',
     'if [ -z "$ORCA_AGENT_HOOK_PORT" ] || [ -z "$ORCA_AGENT_HOOK_TOKEN" ] || [ -z "$ORCA_PANE_KEY" ]; then',
-    '  spool_hook_event',
     '  exit 0',
     'fi',
     // Why: pipe payload to curl's stdin (`payload@-`) instead of an inline
@@ -81,7 +85,7 @@ export function getManagedScript(target: 'local' | 'posix' = 'local'): string {
     '  --data-urlencode "hookEventName=${ORCA_COPILOT_HOOK_EVENT}" \\',
     '  --data-urlencode "env=${ORCA_AGENT_HOOK_ENV}" \\',
     '  --data-urlencode "version=${ORCA_AGENT_HOOK_VERSION}" \\',
-    '  --data-urlencode "payload@-" >/dev/null 2>&1 || spool_hook_event',
+    '  --data-urlencode "payload@-" >/dev/null 2>&1',
     'exit 0',
     ''
   ].join('\n')

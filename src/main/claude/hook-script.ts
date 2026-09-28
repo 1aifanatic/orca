@@ -7,10 +7,10 @@ import {
   buildPosixGrokReplayGuardLines,
   buildWindowsGrokReplayGuardLines
 } from '../agent-hooks/grok-replay-guard'
+import { buildPosixHookInboxCommitLines } from '../agent-hooks/hook-inbox-commit'
 import {
   WINDOWS_HOOK_STDIN_DRAIN_LABEL,
   buildPosixHookPayloadCapture,
-  buildPosixHookSpoolLines,
   buildWindowsHookEnvironmentGuardLines,
   buildWindowsHookStdinDrainEpilogue
 } from '../agent-hooks/hook-stdin-contract'
@@ -59,7 +59,7 @@ export function getManagedScript(
     'printf "{}\\n"',
     ...buildPosixHookPayloadCapture(),
     ...(options.skipWhenGrokImportsClaude ? buildPosixGrokReplayGuardLines() : []),
-    ...buildPosixHookSpoolLines('claude'),
+    ...buildPosixHookInboxCommitLines('claude'),
     ...(options.skipWhenDevinImportsClaude
       ? [
           // Why: Devin imports .claude hooks by default; skip Orca's managed hook there so status posts stay attributed to Devin.
@@ -73,6 +73,8 @@ export function getManagedScript(
     'if [ -n "$CLAUDE_JOB_DIR" ]; then',
     '  exit 0',
     'fi',
+    // Why before the endpoint/POST: a committed event survives the agent killing this hook.
+    'orca_hook_commit && exit 0',
     // Why: refresh endpoint coordinates for PTYs surviving an Orca restart.
     // Why: suppress parse errors so they neither leak nor trip outer set -e.
     'if [ -n "$ORCA_AGENT_HOOK_ENDPOINT" ] && [ -r "$ORCA_AGENT_HOOK_ENDPOINT" ]; then',
@@ -80,12 +82,11 @@ export function getManagedScript(
     '  . "$ORCA_AGENT_HOOK_ENDPOINT" 2>/dev/null || :',
     'fi',
     'if [ -z "$ORCA_AGENT_HOOK_PORT" ] || [ -z "$ORCA_AGENT_HOOK_TOKEN" ] || [ -z "$ORCA_PANE_KEY" ]; then',
-    '  spool_hook_event',
     '  exit 0',
     'fi',
     // Why: keep full hook JSON off the command line and avoid IDS-friendly URL-encoded paths.
     ...buildPosixAgentHookPostCommand('claude').map((line, index, lines) =>
-      index === lines.length - 1 ? `${line} >/dev/null 2>&1 || spool_hook_event` : line
+      index === lines.length - 1 ? `${line} >/dev/null 2>&1` : line
     ),
     'exit 0',
     ''

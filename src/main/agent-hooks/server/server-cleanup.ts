@@ -123,6 +123,7 @@ export abstract class AgentHookServerCleanup extends AgentHookServerAuthorityFen
     }
   ): number {
     // A certified PTY exit passes no resume identity; a surviving shell may opt into the remnant.
+    this.absorbCommittedHookRecords()
     let cleared = 0
     for (const paneKey of paneKeys) {
       const resolvedPaneKey = this.resolvePaneKeyAlias(paneKey)

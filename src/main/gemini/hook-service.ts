@@ -24,10 +24,10 @@ import {
 } from '../agent-hooks/installer-utils-remote'
 import {
   buildPosixHookPayloadCapture,
-  buildPosixHookSpoolLines,
   buildWindowsHookEnvironmentGuardLines,
   buildWindowsHookStdinDrainEpilogue
 } from '../agent-hooks/hook-stdin-contract'
+import { buildPosixHookInboxCommitLines } from '../agent-hooks/hook-inbox-commit'
 
 // Why: Gemini has no permission-prompt hook (approvals are inline UI), so Orca can't show a waiting state — upstream limitation.
 // Why: Gemini's pre-tool event is BeforeTool, not Claude/Codex's PreToolUse; sweep stale PreToolUse entries below.
@@ -73,13 +73,14 @@ function getManagedScript(target: 'local' | 'posix' = 'local'): string {
     // Why: emit `{}` first so Gemini never stalls parsing stdout, even if the guards below exit early.
     'printf "{}\\n"',
     ...buildPosixHookPayloadCapture(),
-    ...buildPosixHookSpoolLines('gemini'),
+    ...buildPosixHookInboxCommitLines('gemini'),
+    // Why before the endpoint/POST: a committed event survives the agent killing this hook.
+    'orca_hook_commit && exit 0',
     // Why: source refreshes endpoint coords so a PTY surviving an Orca restart keeps reporting. See claude/hook-service.ts.
     'if [ -n "$ORCA_AGENT_HOOK_ENDPOINT" ] && [ -r "$ORCA_AGENT_HOOK_ENDPOINT" ]; then',
     '  . "$ORCA_AGENT_HOOK_ENDPOINT" 2>/dev/null || :',
     'fi',
     'if [ -z "$ORCA_AGENT_HOOK_PORT" ] || [ -z "$ORCA_AGENT_HOOK_TOKEN" ] || [ -z "$ORCA_PANE_KEY" ]; then',
-    '  spool_hook_event',
     '  exit 0',
     'fi',
     // Why: worktreeId embeds a path, so post form fields, not hand-built JSON that breaks on quotes/newlines.
@@ -94,7 +95,7 @@ function getManagedScript(target: 'local' | 'posix' = 'local'): string {
     '  --data-urlencode "worktreeId=${ORCA_WORKTREE_ID}" \\',
     '  --data-urlencode "env=${ORCA_AGENT_HOOK_ENV}" \\',
     '  --data-urlencode "version=${ORCA_AGENT_HOOK_VERSION}" \\',
-    '  --data-urlencode "payload@-" >/dev/null 2>&1 || spool_hook_event',
+    '  --data-urlencode "payload@-" >/dev/null 2>&1',
     'exit 0',
     ''
   ].join('\n')
@@ -309,3 +310,6 @@ export class GeminiHookService {
 }
 
 export const geminiHookService = new GeminiHookService()
+
+// Test seam: the generated POSIX script, run end to end by hook-inbox-scripts.test.ts.
+export const _internals = { getManagedScript }
