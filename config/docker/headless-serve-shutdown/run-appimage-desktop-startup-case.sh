@@ -48,9 +48,12 @@ read_start_ticks() {
   local pid=$1
   [[ -r "/proc/$pid/stat" ]] || return 1
   local stat
-  stat=$(cat "/proc/$pid/stat") || return 1
+  local -a fields
+  stat=$(<"/proc/$pid/stat") || return 1
   # comm is parenthesized and may contain spaces or parentheses.
-  awk '{print $20}' <<< "${stat##*) }"
+  read -r -a fields <<< "${stat##*) }"
+  ((${#fields[@]} >= 20)) || return 1
+  printf '%s\n' "${fields[19]}"
 }
 
 identity_alive() {
@@ -208,8 +211,8 @@ report_launcher_exit() {
 cleanup() {
   local status=$?
   trap - EXIT
-  collect_state_processes TERM
   signal_process_group TERM || true
+  collect_state_processes TERM
   signal_owned_processes TERM || true
   if ! wait_for_owned_exit 10 TERM; then
     signal_process_group KILL || true

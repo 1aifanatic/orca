@@ -12,7 +12,8 @@ const functions = oracle.slice(oracle.indexOf('read_start_ticks()'), oracle.inde
 
 function isRunning(pid) {
   try {
-    return readFileSync(`/proc/${pid}/stat`, 'utf8').split(') ')[1][0] !== 'Z'
+    const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
+    return stat.slice(stat.lastIndexOf(') ') + 2)[0] !== 'Z'
   } catch {
     return false
   }
