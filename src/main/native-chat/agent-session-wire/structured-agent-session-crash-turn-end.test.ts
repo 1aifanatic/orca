@@ -168,10 +168,9 @@ function openHost(overrides: Partial<StructuredAgentSessionHostDeps>): void {
 }
 
 /** What a client reads over the wire. */
-function settledTurn() {
-  return host
-    .journalSnapshot(SESSION)
-    .items.map((item) => readAgentJournalTurn(item.body))
+async function settledTurn() {
+  return (await host.journalSnapshot(SESSION)).items
+    .map((item) => readAgentJournalTurn(item.body))
     .find(Boolean)
 }
 
@@ -197,9 +196,14 @@ describe('a turn a crash cut short mid-tool', () => {
       observedAt: RELAUNCHED_AT,
       lastProvenAliveAt: LAST_RENEWED_AT
     })
-    expect(settledTurn()).toMatchObject({ state: 'interrupted', completedAt: LAST_RENEWED_AT })
+    expect(await settledTurn()).toMatchObject({
+      state: 'interrupted',
+      completedAt: LAST_RENEWED_AT
+    })
     // "Worked for 27s", where the tool call's row alone reads 2s.
-    const [timing] = selectStructuredAgentTurnTimings(host.journalSnapshot(SESSION).items).values()
+    const [timing] = selectStructuredAgentTurnTimings(
+      (await host.journalSnapshot(SESSION)).items
+    ).values()
     expect(completedStructuredAgentTurnSeconds(timing)).toBe(27)
   })
 
@@ -222,7 +226,10 @@ describe('a turn a crash cut short mid-tool', () => {
       kind: 'pid-absent',
       lastProvenAliveAt: LAST_RENEWED_AT
     })
-    expect(settledTurn()).toMatchObject({ state: 'interrupted', completedAt: LAST_RENEWED_AT })
+    expect(await settledTurn()).toMatchObject({
+      state: 'interrupted',
+      completedAt: LAST_RENEWED_AT
+    })
   })
 })
 
@@ -310,7 +317,7 @@ describe('a turn a newer start could not settle before it failed', () => {
     })
     await expect(attach(16)).resolves.toMatchObject({ ok: true })
 
-    expect(settledTurn()).toEqual(UNVERIFIABLE_TURN)
+    expect(await settledTurn()).toEqual(UNVERIFIABLE_TURN)
   })
 
   it('is not judged by the watched exit of a start that failed', async () => {
@@ -326,6 +333,6 @@ describe('a turn a newer start could not settle before it failed', () => {
     await expect(attach(16)).resolves.toMatchObject({ ok: true })
 
     // Main ended it at the failed start, an hour after the crash, with the start's reason.
-    expect(settledTurn()).toEqual(UNVERIFIABLE_TURN)
+    expect(await settledTurn()).toEqual(UNVERIFIABLE_TURN)
   })
 })
