@@ -389,6 +389,12 @@ describe('the notice for every reason a host names', () => {
     ],
     [
       'agent_session_operation_invalid',
+      'clearUnconfirmed',
+      'send',
+      "The last /clear didn't finish. Your message was not sent. Start a new chat to continue."
+    ],
+    [
+      'agent_session_operation_invalid',
       'turnActive',
       'command',
       "The agent is still responding. The command didn't run. Wait for the agent to finish responding, or stop it."

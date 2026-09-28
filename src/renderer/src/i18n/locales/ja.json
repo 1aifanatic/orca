@@ -17364,6 +17364,7 @@
         "recordFailed": "Orca はこのチャットの履歴に記録できませんでした。",
         "conversationCleared": "この会話はクリアされました。",
         "openCurrentConversation": "続けるには、現在の会話を開いてください。",
+        "clearUnfinished": "前回の /clear は完了しませんでした。",
         "commandRunning": "/compact または /clear がまだ実行中です。",
         "waitForCommand": "/compact または /clear が終わるまでお待ちください。",
         "agentStarting": "Agent はまだ起動中です。",

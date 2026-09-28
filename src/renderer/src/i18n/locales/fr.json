@@ -17428,6 +17428,7 @@
         "recordFailed": "Orca n'a pas pu l'enregistrer dans l'historique de ce chat.",
         "conversationCleared": "Cette conversation a été effacée.",
         "openCurrentConversation": "Ouvrez la conversation actuelle pour continuer.",
+        "clearUnfinished": "Le dernier /clear ne s'est pas terminé.",
         "commandRunning": "Un /compact ou /clear est encore en cours.",
         "waitForCommand": "Attendez la fin du /compact ou /clear.",
         "agentStarting": "L'agent est encore en cours de démarrage.",

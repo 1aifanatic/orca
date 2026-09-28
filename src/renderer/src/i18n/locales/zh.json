@@ -17329,6 +17329,7 @@
         "recordFailed": "Orca 无法将其记录到此聊天的历史记录中。",
         "conversationCleared": "此对话已被清除。",
         "openCurrentConversation": "请打开当前对话以继续。",
+        "clearUnfinished": "上一次 /clear 未完成。",
         "commandRunning": "/compact 或 /clear 仍在运行。",
         "waitForCommand": "请等待 /compact 或 /clear 完成。",
         "agentStarting": "智能体仍在启动。",

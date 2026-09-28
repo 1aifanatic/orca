@@ -50,6 +50,7 @@ export const AGENT_SESSION_WRITE_NOTICE_COPY = {
   recordFailed: "Orca couldn't record it in this chat's history.",
   conversationCleared: 'This conversation has been cleared.',
   openCurrentConversation: 'Open the current conversation to continue.',
+  clearUnfinished: "The last /clear didn't finish.",
   commandRunning: 'A /compact or /clear is still running.',
   waitForCommand: 'Wait for the /compact or /clear to finish.',
   agentStarting: 'The agent is still starting.',
@@ -163,6 +164,8 @@ const REASON_WORDS = {
       'goElsewhere',
       'openCurrentConversation'
     ),
+    // Nothing settles an unfinished /clear yet, so only a new chat continues.
+    clearUnconfirmed: causeWords('clearUnfinished', 'goElsewhere', 'startNewChat'),
     // A /clear or /compact whose outcome the host never settled; only the host resolves it.
     conversationCommandUnconfirmed: codeWords('hostFinding'),
     conversationCommandInFlight: causeWords('commandRunning', 'wait', 'waitForCommand'),

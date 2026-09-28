@@ -24,6 +24,8 @@ export const AGENT_SESSION_REFUSAL_REASONS = {
     'journalWriteFailed',
     // The conversation's state
     'conversationCleared',
+    /** A /clear that never committed; its replacement conversation may not exist. */
+    'clearUnconfirmed',
     'conversationCommandUnconfirmed',
     'conversationCommandInFlight',
     'handoffInFlight',

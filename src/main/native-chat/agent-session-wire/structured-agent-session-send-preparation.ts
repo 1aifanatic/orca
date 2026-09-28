@@ -35,17 +35,25 @@ export function structuredAgentSessionSendBlock(
   ) {
     return {
       ok: false,
-      refusal: command.replacementSessionId
-        ? refuse(
-            'agent_session_operation_invalid',
-            { reason: 'conversationCleared' },
-            'This conversation has been cleared. Use the current conversation.'
-          )
-        : refuse(
-            'agent_session_operation_invalid',
-            { reason: 'conversationCommandUnconfirmed' },
-            'The conversation operation is unconfirmed.'
-          )
+      refusal:
+        command.phase === 'committed' && command.replacementSessionId
+          ? refuse(
+              'agent_session_operation_invalid',
+              { reason: 'conversationCleared' },
+              'This conversation has been cleared. Use the current conversation.'
+            )
+          : // A prepared /clear names its replacement before that conversation exists.
+            command.command === 'clear'
+            ? refuse(
+                'agent_session_operation_invalid',
+                { reason: 'clearUnconfirmed' },
+                "The last /clear didn't finish. Start a new chat to continue."
+              )
+            : refuse(
+                'agent_session_operation_invalid',
+                { reason: 'conversationCommandUnconfirmed' },
+                'The conversation operation is unconfirmed.'
+              )
     }
   }
   return null

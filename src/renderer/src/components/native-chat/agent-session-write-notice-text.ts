@@ -49,6 +49,8 @@ const SENTENCES: Record<AgentSessionWriteNoticeSentence, () => string> = {
       'components.native-chat.writeNotice.openCurrentConversation',
       COPY.openCurrentConversation
     ),
+  clearUnfinished: () =>
+    translate('components.native-chat.writeNotice.clearUnfinished', COPY.clearUnfinished),
   commandRunning: () =>
     translate('components.native-chat.writeNotice.commandRunning', COPY.commandRunning),
   waitForCommand: () =>
