@@ -2,8 +2,8 @@
 //
 // The fixture is trimmed from captures of the real binary on 0.141.0 (the oldest
 // version Orca exercises) and 0.158.0, with only the upstream provider faked:
-// ids, statuses, `willRetry`, the provider's sentence and `durationMs`, at the
-// host receipt time `t` each frame arrived.
+// statuses, `willRetry`, the provider's sentence and `durationMs`, at the host
+// receipt time `t` each frame arrived. Ids are replaced with synthetic ones.
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -28,7 +28,7 @@ type CapturedFrame = { case: string; t: number; method: string; params: Record<s
 type Row = { key: string; body: AgentJournalItemBody }
 
 const FRAMES: CapturedFrame[] = readFileSync(
-  join(__dirname, '..', '__fixtures__', 'codex-app-server-turn-endings.jsonl'),
+  join(__dirname, '__fixtures__', 'codex-app-server-turn-endings.jsonl'),
   'utf8'
 )
   .split('\n')
