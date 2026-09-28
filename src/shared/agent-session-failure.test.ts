@@ -79,22 +79,6 @@ describe('reading a failure fact', () => {
     ).toEqual({ kind: 'restartFailed', refusal: { code: 'agent_session_conflict' } })
   })
 
-  // Written only by a failed start's one writer; a fact from before it, or from any other writer,
-  // has none.
-  it('keeps the start a rejection came from, and reads a fact without one as before', () => {
-    expect(readAgentSessionFailureFact({ kind: 'startFailed', startKey: 'generation-2' })).toEqual({
-      kind: 'startFailed',
-      startKey: 'generation-2'
-    })
-    expect(readAgentSessionFailureFact({ kind: 'startFailed' })).toEqual({ kind: 'startFailed' })
-    expect(readAgentSessionFailureFact({ kind: 'startFailed', startKey: '' })).toEqual({
-      kind: 'startFailed'
-    })
-    expect(readAgentSessionFailureFact({ kind: 'startFailed', startKey: 7 })).toEqual({
-      kind: 'startFailed'
-    })
-  })
-
   it('drops what a newer host wrote that this build cannot place', () => {
     expect(readAgentSessionFailureFact({ kind: 'futureKind' })).toBeUndefined()
     expect(readAgentSessionFailureFact(undefined)).toBeUndefined()

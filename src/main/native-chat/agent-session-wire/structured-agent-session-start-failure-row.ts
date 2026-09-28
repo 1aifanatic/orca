@@ -7,6 +7,7 @@ import type { AgentJournalItemBody } from '../../../shared/agent-session-journal
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import { structuredAgentSessionStartFailureRowIdentity } from '../../../shared/structured-agent-session-start-failure-row-key'
 import type { JournalLifecycleMutationInput } from '../agent-session-journal/journal-row-builders'
+import type { JournalDispatchRejectionInput } from '../agent-session-journal/journal-store-contracts'
 import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
 import type { StructuredAgentSessionStartFailureWords } from './structured-agent-session-failure-text'
 
@@ -38,17 +39,18 @@ export function structuredAgentSessionStartFailureRowItemId(startKey: string): s
 }
 
 /**
- * What a failed start rejects its messages with, naming the start. Once its row is written, the
- * row's words win: a later report of the same start never puts other words beside it, and never
- * rewrites the row (`written`). A written row whose fact this build cannot read names no start.
+ * What a failed start rejects its messages with, naming the start on each. Once its row is written,
+ * the row's words win: a later report of the same start never puts other words beside it, and never
+ * rewrites the row (`written`). Beside a written row whose fact this build cannot read, the
+ * messages keep their own words and name no start.
  */
 export function structuredAgentSessionStartFailureRejection(
   row: AgentJournalItemBody | null | undefined,
   startKey: string,
   words: StructuredAgentSessionStartFailureWords
-): { words: StructuredAgentSessionStartFailureWords; written: boolean } {
+): { words: JournalDispatchRejectionInput; written: boolean } {
   if (!row) {
-    return { words: { ...words, rejection: { ...words.rejection, startKey } }, written: false }
+    return { words: { ...words, rejectedByStartKey: startKey }, written: false }
   }
   if (row.kind !== 'status' || !row.failure) {
     return { words, written: true }
@@ -57,7 +59,10 @@ export function structuredAgentSessionStartFailureRejection(
   if (!fact || !isSubmissionRejectionFact(fact)) {
     return { words, written: true }
   }
-  return { words: { reason: row.text, rejection: { ...fact, startKey } }, written: true }
+  return {
+    words: { reason: row.text, rejection: fact, rejectedByStartKey: startKey },
+    written: true
+  }
 }
 
 /**
@@ -76,7 +81,7 @@ export async function recordStructuredAgentSessionStartFailure(
     return
   }
   const startKey = failure.startKey ?? oldest
-  // The row and each message it rejects name this start, so a reader pairs them by identity.
+  // Each message it rejects names this start, the row's own key, so a reader pairs them by identity.
   const { words, written } = structuredAgentSessionStartFailureRejection(
     session.journal.itemBody(structuredAgentSessionStartFailureRowItemId(startKey)),
     startKey,

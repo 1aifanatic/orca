@@ -122,9 +122,6 @@ export type AgentSessionFailureFact = {
   attachment?: AgentSessionAttachmentProblem
   /** On `providerRetrying`: why the provider is retrying. */
   retry?: AgentSessionProviderRetry
-  /** Which failed start wrote this, the key of its `start-failure:` row; set only by that start's
-   *  writer, on the row and on every message it rejected. Identity, never part of the situation. */
-  startKey?: string
 }
 
 /** A fact as a row stores it: its kind may be one a newer host added, so only
@@ -222,15 +219,12 @@ export function readAgentSessionFailureFact(value: unknown): AgentSessionFailure
   const refusal = readAgentSessionRefusalReference(value.refusal)
   const attachment = readAttachmentProblem(value.attachment)
   const retry = readProviderRetry(value.retry)
-  const fact = agentSessionFailureFact(value.kind, {
+  return agentSessionFailureFact(value.kind, {
     ...(isProviderDiagnostic(value.detail) ? { detail: value.detail } : {}),
     ...(refusal ? { refusal } : {}),
     ...(attachment ? { attachment } : {}),
     ...(retry ? { retry } : {})
   })
-  return typeof value.startKey === 'string' && value.startKey
-    ? { ...fact, startKey: value.startKey }
-    : fact
 }
 
 /** The provider-authored diagnostic an error carries, set only where it was composed. Follows the

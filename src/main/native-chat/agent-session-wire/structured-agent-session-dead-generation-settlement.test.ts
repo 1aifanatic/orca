@@ -11,7 +11,11 @@ import {
 } from '../../../shared/agent-session-failure'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
-import { structuredAgentSessionStartFailureRow } from './structured-agent-session-start-failure-row'
+import { structuredAgentSessionStartFailure } from './structured-agent-session-failure-text'
+import {
+  recordStructuredAgentSessionStartFailure,
+  structuredAgentSessionStartFailureRow
+} from './structured-agent-session-start-failure-row'
 import {
   captureUnfinishedStructuredAgentSessionWork,
   settleStructuredAgentSessionDeadGeneration,
@@ -319,19 +323,19 @@ describe('dead structured-session generation settlement', () => {
     })
 
     // The sentence is Orca's; the stderr the exit carried rides as a log detail only. The message
-    // and the start's row name the start, the row's own key.
+    // names the start, the row's own key; the row's fact is only the failure.
     const reason = 'The agent stopped before it finished starting. Send your message to try again.'
     const rejection = {
       kind: 'providerStartFailed',
-      detail: { text: 'code 1\nnot signed in', audience: 'log' },
-      startKey: 'generation-1'
+      detail: { text: 'code 1\nnot signed in', audience: 'log' }
     }
     expect(journal.submissions()).toEqual([
       expect.objectContaining({
         clientMessageId: 'client-held',
         dispatchState: 'rejected',
         reason,
-        rejection
+        rejection,
+        rejectedByStartKey: 'generation-1'
       })
     ])
     expect(journal.itemBody(START_ROW)).toEqual({
@@ -347,10 +351,7 @@ describe('dead structured-session generation settlement', () => {
     const first = agentSessionFailureWords(agentSessionFailureFact('notSignedIn'), {
       surface: 'rejection'
     })
-    const row = structuredAgentSessionStartFailureRow('generation-1', {
-      reason: first.reason,
-      rejection: { ...first.rejection, startKey: 'generation-1' }
-    })
+    const row = structuredAgentSessionStartFailureRow('generation-1', first)
     await journal.appendLifecycleBatch({
       settlementId: 'start-failure:generation-1',
       fence: 7,
@@ -381,10 +382,116 @@ describe('dead structured-session generation settlement', () => {
         clientMessageId: 'client-held',
         dispatchState: 'rejected',
         reason: first.reason,
-        rejection: { kind: 'notSignedIn', startKey: 'generation-1' }
+        rejection: { kind: 'notSignedIn' },
+        rejectedByStartKey: 'generation-1'
       })
     ])
     expect(journal.itemBody(START_ROW)).toEqual(written)
+  })
+
+  // The exit and the delivery loop each report one start: the exit what the child was handed, the
+  // loop what is still queued. Whichever reports first writes the start's row; both reject in it.
+  describe('a start that failed with one message handed over and one still queued', () => {
+    const START_KEY = 'generation-1'
+    const loopFailure = structuredAgentSessionStartFailure({
+      failure: agentSessionFailureFact('hostStopped')
+    })
+
+    async function handedOverAndQueued(): Promise<void> {
+      for (const clientMessageId of ['client-handed', 'client-queued']) {
+        await journal.appendSubmission({
+          clientMessageId,
+          payloadFingerprint: 'fingerprint',
+          body: {
+            kind: 'message',
+            role: 'user',
+            blocks: [{ type: 'text', text: clientMessageId }]
+          },
+          fence: 7,
+          handoverRecorded: true
+        })
+      }
+      await journal.resolveDispatch({
+        clientMessageId: 'client-handed',
+        state: 'pending',
+        fence: 7
+      })
+    }
+
+    function settleExit(): Promise<boolean> {
+      return settleStructuredAgentSessionDeadGeneration({
+        journal,
+        sessionId: SESSION,
+        fence: 7,
+        settlementId: `provider-exit:${SESSION}:7:${START_KEY}`,
+        pendingSubmissionReason: 'provider_closed_before_acknowledgement',
+        verdict: { state: 'interrupted', completedAt: 1_000 },
+        exitFailure: agentSessionFailureFact('notSignedIn'),
+        exitedDuringStartup: { generation: START_KEY }
+      })
+    }
+
+    function reportFromLoop(): Promise<void> {
+      return recordStructuredAgentSessionStartFailure(
+        { journal, fence: 7 },
+        { startKey: START_KEY, ...loopFailure }
+      )
+    }
+
+    function startRows(): unknown[] {
+      return journal
+        .snapshot()
+        .items.filter((item) =>
+          item.itemId.startsWith(`orca:${encodeURIComponent('start-failure:')}`)
+        )
+    }
+
+    it.each([
+      ['the exit first', [settleExit, reportFromLoop]],
+      ['the delivery loop first', [reportFromLoop, settleExit]]
+    ] as const)('writes one row and rejects both in its words, %s', async (_order, reports) => {
+      await handedOverAndQueued()
+
+      for (const report of reports) {
+        await report()
+      }
+
+      expect(startRows()).toHaveLength(1)
+      const row = journal.itemBody(START_ROW)
+      if (row?.kind !== 'status') {
+        throw new Error('no start row')
+      }
+      expect(journal.submissions()).toEqual(
+        ['client-handed', 'client-queued'].map((clientMessageId) =>
+          expect.objectContaining({
+            clientMessageId,
+            dispatchState: 'rejected',
+            reason: row.text,
+            rejection: row.failure,
+            rejectedByStartKey: START_KEY
+          })
+        )
+      )
+    })
+
+    // With no generation the loop keys the start by its oldest queued message, not the exit's id,
+    // so the exit leaves the row to it rather than write a second one.
+    it('leaves the row to the delivery loop when the exit has no generation to key it by', async () => {
+      await handedOverAndQueued()
+
+      await settleStructuredAgentSessionDeadGeneration({
+        journal,
+        sessionId: SESSION,
+        fence: 7,
+        settlementId: `provider-exit:${SESSION}:7:null`,
+        pendingSubmissionReason: 'provider_closed_before_acknowledgement',
+        verdict: { state: 'interrupted', completedAt: 1_000 },
+        exitFailure: agentSessionFailureFact('notSignedIn'),
+        exitedDuringStartup: { generation: null }
+      })
+
+      expect(startRows()).toEqual([])
+    })
   })
 
   it("keeps a subagent's settled rows the subagent's, in one batch and after a reopen", async () => {

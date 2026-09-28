@@ -386,6 +386,9 @@ export type AgentJournalSubmission = {
   reason: string | null
   /** On `rejected`, why, typed; absent on rows from older hosts. */
   rejection?: UnreadAgentSessionFailureFact
+  /** On `rejected` by a failed start: that start's key, the one its `start-failure:` row is keyed
+   *  by. Set only by the start's own writer; absent on every other rejection and on older hosts. */
+  rejectedByStartKey?: string
   submittedAt: number
   resolvedAt: number | null
   /** Set when crash reconciliation resolved the dispatch, not the provider. A live

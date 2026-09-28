@@ -1,8 +1,8 @@
-import type { AgentJournalDispatchRejection } from '../../../shared/agent-session-failure-words'
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import { DISPATCH_DOUBT_HOST_RESTARTED } from './journal-dispatch-doubt-reasons'
 import type { AgentSessionJournal } from './journal-store'
+import type { JournalDispatchRejectionInput } from './journal-store-contracts'
 
 /** Settles every submission a process fact left unanswerable. Doubt is never
  *  proof of non-delivery, so nothing here ever becomes re-deliverable. A queued
@@ -41,7 +41,7 @@ export async function markJournalPendingSubmissionsUnknown(
 export async function rejectJournalPendingSubmissions(
   journal: AgentSessionJournal,
   fence: number,
-  rejection: AgentJournalDispatchRejection
+  rejection: JournalDispatchRejectionInput
 ): Promise<string[]> {
   const unwritten = journal
     .submissions()
@@ -67,7 +67,7 @@ export async function rejectJournalPendingSubmissions(
 export async function rejectJournalQueuedSubmissions(
   journal: AgentSessionJournal,
   fence: number,
-  rejection: AgentJournalDispatchRejection,
+  rejection: JournalDispatchRejectionInput,
   which: (submission: AgentJournalSubmission) => boolean = () => true
 ): Promise<string[]> {
   const queued = journal

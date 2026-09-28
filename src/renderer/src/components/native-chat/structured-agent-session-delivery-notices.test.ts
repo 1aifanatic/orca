@@ -324,14 +324,13 @@ describe('the notice on each message that did not go through', () => {
     expect(texts([entry('queued'), entry('sending', { state: 'dispatching' })])).toEqual({})
   })
 
-  // Matched on the start the rejection names and a loaded row keyed by it, never on either sentence
-  // or on the failure the two state.
+  // Matched on the start the host recorded as rejecting the message and a loaded row keyed by it,
+  // never on either sentence or on the failure the two state.
   describe('a message rejected by a start whose row already says why', () => {
     const startFailed: AgentSessionFailureFact = {
       kind: 'startFailed',
       refusal: { code: 'agent_session_identity_required', details: { reason: 'recordMissing' } }
     }
-    const byStart = (startKey: string): AgentSessionFailureFact => ({ ...startFailed, startKey })
     const rejected = (id: string, fact: AgentSessionFailureFact) =>
       entry(id, {
         state: 'rejected',
@@ -341,7 +340,11 @@ describe('the notice on each message that did not go through', () => {
           rejection: { kind: fact.kind }
         }
       })
-    const recorded = (id: string, fact: AgentSessionFailureFact): AgentJournalSubmission => ({
+    const recorded = (
+      id: string,
+      fact: AgentSessionFailureFact,
+      rejectedByStartKey?: string
+    ): AgentJournalSubmission => ({
       clientMessageId: id,
       fence: 1,
       payloadFingerprint: id,
@@ -350,7 +353,8 @@ describe('the notice on each message that did not go through', () => {
       reason: 'Written by the host.',
       rejection: fact,
       submittedAt: 1,
-      resolvedAt: 1
+      resolvedAt: 1,
+      ...(rejectedByStartKey ? { rejectedByStartKey } : {})
     })
     const statusRow = (itemId: string, fact: AgentSessionFailureFact): AgentJournalRenderItem => ({
       itemId,
@@ -370,7 +374,7 @@ describe('the notice on each message that did not go through', () => {
     it('reads only the start-failure rows', () => {
       expect(
         structuredAgentSessionStartFailureKeys([
-          statusRow(startRowKey('gen'), byStart('gen')),
+          statusRow(startRowKey('gen'), startFailed),
           statusRow(agentJournalSubmissionKey('exit-row'), { kind: 'providerExited' })
         ])
       ).toEqual(['gen'])
@@ -382,7 +386,7 @@ describe('the notice on each message that did not go through', () => {
         refusal: { code: 'agent_session_conflict', details: { reason: 'claimConflicted' } }
       }
       const keys = structuredAgentSessionStartFailureKeys([
-        statusRow(startRowKey('gen'), byStart('gen'))
+        statusRow(startRowKey('gen'), startFailed)
       ])
       expect(
         texts(
@@ -393,8 +397,8 @@ describe('the notice on each message that did not go through', () => {
           ],
           null,
           [
-            recorded('first', byStart('gen')),
-            recorded('second', byStart('gen')),
+            recorded('first', startFailed, 'gen'),
+            recorded('second', startFailed, 'gen'),
             recorded('other', otherRefusal)
           ],
           keys
@@ -414,7 +418,7 @@ describe('the notice on each message that did not go through', () => {
         texts(
           [rejected('unnamed', startFailed), rejected('elsewhere', startFailed)],
           null,
-          [recorded('unnamed', startFailed), recorded('elsewhere', byStart('earlier'))],
+          [recorded('unnamed', startFailed), recorded('elsewhere', startFailed, 'earlier')],
           ['gen']
         )
       ).toEqual({
@@ -428,7 +432,7 @@ describe('the notice on each message that did not go through', () => {
         [agentJournalSubmissionKey('first')]: 'Written by the host.'
       })
       expect(
-        texts([rejected('first', startFailed)], null, [recorded('first', byStart('gen'))], [])
+        texts([rejected('first', startFailed)], null, [recorded('first', startFailed, 'gen')], [])
       ).toEqual({ [agentJournalSubmissionKey('first')]: shown })
     })
   })

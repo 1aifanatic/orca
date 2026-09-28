@@ -219,16 +219,22 @@ describe('a start whose child cannot take the message it was handed', () => {
     )
     const firstRejected = await submission(first)
     const secondRejected = await submission(second)
-    // Nothing saw the provider stop when the handover failed; the row names the start it keys.
-    expect(firstRejected?.rejection).toEqual({ kind: 'startFailed', startKey: 'generation-2' })
-    expect(row?.body).toMatchObject({
+    // Nothing saw the provider stop when the handover failed; each message names the start the row
+    // is keyed by.
+    expect(firstRejected).toMatchObject({
+      rejection: { kind: 'startFailed' },
+      rejectedByStartKey: 'generation-2'
+    })
+    expect(row?.body).toEqual({
       kind: 'status',
       text: firstRejected?.reason,
+      tone: 'error',
       failure: firstRejected?.rejection
     })
     expect(secondRejected).toMatchObject({
       reason: firstRejected?.reason,
-      rejection: firstRejected?.rejection
+      rejection: firstRejected?.rejection,
+      rejectedByStartKey: 'generation-2'
     })
     expect(publishedStartRows()).toEqual([firstRejected?.reason])
     // One start failed, so one handover tried it.

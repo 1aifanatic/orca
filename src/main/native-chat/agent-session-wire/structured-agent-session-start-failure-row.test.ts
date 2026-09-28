@@ -47,12 +47,7 @@ it("rejects a later report's messages in the start's row's words, leaving the ro
     settlementId: `start-failure:${START_KEY}`,
     fence: 7,
     recovered: true,
-    mutations: [
-      structuredAgentSessionStartFailureRow(START_KEY, {
-        reason: first.reason,
-        rejection: { ...first.rejection, startKey: START_KEY }
-      })
-    ]
+    mutations: [structuredAgentSessionStartFailureRow(START_KEY, first)]
   })
   const row = journal.itemBody(structuredAgentSessionStartFailureRowItemId(START_KEY))
   await journal.appendSubmission({
@@ -75,7 +70,8 @@ it("rejects a later report's messages in the start's row's words, leaving the ro
       clientMessageId: 'client-queued',
       dispatchState: 'rejected',
       reason: first.reason,
-      rejection: { kind: 'notSignedIn', startKey: START_KEY }
+      rejection: { kind: 'notSignedIn' },
+      rejectedByStartKey: START_KEY
     })
   ])
   expect(journal.itemBody(structuredAgentSessionStartFailureRowItemId(START_KEY))).toEqual(row)

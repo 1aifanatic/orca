@@ -146,18 +146,22 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
               input.failureTextContext
             )
           )
-    await (startupFailure
+    const rejected = await (startupFailure
       ? input.journal.rejectPendingSubmissions(input.fence, startupFailure.words)
       : input.journal.markPendingSubmissionsUnknown(input.fence, input.pendingSubmissionReason))
     const items = input.journal.snapshot().items
     const mutations: JournalLifecycleMutationInput[] = []
     if (showUnexpectedExitOutcome && startKey !== null && startupFailure) {
-      // A start a message waited on is the delivery loop's to record, before or after this exit,
-      // in the words it rejected the message with; this row is for a command, goal or rewind start.
-      // A row already written stays: rejected is terminal, so its words are not reworded.
-      const recordedByDeliveryLoop =
-        input.journal.submissions?.().some(isQueuedAgentJournalSubmission) || startupFailure.written
-      if (!recordedByDeliveryLoop) {
+      // A row already written stays: rejected is terminal, so its words are not reworded. A start
+      // that rejected what it was handed writes its row now, beside those messages; the delivery
+      // loop's later report of it rejects what is queued in the row's words. Only a generation
+      // keys both alike: without one the loop keys by the oldest queued message, so the row for a
+      // start messages still wait on is the loop's. With nothing queued, this is a command, goal or
+      // rewind start, and the row is this settlement's.
+      const queued = input.journal.submissions?.().some(isQueuedAgentJournalSubmission)
+      const keyedLikeDeliveryLoop =
+        rejected.length > 0 && input.exitedDuringStartup?.generation != null
+      if (!startupFailure.written && (!queued || keyedLikeDeliveryLoop)) {
         mutations.push(structuredAgentSessionStartFailureRow(startKey, startupFailure.words))
       }
     } else if (showUnexpectedExitOutcome) {

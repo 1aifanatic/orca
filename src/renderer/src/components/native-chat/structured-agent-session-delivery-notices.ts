@@ -7,8 +7,9 @@
 // words and gets its Retry once the queue moves.
 //
 // A message the host recorded and then rejected is worded from the journal's own fact, found by id;
-// the message keeps only a smaller copy, read when its submission is not loaded. A rejection that
-// names a failed start whose row is loaded says only that it was not sent: the row already says why.
+// the message keeps only a smaller copy, read when its submission is not loaded. A submission the
+// host records as rejected by a failed start whose row is loaded says only that it was not sent: the
+// row already says why.
 
 import { readAgentSessionFailureFact } from '../../../../shared/agent-session-failure'
 import { agentJournalSubmissionKey } from '../../../../shared/agent-session-journal-item-key'
@@ -63,11 +64,12 @@ function deliveryNoticeText(
       'Message was not sent.'
     )
   }
-  const fact = readAgentSessionFailureFact(recorded?.rejection)
   // Only the start's own writer names it, so an equal failure from elsewhere keeps its words.
-  if (entry.state === 'rejected' && fact?.startKey && startFailureKeys.includes(fact.startKey)) {
+  const startKey = recorded?.rejectedByStartKey
+  if (entry.state === 'rejected' && startKey && startFailureKeys.includes(startKey)) {
     return agentSessionWriteNoticeText(agentSessionWriteNotDoneParts('send'))
   }
+  const fact = readAgentSessionFailureFact(recorded?.rejection)
   return agentSessionWriteNoticeText(
     structuredAgentSessionAttemptFailureParts(entry.lastFailure, context, fact)
   )

@@ -1,6 +1,5 @@
 // Append-only journal store for one agent session.
 
-import type { AgentJournalDispatchRejection } from '../../../shared/agent-session-failure-words'
 import { randomUUID } from 'node:crypto'
 import type {
   AgentJournalAcceptanceReceipt,
@@ -47,6 +46,7 @@ import {
 import type {
   AgentSessionJournalOptions,
   JournalAppendResult,
+  JournalDispatchRejectionInput,
   JournalItemAppendOptions,
   JournalLifecycleBatchInput,
   JournalReadSince,
@@ -322,7 +322,7 @@ export class AgentSessionJournal {
   /** Reject unanswered sends after an owner that never proved its start ended: none was written. */
   async rejectPendingSubmissions(
     fence: number,
-    rejection: AgentJournalDispatchRejection
+    rejection: JournalDispatchRejectionInput
   ): Promise<string[]> {
     return rejectJournalPendingSubmissions(this, fence, rejection)
   }
@@ -330,7 +330,7 @@ export class AgentSessionJournal {
   /** Reject sends accepted but never handed over, optionally only those `which` names. */
   async rejectQueuedSubmissions(
     fence: number,
-    rejection: AgentJournalDispatchRejection,
+    rejection: JournalDispatchRejectionInput,
     which?: (submission: AgentJournalSubmission) => boolean
   ): Promise<string[]> {
     return rejectJournalQueuedSubmissions(this, fence, rejection, which)

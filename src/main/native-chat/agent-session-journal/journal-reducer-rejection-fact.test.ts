@@ -10,7 +10,7 @@ import {
   createJournalReducerState,
   type JournalReducerState
 } from './journal-reducer'
-import type { JournalRow } from './journal-row-schema'
+import { parseJournalRow, serializeJournalRow, type JournalRow } from './journal-row-schema'
 
 const EPOCH = 'epoch-1'
 
@@ -96,5 +96,54 @@ describe('a rejected dispatch', () => {
     const malformed = fold([submission, rejected('queueFull')]).submissions.get('cm_1')
     expect(malformed).not.toHaveProperty('rejection')
     expect(malformed && classifyDispatchRejection(malformed)).toMatchObject({ kind: 'queueFull' })
+  })
+
+  // Set only by a failed start's writer; a host from before it, or any other writer, writes none.
+  describe('the start that rejected it', () => {
+    const rejectedBy = (rejectedByStartKey: unknown, state = 'rejected'): JournalRow => {
+      const row: JournalRow = {
+        kind: 'dispatch',
+        clientMessageId: 'cm_1',
+        state: state === 'rejected' ? 'rejected' : 'unknown',
+        providerItemId: null,
+        reason: "Codex couldn't start.",
+        rejection: { kind: 'startFailed' },
+        ...base(2)
+      }
+      // A row read from disk carries whatever the host that wrote it did.
+      return Object.assign(row, { rejectedByStartKey })
+    }
+
+    it('copies it onto a rejected submission, beside the fact it leaves alone', () => {
+      const settled = fold([submission, rejectedBy('generation-2')]).submissions.get('cm_1')
+      expect(settled).toMatchObject({
+        dispatchState: 'rejected',
+        rejection: { kind: 'startFailed' },
+        rejectedByStartKey: 'generation-2'
+      })
+      const unnamed = fold([submission, rejectedBy(undefined)]).submissions.get('cm_1')
+      expect(unnamed).not.toHaveProperty('rejectedByStartKey')
+      // Identity, not the situation: the verdict is the same whichever start it names.
+      expect(settled && classifyDispatchRejection(settled)).toEqual(
+        unnamed && classifyDispatchRejection(unnamed)
+      )
+      const doubt = fold([submission, rejectedBy('generation-2', 'unknown')]).submissions.get(
+        'cm_1'
+      )
+      expect(doubt).not.toHaveProperty('rejectedByStartKey')
+    })
+
+    it('drops a malformed one when read, never the row', () => {
+      for (const malformed of ['', 7, { generation: 'generation-2' }]) {
+        const parsed = parseJournalRow(serializeJournalRow(rejectedBy(malformed)))
+        expect(parsed.ok).toBe(true)
+        const settled = parsed.ok ? fold([submission, parsed.row]).submissions.get('cm_1') : null
+        expect(settled).toMatchObject({
+          dispatchState: 'rejected',
+          rejection: { kind: 'startFailed' }
+        })
+        expect(settled).not.toHaveProperty('rejectedByStartKey')
+      }
+    })
   })
 })

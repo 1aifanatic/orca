@@ -34,9 +34,15 @@ export type ResolveDispatchInput = {
   | { state: 'pending' }
   /** `reason` is what released clients print, `rejection` what newer ones read: both from
    *  `agentSessionFailureWords`, never written by hand. */
-  | ({ state: 'rejected' } & AgentJournalDispatchRejection)
+  | ({ state: 'rejected' } & JournalDispatchRejectionInput)
   | { state: 'unknown'; reason?: string | null }
 )
+
+/** A rejection, and the failed start that wrote it when it is one: only that start's writer
+ *  names it, so its messages pair with its row by the row's own key. */
+export type JournalDispatchRejectionInput = AgentJournalDispatchRejection & {
+  rejectedByStartKey?: string
+}
 
 export type JournalAppendResult = {
   cursor: AgentJournalCursor

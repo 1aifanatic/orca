@@ -18,7 +18,7 @@ function startFailureRow(startKey: string): AgentJournalRenderItem {
       kind: 'status',
       tone: 'error',
       ...agentSessionFailureWords(
-        { kind: 'providerStartFailed', startKey },
+        { kind: 'providerStartFailed' },
         { agentName: 'Claude', surface: 'row' }
       )
     }

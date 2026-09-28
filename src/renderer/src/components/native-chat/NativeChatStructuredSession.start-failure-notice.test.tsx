@@ -38,7 +38,7 @@ afterEach(() => {
 
 const SESSION_ID = 'start-failure-session'
 const START_KEY = 'generation-1'
-const START_FAILED: AgentSessionFailureFact = { kind: 'providerStartFailed', startKey: START_KEY }
+const START_FAILED: AgentSessionFailureFact = { kind: 'providerStartFailed' }
 const START_FAILED_REASON =
   'Claude stopped before it finished starting. Send your message to try again.'
 
@@ -56,7 +56,12 @@ function startFailureRow(fact: AgentSessionFailureFact): AgentJournalRenderItem 
   }
 }
 
-function rejected(clientMessageId: string, reason: string, rejection: AgentSessionFailureFact) {
+function rejected(
+  clientMessageId: string,
+  reason: string,
+  rejection: AgentSessionFailureFact,
+  rejectedByStartKey?: string
+) {
   return {
     outbox: {
       clientMessageId,
@@ -78,7 +83,8 @@ function rejected(clientMessageId: string, reason: string, rejection: AgentSessi
       reason,
       rejection,
       submittedAt: 1,
-      resolvedAt: 1
+      resolvedAt: 1,
+      ...(rejectedByStartKey ? { rejectedByStartKey } : {})
     }
   }
 }
@@ -119,8 +125,8 @@ it("says only 'not sent', with its Retry, on each message the failed start's row
   mocks.journalItems = [startFailureRow(START_FAILED)]
 
   renderPane([
-    rejected('first', START_FAILED_REASON, START_FAILED),
-    rejected('second', START_FAILED_REASON, START_FAILED)
+    rejected('first', START_FAILED_REASON, START_FAILED, START_KEY),
+    rejected('second', START_FAILED_REASON, START_FAILED, START_KEY)
   ])
 
   for (const id of ['first', 'second']) {
@@ -139,7 +145,7 @@ it('keeps the full notice on a message rejected for a reason no start-failure ro
   }
 
   renderPane([
-    rejected('stated', START_FAILED_REASON, START_FAILED),
+    rejected('stated', START_FAILED_REASON, START_FAILED, START_KEY),
     rejected(
       'other',
       'The provider did not accept this message: Image type .bmp.',
@@ -155,19 +161,25 @@ it('keeps the full notice on a message rejected for a reason no start-failure ro
   ).toBeTruthy()
 })
 
-// A host from before starts were named writes the same failure with no start on it.
-it('keeps the full notice on a rejection that names no start, beside an equal start row', async () => {
+// A host from before starts were named records the same failure with no start beside it; another
+// start's row does not explain a message it did not reject.
+it('keeps the full notice on a rejection that names no start, or another, beside an equal start row', async () => {
   mocks.journalItems = [startFailureRow(START_FAILED)]
 
-  renderPane([rejected('older', START_FAILED_REASON, { kind: 'providerStartFailed' })])
+  renderPane([
+    rejected('older', START_FAILED_REASON, START_FAILED),
+    rejected('elsewhere', START_FAILED_REASON, START_FAILED, 'generation-0')
+  ])
 
-  expect(
-    within(await notice('older')).getByText('Claude stopped before it finished starting.')
-  ).toBeTruthy()
+  for (const id of ['older', 'elsewhere']) {
+    expect(
+      within(await notice(id)).getByText('Claude stopped before it finished starting.')
+    ).toBeTruthy()
+  }
 })
 
 it("keeps the start failure's own words when its row is not loaded", async () => {
-  renderPane([rejected('first', START_FAILED_REASON, START_FAILED)])
+  renderPane([rejected('first', START_FAILED_REASON, START_FAILED, START_KEY)])
 
   expect(
     within(await notice('first')).getByText('Claude stopped before it finished starting.')

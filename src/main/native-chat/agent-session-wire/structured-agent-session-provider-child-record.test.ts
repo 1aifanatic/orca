@@ -410,14 +410,15 @@ describe('a published child that dies while it proves its start', () => {
           itemId: `orca:${encodeURIComponent(`start-failure:${child.acquisitionGeneration}`)}`,
           text: TEXT,
           tone: 'error',
-          failure: { ...START_FAILURE, startKey: child.acquisitionGeneration }
+          failure: START_FAILURE
         }
       ])
       for (const id of [first, second]) {
         expect(await submission(id)).toMatchObject({
           dispatchState: 'rejected',
           reason: TEXT,
-          rejection: { ...START_FAILURE, startKey: child.acquisitionGeneration }
+          rejection: START_FAILURE,
+          rejectedByStartKey: child.acquisitionGeneration
         })
       }
       expect(rejectedIn(events, second)).toBe(true)
@@ -460,13 +461,16 @@ describe('a start another operation made that dies while a sent message waits on
 
     await eventually(async () => expect((await submission(id))?.dispatchState).toBe('rejected'))
     await settleLoop()
-    expect((await submission(id))?.reason).toBe(TEXT)
+    expect(await submission(id)).toMatchObject({
+      reason: TEXT,
+      rejectedByStartKey: operationChild.acquisitionGeneration
+    })
     expect(await statusRows()).toEqual([
       {
         itemId: `orca:${encodeURIComponent(`start-failure:${operationChild.acquisitionGeneration}`)}`,
         text: TEXT,
         tone: 'error',
-        failure: { ...START_FAILURE, startKey: operationChild.acquisitionGeneration }
+        failure: START_FAILURE
       }
     ])
     expect(rejectedIn(events, id)).toBe(true)
@@ -546,15 +550,11 @@ describe('a child that ends before its message is handed over', () => {
     }
     expect(await submission(id)).toMatchObject({
       reason: 'Codex stopped before this message was sent.',
-      rejection: failure
+      rejection: failure,
+      rejectedByStartKey: 'generation-2'
     })
     expect(await statusRows()).toEqual([
-      {
-        itemId: expect.any(String),
-        text: (await submission(id))?.reason,
-        tone: 'error',
-        failure: { ...failure, startKey: 'generation-2' }
-      }
+      { itemId: expect.any(String), text: (await submission(id))?.reason, tone: 'error', failure }
     ])
     expect(rejectedIn(events, id)).toBe(true)
     await eventually(() => expect(host['conversationDelivery'].loop.isRunning(SESSION)).toBe(false))
@@ -735,10 +735,13 @@ describe('how a stopped child ends the start its loop was waiting on', () => {
     await eventually(async () => expect((await submission(second))?.dispatchState).toBe('rejected'))
     // The sentence is the constructor's, not the reason the stop was given.
     const text = 'Codex never finished starting, so Orca stopped it.'
-    const failure = { kind: 'hostStopped', startKey: 'generation-2' }
-    expect(await submission(second)).toMatchObject({ reason: text, rejection: failure })
+    expect(await submission(second)).toMatchObject({
+      reason: text,
+      rejection: { kind: 'hostStopped' },
+      rejectedByStartKey: 'generation-2'
+    })
     expect(await statusRows()).toEqual([
-      { itemId: expect.any(String), text, tone: 'error', failure }
+      { itemId: expect.any(String), text, tone: 'error', failure: { kind: 'hostStopped' } }
     ])
     expect(dispatch).not.toHaveBeenCalled()
   })

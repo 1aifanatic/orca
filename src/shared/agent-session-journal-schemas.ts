@@ -318,7 +318,9 @@ export const AgentJournalSubmissionSchema = z.object({
   recovered: z.literal(true).optional(),
   handoverRecorded: z.literal(true).optional(),
   handedOverAt: z.number().optional(),
-  rejection: FailureFact.optional()
+  rejection: FailureFact.optional(),
+  // Any value: a malformed one is dropped by the host's reader, never the submission.
+  rejectedByStartKey: z.unknown().optional()
 })
 
 export function isAgentJournalResolution(value: unknown): value is AgentJournalResolution {

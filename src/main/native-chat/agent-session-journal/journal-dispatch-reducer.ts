@@ -36,6 +36,15 @@ export function applyJournalDispatchRow(
   } else {
     delete submission.rejection
   }
+  if (
+    row.state === 'rejected' &&
+    typeof row.rejectedByStartKey === 'string' &&
+    row.rejectedByStartKey
+  ) {
+    submission.rejectedByStartKey = row.rejectedByStartKey
+  } else {
+    delete submission.rejectedByStartKey
+  }
   submission.resolvedAt = row.state === 'pending' ? null : row.ts
   if (row.state === 'pending') {
     submission.handedOverAt = row.ts
