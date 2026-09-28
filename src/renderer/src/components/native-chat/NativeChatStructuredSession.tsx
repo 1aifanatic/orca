@@ -38,8 +38,13 @@ export function NativeChatStructuredSession(
   const { sendThroughRelaunch } = provisionalLaunch
   // The host's own word on whether the provider child has answered startup yet.
   const startupPhase = useStructuredAgentSessionHostExecutionPhase(props.sessionId, props.target)
+  const paneKey = useMemo(
+    () => structuredAgentSessionPaneKey(props.tabId, props.sessionId),
+    [props.sessionId, props.tabId]
+  )
   const controller = useStructuredAgentSession({
     ...props,
+    composerScopeKey: paneKey,
     providerStarting: startupPhase === 'starting',
     transportEnabled: provisionalLaunch.transportEnabled,
     ...(provisionalLaunch.launch ? { launch: provisionalLaunch.launch } : {})
@@ -57,10 +62,6 @@ export function NativeChatStructuredSession(
     id: string
     sequence: number
   } | null>(null)
-  const paneKey = useMemo(
-    () => structuredAgentSessionPaneKey(props.tabId, props.sessionId),
-    [props.sessionId, props.tabId]
-  )
   const rootRef = useRef<HTMLDivElement>(null)
   const composerRef = useRef<NativeChatComposerHandle>(null)
   const paneCommands = useStructuredNativeChatPaneCommands({

@@ -23,6 +23,7 @@ import { getStructuredAgentLaunchPromptDispatch } from '@/lib/structured-agent-s
 import { useStructuredAgentSessionOutboxOwnerChange } from '@/runtime/structured-agent-session-accepted-send-capability'
 import { useStructuredAgentSessionOutboxUnconfirmedProbe } from './use-structured-agent-session-outbox-unconfirmed-probe'
 import { createBrowserUuid } from '@/lib/browser-uuid'
+import { useStructuredAgentSessionWithdrawnRestore } from './structured-agent-session-withdrawn-message-restore'
 
 export function structuredSessionOperationId(): string {
   return createStructuredAgentSessionOperationId(createBrowserUuid)
@@ -33,10 +34,13 @@ export function useStructuredAgentSessionOutbox(args: {
   target: RuntimeClientTarget
   fence: number | null
   submissions: readonly AgentJournalSubmission[]
+  /** The composer that gets back what a Stop withdrew from this client's outbox. */
+  composerScopeKey?: string
 }) {
-  const { fence, sessionId, submissions, target } = args
+  const { composerScopeKey, fence, sessionId, submissions, target } = args
   // What resends, unblocks and drops a send in flight besides a Retry or a new send; see the hook.
   const owner = useStructuredAgentSessionOutboxOwnerChange(target, fence)
+  const restoreWithdrawn = useStructuredAgentSessionWithdrawnRestore(sessionId, composerScopeKey)
   const [outbox, setOutbox] = useState<StructuredAgentSessionOutboxEntry[]>(() =>
     readMountedStructuredAgentSessionOutbox(sessionId, fence, readOutbox)
   )
@@ -103,6 +107,7 @@ export function useStructuredAgentSessionOutbox(args: {
       next.some((entry, index) => entry !== current[index]) ||
       next.length !== current.length
     ) {
+      restoreWithdrawn.byHost(current, submissions)
       outboxRef.current = next
       setOutbox(next)
       writeOutbox(sessionId, next)
@@ -123,7 +128,7 @@ export function useStructuredAgentSessionOutbox(args: {
     ) {
       setError(null)
     }
-  }, [sessionId, submissions])
+  }, [restoreWithdrawn, sessionId, submissions])
 
   // The one place that owns the refs, the React state and the storage write.
   const applyDisposition = useCallback(
@@ -254,11 +259,12 @@ export function useStructuredAgentSessionOutbox(args: {
       blockedIdRef.current
     )
     if (next.length !== outboxRef.current.length) {
+      restoreWithdrawn.byStop(outboxRef.current.filter((entry) => !next.includes(entry)))
       outboxRef.current = next
       setOutbox(next)
       writeOutbox(sessionId, next)
     }
-  }, [sessionId, submissions])
+  }, [restoreWithdrawn, sessionId, submissions])
 
   const retry = (clientMessageId: string): void => {
     blockedIdRef.current = null

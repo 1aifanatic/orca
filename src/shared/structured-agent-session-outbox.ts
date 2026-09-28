@@ -9,7 +9,7 @@ import type {
   AgentSessionWireRefusalCode
 } from './agent-session-wire'
 import { structuredAgentSessionPayloadFingerprint } from './structured-agent-session-mutation'
-import { DISPATCH_REJECTED_CANCELLED } from './structured-agent-session-dispatch-rejection'
+import { dispatchWasWithdrawn } from './structured-agent-session-dispatch-rejection'
 
 /** `rejected`: the host settled the send as not delivered. The drain never sends it again on its
  *  own and nothing queues behind it; only the user's Retry does. */
@@ -153,10 +153,7 @@ export function reconcileStructuredAgentSessionOutbox(
     if (submission?.dispatchState === 'accepted') {
       return []
     }
-    if (
-      submission?.dispatchState === 'rejected' &&
-      submission.reason === DISPATCH_REJECTED_CANCELLED
-    ) {
+    if (dispatchWasWithdrawn(submission)) {
       return []
     }
     if (submission?.dispatchState === 'pending') {

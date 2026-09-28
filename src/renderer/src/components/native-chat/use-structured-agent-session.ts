@@ -45,9 +45,12 @@ export function useStructuredAgentSession(args: {
   providerStarting?: boolean
   /** This view started the session; only then does the stored selection name what it runs. */
   launch?: StructuredAgentSessionLaunchView
+  /** The composer that gets back what a Stop withdrew. */
+  composerScopeKey?: string
 }) {
   const {
     agent,
+    composerScopeKey,
     isVisible,
     launch,
     providerStarting = false,
@@ -89,7 +92,8 @@ export function useStructuredAgentSession(args: {
     sessionId,
     target,
     fence: transportState.fence,
-    submissions: transportState.submissions
+    submissions: transportState.submissions,
+    composerScopeKey
   })
 
   const threadGoal = useStructuredAgentSessionThreadGoal({

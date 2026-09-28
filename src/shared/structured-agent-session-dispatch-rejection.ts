@@ -18,6 +18,8 @@
 // reason, and a client has to know which kind it is holding before it can decide
 // whether the string is showable.
 
+import type { AgentJournalSubmission } from './agent-session-journal-types'
+
 export const DISPATCH_REJECTED_WRITE_FAILED = 'provider_write_failed'
 
 /** Local admission refused the frame before any transport was involved. Two
@@ -28,6 +30,15 @@ export const DISPATCH_REJECTED_CODEX_QUEUE_FULL = 'codex structured dispatch que
 
 /** The provider confirmed a queued frame was withdrawn before execution. */
 export const DISPATCH_REJECTED_CANCELLED = 'provider_cancelled_before_start'
+
+/** A Stop withdrew it before it ran: it will not land, and only its sender can send it again. */
+export function dispatchWasWithdrawn(
+  submission: Pick<AgentJournalSubmission, 'dispatchState' | 'reason'> | undefined
+): boolean {
+  return (
+    submission?.dispatchState === 'rejected' && submission.reason === DISPATCH_REJECTED_CANCELLED
+  )
+}
 
 /** Accepted by a host process that ended before handing it to any provider. */
 export const DISPATCH_REJECTED_HOST_RESTARTED = 'host_restarted_before_delivery'

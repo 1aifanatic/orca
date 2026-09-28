@@ -1,5 +1,9 @@
-import { useCallback, useRef, useState } from 'react'
-import { readNativeChatDraftCache, writeNativeChatDraftCache } from './native-chat-draft-cache'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  readNativeChatDraftCache,
+  subscribeToNativeChatDraftAppend,
+  writeNativeChatDraftCache
+} from './native-chat-draft-cache'
 
 /**
  * Composer draft state backed by the scope cache so a typed-but-unsent message
@@ -21,6 +25,14 @@ export function useNativeChatDraft(scopeKey: string): {
     lastScopeKey.current = scopeKey
     setDraftState(readNativeChatDraftCache(scopeKey))
   }
+
+  useEffect(
+    () =>
+      subscribeToNativeChatDraftAppend(scopeKey, () =>
+        setDraftState(readNativeChatDraftCache(scopeKey))
+      ),
+    [scopeKey]
+  )
 
   // Persist every mutation through the cache. Accepts the same value/updater
   // forms as a useState setter so call sites are drop-in.

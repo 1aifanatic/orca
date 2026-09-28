@@ -27,11 +27,28 @@ vi.mock('./NativeChatApprovalCard', () => moduleFactories.nativeChatApprovalCard
 vi.mock('./NativeChatQuestionCard', () => moduleFactories.nativeChatQuestionCard())
 
 import { NativeChatStructuredSession } from './NativeChatStructuredSession'
+import { structuredAgentSessionPaneKey } from '../../../../shared/structured-agent-session-projection'
 
 describe('NativeChatStructuredSession', () => {
   afterEach(() => {
     cleanup()
     resetStructuredSessionMocks()
+  })
+
+  it('gives what a Stop withdrew back to the composer this pane shows', () => {
+    render(
+      <NativeChatStructuredSession
+        isVisible
+        isFocusedGroup
+        tabId="structured-tab-1"
+        sessionId="session-1"
+        target={{ kind: 'local' }}
+        agent="codex"
+      />
+    )
+    const paneKey = structuredAgentSessionPaneKey('structured-tab-1', 'session-1')
+    expect(mocks.composerProps).toMatchObject({ paneKey })
+    expect(mocks.controllerProps).toMatchObject({ composerScopeKey: paneKey })
   })
 
   it('routes the launch draft and app-menu paste to the structured composer', () => {
