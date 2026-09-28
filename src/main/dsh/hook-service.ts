@@ -165,6 +165,8 @@ function buildStatus(
     : status(configPath, 'partial', `Managed hook missing for events: ${missing.join(', ')}`, true)
 }
 
+/** Installs Orca's status hooks into DSH. See `docs/reference/dsh-harness-integration.md`
+ *  for the profile/patch-layer model and the env-scrub finding the aliases work around. */
 export class DshHookService {
   async refreshManagedScripts(): Promise<void> {
     await refreshManagedScriptIfPresent(getDshManagedScriptPath(), getManagedScript())
