@@ -33,18 +33,40 @@ function Get-CacheBytes {
 $initialCacheBytes = Get-CacheBytes
 $process = $null
 $started = [DateTime]::UtcNow
+function Assert-AcquisitionBudget {
+  $layoutFiles = @(Get-ChildItem -LiteralPath $layout -File -Recurse -Force -ErrorAction Stop)
+  $tempFiles = @(Get-ChildItem -LiteralPath $temp -File -Recurse -Force -ErrorAction Stop)
+  $layoutBytes = [long]($layoutFiles | Measure-Object Length -Sum).Sum
+  $tempBytes = [long]($tempFiles | Measure-Object Length -Sum).Sum
+  $externalGrowth = [Math]::Max(0, (Get-CacheBytes) - $initialCacheBytes)
+  $elapsed = ([DateTime]::UtcNow - $started).TotalSeconds
+  $reasons = @()
+  if (($layoutBytes + $tempBytes + $externalGrowth) -gt 4GB) { $reasons += 'aggregate-bytes' }
+  if ($layoutFiles.Count -gt 1000) { $reasons += 'layout-payload-count' }
+  if ($tempFiles.Count -gt 10000) { $reasons += 'temporary-extraction-count' }
+  if ($elapsed -gt 2700) { $reasons += 'elapsed-time' }
+  $budget = [ordered]@{
+    observedAt=[DateTime]::UtcNow.ToString('o'); elapsedSeconds=$elapsed
+    layoutFiles=$layoutFiles.Count; temporaryFiles=$tempFiles.Count
+    layoutBytes=$layoutBytes; temporaryBytes=$tempBytes; externalCacheGrowthBytes=$externalGrowth
+    aggregateBytes=($layoutBytes+$tempBytes+$externalGrowth)
+    byteLimit=4GB; layoutFileLimit=1000; temporaryFileLimit=10000; secondsLimit=2700
+    exceeded=$reasons
+  }
+  $budget | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $ReceiptRoot 'budget-latest.json')
+  if ($reasons.Count -gt 0) {
+    $budget | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $ReceiptRoot 'budget-exceeded.json')
+    throw ('Layout acquisition budget exceeded: ' + ($reasons -join ', '))
+  }
+}
 try {
   $process = Start-Process -FilePath $bootstrapper -ArgumentList $arguments -PassThru -WindowStyle Hidden -RedirectStandardOutput (Join-Path $ReceiptRoot 'bootstrapper-stdout.txt') -RedirectStandardError (Join-Path $ReceiptRoot 'bootstrapper-stderr.txt')
   while (!$process.WaitForExit(2000)) {
-    $files = @(Get-ChildItem -LiteralPath $temp,$layout -File -Recurse -Force -ErrorAction Stop)
-    $bytes = [long]($files | Measure-Object Length -Sum).Sum
-    $externalGrowth = [Math]::Max(0, (Get-CacheBytes) - $initialCacheBytes)
-    if (($bytes + $externalGrowth) -gt 4GB -or $files.Count -gt 1000 -or ([DateTime]::UtcNow - $started).TotalMinutes -gt 45) { throw 'Layout acquisition budget exceeded' }
+    Assert-AcquisitionBudget
   }
   $process.Refresh()
   if ($process.ExitCode -ne 0) { throw "Layout acquisition failed: $($process.ExitCode)" }
-  $files = @(Get-ChildItem -LiteralPath $temp,$layout -File -Recurse -Force)
-  if ($files.Count -gt 1000 -or (([long]($files | Measure-Object Length -Sum).Sum) + [Math]::Max(0, (Get-CacheBytes)-$initialCacheBytes)) -gt 4GB) { throw 'Final layout budget exceeded' }
+  Assert-AcquisitionBudget
   $catalog = Join-Path $layout 'Catalog.json'
   if (!(Test-Path $catalog)) { throw 'Supported layout omitted Catalog.json' }
   Copy-Item -LiteralPath $catalog -Destination (Join-Path $ReceiptRoot 'Catalog.json')
