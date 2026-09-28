@@ -244,6 +244,9 @@ export class AgentSessionJournal {
 
   submissions = (): AgentJournalSubmission[] => [...this.state.submissions.values()]
 
+  submission = (clientMessageId: string): AgentJournalSubmission | undefined =>
+    this.state.submissions.get(clientMessageId)
+
   pendingSubmissions = (): AgentJournalSubmission[] =>
     this.submissions().filter((entry) => entry.dispatchState === 'pending')
 

@@ -149,7 +149,7 @@ export function holdQueuedMessages(
   return held
 }
 
-/** Lift the stop-shaped holds when the user next starts a turn: a stored
+/** Lift the stop-shaped holds once a user send starts its turn: a stored
  *  'stopped' (Stop, /clear carry) and the DERIVED restart hold — that row is
  *  adopted into the current host instance, the same fact the derivation reads,
  *  so no second copy exists. `send_failed` and unknown markers stay: they

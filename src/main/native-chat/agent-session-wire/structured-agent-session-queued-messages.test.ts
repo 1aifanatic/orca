@@ -1,7 +1,7 @@
 // Mid-turn queueing against the real host, store and journal: a capable send
 // while the session owes work becomes a draft, the drain converts exactly one
 // draft when the work settles, Stop holds the queue (never withdrawing text)
-// until the user's next dispatched send lifts the pause, /clear carries the
+// until a user send starts its turn and lifts the pause, /clear carries the
 // cards to its replacement session, and a refused conversion comes back as a
 // returned card.
 
@@ -234,7 +234,7 @@ describe('held drafts', () => {
       throw new Error('expected a queued receipt')
     }
     const draftId = queued.value.queued.messageId
-    rotateStructuredAgentSessionHostInstanceForTests()
+    rig.restartHostProcess()
     await settleAccepted(working, 'a')
     await host.close(SESSION)
     expect(await drafts()).toMatchObject([{ messageId: draftId, state: 'waiting', paused: true }])
@@ -251,22 +251,22 @@ describe('held drafts', () => {
     })
   })
 
-  it("a restart-held draft also lifts on the user's next dispatched send, exactly like a Stop's hold", async () => {
+  it("a restart-held draft also lifts when the user's next send starts its turn, exactly like a Stop's hold", async () => {
     const working = await workingSend()
     const queued = await send('written before the restart', 'queue-if-active').result
     if (!queued.ok || !('queued' in queued.value)) {
       throw new Error('expected a queued receipt')
     }
     const draftId = queued.value.queued.messageId
-    rotateStructuredAgentSessionHostInstanceForTests()
+    rig.restartHostProcess()
     await settleAccepted(working, 'a')
     await new Promise((resolve) => setTimeout(resolve, 250))
     expect(await submission(draftId)).toBeUndefined()
     expect(await drafts()).toEqual([{ messageId: draftId, state: 'waiting', paused: true }])
-    // The user's send adopts the row into the running instance and lifts it.
+    // The user's send starting its turn adopts the row into this instance and lifts it.
     const next = send('user starts a new turn')
     await next.result
-    expect(await drafts()).toEqual([{ messageId: draftId, state: 'waiting' }])
+    expect(await drafts()).toEqual([{ messageId: draftId, state: 'waiting', paused: true }])
     await settleAccepted(next.id, 'b')
     await eventually(async () => expect(await submission(draftId)).toBeDefined())
   })
@@ -403,7 +403,7 @@ describe('Stop and Delete', () => {
     await eventually(async () => expect(await submission(draftId)).toBeDefined())
   })
 
-  it("the user's next dispatched send lifts the stopped hold, and the held draft drains after that turn", async () => {
+  it("the user's next send lifts the stopped hold once its turn starts, and the held draft drains after that turn", async () => {
     const working = await workingSend()
     const queued = await send('paused by stop', 'queue-if-active').result
     if (!queued.ok || !('queued' in queued.value)) {
@@ -416,11 +416,11 @@ describe('Stop and Delete', () => {
     await new Promise((resolve) => setTimeout(resolve, 250))
     expect(await submission(draftId)).toBeUndefined()
     expect(await drafts()).toEqual([{ messageId: draftId, state: 'waiting', paused: true }])
-    // An ordinary send that dispatches IS the user starting a turn: the pause
-    // lifts in the send's own step, and the draft drains after that turn.
+    // The host accepting the send is not yet a turn: the pause lifts when the
+    // provider accepts it, and the draft drains after that turn.
     const next = send('user starts a new turn')
     await next.result
-    expect(await drafts()).toEqual([{ messageId: draftId, state: 'waiting' }])
+    expect(await drafts()).toEqual([{ messageId: draftId, state: 'waiting', paused: true }])
     await settleAccepted(next.id, 'b')
     await eventually(async () => expect(await submission(draftId)).toBeDefined())
   })
@@ -597,7 +597,7 @@ describe('/clear', () => {
       throw new Error('expected a replacement session')
     }
     // The source's cards are spent tombstones; the replacement shows them,
-    // held until the user acts (or their next dispatched send lifts the hold).
+    // held until the user acts (or their next send starting its turn lifts the hold).
     expect(await drafts()).toHaveLength(0)
     expect(await drafts(replacementId)).toEqual([
       { messageId: firstId, state: 'waiting', paused: true },

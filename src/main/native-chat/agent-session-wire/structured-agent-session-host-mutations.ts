@@ -11,15 +11,16 @@ import type {
   AgentJournalItemIdentity,
   AgentJournalMessageItem
 } from '../../../shared/agent-session-journal-types'
-import type {
-  AgentSessionCancelResult,
-  AgentSessionMutationEnvelope,
-  AgentSessionMutationResult,
-  AgentSessionOptionResult,
-  AgentSessionPromptResult,
-  AgentSessionSendResult,
-  AgentSessionThreadGoalChange,
-  AgentSessionThreadGoalResult
+import {
+  agentSessionSendSubmission,
+  type AgentSessionCancelResult,
+  type AgentSessionMutationEnvelope,
+  type AgentSessionMutationResult,
+  type AgentSessionOptionResult,
+  type AgentSessionPromptResult,
+  type AgentSessionSendResult,
+  type AgentSessionThreadGoalChange,
+  type AgentSessionThreadGoalResult
 } from '../../../shared/agent-session-wire'
 import { DISPATCH_REJECTED_CANCELLED } from '../../../shared/structured-agent-session-dispatch-rejection'
 import { isStructuredAgentSessionMainAgentWorking } from '../../../shared/structured-agent-session-main-agent-working'
@@ -46,8 +47,8 @@ import {
 } from './structured-agent-session-mutation-plans'
 import { maybeQueueStructuredAgentSessionSend } from './structured-agent-session-queued-messages'
 import {
-  holdQueuedMessagesForStop,
-  releaseStopHeldQueuedMessages
+  awaitUserSendTurn,
+  holdQueuedMessagesForStop
 } from './structured-agent-session-queued-stop'
 import type {
   StructuredAgentSessionCaller,
@@ -116,7 +117,8 @@ export function sendStructuredAgentSessionTurn(
     delivery?: 'queue-if-active'
     /** Host-local, set only by the client-facing `agentSession.send` RPC: the
      *  user's own send. Orchestration mail, a restart continuation and a launch
-     *  prompt never lift a Stop's or a restart's queue pause. */
+     *  prompt never lift a Stop's or a restart's queue pause; this one does once
+     *  its turn starts. */
     userSend?: true
     beforeRun?: () => void
   }
@@ -142,13 +144,14 @@ export function sendStructuredAgentSessionTurn(
         }
         const accepted = await plan.run(ctx)
         if (accepted.ok) {
-          context.wakeDelivery(ctx.sessionId)
-          // The user started a turn, which supersedes any Stop that paused the
-          // queue: its holds lift in this same serialized step, so the held
-          // drafts drain after this turn. A queued accept above never lifts.
+          // Lifts a Stop's queue pause only once the provider accepts it.
           if (params.userSend) {
-            await releaseStopHeldQueuedMessages(ctx)
+            awaitUserSendTurn(
+              context.sessions.get(ctx.sessionId),
+              agentSessionSendSubmission(accepted.value)
+            )
           }
+          context.wakeDelivery(ctx.sessionId)
         }
         return accepted
       }
@@ -199,7 +202,7 @@ export function cancelStructuredAgentSessionTurn(
         // frontier NOW — the drain must not send a draft the user is stopping.
         // The cards stay published as paused; nothing is withdrawn and no text
         // ever rides the answer.
-        await holdQueuedMessagesForStop(ctx)
+        await holdQueuedMessagesForStop(ctx, context.sessions.get(ctx.sessionId))
         // Stop withdraws every queued SUBMISSION first, whatever the start or the child is doing.
         const withdrawn = await ctx.journal.rejectQueuedSubmissions(
           ctx.fence,

@@ -10,6 +10,7 @@ import type {
 } from './structured-agent-session-host-types'
 import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
 import { StructuredAgentSessionQueuedMessageDrain } from './structured-agent-session-queued-messages'
+import { releaseQueuePauseOnUserTurnStart } from './structured-agent-session-queued-stop'
 import {
   deleteQueuedStructuredAgentMessage,
   sendQueuedStructuredAgentMessage
@@ -39,9 +40,11 @@ export function wireStructuredAgentSessionQueuedMessages(host: {
   return {
     drain,
     /** Every journal publish: turn, submission, prompt, command and Stop
-     *  settlements are all commits, and each re-derives the drain's gates. */
+     *  settlements are all commits, and each re-derives the drain's gates —
+     *  and whether a user send's turn has started, lifting the Stop pause. */
     onJournalActivity: (sessionId: string) => {
       host.touch(sessionId)
+      releaseQueuePauseOnUserTurnStart(sessionId, host.sessions.get(sessionId))
       drain.schedule(sessionId)
     },
     queuedMessageSend: (

@@ -147,7 +147,7 @@ export class JournalQueuedMessages {
   /** Lift the stop-shaped holds — a stored 'stopped', and the derived restart
    *  hold, whose row is adopted into the given instance — because the user next
    *  started a turn. `send_failed` stays for its explicit Send. Guarded by the
-   *  cached list, so the sends that have nothing to lift (almost all of them)
+   *  cached list, so the started turns with nothing to lift (almost all of them)
    *  cost no write transaction. */
   releaseStopHolds(input: { hostInstance: string }): Promise<void> {
     const stopShaped = (row: QueuedMessageRow) =>

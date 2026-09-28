@@ -10,6 +10,7 @@ import type { AgentJournalSubmission } from '../../../shared/agent-session-journ
 import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
+import { rotateStructuredAgentSessionHostInstanceForTests } from './structured-agent-session-queued-pause'
 import {
   HOST_TEST_NOW as NOW,
   HOST_TEST_SESSION as SESSION,
@@ -190,6 +191,16 @@ export async function createQueuedMessageTestRig() {
     })
   }
 
+  /** What a host-process restart loses while the rows survive: the instance id
+   *  and the in-memory record of user sends awaiting their turn. */
+  function restartHostProcess(): void {
+    rotateStructuredAgentSessionHostInstanceForTests()
+    const session = host.collaboratorsForTests().sessions.get(SESSION)
+    if (session) {
+      delete session.userSendsAwaitingTurn
+    }
+  }
+
   async function dispose(): Promise<void> {
     await host.flushAllStreamedEvents()
     await rm(root, { recursive: true, force: true })
@@ -212,6 +223,7 @@ export async function createQueuedMessageTestRig() {
     workingSend,
     settleAccepted,
     settleRejected,
+    restartHostProcess,
     dispose
   }
 }
