@@ -53,7 +53,8 @@ function conversationCommandFailureText(
   agentName: string
 ): string | null {
   const fact = readAgentSessionFailureFact(result.failure)
-  if (!fact) {
+  // A part this build cannot read, such as a newer refusal code, may change the host's advice.
+  if (!fact || Object.keys(result.failure ?? {}).some((part) => !(part in fact))) {
     return result.error ?? null
   }
   // As the host words it: only a /clear whose new conversation failed to start names the agent.
