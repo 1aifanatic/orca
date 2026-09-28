@@ -210,7 +210,7 @@ describe('Stop against a host that stops the conversation', () => {
     expect(new Set(ids).size).toBe(3)
   })
 
-  it('sends one Stop for a second press while the first is still on its way', async () => {
+  it('sends a Stop of its own for a second press while the first is still on its way', async () => {
     submissions = [submission({ handoverRecorded: true, handedOverAt: 2 })]
     const pending: ((value: unknown) => void)[] = []
     mocks.call.mockImplementation((_target, method) =>
@@ -228,9 +228,10 @@ describe('Stop against a host that stops the conversation', () => {
       await Promise.all(presses)
     })
 
+    // The host runs them in order; the second acts on whatever is still running, if anything.
     const ids = cancelOperationIds()
     expect(ids).toHaveLength(2)
-    expect(ids[1]).toBe(ids[0])
+    expect(ids[1]).not.toBe(ids[0])
   })
 
   it('sends a new Stop after one the host answered once the chat had moved on', async () => {
@@ -268,37 +269,41 @@ describe('Stop against a host that stops the conversation', () => {
     expect(ids[1]).not.toBe(ids[0])
   })
 
-  it('keeps a newer Stop joinable when an older joined one settles after it', async () => {
-    submissions = [submission({ handoverRecorded: true, handedOverAt: 2 })]
-    const pending: ((value: unknown) => void)[] = []
-    mocks.call.mockImplementation((_target, method) =>
-      method === 'agentSession.cancel'
-        ? new Promise((resolve) => pending.push(resolve))
-        : Promise.resolve(null)
-    )
-    const { result } = render()
-    const settle = (index: number): void =>
-      pending[index]?.({ ok: true, value: { cancelled: true } })
+  it('stops a message sent after a Stop whose answer is still on its way', async () => {
+    items = [RUNNING_TURN]
+    const ran = new Set<string>()
+    const pending: (() => void)[] = []
+    mocks.call.mockImplementation((_target, method, params) => {
+      if (method !== 'agentSession.cancel') {
+        return Promise.resolve(null)
+      }
+      // As the host's ledger does: an id it already ran replays as handled and stops nothing.
+      const operationId: string = params.envelope.clientOperationId
+      const value = { cancelled: !ran.has(operationId) }
+      ran.add(operationId)
+      return new Promise((resolve) => pending.push(() => resolve({ ok: true, value })))
+    })
+    const { result, rerender } = render()
 
+    let first: Promise<unknown> = Promise.resolve()
+    let second: Promise<unknown> = Promise.resolve()
+    act(() => {
+      first = result.current.stop()
+    })
+    // The next message goes out, and reaches the host ahead of the second Stop.
+    outbox = [entry('dispatching')]
+    rerender()
+    act(() => {
+      second = result.current.stop()
+    })
     await act(async () => {
-      const first = result.current.stop()
-      const joined = result.current.stop()
-      settle(0)
-      await first
-      const third = result.current.stop()
-      settle(1)
-      await joined
-      const fourth = result.current.stop()
-      settle(2)
-      settle(3)
-      await Promise.all([third, fourth])
+      for (const answer of pending) {
+        answer()
+      }
+      await Promise.all([first, second])
     })
 
-    const ids = cancelOperationIds()
-    expect(ids).toHaveLength(4)
-    expect(ids[1]).toBe(ids[0])
-    expect(ids[2]).not.toBe(ids[0])
-    expect(ids[3]).toBe(ids[2])
+    expect(await second).toEqual({ cancelled: true })
   })
 
   it('does not let a lost stop of every background task swallow the next one', async () => {

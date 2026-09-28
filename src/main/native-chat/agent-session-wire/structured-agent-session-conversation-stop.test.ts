@@ -218,7 +218,7 @@ describe('a Stop that names no turn', () => {
     await result
     await eventually(() => expect(submission(id)?.handedOverAt).toBeDefined())
 
-    // Why the client never keeps a no-turn Stop's id past its answer: the same id is the same Stop.
+    // Why the client never reuses a no-turn Stop's id: the same id is the same Stop.
     expect(await stop(undefined, operationId)).toMatchObject({
       ok: true,
       replayed: true,
