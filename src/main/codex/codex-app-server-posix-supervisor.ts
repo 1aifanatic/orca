@@ -1,17 +1,21 @@
 import type { CodexAppServerLaunch } from './codex-app-server-connection'
 
-/** Time the provider gets after stdin ends before SIGTERM, and after SIGTERM before SIGKILL. */
-export const DEFAULT_PROVIDER_SUPERVISOR_GRACE_MS = 1250
-/** Largest grace a spec may carry; raising it widens recovery's SIGTERM stage with it. */
-export const MAX_PROVIDER_SUPERVISOR_GRACE_MS = 1250
-/** How long the supervisor waits for a SIGKILLed provider group to disappear. */
-export const PROVIDER_GROUP_REAP_TIMEOUT_MS = 1500
+/** Time the provider gets to exit on its own after its stdin ends, before SIGTERM. */
+export const PROVIDER_STDIN_END_GRACE_MS = 1_000
+/** Time the provider group gets to flush and exit after SIGTERM, before SIGKILL. */
+export const PROVIDER_SIGTERM_GRACE_MS = 3_000
+/**
+ * How long the supervisor waits for a SIGKILLed group to disappear. A killed process never runs
+ * again, so this only covers the kernel finishing the kill; waiting forever could hang close or
+ * recovery on a process stuck in the kernel, such as one blocked on a hung network drive.
+ */
+export const PROVIDER_GROUP_REAP_TIMEOUT_MS = 1_500
 /**
  * Longest a supervisor can take to stop once asked (stdin end, grace, SIGTERM, grace, SIGKILL,
- * reap); a SIGKILL sooner can orphan its group.
+ * reap); a SIGKILL sooner can orphan its group. The graces are also the largest a spec may carry.
  */
 export const PROVIDER_SUPERVISOR_MAX_STOP_MS =
-  2 * MAX_PROVIDER_SUPERVISOR_GRACE_MS + PROVIDER_GROUP_REAP_TIMEOUT_MS
+  PROVIDER_STDIN_END_GRACE_MS + PROVIDER_SIGTERM_GRACE_MS + PROVIDER_GROUP_REAP_TIMEOUT_MS
 
 /** Inline supervisor source kept dependency-free for the spawned Node child. */
 export const POSIX_PROVIDER_SUPERVISOR_SCRIPT = `
@@ -66,7 +70,7 @@ const finishWithProviderOutcome = (code, signal) => {
   process.removeAllListeners(signal)
   process.kill(process.pid, signal)
 }
-// Every stop is the same: SIGTERM the group, SIGKILL it after the grace, and exit only once it is
+// Every stop is the same: SIGTERM the group, SIGKILL it after its grace, and exit only once it is
 // gone. Whoever stops this pid judges the provider by it, so a dead supervisor means a dead group.
 const stopProviderGroup = (receivedSignal) => {
   if (settling) return
@@ -74,7 +78,7 @@ const stopProviderGroup = (receivedSignal) => {
   clearInterval(timer)
   if (ownerShutdownTimer) clearTimeout(ownerShutdownTimer)
   try { process.kill(-child.pid, 'SIGTERM') } catch {}
-  void waitForProviderGroupExit(spec.graceMs)
+  void waitForProviderGroupExit(spec.sigtermGraceMs)
     .then((exited) => exited || reapOwnedProviderGroup())
     .then((reaped) => {
       if (!reaped) return process.exit(1)
@@ -85,7 +89,7 @@ const scheduleOwnerShutdown = () => {
   if (settling || ownerShutdownTimer) return
   // A normal close ends the provider's stdin first; allow it to flush and
   // exit before forcing the group, while still bounding an orphaned child.
-  ownerShutdownTimer = setTimeout(() => stopProviderGroup(null), spec.graceMs)
+  ownerShutdownTimer = setTimeout(() => stopProviderGroup(null), spec.stdinEndGraceMs)
   ownerShutdownTimer.unref()
 }
 process.stdin.once('end', scheduleOwnerShutdown)
@@ -122,7 +126,15 @@ export type ProviderSupervisorOptions = {
   cwd?: string
   /** The process the supervisor serves; it must be the supervisor's parent. */
   ownerPid?: number
-  graceMs?: number
+  stdinEndGraceMs?: number
+  sigtermGraceMs?: number
+}
+
+// A longer grace than the max stop allows would let recovery or close SIGKILL mid-stop.
+function assertGraceWithin(name: string, graceMs: number, maxMs: number): void {
+  if (!(graceMs >= 0 && graceMs <= maxMs)) {
+    throw new RangeError(`Provider supervisor ${name} grace ${graceMs} ms is outside 0-${maxMs} ms`)
+  }
 }
 
 export function supervisedPosixLaunch(
@@ -131,21 +143,20 @@ export function supervisedPosixLaunch(
   {
     cwd = launch.cwd ?? process.cwd(),
     ownerPid = process.pid,
-    graceMs = DEFAULT_PROVIDER_SUPERVISOR_GRACE_MS
+    stdinEndGraceMs = PROVIDER_STDIN_END_GRACE_MS,
+    sigtermGraceMs = PROVIDER_SIGTERM_GRACE_MS
   }: ProviderSupervisorOptions = {}
 ): { command: string; args: string[]; env: NodeJS.ProcessEnv } {
-  if (!(graceMs >= 0 && graceMs <= MAX_PROVIDER_SUPERVISOR_GRACE_MS)) {
-    throw new RangeError(
-      `Provider supervisor grace ${graceMs} ms is outside 0-${MAX_PROVIDER_SUPERVISOR_GRACE_MS} ms`
-    )
-  }
+  assertGraceWithin('stdin-end', stdinEndGraceMs, PROVIDER_STDIN_END_GRACE_MS)
+  assertGraceWithin('SIGTERM', sigtermGraceMs, PROVIDER_SIGTERM_GRACE_MS)
   const supervisorSpec = Buffer.from(
     JSON.stringify({
       command: launch.command,
       args: launch.args,
       cwd,
       ownerPid,
-      graceMs
+      stdinEndGraceMs,
+      sigtermGraceMs
     })
   ).toString('base64')
   return {

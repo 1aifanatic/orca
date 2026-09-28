@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest'
 import type { CodexAppServerLaunch } from './codex-app-server-connection'
 import {
   createProviderSpawnSpec,
-  DEFAULT_PROVIDER_SUPERVISOR_GRACE_MS,
-  MAX_PROVIDER_SUPERVISOR_GRACE_MS,
   POSIX_PROVIDER_SUPERVISOR_SCRIPT,
+  PROVIDER_SIGTERM_GRACE_MS,
+  PROVIDER_STDIN_END_GRACE_MS,
   supervisedPosixLaunch
 } from './codex-app-server-posix-supervisor'
 
@@ -31,7 +31,8 @@ describe('structured provider supervision', () => {
         args: ['app-server', '--flag'],
         cwd: '/work/repo',
         ownerPid: process.pid,
-        graceMs: DEFAULT_PROVIDER_SUPERVISOR_GRACE_MS
+        stdinEndGraceMs: PROVIDER_STDIN_END_GRACE_MS,
+        sigtermGraceMs: PROVIDER_SIGTERM_GRACE_MS
       })
     )
     expect(
@@ -54,12 +55,15 @@ describe('structured provider supervision', () => {
   })
 
   it('refuses a grace longer than recovery waits before SIGKILL', () => {
-    expect(() =>
-      supervisedPosixLaunch(launch, {}, { graceMs: MAX_PROVIDER_SUPERVISOR_GRACE_MS })
-    ).not.toThrow()
-    expect(() =>
-      supervisedPosixLaunch(launch, {}, { graceMs: MAX_PROVIDER_SUPERVISOR_GRACE_MS + 1 })
-    ).toThrow(RangeError)
+    const stdinEnd = (stdinEndGraceMs: number) => () =>
+      supervisedPosixLaunch(launch, {}, { stdinEndGraceMs })
+    const sigterm = (sigtermGraceMs: number) => () =>
+      supervisedPosixLaunch(launch, {}, { sigtermGraceMs })
+
+    expect(stdinEnd(PROVIDER_STDIN_END_GRACE_MS)).not.toThrow()
+    expect(stdinEnd(PROVIDER_STDIN_END_GRACE_MS + 1)).toThrow(RangeError)
+    expect(sigterm(PROVIDER_SIGTERM_GRACE_MS)).not.toThrow()
+    expect(sigterm(PROVIDER_SIGTERM_GRACE_MS + 1)).toThrow(RangeError)
   })
 
   it('uses direct provider spawning on Windows because the job owns the tree', () => {
