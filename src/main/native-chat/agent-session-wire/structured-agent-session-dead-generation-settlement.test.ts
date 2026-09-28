@@ -492,6 +492,35 @@ describe('dead structured-session generation settlement', () => {
 
       expect(startRows()).toEqual([])
     })
+
+    // Its messages were never handed to this child, so the start is the loop's to report.
+    it('leaves the row to the delivery loop when the exit rejected nothing it was handed', async () => {
+      await journal.appendSubmission({
+        clientMessageId: 'client-queued',
+        payloadFingerprint: 'fingerprint',
+        body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'hello?' }] },
+        fence: 7,
+        handoverRecorded: true
+      })
+
+      // As the exit of a start always settles: a failed start says why.
+      await settleStructuredAgentSessionDeadGeneration({
+        journal,
+        sessionId: SESSION,
+        fence: 7,
+        settlementId: `provider-exit:${SESSION}:7:${START_KEY}`,
+        pendingSubmissionReason: 'provider_closed_before_acknowledgement',
+        verdict: { state: 'interrupted', completedAt: 1_000 },
+        showUnexpectedExitOutcome: true,
+        exitFailure: agentSessionFailureFact('notSignedIn'),
+        exitedDuringStartup: { generation: START_KEY }
+      })
+
+      expect(startRows()).toEqual([])
+      expect(journal.submissions()).toEqual([
+        expect.objectContaining({ clientMessageId: 'client-queued', dispatchState: 'pending' })
+      ])
+    })
   })
 
   it("keeps a subagent's settled rows the subagent's, in one batch and after a reopen", async () => {
