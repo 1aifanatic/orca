@@ -244,13 +244,11 @@ test('dispatches coordinate pointer input fast enough for real gestures', async 
     // numbers ride along in the annotation where the failure artifact will carry them.
     test.info().annotations.push({ type: 'pointer-latency', description: latencyReport })
 
-    // Why: absolute milliseconds vary by host, so compare against browser.eval on the same
-    // socket and queue — a pointer event that spawns the helper costs that plus a process
-    // launch. Measured multiples of the control: in process 1.5x/1.5x/4x, via the helper
-    // 5.7x/5.5x/20.5x. These thresholds sit between the two, not near either.
-    expect(latency.mouseMove, latencyReport).toBeLessThan(latency.evalControl * 3)
-    expect(latency.mouseWheel, latencyReport).toBeLessThan(latency.evalControl * 3)
-    expect(latency.click, latencyReport).toBeLessThan(latency.evalControl * 10)
+    // CDP pointer dispatch waits for a frame; fast evaluation can finish far below one.
+    const dispatchControlMs = Math.max(latency.evalControl, 1000 / 60)
+    expect(latency.mouseMove, latencyReport).toBeLessThan(dispatchControlMs * 3)
+    expect(latency.mouseWheel, latencyReport).toBeLessThan(dispatchControlMs * 3)
+    expect(latency.click, latencyReport).toBeLessThan(dispatchControlMs * 10)
 
     // ── Gesture fidelity ──
 
