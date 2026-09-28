@@ -1,7 +1,6 @@
 import { detectAgentStatusFromTitle } from '@/lib/agent-status'
 import { useAppStore } from '@/store'
 import type { AgentStatusEntry } from '../../../../../shared/agent-status-types'
-import { cliExitEndsAgentRow } from '../../../../../shared/agent-row-cli-exit'
 import { createAgentInterruptInference } from '../agent-interrupt-inference'
 import { createAgentQuestionAnsweredInference } from '../agent-question-answered-inference'
 import type { AgentInterruptInputIntent } from '../../../../../shared/agent-interrupt-intent'
@@ -100,10 +99,6 @@ export function installInterruptInputIntent(session: ConnectPanePtySession): voi
           history.startedAt === entry.stateStartedAt
       ) === true
     if (!unchanged && !inferredFromEntry) {
-      return
-    }
-    if (!cliExitEndsAgentRow(current)) {
-      state.clearAgentLaunchConfig(session.cacheKey)
       return
     }
     state.dropAgentStatus(session.cacheKey)

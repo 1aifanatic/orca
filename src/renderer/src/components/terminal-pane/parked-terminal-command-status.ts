@@ -5,7 +5,6 @@
  * (foreground process-confirm ladder, key-intent interrupt inference) stay with the mounted pane.
  */
 import type { AgentStatusEntry } from '../../../../shared/agent-status-types'
-import { cliExitEndsAgentRow } from '../../../../shared/agent-row-cli-exit'
 import { resolvePaneAgentOwner } from '../../../../shared/pane-agent-owner'
 import { parseAppSshPtyId } from '../../../../shared/ssh-pty-id'
 import { dispatchTerminalCommandFinishedEvent } from '@/hooks/terminal-command-finished-event'
@@ -103,10 +102,6 @@ export function createParkedTerminalCommandStatusPolicy(options: {
       current.stateStartedAt === entry.stateStartedAt &&
       current.agentType === entry.agentType
     if (!unchanged) {
-      return
-    }
-    if (!cliExitEndsAgentRow(current)) {
-      state.clearAgentLaunchConfig(paneKey)
       return
     }
     state.dropAgentStatus(paneKey)

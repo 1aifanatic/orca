@@ -384,32 +384,6 @@ describe('createParkedTerminalCommandStatusPolicy', () => {
     ssh.dispose()
   })
 
-  it('keeps an SSH Codex row that still shows work when its TUI exits', async () => {
-    // Codex's shared background server keeps the turn running after the TUI leaves the pane.
-    const providerSession = {
-      key: 'session_id' as const,
-      id: 'root',
-      transcriptPath: '/home/user/.codex/sessions/rollout-root.jsonl'
-    }
-    mockStoreState.agentStatusByPaneKey[PANE_KEY] = makeStatusEntry({
-      agentType: 'codex',
-      providerSession
-    })
-    const ssh = await createPolicy(PTY_ID_SSH)
-    ssh.onCommandFinished(0)
-    expect(mockStoreState.dropAgentStatus).not.toHaveBeenCalled()
-    expect(mockStoreState.clearAgentLaunchConfig).toHaveBeenCalledWith(PANE_KEY)
-
-    mockStoreState.agentStatusByPaneKey[PANE_KEY] = makeStatusEntry({
-      state: 'done',
-      agentType: 'codex',
-      providerSession
-    })
-    ssh.onCommandFinished(0)
-    expect(mockStoreState.dropAgentStatus).toHaveBeenCalledWith(PANE_KEY)
-    ssh.dispose()
-  })
-
   it('clears the launch registry on SSH command finished when no status row exists', async () => {
     const ssh = await createPolicy(PTY_ID_SSH)
 
