@@ -26,6 +26,8 @@ import {
   openAgentSessionJournalWithRecovery,
   providerHistoryId
 } from './agent-session-journal-recovery'
+import { JOURNAL_NEWER_SCHEMA_MESSAGE } from '../agent-session-journal/journal-open-failure'
+import { performSend, type AgentSessionTurnContext } from './structured-agent-session-turns'
 
 // The store's replay goes through the mock: it is the only read of the journal an open makes.
 vi.mock('../agent-session-journal/journal-open', async (importOriginal) => {
@@ -223,6 +225,24 @@ describe('openAgentSessionJournalWithRecovery', () => {
 
     expect(opened.recovery).toBeNull()
     expect(opened.journal.isReadOnly).toBe(true)
+    // A send says to update, as a database a newer Orca wrote does.
+    const sent = await performSend(
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a refused append returns before anything but the journal and fence is read.
+      { sessionId: CODEX_SESSION, journal: opened.journal, fence: 1 } as AgentSessionTurnContext,
+      {
+        clientMessageId: 'client-after-downgrade',
+        payloadFingerprint: 'fp',
+        body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'hello' }] }
+      }
+    )
+    expect(sent).toMatchObject({
+      ok: false,
+      refusal: {
+        code: 'agent_session_journal_unreadable',
+        details: { reason: 'journalUnavailable' },
+        message: JOURNAL_NEWER_SCHEMA_MESSAGE
+      }
+    })
     await withJournalDatabase(journalDir, (db) => {
       const rows = readTestJournalRows(db, CODEX_SESSION, epoch)
       expect(rows.some((entry) => entry.rowJson.includes('"v":99'))).toBe(true)

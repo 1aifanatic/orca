@@ -36,6 +36,7 @@ import { validatePendingPrompt } from './structured-agent-session-prompt-state'
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
 import {
   classifyJournalOpenFailure,
+  isJournalWrittenByNewerOrca,
   journalOpenRefusal
 } from '../agent-session-journal/journal-open-failure'
 export { performSetOption } from './structured-agent-session-turns-options'
@@ -144,8 +145,12 @@ export async function performSend(
   try {
     await ctx.journal.appendSubmission({ ...input, fence: ctx.fence, handoverRecorded: true })
   } catch (error) {
-    // Damage SQLite proves is the chat's, and no retry writes past it: say so, as an open does.
-    if (classifyJournalOpenFailure(error) === 'journalCorrupt') {
+    // Damage SQLite proves is the chat's, and no retry writes past it: say so, as an open does. So
+    // does a chat holding a newer Orca's rows, which only an update writes past.
+    if (
+      classifyJournalOpenFailure(error) === 'journalCorrupt' ||
+      isJournalWrittenByNewerOrca(error)
+    ) {
       return { ok: false, refusal: journalOpenRefusal(error) }
     }
     return invalid('journalWriteFailed', 'The message could not be recorded and was not sent.')
