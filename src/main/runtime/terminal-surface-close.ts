@@ -1,6 +1,9 @@
 import type { RuntimeSessionTabCloseReason } from '../../shared/runtime-session-contracts'
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
-import { recordClosedTerminalTabTombstone } from '../../shared/closed-terminal-tab-tombstones'
+import {
+  hasClosedTerminalTabRecord,
+  recordClosedTerminalTabTombstone
+} from '../../shared/closed-terminal-tab-tombstones'
 import type {
   TerminalLayoutSnapshot,
   TerminalPaneLayoutNode
@@ -218,8 +221,13 @@ export function terminalSurfaceCloseMutation(
       return { value: new Error('terminal_tab_pinned'), persist: false }
     }
     if (!result.closed) {
-      // Why: a tab this session never listed still records its close, so its late spawn is refused.
-      if (commit.options.allowMissing && result.session !== session) {
+      // Why: a tab this session never listed still records its close, so its late spawn is refused;
+      // an existing record (an echo of that close) needs no second write.
+      if (
+        commit.options.allowMissing &&
+        target.kind === 'tab' &&
+        !hasClosedTerminalTabRecord(session.closedTerminalTabTombstonesByTabId, target.tabId)
+      ) {
         commit.setSession(result.session, hostId)
         return { value: undefined }
       }

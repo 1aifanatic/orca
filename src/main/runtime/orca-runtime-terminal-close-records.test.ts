@@ -3,7 +3,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { getDefaultWorkspaceSession } from '../../shared/constants'
-import { MAX_CLOSED_TERMINAL_TAB_TOMBSTONES } from '../../shared/closed-terminal-tab-tombstones'
+import {
+  CLOSED_TERMINAL_TAB_TOMBSTONE_TTL_MS,
+  MAX_CLOSED_TERMINAL_TAB_TOMBSTONES
+} from '../../shared/closed-terminal-tab-tombstones'
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
 import { Store } from '../persistence/loading-store/store'
 import { closeTestStores, createSqliteTestStore } from '../persistence-test-harness'
@@ -115,6 +118,51 @@ describe('close records', () => {
     expect(
       Object.keys(store.getWorkspaceSession().closedTerminalTabTombstonesByTabId ?? {}).sort()
     ).toEqual([LATE_TAB_ID, TAB_ID].sort())
+  })
+
+  it("keeps a close's first reason when the renderer's echo closes the same tab again", async () => {
+    const { store, runtime } = createPersistedRuntime()
+
+    await runtime.closeTerminalSurfaceFromRenderer({
+      worktreeId: WORKTREE_ID,
+      target: { kind: 'tab', tabId: LATE_TAB_ID },
+      reason: 'cleanup'
+    })
+    const first = store.getWorkspaceSession().closedTerminalTabTombstonesByTabId?.[LATE_TAB_ID]
+    await runtime.closeTerminalSurfaceFromRenderer({
+      worktreeId: WORKTREE_ID,
+      target: { kind: 'tab', tabId: LATE_TAB_ID },
+      reason: 'user'
+    })
+
+    expect(first?.reason).toBe('cleanup')
+    expect(store.getWorkspaceSession().closedTerminalTabTombstonesByTabId?.[LATE_TAB_ID]).toEqual(
+      first
+    )
+  })
+
+  it('admits a late spawn for a tab whose close record is past the TTL', async () => {
+    const expired = {
+      [LATE_TAB_ID]: {
+        closedAt: Date.now() - CLOSED_TERMINAL_TAB_TOMBSTONE_TTL_MS - 60_000,
+        worktreeId: WORKTREE_ID,
+        reason: 'user' as const
+      }
+    }
+    const { store } = createPersistedRuntime({
+      ...makeSession(),
+      closedTerminalTabTombstonesByTabId: expired
+    })
+
+    expect(
+      await store.persistPtyBinding({
+        worktreeId: WORKTREE_ID,
+        tabId: LATE_TAB_ID,
+        leafId: LEAF_ID,
+        ptyId: 'late-pty',
+        incarnationId: 'late-incarnation'
+      })
+    ).toBe(true)
   })
 
   it('records nothing for a split pane close, which leaves its tab open', async () => {

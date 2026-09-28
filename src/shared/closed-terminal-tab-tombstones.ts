@@ -53,20 +53,28 @@ export function recordClosedTerminalTabTombstone(
   record: Omit<ClosedTerminalTabTombstone, 'closedAt'>,
   now: number
 ): ClosedTerminalTabTombstonesByTabId {
+  // Why first writer wins: an echo of the same close (the renderer acknowledging a close main
+  // made) must not replace the reason or restart the TTL.
+  if (hasClosedTerminalTabRecord(map, tabId, undefined, now)) {
+    return pruneClosedTerminalTabTombstones(map, now)
+  }
   return pruneClosedTerminalTabTombstones({ ...map, [tabId]: { ...record, closedAt: now } }, now)
 }
 
-/** Whether a tab id was closed, by the record's own worktree. Object.hasOwn because the map is a
- *  plain object: `in` answers true for every Object.prototype key. */
+/** Whether a tab id was closed within the TTL, by the record's own worktree. The TTL is checked
+ *  here because pruning only runs when the partition next records a close. Object.hasOwn because
+ *  the map is a plain object: `in` answers true for every Object.prototype key. */
 export function hasClosedTerminalTabRecord(
   map: ClosedTerminalTabTombstonesByTabId | undefined,
   tabId: string,
-  worktreeId?: string
+  worktreeId?: string,
+  now = Date.now()
 ): boolean {
+  const record = map !== undefined && Object.hasOwn(map, tabId) ? map[tabId] : undefined
   return (
-    map !== undefined &&
-    Object.hasOwn(map, tabId) &&
-    (worktreeId === undefined || map[tabId]?.worktreeId === worktreeId)
+    record !== undefined &&
+    now - record.closedAt <= CLOSED_TERMINAL_TAB_TOMBSTONE_TTL_MS &&
+    (worktreeId === undefined || record.worktreeId === worktreeId)
   )
 }
 
