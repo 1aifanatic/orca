@@ -1,7 +1,10 @@
 // How a `dispatch` row settles its submission. Field by field, so a key the row gains must be
 // copied here to reach any reader.
 
-import { readAgentSessionFailureFact } from '../../../shared/agent-session-failure'
+import {
+  readAgentSessionFailureFact,
+  type UnreadAgentSessionFailureFact
+} from '../../../shared/agent-session-failure'
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
 import type { JournalReducerState } from './journal-reducer'
 import type { JournalRow } from './journal-row-schema'
@@ -22,9 +25,12 @@ export function applyJournalDispatchRow(
   submission.dispatchState = row.state
   submission.providerItemId = row.providerItemId
   submission.reason = row.reason
-  // Read, not copied: a row from disk may carry a fact this build cannot place.
+  // Read where it can be placed; a kind it cannot place is kept as written, so the classifier
+  // still knows a fact was there without this build claiming what it says.
   const rejection =
-    row.state === 'rejected' ? readAgentSessionFailureFact(row.rejection) : undefined
+    row.state === 'rejected'
+      ? (readAgentSessionFailureFact(row.rejection) ?? unreadFailureFact(row.rejection))
+      : undefined
   if (rejection) {
     submission.rejection = rejection
   } else {
@@ -49,4 +55,14 @@ export function applyJournalDispatchRow(
     cursor: { epoch: row.epoch, sequence: row.seq },
     acceptedAt: row.ts
   })
+}
+
+function unreadFailureFact(value: unknown): UnreadAgentSessionFailureFact | undefined {
+  return typeof value === 'object' &&
+    value !== null &&
+    'kind' in value &&
+    typeof value.kind === 'string' &&
+    value.kind
+    ? { kind: value.kind }
+    : undefined
 }

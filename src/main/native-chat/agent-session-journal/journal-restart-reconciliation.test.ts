@@ -17,6 +17,7 @@ import type { ProviderHistoryItem, ProviderHistoryWindow } from './journal-submi
 import { createTrackedJournalOpener } from './journal-store-test-open'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
+import { classifyDispatchRejection } from '../../../shared/structured-agent-session-dispatch-rejection'
 
 const IDENTITY: AgentSessionJournalIdentity = {
   sessionId: 'session-1',
@@ -130,6 +131,12 @@ describe('reconcileJournalSubmissionsAgainstHistory', () => {
         .reason
     )
     expect(submission?.rejection).toEqual({ kind: 'notDelivered' })
+    // Nobody failed: the crash stranded it before the provider took it.
+    expect(submission && classifyDispatchRejection(submission)).toEqual({
+      category: 'undelivered',
+      verdict: null,
+      kind: 'notDelivered'
+    })
   })
 
   it('leaves a submission unknown while the provider reports a turn in flight', async () => {

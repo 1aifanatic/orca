@@ -11,7 +11,7 @@
 
 import {
   agentSessionFailureFact,
-  type AgentSessionFailureFact
+  type SubmissionRejectionFact
 } from '../../../shared/agent-session-failure'
 import {
   agentSessionFailureWords,
@@ -161,7 +161,7 @@ export class StructuredAgentSessionDeliveryLoop {
   private async handOver(
     sessionId: string,
     awaited: StructuredAgentSessionProviderChildIdentity | null,
-    startFailure: AgentSessionFailureFact | null
+    startFailure: SubmissionRejectionFact | null
   ): Promise<Step> {
     const session = this.deps.sessions.get(sessionId)
     if (!session || this.disposed) {

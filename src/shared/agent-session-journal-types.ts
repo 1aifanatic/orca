@@ -7,7 +7,7 @@
 // rewritten in place, so a host that cannot read a row refuses to write the
 // journal rather than skipping or compacting past it.
 
-import type { AgentSessionFailureFact } from './agent-session-failure'
+import type { UnreadAgentSessionFailureFact } from './agent-session-failure'
 import type { AgentSessionFailureRowWords } from './agent-session-failure-words'
 import type { AgentType } from './agent-status-types'
 import type { AgentSessionQuestionAnswer } from './agent-session-question-answer'
@@ -375,7 +375,7 @@ export type AgentJournalSubmission = {
    *  older clients already recognise. On `unknown`, the doubt marker. */
   reason: string | null
   /** On `rejected`, why, typed; absent on rows from older hosts. */
-  rejection?: AgentSessionFailureFact
+  rejection?: UnreadAgentSessionFailureFact
   submittedAt: number
   resolvedAt: number | null
   /** Set when crash reconciliation resolved the dispatch, not the provider. A live

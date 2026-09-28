@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest'
 import {
   AGENT_SESSION_ATTACHMENT_PROBLEM_REASONS,
   AGENT_SESSION_FAILURE_KINDS,
+  isSubmissionRejectionFact,
   readAgentSessionFailureFact,
   type AgentSessionFailureFact,
-  type AgentSessionFailureKind
+  type AgentSessionFailureKind,
+  type SubmissionRejectionKind
 } from './agent-session-failure'
 import {
   agentSessionFailureSentence,
@@ -23,7 +25,7 @@ import {
 const ORCA_INTERNAL = /\b[a-z]+_[a-z_]+\b|[0-9a-f]{8}-[0-9a-f]{4}-|[/\\][\w.-]+[/\\]|Error:|ENOENT/
 
 const SURFACES: readonly AgentSessionFailureSurface[] = ['row', 'rejection']
-const LEGACY_MARKER_KINDS: ReadonlySet<AgentSessionFailureKind> = new Set([
+const LEGACY_MARKER_KINDS: ReadonlySet<SubmissionRejectionKind> = new Set([
   'cancelled',
   'writeFailed',
   'queueFull'
@@ -69,22 +71,19 @@ describe('the words written beside a failure fact', () => {
           expect([fact, sentence]).toEqual([fact, expect.stringMatching(/[^.]\.$/)])
           expect(sentence).not.toMatch(/\.\./)
           expect(sentence).not.toMatch(ORCA_INTERNAL)
-          if (surface === 'rejection' && LEGACY_MARKER_KINDS.has(kind)) {
-            continue
-          }
           const context = { agentName, command, provider: 'claude' } as const
-          const written =
-            surface === 'row'
-              ? agentSessionFailureWords(fact, { ...context, surface }).text
-              : agentSessionFailureWords(fact, { ...context, surface }).reason
-          expect(written).toBe(sentence)
+          if (surface === 'row') {
+            expect(agentSessionFailureWords(fact, { ...context, surface }).text).toBe(sentence)
+          } else if (isSubmissionRejectionFact(fact) && !LEGACY_MARKER_KINDS.has(fact.kind)) {
+            expect(agentSessionFailureWords(fact, { ...context, surface }).reason).toBe(sentence)
+          }
         }
       }
     })
   })
 
   it('writes the legacy markers released clients hide, byte for byte, on a rejection', () => {
-    const reason = (kind: AgentSessionFailureKind, provider?: 'claude' | 'codex') =>
+    const reason = (kind: SubmissionRejectionKind, provider?: 'claude' | 'codex') =>
       agentSessionFailureWords({ kind }, { surface: 'rejection', provider }).reason
     expect(reason('cancelled')).toBe(DISPATCH_REJECTED_CANCELLED)
     expect(DISPATCH_REJECTED_CANCELLED).toBe('provider_cancelled_before_start')

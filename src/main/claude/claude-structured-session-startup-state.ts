@@ -3,7 +3,7 @@
 // options restored): the host's delivery loop waits on `settled` before it hands a message over,
 // so a first turn never runs under defaults the restore was about to replace.
 
-import type { AgentSessionFailureFact } from '../../shared/agent-session-failure'
+import type { SubmissionRejectionFact } from '../../shared/agent-session-failure'
 import { providerStartupFailureFact } from '../native-chat/agent-session-wire/structured-agent-session-failure-text'
 import type { ClaudeSession } from './claude-structured-session-state'
 
@@ -25,7 +25,7 @@ export function createClaudeSessionStartup(): ClaudeSessionStartup {
   return { state: 'pending', failure: null, settled: ended, end }
 }
 
-export function claudeStartupFailureFact(session: ClaudeSession): AgentSessionFailureFact | null {
+export function claudeStartupFailureFact(session: ClaudeSession): SubmissionRejectionFact | null {
   return session.startup.state === 'failed'
     ? providerStartupFailureFact(session.startup.failure ?? undefined)
     : null

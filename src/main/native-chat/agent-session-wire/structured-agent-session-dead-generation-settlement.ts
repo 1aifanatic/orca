@@ -1,7 +1,7 @@
 import {
   agentSessionFailureFact,
   MAX_PROVIDER_DIAGNOSTIC_CHARS,
-  type AgentSessionFailureFact
+  type SubmissionRejectionFact
 } from '../../../shared/agent-session-failure'
 import { parseAgentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import type {
@@ -101,7 +101,7 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
   pendingSubmissionReason: string
   showUnexpectedExitOutcome?: boolean
   /** Why the provider stopped, as the adapter told it; the row's sentence is this fact's. */
-  exitFailure?: AgentSessionFailureFact
+  exitFailure?: SubmissionRejectionFact
   /** Who a failed start's sentence names. */
   failureTextContext?: AgentSessionFailureWordsContext
   /** The provider never finished starting: the start that failed, keyed by the child's

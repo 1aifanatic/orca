@@ -6,12 +6,15 @@
 // provider's words reach the sentence only when the provider wrote them for a person. The table
 // is also the English default for a client that chooses its own copy from the fact.
 
-import type {
-  AgentSessionAttachmentProblem,
-  AgentSessionAttachmentProblemReason,
-  AgentSessionFailureFact,
-  AgentSessionFailureKind,
-  ProviderDiagnostic
+import {
+  isSubmissionRejectionFact,
+  type AgentSessionAttachmentProblem,
+  type AgentSessionAttachmentProblemReason,
+  type AgentSessionFailureFact,
+  type AgentSessionFailureKind,
+  type ProviderDiagnostic,
+  type SubmissionRejectionFact,
+  type SubmissionRejectionKind
 } from './agent-session-failure'
 import type { AgentSessionWireRefusalCode } from './agent-session-wire-refusals'
 import {
@@ -36,7 +39,7 @@ export type AgentSessionFailureRowWords = {
  *  hide, the legacy marker) they print, and the fact newer ones read. */
 export type AgentJournalDispatchRejection = {
   reason: AgentSessionFailureSentence
-  rejection: AgentSessionFailureFact
+  rejection: SubmissionRejectionFact
 }
 
 /** `row`: a status row, about the chat. `rejection`: a rejected message's reason, about it. */
@@ -212,7 +215,7 @@ export function agentSessionFailureSentence(
 /** The markers released clients hide, for the rejections that had one before rows carried a fact.
  *  A write failure is the bare marker: its error belongs in the log. */
 const LEGACY_REJECTION_MARKERS: Partial<
-  Record<AgentSessionFailureKind, (context: AgentSessionFailureWordsContext) => string | undefined>
+  Record<SubmissionRejectionKind, (context: AgentSessionFailureWordsContext) => string | undefined>
 > = {
   cancelled: () => DISPATCH_REJECTED_CANCELLED,
   writeFailed: () => DISPATCH_REJECTED_WRITE_FAILED,
@@ -231,20 +234,27 @@ export function agentSessionFailureWords(
 ): AgentSessionFailureRowWords
 /** The words a message rejected for this fact records. */
 export function agentSessionFailureWords(
-  fact: AgentSessionFailureFact,
+  fact: SubmissionRejectionFact,
   context: AgentSessionFailureWordsContext & { surface: 'rejection' }
 ): AgentJournalDispatchRejection
 export function agentSessionFailureWords(
   fact: AgentSessionFailureFact,
   context: AgentSessionFailureWordsContext & { surface: AgentSessionFailureSurface }
 ): AgentSessionFailureRowWords | AgentJournalDispatchRejection {
+  if (context.surface === 'row') {
+    return { text: branded(agentSessionFailureSentence(fact, 'row', context)), failure: fact }
+  }
+  // The rejection overload admits only these; a caller that got past the types is Orca's bug.
+  if (!isSubmissionRejectionFact(fact)) {
+    throw new Error(`agent session failure kind ${fact.kind} cannot reject a message`)
+  }
   const words =
-    (context.surface === 'rejection'
-      ? LEGACY_REJECTION_MARKERS[fact.kind]?.(context)
-      : undefined) ?? agentSessionFailureSentence(fact, context.surface, context)
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: this is the one constructor of the brand; `words` came from the table or a legacy marker for `fact`.
-  const sentence = words as AgentSessionFailureSentence
-  return context.surface === 'row'
-    ? { text: sentence, failure: fact }
-    : { reason: sentence, rejection: fact }
+    LEGACY_REJECTION_MARKERS[fact.kind]?.(context) ??
+    agentSessionFailureSentence(fact, 'rejection', context)
+  return { reason: branded(words), rejection: fact }
+}
+
+function branded(words: string): AgentSessionFailureSentence {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: only `agentSessionFailureWords` calls this, with words from the table or a legacy marker for its fact.
+  return words as AgentSessionFailureSentence
 }

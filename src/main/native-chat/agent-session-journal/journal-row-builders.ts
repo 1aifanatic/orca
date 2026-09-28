@@ -1,6 +1,4 @@
-import type { AgentSessionFailureFact } from '../../../shared/agent-session-failure'
 import type {
-  AgentJournalDispatchState,
   AgentJournalItemBody,
   AgentJournalItemIdentity,
   AgentJournalMessageItem,
@@ -79,19 +77,17 @@ export function journalDispatchRowBuilder(
 ): RowBuilder<JournalDispatchRow> {
   const providerItemId =
     input.state === 'accepted' ? agentJournalItemKey(input.providerIdentity) : null
-  return (seq, ts) =>
-    buildJournalDispatchRow({
-      state: state(),
-      clientMessageId: input.clientMessageId,
-      dispatchState: input.state,
-      providerItemId,
-      reason: boundedDispatchReason(input),
-      rejection: input.state === 'rejected' ? input.rejection : undefined,
-      seq,
-      fence: input.fence,
-      ts,
-      recovered: input.recovered
-    })
+  // The only dispatch-row builder: its input type is what makes a rejected row carry its fact.
+  return (seq, ts) => ({
+    kind: 'dispatch',
+    clientMessageId: input.clientMessageId,
+    state: input.state,
+    providerItemId,
+    reason: boundedDispatchReason(input),
+    ...(input.state === 'rejected' ? { rejection: input.rejection } : {}),
+    ...journalRowBase(state().epoch, seq, input.fence, ts),
+    ...(input.recovered ? { recovered: input.recovered } : {})
+  })
 }
 
 /** `reason` is the only unbounded field written by Orca's own code: a provider error is
@@ -280,29 +276,5 @@ export function buildJournalSubmissionRow(input: {
     body: input.body,
     ...journalRowBase(input.state.epoch, input.seq, input.fence, input.ts),
     ...(input.handoverRecorded ? { handoverRecorded: true } : {})
-  }
-}
-
-export function buildJournalDispatchRow(input: {
-  state: JournalReducerState
-  clientMessageId: string
-  dispatchState: AgentJournalDispatchState
-  providerItemId: string | null
-  reason: string | null
-  rejection?: AgentSessionFailureFact
-  seq: number
-  fence: number
-  ts: number
-  recovered?: true
-}): JournalDispatchRow {
-  return {
-    kind: 'dispatch',
-    clientMessageId: input.clientMessageId,
-    state: input.dispatchState,
-    providerItemId: input.providerItemId,
-    reason: input.reason,
-    ...(input.rejection ? { rejection: input.rejection } : {}),
-    ...journalRowBase(input.state.epoch, input.seq, input.fence, input.ts),
-    ...(input.recovered ? { recovered: input.recovered } : {})
   }
 }

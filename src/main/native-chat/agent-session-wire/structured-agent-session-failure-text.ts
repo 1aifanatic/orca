@@ -4,7 +4,7 @@
 import {
   agentSessionFailureFact,
   providerDiagnosticOf,
-  type AgentSessionFailureFact,
+  type SubmissionRejectionFact,
   type AgentSessionFailureKind,
   type ProviderDiagnostic
 } from '../../../shared/agent-session-failure'
@@ -62,7 +62,7 @@ export function providerExitObserved(error: unknown, depth = 0): boolean {
 /** A start that did not land. A refusal the adapter typed keeps its situation, and an exit the
  *  adapter observed says the provider stopped; anything else blames no one — it may be Orca's, or
  *  a spawn that failed. Either keeps the provider's diagnostic when the error carried one. */
-export function providerStartupFailureFact(cause?: unknown): AgentSessionFailureFact {
+export function providerStartupFailureFact(cause?: unknown): SubmissionRejectionFact {
   const typed = typedStartRefusal(
     cause instanceof AgentSessionAcquisitionRefusal ? cause.reason : undefined
   )
@@ -78,8 +78,8 @@ export function providerStartupFailureFact(cause?: unknown): AgentSessionFailure
 /** A child that ended before it proved its start: an exit is a start that failed, keeping the
  *  provider's diagnostic; an Orca fault or a typed start refusal stays what it was. */
 function startupFailureFromExit(
-  failure: AgentSessionFailureFact | undefined
-): AgentSessionFailureFact {
+  failure: SubmissionRejectionFact | undefined
+): SubmissionRejectionFact {
   if (!failure || failure.kind === 'providerExited') {
     return agentSessionFailureFact('providerStartFailed', { detail: failure?.detail })
   }
@@ -91,7 +91,7 @@ function startupFailureFromExit(
  *  now. */
 function refusedStartFailureFact(
   cause: Extract<StructuredAgentSessionStartFailureCause, { refusal: unknown }>
-): AgentSessionFailureFact {
+): SubmissionRejectionFact {
   const { refusal, diagnostic } = cause
   const reason = refusal.details?.reason
   const typed = typedStartRefusal(reason)
@@ -115,14 +115,14 @@ export type StructuredAgentSessionStartFailureCause =
   /** A start that threw, or an adapter's own startup failure; any diagnostic it carries. */
   | { error: unknown }
   /** The child ended before it proved its start, as its ended event told it. */
-  | { exit: AgentSessionFailureFact | undefined }
+  | { exit: SubmissionRejectionFact | undefined }
   /** The provider exited while starting; only its words are known, and the caller names their
    *  audience. */
   | { diagnostic: ProviderDiagnostic | undefined }
   /** Orca's own fault; its error belongs in the log. */
   | { hostFault: true }
   /** Already typed where it was observed. */
-  | { failure: AgentSessionFailureFact }
+  | { failure: SubmissionRejectionFact }
 
 /** A start failure's row repeats the sentence its rejected messages carry: both are about the
  *  messages the start was for. */
@@ -131,7 +131,7 @@ export type StructuredAgentSessionStartFailureWords = AgentJournalDispatchReject
 /** The fact a failed start records, for a writer that words it on its own surface. */
 export function structuredAgentSessionStartFailureFact(
   cause: StructuredAgentSessionStartFailureCause
-): AgentSessionFailureFact {
+): SubmissionRejectionFact {
   if ('refusal' in cause) {
     return refusedStartFailureFact(cause)
   }

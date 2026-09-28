@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { AGENT_SESSION_FAILURE_KINDS, agentSessionFailureFact } from './agent-session-failure'
+import {
+  AGENT_SESSION_FAILURE_KINDS,
+  agentSessionFailureFact,
+  isSubmissionRejectionKind
+} from './agent-session-failure'
 import { agentSessionFailureWords } from './agent-session-failure-words'
 import {
   classifyDispatchRejection,
@@ -16,7 +20,7 @@ describe('classifyDispatchRejection', () => {
     [DISPATCH_REJECTED_CANCELLED, 'withdrawn', null, 'cancelled'],
     [DISPATCH_REJECTED_HOST_RESTARTED, 'undelivered', null, 'hostRestarted'],
     [DISPATCH_REJECTED_PROVIDER_CLOSED, 'undelivered', null, 'chatClosed'],
-    ['not_delivered', 'undelivered', 'failure', 'notDelivered'],
+    ['not_delivered', 'undelivered', null, 'notDelivered'],
     [DISPATCH_REJECTED_QUEUE_FULL, 'transport', 'failure', 'queueFull'],
     [DISPATCH_REJECTED_CODEX_QUEUE_FULL, 'transport', 'failure', 'queueFull'],
     ['provider_write_failed: broken pipe', 'transport', 'failure', 'writeFailed'],
@@ -36,14 +40,35 @@ describe('classifyDispatchRejection', () => {
     })
   })
 
-  it('fails the send for every kind but a withdrawal, a host restart, or a closed chat', () => {
-    for (const kind of AGENT_SESSION_FAILURE_KINDS) {
+  it('fails the send for every kind but a withdrawal, a restart, a close, or a lost send', () => {
+    const noOneFailed = ['cancelled', 'hostRestarted', 'chatClosed', 'notDelivered']
+    for (const kind of AGENT_SESSION_FAILURE_KINDS.filter(isSubmissionRejectionKind)) {
       const verdict = classifyDispatchRejection({ reason: 'x', rejection: { kind } }).verdict
-      expect([kind, verdict]).toEqual([
-        kind,
-        kind === 'cancelled' || kind === 'hostRestarted' || kind === 'chatClosed' ? null : 'failure'
-      ])
+      expect([kind, verdict]).toEqual([kind, noOneFailed.includes(kind) ? null : 'failure'])
     }
+  })
+
+  it.each([
+    ['cancelled', 'withdrawn', null],
+    ['hostRestarted', 'undelivered', null],
+    ['chatClosed', 'undelivered', null],
+    ['notDelivered', 'undelivered', null],
+    ['writeFailed', 'transport', 'failure'],
+    ['queueFull', 'transport', 'failure']
+  ] as const)('reads the written %s rejection as %s, verdict %s', (kind, category, verdict) => {
+    const written = agentSessionFailureWords(agentSessionFailureFact(kind), {
+      surface: 'rejection',
+      provider: 'claude'
+    })
+    expect(classifyDispatchRejection(written)).toEqual({ category, verdict, kind })
+  })
+
+  it('reads a legacy not_delivered row with no fact as a send nobody failed', () => {
+    expect(classifyDispatchRejection({ reason: 'not_delivered' })).toEqual({
+      category: 'undelivered',
+      verdict: null,
+      kind: 'notDelivered'
+    })
   })
 
   it('reads the typed fact over the sentence beside it', () => {
@@ -72,11 +97,20 @@ describe('classifyDispatchRejection', () => {
     }
   })
 
-  it('falls back to the reason when a newer host wrote a kind this build does not know', () => {
-    const rejection = JSON.parse('{"kind":"futureKind"}')
-    expect(
-      classifyDispatchRejection({ reason: DISPATCH_REJECTED_CANCELLED, rejection })
-    ).toMatchObject({ category: 'withdrawn', verdict: null })
+  it('gives a fact it cannot place no verdict, whatever the reason beside it says', () => {
+    // A newer host's kind, a status-row kind, and a fact with no kind at all.
+    for (const rejection of [{ kind: 'futureKind' }, { kind: 'providerRetrying' }, {}]) {
+      for (const reason of [
+        DISPATCH_REJECTED_QUEUE_FULL,
+        DISPATCH_REJECTED_CANCELLED,
+        'Refused.'
+      ]) {
+        expect(classifyDispatchRejection({ reason, rejection })).toEqual({
+          category: 'undelivered',
+          verdict: null
+        })
+      }
+    }
   })
 })
 

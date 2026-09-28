@@ -48,6 +48,28 @@ export function isAgentSessionFailureKind(value: unknown): value is AgentSession
   return typeof value === 'string' && AGENT_SESSION_FAILURE_KINDS.some((kind) => kind === value)
 }
 
+/** Kinds only a status row reports: none is ever why a message was not sent. */
+const STATUS_ROW_ONLY_FAILURE_KINDS = [
+  'compactionFailed',
+  'compactionUnconfirmed',
+  'cancelUnconfirmed',
+  'answerUnconfirmed',
+  'providerRetrying'
+] as const satisfies readonly AgentSessionFailureKind[]
+
+/** Why a message was not sent. A new failure kind is one of these until listed above. */
+export type SubmissionRejectionKind = Exclude<
+  AgentSessionFailureKind,
+  (typeof STATUS_ROW_ONLY_FAILURE_KINDS)[number]
+>
+
+export function isSubmissionRejectionKind(value: unknown): value is SubmissionRejectionKind {
+  return (
+    isAgentSessionFailureKind(value) &&
+    !STATUS_ROW_ONLY_FAILURE_KINDS.some((statusOnly) => statusOnly === value)
+  )
+}
+
 /** `person`: written by the provider for whoever reads the chat, shown inline. `log`: a stderr
  *  tail or exit status, shown only behind Details. */
 export type ProviderDiagnosticAudience = 'person' | 'log'
@@ -100,6 +122,19 @@ export type AgentSessionFailureFact = {
   retry?: AgentSessionProviderRetry
 }
 
+/** A fact as a row stores it: its kind may be one a newer host added, so only
+ *  `readAgentSessionFailureFact` or the rejection classifier may place it. */
+export type UnreadAgentSessionFailureFact = { kind: string }
+
+/** A fact a rejected message may carry. */
+export type SubmissionRejectionFact = AgentSessionFailureFact & { kind: SubmissionRejectionKind }
+
+export function isSubmissionRejectionFact(
+  fact: AgentSessionFailureFact
+): fact is SubmissionRejectionFact {
+  return isSubmissionRejectionKind(fact.kind)
+}
+
 /** Null for empty text, so a writer never records a detail with nothing in it. */
 export function providerDiagnostic(
   text: string,
@@ -109,15 +144,15 @@ export function providerDiagnostic(
   return bounded ? { text: bounded, audience } : undefined
 }
 
-export function agentSessionFailureFact(
-  kind: AgentSessionFailureKind,
+export function agentSessionFailureFact<TKind extends AgentSessionFailureKind>(
+  kind: TKind,
   extra: {
     detail?: ProviderDiagnostic
     refusal?: AgentSessionRefusalReference
     attachment?: AgentSessionAttachmentProblem
     retry?: AgentSessionProviderRetry
   } = {}
-): AgentSessionFailureFact {
+): AgentSessionFailureFact & { kind: TKind } {
   // Re-bounded here, so no writer can store more than the cap however it built the detail.
   const detail = extra.detail
     ? providerDiagnostic(extra.detail.text, extra.detail.audience)

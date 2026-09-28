@@ -1,4 +1,4 @@
-import type { AgentSessionFailureFact } from '../../shared/agent-session-failure'
+import type { SubmissionRejectionFact } from '../../shared/agent-session-failure'
 import { compactClaudeSession, observeClaudeCompaction } from './claude-structured-compaction'
 import type {
   AgentSessionAcquisition,
@@ -121,7 +121,7 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
 
   /** Resolves once a published session's startup has landed, faulted, or been ended by a close;
    *  with the reason when it did not land. */
-  awaitStarted = async (sessionId: string): Promise<void | AgentSessionFailureFact> => {
+  awaitStarted = async (sessionId: string): Promise<void | SubmissionRejectionFact> => {
     const session = this.sessions.get(sessionId)
     if (!session) {
       return

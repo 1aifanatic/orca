@@ -1,5 +1,5 @@
 import type { AgentJournalDispatchRejection } from '../../shared/agent-session-failure-words'
-import type { AgentSessionFailureFact } from '../../shared/agent-session-failure'
+import type { SubmissionRejectionFact } from '../../shared/agent-session-failure'
 import type {
   AgentJournalItemIdentity,
   AgentSessionJournalIdentity
@@ -68,7 +68,7 @@ export type ClaudeStructuredSessionEvent =
       type: 'ended'
       sessionId: string
       reason: string
-      failure?: AgentSessionFailureFact
+      failure?: SubmissionRejectionFact
       /** Present for first-hand child exits so the host can fence recovery. */
       cause?: 'unexpected-exit' | 'requested-close'
       fence?: number

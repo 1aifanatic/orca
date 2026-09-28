@@ -3,7 +3,7 @@ import {
   agentSessionFailureWords,
   type AgentJournalDispatchRejection
 } from '../../shared/agent-session-failure-words'
-import type { AgentSessionFailureFact } from '../../shared/agent-session-failure'
+import type { SubmissionRejectionFact } from '../../shared/agent-session-failure'
 import { TUI_AGENT_DISPLAY_NAMES } from '../../shared/tui-agent-display-names'
 import type { AgentJournalMessageItem } from '../../shared/agent-session-journal-types'
 import type { NativeChatBlock } from '../../shared/native-chat-types'
@@ -122,7 +122,7 @@ export async function startCodexTurn(
 }
 
 /** A message Codex rejected, in the words that name Codex and its legacy markers. */
-function codexDispatchRejection(failure: AgentSessionFailureFact): AgentJournalDispatchRejection {
+function codexDispatchRejection(failure: SubmissionRejectionFact): AgentJournalDispatchRejection {
   return agentSessionFailureWords(failure, {
     surface: 'rejection',
     agentName: TUI_AGENT_DISPLAY_NAMES.codex,

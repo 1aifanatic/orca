@@ -9,6 +9,10 @@ import type {
   AgentJournalItemIdentity,
   AgentJournalMessageItem
 } from '../../../shared/agent-session-journal-types'
+import {
+  classifyDispatchRejection,
+  DISPATCH_REJECTED_QUEUE_FULL
+} from '../../../shared/structured-agent-session-dispatch-rejection'
 import { structuredAgentSessionPayloadFingerprint } from '../../../shared/structured-agent-session-mutation'
 import {
   applyJournalRow,
@@ -320,23 +324,31 @@ describe('submission and dispatch state machine', () => {
     expect(doubt.submissions.get('cm_2')).not.toHaveProperty('rejection')
   })
 
-  it('drops a rejection fact it cannot place but keeps the row', () => {
-    const rejected: JournalRow = {
-      kind: 'dispatch',
-      clientMessageId: 'cm_1',
-      state: 'rejected',
-      providerItemId: null,
-      reason: 'Not sent.',
-      ...base(2)
+  it('keeps only the kind of a rejection fact it cannot place, so it reads as no verdict', () => {
+    const rejected = (rejection: unknown): JournalRow => {
+      const row: JournalRow = {
+        kind: 'dispatch',
+        clientMessageId: 'cm_1',
+        state: 'rejected',
+        providerItemId: null,
+        reason: DISPATCH_REJECTED_QUEUE_FULL,
+        ...base(2)
+      }
+      // A row read from disk carries whatever the host that wrote it did.
+      return Object.assign(row, { rejection })
     }
-    // A newer host's kind, as a row read from disk would carry it.
-    Object.assign(rejected, { rejection: { kind: 'futureKind' } })
-    const state = fold([submission, rejected])
-    expect(state.submissions.get('cm_1')).toMatchObject({
-      dispatchState: 'rejected',
-      reason: 'Not sent.'
+    // A newer host's kind: the marker beside it must not decide.
+    const newer = fold([submission, rejected({ kind: 'futureKind', detail: 'x' })])
+    const settled = newer.submissions.get('cm_1')
+    expect(settled).toMatchObject({ dispatchState: 'rejected', rejection: { kind: 'futureKind' } })
+    expect(settled && classifyDispatchRejection(settled)).toEqual({
+      category: 'undelivered',
+      verdict: null
     })
-    expect(state.submissions.get('cm_1')).not.toHaveProperty('rejection')
+    // Not a fact at all: dropped, leaving the reason.
+    const malformed = fold([submission, rejected('queueFull')]).submissions.get('cm_1')
+    expect(malformed).not.toHaveProperty('rejection')
+    expect(malformed && classifyDispatchRejection(malformed)).toMatchObject({ kind: 'queueFull' })
   })
 
   it('does not give a newer identical echo to a legacy unknown write failure', () => {

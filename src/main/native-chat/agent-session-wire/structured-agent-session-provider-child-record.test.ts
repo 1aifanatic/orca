@@ -15,7 +15,8 @@ import type {
 import { DISPATCH_REJECTED_CANCELLED } from '../../../shared/structured-agent-session-dispatch-rejection'
 import {
   agentSessionFailureFact,
-  type AgentSessionFailureFact
+  type AgentSessionFailureFact,
+  type SubmissionRejectionFact
 } from '../../../shared/agent-session-failure'
 import {
   agentSessionFailureSentence,
@@ -367,7 +368,7 @@ describe('settling an earlier child before the next one takes its message', () =
 
 const START_EXIT = 'claude stream-json exited (code 1)'
 const START_TEXT = 'Codex stopped before it finished starting. Send your message to try again.'
-const START_FAILURE: AgentSessionFailureFact = {
+const START_FAILURE: SubmissionRejectionFact = {
   kind: 'providerStartFailed',
   detail: { text: START_EXIT, audience: 'log' }
 }
@@ -379,7 +380,7 @@ describe('a published child that dies while it proves its start', () => {
   it.each([['the loop sees the start fail first'], ['the exit is processed first']])(
     'leaves one error row keyed by the start, and every queued message rejected with it: %s (R2)',
     async (order) => {
-      const settled = deferred<AgentSessionFailureFact>()
+      const settled = deferred<SubmissionRejectionFact>()
       adapterExtras = { awaitStarted: vi.fn(() => settled.promise) }
       await restartHost()
       acquire.mockImplementation(spawnStartingChild)

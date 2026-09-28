@@ -6,7 +6,7 @@ import type { NativeChatBlock } from '../../shared/native-chat-types'
 import {
   agentSessionFailureFact,
   type AgentSessionAttachmentProblem,
-  type AgentSessionFailureFact
+  type SubmissionRejectionFact
 } from '../../shared/agent-session-failure'
 import {
   agentSessionFailureWords,
@@ -18,9 +18,9 @@ import { claudeRecord } from './claude-structured-item-translation'
 /** Orca refused the message's content, as opposed to failing to read an attachment. */
 export class ClaudeDispatchContentError extends Error {
   /** What was wrong, typed where the check saw it; `message` stays for logs. */
-  readonly failure: AgentSessionFailureFact
+  readonly failure: SubmissionRejectionFact
 
-  constructor(message: string, failure: AgentSessionFailureFact) {
+  constructor(message: string, failure: SubmissionRejectionFact) {
     super(message)
     this.name = 'ClaudeDispatchContentError'
     this.failure = failure
@@ -36,7 +36,7 @@ function attachmentError(message: string, attachment: AgentSessionAttachmentProb
 
 /** A message Claude rejected, in the words that name Claude and its legacy markers. */
 export function claudeDispatchRejection(
-  failure: AgentSessionFailureFact
+  failure: SubmissionRejectionFact
 ): AgentJournalDispatchRejection {
   return agentSessionFailureWords(failure, {
     surface: 'rejection',

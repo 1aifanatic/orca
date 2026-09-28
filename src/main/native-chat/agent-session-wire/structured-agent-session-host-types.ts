@@ -1,4 +1,4 @@
-import type { AgentSessionFailureFact } from '../../../shared/agent-session-failure'
+import type { SubmissionRejectionFact } from '../../../shared/agent-session-failure'
 import type { AgentSessionOwnerProbe } from '../../../shared/agent-session-lease-adjudication'
 import type { AgentJournalCursor } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
@@ -63,7 +63,7 @@ export type StructuredAgentSessionEndedChild = StructuredAgentSessionProviderChi
     /** Descriptive text only — the provider's diagnostic, or the host's cause. Decides nothing. */
     reason: string | null
     /** What the chat records about this end; absent reads as a provider exit with no detail. */
-    failure?: AgentSessionFailureFact
+    failure?: SubmissionRejectionFact
     duringStartup: boolean
     /** Where the conversation's journal stood when the child ended, to order the end against a
      *  message's acceptance. */

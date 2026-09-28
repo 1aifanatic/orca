@@ -33,7 +33,7 @@ import {
   isAgentSessionWireRefusalCode,
   type AgentSessionRefusalReason
 } from '../../../shared/agent-session-wire-refusals'
-import type { AgentSessionFailureFact } from '../../../shared/agent-session-failure'
+import type { SubmissionRejectionFact } from '../../../shared/agent-session-failure'
 import type { AgentJournalDispatchRejection } from '../../../shared/agent-session-failure-words'
 import type { AgentSessionPromptResponse } from '../../../shared/agent-session-question-answer'
 import type { ProviderHistoryWindow } from '../agent-session-journal/journal-submission-reconciler'
@@ -164,7 +164,7 @@ export type StructuredAgentSessionEndedEvent = {
   reason: string
   /** Why it ended, as the adapter knows it: the provider's exit with its own diagnostic, or an
    *  Orca fault. Absent reads as a provider exit with nothing to add. */
-  failure?: AgentSessionFailureFact
+  failure?: SubmissionRejectionFact
   cause: 'unexpected-exit' | 'requested-close'
   fence: number
   acquisitionGeneration: string
@@ -324,7 +324,7 @@ export type StructuredAgentSessionAdapter = {
   /** Resolves once a session published before it proved its start has proven it, failed, or been
    *  closed; at once for any other. A start that did not land resolves with the chat's words for
    *  why. Never rejects. */
-  awaitStarted?(sessionId: string): Promise<void | AgentSessionFailureFact>
+  awaitStarted?(sessionId: string): Promise<void | SubmissionRejectionFact>
   readOptions?(input: { sessionId: string; fence: number }): Promise<AgentSessionOptionsResult>
   /** Option keys skipped after a provider rejected their persisted restore value. */
   readOptionRestoreFailures?(sessionId: string): readonly string[]
