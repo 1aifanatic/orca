@@ -43,6 +43,7 @@ async function settleStopQueuedWithdrawal(
     wake?: ((sessionId: string) => void) | undefined
   }
 ): Promise<{ withdrawnQueued: AgentSessionWithdrawnQueuedMessage[] } | Record<string, never>> {
+  let withdrawnQueued: AgentSessionWithdrawnQueuedMessage[] | undefined
   try {
     // The frontier, plus the cards this Stop itself returned: a consumed draft
     // whose submission it withdrew before the agent received it. Nothing else
@@ -53,17 +54,28 @@ async function settleStopQueuedWithdrawal(
         messageIds.add(row.messageId)
       }
     }
-    const withdrawnQueued = await withdrawQueuedMessagesForOperation(ctx.journal, {
+    withdrawnQueued = await withdrawQueuedMessagesForOperation(ctx.journal, {
       sessionId: ctx.sessionId,
       messageIds: [...messageIds],
       callerKey: ctx.resolvedBy,
       operationId: input.operationId
     })
-    ctx.publish()
     input.wake?.(ctx.sessionId)
-    return { withdrawnQueued }
   } catch {
-    return {}
+    // The drafts stay paused; the publish below still shows them so.
+  }
+  // Outside the withdrawal: a failed write must still publish the pause, and a
+  // failed publish must not drop bodies that were already withdrawn.
+  publishQueuedChange(ctx)
+  return withdrawnQueued ? { withdrawnQueued } : {}
+}
+
+/** Pauses and withdrawals write no journal row; never let their publish fail the Stop. */
+function publishQueuedChange(ctx: AgentSessionTurnContext): void {
+  try {
+    ctx.publish()
+  } catch {
+    // The next journal commit carries the list.
   }
 }
 
@@ -99,7 +111,7 @@ export function stopQueuedWithdrawalFinisher(
     }
     if (frontier.length > 0) {
       // The pause writes no journal row; a Stop that committed none either must still show it.
-      ctx.publish()
+      publishQueuedChange(ctx)
     }
     return { ok: true, value }
   }

@@ -80,23 +80,29 @@ export async function withdrawClearedSourceQueuedMessages(
   ctx: AgentSessionTurnContext,
   input: { callerKey: string; operationId: string }
 ): Promise<AgentSessionWithdrawnQueuedMessage[]> {
+  let withdrawn: AgentSessionWithdrawnQueuedMessage[]
   try {
     const messageIds = withdrawableQueuedMessages(ctx.journal).map((row) => row.messageId)
     if (messageIds.length === 0) {
       return []
     }
-    const withdrawn = await withdrawQueuedMessagesForOperation(ctx.journal, {
+    withdrawn = await withdrawQueuedMessagesForOperation(ctx.journal, {
       sessionId: ctx.sessionId,
       messageIds,
       ...input
     })
-    if (withdrawn.length > 0) {
-      ctx.publish()
-    }
-    return withdrawn
   } catch {
     return []
   }
+  if (withdrawn.length > 0) {
+    // A failed publish must not drop bodies that were already withdrawn.
+    try {
+      ctx.publish()
+    } catch {
+      // The next journal commit carries the list.
+    }
+  }
+  return withdrawn
 }
 
 /** A replay's answer, from the tombstones the original withdrawal stamped. */

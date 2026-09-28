@@ -20,7 +20,11 @@ import { AgentSessionRecordStore } from '../../runtime/agent-session-record-stor
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
 import { AgentSessionJournal } from '../agent-session-journal/journal-store'
-import { rotateStructuredAgentSessionHostInstanceForTests } from './structured-agent-session-queued-pause'
+import { JournalQueuedMessages } from '../agent-session-journal/journal-queued-messages'
+import {
+  resetQueuedMessagePausesForTests,
+  rotateStructuredAgentSessionHostInstanceForTests
+} from './structured-agent-session-queued-pause'
 import {
   HOST_TEST_NOW as NOW,
   HOST_TEST_SESSION as SESSION,
@@ -46,6 +50,8 @@ function eventually(assertion: () => void | Promise<void>): Promise<void> {
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'orca-queued-messages-'))
   resetHostTestOperationIds()
+  // Operation ids repeat per test, so a pause left by an earlier test would hold this one's drafts.
+  resetQueuedMessagePausesForTests()
   // Admitted: the message is written and unanswered, so the session owes work
   // until the test settles it.
   dispatch = vi.fn(async () => ({ state: 'admitted' as const }))
@@ -640,6 +646,42 @@ describe('/clear', () => {
     })
     expect(replayed.ok && replayed.value.withdrawnQueued).toHaveLength(2)
   })
+  it('a draft held by a clear left prepared drains when the retried clear fails with no journal commit', async () => {
+    const working = await workingSend()
+    const queued = await send('behind the clear', 'queue-if-active').result
+    if (!queued.ok || !('queued' in queued.value)) {
+      throw new Error('expected a queued receipt')
+    }
+    const draftId = queued.value.queued.messageId
+    // A clear that threw left its prepared phase behind; the settling turn's drain step meets it.
+    const operationId = hostTestOperationId()
+    await store.setConversationCommand(SESSION, 1, {
+      command: 'clear',
+      runtimeFence: 1,
+      operationId,
+      callerKey: CALLER.callerKey,
+      phase: 'prepared',
+      state: 'unknown'
+    })
+    await settleAccepted(working, 'a')
+    await new Promise((resolve) => setTimeout(resolve, 250))
+    expect(await submission(draftId)).toBeUndefined()
+    // The retried clear fails definitively: it settles on the record alone.
+    const attach = vi.spyOn(host, 'attach').mockResolvedValueOnce({
+      ok: false,
+      refusal: { code: 'structured_agent_session_unsupported', message: 'unsupported' }
+    })
+    try {
+      expect(await clear(operationId)).toMatchObject({
+        ok: true,
+        value: { command: 'clear', state: 'completed', error: 'unsupported' }
+      })
+    } finally {
+      attach.mockRestore()
+    }
+    await eventually(async () => expect(await submission(draftId)).toBeDefined())
+  })
+
   it('a clear with no drafts answers exactly as before: no withdrawnQueued field', async () => {
     const cleared = await clear(hostTestOperationId(), true)
     expect(cleared).toMatchObject({ ok: true, value: { command: 'clear', state: 'completed' } })
@@ -743,6 +785,44 @@ describe('publication', () => {
     // Idle, nothing in flight: the Stop interrupts nothing and writes no journal row.
     const events = await subscribeEvents()
     expect(await stop()).toMatchObject({ ok: true, value: { cancelled: false } })
+    await eventually(() =>
+      expect(queuedFrames(events).at(-1)).toMatchObject([
+        { messageId: firstId, state: 'returned' },
+        { messageId: secondId, state: 'waiting', paused: true }
+      ])
+    )
+  })
+
+  it('a capable Stop whose withdrawal write fails still publishes the pause, with no journal row', async () => {
+    const working = await workingSend()
+    const first = await send('to be refused', 'queue-if-active').result
+    const second = await send('waits behind the card', 'queue-if-active').result
+    if (!first.ok || !('queued' in first.value) || !second.ok || !('queued' in second.value)) {
+      throw new Error('expected queued receipts')
+    }
+    const firstId = first.value.queued.messageId
+    const secondId = second.value.queued.messageId
+    await settleAccepted(working, 'a')
+    await eventually(async () => expect(await submission(firstId)).toBeDefined())
+    await settleRejected(firstId, 'refused')
+    await eventually(async () =>
+      expect(await drafts()).toMatchObject([
+        { messageId: firstId, state: 'returned' },
+        { messageId: secondId, state: 'waiting' }
+      ])
+    )
+    // Idle, so the Stop commits no journal row; only its own publish can show the pause.
+    const events = await subscribeEvents()
+    const withdraw = vi
+      .spyOn(JournalQueuedMessages.prototype, 'withdraw')
+      .mockRejectedValueOnce(new Error('disk full'))
+    try {
+      const stopped = await stop(true)
+      expect(stopped).toMatchObject({ ok: true, value: { cancelled: false } })
+      expect(stopped.ok && 'withdrawnQueued' in stopped.value).toBe(false)
+    } finally {
+      withdraw.mockRestore()
+    }
     await eventually(() =>
       expect(queuedFrames(events).at(-1)).toMatchObject([
         { messageId: firstId, state: 'returned' },

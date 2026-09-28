@@ -46,6 +46,12 @@ export function pauseQueuedMessage(
   pauseRevision++
 }
 
+/** Process-level state outlives a test's host; tests only. */
+export function resetQueuedMessagePausesForTests(): void {
+  pausedDrafts.clear()
+  pauseRevision++
+}
+
 /** Cleared on consume, withdraw, and delete — the transitions that retire the hold. */
 export function releaseQueuedMessagePause(sessionId: string, messageId: string): void {
   if (pausedDrafts.delete(pauseKey(sessionId, messageId))) {
