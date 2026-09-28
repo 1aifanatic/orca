@@ -97,10 +97,7 @@ export function useStructuredAgentSessionOutbox(args: {
     const current = outboxRef.current
     const hostOwns = new Set(
       submissions
-        .filter(
-          (submission) =>
-            submission.dispatchState === 'pending' || submission.dispatchState === 'accepted'
-        )
+        .filter((submission) => submission.dispatchState !== 'rejected')
         .map((submission) => submission.clientMessageId)
     )
     const next = reconcileStructuredAgentSessionOutbox(current, submissions)
@@ -221,10 +218,8 @@ export function useStructuredAgentSessionOutbox(args: {
 
   // A transport-side unknown may never have reached the host, and nothing else
   // moves it out of `unconfirmed`, so one wedges the whole FIFO queue. Re-issuing
-  // the same envelope without `retryUnknown` is idempotent: the operation ledger
-  // replays a recorded outcome, or the host performs a genuine first delivery.
-  // A host-confirmed unknown stays parked until the user explicitly asks Retry
-  // to replay the same operation.
+  // the same envelope is idempotent: the operation ledger replays a recorded
+  // outcome, or the host performs a genuine first delivery.
   // The first `unconfirmed` entry is the one holding the queue, at whatever index it sits: an
   // unconfirmed tail behind an admitted head would otherwise wedge until the head cleared,
   // which is the wedge this probe exists to prevent.
@@ -292,9 +287,8 @@ export function useStructuredAgentSessionOutbox(args: {
       (candidate) => candidate.clientMessageId === clientMessageId
     )
     const current = outboxRef.current.find((entry) => entry.clientMessageId === clientMessageId)
-    // A provider-history reconciliation can settle an earlier unknown as
-    // rejected before the user presses Retry. Reusing that operation id only
-    // replays the settled rejection forever, so rotate the id for a safe resend.
+    // Reusing a rejected send's operation id only replays the settled rejection
+    // forever, so rotate the id for a safe resend.
     if (
       current &&
       (submission?.dispatchState === 'rejected' ||
@@ -320,12 +314,7 @@ export function useStructuredAgentSessionOutbox(args: {
       setOutbox(rotated)
       return
     }
-    const retryAfterUnknownSubmittedAt =
-      submission?.dispatchState === 'unknown'
-        ? submission.submittedAt
-        : current?.state === 'unconfirmed'
-          ? -1
-          : null
+    const retryAfterUnknownSubmittedAt = current?.state === 'unconfirmed' ? -1 : null
     const next = outboxRef.current.map((entry) =>
       entry.clientMessageId === clientMessageId
         ? {

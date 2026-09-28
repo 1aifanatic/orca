@@ -451,23 +451,48 @@ describe('useStructuredAgentSessionOutbox', () => {
     expect(mocks.call).toHaveBeenCalledOnce()
   })
 
-  it('drains a head the host refuses to redeliver so the queue behind it advances', async () => {
-    // The guard refuses a retry it cannot prove is a first delivery. That must
-    // not leave a Retry that does nothing in front of a wedged queue: the entry
-    // leaves the outbox, the user is told Orca will not send it again, and the
-    // message queued behind it goes out.
-    // The second send never settles, so the refusal's error is still on screen
-    // when the queue behind it advances.
+  it('draws a host unknown as sent and sends the queued message behind it, with no Retry', async () => {
+    // Doubt the host recorded is never a barrier: the entry leaves, nothing says it is
+    // unconfirmed, and the next message goes out on its own.
     mocks.call.mockImplementation(async (_target, _method, params) => {
       const request = params as {
         envelope: { clientOperationId: string }
         body: { blocks: { text?: string }[] }
       }
-      if (request.body.blocks[0]?.text === 'second') {
-        return new Promise(() => {})
-      }
-      return unknownResultFor(request.envelope.clientOperationId, 10)
+      return request.body.blocks[0]?.text === 'second'
+        ? acceptedResultFor(request.envelope.clientOperationId, 11)
+        : unknownResultFor(request.envelope.clientOperationId, 10)
     })
+    const { result } = renderHook(() =>
+      useStructuredAgentSessionOutbox({
+        sessionId: 'session-1',
+        target: LOCAL_TARGET,
+        fence: 1,
+        submissions: []
+      })
+    )
+
+    act(() => expect(result.current.send('first')).toBe(true))
+    await waitFor(() => expect(mocks.call).toHaveBeenCalledOnce())
+    act(() => expect(result.current.send('second')).toBe(true))
+    await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(result.current.outbox).toHaveLength(0))
+
+    const sent = mocks.call.mock.calls.map(
+      (call) => (call[2] as { body?: { blocks?: { text?: string }[] } })?.body?.blocks?.[0]?.text
+    )
+    expect(sent).toEqual(['first', 'second'])
+    expect(result.current.error).toBeNull()
+    expect(result.current.blockedClientMessageId).toBeNull()
+  })
+
+  it('releases an entry the journal settles unknown, whatever its last reply said', async () => {
+    mocks.call.mockImplementation(async (_target, _method, params) =>
+      pendingResultFor(
+        (params as { envelope: { clientOperationId: string } }).envelope.clientOperationId,
+        10
+      )
+    )
     const { result, rerender } = renderHook(
       ({ submissions }: { submissions: readonly AgentJournalSubmission[] }) =>
         useStructuredAgentSessionOutbox({
@@ -480,28 +505,13 @@ describe('useStructuredAgentSessionOutbox', () => {
     )
 
     act(() => expect(result.current.send('first')).toBe(true))
-    await waitFor(() => expect(result.current.outbox[0]?.state).toBe('unconfirmed'))
+    await waitFor(() => expect(result.current.outbox[0]?.state).toBe('dispatching'))
     const firstId = result.current.outbox[0]!.clientMessageId
-    rerender({ submissions: [unknownResultFor(firstId, 10).value.submission] })
-
-    act(() => expect(result.current.send('second')).toBe(true))
-    expect(result.current.outbox).toHaveLength(2)
-
-    act(() => result.current.retry(firstId))
-    await waitFor(() =>
-      expect(result.current.outbox.some((entry) => entry.clientMessageId === firstId)).toBe(false)
-    )
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 200))
+    rerender({
+      submissions: [{ ...unknownResultFor(firstId, 10).value.submission, recovered: true }]
     })
-
-    const sent = mocks.call.mock.calls.map(
-      (call) => (call[2] as { body?: { blocks?: { text?: string }[] } })?.body?.blocks?.[0]?.text
-    )
-    expect(sent).toContain('second')
-    expect(result.current.error).toBe(
-      'Message delivery is unconfirmed and Orca will not send it again'
-    )
+    await waitFor(() => expect(result.current.outbox).toHaveLength(0))
+    expect(result.current.error).toBeNull()
   })
 
   it('retains a send operation after a pending-admission refusal', async () => {
@@ -600,91 +610,16 @@ describe('useStructuredAgentSessionOutbox', () => {
     })
   })
 
-  it('retries an unknown head and advances a queued tail', async () => {
-    // oxlint-disable-next-line no-restricted-properties -- stubbing the global the generator reads, to pin ids in this test
-    vi.mocked(globalThis.crypto.randomUUID)
-      .mockReturnValueOnce('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
-      .mockReturnValueOnce('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')
-    mocks.call
-      .mockImplementationOnce(async (_target, _method, params) => {
-        const clientMessageId = (params as { envelope: { clientOperationId: string } }).envelope
-          .clientOperationId
-        return unknownResultFor(clientMessageId, 10)
-      })
-      .mockImplementationOnce(async (_target, _method, params) => {
-        const clientMessageId = (params as { envelope: { clientOperationId: string } }).envelope
-          .clientOperationId
-        return acceptedResultFor(clientMessageId, 11)
-      })
-      .mockImplementationOnce(async (_target, _method, params) => {
-        const clientMessageId = (params as { envelope: { clientOperationId: string } }).envelope
-          .clientOperationId
-        return acceptedResultFor(clientMessageId, 12)
-      })
-    const { result, rerender } = renderHook(
-      ({ submissions }: { submissions: readonly AgentJournalSubmission[] }) =>
-        useStructuredAgentSessionOutbox({
-          sessionId: 'session-1',
-          target: LOCAL_TARGET,
-          fence: 1,
-          submissions
-        }),
-      { initialProps: { submissions: [] as readonly AgentJournalSubmission[] } }
-    )
-
-    act(() => {
-      expect(result.current.send('first')).toBe(true)
+  it("drops an older host's not-delivered head so the queued tail advances without a Retry", async () => {
+    mocks.call.mockImplementation(async (_target, _method, params) => {
+      const request = params as {
+        envelope: { clientOperationId: string }
+        body: { blocks: { text?: string }[] }
+      }
+      return request.body.blocks[0]?.text === 'second'
+        ? acceptedResultFor(request.envelope.clientOperationId, 11)
+        : pendingResultFor(request.envelope.clientOperationId, 10)
     })
-    await waitFor(() => expect(result.current.outbox[0]?.state).toBe('unconfirmed'))
-    const firstId = result.current.outbox[0]!.clientMessageId
-    rerender({
-      submissions: [
-        {
-          clientMessageId: firstId,
-          fence: 1,
-          payloadFingerprint: 'fingerprint',
-          dispatchState: 'unknown',
-          providerItemId: null,
-          reason: 'socket closed',
-          submittedAt: 10,
-          resolvedAt: 10
-        }
-      ]
-    })
-    act(() => {
-      expect(result.current.send('second')).toBe(true)
-    })
-    expect(result.current.outbox).toHaveLength(2)
-
-    act(() => result.current.retry(firstId))
-    await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(3))
-    await waitFor(() => expect(result.current.outbox).toHaveLength(0))
-    const retryParams = mocks.call.mock.calls[1]?.[2] as { retryUnknown?: true } | undefined
-    expect(retryParams?.retryUnknown).toBeUndefined()
-  })
-
-  it('rotates a history-rejected unknown head so the queued tail can advance', async () => {
-    // oxlint-disable-next-line no-restricted-properties -- stubbing the global the generator reads, to pin ids in this test
-    vi.mocked(globalThis.crypto.randomUUID)
-      .mockReturnValueOnce('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
-      .mockReturnValueOnce('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')
-      .mockReturnValueOnce('cccccccc-cccc-4ccc-8ccc-cccccccccccc')
-    mocks.call
-      .mockImplementationOnce(async (_target, _method, params) => {
-        const clientMessageId = (params as { envelope: { clientOperationId: string } }).envelope
-          .clientOperationId
-        return unknownResultFor(clientMessageId, 10)
-      })
-      .mockImplementationOnce(async (_target, _method, params) => {
-        const clientMessageId = (params as { envelope: { clientOperationId: string } }).envelope
-          .clientOperationId
-        return acceptedResultFor(clientMessageId, 11)
-      })
-      .mockImplementationOnce(async (_target, _method, params) => {
-        const clientMessageId = (params as { envelope: { clientOperationId: string } }).envelope
-          .clientOperationId
-        return acceptedResultFor(clientMessageId, 12)
-      })
     const { result, rerender } = renderHook(
       ({ submissions }: { submissions: readonly AgentJournalSubmission[] }) =>
         useStructuredAgentSessionOutbox({
@@ -697,9 +632,8 @@ describe('useStructuredAgentSessionOutbox', () => {
     )
 
     act(() => expect(result.current.send('first')).toBe(true))
-    await waitFor(() => expect(result.current.outbox[0]?.state).toBe('unconfirmed'))
+    await waitFor(() => expect(result.current.outbox[0]?.state).toBe('dispatching'))
     const firstId = result.current.outbox[0]!.clientMessageId
-    act(() => expect(result.current.send('second')).toBe(true))
     rerender({
       submissions: [
         {
@@ -714,14 +648,11 @@ describe('useStructuredAgentSessionOutbox', () => {
         }
       ]
     })
-
-    act(() => result.current.retry(firstId))
-    await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(3))
     await waitFor(() => expect(result.current.outbox).toHaveLength(0))
-    const retryParams = mocks.call.mock.calls[1]?.[2] as
-      | { envelope: { clientOperationId: string } }
-      | undefined
-    expect(retryParams?.envelope.clientOperationId).not.toBe(firstId)
+    act(() => expect(result.current.send('second')).toBe(true))
+    await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(result.current.outbox).toHaveLength(0))
+    expect(result.current.error).toBeNull()
   })
 
   it('rotates the id after a refused write and delivers the message exactly once', async () => {
@@ -814,7 +745,7 @@ describe('useStructuredAgentSessionOutbox', () => {
     )
 
     act(() => expect(result.current.send('first session')).toBe(true))
-    await waitFor(() => expect(result.current.outbox[0]?.state).toBe('unconfirmed'))
+    await waitFor(() => expect(mocks.call).toHaveBeenCalledOnce())
 
     rerender({ sessionId: 'session-2' })
     expect(result.current.outbox).toHaveLength(0)

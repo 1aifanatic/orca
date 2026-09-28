@@ -37,8 +37,8 @@ export const DISPATCH_REJECTED_HOST_RESTARTED = 'host_restarted_before_delivery'
  *  Read only, like the one above. */
 export const DISPATCH_REJECTED_PROVIDER_CLOSED = 'provider_closed_before_delivery'
 
-/** Restart reconciliation found the send absent from a provider history it could trust. Rows
- *  written before rows carried a fact hold it as their reason; released clients printed it. */
+/** Legacy marker: an older host's restart verdict, inferred from the send's absence in the
+ *  provider's transcript. Read only; no host writes it now. */
 export const DISPATCH_REJECTED_NOT_DELIVERED = 'not_delivered'
 
 /** True for the internal transport marker, false for a provider's own words. Legacy-reason half
@@ -164,6 +164,23 @@ export function classifyDispatchRejection(
     return { category: 'content', verdict: 'failure' }
   }
   return { category: KIND_CATEGORY[kind], verdict: KIND_VERDICT[kind], kind }
+}
+
+/**
+ * A send drawn as an ordinary sent message: the provider took it, or Orca cannot tell — a crash,
+ * a dead agent or an unproven write left it in doubt, and the next message is how the chat
+ * continues. An older host's `notDelivered` was only ever that same doubt, inferred from the
+ * transcript, so it is drawn the same way rather than dropped from history.
+ */
+export function structuredAgentSessionSubmissionDrawsAsSent(
+  submission: Pick<AgentJournalSubmission, 'dispatchState' | 'reason'> & { rejection?: unknown }
+): boolean {
+  return (
+    submission.dispatchState === 'accepted' ||
+    submission.dispatchState === 'unknown' ||
+    (submission.dispatchState === 'rejected' &&
+      classifyDispatchRejection(submission).kind === 'notDelivered')
+  )
 }
 
 /** A submission that says Orca never handed it over, in any dispatch state: journals written

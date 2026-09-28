@@ -10,6 +10,7 @@ import {
 } from '../../../shared/structured-agent-session-outbox'
 import { agentSessionRefusalFailure } from '../../../shared/agent-session-write-failure'
 import { createStructuredAgentSessionOperationId } from '../../../shared/structured-agent-session-mutation'
+import { structuredAgentSessionSubmissionDrawsAsSent } from '../../../shared/structured-agent-session-dispatch-rejection'
 import {
   mutateStructuredAgentSessionLaunchPrompt,
   type StructuredAgentSessionLaunchPromptMutation
@@ -119,21 +120,18 @@ async function dispatchStructuredLaunchPrompt(
       )
       return false
     }
-    const dispatchState = result.value.submission.dispatchState
+    const { submission } = result.value
+    // An `unknown` is drawn as sent: the journal shows it, and a new message continues the chat.
+    const sent = structuredAgentSessionSubmissionDrawsAsSent(submission)
     mutateEntry(entry, (current) =>
-      dispatchState === 'accepted'
+      sent
         ? null
         : {
             ...current,
-            state:
-              dispatchState === 'unknown'
-                ? 'unconfirmed'
-                : dispatchState === 'pending'
-                  ? 'dispatching'
-                  : 'queued'
+            state: submission.dispatchState === 'pending' ? 'dispatching' : 'queued'
           }
     )
-    return dispatchState === 'accepted' || dispatchState === 'pending'
+    return sent || submission.dispatchState === 'pending'
   } catch {
     mutateEntry(entry, (current) => ({ ...current, state: 'unconfirmed' }))
     return false

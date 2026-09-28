@@ -16,7 +16,10 @@ import {
 } from './agent-session-refusal-notice'
 import type { AgentSessionWriteNoticePart } from './agent-session-write-notice-copy'
 import { agentSessionRefusalFailure } from './agent-session-write-failure'
-import { classifyDispatchRejection } from './structured-agent-session-dispatch-rejection'
+import {
+  classifyDispatchRejection,
+  structuredAgentSessionSubmissionDrawsAsSent
+} from './structured-agent-session-dispatch-rejection'
 import {
   classifyStructuredAgentSessionSendFailure,
   requeueStructuredAgentSessionSendRefusal,
@@ -68,39 +71,13 @@ function dropEntry(input: SendDispositionInput): StructuredAgentSessionOutboxEnt
   )
 }
 
-/**
- * The user force-retried a host-confirmed `unknown` and got the same submission
- * back. That is now the only answer such a retry can get: `unknown` means the
- * host cannot tell whether the provider has the message, and no reason it
- * records ever makes a second delivery safe. Parking the entry would offer a
- * Retry that does nothing in front of a queue nothing can drain, so it leaves
- * the outbox. Nothing is lost from the conversation: the durable submission row
- * already renders the message.
- *
- * A `rejected` submission takes the other path — the message provably did not
- * happen, so Retry rotates the id and sends it as a genuinely new message.
- */
-function refusedRedelivery(
-  entry: StructuredAgentSessionOutboxEntry,
-  submission: AgentSessionSendResult['submission']
-): boolean {
-  return (
-    entry.retryAfterUnknownSubmittedAt !== null &&
-    submission.dispatchState === 'unknown' &&
-    submission.submittedAt === entry.retryAfterUnknownSubmittedAt
-  )
-}
-
 /** Whether the journal already answers a send still in flight, so its own reply adds nothing: the
  *  host holds the message, or rejected it — a later `pending` reply must not undo that. */
 export function journalAnswersInFlightSend(
   submissions: readonly AgentJournalSubmission[],
   clientMessageId: string | null
 ): boolean {
-  return submissions.some(
-    (submission) =>
-      submission.clientMessageId === clientMessageId && submission.dispatchState !== 'unknown'
-  )
+  return submissions.some((submission) => submission.clientMessageId === clientMessageId)
 }
 
 /**
@@ -192,15 +169,9 @@ export function disposeStructuredAgentSessionSendResult(
     }
   }
   const submission = result.value.submission
-  if (refusedRedelivery(input.entry, submission)) {
-    return {
-      entries: dropEntry(input),
-      error: 'Message delivery is unconfirmed and Orca will not send it again',
-      blockedClientMessageId: input.blockedClientMessageId,
-      retryWithFreshClientMessageId: null
-    }
-  }
-  if (submission.dispatchState === 'accepted') {
+  // Sent, or in doubt after a crash or a dead agent: either way the journal draws the message, and
+  // sending a new one is how the chat continues.
+  if (structuredAgentSessionSubmissionDrawsAsSent(submission)) {
     return {
       entries: dropEntry(input),
       error: null,
@@ -233,29 +204,14 @@ export function disposeStructuredAgentSessionSendResult(
       retryWithFreshClientMessageId: input.entry.clientMessageId
     }
   }
-  if (submission.dispatchState === 'unknown' && submission.recovered) {
-    return {
-      entries: input.entries.map((candidate) =>
-        candidate.clientMessageId === input.entry.clientMessageId
-          ? { ...candidate, state: 'unconfirmed', retryAfterUnknownSubmittedAt: -1 }
-          : candidate
-      ),
-      error: null,
-      blockedClientMessageId: input.blockedClientMessageId,
-      retryWithFreshClientMessageId: null
-    }
-  }
   // `pending` is the host saying the message was written and is awaiting the
   // provider's acknowledgement, which cannot arrive until the turn ahead of it
   // ends. That is not doubt, and keeping order is no longer the reason to hold
   // the entry -- the host fixed the order when it wrote the row. It stays
-  // because a `pending` can still settle `rejected` or `unknown`, and only the
-  // entry carries the retry state that answer needs.
+  // because a `pending` can still settle `rejected`, and only the entry carries
+  // the retry state that answer needs.
   return {
-    entries: replaceEntryState(
-      input,
-      submission.dispatchState === 'unknown' ? 'unconfirmed' : 'dispatching'
-    ),
+    entries: replaceEntryState(input, 'dispatching'),
     error: null,
     blockedClientMessageId: input.blockedClientMessageId,
     retryWithFreshClientMessageId: null

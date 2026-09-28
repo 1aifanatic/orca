@@ -11,9 +11,14 @@ import {
 } from './agent-session-refusal-retry'
 import type { AgentSessionMutationEnvelope } from './agent-session-wire'
 import { structuredAgentSessionPayloadFingerprint } from './structured-agent-session-mutation'
-import { classifyDispatchRejection } from './structured-agent-session-dispatch-rejection'
+import {
+  classifyDispatchRejection,
+  structuredAgentSessionSubmissionDrawsAsSent
+} from './structured-agent-session-dispatch-rejection'
 
-/** `rejected`: the host settled the send as not delivered. The drain never sends it again on its
+/** `unconfirmed`: this client cannot tell whether the host recorded the send (a lost reply, a
+ *  remount mid-send); a same-id resend asks it, and nothing may overtake it meanwhile.
+ *  `rejected`: the host settled the send as not delivered. The drain never sends it again on its
  *  own and nothing queues behind it; only the user's Retry does. */
 export type StructuredAgentSessionOutboxState =
   | 'queued'
@@ -29,6 +34,8 @@ export type StructuredAgentSessionOutboxEntry = {
   state: StructuredAgentSessionOutboxState
   queuedAt: number
   lastAttemptAt: number | null
+  /** Non-null once the user retried an `unconfirmed` entry: it keeps its id and is not probed
+   *  again. The name is stored; older builds kept a doubted submission's time here. */
   retryAfterUnknownSubmittedAt: number | null
   source?: 'launch'
   /** Why the last attempt did not go through. Lives on the message so it goes when the message
@@ -189,7 +196,8 @@ export function reconcileStructuredAgentSessionOutbox(
   const settled = new Map(submissions.map((entry) => [entry.clientMessageId, entry]))
   return entries.flatMap((entry) => {
     const submission = settled.get(entry.clientMessageId)
-    if (submission?.dispatchState === 'accepted') {
+    // The journal draws it as sent, so the entry has nothing left to hold or retry.
+    if (submission && structuredAgentSessionSubmissionDrawsAsSent(submission)) {
       return []
     }
     if (
@@ -215,13 +223,6 @@ export function reconcileStructuredAgentSessionOutbox(
           lastFailure: structuredAgentSessionRejectedFailure(submission)
         }
       ]
-    }
-    if (
-      submission?.dispatchState === 'unknown' &&
-      entry.retryAfterUnknownSubmittedAt !== -1 &&
-      entry.retryAfterUnknownSubmittedAt !== submission.submittedAt
-    ) {
-      return [{ ...entry, state: 'unconfirmed' as const }]
     }
     return [entry]
   })
