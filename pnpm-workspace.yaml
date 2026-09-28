@@ -17,6 +17,7 @@ minimumReleaseAgeExclude:
   - pdfjs-dist@6.3.289
   - zod@4.5.4
   - '@shadcn/lint@0.1.0'
+  - i18next-cli@1.74.2
 shamefullyHoist: true
 
 # Orca always launches the user's own resolved Claude CLI via
