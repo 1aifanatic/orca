@@ -4,8 +4,8 @@ import { prepareActiveWorktreeFocusAfterDelete } from '../sidebar/active-worktre
 
 /**
  * Captures, before a cleanup batch starts, whether it includes the workspace the user is in.
- * The returned committer runs after the batch settles and focuses a sibling only if that
- * workspace is gone, matching the sidebar's batch delete. Safe to call more than once.
+ * The returned committer runs after every row settles and focuses a sibling only once that
+ * workspace is gone; rows still queued in the batch are never picked. Safe to call repeatedly.
  */
 export function prepareWorkspaceCleanupActiveWorkspaceFocus(
   candidates: readonly Pick<WorkspaceCleanupCandidate, 'worktreeId'>[]
@@ -17,5 +17,13 @@ export function prepareWorkspaceCleanupActiveWorkspaceFocus(
   ) {
     return () => {}
   }
-  return prepareActiveWorktreeFocusAfterDelete(activeWorktreeId)
+  const commit = prepareActiveWorktreeFocusAfterDelete(activeWorktreeId)
+  return () => {
+    // Why: this runs inside the removal loop; a focus failure must not abort the remaining deletes.
+    try {
+      commit()
+    } catch (error) {
+      console.error('Workspace cleanup could not focus another workspace', error)
+    }
+  }
 }

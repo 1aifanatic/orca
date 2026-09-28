@@ -181,7 +181,6 @@ export function useWorkspaceCleanupRemoval({
           clearWorktreeDeleteState(target.id, target.hostId)
         }
       }
-      commitActiveWorkspaceFocus()
       if (mountedRef.current) {
         settle()
       }
@@ -200,6 +199,8 @@ export function useWorkspaceCleanupRemoval({
               Object.fromEntries(Object.keys(current).map((identity) => [identity, 'deleting']))
             )
           }
+          // Why: progress follows each row, so focus moves as soon as the active row is gone.
+          commitActiveWorkspaceFocus()
         },
         onRowFailed: (failure) => {
           clearQueuedDeleteState(failure.worktreeId, failure.executionHostId)
@@ -220,8 +221,6 @@ export function useWorkspaceCleanupRemoval({
             // Why: defensively covers failures that never reached onRowFailed.
             clearQueuedDeleteState(failure.worktreeId, failure.executionHostId)
           }
-          // After the queued marks clear, so a row that failed to delete can take focus.
-          commitActiveWorkspaceFocus()
           if (mountedRef.current) {
             setRowFailures(nextFailures)
             onDeselect(result.removedIdentities)

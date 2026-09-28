@@ -62,6 +62,7 @@ export function useWorkspaceCleanupUnverifiedRemoval({
           if (mountedRef.current) {
             setDeletionPhaseByIdentity((current) => ({ ...current, [identity]: 'deleting' }))
           }
+          commitActiveWorkspaceFocus()
         },
         onRowFailed: (failure) => {
           clearQueuedDeleteState(failure.worktreeId, failure.executionHostId)
@@ -73,7 +74,6 @@ export function useWorkspaceCleanupUnverifiedRemoval({
         },
         onResult: (result) => {
           clearQueuedDeleteState(candidate.worktreeId, hostId ?? undefined)
-          commitActiveWorkspaceFocus()
           if (mountedRef.current) {
             applyResult(result, identity, setRowFailures, setDeletionPhaseByIdentity, onDeselect)
           }
@@ -87,7 +87,6 @@ export function useWorkspaceCleanupUnverifiedRemoval({
         },
         onError: () => {
           clearQueuedDeleteState(candidate.worktreeId, hostId ?? undefined)
-          commitActiveWorkspaceFocus()
           if (mountedRef.current) {
             setDeletionPhaseByIdentity((current) => withoutIdentity(current, identity))
           }
