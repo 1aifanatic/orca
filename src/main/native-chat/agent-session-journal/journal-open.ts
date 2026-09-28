@@ -47,9 +47,24 @@ export function replayJournal(db: Database.Database, sessionId: string): Journal
   if (!pointer) {
     return null
   }
-  const { epoch } = pointer
-  const state = createJournalReducerState(sessionId, epoch)
-  const repairedFrom = pendingJournalRepairSequence(db, sessionId, epoch)
+  return foldJournalRows({
+    sessionId,
+    pointer,
+    repairedFrom: pendingJournalRepairSequence(db, sessionId, pointer.epoch),
+    rows: iterateJournalEpochRows(db, pointer)
+  })
+}
+
+/** Folds one epoch's stored rows, in sequence order, wherever they are stored. */
+export function foldJournalRows(input: {
+  sessionId: string
+  pointer: JournalBlockPointer
+  /** The sequence a pending repair on this epoch left free. */
+  repairedFrom: number | null
+  rows: Iterable<{ seq: number; rowJson: string }>
+}): JournalLoad {
+  const { pointer, repairedFrom } = input
+  const state = createJournalReducerState(input.sessionId, pointer.epoch)
   let expectedSequence = FIRST_JOURNAL_SEQUENCE
   let gapSequence: number | undefined
   let unanchoredSequence: number | undefined
@@ -60,7 +75,7 @@ export function replayJournal(db: Database.Database, sessionId: string): Journal
   let latched = false
   let truncateFrom: number | undefined
 
-  for (const entry of iterateJournalEpochRows(db, pointer)) {
+  for (const entry of input.rows) {
     const parsed = parseJournalRow(entry.rowJson)
     if (!parsed.ok) {
       truncateFrom = entry.seq

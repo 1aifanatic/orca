@@ -36,5 +36,7 @@ export async function restoreStructuredAgentSessionRead(
       return null
     }
   }
-  return openStructuredAgentSessionConversationJournal(deps, record)
+  return openStructuredAgentSessionConversationJournal(deps, record, {
+    deferPerSessionImport: true
+  })
 }

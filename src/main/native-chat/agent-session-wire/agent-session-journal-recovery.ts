@@ -47,10 +47,12 @@ export async function openAgentSessionJournalWithRecovery(input: {
   fence: number
   /** Resolve directly to a transcript instead of discovering it by session id. */
   historyFilePath?: string | null
+  deferPerSessionImport?: boolean
 }): Promise<AgentSessionJournalOpened> {
   const journal = await openAgentSessionJournal({
     identity: input.identity,
-    database: input.database
+    database: input.database,
+    deferPerSessionImport: input.deferPerSessionImport
   })
   if (!journal.needsRebuild) {
     return { journal, recovery: null }

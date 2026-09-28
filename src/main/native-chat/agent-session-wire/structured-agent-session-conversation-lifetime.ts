@@ -98,6 +98,11 @@ export function createStructuredAgentSessionConversationLifetime(host: {
     conversation: async (sessionId: string): Promise<StructuredAgentSessionHostSession> => {
       const open = sessions.get(sessionId)
       if (open) {
+        // Restore left its per-chat file uncopied; a reader gets the chat from the one database.
+        // Awaited only then: an open conversation otherwise answers in the same turn.
+        if (open.journal.importPending) {
+          await open.journal.whenImported()
+        }
         return open
       }
       const record = deps().store.getRecord(sessionId)
@@ -121,6 +126,10 @@ export function createStructuredAgentSessionConversationLifetime(host: {
           throw agentSessionRefusalError('agent_session_identity_required', {
             reason: 'recordMissing'
           })
+        }
+        // Restore may have opened it while this waited.
+        if (session.journal.importPending) {
+          await session.journal.whenImported()
         }
         return session
       })

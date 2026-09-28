@@ -11,22 +11,36 @@ import { replayJournal } from './journal-open'
 import type { JournalStoreHost } from './journal-store-collaborators'
 import { openJournalStoreState } from './journal-store-open'
 import { deleteJournalRepairedSuffix } from './journal-repair-marker'
-import { importPerSessionJournal } from './journal-per-session-import'
+import { importPerSessionJournal, previewPerSessionJournal } from './journal-per-session-import'
 
 export async function restoreJournalStore(
   host: JournalStoreHost,
   collaborators: { epochController: JournalEpochController }
 ): Promise<void> {
-  // A per-chat file left by an earlier build is this chat's newest history: copied in first.
-  await importPerSessionJournal({
+  const source = {
     database: host.database(),
     identity: host.identity,
     legacyDirectory: host.legacyDirectory
-  })
+  }
+  // A restore reads a chat still in its per-chat file from there, and copies it before its first use.
+  const preview = host.deferPerSessionImport ? previewPerSessionJournal(source) : null
+  if (preview) {
+    host.owe(async () => {
+      await importPerSessionJournal(source)
+      const imported = replayJournal(source.database.db, host.identity.sessionId)
+      if (!imported) {
+        throw new Error(`per-chat journal of ${host.identity.sessionId} was gone before its copy`)
+      }
+      host.adopt(imported)
+    })
+  } else {
+    // A per-chat file left by an earlier build is this chat's newest history: copied in first.
+    await importPerSessionJournal(source)
+  }
   return openJournalStoreState({
     legacyDirectory: host.legacyDirectory,
     replay: () => {
-      const loaded = replayJournal(host.database().db, host.identity.sessionId)
+      const loaded = preview ?? replayJournal(host.database().db, host.identity.sessionId)
       host.setOpenedCorrupt(loaded?.corrupt ?? false)
       return loaded
     },

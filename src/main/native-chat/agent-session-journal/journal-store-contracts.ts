@@ -17,6 +17,8 @@ export type AgentSessionJournalOptions = {
   database: JournalHostDatabase
   now?: () => number
   mintEpoch?: () => string
+  /** A restore's open: see `AgentSessionJournal.whenImported`. */
+  deferPerSessionImport?: boolean
 }
 
 export type JournalReadSince =

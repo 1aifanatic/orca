@@ -42,7 +42,11 @@ export type StructuredAgentSessionConversationOpenDeps = {
 
 /** An acquisition's own open: its reserve cleared the record's death evidence, so it settles
  *  what the gone generation left running itself, from what it read before. */
-export type StructuredAgentSessionConversationOpenOptions = { acquisition?: boolean }
+export type StructuredAgentSessionConversationOpenOptions = {
+  acquisition?: boolean
+  /** A restore's open, which copies no per-chat file: see `AgentSessionJournal.whenImported`. */
+  deferPerSessionImport?: boolean
+}
 
 export type StructuredAgentSessionConversationOpenContext = {
   deps: StructuredAgentSessionConversationOpenDeps
@@ -91,7 +95,8 @@ export async function openStructuredAgentSessionConversationJournal(
     identity,
     database: deps.journalDatabase,
     fence,
-    historyFilePath: (await deps.adapter.historyFilePath?.({ identity })) ?? null
+    historyFilePath: (await deps.adapter.historyFilePath?.({ identity })) ?? null,
+    deferPerSessionImport: options.deferPerSessionImport
   })
   try {
     // A queued row found here is a leftover the delivery loop's first step rejects; a handed-over

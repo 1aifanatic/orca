@@ -107,6 +107,8 @@ export class AgentSessionJournal {
       now: this.now,
       mintEpoch: this.mintEpoch,
       serialize: (run) => this.queue.serialize(run),
+      deferPerSessionImport: options.deferPerSessionImport === true,
+      owe: (work) => this.queue.owe(work),
       database: () => this.database,
       state: () => this.state,
       block: () => this.block,
@@ -186,9 +188,23 @@ export class AgentSessionJournal {
     this.onCommitted = listener
   }
 
+  /**
+   * Resolves once the chat's rows are in the host's database. A restore's open serves a chat still
+   * in its per-chat file from a read-only fold of it; the copy runs before the chat's first write,
+   * and a reader that needs rows (forward pages, catch-up) awaits it here.
+   */
+  whenImported(): Promise<void> {
+    return this.queue.serialize(async () => undefined)
+  }
+
+  get importPending(): boolean {
+    return this.queue.owing
+  }
+
   /** Saves the settled listing status at the fold's position, after the rows it describes. */
   saveListingStatus(projection: StructuredAgentSessionStatusProjection): void {
-    if (!this.readOnly) {
+    // Not yet copied: no host row to annotate, and saving must not force the copy.
+    if (!this.readOnly && !this.queue.owing) {
       this.listingStatus.save(this.cursor(), projection, this.state.lastActivityAt)
     }
   }

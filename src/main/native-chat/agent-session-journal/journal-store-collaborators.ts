@@ -25,6 +25,10 @@ export type JournalStoreHost = {
   now: () => number
   mintEpoch: () => string
   serialize: <T>(run: () => Promise<T>) => Promise<T>
+  /** Leave a chat still in its per-chat file uncopied until its first use. */
+  deferPerSessionImport: boolean
+  /** Work the chat's next write waits for. */
+  owe: (work: () => Promise<void>) => void
   database: () => JournalHostDatabase
   state: () => JournalReducerState
   block: () => number

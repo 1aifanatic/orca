@@ -23,9 +23,12 @@ import type { AgentSessionJournalIdentity } from '../../../shared/agent-session-
 import Database from '../../sqlite/sync-database'
 import type { SqliteRow } from '../../sqlite/sqlite-statement'
 import type { JournalHostDatabase } from './journal-host-database'
+import { foldJournalRows, type JournalLoad } from './journal-open'
 import { legacyJournalDatabaseFile } from './journal-paths'
+import { pendingJournalRepairSequence } from './journal-repair-marker'
 import {
   planPerSessionImport,
+  readPerSessionImportMarker,
   reimportedJournalRows,
   writePerSessionImportMarker,
   type PerSessionImportPlan,
@@ -140,6 +143,51 @@ async function importOnce(input: ImportInput): Promise<PerSessionJournalImportOu
   }
   retireImportedDirectory(input, legacy.epoch)
   return plan?.kind === 'copied' ? 'already-imported' : 'imported'
+}
+
+/**
+ * The chat a first copy would import, folded straight from its per-chat file and copying nothing:
+ * for a restore, which must not import. Null when the open has to import now instead: the chat is
+ * already in the host's database or was copied before (the reimport rules decide), its file holds
+ * no chat, or its fold needs a repair written. The file is closed before this returns.
+ */
+export function previewPerSessionJournal(
+  input: Pick<ImportInput, 'database' | 'identity' | 'legacyDirectory' | 'openSource'>
+): JournalLoad | null {
+  const { sessionId } = input.identity
+  const db = input.database.db
+  const sourcePath = legacyJournalDatabaseFile(input.legacyDirectory)
+  if (
+    readJournalSessionPointer(db, sessionId) ||
+    readPerSessionImportMarker(db, sessionId) ||
+    !existsSync(sourcePath)
+  ) {
+    return null
+  }
+  const source = (input.openSource ?? openLegacySource)(sourcePath)
+  try {
+    const legacy = readLegacyHead(source, sessionId)
+    if (!legacy) {
+      return null
+    }
+    const loaded = foldJournalRows({
+      sessionId,
+      pointer: { epoch: legacy.epoch, block: -1 },
+      repairedFrom: source.prepare(HAS_LEGACY_TABLE).get('journal_repairs')
+        ? pendingJournalRepairSequence(source, sessionId, legacy.epoch)
+        : null,
+      rows: legacyRows(source, sessionId, legacy.epoch)
+    })
+    return loaded.corrupt || loaded.readOnly || loaded.truncateFrom !== undefined ? null : loaded
+  } finally {
+    source.close()
+  }
+}
+
+function* legacyRows(source: Database.Database, sessionId: string, epoch: string) {
+  for (const batch of legacyRowBatches(source, sessionId, epoch, IMPORT_BATCH_ROWS)) {
+    yield* batch.rows
+  }
 }
 
 /** A plain read-only connection: it sees committed WAL frames without checkpointing them. */
