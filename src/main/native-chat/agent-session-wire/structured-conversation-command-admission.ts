@@ -26,14 +26,6 @@ export function conversationCommandBlocked(
   ) {
     return 'This conversation has been cleared. Open the current conversation to continue.'
   }
-  // An older build's compaction record belongs to a child this host no longer runs.
-  if (
-    record.conversationCommand?.command === 'clear' &&
-    record.conversationCommand.state === 'unknown' &&
-    record.conversationCommand.phase === 'prepared'
-  ) {
-    return 'The previous conversation operation is unconfirmed.'
-  }
   if (record.lease.handoffStage || record.lease.handoffOperationId) {
     return 'Wait for the session handoff to finish.'
   }

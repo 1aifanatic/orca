@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { cp, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -7,6 +7,7 @@ import type { AgentSessionConversationCommand } from '../../../shared/agent-sess
 import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
+import { STRUCTURED_AGENT_SESSION_IDLE_MS } from './structured-agent-session-idle-sweep'
 import {
   HOST_TEST_NOW,
   HOST_TEST_SESSION,
@@ -18,37 +19,77 @@ import {
 
 const caller = { callerKey: 'desktop' }
 let directory: string
+let generation: number
+let clock: number
 let store: AgentSessionRecordStore
 let host: StructuredAgentSessionHost
+let hosts: StructuredAgentSessionHost[]
 let adapter: StructuredAgentSessionAdapter
 const compact = vi.fn<NonNullable<StructuredAgentSessionAdapter['compact']>>()
 let acquisitions = 0
 
-function commandParams(command: AgentSessionConversationCommand) {
+function envelope(method: string, fields: Record<string, unknown>) {
   return {
-    command,
-    envelope: {
+    sessionId: HOST_TEST_SESSION,
+    clientOperationId: hostTestOperationId(),
+    expectedRuntimeFence: store.getRecord(HOST_TEST_SESSION)!.lease.runtimeFence,
+    payloadFingerprint: computeAgentSessionPayloadFingerprint({
+      method,
       sessionId: HOST_TEST_SESSION,
-      clientOperationId: hostTestOperationId(),
-      expectedRuntimeFence: store.getRecord(HOST_TEST_SESSION)!.lease.runtimeFence,
-      payloadFingerprint: computeAgentSessionPayloadFingerprint({
-        method: 'agentSession.conversationCommand',
-        sessionId: HOST_TEST_SESSION,
-        fields: { command }
-      })
-    }
+      fields
+    })
   }
+}
+
+function commandParams(command: AgentSessionConversationCommand) {
+  return { command, envelope: envelope('agentSession.conversationCommand', { command }) }
+}
+
+function sendParams(text: string) {
+  const body = hostTestMessage(text)
+  return { body, envelope: envelope('agentSession.send', { body }) }
+}
+
+const generationRoot = () => join(directory, `generation-${generation}`)
+
+async function openHost(): Promise<void> {
+  store = await AgentSessionRecordStore.open({
+    directory: join(generationRoot(), 'store'),
+    hostId: 'local'
+  })
+  host = new StructuredAgentSessionHost({
+    store,
+    adapter,
+    journalRoot: generationRoot(),
+    claimKeyId: 'key',
+    now: () => clock,
+    mintSpawnToken: () => `spawn-${acquisitions}`,
+    // The owners a restarted host finds died with the process that started them.
+    probeOwner: async () => ({ outcome: 'pid-absent' })
+  })
+  hosts.push(host)
+}
+
+/** A crash and relaunch: the next host opens what the dying one had written, and nothing after. */
+async function restartHost(): Promise<void> {
+  await store.renewLeases([])
+  const dying = generationRoot()
+  generation++
+  await cp(dying, generationRoot(), {
+    recursive: true,
+    filter: (source) => !source.endsWith('.tmp') && !source.includes('.lock')
+  })
+  await openHost()
 }
 
 beforeEach(async () => {
   resetHostTestOperationIds()
   acquisitions = 0
+  generation = 0
+  clock = HOST_TEST_NOW
+  hosts = []
   compact.mockReset().mockResolvedValue({ state: 'accepted', providerIdentity: null })
   directory = await mkdtemp(join(tmpdir(), 'orca-conversation-command-'))
-  store = await AgentSessionRecordStore.open({
-    directory: join(directory, 'store'),
-    hostId: 'local'
-  })
   adapter = {
     supportsLocation: (location) =>
       location.executionHostId === 'local' && location.wslDistro === null,
@@ -81,18 +122,11 @@ beforeEach(async () => {
     answerPrompt: async () => {},
     setOption: async () => {},
     compact,
-    releaseAcquisition: async () => true,
-    closeSession: async () => true,
+    releaseAcquisition: vi.fn(async () => true),
+    closeSession: vi.fn(async () => true),
     readOptions: async () => ({ models: [], current: { model: 'test-model', effort: 'high' } })
   }
-  host = new StructuredAgentSessionHost({
-    store,
-    adapter,
-    journalRoot: directory,
-    claimKeyId: 'key',
-    now: () => HOST_TEST_NOW,
-    mintSpawnToken: () => `spawn-${acquisitions}`
-  })
+  await openHost()
   expect(
     await host.attach(caller, hostTestAttachParams(null, { options: { effort: 'low' } }))
   ).toMatchObject({ ok: true })
@@ -100,7 +134,9 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
-  await host.flushAllStreamedEvents()
+  for (const each of hosts) {
+    await each.flushAllStreamedEvents()
+  }
   await rm(directory, { recursive: true, force: true })
 })
 
@@ -237,5 +273,139 @@ describe('host conversation commands', () => {
     await host.setSessionTabVisibility(HOST_TEST_SESSION, false)
     await host.setSessionTabVisibility(result.value.replacementSessionId!, false)
     expect(host.conversationReplacements()).toEqual([])
+  })
+})
+
+describe('a clear that never committed', () => {
+  /** The replacement's start answers with a refusal that proves nothing either way. */
+  function refuseReplacementStartOnce() {
+    vi.spyOn(host, 'attach').mockResolvedValueOnce({
+      ok: false,
+      refusal: { code: 'agent_session_operation_capacity', message: 'Too many operations.' }
+    })
+  }
+
+  async function clearCommits(params = commandParams('clear')) {
+    const result = await host.conversationCommand(caller, params)
+    expect(result).toMatchObject({
+      ok: true,
+      value: { state: 'completed', replacementSessionId: expect.any(String) }
+    })
+    return result.ok ? result.value.replacementSessionId! : ''
+  }
+
+  it('refuses nothing afterwards: a rewind, a compaction and a send all run', async () => {
+    adapter.rewindSupport = () => ({ supported: true })
+    refuseReplacementStartOnce()
+    await expect(host.conversationCommand(caller, commandParams('clear'))).rejects.toThrow(
+      'Too many operations.'
+    )
+    // Past every conversation check: only the stale epoch it names stops it.
+    expect(
+      await host.rewind(caller, {
+        envelope: envelope('agentSession.rewind', {
+          itemId: 'item-1',
+          expectedEpoch: 'stale-epoch'
+        }),
+        itemId: 'item-1',
+        expectedEpoch: 'stale-epoch'
+      })
+    ).toMatchObject({ ok: false, refusal: { rewindReason: 'stale-epoch' } })
+    expect(await host.conversationCommand(caller, commandParams('compact'))).toMatchObject({
+      ok: true
+    })
+    expect(await host.send(caller, sendParams('still here'))).toMatchObject({ ok: true })
+  })
+
+  it('lets a clear under a new operation id commit', async () => {
+    refuseReplacementStartOnce()
+    await expect(host.conversationCommand(caller, commandParams('clear'))).rejects.toThrow()
+    const replacement = await clearCommits()
+    expect(store.listVisibleSessionIds()).toEqual([replacement])
+  })
+
+  it('reruns under the same operation id and starts exactly one replacement', async () => {
+    refuseReplacementStartOnce()
+    const params = commandParams('clear')
+    await expect(host.conversationCommand(caller, params)).rejects.toThrow()
+    expect(acquisitions).toBe(1)
+    await clearCommits(params)
+    expect(acquisitions).toBe(2)
+  })
+
+  /** What an older build left when its clear's outcome was lost: gated every write until now. */
+  async function restartOverAnOlderBuildsUnconfirmedClear() {
+    const record = store.getRecord(HOST_TEST_SESSION)!
+    await store.setConversationCommand(HOST_TEST_SESSION, record.lease.runtimeFence, {
+      command: 'clear',
+      runtimeFence: record.lease.runtimeFence,
+      operationId: hostTestOperationId(),
+      callerKey: caller.callerKey,
+      phase: 'prepared',
+      state: 'unknown',
+      replacementSessionId: 'clear-from-an-older-build'
+    })
+    await restartHost()
+  }
+
+  it("accepts a send on a restarted host holding an older build's unconfirmed clear", async () => {
+    await restartOverAnOlderBuildsUnconfirmedClear()
+    expect(await host.send(caller, sendParams('after the restart'))).toMatchObject({ ok: true })
+  })
+
+  it("clears on a restarted host holding an older build's unconfirmed clear", async () => {
+    await restartOverAnOlderBuildsUnconfirmedClear()
+    await clearCommits()
+  })
+
+  /** A clear whose replacement started but whose commit never landed; answers that replacement. */
+  async function clearThatDiesBeforeItsCommit(): Promise<string> {
+    const commit = store.setConversationCommand.bind(store)
+    let crashed = false
+    vi.spyOn(store, 'setConversationCommand').mockImplementation(async (...args) => {
+      if (!crashed && args[2].phase === 'committed' && args[2].replacementSessionId) {
+        crashed = true
+        throw new Error('crash before the commit')
+      }
+      return commit(...args)
+    })
+    await expect(host.conversationCommand(caller, commandParams('clear'))).rejects.toThrow(
+      'crash before the commit'
+    )
+    const [orphan] = store
+      .listRecords()
+      .flatMap((record) => (record.sessionId === HOST_TEST_SESSION ? [] : [record.sessionId]))
+    expect(host.collaboratorsForTests().sessions.get(orphan!)?.child).toBeTruthy()
+    return orphan!
+  }
+
+  // Nothing points at that replacement, so nothing lists, opens or starts it. Its agent is the
+  // only thing it holds, and it ends the way every quiet agent does.
+  it('leaves a replacement it never pointed at unlisted, and its agent stopped once idle', async () => {
+    const orphan = await clearThatDiesBeforeItsCommit()
+    const replacement = await clearCommits()
+    expect(replacement).not.toBe(orphan)
+    expect(store.listVisibleSessionIds()).toEqual([replacement])
+    expect(host.conversationReplacements().map((entry) => entry.sessionId)).toEqual([replacement])
+    clock += STRUCTURED_AGENT_SESSION_IDLE_MS + 1
+    await host.collaboratorsForTests().lifetime.idleSweep.tick()
+    expect(host.collaboratorsForTests().sessions.has(orphan)).toBe(false)
+    expect(store.getRecord(orphan)?.lease).toMatchObject({ claimStatus: 'released' })
+  })
+
+  it('starts nothing for that replacement after a crash, and releases what it held', async () => {
+    const orphan = await clearThatDiesBeforeItsCommit()
+    await restartHost()
+    await host.restoreReadableSessions(store.listVisibleSessionIds())
+    const replacement = await clearCommits()
+    expect(store.listVisibleSessionIds()).toEqual([replacement])
+    expect(host.conversationReplacements().map((entry) => entry.sessionId)).toEqual([replacement])
+    expect(host.collaboratorsForTests().sessions.has(orphan)).toBe(false)
+    const started = vi.mocked(adapter.acquire).mock.calls.map(([input]) => input.identity.sessionId)
+    expect(started.filter((sessionId) => sessionId === orphan)).toHaveLength(1)
+    expect(store.getRecord(orphan)?.lease).toMatchObject({
+      claimStatus: 'released',
+      ownerProcess: null
+    })
   })
 })

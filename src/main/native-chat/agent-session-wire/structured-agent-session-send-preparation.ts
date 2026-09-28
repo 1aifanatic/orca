@@ -1,8 +1,8 @@
 // What a send or a Stop needs from the session before the ledger places its row: the
 // conversation open. Nothing here needs an owner — a send is accepted into the conversation and
 // the delivery loop makes the session ready — so a refusal before acceptance is only one the
-// conversation itself makes: a rewind or conversation command in doubt, a cleared conversation,
-// or a journal that cannot be opened.
+// conversation itself makes: a rewind in doubt, a cleared conversation, or a journal that cannot be
+// opened.
 
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type {
@@ -55,19 +55,18 @@ export function structuredAgentSessionSendBlock(
     return rewindRefusal('outcome-unknown')
   }
   const command = record?.conversationCommand
-  // Only a clear's record gates sends; an older build's compaction record belongs to a child this
-  // host no longer runs.
+  // Only a committed clear: one that never committed changed nothing, and an older build's
+  // unconfirmed record is one of those.
   if (
     command?.command === 'clear' &&
-    ((command.state === 'unknown' && command.phase === 'prepared') || command.replacementSessionId)
+    command.phase === 'committed' &&
+    command.replacementSessionId
   ) {
     return {
       ok: false,
       refusal: {
         code: 'agent_session_operation_invalid',
-        message: command.replacementSessionId
-          ? 'This conversation has been cleared. Use the current conversation.'
-          : 'The conversation operation is unconfirmed.'
+        message: 'This conversation has been cleared. Use the current conversation.'
       }
     }
   }

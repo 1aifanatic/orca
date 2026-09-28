@@ -93,6 +93,37 @@ describe('conversationCommandBlocked for a command sent at rest (C6, B3)', () =>
     expect(conversationCommandBlocked(contextWith(null), record)).toBeNull()
   })
 
+  // A clear's commit is its only durable write, so a record short of it never changed the chat.
+  it("ignores a clear that never committed, as an older build's record leaves one", () => {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the admission reads only the lease and the command record.
+    const record = {
+      lease: {},
+      conversationCommand: {
+        command: 'clear',
+        phase: 'prepared',
+        state: 'unknown',
+        replacementSessionId: 'clear-replacement'
+      }
+    } as unknown as AgentSessionRecord
+    expect(conversationCommandBlocked(contextWith(null), record)).toBeNull()
+  })
+
+  it('refuses on a committed clear', () => {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the admission reads only the lease and the command record.
+    const record = {
+      lease: {},
+      conversationCommand: {
+        command: 'clear',
+        phase: 'committed',
+        state: 'completed',
+        replacementSessionId: 'clear-replacement'
+      }
+    } as unknown as AgentSessionRecord
+    expect(conversationCommandBlocked(contextWith(null), record)).toBe(
+      'This conversation has been cleared. Open the current conversation to continue.'
+    )
+  })
+
   it('at handover, lets the command itself and messages queued behind it wait', () => {
     const ctx = contextWith(null)
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the admission reads only the dispatch fields.

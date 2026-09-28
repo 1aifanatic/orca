@@ -85,15 +85,13 @@ export function runStructuredConversationCommand(
           const prior = matching()
           return prior?.phase === 'committed' ? prior : null
         },
-        rerunWhenReplayMissing: () => command === 'clear' && matching()?.phase === 'prepared',
+        // Nothing durable is written before the commit, so a clear with no committed answer
+        // changed nothing and runs again; its replacement's id and start are the same each time.
+        rerunWhenReplayMissing: () => command === 'clear',
         run: async (ctx) => {
           await host.flushStreamedEvents(sessionId)
           const record = store.getRecord(sessionId)!
-          const prior = matching()
-          const blocked =
-            prior?.phase === 'prepared' && command === 'clear'
-              ? null
-              : conversationCommandBlocked(ctx, record)
+          const blocked = conversationCommandBlocked(ctx, record)
           if (blocked) {
             return {
               ok: false,
@@ -102,22 +100,18 @@ export function runStructuredConversationCommand(
           }
           const replacementSessionId =
             command === 'clear'
-              ? (prior?.replacementSessionId ??
-                `clear-${createHash('sha256')
+              ? `clear-${createHash('sha256')
                   .update(JSON.stringify([sessionId, caller.callerKey, clientOperationId]))
                   .digest('hex')
-                  .slice(0, 40)}`)
+                  .slice(0, 40)}`
               : undefined
-          const prepared = {
+          const base = {
             command,
             runtimeFence: ctx.fence,
             operationId: clientOperationId,
             callerKey: caller.callerKey,
-            phase: 'prepared' as const,
-            state: 'unknown' as const,
             ...(replacementSessionId ? { replacementSessionId } : {})
           }
-          await store.setConversationCommand(sessionId, ctx.fence, prepared)
           if (command === 'clear' && replacementSessionId) {
             const attach: AgentSessionAttachParams = {
               envelope: {
@@ -154,7 +148,7 @@ export function runStructuredConversationCommand(
                 throw new Error(acquired.refusal.message)
               }
               const failed = {
-                ...prepared,
+                ...base,
                 replacementSessionId: undefined,
                 phase: 'committed' as const,
                 state: 'completed' as const,
@@ -165,7 +159,7 @@ export function runStructuredConversationCommand(
             }
           }
           const completed = {
-            ...prepared,
+            ...base,
             phase: 'committed' as const,
             state: 'completed' as const
           }
