@@ -274,24 +274,14 @@ describe('resolveTerminalHandleByProcessIncarnation direct fencing', () => {
     })
   }
 
-  /** Call the private resolveTerminalHandleByProcessIncarnation on the runtime. */
   function resolve(
     runtime: OrcaRuntimeService,
     processIncarnation: string,
     serializedHostScope: string | null
   ): string | null {
-    return (
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Test fixture crosses a private/runtime boundary with a verified shape.
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Test fixture crosses a private/runtime boundary with a verified shape.
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Test fixture crosses a private/runtime boundary with a verified shape.
-      (
-        runtime as unknown as {
-          resolveTerminalHandleByProcessIncarnation(
-            processIncarnation: string,
-            serializedHostScope: string | null
-          ): string | null
-        }
-      ).resolveTerminalHandleByProcessIncarnation(processIncarnation, serializedHostScope)
+    return runtime.resolveTerminalHandleByProcessIncarnation(
+      processIncarnation,
+      serializedHostScope
     )
   }
 
