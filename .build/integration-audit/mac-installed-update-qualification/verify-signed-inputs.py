@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import hashlib,json,os,pathlib,subprocess
 root=pathlib.Path(os.environ['RUNNER_TEMP'])
-inputs=[('A','02e7f7ba71594fcecbb12c38df07c73fa661cf08','1.4.214-local.1790614800000.02e7f7ba7159'),('B','04d9099d8ca9acecafa020b812a682caf7d1dcc5','1.4.214-local.1790614800001.04d9099d8ca9')]
+inputs=[('A','e5aa7bf92a70aff5d403dc2942bf8265fca9d791','1.4.214-local.1790623200000.e5aa7bf92a70'),('B','a88eb0980039ac7a69e73667b9280e142e15f022','1.4.214-local.1790623200001.a88eb0980039')]
 def digest(path):
  h=hashlib.sha256()
  with path.open('rb') as stream:

@@ -21,10 +21,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {label: A, source: 02e7f7ba71594fcecbb12c38df07c73fa661cf08, version: 1.4.214-local.1790614800000.02e7f7ba7159, arch: arm64, runner: macos-15}
-          - {label: B, source: 04d9099d8ca9acecafa020b812a682caf7d1dcc5, version: 1.4.214-local.1790614800001.04d9099d8ca9, arch: arm64, runner: macos-15}
-          - {label: A, source: 02e7f7ba71594fcecbb12c38df07c73fa661cf08, version: 1.4.214-local.1790614800000.02e7f7ba7159, arch: x64, runner: macos-15-intel}
-          - {label: B, source: 04d9099d8ca9acecafa020b812a682caf7d1dcc5, version: 1.4.214-local.1790614800001.04d9099d8ca9, arch: x64, runner: macos-15-intel}
+          - {label: A, source: e5aa7bf92a70aff5d403dc2942bf8265fca9d791, version: 1.4.214-local.1790623200000.e5aa7bf92a70, arch: arm64, runner: macos-15}
+          - {label: B, source: a88eb0980039ac7a69e73667b9280e142e15f022, version: 1.4.214-local.1790623200001.a88eb0980039, arch: arm64, runner: macos-15}
+          - {label: A, source: e5aa7bf92a70aff5d403dc2942bf8265fca9d791, version: 1.4.214-local.1790623200000.e5aa7bf92a70, arch: x64, runner: macos-15-intel}
+          - {label: B, source: a88eb0980039ac7a69e73667b9280e142e15f022, version: 1.4.214-local.1790623200001.a88eb0980039, arch: x64, runner: macos-15-intel}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     env:
@@ -108,7 +108,7 @@ jobs:
       OVERLAY_SHA256: 48ef8a01affc1bac0dfb34f0f3cd29cdfd87abda60aeed9232f7ca7b94d49cb5
     steps:
       - uses: actions/checkout@v6
-        with: {ref: 04d9099d8ca9acecafa020b812a682caf7d1dcc5, persist-credentials: false}
+        with: {ref: a88eb0980039ac7a69e73667b9280e142e15f022, persist-credentials: false}
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.sha }}

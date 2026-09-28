@@ -99,6 +99,7 @@ async function waitUpdaterReady(version) {
   while (Date.now() < deadline) {
     check()
     const snapshot = await updater('status')
+    receipt.updaterInitialization = { requestedVersion: version, appVersion: snapshot.appVersion, support: snapshot.support, state: snapshot.status?.state }
     if (snapshot.appVersion !== version) throw new Error('Serving updater version mismatch')
     if (snapshot.support?.installMode === 'supervised-headless-serve' && snapshot.support.automatic) return snapshot
     await delay(250)
