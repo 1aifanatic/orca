@@ -116,7 +116,7 @@ describe('launch readiness on a declared composer-quiet agent (goose)', () => {
     expect(launch).toBe('timeout')
   })
 
-  it('stays exactly tui-idle under a shell that marks no commands (fish, cmd)', async () => {
+  it('stays exactly tui-idle under a shell that marks no commands (fish before 4.0, cmd)', async () => {
     // No 133;C means no proof the agent owns the PTY, even with a real goose composer on screen.
     const { data } = readCapture('goose-composer-ready')
     const { launch } = await replay(
