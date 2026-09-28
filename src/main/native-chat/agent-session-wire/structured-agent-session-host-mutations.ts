@@ -254,16 +254,11 @@ export async function settleStructuredAgentSessionLateDispatch(
   input: {
     sessionId: string
     clientMessageId: string
-    /** The fact is a streamed turn's end: land after that turn's rows. */
-    afterStreamedRows?: true
   } & (
     | { providerIdentity: AgentJournalItemIdentity }
     | ({ state: 'rejected' } & AgentJournalDispatchRejection)
   )
 ): Promise<void> {
-  if (input.afterStreamedRows) {
-    await context.flushStreamedEvents(input.sessionId)
-  }
   const session = context.sessions.get(input.sessionId)
   if (!session) {
     return

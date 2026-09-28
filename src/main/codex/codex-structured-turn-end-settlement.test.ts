@@ -43,7 +43,7 @@ async function turnEndRig() {
 }
 
 describe('a Codex send its turn ended without echoing', () => {
-  it('is withdrawn when the turn is interrupted, once, behind the turn rows', async () => {
+  it('is withdrawn when the turn is interrupted, once', async () => {
     const rig = await turnEndRig()
     await expect(rig.send('client-1')).resolves.toEqual({ state: 'admitted' })
     rig.turns.start()
@@ -54,8 +54,7 @@ describe('a Codex send its turn ended without echoing', () => {
       expect.objectContaining({
         sessionId: 'session-1',
         clientMessageId: 'client-1',
-        state: 'rejected',
-        afterStreamedRows: true
+        state: 'rejected'
       })
     ])
     expect(rig.categoryOf(rig.settlements[0])).toBe('withdrawn')

@@ -155,13 +155,9 @@ export class CodexStructuredSessionAdapter implements StructuredAgentSessionAdap
     }
     if (event.type === 'notification') {
       this.compactions.codex(event.sessionId, event.method, event.params)
-      // After the journal took the turn's end, so the settlement lands behind that row.
+      // Only an admitted turn end settles; a refused one settles on the retry that lands.
       settleCodexSendsInEndedTurn(session, event.method, event.params, (settlement) =>
-        this.deps.onDispatchSettledLate?.({
-          sessionId: event.sessionId,
-          ...settlement,
-          afterStreamedRows: true
-        })
+        this.deps.onDispatchSettledLate?.({ sessionId: event.sessionId, ...settlement })
       )
       // After the admission check, so a refused frame is observed by the strip
       // only on the retry that also reaches the journal.

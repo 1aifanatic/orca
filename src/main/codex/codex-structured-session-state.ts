@@ -79,11 +79,11 @@ export type CodexStructuredSessionAdapterDeps = {
     state: AgentSessionBackgroundTaskState | null
   ) => void
   /** A send admitted earlier: its identity once Codex echoes it, or its rejection when the turn
-   *  Codex answered it into ended without taking it, landed behind that turn's rows. */
+   *  Codex answered it into ended without taking it. */
   onDispatchSettledLate?: (
     input: { sessionId: string; clientMessageId: string } & (
       | { providerIdentity: AgentJournalItemIdentity }
-      | ({ state: 'rejected'; afterStreamedRows: true } & AgentJournalDispatchRejection)
+      | ({ state: 'rejected' } & AgentJournalDispatchRejection)
     )
   ) => void
   /** Codex reported its thread not running with no turn open: a send whose
