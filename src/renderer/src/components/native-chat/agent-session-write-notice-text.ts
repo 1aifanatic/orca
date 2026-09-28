@@ -5,11 +5,13 @@ import { translate } from '@/i18n/i18n'
 import {
   AGENT_SESSION_WRITE_NOTICE_COPY as COPY,
   agentSessionWriteNoticeParts,
-  type AgentSessionWriteFailure,
-  type AgentSessionWriteKind,
   type AgentSessionWriteNoticePart,
   type AgentSessionWriteNoticeSentence
 } from '../../../../shared/agent-session-refusal-notice'
+import type {
+  AgentSessionWriteFailure,
+  AgentSessionWriteKind
+} from '../../../../shared/agent-session-write-failure'
 
 const SENTENCES: Record<AgentSessionWriteNoticeSentence, () => string> = {
   notDoneSend: () => translate('components.native-chat.writeNotice.notDoneSend', COPY.notDoneSend),
@@ -37,7 +39,68 @@ const SENTENCES: Record<AgentSessionWriteNoticeSentence, () => string> = {
   historyUnreadable: () =>
     translate('components.native-chat.writeNotice.historyUnreadable', COPY.historyUnreadable),
   unsupported: () => translate('components.native-chat.writeNotice.unsupported', COPY.unsupported),
-  unreachable: () => translate('components.native-chat.writeNotice.unreachable', COPY.unreachable)
+  unreachable: () => translate('components.native-chat.writeNotice.unreachable', COPY.unreachable),
+  recordFailed: () =>
+    translate('components.native-chat.writeNotice.recordFailed', COPY.recordFailed),
+  conversationCleared: () =>
+    translate('components.native-chat.writeNotice.conversationCleared', COPY.conversationCleared),
+  openCurrentConversation: () =>
+    translate(
+      'components.native-chat.writeNotice.openCurrentConversation',
+      COPY.openCurrentConversation
+    ),
+  commandRunning: () =>
+    translate('components.native-chat.writeNotice.commandRunning', COPY.commandRunning),
+  waitForCommand: () =>
+    translate('components.native-chat.writeNotice.waitForCommand', COPY.waitForCommand),
+  agentStarting: () =>
+    translate('components.native-chat.writeNotice.agentStarting', COPY.agentStarting),
+  waitForStart: () =>
+    translate('components.native-chat.writeNotice.waitForStart', COPY.waitForStart),
+  turnActive: () => translate('components.native-chat.writeNotice.turnActive', COPY.turnActive),
+  waitForTurn: () => translate('components.native-chat.writeNotice.waitForTurn', COPY.waitForTurn),
+  promptPending: () =>
+    translate('components.native-chat.writeNotice.promptPending', COPY.promptPending),
+  answerFirst: () => translate('components.native-chat.writeNotice.answerFirst', COPY.answerFirst),
+  backgroundTasksRunning: () =>
+    translate(
+      'components.native-chat.writeNotice.backgroundTasksRunning',
+      COPY.backgroundTasksRunning
+    ),
+  waitForBackgroundTasks: () =>
+    translate(
+      'components.native-chat.writeNotice.waitForBackgroundTasks',
+      COPY.waitForBackgroundTasks
+    ),
+  messagesUnsettled: () =>
+    translate('components.native-chat.writeNotice.messagesUnsettled', COPY.messagesUnsettled),
+  settleEarlierMessage: () =>
+    translate('components.native-chat.writeNotice.settleEarlierMessage', COPY.settleEarlierMessage),
+  optionRejected: () =>
+    translate('components.native-chat.writeNotice.optionRejected', COPY.optionRejected),
+  goalsUnsupported: () =>
+    translate('components.native-chat.writeNotice.goalsUnsupported', COPY.goalsUnsupported),
+  agentRefused: () =>
+    translate('components.native-chat.writeNotice.agentRefused', COPY.agentRefused),
+  ownerUnproven: () =>
+    translate('components.native-chat.writeNotice.ownerUnproven', COPY.ownerUnproven),
+  reopenChat: () => translate('components.native-chat.writeNotice.reopenChat', COPY.reopenChat),
+  terminalAgentHoldsChat: () =>
+    translate(
+      'components.native-chat.writeNotice.terminalAgentHoldsChat',
+      COPY.terminalAgentHoldsChat
+    ),
+  quitTerminalAgent: () =>
+    translate('components.native-chat.writeNotice.quitTerminalAgent', COPY.quitTerminalAgent),
+  hostReconciling: () =>
+    translate('components.native-chat.writeNotice.hostReconciling', COPY.hostReconciling),
+  waitMoment: () => translate('components.native-chat.writeNotice.waitMoment', COPY.waitMoment),
+  recordUnreadable: () =>
+    translate('components.native-chat.writeNotice.recordUnreadable', COPY.recordUnreadable),
+  chatNotFound: () =>
+    translate('components.native-chat.writeNotice.chatNotFound', COPY.chatNotFound),
+  startNewChat: () =>
+    translate('components.native-chat.writeNotice.startNewChat', COPY.startNewChat)
 }
 
 export function agentSessionWriteNoticeText(parts: readonly AgentSessionWriteNoticePart[]): string {

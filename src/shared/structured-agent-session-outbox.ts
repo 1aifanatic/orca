@@ -1,13 +1,12 @@
+import { readAgentSessionFailureFact, type AgentSessionFailureFact } from './agent-session-failure'
 import type { AgentJournalMessageItem, AgentJournalSubmission } from './agent-session-journal-types'
 import {
   parseAgentSessionWriteFailure,
-  type AgentSessionWriteFailure
-} from './agent-session-refusal-notice'
+  type AgentSessionWriteFailure,
+  type AgentSessionWriteRefusal
+} from './agent-session-write-failure'
 import { agentSessionRefusalOperationState } from './agent-session-refusal-retry'
-import type {
-  AgentSessionMutationEnvelope,
-  AgentSessionWireRefusalCode
-} from './agent-session-wire'
+import type { AgentSessionMutationEnvelope } from './agent-session-wire'
 import { structuredAgentSessionPayloadFingerprint } from './structured-agent-session-mutation'
 import { classifyDispatchRejection } from './structured-agent-session-dispatch-rejection'
 
@@ -34,11 +33,39 @@ export type StructuredAgentSessionOutboxEntry = {
   lastFailure?: StructuredAgentSessionAttemptFailure
 }
 
+/** A host's rejection fact as a message keeps it: never its provider detail, whose person-facing
+ *  words are already in the reason and whose log text is not kept client-side. */
+export type StructuredAgentSessionRejectionFact = Pick<
+  AgentSessionFailureFact,
+  'kind' | 'attachment'
+>
+
 /** Kept as the fact, not the words: the Retry row chooses those when it shows the entry. */
 export type StructuredAgentSessionAttemptFailure =
   | AgentSessionWriteFailure
   /** The host recorded the message and the provider turned it down, with the provider's reason. */
-  | { kind: 'rejected'; reason: string | null }
+  | { kind: 'rejected'; reason: string | null; rejection?: StructuredAgentSessionRejectionFact }
+
+/** The failure a rejected submission leaves on its message. A fact this build cannot place is
+ *  dropped, leaving the reason. */
+export function structuredAgentSessionRejectedFailure(submission: {
+  reason: string | null
+  rejection?: unknown
+}): Extract<StructuredAgentSessionAttemptFailure, { kind: 'rejected' }> {
+  const fact = readAgentSessionFailureFact(submission.rejection)
+  return {
+    kind: 'rejected',
+    reason: submission.reason,
+    ...(fact
+      ? {
+          rejection: {
+            kind: fact.kind,
+            ...(fact.attachment ? { attachment: fact.attachment } : {})
+          }
+        }
+      : {})
+  }
+}
 
 function parseStructuredAgentSessionAttemptFailure(
   value: unknown
@@ -51,7 +78,10 @@ function parseStructuredAgentSessionAttemptFailure(
     'reason' in value
   ) {
     return value.reason === null || typeof value.reason === 'string'
-      ? { kind: 'rejected', reason: value.reason }
+      ? structuredAgentSessionRejectedFailure({
+          reason: value.reason,
+          rejection: 'rejection' in value ? value.rejection : undefined
+        })
       : undefined
   }
   return parseAgentSessionWriteFailure(value)
@@ -119,13 +149,12 @@ export function stageStructuredAgentSessionOutboxEntryForSend(
 
 export function requeueStructuredAgentSessionSendRefusal(
   entry: StructuredAgentSessionOutboxEntry,
-  code: AgentSessionWireRefusalCode,
+  refusal: AgentSessionWriteRefusal,
   createOperationId: () => string,
   retainOperationId = false
 ): StructuredAgentSessionOutboxEntry {
-  const refusalState = agentSessionRefusalOperationState(code)
   if (
-    refusalState !== 'settled-rejected' ||
+    agentSessionRefusalOperationState(refusal.code) !== 'settled-rejected' ||
     retainOperationId ||
     entry.state === 'unconfirmed' ||
     entry.retryAfterUnknownSubmittedAt !== null
@@ -173,7 +202,7 @@ export function reconcileStructuredAgentSessionOutbox(
         {
           ...entry,
           state: 'rejected' as const,
-          lastFailure: { kind: 'rejected' as const, reason: submission.reason }
+          lastFailure: structuredAgentSessionRejectedFailure(submission)
         }
       ]
     }

@@ -75,6 +75,11 @@ export const START_REFUSAL_RESUMABLE: Record<AgentSessionWireRefusalCode, boolea
   agent_session_owner_restart_failed: true
 }
 
+/** Sentences a refusal notice shows too, so a chat says them one way. */
+export const TERMINAL_AGENT_HOLDS_CHAT = 'This chat is still open in a terminal agent.'
+export const QUIT_TERMINAL_AGENT = 'Quit that agent to continue the chat here.'
+export const START_NEW_CHAT = 'Start a new chat to continue.'
+
 /** Person-facing provider text is quoted, but bounded so the sentence stays one. */
 const MAX_QUOTED_DETAIL_CHARS = 512
 const BYTES_PER_MB = 1024 * 1024
@@ -112,11 +117,11 @@ function couldNot(verb: string): Sentence {
     const failed = `${agentName ?? 'The agent'} couldn't ${verb}.`
     // Only a terminal agent an older build recorded holds a claim; quitting it frees the chat.
     if (fact.refusal?.details?.reason === 'claimConflicted') {
-      return `${failed} This chat is still open in a terminal agent. Quit that agent to continue the chat here.`
+      return `${failed} ${TERMINAL_AGENT_HOLDS_CHAT} ${QUIT_TERMINAL_AGENT}`
     }
     const code = fact.refusal?.code
     return code && !START_REFUSAL_RESUMABLE[code]
-      ? `${failed} Start a new chat to continue.`
+      ? `${failed} ${START_NEW_CHAT}`
       : `${failed}${startRetry(context)}`
   }
 }
@@ -157,7 +162,7 @@ const FAILURE_SENTENCES = {
   notSignedIn: (context) =>
     `${context.agentName ?? 'The agent'} is not signed in for the selected account. Sign in, then ${retryStep(context)}.`,
   historyTooLarge: () =>
-    "This conversation's history is too large to restore here. Start a new chat to continue.",
+    `This conversation's history is too large to restore here. ${START_NEW_CHAT}`,
   managedAccountEnvOverride: () =>
     'This Claude launch sets its own Anthropic sign-in variables. Remove them to use a managed Claude account.',
   accountSwitchInProgress: () =>

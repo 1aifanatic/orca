@@ -4,17 +4,24 @@ import {
   type AgentSessionWireRefusalCode
 } from './agent-session-wire-refusals'
 import {
+  AGENT_SESSION_WRITE_NOTICE_COPY,
   agentSessionRefusalNotice,
-  agentSessionRpcErrorFailure,
+  agentSessionRefusalReasonWords,
   agentSessionWriteFailureNotice,
-  agentSessionWriteKindForMethod,
   agentSessionWriteNoticeEnglish,
   agentSessionWriteNoticeParts,
-  parseAgentSessionWriteFailure,
-  type AgentSessionWriteFailure,
-  type AgentSessionWriteKind,
   type AgentSessionWriteNoticeSentence
 } from './agent-session-refusal-notice'
+import { AGENT_SESSION_REFUSAL_REASONS } from './agent-session-refusal-details'
+import { agentSessionFailureSentence } from './agent-session-failure-words'
+import {
+  agentSessionRefusalFailure,
+  agentSessionRpcErrorFailure,
+  agentSessionWriteKindForMethod,
+  type AgentSessionWriteFailure,
+  type AgentSessionWriteKind,
+  type AgentSessionWriteRefusal
+} from './agent-session-write-failure'
 import {
   DISPATCH_REJECTED_QUEUE_FULL,
   DISPATCH_REJECTED_WRITE_FAILED
@@ -294,30 +301,144 @@ describe('agentSessionRefusalNotice', () => {
   })
 })
 
-describe('parseAgentSessionWriteFailure', () => {
-  it('reads back what was saved, and nothing but the code', () => {
-    expect(
-      parseAgentSessionWriteFailure(
-        JSON.parse(JSON.stringify({ kind: 'refused', code: 'agent_session_conflict' }))
+// Every (code x reason) a host can name, as a write keeps it.
+const REASONED: AgentSessionWriteRefusal[] = AGENT_SESSION_WIRE_REFUSAL_CODES.flatMap((code) =>
+  AGENT_SESSION_REFUSAL_REASONS[code].map((reason) =>
+    agentSessionRefusalFailure({ code, details: { reason } })
+  )
+)
+
+function reasonOf(failure: AgentSessionWriteRefusal): string {
+  return `${failure.code}/${failure.details?.reason}`
+}
+
+describe('the notice for every reason a host names', () => {
+  const cells = REASONED.flatMap((failure) =>
+    WRITES.map((write) => ({
+      failure,
+      write,
+      parts: agentSessionWriteNoticeParts(failure, write),
+      words: agentSessionRefusalReasonWords(failure),
+      cell: `${reasonOf(failure)} x ${write}`
+    }))
+  )
+
+  it('has words for every reason', () => {
+    for (const { words, cell } of cells) {
+      expect(words, cell).toBeDefined()
+    }
+  })
+
+  it('keeps the code words where the table says the reason means nothing more', () => {
+    for (const { failure, write, parts, words, cell } of cells) {
+      if (words && 'words' in words) {
+        expect(parts, cell).toEqual(
+          agentSessionWriteNoticeParts({ ...failure, details: undefined }, write)
+        )
+      }
+    }
+  })
+
+  it('names a step exactly where the person has one to take', () => {
+    for (const { words, cell } of cells) {
+      if (words && 'cause' in words) {
+        expect(words.step !== undefined, cell).toBe(
+          words.action === 'wait' || words.action === 'actFirst' || words.action === 'goElsewhere'
+        )
+      }
+    }
+  })
+
+  it('says the write did not happen, once, and never shows the host message', () => {
+    for (const { failure, write, parts, cell } of cells) {
+      const english = agentSessionWriteNoticeEnglish(parts)
+      expect(english.length, cell).toBeGreaterThan(0)
+      expect(agentSessionRefusalNotice({ ...failure, message: HOST_TEXT }, write), cell).toBe(
+        english
       )
-    ).toEqual({ kind: 'refused', code: 'agent_session_conflict' })
-    expect(parseAgentSessionWriteFailure({ kind: 'failed' })).toEqual({ kind: 'failed' })
-    expect(
-      parseAgentSessionWriteFailure({
-        kind: 'refused',
-        code: 'agent_session_conflict',
-        message: HOST_TEXT
-      })
-    ).toEqual({ kind: 'refused', code: 'agent_session_conflict' })
+      if (failure.code === 'agent_session_operation_unknown') {
+        expect(parts, cell).toEqual(['outcomeUnknown'])
+        continue
+      }
+      const notDone = parts.filter((part) => typeof part === 'string' && part.startsWith('notDone'))
+      const answeredAway = write === 'answer' && parts.includes('questionChanged')
+      const unsupported = failure.code === 'structured_agent_session_unsupported'
+      expect(notDone, cell).toEqual(answeredAway || unsupported ? [] : [NOT_DONE[write]])
+    }
+  })
+
+  it("uses the failure's own sentence for a start that failed, and only for a message", () => {
+    const failure = agentSessionRefusalFailure({
+      code: 'agent_session_operation_invalid',
+      details: { reason: 'notSignedIn' }
+    })
+    expect(agentSessionWriteNoticeParts(failure, 'send')).toEqual([
+      'notDoneSend',
+      { text: agentSessionFailureSentence({ kind: 'notSignedIn' }, 'rejection') }
+    ])
+    // Its next step is to send the message again, which a Stop cannot do.
+    expect(agentSessionWriteNoticeParts(failure, 'stop')).toEqual(['notDoneStop'])
   })
 
   it.each([
-    null,
-    'The agent was restarting.',
-    { kind: 'refused' },
-    { kind: 'refused', code: 'agent_session_from_the_future' },
-    { kind: 'something-else' }
-  ])('drops %j instead of guessing', (value) => {
-    expect(parseAgentSessionWriteFailure(value)).toBeUndefined()
+    [
+      'agent_session_operation_invalid',
+      'conversationCleared',
+      'send',
+      'This conversation has been cleared. Your message was not sent. Open the current conversation to continue.'
+    ],
+    [
+      'agent_session_operation_invalid',
+      'turnActive',
+      'command',
+      "The agent is still responding. The command didn't run. Wait for the agent to finish responding, or stop it."
+    ],
+    [
+      'agent_session_conflict',
+      'claimConflicted',
+      'composer-send',
+      'This chat is still open in a terminal agent. Your message was not sent. Quit that agent to continue the chat here.'
+    ],
+    [
+      'agent_session_conflict',
+      'chatStarting',
+      'stop',
+      "The agent is still starting. The agent wasn't stopped. Wait for the agent to finish starting."
+    ],
+    [
+      'agent_session_operation_invalid',
+      'promptGone',
+      'answer',
+      'This question was already answered or has changed.'
+    ],
+    [
+      'agent_session_checkpoint_stale',
+      'fenceStale',
+      'composer-send',
+      'Your message was not sent. Send it again.'
+    ]
+  ] as const)('%s / %s on %s', (code, reason, write, expected) => {
+    expect(
+      agentSessionRefusalNotice({ code, message: HOST_TEXT, details: { reason } }, write)
+    ).toBe(expected)
   })
+})
+
+describe('a refusal from a host that names no reason this build knows', () => {
+  it.each([
+    ['an older host', undefined],
+    ['a reason a newer host added', { reason: 'fromTheFuture' }],
+    ['facts with no reason', { ownerVerdict: 'unverifiable' }]
+  ])("reads as the code's row: %s", (_label, details) => {
+    const refusal = JSON.parse(
+      JSON.stringify({ code: 'agent_session_operation_invalid', message: HOST_TEXT, details })
+    )
+    expect(agentSessionRefusalNotice(refusal, 'command')).toBe("The command didn't run.")
+  })
+})
+
+it('keeps a sentence the failure rows share word for word', () => {
+  expect(agentSessionFailureSentence({ kind: 'historyTooLarge' }, 'row')).toContain(
+    AGENT_SESSION_WRITE_NOTICE_COPY.startNewChat
+  )
 })

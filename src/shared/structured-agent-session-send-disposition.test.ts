@@ -189,6 +189,57 @@ describe('what a refusal shows the user', () => {
     ).toBe('Your message was not sent.')
   })
 
+  it("keeps the reason the host named, and says it on the message's Retry row", () => {
+    const disposition = disposeStructuredAgentSessionSendResult({
+      entries: [entry],
+      entry,
+      blockedClientMessageId: null,
+      result: {
+        ok: false,
+        refusal: {
+          code: 'agent_session_conflict',
+          message: 'The chat is still starting.',
+          details: { reason: 'chatStarting' }
+        }
+      },
+      createOperationId: () => 'unused'
+    })
+
+    const lastFailure = disposition.entries[0]?.lastFailure
+    expect(lastFailure).toEqual({
+      kind: 'refused',
+      code: 'agent_session_conflict',
+      details: { reason: 'chatStarting' }
+    })
+    expect(
+      agentSessionWriteNoticeEnglish(structuredAgentSessionAttemptFailureParts(lastFailure!))
+    ).toBe(
+      'The agent is still starting. Your message was not sent. Wait for the agent to finish starting.'
+    )
+  })
+
+  it("keeps a rejected message's typed fact without the provider's detail", () => {
+    const disposition = disposeStructuredAgentSessionSendResult({
+      entries: [entry],
+      entry,
+      blockedClientMessageId: null,
+      result: rejectedWith('An image on this message is empty, so the message was not sent.', {
+        rejection: {
+          kind: 'attachmentInvalid',
+          attachment: { reason: 'empty' },
+          detail: { text: 'image block 2: zero bytes', audience: 'log' }
+        }
+      }),
+      createOperationId: () => 'unused'
+    })
+
+    expect(disposition.entries[0]?.lastFailure).toEqual({
+      kind: 'rejected',
+      reason: 'An image on this message is empty, so the message was not sent.',
+      rejection: { kind: 'attachmentInvalid', attachment: { reason: 'empty' } }
+    })
+  })
+
   it('keeps a failed request as a fact, not a transport error string', () => {
     const disposition = disposeStructuredAgentSessionSendFailure({
       entries: [entry],

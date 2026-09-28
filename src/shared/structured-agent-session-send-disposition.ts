@@ -10,16 +10,17 @@
 import type { AgentJournalSubmission } from './agent-session-journal-types'
 import type { AgentSessionMutationResult, AgentSessionSendResult } from './agent-session-wire'
 import {
-  agentSessionRefusalFailure,
   agentSessionWriteNoticeEnglish,
   agentSessionWriteNoticeParts,
   agentSessionWriteNotDoneParts,
   type AgentSessionWriteNoticePart
 } from './agent-session-refusal-notice'
+import { agentSessionRefusalFailure } from './agent-session-write-failure'
 import { classifyDispatchRejection } from './structured-agent-session-dispatch-rejection'
 import {
   classifyStructuredAgentSessionSendFailure,
   requeueStructuredAgentSessionSendRefusal,
+  structuredAgentSessionRejectedFailure,
   type StructuredAgentSessionAttemptFailure,
   type StructuredAgentSessionOutboxEntry
 } from './structured-agent-session-outbox'
@@ -162,16 +163,17 @@ export function disposeStructuredAgentSessionSendResult(
     const refusedIndex = input.entries.findIndex(
       (candidate) => candidate.clientMessageId === input.entry.clientMessageId
     )
+    const refusal = agentSessionRefusalFailure(result.refusal)
     const entries = input.entries.map((candidate) =>
       candidate.clientMessageId === input.entry.clientMessageId
         ? withLastFailure(
             requeueStructuredAgentSessionSendRefusal(
               candidate,
-              result.refusal.code,
+              refusal,
               input.createOperationId,
               input.entry.lastAttemptAt !== null
             ),
-            agentSessionRefusalFailure(result.refusal)
+            refusal
           )
         : candidate
     )
@@ -221,10 +223,11 @@ export function disposeStructuredAgentSessionSendResult(
   }
   if (submission.dispatchState === 'rejected') {
     return {
-      entries: replaceEntryState(input, 'rejected', {
-        kind: 'rejected',
-        reason: submission.reason
-      }),
+      entries: replaceEntryState(
+        input,
+        'rejected',
+        structuredAgentSessionRejectedFailure(submission)
+      ),
       error: null,
       blockedClientMessageId: input.blockedClientMessageId,
       retryWithFreshClientMessageId: input.entry.clientMessageId
