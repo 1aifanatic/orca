@@ -524,7 +524,7 @@ describe('SshRelaySession reconnect incarnation ordering', () => {
       }
       const closedTab: ReturnType<typeof getDefaultWorkspaceSession> = {
         ...getDefaultWorkspaceSession(),
-        closedTerminalTabTombstonesByTabId: { [tabId]: { closedAt: 1, worktreeId } }
+        closedTerminalTabTombstonesByTabId: { [tabId]: { closedAt: Date.now(), worktreeId } }
       }
       vi.mocked(mockStore.getWorkspaceSession).mockImplementation((hostId) =>
         (hostId ? 'host' : 'local') !== tombstonePartition
