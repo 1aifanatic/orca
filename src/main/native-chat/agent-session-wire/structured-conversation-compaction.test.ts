@@ -492,11 +492,12 @@ it('settles a command whose adapter call threw after the start as unknown (B4)',
 it('writes one exit row when the child dies mid-command, and the loop writes nothing but moves on (B4)', async () => {
   state.acquire.mockImplementation(async ({ fence, spawnToken }) => ({
     process: { hostId: 'local', pid: 4242, processStartTimeMs: 1_700_000_000_000, spawnToken },
-    acquisitionGeneration: 'generation-1',
+    acquisitionGeneration: `generation-${fence}`,
     link: {
       linkId: `link-${fence}`,
       handle: { provider: 'codex', threadId: THREAD },
-      origin: 'created',
+      // The next child resumes the thread, as a real one does.
+      origin: state.store.getRecord(SESSION)?.providerHandleChain.length ? 'resumed' : 'created',
       mintedAtFence: fence,
       observedAt: 1
     }
@@ -511,11 +512,12 @@ it('writes one exit row when the child dies mid-command, and the loop writes not
   })
 
   // The adapter never answers the command: the host's own record of the child's end is enough.
+  const fence = state.store.getRecord(SESSION)!.lease.runtimeFence
   await state.host.handleAdapterEvent({
     type: 'ended',
     sessionId: SESSION,
-    fence: state.store.getRecord(SESSION)!.lease.runtimeFence,
-    acquisitionGeneration: 'generation-1',
+    fence,
+    acquisitionGeneration: `generation-${fence}`,
     reason: 'provider exited',
     cause: 'unexpected-exit'
   })
@@ -523,8 +525,9 @@ it('writes one exit row when the child dies mid-command, and the loop writes not
   await vi.waitFor(async () =>
     expect(readAgentJournalTurn((await commandTurn(cmid))?.body)?.state).toBe('interrupted')
   )
-  // Released from the command, the loop starts a child for what waited behind it.
-  await vi.waitFor(() => expect(state.acquire).toHaveBeenCalledTimes(2))
+  // Released from the command, the loop starts a child and delivers what waited behind it.
+  await vi.waitFor(() => expect(state.dispatch).toHaveBeenCalledOnce())
+  expect(state.acquire).toHaveBeenCalledTimes(2)
   const snapshot = await journal()
   expect(
     snapshot.items.filter((item) => item.body.kind === 'status' && item.body.tone === 'error')
