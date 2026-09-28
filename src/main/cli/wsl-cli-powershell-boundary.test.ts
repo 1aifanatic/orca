@@ -196,6 +196,10 @@ describe('WSL CLI PowerShell boundary', () => {
   it.skipIf(process.platform !== 'win32')(
     'pins a non-ASCII app identity and the dev launcher env through Windows PowerShell 5.1',
     async () => {
+      const runtime = process.env.BUN_EXECUTABLE
+      if (!runtime) {
+        throw new Error('BUN_EXECUTABLE is required for the managed Bun bridge test')
+      }
       const root = await mkdtemp(join(tmpdir(), 'orca-wsl-managed-bridge-'))
       const userDataPath = join(root, "张三's O\u2019Brien Orca")
       const cliEntryPath = join(root, 'cli \u2018entry\u2019.cjs')
@@ -220,7 +224,7 @@ describe('WSL CLI PowerShell boundary', () => {
             'Bypass',
             '-File',
             bridgePath,
-            process.execPath,
+            runtime,
             '-WslCwd',
             root,
             ...FORWARDED_ARGS
