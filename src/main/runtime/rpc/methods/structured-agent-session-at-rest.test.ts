@@ -376,9 +376,13 @@ describe('every close withdraws what is queued (P2-29)', () => {
     )
 
     await close()
+    // A close's rejection is a sentence with its fact beside it, never a marker.
     await vi.waitFor(() =>
-      expect(JSON.stringify(reader)).toContain('provider_closed_before_delivery')
+      expect(JSON.stringify(reader)).toContain(
+        '"reason":"The chat closed before this message was sent.","submittedAt"'
+      )
     )
+    expect(JSON.stringify(reader)).toContain('"rejection":{"kind":"chatClosed"}')
     expect(rig.host.hasSession(SESSION)).toBe(false)
     expect(rig.adapter.acquire).not.toHaveBeenCalled()
   })

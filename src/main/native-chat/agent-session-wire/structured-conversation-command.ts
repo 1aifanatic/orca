@@ -16,7 +16,10 @@ import {
 } from './structured-agent-session-attach'
 import { admitAndRunAgentSessionMutation } from './structured-agent-session-mutation-admission'
 import type { StructuredAgentSessionMutationContext } from './structured-agent-session-host-mutations'
-import { openWithAgent } from './structured-agent-session-send-preparation'
+import {
+  openWithAgent,
+  structuredAgentSessionFailureWordsContext
+} from './structured-agent-session-send-preparation'
 import type { StructuredAgentSessionCaller } from './structured-agent-session-host-types'
 import type { StructuredAgentSessionHost } from './structured-agent-session-host'
 import { conversationCommandBlocked } from './structured-conversation-command-admission'
@@ -29,7 +32,6 @@ import {
   type AgentSessionFailureWordsContext
 } from '../../../shared/agent-session-failure-words'
 import { structuredAgentSessionStartFailureFact } from './structured-agent-session-failure-text'
-import { structuredAgentSessionFailureWordsContext } from './structured-agent-session-send-preparation'
 import type { StructuredSessionCompactionResult } from './structured-session-compaction'
 
 /** A compaction that did not succeed, keeping only what the provider wrote for a person. */

@@ -716,8 +716,8 @@ describe('how a stopped child ends the start its loop was waiting on', () => {
     expect(await statusRows()).toEqual([])
   })
 
-  it("fails the start after a host stop, as Orca's fault rather than the provider's (R2)", async () => {
-    const reason = 'Claude never finished starting, so Orca stopped it.'
+  it("fails the start after a host stop, as a start Orca stopped rather than the provider's (R2)", async () => {
+    const reason = 'the start watchdog fired'
     const second = await stoppedWhileStarting(() =>
       host['serialize'](SESSION, () =>
         stopStructuredAgentSessionAgentUnderSerialize(host['lifetimeContext'](), SESSION, {
@@ -728,13 +728,14 @@ describe('how a stopped child ends the start its loop was waiting on', () => {
     )
 
     await eventually(async () => expect((await submission(second))?.dispatchState).toBe('rejected'))
-    const text = "Orca ran into a problem, so this didn't go through. Try again."
+    // The sentence is the constructor's, not the reason the stop was given.
+    const text = 'Codex never finished starting, so Orca stopped it.'
     expect(await submission(second)).toMatchObject({
       reason: text,
-      rejection: { kind: 'hostFault' }
+      rejection: { kind: 'hostStopped' }
     })
     expect(await statusRows()).toEqual([
-      { itemId: expect.any(String), text, tone: 'error', failure: { kind: 'hostFault' } }
+      { itemId: expect.any(String), text, tone: 'error', failure: { kind: 'hostStopped' } }
     ])
     expect(dispatch).not.toHaveBeenCalled()
   })
