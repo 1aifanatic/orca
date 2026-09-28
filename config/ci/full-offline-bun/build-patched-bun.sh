@@ -6,6 +6,7 @@ export PATH=/opt/orca-rust/bin:/opt/cmake/bin:/opt/bun/bin:/opt/node/bin:/usr/li
 export BUN_TOOLCHAIN_RUST=/opt/orca-rust
 export BUN_TOOLCHAIN_LLVM=/usr/lib/llvm-21
 export BUN_BUILD_PREFETCH_DIR=/prefetch
+export BUN_INSTALL=/work/bun-install
 export CARGO_HOME=/work/cargo-home CARGO_NET_OFFLINE=true
 export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=/usr/lib/llvm-21/bin/clang
 export BUN_INSTALL_CACHE_DIR=/work/bun_install_cache_dir
