@@ -111,6 +111,9 @@ export type RuntimePtyController = {
     ptyId: string,
     opts?: { keepHistory?: boolean; deadlineMs?: number }
   ): Promise<boolean>
+  /** Durably records a kill order for an explicit close's unconfirmed stop, replayed when its SSH
+   *  host reconnects. True only when an order was written; local PTYs have no later host to ask. */
+  recordUnconfirmedStop?(ptyId: string): boolean
   getCwd?(ptyId: string): Promise<string | null>
   getForegroundProcess(ptyId: string): Promise<string | null>
   inspectProcess?(
