@@ -1,0 +1,9 @@
+{
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@vscode/windows-process-tree": "0.8.0",
+    "node-gyp": "11.5.0",
+    "node-addon-api": "8.5.0"
+  }
+}

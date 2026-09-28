@@ -84,6 +84,29 @@ jobs:
           if ($LASTEXITCODE -ne 0) { $failed = $true }
           Pop-Location
           if ($failed) { throw 'One or more native Windows contracts failed' }
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          architecture: ${{ matrix.arch }}
+      - name: Build patched process identity reader with production builder
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Push-Location config/bun-conpty-build/full-preflight/project
+          npm install --ignore-scripts --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { throw 'Diagnostic native build dependencies failed' }
+          node config/scripts/build-windows-process-tree-relay-addon.mjs --arch=${{ matrix.arch }}
+          if ($LASTEXITCODE -ne 0) { throw 'Patched process identity build failed' }
+          Pop-Location
+      - name: Execute complete packaged production readiness through public entry
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:ORCA_FULL_RECEIPTS = (Resolve-Path receipts).Path
+          tar -xzf config/bun-conpty-build/full-preflight/payload.tar.gz -C config/bun-conpty-build/full-preflight
+          if ($LASTEXITCODE -ne 0) { throw 'Fixture extraction failed' }
+          node config/bun-conpty-build/full-preflight/qualify-full.mjs ${{ matrix.arch }} 2>&1 | Tee-Object -FilePath receipts/full-preflight.log
+          if ($LASTEXITCODE -ne 0) { throw 'Complete production preflight failed' }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
