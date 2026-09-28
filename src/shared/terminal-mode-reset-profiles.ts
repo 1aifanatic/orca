@@ -15,6 +15,7 @@ export const RESET_KITTY_KEYBOARD_PROTOCOL = '\x1b[<99u\x1b[=0u'
 export function buildKittyKeyboardRestore(provenFlags: number | undefined): string {
   return provenFlags === undefined ? '\x1b[<99u' : `\x1b[<99u\x1b[=${provenFlags}u`
 }
+
 // Why: abandoned byte-gap replay drains live chunks, so a dropped intensity reset must not style them (STA-4042).
 export const RESET_GRAPHIC_RENDITION = '\x1b[0m'
 // Last so a dead process cannot leave stale attributes in the DECSC register.
