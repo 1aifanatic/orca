@@ -12,14 +12,13 @@ import {
   requiresDoubleEscapeInterrupt,
   type AgentInterruptInferenceRequest
 } from '../../../shared/agent-interrupt-intent'
-import { isAgentInterruptTurnCurrent } from '../../../shared/agent-interrupt-turn-baseline'
 import {
   isAskUserQuestionTool,
   type AgentQuestionAnsweredInferenceRequest
 } from '../../../shared/agent-question-answered-intent'
 import { AGENT_STATUS_STALE_AFTER_MS, type AgentType } from '../../../shared/agent-status-types'
 import type { EnrichedAgentHookEventPayload } from './server-types'
-import { isValidPaneKey } from './server-status-identity'
+import { equivalentInterruptAgentType, isValidPaneKey } from './server-status-identity'
 import { AgentHookServerRowOwnership } from './server-row-ownership'
 import { foldMainAgentWithRowChildWork } from './server-row-child-work-fold'
 
@@ -62,28 +61,13 @@ export abstract class AgentHookServerStatusInference extends AgentHookServerRowO
     if (dismissesClaudeQuestion) {
       return this.inferQuestionAnswered(request)
     }
-    // Why: inference is a fallback for a missing final hook, so any hook that ended or replaced the
-    // keypress's turn in the settle window wins over it.
+    // Why: inference is a fallback for a missing final hook; a strict baseline match keeps a delayed timer from clobbering any newer hook.
     if (
       payload.state !== 'working' ||
-      !isAgentInterruptTurnCurrent(
-        {
-          agentType: request.baselineAgentType,
-          prompt: request.baselinePrompt,
-          updatedAt: request.baselineUpdatedAt,
-          stateStartedAt: request.baselineStateStartedAt,
-          ...(typeof request.baselineMainAgentStateStartedAt === 'number'
-            ? { mainAgentStateStartedAt: request.baselineMainAgentStateStartedAt }
-            : {})
-        },
-        {
-          agentType,
-          prompt: payload.prompt,
-          updatedAt: existing.receivedAt,
-          stateStartedAt: existing.stateStartedAt,
-          mainAgent: payload.mainAgent
-        }
-      ) ||
+      !equivalentInterruptAgentType(agentType, request.baselineAgentType) ||
+      payload.prompt !== request.baselinePrompt ||
+      existing.receivedAt !== request.baselineUpdatedAt ||
+      existing.stateStartedAt !== request.baselineStateStartedAt ||
       Date.now() - existing.receivedAt > AGENT_STATUS_STALE_AFTER_MS
     ) {
       return false
