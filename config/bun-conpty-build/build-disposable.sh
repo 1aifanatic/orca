@@ -14,7 +14,7 @@ python3 - "$bun_build_root/bun/.buildkite/Dockerfile" <<'PYDOCKER'
 from pathlib import Path
 import sys
 p = Path(sys.argv[1])
-s = p.read_text().replace('RUN apt-get update', 'RUN echo "inet4_only = on" >> /etc/wgetrc && echo "ipv4" >> /root/.curlrc && echo \'Acquire::ForceIPv4 "true";\' > /etc/apt/apt.conf.d/99-force-ipv4 && apt-get update', 1)
+s = p.read_text().replace('ubuntu:20.04', 'ubuntu:22.04').replace('RUN apt-get update', 'RUN echo "inet4_only = on" >> /etc/wgetrc && echo "ipv4" >> /root/.curlrc && echo \'Acquire::ForceIPv4 "true";\' > /etc/apt/apt.conf.d/99-force-ipv4 && apt-get update', 1)
 p.write_text(s)
 PYDOCKER
 docker build --target base --tag bun-conpty-toolchain-base --file "$bun_build_root/bun/.buildkite/Dockerfile" "$bun_build_root/bun"
