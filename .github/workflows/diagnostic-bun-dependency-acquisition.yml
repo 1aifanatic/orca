@@ -1,6 +1,11 @@
 name: Diagnostic pinned Bun dependency caches
 on:
   workflow_dispatch:
+  push:
+    branches: [OrcaWin/np-bun-dependency-cache-diagnostic]
+    paths:
+      - .github/workflows/diagnostic-bun-dependency-acquisition.yml
+      - config/ci/dependency-cache-acquisition/**
 permissions:
   contents: read
 concurrency:
