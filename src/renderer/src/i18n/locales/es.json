@@ -14978,7 +14978,7 @@
         "hostFault": "Orca tuvo un problema, así que esto no se completó.",
         "hostFaultTryAgain": "Orca tuvo un problema, así que esto no se completó. Vuelva a intentarlo.",
         "hostStopped": "{{agent}} no terminó de iniciarse, así que Orca lo detuvo.",
-        "providerRateLimited": "{{agent}} alcanzó un límite de uso y está reintentando.",
+        "providerRateLimited": "{{agent}} alcanzó un límite de solicitudes y está reintentando.",
         "providerRetrying": "{{agent}} tuvo un problema temporal y está reintentando."
       },
       "writeNotice": {
