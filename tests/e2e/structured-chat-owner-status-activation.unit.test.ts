@@ -130,7 +130,7 @@ describe('a chat at rest keeps its worktree activatable', () => {
     await host.hold(SESSION, SURFACE)
     host.release(SESSION, SURFACE)
     await vi.waitFor(() => expect(host.hasSession(SESSION)).toBe(false))
-    expect(closeSession).toHaveBeenCalledWith(SESSION)
+    expect(closeSession).toHaveBeenCalledWith(SESSION, 'evict')
 
     expect(host.handoffStatus(SESSION)).toMatchObject({ owner: 'native' })
     expect(await activate()).toBe('structured')
