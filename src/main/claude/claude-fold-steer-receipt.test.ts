@@ -311,11 +311,46 @@ describe('Claude fold receipt for a mid-turn send (captured orders)', () => {
       rig.deliver(captured)
     }
 
+    // The task's completion revises a live row ahead of the wake's init, and
+    // that provider output is what opens the wake turn.
     const finalByTurn = new Map(rig.turns().map((turn) => [turn.turnId, turn]))
-    expect([...finalByTurn.keys()]).toEqual([first, 'wake-text-1'])
-    expect(finalByTurn.get('wake-text-1')).toMatchObject({ state: 'completed' })
+    expect([...finalByTurn.keys()]).toEqual([first, 'task_updated-17547'])
+    expect(finalByTurn.get('task_updated-17547')).toMatchObject({ state: 'completed' })
     // The wake result names no send; only the first send ever settled.
     expect(rig.settled).toHaveBeenCalledTimes(1)
+  })
+
+  it('background-wake: a steer replayed after the wake cycle began work folds into the wake turn', async () => {
+    const rig = await riggedAdapter()
+    const first = await rig.dispatchAt(13, 'client-first', FIRST_PROMPT)
+    const { firstTurn, wake } = backgroundWakeCapture({
+      sessionId: PROVIDER_SESSION_ID,
+      first,
+      steer: 'pending'
+    })
+    const wakeResult = wake.findIndex((captured) => captured.frame.type === 'result')
+    for (const captured of [...firstTurn, ...wake.slice(0, wakeResult)]) {
+      rig.deliver(captured)
+    }
+    // Captured order up to the wake's output; the steer's replay is placed
+    // mid-cycle, where the CLI replays a send it folded (p3-early-steer).
+    const steer = await rig.dispatchAt(19_725, 'client-steer', STEER_PROMPT)
+    rig.deliver(userReplay(19_726, PROVIDER_SESSION_ID, steer, STEER_PROMPT))
+    for (const captured of wake.slice(wakeResult)) {
+      rig.deliver(captured)
+    }
+
+    expect([...new Set(rig.turns().map((turn) => turn.turnId))]).toEqual([
+      first,
+      'task_updated-17547'
+    ])
+    expect(rig.turns().every((turn) => turn.state !== 'interrupted')).toBe(true)
+    expect(replayEventFor(rig.events, steer)).not.toHaveProperty('startsTurn')
+    expect(rig.settled).toHaveBeenCalledWith({
+      sessionId: 'session-1',
+      clientMessageId: 'client-steer',
+      providerIdentity: { provider: 'claude', sessionId: PROVIDER_SESSION_ID, uuid: steer }
+    })
   })
 
   it('miss: a steer whose replay trails the result keeps the opener path and its own turn', async () => {
@@ -387,7 +422,7 @@ describe('Claude fold receipt for a mid-turn send (captured orders)', () => {
 })
 
 describe('Claude fold receipt boundaries (synthetic orders)', () => {
-  it('lost result: a root init marks the open turn stale, so the next adopted replay is a boundary', async () => {
+  it('lost result: a root init starts a cycle with no work yet, so the next adopted replay is a boundary', async () => {
     const rig = await riggedAdapter()
     const uuidA = await rig.dispatchAt(10, 'client-a', 'first prompt')
     rig.deliver(userReplay(1_000, PROVIDER_SESSION_ID, uuidA, 'first prompt'))

@@ -185,14 +185,19 @@ export function createClaudeJournalTranslator(
       if (event.type === 'message') {
         context.observe(event.message, event.observedAt ?? Date.now())
         // A root init is the CLI starting a new request cycle (measured per turn,
-        // per queued turn, per background wake, per /compact); an open turn stops
-        // folding sends. Subagent frames name a parent and never carry one.
-        if (
-          event.message.type === 'system' &&
-          event.message.subtype === 'init' &&
-          isRootClaudeFrame(event.message)
-        ) {
-          turn.observeProviderCycleStart()
+        // per queued turn, per background wake, per /compact); a send replayed
+        // after that cycle's first root work was folded into it. Task frames are
+        // not cycle work: they arrive between cycles too.
+        if (isRootClaudeFrame(event.message)) {
+          if (event.message.type === 'system' && event.message.subtype === 'init') {
+            turn.observeProviderCycleStart()
+          } else if (
+            event.startsTurn === true ||
+            event.message.type === 'assistant' ||
+            event.message.type === 'stream_event'
+          ) {
+            turn.observeProviderCycleWork()
+          }
         }
       }
       if (event.type === 'message' && handleStream(event.message, event.observedAt ?? Date.now())) {

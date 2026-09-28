@@ -170,3 +170,16 @@ export function initFrame(at: number, sessionId: string): CapturedFoldFrame {
     }
   }
 }
+
+/** A root background-task system frame (`task_started`, `task_updated`, ...). */
+export function taskFrame(
+  at: number,
+  sessionId: string,
+  subtype: string,
+  fields: Record<string, unknown>
+): CapturedFoldFrame {
+  return {
+    at,
+    frame: { type: 'system', subtype, session_id: sessionId, uuid: `${subtype}-${at}`, ...fields }
+  }
+}

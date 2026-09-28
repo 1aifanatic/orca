@@ -30,9 +30,11 @@ export class ClaudeOpenTurn {
    *  failed: nothing would ever close the turn it opened, and the row would read
    *  working for the life of the session. Only an accepted send lifts it. */
   private reopenSuppressed = false
-  /** Set when a root init arrives while this turn is open: the CLI began a new
-   *  request cycle, so sends no longer fold into the open turn. */
-  private cycleStartObserved = false
+  /** Whether the provider's current request cycle has done root work — a send
+   *  echo or model output — since its init. Output can open a turn ahead of its
+   *  cycle's init (a background task finishing), so membership is read from the
+   *  cycle's work, not from when the turn opened. */
+  private cycleWorkObserved = false
   private readonly opener: (
     frame: Record<string, unknown>,
     source: ClaudeTurnSource | null,
@@ -66,15 +68,21 @@ export class ClaudeOpenTurn {
     return this.current !== null
   }
 
-  /** Whether the open turn's provider request cycle is still the live one — the
-   *  state in which the CLI folds an arriving send into the turn. */
+  /** Whether a turn is open inside a provider request cycle that has already
+   *  done work — the state in which the CLI folds an arriving send into it. A
+   *  cycle's first send is its opener, never a fold. */
   get openedInLiveProviderCycle(): boolean {
-    return this.current !== null && !this.cycleStartObserved
+    return this.current !== null && this.cycleWorkObserved
   }
 
   /** A root init frame: the CLI is starting a new request cycle. */
   observeProviderCycleStart(): void {
-    this.cycleStartObserved = true
+    this.cycleWorkObserved = false
+  }
+
+  /** A root send echo or model output inside the current request cycle. */
+  observeProviderCycleWork(): void {
+    this.cycleWorkObserved = true
   }
 
   /** Open a turn, ending whichever one was still open. A new turn starting is the
@@ -87,8 +95,6 @@ export class ClaudeOpenTurn {
       this.publish(this.current, { state: 'interrupted', completedAt: observedAt })
     }
     this.current = turn
-    // The turn just opened belongs to the newest cycle by construction.
-    this.cycleStartObserved = false
     this.publish(turn)
     this.deps.sink.setActivity?.(null)
   }
@@ -107,6 +113,8 @@ export class ClaudeOpenTurn {
   /** End the open turn, if one is open, and clear the live activity line. The
    *  context facts the end brings ride the same revision. */
   settle(end: ClaudeTurnEnd, contextUsage?: AgentSessionContextUsage): void {
+    // Every settle is a provider cycle ending (result, idle, child exit).
+    this.cycleWorkObserved = false
     if (this.current) {
       this.publish(this.current, end, contextUsage)
       this.current = null

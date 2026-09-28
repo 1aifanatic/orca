@@ -17,6 +17,7 @@ import {
   initFrame,
   resultFrame,
   sessionIdle,
+  taskFrame,
   toolResult,
   userReplay,
   type CapturedFoldFrame,
@@ -223,7 +224,8 @@ export function earlySteerCapture({
 
 /** p3-background-wake: after the turn's result, the finished background task
  *  wakes the CLI — a NEW cycle: its own init, output with no user replay, and a
- *  result that names no send at all (`user_message_uuids` absent). */
+ *  result that names no send at all (`user_message_uuids` absent). The task's
+ *  completion frames arrive BEFORE the wake's init. */
 export function backgroundWakeCapture({ sessionId, first }: FoldCaptureIds): {
   firstTurn: CapturedFoldFrame[]
   wake: CapturedFoldFrame[]
@@ -233,6 +235,13 @@ export function backgroundWakeCapture({ sessionId, first }: FoldCaptureIds): {
       initFrame(252, sessionId),
       userReplay(1_193, sessionId, first, FIRST_PROMPT),
       assistantToolUse(2_372, sessionId, 'reply-tool-1', 'toolu_bg_1', [first]),
+      taskFrame(2_530, sessionId, 'task_started', {
+        task_id: 'task_bg_1',
+        tool_use_id: 'toolu_bg_1',
+        description: 'Sleep then print marker',
+        is_backgrounded: true,
+        task_type: 'local_bash'
+      }),
       toolResult(2_532, sessionId, 'tool-result-1', 'toolu_bg_1'),
       assistantText(3_403, sessionId, 'reply-text-1', 'STARTED'),
       resultFrame(3_406, sessionId, 'result-1', {
@@ -243,6 +252,16 @@ export function backgroundWakeCapture({ sessionId, first }: FoldCaptureIds): {
       sessionIdle(3_407, sessionId)
     ],
     wake: [
+      taskFrame(17_547, sessionId, 'task_updated', {
+        task_id: 'task_bg_1',
+        patch: { status: 'completed' }
+      }),
+      taskFrame(17_547, sessionId, 'task_notification', {
+        task_id: 'task_bg_1',
+        tool_use_id: 'toolu_bg_1',
+        status: 'completed',
+        summary: 'Background command completed (exit code 0)'
+      }),
       initFrame(17_626, sessionId),
       assistantText(19_721, sessionId, 'wake-text-1', 'The background command finished.'),
       resultFrame(19_729, sessionId, 'result-2', {

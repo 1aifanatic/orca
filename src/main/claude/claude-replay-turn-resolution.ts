@@ -2,8 +2,8 @@
 //
 // A replay or result is joined to its waiter by the client uuid Claude echoes.
 // A send Claude FOLDS into the running request cycle is replayed mid-cycle with
-// the client uuid adopted: while the open turn's cycle is still live, that
-// replay is a delivery receipt and opens no boundary.
+// the client uuid adopted: once that cycle has done work, that replay is a
+// delivery receipt and opens no boundary.
 
 import { forgetRetiredWaiter } from './claude-structured-dispatch-waiters'
 import {
@@ -175,11 +175,12 @@ function claudeCliEmitsPerTurnInit(session: ClaudeSession): boolean {
 /** The provider's own cycle state decides a fold: the CLI folds a send into the
  *  request cycle that is running when the send arrives, and it replays a folded
  *  send mid-cycle with the client uuid ADOPTED (measured: fold-fresh/-resumed,
- *  two-steers, early-steer). So an adopted replay while the open turn's cycle is
- *  still live is a delivery receipt, not a turn boundary. A new cycle announces
- *  itself with a root init (per-turn, measured — gated by the floor above), so a
- *  lost result cannot leave a stale turn swallowing the next turn's replay. A
- *  fresh replay uuid is not the measured fold shape and keeps the opener path. */
+ *  two-steers, early-steer). So an adopted replay after the running cycle has
+ *  done work is a delivery receipt, not a turn boundary; a cycle's first send is
+ *  its opener. A new cycle announces itself with a root init (per-turn, measured
+ *  — gated by the floor above), so a lost result cannot leave a stale turn
+ *  swallowing the next turn's replay. A fresh replay uuid is not the measured
+ *  fold shape and keeps the opener path. */
 function claudeReplayIsFoldReceipt(
   session: ClaudeSession,
   waiter: ClaudeDispatchWaiter,
