@@ -45,6 +45,7 @@ import {
   selectNativeChatActiveTurnKey,
   type NativeChatSettledTurns
 } from '../../../../shared/native-chat-turn-status'
+import { nativeChatRowTurnKeys } from '../../../../shared/native-chat-turn-grouping'
 import {
   nativeChatTurnDiffs,
   type NativeChatDiffReveal,
@@ -73,6 +74,7 @@ export function NativeChatMessageList({
   workingStartedAt,
   settledTurns,
   activeTurnOpenedBy = null,
+  turnKeysByItemId = null,
   failedDeliveryMessageIds,
   showTurnStatus = true,
   showLiveTurnActivity = true,
@@ -92,8 +94,11 @@ export function NativeChatMessageList({
   workingStartedAt?: number | null
   /** Host-recorded turn durations keyed by user message id (structured lane). */
   settledTurns?: NativeChatSettledTurns
-  /** The user message the host says opened the running turn (structured lane). */
+  /** The key the host says anchors the running turn's bar (structured lane). */
   activeTurnOpenedBy?: string | null
+  /** Host-attributed turn ownership per journal item id (structured lane).
+   *  Rows it does not name keep positional preceding-user grouping. */
+  turnKeysByItemId?: ReadonlyMap<string, string> | null
   onLinkClick?: CommentMarkdownLinkClickHandler
   allowFileUriLinks?: boolean
   failedDeliveryMessageIds?: ReadonlySet<string>
@@ -157,20 +162,12 @@ export function NativeChatMessageList({
   const showTypingIndicator = showTurnStatus
     ? isWorking
     : shouldShowNativeChatTypingIndicator({ messages, isWorking })
-  const latestUserIndex = messages.findLastIndex((message) => message.role === 'user')
-  const currentTurnKey =
-    latestUserIndex === -1 ? undefined : (messages[latestUserIndex]?.id ?? undefined)
-  // Resolve each row's turn boundary once. Prefix slice/findLast in the render
+  // Resolve each row's owning turn once. Prefix slice/findLast in the render
   // loop becomes quadratic for long transcripts.
-  const turnKeys = useMemo(() => {
-    let currentTurnKey: string | undefined
-    return messages.map((message) => {
-      if (message.role === 'user') {
-        currentTurnKey = message.id
-      }
-      return currentTurnKey
-    })
-  }, [messages])
+  const turnKeys = useMemo(
+    () => nativeChatRowTurnKeys(messages, showTurnStatus ? turnKeysByItemId : null),
+    [messages, showTurnStatus, turnKeysByItemId]
+  )
   const turnDiffs = useMemo(
     () =>
       journalItems
@@ -203,7 +200,6 @@ export function NativeChatMessageList({
         messages,
         turnKeys,
         activeTurnKey,
-        currentTurnKey,
         receipts,
         turnStatuses,
         turnDiffs,
@@ -214,7 +210,6 @@ export function NativeChatMessageList({
       }),
     [
       activeTurnKey,
-      currentTurnKey,
       expandedTurnIds,
       isWorking,
       lifecycleWorking,
