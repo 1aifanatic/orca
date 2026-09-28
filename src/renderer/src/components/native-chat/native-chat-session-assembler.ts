@@ -7,7 +7,10 @@ import {
   type NativeChatSessionStatus
 } from '../../../../shared/native-chat-types'
 import { NATIVE_CHAT_STREAMING_ID } from '../../../../shared/native-chat-streaming'
-import { compareNativeChatMessagesByTime } from '../../../../shared/native-chat-transcript-projection'
+import {
+  compareNativeChatMessagesByTime,
+  compareNativeChatMessageTimes
+} from '../../../../shared/native-chat-transcript-projection'
 import {
   hasImagePromptMarker,
   isImageSourceUserTurn,
@@ -105,14 +108,17 @@ function messageSortRank(message: NativeChatMessage): number {
   return 0
 }
 
-// Rank first; within a tier the transcript's shared time order.
-export function compareMessages(a: NativeChatMessage, b: NativeChatMessage): number {
+// Rank first; within a tier the transcript's shared time order. Ties are left to
+// the caller's order, which the message list keeps.
+export function compareMessageTimes(a: NativeChatMessage, b: NativeChatMessage): number {
   const ar = messageSortRank(a)
   const br = messageSortRank(b)
-  if (ar !== br) {
-    return ar - br
-  }
-  return compareNativeChatMessagesByTime(a, b)
+  return ar !== br ? ar - br : compareNativeChatMessageTimes(a, b)
+}
+
+// Ties broken by id: the merged sources below have no shared order of their own.
+export function compareMessages(a: NativeChatMessage, b: NativeChatMessage): number {
+  return compareMessageTimes(a, b) || compareNativeChatMessagesByTime(a, b)
 }
 
 /**

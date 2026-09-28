@@ -1,6 +1,6 @@
 import type { NativeChatMessage } from '../../../../shared/native-chat-types'
 import { projectNativeChatTranscriptMessages } from '../../../../shared/native-chat-transcript-projection'
-import { compareMessages } from './native-chat-session-assembler'
+import { compareMessageTimes } from './native-chat-session-assembler'
 
 function sameMessage(left: NativeChatMessage, right: NativeChatMessage): boolean {
   // Folding only clones the assistant rows that absorb a tool run; every other row
@@ -25,7 +25,7 @@ export function createNativeChatMessageListProjection(): (
   let previous: NativeChatMessage[] = []
   let byId = new Map<string, NativeChatMessage>()
   return (messages) => {
-    const folded = projectNativeChatTranscriptMessages(messages, compareMessages)
+    const folded = projectNativeChatTranscriptMessages(messages, compareMessageTimes)
     const next = folded.map((message) => {
       const prior = byId.get(message.id)
       // Folding clones historical tool runs even when every contributing block is unchanged.
