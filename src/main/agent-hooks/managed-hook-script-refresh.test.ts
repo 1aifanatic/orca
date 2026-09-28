@@ -153,8 +153,8 @@ describe('managed hook script refresh', () => {
     delete process.env.GROK_HOME
     delete process.env.KIMI_CODE_HOME
     try {
-      // Why await: Codex's install takes a cross-process lock before it writes, so
-      // its script lands only after the install settles.
+      // Why await: Codex's install awaits its approval promotion before it writes
+      // its script, so the script lands only after the install settles.
       await withPlatform('win32', () =>
         Promise.allSettled(MANAGED_AGENT_HOOK_INSTALLERS.map(([, install]) => install()))
       )

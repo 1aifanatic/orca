@@ -129,7 +129,7 @@ export async function installCodexHooksExclusively(
   let recentGrantEntries: readonly CodexTrustEntry[] = []
 
   config.hooks = nextHooks
-  await writeSharedCodexScriptIfChanged(scriptPath, getManagedScript())
+  writeSharedCodexScriptIfChanged(scriptPath, getManagedScript())
   writeCodexHooksJson(configPath, nextHooks)
   // Why: trust entries write last so a half-write can't leave a hash pointing at a nonexistent hook.
   // Why: surface trust-write failures — otherwise getStatus reports green for a hook Codex won't fire.
