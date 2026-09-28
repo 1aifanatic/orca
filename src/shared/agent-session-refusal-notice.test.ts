@@ -390,22 +390,25 @@ describe('the notice for every reason a host names', () => {
       })
     ).toEqual(['historyUnavailable', 'notDoneSend'])
     expect(
-      send({
-        kind: 'refused',
-        code: 'agent_session_operation_invalid',
-        details: { reason: 'notSignedIn' }
-      })
-    ).toEqual([
-      'notDoneSend',
-      { text: 'Codex is not signed in for the selected account. Sign in first.' }
-    ])
+      agentSessionWriteNoticeEnglish(
+        send({
+          kind: 'refused',
+          code: 'agent_session_operation_invalid',
+          details: { reason: 'notSignedIn' }
+        })
+      )
+    ).toBe(
+      'Your message was not sent. Codex is not signed in for the selected account. Sign in first.'
+    )
     expect(
-      send({
-        kind: 'refused',
-        code: 'agent_session_operation_invalid',
-        details: { reason: 'providerStartFailed' }
-      })
-    ).toEqual(['notDoneSend', { text: 'Codex stopped before it finished starting.' }])
+      agentSessionWriteNoticeEnglish(
+        send({
+          kind: 'refused',
+          code: 'agent_session_operation_invalid',
+          details: { reason: 'providerStartFailed' }
+        })
+      )
+    ).toBe('Your message was not sent. Codex stopped before it finished starting.')
   })
 
   it('says the write did not happen, once, and never shows the host message', () => {
@@ -435,10 +438,14 @@ describe('the notice for every reason a host names', () => {
       code: 'agent_session_operation_invalid',
       details: { reason: 'notSignedIn' }
     })
+    // The fact, not its English, so desktop words it in the reader's language.
     expect(agentSessionWriteNoticeParts(failure, 'send')).toEqual([
       'notDoneSend',
-      { text: agentSessionFailureSentence({ kind: 'notSignedIn' }, 'rejection') }
+      { failure: { kind: 'notSignedIn' }, surface: 'rejection', context: {} }
     ])
+    expect(agentSessionWriteNoticeEnglish(agentSessionWriteNoticeParts(failure, 'send'))).toBe(
+      `Your message was not sent. ${agentSessionFailureSentence({ kind: 'notSignedIn' }, 'rejection')}`
+    )
     // Its next step is to send the message again, which a Stop cannot do.
     expect(agentSessionWriteNoticeParts(failure, 'stop')).toEqual(['notDoneStop'])
   })
@@ -575,16 +582,16 @@ describe('agentSessionRefusalCauseParts', () => {
       })
     ).toEqual(['turnActive', 'waitForTurn'])
     expect(
-      agentSessionRefusalCauseParts({
-        kind: 'refused',
-        code: 'agent_session_operation_invalid',
-        details: { reason: 'historyTooLarge' }
-      })
-    ).toEqual([
-      {
-        text: "This conversation's history is too large to restore here. Start a new chat to continue."
-      }
-    ])
+      agentSessionWriteNoticeEnglish(
+        agentSessionRefusalCauseParts({
+          kind: 'refused',
+          code: 'agent_session_operation_invalid',
+          details: { reason: 'historyTooLarge' }
+        })
+      )
+    ).toBe(
+      "This conversation's history is too large to restore here. Start a new chat to continue."
+    )
   })
 
   it('leaves out a step the Retry beside it takes', () => {
@@ -596,33 +603,37 @@ describe('agentSessionRefusalCauseParts', () => {
       })
     ).toEqual(['historyUnavailable'])
     expect(
-      agentSessionRefusalCauseParts(
-        {
+      agentSessionWriteNoticeEnglish(
+        agentSessionRefusalCauseParts(
+          {
+            kind: 'refused',
+            code: 'agent_session_operation_invalid',
+            details: { reason: 'notSignedIn' }
+          },
+          { agentName: 'Claude' }
+        )
+      )
+    ).toBe('Claude is not signed in for the selected account. Sign in first.')
+    expect(
+      agentSessionWriteNoticeEnglish(
+        agentSessionRefusalCauseParts({
           kind: 'refused',
           code: 'agent_session_operation_invalid',
-          details: { reason: 'notSignedIn' }
-        },
-        { agentName: 'Claude' }
+          details: { reason: 'providerStartFailed' }
+        })
       )
-    ).toEqual([{ text: 'Claude is not signed in for the selected account. Sign in first.' }])
+    ).toBe('The agent stopped before it finished starting.')
     expect(
-      agentSessionRefusalCauseParts({
-        kind: 'refused',
-        code: 'agent_session_operation_invalid',
-        details: { reason: 'providerStartFailed' }
-      })
-    ).toEqual([{ text: 'The agent stopped before it finished starting.' }])
-    expect(
-      agentSessionRefusalCauseParts({
-        kind: 'refused',
-        code: 'agent_session_operation_invalid',
-        details: { reason: 'managedAccountUnsupported' }
-      })
-    ).toEqual([
-      {
-        text: 'While a Claude account is added in WSL, Claude chats need a Windows Claude account. Choose or add one in Claude Accounts settings.'
-      }
-    ])
+      agentSessionWriteNoticeEnglish(
+        agentSessionRefusalCauseParts({
+          kind: 'refused',
+          code: 'agent_session_operation_invalid',
+          details: { reason: 'managedAccountUnsupported' }
+        })
+      )
+    ).toBe(
+      'While a Claude account is added in WSL, Claude chats need a Windows Claude account. Choose or add one in Claude Accounts settings.'
+    )
   })
 
   it('writes the same sentences as before where no Retry stands beside them', () => {

@@ -17,10 +17,7 @@ import {
 import type { AgentSessionWriteNoticePart } from './agent-session-write-notice-copy'
 import { agentSessionRefusalFailure } from './agent-session-write-failure'
 import type { AgentSessionFailureFact } from './agent-session-failure'
-import {
-  agentSessionFailureSentence,
-  type AgentSessionFailureWordsContext
-} from './agent-session-failure-words'
+import type { AgentSessionFailureWordsContext } from './agent-session-failure-words'
 import { classifyDispatchRejection } from './structured-agent-session-dispatch-rejection'
 import {
   classifyStructuredAgentSessionSendFailure,
@@ -163,7 +160,7 @@ function rejectionFactParts(
   }
   // A fact this build cannot place proves only that the message did not happen.
   return kind
-    ? [{ text: agentSessionFailureSentence({ ...fact, kind }, 'rejection', context) }]
+    ? [{ failure: { ...fact, kind }, surface: 'rejection', context }]
     : agentSessionWriteNotDoneParts(write)
 }
 

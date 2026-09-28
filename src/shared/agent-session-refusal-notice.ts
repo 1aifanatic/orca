@@ -255,9 +255,8 @@ function reasonParts(
     return undefined
   }
   if ('fact' in words) {
-    const sentence = agentSessionFailureSentence({ kind: words.fact }, 'rejection', context)
     return write === 'send' || write === 'composer-send'
-      ? [NOT_DONE[write], { text: sentence }]
+      ? [NOT_DONE[write], { failure: { kind: words.fact }, surface: 'rejection', context }]
       : undefined
   }
   const said = causeParts(words.cause, write)
@@ -341,7 +340,13 @@ export function agentSessionWriteNoticeEnglish(
   parts: readonly AgentSessionWriteNoticePart[]
 ): string {
   return parts
-    .map((part) => (typeof part === 'string' ? AGENT_SESSION_WRITE_NOTICE_COPY[part] : part.text))
+    .map((part) =>
+      typeof part === 'string'
+        ? AGENT_SESSION_WRITE_NOTICE_COPY[part]
+        : 'text' in part
+          ? part.text
+          : agentSessionFailureSentence(part.failure, part.surface, part.context)
+    )
     .join(' ')
 }
 

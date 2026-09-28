@@ -1,10 +1,15 @@
 // The sentences a chat notice is made of, each whole so desktop can translate it on its own.
 
+import type { AgentSessionFailureFact } from './agent-session-failure'
 import {
   QUIT_TERMINAL_AGENT,
   START_NEW_CHAT,
   TERMINAL_AGENT_HOLDS_CHAT
 } from './agent-session-failure-copy'
+import type {
+  AgentSessionFailureSurface,
+  AgentSessionFailureWordsContext
+} from './agent-session-failure-words'
 
 /** Every sentence a notice is made of. Desktop translates each whole sentence with this as its
  *  fallback; mobile shows it as is. */
@@ -60,5 +65,15 @@ export const AGENT_SESSION_WRITE_NOTICE_COPY = {
 } as const
 
 export type AgentSessionWriteNoticeSentence = keyof typeof AGENT_SESSION_WRITE_NOTICE_COPY
-/** A notice as whole sentences, each translated on its own; `text` is a provider's own words. */
-export type AgentSessionWriteNoticePart = AgentSessionWriteNoticeSentence | { text: string }
+/** A failure fact, worded where it is shown so desktop can say it in the reader's language. */
+export type AgentSessionWriteNoticeFailurePart = {
+  failure: AgentSessionFailureFact
+  surface: AgentSessionFailureSurface
+  context: AgentSessionFailureWordsContext
+}
+/** A notice as whole sentences, each translated on its own; `text` is words someone else wrote: a
+ *  provider's, or a host's sentence with no fact beside it. */
+export type AgentSessionWriteNoticePart =
+  | AgentSessionWriteNoticeSentence
+  | { text: string }
+  | AgentSessionWriteNoticeFailurePart
