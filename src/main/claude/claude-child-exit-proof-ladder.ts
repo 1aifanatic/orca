@@ -3,7 +3,7 @@ import { waitForProcessExitUntil } from '../codex/codex-process-exit-deadline'
 import { PROVIDER_SUPERVISOR_MAX_STOP_MS } from '../codex/codex-app-server-posix-supervisor'
 import type { ClaudeChildTreeReaper } from './claude-agent-sdk-exit-proof'
 
-const GRACEFUL_EXIT_MS = 1_500
+export const GRACEFUL_EXIT_MS = 1_500
 // A signalled supervisor escalates on its own; forcing it sooner kills it and orphans Claude.
 export const SUPERVISED_GRACEFUL_EXIT_MS = PROVIDER_SUPERVISOR_MAX_STOP_MS + 500
 const FORCED_EXIT_MS = 1_000
