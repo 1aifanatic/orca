@@ -57,6 +57,22 @@ vi.mock('../codex/codex-state-db-backfill-recovery', () =>
   import('./pty-ipc-mock-registry').then((m) => m.codexBackfillRecoveryModuleMock())
 )
 
+function createExitListeners() {
+  const listeners = new Set<(info: { exitCode: number }) => void>()
+  return {
+    subscribe: vi.fn((listener: (info: { exitCode: number }) => void) => {
+      listeners.add(listener)
+      return { dispose: vi.fn(() => listeners.delete(listener)) }
+    }),
+    emit: (info: { exitCode: number }) => {
+      for (const listener of listeners) {
+        listener(info)
+      }
+    },
+    activeCount: () => listeners.size
+  }
+}
+
 describe('registerPtyHandlers', () => {
   const { handlers, mainWindow } = setupPtyIpcSuite()
 
@@ -138,16 +154,12 @@ describe('registerPtyHandlers', () => {
   })
   it('retains PTY listeners until physical exit after manual kill IPC', async () => {
     const onDataDisposable = makeDisposable()
-    const onExitDisposable = makeDisposable()
-    let exitCb: ((info: { exitCode: number }) => void) | undefined
+    const exitListeners = createExitListeners()
     // Why: hold a stable ref to the kill spy — destroyPtyProcess reassigns proc.kill to a no-op (docs/fix-pty-fd-leak.md), so reading proc.kill.mock later would crash.
     const killSpy = vi.fn()
     const proc = {
       onData: vi.fn(() => onDataDisposable),
-      onExit: vi.fn((cb: (info: { exitCode: number }) => void) => {
-        exitCb = cb
-        return onExitDisposable
-      }),
+      onExit: exitListeners.subscribe,
       write: vi.fn(),
       resize: vi.fn(),
       kill: killSpy,
@@ -178,29 +190,25 @@ describe('registerPtyHandlers', () => {
     await vi.waitFor(() => expect(finishSnapshot).toBeTypeOf('function'))
     expect(killSpy).not.toHaveBeenCalled()
     expect(onDataDisposable.dispose).not.toHaveBeenCalled()
-    expect(onExitDisposable.dispose).not.toHaveBeenCalled()
+    expect(exitListeners.activeCount()).toBe(1)
     finishSnapshot?.()
     await vi.waitFor(() => expect(killSpy).toHaveBeenCalledTimes(1))
     expect(onDataDisposable.dispose).not.toHaveBeenCalled()
-    expect(onExitDisposable.dispose).not.toHaveBeenCalled()
+    expect(exitListeners.activeCount()).toBe(1)
 
-    exitCb?.({ exitCode: -1 })
+    exitListeners.emit({ exitCode: -1 })
     await killPromise
 
     expect(onDataDisposable.dispose).toHaveBeenCalledTimes(1)
-    expect(onExitDisposable.dispose).toHaveBeenCalledTimes(1)
+    expect(exitListeners.activeCount()).toBe(0)
   })
   it('retains PTY listeners until physical exit after runtime controller kill', async () => {
     const onDataDisposable = makeDisposable()
-    const onExitDisposable = makeDisposable()
-    let exitCb: ((info: { exitCode: number }) => void) | undefined
+    const exitListeners = createExitListeners()
     const killSpy = vi.fn()
     const proc = {
       onData: vi.fn(() => onDataDisposable),
-      onExit: vi.fn((cb: (info: { exitCode: number }) => void) => {
-        exitCb = cb
-        return onExitDisposable
-      }),
+      onExit: exitListeners.subscribe,
       write: vi.fn(),
       resize: vi.fn(),
       kill: killSpy,
@@ -233,23 +241,19 @@ describe('registerPtyHandlers', () => {
     expect(runtimeController.kill(spawnResult.id)).toBe(true)
     await vi.waitFor(() => expect(killSpy).toHaveBeenCalledTimes(1))
     expect(onDataDisposable.dispose).not.toHaveBeenCalled()
-    expect(onExitDisposable.dispose).not.toHaveBeenCalled()
+    expect(exitListeners.activeCount()).toBe(1)
 
-    exitCb?.({ exitCode: -1 })
-    await vi.waitFor(() => expect(onExitDisposable.dispose).toHaveBeenCalledTimes(1))
+    exitListeners.emit({ exitCode: -1 })
+    await vi.waitFor(() => expect(exitListeners.activeCount()).toBe(0))
     expect(onDataDisposable.dispose).toHaveBeenCalledTimes(1)
   })
   it('retains daemon PTY listeners across renderer reload until physical exit', async () => {
     const onDataDisposable = makeDisposable()
-    const onExitDisposable = makeDisposable()
-    let exitCb: ((info: { exitCode: number }) => void) | undefined
+    const exitListeners = createExitListeners()
     const killSpy = vi.fn()
     const proc = {
       onData: vi.fn(() => onDataDisposable),
-      onExit: vi.fn((cb: (info: { exitCode: number }) => void) => {
-        exitCb = cb
-        return onExitDisposable
-      }),
+      onExit: exitListeners.subscribe,
       write: vi.fn(),
       resize: vi.fn(),
       kill: killSpy,
@@ -289,10 +293,10 @@ describe('registerPtyHandlers', () => {
 
     expect(killSpy).not.toHaveBeenCalled()
     expect(onDataDisposable.dispose).not.toHaveBeenCalled()
-    expect(onExitDisposable.dispose).not.toHaveBeenCalled()
+    expect(exitListeners.activeCount()).toBe(1)
 
-    exitCb?.({ exitCode: -1 })
-    expect(onExitDisposable.dispose).toHaveBeenCalledTimes(1)
+    exitListeners.emit({ exitCode: -1 })
+    expect(exitListeners.activeCount()).toBe(0)
   })
   it('removes the previous renderer-reset listener from its original webContents', () => {
     const firstWindow = {
