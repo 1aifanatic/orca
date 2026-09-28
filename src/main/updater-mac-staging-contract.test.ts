@@ -10,12 +10,23 @@ const require = createRequire(__filename)
 // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: this is the installed dependency's declared CommonJS export, bypassing updater mocks.
 const { MacUpdater } = require('electron-updater/out/MacUpdater') as typeof MacUpdaterModule
 
-function invokePinnedMethod(name: string, receiver: object, ...args: unknown[]): unknown {
-  const method: unknown = Reflect.get(MacUpdater.prototype, name)
-  if (typeof method !== 'function') {
-    throw new Error(`Pinned MacUpdater method missing: ${name}`)
-  }
-  return Reflect.apply(method, receiver, args)
+const pinnedPrototype: unknown = MacUpdater.prototype
+if (
+  !pinnedPrototype ||
+  typeof pinnedPrototype !== 'object' ||
+  !('updateDownloaded' in pinnedPrototype) ||
+  typeof pinnedPrototype.updateDownloaded !== 'function' ||
+  !('handleUpdateDownloaded' in pinnedPrototype) ||
+  typeof pinnedPrototype.handleUpdateDownloaded !== 'function' ||
+  !('quitAndInstall' in pinnedPrototype) ||
+  typeof pinnedPrototype.quitAndInstall !== 'function'
+) {
+  throw new Error('Pinned MacUpdater staging contract changed')
+}
+const pinnedMethods = {
+  updateDownloaded: pinnedPrototype.updateDownloaded,
+  handleUpdateDownloaded: pinnedPrototype.handleUpdateDownloaded,
+  quitAndInstall: pinnedPrototype.quitAndInstall
 }
 
 describe('pinned MacUpdater native staging contract', () => {
@@ -41,13 +52,12 @@ describe('pinned MacUpdater native staging contract', () => {
         updater.server?.close()
       },
       handleUpdateDownloaded: (): void => {
-        invokePinnedMethod('handleUpdateDownloaded', updater)
+        pinnedMethods.handleUpdateDownloaded.call(updater)
       }
     }
     try {
       // Known size avoids any payload read; the real implementation still opens its staging proxy.
-      await invokePinnedMethod(
-        'updateDownloaded',
+      await pinnedMethods.updateDownloaded.call(
         updater,
         { url: new URL('https://example.invalid/update.zip'), info: { size: 1 } },
         { version: '1.0.61', downloadedFile: '/unused-contract-payload.zip' }
@@ -58,7 +68,7 @@ describe('pinned MacUpdater native staging contract', () => {
       expect(native.listenerCount('update-downloaded')).toBe(0)
       expect(updater.app.quit).not.toHaveBeenCalled()
 
-      invokePinnedMethod('quitAndInstall', updater)
+      pinnedMethods.quitAndInstall.call(updater)
       expect(lifecycle).toEqual(['payload-downloaded', 'native-staging-started'])
       expect(updater.app.quit).not.toHaveBeenCalled()
       native.emit('update-downloaded')
