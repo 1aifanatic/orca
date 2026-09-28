@@ -16,7 +16,7 @@ import { quotePowerShellLiteral } from '../../shared/powershell-native-argument'
 import { wrapRuntimeHomeHookCommand } from '../agent-hooks/runtime-home-hook-command'
 import { wrapWindowsDirectCmdHookCommand } from '../agent-hooks/windows-direct-cmd-hook-command'
 import { isGitBashAvailable } from '../git-bash'
-import { claudeVersionSupportsSessionEnd } from './claude-session-end-hook-capability'
+import { claudeVersionSupportsSessionEnd } from './claude-hook-event-versions'
 
 export type ClaudeCompatibleHookSettings = {
   configDirName: '.claude' | '.openclaude'

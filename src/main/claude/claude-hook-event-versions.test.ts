@@ -3,7 +3,7 @@ import {
   CLAUDE_SESSION_END_CAPABILITY_FLOOR,
   claudeVersionSupportsSessionEnd,
   parseClaudeCliVersion
-} from './claude-session-end-hook-capability'
+} from './claude-hook-event-versions'
 
 describe('Claude SessionEnd hook version capability', () => {
   it('records 2.1.261 as the measured floor', () => {
