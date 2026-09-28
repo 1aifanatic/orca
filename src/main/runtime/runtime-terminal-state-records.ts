@@ -88,7 +88,7 @@ export type RuntimePtyWorktreeRecord = RuntimeTerminalTailState & {
   title: string | null
   titleUpdatedAt: number | null
   lastOutputAt: number | null
-  /** See terminal-command-paint.ts; absent until the pane's first output. */
+  /** See terminal-command-paint.ts; absent until the pane's first output, and again after a gap or a new process. */
   commandPaint?: TerminalCommandPaint
 }
 
