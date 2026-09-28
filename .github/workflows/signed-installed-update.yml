@@ -14,6 +14,8 @@ jobs:
   windows_watcher:
     if: github.repository == 'stablyai/orca' && github.ref == 'refs/heads/OrcaWin/np-installed-mac-update-diagnostic'
     uses: ./.github/workflows/windows-watcher-artifacts.yml
+    with:
+      ref: 2956015b2c6722b7809aa981ad1e76e1e83ba756
   package:
     needs: windows_watcher
     environment: adhoc-mac-build
@@ -21,10 +23,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {label: A, source: e5aa7bf92a70aff5d403dc2942bf8265fca9d791, version: 1.4.214-local.1790623200000.e5aa7bf92a70, arch: arm64, runner: macos-15}
-          - {label: B, source: a88eb0980039ac7a69e73667b9280e142e15f022, version: 1.4.214-local.1790623200001.a88eb0980039, arch: arm64, runner: macos-15}
-          - {label: A, source: e5aa7bf92a70aff5d403dc2942bf8265fca9d791, version: 1.4.214-local.1790623200000.e5aa7bf92a70, arch: x64, runner: macos-15-intel}
-          - {label: B, source: a88eb0980039ac7a69e73667b9280e142e15f022, version: 1.4.214-local.1790623200001.a88eb0980039, arch: x64, runner: macos-15-intel}
+          - {label: A, source: 7996f1f8ee49a88203d44a28478b576214ffb9cd, version: 1.4.214-local.1790627959054.7996f1f8ee49, arch: arm64, runner: macos-15}
+          - {label: B, source: 2956015b2c6722b7809aa981ad1e76e1e83ba756, version: 1.4.214-local.1790627959055.2956015b2c67, arch: arm64, runner: macos-15}
+          - {label: A, source: 7996f1f8ee49a88203d44a28478b576214ffb9cd, version: 1.4.214-local.1790627959054.7996f1f8ee49, arch: x64, runner: macos-15-intel}
+          - {label: B, source: 2956015b2c6722b7809aa981ad1e76e1e83ba756, version: 1.4.214-local.1790627959055.2956015b2c67, arch: x64, runner: macos-15-intel}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     env:
@@ -108,7 +110,7 @@ jobs:
       OVERLAY_SHA256: 48ef8a01affc1bac0dfb34f0f3cd29cdfd87abda60aeed9232f7ca7b94d49cb5
     steps:
       - uses: actions/checkout@v6
-        with: {ref: a88eb0980039ac7a69e73667b9280e142e15f022, persist-credentials: false}
+        with: {ref: 2956015b2c6722b7809aa981ad1e76e1e83ba756, persist-credentials: false}
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.sha }}

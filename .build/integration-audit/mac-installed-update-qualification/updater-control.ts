@@ -19,7 +19,13 @@ async function main(): Promise<void> {
     appVersion: result.appVersion,
     runtimeId: result.runtimeId,
     support: { installMode: result.support.installMode, automatic: result.support.automatic, reason: result.support.reason },
-    status: { state: result.status.state, ...('version' in result.status ? { version: result.status.version } : {}) }
+    status: {
+      state: result.status.state,
+      ...('version' in result.status ? { version: result.status.version } : {}),
+      ...('percent' in result.status && Number.isFinite(result.status.percent) ? { percent: result.status.percent } : {}),
+      source: result.status.source === 'local' ? 'local' : result.status.source ? 'other' : 'release',
+      ...('retryable' in result.status ? { retryable: result.status.retryable } : {})
+    }
   }))
 }
 void main().catch((error: unknown) => {

@@ -111,6 +111,14 @@ async function waitStatus(state, version, timeout = 180_000) {
   while (Date.now() < deadline) {
     check()
     const snapshot = await updater('status')
+    const observation = { requestedState: state, requestedVersion: version, appVersion: snapshot.appVersion, support: snapshot.support, status: snapshot.status }
+    receipt.lastUpdaterObservation = observation
+    receipt.updaterTransitions ??= []
+    const previous = receipt.updaterTransitions.at(-1)
+    if (!previous || JSON.stringify(previous.observation) !== JSON.stringify(observation)) {
+      if (receipt.updaterTransitions.length >= 32) receipt.updaterTransitions.shift()
+      receipt.updaterTransitions.push({ observedAt: new Date().toISOString(), observation })
+    }
     if (snapshot.support?.installMode !== 'supervised-headless-serve' || !snapshot.support.automatic) throw new Error('Production updater supervisor unavailable')
     if (snapshot.status.state === 'error') throw new Error('Production updater reported failure')
     if (snapshot.status.state === state && snapshot.status.version === version) return snapshot
