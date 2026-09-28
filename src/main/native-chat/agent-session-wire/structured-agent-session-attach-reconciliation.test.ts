@@ -11,7 +11,7 @@ import type { AgentJournalMessageItem } from '../../../shared/agent-session-jour
 import { projectStructuredAgentSessionStatusState } from '../../../shared/structured-agent-session-projection'
 import { digestPayload } from '../agent-session-journal/journal-payload-bounds'
 import { journalDirectoryFor } from '../agent-session-journal/journal-paths'
-import type { ProviderHistoryWindow } from '../agent-session-journal/journal-submission-reconciler'
+import type { ProviderHistorySource } from '../agent-session-journal/journal-submission-reconciler'
 import { createTrackedJournalOpener } from '../agent-session-journal/journal-store-test-open'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { openTestAttachConversation } from './structured-agent-session-attach-test-conversation'
@@ -47,26 +47,29 @@ function userMessage(text: string): AgentJournalMessageItem {
 }
 
 /** A transcript read whole that holds none of the sends below. */
-function window(overrides: Partial<ProviderHistoryWindow> = {}): ProviderHistoryWindow {
+function window(overrides: Partial<ProviderHistorySource> = {}): ProviderHistorySource {
   return {
-    items: [],
-    boundaryConsistent: true,
     turnInFlight: false,
-    recorded: { itemIds: new Set(), itemIdsByFingerprint: new Map(), provesAbsenceOf: () => true },
+    readWindow: async () => ({ items: [], boundaryConsistent: true }),
+    readRecorded: async () => ({
+      itemIds: new Set(),
+      itemIdsByFingerprint: new Map(),
+      provesAbsenceOf: () => true
+    }),
     ...overrides
   }
 }
 
 /** Only the surface `attachJournal` touches; every send-shaped method is a spy
  *  so a re-delivery would be visible rather than silent. */
-function adapterWith(providerHistoryWindow?: () => Promise<ProviderHistoryWindow | null>): {
+function adapterWith(providerHistory?: () => Promise<ProviderHistorySource | null>): {
   adapter: StructuredAgentSessionAdapter
   dispatch: ReturnType<typeof vi.fn>
 } {
   const dispatch = vi.fn()
   const adapter = {
     dispatch,
-    ...(providerHistoryWindow ? { providerHistoryWindow } : {})
+    ...(providerHistory ? { providerHistory } : {})
   } as unknown as StructuredAgentSessionAdapter
   return { adapter, dispatch }
 }

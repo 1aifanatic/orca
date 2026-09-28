@@ -13,7 +13,7 @@ import { agentJournalItemKey } from '../../shared/agent-session-journal-item-key
 import type { AgentJournalSubmission } from '../../shared/agent-session-journal-types'
 import {
   claudeProviderHistoryWindowFromJsonl,
-  resolveClaudeProviderHistoryWindow
+  openClaudeProviderHistory
 } from './claude-structured-history-window'
 
 const PROVIDER_SESSION = 'provider-1'
@@ -78,7 +78,7 @@ describe('claudeProviderHistoryWindowFromJsonl', () => {
       'utf8'
     )
 
-    const window = await resolveClaudeProviderHistoryWindow({
+    const history = openClaudeProviderHistory({
       identity: {
         sessionId: ORCA_SESSION,
         workspaceId: 'workspace-1',
@@ -90,7 +90,13 @@ describe('claudeProviderHistoryWindowFromJsonl', () => {
       hasLiveSession: false
     })
 
-    expect(window?.items.map((item) => item.providerItemId)).toEqual(['u-1'])
+    expect((await history?.readWindow())?.items.map((item) => item.providerItemId)).toEqual(['u-1'])
+    const recorded = await history?.readRecorded()
+    expect(
+      recorded?.itemIds.has(
+        agentJournalItemKey({ provider: 'claude', sessionId: PROVIDER_SESSION, uuid: 'u-1' })
+      )
+    ).toBe(true)
   })
 
   it('pins the renderer and host fingerprint functions to the same digest', () => {

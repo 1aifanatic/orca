@@ -10,7 +10,7 @@ import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { digestPayload } from '../agent-session-journal/journal-payload-bounds'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
-import type { ProviderHistoryWindow } from '../agent-session-journal/journal-submission-reconciler'
+import type { ProviderHistorySource } from '../agent-session-journal/journal-submission-reconciler'
 import {
   attachFingerprintFields,
   type AgentSessionAttachParams
@@ -120,11 +120,14 @@ describe('structured session acquisition options', () => {
       hostId: 'local'
     })
     let childAcquired = false
-    const historyWindow = (): ProviderHistoryWindow => ({
-      items: [],
-      boundaryConsistent: true,
+    const historyWindow = (): ProviderHistorySource => ({
       turnInFlight: childAcquired,
-      recorded: { itemIds: new Set(), itemIdsByFingerprint: new Map(), provesAbsenceOf: () => true }
+      readWindow: async () => ({ items: [], boundaryConsistent: true }),
+      readRecorded: async () => ({
+        itemIds: new Set(),
+        itemIdsByFingerprint: new Map(),
+        provesAbsenceOf: () => true
+      })
     })
     const withHistory = (origin: 'created' | 'resumed'): StructuredAgentSessionAdapter => {
       const sessionAdapter = adapter({ origin })
@@ -147,7 +150,7 @@ describe('structured session acquisition options', () => {
           }
         }
       })
-      sessionAdapter.providerHistoryWindow = vi.fn(async () => historyWindow())
+      sessionAdapter.providerHistory = vi.fn(async () => historyWindow())
       return sessionAdapter
     }
 

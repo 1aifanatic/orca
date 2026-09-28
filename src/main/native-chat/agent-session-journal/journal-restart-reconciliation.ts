@@ -22,7 +22,11 @@ import {
 } from '../../../shared/agent-session-journal-item-key'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import type { AgentSessionJournal } from './journal-store'
-import { reconcileSubmissions, type ProviderHistoryWindow } from './journal-submission-reconciler'
+import {
+  reconcileSubmissions,
+  type ProviderHistorySource,
+  type ProviderHistoryWindow
+} from './journal-submission-reconciler'
 
 /**
  * Only a text-only body can be compared against provider content. A submission
@@ -89,6 +93,25 @@ function unseenHistory(
   }
 }
 
+const UNREAD_WINDOW = { items: [], boundaryConsistent: false } as const
+
+/** Read only what these sends are decided by: the recorded history for a send handed over under
+ *  an id, the anchored window for one without. A failed read decides nothing. */
+async function readHistoryFor(
+  history: ProviderHistorySource,
+  submissions: readonly AgentJournalSubmission[]
+): Promise<ProviderHistoryWindow> {
+  const [window, recorded] = await Promise.all([
+    submissions.some((submission) => !submission.handedOverItemId)
+      ? history.readWindow().catch(() => UNREAD_WINDOW)
+      : UNREAD_WINDOW,
+    submissions.some((submission) => submission.handedOverItemId)
+      ? history.readRecorded().catch(() => null)
+      : null
+  ])
+  return { ...window, turnInFlight: history.turnInFlight, recorded }
+}
+
 /**
  * Decide what the crash boundary could only doubt. Returns the client message
  * ids this pass settled, so the attach result stops reporting them unconfirmed.
@@ -96,16 +119,17 @@ function unseenHistory(
 export async function reconcileJournalSubmissionsAgainstHistory(input: {
   journal: AgentSessionJournal
   fence: number
-  history: ProviderHistoryWindow
+  history: ProviderHistorySource
 }): Promise<string[]> {
   const submissions = comparableSubmissions(input.journal)
   if (submissions.length === 0) {
     return []
   }
+  const history = await readHistoryFor(input.history, submissions)
   const settled: string[] = []
   for (const outcome of reconcileSubmissions({
     submissions,
-    history: unseenHistory(input.journal, input.history)
+    history: unseenHistory(input.journal, history)
   })) {
     if (outcome.outcome === 'unknown') {
       // Narrowing failed: the submission stays unconfirmed, so record why.

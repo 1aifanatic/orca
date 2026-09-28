@@ -4,7 +4,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import type {
   AgentJournalItemIdentity,
@@ -15,6 +15,7 @@ import { digestPayload } from './journal-payload-bounds'
 import { reconcileJournalSubmissionsAgainstHistory } from './journal-restart-reconciliation'
 import type {
   ProviderHistoryItem,
+  ProviderHistorySource,
   ProviderHistoryWindow,
   ProviderRecordedHistory
 } from './journal-submission-reconciler'
@@ -67,11 +68,17 @@ function history(uuid: string, text: string): ProviderHistoryItem {
   }
 }
 
+/** History the reconciler reads on demand; `recorded` is what the whole-file read finds. */
 function window(
   items: ProviderHistoryItem[],
   overrides: Partial<ProviderHistoryWindow> = {}
-): ProviderHistoryWindow {
-  return { items, boundaryConsistent: true, turnInFlight: false, ...overrides }
+): ProviderHistorySource {
+  const { boundaryConsistent = true, turnInFlight = false, recorded = null } = overrides
+  return {
+    turnInFlight,
+    readWindow: vi.fn(async () => ({ items, boundaryConsistent })),
+    readRecorded: vi.fn(async () => recorded)
+  }
 }
 
 /** The whole transcript, holding these records; each is `[uuid, text]`. */
@@ -345,6 +352,38 @@ describe('reconcileJournalSubmissionsAgainstHistory', () => {
       dispatchState: 'accepted',
       providerItemId: agentJournalItemKey(claudeIdentity('uuid-sent'))
     })
+  })
+
+  it('reads no provider history when nothing is left to decide', async () => {
+    const journal = await open()
+    const history = window([])
+
+    expect(await reconcileJournalSubmissionsAgainstHistory({ journal, fence: 2, history })).toEqual(
+      []
+    )
+    expect(history.readWindow).not.toHaveBeenCalled()
+    expect(history.readRecorded).not.toHaveBeenCalled()
+  })
+
+  it('reads only the recorded history when every stranded send carries a frame id', async () => {
+    const journal = await reopenAfterCrash(undefined, undefined, 'uuid-sent')
+    const history = window([], { recorded: wholeHistory([['uuid-sent', 'deploy the thing']]) })
+
+    await reconcileJournalSubmissionsAgainstHistory({ journal, fence: 2, history })
+
+    expect(history.readWindow).not.toHaveBeenCalled()
+    expect(journal.submissions()[0]?.dispatchState).toBe('accepted')
+  })
+
+  it('leaves a send unknown when the recorded history cannot be read', async () => {
+    const journal = await reopenAfterCrash(undefined, undefined, 'uuid-sent')
+    const history = window([])
+    vi.mocked(history.readRecorded).mockRejectedValue(new Error('EACCES'))
+
+    const settled = await reconcileJournalSubmissionsAgainstHistory({ journal, fence: 2, history })
+
+    expect(settled).toEqual([])
+    expect(journal.submissions()[0]?.dispatchState).toBe('unknown')
   })
 
   it('never rejects a send recorded without a frame id, which older builds wrote', async () => {

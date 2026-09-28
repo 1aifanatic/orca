@@ -66,6 +66,19 @@ export type ProviderRecordedHistory = {
   provesAbsenceOf: (itemId: string) => boolean
 }
 
+/**
+ * Provider history as an attach samples it. Liveness is fixed at the sample, before a new child
+ * starts; each read runs only when an unsettled send is decided by it, so an open with nothing to
+ * decide reads no transcript. A read that fails leaves its sends `unknown`.
+ */
+export type ProviderHistorySource = {
+  turnInFlight: boolean
+  /** The anchored window: only sends handed over with no id are decided by it. */
+  readWindow: () => Promise<Pick<ProviderHistoryWindow, 'items' | 'boundaryConsistent'>>
+  /** Every recorded user item: only sends handed over under an id are decided by it. */
+  readRecorded: () => Promise<ProviderRecordedHistory | null>
+}
+
 export type SubmissionReconciliation =
   | {
       clientMessageId: string

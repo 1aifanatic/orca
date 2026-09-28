@@ -20,6 +20,7 @@ import type { AgentSessionJournalIdentity } from '../../shared/agent-session-jou
 import { resolveSessionFilePath } from '../native-chat/session-file-resolver'
 import type {
   ProviderHistoryItem,
+  ProviderHistorySource,
   ProviderHistoryWindow,
   ProviderRecordedHistory
 } from '../native-chat/agent-session-journal/journal-submission-reconciler'
@@ -168,6 +169,8 @@ type HistoryWindowInput = {
   turnInFlight: boolean
 }
 
+type HistoryReadInput = HistoryWindowInput & { transcriptPath: string }
+
 /**
  * Sink for the ancestry replay. Only the fingerprinted item survives the call,
  * so the window holds at most one small row per anchor..leaf record — never the
@@ -234,20 +237,17 @@ function createRecordedCollector(input: HistoryWindowInput) {
     const blocks = claudePromptBlocks(row)
     if (blocks) {
       const fingerprint = promptFingerprint(input.sessionId, blocks)
-      itemIdsByFingerprint.set(fingerprint, [
-        ...(itemIdsByFingerprint.get(fingerprint) ?? []),
-        itemId
-      ])
+      const sameText = itemIdsByFingerprint.get(fingerprint) ?? []
+      itemIdsByFingerprint.set(fingerprint, [...sameText, itemId])
     }
   }
 
   function finish(): ProviderRecordedHistory {
-    const provable = whole
     return {
       itemIds,
       itemIdsByFingerprint,
       provesAbsenceOf: (itemId) => {
-        const identity = provable ? parseAgentJournalItemKey(itemId) : null
+        const identity = whole ? parseAgentJournalItemKey(itemId) : null
         return identity?.provider === 'claude' && identity.sessionId === input.providerSessionId
       }
     }
@@ -305,39 +305,41 @@ function anchoredWindowFromJsonl(
 }
 
 /**
- * The window for one attached session: resolve the provider's transcript, then
- * read it against the handle's durable leaf. A live child means a send queued
- * behind its running turn is not in the file yet, so liveness is carried in
- * rather than assumed — only the adapter's session map can answer it.
+ * History for one attached session. Liveness is sampled now, because only the adapter's session
+ * map can answer it and a live child means a send queued behind its running turn is not in the file
+ * yet. The transcript is resolved and read only when a stranded send needs it.
  */
-export async function resolveClaudeProviderHistoryWindow(input: {
+export function openClaudeProviderHistory(input: {
   identity: AgentSessionJournalIdentity
   accountHomePath: string
   hasLiveSession: boolean
-}): Promise<ProviderHistoryWindow | null> {
+}): ProviderHistorySource | null {
   const handle = input.identity.providerHandle
   if (handle.kind !== 'claude') {
     return null
   }
-  const transcriptPath = await resolveSessionFilePath('claude', handle.sessionId, {
-    claudeProjectsDir: join(input.accountHomePath, 'projects')
-  })
-  if (!transcriptPath) {
-    return null
-  }
-  const read = {
-    transcriptPath,
+  const scope: HistoryWindowInput = {
     providerSessionId: handle.sessionId,
     previousLeafUuid: handle.leafUuid,
     sessionId: input.identity.sessionId,
     turnInFlight: input.hasLiveSession
   }
-  const window = await readClaudeProviderHistoryWindow(read)
-  return { ...window, recorded: await readClaudeRecordedHistory(read) }
+  let transcriptPath: Promise<string | null> | undefined
+  const readWith = async <T>(read: (input: HistoryReadInput) => Promise<T>, fallback: T) => {
+    const path = await (transcriptPath ??= resolveSessionFilePath('claude', handle.sessionId, {
+      claudeProjectsDir: join(input.accountHomePath, 'projects')
+    }))
+    return path ? read({ ...scope, transcriptPath: path }) : fallback
+  }
+  return {
+    turnInFlight: input.hasLiveSession,
+    readWindow: () => readWith(readClaudeProviderHistoryWindow, INCONSISTENT),
+    readRecorded: () => readWith(readClaudeRecordedHistory, null)
+  }
 }
 
 async function readClaudeRecordedHistory(
-  input: HistoryWindowInput & { transcriptPath: string }
+  input: HistoryReadInput
 ): Promise<ProviderRecordedHistory | null> {
   const recorded = createRecordedCollector(input)
   try {
@@ -360,7 +362,7 @@ async function readClaudeRecordedHistory(
 }
 
 export async function readClaudeProviderHistoryWindow(
-  input: HistoryWindowInput & { transcriptPath: string }
+  input: HistoryReadInput
 ): Promise<ProviderHistoryWindow> {
   const ancestryAnchorUuid = input.previousLeafUuid
   if (!ancestryAnchorUuid) {
