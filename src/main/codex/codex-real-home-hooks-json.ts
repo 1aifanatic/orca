@@ -26,9 +26,9 @@ export function assertHooksJsonGeneration(
 ): void {
   const currentRaw = existsSync(hooksJsonPath) ? readFileSync(hooksJsonPath, 'utf-8') : null
   if (currentRaw !== expectedRaw || resolveHooksJsonWritePath(hooksJsonPath) !== hooksWritePath) {
-    // Why: the pre-mutation RPC can overlap a user's editor save. Abort rather
-    // than atomically replacing a newer file with the stale parsed snapshot.
-    throw new Error('Codex hooks.json changed while Orca prepared its trust repair')
+    // Why: another process may have saved since the read. Abort rather than
+    // atomically replacing a newer file with the stale parsed snapshot.
+    throw new Error('Codex hooks.json changed since Orca read it')
   }
 }
 

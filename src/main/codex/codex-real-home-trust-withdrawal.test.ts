@@ -22,9 +22,7 @@ vi.mock('./codex-hook-trust-grant', () => ({
 }))
 
 import { ensureRealHomeCodexHookState, _internals } from './codex-real-home-hook-install'
-import { cleanupLegacySystemManagedHooks } from './codex-hook-legacy-cleanup'
 import { getCodexManagedHookInstallMaterial } from './codex-hook-definition'
-import { _internals as rebaseInternals } from './codex-user-hook-trust-rebase'
 
 // Why these tests: a failed trust session withdraws only what that call wrote and
 // is still untrusted. Every Orca on this HOME shares the file, so anything else
@@ -49,8 +47,6 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  rebaseInternals.setSessionRunner(null)
-  rebaseInternals.resetRetryState()
   vi.unstubAllEnvs()
   vi.restoreAllMocks()
   grantMock.mockReset()
@@ -73,52 +69,6 @@ it('keeps a hooks.json save that lands during a failed real-home grant', async (
     })
   ).toBe('unavailable')
 
-  expect(readFileSync(hooksJsonPath(), 'utf-8')).toBe(SAVED_MEANWHILE)
-})
-
-it('keeps a hooks.json save that lands during a failed legacy-sweep trust repair', async () => {
-  // Why a retired form (#1536): the sweep never removes the current entry.
-  const quoted = `'${join(homeDir, '.orca', 'agent-hooks', 'codex-hook.sh')}'`
-  const legacyCommand =
-    process.platform === 'win32'
-      ? join(userDataDir, 'agent-hooks', 'codex-hook.cmd')
-      : `if [ -x ${quoted} ]; then /bin/sh ${quoted}; fi`
-  writeFileSync(
-    hooksJsonPath(),
-    `${JSON.stringify(
-      {
-        hooks: {
-          Stop: [
-            { hooks: [{ type: 'command', command: legacyCommand }] },
-            { hooks: [{ type: 'command', command: 'user-hook.sh' }] }
-          ]
-        }
-      },
-      null,
-      2
-    )}\n`
-  )
-  const operations: string[] = []
-  rebaseInternals.setSessionRunner(async (request) => {
-    operations.push(request.operation)
-    if (request.operation === 'inspect-user-hook-trust') {
-      return {
-        outcome: 'inspected',
-        moves: request.moves.map((move) => ({
-          ...move,
-          reportedOldKey: move.oldKey,
-          wasTrusted: true,
-          enabled: true
-        }))
-      }
-    }
-    writeFileSync(hooksJsonPath(), SAVED_MEANWHILE)
-    throw new Error('repair failed')
-  })
-
-  await expect(cleanupLegacySystemManagedHooks()).resolves.toBeUndefined()
-
-  expect(operations).toEqual(['inspect-user-hook-trust', 'repair-user-hook-trust'])
   expect(readFileSync(hooksJsonPath(), 'utf-8')).toBe(SAVED_MEANWHILE)
 })
 

@@ -54,7 +54,6 @@ async function sweepLegacySystemManagedHooks(): Promise<void> {
     return
   }
 
-  const systemHomePath = getSystemCodexHomePath()
   // Why: the pre-write guard below compares against these bytes; a separate
   // later read would let a concurrent save land between parse and snapshot.
   const { raw: previousRaw, config } = readHooksJsonWithRaw(legacyConfigPath)
@@ -95,9 +94,8 @@ async function sweepLegacySystemManagedHooks(): Promise<void> {
     // Why: this is the user's system hooks file, not Orca's runtime copy.
     // Remove only retired Orca hook entries and preserve other managers' metadata.
     const hooksWritePath = resolveHooksJsonWritePath(legacyConfigPath)
-    await mutateRealHomeHooksPreservingUserTrust({
+    mutateRealHomeHooksPreservingUserTrust({
       sourcePath: legacyConfigPath,
-      runtimeHomePath: systemHomePath,
       tomlPath: getSystemCodexConfigTomlPath(),
       beforeHooks: config.hooks,
       afterHooks: nextHooks,
@@ -106,9 +104,9 @@ async function sweepLegacySystemManagedHooks(): Promise<void> {
           readFileSync(legacyConfigPath, 'utf-8') !== previousRaw ||
           resolveHooksJsonWritePath(legacyConfigPath) !== hooksWritePath
         ) {
-          // Why: the pre-mutation RPC may overlap a user save; downgrade must
-          // never replace that newer dotfiles generation with our stale parse.
-          throw new Error('System Codex hooks changed during trust repair')
+          // Why: another process may have saved since the read; never replace
+          // that newer dotfiles generation with this stale parse.
+          throw new Error('System Codex hooks changed since Orca read them')
         }
         writeHooksJson(hooksWritePath, { ...config, hooks: nextHooks }, { preserveMode: true })
       }

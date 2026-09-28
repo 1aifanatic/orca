@@ -33,7 +33,6 @@ import {
 } from './codex-trust-grant-ledger'
 import type { CodexHookTrustGrantRequest } from './codex-app-server-client'
 import { getCodexHookTrustSignature } from './codex-hook-identity'
-import { _internals as rebaseInternals } from './codex-user-hook-trust-rebase'
 
 const { getPathMock, homedirMock, resolveCodexCommandMock } = vi.hoisted(() => ({
   getPathMock: vi.fn<(name: string) => string>(),
@@ -75,7 +74,6 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  rebaseInternals.setSessionRunner(null)
   trustGrantInternals.setGrantSessionRunner(null)
   trustGrantInternals.resetDiagnostics()
   codexAppServerCapabilityCache.clear()
@@ -255,22 +253,6 @@ describe('CodexHookService app-server trust grant lane', () => {
         )}\n`
       )
       symlinkSync(targetPath, hooksPath)
-      const operations: string[] = []
-      rebaseInternals.setSessionRunner(async (request) => {
-        operations.push(request.operation)
-        if (request.operation === 'inspect-user-hook-trust') {
-          return {
-            outcome: 'inspected',
-            moves: request.moves.map((move) => ({
-              ...move,
-              reportedOldKey: move.oldKey,
-              wasTrusted: true,
-              enabled: true
-            }))
-          }
-        }
-        return { outcome: 'repaired', repaired: 1 }
-      })
       installCodexLikeGrantRunner()
 
       await new CodexHookService().remove()
@@ -279,7 +261,6 @@ describe('CodexHookService app-server trust grant lane', () => {
       expect(JSON.parse(readFileSync(targetPath, 'utf-8')).hooks.Stop).toEqual([
         { hooks: [userHook] }
       ])
-      expect(operations).toEqual(['inspect-user-hook-trust', 'repair-user-hook-trust'])
     }
   )
 

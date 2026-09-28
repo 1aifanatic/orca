@@ -18,6 +18,7 @@ import type { CodexManagedTrustGrantPlan } from './codex-hook-trust-grant'
 import {
   computeTrustKey,
   readHookTrustEntries,
+  upsertHookTrustEntries,
   upsertHookTrustEntriesInContent,
   type CodexTrustEntry
 } from './config-toml-trust'
@@ -48,7 +49,6 @@ import {
   readCodexTrustGrantLedgerHome,
   writeCodexTrustGrantLedgerHome
 } from './codex-trust-grant-ledger'
-import { _internals as rebaseInternals } from './codex-user-hook-trust-rebase'
 
 let fakeHomeDir: string
 let userDataDir: string
@@ -92,8 +92,6 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  rebaseInternals.setSessionRunner(null)
-  rebaseInternals.resetRetryState()
   rmSync(fakeHomeDir, { recursive: true, force: true })
   rmSync(userDataDir, { recursive: true, force: true })
   if (previousUserDataPath === undefined) {
@@ -525,7 +523,7 @@ describe('removeRealHomeCodexHookForOptOut', () => {
     expect(readFileSync(getRealHooksJsonPath(), 'utf-8')).toBe('{ not json')
   })
 
-  it('rebases trust when a user appended hooks after Orca installed', async () => {
+  it('moves the trust of a user hook appended after Orca when the opt-out removes Orca', async () => {
     grantSucceeds()
     const before = { type: 'command', command: 'before.sh' }
     writeFileSync(
@@ -541,70 +539,23 @@ describe('removeRealHomeCodexHookForOptOut', () => {
     const after = { type: 'command', command: 'after.sh' }
     installed.hooks!.Stop!.push({ hooks: [after] })
     writeFileSync(getRealHooksJsonPath(), `${JSON.stringify(installed, null, 2)}\n`)
-    const operations: string[] = []
-    rebaseInternals.setSessionRunner(async (request) => {
-      operations.push(request.operation)
-      if (request.operation === 'inspect-user-hook-trust') {
-        expect(readRealHooksJson().hooks?.Stop?.[2]?.hooks?.[0]?.command).toBe('after.sh')
-        return {
-          outcome: 'inspected',
-          moves: request.moves.map((move) => ({
-            ...move,
-            reportedOldKey: move.oldKey,
-            wasTrusted: true,
-            enabled: true
-          }))
-        }
-      }
-      expect(readRealHooksJson().hooks?.Stop?.[1]?.hooks?.[0]?.command).toBe('after.sh')
-      return { outcome: 'repaired', repaired: 1 }
+    const afterAt = (groupIndex: number) => ({
+      sourcePath: getRealHooksJsonPath(),
+      eventLabel: 'stop' as const,
+      groupIndex,
+      handlerIndex: 0,
+      command: 'after.sh'
     })
+    upsertHookTrustEntries(getRealConfigTomlPath(), [
+      { ...afterAt(2), trustedHash: 'sha256:user-approved' }
+    ])
 
     expect(await removeRealHomeCodexHookForOptOut()).toBe('removed')
-    expect(operations).toEqual(['inspect-user-hook-trust', 'repair-user-hook-trust'])
+
     expect(readRealHooksJson().hooks?.Stop).toEqual([{ hooks: [before] }, { hooks: [after] }])
-  })
-
-  it('aborts without writing when hooks.json changes during the trust inspection', async () => {
-    grantSucceeds()
-    const before = { type: 'command', command: 'before.sh' }
-    writeFileSync(
-      getRealHooksJsonPath(),
-      `${JSON.stringify({ hooks: { Stop: [{ hooks: [before] }] } }, null, 2)}\n`
-    )
-    await ensureRealHomeCodexHookState({
-      hooksEnabled: true,
-      userDataPath: userDataDir,
-      writePolicy: 'add-missing-only'
-    })
-    const installed = readRealHooksJson()
-    const after = { type: 'command', command: 'after.sh' }
-    installed.hooks!.Stop!.push({ hooks: [after] })
-    writeFileSync(getRealHooksJsonPath(), `${JSON.stringify(installed, null, 2)}\n`)
-    const userTrustToml = '[hooks.state."x:stop:0:0"]\ntrusted_hash = "user"\n'
-    writeFileSync(getRealConfigTomlPath(), userTrustToml, 'utf-8')
-    const concurrentSave = `${JSON.stringify({ hooks: { Stop: [{ hooks: [before] }] } }, null, 2)}\n`
-    const operations: string[] = []
-    rebaseInternals.setSessionRunner(async (request) => {
-      operations.push(request.operation)
-      // A user save (or a second Orca instance) lands while the RPC runs.
-      writeFileSync(getRealHooksJsonPath(), concurrentSave, 'utf-8')
-      return {
-        outcome: 'inspected',
-        moves: request.moves.map((move) => ({
-          ...move,
-          reportedOldKey: move.oldKey,
-          wasTrusted: true,
-          enabled: true
-        }))
-      }
-    })
-
-    expect(await removeRealHomeCodexHookForOptOut()).toBe('unavailable')
-
-    expect(operations).toEqual(['inspect-user-hook-trust'])
-    expect(readFileSync(getRealHooksJsonPath(), 'utf-8')).toBe(concurrentSave)
-    expect(readFileSync(getRealConfigTomlPath(), 'utf-8')).toBe(userTrustToml)
+    const trust = readHookTrustEntries(getRealConfigTomlPath())
+    expect(trust.get(computeTrustKey(afterAt(1)))?.trustedHash).toBe('sha256:user-approved')
+    expect(trust.get(computeTrustKey(afterAt(2)))).toBeUndefined()
   })
 
   it('removes only Orca entries and reports the removed lane', async () => {

@@ -13,7 +13,6 @@ import { join, relative } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { getManagedCommand } from '../../main/codex/codex-hook-definition'
 import { _internals as grantInternals } from '../../main/codex/codex-hook-trust-grant'
-import { _internals as rebaseInternals } from '../../main/codex/codex-user-hook-trust-rebase'
 
 const { homes, call } = vi.hoisted(() => ({
   homes: { current: '' },
@@ -92,14 +91,11 @@ beforeEach(() => {
   vi.stubEnv('ORCA_CODEX_HOME', managedHome)
   vi.stubEnv('WSL_DISTRO_NAME', '')
   grantInternals.setGrantSessionRunner(stubMissingCodexBinary)
-  rebaseInternals.setSessionRunner(stubMissingCodexBinary)
 })
 
 afterEach(() => {
   call.mockReset()
   grantInternals.setGrantSessionRunner(null)
-  rebaseInternals.setSessionRunner(null)
-  rebaseInternals.resetRetryState()
   vi.unstubAllEnvs()
   vi.restoreAllMocks()
   process.exitCode = undefined

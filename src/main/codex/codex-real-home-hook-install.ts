@@ -177,9 +177,8 @@ async function installRealHomeCodexHook(
   })
   if (plan.changed) {
     backupRealHomeHooksJsonOnce(userDataPath, previousRaw)
-    await mutateRealHomeHooksPreservingUserTrust({
+    mutateRealHomeHooksPreservingUserTrust({
       sourcePath: hooksJsonPath,
-      runtimeHomePath: getSystemCodexHomePath(),
       tomlPath: getRealHomeConfigTomlPath(),
       beforeHooks: config.hooks ?? {},
       afterHooks: plan.hooks,
@@ -273,9 +272,8 @@ async function sweepRealHomeCodexHook(): Promise<RealHomeCodexHookLane> {
   }
   if (removedAny) {
     const hooksWritePath = resolveHooksJsonWritePath(hooksJsonPath)
-    await mutateRealHomeHooksPreservingUserTrust({
+    mutateRealHomeHooksPreservingUserTrust({
       sourcePath: hooksJsonPath,
-      runtimeHomePath: getSystemCodexHomePath(),
       tomlPath: getRealHomeConfigTomlPath(),
       beforeHooks: config.hooks,
       afterHooks: nextHooks,

@@ -9,6 +9,7 @@ import { _internals as grantInternals } from './codex-hook-trust-grant'
 import {
   computeTrustedHash,
   normalizeHookTrustKeyForLookup,
+  computeTrustKey,
   parseTrustKey,
   readHookTrustEntries,
   upsertHookTrustEntries
@@ -32,6 +33,7 @@ import {
   _internals as realHomeInternals,
   ensureRealHomeCodexHookState
 } from './codex-real-home-hook-install'
+import { cleanupLegacySystemManagedHooks } from './codex-hook-legacy-cleanup'
 
 // Why this file (QA case 4): a cold `codex app-server` on a loaded Mac took over
 // 10 s. That start must still grant, and a session that does time out must not
@@ -48,11 +50,15 @@ function configPath(): string {
   return join(homes.tmpHome, '.codex', 'config.toml')
 }
 
+function readHooks(): Record<string, HookDefinition[]> {
+  const file: { hooks: Record<string, HookDefinition[]> } = JSON.parse(
+    readFileSync(hooksPath(), 'utf-8')
+  )
+  return file.hooks
+}
+
 function orcaHandlerCount(): number {
-  const { hooks } = JSON.parse(readFileSync(hooksPath(), 'utf-8')) as {
-    hooks: Record<string, HookDefinition[]>
-  }
-  return Object.values(hooks)
+  return Object.values(readHooks())
     .flat()
     .flatMap((definition) => definition.hooks ?? [])
     .filter((hook) => isCodexManagedCommand(hook.command)).length
@@ -155,4 +161,35 @@ describe('a slow codex app-server start', () => {
     expect(await Promise.all(queued)).toEqual(['unavailable', 'unavailable', 'unavailable'])
     expect(counts.sessions).toBe(2)
   })
+
+  it.skipIf(process.platform === 'win32')(
+    'removes a retired entry and moves the user trust behind it while every session times out',
+    async () => {
+      const counts = installAppServerWithColdStart(10 * 60_000)
+      const script = `'${join(homes.tmpHome, '.orca', 'agent-hooks', 'codex-hook.sh')}'`
+      const retired = {
+        hooks: [{ type: 'command', command: `if [ -x ${script} ]; then /bin/sh ${script}; fi` }]
+      }
+      writeFileSync(
+        hooksPath(),
+        `${JSON.stringify({ hooks: { Stop: [retired, USER_HOOK] } }, null, 2)}\n`
+      )
+      const userAt = (groupIndex: number) => ({
+        sourcePath: hooksPath(),
+        eventLabel: 'stop' as const,
+        groupIndex,
+        handlerIndex: 0,
+        command: 'user-hook.sh'
+      })
+      upsertHookTrustEntries(configPath(), [{ ...userAt(1), trustedHash: 'sha256:user-approved' }])
+
+      expect(await ensureOnLaunch()).toBe('unavailable')
+      await cleanupLegacySystemManagedHooks()
+
+      expect(readHooks().Stop).toEqual([USER_HOOK])
+      const trust = readHookTrustEntries(configPath())
+      expect(trust.get(computeTrustKey(userAt(0)))?.trustedHash).toBe('sha256:user-approved')
+      expect(counts.sessions).toBe(1)
+    }
+  )
 })

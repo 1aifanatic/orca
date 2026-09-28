@@ -1,17 +1,15 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { HookCommandConfig, HookDefinition } from '../agent-hooks/installer-utils'
-import type { CodexUserHookTrustRebaseRequest } from './codex-user-hook-trust-rebase-client'
-
-const resolveCodexCommandMock = vi.hoisted(() => vi.fn(() => process.execPath))
-vi.mock('../codex-cli/command', () => ({ resolveCodexCommand: resolveCodexCommandMock }))
-
-import { codexAppServerCapabilityCache } from './codex-app-server-capability-cache'
-import { CodexAppServerUnsupportedError } from './codex-app-server-session'
 import {
-  _internals,
+  computeTrustKey,
+  readHookTrustEntries,
+  upsertHookTrustEntries,
+  type CodexTrustEntry
+} from './config-toml-trust'
+import {
   getMovedCodexUserHookTrust,
   mutateRealHomeHooksPreservingUserTrust
 } from './codex-user-hook-trust-rebase'
@@ -27,9 +25,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  _internals.setSessionRunner(null)
-  _internals.resetRetryState()
-  codexAppServerCapabilityCache.clear()
+  vi.restoreAllMocks()
   rmSync(root, { recursive: true, force: true })
 })
 
@@ -37,30 +33,38 @@ function command(command: string): HookCommandConfig {
   return { type: 'command', command }
 }
 
-describe('real-home user hook trust rebasing', () => {
-  it('writes directly without reading config or spawning Codex when user positions stay stable', async () => {
-    const user = command('user-hook')
-    const orca = command('orca-hook')
-    const before = { Stop: [{ hooks: [user] }] }
-    const after = { Stop: [{ hooks: [user] }, { hooks: [orca] }] }
-    let wroteHooks = false
-    _internals.setSessionRunner(() => {
-      throw new Error('stable positions must not open an app-server session')
-    })
+function stopEntry(groupIndex: number, hook: HookCommandConfig): CodexTrustEntry {
+  return {
+    sourcePath: hooksPath,
+    eventLabel: 'stop',
+    groupIndex,
+    handlerIndex: 0,
+    command: hook.command!
+  }
+}
 
-    expect(
-      await mutateRealHomeHooksPreservingUserTrust({
-        sourcePath: hooksPath,
-        runtimeHomePath: root,
-        tomlPath: configPath,
-        beforeHooks: before,
-        afterHooks: after,
-        writeHooks: () => {
-          wroteHooks = true
-        }
-      })
-    ).toBeUndefined()
-    expect(wroteHooks).toBe(true)
+function mutate(
+  before: Record<string, HookDefinition[]>,
+  after: Record<string, HookDefinition[]>
+): void {
+  mutateRealHomeHooksPreservingUserTrust({
+    sourcePath: hooksPath,
+    tomlPath: configPath,
+    beforeHooks: before,
+    afterHooks: after,
+    writeHooks: () => writeFileSync(hooksPath, JSON.stringify({ hooks: after }))
+  })
+}
+
+describe('real-home user hook trust rebasing', () => {
+  it('writes without touching config.toml when no hook moves', () => {
+    const user = command('user-hook')
+    mutate(
+      { Stop: [{ hooks: [user] }] },
+      { Stop: [{ hooks: [user] }, { hooks: [command('orca')] }] }
+    )
+
+    expect(existsSync(hooksPath)).toBe(true)
     expect(existsSync(configPath)).toBe(false)
   })
 
@@ -95,159 +99,56 @@ describe('real-home user hook trust rebasing', () => {
     ])
   })
 
-  it('carries only previously trusted states into the repair request', async () => {
+  it("moves each shifted hook's trust block to its new key, bytes unchanged", () => {
     const orca = command('orca-hook')
     const trusted = command('trusted-user')
+    const disabled = command('disabled-user')
     const untrusted = command('untrusted-user')
-    const before = { Stop: [{ hooks: [orca] }, { hooks: [trusted] }, { hooks: [untrusted] }] }
-    const after = { Stop: [{ hooks: [trusted] }, { hooks: [untrusted] }] }
-    writeFileSync(hooksPath, `${JSON.stringify({ hooks: before }, null, 2)}\n`)
-    writeFileSync(configPath, '# original config\n')
-    const requests: CodexUserHookTrustRebaseRequest[] = []
-    _internals.setSessionRunner(async (request) => {
-      requests.push(request)
-      if (request.operation === 'inspect-user-hook-trust') {
-        return {
-          outcome: 'inspected',
-          moves: request.moves.map((move) => ({
-            ...move,
-            reportedOldKey: move.oldKey,
-            wasTrusted: move.command === 'trusted-user',
-            enabled: move.command !== 'untrusted-user'
-          }))
-        }
-      }
-      return { outcome: 'repaired', repaired: 1 }
-    })
+    upsertHookTrustEntries(configPath, [
+      { ...stopEntry(0, orca), trustedHash: 'sha256:orca' },
+      { ...stopEntry(1, trusted), trustedHash: 'sha256:from-an-older-codex' },
+      { ...stopEntry(2, disabled), trustedHash: 'sha256:disabled', enabled: false }
+    ])
+    writeFileSync(configPath, `model = "user-model"\n${readFileSync(configPath, 'utf-8')}`)
 
-    await mutateRealHomeHooksPreservingUserTrust({
-      sourcePath: hooksPath,
-      runtimeHomePath: root,
-      tomlPath: configPath,
-      beforeHooks: before,
-      afterHooks: after,
-      writeHooks: () => writeFileSync(hooksPath, `${JSON.stringify({ hooks: after }, null, 2)}\n`)
-    })
+    mutate(
+      {
+        Stop: [
+          { hooks: [orca] },
+          { hooks: [trusted] },
+          { hooks: [disabled] },
+          { hooks: [untrusted] }
+        ]
+      },
+      { Stop: [{ hooks: [trusted] }, { hooks: [disabled] }, { hooks: [untrusted] }] }
+    )
 
-    expect(requests).toHaveLength(2)
-    expect(requests[0]?.invocation.envToDelete).toContain('CODEX_HOME')
-    const repair = requests[1]
-    expect(repair?.operation).toBe('repair-user-hook-trust')
-    if (repair?.operation === 'repair-user-hook-trust') {
-      expect(repair.moves).toEqual([
-        expect.objectContaining({ command: 'trusted-user', wasTrusted: true, enabled: true }),
-        expect.objectContaining({ command: 'untrusted-user', wasTrusted: false, enabled: false })
-      ])
-    }
+    const trust = readHookTrustEntries(configPath)
+    expect(trust.get(computeTrustKey(stopEntry(0, trusted)))).toEqual({
+      trustedHash: 'sha256:from-an-older-codex',
+      enabled: true
+    })
+    expect(trust.get(computeTrustKey(stopEntry(1, disabled)))).toEqual({
+      trustedHash: 'sha256:disabled',
+      enabled: false
+    })
+    // Why: an untrusted hook keeps no record, and the key it vacated holds none.
+    expect(trust.get(computeTrustKey(stopEntry(2, untrusted)))).toBeUndefined()
+    expect(trust.get(computeTrustKey(stopEntry(3, untrusted)))).toBeUndefined()
+    expect(readFileSync(configPath, 'utf-8').startsWith('model = "user-model"\n')).toBe(true)
   })
 
-  it('marks the host unsupported and skips further codex sessions', async () => {
+  it('keeps the hooks write and reports when config.toml cannot be written', () => {
     const orca = command('orca-hook')
     const user = command('user-hook')
-    const before = { Stop: [{ hooks: [orca] }, { hooks: [user] }] }
-    const after = { Stop: [{ hooks: [user] }] }
-    writeFileSync(configPath, '# config\n')
-    let sessions = 0
-    _internals.setSessionRunner(async () => {
-      sessions += 1
-      throw new CodexAppServerUnsupportedError('unrecognized subcommand app-server')
-    })
-    const args = {
-      sourcePath: hooksPath,
-      runtimeHomePath: root,
-      tomlPath: configPath,
-      beforeHooks: before,
-      afterHooks: after,
-      writeHooks: () => {
-        throw new Error('write must not run')
-      }
-    }
-
-    await expect(mutateRealHomeHooksPreservingUserTrust(args)).rejects.toThrow(
-      'unrecognized subcommand'
-    )
-    await expect(mutateRealHomeHooksPreservingUserTrust(args)).rejects.toThrow('marked unsupported')
-    expect(sessions).toBe(1)
-    expect(codexAppServerCapabilityCache.shouldTry('native')).toBe(false)
-  })
-
-  it('cools down after a transient session failure instead of retrying every launch prep', async () => {
-    const orca = command('orca-hook')
-    const user = command('user-hook')
-    const before = { Stop: [{ hooks: [orca] }, { hooks: [user] }] }
-    const after = { Stop: [{ hooks: [user] }] }
-    writeFileSync(configPath, '# config\n')
-    let sessions = 0
-    _internals.setSessionRunner(async () => {
-      sessions += 1
-      throw new Error('pre-mutation hooks/list reported 0 of 1 moved user hooks')
-    })
-    const args = {
-      sourcePath: hooksPath,
-      runtimeHomePath: root,
-      tomlPath: configPath,
-      beforeHooks: before,
-      afterHooks: after,
-      writeHooks: () => {
-        throw new Error('write must not run')
-      }
-    }
-
-    await expect(mutateRealHomeHooksPreservingUserTrust(args)).rejects.toThrow(
-      '0 of 1 moved user hooks'
-    )
-    await expect(mutateRealHomeHooksPreservingUserTrust(args)).rejects.toThrow('cooling down')
-    expect(sessions).toBe(1)
-    // Why: a transient failure must not poison the shared capability signal.
-    expect(codexAppServerCapabilityCache.shouldTry('native')).toBe(true)
-  })
-
-  // Why: a snapshot restore would undo the removal and any save made during the
-  // session; the moved hooks surface for review in Codex instead.
-  it('keeps the write and a save made during the session when post-mutation repair fails', async () => {
-    const orca = command('orca-hook')
-    const user = command('user-hook')
-    const before = { Stop: [{ hooks: [orca] }, { hooks: [user] }] }
-    const after = { Stop: [{ hooks: [user] }] }
-    writeFileSync(
-      hooksPath,
-      '{ "hooks": { "Stop": [{"hooks":[{"type":"command","command":"orca-hook"}]},{"hooks":[{"type":"command","command":"user-hook"}]}] } }\r\n'
-    )
-    writeFileSync(configPath, '# user formatting\r\nmodel = "x"\r\n')
-    const savedDuringSession = '# user formatting\r\nmodel = "saved-during-session"\r\n'
-    _internals.setSessionRunner(async (request) => {
-      if (request.operation === 'inspect-user-hook-trust') {
-        return {
-          outcome: 'inspected',
-          moves: request.moves.map((move) => ({
-            ...move,
-            reportedOldKey: move.oldKey,
-            wasTrusted: true,
-            enabled: true
-          }))
-        }
-      }
-      writeFileSync(configPath, savedDuringSession)
-      throw new Error('repair transport failed')
-    })
+    upsertHookTrustEntries(configPath, [{ ...stopEntry(1, user), trustedHash: 'sha256:user' }])
+    rmSync(configPath)
+    mkdirSync(configPath)
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-    await expect(
-      mutateRealHomeHooksPreservingUserTrust({
-        sourcePath: hooksPath,
-        runtimeHomePath: root,
-        tomlPath: configPath,
-        beforeHooks: before,
-        afterHooks: after,
-        writeHooks: () => writeFileSync(hooksPath, `${JSON.stringify({ hooks: after })}\n`)
-      })
-    ).resolves.toBeUndefined()
-    expect(JSON.parse(readFileSync(hooksPath, 'utf-8'))).toEqual({ hooks: after })
-    expect(readFileSync(configPath, 'utf-8')).toBe(savedDuringSession)
-    expect(warn).toHaveBeenCalledWith(
-      '[codex-user-hook-trust] could not re-key moved user hook trust:',
-      expect.any(Error)
-    )
-    warn.mockRestore()
+    mutate({ Stop: [{ hooks: [orca] }, { hooks: [user] }] }, { Stop: [{ hooks: [user] }] })
+
+    expect(JSON.parse(readFileSync(hooksPath, 'utf-8')).hooks.Stop).toEqual([{ hooks: [user] }])
+    expect(warn).toHaveBeenCalled()
   })
 })

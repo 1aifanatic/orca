@@ -50,6 +50,47 @@ export function removeHookTrustContent(content: string, keys: readonly string[])
   return updated + content.slice(cursor)
 }
 
+/**
+ * Moves each hook's trust block to the hook's new key, body bytes unchanged.
+ * Codex hashes a hook's content, not its position, so the moved block stays
+ * exactly as valid as before; a hook with no block keeps none.
+ */
+export function moveHookTrustContent(
+  existingContent: string,
+  moves: readonly { oldKey: string; newKey: string }[]
+): string {
+  const content = stripLeadingBom(existingContent)
+  const bodies = moves.flatMap(({ oldKey, newKey }) => {
+    const [range] = findHookTrustBlockRanges(
+      content,
+      new Set([normalizeCodexHookTrustLookupKey(oldKey)])
+    )
+    return range ? [{ newKey, body: content.slice(range.contentStart, range.end).trimEnd() }] : []
+  })
+  let updated = removeHookTrustContent(content, [
+    ...moves.map(({ oldKey }) => oldKey),
+    ...moves.map(({ newKey }) => newKey)
+  ])
+  if (bodies.length === 0) {
+    return updated
+  }
+  if (
+    bodies.some(({ newKey }) =>
+      usesWindowsCodexPathSeparators(parseCodexTrustKey(newKey)?.sourcePath ?? '')
+    )
+  ) {
+    updated = ensureHooksStateParentTable(updated)
+  }
+  const blocks = bodies.flatMap(({ newKey, body }) =>
+    getTrustKeyWriteVariants(newKey).map(
+      (key) => `[hooks.state.${formatHookStateTableKey(key)}]${body ? `\n${body}` : ''}`
+    )
+  )
+  const separator =
+    updated.length === 0 || updated.endsWith('\n\n') ? '' : updated.endsWith('\n') ? '\n' : '\n\n'
+  return `${updated}${separator}${blocks.join('\n\n')}\n`
+}
+
 function upsertTrustBlocks(
   content: string,
   keys: readonly string[],
