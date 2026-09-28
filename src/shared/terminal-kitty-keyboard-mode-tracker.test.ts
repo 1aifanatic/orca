@@ -91,6 +91,9 @@ describe('TerminalKittyKeyboardModeTracker', () => {
     await feed('1u')
     expect(tracker.flags).toBe(0)
     expect(await xtermReport()).toBe('\x1b[?0u')
+    await feed('\x1b[?1049l')
+    expect(tracker.flags).toBe(5)
+    expect(await xtermReport()).toBe('\x1b[?5u')
     term.dispose()
   })
 
