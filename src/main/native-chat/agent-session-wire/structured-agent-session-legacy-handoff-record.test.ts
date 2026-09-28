@@ -26,7 +26,7 @@ import {
 const CALLER = { callerKey: 'client-1' }
 
 /** Delivery runs on its own serialized steps; under a loaded runner they take more than a second. */
-function eventually(assertion: () => void): Promise<void> {
+function eventually(assertion: () => void | Promise<void>): Promise<void> {
   return vi.waitFor(assertion, { timeout: 10_000 })
 }
 
@@ -83,15 +83,14 @@ async function delivered(text: string) {
   const sent = await send(text)
   expect(sent).toMatchObject({ ok: true })
   const clientMessageId = sent.ok ? sent.value.clientMessageId : ''
-  const submission = () =>
-    host
-      .journalSnapshot(SESSION)
-      .submissions.find((candidate) => candidate.clientMessageId === clientMessageId)
-  await eventually(() =>
-    expect(
-      submission()?.dispatchState !== 'pending' || submission()?.handedOverAt !== undefined
-    ).toBe(true)
-  )
+  const submission = async () =>
+    (await host.journalSnapshot(SESSION)).submissions.find(
+      (candidate) => candidate.clientMessageId === clientMessageId
+    )
+  await eventually(async () => {
+    const current = await submission()
+    expect(current?.dispatchState !== 'pending' || current?.handedOverAt !== undefined).toBe(true)
+  })
   return submission()
 }
 
@@ -245,19 +244,20 @@ describe('a record an older build left mid terminal handoff', () => {
       handoffStage: 'recovering'
     })
     // Sending and opening the chat both say what frees it: quitting that terminal agent. A send is
-    // accepted, then rejected by the start that cannot take the lease, and the chat's row says why.
+    // accepted, then rejected by the start that cannot take the lease, and the chat's row says why,
+    // worded from the refusal's details; only the live refusal names the process.
     const quitTerminal =
       'This chat is still open in a terminal agent (process 4242). Quit that agent to continue the chat here.'
     expect(await delivered('while the terminal still runs')).toMatchObject({
       dispatchState: 'rejected'
     })
     expect(
-      host
-        .journalSnapshot(SESSION)
-        .items.flatMap((item) =>
-          item.body.kind === 'status' && item.body.tone === 'error' ? [item.body.text] : []
-        )
-    ).toEqual([expect.stringContaining(quitTerminal)])
+      (await host.journalSnapshot(SESSION)).items.flatMap((item) =>
+        item.body.kind === 'status' && item.body.tone === 'error' ? [item.body.text] : []
+      )
+    ).toEqual([
+      "Codex couldn't restart. This chat is still open in a terminal agent. Quit that agent to continue the chat here."
+    ])
     const fence = store.getRecord(SESSION)?.lease.runtimeFence ?? null
     expect(await host.attach(CALLER, hostTestAttachParams(fence))).toMatchObject({
       ok: false,
@@ -267,9 +267,8 @@ describe('a record an older build left mid terminal handoff', () => {
     expect(stopOwnerProcess).not.toHaveBeenCalled()
     expect(acquire).not.toHaveBeenCalled()
 
-    // The user closes the terminal; the next open proves it gone and the chat takes over.
+    // The user closes the terminal; the next send's start proves it gone and the chat takes over.
     probe.mockResolvedValue({ outcome: 'pid-absent' })
-    await host.hold(SESSION, 'surface-1')
 
     expect(stopOwnerProcess).not.toHaveBeenCalled()
     expect(await delivered('after the terminal closed')).toMatchObject({

@@ -530,7 +530,11 @@ describe('PR Checks skip wiring', () => {
     )
     expect(classify.run).toContain('--diff-filter=ACDMR')
     expect(classify.run).toContain('--no-renames')
-    expect(classify.run).toContain('--merge-base "$BASE_SHA" "$HEAD_SHA"')
+    // HEAD is the merge commit, so HEAD^1 is the base side and no merge base is computed.
+    // That is what lets this job check out shallowly, which every other job waits on.
+    expect(classify.run).toContain('node config/scripts/git-pull-request-diff-base.mjs "$BASE_SHA"')
+    expect(classify.run).toContain('"$DIFF_BASE" HEAD')
+    expect(classify.run).not.toContain('--merge-base "$')
     expect(classify.run).toContain('node config/scripts/pr-code-change-scope.mjs')
     expect(classify.run).toContain('tee -a "$GITHUB_OUTPUT"')
     expect(prWorkflow.jobs.code_paths.outputs.should_run).toBe(
@@ -582,12 +586,21 @@ describe('PR Checks skip wiring', () => {
 
   it('gates each expensive job on its classifier and cache prerequisite', () => {
     for (const jobName of expensiveJobs.filter((jobName) => jobName !== 'test')) {
-      expect(prWorkflow.jobs[jobName].needs, jobName).toEqual(['code_paths'])
+      expect(prWorkflow.jobs[jobName].needs, jobName).toEqual(
+        ['package', 'package_windows'].includes(jobName)
+          ? ['code_paths', 'static_analysis', 'typecheck']
+          : ['code_paths']
+      )
       expect(prWorkflow.jobs[jobName].if, jobName).toBe(
         `needs.code_paths.outputs.${jobName} == 'true'`
       )
     }
-    expect(prWorkflow.jobs.test.needs).toEqual(['code_paths', 'test_native_cache'])
+    expect(prWorkflow.jobs.test.needs).toEqual([
+      'code_paths',
+      'test_native_cache',
+      'static_analysis',
+      'typecheck'
+    ])
     expect(prWorkflow.jobs.test.if).toContain("needs.code_paths.outputs.test == 'true'")
     expect(prWorkflow.jobs.test.if).toContain("needs.test_native_cache.result == 'success'")
     expect(prWorkflow.jobs.test.if).toContain("needs.test_native_cache.result == 'skipped'")
