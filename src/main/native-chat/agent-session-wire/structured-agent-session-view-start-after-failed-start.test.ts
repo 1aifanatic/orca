@@ -40,11 +40,14 @@ let host: StructuredAgentSessionHost
 let adapter: ClaudeStructuredSessionAdapter
 let claude: ReturnType<typeof fakeClaude>
 let lifecycle: Promise<void>[]
+/** Every initialize waits on it: a start that must outlast a step does not race a timer. */
+let initGate: Promise<void>
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'orca-view-start-after-failed-start-'))
   resetHostTestOperationIds()
   lifecycle = []
+  initGate = Promise.resolve()
   // Every start spawns, is published, and exits before it answers initialize.
   claude = fakeClaude({ initDelayMs: 20, exitBeforeInit: LAUNCH_FAILURE })
   adapter = new ClaudeStructuredSessionAdapter({
@@ -64,7 +67,16 @@ beforeEach(async () => {
         lifecycle.push(host.handleAdapterEvent(mapped))
       }
     },
-    openConnection: (launch, handlers) => claude.openConnection(launch, handlers),
+    openConnection: async (launch, handlers) => {
+      const connection = await claude.openConnection(launch, handlers)
+      const initialize = connection.initializationResult
+      return Object.assign(connection, {
+        initializationResult: async () => {
+          await initGate
+          return initialize()
+        }
+      })
+    },
     readProcessStartTime: async () => 1_700_000_000_000,
     now: () => NOW
   })
@@ -133,13 +145,21 @@ async function send(text: string): Promise<string> {
 describe('a fresh chat whose Claude start fails', () => {
   // QA saw three failed starts from opening the chat alone: the create's, and the view's.
   it.each([
-    ['after the create already died', 20],
-    // Long enough for both subscriptions to bind on a loaded runner before the create's child exits.
-    ['while the create is still starting', 1_000]
+    ['after the create already died', false],
+    ['while the create is still starting', true]
   ] as const)(
     'starts once for the open and once for a send, one row each, when the view binds %s',
-    async (_when, initDelayMs) => {
-      claude = fakeClaude({ initDelayMs, exitBeforeInit: LAUNCH_FAILURE })
+    async (_when, createStillStarting) => {
+      // Released only once the views bound, so no runner is slow enough to let the create die first.
+      let releaseCreate = (): void => {}
+      const createGate = new Promise<void>((resolve) => {
+        releaseCreate = resolve
+      })
+      if (!createStillStarting) {
+        releaseCreate()
+      }
+      initGate = createGate
+      claude = fakeClaude({ exitBeforeInit: LAUNCH_FAILURE })
       await expect(
         host.attach(
           CALLER,
@@ -151,15 +171,16 @@ describe('a fresh chat whose Claude start fails', () => {
           })
         )
       ).resolves.toMatchObject({ ok: true })
-      if (initDelayMs === 20) {
+      if (!createStillStarting) {
         await settleExits()
       }
       // Two surfaces bind, as a pane and a second window do.
       const unsubscribe = await view(SURFACE)
       await view('desktop-chat:2')
-      if (initDelayMs === 1_000) {
+      if (createStillStarting) {
         // The views bound to the create's child itself, before it exited.
         expect(await timeline()).toEqual([])
+        releaseCreate()
       }
       await settleExits()
       const startFailure = `The provider stopped before it finished starting: ${LAUNCH_FAILURE}.`
