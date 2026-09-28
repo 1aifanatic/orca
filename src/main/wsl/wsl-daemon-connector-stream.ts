@@ -1,4 +1,5 @@
-import { Duplex, Readable, Writable } from 'node:stream'
+import { DaemonConnectionLostError } from '../daemon/daemon-errors'
+import { Duplex } from 'node:stream'
 import { spawnProcess, type ProcessSpec } from '../../shared/child-process/run-process'
 import { WSL_DAEMON_CONNECTOR_READY } from './wsl-daemon-connector-script'
 
@@ -9,10 +10,7 @@ export function openWslDaemonConnectorStream(
 ): Promise<Duplex> {
   signal.throwIfAborted()
   const child = spawnProcess(spec)
-  const stream = Duplex.fromWeb(
-    { readable: Readable.toWeb(child.stdout), writable: Writable.toWeb(child.stdin) },
-    { objectMode: false }
-  )
+  const stream = Duplex.from({ readable: child.stdout, writable: child.stdin })
   // A child can fail before the awaiting protocol consumer has installed its listener.
   stream.on('error', () => {})
   stream.once('close', () => child.kill())
@@ -37,7 +35,7 @@ export function openWslDaemonConnectorStream(
       stream.destroy()
       reject(error)
     }
-    const closed = () => fail(new Error('WSL daemon connector closed before connection'))
+    const closed = () => fail(new DaemonConnectionLostError('Connection lost'))
     const abort = () =>
       fail(new Error('WSL daemon connector connection canceled', { cause: signal.reason }))
     const onStderr = (bytes: Buffer) => {

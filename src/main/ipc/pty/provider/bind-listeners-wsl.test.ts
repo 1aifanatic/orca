@@ -1,3 +1,4 @@
+import { runCoalescedDaemonRestart } from '../../../daemon/daemon-restart-state'
 import { afterEach, expect, it, vi } from 'vitest'
 import { bindProviderListeners } from './bind-listeners'
 import { setRebindProviderListeners, unbindLocalProviderListeners } from './listener-lifecycle'
@@ -66,4 +67,32 @@ it('binds added guests once, excludes SSH and removes listeners across reload an
   expect(session.acceptPtyDataForRenderer).toHaveBeenCalledTimes(2)
   unbindLocalProviderListeners()
   expect(native.listeners.size).toBe(0)
+})
+
+it('does not rebind a retiring local provider when guests change during restart', async () => {
+  const rebind = vi.fn()
+  setRebindProviderListeners(rebind)
+  let finish!: () => void
+  const pending = runCoalescedDaemonRestart(async () => {
+    await new Promise<void>((resolve) => {
+      finish = resolve
+    })
+    return { killedCount: 0 }
+  })
+  try {
+    const release = registerWslPtyProvider(
+      { distro: 'Ubuntu', relayBuildId: 'during-restart' },
+      provider().value
+    )
+    releases.push(release)
+    release()
+    expect(rebind).not.toHaveBeenCalled()
+  } finally {
+    finish()
+    await pending
+  }
+  releases.push(
+    registerWslPtyProvider({ distro: 'Ubuntu', relayBuildId: 'after-restart' }, provider().value)
+  )
+  expect(rebind).toHaveBeenCalledOnce()
 })

@@ -1,3 +1,4 @@
+import { DaemonConnectionLostError } from '../daemon/daemon-errors'
 import { afterEach, expect, it } from 'vitest'
 import { createServer } from 'node:net'
 import { mkdtempSync, rmSync, writeFileSync, symlinkSync } from 'node:fs'
@@ -51,6 +52,8 @@ unix(
       },
       AbortSignal.timeout(10_000)
     )
+    expect(stream.readableObjectMode).toBe(false)
+    expect(stream.writableObjectMode).toBe(false)
     const chunks: Buffer[] = []
     stream.on('data', (chunk: Buffer) => chunks.push(chunk))
     const ended = once(stream, 'end')
@@ -72,7 +75,7 @@ unix('rejects changed guest identity before connecting', async () => {
       },
       AbortSignal.timeout(10_000)
     )
-  ).rejects.toThrow('closed before connection')
+  ).rejects.toBeInstanceOf(DaemonConnectionLostError)
 })
 
 it('cancels a connector that never reaches readiness', async () => {

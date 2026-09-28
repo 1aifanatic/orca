@@ -1,3 +1,4 @@
+import { isDaemonRestartInFlight } from '../../../daemon/daemon-restart-state'
 import { parseAppWslPtyId, type WslPtyOwner } from '../../../../shared/wsl-pty-id'
 import { wslPtyOwnerKey } from '../../../../shared/wsl-pty-consumer-recovery'
 import { relayProvidersByGeneration } from '../../../providers/relay-pty-generation-registry'
@@ -50,11 +51,15 @@ export function registerWslPtyProvider(owner: WslPtyOwner, provider: IPtyProvide
     throw new Error('WSL terminal owner already registered')
   }
   wslProviders.set(key, provider)
-  rebindLocalProviderListeners()
+  if (!isDaemonRestartInFlight()) {
+    rebindLocalProviderListeners()
+  }
   return () => {
     if (wslProviders.get(key) === provider) {
       wslProviders.delete(key)
-      rebindLocalProviderListeners()
+      if (!isDaemonRestartInFlight()) {
+        rebindLocalProviderListeners()
+      }
     }
   }
 }
@@ -164,9 +169,7 @@ export function getSshPtyProvider(connectionId: string): IPtyProvider | undefine
   return sshProviders.get(connectionId)
 }
 
-/** Get the installed PTY provider (for direct access in tests/runtime).
- *  After daemon init this may be a DaemonPtyAdapter/DaemonPtyRouter, not LocalPtyProvider;
- *  callers needing LocalPtyProvider-specific methods must type-narrow or import the class. */
+/** Get the installed daemon provider for runtime operations and tests. */
 export function getLocalPtyProvider(): IPtyProvider {
   return localProvider
 }
