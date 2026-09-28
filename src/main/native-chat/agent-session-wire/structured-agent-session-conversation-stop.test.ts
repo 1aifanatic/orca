@@ -201,7 +201,24 @@ describe('a Stop that names no turn', () => {
     expect(dispatch).not.toHaveBeenCalled()
   })
 
-  it('says nothing of a finished turn when the provider had nothing left to stop', async () => {
+  it('says why when the provider refused it, in its words', async () => {
+    const { id, result } = send('hello')
+    await result
+    await eventually(async () => expect((await submission(id))?.handedOverAt).toBeDefined())
+    cancelTurn.mockResolvedValueOnce({
+      cancelled: false,
+      refusal: { detail: { text: 'no active turn to interrupt', audience: 'person' } }
+    })
+
+    expect(await stop()).toMatchObject({ ok: true, value: { cancelled: false } })
+
+    expect(cancelTurn).toHaveBeenCalledOnce()
+    expect(await statusRows()).toEqual([
+      'Stop could not reach the agent: no active turn to interrupt.'
+    ])
+  })
+
+  it('says it reached nothing when the provider had no turn to stop', async () => {
     const { id, result } = send('hello')
     await result
     await eventually(async () => expect((await submission(id))?.handedOverAt).toBeDefined())
@@ -209,8 +226,9 @@ describe('a Stop that names no turn', () => {
 
     expect(await stop()).toMatchObject({ ok: true, value: { cancelled: false } })
 
-    expect(cancelTurn).toHaveBeenCalledOnce()
-    expect(await statusRows()).toEqual([])
+    expect(await statusRows()).toEqual([
+      'Stop could not reach the agent: it had no turn running to stop.'
+    ])
   })
 
   it('stops nothing when it reuses the id of a Stop the host already ran', async () => {

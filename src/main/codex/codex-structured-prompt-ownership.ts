@@ -1,6 +1,7 @@
 import {
   AgentSessionPromptAnswerRejectedError,
   AgentSessionPromptUnavailableError,
+  type AgentSessionCancelOutcome,
   type StructuredAgentSessionAdapter
 } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import type { StructuredSessionCompaction } from '../native-chat/agent-session-wire/structured-session-compaction'
@@ -25,7 +26,7 @@ type AnswerInput = Parameters<StructuredAgentSessionAdapter['answerPrompt']>[0]
 function cancelCodexConversation(
   input: Parameters<typeof cancelCodexStructuredTurn>[0],
   session: CodexSession
-): Promise<{ cancelled: boolean }> {
+): Promise<AgentSessionCancelOutcome> {
   const { request, sessions, compactions, cancellation } = input
   const liveTurnId = request.resolveLiveTurnId?.() ?? null
   // A turn the journal shows that Codex has not started yet (a compaction's) has nothing to stop.
@@ -54,7 +55,7 @@ export async function cancelCodexStructuredTurn(input: {
   sessions: Map<string, CodexSession>
   compactions: StructuredSessionCompaction
   cancellation: CodexStructuredTurnCancellation
-}): Promise<{ cancelled: boolean }> {
+}): Promise<AgentSessionCancelOutcome> {
   const { request, sessions, compactions, cancellation } = input
   const session = requireLiveCodexSession(sessions, request.sessionId)
   const prompt = request.prompt

@@ -142,14 +142,14 @@ describe('CodexStructuredSessionAdapter.cancelTurn', () => {
         turnId: 'turn-1',
         fence: 7
       })
-    ).resolves.toEqual({ cancelled: false })
+    ).resolves.toEqual({ cancelled: false, refusal: {} })
     await expect(
       (await acquired(absent)).cancelTurn({
         sessionId: 'session-1',
         turnId: 'turn-1',
         fence: 7
       })
-    ).resolves.toEqual({ cancelled: false })
+    ).resolves.toEqual({ cancelled: false, refusal: {} })
   })
 
   it('rethrows an unsettled interrupt so the turn is not shown as cancelled', async () => {
@@ -422,6 +422,6 @@ describe('Codex Stop that names no turn', () => {
       threadId: THREAD_ID,
       turn: { id: 'turn-compact', status: 'completed' }
     })
-    await expect(compaction).resolves.toEqual({})
+    await expect(compaction).resolves.toEqual({ outcome: 'compacted' })
   })
 })
