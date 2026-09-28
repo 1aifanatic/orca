@@ -6,10 +6,6 @@ import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-
 import type { AgentJournalRenderItem } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionDeathEvidence } from '../../../shared/agent-session-record'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
-import {
-  codexSubagentGroupBody,
-  codexSubagentGroupIdentity
-} from '../../codex/codex-subagent-roster'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { createTrackedJournalOpener } from '../agent-session-journal/journal-store-test-open'
 import { settleStaleStructuredAgentSessionState } from './structured-agent-session-dead-generation-settlement'
@@ -81,93 +77,59 @@ function promptItem(state: 'pending' | 'resolved', sequence: number): AgentJourn
 }
 
 describe('turn verdict from death evidence', () => {
-  const providerActiveAt = (at: number) => ({ lastProviderActivityAt: () => at })
   /** Judges a turn the fence-1 owner wrote, by evidence naming that owner. */
-  const verdictForTurn = (
-    evidence: AgentSessionDeathEvidence | null | undefined,
-    journal: ReturnType<typeof providerActiveAt>
-  ) => turnVerdictFromDeathEvidence(evidence && { ownerFence: 1, ...evidence }, journal, 1)
+  const verdictForTurn = (evidence: AgentSessionDeathEvidence | null | undefined) =>
+    turnVerdictFromDeathEvidence(evidence && { ownerFence: 1, ...evidence }, 1)
 
   it('ends a watched exit at the exit', () => {
-    expect(
-      verdictForTurn(
-        { kind: 'exit-observed', detail: 'exit', observedAt: 500 },
-        providerActiveAt(300)
-      )
-    ).toEqual({ state: 'interrupted', completedAt: 500 })
+    expect(verdictForTurn({ kind: 'exit-observed', detail: 'exit', observedAt: 500 })).toEqual({
+      state: 'interrupted',
+      completedAt: 500
+    })
   })
 
   it.each(['pid-absent', 'identity-mismatch'] as const)(
-    'ends a %s proof with no proof of life at the last row the provider wrote, not at the probe',
+    'ends a %s proof at the last proof of life, never after the probe',
     (kind) => {
-      // Probed at 9000, long after the crash: the downtime is never counted as work.
-      expect(
-        verdictForTurn({ kind, detail: 'gone', observedAt: 9_000 }, providerActiveAt(300))
-      ).toEqual({
-        state: 'interrupted',
-        completedAt: 300
+      const proof = (lastProvenAliveAt?: number) => ({
+        kind,
+        detail: 'gone',
+        observedAt: 9_000,
+        ...(lastProvenAliveAt === undefined ? {} : { lastProvenAliveAt })
       })
-      // A live row stamped after the probe cannot outlast it, and no live row leaves only the probe.
-      for (const lastLive of [9_500, 0]) {
-        expect(
-          verdictForTurn({ kind, detail: 'gone', observedAt: 9_000 }, providerActiveAt(lastLive))
-        ).toEqual({ state: 'interrupted', completedAt: 9_000 })
-      }
+      // Probed at 9000, long after the crash: the downtime is never counted as work.
+      expect(verdictForTurn(proof(8_000))).toEqual({ state: 'interrupted', completedAt: 8_000 })
+      expect(verdictForTurn(proof(9_500))).toEqual({ state: 'interrupted', completedAt: 9_000 })
+      // A proof that recorded no proof of life has only the probe.
+      expect(verdictForTurn(proof())).toEqual({ state: 'interrupted', completedAt: 9_000 })
     }
   )
 
-  it('ends a probe-proven death at the later of the last renewal and the last row the provider wrote', () => {
-    const proof = (lastProvenAliveAt: number) => ({
-      kind: 'pid-absent' as const,
-      detail: 'gone',
-      observedAt: 9_000,
-      lastProvenAliveAt
-    })
-    // A silent tool run: the renewal saw the child working long after its last row.
-    expect(verdictForTurn(proof(8_000), providerActiveAt(300))).toEqual({
-      state: 'interrupted',
-      completedAt: 8_000
-    })
-    expect(verdictForTurn(proof(8_000), providerActiveAt(0))).toEqual({
-      state: 'interrupted',
-      completedAt: 8_000
-    })
-    // A chatty provider: its last row is the tighter bound.
-    expect(verdictForTurn(proof(200), providerActiveAt(300))).toEqual({
-      state: 'interrupted',
-      completedAt: 300
-    })
-    // Neither bound outlasts the probe.
-    expect(verdictForTurn(proof(9_500), providerActiveAt(300))).toEqual({
-      state: 'interrupted',
-      completedAt: 9_000
-    })
-  })
-
   it('ends a watched exit at the exit even when a renewal is recorded', () => {
     expect(
-      verdictForTurn(
-        { kind: 'exit-observed', detail: 'exit', observedAt: 500, lastProvenAliveAt: 400 },
-        providerActiveAt(300)
-      )
+      verdictForTurn({
+        kind: 'exit-observed',
+        detail: 'exit',
+        observedAt: 500,
+        lastProvenAliveAt: 400
+      })
     ).toEqual({ state: 'interrupted', completedAt: 500 })
   })
 
   it('leaves a release nothing proved unverifiable', () => {
-    expect(verdictForTurn(null, providerActiveAt(300))).toEqual({ state: 'unverifiable' })
-    expect(verdictForTurn(undefined, providerActiveAt(300))).toEqual({
-      state: 'unverifiable'
-    })
+    expect(verdictForTurn(null)).toEqual({ state: 'unverifiable' })
+    expect(verdictForTurn(undefined)).toEqual({ state: 'unverifiable' })
   })
   it('keeps the rule an older build applied to evidence that names no owner', () => {
     // Only a watched exit was proof then; a probe's proof stays unverifiable.
     const legacy = { detail: 'gone', observedAt: 9_000, lastProvenAliveAt: 8_000 }
-    expect(
-      turnVerdictFromDeathEvidence({ ...legacy, kind: 'exit-observed' }, providerActiveAt(300), 1)
-    ).toEqual({ state: 'interrupted', completedAt: 9_000 })
-    expect(
-      turnVerdictFromDeathEvidence({ ...legacy, kind: 'pid-absent' }, providerActiveAt(300), 1)
-    ).toEqual({ state: 'unverifiable' })
+    expect(turnVerdictFromDeathEvidence({ ...legacy, kind: 'exit-observed' }, 1)).toEqual({
+      state: 'interrupted',
+      completedAt: 9_000
+    })
+    expect(turnVerdictFromDeathEvidence({ ...legacy, kind: 'pid-absent' }, 1)).toEqual({
+      state: 'unverifiable'
+    })
   })
 
   it('gives a turn no end from evidence about any other owner', () => {
@@ -184,9 +146,7 @@ describe('turn verdict from death evidence', () => {
       [{ ...proof, kind: 'exit-observed' as const, ownerFence: 3 }, 1],
       [{ ...proof, ownerFence: 1 }, undefined]
     ] as const) {
-      expect(turnVerdictFromDeathEvidence(evidence, providerActiveAt(300), turnFence)).toEqual({
-        state: 'unverifiable'
-      })
+      expect(turnVerdictFromDeathEvidence(evidence, turnFence)).toEqual({ state: 'unverifiable' })
     }
   })
 })
@@ -264,6 +224,13 @@ describe('running turn lifecycle revisions', () => {
     })
   })
 
+  it('never ends a turn before it began, when the last proof of life predates it', () => {
+    const item = lifecycleItem('turn-2', 'running', 2, { startedAt: 500 })
+    expect(
+      runningTurnLifecycleRevisions([item], { state: 'interrupted', completedAt: 300 })
+    ).toMatchObject([{ body: { kind: 'turn', state: 'interrupted', completedAt: 500 } }])
+  })
+
   it('revises a legacy status-form running row from an older host into a typed turn', () => {
     expect(
       runningTurnLifecycleRevisions([legacyLifecycleItem('turn-2', 30)], { state: 'unverifiable' })
@@ -282,12 +249,13 @@ describe('running turn lifecycle revisions', () => {
   })
 })
 
-/** A probe that found the fence-1 owner gone at 9000. */
+/** A probe that found the fence-1 owner gone at 9000, last proven alive at 100. */
 const PROVEN: AgentSessionDeathEvidence = {
   kind: 'pid-absent',
   detail: 'recorded pid absent on host',
   observedAt: 9_000,
-  ownerFence: 1
+  ownerFence: 1,
+  lastProvenAliveAt: 100
 }
 
 describe('stale session state on a cold acquire', () => {
@@ -422,7 +390,7 @@ describe('stale session state on a cold acquire', () => {
     }
   })
 
-  it('ends a probe-proven turn at the last row the provider wrote, which a revised item does not carry', async () => {
+  it('ends a probe-proven turn at its last proof of life, not at a row written after it', async () => {
     const root = await mkdtemp(join(tmpdir(), 'orca-stale-session-'))
     const journals = createTrackedJournalOpener()
     let now = 100
@@ -447,27 +415,13 @@ describe('stale session state on a cold acquire', () => {
       )
       now = 200
       await journal.appendItem(command, { ...shell, state: 'running' }, { fence: 1 })
-      // Output streamed until 700: a revision, so the item still reads as first seen at 200.
+      // Rows can outlast the last renewal; only the renewal is proof of life.
       now = 700
       await journal.appendItem(
         command,
         { ...shell, input: { command: 'pnpm test', streamed: 'ok' }, state: 'running' },
         { fence: 1 }
       )
-      // Crash reconciliation is Orca writing, not the provider working.
-      now = 900
-      await journal.appendLifecycleBatch({
-        settlementId: 'earlier-recovery',
-        fence: 1,
-        recovered: true,
-        mutations: [
-          {
-            kind: 'item',
-            identity: { provider: 'orca', clientMessageId: 'earlier-recovery' },
-            body: { kind: 'status', text: 'recovered' }
-          }
-        ]
-      })
       now = 9_000
 
       await settleStaleStructuredAgentSessionState({
@@ -479,20 +433,20 @@ describe('stale session state on a cold acquire', () => {
           kind: 'pid-absent',
           detail: 'recorded pid absent on host',
           observedAt: 9_000,
-          ownerFence: 1
+          ownerFence: 1,
+          lastProvenAliveAt: 650
         }
       })
 
       const items = journal.snapshot().items
       expect(items.map((item) => readAgentJournalTurn(item.body)).find(Boolean)).toMatchObject({
         state: 'interrupted',
-        completedAt: 700
+        completedAt: 650
       })
       // The probe's detail is Orca's, so the row carries none.
       expect(
         items.flatMap((item) => (item.body.kind === 'status' ? [item.body.text] : []))
       ).toEqual([
-        'recovered',
         'The agent stopped while this response was in progress. You can continue in this conversation.'
       ])
     } finally {
@@ -501,73 +455,11 @@ describe('stale session state on a cold acquire', () => {
     }
   })
 
-  it('does not count the reopen settling a roster the crashed host left working as activity', async () => {
+  it('ends a crashed turn at its last proof of life, not at a send accepted before the proof', async () => {
     const root = await mkdtemp(join(tmpdir(), 'orca-stale-session-'))
     const journals = createTrackedJournalOpener()
     let now = 100
-    const identity = {
-      sessionId: 'session-1',
-      workspaceId: 'workspace-1',
-      hostId: 'local',
-      agent: 'codex' as const,
-      providerHandle: { kind: 'codex' as const, threadId: THREAD }
-    }
     try {
-      const live = await journals.open({ identity, journalDir: root, now: () => now })
-      await live.appendItem(
-        { provider: 'codex', threadId: THREAD, turnId: 'turn-1', ordinal: 0 },
-        { kind: 'turn', turnId: 'turn-1', state: 'running', startedAt: 100 },
-        { fence: 1 }
-      )
-      now = 200
-      const groupId = `${THREAD}:turn-1`
-      await live.appendItem(
-        codexSubagentGroupIdentity(groupId),
-        codexSubagentGroupBody(groupId, [
-          { id: 'a', label: 'explore', state: 'working', startedAt: 200 }
-        ]),
-        { fence: 1 }
-      )
-      await live.close()
-      // Relaunched long after the crash: the open retires the roster, then the probe proves death.
-      now = 9_000
-      const reopened = await journals.open({ identity, journalDir: root, now: () => now })
-
-      await settleStaleStructuredAgentSessionState({
-        journal: reopened,
-        sessionId: 'session-1',
-        fence: 2,
-        acquisitionGeneration: 'generation-2',
-        deathEvidence: { kind: 'pid-absent', detail: 'gone', observedAt: 8_500, ownerFence: 1 }
-      })
-
-      expect(
-        reopened
-          .snapshot()
-          .items.map((item) => readAgentJournalTurn(item.body))
-          .find(Boolean)
-      ).toMatchObject({ state: 'interrupted', completedAt: 200 })
-    } finally {
-      await journals.closeAll()
-      await rm(root, { recursive: true, force: true })
-    }
-  })
-
-  describe('a crashed turn revised by a proof that lands after the relaunch', () => {
-    const CRASH_BOUND = {
-      kind: 'pid-absent' as const,
-      detail: 'gone',
-      observedAt: 3_606_000,
-      ownerFence: 1,
-      lastProvenAliveAt: 210
-    }
-
-    /** The fence-1 owner worked until 200 and died; the relaunch's open found no proof yet. */
-    async function crashedThenOpened(
-      root: string,
-      journals: ReturnType<typeof createTrackedJournalOpener>
-    ) {
-      let now = 100
       const journal = await journals.open({
         identity: {
           sessionId: 'session-1',
@@ -590,67 +482,43 @@ describe('stale session state on a cold acquire', () => {
         { kind: 'tool-call', name: 'shell', input: { command: 'pnpm test' }, state: 'running' },
         { fence: 1 }
       )
-      now = 3_600_000
-      const settle = (fence: number, deathEvidence: AgentSessionDeathEvidence | null) =>
+      const settle = (deathEvidence: AgentSessionDeathEvidence | null) =>
         settleStaleStructuredAgentSessionState({
           journal,
           sessionId: 'session-1',
-          fence,
+          fence: 1,
           acquisitionGeneration: null,
           deathEvidence
         })
-      await settle(1, null)
+      // An hour later the relaunch opens the chat before anything proved the owner gone.
+      now = 3_600_000
+      await settle(null)
       const turn = () => journal.snapshot().items.map((item) => readAgentJournalTurn(item.body))[0]
       expect(turn()).toMatchObject({ state: 'unverifiable' })
-      return { journal, settle, turn, at: (time: number) => (now = time) }
+      now = 3_605_000
+      await journal.appendSubmission({
+        clientMessageId: 'send-1',
+        payloadFingerprint: 'fingerprint-1',
+        body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'still there?' }] },
+        fence: 1,
+        handoverRecorded: true
+      })
+      await journal.resolveDispatch({ clientMessageId: 'send-1', state: 'pending', fence: 1 })
+      now = 3_606_000
+
+      await settle({
+        kind: 'pid-absent',
+        detail: 'gone',
+        observedAt: 3_606_000,
+        ownerFence: 1,
+        lastProvenAliveAt: 210
+      })
+
+      expect(turn()).toMatchObject({ state: 'interrupted', completedAt: 210 })
+    } finally {
+      await journals.closeAll()
+      await rm(root, { recursive: true, force: true })
     }
-
-    it('does not end the turn at a send accepted before the proof', async () => {
-      const root = await mkdtemp(join(tmpdir(), 'orca-stale-session-'))
-      const journals = createTrackedJournalOpener()
-      try {
-        const { journal, settle, turn, at } = await crashedThenOpened(root, journals)
-        at(3_605_000)
-        await journal.appendSubmission({
-          clientMessageId: 'send-1',
-          payloadFingerprint: 'fingerprint-1',
-          body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'still there?' }] },
-          fence: 1,
-          handoverRecorded: true
-        })
-        await journal.resolveDispatch({ clientMessageId: 'send-1', state: 'pending', fence: 1 })
-        at(3_606_000)
-
-        await settle(1, CRASH_BOUND)
-
-        expect(turn()).toMatchObject({ state: 'interrupted', completedAt: 210 })
-      } finally {
-        await journals.closeAll()
-        await rm(root, { recursive: true, force: true })
-      }
-    })
-
-    it("does not end the turn at a newer owner's work", async () => {
-      const root = await mkdtemp(join(tmpdir(), 'orca-stale-session-'))
-      const journals = createTrackedJournalOpener()
-      try {
-        const { journal, settle, turn, at } = await crashedThenOpened(root, journals)
-        at(3_605_000)
-        await journal.appendItem(
-          { ...RUNNING_IDENTITY, turnId: 'turn-3' },
-          { kind: 'turn', turnId: 'turn-3', state: 'running', startedAt: 3_605_000 },
-          { fence: 2 }
-        )
-        at(3_606_000)
-
-        await settle(2, CRASH_BOUND)
-
-        expect(turn()).toMatchObject({ state: 'interrupted', completedAt: 210 })
-      } finally {
-        await journals.closeAll()
-        await rm(root, { recursive: true, force: true })
-      }
-    })
   })
 
   it('revises an unverifiable turn only from a proof naming its own owner, and only once', async () => {

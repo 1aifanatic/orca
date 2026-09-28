@@ -38,8 +38,6 @@ export type JournalReducerState = {
   epoch: string
   lastSequence: number
   lastActivityAt: number
-  /** Writer fence → the last row that owner's provider child wrote live: its last sign of work. */
-  providerActivityAt: Map<number, number>
   /** Lowest sequence still individually replayable; rows below it were compacted. */
   oldestSequence: number
   highestFence: number
@@ -62,7 +60,6 @@ export function createJournalReducerState(sessionId: string, epoch: string): Jou
     epoch,
     lastSequence: 0,
     lastActivityAt: 0,
-    providerActivityAt: new Map(),
     oldestSequence: 1,
     highestFence: 0,
     items: new Map(),
@@ -82,10 +79,6 @@ export function applyJournalRow(state: JournalReducerState, row: JournalRow): vo
     return
   }
   state.lastActivityAt = Math.max(state.lastActivityAt, row.ts)
-  if (isLiveProviderOutput(row)) {
-    const last = state.providerActivityAt.get(row.fence) ?? 0
-    state.providerActivityAt.set(row.fence, Math.max(last, row.ts))
-  }
   if (row.kind === 'item') {
     if (journalItemRevisionIsStale(state, row.itemId, row.revision)) {
       return
@@ -132,25 +125,6 @@ export function applyJournalRow(state: JournalReducerState, row: JournalRow): vo
     return
   }
   applyJournalDispatchRow(state, row)
-}
-
-/** Whether a row says the provider child was working. Exhaustive, so a new kind must be classified. */
-function isLiveProviderOutput(row: JournalRow): boolean {
-  // Crash reconciliation is Orca writing after the fact.
-  if (row.recovered) {
-    return false
-  }
-  switch (row.kind) {
-    case 'item':
-    case 'tombstone':
-    case 'lifecycle-batch':
-      return true
-    // Orca's and the user's rows: a send is accepted, and journaled, after the child died too.
-    case 'submission':
-    case 'dispatch':
-    case 'epoch':
-      return false
-  }
 }
 
 export function rememberAppliedSettlementId(

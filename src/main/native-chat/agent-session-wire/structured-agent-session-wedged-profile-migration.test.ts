@@ -191,8 +191,8 @@ function isAcquirable(lease: NonNullable<ReturnType<typeof store.getRecord>>['le
   )
 }
 
-/** When the seeded turn's row was written: the last time the dead owner was seen working. */
-const SEEDED_TURN_SEEN_AT = NOW - 4_000
+/** After the owner's last renewal, so a turn it proves dead ends at its start, never before. */
+const SEEDED_TURN_STARTED_AT = NOW - 5_000
 
 async function seedRunningTurn(provider: 'codex' | 'claude' = 'codex'): Promise<void> {
   const journal = await openAgentSessionJournal({
@@ -206,17 +206,13 @@ async function seedRunningTurn(provider: 'codex' | 'claude' = 'codex'): Promise<
           ? { kind: 'codex', threadId: THREAD }
           : { kind: 'claude', sessionId: 'provider-session-alpha-1', leafUuid: null }
     },
-    journalDir: journalDirectoryFor(root, {
-      workspaceId: LOCATION.workspaceId,
-      sessionId: SESSION
-    }),
-    now: () => SEEDED_TURN_SEEN_AT
+    journalDir: journalDirectoryFor(root, { workspaceId: LOCATION.workspaceId, sessionId: SESSION })
   })
   await journal.appendItem(
     provider === 'codex'
       ? { provider: 'codex', threadId: THREAD, turnId: 'turn-1', ordinal: 0 }
       : { provider: 'claude', sessionId: 'provider-session-alpha-1', uuid: 'uuid-running' },
-    { kind: 'turn', turnId: 'turn-1', state: 'running', startedAt: NOW - 5_000 },
+    { kind: 'turn', turnId: 'turn-1', state: 'running', startedAt: SEEDED_TURN_STARTED_AT },
     { fence: 13 }
   )
   await journal.close()
@@ -313,7 +309,7 @@ describe('already-wedged profiles become usable on load', () => {
       'a quit that left the owner for a probe to prove gone',
       wedgedRecord({ claimStatus: 'live', handoffStage: null, ownerProcess: DEAD_OWNER }),
       null,
-      { state: 'interrupted', completedAt: SEEDED_TURN_SEEN_AT }
+      { state: 'interrupted', completedAt: SEEDED_TURN_STARTED_AT }
     ],
     [
       'a quit that left an owner on a host this one cannot probe',
@@ -393,12 +389,12 @@ describe('already-wedged profiles become usable on load', () => {
 
     expect(acquire).toHaveBeenCalledOnce()
     expect(activeStructuredAgentSessionTurnId(restoredJournal().snapshot().items)).toBe(null)
-    // A pid probe proved the owner gone, so the turn was cut short when it was last seen working.
+    // A pid probe proved the owner gone, so the turn was cut short when it was last proven alive.
     expect(turnLifecycle('turn-1')).toEqual({
       turnId: 'turn-1',
       state: 'interrupted',
       startedAt: NOW - 5_000,
-      completedAt: SEEDED_TURN_SEEN_AT,
+      completedAt: SEEDED_TURN_STARTED_AT,
       recovered: true
     })
     expect(store.getRecord(SESSION)?.lease).toMatchObject({
@@ -487,12 +483,12 @@ describe('already-wedged profiles become usable on load', () => {
 
       expect(acquire).toHaveBeenCalledOnce()
       expect(store.getRecord(SESSION)?.lease).toMatchObject({ claimStatus: 'live' })
-      // A pid probe proved the owner gone, so the turn was cut short when it was last seen working.
+      // A pid probe proved the owner gone, so the turn was cut short when it was last proven alive.
       expect(turnLifecycle('turn-1')).toEqual({
         turnId: 'turn-1',
         state: 'interrupted',
         startedAt: NOW - 5_000,
-        completedAt: SEEDED_TURN_SEEN_AT,
+        completedAt: SEEDED_TURN_STARTED_AT,
         recovered: true
       })
     }

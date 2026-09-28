@@ -29,7 +29,6 @@ export const UNVERIFIABLE_TURN_VERDICT: StructuredAgentSessionTurnVerdict = {
 
 export function turnVerdictFromDeathEvidence(
   evidence: AgentSessionDeathEvidence | null | undefined,
-  journal: Pick<AgentSessionJournal, 'lastProviderActivityAt'>,
   /** Fence of the owner that wrote the turn. */
   turnFence: number | undefined
 ): StructuredAgentSessionTurnVerdict {
@@ -48,15 +47,11 @@ export function turnVerdictFromDeathEvidence(
   if (evidence.kind === 'exit-observed') {
     return { state: 'interrupted', completedAt: evidence.observedAt }
   }
-  // A probe finds a dead child long after it died. The later of the last renewal and the last row
-  // it wrote bounds its end, so the turn never counts the time Orca itself was down.
-  const lastSeen = Math.max(
-    evidence.lastProvenAliveAt ?? 0,
-    journal.lastProviderActivityAt(evidence.ownerFence)
-  )
+  // A probe finds a dead child long after it died; its last renewal bounds the end, so the turn never
+  // counts the time Orca was down. Timeline rows don't: a send can land there after the death.
   return {
     state: 'interrupted',
-    completedAt: lastSeen > 0 ? Math.min(lastSeen, evidence.observedAt) : evidence.observedAt
+    completedAt: Math.min(evidence.lastProvenAliveAt ?? evidence.observedAt, evidence.observedAt)
   }
 }
 
@@ -79,7 +74,7 @@ export function runningTurnLifecycleRevisions(
 export function provenUnverifiableTurnRevisions(
   items: readonly AgentJournalRenderItem[],
   evidence: AgentSessionDeathEvidence | null | undefined,
-  journal: Pick<AgentSessionJournal, 'lastProviderActivityAt' | 'itemFence'>
+  journal: Pick<AgentSessionJournal, 'itemFence'>
 ): JournalLifecycleMutationInput[] {
   const ownerFence = evidence?.ownerFence
   if (ownerFence === undefined) {
@@ -88,11 +83,7 @@ export function provenUnverifiableTurnRevisions(
   return items.flatMap((item) => {
     const turn = readAgentJournalTurn(item.body)
     return turn?.state === 'unverifiable' && journal.itemFence(item.itemId) === ownerFence
-      ? turnLifecycleRevision(
-          item,
-          turn,
-          turnVerdictFromDeathEvidence(evidence, journal, ownerFence)
-        )
+      ? turnLifecycleRevision(item, turn, turnVerdictFromDeathEvidence(evidence, ownerFence))
       : []
   })
 }
@@ -121,7 +112,10 @@ function settledLifecycle(
     durationMs: _durationMs,
     ...kept
   } = lifecycle
-  return verdict.state === 'interrupted'
-    ? { ...kept, state: verdict.state, completedAt: verdict.completedAt }
-    : { ...kept, state: verdict.state }
+  if (verdict.state !== 'interrupted') {
+    return { ...kept, state: verdict.state }
+  }
+  // A renewal can predate the turn, which started with its owner alive; it never ends before that.
+  const began = Math.max(lifecycle.requestedAt ?? 0, lifecycle.startedAt ?? 0)
+  return { ...kept, state: verdict.state, completedAt: Math.max(verdict.completedAt, began) }
 }
