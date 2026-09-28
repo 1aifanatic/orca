@@ -19,7 +19,7 @@ p.write_text(s)
 PYDOCKER
 docker build --target base --tag bun-conpty-toolchain-base --file "$bun_build_root/bun/.buildkite/Dockerfile" "$bun_build_root/bun"
 docker build --tag bun-conpty-toolchain --file "$fixture_dir/Dockerfile" "$fixture_dir"
-for bun_target_arch in x64 arm64; do
+for bun_target_arch in aarch64; do
   bun_baseline_arg=""
   if [[ "$bun_target_arch" == x64 ]]; then bun_baseline_arg="--baseline=true"; fi
   docker run --rm --mount "type=bind,source=$bun_build_root/bun,target=/work/bun" \
