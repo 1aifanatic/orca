@@ -197,6 +197,7 @@ const REASON_WORDS = {
   agent_session_journal_unreadable: {
     // No retry reads past damage, so only a new chat continues.
     journalCorrupt: causeWords('historyUnusable', 'goElsewhere', 'startNewChat'),
+    // Says its step despite 'retry': released clients and the phone often show no Retry here.
     journalUnavailable: causeWords('historyUnavailable', 'retry', 'tryAgain')
   },
   // Thrown, so a client meets these only as an RPC error; the code's words stand.
