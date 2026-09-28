@@ -25,9 +25,10 @@ case "${1:?}" in
     ;;
   rust)
     test "$TARGETARCH" = amd64 || { echo 'Retained Rust inputs require an x64 build host' >&2; exit 2; }
-    cp "rustup-${cpu}-rustup-init" /tmp/orca-verified-rustup-init
-    chmod +x /tmp/orca-verified-rustup-init
-    /tmp/orca-verified-rustup-init -y --no-modify-path --default-toolchain none
+    mkdir /tmp/orca-rustup-bootstrap
+    cp "rustup-${cpu}-rustup-init" /tmp/orca-rustup-bootstrap/rustup-init
+    chmod +x /tmp/orca-rustup-bootstrap/rustup-init
+    /tmp/orca-rustup-bootstrap/rustup-init -y --no-modify-path --default-toolchain none
     mkdir /tmp/orca-verified-rust
     for component in rustc-nightly-x86_64-unknown-linux-gnu cargo-nightly-x86_64-unknown-linux-gnu \
       rust-std-nightly-x86_64-unknown-linux-gnu rust-std-nightly-x86_64-pc-windows-msvc \
@@ -38,7 +39,7 @@ case "${1:?}" in
     rustup toolchain link orca-nightly-2026-07-20 /opt/orca-rust
     mkdir -p /opt/orca-provenance
     cp /opt/orca-rust/lib/rustlib/components /opt/orca-provenance/rust-components.txt
-    rm -rf /tmp/orca-verified-rust /tmp/orca-verified-rustup-init
+    rm -rf /tmp/orca-verified-rust /tmp/orca-rustup-bootstrap
     ;;
   windows)
     tar -xzf "xwin-${cpu}-xwin-0.9.0-${cpu}-unknown-linux-musl.tar.gz" -C /opt
