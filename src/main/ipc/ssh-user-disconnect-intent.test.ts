@@ -464,10 +464,11 @@ describe("SSH: the user's Disconnect holds until the user connects", () => {
 
     // What the transport reports when its socket drops and its reconnect ladder arms.
     reportMaintenanceState('reconnecting')
+    const rejected = expect(terminate).rejects.toThrow('dropped (reconnecting)')
 
     // Closing the connection is what disarms the ladder's timer.
     await vi.waitFor(() => expect(mockMaintenanceConnection.disconnect).toHaveBeenCalled())
-    await expect(terminate).rejects.toThrow('dropped (reconnecting)')
+    await rejected
     expect(mockMux.dispose).toHaveBeenCalled()
     expect(mockStore.markSshRemotePtyLease).not.toHaveBeenCalledWith(
       TARGET.id,
@@ -546,6 +547,59 @@ describe("SSH: the user's Disconnect holds until the user connects", () => {
       status: 'disconnected',
       disconnectedBy: 'user'
     })
+  })
+
+  it("(ii) a user's Connect while the terminate waits behind the Disconnect ends connected", async () => {
+    const runtime = useRuntime()
+    await invoke('ssh:connect')
+    holdSessionsThatNeedTheRelay()
+    let finishDisconnect!: () => void
+    const disconnectTransport = mockConnectionManager.disconnect.getMockImplementation()!
+    mockConnectionManager.disconnect.mockImplementationOnce(
+      (...args: unknown[]) =>
+        new Promise((resolve) => {
+          finishDisconnect = () => resolve(disconnectTransport(...args))
+        })
+    )
+    const disconnect = invoke('ssh:disconnect')
+    await vi.waitFor(() => expect(mockConnectionManager.disconnect).toHaveBeenCalledTimes(1))
+    // Queued behind the Disconnect's lifecycle operation, as is the Connect after it.
+    const terminate = invoke('ssh:terminateSessions')
+    const userConnect = invoke('ssh:connect')
+    mockConnectionManager.connect.mockClear()
+    runtime.notifySshRelayReady.mockClear()
+    finishDisconnect()
+
+    await disconnect
+    await expect(terminate).resolves.toEqual({ terminated: 1, unverifiable: 0 })
+    // Nothing End Terminals does may cancel the Connect that waited behind it.
+    await expect(userConnect).resolves.toMatchObject({ status: 'connected' })
+    expect(persistedTargets.get(TARGET.id)?.desiredConnection).toBe('connected')
+    expect(mockConnectionManager.connect).toHaveBeenCalled()
+    expect(mockConnectionManager.getConnection(TARGET.id)).toBeDefined()
+    expect(activeSessions.get(TARGET.id)?.getState()).toBe('ready')
+    expect(runtime.notifySshRelayReady).toHaveBeenLastCalledWith(TARGET.id)
+  })
+
+  it("(ii) after the user's Connect, a relay reconnect restores forwards and republishes", async () => {
+    const runtime = useRuntime()
+    await invoke('ssh:disconnect')
+    await expect(invoke('ssh:connect')).resolves.toMatchObject({ status: 'connected' })
+    runtime.notifySshRelayReady.mockClear()
+    mockPortForwardManager.addForward.mockClear()
+    const session = activeSessions.get(TARGET.id)!
+    const deploys = mocks.mockDeployAndLaunchRelay.mock.calls.length
+
+    // The transport drops and comes back, which redeploys the relay and fires ready again.
+    reportTransportState({ ...connectedState(), status: 'reconnecting', reconnectAttempt: 1 })
+    reportTransportState(connectedState())
+    await vi.waitFor(() => {
+      expect(mocks.mockDeployAndLaunchRelay.mock.calls.length).toBe(deploys + 1)
+      expect(session.getState()).toBe('ready')
+    })
+
+    expect(runtime.notifySshRelayReady).toHaveBeenCalledWith(TARGET.id)
+    expect(mockPortForwardManager.addForward).toHaveBeenCalledTimes(1)
   })
 
   it("(h) a drop while the user's Disconnect waits its turn still publishes it disconnected", async () => {
