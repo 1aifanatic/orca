@@ -223,14 +223,12 @@ async function settleTurn(sessionId: string, turnIndex: number): Promise<void> {
   await host.flushStreamedEvents(sessionId)
 }
 
-function userTexts(sessionId: string): string[] {
-  return host
-    .journalSnapshot(sessionId)
-    .items.flatMap((item: AgentJournalRenderItem) =>
-      item.body?.kind === 'message' && item.body.role === 'user'
-        ? item.body.blocks.map((block) => (block.type === 'text' ? block.text : ''))
-        : []
-    )
+async function userTexts(sessionId: string): Promise<string[]> {
+  return (await host.journalSnapshot(sessionId)).items.flatMap((item: AgentJournalRenderItem) =>
+    item.body?.kind === 'message' && item.body.role === 'user'
+      ? item.body.blocks.map((block) => (block.type === 'text' ? block.text : ''))
+      : []
+  )
 }
 
 /** A capability-backed terminal worker under the coordinator's Run, and its worker_done. */
@@ -379,7 +377,7 @@ describe('a worker result reaches the structured chat that coordinates it', () =
     await vi.waitFor(() => expect(chat.turns).toHaveLength(1), WAIT)
     expect(turnText(chat.turns[0]!)).toBe(ptyPointer(`run:${runId}`))
     await settleTurn(COORDINATOR, 0)
-    expect(userTexts(COORDINATOR)).toEqual([expect.stringMatching(POINTER)])
+    expect(await userTexts(COORDINATOR)).toEqual([expect.stringMatching(POINTER)])
 
     const checked = await call('orchestration.check', {}, { sessionId: COORDINATOR })
     expect(checked).toMatchObject({
@@ -405,7 +403,7 @@ describe('a worker result reaches the structured chat that coordinates it', () =
       WAIT
     )
     expect(chat.turns).toHaveLength(1)
-    expect(userTexts(COORDINATOR)).toHaveLength(1)
+    expect(await userTexts(COORDINATOR)).toHaveLength(1)
   })
 
   it('points the next result at a coordinator that read the last one without acking', async () => {
@@ -486,7 +484,7 @@ describe('a worker result reaches the structured chat that coordinates it', () =
     await vi.waitFor(() => expect(revived.turns).toHaveLength(1), WAIT)
     expect(revived.turns[0]!.text).toMatch(POINTER)
     await settleTurn(COORDINATOR, 0)
-    expect(userTexts(COORDINATOR)).toEqual([expect.stringMatching(POINTER)])
+    expect(await userTexts(COORDINATOR)).toEqual([expect.stringMatching(POINTER)])
   })
 
   it('points mail at the idle edge when it arrived mid-turn', async () => {
@@ -511,6 +509,8 @@ describe('a worker result reaches the structured chat that coordinates it', () =
       }
     )
     expect(first).toMatchObject({ ok: true })
+    // Accepted, then delivered: the provider sees the turn once the host hands it over.
+    await vi.waitFor(() => expect(chat.turns).toHaveLength(1), WAIT)
     const notify = (method: string, params: unknown) =>
       chat.handlers.onNotification?.(method, params)
     notify('turn/started', { turn: { id: 'turn-1' } })
