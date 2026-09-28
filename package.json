@@ -14,7 +14,7 @@
     "audit:perf": "oxlint --config config/oxlint-performance-audit.json --format json src",
     "test:perf:contracts": "vitest run --config config/vitest.performance.config.ts",
     "format": "oxfmt --write .",
-    "lint": "oxlint && pnpm run audit:anti-slop && pnpm run audit:code-quality:native && pnpm run audit:code-quality:type-aware && pnpm run check:reliability-gates && pnpm run check:dead-classes && pnpm run check:max-lines-ratchet && pnpm run check:ts-nocheck-ratchet && pnpm run check:runtime-electron-ratchet && pnpm run check:readme-local-links && pnpm run verify:rpc-params-catalog && pnpm run verify:bundled-skill-guides && pnpm run verify:skill-bundle-manifest && pnpm run verify:localization-catalogs && pnpm run verify:localization-extraction && pnpm run verify:localization-coverage",
+    "lint": "node config/scripts/run-oxlint-shards.mjs && pnpm run audit:anti-slop && pnpm run audit:code-quality:native && pnpm run audit:code-quality:type-aware && pnpm run check:reliability-gates && pnpm run check:dead-classes && pnpm run check:max-lines-ratchet && pnpm run check:ts-nocheck-ratchet && pnpm run check:runtime-electron-ratchet && pnpm run check:readme-local-links && pnpm run verify:rpc-params-catalog && pnpm run verify:bundled-skill-guides && pnpm run verify:skill-bundle-manifest && pnpm run verify:localization-catalogs && pnpm run verify:localization-extraction && pnpm run verify:localization-coverage",
     "audit:code-quality": "pnpm run audit:code-quality:native && pnpm run audit:code-quality:type-aware && pnpm run audit:react-doctor",
     "audit:code-quality:native": "oxlint --config config/oxlint-code-quality-native-plugins.json src config tests mobile --deny-warnings",
     "audit:code-quality:type-aware": "oxlint --type-aware --config config/oxlint-code-quality-type-aware.json src config tests --deny-warnings",
@@ -170,7 +170,7 @@
     "test:e2e:ssh-docker-bulk-open-freeze": "node config/scripts/run-ssh-docker-bulk-open-freeze-e2e.mjs",
     "repro:live-remote-bulk-open-freeze": "node config/scripts/live-remote-bulk-open-freeze-repro.mjs",
     "repro:live-remote-realistic-freeze": "node config/scripts/live-remote-realistic-freeze-repro.mjs",
-    "audit:anti-slop": "node config/scripts/sync-anti-slop-plugin.mjs && node config/scripts/run-anti-slop-shards.mjs",
+    "audit:anti-slop": "node config/scripts/sync-anti-slop-plugin.mjs && node config/scripts/run-oxlint-shards.mjs --config=config/oxlint-anti-slop.json --deny-warnings src config tests mobile",
     "sync:anti-slop-plugin": "node config/scripts/sync-anti-slop-plugin.mjs"
   },
   "dependencies": {

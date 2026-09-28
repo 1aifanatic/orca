@@ -1,9 +1,12 @@
-// Why sharded: config/oxlint-anti-slop.json turns every native category off and runs its
-// rules through `jsPlugins`, so oxlint's threaded Rust engine does no work and the pass is
-// one JS runtime per process. Measured, it does not scale with `--threads` (11.68s at 4 vs
-// 12.38s at 16). Parallelism has to come from more processes, so this splits the file set
-// across them. Sharding is sound because every anti-slop rule is a single-file analysis: the
-// only mutable module state is a WeakMap keyed on each file's own Program node.
+// Why sharded: an oxlint pass that enables `jsPlugins` does not scale with `--threads`,
+// because every plugin callback is funnelled through one JS runtime per process. Both passes
+// that use this are plugin-bound: anti-slop measured 11.68s at 4 threads against 12.38s at 16,
+// and the root lint burns identical CPU at 1 and 4 threads. Parallelism has to come from more
+// processes, so this splits the file set across them. That is sound for a lint pass because
+// every rule is a single-file analysis.
+//
+// Args are forwarded to oxlint verbatim. Anything starting with `-` is treated as a
+// self-contained flag (use the `--flag=value` form), and the rest as paths to shard.
 //
 // Why directory units and not file paths: a shard holds ~7k files, and passing those as argv
 // overruns the command-line limit (hard-fails on Windows via CommandLineToArgvW). Whole
@@ -16,14 +19,18 @@ import process from 'node:process'
 import { pathToFileURL } from 'node:url'
 import { resolveOxlintInvocation } from './oxlint-cli-invocation.mjs'
 
-export const CONFIG = 'config/oxlint-anti-slop.json'
-export const ROOTS = ['src', 'config', 'tests', 'mobile']
+export function splitArgs(argv) {
+  return {
+    flags: argv.filter((arg) => arg.startsWith('-')),
+    paths: argv.filter((arg) => !arg.startsWith('-'))
+  }
+}
 // Bounds argv growth. Each unit is a path of ~40 chars, so even at this cap a shard stays far
 // under the ~32k Windows command-line limit, while leaving room to split a lopsided tree.
 const MAX_UNITS = 4096
 
 function shardCount() {
-  const requested = Number(process.env.ORCA_ANTI_SLOP_SHARDS)
+  const requested = Number(process.env.ORCA_OXLINT_SHARDS)
   if (Number.isInteger(requested) && requested > 0) {
     return requested
   }
@@ -32,17 +39,13 @@ function shardCount() {
   return Math.max(1, Math.min(os.availableParallelism?.() ?? os.cpus().length, 8))
 }
 
-export function listFiles(root = process.cwd()) {
+export function listFiles(root = process.cwd(), argv = []) {
   const { command, prefixArgs } = resolveOxlintInvocation(root)
-  const result = spawnSync(
-    command,
-    [...prefixArgs, '--config', CONFIG, ...ROOTS, '--debug=files'],
-    {
-      cwd: root,
-      encoding: 'utf8',
-      maxBuffer: 64 * 1024 * 1024
-    }
-  )
+  const result = spawnSync(command, [...prefixArgs, ...argv, '--debug=files'], {
+    cwd: root,
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024
+  })
   if (result.status !== 0) {
     process.stderr.write(result.stderr ?? '')
     throw new Error(`oxlint --debug=files exited with ${result.status}`)
@@ -114,18 +117,12 @@ export function packShards(units, shards) {
   return bins.filter((bin) => bin.units.length > 0)
 }
 
-function runShard(units, root) {
+function runShard(units, root, flags) {
   const { command, prefixArgs } = resolveOxlintInvocation(root)
   return new Promise((resolve) => {
     const child = spawn(
       command,
-      [
-        ...prefixArgs,
-        '--config',
-        CONFIG,
-        '--deny-warnings',
-        ...units.map((unit) => path.normalize(unit))
-      ],
+      [...prefixArgs, ...flags, ...units.map((unit) => path.normalize(unit))],
       { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] }
     )
     let stdout = ''
@@ -170,18 +167,20 @@ export function planShards(files, shards) {
 
 async function main() {
   const root = process.cwd()
-  const files = listFiles(root)
+  const argv = process.argv.slice(2)
+  const { flags } = splitArgs(argv)
+  const files = listFiles(root, argv)
   const shards = Math.min(shardCount(), files.length || 1)
   const { units, bins } = planShards(files, shards)
 
   console.log(
-    `anti-slop: ${files.length} files across ${bins.length} shard(s) (${units.length} units): ${bins
+    `oxlint shards: ${files.length} files across ${bins.length} shard(s) (${units.length} units): ${bins
       .map((bin) => bin.count)
       .join(', ')}`
   )
 
   // Printed in shard order rather than completion order so the log is reproducible.
-  const results = await Promise.all(bins.map((bin) => runShard(bin.units, root)))
+  const results = await Promise.all(bins.map((bin) => runShard(bin.units, root, flags)))
   let failed = false
   for (const result of results) {
     if (result.stdout) {

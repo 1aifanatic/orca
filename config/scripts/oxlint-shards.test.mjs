@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildUnits, packShards, planShards } from './run-anti-slop-shards.mjs'
+import { buildUnits, packShards, planShards } from './run-oxlint-shards.mjs'
 
 // Why these properties: the sharded pass equals a single pass only if every file is linted by
 // exactly one shard. Coverage and disjointness are what carry that, so they are asserted

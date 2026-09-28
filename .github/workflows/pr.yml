@@ -187,10 +187,14 @@ jobs:
             mobile/pnpm-lock.yaml
 
       # Keep each check in its own log while sharing this runner.
+      # Sharded for the same reason as the anti-slop audit below: the root config loads 5 JS
+      # plugins, and oxlint funnels every plugin callback through one JS runtime per process, so
+      # this pass burns identical CPU at 1 and 4 threads. No --config, or oxlint stops reading
+      # mobile/.oxlintrc.json and reports rules mobile turns off.
       - name: Lint
         id: root-lint
         background: true
-        run: pnpm exec oxlint --format github
+        run: node config/scripts/run-oxlint-shards.mjs --format=github
 
       - name: Reject low-evidence patterns
         run: pnpm run audit:anti-slop
