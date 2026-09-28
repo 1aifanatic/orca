@@ -348,18 +348,23 @@ for (const closeMode of ['terminal-close-cli', 'worker-release'] as const) {
     await expect
       .poll(() => readCompletedWorkerLedger().filter((event) => event.event === 'normal-exit'))
       .toHaveLength(1)
-    expect(
-      await orcaPage.evaluate(
-        ({ paneKey, tabId, worktreeId }) => {
-          const state = window.__store?.getState()
-          return {
-            tabPresent: Boolean(state?.tabsByWorktree[worktreeId]?.some((tab) => tab.id === tabId)),
-            recoveryPresent: Boolean(state?.sleepingAgentSessionsByPaneKey[paneKey])
-          }
-        },
-        { paneKey: workerPaneKey, tabId: workerBefore.tabId, worktreeId: targetWorktreeId }
+    // The exit marker precedes the asynchronous renderer recovery update.
+    await expect
+      .poll(() =>
+        orcaPage.evaluate(
+          ({ paneKey, tabId, worktreeId }) => {
+            const state = window.__store?.getState()
+            return {
+              tabPresent: Boolean(
+                state?.tabsByWorktree[worktreeId]?.some((tab) => tab.id === tabId)
+              ),
+              recoveryPresent: Boolean(state?.sleepingAgentSessionsByPaneKey[paneKey])
+            }
+          },
+          { paneKey: workerPaneKey, tabId: workerBefore.tabId, worktreeId: targetWorktreeId }
+        )
       )
-    ).toEqual({ tabPresent: true, recoveryPresent: true })
+      .toEqual({ tabPresent: true, recoveryPresent: true })
 
     await orcaPage.evaluate(
       ({ paneKey, tabId, worktreeId }) => {
