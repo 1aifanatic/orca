@@ -1,3 +1,4 @@
+import { isQoderTerminalTitle } from './qoder-terminal-title'
 import {
   AGY_AGENT_NAME_RE,
   DROID_AGENT_NAME_RE,
@@ -68,6 +69,9 @@ export const QUARTER_CIRCLE_SPINNER_RE = /[\u25d0-\u25d3]/g
 
 function computeIsGeminiTerminalTitle(title: string): boolean {
   // Why first: see isDshTerminalTitle — the two agents share the `✦` glyph.
+  if (isQoderTerminalTitle(title)) {
+    return false
+  }
   if (isDshTerminalTitle(title)) {
     return false
   }
