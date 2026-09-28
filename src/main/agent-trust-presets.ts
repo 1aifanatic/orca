@@ -5,7 +5,6 @@ import { writeFileAtomically } from './codex-accounts/fs-utils'
 import { getOrcaManagedCodexHomePath } from './codex/codex-home-paths'
 import { addProjectTrustLevel, readProjectTrustDecision } from './codex/config-toml-trust'
 import { runExclusivelyForCodexTrustConfig } from './codex/codex-trust-config-mutation-queue'
-import { withRealHomeWriteLock } from './codex/codex-hook-trust-queue'
 
 export type AgentTrustPreset = 'cursor' | 'copilot' | 'codex' | 'antigravity'
 
@@ -180,15 +179,12 @@ export function markCodexProjectTrusted(workspacePath: string): Promise<void> {
   // reverted. Same runtime-before-system lock order the installer takes.
   return runExclusivelyForCodexTrustConfig(runtimeTomlPath, () =>
     runExclusivelyForCodexTrustConfig(systemTomlPath, async () => {
-      // Why compare first: every Codex launch lands here, and the real-home lock is only for writes.
+      // Why compare first: the add only sees trustRoot, but the answer may sit on the cwd or the repository root.
       if (readProjectTrustDecision(systemTomlPath, lookupPaths) === null) {
         try {
-          // The locked add re-reads, so a choice another instance wrote while this waited is honoured.
-          await withRealHomeWriteLock(async () =>
-            addProjectTrustLevel(systemTomlPath, trustRoot, 'trusted')
-          )
+          addProjectTrustLevel(systemTomlPath, trustRoot, 'trusted')
         } catch (error) {
-          // Why: a failed ~/.codex write or lock is bookkeeping; it must not cost the runtime home its trust.
+          // Why: a failed ~/.codex write is bookkeeping; it must not cost the runtime home its trust.
           console.warn('[codex-project-trust] could not record trust in ~/.codex:', error)
         }
       }

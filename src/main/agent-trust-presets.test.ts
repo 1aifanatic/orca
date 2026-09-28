@@ -13,7 +13,7 @@ import {
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type * as InstallLock from './agent-hooks/managed-hook-install-lock'
+import type * as AtomicWrite from './codex/config-toml-atomic-write'
 
 const testState = {
   fakeHomeDir: '',
@@ -41,9 +41,9 @@ vi.mock('node:os', async () => {
   }
 })
 
-vi.mock('./agent-hooks/managed-hook-install-lock', async (importOriginal) => {
-  const actual = await importOriginal<typeof InstallLock>()
-  return { withManagedHookInstallLock: vi.fn(actual.withManagedHookInstallLock) }
+vi.mock('./codex/config-toml-atomic-write', async (importOriginal) => {
+  const actual = await importOriginal<typeof AtomicWrite>()
+  return { ...actual, writeTomlConfigAtomically: vi.fn(actual.writeTomlConfigAtomically) }
 })
 
 const {
@@ -54,7 +54,7 @@ const {
 } = await import('./agent-trust-presets')
 const { runExclusivelyForCodexTrustConfig } =
   await import('./codex/codex-trust-config-mutation-queue')
-const { withManagedHookInstallLock } = await import('./agent-hooks/managed-hook-install-lock')
+const { writeTomlConfigAtomically } = await import('./codex/config-toml-atomic-write')
 
 beforeEach(() => {
   testState.fakeHomeDir = mkdtempSync(join(tmpdir(), 'orca-trust-presets-'))
@@ -358,7 +358,7 @@ describe('markCodexProjectTrusted keeps the answer the user already gave', () =>
   let workspace = ''
   beforeEach(() => {
     workspace = mkdtempSync(join(tmpdir(), 'orca-codex-ws-'))
-    vi.mocked(withManagedHookInstallLock).mockClear()
+    vi.mocked(writeTomlConfigAtomically).mockClear()
   })
   afterEach(() => {
     rmSync(workspace, { recursive: true, force: true })
@@ -379,7 +379,6 @@ describe('markCodexProjectTrusted keeps the answer the user already gave', () =>
 
     expect(readFileSync(systemConfigPath(), 'utf-8')).toBe(original)
     expect(existsSync(runtimeConfigPath())).toBe(false)
-    expect(withManagedHookInstallLock).not.toHaveBeenCalled()
   })
 
   it.each(['trust_level = "Trusted"', 'trust_level = "maybe"', 'trust_level = trusted'])(
@@ -392,11 +391,10 @@ describe('markCodexProjectTrusted keeps the answer the user already gave', () =>
 
       expect(readFileSync(systemConfigPath(), 'utf-8')).toBe(original)
       expect(existsSync(runtimeConfigPath())).toBe(false)
-      expect(withManagedHookInstallLock).not.toHaveBeenCalled()
     }
   )
 
-  it('adds trusted once under the lock, leaving the rest of config.toml byte-identical', async () => {
+  it('adds trusted once, leaving the rest of config.toml byte-identical', async () => {
     const original = [
       '# my settings',
       "model = 'gpt-5.5'  # keep this spacing",
@@ -412,17 +410,14 @@ describe('markCodexProjectTrusted keeps the answer the user already gave', () =>
     const trustBlock = `${projectHeader(workspace)}\ntrust_level = "trusted"\n`
     expect(readFileSync(systemConfigPath(), 'utf-8')).toBe(`${original}\n${trustBlock}`)
     expect(readFileSync(runtimeConfigPath(), 'utf-8')).toBe(trustBlock)
-    expect(withManagedHookInstallLock).toHaveBeenCalledTimes(1)
 
     const systemMtime = backdate(systemConfigPath())
     const runtimeMtime = backdate(runtimeConfigPath())
-    vi.mocked(withManagedHookInstallLock).mockClear()
 
     await markCodexProjectTrusted(workspace)
 
     expect(statSync(systemConfigPath()).mtimeMs).toBe(systemMtime)
     expect(statSync(runtimeConfigPath()).mtimeMs).toBe(runtimeMtime)
-    expect(withManagedHookInstallLock).not.toHaveBeenCalled()
   })
 
   it('keeps an explicit untrusted answer on the repository root a linked worktree resolves to', async () => {
@@ -501,15 +496,16 @@ describe('markCodexProjectTrusted keeps the answer the user already gave', () =>
     expect(existsSync(runtimeConfigPath())).toBe(false)
   })
 
-  it('still trusts an unanswered project in the runtime home when the ~/.codex lock fails', async () => {
+  it('still trusts an unanswered project in the runtime home when the ~/.codex write fails', async () => {
     const original = 'model = "gpt-5.5"\n'
     seedSystemConfig(original)
-    vi.mocked(withManagedHookInstallLock).mockRejectedValueOnce(
-      new Error('Managed-hook install lock belongs to another host')
-    )
+    vi.mocked(writeTomlConfigAtomically).mockImplementationOnce(() => {
+      throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' })
+    })
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     try {
       await markCodexProjectTrusted(workspace)
+      expect(warn).toHaveBeenCalledTimes(1)
     } finally {
       warn.mockRestore()
     }
