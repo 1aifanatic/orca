@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test'
-import { mkdtempSync, copyFileSync, writeFileSync, readFileSync, mkdirSync, rmSync } from 'node:fs'
+import { mkdtempSync, realpathSync, copyFileSync, writeFileSync, readFileSync, mkdirSync, rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 const fixture=dirname(fileURLToPath(import.meta.url))
 describe.skipIf(process.platform!=='win32')('production Windows preflight child launch',()=>{
  it.each(['unset','invalid','valid'])('launches selected provider in a real child with %s inherited selector',async(mode)=>{
-  const root=mkdtempSync(join(tmpdir(),'orca-child-launch-'))
+  const root=realpathSync(mkdtempSync(join(tmpdir(),'orca-child-launch-')))
   let child
   let timer
   try{
