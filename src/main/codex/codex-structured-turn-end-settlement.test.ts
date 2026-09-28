@@ -60,7 +60,7 @@ describe('a Codex send its turn ended without echoing', () => {
     expect(rig.categoryOf(rig.settlements[0])).toBe('withdrawn')
   })
 
-  it('is rejected in Codex words when the turn fails, once across the error and its end', async () => {
+  it('is rejected in Codex words when its failed turn ends without echoing it', async () => {
     const rig = await turnEndRig()
     await rig.send('client-1')
     rig.turns.start()
@@ -81,6 +81,32 @@ describe('a Codex send its turn ended without echoing', () => {
           kind: 'providerRejected',
           detail: { text: 'usage limit reached', audience: 'person' }
         }
+      })
+    ])
+  })
+
+  it('is accepted when Codex records it after the error that fails its turn', async () => {
+    const rig = await turnEndRig()
+    await rig.send('client-1')
+    rig.turns.start()
+    rig.turns.echo('client-1')
+    await rig.send('client-2')
+
+    // A failed turn keeps its steered input: Codex records it after the error, before the end.
+    rig.codex.connections[0]!.handlers.onNotification?.('error', {
+      threadId: CODEX_TEST_THREAD_ID,
+      turnId: 'turn-1',
+      willRetry: false,
+      error: { message: 'usage limit reached' }
+    })
+    rig.turns.echo('client-2')
+    rig.turns.end('failed', 'usage limit reached')
+
+    expect(rig.settlements).toEqual([
+      expect.objectContaining({ clientMessageId: 'client-1', providerIdentity: expect.anything() }),
+      expect.objectContaining({
+        clientMessageId: 'client-2',
+        providerIdentity: expect.objectContaining({ turnId: 'turn-1' })
       })
     ])
   })

@@ -1,9 +1,9 @@
 // A send Codex answered into a turn that then ended without echoing it. Codex clears
 // a turn's pending input when it is interrupted, so that send never reached the model
-// and is withdrawn, as a Stop's host-side withdrawal is. A turn that failed before
-// taking it is a send Codex refused, in its own words. A completed turn records
-// pending input as it finishes, so its sends' echoes are still due and it settles
-// nothing.
+// and is withdrawn, as a Stop's host-side withdrawal is. Any other end records pending
+// input before `turn/completed`, a failed turn after its `error` frame, so only that
+// frame settles: a failed turn that never echoed the send refused it, in Codex's words,
+// and a completed one leaves it to its echo.
 
 import {
   agentSessionFailureFact,
@@ -16,7 +16,6 @@ import {
   type AgentJournalDispatchRejection
 } from '../../shared/agent-session-failure-words'
 import type { CodexTurnEnd } from './codex-structured-dispatch-echo'
-import { readCodexProviderVerdict } from './codex-structured-journal-provider-verdicts'
 import type { CodexSession } from './codex-structured-session-state'
 import {
   readCodexThreadId,
@@ -54,22 +53,18 @@ function errorDetail(error: unknown): ProviderDiagnostic | undefined {
 
 /** The end a primary-thread notification reports for its turn, or null for any other frame. */
 export function readCodexTurnEnd(method: string, params: unknown): CodexTurnEnd | null {
-  if (method === 'turn/completed') {
-    const status = readCodexTurnStatus(params)
-    if (status === 'interrupted') {
-      return { status: 'interrupted' }
-    }
-    if (status === 'failed') {
-      const detail = errorDetail(field(field(params, 'turn'), 'error'))
-      return { status: 'failed', ...(detail ? { detail } : {}) }
-    }
-    return { status: 'completed' }
+  if (method !== 'turn/completed') {
+    return null
   }
-  if (readCodexProviderVerdict(method, params) === 'turn-failed') {
-    const detail = errorDetail(field(params, 'error'))
+  const status = readCodexTurnStatus(params)
+  if (status === 'interrupted') {
+    return { status: 'interrupted' }
+  }
+  if (status === 'failed') {
+    const detail = errorDetail(field(field(params, 'turn'), 'error'))
     return { status: 'failed', ...(detail ? { detail } : {}) }
   }
-  return null
+  return { status: 'completed' }
 }
 
 /** How an ended turn settles a send it never echoed; null leaves the send to its echo. */
