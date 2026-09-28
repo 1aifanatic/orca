@@ -381,6 +381,32 @@ describe('queued message actions', () => {
     }
   })
 
+  it('a lost /clear replays only within seconds of the press, since sends wait on it', async () => {
+    vi.useFakeTimers()
+    try {
+      const attempt = async (callMs: number): Promise<number> => {
+        const harness = createHarness({
+          writeResult: () => {
+            vi.setSystemTime(Date.now() + callMs)
+            return { kind: 'not-done', notice: 'lost', answerLost: true }
+          }
+        })
+        const cleared = harness.result.current.writeConversationCommand('clear')
+        await vi.advanceTimersByTimeAsync(60_000)
+        await expect(cleared).resolves.toMatchObject({ kind: 'not-done' })
+        expect(pendingQueuedWithdrawals('session-1')).toHaveLength(0)
+        return harness.writeCalls.length
+      }
+      // Fast failures: every bounded replay fits the window.
+      expect(await attempt(0)).toBe(4)
+      // A slow replay ends the window; a first call that ran to its timeout gets none.
+      expect(await attempt(5_000)).toBe(2)
+      expect(await attempt(195_000)).toBe(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('a refusal is final: no replay', async () => {
     const harness = createHarness({
       writeResult: () => ({ kind: 'not-done', notice: 'refused' })

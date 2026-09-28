@@ -57,6 +57,10 @@ export type StructuredAgentSessionQueuedMessagesController = {
   ) => Promise<StructuredAgentSessionWriteOutcome<AgentSessionConversationCommandResult>>
 }
 
+/** Sends wait while a clear settles, so its replays stop within seconds: a slow first call
+ *  (up to the command's long timeout) is never followed by more. */
+const CLEAR_REPLAY_WINDOW_MS = 10_000
+
 type PressedWork = { turnId: string | null; submissions: readonly AgentJournalSubmission[] }
 
 /** A Stop names no turn, so a replay the host never saw runs against whatever is in flight when
@@ -241,7 +245,7 @@ export function useStructuredAgentSessionQueuedMessages(args: {
         'agentSession.cancel',
         { withdrawQueued: true },
         operationId,
-        () => isStillPressedWork(pressed, workRef.current)
+        { mayReplay: () => isStillPressedWork(pressed, workRef.current) }
       )
       if (outcome.kind === 'done') {
         restore(operationId, outcome.value.withdrawnQueued ?? [], composerScopeKey, alreadyRestored)
@@ -275,7 +279,8 @@ export function useStructuredAgentSessionQueuedMessages(args: {
         write,
         method,
         fields,
-        operationId
+        operationId,
+        { replayWindowMs: CLEAR_REPLAY_WINDOW_MS }
       )
       if (outcome.kind !== 'done') {
         // Refused, or still unanswered after the replays: released. An unapplied
