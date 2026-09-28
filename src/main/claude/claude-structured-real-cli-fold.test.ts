@@ -31,7 +31,7 @@ import {
 const SESSION_ID = 'real-cli-fold'
 // Pins the live proof order (SessionStart hook frame before system/init) and lets the
 // Bash steps run unprompted, whatever the config dir under test configures.
-const LIVE_SHAPE_SETTINGS = JSON.stringify({
+const FOLD_SESSION_SETTINGS = JSON.stringify({
   hooks: { SessionStart: [{ hooks: [{ type: 'command', command: 'echo' }] }] },
   permissions: { allow: ['Bash(sleep:*)'] }
 })
@@ -84,7 +84,7 @@ describe.skipIf(!realClaudeAvailable)('Claude structured real CLI fold', () => {
             ...CLAUDE_STRUCTURED_BASE_OPTIONS,
             extraArgs: {
               ...CLAUDE_STRUCTURED_BASE_OPTIONS.extraArgs,
-              settings: LIVE_SHAPE_SETTINGS
+              settings: FOLD_SESSION_SETTINGS
             },
             sessionId: providerSessionId
           },
