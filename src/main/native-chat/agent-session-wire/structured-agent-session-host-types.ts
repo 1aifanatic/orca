@@ -9,7 +9,8 @@ import type { AgentSessionJournal } from '../agent-session-journal/journal-store
 import type {
   StructuredAgentSessionAdapter,
   StructuredAgentSessionChildEndCause,
-  StructuredAgentSessionProviderChildPhase
+  StructuredAgentSessionProviderChildPhase,
+  StructuredAgentSessionStopCause
 } from './structured-agent-session-adapter'
 import type { AgentSessionAttachParams } from './structured-agent-session-attach'
 import type { StructuredAgentSessionStatusSink } from './structured-agent-session-status-feed'
@@ -32,6 +33,11 @@ export type StructuredAgentSessionReveal = {
 export type StructuredAgentSessionProviderChildIdentity = {
   readonly generation: string | null
   readonly fence: number
+}
+
+/** A wind-down still owed, with the cause of the stop that owes it: a retry finishes that stop. */
+export type StructuredAgentSessionOwedWindDown = StructuredAgentSessionProviderChildIdentity & {
+  readonly cause: StructuredAgentSessionStopCause
 }
 
 /** The provider process behind a conversation. Written only in
@@ -79,7 +85,7 @@ export type StructuredAgentSessionHostSession = {
   /** The wind-down this host still owes for a child it started: settling that generation's work
    *  and handing the lease back. Outlives `child`, which ends the moment the adapter proves the
    *  exit — an eviction that aborts after that point must still finish it on the next close. */
-  owesProviderChildWindDown?: StructuredAgentSessionProviderChildIdentity
+  owesProviderChildWindDown?: StructuredAgentSessionOwedWindDown
   lastEndedChild?: StructuredAgentSessionEndedChild
 }
 

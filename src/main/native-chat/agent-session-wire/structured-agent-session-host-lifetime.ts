@@ -102,11 +102,15 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
   if (!session) {
     return
   }
+  // A retry finishes the stop that ended the child, so the turn that stop cut keeps its cause.
+  const cause = session.child
+    ? ending.cause
+    : (session.owesProviderChildWindDown?.cause ?? ending.cause)
   // The obligation OUTLIVES the child. `child` is ended the instant the adapter proves the exit,
   // so a step that aborts after that point would otherwise leave the retry reading "no child
   // here" and skipping the settlement and the lease release it still owes.
   const owed = owedProviderChildWindDown(session)
-  session.owesProviderChildWindDown = owed
+  session.owesProviderChildWindDown = owed ? { ...owed, cause } : undefined
   const stopping = session.child
   let settlementError: unknown
   const eviction: StructuredAgentSessionEvictionContext = {
@@ -117,7 +121,7 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
     eventSink: context.runtimeState.eventSinkFor(sessionId),
     adapter: context.deps.adapter,
     // The adapter settles its own open turn with this, so who asked travels with the stop.
-    stopCause: ending.cause,
+    stopCause: cause,
     ...(context.restartWitness
       ? { beforeProviderChildStop: () => context.restartWitness?.beforeStop(sessionId) }
       : {}),
@@ -127,7 +131,7 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
         endProviderChild(session, {
           generation: stopping.generation,
           fence: stopping.fence,
-          cause: ending.cause,
+          cause,
           reason: ending.reason ?? null,
           duringStartup: stopping.phase === 'starting',
           ...verdict
@@ -147,7 +151,7 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
         settlementId: `expected-close:${sessionId}:${fence}:${owed?.generation ?? 'unknown'}`,
         pendingSubmissionReason: 'provider_closed_before_acknowledgement',
         // Only a turn no adapter settled: one with no close, or whose settle threw.
-        verdict: turnVerdictForChildEnd(ending.cause, context.now()),
+        verdict: turnVerdictForChildEnd(cause, context.now()),
         showUnexpectedExitOutcome: false,
         onError: (id, error) => {
           settlementError = error

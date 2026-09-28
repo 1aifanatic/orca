@@ -247,6 +247,36 @@ describe('a turn cut short by closing its provider', () => {
     expect(turn).toMatchObject({ state: 'interrupted', outcome: 'cancellation' })
   })
 
+  it.each([
+    ['user-close', { outcome: 'cancellation' }],
+    ['evict', { outcome: undefined }]
+  ] as const)(
+    "keeps a %s's cause when the idle sweep finishes a wind-down it could not",
+    async (cause, verdict) => {
+      providerEnd = null
+      await runningTurn()
+      const sink = host['runtimeState'].eventSinkFor(SESSION)
+      const drained = sink.drained.bind(sink)
+      let failed = false
+      vi.spyOn(sink, 'drained').mockImplementation(async () => {
+        if (closeCalls > 0 && !failed) {
+          failed = true
+          return { ok: false, error: new Error('drain failed') }
+        }
+        return drained()
+      })
+      // The provider is proven gone, then the close aborts before the host settles its turn.
+      await expect(host.close(SESSION, cause)).rejects.toThrow()
+
+      await host.collaboratorsForTests().lifetime.idleSweep.tick()
+
+      expect(closeCalls).toBe(1)
+      const { turn } = await settledTurn()
+      expect(turn).toMatchObject({ state: 'interrupted' })
+      expect(turn?.outcome).toBe(verdict.outcome)
+    }
+  )
+
   it("leaves a quit's cut on a turn no adapter settled as news", async () => {
     providerEnd = null
     await runningTurn()
