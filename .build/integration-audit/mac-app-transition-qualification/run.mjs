@@ -7,6 +7,8 @@ import { join, resolve } from 'node:path'
 import { createServer } from 'node:net'
 import { setTimeout as delay } from 'node:timers/promises'
 import { resolveRuntimeServeSmokeLaunch, readRuntimeServeSmokePid, runtimeServeSmokeProcessState } from '../../../config/scripts/runtime-serve-smoke-launch.mjs'
+import { summarizeCommandFailure } from './command-failure.mjs'
+import { PROTOCOL_VERSION } from '../../../src/main/daemon/daemon-protocol-version.ts'
 import { stopServer } from '../../../config/scripts/runtime-serve-smoke-shutdown.mjs'
 
 const args = new Map(process.argv.slice(2).map(arg => { const i = arg.indexOf('='); return [arg.slice(0, i), arg.slice(i + 1)] }))
@@ -17,9 +19,9 @@ if (process.platform !== 'darwin' || process.env.CI !== 'true' || process.env.OR
 const source = resolve(import.meta.dirname, '../../..')
 const appA = required('--app-a'), appB = required('--app-b'), receiptPath = required('--receipt')
 const probe = required('--probe'), cleanup = required('--cleanup'), folderRpc = required('--folder-rpc')
-const root = mkdtempSync(join(tmpdir(), 'orca-client-transition-'))
+const root = mkdtempSync(join(tmpdir(), 'oct-'))
 const profile = join(root, 'profile')
-const receipt = { scope: 'signed client-artifact A-B-A; not updater/version/runtime-generation qualification', status: 'running', root, stages: [], cleanup: [] }
+const receipt = { scope: 'signed client-artifact A-B-A; not updater/version/runtime-generation qualification', status: 'running', root, stages: [], cleanup: [], commandFailures: [] }
 let child, launch, pairing, command, servingPid, serverReady = false, cancelled = false, cleaning = false
 const auxiliaries = new Set()
 const observedShells = new Set()
@@ -33,14 +35,18 @@ function run(program, argv, options = {}) {
   return new Promise((resolvePromise, reject) => {
     const proc = spawn(program, argv, { cwd: options.cwd ?? source, env: { ...process.env, ...launch?.env, ORCA_PAIRING_CODE: options.pairing, ORCA_BACKGROUND_LAUNCH: '1' }, stdio: ['ignore', 'pipe', 'pipe'] })
     auxiliaries.add(proc)
-    let output = '', size = 0, failure
+    let output = '', stderr = '', size = 0, failure
     const timer = setTimeout(() => { failure = 'command timeout'; proc.kill('SIGKILL') }, options.timeout ?? 30_000)
     proc.stdout.on('data', data => { size += data.length; if (size > 2 ** 20) { failure = 'command output cap'; proc.kill('SIGKILL') } else output += data })
-    proc.stderr.on('data', data => { size += data.length; if (options.captureStderr && size <= 2 ** 20) output += data; if (size > 2 ** 20) { failure = 'command output cap'; proc.kill('SIGKILL') } })
+    proc.stderr.on('data', data => { size += data.length; if (size <= 2 ** 20) stderr += data; if (options.captureStderr && size <= 2 ** 20) output += data; if (size > 2 ** 20) { failure = 'command output cap'; proc.kill('SIGKILL') } })
     proc.once('error', () => { failure = 'command spawn failed' })
-    proc.once('close', code => {
+    proc.once('close', (code, signal) => {
       clearTimeout(timer); auxiliaries.delete(proc)
-      if (failure || code !== 0) reject(new Error(`${options.label ?? 'diagnostic command'}: ${failure ?? `exit ${code}`}`))
+      if (failure || code !== 0) {
+        const evidence = { operation: options.label ?? 'diagnostic command', ...summarizeCommandFailure(output, stderr, code, signal, failure) }
+        receipt.commandFailures.push(evidence)
+        reject(new Error(`${evidence.operation}: ${failure ?? `exit ${code}`}${evidence.errorCode ? ` (${evidence.errorCode})` : ''}`))
+      }
       else resolvePromise(output.trim())
     })
   })
@@ -100,7 +106,7 @@ async function stop() {
   if (!serverReady) throw new Error('Startup never established serving identity; profile/keychain retained conservatively')
   serverReady = false
 }
-async function identity() { return JSON.parse(await run(process.execPath, [probe, profile])).identity }
+async function identity() { return JSON.parse(await run(process.execPath, [probe, profile], { label: 'Authenticated daemon identity' })).identity }
 const ownerKey = owner => JSON.stringify([owner.pid, owner.startedAtMs, owner.launchNonce])
 async function observe(item, first = false) {
   await cli(['terminal', 'show', '--terminal', item.handle])
@@ -125,6 +131,9 @@ async function observe(item, first = false) {
 }
 const items = []
 try {
+  const socketBytes = Buffer.byteLength(join(profile, 'daemon', `daemon-v${PROTOCOL_VERSION}.sock`))
+  receipt.socketPathBytes = socketBytes
+  if (socketBytes >= 104) throw new Error('Disposable daemon socket exceeds macOS sockaddr_un capacity')
   const copies = {}
   for (const [label, input] of [['A', appA], ['B', appB]]) {
     const target = join(root, label, 'Orca.app'); mkdirSync(join(root, label))
@@ -189,7 +198,7 @@ try {
   clearTimeout(totalTimer)
   let serverExited = false, daemonRetired = false
   try { await stop(); serverExited = true; receipt.cleanup.push('serving process exited') } catch (error) { receipt.cleanup.push(error.message); receipt.status = 'failed' }
-  try { await run(process.execPath, [cleanup, profile], { cleanup: true, timeout: 15_000 }); receipt.cleanup.push('authenticated daemon retired');
+  try { await run(process.execPath, [cleanup, profile], { cleanup: true, timeout: 15_000, label: 'Authenticated daemon cleanup' }); receipt.cleanup.push('authenticated daemon retired');
     const end = Date.now() + 5_000;
     while ([...observedShells].some(pid => runtimeServeSmokeProcessState(pid) !== 'exited') && Date.now() < end) await delay(50);
     if ([...observedShells].some(pid => runtimeServeSmokeProcessState(pid) !== 'exited')) throw new Error('Shell exit unverifiable after authenticated daemon shutdown');
