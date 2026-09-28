@@ -260,11 +260,10 @@ describe('Stop against a host that stops the conversation', () => {
     })
 
     // Reusing the first id would replay it: the host answers not-cancelled and stops nothing.
-    const envelopes = cancels().map((params) => (params as { envelope: unknown }).envelope)
-    expect(envelopes).toEqual([
-      expect.objectContaining({ expectedRuntimeFence: 3 }),
-      expect.objectContaining({ expectedRuntimeFence: 4 })
-    ])
+    const fences: number[] = mocks.call.mock.calls
+      .filter(([, method]) => method === 'agentSession.cancel')
+      .map(([, , params]) => params.envelope.expectedRuntimeFence)
+    expect(fences).toEqual([3, 4])
     const ids = cancelOperationIds()
     expect(ids[1]).not.toBe(ids[0])
   })
