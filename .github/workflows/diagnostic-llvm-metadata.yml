@@ -1,0 +1,40 @@
+name: Diagnostic LLVM metadata resolution
+on:
+  push:
+    branches: [OrcaWin/np-offline-llvm-metadata-diagnostic]
+    paths: ['.github/workflows/diagnostic-llvm-metadata.yml', 'config/ci/offline-llvm-probe/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: diagnostic-llvm-metadata-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  metadata:
+    if: github.repository == 'stablyai/orca' && github.ref == 'refs/heads/OrcaWin/np-offline-llvm-metadata-diagnostic'
+    defaults:
+      run:
+        shell: bash
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      ORCA_BACKGROUND_LAUNCH: '1'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Resolve exact compiler inputs without downloading compiler packages
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/llvm-receipts"
+          docker pull --platform linux/amd64 ubuntu@sha256:8feb4d8ca5354def3d8fce243717141ce31e2c428701f6682bd2fafe15388214
+          docker image inspect ubuntu@sha256:8feb4d8ca5354def3d8fce243717141ce31e2c428701f6682bd2fafe15388214 > "$RUNNER_TEMP/llvm-receipts/base-image.json"
+          docker run --rm --platform linux/amd64 --cpus 2 --memory 3g --pids-limit 256 --volume "$GITHUB_WORKSPACE/config/ci/offline-llvm-probe:/probe:ro" --volume "$RUNNER_TEMP/llvm-receipts:/receipts" ubuntu@sha256:8feb4d8ca5354def3d8fce243717141ce31e2c428701f6682bd2fafe15388214 bash /probe/resolve.sh 2>&1 | tee "$RUNNER_TEMP/llvm-receipts/resolution.log"
+          test -s "$RUNNER_TEMP/llvm-receipts/closure.json"
+          test -s "$RUNNER_TEMP/llvm-receipts/provenance.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: llvm-metadata-resolution-diagnostic
+          path: ${{ runner.temp }}/llvm-receipts/
+          retention-days: 7

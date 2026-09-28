@@ -1,0 +1,29 @@
+{
+  "InRelease": {
+    "url": "https://apt.llvm.org/focal/dists/llvm-toolchain-focal-21/InRelease",
+    "sha256": "a6917d65ff10279b06da8e411bbf77cf8e9af8f5e48bc10af46d705f51212d3e",
+    "bytes": 5554
+  },
+  "Packages.gz": {
+    "url": "https://apt.llvm.org/focal/dists/llvm-toolchain-focal-21/main/binary-amd64/Packages.gz",
+    "sha256": "370c5ba51411ce91d7723a446b351caedba3d231f80fc41d46fead2c41b62b24",
+    "bytes": 13010
+  },
+  "llvm-snapshot.gpg.key": {
+    "url": "https://apt.llvm.org/llvm-snapshot.gpg.key",
+    "sha256": "8b2a587ffd672c4687e7581dad4b2f6c1bb2ad6b480cd9771ba2ff48e0b8c75d",
+    "bytes": 3167
+  },
+  "apt-guidance.html": {
+    "url": "https://apt.llvm.org/",
+    "sha256": "ed85c1df11572d1d31a7fcb1c5ab2c4714cdd2845f618dab3e38f66778783b9d",
+    "bytes": 25813
+  },
+  "toolchain-ppa.asc": {
+    "url": "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xC8EC952E2A0E1FBDC5090F6A2C277A0A352154E5",
+    "sha256": "aa6927526a6e522ddeac8b82920f72098e558677255f86ce7278aa68d9df7e47",
+    "bytes": 1732,
+    "fingerprint": "C8EC952E2A0E1FBDC5090F6A2C277A0A352154E5",
+    "fingerprintSource": "https://api.launchpad.net/1.0/~ubuntu-toolchain-r/+archive/ubuntu/test"
+  }
+}
