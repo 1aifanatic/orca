@@ -1,35 +1,69 @@
-name: Bundled ConPTY Bun build proof
+name: Bundled ConPTY Bun native ARM64 qualification
 on:
   push:
     branches: [OrcaWin/np-bun-conpty-build-proof]
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: bun-conpty-build-proof
   cancel-in-progress: false
 jobs:
-  build:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 240
+  qualify-arm64:
+    runs-on: windows-11-arm
+    timeout-minutes: 20
     env:
       ORCA_BACKGROUND_LAUNCH: '1'
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - name: Free unused SDK space on disposable runner
+      - uses: actions/download-artifact@v4
+        with:
+          name: bun-conpty-candidate
+          run-id: 36380797727
+          github-token: ${{ github.token }}
+          path: candidate
+      - name: Verify exact ARM64 runtime and provider closure
+        shell: pwsh
         run: |
-          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL
-          df -h "$RUNNER_TEMP"
-          free -h
-      - name: Compile isolated Windows runtime candidates
-        run: BUN_CONPTY_BUILD_ROOT="$RUNNER_TEMP/bun-conpty-build" bash config/bun-conpty-build/build-disposable.sh
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force receipts | Out-Null
+          $runtime = (Resolve-Path 'candidate/conpty-aarch64/bun.exe').Path
+          $expected = '9ca4184dd4e4dc7f9575075ab4ce6b00fb1feac59110d68c660177c5447ad526'
+          $actual = (Get-FileHash $runtime -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw 'Candidate runtime hash mismatch' }
+          $root = (Resolve-Path 'config/bun-conpty-build/arm64-qualification').Path
+          $manifest = Get-Content (Join-Path $root 'sha256.json') -Raw | ConvertFrom-Json -AsHashtable
+          foreach ($file in $manifest.Keys) {
+            if ((Get-FileHash (Join-Path $root $file) -Algorithm SHA256).Hash.ToLowerInvariant() -ne $manifest[$file]) { throw "Fixture hash mismatch: $file" }
+          }
+          $identity = & $runtime --no-env-file -e 'console.log(JSON.stringify({platform:process.platform,arch:process.arch,version:process.versions.bun,revision:Bun.revision}))'
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate identity probe failed' }
+          $parsed = $identity | ConvertFrom-Json
+          if ($parsed.platform -ne 'win32' -or $parsed.arch -ne 'arm64' -or $parsed.version -ne '1.4.2-canary.1') { throw "Unexpected native identity: $identity" }
+          $osArch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
+          if ($osArch -ne 'Arm64') { throw "Runner OS architecture is $osArch" }
+          @{ runtime = $parsed; sha256 = $actual; osArchitecture = $osArch; sourceRun = 36380797727; runnerImage = $env:ImageVersion } | ConvertTo-Json -Depth 5 | Set-Content receipts/identity.json
+          "BUN_EXECUTABLE=$runtime" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "BUN_CONPTY_LIBRARY=$(Join-Path $root 'conpty/conpty.dll')" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Execute unchanged replay, bytes, owned-job and MSYS contracts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $receipts = (Resolve-Path receipts).Path
+          Push-Location config/bun-conpty-build/arm64-qualification/tests
+          $failed = $false
+          foreach ($case in @('wide-repaint.test.mjs','wide-bytes.test.mjs','windows-pty-job.test.mjs','windows-msys-job.test.mjs')) {
+            & $env:BUN_EXECUTABLE test $case --timeout 100000 2>&1 | Tee-Object -FilePath (Join-Path $receipts "$case.log")
+            if ($LASTEXITCODE -ne 0) { $failed = $true }
+          }
+          Pop-Location
+          if ($failed) { throw 'One or more ARM64 contracts failed' }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: bun-conpty-candidate
+          name: bun-conpty-arm64-qualification
           retention-days: 7
           if-no-files-found: warn
-          path: |
-            ${{ runner.temp }}/bun-conpty-build/bun/build/conpty-*/bun.exe
-            ${{ runner.temp }}/bun-conpty-build/bun/build/conpty-*/build.ninja
+          path: receipts
