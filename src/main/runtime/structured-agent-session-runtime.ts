@@ -47,6 +47,7 @@ import {
   claimStructuredAgentSessionJournal,
   recordStructuredAgentSessionHostInstallRefusal,
   releaseStructuredAgentSessionJournal,
+  stopRetryingStructuredAgentSessionJournalClaim,
   structuredAgentSessionJournalOwnerRefusal
 } from './structured-agent-session-journal-ownership'
 import { agentSessionStorePath } from './agent-session-record-store-file'
@@ -169,26 +170,28 @@ export async function waitForStructuredAgentSessionRecovery(): Promise<void> {
 export async function stopStructuredAgentSessionRuntime(options?: {
   trigger?: AgentSessionResumeTrigger
 }): Promise<void> {
+  stopRetryingStructuredAgentSessionJournalClaim()
   const trigger = options?.trigger ?? structuredAgentSessionTeardownTrigger()
-  const pending = installing
-  installing = null
-  setStructuredAgentSessionHost(null)
+  const failures: unknown[] = []
+  // An install that began while this stop awaited (a takeover already under way) is torn down
+  // too: no journal connection may outlive the lock.
   const outstanding = [...pendingTeardown]
   pendingTeardown.clear()
-  const installed = pending ? await pending.catch(() => null) : null
-  if (installed) {
-    outstanding.push(installed)
-  }
-  const failures: unknown[] = []
-  for (const runtime of outstanding) {
-    try {
-      await tearDownRuntime(runtime, trigger)
-    } catch (error) {
-      pendingTeardown.add(runtime)
-      failures.push(error)
+  do {
+    const pending = installing
+    installing = null
+    setStructuredAgentSessionHost(null)
+    const installed = await pending?.catch(() => null)
+    for (const runtime of [...outstanding.splice(0), ...(installed ? [installed] : [])]) {
+      try {
+        await tearDownRuntime(runtime, trigger)
+      } catch (error) {
+        pendingTeardown.add(runtime)
+        failures.push(error)
+      }
     }
-  }
-  await agentModelCatalogStore.flushPersistence()
+    await agentModelCatalogStore.flushPersistence()
+  } while (installing)
   if (failures.length === 0 && pendingTeardown.size === 0) {
     releaseStructuredAgentSessionJournal()
   }

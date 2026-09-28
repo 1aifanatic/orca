@@ -10,7 +10,10 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { isAgentSessionRefusalError } from '../../shared/agent-session-wire-refusals'
 import { JOURNAL_DB_SCHEMA_VERSION } from '../native-chat/agent-session-journal/journal-database-schema'
-import { journalDatabasePath } from '../native-chat/agent-session-journal/journal-host-database'
+import {
+  JournalHostDatabase,
+  journalDatabasePath
+} from '../native-chat/agent-session-journal/journal-host-database'
 import { JOURNAL_OWNER_LOCK_FILE } from '../native-chat/agent-session-journal/journal-owner-lock'
 import {
   holdJournalOwnerLockInChild,
@@ -20,6 +23,7 @@ import {
 import { JOURNAL_NEWER_SCHEMA_MESSAGE } from '../native-chat/agent-session-journal/journal-open-failure'
 import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
 import Database from '../sqlite/sync-database'
+import { agentModelCatalogStore } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
 import type { RuntimeNavigationTarget } from '../../shared/runtime-navigation'
 import type { RuntimeMobileSessionTabsResult } from '../../shared/runtime-types'
 import { OrcaRuntimeService } from './orca-runtime'
@@ -30,6 +34,7 @@ import { readRuntimeMetadata } from './runtime-metadata'
 import { OrcaRuntimeRpcServer } from './runtime-rpc'
 import {
   JOURNAL_OWNER_REFUSAL_MESSAGES,
+  onStructuredAgentSessionJournalOwned,
   releaseStructuredAgentSessionJournal,
   setJournalOwnerProcessKind,
   type JournalOwnerProcessKind
@@ -506,6 +511,68 @@ describe('startup and other non-chat work without a structured host', () => {
       })
       unsubscribe()
       expect(pushed.at(-1)).not.toHaveProperty('agentSessionsUnverifiable')
+    })
+  })
+
+  describe('quitting while refused', () => {
+    function holdCatalogFlush(): () => void {
+      let release!: () => void
+      const held = new Promise<void>((resolve) => (release = resolve))
+      vi.spyOn(agentModelCatalogStore, 'flushPersistence').mockImplementationOnce(() => held)
+      return release
+    }
+
+    it('does not take the lock once the stop has begun', async () => {
+      holder = await holdJournalOwnerLockInChild(root)
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+      const { runtime } = startupRuntime()
+      await runtime.prepareStructuredAgentSessionStartupRestoration()
+      const owned = vi.fn()
+      stopAwaitingOwnership.push(onStructuredAgentSessionJournalOwned(owned))
+      const releaseFlush = holdCatalogFlush()
+      const stopping = stopStructuredAgentSessionRuntime()
+
+      await holder.kill()
+      holder = null
+      // Past the longest retry delay: a retry still scheduled would have taken the lock by now.
+      await new Promise((resolve) => setTimeout(resolve, 5_500))
+      releaseFlush()
+      await stopping
+
+      expect(owned).not.toHaveBeenCalled()
+      expect(getStructuredAgentSessionHost()).toBeNull()
+      expect(existsSync(journalDatabasePath(root))).toBe(false)
+    })
+
+    it('tears down a takeover install that lands during the stop', async () => {
+      holder = await holdJournalOwnerLockInChild(root)
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+      const { runtime, refreshPtyRecords } = startupRuntime(async () => {
+        const host = await install()
+        vi.spyOn(host, 'reconcileRestartLeases').mockResolvedValue(undefined)
+        return host
+      })
+      const releaseRefresh = heldOnce(refreshPtyRecords)
+      const startup = runtime.prepareStructuredAgentSessionStartupRestoration()
+      await vi.waitFor(() => expect(refreshPtyRecords).toHaveBeenCalledOnce())
+      await holder.kill()
+      holder = null
+      // Taken before the quit: the takeover waits on the refused startup's PTY refresh.
+      await vi.waitFor(() => expect(gateRefusal().reason).toBe('hostDisabled'), { timeout: 10_000 })
+      const closed = vi.spyOn(JournalHostDatabase.prototype, 'close')
+      const releaseFlush = holdCatalogFlush()
+      const stopping = stopStructuredAgentSessionRuntime()
+
+      releaseRefresh()
+      await startup
+      await vi.waitFor(() => expect(getStructuredAgentSessionHost()).not.toBeNull(), {
+        timeout: 10_000
+      })
+      releaseFlush()
+      await stopping
+
+      expect(getStructuredAgentSessionHost()).toBeNull()
+      expect(closed).toHaveBeenCalledOnce()
     })
   })
 

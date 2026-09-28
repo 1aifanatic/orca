@@ -136,9 +136,15 @@ export function onStructuredAgentSessionJournalOwned(listener: () => void): () =
   return () => ownedListeners.delete(listener)
 }
 
+/** First, when stopping: a takeover landing during the teardown would install a host after it.
+ *  The refusal stands, so a request in that window is still refused rather than claiming. */
+export function stopRetryingStructuredAgentSessionJournalClaim(): void {
+  refused?.retry.cancel()
+}
+
 /** Last, after the journal database is closed. Also stops a refused claim's retry. */
 export function releaseStructuredAgentSessionJournal(): void {
-  refused?.retry.cancel()
+  stopRetryingStructuredAgentSessionJournalClaim()
   refused = null
   const lock = held
   held = null
