@@ -245,6 +245,27 @@ for (const closeMode of ['terminal-close-cli', 'worker-release'] as const) {
       )
       .toEqual(expectedRecovery)
 
+    orcaPage.on('console', (message) => {
+      if (message.text().includes('RECOVERY_PROBE')) {
+        console.log(message.text())
+      }
+    })
+    await orcaPage.evaluate((paneKey) => {
+      window.__store?.subscribe((state, previous) => {
+        const record = state.sleepingAgentSessionsByPaneKey[paneKey]
+        if (record !== previous.sleepingAgentSessionsByPaneKey[paneKey]) {
+          console.warn(
+            'RECOVERY_PROBE',
+            JSON.stringify({
+              record,
+              status: state.agentStatusByPaneKey[paneKey],
+              previousStatus: previous.agentStatusByPaneKey[paneKey],
+              stack: new Error('recovery transition').stack
+            })
+          )
+        }
+      })
+    }, workerPaneKey)
     const completed = await client.call<{ message: { type: string } }>(
       'orchestration.send',
       {
