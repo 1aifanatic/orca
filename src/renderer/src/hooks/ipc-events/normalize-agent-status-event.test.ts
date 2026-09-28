@@ -17,4 +17,21 @@ describe('normalizeAgentStatusEvent', () => {
 
     expect(normalized?.lastAssistantMessageIsToolOutput).toBe(true)
   })
+
+  // Why: the TUI-exit cleanup reads it to keep a row whose work outlives the CLI.
+  it('keeps where the host reports the session running while the row shows work', () => {
+    const event = {
+      paneKey: 'tab-1:1',
+      prompt: 'go',
+      agentType: 'codex',
+      sessionRunner: 'background-server' as const,
+      connectionId: null,
+      receivedAt: 1,
+      stateStartedAt: 1
+    }
+    expect(normalizeAgentStatusEvent({ ...event, state: 'working' })?.sessionRunner).toBe(
+      'background-server'
+    )
+    expect(normalizeAgentStatusEvent({ ...event, state: 'done' })?.sessionRunner).toBeUndefined()
+  })
 })

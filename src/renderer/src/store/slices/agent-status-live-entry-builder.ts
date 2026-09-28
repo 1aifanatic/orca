@@ -247,6 +247,7 @@ export function buildAgentStatusLiveEntry(
     acceptedStatusSeq: (existing?.acceptedStatusSeq ?? 0) + 1,
     ...(payload.observation ? { observation: payload.observation } : {}),
     interrupted: payload.interrupted,
+    ...(payload.sessionRunner ? { sessionRunner: payload.sessionRunner } : {}),
     sessionBoundary:
       payload.sessionBoundary ??
       (existing?.state === 'done' &&

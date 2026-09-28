@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -140,6 +140,69 @@ describe('RelayAgentHookServer Codex subagent transcript polling', () => {
       expect(forward.mock.calls.at(-1)?.[0]).toMatchObject({ source: 'codex', paneKey: PANE_KEY })
       expect(forward.mock.calls.at(-1)?.[0].hookEventName).toBeUndefined()
       expect(forward.mock.calls.at(-1)?.[0].hasExplicitPrompt).toBeUndefined()
+    } finally {
+      server.stop()
+    }
+  })
+
+  // Why: only the relay can see the remote Codex home, so it reports whether the pane's work runs
+  // in Codex's background server (and so outlives the TUI), and ends that work when the server dies.
+  it('reports work running in the remote background server and ends it once the server is gone', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'relay-hook-codex-home-'))
+    dirs.push(home)
+    const dayDir = join(home, 'sessions', '2026', '09', '27')
+    mkdirSync(dayDir, { recursive: true })
+    mkdirSync(join(home, 'app-server-daemon'))
+    const pidRecord = join(home, 'app-server-daemon', 'daemon.pid')
+    writeFileSync(pidRecord, JSON.stringify({ pid: process.pid }))
+    const parentPath = join(dayDir, 'rollout-2026-09-27T10-00-00-root.jsonl')
+    writeFileSync(
+      parentPath,
+      line({ type: 'event_msg', payload: { type: 'task_started', turn_id: 'turn-1' } })
+    )
+    const forward = vi.fn<(envelope: AgentHookRelayEnvelope) => void>()
+    const server = new RelayAgentHookServer({ endpointDir: home, forward })
+    await server.start()
+    try {
+      const { port, token } = server.getCoordinates()
+      const response = await fetch(`http://127.0.0.1:${port}/hook/codex`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Orca-Agent-Hook-Token': token
+        },
+        body: JSON.stringify({
+          paneKey: PANE_KEY,
+          tabId: 'tab-1',
+          worktreeId: 'wt-1',
+          payload: {
+            hook_event_name: 'UserPromptSubmit',
+            session_id: 'root-session',
+            turn_id: 'turn-1',
+            transcript_path: parentPath,
+            prompt: 'go'
+          }
+        })
+      })
+      expect(response.status).toBe(204)
+      expect(forward.mock.calls[0]?.[0].payload).toMatchObject({
+        state: 'working',
+        sessionRunner: 'background-server'
+      })
+
+      // Above every platform's pid ceiling: the record a killed server leaves behind.
+      writeFileSync(pidRecord, JSON.stringify({ pid: 2_147_483_646 }))
+      await vi.waitFor(
+        () => {
+          expect(forward.mock.calls.at(-1)?.[0].payload).toMatchObject({
+            state: 'done',
+            interrupted: true,
+            mainAgent: { state: 'done', outcome: 'cancellation' }
+          })
+        },
+        { timeout: 3_000, interval: 50 }
+      )
+      expect(forward.mock.calls.at(-1)?.[0].payload.sessionRunner).toBeUndefined()
     } finally {
       server.stop()
     }

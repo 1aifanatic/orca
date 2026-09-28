@@ -1,7 +1,7 @@
-// Codex's turn and subagents run in its app-server, which a shared background server keeps
-// running after the TUI exits ("Run in background", or "Exit" with a subagent still running). The
-// TUI's exit is therefore not the end of a Codex row that still shows work: Codex's own records,
-// read by the execution host, end it.
+// Codex's shared background server keeps running a TUI's turn and subagents after the TUI exits
+// ("Run in background", or "Exit" with a subagent still running). When the execution host reports
+// the row's work running there, the TUI's exit is not the end of the row: Codex's own records, read
+// by the host, end it. A Codex that runs its session itself takes the work with it.
 import type * as React from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { makePaneKey } from '../../../../shared/stable-pane-id'
@@ -156,7 +156,7 @@ describe('connectPanePty', () => {
     ptyId: string,
     row: Pick<
       AgentStatusEntry,
-      'state' | 'agentType' | 'mainAgent' | 'subagents' | 'providerSession'
+      'state' | 'agentType' | 'mainAgent' | 'subagents' | 'providerSession' | 'sessionRunner'
     >
   ): Promise<string> {
     vi.useFakeTimers()
@@ -216,7 +216,8 @@ describe('connectPanePty', () => {
       ...row,
       state: 'working',
       agentType: 'codex',
-      providerSession
+      providerSession,
+      sessionRunner: 'background-server'
     })
 
     expect(mockStoreState.dropAgentStatus).not.toHaveBeenCalled()
@@ -226,9 +227,15 @@ describe('connectPanePty', () => {
     expect(mockStoreState.clearAgentLaunchConfig).toHaveBeenCalledWith(paneKey)
   })
 
-  it.each<[string, Pick<AgentStatusEntry, 'state' | 'agentType' | 'providerSession'>]>([
+  it.each<
+    [string, Pick<AgentStatusEntry, 'state' | 'agentType' | 'providerSession' | 'sessionRunner'>]
+  >([
     ['a settled Codex row', { state: 'done', agentType: 'codex', providerSession }],
-    ['a Codex row that names no rollout to settle it', { state: 'working', agentType: 'codex' }],
+    [
+      // An embedded Codex killed mid-turn writes no end marker; its work died with it.
+      'a Codex row still working in the TUI itself',
+      { state: 'working', agentType: 'codex', providerSession }
+    ],
     ['any other agent still working', { state: 'working', agentType: 'claude', providerSession }]
   ])('retires %s when its CLI exits', async (_label, row) => {
     const paneKey = await exitTuiWithRow('pty-cli-exit-retires', row)

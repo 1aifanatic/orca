@@ -10,8 +10,10 @@ import { codexRosterToSnapshots } from '../../codex-subagent-roster'
 import { reconcileCodexSubagentTranscript } from '../../codex-subagent-transcript'
 import type { AgentHookEventPayload } from '../listener-event'
 import type { HookListenerState } from '../listener-state'
+import { codexBackgroundServerRunning } from '../../codex-background-server'
 import {
   codexMainAgentStatusForPayload,
+  codexSessionRunner,
   getOrCreateCodexSubagentRoster,
   getOrCreateCodexSubagentTranscriptState,
   resolveCodexPaneStatus,
@@ -63,7 +65,8 @@ export function catchUpOnCodexParentRollout(
 }
 
 /** Whether the rollout can still change a Codex row: a root turn open by its own record or by the
- *  rollout's, or children, each of which is read from its own rollout. */
+ *  rollout's (unless the root already ended it as cancelled, which is final), or children, each of
+ *  which is read from its own rollout. */
 export function codexRolloutNeedsWatch(state: HookListenerState, paneKey: string): boolean {
   const transcriptState = state.codexSubagentTranscriptByPaneKey.get(paneKey)
   if (
@@ -73,9 +76,11 @@ export function codexRolloutNeedsWatch(state: HookListenerState, paneKey: string
     return false
   }
   const lead = state.codexLeadStateByPaneKey.get(paneKey)
+  const openTurnId = transcriptState.mainTurns.openTurnId
   return (
     (lead !== undefined && lead.state !== 'done') ||
-    transcriptState.mainTurns.openTurnId !== undefined ||
+    (openTurnId !== undefined &&
+      !(lead?.outcome === 'cancellation' && lead.turnId === openTurnId)) ||
     (state.codexSubagentRosterByPaneKey.get(paneKey)?.size ?? 0) > 0
   )
 }
@@ -97,16 +102,45 @@ function codexRowFromRecords(
     state: resolution.stateName,
     workingMode: resolution.workingMode,
     interrupted: mainAgentTurnInterrupted(lead),
+    sessionRunner: codexSessionRunner(state, paneKey, resolution.stateName),
     subagents: codexRosterToSnapshots(state.codexSubagentRosterByPaneKey.get(paneKey)),
     mainAgent: codexMainAgentStatusForPayload(lead)
   })
   return !payload ||
     (payload.state === current.state &&
+      payload.sessionRunner === current.sessionRunner &&
       payload.mainAgent?.state === current.mainAgent?.state &&
       payload.mainAgent?.outcome === current.mainAgent?.outcome &&
       JSON.stringify(payload.subagents) === JSON.stringify(current.subagents))
     ? undefined
     : payload
+}
+
+/** Ends what a Codex background server was running once that server is gone: it writes no end
+ *  marker when it dies, and nothing else can run its turn or subagents. */
+function endCodexWorkOfStoppedServer(
+  state: HookListenerState,
+  paneKey: string,
+  current: ParsedAgentStatusPayload
+): void {
+  const rolloutPath = state.codexSubagentTranscriptByPaneKey.get(paneKey)?.parent.filePath
+  if (
+    current.sessionRunner !== 'background-server' ||
+    !rolloutPath ||
+    codexBackgroundServerRunning(rolloutPath)
+  ) {
+    return
+  }
+  const lead = state.codexLeadStateByPaneKey.get(paneKey)
+  if (lead && lead.state !== 'done') {
+    setCodexMainAgentTurnState(state, paneKey, {
+      state: 'done',
+      outcome: 'cancellation',
+      turnId: lead.turnId,
+      model: lead.model
+    })
+  }
+  state.codexSubagentRosterByPaneKey.get(paneKey)?.clear()
 }
 
 /** Reads the rollout and rebuilds the pane's Codex row from the records it leaves, as an
@@ -121,6 +155,7 @@ export function observeCodexRollout(
     return undefined
   }
   catchUpOnCodexParentRollout(state, paneKey, undefined)
+  endCodexWorkOfStoppedServer(state, paneKey, current.payload)
   const payload = codexRowFromRecords(state, paneKey, current.payload)
   if (!payload) {
     return undefined
