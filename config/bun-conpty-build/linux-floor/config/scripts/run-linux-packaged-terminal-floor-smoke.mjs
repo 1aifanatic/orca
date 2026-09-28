@@ -75,6 +75,7 @@ export async function runPackagedTerminalFloorSmoke(appDirectory) {
     const { runProcess } = createRequire(import.meta.url)(fixture)
     const containerName = `orca-terminal-floor-${randomUUID()}`
     let result
+    let cleanup
     try {
       result = await runProcess({
         program: 'docker',
@@ -88,20 +89,17 @@ export async function runPackagedTerminalFloorSmoke(appDirectory) {
       })
     } finally {
       // A terminated Docker client does not stop its container.
-      const cleanup = await runProcess({
+      cleanup = await runProcess({
         program: 'docker',
         args: ['rm', '--force', containerName],
         timeoutMs: 10_000,
         maxOutputBytes: 8192
       })
-      if (
-        cleanup.timedOut ||
-        (cleanup.code !== 0 && !cleanup.stderr.includes('No such container'))
-      ) {
-        throw new Error(
-          `Could not remove qualification container ${containerName}: ${cleanup.stderr}`
-        )
-      }
+    }
+    if (cleanup.timedOut || (cleanup.code !== 0 && !cleanup.stderr.includes('No such container'))) {
+      throw new Error(
+        `Could not remove qualification container ${containerName}: ${cleanup.stderr}`
+      )
     }
     if (result.timedOut || result.outputTruncated || result.code !== 0) {
       throw new Error(

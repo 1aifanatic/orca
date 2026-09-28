@@ -704,5 +704,5 @@
   "src/main/daemon/daemon-pty-daemon-recovery.ts": "93607d3c70530f18076636d24395d9b5b74cd8ca909efe33b1a7077de6b77119",
   "src/main/daemon/daemon-pty-adapter.ts": "cd295912ab55b392987ca2df7198d6ee24a1d21dcf00346638bd6c64c544dfd5",
   "src/main/daemon/linux-packaged-terminal-floor-fixture.ts": "3e59120ff27ad85f9850e0edf192de99e0e97836175fbbb56efe39ddd95524ca",
-  "config/scripts/run-linux-packaged-terminal-floor-smoke.mjs": "cc2761c8551c618be0233a96ba89a8508244691696e2b19fa23636301e8618cf"
+  "config/scripts/run-linux-packaged-terminal-floor-smoke.mjs": "7c59d31670fbe0e5d1c79d66cd40d67195fefb7ba42b3eb99f05552cf7921fce"
 }
