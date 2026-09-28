@@ -1,0 +1,96 @@
+name: Linux 5.4 final artifact diagnostic
+on:
+  push:
+    branches: [OrcaWin/np-linux54-diagnostic-x64]
+    paths:
+      - '.github/workflows/linux54-diagnostic.yml'
+      - 'config/diagnostics/linux54/**'
+  workflow_dispatch: {}
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: linux54-diagnostic-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  x64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      ORCA_BACKGROUND_LAUNCH: '1'
+      PRODUCTION_SHA: 04d9099d8ca9acecafa020b812a682caf7d1dcc5
+      PACKAGE_RUN: '36456329488'
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Checkout exact production fixture source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.PRODUCTION_SHA }}
+          persist-credentials: false
+      - name: Checkout diagnostic scripts independently
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          path: diagnostic
+          sparse-checkout: config/diagnostics/linux54
+          persist-credentials: false
+      - name: Require final successful package job before downloading
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api "repos/$GH_REPO/actions/runs/$PACKAGE_RUN" > "$RUNNER_TEMP/package-run.json"
+          gh api "repos/$GH_REPO/actions/runs/$PACKAGE_RUN/jobs?per_page=100" > "$RUNNER_TEMP/package-jobs.json"
+          python3 - <<'PY'
+          import json,os,pathlib
+          r=pathlib.Path(os.environ['RUNNER_TEMP'])
+          run=json.loads((r/'package-run.json').read_text())
+          assert run['status']=='completed', 'Wait for package run completion; do not use incomplete artifacts'
+          assert run['head_sha']==os.environ['PRODUCTION_SHA'], 'Wrong production source'
+          assert run['path']=='.github/workflows/bun-profile-tests.yml', 'Wrong package producer workflow'
+          jobs=json.loads((r/'package-jobs.json').read_text())
+          assert jobs['total_count']<=100, 'Job response truncated'
+          selected=[j for j in jobs['jobs'] if j['name'].startswith('linux_package') and 'x64' in j['name']]
+          assert len(selected)==1 and selected[0]['conclusion']=='success', 'Final x64 package job is not successful'
+          PY
+      - uses: actions/download-artifact@v8
+        with:
+          name: bun-linux-package-x64
+          run-id: ${{ env.PACKAGE_RUN }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/downloaded-package
+      - name: Locate and validate archive and completed userspace receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 diagnostic/config/diagnostics/linux54/prepare-artifact.py --directory "$RUNNER_TEMP/downloaded-package" --output "$RUNNER_TEMP/unpacked-x64" --sha "$PRODUCTION_SHA" --arch x64 > "$RUNNER_TEMP/package-location.json"
+          python3 - <<'PY'
+          import json,os,pathlib
+          data=json.loads((pathlib.Path(os.environ['RUNNER_TEMP'])/'package-location.json').read_text())
+          with open(os.environ['GITHUB_ENV'],'a') as f:f.write('EVIDENCE_DIRECTORY='+data['evidence']+'\n')
+          PY
+      - uses: ./.github/actions/install-node-dependencies
+        with:
+          native-runtime: none
+      - name: Install bounded VM prerequisites
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils cloud-image-utils ubuntu-cloudimage-keyring curl
+      - name: Run actual kernel qualification without a visible desktop
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 diagnostic/config/diagnostics/linux54/run.py --source-root "$GITHUB_WORKSPACE" --expected-source "$PRODUCTION_SHA" --arch amd64 --app-dir "$RUNNER_TEMP/unpacked-x64" --artifact-source-file "$EVIDENCE_DIRECTORY/source-commit.txt" --artifact-manifest "$EVIDENCE_DIRECTORY/payload-sha256.txt" --work-dir "$RUNNER_TEMP/linux54-x64"
+      - name: Retain small diagnostic evidence only
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux54-x64-qualification-${{ github.run_id }}
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/linux54-x64/receipt.json
+            ${{ runner.temp }}/linux54-x64/serial.log
+            ${{ runner.temp }}/linux54-x64/*.sums
+            ${{ runner.temp }}/linux54-x64/*.gpg
+            ${{ runner.temp }}/package-run.json
+            ${{ runner.temp }}/package-jobs.json
+            ${{ runner.temp }}/package-location.json

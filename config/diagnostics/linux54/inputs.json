@@ -1,0 +1,48 @@
+{
+  "source": "https://cloud-images.ubuntu.com/releases/focal/release-20250624",
+  "serial": "20250624",
+  "expectedKernel": "5.4.0-216-generic",
+  "expectedGlibc": "glibc 2.31",
+  "images": {
+    "amd64": {
+      "disk": {
+        "name": "ubuntu-20.04-server-cloudimg-amd64.img",
+        "sha256": "18f2977d77dfea1b74aee14533bd21c34f789139e949c57023b7364894b7e5e9",
+        "url": "https://cloud-images.ubuntu.com/releases/focal/release-20250624/ubuntu-20.04-server-cloudimg-amd64.img",
+        "maxBytes": 1073741824
+      },
+      "kernel": {
+        "name": "ubuntu-20.04-server-cloudimg-amd64-vmlinuz-generic",
+        "sha256": "c5bb7de4df4416f77e8eb33547a30673d84542c7b0ae789954ce82e8f8b26f09",
+        "url": "https://cloud-images.ubuntu.com/releases/focal/release-20250624/unpacked/ubuntu-20.04-server-cloudimg-amd64-vmlinuz-generic",
+        "maxBytes": 67108864
+      },
+      "initrd": {
+        "name": "ubuntu-20.04-server-cloudimg-amd64-initrd-generic",
+        "sha256": "0c45869437673f87bafc85dc90c3612df49714c920e677c6709654ae9f938dab",
+        "url": "https://cloud-images.ubuntu.com/releases/focal/release-20250624/unpacked/ubuntu-20.04-server-cloudimg-amd64-initrd-generic",
+        "maxBytes": 134217728
+      }
+    },
+    "arm64": {
+      "disk": {
+        "name": "ubuntu-20.04-server-cloudimg-arm64.img",
+        "sha256": "d4603cd783e2578f838c63f7c3a8dae6b554bd6358870f2c8eb182aa51ade465",
+        "url": "https://cloud-images.ubuntu.com/releases/focal/release-20250624/ubuntu-20.04-server-cloudimg-arm64.img",
+        "maxBytes": 1073741824
+      },
+      "kernel": {
+        "name": "ubuntu-20.04-server-cloudimg-arm64-vmlinuz-generic",
+        "sha256": "2927070c1e2700ccb828fc71fdf70537b1650bcfe395f22871a4f395c7f9e944",
+        "url": "https://cloud-images.ubuntu.com/releases/focal/release-20250624/unpacked/ubuntu-20.04-server-cloudimg-arm64-vmlinuz-generic",
+        "maxBytes": 67108864
+      },
+      "initrd": {
+        "name": "ubuntu-20.04-server-cloudimg-arm64-initrd-generic",
+        "sha256": "6765adf9f69dc2957654e9465a069f40b9d5ada9176abb61dce5e803363d2bb3",
+        "url": "https://cloud-images.ubuntu.com/releases/focal/release-20250624/unpacked/ubuntu-20.04-server-cloudimg-arm64-initrd-generic",
+        "maxBytes": 134217728
+      }
+    }
+  }
+}
