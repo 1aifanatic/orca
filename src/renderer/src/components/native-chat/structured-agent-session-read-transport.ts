@@ -3,27 +3,17 @@ import type { AgentSessionSubscribeEvent } from '../../../../shared/agent-sessio
 import { createStructuredAgentSessionEventCoalescer } from '../../../../shared/structured-agent-session-coalescer'
 import {
   AGENT_SESSION_UNATTACHED_READ_GRACE_MS,
+  isFinalAgentSessionReadRefusal,
   isUnattachedAgentSessionReadRefusal
 } from '../../../../shared/structured-agent-session-read-refusal'
-import { agentSessionThrownRefusal } from '../../../../shared/agent-session-write-failure'
+import type { AgentSessionRefusalReference } from '../../../../shared/agent-session-wire-refusals'
+import { readAgentSessionErrorRefusal } from '../../../../shared/agent-session-write-failure'
+import { subscribeRuntimeHostContactRegained } from '@/runtime/runtime-host-contact-regained'
 import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
-import { RuntimeRpcCallError } from '@/runtime/runtime-rpc-result'
 import { subscribeStructuredAgentSession } from '@/runtime/structured-agent-session-client'
-import { agentSessionWriteFailureText } from './agent-session-write-notice-text'
 
-// A stream hands its failure over as the raw `{ code, message, data }` payload; `String()` of that is `[object Object]`.
+// A stream hands its failure over as the raw `{ code, message }` payload; `String()` of that is `[object Object]`.
 function readFailureText(error: unknown): string {
-  // A thrown refusal's message is its bare code; its words come from the refusal in `data`.
-  const refusal = agentSessionThrownRefusal(
-    error instanceof RuntimeRpcCallError
-      ? error.response.error.data
-      : typeof error === 'object' && error !== null && 'data' in error
-        ? error.data
-        : undefined
-  )
-  if (refusal) {
-    return agentSessionWriteFailureText(refusal, 'read-history')
-  }
   if (error instanceof Error) {
     return error.message || 'Something went wrong.'
   }
@@ -41,19 +31,42 @@ function readFailureText(error: unknown): string {
   return 'Something went wrong.'
 }
 
+const RECONNECT_FIRST_DELAY_MS = 750
+const RECONNECT_MAX_DELAY_MS = 30_000
+
+/** Each reconnect waits twice the last, up to the cap, until a read delivers. */
 function createReconnectScheduler(args: { shouldStop: () => boolean; reconnect: () => void }) {
   let timer: ReturnType<typeof setTimeout> | null = null
+  let nextDelay = RECONNECT_FIRST_DELAY_MS
   return {
-    schedule(delay = 750): void {
+    schedule(): void {
       if (args.shouldStop() || timer) {
         return
       }
+      const delay = nextDelay
+      nextDelay = Math.min(delay * 2, RECONNECT_MAX_DELAY_MS)
       timer = setTimeout(() => {
         timer = null
         if (!args.shouldStop()) {
           args.reconnect()
         }
       }, delay)
+    },
+    /** A read delivered, so the next failure is retried soon again. */
+    reset(): void {
+      nextDelay = RECONNECT_FIRST_DELAY_MS
+    },
+    /** The host is reachable again: a waiting retry runs now instead of after the grown wait. */
+    retryNow(): void {
+      nextDelay = RECONNECT_FIRST_DELAY_MS
+      if (!timer) {
+        return
+      }
+      clearTimeout(timer)
+      timer = null
+      if (!args.shouldStop()) {
+        args.reconnect()
+      }
     },
     dispose(): void {
       if (timer) {
@@ -66,7 +79,8 @@ function createReconnectScheduler(args: { shouldStop: () => boolean; reconnect: 
 
 export function startStructuredAgentSessionReadTransport(args: {
   applyEvent: (event: AgentSessionSubscribeEvent) => void
-  applyError: (message: string) => void
+  /** `message` is the failure's own text, for logs; `refusal` is what a surface words. */
+  applyError: (message: string, refusal?: AgentSessionRefusalReference) => void
   getCursor: () => AgentJournalCursor | null
   onHistoryReadInvalidated: () => void
   hydrate?: (shouldStop: () => boolean) => Promise<void>
@@ -78,6 +92,8 @@ export function startStructuredAgentSessionReadTransport(args: {
 } {
   let stopped = false
   let connected = false
+  // A refusal no retry reads past ends reconnecting for this run; reopening the chat starts another.
+  let failedFinally = false
   let unattachedSince: number | null = null
   let opening = false
   let openGeneration = 0
@@ -90,9 +106,16 @@ export function startStructuredAgentSessionReadTransport(args: {
     }
   })
   const reconnectScheduler = createReconnectScheduler({
-    shouldStop: () => stopped || connected,
+    shouldStop: () => stopped || connected || failedFinally,
     reconnect: () => void open()
   })
+  // Why: an outage grows the retry wait to its cap; a host that is back should not wait it out.
+  const stopHostContactWatch =
+    args.target.kind === 'environment'
+      ? subscribeRuntimeHostContactRegained(args.target.environmentId, () =>
+          reconnectScheduler.retryNow()
+        )
+      : () => {}
   const isCurrentOpenGeneration = (candidate: number): boolean =>
     !stopped && candidate === openGeneration
   const clearUnattachedReadGrace = (): void => {
@@ -109,16 +132,25 @@ export function startStructuredAgentSessionReadTransport(args: {
    * A window, not a mute. An unattached read still refusing past the grace is no longer
    * transitional, so the pane is owed the failure rather than a spinner that never resolves.
    */
+  const applyReadFailure = (error: unknown): void => {
+    const refusal = readAgentSessionErrorRefusal(error)
+    failedFinally = isFinalAgentSessionReadRefusal(refusal)
+    if (refusal) {
+      args.applyError(readFailureText(error), refusal)
+    } else {
+      args.applyError(readFailureText(error))
+    }
+  }
   const reportReadFailure = (error: unknown): void => {
     if (!isUnattachedAgentSessionReadRefusal(error)) {
       clearUnattachedReadGrace()
-      args.applyError(readFailureText(error))
+      applyReadFailure(error)
       return
     }
     const now = Date.now()
     unattachedSince ??= now
     if (now - unattachedSince >= AGENT_SESSION_UNATTACHED_READ_GRACE_MS) {
-      args.applyError(readFailureText(error))
+      applyReadFailure(error)
     }
   }
   const captureHistoryReadGuard = (): (() => boolean) => {
@@ -132,6 +164,10 @@ export function startStructuredAgentSessionReadTransport(args: {
       return
     }
     clearUnattachedReadGrace()
+    // Not on connect: a local subscribe resolves before the host's open refuses.
+    if (event.type !== 'end') {
+      reconnectScheduler.reset()
+    }
     if (event.type === 'snapshot' || event.type === 'reset') {
       coalescer.flush()
       if (!isCurrentOpenGeneration(eventOpenGeneration)) {
@@ -243,6 +279,7 @@ export function startStructuredAgentSessionReadTransport(args: {
       stopped = true
       openGeneration += 1
       args.onHistoryReadInvalidated()
+      stopHostContactWatch()
       reconnectScheduler.dispose()
       coalescer.dispose()
       unsubscribe()

@@ -2,7 +2,10 @@ import type {
   AgentSessionMutationResult,
   AgentSessionSendResult
 } from '../../../../shared/agent-session-wire'
-import { agentSessionThrownRefusal } from '../../../../shared/agent-session-write-failure'
+import {
+  agentSessionRefusalFailure,
+  readAgentSessionErrorRefusal
+} from '../../../../shared/agent-session-write-failure'
 import {
   disposeStructuredAgentSessionSendFailure,
   disposeStructuredAgentSessionSendRefusal,
@@ -10,7 +13,6 @@ import {
   type StructuredAgentSessionSendDisposition
 } from '../../../../shared/structured-agent-session-send-disposition'
 import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
-import { RuntimeRpcCallError } from '@/runtime/runtime-rpc-result'
 import { callStructuredAgentSession } from '@/runtime/structured-agent-session-client'
 import {
   stageStructuredAgentSessionOutboxEntryForSend,
@@ -134,10 +136,8 @@ export function dispatchStructuredAgentSessionOutboxEntry(args: {
         entry: args.next,
         blockedClientMessageId: args.blockedIdRef.current
       }
-      const refusal =
-        caught instanceof RuntimeRpcCallError
-          ? agentSessionThrownRefusal(caught.response.error.data)
-          : undefined
+      const thrown = readAgentSessionErrorRefusal(caught)
+      const refusal = thrown ? agentSessionRefusalFailure(thrown) : undefined
       args.applyDisposition(
         refusal
           ? disposeStructuredAgentSessionSendRefusal({

@@ -12,6 +12,7 @@ import {
   isAgentSessionWireRefusalCode,
   readAgentSessionRefusalReference,
   type AgentSessionOwnerVerdict,
+  type AgentSessionRefusalReference,
   type AgentSessionWireRefusal,
   type AgentSessionWireRefusalCode
 } from './agent-session-wire-refusals'
@@ -129,32 +130,45 @@ export function agentSessionRefusalFailure(
     : { kind: 'refused', code: refusal.code }
 }
 
-/** The refusal a thrown request carries in its RPC error's `data` (`main/runtime/rpc/errors.ts`):
- *  its wire message is the bare code, so this is the only place its reason survives. */
-export function agentSessionThrownRefusal(data: unknown): AgentSessionWriteRefusal | undefined {
-  const reference = readAgentSessionRefusalReference(
-    typeof data === 'object' && data !== null && 'refusal' in data ? data.refusal : undefined
-  )
-  return reference ? agentSessionRefusalFailure(reference) : undefined
-}
-
-/** A request that threw, from the RPC error code and data the host answered with (undefined when
- *  none came back). Only a host that turned it away before running the method proves the write
- *  did not happen. */
-export function agentSessionRpcErrorFailure(
-  code: string | undefined,
-  data?: unknown
-): AgentSessionWriteFailure {
-  const refusal = agentSessionThrownRefusal(data)
-  if (refusal) {
-    return refusal
-  }
+/** A request that threw, from the RPC error code the host answered with (undefined when none came
+ *  back). Only a host that turned it away before running the method proves the write did not
+ *  happen. */
+export function agentSessionRpcErrorFailure(code: string | undefined): AgentSessionWriteFailure {
   if (code === 'method_not_found' || code === 'method_not_supported') {
     return { kind: 'refused', code: 'structured_agent_session_unsupported' }
   }
   return code === 'invalid_argument' || code === 'unauthorized'
     ? { kind: 'refused', code: 'agent_session_operation_invalid' }
     : { kind: 'unconfirmed' }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+/** The refusal a failed request's error carries in its data. Takes both shapes a client meets: an
+ *  RPC call's thrown error, whose payload is on `response.error`, and the payload a stream hands
+ *  its error callback. Undefined from an older host, or for a failure that was not a refusal. */
+export function readAgentSessionErrorRefusal(
+  error: unknown
+): AgentSessionRefusalReference | undefined {
+  const payload =
+    isRecord(error) && isRecord(error.response) && isRecord(error.response.error)
+      ? error.response.error
+      : error
+  const data = isRecord(payload) ? payload.data : undefined
+  return isRecord(data) ? readAgentSessionRefusalReference(data.refusal) : undefined
+}
+
+/** What to say about a request that threw: the host's refusal when its error carried one, else
+ *  what the RPC error code proves. Words only: whether the write may have happened stays the
+ *  caller's own classification. */
+export function agentSessionThrownFailure(
+  error: unknown,
+  rpcCode: string | undefined
+): AgentSessionWriteFailure {
+  const refusal = readAgentSessionErrorRefusal(error)
+  return refusal ? agentSessionRefusalFailure(refusal) : agentSessionRpcErrorFailure(rpcCode)
 }
 
 /** A saved failure, or undefined when it is not one this build wrote. */

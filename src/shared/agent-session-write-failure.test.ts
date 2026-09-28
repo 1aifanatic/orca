@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   agentSessionRefusalFailure,
-  agentSessionRpcErrorFailure,
-  agentSessionThrownRefusal,
-  parseAgentSessionWriteFailure
+  agentSessionThrownFailure,
+  parseAgentSessionWriteFailure,
+  readAgentSessionErrorRefusal
 } from './agent-session-write-failure'
 
 const HOST_TEXT = 'Expected runtime fence 1; the session is at 3.'
@@ -125,47 +125,70 @@ describe('agentSessionRefusalFailure', () => {
   })
 })
 
-describe('a refusal the host threw', () => {
-  // The RPC error's data `mapRuntimeError` sends for it (wire code `runtime_error`), as it
-  // reaches a client over JSON.
-  const data = saved({
-    refusal: {
+describe('a refusal a failed request carried in its error', () => {
+  const refusal = {
+    code: 'agent_session_journal_unreadable',
+    details: { reason: 'journalCorrupt', stray: 'dropped' }
+  }
+  const payload = { code: 'runtime_error', message: 'agent_session_journal_unreadable' }
+
+  it('is read from a thrown RPC error and from a stream payload alike', () => {
+    const expected = {
       code: 'agent_session_journal_unreadable',
-      details: { reason: 'journalOwnedElsewhere', processKind: 'dev-desktop' }
+      details: { reason: 'journalCorrupt' }
     }
+    expect(
+      readAgentSessionErrorRefusal({ response: { error: { ...payload, data: { refusal } } } })
+    ).toEqual(expected)
+    expect(readAgentSessionErrorRefusal(saved({ ...payload, data: { refusal } }))).toEqual(expected)
   })
 
-  it('is read from the error data, reason and process kind kept', () => {
-    const refusal = {
+  it.each([
+    ['an older host', payload],
+    ['a thrown error without a response', new Error('agent_session_journal_unreadable')],
+    ['a code this build does not know', { ...payload, data: { refusal: { code: 'from_later' } } }],
+    ['nothing', undefined]
+  ])('is absent from %s', (_label, error) => {
+    expect(readAgentSessionErrorRefusal(error)).toBeUndefined()
+  })
+
+  it("words the refusal when there is one, else what the request's error code proves", () => {
+    expect(agentSessionThrownFailure({ ...payload, data: { refusal } }, 'runtime_error')).toEqual({
       kind: 'refused',
+      code: 'agent_session_journal_unreadable',
+      details: { reason: 'journalCorrupt' }
+    })
+    expect(agentSessionThrownFailure(payload, 'runtime_error')).toEqual({ kind: 'unconfirmed' })
+    expect(agentSessionThrownFailure(payload, 'method_not_found')).toEqual({
+      kind: 'refused',
+      code: 'structured_agent_session_unsupported'
+    })
+  })
+
+  it("keeps the owner refusal's reason and process kind", () => {
+    const owner = {
       code: 'agent_session_journal_unreadable',
       details: { reason: 'journalOwnedElsewhere', processKind: 'dev-desktop' }
     }
-    expect(agentSessionThrownRefusal(data)).toEqual(refusal)
     // Not "Orca couldn't confirm what happened": the host refused it before running it.
-    expect(agentSessionRpcErrorFailure('runtime_error', data)).toEqual(refusal)
+    expect(
+      agentSessionThrownFailure(saved({ ...payload, data: { refusal: owner } }), 'runtime_error')
+    ).toEqual({
+      kind: 'refused',
+      ...owner
+    })
   })
 
   it("degrades a reason or kind another build added to the code's own words", () => {
     const newer = {
-      refusal: {
-        code: 'agent_session_journal_unreadable',
-        details: { reason: 'journalFromTheFuture', processKind: 'phone' }
-      }
+      code: 'agent_session_journal_unreadable',
+      details: { reason: 'journalFromTheFuture', processKind: 'phone' }
     }
-    expect(agentSessionThrownRefusal(newer)).toEqual({
+    expect(
+      agentSessionThrownFailure({ ...payload, data: { refusal: newer } }, 'runtime_error')
+    ).toEqual({
       kind: 'refused',
       code: 'agent_session_journal_unreadable'
-    })
-  })
-
-  it('finds none in an error that carries no refusal', () => {
-    expect(agentSessionThrownRefusal(undefined)).toBeUndefined()
-    expect(
-      agentSessionThrownRefusal({ refusal: { code: 'agent_session_from_the_future' } })
-    ).toBeUndefined()
-    expect(agentSessionRpcErrorFailure('runtime_error', { nextSteps: [] })).toEqual({
-      kind: 'unconfirmed'
     })
   })
 })

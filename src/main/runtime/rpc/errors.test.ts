@@ -20,7 +20,7 @@ import {
   agentSessionRefusalError,
   refuseUnclassified
 } from '../../../shared/agent-session-wire-refusals'
-import { agentSessionThrownRefusal } from '../../../shared/agent-session-write-failure'
+import { readAgentSessionErrorRefusal } from '../../../shared/agent-session-write-failure'
 
 class LineageError extends Error {
   code = 'LINEAGE_PARENT_NOT_FOUND'
@@ -379,8 +379,7 @@ describe('thrown agent-session refusals', () => {
         }
       }
     })
-    expect(agentSessionThrownRefusal(wire.data)).toEqual({
-      kind: 'refused',
+    expect(readAgentSessionErrorRefusal(wire)).toEqual({
       code: 'agent_session_journal_unreadable',
       details: { reason: 'journalOwnedElsewhere', processKind: 'dev-desktop' }
     })

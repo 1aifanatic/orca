@@ -23,7 +23,7 @@ import {
 } from './structured-agent-session-launch-registry'
 import {
   agentSessionRefusalFailure,
-  agentSessionRpcErrorFailure,
+  agentSessionThrownFailure,
   type AgentSessionWriteFailure
 } from '../../../shared/agent-session-write-failure'
 
@@ -110,10 +110,10 @@ async function setLaunchOption(
   } catch (error) {
     return {
       kind: 'refused',
-      failure:
-        error instanceof RuntimeRpcCallError
-          ? agentSessionRpcErrorFailure(error.code, error.response.error.data)
-          : agentSessionRpcErrorFailure(undefined)
+      failure: agentSessionThrownFailure(
+        error,
+        error instanceof RuntimeRpcCallError ? error.code : undefined
+      )
     }
   }
 }

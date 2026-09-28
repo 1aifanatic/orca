@@ -256,7 +256,7 @@
     "cmdk": "^1.1.1",
     "diff": "8.0.4",
     "dompurify": "3.4.15",
-    "electron": "43.7.0",
+    "electron": "43.7.5",
     "electron-builder": "^26.15.3",
     "electron-builder-squirrel-windows": "^26.15.3",
     "electron-vite": "^5.0.0",

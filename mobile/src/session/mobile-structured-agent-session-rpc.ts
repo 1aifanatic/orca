@@ -15,9 +15,10 @@ import {
   agentSessionWriteNoticeParts
 } from '../../../src/shared/agent-session-refusal-notice'
 import {
-  agentSessionRpcErrorFailure,
-  agentSessionThrownRefusal,
+  agentSessionRefusalFailure,
+  agentSessionThrownFailure,
   agentSessionWriteKindForMethod,
+  readAgentSessionErrorRefusal,
   type AgentSessionWriteKind
 } from '../../../src/shared/agent-session-write-failure'
 import { structuredSessionOperationId } from './structured-session-operation-id'
@@ -64,20 +65,13 @@ class AgentSessionRpcResponseError extends Error {
  *  frame (`{ message, error }`): a thrown refusal's message is its bare code, so its words come
  *  from the refusal in the error's data. */
 export function agentSessionReadFailureText(failure: unknown): string {
-  const data =
-    failure instanceof AgentSessionRpcResponseError
-      ? failure.data
-      : typeof failure === 'object' &&
-          failure !== null &&
-          'error' in failure &&
-          typeof failure.error === 'object' &&
-          failure.error !== null &&
-          'data' in failure.error
-        ? failure.error.data
-        : undefined
-  const refusal = agentSessionThrownRefusal(data)
+  const refusal = readAgentSessionErrorRefusal(
+    typeof failure === 'object' && failure !== null && 'error' in failure ? failure.error : failure
+  )
   if (refusal) {
-    return agentSessionWriteNoticeEnglish(agentSessionWriteNoticeParts(refusal, 'read-history'))
+    return agentSessionWriteNoticeEnglish(
+      agentSessionWriteNoticeParts(agentSessionRefusalFailure(refusal), 'read-history')
+    )
   }
   if (failure instanceof Error) {
     return failure.message
@@ -223,7 +217,7 @@ export async function requestStructuredAgentSessionMutation<TValue>(args: {
   } catch (error) {
     const answered =
       error instanceof AgentSessionRpcResponseError
-        ? agentSessionRpcErrorFailure(error.code, error.data)
+        ? agentSessionThrownFailure(error, error.code)
         : null
     if (answered && answered.kind !== 'unconfirmed') {
       // The host turned the request away before running it; its text is written for a log.
