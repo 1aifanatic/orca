@@ -19,7 +19,7 @@ with tarfile.open(archive, "r:gz") as bundle:
         raise ValueError("archive contains unsafe path")
     if any(not member.isfile() for member in members):
         raise ValueError("archive must contain regular files only")
-    bundle.extractall(destination, filter="data")
+    bundle.extractall(destination)
     files = {path.name for path in destination.iterdir()}
 if "inputs.json" not in files:
     raise ValueError("archive omitted inputs.json")
