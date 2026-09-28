@@ -25,6 +25,9 @@ on:
         type: boolean
         default: false
 
+env:
+  ORCA_TEST_REQUIRE_ORCAD_ARTIFACTS: '1'
+
 permissions:
   contents: read
 
@@ -183,7 +186,7 @@ jobs:
       - name: Verify native Alpine artifact and persistence
         run: |
           docker run --rm --init -i \
-            -e ORCA_BACKGROUND_LAUNCH=1 \
+            -e ORCA_BACKGROUND_LAUNCH=1 -e ORCA_TEST_REQUIRE_ORCAD_ARTIFACTS=1 \
             -v "$GITHUB_WORKSPACE:/work" -w /work \
             node:24-alpine3.23 sh -s <<'BUN_QUALIFICATION'
           set -eu

@@ -13,7 +13,12 @@ const runtime = join(
   `${process.platform}-${process.arch}`,
   cliRuntimeFilename(process.platform)
 )
-const env = { ...process.env, ORCA_BACKGROUND_LAUNCH: '1', BUN_EXECUTABLE: runtime }
+const env = {
+  ...process.env,
+  ORCA_BACKGROUND_LAUNCH: '1',
+  BUN_EXECUTABLE: runtime,
+  ORCA_TEST_REQUIRE_CLI_ARTIFACTS: '1'
+}
 function run(args, environment = env) {
   const result = runProcessSync({
     program: process.execPath,

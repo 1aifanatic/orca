@@ -466,14 +466,23 @@ describe('packaged runtime resources', () => {
         )
         await writeFile(join(unpackedCliDir, 'cli-bin.js'), "require('./index.js')\n", 'utf8')
         await mkdir(join(resourcesDir, 'terminal-daemon'), { recursive: true })
-        await writeFile(join(resourcesDir, 'terminal-daemon', 'daemon-entry.js'), '')
-        await writeBundledCliRuntimeFixture(join(resourcesDir, 'cli-runtime'), 'linux', 'x64')
+        await writeFile(
+          join(resourcesDir, 'terminal-daemon', 'daemon-entry.js'),
+          'console.error("Usage: daemon-entry <socket>"); process.exit(1)\n'
+        )
+        const quotedNode = `'${process.execPath.replaceAll("'", "'\\''")}'`
+        await writeBundledCliRuntimeFixture(
+          join(resourcesDir, 'cli-runtime'),
+          'linux',
+          process.arch,
+          `#!/bin/sh\nexec ${quotedNode} "$@"\n`
+        )
         await writeFile(launcherPath, '#!/usr/bin/env bash\n', { encoding: 'utf8', mode: 0o644 })
 
         await electronBuilderConfig.afterPack({
           appOutDir: join(root, 'linux-unpacked'),
           electronPlatformName: 'linux',
-          arch: 1,
+          arch: process.arch === 'arm64' ? 3 : 1,
           packager: { appInfo: { version: '9.9.9' } }
         })
 

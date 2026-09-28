@@ -6,10 +6,14 @@ import { copyFile, mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { cliRuntimeTarget, cliRuntimeFilename } from '../bundled-cli-runtime.cjs'
 
-export async function writeBundledCliRuntimeFixture(directory, platform, arch) {
-  const bytes = 'runtime fixture'
+export async function writeBundledCliRuntimeFixture(
+  directory,
+  platform,
+  arch,
+  bytes = 'runtime fixture'
+) {
   await mkdir(directory, { recursive: true })
-  await writeFile(join(directory, cliRuntimeFilename(platform)), bytes)
+  await writeFile(join(directory, cliRuntimeFilename(platform)), bytes, { mode: 0o755 })
   await copyFile(
     join(import.meta.dirname, '../../resources/licenses/bun/LICENSE.md'),
     join(directory, 'LICENSE.md')
