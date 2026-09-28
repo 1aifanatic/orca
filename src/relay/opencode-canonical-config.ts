@@ -19,15 +19,14 @@ export function installOpenCodePluginInCanonicalConfig(
       agent === 'opencode2' ? 'orca-opencode2-status.js' : 'orca-opencode-status.js'
     const pluginPath = join(configDir, 'plugins', pluginFileName)
     mkdirSync(join(configDir, 'plugins'), { recursive: true })
-    if (isInstalledOpenCodePluginCurrent(pluginPath, source)) {
-      return true
+    if (!isInstalledOpenCodePluginCurrent(pluginPath, source)) {
+      try {
+        unlinkSync(pluginPath)
+      } catch {
+        // The file may not exist on the first install.
+      }
+      writeFileSync(pluginPath, source)
     }
-    try {
-      unlinkSync(pluginPath)
-    } catch {
-      // The file may not exist on the first install.
-    }
-    writeFileSync(pluginPath, source)
     return true
   } catch (err) {
     process.stderr.write(

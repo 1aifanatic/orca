@@ -28,7 +28,10 @@ import {
   OPENCODE2_LEGACY_HOOKS_DIR,
   OPENCODE_LEGACY_HOOKS_DIR
 } from './legacy-shared-config-dir'
-import { isInstalledOpenCodePluginCurrent } from '../../shared/opencode-installed-plugin'
+import {
+  isInstalledOpenCodePluginCurrent,
+  isOverlayOpenCodePluginCurrent
+} from '../../shared/opencode-installed-plugin'
 
 const ORCA_OPENCODE_PLUGIN_FILE = 'orca-opencode-status.js'
 const OPENCODE_OVERLAY_DIR = 'opencode-config-overlays'
@@ -280,15 +283,14 @@ export class OpenCodeHookService {
     mkdirSync(pluginsDir, { recursive: true })
     const pluginPath = join(pluginsDir, this.pluginFileName)
     const source = this.pluginSource()
-    if (isInstalledOpenCodePluginCurrent(pluginPath, source)) {
-      return
+    if (!isOverlayOpenCodePluginCurrent(pluginPath, source)) {
+      try {
+        unlinkSync(pluginPath)
+      } catch {
+        // File may not exist on a fresh overlay; a real failure surfaces on writeFileSync below.
+      }
+      writeFileSync(pluginPath, source)
     }
-    try {
-      unlinkSync(pluginPath)
-    } catch {
-      // File may not exist on a fresh overlay; a real failure surfaces on writeFileSync below.
-    }
-    writeFileSync(pluginPath, source)
   }
 
   private writePluginToConfigDir(configDir: string): void {

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -76,7 +77,7 @@ describe('PluginOverlayManager', () => {
     ).toBe('v2 plugin')
   })
 
-  // Why: OpenCode 2 hot-reloads every plugin when a plugins-dir file is rewritten, even unchanged.
+  // Why: OpenCode 2 reloads a plugin whose file mtime changed, even with unchanged bytes.
   it('leaves a current canonical plugin untouched and replaces a stale one', () => {
     const env = { XDG_CONFIG_HOME: join(homeDir, 'xdg') }
     const pluginPath = join(homeDir, 'xdg', 'opencode', 'plugins', 'orca-opencode2-status.js')
@@ -91,6 +92,30 @@ describe('PluginOverlayManager', () => {
     manager.setSources({ opencode2PluginSource: 'v2 plugin, next release' })
     expect(manager.installOpenCodePlugin('opencode2', env)).toBe(true)
     expect(readFileSync(pluginPath, 'utf8')).toBe('v2 plugin, next release')
+  })
+
+  // Why: OpenCode 2 loads through a file-level symlink (dotfile managers) and stats its target.
+  it('leaves a symlinked canonical plugin with current bytes untouched', () => {
+    const env = { XDG_CONFIG_HOME: join(homeDir, 'xdg') }
+    const pluginsDir = join(homeDir, 'xdg', 'opencode', 'plugins')
+    const pluginPath = join(pluginsDir, 'orca-opencode2-status.js')
+    const targetPath = join(homeDir, 'dotfiles-orca-opencode2-status.js')
+    mkdirSync(pluginsDir, { recursive: true })
+    writeFileSync(targetPath, 'v2 plugin')
+    symlinkSync(targetPath, pluginPath)
+    const past = new Date('2020-01-01T00:00:00Z')
+    utimesSync(targetPath, past, past)
+    manager.setSources({ opencode2PluginSource: 'v2 plugin' })
+
+    expect(manager.installOpenCodePlugin('opencode2', env)).toBe(true)
+    expect(lstatSync(pluginPath).isSymbolicLink()).toBe(true)
+    expect(statSync(targetPath).mtimeMs).toBe(past.getTime())
+
+    manager.setSources({ opencode2PluginSource: 'v2 plugin, next release' })
+    expect(manager.installOpenCodePlugin('opencode2', env)).toBe(true)
+    expect(lstatSync(pluginPath).isFile()).toBe(true)
+    expect(readFileSync(pluginPath, 'utf8')).toBe('v2 plugin, next release')
+    expect(readFileSync(targetPath, 'utf8')).toBe('v2 plugin')
   })
 
   it('mirrors a preexisting remote OpenCode config dir before adding Orca plugin', () => {
