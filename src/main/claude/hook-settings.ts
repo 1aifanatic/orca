@@ -19,9 +19,10 @@ import { isGitBashAvailable } from '../git-bash'
 import type { ClaudeManagedHookPlan } from './claude-managed-hook-events'
 
 export type ClaudeCompatibleHookSettings = {
-  configDirName: '.claude' | '.openclaude'
-  scriptBaseName: 'claude-hook' | 'openclaude-hook'
+  configDirName: '.claude' | '.openclaude' | '.qoder'
+  scriptBaseName: 'claude-hook' | 'openclaude-hook' | 'qoder-hook'
   usesWindowsCompatLauncher: boolean
+  windowsHookShell?: 'powershell'
 }
 
 export const CLAUDE_HOOK_SETTINGS: ClaudeCompatibleHookSettings = {
@@ -96,6 +97,14 @@ export function getManagedLifecycleHook(
   if (process.platform !== 'win32' || !settings.usesWindowsCompatLauncher) {
     return buildManagedCommandHook(getManagedCommand(scriptPath, { neutralJsonWhenMissing: true }))
   }
+  if (settings.windowsHookShell === 'powershell') {
+    return {
+      type: 'command',
+      command: getWindowsPowerShellLifecycleCommand(scriptPath),
+      shell: 'powershell',
+      timeout: MANAGED_HOOK_TIMEOUT_SECONDS
+    }
+  }
   return getWindowsManagedLifecycleHook(scriptPath, options)
 }
 
@@ -115,19 +124,21 @@ export function getWindowsManagedLifecycleHook(
   if (directCommand) {
     return { type: 'command', command: directCommand, timeout: MANAGED_HOOK_TIMEOUT_SECONDS }
   }
+  return {
+    type: 'command',
+    command: wrapWindowsPowerShellEncodedCommand(getWindowsPowerShellLifecycleCommand(scriptPath)),
+    timeout: MANAGED_HOOK_TIMEOUT_SECONDS
+  }
+}
+
+function getWindowsPowerShellLifecycleCommand(scriptPath: string): string {
   const scriptFileName = win32.basename(scriptPath)
-  // Why: runtime profile resolution keeps the managed entry portable across users (STA-3348).
   const quotedRelativePath = quotePowerShellLiteral(`.orca\\agent-hooks\\${scriptFileName}`)
-  // Why: compat consumers require neutral JSON even when the managed script is missing (#14818).
-  const innerCommand =
+  return (
     `$scriptPath = Join-Path $env:USERPROFILE ${quotedRelativePath}; ` +
     'if (Test-Path -LiteralPath $scriptPath -PathType Leaf) { & $scriptPath; exit $LASTEXITCODE }; ' +
     "[Console]::In.ReadToEnd() | Out-Null; Write-Output '{}'; exit 0"
-  return {
-    type: 'command',
-    command: wrapWindowsPowerShellEncodedCommand(innerCommand),
-    timeout: MANAGED_HOOK_TIMEOUT_SECONDS
-  }
+  )
 }
 
 export function hasSameManagedHookInvocation(
@@ -136,6 +147,7 @@ export function hasSameManagedHookInvocation(
 ): boolean {
   return (
     actual.command === expected.command &&
+    actual.shell === expected.shell &&
     JSON.stringify(actual.args ?? []) === JSON.stringify(expected.args ?? [])
   )
 }

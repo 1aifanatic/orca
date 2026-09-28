@@ -1,4 +1,5 @@
 import { existsSync, rmSync, writeFileSync } from 'node:fs'
+import type { AgentHookSource } from '../../shared/agent-hook-relay'
 import type { SFTPWrapper } from 'ssh2'
 import type { AgentHookInstallState, AgentHookInstallStatus } from '../../shared/agent-hook-types'
 import {
@@ -49,6 +50,9 @@ type ClaudeHookServiceOptions = {
   agent: AgentHookInstallStatus['agent']
   displayName: string
   settings: ClaudeCompatibleHookSettings
+  source?: AgentHookSource
+  /** A Claude-compatible CLI with its own settings file writes a fixed plan, not Claude's version table. */
+  hookPlan?: ClaudeManagedHookPlan
 }
 
 type ClaudeHookInstallOptions = {
@@ -69,11 +73,11 @@ export class ClaudeHookService {
   }
 
   // Why: Claude's settings loader rejects events newer than the running CLI, so its plan follows the
-  // resolved version; OpenClaude reads its own settings file.
+  // resolved version; OpenClaude and Qoder read their own settings files.
   private managedHookPlan(options: ClaudeHookInstallOptions): ClaudeManagedHookPlan {
     return this.options.agent === 'claude'
       ? getClaudeManagedHookPlan(options.claudeVersion)
-      : OPENCLAUDE_MANAGED_HOOK_PLAN
+      : (this.options.hookPlan ?? OPENCLAUDE_MANAGED_HOOK_PLAN)
   }
 
   getStatus(options: ClaudeHookInstallOptions = {}): AgentHookInstallStatus {
@@ -127,6 +131,7 @@ export class ClaudeHookService {
     await refreshManagedScriptIfPresent(
       getManagedScriptPath(this.options.settings),
       getManagedScript('local', {
+        source: this.options.source,
         skipWhenDevinImportsClaude: this.options.agent === 'claude',
         skipWhenGrokImportsClaude: this.options.agent === 'claude'
       })
@@ -163,6 +168,7 @@ export class ClaudeHookService {
     writeManagedScript(
       scriptPath,
       getManagedScript('local', {
+        source: this.options.source,
         skipWhenDevinImportsClaude: this.options.agent === 'claude',
         skipWhenGrokImportsClaude: this.options.agent === 'claude'
       })
@@ -255,6 +261,7 @@ export class ClaudeHookService {
         sftp,
         remoteScriptPath,
         getManagedScript('posix', {
+          source: this.options.source,
           skipWhenDevinImportsClaude: this.options.agent === 'claude',
           skipWhenGrokImportsClaude: this.options.agent === 'claude'
         })

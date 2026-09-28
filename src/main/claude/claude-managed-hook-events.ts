@@ -1,3 +1,4 @@
+import type { HookDefinition } from '../agent-hooks/installer-utils'
 import {
   claudeKnowsHookEvent,
   claudeKnowsStatusLine,
@@ -79,12 +80,15 @@ const CLAUDE_SESSION_END_EVENT = {
 
 export const CLAUDE_MANAGED_EVENTS = [...CLAUDE_EVENTS, CLAUDE_SESSION_END_EVENT] as const
 
-export type ClaudeManagedHookEvent = (typeof CLAUDE_MANAGED_EVENTS)[number]
+export type ManagedHookEvent = {
+  eventName: string
+  definition: Omit<HookDefinition, 'hooks'>
+}
 
 export type ClaudeManagedHookPlan = {
-  install: readonly ClaudeManagedHookEvent[]
+  install: readonly ManagedHookEvent[]
   /** Events whose Orca entry must go; user entries under them always stay. */
-  retire: readonly ClaudeManagedHookEvent[]
+  retire: readonly ManagedHookEvent[]
   /** Orca's statusLine usage feed; `retire` removes only Orca's own, `leave` never touches the slot. */
   statusLine: 'install' | 'retire' | 'leave'
 }
