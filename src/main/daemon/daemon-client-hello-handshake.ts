@@ -110,23 +110,18 @@ export function sendDaemonHello(
   })
 }
 
-function parseDaemonEndpointIdentity(value: unknown): DaemonEndpointIdentity | null {
-  if (!value || typeof value !== 'object') {
+function isDaemonIdentityRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object'
+}
+
+function parseDaemonEndpointIdentity(identity: unknown): DaemonEndpointIdentity | null {
+  if (!isDaemonIdentityRecord(identity)) {
     return null
   }
-  const identity = value as {
-    pid?: unknown
-    startedAtMs?: unknown
-    launchNonce?: unknown
-    linuxStartTicks?: unknown
-    bootId?: unknown
-    entryPath?: unknown
-    appVersion?: unknown
-    spawnerExecPath?: unknown
-  }
   if (
+    typeof identity.pid !== 'number' ||
     !Number.isSafeInteger(identity.pid) ||
-    (identity.pid as number) <= 0 ||
+    identity.pid <= 0 ||
     typeof identity.startedAtMs !== 'number' ||
     !Number.isFinite(identity.startedAtMs) ||
     identity.startedAtMs <= 0 ||
@@ -149,7 +144,7 @@ function parseDaemonEndpointIdentity(value: unknown): DaemonEndpointIdentity | n
     ...(typeof identity.linuxStartTicks === 'string' && typeof identity.bootId === 'string'
       ? { linuxStartTicks: identity.linuxStartTicks, bootId: identity.bootId }
       : {}),
-    pid: identity.pid as number,
+    pid: identity.pid,
     startedAtMs: identity.startedAtMs,
     launchNonce: identity.launchNonce,
     ...(typeof identity.entryPath === 'string' && identity.entryPath.length > 0
