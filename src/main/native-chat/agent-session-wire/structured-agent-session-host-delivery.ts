@@ -56,9 +56,9 @@ export function createStructuredAgentSessionConversationDelivery(input: {
       structuredAgentSessionConversationFence(deps.store, sessionId),
     abandonQueued: async (sessionId, which) => {
       const session = sessions.get(sessionId)
-      if (session) {
-        await abandonQueuedStructuredAgentSessionMessages(deps, sessionId, session.journal, which)
-      }
+      return session
+        ? abandonQueuedStructuredAgentSessionMessages(deps, sessionId, session.journal, which)
+        : true
     },
     startFailureText: (sessionId, cause) =>
       structuredAgentSessionStartFailureText(deps.store.getRecord(sessionId), cause),

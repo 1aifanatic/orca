@@ -27,6 +27,7 @@ import { AgentSessionRecordStore } from '../../runtime/agent-session-record-stor
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
 import { stopStructuredAgentSessionAgentUnderSerialize } from './structured-agent-session-host-lifetime'
+import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
 import {
   HOST_TEST_LOCATION,
   HOST_TEST_NOW as NOW,
@@ -681,7 +682,9 @@ describe('how a stopped child ends the start its loop was waiting on', () => {
     )
   }
 
-  it('closes what was queued when the user closed the chat, and starts no child for it', async () => {
+  /** A message queued behind a starting child when the close's stop cut it. `beforeStart` runs
+   *  after the stop and before the loop looks again. */
+  async function closedWhileStarting(beforeStart: () => void = () => undefined) {
     const start = deferred<void>()
     adapterExtras = {
       awaitStarted: vi.fn(() => start.promise),
@@ -693,9 +696,15 @@ describe('how a stopped child ends the start its loop was waiting on', () => {
     await eventually(() => expect(adapterExtras.awaitStarted).toHaveBeenCalledTimes(1))
     await closeStopOnly()
     const starts = acquire.mock.calls.length
+    beforeStart()
     start.resolve()
-
     await settleLoop()
+    return { first, starts }
+  }
+
+  it('closes what was queued when the user closed the chat, and starts no child for it', async () => {
+    const { first, starts } = await closedWhileStarting()
+
     expect(submission(first)).toMatchObject({
       dispatchState: 'rejected',
       reason: DISPATCH_REJECTED_PROVIDER_CLOSED
@@ -703,6 +712,49 @@ describe('how a stopped child ends the start its loop was waiting on', () => {
     expect(acquire).toHaveBeenCalledTimes(starts)
     expect(dispatch).not.toHaveBeenCalled()
     expect(statusRows()).toEqual([])
+  })
+
+  it('starts no child when closing what was queued fails, and closes it on the next wake', async () => {
+    const { first, starts } = await closedWhileStarting(() => {
+      const journal = conversation()!.journal
+      const reject = journal.rejectQueuedSubmissions.bind(journal)
+      vi.spyOn(journal, 'rejectQueuedSubmissions').mockImplementation(async (...args) => {
+        if (args[1] === DISPATCH_REJECTED_PROVIDER_CLOSED) {
+          vi.mocked(journal.rejectQueuedSubmissions).mockImplementation(reject)
+          throw new Error('disk full')
+        }
+        return reject(...args)
+      })
+    })
+
+    expect(submission(first)?.dispatchState).toBe('pending')
+    expect(acquire).toHaveBeenCalledTimes(starts)
+    expect(dispatch).not.toHaveBeenCalled()
+
+    const second = await accept('second')
+    await eventually(() => expect(submission(second)?.dispatchState).toBe('accepted'))
+    expect(submission(first)).toMatchObject({
+      dispatchState: 'rejected',
+      reason: DISPATCH_REJECTED_PROVIDER_CLOSED
+    })
+    expect(dispatch).toHaveBeenCalledTimes(1)
+  })
+
+  it('goes on with a message sent in a later epoch, whose sequence restarts at or below the close', async () => {
+    await closedWhileStarting()
+    const session = conversation()!
+    await session.journal.rollEpoch(
+      'corruption',
+      structuredAgentSessionConversationFence(store, SESSION)
+    )
+
+    const second = await accept('second')
+
+    await eventually(() => expect(submission(second)?.dispatchState).toBe('accepted'))
+    expect(session.lastEndedChild).toMatchObject({ cause: 'user-close' })
+    expect(submission(second)!.acceptedSequence).toBeLessThanOrEqual(
+      session.lastEndedChild!.endedAt.sequence
+    )
   })
 
   it('goes on with a message sent after the close, never failing it', async () => {

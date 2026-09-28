@@ -43,11 +43,11 @@ export type StructuredAgentSessionDeliveryLoopDeps = {
   ensureProviderChild: (sessionId: string) => Promise<StructuredAgentSessionResumeOutcome>
   /** The fence the conversation's own writes carry; see `structuredAgentSessionConversationFence`. */
   conversationFence: (sessionId: string) => number
-  /** Rejects queued messages as a completed close of the chat does. */
+  /** Rejects queued messages as a completed close of the chat does; false when that failed. */
   abandonQueued: (
     sessionId: string,
     which: (submission: AgentJournalSubmission) => boolean
-  ) => Promise<void>
+  ) => Promise<boolean>
   /** What the chat says when the session could not be made ready. */
   startFailureText: (sessionId: string, cause: AgentSessionWireRefusal) => string
   onError: (sessionId: string, error: unknown) => void
@@ -139,7 +139,10 @@ export class StructuredAgentSessionDeliveryLoop {
       // A handle closes only with nothing queued, so one an earlier handle wrote is a leftover.
       (submission) => session.journal.wroteBeforeOpen(submission.acceptedSequence)
     )
-    await this.closeWhatTheUserClosed(sessionId, session)
+    if (!(await this.closeWhatTheUserClosed(sessionId, session))) {
+      // Never start an agent for a message the user closed; the next wake re-derives and retries.
+      return this.stop(sessionId)
+    }
     const oldest = oldestQueuedSubmission(session)
     if (!oldest) {
       return this.stop(sessionId)
@@ -225,17 +228,18 @@ export class StructuredAgentSessionDeliveryLoop {
   }
 
   /** A close of this chat that stopped its child and then did not complete still closed what was
-   *  queued before it, so no child starts for those. Ordered, not latched: a later send goes on. */
+   *  queued before it, so no child starts for those. Ordered, not latched: a later send goes on.
+   *  False when those could not be closed. */
   private async closeWhatTheUserClosed(
     sessionId: string,
     session: StructuredAgentSessionHostSession
-  ): Promise<void> {
+  ): Promise<boolean> {
     const ended = session.lastEndedChild
     if (session.child || !ended || childEndDisposition(ended.cause) !== 'closed') {
-      return
+      return true
     }
     const { epoch } = session.journal.cursor()
-    await this.deps.abandonQueued(
+    return this.deps.abandonQueued(
       sessionId,
       (submission) =>
         ended.endedAt.epoch === epoch &&

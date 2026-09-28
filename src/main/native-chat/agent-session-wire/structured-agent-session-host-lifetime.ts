@@ -57,20 +57,27 @@ type ConversationCloseDeps = Pick<StructuredAgentSessionHostDeps, 'onEventSinkEr
 
 /** A conversation's handle closes with nothing queued: what is still queued when the chat closes,
  *  or the app quits, will not be handed over. Best effort: the next open's delivery loop rejects a
- *  leftover itself. `which` narrows it to the messages a close that did not complete closed. */
+ *  leftover itself. `which` narrows it to the messages a close that did not complete closed.
+ *  Resolves false when the rejection failed; the failure is reported, never thrown. */
 export async function abandonQueuedStructuredAgentSessionMessages(
   deps: ConversationCloseDeps,
   sessionId: string,
   journal: StructuredAgentSessionHostSession['journal'],
   which?: (submission: AgentJournalSubmission) => boolean
-): Promise<void> {
-  await journal
+): Promise<boolean> {
+  return journal
     .rejectQueuedSubmissions(
       structuredAgentSessionConversationFence(deps.store, sessionId),
       DISPATCH_REJECTED_PROVIDER_CLOSED,
       which
     )
-    .catch((error: unknown) => deps.onEventSinkError?.({ sessionId, error }))
+    .then(
+      () => true,
+      (error: unknown) => {
+        deps.onEventSinkError?.({ sessionId, error })
+        return false
+      }
+    )
 }
 
 /** Dropping a session and dropping its status row are ONE operation: the store keeps the row until
