@@ -19,7 +19,7 @@ import {
   collectManagedTrustEntries,
   removeSelfComputedMatchingTrustEntries
 } from './codex-hook-trust-cleanup'
-import { runExclusivelyForSystemTrustConfig, withRealHomeWriteLock } from './codex-hook-trust-queue'
+import { runExclusivelyForCodexTrustConfig } from './codex-trust-config-mutation-queue'
 import { mutateRealHomeHooksPreservingUserTrust } from './codex-user-hook-trust-rebase'
 import { restoreRealHomeHooksJson, writeRealHomeHooksJson } from './codex-real-home-hooks-json'
 
@@ -34,26 +34,9 @@ function getLegacyCodexProfileTomlPath(): string {
 export function cleanupLegacySystemManagedHooks(): Promise<void> {
   // Why: shares the real-home lane with ensureRealHomeCodexHookState — both
   // capture, mutate and roll back the user's ~/.codex/config.toml.
-  return runExclusivelyForSystemTrustConfig(async () => {
-    // Why compare first: this runs on every install, and a retired entry is rare.
-    if (hasRetiredSystemHook()) {
-      // The locked sweep re-reads, so a change made while waiting is honoured.
-      await withRealHomeWriteLock(sweepLegacySystemManagedHooks)
-    }
-  })
-}
-
-function hasRetiredSystemHook(): boolean {
-  if (getSystemConfigPath() === getConfigPath()) {
-    return false
-  }
-  const hooks = readHooksJsonWithRaw(getSystemConfigPath()).config?.hooks ?? {}
-  return Object.values(hooks).some(
-    (definitions) =>
-      Array.isArray(definitions) &&
-      definitions.some((definition) =>
-        hookDefinitionHasManagedCommand(definition, isRetiredCodexHookCommand)
-      )
+  return runExclusivelyForCodexTrustConfig(
+    getSystemCodexConfigTomlPath(),
+    sweepLegacySystemManagedHooks
   )
 }
 

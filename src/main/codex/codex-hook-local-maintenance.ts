@@ -32,7 +32,7 @@ export async function refreshCodexRuntimeUserHooksExclusively(
   const configPath = getConfigPath(runtimeHomePath)
   // Why: same as install() — capture in-Orca approvals before this refresh
   // rewrites the runtime files they are keyed against.
-  await promoteCodexRuntimeHookApprovalsToSystem(runtimeHomePath)
+  promoteCodexRuntimeHookApprovalsToSystem(runtimeHomePath)
   const config = readHooksJson(configPath)
   if (!config) {
     // Why: disabled launch prep once called remove(); preserve that legacy cleanup even when runtime hooks.json is malformed.

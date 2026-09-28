@@ -1,17 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
-import type * as InstallLock from '../agent-hooks/managed-hook-install-lock'
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  statSync,
-  unlinkSync,
-  writeFileSync
-} from 'node:fs'
+import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import type * as Os from 'node:os'
 import { join } from 'node:path'
-import { setTimeout as delay } from 'node:timers/promises'
 import {
   computeTrustKey,
   normalizeHookTrustKeyForLookup,
@@ -32,10 +22,6 @@ vi.mock('os', async (importOriginal) => {
   const actual = await importOriginal<typeof Os>()
   return { ...actual, homedir: homedirMock }
 })
-vi.mock('../agent-hooks/managed-hook-install-lock', async (importOriginal) => {
-  const actual = await importOriginal<typeof InstallLock>()
-  return { withManagedHookInstallLock: vi.fn(actual.withManagedHookInstallLock) }
-})
 
 import { CodexHookService, getCodexManagedHookInstallMaterial } from './hook-service'
 import {
@@ -43,8 +29,6 @@ import {
   ensureRealHomeCodexHookState
 } from './codex-real-home-hook-install'
 import { getOrcaManagedCodexHomePath } from './codex-home-paths'
-import { getManagedScriptPath } from './codex-hook-definition'
-import { withManagedHookInstallLock } from '../agent-hooks/managed-hook-install-lock'
 import {
   resolveStartupManagedHookAction,
   shouldInstallStartupManagedAgentHook
@@ -127,56 +111,6 @@ describe('the shared real-home Codex entry', () => {
 
     expect(status.state).toBe('installed')
     expect(snapshotRealCodexHome()).toEqual(before)
-  })
-
-  // Why: this runs on every pane spawn; one that writes nothing must not probe
-  // the lock owner or wait behind another instance's trust session.
-  it('takes no cross-process lock on a steady-state pane spawn', async () => {
-    seedSharedEntry()
-    const accountHome = join(homes.userDataDir, 'codex-accounts', 'account-1', 'home')
-    mkdirSync(accountHome, { recursive: true })
-    const service = new CodexHookService()
-    await service.prepareRuntimeHomeForLaunch(accountHome, undefined, true)
-    vi.mocked(withManagedHookInstallLock).mockClear()
-
-    await service.prepareRuntimeHomeForLaunch(accountHome, undefined, true)
-
-    expect(withManagedHookInstallLock).not.toHaveBeenCalled()
-  })
-
-  // Why: another instance's trust session holds the real-home lock for its whole
-  // RPC session; waiting on it for the shared script would fail the pane's install.
-  it('rewrites the shared script while another instance holds the real-home lock', async () => {
-    seedSharedEntry()
-    const accountHome = join(homes.userDataDir, 'codex-accounts', 'account-1', 'home')
-    mkdirSync(accountHome, { recursive: true })
-    const service = new CodexHookService()
-    await service.prepareRuntimeHomeForLaunch(accountHome, undefined, true)
-    unlinkSync(getManagedScriptPath())
-    let releaseOther!: () => void
-    const otherHeld = new Promise<void>((resolve) => {
-      releaseOther = resolve
-    })
-    let otherAcquired!: () => void
-    const acquired = new Promise<void>((resolve) => {
-      otherAcquired = resolve
-    })
-    const other = withManagedHookInstallLock(homes.tmpHome, undefined, async () => {
-      otherAcquired()
-      await otherHeld
-    })
-    await acquired
-
-    try {
-      const prepared = service.prepareRuntimeHomeForLaunch(accountHome, undefined, true)
-      const settled = await Promise.race([prepared, delay(2_000).then(() => 'still waiting')])
-
-      expect(settled).toMatchObject({ state: 'installed' })
-      expect(existsSync(getManagedScriptPath())).toBe(true)
-    } finally {
-      releaseOther()
-      await other
-    }
   })
 
   it('survives launch prep on the real-home lane with hooks off', async () => {

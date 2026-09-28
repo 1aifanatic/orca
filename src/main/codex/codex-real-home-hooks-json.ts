@@ -57,16 +57,12 @@ export function backupRealHomeHooksJsonOnce(
   writeFileAtomically(backupPath, previousRaw, { mode: 0o600 })
 }
 
-export function serializeRealHomeHooksJson(config: Record<string, unknown>): string {
-  return `${JSON.stringify(config, null, 2)}\n`
-}
-
 /** Writes Orca's generation of the real hooks.json and returns its exact bytes. */
 export function writeRealHomeHooksJson(
   hooksWritePath: string,
   config: Record<string, unknown>
 ): string {
-  const serialized = serializeRealHomeHooksJson(config)
+  const serialized = `${JSON.stringify(config, null, 2)}\n`
   writeHooksJson(hooksWritePath, config, { preserveMode: true, serialized })
   return serialized
 }
