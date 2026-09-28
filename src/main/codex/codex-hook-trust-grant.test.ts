@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -330,14 +330,16 @@ describe('grantManagedCodexHookTrust', () => {
     })
   })
 
-  it('restores exact config bytes before fallback after a mutating RPC error', async () => {
+  // Why no restore: the session writes trust only at Orca's own keys, and a
+  // snapshot restore would also undo a save that landed during it.
+  it('keeps a config.toml save made during a failed session', async () => {
     const entries = [managedEntry('session_start')]
     const plan = buildPlan(entries)
-    const original = '# user formatting\r\n[hooks]\r\n'
     mkdirSync(runtimeHomeDir, { recursive: true })
-    writeFileSync(plan.tomlPath, original)
+    writeFileSync(plan.tomlPath, '# user formatting\r\n[hooks]\r\n')
+    const savedDuringSession = '# user formatting\r\n[hooks]\r\nmodel = "saved-during-session"\r\n'
     _internals.setGrantSessionRunner(async () => {
-      writeFileSync(plan.tomlPath, '[hooks.state."rpc-partial"]\ntrusted_hash = "changed"\n')
+      writeFileSync(plan.tomlPath, savedDuringSession)
       throw new Error('post-write transport failure')
     })
 
@@ -345,15 +347,16 @@ describe('grantManagedCodexHookTrust', () => {
       lane: 'fallback',
       reason: 'error'
     })
-    expect(readFileSync(plan.tomlPath, 'utf8')).toBe(original)
+    expect(readFileSync(plan.tomlPath, 'utf8')).toBe(savedDuringSession)
   })
 
-  it('removes an RPC-created config before fallback when none existed', async () => {
+  it('keeps a config.toml created during a failed session', async () => {
     const entries = [managedEntry('session_start')]
     const plan = buildPlan(entries)
     mkdirSync(runtimeHomeDir, { recursive: true })
+    const createdDuringSession = 'model = "created-during-session"\n'
     _internals.setGrantSessionRunner(async () => {
-      writeFileSync(plan.tomlPath, '[hooks.state."rpc-partial"]\ntrusted_hash = "changed"\n')
+      writeFileSync(plan.tomlPath, createdDuringSession)
       return {
         outcome: 'verify-failed',
         reason: 'post-write listing failed',
@@ -365,7 +368,7 @@ describe('grantManagedCodexHookTrust', () => {
       lane: 'fallback',
       reason: 'verify-failed'
     })
-    expect(existsSync(plan.tomlPath)).toBe(false)
+    expect(readFileSync(plan.tomlPath, 'utf8')).toBe(createdDuringSession)
   })
 
   it('honors the ops kill switch env flag', async () => {

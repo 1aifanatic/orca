@@ -1,9 +1,10 @@
-import { existsSync, readFileSync, statSync, unlinkSync } from 'node:fs'
+import { existsSync, readFileSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   hookDefinitionHasManagedCommand,
   readHooksJsonWithRaw,
-  removeManagedCommands
+  removeManagedCommands,
+  writeHooksJson
 } from '../agent-hooks/installer-utils'
 import { resolveHooksJsonWritePath } from '../agent-hooks/hook-config-write-path'
 import { findManagedTomlBlocks } from '../agent-hooks/managed-toml-ownership'
@@ -21,7 +22,6 @@ import {
 } from './codex-hook-trust-cleanup'
 import { runExclusivelyForCodexTrustConfig } from './codex-trust-config-mutation-queue'
 import { mutateRealHomeHooksPreservingUserTrust } from './codex-user-hook-trust-rebase'
-import { restoreRealHomeHooksJson, writeRealHomeHooksJson } from './codex-real-home-hooks-json'
 
 const LEGACY_ORCA_PROFILE_NAME = 'orca-agent-status'
 const LEGACY_ORCA_PROFILE_BLOCK_START = '# BEGIN ORCA AGENT STATUS HOOKS'
@@ -32,8 +32,8 @@ function getLegacyCodexProfileTomlPath(): string {
 }
 
 export function cleanupLegacySystemManagedHooks(): Promise<void> {
-  // Why: shares the real-home lane with ensureRealHomeCodexHookState — both
-  // capture, mutate and roll back the user's ~/.codex/config.toml.
+  // Why: shares the real-home lane with ensureRealHomeCodexHookState; both
+  // write the user's ~/.codex/hooks.json and its trust in config.toml.
   return runExclusivelyForCodexTrustConfig(
     getSystemCodexConfigTomlPath(),
     sweepLegacySystemManagedHooks
@@ -95,8 +95,6 @@ async function sweepLegacySystemManagedHooks(): Promise<void> {
     // Why: this is the user's system hooks file, not Orca's runtime copy.
     // Remove only retired Orca hook entries and preserve other managers' metadata.
     const hooksWritePath = resolveHooksJsonWritePath(legacyConfigPath)
-    const previousMode = statSync(hooksWritePath).mode
-    let writtenRaw: string | null = null
     await mutateRealHomeHooksPreservingUserTrust({
       sourcePath: legacyConfigPath,
       runtimeHomePath: systemHomePath,
@@ -112,10 +110,8 @@ async function sweepLegacySystemManagedHooks(): Promise<void> {
           // never replace that newer dotfiles generation with our stale parse.
           throw new Error('System Codex hooks changed during trust repair')
         }
-        writtenRaw = writeRealHomeHooksJson(hooksWritePath, { ...config, hooks: nextHooks })
-      },
-      restoreHooks: () =>
-        restoreRealHomeHooksJson(hooksWritePath, previousRaw, writtenRaw, previousMode)
+        writeHooksJson(hooksWritePath, { ...config, hooks: nextHooks }, { preserveMode: true })
+      }
     })
     removeSelfComputedMatchingTrustEntries(getSystemCodexConfigTomlPath(), trustEntries)
   }

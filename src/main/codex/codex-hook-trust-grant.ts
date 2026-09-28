@@ -22,12 +22,6 @@ import {
   type CodexTrustGrantLedgerEntry
 } from './codex-trust-grant-ledger'
 import type { CodexTrustEntry } from './config-toml-trust'
-import {
-  captureCodexTrustConfig,
-  readCodexTrustConfigGeneration,
-  restoreCodexTrustConfig,
-  type CodexTrustConfigSnapshot
-} from './codex-trust-config-rollback'
 import { runExclusivelyForCodexTrustConfig } from './codex-trust-config-mutation-queue'
 import {
   resolveCodexTrustGrantHost,
@@ -131,28 +125,20 @@ type GrantAttempt = {
   expected: ExpectedManagedEntry[]
   hostKey: CodexAppServerHostKey
   currentStamp: CodexTrustGrantBinaryStamp | null
-  configSnapshot: ReturnType<typeof captureCodexTrustConfig>
   startedAtMs: number
 }
 
-// Why current bytes: Codex, not Orca, wrote config.toml in the session that just
-// settled, so there is no Orca generation to compare; the restore follows at once.
-function restoreAfterSession(tomlPath: string, snapshot: CodexTrustConfigSnapshot): void {
-  restoreCodexTrustConfig(tomlPath, snapshot, readCodexTrustConfigGeneration(tomlPath, snapshot))
-}
-
 /** Post-session verification, ledger persistence and telemetry. Never throws for
- *  a verify failure — every rejection is a rolled-back fallback. */
+ *  a verify failure — every rejection is a fallback. */
 function completeGrant(
   attempt: GrantAttempt,
   result: CodexHookTrustGrantSessionResult
 ): CodexManagedTrustGrantOutcome {
-  const { plan, expected, hostKey, configSnapshot } = attempt
+  const { plan, expected, hostKey } = attempt
   const rejectGrant = (
     detail: unknown,
     verifyClass: CodexTrustGrantVerifyClass
   ): CodexManagedTrustGrantOutcome => {
-    restoreAfterSession(plan.tomlPath, configSnapshot)
     startTransientCooldown(hostKey)
     return fallback(plan, 'verify-failed', detail, verifyClass)
   }
@@ -211,15 +197,14 @@ async function runGrantAttempt(
   resolvedHost: ResolvedCodexTrustGrantHost,
   hostKey: CodexAppServerHostKey
 ): Promise<CodexManagedTrustGrantOutcome> {
-  // Why: the RPC may rewrite config.toml before a later RPC fails. Restore its
-  // exact pre-session bytes before the legacy lane runs so every fallback has
-  // the same input and output as the pre-RPC implementation.
+  // Why no config.toml restore on failure: the session writes trust only at
+  // Orca's own keys, bound to Orca's command by its hash, and each caller settles
+  // those keys itself. A restore would undo anything saved meanwhile.
   const attempt: GrantAttempt = {
     plan,
     expected,
     hostKey,
     currentStamp: resolvedHost.binaryStamp,
-    configSnapshot: captureCodexTrustConfig(plan.tomlPath),
     startedAtMs: Date.now()
   }
   let unsupportedError: unknown
@@ -243,10 +228,9 @@ async function runGrantAttempt(
       async () => {
         if (unsupportedError === undefined) {
           // Why: a concurrent launch's probe proved the surface missing while
-          // this one waited behind it; nothing was mutated, so nothing to undo.
+          // this one waited behind it.
           return fallback(plan, 'unsupported-cached')
         }
-        restoreAfterSession(plan.tomlPath, attempt.configSnapshot)
         transientRetryAfterByHost.delete(hostKey)
         return fallback(plan, 'unsupported', unsupportedError)
       },
@@ -259,7 +243,6 @@ async function runGrantAttempt(
       }
     )
   } catch (error) {
-    restoreAfterSession(plan.tomlPath, attempt.configSnapshot)
     startTransientCooldown(hostKey)
     return fallback(plan, 'error', error)
   }
@@ -268,8 +251,8 @@ async function runGrantAttempt(
 /**
  * Grants trust for Orca's managed Codex hooks through codex's own app-server
  * RPCs, verified by re-list. Returns the granted entries carrying Codex's
- * verbatim hashes, or a fallback marker — the caller then runs the previous
- * computeTrustedHash lane, byte-identical to the pre-RPC behavior. Never
+ * verbatim hashes, or a fallback marker — a managed-home caller then writes
+ * computeTrustedHash trust, and the real-home caller withdraws its entry. Never
  * throws: any unexpected failure is a fallback, because hook install is
  * best-effort launch prep.
  */

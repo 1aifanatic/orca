@@ -57,12 +57,9 @@ describe('real-home user hook trust rebasing', () => {
         afterHooks: after,
         writeHooks: () => {
           wroteHooks = true
-        },
-        restoreHooks: () => {
-          throw new Error('restore must not run')
         }
       })
-    ).toBeNull()
+    ).toBeUndefined()
     expect(wroteHooks).toBe(true)
     expect(existsSync(configPath)).toBe(false)
   })
@@ -129,10 +126,7 @@ describe('real-home user hook trust rebasing', () => {
       tomlPath: configPath,
       beforeHooks: before,
       afterHooks: after,
-      writeHooks: () => writeFileSync(hooksPath, `${JSON.stringify({ hooks: after }, null, 2)}\n`),
-      restoreHooks: () => {
-        throw new Error('restore must not run')
-      }
+      writeHooks: () => writeFileSync(hooksPath, `${JSON.stringify({ hooks: after }, null, 2)}\n`)
     })
 
     expect(requests).toHaveLength(2)
@@ -166,9 +160,6 @@ describe('real-home user hook trust rebasing', () => {
       afterHooks: after,
       writeHooks: () => {
         throw new Error('write must not run')
-      },
-      restoreHooks: () => {
-        throw new Error('restore must not run')
       }
     }
 
@@ -199,9 +190,6 @@ describe('real-home user hook trust rebasing', () => {
       afterHooks: after,
       writeHooks: () => {
         throw new Error('write must not run')
-      },
-      restoreHooks: () => {
-        throw new Error('restore must not run')
       }
     }
 
@@ -214,16 +202,19 @@ describe('real-home user hook trust rebasing', () => {
     expect(codexAppServerCapabilityCache.shouldTry('native')).toBe(true)
   })
 
-  it('restores both files byte-exactly when post-mutation repair fails', async () => {
+  // Why: a snapshot restore would undo the removal and any save made during the
+  // session; the moved hooks surface for review in Codex instead.
+  it('keeps the write and a save made during the session when post-mutation repair fails', async () => {
     const orca = command('orca-hook')
     const user = command('user-hook')
     const before = { Stop: [{ hooks: [orca] }, { hooks: [user] }] }
     const after = { Stop: [{ hooks: [user] }] }
-    const originalHooks =
+    writeFileSync(
+      hooksPath,
       '{ "hooks": { "Stop": [{"hooks":[{"type":"command","command":"orca-hook"}]},{"hooks":[{"type":"command","command":"user-hook"}]}] } }\r\n'
-    const originalConfig = '# user formatting\r\nmodel = "x"\r\n'
-    writeFileSync(hooksPath, originalHooks)
-    writeFileSync(configPath, originalConfig)
+    )
+    writeFileSync(configPath, '# user formatting\r\nmodel = "x"\r\n')
+    const savedDuringSession = '# user formatting\r\nmodel = "saved-during-session"\r\n'
     _internals.setSessionRunner(async (request) => {
       if (request.operation === 'inspect-user-hook-trust') {
         return {
@@ -236,9 +227,10 @@ describe('real-home user hook trust rebasing', () => {
           }))
         }
       }
-      writeFileSync(configPath, '[hooks.state."partial"]\ntrusted_hash = "bad"\n')
+      writeFileSync(configPath, savedDuringSession)
       throw new Error('repair transport failed')
     })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
     await expect(
       mutateRealHomeHooksPreservingUserTrust({
@@ -247,11 +239,15 @@ describe('real-home user hook trust rebasing', () => {
         tomlPath: configPath,
         beforeHooks: before,
         afterHooks: after,
-        writeHooks: () => writeFileSync(hooksPath, `${JSON.stringify({ hooks: after })}\n`),
-        restoreHooks: () => writeFileSync(hooksPath, originalHooks)
+        writeHooks: () => writeFileSync(hooksPath, `${JSON.stringify({ hooks: after })}\n`)
       })
-    ).rejects.toThrow('repair transport failed')
-    expect(readFileSync(hooksPath, 'utf-8')).toBe(originalHooks)
-    expect(readFileSync(configPath, 'utf-8')).toBe(originalConfig)
+    ).resolves.toBeUndefined()
+    expect(JSON.parse(readFileSync(hooksPath, 'utf-8'))).toEqual({ hooks: after })
+    expect(readFileSync(configPath, 'utf-8')).toBe(savedDuringSession)
+    expect(warn).toHaveBeenCalledWith(
+      '[codex-user-hook-trust] could not re-key moved user hook trust:',
+      expect.any(Error)
+    )
+    warn.mockRestore()
   })
 })

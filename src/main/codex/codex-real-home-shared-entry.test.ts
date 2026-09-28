@@ -119,7 +119,11 @@ describe('the shared real-home Codex entry', () => {
     const before = snapshotRealCodexHome()
 
     expect(
-      await ensureRealHomeCodexHookState({ hooksEnabled: false, userDataPath: homes.userDataDir })
+      await ensureRealHomeCodexHookState({
+        hooksEnabled: false,
+        userDataPath: homes.userDataDir,
+        writePolicy: 'add-missing-only'
+      })
     ).toBe('removed')
 
     expect(snapshotRealCodexHome()).toEqual(before)
@@ -134,7 +138,11 @@ describe('the shared real-home Codex entry', () => {
     expect(resolveStartupManagedHookAction(settings)).toBe('skip')
     expect(shouldInstallStartupManagedAgentHook(settings, 'codex')).toBe(false)
     // First pane: both lanes run with hooks off.
-    await ensureRealHomeCodexHookState({ hooksEnabled: false, userDataPath: homes.userDataDir })
+    await ensureRealHomeCodexHookState({
+      hooksEnabled: false,
+      userDataPath: homes.userDataDir,
+      writePolicy: 'add-missing-only'
+    })
     await new CodexHookService().prepareRuntimeHomeForLaunch(
       getOrcaManagedCodexHomePath(),
       undefined,

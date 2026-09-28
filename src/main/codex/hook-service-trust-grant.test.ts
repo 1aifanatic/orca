@@ -379,29 +379,30 @@ describe('CodexHookService app-server trust grant lane', () => {
     expect(resolveCodexCommandMock).not.toHaveBeenCalled()
   })
 
-  it('restores exact config bytes before fallback after a mutating RPC failure', async () => {
+  // Why: without a restore, the managed fallback still settles Orca's trust, and
+  // a save made during the failed session survives.
+  it('settles managed trust through the fallback after a mutating RPC failure', async () => {
     prepareSystemHome()
     const service = new CodexHookService()
     process.env.ORCA_DISABLE_CODEX_TRUST_RPC = '1'
     expect((await service.install()).state).toBe('installed')
     const managedHome = join(userDataDir, 'codex-runtime-home', 'home')
-    const baseline = readFileSync(join(managedHome, 'config.toml'))
+    const baselineTrust = readHookTrustEntries(join(managedHome, 'config.toml'))
 
     delete process.env.ORCA_DISABLE_CODEX_TRUST_RPC
-    rmSync(managedHome, { recursive: true, force: true })
     trustGrantInternals.resetDiagnostics()
     const runner = vi.fn(async (request: CodexHookTrustGrantRequest) => {
-      const codexHome = request.invocation.env?.CODEX_HOME
-      writeFileSync(
-        join(codexHome!, 'config.toml'),
-        '[hooks.state."rpc-partial"]\ntrusted_hash = "sha256:changed"\n'
-      )
+      const tomlPath = join(request.invocation.env!.CODEX_HOME!, 'config.toml')
+      writeFileSync(tomlPath, `model = "saved-during-session"\n${readFileSync(tomlPath, 'utf8')}`)
       throw new Error('transport failed after config/batchWrite')
     })
     trustGrantInternals.setGrantSessionRunner(runner)
 
     expect((await service.install()).state).toBe('installed')
     expect(runner).toHaveBeenCalledTimes(1)
-    expect(readFileSync(join(managedHome, 'config.toml'))).toEqual(baseline)
+    const configPath = join(managedHome, 'config.toml')
+    expect(readFileSync(configPath, 'utf8')).toContain('model = "saved-during-session"')
+    expect(baselineTrust.size).toBeGreaterThan(0)
+    expect(new Map(readHookTrustEntries(configPath))).toEqual(new Map(baselineTrust))
   })
 })

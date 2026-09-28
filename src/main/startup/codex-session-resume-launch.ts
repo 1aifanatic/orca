@@ -100,7 +100,8 @@ export async function prepareCodexSessionResumeForLaunch(args: {
         if (isSystemHome) {
           await ensureRealHomeCodexHookState({
             hooksEnabled,
-            userDataPath: app.getPath('userData')
+            userDataPath: app.getPath('userData'),
+            writePolicy: 'add-missing-only'
           })
         } else if (hooksEnabled) {
           await codexHookService.installForLaunchPrep(resumeHome)

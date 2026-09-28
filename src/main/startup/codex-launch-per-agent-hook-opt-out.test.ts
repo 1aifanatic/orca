@@ -130,7 +130,7 @@ describe('Codex launch prep honours the per-agent hook opt-out', () => {
 
       expect(mocks.ensureRealHomeCodexHookState).toHaveBeenCalledTimes(1)
       expect(mocks.ensureRealHomeCodexHookState).toHaveBeenCalledWith(
-        expect.objectContaining({ hooksEnabled: codexHooksOn })
+        expect.objectContaining({ hooksEnabled: codexHooksOn, writePolicy: 'add-missing-only' })
       )
       expect(mocks.prepareRuntimeHomeForLaunch).not.toHaveBeenCalled()
     }
@@ -162,7 +162,7 @@ describe('Codex launch prep honours the per-agent hook opt-out', () => {
 
       expect(mocks.ensureRealHomeCodexHookState).toHaveBeenCalledTimes(1)
       expect(mocks.ensureRealHomeCodexHookState).toHaveBeenCalledWith(
-        expect.objectContaining({ hooksEnabled: codexHooksOn })
+        expect.objectContaining({ hooksEnabled: codexHooksOn, writePolicy: 'add-missing-only' })
       )
       expect(mocks.installForLaunchPrep).not.toHaveBeenCalled()
       expect(mocks.refreshRuntimeUserHooksForLaunchPrep).not.toHaveBeenCalled()

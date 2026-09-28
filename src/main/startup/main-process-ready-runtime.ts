@@ -90,8 +90,8 @@ export async function initializeReadyRuntimeServices(): Promise<void> {
   }, WORKTREE_TRASH_SWEEP_FALLBACK_MS)
   nativeTheme.themeSource = store.getSettings().theme ?? 'system'
   // Why (#16441): the real-home grant runs a codex app-server session. It stays
-  // ordered before managed-hook reconciliation — its in-slot upgrade must land
-  // before the managed install's legacy sweep retires the prior command — but
+  // ordered before managed-hook reconciliation — its in-slot conversion must land
+  // before the managed install's retired-form sweep removes the prior command — but
   // awaiting it inline stalled app init behind that session, so chain instead of blocking.
   const startupManagedHookSettings = store.getSettings()
   const shouldReconcileStartupManagedHooks =
@@ -103,7 +103,9 @@ export async function initializeReadyRuntimeServices(): Promise<void> {
     state.codexRuntimeHome?.isHostSystemDefaultRealHomeSelected()
       ? ensureRealHomeCodexHookState({
           hooksEnabled: true,
-          userDataPath: app.getPath('userData')
+          userDataPath: app.getPath('userData'),
+          // Why app start: the one place an older build's entry becomes the frozen command.
+          writePolicy: 'convert-older-forms'
         }).catch((error: unknown) => {
           console.warn('[codex-real-home-hooks] startup ensure failed:', error)
         })

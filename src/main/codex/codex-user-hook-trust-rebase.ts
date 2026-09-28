@@ -9,12 +9,6 @@ import { isCodexAppServerUnsupportedError } from './codex-app-server-session'
 import { CODEX_TRUST_GRANT_TRANSIENT_RETRY_INTERVAL_MS } from './codex-hook-trust-grant'
 import { createCodexHookTrustEntry } from './codex-hook-identity'
 import { resolveCodexTrustGrantHost } from './codex-trust-grant-host'
-import {
-  captureCodexTrustConfig,
-  readCodexTrustConfigGeneration,
-  restoreCodexTrustConfig,
-  type CodexTrustConfigSnapshot
-} from './codex-trust-config-rollback'
 import { runExclusivelyForCodexTrustConfig } from './codex-trust-config-mutation-queue'
 import { computeTrustKey, type CodexTrustEntry } from './config-toml-trust'
 import type {
@@ -24,12 +18,6 @@ import type {
 } from './codex-user-hook-trust-rebase-client'
 
 type HooksByEvent = Record<string, HookDefinition[]>
-
-/** The pre-rebase config plus the generation the rebase left, for a later guarded restore. */
-export type CodexUserHookTrustRebaseRollback = {
-  snapshot: CodexTrustConfigSnapshot
-  written: Buffer | null
-}
 
 type RebaseSessionRunner = (
   request: CodexUserHookTrustRebaseRequest
@@ -105,33 +93,6 @@ export function getMovedCodexUserHookTrust(
   return moves
 }
 
-function rollbackMutation(
-  restoreHooks: () => void,
-  tomlPath: string,
-  snapshot: CodexTrustConfigSnapshot,
-  originalError: unknown
-): never {
-  const rollbackErrors: unknown[] = []
-  try {
-    restoreHooks()
-  } catch (error) {
-    rollbackErrors.push(error)
-  }
-  try {
-    // Why current bytes: Codex wrote them in the session that just failed.
-    restoreCodexTrustConfig(tomlPath, snapshot, readCodexTrustConfigGeneration(tomlPath, snapshot))
-  } catch (error) {
-    rollbackErrors.push(error)
-  }
-  if (rollbackErrors.length > 0) {
-    throw new AggregateError(
-      [originalError, ...rollbackErrors],
-      'Failed to rebase moved user hook trust and restore the original files'
-    )
-  }
-  throw originalError
-}
-
 export function mutateRealHomeHooksPreservingUserTrust(args: {
   sourcePath: string
   runtimeHomePath: string
@@ -139,14 +100,13 @@ export function mutateRealHomeHooksPreservingUserTrust(args: {
   beforeHooks: HooksByEvent
   afterHooks: HooksByEvent
   writeHooks: () => void
-  restoreHooks: () => void
-}): Promise<CodexUserHookTrustRebaseRollback | null> {
+}): Promise<void> {
   const moves = getMovedCodexUserHookTrust(args.sourcePath, args.beforeHooks, args.afterHooks)
   if (moves.length === 0) {
     args.writeHooks()
-    return Promise.resolve(null)
+    return Promise.resolve()
   }
-  // Why: capture/mutate/restore on one config.toml is not reentrant.
+  // Why: the inspect, write and repair of one config.toml must not interleave.
   return runExclusivelyForCodexTrustConfig(args.tomlPath, () => rebaseMovedUserTrust(args, moves))
 }
 
@@ -155,10 +115,9 @@ async function rebaseMovedUserTrust(
     runtimeHomePath: string
     tomlPath: string
     writeHooks: () => void
-    restoreHooks: () => void
   },
   moves: CodexUserHookTrustMove[]
-): Promise<CodexUserHookTrustRebaseRollback | null> {
+): Promise<void> {
   const hostKey = getCodexAppServerHostKey({ kind: 'native' })
   if (!codexAppServerCapabilityCache.shouldTry(hostKey)) {
     throw new Error('codex app-server is marked unsupported on this host; trust rebase skipped')
@@ -170,7 +129,6 @@ async function rebaseMovedUserTrust(
     }
     rebaseRetryAfterByHost.delete(hostKey)
   }
-  const snapshot = captureCodexTrustConfig(args.tomlPath)
 
   const baseRequest = (await resolveCodexTrustGrantHost({ kind: 'native' })).buildRequest({
     runtimeHomePath: args.runtimeHomePath,
@@ -197,10 +155,8 @@ async function rebaseMovedUserTrust(
     throw new Error('Unexpected Codex user hook trust inspection result')
   }
 
-  let hooksWritten = false
+  args.writeHooks()
   try {
-    args.writeHooks()
-    hooksWritten = true
     const repaired = await runSession({
       operation: 'repair-user-hook-trust',
       invocation: baseRequest.invocation,
@@ -210,13 +166,12 @@ async function rebaseMovedUserTrust(
     if (repaired.outcome !== 'repaired') {
       throw new Error('Unexpected Codex user hook trust repair result')
     }
-    return { snapshot, written: readCodexTrustConfigGeneration(args.tomlPath, snapshot) }
   } catch (error) {
     rememberRebaseSessionFailure(hostKey, error)
-    if (hooksWritten) {
-      return rollbackMutation(args.restoreHooks, args.tomlPath, snapshot, error)
-    }
-    throw error
+    // Why no restore: the write is what the user or Orca asked for, and putting
+    // back a snapshot would undo anything saved since. Codex lists the moved
+    // hooks for review, which the user can approve there.
+    console.warn('[codex-user-hook-trust] could not re-key moved user hook trust:', error)
   }
 }
 
