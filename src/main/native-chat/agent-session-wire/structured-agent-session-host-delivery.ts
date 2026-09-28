@@ -18,7 +18,7 @@ import type {
   StructuredAgentSessionHostSession
 } from './structured-agent-session-host-types'
 import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
-import { structuredAgentSessionStartFailureText } from './structured-agent-session-send-preparation'
+import { structuredAgentSessionFailureWordsContext } from './structured-agent-session-send-preparation'
 import { settleInterruptedCompaction } from './structured-compaction-recovery'
 import { recoverStructuredRewind } from './structured-rewind-recovery'
 
@@ -64,8 +64,8 @@ export function createStructuredAgentSessionConversationDelivery(input: {
         ? abandonQueuedStructuredAgentSessionMessages(deps, sessionId, session.journal, which)
         : true
     },
-    startFailureText: (sessionId, cause) =>
-      structuredAgentSessionStartFailureText(deps.store.getRecord(sessionId), cause),
+    failureTextContext: (sessionId) =>
+      structuredAgentSessionFailureWordsContext(deps.store.getRecord(sessionId)),
     onError: (sessionId, error) => deps.onEventSinkError?.({ sessionId, error })
   })
   const adoptOpened = async (

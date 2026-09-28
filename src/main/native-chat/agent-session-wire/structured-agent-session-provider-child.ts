@@ -8,7 +8,6 @@
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type {
-  StructuredAgentSessionChildEndCause,
   StructuredAgentSessionEndedChild,
   StructuredAgentSessionHostSession,
   StructuredAgentSessionProviderChild,
@@ -70,30 +69,7 @@ export function failedProviderChildStart(
   session: Pick<ChildBearer, 'child' | 'lastEndedChild'>
 ): StructuredAgentSessionEndedChild | null {
   const ended = session.lastEndedChild
-  return !session.child && ended?.duringStartup && childEndDisposition(ended.cause) === 'failed'
-    ? ended
-    : null
-}
-
-/** What a child's end means for the messages queued behind it. A user's Stop lets them go on to a
- *  new child; the user closing this chat closes them with it, as a completed close would; any other
- *  end failed them, a host's own stop included, since it is why the start did not land. */
-export type StructuredAgentSessionChildEndDisposition = 'continue' | 'closed' | 'failed'
-
-export function childEndDisposition(
-  cause: StructuredAgentSessionChildEndCause
-): StructuredAgentSessionChildEndDisposition {
-  switch (cause) {
-    case 'user-stop':
-      return 'continue'
-    case 'user-close':
-      return 'closed'
-    case 'exit':
-    case 'attach-failed':
-    case 'host-stop':
-    case 'evict':
-      return 'failed'
-  }
+  return !session.child && ended?.duringStartup && ended.cause !== 'user-stop' ? ended : null
 }
 
 function matchingChild(

@@ -10,7 +10,8 @@
 
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
-import { DISPATCH_REJECTED_PROVIDER_CLOSED } from '../../../shared/structured-agent-session-dispatch-rejection'
+import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
+import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import {
   evictStructuredAgentSession,
   STRUCTURED_AGENT_SESSION_EVICTION_STEPS,
@@ -63,7 +64,7 @@ export async function abandonQueuedStructuredAgentSessionMessages(
   return journal
     .rejectQueuedSubmissions(
       structuredAgentSessionConversationFence(deps.store, sessionId),
-      DISPATCH_REJECTED_PROVIDER_CLOSED,
+      agentSessionFailureWords(agentSessionFailureFact('chatClosed'), { surface: 'rejection' }),
       which
     )
     .then(
