@@ -21,6 +21,7 @@ let items: AgentJournalRenderItem[] = []
 let submissions: AgentJournalSubmission[] = []
 let outbox: StructuredAgentSessionOutboxEntry[] = []
 let blockedClientMessageId: string | null = null
+let fence = 3
 
 vi.mock('@/runtime/structured-agent-session-client', () => ({
   callStructuredAgentSession: mocks.call,
@@ -29,7 +30,7 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
 
 vi.mock('./use-structured-agent-session-read', () => ({
   useStructuredAgentSessionRead: () => ({
-    state: { fence: 3, items, submissions, status: 'ready', error: null, hasOlder: false },
+    state: { fence, items, submissions, status: 'ready', error: null, hasOlder: false },
     loadingOlder: false,
     loadOlder: vi.fn()
   })
@@ -139,6 +140,7 @@ beforeEach(() => {
   submissions = []
   outbox = []
   blockedClientMessageId = null
+  fence = 3
 })
 
 describe('Stop against a host that stops the conversation', () => {
@@ -225,6 +227,123 @@ describe('Stop against a host that stops the conversation', () => {
       }
       await Promise.all(presses)
     })
+
+    const ids = cancelOperationIds()
+    expect(ids).toHaveLength(2)
+    expect(ids[1]).toBe(ids[0])
+  })
+
+  it('sends a new Stop after one the host answered once the chat had moved on', async () => {
+    items = [RUNNING_TURN]
+    const pending: ((value: unknown) => void)[] = []
+    mocks.call.mockImplementation((_target, method) =>
+      method !== 'agentSession.cancel'
+        ? Promise.resolve(null)
+        : pending.length === 0
+          ? new Promise((resolve) => pending.push(resolve))
+          : Promise.resolve({ ok: true, value: { cancelled: true } })
+    )
+    const { result, rerender } = render()
+
+    let first: Promise<unknown> = Promise.resolve()
+    act(() => {
+      first = result.current.stop()
+    })
+    fence = 4
+    rerender()
+    await act(async () => {
+      pending[0]?.({ ok: true, value: { cancelled: true } })
+      await first
+    })
+    await act(async () => {
+      await result.current.stop()
+    })
+
+    // Reusing the first id would replay it: the host answers not-cancelled and stops nothing.
+    const envelopes = cancels().map((params) => (params as { envelope: unknown }).envelope)
+    expect(envelopes).toEqual([
+      expect.objectContaining({ expectedRuntimeFence: 3 }),
+      expect.objectContaining({ expectedRuntimeFence: 4 })
+    ])
+    const ids = cancelOperationIds()
+    expect(ids[1]).not.toBe(ids[0])
+  })
+
+  it('keeps a newer Stop joinable when an older joined one settles after it', async () => {
+    submissions = [submission({ handoverRecorded: true, handedOverAt: 2 })]
+    const pending: ((value: unknown) => void)[] = []
+    mocks.call.mockImplementation((_target, method) =>
+      method === 'agentSession.cancel'
+        ? new Promise((resolve) => pending.push(resolve))
+        : Promise.resolve(null)
+    )
+    const { result } = render()
+    const settle = (index: number): void =>
+      pending[index]?.({ ok: true, value: { cancelled: true } })
+
+    await act(async () => {
+      const first = result.current.stop()
+      const joined = result.current.stop()
+      settle(0)
+      await first
+      const third = result.current.stop()
+      settle(1)
+      await joined
+      const fourth = result.current.stop()
+      settle(2)
+      settle(3)
+      await Promise.all([third, fourth])
+    })
+
+    const ids = cancelOperationIds()
+    expect(ids).toHaveLength(4)
+    expect(ids[1]).toBe(ids[0])
+    expect(ids[2]).not.toBe(ids[0])
+    expect(ids[3]).toBe(ids[2])
+  })
+
+  it('does not let a lost stop of every background task swallow the next one', async () => {
+    const answers: (() => unknown)[] = [
+      () => {
+        throw new Error('the connection dropped before the host answered')
+      }
+    ]
+    mocks.call.mockImplementation(async (_target, method) =>
+      method === 'agentSession.cancel'
+        ? (answers.shift()?.() ?? { ok: true, value: { cancelled: true } })
+        : null
+    )
+    const { result } = render()
+
+    for (let press = 0; press < 2; press += 1) {
+      await act(async () => {
+        await result.current.stopBackgroundTask()
+      })
+    }
+
+    const ids = cancelOperationIds()
+    expect(ids).toHaveLength(2)
+    expect(ids[1]).not.toBe(ids[0])
+  })
+
+  it('replays a lost stop of one background task, which names what it stops', async () => {
+    const answers: (() => unknown)[] = [
+      () => {
+        throw new Error('the connection dropped before the host answered')
+      }
+    ]
+    mocks.call.mockImplementation(async (_target, method) =>
+      method === 'agentSession.cancel'
+        ? (answers.shift()?.() ?? { ok: true, value: { cancelled: true } })
+        : null
+    )
+    const { result } = render()
+
+    for (let press = 0; press < 2; press += 1) {
+      await act(async () => {
+        await result.current.stopBackgroundTask('task-1')
+      })
+    }
 
     const ids = cancelOperationIds()
     expect(ids).toHaveLength(2)

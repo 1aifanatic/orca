@@ -1,7 +1,8 @@
 // One structured-session mutation, fenced and idempotent.
 //
 // The client operation id is keyed on (session, method, payload) so a retry of
-// the same request reuses it and the host upserts one row instead of two, and
+// the same request reuses it and the host upserts one row instead of two (a
+// payload naming no target keeps it only while its call is in flight), and
 // every result is discarded unless the runtime fence it was issued against is
 // still the current one. A write that did not happen is reported once, in the
 // person's words, by the caller that knows where to say it; nothing latches.
@@ -17,6 +18,7 @@ import {
 } from '../../../../shared/agent-session-refusal-notice'
 import { agentSessionRefusalOperationState } from '../../../../shared/agent-session-refusal-retry'
 import { structuredAgentSessionPayloadFingerprint } from '../../../../shared/structured-agent-session-mutation'
+import { structuredAgentSessionWriteNamesItsTarget } from '../../../../shared/structured-agent-session-operation-identity'
 import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
 import { RuntimeRpcCallError } from '@/runtime/runtime-rpc-result'
 import { callStructuredAgentSession } from '@/runtime/structured-agent-session-client'
@@ -75,9 +77,19 @@ export function useStructuredAgentSessionMutate(args: {
       }
       const targetFence = stateRef.current.fence
       const key = `${sessionId}:${fingerprintMethod}:${JSON.stringify(fields)}`
+      // Decided before the id is picked: a write naming no target keeps its id for its own call,
+      // which a press made meanwhile joins; any other keeps it for a retry to replay.
+      const namesTarget = structuredAgentSessionWriteNamesItsTarget(fingerprintMethod, fields)
       const clientOperationId =
         operationIdOverride ?? operationIds.current.get(key) ?? structuredSessionOperationId()
       operationIds.current.set(key, clientOperationId)
+      // Only while the key still holds this call's id: a joined call settling late must not drop
+      // a newer call's id.
+      const release = (): void => {
+        if (operationIds.current.get(key) === clientOperationId) {
+          operationIds.current.delete(key)
+        }
+      }
       let result: AgentSessionMutationResult<T>
       try {
         result = await callStructuredAgentSession<AgentSessionMutationResult<T>>(target, method, {
@@ -92,13 +104,12 @@ export function useStructuredAgentSessionMutate(args: {
             })
           },
           ...fields
+        }).finally(() => {
+          if (!namesTarget) {
+            release()
+          }
         })
       } catch (error) {
-        // A Stop naming no turn has one key per session, so a kept id would replay into every
-        // later Stop; it stops whatever is in flight, so sending it afresh is safe.
-        if (fingerprintMethod === 'agentSession.cancel' && fields.turnId === undefined) {
-          operationIds.current.delete(key)
-        }
         return enabledRef.current && stateRef.current.fence === targetFence
           ? {
               kind: 'not-done',
@@ -113,13 +124,13 @@ export function useStructuredAgentSessionMutate(args: {
       }
       if (!result.ok) {
         const operationState = agentSessionRefusalOperationState(result.refusal.code)
-        // Cancel's plan recovers no unknown ledger row, so its id would earn the same refusal until
-        // it expires; a Stop naming no turn has one key per session, so that is every later Stop.
+        // Cancel's plan recovers no unknown ledger row, so a kept id would earn the same refusal
+        // until it expires, and Stop for that turn would do nothing.
         if (
           operationState === 'settled-rejected' ||
           (operationState === 'unknown' && fingerprintMethod === 'agentSession.cancel')
         ) {
-          operationIds.current.delete(key)
+          release()
         }
         return enabledRef.current && stateRef.current.fence === targetFence
           ? {
@@ -135,7 +146,7 @@ export function useStructuredAgentSessionMutate(args: {
         return { kind: 'dropped' }
       }
       if (!conversationCommands.isUnconfirmedConversationCommand(fingerprintMethod, result.value)) {
-        operationIds.current.delete(key)
+        release()
       }
       return { kind: 'done', value: result.value }
     },
