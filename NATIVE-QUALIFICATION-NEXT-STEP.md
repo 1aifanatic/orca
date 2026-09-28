@@ -1,6 +1,6 @@
 # Native Windows Bun qualification next step
 
-Use only after the current full-build x64 and ARM64 artifacts have hash-verified receipts. This fixture is local/diagnostic and does not install or promote anything.
+Use only after the current full-build x64 and ARM64 artifacts have hash-verified receipts. This fixture is local/diagnostic and does not install or promote anything. Never substitute the historical successful binaries in `runtime-build-preparation/inputs.json` for a newly rebuilt artifact: record each artifact's build run, source commit, and SHA256 separately.
 
 1. Copy the verified Bun runtime, daemon bundle, and the architecture-matched `conpty.dll` plus `OpenConsole.exe` into an isolated temporary directory. Validate both files with `resolveWindowsConptyProvider`; a DLL-only directory is invalid.
 2. Set `ORCA_BACKGROUND_LAUNCH=1` and `BUN_EXECUTABLE` to the copied runtime. Run provider identity and `daemon-bun-pty-artifact.integration.test.ts` first.
