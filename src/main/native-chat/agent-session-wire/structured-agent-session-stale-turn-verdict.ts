@@ -29,7 +29,7 @@ export const UNVERIFIABLE_TURN_VERDICT: StructuredAgentSessionTurnVerdict = {
 
 export function turnVerdictFromDeathEvidence(
   evidence: AgentSessionDeathEvidence | null | undefined,
-  journal: Pick<AgentSessionJournal, 'lastLiveActivityAt'>,
+  journal: Pick<AgentSessionJournal, 'lastProviderActivityAt'>,
   /** Fence of the owner that wrote the turn. */
   turnFence: number | undefined
 ): StructuredAgentSessionTurnVerdict {
@@ -50,7 +50,10 @@ export function turnVerdictFromDeathEvidence(
   }
   // A probe finds a dead child long after it died. The later of the last renewal and the last row
   // it wrote bounds its end, so the turn never counts the time Orca itself was down.
-  const lastSeen = Math.max(evidence.lastProvenAliveAt ?? 0, journal.lastLiveActivityAt())
+  const lastSeen = Math.max(
+    evidence.lastProvenAliveAt ?? 0,
+    journal.lastProviderActivityAt(evidence.ownerFence)
+  )
   return {
     state: 'interrupted',
     completedAt: lastSeen > 0 ? Math.min(lastSeen, evidence.observedAt) : evidence.observedAt
@@ -76,7 +79,7 @@ export function runningTurnLifecycleRevisions(
 export function provenUnverifiableTurnRevisions(
   items: readonly AgentJournalRenderItem[],
   evidence: AgentSessionDeathEvidence | null | undefined,
-  journal: Pick<AgentSessionJournal, 'lastLiveActivityAt' | 'itemFence'>
+  journal: Pick<AgentSessionJournal, 'lastProviderActivityAt' | 'itemFence'>
 ): JournalLifecycleMutationInput[] {
   const ownerFence = evidence?.ownerFence
   if (ownerFence === undefined) {

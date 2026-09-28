@@ -81,37 +81,42 @@ function promptItem(state: 'pending' | 'resolved', sequence: number): AgentJourn
 }
 
 describe('turn verdict from death evidence', () => {
-  const lastLiveAt = (at: number) => ({ lastLiveActivityAt: () => at })
+  const providerActiveAt = (at: number) => ({ lastProviderActivityAt: () => at })
   /** Judges a turn the fence-1 owner wrote, by evidence naming that owner. */
   const verdictForTurn = (
     evidence: AgentSessionDeathEvidence | null | undefined,
-    journal: ReturnType<typeof lastLiveAt>
+    journal: ReturnType<typeof providerActiveAt>
   ) => turnVerdictFromDeathEvidence(evidence && { ownerFence: 1, ...evidence }, journal, 1)
 
   it('ends a watched exit at the exit', () => {
     expect(
-      verdictForTurn({ kind: 'exit-observed', detail: 'exit', observedAt: 500 }, lastLiveAt(300))
+      verdictForTurn(
+        { kind: 'exit-observed', detail: 'exit', observedAt: 500 },
+        providerActiveAt(300)
+      )
     ).toEqual({ state: 'interrupted', completedAt: 500 })
   })
 
   it.each(['pid-absent', 'identity-mismatch'] as const)(
-    'ends a %s proof with no proof of life at the last row the journal saw live, not at the probe',
+    'ends a %s proof with no proof of life at the last row the provider wrote, not at the probe',
     (kind) => {
       // Probed at 9000, long after the crash: the downtime is never counted as work.
-      expect(verdictForTurn({ kind, detail: 'gone', observedAt: 9_000 }, lastLiveAt(300))).toEqual({
+      expect(
+        verdictForTurn({ kind, detail: 'gone', observedAt: 9_000 }, providerActiveAt(300))
+      ).toEqual({
         state: 'interrupted',
         completedAt: 300
       })
       // A live row stamped after the probe cannot outlast it, and no live row leaves only the probe.
       for (const lastLive of [9_500, 0]) {
         expect(
-          verdictForTurn({ kind, detail: 'gone', observedAt: 9_000 }, lastLiveAt(lastLive))
+          verdictForTurn({ kind, detail: 'gone', observedAt: 9_000 }, providerActiveAt(lastLive))
         ).toEqual({ state: 'interrupted', completedAt: 9_000 })
       }
     }
   )
 
-  it('ends a probe-proven death at the later of the last renewal and the last live row', () => {
+  it('ends a probe-proven death at the later of the last renewal and the last row the provider wrote', () => {
     const proof = (lastProvenAliveAt: number) => ({
       kind: 'pid-absent' as const,
       detail: 'gone',
@@ -119,21 +124,21 @@ describe('turn verdict from death evidence', () => {
       lastProvenAliveAt
     })
     // A silent tool run: the renewal saw the child working long after its last row.
-    expect(verdictForTurn(proof(8_000), lastLiveAt(300))).toEqual({
+    expect(verdictForTurn(proof(8_000), providerActiveAt(300))).toEqual({
       state: 'interrupted',
       completedAt: 8_000
     })
-    expect(verdictForTurn(proof(8_000), lastLiveAt(0))).toEqual({
+    expect(verdictForTurn(proof(8_000), providerActiveAt(0))).toEqual({
       state: 'interrupted',
       completedAt: 8_000
     })
     // A chatty provider: its last row is the tighter bound.
-    expect(verdictForTurn(proof(200), lastLiveAt(300))).toEqual({
+    expect(verdictForTurn(proof(200), providerActiveAt(300))).toEqual({
       state: 'interrupted',
       completedAt: 300
     })
     // Neither bound outlasts the probe.
-    expect(verdictForTurn(proof(9_500), lastLiveAt(300))).toEqual({
+    expect(verdictForTurn(proof(9_500), providerActiveAt(300))).toEqual({
       state: 'interrupted',
       completedAt: 9_000
     })
@@ -143,14 +148,14 @@ describe('turn verdict from death evidence', () => {
     expect(
       verdictForTurn(
         { kind: 'exit-observed', detail: 'exit', observedAt: 500, lastProvenAliveAt: 400 },
-        lastLiveAt(300)
+        providerActiveAt(300)
       )
     ).toEqual({ state: 'interrupted', completedAt: 500 })
   })
 
   it('leaves a release nothing proved unverifiable', () => {
-    expect(verdictForTurn(null, lastLiveAt(300))).toEqual({ state: 'unverifiable' })
-    expect(verdictForTurn(undefined, lastLiveAt(300))).toEqual({
+    expect(verdictForTurn(null, providerActiveAt(300))).toEqual({ state: 'unverifiable' })
+    expect(verdictForTurn(undefined, providerActiveAt(300))).toEqual({
       state: 'unverifiable'
     })
   })
@@ -158,10 +163,10 @@ describe('turn verdict from death evidence', () => {
     // Only a watched exit was proof then; a probe's proof stays unverifiable.
     const legacy = { detail: 'gone', observedAt: 9_000, lastProvenAliveAt: 8_000 }
     expect(
-      turnVerdictFromDeathEvidence({ ...legacy, kind: 'exit-observed' }, lastLiveAt(300), 1)
+      turnVerdictFromDeathEvidence({ ...legacy, kind: 'exit-observed' }, providerActiveAt(300), 1)
     ).toEqual({ state: 'interrupted', completedAt: 9_000 })
     expect(
-      turnVerdictFromDeathEvidence({ ...legacy, kind: 'pid-absent' }, lastLiveAt(300), 1)
+      turnVerdictFromDeathEvidence({ ...legacy, kind: 'pid-absent' }, providerActiveAt(300), 1)
     ).toEqual({ state: 'unverifiable' })
   })
 
@@ -179,7 +184,7 @@ describe('turn verdict from death evidence', () => {
       [{ ...proof, kind: 'exit-observed' as const, ownerFence: 3 }, 1],
       [{ ...proof, ownerFence: 1 }, undefined]
     ] as const) {
-      expect(turnVerdictFromDeathEvidence(evidence, lastLiveAt(300), turnFence)).toEqual({
+      expect(turnVerdictFromDeathEvidence(evidence, providerActiveAt(300), turnFence)).toEqual({
         state: 'unverifiable'
       })
     }
@@ -417,7 +422,7 @@ describe('stale session state on a cold acquire', () => {
     }
   })
 
-  it('ends a probe-proven turn at its last live row, which a revised item does not carry', async () => {
+  it('ends a probe-proven turn at the last row the provider wrote, which a revised item does not carry', async () => {
     const root = await mkdtemp(join(tmpdir(), 'orca-stale-session-'))
     const journals = createTrackedJournalOpener()
     let now = 100
@@ -546,6 +551,106 @@ describe('stale session state on a cold acquire', () => {
       await journals.closeAll()
       await rm(root, { recursive: true, force: true })
     }
+  })
+
+  describe('a crashed turn revised by a proof that lands after the relaunch', () => {
+    const CRASH_BOUND = {
+      kind: 'pid-absent' as const,
+      detail: 'gone',
+      observedAt: 3_606_000,
+      ownerFence: 1,
+      lastProvenAliveAt: 210
+    }
+
+    /** The fence-1 owner worked until 200 and died; the relaunch's open found no proof yet. */
+    async function crashedThenOpened(
+      root: string,
+      journals: ReturnType<typeof createTrackedJournalOpener>
+    ) {
+      let now = 100
+      const journal = await journals.open({
+        identity: {
+          sessionId: 'session-1',
+          workspaceId: 'workspace-1',
+          hostId: 'local',
+          agent: 'codex',
+          providerHandle: { kind: 'codex', threadId: THREAD }
+        },
+        journalDir: root,
+        now: () => now
+      })
+      await journal.appendItem(
+        RUNNING_IDENTITY,
+        { kind: 'turn', turnId: 'turn-2', state: 'running', startedAt: 100 },
+        { fence: 1 }
+      )
+      now = 200
+      await journal.appendItem(
+        { ...RUNNING_IDENTITY, ordinal: 1 },
+        { kind: 'tool-call', name: 'shell', input: { command: 'pnpm test' }, state: 'running' },
+        { fence: 1 }
+      )
+      now = 3_600_000
+      const settle = (fence: number, deathEvidence: AgentSessionDeathEvidence | null) =>
+        settleStaleStructuredAgentSessionState({
+          journal,
+          sessionId: 'session-1',
+          fence,
+          acquisitionGeneration: null,
+          deathEvidence
+        })
+      await settle(1, null)
+      const turn = () => journal.snapshot().items.map((item) => readAgentJournalTurn(item.body))[0]
+      expect(turn()).toMatchObject({ state: 'unverifiable' })
+      return { journal, settle, turn, at: (time: number) => (now = time) }
+    }
+
+    it('does not end the turn at a send accepted before the proof', async () => {
+      const root = await mkdtemp(join(tmpdir(), 'orca-stale-session-'))
+      const journals = createTrackedJournalOpener()
+      try {
+        const { journal, settle, turn, at } = await crashedThenOpened(root, journals)
+        at(3_605_000)
+        await journal.appendSubmission({
+          clientMessageId: 'send-1',
+          payloadFingerprint: 'fingerprint-1',
+          body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'still there?' }] },
+          fence: 1,
+          handoverRecorded: true
+        })
+        await journal.resolveDispatch({ clientMessageId: 'send-1', state: 'pending', fence: 1 })
+        at(3_606_000)
+
+        await settle(1, CRASH_BOUND)
+
+        expect(turn()).toMatchObject({ state: 'interrupted', completedAt: 210 })
+      } finally {
+        await journals.closeAll()
+        await rm(root, { recursive: true, force: true })
+      }
+    })
+
+    it("does not end the turn at a newer owner's work", async () => {
+      const root = await mkdtemp(join(tmpdir(), 'orca-stale-session-'))
+      const journals = createTrackedJournalOpener()
+      try {
+        const { journal, settle, turn, at } = await crashedThenOpened(root, journals)
+        at(3_605_000)
+        await journal.appendItem(
+          { ...RUNNING_IDENTITY, turnId: 'turn-3' },
+          { kind: 'turn', turnId: 'turn-3', state: 'running', startedAt: 3_605_000 },
+          { fence: 2 }
+        )
+        at(3_606_000)
+
+        await settle(2, CRASH_BOUND)
+
+        expect(turn()).toMatchObject({ state: 'interrupted', completedAt: 210 })
+      } finally {
+        await journals.closeAll()
+        await rm(root, { recursive: true, force: true })
+      }
+    })
   })
 
   it('revises an unverifiable turn only from a proof naming its own owner, and only once', async () => {

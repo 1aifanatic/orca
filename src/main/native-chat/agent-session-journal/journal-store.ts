@@ -234,8 +234,8 @@ export class AgentSessionJournal {
   /** Includes revisions and completion tombstones, whose timestamps disappear from render items. */
   lastActivityAt = (): number => this.state.lastActivityAt
 
-  /** The same over rows written live, so crash reconciliation never reads as activity; 0 if none. */
-  lastLiveActivityAt = (): number => this.state.lastLiveActivityAt
+  /** When the provider child of the owner at `fence` last wrote a row live; 0 if never. */
+  lastProviderActivityAt = (fence: number): number => this.state.providerActivityAt.get(fence) ?? 0
 
   /** Fence of the writer that created the item, while it is in the timeline. */
   itemFence = (itemId: string): number | undefined => this.state.itemFences.get(itemId)
