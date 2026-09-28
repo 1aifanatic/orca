@@ -149,6 +149,16 @@ export function shouldQueueStructuredAgentSessionSend(input: {
   return oldestActionableQueuedMessage(input.journal.queuedMessages.list()) !== null
 }
 
+/** A draft's payload fingerprint in the session that will send it: the reducer
+ *  aliases the provider's echo to the submission by recomputing exactly this. */
+export function queuedMessageFingerprint(sessionId: string, body: AgentJournalMessageItem): string {
+  return structuredAgentSessionPayloadFingerprint({
+    method: 'agentSession.send',
+    sessionId,
+    fields: { body }
+  })
+}
+
 /** The accept-side budget refusal, or null when the draft fits. */
 export function queuedMessageBudgetRefusal(
   journal: AgentSessionJournal,
@@ -225,11 +235,7 @@ export async function maybeQueueStructuredAgentSessionSend(
   const row = await ctx.journal.queuedMessages.insert({
     messageId: clientMessageId,
     body: params.body,
-    fingerprint: structuredAgentSessionPayloadFingerprint({
-      method: 'agentSession.send',
-      sessionId: ctx.sessionId,
-      fields: { body: params.body }
-    }),
+    fingerprint: queuedMessageFingerprint(ctx.sessionId, params.body),
     hostInstance: structuredAgentSessionHostInstance()
   })
   return {

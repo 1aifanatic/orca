@@ -47,6 +47,10 @@ import {
 } from './structured-agent-session-mutation-plans'
 import { maybeQueueStructuredAgentSessionSend } from './structured-agent-session-queued-messages'
 import {
+  compactInFlightContext,
+  conversationOperationWaitRefusal
+} from './structured-conversation-command-lane'
+import {
   awaitUserSendTurn,
   holdQueuedMessagesForStop
 } from './structured-agent-session-queued-stop'
@@ -115,11 +119,14 @@ export function sendStructuredAgentSessionTurn(
     body: AgentJournalMessageItem
     retryUnknown?: true
     delivery?: 'queue-if-active'
-    /** Host-local, set only by the client-facing `agentSession.send` RPC: the
-     *  user's own send. Orchestration mail, a restart continuation and a launch
-     *  prompt never lift a Stop's or a restart's queue pause; this one does once
-     *  its turn starts. */
+    /** Host-local, set only by the client-facing `agentSession.send` RPC (the
+     *  renderer's launch prompt included): lifts a Stop's or a restart's queue
+     *  pause once its turn starts. Orchestration mail, a restart continuation
+     *  and `agent.launch`'s host-sent prompt never set it. */
     userSend?: true
+    /** Host-local: admitted beside a /compact's lane, so it may only become a
+     *  draft — a send the gate no longer holds is refused, never dispatched. */
+    draftOnly?: true
     beforeRun?: () => void
   }
 ): Promise<AgentSessionMutationResult<AgentSessionSendResult>> {
@@ -132,11 +139,15 @@ export function sendStructuredAgentSessionTurn(
       ...plan,
       run: async (ctx) => {
         // The queue decision runs first: a capable send during a transient hold
-        // (a /compact in flight) queues rather than being refused; only a
-        // `blocked` hold — which never queues — falls through to the refusal.
+        // (a /compact in flight — the command controller lets it through) queues
+        // rather than being refused; only a `blocked` hold — which never queues —
+        // falls through to the refusal.
         const queued = await maybeQueueStructuredAgentSessionSend(context, ctx, params)
         if (queued) {
           return queued
+        }
+        if (params.draftOnly) {
+          return conversationOperationWaitRefusal()
         }
         const blocked = structuredAgentSessionSendBlock(context.deps.store.getRecord(ctx.sessionId))
         if (blocked) {
@@ -171,16 +182,8 @@ export function cancelStructuredAgentSessionTurn(
     prompt?: { itemId: string; expectedRevision: number }
   }
 ): Promise<AgentSessionMutationResult<AgentSessionCancelResult>> {
-  const command = context.deps.store.getRecord(params.envelope.sessionId)?.conversationCommand
   // Interrupts must reach a provider while the command awaits its terminal frame.
-  const cancellationContext =
-    command?.command === 'compact' && command.phase === 'prepared'
-      ? {
-          ...context,
-          serialize: <T>(sessionId: string, task: () => Promise<T>) =>
-            context.serialize(`compact-cancel:${sessionId}`, task)
-        }
-      : context
+  const cancellationContext = compactInFlightContext(context, params.envelope.sessionId) ?? context
   const plan = cancelPlan(params)
   if (params.scope || params.prompt) {
     return mutate(

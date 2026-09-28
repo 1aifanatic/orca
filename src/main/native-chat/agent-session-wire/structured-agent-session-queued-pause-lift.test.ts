@@ -3,13 +3,18 @@
 // A consumed draft (drained or sent now) is a user send like any other.
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { hostTestMessage } from './structured-agent-session-host-test-data'
+import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
+import { HOST_TEST_SESSION, hostTestMessage } from './structured-agent-session-host-test-data'
 import {
   QUEUED_RIG_CALLER,
   createQueuedMessageTestRig,
   eventually,
   type QueuedMessageTestRig
 } from './structured-agent-session-queued-message-rig.test-fixture'
+import {
+  awaitUserSendTurn,
+  MAX_USER_SENDS_AWAITING_TURN
+} from './structured-agent-session-queued-stop'
 
 let rig: QueuedMessageTestRig
 
@@ -159,5 +164,30 @@ describe("a Stop's queue pause", () => {
     await mail.result
     await rig.settleAccepted(mail.id, 'mail')
     await expectNeverSent(draftId)
+  })
+})
+
+describe('user sends awaiting their turn', () => {
+  it('stay bounded when they settle unknown, forgetting the oldest first', () => {
+    const session = rig.host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)
+    const queuedSubmission = (clientMessageId: string): AgentJournalSubmission => ({
+      clientMessageId,
+      fence: 1,
+      payloadFingerprint: 'fp',
+      dispatchState: 'pending',
+      providerItemId: null,
+      reason: null,
+      submittedAt: 0,
+      resolvedAt: null,
+      handoverRecorded: true
+    })
+    const total = MAX_USER_SENDS_AWAITING_TURN + 8
+    for (let index = 0; index < total; index++) {
+      awaitUserSendTurn(session, queuedSubmission(`send-${index}`))
+    }
+    const awaiting = [...(session?.userSendsAwaitingTurn ?? [])]
+    expect(awaiting).toHaveLength(MAX_USER_SENDS_AWAITING_TURN)
+    expect(awaiting[0]).toBe('send-8')
+    expect(awaiting.at(-1)).toBe(`send-${total - 1}`)
   })
 })

@@ -1,5 +1,10 @@
 import { sendStructuredAgentSessionTurn } from './structured-agent-session-host-mutations'
 import {
+  compactInFlightContext,
+  conversationOperationWaitRefusal
+} from './structured-conversation-command-lane'
+import { queuedMessageBodyIsTextOnly } from './structured-agent-session-queued-messages'
+import {
   runStructuredConversationCommand,
   type ConversationCommandParams
 } from './structured-conversation-command'
@@ -16,28 +21,28 @@ export class StructuredConversationCommandController {
   send = (
     caller: StructuredAgentSessionCaller,
     params: Parameters<typeof sendStructuredAgentSessionTurn>[2]
-  ): ReturnType<typeof sendStructuredAgentSessionTurn> =>
-    this.pending.has(params.envelope.sessionId)
-      ? Promise.resolve({
-          ok: false,
-          refusal: {
-            code: 'agent_session_operation_invalid',
-            message: 'Wait for the conversation operation to finish.'
-          }
-        })
-      : sendStructuredAgentSessionTurn(this.context(), caller, params)
+  ): ReturnType<typeof sendStructuredAgentSessionTurn> => {
+    const context = this.context()
+    const { sessionId } = params.envelope
+    if (!this.pending.has(sessionId)) {
+      return sendStructuredAgentSessionTurn(context, caller, params)
+    }
+    // A send that can become a draft is admitted during a /compact in flight,
+    // held by the queue gate's `command` hold; every other send still waits.
+    const queueLane =
+      params.delivery === 'queue-if-active' && queuedMessageBodyIsTextOnly(params.body)
+        ? compactInFlightContext(context, sessionId)
+        : null
+    return queueLane
+      ? sendStructuredAgentSessionTurn(queueLane, caller, { ...params, draftOnly: true })
+      : Promise.resolve(conversationOperationWaitRefusal())
+  }
 
   run = (caller: StructuredAgentSessionCaller, params: ConversationCommandParams) => {
     const key = JSON.stringify([caller.callerKey, params.envelope.clientOperationId])
     const pending = this.pending.get(params.envelope.sessionId)
     if (pending && pending.key !== key) {
-      return Promise.resolve({
-        ok: false as const,
-        refusal: {
-          code: 'agent_session_operation_invalid' as const,
-          message: 'Wait for the conversation operation to finish.'
-        }
-      })
+      return Promise.resolve(conversationOperationWaitRefusal())
     }
     const entry = pending ?? { key, count: 0 }
     entry.count++

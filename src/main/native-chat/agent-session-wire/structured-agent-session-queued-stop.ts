@@ -57,6 +57,11 @@ export async function holdQueuedMessagesForStop(
   }
 }
 
+/** Sends settling `unknown` are never terminal (a late echo or restart
+ *  reconciliation can still accept one), so they stay remembered; this bounds
+ *  them. Forgetting the oldest only leaves the cards held for the next send. */
+export const MAX_USER_SENDS_AWAITING_TURN = 32
+
 /** A client's own send the host just recorded for handover — a direct send, or
  *  a draft's consumption by the drain or Send-now: remembered until the
  *  provider answers it. Only a submission still provably unwritten counts — a
@@ -68,15 +73,22 @@ export function awaitUserSendTurn(
   if (!session || !submission || !isQueuedAgentJournalSubmission(submission)) {
     return
   }
-  session.userSendsAwaitingTurn ??= new Set()
-  session.userSendsAwaitingTurn.add(submission.clientMessageId)
+  const awaiting = (session.userSendsAwaitingTurn ??= new Set())
+  awaiting.add(submission.clientMessageId)
+  for (const oldest of awaiting) {
+    if (awaiting.size <= MAX_USER_SENDS_AWAITING_TURN) {
+      break
+    }
+    awaiting.delete(oldest)
+  }
 }
 
 /** Every journal publish: a remembered user send the provider has now accepted
  *  started the user's turn, which lifts the stop-shaped holds — a Stop's, a
  *  /clear carry's, or a restart's (that row is adopted into this instance).
- *  One refused, or gone from the journal, is forgotten with the holds intact.
- *  `send_failed` holds stay — they release only through an explicit Send. */
+ *  One refused, or gone from the journal, is forgotten with the holds intact;
+ *  one `unknown` stays, since it can still be accepted. `send_failed` holds
+ *  stay — they release only through an explicit Send. */
 export function releaseQueuePauseOnUserTurnStart(
   sessionId: string,
   session: StructuredAgentSessionHostSession | undefined

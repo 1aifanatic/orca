@@ -18,7 +18,10 @@ import { QueuedMessageNotConsumableError } from '../agent-session-journal/journa
 import type { QueuedMessageRow } from '../agent-session-journal/queued-message-table'
 import { admitAndRunAgentSessionMutation } from './structured-agent-session-mutation-admission'
 import type { MutationPlan } from './structured-agent-session-mutation-plans'
-import { structuredQueueHold } from './structured-agent-session-queued-messages'
+import {
+  queuedMessageFingerprint,
+  structuredQueueHold
+} from './structured-agent-session-queued-messages'
 import { structuredAgentSessionHostInstance } from './structured-agent-session-queued-pause'
 import { awaitUserSendTurn, unsettledQueuedMessages } from './structured-agent-session-queued-stop'
 import type { StructuredAgentSessionMutationContext } from './structured-agent-session-host-mutations'
@@ -76,6 +79,7 @@ export async function withdrawQueuedMessagesForOperation(
 export async function carryQueuedMessagesToClearReplacement(
   ctx: AgentSessionTurnContext,
   input: {
+    replacementSessionId: string
     replacementJournal: AgentSessionJournal | undefined
     callerKey: string
     operationId: string
@@ -94,11 +98,12 @@ export async function carryQueuedMessagesToClearReplacement(
       // Held from birth ('stopped', the Stop-pause lifetime): the replacement is
       // idle, so an unheld insert would drain before the hold could land. A
       // returned card carries over as a plain held draft — its refusal belonged
-      // to the source's submissions.
+      // to the source's submissions. The fingerprint is re-scoped to the
+      // replacement, or its echo could never alias the sent bubble.
       await replacement.queuedMessages.insert({
         messageId: row.messageId,
         body: row.body,
-        fingerprint: row.fingerprint,
+        fingerprint: queuedMessageFingerprint(input.replacementSessionId, row.body),
         hostInstance: structuredAgentSessionHostInstance(),
         holdReason: 'stopped'
       })
