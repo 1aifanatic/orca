@@ -153,11 +153,12 @@ export class ClaudeHookService {
     }
 
     const hook = getManagedLifecycleHook(scriptPath, this.options.settings)
+    const plan = this.managedHookPlan(options)
     let nextConfig = applyManagedHooks(
       config,
       hook,
       getManagedScriptFileName(this.options.settings),
-      this.managedHookPlan(options)
+      plan
     )
     writeManagedScript(
       scriptPath,
@@ -166,9 +167,10 @@ export class ClaudeHookService {
         skipWhenGrokImportsClaude: this.options.agent === 'claude'
       })
     )
-    // Why: the statusline usage feed is Claude-only — OpenClaude data would be misattributed to the Claude provider.
-    if (this.options.agent === 'claude') {
+    if (plan.statusLine === 'install') {
       nextConfig = this.installManagedStatusLine(nextConfig)
+    } else if (plan.statusLine === 'retire') {
+      nextConfig = this.retireManagedStatusLine(nextConfig)
     }
     writeHooksJson(configPath, nextConfig)
     return this.getStatus(options)
@@ -194,6 +196,23 @@ export class ClaudeHookService {
       writeFileSync(markerPath, '')
     } catch {
       // Best-effort: a missing marker only means one future user deletion gets re-installed once.
+    }
+    return next
+  }
+
+  // Why: a Claude that predates statusLine discards the whole settings file over Orca's; dropping the
+  // marker with it keeps an upgrade from reading the removal as the user's opt-out.
+  private retireManagedStatusLine(config: HooksConfig): HooksConfig {
+    const { config: next, changed } = removeManagedStatusLine(
+      config,
+      getStatusLineScriptFileName(this.options.settings)
+    )
+    if (changed) {
+      try {
+        rmSync(getStatusLineInstallMarkerPath(this.options.settings), { force: true })
+      } catch {
+        // Best-effort: a stale marker only means one upgrade skips re-adding the statusline.
+      }
     }
     return next
   }

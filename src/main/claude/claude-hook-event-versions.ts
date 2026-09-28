@@ -22,9 +22,13 @@ export const CLAUDE_HOOK_EVENT_FIRST_VERSIONS = {
   StopFailure: '2.1.78'
 } as const
 
-// Why: an unresolved version gets Orca's core lifecycle events, all known by SessionStart's release,
-// and nothing newer; a Claude older than that is gated only once its version resolves.
-export const UNRESOLVED_CLAUDE_VERSION = CLAUDE_HOOK_EVENT_FIRST_VERSIONS.SessionStart
+// Why: 1.0.49 through 1.0.66 also discard the whole file over an unknown top-level key, and
+// `statusLine` joined their schema only in 1.0.64. Pinned by the same fixture's topLevelSettings.
+export const CLAUDE_STATUS_LINE_FIRST_VERSION = '1.0.64'
+
+// Why: an unresolved version gets what the first release accepting Orca's core lifecycle events and
+// statusLine knows, and nothing newer; a Claude older than that is gated only once its version resolves.
+export const UNRESOLVED_CLAUDE_VERSION = CLAUDE_STATUS_LINE_FIRST_VERSION
 
 export type ClaudeHookEventName = keyof typeof CLAUDE_HOOK_EVENT_FIRST_VERSIONS
 
@@ -38,14 +42,22 @@ export function claudeVersionReaches(version: string | null | undefined, floor: 
   return parsed !== null && hasReachedAppVersion(parsed, floor)
 }
 
+function claudeKnowsSince(version: string | null | undefined, firstVersion: string): boolean {
+  return hasReachedAppVersion(
+    parseClaudeCliVersion(version) ?? UNRESOLVED_CLAUDE_VERSION,
+    firstVersion
+  )
+}
+
 export function claudeKnowsHookEvent(
   version: string | null | undefined,
   eventName: ClaudeHookEventName
 ): boolean {
-  return hasReachedAppVersion(
-    parseClaudeCliVersion(version) ?? UNRESOLVED_CLAUDE_VERSION,
-    CLAUDE_HOOK_EVENT_FIRST_VERSIONS[eventName]
-  )
+  return claudeKnowsSince(version, CLAUDE_HOOK_EVENT_FIRST_VERSIONS[eventName])
+}
+
+export function claudeKnowsStatusLine(version: string | null | undefined): boolean {
+  return claudeKnowsSince(version, CLAUDE_STATUS_LINE_FIRST_VERSION)
 }
 
 export async function probeClaudeCliVersion(executablePath: string): Promise<string | null> {

@@ -1,5 +1,6 @@
 import {
   claudeKnowsHookEvent,
+  claudeKnowsStatusLine,
   claudeVersionReaches,
   parseClaudeCliVersion
 } from './claude-hook-event-versions'
@@ -84,6 +85,8 @@ export type ClaudeManagedHookPlan = {
   install: readonly ClaudeManagedHookEvent[]
   /** Events whose Orca entry must go; user entries under them always stay. */
   retire: readonly ClaudeManagedHookEvent[]
+  /** Orca's statusLine usage feed; `retire` removes only Orca's own, `leave` never touches the slot. */
+  statusLine: 'install' | 'retire' | 'leave'
 }
 
 /** What to write for a Claude of this version; see claude-hook-event-versions.ts. */
@@ -101,11 +104,17 @@ export function getClaudeManagedHookPlan(
     parseClaudeCliVersion(claudeVersion) === null
       ? []
       : CLAUDE_MANAGED_EVENTS.filter((event) => !install.includes(event))
-  return { install, retire }
+  return {
+    install,
+    retire,
+    statusLine: claudeKnowsStatusLine(claudeVersion) ? 'install' : 'retire'
+  }
 }
 
-// Why: OpenClaude reads its own settings file and accepts every event Orca writes.
+// Why: OpenClaude reads its own settings file and accepts every event Orca writes. The statusline
+// usage feed is Claude-only — OpenClaude data would be misattributed to the Claude provider.
 export const OPENCLAUDE_MANAGED_HOOK_PLAN: ClaudeManagedHookPlan = {
   install: CLAUDE_EVENTS,
-  retire: [CLAUDE_SESSION_END_EVENT]
+  retire: [CLAUDE_SESSION_END_EVENT],
+  statusLine: 'leave'
 }
