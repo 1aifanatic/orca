@@ -8,7 +8,7 @@ import type { GlobalSettings } from '../../shared/global-settings-types'
 import {
   isAgentStatusHooksEnabled,
   isAgentStatusHooksEnabledForAgent
-} from './agent-status-hooks-setting'
+} from '../../shared/agent-status-hooks-setting'
 import { probeClaudeCliVersion } from '../claude/claude-hook-event-versions'
 import { detectLocalManagedAgentCliPresence } from './local-agent-cli-presence'
 import {
@@ -25,7 +25,7 @@ export { MANAGED_AGENT_HOOK_INSTALLERS } from './managed-agent-hook-registry'
 export {
   isAgentStatusHooksEnabled,
   isAgentStatusHooksEnabledForAgent
-} from './agent-status-hooks-setting'
+} from '../../shared/agent-status-hooks-setting'
 
 type ManagedHookSettings = Partial<
   Pick<GlobalSettings, 'agentCmdOverrides' | 'agentStatusHooksEnabled' | 'disabledTuiAgents'>

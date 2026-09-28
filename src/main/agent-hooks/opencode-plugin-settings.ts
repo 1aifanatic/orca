@@ -1,5 +1,5 @@
 import type { PluginSources } from '../../relay/plugin-overlay'
-import { isAgentStatusHooksEnabledForAgent } from './agent-status-hooks-setting'
+import { isAgentStatusHooksEnabledForAgent } from '../../shared/agent-status-hooks-setting'
 import type { ManagedHookDetectionSettings } from './managed-hook-detection-commands'
 
 function enabled(settings: ManagedHookDetectionSettings, agent: 'opencode' | 'opencode2'): boolean {
