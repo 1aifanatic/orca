@@ -146,6 +146,9 @@ try {
   # Service host keys are readable only by SYSTEM and administrators.
   Invoke-Bounded icacls.exe @($hostKey,'/inheritance:r','/grant:r','*S-1-5-18:F','*S-1-5-32-544:F') | Out-Null
   Invoke-Bounded icacls.exe @($hostKey,'/setowner','*S-1-5-18') | Out-Null
+  $hostAcl=Get-Acl -LiteralPath $hostKey
+  $hostAcl.SetSecurityDescriptorSddlForm('D:P(A;;FA;;;SY)(A;;FA;;;BA)',[Security.AccessControl.AccessControlSections]::Access)
+  Set-Acl -LiteralPath $hostKey -AclObject $hostAcl
   $report.hostKeyAcl=(Get-Acl -LiteralPath $hostKey).Sddl
   $authorized=Join-Path $root 'authorized_keys'
   Copy-Item -LiteralPath "$clientKey.pub" -Destination $authorized
