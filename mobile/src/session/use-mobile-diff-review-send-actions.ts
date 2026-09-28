@@ -10,7 +10,8 @@ import { reviewTerminalListRead, reviewTerminalSendRun } from './mobile-review-t
 import { launchAgentWithPrompt } from './pr-ai-triage-launch'
 import { interpretOrThrowRefusalMessage } from '../transport/rpc-refusal-message'
 import { healMobileNativeChatStaleInput } from './mobile-native-chat-stale-input'
-import type { ReviewScreenState, SendSheetState } from './mobile-diff-review-screen-model'
+import type { ReviewScreenState } from './mobile-diff-review-screen-model'
+import type { ReviewSheetIntents } from './mobile-diff-review-sheets'
 
 type SendActionsInput = {
   client: RpcClient | null
@@ -19,7 +20,7 @@ type SendActionsInput = {
   worktreeId: string
   screenState: ReviewScreenState
   setActionError: Dispatch<SetStateAction<string | null>>
-  setSendSheet: Dispatch<SetStateAction<SendSheetState | null>>
+  sheets: Pick<ReviewSheetIntents, 'openSheet' | 'closeSheet' | 'updateSendSheet'>
   saveCommentsAndReviewState: (
     comments: DiffComment[],
     reviewState: MobileDiffReviewState
@@ -37,9 +38,10 @@ export function useMobileDiffReviewSendActions(input: SendActionsInput) {
     worktreeId,
     screenState,
     setActionError,
-    setSendSheet,
+    sheets,
     saveCommentsAndReviewState
   } = input
+  const { openSheet, closeSheet, updateSendSheet } = sheets
 
   const copyNotes = useCallback(async () => {
     if (screenState.kind !== 'ready' || screenState.comments.length === 0) {
@@ -113,16 +115,16 @@ export function useMobileDiffReviewSendActions(input: SendActionsInput) {
       await markNotesSent(comments)
       triggerSuccess()
       setActionError('Review notes sent')
-      setSendSheet(null)
+      closeSheet('send')
     },
-    [client, connState, markNotesSent, setActionError, setSendSheet]
+    [client, connState, closeSheet, markNotesSent, setActionError]
   )
 
   const createTerminalAndSend = useCallback(
     async (comments: readonly DiffComment[]) => {
       // Reported, not thrown: the sheet's caller drops the promise, so a throw would show nothing.
       if (!client || connState !== 'connected') {
-        setSendSheet(null)
+        closeSheet('send')
         setActionError('Waiting for desktop...')
         return
       }
@@ -131,7 +133,7 @@ export function useMobileDiffReviewSendActions(input: SendActionsInput) {
       }
       agentLaunchInFlightRef.current = true
       // Closed up front so the wait (up to a minute for a terminal agent) shows its progress here.
-      setSendSheet(null)
+      closeSheet('send')
       setActionError('Starting an agent...')
       let result
       try {
@@ -164,7 +166,7 @@ export function useMobileDiffReviewSendActions(input: SendActionsInput) {
       // The warning is a note on a launch that went ahead, so it follows the success, not replaces it.
       setActionError(result.warning ? `Review notes sent. ${result.warning}` : 'Review notes sent')
     },
-    [client, connState, hostCapabilities, markNotesSent, setActionError, setSendSheet, worktreeId]
+    [client, closeSheet, connState, hostCapabilities, markNotesSent, setActionError, worktreeId]
   )
 
   const openSendSheet = useCallback(async () => {
@@ -172,7 +174,7 @@ export function useMobileDiffReviewSendActions(input: SendActionsInput) {
       setActionError('Waiting for desktop...')
       return
     }
-    setSendSheet({ kind: 'loading' })
+    openSheet({ kind: 'send', load: { kind: 'loading' } })
     try {
       const response = await reviewTerminalListRead.request(client, {
         worktree: `id:${worktreeId}`
@@ -182,15 +184,15 @@ export function useMobileDiffReviewSendActions(input: SendActionsInput) {
         () => reviewTerminalListRead.interpret(response),
         'Unable to load agent sessions'
       )
-      setSendSheet({ kind: 'ready', terminals })
+      updateSendSheet({ kind: 'ready', terminals })
     } catch (err) {
-      setSendSheet({
+      updateSendSheet({
         kind: 'error',
         message: err instanceof Error ? err.message : 'Unable to load agent sessions',
         terminals: []
       })
     }
-  }, [client, connState, setActionError, setSendSheet, worktreeId])
+  }, [client, connState, openSheet, setActionError, updateSendSheet, worktreeId])
 
   return {
     clearSentNotes,
