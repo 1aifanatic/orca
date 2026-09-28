@@ -1,7 +1,7 @@
 name: Linux 5.4 final artifact diagnostic
 on:
   push:
-    branches: [OrcaWin/np-linux54-diagnostic-x64]
+    branches: [OrcaWin/np-linux54-diagnostic-arm64]
     paths:
       - '.github/workflows/linux54-diagnostic.yml'
       - 'config/diagnostics/linux54/**'
@@ -13,8 +13,8 @@ concurrency:
   group: linux54-diagnostic-${{ github.ref }}
   cancel-in-progress: false
 jobs:
-  x64:
-    runs-on: ubuntu-24.04
+  arm64:
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 60
     env:
       ORCA_BACKGROUND_LAUNCH: '1'
@@ -49,12 +49,12 @@ jobs:
           assert run['path']=='.github/workflows/bun-profile-tests.yml', 'Wrong package producer workflow'
           jobs=json.loads((r/'package-jobs.json').read_text())
           assert jobs['total_count']<=100, 'Job response truncated'
-          selected=[j for j in jobs['jobs'] if j['name'].startswith('linux_package') and 'x64' in j['name']]
-          assert len(selected)==1 and selected[0]['status']=='completed' and selected[0]['conclusion']=='success', 'Final x64 package job is not successful'
+          selected=[j for j in jobs['jobs'] if j['name'].startswith('linux_package') and 'arm64' in j['name']]
+          assert len(selected)==1 and selected[0]['status']=='completed' and selected[0]['conclusion']=='success', 'Final arm64 package job is not successful'
           PY
       - uses: actions/download-artifact@v8
         with:
-          name: bun-linux-package-x64
+          name: bun-linux-package-arm64
           run-id: ${{ env.PACKAGE_RUN }}
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/downloaded-package
@@ -62,7 +62,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 diagnostic/config/diagnostics/linux54/prepare-artifact.py --directory "$RUNNER_TEMP/downloaded-package" --output "$RUNNER_TEMP/unpacked-x64" --sha "$PRODUCTION_SHA" --arch x64 > "$RUNNER_TEMP/package-location.json"
+          python3 diagnostic/config/diagnostics/linux54/prepare-artifact.py --directory "$RUNNER_TEMP/downloaded-package" --output "$RUNNER_TEMP/unpacked-arm64" --sha "$PRODUCTION_SHA" --arch arm64 > "$RUNNER_TEMP/package-location.json"
           python3 - <<'PY'
           import json,os,pathlib
           data=json.loads((pathlib.Path(os.environ['RUNNER_TEMP'])/'package-location.json').read_text())
@@ -72,24 +72,24 @@ jobs:
         with:
           native-runtime: none
       - name: Install bounded VM prerequisites
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils cloud-image-utils ubuntu-cloudimage-keyring curl
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends qemu-system-arm qemu-utils cloud-image-utils ubuntu-cloudimage-keyring curl
       - name: Run actual kernel qualification without a visible desktop
         shell: bash
         run: |
           set -euo pipefail
-          python3 diagnostic/config/diagnostics/linux54/run.py --source-root "$GITHUB_WORKSPACE" --expected-source "$PRODUCTION_SHA" --arch amd64 --app-dir "$RUNNER_TEMP/unpacked-x64" --artifact-source-file "$EVIDENCE_DIRECTORY/source-commit.txt" --artifact-manifest "$EVIDENCE_DIRECTORY/payload-sha256.txt" --work-dir "$RUNNER_TEMP/linux54-x64"
+          python3 diagnostic/config/diagnostics/linux54/run.py --source-root "$GITHUB_WORKSPACE" --expected-source "$PRODUCTION_SHA" --arch arm64 --app-dir "$RUNNER_TEMP/unpacked-arm64" --artifact-source-file "$EVIDENCE_DIRECTORY/source-commit.txt" --artifact-manifest "$EVIDENCE_DIRECTORY/payload-sha256.txt" --work-dir "$RUNNER_TEMP/linux54-arm64"
       - name: Retain small diagnostic evidence only
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: linux54-x64-qualification-${{ github.run_id }}
+          name: linux54-arm64-qualification-${{ github.run_id }}
           retention-days: 7
           if-no-files-found: warn
           path: |
-            ${{ runner.temp }}/linux54-x64/receipt.json
-            ${{ runner.temp }}/linux54-x64/serial.log
-            ${{ runner.temp }}/linux54-x64/*.sums
-            ${{ runner.temp }}/linux54-x64/*.gpg
+            ${{ runner.temp }}/linux54-arm64/receipt.json
+            ${{ runner.temp }}/linux54-arm64/serial.log
+            ${{ runner.temp }}/linux54-arm64/*.sums
+            ${{ runner.temp }}/linux54-arm64/*.gpg
             ${{ runner.temp }}/package-run.json
             ${{ runner.temp }}/package-jobs.json
             ${{ runner.temp }}/package-location.json
