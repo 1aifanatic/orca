@@ -24,6 +24,17 @@
       "d54e66004c": "terminal"
     },
     "components": {
+      "sidebar": {
+        "worktree": {
+          "card": {
+            "compact": {
+              "agents": {
+                "a128d7006b": "{{value0}} {{value1}} child {{value2}}"
+              }
+            }
+          }
+        }
+      },
       "CodexRestartChip": {
         "9263e75f49": "Codex is using the previous account"
       },
