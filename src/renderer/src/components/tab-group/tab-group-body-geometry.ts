@@ -25,7 +25,6 @@ const RECT_MIN_CHANGE_PX = 1
 
 const bodiesByGroupId = new Map<string, HTMLElement>()
 const sourcesByGroupId = new Map<string, Set<GroupBodyGeometrySource>>()
-let sourceCount = 0
 
 function isSameRect(prev: TabGroupBodyRect | null, next: TabGroupBodyRect | null): boolean {
   if (!prev || !next) {
@@ -122,15 +121,14 @@ function acquireSource(groupId: string, container: HTMLElement): GroupBodyGeomet
   }
   source.observer.observe(container)
   syncObservedBody(source)
+  if (sourcesByGroupId.size === 0) {
+    window.addEventListener('resize', measureAllSources)
+  }
   if (!sources) {
     sources = new Set()
     sourcesByGroupId.set(groupId, sources)
   }
   sources.add(source)
-  sourceCount += 1
-  if (sourceCount === 1) {
-    window.addEventListener('resize', measureAllSources)
-  }
   return source
 }
 
@@ -141,8 +139,7 @@ function releaseSource(source: GroupBodyGeometrySource): void {
   if (sources?.size === 0) {
     sourcesByGroupId.delete(source.groupId)
   }
-  sourceCount -= 1
-  if (sourceCount === 0) {
+  if (sourcesByGroupId.size === 0) {
     window.removeEventListener('resize', measureAllSources)
   }
 }
