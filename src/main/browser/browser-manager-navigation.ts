@@ -73,41 +73,61 @@ export abstract class BrowserManagerNavigation extends BrowserManagerVisibility 
   }
 
   /**
-   * The one writer of a guest's identity. Two layers carry it: the WebContents UA, which needs no
-   * debugger but cancels an in-flight navigation unless written at did-start-navigation, and a CDP
-   * override, which outranks it. The override is cleared whenever the WebContents UA already
-   * presents the identity, because any override without userAgentMetadata makes Chromium drop
-   * navigator.userAgentData and every sec-ch-ua header.
+   * The only writer of the WebContents UA. Chromium cancels a redirect, and reloads a loading
+   * document, when that UA changes at any other moment; a cross-document did-start-navigation is
+   * the one point where it lands on the new document alone. Call it synchronously from that event.
    */
-  protected applyTabIdentity(
+  protected presentTabIdentityAtNavigationStart(
     guest: Electron.WebContents,
     url: string,
-    options: { webContentsWritable: boolean }
+    sameDocument: boolean
   ): Promise<boolean> {
-    const processIdentity = getBrowserProcessUserAgentIdentity()
-    const identity = resolveBrowserTabIdentity({
-      url,
-      mobile: this.hasMobileViewportPreset(guest.id),
-      processIdentity
-    })
+    const identity = this.resolveGuestTabIdentity(guest, url)
     // The WebContents UA carries no mobile identity: that needs metadata only CDP can send.
     const webContentsUserAgent =
-      identity.kind === 'google-auth' ? identity.userAgent : processIdentity.userAgent
+      identity.kind === 'google-auth'
+        ? identity.userAgent
+        : getBrowserProcessUserAgentIdentity().userAgent
     let presentedByWebContents = guest.getUserAgent()
-    // Why: WebContents.setUserAgent() during a redirect makes Chromium cancel the in-flight
-    // navigation (ERR_ABORTED) and replay the original request, which a POST-started OAuth chain
-    // cannot survive — the sign-in lands on a blank tab. Redirects and preset changes go over CDP.
-    if (options.webContentsWritable && presentedByWebContents !== webContentsUserAgent) {
+    if (!sameDocument && presentedByWebContents !== webContentsUserAgent) {
       guest.setUserAgent(webContentsUserAgent)
       presentedByWebContents = webContentsUserAgent
     }
+    return this.writeTabIdentityOverride(guest, identity, presentedByWebContents)
+  }
+
+  /** Every other identity change (redirects, failed loads, preset changes) goes over CDP only. */
+  protected retargetTabIdentity(guest: Electron.WebContents, url: string): Promise<boolean> {
+    return this.writeTabIdentityOverride(
+      guest,
+      this.resolveGuestTabIdentity(guest, url),
+      guest.getUserAgent()
+    )
+  }
+
+  private resolveGuestTabIdentity(guest: Electron.WebContents, url: string): BrowserTabIdentity {
+    return resolveBrowserTabIdentity({
+      url,
+      mobile: this.hasMobileViewportPreset(guest.id),
+      processIdentity: getBrowserProcessUserAgentIdentity()
+    })
+  }
+
+  // Why clear rather than restate: any override without userAgentMetadata makes Chromium drop
+  // navigator.userAgentData and every sec-ch-ua header, so it stands only when the WebContents UA
+  // cannot present the identity itself.
+  private writeTabIdentityOverride(
+    guest: Electron.WebContents,
+    identity: BrowserTabIdentity,
+    presentedByWebContents: string
+  ): Promise<boolean> {
     const override: CdpUserAgentOverride =
       identity.kind === 'mobile'
         ? { userAgent: identity.userAgent, userAgentMetadata: identity.userAgentMetadata }
         : presentedByWebContents === identity.userAgent
           ? { userAgent: '' }
-          : // Only reachable mid-redirect with the WebContents UA still on the other identity; the next
-            // direct navigation rewrites that UA and clears this override.
+          : // Only reachable before a navigation start can rewrite the WebContents UA (a redirect
+            // off the auth host, a failed load); the next cross-document navigation clears it.
             { userAgent: identity.userAgent }
     if (override.userAgent === '' && !this.standingCdpUserAgentOverride(guest.id)) {
       return Promise.resolve(true)

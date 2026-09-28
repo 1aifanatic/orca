@@ -35,7 +35,7 @@ export abstract class BrowserManagerGuestNavigationPolicy extends BrowserManager
         return
       }
       this.updatePendingNavigationForRedirect(guest.id, url)
-      void this.applyTabIdentity(guest, url, { webContentsWritable: false })
+      void this.retargetTabIdentity(guest, url)
     }
 
     const didFailLoadHandler = (
@@ -52,9 +52,7 @@ export abstract class BrowserManagerGuestNavigationPolicy extends BrowserManager
       const failedNavigationWasCurrent = this.failPendingNavigation(guest.id, validatedURL)
       if (failedNavigationWasCurrent) {
         // Restore the identity of the document that remains (usually the failed URL's error page).
-        // Why CDP only: that error page is still loading here, and setUserAgent() makes Chromium
-        // reload it — replaying the failed request. The next navigation rewrites the WebContents UA.
-        void this.applyTabIdentity(guest, guest.getURL(), { webContentsWritable: false })
+        void this.retargetTabIdentity(guest, guest.getURL())
       }
       const browserPageId = this.tabIdByWebContentsId.get(guest.id)
       const certificateFailure = browserPageId
@@ -102,9 +100,7 @@ export abstract class BrowserManagerGuestNavigationPolicy extends BrowserManager
       // Why: getURL() still reports the previous committed URL until this navigation commits, so
       // every UA writer must read the in-flight target or they disagree about the tab's host.
       this.startPendingNavigation(guest.id, url)
-      // Why: a same-document navigation keeps the loading document, and setUserAgent() while it
-      // loads makes Chromium reload it — replaying a one-time OAuth callback that calls replaceState.
-      void this.applyTabIdentity(guest, url, { webContentsWritable: !isInPlace })
+      void this.presentTabIdentityAtNavigationStart(guest, url, isInPlace)
       this.certificateTrustController?.onMainFrameNavigationStarted(guest.id)
       // Why: a pre-registration failure belongs only to its own nav; a replacement nav must not replay it.
       this.pendingLoadFailuresByGuestId.delete(guest.id)

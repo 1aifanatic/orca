@@ -91,6 +91,22 @@ function navigate(url: string, { inPlace = false } = {}): void {
   didStartNavigation(null, url, inPlace, true)
 }
 
+function redirectTo(url: string): void {
+  const willRedirect = mocks.guestOnMock.mock.calls.findLast(
+    ([event]) => event === 'will-redirect'
+  )?.[1]
+  willRedirect({ preventDefault: vi.fn() }, url, false, true)
+}
+
+// A redirect target that fails: the one failed-load path whose restore could otherwise write the UA.
+function failLoad(url: string): void {
+  redirectTo(url)
+  const didFailLoad = mocks.guestOnMock.mock.calls.findLast(
+    ([event]) => event === 'did-fail-load'
+  )?.[1]
+  didFailLoad(null, -102, 'ERR_CONNECTION_REFUSED', url, true)
+}
+
 async function observe(
   { id, handle }: { id: number; handle: ViewportGuestHandle },
   url: string
@@ -273,6 +289,34 @@ describe('tab identity ownership', () => {
     expect(healed.presented).toBe(GUEST_CLEAN_UA)
     expect(healed.standingOverride).toBeNull()
   })
+
+  // Why a table over every entry point: Chromium cancels a redirect, and reloads a loading document,
+  // when the WebContents UA changes anywhere but a cross-document navigation start.
+  it.each([
+    ['a redirect', () => redirectTo(ORDINARY_URL)],
+    ['a failed load', () => failLoad(ORDINARY_URL)],
+    ['a desktop preset', (tab: string) => browserManager.setViewportOverride(tab, PRESETS.desktop)],
+    ['a mobile preset', (tab: string) => browserManager.setViewportOverride(tab, PRESETS.mobile)],
+    ['clearing a preset', (tab: string) => browserManager.setViewportOverride(tab, null)],
+    ['a same-document navigation', () => navigate(`${AUTH_URL}#step`, { inPlace: true })]
+  ])(
+    'writes the WebContents UA only at a cross-document navigation start, not on %s',
+    async (_label, act) => {
+      mocks.processUserAgentMode = 'clean'
+      mocks.processUserAgent = GUEST_CLEAN_UA
+      const opened = openTab(AUTH_URL)
+      expect(opened.handle.guest.setUserAgent).toHaveBeenCalledOnce()
+
+      await act(opened.tab)
+      await flushViewportOps()
+      expect(opened.handle.guest.setUserAgent).toHaveBeenCalledOnce()
+
+      navigate('https://example.org/')
+      // Synchronous: the write must land inside did-start-navigation, before any await.
+      expect(opened.handle.guest.setUserAgent).toHaveBeenCalledTimes(2)
+      expect(opened.handle.webContentsUserAgent()).toBe(GUEST_CLEAN_UA)
+    }
+  )
 
   // Why: setUserAgent() while a document loads makes Chromium reload it, and an OAuth callback that
   // strips its code with replaceState would be requested twice — the one-time code replayed.

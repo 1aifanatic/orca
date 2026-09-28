@@ -169,9 +169,7 @@ export abstract class BrowserManagerViewport extends BrowserManagerDownloadLifec
     // Why: identity is not an emulation step. It follows the requested preset whatever the steps
     // above did, so a failed metrics or touch write can never strand a mobile identity on the tab.
     const identityApplied = await this.runViewportEmulationStep(browserTabId, 'identity', () =>
-      this.applyTabIdentity(guest, this.resolveTabNavigationUrl(guest), {
-        webContentsWritable: false
-      })
+      this.retargetTabIdentity(guest, this.resolveTabNavigationUrl(guest))
     )
     return (
       metricsApplied &&
