@@ -48,6 +48,7 @@ function revealCompactAgentCard(agentListRoot: HTMLElement | null): void {
 type Props = {
   worktreeId: string
   agents?: DashboardAgentRowData[]
+  hasStatusGutter?: boolean
   /** Spacing from the card body above; parent decides whether a divider is appropriate. */
   className?: string
 }
@@ -56,6 +57,7 @@ type Props = {
 const WorktreeCardAgents = React.memo(function WorktreeCardAgents({
   worktreeId,
   agents: precomputedAgents,
+  hasStatusGutter = true,
   className
 }: Props) {
   const selectedAgents = useWorktreeAgentRows(worktreeId, precomputedAgents === undefined)
@@ -64,18 +66,27 @@ const WorktreeCardAgents = React.memo(function WorktreeCardAgents({
     return null
   }
   // Why: mount the inner body (owns the 30s useNow tick) only for non-empty rows, so idle worktrees pay no timer cost.
-  return <WorktreeCardAgentsBody worktreeId={worktreeId} agents={agents} className={className} />
+  return (
+    <WorktreeCardAgentsBody
+      worktreeId={worktreeId}
+      agents={agents}
+      hasStatusGutter={hasStatusGutter}
+      className={className}
+    />
+  )
 })
 
 type BodyProps = {
   worktreeId: string
   agents: DashboardAgentRowData[]
+  hasStatusGutter: boolean
   className?: string
 }
 
 const WorktreeCardAgentsBody = React.memo(function WorktreeCardAgentsBody({
   worktreeId,
   agents,
+  hasStatusGutter,
   className
 }: BodyProps) {
   const agentActivityDisplayMode =
@@ -364,7 +375,12 @@ const WorktreeCardAgentsBody = React.memo(function WorktreeCardAgentsBody({
     return (
       <div
         ref={compactAgentListRootRef}
-        className={cn('flex flex-col mt-1 gap-0.5', className)}
+        className={cn(
+          'flex flex-col mt-1 gap-0.5',
+          // Reserve the disclosure gutter for every row so parent, sibling and child columns stay aligned.
+          hasLineage && (hasStatusGutter ? 'pl-3' : 'pl-7'),
+          className
+        )}
         onClick={stopBubble}
         onDoubleClick={stopBubble}
         onMouseDown={stopBubble}
