@@ -102,11 +102,11 @@ describe('a second process on the same profile', () => {
         refusal: {
           code: 'agent_session_journal_unreadable',
           message: JOURNAL_OWNER_REFUSAL_MESSAGES[kind],
-          details: { reason: 'journalUnavailable' }
+          details: { reason: 'journalOwnedElsewhere', processKind: kind }
         }
       })
       expect(gateRefusal()).toEqual({
-        reason: 'journalUnavailable',
+        reason: 'journalOwnedElsewhere',
         message: JOURNAL_OWNER_REFUSAL_MESSAGES[kind]
       })
       expect(getStructuredAgentSessionHost()).toBeNull()
@@ -123,7 +123,7 @@ describe('a second process on the same profile', () => {
     holder = await holdJournalOwnerLockInChild(root)
     vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     await expect(install()).rejects.toMatchObject({
-      refusal: { details: { reason: 'journalUnavailable' } }
+      refusal: { details: { reason: 'journalOwnedElsewhere' } }
     })
 
     await holder.kill()
@@ -249,7 +249,7 @@ describe('startup and other non-chat work without a structured host', () => {
       allowAttachedWindow: true,
       onlyRuntimeOwnedTerminals: true
     })
-    expect(gateRefusal().reason).toBe('journalUnavailable')
+    expect(gateRefusal().reason).toBe('journalOwnedElsewhere')
   })
 
   it('goes ahead when the owner cannot open its journal', async () => {
@@ -392,7 +392,7 @@ describe('startup and other non-chat work without a structured host', () => {
         throw new Error('the record store would not open')
       })
     ).rejects.toThrow('the record store would not open')
-    expect(gateRefusal().reason).toBe('journalUnavailable')
+    expect(gateRefusal().reason).toBe('journalOwnedElsewhere')
   })
 
   it('still fails on an install error that refuses nothing', async () => {

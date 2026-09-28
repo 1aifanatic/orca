@@ -4,6 +4,7 @@
 
 import {
   readAgentSessionRefusalDetails,
+  type AgentSessionJournalProcessKind,
   type AgentSessionRefusalReason
 } from './agent-session-refusal-details'
 import type { AgentSessionRewindReason } from './agent-session-rewind'
@@ -63,12 +64,15 @@ type DurableRefusalFacts = {
   agent_session_operation_unknown: { rewindReason?: AgentSessionRewindReason }
   /** A snapshot from when it was refused; see `agentSessionOwnerVerdictAllowsFreshOperationId`. */
   agent_session_ownership_unknown: { ownerVerdict?: AgentSessionOwnerVerdict }
+  /** How the refused process was started, which picks its step past the owner. */
+  agent_session_journal_unreadable: { processKind?: AgentSessionJournalProcessKind }
 }
 
 const DURABLE_FACT_KEYS: Partial<Record<AgentSessionWireRefusalCode, readonly string[]>> = {
   agent_session_operation_invalid: ['rewindReason'],
   agent_session_operation_unknown: ['rewindReason'],
-  agent_session_ownership_unknown: ['ownerVerdict']
+  agent_session_ownership_unknown: ['ownerVerdict'],
+  agent_session_journal_unreadable: ['processKind']
 } satisfies { [C in keyof DurableRefusalFacts]: readonly (keyof DurableRefusalFacts[C])[] }
 
 export type AgentSessionWriteRefusalDetails<C extends AgentSessionWireRefusalCode> = {

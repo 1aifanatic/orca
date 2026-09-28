@@ -1,5 +1,6 @@
 // The sentences a chat notice is made of, each whole so desktop can translate it on its own.
 
+import type { AgentSessionJournalProcessKind } from './agent-session-refusal-details'
 import {
   QUIT_TERMINAL_AGENT,
   START_NEW_CHAT,
@@ -55,6 +56,12 @@ export const AGENT_SESSION_WRITE_NOTICE_COPY = {
   waitMoment: 'Wait a moment.',
   recordUnreadable: "Orca couldn't read this chat's saved state.",
   chatNotFound: 'The Orca running this chat has no record of it.',
+  chatsOpenElsewhere: 'Chats are open in another Orca using this profile.',
+  quitOtherOrca: 'Quit that Orca to use chats here.',
+  quitOtherOrcaOrUseDevProfile:
+    'Quit that Orca to use chats here, or start this one with its own profile (ORCA_DEV_USER_DATA_PATH).',
+  stopOtherOrcaOrUseDataFolder:
+    'Stop that Orca to use chats here, or give this one its own data folder (ORCA_USER_DATA).',
   startNewChat: START_NEW_CHAT,
   tryAgain: 'Try again.'
 } as const
@@ -62,3 +69,13 @@ export const AGENT_SESSION_WRITE_NOTICE_COPY = {
 export type AgentSessionWriteNoticeSentence = keyof typeof AGENT_SESSION_WRITE_NOTICE_COPY
 /** A notice as whole sentences, each translated on its own; `text` is a provider's own words. */
 export type AgentSessionWriteNoticePart = AgentSessionWriteNoticeSentence | { text: string }
+
+/** A process refused its profile's chats gets past the owner by how it was started. */
+export const JOURNAL_OWNED_ELSEWHERE_STEP: Record<
+  AgentSessionJournalProcessKind,
+  AgentSessionWriteNoticeSentence
+> = {
+  'dev-desktop': 'quitOtherOrcaOrUseDevProfile',
+  packaged: 'quitOtherOrca',
+  orcad: 'stopOtherOrcaOrUseDataFolder'
+}

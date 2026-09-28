@@ -7,6 +7,7 @@
 // releases the previous one first.
 
 import { resolve } from 'node:path'
+import type { AgentSessionJournalProcessKind } from '../../shared/agent-session-refusal-details'
 import {
   agentSessionRefusalError,
   isAgentSessionRefusalError,
@@ -20,8 +21,9 @@ import {
 } from '../native-chat/agent-session-journal/journal-owner-lock'
 
 /** Which way the refused process can be told to get out of the way. */
-export type JournalOwnerProcessKind = 'dev-desktop' | 'packaged' | 'orcad'
+export type JournalOwnerProcessKind = AgentSessionJournalProcessKind
 
+// For logs and released clients; current clients pick their words from the reason and kind.
 export const JOURNAL_OWNER_REFUSAL_MESSAGES: Record<JournalOwnerProcessKind, string> = {
   'dev-desktop':
     'Chats are open in another Orca window using this profile. Quit that Orca to use chats here, or start this one with its own profile (ORCA_DEV_USER_DATA_PATH).',
@@ -85,7 +87,7 @@ export function structuredAgentSessionJournalOwnerRefusal(): AgentSessionRefusal
   }
   return agentSessionRefusalError(
     'agent_session_journal_unreadable',
-    { reason: 'journalUnavailable' },
+    { reason: 'journalOwnedElsewhere', processKind },
     JOURNAL_OWNER_REFUSAL_MESSAGES[processKind]
   )
 }

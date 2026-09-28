@@ -13,7 +13,10 @@ import { isSqliteCorruption } from '../../sqlite/sqlite-read-failure'
 import { JournalDatabaseNewerSchemaError } from './journal-database'
 import { AgentSessionJournalError } from './journal-write-guards'
 
-export type JournalOpenFailure = AgentSessionRefusalReason<'agent_session_journal_unreadable'>
+export type JournalOpenFailure = Exclude<
+  AgentSessionRefusalReason<'agent_session_journal_unreadable'>,
+  'journalOwnedElsewhere'
+>
 
 // Bounds a cause chain that loops back on itself.
 const MAX_CAUSE_DEPTH = 8

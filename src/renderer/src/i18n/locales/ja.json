@@ -17394,6 +17394,10 @@
         "recordUnreadable": "Orca はこのチャットの保存済みの状態を読み取れませんでした。",
         "chatNotFound": "このチャットを実行している Orca には、このチャットの記録がありません。",
         "startNewChat": "続けるには、新しいチャットを開始してください。",
+        "chatsOpenElsewhere": "このプロファイルを使用している別の Orca でチャットが開かれています。",
+        "quitOtherOrca": "ここでチャットを使うには、その Orca を終了してください。",
+        "quitOtherOrcaOrUseDevProfile": "ここでチャットを使うには、その Orca を終了するか、この Orca を専用のプロファイル (ORCA_DEV_USER_DATA_PATH) で起動してください。",
+        "stopOtherOrcaOrUseDataFolder": "ここでチャットを使うには、その Orca を停止するか、この Orca に専用のデータフォルダー (ORCA_USER_DATA) を指定してください。",
         "tryAgain": "もう一度お試しください。"
       },
       "composer": {

@@ -17524,6 +17524,10 @@
         "recordUnreadable": "Orca couldn't read this chat's saved state.",
         "chatNotFound": "The Orca running this chat has no record of it.",
         "startNewChat": "Start a new chat to continue.",
+        "chatsOpenElsewhere": "Chats are open in another Orca using this profile.",
+        "quitOtherOrca": "Quit that Orca to use chats here.",
+        "quitOtherOrcaOrUseDevProfile": "Quit that Orca to use chats here, or start this one with its own profile (ORCA_DEV_USER_DATA_PATH).",
+        "stopOtherOrcaOrUseDataFolder": "Stop that Orca to use chats here, or give this one its own data folder (ORCA_USER_DATA).",
         "tryAgain": "Try again."
       },
       "taskList": {
