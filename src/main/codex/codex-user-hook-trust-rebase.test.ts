@@ -151,4 +151,54 @@ describe('real-home user hook trust rebasing', () => {
     expect(JSON.parse(readFileSync(hooksPath, 'utf-8')).hooks.Stop).toEqual([{ hooks: [user] }])
     expect(warn).toHaveBeenCalled()
   })
+
+  it('moves nothing when any stored key has an unknown shape, leaving review to Codex', () => {
+    const orca = command('orca-hook')
+    const user = command('user-hook')
+    upsertHookTrustEntries(configPath, [{ ...stopEntry(1, user), trustedHash: 'sha256:user' }])
+    const before = `${readFileSync(configPath, 'utf-8')}\n[hooks.state."a-key-in-a-new-format"]\ntrusted_hash = "sha256:other"\n`
+    writeFileSync(configPath, before)
+
+    mutate({ Stop: [{ hooks: [orca] }, { hooks: [user] }] }, { Stop: [{ hooks: [user] }] })
+
+    expect(JSON.parse(readFileSync(hooksPath, 'utf-8')).hooks.Stop).toEqual([{ hooks: [user] }])
+    expect(readFileSync(configPath, 'utf-8')).toBe(before)
+  })
+
+  // Why POSIX only: the expected bytes spell the key the way a POSIX path is written.
+  it.skipIf(process.platform === 'win32')(
+    'rewrites only the moved blocks, carrying each body verbatim and computing nothing',
+    () => {
+      const orca = command('orca-hook')
+      const user = command('user-hook')
+      const other = command('other-event-hook')
+      const userBody =
+        'trusted_hash = "sha256:written-by-codex"\nnote = "a field Orca does not know"'
+      const unrelated = [
+        'model = "user-model" # the user\'s own comment',
+        '',
+        '[projects."/work/app"]',
+        'trust_level = "trusted"',
+        '',
+        `[hooks.state."${hooksPath}:post_tool_use:0:0"]`,
+        'trusted_hash = "sha256:untouched"',
+        ''
+      ].join('\n')
+      writeFileSync(
+        configPath,
+        `${unrelated}\n[hooks.state."${hooksPath}:stop:1:0"]\n${userBody}\n`
+      )
+
+      mutate(
+        { Stop: [{ hooks: [orca] }, { hooks: [user] }], PostToolUse: [{ hooks: [other] }] },
+        { Stop: [{ hooks: [user] }], PostToolUse: [{ hooks: [other] }] }
+      )
+
+      const after = readFileSync(configPath, 'utf-8')
+      expect(after.startsWith(unrelated)).toBe(true)
+      expect(after.slice(unrelated.length)).toBe(
+        `\n[hooks.state."${hooksPath}:stop:0:0"]\n${userBody}\n`
+      )
+    }
+  )
 })

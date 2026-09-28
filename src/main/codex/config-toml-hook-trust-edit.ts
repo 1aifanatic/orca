@@ -9,6 +9,7 @@ import {
 } from './codex-trust-identity'
 import {
   ensureHooksStateParentTable,
+  findAllHookTrustBlocks,
   findHookTrustBlockRanges,
   type HookTrustBlockRange
 } from './config-toml-hook-trust-blocks'
@@ -50,16 +51,25 @@ export function removeHookTrustContent(content: string, keys: readonly string[])
   return updated + content.slice(cursor)
 }
 
+// Why: Codex's hook_key is `<path>:<event>:<group>:<handler>` (checked unchanged
+// from 0.141 to 0.158). Any other shape means the format moved under us.
+const HOOK_TRUST_KEY_SHAPE = /^.+:[a-z][a-z0-9_]*:(?:0|[1-9]\d*):(?:0|[1-9]\d*)$/
+
 /**
- * Moves each hook's trust block to the hook's new key, body bytes unchanged.
- * Codex hashes a hook's content, not its position, so the moved block stays
- * exactly as valid as before; a hook with no block keeps none.
+ * Moves each hook's trust block to the hook's new key, body bytes unchanged:
+ * only what Codex wrote moves, and no hash is ever computed. Codex hashes a
+ * hook's content, not its path or position, so the moved block stays exactly
+ * as valid as before; a hook with no block keeps none. If any stored key has
+ * an unknown shape, nothing moves and Codex asks the user to review instead.
  */
 export function moveHookTrustContent(
   existingContent: string,
   moves: readonly { oldKey: string; newKey: string }[]
 ): string {
   const content = stripLeadingBom(existingContent)
+  if (findAllHookTrustBlocks(content).some(({ key }) => !HOOK_TRUST_KEY_SHAPE.test(key))) {
+    return existingContent
+  }
   const bodies = moves.flatMap(({ oldKey, newKey }) => {
     const [range] = findHookTrustBlockRanges(
       content,

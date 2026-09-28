@@ -5,7 +5,13 @@ import { join } from 'node:path'
 import { wrapPosixHookCommand, type HookDefinition } from '../agent-hooks/installer-utils'
 import { _internals as grantInternals } from './codex-hook-trust-grant'
 import { createCodexHookTrustEntry } from './codex-hook-identity'
-import { computeTrustKey, computeTrustedHash, readHookTrustEntries } from './config-toml-trust'
+import {
+  computeTrustKey,
+  computeTrustedHash,
+  readHookTrustEntries,
+  upsertHookTrustEntries,
+  type CodexTrustEntry
+} from './config-toml-trust'
 import { getCodexManagedHookInstallMaterial } from './codex-hook-definition'
 import { isCodexManagedCommand, setupCodexHookHomes } from './hook-service-test-harness'
 
@@ -71,6 +77,18 @@ function seed(file: HooksFile): void {
   writeFileSync(configPath(), 'model = "user-model"\n')
 }
 
+const SAVED_HOOK_HASH = 'sha256:approved-in-codex'
+
+function savedHookAt(groupIndex: number): CodexTrustEntry {
+  return {
+    sourcePath: hooksPath(),
+    eventLabel: 'stop',
+    groupIndex,
+    handlerIndex: 0,
+    command: 'saved-meanwhile.sh'
+  }
+}
+
 /** Codex fails the session after another writer saved both files meanwhile. */
 function failSessionAfterConcurrentEdits(): { sessions: number } {
   const counts = { sessions: 0 }
@@ -80,6 +98,10 @@ function failSessionAfterConcurrentEdits(): { sessions: number } {
     hooks.hooks.Stop = [...(hooks.hooks.Stop ?? []), SAVED_HOOK]
     writeFileSync(hooksPath(), `${JSON.stringify(hooks, null, 2)}\n`)
     appendFileSync(configPath(), SAVED_PROJECT)
+    // Why: the user approves the saved hook in Codex while the session runs.
+    upsertHookTrustEntries(configPath(), [
+      { ...savedHookAt(hooks.hooks.Stop.length - 1), trustedHash: SAVED_HOOK_HASH }
+    ])
     throw new Error('codex app-server exited with code 1')
   })
   return counts
@@ -132,6 +154,10 @@ describe('a failed real-home trust session with a concurrent edit', () => {
     expect(readHooks().hooks.Stop).toEqual([USER_HOOK, SAVED_HOOK])
     expect(readFileSync(configPath(), 'utf-8')).toContain(SAVED_PROJECT)
     expect(untrustedOrcaHandlers()).toEqual([])
+    // Why: withdrawing Orca's entry moved the saved hook up a slot; its approval moved too.
+    const trust = readHookTrustEntries(configPath())
+    expect(trust.get(computeTrustKey(savedHookAt(1)))?.trustedHash).toBe(SAVED_HOOK_HASH)
+    expect(trust.get(computeTrustKey(savedHookAt(2)))).toBeUndefined()
     // Why: the log says what happened, including when the next try comes.
     const events = getCodexManagedHookInstallMaterial().events.length
     expect(vi.mocked(console.warn)).toHaveBeenCalledWith(
