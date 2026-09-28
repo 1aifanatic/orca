@@ -3,7 +3,8 @@
  * `ORCA_AGENT_SESSION_ID` names the caller, and nothing resolves or guesses a terminal for it.
  *
  * One rule for every verb that names a caller: a caller flag may restate the session, but a flag
- * naming anyone else is refused before any request — never silently dropped, never allowed to win.
+ * naming anyone else is refused — never silently dropped, never allowed to win. A session address
+ * the CLI cannot place is left to the host, whose `/clear` lineage decides.
  * The #21097 accident was a chat that named a sibling's terminal and consumed that sibling's mail.
  *
  * The session env here is the hardest case, a chat that inherited a pane's `ORCA_TERMINAL_HANDLE`
@@ -29,6 +30,8 @@ import { formatCliError, reportCliError } from './cli-error'
 import { RuntimeRpcFailureError } from './runtime/types'
 
 const SESSION = 'f7a1c0de-1111-4222-8333-444455556666'
+/** The session a `/clear` continued as SESSION: the chat's orchestration address stays this one's. */
+const ROOT = '0b5e2d7c-9a41-4c3e-8f62-7d1a3e5b9c08'
 const IDENTITY_ENV = [
   'ORCA_AGENT_SESSION_ID',
   'ORCA_TERMINAL_HANDLE',
@@ -315,6 +318,25 @@ describe.each(CALLER_VERBS)('orchestration $command run as an agent session', (v
     }
   )
 })
+
+describe.each(CALLER_VERBS.filter((verb) => verb.callerFlag !== undefined))(
+  'orchestration $command run by a /clear-ed chat',
+  (verb) => {
+    beforeEach(asSessionWithInheritedPane)
+
+    it('sends the address it had before the clear for the host to place, instead of refusing it', async () => {
+      // The chat's address is its lineage root's, which only the host's session records know.
+      const flags = flagMap({ ...verb.flags, [verb.callerFlag ?? 'from']: `session:${ROOT}` })
+      await invoke(verb.command, flags)
+
+      const [params] = callsTo(verb.method)
+      expect(params?.[verb.callerParam]).toBe(`session:${ROOT}`)
+      expect(params?.terminalPaneKey).toBeUndefined()
+      expect(params?.senderPaneKey).toBeUndefined()
+      expect(getTerminalHandleMock).not.toHaveBeenCalled()
+    })
+  }
+)
 
 describe.each([
   { command: 'gate-list', method: 'gateList', callerParam: 'from' },
