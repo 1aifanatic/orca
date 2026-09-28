@@ -292,6 +292,7 @@ async function probeInteractivity(
     }
   }, target.webTabId)
   await focusActiveTerminalInput(page)
+  console.log('INPUT_BEFORE', name, await inputProbe.evaluate((probe) => probe.read()))
   await page.keyboard.type(token)
   await page.keyboard.press('Enter')
   const paintedLive = await waitForPaneMarker(
