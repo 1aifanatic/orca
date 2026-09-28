@@ -217,6 +217,44 @@ describe('the owner, when its journal will not open', () => {
   })
 })
 
+describe('logging a journal that will not open', () => {
+  const OPEN_FAILED = '[structured-agent-session] opening the chat journal database failed'
+
+  async function writeJunkJournal(): Promise<void> {
+    const path = journalDatabasePath(root)
+    await rm(`${path}-wal`, { force: true })
+    await rm(`${path}-shm`, { force: true })
+    await writeFile(path, 'not a database '.repeat(512))
+  }
+
+  // Every chat request retries the open; the same failure each time is one log, not one per request.
+  it('logs a repeated failure once, with its stack, and again after an open succeeds', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const openFailureLogs = () => warn.mock.calls.filter(([message]) => message === OPEN_FAILED)
+    await install()
+    await stopStructuredAgentSessionRuntime()
+    await writeJunkJournal()
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await expect(install()).rejects.toMatchObject({
+        refusal: { details: { reason: 'journalCorrupt' } }
+      })
+    }
+    expect(openFailureLogs()).toHaveLength(1)
+    expect(openFailureLogs()[0]?.[1]).toBeInstanceOf(Error)
+    expect(openFailureLogs()[0]?.[1]).toHaveProperty('stack', expect.stringContaining('\n'))
+
+    await unlink(journalDatabasePath(root))
+    await install()
+    await stopStructuredAgentSessionRuntime()
+    await writeJunkJournal()
+    await expect(install()).rejects.toMatchObject({
+      refusal: { details: { reason: 'journalCorrupt' } }
+    })
+    expect(openFailureLogs()).toHaveLength(2)
+  })
+})
+
 // A refused host is a no-host state for startup: the app restores terminals and tabs as usual,
 // and only structured requests are refused.
 describe('startup and other non-chat work without a structured host', () => {

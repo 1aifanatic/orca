@@ -41,15 +41,11 @@ import {
   type ClaudeManagedAccountGateSettings
 } from '../native-chat/claude-structured-managed-account-support'
 import { AgentSessionRecordStore } from './agent-session-record-store'
-import { JournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database'
-import { journalOpenRefusalError } from '../native-chat/agent-session-journal/journal-open-failure'
 import {
-  claimStructuredAgentSessionJournal,
-  recordStructuredAgentSessionHostInstallRefusal,
   releaseStructuredAgentSessionJournal,
-  stopRetryingStructuredAgentSessionJournalClaim,
-  structuredAgentSessionJournalOwnerRefusal
+  stopRetryingStructuredAgentSessionJournalClaim
 } from './structured-agent-session-journal-ownership'
+import { openOwnedJournalDatabase } from './structured-agent-session-journal-open'
 import { agentSessionStorePath } from './agent-session-record-store-file'
 import { stopOrphanAgentSessionChildren } from './agent-session-orphan-child-reaper'
 import {
@@ -348,28 +344,4 @@ async function install(deps: StructuredAgentSessionRuntimeDeps): Promise<Install
     journalDatabase,
     waitForRecovery: lifecycle.drain
   }
-}
-
-/** The journal database, opened only under this process's owner lock. A refusal is recorded for
- *  the gate and thrown to the caller; the next install tries again. A lock file that cannot be
- *  opened at all refuses like the database it guards. */
-function openOwnedJournalDatabase(stateDirectory: string): JournalHostDatabase {
-  try {
-    const lock = claimStructuredAgentSessionJournal(stateDirectory)
-    if (lock) {
-      const opened = JournalHostDatabase.open(lock)
-      recordStructuredAgentSessionHostInstallRefusal(null)
-      return opened
-    }
-  } catch (error) {
-    console.warn('[structured-agent-session] opening the chat journal database failed', error)
-    // Nothing is renamed, deleted or rebuilt: the file is left exactly as it is.
-    const refusal = journalOpenRefusalError(error)
-    recordStructuredAgentSessionHostInstallRefusal(refusal)
-    throw refusal
-  }
-  throw (
-    structuredAgentSessionJournalOwnerRefusal() ??
-    new Error('the chat journal owner lock was refused')
-  )
 }
