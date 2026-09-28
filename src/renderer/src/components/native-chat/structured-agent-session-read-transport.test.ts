@@ -9,10 +9,14 @@ import type {
   AgentSessionSubscribeEvent
 } from '../../../../shared/agent-session-wire'
 
-const mocks = vi.hoisted(() => ({ subscribe: vi.fn() }))
+const mocks = vi.hoisted(() => ({ subscribe: vi.fn(), watchHostContact: vi.fn() }))
 
 vi.mock('@/runtime/structured-agent-session-client', () => ({
   subscribeStructuredAgentSession: mocks.subscribe
+}))
+
+vi.mock('@/runtime/runtime-host-contact-regained', () => ({
+  subscribeRuntimeHostContactRegained: mocks.watchHostContact
 }))
 
 import { startStructuredAgentSessionReadTransport } from './structured-agent-session-read-transport'
@@ -496,5 +500,63 @@ describe('structured agent-session read transport unattached refusals', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('reads again as soon as a remote host is reachable, not after the grown wait', async () => {
+    vi.useFakeTimers()
+    try {
+      let hostContactRegained = (): void => {}
+      const stopWatch = vi.fn()
+      mocks.watchHostContact.mockImplementation((_environmentId, listener: () => void) => {
+        hostContactRegained = listener
+        return stopWatch
+      })
+      const unavailable = { code: 'runtime_unavailable', message: 'Remote runtime is unavailable.' }
+      const transport = startStructuredAgentSessionReadTransport({
+        applyEvent: vi.fn(),
+        applyError: vi.fn(),
+        getCursor: () => null,
+        onHistoryReadInvalidated: () => undefined,
+        hydrate: async () => undefined,
+        sessionId: 'session-a',
+        target: { kind: 'environment', environmentId: 'env-a' }
+      })
+      expect(mocks.watchHostContact).toHaveBeenCalledWith('env-a', expect.any(Function))
+      await flushPromises()
+      const refuseLatest = async (): Promise<void> => {
+        const attempt = attempts.at(-1)!
+        attempt.closed.resolve({ unsubscribe: attempt.unsubscribe })
+        await flushPromises()
+        attempt.onError(unavailable)
+      }
+      // An outage long enough that the wait reaches its cap.
+      for (const delay of [750, 1_500, 3_000, 6_000, 12_000, 24_000]) {
+        await refuseLatest()
+        await vi.advanceTimersByTimeAsync(delay)
+      }
+      await refuseLatest()
+      const opened = attempts.length
+      await vi.advanceTimersByTimeAsync(29_000)
+      expect(attempts).toHaveLength(opened)
+
+      hostContactRegained()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(attempts).toHaveLength(opened + 1)
+
+      // The wait starts over too, so a failure right after reconnect is retried soon.
+      await refuseLatest()
+      await vi.advanceTimersByTimeAsync(750)
+      expect(attempts).toHaveLength(opened + 2)
+
+      transport.dispose()
+      expect(stopWatch).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('does not watch host contact for a local read', () => {
+    startWithHydration(async () => undefined, vi.fn()).dispose()
+    expect(mocks.watchHostContact).not.toHaveBeenCalled()
   })
 })

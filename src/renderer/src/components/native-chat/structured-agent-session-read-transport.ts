@@ -8,6 +8,7 @@ import {
 } from '../../../../shared/structured-agent-session-read-refusal'
 import type { AgentSessionRefusalReference } from '../../../../shared/agent-session-wire-refusals'
 import { readAgentSessionErrorRefusal } from '../../../../shared/agent-session-write-failure'
+import { subscribeRuntimeHostContactRegained } from '@/runtime/runtime-host-contact-regained'
 import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
 import { subscribeStructuredAgentSession } from '@/runtime/structured-agent-session-client'
 
@@ -55,6 +56,18 @@ function createReconnectScheduler(args: { shouldStop: () => boolean; reconnect: 
     reset(): void {
       nextDelay = RECONNECT_FIRST_DELAY_MS
     },
+    /** The host is reachable again: a waiting retry runs now instead of after the grown wait. */
+    retryNow(): void {
+      nextDelay = RECONNECT_FIRST_DELAY_MS
+      if (!timer) {
+        return
+      }
+      clearTimeout(timer)
+      timer = null
+      if (!args.shouldStop()) {
+        args.reconnect()
+      }
+    },
     dispose(): void {
       if (timer) {
         clearTimeout(timer)
@@ -96,6 +109,13 @@ export function startStructuredAgentSessionReadTransport(args: {
     shouldStop: () => stopped || connected || failedFinally,
     reconnect: () => void open()
   })
+  // Why: an outage grows the retry wait to its cap; a host that is back should not wait it out.
+  const stopHostContactWatch =
+    args.target.kind === 'environment'
+      ? subscribeRuntimeHostContactRegained(args.target.environmentId, () =>
+          reconnectScheduler.retryNow()
+        )
+      : () => {}
   const isCurrentOpenGeneration = (candidate: number): boolean =>
     !stopped && candidate === openGeneration
   const clearUnattachedReadGrace = (): void => {
@@ -259,6 +279,7 @@ export function startStructuredAgentSessionReadTransport(args: {
       stopped = true
       openGeneration += 1
       args.onHistoryReadInvalidated()
+      stopHostContactWatch()
       reconnectScheduler.dispose()
       coalescer.dispose()
       unsubscribe()
