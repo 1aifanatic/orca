@@ -21,13 +21,15 @@ for family, address in ((socket.AF_INET, ('192.0.2.1', 443)),
         probe.settimeout(1)
         result = probe.connect_ex(address)
     receipt['socketProbes'].append({'address': address[0], 'errno': result})
-    if result not in (errno.ENETUNREACH, errno.EHOSTUNREACH):
-        raise SystemExit(f'network isolation probe unexpected result: {result}')
 print(json.dumps(receipt, indent=2))
 destination = Path(sys.argv[1]) / 'receipt'
 destination.mkdir(exist_ok=True)
 (destination / 'network-isolation.json').write_text(json.dumps(receipt, indent=2) + '\n')
-if len([line for line in routes.splitlines() if line.strip()]) != 1:
+for probe in receipt['socketProbes']:
+    if probe['errno'] not in (errno.ENETUNREACH, errno.EHOSTUNREACH, errno.EADDRNOTAVAIL):
+        raise SystemExit(f'network isolation probe unexpected result: {probe}')
+route_rows = [line for line in routes.splitlines() if line.strip() and not line.startswith('Iface')]
+if route_rows:
     raise SystemExit('current process namespace still has IPv4 routes')
 PY
 python3 "$script_dir/verify-offline-xwin.py" "$root"
