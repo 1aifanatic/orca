@@ -479,49 +479,36 @@ describe('a send handed over under its own frame id', () => {
     expect(
       verdicts(contents, 'anchor', [handedOver('ship it'), handedOver('and test it', 'next')])
     ).toMatchObject([
-      { outcome: 'unknown', reason: 'ambiguous_match' },
+      { outcome: 'unknown', reason: 'not_found' },
       { outcome: 'accepted', providerItemId: key('next') }
     ])
   })
 
-  it('stays unknown when the send merged with it had the same text', () => {
-    const merged = [
-      { type: 'text', text: 'yes' },
-      { type: 'text', text: 'yes' }
-    ]
-    const contents = jsonl([ANCHOR, prompt('next', 'anchor', merged)], 'next')
-
-    expect(
-      verdicts(contents, 'anchor', [handedOver('yes'), handedOver('yes', 'next')])
-    ).toMatchObject([{ outcome: 'unknown' }, { outcome: 'accepted' }])
-  })
-
-  it('is not delivered when the only copy of its text is an identical send found by id', () => {
-    const contents = jsonl([ANCHOR, prompt('first', 'anchor', 'yes')], 'first')
-
-    expect(
-      verdicts(contents, 'anchor', [handedOver('yes', 'first'), handedOver('yes')])
-    ).toMatchObject([{ outcome: 'accepted' }, { outcome: 'rejected' }])
-  })
-
-  it('is not delivered when the whole file lacks it', () => {
+  it('stays unknown, never not delivered, when the whole file lacks it', () => {
     const contents = jsonl([ANCHOR, prompt('u-1', 'anchor', 'something else')], 'u-1')
 
-    expect(verdict(contents, 'anchor', 'ship it')).toMatchObject({ outcome: 'rejected' })
+    expect(verdict(contents, 'anchor', 'ship it')).toEqual({
+      clientMessageId: 'cm-sent',
+      outcome: 'unknown',
+      reason: 'not_found'
+    })
   })
 
-  it('stays unknown when a line of the file does not parse', () => {
-    const contents = `${jsonl([ANCHOR], 'anchor')}{"type":"user","uuid":"sent"`
+  it('is found past a line that does not parse', () => {
+    const contents = `${jsonl([ANCHOR], 'anchor')}{"type":"user","uuid":"torn"\n${jsonl(
+      [prompt('sent', 'anchor', 'ship it')],
+      'sent'
+    )}`
 
-    expect(verdict(contents, 'anchor', 'ship it')).toMatchObject({ outcome: 'unknown' })
+    expect(verdict(contents, 'anchor', 'ship it')).toMatchObject({ outcome: 'accepted' })
   })
 
-  it('stays unknown when a record under another id holds the same text', () => {
+  it('is not accepted by a record of its text under another id', () => {
     const contents = jsonl([ANCHOR, prompt('minted', 'anchor', 'ship it')], 'minted')
 
     expect(verdict(contents, 'anchor', 'ship it')).toMatchObject({
       outcome: 'unknown',
-      reason: 'ambiguous_match'
+      reason: 'not_found'
     })
   })
 })

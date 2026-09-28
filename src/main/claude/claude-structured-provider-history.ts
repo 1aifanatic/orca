@@ -1,18 +1,15 @@
 // What restart reconciliation reads from Claude: the anchored window for sends handed over with no
-// id, and every user frame the transcript holds for sends handed over under one.
+// id, and the id of every user frame the transcript holds for sends handed over under one.
 //
-// A frame is found by its id wherever it sits, so the id read needs no start point. What it does
-// need is Claude's own recording rules: a frame folded into a running turn gets no row of its own,
-// only a `queued_command` attachment naming it by `source_uuid`; and frames queued together behind
-// a turn are merged into ONE row under the last frame's uuid, so the others leave only their text.
+// A frame is found by its id wherever it sits, so the id read needs no start point. A frame folded
+// into a running turn gets no row of its own, only a `queued_command` attachment naming it by
+// `source_uuid`. Frames queued together behind a turn are merged into ONE row under the last
+// frame's uuid, so the others cannot be found and stay unconfirmed.
 
 import { createReadStream } from 'node:fs'
 import { join } from 'node:path'
 import type { AgentSessionJournalIdentity } from '../../shared/agent-session-journal-types'
-import {
-  agentJournalItemKey,
-  parseAgentJournalItemKey
-} from '../../shared/agent-session-journal-item-key'
+import { agentJournalItemKey } from '../../shared/agent-session-journal-item-key'
 import type {
   ProviderHistorySource,
   ProviderRecordedHistory
@@ -20,7 +17,6 @@ import type {
 import { resolveSessionFilePath } from '../native-chat/session-file-resolver'
 import { splitTranscriptStreamLines } from '../native-chat/transcript-stream-lines'
 import {
-  claudePromptFingerprint,
   MAX_HISTORY_WINDOW_RECORD_BYTES,
   readClaudeProviderHistoryWindow,
   type HistoryWindowInput
@@ -40,90 +36,39 @@ function stringField(source: Record<string, unknown> | null, key: string): strin
   return typeof value === 'string' && value.trim() ? value : null
 }
 
-/** The id and content a user frame was recorded under, as Claude's own readers take them. */
-function recordedUserFrame(
-  row: Record<string, unknown>
-): { uuid: string | null; content: unknown } | null {
+/** The id a user frame was recorded under, as Claude's own readers take it. */
+function recordedFrameUuid(row: Record<string, unknown>): string | null {
   if (row.isSidechain === true) {
     return null
   }
   if (row.type === 'user') {
-    return { uuid: stringField(row, 'uuid'), content: asRecord(row.message)?.content }
+    return stringField(row, 'uuid')
   }
   const attachment = row.type === 'attachment' ? asRecord(row.attachment) : null
   return attachment?.type === 'queued_command'
-    ? {
-        uuid: stringField(attachment, 'source_uuid') ?? stringField(row, 'uuid'),
-        content: attachment.prompt
-      }
+    ? (stringField(attachment, 'source_uuid') ?? stringField(row, 'uuid'))
     : null
 }
 
-function textPart(part: unknown): string | null {
-  if (typeof part === 'string') {
-    return part
-  }
-  const block = asRecord(part)
-  return block?.type === 'text' && typeof block.text === 'string' ? block.text : null
-}
-
-/** Each text part on its own: a frame merged into another's row keeps its text there as a block. */
-function textParts(content: unknown): string[] {
-  const parts =
-    typeof content === 'string' ? [content] : Array.isArray(content) ? content.map(textPart) : []
-  return parts.filter((text): text is string => typeof text === 'string' && text.trim() !== '')
-}
-
-/**
- * Every user frame in the file. Absence counts only when every line of this session's file was
- * read; any line that does not parse may be the missing record.
- */
+/** Every user frame in the file. A line that does not parse is skipped: it can only hide a send,
+ *  which then stays unconfirmed. */
 function createRecordedCollector(input: HistoryWindowInput) {
   const itemIds = new Set<string>()
-  const itemIdsByFingerprint = new Map<string, string[]>()
-  let whole = true
-  return { add, finish }
-
-  function add(line: string): void {
-    if (!line.trim()) {
-      return
-    }
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(line)
-    } catch {
-      whole = false
-      return
-    }
-    const row = asRecord(parsed)
-    const frame = row ? recordedUserFrame(row) : null
-    if (!row || !frame?.uuid) {
-      return
-    }
-    const sessionId = stringField(row, 'sessionId') ?? input.providerSessionId
-    const itemId = agentJournalItemKey({ provider: 'claude', sessionId, uuid: frame.uuid })
-    itemIds.add(itemId)
-    // Keyed as a one-text-block send is fingerprinted: the only kind reconciled (`comparableBody`).
-    for (const text of textParts(frame.content)) {
-      const fingerprint = claudePromptFingerprint(input.sessionId, [{ type: 'text', text }])
-      const copies = itemIdsByFingerprint.get(fingerprint)
-      if (copies) {
-        copies.push(itemId)
-      } else {
-        itemIdsByFingerprint.set(fingerprint, [itemId])
+  return {
+    add(line: string): void {
+      let row: Record<string, unknown> | null = null
+      try {
+        row = line.trim() ? asRecord(JSON.parse(line)) : null
+      } catch {
+        return
       }
-    }
-  }
-
-  function finish(): ProviderRecordedHistory {
-    return {
-      itemIds,
-      itemIdsByFingerprint,
-      provesAbsenceOf: (itemId) => {
-        const identity = whole ? parseAgentJournalItemKey(itemId) : null
-        return identity?.provider === 'claude' && identity.sessionId === input.providerSessionId
+      const uuid = row && recordedFrameUuid(row)
+      if (row && uuid) {
+        const sessionId = stringField(row, 'sessionId') ?? input.providerSessionId
+        itemIds.add(agentJournalItemKey({ provider: 'claude', sessionId, uuid }))
       }
-    }
+    },
+    finish: (): ProviderRecordedHistory => ({ itemIds })
   }
 }
 

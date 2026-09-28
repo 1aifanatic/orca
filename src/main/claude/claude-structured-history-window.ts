@@ -1,18 +1,16 @@
 // Provider history for restart reconciliation, read from the Claude project JSONL.
 //
 // Why this file is the source of truth for "did Claude take it": a resume replays
-// this transcript by session id, so a message absent from it is absent from the
-// conversation Orca is about to resume. Absence here is not an inference about a
-// dead child — it is the content of the next turn's context.
+// this transcript by session id, so a message found in it is in the conversation
+// Orca is about to resume.
 //
 // The window is anchored on the leaf uuid Orca durably recorded for the session
 // and walks back to it from the file's last transcript row, which is where a
 // resume by session id continues; Claude's marker lags a crash mid-turn.
 // Without that anchor the read has no proven start, and the branch proof is what
 // decides whether the file we just read still descends from it: a fork, a
-// compaction, a sibling branch, or a torn tail all fail the proof, and every one
-// of those makes absence meaningless. Failing it reports an inconsistent
-// boundary rather than an empty window, because the two decide opposite things.
+// compaction, a sibling branch, or a torn tail all fail the proof, and report an
+// inconsistent boundary rather than an empty window.
 
 import type {
   ProviderHistoryItem,
@@ -140,7 +138,7 @@ function claudePromptBlocks(record: TranscriptRecord): NativeChatBlock[] | null 
  * produced the envelope. Matching here is therefore an equality between two runs
  * of one function, not a guess about two encodings agreeing.
  */
-export function claudePromptFingerprint(sessionId: string, blocks: NativeChatBlock[]): string {
+function promptFingerprint(sessionId: string, blocks: NativeChatBlock[]): string {
   return computeAgentSessionPayloadFingerprint({
     method: 'agentSession.send',
     sessionId,
@@ -153,8 +151,7 @@ export type HistoryWindowInput = {
   previousLeafUuid: string | null
   /** Orca session id: the fingerprint a submission carries is scoped to it. */
   sessionId: string
-  /** The caller must PROVE no provider child can be appending; absence proves
-   *  nothing while a turn is running. */
+  /** A provider child may still be appending to the file. */
   turnInFlight: boolean
 }
 
@@ -177,7 +174,7 @@ function createWindowCollector(input: HistoryWindowInput) {
       // Claude echoes no client message id, so identity matching reduces to the
       // fingerprint pass; the reconciler treats that as the weakest evidence.
       clientMessageId: null,
-      payloadFingerprint: claudePromptFingerprint(input.sessionId, blocks),
+      payloadFingerprint: promptFingerprint(input.sessionId, blocks),
       identity: {
         provider: 'claude',
         sessionId: stringField(record, 'sessionId') ?? input.providerSessionId,

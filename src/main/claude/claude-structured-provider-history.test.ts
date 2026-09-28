@@ -10,7 +10,7 @@ import type {
 } from '../../shared/agent-session-journal-types'
 import { reconcileJournalSubmissionsAgainstHistory } from '../native-chat/agent-session-journal/journal-restart-reconciliation'
 import { createTrackedJournalOpener } from '../native-chat/agent-session-journal/journal-store-test-open'
-import { claudePromptFingerprint } from './claude-structured-history-window'
+import { digestPayload } from '../native-chat/agent-session-journal/journal-payload-bounds'
 import { openClaudeProviderHistory } from './claude-structured-provider-history'
 
 const PROVIDER_SESSION = 'provider-1'
@@ -56,11 +56,11 @@ function frameIdentity(uuid: string) {
 
 type Journal = Awaited<ReturnType<typeof journals.open>>
 
-/** A send handed over under frame `uuid`, fingerprinted as the send path does. */
+/** A send handed over under frame `uuid`. */
 async function handOver(journal: Journal, clientMessageId: string, uuid: string, text: string) {
   await journal.appendSubmission({
     clientMessageId,
-    payloadFingerprint: claudePromptFingerprint(IDENTITY.sessionId, [{ type: 'text', text }]),
+    payloadFingerprint: digestPayload(text),
     body: userMessage(text),
     fence: 1
   })
@@ -111,14 +111,12 @@ afterEach(async () => {
 })
 
 describe('openClaudeProviderHistory', () => {
-  it('leaves a send unknown while a turn runs, even with no anchor to read a window from', async () => {
-    // Claude may not have written the record yet, so its absence proves nothing.
-    expect(await strandedMidTurn(true)).toEqual({ 'cm-sent': 'unknown' })
-  })
-
-  it('decides the same send not delivered once no child can still be writing', async () => {
-    expect(await strandedMidTurn(false)).toEqual({ 'cm-sent': 'rejected' })
-  })
+  it.each([true, false])(
+    'leaves a send its id is missing from unknown, never not delivered (child still running: %s)',
+    async (hasLiveSession) => {
+      expect(await strandedMidTurn(hasLiveSession)).toEqual({ 'cm-sent': 'unknown' })
+    }
+  )
 
   it.each([false, true])(
     'leaves a send unknown when Claude merged it into the row of the send after it (that send accepted: %s)',
@@ -147,16 +145,4 @@ describe('openClaudeProviderHistory', () => {
       expect(states).toEqual({ 'cm-first': 'unknown', 'cm-second': 'accepted' })
     }
   )
-
-  it('decides a repeat of an older message the journal holds not delivered', async () => {
-    await writeTranscript([userRow('older', 'ship it')])
-
-    const states = await restartAfter(async (journal) => {
-      await journal.appendItem(frameIdentity('older'), userMessage('ship it'), { fence: 1 })
-      await handOver(journal, 'cm-repeat', 'repeat', 'ship it')
-    })
-
-    // The only copy of the text is the older row's own, so the repeat is provably missing.
-    expect(states).toEqual({ 'cm-repeat': 'rejected' })
-  })
 })

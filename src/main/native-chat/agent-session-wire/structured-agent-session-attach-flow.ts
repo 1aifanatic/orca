@@ -159,11 +159,10 @@ export async function performAttach(
         return { ok: false, refusal: replay.refusal }
       }
     }
-    // Sample provider history before a new child is acquired. Once acquireOwner
-    // starts the child, the adapter's liveness signal intentionally becomes
-    // conservative and an absent prompt can no longer prove non-delivery. The
-    // transcript is read later, and only for a stranded send: the new child is
-    // sent nothing first, so nothing it appends can be one.
+    // Sample provider history before a new child is acquired, so liveness describes
+    // the child the crash left, not the one this attach starts. The transcript is
+    // read later, and only for a stranded send: the new child is sent nothing
+    // first, so nothing it appends can be one.
     providerHistory = await sampleProviderHistory({
       adapter: input.adapter,
       identity: journalIdentityFor(record, params),

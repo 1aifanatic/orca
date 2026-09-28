@@ -86,7 +86,7 @@ function history(input: {
 
 /** A history read whole, holding exactly these item keys. */
 function wholeHistory(itemIds: string[]): ProviderRecordedHistory {
-  return { itemIds: new Set(itemIds), itemIdsByFingerprint: new Map(), provesAbsenceOf: () => true }
+  return { itemIds: new Set(itemIds) }
 }
 
 function window(
@@ -233,7 +233,7 @@ describe('crash between provider accept and journal commit', () => {
     })
   })
 
-  it('reports a rejected submission as never delivered, and never re-sends it', async () => {
+  it('leaves a handed-over send unconfirmed when history lacks it, and never re-sends it', async () => {
     const journal = await open()
     await journal.appendSubmission({
       clientMessageId: 'cm_1',
@@ -255,26 +255,11 @@ describe('crash between provider accept and journal commit', () => {
       submissions: restarted.submissions(),
       history: window([], { recorded: wholeHistory([]) })
     })
-    expect(outcome).toEqual({
-      clientMessageId: 'cm_1',
-      outcome: 'rejected',
-      reason: 'not_delivered'
-    })
-
-    await restarted.resolveDispatch({
-      clientMessageId: 'cm_1',
-      state: 'rejected',
-      ...agentSessionFailureWords(agentSessionFailureFact('notDelivered'), {
-        surface: 'rejection'
-      }),
-      fence: 2,
-      recovered: true
-    })
-    // The bubble survives with an explicit terminal state — the message is not
-    // silently retried and not silently dropped.
+    // A merged frame leaves no record under its own id, so a missing id is not proof of loss.
+    expect(outcome).toEqual({ clientMessageId: 'cm_1', outcome: 'unknown', reason: 'not_found' })
+    // The bubble survives, unconfirmed: the message is not silently retried or dropped.
     expect(restarted.snapshot().items).toHaveLength(1)
-    expect(restarted.snapshot().submissions[0]?.dispatchState).toBe('rejected')
-    expect(restarted.receiptFor('cm_1')).toBeNull()
+    expect(restarted.snapshot().submissions[0]?.dispatchState).toBe('unknown')
   })
 
   it('survives replay of an already-reconciled journal without changing the answer', async () => {
@@ -411,7 +396,7 @@ describe('reconciliation matching', () => {
       ])
     })
     // Absent from a window that starts at the last completed turn, not at this send.
-    expect(outcome).toMatchObject({ outcome: 'unknown', reason: 'no_dispatch_identity' })
+    expect(outcome).toMatchObject({ outcome: 'unknown', reason: 'not_found' })
   })
 
   it('lets a strong client-id match win an item a weaker fingerprint would have claimed', () => {

@@ -7,8 +7,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { agentSessionRecordFixture } from '../../../shared/agent-session-record.test-fixture'
+import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
-import { projectStructuredAgentSessionStatusState } from '../../../shared/structured-agent-session-projection'
 import { digestPayload } from '../agent-session-journal/journal-payload-bounds'
 import { journalDirectoryFor } from '../agent-session-journal/journal-paths'
 import type { ProviderHistorySource } from '../agent-session-journal/journal-submission-reconciler'
@@ -46,16 +46,14 @@ function userMessage(text: string): AgentJournalMessageItem {
   return { kind: 'message', role: 'user', blocks: [{ type: 'text', text }] }
 }
 
-/** A transcript read whole that holds none of the sends below. */
+const SENT_FRAME = { provider: 'claude', sessionId: 'provider-1', uuid: 'cm_1-frame' } as const
+
+/** A transcript that holds `cm_1`'s frame and nothing else. */
 function window(overrides: Partial<ProviderHistorySource> = {}): ProviderHistorySource {
   return {
     turnInFlight: false,
     readWindow: async () => ({ items: [], boundaryConsistent: true }),
-    readRecorded: async () => ({
-      itemIds: new Set(),
-      itemIdsByFingerprint: new Map(),
-      provesAbsenceOf: () => true
-    }),
+    readRecorded: async () => ({ itemIds: new Set([agentJournalItemKey(SENT_FRAME)]) }),
     ...overrides
   }
 }
@@ -123,40 +121,28 @@ afterEach(async () => {
 })
 
 describe('attachJournal restart reconciliation', () => {
-  it('settles a provably undelivered submission and stops reporting it unconfirmed', async () => {
+  it('settles a send found by its frame id and stops reporting it unconfirmed', async () => {
     await crashedJournal()
     const { adapter, dispatch } = adapterWith(async () => window())
 
     const attached = await attach(adapter)
 
     expect(attached.unconfirmedClientMessageIds).toEqual([])
-    const submission = attached.journal.submissions()[0]
-    expect(submission?.dispatchState).toBe('rejected')
-    expect(submission?.rejection).toEqual({ kind: 'notDelivered' })
+    expect(attached.journal.submissions()[0]).toMatchObject({
+      dispatchState: 'accepted',
+      providerItemId: agentJournalItemKey(SENT_FRAME)
+    })
     // Deciding is not sending: nothing here puts the message back on the wire.
     expect(dispatch).not.toHaveBeenCalled()
   })
 
-  it('gives a send the provider never received no verdict and no listing', async () => {
-    await crashedJournal()
-    const { adapter } = adapterWith(async () => window())
+  it('still reports a submission unconfirmed when history does not hold it', async () => {
+    await crashedJournal('cm_2')
+    const { adapter, dispatch } = adapterWith(async () => window())
 
     const attached = await attach(adapter)
 
-    // Nobody failed: the crash stranded it, so the chat must not read Failed or be listed by it.
-    const { items, submissions } = attached.journal.snapshot()
-    expect(
-      projectStructuredAgentSessionStatusState(items, submissions, RECORD.lease.runtimeFence)
-    ).toMatchObject({ summary: { status: null }, latestRequest: null })
-  })
-
-  it('still reports a submission unconfirmed when the window cannot decide it', async () => {
-    await crashedJournal()
-    const { adapter, dispatch } = adapterWith(async () => window({ turnInFlight: true }))
-
-    const attached = await attach(adapter)
-
-    expect(attached.unconfirmedClientMessageIds).toEqual(['cm_1'])
+    expect(attached.unconfirmedClientMessageIds).toEqual(['cm_2'])
     expect(attached.journal.submissions()[0]?.dispatchState).toBe('unknown')
     expect(dispatch).not.toHaveBeenCalled()
   })
@@ -198,7 +184,6 @@ describe('attachJournal restart reconciliation', () => {
       fence: RECORD.lease.runtimeFence,
       handoverRecorded: true
     })
-    // History that holds nothing: absence would prove a handed-over message undelivered.
     const { adapter, dispatch } = adapterWith(async () => window())
 
     const attached = await attachJournal({

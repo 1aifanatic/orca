@@ -5,14 +5,14 @@
 // `pending` becomes `unknown` and is then matched against provider history.
 //
 // A send handed over under an id the provider adopts is decided by that id alone,
-// looked up across the whole history: present means delivered, absent from a
-// history read whole means not — unless a copy of its text no other send's id
-// accounts for could be it. Older sends carry no such id and fall back to
-// the anchored window — an echoed client message id, else a provider item id the
-// journal already adopted, else the payload fingerprint when it picks out
-// exactly one unclaimed item. That window is not scoped to the send, so absence
-// from it proves nothing and those sends stay `unknown`. Never by text equality:
-// the same question asked twice is two messages, and collapsing them loses one.
+// looked up across the whole history: found means delivered. Not found decides
+// nothing, because a delivered frame can leave no record under its own id —
+// Claude records frames queued together under the last one's id — so after a
+// restart no send is ever called not delivered. Older sends carry no such id and
+// fall back to the anchored window — an echoed client message id, else a
+// provider item id the journal already adopted, else the payload fingerprint
+// when it picks out exactly one unclaimed item. Never by text equality: the
+// same question asked twice is two messages, and collapsing them loses one.
 //
 // Orca never re-sends on the user's behalf. An unresolved submission stays
 // `unknown` — a displayed state meaning "delivery unconfirmed", neither sent nor
@@ -26,7 +26,6 @@ import {
   agentJournalItemKey,
   parseAgentJournalItemKey
 } from '../../../shared/agent-session-journal-item-key'
-import { DISPATCH_REJECTED_NOT_DELIVERED } from '../../../shared/structured-agent-session-dispatch-rejection'
 
 export type ProviderHistoryItem = {
   /** The provider's own id for this item. Used to claim it at most once; the
@@ -46,11 +45,10 @@ export type ProviderHistoryWindow = {
   items: readonly ProviderHistoryItem[]
   /**
    * The history read actually started at the journal's last committed item. A
-   * fork, a compacted provider log, or a truncated read makes absence
-   * meaningless, so a missing submission cannot be called "not delivered".
+   * fork, a compacted provider log, or a truncated read breaks that.
    */
   boundaryConsistent: boolean
-  /** The provider reports a turn still running: absence proves nothing yet. */
+  /** The provider reports a turn still running: a send may not be recorded yet. */
   turnInFlight: boolean
   /** Every user item the history holds, not only those after the anchor. Absent when the
    *  provider has no whole-history read; sends handed over under an id then stay `unknown`. */
@@ -60,12 +58,6 @@ export type ProviderHistoryWindow = {
 export type ProviderRecordedHistory = {
   /** Journal keys of every user item in the history. */
   itemIds: ReadonlySet<string>
-  /** Keys of the items holding each text block, once per copy, by that block's payload
-   *  fingerprint. A send recorded under an id Orca did not choose, or merged into another send's
-   *  item, leaves only its text behind, so a copy no send found by id accounts for vetoes absence. */
-  itemIdsByFingerprint: ReadonlyMap<string, readonly string[]>
-  /** The history was read whole and is where an item with this key would have been recorded. */
-  provesAbsenceOf: (itemId: string) => boolean
 }
 
 /**
@@ -88,16 +80,13 @@ export type SubmissionReconciliation =
       providerItemId: string
       identity: AgentJournalItemIdentity
     }
-  | { clientMessageId: string; outcome: 'rejected'; reason: SubmissionRejectionReason }
   | { clientMessageId: string; outcome: 'unknown'; reason: SubmissionUnknownReason }
-
-export type SubmissionRejectionReason = typeof DISPATCH_REJECTED_NOT_DELIVERED
 
 export type SubmissionUnknownReason =
   | 'history_boundary_inconsistent'
   | 'turn_in_flight'
   | 'ambiguous_match'
-  | 'no_dispatch_identity'
+  | 'not_found'
 
 /**
  * Resolve every unsettled submission against provider history.
@@ -177,80 +166,22 @@ export function reconcileSubmissions(input: {
     }
   }
 
-  const unclaimed = unclaimedCopies(recorded, unsettled, identified)
   return unsettled.map((submission) =>
     submission.handedOverItemId
-      ? resolveByIdentity(
-          submission,
-          submission.handedOverItemId,
-          identified,
-          unclaimed,
-          input.history
-        )
+      ? resolveByIdentity(submission.clientMessageId, submission.handedOverItemId, identified)
       : resolveOne(submission, matched, ambiguous, input.history)
   )
 }
 
-/**
- * The copies of each text left once every id known to be a send takes ONE copy: its own text. A
- * row can hold other sends' text too (Claude merges frames queued together into the last one's
- * row), so an id never takes the whole row, or the only copy of a merged send would go with it.
- */
-export function withoutOwnCopies(
-  itemIdsByFingerprint: ReadonlyMap<string, readonly string[]>,
-  owners: ReadonlyMap<string, string>
-): Map<string, string[]> {
-  const copies = new Map([...itemIdsByFingerprint].map(([key, itemIds]) => [key, [...itemIds]]))
-  for (const [itemId, fingerprint] of owners) {
-    const sameText = copies.get(fingerprint)
-    const at = sameText?.indexOf(itemId) ?? -1
-    if (sameText && at >= 0) {
-      sameText.splice(at, 1)
-    }
-  }
-  return copies
-}
-
-/** Copies of each text no send found by its id accounts for: one may be a send whose id the
- *  history does not hold. */
-function unclaimedCopies(
-  recorded: ProviderRecordedHistory | null | undefined,
-  submissions: readonly AgentJournalSubmission[],
-  identified: ReadonlySet<string>
-): Map<string, number> {
-  const owners = new Map(
-    submissions.flatMap(({ handedOverItemId: own, payloadFingerprint }) =>
-      own && identified.has(own) ? [[own, payloadFingerprint] as const] : []
-    )
-  )
-  const copies = withoutOwnCopies(recorded?.itemIdsByFingerprint ?? new Map(), owners)
-  return new Map([...copies].map(([key, itemIds]) => [key, itemIds.length]))
-}
-
 function resolveByIdentity(
-  submission: AgentJournalSubmission,
+  clientMessageId: string,
   itemId: string,
-  identified: ReadonlySet<string>,
-  unclaimed: ReadonlyMap<string, number>,
-  history: ProviderHistoryWindow
+  identified: ReadonlySet<string>
 ): SubmissionReconciliation {
-  const { clientMessageId } = submission
-  if (identified.has(itemId)) {
-    const identity = parseAgentJournalItemKey(itemId)
-    return identity
-      ? { clientMessageId, outcome: 'accepted', providerItemId: itemId, identity }
-      : { clientMessageId, outcome: 'unknown', reason: 'history_boundary_inconsistent' }
-  }
-  if (history.turnInFlight) {
-    return { clientMessageId, outcome: 'unknown', reason: 'turn_in_flight' }
-  }
-  if (!history.recorded?.provesAbsenceOf(itemId)) {
-    return { clientMessageId, outcome: 'unknown', reason: 'history_boundary_inconsistent' }
-  }
-  if ((unclaimed.get(submission.payloadFingerprint) ?? 0) > 0) {
-    return { clientMessageId, outcome: 'unknown', reason: 'ambiguous_match' }
-  }
-  return { clientMessageId, outcome: 'rejected', reason: DISPATCH_REJECTED_NOT_DELIVERED }
+  const identity = identified.has(itemId) ? parseAgentJournalItemKey(itemId) : null
+  return identity
+    ? { clientMessageId, outcome: 'accepted', providerItemId: itemId, identity }
+    : { clientMessageId, outcome: 'unknown', reason: 'not_found' }
 }
 
 function claimBy(
@@ -315,6 +246,6 @@ function resolveOne(
   return {
     clientMessageId: submission.clientMessageId,
     outcome: 'unknown',
-    reason: 'no_dispatch_identity'
+    reason: 'not_found'
   }
 }

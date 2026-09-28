@@ -120,15 +120,15 @@ describe('structured session acquisition options', () => {
       hostId: 'local'
     })
     let childAcquired = false
-    const historyWindow = (): ProviderHistorySource => ({
-      turnInFlight: childAcquired,
-      readWindow: async () => ({ items: [], boundaryConsistent: true }),
-      readRecorded: async () => ({
-        itemIds: new Set(),
-        itemIdsByFingerprint: new Map(),
-        provesAbsenceOf: () => true
-      })
-    })
+    const sampledWithChild: boolean[] = []
+    const historyWindow = (): ProviderHistorySource => {
+      sampledWithChild.push(childAcquired)
+      return {
+        turnInFlight: childAcquired,
+        readWindow: async () => ({ items: [], boundaryConsistent: true }),
+        readRecorded: async () => null
+      }
+    }
     const withHistory = (origin: 'created' | 'resumed'): StructuredAgentSessionAdapter => {
       const sessionAdapter = adapter({ origin })
       const acquire = vi.mocked(sessionAdapter.acquire)
@@ -184,12 +184,6 @@ describe('structured session acquisition options', () => {
       } satisfies AgentJournalMessageItem,
       fence: 1
     })
-    await firstJournal!.resolveDispatch({
-      clientMessageId: 'crashed-send',
-      state: 'pending',
-      providerIdentity: { provider: 'claude', sessionId: 'provider-1', uuid: 'crashed-frame' },
-      fence: 1
-    })
     await firstJournal!.close()
     const store = await AgentSessionRecordStore.open({
       directory: join(root, 'store'),
@@ -219,12 +213,12 @@ describe('structured session acquisition options', () => {
       onAttached: () => {}
     })
 
-    expect(second).toMatchObject({ ok: true, value: { unconfirmedClientMessageIds: [] } })
     expect(second).toMatchObject({
-      value: {
-        page: { submissions: [{ clientMessageId: 'crashed-send', dispatchState: 'rejected' }] }
-      }
+      ok: true,
+      value: { unconfirmedClientMessageIds: ['crashed-send'] }
     })
+    // Both attaches sampled liveness before their own child started.
+    expect(sampledWithChild).toEqual([false, false])
   })
 
   it('persists create defaults before the first provider acquisition', async () => {

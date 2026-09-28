@@ -1,17 +1,12 @@
 // The production caller for `reconcileSubmissions`.
 //
 // Runs once per journal open, after the crash boundary has already settled every
-// survivor to `unknown`. It only ever narrows that answer: `accepted` when the
-// provider's own history holds the message, `rejected` when a history read whole
-// lacks the id the send was handed over under. Anything the reconciler leaves
-// `unknown` is left exactly as the crash boundary wrote it.
-//
-// Nothing here dispatches. A `rejected` submission becomes re-sendable only
-// through the user's Retry, which rotates the client message id; Orca still
-// never puts a message back on the wire on the user's behalf.
+// survivor to `unknown`. It only ever narrows that answer, to `accepted` when the
+// provider's own history holds the message. It never decides `rejected`: history
+// cannot show a send never arrived, and a wrong "not delivered" invites a Retry
+// that sends a delivered message twice. Anything the reconciler leaves `unknown`
+// is left exactly as the crash boundary wrote it, and nothing here dispatches.
 
-import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
-import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import type {
   AgentJournalMessageItem,
   AgentJournalSubmission
@@ -21,11 +16,9 @@ import {
   agentJournalSubmissionKey
 } from '../../../shared/agent-session-journal-item-key'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
-import { structuredAgentSessionPayloadFingerprint } from '../../../shared/structured-agent-session-mutation'
 import type { AgentSessionJournal } from './journal-store'
 import {
   reconcileSubmissions,
-  withoutOwnCopies,
   type ProviderHistorySource,
   type ProviderHistoryWindow
 } from './journal-submission-reconciler'
@@ -33,9 +26,8 @@ import {
 /**
  * Only a text-only body can be compared against provider content. A submission
  * carrying an attachment was fingerprinted over an `image-ref` path the
- * transcript does not keep, so its absence from history would be an artefact of
- * the encoding rather than evidence — and `rejected` is the one outcome that
- * costs the user a duplicate if it is wrong. Those stay `unknown`.
+ * transcript does not keep, so matching it against history would test the
+ * encoding rather than the message. Those stay `unknown`.
  */
 function comparableBody(body: AgentJournalMessageItem | undefined): boolean {
   return (
@@ -63,15 +55,6 @@ function comparableSubmissions(journal: AgentSessionJournal): AgentJournalSubmis
   })
 }
 
-/** The fingerprint a send of this body carries, the key the reducer aliases an echo by. */
-function sendFingerprint(sessionId: string, body: AgentJournalMessageItem): string {
-  return structuredAgentSessionPayloadFingerprint({
-    method: 'agentSession.send',
-    sessionId,
-    fields: { body }
-  })
-}
-
 /** Items the journal already committed are not new evidence: leaving them
  *  claimable would let an undelivered message match an older identical one. */
 function unseenHistory(
@@ -79,40 +62,18 @@ function unseenHistory(
   history: ProviderHistoryWindow
 ): ProviderHistoryWindow {
   const snapshot = journal.snapshot()
+  const committed = new Set(snapshot.items.map((item) => item.itemId))
   // Accepted submissions alias their provider item to the optimistic `orca:*`
   // row, so the rendered item id alone does not identify the provider history
   // already consumed by the journal.
-  const accepted = snapshot.submissions.flatMap(
-    ({ dispatchState, providerItemId, payloadFingerprint }) =>
-      dispatchState === 'accepted' && providerItemId
-        ? [[providerItemId, payloadFingerprint] as const]
-        : []
-  )
-  const committed = new Set([
-    ...snapshot.items.map((item) => item.itemId),
-    ...accepted.map(([itemId]) => itemId)
-  ])
-  const recorded = history.recorded
+  for (const submission of snapshot.submissions) {
+    if (submission.dispatchState === 'accepted' && submission.providerItemId) {
+      committed.add(submission.providerItemId)
+    }
+  }
   return {
     ...history,
-    items: history.items.filter((item) => !committed.has(agentJournalItemKey(item.identity))),
-    // A committed id takes only the copy of the text it was committed with, never its whole row:
-    // Claude records frames queued together in the last one's row, which then holds the only
-    // copy of an earlier send's text.
-    recorded: recorded && {
-      ...recorded,
-      itemIdsByFingerprint: withoutOwnCopies(
-        recorded.itemIdsByFingerprint,
-        new Map([
-          ...snapshot.items.flatMap(({ itemId, body }) =>
-            recorded.itemIds.has(itemId) && body.kind === 'message' && body.role === 'user'
-              ? [[itemId, sendFingerprint(snapshot.sessionId, body)] as const]
-              : []
-          ),
-          ...accepted
-        ])
-      )
-    }
+    items: history.items.filter((item) => !committed.has(agentJournalItemKey(item.identity)))
   }
 }
 
@@ -163,25 +124,13 @@ export async function reconcileJournalSubmissionsAgainstHistory(input: {
       })
       continue
     }
-    await input.journal.resolveDispatch(
-      outcome.outcome === 'accepted'
-        ? {
-            clientMessageId: outcome.clientMessageId,
-            state: 'accepted',
-            providerIdentity: outcome.identity,
-            fence: input.fence,
-            recovered: true
-          }
-        : {
-            clientMessageId: outcome.clientMessageId,
-            state: 'rejected',
-            ...agentSessionFailureWords(agentSessionFailureFact('notDelivered'), {
-              surface: 'rejection'
-            }),
-            fence: input.fence,
-            recovered: true
-          }
-    )
+    await input.journal.resolveDispatch({
+      clientMessageId: outcome.clientMessageId,
+      state: 'accepted',
+      providerIdentity: outcome.identity,
+      fence: input.fence,
+      recovered: true
+    })
     settled.push(outcome.clientMessageId)
   }
   return settled
