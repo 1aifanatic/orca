@@ -38,7 +38,7 @@ import {
   type ClaudeExitLifecycle
 } from './claude-structured-session-exit-lifecycle'
 import type { AgentSessionBackgroundTaskState } from '../../shared/agent-session-wire'
-import { openClaudeProviderHistory } from './claude-structured-history-window'
+import { openClaudeProviderHistory } from './claude-structured-provider-history'
 import { drainClaudeChildWork } from './claude-child-work-evidence'
 import {
   admitClaudePromptCancellation,

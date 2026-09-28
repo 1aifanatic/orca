@@ -11,10 +11,11 @@ import { computeAgentSessionPayloadFingerprint } from '../../shared/agent-sessio
 import { reconcileSubmissions } from '../native-chat/agent-session-journal/journal-submission-reconciler'
 import { agentJournalItemKey } from '../../shared/agent-session-journal-item-key'
 import type { AgentJournalSubmission } from '../../shared/agent-session-journal-types'
+import { claudeProviderHistoryWindowFromJsonl } from './claude-structured-history-window'
 import {
-  claudeProviderHistoryWindowFromJsonl,
+  claudeRecordedHistoryFromJsonl,
   openClaudeProviderHistory
-} from './claude-structured-history-window'
+} from './claude-structured-provider-history'
 
 const PROVIDER_SESSION = 'provider-1'
 const ORCA_SESSION = 'session-1'
@@ -165,7 +166,7 @@ describe('claudeProviderHistoryWindowFromJsonl', () => {
   it('reports no window and an inconsistent boundary without a durable anchor', () => {
     const contents = jsonl([ANCHOR, prompt('u-1', 'anchor', 'ship it')], 'u-1')
 
-    expect(read(contents, null)).toMatchObject({
+    expect(read(contents, null)).toEqual({
       items: [],
       boundaryConsistent: false,
       turnInFlight: false
@@ -199,7 +200,7 @@ describe('claudeProviderHistoryWindowFromJsonl', () => {
   })
 
   it('keeps the boundary consistent and the window empty when nothing followed the anchor', () => {
-    expect(read(jsonl([ANCHOR], 'anchor'), 'anchor')).toMatchObject({
+    expect(read(jsonl([ANCHOR], 'anchor'), 'anchor')).toEqual({
       items: [],
       boundaryConsistent: true,
       turnInFlight: false
@@ -359,15 +360,13 @@ describe('a crash between Claude saving a prompt and Orca recording its echo', (
 })
 
 describe('a send handed over under its own frame id', () => {
-  const sentKey = agentJournalItemKey({
-    provider: 'claude',
-    sessionId: PROVIDER_SESSION,
-    uuid: 'sent'
-  })
+  const key = (uuid: string) =>
+    agentJournalItemKey({ provider: 'claude', sessionId: PROVIDER_SESSION, uuid })
+  const sentKey = key('sent')
 
-  function handedOver(text: string): AgentJournalSubmission {
+  function handedOver(text: string, uuid = 'sent'): AgentJournalSubmission {
     return {
-      clientMessageId: 'cm-sent',
+      clientMessageId: `cm-${uuid}`,
       fence: 1,
       payloadFingerprint: sendFingerprint(text),
       dispatchState: 'unknown',
@@ -375,16 +374,48 @@ describe('a send handed over under its own frame id', () => {
       reason: null,
       submittedAt: 0,
       resolvedAt: null,
-      handedOverItemId: sentKey
+      handedOverItemId: key(uuid)
     }
   }
 
-  function verdict(contents: string, previousLeafUuid: string | null, text: string) {
-    const [outcome] = reconcileSubmissions({
-      history: read(contents, previousLeafUuid),
-      submissions: [handedOver(text)]
+  function verdicts(
+    contents: string,
+    previousLeafUuid: string | null,
+    submissions: AgentJournalSubmission[]
+  ) {
+    const input = {
+      contents,
+      providerSessionId: PROVIDER_SESSION,
+      previousLeafUuid,
+      sessionId: ORCA_SESSION,
+      turnInFlight: false
+    }
+    return reconcileSubmissions({
+      history: {
+        ...read(contents, previousLeafUuid),
+        recorded: claudeRecordedHistoryFromJsonl(input)
+      },
+      submissions
     })
-    return outcome
+  }
+
+  function verdict(contents: string, previousLeafUuid: string | null, text: string) {
+    return verdicts(contents, previousLeafUuid, [handedOver(text)])[0]
+  }
+
+  /** What Claude writes for a frame it folds into a running turn instead of a row of its own. */
+  function folded(rowUuid: string, parentUuid: string, sourceUuid: string, text: string): Row {
+    return {
+      type: 'attachment',
+      uuid: rowUuid,
+      parentUuid,
+      sessionId: PROVIDER_SESSION,
+      attachment: {
+        type: 'queued_command',
+        prompt: [{ type: 'text', text }],
+        source_uuid: sourceUuid
+      }
+    }
   }
 
   it('is accepted when Claude holds it before the anchor a later turn advanced', () => {
@@ -420,6 +451,57 @@ describe('a send handed over under its own frame id', () => {
     const contents = jsonl([prompt('sent', null, 'ship it')], 'sent')
 
     expect(verdict(contents, null, 'ship it')).toMatchObject({ outcome: 'accepted' })
+  })
+
+  it('is accepted when Claude folded it into a running turn under a row id of its own', () => {
+    const contents = jsonl(
+      [
+        ANCHOR,
+        prompt('turn', 'anchor', 'run the tests'),
+        folded('fold-row', 'turn', 'sent', 'ship it')
+      ],
+      'fold-row'
+    )
+
+    expect(verdict(contents, 'anchor', 'ship it')).toMatchObject({
+      outcome: 'accepted',
+      providerItemId: sentKey
+    })
+  })
+
+  it('stays unknown when Claude merged it into the record of a send queued after it', () => {
+    const merged = [
+      { type: 'text', text: 'ship it' },
+      { type: 'text', text: 'and test it' }
+    ]
+    const contents = jsonl([ANCHOR, prompt('next', 'anchor', merged)], 'next')
+
+    expect(
+      verdicts(contents, 'anchor', [handedOver('ship it'), handedOver('and test it', 'next')])
+    ).toMatchObject([
+      { outcome: 'unknown', reason: 'ambiguous_match' },
+      { outcome: 'accepted', providerItemId: key('next') }
+    ])
+  })
+
+  it('stays unknown when the send merged with it had the same text', () => {
+    const merged = [
+      { type: 'text', text: 'yes' },
+      { type: 'text', text: 'yes' }
+    ]
+    const contents = jsonl([ANCHOR, prompt('next', 'anchor', merged)], 'next')
+
+    expect(
+      verdicts(contents, 'anchor', [handedOver('yes'), handedOver('yes', 'next')])
+    ).toMatchObject([{ outcome: 'unknown' }, { outcome: 'accepted' }])
+  })
+
+  it('is not delivered when the only copy of its text is an identical send found by id', () => {
+    const contents = jsonl([ANCHOR, prompt('first', 'anchor', 'yes')], 'first')
+
+    expect(
+      verdicts(contents, 'anchor', [handedOver('yes', 'first'), handedOver('yes')])
+    ).toMatchObject([{ outcome: 'accepted' }, { outcome: 'rejected' }])
   })
 
   it('is not delivered when the whole file lacks it', () => {

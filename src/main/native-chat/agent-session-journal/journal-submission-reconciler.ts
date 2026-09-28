@@ -6,7 +6,8 @@
 //
 // A send handed over under an id the provider adopts is decided by that id alone,
 // looked up across the whole history: present means delivered, absent from a
-// history read whole means not. Older sends carry no such id and fall back to
+// history read whole means not — unless a copy of its text no other send's id
+// accounts for could be it. Older sends carry no such id and fall back to
 // the anchored window — an echoed client message id, else a provider item id the
 // journal already adopted, else the payload fingerprint when it picks out
 // exactly one unclaimed item. That window is not scoped to the send, so absence
@@ -59,8 +60,9 @@ export type ProviderHistoryWindow = {
 export type ProviderRecordedHistory = {
   /** Journal keys of every user item in the history. */
   itemIds: ReadonlySet<string>
-  /** Keys of the plain-text ones, by payload fingerprint. A provider build that recorded a send
-   *  under an id of its own leaves only its content behind, so a same-content item vetoes absence. */
+  /** Keys of the items holding each text block, once per copy, by that block's payload
+   *  fingerprint. A send recorded under an id Orca did not choose, or merged into another send's
+   *  item, leaves only its text behind, so a copy no send found by id accounts for vetoes absence. */
   itemIdsByFingerprint: ReadonlyMap<string, readonly string[]>
   /** The history was read whole and is where an item with this key would have been recorded. */
   provesAbsenceOf: (itemId: string) => boolean
@@ -175,17 +177,46 @@ export function reconcileSubmissions(input: {
     }
   }
 
+  const unclaimed = unclaimedCopies(recorded, unsettled, identified)
   return unsettled.map((submission) =>
     submission.handedOverItemId
-      ? resolveByIdentity(submission, submission.handedOverItemId, identified, input.history)
+      ? resolveByIdentity(
+          submission,
+          submission.handedOverItemId,
+          identified,
+          unclaimed,
+          input.history
+        )
       : resolveOne(submission, matched, ambiguous, input.history)
   )
+}
+
+/** Copies of each text left once every send found by its id takes its own: a leftover copy may be
+ *  a send whose id the history does not hold. */
+function unclaimedCopies(
+  recorded: ProviderRecordedHistory | null | undefined,
+  submissions: readonly AgentJournalSubmission[],
+  identified: ReadonlySet<string>
+): Map<string, number> {
+  const copies = new Map(
+    [...(recorded?.itemIdsByFingerprint ?? [])].map(([key, itemIds]) => [key, [...itemIds]])
+  )
+  for (const submission of submissions) {
+    const own = submission.handedOverItemId
+    const sameText =
+      own && identified.has(own) ? copies.get(submission.payloadFingerprint) : undefined
+    if (own && sameText?.includes(own)) {
+      sameText.splice(sameText.indexOf(own), 1)
+    }
+  }
+  return new Map([...copies].map(([key, itemIds]) => [key, itemIds.length]))
 }
 
 function resolveByIdentity(
   submission: AgentJournalSubmission,
   itemId: string,
   identified: ReadonlySet<string>,
+  unclaimed: ReadonlyMap<string, number>,
   history: ProviderHistoryWindow
 ): SubmissionReconciliation {
   const { clientMessageId } = submission
@@ -201,8 +232,7 @@ function resolveByIdentity(
   if (!history.recorded?.provesAbsenceOf(itemId)) {
     return { clientMessageId, outcome: 'unknown', reason: 'history_boundary_inconsistent' }
   }
-  const sameContent = history.recorded.itemIdsByFingerprint.get(submission.payloadFingerprint)
-  if (sameContent?.some((id) => !identified.has(id))) {
+  if ((unclaimed.get(submission.payloadFingerprint) ?? 0) > 0) {
     return { clientMessageId, outcome: 'unknown', reason: 'ambiguous_match' }
   }
   return { clientMessageId, outcome: 'rejected', reason: DISPATCH_REJECTED_NOT_DELIVERED }
