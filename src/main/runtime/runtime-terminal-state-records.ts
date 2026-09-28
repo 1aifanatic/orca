@@ -11,6 +11,7 @@ import type { HeadlessEmulator } from '../daemon/headless-emulator'
 import type { PtyProviderBufferSnapshot } from '../providers/types'
 import type { RetainedTailRedrawCursor } from './terminal-tail-redraw-buffer'
 import type { TerminalTailWaitState } from './terminal-wait-tail-state'
+import type { TerminalCommandPaint } from './terminal-command-paint'
 import type { PtyShellOwnershipMirror } from './pty-shell-ownership-mirror'
 import type { TerminalExitCause } from '../../shared/terminal-exit-cause'
 import type { AgentSessionOwnerBinding } from '../../shared/agent-session-host-authority'
@@ -87,9 +88,8 @@ export type RuntimePtyWorktreeRecord = RuntimeTerminalTailState & {
   title: string | null
   titleUpdatedAt: number | null
   lastOutputAt: number | null
-  /** See terminal-command-paint.ts; absent until the shell marks a command start. */
-  commandStartedAt?: number | null
-  commandPaintedAt?: number | null
+  /** See terminal-command-paint.ts; absent until the pane's first output. */
+  commandPaint?: TerminalCommandPaint
 }
 
 export type RuntimePtyTabCloseAuthority = {
