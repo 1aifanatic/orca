@@ -1,4 +1,4 @@
-import { fork, type ChildProcess } from 'node:child_process'
+import { fork, type ChildProcess, type ForkOptions } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -107,14 +107,16 @@ export async function launchDaemonGeneration(options: {
       '--refuse-dispose',
       String(refuseDispose)
     ],
-    {
-      cwd: runtime.userDataDir,
-      execPath: runtime.bunRuntime.execPath,
-      execArgv: ['--no-env-file'],
-      windowsHide: true,
-      env,
-      stdio: ['ignore', 'ignore', 'pipe', 'ipc']
-    }
+    Object.assign(
+      {
+        cwd: runtime.userDataDir,
+        execPath: runtime.bunRuntime.execPath,
+        execArgv: ['--no-env-file'],
+        env,
+        stdio: ['ignore', 'ignore', 'pipe', 'ipc']
+      } satisfies ForkOptions,
+      { windowsHide: true }
+    )
   )
   child.stderr?.on('data', (chunk: Buffer) => {
     startupLog = `${startupLog}${chunk.toString('utf8')}`.slice(-MAX_CAPTURED_CHARS)
