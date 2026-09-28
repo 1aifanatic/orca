@@ -320,6 +320,7 @@ test.describe('Combined diff invalidation freeze repro (STA-3420)', () => {
       expect(measurement.burst.maxLagMs).toBeLessThanOrEqual(
         Math.max(measurement.baseline.maxLagMs, 100) + 1_000
       )
+      throw new Error('Diagnostic-only run: upload renderer.cpuprofile')
     } finally {
       rmSync(fixture.repoPath, { recursive: true, force: true })
     }
