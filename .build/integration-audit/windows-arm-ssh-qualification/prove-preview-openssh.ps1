@@ -144,7 +144,8 @@ try {
   Invoke-Bounded $keygen @('-q','-t','ed25519','-N','','-f',$clientKey) | Out-Null
   Write-Stage 'private-key-create-complete'
   # Service host keys are readable only by SYSTEM and administrators.
-  Invoke-Bounded icacls.exe @($hostKey,'/inheritance:r','/grant:r','*S-1-5-18:F','*S-1-5-32-544:F','/setowner','*S-1-5-18') | Out-Null
+  Invoke-Bounded icacls.exe @($hostKey,'/inheritance:r','/grant:r','*S-1-5-18:F','*S-1-5-32-544:F') | Out-Null
+  Invoke-Bounded icacls.exe @($hostKey,'/setowner','*S-1-5-18') | Out-Null
   $report.hostKeyAcl=(Get-Acl -LiteralPath $hostKey).Sddl
   $authorized=Join-Path $root 'authorized_keys'
   Copy-Item -LiteralPath "$clientKey.pub" -Destination $authorized
