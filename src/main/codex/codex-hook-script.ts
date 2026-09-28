@@ -1,10 +1,11 @@
 import { buildPosixAgentHookPostCommand } from '../agent-hooks/hook-post-command'
-import { buildPosixHookInboxCommitLines } from '../agent-hooks/hook-inbox-commit'
 import {
   buildPosixHookPayloadCapture,
+  buildPosixHookSpoolLines,
   buildWindowsHookEnvironmentGuardLines,
   buildWindowsHookStdinDrainEpilogue
 } from '../agent-hooks/hook-stdin-contract'
+import { buildPosixHookInboxCommitLines } from '../agent-hooks/hook-inbox-commit'
 import { buildWindowsAgentHookCurlPostCommand } from '../agent-hooks/installer-utils'
 
 export function getManagedScript(target: 'local' | 'posix' = 'local'): string {
@@ -25,6 +26,7 @@ export function getManagedScript(target: 'local' | 'posix' = 'local'): string {
   return [
     '#!/bin/sh',
     ...buildPosixHookPayloadCapture(),
+    ...buildPosixHookSpoolLines('codex'),
     ...buildPosixHookInboxCommitLines('codex'),
     // Why before the endpoint/POST: a committed event survives the agent killing this hook.
     'orca_hook_commit && exit 0',
@@ -56,6 +58,7 @@ export function getManagedScript(target: 'local' | 'posix' = 'local'): string {
     '  load_hook_endpoint "$ORCA_AGENT_HOOK_ENDPOINT"',
     'fi',
     'if [ -z "$ORCA_AGENT_HOOK_PORT" ] || [ -z "$ORCA_AGENT_HOOK_TOKEN" ] || [ -z "$ORCA_PANE_KEY" ]; then',
+    '  spool_hook_event',
     '  exit 0',
     'fi',
     'post_codex_hook() {',
@@ -84,6 +87,7 @@ export function getManagedScript(target: 'local' | 'posix' = 'local'): string {
     '    # post_codex_hook "$windows_curl" 3 5 >/dev/null 2>&1 || true',
     '  fi',
     'fi',
+    'spool_hook_event',
     'exit 0',
     ''
   ].join('\n')

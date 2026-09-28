@@ -2,11 +2,10 @@ import {
   AGENT_HOOK_INBOX_DIR_NAME,
   AGENT_HOOK_INBOX_ENDPOINT_KEY,
   AGENT_HOOK_INBOX_ENDPOINT_VALUE,
-  AGENT_HOOK_INBOX_MAX_BACKLOG,
   AGENT_HOOK_INBOX_MAX_PAYLOAD_CHARS,
   AGENT_HOOK_INBOX_RECORD_END,
   AGENT_HOOK_INBOX_RECORD_MARKER,
-  AGENT_HOOK_INBOX_SHED_TOOL_PROGRESS_BACKLOG
+  AGENT_HOOK_INBOX_TOOL_PROGRESS_BACKLOG_LIMIT
 } from '../../shared/agent-hook-inbox-record'
 
 /** Bounded retries past record names left by an earlier process that had the same pid. */
@@ -74,8 +73,7 @@ export function buildPosixHookInboxCommitLines(
     // Positional parameters are local to this function, so the glob count clobbers nothing.
     '  set -- "$orca_inbox"/*.rec',
     '  [ -e "$1" ] || set --',
-    `  [ "$#" -lt ${AGENT_HOOK_INBOX_MAX_BACKLOG} ] || return 0`,
-    `  if [ "$#" -ge ${AGENT_HOOK_INBOX_SHED_TOOL_PROGRESS_BACKLOG} ]; then`,
+    `  if [ "$#" -ge ${AGENT_HOOK_INBOX_TOOL_PROGRESS_BACKLOG_LIMIT} ]; then`,
     `  ${toolProgressCase}`,
     '  fi',
     '  orca_inbox_seq=0',

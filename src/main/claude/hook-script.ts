@@ -7,13 +7,14 @@ import {
   buildPosixGrokReplayGuardLines,
   buildWindowsGrokReplayGuardLines
 } from '../agent-hooks/grok-replay-guard'
-import { buildPosixHookInboxCommitLines } from '../agent-hooks/hook-inbox-commit'
 import {
   WINDOWS_HOOK_STDIN_DRAIN_LABEL,
   buildPosixHookPayloadCapture,
+  buildPosixHookSpoolLines,
   buildWindowsHookEnvironmentGuardLines,
   buildWindowsHookStdinDrainEpilogue
 } from '../agent-hooks/hook-stdin-contract'
+import { buildPosixHookInboxCommitLines } from '../agent-hooks/hook-inbox-commit'
 
 export function getManagedScript(
   target: 'local' | 'posix' = 'local',
@@ -59,6 +60,7 @@ export function getManagedScript(
     'printf "{}\\n"',
     ...buildPosixHookPayloadCapture(),
     ...(options.skipWhenGrokImportsClaude ? buildPosixGrokReplayGuardLines() : []),
+    ...buildPosixHookSpoolLines('claude'),
     ...buildPosixHookInboxCommitLines('claude'),
     ...(options.skipWhenDevinImportsClaude
       ? [
@@ -82,11 +84,12 @@ export function getManagedScript(
     '  . "$ORCA_AGENT_HOOK_ENDPOINT" 2>/dev/null || :',
     'fi',
     'if [ -z "$ORCA_AGENT_HOOK_PORT" ] || [ -z "$ORCA_AGENT_HOOK_TOKEN" ] || [ -z "$ORCA_PANE_KEY" ]; then',
+    '  spool_hook_event',
     '  exit 0',
     'fi',
     // Why: keep full hook JSON off the command line and avoid IDS-friendly URL-encoded paths.
     ...buildPosixAgentHookPostCommand('claude').map((line, index, lines) =>
-      index === lines.length - 1 ? `${line} >/dev/null 2>&1` : line
+      index === lines.length - 1 ? `${line} >/dev/null 2>&1 || spool_hook_event` : line
     ),
     'exit 0',
     ''

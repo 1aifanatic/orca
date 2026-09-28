@@ -20,6 +20,8 @@ import type { EnrichedAgentHookEventPayload } from './server/server-types'
 
 const PANE = makePaneKey('tab-1', '11111111-1111-4111-8111-111111111111')
 
+type CodexHookPayload = { hook_event_name: string; prompt?: string }
+
 let dir: string
 let servers: AgentHookServer[]
 
@@ -53,7 +55,7 @@ function paneState(server: AgentHookServer): string {
 /** Runs the real managed Codex hook the way Codex does, with a deadline, while a stand-in curl
  *  hangs as a stalled Orca would. spawnSync also blocks this thread — the hook server's thread —
  *  for the whole run, so the hook cannot rely on Orca answering anything. */
-function runCodexHookAgainstStalledOrca(server: AgentHookServer, payload: object) {
+function runCodexHookAgainstStalledOrca(server: AgentHookServer, payload: CodexHookPayload) {
   const bin = mkdtempSync(join(dir, 'bin-'))
   writeFileSync(join(bin, 'curl'), '#!/bin/sh\nexec sleep 30\n')
   chmodSync(join(bin, 'curl'), 0o755)
@@ -82,7 +84,7 @@ function runCodexHookAgainstStalledOrca(server: AgentHookServer, payload: object
   })
 }
 
-function commitRecord(name: string, payload: object): void {
+function commitRecord(name: string, payload: CodexHookPayload): void {
   writeFileSync(
     join(inboxDir(), name),
     [
@@ -105,21 +107,24 @@ describe('hook inbox', () => {
     expect(readFileSync(server.endpointFilePath!, 'utf8')).toContain('ORCA_AGENT_HOOK_INBOX=1\n')
   })
 
-  it('applies an event whose hook the agent killed while Orca could not answer', async () => {
-    const server = await startServer()
+  it.skipIf(process.platform === 'win32')(
+    'applies an event whose hook the agent killed while Orca could not answer',
+    async () => {
+      const server = await startServer()
 
-    const run = runCodexHookAgainstStalledOrca(server, {
-      hook_event_name: 'UserPromptSubmit',
-      prompt: 'ship it'
-    })
+      const run = runCodexHookAgainstStalledOrca(server, {
+        hook_event_name: 'UserPromptSubmit',
+        prompt: 'ship it'
+      })
 
-    // Delivered live, not at the next launch.
-    await expect.poll(() => paneState(server), { timeout: 3_000, interval: 10 }).toBe('working')
-    expect(readdirSync(inboxDir())).toEqual([])
-    // And the hook finished well inside the deadline: it never waited on Orca.
-    expect(run.signal).toBeNull()
-    expect(run.status).toBe(0)
-  })
+      // Delivered live, not at the next launch.
+      await expect.poll(() => paneState(server), { timeout: 3_000, interval: 10 }).toBe('working')
+      expect(readdirSync(inboxDir())).toEqual([])
+      // And the hook finished well inside the deadline: it never waited on Orca.
+      expect(run.signal).toBeNull()
+      expect(run.status).toBe(0)
+    }
+  )
 
   it('applies a committed Stop before a process-exit reconcile decides the pane is dead', async () => {
     const server = await startServer()
@@ -187,7 +192,7 @@ describe('hook inbox', () => {
     first.stop()
 
     mkdirSync(inboxDir(), { recursive: true })
-    const stale = (name: string, launchToken: string, payload: object) =>
+    const stale = (name: string, launchToken: string, payload: CodexHookPayload) =>
       writeFileSync(
         join(inboxDir(), name),
         [

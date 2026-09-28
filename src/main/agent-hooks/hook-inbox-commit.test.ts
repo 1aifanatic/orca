@@ -152,16 +152,22 @@ describe.each(POSIX_SHELLS)('orca_hook_commit under %s', (shell) => {
     expect(payloads).toEqual(['{"n":1}', '{"n":2}'])
   })
 
-  it('sheds tool progress, but keeps lifecycle events, once a backlog shows nothing drains', () => {
+  it('sheds only tool progress, and only once a backlog shows nothing drains', () => {
     const { endpoint, inbox } = makeEndpoint(ENDPOINT_WITH_INBOX)
-    for (let index = 0; index < 64; index += 1) {
+    // A stalled but live Orca builds a backlog too; its tool events still matter (they release
+    // a permission wait), so nothing is shed short of the closed-Orca limit.
+    for (let index = 0; index < 1999; index += 1) {
       writeFileSync(join(inbox, `1.${index}.rec`), 'x')
     }
     expect(runCommit(shell, endpoint, '{"hook_event_name":"PreToolUse"}').stdout.trim()).toBe(
       'rc=0'
     )
-    expect(readdirSync(inbox)).toHaveLength(64)
+    expect(readdirSync(inbox)).toHaveLength(2000)
+    expect(runCommit(shell, endpoint, '{"hook_event_name":"PostToolUse"}').stdout.trim()).toBe(
+      'rc=0'
+    )
+    expect(readdirSync(inbox)).toHaveLength(2000)
     expect(runCommit(shell, endpoint, '{"hook_event_name":"Stop"}').stdout.trim()).toBe('rc=0')
-    expect(readdirSync(inbox)).toHaveLength(65)
+    expect(readdirSync(inbox)).toHaveLength(2001)
   })
 })

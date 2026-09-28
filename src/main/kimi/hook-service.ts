@@ -27,7 +27,10 @@ import {
   writeManagedScriptRemote,
   writeTextFileRemoteAtomic
 } from '../agent-hooks/installer-utils-remote'
-import { buildPosixHookPayloadCapture } from '../agent-hooks/hook-stdin-contract'
+import {
+  buildPosixHookPayloadCapture,
+  buildPosixHookSpoolLines
+} from '../agent-hooks/hook-stdin-contract'
 import { buildPosixHookInboxCommitLines } from '../agent-hooks/hook-inbox-commit'
 import {
   applyManagedKimiHooks,
@@ -79,16 +82,24 @@ function getManagedScript(target: 'local' | 'posix' = 'local'): string {
     '  . "$ORCA_AGENT_HOOK_ENDPOINT" 2>/dev/null || :',
     'fi',
     'if [ -z "$ORCA_AGENT_HOOK_PORT" ] || [ -z "$ORCA_AGENT_HOOK_TOKEN" ] || [ -z "$ORCA_PANE_KEY" ]; then',
+    // Why: the windows-local ordering runs this guard before stdin is read and before
+    // spool_hook_event is defined, so only the payload-first ordering may spool here.
+    ...(windowsLocal ? [] : ['  spool_hook_event']),
     '  exit 0',
     'fi'
   ]
   return [
     '#!/bin/sh',
     ...(windowsLocal
-      ? // Why no inbox commit: Git Bash sources endpoint.cmd, which never advertises it here.
-        [...endpointRefreshAndGuard, ...buildPosixHookPayloadCapture()]
+      ? [
+          ...endpointRefreshAndGuard,
+          ...buildPosixHookPayloadCapture(),
+          ...buildPosixHookSpoolLines('kimi')
+        ]
       : [
           ...buildPosixHookPayloadCapture(),
+          ...buildPosixHookSpoolLines('kimi'),
+          // Why no commit on Windows: Git Bash sources endpoint.cmd, which never advertises it.
           ...buildPosixHookInboxCommitLines('kimi'),
           // Why before the endpoint/POST: a committed event survives the agent killing this hook.
           'orca_hook_commit && exit 0',
@@ -110,7 +121,7 @@ function getManagedScript(target: 'local' | 'posix' = 'local'): string {
     '  --data-urlencode "worktreeId=${ORCA_WORKTREE_ID}" \\',
     '  --data-urlencode "env=${ORCA_AGENT_HOOK_ENV}" \\',
     '  --data-urlencode "version=${ORCA_AGENT_HOOK_VERSION}" \\',
-    '  --data-urlencode "payload@-" >/dev/null 2>&1',
+    '  --data-urlencode "payload@-" >/dev/null 2>&1 || spool_hook_event',
     'exit 0',
     ''
   ].join('\n')

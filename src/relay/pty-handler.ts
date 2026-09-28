@@ -534,6 +534,7 @@ export class PtyHandler {
   private lastPtyLoadError: unknown = null
   // Why: single optional slot is intentional — callers compose externally; a throw is swallowed so it can't block cleanup.
   private exitListener: PtyExitListener | null = null
+  private outputPublishBarrier: (() => void) | null = null
   private surfaceRetiredListener: PtySurfaceRetiredListener | null = null
   private readonly retiredPaneSurfaces = new RetiredPaneSurfaceRegistry()
   private ptyPoolEmptyListener: (() => void) | null = null
@@ -707,6 +708,22 @@ export class PtyHandler {
   }
 
   /** Subscribe to PTY-exit events (relay-hook server uses this to evict per-paneKey caches). */
+  /** Runs before this handler publishes PTY output or an exit, so anything an agent committed
+   *  before it printed or exited (a hook event) reaches the client ahead of that output. */
+  setOutputPublishBarrier(barrier: (() => void) | null): void {
+    this.outputPublishBarrier = barrier
+  }
+
+  private runOutputPublishBarrier(): void {
+    try {
+      this.outputPublishBarrier?.()
+    } catch (err) {
+      process.stderr.write(
+        `[pty-handler] output publish barrier threw: ${err instanceof Error ? err.message : String(err)}\n`
+      )
+    }
+  }
+
   setExitListener(listener: PtyExitListener | null): void {
     this.exitListener = listener
   }
@@ -1022,6 +1039,7 @@ export class PtyHandler {
       this.releaseRelayIngress(managed)
       this.pausedOutputPtys.delete(managed.id)
       this.consumerPausedOutputPtys.delete(managed.id)
+      this.runOutputPublishBarrier()
       this.flushPtyOutput(managed.id)
       this.pendingExitByPty.set(managed.id, {
         id: managed.id,
@@ -1239,6 +1257,7 @@ export class PtyHandler {
 
   private flushPendingOutput(): void {
     this.outputFlushTimer = null
+    this.runOutputPublishBarrier()
     // Why batch before the first send: a re-entrant sink must read the values a whole-map snapshot
     // would have frozen. Why the raw iterator: `for...of` would consume one entry past the limit.
     const pendingEntries = this.pendingOutputByPty[Symbol.iterator]()

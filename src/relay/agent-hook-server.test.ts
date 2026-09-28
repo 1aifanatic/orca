@@ -165,15 +165,25 @@ describe('RelayAgentHookServer', () => {
     }
   })
 
-  it('forwards what an exited pane committed before forgetting it', async () => {
+  it('forwards committed hook events synchronously when asked to drain', async () => {
     const forward = vi.fn<(envelope: AgentHookRelayEnvelope) => void>()
     const server = new RelayAgentHookServer({ endpointDir: dir, forward })
     await server.start()
     try {
       commitInboxRecord(join(dir, 'hook-inbox', '1.0.rec'), 'UserPromptSubmit')
-      server.clearPaneState(PANE_KEY)
+      server.drainCommittedHooks()
       expect(forward).toHaveBeenCalledTimes(1)
-      expect(server.replayCachedPayloadsForPanes()).toBe(0)
+    } finally {
+      server.stop()
+    }
+  })
+
+  it('keeps hook scripts on the POST when started without an inbox', async () => {
+    const forward = vi.fn<(envelope: AgentHookRelayEnvelope) => void>()
+    const server = new RelayAgentHookServer({ endpointDir: dir, forward })
+    await server.start({ hookInbox: false })
+    try {
+      expect(readFileSync(join(dir, 'endpoint.env'), 'utf8')).not.toContain('ORCA_AGENT_HOOK_INBOX')
     } finally {
       server.stop()
     }

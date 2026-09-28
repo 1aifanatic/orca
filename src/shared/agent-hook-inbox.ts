@@ -55,15 +55,17 @@ export type CommittedHookIngest = (
 
 /**
  * Takes ownership of every hook event committed to disk for one endpoint: replays the legacy
- * spool (still written by hook scripts from an older Orca) and the inbox backlog, then keeps the
- * inbox draining live. Returns null when the inbox cannot be owned; the caller must then not
- * advertise it, so hook scripts keep POSTing.
+ * spool (written by hook scripts whose POST failed) and the inbox backlog, then keeps the inbox
+ * draining live. Returns null when there is no inbox to own; the caller must then not advertise
+ * it, so hook scripts keep POSTing.
  */
 export function openAgentHookInbox(options: {
   endpointDir: string
   ingest: CommittedHookIngest
   /** Launch the host last saw for a pane; a replay from any other launch is stale. */
   persistedLaunchTokenHash?: (paneKey: string) => string | undefined
+  /** False when this host cannot drain before the pane's output is published (see the WSL relay). */
+  inbox?: boolean
 }): AgentHookInbox | null {
   const isStaleReplay = (paneKey: unknown, launchToken: unknown): boolean => {
     const expected =
@@ -87,6 +89,11 @@ export function openAgentHookInbox(options: {
   } catch (error) {
     // Why: a replay failure must not stop the host from starting; the spool stays for next time.
     console.error('[agent-hooks] spool replay failed:', error)
+  }
+  // Why Windows is excluded: no Windows hook commits yet (.cmd hooks still POST), so a watcher and
+  // sweep there would only cost main-thread work.
+  if (options.inbox === false || process.platform === 'win32') {
+    return null
   }
   const inbox = new AgentHookInbox(
     agentHookInboxDir(options.endpointDir),

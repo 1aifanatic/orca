@@ -62,6 +62,11 @@ export type RelayHookServerOptions = {
 
 export type RelayHookServerStartOptions = {
   publishEndpoint?: boolean
+  /**
+   * Whether hook scripts may commit to this relay's inbox instead of POSTing. Only safe when the
+   * panes' output flows through this relay, which drains before publishing it; defaults to true.
+   */
+  hookInbox?: boolean
 }
 
 export class RelayAgentHookServer {
@@ -117,7 +122,8 @@ export class RelayAgentHookServer {
     this.portFallbackApplied = false
     this.hookInbox ??= openAgentHookInbox({
       endpointDir: this.endpointDir,
-      ingest: (source, body, { isReplay }) => this.ingestHookBody(source, body, { isReplay })
+      ingest: (source, body, { isReplay }) => this.ingestHookBody(source, body, { isReplay }),
+      inbox: options.hookInbox
     })
     try {
       await this.listenOn(this.preferredPort)
@@ -198,8 +204,13 @@ export class RelayAgentHookServer {
 
   /** Request-driven replay: re-forwards each cached paneKey payload as a fresh notification. Forwards are
    *  issued before the request handler returns, so the response trails all replayed notifications. */
-  replayCachedPayloadsForPanes(): number {
+  /** Applies and forwards every hook event already committed to the inbox. */
+  drainCommittedHooks(): void {
     this.hookInbox?.drain()
+  }
+
+  replayCachedPayloadsForPanes(): number {
+    this.drainCommittedHooks()
     const cachedSnapshot = new Map(this.state.lastStatusByPaneKey)
     const replayable = selectReplayableCachedPanes({
       cachedByPaneKey: cachedSnapshot,
@@ -217,9 +228,6 @@ export class RelayAgentHookServer {
 
   /** Drop a paneKey's cached entries on PTY exit so a terminated pane can't resurface as a ghost event on reconnect. */
   clearPaneState(paneKey: string): void {
-    // Why: an event the agent committed before its pane went away is applied before the pane is
-    // forgotten, as the blocking POST used to guarantee.
-    this.hookInbox?.drain()
     this.retryScheduler.clearAssistantMessageRetry(paneKey)
     this.retryScheduler.clearTranscriptPoll(paneKey)
     clearPaneCacheState(this.state, paneKey)
@@ -271,7 +279,7 @@ export class RelayAgentHookServer {
       }
       const body = await readRequestBody(req)
       // Why: anything committed to the inbox before this POST was published earlier.
-      this.hookInbox?.drain()
+      this.drainCommittedHooks()
       this.ingestHookBody(source, mergeAgentHookRequestHeaders(body, req.headers))
       res.writeHead(204)
       res.end()

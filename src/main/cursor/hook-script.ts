@@ -5,6 +5,7 @@ import {
 } from '../agent-hooks/installer-utils'
 import {
   buildPosixHookPayloadCapture,
+  buildPosixHookSpoolLines,
   buildWindowsHookEnvironmentGuardLines,
   buildWindowsHookStdinDrainEpilogue
 } from '../agent-hooks/hook-stdin-contract'
@@ -65,6 +66,7 @@ export function getManagedScript(target: 'local' | 'posix' = 'local'): string {
     'fi',
     ...buildPosixHookPayloadCapture(),
     ...buildPosixGrokReplayGuardLines(),
+    ...buildPosixHookSpoolLines('cursor'),
     ...buildPosixHookInboxCommitLines('cursor'),
     // Why before the endpoint/POST: a committed event survives the agent killing this hook.
     'orca_hook_commit && exit 0',
@@ -73,6 +75,7 @@ export function getManagedScript(target: 'local' | 'posix' = 'local'): string {
     '  . "$ORCA_AGENT_HOOK_ENDPOINT" 2>/dev/null || :',
     'fi',
     'if [ -z "$ORCA_AGENT_HOOK_PORT" ] || [ -z "$ORCA_AGENT_HOOK_TOKEN" ] || [ -z "$ORCA_PANE_KEY" ]; then',
+    '  spool_hook_event',
     '  exit 0',
     'fi',
     // Why: post form fields because path-bearing worktree IDs are unsafe in hand-built JSON.
@@ -87,7 +90,7 @@ export function getManagedScript(target: 'local' | 'posix' = 'local'): string {
     '  --data-urlencode "worktreeId=${ORCA_WORKTREE_ID}" \\',
     '  --data-urlencode "env=${ORCA_AGENT_HOOK_ENV}" \\',
     '  --data-urlencode "version=${ORCA_AGENT_HOOK_VERSION}" \\',
-    '  --data-urlencode "payload@-" >/dev/null 2>&1',
+    '  --data-urlencode "payload@-" >/dev/null 2>&1 || spool_hook_event',
     'exit 0',
     ''
   ].join('\n')

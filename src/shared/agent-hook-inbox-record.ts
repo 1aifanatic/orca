@@ -25,11 +25,10 @@ export const AGENT_HOOK_INBOX_RECORD_END = 'orca-hook-end'
 /** Larger payloads take the POST path, which rejects them just as it does today. The shell counts
  *  characters, so the reader allows for four-byte UTF-8 on top of this. */
 export const AGENT_HOOK_INBOX_MAX_PAYLOAD_CHARS = HOOK_REQUEST_MAX_BYTES
-/** Why: a backlog means nothing is draining (Orca closed while agents run on); keep lifecycle
- *  events and shed tool progress, which a later lifecycle event supersedes anyway. */
-export const AGENT_HOOK_INBOX_SHED_TOOL_PROGRESS_BACKLOG = 64
-/** Past this, a writer stops committing: every durable obligation needs a bound. */
-export const AGENT_HOOK_INBOX_MAX_BACKLOG = 2000
+/** A backlog this deep means nothing is draining (Orca closed while agents run on): writers shed
+ *  tool progress there but keep lifecycle events, so the replay still ends on the final state.
+ *  Far above anything a stalled but live Orca accumulates, whose tool events it still needs. */
+export const AGENT_HOOK_INBOX_TOOL_PROGRESS_BACKLOG_LIMIT = 2000
 
 /** Trailer keys copied into the hook body. Anything else is ignored, so a trailer can never set
  *  transport fields such as `isReplay` or `payload`. */
