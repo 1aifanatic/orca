@@ -389,6 +389,39 @@ describe('mobile structured queued messages', () => {
       expect(plain.envelope.clientOperationId).not.toBe(first.envelope.clientOperationId)
       expect(attempts).toBe(4)
     })
+
+    it('keeps an ack-lost send when the host refuses its replay as unauthorized', async () => {
+      let attempts = 0
+      sendRequest.mockImplementation(async (method) => {
+        if (method === 'agentSession.send') {
+          attempts += 1
+          if (attempts === 1) {
+            throw markRpcDeliveryUnknown(new Error('Connection closed'))
+          }
+          // An auth refusal says nothing about whether the first attempt was delivered.
+          return {
+            id: 'request-1',
+            ok: false,
+            error: { code: 'unauthorized', message: 'Pairing revoked' }
+          }
+        }
+        return method === 'agentSession.options' ? ok({ models: [], current: {} }) : ok({})
+      })
+      await mountSession(CAPABLE)
+      await act(async () => {
+        expect(await hook!.sendWithOutcome('in doubt')).toBe('unknown')
+      })
+      await act(async () => {
+        expect(await hook!.sendWithOutcome('in doubt')).toBe('rejected')
+      })
+      await act(async () => {
+        await hook!.sendWithOutcome('in doubt')
+      })
+      const first = requestOf('agentSession.send', 0)
+      expect(requestOf('agentSession.send', 2).envelope.clientOperationId).toBe(
+        first.envelope.clientOperationId
+      )
+    })
   })
 
   it('an ack-lost send is spent once the host publishes it as a draft, even one later withdrawn', async () => {

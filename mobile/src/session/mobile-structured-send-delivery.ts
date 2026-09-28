@@ -26,10 +26,7 @@
 //     model five times.
 
 import type { AgentJournalSubmission } from '../../../src/shared/agent-session-journal-types'
-import type {
-  AgentSessionSendResult,
-  AgentSessionWireRefusalCode
-} from '../../../src/shared/agent-session-wire'
+import type { AgentSessionSendResult } from '../../../src/shared/agent-session-wire'
 import { agentSessionRefusalOperationState } from '../../../src/shared/agent-session-refusal-retry'
 import { structuredAgentSessionRejectionNotice } from '../../../src/shared/structured-agent-session-send-disposition'
 import type { MobileNativeChatSendOutcome } from './mobile-native-chat-send'
@@ -64,7 +61,7 @@ export function mobileStructuredSendDelivery(
   if (result.status !== 'accepted') {
     return {
       outcome: 'rejected',
-      operationIdSpent: !retained || hostRefusedRequestShape(result.hostRefusalCode),
+      operationIdSpent: !retained || result.hostRejectedRequestShape === true,
       error: result.message
     }
   }
@@ -100,8 +97,4 @@ export function mobileStructuredSendDelivery(
     return { outcome: 'unknown', operationIdSpent: false, error: null }
   }
   return { outcome: 'accepted', operationIdSpent: true, error: null }
-}
-
-function hostRefusedRequestShape(code: AgentSessionWireRefusalCode | undefined): boolean {
-  return code !== undefined && agentSessionRefusalOperationState(code) === 'settled-rejected'
 }

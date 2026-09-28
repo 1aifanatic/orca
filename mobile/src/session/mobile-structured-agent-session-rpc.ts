@@ -28,9 +28,10 @@ export const STRUCTURED_SEND_TIMEOUT_MS = 15_000
 export type StructuredAgentSessionMutationCallResult<TValue> =
   | { status: 'accepted'; value: TValue }
   | { status: 'refused'; code: AgentSessionWireRefusalCode; message: string }
-  /** `hostRefusalCode` is present when the host answered and turned the request itself away
-   *  before running it; absent when the request never left this device. */
-  | { status: 'failed'; message: string; hostRefusalCode?: AgentSessionWireRefusalCode }
+  /** `hostRejectedRequestShape`: the host's schema turned this request away before running
+   *  it, so the same request can never be accepted there. An auth refusal does not set it:
+   *  it says nothing about an earlier delivery of the same id. */
+  | { status: 'failed'; message: string; hostRejectedRequestShape?: true }
   /** `hostReportedOperationUnknown` separates a host answer about the id from doubt
    *  about the effect. Whether that id can still be retried is the method's own
    *  question: a plan that recovers an unknown ledger row replays or reruns it, one
@@ -194,7 +195,9 @@ export async function requestStructuredAgentSessionMutation<TValue>(args: {
         message: agentSessionWriteNoticeEnglish(
           agentSessionWriteNoticeParts(answered, phoneWriteKind(fingerprintMethod, fields))
         ),
-        ...(answered.kind === 'refused' ? { hostRefusalCode: answered.code } : {})
+        ...(error instanceof AgentSessionRpcResponseError && error.code === 'invalid_argument'
+          ? { hostRejectedRequestShape: true }
+          : {})
       }
     }
     if (

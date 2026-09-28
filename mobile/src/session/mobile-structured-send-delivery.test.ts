@@ -163,7 +163,7 @@ describe('mobileStructuredSendDelivery', () => {
         {
           status: 'failed',
           message: 'Your message was not sent. Send it again.',
-          hostRefusalCode: 'agent_session_operation_invalid'
+          hostRejectedRequestShape: true
         },
         true
       )
@@ -172,14 +172,11 @@ describe('mobileStructuredSendDelivery', () => {
       operationIdSpent: true,
       error: 'Your message was not sent. Send it again.'
     })
-    // A host without the method at all proves nothing settled about this id.
+    // Any other refusal (an auth failure, a host without the method) proves nothing
+    // about an earlier delivery of this id.
     expect(
       mobileStructuredSendDelivery(
-        {
-          status: 'failed',
-          message: 'Your message was not sent.',
-          hostRefusalCode: 'structured_agent_session_unsupported'
-        },
+        { status: 'failed', message: 'Your message was not sent.' },
         true
       )
     ).toMatchObject({ operationIdSpent: false })
