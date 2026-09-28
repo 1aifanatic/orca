@@ -88,7 +88,8 @@ export type AgentSessionDeathEvidence = {
   detail: string
   observedAt: number
   /** The death interval's lower bound: the last time the runtime holding the owner's transport
-   *  proved it alive. Absent when nothing did, and on evidence older builds wrote. */
+   *  proved it alive. Only a probe's proof records it: absent on a surface-release exit, a failed
+   *  start, and evidence older builds wrote. */
   lastProvenAliveAt?: number
 }
 
