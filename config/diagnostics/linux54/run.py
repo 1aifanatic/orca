@@ -172,7 +172,7 @@ def main():
                    '-append', f'root=LABEL=cloudimg-rootfs rw console={console} ds=nocloud',
                    '-drive', f'file={overlay},format=qcow2,if=virtio',
                    '-drive', f'file={seed},format=raw,if=virtio,readonly=on',
-                   '-netdev', 'user,id=net', '-device', 'virtio-net-pci,netdev=net',
+                   '-netdev', 'user,id=net', '-device', 'virtio-net-pci,netdev=net,romfile=',
                    '-virtfs', f'local,path={app},mount_tag=artifact,security_model=none,readonly=on',
                    '-virtfs', f'local,path={fixture},mount_tag=qualification,security_model=none,readonly=on']
         report['command'] = command
