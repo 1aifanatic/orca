@@ -76,7 +76,8 @@ export async function sendMobileStructuredAgentSessionMessage(input: {
   try {
     operation = await getOrCreateMobileStructuredSendOperation({
       operationKey: input.delivery ? queuedOperationKey : immediateOperationKey,
-      // A retained id replays exactly as first sent, whatever the capability says now.
+      // A retained id replays exactly as first sent, whatever the capability says now;
+      // a host that refuses that request shape retires it, so the next send goes out fresh.
       alternateOperationKey: input.delivery ? immediateOperationKey : queuedOperationKey,
       callerIdentity: input.callerIdentity,
       payloadFingerprint: requestedPayloadFingerprint,

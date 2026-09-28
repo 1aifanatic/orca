@@ -324,6 +324,71 @@ describe('mobile structured queued messages', () => {
       const journal = stored.get('orca:mobileStructuredSendOperations:v1') ?? ''
       expect(journal).not.toContain('delivery')
     })
+
+    it('retires an ack-lost delivery send an older host refuses, so the next send goes out plain', async () => {
+      const journalKey = 'orca:mobileStructuredSendOperations:v1'
+      let attempts = 0
+      sendRequest.mockImplementation(async (method, params) => {
+        if (method === 'agentSession.send') {
+          attempts += 1
+          if (attempts <= 2) {
+            throw markRpcDeliveryUnknown(new Error('Connection closed'))
+          }
+          // The downgraded host's strict schema turns `delivery` away before running anything.
+          if ('delivery' in fieldsOf(params)) {
+            return {
+              id: 'request-1',
+              ok: false,
+              error: { code: 'invalid_argument', message: 'Unrecognized key: "delivery"' }
+            }
+          }
+          return mutationOk({
+            clientMessageId: 'client-plain',
+            submission: {
+              clientMessageId: 'client-plain',
+              fence: 3,
+              payloadFingerprint: 'fp',
+              dispatchState: 'accepted',
+              providerItemId: null,
+              reason: null,
+              submittedAt: 10,
+              resolvedAt: 10
+            }
+          })
+        }
+        return method === 'agentSession.options' ? ok({ models: [], current: {} }) : ok({})
+      })
+      await mountSession(CAPABLE)
+      await act(async () => {
+        expect(await hook!.sendWithOutcome('downgraded')).toBe('unknown')
+      })
+      unmountSession()
+      await mountSession(LEGACY)
+      // A lost answer is still doubt: the replay keeps the id and its delivery.
+      await act(async () => {
+        expect(await hook!.sendWithOutcome('downgraded')).toBe('unknown')
+      })
+      const first = requestOf('agentSession.send', 0)
+      expect(requestOf('agentSession.send', 1).envelope.clientOperationId).toBe(
+        first.envelope.clientOperationId
+      )
+      expect(stored.get(journalKey)).toContain(String(first.envelope.clientOperationId))
+      // The host answering that it cannot take the request retires the entry, once.
+      await act(async () => {
+        expect(await hook!.sendWithOutcome('downgraded')).toBe('rejected')
+      })
+      const refused = requestOf('agentSession.send', 2)
+      expect(refused.params.delivery).toBe('queue-if-active')
+      expect(refused.envelope.clientOperationId).toBe(first.envelope.clientOperationId)
+      expect(onSendError).toHaveBeenCalledTimes(1)
+      await act(async () => {
+        expect(await hook!.sendWithOutcome('downgraded')).toBe('accepted')
+      })
+      const plain = requestOf('agentSession.send', 3)
+      expect('delivery' in plain.params).toBe(false)
+      expect(plain.envelope.clientOperationId).not.toBe(first.envelope.clientOperationId)
+      expect(attempts).toBe(4)
+    })
   })
 
   it('an ack-lost send is spent once the host publishes it as a draft, even one later withdrawn', async () => {

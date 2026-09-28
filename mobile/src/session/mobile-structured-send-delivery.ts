@@ -15,14 +15,21 @@
 //     message is a new message and must carry a new id.
 //   rejected — a terminal refusal or rejected submission spends a fresh id. A
 //     pending-admission refusal, or any refusal after earlier transport doubt,
-//     keeps it because neither proves a retained delivery did not happen.
+//     keeps it because neither proves a retained delivery did not happen. The
+//     one exception is a host that refuses the replay's request shape itself
+//     (an older host's strict schema turning `delivery` away): that host can
+//     never accept the replay, so keeping the id would only refuse every later
+//     send of the same text.
 //   unknown — the one answer that KEEPS its id, whether it came from the host or
 //     from an ack-loss on the way back. The message may be with the provider, so
 //     the retry has to stay a replay. Rotating here is what sent one message to a
 //     model five times.
 
 import type { AgentJournalSubmission } from '../../../src/shared/agent-session-journal-types'
-import type { AgentSessionSendResult } from '../../../src/shared/agent-session-wire'
+import type {
+  AgentSessionSendResult,
+  AgentSessionWireRefusalCode
+} from '../../../src/shared/agent-session-wire'
 import { agentSessionRefusalOperationState } from '../../../src/shared/agent-session-refusal-retry'
 import { structuredAgentSessionRejectionNotice } from '../../../src/shared/structured-agent-session-send-disposition'
 import type { MobileNativeChatSendOutcome } from './mobile-native-chat-send'
@@ -57,7 +64,7 @@ export function mobileStructuredSendDelivery(
   if (result.status !== 'accepted') {
     return {
       outcome: 'rejected',
-      operationIdSpent: !retained,
+      operationIdSpent: !retained || hostRefusedRequestShape(result.hostRefusalCode),
       error: result.message
     }
   }
@@ -93,4 +100,8 @@ export function mobileStructuredSendDelivery(
     return { outcome: 'unknown', operationIdSpent: false, error: null }
   }
   return { outcome: 'accepted', operationIdSpent: true, error: null }
+}
+
+function hostRefusedRequestShape(code: AgentSessionWireRefusalCode | undefined): boolean {
+  return code !== undefined && agentSessionRefusalOperationState(code) === 'settled-rejected'
 }

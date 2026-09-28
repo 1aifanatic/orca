@@ -86,4 +86,35 @@ describe('MobileNativeChatQueuedMessages', () => {
       .filter((child) => child === 'Send' || child === 'Send now')
     expect(labels).toEqual(['Send', 'Send now'])
   })
+
+  it('gives every card action at least a 44pt touch target', async () => {
+    const mounted = create(createElement('View'))
+    renderer = mounted
+    await act(async () => {
+      mounted.update(
+        createElement(MobileNativeChatQueuedMessages, {
+          cards: [
+            {
+              messageId: 'waiting-1',
+              text: 'next',
+              state: 'waiting',
+              paused: false,
+              label: 'Queued — sends when the current turn ends'
+            }
+          ],
+          onSend: vi.fn(async () => true),
+          onDelete: vi.fn(async () => true),
+          onEdit: vi.fn(async () => true)
+        })
+      )
+    })
+    const buttons = mounted.root.findAll((node) => node.props.accessibilityRole === 'button')
+    expect(buttons).toHaveLength(3)
+    for (const button of buttons) {
+      const resolved: unknown = button.props.style({ pressed: false })
+      const style = Object.assign({}, ...(Array.isArray(resolved) ? resolved : [resolved]))
+      expect(style.minHeight).toBeGreaterThanOrEqual(44)
+      expect(style.minWidth).toBeGreaterThanOrEqual(44)
+    }
+  })
 })

@@ -155,6 +155,36 @@ describe('mobileStructuredSendDelivery', () => {
     })
   })
 
+  it('releases a replay only when the host refuses its request shape itself', () => {
+    // An older host's strict schema refuses `delivery` before it runs anything:
+    // that replay can never be accepted, so keeping the id refuses the text forever.
+    expect(
+      mobileStructuredSendDelivery(
+        {
+          status: 'failed',
+          message: 'Your message was not sent. Send it again.',
+          hostRefusalCode: 'agent_session_operation_invalid'
+        },
+        true
+      )
+    ).toEqual({
+      outcome: 'rejected',
+      operationIdSpent: true,
+      error: 'Your message was not sent. Send it again.'
+    })
+    // A host without the method at all proves nothing settled about this id.
+    expect(
+      mobileStructuredSendDelivery(
+        {
+          status: 'failed',
+          message: 'Your message was not sent.',
+          hostRefusalCode: 'structured_agent_session_unsupported'
+        },
+        true
+      )
+    ).toMatchObject({ operationIdSpent: false })
+  })
+
   it('fails closed when an invalid host response omits the required submission', () => {
     const result = {
       status: 'accepted',

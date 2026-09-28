@@ -109,6 +109,13 @@ export function MobileNativeChatQueuedMessages({
   )
 }
 
+// Actions draw as a 32pt text row but touch as 44pt targets (platform floor); the
+// row's negative margins give back the padding, and half-gap insets never overlap.
+const MIN_TOUCH_TARGET = 44
+const ACTION_ROW_HEIGHT = 32
+const ACTION_TARGET_INSET_VERTICAL = (MIN_TOUCH_TARGET - ACTION_ROW_HEIGHT) / 2
+const ACTION_TARGET_INSET_HORIZONTAL = spacing.md / 2
+
 const styles = StyleSheet.create({
   list: {
     marginHorizontal: spacing.lg,
@@ -143,11 +150,15 @@ const styles = StyleSheet.create({
   },
   actions: {
     flexDirection: 'row',
-    gap: spacing.md,
-    marginTop: 2
+    marginTop: 2 - ACTION_TARGET_INSET_VERTICAL,
+    marginBottom: -ACTION_TARGET_INSET_VERTICAL,
+    marginHorizontal: -ACTION_TARGET_INSET_HORIZONTAL
   },
   action: {
-    minHeight: 32,
+    minHeight: MIN_TOUCH_TARGET,
+    minWidth: MIN_TOUCH_TARGET,
+    paddingHorizontal: ACTION_TARGET_INSET_HORIZONTAL,
+    alignItems: 'center',
     justifyContent: 'center'
   },
   actionLabel: {
