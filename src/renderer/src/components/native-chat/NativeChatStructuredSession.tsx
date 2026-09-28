@@ -247,7 +247,7 @@ export function NativeChatStructuredSession(
       />
       <NativeChatLaunchRetry
         lifecycle={provisionalLaunch.lifecycle}
-        failureReason={provisionalLaunch.failureReason}
+        failure={provisionalLaunch.failure}
         onRetry={provisionalLaunch.retry}
       />
       <NativeChatStructuredSessionStatus

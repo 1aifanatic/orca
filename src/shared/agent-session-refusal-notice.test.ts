@@ -5,6 +5,7 @@ import {
 } from './agent-session-wire-refusals'
 import {
   agentSessionReadHistoryRefusalParts,
+  agentSessionRefusalCauseParts,
   agentSessionRefusalNotice,
   agentSessionRefusalReasonWords,
   agentSessionWriteFailureNotice,
@@ -520,5 +521,37 @@ describe('a chat whose history the host could not open', () => {
     expect(agentSessionReadHistoryRefusalParts('agent_session_from_the_future')).toEqual([
       'notDoneReadHistory'
     ])
+  })
+})
+
+// For a line that already says what did not happen, such as a chat that could not start.
+describe('agentSessionRefusalCauseParts', () => {
+  it('gives the cause and step a reason names, without the write that did not happen', () => {
+    expect(
+      agentSessionRefusalCauseParts({
+        kind: 'refused',
+        code: 'agent_session_operation_invalid',
+        details: { reason: 'turnActive' }
+      })
+    ).toEqual(['turnActive', 'waitForTurn'])
+    expect(
+      agentSessionRefusalCauseParts({
+        kind: 'refused',
+        code: 'agent_session_operation_invalid',
+        details: { reason: 'notSignedIn' }
+      })
+    ).toEqual([{ text: agentSessionFailureSentence({ kind: 'notSignedIn' }, 'rejection') }])
+  })
+
+  it.each<[string, AgentSessionWriteFailure]>([
+    ['a refusal with no reason', { kind: 'refused', code: 'agent_session_operation_invalid' }],
+    [
+      "a reason whose code's words stand",
+      { kind: 'refused', code: 'agent_session_conflict', details: { reason: 'ownerAlive' } }
+    ],
+    ['a failed request', { kind: 'failed' }],
+    ['an unconfirmed one', { kind: 'unconfirmed' }]
+  ])('names nothing for %s', (_label, failure) => {
+    expect(agentSessionRefusalCauseParts(failure)).toEqual([])
   })
 })

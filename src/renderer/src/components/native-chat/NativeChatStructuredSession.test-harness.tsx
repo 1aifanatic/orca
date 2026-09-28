@@ -2,6 +2,7 @@ import { forwardRef, useImperativeHandle, useRef } from 'react'
 import { vi } from 'vitest'
 import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
 import type { AgentSessionBackgroundTask } from '../../../../shared/agent-session-wire'
+import type { AgentSessionWriteRefusal } from '../../../../shared/agent-session-write-failure'
 import type { NativeChatApprovalCardProps } from './NativeChatApprovalCard'
 import type { NativeChatQuestionCardProps } from './NativeChatQuestionCard'
 import type { NativeChatLaunchSeed } from './native-chat-composer-types'
@@ -43,7 +44,7 @@ export function createStructuredSessionMocks() {
     call: vi.fn<(...args: never[]) => unknown>(),
     fileLinkClick: vi.fn<(...args: never[]) => unknown>(),
     launchLifecycle: nullable<StructuredAgentSessionLaunchLifecycle>(),
-    launchFailureReason: nullable<string>(),
+    launchFailure: nullable<AgentSessionWriteRefusal>(),
     launchResumes: false,
     retryLaunch: vi.fn<(...args: never[]) => unknown>(),
     controllerProps: nullable<{ transportEnabled?: boolean }>(),
@@ -182,7 +183,7 @@ export function createStructuredSessionMocks() {
       getStructuredAgentSessionLaunchResumes: () => mocks.launchResumes,
       useStructuredAgentSessionLaunchSelection: () => null,
       useStructuredAgentSessionLaunchLifecycle: () => mocks.launchLifecycle,
-      useStructuredAgentSessionLaunchFailureReason: () => mocks.launchFailureReason
+      useStructuredAgentSessionLaunchFailure: () => mocks.launchFailure
     }),
     useNativeChatFontScale: () => ({
       useNativeChatFontScale: () => ({ scale: 1 })
@@ -238,7 +239,7 @@ export function createStructuredSessionMocks() {
   const resetStructuredSessionMocks = (): void => {
     mocks.call.mockReset()
     mocks.launchLifecycle = null
-    mocks.launchFailureReason = null
+    mocks.launchFailure = null
     mocks.launchResumes = false
     mocks.retryLaunch.mockReset()
     mocks.controllerProps = null

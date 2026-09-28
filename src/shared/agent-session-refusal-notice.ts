@@ -267,6 +267,22 @@ function reasonParts(
   return causeWordsParts(words, write)
 }
 
+/** What stopped a refused write and the step past it, without saying which write did not happen:
+ *  for a line that already says so, such as a chat that could not start. Empty when the refusal
+ *  names no reason with words of its own. */
+export function agentSessionRefusalCauseParts(
+  failure: AgentSessionWriteFailure
+): AgentSessionWriteNoticePart[] {
+  const words = failure.kind === 'refused' ? agentSessionRefusalReasonWords(failure) : undefined
+  if (!words || 'words' in words) {
+    return []
+  }
+  if ('fact' in words) {
+    return [{ text: agentSessionFailureSentence({ kind: words.fact }, 'rejection') }]
+  }
+  return words.step ? [words.cause, words.step] : [words.cause]
+}
+
 export function agentSessionWriteNoticeParts(
   failure: AgentSessionWriteFailure,
   write: AgentSessionWriteKind
