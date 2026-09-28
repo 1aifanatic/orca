@@ -1,3 +1,4 @@
+import * as ProviderStateCleanup from '../provider/state-cleanup'
 import { ensureCodexStateDbBackfillRecoveryStarted } from '../../../codex/codex-state-db-backfill-recovery'
 import type * as GuestSpawnOptions from '../../../wsl/wsl-guest-spawn-options'
 import type * as GuestTerminalPreparation from '../../../wsl/wsl-guest-terminal-preparation'
@@ -329,3 +330,31 @@ it('refuses retained guest restore when the admitted owner cannot prove session 
   expect(spawn).not.toHaveBeenCalled()
   adapter.dispose()
 })
+
+it.each([false, true])(
+  'preserves retained provider state on preparation failure (fresh=%s)',
+  async (freshSession) => {
+    const id = toAppWslPtyId(owner, 'retained-after-failure')
+    const { ctx, provider, spawn, adapter } = fixture(freshSession ? {} : { sessionId: id })
+    vi.mocked(provider.probePtyLiveness).mockResolvedValue(false)
+    const clear = vi.spyOn(ProviderStateCleanup, 'clearProviderPtyState')
+    try {
+      await preparePtyIpcSpawnPreflight(ctx)
+      await assemblePtyIpcSpawnEnv(ctx)
+      vi.mocked(prepareWslGuestTerminalSpawn).mockRejectedValueOnce(
+        new Error('guest preparation failed')
+      )
+      await expect(buildPtyIpcSpawnOptions(ctx)).rejects.toThrow('guest preparation failed')
+      expect(spawn).not.toHaveBeenCalled()
+      if (freshSession) {
+        expect(clear).toHaveBeenCalledExactlyOnceWith(ctx.effectiveSessionId)
+      } else {
+        expect(clear).not.toHaveBeenCalled()
+        expect(ctx.effectiveSessionAppId).toBe(id)
+        expect(ctx.isMintedSessionId).toBe(false)
+      }
+    } finally {
+      adapter.dispose()
+    }
+  }
+)
