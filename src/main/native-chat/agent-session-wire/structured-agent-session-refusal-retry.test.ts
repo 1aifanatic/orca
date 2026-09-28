@@ -107,6 +107,8 @@ async function abandonHost(host: StructuredAgentSessionHost): Promise<void> {
   host['runtimeState'].stopLeaseRenewal()
   host['holds'].dispose()
   host['conversationDelivery'].loop.dispose()
+  // As quit does: a send's delivery start still writes the store, whose directory is removed next.
+  await host['tasks'].drainAttaches()
   await Promise.all([...host['sessions'].values()].map((session) => session.journal.close()))
   host['sessions'].clear()
 }
