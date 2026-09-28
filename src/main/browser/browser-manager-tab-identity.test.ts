@@ -294,6 +294,30 @@ describe('tab identity ownership', () => {
     expect(opened.handle.webContentsUserAgent()).toBe(GUEST_CLEAN_UA)
   })
 
+  // Why: a failed navigation commits an error page that is still loading at did-fail-load, and
+  // setUserAgent() then makes Chromium reload it — the failed request replayed.
+  it('leaves the WebContents UA alone when a redirected navigation fails', async () => {
+    mocks.processUserAgentMode = 'clean'
+    mocks.processUserAgent = GUEST_CLEAN_UA
+    const opened = openTab(ORDINARY_URL)
+    navigate(`${ORDINARY_URL}start`)
+    const willRedirect = mocks.guestOnMock.mock.calls.findLast(
+      ([event]) => event === 'will-redirect'
+    )?.[1]
+    willRedirect({ preventDefault: vi.fn() }, AUTH_URL, false, true)
+    await flushViewportOps()
+
+    opened.handle.commitNavigationTo(AUTH_URL)
+    const didFailLoad = mocks.guestOnMock.mock.calls.findLast(
+      ([event]) => event === 'did-fail-load'
+    )?.[1]
+    didFailLoad(null, -102, 'ERR_CONNECTION_REFUSED', AUTH_URL, true)
+    expect(opened.handle.webContentsUserAgent()).toBe(GUEST_CLEAN_UA)
+    const observed = await observe(opened, AUTH_URL)
+    expect(observed.presented).toBe(googleAuthUserAgent())
+    expect(observed.requestIdentity.kind).toBe('google-auth')
+  })
+
   // Why: a debugger that cannot attach (DevTools open on the guest) installs no mobile identity, so
   // requests claiming one would disagree with the document's own navigator.userAgent.
   it('keeps requests on the presented identity when a mobile preset cannot attach', async () => {

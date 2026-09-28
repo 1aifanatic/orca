@@ -51,8 +51,10 @@ export abstract class BrowserManagerGuestNavigationPolicy extends BrowserManager
       // Why: a nav that never committed must not leave its target standing as the tab's host.
       const failedNavigationWasCurrent = this.failPendingNavigation(guest.id, validatedURL)
       if (failedNavigationWasCurrent) {
-        // The attempted host never committed, so restore every UA layer to the document that remains.
-        void this.applyTabIdentity(guest, guest.getURL(), { webContentsWritable: true })
+        // Restore the identity of the document that remains (usually the failed URL's error page).
+        // Why CDP only: that error page is still loading here, and setUserAgent() makes Chromium
+        // reload it — replaying the failed request. The next navigation rewrites the WebContents UA.
+        void this.applyTabIdentity(guest, guest.getURL(), { webContentsWritable: false })
       }
       const browserPageId = this.tabIdByWebContentsId.get(guest.id)
       const certificateFailure = browserPageId

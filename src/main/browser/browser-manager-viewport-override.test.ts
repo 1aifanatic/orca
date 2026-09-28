@@ -395,7 +395,8 @@ describe('browserManager', () => {
       didFailLoad(null, -3, 'Aborted', 'https://accounts.google.com/', true)
       await flushViewportOps()
 
-      expect(guest.setUserAgent).toHaveBeenLastCalledWith(GUEST_CLEAN_UA)
+      // The restore goes over CDP: only did-start-navigation wrote the WebContents UA.
+      expect(guest.setUserAgent).toHaveBeenCalledOnce()
       expect(presentedUserAgent()).toBe(GUEST_CLEAN_UA)
 
       // A later preset must also resolve the committed, non-auth URL.
