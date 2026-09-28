@@ -33,7 +33,7 @@ function firstChangePath(changes: unknown): string | undefined {
 }
 
 /** The tool a thread item runs, or null for an item that is not a tool call (a message, a
- *  thought, a plan). A persistent command is not one either: it is work of its own. */
+ *  thought, a plan). */
 export function codexChildToolCall(item: CodexThreadItem): CodexChildToolCall | null {
   switch (item.type) {
     case 'commandExecution':

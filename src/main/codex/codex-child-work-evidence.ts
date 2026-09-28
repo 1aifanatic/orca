@@ -28,7 +28,6 @@ import {
   codexToolCallEnded,
   type CodexChildToolCall
 } from './codex-child-work-translation'
-import { codexCommandOutlivesTurn } from './codex-command-lifecycle'
 import { readRecord } from './codex-item-field-readers'
 import { readCodexThreadItem } from './codex-structured-item-translation'
 import { codexThreadWaitsOnUser, readCodexTurnId } from './codex-structured-thread-facts'
@@ -159,8 +158,9 @@ export class CodexChildWorkEvidence {
       facts.waiting = codexThreadWaitsOnUser(event.params)
       return
     }
+    // Every Codex agent shell is unified exec: it is the open call until its process exits.
     const item = readCodexThreadItem(readRecord(event.params).item)
-    if (!item || codexCommandOutlivesTurn(item)) {
+    if (!item) {
       return
     }
     // A frame that names no turn belongs to the one the child is running.

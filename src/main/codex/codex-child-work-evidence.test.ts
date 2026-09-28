@@ -292,6 +292,44 @@ describe('Codex child-work evidence', () => {
     expect(byKind('agent')[0]?.operation).toBeUndefined()
   })
 
+  it('names a unified-exec shell as the open call until its process exits', () => {
+    const { send, byKind } = runningChild()
+    // Codex runs every agent shell through unified exec, not only the ones that outlive a turn.
+    send(
+      item(
+        'item/started',
+        CHILD,
+        'c1',
+        shell('exec-1', 'npm test', 'inProgress', 'unifiedExecStartup')
+      )
+    )
+    expect(byKind('agent')[0]?.operation).toMatchObject({ toolName: 'Bash', input: 'npm test' })
+    send(
+      item(
+        'item/completed',
+        CHILD,
+        'c1',
+        shell('exec-1', 'npm test', 'completed', 'unifiedExecStartup')
+      )
+    )
+    expect(byKind('agent')[0]?.operation).toBeUndefined()
+    // An approved command starts on the approval path and completes from unified exec.
+    send(item('item/started', CHILD, 'c1', shell('exec-2', 'touch ~/marker')))
+    expect(byKind('agent')[0]?.operation).toMatchObject({
+      toolName: 'Bash',
+      input: 'touch ~/marker'
+    })
+    send(
+      item(
+        'item/completed',
+        CHILD,
+        'c1',
+        shell('exec-2', 'touch ~/marker', 'completed', 'unifiedExecStartup')
+      )
+    )
+    expect(byKind('agent')[0]?.operation).toBeUndefined()
+  })
+
   it("never carries a run's open call into the next run when its ending was lost", () => {
     const { send, byKind } = runningChild()
     send(item('item/started', CHILD, 'c1', shell('cmd-1', 'npm test')))
@@ -380,8 +418,8 @@ describe('Codex child-work evidence', () => {
         parentChildWorkId: agent!.childWorkId
       })
     ])
-    // A persistent command is work of its own, never the tool the child is running.
-    expect(agent?.operation).toBeUndefined()
+    // While the child's turn runs, the command is also the tool it has open.
+    expect(agent?.operation).toMatchObject({ toolName: 'Bash', input: 'npm run dev' })
     send(turn('turn/completed', CHILD, 'c1'))
     expect(byKind('agent')[0]).toMatchObject({ membership: 'settled', outcome: 'succeeded' })
     expect(display(agent!.childWorkId)).toBe('monitoring')

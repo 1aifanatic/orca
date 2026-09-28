@@ -214,7 +214,12 @@ describe('Codex structured child-work producer', () => {
           exitCode: 0
         }),
         lead: 'working',
-        check: () => expect(byDescription('review')?.operation).toBeUndefined()
+        // The dev server is still the child's open call while its turn runs.
+        check: () =>
+          expect(byDescription('review')?.operation).toMatchObject({
+            toolName: 'Bash',
+            input: 'npm run dev'
+          })
       },
       {
         frame: item('item/completed', REVIEWER, 'r1', {
