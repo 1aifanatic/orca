@@ -289,6 +289,10 @@ export const AGENT_LAUNCH_RUNTIME_CAPABILITY = 'agent.launch.v2' as const
 // Optional identity support on agent.launch; mobile replay across replacement hosts requires the new method.
 export const AGENT_LAUNCH_REPLAY_RUNTIME_CAPABILITY = 'agent.launch.replay.v1' as const
 
+// A host that sends a launch prompt its typed startup line cannot carry to a paste after
+// readiness; an older host folds any prompt into that line, so clients gate prompted launches on it.
+export const AGENT_LAUNCH_PROMPT_CARRY_RUNTIME_CAPABILITY = 'agent.launch.prompt-carry.v1' as const
+
 // agent.launchReplay requires the ledger; older replacement hosts must reject the method.
 export const AGENT_LAUNCH_REPLAY_REQUIRED_RUNTIME_CAPABILITY =
   'agent.launch.replay-required.v1' as const
@@ -425,7 +429,8 @@ export const RUNTIME_CAPABILITIES = [
   NOTIFICATIONS_REMOTE_PUSH_RUNTIME_CAPABILITY,
   AGENT_LAUNCH_RUNTIME_CAPABILITY,
   AGENT_LAUNCH_REPLAY_RUNTIME_CAPABILITY,
-  AGENT_LAUNCH_REPLAY_REQUIRED_RUNTIME_CAPABILITY
+  AGENT_LAUNCH_REPLAY_REQUIRED_RUNTIME_CAPABILITY,
+  AGENT_LAUNCH_PROMPT_CARRY_RUNTIME_CAPABILITY
 ] as const
 
 export type RuntimeCapability = (typeof RUNTIME_CAPABILITIES)[number] | (string & {})

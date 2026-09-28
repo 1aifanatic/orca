@@ -4,6 +4,10 @@ import {
   TYPED_STARTUP_LINE_PROMPT_BUDGET_BYTES
 } from './startup-line-prompt-carry'
 import type { TuiAgent } from './tui-agent'
+import {
+  AGENT_LAUNCH_PROMPT_CARRY_RUNTIME_CAPABILITY,
+  RUNTIME_CAPABILITIES
+} from './protocol-version'
 
 function offer(agent: TuiAgent, prompt: string, extra: { cmdOverride?: string } = {}) {
   return planStartupWithPromptCandidate(
@@ -96,5 +100,12 @@ describe('whether a launch prompt rides the typed startup line', () => {
 
   it('reports nothing carried for an empty prompt', () => {
     expect(offer('claude', '   ').promptCarried).toBe(false)
+  })
+})
+
+describe('the capability clients gate a prompted launch on', () => {
+  it('is advertised by every host that applies the typed-line rule', () => {
+    // An older host folds any prompt into the typed line, so its absence is the gate.
+    expect(RUNTIME_CAPABILITIES).toContain(AGENT_LAUNCH_PROMPT_CARRY_RUNTIME_CAPABILITY)
   })
 })
