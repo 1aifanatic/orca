@@ -98,9 +98,9 @@ export function useStructuredAgentSessionMutate(args: {
           ? {
               kind: 'not-done',
               notice: agentSessionWriteFailureText(
-                agentSessionRpcErrorFailure(
-                  error instanceof RuntimeRpcCallError ? error.code : undefined
-                ),
+                error instanceof RuntimeRpcCallError
+                  ? agentSessionRpcErrorFailure(error.code, error.response.error.data)
+                  : agentSessionRpcErrorFailure(undefined),
                 writeKind(fingerprintMethod, fields)
               )
             }

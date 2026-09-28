@@ -110,9 +110,10 @@ async function setLaunchOption(
   } catch (error) {
     return {
       kind: 'refused',
-      failure: agentSessionRpcErrorFailure(
-        error instanceof RuntimeRpcCallError ? error.code : undefined
-      )
+      failure:
+        error instanceof RuntimeRpcCallError
+          ? agentSessionRpcErrorFailure(error.code, error.response.error.data)
+          : agentSessionRpcErrorFailure(undefined)
     }
   }
 }

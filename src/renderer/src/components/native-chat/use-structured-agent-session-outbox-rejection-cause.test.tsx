@@ -14,6 +14,7 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
 }))
 
 import { setLocalRuntimeCapabilitiesForTests } from '@/runtime/local-runtime-capabilities'
+import { RuntimeRpcCallError } from '@/runtime/runtime-rpc-result'
 import { useStructuredAgentSessionOutbox } from './use-structured-agent-session-outbox'
 import { agentSessionWriteNoticeEnglish } from '../../../../shared/agent-session-refusal-notice'
 import { structuredAgentSessionAttemptFailureParts } from '../../../../shared/structured-agent-session-send-disposition'
@@ -403,5 +404,53 @@ describe('a send refused while its agent restarted', () => {
     await waitFor(() => expect(result.current.outbox).toHaveLength(0))
     expect(result.current.error).toBeNull()
     expect(result.current.blockedClientMessageId).toBeNull()
+  })
+})
+
+describe('a send the host refused by throwing', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.clear()
+  })
+
+  it("keeps the refusal on the message, with the refusal's words and not a bare failure", async () => {
+    // As `mapRuntimeError` sends a thrown refusal (pinned in `rpc/errors.test.ts`).
+    mocks.call.mockRejectedValue(
+      new RuntimeRpcCallError({
+        id: 'req-1',
+        ok: false,
+        error: {
+          code: 'runtime_error',
+          message: 'agent_session_journal_unreadable',
+          data: {
+            refusal: {
+              code: 'agent_session_journal_unreadable',
+              details: { reason: 'journalOwnedElsewhere', processKind: 'packaged' }
+            }
+          }
+        }
+      })
+    )
+    const { result } = renderHook(() =>
+      useStructuredAgentSessionOutbox({
+        sessionId: 'session-1',
+        target: { kind: 'local' },
+        fence: 1,
+        submissions: []
+      })
+    )
+
+    act(() => expect(result.current.send('hello')).toBe(true))
+
+    await waitFor(() =>
+      expect(result.current.outbox[0]?.lastFailure).toEqual({
+        kind: 'refused',
+        code: 'agent_session_journal_unreadable',
+        details: { reason: 'journalOwnedElsewhere', processKind: 'packaged' }
+      })
+    )
+    expect(shownFailure(result.current.outbox[0])).toBe(
+      'Chats are open in another Orca using this profile. Your message was not sent. Quit that Orca to use chats here.'
+    )
   })
 })

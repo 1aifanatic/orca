@@ -15,7 +15,10 @@ import {
   agentSessionWriteNotDoneParts
 } from './agent-session-refusal-notice'
 import type { AgentSessionWriteNoticePart } from './agent-session-write-notice-copy'
-import { agentSessionRefusalFailure } from './agent-session-write-failure'
+import {
+  agentSessionRefusalFailure,
+  type AgentSessionWriteRefusal
+} from './agent-session-write-failure'
 import { classifyDispatchRejection } from './structured-agent-session-dispatch-rejection'
 import {
   classifyStructuredAgentSessionSendFailure,
@@ -152,6 +155,44 @@ export function structuredAgentSessionAttemptFailureParts(
     : agentSessionWriteNoticeParts(failure, 'send')
 }
 
+/** A send the host refused, whether it returned the refusal or threw it. */
+export function disposeStructuredAgentSessionSendRefusal(
+  input: SendDispositionInput & {
+    refusal: AgentSessionWriteRefusal
+    createOperationId: () => string
+  }
+): StructuredAgentSessionSendDisposition {
+  const refusedIndex = input.entries.findIndex(
+    (candidate) => candidate.clientMessageId === input.entry.clientMessageId
+  )
+  const entries = input.entries.map((candidate) =>
+    candidate.clientMessageId === input.entry.clientMessageId
+      ? withLastFailure(
+          requeueStructuredAgentSessionSendRefusal(
+            candidate,
+            input.refusal,
+            input.createOperationId,
+            input.entry.lastAttemptAt !== null
+          ),
+          input.refusal
+        )
+      : candidate
+  )
+  const refused = entries[refusedIndex]
+  return {
+    entries,
+    error: null,
+    // Read back by index rather than from the input: a refusal can rotate the id, and the
+    // refused entry is not always the head now that an admitted one no longer holds the queue.
+    // A rejected one holds nothing: it can no longer land, and it keeps its own Retry.
+    blockedClientMessageId:
+      !refused || refused.state === 'rejected'
+        ? input.blockedClientMessageId
+        : refused.clientMessageId,
+    retryWithFreshClientMessageId: null
+  }
+}
+
 export function disposeStructuredAgentSessionSendResult(
   input: SendDispositionInput & {
     result: AgentSessionMutationResult<AgentSessionSendResult>
@@ -160,36 +201,10 @@ export function disposeStructuredAgentSessionSendResult(
 ): StructuredAgentSessionSendDisposition {
   const result = input.result
   if (!result.ok) {
-    const refusedIndex = input.entries.findIndex(
-      (candidate) => candidate.clientMessageId === input.entry.clientMessageId
-    )
-    const refusal = agentSessionRefusalFailure(result.refusal)
-    const entries = input.entries.map((candidate) =>
-      candidate.clientMessageId === input.entry.clientMessageId
-        ? withLastFailure(
-            requeueStructuredAgentSessionSendRefusal(
-              candidate,
-              refusal,
-              input.createOperationId,
-              input.entry.lastAttemptAt !== null
-            ),
-            refusal
-          )
-        : candidate
-    )
-    const refused = entries[refusedIndex]
-    return {
-      entries,
-      error: null,
-      // Read back by index rather than from the input: a refusal can rotate the id, and the
-      // refused entry is not always the head now that an admitted one no longer holds the queue.
-      // A rejected one holds nothing: it can no longer land, and it keeps its own Retry.
-      blockedClientMessageId:
-        !refused || refused.state === 'rejected'
-          ? input.blockedClientMessageId
-          : refused.clientMessageId,
-      retryWithFreshClientMessageId: null
-    }
+    return disposeStructuredAgentSessionSendRefusal({
+      ...input,
+      refusal: agentSessionRefusalFailure(result.refusal)
+    })
   }
   const submission = result.value.submission
   if (refusedRedelivery(input.entry, submission)) {

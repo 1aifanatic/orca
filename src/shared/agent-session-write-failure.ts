@@ -10,6 +10,7 @@ import {
 import type { AgentSessionRewindReason } from './agent-session-rewind'
 import {
   isAgentSessionWireRefusalCode,
+  readAgentSessionRefusalReference,
   type AgentSessionOwnerVerdict,
   type AgentSessionWireRefusal,
   type AgentSessionWireRefusalCode
@@ -128,10 +129,26 @@ export function agentSessionRefusalFailure(
     : { kind: 'refused', code: refusal.code }
 }
 
-/** A request that threw, from the RPC error code the host answered with (undefined when none came
- *  back). Only a host that turned it away before running the method proves the write did not
- *  happen. */
-export function agentSessionRpcErrorFailure(code: string | undefined): AgentSessionWriteFailure {
+/** The refusal a thrown request carries in its RPC error's `data` (`main/runtime/rpc/errors.ts`):
+ *  its wire message is the bare code, so this is the only place its reason survives. */
+export function agentSessionThrownRefusal(data: unknown): AgentSessionWriteRefusal | undefined {
+  const reference = readAgentSessionRefusalReference(
+    typeof data === 'object' && data !== null && 'refusal' in data ? data.refusal : undefined
+  )
+  return reference ? agentSessionRefusalFailure(reference) : undefined
+}
+
+/** A request that threw, from the RPC error code and data the host answered with (undefined when
+ *  none came back). Only a host that turned it away before running the method proves the write
+ *  did not happen. */
+export function agentSessionRpcErrorFailure(
+  code: string | undefined,
+  data?: unknown
+): AgentSessionWriteFailure {
+  const refusal = agentSessionThrownRefusal(data)
+  if (refusal) {
+    return refusal
+  }
   if (code === 'method_not_found' || code === 'method_not_supported') {
     return { kind: 'refused', code: 'structured_agent_session_unsupported' }
   }

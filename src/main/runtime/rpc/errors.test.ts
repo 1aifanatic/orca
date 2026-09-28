@@ -20,6 +20,7 @@ import {
   agentSessionRefusalError,
   refuseUnclassified
 } from '../../../shared/agent-session-wire-refusals'
+import { agentSessionThrownRefusal } from '../../../shared/agent-session-write-failure'
 
 class LineageError extends Error {
   code = 'LINEAGE_PARENT_NOT_FOUND'
@@ -353,6 +354,35 @@ describe('thrown agent-session refusals', () => {
       code: 'agent_session_conflict',
       message: 'agent_session_conflict',
       data: { refusal: { code: 'agent_session_conflict' } }
+    })
+  })
+
+  // The shape every client test of a thrown refusal feeds in, pinned to what this produces.
+  it("sends the owner refusal's reason and process kind where a client reads them", () => {
+    const response = mapRuntimeError(
+      'req_1',
+      meta,
+      agentSessionRefusalError(
+        'agent_session_journal_unreadable',
+        { reason: 'journalOwnedElsewhere', processKind: 'dev-desktop' },
+        'Chats are open in another Orca window using this profile.'
+      )
+    )
+    const wire = JSON.parse(JSON.stringify(response.error))
+    expect(wire).toEqual({
+      code: 'runtime_error',
+      message: 'agent_session_journal_unreadable',
+      data: {
+        refusal: {
+          code: 'agent_session_journal_unreadable',
+          details: { reason: 'journalOwnedElsewhere', processKind: 'dev-desktop' }
+        }
+      }
+    })
+    expect(agentSessionThrownRefusal(wire.data)).toEqual({
+      kind: 'refused',
+      code: 'agent_session_journal_unreadable',
+      details: { reason: 'journalOwnedElsewhere', processKind: 'dev-desktop' }
     })
   })
 

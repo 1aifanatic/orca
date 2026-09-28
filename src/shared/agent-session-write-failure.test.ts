@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   agentSessionRefusalFailure,
+  agentSessionRpcErrorFailure,
+  agentSessionThrownRefusal,
   parseAgentSessionWriteFailure
 } from './agent-session-write-failure'
 
@@ -119,6 +121,51 @@ describe('agentSessionRefusalFailure', () => {
     expect(agentSessionRefusalFailure(refusal)).toEqual({
       kind: 'refused',
       code: 'agent_session_from_the_future'
+    })
+  })
+})
+
+describe('a refusal the host threw', () => {
+  // The RPC error's data `mapRuntimeError` sends for it (wire code `runtime_error`), as it
+  // reaches a client over JSON.
+  const data = saved({
+    refusal: {
+      code: 'agent_session_journal_unreadable',
+      details: { reason: 'journalOwnedElsewhere', processKind: 'dev-desktop' }
+    }
+  })
+
+  it('is read from the error data, reason and process kind kept', () => {
+    const refusal = {
+      kind: 'refused',
+      code: 'agent_session_journal_unreadable',
+      details: { reason: 'journalOwnedElsewhere', processKind: 'dev-desktop' }
+    }
+    expect(agentSessionThrownRefusal(data)).toEqual(refusal)
+    // Not "Orca couldn't confirm what happened": the host refused it before running it.
+    expect(agentSessionRpcErrorFailure('runtime_error', data)).toEqual(refusal)
+  })
+
+  it("degrades a reason or kind another build added to the code's own words", () => {
+    const newer = {
+      refusal: {
+        code: 'agent_session_journal_unreadable',
+        details: { reason: 'journalFromTheFuture', processKind: 'phone' }
+      }
+    }
+    expect(agentSessionThrownRefusal(newer)).toEqual({
+      kind: 'refused',
+      code: 'agent_session_journal_unreadable'
+    })
+  })
+
+  it('finds none in an error that carries no refusal', () => {
+    expect(agentSessionThrownRefusal(undefined)).toBeUndefined()
+    expect(
+      agentSessionThrownRefusal({ refusal: { code: 'agent_session_from_the_future' } })
+    ).toBeUndefined()
+    expect(agentSessionRpcErrorFailure('runtime_error', { nextSteps: [] })).toEqual({
+      kind: 'unconfirmed'
     })
   })
 })

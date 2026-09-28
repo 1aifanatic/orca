@@ -15,6 +15,7 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
   subscribeStructuredAgentSession: mocks.subscribe
 }))
 
+import { RuntimeRpcCallError } from '@/runtime/runtime-rpc-result'
 import { startStructuredAgentSessionReadTransport } from './structured-agent-session-read-transport'
 
 type SubscribeAttempt = {
@@ -311,6 +312,61 @@ describe('structured agent-session read transport unattached refusals', () => {
     }
   })
 
+  // As `mapRuntimeError` sends a thrown refusal (pinned in `rpc/errors.test.ts`): its message is the
+  // bare code, and its reason rides in data.
+  function thrownRefusal(details: Record<string, unknown>) {
+    return {
+      code: 'runtime_error',
+      message: 'agent_session_journal_unreadable',
+      data: { refusal: { code: 'agent_session_journal_unreadable', details } }
+    }
+  }
+  const OWNED_BY_DEV_ORCA =
+    "Chats are open in another Orca using this profile. This chat's history couldn't be loaded. Quit that Orca to use chats here, or start this one with its own profile (ORCA_DEV_USER_DATA_PATH)."
+
+  it("shows a thrown refusal's own words from the stream, never its code", async () => {
+    vi.useFakeTimers()
+    try {
+      const applyError = vi.fn()
+      const transport = startWithHydration(async () => undefined, applyError)
+      await flushPromises()
+
+      attempts[0].onError(
+        thrownRefusal({ reason: 'journalOwnedElsewhere', processKind: 'dev-desktop' })
+      )
+      attempts[0].closed.resolve({ unsubscribe: attempts[0].unsubscribe })
+      await flushPromises()
+      expect(applyError).toHaveBeenCalledExactlyOnceWith(OWNED_BY_DEV_ORCA)
+
+      await vi.advanceTimersByTimeAsync(750)
+      attempts[1].onError(thrownRefusal({ reason: 'journalCorrupt' }))
+      expect(applyError).toHaveBeenLastCalledWith('Unable to load this chat.')
+      transport.dispose()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("shows a thrown refusal's own words when the history read rejects with it", async () => {
+    vi.useFakeTimers()
+    try {
+      const applyError = vi.fn()
+      const refused = new RuntimeRpcCallError({
+        id: 'req-1',
+        ok: false,
+        error: thrownRefusal({ reason: 'journalOwnedElsewhere', processKind: 'dev-desktop' })
+      })
+      const transport = startWithHydration(async () => {
+        throw refused
+      }, applyError)
+      await flushPromises()
+      expect(applyError).toHaveBeenCalledExactlyOnceWith(OWNED_BY_DEV_ORCA)
+      transport.dispose()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('re-opens after a failed open and leaves the error once the conversation reads (P2-04)', async () => {
     vi.useFakeTimers()
     try {
@@ -318,7 +374,7 @@ describe('structured agent-session read transport unattached refusals', () => {
       const applyEvent = vi.fn()
       const transport = startWithHydration(async () => undefined, applyError, applyEvent)
       await flushPromises()
-      attempts[0].onError({ code: 'agent_session_journal_unreadable', message: 'disk full' })
+      attempts[0].onError({ code: 'runtime_error', message: 'disk full' })
       attempts[0].closed.resolve({ unsubscribe: attempts[0].unsubscribe })
       await flushPromises()
       expect(applyError).toHaveBeenCalledExactlyOnceWith('disk full')

@@ -16,6 +16,7 @@ import {
 } from '../../../src/shared/agent-session-refusal-notice'
 import {
   agentSessionRpcErrorFailure,
+  agentSessionThrownRefusal,
   agentSessionWriteKindForMethod,
   type AgentSessionWriteKind
 } from '../../../src/shared/agent-session-write-failure'
@@ -51,10 +52,41 @@ export type StructuredAgentSessionMutate = <TValue>(
 class AgentSessionRpcResponseError extends Error {
   constructor(
     readonly code: string,
-    message: string
+    message: string,
+    /** A thrown refusal's reason rides here; its message is only the bare code. */
+    readonly data?: unknown
   ) {
     super(message)
   }
+}
+
+/** A failed read of a chat's history as the pane shows it, from a thrown error or a stream's error
+ *  frame (`{ message, error }`): a thrown refusal's message is its bare code, so its words come
+ *  from the refusal in the error's data. */
+export function agentSessionReadFailureText(failure: unknown): string {
+  const data =
+    failure instanceof AgentSessionRpcResponseError
+      ? failure.data
+      : typeof failure === 'object' &&
+          failure !== null &&
+          'error' in failure &&
+          typeof failure.error === 'object' &&
+          failure.error !== null &&
+          'data' in failure.error
+        ? failure.error.data
+        : undefined
+  const refusal = agentSessionThrownRefusal(data)
+  if (refusal) {
+    return agentSessionWriteNoticeEnglish(agentSessionWriteNoticeParts(refusal, 'read-history'))
+  }
+  if (failure instanceof Error) {
+    return failure.message
+  }
+  return typeof failure === 'object' && failure !== null
+    ? 'message' in failure
+      ? String(failure.message ?? '')
+      : ''
+    : String(failure)
 }
 
 export async function callAgentSession<TResult>(
@@ -70,7 +102,11 @@ export async function callAgentSession<TResult>(
     ...(options?.failWhenDisconnected ? { failWhenDisconnected: true } : {})
   })
   if (!response.ok) {
-    throw new AgentSessionRpcResponseError(response.error.code, response.error.message)
+    throw new AgentSessionRpcResponseError(
+      response.error.code,
+      response.error.message,
+      response.error.data
+    )
   }
   return response.result as TResult
 }
@@ -186,7 +222,9 @@ export async function requestStructuredAgentSessionMutation<TValue>(args: {
         }
   } catch (error) {
     const answered =
-      error instanceof AgentSessionRpcResponseError ? agentSessionRpcErrorFailure(error.code) : null
+      error instanceof AgentSessionRpcResponseError
+        ? agentSessionRpcErrorFailure(error.code, error.data)
+        : null
     if (answered && answered.kind !== 'unconfirmed') {
       // The host turned the request away before running it; its text is written for a log.
       return {

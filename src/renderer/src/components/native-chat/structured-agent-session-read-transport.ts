@@ -5,11 +5,25 @@ import {
   AGENT_SESSION_UNATTACHED_READ_GRACE_MS,
   isUnattachedAgentSessionReadRefusal
 } from '../../../../shared/structured-agent-session-read-refusal'
+import { agentSessionThrownRefusal } from '../../../../shared/agent-session-write-failure'
 import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
+import { RuntimeRpcCallError } from '@/runtime/runtime-rpc-result'
 import { subscribeStructuredAgentSession } from '@/runtime/structured-agent-session-client'
+import { agentSessionWriteFailureText } from './agent-session-write-notice-text'
 
-// A stream hands its failure over as the raw `{ code, message }` payload; `String()` of that is `[object Object]`.
+// A stream hands its failure over as the raw `{ code, message, data }` payload; `String()` of that is `[object Object]`.
 function readFailureText(error: unknown): string {
+  // A thrown refusal's message is its bare code; its words come from the refusal in `data`.
+  const refusal = agentSessionThrownRefusal(
+    error instanceof RuntimeRpcCallError
+      ? error.response.error.data
+      : typeof error === 'object' && error !== null && 'data' in error
+        ? error.data
+        : undefined
+  )
+  if (refusal) {
+    return agentSessionWriteFailureText(refusal, 'read-history')
+  }
   if (error instanceof Error) {
     return error.message || 'Something went wrong.'
   }
