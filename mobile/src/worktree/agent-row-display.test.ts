@@ -50,12 +50,12 @@ describe('agentDotState', () => {
     expect(agentDotState(row({ state: 'unknown-state' as never }), 0)).toBe('idle')
   })
 
-  it('reports the verdict of a done row: failed, interrupted, or an old host legacy flag', () => {
-    expect(agentDotState(row({ state: 'done', interrupted: true }), 0)).toBe('interrupted')
+  it("reports the verdict of a done row: failed, or a user's Stop (also an old host's flag) as done", () => {
+    expect(agentDotState(row({ state: 'done', interrupted: true }), 0)).toBe('done')
     expect(agentDotState(row({ state: 'done', ...mainAgentDone('failure') }), 0)).toBe('failed')
     expect(
       agentDotState(row({ state: 'done', ...mainAgentDone('cancellation'), interrupted: true }), 0)
-    ).toBe('interrupted')
+    ).toBe('done')
     expect(agentDotState(row({ state: 'done', ...mainAgentDone('success') }), 0)).toBe('done')
   })
 
@@ -131,9 +131,9 @@ describe('agentDotState', () => {
     ).toBe('working')
     // 'done' never decays, and neither does its verdict.
     expect(agentDotState(row({ state: 'done', updatedAt: 0 }), stale)).toBe('done')
-    expect(agentDotState(row({ state: 'done', updatedAt: 0, interrupted: true }), stale)).toBe(
-      'interrupted'
-    )
+    expect(
+      agentDotState(row({ state: 'done', updatedAt: 0, ...mainAgentDone('interruption') }), stale)
+    ).toBe('interrupted')
   })
 })
 

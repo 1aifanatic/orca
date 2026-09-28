@@ -299,8 +299,8 @@ describe('DashboardAgentRow', () => {
     expect(classes.every((className) => !/\bgroup-hover:/.test(className))).toBe(true)
   })
 
-  it('renders interrupted done rows with plain text on the secondary line', () => {
-    const markup = renderRow(
+  function renderEndedRow(ending: Partial<AgentStatusEntry>): string {
+    return renderRow(
       makeAgent(
         { state: 'done', startedAt: 1_000 },
         {
@@ -309,22 +309,40 @@ describe('DashboardAgentRow', () => {
           updatedAt: 2_000,
           stateStartedAt: 2_000,
           stateHistory: [{ state: 'working', prompt: 'Give me a quick update', startedAt: 1_000 }],
-          interrupted: true
+          ...ending
         }
       )
     )
+  }
+
+  it('renders a crash-cut row with the red dot and plain text on the secondary line', () => {
+    const markup = renderEndedRow({
+      mainAgent: { state: 'done', outcome: 'interruption', stateStartedAt: 2_000 }
+    })
     const promptIndex = markup.indexOf('Give me a quick update')
     const interruptedIndex = markup.indexOf('>interrupted<')
 
     // Why: interrupted keeps the leading red dot, but the plain text belongs
     // on the response line so it does not compete with the user's prompt.
     expect(markup).toContain('data-slot="tooltip-trigger"')
-    expect(markup).toContain('aria-label="Interrupted by user"')
-    expect(markup).not.toContain('title="Interrupted"')
+    expect(markup).toContain('aria-label="Interrupted"')
+    expect(markup).not.toContain('Interrupted by user')
     expect(markup).toContain('bg-red-500')
     expect(markup).not.toContain('data-slot="badge"')
     expect(interruptedIndex).toBeGreaterThan(promptIndex)
     expect(markup).not.toContain('lucide-circle-check')
+  })
+
+  it.each([
+    ['recorded', { mainAgent: { state: 'done', outcome: 'cancellation', stateStartedAt: 2_000 } }],
+    ["an old host's flag", { interrupted: true }]
+  ] as const)("renders a user's Stop (%s) with the done check, still saying so", (_, ending) => {
+    const markup = renderEndedRow(ending)
+
+    expect(markup).toContain('lucide-circle-check')
+    expect(markup).not.toContain('bg-red-500')
+    expect(markup).toContain('aria-label="Interrupted by user"')
+    expect(markup).toContain('>interrupted<')
   })
 
   it('reserves a real working tool line before tool metadata arrives', () => {

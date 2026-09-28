@@ -104,8 +104,9 @@ export function resolveRecentWorkspaceTabStatus(
   if (verdicts.has('unconfirmed')) {
     return 'unconfirmed'
   }
-  if (explicit === 'done') {
-    return explicit
+  // Why: attention demotes a user's Stop, but its tab still reads done.
+  if (explicit === 'done' || verdicts.has('done')) {
+    return 'done'
   }
   return tabHasLivePty(paneSources.ptyIdsByTabId, row.terminalTab.id) ? 'active' : 'inactive'
 }

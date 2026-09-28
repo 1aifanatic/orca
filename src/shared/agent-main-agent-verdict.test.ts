@@ -53,11 +53,13 @@ describe('agentMainAgentVerdict', () => {
           ? 'failed'
           : row.state !== 'done'
             ? null
-            : verdict === 'cancellation' || verdict === 'interruption'
-              ? 'interrupted'
-              : verdict === 'unconfirmed'
-                ? 'unconfirmed'
-                : null
+            : verdict === 'cancellation'
+              ? 'done'
+              : verdict === 'interruption'
+                ? 'interrupted'
+                : verdict === 'unconfirmed'
+                  ? 'unconfirmed'
+                  : null
       )
     }
   })
@@ -93,6 +95,21 @@ describe('agentMainAgentVerdict', () => {
       agentMainAgentVerdict({ state: 'done', interrupted: true, mainAgent: { state: 'done' } })
     ).toBe('cancellation')
     expect(agentMainAgentVerdict({ state: 'done', interrupted: true })).toBe('cancellation')
+  })
+
+  it("marks a done row by its verdict: a user's Stop reads done, only a cut-short turn interrupted", () => {
+    for (const [outcome, mark] of [
+      ['success', null],
+      ['failure', 'failed'],
+      ['cancellation', 'done'],
+      ['interruption', 'interrupted'],
+      ['unconfirmed', 'unconfirmed']
+    ] as const) {
+      const row = { state: 'done' as const, mainAgent: { state: 'done' as const, outcome } }
+      expect(agentVerdictDisplayMark(row), outcome).toBe(mark)
+    }
+    // An old host's legacy flag is a user's Stop too.
+    expect(agentVerdictDisplayMark({ state: 'done', interrupted: true })).toBe('done')
   })
 
   it('reads a crash-cut turn as interrupted and an unproven end as unconfirmed, neither a stop', () => {

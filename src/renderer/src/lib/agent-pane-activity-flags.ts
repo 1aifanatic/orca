@@ -33,6 +33,8 @@ export function applyAgentPaneActivityFlags(
     case 'unconfirmed':
       flags.hasUnconfirmed = true
       return
+    // A user's Stop falls through to its row's own done.
+    case 'done':
     case null:
       break
   }

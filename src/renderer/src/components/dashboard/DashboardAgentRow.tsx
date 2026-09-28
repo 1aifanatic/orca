@@ -34,7 +34,7 @@ function stateDotTooltipLabel(
   dotState: AgentDotState,
   now: number
 ): string {
-  if (dotState === 'interrupted') {
+  if (dotState === 'interrupted' || dotState === 'done') {
     return agentVerdictStatusLine(agent.entry) ?? agentStateLabel(dotState)
   }
   // Why: report the observation, not a verdict on the agent — the elapsed gap is what
@@ -147,7 +147,8 @@ const DashboardAgentRow = React.memo(function DashboardAgentRow({
   const toolInput = showsTool ? (agent.entry.toolInput?.trim() ?? '') : ''
   const lastAssistantMessage = agent.entry.lastAssistantMessage?.trim() ?? ''
   const verdictDotState = agentVerdictDisplayMark(agent.entry)
-  const isInterrupted = verdictDotState === 'interrupted'
+  // A user's Stop marks done but keeps its "interrupted" tag.
+  const isInterrupted = verdictDotState === 'interrupted' || verdictDotState === 'done'
   const lineage = agent.lineage
   const isLineageChild = lineage?.depth === 1
   const lineageChildCount = lineage?.childCount ?? 0
