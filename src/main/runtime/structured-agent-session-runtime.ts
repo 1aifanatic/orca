@@ -188,6 +188,8 @@ export async function stopStructuredAgentSessionRuntime(options?: {
     }
     await agentModelCatalogStore.flushPersistence()
   } while (installing)
+  // An install a pass awaited registered its host after that pass cleared the slot.
+  setStructuredAgentSessionHost(null)
   if (failures.length === 0 && pendingTeardown.size === 0) {
     releaseStructuredAgentSessionJournal()
   }

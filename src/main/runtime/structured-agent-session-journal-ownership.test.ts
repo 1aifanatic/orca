@@ -26,6 +26,7 @@ import Database from '../sqlite/sync-database'
 import { agentModelCatalogStore } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
 import type { RuntimeNavigationTarget } from '../../shared/runtime-navigation'
 import type { RuntimeMobileSessionTabsResult } from '../../shared/runtime-types'
+import { AgentSessionRecordStore } from './agent-session-record-store'
 import { OrcaRuntimeService } from './orca-runtime'
 import { requireStructuredCleanupHost } from './rpc/methods/structured-agent-session-gate'
 import { assertLegacyAiVaultResumeCommandAllowed } from '../ai-vault/structured-session-ownership'
@@ -611,6 +612,49 @@ describe('startup and other non-chat work without a structured host', () => {
 
       expect(getStructuredAgentSessionHost()).toBeNull()
       expect(closed).toHaveBeenCalledOnce()
+    })
+
+    // An install that finishes after a later pass cleared the registry registers the host that pass
+    // then tears down: no request after the stop may be handed that host.
+    it('leaves no host registered when a takeover install spans a teardown pass', async () => {
+      holder = await holdJournalOwnerLockInChild(root)
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+      const { runtime, refreshPtyRecords } = startupRuntime(async () => {
+        const host = await install()
+        vi.spyOn(host, 'reconcileRestartLeases').mockResolvedValue(undefined)
+        return host
+      })
+      const releaseRefresh = heldOnce(refreshPtyRecords)
+      const startup = runtime.prepareStructuredAgentSessionStartupRestoration()
+      await vi.waitFor(() => expect(refreshPtyRecords).toHaveBeenCalledOnce())
+      // Only the takeover's install opens the record store, and it waits there.
+      const openStore = AgentSessionRecordStore.open.bind(AgentSessionRecordStore)
+      let releaseOpen!: () => void
+      const openHeld = new Promise<void>((resolve) => (releaseOpen = resolve))
+      const opened = vi
+        .spyOn(AgentSessionRecordStore, 'open')
+        .mockImplementationOnce(async (input) => {
+          await openHeld
+          return openStore(input)
+        })
+      await holder.kill()
+      holder = null
+      await vi.waitFor(() => expect(gateRefusal().reason).toBe('hostDisabled'), { timeout: 10_000 })
+      const closed = vi.spyOn(JournalHostDatabase.prototype, 'close')
+      const releaseFlush = holdCatalogFlush()
+      const stopping = stopStructuredAgentSessionRuntime()
+
+      releaseRefresh()
+      await startup
+      await vi.waitFor(() => expect(opened).toHaveBeenCalled(), { timeout: 10_000 })
+      releaseFlush()
+      // The second pass clears the registry and waits on the install, which then registers its host.
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      releaseOpen()
+      await stopping
+
+      expect(closed).toHaveBeenCalledOnce()
+      expect(getStructuredAgentSessionHost()).toBeNull()
     })
   })
 
