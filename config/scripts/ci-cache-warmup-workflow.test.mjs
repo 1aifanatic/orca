@@ -46,6 +46,19 @@ it('publishes incremental state under a key and prefix that new PRs restore', ()
   expect(steps.indexOf(check)).toBeGreaterThan(steps.indexOf(cache))
 })
 
+it('warms the Playwright WebKit archive used by the mobile web PR job', () => {
+  const cache = steps.find((step) => step.name === 'Cache Playwright WebKit archive')
+  const populate = steps.find((step) => step.name === 'Populate Playwright WebKit archive')
+  const pr = readWorkflow('pr').jobs.mobile_web_app.steps
+  const restore = pr.find((step) => step.id === 'webkit-cache')
+  expect(cache.uses).toBe('actions/cache@v5')
+  expect(cache.with.path).toBe('~/.cache/ms-playwright')
+  expect(populate.run).toBe('pnpm exec playwright install webkit')
+  expect(restore.uses).toBe('actions/cache/restore@v5')
+  expect(restore.with.path).toBe(cache.with.path)
+  expect(restore.with.key).toBe(cache.with.key)
+})
+
 it('bounds warming to the required platforms and validates changes without granting writes', () => {
   expect(Object.keys(workflow.jobs)).toEqual([
     'warm',

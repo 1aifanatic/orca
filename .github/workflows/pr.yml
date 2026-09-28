@@ -719,10 +719,26 @@ jobs:
       # The drawer check runs on WebKit as well as Chrome, because the shell's iOS WebView is
       # WebKit and the Chrome above cannot stand in for it. Downloaded rather than resolved from
       # the runner: Ubuntu ships no WebKit build to point at.
-      - name: Install WebKit for the drawer check
+      # The browser archive is warmed on main so PRs do not redownload it. Host
+      # libraries remain per-runner and are always installed for correctness.
+      - name: Restore Playwright WebKit archive
+        id: webkit-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-webkit-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            playwright-webkit-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Install WebKit system dependencies
+        id: webkit-deps
+        background: true
+        run: pnpm exec playwright install-deps webkit
+
+      - name: Install WebKit browser
         id: webkit
         background: true
-        run: pnpm exec playwright install --with-deps webkit
+        run: pnpm exec playwright install webkit
 
       # The entry lives in mobile/ so one React resolves; without this every RN import is nothing.
       - uses: ./.github/actions/install-mobile-dependencies
@@ -751,7 +767,7 @@ jobs:
         run: pnpm run build:mobile-web
 
       # Browser checks must observe both a finished install and the built bundle.
-      - wait: [webkit, mobile-routes]
+      - wait: [webkit-deps, webkit, mobile-routes]
 
       # The bundling tests skip themselves where mobile dependencies are absent, which is how they
       # stay green in the sharded `test` job. This is the job that installs them, so here a missing

@@ -56,6 +56,18 @@ jobs:
           node-version: '24'
           cache-electron-package: 'true'
 
+      # Keep the large WebKit archive out of every PR's network path. The PR job
+      # still installs host libraries on its own runner for correctness.
+      - name: Cache Playwright WebKit archive
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-webkit-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            playwright-webkit-${{ runner.os }}-${{ runner.arch }}-
+      - name: Populate Playwright WebKit archive
+        run: pnpm exec playwright install webkit
+
       - name: Populate shared Electron archive
         run: node config/scripts/install-electron-package-binary.mjs
 
