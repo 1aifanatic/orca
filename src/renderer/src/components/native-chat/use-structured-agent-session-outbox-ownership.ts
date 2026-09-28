@@ -20,6 +20,9 @@ export function useStructuredAgentSessionOutboxOwnership(args: {
   queuedMessageIds: readonly string[] | undefined
   outboxRef: { current: StructuredAgentSessionOutboxEntry[] }
   blockedIdRef: { current: string | null }
+  /** The send in flight and its generation: a host that holds that send answered it. */
+  inFlightIdRef: { current: string | null }
+  dispatchGenerationRef: { current: number }
   setOutbox: (entries: StructuredAgentSessionOutboxEntry[]) => void
   restoreWithdrawn: ReturnType<typeof useStructuredAgentSessionWithdrawnRestore>
 }): {
@@ -31,7 +34,7 @@ export function useStructuredAgentSessionOutboxOwnership(args: {
   retire: (ids: readonly string[]) => void
 } {
   const { blockedIdRef, outboxRef, queuedMessageIds, restoreWithdrawn, sessionId, setOutbox } = args
-  const { submissions } = args
+  const { dispatchGenerationRef, inFlightIdRef, submissions } = args
 
   const withdrawUnsent = useCallback((): string[] => {
     const next = withdrawUnsentStructuredAgentSessionOutboxEntries(
@@ -53,6 +56,11 @@ export function useStructuredAgentSessionOutboxOwnership(args: {
   const retire = useCallback(
     (ids: readonly string[]): void => {
       const owned = new Set(ids)
+      // Like a journal row answering it: free single-flight and void the unsettled send's reply.
+      if (inFlightIdRef.current !== null && owned.has(inFlightIdRef.current)) {
+        dispatchGenerationRef.current += 1
+        inFlightIdRef.current = null
+      }
       const next = outboxRef.current.filter((entry) => !owned.has(entry.clientMessageId))
       if (next.length !== outboxRef.current.length) {
         outboxRef.current = next
@@ -60,7 +68,7 @@ export function useStructuredAgentSessionOutboxOwnership(args: {
         writeOutbox(sessionId, next)
       }
     },
-    [outboxRef, sessionId, setOutbox]
+    [dispatchGenerationRef, inFlightIdRef, outboxRef, sessionId, setOutbox]
   )
 
   useEffect(() => {

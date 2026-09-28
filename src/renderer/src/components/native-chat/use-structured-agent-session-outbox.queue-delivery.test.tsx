@@ -160,5 +160,8 @@ describe('outbox queue delivery selection', () => {
     await waitFor(() => expect(first.result.current.outbox).toHaveLength(0))
     // Retired, not restored: nothing to resend, nothing appended anywhere.
     expect(localStorage.getItem('orca:desktopStructuredAgentSessionOutbox:v1:session-1')).toBeNull()
+    // The held draft answered the send, so the next one goes without waiting on the lost reply.
+    expect(first.result.current.send('next')).toBe(true)
+    await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(2))
   })
 })

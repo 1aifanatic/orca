@@ -277,6 +277,8 @@ export function useStructuredAgentSessionOutbox(args: {
     queuedMessageIds,
     outboxRef,
     blockedIdRef,
+    inFlightIdRef,
+    dispatchGenerationRef,
     setOutbox,
     restoreWithdrawn
   })
