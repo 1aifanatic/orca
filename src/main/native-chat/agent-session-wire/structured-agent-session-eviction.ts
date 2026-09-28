@@ -18,8 +18,9 @@
 // verdict — handed to recovery, which the wind-down's last step then runs, stopping the recorded
 // owner by identity. Past the stop, draining, settling and that recovery are bookkeeping, which
 // never keeps the lease from moving or the stop from finishing: a failure there is reported and the
-// wind-down goes on, since the next child's attach re-derives what they would have written. The
-// rest still abort, and a failed release leaves the wind-down owed for the next close to repeat.
+// wind-down goes on, since the next child's attach re-derives what they would have written (and
+// the host keeps a failed settlement owed, so an idle chat's next stop writes it). The rest still
+// abort, and a failed release leaves the wind-down owed for the next close to repeat.
 
 import {
   stopAgentSessionProviderRoot,

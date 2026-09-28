@@ -80,10 +80,11 @@ function owedProviderChildWindDown(
 /**
  * The agent goes to rest; the conversation stays. Runs the eviction steps under a deadline. A step
  * that fails — or runs out of time — aborts the rest and leaves the wind-down owed, so the next
- * stop is a real retry; a failed drain, settlement or recovery is only reported. A stop that cannot
- * prove the exit still ends the child, and runs recovery on its lease. `ending` is how the child's
- * end is told: a user's Stop, the host stopping it for a cause (with its text), a start the child
- * was seen to die in, or an eviction the conversation's close follows.
+ * stop is a real retry; a failed drain, settlement or recovery is only reported, though a failed
+ * settlement stays owed for the next stop. A stop that cannot prove the exit still ends the child,
+ * and runs recovery on its lease. `ending` is how the child's end is told: a user's Stop, the host
+ * stopping it for a cause (with its text), a start the child was seen to die in, or an eviction
+ * the conversation's close follows.
  */
 export async function stopStructuredAgentSessionAgentUnderSerialize(
   context: StructuredAgentSessionLifetimeContext,
@@ -107,6 +108,7 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
   session.owesProviderChildWindDown = owed
   const stopping = session.child
   let settlementError: unknown
+  let settled = false
   const eviction: StructuredAgentSessionEvictionContext = {
     sessionId,
     // The retry must not re-stop a child the adapter already proved gone, so this stays honest.
@@ -139,7 +141,7 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
     onBestEffortStepFailure: (error) => context.deps.onEventSinkError?.({ sessionId, error }),
     discardSink: () => context.runtimeState.discardEventSink(sessionId),
     settleWork: async () => {
-      const settled = await settleEndedStructuredAgentSessionChildWork({
+      const settlementWritten = await settleEndedStructuredAgentSessionChildWork({
         journal: session.journal,
         sessionId,
         child: owed ?? {
@@ -152,10 +154,11 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
           settlementError = error
         }
       })
-      if (!settled) {
+      if (!settlementWritten) {
         // Without the cause the report names the step and nothing else.
         throw new Error('dead generation work settlement failed', { cause: settlementError })
       }
+      settled = true
     },
     releaseLease: async () => {
       const released =
@@ -170,7 +173,9 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
           rootGone: endedChildRootGone(session, owed),
           ...(ending.reason ? { reason: ending.reason } : {})
         }))
-      session.owesProviderChildWindDown = undefined
+      // A settlement that failed stays owed, so the sweep's retry writes it: with no child, only a
+      // send's attach would re-derive it otherwise.
+      session.owesProviderChildWindDown = settled ? undefined : owed
       // A death seen here is the exit the provider's own event would have released and published;
       // whichever gets there first releases, so its readers hear the new fence exactly once. Any
       // other stop leaves them their own fence.

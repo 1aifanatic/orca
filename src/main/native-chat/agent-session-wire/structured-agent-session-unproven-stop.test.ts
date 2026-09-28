@@ -668,6 +668,28 @@ describe('bookkeeping that fails after the child ended', () => {
     expect(await submission(handed)).toMatchObject({ dispatchState: 'unknown', recovered: true })
   })
 
+  it('retries a settlement that could not be written at the next sweep, with no send', async () => {
+    const handed = await childLeftWorkOpen()
+    const journal = conversation()?.journal
+    if (!journal) {
+      throw new Error('conversation not open')
+    }
+    vi.spyOn(journal, 'markPendingSubmissionsUnknown').mockRejectedValueOnce(new Error('disk full'))
+    await host.close(SESSION)
+    expect(hostErrors).toContainEqual(expect.objectContaining({ step: 'settle-dead-generation' }))
+    expect(lease()).toMatchObject(CONCLUDED)
+    const before = hostActivity()
+
+    await host['lifetime'].idleSweep.tick()
+
+    // Read from the handle that stayed open, not a reopen that would re-derive it on its own.
+    expect(host.hasSession(SESSION)).toBe(true)
+    expect(await submission(handed)).toMatchObject({ dispatchState: 'unknown' })
+    expect((await item(OPEN_TURN))?.body).toMatchObject({ state: 'interrupted' })
+    expect((await item(OPEN_QUESTION))?.body).toMatchObject({ resolution: { state: 'cancelled' } })
+    expect(hostActivity()).toEqual(before)
+  })
+
   it('publishes the ended child even when the release after it cannot be written', async () => {
     await deliveredOnce()
     const publishStatus = vi.spyOn(host['clientDelivery'], 'publishStatus')
