@@ -94,3 +94,10 @@ export function selectShellStartupFeatures(input: ShellStartupFeatureInput): She
 export function encodeShellStartupFeatures(features: readonly ShellStartupFeature[]): string {
   return features.join(',')
 }
+
+/** The inverse of `encodeShellStartupFeatures`; unknown names are dropped. */
+export function decodeShellStartupFeatures(encoded: string): ShellStartupFeature[] {
+  return encoded
+    .split(',')
+    .flatMap((name) => SHELL_STARTUP_FEATURES.filter((feature) => feature === name))
+}

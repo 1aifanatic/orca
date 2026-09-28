@@ -92,6 +92,8 @@ export type RuntimePtyController = {
     wslDistro?: string
     stablePaneOwner?: { handle: string; tabId: string; leafId: string }
     agentSessionEnsure?: AgentSessionClaimedSpawnResult
+    /** See `PtySpawnResult.startupCommandMarked`. */
+    startupCommandMarked?: boolean
   }>
   write(ptyId: string, data: string): boolean
   /** Three-valued settlement; local providers settle synchronously. */

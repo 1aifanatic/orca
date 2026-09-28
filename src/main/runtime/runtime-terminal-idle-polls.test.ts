@@ -395,12 +395,7 @@ describe('RuntimeTerminalIdlePolls composer-ready evidence (launch readiness)', 
       getLiveLeaf: (leaf) => leaf,
       watchComposerReady: (ptyId) => {
         watched.push(ptyId)
-        return {
-          signal: () => signal,
-          shellMarksCommands: () => true,
-          waitForOwnership: async () => signal !== 'unowned',
-          dispose
-        }
+        return { signal: () => signal, dispose }
       },
       resolve: (_waiter, result) => resolved.push(result)
     })

@@ -190,6 +190,21 @@ describe('LocalPtyProvider', () => {
       expect(mockProc.write).not.toHaveBeenCalled()
     })
 
+    it.each([
+      ['/bin/zsh', 'goose', true],
+      ['/bin/zsh', "codex '--dangerously-bypass-approvals-and-sandbox'", true],
+      ['/bin/bash', 'goose', true],
+      // The wrapper's prompt hook runs this one, which bash before 5.1 does not mark.
+      ['/bin/bash', "codex '--dangerously-bypass-approvals-and-sandbox'", false],
+      ['/bin/sh', 'goose', false]
+    ])('reports whether %s marks the startup command `%s`', async (shell, command, marked) => {
+      process.env.SHELL = shell
+
+      const result = await provider.spawn({ cols: 80, rows: 24, command })
+
+      expect(result.startupCommandMarked).toBe(marked)
+    })
+
     it('scrubs an inherited wrapper startup command from ordinary panes', async () => {
       process.env.SHELL = '/bin/zsh'
 

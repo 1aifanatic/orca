@@ -64,6 +64,9 @@ export type RuntimePtyWorktreeRecord = RuntimeTerminalTailState & {
   launchToken: string | null
   launchIncarnationId: PtyIncarnationId | null
   launchAgent: TuiAgent | null
+  /** Whether Orca's shell integration marks this pane's startup command with OSC 133, as the
+   *  provider that launched it decided. Absent or false: unknown or unmarked. */
+  startupCommandMarked?: boolean
   agentSessionOwners: AgentSessionOwnerBinding[]
   foregroundAgent: TuiAgent | null
   connected: boolean

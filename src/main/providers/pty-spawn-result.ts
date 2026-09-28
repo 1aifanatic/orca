@@ -21,6 +21,9 @@ export type PtySpawnResult = {
    *  not wait; absent means the host predates the field and the client keeps its own guess.
    *  Never collapse absent into `false`. */
   shellReadyArmed?: boolean
+  /** Set by the provider that chose this new shell's wrapper: whether that wrapper marks the startup
+   *  command with OSC 133 (`shell-startup-command-marks.ts`). Absent (SSH, reattach) means unknown. */
+  startupCommandMarked?: boolean
   /** OS-level pid of the shell process, when available at spawn time.
    *  Why: the memory collector needs this to walk each PTY's process
    *  subtree. Daemon-backed providers return it from the RPC result;

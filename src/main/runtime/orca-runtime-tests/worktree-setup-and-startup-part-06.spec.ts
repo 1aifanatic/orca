@@ -8,8 +8,9 @@ import {
 import type { WorktreeMeta } from '../orca-runtime-test-mocks.spec'
 import { TEST_REPO_ID, makeWorktreeMeta, store } from '../orca-runtime-test-fixtures.spec'
 
-// Startup draft and follow-up for goose, which declares `composer-quiet` launch readiness: with the
-// shell's command-start mark the launch-readiness wait decides; without it, the base delivery does.
+// Startup draft and follow-up for goose, which declares `composer-quiet` launch readiness: in a pane
+// whose shell integration marks its startup command the launch-readiness wait decides; otherwise the
+// base delivery does, whatever marks the output carries.
 const COMMAND_START = '\x1b]133;C\x07'
 const PROMPT_START = '\x1b]133;A\x07'
 const TWO_LINE_PROMPT = 'QA follow-up line one\nQA follow-up line two'
@@ -17,7 +18,8 @@ const BRACKETED_PASTE_ON = '\x1b[?2004h'
 
 async function createGooseWorktree(
   name: string,
-  startup: { startupDraft: string } | { startupPrompt: string }
+  startup: { startupDraft: string } | { startupPrompt: string },
+  startupCommandMarked: boolean
 ) {
   const metaById: Record<string, WorktreeMeta> = {}
   const runtime = new OrcaRuntimeService(
@@ -38,7 +40,7 @@ async function createGooseWorktree(
   // Why a shell first: the agent owns the foreground only after the shell ran its command.
   let foreground = 'zsh'
   runtime.setPtyController({
-    spawn: vi.fn().mockResolvedValue({ id: ptyId }),
+    spawn: vi.fn().mockResolvedValue({ id: ptyId, startupCommandMarked }),
     write,
     kill: () => true,
     getForegroundProcess: async () => foreground
@@ -89,11 +91,13 @@ describe('OrcaRuntimeService worktree startup delivery for a declared agent', ()
   })
 
   it('pastes a startup draft once tui-idle confirms the composer, when the pane marks commands', async () => {
-    const pane = await createGooseWorktree('runtime-goose-draft-marked', {
-      startupDraft: 'draft text'
-    })
+    const pane = await createGooseWorktree(
+      'runtime-goose-draft-marked',
+      { startupDraft: 'draft text' },
+      true
+    )
     pane.startGoose(`${COMMAND_START}${BRACKETED_PASTE_ON}`)
-    // goose keeps painting until 6.4 s: the base 1.5 s quiet timer fires at 7.9 s, inside 8 s.
+    // goose keeps painting until 6.4 s, so a 1.5 s quiet window alone would paste at 7.9 s.
     for (let paintedAt = 800; paintedAt <= 6_400; paintedAt += 800) {
       await vi.advanceTimersByTimeAsync(800)
       pane.paint('loading extensions')
@@ -106,11 +110,13 @@ describe('OrcaRuntimeService worktree startup delivery for a declared agent', ()
     expect(pane.wrote('draft')).toEqual([[pane.ptyId, '\x1b[200~draft text\x1b[201~']])
   })
 
-  it("waits past the shell's own quiet prompt for a marking shell's late command-start mark", async () => {
-    const pane = await createGooseWorktree('runtime-goose-draft-late-mark', {
-      startupDraft: 'draft text'
-    })
-    // The shell arms bracketed paste for its own prompt, so the base 1.5 s quiet window fires first.
+  it("pastes nothing into the shell when a marking pane's command-start mark arrives after the base quiet fire", async () => {
+    const pane = await createGooseWorktree(
+      'runtime-goose-draft-late-mark',
+      { startupDraft: 'draft text' },
+      true
+    )
+    // The shell arms bracketed paste for its own prompt, so the base 1.5 s quiet window would fire.
     pane.paint(`${PROMPT_START}~/repo % ${BRACKETED_PASTE_ON}`)
     pane.execGooseAheadOfItsOutput()
     await vi.advanceTimersByTimeAsync(2_000)
@@ -122,11 +128,14 @@ describe('OrcaRuntimeService worktree startup delivery for a declared agent', ()
     expect(pane.wrote('draft')).toEqual([[pane.ptyId, '\x1b[200~draft text\x1b[201~']])
   })
 
-  it('pastes a startup draft after the base 1.5 s quiet window when the pane marks no commands', async () => {
-    const pane = await createGooseWorktree('runtime-goose-draft-unmarked', {
-      startupDraft: 'draft text'
-    })
-    pane.startGoose(BRACKETED_PASTE_ON)
+  it('pastes a startup draft after the base 1.5 s quiet window when the pane does not mark commands', async () => {
+    const pane = await createGooseWorktree(
+      'runtime-goose-draft-unmarked',
+      { startupDraft: 'draft text' },
+      false
+    )
+    // Marks the pane's own integration did not promise, such as a user's shell-integration script.
+    pane.startGoose(`${COMMAND_START}${BRACKETED_PASTE_ON}`)
     await vi.advanceTimersByTimeAsync(1_499)
     expect(pane.wrote('draft')).toEqual([])
     await vi.advanceTimersByTimeAsync(1)
@@ -135,9 +144,11 @@ describe('OrcaRuntimeService worktree startup delivery for a declared agent', ()
   })
 
   it('pastes a startup follow-up into the composer, when the pane marks commands', async () => {
-    const pane = await createGooseWorktree('runtime-goose-followup-marked', {
-      startupPrompt: 'fix it'
-    })
+    const pane = await createGooseWorktree(
+      'runtime-goose-followup-marked',
+      { startupPrompt: 'fix it' },
+      true
+    )
     pane.startGoose(`${COMMAND_START}goose banner`)
     await vi.advanceTimersByTimeAsync(1_000)
     expect(pane.wrote('fix it')).toEqual([])
@@ -149,13 +160,16 @@ describe('OrcaRuntimeService worktree startup delivery for a declared agent', ()
     expect(pane.wrote('fix it\r')).toEqual([])
   })
 
-  it("waits for a marking shell's late command-start mark, then pastes the whole follow-up", async () => {
-    const pane = await createGooseWorktree('runtime-goose-followup-late-mark', {
-      startupPrompt: TWO_LINE_PROMPT
-    })
+  it('pastes the whole follow-up once, when the command-start mark arrives after the process match and the base budget', async () => {
+    const pane = await createGooseWorktree(
+      'runtime-goose-followup-late-mark',
+      { startupPrompt: TWO_LINE_PROMPT },
+      true
+    )
     pane.paint(`${PROMPT_START}~/repo % `)
     pane.execGooseAheadOfItsOutput()
-    await vi.advanceTimersByTimeAsync(300)
+    // Past the base follow-up's whole 30 x 150 ms poll: nothing typed at the match or at its end.
+    await vi.advanceTimersByTimeAsync(4_600)
     expect(pane.wrote('line one')).toEqual([])
 
     pane.paint(`${COMMAND_START}goose banner`)
@@ -163,31 +177,20 @@ describe('OrcaRuntimeService worktree startup delivery for a declared agent', ()
     pane.paint(BRACKETED_PASTE_ON)
     await vi.advanceTimersByTimeAsync(6_000)
 
-    expect(pane.wrote(`\x1b[200~${TWO_LINE_PROMPT}\x1b[201~`)).toHaveLength(1)
-    expect(pane.wrote(`${TWO_LINE_PROMPT}\r`)).toEqual([])
+    expect(pane.wrote('line one')).toEqual([
+      [pane.ptyId, expect.stringContaining(`\x1b[200~${TWO_LINE_PROMPT}\x1b[201~`)]
+    ])
   })
 
-  it('types a startup follow-up at the end of its budget when a marking shell never marks the command', async () => {
-    const pane = await createGooseWorktree('runtime-goose-followup-mark-never', {
-      startupPrompt: TWO_LINE_PROMPT
-    })
-    pane.paint(`${PROMPT_START}~/repo % `)
-    pane.execGooseAheadOfItsOutput()
-    // The base follow-up polls 30 times, 150 ms apart.
-    await vi.advanceTimersByTimeAsync(4_400)
-    expect(pane.wrote('line one')).toEqual([])
-    await vi.advanceTimersByTimeAsync(100)
-
-    expect(pane.wrote('line one')).toEqual([[pane.ptyId, `${TWO_LINE_PROMPT}\r`]])
-  })
-
-  it('types a startup follow-up on the process match when the pane marks no commands', async () => {
-    const pane = await createGooseWorktree('runtime-goose-followup-unmarked', {
-      startupPrompt: 'fix it'
-    })
-    pane.startGoose('goose banner')
+  it('types a startup follow-up on the process match when the pane does not mark commands', async () => {
+    const pane = await createGooseWorktree(
+      'runtime-goose-followup-unmarked',
+      { startupPrompt: TWO_LINE_PROMPT },
+      false
+    )
+    pane.startGoose(`${COMMAND_START}goose banner`)
     await vi.advanceTimersByTimeAsync(300)
 
-    expect(pane.wrote('fix it')).toEqual([[pane.ptyId, 'fix it\r']])
+    expect(pane.wrote('line one')).toEqual([[pane.ptyId, `${TWO_LINE_PROMPT}\r`]])
   })
 })

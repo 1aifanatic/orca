@@ -13,6 +13,7 @@ import type { DaemonPtySpawnContext } from './daemon-pty-spawn-request'
 import type { ColdRestoreInfo } from './history-reader'
 import { mintPtySessionId } from './pty-session-id'
 import { shellPathSupportsPtyStartupBarrier, resolvePtyShellPath } from './shell-ready'
+import { daemonShellMarksStartupCommand } from './daemon-startup-command-marks'
 import { shellReadyMarkerComesFromLineEditor } from '../../shared/shell-ready-marker-timing'
 import { getRecoveredHistorySeedSegments } from './terminal-history-seed-segments'
 import { AGENT_SESSION_CLAIM_DAEMON_PROTOCOL_VERSION, type CreateOrAttachResult } from './types'
@@ -261,7 +262,13 @@ export abstract class DaemonPtySessionSpawn extends DaemonPtySpawnResult {
         daemonIdentity: this.client.getDaemonIdentity()
       })
     }
-    return this.finishSpawn(context, result)
+    const spawned = await this.finishSpawn(context, result)
+    return effectiveShellPath && result.isNew && !spawned.isReattach
+      ? {
+          ...spawned,
+          startupCommandMarked: daemonShellMarksStartupCommand(effectiveShellPath, opts.env ?? {})
+        }
+      : spawned
   }
 
   protected resultForExitBeforeSpawnReply(

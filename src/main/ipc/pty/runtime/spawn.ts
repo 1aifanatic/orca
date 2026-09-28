@@ -21,19 +21,23 @@ import {
   releaseRuntimeSpawnPreSpawnHiddenMark
 } from './spawn-hidden-delivery'
 
-function toRuntimeSpawnReply(result: {
+export function toRuntimeSpawnReply(result: {
   id: string
   incarnationId?: string
   wslDistro?: string | null
   stablePaneOwner?: { handle: string; tabId: string; leafId: string }
   agentSessionEnsure?: AgentSessionClaimedSpawnResult
+  startupCommandMarked?: boolean
 }) {
   return {
     id: result.id,
     ...(result.incarnationId ? { incarnationId: result.incarnationId } : {}),
     ...(typeof result.wslDistro === 'string' ? { wslDistro: result.wslDistro } : {}),
     ...(result.stablePaneOwner ? { stablePaneOwner: result.stablePaneOwner } : {}),
-    ...(result.agentSessionEnsure ? { agentSessionEnsure: result.agentSessionEnsure } : {})
+    ...(result.agentSessionEnsure ? { agentSessionEnsure: result.agentSessionEnsure } : {}),
+    ...(result.startupCommandMarked !== undefined
+      ? { startupCommandMarked: result.startupCommandMarked }
+      : {})
   }
 }
 

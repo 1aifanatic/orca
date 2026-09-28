@@ -283,7 +283,10 @@ export async function commitRuntimePtySpawn(ctx: RuntimePtySpawnState) {
           }
         }
       : {}),
-    ...(ctx.result.agentSessionEnsure ? { agentSessionEnsure: ctx.result.agentSessionEnsure } : {})
+    ...(ctx.result.agentSessionEnsure ? { agentSessionEnsure: ctx.result.agentSessionEnsure } : {}),
+    ...(ctx.result.startupCommandMarked !== undefined
+      ? { startupCommandMarked: ctx.result.startupCommandMarked }
+      : {})
   }
   resolvePaneSpawnReservation(ctx.paneSpawnReservationKey, ctx.paneSpawnReservation, {
     ...ctx.result,

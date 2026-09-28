@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   createDraftPasteReadyScanner,
   draftPasteReadySignalHasMarker
@@ -139,43 +139,5 @@ describe('watchAgentComposerReady', () => {
     const w = watch()
     w.composer.dispose()
     expect(w.unsubscribe).toHaveBeenCalled()
-  })
-
-  it('knows the shell marks commands from its prompt mark, before any command starts', () => {
-    const w = watch()
-    w.emit('prompt> ')
-    expect(w.composer.shellMarksCommands()).toBe(false)
-    w.emit(`\x1b]133;B\x07`)
-    expect(w.composer.shellMarksCommands()).toBe(true)
-    expect(w.composer.signal()).toBe('unowned')
-  })
-
-  describe('waitForOwnership', () => {
-    beforeEach(() => {
-      vi.useFakeTimers()
-    })
-
-    afterEach(() => {
-      vi.useRealTimers()
-    })
-
-    it('resolves true when the command-start mark arrives within the timeout', async () => {
-      const w = watch()
-      const owned = w.composer.waitForOwnership(1_000)
-      await vi.advanceTimersByTimeAsync(600)
-      w.emit(`${COMMAND_START}goose banner`)
-      await expect(owned).resolves.toBe(true)
-    })
-
-    it('resolves false at the timeout, and on dispose', async () => {
-      const w = watch()
-      const timedOut = w.composer.waitForOwnership(1_000)
-      await vi.advanceTimersByTimeAsync(1_000)
-      await expect(timedOut).resolves.toBe(false)
-
-      const disposed = w.composer.waitForOwnership(1_000)
-      w.composer.dispose()
-      await expect(disposed).resolves.toBe(false)
-    })
   })
 })

@@ -4,10 +4,13 @@ import { PtyStartupIngress, type PtyIngressEmission } from '../../shared/pty-sta
 import { resolvePtyOwnerBackend } from '../../shared/pty-owner-backend'
 import { resolveProcessExitCause } from '../../shared/terminal-exit-cause'
 import { POSIX_SHELL_STARTUP_COMMAND_ENV } from '../pty/posix-shell-startup-command'
+import { shellMarksStartupCommand } from '../shell-startup-command-marks'
+import { decodeShellStartupFeatures, SHELL_STARTUP_FEATURE_ENV } from '../shell-startup-features'
 import { getAgentForegroundContextPaths } from './agent-foreground-context-paths'
 import { getSpawnedShellName } from './local-pty-launch-helpers'
 import type { LocalPtyLaunchPlan } from './local-pty-launch-plan'
 import type { LocalPtyProviderOptions } from './local-pty-provider-types'
+import { getLocalZshWrapperSpec } from './local-pty-shell-ready-wrapper-fileset'
 import {
   clearPtyState,
   dataListeners,
@@ -194,11 +197,23 @@ export function activateLocalPtySession(args: {
   // Why: publish the OS pid for the memory collector; proc.pid can be briefly 0/undefined before node-pty sees the child.
   const rawPid = proc.pid
   const pid = typeof rawPid === 'number' && Number.isFinite(rawPid) && rawPid > 0 ? rawPid : null
+  const wrapperFeatures = plan.shellReadyLaunch?.env[SHELL_STARTUP_FEATURE_ENV]
   return {
     id,
     incarnationId,
     pid,
     ...(exitedBeforeSpawnReply ? { exitedBeforeSpawnReply: true } : {}),
-    ...(spawnedWslDistro !== undefined ? { wslDistro: spawnedWslDistro } : {})
+    ...(spawnedWslDistro !== undefined ? { wslDistro: spawnedWslDistro } : {}),
+    ...(spawn.command
+      ? {
+          startupCommandMarked: shellMarksStartupCommand({
+            shellPath: plan.shellPath,
+            wrapperFeatures:
+              wrapperFeatures === undefined ? null : decodeShellStartupFeatures(wrapperFeatures),
+            zshWrapper: getLocalZshWrapperSpec(),
+            startupCommandRunByPromptHook: startupCommandDeliveredByWrapper
+          })
+        }
+      : {})
   }
 }

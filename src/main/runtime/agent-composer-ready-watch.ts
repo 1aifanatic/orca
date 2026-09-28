@@ -28,10 +28,6 @@ export type AgentComposerSignal = 'unowned' | 'pending' | 'armed' | 'ready'
 
 export type AgentComposerReadyWatch = {
   signal(): AgentComposerSignal
-  /** Whether the shell has written any OSC 133 mark, so it will mark this command's start too. */
-  shellMarksCommands(): boolean
-  /** Resolves true once a command owns the PTY, or false after `timeoutMs` or on dispose. */
-  waitForOwnership(timeoutMs: number): Promise<boolean>
   dispose(): void
 }
 
@@ -54,6 +50,11 @@ function resolveComposerScannerSignal(agent: TuiAgent): DraftPasteReadySignal | 
   return null
 }
 
+/** Whether a launch wait has composer evidence to read for this agent at all. */
+export function agentDeclaresLaunchReadiness(agent: TuiAgent): boolean {
+  return resolveComposerScannerSignal(agent) !== null
+}
+
 export function watchAgentComposerReady(
   agent: TuiAgent,
   host: {
@@ -67,15 +68,7 @@ export function watchAgentComposerReady(
   }
   let scanner: ReturnType<typeof createDraftPasteReadyScanner> | null = null
   let signal: AgentComposerSignal = 'unowned'
-  let marked = false
   let carry = ''
-  const ownershipWaiters = new Set<(owned: boolean) => void>()
-  const settleOwnershipWaiters = (owned: boolean): void => {
-    for (const settle of ownershipWaiters) {
-      settle(owned)
-    }
-    ownershipWaiters.clear()
-  }
 
   const observeOwned = (segment: string): void => {
     if (!scanner || segment.length === 0 || signal === 'ready') {
@@ -98,11 +91,7 @@ export function watchAgentComposerReady(
       index = text.indexOf(OSC_133_PREFIX, index + 1)
     ) {
       const mark = text[index + OSC_133_PREFIX.length]
-      if (mark === undefined) {
-        continue
-      }
-      marked = true
-      if (!OWNERSHIP_MARKS.has(mark)) {
+      if (mark === undefined || !OWNERSHIP_MARKS.has(mark)) {
         continue
       }
       observeOwned(text.slice(cursor, index))
@@ -110,9 +99,6 @@ export function watchAgentComposerReady(
       // Why a fresh scanner per command: the previous command's bracketed paste proves nothing now.
       scanner = mark === 'C' ? createDraftPasteReadyScanner(readySignal) : null
       signal = scanner ? 'pending' : 'unowned'
-      if (scanner) {
-        settleOwnershipWaiters(true)
-      }
     }
     const tail = text.slice(cursor)
     const partial = tail.lastIndexOf('\x1b')
@@ -127,26 +113,5 @@ export function watchAgentComposerReady(
   if (replay) {
     observe(replay)
   }
-  return {
-    signal: () => signal,
-    shellMarksCommands: () => marked,
-    waitForOwnership: (timeoutMs) => {
-      if (signal !== 'unowned') {
-        return Promise.resolve(true)
-      }
-      return new Promise((resolve) => {
-        const settle = (owned: boolean): void => {
-          clearTimeout(timer)
-          ownershipWaiters.delete(settle)
-          resolve(owned)
-        }
-        const timer = setTimeout(() => settle(false), Math.max(0, timeoutMs))
-        ownershipWaiters.add(settle)
-      })
-    },
-    dispose: () => {
-      unsubscribe()
-      settleOwnershipWaiters(false)
-    }
-  }
+  return { signal: () => signal, dispose: unsubscribe }
 }

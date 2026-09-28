@@ -31,6 +31,8 @@ export class OrcaRuntimeWithGetWorktreeTerminalProvisioningHost extends OrcaRunt
   protected getWorktreeStartupReadinessHost(): WorktreeStartupReadinessHost {
     return {
       getPtyId: (handle) => this.getLivePtyForHandle(handle)?.pty.ptyId ?? null,
+      startupCommandMarked: (handle) =>
+        this.getLivePtyForHandle(handle)?.pty.startupCommandMarked === true,
       getForegroundProcess: (ptyId) => this.ptyController!.getForegroundProcess(ptyId),
       hasChildProcesses: (ptyId) =>
         this.ptyController!.hasChildProcesses?.(ptyId) ?? Promise.resolve(false),

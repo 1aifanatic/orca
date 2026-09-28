@@ -4,7 +4,7 @@ import { createDraftPasteReadyScanner } from '../../shared/draft-paste-ready-sca
 import { resolveDraftPasteReadyTimeoutMs } from '../../shared/draft-paste-ready-timeout'
 import { TUI_AGENT_CONFIG } from '../../shared/tui-agent-config'
 import type { TuiAgent } from '../../shared/tui-agent'
-import { watchAgentComposerReady, type AgentComposerReadyWatch } from './agent-composer-ready-watch'
+import { agentDeclaresLaunchReadiness } from './agent-composer-ready-watch'
 import type { OrcaRuntimeService } from './orca-runtime'
 import { TUI_IDLE_POLL_INTERVAL_MS, TUI_IDLE_QUIESCENCE_MS } from './orca-runtime-postlude'
 import { deliverTerminalAgentLaunchPrompt } from './terminal-agent-prompt-delivery'
@@ -13,8 +13,6 @@ import type {
   WorktreeStartupFollowup
 } from './runtime-worktree-agent-startup'
 
-const FOLLOWUP_POLL_ATTEMPTS = 30
-const FOLLOWUP_POLL_INTERVAL_MS = 150
 const BRACKETED_PASTE_BEGIN = '\x1b[200~'
 const BRACKETED_PASTE_END = '\x1b[201~'
 const BRACKETED_PASTE_QUIET_MS = 1500
@@ -28,6 +26,9 @@ export type WorktreeStartupReadinessHost = Pick<
   'waitForTerminal' | 'sendTerminalAgentPrompt'
 > & {
   getPtyId: (handle: string) => string | null
+  /** Whether Orca's shell integration marks this pane's startup command (OSC 133), as decided when
+   *  the pane was spawned. */
+  startupCommandMarked: (handle: string) => boolean
   getForegroundProcess: (ptyId: string) => Promise<string | null>
   hasChildProcesses?: (ptyId: string) => Promise<boolean>
   subscribeToData: (ptyId: string, listener: (data: string) => void) => () => void
@@ -36,40 +37,17 @@ export type WorktreeStartupReadinessHost = Pick<
 }
 
 /**
- * Each startup delivery has one decision point: when its base mechanism fires, the launch-readiness
- * wait decides instead only if the agent declares its composer evidence and its command owns the
- * PTY (OSC 133;C). A shell that writes OSC 133 marks gets until the end of the base budget for that
- * mark, then the base delivery. Undeclared agents and shells that write no OSC 133 marks at all
- * keep the base delivery exactly.
+ * The one decision per startup delivery, made before anything is written: the launch-readiness wait
+ * delivers only for an agent that declares its composer evidence, in a pane whose own shell
+ * integration marks the startup command, so the wait can prove the agent owns the PTY. Everything
+ * else keeps the base delivery exactly.
  */
-function watchLaunchOwnership(
+function launchReadinessDelivers(
   host: WorktreeStartupReadinessHost,
   handle: string,
   agent: TuiAgent
-): AgentComposerReadyWatch | null {
-  const ptyId = host.getPtyId(handle)
-  return ptyId
-    ? watchAgentComposerReady(agent, {
-        subscribeToData: (listener) => host.subscribeToData(ptyId, listener),
-        readRecentOutput: () => host.readRecentOutput(ptyId)
-      })
-    : null
-}
-
-/** `deadlineAt`: the end of the base mechanism's own budget. */
-async function launchWaitDecides(
-  ownership: AgentComposerReadyWatch | null,
-  deadlineAt: number
-): Promise<boolean> {
-  if (ownership === null || ownership.signal() !== 'unowned') {
-    return ownership !== null
-  }
-  if (!ownership.shellMarksCommands()) {
-    return false
-  }
-  // Why wait: a shell that marked its prompt marks the command start too, and daemon output can reach
-  // Orca after the OS already reports the agent in the foreground.
-  return ownership.waitForOwnership(deadlineAt - Date.now())
+): boolean {
+  return agentDeclaresLaunchReadiness(agent) && host.startupCommandMarked(handle)
 }
 
 export function pasteWorktreeStartupDraftWhenReady(
@@ -77,36 +55,44 @@ export function pasteWorktreeStartupDraftWhenReady(
   handle: string,
   draft: WorktreeStartupDraftPaste
 ): void {
-  const startedAt = Date.now()
-  const ownership = watchLaunchOwnership(host, handle, draft.agent)
+  const paste = `${BRACKETED_PASTE_BEGIN}${draft.content}${BRACKETED_PASTE_END}`
+  if (launchReadinessDelivers(host, handle, draft.agent)) {
+    void pasteDraftAfterLaunchReadiness(host, handle, draft.agent, paste).catch((error) =>
+      console.warn('[worktree-create] failed to paste startup draft:', error)
+    )
+    return
+  }
   void waitForWorktreeStartupDraft(host, handle, draft.agent)
-    .then(async (ptyId) => {
+    .then((ptyId) => {
       if (!ptyId) {
         console.warn('[worktree-create] agent did not become ready for draft paste')
         return
       }
-      if (
-        await launchWaitDecides(ownership, startedAt + resolveDraftPasteReadyTimeoutMs(draft.agent))
-      ) {
-        const wait = await host.waitForTerminal(handle, {
-          condition: 'tui-idle',
-          // Why the draft's own budget: unsent text pasted long after start can land mid-typing.
-          timeoutMs:
-            startedAt +
-            resolveDraftPasteReadyTimeoutMs(draft.agent) +
-            DRAFT_READY_CONFIRMATION_LATENCY_MS -
-            Date.now(),
-          acceptComposerReady: true
-        })
-        if (!wait.satisfied) {
-          console.warn('[worktree-create] agent did not become ready for draft paste')
-          return
-        }
-      }
-      host.write(ptyId, `${BRACKETED_PASTE_BEGIN}${draft.content}${BRACKETED_PASTE_END}`)
+      host.write(ptyId, paste)
     })
     .catch((error) => console.warn('[worktree-create] failed to paste startup draft:', error))
-    .finally(() => ownership?.dispose())
+}
+
+async function pasteDraftAfterLaunchReadiness(
+  host: WorktreeStartupReadinessHost,
+  handle: string,
+  agent: TuiAgent,
+  paste: string
+): Promise<void> {
+  const ptyId = host.getPtyId(handle)
+  const wait = ptyId
+    ? await host.waitForTerminal(handle, {
+        condition: 'tui-idle',
+        // Why the draft's own budget: unsent text pasted long after start can land mid-typing.
+        timeoutMs: resolveDraftPasteReadyTimeoutMs(agent) + DRAFT_READY_CONFIRMATION_LATENCY_MS,
+        acceptComposerReady: true
+      })
+    : null
+  if (!ptyId || !wait?.satisfied) {
+    console.warn('[worktree-create] agent did not become ready for draft paste')
+    return
+  }
+  host.write(ptyId, paste)
 }
 
 export function sendWorktreeStartupFollowupWhenReady(
@@ -114,35 +100,32 @@ export function sendWorktreeStartupFollowupWhenReady(
   handle: string,
   followup: WorktreeStartupFollowup
 ): void {
-  const startedAt = Date.now()
-  const ownership = watchLaunchOwnership(host, handle, followup.agent)
-  void waitForWorktreeStartupFollowup(host, handle, followup.expectedProcess)
-    .then(async (ptyId) => {
-      if (!ptyId) {
-        console.warn('[worktree-create] agent did not become ready for follow-up prompt')
-        return
-      }
-      const deadlineAt = startedAt + FOLLOWUP_POLL_ATTEMPTS * FOLLOWUP_POLL_INTERVAL_MS
-      if (!(await launchWaitDecides(ownership, deadlineAt))) {
-        host.write(ptyId, `${followup.prompt}\r`)
-        return
-      }
-      // Why the shared deliverer: a typed `prompt\r` submits at the first newline, and a
-      // process-name match is not a composer that can take input.
-      const delivered = await deliverTerminalAgentLaunchPrompt({
-        runtime: host,
-        handle,
-        text: followup.prompt,
-        terminalLaunched: true
-      })
+  if (launchReadinessDelivers(host, handle, followup.agent)) {
+    // Why the shared deliverer: a typed `prompt\r` submits at the first newline, and a
+    // process-name match is not a composer that can take input.
+    void deliverTerminalAgentLaunchPrompt({
+      runtime: host,
+      handle,
+      text: followup.prompt,
+      terminalLaunched: true
+    }).then((delivered) => {
       if (!delivered) {
         console.warn('[worktree-create] agent did not take its startup follow-up prompt')
       }
     })
+    return
+  }
+  void waitForWorktreeStartupFollowup(host, handle, followup.expectedProcess)
+    .then((ptyId) => {
+      if (!ptyId) {
+        console.warn('[worktree-create] agent did not become ready for follow-up prompt')
+        return
+      }
+      host.write(ptyId, `${followup.prompt}\r`)
+    })
     .catch((error) =>
       console.warn('[worktree-create] failed to send startup follow-up prompt:', error)
     )
-    .finally(() => ownership?.dispose())
 }
 
 export async function waitForWorktreeStartupFollowup(
@@ -154,9 +137,9 @@ export async function waitForWorktreeStartupFollowup(
   if (!ptyId) {
     return null
   }
-  for (let attempt = 0; attempt < FOLLOWUP_POLL_ATTEMPTS; attempt += 1) {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
     if (attempt > 0) {
-      await new Promise((resolve) => setTimeout(resolve, FOLLOWUP_POLL_INTERVAL_MS))
+      await new Promise((resolve) => setTimeout(resolve, 150))
     }
     try {
       const foregroundProcess = await host.getForegroundProcess(ptyId)
