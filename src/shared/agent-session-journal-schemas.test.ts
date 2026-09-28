@@ -357,7 +357,7 @@ describe('typed failure facts', () => {
   })
 
   it("admits a refusal's details, and a row an earlier build wrote with its cause", () => {
-    const refused = (refusal: object) =>
+    const refused = (refusal: Record<string, unknown>) =>
       isAdmissibleAgentJournalItemBody({
         kind: 'status',
         text: "Codex couldn't restart.",
