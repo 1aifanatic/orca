@@ -30,6 +30,8 @@ copyFileSync(join(output,'windows-process-tree.node'),join(root,'windows-process
 const {readWindowsProcessTableFresh}=createRequire(import.meta.url)('./process-observer.cjs')
 const normalizedRoot=output.replaceAll('\\','/').toLowerCase()
 const observed=new Map()
+const baselineProcesses=new Set((await readWindowsProcessTableFresh()).map(row=>`${row.pid}:${row.creationTimeMs}`))
+const terminalOwnerNames=new Set(['bun-runtime.exe','bun.exe','cmd.exe','powershell.exe','pwsh.exe','openconsole.exe','conhost.exe'])
 const scanOwned=async(rootPid)=>{
  const rows=await readWindowsProcessTableFresh()
  let changed=true
@@ -43,7 +45,9 @@ const scanOwned=async(rootPid)=>{
    }
   }
  }
- return rows.filter(row=>observed.get(row.pid)?.creationTimeMs===row.creationTimeMs&&observed.has(row.pid))
+ return rows.filter(row=>
+  (observed.get(row.pid)?.creationTimeMs===row.creationTimeMs&&observed.has(row.pid))||
+  (terminalOwnerNames.has(row.name.toLowerCase())&&!baselineProcesses.has(`${row.pid}:${row.creationTimeMs}`)))
 }
 const results=[]
 for(const selector of ['unset','invalid','valid']) {
