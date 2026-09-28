@@ -219,9 +219,10 @@ async function resolveWorkspace(
   })
   // Only when a startup terminal actually came back: a create that produced none ran no command,
   // so nothing carried the prompt and the launch still owes it to whatever surface it builds next.
-  return created.startupTerminalHandle && startupPrompt
-    ? { ...created, promptRodeLaunchCommand: true }
-    : created
+  const { promptRodeLaunchCommand, ...rest } = created
+  return rest.startupTerminalHandle && promptRodeLaunchCommand
+    ? { ...rest, promptRodeLaunchCommand: true }
+    : rest
 }
 
 /** `structured` is the same surface `outcome` names, kept typed so prompt delivery reads the create's
@@ -323,7 +324,7 @@ async function createTerminalSurface(
       ...(terminal.paneKey ? { paneKey: terminal.paneKey } : {})
     },
     ...(terminal.warning ? { warning: terminal.warning } : {}),
-    ...(startupPrompt ? { promptRodeLaunchCommand: true } : {})
+    ...(startupPrompt && terminal.promptRodeLaunchCommand ? { promptRodeLaunchCommand: true } : {})
   }
 }
 
