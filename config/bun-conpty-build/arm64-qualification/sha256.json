@@ -1,9 +1,11 @@
 {
   "conpty/conpty.dll": "b6cca5f1081111f59e5255eec043d924ebd11a86d09986c0d121b680540b3380",
   "conpty/OpenConsole.exe": "b7763ba27e80d5e84f9e60d1368ec2ddb25dfd10283336c0c9f3f252d35cb2f8",
+  "tests/provider-selection.test.mjs": "fd7935c240361c03d505f6750f1ccb730dc3b52fd63b32f0610c70232da6549c",
   "tests/wide-bytes.test.mjs": "71b6ecb39fd24bdaf46307e5652a90a3a46574db1bf6090511215f48958a614b",
   "tests/windows-pty-job.test.mjs": "bfb7571fc33fba52639930793307975f7266a01178077a2e440fb4fd840ee9af",
   "tests/windows-msys-job.test.mjs": "5726d5728134e792be17692b5582551fb9318645e524a8f9b3c95e16b2317930",
+  "tests/provider-selection-child.mjs": "5f2dbfdda22d383c53c339d1686f5e452552fc9c7ecac7cabdc7c29b4a278222",
   "tests/wide-repaint.test.mjs": "bf51550d8ddc9cf982cd1782d55319cbc91d774b1dc0f05c8a2ac913b03f8e89",
   "tests/windows-bun-pty-gate-entry.js": "57b9b1e68c9358e453caa71ddddf14bf56f10254d0fc055f34cb8252d05e2474",
   "tests/config/scripts/windows-pty-table-stress.mjs": "114e0cc4a5887b67f8bacc8710f9cb709e4c6ca270186efea67b8a34077ca335"
