@@ -90,6 +90,7 @@ export function createStructuredSessionMocks() {
     approvalCardProps: initialApprovalCardProps,
     questionCardProps: null as NativeChatQuestionCardProps | null,
     promptItems: [] as AgentJournalRenderItem[],
+    journalItems: [] as AgentJournalRenderItem[],
     respond: vi.fn<(...args: never[]) => unknown>(),
     cancel: vi.fn<(...args: never[]) => unknown>(),
     handlePasteEvent: vi.fn<(...args: never[]) => unknown>(),
@@ -136,7 +137,7 @@ export function createStructuredSessionMocks() {
             submissions: mocks.submissions as never
           })
           return {
-            journalItems: [],
+            journalItems: mocks.journalItems,
             messages:
               mocks.messages ??
               (mocks.mode === 'outbox'
@@ -285,6 +286,7 @@ export function createStructuredSessionMocks() {
     mocks.approvalCardProps = null
     mocks.questionCardProps = null
     mocks.promptItems = []
+    mocks.journalItems = []
     mocks.respond.mockReset()
     mocks.cancel.mockReset()
     mocks.handlePasteEvent.mockReset()

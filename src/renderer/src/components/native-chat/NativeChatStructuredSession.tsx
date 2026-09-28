@@ -26,6 +26,7 @@ import { useStructuredAgentSessionHostExecutionPhase } from './StructuredAgentSe
 import { structuredAgentLabel } from '@/lib/structured-agent-session-launch-label'
 import { NativeChatThreadGoalBanner } from './NativeChatThreadGoalBanner'
 import { structuredAgentSessionReadFailureNotice } from './structured-agent-session-read-failure-notice'
+import { useStructuredAgentSessionStartFailureFacts } from './use-structured-agent-session-start-failure-facts'
 import { structuredAgentSessionDeliveryNotices } from './structured-agent-session-delivery-notices'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 
@@ -114,9 +115,12 @@ export function NativeChatStructuredSession(
   }, [])
   const agentLabel = structuredAgentLabel(props.agent === 'codex' ? 'codex' : 'claude')
   // Only a rejected message reads the journal's rows, so a new batch of them re-renders no row else.
-  const rejectionRows = controller.outbox.some((entry) => entry.state === 'rejected')
-    ? controller.submissions
-    : NO_SUBMISSIONS
+  const hasRejected = controller.outbox.some((entry) => entry.state === 'rejected')
+  const rejectionRows = hasRejected ? controller.submissions : NO_SUBMISSIONS
+  const startFailures = useStructuredAgentSessionStartFailureFacts(
+    controller.journalItems,
+    hasRejected
+  )
   const deliveryNotices = useMemo(
     () =>
       structuredAgentSessionDeliveryNotices(
@@ -124,9 +128,17 @@ export function NativeChatStructuredSession(
         controller.blockedClientMessageId,
         agentLabel,
         retryDelivery,
-        rejectionRows
+        rejectionRows,
+        startFailures
       ),
-    [controller.outbox, controller.blockedClientMessageId, agentLabel, retryDelivery, rejectionRows]
+    [
+      controller.outbox,
+      controller.blockedClientMessageId,
+      agentLabel,
+      retryDelivery,
+      rejectionRows,
+      startFailures
+    ]
   )
   const viewState = selectNativeChatViewState(session, { readRetries: true })
   const readFailure =
