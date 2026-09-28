@@ -2,11 +2,16 @@ import type {
   AgentSessionConversationCommand,
   AgentSessionConversationCommandResult
 } from '../../../../shared/agent-session-conversation-command'
+import { readAgentSessionFailureFact } from '../../../../shared/agent-session-failure'
+import { agentSessionFailureSentence } from '../../../../shared/agent-session-failure-words'
 import { translate } from '@/i18n/i18n'
+import { AGENT_SESSION_FAILURE_TRANSLATED } from './agent-session-failure-words-text'
 import type { StructuredAgentSessionWriteOutcome } from './use-structured-agent-session-mutate'
 
 export async function sendStructuredConversationCommand(input: {
   command: AgentSessionConversationCommand
+  /** The chat's agent, as a failed /clear names it. */
+  agentName: string
   pending: { current: boolean }
   blocked: boolean
   send: (
@@ -29,20 +34,31 @@ export async function sendStructuredConversationCommand(input: {
       return { accepted: false, error: outcome.notice }
     }
     const result = outcome.kind === 'done' ? outcome.value : null
-    return {
-      accepted: result?.state === 'completed' && !result.error,
-      error:
-        result?.error ??
-        (result
-          ? null
-          : translate(
-              'components.native-chat.conversationCommand.unconfirmed',
-              'Conversation operation was not confirmed.'
-            ))
-    }
+    const error = result
+      ? conversationCommandFailureText(result, input.agentName)
+      : translate(
+          'components.native-chat.conversationCommand.unconfirmed',
+          'Conversation operation was not confirmed.'
+        )
+    return { accepted: result?.state === 'completed' && !error, error }
   } finally {
     input.pending.current = false
   }
+}
+
+/** The host's sentence in the reader's language, from the fact beside it; an older host sends
+ *  only the sentence. */
+function conversationCommandFailureText(
+  result: AgentSessionConversationCommandResult,
+  agentName: string
+): string | null {
+  const fact = readAgentSessionFailureFact(result.failure)
+  if (!fact) {
+    return result.error ?? null
+  }
+  // As the host words it: only a /clear whose new conversation failed to start names the agent.
+  const context = result.command === 'clear' ? { agentName, command: 'clear' as const } : {}
+  return agentSessionFailureSentence(fact, 'row', context, AGENT_SESSION_FAILURE_TRANSLATED)
 }
 
 export function isUnconfirmedConversationCommand(method: string, value: unknown): boolean {

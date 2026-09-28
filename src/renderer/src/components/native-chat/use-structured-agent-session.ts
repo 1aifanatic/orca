@@ -8,6 +8,7 @@ import type {
 } from '../../../../shared/agent-session-conversation-command'
 import type { AgentType } from '../../../../shared/agent-status-types'
 import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
+import { structuredAgentLabel } from '@/lib/structured-agent-session-launch-label'
 import {
   supportsStructuredAgentSessionPromptCancel,
   supportsStructuredAgentSessionQuestionAnswers
@@ -119,6 +120,7 @@ export function useStructuredAgentSession(args: {
     runConversationCommand: (command: AgentSessionConversationCommand) =>
       structuredConversationCommands.sendStructuredConversationCommand({
         command,
+        agentName: structuredAgentLabel(agent === 'codex' ? 'codex' : 'claude'),
         pending: commandPending,
         blocked: Boolean(
           transportState.turnId ||
