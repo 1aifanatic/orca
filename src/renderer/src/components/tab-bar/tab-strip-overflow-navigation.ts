@@ -12,6 +12,16 @@ import {
   restoreTabStripScrollAnchor,
   type TabStripScrollAnchor
 } from './tab-strip-scroll-anchor'
+import {
+  findOffscreenOpenedTabSide,
+  getActiveTabDockSide,
+  readTabStripTabIds,
+  revealTabStripElement,
+  type ActiveTabDockSide
+} from './tab-strip-slot-geometry'
+
+/** A tab opened out of view on `side`; `seq` changes so the same side can signal twice in a row. */
+export type TabStripOffscreenOpen = { side: ActiveTabDockSide; seq: number }
 
 const TAB_STRIP_SCROLL_FRACTION = 0.75
 const TAB_STRIP_MIN_SCROLL_STEP_PX = 120
@@ -57,6 +67,9 @@ export function useTabStripOverflowNavigation({
 }): {
   tabStripRef: RefObject<HTMLDivElement | null>
   tabStripOverflowState: TabStripScrollMetrics
+  activeTabDockSide: ActiveTabDockSide | null
+  offscreenTabOpen: TabStripOffscreenOpen | null
+  clearOffscreenTabOpen: () => void
   scrollTabStrip: (direction: 'start' | 'end', behavior?: ScrollBehavior) => void
 } {
   const tabStripRef = useRef<HTMLDivElement>(null)
@@ -70,6 +83,10 @@ export function useTabStripOverflowNavigation({
   const [tabStripOverflowState, setTabStripOverflowState] = useState<TabStripScrollMetrics>(
     EMPTY_TAB_STRIP_OVERFLOW_STATE
   )
+  const [activeTabDockSide, setActiveTabDockSide] = useState<ActiveTabDockSide | null>(null)
+  const [offscreenTabOpen, setOffscreenTabOpen] = useState<TabStripOffscreenOpen | null>(null)
+  const knownTabIdsRef = useRef<ReadonlySet<string> | null>(null)
+  const clearOffscreenTabOpen = useCallback((): void => setOffscreenTabOpen(null), [])
   const updateTabStripOverflowState = useCallback((): void => {
     const el = tabStripRef.current
     if (!el) {
@@ -79,6 +96,7 @@ export function useTabStripOverflowNavigation({
     setTabStripOverflowState((previous) =>
       sameTabStripScrollMetrics(previous, next) ? previous : next
     )
+    setActiveTabDockSide(getActiveTabDockSide(el))
   }, [])
   const scrollTabStrip = useCallback(
     (direction: 'start' | 'end', behavior: ScrollBehavior = 'smooth'): void => {
@@ -157,10 +175,12 @@ export function useTabStripOverflowNavigation({
     const prev = prevStripLenRef.current
     if (!strip) {
       prevStripLenRef.current = { worktreeId, len: tabCount }
+      knownTabIdsRef.current = null
       return
     }
     if (!prev || prev.worktreeId !== worktreeId) {
       prevStripLenRef.current = { worktreeId, len: tabCount }
+      knownTabIdsRef.current = readTabStripTabIds(strip)
       updateTabStripOverflowState()
       return
     }
@@ -194,6 +214,14 @@ export function useTabStripOverflowNavigation({
       scrollToEnd(false)
       requestAnimationFrame(() => scrollToEnd(false))
     }
+    const knownTabIds = knownTabIdsRef.current
+    if (tabCount > prev.len && !pointerGestureActive && knownTabIds) {
+      const side = findOffscreenOpenedTabSide(strip, knownTabIds, activeTabIdRef.current)
+      if (side) {
+        setOffscreenTabOpen((previous) => ({ side, seq: (previous?.seq ?? 0) + 1 }))
+      }
+    }
+    knownTabIdsRef.current = readTabStripTabIds(strip)
     prevStripLenRef.current = { worktreeId, len: tabCount }
     updateTabStripOverflowState()
     requestAnimationFrame(updateTabStripOverflowState)
@@ -220,10 +248,19 @@ export function useTabStripOverflowNavigation({
       recordScrollAnchor()
       return
     }
-    activeTab.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    revealTabStripElement(strip, activeTab)
+    // Why: the scroll event lands after the resize observer, which would re-pin a stale end stick over this reveal.
+    stickToEndRef.current = isTabStripScrolledToEnd(strip)
     requestAnimationFrame(updateTabStripOverflowState)
     recordScrollAnchor()
   }, [activeVisibleTabId, recordScrollAnchor, updateTabStripOverflowState])
 
-  return { tabStripRef, tabStripOverflowState, scrollTabStrip }
+  return {
+    tabStripRef,
+    tabStripOverflowState,
+    activeTabDockSide,
+    offscreenTabOpen,
+    clearOffscreenTabOpen,
+    scrollTabStrip
+  }
 }

@@ -23,7 +23,7 @@ function rect(left: number, width: number): DOMRect {
   return DOMRect.fromRect({ x: left, y: 0, width, height: 20 })
 }
 
-/** 100px tabs in a 300px strip; a tab's x is its index minus the strip's scroll. */
+/** 100px tabs in a 300px strip; a tab's x is its index minus the strip's scroll, clamped into view when docked. */
 function installStripLayout(): void {
   Object.defineProperty(HTMLElement.prototype, 'scrollWidth', {
     configurable: true,
@@ -54,7 +54,12 @@ function installStripLayout(): void {
     const strip = this.parentElement
     if (strip && isStrip(strip)) {
       const index = Array.from(strip.children).indexOf(this)
-      return rect(index * TAB_WIDTH - strip.scrollLeft, TAB_WIDTH)
+      const left = index * TAB_WIDTH - strip.scrollLeft
+      const docked = this.hasAttribute('data-active-tab-dock')
+      return rect(
+        docked ? Math.min(VIEWPORT_WIDTH - TAB_WIDTH, Math.max(0, left)) : left,
+        TAB_WIDTH
+      )
     }
     return rect(0, 0)
   }
@@ -82,9 +87,19 @@ function Strip({ tabs, active }: { tabs: string[]; active: string }): React.JSX.
     worktreeId: 'wt-1'
   })
   return (
-    <div data-strip="" ref={navigation.tabStripRef}>
+    <div
+      data-strip=""
+      data-dock={navigation.activeTabDockSide ?? undefined}
+      data-offscreen-open={navigation.offscreenTabOpen?.side}
+      ref={navigation.tabStripRef}
+    >
       {tabs.map((id) => (
-        <div key={id} data-tab-id={id} />
+        <div
+          key={id}
+          data-tab-id={id}
+          data-tab-strip-slot=""
+          data-active-tab-dock={id === active ? '' : undefined}
+        />
       ))}
     </div>
   )
@@ -137,5 +152,52 @@ describe('tab strip scroll when tabs are added', () => {
     const { strip, rerender } = mountScrolled('C', 0)
     rerender(<Strip tabs={[...TABS, 'N']} active="N" />)
     expect(strip.scrollLeft).toBe(800)
+  })
+
+  it('keeps on-screen tabs still when a background tab opens beside a docked active tab', () => {
+    const { strip, rerender } = mountScrolled('B', 500)
+    expect(strip.dataset.dock).toBe('start')
+    expect(tabX(strip, 'G')).toBe(100)
+    rerender(<Strip tabs={['A', 'B', 'N', ...TABS.slice(2)]} active="B" />)
+    expect(tabX(strip, 'G')).toBe(100)
+  })
+})
+
+describe('tab strip with a docked active tab', () => {
+  beforeEach(installStripLayout)
+  afterEach(() => {
+    cleanup()
+    restoreStripLayout()
+  })
+
+  it('reports the edge the active tab is docked to', () => {
+    expect(mountScrolled('H', 0).strip.dataset.dock).toBe('end')
+    cleanup()
+    expect(mountScrolled('E', 300).strip.dataset.dock).toBeUndefined()
+  })
+
+  it('reveals a foreground tab opened next to a docked active tab', () => {
+    const { strip, rerender } = mountScrolled('H', 0)
+    rerender(<Strip tabs={[...TABS.slice(0, 8), 'N', ...TABS.slice(8)]} active="N" />)
+    expect(tabX(strip, 'N')).toBe(200)
+    expect(tabX(strip, 'H')).toBe(100)
+  })
+
+  it('flags a background tab that opens out of view', () => {
+    const { strip, rerender } = mountScrolled('B', 0)
+    rerender(<Strip tabs={[...TABS, 'N']} active="B" />)
+    expect(strip.dataset.offscreenOpen).toBe('end')
+  })
+
+  it('flags a background tab opened right after a docked active tab', () => {
+    const { strip, rerender } = mountScrolled('B', 500)
+    rerender(<Strip tabs={['A', 'B', 'N', ...TABS.slice(2)]} active="B" />)
+    expect(strip.dataset.offscreenOpen).toBe('start')
+  })
+
+  it('does not flag a background tab that opens on screen', () => {
+    const { strip, rerender } = mountScrolled('B', 0)
+    rerender(<Strip tabs={['A', 'B', 'N', ...TABS.slice(2)]} active="B" />)
+    expect(strip.dataset.offscreenOpen).toBeUndefined()
   })
 })
