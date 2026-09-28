@@ -9,6 +9,7 @@ const { wslRealpathMock } = vi.hoisted(() => ({
 
 vi.mock('node:fs/promises', () => ({ realpath: wslRealpathMock }))
 
+import { getManagedCommand, getManagedScriptPath } from './codex-hook-definition'
 import {
   prepareManagedCodexHomeBeforeShellLaunch,
   resolveManagedCodexShellPreflightHome
@@ -38,7 +39,35 @@ afterEach(() => {
   }
 })
 
+function writeManagedHooks(home: string, command: string): void {
+  writeFileSync(
+    join(home, 'hooks.json'),
+    JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: 'command', command }] }] } })
+  )
+}
+
 describe('managed Codex shell preflight', () => {
+  // Why: a login(1) pane gets the real HOME; installing from it would write the
+  // real ~/.codex and ~/.orca on behalf of an app that runs with another HOME.
+  it("does not touch a managed home whose hooks run another HOME's script", async () => {
+    const userDataPath = makeRoot()
+    const home = join(userDataPath, 'codex-runtime-home', 'home')
+    mkdirSync(home, { recursive: true })
+    const otherHomeScript = join(makeRoot(), '.orca', 'agent-hooks', 'codex-hook.sh')
+    writeManagedHooks(home, getManagedCommand(otherHomeScript))
+    const install = vi.fn()
+
+    expect(
+      await prepareManagedCodexHomeBeforeShellLaunch({
+        userDataPath,
+        hooksEnabled: true,
+        env: { CODEX_HOME: home, ORCA_CODEX_HOME: home },
+        install
+      })
+    ).toBeNull()
+    expect(install).not.toHaveBeenCalled()
+  })
+
   it('accepts the Orca shared runtime home', () => {
     const userDataPath = makeRoot()
     const home = join(userDataPath, 'codex-runtime-home', 'home')
@@ -57,6 +86,7 @@ describe('managed Codex shell preflight', () => {
     const home = join(userDataPath, 'codex-accounts', 'account-1', 'home')
     mkdirSync(home, { recursive: true })
     writeFileSync(join(home, '.orca-managed-home'), 'account-1\n')
+    writeManagedHooks(home, getManagedCommand(getManagedScriptPath()))
     const install = vi.fn(() => ({
       agent: 'codex' as const,
       state: 'installed' as const,
