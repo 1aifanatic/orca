@@ -1,3 +1,4 @@
+import { WslDaemonOwnerAdmission } from './wsl-daemon-owner-admission'
 import { bunOwnedRuntimeArgs } from '../../shared/bun-owned-runtime-args'
 import { createHash } from 'node:crypto'
 import { join } from 'node:path'
@@ -14,11 +15,7 @@ import { registerWslPtyProvider } from '../ipc/pty/provider/registry'
 import { createRunningWslRuntimeRunner } from './wsl-bun-runtime'
 import { createWslDaemonTransport } from './wsl-daemon-transport'
 import { WslDaemonPtyProvider } from './wsl-daemon-pty-provider'
-import {
-  prepareWslDaemonEndpoint,
-  startPreparedWslDaemonOwner,
-  type PreparedWslDaemonEndpoint
-} from './wsl-daemon-endpoint'
+import { prepareWslDaemonEndpoint, type PreparedWslDaemonEndpoint } from './wsl-daemon-endpoint'
 import type { WslAccountExecutionContext } from './wsl-account-execution-context'
 import { readWslDistributionIdentity } from './wsl-distribution-identity'
 
@@ -32,9 +29,10 @@ export type PreparedWslDaemonTerminalOwner = Readonly<{
   execution: WslAccountExecutionContext
   connection: WslDaemonConnection
 }>
+type AdmittedConnection = WslDaemonConnection & { establishLease: () => Promise<void> }
 type Entry = {
   endpoint: Readonly<PersistedWslDaemonEndpoint>
-  pending: Promise<WslDaemonConnection>
+  pending: Promise<AdmittedConnection>
   close?: () => Promise<void>
 }
 
@@ -101,7 +99,7 @@ export class WslDaemonSessions {
     }
     const reconnecting = this.connect(owner, record.endpoint).then(async (connection) => {
       this.lifetime.signal.throwIfAborted()
-      await connection.provider.establishLifecycleLease()
+      await connection.establishLease()
       this.lifetime.signal.throwIfAborted()
       return connection
     })
@@ -113,7 +111,7 @@ export class WslDaemonSessions {
     endpoint: PersistedWslDaemonEndpoint,
     signal?: AbortSignal,
     prepared?: PreparedWslDaemonEndpoint
-  ): Promise<WslDaemonConnection> {
+  ): Promise<AdmittedConnection> {
     this.lifetime.signal.throwIfAborted()
     const identity = Object.freeze({ distro: owner.distro, relayBuildId: owner.relayBuildId })
     const record = normalizeWslDaemonRecovery({ kind: 'daemon', ...identity, endpoint })
@@ -140,7 +138,7 @@ export class WslDaemonSessions {
       prepared
         ? connection.then(
             async (connected) => {
-              await this.establishOwnerLease(connected.provider, prepared)
+              await connected.establishLease()
               return connected
             },
             () => {
@@ -153,42 +151,31 @@ export class WslDaemonSessions {
     )
   }
 
-  private async establishOwnerLease(
-    provider: WslDaemonPtyProvider,
-    prepared?: PreparedWslDaemonEndpoint
-  ): Promise<void> {
-    const signal = this.lifetime.signal
-    signal.throwIfAborted()
-    try {
-      await provider.establishLifecycleLease()
-    } catch (error) {
-      signal.throwIfAborted()
-      if (!prepared) {
-        throw error
-      }
-      await startPreparedWslDaemonOwner(prepared, signal)
-      signal.throwIfAborted()
-      await provider.establishLifecycleLease()
-    }
-    signal.throwIfAborted()
-  }
-
   private async open(
     owner: Readonly<WslPtyOwner>,
     endpoint: Readonly<PersistedWslDaemonEndpoint>,
     prepared?: PreparedWslDaemonEndpoint
-  ): Promise<WslDaemonConnection> {
+  ): Promise<AdmittedConnection> {
     const signal = this.lifetime.signal
     const shell = await readGuestShell(endpoint, signal)
     signal.throwIfAborted()
     const historyId = createHash('sha256')
       .update(JSON.stringify([this.options.profileScope, wslPtyOwnerKey(owner)]))
       .digest('hex')
+    const admission = new WslDaemonOwnerAdmission(
+      this.options.store,
+      owner,
+      endpoint,
+      signal,
+      prepared
+    )
     const adapter = new DaemonPtyAdapter({
+      respawn: admission.recover,
       profileScope: this.options.profileScope,
       historyPath: join(this.options.historyRoot, historyId),
       guest: {
         distro: owner.distro,
+        admitIdentity: admission.admitIdentity,
         transport: createWslDaemonTransport(endpoint),
         defaultShell: shell,
         defaultCwd: endpoint.home,
@@ -196,10 +183,10 @@ export class WslDaemonSessions {
       }
     })
     const provider = new WslDaemonPtyProvider(owner, adapter)
+    const establishLease = () => admission.establishLease(() => provider.establishLifecycleLease())
     let unregister: (() => void) | undefined
     try {
-      await this.establishOwnerLease(provider, prepared)
-      await this.options.store.upsertWslDaemonRecovery({ kind: 'daemon', ...owner, endpoint })
+      await establishLease()
       signal.throwIfAborted()
       unregister = registerWslPtyProvider(owner, provider)
       const entry = this.entries.get(wslPtyOwnerKey(owner))
@@ -210,7 +197,7 @@ export class WslDaemonSessions {
         unregister?.()
         await provider.disconnectOnly()
       }
-      return Object.freeze({ owner, endpoint, provider })
+      return Object.freeze({ owner, endpoint, provider, establishLease })
     } catch (error) {
       unregister?.()
       await provider.disconnectOnly()

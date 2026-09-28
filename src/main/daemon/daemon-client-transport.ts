@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import type { Duplex } from 'node:stream'
 import { connectDaemonSocket } from './daemon-client-socket-connect'
+import type { DaemonEndpointIdentity } from './daemon-hello-protocol'
 import { DaemonProtocolError } from './types'
 
 export type DaemonTransportOperation = { timeoutMs: number; signal: AbortSignal }
@@ -9,7 +10,10 @@ export type DaemonClientTransport = {
   /** Return a connected ordered byte stream; destroy must release its bridge resources. */
   connect: (role: 'control' | 'stream', operation: DaemonTransportOperation) => Promise<Duplex>
 }
-export type DaemonClientOptions = { protocolVersion?: number } & (
+export type DaemonClientOptions = {
+  protocolVersion?: number
+  admitIdentity?: (identity: DaemonEndpointIdentity | null) => Promise<void>
+} & (
   | { socketPath: string; tokenPath: string; transport?: never }
   | { transport: DaemonClientTransport; socketPath?: never; tokenPath?: never }
 )

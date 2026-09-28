@@ -19,7 +19,17 @@ function contact() {
 }
 (async()=>{
   if(await contact()==='live'){console.log('existing');return;}
-  const env={...process.env,HOME:plan.home,PATH:plan.path,ORCA_BACKGROUND_LAUNCH:'1'};
+  const fs=require('node:fs');
+  const {createHash}=require('node:crypto');
+  const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
+  const readArtifact=file=>{
+    const stat=fs.lstatSync(file);
+    if(!stat.isFile() || stat.isSymbolicLink() || stat.uid!==process.getuid() || (stat.mode & 0o022)) throw Error('Guest daemon artifact ownership changed');
+    return fs.readFileSync(file);
+  };
+  const artifactId=hash(JSON.stringify({runtime:hash(readArtifact(plan.runtime)),files:[{name:'daemon-entry.js',sha256:hash(readArtifact(plan.entry))}]}));
+  if(artifactId!==plan.serverBuildId) throw Error('Retained guest daemon artifacts changed; refusing restart');
+  const env={...process.env,HOME:plan.home,PATH:plan.path??process.env.PATH,ORCA_BACKGROUND_LAUNCH:'1'};
   for(const key of ['NODE_OPTIONS','NODE_PATH','BUN_OPTIONS','BUN_INSPECT','ELECTRON_RUN_AS_NODE']) delete env[key];
   const child=Bun.spawn([plan.runtime,...${JSON.stringify(bunOwnedRuntimeArgs('linux'))},plan.entry,'--socket',plan.socket,'--token',plan.tokenPath],{
     detached:true,stdin:'ignore',stdout:'ignore',stderr:'ignore',cwd:plan.home,env

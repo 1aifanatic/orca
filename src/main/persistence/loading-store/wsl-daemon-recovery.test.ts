@@ -122,3 +122,50 @@ describe('persisted guest daemon endpoint identity', () => {
     expect(readState().wslPtyConsumerRecoveries ?? []).toEqual([])
   })
 })
+
+const oldIncarnation = {
+  pid: 42,
+  startedAtMs: 100,
+  launchNonce: 'old',
+  linuxStartTicks: '123',
+  bootId: 'boot'
+}
+const newIncarnation = { ...oldIncarnation, pid: 43, launchNonce: 'new', linuxStartTicks: '456' }
+
+it('admits incarnation changes only against the expected prior while keeping endpoint immutable', async () => {
+  const { store, readState } = await fixture()
+  await store.upsertWslDaemonRecovery(recovery)
+  await store.upsertWslDaemonRecovery({ ...recovery, incarnation: oldIncarnation }, null)
+  await expect(
+    store.upsertWslDaemonRecovery({ ...recovery, incarnation: newIncarnation }, null)
+  ).rejects.toThrow('admission changed')
+  await expect(
+    store.upsertWslDaemonRecovery(
+      {
+        ...recovery,
+        endpoint: { ...recovery.endpoint, socket: '/other' },
+        incarnation: newIncarnation
+      },
+      oldIncarnation
+    )
+  ).rejects.toThrow('owner identity cannot change')
+  await store.upsertWslDaemonRecovery({ ...recovery, incarnation: newIncarnation }, oldIncarnation)
+  expect(readState().wslPtyConsumerRecoveries).toEqual([
+    { ...recovery, incarnation: newIncarnation }
+  ])
+})
+it('rolls back refused incarnation admission without losing the prior durable owner', async () => {
+  const { store, authority, readState } = await fixture()
+  await store.upsertWslDaemonRecovery({ ...recovery, incarnation: oldIncarnation })
+  const gate = authority.pause()
+  const rejected = expect(
+    store.upsertWslDaemonRecovery({ ...recovery, incarnation: newIncarnation }, oldIncarnation)
+  ).rejects.toThrow('disk refused')
+  await gate.started.promise
+  expect(readState().wslPtyConsumerRecoveries).toEqual([
+    { ...recovery, incarnation: oldIncarnation }
+  ])
+  gate.finish.reject(new Error('disk refused'))
+  await rejected
+  expect(store.getWslDaemonRecovery(recovery)?.incarnation).toEqual(oldIncarnation)
+})

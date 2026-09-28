@@ -118,6 +118,8 @@ function parseDaemonEndpointIdentity(value: unknown): DaemonEndpointIdentity | n
     pid?: unknown
     startedAtMs?: unknown
     launchNonce?: unknown
+    linuxStartTicks?: unknown
+    bootId?: unknown
     entryPath?: unknown
     appVersion?: unknown
     spawnerExecPath?: unknown
@@ -133,7 +135,20 @@ function parseDaemonEndpointIdentity(value: unknown): DaemonEndpointIdentity | n
   ) {
     return null
   }
+  if (
+    (identity.linuxStartTicks !== undefined || identity.bootId !== undefined) &&
+    (typeof identity.linuxStartTicks !== 'string' ||
+      !/^\d+$/.test(identity.linuxStartTicks) ||
+      typeof identity.bootId !== 'string' ||
+      !identity.bootId ||
+      /[\0\r\n]/.test(identity.bootId))
+  ) {
+    return null
+  }
   return {
+    ...(typeof identity.linuxStartTicks === 'string' && typeof identity.bootId === 'string'
+      ? { linuxStartTicks: identity.linuxStartTicks, bootId: identity.bootId }
+      : {}),
     pid: identity.pid as number,
     startedAtMs: identity.startedAtMs,
     launchNonce: identity.launchNonce,
@@ -159,6 +174,8 @@ export function sameDaemonIdentity(
       right !== null &&
       left.pid === right.pid &&
       left.startedAtMs === right.startedAtMs &&
-      left.launchNonce === right.launchNonce)
+      left.launchNonce === right.launchNonce &&
+      left.linuxStartTicks === right.linuxStartTicks &&
+      left.bootId === right.bootId)
   )
 }

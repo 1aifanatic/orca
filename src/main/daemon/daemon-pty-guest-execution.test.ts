@@ -87,6 +87,28 @@ describe('guest daemon execution boundary', () => {
     expect(reportCwd).not.toHaveBeenCalled()
   })
 
+  it('does not spawn before durable admission and refuses a connection changed while waiting', async () => {
+    let release!: () => void
+    const admission = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const admitted = vi.fn(() => admission)
+    const adapter = new DaemonPtyAdapter({ guest: { ...guest(), admitIdentity: admitted } })
+    adapters.push(adapter)
+    const spawning = expect(
+      adapter.spawn({ cols: 80, rows: 24, isNewSession: true })
+    ).rejects.toThrow('Connection lost')
+    await vi.waitFor(() => expect(admitted).toHaveBeenCalledOnce())
+    expect(spawn).not.toHaveBeenCalled()
+    for (const socket of connections) {
+      socket.destroy()
+    }
+    await new Promise((resolve) => setImmediate(resolve))
+    release()
+    await spawning
+    expect(spawn).not.toHaveBeenCalled()
+  })
+
   it('rejects desktop endpoint mixing and foreign paths before spawning', async () => {
     expect(() => new DaemonPtyAdapter({ guest: guest(), tokenPath: '/desktop/token' })).toThrow(
       'cannot use desktop'

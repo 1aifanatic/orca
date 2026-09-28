@@ -1,3 +1,4 @@
+import { proveWslDaemonIncarnationExited } from './wsl-daemon-incarnation'
 import { bunOwnedRuntimeArgs } from '../../shared/bun-owned-runtime-args'
 import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
@@ -9,7 +10,10 @@ import { WSL_GUEST_ARTIFACT_INSTALL_SCRIPT } from './wsl-guest-artifact-install-
 import { WSL_DAEMON_START_SCRIPT } from './wsl-daemon-start-script'
 import { createRunningWslRuntimeRunner } from './wsl-bun-runtime'
 import { readWslDistributionIdentity } from './wsl-distribution-identity'
-import type { PersistedWslDaemonEndpoint } from '../../shared/wsl-daemon-recovery'
+import type {
+  PersistedWslDaemonEndpoint,
+  WslDaemonIncarnation
+} from '../../shared/wsl-daemon-recovery'
 import type { WslPtyOwner } from '../../shared/wsl-pty-id'
 
 export type PreparedWslDaemonEndpoint = Readonly<{
@@ -126,7 +130,24 @@ export async function startPreparedWslDaemonOwner(
   prepared: PreparedWslDaemonEndpoint,
   signal?: AbortSignal
 ): Promise<void> {
-  const endpoint = prepared.endpoint
+  await startWslDaemonOwner(prepared.endpoint, prepared.path, signal)
+}
+
+/** A retained endpoint can restart only after its admitted process incarnation exited. */
+export async function startRetainedWslDaemonOwner(
+  endpoint: PersistedWslDaemonEndpoint,
+  incarnation: WslDaemonIncarnation | undefined,
+  signal?: AbortSignal
+): Promise<void> {
+  await proveWslDaemonIncarnationExited(endpoint, incarnation, signal)
+  await startWslDaemonOwner(endpoint, undefined, signal)
+}
+
+async function startWslDaemonOwner(
+  endpoint: PersistedWslDaemonEndpoint,
+  path: string | undefined,
+  signal?: AbortSignal
+): Promise<void> {
   if ((await readWslDistributionIdentity(endpoint.distro)) !== endpoint.distributionId) {
     throw new Error('WSL distribution was replaced; refusing to start a different terminal owner')
   }
@@ -139,9 +160,9 @@ export async function startPreparedWslDaemonOwner(
       ...bunOwnedRuntimeArgs('linux'),
       '-e',
       WSL_DAEMON_START_SCRIPT,
-      JSON.stringify({ ...endpoint, entry: prepared.entry, path: prepared.path })
+      JSON.stringify({ ...endpoint, path })
     ],
-    loginPath: 'none'
+    loginPath: path === undefined ? 'preferred' : 'none'
   })
   if (result !== 'started' && result !== 'existing') {
     throw new Error('WSL terminal daemon could not be started')

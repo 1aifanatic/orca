@@ -1,10 +1,16 @@
+import { proveWslDaemonIncarnationExited } from './wsl-daemon-incarnation'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { readFile } from 'node:fs/promises'
 import { prepareWslGuestOwner } from './wsl-guest-owner-preparation'
-import { prepareWslDaemonEndpoint, startPreparedWslDaemonOwner } from './wsl-daemon-endpoint'
+import {
+  prepareWslDaemonEndpoint,
+  startPreparedWslDaemonOwner,
+  startRetainedWslDaemonOwner
+} from './wsl-daemon-endpoint'
 import { createRunningWslRuntimeRunner } from './wsl-bun-runtime'
 import { readWslDistributionIdentity } from './wsl-distribution-identity'
 
+vi.mock('./wsl-daemon-incarnation', () => ({ proveWslDaemonIncarnationExited: vi.fn() }))
 vi.mock('node:fs/promises', () => ({ readFile: vi.fn() }))
 vi.mock('../daemon/daemon-bun-runtime', () => ({
   desktopDaemonBundleDir: () => '/app/terminal-daemon'
@@ -111,4 +117,31 @@ it('canonicalizes fresh distro aliases without modifying persisted reconnect ide
   const alias = await prepareWslDaemonEndpoint('ubuntu', 'profile')
   expect(alias).toEqual(first)
   expect(alias.owner.distro).toBe('ubuntu')
+})
+
+it('checks old process death before starting the retained artifact after bundle replacement', async () => {
+  const old = await prepareWslDaemonEndpoint('Ubuntu', 'profile')
+  vi.mocked(readFile).mockResolvedValue(Buffer.from('new-daemon'))
+  const current = await prepareWslDaemonEndpoint('Ubuntu', 'profile')
+  expect(current.endpoint.entry).not.toBe(old.endpoint.entry)
+  const incarnation = {
+    pid: 42,
+    startedAtMs: 100,
+    launchNonce: 'old',
+    linuxStartTicks: '123',
+    bootId: 'boot'
+  }
+  run.mockClear().mockResolvedValue('started')
+  vi.mocked(proveWslDaemonIncarnationExited).mockRejectedValueOnce(new Error('still live'))
+  await expect(startRetainedWslDaemonOwner(old.endpoint, incarnation)).rejects.toThrow('still live')
+  expect(run).not.toHaveBeenCalled()
+  vi.mocked(proveWslDaemonIncarnationExited).mockResolvedValue(undefined)
+  await startRetainedWslDaemonOwner(old.endpoint, incarnation)
+  expect(proveWslDaemonIncarnationExited).toHaveBeenLastCalledWith(
+    old.endpoint,
+    incarnation,
+    undefined
+  )
+  expect(JSON.parse(run.mock.lastCall?.[0].args.at(-1))).toEqual(old.endpoint)
+  expect(createRunningWslRuntimeRunner).toHaveBeenLastCalledWith('ubuntu', undefined, 'captured')
 })

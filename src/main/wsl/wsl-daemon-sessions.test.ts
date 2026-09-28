@@ -18,7 +18,11 @@ const { lease, detach, unregister, run } = vi.hoisted(() => ({
 vi.mock('../daemon/daemon-pty-adapter', () => ({
   DaemonPtyAdapter: vi.fn(
     class {
-      establishLifecycleLease = lease
+      constructor(private readonly options: ConstructorParameters<typeof DaemonPtyAdapter>[0]) {}
+      establishLifecycleLease = async () => {
+        await lease()
+        await this.options.guest?.admitIdentity?.(null)
+      }
       disconnectOnly = detach
     }
   )
@@ -26,7 +30,10 @@ vi.mock('../daemon/daemon-pty-adapter', () => ({
 vi.mock('../ipc/pty/provider/registry', () => ({ registerWslPtyProvider: vi.fn(() => unregister) }))
 vi.mock('./wsl-daemon-endpoint', () => ({
   prepareWslDaemonEndpoint: vi.fn(),
-  startPreparedWslDaemonOwner: vi.fn()
+  startPreparedWslDaemonOwner: vi.fn(),
+  startRetainedWslDaemonOwner: vi.fn(async () => {
+    throw new Error('owner unverifiable')
+  })
 }))
 vi.mock('./wsl-daemon-transport', () => ({ createWslDaemonTransport: vi.fn(() => ({})) }))
 vi.mock('./wsl-bun-runtime', () => ({ createRunningWslRuntimeRunner: vi.fn(() => ({ run })) }))
@@ -56,7 +63,9 @@ function deferred<T>() {
 function setup(record: WslDaemonRecovery | null = null) {
   const store = {
     getWslDaemonRecovery: vi.fn(() => record),
-    upsertWslDaemonRecovery: vi.fn(async (_value: WslDaemonRecovery) => {})
+    upsertWslDaemonRecovery: vi.fn(async (value: WslDaemonRecovery) => {
+      record = value
+    })
   }
   return {
     store,
@@ -255,26 +264,29 @@ it('reconnects a parsed terminal identity without persisting its session suffix'
   try {
     const connection = await sessions.reconnect(parsed)
     expect(connection.owner).toEqual(owner)
-    expect(store.upsertWslDaemonRecovery).toHaveBeenCalledWith({
-      kind: 'daemon',
-      ...owner,
-      endpoint
-    })
+    expect(store.upsertWslDaemonRecovery).toHaveBeenCalledWith(
+      {
+        kind: 'daemon',
+        ...owner,
+        endpoint
+      },
+      null
+    )
     expect(startPreparedWslDaemonOwner).not.toHaveBeenCalled()
   } finally {
     await sessions.dispose()
   }
 })
 
-it('restarts a missing cached owner for a fresh spawn without replacing a retained session', async () => {
+it('refuses a missing identity-less owner even for a fresh spawn', async () => {
   const { sessions } = setup({ kind: 'daemon', ...owner, endpoint })
   await sessions.prepareFresh('Ubuntu')
   lease.mockRejectedValueOnce(new Error('owner contact unverifiable'))
   await expect(sessions.reconnect(owner)).rejects.toThrow('unverifiable')
   expect(startPreparedWslDaemonOwner).not.toHaveBeenCalled()
   lease.mockRejectedValueOnce(new Error('missing endpoint'))
-  await sessions.prepareFresh('Ubuntu')
-  expect(startPreparedWslDaemonOwner).toHaveBeenCalledOnce()
+  await expect(sessions.prepareFresh('Ubuntu')).rejects.toThrow('unverifiable')
+  expect(startPreparedWslDaemonOwner).not.toHaveBeenCalled()
   expect(DaemonPtyAdapter).toHaveBeenCalledOnce()
   await sessions.dispose()
 })
@@ -284,7 +296,7 @@ it('retains a cached owner when fresh startup cannot prove its endpoint absent',
   await sessions.prepareFresh('Ubuntu')
   lease.mockRejectedValueOnce(new Error('contact failed'))
   vi.mocked(startPreparedWslDaemonOwner).mockRejectedValueOnce(new Error('owner unverifiable'))
-  await expect(sessions.prepareFresh('Ubuntu')).rejects.toThrow('owner unverifiable')
+  await expect(sessions.prepareFresh('Ubuntu')).rejects.toThrow('unverifiable')
   expect(detach).not.toHaveBeenCalled()
   expect(unregister).not.toHaveBeenCalled()
   await sessions.reconnect(owner)
@@ -292,7 +304,7 @@ it('retains a cached owner when fresh startup cannot prove its endpoint absent',
   await sessions.dispose()
 })
 
-it('lets a fresh caller recover after joining a failed retained-owner reconnect', async () => {
+it('does not bypass missing identity proof when fresh spawn joins failed reconnect', async () => {
   const { sessions } = setup({ kind: 'daemon', ...owner, endpoint })
   let fail!: (error: Error) => void
   lease.mockImplementationOnce(
@@ -302,16 +314,16 @@ it('lets a fresh caller recover after joining a failed retained-owner reconnect'
       })
   )
   const restore = sessions.reconnect(owner)
-  const rejected = expect(restore).rejects.toThrow('missing endpoint')
+  const rejected = expect(restore).rejects.toThrow('unverifiable')
   await vi.waitFor(() => expect(lease).toHaveBeenCalledOnce())
-  const fresh = sessions.prepareFresh('Ubuntu')
+  const fresh = expect(sessions.prepareFresh('Ubuntu')).rejects.toThrow('unverifiable')
   await vi.waitFor(() => expect(prepareWslDaemonEndpoint).toHaveBeenCalledOnce())
   await Promise.resolve()
   lease.mockRejectedValueOnce(new Error('missing endpoint'))
   fail(new Error('missing endpoint'))
   await rejected
   await fresh
-  expect(startPreparedWslDaemonOwner).toHaveBeenCalledOnce()
-  expect(registerWslPtyProvider).toHaveBeenCalledOnce()
+  expect(startPreparedWslDaemonOwner).not.toHaveBeenCalled()
+  expect(registerWslPtyProvider).not.toHaveBeenCalled()
   await sessions.dispose()
 })

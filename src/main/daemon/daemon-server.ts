@@ -131,6 +131,8 @@ export class DaemonServer {
       identity: {
         launchNonce,
         startedAtMs,
+        linuxStartTicks: options.linuxStartTicks,
+        bootId: options.bootId,
         entryPath: options.entryPath ?? null,
         appVersion: options.appVersion ?? null,
         spawnerExecPath: options.spawnerExecPath ?? null

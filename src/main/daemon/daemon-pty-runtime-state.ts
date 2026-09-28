@@ -54,6 +54,7 @@ export type GuestDaemonExecution = {
   defaultShell: string
   defaultCwd: string
   profiles: readonly { name: string; path: string }[]
+  admitIdentity?: (identity: DaemonEndpointIdentity | null) => Promise<void>
 }
 
 export type DaemonPtyAdapterOptions = {
@@ -229,7 +230,7 @@ export abstract class DaemonPtyRuntimeState {
     }
     this.client = new DaemonClient({
       ...(this.guest
-        ? { transport: this.guest.transport }
+        ? { transport: this.guest.transport, admitIdentity: this.guest.admitIdentity }
         : { socketPath: this.socketPath, tokenPath: this.tokenPath }),
       protocolVersion: opts.protocolVersion
     })

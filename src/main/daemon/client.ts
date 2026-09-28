@@ -62,7 +62,7 @@ export class DaemonClient {
   private requestCounter = 0
   private cleanupSocketListeners: (() => void) | null = null
 
-  constructor(opts: DaemonClientOptions) {
+  constructor(private readonly opts: DaemonClientOptions) {
     this.transport = resolveDaemonTransport(opts)
     this.protocolVersion = opts.protocolVersion ?? PROTOCOL_VERSION
   }
@@ -118,7 +118,6 @@ export class DaemonClient {
     const attempt = new DaemonConnectionAttempt(this.transport, timeoutMs, sharedBudget)
     const controller = attempt.controller
     this.connectionAbort = controller
-    const pendingListenerCleanups = attempt.readerCleanups
     const cleanupPendingListeners = () => attempt.releaseReaders()
 
     try {
@@ -135,7 +134,7 @@ export class DaemonClient {
         attempt.remainingMs()
       )
       this.assertConnectionAttemptCurrent(attemptGeneration, this.controlSocket)
-      pendingListenerCleanups.push(
+      attempt.readerCleanups.push(
         attachControlResponseReader(this.controlSocket, (response) =>
           this.pendingRequests.settle(response)
         )
@@ -154,16 +153,17 @@ export class DaemonClient {
       if (!sameDaemonIdentity(controlIdentity, streamIdentity)) {
         throw new DaemonProtocolError('Daemon identity changed during connection')
       }
-      pendingListenerCleanups.push(
-        attachStreamEventReader(this.streamSocket, (event) => {
-          this.eventListeners.each((listener) => listener(event))
-        })
-      )
 
+      await this.opts.admitIdentity?.(controlIdentity)
       this.assertConnectionAttemptCurrent(attemptGeneration)
       if (controller.signal.aborted) {
         throw controller.signal.reason
       }
+      attempt.readerCleanups.push(
+        attachStreamEventReader(this.streamSocket, (event) => {
+          this.eventListeners.each((listener) => listener(event))
+        })
+      )
       this.connected = true
       this.observedAuthenticatedDisconnect = false
       this.daemonIdentity = controlIdentity
@@ -171,7 +171,7 @@ export class DaemonClient {
       this.connectionGeneration++
 
       const gen = this.connectionGeneration
-      pendingListenerCleanups.push(
+      attempt.readerCleanups.push(
         armDaemonSocketCloseHandlers(this.controlSocket, this.streamSocket, () =>
           this.handleDisconnect(gen)
         )

@@ -1,5 +1,6 @@
 import {
   normalizeWslDaemonRecovery,
+  type WslDaemonIncarnation,
   type WslDaemonRecovery
 } from '../../../shared/wsl-daemon-recovery'
 import type { StoreRuntimeState } from './store-runtime-state'
@@ -52,7 +53,10 @@ export class WslConsumerRecoveryOperations {
     )
   }
 
-  async upsertWslDaemonRecovery(record: WslDaemonRecovery): Promise<void> {
+  async upsertWslDaemonRecovery(
+    record: WslDaemonRecovery,
+    expectedIncarnation?: WslDaemonIncarnation | null
+  ): Promise<void> {
     const normalized = normalizeWslDaemonRecovery(record)
     if (!normalized) {
       throw new Error('Invalid WSL daemon recovery record')
@@ -73,11 +77,25 @@ export class WslConsumerRecoveryOperations {
           }
         }
         const current = rows.find((row) => wslPtyOwnerKey(row) === key)
-        if (current) {
-          if (JSON.stringify(current) !== JSON.stringify(normalized)) {
+        if (current && isWslDaemonRecovery(current)) {
+          if (JSON.stringify(current.endpoint) !== JSON.stringify(normalized.endpoint)) {
             return { value: new Error('WSL daemon owner identity cannot change'), persist: false }
           }
-          return { value: undefined, persist: false }
+          if (JSON.stringify(current.incarnation) === JSON.stringify(normalized.incarnation)) {
+            return { value: undefined, persist: false }
+          }
+          if (
+            !normalized.incarnation ||
+            expectedIncarnation === undefined ||
+            JSON.stringify(current.incarnation ?? null) !== JSON.stringify(expectedIncarnation)
+          ) {
+            return { value: new Error('WSL daemon incarnation admission changed'), persist: false }
+          }
+        } else if (expectedIncarnation) {
+          return {
+            value: new Error('WSL daemon incarnation admission disappeared'),
+            persist: false
+          }
         }
         runtime.state.wslPtyConsumerRecoveries = [
           ...rows.filter((row) => wslPtyOwnerKey(row) !== key),

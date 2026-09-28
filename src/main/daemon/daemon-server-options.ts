@@ -7,6 +7,8 @@ export type DaemonServerOptions = {
   pidPath?: string
   launchNonce?: string
   startedAtMs?: number
+  linuxStartTicks?: string
+  bootId?: string
   publishEndpointOwnership?: () => void
   entryPath?: string
   appVersion?: string

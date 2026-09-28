@@ -29,12 +29,24 @@ const endpoint = z
     serverBuildId: identity
   })
   .strict()
+export const wslDaemonIncarnationSchema = z
+  .object({
+    pid: z.number().int().positive().safe(),
+    startedAtMs: z.number().positive().finite(),
+    launchNonce: identity,
+    linuxStartTicks: z.string().regex(/^\d+$/),
+    bootId: identity
+  })
+  .strict()
+export type WslDaemonIncarnation = z.infer<typeof wslDaemonIncarnationSchema>
+
 const recovery = z
   .object({
     kind: z.literal('daemon'),
     distro: identity,
     relayBuildId: identity,
-    endpoint
+    endpoint,
+    incarnation: wslDaemonIncarnationSchema.optional()
   })
   .strict()
   .refine((value) => value.distro === value.endpoint.distro)

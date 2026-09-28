@@ -38,7 +38,10 @@ function deferred<T>() {
   })
   return { promise, resolve }
 }
-function harness(otherIdentity = identity) {
+function harness(
+  otherIdentity = identity,
+  admitIdentity?: (identity: typeof otherIdentity | null) => Promise<void>
+) {
   const endpoints = new Map<string, ReturnType<typeof pair>>()
   const hellos: unknown[] = []
   const transport: DaemonClientTransport = {
@@ -75,12 +78,44 @@ function harness(otherIdentity = identity) {
       return endpoint.client
     }
   }
-  const client = new DaemonClient({ transport })
+  const client = new DaemonClient({ transport, admitIdentity })
   clients.push(client)
   return { client, transport, endpoints, hellos }
 }
 
 describe('daemon ordered duplex transport', () => {
+  it('does not publish a connection or its events before admission and fences a canceled admission', async () => {
+    const first = deferred<void>()
+    const second = deferred<void>()
+    const admit = vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise)
+    const { client, endpoints } = harness(identity, admit)
+    const event = vi.fn()
+    client.onEvent(event)
+    const connecting = expect(client.ensureConnected()).rejects.toThrow('Disconnected')
+    await vi.waitFor(() => expect(admit).toHaveBeenCalledOnce())
+    endpoints.get('stream')!.server.write(
+      encodeNdjson({
+        type: 'event',
+        event: 'data',
+        sessionId: 's',
+        payload: { data: 'unadmitted' }
+      })
+    )
+    await new Promise((resolve) => setImmediate(resolve))
+    expect(event).not.toHaveBeenCalled()
+    await expect(client.request('ping', undefined)).rejects.toThrow('Not connected')
+    client.disconnect()
+    first.resolve()
+    await connecting
+    const reconnected = client.ensureConnected()
+    await vi.waitFor(() => expect(admit).toHaveBeenCalledTimes(2))
+    await expect(client.request('ping', undefined)).rejects.toThrow('Not connected')
+    second.resolve()
+    await reconnected
+    await expect(client.request('ping', undefined)).resolves.toEqual({})
+    expect(event).not.toHaveBeenCalled()
+  })
+
   it('authenticates both roles, handles RPC/events and settles notify writes', async () => {
     const { client, endpoints, hellos } = harness()
     const event = vi.fn()

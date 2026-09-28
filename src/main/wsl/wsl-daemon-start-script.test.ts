@@ -1,9 +1,18 @@
+import { createHash } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import { runInNewContext } from 'node:vm'
 import { expect, it, vi } from 'vitest'
 import { WSL_DAEMON_START_SCRIPT } from './wsl-daemon-start-script'
 
-it.each(['live', 'EACCES', 'timeout', 'ENOENT', 'ECONNREFUSED'])(
+const hash = (value: string) => createHash('sha256').update(value).digest('hex')
+const serverBuildId = hash(
+  JSON.stringify({
+    runtime: hash('runtime'),
+    files: [{ name: 'daemon-entry.js', sha256: hash('entry') }]
+  })
+)
+
+it.each(['live', 'EACCES', 'timeout', 'ENOENT', 'ECONNREFUSED', 'changed-artifact'])(
   'launches only after verified absent %s contact',
   async (contact) => {
     const absent = contact === 'ENOENT' || contact === 'ECONNREFUSED'
@@ -13,6 +22,7 @@ it.each(['live', 'EACCES', 'timeout', 'ENOENT', 'ECONNREFUSED'])(
       argv: [
         'bun',
         JSON.stringify({
+          serverBuildId,
           userId: '1000',
           home: '/home/u',
           runtime: '/bun',
@@ -25,23 +35,41 @@ it.each(['live', 'EACCES', 'timeout', 'ENOENT', 'ECONNREFUSED'])(
       getuid: () => 1000,
       exitCode: 0
     }
-    const require = () => ({
-      createConnection: () => {
-        const outcome = contacts++ > 0 ? 'live' : contact
-        const socket = new EventEmitter()
-        Object.assign(socket, { setTimeout: vi.fn(), destroy: vi.fn() })
-        queueMicrotask(() => {
-          if (outcome === 'live') {
-            socket.emit('connect')
-          } else if (outcome === 'timeout') {
-            socket.emit('timeout')
-          } else {
-            socket.emit('error', Object.assign(new Error(outcome), { code: outcome }))
-          }
-        })
-        return socket
+    const require = (module: string) => {
+      if (module === 'node:crypto') {
+        return { createHash }
       }
-    })
+      if (module === 'node:fs') {
+        return {
+          lstatSync: () => ({
+            isFile: () => true,
+            isSymbolicLink: () => false,
+            uid: 1000,
+            mode: 0o700
+          }),
+          readFileSync: (file: string) =>
+            file === '/bun' ? 'runtime' : contact === 'changed-artifact' ? 'changed' : 'entry'
+        }
+      }
+      return {
+        createConnection: () => {
+          const outcome =
+            contacts++ > 0 ? 'live' : contact === 'changed-artifact' ? 'ENOENT' : contact
+          const socket = new EventEmitter()
+          Object.assign(socket, { setTimeout: vi.fn(), destroy: vi.fn() })
+          queueMicrotask(() => {
+            if (outcome === 'live') {
+              socket.emit('connect')
+            } else if (outcome === 'timeout') {
+              socket.emit('timeout')
+            } else {
+              socket.emit('error', Object.assign(new Error(outcome), { code: outcome }))
+            }
+          })
+          return socket
+        }
+      }
+    }
     await runInNewContext(WSL_DAEMON_START_SCRIPT, {
       require,
       process: processState,
