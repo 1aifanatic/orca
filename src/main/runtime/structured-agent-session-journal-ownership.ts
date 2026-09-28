@@ -9,6 +9,7 @@
 import { resolve } from 'node:path'
 import {
   agentSessionRefusalError,
+  isAgentSessionRefusalError,
   type AgentSessionRefusalError
 } from '../../shared/agent-session-wire-refusals'
 import {
@@ -92,6 +93,17 @@ export function structuredAgentSessionJournalOwnerRefusal(): AgentSessionRefusal
 /** Why structured chats are refused in this process, or null when nothing refuses them. */
 export function structuredAgentSessionHostRefusal(): AgentSessionRefusalError | null {
   return structuredAgentSessionJournalOwnerRefusal() ?? installRefusal
+}
+
+/** Whether `error` is the refusal structured requests are getting right now. */
+export function isStructuredAgentSessionHostRefusal(error: unknown): boolean {
+  const refusal = structuredAgentSessionHostRefusal()
+  return (
+    refusal !== null &&
+    isAgentSessionRefusalError(error) &&
+    error.refusal.code === refusal.refusal.code &&
+    error.refusal.message === refusal.refusal.message
+  )
 }
 
 /** Set when the owner could not open its journal database; cleared by a later install. The

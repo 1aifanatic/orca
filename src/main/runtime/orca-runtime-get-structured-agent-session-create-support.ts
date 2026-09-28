@@ -19,6 +19,7 @@ import {
 } from './structured-agent-account-home'
 import { resolveStructuredLaunchSeedOptions } from '../../shared/native-chat-session-option-defaults'
 import { hasPersistedStructuredAgentSessionStore as hasPersistedStructuredAgentSessionStoreOnDisk } from './structured-agent-session-runtime'
+import { isStructuredAgentSessionHostRefusal } from './structured-agent-session-journal-ownership'
 import { getProfileUserDataPath } from '../orca-profiles/profile-storage-paths'
 import { parseWslUncPath } from '../../shared/wsl-paths'
 import { parseWorkspaceKey } from '../../shared/workspace-scope'
@@ -258,7 +259,15 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
       return
     }
     // Durable agent records must exist before daemon inventory can be reconciled against them.
-    await this.ensureStructuredAgentSessionHost()
+    try {
+      await this.ensureStructuredAgentSessionHost()
+    } catch (error) {
+      // A refused host is no host: startup goes on, and only structured requests are refused.
+      if (!isStructuredAgentSessionHostRefusal(error)) {
+        throw error
+      }
+      console.warn('[structured-agent-session] startup continues without structured chats', error)
+    }
     await this.refreshMobileSessionPtyRecords()
     await getStructuredAgentSessionHost()?.reconcileRestartLeases()
   }

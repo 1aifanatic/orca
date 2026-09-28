@@ -205,6 +205,81 @@ describe('the owner, when its journal will not open', () => {
   })
 })
 
+// A refused host is a no-host state for startup: the app restores terminals and tabs as usual,
+// and only structured requests are refused.
+describe('startup restoration without a structured host', () => {
+  function startupRuntime(ensureHost: () => Promise<unknown> = install) {
+    const runtime = new OrcaRuntimeService()
+    const refreshPtyRecords = vi.fn(async () => new Set<string>())
+    const hydrateTabs = vi.fn(() => new Set<string>())
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: these are the runtime's own protected members; the test roots the host at `root` and stubs the PTY daemon.
+    const internal = runtime as unknown as {
+      hasPersistedStructuredAgentSessionStore(): boolean
+      ensureStructuredAgentSessionHost(): Promise<unknown>
+      refreshMobileSessionPtyRecords(): Promise<Set<string> | null>
+      getKnownWorkspaceSessionWorktreeIds(): Set<string>
+      hydrateHeadlessMobileSessionTabsFromWorkspaceSession(): Set<string>
+    }
+    internal.hasPersistedStructuredAgentSessionStore = () => true
+    internal.ensureStructuredAgentSessionHost = ensureHost
+    internal.refreshMobileSessionPtyRecords = refreshPtyRecords
+    internal.getKnownWorkspaceSessionWorktreeIds = () => new Set(['workspace-1'])
+    internal.hydrateHeadlessMobileSessionTabsFromWorkspaceSession = hydrateTabs
+    return { runtime, refreshPtyRecords, hydrateTabs }
+  }
+
+  async function expectStartupWithoutHost(runtime: OrcaRuntimeService): Promise<void> {
+    await expect(runtime.prepareStructuredAgentSessionStartupRestoration()).resolves.toBeUndefined()
+    // What `session.tabs.list` awaits before it answers a paired client.
+    await expect(runtime.restoreStructuredAgentSessionTabs()).resolves.toBeUndefined()
+    expect(getStructuredAgentSessionHost()).toBeNull()
+  }
+
+  it('goes ahead while another process owns the chats', async () => {
+    holder = await holdJournalOwnerLockInChild(root)
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const { runtime, refreshPtyRecords, hydrateTabs } = startupRuntime()
+
+    await expectStartupWithoutHost(runtime)
+
+    expect(refreshPtyRecords).toHaveBeenCalledOnce()
+    expect(hydrateTabs).toHaveBeenCalledWith('workspace-1', {
+      allowAttachedWindow: true,
+      onlyRuntimeOwnedTerminals: true
+    })
+    expect(gateRefusal().reason).toBe('journalUnavailable')
+  })
+
+  it('goes ahead when the owner cannot open its journal', async () => {
+    await writeFile(journalDatabasePath(root), 'not a database '.repeat(512))
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const { runtime, refreshPtyRecords, hydrateTabs } = startupRuntime()
+
+    await expectStartupWithoutHost(runtime)
+
+    expect(refreshPtyRecords).toHaveBeenCalledOnce()
+    expect(hydrateTabs).toHaveBeenCalledWith('workspace-1', {
+      allowAttachedWindow: true,
+      onlyRuntimeOwnedTerminals: true
+    })
+    expect(gateRefusal()).toEqual({
+      reason: 'journalCorrupt',
+      message: 'Unable to load this chat.'
+    })
+  })
+
+  it('still fails on an install error that refuses nothing', async () => {
+    const { runtime, refreshPtyRecords } = startupRuntime(async () => {
+      throw new Error('the record store would not open')
+    })
+
+    await expect(runtime.prepareStructuredAgentSessionStartupRestoration()).rejects.toThrow(
+      'the record store would not open'
+    )
+    expect(refreshPtyRecords).not.toHaveBeenCalled()
+  })
+})
+
 describe('releasing ownership', () => {
   it('lets another process take the chats only after a clean stop', async () => {
     await install()
