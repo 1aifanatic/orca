@@ -211,8 +211,13 @@ test.describe('Combined diff invalidation freeze repro (STA-3420)', () => {
       expect(opened.editorCount).toBeGreaterThan(0)
 
       const cdp = await orcaPage.context().newCDPSession(orcaPage)
-      await cdp.send('Profiler.enable')
-      await cdp.send('Profiler.start')
+      const traceComplete = new Promise<string>((resolve) => {
+        cdp.once('Tracing.tracingComplete', (event) => resolve(event.stream ?? ''))
+      })
+      await cdp.send('Tracing.start', {
+        categories: 'devtools.timeline,blink.user_timing',
+        transferMode: 'ReturnAsStream'
+      })
       const measurement = await orcaPage.evaluate(
         async ({ wId, repoPath, relativePaths, burstDurationMs }) => {
           const intervalMs = 50
@@ -301,8 +306,18 @@ test.describe('Combined diff invalidation freeze repro (STA-3420)', () => {
         }
       )
 
-      const { profile } = await cdp.send('Profiler.stop')
-      writeFileSync(test.info().outputPath('renderer.cpuprofile'), JSON.stringify(profile))
+      await cdp.send('Tracing.end')
+      const stream = await traceComplete
+      const chunks: string[] = []
+      for (;;) {
+        const chunk = await cdp.send('IO.read', { handle: stream })
+        chunks.push(chunk.data)
+        if (chunk.eof) {
+          break
+        }
+      }
+      await cdp.send('IO.close', { handle: stream })
+      writeFileSync(test.info().outputPath('renderer-trace.json'), chunks.join(''))
       await cdp.detach()
       console.log(`external-change burst measurement ${JSON.stringify(measurement)}`)
       expect(measurement.sectionRowCount).toBe(1)
@@ -320,7 +335,7 @@ test.describe('Combined diff invalidation freeze repro (STA-3420)', () => {
       expect(measurement.burst.maxLagMs).toBeLessThanOrEqual(
         Math.max(measurement.baseline.maxLagMs, 100) + 1_000
       )
-      throw new Error('Diagnostic-only run: upload renderer.cpuprofile')
+      throw new Error('Diagnostic-only run: upload renderer-trace.json')
     } finally {
       rmSync(fixture.repoPath, { recursive: true, force: true })
     }
