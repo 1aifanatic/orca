@@ -588,6 +588,29 @@ describe('importing a per-chat journal', () => {
     expect(existsSync(legacyJournalDatabaseFile(legacyDir()))).toBe(true)
   })
 
+  // A chat this build founded has a pointer and no import marker: an older build that then starts
+  // a per-chat file for it never held this build's history, so the file is set aside.
+  it('keeps a chat founded in this build when an older build starts a per-chat file for it', async () => {
+    const founded = await openChat()
+    await founded.appendItem(
+      item(1),
+      { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: 'FOUNDED HERE' }] },
+      { fence: 1 }
+    )
+    const foundedEpoch = founded.epoch
+    await journals.closeAll()
+    const older = await historyRows('epoch-older-fresh', 'typed in the older build')
+    await writeLegacyJournal(older.epoch, older.rows)
+    const bytes = await readFile(legacyJournalDatabaseFile(legacyDir()))
+
+    const reopened = await openChat()
+
+    expect(reopened.epoch).toBe(foundedEpoch)
+    expect(texts(reopened)).toContain('FOUNDED HERE')
+    expect(texts(reopened)).not.toContain('typed in the older build')
+    expect((await readFile(legacyJournalDatabaseFile(legacyDir()))).equals(bytes)).toBe(true)
+  })
+
   // Decided once and recorded: no later open reads the file again, after a restart or after the
   // older build ran again and wrote more to it.
   it('never reads a set-aside file again', async () => {

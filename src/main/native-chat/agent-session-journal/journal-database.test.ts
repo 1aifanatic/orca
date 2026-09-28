@@ -240,4 +240,37 @@ describe('schema creation', () => {
       inspected.close()
     }
   })
+
+  // A database an earlier head of this schema wrote gains the set-aside table and keeps its rows.
+  it('upgrades a version 1 database in place', () => {
+    const v1 = new Database(dbPath)
+    v1.pragma('auto_vacuum = INCREMENTAL')
+    v1.pragma('journal_mode = WAL')
+    v1.exec(`
+CREATE TABLE journal_rows (id INTEGER PRIMARY KEY, ts INTEGER NOT NULL, row_json TEXT NOT NULL);
+CREATE TABLE journal_sessions (session_id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL,
+  epoch TEXT NOT NULL, block INTEGER NOT NULL UNIQUE, status_json TEXT, status_seq INTEGER);
+CREATE TABLE journal_repairs (session_id TEXT PRIMARY KEY, epoch TEXT NOT NULL,
+  content_from INTEGER NOT NULL, repaired_at INTEGER NOT NULL);
+CREATE TABLE journal_imports (session_id TEXT PRIMARY KEY, epoch TEXT NOT NULL, tip INTEGER NOT NULL);
+CREATE TABLE journal_import_blocks (session_id TEXT PRIMARY KEY, block INTEGER NOT NULL UNIQUE);
+INSERT INTO journal_sessions VALUES ('s1', 'ws', 'e1', 0, NULL, NULL);
+INSERT INTO journal_imports VALUES ('s1', 'e0', 3);`)
+    v1.pragma('user_version = 1')
+    v1.close()
+
+    const db = openJournalDatabase(dbPath)
+    try {
+      expect(journalPragmaNumber(db, 'user_version')).toBe(JOURNAL_DB_SCHEMA_VERSION)
+      expect(
+        db.prepare("SELECT name FROM sqlite_master WHERE name = 'journal_set_aside'").get()
+      ).toBeTruthy()
+      expect(db.prepare('SELECT session_id, epoch, tip FROM journal_imports').all()).toEqual([
+        { session_id: 's1', epoch: 'e0', tip: 3 }
+      ])
+      expect(journalPragmaNumber(db, 'auto_vacuum')).toBe(2)
+    } finally {
+      db.close()
+    }
+  })
 })

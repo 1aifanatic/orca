@@ -6,7 +6,7 @@
 // carries at most one row per chat: the standing demand for a rebuild a partial repair leaves
 // behind (see journal-repair-marker.ts). `journal_imports` records which per-chat file each chat
 // was last copied from (journal-per-session-reimport.ts), and `journal_set_aside` each chat whose
-// per-chat file an older build started over and which is never read again; `journal_import_blocks`
+// per-chat file is not this build's history and is never read again; `journal_import_blocks`
 // the block a copy still in progress writes into, which no reader follows. `status_json` is the chat's last settled
 // listing status, trusted only where `status_seq` is still the tip of the live epoch.
 
