@@ -97,21 +97,12 @@ export function applyJournalRow(state: JournalReducerState, row: JournalRow): vo
         if (journalItemRevisionIsStale(state, mutation.itemId, mutation.revision)) {
           continue
         }
-        const itemId = resolveJournalItemId(state, mutation.itemId, mutation.body)
+        const { revision, body } = mutation
+        const itemId = resolveJournalItemId(state, mutation.itemId, body)
         acceptSubmissionFromProviderItem(state, mutation.itemId, itemId, row)
-        upsertItem(
-          state,
-          itemId,
-          mutation.revision,
-          journalRenderItem(
-            itemId,
-            mutation.revision,
-            mutation.body,
-            row,
-            journalBatchMutationProducer(row, mutation),
-            sequenceIndex
-          )
-        )
+        const producer = journalBatchMutationProducer(row, mutation)
+        const item = journalRenderItem(itemId, revision, body, row, producer, sequenceIndex)
+        upsertItem(state, itemId, revision, item)
       } else {
         removeItem(state, resolveItemId(state, mutation.itemId), mutation.revision)
       }
