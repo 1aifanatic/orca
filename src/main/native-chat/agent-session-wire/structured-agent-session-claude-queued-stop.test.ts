@@ -5,7 +5,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, expect, it } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import { DISPATCH_REJECTED_CANCELLED } from '../../../shared/structured-agent-session-dispatch-rejection'
 import { activeStructuredAgentSessionTurnId } from '../../../shared/structured-agent-session-live-turn'
@@ -103,8 +103,8 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-function settled(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 20))
+function eventually(assertion: () => unknown): Promise<unknown> {
+  return vi.waitFor(assertion, { timeout: 10_000 })
 }
 
 function envelope(
@@ -151,7 +151,7 @@ async function status(): Promise<string> {
 it('withdraws a follow-up Claude queued behind the running turn when that turn is stopped', async () => {
   const connection = claude.connections[0]!
   const first = await send('Write a long reply.')
-  await settled()
+  await eventually(() => expect(connection.sent).toHaveLength(1))
   // Claude opens the turn: its system/init, then the echo of the message it runs.
   connection.handlers.onMessage?.({
     type: 'system',
@@ -165,15 +165,14 @@ it('withdraws a follow-up Claude queued behind the running turn when that turn i
     ...connection.sent.at(-1)!,
     uuid: connection.sent.at(-1)!.uuid
   })
-  await settled()
-  expect((await dispatch(first)).state).toBe('accepted')
+  await eventually(async () => expect((await dispatch(first)).state).toBe('accepted'))
   const turnId = activeStructuredAgentSessionTurnId((await host.journalSnapshot(SESSION)).items)
   expect(turnId).not.toBeNull()
 
   const followUp = await send('And then this.')
-  await settled()
+  await eventually(() => expect(connection.sent).toHaveLength(2))
   queued.push(String(connection.sent.at(-1)!.uuid))
-  expect((await dispatch(followUp)).state).toBe('pending')
+  await eventually(async () => expect((await dispatch(followUp)).state).toBe('pending'))
 
   const stopped = await host.cancel(CALLER, {
     envelope: envelope('agentSession.cancel', { turnId }),
@@ -187,11 +186,11 @@ it('withdraws a follow-up Claude queued behind the running turn when that turn i
     session_id: PROVIDER_SESSION_ID,
     uuid: 'interrupted-result'
   })
-  await settled()
-
-  expect(await dispatch(followUp)).toEqual({
-    state: 'rejected',
-    reason: DISPATCH_REJECTED_CANCELLED
-  })
-  expect(await status()).toBe('idle')
+  await eventually(async () =>
+    expect(await dispatch(followUp)).toEqual({
+      state: 'rejected',
+      reason: DISPATCH_REJECTED_CANCELLED
+    })
+  )
+  await eventually(async () => expect(await status()).toBe('idle'))
 }, 15_000)
