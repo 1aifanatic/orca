@@ -225,7 +225,8 @@ export abstract class DaemonPtySessionSpawn extends DaemonPtySpawnResult {
       : process.platform !== 'win32' && opts.command
         ? resolveUnixShellPath(opts.shellOverride || resolvePtyShellPath(opts.env ?? {}))
         : ''
-    const shellReadySupported = shellPathSupportsPtyStartupBarrier(effectiveShellPath)
+    const shellReadySupported =
+      Boolean(opts.command) && shellPathSupportsPtyStartupBarrier(effectiveShellPath)
     const immediateMarker = shellReadyMarkerComesFromLineEditor(effectiveShellPath)
     const shellReadyTimeoutMs =
       shellReadySupported &&

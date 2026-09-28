@@ -87,6 +87,14 @@ describe('guest daemon execution boundary', () => {
     expect(reportCwd).not.toHaveBeenCalled()
   })
 
+  it('delivers plain guest shell input without waiting for an unrequested startup marker', async () => {
+    const { provider: p } = provider()
+    const result = await p.spawn({ cols: 80, rows: 24, isNewSession: true })
+    await p.writeWithSettlement(result.id, 'echo ready\r')
+    await waitFor(() => subprocess.write.mock.calls.length > 0)
+    expect(subprocess.write).toHaveBeenCalledWith('echo ready\r')
+  })
+
   it('does not spawn before durable admission and refuses a connection changed while waiting', async () => {
     let release!: () => void
     const admission = new Promise<void>((resolve) => {
