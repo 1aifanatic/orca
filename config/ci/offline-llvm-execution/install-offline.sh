@@ -4,8 +4,13 @@ export DEBIAN_FRONTEND=noninteractive
 cmp /var/lib/dpkg/status /metadata/base-status
 cd /packages
 sha256sum -c SHA256SUMS
-# Local files only; no indexes, fetches or alternate package resolution.
-apt-get --no-download --no-install-recommends -y install /packages/*.deb
+# Focal apt must run its local acquisition step to resolve archive paths.
+mkdir -p /tmp/orca-empty-sources /tmp/orca-empty-lists/partial
+apt-get -o Dir::Etc::sourcelist=/dev/null \
+  -o Dir::Etc::sourceparts=/tmp/orca-empty-sources \
+  -o Dir::State::lists=/tmp/orca-empty-lists \
+  -o Dir::Cache::pkgcache= -o Dir::Cache::srcpkgcache= \
+  --no-install-recommends -y install /packages/*.deb
 while IFS=$'\t' read -r package expected; do
   actual=$(dpkg-query -W -f='${Version}' "$package")
   test "$actual" = "$expected"
