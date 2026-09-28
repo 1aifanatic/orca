@@ -162,6 +162,8 @@ const FAILURE_SENTENCES = {
     'This Claude launch sets its own Anthropic sign-in variables. Remove them to use a managed Claude account.',
   accountSwitchInProgress: () =>
     'A Claude account switch is in progress. Try again after it finishes.',
+  managedAccountUnsupported: (context) =>
+    `While a Claude account is added in WSL, Claude chats need a Windows Claude account. Choose or add one in Claude Accounts settings, then ${retryStep(context)}.`,
   providerExited: (_, __, surface) =>
     surface === 'row'
       ? 'The provider stopped while this response was in progress. You can continue in this conversation.'

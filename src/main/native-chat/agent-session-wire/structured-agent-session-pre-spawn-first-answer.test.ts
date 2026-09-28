@@ -123,6 +123,12 @@ describe('a create that fails before any process spawns', () => {
       'A Claude account switch is in progress. Try again after it finishes.'
     ],
     [
+      'a Claude account added in WSL',
+      'structured Claude is not offered under the active managed Claude account',
+      'managedAccountUnsupported',
+      'While a Claude account is added in WSL, Claude chats need a Windows Claude account. Choose or add one in Claude Accounts settings, then send your message again.'
+    ],
+    [
       "Orca's own reason",
       'claude sessions pin CLAUDE_CONFIG_DIR, not CODEX_HOME',
       undefined,

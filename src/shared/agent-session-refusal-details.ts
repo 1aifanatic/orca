@@ -46,6 +46,8 @@ export const AGENT_SESSION_REFUSAL_REASONS = {
     /** The launch's own Anthropic sign-in variables would override the managed Claude account. */
     'managedAccountEnvOverride',
     'accountSwitchInProgress',
+    /** A Claude account is added in WSL and no Windows one is selected, which a chat can't run under. */
+    'managedAccountUnsupported',
     /** The agent started, then Orca could not open the chat's conversation for it. */
     'attachFailed'
   ],

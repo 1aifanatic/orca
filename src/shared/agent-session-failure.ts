@@ -21,6 +21,7 @@ export const AGENT_SESSION_FAILURE_KINDS = [
   'historyTooLarge',
   'managedAccountEnvOverride',
   'accountSwitchInProgress',
+  'managedAccountUnsupported',
   'providerExited',
   'restartFailed',
   'providerRejected',
