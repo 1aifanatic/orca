@@ -4,7 +4,7 @@ import {
   QUIT_TERMINAL_AGENT,
   START_NEW_CHAT,
   TERMINAL_AGENT_HOLDS_CHAT
-} from './agent-session-failure-words'
+} from './agent-session-failure-copy'
 
 /** Every sentence a notice is made of. Desktop translates each whole sentence with this as its
  *  fallback; mobile shows it as is. */
