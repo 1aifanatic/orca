@@ -61,6 +61,10 @@ if (process.platform !== 'win32') throw new Error('Windows qualification only')
 let result
 if (mode === 'reject') {
   result = rejectedCreation()
+} else if (mode === 'set-before-first-terminal') {
+  const inherited = process.env.BUN_CONPTY_LIBRARY ?? null
+  process.env.BUN_CONPTY_LIBRARY = validProvider
+  result = { inherited, cycle: await terminalCycle(0) }
 } else if (mode === 'cached-failure') {
   const first = rejectedCreation()
   process.env.BUN_CONPTY_LIBRARY = validProvider

@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { isAbsolute, join } from 'node:path'
+import { dirname, isAbsolute, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { beforeAll, describe, expect, it } from 'bun:test'
 
@@ -22,6 +22,7 @@ async function isolated(mode, selector) {
   for (const key of Object.keys(env)) {
     if (/^(NODE_OPTIONS|NODE_PATH|BUN_OPTIONS|BUN_INSPECT.*)$/i.test(key)) delete env[key]
   }
+  if (selector === undefined) delete env.BUN_CONPTY_LIBRARY
   const child = Bun.spawn([process.execPath, fixture, mode, provider], {
     env, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe'
   })
@@ -65,6 +66,28 @@ describe.skipIf(process.platform !== 'win32')('patched Bun ConPTY provider selec
     expect(existsSync(noSymbols)).toBe(true)
     expect((await isolated('reject', noSymbols)).rejected).toBe(true)
   }, 25_000)
+
+  it('refuses the other architecture provider instead of silently using inbox ConPTY', async () => {
+    const otherArch = process.arch === 'arm64' ? 'x64' : 'arm64'
+    const otherProvider = process.env.ORCA_OPPOSITE_CONPTY_LIBRARY ??
+      join(dirname(dirname(provider)), otherArch, 'conpty.dll')
+    expect(isAbsolute(otherProvider)).toBe(true)
+    expect(digest(otherProvider)).toBe(providerHashes[otherArch])
+    expect((await isolated('reject', otherProvider)).rejected).toBe(true)
+  }, 25_000)
+
+  it.each(['invalid', 'unset'])(
+    'honors a verified JS selector before the first Terminal when inherited selector is %s',
+    async (inheritedMode) => {
+      const selector = inheritedMode === 'invalid' ? 'not-an-absolute-provider.dll' : undefined
+      const result = await isolated('set-before-first-terminal', selector)
+      expect(result.inherited).toBe(selector ?? null)
+      expect(result.cycle.exitCode).toBe(0)
+      expect(result.cycle.markerSeen).toBe(true)
+      expect(result.cycle.answered).toBe(true)
+    },
+    25_000
+  )
 
   it('keeps a failed provider selection failed for the process lifetime', async () => {
     const result = await isolated('cached-failure', 'conpty.dll')
