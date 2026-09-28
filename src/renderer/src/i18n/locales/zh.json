@@ -2200,7 +2200,9 @@
         "e57db40c11": "无法为 {{value0}} 构建启动命令。",
         "5b2c1a9e44": "未检测到智能体 CLI，请安装一个，或在设置中选择默认智能体。",
         "b7c1f0a934": "无法访问远程主机，因此 Orca 无法判断工作是否仍在运行。还是关窗吧？",
-        "quitSnapshotSaveFailed": "退出已取消：无法保存会话快照 ({{value0}})。"
+        "quitSnapshotSaveFailed": "退出已取消：无法保存会话快照 ({{value0}})。",
+        "userDisconnectedHosts": "你已断开 {{hosts}}。那里的终端会继续运行。仍要关闭窗口吗？",
+        "userDisconnectedAndUnreachableHosts": "你已断开 {{hosts}}。那里的终端会继续运行。另一台远程主机无法访问，因此 Orca 无法判断那里的工作是否仍在运行。仍要关闭窗口吗？"
       },
       "TerminalSearch": {
         "db234b7519": "关闭",
@@ -12208,7 +12210,10 @@
           },
           "FileExplorerTreeStatus": {
             "ce03835e1f": "此工作区中没有文件",
-            "c76693e456": "无法加载此工作区的文件："
+            "c76693e456": "无法加载此工作区的文件：",
+            "userDisconnectedTitle": "你已断开 {{host}}",
+            "userDisconnectedDescription": "连接后即可显示此工作区的文件。",
+            "connect": "连接"
           },
           "GitHistoryPanel": {
             "cf7cad58d2": "尚无提交",
@@ -18262,7 +18267,8 @@
     },
     "fileLoad": {
       "hostUnresolved": "主机找不到该文件的工作区。它可能已被删除，或者主机可能还不知道。重试，或从选项卡栏中关闭此选项卡。",
-      "userDisconnectedHost": "你已断开 {{host}}。连接后即可加载此文件。",
+      "userDisconnectedTitle": "你已断开 {{host}}",
+      "userDisconnectedDescription": "连接后即可加载此文件。",
       "connect": "连接"
     }
   },

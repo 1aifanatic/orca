@@ -39,9 +39,15 @@ describe("EditorFileLoadErrorView on a host the user's Disconnect holds down", (
 
   it("offers the user's own Connect in place of Retry", async () => {
     const onRetry = vi.fn()
-    render(<EditorFileLoadErrorView message="read failed" worktreeId="wt-ssh" onRetry={onRetry} />)
+    const { container } = render(
+      <EditorFileLoadErrorView message="read failed" worktreeId="wt-ssh" onRetry={onRetry} />
+    )
 
-    screen.getByText('You disconnected devbox. Connect it to load this file.')
+    screen.getByText('You disconnected devbox')
+    screen.getByText('Connect it to load this file.')
+    // Why: the user's own Disconnect is not a load failure, so the card must not read as one.
+    expect(screen.queryByText('Unable to load file')).toBeNull()
+    expect(container.querySelector('.text-destructive')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Connect' }))

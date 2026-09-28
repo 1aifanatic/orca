@@ -2200,7 +2200,9 @@
         "e57db40c11": "{{value0}} 실행 명령을 만들 수 없습니다.",
         "5b2c1a9e44": "agent CLI를 찾지 못했습니다. 하나를 설치하거나 설정에서 기본 agent를 선택하세요.",
         "b7c1f0a934": "원격 호스트에 연결할 수 없으므로 Orca는 해당 호스트에서 작업이 아직 실행 중인지 알 수 없습니다. 그래도 창을 닫으시겠어요?",
-        "quitSnapshotSaveFailed": "종료 취소됨: 세션 스냅샷을 저장할 수 없습니다({{value0}})."
+        "quitSnapshotSaveFailed": "종료 취소됨: 세션 스냅샷을 저장할 수 없습니다({{value0}}).",
+        "userDisconnectedHosts": "{{hosts}} 연결을 끊었습니다. 해당 호스트의 터미널은 계속 실행됩니다. 그래도 창을 닫으시겠어요?",
+        "userDisconnectedAndUnreachableHosts": "{{hosts}} 연결을 끊었습니다. 해당 호스트의 터미널은 계속 실행됩니다. 다른 원격 호스트에 연결할 수 없으므로 Orca는 해당 호스트에서 작업이 아직 실행 중인지 알 수 없습니다. 그래도 창을 닫으시겠어요?"
       },
       "TerminalSearch": {
         "db234b7519": "닫기",
@@ -12208,7 +12210,10 @@
           },
           "FileExplorerTreeStatus": {
             "ce03835e1f": "이 워크스페이스에는 파일이 없습니다.",
-            "c76693e456": "이 워크스페이스에 대한 파일을 로드할 수 없습니다:"
+            "c76693e456": "이 워크스페이스에 대한 파일을 로드할 수 없습니다:",
+            "userDisconnectedTitle": "{{host}} 연결을 끊었습니다",
+            "userDisconnectedDescription": "이 워크스페이스의 파일을 표시하려면 연결하세요.",
+            "connect": "연결"
           },
           "GitHistoryPanel": {
             "cf7cad58d2": "아직 commits이 없습니다",
@@ -18262,7 +18267,8 @@
     },
     "fileLoad": {
       "hostUnresolved": "호스트가 이 파일의 워크스페이스를 찾을 수 없습니다. 삭제되었거나 호스트가 아직 이에 대해 알지 못할 수도 있습니다. 다시 시도하거나 탭 표시줄에서 이 탭을 닫으세요.",
-      "userDisconnectedHost": "{{host}} 연결을 끊었습니다. 이 파일을 불러오려면 연결하세요.",
+      "userDisconnectedTitle": "{{host}} 연결을 끊었습니다",
+      "userDisconnectedDescription": "이 파일을 불러오려면 연결하세요.",
       "connect": "연결"
     }
   },

@@ -1,4 +1,4 @@
-import { AlertCircle, RefreshCw } from 'lucide-react'
+import { AlertCircle, RefreshCw, ServerOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { translate } from '@/i18n/i18n'
 import { useWorktreeHostConnection } from '@/lib/worktree-host-connection-phase'
@@ -38,10 +38,20 @@ export function EditorFileLoadErrorView({
   return (
     <div className="flex h-full items-center justify-center bg-editor-surface p-6 text-sm text-muted-foreground">
       <div className="flex max-w-xl items-start gap-3 rounded-md border border-border bg-background p-4">
-        <AlertCircle className="mt-0.5 size-4 flex-shrink-0 text-destructive" />
+        {/* Why neutral: the user's own Disconnect is not a failure, so it reads like the other
+            pane cards for that host rather than as an error. */}
+        {userDisconnectedHost ? (
+          <ServerOff className="mt-0.5 size-4 flex-shrink-0" />
+        ) : (
+          <AlertCircle className="mt-0.5 size-4 flex-shrink-0 text-destructive" />
+        )}
         <div className="min-w-0">
           <div className="font-medium text-foreground">
-            {translate('auto.components.editor.EditorContent.39f018b052', 'Unable to load file')}
+            {userDisconnectedHost
+              ? translate('editor.fileLoad.userDisconnectedTitle', 'You disconnected {{host}}', {
+                  host: userDisconnectedHost.hostLabel
+                })
+              : translate('auto.components.editor.EditorContent.39f018b052', 'Unable to load file')}
           </div>
           {userDisconnectedHost ? (
             // Why Connect replaces Retry: a read cannot succeed until the user connects the host,
@@ -49,9 +59,8 @@ export function EditorFileLoadErrorView({
             <>
               <div className="mt-1 break-words">
                 {translate(
-                  'editor.fileLoad.userDisconnectedHost',
-                  'You disconnected {{host}}. Connect it to load this file.',
-                  { host: userDisconnectedHost.hostLabel }
+                  'editor.fileLoad.userDisconnectedDescription',
+                  'Connect it to load this file.'
                 )}
               </div>
               <Button

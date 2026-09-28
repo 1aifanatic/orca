@@ -32,7 +32,8 @@ const USER_CONNECT_CALL_SITES: Record<string, readonly string[]> = {
   // The Connect a pane card offers while the user's Disconnect holds its host down.
   'useUserDisconnectedHostConnect(': [
     'components/browser-pane/assemble-chrome/ssh-routed-browser-page-gate.tsx',
-    'components/editor/EditorFileLoadErrorView.tsx'
+    'components/editor/EditorFileLoadErrorView.tsx',
+    'components/right-sidebar/FileExplorerTreeStatus.tsx'
   ],
   // A remote server's `ssh.connect` without the background flag is that server's user connect.
   'connectRuntimeEnvironmentSshTarget(': ['ssh/ssh-user-connect.ts']
