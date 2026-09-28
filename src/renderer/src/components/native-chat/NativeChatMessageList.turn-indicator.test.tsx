@@ -603,11 +603,10 @@ describe('NativeChatMessageList turn indicator', () => {
       />
     )
     // The live bar sits where the settled one will, so settling never moves it.
-    expect(
-      screen
-        .getByText('Complete this task')
-        .compareDocumentPosition(screen.getByText('Working for 3s'))
-    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+    const liveBar = screen.getByText('Working for 3s')
+    expect(screen.getByText('Complete this task').compareDocumentPosition(liveBar)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    )
 
     rerender(
       <NativeChatMessageList
@@ -621,6 +620,10 @@ describe('NativeChatMessageList turn indicator', () => {
 
     const user = screen.getByText('Complete this task')
     const status = screen.getByText('Worked for 3s')
+    // Settled in place: the same bar, not a remount.
+    expect(status.closest('[data-native-chat-turn-status]')).toBe(
+      liveBar.closest('[data-native-chat-turn-status]')
+    )
     const assistant = screen.getByText('Task complete.')
     expect(user.compareDocumentPosition(status)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
     expect(status.compareDocumentPosition(assistant)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)

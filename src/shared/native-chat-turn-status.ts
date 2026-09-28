@@ -226,14 +226,20 @@ export function selectNativeChatTurnStatuses(
       workedSeconds: settled.workedSeconds
     }
   }
+  const activeTiming = timingByTurn[activeTurnKey]
   return {
     active: isWorking
       ? {
-          startedAt: timingByTurn[activeTurnKey]?.startedAt ?? workingStartedAt ?? null,
+          startedAt: activeTiming?.startedAt ?? workingStartedAt ?? null,
           thinking,
           workedSeconds: null
         }
-      : (completedByTurn[activeTurnKey] ?? null),
+      : (completedByTurn[activeTurnKey] ??
+        // Ended, but the local duration is stamped a pass later: stay live until then so
+        // the bar settles in place instead of blinking out. The host's null still hides it.
+        (activeTiming?.workedSeconds === null && !settledByTurn?.has(activeTurnKey)
+          ? { startedAt: activeTiming.startedAt, thinking: false, workedSeconds: null }
+          : null)),
     completedByTurn
   }
 }

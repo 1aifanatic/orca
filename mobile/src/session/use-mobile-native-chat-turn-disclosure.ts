@@ -108,7 +108,7 @@ export function useMobileNativeChatTurnDisclosure({
       const turnStatus =
         !enabled || message.role !== 'user' || !turnKey
           ? null
-          : isWorking && turnKey === activeTurnKey
+          : turnKey === activeTurnKey
             ? active
             : (completedByTurn[turnKey] ?? null)
       return {

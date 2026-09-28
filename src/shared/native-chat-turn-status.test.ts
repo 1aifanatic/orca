@@ -365,6 +365,24 @@ describe('selectNativeChatTurnStatuses', () => {
     )
     expect(completedByTurn).toEqual({})
   })
+
+  it('keeps the just-ended turn live until its local duration is stamped', () => {
+    const running = { u1: { startedAt: 1_000, workedSeconds: null } }
+    const { active } = selectNativeChatTurnStatuses(running, {
+      activeTurnKey: 'u1',
+      isWorking: false,
+      thinking: true
+    })
+    expect(active).toEqual({ startedAt: 1_000, thinking: false, workedSeconds: null })
+    // The host saying it never saw the end still wins.
+    const unverifiable = selectNativeChatTurnStatuses(running, {
+      activeTurnKey: 'u1',
+      isWorking: false,
+      thinking: false,
+      settledByTurn: new Map([['u1', null]])
+    })
+    expect(unverifiable.active).toBeNull()
+  })
 })
 
 describe('nativeChatElapsedSeconds', () => {
