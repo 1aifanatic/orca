@@ -230,6 +230,12 @@ export type StructuredAgentSessionAdapter = {
    *  `AgentSessionAcquisitionRootExitObservedError` when the provider root's own
    *  exit was observed first-hand but its descendants were not proven gone. */
   releaseAcquisition?(input: { sessionId: string }): Promise<boolean>
+  /** The id the provider will record the next send under, for one that adopts a client-chosen
+   *  id. Durable before the hand-over, so a restart can look the send up instead of guessing. */
+  mintDispatchIdentity?(input: {
+    sessionId: string
+    body: AgentJournalMessageItem
+  }): AgentJournalItemIdentity | null
   dispatch(input: {
     sessionId: string
     clientMessageId: string
@@ -240,6 +246,8 @@ export type StructuredAgentSessionAdapter = {
     requestedAt?: number
     /** Revalidate after preparation, immediately before writing to the provider. */
     beforeDispatch?: () => Promise<void>
+    /** From `mintDispatchIdentity`, already durable: the frame must carry exactly this id. */
+    providerIdentity?: AgentJournalItemIdentity
   }): Promise<AgentSessionDispatchOutcome>
   /** `agent` answers for a session with no child running, from the provider alone. */
   rewindSupport?(sessionId: string, agent?: string): AgentSessionRewindSupport

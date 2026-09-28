@@ -59,6 +59,10 @@ export class StructuredAgentSessionAdapterRouter implements StructuredAgentSessi
     return released
   }
 
+  mintDispatchIdentity: NonNullable<StructuredAgentSessionAdapter['mintDispatchIdentity']> = (
+    input
+  ) => this.liveOwnerOrNull(input.sessionId)?.mintDispatchIdentity?.(input) ?? null
+
   dispatch: StructuredAgentSessionAdapter['dispatch'] = (input) =>
     this.owner(input.sessionId).dispatch(input)
 

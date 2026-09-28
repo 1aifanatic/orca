@@ -13,7 +13,11 @@ import type {
 } from '../../../shared/agent-session-journal-types'
 import { digestPayload } from './journal-payload-bounds'
 import { reconcileJournalSubmissionsAgainstHistory } from './journal-restart-reconciliation'
-import type { ProviderHistoryItem, ProviderHistoryWindow } from './journal-submission-reconciler'
+import type {
+  ProviderHistoryItem,
+  ProviderHistoryWindow,
+  ProviderRecordedHistory
+} from './journal-submission-reconciler'
 import { createTrackedJournalOpener } from './journal-store-test-open'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
@@ -70,18 +74,55 @@ function window(
   return { items, boundaryConsistent: true, turnInFlight: false, ...overrides }
 }
 
-/** A host that wrote the submission row and died before learning its outcome. */
-async function reopenAfterCrash(
+/** The whole transcript, holding these records; each is `[uuid, text]`. */
+function wholeHistory(records: [string, string][]): ProviderRecordedHistory {
+  const itemIdsByFingerprint = new Map<string, string[]>()
+  for (const [uuid, text] of records) {
+    const key = agentJournalItemKey(claudeIdentity(uuid))
+    itemIdsByFingerprint.set(digestPayload(text), [
+      ...(itemIdsByFingerprint.get(digestPayload(text)) ?? []),
+      key
+    ])
+  }
+  return {
+    itemIds: new Set(records.map(([uuid]) => agentJournalItemKey(claudeIdentity(uuid)))),
+    itemIdsByFingerprint,
+    provesAbsenceOf: () => true
+  }
+}
+
+/** Appends a send and, when `handedOverAs` names one, hands it over under that frame id. */
+async function appendSend(
+  journal: Awaited<ReturnType<typeof open>>,
+  clientMessageId: string,
+  handedOverAs: string | null,
   body: AgentJournalMessageItem = userMessage('deploy the thing'),
   text = 'deploy the thing'
-) {
-  const journal = await open()
+): Promise<void> {
   await journal.appendSubmission({
-    clientMessageId: 'cm_1',
+    clientMessageId,
     payloadFingerprint: digestPayload(text),
     body,
     fence: 1
   })
+  if (handedOverAs) {
+    await journal.resolveDispatch({
+      clientMessageId,
+      state: 'pending',
+      providerIdentity: claudeIdentity(handedOverAs),
+      fence: 1
+    })
+  }
+}
+
+/** A host that wrote the submission row and died before learning its outcome. */
+async function reopenAfterCrash(
+  body: AgentJournalMessageItem = userMessage('deploy the thing'),
+  text = 'deploy the thing',
+  handedOverAs: string | null = null
+) {
+  const journal = await open()
+  await appendSend(journal, 'cm_1', handedOverAs, body, text)
   const restarted = await open()
   await restarted.markPendingSubmissionsUnknown(2)
   return restarted
@@ -114,12 +155,12 @@ describe('reconcileJournalSubmissionsAgainstHistory', () => {
   })
 
   it('settles a message provably absent from history as rejected: not_delivered', async () => {
-    const journal = await reopenAfterCrash()
+    const journal = await reopenAfterCrash(undefined, undefined, 'uuid-sent')
 
     const settled = await reconcileJournalSubmissionsAgainstHistory({
       journal,
       fence: 2,
-      history: window([])
+      history: window([], { recorded: wholeHistory([['uuid-other', 'something else']]) })
     })
 
     expect(settled).toEqual(['cm_1'])
@@ -217,19 +258,16 @@ describe('reconcileJournalSubmissionsAgainstHistory', () => {
     await journal.appendItem(claudeIdentity('uuid-old'), userMessage('deploy the thing'), {
       fence: 1
     })
-    await journal.appendSubmission({
-      clientMessageId: 'cm_1',
-      payloadFingerprint: digestPayload('deploy the thing'),
-      body: userMessage('deploy the thing'),
-      fence: 1
-    })
+    await appendSend(journal, 'cm_1', 'uuid-sent')
     const restarted = await open()
     await restarted.markPendingSubmissionsUnknown(2)
 
     await reconcileJournalSubmissionsAgainstHistory({
       journal: restarted,
       fence: 2,
-      history: window([history('uuid-old', 'deploy the thing')])
+      history: window([history('uuid-old', 'deploy the thing')], {
+        recorded: wholeHistory([['uuid-old', 'deploy the thing']])
+      })
     })
 
     expect(restarted.submissions()[0]?.dispatchState).toBe('rejected')
@@ -249,19 +287,16 @@ describe('reconcileJournalSubmissionsAgainstHistory', () => {
       providerIdentity: claudeIdentity('uuid-old'),
       fence: 1
     })
-    await journal.appendSubmission({
-      clientMessageId: 'cm_new',
-      payloadFingerprint: digestPayload('deploy the thing'),
-      body: userMessage('deploy the thing'),
-      fence: 1
-    })
+    await appendSend(journal, 'cm_new', 'uuid-new')
     const restarted = await open()
     await restarted.markPendingSubmissionsUnknown(2)
 
     await reconcileJournalSubmissionsAgainstHistory({
       journal: restarted,
       fence: 2,
-      history: window([history('uuid-old', 'deploy the thing')])
+      history: window([history('uuid-old', 'deploy the thing')], {
+        recorded: wholeHistory([['uuid-old', 'deploy the thing']])
+      })
     })
 
     expect(restarted.submissions().map((entry) => entry.dispatchState)).toEqual([
@@ -294,5 +329,63 @@ describe('reconcileJournalSubmissionsAgainstHistory', () => {
       'unknown',
       'unknown'
     ])
+  })
+  it('accepts a send found by its frame id even where the anchored window cannot see it', async () => {
+    // The durable anchor moved past the send, so the window after it is empty.
+    const journal = await reopenAfterCrash(undefined, undefined, 'uuid-sent')
+
+    const settled = await reconcileJournalSubmissionsAgainstHistory({
+      journal,
+      fence: 2,
+      history: window([], { recorded: wholeHistory([['uuid-sent', 'deploy the thing']]) })
+    })
+
+    expect(settled).toEqual(['cm_1'])
+    expect(journal.submissions()[0]).toMatchObject({
+      dispatchState: 'accepted',
+      providerItemId: agentJournalItemKey(claudeIdentity('uuid-sent'))
+    })
+  })
+
+  it('never rejects a send recorded without a frame id, which older builds wrote', async () => {
+    const journal = await reopenAfterCrash()
+
+    const settled = await reconcileJournalSubmissionsAgainstHistory({
+      journal,
+      fence: 2,
+      history: window([], { recorded: wholeHistory([]) })
+    })
+
+    expect(settled).toEqual([])
+    expect(journal.submissions()[0]?.dispatchState).toBe('unknown')
+  })
+
+  it('leaves a send unknown when an unclaimed record holds its text under another id', async () => {
+    // What a provider build that chose its own id would leave behind.
+    const journal = await reopenAfterCrash(undefined, undefined, 'uuid-sent')
+
+    const settled = await reconcileJournalSubmissionsAgainstHistory({
+      journal,
+      fence: 2,
+      history: window([], { recorded: wholeHistory([['uuid-minted', 'deploy the thing']]) })
+    })
+
+    expect(settled).toEqual([])
+    expect(journal.submissions()[0]?.dispatchState).toBe('unknown')
+  })
+
+  it('leaves a send unknown when the history was not read whole', async () => {
+    const journal = await reopenAfterCrash(undefined, undefined, 'uuid-sent')
+
+    const settled = await reconcileJournalSubmissionsAgainstHistory({
+      journal,
+      fence: 2,
+      history: window([], {
+        recorded: { ...wholeHistory([]), provesAbsenceOf: () => false }
+      })
+    })
+
+    expect(settled).toEqual([])
+    expect(journal.submissions()[0]?.dispatchState).toBe('unknown')
   })
 })

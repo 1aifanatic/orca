@@ -93,6 +93,9 @@ export type JournalDispatchRow = JournalRowBase & {
   /** On `rejected`: why, typed. Older readers keep the key and ignore it; a malformed one is
    *  dropped when read, never the row. */
   rejection?: AgentSessionFailureFact
+  /** On `pending`: the provider item key this send was handed over under, for a provider that
+   *  records it under the id Orca chose. No `v` bump: older readers ignore the key. */
+  handedOverItemId?: string
 }
 
 /** An item mutation may name its own producer, because one batch can CREATE

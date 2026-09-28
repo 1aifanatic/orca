@@ -46,8 +46,15 @@ function userMessage(text: string): AgentJournalMessageItem {
   return { kind: 'message', role: 'user', blocks: [{ type: 'text', text }] }
 }
 
+/** A transcript read whole that holds none of the sends below. */
 function window(overrides: Partial<ProviderHistoryWindow> = {}): ProviderHistoryWindow {
-  return { items: [], boundaryConsistent: true, turnInFlight: false, ...overrides }
+  return {
+    items: [],
+    boundaryConsistent: true,
+    turnInFlight: false,
+    recorded: { itemIds: new Set(), itemIdsByFingerprint: new Map(), provesAbsenceOf: () => true },
+    ...overrides
+  }
 }
 
 /** Only the surface `attachJournal` touches; every send-shaped method is a spy
@@ -77,6 +84,16 @@ async function crashedJournal(clientMessageId = 'cm_1', text = 'deploy the thing
     clientMessageId,
     payloadFingerprint: digestPayload(text),
     body: userMessage(text),
+    fence: RECORD.lease.runtimeFence
+  })
+  await journal.resolveDispatch({
+    clientMessageId,
+    state: 'pending',
+    providerIdentity: {
+      provider: 'claude',
+      sessionId: 'provider-1',
+      uuid: `${clientMessageId}-frame`
+    },
     fence: RECORD.lease.runtimeFence
   })
   await journal.close()

@@ -14,13 +14,20 @@
 // of those makes absence meaningless. Failing it reports an inconsistent
 // boundary rather than an empty window, because the two decide opposite things.
 
+import { createReadStream } from 'node:fs'
 import { join } from 'node:path'
 import type { AgentSessionJournalIdentity } from '../../shared/agent-session-journal-types'
 import { resolveSessionFilePath } from '../native-chat/session-file-resolver'
 import type {
   ProviderHistoryItem,
-  ProviderHistoryWindow
+  ProviderHistoryWindow,
+  ProviderRecordedHistory
 } from '../native-chat/agent-session-journal/journal-submission-reconciler'
+import {
+  agentJournalItemKey,
+  parseAgentJournalItemKey
+} from '../../shared/agent-session-journal-item-key'
+import { splitTranscriptStreamLines } from '../native-chat/transcript-stream-lines'
 import { claudeContentBlocks } from '../native-chat/transcript-record-blocks'
 import { isKnownHarnessInjectedUserTurnText } from '../../shared/harness-injected-user-turns'
 import { computeAgentSessionPayloadFingerprint } from '../../shared/agent-session-mutation-envelope'
@@ -86,9 +93,9 @@ function rawTextParts(content: unknown): string[] | null {
 }
 
 /**
- * A user record Orca could itself have submitted. Everything the harness injects
- * is excluded, because a fingerprint computed over machinery would claim a
- * history slot the user's message should have had.
+ * A plain-text user record Orca could itself have submitted. Rows the harness
+ * marks as its own are excluded, because a fingerprint computed over machinery
+ * would claim a history slot the user's message should have had.
  *
  * Attachments are excluded too, and deliberately: the transcript keeps a pasted
  * image as base64 with no path, so the `image-ref` block the submission was
@@ -124,15 +131,15 @@ function claudePromptBlocks(record: TranscriptRecord): NativeChatBlock[] | null 
   if (rawTexts === null || rawTexts.length !== blocks.length) {
     return null
   }
-  const preservedBlocks = blocks.map((block, index) => ({
-    ...block,
-    text: rawTexts[index]!
-  }))
-  const [first] = preservedBlocks
-  if (first?.type !== 'text' || isKnownHarnessInjectedUserTurnText(first.text)) {
-    return null
-  }
-  return preservedBlocks
+  return blocks.map((block, index) => ({ ...block, text: rawTexts[index]! }))
+}
+
+/** The anchored window's prompts: harness-shaped text is left out, so machinery cannot claim a
+ *  send by content. A send handed over under an id never reaches this filter. */
+function claudeUserPromptBlocks(record: TranscriptRecord): NativeChatBlock[] | null {
+  const blocks = claudePromptBlocks(record)
+  const [first] = blocks ?? []
+  return first?.type === 'text' && !isKnownHarnessInjectedUserTurnText(first.text) ? blocks : null
 }
 
 /**
@@ -171,7 +178,7 @@ function createWindowCollector(input: HistoryWindowInput) {
   return { byUuid, onAncestorRecord }
 
   function onAncestorRecord(record: TranscriptRecord, uuid: string): void {
-    const blocks = claudePromptBlocks(record)
+    const blocks = claudeUserPromptBlocks(record)
     if (!blocks) {
       return
     }
@@ -187,6 +194,63 @@ function createWindowCollector(input: HistoryWindowInput) {
         uuid
       }
     })
+  }
+}
+
+/**
+ * Every user record in the file, wherever it sits: a send handed over under an id is found by
+ * that id, so no anchor is needed. Absence counts only when every line of this session's file
+ * was read; any line that does not parse may be the missing record.
+ */
+function createRecordedCollector(input: HistoryWindowInput) {
+  const itemIds = new Set<string>()
+  const itemIdsByFingerprint = new Map<string, string[]>()
+  let whole = true
+  return { add, finish }
+
+  function add(line: string): void {
+    if (!line.trim()) {
+      return
+    }
+    let record: unknown
+    try {
+      record = JSON.parse(line)
+    } catch {
+      whole = false
+      return
+    }
+    const uuid = stringField(record, 'uuid')
+    if (!uuid || !record || typeof record !== 'object' || Array.isArray(record)) {
+      return
+    }
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: A non-array object, checked above.
+    const row = record as TranscriptRecord
+    if (row.type !== 'user') {
+      return
+    }
+    const sessionId = stringField(row, 'sessionId') ?? input.providerSessionId
+    const itemId = agentJournalItemKey({ provider: 'claude', sessionId, uuid })
+    itemIds.add(itemId)
+    const blocks = claudePromptBlocks(row)
+    if (blocks) {
+      const fingerprint = promptFingerprint(input.sessionId, blocks)
+      itemIdsByFingerprint.set(fingerprint, [
+        ...(itemIdsByFingerprint.get(fingerprint) ?? []),
+        itemId
+      ])
+    }
+  }
+
+  function finish(): ProviderRecordedHistory {
+    const provable = whole
+    return {
+      itemIds,
+      itemIdsByFingerprint,
+      provesAbsenceOf: (itemId) => {
+        const identity = provable ? parseAgentJournalItemKey(itemId) : null
+        return identity?.provider === 'claude' && identity.sessionId === input.providerSessionId
+      }
+    }
   }
 }
 
@@ -207,6 +271,16 @@ function windowFromChain(
 }
 
 export function claudeProviderHistoryWindowFromJsonl(
+  input: HistoryWindowInput & { contents: string }
+): ProviderHistoryWindow {
+  const recorded = createRecordedCollector(input)
+  for (const line of input.contents.split('\n')) {
+    recorded.add(line)
+  }
+  return { ...anchoredWindowFromJsonl(input), recorded: recorded.finish() }
+}
+
+function anchoredWindowFromJsonl(
   input: HistoryWindowInput & { contents: string }
 ): ProviderHistoryWindow {
   const ancestryAnchorUuid = input.previousLeafUuid
@@ -251,13 +325,38 @@ export async function resolveClaudeProviderHistoryWindow(input: {
   if (!transcriptPath) {
     return null
   }
-  return readClaudeProviderHistoryWindow({
+  const read = {
     transcriptPath,
     providerSessionId: handle.sessionId,
     previousLeafUuid: handle.leafUuid,
     sessionId: input.identity.sessionId,
     turnInFlight: input.hasLiveSession
-  })
+  }
+  const window = await readClaudeProviderHistoryWindow(read)
+  return { ...window, recorded: await readClaudeRecordedHistory(read) }
+}
+
+async function readClaudeRecordedHistory(
+  input: HistoryWindowInput & { transcriptPath: string }
+): Promise<ProviderRecordedHistory | null> {
+  const recorded = createRecordedCollector(input)
+  try {
+    const stream = createReadStream(input.transcriptPath)
+    for await (const { line } of splitTranscriptStreamLines(
+      stream,
+      MAX_HISTORY_WINDOW_RECORD_BYTES
+    )) {
+      recorded.add(line)
+    }
+  } catch (error) {
+    console.warn('[claude-history-window] transcript unreadable; sends stay unconfirmed:', {
+      transcriptPath: input.transcriptPath,
+      sessionId: input.sessionId,
+      error
+    })
+    return null
+  }
+  return recorded.finish()
 }
 
 export async function readClaudeProviderHistoryWindow(

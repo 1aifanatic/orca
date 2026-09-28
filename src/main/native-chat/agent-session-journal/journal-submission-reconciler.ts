@@ -4,10 +4,14 @@
 // what it TRIED to send but not whether the provider took it. Every surviving
 // `pending` becomes `unknown` and is then matched against provider history.
 //
-// Matching is by identity only — an echoed client message id, else a provider
-// item id the journal already adopted, else the payload fingerprint when it
-// picks out exactly one unclaimed item. Never by text equality: the same
-// question asked twice is two messages, and collapsing them silently loses one.
+// A send handed over under an id the provider adopts is decided by that id alone,
+// looked up across the whole history: present means delivered, absent from a
+// history read whole means not. Older sends carry no such id and fall back to
+// the anchored window — an echoed client message id, else a provider item id the
+// journal already adopted, else the payload fingerprint when it picks out
+// exactly one unclaimed item. That window is not scoped to the send, so absence
+// from it proves nothing and those sends stay `unknown`. Never by text equality:
+// the same question asked twice is two messages, and collapsing them loses one.
 //
 // Orca never re-sends on the user's behalf. An unresolved submission stays
 // `unknown` — a displayed state meaning "delivery unconfirmed", neither sent nor
@@ -17,7 +21,10 @@ import type {
   AgentJournalItemIdentity,
   AgentJournalSubmission
 } from '../../../shared/agent-session-journal-types'
-import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
+import {
+  agentJournalItemKey,
+  parseAgentJournalItemKey
+} from '../../../shared/agent-session-journal-item-key'
 import { DISPATCH_REJECTED_NOT_DELIVERED } from '../../../shared/structured-agent-session-dispatch-rejection'
 
 export type ProviderHistoryItem = {
@@ -44,6 +51,19 @@ export type ProviderHistoryWindow = {
   boundaryConsistent: boolean
   /** The provider reports a turn still running: absence proves nothing yet. */
   turnInFlight: boolean
+  /** Every user item the history holds, not only those after the anchor. Absent when the
+   *  provider has no whole-history read; sends handed over under an id then stay `unknown`. */
+  recorded?: ProviderRecordedHistory | null
+}
+
+export type ProviderRecordedHistory = {
+  /** Journal keys of every user item in the history. */
+  itemIds: ReadonlySet<string>
+  /** Keys of the plain-text ones, by payload fingerprint. A provider build that recorded a send
+   *  under an id of its own leaves only its content behind, so a same-content item vetoes absence. */
+  itemIdsByFingerprint: ReadonlyMap<string, readonly string[]>
+  /** The history was read whole and is where an item with this key would have been recorded. */
+  provesAbsenceOf: (itemId: string) => boolean
 }
 
 export type SubmissionReconciliation =
@@ -62,6 +82,7 @@ export type SubmissionUnknownReason =
   | 'history_boundary_inconsistent'
   | 'turn_in_flight'
   | 'ambiguous_match'
+  | 'no_dispatch_identity'
 
 /**
  * Resolve every unsettled submission against provider history.
@@ -77,13 +98,21 @@ export function reconcileSubmissions(input: {
   const unsettled = input.submissions.filter(
     (submission) => submission.dispatchState === 'pending' || submission.dispatchState === 'unknown'
   )
+  const recorded = input.history.recorded
+  const identified = new Set(
+    unsettled.flatMap(({ handedOverItemId: id }) => (id && recorded?.itemIds.has(id) ? [id] : []))
+  )
+  const legacy = unsettled.filter((submission) => !submission.handedOverItemId)
+  const items = input.history.items.filter(
+    (item) => !identified.has(agentJournalItemKey(item.identity))
+  )
   const claimed = new Set<string>()
   const matched = new Map<string, ProviderHistoryItem>()
   const ambiguous = new Set<string>()
 
   claimBy(
-    unsettled,
-    input.history.items,
+    legacy,
+    items,
     claimed,
     matched,
     (submission, item) =>
@@ -93,8 +122,8 @@ export function reconcileSubmissions(input: {
       submission.providerItemId === agentJournalItemKey(item.identity)
   )
   claimBy(
-    unsettled,
-    input.history.items,
+    legacy,
+    items,
     claimed,
     matched,
     (submission, item) =>
@@ -105,7 +134,7 @@ export function reconcileSubmissions(input: {
   // the first identical submission would make the later one look absent even
   // though either submission could be the delivered one.
   const submissionsByFingerprint = new Map<string, AgentJournalSubmission[]>()
-  for (const submission of unsettled) {
+  for (const submission of legacy) {
     if (matched.has(submission.clientMessageId) || !submission.payloadFingerprint) {
       continue
     }
@@ -114,7 +143,7 @@ export function reconcileSubmissions(input: {
     submissionsByFingerprint.set(submission.payloadFingerprint, sameFingerprint)
   }
   for (const [fingerprint, fingerprintSubmissions] of submissionsByFingerprint) {
-    const candidates = input.history.items.filter(
+    const candidates = items.filter(
       (item) => !claimed.has(item.providerItemId) && item.payloadFingerprint === fingerprint
     )
     if (fingerprintSubmissions.length === 1 && candidates.length === 1) {
@@ -133,7 +162,37 @@ export function reconcileSubmissions(input: {
     }
   }
 
-  return unsettled.map((submission) => resolveOne(submission, matched, ambiguous, input.history))
+  return unsettled.map((submission) =>
+    submission.handedOverItemId
+      ? resolveByIdentity(submission, submission.handedOverItemId, identified, input.history)
+      : resolveOne(submission, matched, ambiguous, input.history)
+  )
+}
+
+function resolveByIdentity(
+  submission: AgentJournalSubmission,
+  itemId: string,
+  identified: ReadonlySet<string>,
+  history: ProviderHistoryWindow
+): SubmissionReconciliation {
+  const { clientMessageId } = submission
+  if (identified.has(itemId)) {
+    const identity = parseAgentJournalItemKey(itemId)
+    return identity
+      ? { clientMessageId, outcome: 'accepted', providerItemId: itemId, identity }
+      : { clientMessageId, outcome: 'unknown', reason: 'history_boundary_inconsistent' }
+  }
+  if (history.turnInFlight) {
+    return { clientMessageId, outcome: 'unknown', reason: 'turn_in_flight' }
+  }
+  if (!history.recorded?.provesAbsenceOf(itemId)) {
+    return { clientMessageId, outcome: 'unknown', reason: 'history_boundary_inconsistent' }
+  }
+  const sameContent = history.recorded.itemIdsByFingerprint.get(submission.payloadFingerprint)
+  if (sameContent?.some((id) => !identified.has(id))) {
+    return { clientMessageId, outcome: 'unknown', reason: 'ambiguous_match' }
+  }
+  return { clientMessageId, outcome: 'rejected', reason: DISPATCH_REJECTED_NOT_DELIVERED }
 }
 
 function claimBy(
@@ -193,11 +252,11 @@ function resolveOne(
       reason: 'turn_in_flight'
     }
   }
-  // Absent from a history we can trust the boundary of, with nothing running:
-  // the provider never took it.
+  // The anchor is the last completed turn, not this send's hand-over, so the send may sit
+  // before it: absence here cannot say the provider never took it.
   return {
     clientMessageId: submission.clientMessageId,
-    outcome: 'rejected',
-    reason: DISPATCH_REJECTED_NOT_DELIVERED
+    outcome: 'unknown',
+    reason: 'no_dispatch_identity'
   }
 }

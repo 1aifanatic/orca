@@ -22,7 +22,8 @@ import { digestPayload } from './journal-payload-bounds'
 import {
   reconcileSubmissions,
   type ProviderHistoryItem,
-  type ProviderHistoryWindow
+  type ProviderHistoryWindow,
+  type ProviderRecordedHistory
 } from './journal-submission-reconciler'
 import { createTrackedJournalOpener } from './journal-store-test-open'
 
@@ -81,6 +82,11 @@ function history(input: {
     payloadFingerprint: digestPayload(input.text),
     identity: { provider: 'codex', threadId: 'thread-1', turnId: TURN_ID, ordinal: input.ordinal }
   }
+}
+
+/** A history read whole, holding exactly these item keys. */
+function wholeHistory(itemIds: string[]): ProviderRecordedHistory {
+  return { itemIds: new Set(itemIds), itemIdsByFingerprint: new Map(), provesAbsenceOf: () => true }
 }
 
 function window(
@@ -235,12 +241,19 @@ describe('crash between provider accept and journal commit', () => {
       body: userMessage('never landed'),
       fence: 1
     })
+    // Handed over under an id the provider would have recorded it by.
+    await journal.resolveDispatch({
+      clientMessageId: 'cm_1',
+      state: 'pending',
+      providerIdentity: ACCEPTED_IDENTITY,
+      fence: 1
+    })
 
     const restarted = await open()
     await restarted.markPendingSubmissionsUnknown(2)
     const [outcome] = reconcileSubmissions({
       submissions: restarted.submissions(),
-      history: window([])
+      history: window([], { recorded: wholeHistory([]) })
     })
     expect(outcome).toEqual({
       clientMessageId: 'cm_1',
@@ -397,7 +410,8 @@ describe('reconciliation matching', () => {
         }
       ])
     })
-    expect(outcome).toMatchObject({ outcome: 'rejected', reason: 'not_delivered' })
+    // Absent from a window that starts at the last completed turn, not at this send.
+    expect(outcome).toMatchObject({ outcome: 'unknown', reason: 'no_dispatch_identity' })
   })
 
   it('lets a strong client-id match win an item a weaker fingerprint would have claimed', () => {
@@ -408,7 +422,7 @@ describe('reconciliation matching', () => {
       ])
     })
     expect(outcomes).toEqual([
-      expect.objectContaining({ clientMessageId: 'cm_1', outcome: 'rejected' }),
+      expect.objectContaining({ clientMessageId: 'cm_1', outcome: 'unknown' }),
       expect.objectContaining({ clientMessageId: 'cm_2', providerItemId: 'item-1' })
     ])
   })
@@ -438,7 +452,7 @@ describe('reconciliation matching', () => {
     })
     expect(outcomes).toEqual([
       expect.objectContaining({ clientMessageId: 'cm_1', providerItemId: 'item-7' }),
-      expect.objectContaining({ clientMessageId: 'cm_2', outcome: 'rejected' })
+      expect.objectContaining({ clientMessageId: 'cm_2', outcome: 'unknown' })
     ])
   })
 

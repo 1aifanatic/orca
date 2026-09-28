@@ -66,6 +66,12 @@ export async function interruptedRestart(
   }
   if (work === 'submission' || work === 'send-after-reply') {
     previous.dispatch.mockResolvedValueOnce({ state: 'admitted' })
+    // Handed over under a frame id, so the restarted host can look it up.
+    previous.host.deps.adapter.mintDispatchIdentity = () => ({
+      provider: 'claude',
+      sessionId: 'provider-session',
+      uuid: 'handed-over-frame'
+    })
     const body = hostTestMessage('Perform the original task')
     await previous.host.send(CALLER, { envelope: envelope('agentSession.send', { body }), body })
     // Accepted first, handed over after: the work in flight is a send the provider took.
@@ -127,7 +133,12 @@ export async function interruptedRestart(
             providerHistoryWindow: async () => ({
               items: [],
               boundaryConsistent: historyBoundaryConsistent,
-              turnInFlight: false
+              turnInFlight: false,
+              recorded: {
+                itemIds: new Set<string>(),
+                itemIdsByFingerprint: new Map(),
+                provesAbsenceOf: () => historyBoundaryConsistent
+              }
             })
           }
         : {})

@@ -7,6 +7,10 @@ import type {
 } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import { stopClaudeBackgroundTasks } from './claude-structured-control-actions'
 import { dispatchClaudeTurn } from './claude-structured-dispatch'
+import {
+  claudeRecordedFrameUuid,
+  mintClaudeDispatchIdentity
+} from './claude-structured-dispatch-content'
 import { StructuredSessionCompaction } from '../native-chat/agent-session-wire/structured-session-compaction'
 import { releaseClaudeAcquisition } from './claude-structured-acquisition-release'
 import { acquireClaudeSession } from './claude-structured-session-acquisition'
@@ -189,8 +193,18 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
     )
   }
 
-  dispatch: StructuredAgentSessionAdapter['dispatch'] = (input) =>
-    dispatchClaudeTurn(this.session(input.sessionId), input, input.beforeDispatch)
+  mintDispatchIdentity: NonNullable<StructuredAgentSessionAdapter['mintDispatchIdentity']> = (
+    input
+  ) => {
+    const session = this.sessions.get(input.sessionId)
+    return session ? mintClaudeDispatchIdentity(session.providerSessionId, input.body) : null
+  }
+
+  dispatch: StructuredAgentSessionAdapter['dispatch'] = (input) => {
+    const session = this.session(input.sessionId)
+    const sentUuid = claudeRecordedFrameUuid(session.providerSessionId, input.providerIdentity)
+    return dispatchClaudeTurn(session, { ...input, sentUuid }, input.beforeDispatch)
+  }
 
   compact: NonNullable<StructuredAgentSessionAdapter['compact']> = (input) =>
     compactClaudeSession(this.session(input.sessionId), this.compactions, input)

@@ -39,6 +39,12 @@ export function applyJournalDispatchRow(
   submission.resolvedAt = row.state === 'pending' ? null : row.ts
   if (row.state === 'pending') {
     submission.handedOverAt = row.ts
+    // Each hand-over names its own frame; a row without one leaves the send decided by content.
+    if (typeof row.handedOverItemId === 'string' && row.handedOverItemId) {
+      submission.handedOverItemId = row.handedOverItemId
+    } else {
+      delete submission.handedOverItemId
+    }
   }
   if (row.recovered) {
     submission.recovered = row.recovered

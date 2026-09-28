@@ -123,7 +123,8 @@ describe('structured session acquisition options', () => {
     const historyWindow = (): ProviderHistoryWindow => ({
       items: [],
       boundaryConsistent: true,
-      turnInFlight: childAcquired
+      turnInFlight: childAcquired,
+      recorded: { itemIds: new Set(), itemIdsByFingerprint: new Map(), provesAbsenceOf: () => true }
     })
     const withHistory = (origin: 'created' | 'resumed'): StructuredAgentSessionAdapter => {
       const sessionAdapter = adapter({ origin })
@@ -178,6 +179,12 @@ describe('structured session acquisition options', () => {
         role: 'user',
         blocks: [{ type: 'text', text: 'deploy the thing' }]
       } satisfies AgentJournalMessageItem,
+      fence: 1
+    })
+    await firstJournal!.resolveDispatch({
+      clientMessageId: 'crashed-send',
+      state: 'pending',
+      providerIdentity: { provider: 'claude', sessionId: 'provider-1', uuid: 'crashed-frame' },
       fence: 1
     })
     await firstJournal!.close()

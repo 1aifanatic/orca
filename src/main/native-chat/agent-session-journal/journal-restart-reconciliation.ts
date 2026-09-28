@@ -2,9 +2,9 @@
 //
 // Runs once per journal open, after the crash boundary has already settled every
 // survivor to `unknown`. It only ever narrows that answer: `accepted` when the
-// provider's own history holds the message, `rejected` when a boundary we can
-// vouch for proves it never arrived. Anything the reconciler leaves `unknown`
-// is left exactly as the crash boundary wrote it.
+// provider's own history holds the message, `rejected` when a history read whole
+// lacks the id the send was handed over under. Anything the reconciler leaves
+// `unknown` is left exactly as the crash boundary wrote it.
 //
 // Nothing here dispatches. A `rejected` submission becomes re-sendable only
 // through the user's Retry, which rotates the client message id; Orca still
@@ -73,9 +73,19 @@ function unseenHistory(
       committed.add(submission.providerItemId)
     }
   }
+  const recorded = history.recorded
   return {
     ...history,
-    items: history.items.filter((item) => !committed.has(agentJournalItemKey(item.identity)))
+    items: history.items.filter((item) => !committed.has(agentJournalItemKey(item.identity))),
+    recorded: recorded && {
+      ...recorded,
+      itemIdsByFingerprint: new Map(
+        [...recorded.itemIdsByFingerprint].map(([fingerprint, itemIds]) => [
+          fingerprint,
+          itemIds.filter((itemId) => !committed.has(itemId))
+        ])
+      )
+    }
   }
 }
 

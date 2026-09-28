@@ -9,6 +9,8 @@ import { structuredAgentSessionSendBody } from '../../shared/structured-agent-se
 import { structuredAgentSessionPayloadFingerprint } from '../../shared/structured-agent-session-mutation'
 import { computeAgentSessionPayloadFingerprint } from '../../shared/agent-session-mutation-envelope'
 import { reconcileSubmissions } from '../native-chat/agent-session-journal/journal-submission-reconciler'
+import { agentJournalItemKey } from '../../shared/agent-session-journal-item-key'
+import type { AgentJournalSubmission } from '../../shared/agent-session-journal-types'
 import {
   claudeProviderHistoryWindowFromJsonl,
   resolveClaudeProviderHistoryWindow
@@ -157,7 +159,7 @@ describe('claudeProviderHistoryWindowFromJsonl', () => {
   it('reports no window and an inconsistent boundary without a durable anchor', () => {
     const contents = jsonl([ANCHOR, prompt('u-1', 'anchor', 'ship it')], 'u-1')
 
-    expect(read(contents, null)).toEqual({
+    expect(read(contents, null)).toMatchObject({
       items: [],
       boundaryConsistent: false,
       turnInFlight: false
@@ -191,7 +193,7 @@ describe('claudeProviderHistoryWindowFromJsonl', () => {
   })
 
   it('keeps the boundary consistent and the window empty when nothing followed the anchor', () => {
-    expect(read(jsonl([ANCHOR], 'anchor'), 'anchor')).toEqual({
+    expect(read(jsonl([ANCHOR], 'anchor'), 'anchor')).toMatchObject({
       items: [],
       boundaryConsistent: true,
       turnInFlight: false
@@ -347,5 +349,91 @@ describe('a crash between Claude saving a prompt and Orca recording its echo', (
     const subagent = row('assistant', 'subagent-reply', null, { isSidechain: true })
     const window = read(`${CRASHED_MID_TURN}\n${JSON.stringify(subagent)}\n`, 'alpha-reply')
     expect(window.items.map((item) => item.providerItemId)).toEqual(['bravo'])
+  })
+})
+
+describe('a send handed over under its own frame id', () => {
+  const sentKey = agentJournalItemKey({
+    provider: 'claude',
+    sessionId: PROVIDER_SESSION,
+    uuid: 'sent'
+  })
+
+  function handedOver(text: string): AgentJournalSubmission {
+    return {
+      clientMessageId: 'cm-sent',
+      fence: 1,
+      payloadFingerprint: sendFingerprint(text),
+      dispatchState: 'unknown',
+      providerItemId: null,
+      reason: null,
+      submittedAt: 0,
+      resolvedAt: null,
+      handedOverItemId: sentKey
+    }
+  }
+
+  function verdict(contents: string, previousLeafUuid: string | null, text: string) {
+    const [outcome] = reconcileSubmissions({
+      history: read(contents, previousLeafUuid),
+      submissions: [handedOver(text)]
+    })
+    return outcome
+  }
+
+  it('is accepted when Claude holds it before the anchor a later turn advanced', () => {
+    // The send stayed unconfirmed while a later turn completed and moved the durable leaf.
+    const contents = jsonl(
+      [
+        ANCHOR,
+        prompt('sent', 'anchor', 'ship it'),
+        prompt('later', 'sent', 'and then this'),
+        prompt('leaf', 'later', 'latest')
+      ],
+      'leaf'
+    )
+
+    expect(read(contents, 'later').items.map((item) => item.providerItemId)).toEqual(['leaf'])
+    expect(verdict(contents, 'later', 'ship it')).toMatchObject({
+      outcome: 'accepted',
+      providerItemId: sentKey
+    })
+  })
+
+  it('is accepted when its text starts with a harness tag', () => {
+    const text = '<system-reminder>why does this parse wrong</system-reminder>'
+    const contents = jsonl([ANCHOR, prompt('sent', 'anchor', [{ type: 'text', text }])], 'sent')
+
+    expect(verdict(contents, 'anchor', text)).toMatchObject({
+      outcome: 'accepted',
+      providerItemId: sentKey
+    })
+  })
+
+  it('is accepted before any turn completed, when there is no anchor at all', () => {
+    const contents = jsonl([prompt('sent', null, 'ship it')], 'sent')
+
+    expect(verdict(contents, null, 'ship it')).toMatchObject({ outcome: 'accepted' })
+  })
+
+  it('is not delivered when the whole file lacks it', () => {
+    const contents = jsonl([ANCHOR, prompt('u-1', 'anchor', 'something else')], 'u-1')
+
+    expect(verdict(contents, 'anchor', 'ship it')).toMatchObject({ outcome: 'rejected' })
+  })
+
+  it('stays unknown when a line of the file does not parse', () => {
+    const contents = `${jsonl([ANCHOR], 'anchor')}{"type":"user","uuid":"sent"`
+
+    expect(verdict(contents, 'anchor', 'ship it')).toMatchObject({ outcome: 'unknown' })
+  })
+
+  it('stays unknown when a record under another id holds the same text', () => {
+    const contents = jsonl([ANCHOR, prompt('minted', 'anchor', 'ship it')], 'minted')
+
+    expect(verdict(contents, 'anchor', 'ship it')).toMatchObject({
+      outcome: 'unknown',
+      reason: 'ambiguous_match'
+    })
   })
 })

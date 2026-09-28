@@ -12,6 +12,7 @@ import {
   type AgentSessionFailureWordsContext
 } from '../../../shared/agent-session-failure-words'
 import type {
+  AgentJournalItemIdentity,
   AgentJournalMessageItem,
   AgentJournalStatusItem,
   AgentJournalSubmission
@@ -75,7 +76,8 @@ async function dispatchSafely(
   ctx: AgentSessionHandoverContext,
   clientMessageId: string,
   body: AgentJournalMessageItem,
-  requestedAt: number
+  requestedAt: number,
+  providerIdentity: AgentJournalItemIdentity | null
 ): Promise<AgentSessionDispatchOutcome> {
   try {
     return await ctx.adapter.dispatch({
@@ -83,7 +85,8 @@ async function dispatchSafely(
       clientMessageId,
       body,
       fence: ctx.fence,
-      requestedAt
+      requestedAt,
+      ...(providerIdentity ? { providerIdentity } : {})
     })
   } catch (error) {
     if (ctx.providerChildPhase?.() === 'starting') {
@@ -178,10 +181,24 @@ export async function handOverSubmission(
     })
     return
   }
-  await ctx.journal.resolveDispatch({ clientMessageId, state: 'pending', fence: ctx.fence })
+  // Durable with the hand-over, so a restart decides delivery by this id, not by content.
+  const providerIdentity =
+    ctx.adapter.mintDispatchIdentity?.({ sessionId: ctx.sessionId, body }) ?? null
+  await ctx.journal.resolveDispatch({
+    clientMessageId,
+    state: 'pending',
+    fence: ctx.fence,
+    ...(providerIdentity ? { providerIdentity } : {})
+  })
   // The row written at acceptance is the send's instant on the host clock; the turn this
   // dispatch opens records it so the live counter never re-anchors at turn-open.
-  const outcome = await dispatchSafely(ctx, clientMessageId, body, submission.submittedAt)
+  const outcome = await dispatchSafely(
+    ctx,
+    clientMessageId,
+    body,
+    submission.submittedAt,
+    providerIdentity
+  )
   // An admission needs no dispatch row: the submission is already pending.
   if (outcome.state === 'admitted') {
     return
