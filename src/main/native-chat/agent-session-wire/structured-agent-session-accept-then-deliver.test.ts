@@ -10,7 +10,10 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vite
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionSubscribeEvent } from '../../../shared/agent-session-wire'
-import { DISPATCH_REJECTED_CANCELLED } from '../../../shared/structured-agent-session-dispatch-rejection'
+import {
+  classifyDispatchRejection,
+  DISPATCH_REJECTED_CANCELLED
+} from '../../../shared/structured-agent-session-dispatch-rejection'
 import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import { journalDirectoryFor } from '../agent-session-journal/journal-paths'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
@@ -22,6 +25,7 @@ import {
 import { journalIdentityFor } from './structured-agent-session-attach'
 import { attachParamsForRecord } from './structured-agent-session-conversation-open'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
+import type { StructuredAgentSessionChildEndCause } from './structured-agent-session-host-types'
 import { persistRewindRecord } from './structured-rewind-recovery'
 import {
   HOST_TEST_NOW as NOW,
@@ -662,6 +666,50 @@ describe('an eviction between acceptance and handover', () => {
     expect(dispatch.mock.calls[0]?.[0].clientMessageId).toBe(id)
     expect(acquire).toHaveBeenCalledTimes(2)
   })
+})
+
+// A close whose stop lands but whose release fails keeps the conversation, so the delivery loop
+// rejects what is queued by how the child ended.
+describe('a close that stops the child and then fails', () => {
+  const END_CHILD = {
+    evict: () => host.close(SESSION)
+  } satisfies Partial<Record<StructuredAgentSessionChildEndCause, () => Promise<void>>>
+
+  it.each([
+    { end: 'evict', starting: true, kind: 'providerStartFailed', verdict: 'failure' },
+    { end: 'evict', starting: false, kind: 'providerExited', verdict: 'failure' }
+  ] as const)(
+    'rejects what is queued as $kind after a $end (during startup: $starting)',
+    async ({ end, starting, kind, verdict }) => {
+      const started = deferred<void>()
+      adapterExtras = {
+        awaitStarted: () => started.promise,
+        // Once: the host's own teardown acknowledges again.
+        acknowledgeSessionRelease: vi.fn().mockImplementationOnce(() => {
+          throw new Error('release acknowledgement failed')
+        })
+      }
+      await host.close(SESSION)
+      await startHost()
+      acquire.mockImplementationOnce(async (input) => ({
+        ...(await spawnChild(input)),
+        ...(starting ? { providerChildPhase: 'starting' as const } : {})
+      }))
+      await host.hold(SESSION, 'surface-1')
+      const id = await accept('hello')
+      await eventually(() => expect(acquire).toHaveBeenCalledTimes(2))
+
+      await expect(END_CHILD[end]()).rejects.toThrow()
+      expect(host.hasSession(SESSION)).toBe(true)
+      started.resolve()
+
+      await eventually(() => expect(submission(id)?.dispatchState).toBe('rejected'))
+      const rejected = submission(id)!
+      expect(rejected.rejection).toMatchObject({ kind })
+      expect(classifyDispatchRejection(rejected).verdict).toBe(verdict)
+      expect(dispatch).not.toHaveBeenCalled()
+    }
+  )
 })
 
 describe('a compaction or rewind an earlier child left prepared', () => {
