@@ -57,6 +57,13 @@ export function withRemoteReattachInputBuffer(transport: PtyTransport): PtyTrans
       }
     },
     sendInput(data, kind) {
+      console.warn('[remote-reattach-debug] send', {
+        kind,
+        connected: transport.isConnected(),
+        ready: connectionReady,
+        buffering: pending?.isBuffering() ?? null,
+        length: data.length
+      })
       if (
         kind !== 'query-reply' &&
         (pending?.isBuffering() === true || (!connectionReady && !transport.isConnected()))
@@ -76,6 +83,7 @@ export function withRemoteReattachInputBuffer(transport: PtyTransport): PtyTrans
         }
       : {}),
     attach(options) {
+      console.warn('[remote-reattach-debug] attach', options.existingPtyId)
       clear()
       connectionReady = false
       const expectedId = options.existingPtyId
@@ -103,6 +111,10 @@ export function withRemoteReattachInputBuffer(transport: PtyTransport): PtyTrans
   }
   transport.setConnectForRecovery?.((options) => wrapped.connect(options))
   transport.setConnectionReady?.(() => {
+    console.warn('[remote-reattach-debug] ready', {
+      id: transport.getPtyId(),
+      buffering: pending?.isBuffering() ?? null
+    })
     connectionReady = true
     if (pending) {
       const expectedId = pendingExpectedId ?? transport.getPtyId()
