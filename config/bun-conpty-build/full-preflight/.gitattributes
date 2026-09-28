@@ -1,0 +1,7 @@
+project/config/patches/*.patch -text
+project/config/scripts/*.mjs text eol=lf
+project/config/scripts/*.cjs text eol=lf
+project/src/shared/*.ts text eol=lf
+qualify-full.mjs text eol=lf
+source-hashes.json text eol=lf
+payload.tar.gz -text
