@@ -7,10 +7,12 @@ export function withRemoteReattachInputBuffer(transport: PtyTransport): PtyTrans
   const sendAccepted = transport.sendInputAccepted?.bind(transport)
   let pending: ReturnType<typeof createPtyPreconnectInputBuffer> | null = null
   let pendingExpectedId: string | null = null
+  let connectionReady = false
   const clear = (): void => {
     pending?.clear()
     pending = null
     pendingExpectedId = null
+    connectionReady = false
   }
   const flush = (
     buffer: ReturnType<typeof createPtyPreconnectInputBuffer>,
@@ -34,6 +36,7 @@ export function withRemoteReattachInputBuffer(transport: PtyTransport): PtyTrans
     ...transport,
     async connect(options) {
       clear()
+      connectionReady = false
       const expectedId = options.sessionId
       const buffer =
         expectedId && parseRemoteRuntimePtyId(expectedId) ? createPtyPreconnectInputBuffer() : null
@@ -54,7 +57,10 @@ export function withRemoteReattachInputBuffer(transport: PtyTransport): PtyTrans
       }
     },
     sendInput(data, kind) {
-      if (kind !== 'query-reply' && (pending?.isBuffering() === true || !transport.isConnected())) {
+      if (
+        kind !== 'query-reply' &&
+        (pending?.isBuffering() === true || (!connectionReady && !transport.isConnected()))
+      ) {
         return ensurePending().enqueue(data, 'ordinary', kind)
       }
       return transport.sendInput(data, kind)
@@ -63,13 +69,15 @@ export function withRemoteReattachInputBuffer(transport: PtyTransport): PtyTrans
     ...(sendAccepted
       ? {
           sendInputAccepted: (data, kind) =>
-            kind !== 'query-reply' && (pending?.isBuffering() === true || !transport.isConnected())
+            kind !== 'query-reply' &&
+            (pending?.isBuffering() === true || (!connectionReady && !transport.isConnected()))
               ? ensurePending().enqueueAccepted(data, kind)
               : sendAccepted(data, kind)
         }
       : {}),
     attach(options) {
       clear()
+      connectionReady = false
       const expectedId = options.existingPtyId
       const buffer = parseRemoteRuntimePtyId(expectedId) ? createPtyPreconnectInputBuffer() : null
       pending = buffer
@@ -95,6 +103,7 @@ export function withRemoteReattachInputBuffer(transport: PtyTransport): PtyTrans
   }
   transport.setConnectForRecovery?.((options) => wrapped.connect(options))
   transport.setConnectionReady?.(() => {
+    connectionReady = true
     if (pending) {
       const expectedId = pendingExpectedId ?? transport.getPtyId()
       if (expectedId) {
