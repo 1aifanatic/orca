@@ -371,7 +371,6 @@ describe('registerPtyHandlers', () => {
       spawn: physicalSpawn,
       authoritativeOwnerListings: false
     })
-    Object.assign(provider, { routesFreshSpawnsToLocalProvider: true })
     setLocalPtyProvider(provider as never)
     registerPtyHandlers(mainWindow as never, runtime)
     const controller = (

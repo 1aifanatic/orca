@@ -11,11 +11,7 @@ import { resolveWslSessionContext } from '../../../daemon/wsl-session-context'
 import { normalizeWindowsTerminalCwd } from '../../../providers/windows-shell-args'
 import { wslUncDirectoryExistsAsync } from '../../../wsl'
 import { getCodexSelectionTargetForPty } from '../host-env/codex-home'
-import {
-  isClaudeLaunchCommand,
-  recoverFreshSpawnProviderRouting,
-  routesFreshSpawnsToLocalProvider
-} from '../host-env/fresh-spawn-routing'
+import { isClaudeLaunchCommand } from '../host-env/fresh-spawn-routing'
 import { getAppPtyId, getProvider, getRelayPtyId } from '../provider/registry'
 import type { PtyIpcSpawnState } from './spawn-state'
 
@@ -23,7 +19,7 @@ export async function preparePtyIpcSpawnPreflight(ctx: PtyIpcSpawnState): Promis
   const args = ctx.args
   // Establish daemon identity before the first await so hidden delivery is gated before byte zero.
   ctx.provider = getProvider(args.connectionId)
-  ctx.isDaemonHostSpawn = !args.connectionId && !routesFreshSpawnsToLocalProvider(ctx.provider)
+  ctx.isDaemonHostSpawn = !args.connectionId
   ctx.isMintedSessionId = args.sessionId === undefined && ctx.isDaemonHostSpawn
   ctx.effectiveSessionId =
     args.sessionId ?? (ctx.isDaemonHostSpawn ? mintPtySessionId(args.worktreeId) : undefined)
@@ -180,38 +176,6 @@ export async function preparePtyIpcSpawnPreflight(ctx: PtyIpcSpawnState): Promis
     : null
   await preparePtyIpcWslRoute(ctx)
   ctx.spawnTiming.mark('preflight')
-  const freshSpawnRecovery =
-    ctx.preAdoptedStablePane || ctx.wslGuest
-      ? undefined
-      : recoverFreshSpawnProviderRouting(ctx.provider, args.connectionId, args.sessionId)
-  if (freshSpawnRecovery) {
-    await freshSpawnRecovery
-    const previousHiddenMarkId = ctx.preSpawnHiddenMarkId
-    ctx.isDaemonHostSpawn = !args.connectionId && !routesFreshSpawnsToLocalProvider(ctx.provider)
-    ctx.isMintedSessionId = args.sessionId === undefined && ctx.isDaemonHostSpawn
-    ctx.effectiveSessionId =
-      args.sessionId ?? (ctx.isDaemonHostSpawn ? mintPtySessionId(args.worktreeId) : undefined)
-    ctx.effectiveSessionAppId =
-      ctx.effectiveSessionId !== undefined
-        ? getAppPtyId(args.connectionId, ctx.effectiveSessionId)
-        : undefined
-    ctx.effectiveSessionRelayId =
-      ctx.effectiveSessionId !== undefined
-        ? getRelayPtyId(args.connectionId, ctx.effectiveSessionId)
-        : undefined
-    ctx.preSpawnHiddenMarkId =
-      ctx.initiallyHidden && ctx.isDaemonHostSpawn && ctx.effectiveSessionAppId !== undefined
-        ? ctx.effectiveSessionAppId
-        : null
-    if (previousHiddenMarkId !== ctx.preSpawnHiddenMarkId) {
-      if (previousHiddenMarkId !== null) {
-        ctx.deps.transitionSpawnHiddenRendererPtyDeliveryState(previousHiddenMarkId, false)
-      }
-      if (ctx.preSpawnHiddenMarkId !== null) {
-        ctx.deps.transitionSpawnHiddenRendererPtyDeliveryState(ctx.preSpawnHiddenMarkId, true)
-      }
-    }
-  }
   ctx.isClaudeLaunch =
     !ctx.preAdoptedStablePane &&
     !args.connectionId &&

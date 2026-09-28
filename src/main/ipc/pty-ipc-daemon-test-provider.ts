@@ -124,7 +124,22 @@ export class PtyIpcDaemonTestProvider extends DaemonPtyAdapter {
       }
       case 'setSessionBackground':
         return {}
-      default:
+      case 'abortHistorySeedTransfer':
+      case 'appendHistorySeedTransfer':
+      case 'cancelCreateOrAttach':
+      case 'closeTransientPty':
+      case 'confirmForegroundProcess':
+      case 'confirmShellForeground':
+      case 'createTransientPty':
+      case 'finishHistorySeedTransfer':
+      case 'inspectProcess':
+      case 'ping':
+      case 'ptySpawnHealth':
+      case 'shutdown':
+      case 'shutdownIfIdle':
+      case 'startHistorySeedTransfer':
+      case 'systemResolverHealth':
+      case 'writeTransientPty':
         throw new Error(`IPC daemon test transport does not implement ${request.type}`)
     }
   }

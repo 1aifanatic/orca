@@ -68,7 +68,6 @@ export type LaunchedDaemonIdentity = {
 
 /** Local (non-daemon) PTY provider the degraded/fallback paths install. */
 export type MockLocalPtyProvider = {
-  routesFreshSpawnsToLocalProvider: undefined
   spawn: Mock<(opts: { sessionId?: string }) => Promise<{ id: string }>>
   attach: Mock<() => Promise<void>>
   hasPty: Mock<() => boolean>

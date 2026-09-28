@@ -13,11 +13,7 @@ import {
   shouldStripInheritedOrcaCodexHome,
   codexHomePathsEqual
 } from '../host-env/codex-home'
-import {
-  isClaudeLaunchCommand,
-  recoverFreshSpawnProviderRouting,
-  routesFreshSpawnsToLocalProvider
-} from '../host-env/fresh-spawn-routing'
+import { isClaudeLaunchCommand } from '../host-env/fresh-spawn-routing'
 import { stripRemotePaneEnvWhenHooksDisabled } from '../provider/liveness'
 import { isTuiAgent } from '../../../../shared/tui-agent-config'
 import { isClaudeAuthSwitchInProgress } from '../../../claude-accounts/live-pty-gate'
@@ -71,7 +67,24 @@ export async function prepareRuntimePtySpawn(
           terminalWindowsWslDistro: null
         }
   ctx.daemonShellOverride = ctx.terminalRuntimeOptions.shellOverride
-  prepareRuntimeSessionIdentity(ctx)
+  ctx.isDaemonHostSpawn = !args.connectionId
+  ctx.callerRequestedSessionId = args.sessionId?.trim()
+  ctx.requestedSessionId =
+    ctx.callerRequestedSessionId ??
+    (ctx.isDaemonHostSpawn && args.agentSessionCreateOperationId
+      ? ptySessionIdForAgentCreateOperation(args.worktreeId, args.agentSessionCreateOperationId)
+      : undefined)
+  ctx.sessionId =
+    ctx.requestedSessionId ??
+    (ctx.isDaemonHostSpawn ? mintPtySessionId(args.worktreeId) : undefined)
+  ctx.effectiveSessionRelayId =
+    ctx.sessionId !== undefined ? getRelayPtyId(args.connectionId, ctx.sessionId) : undefined
+  ctx.effectiveSessionAppId =
+    ctx.sessionId !== undefined ? getAppPtyId(args.connectionId, ctx.sessionId) : undefined
+  ctx.isNewDaemonSession =
+    !ctx.preAdoptedStablePane &&
+    ctx.isDaemonHostSpawn &&
+    (ctx.callerRequestedSessionId === undefined || args.isNewSession === true)
   ctx.expectedWslDistro = !args.connectionId
     ? (resolveWslSessionContext({
         cwd: ctx.cwd,
@@ -107,18 +120,6 @@ export async function prepareRuntimePtySpawn(
       if (pathUsable) {
         await pathUsable
       }
-    }
-    const freshSpawnRecovery = ctx.preAdoptedStablePane
-      ? undefined
-      : recoverFreshSpawnProviderRouting(
-          ctx.provider,
-          args.connectionId,
-          args.sessionId,
-          args.isNewSession
-        )
-    if (freshSpawnRecovery) {
-      await freshSpawnRecovery
-      prepareRuntimeSessionIdentity(ctx)
     }
   }
   ctx.codexSelectionTarget = getCodexSelectionTargetForPty(
@@ -261,26 +262,4 @@ export async function prepareRuntimePtySpawn(
   await prepareRuntimeHostSpawnEnvironment(ctx)
 
   return null
-}
-
-function prepareRuntimeSessionIdentity(ctx: RuntimePtySpawnState): void {
-  const args = ctx.args
-  ctx.isDaemonHostSpawn = !args.connectionId && !routesFreshSpawnsToLocalProvider(ctx.provider)
-  ctx.callerRequestedSessionId = args.sessionId?.trim()
-  ctx.requestedSessionId =
-    ctx.callerRequestedSessionId ??
-    (ctx.isDaemonHostSpawn && args.agentSessionCreateOperationId
-      ? ptySessionIdForAgentCreateOperation(args.worktreeId, args.agentSessionCreateOperationId)
-      : undefined)
-  ctx.sessionId =
-    ctx.requestedSessionId ??
-    (ctx.isDaemonHostSpawn ? mintPtySessionId(args.worktreeId) : undefined)
-  ctx.effectiveSessionRelayId =
-    ctx.sessionId !== undefined ? getRelayPtyId(args.connectionId, ctx.sessionId) : undefined
-  ctx.effectiveSessionAppId =
-    ctx.sessionId !== undefined ? getAppPtyId(args.connectionId, ctx.sessionId) : undefined
-  ctx.isNewDaemonSession =
-    !ctx.preAdoptedStablePane &&
-    ctx.isDaemonHostSpawn &&
-    (ctx.callerRequestedSessionId === undefined || args.isNewSession === true)
 }
