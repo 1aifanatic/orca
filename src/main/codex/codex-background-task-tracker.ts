@@ -58,7 +58,7 @@ export class CodexBackgroundTaskTracker {
 
   observe(event: CodexBackgroundTaskEvent): boolean {
     const itemEvent = event.method === 'item/started' || event.method === 'item/completed'
-    const command = itemEvent ? this.commands.observe(event) : null
+    const commandExit = itemEvent ? this.commands.observe(event) : null
     const frame = readCodexBackgroundTaskFrame(event, this.primaryThreadId)
     if (frame?.kind === 'subagent') {
       this.executions.register(
@@ -72,7 +72,7 @@ export class CodexBackgroundTaskTracker {
     } else if (frame && frame.threadId !== this.primaryThreadId) {
       this.executions.observeTurn(frame.threadId, frame.turnId, frame.state)
     }
-    this.childWork.observe(event, frame, command)
+    this.childWork.observe(event, frame, commandExit)
     if (!frame) {
       return itemEvent ? this.refresh() : false
     }

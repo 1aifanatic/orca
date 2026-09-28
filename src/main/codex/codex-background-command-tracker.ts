@@ -10,10 +10,8 @@ const MAX_DESCRIPTION_CHARS = 512
 
 type Command = { threadId: string; task: AgentSessionBackgroundTask; bytes: number }
 
-/** What one frame did to a persistent command: it started, or its process exited with `item`. */
-export type CodexBackgroundCommandChange =
-  | { type: 'started'; threadId: string; task: AgentSessionBackgroundTask }
-  | { type: 'ended'; threadId: string; taskId: string; item: CodexThreadItem }
+/** A tracked command whose process exited, with the item that said so. */
+export type CodexBackgroundCommandExit = { threadId: string; taskId: string; item: CodexThreadItem }
 
 /** The label's reserved share of the description. Reserved, not merely capped:
  *  a label free to spend the whole budget clips away the command it qualifies,
@@ -70,7 +68,7 @@ export class CodexBackgroundCommandTracker {
     )
   }
 
-  observe(event: CodexBackgroundTaskEvent): CodexBackgroundCommandChange | null {
+  observe(event: CodexBackgroundTaskEvent): CodexBackgroundCommandExit | null {
     const parsed = this.parse(event)
     if (!parsed || this.settled.has(parsed.key)) {
       return null
@@ -88,9 +86,7 @@ export class CodexBackgroundCommandTracker {
         this.settledBytes += bytes
       }
       this.trimSettled()
-      return existing
-        ? { type: 'ended', threadId: existing.threadId, taskId: existing.task.id, item }
-        : null
+      return existing ? { threadId: existing.threadId, taskId: existing.task.id, item } : null
     }
     if (existing) {
       return null
@@ -101,7 +97,7 @@ export class CodexBackgroundCommandTracker {
     this.commands.set(key, command)
     this.liveBytes += command.bytes
     this.trimSettled()
-    return { type: 'started', threadId: command.threadId, task: command.task }
+    return null
   }
 
   tasks(

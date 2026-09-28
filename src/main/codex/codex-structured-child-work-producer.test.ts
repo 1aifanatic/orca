@@ -189,7 +189,7 @@ describe('Codex structured child-work producer', () => {
             basis: 'open'
           })
       },
-      // The child leaves a dev server running past its own turn.
+      // The child starts a dev server it will leave running past its own turn.
       {
         frame: item('item/started', REVIEWER, 'r1', {
           type: 'commandExecution',
@@ -199,10 +199,8 @@ describe('Codex structured child-work producer', () => {
           status: 'inProgress'
         }),
         lead: 'working',
-        check: () =>
-          expect(byDescription('npm run dev')?.parentChildWorkId).toBe(
-            byDescription('review')?.childWorkId
-          )
+        // Not work of its own until it outlives the child's turn.
+        check: () => expect(byDescription('npm run dev')).toBeUndefined()
       },
       {
         frame: item('item/completed', REVIEWER, 'r1', {
@@ -258,6 +256,10 @@ describe('Codex structured child-work producer', () => {
             membership: 'settled',
             outcome: 'succeeded',
             lastMessage: 'Dev server is up'
+          })
+          expect(byDescription('npm run dev')).toMatchObject({
+            membership: 'live',
+            parentChildWorkId: byDescription('review')?.childWorkId
           })
           // Finished, but a shell it launched still runs: the CLI parent rule reads monitoring.
           expect(display('review')).toBe('monitoring')

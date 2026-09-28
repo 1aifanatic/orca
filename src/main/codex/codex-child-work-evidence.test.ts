@@ -400,7 +400,7 @@ describe('Codex child-work evidence', () => {
     expect(byKind('agent')[0]?.state).toBe('working')
   })
 
-  it("owns the child's persistent command, so a finished child reads monitoring while it runs", () => {
+  it('records a command the child left running once its turn ends, so it reads monitoring', () => {
     const { send, byKind, display } = runningChild()
     send(
       item(
@@ -411,6 +411,11 @@ describe('Codex child-work evidence', () => {
       )
     )
     const [agent] = byKind('agent')
+    // While the child's turn runs, the command is the tool it has open, not work of its own.
+    expect(agent?.operation).toMatchObject({ toolName: 'Bash', input: 'npm run dev' })
+    expect(byKind('command')).toEqual([])
+    send(turn('turn/completed', CHILD, 'c1'))
+    expect(byKind('agent')[0]).toMatchObject({ membership: 'settled', outcome: 'succeeded' })
     expect(byKind('command')).toEqual([
       expect.objectContaining({
         membership: 'live',
@@ -418,10 +423,6 @@ describe('Codex child-work evidence', () => {
         parentChildWorkId: agent!.childWorkId
       })
     ])
-    // While the child's turn runs, the command is also the tool it has open.
-    expect(agent?.operation).toMatchObject({ toolName: 'Bash', input: 'npm run dev' })
-    send(turn('turn/completed', CHILD, 'c1'))
-    expect(byKind('agent')[0]).toMatchObject({ membership: 'settled', outcome: 'succeeded' })
     expect(display(agent!.childWorkId)).toBe('monitoring')
     send(
       item('item/completed', CHILD, 'c1', {
@@ -443,16 +444,31 @@ describe('Codex child-work evidence', () => {
         CHILD,
         'c1',
         shell('exec-1', 'tail -f log', 'inProgress', 'unifiedExecStartup')
+      ),
+      turn('turn/completed', CHILD, 'c1'),
+      turn('turn/started', CHILD, 'c2'),
+      // Still inside its turn, so this one is only the child's open call.
+      item(
+        'item/started',
+        CHILD,
+        'c2',
+        shell('exec-2', 'npm test', 'inProgress', 'unifiedExecStartup')
       )
     )
     expect(byKind('command')[0]).not.toHaveProperty('parentChildWorkId')
     send(spawned())
-    expect(byKind('command')[0]?.parentChildWorkId).toBe(byKind('agent')[0]?.childWorkId)
+    expect(byKind('command')).toEqual([
+      expect.objectContaining({
+        description: 'tail -f log',
+        parentChildWorkId: byKind('agent')[0]?.childWorkId
+      })
+    ])
   })
 
-  it("records the session's own persistent command with no owner", () => {
+  it("records the session's own command with no owner once it outlives the session's turn", () => {
     const { send, byKind } = harness()
     send(
+      turn('turn/started', PRIMARY, PARENT_TURN),
       item(
         'item/started',
         PRIMARY,
@@ -460,10 +476,42 @@ describe('Codex child-work evidence', () => {
         shell('exec-9', 'sleep 90', 'inProgress', 'unifiedExecStartup')
       )
     )
+    expect(byKind('command')).toEqual([])
+    send(turn('turn/completed', PRIMARY, PARENT_TURN))
     expect(byKind('command')).toEqual([
       expect.objectContaining({ membership: 'live', description: 'sleep 90' })
     ])
     expect(byKind('command')[0]).not.toHaveProperty('parentChildWorkId')
+  })
+
+  it('keeps shells that exit within their turn out of the records, so none displaces a finished child', () => {
+    const { send, byKind, records } = runningChild()
+    // Codex runs every shell, however short, the way it runs one left running.
+    const shells = (threadId: string, turnId: string, count: number) => {
+      for (let index = 0; index < count; index += 1) {
+        const id = `${threadId}-exec-${index}`
+        send(
+          item(
+            'item/started',
+            threadId,
+            turnId,
+            shell(id, 'rg foo', 'inProgress', 'unifiedExecStartup')
+          ),
+          item('item/completed', threadId, turnId, {
+            ...shell(id, 'rg foo', 'completed', 'unifiedExecStartup'),
+            exitCode: 0
+          })
+        )
+      }
+    }
+    shells(CHILD, 'c1', 20)
+    send(turn('turn/completed', CHILD, 'c1'))
+    shells(PRIMARY, PARENT_TURN, 40)
+    send(turn('turn/completed', PRIMARY, PARENT_TURN))
+    expect(records()).toEqual([
+      expect.objectContaining({ kind: 'agent', membership: 'settled', outcome: 'succeeded' })
+    ])
+    expect(byKind('command')).toEqual([])
   })
 
   it('names the child that spawned a nested child as its owner', () => {
@@ -490,10 +538,11 @@ describe('Codex child-work evidence', () => {
     send(
       item(
         'item/started',
-        CHILD,
-        'c1',
+        PRIMARY,
+        PARENT_TURN,
         shell('exec-1', 'npm run dev', 'inProgress', 'unifiedExecStartup')
-      )
+      ),
+      turn('turn/completed', PRIMARY, PARENT_TURN)
     )
     expect(records()).toHaveLength(2)
     tracker.clear()
