@@ -7,7 +7,8 @@ import type { AgentJournalResetReason } from '../../../shared/agent-session-jour
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import {
   openStructuredAgentSessionConversation,
-  type OpenedStructuredAgentSessionConversation
+  type OpenedStructuredAgentSessionConversation,
+  type StructuredAgentSessionConversationOpenOptions
 } from './structured-agent-session-conversation-open'
 import { StructuredAgentSessionDeliveryLoop } from './structured-agent-session-delivery-loop'
 import { structuredAgentSessionCommandRunning } from './structured-agent-session-command-turn'
@@ -23,7 +24,10 @@ import { recoverStructuredRewind } from './structured-rewind-recovery'
 export type StructuredAgentSessionConversationDelivery = {
   loop: StructuredAgentSessionDeliveryLoop
   /** For a caller inside the session's serialize. */
-  open: (sessionId: string) => Promise<StructuredAgentSessionHostSession | null>
+  open: (
+    sessionId: string,
+    options?: StructuredAgentSessionConversationOpenOptions
+  ) => Promise<StructuredAgentSessionHostSession | null>
   /** Every commit a conversation's journal makes: one may have ended the command that held its
    *  queue. Enqueued through the session's serialize, never read here, so a commit that lands while
    *  a step is deciding to stop wakes the loop after that step rather than being lost to it. */
@@ -104,8 +108,8 @@ export function createStructuredAgentSessionConversationDelivery(input: {
     loop,
     afterCommit,
     adoptOpened,
-    open: (sessionId) =>
-      openStructuredAgentSessionConversation({ deps, sessions, adoptOpened }, sessionId)
+    open: (sessionId, options) =>
+      openStructuredAgentSessionConversation({ deps, sessions, adoptOpened }, sessionId, options)
   }
 }
 

@@ -7,6 +7,7 @@ import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journa
 import { cp, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
+import type { AgentSessionOwnerProbe } from '../../../shared/agent-session-lease-adjudication'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
@@ -39,7 +40,10 @@ afterEach(async () => {
 })
 
 /** A host that dies mid-turn, relaunched over a copy of its files taken at the crash. */
-async function relaunchAfterCrashMidTurn() {
+async function relaunchAfterCrashMidTurn(
+  probe: AgentSessionOwnerProbe,
+  { reconcile = true }: { reconcile?: boolean } = {}
+) {
   const dying = hostTestState()
   await attach()
   const events = dying.acquire.mock.calls[0]?.[0].events
@@ -74,47 +78,79 @@ async function relaunchAfterCrashMidTurn() {
     journalRoot: relaunched,
     claimKeyId: 'key-1',
     mintSpawnToken: () => 'spawn-next',
-    probeOwner: async () => ({ outcome: 'pid-absent' }),
+    probeOwner: async () => probe,
     now: () => NOW
   })
-  await host.reconcileRestartLeases()
+  if (reconcile) {
+    await host.reconcileRestartLeases()
+  }
   replaceHostTestState({ store, host })
   return { host, acquire }
 }
 
-async function runningTurns(host: StructuredAgentSessionHost) {
+/** Neither proof of the old owner's death is an observed exit, so the turn ends `unverifiable`. */
+async function turnStates(host: StructuredAgentSessionHost) {
   return (await host.journalSnapshot(SESSION)).items
     .flatMap((item) => readAgentJournalTurn(item.body) ?? [])
-    .filter((turn) => turn.state === 'running')
+    .map((turn) => turn.state)
 }
 
-it('settles a turn a dead generation left running when a send opens the chat and its start fails', async () => {
-  const { host, acquire } = await relaunchAfterCrashMidTurn()
-  expect(host.hasSession(SESSION)).toBe(false)
+// A host that cannot prove the old owner gone leaves its lease in recovery, still claimed, until
+// the next acquire resolves it: the open is not that acquire, and the turn is no less gone.
+const PROBES = [
+  ['the old owner is proven gone', { outcome: 'pid-absent' }],
+  [
+    'nothing proves the old owner gone',
+    { outcome: 'indeterminate', reason: 'This host cannot probe structured session owners.' }
+  ]
+] as const satisfies readonly (readonly [string, AgentSessionOwnerProbe])[]
 
-  const body = hostTestMessage('sent to a chat nobody has open')
-  const sendEnvelope = envelope('agentSession.send', { body })
-  await expect(host.send(CALLER, { envelope: sendEnvelope, body })).resolves.toMatchObject({
-    ok: true
-  })
-  await eventually(async () =>
-    expect(
-      (await host.journalSnapshot(SESSION)).submissions.find(
-        (entry) => entry.clientMessageId === sendEnvelope.clientOperationId
-      )
-    ).toMatchObject({ dispatchState: 'rejected' })
-  )
+it.each(PROBES)(
+  'settles a turn a dead generation left running when a send opens the chat and its start fails, when %s',
+  async (_when, probe) => {
+    const { host, acquire } = await relaunchAfterCrashMidTurn(probe)
+    expect(host.hasSession(SESSION)).toBe(false)
 
-  expect(acquire).toHaveBeenCalledOnce()
-  expect(await runningTurns(host)).toEqual([])
-  await host.flushAllStreamedEvents()
-})
+    const body = hostTestMessage('sent to a chat nobody has open')
+    const sendEnvelope = envelope('agentSession.send', { body })
+    await expect(host.send(CALLER, { envelope: sendEnvelope, body })).resolves.toMatchObject({
+      ok: true
+    })
+    await eventually(async () =>
+      expect(
+        (await host.journalSnapshot(SESSION)).submissions.find(
+          (entry) => entry.clientMessageId === sendEnvelope.clientOperationId
+        )
+      ).toMatchObject({ dispatchState: 'rejected' })
+    )
 
-it('settles the same turn when a reader opens the chat', async () => {
-  const { host } = await relaunchAfterCrashMidTurn()
+    expect(acquire).toHaveBeenCalledOnce()
+    expect(await turnStates(host)).toEqual(['unverifiable'])
+    await host.flushAllStreamedEvents()
+  }
+)
 
-  await host.revealSession(SESSION)
+it.each(PROBES)(
+  'settles the same turn when a reader opens the chat, when %s',
+  async (_when, probe) => {
+    const { host } = await relaunchAfterCrashMidTurn(probe)
 
-  expect(await runningTurns(host)).toEqual([])
+    await host.revealSession(SESSION)
+
+    expect(await turnStates(host)).toEqual(['unverifiable'])
+    await host.flushAllStreamedEvents()
+  }
+)
+
+// On desktop the chat on screen at relaunch reads before startup reconciles the leases.
+it('settles it when a read reaches the chat before the startup reconcile', async () => {
+  const { host } = await relaunchAfterCrashMidTurn({ outcome: 'pid-absent' }, { reconcile: false })
+  expect(hostTestState().store.getRecord(SESSION)?.lease.claimStatus).toBe('live')
+
+  await host.history({ sessionId: SESSION, direction: 'tail' })
+  await host.reconcileRestartLeases()
+  await host.restoreReadableSessions([SESSION])
+
+  expect(await turnStates(host)).toEqual(['unverifiable'])
   await host.flushAllStreamedEvents()
 })

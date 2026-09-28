@@ -24,7 +24,15 @@ it('tells the structured chat its read keeps retrying', () => {
   ).toBeInTheDocument()
 })
 
-it('shows the host message over either default', () => {
-  render(<NativeChatEmptyState kind="error" retrying message="disk full" />)
+it('shows the host message in place of the terminal-backed default', () => {
+  render(<NativeChatEmptyState kind="error" message="disk full" />)
   expect(screen.getByText('disk full')).toBeInTheDocument()
+  expect(screen.queryByText(/Toggle back to the terminal/)).toBeNull()
+})
+
+it('keeps the structured chat retrying line when the host sent a message', () => {
+  render(<NativeChatEmptyState kind="error" retrying message="disk full" />)
+  expect(
+    screen.getByText('The transcript could not be read. Orca keeps trying to load it.')
+  ).toBeInTheDocument()
 })
