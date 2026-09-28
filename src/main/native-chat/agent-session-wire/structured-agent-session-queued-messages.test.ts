@@ -309,19 +309,18 @@ describe('drain', () => {
     }
     await settleAccepted(working, 'a')
     const firstId = first.value.queued.messageId
+    const secondId = second.value.queued.messageId
     await eventually(async () => expect(await submission(firstId)).toBeDefined())
     await settleRejected(firstId, 'refused')
     await eventually(async () =>
       expect(await drafts()).toMatchObject([
         { messageId: firstId, state: 'returned' },
-        { messageId: second.value.queued.messageId, state: 'waiting' }
+        { messageId: secondId, state: 'waiting' }
       ])
     )
     // Deleting the card unblocks the one behind it.
     expect(await deleteQueued(firstId)).toMatchObject({ ok: true, value: { deleted: true } })
-    await eventually(async () =>
-      expect(await submission(second.value.queued.messageId)).toBeDefined()
-    )
+    await eventually(async () => expect(await submission(secondId)).toBeDefined())
   })
 })
 
