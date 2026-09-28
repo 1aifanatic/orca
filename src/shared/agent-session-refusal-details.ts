@@ -102,7 +102,7 @@ export const AGENT_SESSION_REFUSAL_REASONS = {
     'hostDisabled',
     'hostUnsupported'
   ],
-  // No host path sends it; older clients still read it.
+  // Sent with no reason when starting the agent for an operation throws; older clients read it too.
   agent_session_owner_restart_failed: []
 } as const satisfies Record<AgentSessionWireRefusalCode, readonly string[]>
 

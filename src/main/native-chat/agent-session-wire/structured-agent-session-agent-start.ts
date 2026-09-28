@@ -13,9 +13,11 @@ import {
   agentSessionRefusalFromReference,
   readAgentSessionRefusalReference,
   refuse,
+  refuseUnclassified,
   type AgentSessionRefusalDetailsByCode,
   type AgentSessionWireRefusalCode
 } from '../../../shared/agent-session-wire-refusals'
+import { agentSessionWriteNoticeEnglish } from '../../../shared/agent-session-refusal-notice'
 import type {
   AgentSessionAttachResult,
   AgentSessionMutationResult,
@@ -75,13 +77,17 @@ export function ensureStructuredAgentSessionAgentForOperation(
   context: StructuredAgentSessionAttachContext,
   sessionId: string
 ): Promise<StructuredAgentSessionResumeOutcome> {
-  return ensureStructuredAgentSessionAgent(context, sessionId).catch((error: unknown) => ({
-    ok: false,
-    refusal: {
-      code: 'agent_session_owner_restart_failed',
-      message: error instanceof Error ? error.message : String(error)
+  return ensureStructuredAgentSessionAgent(context, sessionId).catch((error: unknown) => {
+    // The error is Orca's own and goes to the log; the refusal says only that the start failed.
+    console.warn('[agent-session] starting the agent for an operation failed:', error)
+    return {
+      ok: false,
+      refusal: refuseUnclassified(
+        'agent_session_owner_restart_failed',
+        agentSessionWriteNoticeEnglish(['restartFailed'])
+      )
     }
-  }))
+  })
 }
 
 async function startStructuredAgentSessionAgent(
