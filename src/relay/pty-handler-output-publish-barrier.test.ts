@@ -30,7 +30,7 @@ vi.mock('../main/shell-prompt-readiness-probe', () => ({
 }))
 
 import type { PtyHandler } from './pty-handler'
-import { beginPtyHandlerTest, endPtyHandlerTest } from './pty-handler-test-harness'
+import { beginPtyHandlerTest, endPtyHandlerTest, testPtyId } from './pty-handler-test-harness'
 import type { MockDispatcher } from './pty-handler-test-harness'
 
 // The blocking hook POST used to put an agent's event on the wire before the agent could print or
@@ -52,32 +52,83 @@ describe('PtyHandler output publish barrier', () => {
     await endPtyHandlerTest(handler, originalPlatform)
   })
 
-  it('runs before the output and the exit it precedes reach the client', async () => {
-    let onData: ((data: string) => void) | undefined
-    let onExit: ((evt: { exitCode: number }) => void) | undefined
+  function spawnCallbacks() {
+    const callbacks: {
+      onData?: (data: string) => void
+      onExit?: (evt: { exitCode: number }) => void
+    } = {}
     mockPtySpawn.mockReturnValue({
       ...mockPtyInstance,
       onData: vi.fn((cb: (data: string) => void) => {
-        onData = cb
+        callbacks.onData = cb
       }),
       onExit: vi.fn((cb: (evt: { exitCode: number }) => void) => {
-        onExit = cb
+        callbacks.onExit = cb
       })
     })
+    return callbacks
+  }
+
+  function recordWire(queued = 0): string[] {
     const wire: string[] = []
-    handler.setOutputPublishBarrier(() => wire.push('barrier'))
+    handler.setOutputPublishBarrier(() => {
+      wire.push('barrier')
+      return queued
+    })
     dispatcher.notify.mockImplementation((method: string) => {
       if (method === 'pty.data' || method === 'pty.exit') {
         wire.push(method)
       }
     })
+    return wire
+  }
+
+  it('runs before every output chunk and before the exit', async () => {
+    const pty = spawnCallbacks()
+    const wire = recordWire()
     await dispatcher.callRequest('pty.spawn', {})
 
-    onData!('title reverted to the shell')
+    pty.onData!('working')
     vi.advanceTimersByTime(8)
-    onData!('bye')
-    onExit!({ exitCode: 0 })
+    pty.onData!('title reverted to the shell')
+    pty.onExit!({ exitCode: 0 })
 
-    expect(wire).toEqual(['barrier', 'pty.data', 'barrier', 'pty.data', 'pty.exit'])
+    expect(wire).toEqual(['barrier', 'pty.data', 'barrier', 'pty.data', 'barrier', 'pty.exit'])
+  })
+
+  it('runs before output sent straight back after a keypress', async () => {
+    const pty = spawnCallbacks()
+    const wire = recordWire()
+    await dispatcher.callRequest('pty.spawn', {})
+
+    dispatcher.callNotification('pty.data', { id: testPtyId(1), data: '\x1b' })
+    pty.onData!('\x1b]0;zsh\x07$ ')
+    vi.advanceTimersByTime(8)
+
+    expect(wire).toEqual(['barrier', 'pty.data'])
+  })
+
+  it('keeps output behind the hook frames it queued instead of letting it overtake them', async () => {
+    const pty = spawnCallbacks()
+    const lanes: boolean[] = []
+    Object.assign(dispatcher, {
+      tryNotifyPtyData: vi.fn((_params: unknown, options: { interactive: boolean }) => {
+        lanes.push(options.interactive)
+        return true
+      })
+    })
+    let queued = 1
+    handler.setOutputPublishBarrier(() => queued)
+    await dispatcher.callRequest('pty.spawn', {})
+
+    dispatcher.callNotification('pty.data', { id: testPtyId(1), data: '\x1b' })
+    pty.onData!('$ ')
+    queued = 0
+    dispatcher.callNotification('pty.data', { id: testPtyId(1), data: '\x1b' })
+    pty.onData!('$ ')
+
+    // A hook frame was queued first: the echo rides the ordinary lane behind it. Nothing queued:
+    // the echo keeps its interactive priority.
+    expect(lanes).toEqual([false, true])
   })
 })

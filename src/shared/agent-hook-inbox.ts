@@ -1,47 +1,39 @@
-import {
-  closeSync,
-  constants as fsConstants,
-  fstatSync,
-  lstatSync,
-  mkdirSync,
-  chmodSync,
-  openSync,
-  readSync,
-  readdirSync,
-  unlinkSync,
-  watch,
-  type FSWatcher
-} from 'node:fs'
+import { watch, type FSWatcher } from 'node:fs'
 import { join } from 'node:path'
 
 import { isAgentHookSource, type AgentHookSource } from './agent-hook-relay'
 import { buildSpoolHookBody, drainAgentHookSpool, launchTokenHash } from './agent-hook-spool'
 import {
   AGENT_HOOK_INBOX_DIR_NAME,
-  AGENT_HOOK_INBOX_MAX_PAYLOAD_CHARS,
-  AGENT_HOOK_INBOX_RECORD_SUFFIX,
-  endsWithAgentHookInboxRecordEnd,
   parseAgentHookInboxRecord,
   type AgentHookInboxRecord
 } from './agent-hook-inbox-record'
+import {
+  claim,
+  ensurePrivateDirectory,
+  listPendingRecords,
+  listRecordNames,
+  readCompleteRecord,
+  type PendingRecord
+} from './agent-hook-inbox-files'
 
 /** Why: the sweep, not the watcher, guarantees delivery; a platform watcher can arm and then
  *  deliver nothing. The watcher only makes delivery faster than this. */
 export const AGENT_HOOK_INBOX_SWEEP_MS = 1_000
+/** Without a watcher (inotify limits exhausted, say) the sweep is the only wake-up. */
+export const AGENT_HOOK_INBOX_UNWATCHED_SWEEP_MS = 100
+/** Records a background drain applies per turn of the event loop; a backlog left while Orca was
+ *  closed is replayed in slices instead of one long main-thread stall. */
+export const AGENT_HOOK_INBOX_BACKGROUND_SLICE = 200
 /** A record still unterminated this long after its last write belongs to a killed writer. */
 export const AGENT_HOOK_INBOX_TORN_RECORD_MAX_AGE_MS = 10 * 60 * 1000
 /** Same replay horizon as the legacy spool and last-status hydration. */
 export const AGENT_HOOK_INBOX_MAX_RECORD_AGE_MS = 7 * 24 * 60 * 60 * 1000
-const MAX_RECORD_FILE_BYTES = AGENT_HOOK_INBOX_MAX_PAYLOAD_CHARS * 4 + 64 * 1024
-const RECORD_TAIL_PROBE_BYTES = 32
-const RECORD_NAME = /^(\d+)\.(\d+)\.rec$/
 
 export type AgentHookInboxIngest = (
   record: AgentHookInboxRecord,
   meta: { isReplay: boolean }
 ) => void
-
-type PendingRecord = { name: string; path: string; mtimeMs: number; pid: number; seq: number }
 
 export function agentHookInboxDir(endpointDir: string): string {
   return join(endpointDir, AGENT_HOOK_INBOX_DIR_NAME)
@@ -102,7 +94,9 @@ export function openAgentHookInbox(options: {
   if (!inbox.open()) {
     return null
   }
-  inbox.drain()
+  // Why not drain here: a backlog can be thousands of records; background slices replay it while
+  // any decision point that needs it first still forces a full drain.
+  inbox.scheduleDrain()
   return inbox
 }
 
@@ -121,6 +115,8 @@ export class AgentHookInbox {
   private draining = false
   private drainAgain = false
   private replayNames = new Set<string>()
+  private sorted: PendingRecord[] = []
+  private sortedCursor = 0
   private isOpen = false
 
   constructor(
@@ -146,12 +142,14 @@ export class AgentHookInbox {
       // Why: armed before the backlog scan, so a record committed between the scan and arming
       // cannot wait for the sweep (the previous run's endpoint file already advertises us).
       this.watcher = watch(this.dir, { persistent: false }, () => this.scheduleDrain())
-      this.watcher.on('error', () => this.closeWatcher())
+      this.watcher.on('error', () => {
+        this.closeWatcher()
+        this.armSweep()
+      })
     } catch {
       this.watcher = null
     }
-    this.sweepTimer = setInterval(() => this.drain(), AGENT_HOOK_INBOX_SWEEP_MS)
-    this.sweepTimer.unref?.()
+    this.armSweep()
     this.replayNames = new Set(listRecordNames(this.dir))
     this.isOpen = true
     return true
@@ -165,39 +163,58 @@ export class AgentHookInbox {
       this.sweepTimer = null
     }
     this.replayNames.clear()
+    this.sorted = []
+    this.sortedCursor = 0
   }
 
-  /** Synchronously ingests every complete record in commit order. Callers that decide a pane's
-   *  fate (process exit, retirement, interrupt inference) call this first, so an event the agent
-   *  committed before that moment is applied before it, as the old blocking POST guaranteed. */
-  drain(): void {
+  /** Synchronously ingests every complete record in commit order and returns how many it applied.
+   *  Callers that decide a pane's fate (process exit, retirement, interrupt inference) call this
+   *  first, so an event the agent committed before that moment is applied before it, as the old
+   *  blocking POST guaranteed. */
+  drain(limit = Number.POSITIVE_INFINITY): number {
     if (!this.isOpen) {
-      return
+      return 0
     }
     if (this.draining) {
       // Why: an ingest listener re-entered a decision point; the outer pass picks up the rest.
       this.drainAgain = true
-      return
+      return 0
     }
     this.draining = true
+    let applied = 0
     try {
       do {
         this.drainAgain = false
-        this.drainOnce()
-      } while (this.drainAgain && this.isOpen)
+        applied += this.drainOnce(limit - applied)
+      } while (this.drainAgain && this.isOpen && applied < limit)
     } finally {
       this.draining = false
     }
+    return applied
   }
 
-  private scheduleDrain(): void {
+  private armSweep(): void {
+    if (this.sweepTimer) {
+      clearInterval(this.sweepTimer)
+    }
+    this.sweepTimer = setInterval(
+      () => this.scheduleDrain(),
+      this.watcher ? AGENT_HOOK_INBOX_SWEEP_MS : AGENT_HOOK_INBOX_UNWATCHED_SWEEP_MS
+    )
+    this.sweepTimer.unref?.()
+  }
+
+  /** Drains in background slices until nothing complete is left. */
+  scheduleDrain(): void {
     if (this.wakeScheduled) {
       return
     }
     this.wakeScheduled = true
     setImmediate(() => {
       this.wakeScheduled = false
-      this.drain()
+      if (this.drain(AGENT_HOOK_INBOX_BACKGROUND_SLICE) >= AGENT_HOOK_INBOX_BACKGROUND_SLICE) {
+        this.scheduleDrain()
+      }
     })
   }
 
@@ -210,60 +227,52 @@ export class AgentHookInbox {
     this.watcher = null
   }
 
-  private drainOnce(): void {
-    const pending: PendingRecord[] = []
-    for (const name of listRecordNames(this.dir)) {
-      const path = join(this.dir, name)
-      let mtimeMs: number
-      try {
-        const stat = lstatSync(path)
-        if (!stat.isFile()) {
-          continue
+  /** One pass: finish the sorted remainder a sliced drain left, then list the directory once for
+   *  anything newer. Listing once per pass keeps a sliced replay linear in the backlog. */
+  private drainOnce(limit: number): number {
+    let applied = 0
+    let listed = false
+    while (this.isOpen && applied < limit) {
+      if (this.sortedCursor >= this.sorted.length) {
+        if (listed) {
+          break
         }
-        mtimeMs = stat.mtimeMs
-      } catch {
-        continue
+        this.sorted = listPendingRecords(this.dir)
+        this.sortedCursor = 0
+        listed = true
+        if (this.sorted.length === 0) {
+          break
+        }
       }
-      const match = RECORD_NAME.exec(name)
-      pending.push({
-        name,
-        path,
-        mtimeMs,
-        pid: match ? Number(match[1]) : 0,
-        seq: match ? Number(match[2]) : 0
-      })
-    }
-    // Why numeric pid/seq after mtime: coarse mtime clocks tie fast sequential hooks, and a
-    // lexical sort would put pid 999 after pid 1000.
-    pending.sort((a, b) => a.mtimeMs - b.mtimeMs || a.pid - b.pid || a.seq - b.seq)
-    const now = this.now()
-    for (const entry of pending) {
-      if (!this.isOpen) {
-        return
+      const entry = this.sorted[this.sortedCursor]
+      this.sortedCursor += 1
+      if (this.admit(entry, this.now())) {
+        applied += 1
       }
-      this.admit(entry, now)
     }
+    return applied
   }
 
-  private admit(entry: PendingRecord, now: number): void {
+  /** Returns whether the record was handed to ingest. */
+  private admit(entry: PendingRecord, now: number): boolean {
     const bytes = readCompleteRecord(entry.path)
     if (bytes === 'incomplete') {
       if (now - entry.mtimeMs > AGENT_HOOK_INBOX_TORN_RECORD_MAX_AGE_MS) {
         claim(entry.path)
         this.replayNames.delete(entry.name)
       }
-      return
+      return false
     }
     if (!claim(entry.path)) {
-      return
+      return false
     }
     const isReplay = this.replayNames.delete(entry.name)
     if (bytes === 'invalid' || now - entry.mtimeMs > AGENT_HOOK_INBOX_MAX_RECORD_AGE_MS) {
-      return
+      return false
     }
     const parsed = parseAgentHookInboxRecord(bytes)
     if (parsed.kind !== 'complete') {
-      return
+      return false
     }
     try {
       this.ingest(parsed.record, { isReplay })
@@ -271,84 +280,6 @@ export class AgentHookInbox {
       // Why: one bad record must not wedge the records committed after it.
       console.error('[agent-hooks] hook inbox record ingest failed:', error)
     }
-  }
-}
-
-function listRecordNames(dir: string): string[] {
-  try {
-    return readdirSync(dir).filter((name) => name.endsWith(AGENT_HOOK_INBOX_RECORD_SUFFIX))
-  } catch {
-    return []
-  }
-}
-
-/** Only a successful unlink owns the record; ENOENT means another drain took it, and EPERM/EBUSY
- *  (Windows scanners holding the file) means try again on the next pass. */
-function claim(path: string): boolean {
-  try {
-    unlinkSync(path)
     return true
-  } catch {
-    return false
-  }
-}
-
-function readCompleteRecord(path: string): Buffer | 'incomplete' | 'invalid' {
-  let fd: number
-  try {
-    // Why O_NOFOLLOW: the inbox is private, but a record must never read through a link.
-    fd = openSync(path, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0))
-  } catch {
-    return 'incomplete'
-  }
-  try {
-    const stat = fstatSync(fd)
-    if (!stat.isFile() || stat.size > MAX_RECORD_FILE_BYTES) {
-      return 'invalid'
-    }
-    // Why probe the tail first: a record still being written is common under load, and reading
-    // a large unfinished payload on every wake would be wasted work.
-    const tailLength = Math.min(stat.size, RECORD_TAIL_PROBE_BYTES)
-    const tail = Buffer.alloc(tailLength)
-    readSync(fd, tail, 0, tailLength, stat.size - tailLength)
-    if (!endsWithAgentHookInboxRecordEnd(tail)) {
-      return 'incomplete'
-    }
-    const bytes = Buffer.alloc(stat.size)
-    let offset = 0
-    while (offset < bytes.length) {
-      const read = readSync(fd, bytes, offset, bytes.length - offset, offset)
-      if (read === 0) {
-        return 'incomplete'
-      }
-      offset += read
-    }
-    return bytes
-  } catch {
-    return 'incomplete'
-  } finally {
-    closeSync(fd)
-  }
-}
-
-function ensurePrivateDirectory(dir: string): boolean {
-  try {
-    mkdirSync(dir, { recursive: true, mode: 0o700 })
-    const stat = lstatSync(dir)
-    if (!stat.isDirectory()) {
-      return false
-    }
-    if (process.platform === 'win32') {
-      return true
-    }
-    if (typeof process.getuid === 'function' && stat.uid !== process.getuid()) {
-      return false
-    }
-    if ((stat.mode & 0o077) !== 0) {
-      chmodSync(dir, 0o700)
-    }
-    return true
-  } catch {
-    return false
   }
 }

@@ -44,8 +44,9 @@ export abstract class AgentHookServerLifecycle extends AgentHookServerRuntimeEnv
       this.captureHydratedAuthorityCommitments()
       this.ownerStateInitialized = true
     }
-    // Why before the listener binds: the committed backlog is replay, and replay must not race
-    // live hooks.
+    // Why after hydration: replays are fenced against the hydrated launch tokens. The backlog then
+    // drains in background slices; anything that must see it first (a POST, a pane decision)
+    // forces a full drain, so a replay never lands after a later live event.
     if (!this.hookInbox && this.endpointDir) {
       this.hookInbox = openAgentHookInbox({
         endpointDir: this.endpointDir,

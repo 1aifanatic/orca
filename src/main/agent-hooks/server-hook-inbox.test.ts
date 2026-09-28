@@ -214,7 +214,8 @@ describe('hook inbox', () => {
     utimesSync(join(inboxDir(), '2.0.rec'), at - 1, at - 1)
 
     const restarted = await startServer()
+    // Replayed in background slices, off the startup path the listener binds on.
+    await expect.poll(() => readdirSync(inboxDir()), { timeout: 3_000, interval: 10 }).toEqual([])
     expect(paneState(restarted)).toBe('done')
-    expect(readdirSync(inboxDir())).toEqual([])
   })
 })

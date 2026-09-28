@@ -534,7 +534,7 @@ export class PtyHandler {
   private lastPtyLoadError: unknown = null
   // Why: single optional slot is intentional — callers compose externally; a throw is swallowed so it can't block cleanup.
   private exitListener: PtyExitListener | null = null
-  private outputPublishBarrier: (() => void) | null = null
+  private outputPublishBarrier: (() => number) | null = null
   private surfaceRetiredListener: PtySurfaceRetiredListener | null = null
   private readonly retiredPaneSurfaces = new RetiredPaneSurfaceRegistry()
   private ptyPoolEmptyListener: (() => void) | null = null
@@ -707,23 +707,25 @@ export class PtyHandler {
     return this.graceTimeMs
   }
 
-  /** Subscribe to PTY-exit events (relay-hook server uses this to evict per-paneKey caches). */
   /** Runs before this handler publishes PTY output or an exit, so anything an agent committed
-   *  before it printed or exited (a hook event) reaches the client ahead of that output. */
-  setOutputPublishBarrier(barrier: (() => void) | null): void {
+   *  before it printed or exited (a hook event) reaches the client ahead of that output. Returns
+   *  how many frames it queued. */
+  setOutputPublishBarrier(barrier: (() => number) | null): void {
     this.outputPublishBarrier = barrier
   }
 
-  private runOutputPublishBarrier(): void {
+  private runOutputPublishBarrier(): number {
     try {
-      this.outputPublishBarrier?.()
+      return this.outputPublishBarrier?.() ?? 0
     } catch (err) {
       process.stderr.write(
         `[pty-handler] output publish barrier threw: ${err instanceof Error ? err.message : String(err)}\n`
       )
+      return 0
     }
   }
 
+  /** Subscribe to PTY-exit events (relay-hook server uses this to evict per-paneKey caches). */
   setExitListener(listener: PtyExitListener | null): void {
     this.exitListener = listener
   }
@@ -1039,7 +1041,6 @@ export class PtyHandler {
       this.releaseRelayIngress(managed)
       this.pausedOutputPtys.delete(managed.id)
       this.consumerPausedOutputPtys.delete(managed.id)
-      this.runOutputPublishBarrier()
       this.flushPtyOutput(managed.id)
       this.pendingExitByPty.set(managed.id, {
         id: managed.id,
@@ -1257,7 +1258,6 @@ export class PtyHandler {
 
   private flushPendingOutput(): void {
     this.outputFlushTimer = null
-    this.runOutputPublishBarrier()
     // Why batch before the first send: a re-entrant sink must read the values a whole-map snapshot
     // would have frozen. Why the raw iterator: `for...of` would consume one entry past the limit.
     const pendingEntries = this.pendingOutputByPty[Symbol.iterator]()
@@ -1425,8 +1425,11 @@ export class PtyHandler {
   private publishPtyOutput(
     id: string,
     output: RelayPtySourceOutput,
-    interactive: boolean
+    requestedInteractive: boolean
   ): boolean {
+    // Why the lane drop: a hook frame the barrier just queued rides the ordinary lane, and an
+    // interactive chunk may overtake it there.
+    const interactive = this.runOutputPublishBarrier() === 0 && requestedInteractive
     if (this.sourcePublication?.accepts(id)) {
       return this.sourcePublication.publish(id, output, interactive)
     }
@@ -1460,6 +1463,7 @@ export class PtyHandler {
     if (!exit) {
       return
     }
+    this.runOutputPublishBarrier()
     if (this.sourcePublication?.accepts(id)) {
       try {
         // Why: after the exit settlement, re-entering sealAndPublishExit would pump a closed
