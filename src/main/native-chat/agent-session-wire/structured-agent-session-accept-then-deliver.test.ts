@@ -7,8 +7,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
+import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
-import type { AgentSessionSubscribeEvent } from '../../../shared/agent-session-wire'
+import type {
+  AgentSessionSubscribeEvent,
+  AgentSessionTurnCompletionEvent
+} from '../../../shared/agent-session-wire'
 import {
   DISPATCH_REJECTED_CANCELLED,
   DISPATCH_REJECTED_HOST_RESTARTED,
@@ -31,6 +35,7 @@ import {
   HOST_TEST_SESSION as SESSION,
   HOST_TEST_THREAD as THREAD,
   hostTestAttachParams,
+  hostTestDrawnRowIds,
   hostTestMessage,
   hostTestOperationId,
   resetHostTestOperationIds
@@ -322,6 +327,47 @@ describe('a start the chat needed and did not get', () => {
     const next = await accept('after the fix')
     await eventually(async () => expect((await submission(next))?.dispatchState).toBe('accepted'))
     expect(await errorRows()).toHaveLength(1)
+  })
+
+  it('draws the messages it failed above the error row, since they were accepted first', async () => {
+    await host.close(SESSION)
+    acquire.mockRejectedValueOnce(new Error('spawn codex ENOENT'))
+    const first = await accept('first')
+    const second = await accept('second')
+    await eventually(() => expect(submission(second)?.dispatchState).toBe('rejected'))
+
+    const snapshot = host.journalSnapshot(SESSION)
+    const errorRow = snapshot.items.find(
+      (item) => item.body.kind === 'status' && item.body.tone === 'error'
+    )?.itemId
+    const shown = [agentJournalSubmissionKey(first), agentJournalSubmissionKey(second), errorRow]
+    const drawn = hostTestDrawnRowIds(snapshot, [
+      { clientMessageId: first, text: 'first' },
+      { clientMessageId: second, text: 'second' }
+    ])
+    expect(drawn.filter((id) => shown.includes(id))).toEqual(shown)
+  })
+
+  it('notifies failed once for the queued messages one start failure refused', async () => {
+    await host.close(SESSION)
+    acquire.mockRejectedValueOnce(new Error('spawn codex ENOENT'))
+    const completions: AgentSessionTurnCompletionEvent[] = []
+    host.subscribeTurnCompletions({ id: 'dot-1', emit: (event) => completions.push(event) })
+    await accept('first')
+    const second = await accept('second')
+
+    await eventually(async () => expect((await submission(second))?.dispatchState).toBe('rejected'))
+    await host.flushAllStreamedEvents()
+    expect(completions).toEqual([
+      {
+        type: 'completion',
+        completion: expect.objectContaining({
+          sessionId: SESSION,
+          turnId: agentJournalSubmissionKey(second),
+          outcome: 'failure'
+        })
+      }
+    ])
   })
 
   it.each([
