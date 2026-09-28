@@ -17447,7 +17447,7 @@
         "emptyMessage": "Ce message est vide, il n'a donc pas été envoyé.",
         "queueFull": "Trop de messages attendaient l'agent, celui-ci n'a donc pas été envoyé.",
         "writeFailed": "Orca n'a pas pu transmettre ce message à l'agent, il n'a donc pas été envoyé.",
-        "cancelled": "Ce message a été retiré avant que l'agent ne le commence.",
+        "cancelled": "Ce message a été retiré avant que l'agent ne commence à le traiter.",
         "chatClosed": "Le chat s'est fermé avant l'envoi de ce message.",
         "hostRestarted": "Orca a redémarré avant l'envoi de ce message.",
         "notDelivered": "Ce message n'a pas été remis.",

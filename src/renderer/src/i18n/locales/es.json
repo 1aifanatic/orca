@@ -14964,7 +14964,7 @@
         "emptyMessage": "Este mensaje está vacío, así que no se envió.",
         "queueFull": "Había demasiados mensajes esperando al agente, así que este no se envió.",
         "writeFailed": "Orca no pudo entregar este mensaje al agente, así que no se envió.",
-        "cancelled": "Este mensaje se retiró antes de que el agente lo iniciara.",
+        "cancelled": "Este mensaje se retiró antes de que el agente empezara a procesarlo.",
         "chatClosed": "El chat se cerró antes de que se enviara este mensaje.",
         "hostRestarted": "Orca se reinició antes de que se enviara este mensaje.",
         "notDelivered": "Este mensaje no se entregó.",
