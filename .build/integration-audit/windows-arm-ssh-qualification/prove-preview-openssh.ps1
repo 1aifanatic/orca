@@ -1,7 +1,7 @@
 # Ephemeral CI only. Preview ZIP server qualification, not inbox capability coverage.
 param([Parameter(Mandatory=$true)][string]$Receipt,[Parameter(Mandatory=$true)][string]$Archive)
 $ErrorActionPreference = 'Stop'
-$report = @{scope='Microsoft Win32-OpenSSH 10.0.0.0p2-Preview ARM64 private loopback authentication and stock cmd.exe dispatch; NOT inbox server or relay deployment'; status='running'; imageVersion=$env:ImageVersion; cleanup=@('not-confirmed'); observations=@(); stages=@()}
+$report = @{scope='Microsoft Win32-OpenSSH 10.0.0.0p2-Preview ARM64 private loopback authentication and stock cmd.exe dispatch; NOT inbox server or relay deployment'; status='running'; imageVersion=$env:ImageVersion; cleanup=@('not-confirmed'); globalBootstrapCleanup='Not qualified: service bootstrap may create ProgramData SSH and OpenSSH registry entries; disposable CI VM destruction is the boundary'; observations=@(); stages=@()}
 $script:receiptWritten=$false
 function Write-Stage([string]$Stage) {
   $timestamp=[DateTime]::UtcNow.ToString('o')
@@ -38,6 +38,8 @@ Write-Stage 'private-directory-create-complete'
 $report.root=$root
 $createdUser=$false; $createdService=$false; $sid=$null; $ownedServerPid=$null
 $sshDir=Join-Path $root 'OpenSSH-ARM64'
+$sshdLog=Join-Path $root 'private-sshd.log'
+$serviceStartAttempt=$null
 function Invoke-Bounded([string]$Program,[string[]]$Arguments,[int]$Seconds=20,[switch]$AllowFailure) {
   Write-Stage ('command-'+[IO.Path]::GetFileName($Program)+'-start')
   $start=[Diagnostics.ProcessStartInfo]::new($Program)
@@ -56,6 +58,36 @@ function Invoke-Bounded([string]$Program,[string[]]$Arguments,[int]$Seconds=20,[
     return @{code=$process.ExitCode; stdout=$output}
   } finally {$process.Dispose()}
 }
+function Record-PrivateServiceDiagnostics {
+  Write-Stage 'private-service-diagnostics-start'
+  try {
+    $state=Get-CimInstance Win32_Service -Filter "Name='$serviceName'"
+    if($state){
+      $report.serviceDiagnostics=@{state=$state.State;exitCode=$state.ExitCode;serviceSpecificExitCode=$state.ServiceSpecificExitCode;pid=$state.ProcessId;localSystem=($state.StartName -eq 'LocalSystem');privatePath=($state.PathName -like "*$root*")}
+    } else {$report.serviceDiagnostics=@{absent=$true}}
+    if($serviceStartAttempt){
+      try {
+        $events=@(Get-WinEvent -FilterHashtable @{LogName='System';ProviderName='Service Control Manager';StartTime=$serviceStartAttempt} -MaxEvents 50 -ErrorAction Stop | Where-Object {$_.Properties.Value -contains $serviceName})
+        $report.serviceEvents=@($events | ForEach-Object {@{id=$_.Id;utc=$_.TimeCreated.ToUniversalTime().ToString('o');level=$_.Level}})
+      } catch {$report.serviceEventsUnavailable=$true}
+    }
+    if(Test-Path -LiteralPath $sshdLog){
+      $file=[IO.FileStream]::new($sshdLog,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::ReadWrite)
+      try {
+        $buffer=[byte[]]::new(16384)
+        $count=$file.Read($buffer,0,$buffer.Length)
+        $text=[Text.Encoding]::UTF8.GetString($buffer,0,$count)
+        $classes=@()
+        foreach($category in @('permission denied','bad permissions','unable to load host key','no hostkeys available','bind to port','address already in use','registerservicectrlhandler','failed to create','fatal')){
+          if($text.IndexOf($category,[StringComparison]::OrdinalIgnoreCase) -ge 0){$classes+=$category}
+        }
+        $report.privateLog=@{exists=$true;bytes=$file.Length;examinedBytes=$count;errorClasses=$classes}
+      } finally {$file.Dispose()}
+    } else {$report.privateLog=@{exists=$false}}
+  } catch {$report.diagnosticCaptureFailed=$true}
+  Write-Stage 'private-service-diagnostics-complete'
+}
+
 function Machine([string]$Path){
   $file=[IO.File]::OpenRead($Path)
   try{$reader=[IO.BinaryReader]::new($file);$file.Position=0x3c;$position=$reader.ReadInt32();$file.Position=$position;if($reader.ReadUInt32()-ne 0x00004550){throw 'Invalid PE'};return ('0x{0:X4}'-f $reader.ReadUInt16())}finally{$file.Dispose()}
@@ -143,10 +175,11 @@ LogLevel ERROR
   Write-Stage 'private-service-collision-query-complete'
   $createdService=$true
   Write-Stage 'private-service-create-start'
-  New-Service -Name $serviceName -BinaryPathName "`"$sshd`" -f `"$config`"" -StartupType Manual | Out-Null
+  New-Service -Name $serviceName -BinaryPathName "`"$sshd`" -f `"$config`" -E `"$sshdLog`"" -StartupType Manual | Out-Null
   Write-Stage 'private-service-create-complete'
   Invoke-Bounded sc.exe @('privs',$serviceName,'SeAssignPrimaryTokenPrivilege/SeTcbPrivilege/SeBackupPrivilege/SeRestorePrivilege/SeImpersonatePrivilege') | Out-Null
   Write-Stage 'private-service-start-start'
+  $serviceStartAttempt=[DateTime]::Now.AddSeconds(-1)
   Start-Service -Name $serviceName
   Write-Stage 'private-service-start-complete'
   Write-Stage 'private-service-identity-start'
@@ -177,6 +210,7 @@ LogLevel ERROR
   $report.status='failed';$report.error=$_.Exception.Message
 } finally {
   try {
+    Record-PrivateServiceDiagnostics
     Write-Stage 'cleanup-start'
     Write-Stage 'cleanup-service-query-start'
     $privateService=Get-CimInstance Win32_Service -Filter "Name='$serviceName'"
