@@ -1,6 +1,6 @@
-# Review dispatches share per-PR concurrency; unrelated agent tasks stay independent.
+# Explicit review identities share workflow concurrency; legacy names use ordered cancellation.
 name: Pullfrog
-run-name: ${{ inputs.name || github.workflow }}
+run-name: ${{ inputs.name || github.workflow }}${{ inputs.pull_request_number && format(' | PR {0}', inputs.pull_request_number) || '' }}
 on:
   workflow_dispatch:
     inputs:
@@ -22,11 +22,18 @@ permissions:
   contents: read
   pull-requests: read
 
+concurrency:
+  group: ${{ inputs.pull_request_number && format('pullfrog-pr-{0}', inputs.pull_request_number) || format('pullfrog-run-{0}', github.run_id) }}
+  cancel-in-progress: true
+
 jobs:
   review_scope:
     runs-on: ubuntu-slim
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: write
     outputs:
-      group: ${{ steps.scope.outputs.group }}
       current: ${{ steps.scope.outputs.current }}
       number: ${{ steps.scope.outputs.number }}
       head: ${{ steps.scope.outputs.head }}
@@ -46,9 +53,6 @@ jobs:
   pullfrog:
     needs: review_scope
     if: needs.review_scope.outputs.current == 'true'
-    concurrency:
-      group: ${{ needs.review_scope.outputs.group }}
-      cancel-in-progress: true
     runs-on: ubuntu-latest
     permissions:
       id-token: write

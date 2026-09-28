@@ -2,7 +2,12 @@ export function trackE2eFailures(failures, records, now = new Date()) {
   const known = []
   const untracked = []
   const invalid = []
-  const active = records.filter((record) => {
+  const active = (Array.isArray(records) ? records : [records]).filter((record) => {
+    if (!record || typeof record !== 'object' || Array.isArray(record)) {
+      invalid.push(record)
+      return false
+    }
+    const expiry = new Date(`${record.expires}T23:59:59Z`)
     const valid =
       typeof record.file === 'string' &&
       typeof record.title === 'string' &&
@@ -11,7 +16,9 @@ export function trackE2eFailures(failures, records, now = new Date()) {
       /^@[\w-]+(?:\/[\w-]+)?$/.test(record.owner ?? '') &&
       /^https:\/\/github\.com\/stablyai\/orca\/issues\/\d+$/.test(record.issue ?? '') &&
       /^\d{4}-\d{2}-\d{2}$/.test(record.expires ?? '') &&
-      Date.parse(`${record.expires}T23:59:59Z`) >= now.getTime()
+      Number.isFinite(expiry.getTime()) &&
+      expiry.toISOString().slice(0, 10) === record.expires &&
+      expiry.getTime() >= now.getTime()
     if (!valid) {
       invalid.push(record)
     }

@@ -17,9 +17,14 @@ it('requires exact failures with an owner, issue and unexpired review date', () 
     expires: '2026-10-01'
   }
   const now = new Date('2026-09-28')
-  expect(trackE2eFailures([failure], [record], now).known).toHaveLength(1)
+  expect(trackE2eFailures([failure], [null, record], now)).toMatchObject({
+    known: [{ ...failure, tracking: record }],
+    invalid: [null]
+  })
+  expect(trackE2eFailures([failure], null, now).untracked).toEqual([failure])
   for (const change of [
     { expires: '2026-09-27' },
+    { expires: '2026-09-31' },
     { owner: '' },
     { issue: '' },
     { title: 'different' },

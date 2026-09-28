@@ -89,8 +89,11 @@ node config/scripts/ci-unit-selection-review.mjs ARTIFACT_DIRECTORY
 
 Pullfrog recognizes the existing `Review #N [id]` and
 `Review new commits on #N [id]` dispatch names. Explicit dispatchers may provide
-`pull_request_number` and `head_sha`. Recognized review jobs share per-PR
-concurrency, cancelling superseded work. Closed PRs and explicitly stale heads
+`pull_request_number` and `head_sha`. Explicit PR identities share concurrency at the workflow boundary. Legacy review
+names use a bounded lookup of the latest 100 dispatches and cancel only lower
+run IDs for the same PR; a delayed older scope cannot cancel a newer review.
+Unrecognized tasks are never grouped. The scope job alone has Actions write
+permission for ordered cancellation. Closed PRs and explicitly stale heads
 are skipped. A second head check prevents starting an agent after its queued
 head has changed. Unrecognized agent tasks remain independent; lookup failures
 also retain an independent task rather than cancelling unrelated work.
@@ -123,6 +126,11 @@ reads the previous 24 complete hours in hourly pages, samples up to six runs per
 workflow/outcome stratum, and fetches job pages with bounded concurrency. An
 hour exceeding the API's 1,000-result search cap fails visibly. The report and
 raw evidence are retained for 30 days. No extra runner pool is provisioned.
+
+The report measures the full job durations of runs **created** in the window,
+not occupancy clipped to the window: earlier runs that overlap it are excluded,
+and completed sampled jobs may finish after it. This matches the baseline
+cohort method. Workflow IDs keep ref-qualified paths in one sampling stratum.
 
 The report shows weighted runner-hours and cancelled-run hours per workflow,
 runner-minutes per completed PR _run_, and weighted queue/provisioning p95 per

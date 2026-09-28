@@ -69,7 +69,7 @@ export function demandMarkdown(report) {
   return [
     `## CI demand: ${report.start} to ${report.end}`,
     '',
-    `Estimated runner occupancy; ${report.sampledRuns}/${report.populationRuns} runs sampled. ${report.method}.`,
+    `Estimated full job duration for runs created in this window (not window-clipped occupancy); ${report.sampledRuns}/${report.populationRuns} runs sampled. ${report.method}.`,
     '',
     '| Workflow | Runs | Runner hours | Cancelled-run hours | Minutes/completed PR run |',
     '| --- | ---: | ---: | ---: | ---: |',

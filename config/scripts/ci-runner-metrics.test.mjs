@@ -77,3 +77,19 @@ it('refuses to publish a silently truncated inventory', async () => {
     collectRunnerDemand({}, async () => ({ total_count: 1001, workflow_runs: [] }))
   ).rejects.toThrow('API limit')
 })
+
+it('groups ref-qualified paths under the stable workflow ID', () => {
+  const runs = [
+    { ...run, id: 1, workflow_id: 42, path: '.github/workflows/pr.yml@main' },
+    { ...run, id: 2, workflow_id: 42, path: '.github/workflows/pr.yml@feature' }
+  ]
+  const sample = sampleWorkflowRuns(runs, 1, () => 0.5)
+  expect(sample).toHaveLength(1)
+  expect(sample[0].weight).toBe(2)
+  expect(
+    runnerDemand(
+      runs,
+      sample.map((row) => ({ ...row, jobs: [job] }))
+    ).workflows
+  ).toMatchObject([{ workflow: '.github/workflows/pr.yml', runs: 2, runnerMinutes: 10 }])
+})

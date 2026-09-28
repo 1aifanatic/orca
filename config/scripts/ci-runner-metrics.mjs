@@ -3,6 +3,9 @@ const minutesBetween = (start, end) => {
   return Number.isFinite(value) ? Math.max(0, value) : 0
 }
 
+const workflowPath = (run) => run.path.split('@')[0]
+const workflowKey = (run) => run.workflow_id ?? workflowPath(run)
+
 export function weightedPercentile(values, percentile) {
   const sorted = [...values].sort((a, b) => a.value - b.value)
   const target = sorted.reduce((sum, item) => sum + item.weight, 0) * percentile
@@ -20,9 +23,9 @@ export function runnerDemand(runs, samples) {
   const workflows = new Map()
   const pools = new Map()
   for (const run of runs) {
-    if (!workflows.has(run.path)) {
-      workflows.set(run.path, {
-        workflow: run.path,
+    if (!workflows.has(workflowKey(run))) {
+      workflows.set(workflowKey(run), {
+        workflow: workflowPath(run),
         runs: 0,
         sampledRuns: 0,
         runnerMinutes: 0,
@@ -31,11 +34,11 @@ export function runnerDemand(runs, samples) {
         completedPrRunnerMinutes: 0
       })
     }
-    workflows.get(run.path).runs++
+    workflows.get(workflowKey(run)).runs++
   }
   let incompleteJobs = 0
   for (const { run, jobs, weight } of samples) {
-    const row = workflows.get(run.path)
+    const row = workflows.get(workflowKey(run))
     row.sampledRuns++
     for (const job of jobs) {
       if (!job.runner_name || !job.started_at) {
@@ -89,7 +92,7 @@ export function runnerDemand(runs, samples) {
 export function sampleWorkflowRuns(runs, perStratum = 6, random = Math.random) {
   const groups = new Map()
   for (const run of runs) {
-    const key = `${run.path}:${run.conclusion ?? run.status}`
+    const key = `${workflowKey(run)}:${run.conclusion ?? run.status}`
     if (!groups.has(key)) {
       groups.set(key, [])
     }
