@@ -171,21 +171,34 @@ export function settleQueuedRestoreOperation(input: {
   })
 }
 
+/** Operations whose text this process already put back; insertion-ordered for eviction. */
+const restoredOperationIds = new Set<string>()
+const MAX_RESTORED_OPERATIONS = 64
+
 /**
- * Put withdrawn text back once: through the handle when there is one, directly
- * when there is none or the journal failed before restoring — never again after
- * the restore ran, even if removing the entry then failed.
+ * Put withdrawn text back once per operation: through the handle when there is
+ * one, directly when there is none or the journal failed before restoring —
+ * never again after the restore ran, whichever answer (first ask, background
+ * re-ask, or the user's retry of the same id) carried it.
  */
 export async function restoreQueuedTextOnce(
+  operationId: string,
   handle: { entryKey: string; operationId: string } | null,
   restore: () => void
 ): Promise<void> {
-  let ran = false
   const once = (): void => {
-    if (!ran) {
-      ran = true
-      restore()
+    if (restoredOperationIds.has(operationId)) {
+      return
     }
+    restoredOperationIds.add(operationId)
+    while (restoredOperationIds.size > MAX_RESTORED_OPERATIONS) {
+      const oldest = restoredOperationIds.values().next().value
+      if (oldest === undefined) {
+        break
+      }
+      restoredOperationIds.delete(oldest)
+    }
+    restore()
   }
   if (!handle) {
     once()
@@ -247,4 +260,5 @@ export function takeRelaunchQueuedRestoreOperations(input: {
 export function resetQueuedRestoreJournalForTests(): void {
   mutations.tail = Promise.resolve()
   relaunchSweptDraftKeys.clear()
+  restoredOperationIds.clear()
 }

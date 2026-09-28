@@ -82,26 +82,23 @@ export function useMobileNativeChatController(args: {
     nativeChatTranscriptIsLocalReadable
   })
 
-  const {
-    structuredSession: structuredNativeChat,
-    session: nativeChatSession,
-    seatAppendDraftText
-  } = useMobileNativeChatSessionLane({
-    client,
-    structured: activeChatStructured,
-    agent: activeChatAgent,
-    resolvedAgent: activeChatResolution?.agent ?? null,
-    transcriptPath: activeChatResolution?.transcriptPath ?? null,
-    sessionId: activeChatSessionId,
-    sourceIdentity,
-    callerIdentity: deviceTokenRef.current ?? '',
-    enabled: showNativeChat,
-    connState,
-    hostSupport: agentSessionHostSupport,
-    composerScope: { hostId, worktreeId, tabId: activeSessionTabId },
-    onSendError,
-    onActionResolved: onSendResolved
-  })
+  const { structuredSession: structuredNativeChat, session: nativeChatSession } =
+    useMobileNativeChatSessionLane({
+      client,
+      structured: activeChatStructured,
+      agent: activeChatAgent,
+      resolvedAgent: activeChatResolution?.agent ?? null,
+      transcriptPath: activeChatResolution?.transcriptPath ?? null,
+      sessionId: activeChatSessionId,
+      sourceIdentity,
+      callerIdentity: deviceTokenRef.current ?? '',
+      enabled: showNativeChat,
+      connState,
+      hostSupport: agentSessionHostSupport,
+      composerScope: { hostId, worktreeId, tabId: activeSessionTabId },
+      onSendError,
+      onActionResolved: onSendResolved
+    })
   const {
     composerText: chatComposerText,
     setComposerText: setChatComposerText,
@@ -129,8 +126,7 @@ export function useMobileNativeChatController(args: {
     chatActive: showNativeChat,
     transcriptLoading: nativeChatSession.transcriptLoading,
     transcriptSettled: nativeChatSession.status === 'ready',
-    queuedCards: structuredNativeChat.queued.cards,
-    seatAppendDraftText
+    queuedCards: structuredNativeChat.queued.cards
   })
 
   // Deliberately not gated on the chat view being visible: the streaming gate

@@ -224,6 +224,7 @@ describe('mobile structured queued messages', () => {
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     unmountSession()
   })
 
@@ -579,15 +580,26 @@ describe('mobile structured queued messages', () => {
         return method === 'agentSession.options' ? ok({ models: [], current: {} }) : ok({})
       })
       await mountSession(CAPABLE, snapshotEvent({ runningTurn: true }))
+      vi.useFakeTimers()
+      // The press settles on the first answer; the re-ask never holds it.
       await act(async () => {
-        expect(await hook!.cancelPrompt()).toBe(true)
+        expect(await hook!.cancelPrompt()).toBe(false)
       })
+      expect(calls('agentSession.cancel')).toHaveLength(1)
+      // Released screen: the answer lands after the session is gone.
+      unmountSession()
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000)
+      })
+      vi.useRealTimers()
+      await vi.waitFor(() => expect(appendText.mock.calls).toEqual([[DRAFT_KEY, 'one']]))
       expect(calls('agentSession.cancel')).toHaveLength(2)
       expect(requestOf('agentSession.cancel', 1).envelope.clientOperationId).toBe(
         requestOf('agentSession.cancel', 0).envelope.clientOperationId
       )
-      expect(appendText.mock.calls).toEqual([[DRAFT_KEY, 'one']])
-      expect(stored.has('orca:mobileStructuredQueuedRestore:v1')).toBe(false)
+      await vi.waitFor(() =>
+        expect(stored.has('orca:mobileStructuredQueuedRestore:v1')).toBe(false)
+      )
     })
 
     it('a persisted Stop NEVER re-executes on a later launch; its handle is dropped', async () => {
@@ -601,11 +613,29 @@ describe('mobile structured queued messages', () => {
         return method === 'agentSession.options' ? ok({ models: [], current: {} }) : ok({})
       })
       await mountSession(CAPABLE, snapshotEvent({ runningTurn: true }))
+      vi.useFakeTimers()
       await act(async () => {
         expect(await hook!.cancelPrompt()).toBe(false)
       })
-      // Re-asked in-session, bounded, always under the one id.
-      expect(calls('agentSession.cancel')).toHaveLength(3)
+      // Re-asked in the background on a 1 s / 2 s / 4 s schedule, then left alone.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000)
+      })
+      vi.useRealTimers()
+      expect(calls('agentSession.cancel')).toHaveLength(4)
+      expect(
+        new Set(
+          calls('agentSession.cancel').map(
+            (_, index) => requestOf('agentSession.cancel', index).envelope.clientOperationId
+          )
+        ).size
+      ).toBe(1)
+      // Each re-ask has a short budget of its own, so the whole chain is seconds.
+      expect(
+        calls('agentSession.cancel')
+          .slice(1)
+          .map(([, , options]) => fieldsOf(options).timeoutMs)
+      ).toEqual([5_000, 5_000, 5_000])
       expect(stored.has('orca:mobileStructuredQueuedRestore:v1')).toBe(true)
       unmountSession()
       // Remounting in the same process never releases it: an answer may still land.
@@ -620,7 +650,7 @@ describe('mobile structured queued messages', () => {
       await vi.waitFor(() =>
         expect(stored.has('orca:mobileStructuredQueuedRestore:v1')).toBe(false)
       )
-      expect(calls('agentSession.cancel')).toHaveLength(3)
+      expect(calls('agentSession.cancel')).toHaveLength(4)
       expect(appendText).not.toHaveBeenCalled()
     })
   })

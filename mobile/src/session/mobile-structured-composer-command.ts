@@ -8,7 +8,8 @@ import type { RpcClient } from '../transport/rpc-client'
 import type { MobileNativeChatSendOutcome } from './mobile-native-chat-send'
 import {
   requestStructuredAgentSessionMutation,
-  retainStructuredSessionOperationId
+  retainStructuredSessionOperationId,
+  type StructuredAgentSessionMutationCallResult
 } from './mobile-structured-agent-session-rpc'
 import { requestWithdrawingMutation } from './mobile-structured-queued-message-actions'
 import { queuedMessageBodyText } from './mobile-structured-queued-message-cards'
@@ -100,9 +101,34 @@ export async function dispatchMobileStructuredCommand(input: {
           clientOperationId,
           timeoutMs: Math.max(input.timeoutMs, 195_000)
         }
-        // A withdrawing clear re-asks a lost answer: only it carries the drafts' text back.
+        // Only a withdrawing clear owes text back. Its lost answer is re-asked in
+        // the background, so the composer is released after the first ask.
+        const settleWithdrawal = async (
+          answer: StructuredAgentSessionMutationCallResult<AgentSessionConversationCommandResult>
+        ): Promise<void> => {
+          if (!withdrawal) {
+            return
+          }
+          if (answer.status === 'accepted' && answer.value.state !== 'unknown') {
+            const texts = (answer.value.withdrawnQueued ?? []).map((entry) =>
+              queuedMessageBodyText(entry.body)
+            )
+            // Settled through the journal so the bodies are restored exactly once.
+            await restoreQueuedTextOnce(clientOperationId, handle, () => {
+              for (const text of texts) {
+                withdrawal.appendText(withdrawal.draftKey, text)
+              }
+            })
+          } else if (answer.status !== 'accepted' && answer.status !== 'unknown' && handle) {
+            // The host answered definitively without owing text; the handle is dead.
+            await discardQueuedRestoreOperation(handle).catch(() => undefined)
+          }
+        }
         const result = withdrawal
-          ? await requestWithdrawingMutation<AgentSessionConversationCommandResult>(request)
+          ? await requestWithdrawingMutation<AgentSessionConversationCommandResult>(
+              request,
+              settleWithdrawal
+            )
           : await requestStructuredAgentSessionMutation<AgentSessionConversationCommandResult>(
               request
             )
@@ -117,21 +143,6 @@ export async function dispatchMobileStructuredCommand(input: {
           }
         }
         input.operationIds.delete(key)
-        if (result.status === 'accepted' && withdrawal) {
-          const texts = (result.value.withdrawnQueued ?? []).map((entry) =>
-            queuedMessageBodyText(entry.body)
-          )
-          const apply = (): void => {
-            for (const text of texts) {
-              withdrawal.appendText(withdrawal.draftKey, text)
-            }
-          }
-          // Settled through the journal so the bodies are restored exactly once.
-          await restoreQueuedTextOnce(handle, apply)
-        } else if (handle) {
-          // The host answered definitively without owing text; the handle is dead.
-          await discardQueuedRestoreOperation(handle).catch(() => undefined)
-        }
         return result.status === 'accepted'
           ? { accepted: !result.value.error, error: result.value.error ?? null }
           : { accepted: false, error: result.message }

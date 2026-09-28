@@ -15,29 +15,63 @@ import {
   getOrCreateQueuedRestoreOperation,
   queuedRestoreEntryKey,
   restoreQueuedTextOnce,
-  settleQueuedRestoreOperation,
   takeRelaunchQueuedRestoreOperations,
   type QueuedRestoreEntry
 } from './mobile-structured-queued-restore-journal'
 import { structuredSessionOperationId } from './structured-session-operation-id'
 
-/** First ask plus re-asks; each waits out its own reconnect budget. */
-const WITHDRAWING_MUTATION_ATTEMPTS = 3
+/** Desktop's re-ask schedule. */
+const WITHDRAWAL_REASK_DELAYS_MS = [1_000, 2_000, 4_000] as const
+/** A re-ask replays a recorded answer; it needs no command-sized budget. */
+const WITHDRAWAL_REASK_TIMEOUT_MS = 5_000
+
+type WithdrawingRequest = Parameters<typeof requestStructuredAgentSessionMutation>[0] & {
+  clientOperationId: string
+}
+
+function answerLost(result: StructuredAgentSessionMutationCallResult<unknown>): boolean {
+  return result.status === 'unknown' && !result.hostReportedOperationUnknown
+}
 
 /**
  * A withdrawing Stop, /clear or Edit whose answer was lost is re-asked under the
  * SAME operation id: once the host committed, the card is gone and only this
  * answer carries the text back, and a recorded id replays from the tombstones
- * instead of running again. A host that reports the id unknown is not re-asked.
+ * instead of running again. The caller gets the first answer at once — the
+ * re-asks run in the background on desktop's short schedule, so bookkeeping
+ * never holds the composer — and `settle` sees whichever answer is final.
+ * A host that reports the id unknown is not re-asked.
  */
 export async function requestWithdrawingMutation<TValue>(
-  args: Parameters<typeof requestStructuredAgentSessionMutation>[0] & { clientOperationId: string },
-  attemptsLeft = WITHDRAWING_MUTATION_ATTEMPTS
+  request: WithdrawingRequest,
+  settle: (result: StructuredAgentSessionMutationCallResult<TValue>) => Promise<void>
 ): Promise<StructuredAgentSessionMutationCallResult<TValue>> {
-  const result = await requestStructuredAgentSessionMutation<TValue>(args)
-  return result.status === 'unknown' && !result.hostReportedOperationUnknown && attemptsLeft > 1
-    ? requestWithdrawingMutation<TValue>(args, attemptsLeft - 1)
-    : result
+  const result = await requestStructuredAgentSessionMutation<TValue>(request)
+  if (answerLost(result)) {
+    void reaskLostWithdrawal(request, settle).catch(() => undefined)
+  } else {
+    await settle(result)
+  }
+  return result
+}
+
+async function reaskLostWithdrawal<TValue>(
+  request: WithdrawingRequest,
+  settle: (result: StructuredAgentSessionMutationCallResult<TValue>) => Promise<void>
+): Promise<void> {
+  for (const delayMs of WITHDRAWAL_REASK_DELAYS_MS) {
+    await new Promise((resolve) => setTimeout(resolve, delayMs))
+    const result = await requestStructuredAgentSessionMutation<TValue>({
+      ...request,
+      timeoutMs: WITHDRAWAL_REASK_TIMEOUT_MS
+    })
+    if (!answerLost(result)) {
+      await settle(result)
+      return
+    }
+  }
+  // Still unanswered: the handle stays for a retry of the same id, and dies with
+  // the host's replay window or on relaunch.
 }
 
 export type QueuedRestoreTextSink = (draftKey: string, text: string) => void
@@ -78,32 +112,36 @@ export async function editMobileQueuedMessage(input: {
   } catch {
     handle = null
   }
-  const result = await requestWithdrawingMutation<AgentSessionQueuedMessageDeleteResult>({
-    client: input.client,
-    method: 'agentSession.queuedMessageDelete',
-    fingerprintMethod: 'agentSession.queuedMessageDelete',
-    sessionId: input.sessionId,
-    expectedRuntimeFence: input.expectedRuntimeFence,
-    fields,
-    clientOperationId: handle?.operationId ?? structuredSessionOperationId()
-  })
+  const clientOperationId = handle?.operationId ?? structuredSessionOperationId()
+  const result = await requestWithdrawingMutation<AgentSessionQueuedMessageDeleteResult>(
+    {
+      client: input.client,
+      method: 'agentSession.queuedMessageDelete',
+      fingerprintMethod: 'agentSession.queuedMessageDelete',
+      sessionId: input.sessionId,
+      expectedRuntimeFence: input.expectedRuntimeFence,
+      fields,
+      clientOperationId
+    },
+    async (answer) => {
+      if (answer.status === 'accepted' && answer.value.deleted) {
+        const body = answer.value.body
+        await restoreQueuedTextOnce(clientOperationId, handle, () =>
+          input.appendText(input.draftKey, queuedMessageBodyText(body))
+        )
+      } else if (handle) {
+        await discardQueuedRestoreOperation(handle).catch(() => undefined)
+      }
+    }
+  )
   if (result.status === 'accepted') {
-    const value = result.value
-    if (value.deleted) {
-      const apply = (): void => input.appendText(input.draftKey, queuedMessageBodyText(value.body))
-      await restoreQueuedTextOnce(handle, apply)
+    if (result.value.deleted) {
       return true
     }
-    if (handle) {
-      await discardQueuedRestoreOperation(handle).catch(() => undefined)
-    }
-    if (value.disposition === 'dispatched') {
+    if (result.value.disposition === 'dispatched') {
       input.onSendError('This message was already sent.')
     }
     return false
-  }
-  if (handle && result.status !== 'unknown') {
-    await discardQueuedRestoreOperation(handle).catch(() => undefined)
   }
   if (result.status === 'refused' || result.status === 'failed') {
     input.onSendError(result.message)
@@ -149,32 +187,26 @@ async function replayEdit(input: {
   entry: Extract<QueuedRestoreEntry, { method: 'agentSession.queuedMessageDelete' }>
 }): Promise<void> {
   const { entry } = input
-  const result = await requestWithdrawingMutation<AgentSessionQueuedMessageDeleteResult>({
-    client: input.client,
-    method: entry.method,
-    fingerprintMethod: entry.method,
-    sessionId: entry.sessionId,
-    expectedRuntimeFence: input.expectedRuntimeFence,
-    fields: { messageId: entry.fields.messageId },
-    clientOperationId: entry.operationId
-  })
-  if (result.status === 'accepted') {
-    const texts = result.value.deleted ? [queuedMessageBodyText(result.value.body)] : []
-    await settleQueuedRestoreOperation({
-      entryKey: entry.entryKey,
-      operationId: entry.operationId,
-      restore: () => {
-        for (const text of texts) {
-          input.appendText(entry.draftKey, text)
-        }
+  const handle = { entryKey: entry.entryKey, operationId: entry.operationId }
+  await requestWithdrawingMutation<AgentSessionQueuedMessageDeleteResult>(
+    {
+      client: input.client,
+      method: entry.method,
+      fingerprintMethod: entry.method,
+      sessionId: entry.sessionId,
+      expectedRuntimeFence: input.expectedRuntimeFence,
+      fields: { messageId: entry.fields.messageId },
+      clientOperationId: entry.operationId
+    },
+    async (answer) => {
+      if (answer.status === 'accepted' && answer.value.deleted) {
+        const body = answer.value.body
+        await restoreQueuedTextOnce(entry.operationId, handle, () =>
+          input.appendText(entry.draftKey, queuedMessageBodyText(body))
+        )
+      } else {
+        await discardQueuedRestoreOperation(handle).catch(() => undefined)
       }
-    }).catch(() => undefined)
-    return
-  }
-  if (result.status !== 'unknown') {
-    await discardQueuedRestoreOperation({
-      entryKey: entry.entryKey,
-      operationId: entry.operationId
-    }).catch(() => undefined)
-  }
+    }
+  )
 }

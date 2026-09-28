@@ -82,8 +82,8 @@ describe('the queued restore journal against the page store', () => {
     })
     const restore = vi.fn()
     const handle = { entryKey, operationId: operation.operationId }
-    await restoreQueuedTextOnce(handle, restore)
-    await restoreQueuedTextOnce(handle, restore)
+    await restoreQueuedTextOnce(operation.operationId, handle, restore)
+    await restoreQueuedTextOnce(operation.operationId, handle, restore)
     expect(restore).toHaveBeenCalledTimes(1)
     expect(readMirroredStorage([JOURNAL])[JOURNAL]).toBeUndefined()
   })

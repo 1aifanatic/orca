@@ -106,34 +106,40 @@ export async function requestMobileStructuredAgentSessionCancel(args: {
     fields,
     clientOperationId
   }
-  // A withdrawing Stop re-asks a lost answer: only it carries the drafts' text back.
-  const result: StructuredAgentSessionMutationCallResult<AgentSessionCancelResult> = withdraw
-    ? await requestWithdrawingMutation<AgentSessionCancelResult>(request)
-    : await requestStructuredAgentSessionMutation<AgentSessionCancelResult>(request)
   // Cancel's plan recovers no unknown ledger row, so an id the host answered that
   // way earns the same refusal until it expires; keeping it leaves Stop unusable.
   // Transport doubt proves nothing about delivery, so it stays a replay.
-  if (result.status !== 'unknown' || result.hostReportedOperationUnknown === true) {
-    operationIds.delete(key)
-  }
-  if (result.status === 'accepted') {
-    if (withdraw) {
-      const texts = (result.value.withdrawnQueued ?? []).map((entry) =>
-        queuedMessageBodyText(entry.body)
-      )
-      const apply = (): void => {
-        for (const text of texts) {
-          withdraw.appendText(withdraw.draftKey, text)
-        }
-      }
-      // Settled through the journal so the bodies are restored exactly once.
-      await restoreQueuedTextOnce(restoreHandle, apply)
+  const settleOperationId = (
+    answer: StructuredAgentSessionMutationCallResult<AgentSessionCancelResult>
+  ): void => {
+    if (answer.status !== 'unknown' || answer.hostReportedOperationUnknown === true) {
+      operationIds.delete(key)
     }
-    return true
   }
-  if (restoreHandle && (result.status !== 'unknown' || result.hostReportedOperationUnknown)) {
-    // The host answered without owing text (or burned the id); the handle is dead.
-    await discardQueuedRestoreOperation(restoreHandle).catch(() => undefined)
+  // A withdrawing Stop re-asks a lost answer in the background: only it carries
+  // the drafts' text back, and it may land after this screen closed.
+  const result: StructuredAgentSessionMutationCallResult<AgentSessionCancelResult> = withdraw
+    ? await requestWithdrawingMutation<AgentSessionCancelResult>(request, async (answer) => {
+        settleOperationId(answer)
+        if (answer.status === 'accepted') {
+          const texts = (answer.value.withdrawnQueued ?? []).map((entry) =>
+            queuedMessageBodyText(entry.body)
+          )
+          // Settled through the journal so the bodies are restored exactly once.
+          await restoreQueuedTextOnce(clientOperationId, restoreHandle, () => {
+            for (const text of texts) {
+              withdraw.appendText(withdraw.draftKey, text)
+            }
+          })
+        } else if (restoreHandle) {
+          // The host answered without owing text (or burned the id); the handle is dead.
+          await discardQueuedRestoreOperation(restoreHandle).catch(() => undefined)
+        }
+      })
+    : await requestStructuredAgentSessionMutation<AgentSessionCancelResult>(request)
+  settleOperationId(result)
+  if (result.status === 'accepted') {
+    return true
   }
   if (result.status === 'unknown') {
     onSendError('Stop unconfirmed — check chat before retrying')

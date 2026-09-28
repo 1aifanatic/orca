@@ -35,8 +35,7 @@ export function useMobileNativeChatSessionLane({
   sourceIdentity: Parameters<typeof useMobileNativeChatSession>[0]['sourceIdentity']
   callerIdentity: string
   hostSupport: StructuredAgentSessionHostSupport | null
-  /** Composer scope for queued-draft restoration; the drafts hook mounts after
-   *  this lane, so the seam is seated through `seatAppendDraftText`. */
+  /** Composer scope withdrawn queued text is restored to. */
   composerScope: { hostId: string; worktreeId: string; tabId: string | null }
   enabled: boolean
   connState: ConnectionState
@@ -46,11 +45,8 @@ export function useMobileNativeChatSessionLane({
 }): {
   structuredSession: ReturnType<typeof useMobileStructuredAgentSession>
   session: ReturnType<typeof useMobileNativeChatSession>
-  /** Seat the drafts hook's keyed append once it exists. */
-  seatAppendDraftText: (append: (draftKey: string, text: string) => void) => void
 } {
-  const { composerRestore, seatAppendDraftText } =
-    useMobileNativeChatQueuedComposerRestore(composerScope)
+  const composerRestore = useMobileNativeChatQueuedComposerRestore(composerScope)
   const bridgeSession = useMobileNativeChatSession({
     client,
     sourceIdentity,
@@ -75,7 +71,6 @@ export function useMobileNativeChatSessionLane({
   })
   return {
     structuredSession,
-    session: structured ? structuredSession.session : bridgeSession,
-    seatAppendDraftText
+    session: structured ? structuredSession.session : bridgeSession
   }
 }

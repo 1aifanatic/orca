@@ -16,6 +16,10 @@ import {
   normalizeReconcileText
 } from './mobile-native-chat-draft-reconcile'
 import { useMobileNativeChatUnconfirmedSends } from './use-mobile-native-chat-unconfirmed-sends'
+import {
+  subscribeOwedComposerText,
+  takeOwedComposerText
+} from './mobile-native-chat-owed-composer-text'
 import { rebaseMobileNativeChatPendingBaselines } from './mobile-native-chat-pending-baseline'
 import { retireLandedMobileNativeChatPending } from './mobile-native-chat-pending-retirement'
 import {
@@ -58,15 +62,9 @@ export function useMobileNativeChatDrafts(args: {
   transcriptSettled: boolean
   /** The active pane's host-held queued-draft cards (structured lane only). */
   queuedCards?: readonly { messageId: string; text: string }[]
-  /** Seats `appendDraftText` on the session lane's composer-restore seam. */
-  seatAppendDraftText?: (append: (draftKey: string, text: string) => void) => void
 }): {
   composerText: string
   setComposerText: Dispatch<SetStateAction<string>>
-  /** Append restored queued-draft text to a pane's composer — after whatever is
-   *  there, so newer typing is preserved. Keyed so a tab switch mid-restore
-   *  cannot land the text in another pane's composer. */
-  appendDraftText: (draftKey: string, text: string) => void
   getComposerEditGeneration: () => number
   pending: MobileNativeChatPendingMessage[]
   /** Phone-local previews rebound to the transcript message that replaced the
@@ -100,8 +98,7 @@ export function useMobileNativeChatDrafts(args: {
     chatActive = true,
     transcriptLoading,
     transcriptSettled,
-    queuedCards,
-    seatAppendDraftText
+    queuedCards
   } = args
   const draftKey = mobileNativeChatScopeKey(hostId, worktreeId, tabId)
   const pendingKey = draftKey && sessionId ? `${draftKey}\0${sessionId}` : null
@@ -149,10 +146,8 @@ export function useMobileNativeChatDrafts(args: {
     },
     [draftKey]
   )
+  // Restored queued text goes after whatever is there, so newer typing is preserved.
   const appendDraftText = useCallback((draftKey: string, text: string) => {
-    if (!draftKey || text.length === 0) {
-      return
-    }
     draftEditGenerationsRef.current.advance(draftKey)
     setDrafts((previous) => {
       const current = previous[draftKey] ?? ''
@@ -229,9 +224,20 @@ export function useMobileNativeChatDrafts(args: {
     []
   )
 
-  useLayoutEffect(() => {
-    seatAppendDraftText?.(appendDraftText)
-  }, [appendDraftText, seatAppendDraftText])
+  // Withdrawn queued text lands whenever its pane is active, including text
+  // answered while this screen was closed.
+  useEffect(() => {
+    if (!draftKey) {
+      return
+    }
+    const drain = (): void => {
+      for (const text of takeOwedComposerText(draftKey)) {
+        appendDraftText(draftKey, text)
+      }
+    }
+    drain()
+    return subscribeOwedComposerText(drain)
+  }, [appendDraftText, draftKey])
 
   const { holdUnconfirmedSend } = useMobileNativeChatUnconfirmedSends({
     draftKey,
@@ -307,7 +313,6 @@ export function useMobileNativeChatDrafts(args: {
   return {
     composerText: draftKey ? (drafts[draftKey] ?? '') : '',
     setComposerText,
-    appendDraftText,
     getComposerEditGeneration: draftEditGenerationsRef.current.readComposer,
     pending,
     imagePreviewsByMessageId: pendingKey
