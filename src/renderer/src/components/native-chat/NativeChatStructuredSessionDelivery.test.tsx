@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
 import type { AgentSessionBackgroundTask } from '../../../../shared/agent-session-wire'
 import type { NativeChatQuestionCardProps } from './NativeChatQuestionCard'
+import type { NativeChatDeliveryNotice } from './NativeChatMessageRow'
 
 const mocks = vi.hoisted(() => ({
   call: vi.fn(),
@@ -45,6 +46,8 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
 
 vi.mock('./use-structured-agent-session', async () => {
   const { useStructuredAgentSessionOutbox } = await import('./use-structured-agent-session-outbox')
+  const { projectStructuredAgentSessionMessages } =
+    await import('../../../../shared/structured-agent-session-message-projection')
   return {
     useStructuredAgentSession: (props: {
       sessionId: string
@@ -60,7 +63,7 @@ vi.mock('./use-structured-agent-session', async () => {
         journalItems: [],
         messages:
           mocks.mode === 'outbox'
-            ? []
+            ? projectStructuredAgentSessionMessages([], outbox.outbox, [])
             : [
                 {
                   id: 'message-1',
@@ -131,12 +134,19 @@ vi.mock('./use-native-chat-file-link-click', () => ({
   useNativeChatFileLinkClick: (context: unknown) => (context ? mocks.fileLinkClick : undefined)
 }))
 
-vi.mock('./NativeChatMessageList', () => ({
-  NativeChatMessageList: (props: typeof mocks.messageListProps) => {
-    mocks.messageListProps = props
-    return <div data-testid="message-list" />
+vi.mock('./NativeChatMessageList', async () => {
+  const { DeliveryNoticesMock } = await import('./NativeChatStructuredSession.test-harness')
+  return {
+    NativeChatMessageList: (
+      props: NonNullable<typeof mocks.messageListProps> & {
+        deliveryNotices?: ReadonlyMap<string, NativeChatDeliveryNotice>
+      }
+    ) => {
+      mocks.messageListProps = props
+      return <DeliveryNoticesMock notices={props.deliveryNotices} />
+    }
   }
-}))
+})
 
 vi.mock('./NativeChatComposer', () => ({
   NativeChatComposer: forwardRef((props: typeof mocks.composerProps, ref) => {

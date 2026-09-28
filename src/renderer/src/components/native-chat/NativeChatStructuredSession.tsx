@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { agentSessionPromptQuestions } from '../../../../shared/agent-session-question-answer'
 import { dispatchStructuredAgentSessionComposerCommand } from '../../../../shared/structured-agent-session-composer'
 import { structuredAgentSessionPaneKey } from '../../../../shared/structured-agent-session-projection'
@@ -22,11 +22,11 @@ import { NativeChatStructuredSessionStatus } from './NativeChatStructuredSession
 import { useNativeChatLaunchDraftSignal } from './use-native-chat-launch-draft-adoption'
 import { NativeChatLaunchRetry } from './NativeChatLaunchRetry'
 import { useNativeChatProvisionalLaunch } from './use-native-chat-provisional-launch'
-import { NativeChatDeliveryRetry } from './NativeChatDeliveryRetry'
 import { useStructuredAgentSessionHostExecutionPhase } from './StructuredAgentSessionStatusBridge'
 import { structuredAgentLabel } from '@/lib/structured-agent-session-launch-label'
 import { NativeChatThreadGoalBanner } from './NativeChatThreadGoalBanner'
 import { structuredAgentSessionReadFailureNotice } from './structured-agent-session-read-failure-notice'
+import { structuredAgentSessionDeliveryNotices } from './structured-agent-session-delivery-notices'
 
 export function NativeChatStructuredSession(
   props: Omit<NativeChatStructuredViewProps, 'mode'>
@@ -100,6 +100,23 @@ export function NativeChatStructuredSession(
             : 'ready'
     }),
     [controller, props.agent, props.sessionId]
+  )
+  // Read at click time, so the notices stay put while the outbox's Retry is rebuilt each render.
+  const retryRef = useRef(controller.retry)
+  useEffect(() => {
+    retryRef.current = controller.retry
+  })
+  const retryDelivery = useCallback((clientMessageId: string) => {
+    retryRef.current(clientMessageId)
+  }, [])
+  const deliveryNotices = useMemo(
+    () =>
+      structuredAgentSessionDeliveryNotices(
+        controller.outbox,
+        controller.blockedClientMessageId,
+        retryDelivery
+      ),
+    [controller.outbox, controller.blockedClientMessageId, retryDelivery]
   )
   const viewState = selectNativeChatViewState(session, { readRetries: true })
   const readFailure =
@@ -246,14 +263,10 @@ export function NativeChatStructuredSession(
             onLinkClick={onLinkClick}
             allowFileUriLinks={onLinkClick !== undefined}
             runtimeContext={imageRuntimeContext}
+            deliveryNotices={deliveryNotices}
           />
         )}
       </div>
-      <NativeChatDeliveryRetry
-        outbox={controller.outbox}
-        blockedClientMessageId={controller.blockedClientMessageId}
-        retry={controller.retry}
-      />
       <NativeChatLaunchRetry
         lifecycle={provisionalLaunch.lifecycle}
         failure={provisionalLaunch.failure}
