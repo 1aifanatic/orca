@@ -40,6 +40,13 @@ $createdUser=$false; $createdService=$false; $sid=$null; $ownedServerPid=$null
 $sshDir=Join-Path $root 'OpenSSH-ARM64'
 $sshdLog=Join-Path $root 'private-sshd.log'
 $serviceStartAttempt=$null
+function Diagnostic-Categories([string]$Text) {
+  $categories=@()
+  foreach($category in @('connection established','remote protocol version','server host key','host key verification failed','offering public key','server accepts key','authenticated to','sending command','exit status','permission denied','connection closed','connection reset','bad permissions','unable to load host key','no hostkeys available','failed to create','fatal','userauth','accepted publickey','starting session','createprocess','logonuser')){
+    if($Text.IndexOf($category,[StringComparison]::OrdinalIgnoreCase) -ge 0){$categories+=$category}
+  }
+  return $categories
+}
 function Invoke-Bounded([string]$Program,[string[]]$Arguments,[int]$Seconds=20,[switch]$AllowFailure) {
   Write-Stage ('command-'+[IO.Path]::GetFileName($Program)+'-start')
   $start=[Diagnostics.ProcessStartInfo]::new($Program)
@@ -50,22 +57,30 @@ function Invoke-Bounded([string]$Program,[string[]]$Arguments,[int]$Seconds=20,[
   try {
     if(-not $process.Start()){throw 'Owned command failed to start'}
     $stdout=$process.StandardOutput.ReadToEndAsync();$stderr=$process.StandardError.ReadToEndAsync()
-    if(-not $process.WaitForExit($Seconds*1000)){$process.Kill($true);$process.WaitForExit();throw 'Owned command deadline exceeded'}
+    $timedOut=-not $process.WaitForExit($Seconds*1000)
+    if($timedOut){$process.Kill($true);if(-not $process.WaitForExit(5000)){throw 'Owned command kill unconfirmed'}}
+    if(-not [Threading.Tasks.Task]::WaitAll([Threading.Tasks.Task[]]@($stdout,$stderr),5000)){throw 'Owned command output drain deadline exceeded'}
     $output=$stdout.GetAwaiter().GetResult();$errorText=$stderr.GetAwaiter().GetResult()
     if($output.Length+$errorText.Length -gt 1048576){throw 'Owned command output limit exceeded'}
+    if([IO.Path]::GetFileName($Program) -eq 'ssh.exe'){
+      $report.sshClient=@{timedOut=$timedOut;exitCode=$process.ExitCode;stderrBytes=$errorText.Length;categories=@(Diagnostic-Categories $errorText)}
+      Write-Stage 'ssh-client-result'
+    }
+    if($timedOut){throw 'Owned command deadline exceeded'}
     if($process.ExitCode -ne 0 -and -not $AllowFailure){throw "Owned command failed: $([IO.Path]::GetFileName($Program)) exit $($process.ExitCode)"}
     Write-Stage ('command-'+[IO.Path]::GetFileName($Program)+'-complete')
     return @{code=$process.ExitCode; stdout=$output}
   } finally {$process.Dispose()}
 }
-function Record-PrivateServiceDiagnostics {
+function Record-PrivateServiceDiagnostics([switch]$AfterStop) {
   Write-Stage 'private-service-diagnostics-start'
   try {
     $state=Get-CimInstance Win32_Service -Filter "Name='$serviceName'"
     if($state){
-      $report.serviceDiagnostics=@{state=$state.State;exitCode=$state.ExitCode;serviceSpecificExitCode=$state.ServiceSpecificExitCode;pid=$state.ProcessId;localSystem=($state.StartName -eq 'LocalSystem');privatePath=($state.PathName -like "*$root*")}
-    } else {$report.serviceDiagnostics=@{absent=$true}}
-    if($serviceStartAttempt){
+      $diagnostic=@{state=$state.State;exitCode=$state.ExitCode;serviceSpecificExitCode=$state.ServiceSpecificExitCode;pid=$state.ProcessId;localSystem=($state.StartName -eq 'LocalSystem');privatePath=($state.PathName -like "*$root*")}
+    } else {$diagnostic=@{absent=$true}}
+    if($AfterStop){$report.serviceAfterStop=$diagnostic}else{$report.serviceDiagnostics=$diagnostic}
+    if($serviceStartAttempt -and -not $AfterStop){
       try {
         $events=@(Get-WinEvent -FilterHashtable @{LogName='System';ProviderName='Service Control Manager';StartTime=$serviceStartAttempt} -MaxEvents 50 -ErrorAction Stop | Where-Object {$_.Properties.Value -contains $serviceName})
         $report.serviceEvents=@($events | ForEach-Object {@{id=$_.Id;utc=$_.TimeCreated.ToUniversalTime().ToString('o');level=$_.Level}})
@@ -77,10 +92,7 @@ function Record-PrivateServiceDiagnostics {
         $buffer=[byte[]]::new(16384)
         $count=$file.Read($buffer,0,$buffer.Length)
         $text=[Text.Encoding]::UTF8.GetString($buffer,0,$count)
-        $classes=@()
-        foreach($category in @('permission denied','bad permissions','unable to load host key','no hostkeys available','bind to port','address already in use','registerservicectrlhandler','failed to create','fatal')){
-          if($text.IndexOf($category,[StringComparison]::OrdinalIgnoreCase) -ge 0){$classes+=$category}
-        }
+        $classes=@(Diagnostic-Categories $text)
         $report.privateLog=@{exists=$true;bytes=$file.Length;examinedBytes=$count;errorClasses=$classes}
       } finally {$file.Dispose()}
     } else {$report.privateLog=@{exists=$false}}
@@ -171,7 +183,7 @@ AllowTcpForwarding no
 AllowAgentForwarding no
 PermitTunnel no
 PermitTTY no
-LogLevel ERROR
+LogLevel VERBOSE
 "@ | Set-Content -LiteralPath $config -Encoding ascii
   Write-Stage 'server-config-validate-start'
   Invoke-Bounded $sshd @('-t','-f',$config) | Out-Null
@@ -198,7 +210,7 @@ LogLevel ERROR
   $known=Join-Path $root 'known_hosts'
   "[127.0.0.1]:$port $($keyFields[0]) $($keyFields[1])" | Set-Content -LiteralPath $known -Encoding ascii
   $nonce=[Guid]::NewGuid().ToString('N')
-  $sshArgs=@('-F','NUL','-T','-p',[string]$port,'-i',$clientKey,'-o','BatchMode=yes','-o','IdentitiesOnly=yes','-o','StrictHostKeyChecking=yes','-o',"UserKnownHostsFile=$known",'-o','ConnectTimeout=5',"$name@127.0.0.1")
+  $sshArgs=@('-v','-F','NUL','-T','-p',[string]$port,'-i',$clientKey,'-o','BatchMode=yes','-o','IdentitiesOnly=yes','-o','StrictHostKeyChecking=yes','-o',"UserKnownHostsFile=$known",'-o','ConnectTimeout=5',"$name@127.0.0.1")
   $deadline=[DateTime]::UtcNow.AddSeconds(30);$probe=$null
   Write-Stage 'ssh-authentication-start'
   do {
@@ -223,7 +235,12 @@ LogLevel ERROR
     $privateService=Get-CimInstance Win32_Service -Filter "Name='$serviceName'"
     Write-Stage 'cleanup-service-query-complete'
     if($createdService -and $privateService -and ($privateService.PathName -notlike "*$root*" -or ($ownedServerPid -and $privateService.ProcessId -and $privateService.ProcessId -ne $ownedServerPid))){throw 'Private service identity changed; refuse stop'}
-    Write-Stage 'cleanup-service-stop-delete-start'
+    Write-Stage 'cleanup-child-accounting-start'
+    $rows=@(Get-CimInstance Win32_Process)
+    $ownedChildren=@($rows | Where-Object {$_.ExecutablePath -and $_.ExecutablePath.StartsWith($sshDir+'\',[StringComparison]::OrdinalIgnoreCase)})
+    $report.childrenBeforeStop=@($ownedChildren | ForEach-Object {@{pid=$_.ProcessId;parentPid=$_.ParentProcessId;created=$_.CreationDate.ToUniversalTime().ToString('o');image=[IO.Path]::GetFileName($_.ExecutablePath)}})
+    Write-Stage 'cleanup-child-accounting-complete'
+    Write-Stage 'cleanup-service-stop-delete-start' 
     if($createdService){Stop-Service -Name $serviceName -Force -ErrorAction SilentlyContinue;Invoke-Bounded sc.exe @('delete',$serviceName) | Out-Null}
     Write-Stage 'cleanup-service-stop-delete-complete'
     Write-Stage 'cleanup-process-exit-start'
@@ -236,8 +253,23 @@ LogLevel ERROR
     while($createdService -and (Get-Service -Name $serviceName -ErrorAction SilentlyContinue) -and [DateTime]::UtcNow -lt $serviceDeadline){Start-Sleep -Milliseconds 100}
     if($createdService -and (Get-Service -Name $serviceName -ErrorAction SilentlyContinue)){throw 'Private service still registered'}
     Write-Stage 'cleanup-service-absence-complete'
-    Write-Stage 'cleanup-user-profile-start'
-    if($sid){Get-CimInstance Win32_UserProfile | Where-Object SID -eq $sid | Remove-CimInstance}
+    Record-PrivateServiceDiagnostics -AfterStop
+    Write-Stage 'cleanup-child-exit-start'
+    $childDeadline=[DateTime]::UtcNow.AddSeconds(10)
+    do {
+      $remaining=@(Get-CimInstance Win32_Process | Where-Object {$_.ExecutablePath -and $_.ExecutablePath.StartsWith($sshDir+'\',[StringComparison]::OrdinalIgnoreCase)})
+      if(-not $remaining.Count){break};Start-Sleep -Milliseconds 200
+    } while([DateTime]::UtcNow -lt $childDeadline)
+    $report.childrenAfterStop=@($remaining | ForEach-Object {@{pid=$_.ProcessId;parentPid=$_.ParentProcessId;created=$_.CreationDate.ToUniversalTime().ToString('o');image=[IO.Path]::GetFileName($_.ExecutablePath)}})
+    Write-Stage 'cleanup-child-exit-complete'
+    if($remaining.Count){throw 'Private SSH child processes remain; preserve files and discard ephemeral runner'}
+    Write-Stage 'cleanup-user-profile-start' 
+    if($sid){
+      $profiles=@(Get-CimInstance Win32_UserProfile | Where-Object SID -eq $sid)
+      $report.privateProfile=@($profiles | ForEach-Object {@{loaded=$_.Loaded;status=$_.Status}})
+      Write-Stage 'cleanup-user-profile-observed'
+      $profiles | Remove-CimInstance
+    }
     Write-Stage 'cleanup-user-profile-complete'
     Write-Stage 'cleanup-user-start'
     if($createdUser){Remove-LocalUser -Name $name;if(Get-LocalUser -Name $name -ErrorAction SilentlyContinue){throw 'Private account still exists'}}
