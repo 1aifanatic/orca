@@ -20,9 +20,10 @@ for (const sample of [1, 2, 3]) {
         new Promise((resolveBuild, reject) => {
           const argv =
             variant === 'baseline'
-              ? args.filter(
-                  (arg) =>
-                    !arg.startsWith('--config.deb.fpm=') && !arg.startsWith('--config.rpm.fpm=')
+              ? args.map((arg) =>
+                  arg === 'config/electron-builder-pr-linux.config.cjs'
+                    ? 'config/electron-builder.config.cjs'
+                    : arg
                 )
               : args
           const child = spawnProcess({
