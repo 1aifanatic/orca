@@ -2,6 +2,7 @@ import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import { translate } from '@/i18n/i18n'
 import { Label } from '../ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
+import { NativeChatQueueFollowUpsSetting } from './NativeChatQueueFollowUpsSetting'
 import { NativeChatShellEnvironmentSetting } from './NativeChatShellEnvironmentSetting'
 import { NativeChatSupportedAgents } from './NativeChatSupportedAgents'
 import { SearchableSetting } from './SearchableSetting'
@@ -22,7 +23,6 @@ export function NativeChatExperimentalSetting({
   const nativeChatEnabled = settings.experimentalNativeChat === true
   const structuredNativeChatEnabled = settings.experimentalStructuredNativeChat === true
   const resumeOnRestartEnabled = settings.nativeChatResumeWorkOnRestart === true
-  const queueFollowUpsEnabled = settings.nativeChatQueueFollowUps !== false
   const defaultView: NativeChatDefaultView =
     settings.openAgentTabsInChatByDefault === true ? 'native-chat' : 'terminal-chat'
   // Structured-only settings; terminal-backed chat never reads them.
@@ -187,32 +187,7 @@ export function NativeChatExperimentalSetting({
           ) : null}
 
           {structuredChatActive ? (
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0 shrink space-y-0.5">
-                <Label>
-                  {translate(
-                    'components.settings.nativeChat.queueFollowUpsTitle',
-                    'Queue follow-ups'
-                  )}
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  {translate(
-                    'components.settings.nativeChat.queueFollowUpsCopy',
-                    'While the agent is working, Enter adds your message to an editable queue that sends when the turn ends. Off sends mid-turn messages immediately.'
-                  )}
-                </p>
-              </div>
-              <SettingsSwitch
-                checked={queueFollowUpsEnabled}
-                ariaLabel={translate(
-                  'components.settings.nativeChat.queueFollowUpsToggleLabel',
-                  'Toggle queue follow-ups'
-                )}
-                onChange={() =>
-                  updateSettings({ nativeChatQueueFollowUps: !queueFollowUpsEnabled })
-                }
-              />
-            </div>
+            <NativeChatQueueFollowUpsSetting settings={settings} updateSettings={updateSettings} />
           ) : null}
 
           {structuredChatActive ? (

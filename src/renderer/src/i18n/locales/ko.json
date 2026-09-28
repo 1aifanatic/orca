@@ -18055,7 +18055,7 @@
       },
       "nativeChat": {
         "queueFollowUpsTitle": "후속 메시지 대기열에 추가",
-        "queueFollowUpsCopy": "Agent가 작업하는 동안 Enter 키를 누르면 메시지가 편집 가능한 대기열에 추가되어 턴이 끝날 때 전송됩니다. 끄면 턴 중의 메시지가 즉시 전송됩니다.",
+        "queueFollowUpsCopy": "Agent가 작업하는 동안 보낸 메시지는 지금 보내기, 편집, 삭제할 수 있는 카드로 대기합니다. 이미지가 포함된 메시지는 바로 전송됩니다.",
         "queueFollowUpsToggleLabel": "후속 메시지 대기열 전환"
       }
     }

@@ -15156,7 +15156,7 @@
     "settings": {
       "nativeChat": {
         "queueFollowUpsTitle": "Poner mensajes en cola",
-        "queueFollowUpsCopy": "Mientras el agente trabaja, Enter añade tu mensaje a una cola editable que se envía al terminar el turno. Desactivado, los mensajes a mitad de turno se envían de inmediato.",
+        "queueFollowUpsCopy": "Los mensajes que envías mientras el agente trabaja esperan como tarjetas que puedes enviar ahora, editar o eliminar. Los mensajes con imágenes se envían de inmediato.",
         "queueFollowUpsToggleLabel": "Alternar la cola de mensajes"
       }
     }

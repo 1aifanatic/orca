@@ -18055,7 +18055,7 @@
       },
       "nativeChat": {
         "queueFollowUpsTitle": "将后续消息加入队列",
-        "queueFollowUpsCopy": "Agent 工作时，按 Enter 会将消息加入可编辑的队列，并在本轮结束时发送。关闭后，轮次进行中的消息会立即发送。",
+        "queueFollowUpsCopy": "Agent 工作时发送的消息会以卡片形式等待，你可以立即发送、编辑或删除。带图片的消息会立即发送。",
         "queueFollowUpsToggleLabel": "切换后续消息队列"
       }
     }

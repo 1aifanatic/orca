@@ -18180,7 +18180,7 @@
       },
       "nativeChat": {
         "queueFollowUpsTitle": "Queue follow-ups",
-        "queueFollowUpsCopy": "While the agent is working, Enter adds your message to an editable queue that sends when the turn ends. Off sends mid-turn messages immediately.",
+        "queueFollowUpsCopy": "Messages you send while the agent is working wait as cards you can steer, edit, or delete. Messages with images send right away.",
         "queueFollowUpsToggleLabel": "Toggle queue follow-ups"
       }
     }
