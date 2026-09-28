@@ -61,7 +61,7 @@ export function installPtyRuntimeController(deps: PtyRuntimeControllerDeps): voi
       recordUnconfirmedExplicitSshStop({
         store: deps.store,
         ptyId,
-        reversible: deps.reversibleStopOwnersByPtyId.has(ptyId)
+        reversible: runtime?.intentionalPtyStops?.isReversibleStopInFlight(ptyId) ?? false
       }),
     getForegroundProcess: (ptyId) => getForegroundProcessFromRuntimeController(ptyId),
     inspectProcess: (ptyId, options) => inspectProcessFromRuntimeController(ptyId, options),
