@@ -283,6 +283,7 @@ describe('running turn lifecycle revisions', () => {
 describe('stale session state on a cold acquire', () => {
   function journalWith(items: AgentJournalRenderItem[]) {
     const appendLifecycleBatch = vi.fn(async () => ({ epoch: 'epoch-1', sequence: 9 }))
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the settle reads only these journal members, and a release that proved nothing never reads the live bound.
     const journal = {
       snapshot: () => ({ items }),
       itemFence: () => 1,
