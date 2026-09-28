@@ -103,11 +103,11 @@ export class JournalHostDatabase {
     return this.reclaiming
   }
 
-  /** Last, after every store has drained. */
+  /** Last, after every store has drained. A close that fails keeps the handle, so the retried
+   *  teardown closes this same connection before the owner lock goes. */
   close(): void {
-    const connection = this.connection
+    this.connection?.close()
     this.connection = null
-    connection?.close()
   }
 
   /**

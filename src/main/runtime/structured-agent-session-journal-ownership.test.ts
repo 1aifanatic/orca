@@ -697,4 +697,29 @@ describe('releasing ownership', () => {
 
     expect(await probeJournalOwnerLockInChild(root)).toBe('acquired')
   })
+
+  it('keeps the chats until a journal close that failed is retried and goes through', async () => {
+    await install()
+    const close = JournalHostDatabase.prototype.close
+    let connectionClose: ReturnType<typeof vi.fn> | null = null
+    const journalClose = vi
+      .spyOn(JournalHostDatabase.prototype, 'close')
+      .mockImplementation(function (this: JournalHostDatabase) {
+        // The connection's first close fails, as a native close can before it completes.
+        connectionClose ??= vi.spyOn(this.db, 'close').mockImplementationOnce(() => {
+          throw new Error('unable to close due to unfinalized statements')
+        })
+        close.call(this)
+      })
+    const journal = () => journalClose.mock.contexts[0]
+
+    await expect(stopStructuredAgentSessionRuntime()).rejects.toThrow('unable to close')
+    expect(journal()).toHaveProperty('isClosed', false)
+    expect(await probeJournalOwnerLockInChild(root)).toBe('refused')
+
+    await stopStructuredAgentSessionRuntime()
+    expect(connectionClose).toHaveBeenCalledTimes(2)
+    expect(journal()).toHaveProperty('isClosed', true)
+    expect(await probeJournalOwnerLockInChild(root)).toBe('acquired')
+  })
 })
