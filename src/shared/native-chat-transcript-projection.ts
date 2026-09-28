@@ -16,7 +16,7 @@ export function compareNativeChatMessageTimes(a: NativeChatMessage, b: NativeCha
 }
 
 /** Timestamp, then id: a total order for merging sources that share no order of their own. */
-export function compareNativeChatMessagesByTime(
+export function compareNativeChatMessagesByTimeThenId(
   a: NativeChatMessage,
   b: NativeChatMessage
 ): number {

@@ -8,7 +8,7 @@ import {
 } from '../../../../shared/native-chat-types'
 import { NATIVE_CHAT_STREAMING_ID } from '../../../../shared/native-chat-streaming'
 import {
-  compareNativeChatMessagesByTime,
+  compareNativeChatMessagesByTimeThenId,
   compareNativeChatMessageTimes
 } from '../../../../shared/native-chat-transcript-projection'
 import {
@@ -118,7 +118,7 @@ export function compareMessageTimes(a: NativeChatMessage, b: NativeChatMessage):
 
 // Ties broken by id: the merged sources below have no shared order of their own.
 export function compareMessages(a: NativeChatMessage, b: NativeChatMessage): number {
-  return compareMessageTimes(a, b) || compareNativeChatMessagesByTime(a, b)
+  return compareMessageTimes(a, b) || compareNativeChatMessagesByTimeThenId(a, b)
 }
 
 /**
