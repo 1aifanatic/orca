@@ -1,5 +1,5 @@
 {
-  "source": "Read from cli.js of each @anthropic-ai/claude-code npm release. enums: the hook event enum; hooks keys outside it make 1.0.23-2.1.100 discard the whole user settings file. topLevelSettings: whether the settings schema rejects unknown top-level keys, and whether it knows statusLine.",
+  "source": "Read from cli.js of each @anthropic-ai/claude-code npm release. enums: the hook event enum; hooks keys outside it make 1.0.23-2.1.100 discard the whole user settings file. topLevelSettings: the settings schema's top-level keys, and whether it is strict, i.e. discards the whole file over any other key.",
   "previousPublishedVersion": {
     "1.0.23": "1.0.22",
     "1.0.31": "1.0.30",
@@ -17,32 +17,343 @@
   },
   "topLevelSettings": {
     "1.0.48": {
-      "rejectsUnknownKeys": false,
-      "knowsStatusLine": false
+      "strict": false,
+      "keys": [
+        "apiKeyHelper",
+        "cleanupPeriodDays",
+        "env",
+        "includeCoAuthoredBy",
+        "permissions",
+        "model",
+        "enableAllProjectMcpServers",
+        "enabledMcpjsonServers",
+        "disabledMcpjsonServers",
+        "hooks",
+        "learnMode",
+        "forceLoginMethod"
+      ]
     },
     "1.0.49": {
-      "rejectsUnknownKeys": true,
-      "knowsStatusLine": false
+      "strict": true,
+      "keys": [
+        "apiKeyHelper",
+        "cleanupPeriodDays",
+        "env",
+        "includeCoAuthoredBy",
+        "permissions",
+        "model",
+        "enableAllProjectMcpServers",
+        "enabledMcpjsonServers",
+        "disabledMcpjsonServers",
+        "hooks",
+        "learnMode",
+        "forceLoginMethod"
+      ]
+    },
+    "1.0.50": {
+      "strict": true,
+      "keys": [
+        "apiKeyHelper",
+        "cleanupPeriodDays",
+        "env",
+        "includeCoAuthoredBy",
+        "permissions",
+        "model",
+        "enableAllProjectMcpServers",
+        "enabledMcpjsonServers",
+        "disabledMcpjsonServers",
+        "hooks",
+        "learnMode",
+        "forceLoginMethod"
+      ]
+    },
+    "1.0.51": {
+      "strict": true,
+      "keys": [
+        "apiKeyHelper",
+        "cleanupPeriodDays",
+        "env",
+        "includeCoAuthoredBy",
+        "permissions",
+        "model",
+        "enableAllProjectMcpServers",
+        "enabledMcpjsonServers",
+        "disabledMcpjsonServers",
+        "hooks",
+        "learnMode",
+        "forceLoginMethod"
+      ]
+    },
+    "1.0.52": {
+      "strict": true,
+      "keys": [
+        "apiKeyHelper",
+        "cleanupPeriodDays",
+        "env",
+        "includeCoAuthoredBy",
+        "permissions",
+        "model",
+        "enableAllProjectMcpServers",
+        "enabledMcpjsonServers",
+        "disabledMcpjsonServers",
+        "hooks",
+        "learnMode",
+        "forceLoginMethod"
+      ]
+    },
+    "1.0.53": {
+      "strict": true,
+      "keys": [
+        "apiKeyHelper",
+        "awsCredentialExport",
+        "awsAuthRefresh",
+        "cleanupPeriodDays",
+        "env",
+        "includeCoAuthoredBy",
+        "permissions",
+        "model",
+        "enableAllProjectMcpServers",
+        "enabledMcpjsonServers",
+        "disabledMcpjsonServers",
+        "hooks",
+        "learnMode",
+        "forceLoginMethod",
+        "otelHeadersHelper"
+      ]
+    },
+    "1.0.54": {
+      "strict": true,
+      "keys": [
+        "apiKeyHelper",
+        "awsCredentialExport",
+        "awsAuthRefresh",
+        "cleanupPeriodDays",
+        "env",
+        "includeCoAuthoredBy",
+        "permissions",
+        "model",
+        "enableAllProjectMcpServers",
+        "enabledMcpjsonServers",
+        "disabledMcpjsonServers",
+        "hooks",
+        "learnMode",
+        "forceLoginMethod",
+        "otelHeadersHelper"
+      ]
+    },
+    "1.0.58": {
+      "strict": true,
+      "keys": [
+        "apiKeyHelper",
+        "awsCredentialExport",
+        "awsAuthRefresh",
+        "cleanupPeriodDays",
+        "env",
+        "includeCoAuthoredBy",
+        "permissions",
+        "model",
+        "enableAllProjectMcpServers",
+        "enabledMcpjsonServers",
+        "disabledMcpjsonServers",
+        "hooks",
+        "learnMode",
+        "forceLoginMethod",
+        "otelHeadersHelper"
+      ]
+    },
+    "1.0.59": {
+      "strict": true,
+      "keys": [
+        "apiKeyHelper",
+        "awsCredentialExport",
+        "awsAuthRefresh",
+        "cleanupPeriodDays",
+        "env",
+        "includeCoAuthoredBy",
+        "permissions",
+        "model",
+        "enableAllProjectMcpServers",
+        "enabledMcpjsonServers",
+        "disabledMcpjsonServers",
+        "hooks",
+        "learnMode",
+        "forceLoginMethod",
+        "otelHeadersHelper"
+      ]
+    },
+    "1.0.60": {
+      "strict": true,
+      "keys": [
+        "apiKeyHelper",
+        "awsCredentialExport",
+        "awsAuthRefresh",
+        "cleanupPeriodDays",
+        "env",
+        "includeCoAuthoredBy",
+        "permissions",
+        "model",
+        "enableAllProjectMcpServers",
+        "enabledMcpjsonServers",
+        "disabledMcpjsonServers",
+        "hooks",
+        "learnMode",
+        "forceLoginMethod",
+        "otelHeadersHelper"
+      ]
+    },
+    "1.0.61": {
+      "strict": true,
+      "keys": [
+        "apiKeyHelper",
+        "awsCredentialExport",
+        "awsAuthRefresh",
+        "cleanupPeriodDays",
+        "env",
+        "includeCoAuthoredBy",
+        "permissions",
+        "model",
+        "enableAllProjectMcpServers",
+        "enabledMcpjsonServers",
+        "disabledMcpjsonServers",
+        "hooks",
+        "learnMode",
+        "forceLoginMethod",
+        "otelHeadersHelper"
+      ]
     },
     "1.0.62": {
-      "rejectsUnknownKeys": true,
-      "knowsStatusLine": false
+      "strict": true,
+      "keys": [
+        "apiKeyHelper",
+        "awsCredentialExport",
+        "awsAuthRefresh",
+        "cleanupPeriodDays",
+        "env",
+        "includeCoAuthoredBy",
+        "permissions",
+        "model",
+        "enableAllProjectMcpServers",
+        "enabledMcpjsonServers",
+        "disabledMcpjsonServers",
+        "hooks",
+        "learnMode",
+        "forceLoginMethod",
+        "otelHeadersHelper"
+      ]
     },
     "1.0.63": {
-      "rejectsUnknownKeys": true,
-      "knowsStatusLine": false
+      "strict": true,
+      "keys": [
+        "apiKeyHelper",
+        "awsCredentialExport",
+        "awsAuthRefresh",
+        "cleanupPeriodDays",
+        "env",
+        "includeCoAuthoredBy",
+        "permissions",
+        "model",
+        "enableAllProjectMcpServers",
+        "enabledMcpjsonServers",
+        "disabledMcpjsonServers",
+        "hooks",
+        "learnMode",
+        "forceLoginMethod",
+        "otelHeadersHelper",
+        "outputMode"
+      ]
     },
     "1.0.64": {
-      "rejectsUnknownKeys": true,
-      "knowsStatusLine": true
+      "strict": true,
+      "keys": [
+        "apiKeyHelper",
+        "awsCredentialExport",
+        "awsAuthRefresh",
+        "cleanupPeriodDays",
+        "env",
+        "includeCoAuthoredBy",
+        "permissions",
+        "model",
+        "enableAllProjectMcpServers",
+        "enabledMcpjsonServers",
+        "disabledMcpjsonServers",
+        "hooks",
+        "statusLine",
+        "learnMode",
+        "forceLoginMethod",
+        "otelHeadersHelper",
+        "outputMode",
+        "feedbackSurveyState"
+      ]
+    },
+    "1.0.65": {
+      "strict": true,
+      "keys": [
+        "$schema",
+        "apiKeyHelper",
+        "awsCredentialExport",
+        "awsAuthRefresh",
+        "cleanupPeriodDays",
+        "env",
+        "includeCoAuthoredBy",
+        "permissions",
+        "model",
+        "enableAllProjectMcpServers",
+        "enabledMcpjsonServers",
+        "disabledMcpjsonServers",
+        "hooks",
+        "statusLine",
+        "learnMode",
+        "forceLoginMethod",
+        "otelHeadersHelper",
+        "outputMode",
+        "feedbackSurveyState"
+      ]
     },
     "1.0.66": {
-      "rejectsUnknownKeys": true,
-      "knowsStatusLine": true
+      "strict": true,
+      "keys": [
+        "$schema",
+        "apiKeyHelper",
+        "awsCredentialExport",
+        "awsAuthRefresh",
+        "cleanupPeriodDays",
+        "env",
+        "includeCoAuthoredBy",
+        "permissions",
+        "model",
+        "enableAllProjectMcpServers",
+        "enabledMcpjsonServers",
+        "disabledMcpjsonServers",
+        "hooks",
+        "statusLine",
+        "learnMode",
+        "forceLoginMethod",
+        "otelHeadersHelper",
+        "outputMode"
+      ]
     },
     "1.0.67": {
-      "rejectsUnknownKeys": false,
-      "knowsStatusLine": true
+      "strict": false,
+      "keys": [
+        "$schema",
+        "apiKeyHelper",
+        "awsCredentialExport",
+        "awsAuthRefresh",
+        "cleanupPeriodDays",
+        "env",
+        "includeCoAuthoredBy",
+        "permissions",
+        "model",
+        "enableAllProjectMcpServers",
+        "enabledMcpjsonServers",
+        "disabledMcpjsonServers",
+        "hooks",
+        "statusLine",
+        "learnMode",
+        "forceLoginMethod",
+        "otelHeadersHelper",
+        "outputMode"
+      ]
     }
   },
   "enums": {
@@ -65,8 +376,48 @@
     "1.0.31": ["PreToolUse", "PostToolUse", "Notification", "Stop"],
     "1.0.40": ["PreToolUse", "PostToolUse", "Notification", "Stop"],
     "1.0.41": ["PreToolUse", "PostToolUse", "Notification", "Stop", "SubagentStop"],
+    "1.0.48": ["PreToolUse", "PostToolUse", "Notification", "Stop", "SubagentStop", "PreCompact"],
+    "1.0.49": ["PreToolUse", "PostToolUse", "Notification", "Stop", "SubagentStop", "PreCompact"],
+    "1.0.50": ["PreToolUse", "PostToolUse", "Notification", "Stop", "SubagentStop", "PreCompact"],
+    "1.0.51": ["PreToolUse", "PostToolUse", "Notification", "Stop", "SubagentStop", "PreCompact"],
     "1.0.52": ["PreToolUse", "PostToolUse", "Notification", "Stop", "SubagentStop", "PreCompact"],
     "1.0.53": [
+      "PreToolUse",
+      "PostToolUse",
+      "Notification",
+      "UserPromptSubmit",
+      "Stop",
+      "SubagentStop",
+      "PreCompact"
+    ],
+    "1.0.54": [
+      "PreToolUse",
+      "PostToolUse",
+      "Notification",
+      "UserPromptSubmit",
+      "Stop",
+      "SubagentStop",
+      "PreCompact"
+    ],
+    "1.0.58": [
+      "PreToolUse",
+      "PostToolUse",
+      "Notification",
+      "UserPromptSubmit",
+      "Stop",
+      "SubagentStop",
+      "PreCompact"
+    ],
+    "1.0.59": [
+      "PreToolUse",
+      "PostToolUse",
+      "Notification",
+      "UserPromptSubmit",
+      "Stop",
+      "SubagentStop",
+      "PreCompact"
+    ],
+    "1.0.60": [
       "PreToolUse",
       "PostToolUse",
       "Notification",
@@ -105,6 +456,36 @@
       "PreCompact"
     ],
     "1.0.64": [
+      "PreToolUse",
+      "PostToolUse",
+      "Notification",
+      "UserPromptSubmit",
+      "SessionStart",
+      "Stop",
+      "SubagentStop",
+      "PreCompact"
+    ],
+    "1.0.65": [
+      "PreToolUse",
+      "PostToolUse",
+      "Notification",
+      "UserPromptSubmit",
+      "SessionStart",
+      "Stop",
+      "SubagentStop",
+      "PreCompact"
+    ],
+    "1.0.66": [
+      "PreToolUse",
+      "PostToolUse",
+      "Notification",
+      "UserPromptSubmit",
+      "SessionStart",
+      "Stop",
+      "SubagentStop",
+      "PreCompact"
+    ],
+    "1.0.67": [
       "PreToolUse",
       "PostToolUse",
       "Notification",

@@ -13,7 +13,7 @@ import {
 
 const enums: Record<string, string[]> = fixture.enums
 const previousPublished: Record<string, string> = fixture.previousPublishedVersion
-const topLevelSettings: Record<string, { rejectsUnknownKeys: boolean; knowsStatusLine: boolean }> =
+const topLevelSettings: Record<string, { strict: boolean; keys: string[] }> =
   fixture.topLevelSettings
 const versions = Object.keys(enums).sort(compareAppVersions)
 const isTableEvent = (name: string): name is ClaudeHookEventName =>
@@ -40,13 +40,14 @@ describe('Claude hook event version table', () => {
 describe('Claude statusLine version floor', () => {
   it('pins statusLine to the first release whose settings schema knows it', () => {
     for (const [version, schema] of Object.entries(topLevelSettings)) {
-      expect(schema.knowsStatusLine, version).toBe(
+      expect(schema.keys.includes('statusLine'), version).toBe(
         compareAppVersions(version, CLAUDE_STATUS_LINE_FIRST_VERSION) >= 0
       )
     }
     // Why: the release just before rejects the unknown key, so the floor is exact, not just safe.
     const before = previousPublished[CLAUDE_STATUS_LINE_FIRST_VERSION]
-    expect(topLevelSettings[before]).toEqual({ rejectsUnknownKeys: true, knowsStatusLine: false })
+    expect(topLevelSettings[before].strict).toBe(true)
+    expect(topLevelSettings[before].keys).not.toContain('statusLine')
   })
 
   it.each([

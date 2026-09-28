@@ -9,7 +9,7 @@ const SCRIPT_FILE_NAME = 'claude-hook.sh'
 const MANAGED_COMMAND = '/home/dev/.orca/agent-hooks/claude-hook.sh'
 const managedHook = { type: 'command' as const, command: MANAGED_COMMAND }
 const enums: Record<string, string[]> = fixture.enums
-const topLevelSettings: Record<string, { knowsStatusLine: boolean }> = fixture.topLevelSettings
+const topLevelSettings: Record<string, { keys: string[] }> = fixture.topLevelSettings
 
 function install(config: HooksConfig, claudeVersion: string | undefined): HooksConfig {
   return applyManagedHooks(
@@ -66,7 +66,9 @@ describe('Claude managed hook events by resolved version', () => {
     'writes statusLine only if Claude %s knows it',
     (version) => {
       const plan = getClaudeManagedHookPlan(version)
-      expect(plan.statusLine === 'install').toBe(topLevelSettings[version].knowsStatusLine)
+      expect(plan.statusLine === 'install').toBe(
+        topLevelSettings[version].keys.includes('statusLine')
+      )
     }
   )
 
