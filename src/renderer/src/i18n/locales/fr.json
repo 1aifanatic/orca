@@ -2307,8 +2307,8 @@
         "5b2c1a9e44": "Aucun CLI d'agent détecté — installez-en un ou choisissez un agent par défaut dans les paramètres.",
         "b7c1f0a934": "Un hôte distant n'a pas pu être atteint, Orca ne peut donc pas savoir si le travail est toujours en cours là-bas. Fermer la fenêtre quand même ?",
         "quitSnapshotSaveFailed": "Quitter annulé : l'instantané de session n'a pas pu être enregistré ({{value0}}).",
-        "userDisconnectedHosts": "Vous avez déconnecté {{hosts}}. Les terminaux y continuent de s'exécuter. Fermer la fenêtre quand même ?",
-        "userDisconnectedAndUnreachableHosts": "Vous avez déconnecté {{hosts}}. Les terminaux y continuent de s'exécuter. Un autre hôte distant n'a pas pu être atteint, Orca ne peut donc pas savoir si le travail y est toujours en cours. Fermer la fenêtre quand même ?"
+        "userDisconnectedHosts": "Vous avez déconnecté {{hosts}}. Fermer la fenêtre ne met pas fin aux terminaux qui s'y trouvent. Fermer la fenêtre quand même ?",
+        "userDisconnectedAndUnreachableHosts": "Vous avez déconnecté {{hosts}}. Fermer la fenêtre ne met pas fin aux terminaux qui s'y trouvent. Un autre hôte distant n'a pas pu être atteint, Orca ne peut donc pas savoir si le travail y est toujours en cours. Fermer la fenêtre quand même ?"
       },
       "TerminalSearch": {
         "db234b7519": "Fermer",

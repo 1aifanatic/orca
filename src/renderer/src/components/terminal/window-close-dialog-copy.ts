@@ -8,14 +8,14 @@ export function describeWindowCloseRunningWork(
   if (work.kind === 'user-disconnected') {
     return translate(
       'auto.components.Terminal.userDisconnectedHosts',
-      'You disconnected {{hosts}}. Terminals there keep running. Close the window anyway?',
+      'You disconnected {{hosts}}. Closing the window does not end terminals there. Close the window anyway?',
       { hosts: work.hostLabels.join(', ') }
     )
   }
   if (work.kind === 'unverifiable' && work.userDisconnectedHostLabels.length > 0) {
     return translate(
       'auto.components.Terminal.userDisconnectedAndUnreachableHosts',
-      'You disconnected {{hosts}}. Terminals there keep running. Another remote host could not be reached, so Orca cannot tell whether work is still running there. Close the window anyway?',
+      'You disconnected {{hosts}}. Closing the window does not end terminals there. Another remote host could not be reached, so Orca cannot tell whether work is still running there. Close the window anyway?',
       { hosts: work.userDisconnectedHostLabels.join(', ') }
     )
   }

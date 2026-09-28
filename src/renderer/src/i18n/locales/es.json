@@ -1968,8 +1968,8 @@
         "cdc9ac4b2d": "editor",
         "e57db40c11": "No se pudo generar el comando de inicio para {{value0}}.",
         "5b2c1a9e44": "No se detectó ninguna CLI de agente; instala una o elige un agente predeterminado en Ajustes.",
-        "userDisconnectedHosts": "Desconectaste {{hosts}}. Las terminales siguen ejecutándose allí. ¿Cerrar la ventana de todos modos?",
-        "userDisconnectedAndUnreachableHosts": "Desconectaste {{hosts}}. Las terminales siguen ejecutándose allí. No se pudo contactar con otro host remoto, así que Orca no puede saber si el trabajo sigue ejecutándose allí. ¿Cerrar la ventana de todos modos?"
+        "userDisconnectedHosts": "Desconectaste {{hosts}}. Cerrar la ventana no termina las terminales allí. ¿Cerrar la ventana de todos modos?",
+        "userDisconnectedAndUnreachableHosts": "Desconectaste {{hosts}}. Cerrar la ventana no termina las terminales allí. No se pudo contactar con otro host remoto, así que Orca no puede saber si el trabajo sigue ejecutándose allí. ¿Cerrar la ventana de todos modos?"
       },
       "TerminalSearch": {
         "db234b7519": "Cerrar",
