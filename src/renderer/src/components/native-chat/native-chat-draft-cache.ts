@@ -28,22 +28,28 @@ export function writeNativeChatDraftCache(scopeKey: string, draft: string): void
   })
 }
 
+export function appendNativeChatDraftText(draft: string, text: string): string {
+  return draft === '' ? text : `${draft.trimEnd()}\n\n${text}`
+}
+
 // Only a write from outside the composer notifies; its own writes already hold the text.
-const appendListeners = new Map<string, Set<() => void>>()
+const appendListeners = new Map<string, Set<(text: string) => void>>()
 
 /** Puts text back after whatever is typed, and tells a mounted composer to show it. */
 export function appendNativeChatDraftCache(scopeKey: string, text: string): void {
   if (text === '') {
     return
   }
-  const draft = readNativeChatDraftCache(scopeKey)
-  writeNativeChatDraftCache(scopeKey, draft === '' ? text : `${draft.trimEnd()}\n\n${text}`)
-  appendListeners.get(scopeKey)?.forEach((listener) => listener())
+  writeNativeChatDraftCache(
+    scopeKey,
+    appendNativeChatDraftText(readNativeChatDraftCache(scopeKey), text)
+  )
+  appendListeners.get(scopeKey)?.forEach((listener) => listener(text))
 }
 
 export function subscribeToNativeChatDraftAppend(
   scopeKey: string,
-  listener: () => void
+  listener: (text: string) => void
 ): () => void {
   const listeners = appendListeners.get(scopeKey) ?? new Set()
   appendListeners.set(scopeKey, listeners)

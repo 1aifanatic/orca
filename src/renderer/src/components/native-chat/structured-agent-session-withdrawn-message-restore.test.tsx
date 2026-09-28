@@ -333,14 +333,26 @@ describe('Stop through the chat', () => {
   })
 })
 
+const notComposing = (): boolean => false
+
 describe('an open composer', () => {
   it('shows text put back while it is open, after what is typed', () => {
-    const { result } = renderHook(() => useNativeChatDraft(PANE))
+    const { result } = renderHook(() => useNativeChatDraft(PANE, notComposing))
     act(() => result.current.setDraft('typed'))
 
     act(() => appendNativeChatDraftCache(PANE, 'hello'))
 
     expect(result.current.draft).toBe('typed\n\nhello')
+  })
+
+  it('keeps text put back mid-composition through the composed writes, even if it unmounts', () => {
+    const { result, unmount } = renderHook(() => useNativeChatDraft(PANE, () => true))
+    act(() => appendNativeChatDraftCache(PANE, 'hello'))
+    act(() => result.current.setDraft('typed'))
+
+    expect(result.current.draft).toBe('typed')
+    unmount()
+    expect(readNativeChatDraftCache(PANE)).toBe('typed\n\nhello')
   })
 
   it('shows images put back while it is open, beside the ones attached', () => {

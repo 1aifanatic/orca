@@ -67,6 +67,7 @@ vi.mock('../dictation/dictation-control-events', () => ({
 }))
 
 import { NativeChatComposer } from './NativeChatComposer'
+import { appendNativeChatDraftCache, readNativeChatDraftCache } from './native-chat-draft-cache'
 
 type Dispatched = { handled: boolean; accepted: boolean; error: string | null }
 
@@ -238,5 +239,27 @@ describe('structured send racing the next IME composition', () => {
     expect(structured.onError).toHaveBeenCalledWith('nope')
     expect(structured.send).not.toHaveBeenCalled()
     expect(promptValue(input)).toBe('/model')
+  })
+})
+
+describe('a withdrawn message put back during an IME composition', () => {
+  afterEach(() => cleanup())
+
+  // The field ignores a programmatic draft while the IME owns it, and the next composed keystroke
+  // wrote the draft without the text, after its outbox entry had already been dropped.
+  it('shows the text once the composition settles, after what was composed', () => {
+    renderComposer(transport())
+    const pane = `tab-${paneCounter}:structured`
+    const input = textarea()
+    changePrompt(input, 'abc')
+
+    fireEvent.compositionStart(input)
+    changePrompt(input, 'abc안')
+    act(() => appendNativeChatDraftCache(pane, 'withdrawn'))
+    changePrompt(input, 'abc안녕')
+    fireEvent.compositionEnd(input, { data: '안녕' })
+
+    expect(promptValue(input)).toBe('abc안녕\n\nwithdrawn')
+    expect(readNativeChatDraftCache(pane)).toBe('abc안녕\n\nwithdrawn')
   })
 })
