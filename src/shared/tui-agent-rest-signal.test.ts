@@ -40,6 +40,7 @@ const EXPECTED_REST_SIGNALS: Record<TuiAgent, TuiAgentRestSignal> = {
   aug: 'none',
   cline: 'none',
   codebuff: 'none',
+  freebuff: 'none',
   'command-code': 'none',
   continue: 'none',
   kimi: 'none',

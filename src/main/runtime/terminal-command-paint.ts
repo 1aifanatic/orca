@@ -22,10 +22,11 @@ function hasVisibleText(normalizedText: string): boolean {
 
 /** Index just past the chunk's last command-start marker, or -1 when it has none. */
 function commandStartMarkerEnd(data: string): number {
-  const start = data.lastIndexOf(COMMAND_START_MARKER)
-  if (start === -1) {
+  // Why includes first: this runs on every chunk, and lastIndexOf is several times slower.
+  if (!data.includes(COMMAND_START_MARKER)) {
     return -1
   }
+  const start = data.lastIndexOf(COMMAND_START_MARKER)
   const bel = data.indexOf('\x07', start)
   const st = data.indexOf('\x1b\\', start)
   if (bel !== -1 && (st === -1 || bel < st)) {
@@ -59,8 +60,8 @@ export function observeTerminalCommandPaint(
   }
 }
 
-/** Why no marker reads as painted: a shell without the integration (fish, cmd.exe) gives no
- *  command boundary, so any output is all the evidence there is. */
+/** Why no marker reads as painted: some launches get no command boundary (cmd.exe, a bash
+ *  startup command run from PROMPT_COMMAND), so any output is all the evidence there is. */
 export function hasTerminalCommandPainted(record: TerminalCommandPaintRecord): boolean {
   return record.commandStartedAt == null || record.commandPaintedAt != null
 }
