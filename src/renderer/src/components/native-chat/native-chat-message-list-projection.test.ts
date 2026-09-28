@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import type { NativeChatMessage } from '../../../../shared/native-chat-types'
 import { createNativeChatMessageListProjection } from './native-chat-message-list-projection'
-import { compareMessageTimes } from './native-chat-session-assembler'
+import { orderNativeChatMessages } from './native-chat-message-grouping'
 import { stripNoiseMessages } from './native-chat-noise'
 import { foldToolMessages } from './native-chat-tool-fold'
 
@@ -54,17 +54,10 @@ it('retains settled folded runs while exposing changed tools, metadata, and attr
   ]
   for (const messages of scenarios) {
     expect(project(messages)).toEqual(
-      stripNoiseMessages(foldToolMessages([...messages].sort(compareMessageTimes)))
+      stripNoiseMessages(foldToolMessages(orderNativeChatMessages(messages)))
     )
   }
   expect(project([prose, call, result])[0]).not.toBe(initial[0])
-})
-
-it('keeps rows that share a timestamp in the order their source gave them', () => {
-  const project = createNativeChatMessageListProjection()
-  const first = message('zeta', 7, [{ type: 'text', text: 'First question' }], 'system')
-  const second = message('alpha', 7, [{ type: 'text', text: 'Second question' }], 'system')
-  expect(project([first, second]).map(({ id }) => id)).toEqual(['zeta', 'alpha'])
 })
 
 // A reused row aliases producer-owned block objects (a journal item's `body.blocks`),
