@@ -309,6 +309,10 @@ export function deleteQueuedStructuredAgentMessage(
         callerKey: ctx.resolvedBy,
         operationId
       })
+      // A withdrawal writes no journal row; publish it, and re-derive the drain
+      // — deleting a returned card can unblock the drafts behind it.
+      ctx.publish()
+      context.wakeQueuedDrain?.(ctx.sessionId)
       const body = withdrawn[0]?.body
       return body
         ? { ok: true, value: { deleted: true, messageId, body } }
