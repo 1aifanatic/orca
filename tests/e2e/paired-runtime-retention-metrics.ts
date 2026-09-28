@@ -14,11 +14,13 @@ export async function readPairedRetentionSample(
   try {
     const session = await page.context().newCDPSession(page)
     await session.send('HeapProfiler.collectGarbage')
+    console.log('RETENTION_HEAP_CDP', JSON.stringify(await session.send('Runtime.getHeapUsage')))
     await session.detach()
-  } catch {
+  } catch (error) {
+    console.log('RETENTION_HEAP_CDP_ERROR', String(error))
     // GC only improves measurement fidelity.
   }
-  return page.evaluate((targets) => {
+  const sample = await page.evaluate((targets) => {
     let bufferCells = 0
     let mountedTargetManagers = 0
     let targetPanes = 0
@@ -45,6 +47,8 @@ export async function readPairedRetentionSample(
       targetPanes
     }
   }, tabIds)
+  console.log('RETENTION_HEAP_BROWSER', JSON.stringify(sample))
+  return sample
 }
 
 export async function startRendererLagProbe(page: Page): Promise<JSHandle<{ stop: () => number }>> {
