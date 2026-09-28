@@ -68,6 +68,37 @@ describe('managed Codex shell preflight', () => {
     expect(install).not.toHaveBeenCalled()
   })
 
+  it('repairs a home whose hooks run its own script when the home path has an apostrophe', async () => {
+    const userDataPath = makeRoot()
+    const home = join(userDataPath, 'codex-runtime-home', 'home')
+    mkdirSync(home, { recursive: true })
+    const apostropheHome = join(makeRoot(), "o'brien")
+    vi.stubEnv('HOME', apostropheHome)
+    vi.stubEnv('USERPROFILE', apostropheHome)
+    writeManagedHooks(home, getManagedCommand(getManagedScriptPath()))
+    const install = vi.fn(() => ({
+      agent: 'codex' as const,
+      state: 'installed' as const,
+      configPath: join(home, 'hooks.json'),
+      managedHooksPresent: true,
+      detail: null
+    }))
+
+    try {
+      expect(
+        await prepareManagedCodexHomeBeforeShellLaunch({
+          userDataPath,
+          hooksEnabled: true,
+          env: { CODEX_HOME: home, ORCA_CODEX_HOME: home },
+          install
+        })
+      ).toMatchObject({ state: 'installed' })
+      expect(install).toHaveBeenCalledWith(home)
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
   it('accepts the Orca shared runtime home', () => {
     const userDataPath = makeRoot()
     const home = join(userDataPath, 'codex-runtime-home', 'home')

@@ -2,7 +2,9 @@ import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { join, relative, resolve, sep } from 'node:path'
 import type { AgentHookInstallStatus } from '../../shared/agent-hook-types'
 import { normalizeRuntimePathForComparison } from '../../shared/cross-platform-path'
+import { quotePowerShellLiteral } from '../../shared/powershell-native-argument'
 import { readHooksJson } from '../agent-hooks/installer-utils'
+import { quotePosixShellString } from '../agent-hooks/posix-hook-command'
 import { getConfigPath, getManagedScriptPath } from './codex-hook-definition'
 import { codexHookService } from './hook-service'
 
@@ -85,13 +87,17 @@ export function resolveManagedCodexShellPreflightHome(
  */
 function managedHomeRunsOwnScript(runtimeHomePath: string): boolean {
   const scriptPath = getManagedScriptPath()
+  // Why the writers' own quoting: an apostrophe in the home path is escaped in the command.
+  const quotedPaths = [quotePosixShellString(scriptPath), quotePowerShellLiteral(scriptPath)]
   const hooks = readHooksJson(getConfigPath(runtimeHomePath))?.hooks ?? {}
   return Object.values(hooks).some(
     (definitions) =>
       Array.isArray(definitions) &&
       definitions.some((definition) =>
         (definition.hooks ?? []).some(
-          (hook) => hook.command === scriptPath || hook.command?.includes(`'${scriptPath}'`)
+          (hook) =>
+            hook.command === scriptPath ||
+            quotedPaths.some((quoted) => hook.command?.includes(quoted))
         )
       )
   )
