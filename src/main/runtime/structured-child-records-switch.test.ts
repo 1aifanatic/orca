@@ -131,7 +131,6 @@ describe('the chat strip and the session list read the same host child records',
     expect(await host.attach({ callerKey: 'switch-test' }, attachParams)).toMatchObject({
       ok: true
     })
-    await host.hold(SESSION, 'desktop-chat:1')
     const summaries: AgentSessionStatusSummary[] = []
     host.subscribeStatus({
       id: 'session-list',
@@ -144,7 +143,7 @@ describe('the chat strip and the session list read the same host child records',
       }
     })
     const strip: (AgentSessionBackgroundTaskState | null)[] = []
-    host.subscribe({
+    await host.subscribe({
       id: 'strip',
       sessionId: SESSION,
       emit: (event) => {
@@ -207,13 +206,47 @@ describe('the chat strip and the session list read the same host child records',
       source: 'unifiedExecStartup',
       status: 'inProgress'
     })
+    // Every command the child runs is a live record under it, whatever Codex tagged it.
     both([
       {
         kind: 'agent',
         description: 'review',
         state: 'working',
         membership: 'live',
-        tool: 'Bash: npm test'
+        tool: 'Bash: npm run dev'
+      },
+      {
+        kind: 'command',
+        description: 'npm test',
+        state: 'working',
+        membership: 'live',
+        owner: 'review'
+      },
+      {
+        kind: 'command',
+        description: 'npm run dev',
+        state: 'working',
+        membership: 'live',
+        owner: 'review'
+      }
+    ])
+
+    // A command that exits leaves nothing behind.
+    await item('item/completed', REVIEWER, 'r1', {
+      type: 'commandExecution',
+      id: 'cmd-1',
+      command: 'npm test',
+      source: 'unifiedExecStartup',
+      status: 'completed',
+      exitCode: 0
+    })
+    both([
+      {
+        kind: 'agent',
+        description: 'review',
+        state: 'working',
+        membership: 'live',
+        tool: 'Bash: npm run dev'
       },
       {
         kind: 'command',
@@ -260,7 +293,8 @@ describe('the chat strip and the session list read the same host child records',
       exitCode: 0
     })
     expect(parentRow()).toMatchObject({ state: 'done' })
-    // Finished children stay listed, with how they ended, until the session's next turn.
+    // The finished child stays listed, with how it ended, until the session's next turn; the dev
+    // server's record went when its process exited.
     both([
       {
         kind: 'agent',
@@ -268,14 +302,6 @@ describe('the chat strip and the session list read the same host child records',
         state: 'done',
         membership: 'settled',
         outcome: 'succeeded'
-      },
-      {
-        kind: 'command',
-        description: 'npm run dev',
-        state: 'done',
-        membership: 'settled',
-        outcome: 'succeeded',
-        owner: 'review'
       }
     ])
 
@@ -299,8 +325,9 @@ describe('the chat strip and the session list read the same host child records',
       }
     ])
 
-    // Letting go of the session drops its row, and every child record with it, from both.
+    // Closing its tab lets go of the session: its row, and every child record with it, leave both.
     const subject = parentSubject(summaries)
+    await host.setSessionTabVisibility(SESSION, false)
     await host.close(SESSION)
     expect(server.getStructuredChildWorkViews(subject)).toEqual([])
     expect(summaries.at(-1)).not.toHaveProperty('children')

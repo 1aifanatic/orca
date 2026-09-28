@@ -426,7 +426,7 @@ describe('structured child-work reconciliation', () => {
     expect(records(store)).toHaveLength(1)
   })
 
-  // Brennan's call: a finished subagent stays listed, with how it ended, until the parent's next
+  // The product rule: a finished subagent stays listed, with how it ended, until the parent's next
   // turn begins. A finished child whose shell still runs stays so that shell keeps its owner.
   it("keeps finished children until the session's next turn starts, then only owners of live work", () => {
     const { store, apply } = harness()

@@ -46,7 +46,11 @@ function child(overrides: Partial<AgentChildWorkView> = {}): AgentChildWorkView 
   }
 }
 
+// A finished subagent: a command's record goes when it stops, so only a child that settles lists.
 const SETTLED = child({
+  id: 'child-0',
+  kind: 'agent',
+  description: 'review',
   state: 'done',
   membership: 'settled',
   outcome: 'succeeded',
