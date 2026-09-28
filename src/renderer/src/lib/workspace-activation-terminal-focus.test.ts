@@ -5,6 +5,8 @@ import { createRoot } from 'react-dom/client'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+globalThis.IS_REACT_ACT_ENVIRONMENT = true
+
 const mocks = vi.hoisted(() => ({
   focus: vi.fn(),
   getState: vi.fn(),
