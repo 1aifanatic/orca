@@ -258,7 +258,8 @@ function applySubmission(
     providerItemId: null,
     reason: null,
     submittedAt: row.ts,
-    resolvedAt: null
+    resolvedAt: null,
+    ...(row.handoverRecorded ? { handoverRecorded: true, acceptedSequence: row.seq } : {})
   })
   const itemId = agentJournalSubmissionKey(row.clientMessageId)
   upsertItem(state, itemId, 0, journalRenderItem(itemId, 0, row.body, row))
@@ -281,6 +282,9 @@ function applyDispatch(
   submission.providerItemId = row.providerItemId
   submission.reason = row.reason
   submission.resolvedAt = row.state === 'pending' ? null : row.ts
+  if (row.state === 'pending') {
+    submission.handedOverAt = row.ts
+  }
   if (row.recovered) {
     submission.recovered = row.recovered
   } else {
