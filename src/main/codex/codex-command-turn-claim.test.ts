@@ -87,7 +87,10 @@ function recorder(refuseRevisions = 0) {
 }
 
 /** Codex names the thread inside every notification's params too. */
-function notification(method: string, params: object): CodexStructuredSessionEvent {
+function notification(
+  method: string,
+  params: Record<string, unknown>
+): CodexStructuredSessionEvent {
   return {
     type: 'notification',
     sessionId: SESSION,
