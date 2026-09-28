@@ -2,10 +2,7 @@ import { useMemo, useRef } from 'react'
 import * as structuredConversationCommands from './structured-conversation-command-send'
 import type { AgentSessionPromptResult } from '../../../../shared/agent-session-wire'
 import { useStructuredAgentSessionOutbox } from './use-structured-agent-session-outbox'
-import type {
-  AgentSessionConversationCommand,
-  AgentSessionConversationCommandResult
-} from '../../../../shared/agent-session-conversation-command'
+import type { AgentSessionConversationCommand } from '../../../../shared/agent-session-conversation-command'
 import type { AgentType } from '../../../../shared/agent-status-types'
 import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
 import {
@@ -34,6 +31,7 @@ import { useStructuredAgentSessionThreadGoal } from './use-structured-agent-sess
 import { useStructuredAgentSessionContextUsage } from './use-structured-agent-session-context-usage'
 import { useStructuredAgentSessionRailOutline } from './use-structured-agent-session-rail-outline'
 import { useStructuredAgentSessionQueuedMessages } from './use-structured-agent-session-queued-messages'
+import { outboxOutsideQueuedCards } from './structured-agent-session-queued-cards'
 import { structuredAgentSessionPaneKey } from '../../../../shared/structured-agent-session-projection'
 
 export type { StructuredPromptItem } from './structured-agent-session-message-projection'
@@ -69,13 +67,21 @@ export function useStructuredAgentSession(args: {
     target,
     transportEnabled = true
   } = args
-  const { state, loadingOlder, olderHistoryGeneration, loadOlder, mutate, write, providerVisible } =
-    useStructuredAgentSessionTransport({
-      sessionId,
-      target,
-      isVisible,
-      enabled: transportEnabled
-    })
+  const {
+    state,
+    loadingOlder,
+    olderHistoryGeneration,
+    loadOlder,
+    mutate,
+    write,
+    operationIdFor,
+    providerVisible
+  } = useStructuredAgentSessionTransport({
+    sessionId,
+    target,
+    isVisible,
+    enabled: transportEnabled
+  })
   const commandPending = useRef(false)
   const transportState = useStructuredAgentSessionTransportState(state, transportEnabled)
   const {
@@ -148,9 +154,15 @@ export function useStructuredAgentSession(args: {
           transportState.submissions,
           outboxController.blockedClientMessageId
         )))
+  // A queued send is a card, never a transcript bubble.
+  const isWorking = transportState.isWorking
+  const transcriptOutbox = useMemo(
+    () => outboxOutsideQueuedCards(outbox, queuedMessageIds, isWorking),
+    [isWorking, outbox, queuedMessageIds]
+  )
   const messages = useStructuredAgentSessionMessages(
     transportState.journalItems,
-    outbox,
+    transcriptOutbox,
     transportState.submissions
   )
   const queuedController = useStructuredAgentSessionQueuedMessages({
@@ -164,15 +176,13 @@ export function useStructuredAgentSession(args: {
       ? (targetSessionId: string) => structuredAgentSessionPaneKey(tabId, targetSessionId)
       : undefined,
     mutate,
-    write
+    write,
+    operationIdFor
   })
   return {
     conversationCommands,
-    runConversationCommand: (command: AgentSessionConversationCommand) => {
-      // Write-ahead (clear only): the marker precedes the RPC so a crash between the
-      // host withdrawing drafts and the composer restore cannot lose the text.
-      const clearOperationId = command === 'clear' ? queuedController.beginClearWithdrawal() : null
-      return structuredConversationCommands.sendStructuredConversationCommand({
+    runConversationCommand: (command: AgentSessionConversationCommand) =>
+      structuredConversationCommands.sendStructuredConversationCommand({
         command,
         pending: commandPending,
         blocked: Boolean(
@@ -181,25 +191,8 @@ export function useStructuredAgentSession(args: {
           transportState.backgroundTasks.isMonitoring ||
           outbox.length
         ),
-        send: (command) =>
-          write<AgentSessionConversationCommandResult>(
-            'agentSession.conversationCommand',
-            'agentSession.conversationCommand',
-            // A capable clear opts into withdrawing drafts so their text comes back in
-            // the result; an older host's strict schema never sees the key.
-            { command, ...(clearOperationId !== null ? { withdrawQueued: true } : {}) },
-            clearOperationId
-          ).then((outcome) => {
-            if (clearOperationId !== null) {
-              queuedController.settleClearWithdrawal(
-                clearOperationId,
-                outcome.kind === 'done' ? outcome.value : null
-              )
-            }
-            return outcome
-          })
-      })
-    },
+        send: queuedController.writeConversationCommand
+      }),
     journalItems: transportState.journalItems,
     messages,
     status: transportEnabled ? state.status : 'ready',

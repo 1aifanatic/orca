@@ -9,6 +9,10 @@ import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
 import type { AgentSessionQueuedMessage } from '../../../../shared/agent-session-wire'
+import {
+  createStructuredAgentSessionOutboxEntry,
+  type StructuredAgentSessionOutboxEntry
+} from '../../../../shared/structured-agent-session-outbox'
 
 const mocks = vi.hoisted(() => ({
   call: vi.fn(),
@@ -17,6 +21,7 @@ const mocks = vi.hoisted(() => ({
 }))
 let items: AgentJournalRenderItem[] = []
 let queuedMessages: AgentSessionQueuedMessage[] | undefined
+let outboxEntries: StructuredAgentSessionOutboxEntry[] = []
 
 vi.mock('@/runtime/structured-agent-session-client', () => ({
   callStructuredAgentSession: mocks.call,
@@ -44,7 +49,7 @@ vi.mock('./use-structured-agent-session-outbox', () => ({
   useStructuredAgentSessionOutbox: (args: { queueDelivery?: boolean }) => {
     mocks.outboxArgs.push(args)
     return {
-      outbox: [],
+      outbox: outboxEntries,
       blockedClientMessageId: null,
       error: null,
       send: vi.fn(),
@@ -118,6 +123,7 @@ beforeEach(() => {
   )
   items = [RUNNING_TURN]
   queuedMessages = undefined
+  outboxEntries = []
   localStorage.clear()
   clearQueuedWithdrawalsForTests()
 })
@@ -188,6 +194,61 @@ describe('against a capable host', () => {
         }
       })
     )
+  })
+
+  it("an unconfirmed /clear's next press replays its operation id (the host refuses any other)", async () => {
+    items = []
+    mocks.call.mockImplementation(async (_target, method) =>
+      method === 'agentSession.conversationCommand'
+        ? {
+            ok: true,
+            replayed: false,
+            fence: 3,
+            cursor: { epoch: 'e', sequence: 1 },
+            value: { command: 'clear', state: 'unknown' }
+          }
+        : null
+    )
+    const { result } = render()
+    await act(async () => {
+      await result.current.runConversationCommand('clear')
+    })
+    await act(async () => {
+      await result.current.runConversationCommand('clear')
+    })
+    const ids = mocks.call.mock.calls
+      .filter(([, method]) => method === 'agentSession.conversationCommand')
+      .map(([, , params]) => ConversationCommandParams.parse(params).envelope.clientOperationId)
+    expect(ids).toHaveLength(2)
+    expect(ids[1]).toBe(ids[0])
+  })
+
+  it('a mid-turn queue send is never a transcript bubble, before or after the host holds it', () => {
+    const entry = (id: string, text: string, delivery?: 'queue-if-active') =>
+      createStructuredAgentSessionOutboxEntry({
+        clientMessageId: id,
+        sessionId: 'session-1',
+        text,
+        attachments: [],
+        queuedAt: 1,
+        ...(delivery ? { delivery } : {})
+      })
+    outboxEntries = [
+      entry('pending-queue', 'awaiting the answer', 'queue-if-active'),
+      entry('plain', 'immediate send')
+    ]
+    const working = render()
+    const workingText = JSON.stringify(working.result.current.messages)
+    expect(workingText).not.toContain('awaiting the answer')
+    expect(workingText).toContain('immediate send')
+    // The host already publishes it as a draft: the card alone shows it, whatever the turn.
+    items = []
+    queuedMessages = [draft('pending-queue')]
+    const idle = render()
+    expect(JSON.stringify(idle.result.current.messages)).not.toContain('awaiting the answer')
+    queuedMessages = undefined
+    const idleUnheld = render()
+    expect(JSON.stringify(idleUnheld.result.current.messages)).toContain('awaiting the answer')
   })
 
   it('shows host-held drafts as cards, never as transcript bubbles', () => {

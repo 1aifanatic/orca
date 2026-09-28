@@ -3,6 +3,7 @@
 
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 import type { AgentSessionQueuedMessage } from '../../../../shared/agent-session-wire'
+import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
 
 /** Why a card is not on its way right now; decides the caption under the text. */
 export type QueuedMessageCardHold =
@@ -73,4 +74,27 @@ export function newestSteerableQueuedMessageCard(
   cards: readonly QueuedMessageCard[]
 ): QueuedMessageCard | null {
   return cards.at(-1) ?? null
+}
+
+/**
+ * The outbox entries the transcript may show as pending bubbles. A send the host holds
+ * as a draft (same id) is a card, and so is a mid-turn queue send still awaiting its
+ * answer — otherwise it paints in the transcript until the queued answer retires it.
+ */
+export function outboxOutsideQueuedCards(
+  outbox: readonly StructuredAgentSessionOutboxEntry[],
+  heldIds: readonly string[],
+  isWorking: boolean
+): readonly StructuredAgentSessionOutboxEntry[] {
+  const held = new Set(heldIds)
+  const next = outbox.filter(
+    (entry) =>
+      !held.has(entry.clientMessageId) &&
+      !(
+        isWorking &&
+        entry.delivery === 'queue-if-active' &&
+        (entry.state === 'queued' || entry.state === 'dispatching')
+      )
+  )
+  return next.length === outbox.length ? outbox : next
 }

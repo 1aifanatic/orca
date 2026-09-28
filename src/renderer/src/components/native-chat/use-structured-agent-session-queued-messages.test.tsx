@@ -65,7 +65,8 @@ function createHarness(
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the stub answers every mutate with null, a valid outcome for any T.
       mutate: mutate as StructuredAgentSessionMutate,
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: each scripted answer is the outcome shape of the one write it responds to; generic erasure cannot express that.
-      write: write as StructuredAgentSessionWrite
+      write: write as StructuredAgentSessionWrite,
+      operationIdFor: () => 'operation-clear'
     })
   )
   return { ...rendered, mutate, write, writeCalls }
@@ -226,7 +227,7 @@ describe('queued message actions', () => {
     await waitFor(() => expect(pendingQueuedWithdrawals('session-1')).toHaveLength(0))
     expect(harness.write).not.toHaveBeenCalled()
     // Restored exactly once: remount adds nothing, and a duplicated answer for the
-    // same operation is answered from the durable restored record.
+    // same operation is answered from the restored record.
     completeQueuedWithdrawal(
       'session-1',
       'operation-applied',
@@ -248,24 +249,107 @@ describe('queued message actions', () => {
     expect(pendingQueuedWithdrawals('session-1')).toHaveLength(1)
   })
 
-  it("a /clear's answer restores into the replacement session's pane", () => {
-    const harness = createHarness()
-    let operationId: string | null = null
-    act(() => {
-      operationId = harness.result.current.beginClearWithdrawal()
+  it("a /clear's answer restores into the replacement session's pane", async () => {
+    let observedPendingAtCallTime = 0
+    const harness = createHarness({
+      writeResult: () => {
+        observedPendingAtCallTime = pendingQueuedWithdrawals('session-1').length
+        return {
+          kind: 'done',
+          value: {
+            command: 'clear',
+            state: 'completed',
+            replacementSessionId: 'session-2abcdef',
+            withdrawnQueued: [{ messageId: 'draft-1', body: body('cleared text') }]
+          }
+        }
+      }
     })
-    expect(operationId).not.toBeNull()
-    expect(pendingQueuedWithdrawals('session-1')).toHaveLength(1)
-    act(() =>
-      harness.result.current.settleClearWithdrawal(operationId ?? '', {
-        command: 'clear',
-        state: 'completed',
-        replacementSessionId: 'session-2abcdef',
-        withdrawnQueued: [{ messageId: 'draft-1', body: body('cleared text') }]
-      })
-    )
+    await act(() => harness.result.current.writeConversationCommand('clear').then(() => {}))
+    expect(harness.writeCalls[0]?.slice(2)).toEqual([
+      { command: 'clear', withdrawQueued: true },
+      'operation-clear'
+    ])
+    expect(observedPendingAtCallTime).toBe(1)
     expect(readNativeChatDraftCache('tab-1:session-2abcdef')).toBe('cleared text')
     expect(readNativeChatDraftCache(SCOPE)).toBe('')
     expect(pendingQueuedWithdrawals('session-1')).toHaveLength(0)
+  })
+
+  it("a non-clear command, or any command on an incapable host, is exactly today's write", async () => {
+    const harness = createHarness({ enabled: false })
+    await act(() => harness.result.current.writeConversationCommand('clear').then(() => {}))
+    const capable = createHarness()
+    await act(() => capable.result.current.writeConversationCommand('compact').then(() => {}))
+    expect([...harness.writeCalls, ...capable.writeCalls]).toEqual([
+      [
+        'agentSession.conversationCommand',
+        'agentSession.conversationCommand',
+        { command: 'clear' }
+      ],
+      [
+        'agentSession.conversationCommand',
+        'agentSession.conversationCommand',
+        { command: 'compact' }
+      ]
+    ])
+    expect(pendingQueuedWithdrawals('session-1')).toHaveLength(0)
+  })
+
+  it('a lost Edit answer is replayed under the same operation id, and its text comes back', async () => {
+    vi.useFakeTimers()
+    try {
+      let calls = 0
+      const harness = createHarness({
+        writeResult: (call) =>
+          ++calls === 1
+            ? { kind: 'not-done', notice: 'lost', answerLost: true }
+            : {
+                kind: 'done',
+                value: { deleted: true, messageId: call[2].messageId, body: body('edit me') }
+              }
+      })
+      const edited = harness.result.current.edit('draft-1')
+      await vi.advanceTimersByTimeAsync(1_000)
+      await edited
+      expect(harness.writeCalls).toHaveLength(2)
+      expect(harness.writeCalls[1]?.[3]).toBe(harness.writeCalls[0]?.[3])
+      expect(readNativeChatDraftCache(SCOPE)).toBe('edit me')
+      expect(pendingQueuedWithdrawals('session-1')).toHaveLength(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a refusal is final: no replay', async () => {
+    const harness = createHarness({
+      writeResult: () => ({ kind: 'not-done', notice: 'refused' })
+    })
+    await act(() => harness.result.current.edit('draft-1'))
+    expect(harness.writeCalls).toHaveLength(1)
+    expect(pendingQueuedWithdrawals('session-1')).toHaveLength(0)
+  })
+
+  it('a second press on a card while its action is in flight sends nothing more', async () => {
+    const harness = createHarness()
+    await act(async () => {
+      await Promise.all([
+        harness.result.current.steer('draft-1'),
+        harness.result.current.steer('draft-1')
+      ])
+    })
+    expect(harness.mutate).toHaveBeenCalledTimes(1)
+  })
+
+  it('a torn marker record never blocks Stop', async () => {
+    localStorage.setItem(
+      'orca:structuredAgentSessionQueuedRestore:v1:session-1',
+      JSON.stringify([null, 7, { operationId: 1 }])
+    )
+    const harness = createHarness({
+      writeResult: () => ({ kind: 'done', value: { cancelled: true } })
+    })
+    await act(() => harness.result.current.stopWithdrawing().then(() => {}))
+    expect(harness.writeCalls[0]?.[0]).toBe('agentSession.cancel')
   })
 })

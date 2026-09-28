@@ -27,8 +27,9 @@ import { agentSessionWriteFailureText } from './agent-session-write-notice-text'
 
 export type StructuredAgentSessionWriteOutcome<T> =
   | { kind: 'done'; value: T }
-  /** Refused or failed, with what to tell the person. */
-  | { kind: 'not-done'; notice: string }
+  /** Refused or failed, with what to tell the person. `answerLost`: the request may have
+   *  reached the host (the call threw), so replaying the same operation id is its answer. */
+  | { kind: 'not-done'; notice: string; answerLost?: true }
   /** Settled for an owner or session this pane no longer shows; there is nothing to say. */
   | { kind: 'dropped' }
 
@@ -46,6 +47,14 @@ export type StructuredAgentSessionWrite = <T>(
 /** A write whose failure is shown as a toast; the control that sent it is the way to try again. */
 export type StructuredAgentSessionMutate = <T>(...args: WriteArgs) => Promise<T | null>
 
+function operationKey(
+  sessionId: string,
+  fingerprintMethod: string,
+  fields: Record<string, unknown>
+): string {
+  return `${sessionId}:${fingerprintMethod}:${JSON.stringify(fields)}`
+}
+
 export function useStructuredAgentSessionMutate(args: {
   sessionId: string
   target: RuntimeClientTarget
@@ -56,6 +65,8 @@ export function useStructuredAgentSessionMutate(args: {
 }): {
   write: StructuredAgentSessionWrite
   mutate: StructuredAgentSessionMutate
+  /** The id `write` would pick for these fields, for a caller that must record it first. */
+  operationIdFor: (fingerprintMethod: string, fields: Record<string, unknown>) => string
 } {
   const { enabled = true, sessionId, stateRef, target } = args
   const operationIds = useRef(new Map<string, string>())
@@ -64,6 +75,14 @@ export function useStructuredAgentSessionMutate(args: {
     // Why: update the gate after commit so render stays free of ref mutations.
     enabledRef.current = enabled
   }, [enabled])
+
+  const operationIdFor = useCallback(
+    (fingerprintMethod: string, fields: Record<string, unknown>): string =>
+      (structuredAgentSessionWriteNamesItsTarget(fingerprintMethod, fields)
+        ? operationIds.current.get(operationKey(sessionId, fingerprintMethod, fields))
+        : undefined) ?? structuredSessionOperationId(),
+    [sessionId]
+  )
 
   const write = useCallback(
     async <T>(
@@ -76,7 +95,7 @@ export function useStructuredAgentSessionMutate(args: {
         return { kind: 'dropped' }
       }
       const targetFence = stateRef.current.fence
-      const key = `${sessionId}:${fingerprintMethod}:${JSON.stringify(fields)}`
+      const key = operationKey(sessionId, fingerprintMethod, fields)
       // A write naming no target acts on whatever is in flight when the host reaches it, so every
       // press is its own write; one naming its target keeps its id for a retry to replay.
       const namesTarget = structuredAgentSessionWriteNamesItsTarget(fingerprintMethod, fields)
@@ -111,7 +130,8 @@ export function useStructuredAgentSessionMutate(args: {
                   error instanceof RuntimeRpcCallError ? error.code : undefined
                 ),
                 writeKind(fingerprintMethod, fields)
-              )
+              ),
+              answerLost: true
             }
           : { kind: 'dropped' }
       }
@@ -157,5 +177,5 @@ export function useStructuredAgentSessionMutate(args: {
     [write]
   )
 
-  return { write, mutate }
+  return { write, mutate, operationIdFor }
 }

@@ -4,7 +4,7 @@
 // rows expose Steer/Send, Delete, and the Edit / Turn-off-queueing menu, with
 // captions derived client-side per state.
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
@@ -55,8 +55,7 @@ function controller(cards: QueuedMessageCard[]): StructuredAgentSessionQueuedMes
     edit: vi.fn(async () => {}),
     steerNewest: vi.fn(() => false),
     stopWithdrawing: vi.fn(async () => null),
-    beginClearWithdrawal: () => null,
-    settleClearWithdrawal: vi.fn()
+    writeConversationCommand: vi.fn(async () => ({ kind: 'dropped' as const }))
   }
 }
 
@@ -97,6 +96,20 @@ describe('NativeChatQueuedMessageList', () => {
     expect(owner.steer).toHaveBeenCalledWith('draft-1')
     fireEvent.click(screen.getAllByRole('button', { name: 'Delete' })[1]!)
     expect(owner.remove).toHaveBeenCalledWith('draft-2')
+  })
+
+  it('Delete hands focus to the composer once the focused card is gone', async () => {
+    const focusComposer = vi.fn()
+    const owner = controller([card({ messageId: 'draft-1', position: 1 })])
+    render(
+      <TooltipProvider delayDuration={0}>
+        <NativeChatQueuedMessageList controller={owner} focusComposer={focusComposer} />
+      </TooltipProvider>
+    )
+    const remove = screen.getByRole('button', { name: 'Delete' })
+    remove.focus()
+    fireEvent.click(remove)
+    await waitFor(() => expect(focusComposer).toHaveBeenCalledTimes(1))
   })
 
   it('a returned card shows the stored reason and offers Send instead of Steer', () => {

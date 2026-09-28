@@ -280,7 +280,12 @@ export function NativeChatStructuredSession(
         />
       ) : null}
       {/* Host-held drafts stack directly above the composer; they are never transcript rows. */}
-      <NativeChatQueuedMessageList controller={controller.queuedMessages} />
+      <NativeChatQueuedMessageList
+        controller={controller.queuedMessages}
+        focusComposer={() => {
+          composerRef.current?.focus()
+        }}
+      />
       {/* Prompt cards take the composer's slot, below the background-task dock. */}
       {prompt && approval ? (
         <NativeChatApprovalCard

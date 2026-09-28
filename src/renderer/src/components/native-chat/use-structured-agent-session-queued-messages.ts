@@ -7,7 +7,10 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { toast } from 'sonner'
 import { translate } from '@/i18n/i18n'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
-import type { AgentSessionConversationCommandResult } from '../../../../shared/agent-session-conversation-command'
+import type {
+  AgentSessionConversationCommand,
+  AgentSessionConversationCommandResult
+} from '../../../../shared/agent-session-conversation-command'
 import type {
   AgentSessionCancelResult,
   AgentSessionQueuedMessage,
@@ -24,12 +27,14 @@ import {
   abandonQueuedWithdrawal,
   beginQueuedWithdrawal,
   completeQueuedWithdrawal,
-  pendingQueuedWithdrawals
+  pendingQueuedWithdrawals,
+  writeQueuedWithdrawal
 } from './structured-agent-session-queued-restore'
 import { structuredSessionOperationId } from './use-structured-agent-session-outbox'
 import type {
   StructuredAgentSessionMutate,
-  StructuredAgentSessionWrite
+  StructuredAgentSessionWrite,
+  StructuredAgentSessionWriteOutcome
 } from './use-structured-agent-session-mutate'
 
 export type StructuredAgentSessionQueuedMessagesController = {
@@ -45,13 +50,11 @@ export type StructuredAgentSessionQueuedMessagesController = {
    *  `alreadyRestored` names ids whose text the sender's own outbox withdrawal
    *  just put back, so `withdrawnQueued` never duplicates it. */
   stopWithdrawing: (alreadyRestored?: readonly string[]) => Promise<AgentSessionCancelResult | null>
-  /** Write-ahead marker for a /clear about to run; null when the host keeps no drafts. */
-  beginClearWithdrawal: () => string | null
-  /** Restore what the clear's answer carried; the replacement session's pane gets the text. */
-  settleClearWithdrawal: (
-    operationId: string,
-    result: AgentSessionConversationCommandResult | null
-  ) => void
+  /** The conversation-command write. A capable /clear also withdraws drafts, and their
+   *  text lands in the replacement session's pane; anything else is today's request. */
+  writeConversationCommand: (
+    command: AgentSessionConversationCommand
+  ) => Promise<StructuredAgentSessionWriteOutcome<AgentSessionConversationCommandResult>>
 }
 
 function alreadySentNotice(): void {
@@ -72,6 +75,8 @@ export function useStructuredAgentSessionQueuedMessages(args: {
   composerScopeKeyForSession: ((sessionId: string) => string) | undefined
   mutate: StructuredAgentSessionMutate
   write: StructuredAgentSessionWrite
+  /** The id `write` would reuse for a request: an unconfirmed clear's next press replays it. */
+  operationIdFor: (fingerprintMethod: string, fields: Record<string, unknown>) => string
 }): StructuredAgentSessionQueuedMessagesController {
   const {
     composerScopeKey,
@@ -79,6 +84,7 @@ export function useStructuredAgentSessionQueuedMessages(args: {
     enabled,
     hasPendingPrompt,
     mutate,
+    operationIdFor,
     queuedMessages,
     sessionId,
     submissions,
@@ -105,32 +111,51 @@ export function useStructuredAgentSessionQueuedMessages(args: {
     [sessionId]
   )
 
-  const steer = useCallback(
-    async (messageId: string): Promise<void> => {
-      await mutate<AgentSessionSendResult>(
-        'agentSession.queuedMessageSend',
-        'agentSession.queuedMessageSend',
-        { messageId }
-      )
+  // One action per card at a time: a double-click or a chord repeat is not a second request.
+  const actingOnRef = useRef(new Set<string>())
+  const actOnce = useCallback(
+    async (messageId: string, action: () => Promise<void>): Promise<void> => {
+      if (actingOnRef.current.has(messageId)) {
+        return
+      }
+      actingOnRef.current.add(messageId)
+      try {
+        await action()
+      } finally {
+        actingOnRef.current.delete(messageId)
+      }
     },
-    [mutate]
+    []
+  )
+
+  const steer = useCallback(
+    (messageId: string): Promise<void> =>
+      actOnce(messageId, async () => {
+        await mutate<AgentSessionSendResult>(
+          'agentSession.queuedMessageSend',
+          'agentSession.queuedMessageSend',
+          { messageId }
+        )
+      }),
+    [actOnce, mutate]
   )
 
   const remove = useCallback(
-    async (messageId: string): Promise<void> => {
-      const result = await mutate<AgentSessionQueuedMessageDeleteResult>(
-        'agentSession.queuedMessageDelete',
-        'agentSession.queuedMessageDelete',
-        { messageId }
-      )
-      if (result && !result.deleted && result.disposition === 'dispatched') {
-        alreadySentNotice()
-      }
-    },
-    [mutate]
+    (messageId: string): Promise<void> =>
+      actOnce(messageId, async () => {
+        const result = await mutate<AgentSessionQueuedMessageDeleteResult>(
+          'agentSession.queuedMessageDelete',
+          'agentSession.queuedMessageDelete',
+          { messageId }
+        )
+        if (result && !result.deleted && result.disposition === 'dispatched') {
+          alreadySentNotice()
+        }
+      }),
+    [actOnce, mutate]
   )
 
-  const edit = useCallback(
+  const editOnce = useCallback(
     async (messageId: string): Promise<void> => {
       const operationId = structuredSessionOperationId()
       // Before the RPC, so a replayed answer within this session restores once.
@@ -141,8 +166,8 @@ export function useStructuredAgentSessionQueuedMessages(args: {
         messageId,
         beganAt: Date.now()
       })
-      const outcome = await write<AgentSessionQueuedMessageDeleteResult>(
-        'agentSession.queuedMessageDelete',
+      const outcome = await writeQueuedWithdrawal<AgentSessionQueuedMessageDeleteResult>(
+        write,
         'agentSession.queuedMessageDelete',
         { messageId },
         operationId
@@ -160,14 +185,18 @@ export function useStructuredAgentSessionQueuedMessages(args: {
         }
         return
       }
-      // Refused or lost: nothing replays a marker (see the recovery note below),
-      // so it is released. The host keeps an unwithdrawn draft visible as a card.
+      // Refused, or still unanswered after the replays: released. The host keeps an
+      // unwithdrawn draft visible as a card.
       abandonQueuedWithdrawal(sessionId, operationId)
       if (outcome.kind === 'not-done') {
         toast.error(outcome.notice)
       }
     },
     [composerScopeKey, restore, sessionId, write]
+  )
+  const edit = useCallback(
+    (messageId: string): Promise<void> => actOnce(messageId, () => editOnce(messageId)),
+    [actOnce, editOnce]
   )
 
   const steerNewest = useCallback((): boolean => {
@@ -186,8 +215,8 @@ export function useStructuredAgentSessionQueuedMessages(args: {
     async (alreadyRestored: readonly string[] = []): Promise<AgentSessionCancelResult | null> => {
       const operationId = structuredSessionOperationId()
       beginQueuedWithdrawal(sessionId, { operationId, kind: 'stop', beganAt: Date.now() })
-      const outcome = await write<AgentSessionCancelResult>(
-        'agentSession.cancel',
+      const outcome = await writeQueuedWithdrawal<AgentSessionCancelResult>(
+        write,
         'agentSession.cancel',
         { withdrawQueued: true },
         operationId
@@ -196,8 +225,8 @@ export function useStructuredAgentSessionQueuedMessages(args: {
         restore(operationId, outcome.value.withdrawnQueued ?? [], composerScopeKey, alreadyRestored)
         return outcome.value
       }
-      // Refused or lost: released, never replayed — a replay could execute a new
-      // Stop. Unwithdrawn drafts stay visible as cards on the host's list.
+      // Refused, or still unanswered after the replays: released. Unwithdrawn
+      // drafts stay visible as cards on the host's list.
       abandonQueuedWithdrawal(sessionId, operationId)
       if (outcome.kind === 'not-done') {
         toast.error(outcome.notice)
@@ -207,29 +236,47 @@ export function useStructuredAgentSessionQueuedMessages(args: {
     [composerScopeKey, restore, sessionId, write]
   )
 
-  const beginClearWithdrawal = useCallback((): string | null => {
-    if (!enabled) {
-      return null
-    }
-    const operationId = structuredSessionOperationId()
-    beginQueuedWithdrawal(sessionId, { operationId, kind: 'clear', beganAt: Date.now() })
-    return operationId
-  }, [enabled, sessionId])
-
-  const settleClearWithdrawal = useCallback(
-    (operationId: string, result: AgentSessionConversationCommandResult | null): void => {
-      if (result === null) {
-        // Refused or lost: released, never replayed — a replay could execute the
-        // clear. An unapplied clear leaves the source and its cards untouched.
-        abandonQueuedWithdrawal(sessionId, operationId)
-        return
+  const writeConversationCommand = useCallback(
+    async (
+      command: AgentSessionConversationCommand
+    ): Promise<StructuredAgentSessionWriteOutcome<AgentSessionConversationCommandResult>> => {
+      const method = 'agentSession.conversationCommand'
+      if (command !== 'clear' || !enabled) {
+        return write<AgentSessionConversationCommandResult>(method, method, { command })
       }
-      const scopeKey = result.replacementSessionId
-        ? (composerScopeKeyForSession?.(result.replacementSessionId) ?? composerScopeKey)
+      // Opts into withdrawing drafts; an older host's strict schema never sees the key.
+      const fields = { command, withdrawQueued: true }
+      // The id write would reuse: the host refuses any other clear while one is unconfirmed.
+      const operationId = operationIdFor(method, fields)
+      beginQueuedWithdrawal(sessionId, { operationId, kind: 'clear', beganAt: Date.now() })
+      const outcome = await writeQueuedWithdrawal<AgentSessionConversationCommandResult>(
+        write,
+        method,
+        fields,
+        operationId
+      )
+      if (outcome.kind !== 'done') {
+        // Refused, or still unanswered after the replays: released. An unapplied
+        // clear leaves the source and its cards untouched.
+        abandonQueuedWithdrawal(sessionId, operationId)
+        return outcome
+      }
+      const replacement = outcome.value.replacementSessionId
+      const scopeKey = replacement
+        ? (composerScopeKeyForSession?.(replacement) ?? composerScopeKey)
         : composerScopeKey
-      restore(operationId, result.withdrawnQueued ?? [], scopeKey)
+      restore(operationId, outcome.value.withdrawnQueued ?? [], scopeKey)
+      return outcome
     },
-    [composerScopeKey, composerScopeKeyForSession, restore, sessionId]
+    [
+      composerScopeKey,
+      composerScopeKeyForSession,
+      enabled,
+      operationIdFor,
+      restore,
+      sessionId,
+      write
+    ]
   )
 
   // A marker left by a crash is RELEASED, never replayed: an operation-id replay
@@ -237,9 +284,9 @@ export function useStructuredAgentSessionQueuedMessages(args: {
   // cleared, or new work stopped, by a press from before the crash. The client has
   // no wire method to ask for an operation's recorded outcome without running it.
   // Crash-before-reach loses nothing — the host still holds the drafts and shows
-  // them as cards. Only a crash inside the window between the host's withdrawal
-  // commit and this restore strands the text in its op-stamped tombstones; closing
-  // that window needs a wire-level outcome lookup, deliberately not added here.
+  // them as cards. A crash (or a fence move) between the host's withdrawal commit
+  // and this restore strands the text in its op-stamped tombstones; closing that
+  // needs a wire-level outcome lookup, deliberately not added here.
   const recoveredRef = useRef<string | null>(null)
   useEffect(() => {
     if (!enabled || recoveredRef.current === sessionId) {
@@ -258,7 +305,6 @@ export function useStructuredAgentSessionQueuedMessages(args: {
     edit,
     steerNewest,
     stopWithdrawing,
-    beginClearWithdrawal,
-    settleClearWithdrawal
+    writeConversationCommand
   }
 }
