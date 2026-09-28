@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -euo pipefail
+receipt=${1:?}
+mkdir -p "$receipt"
+clang-21 --version > "$receipt/clang.txt"
+lld-link-21 --version > "$receipt/lld.txt"
+grep -F '21.1.5' "$receipt/clang.txt"
+grep -F '21.1.5' "$receipt/lld.txt"
+printf 'int orca_probe(void) { return 42; }\n' > "$receipt/probe.c"
+clang-21 --target=x86_64-pc-windows-msvc -ffreestanding -c "$receipt/probe.c" -o "$receipt/x64.obj"
+clang-21 --target=aarch64-pc-windows-msvc -ffreestanding -c "$receipt/probe.c" -o "$receipt/arm64.obj"
+llvm-readobj-21 --file-headers "$receipt/x64.obj" > "$receipt/x64-header.txt"
+llvm-readobj-21 --file-headers "$receipt/arm64.obj" > "$receipt/arm64-header.txt"
+grep -F 'IMAGE_FILE_MACHINE_AMD64' "$receipt/x64-header.txt"
+grep -F 'IMAGE_FILE_MACHINE_ARM64' "$receipt/arm64-header.txt"
+lld-link-21 /dll /noentry /nodefaultlib /machine:x64 "/out:$receipt/x64.dll" "$receipt/x64.obj"
+lld-link-21 /dll /noentry /nodefaultlib /machine:arm64 "/out:$receipt/arm64.dll" "$receipt/arm64.obj"
+llvm-readobj-21 --file-headers "$receipt/x64.dll" > "$receipt/x64-dll-header.txt"
+llvm-readobj-21 --file-headers "$receipt/arm64.dll" > "$receipt/arm64-dll-header.txt"
+grep -F 'IMAGE_FILE_MACHINE_AMD64' "$receipt/x64-dll-header.txt"
+grep -F 'IMAGE_FILE_MACHINE_ARM64' "$receipt/arm64-dll-header.txt"
+dpkg-query -W > "$receipt/installed-packages.txt"
+sha256sum /usr/lib/llvm-21/bin/clang /usr/lib/llvm-21/bin/lld "$receipt"/*.obj "$receipt"/*.dll > "$receipt/output-hashes.txt"

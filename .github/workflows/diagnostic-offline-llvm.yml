@@ -1,0 +1,68 @@
+name: Diagnostic offline LLVM execution
+on:
+  push:
+    branches: [OrcaWin/np-offline-llvm-execution-diagnostic]
+    paths: ['.github/workflows/diagnostic-offline-llvm.yml', 'config/ci/offline-llvm-execution/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: diagnostic-offline-llvm-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  compiler:
+    if: github.repository == 'stablyai/orca' && github.ref == 'refs/heads/OrcaWin/np-offline-llvm-execution-diagnostic'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      ORCA_BACKGROUND_LAUNCH: '1'
+      BASE: ubuntu@sha256:8feb4d8ca5354def3d8fce243717141ce31e2c428701f6682bd2fafe15388214
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v6
+        with:
+          ref: 52f76c07002d9d633c632a5ddf12a8051e908899
+          path: metadata-source
+          persist-credentials: false
+      - name: Retrieve verified metadata artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/llvm-offline"
+          gh api repos/stablyai/orca/actions/artifacts/10988628982/zip > "$RUNNER_TEMP/llvm-offline/metadata.zip"
+          python3 config/ci/offline-llvm-execution/acquire.py extract "$RUNNER_TEMP/llvm-offline/metadata.zip" "$RUNNER_TEMP/llvm-offline/metadata"
+          docker pull --platform linux/amd64 "$BASE"
+          docker image inspect "$BASE" > "$RUNNER_TEMP/llvm-offline/base-image.json"
+      - name: Decode retained authenticated indexes without networking
+        run: |
+          set -euo pipefail
+          mkdir "$RUNNER_TEMP/llvm-offline/indexes"
+          docker run --rm --network none --platform linux/amd64 --cpus 2 --memory 3g --pids-limit 256 -v "$RUNNER_TEMP/llvm-offline/metadata:/metadata:ro" -v "$RUNNER_TEMP/llvm-offline/indexes:/indexes" "$BASE" bash -euc 'for file in /metadata/authenticated-lists/*Packages*; do /usr/lib/apt/apt-helper cat-file "$file" > "/indexes/$(basename "$file").txt"; done'
+      - name: Acquire only verified closure
+        run: |
+          set -euo pipefail
+          python3 config/ci/offline-llvm-execution/acquire.py acquire "$RUNNER_TEMP/llvm-offline/metadata" metadata-source/config/ci/offline-llvm-probe "$RUNNER_TEMP/llvm-offline/indexes" "$RUNNER_TEMP/llvm-offline/packages"
+          cp -R config/ci/offline-llvm-execution "$RUNNER_TEMP/llvm-offline/probe-source"
+          cp -R metadata-source/config/ci/offline-llvm-probe "$RUNNER_TEMP/llvm-offline/metadata-source"
+      - name: Install and execute on fresh base without networking
+        run: |
+          set -euo pipefail
+          mkdir "$RUNNER_TEMP/llvm-offline/results"
+          docker run --rm --network none --platform linux/amd64 --cpus 2 --memory 3g --pids-limit 256 -v "$RUNNER_TEMP/llvm-offline/metadata:/metadata:ro" -v "$RUNNER_TEMP/llvm-offline/packages:/packages:ro" -v "$GITHUB_WORKSPACE/config/ci/offline-llvm-execution:/probe:ro" -v "$RUNNER_TEMP/llvm-offline/results:/results" "$BASE" bash /probe/install-offline.sh 2>&1 | tee "$RUNNER_TEMP/llvm-offline/execution.log"
+          test -s "$RUNNER_TEMP/llvm-offline/results/SUCCESS"
+      - name: Allow receipt upload
+        if: always()
+        run: sudo chown -R "$(id -u):$(id -g)" "$RUNNER_TEMP/llvm-offline"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: offline-llvm-execution-inputs-and-receipts
+          path: ${{ runner.temp }}/llvm-offline/
+          retention-days: 7
