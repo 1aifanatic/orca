@@ -269,6 +269,36 @@ describe('turn-owned grouping', () => {
     ])
   })
 
+  it("rolls a turn's diff up once, under its last row, when another prompt lands among its rows", () => {
+    // B opens its own turn but was sent before A's last row was written.
+    const messages = [
+      text('A', 'go', 'user'),
+      toolRun('t1'),
+      text('B', 'next', 'user'),
+      text('a-answer', 'Done with A.'),
+      toolRun('b1')
+    ]
+    const diff = (added: number): NativeChatTurnDiff => ({
+      files: [],
+      added,
+      removed: 0,
+      truncated: false
+    })
+    const slots = build(messages, {
+      turnKeys: ['A', 'A', 'B', 'A', 'B'],
+      turnDiffs: new Map([
+        ['A', diff(1)],
+        ['B', diff(2)]
+      ])
+    })
+    expect(
+      slots.filter((slot) => slot.turnDiff).map((slot) => [slot.message.id, slot.turnDiff?.added])
+    ).toEqual([
+      ['a-answer', 1],
+      ['b1', 2]
+    ])
+  })
+
   it("keeps a running turn's rows live while a newer message waits behind it", () => {
     const messages = [text('A', 'go', 'user'), toolRun('t1'), text('C', 'next up', 'user')]
     const slots = build(messages, {

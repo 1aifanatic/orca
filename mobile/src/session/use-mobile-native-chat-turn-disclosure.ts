@@ -72,6 +72,7 @@ export function useMobileNativeChatTurnDisclosure({
     workingStartedAt,
     settledTurns,
     activeTurnOpenedBy,
+    turnKeysByItemId,
     thinking,
     scopeKey
   })

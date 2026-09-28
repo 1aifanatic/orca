@@ -351,6 +351,60 @@ describe('useMobileNativeChatTurnDisclosure', () => {
     }
   })
 
+  it("never hands a provider-opened turn's clock to a message sent during it", () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(10_000)
+      const row = (id: string): NativeChatMessage => ({
+        id,
+        role: 'assistant',
+        blocks: [{ type: 'text', text: id }],
+        timestamp: null,
+        source: 'transcript'
+      })
+      // A wake turn runs; B is sent during it and folded in, so B opened nothing.
+      const messages = [row('w1'), userMessage('B'), row('w2')]
+      const owned = new Map([
+        ['w1', 'wake'],
+        ['B', 'wake'],
+        ['w2', 'wake']
+      ])
+      act(() => {
+        renderer = create(
+          createElement(Harness, {
+            messages,
+            enabled: true,
+            workingStartedAt: 5_000,
+            activeTurnOpenedBy: 'wake',
+            turnKeysByItemId: owned,
+            settledTurns: new Map([['wake', null]])
+          })
+        )
+      })
+      // The wake turn settles: the host no longer names a running turn.
+      vi.setSystemTime(20_000)
+      act(() => {
+        renderer!.update(
+          createElement(Harness, {
+            messages,
+            enabled: true,
+            isWorking: false,
+            workingStartedAt: null,
+            activeTurnOpenedBy: null,
+            turnKeysByItemId: owned,
+            settledTurns: new Map([['wake', { startedAt: 5_000, workedSeconds: 15 }]])
+          })
+        )
+      })
+      const disclosure = renderer!.root.findByType('result').props.disclosure
+      const [rowW1, rowB] = messages.map((message, index) => disclosure.resolveRow(index, message))
+      expect(rowW1.turnStatus).toEqual({ startedAt: 5_000, thinking: false, workedSeconds: 15 })
+      expect(rowB.turnStatus).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('keeps at most the latest 128 turns expanded', () => {
     vi.useFakeTimers()
     try {

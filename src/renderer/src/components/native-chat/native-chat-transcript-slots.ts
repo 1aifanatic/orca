@@ -133,6 +133,14 @@ export function buildNativeChatTranscriptSlots(
   })
   // A turn with no user bubble (provider-opened) anchors its bar at its first row.
   const selfAnchors = nativeChatSelfAnchoredTurnRows(messages, turnKeys)
+  // A turn's rows need not be contiguous (another turn's prompt can land among
+  // them), so its rollup goes under its last row, not every run boundary.
+  const lastRowByTurn = new Map<string, number>()
+  turnKeys.forEach((turnKey, index) => {
+    if (turnKey !== undefined) {
+      lastRowByTurn.set(turnKey, index)
+    }
+  })
   const slots: NativeChatTranscriptSlot[] = []
   for (const [index, message] of messages.entries()) {
     const turnKey = turnKeys[index]
@@ -152,7 +160,8 @@ export function buildNativeChatTranscriptSlots(
             : undefined
     // The live turn's bar carries its running clock; it settles in place.
     const status = showTurnStatus ? (candidateStatus ?? undefined) : undefined
-    const turnDiff = turnKey && turnKeys[index + 1] !== turnKey ? turnDiffs.get(turnKey) : undefined
+    const turnDiff =
+      turnKey && lastRowByTurn.get(turnKey) === index ? turnDiffs.get(turnKey) : undefined
     const folded = foldedRows.has(index)
     // Skipping a folded row entirely is what keeps windowing honest: a counted
     // index the row declines to draw reserves estimated height for nothing and
