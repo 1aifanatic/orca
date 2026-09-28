@@ -15,7 +15,7 @@ jobs:
     if: github.repository == 'stablyai/orca' && github.ref == 'refs/heads/OrcaWin/np-installed-mac-update-diagnostic'
     uses: ./.github/workflows/windows-watcher-artifacts.yml
     with:
-      ref: 2956015b2c6722b7809aa981ad1e76e1e83ba756
+      ref: c84a9f0285c2360ea379362ebd7cdfe9b32f8e5d
   package:
     needs: windows_watcher
     environment: adhoc-mac-build
@@ -23,10 +23,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {label: A, source: 7996f1f8ee49a88203d44a28478b576214ffb9cd, version: 1.4.214-local.1790627959054.7996f1f8ee49, arch: arm64, runner: macos-15}
-          - {label: B, source: 2956015b2c6722b7809aa981ad1e76e1e83ba756, version: 1.4.214-local.1790627959055.2956015b2c67, arch: arm64, runner: macos-15}
-          - {label: A, source: 7996f1f8ee49a88203d44a28478b576214ffb9cd, version: 1.4.214-local.1790627959054.7996f1f8ee49, arch: x64, runner: macos-15-intel}
-          - {label: B, source: 2956015b2c6722b7809aa981ad1e76e1e83ba756, version: 1.4.214-local.1790627959055.2956015b2c67, arch: x64, runner: macos-15-intel}
+          - {label: A, source: 3423607594494ff6d59e6210029c4788fc62b710, version: 1.4.214-local.1790628330602.342360759449, arch: arm64, runner: macos-15}
+          - {label: B, source: c84a9f0285c2360ea379362ebd7cdfe9b32f8e5d, version: 1.4.214-local.1790628330603.c84a9f0285c2, arch: arm64, runner: macos-15}
+          - {label: A, source: 3423607594494ff6d59e6210029c4788fc62b710, version: 1.4.214-local.1790628330602.342360759449, arch: x64, runner: macos-15-intel}
+          - {label: B, source: c84a9f0285c2360ea379362ebd7cdfe9b32f8e5d, version: 1.4.214-local.1790628330603.c84a9f0285c2, arch: x64, runner: macos-15-intel}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     env:
@@ -110,7 +110,7 @@ jobs:
       OVERLAY_SHA256: 48ef8a01affc1bac0dfb34f0f3cd29cdfd87abda60aeed9232f7ca7b94d49cb5
     steps:
       - uses: actions/checkout@v6
-        with: {ref: 2956015b2c6722b7809aa981ad1e76e1e83ba756, persist-credentials: false}
+        with: {ref: c84a9f0285c2360ea379362ebd7cdfe9b32f8e5d, persist-credentials: false}
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.sha }}
