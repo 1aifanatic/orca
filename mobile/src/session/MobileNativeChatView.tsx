@@ -28,6 +28,7 @@ import { useMobileNativeChatPinchGesture } from './use-mobile-native-chat-pinch-
 import { useMobileNativeChatTailFollow } from './use-mobile-native-chat-tail-follow'
 import { useMobileNativeChatTurnDisclosure } from './use-mobile-native-chat-turn-disclosure'
 import { useSettledMobileNativeChatInputLock } from './use-mobile-native-chat-input-lease'
+import { useMobileNativeChatQueuedEditFocus } from './use-mobile-native-chat-queued-edit-focus'
 import { MobileNativeChatTurnActivity } from './MobileNativeChatTurnStatus'
 import { MobileAgentWorkingIndicator } from './MobileAgentWorkingIndicator'
 import type { PendingNativeChatImage } from './mobile-native-chat-image-attachment'
@@ -246,6 +247,10 @@ export function MobileNativeChatView({
     [onSend, onClearSendError, jumpToTail]
   )
 
+  const { composerInputRef, editQueuedMessage } = useMobileNativeChatQueuedEditFocus(
+    queuedMessages?.onEdit
+  )
+
   const loadEarlier = useCallback(() => {
     detachFromTail()
     onLoadEarlier?.()
@@ -373,7 +378,7 @@ export function MobileNativeChatView({
           ) : null}
         </GestureHandlerRootView>
       )}
-      <MobileNativeChatQueuedMessages {...queuedMessages} />
+      <MobileNativeChatQueuedMessages {...queuedMessages} onEdit={editQueuedMessage} />
       <MobileNativeChatPromptCard
         ask={ask}
         askKey={askKey}
@@ -425,6 +430,7 @@ export function MobileNativeChatView({
         </View>
       ) : null}
       <MobileNativeChatComposer
+        inputRef={composerInputRef}
         structuredCommands={
           structuredActivityUi ? (sessionOptions?.controller.conversationCommands ?? []) : undefined
         }
