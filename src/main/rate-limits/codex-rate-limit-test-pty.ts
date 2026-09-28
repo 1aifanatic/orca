@@ -1,7 +1,7 @@
 import { vi } from 'vitest'
 
 export function makeDisposable() {
-  return { dispose: vi.fn() }
+  return { dispose: vi.fn<() => void>() }
 }
 
 export function makePtyTerm() {
@@ -12,13 +12,13 @@ export function makePtyTerm() {
       dataHandler = callback
       return makeDisposable()
     }),
-    onError: vi.fn(() => ({ dispose: vi.fn() })),
+    onError: vi.fn(() => ({ dispose: vi.fn<() => void>() })),
     onExit: vi.fn((callback: () => void) => {
       exitHandler = callback
       return makeDisposable()
     }),
-    write: vi.fn(),
-    kill: vi.fn(),
+    write: vi.fn<(data: string) => void>(),
+    kill: vi.fn<() => void>(),
     emitData: (data: string) => dataHandler?.(data),
     emitExit: () => exitHandler?.()
   }
