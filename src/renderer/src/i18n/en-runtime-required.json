@@ -2687,12 +2687,10 @@
         "notAgent": {
           "subtitle": "This terminal is not running a recognized coding agent.",
           "title": "No conversation here"
-        },
-        "reconnecting": "Reconnecting to this chat…"
+        }
       },
       "status": {
         "responding": "Agent is responding",
-        "thinking": "Thinking",
         "toggleDetails": "Toggle turn details",
         "workedFor": "Worked for {{value0}}",
         "workingFor": "Working for {{value0}}"
