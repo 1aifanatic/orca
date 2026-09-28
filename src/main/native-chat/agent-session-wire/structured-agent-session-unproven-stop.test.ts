@@ -100,7 +100,6 @@ function startHost(): void {
       return ownerProbe
     },
     stopOwnerProcess,
-    releaseGraceMs: 60_000,
     now: () => NOW,
     onEventSinkError: ({ error }) => hostErrors.push(error)
   })
@@ -180,8 +179,10 @@ function stop() {
   })
 }
 
-function submission(id: string): AgentJournalSubmission | undefined {
-  return host.journalSnapshot(SESSION).submissions.find((entry) => entry.clientMessageId === id)
+async function submission(id: string): Promise<AgentJournalSubmission | undefined> {
+  return (await host.journalSnapshot(SESSION)).submissions.find(
+    (entry) => entry.clientMessageId === id
+  )
 }
 
 function conversation() {
@@ -203,7 +204,7 @@ function deferred<T>() {
 /** A ready child delivered one message, so the conversation holds it and its live lease. */
 async function deliveredOnce(): Promise<void> {
   const first = await accept('first')
-  await eventually(() => expect(submission(first)?.dispatchState).toBe('accepted'))
+  await eventually(async () => expect((await submission(first))?.dispatchState).toBe('accepted'))
   expect(conversation()?.child).not.toBeNull()
   // The recorded owner is this child, alive until something stops it.
   ownerProbe = ALIVE
@@ -224,7 +225,7 @@ async function expectRecoveryConcludedWithoutASend(before: HostActivity): Promis
   expect(lease()).toMatchObject(CONCLUDED)
   expect(hostActivity()).toEqual(before)
   const next = await accept('next')
-  await eventually(() => expect(submission(next)?.dispatchState).toBe('accepted'))
+  await eventually(async () => expect((await submission(next))?.dispatchState).toBe('accepted'))
   expect(acquire).toHaveBeenCalledTimes(before.starts + 1)
   expect(stopOwnerProcess).toHaveBeenCalledTimes(1)
   expect(lease()).toMatchObject({ claimStatus: 'live', handoffStage: null })
@@ -236,7 +237,7 @@ async function expectUnverifiedOwnerReleasedWithoutASignal(before: HostActivity)
   expect(lease()).toMatchObject({ ...CONCLUDED, deathEvidence: null })
   expect(hostActivity()).toEqual(before)
   const next = await accept('next')
-  await eventually(() => expect(submission(next)?.dispatchState).toBe('accepted'))
+  await eventually(async () => expect((await submission(next))?.dispatchState).toBe('accepted'))
   expect(acquire).toHaveBeenCalledTimes(before.starts + 1)
   expect(stopOwnerProcess).not.toHaveBeenCalled()
 }
@@ -276,7 +277,7 @@ describe('a stop that cannot prove its child exited (C′ trigger 1)', () => {
 
     expect(conversation()?.child).toBeNull()
     expect(conversation()?.lastEndedChild).toMatchObject({ cause: 'user-stop', rootGone: false })
-    expect(submission(first)).toMatchObject({
+    expect(await submission(first)).toMatchObject({
       dispatchState: 'rejected',
       reason: DISPATCH_REJECTED_CANCELLED
     })
@@ -311,9 +312,9 @@ describe('a stop that cannot prove its child exited (C′ trigger 1)', () => {
     })
     await eventually(() => expect(lease()).toMatchObject(CONCLUDED))
     // Settled like every other end: no card is left open with no agent behind it.
-    const question = host
-      .journalSnapshot(SESSION)
-      .items.find((item) => item.itemId === agentJournalItemKey(identity))
+    const question = (await host.journalSnapshot(SESSION)).items.find(
+      (item) => item.itemId === agentJournalItemKey(identity)
+    )
     expect(question?.body).toMatchObject({ resolution: { state: 'cancelled' } })
     await eventually(() => expect(acknowledgeSessionRelease).toHaveBeenCalledWith(SESSION))
     await expectRecoveryConcludedWithoutASend(before)
@@ -335,7 +336,7 @@ describe('a stop that cannot prove its child exited (C′ trigger 1)', () => {
     })
     ownerProbe = GONE
     const next = await accept('next')
-    await eventually(() => expect(submission(next)?.dispatchState).toBe('accepted'))
+    await eventually(async () => expect((await submission(next))?.dispatchState).toBe('accepted'))
     expect(stopOwnerProcess).not.toHaveBeenCalled()
   })
 })
@@ -378,13 +379,13 @@ describe('a start the child was seen to die in (C′ trigger 2)', () => {
     // And the live store's next transaction keeps it: the Retry starts on the released lease.
     ownerProbe = GONE
     const retry = await accept('retry')
-    await eventually(() => expect(submission(retry)?.dispatchState).toBe('accepted'))
+    await eventually(async () => expect((await submission(retry))?.dispatchState).toBe('accepted'))
   })
 
   it('ends the child when the death is seen, so a Retry at once starts a new child (W42)', async () => {
     const first = await diedStarting()
 
-    await eventually(() => expect(submission(first)?.dispatchState).toBe('rejected'))
+    await eventually(async () => expect((await submission(first))?.dispatchState).toBe('rejected'))
     await eventually(() => expect(conversation()?.child).toBeNull())
     // The provider's own words, not the chat's copy of them.
     expect(conversation()?.lastEndedChild).toMatchObject({
@@ -404,11 +405,10 @@ describe('a start the child was seen to die in (C′ trigger 2)', () => {
 
     ownerProbe = GONE
     const retry = await accept('retry')
-    await eventually(() => expect(submission(retry)?.dispatchState).toBe('accepted'))
+    await eventually(async () => expect((await submission(retry))?.dispatchState).toBe('accepted'))
     // One rejection with the start's words, the first message's; the Retry got a new child.
-    const rejected = host
-      .journalSnapshot(SESSION)
-      .submissions.filter((entry) => entry.reason === TEXT)
+    const rejected = (await host.journalSnapshot(SESSION)).submissions
+      .filter((entry) => entry.reason === TEXT)
       .map((entry) => entry.clientMessageId)
     expect(rejected).toEqual([first])
     expect(acquire).toHaveBeenCalledTimes(3)
@@ -443,7 +443,7 @@ describe('a start the child was seen to die in (C′ trigger 2)', () => {
     })
 
     await eventually(() => expect(conversation()?.child).toBeNull())
-    expect(submission(first)).toMatchObject({ dispatchState: 'rejected', reason: TEXT })
+    expect(await submission(first)).toMatchObject({ dispatchState: 'rejected', reason: TEXT })
     expect(conversation()?.lastEndedChild).toMatchObject({ cause: 'exit', rootGone: false })
     await eventually(() => expect(lease()).toMatchObject(CONCLUDED))
     await expectRecoveryConcludedWithoutASend(before)
@@ -483,11 +483,11 @@ describe('a re-attach that fails after it bound the live child', () => {
       resolution: { state: 'pending', selectedOptionId: null, resolvedBy: null, resolvedAt: null }
     })
     await host.flushStreamedEvents(SESSION)
-    const question = () =>
-      host
-        .journalSnapshot(SESSION)
-        .items.find((item) => item.itemId === agentJournalItemKey(identity))
-    expect(question()?.body).toMatchObject({ resolution: { state: 'pending' } })
+    const question = async () =>
+      (await host.journalSnapshot(SESSION)).items.find(
+        (item) => item.itemId === agentJournalItemKey(identity)
+      )
+    expect((await question())?.body).toMatchObject({ resolution: { state: 'pending' } })
     // The same attach again reuses the live child, then fails before it commits; its cleanup
     // releases that child.
     vi.spyOn(store, 'recordOperationOutcome').mockRejectedValueOnce(new Error('disk full'))
@@ -497,7 +497,7 @@ describe('a re-attach that fails after it bound the live child', () => {
 
     expect(acquire).toHaveBeenCalledTimes(2)
     expect(conversation()?.lastEndedChild).toMatchObject({ cause: 'attach-failed' })
-    expect(question()?.body).toMatchObject({ resolution: { state: 'cancelled' } })
+    expect((await question())?.body).toMatchObject({ resolution: { state: 'cancelled' } })
   })
 })
 
@@ -578,10 +578,10 @@ const OPEN_QUESTION = {
   ordinal: 21
 }
 
-function item(identity: typeof OPEN_TURN) {
-  return host
-    .journalSnapshot(SESSION)
-    .items.find((entry) => entry.itemId === agentJournalItemKey(identity))
+async function item(identity: typeof OPEN_TURN) {
+  return (await host.journalSnapshot(SESSION)).items.find(
+    (entry) => entry.itemId === agentJournalItemKey(identity)
+  )
 }
 
 /** The live child took a send it has not answered, and left a turn and a question open. */
@@ -589,7 +589,7 @@ async function childLeftWorkOpen(start: () => Promise<void> = deliveredOnce): Pr
   await start()
   dispatch.mockResolvedValueOnce({ state: 'admitted' })
   const handed = await accept('handed')
-  await eventually(() => expect(submission(handed)?.handedOverAt).toBeDefined())
+  await eventually(async () => expect((await submission(handed))?.handedOverAt).toBeDefined())
   const events = acquire.mock.calls.at(-1)?.[0].events
   events?.appendItem(
     OPEN_TURN,
@@ -602,7 +602,7 @@ async function childLeftWorkOpen(start: () => Promise<void> = deliveredOnce): Pr
     resolution: { state: 'pending', selectedOptionId: null, resolvedBy: null, resolvedAt: null }
   })
   await host.flushStreamedEvents(SESSION)
-  expect(submission(handed)?.dispatchState).toBe('pending')
+  expect((await submission(handed))?.dispatchState).toBe('pending')
   return handed
 }
 
@@ -622,12 +622,12 @@ describe('a new child never inherits a wait on the one before it', () => {
     host['eventRecovery'].recoverAfterSinkFailure(SESSION, new Error('disk full'))
 
     await eventually(() => expect(lease()).toMatchObject(CONCLUDED))
-    expect(submission(handed)?.dispatchState).toBe('pending')
-    expect(item(OPEN_QUESTION)?.body).toMatchObject({ resolution: { state: 'pending' } })
+    expect((await submission(handed))?.dispatchState).toBe('pending')
+    expect((await item(OPEN_QUESTION))?.body).toMatchObject({ resolution: { state: 'pending' } })
     await expectRecoveryConcludedWithoutASend(before)
-    expect(submission(handed)).toMatchObject({ dispatchState: 'unknown', recovered: true })
-    expect(item(OPEN_TURN)?.body).toMatchObject({ state: 'unverifiable' })
-    expect(item(OPEN_QUESTION)?.body).toMatchObject({ resolution: { state: 'cancelled' } })
+    expect(await submission(handed)).toMatchObject({ dispatchState: 'unknown', recovered: true })
+    expect((await item(OPEN_TURN))?.body).toMatchObject({ state: 'unverifiable' })
+    expect((await item(OPEN_QUESTION))?.body).toMatchObject({ resolution: { state: 'cancelled' } })
   })
 
   it('leaves a live child its own unanswered send when its attach is retried', async () => {
@@ -640,7 +640,7 @@ describe('a new child never inherits a wait on the one before it', () => {
     expect(await host.attach(CALLER, params)).toMatchObject({ ok: true })
 
     expect(acquire).toHaveBeenCalledTimes(2)
-    expect(submission(handed)?.dispatchState).toBe('pending')
+    expect((await submission(handed))?.dispatchState).toBe('pending')
   })
 })
 
@@ -661,10 +661,11 @@ describe('bookkeeping that fails after the child ended', () => {
     await host.close(SESSION)
 
     expect(hostErrors).toContainEqual(expect.objectContaining({ step: 'settle-dead-generation' }))
-    expect(host.hasSession(SESSION)).toBe(false)
+    // The handle stays open: the send still reads pending, so it is more than a cache.
+    expect(host.hasSession(SESSION)).toBe(true)
     expect(acknowledgeSessionRelease).toHaveBeenCalledWith(SESSION)
     await expectRecoveryConcludedWithoutASend(before)
-    expect(submission(handed)).toMatchObject({ dispatchState: 'unknown', recovered: true })
+    expect(await submission(handed)).toMatchObject({ dispatchState: 'unknown', recovered: true })
   })
 
   it('publishes the ended child even when the release after it cannot be written', async () => {

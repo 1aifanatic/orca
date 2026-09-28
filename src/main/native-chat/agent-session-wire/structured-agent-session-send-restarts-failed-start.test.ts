@@ -11,6 +11,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
+import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import type { AgentSessionMutationEnvelope } from '../../../shared/agent-session-wire'
 import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
@@ -21,6 +22,7 @@ import {
   HOST_TEST_SESSION as SESSION,
   HOST_TEST_THREAD as THREAD,
   hostTestAttachParams,
+  hostTestDrawnRowIds,
   hostTestMessage,
   hostTestOperationId,
   resetHostTestOperationIds
@@ -29,7 +31,7 @@ import {
 const CALLER = { callerKey: 'client-1' }
 
 /** Delivery runs on its own serialized steps; under a loaded runner they take more than a second. */
-function eventually(assertion: () => void): Promise<void> {
+function eventually(assertion: () => void | Promise<void>): Promise<void> {
   return vi.waitFor(assertion, { timeout: 10_000 })
 }
 const EXIT_REASON = 'Claude Code is not signed in. Sign in with the Claude CLI'
@@ -70,7 +72,9 @@ async function send(
     value: { submission: { dispatchState: 'pending', handoverRecorded: true } }
   })
   const clientMessageId = sent.ok ? sent.value.clientMessageId : ''
-  await eventually(() => expect(submission(clientMessageId)?.handedOverAt).toBeDefined())
+  await eventually(async () =>
+    expect((await submission(clientMessageId))?.handedOverAt).toBeDefined()
+  )
   return clientMessageId
 }
 
@@ -102,16 +106,16 @@ function exitBeforeProof(): Promise<void> {
   })
 }
 
-function journalStatuses(): string[] {
-  return host
-    .journalSnapshot(SESSION)
-    .items.flatMap((item) => (item.body.kind === 'status' ? [item.body.text] : []))
+async function journalStatuses(): Promise<string[]> {
+  return (await host.journalSnapshot(SESSION)).items.flatMap((item) =>
+    item.body.kind === 'status' ? [item.body.text] : []
+  )
 }
 
-function submission(clientMessageId: string) {
-  return host
-    .journalSnapshot(SESSION)
-    .submissions.find((entry) => entry.clientMessageId === clientMessageId)
+async function submission(clientMessageId: string) {
+  return (await host.journalSnapshot(SESSION)).submissions.find(
+    (entry) => entry.clientMessageId === clientMessageId
+  )
 }
 
 beforeEach(async () => {
@@ -188,24 +192,33 @@ describe('a send into a published session whose child ended before startup', () 
 
   it('retires the held message with the cause when the restarted child exits before proving its start', async () => {
     const releasedFence = store.getRecord(SESSION)?.lease.runtimeFence ?? 0
-    const rowsBefore = journalStatuses().length
+    const rowsBefore = (await journalStatuses()).length
 
     const held = await send('still not signed in', releasedFence)
     await exitBeforeProof()
 
     // The child never proved its start, so it accepted nothing: the exit rejects the message this
     // host admitted, so nothing pins the session and Retry stays offered, and one row names the cause.
-    expect(submission(held)).toMatchObject({
+    expect(await submission(held)).toMatchObject({
       dispatchState: 'rejected',
       reason: expect.stringContaining(EXIT_REASON),
       recovered: true
     })
     expect(
-      host.journalSnapshot(SESSION).submissions.filter((e) => e.dispatchState === 'pending')
+      (await host.journalSnapshot(SESSION)).submissions.filter((e) => e.dispatchState === 'pending')
     ).toEqual([])
-    expect(journalStatuses().slice(rowsBefore)).toEqual([
+    expect((await journalStatuses()).slice(rowsBefore)).toEqual([
       expect.stringMatching(/stopped before it finished starting: .*not signed in/)
     ])
+    // Accepted before the restart it needed, so the chat draws it above the row naming the cause.
+    const snapshot = await host.journalSnapshot(SESSION)
+    const causeRow = snapshot.items.findLast((item) => item.body.kind === 'status')?.itemId
+    const shown = [agentJournalSubmissionKey(held), causeRow]
+    expect(
+      hostTestDrawnRowIds(snapshot, [
+        { clientMessageId: held, text: 'still not signed in' }
+      ]).filter((id) => shown.includes(id))
+    ).toEqual(shown)
     // The failed restart moved the fence twice: the acquisition, and the exit that released it.
     expect(store.getRecord(SESSION)?.lease.runtimeFence).toBe(releasedFence + 2)
     expect(store.getRecord(SESSION)?.lease.claimStatus).toBe('released')
@@ -216,7 +229,7 @@ describe('a send into a published session whose child ended before startup', () 
     await send('signed in now')
     expect(acquire).toHaveBeenCalledTimes(3)
     expect(dispatch).toHaveBeenCalledTimes(2)
-    expect(journalStatuses().slice(rowsBefore)).toHaveLength(1)
+    expect((await journalStatuses()).slice(rowsBefore)).toHaveLength(1)
   })
 })
 
@@ -230,7 +243,7 @@ describe('a send while the child of the first start is still proving itself', ()
     await proveStarted()
 
     expect(acquire).toHaveBeenCalledOnce()
-    expect(journalStatuses()).toEqual([])
+    expect(await journalStatuses()).toEqual([])
   })
 
   it('is retired with the cause when that child exits first, and restarts nothing', async () => {
@@ -239,13 +252,13 @@ describe('a send while the child of the first start is still proving itself', ()
 
     await exitBeforeProof()
 
-    expect(submission(held)).toMatchObject({
+    expect(await submission(held)).toMatchObject({
       dispatchState: 'rejected',
       reason: expect.stringContaining(EXIT_REASON),
       recovered: true
     })
     expect(acquire).toHaveBeenCalledOnce()
-    expect(journalStatuses()).toEqual([
+    expect(await journalStatuses()).toEqual([
       expect.stringMatching(/stopped before it finished starting: .*not signed in/)
     ])
     expect(store.getRecord(SESSION)?.lease.runtimeFence).toBe(fence + 1)

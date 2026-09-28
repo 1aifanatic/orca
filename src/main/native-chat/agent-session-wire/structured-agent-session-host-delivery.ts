@@ -14,7 +14,7 @@ import {
   StructuredAgentSessionDeliveryLoop,
   type StructuredAgentSessionDeliveryLoopDeps
 } from './structured-agent-session-delivery-loop'
-import type { StructuredAgentSessionResumeOutcome } from './structured-agent-session-hold-resume'
+import type { StructuredAgentSessionResumeOutcome } from './structured-agent-session-agent-start'
 import type {
   StructuredAgentSessionHostDeps,
   StructuredAgentSessionHostSession
@@ -43,7 +43,11 @@ export function createStructuredAgentSessionConversationDelivery(input: {
   sessions: Map<string, StructuredAgentSessionHostSession>
   serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
   trackStart: <T>(start: Promise<T>) => Promise<T>
-  ensureProviderChild: (sessionId: string) => Promise<StructuredAgentSessionResumeOutcome>
+  /** Starts a child for `startedFor`, the queued message at the head, if the session has none. */
+  ensureProviderChild: (
+    sessionId: string,
+    startedFor: string
+  ) => Promise<StructuredAgentSessionResumeOutcome>
   stopAgent: StructuredAgentSessionDeliveryLoopDeps['stopAgent']
   reset: (sessionId: string, journal: AgentSessionJournal, reset: AgentJournalResetReason) => void
   publishRestored: (sessionId: string) => void
@@ -88,8 +92,8 @@ export function createStructuredAgentSessionConversationDelivery(input: {
 /**
  * A compaction or rewind found prepared when the conversation opens was started under a child
  * this process no longer has — the open runs only when none is indexed — so nothing will finish
- * it, and left alone it refuses every send until a view attaches. Settled here instead of by a
- * start inside acceptance. A Codex rewind only its provider can prove stays for the attach.
+ * it, and left alone it refuses every send, so no agent would ever start to. Settled here instead
+ * of by a start inside acceptance. A Codex rewind only its provider can prove stays for the attach.
  */
 async function settleInterruptedCommands(
   deps: StructuredAgentSessionHostDeps,

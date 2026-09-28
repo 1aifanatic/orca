@@ -5,6 +5,7 @@ import {
   STRUCTURED_AGENT_SESSION_EVICTION_STEPS,
   type StructuredAgentSessionEvictionContext
 } from './structured-agent-session-eviction'
+import { withStructuredAgentSessionEvictionDeadline } from './structured-agent-session-eviction-deadline'
 import {
   AgentSessionAcquisitionExitUnprovenError,
   AgentSessionAcquisitionRootExitObservedError,
@@ -94,6 +95,16 @@ describe('structured agent session eviction', () => {
       'acknowledge-release',
       'resolve-recovery'
     ])
+  })
+
+  it('keeps which steps only report their failure under the teardown deadline', () => {
+    const bestEffort = withStructuredAgentSessionEvictionDeadline(
+      STRUCTURED_AGENT_SESSION_EVICTION_STEPS
+    )
+      .filter((step) => step.bestEffort)
+      .map((step) => step.name)
+
+    expect(bestEffort).toEqual(['drain-published', 'settle-dead-generation', 'resolve-recovery'])
   })
 
   it('still stops the child when the pre-stop snapshot cannot drain the sink', async () => {
