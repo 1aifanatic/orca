@@ -372,6 +372,30 @@ describe('typed failure facts', () => {
     expect(refused({ code: 'agent_session_conflict', cause: 'claimConflicted' })).toBe(true)
   })
 
+  // The schema is the one older builds of this stack read with: the start's key, well-formed or
+  // not, never makes a row malformed; the fact reader keeps or drops it.
+  it('admits the start a rejection came from, whatever a host wrote for it', () => {
+    for (const startKey of ['generation-2', 7]) {
+      const failure = { kind: 'startFailed', startKey }
+      expect(
+        isAdmissibleAgentJournalItemBody({ kind: 'status', text: "Codex couldn't start.", failure })
+      ).toBe(true)
+      expect(
+        isAdmissibleAgentJournalSubmission({
+          clientMessageId: 'cm-1',
+          fence: 1,
+          payloadFingerprint: 'fp',
+          dispatchState: 'rejected',
+          providerItemId: null,
+          reason: "Codex couldn't start.",
+          submittedAt: 1,
+          resolvedAt: 2,
+          rejection: failure
+        })
+      ).toBe(true)
+    }
+  })
+
   it('keeps a kind or audience a newer host writes admissible', () => {
     expect(
       isAdmissibleAgentJournalItemBody({

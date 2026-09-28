@@ -185,7 +185,11 @@ describe("a saved message's last failure", () => {
           lastFailure: {
             kind: 'rejected',
             reason: 'Claude stopped before it finished starting.',
-            rejection: { kind: 'providerStartFailed', detail: { text: 'exit 1', audience: 'log' } }
+            rejection: {
+              kind: 'providerStartFailed',
+              detail: { text: 'exit 1', audience: 'log' },
+              startKey: 'generation-1'
+            }
           }
         },
         {

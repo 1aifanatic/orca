@@ -85,6 +85,13 @@ describe('classifyDispatchRejection', () => {
     ).toMatchObject({ category: 'transport', verdict: 'failure' })
   })
 
+  it('classifies a rejection the same whichever start it names', () => {
+    const reason = "Claude couldn't start."
+    expect(
+      classifyDispatchRejection({ reason, rejection: { kind: 'startFailed', startKey: 'g-2' } })
+    ).toEqual(classifyDispatchRejection({ reason, rejection: { kind: 'startFailed' } }))
+  })
+
   it('writes a sentence, not a marker released clients would print, for a restart or a close', () => {
     for (const kind of ['hostRestarted', 'chatClosed'] as const) {
       const written = agentSessionFailureWords(agentSessionFailureFact(kind), {
