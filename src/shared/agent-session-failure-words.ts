@@ -172,10 +172,10 @@ const FAILURE_SENTENCES = {
     'A Claude account switch is in progress. Try again after it finishes.',
   managedAccountUnsupported: (context) =>
     `While a Claude account is added in WSL, Claude chats need a Windows Claude account. Choose or add one in Claude Accounts settings, then ${retryStep(context)}.`,
-  providerExited: (_, __, surface) =>
+  providerExited: ({ agentName }, _, surface) =>
     surface === 'row'
-      ? 'The provider stopped while this response was in progress. You can continue in this conversation.'
-      : 'The provider stopped before this message was sent.',
+      ? `${agentName ?? 'The agent'} stopped while this response was in progress. You can continue in this conversation.`
+      : `${agentName ?? 'The agent'} stopped before this message was sent.`,
   restartFailed: couldNot('restart'),
   providerRejected: (_, fact) =>
     quotingPersonDetail('The provider did not accept this message', fact.detail),

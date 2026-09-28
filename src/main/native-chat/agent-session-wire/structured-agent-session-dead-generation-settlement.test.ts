@@ -17,7 +17,7 @@ import {
 } from './structured-agent-session-dead-generation-settlement'
 
 const UNEXPECTED_PROVIDER_EXIT_OUTCOME =
-  'The provider stopped while this response was in progress. You can continue in this conversation.'
+  'The agent stopped while this response was in progress. You can continue in this conversation.'
 
 const SESSION = 'session-dead-generation'
 const THREAD = 'thread-1'

@@ -16,8 +16,8 @@ import {
   type StructuredAgentSessionRecoveryTicket
 } from './structured-agent-session-unexpected-exit'
 
-const UNEXPECTED_PROVIDER_EXIT_OUTCOME =
-  'The provider stopped while this response was in progress. You can continue in this conversation.'
+const exitOutcome = (agent: string): string =>
+  `${agent} stopped while this response was in progress. You can continue in this conversation.`
 
 const SESSION = 'session-1'
 const GENERATION = 'generation-1'
@@ -264,7 +264,7 @@ describe('provider-exit recovery tickets', () => {
           },
           body: {
             kind: 'status',
-            text: UNEXPECTED_PROVIDER_EXIT_OUTCOME,
+            text: exitOutcome('The agent'),
             failure: { kind: 'providerExited' }
           }
         },
@@ -355,7 +355,7 @@ describe('provider-exit recovery tickets', () => {
           expect.objectContaining({
             body: {
               kind: 'status',
-              text: UNEXPECTED_PROVIDER_EXIT_OUTCOME,
+              text: exitOutcome('Claude'),
               failure: { kind: 'providerExited' }
             }
           })
@@ -407,7 +407,7 @@ describe('provider-exit recovery tickets', () => {
           expect.objectContaining({
             body: {
               kind: 'status',
-              text: UNEXPECTED_PROVIDER_EXIT_OUTCOME,
+              text: exitOutcome('Claude'),
               failure: { kind: 'providerExited' }
             }
           })

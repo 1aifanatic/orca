@@ -1,5 +1,8 @@
 import { agentSessionFailureFact, providerDiagnosticOf } from '../../shared/agent-session-failure'
-import { providerStartupFailureFact } from '../native-chat/agent-session-wire/structured-agent-session-failure-text'
+import {
+  providerExitObserved,
+  providerStartupFailureFact
+} from '../native-chat/agent-session-wire/structured-agent-session-failure-text'
 import { settledClaudeTurnEndLeaf } from './claude-structured-resume-point'
 import {
   claudeRootExitObserved,
@@ -89,11 +92,16 @@ export function settleClaudeUnexpectedExit(
       type: 'ended',
       sessionId,
       reason: exit.error.message,
-      // A start that never landed says why it failed; a running child's exit keeps its stderr.
+      // A start that never landed says why it failed. After it landed, only the child's own exit
+      // blames the provider; an Orca fault that closed it is Orca's.
       failure:
-        exit.session.startup.state === 'proven'
-          ? agentSessionFailureFact('providerExited', { detail: providerDiagnosticOf(exit.error) })
-          : providerStartupFailureFact(exit.session.startup.failure ?? exit.error),
+        exit.session.startup.state !== 'proven'
+          ? providerStartupFailureFact(exit.session.startup.failure ?? exit.error)
+          : providerExitObserved(exit.error)
+            ? agentSessionFailureFact('providerExited', {
+                detail: providerDiagnosticOf(exit.error)
+              })
+            : agentSessionFailureFact('hostFault'),
       cause: 'unexpected-exit',
       fence: exit.session.fence,
       acquisitionGeneration: exit.session.acquisitionGeneration,

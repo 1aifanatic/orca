@@ -18,10 +18,7 @@ import {
   type AgentSessionFailureFact,
   type SubmissionRejectionFact
 } from '../../../shared/agent-session-failure'
-import {
-  agentSessionFailureSentence,
-  agentSessionFailureWords
-} from '../../../shared/agent-session-failure-words'
+import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import { openAgentSessionJournal } from '../agent-session-journal/journal-store-factory'
 import { journalDirectoryFor } from '../agent-session-journal/journal-paths'
@@ -357,7 +354,9 @@ describe('settling an earlier child before the next one takes its message', () =
     )
     expect(
       items.flatMap((item) => (item.body.kind === 'status' ? [item.body.text] : []))
-    ).toContain(agentSessionFailureSentence({ kind: 'providerExited' }, 'row'))
+    ).toContain(
+      'Codex stopped while this response was in progress. You can continue in this conversation.'
+    )
     // Handed over at the new child's fence, which the attach reserved after settling.
     const newFence = store.getRecord(SESSION)!.lease.runtimeFence
     expect(newFence).toBeGreaterThan(releasedFence)
@@ -535,7 +534,7 @@ describe('a child that ends before its message is handed over', () => {
       detail: { text: 'codex app-server crashed', audience: 'log' }
     }
     expect(submission(id)).toMatchObject({
-      reason: 'The provider stopped before this message was sent.',
+      reason: 'Codex stopped before this message was sent.',
       rejection: failure
     })
     expect(statusRows()).toEqual([

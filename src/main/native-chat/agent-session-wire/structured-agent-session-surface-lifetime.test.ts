@@ -39,7 +39,7 @@ import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 
 const UNEXPECTED_PROVIDER_EXIT_OUTCOME =
-  'The provider stopped while this response was in progress. You can continue in this conversation.'
+  'Codex stopped while this response was in progress. You can continue in this conversation.'
 
 const CALLER = { callerKey: 'client-1' }
 const SURFACE = 'desktop-chat:1'

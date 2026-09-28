@@ -190,6 +190,8 @@ export async function settleStaleStructuredAgentSessionState(input: {
   fence: number
   acquisitionGeneration: string | null
   deathEvidence: AgentSessionDeathEvidence | null
+  /** Who the exit row names. */
+  failureTextContext?: AgentSessionFailureWordsContext
 }): Promise<number> {
   const { journal } = input
   const items = journal.snapshot().items
@@ -213,7 +215,10 @@ export async function settleStaleStructuredAgentSessionState(input: {
       // that the provider stopped.
       body: {
         kind: 'status',
-        ...agentSessionFailureWords(agentSessionFailureFact('providerExited'), { surface: 'row' })
+        ...agentSessionFailureWords(agentSessionFailureFact('providerExited'), {
+          ...input.failureTextContext,
+          surface: 'row'
+        })
       }
     })
   }

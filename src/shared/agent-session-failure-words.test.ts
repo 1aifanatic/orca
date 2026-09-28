@@ -149,12 +149,24 @@ describe('the words written beside a failure fact', () => {
   })
 
   it('names the exit a row reports differently from the message it left unsent', () => {
+    expect(
+      agentSessionFailureWords({ kind: 'providerExited' }, { surface: 'row', agentName: 'Claude' })
+        .text
+    ).toBe(
+      'Claude stopped while this response was in progress. You can continue in this conversation.'
+    )
+    expect(
+      agentSessionFailureWords(
+        { kind: 'providerExited' },
+        { surface: 'rejection', agentName: 'Codex' }
+      ).reason
+    ).toBe('Codex stopped before this message was sent.')
     expect(agentSessionFailureWords({ kind: 'providerExited' }, { surface: 'row' }).text).toBe(
-      'The provider stopped while this response was in progress. You can continue in this conversation.'
+      'The agent stopped while this response was in progress. You can continue in this conversation.'
     )
     expect(
       agentSessionFailureWords({ kind: 'providerExited' }, { surface: 'rejection' }).reason
-    ).toBe('The provider stopped before this message was sent.')
+    ).toBe('The agent stopped before this message was sent.')
   })
 
   it('says what frees a chat a terminal agent still holds, without naming its process', () => {

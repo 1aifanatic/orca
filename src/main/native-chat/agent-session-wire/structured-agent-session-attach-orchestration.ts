@@ -23,6 +23,7 @@ import {
 } from './structured-agent-session-launch-env'
 import { refuseAgentSessionMutation } from './structured-agent-session-mutation-admission'
 import { settleStaleStructuredAgentSessionState } from './structured-agent-session-dead-generation-settlement'
+import { structuredAgentSessionFailureWordsContext } from './structured-agent-session-send-preparation'
 import type { StructuredAgentSessionAttachContext } from './structured-agent-session-attach-context'
 import type {
   StructuredAgentSessionProviderChild,
@@ -131,7 +132,8 @@ async function runAttach(
   const attemptSink = context.runtimeState.mintEventSink(sessionId)
   // Read before the reserve clears it: how the previous generation ended decides how whatever it
   // left running is settled.
-  const priorDeathEvidence = context.deps.store.getRecord(sessionId)?.lease.deathEvidence ?? null
+  const priorRecord = context.deps.store.getRecord(sessionId)
+  const priorDeathEvidence = priorRecord?.lease.deathEvidence ?? null
   const attempt: { candidate: AttachCandidate | null; committed: boolean } = {
     candidate: null,
     committed: false
@@ -188,7 +190,8 @@ async function runAttach(
             sessionId,
             fence,
             acquisitionGeneration,
-            deathEvidence: priorDeathEvidence
+            deathEvidence: priorDeathEvidence,
+            failureTextContext: structuredAgentSessionFailureWordsContext(priorRecord)
           })
         }
         await bindAndDrain(eventSink, attached.journal, fence, (activity) =>

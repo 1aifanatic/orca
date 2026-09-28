@@ -528,7 +528,7 @@ describe('a child that exits before its message is handed over', () => {
 
     await eventually(() => expect(submission(id)?.dispatchState).toBe('rejected'))
     expect(submission(id)).toMatchObject({
-      reason: 'The provider stopped before this message was sent.',
+      reason: 'Codex stopped before this message was sent.',
       rejection: { kind: 'providerExited' }
     })
     expect(acquire).toHaveBeenCalledTimes(2)
