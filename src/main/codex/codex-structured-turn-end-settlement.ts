@@ -19,6 +19,7 @@ import type { CodexTurnEnd } from './codex-structured-dispatch-echo'
 import type { CodexSession } from './codex-structured-session-state'
 import {
   readCodexThreadId,
+  readCodexTurnErrorMessage,
   readCodexTurnId,
   readCodexTurnStatus
 } from './codex-structured-thread-facts'
@@ -40,15 +41,9 @@ export type CodexTurnEndSettlement = {
   state: 'rejected'
 } & AgentJournalDispatchRejection
 
-function field(value: unknown, key: string): unknown {
-  return typeof value === 'object' && value !== null && key in value
-    ? Reflect.get(value, key)
-    : undefined
-}
-
-function errorDetail(error: unknown): ProviderDiagnostic | undefined {
-  const message = field(error, 'message')
-  return typeof message === 'string' ? providerDiagnostic(message, 'person') : undefined
+function errorDetail(params: unknown): ProviderDiagnostic | undefined {
+  const message = readCodexTurnErrorMessage(params)
+  return message ? providerDiagnostic(message, 'person') : undefined
 }
 
 /** The end a primary-thread notification reports for its turn, or null for any other frame. */
@@ -61,7 +56,7 @@ export function readCodexTurnEnd(method: string, params: unknown): CodexTurnEnd 
     return { status: 'interrupted' }
   }
   if (status === 'failed') {
-    const detail = errorDetail(field(field(params, 'turn'), 'error'))
+    const detail = errorDetail(params)
     return { status: 'failed', ...(detail ? { detail } : {}) }
   }
   return { status: 'completed' }
