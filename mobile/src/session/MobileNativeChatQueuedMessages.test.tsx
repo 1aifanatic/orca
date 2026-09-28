@@ -81,7 +81,7 @@ describe('MobileNativeChatQueuedMessages', () => {
     expect(mounted.root.findByProps({ accessibilityLabel: 'Send this message' })).toBeTruthy()
     expect(mounted.root.findByProps({ accessibilityLabel: 'Send this message now' })).toBeTruthy()
     const labels = mounted.root
-      .findAllByType('Text')
+      .findAll((node) => String(node.type) === 'Text')
       .map((node) => node.props.children)
       .filter((child) => child === 'Send' || child === 'Send now')
     expect(labels).toEqual(['Send', 'Send now'])
