@@ -23,9 +23,11 @@ function worktreeId(name: string): string {
   return `${REPO_ID}::/repo/${name}`
 }
 
+// Production-shaped: the scan qualifies local rows as `local`, while the sidebar rows stay unhosted.
 function candidateFor(name: string) {
   return makeCandidate({
     worktreeId: worktreeId(name),
+    executionHostId: 'local',
     displayName: name,
     branch: name,
     path: `/repo/${name}`
@@ -260,7 +262,15 @@ describe('workspace cleanup removal of the active workspace', () => {
     ]
   ])('leaves focus alone when %s', async (_label, override) => {
     seed('active')
-    useAppStore.setState(override)
+    // The viewed row is host-b's, so it resolves and only the host check can keep focus.
+    useAppStore.setState((state) => ({
+      ...override,
+      worktreesByRepo: {
+        [REPO_ID]: state.worktreesByRepo[REPO_ID].map((wt) =>
+          wt.id === worktreeId('active') ? { ...wt, hostId: 'ssh:host-b' as const } : wt
+        )
+      }
+    }))
     const pending = deferRemovals()
     const { result } = renderRemoval()
     act(() =>
