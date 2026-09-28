@@ -175,6 +175,13 @@ export const AGENT_SESSION_ACCEPTED_SEND_RUNTIME_CAPABILITY =
 // only Stop a client can send before the provider has opened a turn.
 export const AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY =
   'agent-session.conversation-stop.v1' as const
+// Why: `agentSession.send`'s params are strict, so an older host rejects `delivery`; and only a
+// capable client can render the `queued` result arm, the draft list, and returned cards. DARK ON
+// PURPOSE — not in RUNTIME_CAPABILITIES: advertising requires the complete immediate path behind
+// it (Claude fold receipt, the integrated Codex steer matrix, confirmed cancellation, turn-owner
+// bars) in the shipped host. The host mechanism lands first; the constant gates the rollout.
+export const AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY =
+  'agent-session.queued-messages.v1' as const
 // Why: paired clients advertise Claude-structured support so the host can gate its agent-specific
 // journal and lifecycle surfaces independently from Codex support.
 export const CLAUDE_STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY =

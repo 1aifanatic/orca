@@ -1,3 +1,5 @@
+import type { AgentJournalMessageItem } from './agent-session-journal-types'
+
 export type AgentSessionConversationCommand = 'clear' | 'compact'
 
 export type AgentSessionConversationCommandResult = {
@@ -5,6 +7,10 @@ export type AgentSessionConversationCommandResult = {
   state: 'completed' | 'unknown'
   replacementSessionId?: string
   error?: string
+  /** Drafts a clear withdrew from the superseded source, with their text, so the
+   *  composer restores them. Never persisted in the ledger — replays re-read the
+   *  drafts' own op-stamped tombstones. */
+  withdrawnQueued?: { messageId: string; body: AgentJournalMessageItem }[]
 }
 
 export type AgentSessionConversationCommandRecord = AgentSessionConversationCommandResult & {

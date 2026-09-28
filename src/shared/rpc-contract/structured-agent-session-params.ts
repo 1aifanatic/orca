@@ -168,6 +168,10 @@ export const SendParams = z
   .object({
     envelope: MutationEnvelope,
     retryUnknown: z.literal(true).optional(),
+    /** Queue the send as a host-held draft while the main agent is working. Strict object, so an
+     *  older host refuses it: clients send it only when `agent-session.queued-messages.v1` is
+     *  advertised. Participates in the operation fingerprint, never the body fingerprint. */
+    delivery: z.literal('queue-if-active').optional(),
     body: z
       .object({
         kind: z.literal('message'),
@@ -187,6 +191,9 @@ export const CancelParams = z
     envelope: MutationEnvelope,
     // Absent: stop whatever the conversation has in flight. Present: only if that turn is current.
     turnId: Identifier('Invalid turn id').optional(),
+    /** Withdraw waiting and returned drafts too, returning their text. Capability-gated like
+     *  `delivery`: an older host's strict schema refuses the unknown key. */
+    withdrawQueued: z.literal(true).optional(),
     scope: z.literal('background-tasks').optional(),
     taskId: Identifier('Invalid task id').optional(),
     prompt: z
@@ -208,7 +215,19 @@ export const CancelParams = z
     if (value.turnId === undefined && (value.prompt !== undefined || value.scope !== undefined)) {
       ctx.addIssue({ code: 'custom', message: 'A prompt or background-task cancel names its turn' })
     }
+    if (value.withdrawQueued && (value.prompt !== undefined || value.scope !== undefined)) {
+      ctx.addIssue({ code: 'custom', message: 'Only a conversation Stop withdraws queued drafts' })
+    }
   })
+
+/** `agentSession.queuedMessageSend` / `agentSession.queuedMessageDelete`. Gated on
+ *  `agent-session.queued-messages.v1`; an older host lacks the methods entirely. */
+export const QueuedMessageActionParams = z
+  .object({
+    envelope: MutationEnvelope,
+    messageId: Identifier('Invalid queued message id')
+  })
+  .strict()
 
 export const RespondParams = z
   .object({

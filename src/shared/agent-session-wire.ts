@@ -17,6 +17,7 @@ import type { AgentSessionContextUsage } from './agent-session-context-usage'
 
 import type {
   AgentJournalCursor,
+  AgentJournalMessageItem,
   AgentJournalRenderItem,
   AgentJournalResetReason,
   AgentJournalResolution,
@@ -103,6 +104,9 @@ export type AgentSessionHistoryPage = {
   hasNewer: boolean
   /** Present on hosts that expose provider-owned background task lifecycle. */
   backgroundTasks?: AgentSessionBackgroundTaskState | null
+  /** The host's queued drafts. Absent = no claim (older host); `[]`/null = empty.
+   *  Live subscription state stays authoritative over a stale history answer. */
+  queuedMessages?: AgentSessionQueuedMessage[] | null
   /** Host wall clock (ms epoch) when the page was read, so a client attaching mid-turn
    *  can anchor a live counter on the real start. Absent from older hosts. */
   hostNow?: number
@@ -140,6 +144,8 @@ export type AgentSessionSubscribeEvent =
       page: AgentSessionHistoryPage
       fence: number
       backgroundTasks?: AgentSessionBackgroundTaskState | null
+      /** Whole-list draft publication; omitted when unchanged since the last frame sent. */
+      queuedMessages?: AgentSessionQueuedMessage[] | null
       /** Omitted when unchanged; null clears a previous provider catalog. */
       commands?: AgentSessionSlashCommand[] | null
       /** Latest provider-authored turn activity; optional for mixed-version hosts. */
@@ -152,6 +158,9 @@ export type AgentSessionSubscribeEvent =
       /** Optional so mixed-version cursors retain the ownership fence. */
       fence?: number
       backgroundTasks?: AgentSessionBackgroundTaskState | null
+      /** Whole-list draft publication. On a multi-page catch-up it rides only the
+       *  final page, so a consumed card never vanishes before its bubble arrives. */
+      queuedMessages?: AgentSessionQueuedMessage[] | null
       /** Omitted when unchanged; null clears a previous provider catalog. */
       commands?: AgentSessionSlashCommand[] | null
       /** Additive ephemeral state; it never creates or advances journal rows. */
@@ -164,6 +173,8 @@ export type AgentSessionSubscribeEvent =
       page: AgentSessionHistoryPage
       fence: number
       backgroundTasks?: AgentSessionBackgroundTaskState | null
+      /** Whole-list draft publication; a reset re-hydrates it with the page. */
+      queuedMessages?: AgentSessionQueuedMessage[] | null
       /** Omitted when unchanged; null clears a previous provider catalog. */
       commands?: AgentSessionSlashCommand[] | null
       activity?: AgentSessionTurnActivity | null
@@ -305,16 +316,69 @@ export type AgentSessionAttachResult = {
   tabId?: string
 }
 
-export type AgentSessionSendResult = {
-  clientMessageId: string
-  submission: AgentJournalSubmission
+/** The host queued the send as a draft instead of submitting it. Only clients
+ *  that sent `delivery: 'queue-if-active'` — gated on
+ *  `agent-session.queued-messages.v1` — ever receive this arm; `state` other
+ *  than `waiting` appears only on replays of an already-settled draft. */
+export type AgentSessionQueuedSendReceipt = {
+  messageId: string
+  position: number
+  state: 'waiting' | 'dispatched' | 'returned' | 'withdrawn'
+}
+
+export type AgentSessionSendResult =
+  | {
+      clientMessageId: string
+      submission: AgentJournalSubmission
+    }
+  | { clientMessageId: string; queued: AgentSessionQueuedSendReceipt }
+
+/** The submission arm's payload; undefined for a queued answer. For callers that
+ *  never send `delivery` the queued arm cannot arrive, and `undefined` reads as
+ *  delivery-unknown rather than as an error. */
+export function agentSessionSendSubmission(
+  result: AgentSessionSendResult | undefined
+): AgentJournalSubmission | undefined {
+  return result !== undefined && 'submission' in result ? result.submission : undefined
+}
+
+/** A withdrawn draft handed back with its text, so a Stop or /clear restores it
+ *  to the sender's composer instead of losing it. */
+export type AgentSessionWithdrawnQueuedMessage = {
+  messageId: string
+  body: AgentJournalMessageItem
 }
 
 export type AgentSessionCancelResult = {
   /** The turn the client named, echoed so a late reply can be matched; absent when it named none. */
   turnId?: string
   cancelled: boolean
+  /** Present only when the Stop carried `withdrawQueued`; replays answer from
+   *  the drafts' op-stamped tombstones, so a lost acknowledgement loses no text. */
+  withdrawnQueued?: AgentSessionWithdrawnQueuedMessage[]
 }
+
+/** One draft the host holds for this conversation, published whole-list on the
+ *  subscribe stream and on history pages. Text-only v1. */
+export type AgentSessionQueuedMessage = {
+  messageId: string
+  position: number
+  body: AgentJournalMessageItem
+  state: 'waiting' | 'returned'
+  /** Derived at publish: a Stop, a pre-consume failure, or a host restart holds it. */
+  paused?: true
+  /** Copy for a paused card when the hold came from a failure; absent otherwise. */
+  pausedReason?: string
+  /** The stored effective refusal. Clients decide showability with
+   *  `dispatchRejectionReasonIsInternal`, exactly as for rejected submissions. */
+  returnedReason?: string | null
+}
+
+export type AgentSessionQueuedMessageDeleteResult =
+  | { deleted: true; messageId: string; body: AgentJournalMessageItem }
+  /** `dispatched` means it already became a submission; `missing` covers a
+   *  pruned tombstone. Replays answer from tombstone receipts. */
+  | { deleted: false; messageId: string; disposition: 'dispatched' | 'withdrawn' | 'missing' }
 
 export type AgentSessionPromptResult = {
   itemId: string

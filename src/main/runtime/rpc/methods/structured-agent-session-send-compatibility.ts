@@ -2,6 +2,7 @@ import {
   AGENT_SESSION_ACCEPTED_SEND_RUNTIME_CAPABILITY,
   AGENT_SESSION_PENDING_SEND_RESULT_RUNTIME_CAPABILITY
 } from '../../../../shared/protocol-version'
+import { agentSessionSendSubmission } from '../../../../shared/agent-session-wire'
 import type { StructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-host'
 import { STRUCTURED_AGENT_SESSION_START_WAIT_MS } from '../../../native-chat/agent-session-wire/structured-agent-session-send-settlement'
 import type { RpcContext } from '../core'
@@ -21,7 +22,8 @@ export async function sendStructuredAgentSessionForClient(
   const capabilities = context.clientCapabilities ?? []
   if (
     !result.ok ||
-    result.value.submission.dispatchState !== 'pending' ||
+    // A queued answer only ever reaches a capable client, which renders it as-is.
+    agentSessionSendSubmission(result.value)?.dispatchState !== 'pending' ||
     context.clientKind === undefined ||
     capabilities.includes(AGENT_SESSION_ACCEPTED_SEND_RUNTIME_CAPABILITY)
   ) {

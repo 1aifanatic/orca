@@ -67,10 +67,55 @@ function notice(reason: string | null): string | undefined {
   )
 }
 
+describe('a queued draft answer', () => {
+  it('retires the outbox entry: the host-held draft carries any later refusal', () => {
+    const disposition = disposeStructuredAgentSessionSendResult({
+      entries: [entry],
+      entry,
+      blockedClientMessageId: null,
+      result: {
+        ok: true,
+        replayed: false,
+        fence: 1,
+        cursor: { epoch: 'epoch-1', sequence: 10 },
+        value: {
+          clientMessageId: 'client-1',
+          queued: { messageId: 'client-1', position: 1, state: 'waiting' }
+        }
+      },
+      createOperationId: () => 'unused'
+    })
+    expect(disposition.entries).toEqual([])
+    expect(disposition.error).toBeNull()
+    expect(disposition.retryWithFreshClientMessageId).toBeNull()
+  })
+
+  it('a withdrawn replay is spent, not unknown', () => {
+    const disposition = disposeStructuredAgentSessionSendResult({
+      entries: [entry],
+      entry,
+      blockedClientMessageId: null,
+      result: {
+        ok: true,
+        replayed: true,
+        fence: 1,
+        cursor: { epoch: 'epoch-1', sequence: 10 },
+        value: {
+          clientMessageId: 'client-1',
+          queued: { messageId: 'client-1', position: 1, state: 'withdrawn' }
+        }
+      },
+      createOperationId: () => 'unused'
+    })
+    expect(disposition.entries).toEqual([])
+    expect(disposition.error).toBeNull()
+  })
+})
+
 describe('what a rejection shows the user', () => {
   it('removes a queued message the provider confirms Stop cancelled', () => {
     const result = rejectedWith(DISPATCH_REJECTED_CANCELLED)
-    if (!result.ok) {
+    if (!result.ok || !('submission' in result.value)) {
       throw new Error('expected rejected submission fixture')
     }
 
@@ -163,7 +208,7 @@ describe('what a refusal shows the user', () => {
       lastFailure: { kind: 'refused', code: 'agent_session_checkpoint_stale' }
     }
     const result = rejectedWith(null)
-    if (!result.ok) {
+    if (!result.ok || !('submission' in result.value)) {
       throw new Error('expected a send result')
     }
     result.value.submission = { ...result.value.submission, dispatchState: 'accepted' }
@@ -207,7 +252,7 @@ describe('ambiguous operation refusals', () => {
 
   it('parks a recovered missing submission without polling forever', () => {
     const result = rejectedWith(null)
-    if (!result.ok) {
+    if (!result.ok || !('submission' in result.value)) {
       throw new Error('expected a send result')
     }
     result.value.submission = {
