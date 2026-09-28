@@ -1,36 +1,40 @@
 // Whether a real, signed-in Claude CLI is present — the gate every real-CLI
 // suite skips on. Probed once per test process.
 
-import { spawnSync } from 'node:child_process'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { runProcessSync, type ProcessResult } from '../../shared/child-process/run-process'
+import { withCliRuntimeOnPath } from '../../shared/node-cli-command-resolution'
 import { CLAUDE_AUTH_ENV_VARS } from '../claude-accounts/environment'
 import { resolveClaudeCommand } from '../codex-cli/command'
-import { getSpawnArgsForWindows } from '../win32-utils'
 
 export const realClaudeCommand = resolveClaudeCommand()
 
-const versionLaunch = getSpawnArgsForWindows(realClaudeCommand, ['--version'])
-export const realClaudeAvailable =
-  spawnSync(versionLaunch.spawnCmd, versionLaunch.spawnArgs, {
-    stdio: 'ignore',
-    windowsHide: true,
-    timeout: 5_000
-  }).status === 0
+// Why paired: the probe must run the CLI under the same node the structured launch gives it.
+function probeRealClaude(args: string[]): ProcessResult | null {
+  try {
+    return runProcessSync({
+      program: realClaudeCommand,
+      args,
+      env: withCliRuntimeOnPath(realClaudeCommand, process.env),
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeoutMs: 5_000
+    })
+  } catch {
+    return null
+  }
+}
 
-const authStatusLaunch = getSpawnArgsForWindows(realClaudeCommand, ['auth', 'status', '--json'])
+export const realClaudeAvailable = probeRealClaude(['--version'])?.code === 0
+
 /** The CLI's own account report — the only source of truth for where it writes that
  *  is not derived from Orca's own path expressions. */
 export const realClaudeAuthStatus = (() => {
   if (!realClaudeAvailable) {
     return null
   }
-  const result = spawnSync(authStatusLaunch.spawnCmd, authStatusLaunch.spawnArgs, {
-    encoding: 'utf8',
-    windowsHide: true,
-    timeout: 5_000
-  })
-  if (result.status !== 0) {
+  const result = probeRealClaude(['auth', 'status', '--json'])
+  if (!result || result.code !== 0) {
     return null
   }
   try {
