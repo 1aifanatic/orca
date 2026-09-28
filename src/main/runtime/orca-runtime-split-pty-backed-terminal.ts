@@ -103,6 +103,10 @@ export class OrcaRuntimeWithSplitPtyBackedTerminal extends OrcaRuntimeWithSplitT
       )
     }
 
+    console.info(
+      'SPLIT_PROBE_SOURCE',
+      JSON.stringify({ sourceAuthority, parentTabId, ptyId: pty.ptyId })
+    )
     const revealSplit = async (): Promise<void> => {
       await this.notifier?.revealTerminalSession?.(workspace.id, {
         ptyId: result.id,
@@ -195,9 +199,15 @@ export class OrcaRuntimeWithSplitPtyBackedTerminal extends OrcaRuntimeWithSplitT
           pty.ptyId
         )
       : null
+    console.info(
+      'SPLIT_PROBE_COMMITTED',
+      JSON.stringify({ committedSourceAuthority, parentTabId, ptyId: pty.ptyId })
+    )
     if (sourceAuthority.persisted && committedSourceAuthority?.rendererMounted) {
       // Why: renderer adoption is a projection after the durable main commit; rejection cannot undo it.
-      void revealSplit().catch(() => undefined)
+      void revealSplit()
+        .then(() => console.info('SPLIT_PROBE_REVEALED'))
+        .catch((error) => console.info('SPLIT_PROBE_ERROR', String(error)))
     }
 
     return {

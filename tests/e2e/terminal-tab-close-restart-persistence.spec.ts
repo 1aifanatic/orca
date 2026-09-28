@@ -38,6 +38,12 @@ test('durable whole-tab close removes a split tab across restart', async (// oxl
   try {
     const firstLaunch = await session.launch()
     firstApp = firstLaunch.app
+    firstApp.process().stdout?.on('data', (chunk) => {
+      const text = String(chunk)
+      if (text.includes('SPLIT_PROBE')) {
+        console.log(text)
+      }
+    })
     const worktreeId = await attachRepoAndOpenTerminal(firstLaunch.page, repoPath)
     await waitForSessionReady(firstLaunch.page)
     await waitForActiveWorktree(firstLaunch.page)
