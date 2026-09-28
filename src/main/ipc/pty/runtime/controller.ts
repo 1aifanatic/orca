@@ -4,7 +4,6 @@ import type { PtyRuntimeControllerDeps } from './controller-deps'
 import { spawnPtyFromRuntimeController } from './spawn'
 import {
   killPtyFromRuntimeController,
-  markReversibleStopsFromRuntimeController,
   retireRejectedPtyFromRuntimeController,
   stopAndWaitPtyFromRuntimeController
 } from './kill'
@@ -27,6 +26,7 @@ import {
   waitForRendererSerializerFromRuntimeController,
   writePtyFromRuntimeController
 } from './operations'
+import { recordUnconfirmedExplicitSshStop } from './undelivered-ssh-kill'
 import { supportsForegroundProcessEvidenceFromRuntimeController } from './foreground-process-evidence-capability'
 import {
   listProcessesFromRuntimeController,
@@ -44,9 +44,9 @@ export function installPtyRuntimeController(deps: PtyRuntimeControllerDeps): voi
     },
     adoptStablePane,
     spawn: async (args) => spawnPtyFromRuntimeController(deps, args),
-    write: (ptyId, data) => writePtyFromRuntimeController(ptyId, data),
-    writeWithSettlement: (ptyId, data) =>
-      writePtyFromRuntimeController(ptyId, data, { waitForSettlement: true }),
+    write: (ptyId, data, inputKind) => writePtyFromRuntimeController(deps, ptyId, data, inputKind),
+    writeWithSettlement: (ptyId, data, inputKind) =>
+      writePtyFromRuntimeController(deps, ptyId, data, inputKind, { waitForSettlement: true }),
     probePtyLiveness: (ptyId) => probePtyLivenessFromRuntimeController(deps, ptyId),
     // Why: subscriber-driven ingestion for daemon sessions no renderer pane
     // ever attached. Local daemon sessions only — SSH panes have their own
@@ -56,8 +56,13 @@ export function installPtyRuntimeController(deps: PtyRuntimeControllerDeps): voi
     kill: (ptyId) => killPtyFromRuntimeController(deps, ptyId),
     retireRejectedPty: (ptyId, stopConfirmed) =>
       retireRejectedPtyFromRuntimeController(deps, ptyId, stopConfirmed),
-    markReversibleStops: (ptyIds) => markReversibleStopsFromRuntimeController(deps, ptyIds),
     stopAndWait: (ptyId, opts) => stopAndWaitPtyFromRuntimeController(deps, ptyId, opts),
+    recordUnconfirmedStop: (ptyId) =>
+      recordUnconfirmedExplicitSshStop({
+        store: deps.store,
+        ptyId,
+        reversible: runtime?.intentionalPtyStops?.isReversibleStopInFlight(ptyId) ?? false
+      }),
     getForegroundProcess: (ptyId) => getForegroundProcessFromRuntimeController(ptyId),
     inspectProcess: (ptyId, options) => inspectProcessFromRuntimeController(ptyId, options),
     confirmForegroundProcess: (ptyId) => confirmForegroundProcessFromRuntimeController(ptyId),
