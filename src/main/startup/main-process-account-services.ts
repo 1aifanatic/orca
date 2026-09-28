@@ -18,7 +18,7 @@ import { readMiniMaxApiKey } from '../minimax/minimax-api-key-store'
 import { createAccountRuntimeTargetSettingsSync } from '../rate-limits/account-runtime-target-sync'
 import { normalizeCodexRuntimeSelection } from '../codex-accounts/runtime-selection'
 import { normalizeClaudeRuntimeSelection } from '../claude-accounts/runtime-selection'
-import { isAgentStatusHooksEnabled } from '../agent-hooks/managed-agent-hook-controls'
+import { isAgentStatusHooksEnabledForAgent } from '../agent-hooks/managed-agent-hook-controls'
 import { agentHookServer } from '../agent-hooks/server'
 import { setSystemCodexHomeHookSweepSuppressed } from '../codex/hook-service'
 import { isRealHomeCodexHookLaneUsable } from '../codex/codex-real-home-hook-install'
@@ -51,7 +51,7 @@ export function initializeMainProcessAccountServices(): void {
     () =>
       state.codexRuntimeHome !== null &&
       state.codexRuntimeHome.isHostSystemDefaultRealHome() &&
-      isAgentStatusHooksEnabled(state.store?.getSettings())
+      isAgentStatusHooksEnabledForAgent(state.store?.getSettings(), 'codex')
   )
   state.codexSessionMigration = createCodexSessionMigrationScheduler({
     isEligible: () =>
