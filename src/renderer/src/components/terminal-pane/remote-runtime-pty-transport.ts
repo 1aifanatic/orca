@@ -1456,6 +1456,10 @@ export function createRemoteRuntimePtyTransport(
       return false
     }
     const stream = getCurrentMultiplexedStream(targetHandle)
+    console.warn(
+      'INPUT_STREAM_PROBE',
+      JSON.stringify({ text, handle, stream: Boolean(stream), pendingViewportClaim })
+    )
     if (stream?.sendInput(text)) {
       return true
     }
@@ -2586,6 +2590,16 @@ export function createRemoteRuntimePtyTransport(
     // Why no kind: terminal.send has no launch kind, and its query-reply kind is for mobile
     // clients, so the host classifies a desktop's bytes itself.
     sendInput(data: string): boolean {
+      console.warn(
+        'INPUT_TRANSPORT_PROBE',
+        JSON.stringify({
+          data,
+          connected,
+          handle,
+          blocked: recoveryBlocksIo(),
+          pendingViewportClaim
+        })
+      )
       if (!connected || !handle || recoveryBlocksIo()) {
         return false
       }

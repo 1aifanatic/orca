@@ -1,3 +1,4 @@
+import { tracePairedInput } from './paired-input-diagnostic'
 import type { ManagedPaneInternal } from '@/lib/pane-manager/pane-manager-types'
 import { subscribeToTerminalInputData } from '../terminal-user-input-signal'
 import { installTerminalImeCompositionRoute } from '../terminal-ime-composition-route'
@@ -45,6 +46,7 @@ export function installPtyInputForward(session: ConnectPanePtySession): void {
     ) {
       return
     }
+    tracePairedInput(session, data, wasUserInput, 'forward')
     const currentPtyId = session.transport.getPtyId()
     // Why: after a Codex account switch, the runtime auth has already moved to
     // the newly selected account. Stale panes must not keep sending input until
@@ -182,6 +184,7 @@ export function installPtyInputForward(session: ConnectPanePtySession): void {
   session.onDataDisposable = subscribeToTerminalInputData(
     session.pane.terminal,
     (data, wasUserInput) => {
+      tracePairedInput(session, data, wasUserInput, 'subscribe')
       const forward = wasUserInput ? forwardUserInput : forwardUnclassifiedInput
       if (session.deps.deferPtyInput) {
         session.deps.deferPtyInput(session.pane.id, data, forward)
@@ -208,12 +211,7 @@ export function installPtyInputForward(session: ConnectPanePtySession): void {
   }
 
   session.isRendererPtyResizeAuthoritative = (): boolean => {
-    if (session.deps.isVisibleRef.current) {
-      return true
-    }
-    // Why: hidden-tab layout churn is not authoritative; visible resume
-    // owns correction, and hidden SIGWINCH can reset full-screen TUIs.
-    return false
+    return session.deps.isVisibleRef.current
   }
 
   session.forwardPtyResize = (cols: number, rows: number): void => {

@@ -382,6 +382,11 @@ test('paired client keeps revealed remote terminals interactive', async ({
   const createdTerminals: string[] = []
   const results: ScenarioResult[] = []
   try {
+    client.page.on('console', (message) => {
+      if (message.text().includes('_PROBE')) {
+        console.log('CLIENT', message.text())
+      }
+    })
     const worktreeId = await orcaPage.evaluate(() => {
       const id = window.__store?.getState().activeWorktreeId
       if (!id) {
