@@ -1,0 +1,28 @@
+name: Diagnostic installed Visual Studio verifier inventory
+on:
+  push:
+    branches: [OrcaWin/np-sdk-verifier-inspection]
+    paths: ['.github/workflows/sdk-verifier-inspection.yml', 'config/ci/sdk-verifier-inspection/inspect-installed-verifier.ps1']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    if: github.repository == 'stablyai/orca' && github.ref == 'refs/heads/OrcaWin/np-sdk-verifier-inspection'
+    runs-on: windows-2022
+    timeout-minutes: 5
+    env:
+      ORCA_BACKGROUND_LAUNCH: '1'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Identify existing Microsoft-signed installer without executing it
+        shell: pwsh
+        run: ./config/ci/sdk-verifier-inspection/inspect-installed-verifier.ps1
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: installed-vs-verifier-identities
+          path: ${{ runner.temp }}/vs-verifier-inspection/
+          retention-days: 7
