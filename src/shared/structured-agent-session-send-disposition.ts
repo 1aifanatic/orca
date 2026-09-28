@@ -16,13 +16,18 @@ import {
 } from './agent-session-refusal-notice'
 import type { AgentSessionWriteNoticePart } from './agent-session-write-notice-copy'
 import { agentSessionRefusalFailure } from './agent-session-write-failure'
+import {
+  agentSessionFailureSentence,
+  agentSessionRejectionMayHoldMarker
+} from './agent-session-failure-words'
 import { classifyDispatchRejection } from './structured-agent-session-dispatch-rejection'
 import {
   classifyStructuredAgentSessionSendFailure,
   requeueStructuredAgentSessionSendRefusal,
   structuredAgentSessionRejectedFailure,
   type StructuredAgentSessionAttemptFailure,
-  type StructuredAgentSessionOutboxEntry
+  type StructuredAgentSessionOutboxEntry,
+  type StructuredAgentSessionRejectionFact
 } from './structured-agent-session-outbox'
 
 export type StructuredAgentSessionSendDisposition = {
@@ -129,8 +134,13 @@ export function structuredAgentSessionRejectionNotice(
 
 export function structuredAgentSessionRejectionParts(
   reason: string | null,
-  write: 'send' | 'composer-send'
+  write: 'send' | 'composer-send',
+  /** The host's typed fact, which decides when the row carried one. */
+  fact?: StructuredAgentSessionRejectionFact
 ): AgentSessionWriteNoticePart[] {
+  if (fact) {
+    return rejectionFactParts(reason, write, fact)
+  }
   if (reason === null) {
     return ['notDoneSend']
   }
@@ -143,12 +153,32 @@ export function structuredAgentSessionRejectionParts(
   return rejection.kind ? agentSessionWriteNotDoneParts(write) : [{ text: reason }]
 }
 
+function rejectionFactParts(
+  reason: string | null,
+  write: 'send' | 'composer-send',
+  fact: StructuredAgentSessionRejectionFact
+): AgentSessionWriteNoticePart[] {
+  const { kind } = classifyDispatchRejection({ reason, rejection: fact })
+  if (kind === 'writeFailed') {
+    return ['unreachable', ...agentSessionWriteNotDoneParts(write)]
+  }
+  // A fact this build cannot place proves only that the message did not happen.
+  if (!kind) {
+    return agentSessionWriteNotDoneParts(write)
+  }
+  // The host wrote the fact's sentence as the reason, with the agent's name and any words the
+  // provider wrote for a person; only where a marker may stand in is the sentence rebuilt.
+  return reason !== null && !agentSessionRejectionMayHoldMarker(kind)
+    ? [{ text: reason }]
+    : [{ text: agentSessionFailureSentence({ ...fact, kind }, 'rejection') }]
+}
+
 /** What the Retry row says about why its message did not go through. */
 export function structuredAgentSessionAttemptFailureParts(
   failure: StructuredAgentSessionAttemptFailure
 ): AgentSessionWriteNoticePart[] {
   return failure.kind === 'rejected'
-    ? structuredAgentSessionRejectionParts(failure.reason, 'send')
+    ? structuredAgentSessionRejectionParts(failure.reason, 'send', failure.rejection)
     : agentSessionWriteNoticeParts(failure, 'send')
 }
 

@@ -229,6 +229,12 @@ const LEGACY_REJECTION_MARKERS: Partial<
         : undefined
 }
 
+/** Whether a rejection of this kind may hold a legacy marker as its reason instead of a sentence,
+ *  so a reader words it from the fact. */
+export function agentSessionRejectionMayHoldMarker(kind: SubmissionRejectionKind): boolean {
+  return LEGACY_REJECTION_MARKERS[kind] !== undefined
+}
+
 /** The words a status row reporting this fact records. */
 export function agentSessionFailureWords(
   fact: AgentSessionFailureFact,

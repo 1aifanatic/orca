@@ -55,12 +55,12 @@ function rejectedWith(
   }
 }
 
-function notice(reason: string | null): string | undefined {
+function notice(reason: string | null, rejection?: AgentSessionFailureFact): string | undefined {
   const disposition = disposeStructuredAgentSessionSendResult({
     entries: [entry],
     entry,
     blockedClientMessageId: null,
-    result: rejectedWith(reason),
+    result: rejectedWith(reason, rejection ? { rejection } : {}),
     createOperationId: () => 'unused'
   })
   // The reason travels with the message it explains, never as a separate error.
@@ -154,6 +154,43 @@ describe('what a rejection shows the user', () => {
     const shown = notice(DISPATCH_REJECTED_QUEUE_FULL)
     expect(shown).not.toContain('queue is full')
     expect(shown).toBe('Your message was not sent.')
+  })
+})
+
+// A row that carries the host's fact is worded from it; the reason is read only as the fact's own
+// sentence, never classified again.
+describe('what a rejection with a typed fact shows the user', () => {
+  it('says Orca could not hand the message over, whatever the reason holds', () => {
+    expect(notice('provider_write_failed', { kind: 'writeFailed' })).toBe(
+      "Orca couldn't reach the agent. Your message was not sent."
+    )
+    expect(notice('Something unrelated.', { kind: 'writeFailed' })).toBe(
+      "Orca couldn't reach the agent. Your message was not sent."
+    )
+  })
+
+  it("rebuilds the fact's sentence where a marker stands in for it", () => {
+    expect(notice(DISPATCH_REJECTED_QUEUE_FULL, { kind: 'queueFull' })).toBe(
+      'Too many messages were waiting for the agent, so this one was not sent.'
+    )
+  })
+
+  it("shows the sentence the host wrote for the fact, with the agent's name it knew", () => {
+    const reason = 'Claude never finished starting, so Orca stopped it.'
+    expect(notice(reason, { kind: 'hostStopped' })).toBe(reason)
+  })
+
+  // The message keeps no fact it cannot place, so the host's sentence stands, as on an older host.
+  it("shows a newer host's sentence when its fact cannot be placed", () => {
+    expect(notice('A sentence a newer host wrote.', JSON.parse('{"kind":"fromTheFuture"}'))).toBe(
+      'A sentence a newer host wrote.'
+    )
+  })
+
+  it('says only that the message was not sent for a fact no message can carry', () => {
+    expect(notice('Compaction failed.', { kind: 'compactionFailed' })).toBe(
+      'Your message was not sent.'
+    )
   })
 })
 
