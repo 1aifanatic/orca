@@ -1,4 +1,4 @@
-name: Bundled ConPTY Bun native Windows qualification
+name: Bundled ConPTY native Windows runtime retention qualification
 on:
   push:
     branches: [OrcaWin/np-bun-conpty-build-proof]
@@ -16,105 +16,58 @@ jobs:
         include:
           - os: windows-2022
             arch: x64
-            osArch: X64
             sourceRun: 36379211508
             candidateDir: conpty-x64
             providerDir: conpty-x64
-            oppositeDir: conpty
             sha256: e1704a213d9e1634920d5b7d97b9d97f637b232059fb152a0f0bd48930ad463e
           - os: windows-11-arm
             arch: arm64
-            osArch: Arm64
             sourceRun: 36380797727
             candidateDir: conpty-aarch64
             providerDir: conpty
-            oppositeDir: conpty-x64
             sha256: 9ca4184dd4e4dc7f9575075ab4ce6b00fb1feac59110d68c660177c5447ad526
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 8
     env:
       ORCA_BACKGROUND_LAUNCH: '1'
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+          sparse-checkout: config/bun-conpty-build
       - uses: actions/download-artifact@v4
         with:
           name: bun-conpty-candidate
           run-id: ${{ matrix.sourceRun }}
           github-token: ${{ github.token }}
           path: candidate
-      - name: Verify exact native runtime and provider closure
+      - uses: actions/download-artifact@v4
+        with:
+          name: bun-conpty-${{ matrix.arch }}-qualification
+          run-id: 36391706570
+          github-token: ${{ github.token }}
+          path: qualified-package
+      - name: Exercise actual runtime retention with qualified native artifacts
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           New-Item -ItemType Directory -Force receipts | Out-Null
           $runtime = (Resolve-Path 'candidate/${{ matrix.candidateDir }}/bun.exe').Path
-          $expected = '${{ matrix.sha256 }}'
-          $actual = (Get-FileHash $runtime -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($actual -ne $expected) { throw 'Candidate runtime hash mismatch' }
-          $root = (Resolve-Path 'config/bun-conpty-build/arm64-qualification').Path
-          $manifest = Get-Content (Join-Path $root 'sha256.json') -Raw | ConvertFrom-Json -AsHashtable
-          foreach ($file in $manifest.Keys) {
-            if ((Get-FileHash (Join-Path $root $file) -Algorithm SHA256).Hash.ToLowerInvariant() -ne $manifest[$file]) { throw "Fixture hash mismatch: $file" }
-          }
-          $identity = & $runtime --no-env-file -e 'console.log(JSON.stringify({platform:process.platform,arch:process.arch,version:process.versions.bun,revision:Bun.revision}))'
-          if ($LASTEXITCODE -ne 0) { throw 'Candidate identity probe failed' }
-          $parsed = $identity | ConvertFrom-Json
-          if ($parsed.platform -ne 'win32' -or $parsed.arch -ne '${{ matrix.arch }}' -or $parsed.version -ne '1.4.2' -or $parsed.revision -ne '744846f844374847c902b5e7fd59b4342a51ef99') { throw "Unexpected native identity: $identity" }
-          $osArch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
-          if ($osArch -ne '${{ matrix.osArch }}') { throw "Runner OS architecture is $osArch" }
-          @{ runtime = $parsed; sha256 = $actual; osArchitecture = $osArch; sourceRun = ${{ matrix.sourceRun }}; runnerImage = $env:ImageVersion } | ConvertTo-Json -Depth 5 | Set-Content receipts/identity.json
-          "BUN_EXECUTABLE=$runtime" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "ORCA_OPPOSITE_CONPTY_LIBRARY=$(Join-Path $root '${{ matrix.oppositeDir }}/conpty.dll')" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "BUN_CONPTY_LIBRARY=$(Join-Path $root '${{ matrix.providerDir }}/conpty.dll')" | Out-File -FilePath $env:GITHUB_ENV -Append
-      - name: Execute unchanged replay, bytes, owned-job and MSYS contracts
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $receipts = (Resolve-Path receipts).Path
-          Push-Location config/bun-conpty-build/arm64-qualification/tests
-          $failed = $false
-          foreach ($case in @('wide-repaint.test.mjs','wide-bytes.test.mjs','windows-pty-job.test.mjs','windows-msys-job.test.mjs','child-launch.test.mjs')) {
-            & $env:BUN_EXECUTABLE test $case --timeout 100000 2>&1 | Tee-Object -FilePath (Join-Path $receipts "$case.log")
-            if ($LASTEXITCODE -ne 0) { $failed = $true }
-          }
-          # In-process JS mutation is a documented failing design; retain that fixture unchanged.
-          & $env:BUN_EXECUTABLE test provider-selection.test.mjs --test-name-pattern 'refuses|keeps|retains' --timeout 100000 2>&1 | Tee-Object -FilePath (Join-Path $receipts 'provider-selection-positive.log')
-          if ($LASTEXITCODE -ne 0) { $failed = $true }
-          Pop-Location
-          if ($failed) { throw 'One or more native Windows contracts failed' }
-      - uses: actions/setup-node@v6
-        with:
-          node-version: '24'
-          architecture: ${{ matrix.arch }}
-      - name: Build patched process identity reader with production builder
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          Push-Location config/bun-conpty-build/full-preflight/project
-          npm install --ignore-scripts --no-audit --no-fund
-          if ($LASTEXITCODE -ne 0) { throw 'Diagnostic native build dependencies failed' }
-          node config/scripts/build-windows-process-tree-relay-addon.mjs --arch=${{ matrix.arch }}
-          if ($LASTEXITCODE -ne 0) { throw 'Patched process identity build failed' }
-          Pop-Location
-      - name: Execute complete packaged production readiness through public entry
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $env:ORCA_FULL_RECEIPTS = (Resolve-Path receipts).Path
-          tar -xzf config/bun-conpty-build/full-preflight/payload.tar.gz -C config/bun-conpty-build/full-preflight
-          if ($LASTEXITCODE -ne 0) { throw 'Fixture extraction failed' }
-          node config/bun-conpty-build/full-preflight/qualify-full.mjs ${{ matrix.arch }} 2>&1 | Tee-Object -FilePath receipts/full-preflight.log
-          if ($LASTEXITCODE -ne 0) { throw 'Complete production preflight failed' }
+          if ((Get-FileHash $runtime -Algorithm SHA256).Hash.ToLowerInvariant() -ne '${{ matrix.sha256 }}') { throw 'Candidate runtime hash mismatch' }
+          $qualified = (Resolve-Path qualified-package).Path
+          $addon = Join-Path $qualified 'config/bun-conpty-build/full-preflight/project/.build/windows-process-tree/${{ matrix.arch }}/windows-process-tree.node'
+          $manifest = Get-Content (Join-Path $qualified 'receipts/full-artifact-manifest.json') -Raw | ConvertFrom-Json
+          $addonHash = (Get-FileHash $addon -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($addonHash -ne $manifest.manifest.'windows-process-tree.node') { throw 'Qualified addon hash mismatch' }
+          $fixture = (Resolve-Path 'config/bun-conpty-build/runtime-retention').Path
+          Copy-Item $addon (Join-Path $fixture 'windows-process-tree.node')
+          $env:BUN_CONPTY_LIBRARY = (Resolve-Path 'config/bun-conpty-build/arm64-qualification/${{ matrix.providerDir }}/conpty.dll').Path
+          @{ runtimeSha256 = '${{ matrix.sha256 }}'; addonSha256 = $addonHash; addonRun = 36391706570; arch = '${{ matrix.arch }}' } | ConvertTo-Json | Set-Content receipts/retention-inputs.json
+          & $runtime test (Join-Path $fixture 'retention-native.test.mjs') --timeout 60000 2>&1 | Tee-Object -FilePath receipts/retention.log
+          if ($LASTEXITCODE -ne 0) { throw 'Native retention qualification failed' }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: bun-conpty-${{ matrix.arch }}-qualification
+          name: bun-retention-${{ matrix.arch }}
           retention-days: 7
-          if-no-files-found: warn
-          path: |
-            receipts
-            config/bun-conpty-build/full-preflight/project/package-lock.json
-            config/bun-conpty-build/full-preflight/project/node_modules/@vscode/windows-process-tree/build/config.gypi
-            config/bun-conpty-build/full-preflight/project/.build/windows-process-tree/${{ matrix.arch }}/windows-process-tree.node
+          path: receipts
