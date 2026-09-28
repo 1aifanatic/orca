@@ -20,6 +20,7 @@ export type StructuredAgentSessionLeaseStore = Pick<
   'getRecord' | 'transitionHandoff'
 >
 
+/** Whether the lease was released, which moves its fence; recovery keeps the fence. */
 export async function releaseStoredStructuredAgentSessionOwner(input: {
   store: StructuredAgentSessionLeaseStore
   sessionId: string
@@ -30,9 +31,9 @@ export async function releaseStoredStructuredAgentSessionOwner(input: {
   rootGone: boolean
   /** Why the child stopped, when the host knows more than that it did. */
   reason?: string
-}): Promise<void> {
+}): Promise<boolean> {
   if (!input.hasProviderChild) {
-    return
+    return false
   }
   const record = input.store.getRecord(input.sessionId)
   if (
@@ -40,7 +41,7 @@ export async function releaseStoredStructuredAgentSessionOwner(input: {
     record.lease.runtimeFence !== input.expectedFence ||
     !isSurfaceReleasableAgentSessionRecord(record)
   ) {
-    return
+    return false
   }
   if (!input.rootGone) {
     await input.store.transitionHandoff(input.sessionId, (latest) =>
@@ -50,7 +51,7 @@ export async function releaseStoredStructuredAgentSessionOwner(input: {
         now: input.now
       })
     )
-    return
+    return false
   }
   await releaseStoredAgentSessionOwnerAfterSurfaceClose(input.store, {
     sessionId: input.sessionId,
@@ -59,6 +60,7 @@ export async function releaseStoredStructuredAgentSessionOwner(input: {
     // The store refuses a longer detail on its next read, undoing this release.
     ...(input.reason ? { exitReason: input.reason.slice(0, MAX_UNEXPECTED_EXIT_REASON_CHARS) } : {})
   })
+  return true
 }
 
 /** Releases only the exact provider child whose exit the adapter positively observed. */

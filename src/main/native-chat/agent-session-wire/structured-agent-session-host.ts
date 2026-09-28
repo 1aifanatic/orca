@@ -140,12 +140,7 @@ export class StructuredAgentSessionHost {
       store: deps.store,
       sessions: this.sessions,
       flushLifecycle: (sessionId) => this.runtimeState.lifecycleBarrier(sessionId),
-      publishFence: (sessionId, session) =>
-        this.subscribers.snapshot(
-          sessionId,
-          session.journal,
-          structuredAgentSessionConversationFence(deps.store, sessionId)
-        ),
+      publishFence: this.publishFence,
       publishStatus: this.clientDelivery.publishStatusAndSettlement,
       hasResumeCapableHolder: (sessionId) => this.holds.hasResumeCapableHolder(sessionId),
       restartReleaseGrace: (sessionId) => this.holds.renew(sessionId),
@@ -183,6 +178,13 @@ export class StructuredAgentSessionHost {
   handleAdapterEvent = (event: Parameters<StructuredAgentSessionEventRecovery['handle']>[0]) =>
     this.eventRecovery.handle(event)
 
+  private publishFence = (sessionId: string, session: StructuredAgentSessionHostSession): void =>
+    this.subscribers.snapshot(
+      sessionId,
+      session.journal,
+      structuredAgentSessionConversationFence(this.deps.store, sessionId)
+    )
+
   private lifetimeContext(): StructuredAgentSessionLifetimeContext {
     return {
       deps: this.deps,
@@ -190,7 +192,8 @@ export class StructuredAgentSessionHost {
       sessions: this.sessions,
       now: () => this.now(),
       forgetStatus: this.clientDelivery.forgetStatus,
-      publishStatus: this.clientDelivery.publishStatus
+      publishStatus: this.clientDelivery.publishStatus,
+      publishFence: this.publishFence
     }
   }
 

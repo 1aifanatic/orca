@@ -316,13 +316,14 @@ describe('a start the child was seen to die in (C′ trigger 2)', () => {
   const TEXT = providerStartupFailureOutcome(EXIT)
 
   /** The first child dies starting, before any exit is published for it. */
-  async function diedStarting(reason = EXIT): Promise<string> {
+  async function diedStarting(reason = EXIT, whileStarting?: () => void): Promise<string> {
     const settled = deferred<{ reason: string }>()
     adapterExtras = { awaitStarted: vi.fn(() => settled.promise) }
     await restartHost()
     acquire.mockImplementationOnce(spawnStartingChild)
     const first = await accept('first')
     await eventually(() => expect(adapterExtras.awaitStarted).toHaveBeenCalled())
+    whileStarting?.()
     ownerProbe = ALIVE
     settled.resolve({ reason })
     return first
@@ -382,6 +383,27 @@ describe('a start the child was seen to die in (C′ trigger 2)', () => {
       .map((entry) => entry.clientMessageId)
     expect(rejected).toEqual([first])
     expect(acquire).toHaveBeenCalledTimes(3)
+  })
+
+  // The provider's own exit event never comes here, so the stop is the only release.
+  it('tells a reader open throughout the fence its release moved the lease to', async () => {
+    const fences: number[] = []
+    let startedAt = 0
+    await diedStarting(EXIT, () => {
+      startedAt = lease()?.runtimeFence ?? 0
+      host.subscribe({
+        id: 'pane',
+        sessionId: SESSION,
+        emit: (event) => {
+          if (event.type !== 'end' && event.fence !== undefined) {
+            fences.push(event.fence)
+          }
+        }
+      })
+    })
+
+    await eventually(() => expect(fences.at(-1)).toBe(startedAt + 1))
+    expect(lease()).toMatchObject({ claimStatus: 'released', runtimeFence: startedAt + 1 })
   })
 
   it('hands the lease to recovery when that close is unproven, and the next send starts (W43)', async () => {

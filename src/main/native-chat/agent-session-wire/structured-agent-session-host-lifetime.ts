@@ -41,6 +41,8 @@ export type StructuredAgentSessionLifetimeContext = {
   forgetStatus: (sessionId: string) => void
   /** Re-projects the session's status after its agent stopped and the chat stays. */
   publishStatus?: (sessionId: string) => void
+  /** Tells the conversation's readers the fence a release moved it to. */
+  publishFence?: (sessionId: string, session: StructuredAgentSessionHostSession) => void
   /** Quit-only snapshot taken immediately before the provider child is stopped. */
   restartWitness?: {
     beforeStop: (sessionId: string) => void
@@ -184,8 +186,9 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
       }
     },
     releaseLease: async () => {
-      if (owed) {
-        await releaseStoredStructuredAgentSessionOwner({
+      const released =
+        owed !== undefined &&
+        (await releaseStoredStructuredAgentSessionOwner({
           store: context.deps.store,
           sessionId,
           hasProviderChild: true,
@@ -194,14 +197,18 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
           // Read from the ended child, so a retry after a later step failed keeps the verdict.
           rootGone: endedChildRootGone(session, owed),
           ...(ending.reason ? { reason: ending.reason } : {})
-        })
-      }
+        }))
       session.owesProviderChildWindDown = undefined
       if (ending.cause === 'evict') {
         context.forgetStatus(sessionId)
         return
       }
-      // The conversation stays: its readers keep their own fence, and only the status moves.
+      // A death seen here is the exit the provider's own event would have released and published;
+      // whichever gets there first releases, so its readers hear the new fence exactly once. Any
+      // other stop leaves them their own fence, and only the status moves.
+      if (released && ending.cause === 'exit') {
+        context.publishFence?.(sessionId, session)
+      }
       context.publishStatus?.(sessionId)
     }
   }
