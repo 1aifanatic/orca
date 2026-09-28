@@ -13,7 +13,6 @@ jobs:
     timeout-minutes: 240
     env:
       ORCA_BACKGROUND_LAUNCH: '1'
-      BUN_CONPTY_BUILD_ROOT: ${{ runner.temp }}/bun-conpty-build
     steps:
       - uses: actions/checkout@v6
         with:
@@ -24,7 +23,7 @@ jobs:
           df -h "$RUNNER_TEMP"
           free -h
       - name: Compile isolated Windows runtime candidates
-        run: bash config/bun-conpty-build/build-disposable.sh
+        run: BUN_CONPTY_BUILD_ROOT="$RUNNER_TEMP/bun-conpty-build" bash config/bun-conpty-build/build-disposable.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with:
