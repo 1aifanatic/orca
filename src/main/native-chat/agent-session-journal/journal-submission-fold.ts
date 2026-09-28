@@ -86,8 +86,9 @@ function placeHandedOverMessage(
   if (!submission.handoverRecorded || !item) {
     return
   }
+  const { sequenceIndex: _acceptedAt, ...accepted } = item
   state.items.set(itemId, {
-    ...item,
+    ...accepted,
     sequence: row.seq,
     observedAt: row.ts,
     turnScope: row.turnScope ?? state.derivedTurnScope.scopeFor(item.body)

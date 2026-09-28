@@ -144,14 +144,15 @@ describe('transcript slots', () => {
     expect(slots[0]?.receipt).toBe(receipt)
   })
 
-  it('leaves the running turn status to the single transcript-tail indicator', () => {
+  it('puts the running turn bar under the prompt it answers', () => {
     const status: NativeChatTurnStatus = { startedAt: 1, thinking: false, workedSeconds: null }
-    const slots = build([text('u', 'ask', 'user')], {
+    const slots = build([text('u', 'ask', 'user'), text('a', 'answer')], {
       currentTurnKey: 'u',
       turnStatuses: { active: status, completedByTurn: {} },
       isWorking: true
     })
-    expect(slots[0]?.status).toBeUndefined()
+    expect(slots[0]?.status).toBe(status)
+    expect(slots[1]?.status).toBeUndefined()
   })
 
   it('reserves a height for every slot it keeps', () => {
@@ -325,20 +326,20 @@ describe('the live turn', () => {
       turnStatuses: { active: working, completedByTurn: { u1: settled(4) } }
     })
     expect(slotOf(slots, 'u1')?.status?.workedSeconds).toBe(4)
-    // The running turn's clock is the transcript-tail indicator's, not a row's.
     expect(
       slots.filter((slot) => slot.status !== undefined).map((slot) => slot.message.id)
-    ).toEqual(['u1'])
+    ).toEqual(['u1', 'wake-tool'])
   })
 
-  it('draws a running turn the provider opened on no row, and its settled duration at its first', () => {
+  it('draws a turn the provider opened at its first row, running and then settled', () => {
     const running = buildLive(messages, wakeJournal('running'), {
-      turnStatuses: { active: settled(9), completedByTurn: { u1: settled(4) } }
+      isWorking: true,
+      turnStatuses: { active: working, completedByTurn: { u1: settled(4) } }
     })
-    expect(running.map((slot) => [slot.message.id, slot.status?.workedSeconds])).toEqual([
-      ['u1', 4],
+    expect(running.map((slot) => [slot.message.id, slot.status])).toEqual([
+      ['u1', settled(4)],
       ['a1', undefined],
-      ['wake-tool', undefined],
+      ['wake-tool', working],
       ['wake-note', undefined]
     ])
     const ended = buildLive(messages, wakeJournal('completed'), {

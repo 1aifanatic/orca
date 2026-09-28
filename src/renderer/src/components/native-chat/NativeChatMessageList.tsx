@@ -404,7 +404,7 @@ export function NativeChatMessageList({
                 {showTurnStatus && showLiveTurnActivity && isWorking ? (
                   <NativeChatTurnActivityLine
                     activity={turnActivity}
-                    status={turnStatuses.active}
+                    thinking={turnStatuses.active?.thinking === true}
                   />
                 ) : null}
                 {!showTurnStatus && showTypingIndicator ? <NativeChatTypingIndicatorRow /> : null}
