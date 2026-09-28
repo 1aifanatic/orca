@@ -1,0 +1,2327 @@
+[
+  {
+    "path": "Catalog.json",
+    "bytes": 17954732,
+    "sha256": "f0a50ea157222c29abd5ea6ff01bfc3c33b04e011c5e45ee2ca38ef0778e5643"
+  },
+  {
+    "path": "ChannelManifest.json",
+    "bytes": 91781,
+    "sha256": "fca418ba94ffbcfb7a2b25f10f16f39dd09660568d21eef4bd3f274cb0b27b8c"
+  },
+  {
+    "path": "Layout.json",
+    "bytes": 548,
+    "sha256": "c838c51e86a3addc7cf03e3dd7a18dc727e17feb97f11ceccbb472055ce2b648"
+  },
+  {
+    "path": "Response.json",
+    "bytes": 548,
+    "sha256": "c838c51e86a3addc7cf03e3dd7a18dc727e17feb97f11ceccbb472055ce2b648"
+  },
+  {
+    "path": "Response.template.json",
+    "bytes": 26333,
+    "sha256": "6e016c4e259f739f2e65a68f2ffa80a1d85179d41e82e83e0bd9830eb1940639"
+  },
+  {
+    "path": "vs_BuildTools.exe",
+    "bytes": 4473792,
+    "sha256": "37bb0fb429d163ecebd272a865d11a37b906d152bef960da2ddb29c2e2fd6eeb"
+  },
+  {
+    "path": "vs_installer.opc",
+    "bytes": 50363099,
+    "sha256": "4429b93a5263647805317c087c1f8f08ede36dbdfe04168a5b10814b2a0cc879"
+  },
+  {
+    "path": "vs_installer.version.json",
+    "bytes": 121,
+    "sha256": "e78a1053a6d59ad60ba8105623181b013c0ffc452216caada2699046f191974f"
+  },
+  {
+    "path": "vs_setup.exe",
+    "bytes": 4473792,
+    "sha256": "37bb0fb429d163ecebd272a865d11a37b906d152bef960da2ddb29c2e2fd6eeb"
+  },
+  {
+    "path": "certificates\\manifestCounterSignRootCertificate.cer",
+    "bytes": 1521,
+    "sha256": "df545bf919a2439c36983b54cdfc903dfa4f37d3996d8d84b4c31eec6f3c163e"
+  },
+  {
+    "path": "certificates\\manifestRootCertificate.cer",
+    "bytes": 1521,
+    "sha256": "847df6a78497943f27fc72eb93f9a637320a02b561d0a91b09e87a7807ed7c61"
+  },
+  {
+    "path": "certificates\\vs_installer_opc.RootCertificate.cer",
+    "bytes": 1521,
+    "sha256": "df545bf919a2439c36983b54cdfc903dfa4f37d3996d8d84b4c31eec6f3c163e"
+  },
+  {
+    "path": "Microsoft.Build,version=17.14.60.2643110,chip=neutral,language=neutral\\payload.vsix",
+    "bytes": 15215102,
+    "sha256": "dd60a169e94ae9a682ac1a83c2785588392114ac65164eb5605acd89ee7f2426"
+  },
+  {
+    "path": "Microsoft.Build.Arm64,version=17.14.60.2643110,language=neutral,machinearch=arm64\\payload.vsix",
+    "bytes": 3783669,
+    "sha256": "869bd4117ab6fafd701a440f6d5b355502102bc24f1116c304c972305ef1b5a7"
+  },
+  {
+    "path": "Microsoft.Build.Dependencies,version=17.14.36015.10,productarch=neutral\\payload.vsix",
+    "bytes": 2763565,
+    "sha256": "02cf79e4335684c439d5cb5d587aec12bccb53037869c5aea93aca62a6f42a31"
+  },
+  {
+    "path": "Microsoft.Build.FileTracker.Msi,version=17.14.36015.10\\cab1.cab",
+    "bytes": 428564,
+    "sha256": "a297354b1c376d6be790496fb565a973e46a91daf9f39729fb5a0c4c79cc0524"
+  },
+  {
+    "path": "Microsoft.Build.FileTracker.Msi,version=17.14.36015.10\\Microsoft.Build.FileTracker.Msi.msi",
+    "bytes": 49152,
+    "sha256": "4bd3cabe5079315ca28596b89716a04b2cde6e2155143f0ecdbe15ad05d48298"
+  },
+  {
+    "path": "Microsoft.Build.UnGAC,version=17.14.60.2643110,chip=neutral,language=neutral\\Microsoft.Build.UnGAC.exe",
+    "bytes": 18760,
+    "sha256": "f622e9c0d03b0cdf269b44b82760add2b428aeb8d93434b5f39ffb24eee82071"
+  },
+  {
+    "path": "Microsoft.CodeAnalysis.Compilers,version=4.14.0.2642407,productarch=x86\\payload.vsix",
+    "bytes": 13250796,
+    "sha256": "7b6dd02c4b369e7b3d03b4aebdbdb53aa6f02c0a6e9fa00261b4536b92d2e241"
+  },
+  {
+    "path": "Microsoft.NuGet.Build.Tasks.Setup,version=17.2.0.2311601\\payload.vsix",
+    "bytes": 303636,
+    "sha256": "5635b7c143b0f022cdd8f79494718f4c86df8ed0b036249258f22634f23a9536"
+  },
+  {
+    "path": "Microsoft.PythonTools.BuildCore.Vsix,version=17.0.25079.8,productarch=neutral\\payload.vsix",
+    "bytes": 683109,
+    "sha256": "ba66bfa9aa8204518771b8c4bbc9f00b94eaf89295ed1eb0a450e11ccedacc79"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.ASAN.Headers.base,version=14.44.35226\\payload.vsix",
+    "bytes": 97819,
+    "sha256": "f07d0d646b4959c36f29f3e6acef785d03cf9fb3165cdfa20318ed38cd4d7077"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.ASAN.X64.base,version=14.44.35226\\payload.vsix",
+    "bytes": 63347389,
+    "sha256": "40ab714821d53f02bc029e4d6002a32f086d7676cbb73be21a6043fd2a2f5999"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.ASAN.X86,version=14.44.35226\\payload.vsix",
+    "bytes": 9534,
+    "sha256": "c60c0e185585e0519c29910ddd7568c289c42cd37170f9f00f0fc42330d7c5b3"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.ASAN.X86.base,version=14.44.35226\\payload.vsix",
+    "bytes": 58227357,
+    "sha256": "549484e5aec6e2b15c69f211f631b97d6f608bd7cc6165ec27f6a36b31e7ca3d"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.ASAN.X86.OneCore,version=14.44.35226\\payload.vsix",
+    "bytes": 9523,
+    "sha256": "4682cfff494d49a2d280eee62f1321434ea15cd6ea2e1032b9972ce7a0ccee01"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.ASAN.X86.OneCore.base,version=14.44.35226\\payload.vsix",
+    "bytes": 44392762,
+    "sha256": "8f9381c2681feb5fd9986a17935a8062e9c8d465c7cae0b5c01d7ae530393a57"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.ATL.ARM64,version=14.44.35208\\payload.vsix",
+    "bytes": 8710,
+    "sha256": "accc237207c4c0e786946a0a53ee02823d96c81aab7e4a95bbafa74d3f2e481e"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.ATL.ARM64.base,version=14.44.35208\\payload.vsix",
+    "bytes": 1352172,
+    "sha256": "1c60a604821a3f4cd59a0da8f8a800ff79f6d8feb6fe13b8d482dd562aa84591"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.ATL.Headers,version=14.44.35208\\payload.vsix",
+    "bytes": 8712,
+    "sha256": "f146dd597a37ec9b503c1fe575c61fae836420041558b6b451cdc4058c79cc5f"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.ATL.Headers.base,version=14.44.35208\\payload.vsix",
+    "bytes": 585841,
+    "sha256": "f8d375a254b6cfdbe0e7dc4fe7342d6212052068eb6394070dd932c815adb500"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.ATL.Source,version=14.44.35208\\payload.vsix",
+    "bytes": 8696,
+    "sha256": "81db1be9b923e02220229c16ef3605f2059916a8d3238a27c1a871c162ce0c76"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.ATL.Source.base,version=14.44.35208\\payload.vsix",
+    "bytes": 16578,
+    "sha256": "534a8ec04575bc942dfeee60227567ba9f578870942d09194029aa286c4b12b4"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.ATL.X64,version=14.44.35208\\payload.vsix",
+    "bytes": 8735,
+    "sha256": "1d9373d83db5f8b5820ba1a53210f245b5c6a97b590039f32008c86810b3d9b0"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.ATL.X64.base,version=14.44.35208\\payload.vsix",
+    "bytes": 809804,
+    "sha256": "6dd0b7f8079c654db2b8fdaebc74900e8418b5204914a77bde93a5b01ac0998c"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.ATL.X86,version=14.44.35208\\payload.vsix",
+    "bytes": 8695,
+    "sha256": "2bb859558fc86d95e075724bf308b13b7806d4ce44ae0f8505f9009a72c53c07"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.ATL.X86.base,version=14.44.35208\\payload.vsix",
+    "bytes": 857145,
+    "sha256": "a5d98b99d8d874be29532e26f9b6cf40f961d8b019a60aa13bfb42114a928563"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CA.Ext.HostARM64.TargetARM64,version=14.44.35214,machinearch=arm64\\payload.vsix",
+    "bytes": 9581,
+    "sha256": "b1f8f25d152147d4199007eeab567c0d1bec6b07d21a98c031b9a43ea445d22a"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CA.Ext.HostARM64.TargetARM64.base,version=14.44.35214,machinearch=arm64\\payload.vsix",
+    "bytes": 3719664,
+    "sha256": "5adcd4f921e023a32aa39aa69889f8152fe2aad09bd09e3b20edb7871552476f"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CA.Ext.HostARM64.TargetARM64.Res.base,version=14.44.35214,language=en-US,machinearch=arm64\\payload.vsix",
+    "bytes": 133372,
+    "sha256": "96c0b1f7be78d00f0cbc04ee4e9fc650dacb8430f3ca9905bb8ccdf39680b5a1"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CA.Ext.HostARM64.Targetx64,version=14.44.35214,machinearch=arm64\\payload.vsix",
+    "bytes": 9569,
+    "sha256": "26a4fb9a9ac78ecc4c83738c93945eb5c58cde0d9ee5bb7a9d3e922aa023cb1c"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CA.Ext.HostARM64.Targetx64.base,version=14.44.35214,machinearch=arm64\\payload.vsix",
+    "bytes": 3719624,
+    "sha256": "85e79ab2e5f1c45c29022bdd493912cd411cbc40e6a277c9f4be1f821f1200f4"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CA.Ext.HostARM64.Targetx64.Res.base,version=14.44.35214,language=en-US,machinearch=arm64\\payload.vsix",
+    "bytes": 133324,
+    "sha256": "e9d6da18c08b6cbd5a3b43d98098727f9d82a01e65636b3e8ba78273eef6c2e0"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CA.Ext.HostARM64.Targetx86,version=14.44.35214,machinearch=arm64\\payload.vsix",
+    "bytes": 9539,
+    "sha256": "4a07bfa2f82f52a058eed1c9829023c132d86133b2b517b3f966cd776f2454dc"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CA.Ext.HostARM64.Targetx86.base,version=14.44.35214,machinearch=arm64\\payload.vsix",
+    "bytes": 3719631,
+    "sha256": "0c531ead2d015ac648f1409e1158547df40c51e7d18ad32f4861bbb744e9e66d"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CA.Ext.HostARM64.Targetx86.Res.base,version=14.44.35214,language=en-US,machinearch=arm64\\payload.vsix",
+    "bytes": 133309,
+    "sha256": "63a05202eb0df9d099ed5200305df8e4e231122682c4b2f76c45dedcc50b356a"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CA.Ext.Hostx64.TargetARM64,version=14.44.35214,chip=x64\\payload.vsix",
+    "bytes": 9541,
+    "sha256": "94526fbbf30a82915b0496b21865a84d104e89365a7882ddd3236c293a5f91c9"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CA.Ext.Hostx64.TargetARM64.base,version=14.44.35214,chip=x64\\payload.vsix",
+    "bytes": 3954281,
+    "sha256": "fa6ca2c847b2c789ffa5d09b76e85c298d551a9be75070923002613ba3c3f6fb"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CA.Ext.Hostx64.TargetARM64.Res.base,version=14.44.35214,chip=x64,language=en-US\\payload.vsix",
+    "bytes": 96733,
+    "sha256": "e3a0be43e1aeb0ac838d7ecfe8540c8f718cc135f5538c4fa1ef1e4ad1f0810e"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CA.Ext.Hostx64.Targetx64,version=14.44.35214,chip=x64\\payload.vsix",
+    "bytes": 9539,
+    "sha256": "a9bd383345be1e473eb3fc452629aa1cee9b1719ed35091d6981c83517358b2f"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CA.Ext.Hostx64.Targetx64.base,version=14.44.35214,chip=x64\\payload.vsix",
+    "bytes": 3954288,
+    "sha256": "6175bc30e14b5143a5170fa222139bbd4d068bb9449bb1f5148454dbc189bb64"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CA.Ext.Hostx64.Targetx64.Res.base,version=14.44.35214,chip=x64,language=en-US\\payload.vsix",
+    "bytes": 96669,
+    "sha256": "19f5b4ff39ffae9dfdcc3511c2e021c85f47a3049e1ce7010bdf287808d2e4f8"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CA.Ext.Hostx64.Targetx86,version=14.44.35214,chip=x64\\payload.vsix",
+    "bytes": 9542,
+    "sha256": "30e0ff541ad21079c40115c7b171bf3464492707f842ff760fbf25c546f0e5fc"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CA.Ext.Hostx64.Targetx86.base,version=14.44.35214,chip=x64\\payload.vsix",
+    "bytes": 3954270,
+    "sha256": "1e6667e40d7e9343353314f1041d358e446ab7657b1488c74deb2a52e567abf4"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CA.Ext.Hostx64.Targetx86.Res.base,version=14.44.35214,chip=x64,language=en-US\\payload.vsix",
+    "bytes": 96659,
+    "sha256": "e7328ea2d8b7c0dbd468b2f1fcccafcfaa5a67d60da5310515d3a61c88714e45"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CA.Ext.Hostx86.TargetARM64,version=14.44.35214\\payload.vsix",
+    "bytes": 9526,
+    "sha256": "1d1aa93181fae03b78f20e8905ee46dfdbc736cfb8375ef2fe6b6cc3e1d48b9d"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CA.Ext.Hostx86.TargetARM64.base,version=14.44.35214\\payload.vsix",
+    "bytes": 3155464,
+    "sha256": "f17ff95aaea7a2cc36cefdd70bf4c1079d22a873bcd97e270ef536104341a288"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CA.Ext.Hostx86.TargetARM64.Res.base,version=14.44.35214,language=en-US\\payload.vsix",
+    "bytes": 96686,
+    "sha256": "33d3d431db28b8db9007f12843eb71d4977f235572b336db961d22d10ccd5a57"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CA.Ext.Hostx86.Targetx64,version=14.44.35214\\payload.vsix",
+    "bytes": 9518,
+    "sha256": "fb3acfb6ef2815486be4dfc6cb54af40ad570c72928d99a870f03c61aa7ffca0"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CA.Ext.Hostx86.Targetx64.base,version=14.44.35214\\payload.vsix",
+    "bytes": 3155454,
+    "sha256": "51f646760f9fdf406bf15e9b3495c4b1d33a30cf2e9fa94aeb9b9b79d972e1eb"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CA.Ext.Hostx86.Targetx64.Res.base,version=14.44.35214,language=en-US\\payload.vsix",
+    "bytes": 96627,
+    "sha256": "bd2bcf3f49009d345c6aadd8a077bcd5c2c8628a599356cd55b777c66acc1d9b"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CA.Ext.Hostx86.Targetx86,version=14.44.35214\\payload.vsix",
+    "bytes": 9561,
+    "sha256": "9ba334d829fc6f28cd3060b0c102bdcabd8b043bb21518b87a6ecac98aed92de"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CA.Ext.Hostx86.Targetx86.base,version=14.44.35214\\payload.vsix",
+    "bytes": 3155451,
+    "sha256": "8ba357a058d68ff0068a77c789bec66a3a41d27cc9243a1523630f4b4852446f"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CA.Ext.Hostx86.Targetx86.Res.base,version=14.44.35214,language=en-US\\payload.vsix",
+    "bytes": 96606,
+    "sha256": "a141efab44f386b625b621e2744e0ed08cea25e4319895cc94144453b2688d65"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CA.Rulesets.base,version=14.44.35214\\payload.vsix",
+    "bytes": 30739,
+    "sha256": "d6d67172872117be5bb87a8a1319072b780b0955a313631e70f2b415aa244b28"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CRT.ARM64.Desktop,version=14.44.35226\\payload.vsix",
+    "bytes": 9535,
+    "sha256": "cae86743913e3c86b96b2a130c34fa388cc0f405fe7757a00d8963b5d2709bca"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CRT.ARM64.Desktop.base,version=14.44.35226\\payload.vsix",
+    "bytes": 48504922,
+    "sha256": "ba1aeca6d6470d2b3b318ec7bffb3e61f9a736cfb76d8a7d18e004a8e7c26651"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CRT.ARM64.Desktop.debug.base,version=14.44.35226\\payload.vsix",
+    "bytes": 50967971,
+    "sha256": "317e00c77dc51611fd7bec279b1ef67790bc73df8fe5bbc19432213b84d5e7ee"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CRT.ARM64.OneCore.Desktop,version=14.44.35226\\payload.vsix",
+    "bytes": 9544,
+    "sha256": "593d0258c5e7a83eb3bc8cd84d4d8587a4ce0cdf04335258d57139e6f7bdf885"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CRT.ARM64.OneCore.Desktop.base,version=14.44.35226\\payload.vsix",
+    "bytes": 40321575,
+    "sha256": "940d03cbf0da726b8244e9264ef851eee2ef8a4e7decb0a4d937038ad8c0016a"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CRT.ARM64.OneCore.Desktop.debug.base,version=14.44.35226\\payload.vsix",
+    "bytes": 45559683,
+    "sha256": "16266c59c2faea4017a22d8e72d3e8746bd0295da26aeea37092d39fe0922fb4"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CRT.ARM64.Store,version=14.44.35226\\payload.vsix",
+    "bytes": 9528,
+    "sha256": "df611434da174d815e908728e9cf67458c7e0c7016e93fc3a41a31bd29edb20c"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CRT.ARM64.Store.base,version=14.44.35226\\payload.vsix",
+    "bytes": 60875826,
+    "sha256": "57ece91747be72fdd9ed0c39b83225011c8afba6b6f616a23ace54d0522f79e9"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CRT.ARM64EC.Store.base,version=14.44.35208\\payload.vsix",
+    "bytes": 117534,
+    "sha256": "c6884e43a553152511a37f228580445229ae9241f3a7f2d22ee76cda01b7f8a9"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CRT.Headers,version=14.44.35220\\payload.vsix",
+    "bytes": 9588,
+    "sha256": "0a99643482ff9866db4583eaf4d05534e7622497fc7a73e85e5957a2dd46b79b"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CRT.Headers.base,version=14.44.35220\\payload.vsix",
+    "bytes": 2116223,
+    "sha256": "852382a9aa73502b7849c1bcadfb603ba7175c4e8b60e6aba03c7de711d4ece5"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CRT.Headers.Resources,version=14.44.35220,language=en-US\\payload.vsix",
+    "bytes": 9542,
+    "sha256": "a0eb4ce33c8ba099de759f355585cfc963142595af6176971ec3cd053c517d30"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CRT.Headers.Resources.base,version=14.44.35220,language=en-US\\payload.vsix",
+    "bytes": 376066,
+    "sha256": "7b6ead51c6d5cf775acaf50df36e89486eeea6c805c37785db6a337da20ee340"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CRT.Redist.ARM64,version=14.44.35211\\payload.vsix",
+    "bytes": 9520,
+    "sha256": "001e4b3cb93141132ed4f6a1f9962b12fff77acd25158dec7202756a0d74a23a"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CRT.Redist.ARM64.base,version=14.44.35211\\payload.vsix",
+    "bytes": 5046547,
+    "sha256": "fc8f37250188509818258582758a3b704810c77b6d25845486d583ea99d9aa1f"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CRT.Redist.ARM64.OneCore.Desktop,version=14.44.35211\\payload.vsix",
+    "bytes": 9522,
+    "sha256": "a78b0019660d0e2597fa5e58e987a13ec95ea14ea5704cea017c84e2c302321a"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CRT.Redist.ARM64.OneCore.Desktop.base,version=14.44.35211\\payload.vsix",
+    "bytes": 3270408,
+    "sha256": "621a36d2a0b63c284c014e911df66bb6acae267716aceb4c7873afed01c42cc7"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CRT.Redist.X64,version=14.44.35211\\payload.vsix",
+    "bytes": 9499,
+    "sha256": "e4fa4a3f1b32b187222320b8c8419b79e5bb5f9d94cce88122b3163cbc210a2d"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CRT.Redist.X64.base,version=14.44.35211\\payload.vsix",
+    "bytes": 3224191,
+    "sha256": "4aaf54db0bfc9435f7c3660e1a00237a4b556042bfeea64bde44c2e0194e6ee5"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CRT.Redist.x64.OneCore.Desktop,version=14.44.35211\\payload.vsix",
+    "bytes": 9530,
+    "sha256": "0233e79dc5be476f0e5601911f63a9a1fb0c6683438c97378759b96845eb27e2"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CRT.Redist.x64.OneCore.Desktop.base,version=14.44.35211\\payload.vsix",
+    "bytes": 1810779,
+    "sha256": "2076c0dc32095338841011431766d532479b50e1c37f17638325c792f37f9fdb"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CRT.Redist.X86,version=14.44.35211\\payload.vsix",
+    "bytes": 9523,
+    "sha256": "9cd5dab4bb7dd7f5f3fcdde31351514b01de18d648ac1e2098c4c76b36b3d666"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CRT.Redist.X86.base,version=14.44.35211\\payload.vsix",
+    "bytes": 2967919,
+    "sha256": "52b7fa1fd64125c5c61573a5606a48fb6e63489f89f58f8930f18ccc7e8c80a2"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CRT.Redist.x86.OneCore.Desktop,version=14.44.35211\\payload.vsix",
+    "bytes": 9528,
+    "sha256": "fbb766f850c054cc97fec4b21158b76ec81dae78de55011ffeaf8cdcf7dc0773"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CRT.Redist.x86.OneCore.Desktop.base,version=14.44.35211\\payload.vsix",
+    "bytes": 1656362,
+    "sha256": "43c2c282a7d6f163e1d33ce48f3f9dba9830b7cf4774337aaa5d0e51db9a39af"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CRT.Source,version=14.44.35220\\payload.vsix",
+    "bytes": 9529,
+    "sha256": "9f2bf8dc601792bc368b4aca103daaab05cf95977fb931ff9f933865105214c1"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CRT.Source.base,version=14.44.35220\\payload.vsix",
+    "bytes": 1136404,
+    "sha256": "f3f4a483dca5e80a029f00d5d4053626d64bc7d3e30fa73294cf21d5450cf359"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CRT.x64.Desktop,version=14.44.35226\\payload.vsix",
+    "bytes": 9527,
+    "sha256": "62cd3ce93d8e8d7e1d71699896c5adc4ccf93e6b85a4e2a4ed00eb6b5fd27302"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CRT.x64.Desktop.base,version=14.44.35226\\payload.vsix",
+    "bytes": 50776097,
+    "sha256": "f01f701a7bcd9587a340898c851424f6a52bb913a70c185ff0d5bf0288c5831a"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CRT.x64.OneCore.Desktop,version=14.44.35226\\payload.vsix",
+    "bytes": 9546,
+    "sha256": "e9b4201046c9836aa6996dfc36e37b9f9896654a112cda2ea0d5c909aa5a0387"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CRT.x64.OneCore.Desktop.base,version=14.44.35226\\payload.vsix",
+    "bytes": 54575650,
+    "sha256": "50d68caa9bba363d6209bf5fc8a572f013c9f370f6e203f36f04e3d84f5083ca"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CRT.x64.Store,version=14.44.35226\\payload.vsix",
+    "bytes": 9530,
+    "sha256": "31930ca18a232d8cba840e45085963420cec70ba039d1d3695835d3df4c57a50"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CRT.x64.Store.base,version=14.44.35226\\payload.vsix",
+    "bytes": 27596908,
+    "sha256": "9135b03c0df53c7a0aa9bef7230a1c2ff4263a0ee7baa7e419d034f484f6bb56"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CRT.x86.Desktop,version=14.44.35226\\payload.vsix",
+    "bytes": 9542,
+    "sha256": "c3c4d713f6fc73c9ac000a1adf070ee468e1cd3950e891856f90b64946090169"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CRT.x86.Desktop.base,version=14.44.35226\\payload.vsix",
+    "bytes": 87554282,
+    "sha256": "e4dc8ef4551d621501295d2175c890788368d8f8a218401c7c96405d31cb8e41"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CRT.x86.OneCore.Desktop,version=14.44.35226\\payload.vsix",
+    "bytes": 9535,
+    "sha256": "3907812a743c7f51b32f0805a22a1bccf6632f6fe18c2fc8f8f3cb94a75e44a8"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CRT.x86.OneCore.Desktop.base,version=14.44.35226\\payload.vsix",
+    "bytes": 50212964,
+    "sha256": "ca2b9996bade91bdea531598f47e6309ae38f08a3b163ba166d636892e6d9dbc"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CRT.x86.Store,version=14.44.35226\\payload.vsix",
+    "bytes": 9531,
+    "sha256": "0c9a7c137f9866400ed0bd18566b92f561410b3ad6474986c877ca2ee79a22bc"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CRT.x86.Store.base,version=14.44.35226\\payload.vsix",
+    "bytes": 27059639,
+    "sha256": "d29d5bd117b1b3a4485a9172d57180417adcb47e004d492b47e031d4c2933dd5"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.PGO.ARM64,version=14.44.35219\\payload.vsix",
+    "bytes": 9556,
+    "sha256": "bd17baae259323f6de4d8c489e570ad2e389f474c97291c97b1e74093d403327"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.PGO.ARM64.base,version=14.44.35219\\payload.vsix",
+    "bytes": 57622,
+    "sha256": "14b9d8358517d98e43706ab1a4e7c9ea71cffd4670632bdd1666b2cfaa9be119"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.PGO.Headers,version=14.44.35208\\payload.vsix",
+    "bytes": 8667,
+    "sha256": "ad346f8c80ee42a5558d92a4b4accacce3ea99a10b34653af3f51b762f121568"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.PGO.Headers.base,version=14.44.35208\\payload.vsix",
+    "bytes": 9732,
+    "sha256": "2648898823a16a9e1a40a986de9c2678384e7a0e904284d0aeba1861dd271865"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.PGO.X64,version=14.44.35219\\payload.vsix",
+    "bytes": 9521,
+    "sha256": "2e445d188c79f0882b1fe6cbd9cc7ab6372485b5dbc778255c9eb823f671cf66"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.PGO.X64.base,version=14.44.35219\\payload.vsix",
+    "bytes": 26597,
+    "sha256": "d22f6dde12d81367ec119940820b355a21c1c940b1b1d405ca5ac837c86e6561"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.PGO.X86,version=14.44.35219\\payload.vsix",
+    "bytes": 9522,
+    "sha256": "05d4744c012c6727778bf73851cd8046050d8f3959b481ccd1483f91ef79dfb5"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.PGO.X86.base,version=14.44.35219\\payload.vsix",
+    "bytes": 26897,
+    "sha256": "b7b4e56a1befb63d47157c6fa431e9528ace474aa790e27daf6f7a2c8b07e441"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Prem.HostARM64.TargetARM64.Res.base,version=14.44.35219,language=en-US,machinearch=arm64\\payload.vsix",
+    "bytes": 42380,
+    "sha256": "7feefcd55fede8a2a2e10f2911d021cccf676182dae320118871aa1e3d64a3a1"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Prem.HostARM64.Targetx64.Res.base,version=14.44.35219,language=en-US,machinearch=arm64\\payload.vsix",
+    "bytes": 26740,
+    "sha256": "cf427d81de2c87a4bf72e23017e352022a26c12b3a6a7c828382118d57818738"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Prem.HostARM64.TargetX86.Res.base,version=14.44.35219,language=en-US,machinearch=arm64\\payload.vsix",
+    "bytes": 26740,
+    "sha256": "fe098841888a3b3b3148f79fcc7d3c407de9a8d1bda92892e51212445c4a8391"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Prem.HostX64.TargetARM64.Res.base,version=14.44.35219,chip=x64,language=en-US\\payload.vsix",
+    "bytes": 23001,
+    "sha256": "840ab94a097a11ffea3b7d6e9ce40ba6979974075af47a1622b4a04b1dfc544d"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Prem.HostX64.TargetX64.Res.base,version=14.44.35219,chip=x64,language=en-US\\payload.vsix",
+    "bytes": 33359,
+    "sha256": "58b2644d6ea3f0448ce71fdc623212589ee06044c5804ee3baacbf375284b68a"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Prem.HostX64.TargetX86.Res.base,version=14.44.35219,chip=x64,language=en-US\\payload.vsix",
+    "bytes": 23028,
+    "sha256": "201bc0e405d5ef7281ab7e0f09bb1c9330c027db31df4d0eadd5245bc0244dbb"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Prem.HostX86.TargetARM64.Res.base,version=14.44.35219,language=en-US\\payload.vsix",
+    "bytes": 22955,
+    "sha256": "c2c15564b35722b73d5f50650d7495172d334aaea3dafc8770575e656d778618"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Prem.Hostx86.Targetx64.Res.base,version=14.44.35219,language=en-US\\payload.vsix",
+    "bytes": 22974,
+    "sha256": "1bc723d2b8402fe9c26f213a8c818ce27991878b529719e60fa131abe3fcadcd"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Prem.HostX86.TargetX86.Res.base,version=14.44.35219,language=en-US\\payload.vsix",
+    "bytes": 33300,
+    "sha256": "f9e60045f630e105562868577033a7f18adb36ab305dd6a494e849d950ef3aa8"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Premium.Tools.ARM64.Base,version=14.44.35219\\payload.vsix",
+    "bytes": 9531,
+    "sha256": "f6d770f9194285a3011696039637aa94370c9fc5513d7d5fbbe015e849579508"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Premium.Tools.ARM64.Base.base,version=14.44.35219\\payload.vsix",
+    "bytes": 82403,
+    "sha256": "06a3ead960fd51508dbb7cba86918ed6f232c3362c26940e5327a5b8c5ec9406"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Premium.Tools.HostARM64.TargetARM64,version=14.44.35219,machinearch=arm64\\payload.vsix",
+    "bytes": 9551,
+    "sha256": "56faa3174b76515b68fbca74920b7953a19d54ec774758136e8c764181f8bdef"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Premium.Tools.HostARM64.TargetARM64.base,version=14.44.35219,machinearch=arm64\\payload.vsix",
+    "bytes": 300963,
+    "sha256": "fbf9f2af09ecb57e6eeafe196ebedeb21d2bed868855531396d7bac8d4efb779"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Premium.Tools.HostARM64.TargetX64,version=14.44.35219,machinearch=arm64\\payload.vsix",
+    "bytes": 9550,
+    "sha256": "4b7b0db86f130afc35621067ca641173d865da9375aaa84d57d25a7c7bff9cad"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Premium.Tools.HostARM64.TargetX64.base,version=14.44.35219,machinearch=arm64\\payload.vsix",
+    "bytes": 164611,
+    "sha256": "649f6512bd3a113c8fc2b08280611fc6cdace9751007c6381068fe43dad98f53"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Premium.Tools.HostARM64.TargetX86,version=14.44.35219,machinearch=arm64\\payload.vsix",
+    "bytes": 9591,
+    "sha256": "7f1b1c2552275e434701f81f37ca979c7605ecce9ac027071de51710d95248af"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Premium.Tools.HostARM64.TargetX86.base,version=14.44.35219,machinearch=arm64\\payload.vsix",
+    "bytes": 164660,
+    "sha256": "ce64299d3f0dc471c69f1569c0ad7680c9a5c1688863e85b8c198f4aa66d2bad"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Premium.Tools.HostX64.TargetARM64,version=14.44.35219,chip=x64\\payload.vsix",
+    "bytes": 9551,
+    "sha256": "f0ed40d00db2da2ff1a6497cdcd50097993d771e2d273bc9c894176718a17afb"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Premium.Tools.HostX64.TargetARM64.base,version=14.44.35219,chip=x64\\payload.vsix",
+    "bytes": 128325,
+    "sha256": "b6c2848930fd45403488ed7d8c2d625c3141f9ba4ab7843bb5ebc51036303a1e"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Premium.Tools.HostX64.TargetX64,version=14.44.35219,chip=x64\\payload.vsix",
+    "bytes": 9542,
+    "sha256": "05e38b0389ab9b2c537eeb5714feec095d238db6531086a5750e4a657760c44f"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Premium.Tools.HostX64.TargetX64.base,version=14.44.35219,chip=x64\\payload.vsix",
+    "bytes": 240657,
+    "sha256": "4988bf20f7d6bb0bd6b78cc7d7131e97c9f8fe5779a8a2ed20b7d5ebc8ff9cb8"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Premium.Tools.HostX64.TargetX86,version=14.44.35219,chip=x64\\payload.vsix",
+    "bytes": 9546,
+    "sha256": "39349fe7a30bbaa6834995fbfd8a944ac8aae0ae7c70d02ad15290e6da17cabd"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Premium.Tools.HostX64.TargetX86.base,version=14.44.35219,chip=x64\\payload.vsix",
+    "bytes": 128321,
+    "sha256": "3d8fa9891fe267d863332caa5070cdf751c0d09a3ab166745ae071ad19343a35"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Premium.Tools.Hostx86.Targetarm64,version=14.44.35219\\payload.vsix",
+    "bytes": 9566,
+    "sha256": "f9efeb7371be3ed66de9ef102bdc5d7b8d717002e2833c969cf8c4f035c7e31d"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Premium.Tools.Hostx86.Targetarm64.base,version=14.44.35219\\payload.vsix",
+    "bytes": 120625,
+    "sha256": "2c6dfd1e429c1a72bc7eccefd9df20f5996fb17062b6a3b3f8a72b05cb2a84b5"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Premium.Tools.HostX86.TargetX64,version=14.44.35219\\payload.vsix",
+    "bytes": 9541,
+    "sha256": "469163878137b7fe1d3351cfbdef2eb441dd5cdf0d05d45baa55ba789057e883"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Premium.Tools.HostX86.TargetX64.base,version=14.44.35219\\payload.vsix",
+    "bytes": 120632,
+    "sha256": "c31508a4335ffe6c8b892e21645905587ba98e0e319de063f759747114719a76"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Premium.Tools.HostX86.TargetX86,version=14.44.35219\\payload.vsix",
+    "bytes": 9541,
+    "sha256": "6536421b408f367934b413cb3427f53a3d5711ef3cd3f43ee987ddcf884b9313"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Premium.Tools.HostX86.TargetX86.base,version=14.44.35219\\payload.vsix",
+    "bytes": 172810,
+    "sha256": "54bc1d93816db12fcc33558dd851ded13f008caa1d129d85699b4654d954fcc7"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Props,version=14.44.35229\\payload.vsix",
+    "bytes": 12876,
+    "sha256": "ba5356012c0d37ccd0a8fdbf601f60643b69cdf352701086ecc119de130c41a0"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Props.ARM64,version=14.44.35229\\payload.vsix",
+    "bytes": 10930,
+    "sha256": "e1a94daad03c74dc59ce6e9005cbed88c04eb65cd4192b54ea98e571b2b5530c"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Props.ATLMFC,version=14.44.35208\\payload.vsix",
+    "bytes": 10040,
+    "sha256": "652e4af335ebcd08c599e56a38dab5191ff93e4031eeadb02192f0774f9d8a74"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Props.x64,version=14.44.35229\\payload.vsix",
+    "bytes": 10929,
+    "sha256": "cac2eed5001ad5082615d7d0ca7e8f937ee18d69483e295d16caf6fa4a534fa2"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Props.x86,version=14.44.35229\\payload.vsix",
+    "bytes": 10904,
+    "sha256": "89d089038b17a43453ec18213ce71036ee75ff15e1134a03dd2be75ae2fcd937"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Servicing,version=14.44.35229\\payload.vsix",
+    "bytes": 10910,
+    "sha256": "41f427dc5e0a49c04167cd2f9d241ba24111315c5cba8b000cb067e1e6c1096f"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Servicing.ATL,version=14.44.35208\\payload.vsix",
+    "bytes": 9854,
+    "sha256": "ad313ed5e89acff36dbf4bdf0bda6dc0bc21dbaac0b5249cec2e7e591b050dbb"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Servicing.CAExtensions,version=14.44.35214\\payload.vsix",
+    "bytes": 10699,
+    "sha256": "3406207b00778934a954c829a44e2afc9aaf8943478a57902315b1c609e69e12"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Servicing.CARulesets,version=14.44.35214\\payload.vsix",
+    "bytes": 10670,
+    "sha256": "ba33da513c39076582631132a9118cf71d856ffd8e7033b4459200f31bd6c4d9"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Servicing.Compilers,version=14.44.35229\\payload.vsix",
+    "bytes": 10701,
+    "sha256": "c1d662d41afdf7dcb0fcbd676a50af7cf6e4361fa934ff2595b31d054ce457f7"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Servicing.CrtHeaders,version=14.44.35220\\payload.vsix",
+    "bytes": 10682,
+    "sha256": "8637a066ddd614f13c12b2a3b2e0429492e178db8ba15e98ea3856c1056d2e27"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Tools.Core.Props,version=14.44.35208\\payload.vsix",
+    "bytes": 10235,
+    "sha256": "44fb41ef08834d014f1f08ad09ee2c61404881d47a63a71591575e1befef19a9"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Tools.Core.x86,version=14.44.35208\\payload.vsix",
+    "bytes": 10773,
+    "sha256": "e30231b8843df0312fb9dff5b9ca7793acbce053562d9db6457494ed750f352b"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Tools.HostARM64.TargetARM64,version=14.44.35229,machinearch=arm64\\payload.vsix",
+    "bytes": 10633,
+    "sha256": "8220299b6739bc9368c8b630a37eec0a5482c833240657854453780b700524d3"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Tools.HostARM64.TargetARM64.base,version=14.44.35229,machinearch=arm64\\payload.vsix",
+    "bytes": 22524648,
+    "sha256": "16fc2e8e645e9338e678ecc2808b0f453acb66df5eb196af74e66e182ba92ec7"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Tools.HostARM64.TargetARM64.Res.base,version=14.44.35229,language=en-US,machinearch=arm64\\payload.vsix",
+    "bytes": 273904,
+    "sha256": "291ce64f5cb22909dd7495beefdc33adee13e4b65755ffada238589a993a13be"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Tools.HostARM64.TargetX64,version=14.44.35229,machinearch=arm64\\payload.vsix",
+    "bytes": 10637,
+    "sha256": "402a0cbe2da74b36f0ff20b1afc580274d472c0eef52ad3942cf91168fdb0345"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Tools.HostARM64.TargetX64.base,version=14.44.35229,machinearch=arm64\\payload.vsix",
+    "bytes": 27277514,
+    "sha256": "c02b0201b949edbec24fdd6a19cfce947bf440c593c0767c8e8352968b52a54a"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Tools.HostARM64.Targetx64.Res.base,version=14.44.35229,language=en-US,machinearch=arm64\\payload.vsix",
+    "bytes": 272264,
+    "sha256": "2d9aca4472cf0ec4f515f020e7f6f0b6a8015e7ff1a9f7c2812e15c4efd962d1"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Tools.HostARM64.TargetX86,version=14.44.35229,machinearch=arm64\\payload.vsix",
+    "bytes": 10651,
+    "sha256": "2d271c4f3a7ba76453df34673d2f07f99e395ebb4466c8fbf2039abbeed08dd5"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Tools.HostARM64.TargetX86.base,version=14.44.35229,machinearch=arm64\\payload.vsix",
+    "bytes": 24062864,
+    "sha256": "a01b27d1ad3a2a43e0bb4ddbadacf2213bcf95bfbc39ac32b1f0f4c8fbeb2dea"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Tools.HostARM64.TargetX86.Res.base,version=14.44.35229,language=en-US,machinearch=arm64\\payload.vsix",
+    "bytes": 272288,
+    "sha256": "d90878ab23e5f7b4f42f0a521a9a0194775c4ddc61305c537ec1448b3bedabe7"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Tools.HostX64.TargetARM64,version=14.44.35229,chip=x64\\payload.vsix",
+    "bytes": 10655,
+    "sha256": "6f307f6333bd25bfc2ff7a70a3f97b33d6fa5052f060183fe69654a9a87864f8"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Tools.HostX64.TargetARM64.base,version=14.44.35229,chip=x64\\payload.vsix",
+    "bytes": 21448389,
+    "sha256": "ea6756748c60943b99235806bb74b8d878efe5d7ab1194fd3d17213df60c2d91"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Tools.HostX64.TargetARM64.Res.base,version=14.44.35229,chip=x64,language=en-US\\payload.vsix",
+    "bytes": 231825,
+    "sha256": "24b68802933f26e8c242cee749d738a98a933ec8b81e8f842e98439bca6d7a13"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Tools.HostX64.TargetX64,version=14.44.35229,chip=x64\\payload.vsix",
+    "bytes": 10621,
+    "sha256": "2873cf819a4c93c90ea8eaae7239ed5b671e283cb5b6685c5a6b606c46eccf70"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Tools.HostX64.TargetX64.base,version=14.44.35229,chip=x64\\payload.vsix",
+    "bytes": 26607271,
+    "sha256": "f4ad3cee4ef18e9f36382399261de27be6910ab3467178d7e687377ec841306d"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Tools.HostX64.TargetX64.Res.base,version=14.44.35229,chip=x64,language=en-US\\payload.vsix",
+    "bytes": 231747,
+    "sha256": "603375e4d6d639bc6e0a7d0d657b17e0c3b72e52450f78eb41e987f40c3b5305"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Tools.HostX64.TargetX86,version=14.44.35229,chip=x64\\payload.vsix",
+    "bytes": 10618,
+    "sha256": "a5afc8b6558d29c634a5fc345dee919425c2006c07e04b26bcac05279429dd1e"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Tools.HostX64.TargetX86.base,version=14.44.35229,chip=x64\\payload.vsix",
+    "bytes": 23063688,
+    "sha256": "397d8ed2de114eeaccf98f8a8ed359fbdf50f9dbf3efa3f19aeac72f8b4abb90"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Tools.HostX64.TargetX86.Res.base,version=14.44.35229,chip=x64,language=en-US\\payload.vsix",
+    "bytes": 231766,
+    "sha256": "4cdd60b6d67c6dee70e2e7dc7d18604811c39cda16a5180899d4cf5b6ce96d73"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Tools.Hostx86.Targetarm64,version=14.44.35229\\payload.vsix",
+    "bytes": 10628,
+    "sha256": "0fad41633e0b1bffca2a1ec40075784d9c1c9effd319213f852f894dbb78769c"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Tools.Hostx86.Targetarm64.base,version=14.44.35229\\payload.vsix",
+    "bytes": 18990857,
+    "sha256": "60adb441661a614df5ae27ea9302e768b6f77a388fbdafc19f8236d7ff2d2652"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Tools.HostX86.TargetARM64.Res.base,version=14.44.35229,language=en-US\\payload.vsix",
+    "bytes": 231751,
+    "sha256": "b43e6abe5617c45e775f73cf47b46e7631e471f13d815421747dda97ebb30d99"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Tools.HostX86.TargetX64,version=14.44.35229\\payload.vsix",
+    "bytes": 10616,
+    "sha256": "526edb6e2afbcf2e5bc44326616089fdd27b7f8b55ff9c8974b0166212bb1204"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Tools.HostX86.TargetX64.base,version=14.44.35229\\payload.vsix",
+    "bytes": 23163338,
+    "sha256": "ddc37575ca3f1e138c6a99acac18cae633c50973528f0bce32236b8674ab8a73"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Tools.Hostx86.Targetx64.Res.base,version=14.44.35229,language=en-US\\payload.vsix",
+    "bytes": 231702,
+    "sha256": "cbd1a28d04b8d708e3b6333aa9dd631aea99cfba679c41a33bc809c00833198b"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Tools.HostX86.TargetX86,version=14.44.35229\\payload.vsix",
+    "bytes": 10613,
+    "sha256": "06c8d25c853360bdd609a4f343dd1b0067e750788cf1c62800cb6ce4f6828ec5"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Tools.HostX86.TargetX86.base,version=14.44.35229\\payload.vsix",
+    "bytes": 20997694,
+    "sha256": "f493858574560c23567be4ec2678eff4de4c48d7a22e0d6f1cbbf94fb0e9f4d7"
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.Tools.HostX86.TargetX86.Res.base,version=14.44.35229,language=en-US\\payload.vsix",
+    "bytes": 231725,
+    "sha256": "dab417fe3b742d45b717d89cfbec913de69082001604e29d9445f7f9261d90af"
+  },
+  {
+    "path": "Microsoft.VisualCpp.CRT.ARM64EC.Store,version=14.44.35208\\payload.vsix",
+    "bytes": 8698,
+    "sha256": "a27e12528fdc4c4555c1555d6feff84e3649aedeaaf319bebb0cd22400c96d1c"
+  },
+  {
+    "path": "Microsoft.VisualCpp.CRT.ClickOnce.Msi,version=14.44.35211,language=en-US\\cab1.cab",
+    "bytes": 12700,
+    "sha256": "f3bb05084f69104b6a9b2c18d0b246665bef6cdc0500855c76071b62f63af1c5"
+  },
+  {
+    "path": "Microsoft.VisualCpp.CRT.ClickOnce.Msi,version=14.44.35211,language=en-US\\vcpp_crt.redist.clickonce.msi",
+    "bytes": 204800,
+    "sha256": "b79d3f4eb3afacd77de548b87ea7451c328192be5d59e51fcbd8005c9ad0600c"
+  },
+  {
+    "path": "Microsoft.VisualCpp.CRT.Redist.Resources,version=14.44.35211,language=en-US\\payload.vsix",
+    "bytes": 9511,
+    "sha256": "dc658e50380ff47939d0ba466bf75cfb07991edfbe3d8be623d56fa28748681b"
+  },
+  {
+    "path": "Microsoft.VisualCpp.DIA.SDK,version=14.44.35215\\payload.vsix",
+    "bytes": 8252046,
+    "sha256": "e85173a7210a2f5ff98ae42de51ac39c460bee1dfdd2fb6cf0606ee85f790010"
+  },
+  {
+    "path": "Microsoft.VisualCpp.Redist.14,version=14.44.35211,chip=x64\\VC_redist.x64.exe",
+    "bytes": 25635768,
+    "sha256": "cc0ff0eb1dc3f5188ae6300faef32bf5beeba4bdd6e8e445a9184072096b713b"
+  },
+  {
+    "path": "Microsoft.VisualCpp.Redist.14,version=14.44.35211,chip=x64\\VCRedistInstall.ps1",
+    "bytes": 26788,
+    "sha256": "1451963edb8080629977c84e644ee22fd82e8a32f5d549a521cf262f24b401d1"
+  },
+  {
+    "path": "Microsoft.VisualCpp.Redist.14,version=14.44.35211,chip=x86\\VC_redist.x86.exe",
+    "bytes": 13953392,
+    "sha256": "0c09f2611660441084ce0df425c51c11e147e6447963c3690f97e0b25c55ed64"
+  },
+  {
+    "path": "Microsoft.VisualCpp.Redist.14,version=14.44.35211,chip=x86\\VCRedistInstall.ps1",
+    "bytes": 26788,
+    "sha256": "1451963edb8080629977c84e644ee22fd82e8a32f5d549a521cf262f24b401d1"
+  },
+  {
+    "path": "Microsoft.VisualCpp.Redist.14.Latest,version=14.44.35211,chip=arm64\\VC_redist.arm64.exe",
+    "bytes": 11722336,
+    "sha256": "5139e1440c3a20b92153a4db561c069a0175aaf76c276c3e5b6f56099edcf4b0"
+  },
+  {
+    "path": "Microsoft.VisualCpp.Redist.14.Latest,version=14.44.35211,chip=arm64\\VCRedistInstall.ps1",
+    "bytes": 26788,
+    "sha256": "1451963edb8080629977c84e644ee22fd82e8a32f5d549a521cf262f24b401d1"
+  },
+  {
+    "path": "Microsoft.VisualCpp.Redist.14.Latest,version=14.44.35211,chip=x64\\VC_redist.x64.exe",
+    "bytes": 25635768,
+    "sha256": "cc0ff0eb1dc3f5188ae6300faef32bf5beeba4bdd6e8e445a9184072096b713b"
+  },
+  {
+    "path": "Microsoft.VisualCpp.Redist.14.Latest,version=14.44.35211,chip=x64\\VCRedistInstall.ps1",
+    "bytes": 26788,
+    "sha256": "1451963edb8080629977c84e644ee22fd82e8a32f5d549a521cf262f24b401d1"
+  },
+  {
+    "path": "Microsoft.VisualCpp.Redist.14.Latest,version=14.44.35211,chip=x86\\VC_redist.x86.exe",
+    "bytes": 13953392,
+    "sha256": "0c09f2611660441084ce0df425c51c11e147e6447963c3690f97e0b25c55ed64"
+  },
+  {
+    "path": "Microsoft.VisualCpp.Redist.14.Latest,version=14.44.35211,chip=x86\\VCRedistInstall.ps1",
+    "bytes": 26788,
+    "sha256": "1451963edb8080629977c84e644ee22fd82e8a32f5d549a521cf262f24b401d1"
+  },
+  {
+    "path": "Microsoft.VisualCpp.RuntimeDebug.14,version=14.44.35211,chip=x64,machinearch=x64\\cab1.cab",
+    "bytes": 10263772,
+    "sha256": "25e3a560327797998ac10357ed5ed41d5b638d36a9b092d2004fb912da027a43"
+  },
+  {
+    "path": "Microsoft.VisualCpp.RuntimeDebug.14,version=14.44.35211,chip=x64,machinearch=x64\\vc_RuntimeDebug.msi",
+    "bytes": 212992,
+    "sha256": "4fd8cbe4ab8f1dc9b26f0e531ab0355780dc40ca0fd4f514e22de730c377ca38"
+  },
+  {
+    "path": "Microsoft.VisualCpp.RuntimeDebug.14,version=14.44.35211,chip=x86\\cab1.cab",
+    "bytes": 10195708,
+    "sha256": "1cfc2a3ab42ffa3bc1e49593decd03f0c0a7c7423dd663a0ab695fe683c86fc5"
+  },
+  {
+    "path": "Microsoft.VisualCpp.RuntimeDebug.14,version=14.44.35211,chip=x86\\vc_RuntimeDebug.msi",
+    "bytes": 204800,
+    "sha256": "be79fb868dae02f4bb1789b89d238bc18d154edd9dd5f0e21b24d962ed80c508"
+  },
+  {
+    "path": "Microsoft.VisualCpp.RuntimeDebug.14.ARM64,version=14.44.35211,chip=x64,machinearch=arm64\\cab1.cab",
+    "bytes": 16991545,
+    "sha256": "cbdaf97bb0cbcf93f88ecb161817dc43575e20a2357b30a9b4355b898a115eab"
+  },
+  {
+    "path": "Microsoft.VisualCpp.RuntimeDebug.14.ARM64,version=14.44.35211,chip=x64,machinearch=arm64\\vc_RuntimeDebug_arm64.msi",
+    "bytes": 212992,
+    "sha256": "8de4f3cfddc6a24bd1ef92fcbf26def99849a21a7d53786e81279a534981e3ba"
+  },
+  {
+    "path": "Microsoft.VisualCpp.Servicing.DIASDK,version=14.44.35215\\payload.vsix",
+    "bytes": 10704,
+    "sha256": "a83a0dddfc945d84c0bab6f2c2d0ce65cba1edf6fcca5799a9da861e497abc29"
+  },
+  {
+    "path": "Microsoft.VisualCpp.Servicing.Redist,version=14.44.35211\\payload.vsix",
+    "bytes": 12086,
+    "sha256": "8a78222fba3e5a76e78a25a5617f0af8de63ab046dec88b3f8fb44ea25f13761"
+  },
+  {
+    "path": "Microsoft.VisualStudio.BuildTools.Resources,version=17.14.36015.10,language=en-US\\payload.vsix",
+    "bytes": 736229,
+    "sha256": "2df53059c217817a6babce6be4fbe102ec67c5f9ad9d77e776b8963d7a05ce0e"
+  },
+  {
+    "path": "Microsoft.VisualStudio.NativeImageSupport,version=17.14.37627.15,productarch=x86\\payload.vsix",
+    "bytes": 33859,
+    "sha256": "e8feca19e0dac1edc96600220a710fbe75abc69f6a6a7fc73e4f2ceb67cf6e59"
+  },
+  {
+    "path": "Microsoft.VisualStudio.Net.Eula.Resources,version=17.14.36015.10,language=en-US,productarch=neutral\\payload.vsix",
+    "bytes": 27695,
+    "sha256": "fa165373c8a50fba393229333f54f46e8d8e4027895b4aa4099a835c885c6289"
+  },
+  {
+    "path": "Microsoft.VisualStudio.NuGet.BuildTools,version=17.0.601403.1,productarch=neutral\\payload.vsix",
+    "bytes": 4910758,
+    "sha256": "0652ee3c57d6492060d896eb77447cdb915ab835860d30b5c83000a023e187f6"
+  },
+  {
+    "path": "Microsoft.VisualStudio.Setup.Configuration,version=3.12.2140.44225\\Microsoft.VisualStudio.Setup.Configuration.msi",
+    "bytes": 1323008,
+    "sha256": "098a8cffbc90d04c284f63039f90143be9d69502aeeeffaf37530381d0b14196"
+  },
+  {
+    "path": "Microsoft.VisualStudio.Setup.Configuration.Interop,version=17.14.36015.10\\payload.vsix",
+    "bytes": 21697,
+    "sha256": "153a5f0e5331ab8d704594304af293432c8a52e8321d0e1c01b2331b1b091743"
+  },
+  {
+    "path": "Microsoft.VisualStudio.Setup.WMIProvider,version=3.12.2140.44225\\Microsoft.VisualStudio.Setup.WMIProvider.msi",
+    "bytes": 1585152,
+    "sha256": "905647e19475e6947553d45ecb91c775060d5ffd6c5776197df3e7b348a60fed"
+  },
+  {
+    "path": "Microsoft.VisualStudio.VC.DevCmd,version=17.14.36130.4,productarch=neutral\\payload.vsix",
+    "bytes": 759335,
+    "sha256": "dace3ed124037ea0bc53f809a71495f01b698c5cd3b7fdf93f5287e05f2f700d"
+  },
+  {
+    "path": "Microsoft.VisualStudio.VC.DevCmd.Resources,version=17.14.36802.14,language=en-US,productarch=neutral\\payload.vsix",
+    "bytes": 20656,
+    "sha256": "d3a58de5f31100a19cee0953b0e8be111079ccac6ba164244f2390162e9eb51d"
+  },
+  {
+    "path": "Microsoft.VisualStudio.VC.Icons,version=17.14.36015.10,productarch=neutral\\payload.vsix",
+    "bytes": 25115,
+    "sha256": "d97ecdb884673216138a21d2770baf40c58b914f09b6bec1da657446f2205e83"
+  },
+  {
+    "path": "Microsoft.VisualStudio.VC.MSBuild.v170.ARM64,version=17.14.36015.10,productarch=neutral\\payload.vsix",
+    "bytes": 12941,
+    "sha256": "3bdf0884eaa90c820d204a3a08cd1be15c367056fbe6e440f014f62cdfb79146"
+  },
+  {
+    "path": "Microsoft.VisualStudio.VC.MSBuild.v170.ARM64.v143,version=17.14.36015.10,productarch=neutral\\payload.vsix",
+    "bytes": 16094,
+    "sha256": "49dc8163bd68423090977b0606e13bf8b61629511c54217137b2526a08112a48"
+  },
+  {
+    "path": "Microsoft.VisualStudio.VC.MSBuild.v170.ARM64EC,version=17.14.36015.10,productarch=neutral\\payload.vsix",
+    "bytes": 12962,
+    "sha256": "ff156f27f896d698dc2bc3cb1f5de120b9b6fbdd4ea19d87982e3db323942df5"
+  },
+  {
+    "path": "Microsoft.VisualStudio.VC.MSBuild.v170.ARM64EC.v143,version=17.14.36015.10,productarch=neutral\\payload.vsix",
+    "bytes": 12567,
+    "sha256": "86aee331344efcce65b4e3a0b668db70501b634a0aff5a270bb2fbd6e2381214"
+  },
+  {
+    "path": "Microsoft.VisualStudio.VC.MSBuild.v170.Base,version=17.14.36518.7,productarch=neutral\\payload.vsix",
+    "bytes": 622776,
+    "sha256": "1e6e4a79da18b5fa6170be38cc3495f17c1898a80bbd2db074136835cabe3394"
+  },
+  {
+    "path": "Microsoft.VisualStudio.VC.MSBuild.v170.Base.Resources,version=17.14.37502.0,language=en-US,productarch=neutral\\payload.vsix",
+    "bytes": 112296,
+    "sha256": "c4a588ead42bdadc39b63dad39991febef6844ee76f22fd40a3a3513f19ea92f"
+  },
+  {
+    "path": "Microsoft.VisualStudio.VC.MSBuild.v170.X64,version=17.14.36015.10,productarch=neutral\\payload.vsix",
+    "bytes": 13019,
+    "sha256": "ff449f187733d3334cd141988979f3e7c3a3cbaa504fead7b135c0460a032805"
+  },
+  {
+    "path": "Microsoft.VisualStudio.VC.MSBuild.v170.X64.v143,version=17.14.36015.10,productarch=neutral\\payload.vsix",
+    "bytes": 10940,
+    "sha256": "3b2d6b39798ac7219cfd6bf22e1ebac85cd7c2d41011d14b689108a66c03b136"
+  },
+  {
+    "path": "Microsoft.VisualStudio.VC.MSBuild.v170.X86,version=17.14.36015.10,productarch=neutral\\payload.vsix",
+    "bytes": 12958,
+    "sha256": "b761fb85b2b2d9b2271e01939ae26c4ee65d1c9b57c5d8ef7ed514886594a79e"
+  },
+  {
+    "path": "Microsoft.VisualStudio.VC.MSBuild.v170.x86.v143,version=17.14.36015.10,productarch=neutral\\payload.vsix",
+    "bytes": 10960,
+    "sha256": "87eda804f96d176429b9b21934c57def4c711240fe7c806eaa08942aa28f50d6"
+  },
+  {
+    "path": "Microsoft.VisualStudio.VC.vcvars,version=17.14.36518.7,productarch=neutral\\payload.vsix",
+    "bytes": 20498,
+    "sha256": "b4ec9e7ca2d27ec029bd818145ad6d4bcaa8ac830ec3a284c7956f13988b3fec"
+  },
+  {
+    "path": "Microsoft.VisualStudio.VsDevCmd.Core.DotNet,version=17.14.36015.10,productarch=neutral\\payload.vsix",
+    "bytes": 11267,
+    "sha256": "2fc42df0da9a47721ad16f499ededf05c0e84a1ccd282dddeaa6a0a7f66271ec"
+  },
+  {
+    "path": "Microsoft.VisualStudio.VsDevCmd.Core.WinSdk,version=17.14.36015.10,productarch=neutral\\payload.vsix",
+    "bytes": 13768,
+    "sha256": "13db525c847166b342236657c619d9eac341d268e1301404a1b1b31f079298af"
+  },
+  {
+    "path": "Microsoft.VisualStudio.VsDevCmd.Ext.NetFxSdk,version=17.14.36130.4,productarch=neutral\\payload.vsix",
+    "bytes": 11007,
+    "sha256": "cc18a63827455dab970329fe69d9f0be6b5fac18eb98c346e39580134560c015"
+  },
+  {
+    "path": "Microsoft.VS.VC.vcvars.x64.Shortcuts,version=17.14.36015.10,language=en-US,productarch=neutral\\payload.vsix",
+    "bytes": 8963,
+    "sha256": "8800e8f24d3a3eec467208f7e5b075a71af182de02618b448c3134fbef90ad9f"
+  },
+  {
+    "path": "Microsoft.VS.VC.vcvars.x86.Shortcuts,version=17.14.36015.10,language=en-US,productarch=neutral\\payload.vsix",
+    "bytes": 8917,
+    "sha256": "a76b7c7298bf3731abe72d5f1f5f34c582b5fdc05b4961823ec88358314d74ee"
+  },
+  {
+    "path": "Microsoft.Windows.UniversalCRT.Msu.7,version=10.0.26624.1,chip=x64\\Windows6.1-KB2999226-x64.msu",
+    "bytes": 1034556,
+    "sha256": "43234d2986ca9b0de75d5183977964d161a8395c3396279ddfc9b20698e5bc34"
+  },
+  {
+    "path": "Microsoft.Windows.UniversalCRT.Msu.7,version=10.0.26624.1,chip=x86\\Windows6.1-KB2999226-x86.msu",
+    "bytes": 629006,
+    "sha256": "909e76c81ef0eb176144b253ddffe7a8fdfacebfaa15e97def003d2262fbf084"
+  },
+  {
+    "path": "Microsoft.Windows.UniversalCRT.Msu.8,version=10.0.26624,chip=x64\\Windows8-RT-KB2999226-x64.msu",
+    "bytes": 1359820,
+    "sha256": "50cae25da33fa950222d1a803e42567291eb7feb087fa119b1c97fe9d41cd9f8"
+  },
+  {
+    "path": "Microsoft.Windows.UniversalCRT.Msu.8,version=10.0.26624,chip=x86\\Windows8-RT-KB2999226-x86.msu",
+    "bytes": 625544,
+    "sha256": "0f36750fbb06fee23131f68b4d0943841eed24730ec1d5d77dedc41d359be88d"
+  },
+  {
+    "path": "Microsoft.Windows.UniversalCRT.Msu.81,version=10.0.26624,chip=x64\\Windows8.1-KB2999226-x64.msu",
+    "bytes": 1005170,
+    "sha256": "9f707096c7d279ed4bc2a40ba695efac69c20406e0ca97e2b3e08443c6381d15"
+  },
+  {
+    "path": "Microsoft.Windows.UniversalCRT.Msu.81,version=10.0.26624.1,chip=x86\\Windows8.1-KB2999226-x86.msu",
+    "bytes": 603348,
+    "sha256": "b83251219c5390536b02bebaf5e43a6f13381ce1db43e76483bce07c4bcf877b"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\WinSdkInstaller.exe",
+    "bytes": 41904,
+    "sha256": "25c1e69ee65dd53311dd24f08f1dd6006e1078d749ad7022d0efd0d5b6c1e757"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\winsdksetup.exe",
+    "bytes": 1451232,
+    "sha256": "6fa0fa27db77a909f5ecb35183cb26a969a6775936780936fe239e4f9c66b458"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\03fbc2dfe9d3e7bb2389c7ed18c6ad3e.cab",
+    "bytes": 750427,
+    "sha256": "cd8a8515edfdd27d8807cceb466cc4c57c46f0e40523ab3b5d19bb816debf09d"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\05047a45609f311645eebcac2739fc4c.cab",
+    "bytes": 230296,
+    "sha256": "902003e4976c7bc4bcda9f31f1d835b8072235532412770f66b0bc9f0882cb7e"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\05254f60ea43b4e3959b17cdb03268c0.cab",
+    "bytes": 666782,
+    "sha256": "cfc5fba20300cc814e537381313acc616f2f9b6f3843bc330697e2a5e5a4dc72"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\07a57cdb41ba28cced14005f087267be.cab",
+    "bytes": 103680,
+    "sha256": "1f350449f6f598a4d9b316e69ad9b845db8e8d919b8b34f5c07b32598f6de319"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\08e9468089f54c8455f59fd9bb48fcec.cab",
+    "bytes": 74917,
+    "sha256": "ae5b02b0aa46399b0be359db7b85aefc7a699ab1d8a3ec16ae91ef4e0bcfefe2"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\126c039acc6f1c0a9426a128efb713e7.cab",
+    "bytes": 1562758,
+    "sha256": "5a7bc7ba00d6edc4291b106a904b8df200201ee53bb4b075aa8bc04e09ccc2fb"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\12a529d45b148a2d28290a8a7535b37b.cab",
+    "bytes": 1053435,
+    "sha256": "b23757ead1dca04c9e38bae815c58b3e79a5f6bbeca3e1f0f44c50963200cceb"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\13bf5f9b75a9d1c9f44ba5d34a14227f.cab",
+    "bytes": 95422,
+    "sha256": "52a9ab35d8014f2107997f9f1e4e6d0b615c2db4c7698f8da6cc00c3d239ff7b"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\13d68b8a7b6678a368e2d13ff4027521.cab",
+    "bytes": 390500,
+    "sha256": "0b26ede2d22ea531d921269dfffcd14cc71d6932cac0f2720fcec37079286643"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\15369c02f0856bfd3d570cd8a8107b55.cab",
+    "bytes": 911490,
+    "sha256": "353fa8450c1edb5470b0986370e5df7541d59a2f6508aa0ee5131c6c2376fc87"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\1623efce9d1a46396798f44a7bc769e9.cab",
+    "bytes": 456911,
+    "sha256": "33ce42eec8982a8c1c33a3c695045e595b0df09dcaeb766b30ca5faadd93dc1e"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\16ab2ea2187acffa6435e334796c8c89.cab",
+    "bytes": 666803,
+    "sha256": "d29e10bb5ce2e28957b5635b6eeb6a491fdb311c925b398443451f953f399bc2"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\19248fabbb2098a7b88c4a2786066bcc.cab",
+    "bytes": 782585,
+    "sha256": "6ccbd0b699534b8cc24784e9fbbf242196332053313075c334c126e90c8a21e7"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\1de82860db02f762c5f65a73daa31f3e.cab",
+    "bytes": 14700335,
+    "sha256": "317270932ab9f5f30817bdaf788791ce071439bd8fab8960ad180c2bd9edf34c"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\1f32e9acf0bb1e6a5f485cd8670cd8e1.cab",
+    "bytes": 22175,
+    "sha256": "bfd13fa127622764eeaa3de5572f6c850a735896cf515e4575359915ea868a3e"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\20e79882c0bf37840a94a4ce06bc571e.cab",
+    "bytes": 2020557,
+    "sha256": "115ef4c40f07c8694a1e747423f505f7c10b59e7a8872be2572918e426fd4b52"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\220daf459e79c5d26366654b1b482e87.cab",
+    "bytes": 97459,
+    "sha256": "2cbf336cb3b14f59d9259bf2d3786bd3ff48fefdf041f8bc29aaa62ccd65bc8d"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\262fa3187c00a1f695e0c3eeb7ecf423.cab",
+    "bytes": 1606317,
+    "sha256": "678cd941cf0e11c860514e4e7c042cbffcba58aec6ed4156163e90c735ab3b6a"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\2630bae9681db6a9f6722366f47d055c.cab",
+    "bytes": 7616218,
+    "sha256": "8af58a5ddeb256460c1563040c2eb6fbaba98cd9256c43b7ada85ed691b482d5"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\263104e5ce3a72f68151a93d88a3f22f.cab",
+    "bytes": 19219,
+    "sha256": "281b6c3ab8248b9b1b00659f7a48207a5cfddad58d8ec4c670292839f73a5d97"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\26ea25236f12b23db661acf268a70cfa.cab",
+    "bytes": 93999,
+    "sha256": "a6d81007e50b1881d58e802ef4402ff16c62ff4960b41c4263057e3173981919"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\2a30b5d1115d515c6ddd8cd6b5173835.cab",
+    "bytes": 94038,
+    "sha256": "b0f56fe41409081c910495b0798885996eb2aff8e030217b515856157b815efd"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\2dd914bb5abd9365f932d15eede09c52.cab",
+    "bytes": 1369389,
+    "sha256": "a9c6ee80fd44bf9cdcabcb6af826e0722d4c8e483dde70a981ca057711001e65"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\2e876dd22fa5e6785f137e3422dd50ec.cab",
+    "bytes": 9216010,
+    "sha256": "bd490c2da3b5837261d43791a02ea3bb6aef1de787f52bec5e7dd638bfb77f51"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\306e26e920fd32cb02bf538b4e799a0d.cab",
+    "bytes": 169220,
+    "sha256": "4e2bdb867bc7c56e5944d82bb8cc8e686dda698a3d64245a045c3ef37fdc8daf"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\3e2f7be479e3679d700ce0782e4cc318.cab",
+    "bytes": 32793626,
+    "sha256": "0ae0ea0d8c43d3ecf0cfe69b31cb19f6ea1f8323f3bef2521ef9a8e4ed08d343"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\4035a83dc8e73244d15d1196d55059c3.cab",
+    "bytes": 19408,
+    "sha256": "577063ebb8a8e9e04d4d44f3cb7fd63fd5c4499742fd54c111a74247f2d1b6e5"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\40d92f424eff54b03db4c51669f9a8d6.cab",
+    "bytes": 194277,
+    "sha256": "69c225dc80675088e8d19451e3ab352427a00379a3154a83b0974a1808ceaa4c"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\43d52fdb99b86048e15fbd34f5b99cb5.cab",
+    "bytes": 253065,
+    "sha256": "1ad0113ab87d5107e2b35f73d8342802d816c32757302bf9891eb941b25949e3"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\43fd989a0684600a8c4dda7a6373eb59.cab",
+    "bytes": 47677,
+    "sha256": "0db68ced7048a12b8890f2abd79523b34b29484b110ff59755663118f1070019"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\44472e2321abba45e828de25827264a3.cab",
+    "bytes": 23283,
+    "sha256": "bf9a4ee11d41fe1c0433b02ba27a8542a544f7b8c9313e7aba1b0084058fbab9"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\463ad1b0783ebda908fd6c16a4abfe93.cab",
+    "bytes": 218021,
+    "sha256": "43c40559098a2c1efbef6af16f97a44fd80b3bb9fe8ae117c4e6f9f3f852b8e8"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\47133212c2f5ccf49392d7762293a075.cab",
+    "bytes": 1632448,
+    "sha256": "f6e618f6a344a0e6556f4aabe31b736fcdb7fa6b537cb8aae4650d5396c672fd"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\4a4c678668584fc994ead5b99ccf7f03.cab",
+    "bytes": 437868,
+    "sha256": "ffcaa1a818539e71cfbb12e9fa2a87cef30f33089b0d20bc1e6c6fd24abf2014"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\4ad4df991deb0eaa1f79f896b959d580.cab",
+    "bytes": 1546948,
+    "sha256": "a20463ef1d2ab312d5a9784d46cd37020e1932ee741a9f679c4ddc216fa65cd6"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\4c59234340aaf3a96ec480c1aad8d179.cab",
+    "bytes": 609561,
+    "sha256": "ca23424a57895bdafa3ff190da678530f5da4af7912688a5fc2ae589eef0086a"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\4dc69cc131b3f4fdde53e76d759509dc.cab",
+    "bytes": 462379,
+    "sha256": "ef149adb54c96575b249df9547b50cb272374bc5d261e2f62ef31fc7df9142b4"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\4e2dea081242e821596b58b31bc22cca.cab",
+    "bytes": 18680,
+    "sha256": "778434baeeb33a0ed08e668882954b2cda37b04af44f573cdcf6047ec0109f11"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\4ec14c5368b7642563c070cd168960a8.cab",
+    "bytes": 1885152,
+    "sha256": "59823100ddfe9030851ac765e90de0e1875e908737f426ece8c3a00de6e15cda"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\4fe4c8b88812f5339018c0eef95acdb9.cab",
+    "bytes": 26653,
+    "sha256": "cadd61caab00b5ad3ef449efb54f8a7b1a43a7cfb85f321b544ca578b14e179b"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\50ce7925226cb6ab8e0fe9ad9fd58433.cab",
+    "bytes": 7471051,
+    "sha256": "27f65257e3efd66116c9fd5339a387ab6501bc260fb8fef2bd10e16899b9de05"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\53174a8154da07099db041b9caffeaee.cab",
+    "bytes": 15676146,
+    "sha256": "32ed51da59f3252ba263a0134c131a8a31297fd14136a7f94cecb0b810e6d207"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\5509e4710313421be8d5e7cfbfde4d30.cab",
+    "bytes": 1045394,
+    "sha256": "d749eedae9bb6fd52db819b2285a676fb6ab5f8b227a5a14a00044bf55f43d1a"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\559dbc3a49a69c6adf60b1c87b4df71b.cab",
+    "bytes": 18564,
+    "sha256": "9f44a2d144213e7a7fc76a4c6f60bf620ed167e5fab6f2e031da370d0fb598d4"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\563138901adf40a699df4654138ac397.cab",
+    "bytes": 1434591,
+    "sha256": "6ce22e9456ab2f5e7c898819178f73e41900f748e9e103a45ddcb0c00acfd035"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\56a114848fda9a7e47bad4b3fc4be9a6.cab",
+    "bytes": 7809397,
+    "sha256": "5698388eaec1f948c13563a02d3d78622200c45188b4f955dd07f601ba0ea73f"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\576cff9c50e8085ab8d9c28ee12bac3e.cab",
+    "bytes": 666796,
+    "sha256": "68c498f6706a0b4dedd57c0d6e351f65344d4613071031f92db7fc6d2ccf9b04"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\58314d0646d7e1a25e97c902166c3155.cab",
+    "bytes": 16603242,
+    "sha256": "ec209a224c9b2d31f3409208d30f5a6335c55217ad384d6212c833ac83360eba"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\590d28783ff280b8b0016c3492433241.cab",
+    "bytes": 9020389,
+    "sha256": "16b45c0b457995a56def95406557a4fe3fa57c7a1dcb0736fe6eb162c42f7f88"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\598442d9f84639d200d4f3af477da95c.cab",
+    "bytes": 59227,
+    "sha256": "670383674e304ce1c736576937bbe890afd4be43f44c17dbe1605bb0cbf06174"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\5a22e5cde814b041749fb271547f4dd5.cab",
+    "bytes": 15542250,
+    "sha256": "57e7e309413d05b781ae76d1b5c54dc7aff350b6a460920f1f358e8003aabdfb"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\5c9ecffb06ed5f4fe5fb7db86bf7328b.cab",
+    "bytes": 368350,
+    "sha256": "232ee7d3bfc312c683e0c8407df10fa138879b2996bee333ebd61705965d0e63"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\5cf1d61a223a02ff2f52fe05f058d52e.cab",
+    "bytes": 1242793,
+    "sha256": "174d26ba1979fa2b8980165e361e7fc4e1822b6d0b4fc6b35c3f0b5cb2c4f6bd"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\5f6cfec263cd265cf3b0d97fd78ddf05.cab",
+    "bytes": 3100184,
+    "sha256": "27f207feeada5b360860c3908f5cca45fb6b6a43958fa6d2c785199187da5ef2"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\61d57a7a82309cd161a854a6f4619e52.cab",
+    "bytes": 9506654,
+    "sha256": "a29f471c9a242aab488f9afa067d45f7a462f1c12fc892d66652be7f37a619d1"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\66c7c64126fbf84f47ccec556d149b12.cab",
+    "bytes": 19033,
+    "sha256": "f65349cc0422451d1ad1e6bef4771d86605e7e13284f45c2bab2d5d604cd4a67"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\67c9fd1fab36154e6e7e429610cd67c8.cab",
+    "bytes": 770995,
+    "sha256": "453aec009db83becce61fa1af16c9890d1c87d92106a3d4e85f3ca3a97e8005f"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\67fb2af3d2219b403e419535a547c019.cab",
+    "bytes": 99414,
+    "sha256": "cb662c96fdcec9671900fb188851b326c5f2e53bff387abb9aed81305ed39f89"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\685f3d4691f444bc382762d603a99afc.cab",
+    "bytes": 1155835,
+    "sha256": "3268cf2e5bacfb75ccaa8fe4feceba6d85836d3874566c79dc2f9e09b0424efd"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\68a5a2b14625f935761325cddfadca11.cab",
+    "bytes": 2435734,
+    "sha256": "dbd5206688af73581def06c8bf2dcde88cf4340c2f37b5a6f7c4e9d98b1bac0d"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\68de71e3e2fb9941ee5b7c77500c0508.cab",
+    "bytes": 18797577,
+    "sha256": "a5df26654d49533e70596f234eefbfc57b60de73339a15de121a425fe31bdb5b"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\69661e20556b3ca9456b946c2c881ddd.cab",
+    "bytes": 18745734,
+    "sha256": "bef5b038fce288fa1db234bd61c3e450abecc02f5a386248625073a83010f61e"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\6b12414fdb1b4978419abcd383206c09.cab",
+    "bytes": 18538,
+    "sha256": "721c477111f4b20eb0aa12e5849740e834c8ce0939800ead3f8616c6db7cf321"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\6b5a91701fdb98ac8bc4af6e238e0390.cab",
+    "bytes": 2007811,
+    "sha256": "f933f8cf6d37ae46d060c8a732d0f8e041d6d7aeede666c336a9646741d939e9"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\6e86d5003787b5a44d77f0142b20f2ff.cab",
+    "bytes": 104255,
+    "sha256": "507f6aa6a8380cf9dcee7c4450aab7b4e18d1fc11b77c64509494c64120d287e"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\6ee7bbee8435130a869cf971694fd9e2.cab",
+    "bytes": 26146004,
+    "sha256": "04728e326214d8960a188614995b65a3e9e33f93eaf13dd3ca16fe513cdff0de"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\703316c9de0a32acf316d03b1cffc559.cab",
+    "bytes": 9449625,
+    "sha256": "bd827c04acb7976c9e1997676255277a1f41da46739f9ecebae5c3698e12234b"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\73b80f421d7f3df5a71bd772f56bf3ae.cab",
+    "bytes": 98153,
+    "sha256": "952c359c276d4f3daf7b59a72ce5a27e4094c1293a8769906e3c5f32df6401e5"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\766c0ffd568bbb31bf7fb6793383e24a.cab",
+    "bytes": 8176880,
+    "sha256": "c590f816f3bb15a79a0bf815ca942aeec4a36c08fd66fa35a243c86b4f8bac7d"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\78fa3c824c2c48bd4a49ab5969adaaf7.cab",
+    "bytes": 54881173,
+    "sha256": "6f9096bc7c182383c22a947d1b2c994d78d1742ca25163fad8fd8c2c848419c5"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\7afc7b670accd8e3cc94cfffd516f5cb.cab",
+    "bytes": 1053493,
+    "sha256": "1d99dc10063c05e8b34b82af18db61c080809456d471674d0272f071526df0ab"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\7c3667a45d36470bf3cb648878a6ac2e.cab",
+    "bytes": 778294,
+    "sha256": "86140957571b82e3957bc899da8d8f6a6ff177ca828f7fdaf097114eaa142205"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\8016f7584c8fbeff0b032c65f4173e78.cab",
+    "bytes": 41245,
+    "sha256": "79a0989449dac1b180eecbb7ab59256f27025034d8cb75412793a74f7a2bae3d"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\8038f3cc95dc4b7d0346cb2ab7e044ff.cab",
+    "bytes": 1053623,
+    "sha256": "cfc4a1f9f6423c2de002d1659409e51bffc005ed1401987e6000b137a7f36054"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\8125ee239710f33ea485965f76fae646.cab",
+    "bytes": 5779649,
+    "sha256": "afca62a1e32f28fad347f7610c6ef663506a798db78ac4e4cf545aeaa4c5d1d3"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\818d2d3634f0efb6e64d7e7c8ca5f98b.cab",
+    "bytes": 113861,
+    "sha256": "285d740dc8d842cbcf08eb15df2cccc0756aef8865efc27ba3b290363debf556"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\838060235bcd28bf40ef7532c50ee032.cab",
+    "bytes": 19198,
+    "sha256": "bc3d7f43e248d0c040980608bc6cafe827137242d29bbda7832108c64987f69b"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\89d9bbd87f7a5560bafa520a4ebfdf17.cab",
+    "bytes": 91569,
+    "sha256": "532f98e57d8fefd945864a56957b2b713f7d2ba2c844d2bca83b6103c9e56042"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\8ce0662e0e014576121e526f53d8f6b5.cab",
+    "bytes": 446208,
+    "sha256": "a3e22cacb553a1590c08dfa1afb7bc8eacab8ef237f35a10277ac9b051e41f45"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\8da73ae89e24f0b5cdf1787799c2a65f.cab",
+    "bytes": 1503744,
+    "sha256": "e24039473bcc57d456ea2eaf4b5b8a58b6873604615746d7df9bed460a68b38f"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\8daf1f236e631041cdaa802ddb9ccc3d.cab",
+    "bytes": 111097,
+    "sha256": "1935f24d6f0fe19f1a1720b40d7834f44053a3e57c71fe79f351854d810f6daf"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\8e4755178e6b5bcba8d3538c3630b7a5.cab",
+    "bytes": 1143297,
+    "sha256": "296670d9fed15c149cfb5655cd9e86ee9d91a1662a243632f572311b68c5501a"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\8fe3c1ca244ece932599eb0b61855d8f.cab",
+    "bytes": 95297,
+    "sha256": "2b018dcee73ad70a2e4ac35b9eca42b3b92f68e384a7823039d5a19b0ec2f451"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\90e1202895672ce81992e71be30528cc.cab",
+    "bytes": 357394,
+    "sha256": "154e409539008c04691f399ff2c2f22f3f77c84c659eabd1fd2c5ced07225b17"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\931721e121ef91707ddcb6cac354d95c.cab",
+    "bytes": 18701,
+    "sha256": "2cfb9fdedfbe917ec475360600ab476561e4000b55a7c3b59385e2f1abb378e9"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\93a74a1d34a22ae9d2e1ccc5208ad21a.cab",
+    "bytes": 482753,
+    "sha256": "1d1480714c75790621d86d243f597f1d3322b3dc90a19d83b5a229a0d35b15fd"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\94521fd1a9c57258998d60ce60dc43c3.cab",
+    "bytes": 1905800,
+    "sha256": "7b6375cb60a2ec5b5b79f98375ce478e6ce13aca7d0e047b52548b0c8b03eb77"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\948a611cd2aca64b1e5113ffb7b95d5f.cab",
+    "bytes": 884976,
+    "sha256": "b6a9ed3b431d2aa75f6608a5b6547b4e45bd6394d89d2011938eecb1c3eea6cd"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\96076045170fe5db6d5dcf14b6f6688e.cab",
+    "bytes": 678655,
+    "sha256": "82d970f5b628250ef72467d0826260c6a9f32252f42daa3c31fed2a23170170e"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\9a7145bc3b132e5da6d44c0ab4a1af70.cab",
+    "bytes": 7914269,
+    "sha256": "27db9c6df30eab8f2eb4cfecd366d698ff47609a2e4ebb5647957fff5f3b6207"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\9ba47e440ec2fbe9a3d32a53bf0f68dc.cab",
+    "bytes": 469924,
+    "sha256": "95a0ecf0933a3ae122d5ce9cdd689d3937d06c59117a1f10dd7fc8a7d6c7eb95"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\a17683486ace64c3f9a1cacb81ee0260.cab",
+    "bytes": 101654,
+    "sha256": "3d523267e4cd49fcbdd1c23f30e375059dcc425cf7a31155bf372c9f08fdaac0"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\a1e2a83aa8a71c48c742eeaff6e71928.cab",
+    "bytes": 27764279,
+    "sha256": "29f8ed0537b49087321dfb7cce60aad7252900ecfbd81d6336fdb67056778a5d"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\a330840cf08ad4d210703c9acd1bf2b8.cab",
+    "bytes": 1078523,
+    "sha256": "3c5e06113c26f836abf4e950b94ead51ba11247ad3d8faa0b8211d7f68987f77"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\a35cd6c9233b6ba3da66eecaa9190436.cab",
+    "bytes": 1919726,
+    "sha256": "6628f837de3195849b6e67195fef616140836336ee347c03bf9add3105d27acc"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\a68c0988d16ee124783efd98074dcbf9.cab",
+    "bytes": 19223,
+    "sha256": "d2bfb6ddc31c6a48744b4004f124722ebf606b7cd305391bc34b0857238cf2e3"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\a76e4219ecb0f1c0006a6fe080c54ad9.cab",
+    "bytes": 8312768,
+    "sha256": "03d0921968c85ce2d95dba402626549bca3cba6abeb48087a256bb9c3164199b"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\aa9c58552bdb82dae4ed48ece081cfe3.cab",
+    "bytes": 1575770,
+    "sha256": "03e7a479ec18c20cfbf1c860ae4a98bb791b320e6137f2eb15f7e1d43adae835"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\ac4ddfcf1101c483559a5f6e36f1ef2d.cab",
+    "bytes": 20937,
+    "sha256": "08ff2379eef3a6775d2e670c862567f3495343e5d30dc5389990e18d6a90cab0"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Application Verifier arm64 External Package (DesktopEditions)-arm64_en-us.msi",
+    "bytes": 593920,
+    "sha256": "8c831d6c579e63bd1d9101f297192455171a5000469383cd71d88e04857eb108"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Application Verifier arm64 External Package (OnecoreUAP)-arm64_en-us.msi",
+    "bytes": 1626112,
+    "sha256": "b6f578226b37cf74e001f8b172f53324866f003d1e0647e58a29cbc2ae2e4192"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Application Verifier x64 External Package (DesktopEditions)-x64_en-us.msi",
+    "bytes": 688128,
+    "sha256": "973a7383011604ae9dbfdc6316e9f59771d75ffce3dd419d899beed9d77b70db"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Application Verifier x64 External Package (OnecoreUAP)-x64_en-us.msi",
+    "bytes": 2428928,
+    "sha256": "95dc3678cbf2495e2e2ab3adc3dc6c40cea36266bbf2e3d565dc7d8e5b1f431a"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Application Verifier x86 External Package (DesktopEditions)-x86_en-us.msi",
+    "bytes": 565248,
+    "sha256": "9c7385be9aced7785332ff09be4bf18b070d09895b975e3a297715b38ebc63f4"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Application Verifier x86 External Package (OnecoreUAP)-x86_en-us.msi",
+    "bytes": 1339392,
+    "sha256": "b48ee9771ab259c9fb5bf91d8ddd91604fea43b8291c81e989c6589bcd9dd33d"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\b0656253ef2f688d2982eafa2e73f621.cab",
+    "bytes": 32762,
+    "sha256": "de70f656de01fd2f2e17539b4a50ddd66e2b0ac4486dfbf870cf4dc499db24c7"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\b1a824e2952532fe8fd0145f5d148d25.cab",
+    "bytes": 408125,
+    "sha256": "68914155c673bf5f38fbef8502f142a194a46c0abe4c5b62944dc0b755bcb0c2"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\b1a8ecf890b4ffddd05e8c9422f55db7.cab",
+    "bytes": 159495,
+    "sha256": "33a044c36af28ba67feb277cc12f96ee4eefa85f7b8720ce5b3a649d64883584"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\b2f03f34ff83ec013b9e45c7cd8e8a73.cab",
+    "bytes": 156894,
+    "sha256": "a17b9674b79ac4c8d9c4516c41d6f32fcde041bdb07ec7f0758c16ee8a62ecac"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\b4eea6c909a31ab051e6f9b6218beec8.cab",
+    "bytes": 379000,
+    "sha256": "39c6bab7981aad85629d5a8b54fd3831d04b5de5099acf006edd5b3bdc58a358"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\b5f177b84c0ec473cbd69557634b27cd.cab",
+    "bytes": 18691,
+    "sha256": "90a10d7b9c4333b87f2abb3d575bdfd9a7a02417613c98dd1e65358038de922d"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\b80b7321357f7c9f281536f9440dfe68.cab",
+    "bytes": 18901,
+    "sha256": "f4417618f207a6af7971f1266e86e175807b1be07fb5df727a56eaac9678dbc7"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\b82881a61b7477bd4eb5de2cd5037fe2.cab",
+    "bytes": 27927506,
+    "sha256": "7df7d66a1c1d9f4f64b5d071dc706a6e2fde59cbd4c2b7cc6eac02cf0582bd22"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\b913ca15956d14df2d4b1f11ae07885b.cab",
+    "bytes": 226747,
+    "sha256": "e334ef611a5e5c73316468565f208ae35fd358a58315b567fb4f59c842441888"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\be06eca425b0c3c2f4de61cbfe9bc7a7.cab",
+    "bytes": 226699,
+    "sha256": "77c2f54dc82cb93c4c2c5608bdcc25fcbc1c3864cae28b85b29257e6df33d407"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\beb5360d2daaa3167dea7ad16c28f996.cab",
+    "bytes": 609253,
+    "sha256": "6feaabf4b1b09b4e3210adddb12c8c8d6702d731da033784ef0330488f5bef51"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\c0aa6d435b0851bf34365aadabd0c20f.cab",
+    "bytes": 4951894,
+    "sha256": "b9e05d77c4e719d4f394b5a66328cfb2df2a80914785545eeb049a69fcb11d3c"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\c1be9e93e88be3f6207f5cc074775d81.cab",
+    "bytes": 97667,
+    "sha256": "44c6935d42e9ae35798e0ab2d56b4de458e41c863f6d22bbc03490fd454b85b7"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\c2aabf6ea5c1d348ec22f3aeb92f8656.cab",
+    "bytes": 18885,
+    "sha256": "f6479bc17c44cceb20de4e752fe29260b10be12de0a09ca0e664c5f132c18d9d"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\c4d38a2c963178a1a3469ca3d913768e.cab",
+    "bytes": 21175,
+    "sha256": "23e917da442368fd73a007d211314bbddbe310464f1b6906fe7ca23614c4aa33"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\cd9128b760c06a010e1621af6528432e.cab",
+    "bytes": 65469,
+    "sha256": "c1845644795dc43cb25da0baa1d1a3f13a4f3616649e7d7abdff7a006600f5da"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\cdea5502a35d09ddfbcda12e3a391dc0.cab",
+    "bytes": 7596870,
+    "sha256": "76a16062cc9764cceb9f0a4e1f43fdea97affa70752c83542562fc1f30fb9e60"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\d117bb4bc77abadc7c603552e122e513.cab",
+    "bytes": 583244,
+    "sha256": "225b9f2f52626455941298901c07cd1b4be5fc66e08faf5d47850812781872c6"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\d1de88680a8e53fe75e01e94dc0ed767.cab",
+    "bytes": 46971,
+    "sha256": "9d88fa269dc02fd3fde50a056c04d6dfcc5b8a15739ae0f3e7ac51cc1c88f5b8"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\d3e405ab232f8aca8c5b6a48a913d6b0.cab",
+    "bytes": 935416,
+    "sha256": "977ae9374c9f06ca2c32d1792c16eb5c7d871185c50a89c8ea51c1cf4cab1946"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\d67259e233ce975d91c3b02d483becad.cab",
+    "bytes": 14165340,
+    "sha256": "3c3ea42bda9a6257924f9b02b7f2d0245bea1fc1835a191e99d6ddaa54725c10"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\d95da93904819b1f7e68adb98b49a9c7.cab",
+    "bytes": 42017,
+    "sha256": "bc3beabebc0a9f161bbbe69dbce0075019ca6e40f5df5a8b2342a8a2ab25b22a"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\dcfb1aa345e349091a44e86ce1766566.cab",
+    "bytes": 93964,
+    "sha256": "d512a8751e0a338028e1ac168d80b5a7722c2830677a6cd617cf5e4be87be353"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\de111c3d435b0785b31b28c386ee691f.cab",
+    "bytes": 18989,
+    "sha256": "d993e77090a87d9120965278ddb6f95841c0a3e8bfc88647e985f02298369480"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\e10768bb6e9d0ea730280336b697da66.cab",
+    "bytes": 7328808,
+    "sha256": "46e21578a4cfce3bd6e4eacc10b92121a825ce443cc2f6cce84b07e37b9d21bc"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\e10f8811d44b50885777f56f8272f66b.cab",
+    "bytes": 609219,
+    "sha256": "26132fe0b658e0d5d002503db9db56fe3f556ac49e01aa5f6fff9ae21e882309"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\e24dd258b3bbfa69c0842948fe0dd670.cab",
+    "bytes": 166844,
+    "sha256": "38f15a60b6dac64a7eba63c9684274c99908817e7f041cfd34b849475e6d3bb3"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\e3bfdbe21d5f48f62e6347294e6e8492.cab",
+    "bytes": 107469,
+    "sha256": "581d89c4572d247bec2a6df4dd5565ecfed64342b356fb6715d3d13b78f59960"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\e3d1b35aecfccda1b4af6fe5988ac4be.cab",
+    "bytes": 15463439,
+    "sha256": "b62dca92fa3a59a6a811d181adfb3c033c44b44b4d99892662294e3e4c34e2ba"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\e59830bab4961666e8d8c2af1e5fa771.cab",
+    "bytes": 207581,
+    "sha256": "c7789ad04b9b0f6fb31c3139bb18a847e9f754bcff5f956ae7d1738047098cff"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\e5c4b31ff9997ac5603f4f28cd7df602.cab",
+    "bytes": 1932592,
+    "sha256": "18b92105b56f44043e7de7286dae9e1acd8e7beccd0ccf40f85cb56cf00662b9"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\e87de81a902e0c8cde9e1355c3ff5f3f.cab",
+    "bytes": 1708890,
+    "sha256": "b93046f97bfbe8652a13bf5cfb0ccdccf71637c4294b0a0856a27c687c76460d"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\e89e3dcbb016928c7e426238337d69eb.cab",
+    "bytes": 920606,
+    "sha256": "4e5f0346d59faae3742c79d48df74f221b202da347f5751cc3e53156941368f1"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\e98fa5eb5fee6ce17a7a69d585870b7c.cab",
+    "bytes": 1436297,
+    "sha256": "afbe085b2daba00895e10e9c5be3dcc9d3ecdfc4665a5e631050373fc99b3e06"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\ec0637c03f99046936d32d51e13a392a.cab",
+    "bytes": 18556,
+    "sha256": "d6881b03e4fd187112d66d447e83360bbcd68cb69364c2d800293571a4068c6c"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\ec9ab4bbb809719605d27da343b909e8.cab",
+    "bytes": 107442,
+    "sha256": "ab511b28c1af3f681a59d91df216d6618170bca9d3926138beffc7cc13c96c0d"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\ec9d39539c27e8cf5ad39bffce00c34e.cab",
+    "bytes": 234328,
+    "sha256": "9fba6392246a7e9ca8b98581247ba0699c11abb2002927a41a3a4a124f5f2212"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\eca0aa33de85194cd50ed6e0aae0156f.cab",
+    "bytes": 42174,
+    "sha256": "c0c6cc329d2be2ddba902649c46efb9064186c2185445451602c90d9c7eb3dd8"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\ed4d1c6b9811d81e3cebc553ae604f0d.cab",
+    "bytes": 18680,
+    "sha256": "fdd06cda47472586752e719dc67c7a145b6fef32eacb6e293dcb2525d4e12fb5"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\ed5aa2f399092df3084cce671f072cac.cab",
+    "bytes": 1518547,
+    "sha256": "6ac51feeaeb81ac3a1f00f40e263dead13f932d2bc11c8fd286fb49b14a3e501"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\ef4472fd7552490fd759075186ed2ec8.cab",
+    "bytes": 264143,
+    "sha256": "44fa2f089ff4d7865c791708c5978dd1e8163647d9faaf6ba7e0b2e52317eba8"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\f105a73f98cfc88c7b64d8f7b39a474c.cab",
+    "bytes": 59269,
+    "sha256": "78a042e663567e2ab2488aa81c8b12954b72a32c7bb90dbba7c3aab7facb7517"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\f2e05dfd38ed343d3de77209cf3ecdae.cab",
+    "bytes": 1240695,
+    "sha256": "c536e6742d56a05c47310c23e09a9e5a5552d914f5752ff9050eee88e009bcf9"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\f4661eda3692e166927c14c96164150a.cab",
+    "bytes": 1010038,
+    "sha256": "c1cc9e73acf7e2f6ef4c24f0753197200328621cfd70467c11cbbb0774400087"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\f7b25543b47329ef932ad391c72c4ab7.cab",
+    "bytes": 89488,
+    "sha256": "d963b573a47af04623a73f4ce24e6c16ee57c946ce7d3729832939d5a1ff2184"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\f9b24c8280986c0683fbceca5326d806.cab",
+    "bytes": 7245228,
+    "sha256": "154f4a24ec22ea0c932709f0e1a2c443946b42c14291a49a280ab4ea0eaa504d"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\f9ff50431335056fb4fbac05b8268204.cab",
+    "bytes": 19158,
+    "sha256": "355cc1e65b9e5f02a0b3a4f32d02f9241b97030d3527166eff6a372d5d0e1bac"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\fe38b2fd0d440e3c6740b626f51a22fc.cab",
+    "bytes": 19199,
+    "sha256": "afcbe5f2696bdacf801c3c2c758659a5e2861551fb9e78b4dd04a835a0ecdf80"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\fef2cfedd6135e0ed85290b83f3682c3.cab",
+    "bytes": 761906,
+    "sha256": "01f034bd5f84a5e4bd7f75ef1b2becf7d75b87749794d8d9659dbdf7672a5050"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\ff8dd5a961e46b5d05906ac4b7a5ba37.cab",
+    "bytes": 18527,
+    "sha256": "56cb5452fbb1d6106ff9e271d5cee6cfbbec6bfaad24b82580a7c5b38e434734"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Kits Configuration Installer-x86_en-us.msi",
+    "bytes": 446464,
+    "sha256": "fc2ebdcd005eb65a703518e0b8b53cc6b3712fcf5d0e341e9751bb9a1acc7695"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\MSI Development Tools-x86_en-us.msi",
+    "bytes": 450560,
+    "sha256": "8f515e4065ac0966a1cc49c8cfc7871f5f7eafc80e90e8253dd8942764ee2561"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\MsiVal2-x86_en-us.msi",
+    "bytes": 655360,
+    "sha256": "af8fb98d0614670971a3d848cf048de9910752ff21ae834b9d038c514bac676b"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Orca-x86_en-us.msi",
+    "bytes": 655360,
+    "sha256": "0dee79142e048f8332ba930bca0671ea55db7121f8044691768e7407d6f94756"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\SDK ARM64 Additions-x86_en-us.msi",
+    "bytes": 446464,
+    "sha256": "84a6077b8906e77a636a6da15f13289743e6b1353f6ecbfd5fa1852f34fa8db1"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\SDK ARM64 Redistributables-x86_en-us.msi",
+    "bytes": 446464,
+    "sha256": "fb3ed13d936c7479e70500bce47d4fc3032c054053eff59fe640d5cd4d359fbf"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Universal CRT Extension SDK-x86_en-us.msi",
+    "bytes": 450560,
+    "sha256": "399db8bc2817ae3757a4b95a1319c5c8efb33948da4db90e8a582a56494d51e4"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Universal CRT Headers Libraries and Sources-x86_en-us.msi",
+    "bytes": 589824,
+    "sha256": "f611ce8a9e576e3383917b04b6fbe5ee6bed8363c1a2a8e9d6f8335cbb422675"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Universal CRT Redistributable-x86_en-us.msi",
+    "bytes": 475136,
+    "sha256": "85bf16e75f66dc4c54c2fa828f10fc5dc36596a2025b68a424d1753a5d9f8792"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Universal CRT Tools arm64-arm64_en-us.msi",
+    "bytes": 471040,
+    "sha256": "3e419acb7b170ac7658119a7a7f15427ff1de199fdafea16111f7e87a7113f07"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Universal CRT Tools x64-x64_en-us.msi",
+    "bytes": 450560,
+    "sha256": "e9611a0bfb0b23ac559197048a2ada651b715f42ab004f8e9d9e94d962c83170"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Universal CRT Tools x86-x86_en-us.msi",
+    "bytes": 450560,
+    "sha256": "dc928d2756f61f4efcb9597fb4310eccb0bf738f61a21dc4bf7e23df5faef111"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Universal General MIDI DLS Extension SDK-x86_en-us.msi",
+    "bytes": 450560,
+    "sha256": "8e4495a4eb1810b4fcadfda78c655beb3949c2af08da6032e4f4ee07d251e206"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\WinAppDeploy-x86_en-us.msi",
+    "bytes": 1814528,
+    "sha256": "05c3052cc37f4db17671f82571f2e31dc59892f91f0969962fb141bb0c767c2c"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows App Certification Kit Native Components-x64_en-us.msi",
+    "bytes": 512000,
+    "sha256": "db33a6f9d61c63fc659ba27f1a7e39501070d0a07b264e90e2dd0abec478cdc2"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows App Certification Kit Native Components-x86_en-us.msi",
+    "bytes": 512000,
+    "sha256": "9b4cf101424b4946f76c7769d155ae7bd5c08d60695463371f5e6214458c1ac8"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows App Certification Kit SupportedApiList x86-x86_en-us.msi",
+    "bytes": 450560,
+    "sha256": "0270eb856d891e79d9db166525522aa629e69ad5a84dc043810ea1f6ca08f567"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows App Certification Kit x64 (OnecoreUAP)-x86_en-us.msi",
+    "bytes": 462848,
+    "sha256": "570b76b34ba562eebcfa815a378113bf08f9c76a8a6b267c62c13307e9a03a23"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows App Certification Kit x64-x86_en-us.msi",
+    "bytes": 581632,
+    "sha256": "46a684f570d8d23657366a85b32c2f3f2d6ea9c359533089b72613ab67970336"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows App Certification Kit x86 (OnecoreUAP)-x86_en-us.msi",
+    "bytes": 462848,
+    "sha256": "53122870736aca0e7c5862681c06cf6558d2791f13f2ed52b7cc6a62dc198634"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows App Certification Kit x86-x86_en-us.msi",
+    "bytes": 581632,
+    "sha256": "52d109c2c8b5f22008266fe6cb222bd59911fa0aa25bb5a12913160e4ad51f1d"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows Desktop Extension SDK Contracts-x86_en-us.msi",
+    "bytes": 479232,
+    "sha256": "c707543bc192db15a406645b7d60970030749c7c7bc7f3c9b8cfca736d554763"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows Desktop Extension SDK-x86_en-us.msi",
+    "bytes": 450560,
+    "sha256": "7d6eb4d916c82673c1040df4eb1da2ac167b05dc8f39369f46134e185990b0c9"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows IoT Extension SDK Contracts-x86_en-us.msi",
+    "bytes": 446464,
+    "sha256": "aa4c3f796fb71e28c49910d14b8593b732de59a0671a839c3bfd1d3866e05c29"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows IoT Extension SDK-x86_en-us.msi",
+    "bytes": 446464,
+    "sha256": "4e187568f1cfc94d192f30339759f03e36e294bc07f9ed56e7ae7fb2e8727477"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows Mobile Extension SDK Contracts-x86_en-us.msi",
+    "bytes": 446464,
+    "sha256": "4ab007549007947956d04349a2a165efd2234132fb26832f1513065e91c9db20"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows Mobile Extension SDK-x86_en-us.msi",
+    "bytes": 446464,
+    "sha256": "af86dd3526170a39eb7b3ed6ec274feabce655e94b403b6c0a6dd9e467c6caac"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows SDK ARM64 Desktop Tools-x86_en-us.msi",
+    "bytes": 450560,
+    "sha256": "95eb9dc8abaf8ce4c9c4e443862708ec8b6f2092b9a78a28928107f1b1073b36"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows SDK Desktop Headers arm64-x86_en-us.msi",
+    "bytes": 446464,
+    "sha256": "bd2c39e59c62e9f81382f843f7df2d47a6f2cc865ee612f7ed42d27086895552"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows SDK Desktop Headers x64-x86_en-us.msi",
+    "bytes": 450560,
+    "sha256": "d189ca50e5632b546795922e2262794c068d6ff301860feb4522b8b93cbb3ba8"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows SDK Desktop Headers x86-x86_en-us.msi",
+    "bytes": 790528,
+    "sha256": "f1e5159feb948ce90a81dcc6a427dde844610230cb6ed787e35d422de527a5f8"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows SDK Desktop Libs arm64-x86_en-us.msi",
+    "bytes": 528384,
+    "sha256": "21f16dd88e22467ac0663520426f972f2bd1d9925ae7d8c2baf9e5288bf9ec6c"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows SDK Desktop Libs x64-x86_en-us.msi",
+    "bytes": 528384,
+    "sha256": "2e956ca1cf17800b0f9811a6249b945f045addf18ee85ffe7aea99ec6c27243a"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows SDK Desktop Libs x86-x86_en-us.msi",
+    "bytes": 528384,
+    "sha256": "4a5dbbc358dbe9dc54d4db02912cbe0e26f3215de928283afd328511bb842efa"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows SDK Desktop Tools arm64-x86_en-us.msi",
+    "bytes": 471040,
+    "sha256": "b5c27991ab2677c39780581ddf48de2e577e9d3687568fe35761ba20cc4f3a64"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows SDK Desktop Tools x64-x86_en-us.msi",
+    "bytes": 475136,
+    "sha256": "5af8b39e5b8e40c7235b447e7d18ce4607209734f3c506006fadcdeb8931c136"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows SDK Desktop Tools x86-x86_en-us.msi",
+    "bytes": 475136,
+    "sha256": "c7e457d32cedcf8281cdd70c138d0b10f4e15e22ca818f41a54785352cb0b3e8"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows SDK DirectX x64 Remote-x64_en-us.msi",
+    "bytes": 450560,
+    "sha256": "c629e346a0e3860e5ea8edec307303eb9d0eee44f99a939f6236e162c4a838f7"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows SDK DirectX x86 Remote-x86_en-us.msi",
+    "bytes": 450560,
+    "sha256": "7e18ea4a23b6af36eae98277ca3c565646795e109a6721ce52195d16f89016f6"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows SDK EULA-x86_en-us.msi",
+    "bytes": 450560,
+    "sha256": "f3958c26326c6aeb29cb91a62e8e7f2f4347b8847313d6a8041567b12d493bb6"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows SDK Facade Windows WinMD Versioned-x86_en-us.msi",
+    "bytes": 450560,
+    "sha256": "14449208e10ba8f496f9e8c5478d0e2d1ba294e3c21bef800e87bb2b516f62fa"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows SDK for Windows Store Apps Contracts-x86_en-us.msi",
+    "bytes": 466944,
+    "sha256": "53f21b4b3ff0cc35a178469f16ba5051de58d55605c6107b39a20c1fb104eb38"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows SDK for Windows Store Apps DirectX x64 Remote-x64_en-us.msi",
+    "bytes": 454656,
+    "sha256": "39517cde1a01dfdd85b22e054094106078f6c1bd7abae54755f09bbf5b86b4ad"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows SDK for Windows Store Apps DirectX x86 Remote-x86_en-us.msi",
+    "bytes": 454656,
+    "sha256": "b57fa511b00e0186342fa0fd1e6c060495cd3368ecfe055a05297372b0aaa415"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows SDK for Windows Store Apps Headers OnecoreUap-x86_en-us.msi",
+    "bytes": 471040,
+    "sha256": "be5ee13ccc98b87211b4f3686972b00fa16f20f266fe9dc5572d62f001e0547c"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows SDK for Windows Store Apps Headers-x86_en-us.msi",
+    "bytes": 1060864,
+    "sha256": "c9f78ae3e730ea1789a37001e204a970099d2acc555cc537fb45ea0bb23b347c"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows SDK for Windows Store Apps Legacy Tools-x86_en-us.msi",
+    "bytes": 454656,
+    "sha256": "089bca68c4e6961dcf7a8688695b1f209c57c81b00d3017bc4030f0459e65dd1"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows SDK for Windows Store Apps Libs-x86_en-us.msi",
+    "bytes": 528384,
+    "sha256": "1381535d2f6b1894a092da67f8a8fb048a4dfe8060ce75b3275affa81b02586e"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows SDK for Windows Store Apps Metadata-x86_en-us.msi",
+    "bytes": 454656,
+    "sha256": "79e98ced41f73362df5152a737fb0cb12cfe6835a12044b2822503f6c2973ba2"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows SDK for Windows Store Apps Tools-x86_en-us.msi",
+    "bytes": 516096,
+    "sha256": "8fb00df405939d60e50a2f1f5d068284153ab3520b6b3657c9ce3796e4a60469"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows SDK for Windows Store Apps-x86_en-us.msi",
+    "bytes": 462848,
+    "sha256": "5603db7a320d34b4f08774d5735960551777dad8026848054bf349dcfac17348"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows SDK for Windows Store Managed Apps Libs-x86_en-us.msi",
+    "bytes": 450560,
+    "sha256": "461fc771d203d3f7eee204a9a6093196bfa4021e53b6e0d4444dfedfe40858c6"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows SDK Modern Non-Versioned Developer Tools-x86_en-us.msi",
+    "bytes": 458752,
+    "sha256": "82abfe7e3f7a14a288c8feff3152e14d8a05e280f72cfe1f97d542b8c5ef73b2"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows SDK Modern Versioned Developer Tools-x86_en-us.msi",
+    "bytes": 458752,
+    "sha256": "45b528b739011f89e7e96045885aae29e68a29667980f8eefacfae6acf44d597"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows SDK OnecoreUap Headers arm64-x86_en-us.msi",
+    "bytes": 450560,
+    "sha256": "3a6b88f58773193d318c84976a0c487d6fac2046391539e78005f85a71e315d9"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows SDK OnecoreUap Headers x64-x86_en-us.msi",
+    "bytes": 450560,
+    "sha256": "14667a930569186a25e75eb35614ce43549b7406705e098db71ffe9b31c60faa"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows SDK OnecoreUap Headers x86-x86_en-us.msi",
+    "bytes": 495616,
+    "sha256": "09725127b70e645fd0c86f004a1b0204ae72d685d70b2e3856efc00533aaeec3"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows SDK Redistributables-x86_en-us.msi",
+    "bytes": 450560,
+    "sha256": "4f6c4da1905281e82785c4411a57711b8aaea54e2417742cfa17473678208b66"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows SDK Signing Tools-x86_en-us.msi",
+    "bytes": 462848,
+    "sha256": "99505122e69835942b7b9e3f49d91b4af7bfb0438e898898aa2cce3333f70714"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows SDK-x86_en-us.msi",
+    "bytes": 462848,
+    "sha256": "88b217903d9c56416566512d6cf8f29ea9a10bbc50cddf02556dda70dfc6d570"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows Team Extension SDK Contracts-x86_en-us.msi",
+    "bytes": 446464,
+    "sha256": "36e1e3c0ab97b9f1ab058ad0867b46646e08f6f043efbda5418696619694c77f"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\Windows Team Extension SDK-x86_en-us.msi",
+    "bytes": 446464,
+    "sha256": "7ba32f63f2668d921952dc31335745014b16d59e9e66e20f07aeb24651f29af2"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\WinRT Intellisense Desktop - en-us-x86_en-us.msi",
+    "bytes": 495616,
+    "sha256": "4e6e5ba356236a9df8fe15e47b9c078af4a65ac8fc0793dbad3c65eddeb14530"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\WinRT Intellisense Desktop - Other Languages-x86_en-us.msi",
+    "bytes": 602112,
+    "sha256": "80731689bb710c4153d16fe735b08cd2d09a3bb13d00b3304f3a32d8c7357f11"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\WinRT Intellisense IoT - en-us-x86_en-us.msi",
+    "bytes": 446464,
+    "sha256": "bb80431bb59b5023eb924c54a00de15b11d3d5b10f83a5d7b1756fd5c07d6dbf"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\WinRT Intellisense IoT - Other Languages-x86_en-us.msi",
+    "bytes": 446464,
+    "sha256": "048b99a08fc32065a157877586c6c1ccb86d2fce4dbbd739fe1aa930d7364b5c"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\WinRT Intellisense Mobile - en-us-x86_en-us.msi",
+    "bytes": 454656,
+    "sha256": "a5c70498968d1fa2a7b3f4ad5a04a723d67c6817e55158e251ef0ba41ed535a2"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\WinRT Intellisense PPI - en-us-x86_en-us.msi",
+    "bytes": 446464,
+    "sha256": "4a60fcdab9658a18e7291624be6fbb2555cfbb945e851bd0ab12f226a010c5b9"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\WinRT Intellisense PPI - Other Languages-x86_en-us.msi",
+    "bytes": 446464,
+    "sha256": "61dd3b1e66a498389b249ef35e90cd733580e43b24ef4eefeadcc5a09a4ec853"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\WinRT Intellisense UAP - en-us-x86_en-us.msi",
+    "bytes": 483328,
+    "sha256": "b7310381c1f386b15bf79cf54882be8efb900bf3b85ddfd0624ede804bbea62f"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Installers\\WinRT Intellisense UAP - Other Languages-x86_en-us.msi",
+    "bytes": 552960,
+    "sha256": "78911fe465324e5ca822692a944a6413d98577065b6a0a189a99251331463e29"
+  },
+  {
+    "path": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral\\Redistributable\\10.1.0.0\\UAPSDKAddOn-x86.msi",
+    "bytes": 237568,
+    "sha256": "5cd04713af745840b1dab8da280b97b774ecf08065987eae0a9b95ee8ea838d8"
+  }
+]

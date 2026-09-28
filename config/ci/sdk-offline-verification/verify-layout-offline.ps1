@@ -13,34 +13,81 @@ $adapters = @(Get-NetAdapter -IncludeHidden | Where-Object { $_.Status -eq 'Up' 
 if ($adapters.Count -eq 0) { throw 'No adapters to isolate; inspect runner networking' }
 $adapters | Select-Object Name,InterfaceDescription,InterfaceGuid,Status | ConvertTo-Json | Set-Content (Join-Path $Receipts 'network-before.json')
 $results = @()
-function Run-Verify([string]$Case) {
-  if (@(Get-NetAdapter -IncludeHidden | Where-Object { $_.Status -eq 'Up' }).Count -ne 0) { throw 'Network adapter became active during offline verification' }
+function Record-TrustStores([string]$Phase) {
+  $certificates=@(foreach($location in @('CurrentUser','LocalMachine')){
+    foreach($store in @('Root','CA')){
+      foreach($certificate in Get-ChildItem "Cert:\$location\$store"){
+        @{location=$location;store=$store;subject=$certificate.Subject;issuer=$certificate.Issuer;thumbprint=$certificate.Thumbprint;sha256=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($certificate.RawData)).ToLowerInvariant();notBefore=$certificate.NotBefore.ToUniversalTime().ToString('o');notAfter=$certificate.NotAfter.ToUniversalTime().ToString('o')}
+      }
+    }
+  })
+  @{utc=[DateTime]::UtcNow.ToString('o');certificates=$certificates} | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $Receipts "trust-stores-$Phase.json")
+}
+function Assert-LayoutUnchanged([string]$Phase) {
+  $manifestPath=Join-Path $PSScriptRoot 'expected-layout-inventory.json'
+  if((Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant() -ne 'dadf6f6a0ced2a3a8943c98430d61a662671246d0ad0553b1bdd3d1f70097583'){throw 'Expected inventory identity mismatch'}
+  $expected=@(Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json)
+  if($expected.Count -ne 465){throw 'Expected inventory count mismatch'}
+  $byPath=[Collections.Generic.Dictionary[string,object]]::new([StringComparer]::OrdinalIgnoreCase)
+  foreach($entry in $expected){$byPath.Add($entry.path.Replace('\','/'),$entry)}
+  $actual=@(Get-ChildItem -LiteralPath $Layout -File -Recurse -Force)
+  if($actual.Count -ne 465){throw "Layout file count changed: $Phase"}
+  $total=0L
+  foreach($file in $actual){
+    if($file.Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'Unexpected layout reparse point'}
+    $relative=[IO.Path]::GetRelativePath($Layout,$file.FullName).Replace('\','/')
+    if(-not $byPath.ContainsKey($relative)){throw "Unexpected layout path: $relative"}
+    $entry=$byPath[$relative]
+    if($file.Length -ne $entry.bytes -or (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -ne $entry.sha256){throw "Layout bytes changed: $relative"}
+    $byPath.Remove($relative) | Out-Null
+    $total+=$file.Length
+  }
+  if($byPath.Count){throw 'Expected layout paths missing'}
+  @{phase=$Phase;utc=[DateTime]::UtcNow.ToString('o');files=$actual.Count;bytes=$total;inventorySha256='dadf6f6a0ced2a3a8943c98430d61a662671246d0ad0553b1bdd3d1f70097583';exactPathsSizesHashes=$true} | ConvertTo-Json | Set-Content (Join-Path $Receipts "layout-integrity-$Phase.json")
+}
+function Run-Verify([string]$Case,[switch]$ConnectedPreparation) {
+  if (!$ConnectedPreparation -and @(Get-NetAdapter -IncludeHidden | Where-Object { $_.Status -eq 'Up' }).Count -ne 0) { throw 'Network adapter became active during offline verification' }
   $caseRoot = Join-Path $Receipts $Case
   New-Item -ItemType Directory -Path $caseRoot | Out-Null
+  $oldTemp=$env:TEMP; $oldTmp=$env:TMP
   $env:TEMP = $caseRoot
   $env:TMP = $caseRoot
-  $process = Start-Process -FilePath $Bootstrapper -ArgumentList @('--layout', ('"'+$Layout+'"'), '--verify', '--quiet', '--wait') -PassThru -WindowStyle Hidden -RedirectStandardOutput (Join-Path $caseRoot 'stdout.txt') -RedirectStandardError (Join-Path $caseRoot 'stderr.txt')
+  $process=$null
+  @{case=$Case;connectedPreparation=[bool]$ConnectedPreparation;startedUtc=[DateTime]::UtcNow.ToString('o');deadlineSeconds=600;completed=$false} | ConvertTo-Json | Set-Content (Join-Path $caseRoot 'started.json')
   try {
-    if (!$process.WaitForExit(600000)) { throw "Offline verify timed out: $Case" }
+    $process = Start-Process -FilePath $Bootstrapper -ArgumentList @('--layout', ('"'+$Layout+'"'), '--verify', '--quiet', '--wait') -PassThru -WindowStyle Hidden -RedirectStandardOutput (Join-Path $caseRoot 'stdout.txt') -RedirectStandardError (Join-Path $caseRoot 'stderr.txt')
+    if (!$process.WaitForExit(600000)) { throw "Layout verify timed out: $Case" }
     $process.Refresh()
-    if (@(Get-NetAdapter -IncludeHidden | Where-Object { $_.Status -eq 'Up' }).Count -ne 0) { throw 'Offline verification lost network isolation' }
-    $caseResult=[ordered]@{case=$Case;exitCode=$process.ExitCode;networkAdaptersDown=$true}
+    if (!$ConnectedPreparation -and @(Get-NetAdapter -IncludeHidden | Where-Object { $_.Status -eq 'Up' }).Count -ne 0) { throw 'Offline verification lost network isolation' }
+    $caseResult=[ordered]@{case=$Case;exitCode=$process.ExitCode;networkAdaptersDown=(!$ConnectedPreparation);connectedPreparation=[bool]$ConnectedPreparation}
     $caseResult | ConvertTo-Json | Set-Content (Join-Path $caseRoot 'result.json')
     return $caseResult
   } catch {
     @{case=$Case;error=$_.Exception.Message;completed=$false} | ConvertTo-Json | Set-Content (Join-Path $caseRoot 'failure.json')
     throw
   } finally {
-    if (!$process.HasExited) {
+    $env:TEMP=$oldTemp; $env:TMP=$oldTmp
+    if ($process -and !$process.HasExited) {
       & "$env:WINDIR\System32\taskkill.exe" /PID $process.Id /T /F | Out-Null
       $killCode=$LASTEXITCODE
       $exited=$process.WaitForExit(10000)
       @{taskkillExitCode=$killCode;rootExited=$exited;descendantExitVerified=$false} | ConvertTo-Json | Set-Content (Join-Path $caseRoot 'termination.json')
       if ($killCode -ne 0 -or !$exited) { Write-Warning 'Verifier termination unconfirmed; restore CI networking without claiming offline success' }
     }
+    if($process){$process.Dispose()}
   }
 }
 try {
+  Assert-LayoutUnchanged 'before-connected-preparation'
+  Record-TrustStores 'before-connected-preparation'
+  try {
+    $result=Run-Verify 'connected-preparation' -ConnectedPreparation
+    $results+=$result
+    if($result.exitCode -ne 0){throw 'Connected original verification failed; offline qualification not attempted'}
+  } finally {
+    Record-TrustStores 'after-connected-preparation'
+    Assert-LayoutUnchanged 'after-connected-preparation'
+  }
   foreach ($adapter in $adapters) { Disable-NetAdapter -InputObject $adapter -Confirm:$false -ErrorAction Stop }
   if (@(Get-NetAdapter -IncludeHidden | Where-Object { $_.Status -eq 'Up' }).Count -ne 0) { throw 'Could not isolate network adapters' }
   $result = Run-Verify 'original'
@@ -71,7 +118,7 @@ try {
   try {
     [IO.File]::WriteAllBytes($catalog,$originalCatalog)
     $results | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $Receipts 'verification-results.json')
-    @{manifestSignatureVerified=$false;reason='Classify original and tampered logs before making a cryptographic claim';productInstalled=$false} | ConvertTo-Json | Set-Content (Join-Path $Receipts 'trust-claims.json')
+    @{connectedPreparationRequired=$true;manifestSignatureVerified=$false;reason='Classify original and tampered logs before making a cryptographic claim';productInstalled=$false} | ConvertTo-Json | Set-Content (Join-Path $Receipts 'trust-claims.json')
   } finally {
     foreach ($adapter in $adapters) { Enable-NetAdapter -InputObject $adapter -Confirm:$false -ErrorAction Continue }
     $restoreDeadline=[DateTime]::UtcNow.AddSeconds(30)
