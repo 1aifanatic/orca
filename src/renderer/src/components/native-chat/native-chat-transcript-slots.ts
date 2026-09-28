@@ -15,6 +15,7 @@ import {
 } from '../../../../shared/native-chat-types'
 import type { NativeChatTurnStatus } from '../../../../shared/native-chat-turn-status'
 import {
+  nativeChatRowReportsFailure,
   nativeChatTurnFold,
   type NativeChatTurnFoldRow
 } from '../../../../shared/native-chat-turn-fold'
@@ -97,9 +98,10 @@ export function buildNativeChatTranscriptSlots(
       rendersProse: content.markdown.length > 0 || content.hasImages,
       // The raw blocks, not the renderable ones: a childless roster draws no row
       // and its plain-text twin is then the only record the spawn happened.
-      outlivesTurn: message.blocks.some(
-        (block) => isSubagentGroupBlock(block) || isBackgroundTaskBlock(block)
-      )
+      outlivesTurn:
+        message.blocks.some(
+          (block) => isSubagentGroupBlock(block) || isBackgroundTaskBlock(block)
+        ) || nativeChatRowReportsFailure(message.blocks)
     }
   })
   // Liveness is the turn's, not any one call's: the run at the frontier stays

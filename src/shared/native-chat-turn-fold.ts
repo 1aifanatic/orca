@@ -9,7 +9,7 @@
 // Shared because desktop and mobile both draw this disclosure, and a fold that
 // hides a different row on each surface is the same bug twice.
 
-import type { NativeChatRole } from './native-chat-types'
+import type { NativeChatBlock, NativeChatRole } from './native-chat-types'
 
 /** What the fold needs to know about one transcript row. Deliberately not a
  *  `NativeChatMessage`: each surface derives "renders prose" through its own
@@ -20,10 +20,23 @@ export type NativeChatTurnFoldRow = {
   role: NativeChatRole
   /** Whether the row draws prose — the only thing that can be an answer. */
   rendersProse: boolean
-  /** Whether the row carries work that outlives the turn that started it: a
-   *  spawn roster or a background task. That row is the durable report of how
-   *  the work ended — often the only one — so it never folds. */
+  /** Whether the row outlives the turn that started it: a spawn roster, a
+   *  background task, or a reported failure (`nativeChatRowReportsFailure`).
+   *  That row is the durable report of how the work ended — often the only
+   *  one — so it never folds. */
   outlivesTurn: boolean
+}
+
+/** A failure row — the agent stopped, the session did not survive a restart — says how the turn
+ *  or the chat ended and what to do next, so it is never the turn's hidden work. A provider retry
+ *  is not a failure yet. */
+export function nativeChatRowReportsFailure(blocks: readonly NativeChatBlock[]): boolean {
+  return blocks.some(
+    (block) =>
+      block.type === 'text' &&
+      block.failure !== undefined &&
+      block.failure.kind !== 'providerRetrying'
+  )
 }
 
 export type NativeChatTurnFold = {
