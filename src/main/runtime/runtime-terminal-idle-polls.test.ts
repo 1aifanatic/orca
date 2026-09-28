@@ -72,6 +72,7 @@ describe('RuntimeTerminalIdlePolls timer budget', () => {
       quiescenceMs: 1500,
       getTabTitle: () => null,
       getForegroundProcess: () => null,
+      hasCommandPainted: () => true,
       getAdoptedPtyIdleStatus: () => null,
       getPaneAgent: () => null,
       getFirstPartyAgentStatus: () => null,
@@ -109,6 +110,7 @@ describe('RuntimeTerminalIdlePolls timer budget', () => {
       quiescenceMs: 1500,
       getTabTitle: () => null,
       getForegroundProcess: () => null,
+      hasCommandPainted: () => true,
       getAdoptedPtyIdleStatus: () => null,
       getPaneAgent: () => null,
       getFirstPartyAgentStatus: () => null,
@@ -136,6 +138,7 @@ describe('RuntimeTerminalIdlePolls timer budget', () => {
       quiescenceMs: 1500,
       getTabTitle: () => null,
       getForegroundProcess: () => null,
+      hasCommandPainted: () => true,
       getAdoptedPtyIdleStatus: () => null,
       getPaneAgent: () => null,
       getFirstPartyAgentStatus: () => null,
@@ -168,6 +171,7 @@ describe('RuntimeTerminalIdlePolls timer budget', () => {
         new Promise<string | null>((resolve) => {
           gates.push(resolve)
         }),
+      hasCommandPainted: () => true,
       getAdoptedPtyIdleStatus: () => null,
       getPaneAgent: () => null,
       getFirstPartyAgentStatus: () => null,
@@ -226,6 +230,7 @@ describe('RuntimeTerminalIdlePolls rendered-screen blocked prompts', () => {
       getTabTitle: () => null,
       // Unknown agent + quiet pane: without the screen check this would settle idle.
       getForegroundProcess: () => (foreground ? Promise.resolve(foreground) : null),
+      hasCommandPainted: () => true,
       getAdoptedPtyIdleStatus: () => null,
       getPaneAgent: () => agent,
       getFirstPartyAgentStatus: () => null,
@@ -367,12 +372,20 @@ describe('RuntimeTerminalIdlePolls quiet foreground for a launched agent', () =>
     vi.useRealTimers()
   })
 
-  function createPolls(agent: TuiAgent, resolved: string[]): RuntimeTerminalIdlePolls {
+  function createPolls(
+    agent: TuiAgent,
+    resolved: string[],
+    foregroundReads: string[] = []
+  ): RuntimeTerminalIdlePolls {
     return new RuntimeTerminalIdlePolls({
       intervalMs: INTERVAL_MS,
       quiescenceMs: QUIESCENCE_MS,
       getTabTitle: () => null,
-      getForegroundProcess: () => Promise.resolve(TUI_AGENT_CONFIG[agent].expectedProcess),
+      getForegroundProcess: (ptyId) => {
+        foregroundReads.push(ptyId)
+        return Promise.resolve(TUI_AGENT_CONFIG[agent].expectedProcess)
+      },
+      hasCommandPainted: () => true,
       getAdoptedPtyIdleStatus: () => null,
       getPaneAgent: () => agent,
       getFirstPartyAgentStatus: () => null,
@@ -387,7 +400,8 @@ describe('RuntimeTerminalIdlePolls quiet foreground for a launched agent', () =>
   // every launched agent failed `worker start` at agent_readiness after 60s (STA-7440).
   it('settles an agent with no other rest signal once it has painted and gone quiet', async () => {
     const resolved: string[] = []
-    const polls = createPolls('amp', resolved)
+    const foregroundReads: string[] = []
+    const polls = createPolls('amp', resolved, foregroundReads)
     const pty = makePty('pty-amp')
     const leaf = makeLeaf('tab-amp')
     polls.startPty(makeWaiter('pty'), pty)
@@ -403,6 +417,8 @@ describe('RuntimeTerminalIdlePolls quiet foreground for a launched agent', () =>
     // The next sweep lands inside the quiet window measured from that paint.
     await vi.advanceTimersByTimeAsync(INTERVAL_MS / 2)
     expect(resolved).toEqual([])
+    // A pane that cannot settle yet costs no process inspection.
+    expect(foregroundReads).toEqual([])
 
     await vi.advanceTimersByTimeAsync(INTERVAL_MS)
     expect(resolved).toEqual(['pty', 'leaf'])

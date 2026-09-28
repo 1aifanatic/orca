@@ -29,13 +29,18 @@ import {
  * inverted that — `0 >= quiescenceMs` is false forever, so an adopted pane that never
  * emitted could not settle no matter how long the caller waited.
  * Why not on `after-paint`: that pane runs a known agent, whose TUI must paint before it can
- * take input, so no output yet means it is still booting.
+ * take input, so until the command has painted it is still booting. The shell's prompt and
+ * echoed command line are not the agent's paint (see terminal-command-paint.ts).
  */
 function isQuietForQuiescence(
   lastOutputAt: number | null,
   quiescenceMs: number,
-  lane: QuietForegroundLane
+  lane: QuietForegroundLane,
+  commandPainted: () => boolean
 ): boolean {
+  if (lane === 'after-paint' && !commandPainted()) {
+    return false
+  }
   if (lastOutputAt === null) {
     return lane === 'open'
   }
@@ -47,6 +52,8 @@ import type { RuntimeLeafRecord, RuntimePtyWorktreeRecord } from './runtime-term
 type RuntimeTerminalIdlePollDependencies = TuiIdleEvidenceSource & {
   intervalMs: number
   getForegroundProcess(ptyId: string): Promise<string | null> | null
+  /** Whether the pane's running command has painted anything of its own. */
+  hasCommandPainted(ptyId: string): boolean
   /** The pane's rendered viewport, or null when the runtime holds no screen model for it. */
   readVisibleScreen(ptyId: string): Promise<string | null> | null
   /** Re-read the record the waiter registered against; see `sample` below. */
@@ -130,7 +137,10 @@ export class RuntimeTerminalIdlePolls {
         ptyId: pty.ptyId,
         ready: () => buildPtyTerminalWaitResult(handle, 'tui-idle', pty),
         blocked: (reason) => buildPtyTerminalWaitBlockedResult(handle, 'tui-idle', pty, reason),
-        isQuiet: (lane) => isQuietForQuiescence(pty.lastOutputAt, this.deps.quiescenceMs, lane)
+        isQuiet: (lane) =>
+          isQuietForQuiescence(pty.lastOutputAt, this.deps.quiescenceMs, lane, () =>
+            this.deps.hasCommandPainted(pty.ptyId)
+          )
       }
     }
     // Why re-read: `syncWindowGraph` rebuilds `this.leaves` with fresh objects on every
@@ -146,7 +156,13 @@ export class RuntimeTerminalIdlePolls {
       ptyId: leaf.ptyId,
       ready: () => buildTerminalWaitResult(handle, 'tui-idle', live()),
       blocked: (reason) => buildTerminalWaitBlockedResult(handle, 'tui-idle', live(), reason),
-      isQuiet: (lane) => isQuietForQuiescence(live().lastOutputAt, this.deps.quiescenceMs, lane)
+      isQuiet: (lane) =>
+        isQuietForQuiescence(
+          live().lastOutputAt,
+          this.deps.quiescenceMs,
+          lane,
+          () => !leaf.ptyId || this.deps.hasCommandPainted(leaf.ptyId)
+        )
     }
   }
 
@@ -187,7 +203,10 @@ export class RuntimeTerminalIdlePolls {
         this.settle(entry, sample.ready())
         return
       }
-      if (verdict.quietForeground !== 'closed' && ptyId && !entry.foregroundPollInFlight) {
+      const lane = verdict.quietForeground
+      // Why quiet before the read too: a streaming or not-yet-painted pane cannot settle, so it
+      // must not pay a process inspection every tick for a whole turn.
+      if (lane !== 'closed' && ptyId && !entry.foregroundPollInFlight && sample.isQuiet(lane)) {
         const foregroundRead = this.deps.getForegroundProcess(ptyId)
         if (!foregroundRead) {
           return
@@ -195,7 +214,7 @@ export class RuntimeTerminalIdlePolls {
         entry.foregroundPollInFlight = true
         startedForegroundPoll = true
         const foreground = await foregroundRead
-        if (foreground && !isShellProcess(foreground) && sample.isQuiet(verdict.quietForeground)) {
+        if (foreground && !isShellProcess(foreground) && sample.isQuiet(lane)) {
           this.settle(entry, sample.ready())
         }
       }

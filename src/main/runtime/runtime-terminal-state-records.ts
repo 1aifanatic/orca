@@ -87,6 +87,9 @@ export type RuntimePtyWorktreeRecord = RuntimeTerminalTailState & {
   title: string | null
   titleUpdatedAt: number | null
   lastOutputAt: number | null
+  /** See terminal-command-paint.ts; absent until the shell marks a command start. */
+  commandStartedAt?: number | null
+  commandPaintedAt?: number | null
 }
 
 export type RuntimePtyTabCloseAuthority = {
