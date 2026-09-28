@@ -90,7 +90,7 @@ export function nativeChatTurnFold({
   for (const [index, row] of rows.entries()) {
     const { turnKey } = row
     // Outside the fold by construction: the reader's own message anchors the
-    // turn, and a roster or background-task row outlives it.
+    // turn, and a roster, background-task or failure row outlives it.
     if (
       turnKey === undefined ||
       row.role === 'user' ||
