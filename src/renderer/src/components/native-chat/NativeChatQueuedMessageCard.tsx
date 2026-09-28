@@ -12,7 +12,10 @@ import { translate } from '@/i18n/i18n'
 import { structuredAgentSessionAttemptFailureParts } from '../../../../shared/structured-agent-session-send-disposition'
 import { DISPATCH_REJECTED_CANCELLED } from '../../../../shared/structured-agent-session-dispatch-rejection'
 import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
-import { QUEUED_MESSAGE_PAUSED_SEND_FAILED } from '../../../../shared/agent-session-wire'
+import {
+  QUEUED_MESSAGE_PAUSED_SEND_FAILED,
+  QUEUED_MESSAGE_PAUSED_STOPPED
+} from '../../../../shared/agent-session-wire'
 import { isMacPlatform } from './native-chat-shortcut'
 import type { QueuedMessageCard } from './structured-agent-session-queued-cards'
 
@@ -36,16 +39,20 @@ export function queuedMessageCardCaption(card: QueuedMessageCard): string | null
         })
       )
     case 'paused':
-      // Markers localize; an unknown one (newer host) is a plain pause, never shown raw.
-      return card.pausedReason === QUEUED_MESSAGE_PAUSED_SEND_FAILED
-        ? translate(
-            'components.native-chat.queuedMessages.pausedSendFailed',
-            "Couldn't send — press Send to retry."
-          )
-        : translate(
-            'components.native-chat.queuedMessages.pausedHold',
-            'Paused — sends after your next message'
-          )
+      // Markers localize; an absent or unknown one (newer host) is a plain pause, never shown raw.
+      if (card.pausedReason === QUEUED_MESSAGE_PAUSED_STOPPED) {
+        return translate(
+          'components.native-chat.queuedMessages.pausedHold',
+          'Paused — sends after your next message'
+        )
+      }
+      if (card.pausedReason === QUEUED_MESSAGE_PAUSED_SEND_FAILED) {
+        return translate(
+          'components.native-chat.queuedMessages.pausedSendFailed',
+          "Couldn't send — press Send to retry."
+        )
+      }
+      return translate('components.native-chat.queuedMessages.paused', 'Paused')
     case 'behind-returned':
       return translate(
         'components.native-chat.queuedMessages.behindReturnedHold',

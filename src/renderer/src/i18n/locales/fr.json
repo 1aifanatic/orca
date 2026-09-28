@@ -17786,7 +17786,8 @@
         "editMessage": "Modifier le message",
         "turnOffQueueing": "Désactiver la file d'attente",
         "withdrawnHold": "Arrêté avant l'envoi",
-        "pausedSendFailed": "Envoi impossible. Appuyez sur Envoyer pour réessayer."
+        "pausedSendFailed": "Envoi impossible. Appuyez sur Envoyer pour réessayer.",
+        "paused": "En pause"
       }
     },
     "tab": {

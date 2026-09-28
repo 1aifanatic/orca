@@ -17687,7 +17687,8 @@
         "editMessage": "编辑消息",
         "turnOffQueueing": "关闭排队",
         "withdrawnHold": "在发送前已停止",
-        "pausedSendFailed": "无法发送。点按发送以重试。"
+        "pausedSendFailed": "无法发送。点按发送以重试。",
+        "paused": "已暂停"
       }
     },
     "tab": {

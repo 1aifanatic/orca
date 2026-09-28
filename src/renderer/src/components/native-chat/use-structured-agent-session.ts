@@ -182,11 +182,11 @@ export function useStructuredAgentSession(args: {
           transportState.backgroundTasks.isMonitoring ||
           outbox.length
         ),
-        send: (sent) =>
+        send: (command) =>
           write<AgentSessionConversationCommandResult>(
             'agentSession.conversationCommand',
             'agentSession.conversationCommand',
-            { command: sent }
+            { command }
           )
       }),
     journalItems: transportState.journalItems,

@@ -64,20 +64,32 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('NativeChatQueuedMessageList', () => {
-  it('renders nothing when the host holds no drafts', () => {
+  it('renders only an empty live region when the host holds no drafts', () => {
     const { container } = renderList(controller([]))
-    expect(container.firstChild).toBeNull()
+    expect(screen.queryByRole('list')).toBeNull()
+    expect(container.querySelector('[aria-live="polite"]')?.childElementCount).toBe(0)
   })
 
-  it('is a labeled polite live list with one row per draft, in order', () => {
+  it('the first card appears inside a live region that was already mounted', () => {
+    const { container, rerender } = renderList(controller([]))
+    const region = container.querySelector('[aria-live="polite"]')
+    rerender(
+      <TooltipProvider delayDuration={0}>
+        <NativeChatQueuedMessageList controller={controller([card({ messageId: 'draft-1' })])} />
+      </TooltipProvider>
+    )
+    expect(container.querySelector('[aria-live="polite"]')).toBe(region)
+    expect(region?.contains(screen.getByRole('list', { name: 'Queued messages' }))).toBe(true)
+  })
+
+  it('is a labeled list with one row per draft, in order', () => {
     renderList(
       controller([
         card({ messageId: 'draft-1', position: 1 }),
         card({ messageId: 'draft-2', position: 2 })
       ])
     )
-    const list = screen.getByRole('list', { name: 'Queued messages' })
-    expect(list.getAttribute('aria-live')).toBe('polite')
+    screen.getByRole('list', { name: 'Queued messages' })
     const rows = screen.getAllByRole('listitem')
     expect(rows).toHaveLength(2)
     expect(rows[0]?.textContent).toContain('text of draft-1')
@@ -146,8 +158,8 @@ describe('NativeChatQueuedMessageList', () => {
     )
   })
 
-  it('a paused card says the queue resumes with the next message and offers Send', () => {
-    renderList(controller([card({ messageId: 'held', hold: 'paused' })]))
+  it("a Stop's paused card says the queue resumes with the next message and offers Send", () => {
+    renderList(controller([card({ messageId: 'held', hold: 'paused', pausedReason: 'stopped' })]))
     expect(screen.getByRole('listitem').textContent).toContain(
       'Paused — sends after your next message'
     )
@@ -180,13 +192,17 @@ describe('NativeChatQueuedMessageList', () => {
     expect(screen.getAllByRole('button', { name: 'Send' }).length).toBeGreaterThan(0)
   })
 
-  it('an unknown pause marker from a newer host reads as a plain pause, never raw', () => {
+  it('an absent or unknown pause marker reads as a plain pause, never raw', () => {
     renderList(
-      controller([card({ messageId: 'future', hold: 'paused', pausedReason: 'some_newer_marker' })])
+      controller([
+        card({ messageId: 'future', hold: 'paused', pausedReason: 'some_newer_marker' }),
+        card({ messageId: 'bare', hold: 'paused', position: 2 })
+      ])
     )
-    const row = screen.getByRole('listitem')
-    expect(row.textContent).toContain('Paused')
-    expect(row.textContent).not.toContain('some_newer_marker')
+    for (const row of screen.getAllByRole('listitem')) {
+      expect(row.querySelectorAll('p')[1]?.textContent).toBe('Paused')
+    }
+    expect(screen.getAllByRole('listitem')[0]?.textContent).not.toContain('some_newer_marker')
   })
 
   it('a draft behind a returned card says a message ahead needs attention', () => {

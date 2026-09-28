@@ -15085,7 +15085,8 @@
         "editMessage": "Editar mensaje",
         "turnOffQueueing": "Desactivar la cola",
         "withdrawnHold": "Detenido antes de enviarse",
-        "pausedSendFailed": "No se pudo enviar. Pulsa Enviar para reintentar."
+        "pausedSendFailed": "No se pudo enviar. Pulsa Enviar para reintentar.",
+        "paused": "En pausa"
       }
     },
     "tab": {

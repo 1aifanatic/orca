@@ -17722,7 +17722,8 @@
         "editMessage": "メッセージを編集",
         "turnOffQueueing": "キューへの追加をオフにする",
         "withdrawnHold": "送信前に停止されました",
-        "pausedSendFailed": "送信できませんでした。「送信」を押して再試行してください。"
+        "pausedSendFailed": "送信できませんでした。「送信」を押して再試行してください。",
+        "paused": "一時停止中"
       }
     },
     "tab": {

@@ -17852,7 +17852,8 @@
         "alreadySent": "This message was already sent.",
         "editAlreadySent": "Already sent — your text is still in the composer.",
         "withdrawnHold": "Stopped before it was sent",
-        "pausedSendFailed": "Couldn't send — press Send to retry."
+        "pausedSendFailed": "Couldn't send — press Send to retry.",
+        "paused": "Paused"
       }
     },
     "tab": {
