@@ -103,11 +103,13 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
       // A real journal's sequence only ever advances, so the feed's projection
       // cache must miss on every publish here: this test is about the rename.
       let sequence = 0
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the status feed reads only these journal members.
       const journal = {
         snapshot: () => ({ items }),
         lastActivityAt: () => 1,
         isReadOnly: false,
-        cursor: () => ({ epoch: 1, sequence: (sequence += 1) })
+        cursor: () => ({ epoch: 1, sequence: (sequence += 1) }),
+        saveListingStatus: () => undefined
       } as unknown as AgentSessionJournal
       const pending: Promise<void>[] = []
       const observe = vi.fn((summary, options) => {
@@ -190,10 +192,12 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
     const { deps, setDisplayName, setRenameError } = makeDeps({
       getRepo: () => ({ id: REPO_ID, kind: 'folder', path: '/workspace/platform' }) as Repo
     })
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the status feed reads only these journal members.
     const journal = {
       isReadOnly: false,
       lastActivityAt: () => 1,
       cursor: () => ({ epoch: 1, sequence: 1 }),
+      saveListingStatus: () => undefined,
       snapshot: () => ({
         items: [
           { body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'Fix auth' }] } },
