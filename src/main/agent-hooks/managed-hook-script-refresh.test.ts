@@ -25,9 +25,12 @@ beforeEach(() => {
   previousUserDataPath = process.env.ORCA_USER_DATA_PATH
   isolatedUserDataDir = mkdtempSync(join(tmpdir(), 'orca-hook-refresh-user-data-'))
   process.env.ORCA_USER_DATA_PATH = isolatedUserDataDir
+  // Why: the Codex installer below would otherwise start a real `codex app-server`.
+  stubCodexTrustSessionsForTests()
 })
 
 afterEach(() => {
+  restoreCodexTrustSessionsForTests()
   if (previousUserDataPath === undefined) {
     delete process.env.ORCA_USER_DATA_PATH
   } else {
@@ -60,6 +63,10 @@ import {
   MANAGED_AGENT_HOOK_SCRIPT_REFRESHERS
 } from './managed-agent-hook-registry'
 import { ClaudeHookService } from '../claude/hook-service'
+import {
+  restoreCodexTrustSessionsForTests,
+  stubCodexTrustSessionsForTests
+} from '../codex/hook-service-test-harness'
 
 async function withPlatform<T>(platform: NodeJS.Platform, run: () => T | Promise<T>): Promise<T> {
   const original = Object.getOwnPropertyDescriptor(process, 'platform')
@@ -146,11 +153,11 @@ describe('managed hook script refresh', () => {
     delete process.env.GROK_HOME
     delete process.env.KIMI_CODE_HOME
     try {
-      await withPlatform('win32', () => {
-        for (const [, install] of MANAGED_AGENT_HOOK_INSTALLERS) {
-          install()
-        }
-      })
+      // Why await: Codex's install takes a cross-process lock before it writes, so
+      // its script lands only after the install settles.
+      await withPlatform('win32', () =>
+        Promise.allSettled(MANAGED_AGENT_HOOK_INSTALLERS.map(([, install]) => install()))
+      )
       const hooksDir = join(home, '.orca', 'agent-hooks')
       const files = readdirSync(hooksDir)
       expect(files.length).toBeGreaterThan(0)
