@@ -55,7 +55,7 @@ it('preserves configured hooks, architecture, names, and PR compression with exa
   })
   expect(args).toEqual([
     '--config',
-    'config/electron-builder.config.cjs',
+    'config/electron-builder-pr-linux.config.cjs',
     '--linux',
     'deb',
     '--x64',
@@ -66,11 +66,7 @@ it('preserves configured hooks, architecture, names, and PR compression with exa
     '--config.directories.output',
     '/out with spaces',
     '--config.deb.compression=gz',
-    '--config.rpm.compression=gzip',
-    '--config.deb.fpm=--deb-compression-level',
-    '--config.deb.fpm=1',
-    '--config.rpm.fpm=--rpm-compression-level',
-    '--config.rpm.fpm=1'
+    '--config.rpm.compression=gzip'
   ])
   expect(() => linuxFormatArguments({ format: 'zip' })).toThrow('Unsupported Linux package format')
 })
