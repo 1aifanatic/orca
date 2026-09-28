@@ -108,13 +108,11 @@ describe("the Codex main agent turn, settled from Codex's rollout", () => {
   })
 
   // Shapes as Codex writes them: `turn_aborted` carries its `TurnAbortReason` in snake_case.
-  function marker(
-    type: string,
-    turnId: string,
-    reason: string | undefined = 'interrupted'
-  ): string {
+  function marker(type: string, turnId: string, reason: string | null = 'interrupted'): string {
     const payload =
-      type === 'turn_aborted' ? { type, turn_id: turnId, reason } : { type, turn_id: turnId }
+      type !== 'turn_aborted' || reason === null
+        ? { type, turn_id: turnId }
+        : { type, turn_id: turnId, reason }
     return `${JSON.stringify({ type: 'event_msg', payload })}\n`
   }
 
@@ -157,11 +155,11 @@ describe("the Codex main agent turn, settled from Codex's rollout", () => {
   })
 
   // Codex's app-server reports every abort as an interrupted turn, whatever its reason.
-  it.each<[string | undefined, string]>([
+  it.each<[string | null, string]>([
     ['replaced', 'a new task took the turn over'],
     ['review_ended', 'review mode ended'],
     ['budget_limited', 'the token budget ran out'],
-    [undefined, 'no reason recorded']
+    [null, 'no reason recorded']
   ])('reads an abort for %s (%s) as the same cancel an Interrupt hook reports', (reason) => {
     hook({ hook_event_name: 'UserPromptSubmit', prompt: 'go', turn_id: 'turn-1' })
     appendFileSync(rollout, marker('turn_aborted', 'turn-1', reason))
@@ -290,6 +288,17 @@ describe("the Codex main agent turn, settled from Codex's rollout", () => {
     expect(observed?.hasExplicitPrompt).toBeUndefined()
     seedLegacyAgentStatusForTests(state, observed!)
     expect(codexRolloutNeedsWatch(state, PANE_KEY)).toBe(false)
+  })
+
+  it("keeps watching for a subagent that starts after the main agent's turn ended", () => {
+    hook({ hook_event_name: 'UserPromptSubmit', prompt: 'go', turn_id: 'turn-1' })
+    appendFileSync(rollout, marker('turn_aborted', 'turn-1'))
+    hook({ hook_event_name: 'Interrupt', turn_id: 'turn-1' })
+    expect(codexRolloutNeedsWatch(state, PANE_KEY)).toBe(false)
+
+    // A subagent the cancel left running spawns its own; its rollout is what will end it.
+    hook({ hook_event_name: 'SubagentStart', agent_id: '019fa65f-3144-7151-9c02-cff7a28f316f' })
+    expect(codexRolloutNeedsWatch(state, PANE_KEY)).toBe(true)
   })
 
   it('does not watch a pane with no rollout to read', () => {
