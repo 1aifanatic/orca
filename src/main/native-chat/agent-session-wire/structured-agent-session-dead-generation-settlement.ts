@@ -118,7 +118,7 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
   /** Who a failed start's sentence names. */
   failureTextContext?: AgentSessionFailureWordsContext
   /** The provider never finished starting: the start that failed, keyed by the child's
-   *  generation. Its row is the one the delivery loop writes for the same start. */
+   *  generation, as the delivery loop keys the same start's one row. */
   exitedDuringStartup?: { generation: string | null }
   onError?: (sessionId: string, error: unknown) => void
 }): Promise<boolean> {

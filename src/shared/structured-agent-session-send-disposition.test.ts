@@ -297,6 +297,24 @@ describe('what a refusal shows the user', () => {
     })
   })
 
+  // The pane reads the start from the journal's submission; the message's saved copy never holds it.
+  it('keeps no start on the saved copy of a message a failed start rejected', () => {
+    const result = rejectedWith("Claude couldn't start.", { rejection: { kind: 'startFailed' } })
+    if (!result.ok) {
+      throw new Error('expected rejected submission fixture')
+    }
+    const [saved] = reconcileStructuredAgentSessionOutbox(
+      [{ ...entry, state: 'dispatching' }],
+      [{ ...result.value.submission, rejectedByStartKey: 'generation-2' }]
+    )
+
+    expect(saved?.lastFailure).toEqual({
+      kind: 'rejected',
+      reason: "Claude couldn't start.",
+      rejection: { kind: 'startFailed' }
+    })
+  })
+
   it('keeps a failed request as a fact, not a transport error string', () => {
     const disposition = disposeStructuredAgentSessionSendFailure({
       entries: [entry],
