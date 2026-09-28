@@ -18,6 +18,7 @@ export type RelayLaunchOptions = {
   connectMode: boolean
   detached: boolean
   cliMode: boolean
+  spawnDetachedMode: boolean
   sockPath: string
   endpointDir?: string
   logFile?: string
@@ -31,6 +32,7 @@ export function parseRelayLaunchOptions(argv: string[]): RelayLaunchOptions {
   let connectMode = false
   let detached = false
   let cliMode = false
+  let spawnDetachedMode = false
   let sockPath = ''
   let endpointDir: string | undefined
   let logFile: string | undefined
@@ -48,6 +50,8 @@ export function parseRelayLaunchOptions(argv: string[]): RelayLaunchOptions {
       connectMode = true
     } else if (argv[i] === '--orca-cli') {
       cliMode = true
+    } else if (argv[i] === '--spawn-detached') {
+      spawnDetachedMode = true
     } else if (argv[i] === '--detached') {
       detached = true
     } else if (argv[i] === '--sock-path' && argv[i + 1]) {
@@ -75,6 +79,7 @@ export function parseRelayLaunchOptions(argv: string[]): RelayLaunchOptions {
     connectMode,
     detached,
     cliMode,
+    spawnDetachedMode,
     sockPath,
     endpointDir,
     logFile,

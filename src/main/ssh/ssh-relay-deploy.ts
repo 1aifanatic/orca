@@ -1481,7 +1481,7 @@ function windowsRelayLaunchCommand(
   ripgrepPath?: string
 ): string {
   const relayScript = joinRemotePath(hostPlatform, remoteDir, 'relay.js')
-  // Why: Windows sshd kills the exec channel's process tree on close; WMI re-parents the detached relay to survive.
+  // Why: the relay asks Bun's CreateProcessW FFI to break away from sshd's job.
   const quoted = (value: string): string => `"${value.replace(/"/g, '\\"')}"`
   const relayCommandLine = [
     quoted(nodePath),
@@ -1505,16 +1505,8 @@ function windowsRelayLaunchCommand(
     `1>${quoted(logFile)}`,
     `2>${quoted(errFile)}`
   ].join(' ')
-  const wmiCommandLine = `cmd.exe /d /s /c "${relayCommandLine}"`
-  return commandWithNodePath(
-    hostPlatform,
-    nodePath,
-    remoteDir,
-    [
-      `$result = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = ${powerShellLiteral(wmiCommandLine)}; CurrentDirectory = ${powerShellLiteral(remoteDir)} }`,
-      `if ($result.ReturnValue -ne 0) { throw "Win32_Process.Create failed with $($result.ReturnValue)" }`
-    ].join('; ')
-  )
+  const detachedLaunch = `& ${powerShellLiteral(nodePath)} --no-env-file --config=NUL --no-install ${powerShellLiteral(relayScript)} --spawn-detached --spawn-command ${powerShellLiteral(relayCommandLine)}; if ($LASTEXITCODE -ne 0) { throw "Bun detached launch failed with exit $LASTEXITCODE" }`
+  return commandWithNodePath(hostPlatform, nodePath, remoteDir, [detachedLaunch].join('; '))
 }
 
 async function probeWindowsRelayPipe(

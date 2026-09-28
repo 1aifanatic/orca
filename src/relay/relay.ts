@@ -1,4 +1,3 @@
-
 // Orca Relay — remote-host daemon and reconnect bridge entry point.
 
 import { parseRelayLaunchOptions, readRelayEndpointCredential } from './relay-launch-options'
@@ -7,6 +6,7 @@ import { runRelayOrcaCliChannel } from './relay-orca-cli-channel'
 import { runRelayDaemon } from './relay-daemon'
 import { relayLogLine } from './relay-diagnostic-log'
 import { configureRelayBundledRipgrep } from './relay-bundled-ripgrep'
+import { launchDetachedWindowsRelay } from './windows-detached-launch'
 
 async function main(): Promise<void> {
   const options = parseRelayLaunchOptions(process.argv)
@@ -21,6 +21,19 @@ async function main(): Promise<void> {
       marker === -1 ? [] : process.argv.slice(marker + 1),
       readRelayEndpointCredential(options.credentialFile)
     )
+    return
+  }
+  if (options.spawnDetachedMode) {
+    const marker = process.argv.indexOf('--spawn-detached')
+    const args = marker === -1 ? [] : process.argv.slice(marker + 1)
+    const commandMarker = args.indexOf('--spawn-command')
+    if (commandMarker === -1 || !args[commandMarker + 1]) {
+      throw new Error('Detached launch command is unavailable')
+    }
+    const command = args[commandMarker + 1]
+    const comspec = process.env.ComSpec ?? 'C:\\Windows\\System32\\cmd.exe'
+    const pid = launchDetachedWindowsRelay(comspec, ['/d', '/s', '/c', command], process.cwd())
+    process.stdout.write(`launched ${pid}\n`)
     return
   }
   configureRelayBundledRipgrep(options.ripgrepPath)
