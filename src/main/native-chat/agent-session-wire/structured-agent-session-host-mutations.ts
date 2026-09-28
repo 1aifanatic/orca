@@ -45,7 +45,10 @@ import {
   type MutationPlan
 } from './structured-agent-session-mutation-plans'
 import { maybeQueueStructuredAgentSessionSend } from './structured-agent-session-queued-messages'
-import { stopQueuedWithdrawalFinisher } from './structured-agent-session-queued-stop'
+import {
+  holdQueuedMessagesForStop,
+  releaseStopHeldQueuedMessages
+} from './structured-agent-session-queued-stop'
 import type {
   StructuredAgentSessionCaller,
   StructuredAgentSessionHostDeps,
@@ -136,6 +139,10 @@ export function sendStructuredAgentSessionTurn(
         const accepted = await plan.run(ctx)
         if (accepted.ok) {
           context.wakeDelivery(ctx.sessionId)
+          // The user started a turn, which supersedes any Stop that paused the
+          // queue: its holds lift in this same serialized step, so the held
+          // drafts drain after this turn. A queued accept above never lifts.
+          await releaseStopHeldQueuedMessages(ctx)
         }
         return accepted
       }
@@ -152,7 +159,6 @@ export function cancelStructuredAgentSessionTurn(
     turnId?: string
     scope?: 'background-tasks'
     taskId?: string
-    withdrawQueued?: true
     prompt?: { itemId: string; expectedRevision: number }
   }
 ): Promise<AgentSessionMutationResult<AgentSessionCancelResult>> {
@@ -183,13 +189,12 @@ export function cancelStructuredAgentSessionTurn(
     {
       ...plan,
       run: async (ctx) => {
-        // Holds the withdrawable frontier now; `finish` withdraws it after the
-        // interrupt, for the capable clients that asked.
-        const finish = await stopQueuedWithdrawalFinisher(ctx, {
-          withdrawQueued: params.withdrawQueued,
-          operationId: params.envelope.clientOperationId
-        })
-        // Stop withdraws every queued message first, whatever the start or the child is doing.
+        // Stop's queued-draft step, the same for every client: hold the waiting
+        // frontier NOW — the drain must not send a draft the user is stopping.
+        // The cards stay published as paused; nothing is withdrawn and no text
+        // ever rides the answer.
+        await holdQueuedMessagesForStop(ctx)
+        // Stop withdraws every queued SUBMISSION first, whatever the start or the child is doing.
         const withdrawn = await ctx.journal.rejectQueuedSubmissions(
           ctx.fence,
           DISPATCH_REJECTED_CANCELLED
@@ -199,7 +204,7 @@ export function cancelStructuredAgentSessionTurn(
         if (child?.phase === 'starting') {
           // A start that may never land is the one thing here Stop has to end; the chat stays.
           await context.stopAgent(ctx.sessionId)
-          return finish({ ...named, cancelled: true })
+          return { ok: true, value: { ...named, cancelled: true } }
         }
         // A Stop naming no turn ends nothing more unless the session reads working, by the rule
         // every session list and the chat's own Stop read it.
@@ -211,10 +216,9 @@ export function cancelStructuredAgentSessionTurn(
             ctx.fence
           )
         if (child && inFlight) {
-          const interrupted = await plan.run(ctx)
-          return interrupted.ok ? finish(interrupted.value) : interrupted
+          return plan.run(ctx)
         }
-        return finish({ ...named, cancelled: withdrawn.length > 0 })
+        return { ok: true, value: { ...named, cancelled: withdrawn.length > 0 } }
       }
     },
     openForWrite(context, params.envelope)

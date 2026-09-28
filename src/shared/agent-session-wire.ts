@@ -342,20 +342,10 @@ export function agentSessionSendSubmission(
   return result !== undefined && 'submission' in result ? result.submission : undefined
 }
 
-/** A withdrawn draft handed back with its text, so a Stop or /clear restores it
- *  to the sender's composer instead of losing it. */
-export type AgentSessionWithdrawnQueuedMessage = {
-  messageId: string
-  body: AgentJournalMessageItem
-}
-
 export type AgentSessionCancelResult = {
   /** The turn the client named, echoed so a late reply can be matched; absent when it named none. */
   turnId?: string
   cancelled: boolean
-  /** Present only when the Stop carried `withdrawQueued`; replays answer from
-   *  the drafts' op-stamped tombstones, so a lost acknowledgement loses no text. */
-  withdrawnQueued?: AgentSessionWithdrawnQueuedMessage[]
 }
 
 /** The draft could not be converted into a send; an explicit Send retries it. */
@@ -382,8 +372,10 @@ export type AgentSessionQueuedMessage = {
   returnedReason?: string | null
 }
 
+/** No body: the card leaving the published list IS the outcome, so a lost
+ *  answer needs no re-ask and no text ever rides the wire back. */
 export type AgentSessionQueuedMessageDeleteResult =
-  | { deleted: true; messageId: string; body: AgentJournalMessageItem }
+  | { deleted: true; messageId: string }
   /** `dispatched` means it already became a submission; `missing` covers a
    *  pruned tombstone. Replays answer from tombstone receipts. */
   | { deleted: false; messageId: string; disposition: 'dispatched' | 'withdrawn' | 'missing' }

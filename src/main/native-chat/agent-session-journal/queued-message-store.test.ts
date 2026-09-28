@@ -363,7 +363,7 @@ describe('returned transition (D1/N4)', () => {
 })
 
 describe('withdraw', () => {
-  it('withdraws waiting and returned rows together and hands their bodies back as receipts', async () => {
+  it('withdraws waiting and returned rows together into op-stamped receipts', async () => {
     const journal = await open()
     await queueDraft(journal, 'draft-1', 'first text')
     await queueDraft(journal, 'draft-2', 'second text')
@@ -568,7 +568,7 @@ describe('holds', () => {
     ).resolves.toBeUndefined()
   })
 
-  it('a withdraw naming no drafts touches nothing — a capable Stop with no drafts costs no write', async () => {
+  it('a withdraw naming no drafts touches nothing — a Delete race with no rows costs no write', async () => {
     const journal = await open()
     await journal.close()
     await expect(
@@ -590,6 +590,46 @@ describe('holds', () => {
     expect(journal.queuedMessages.get('draft-1')).toMatchObject({
       state: 'returned',
       holdReason: null
+    })
+  })
+
+  it("releaseHolds lifts only the named reason: Stop's pause dies, send_failed stays", async () => {
+    const journal = await open()
+    await queueDraft(journal, 'draft-1')
+    await queueDraft(journal, 'draft-2')
+    await queueDraft(journal, 'draft-3')
+    await journal.queuedMessages.hold({ messageIds: ['draft-1'], reason: 'stopped' })
+    await journal.queuedMessages.hold({ messageIds: ['draft-2'], reason: 'send_failed' })
+    await journal.queuedMessages.releaseHolds({ reason: 'stopped' })
+    expect(journal.queuedMessages.get('draft-1')?.holdReason).toBeNull()
+    expect(journal.queuedMessages.get('draft-2')?.holdReason).toBe('send_failed')
+    expect(journal.queuedMessages.get('draft-3')?.holdReason).toBeNull()
+  })
+
+  it('a release with nothing to lift changes nothing and fires no commit notification', async () => {
+    const journal = await open()
+    await queueDraft(journal, 'draft-1')
+    await journal.queuedMessages.hold({ messageIds: ['draft-1'], reason: 'send_failed' })
+    const revision = journal.queuedMessages.revision()
+    // Every dispatched user send calls this; one with no stopped holds must not publish.
+    await journal.queuedMessages.releaseHolds({ reason: 'stopped' })
+    expect(journal.queuedMessages.revision()).toBe(revision)
+    expect(journal.queuedMessages.get('draft-1')?.holdReason).toBe('send_failed')
+  })
+
+  it("an insert can be born held — /clear's carry must never be visible unheld", async () => {
+    const journal = await open()
+    const row = await journal.queuedMessages.insert({
+      messageId: 'carried-1',
+      body: message('carried text'),
+      fingerprint: 'fp-carried-1',
+      hostInstance: 'proc-1',
+      holdReason: 'stopped'
+    })
+    expect(row.holdReason).toBe('stopped')
+    expect(journal.queuedMessages.get('carried-1')).toMatchObject({
+      state: 'waiting',
+      holdReason: 'stopped'
     })
   })
 })

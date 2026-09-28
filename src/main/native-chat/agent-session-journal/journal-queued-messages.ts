@@ -24,6 +24,7 @@ import {
   listQueuedMessages,
   pruneQueuedMessages,
   queuedMessagesSettledByOp,
+  releaseQueuedMessageHolds,
   returnDispatchedQueuedMessage,
   withdrawQueuedMessages,
   type QueuedMessageHoldReason,
@@ -87,6 +88,9 @@ export class JournalQueuedMessages {
     body: AgentJournalMessageItem
     fingerprint: string
     hostInstance: string
+    /** Insert already held (a /clear carrying drafts across sessions), so the
+     *  row is never visible to the drain unheld. */
+    holdReason?: QueuedMessageHoldReason
   }): Promise<QueuedMessageRow> {
     return this.deps.serialize(async () => {
       assertJournalWritable(this.deps.readOnly(), this.deps.sessionId)
@@ -140,8 +144,37 @@ export class JournalQueuedMessages {
     })
   }
 
-  /** Compare-and-transition waiting ∪ returned rows to op-stamped tombstones; the
-   *  returned rows' bodies come back too, so a Stop or clear restores their text. */
+  /** Lift one hold reason from every waiting row — Stop's pause lasts until the
+   *  user next starts a turn. Guarded by the cached list, so the sends that have
+   *  nothing to lift (almost all of them) cost no write transaction. */
+  releaseHolds(input: { reason: QueuedMessageHoldReason }): Promise<void> {
+    if (!this.list().some((row) => row.state === 'waiting' && row.holdReason === input.reason)) {
+      return Promise.resolve()
+    }
+    return this.deps.serialize(async () => {
+      assertJournalWritable(this.deps.readOnly(), this.deps.sessionId)
+      const { db } = this.deps.database()
+      db.exec('BEGIN IMMEDIATE')
+      let released: number
+      try {
+        released = releaseQueuedMessageHolds(db, {
+          sessionId: this.deps.sessionId,
+          reason: input.reason
+        })
+        db.exec('COMMIT')
+      } catch (error) {
+        db.exec('ROLLBACK')
+        throw error
+      }
+      if (released > 0) {
+        this.changeRevision++
+        this.deps.committed()
+      }
+    })
+  }
+
+  /** Compare-and-transition waiting ∪ returned rows to op-stamped tombstones,
+   *  kept only so a replay of the settling operation answers "spent". */
   withdraw(input: {
     messageIds: readonly string[]
     settledByOp: string

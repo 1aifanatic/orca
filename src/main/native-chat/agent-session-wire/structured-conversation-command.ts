@@ -20,16 +20,11 @@ import { openWithAgent } from './structured-agent-session-send-preparation'
 import type { StructuredAgentSessionCaller } from './structured-agent-session-host-types'
 import type { StructuredAgentSessionHost } from './structured-agent-session-host'
 import { conversationCommandBlocked } from './structured-conversation-command-admission'
-import {
-  replayWithdrawnQueuedMessages,
-  withdrawClearedSourceQueuedMessages
-} from './structured-agent-session-queued-mutations'
+import { carryQueuedMessagesToClearReplacement } from './structured-agent-session-queued-mutations'
 
 export type ConversationCommandParams = {
   envelope: AgentSessionMutationEnvelope
   command: AgentSessionConversationCommand
-  /** Only a capable caller receives withdrawn text; without it the source keeps its cards. */
-  withdrawQueued?: true
 }
 export type ConversationReplacement = {
   sourceSessionId: string
@@ -45,8 +40,6 @@ export function runStructuredConversationCommand(
   params: ConversationCommandParams
 ): Promise<AgentSessionMutationResult<AgentSessionConversationCommandResult>> {
   const { envelope, command } = params
-  // Clear only; the caller can receive withdrawn text.
-  const withdrawQueued = command === 'clear' && params.withdrawQueued === true
   const { sessionId, clientOperationId } = envelope
   const store = context.deps.store
   const matching = () => {
@@ -69,43 +62,27 @@ export function runStructuredConversationCommand(
       now: context.now,
       plan: {
         method: 'agentSession.conversationCommand',
-        fields: { command, ...(params.withdrawQueued ? { withdrawQueued: true } : {}) },
+        fields: { command },
         recoverUnknownFromDurableState: true,
-        settledOutcome: (value) => {
-          // Withdrawn bodies never enter the ledger (it caps result payloads);
-          // replays re-read the drafts' own op-stamped tombstones instead.
-          const { withdrawnQueued: _bodies, ...recorded } = value
-          return { status: 'succeeded', sessionId, conversationCommand: recorded }
-        },
-        replay: (ctx, outcome) => {
-          const replayed = (() => {
-            if (outcome.status === 'succeeded' && outcome.conversationCommand) {
-              return outcome.conversationCommand
-            }
-            const prior = matching()
-            if (prior?.phase === 'committed') {
-              return prior
-            }
-            if (command === 'compact' && prior && outcome.status !== 'unknown') {
-              return {
-                command,
-                state: 'unknown' as const,
-                error: 'Compaction completion is unconfirmed; it was not run again.'
-              }
-            }
-            return outcome.status === 'succeeded' && command === 'compact'
-              ? { command, state: 'completed' as const }
-              : null
-          })()
-          if (!replayed || !withdrawQueued) {
-            return replayed
+        settledOutcome: (value) => ({ status: 'succeeded', sessionId, conversationCommand: value }),
+        replay: (_ctx, outcome) => {
+          if (outcome.status === 'succeeded' && outcome.conversationCommand) {
+            return outcome.conversationCommand
           }
-          const withdrawnQueued = replayWithdrawnQueuedMessages(
-            ctx.journal,
-            caller.callerKey,
-            clientOperationId
-          )
-          return withdrawnQueued.length > 0 ? { ...replayed, withdrawnQueued } : replayed
+          const prior = matching()
+          if (prior?.phase === 'committed') {
+            return prior
+          }
+          if (command === 'compact' && prior && outcome.status !== 'unknown') {
+            return {
+              command,
+              state: 'unknown' as const,
+              error: 'Compaction completion is unconfirmed; it was not run again.'
+            }
+          }
+          return outcome.status === 'succeeded' && command === 'compact'
+            ? { command, state: 'completed' as const }
+            : null
         },
         rerunWhenReplayMissing: () => command === 'clear' && matching()?.phase === 'prepared',
         run: async (ctx) => {
@@ -186,6 +163,15 @@ export function runStructuredConversationCommand(
               await store.setConversationCommand(sessionId, ctx.fence, failed)
               return { ok: true, value: failed }
             }
+            // Carry the source's drafts to the replacement as held rows, the
+            // same for every client version: the cards stay visible where the
+            // user now is, and no text rides the wire. Bookkeeping — a failure
+            // is reported and never fails the clear.
+            await carryQueuedMessagesToClearReplacement(ctx, {
+              replacementJournal: context.sessions.get(replacementSessionId)?.journal,
+              callerKey: caller.callerKey,
+              operationId: clientOperationId
+            })
           } else {
             if (!ctx.adapter.compact) {
               throw new Error('Compaction is unavailable for this provider.')
@@ -263,24 +249,7 @@ export function runStructuredConversationCommand(
             ...(error ? { error: error.slice(0, 4096) } : {})
           }
           await store.setConversationCommand(sessionId, ctx.fence, completed)
-          if (!withdrawQueued) {
-            // An old client could not receive withdrawn text: the source keeps its
-            // cards, the supersession fence blocks the drain, and Delete still works.
-            return { ok: true, value: completed }
-          }
-          // The capable caller's composer takes the text back: withdraw the source's
-          // drafts — returned cards included. On failure the committed supersession
-          // fence already blocks the drain; the cards keep Delete.
-          const withdrawnQueued = await withdrawClearedSourceQueuedMessages(ctx, {
-            callerKey: caller.callerKey,
-            operationId: clientOperationId
-          })
-          return {
-            ok: true,
-            // Bodies ride the RESULT only; the ledger's recorded outcome stays
-            // capped, and replays re-read the drafts' own tombstones.
-            value: withdrawnQueued.length > 0 ? { ...completed, withdrawnQueued } : completed
-          }
+          return { ok: true, value: completed }
         }
       }
     })

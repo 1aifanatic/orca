@@ -191,9 +191,6 @@ export const CancelParams = z
     envelope: MutationEnvelope,
     // Absent: stop whatever the conversation has in flight. Present: only if that turn is current.
     turnId: Identifier('Invalid turn id').optional(),
-    /** Withdraw waiting and returned drafts too, returning their text. Capability-gated like
-     *  `delivery`: an older host's strict schema refuses the unknown key. */
-    withdrawQueued: z.literal(true).optional(),
     scope: z.literal('background-tasks').optional(),
     taskId: Identifier('Invalid task id').optional(),
     prompt: z
@@ -214,9 +211,6 @@ export const CancelParams = z
     }
     if (value.turnId === undefined && (value.prompt !== undefined || value.scope !== undefined)) {
       ctx.addIssue({ code: 'custom', message: 'A prompt or background-task cancel names its turn' })
-    }
-    if (value.withdrawQueued && (value.prompt !== undefined || value.scope !== undefined)) {
-      ctx.addIssue({ code: 'custom', message: 'Only a conversation Stop withdraws queued drafts' })
     }
   })
 
@@ -305,10 +299,7 @@ export const ModelCatalogParams = z.strictObject({
 export const ConversationCommandParams = z
   .object({
     envelope: MutationEnvelope,
-    command: z.enum(['clear', 'compact']),
-    /** Clear only (ignored on compact): withdraw the source's drafts and return their text.
-     *  Capability-gated like Stop's; without it the source keeps its cards. */
-    withdrawQueued: z.literal(true).optional()
+    command: z.enum(['clear', 'compact'])
   })
   .strict()
 

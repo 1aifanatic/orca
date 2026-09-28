@@ -78,14 +78,19 @@ export async function createQueuedMessageTestRig() {
     ok: true
   })
 
-  function envelope(fields: Record<string, unknown>, method: string, clientOperationId: string) {
+  function envelope(
+    fields: Record<string, unknown>,
+    method: string,
+    clientOperationId: string,
+    sessionId = SESSION
+  ) {
     return {
-      sessionId: SESSION,
+      sessionId,
       clientOperationId,
       expectedRuntimeFence: 1,
       payloadFingerprint: computeAgentSessionPayloadFingerprint({
         method,
-        sessionId: SESSION,
+        sessionId,
         fields
       })
     }
@@ -103,17 +108,24 @@ export async function createQueuedMessageTestRig() {
     return { id: clientOperationId, result }
   }
 
-  function stop(withdrawQueued?: true, clientOperationId = hostTestOperationId()) {
-    const fields = withdrawQueued ? { withdrawQueued } : {}
-    return host.cancel(QUEUED_RIG_CALLER, {
-      envelope: envelope(fields, 'agentSession.cancel', clientOperationId),
-      ...(withdrawQueued ? { withdrawQueued } : {})
+  function stop(clientOperationId = hostTestOperationId(), caller = QUEUED_RIG_CALLER) {
+    return host.cancel(caller, {
+      envelope: envelope({}, 'agentSession.cancel', clientOperationId)
     })
   }
 
-  function sendNow(messageId: string, clientOperationId = hostTestOperationId()) {
+  function sendNow(
+    messageId: string,
+    clientOperationId = hostTestOperationId(),
+    sessionId = SESSION
+  ) {
     return host.queuedMessageSend(QUEUED_RIG_CALLER, {
-      envelope: envelope({ messageId }, 'agentSession.queuedMessageSend', clientOperationId),
+      envelope: envelope(
+        { messageId },
+        'agentSession.queuedMessageSend',
+        clientOperationId,
+        sessionId
+      ),
       messageId
     })
   }
@@ -131,8 +143,10 @@ export async function createQueuedMessageTestRig() {
     )
   }
 
-  async function drafts(): Promise<{ messageId: string; state: string }[]> {
-    const page = await host.history({ sessionId: SESSION, direction: 'tail' })
+  async function drafts(
+    sessionId = SESSION
+  ): Promise<{ messageId: string; state: string; paused?: true }[]> {
+    const page = await host.history({ sessionId, direction: 'tail' })
     if (!page.ok) {
       throw new Error('history refused')
     }

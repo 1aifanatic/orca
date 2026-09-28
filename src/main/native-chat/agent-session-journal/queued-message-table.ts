@@ -86,6 +86,9 @@ export function insertQueuedMessage(
     fingerprint: string
     hostInstance: string
     now: number
+    /** Insert already held (a /clear carrying drafts across sessions): the row
+     *  must never be visible unheld, or the drain could send it first. */
+    holdReason?: QueuedMessageHoldReason
   }
 ): QueuedMessageRow {
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the statement selects exactly one aliased numeric column; better-sqlite3 types rows as unknown.
@@ -95,7 +98,7 @@ export function insertQueuedMessage(
   const position = Number(highest?.p ?? 0) + 1
   db.prepare(
     `INSERT INTO queued_messages (${COLUMNS})
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'waiting', NULL, NULL, NULL, NULL, NULL)`
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'waiting', ?, NULL, NULL, NULL, NULL)`
   ).run(
     input.sessionId,
     input.messageId,
@@ -103,7 +106,8 @@ export function insertQueuedMessage(
     JSON.stringify(input.body),
     input.fingerprint,
     input.now,
-    input.hostInstance
+    input.hostInstance,
+    input.holdReason ?? null
   )
   return {
     sessionId: input.sessionId,
@@ -114,7 +118,7 @@ export function insertQueuedMessage(
     createdAt: input.now,
     hostInstance: input.hostInstance,
     state: 'waiting',
-    holdReason: null,
+    holdReason: input.holdReason ?? null,
     returnedReason: null,
     settledAt: null,
     settledByOp: null,
@@ -133,32 +137,40 @@ export function holdQueuedMessages(
     reason: QueuedMessageHoldReason
   }
 ): number {
+  const update = db.prepare(
+    `UPDATE queued_messages SET hold_reason = ?
+     WHERE session_id = ? AND message_id = ? AND state = 'waiting'
+       AND (hold_reason IS NULL OR hold_reason <> ?)`
+  )
   let held = 0
   for (const messageId of input.messageIds) {
-    const changed = db
-      .prepare(
-        `UPDATE queued_messages SET hold_reason = ?
-         WHERE session_id = ? AND message_id = ? AND state = 'waiting'
-           AND (hold_reason IS NULL OR hold_reason <> ?)`
-      )
-      .run(input.reason, input.sessionId, messageId, input.reason)
-    held += Number(changed.changes ?? 0)
+    held += Number(update.run(input.reason, input.sessionId, messageId, input.reason).changes ?? 0)
   }
   return held
 }
 
+/** Lift one hold reason from every waiting row — Stop's pause dies when the
+ *  user next starts a turn. Other reasons (`send_failed`) are untouched: they
+ *  release only through an explicit Send. Returns how many rows it lifted. */
+export function releaseQueuedMessageHolds(
+  db: Database.Database,
+  input: { sessionId: string; reason: QueuedMessageHoldReason }
+): number {
+  return Number(
+    db
+      .prepare(
+        `UPDATE queued_messages SET hold_reason = NULL
+         WHERE session_id = ? AND state = 'waiting' AND hold_reason = ?`
+      )
+      .run(input.sessionId, input.reason).changes ?? 0
+  )
+}
+
 export function listQueuedMessages(db: Database.Database, sessionId: string): QueuedMessageRow[] {
-  const rows = db
+  return db
     .prepare(`SELECT ${COLUMNS} FROM queued_messages WHERE session_id = ? ORDER BY position ASC`)
     .all(sessionId)
-  const parsed: QueuedMessageRow[] = []
-  for (const row of rows) {
-    const stored = toStoredRow(row)
-    if (stored) {
-      parsed.push(stored)
-    }
-  }
-  return parsed
+    .flatMap((row) => toStoredRow(row) ?? [])
 }
 
 export function getQueuedMessage(
@@ -203,9 +215,10 @@ export function consumeQueuedMessageInTransaction(
   return Number(changed.changes ?? 0) === 1
 }
 
-/** Compare-and-transition the withdrawable set (waiting ∪ returned) to withdrawn
- *  tombstones stamped with the operation's caller-scoped key. Returns the rows
- *  actually transitioned, with the bodies the caller returns to the user. */
+/** Compare-and-transition unsettled rows (waiting ∪ returned) to withdrawn
+ *  tombstones stamped with the operation's caller-scoped key, kept only so a
+ *  replay of the settling operation answers "spent". Returns the rows actually
+ *  transitioned; their text stays in this database, never on the wire. */
 export function withdrawQueuedMessages(
   db: Database.Database,
   input: { sessionId: string; messageIds: readonly string[]; settledByOp: string; now: number }
@@ -257,20 +270,13 @@ export function queuedMessagesSettledByOp(
   sessionId: string,
   settledByOp: string
 ): QueuedMessageRow[] {
-  const rows = db
+  return db
     .prepare(
       `SELECT ${COLUMNS} FROM queued_messages
        WHERE session_id = ? AND settled_by_op = ? ORDER BY position ASC`
     )
     .all(sessionId, settledByOp)
-  const parsed: QueuedMessageRow[] = []
-  for (const row of rows) {
-    const stored = toStoredRow(row)
-    if (stored) {
-      parsed.push(stored)
-    }
-  }
-  return parsed
+    .flatMap((row) => toStoredRow(row) ?? [])
 }
 
 /** What the loaded journal says about a dispatched draft's consumed submission. */

@@ -16,7 +16,6 @@ import type {
 } from '../../../shared/agent-session-wire'
 import { DISPATCH_DOUBT_SUBMISSION_MISSING } from '../agent-session-journal/journal-dispatch-doubt-reasons'
 import { structuredAgentSessionPayloadFingerprint } from '../../../shared/structured-agent-session-mutation'
-import { replayWithdrawnQueuedMessages } from './structured-agent-session-queued-mutations'
 import {
   performCancel,
   performPrompt,
@@ -135,7 +134,6 @@ export function cancelPlan(params: {
   turnId?: string
   scope?: 'background-tasks'
   taskId?: string
-  withdrawQueued?: true
   prompt?: { itemId: string; expectedRevision: number }
 }): MutationPlan<AgentSessionCancelResult> {
   return {
@@ -146,7 +144,6 @@ export function cancelPlan(params: {
       ...(params.turnId !== undefined ? { turnId: params.turnId } : {}),
       ...(params.scope ? { scope: params.scope } : {}),
       ...(params.taskId ? { taskId: params.taskId } : {}),
-      ...(params.withdrawQueued ? { withdrawQueued: params.withdrawQueued } : {}),
       ...(params.prompt ? { prompt: params.prompt } : {})
     },
     run: (ctx) =>
@@ -158,20 +155,10 @@ export function cancelPlan(params: {
         ...(params.prompt ? { prompt: params.prompt } : {})
       }),
     // Interrupting twice would kill a turn the client never asked to stop, so a
-    // replay reports the turn as already handled — but the withdrawn drafts'
-    // bodies still come back, from their op-stamped tombstones.
-    replay: (ctx) => ({
+    // replay reports the turn as already handled.
+    replay: () => ({
       ...(params.turnId !== undefined ? { turnId: params.turnId } : {}),
-      cancelled: false,
-      ...(params.withdrawQueued
-        ? {
-            withdrawnQueued: replayWithdrawnQueuedMessages(
-              ctx.journal,
-              ctx.resolvedBy,
-              params.envelope.clientOperationId
-            )
-          }
-        : {})
+      cancelled: false
     })
   }
 }

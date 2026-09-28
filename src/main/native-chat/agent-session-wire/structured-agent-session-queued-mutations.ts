@@ -1,8 +1,9 @@
-// `agentSession.queuedMessageSend` / `agentSession.queuedMessageDelete`, and the
-// withdraw step Stop (`structured-agent-session-queued-stop.ts`) and /clear share. All three settle drafts into op-stamped
-// tombstone receipts, so a lost acknowledgement replays from the rows themselves
-// — never from the operation ledger, which records only that an operation
-// happened.
+// `agentSession.queuedMessageSend` / `agentSession.queuedMessageDelete`, and
+// /clear's carry of the source's drafts to its replacement session. Settling
+// operations stamp op-scoped tombstone receipts, so a lost acknowledgement
+// replays from the rows themselves — never from the operation ledger, which
+// records only that an operation happened. No mutation returns draft text:
+// the published list is the one authority a client renders.
 
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import { agentSessionOperationKey } from '../../../shared/agent-session-operation-ledger'
@@ -10,8 +11,7 @@ import type {
   AgentSessionMutationEnvelope,
   AgentSessionMutationResult,
   AgentSessionQueuedMessageDeleteResult,
-  AgentSessionSendResult,
-  AgentSessionWithdrawnQueuedMessage
+  AgentSessionSendResult
 } from '../../../shared/agent-session-wire'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { QueuedMessageNotConsumableError } from '../agent-session-journal/journal-queued-messages'
@@ -22,6 +22,7 @@ import {
 import { admitAndRunAgentSessionMutation } from './structured-agent-session-mutation-admission'
 import type { MutationPlan } from './structured-agent-session-mutation-plans'
 import { structuredQueueHold } from './structured-agent-session-queued-messages'
+import { structuredAgentSessionHostInstance } from './structured-agent-session-queued-pause'
 import type { StructuredAgentSessionMutationContext } from './structured-agent-session-host-mutations'
 import type { StructuredAgentSessionCaller } from './structured-agent-session-host-types'
 import {
@@ -44,16 +45,16 @@ function submissionFor(
   return ctx.journal.submissions().find((entry) => entry.clientMessageId === clientMessageId)
 }
 
-/** The one withdrawable-card predicate Stop and /clear share: definitively
- *  unsettled drafts — waiting or returned. Pending/unknown/accepted deliveries
- *  stay outside it. */
-export function withdrawableQueuedMessages(journal: AgentSessionJournal): QueuedMessageRow[] {
+/** The one unsettled-card predicate Stop's hold, /clear's carry and the budget
+ *  share: waiting or returned. Pending/unknown/accepted deliveries stay
+ *  outside it. */
+export function unsettledQueuedMessages(journal: AgentSessionJournal): QueuedMessageRow[] {
   return journal.queuedMessages.list().filter(isUnsettledQueuedMessage)
 }
 
-/** One transaction, stamped with the operation's caller-scoped key. Withdrawal
- *  retires any hold in the same UPDATE, and the store's commit notification
- *  publishes the change. */
+/** One transaction, stamped with the operation's caller-scoped key so a replay
+ *  answers "spent" from the receipts. Withdrawal retires any hold in the same
+ *  UPDATE, and the store's commit notification publishes the change. */
 export async function withdrawQueuedMessagesForOperation(
   journal: AgentSessionJournal,
   input: {
@@ -62,47 +63,67 @@ export async function withdrawQueuedMessagesForOperation(
     callerKey: string
     operationId: string
   }
-): Promise<AgentSessionWithdrawnQueuedMessage[]> {
-  const rows = await journal.queuedMessages.withdraw({
+): Promise<QueuedMessageRow[]> {
+  return journal.queuedMessages.withdraw({
     messageIds: input.messageIds,
     settledByOp: agentSessionOperationKey(input.callerKey, input.operationId)
   })
-  return rows.map((row) => ({ messageId: row.messageId, body: row.body }))
 }
 
-/** /clear's withdrawal of the superseded source's cards. Bookkeeping after the
- *  committed clear: a failure leaves the cards for Delete (the supersession
- *  fence already blocks the drain), and a source with no drafts answers
- *  exactly as before — no write, no publish, no result field. */
-export async function withdrawClearedSourceQueuedMessages(
+/**
+ * /clear's carry: the source's unsettled drafts become held rows on the
+ * replacement session — the SAME for every client version, with no text on the
+ * wire — so the cards stay visible where the user now is. Runs after the
+ * replacement's attach succeeded and before the clear commits. Each insert is
+ * idempotent on (session, message), so the clear's rerun-while-prepared replays
+ * it safely; the source rows are then tombstoned. Bookkeeping around the clear:
+ * a failure leaves the cards on the superseded source — whose supersession
+ * fence already blocks the drain — reported, never gating the clear. A crash
+ * between the copy and the tombstone leaves both, which the fence also makes
+ * harmless: nothing is lost and nothing runs.
+ */
+export async function carryQueuedMessagesToClearReplacement(
   ctx: AgentSessionTurnContext,
-  input: { callerKey: string; operationId: string }
-): Promise<AgentSessionWithdrawnQueuedMessage[]> {
-  try {
-    const messageIds = withdrawableQueuedMessages(ctx.journal).map((row) => row.messageId)
-    if (messageIds.length === 0) {
-      return []
-    }
-    return await withdrawQueuedMessagesForOperation(ctx.journal, {
-      sessionId: ctx.sessionId,
-      messageIds,
-      ...input
-    })
-  } catch {
-    return []
+  input: {
+    replacementJournal: AgentSessionJournal | undefined
+    callerKey: string
+    operationId: string
   }
-}
-
-/** A replay's answer, from the tombstones the original withdrawal stamped. */
-export function replayWithdrawnQueuedMessages(
-  journal: AgentSessionJournal,
-  callerKey: string,
-  operationId: string
-): AgentSessionWithdrawnQueuedMessage[] {
-  return journal.queuedMessages
-    .receipts(agentSessionOperationKey(callerKey, operationId))
-    .filter((row) => row.state === 'withdrawn')
-    .map((row) => ({ messageId: row.messageId, body: row.body }))
+): Promise<void> {
+  try {
+    const rows = unsettledQueuedMessages(ctx.journal)
+    if (rows.length === 0) {
+      return
+    }
+    const replacement = input.replacementJournal
+    if (!replacement) {
+      throw new Error('the replacement journal is not open')
+    }
+    for (const row of rows) {
+      // Held from birth ('stopped', the Stop-pause lifetime): the replacement is
+      // idle, so an unheld insert would drain before the hold could land. A
+      // returned card carries over as a plain held draft — its refusal belonged
+      // to the source's submissions.
+      await replacement.queuedMessages.insert({
+        messageId: row.messageId,
+        body: row.body,
+        fingerprint: row.fingerprint,
+        hostInstance: structuredAgentSessionHostInstance(),
+        holdReason: 'stopped'
+      })
+    }
+    await withdrawQueuedMessagesForOperation(ctx.journal, {
+      sessionId: ctx.sessionId,
+      messageIds: rows.map((row) => row.messageId),
+      callerKey: input.callerKey,
+      operationId: input.operationId
+    })
+  } catch (error) {
+    console.warn("[agent-session] /clear's queued-draft carry skipped:", {
+      sessionId: ctx.sessionId,
+      error: error instanceof Error ? error.message : String(error)
+    })
+  }
 }
 
 function mutateQueued<TValue>(
@@ -218,7 +239,9 @@ export function sendQueuedStructuredAgentMessage(
   return mutateQueued(context, caller, params.envelope, plan)
 }
 
-/** Delete = discard, with the body in the receipt so the composer can restore it. */
+/** Delete = discard, with no body in the answer: the card leaving the published
+ *  list IS the outcome, so a lost answer needs no re-ask. An Edit is the client
+ *  copying the text it already renders, then this Delete. */
 export function deleteQueuedStructuredAgentMessage(
   context: StructuredAgentSessionMutationContext,
   caller: StructuredAgentSessionCaller,
@@ -250,16 +273,15 @@ export function deleteQueuedStructuredAgentMessage(
         callerKey: ctx.resolvedBy,
         operationId
       })
-      const body = withdrawn[0]?.body
-      return body
-        ? { ok: true, value: { deleted: true, messageId, body } }
+      return withdrawn.length > 0
+        ? { ok: true, value: { deleted: true, messageId } }
         : { ok: true, value: { deleted: false, messageId, disposition: 'withdrawn' } }
     },
     replay: (ctx) => {
-      const replayed = replayWithdrawnQueuedMessages(ctx.journal, ctx.resolvedBy, operationId).find(
-        (entry) => entry.messageId === messageId
-      )
-      return replayed ? { deleted: true, messageId, body: replayed.body } : null
+      const replayed = ctx.journal.queuedMessages
+        .receipts(agentSessionOperationKey(ctx.resolvedBy, operationId))
+        .some((row) => row.messageId === messageId && row.state === 'withdrawn')
+      return replayed ? { deleted: true, messageId } : null
     }
   }
   return mutateQueued(context, caller, params.envelope, plan)
