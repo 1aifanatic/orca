@@ -43,6 +43,9 @@ export const AGENT_SESSION_REFUSAL_REASONS = {
     'providerStartFailed',
     'notSignedIn',
     'historyTooLarge',
+    /** The launch's own Anthropic sign-in variables would override the managed Claude account. */
+    'managedAccountEnvOverride',
+    'accountSwitchInProgress',
     /** The agent started, then Orca could not open the chat's conversation for it. */
     'attachFailed'
   ],

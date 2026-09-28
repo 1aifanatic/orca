@@ -5,8 +5,10 @@ import {
   agentSessionFailureFact,
   providerDiagnosticOf,
   type AgentSessionFailureFact,
+  type AgentSessionFailureKind,
   type ProviderDiagnostic
 } from '../../../shared/agent-session-failure'
+import type { AgentSessionRefusalReason } from '../../../shared/agent-session-refusal-details'
 import {
   agentSessionFailureWords,
   type AgentJournalDispatchRejection,
@@ -17,6 +19,21 @@ import {
   type AgentSessionWireRefusal
 } from '../../../shared/agent-session-wire-refusals'
 import { AgentSessionAcquisitionRefusal } from './structured-agent-session-adapter'
+
+/** Start refusals whose situation is itself what the person reads, with its own next step. */
+const TYPED_START_REFUSALS = [
+  'notSignedIn',
+  'historyTooLarge',
+  'managedAccountEnvOverride',
+  'accountSwitchInProgress'
+] as const satisfies readonly (AgentSessionFailureKind &
+  AgentSessionRefusalReason<'agent_session_operation_invalid'>)[]
+
+function typedStartRefusal(
+  reason: string | undefined
+): (typeof TYPED_START_REFUSALS)[number] | undefined {
+  return TYPED_START_REFUSALS.find((typed) => typed === reason)
+}
 
 /** Marks the error an adapter observed its child's exit with, where it observed it. */
 export function withObservedProviderExit<TError extends Error>(error: TError): TError {
@@ -45,11 +62,11 @@ export function providerExitObserved(error: unknown, depth = 0): boolean {
  *  adapter observed says the provider stopped; anything else blames no one — it may be Orca's, or
  *  a spawn that failed. Either keeps the provider's diagnostic when the error carried one. */
 export function providerStartupFailureFact(cause?: unknown): AgentSessionFailureFact {
-  if (
-    cause instanceof AgentSessionAcquisitionRefusal &&
-    (cause.reason === 'notSignedIn' || cause.reason === 'historyTooLarge')
-  ) {
-    return agentSessionFailureFact(cause.reason)
+  const typed = typedStartRefusal(
+    cause instanceof AgentSessionAcquisitionRefusal ? cause.reason : undefined
+  )
+  if (typed) {
+    return agentSessionFailureFact(typed)
   }
   return agentSessionFailureFact(
     providerExitObserved(cause) ? 'providerStartFailed' : 'startFailed',
@@ -76,8 +93,9 @@ function refusedStartFailureFact(
 ): AgentSessionFailureFact {
   const { refusal, diagnostic } = cause
   const reason = refusal.details?.reason
-  if (reason === 'notSignedIn' || reason === 'historyTooLarge') {
-    return agentSessionFailureFact(reason)
+  const typed = typedStartRefusal(reason)
+  if (typed) {
+    return agentSessionFailureFact(typed)
   }
   if (reason === 'providerStartFailed') {
     return agentSessionFailureFact('providerStartFailed', { detail: diagnostic })

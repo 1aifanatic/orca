@@ -82,6 +82,8 @@ const KIND_CATEGORY = {
   startFailed: 'startFailed',
   notSignedIn: 'startFailed',
   historyTooLarge: 'startFailed',
+  managedAccountEnvOverride: 'startFailed',
+  accountSwitchInProgress: 'startFailed',
   restartFailed: 'startFailed',
   providerRejected: 'content',
   attachmentInvalid: 'content',

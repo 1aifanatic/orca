@@ -172,7 +172,9 @@ export async function resolveClaudeStructuredInvocation(
   // Under a managed account the pinned credential is the only auth this launch may
   // use, so an explicit override is refused rather than silently beating the pin.
   if (auth.stripAuthEnv && hasClaudeAuthEnvConflict(overlay)) {
-    throw new Error(CLAUDE_AUTH_ENV_CONFLICT_MESSAGE)
+    throw new AgentSessionPreSpawnError(new Error(CLAUDE_AUTH_ENV_CONFLICT_MESSAGE), {
+      reason: 'managedAccountEnvOverride'
+    })
   }
   // Why the overlay merges onto the inherited env rather than replacing it: the child
   // still needs PATH and the rest of the shell environment, and withCliRuntimeOnPath
@@ -209,7 +211,9 @@ export async function assertClaudeAuthSwitchSettled(
   timeoutMs = CLAUDE_AUTH_SWITCH_SETTLE_TIMEOUT_MS
 ): Promise<void> {
   if (!(await whenClaudeAuthSwitchSettles(timeoutMs))) {
-    throw new Error(CLAUDE_AUTH_SWITCH_IN_PROGRESS_MESSAGE)
+    throw new AgentSessionPreSpawnError(new Error(CLAUDE_AUTH_SWITCH_IN_PROGRESS_MESSAGE), {
+      reason: 'accountSwitchInProgress'
+    })
   }
 }
 

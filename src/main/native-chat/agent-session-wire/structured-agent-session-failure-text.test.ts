@@ -53,6 +53,25 @@ describe('structuredAgentSessionStartFailure', () => {
     )
   })
 
+  it.each([
+    [
+      'managedAccountEnvOverride',
+      'This Claude launch sets its own Anthropic sign-in variables. Remove them to use a managed Claude account.'
+    ],
+    [
+      'accountSwitchInProgress',
+      'A Claude account switch is in progress. Try again after it finishes.'
+    ]
+  ] as const)('words a start refused for %s by that situation', (reason, sentence) => {
+    const code = 'agent_session_operation_invalid'
+    expect(
+      structuredAgentSessionStartFailure(
+        { refusal: refuse(code, { reason }, code) },
+        { agentName: 'Claude' }
+      )
+    ).toEqual({ reason: sentence, rejection: { kind: reason } })
+  })
+
   it('words a refused restart by its situation, never its message', () => {
     const words = structuredAgentSessionStartFailure(
       {

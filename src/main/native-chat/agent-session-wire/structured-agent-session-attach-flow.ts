@@ -2,7 +2,8 @@ import { refuse } from '../../../shared/agent-session-wire-refusals'
 import { settlePostAcquisitionAttachFailure } from './structured-agent-session-attach-failure'
 import {
   failedAcquisitionRefusal,
-  failedAcquisitionSettlement
+  failedAcquisitionSettlement,
+  preSpawnFailureInWords
 } from './structured-agent-session-failed-create-refusal'
 import type {
   StructuredAgentSessionAdapter,
@@ -203,15 +204,16 @@ export async function performAttach(
     }
     input.onAcquisitionFailed?.(error)
     const failed = failedAcquisitionRefusal(error, wording)
-    if (failed) {
-      // The refusal carries only its sentence, so what failed is kept here.
+    const thrown = failed ? error : preSpawnFailureInWords(error, wording)
+    if (failed || thrown !== error) {
+      // The answer carries only its sentence, so what failed is kept here.
       console.warn('[agent-session] provider start failed:', error)
     }
     return (
       failed ?? {
         ok: false,
         refusal: classifyStoreFailure(
-          error,
+          thrown,
           store.getRecord(sessionId)?.lease.runtimeFence ?? null,
           store.getRecord(sessionId)
         )

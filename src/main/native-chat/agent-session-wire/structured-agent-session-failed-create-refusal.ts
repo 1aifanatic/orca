@@ -20,6 +20,7 @@ import {
   AgentSessionAcquisitionExitUnprovenError,
   AgentSessionAcquisitionRefusal,
   AgentSessionAcquisitionRootExitObservedError,
+  AgentSessionPreSpawnError,
   isAgentSessionPreSpawnError
 } from './structured-agent-session-adapter'
 import {
@@ -106,6 +107,9 @@ function failedAcquisitionDetails(
   if (error instanceof AgentSessionAcquisitionRefusal) {
     return { reason: error.reason }
   }
+  if (isAgentSessionPreSpawnError(error) && error.reason) {
+    return { reason: error.reason }
+  }
   if (isExitProvenAcquisitionFailure(error) && providerExitObserved(error)) {
     return { reason: 'providerStartFailed' }
   }
@@ -126,6 +130,18 @@ export function failedAcquisitionRefusal(
     }
   }
   return null
+}
+
+/** A start that failed before any process still throws, in the sentence its replay reads: the
+ *  error's own text is Orca's or the refusing site's, so it goes to the log. A message that is
+ *  itself a code keeps it, since the wire routes on it. */
+export function preSpawnFailureInWords(error: unknown, wording: FailedAcquisitionWording): unknown {
+  if (!isAgentSessionPreSpawnError(error) || /^[a-z0-9_]+$/.test(error.message)) {
+    return error
+  }
+  return new AgentSessionPreSpawnError(error, {
+    message: failedAcquisitionSettlement(error, wording).outcome.message
+  })
 }
 
 /** Only a durably failed operation says anything about retrying under a new one. */

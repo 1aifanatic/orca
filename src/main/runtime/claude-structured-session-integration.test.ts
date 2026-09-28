@@ -364,9 +364,28 @@ describe('a structured Claude session over agentSession.*', () => {
     claudeAuthPolicy = { stripAuthEnv: true }
     // The default overlay carries ANTHROPIC_AUTH_TOKEN, which the terminal path
     // refuses at spawn-env.ts:25 rather than letting it beat the pinned account.
-    const refused = await call('agentSession.create', createIntentParams())
+    const params = createIntentParams()
+    const sentence =
+      'This Claude launch sets its own Anthropic sign-in variables. Remove them to use a managed Claude account.'
+    const refused = await call('agentSession.create', params)
 
-    expect(JSON.stringify(refused)).toContain('explicit Anthropic auth environment')
+    // The thrown answer keeps its wire code; only its words are the ones its replay reads.
+    expect(refused).toMatchObject({
+      ok: false,
+      error: { code: 'runtime_error', message: sentence }
+    })
+    // Its replay reads the same sentence, beside the situation it names.
+    expect(await call('agentSession.create', params)).toMatchObject({
+      ok: true,
+      result: {
+        ok: false,
+        refusal: {
+          code: 'agent_session_operation_invalid',
+          details: { reason: 'managedAccountEnvOverride' },
+          message: sentence
+        }
+      }
+    })
     // Refused before spawn: no provider child was ever opened.
     expect(claude.connections).toHaveLength(0)
   })
