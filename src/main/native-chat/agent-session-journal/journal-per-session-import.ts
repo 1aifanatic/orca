@@ -136,7 +136,12 @@ async function importOnce(input: ImportInput): Promise<PerSessionJournalImportOu
   }
   // Also a file a crash left after its copy was recorded (`copied`): deleted now, not copied again.
   retireLegacyJournal(input)
-  return plan?.kind === 'copied' ? 'already-imported' : 'imported'
+  if (plan?.kind === 'copied') {
+    return 'already-imported'
+  }
+  // The open's replay of what was just copied is a long task of its own; don't add this one to it.
+  await yieldToEventLoop()
+  return 'imported'
 }
 
 /**

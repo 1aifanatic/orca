@@ -313,6 +313,25 @@ describe('importing a per-chat journal', () => {
     expect(rowCount(database.db)).toBe(rows.length)
   })
 
+  it('ends a copy on a turn of its own, so the open that replays it starts a new task', async () => {
+    const { epoch, rows } = await historyRows()
+    await writeLegacyJournal(epoch, rows)
+    let turns = 0
+    const tick = (): void => {
+      turns += 1
+    }
+
+    setImmediate(tick)
+    await importPerSessionJournal({
+      database: openTestJournalHostDatabase(root),
+      identity: IDENTITY,
+      legacyDirectory: legacyDir()
+    })
+
+    // One batch copies, and both verify reads are one batch each: only the final yield turns.
+    expect(turns).toBe(1)
+  })
+
   it('keeps the file and refuses the chat when the copy does not read back as the file', async () => {
     const { epoch, rows } = await historyRows()
     await writeLegacyJournal(epoch, rows)
