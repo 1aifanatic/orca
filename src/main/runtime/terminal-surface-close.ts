@@ -136,10 +136,10 @@ export function closeTerminalSurfaceInWorkspaceSession(
   const result = closeTerminalTabInWorkspaceSession(session, worktreeId, target.tabId, {
     force: options.force
   })
-  // Why a tab this session never listed is still recorded: its spawn may commit later and graft it.
   if (result.pinned) {
     return { ...result, resolution: 'tab' }
   }
+  // Why a tab this session never listed is still recorded: its spawn may commit later and graft it.
   const recorded: WorkspaceSessionState = {
     ...result.session,
     closedTerminalTabTombstonesByTabId: recordClosedTerminalTabTombstone(
