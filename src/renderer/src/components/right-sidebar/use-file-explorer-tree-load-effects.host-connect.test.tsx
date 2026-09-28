@@ -3,7 +3,10 @@ import { renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
 
-const mocks = vi.hoisted(() => ({ connectedEpoch: null as string | null }))
+const mocks = vi.hoisted(() => {
+  const host: { connectedEpoch: string | null } = { connectedEpoch: null }
+  return host
+})
 
 vi.mock('@/lib/worktree-host-connection-phase', () => ({
   useWorktreeHostConnection: () => ({ connectedEpoch: mocks.connectedEpoch })
