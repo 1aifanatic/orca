@@ -205,6 +205,37 @@ describe('Claude effort default at rest', () => {
     expect(catalogDefault(other, 'opus[1m]')).toBe('medium')
   })
 
+  it("leaves a Codex chat's unsaved effort blank at rest, as its live child does", async () => {
+    const store = new AgentModelCatalogStore()
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the resting read and the catalog key touch only these fields.
+    const record = {
+      provider: 'codex',
+      accountHome: { variable: 'CODEX_HOME', path: '/accounts/codex' },
+      location: { wslDistro: null },
+      options: { model: 'gpt-5.5' }
+    } as unknown as AgentSessionRecord
+    store.recordSuccess(agentModelCatalogFingerprintForRecord(record), 'codex', {
+      models: [
+        {
+          id: 'gpt-5.5',
+          label: 'GPT-5.5',
+          isDefault: true,
+          defaultEffort: 'medium',
+          efforts: [
+            { value: 'medium', label: 'Medium' },
+            { value: 'high', label: 'High' }
+          ]
+        }
+      ],
+      fastModeTierByModel: new Map(),
+      origin: 'live-session'
+    })
+
+    const result = await readAtRest(store, record)
+
+    expect(result.current).toEqual({ model: 'gpt-5.5' })
+  })
+
   it("never saves the applied effort as the chat's own pick", async () => {
     const store = new AgentModelCatalogStore()
     const events: ClaudeStructuredSessionEvent[] = []
