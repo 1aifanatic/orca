@@ -211,6 +211,43 @@ describe('a Codex send its turn ended without echoing', () => {
     })
   })
 
+  it('rejects a send in Codex words by the recorded end of a failed turn that finished before its answer', async () => {
+    const rig = await turnEndRig()
+    const release = rig.turns.holdNextAnswer()
+    const sending = rig.send('client-1')
+    await vi.waitFor(() => expect(rig.turns.turnId).toBe('turn-1'))
+    rig.turns.start()
+    rig.turns.end('failed', 'usage limit reached')
+    release()
+
+    await expect(sending).resolves.toMatchObject({
+      state: 'rejected',
+      rejection: {
+        kind: 'providerRejected',
+        detail: { text: 'usage limit reached', audience: 'person' }
+      }
+    })
+    // Settled once, by the answer: a late echo is no longer owed anything.
+    rig.turns.echo('client-1')
+    expect(rig.settlements).toEqual([])
+  })
+
+  it('leaves a send pending, still armed, when its answer is read after its turn completed', async () => {
+    const rig = await turnEndRig()
+    const release = rig.turns.holdNextAnswer()
+    const sending = rig.send('client-1')
+    await vi.waitFor(() => expect(rig.turns.turnId).toBe('turn-1'))
+    rig.turns.start()
+    rig.turns.end('completed')
+    release()
+
+    await expect(sending).resolves.toEqual({ state: 'admitted' })
+    expect(rig.settlements).toEqual([])
+    rig.turns.echo('client-1')
+    expect(rig.settledIds()).toEqual(['client-1'])
+    expect(rig.settlements[0]).toHaveProperty('providerIdentity')
+  })
+
   it('leaves a send whose answer timed out to its echo', async () => {
     const rig = await turnEndRig()
     rig.codex.routes['turn/start'] = () => {
