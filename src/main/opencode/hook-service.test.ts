@@ -129,6 +129,18 @@ describe('OpenCodeHookService buildPtyEnv / clearPty round-trip', () => {
     const pluginSource = readFileSync(pluginPath, 'utf8')
     expect(pluginSource).toContain('OrcaOpenCodeStatusPlugin')
     expect(pluginSource).toContain('messageID: part.messageID')
+    // Why: OpenCode 2 reports pane lifecycle from each TUI, which loads only plugin directories.
+    const tuiEntry = join(
+      resolveOpenCodeConfigDirectory(),
+      'plugins',
+      'orca-opencode-status-tui',
+      'tui.js'
+    )
+    expect(readFileSync(tuiEntry, 'utf8')).toBe(pluginSource)
+    const past = new Date('2020-01-01T00:00:00Z')
+    utimesSync(tuiEntry, past, past)
+    service.buildPtyEnv(daemonSessionId)
+    expect(statSync(tuiEntry).mtimeMs).toBe(past.getTime())
   })
 
   // Why: OpenCode 2 reloads a plugin whose file mtime changed, which restarted status mid-turn.
@@ -469,6 +481,21 @@ describe('OpenCodeHookService overlay mode (user OPENCODE_CONFIG_DIR set)', () =
     expect(overlayPlugin).toContain('OrcaOpenCodeStatusPlugin')
     expect(overlayPlugin).not.toBe(userOrcaSentinel)
     expectUserConfigIntact()
+  })
+
+  it('installs the TUI copy in the overlay without mirroring a user dir of the same name', () => {
+    const userTuiDir = join(userConfigDir, 'plugins', 'orca-opencode-status-tui')
+    mkdirSync(userTuiDir)
+    writeFileSync(join(userTuiDir, 'tui.js'), 'USER OWNED')
+
+    const env = new OpenCodeHookService().buildPtyEnv(ptyId, userConfigDir)
+
+    const overlayTui = join(env.OPENCODE_CONFIG_DIR!, 'plugins', 'orca-opencode-status-tui')
+    expect(lstatSync(overlayTui).isSymbolicLink()).toBe(false)
+    expect(readFileSync(join(overlayTui, 'tui.js'), 'utf8')).toBe(
+      readFileSync(join(env.OPENCODE_CONFIG_DIR!, 'plugins', 'orca-opencode-status.js'), 'utf8')
+    )
+    expect(readFileSync(join(userTuiDir, 'tui.js'), 'utf8')).toBe('USER OWNED')
   })
 
   it.skipIf(process.platform === 'win32')(

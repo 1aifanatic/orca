@@ -2,6 +2,7 @@ import { mkdirSync, unlinkSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import { resolveOpenCodeConfigDirectory } from '../shared/opencode-config-directory'
 import { isInstalledOpenCodePluginCurrent } from '../shared/opencode-installed-plugin'
+import { writeOpenCodeTuiPlugin } from '../shared/opencode-tui-plugin-install'
 
 const RELAY_HOOKS_DIR = '.orca-relay'
 
@@ -27,6 +28,7 @@ export function installOpenCodePluginInCanonicalConfig(
       }
       writeFileSync(pluginPath, source)
     }
+    writeOpenCodeTuiPlugin(join(configDir, 'plugins'), pluginFileName, source)
     return true
   } catch (err) {
     process.stderr.write(
