@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type {
   AgentJournalItemBody,
-  AgentJournalRenderItem
+  AgentJournalRenderItem,
+  AgentJournalSubmission
 } from '../../../../shared/agent-session-journal-types'
 import { projectAgentSessionConversationOutline } from '../../../../shared/agent-session-conversation-outline'
 import { agentJournalSubmissionKey } from '../../../../shared/agent-session-journal-item-key'
@@ -38,11 +39,22 @@ function answered(question: string): AgentJournalItemBody {
 /** The ids the desktop transcript list draws, top to bottom. */
 function drawn(
   items: AgentJournalRenderItem[],
-  outbox: StructuredAgentSessionOutboxEntry[] = []
+  outbox: StructuredAgentSessionOutboxEntry[] = [],
+  submissions: AgentJournalSubmission[] = []
 ): string[] {
   return createNativeChatMessageListProjection()(
-    projectStructuredAgentSessionMessages(items, outbox, [])
+    projectStructuredAgentSessionMessages(items, outbox, submissions)
   ).map(({ id }) => id)
+}
+
+function queued(clientMessageId: string, text: string, queuedAt: number) {
+  return createStructuredAgentSessionOutboxEntry({
+    clientMessageId,
+    sessionId: 'session',
+    text,
+    attachments: [],
+    queuedAt
+  })
 }
 
 describe('structured transcript order', () => {
@@ -79,19 +91,40 @@ describe('structured transcript order', () => {
 
   it('keeps a send the journal does not hold yet below every row it does', () => {
     // The composer's clock can trail the host's; the unsent message still reads last.
-    const outbox = [
-      createStructuredAgentSessionOutboxEntry({
-        clientMessageId: 'queued',
-        sessionId: 'session',
-        text: 'One more thing',
-        attachments: [],
-        queuedAt: 150
-      })
-    ]
+    const outbox = [queued('queued', 'One more thing', 150)]
     const items = [
       journalItem('ask', 1, 100, said('user', 'Fix the parser')),
       journalItem('reply', 2, 200, said('assistant', 'Working on it'))
     ]
     expect(drawn(items, outbox)).toEqual(['ask', 'reply', agentJournalSubmissionKey('queued')])
+  })
+
+  it('keeps a send the journal recorded and the provider refused at its journal place', () => {
+    // The agent kept writing after the refused steer; its Retry stays with the composer.
+    const refused = agentJournalSubmissionKey('steer')
+    const items = [
+      journalItem('ask', 1, 100, said('user', 'Fix the parser')),
+      journalItem(refused, 2, 200, said('user', 'Keep the old API')),
+      journalItem('reply', 3, 300, said('assistant', 'Done.'))
+    ]
+    const submissions: AgentJournalSubmission[] = [
+      {
+        clientMessageId: 'steer',
+        fence: 1,
+        payloadFingerprint: 'fingerprint',
+        dispatchState: 'rejected',
+        providerItemId: null,
+        reason: 'provider_refused',
+        submittedAt: 200,
+        resolvedAt: 250
+      }
+    ]
+    expect(
+      drawn(
+        items,
+        [queued('steer', 'Keep the old API', 190), queued('next', 'And docs', 400)],
+        submissions
+      )
+    ).toEqual(['ask', refused, 'reply', agentJournalSubmissionKey('next')])
   })
 })

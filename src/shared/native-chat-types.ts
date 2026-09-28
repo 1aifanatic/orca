@@ -203,7 +203,7 @@ export type NativeChatMessage = {
   /** How a user message was delivered when it was not an ordinary prompt. */
   sentAs?: AgentJournalMessageSendMode
   /** Set only by the structured projection, on rows the journal holds, and ranks
-   *  them ahead of time. Terminal-backed messages, which cross the wire, never carry it. */
+   *  them ahead of time. Terminal-backed messages never carry it, and worker reads strip it. */
   journalPosition?: AgentJournalPosition
 }
 

@@ -16,8 +16,12 @@ export function agentJournalItemRowOrigin(
     id: item.itemId,
     timestamp: item.observedAt,
     source: 'transcript',
-    journalPosition: { sequence: item.sequence, index: item.sequenceIndex ?? 0 }
+    journalPosition: agentJournalItemPosition(item)
   }
+}
+
+export function agentJournalItemPosition(item: PositionedItem): AgentJournalPosition {
+  return { sequence: item.sequence, index: item.sequenceIndex ?? 0 }
 }
 
 export function compareAgentJournalPositions(
