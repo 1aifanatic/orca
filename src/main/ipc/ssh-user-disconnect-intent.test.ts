@@ -376,6 +376,33 @@ describe("SSH: the user's Disconnect holds until the user connects", () => {
     expect(persistedTargets.get(TARGET.id)?.desiredConnection).toBe('disconnected')
   })
 
+  it("(h) a user's Connect during a failed terminate keeps the connection it asked for", async () => {
+    await invoke('ssh:disconnect')
+    mockStore.getSshRemotePtyLeases.mockReturnValue([
+      { targetId: TARGET.id, ptyId: 'pty-1', state: 'detached' }
+    ])
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: terminate calls only shutdown, which the shared mock provider implements.
+    vi.mocked(getSshPtyProvider).mockReturnValue(mockPtyProvider as never)
+    vi.mocked(getPtyIdsForConnection).mockReturnValue(['pty-1'])
+    let failShutdown!: (error: Error) => void
+    mockPtyProvider.shutdown.mockReturnValue(
+      new Promise((_resolve, reject) => {
+        failShutdown = reject
+      })
+    )
+    await invoke('ssh:connectForSessionCleanup')
+    const terminate = invoke('ssh:terminateSessions')
+    await vi.waitFor(() => expect(mockPtyProvider.shutdown).toHaveBeenCalled())
+
+    const connect = invoke('ssh:connect')
+    failShutdown(new Error('mux down'))
+
+    await expect(terminate).rejects.toThrow('Failed to terminate SSH host sessions')
+    await expect(connect).resolves.toMatchObject({ status: 'connected' })
+    expect(mockConnectionManager.getConnection(TARGET.id)).toBeDefined()
+    expect(persistedTargets.get(TARGET.id)?.desiredConnection).toBe('connected')
+  })
+
   it('(h) publishes the Disconnect even when a failed connect left no connection object', async () => {
     mockConnectionManager.connect.mockRejectedValueOnce(new Error('connect ECONNREFUSED'))
     await expect(invoke('ssh:connect')).rejects.toThrow('ECONNREFUSED')
