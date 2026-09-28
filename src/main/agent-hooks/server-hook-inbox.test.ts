@@ -146,6 +146,44 @@ describe('hook inbox', () => {
     expect(paneState(server)).toBe('done')
   })
 
+  it('reaps a pane that died while Orca was closed instead of leaving its replay working', async () => {
+    const commitClaude = (name: string, payload: object) =>
+      writeFileSync(
+        join(inboxDir(), name),
+        [
+          JSON.stringify({ session_id: 's1', ...payload }),
+          'orca-hook-record v1',
+          'source=claude',
+          `paneKey=${PANE}`,
+          'tabId=tab-1',
+          'worktreeId=wt-1',
+          'env=production',
+          'orca-hook-end',
+          ''
+        ].join('\n')
+      )
+    const first = await startServer()
+    commitClaude('100.0.rec', { hook_event_name: 'UserPromptSubmit', prompt: 'ship it' })
+    await expect.poll(() => paneState(first), { timeout: 3_000, interval: 10 }).toBe('working')
+    first.stop()
+    // Orca closed: the agent committed one more event, then its PTY died.
+    commitClaude('101.0.rec', {
+      hook_event_name: 'PreToolUse',
+      tool_name: 'Bash',
+      tool_input: { command: 'ls' }
+    })
+
+    const restarted = await startServer()
+    await restarted.reapRestoredClaudeSubagentsWithoutLiveAgent(
+      () => true,
+      async () => false,
+      () => true
+    )
+    await new Promise((resolve) => setTimeout(resolve, 300))
+
+    expect(paneState(restarted)).not.toBe('working')
+  })
+
   it('replays what agents committed while Orca was closed, fenced to the current launch', async () => {
     const first = await startServer()
     first.ingestRemote(
