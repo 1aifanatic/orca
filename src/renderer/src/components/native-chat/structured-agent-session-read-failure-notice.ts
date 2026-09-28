@@ -15,6 +15,8 @@ export type StructuredAgentSessionReadFailureNotice = {
   named: boolean
   /** Nothing the read retries gets past it, so the pane no longer says it keeps trying. */
   final: boolean
+  /** The words already say the history couldn't be opened, so the pane need not say it again. */
+  saysUnread: boolean
 }
 
 export function structuredAgentSessionReadFailureNotice(
@@ -27,6 +29,7 @@ export function structuredAgentSessionReadFailureNotice(
   return {
     text: agentSessionWriteNoticeText(parts),
     named: refusal?.details?.reason !== undefined,
-    final: isFinalAgentSessionReadRefusal(refusal)
+    final: isFinalAgentSessionReadRefusal(refusal),
+    saysUnread: parts.includes('historyUnavailable')
   }
 }

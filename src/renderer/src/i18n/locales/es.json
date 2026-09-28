@@ -15108,7 +15108,8 @@
         "error": {
           "title": "No se pudo cargar la conversación",
           "subtitle": "No se pudo leer la transcripción. Vuelva a la terminal para seguir trabajando.",
-          "retryingSubtitle": "No se pudo leer la transcripción. Orca sigue intentando cargarla."
+          "retryingSubtitle": "No se pudo leer la transcripción. Orca sigue intentando cargarla.",
+          "keepsTrying": "Orca sigue intentando cargarlo."
         },
         "reconnecting": "Reconectando con este chat…",
         "pairHost": "Empareje un host para ver el historial de chat del agente.",

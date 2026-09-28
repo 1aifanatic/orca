@@ -80,9 +80,9 @@ it("names a history that couldn't open right now once, and that the pane keeps t
 
   expect(screen.getAllByText("Orca couldn't open this chat's history right now.")).toHaveLength(1)
   expect(screen.queryByText('Could not load conversation')).toBeNull()
-  expect(
-    screen.getByText('The transcript could not be read. Orca keeps trying to load it.')
-  ).toBeTruthy()
+  // The title already says the history didn't open, so the line under it says only the retrying.
+  expect(screen.getByText('Orca keeps trying to load it.')).toBeTruthy()
+  expect(screen.queryByText(/could not be read/)).toBeNull()
   expect(screen.queryByText(/Try again/)).toBeNull()
 })
 

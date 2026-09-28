@@ -30,6 +30,9 @@ export const NATIVE_CHAT_EMPTY_STATE_COPY = {
   }
 } as const satisfies Record<string, NativeChatEmptyStateCopy>
 
+/** The retrying half alone, under a title that already says the history couldn't be opened. */
+export const NATIVE_CHAT_KEEPS_TRYING_COPY = 'Orca keeps trying to load it.'
+
 /** Resolve the empty-state copy with the agent label substituted for `{{value0}}`.
  *  For platforms without an i18n layer (mobile). */
 export function formatNativeChatEmptyStateCopy(
