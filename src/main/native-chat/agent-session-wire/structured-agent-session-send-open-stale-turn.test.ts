@@ -39,7 +39,10 @@ afterEach(async () => {
 })
 
 /** A host that dies mid-turn, relaunched over a copy of its files taken at the crash. */
-async function relaunchAfterCrashMidTurn(probe: AgentSessionOwnerProbe) {
+async function relaunchAfterCrashMidTurn(
+  probe: AgentSessionOwnerProbe,
+  { reconcile = true }: { reconcile?: boolean } = {}
+) {
   const dying = hostTestState()
   await attach()
   const events = dying.acquire.mock.calls[0]?.[0].events
@@ -76,7 +79,9 @@ async function relaunchAfterCrashMidTurn(probe: AgentSessionOwnerProbe) {
     probeOwner: async () => probe,
     now: () => NOW
   })
-  await host.reconcileRestartLeases()
+  if (reconcile) {
+    await host.reconcileRestartLeases()
+  }
   replaceHostTestState({ store, host })
   return { host, acquire }
 }
@@ -134,3 +139,16 @@ it.each(PROBES)(
     await host.flushAllStreamedEvents()
   }
 )
+
+// On desktop the chat on screen at relaunch reads before startup reconciles the leases.
+it('settles it when a read reaches the chat before the startup reconcile', async () => {
+  const { host } = await relaunchAfterCrashMidTurn({ outcome: 'pid-absent' }, { reconcile: false })
+  expect(hostTestState().store.getRecord(SESSION)?.lease.claimStatus).toBe('live')
+
+  await host.history({ sessionId: SESSION, direction: 'tail' })
+  await host.reconcileRestartLeases()
+  await host.restoreReadableSessions([SESSION])
+
+  expect(await turnStates(host)).toEqual(['unverifiable'])
+  await host.flushAllStreamedEvents()
+})
