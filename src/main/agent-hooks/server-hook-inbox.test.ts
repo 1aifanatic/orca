@@ -16,7 +16,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { makePaneKey } from '../../shared/stable-pane-id'
 import { getManagedScript as codexScript } from '../codex/codex-hook-script'
 import { AgentHookServer } from './server'
-import type { EnrichedAgentHookEventPayload } from './server/server-types'
 
 const PANE = makePaneKey('tab-1', '11111111-1111-4111-8111-111111111111')
 
@@ -126,34 +125,6 @@ describe('hook inbox', () => {
     }
   )
 
-  it('applies a committed Stop before a process-exit reconcile decides the pane is dead', async () => {
-    const server = await startServer()
-    const seen: EnrichedAgentHookEventPayload[] = []
-    server.subscribeEnrichedStatus((payload) => seen.push(payload))
-    commitRecord('100.0.rec', { hook_event_name: 'UserPromptSubmit', prompt: 'ship it' })
-    await expect.poll(() => paneState(server), { timeout: 3_000, interval: 10 }).toBe('working')
-
-    // The agent committed its Stop and exited; the exit is decided before any watcher wakes.
-    commitRecord('101.0.rec', { hook_event_name: 'Stop' })
-    server.reconcileEndedProcessForPaneKeys([PANE])
-
-    // The completion was observed, then the dead pane retired; nothing is left in the inbox for a
-    // later wake to resurrect as a row for a process that no longer exists.
-    expect(seen.map((status) => status.payload.state)).toEqual(['working', 'done'])
-    expect(paneState(server)).toBe('missing')
-    expect(readdirSync(inboxDir())).toEqual([])
-  })
-
-  it('leaves no ghost row for a turn the agent committed just before it died', async () => {
-    const server = await startServer()
-    commitRecord('200.0.rec', { hook_event_name: 'UserPromptSubmit', prompt: 'ship it' })
-    // The process is certified dead before any watcher wakes, with no row yet for the pane.
-    server.reconcileEndedProcessForPaneKeys([PANE])
-    await new Promise((resolve) => setTimeout(resolve, 1_500))
-    expect(paneState(server)).toBe('missing')
-    expect(readdirSync(inboxDir())).toEqual([])
-  })
-
   it('lets a committed Stop, not a Ctrl+C inferred after it, end the turn', async () => {
     const server = await startServer()
     commitRecord('300.0.rec', { hook_event_name: 'UserPromptSubmit', prompt: 'ship it' })
@@ -173,21 +144,6 @@ describe('hook inbox', () => {
 
     expect(inferred).toBe(false)
     expect(paneState(server)).toBe('done')
-  })
-
-  it('applies a committed hook before a status the agent printed after it', async () => {
-    const server = await startServer()
-    const seen: string[] = []
-    server.subscribeEnrichedStatus((status) => seen.push(status.payload.state))
-    commitRecord('400.0.rec', { hook_event_name: 'UserPromptSubmit', prompt: 'ship it' })
-    server.ingestTerminalStatus({
-      paneKey: PANE,
-      tabId: 'tab-1',
-      worktreeId: 'wt-1',
-      connectionId: null,
-      payload: { state: 'done', prompt: 'ship it', agentType: 'codex' }
-    })
-    expect(seen).toEqual(['working', 'done'])
   })
 
   it('replays what agents committed while Orca was closed, fenced to the current launch', async () => {

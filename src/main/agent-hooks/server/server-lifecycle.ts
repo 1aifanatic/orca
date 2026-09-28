@@ -97,7 +97,7 @@ export abstract class AgentHookServerLifecycle extends AgentHookServerRuntimeEnv
         trackEmptyPaneKeyHook(hookBody)
         // Why: a POST is a hook that could not commit (or an older script); anything committed
         // before it was published earlier and must not be ordered after it.
-        this.absorbCommittedHookRecords()
+        this.drainCommittedHooks()
         this.ingestHookBody(source, hookBody)
         res.writeHead(204)
         res.end()
@@ -155,7 +155,7 @@ export abstract class AgentHookServerLifecycle extends AgentHookServerRuntimeEnv
 
   stop(): void {
     // Why: apply what agents committed right up to quit, then stop draining before the maps clear.
-    this.absorbCommittedHookRecords()
+    this.drainCommittedHooks()
     this.hookInbox?.close()
     this.hookInbox = null
     // Why: flush the pending debounced write before clearing the map, else a hook <250ms before quit is lost on relaunch.

@@ -5,7 +5,6 @@ import {
 } from './visibility-state'
 import { allocatePtyLifecycleSequence } from '../host-env/types'
 import { makePtyDataPayload, sendPtyDataToRenderer } from './payload'
-import { runRendererPublishBarrier } from './renderer-publish-barrier'
 import { getRendererInFlightCharsForPty } from './accounting'
 import { clearFlushTimerIfIdle } from './flush'
 import { ptyIncarnationById } from '../provider/ownership-state'
@@ -203,7 +202,6 @@ export function finalizePtyExitForRenderer(
       session.schedulePendingDataAfterCreditReport(true)
     }
   }
-  runRendererPublishBarrier()
   session.mainWindow.webContents.send('pty:exit', {
     ...payload,
     ...(session.reversibleStopOwnersByPtyId.has(payload.id)

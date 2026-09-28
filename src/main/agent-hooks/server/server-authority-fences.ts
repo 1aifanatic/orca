@@ -10,7 +10,6 @@ import type {
 export abstract class AgentHookServerAuthorityFences extends AgentHookServerAuthorityAliases {
   // Why: retirement fences a pane and every alias of it, then deletes those aliases.
   retirePaneAuthority(paneKey: string, retirementId?: string): void {
-    this.absorbCommittedHookRecords()
     const ownerPaneKey = this.resolvePaneKeyAlias(paneKey)
     const previousFence = this.retiredPaneFencesByKey.get(ownerPaneKey)
     const paneKeys = new Set([paneKey, ownerPaneKey])

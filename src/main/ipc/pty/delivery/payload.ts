@@ -3,7 +3,6 @@ import type { PtyModelRestoreReason } from '../../../../shared/pty-model-restore
 import { mainDeliveryBreadcrumbs } from './debug'
 import { recordPtyRendererDeliveryPressure } from './accounting'
 import type { PtyDataPayload, PtyIpcSession } from '../session'
-import { runRendererPublishBarrier } from './renderer-publish-barrier'
 
 export function makePtyDataPayload(
   id: string,
@@ -62,7 +61,6 @@ export function sendPtyDataToRenderer(
   payload: PtyDataPayload,
   projectionAdmissionIds?: readonly string[]
 ): { sent: boolean; projectionsTransferred: boolean } {
-  runRendererPublishBarrier()
   if (!session.mainWindow) {
     if (projectionAdmissionIds) {
       session.sshOutputIntake?.transferProjections(projectionAdmissionIds, 'renderer-destroyed')

@@ -160,18 +160,13 @@ export abstract class AgentHookServerState {
 
   protected hookInbox: AgentHookInbox | null = null
 
-  /** Applies every hook event already committed to the inbox. Runs first wherever the server
-   *  decides a pane's fate from outside the hook stream (process exit, retirement, inference), so
-   *  an event committed before that moment still lands before it — the order the blocking POST
-   *  used to guarantee. */
-  protected absorbCommittedHookRecords(): void {
-    this.hookInbox?.drain()
-  }
-
-  /** Applies every hook event already committed to the inbox. Main's PTY delivery calls this
-   *  before it sends a pane's output or exit to the renderer. */
+  /** Applies every hook event already committed to the inbox. Callers are the entries where main
+   *  learns about a pane from outside the hook stream: the runtime before it processes a pane's
+   *  output, fact or exit, a user action that decides a pane's fate, and a POST. An agent commits
+   *  a hook before its next action, so applying the inbox first keeps the order the blocking POST
+   *  gave. Never call it mid-parse: its ingest can drive terminal state (synthetic titles). */
   drainCommittedHooks(): void {
-    this.absorbCommittedHookRecords()
+    this.hookInbox?.drain()
   }
 
   protected abstract withdrawReplayObservation(paneKey: string): void

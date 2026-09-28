@@ -17,8 +17,6 @@ export abstract class AgentHookServerIngestTerminal extends AgentHookServerInges
     terminalHandle?: string
     payload: ParsedAgentStatusPayload
   }): void {
-    // Why: this status was printed after any hook the agent committed before it.
-    this.absorbCommittedHookRecords()
     const physicalPaneKey = event.paneKey.trim()
     let paneKey = this.resolvePaneKeyAlias(physicalPaneKey)
     const parsedPaneKey = parsePaneKey(paneKey)
