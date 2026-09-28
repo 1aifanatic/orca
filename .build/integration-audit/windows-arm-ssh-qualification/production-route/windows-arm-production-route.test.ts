@@ -22,19 +22,50 @@ function textField(value: Record<string, unknown>, key: string): string {
 }
 function classifyFailure(error: unknown): Record<string, unknown> {
   const message = error instanceof Error ? error.message : ''
+  // execCommand includes the command before the output; never classify that script as an error.
+  const commandFailure = /^Command "([\s\S]*)" failed \(exit (-?\d{1,10})\): ([\s\S]*)$/.exec(message)
+  const output = (commandFailure?.[3] ?? (message.startsWith('Command "') ? '' : message)).slice(0, 16384)
+  const command = commandFailure?.[1] ?? ''
+  const wmiCreateFailure = /Win32_Process\.Create failed with (\d{1,10})/.exec(output)
+  const commandPhase = command.includes('--detached') ? 'detached-launch'
+    : command.includes('--connect') ? 'relay-connect'
+    : command.includes('--version') ? 'runtime-version'
+    : commandFailure ? 'remote-command' : undefined
   const categories = [
-    ['sftp', /sftp|subsystem/i], ['permission', /permission|access.denied/i],
+    ['sftp', /sftp|subsystem/i], ['permission', /permission|access(?: is)? denied|EACCES|EPERM/i],
     ['missing-file', /not.found|ENOENT|missing/i], ['timeout', /timed?.?out|timeout/i],
     ['runtime', /bun|runtime/i], ['integrity', /hash|sha256|integrity/i],
-    ['connection', /connection|channel|socket/i], ['mock-contract', /not a function|mock/i]
+    ['connection', /connection|channel|socket/i], ['mock-contract', /not a function|mock/i],
+    ['command-not-found', /not recognized|command not found/i],
+    ['invalid-executable', /not a valid win32|bad exe|invalid image/i],
+    ['syntax', /syntax error|unexpected token|ParserError/i],
+    ['sharing-violation', /being used by another process|sharing violation/i],
+    ['cim', /CimException|Invoke-CimMethod|Win32_Process\.Create/i]
   ] as const
   return {
     ...((error && typeof error === 'object' && 'code' in error && typeof error.code === 'number' && Number.isInteger(error.code)) ? { nativeExitCode: error.code } : {}),
+    ...(wmiCreateFailure ? { wmiCreateReturnCode: Number(wmiCreateFailure[1]) } : {}),
+    ...(commandFailure ? { remoteExitCode: Number(commandFailure[2]), commandPhase, outputCharacters: output.length,
+      outputLines: output.split(/\r?\n/).slice(0, 12).map((line, index) => ({ index,
+        categories: categories.filter(([,pattern]) => pattern.test(line)).map(([label]) => label) })) } : {}),
     kind: error instanceof Error ? error.constructor.name.replace(/[^a-zA-Z0-9_]/g, '').slice(0,64) : typeof error,
-    categories: categories.filter(([,pattern]) => pattern.test(message)).map(([label]) => label),
+    categories: categories.filter(([,pattern]) => pattern.test(output)).map(([label]) => label),
     frames: error instanceof Error ? [...(error.stack ?? '').matchAll(/([a-zA-Z0-9_-]+\.(?:ts|js|mjs|cjs)):(\d+):(\d+)/g)].slice(0,8).map(match => `${match[1]}:${match[2]}:${match[3]}`) : []
   }
 }
+it('retains numeric remote failure evidence without leaking command or output text', () => {
+  const result = classifyFailure(new Error('Command "bun.exe --detached secret-token permission-test" failed (exit 5): Access is denied.\nC:\\Users\\secret-user'))
+  expect(result).toMatchObject({ remoteExitCode: 5, commandPhase: 'detached-launch', categories: ['permission'],
+    outputLines: [{ index: 0, categories: ['permission'] }, { index: 1, categories: [] }] })
+  expect(JSON.stringify(result)).not.toMatch(/secret|bun.exe|permission-test|Users/)
+  const scriptOnly = classifyFailure(new Error('Command "bun.exe permission check" failed (exit 2): Nothing classified'))
+  expect(scriptOnly).toMatchObject({ remoteExitCode: 2, categories: [] })
+})
+it('preserves the numeric WMI creation verdict', () => {
+  expect(classifyFailure(new Error('Command "bun --detached" failed (exit 1): Win32_Process.Create failed with 2'))).toMatchObject({
+    remoteExitCode: 1, wmiCreateReturnCode: 2, commandPhase: 'detached-launch', categories: ['cim']
+  })
+})
 const configPath = process.env.ORCA_SSH_PROBE_CONFIG
 it.skipIf(!configPath)('native ARM OpenSSH deploy preserves the owned shell across transport loss', { timeout: 600_000 }, async () => {
   expect(process.platform).toBe('win32')

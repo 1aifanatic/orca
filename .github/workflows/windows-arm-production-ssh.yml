@@ -10,7 +10,7 @@ on:
       source_sha:
         description: Exact qualified production source commit
         required: true
-        default: a88eb0980039ac7a69e73667b9280e142e15f022
+        default: 60d4f78060304291af5c9a39752d08640797d62a
 permissions:
   contents: read
 concurrency:
@@ -21,7 +21,7 @@ jobs:
     if: github.repository == 'stablyai/orca' && github.ref == 'refs/heads/OrcaWin/np-arm-ssh-production-diagnostic'
     uses: ./.github/workflows/windows-watcher-artifacts.yml
     with:
-      ref: ${{ inputs.source_sha || 'a88eb0980039ac7a69e73667b9280e142e15f022' }}
+      ref: ${{ inputs.source_sha || '60d4f78060304291af5c9a39752d08640797d62a' }}
   qualify:
     needs: windows_watcher
     runs-on: windows-11-arm
@@ -29,11 +29,11 @@ jobs:
     env:
       ORCA_BACKGROUND_LAUNCH: '1'
       ORCA_ISOLATED_SSH_CI: '1'
-      QUALIFICATION_SOURCE_SHA: ${{ inputs.source_sha || 'a88eb0980039ac7a69e73667b9280e142e15f022' }}
+      QUALIFICATION_SOURCE_SHA: ${{ inputs.source_sha || '60d4f78060304291af5c9a39752d08640797d62a' }}
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.source_sha || 'a88eb0980039ac7a69e73667b9280e142e15f022' }}
+          ref: ${{ inputs.source_sha || '60d4f78060304291af5c9a39752d08640797d62a' }}
           persist-credentials: false
       - uses: actions/checkout@v6
         with:
