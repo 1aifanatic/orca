@@ -50,12 +50,12 @@ export class JournalOwnerLock {
 }
 
 const RETRY_FIRST_DELAY_MS = 1_000
-const RETRY_MAX_DELAY_MS = 30_000
+const RETRY_MAX_DELAY_MS = 5_000
 
 /**
- * Keeps asking for the lock a peer holds, backing off from 1 s to 30 s. On Windows a dead
- * holder's lock is released only after an OS-timed delay, so one refusal is not the answer.
- * In memory only: it dies with the process or when cancelled.
+ * Keeps asking for the lock a peer holds, backing off from 1 s to 5 s. The lock frees as the
+ * holder exits, but nothing tells this process, so the cap is how long chats stay refused here
+ * after the owner quits. In memory only: it dies with the process or when cancelled.
  */
 export function retryJournalOwnerLock(input: {
   stateDirectory: string

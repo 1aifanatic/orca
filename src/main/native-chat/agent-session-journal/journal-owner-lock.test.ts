@@ -93,7 +93,7 @@ describe('the owner lock', () => {
 })
 
 describe('retrying a refused lock', () => {
-  it('backs off from one second to thirty and stops once it is granted', () => {
+  it('backs off from one second to five and stops once it is granted', () => {
     const delays: number[] = []
     const pending: (() => void)[] = []
     let grantOn = 7
@@ -113,7 +113,7 @@ describe('retrying a refused lock', () => {
     while (pending.length > 0) {
       pending.shift()!()
     }
-    expect(delays).toEqual([1_000, 2_000, 4_000, 8_000, 16_000, 30_000, 30_000])
+    expect(delays).toEqual([1_000, 2_000, 4_000, 5_000, 5_000, 5_000, 5_000])
     expect(granted).toEqual([fakeLock])
   })
 
