@@ -2201,8 +2201,8 @@
         "5b2c1a9e44": "未检测到智能体 CLI，请安装一个，或在设置中选择默认智能体。",
         "b7c1f0a934": "无法访问远程主机，因此 Orca 无法判断工作是否仍在运行。还是关窗吧？",
         "quitSnapshotSaveFailed": "退出已取消：无法保存会话快照 ({{value0}})。",
-        "userDisconnectedHosts": "你已断开 {{hosts}}。关闭窗口不会结束那里的终端。仍要关闭窗口吗？",
-        "userDisconnectedAndUnreachableHosts": "你已断开 {{hosts}}。关闭窗口不会结束那里的终端。另一台远程主机无法访问，因此 Orca 无法判断那里的工作是否仍在运行。仍要关闭窗口吗？"
+        "userDisconnectedHosts": "你已断开 {{hosts}}。关闭窗口不会结束其上的终端。仍要关闭窗口吗？",
+        "userDisconnectedAndUnreachableHosts": "你已断开 {{hosts}}。关闭窗口不会结束其上的终端。另一台远程主机无法访问，因此 Orca 无法判断该主机上的工作是否仍在运行。仍要关闭窗口吗？"
       },
       "TerminalSearch": {
         "db234b7519": "关闭",
