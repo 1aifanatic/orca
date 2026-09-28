@@ -105,7 +105,8 @@ async function seedCrashedStore(): Promise<void> {
   store = await AgentSessionRecordStore.open({ directory, hostId: 'local' })
 }
 
-/** A running turn whose only row after its start is a Bash call that never reported back. */
+/** A running turn whose only row after its start is a Bash call that never reported back, for a
+ *  send the provider never acknowledged: the reopen settles it at the fence after the crash. */
 async function seedClaudeToolTurn(): Promise<void> {
   let now = TOOL_STARTED_AT - 2_000
   const journal = await openAgentSessionJournal({
@@ -122,11 +123,12 @@ async function seedClaudeToolTurn(): Promise<void> {
     }),
     now: () => now
   })
-  await journal.appendItem(
-    { provider: 'claude', sessionId: PROVIDER_SESSION, uuid: 'uuid-user' },
-    { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'run the loop' }] },
-    { fence: 13 }
-  )
+  await journal.appendSubmission({
+    clientMessageId: 'send-1',
+    payloadFingerprint: '0'.repeat(64),
+    body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'run the loop' }] },
+    fence: 13
+  })
   await journal.appendItem(
     { provider: 'claude', sessionId: PROVIDER_SESSION, uuid: 'uuid-turn' },
     { kind: 'turn', turnId: 'turn-1', state: 'running', startedAt: now },
