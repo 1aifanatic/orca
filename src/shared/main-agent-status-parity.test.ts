@@ -123,13 +123,10 @@ const STORIES: Story[] = [
       expect: { state: 'working', mainAgent: { state: 'done' } }
     },
     codex: {
-      // A root Stop with no transcript-tracked children clears the roster (Codex 0.144 could omit
-      // child Stop hooks), so the child proves it is still alive with its next tool event.
       events: [
         { hook_event_name: 'UserPromptSubmit', prompt: 'go' },
         { hook_event_name: 'SubagentStart', agent_id: 'agent-1' },
-        { hook_event_name: 'Stop' },
-        { hook_event_name: 'PreToolUse', agent_id: 'agent-1', tool_name: 'shell' }
+        { hook_event_name: 'Stop' }
       ],
       expect: { state: 'working', mainAgent: { state: 'done' } }
     }

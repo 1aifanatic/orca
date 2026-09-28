@@ -14,7 +14,6 @@ import {
 } from '../../codex-subagent-roster'
 import {
   createCodexSubagentTranscriptState,
-  hasTrackedCodexTranscriptSubagents,
   type CodexSubagentTranscriptState
 } from '../../codex-subagent-transcript'
 import type { CodexRolloutTurnEnd } from '../../codex-rollout-turn-lifecycle'
@@ -42,10 +41,6 @@ export function getOrCreateCodexSubagentTranscriptState(
     state.codexSubagentTranscriptByPaneKey.set(paneKey, transcriptState)
   }
   return transcriptState
-}
-
-export function hasCodexTranscriptSubagents(state: HookListenerState, paneKey: string): boolean {
-  return hasTrackedCodexTranscriptSubagents(state.codexSubagentTranscriptByPaneKey.get(paneKey))
 }
 
 /** How Codex's rollout recorded this turn's end, if it has. */
@@ -231,6 +226,8 @@ export function reconcileRemoteCodexState(
       finishCodexSubagent(roster, agentId)
     }
   } else if (eventName === 'SessionStart' || (eventName === 'Stop' && !payload.subagents)) {
+    // Why: the relay's root Stop carries its whole roster, so one with none means the relay tracks
+    // none; the relay itself never drops a child on Stop.
     roster.clear()
   }
   const previousLead = state.codexLeadStateByPaneKey.get(paneKey)

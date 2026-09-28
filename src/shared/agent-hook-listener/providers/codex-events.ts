@@ -30,7 +30,6 @@ import {
   codexRolloutTurnEnd,
   getOrCreateCodexSubagentRoster,
   getOrCreateCodexSubagentTranscriptState,
-  hasCodexTranscriptSubagents,
   resolveCodexPaneStatus,
   setCodexMainAgentTurnState
 } from './codex-state'
@@ -210,10 +209,6 @@ export function normalizeCodexEvent(
     return buildCodexChildDrivenStatusPayload(state, eventName, paneKey, hookPayload)
   }
 
-  if (eventName === 'Stop' && !hasCodexTranscriptSubagents(state, paneKey)) {
-    // Why: Codex CLI 0.144 can omit child Stop hooks; later child activity safely recreates any agent still running.
-    state.codexSubagentRosterByPaneKey.delete(paneKey)
-  }
   // Why: resolved after the transcript reconcile above, so this turn's reviewer is read from the
   // rollout during the very PermissionRequest being classified, not from a prior event.
   const ownedState = resolveCodexApprovalOwnedState(

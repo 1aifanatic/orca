@@ -63,7 +63,7 @@ export function catchUpOnCodexParentRollout(
 }
 
 /** Whether the rollout can still change a Codex row: a root turn open by its own record or by the
- *  rollout's, or children tracked from the rollout. */
+ *  rollout's, or children, each of which is read from its own rollout. */
 export function codexRolloutNeedsWatch(state: HookListenerState, paneKey: string): boolean {
   const transcriptState = state.codexSubagentTranscriptByPaneKey.get(paneKey)
   if (
@@ -76,7 +76,7 @@ export function codexRolloutNeedsWatch(state: HookListenerState, paneKey: string
   return (
     (lead !== undefined && lead.state !== 'done') ||
     transcriptState.mainTurns.openTurnId !== undefined ||
-    transcriptState.subagents.size > 0
+    (state.codexSubagentRosterByPaneKey.get(paneKey)?.size ?? 0) > 0
   )
 }
 

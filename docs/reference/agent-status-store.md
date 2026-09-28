@@ -233,7 +233,7 @@ at 3 seconds, so the execution host (main for a local pane, the relay for an SSH
 one) also reads the pane's parent rollout. Every Codex event catches up on it
 first, and the Codex rollout watch (`codex-rollout-watch.ts`) reads it once a
 second while the main agent's turn is open (by its own record or the rollout's)
-or rollout-tracked children run. The watch reads; it never replays a hook body.
+or any child runs. The watch reads; it never replays a hook body.
 It rebuilds the row from the current records and publishes it with no hook name
 or explicit prompt, so it restates the row rather than starting a turn, and its
 life follows the pane's records, not the identity of the row it last published.
@@ -242,7 +242,12 @@ ended turns with how each ended. Every `turn_aborted` is a cancellation,
 whatever its reason (`interrupted`, `replaced`, `review_ended`, `budget_limited`,
 or none), because Codex's own app-server reports every aborted turn as
 interrupted. This settles the turn when its hook was lost or never registered
-(Codex before 0.150).
+(Codex before 0.150). The same reads cover the children: every child in the
+roster, whether a hook or the parent rollout announced it, is also read from its
+own rollout (named by its thread id), and it leaves the row on its own
+`SubagentStop`, once that rollout records its turn's end (Codex aborts a child
+without a `SubagentStop`), or when the session ends. The main agent's `Stop` or
+`Interrupt` never drops a child.
 
 Admission is one function, `normalizeAgentStatusPayload`, on the relay wire,
 IPC and disk. A malformed `mainAgent` drops the field and keeps the row. Old hosts
@@ -277,10 +282,6 @@ reader does not mistake them for drift:
   first.
 - The structured lane has no per-child wait: a child's pending prompt makes
   the session `attention`, which reads as the main agent's own `blocked`.
-- The Codex hook lane drops its roster on a root `Stop` when it tracks no
-  child transcripts, so a still-running or still-asking child stops holding
-  the row. `Interrupt` never drops it: the subagent a cancel leaves running
-  holds the row until its own `SubagentStop`.
 
 How the main agent's turn ended is not a fold input. A cancel is a verdict on
 the main agent, carried as `mainAgent.outcome: 'cancellation'` (and, for

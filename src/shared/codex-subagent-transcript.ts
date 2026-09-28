@@ -164,17 +164,13 @@ function normalizedTranscriptPath(transcriptPath: string | undefined): string | 
     : undefined
 }
 
+/** Whether the child's latest turn in its own rollout has ended, completed or aborted. */
 function childIsComplete(records: JsonRecord[]): boolean {
   let complete = false
   for (const recordValue of records) {
-    if (recordValue.type !== 'event_msg') {
-      continue
-    }
-    const payload = record(recordValue.payload)
-    if (payload?.type === 'task_started') {
-      complete = false
-    } else if (payload?.type === 'task_complete') {
-      complete = true
+    const lifecycle = decodeCodexRolloutTurnLifecycle(recordValue)
+    if (lifecycle) {
+      complete = lifecycle.state !== 'working'
     }
   }
   return complete
@@ -188,12 +184,6 @@ export function createCodexSubagentTranscriptState(): CodexSubagentTranscriptSta
     reviewersByPath: new Map(),
     mainTurns: createCodexRolloutTurns()
   }
-}
-
-export function hasTrackedCodexTranscriptSubagents(
-  state: CodexSubagentTranscriptState | undefined
-): boolean {
-  return Boolean(state && state.subagents.size > 0)
 }
 
 export function reconcileCodexSubagentTranscript(
@@ -250,6 +240,20 @@ export function reconcileCodexSubagentTranscript(
       { description: tracked.description, state: 'working' },
       tracked.startedAt
     )
+  }
+  // Why: every child the roster holds, a hook-announced one included, is read from its own rollout
+  // (named by its thread id), so it leaves when that rollout records its turn's end even if its
+  // SubagentStop never arrives (an aborted child fires none), and never because its parent's turn
+  // ended.
+  for (const [id, child] of roster) {
+    if (!state.subagents.has(id)) {
+      state.subagents.set(id, { offset: 0, carry: '', startedAt: child.startedAt })
+    }
+  }
+  for (const id of state.subagents.keys()) {
+    if (!roster.has(id)) {
+      state.subagents.delete(id)
+    }
   }
   const entriesByDirectory = new Map<string, string[]>()
   const now = Date.now()

@@ -124,6 +124,35 @@ describe('the Codex rollout watch', () => {
       subagents: [expect.objectContaining({ id: CHILD_ID, state: 'working' })]
     })
   })
+  // A child Codex aborts fires no SubagentStop: Codex runs Stop hooks only for a turn that
+  // completes. An embedded TUI exiting with a subagent still running aborts it this way.
+  it('retires a hook-announced subagent once its own rollout records its abort', async () => {
+    const childRollout = join(dir, `rollout-2026-09-27T10-00-00-${CHILD_ID}.jsonl`)
+    writeFileSync(rollout, turnMarker('task_started', 'turn-1'))
+    writeFileSync(childRollout, turnMarker('task_started', 'child-turn'))
+    await post({ hook_event_name: 'UserPromptSubmit', prompt: 'go', turn_id: 'turn-1' })
+    await post({ hook_event_name: 'SubagentStart', agent_id: CHILD_ID, turn_id: 'child-turn' })
+    await post({ hook_event_name: 'Interrupt', turn_id: 'turn-1' })
+    await new Promise((resolve) => setTimeout(resolve, 1_500))
+    expect(server.getStatusSnapshot()[0]).toMatchObject({
+      state: 'working',
+      mainAgent: { state: 'done', outcome: 'cancellation' },
+      subagents: [expect.objectContaining({ id: CHILD_ID, state: 'working' })]
+    })
+
+    appendFileSync(childRollout, turnMarker('turn_aborted', 'child-turn'))
+    await vi.waitFor(
+      () => {
+        expect(server.getStatusSnapshot()[0]).toMatchObject({
+          state: 'done',
+          interrupted: true,
+          mainAgent: { state: 'done', outcome: 'cancellation' }
+        })
+      },
+      { timeout: 3_000, interval: 50 }
+    )
+    expect(server.getStatusSnapshot()[0]?.subagents).toBeUndefined()
+  })
 })
 
 describe('a Codex turn that ended while Orca was down', () => {
