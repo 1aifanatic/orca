@@ -35,17 +35,8 @@ export {
 export function createCodexJournalTranslator(
   deps: CodexJournalTranslatorDeps
 ): CodexJournalTranslator {
-  const {
-    activeTurns,
-    subagents,
-    linkageFor,
-    genericFrames,
-    items,
-    compactions,
-    goals,
-    prompts,
-    settleOversizedNotification
-  } = createCodexJournalTranslatorWriters(deps)
+  const { activeTurns, subagents, linkageFor, genericFrames, items, compactions, goals, prompts } =
+    createCodexJournalTranslatorWriters(deps)
   const flushStreams = (): CodexJournalTranslationAdmission =>
     items.streams.flush() ? CODEX_JOURNAL_ADMITTED : { accepted: false, reason: 'backpressure' }
   let readActivity = createCodexProviderActivityReader()
@@ -204,10 +195,6 @@ export function createCodexJournalTranslator(
         )
       }
       if (event.type === 'provider-frame') {
-        const settlement = settleOversizedNotification(event)
-        if (settlement && !settlement.accepted) {
-          return settlement
-        }
         return genericFrames.appendUnhandled(event.kind, event.payload, event.threadId)
       }
       if (event.method === 'turn/started' || event.method === 'turn/completed') {
