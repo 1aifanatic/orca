@@ -288,7 +288,7 @@ describe('remote runtime terminal split authority', () => {
     const harness = createHarness(true, { rendererMounted: true, rendererPtyId: null })
     await harness.runtime.splitTerminal(harness.handle, { direction: 'vertical' })
     expect(harness.revealTerminalSession).toHaveBeenCalledOnce()
-    expect(harness.getSession().terminalLayoutsByTabId[TAB_ID]?.root.type).toBe('split')
+    expect(harness.getSession().terminalLayoutsByTabId[TAB_ID]?.root?.type).toBe('split')
   })
 
   it('does not reveal a persisted split into a renderer bound to a different PTY', async () => {
