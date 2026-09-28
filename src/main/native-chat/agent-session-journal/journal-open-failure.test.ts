@@ -4,8 +4,8 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { openJournalDatabase } from './journal-database'
 import { classifyJournalOpenFailure } from './journal-open-failure'
-import { loadJournal } from './journal-open'
-import { journalDatabaseFile } from './journal-paths'
+import { journalDatabasePath } from './journal-host-database'
+import { replayJournal } from './journal-open'
 
 let root: string
 
@@ -17,10 +17,15 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-/** What the journal's own open throws for the file as it stands. */
+/** What the journal's own open, then a chat's replay, throws for the file as it stands. */
 function openFailure(): unknown {
   try {
-    loadJournal(root, 'session-1')
+    const db = openJournalDatabase(journalDatabasePath(root))
+    try {
+      replayJournal(db, 'session-1')
+    } finally {
+      db.close()
+    }
   } catch (error) {
     return error
   }
@@ -38,17 +43,17 @@ function systemError(code: string, errno: number): Error {
 
 describe('classifyJournalOpenFailure', () => {
   it('calls a journal that is not a database corrupt', async () => {
-    await writeFile(journalDatabaseFile(root), 'not a database '.repeat(64))
+    await writeFile(journalDatabasePath(root), 'not a database '.repeat(64))
     const error = openFailure()
     expect(error).toMatchObject({ errcode: 26 })
     expect(classifyJournalOpenFailure(error)).toBe('journalCorrupt')
   })
 
   it('calls a journal whose pages are damaged corrupt', async () => {
-    const path = journalDatabaseFile(root)
+    const path = journalDatabasePath(root)
     const opened = openJournalDatabase(path)
-    opened.db.exec('PRAGMA journal_mode = DELETE')
-    opened.db.close()
+    opened.exec('PRAGMA journal_mode = DELETE')
+    opened.close()
     const bytes = await readFile(path)
     // Page 1 holds the header and schema; every table's root page follows it.
     bytes.fill(0xab, 4096)

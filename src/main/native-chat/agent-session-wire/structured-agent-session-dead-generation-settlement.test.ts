@@ -15,6 +15,7 @@ import {
   settleStructuredAgentSessionDeadGeneration,
   unfinishedStructuredAgentSessionWorkWasInterrupted
 } from './structured-agent-session-dead-generation-settlement'
+import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 
 const UNEXPECTED_PROVIDER_EXIT_OUTCOME =
   'The agent stopped while this response was in progress. You can continue in this conversation.'
@@ -34,7 +35,7 @@ beforeEach(async () => {
       agent: 'codex',
       providerHandle: { kind: 'codex', threadId: THREAD }
     },
-    journalDir: root,
+    database: openTestJournalHostDatabase(root),
     now: () => 1_000
   })
 })
@@ -402,7 +403,7 @@ describe('dead structured-session generation settlement', () => {
         agent: 'codex',
         providerHandle: { kind: 'codex', threadId: THREAD }
       },
-      journalDir: root,
+      database: openTestJournalHostDatabase(root),
       now: () => 1_000
     })
     expect(settledProducers()).toEqual(settled)

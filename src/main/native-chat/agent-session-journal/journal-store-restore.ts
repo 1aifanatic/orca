@@ -11,21 +11,28 @@ import { replayJournal } from './journal-open'
 import type { JournalStoreHost } from './journal-store-collaborators'
 import { openJournalStoreState } from './journal-store-open'
 import { deleteJournalRepairedSuffix } from './journal-repair-marker'
+import { importPerSessionJournal } from './journal-per-session-import'
 
 export function restoreJournalStore(
   host: JournalStoreHost,
   collaborators: { epochController: JournalEpochController }
 ): Promise<void> {
   return openJournalStoreState({
-    journalDir: host.journalDir,
-    loaded: host.loaded(),
+    legacyDirectory: host.legacyDirectory,
     replay: () => {
-      const opened = host.database()
-      return replayJournal(opened.db, opened.readOnly, host.identity.sessionId)
+      // A per-chat file left by an earlier build is this chat's newest history: copied in first.
+      importPerSessionJournal({
+        database: host.database(),
+        identity: host.identity,
+        legacyDirectory: host.legacyDirectory
+      })
+      const loaded = replayJournal(host.database().db, host.identity.sessionId)
+      host.setOpenedCorrupt(loaded?.corrupt ?? false)
+      return loaded
     },
     deleteSuffix: (fromSeq, contentFrom) =>
       deleteJournalRepairedSuffix({
-        db: host.database().db,
+        database: host.database(),
         sessionId: host.identity.sessionId,
         epoch: host.state().epoch,
         fromSeq,

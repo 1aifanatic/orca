@@ -23,6 +23,7 @@ import {
 } from '../../../shared/agent-session-wire'
 import type { AgentChildWorkEvidence } from '../../../shared/agent-status-child-work-evidence'
 import { projectStructuredAgentSessionStatusState } from '../../../shared/structured-agent-session-projection'
+import { isSavableStructuredAgentSessionProjection } from '../../../shared/structured-agent-session-saved-status'
 import { structuredAgentSessionAgentStatus } from '../../../shared/structured-agent-session-agent-status'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { StructuredAgentSessionProviderChildPhase } from './structured-agent-session-adapter'
@@ -330,6 +331,9 @@ export class StructuredAgentSessionStatusFeed {
         )
       }
       this.journalProjections.set(journal, projection)
+      if (!readOnly && isSavableStructuredAgentSessionProjection(projection.state.summary)) {
+        journal.saveListingStatus(projection.state.summary)
+      }
     }
     return projection.state
   }

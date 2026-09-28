@@ -15,11 +15,14 @@ import type {
   AgentSessionJournalIdentity
 } from '../../../shared/agent-session-journal-types'
 import type Database from '../../sqlite/sync-database'
-import { openJournalDatabase } from './journal-database'
 import { JOURNAL_DB_SCHEMA_VERSION } from './journal-database-schema'
-import { journalDatabaseFile } from './journal-paths'
+import { JournalDatabaseNewerSchemaError } from './journal-database'
+import { journalDatabasePath } from './journal-host-database'
 import type { AgentSessionJournal } from './journal-store'
-import { createTrackedJournalOpener } from './journal-store-test-open'
+import {
+  createTrackedJournalOpener,
+  openTestJournalHostDatabase
+} from './journal-host-database-test-support'
 
 const IDENTITY: AgentSessionJournalIdentity = {
   sessionId: 'session-1',
@@ -49,18 +52,18 @@ function body(value: string): AgentJournalItemBody {
 function open(): Promise<AgentSessionJournal> {
   return journals.open({
     identity: IDENTITY,
-    journalDir: root,
+    stateDirectory: root,
     now: tick,
     mintEpoch: () => `epoch-${clock}`
   })
 }
 
 async function withDatabase(run: (db: Database.Database) => void): Promise<void> {
-  const opened = openJournalDatabase(journalDatabaseFile(root))
+  const opened = openTestJournalHostDatabase(root)
   try {
     run(opened.db)
   } finally {
-    opened.db.close()
+    opened.close()
   }
 }
 
@@ -70,6 +73,21 @@ async function appendRawRow(epoch: string, seq: number, rowJson: string): Promis
     db.prepare(
       'INSERT INTO journal_rows (session_id, epoch, seq, ts, row_json) VALUES (?, ?, ?, ?, ?)'
     ).run(IDENTITY.sessionId, epoch, seq, 1, rowJson)
+  })
+}
+
+/** A row only a newer build could have written. */
+function futureRow(epoch: string, seq: number): string {
+  return JSON.stringify({
+    v: 99,
+    kind: 'item',
+    epoch,
+    seq,
+    fence: 1,
+    ts: 1,
+    itemId: 'future',
+    revision: 1,
+    body: { kind: 'status', text: 'from a newer build' }
   })
 }
 
@@ -84,30 +102,24 @@ afterEach(async () => {
 })
 
 describe('axis 1: the database shape', () => {
-  it('latches read-only on a newer user_version and writes nothing', async () => {
+  // A newer build's database is not opened at all, so nothing here can write to it.
+  it('refuses a database a newer build stamped, and writes nothing', async () => {
     const journal = await open()
     await journal.appendItem(item(0), body('a'), { fence: 1 })
     await journal.close()
     await withDatabase((db) => db.pragma(`user_version = ${JOURNAL_DB_SCHEMA_VERSION + 1}`))
-    const before = await stat(journalDatabaseFile(root))
+    const before = await stat(journalDatabasePath(root))
 
-    const reopened = await open()
-    expect(reopened.isReadOnly).toBe(true)
-    await expect(reopened.appendItem(item(1), body('b'), { fence: 1 })).rejects.toMatchObject({
-      code: 'journal_read_only'
-    })
-    // The file this build must not touch is byte-identical afterwards.
-    await reopened.close()
-    expect((await stat(journalDatabaseFile(root))).size).toBe(before.size)
-    await withDatabase((db) => {
-      expect(db.pragma('user_version', { simple: true })).toBe(JOURNAL_DB_SCHEMA_VERSION + 1)
-    })
+    await expect(open()).rejects.toBeInstanceOf(JournalDatabaseNewerSchemaError)
+    expect((await stat(journalDatabasePath(root))).size).toBe(before.size)
   })
 
-  it('refuses the schema escape hatch on a latched store', async () => {
+  it('refuses the schema escape hatch on a store latched by a newer row', async () => {
     const journal = await open()
+    const epoch = journal.epoch
+    const nextSeq = journal.cursor().sequence + 1
     await journal.close()
-    await withDatabase((db) => db.pragma(`user_version = ${JOURNAL_DB_SCHEMA_VERSION + 1}`))
+    await appendRawRow(epoch, nextSeq, futureRow(epoch, nextSeq))
 
     const reopened = await open()
     // With byte-copy quarantine gone there is nothing for `schema_unreadable` to
@@ -141,21 +153,7 @@ describe('axis 2: the row body shape', () => {
     const epoch = journal.epoch
     const nextSeq = journal.cursor().sequence + 1
     await journal.close()
-    await appendRawRow(
-      epoch,
-      nextSeq,
-      JSON.stringify({
-        v: 99,
-        kind: 'item',
-        epoch,
-        seq: nextSeq,
-        fence: 1,
-        ts: 1,
-        itemId: 'future',
-        revision: 1,
-        body: { kind: 'status', text: 'from a newer build' }
-      })
-    )
+    await appendRawRow(epoch, nextSeq, futureRow(epoch, nextSeq))
 
     const reopened = await open()
     expect(reopened.isReadOnly).toBe(true)

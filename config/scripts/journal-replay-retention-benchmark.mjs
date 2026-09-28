@@ -23,7 +23,7 @@ try {
     await build({
       stdin: {
         contents:
-          "export {openAgentSessionJournal} from './src/main/native-chat/agent-session-journal/journal-store-factory'; export {loadJournal} from './src/main/native-chat/agent-session-journal/journal-open'; export {journalDatabaseFile} from './src/main/native-chat/agent-session-journal/journal-paths';",
+          "export {openAgentSessionJournal} from './src/main/native-chat/agent-session-journal/journal-store-factory'; export {replayJournal} from './src/main/native-chat/agent-session-journal/journal-open'; export {JournalHostDatabase, journalDatabasePath} from './src/main/native-chat/agent-session-journal/journal-host-database'; export {tryAcquireJournalOwnerLock} from './src/main/native-chat/agent-session-journal/journal-owner-lock';",
         resolveDir: root
       },
       bundle: true,
@@ -69,8 +69,10 @@ try {
     agent: 'codex',
     providerHandle: { kind: 'codex', threadId: 'thread' }
   }
-  const journalDir = join(fixture, 'session')
-  const journal = await implementations.current.openAgentSessionJournal({ identity, journalDir })
+  const stateDirectory = join(fixture, 'state')
+  const lock = implementations.current.tryAcquireJournalOwnerLock(stateDirectory)
+  const database = implementations.current.JournalHostDatabase.open(lock)
+  const journal = await implementations.current.openAgentSessionJournal({ identity, database })
   const item = { provider: 'codex', threadId: 'thread', turnId: 'turn', ordinal: 0 }
   const text = 'x'.repeat(32768)
   for (let revision = 0; revision < 2000; revision++) {
@@ -88,7 +90,7 @@ try {
   for (const arm of ['baseline', 'current', 'current', 'baseline']) {
     global.gc()
     const start = performance.now()
-    let loaded = implementations[arm].loadJournal(journalDir, identity.sessionId)
+    let loaded = implementations[arm].replayJournal(database.db, identity.sessionId)
     const ms = performance.now() - start
     assert.equal(loaded.state.items.size, 1)
     assert.equal([...loaded.state.items.values()][0].revision, 2000)
@@ -103,7 +105,7 @@ try {
       global.gc()
       peakLiveHeap = Math.max(peakLiveHeap, process.memoryUsage().heapUsed)
     }
-    loaded = implementations[arm].loadJournal(journalDir, identity.sessionId)
+    loaded = implementations[arm].replayJournal(database.db, identity.sessionId)
     delete globalThis.__replayMemoryProbe
     assert.equal(loaded.state.items.size, 1)
     loaded = null
@@ -111,11 +113,13 @@ try {
       JSON.stringify({
         arm,
         ms,
-        databaseBytes: (await stat(implementations[arm].journalDatabaseFile(journalDir))).size,
+        databaseBytes: (await stat(implementations[arm].journalDatabasePath(stateDirectory))).size,
         peakLiveHeapDelta: peakLiveHeap - initialHeap
       })
     )
   }
+  database.close()
+  lock.release()
 } finally {
   delete globalThis.__replayMemoryProbe
   await rm(fixture, { recursive: true, force: true })

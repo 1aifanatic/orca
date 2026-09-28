@@ -7,6 +7,7 @@ import {
   migrateMobilePairingDataToCanonicalUserDataPath
 } from '../persistence'
 import { OrcaRuntimeRpcServer } from '../runtime/runtime-rpc'
+import { setJournalOwnerProcessKind } from '../runtime/structured-agent-session-journal-ownership'
 import { registerMobileHandlers } from '../ipc/mobile'
 import { getLocalPtyProvider, registerHeadlessPtyRuntime } from '../ipc/pty'
 import { LocalPtyProvider } from '../providers/local-pty-provider'
@@ -74,6 +75,7 @@ function installRuntimeRpc(
   }
   // Why: pin dev to 6769 so `pnpm dev` doesn't race packaged Orca on 6768 and fall back to a random port, breaking deterministic mobile pairing/repro (STA-1511).
   const devWsPort = is.dev && !isE2E ? 6769 : undefined
+  setJournalOwnerProcessKind(is.dev && !serveOptions ? 'dev-desktop' : 'packaged')
   const runtimeRpc = new OrcaRuntimeRpcServer({
     runtime,
     // Why: mobile pairing needs the stable pre-setName() path (getCanonicalUserDataPath), not a late app.getPath('userData') that drops paired devices across restarts.
@@ -91,7 +93,8 @@ function installRuntimeRpc(
           preferPinnedWsPort: true
         }
       : {}),
-    webClientRoot: getBundledWebClientRoot()
+    webClientRoot: getBundledWebClientRoot(),
+    journalStateDirectory: getProfileUserDataPath()
   })
   state.runtimeRpc = runtimeRpc
   registerMobileHandlers(runtimeRpc, {

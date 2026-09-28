@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import type { AgentJournalRenderItem } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
-import { createTrackedJournalOpener } from '../agent-session-journal/journal-store-test-open'
+import { createTrackedJournalOpener } from '../agent-session-journal/journal-host-database-test-support'
 import { settleStaleStructuredAgentSessionState } from './structured-agent-session-dead-generation-settlement'
 import {
   runningTurnLifecycleRevisions,
@@ -276,7 +276,7 @@ describe('stale session state on a cold acquire', () => {
           agent: 'codex',
           providerHandle: { kind: 'codex', threadId: THREAD }
         },
-        journalDir: root,
+        stateDirectory: root,
         now: () => 1_000
       })
       const child = { agentId: 'thread-child', producerKind: 'agent' as const }

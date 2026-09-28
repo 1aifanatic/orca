@@ -11,10 +11,11 @@ import type {
   AgentJournalItemIdentity,
   AgentSessionJournalIdentity
 } from '../../../shared/agent-session-journal-types'
-import { openJournalDatabase } from './journal-database'
-import { journalDatabaseFile } from './journal-paths'
 import { parseJournalRow } from './journal-row-schema'
-import { createTrackedJournalOpener } from './journal-store-test-open'
+import {
+  createTrackedJournalOpener,
+  openTestJournalHostDatabase
+} from './journal-host-database-test-support'
 
 const IDENTITY: AgentSessionJournalIdentity = {
   sessionId: 'session-1',
@@ -61,7 +62,7 @@ const journals = createTrackedJournalOpener()
 const open = () =>
   journals.open({
     identity: IDENTITY,
-    journalDir: root,
+    stateDirectory: root,
     now: () => ++clock,
     mintEpoch: () => 'epoch-1'
   })
@@ -111,7 +112,7 @@ describe('context facts on replayed turn rows', () => {
       { fence: 1 }
     )
     await journal.close()
-    const opened = openJournalDatabase(journalDatabaseFile(root))
+    const opened = openTestJournalHostDatabase(root)
     try {
       const stored: unknown = opened.db
         .prepare('SELECT row_json FROM journal_rows WHERE seq = 2')
@@ -124,7 +125,7 @@ describe('context facts on replayed turn rows', () => {
         .prepare('UPDATE journal_rows SET row_json = ? WHERE seq = 2')
         .run(JSON.stringify(future))
     } finally {
-      opened.db.close()
+      opened.close()
     }
 
     const reopened = await open()

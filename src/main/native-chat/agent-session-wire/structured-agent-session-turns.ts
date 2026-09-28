@@ -34,6 +34,10 @@ import type {
 import { structuredAgentSessionStartFailure } from './structured-agent-session-failure-text'
 import { validatePendingPrompt } from './structured-agent-session-prompt-state'
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
+import {
+  classifyJournalOpenFailure,
+  journalOpenRefusal
+} from '../agent-session-journal/journal-open-failure'
 export { performSetOption } from './structured-agent-session-turns-options'
 export { performPrompt } from './structured-agent-session-turns-prompt'
 
@@ -139,7 +143,11 @@ export async function performSend(
   }
   try {
     await ctx.journal.appendSubmission({ ...input, fence: ctx.fence, handoverRecorded: true })
-  } catch {
+  } catch (error) {
+    // Damage SQLite proves is the chat's, and no retry writes past it: say so, as an open does.
+    if (classifyJournalOpenFailure(error) === 'journalCorrupt') {
+      return { ok: false, refusal: journalOpenRefusal(error) }
+    }
     return invalid('journalWriteFailed', 'The message could not be recorded and was not sent.')
   }
   return {

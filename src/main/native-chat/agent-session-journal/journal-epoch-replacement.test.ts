@@ -1,19 +1,21 @@
 // Republishing an epoch is ONE transaction.
 
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   AgentJournalItemIdentity,
   AgentSessionJournalIdentity
 } from '../../../shared/agent-session-journal-types'
-import { openJournalDatabase, type OpenJournalDatabase } from './journal-database'
+import { journalDatabasePath, type JournalHostDatabase } from './journal-host-database'
 import { replaceJournalEpoch } from './journal-epoch-replacement'
 import type { JournalLoad } from './journal-open'
-import { journalDatabaseFile } from './journal-paths'
 import { readJournalEpochRows, readJournalSessionEpoch } from './journal-row-table'
-import { createTrackedJournalOpener } from './journal-store-test-open'
+import {
+  createTrackedJournalOpener,
+  openTestJournalHostDatabase
+} from './journal-host-database-test-support'
 
 const IDENTITY: AgentSessionJournalIdentity = {
   sessionId: 'session-1',
@@ -25,7 +27,7 @@ const IDENTITY: AgentSessionJournalIdentity = {
 
 let root: string
 let clock = 1_000
-let database: OpenJournalDatabase
+let database: JournalHostDatabase
 const journals = createTrackedJournalOpener()
 
 function now(): number {
@@ -42,7 +44,7 @@ function replace(input: {
   onPublished?: (loaded: JournalLoad) => void
 }): void {
   replaceJournalEpoch({
-    db: database.db,
+    database,
     identity: IDENTITY,
     reason: 'legacy_import',
     fence: 1,
@@ -56,12 +58,12 @@ function replace(input: {
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'orca-journal-replace-'))
   clock = 1_000
-  database = openJournalDatabase(journalDatabaseFile(root))
+  database = openTestJournalHostDatabase(root)
 })
 
 afterEach(async () => {
   try {
-    database.db.close()
+    database.close()
   } catch {
     // Already closed by the case.
   }
@@ -85,7 +87,7 @@ describe('journal epoch replacement', () => {
   })
 
   it('discards every superseded row in the same transaction', async () => {
-    const journal = await journals.open({ identity: IDENTITY, journalDir: root })
+    const journal = await journals.open({ identity: IDENTITY, stateDirectory: root })
     await journal.appendItem(item(1), { kind: 'status', text: 'old' }, { fence: 1 })
     await journal.appendItem(item(2), { kind: 'status', text: 'older' }, { fence: 1 })
     const before = journal.epoch
@@ -99,5 +101,28 @@ describe('journal epoch replacement', () => {
     expect(journal.snapshot().items.map((entry) => entry.body)).toEqual([
       { kind: 'status', text: 'republished' }
     ])
+  })
+
+  // `auto_vacuum = INCREMENTAL` only marks freed pages; nothing hands them back unless asked. A
+  // rewind that replaces a large chat must not leave the file holding its old history forever.
+  it('hands the pages a large replace freed back to the filesystem', async () => {
+    const journal = await journals.open({ identity: IDENTITY, stateDirectory: root })
+    const text = 'x'.repeat(4_000)
+    for (let ordinal = 1; ordinal <= 400; ordinal += 1) {
+      await journal.appendItem(item(ordinal), { kind: 'status', text }, { fence: 1 })
+    }
+    database.db.pragma('wal_checkpoint(TRUNCATE)')
+    const grown = (await stat(journalDatabasePath(root))).size
+
+    await journal.replaceEpochItems('legacy_import', 1, [
+      { identity: item(9), body: { kind: 'status', text: 'republished' } }
+    ])
+    // The replace schedules the reclaim itself; this only waits for it.
+    await vi.waitFor(
+      () => expect(Number(database.db.pragma('freelist_count', { simple: true }))).toBeLessThan(8),
+      { timeout: 2_000 }
+    )
+    database.db.pragma('wal_checkpoint(TRUNCATE)')
+    expect((await stat(journalDatabasePath(root))).size).toBeLessThan(grown / 4)
   })
 })

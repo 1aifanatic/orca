@@ -13,6 +13,7 @@ import { getStructuredAgentSessionHost } from '../../../native-chat/agent-sessio
 import type { StructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-host'
 import type { StructuredAgentSessionCaller } from '../../../native-chat/agent-session-wire/structured-agent-session-host-types'
 import type { RpcContext } from '../core'
+import { structuredAgentSessionHostRefusal } from '../../structured-agent-session-journal-ownership'
 import {
   supportsStructuredAgentSessionCapability,
   supportsStructuredAgentSessions
@@ -36,13 +37,7 @@ export function requireStructuredCapability(ctx: RpcContext): void {
 
 export function requireStructuredHost(ctx: RpcContext): StructuredAgentSessionHost {
   requireStructuredCapability(ctx)
-  const host = getStructuredAgentSessionHost()
-  if (!host) {
-    throw agentSessionRefusalError('structured_agent_session_unsupported', {
-      reason: 'hostDisabled'
-    })
-  }
-  return host
+  return requireHostOrRefusal()
 }
 
 /**
@@ -73,13 +68,23 @@ export function requireStructuredCleanupHost(ctx: RpcContext): StructuredAgentSe
       reason: 'clientCapabilityMissing'
     })
   }
+  return requireHostOrRefusal()
+}
+
+/**
+ * The host, or why there is none. A process whose chats another Orca owns, or whose journal would
+ * not open, says so under every getter — cleanup included: nothing here can stop a child it never
+ * started, and the words tell the user where their chats are.
+ */
+function requireHostOrRefusal(): StructuredAgentSessionHost {
   const host = getStructuredAgentSessionHost()
-  if (!host) {
-    throw agentSessionRefusalError('structured_agent_session_unsupported', {
-      reason: 'hostDisabled'
-    })
+  if (host) {
+    return host
   }
-  return host
+  throw (
+    structuredAgentSessionHostRefusal() ??
+    agentSessionRefusalError('structured_agent_session_unsupported', { reason: 'hostDisabled' })
+  )
 }
 
 /** Builds the host for a call that may be the first this process sees. Every session is addressed

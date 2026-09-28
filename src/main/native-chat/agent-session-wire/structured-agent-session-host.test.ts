@@ -26,6 +26,7 @@ import {
   HOST_TEST_THREAD as THREAD,
   hostTestMessage
 } from './structured-agent-session-host-test-data'
+import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 
 let root: string
 let store: AgentSessionRecordStore
@@ -132,7 +133,7 @@ describe('attach', () => {
     host = new StructuredAgentSessionHost({
       store,
       adapter: { ...adapter(), acquire },
-      journalRoot: root,
+      journalDatabase: openTestJournalHostDatabase(root),
       claimKeyId: 'key-1',
       mintSpawnToken: () => 'spawn-a',
       now: () => NOW
@@ -561,7 +562,7 @@ describe('restart', () => {
     host = new StructuredAgentSessionHost({
       store,
       adapter: { ...adapter(), ...adapterOverrides },
-      journalRoot: root,
+      journalDatabase: openTestJournalHostDatabase(root),
       claimKeyId: 'key-1',
       mintSpawnToken: () => 'spawn-b',
       probeOwner,

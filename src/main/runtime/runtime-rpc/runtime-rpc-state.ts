@@ -41,6 +41,8 @@ export class RuntimeRpcState {
   protected readonly exposeNetworkByDefault: boolean
   protected readonly pinnedBindHost: string | null
   protected readonly webClientRoot: string | undefined
+  protected readonly journalStateDirectory: string | undefined
+  protected stopWaitingForJournalOwnership: (() => void) | null = null
   // Why: STA-2370 — the host the WS listener is currently bound to, so pairing can widen loopback→all-interfaces once.
   protected wsBoundHost: string | null = null
   // Why: STA-2370 — in-flight widen so concurrent pairing requests share a single rebind.
@@ -103,6 +105,7 @@ export class RuntimeRpcState {
     exposeNetworkByDefault = false,
     pinnedBindHost,
     webClientRoot,
+    journalStateDirectory,
     keepaliveIntervalMs = KEEPALIVE_INTERVAL_MS,
     longPollCap = LONG_POLL_CAP,
     metadataOwnershipPollMs = RUNTIME_METADATA_OWNERSHIP_POLL_MS,
@@ -119,6 +122,7 @@ export class RuntimeRpcState {
     this.exposeNetworkByDefault = exposeNetworkByDefault
     this.pinnedBindHost = pinnedBindHost ?? null
     this.webClientRoot = webClientRoot
+    this.journalStateDirectory = journalStateDirectory
     this.keepaliveIntervalMs = keepaliveIntervalMs
     this.longPollCap = longPollCap
     this.metadataOwnershipPollMs = metadataOwnershipPollMs

@@ -9,7 +9,7 @@
 // wakes. Nothing here starts a provider child.
 
 import type { AgentJournalResetReason } from '../../../shared/agent-session-journal-types'
-import { journalDirectoryFor } from '../agent-session-journal/journal-paths'
+import type { JournalHostDatabase } from '../agent-session-journal/journal-host-database'
 import { openAgentSessionJournalWithRecovery } from './agent-session-journal-recovery'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
@@ -36,7 +36,7 @@ export type OpenedStructuredAgentSessionConversation = {
 export type StructuredAgentSessionConversationOpenDeps = {
   store: Pick<AgentSessionRecordStore, 'getRecord'>
   adapter: Pick<StructuredAgentSessionAdapter, 'historyFilePath'>
-  journalRoot: string
+  journalDatabase: JournalHostDatabase
   onEventSinkError?: StructuredAgentSessionHostDeps['onEventSinkError']
 }
 
@@ -89,10 +89,7 @@ export async function openStructuredAgentSessionConversationJournal(
   const identity = journalIdentityFor(record, params)
   const opened = await openAgentSessionJournalWithRecovery({
     identity,
-    journalDir: journalDirectoryFor(deps.journalRoot, {
-      workspaceId: record.location.workspaceId,
-      sessionId
-    }),
+    database: deps.journalDatabase,
     fence,
     historyFilePath: (await deps.adapter.historyFilePath?.({ identity })) ?? null
   })

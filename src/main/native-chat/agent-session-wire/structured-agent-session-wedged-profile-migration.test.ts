@@ -34,7 +34,6 @@ import { AgentSessionRecordStore } from '../../runtime/agent-session-record-stor
 import { AGENT_SESSION_STORE_FILE_NAME } from '../../runtime/agent-session-record-store-file'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { openAgentSessionJournal } from '../agent-session-journal/journal-store-factory'
-import { journalDirectoryFor } from '../agent-session-journal/journal-paths'
 import { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
 import type { StructuredAgentSessionHostDeps } from './structured-agent-session-host-types'
@@ -46,6 +45,7 @@ import {
   hostTestAttachParams,
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
+import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 
 const CALLER = { callerKey: 'client-1' }
 const DEAD_OWNER: AgentSessionProcessIdentity = {
@@ -140,7 +140,7 @@ function openHost(overrides: Partial<StructuredAgentSessionHostDeps> = {}): void
       setOption: vi.fn(),
       supportsCreate: () => true
     } as unknown as StructuredAgentSessionAdapter,
-    journalRoot: root,
+    journalDatabase: openTestJournalHostDatabase(root),
     claimKeyId: 'key-1',
     mintSpawnToken: () => 'spawn-new',
     now: () => NOW,
@@ -203,7 +203,7 @@ async function seedRunningTurn(provider: 'codex' | 'claude' = 'codex'): Promise<
           ? { kind: 'codex', threadId: THREAD }
           : { kind: 'claude', sessionId: 'provider-session-alpha-1', leafUuid: null }
     },
-    journalDir: journalDirectoryFor(root, { workspaceId: LOCATION.workspaceId, sessionId: SESSION })
+    database: openTestJournalHostDatabase(root)
   })
   await journal.appendItem(
     provider === 'codex'

@@ -6,10 +6,7 @@
 // in the surviving sequence is corruption, and the caller rolls the epoch
 // rather than rendering a partial timeline.
 
-import { existsSync } from 'node:fs'
 import type Database from '../../sqlite/sync-database'
-import { openJournalDatabase } from './journal-database'
-import { journalDatabaseFile } from './journal-paths'
 import {
   applyJournalRow,
   createJournalReducerState,
@@ -29,7 +26,7 @@ const FIRST_JOURNAL_SEQUENCE = 1
 
 export type JournalLoad = {
   state: JournalReducerState
-  /** A future schema version was met: no writes, no deletion. */
+  /** A row from a future schema was met: no writes, no deletion. */
   readOnly: boolean
   /** Set when the surviving prefix is unusable and the caller must roll the epoch. */
   corrupt: boolean
@@ -41,18 +38,8 @@ export type JournalLoad = {
   truncateFrom?: number
 }
 
-/**
- * Replay on a connection this function does NOT own. Returns null when the
- * session has no journal yet.
- */
-export function replayJournal(
-  db: Database.Database,
-  readOnly: boolean,
-  sessionId: string
-): JournalLoad | null {
-  if (readOnly) {
-    return emptyReadOnlyLoad(sessionId)
-  }
+/** Replays one chat from the host's database. Returns null when the chat has no journal yet. */
+export function replayJournal(db: Database.Database, sessionId: string): JournalLoad | null {
   const epoch = readJournalSessionEpoch(db, sessionId)
   if (!epoch) {
     return null
@@ -139,28 +126,4 @@ export function readJournalRowsAfterCursor(
     rows.push(parsed.row)
   }
   return rows
-}
-
-/** Standalone probe. Opens its own connection and closes it before returning,
- *  so a caller holding only the returned value holds no handle. */
-export function loadJournal(journalDir: string, sessionId: string): JournalLoad | null {
-  const dbPath = journalDatabaseFile(journalDir)
-  if (!existsSync(dbPath)) {
-    return null
-  }
-  const opened = openJournalDatabase(dbPath)
-  try {
-    return replayJournal(opened.db, opened.readOnly, sessionId)
-  } finally {
-    opened.db.close()
-  }
-}
-
-function emptyReadOnlyLoad(sessionId: string): JournalLoad {
-  return {
-    state: createJournalReducerState(sessionId, ''),
-    readOnly: true,
-    corrupt: false,
-    malformedRows: 0
-  }
 }

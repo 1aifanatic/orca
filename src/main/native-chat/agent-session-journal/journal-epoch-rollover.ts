@@ -3,25 +3,25 @@
 // One transaction: discard every row of the superseded epoch, insert the new
 // epoch row at sequence 1, move the session projection onto it, and retire any
 // repair marker the superseded epoch was carrying. Superseded rows are DELETED
-// rather than retained — nothing would ever shed them.
+// rather than retained — nothing would ever shed them — and the pages they held
+// go back to the filesystem after the commit.
 
 import { journalRowSchemaVersion } from '../../../shared/agent-session-journal-types'
-import type { AgentSessionProviderHandle } from '../../../shared/agent-session-journal-types'
-import type Database from '../../sqlite/sync-database'
+import type { AgentSessionJournalIdentity } from '../../../shared/agent-session-journal-types'
+import type { JournalHostDatabase } from './journal-host-database'
 import type { JournalLoad } from './journal-open'
 import { clearJournalRepairMarker } from './journal-repair-marker'
 import { applyJournalRow, createJournalReducerState } from './journal-reducer'
 import {
-  deleteAllJournalRows,
+  deleteJournalSessionRows,
   insertJournalRow,
-  upsertJournalSessionRow
+  publishJournalSessionEpoch
 } from './journal-row-table'
 import type { AgentJournalEpochReason, JournalRow } from './journal-row-schema'
 
 export function publishNewEpoch(input: {
-  db: Database.Database
-  sessionId: string
-  providerHandle: AgentSessionProviderHandle
+  database: JournalHostDatabase
+  identity: AgentSessionJournalIdentity
   epoch: string
   reason: AgentJournalEpochReason
   fence: number
@@ -32,7 +32,7 @@ export function publishNewEpoch(input: {
   const row: JournalRow = {
     kind: 'epoch',
     reason: input.reason,
-    providerHandle: input.providerHandle,
+    providerHandle: input.identity.providerHandle,
     // Carries no body: an older host must keep reading a turn-free session past row 1.
     v: journalRowSchemaVersion([]),
     epoch: input.epoch,
@@ -41,23 +41,20 @@ export function publishNewEpoch(input: {
     ts: input.now
   }
 
-  input.db.exec('BEGIN IMMEDIATE')
-  try {
-    deleteAllJournalRows(input.db)
-    clearJournalRepairMarker(input.db, input.sessionId)
-    insertJournalRow(input.db, input.sessionId, row)
-    upsertJournalSessionRow(input.db, input.sessionId, input.epoch, input.now)
-    input.db.exec('COMMIT')
-  } catch (error) {
-    input.db.exec('ROLLBACK')
-    throw error
-  }
+  const { sessionId } = input.identity
+  input.database.transaction((db) => {
+    deleteJournalSessionRows(db, sessionId)
+    clearJournalRepairMarker(db, sessionId)
+    insertJournalRow(db, sessionId, row)
+    publishJournalSessionEpoch(db, input.identity, input.epoch)
+  })
 
   // COMMIT landed: on disk the superseded prefix is gone and this epoch is the
   // live one. The caller adopts that immediately, or a later failure leaves the
   // store writing into an epoch that no longer exists.
-  const state = createJournalReducerState(input.sessionId, input.epoch)
+  const state = createJournalReducerState(sessionId, input.epoch)
   applyJournalRow(state, row)
   state.oldestSequence = 1
   input.onPublished({ state, readOnly: false, corrupt: false, malformedRows: 0 })
+  void input.database.reclaimFreePages()
 }

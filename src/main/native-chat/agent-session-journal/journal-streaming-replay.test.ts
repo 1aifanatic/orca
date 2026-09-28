@@ -3,15 +3,15 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AGENT_SESSION_JOURNAL_SCHEMA_VERSION } from '../../../shared/agent-session-journal-types'
-import { openJournalDatabase, type OpenJournalDatabase } from './journal-database'
-import { journalDatabaseFile } from './journal-paths'
+import type { JournalHostDatabase } from './journal-host-database'
 import { replayJournal } from './journal-open'
-import { insertJournalRow, upsertJournalSessionRow } from './journal-row-table'
+import { insertJournalRow, publishJournalSessionEpoch } from './journal-row-table'
 import type { JournalRow } from './journal-row-schema'
 import * as reducer from './journal-reducer'
+import { openTestJournalHostDatabase } from './journal-host-database-test-support'
 
 let root: string
-let opened: OpenJournalDatabase
+let opened: JournalHostDatabase
 const sessionId = 'streaming-session'
 const epoch = 'epoch-1'
 
@@ -48,13 +48,13 @@ function put(row: JournalRow): void {
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'orca-stream-replay-'))
-  opened = openJournalDatabase(journalDatabaseFile(root))
-  upsertJournalSessionRow(opened.db, sessionId, epoch, 1)
+  opened = openTestJournalHostDatabase(root)
+  publishJournalSessionEpoch(opened.db, { sessionId: sessionId, workspaceId: 'ws-1' }, epoch)
 })
 
 afterEach(async () => {
   vi.restoreAllMocks()
-  opened.db.close()
+  opened.close()
   await rm(root, { recursive: true, force: true })
 })
 
@@ -86,7 +86,7 @@ describe('streaming journal replay', () => {
       }
       apply(state, row)
     })
-    const loaded = replayJournal(opened.db, false, sessionId)!
+    const loaded = replayJournal(opened.db, sessionId)!
     expect(loaded.state.items.size).toBe(1)
     expect(loaded.state.items.get('message-1')?.revision).toBe(2049)
     expect(loaded.state.lastSequence).toBe(2049)
@@ -108,7 +108,7 @@ describe('streaming journal replay', () => {
       }
       apply(state, row)
     })
-    const loaded = replayJournal(opened.db, false, sessionId)!
+    const loaded = replayJournal(opened.db, sessionId)!
     expect(loaded.state.lastSequence).toBe(300)
     expect(checkpoints.map((entry) => entry.busy)).toEqual([0, 0])
   })
@@ -118,7 +118,7 @@ describe('streaming journal replay', () => {
     put(revision(2))
     put(revision(4))
     put({ ...revision(5), v: AGENT_SESSION_JOURNAL_SCHEMA_VERSION + 1 })
-    const loaded = replayJournal(opened.db, false, sessionId)!
+    const loaded = replayJournal(opened.db, sessionId)!
     expect(loaded).toMatchObject({ readOnly: true, corrupt: true, malformedRows: 0 })
     expect(loaded.truncateFrom).toBeUndefined()
     expect(loaded.state.items.get('message-1')?.revision).toBe(2)
@@ -134,7 +134,7 @@ describe('streaming journal replay', () => {
     opened.db
       .prepare('INSERT INTO journal_rows VALUES (?, ?, ?, ?, ?)')
       .run(sessionId, epoch, 5, 5, '{')
-    const loaded = replayJournal(opened.db, false, sessionId)!
+    const loaded = replayJournal(opened.db, sessionId)!
     expect(loaded).toMatchObject({
       readOnly: false,
       corrupt: true,
@@ -147,7 +147,7 @@ describe('streaming journal replay', () => {
   it('rejects an unanchored prefix before a later gap', () => {
     put(revision(1))
     put(revision(3))
-    const loaded = replayJournal(opened.db, false, sessionId)!
+    const loaded = replayJournal(opened.db, sessionId)!
     expect(loaded).toMatchObject({ readOnly: false, corrupt: true, truncateFrom: 1 })
     expect(loaded.state.items.size).toBe(0)
     expect(loaded.state.lastSequence).toBe(0)

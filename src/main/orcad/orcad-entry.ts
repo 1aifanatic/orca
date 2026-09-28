@@ -119,6 +119,8 @@ async function startOrcadRuntime(
 ): Promise<Pick<OrcadHandle, 'readiness'>> {
   const { OrcaRuntimeService } = await import('../runtime/orca-runtime')
   const { OrcaRuntimeRpcServer } = await import('../runtime/runtime-rpc')
+  const { setJournalOwnerProcessKind } =
+    await import('../runtime/structured-agent-session-journal-ownership')
   const { registerHeadlessPtyRuntime, getLocalPtyProvider, getSshPtyProvider } =
     await import('../ipc/pty')
   const { getAppEnvironment } = await import('../../shared/app-environment')
@@ -290,9 +292,11 @@ async function startOrcadRuntime(
   observedStatusCapture.attach(runtime)
 
   const bindHost = resolveOrcadBindHost(options.bind)
+  setJournalOwnerProcessKind('orcad')
   rpc = new OrcaRuntimeRpcServer({
     runtime,
     userDataPath: runtimeUserDataPath,
+    journalStateDirectory: runtimeUserDataPath,
     enableWebSocket: true,
     // Why pinned and not `exposeNetworkByDefault`: an unattended host's exposure must be
     // exactly what the operator asked for, on every launch. The default path widens itself

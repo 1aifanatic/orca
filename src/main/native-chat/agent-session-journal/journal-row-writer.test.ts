@@ -9,15 +9,15 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { AGENT_SESSION_JOURNAL_SCHEMA_VERSION } from '../../../shared/agent-session-journal-types'
-import { openJournalDatabase, type OpenJournalDatabase } from './journal-database'
-import { journalDatabaseFile } from './journal-paths'
+import type { JournalHostDatabase } from './journal-host-database'
 import {
   insertJournalRow,
   readJournalEpochRows,
-  upsertJournalSessionRow
+  publishJournalSessionEpoch
 } from './journal-row-table'
 import type { JournalRow } from './journal-row-schema'
 import { JournalRowWriter } from './journal-row-writer'
+import { openTestJournalHostDatabase } from './journal-host-database-test-support'
 
 const SESSION_ID = 'session-1'
 const EPOCH = 'epoch-1'
@@ -38,19 +38,19 @@ function row(seq: number, ts: number): JournalRow {
 
 describe('journal row writer', () => {
   let root: string
-  let database: OpenJournalDatabase
+  let database: JournalHostDatabase
   let readOnly = false
 
   beforeEach(async () => {
     root = await mkdtemp(join(tmpdir(), 'orca-journal-row-writer-'))
-    database = openJournalDatabase(journalDatabaseFile(root))
-    upsertJournalSessionRow(database.db, SESSION_ID, EPOCH, 1)
+    database = openTestJournalHostDatabase(root)
+    publishJournalSessionEpoch(database.db, { sessionId: SESSION_ID, workspaceId: 'ws-1' }, EPOCH)
     readOnly = false
   })
 
   afterEach(async () => {
     try {
-      database.db.close()
+      database.close()
     } catch {
       // Already closed by the case.
     }

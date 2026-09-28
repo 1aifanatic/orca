@@ -1,9 +1,7 @@
 // Every statement the journal issues against `journal_rows` / `journal_sessions`.
 //
-// Each one is a prefix or range scan on the `(session_id, epoch, seq)` primary
-// key; there is no secondary index, and no `max(seq)` tip query — replay folds
-// the epoch to obtain `lastSequence`, so nothing needs the tip from SQL.
-// Columns are always named: `SELECT *` is uncacheable and can drop a column.
+// Each one is a prefix or range scan of one chat's rows on the primary key. Columns are always
+// named: `SELECT *` is uncacheable and can drop a column.
 
 import type Database from '../../sqlite/sync-database'
 import { serializeJournalRow, type JournalRow } from './journal-row-schema'
@@ -11,30 +9,33 @@ import { serializeJournalRow, type JournalRow } from './journal-row-schema'
 export type JournalStoredRow = { epoch: string; seq: number; ts: number; rowJson: string }
 
 const SELECT_SESSION = 'SELECT epoch FROM journal_sessions WHERE session_id = ?'
-const UPSERT_SESSION = `INSERT INTO journal_sessions (session_id, epoch, updated_at)
+// A new epoch invalidates the saved status, which was computed at a position of the old one.
+const PUBLISH_SESSION_EPOCH = `INSERT INTO journal_sessions (session_id, workspace_id, epoch)
 VALUES (?, ?, ?)
-ON CONFLICT(session_id) DO UPDATE SET epoch = excluded.epoch, updated_at = excluded.updated_at`
+ON CONFLICT(session_id) DO UPDATE SET
+  workspace_id = excluded.workspace_id, epoch = excluded.epoch,
+  status_json = NULL, status_seq = NULL`
 const INSERT_ROW =
   'INSERT INTO journal_rows (session_id, epoch, seq, ts, row_json) VALUES (?, ?, ?, ?, ?)'
-const SELECT_EPOCH_ROWS = `SELECT epoch, seq, ts, row_json FROM journal_rows
-WHERE session_id = ? AND epoch = ? ORDER BY seq ASC`
 const SELECT_ROWS_AFTER = `SELECT epoch, seq, ts, row_json FROM journal_rows
 WHERE session_id = ? AND epoch = ? AND seq > ? ORDER BY seq ASC`
 const SELECT_ROWS_AFTER_LIMITED = `${SELECT_ROWS_AFTER} LIMIT ?`
+const DELETE_SESSION_ROWS = 'DELETE FROM journal_rows WHERE session_id = ?'
 const DELETE_SUFFIX = 'DELETE FROM journal_rows WHERE session_id = ? AND epoch = ? AND seq >= ?'
+const SELECT_TIP = 'SELECT max(seq) AS tip FROM journal_rows WHERE session_id = ? AND epoch = ?'
 
 export function readJournalSessionEpoch(db: Database.Database, sessionId: string): string | null {
   const row = db.prepare(SELECT_SESSION).get(sessionId) as { epoch?: string } | undefined
   return row?.epoch ?? null
 }
 
-export function upsertJournalSessionRow(
+/** Points the chat at `epoch`. Only an epoch change writes this row; an append never does. */
+export function publishJournalSessionEpoch(
   db: Database.Database,
-  sessionId: string,
-  epoch: string,
-  updatedAt: number
+  identity: { sessionId: string; workspaceId: string },
+  epoch: string
 ): void {
-  db.prepare(UPSERT_SESSION).run(sessionId, epoch, updatedAt)
+  db.prepare(PUBLISH_SESSION_EPOCH).run(identity.sessionId, identity.workspaceId, epoch)
 }
 
 export function insertJournalRow(
@@ -47,12 +48,10 @@ export function insertJournalRow(
   return Buffer.byteLength(rowJson, 'utf8')
 }
 
-export function readJournalEpochRows(
-  db: Database.Database,
-  sessionId: string,
-  epoch: string
-): JournalStoredRow[] {
-  return toStoredRows(db.prepare(SELECT_EPOCH_ROWS).all(sessionId, epoch))
+/** The live epoch's highest sequence, or 0 when it holds no row. */
+export function readJournalTip(db: Database.Database, sessionId: string, epoch: string): number {
+  const tip = db.prepare(SELECT_TIP).get(sessionId, epoch)?.tip
+  return typeof tip === 'number' ? tip : 0
 }
 
 // Why pages, not `.iterate()`: a lazily consumed cursor pins a read snapshot for as long as the
@@ -78,6 +77,15 @@ export function* iterateJournalEpochRows(
   }
 }
 
+/** Every row of one epoch, in sequence order. */
+export function readJournalEpochRows(
+  db: Database.Database,
+  sessionId: string,
+  epoch: string
+): JournalStoredRow[] {
+  return [...iterateJournalEpochRows(db, sessionId, epoch)]
+}
+
 export function readJournalRowsAfter(
   db: Database.Database,
   sessionId: string,
@@ -93,14 +101,9 @@ export function readJournalRowsAfter(
   return toStoredRows(db.prepare(SELECT_ROWS_AFTER).all(sessionId, epoch, afterSeq))
 }
 
-/**
- * Unqualified on purpose. One database per session means every row here belongs
- * to this session, and the unqualified form takes SQLite's truncate
- * optimization: measured at 0.26% of the database in WAL bytes where the
- * `WHERE session_id = ?` form rewrote every emptied leaf at up to 99%.
- */
-export function deleteAllJournalRows(db: Database.Database): void {
-  db.exec('DELETE FROM journal_rows')
+/** Every row the chat holds, whatever its epoch: a new epoch replaces them all. */
+export function deleteJournalSessionRows(db: Database.Database, sessionId: string): void {
+  db.prepare(DELETE_SESSION_ROWS).run(sessionId)
 }
 
 /** Drop the rejected suffix a repair found, from `fromSeq` to the tip. */

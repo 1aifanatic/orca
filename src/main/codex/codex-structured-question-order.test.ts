@@ -31,6 +31,7 @@ import {
   projectStructuredQuestionMessages,
   structuredQuestionTranscript
 } from '../../renderer/src/components/native-chat/structured-agent-question-projection'
+import { openTestJournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database-test-support'
 
 const CALLER = { callerKey: 'client-1' }
 
@@ -90,7 +91,7 @@ beforeEach(async () => {
   host = new StructuredAgentSessionHost({
     store,
     adapter,
-    journalRoot: root,
+    journalDatabase: openTestJournalHostDatabase(root),
     claimKeyId: 'key-1',
     mintSpawnToken: () => 'spawn-a',
     // Every write lands on its own millisecond, as it does live.

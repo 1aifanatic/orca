@@ -23,8 +23,7 @@ import {
 } from '../../shared/protocol-version'
 import type { AgentJournalRenderItem } from '../../shared/agent-session-journal-types'
 import { attachFingerprintFields } from '../native-chat/agent-session-wire/structured-agent-session-attach'
-import { journalDirectoryFor } from '../native-chat/agent-session-journal/journal-paths'
-import { createTrackedJournalOpener } from '../native-chat/agent-session-journal/journal-store-test-open'
+import { createTrackedJournalOpener } from '../native-chat/agent-session-journal/journal-host-database-test-support'
 import type { OrcaRuntimeService } from './orca-runtime'
 import type { RpcRequest, RpcResponse } from './rpc/core'
 import { RpcDispatcher } from './rpc/dispatcher'
@@ -384,7 +383,7 @@ describe('a structured codex session over agentSession.*', () => {
     }
     const reopened = await journals.open({
       identity,
-      journalDir: journalDirectoryFor(root, identity)
+      stateDirectory: root
     })
     expect(reopened.snapshot().items.map(textOf)).toContain('Buffered while the journal opens.')
     expect(

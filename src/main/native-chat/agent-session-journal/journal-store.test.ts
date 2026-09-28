@@ -12,17 +12,19 @@ import {
   boundJournalKeyComponent,
   MAX_JOURNAL_KEY_COMPONENT_CHARS
 } from '../../../shared/agent-session-journal-item-key'
-import { loadJournal } from './journal-open'
 import {
   boundInlineText,
   boundPayload,
   DEFAULT_JOURNAL_PAYLOAD_LIMITS
 } from './journal-payload-bounds'
 import { activeStructuredAgentSessionTurnId } from '../../../shared/structured-agent-session-live-turn'
-import { journalDatabaseFile, journalDirectoryFor, journalPathSegment } from './journal-paths'
+import { journalDirectoryFor, journalPathSegment } from './journal-paths'
 import { AgentSessionJournalError, type AgentSessionJournal } from './journal-store'
 import type { openAgentSessionJournal } from './journal-store-factory'
-import { createTrackedJournalOpener } from './journal-store-test-open'
+import {
+  createTrackedJournalOpener,
+  openTestJournalHostDatabase
+} from './journal-host-database-test-support'
 import type Database from '../../sqlite/sync-database'
 
 const IDENTITY: AgentSessionJournalIdentity = {
@@ -54,7 +56,7 @@ const journals = createTrackedJournalOpener()
 async function open(overrides: Partial<Parameters<typeof openAgentSessionJournal>[0]> = {}) {
   return journals.open({
     identity: IDENTITY,
-    journalDir: root,
+    stateDirectory: root,
     now: tick,
     mintEpoch: () => `epoch-${clock}`,
     ...overrides
@@ -203,17 +205,6 @@ describe('fences', () => {
 })
 
 describe('replay', () => {
-  it('adopts a caller-provided load without replaying the rows again', async () => {
-    const journal = await open()
-    await journal.appendItem(item(0), body('a'), { fence: 1 })
-    const loaded = await loadJournal(root, IDENTITY.sessionId)
-    expect(loaded).not.toBeNull()
-    await journal.close()
-
-    const reopened = await open({ loaded })
-    expect(reopened.snapshot()).toEqual(journal.snapshot())
-  })
-
   it('reopens to the same render model the live writer held', async () => {
     const journal = await open()
     await journal.appendItem(item(0), body('a'), { fence: 1 })
@@ -395,10 +386,11 @@ describe('journal location', () => {
 })
 
 describe('on-disk layout', () => {
-  it('keeps the session database and its projection in one directory', async () => {
+  it('keeps every chat of the state directory in its one database, and no per-chat file', async () => {
     const journal: AgentSessionJournal = await open()
     await journal.appendItem(item(0), body('a'), { fence: 1 })
-    expect(await readdir(root)).toContain('journal.db')
+    expect(await readdir(root)).toContain('agent-session-journal.db')
+    expect(await readdir(root)).not.toContain('agent-session-journal')
     await journal.close()
     await withJournalDatabase(root, (db) => {
       const row = db.prepare('SELECT row_json FROM journal_rows WHERE seq = 2').get()
@@ -413,15 +405,14 @@ describe('on-disk layout', () => {
 /** Opens the session database directly, so a case can stage a fault or read
  *  back what a commit actually stored. */
 async function withJournalDatabase(
-  journalDir: string,
+  stateDirectory: string,
   run: (db: Database.Database) => void
 ): Promise<void> {
-  const { openJournalDatabase } = await import('./journal-database')
-  const opened = openJournalDatabase(journalDatabaseFile(journalDir))
+  const opened = openTestJournalHostDatabase(stateDirectory)
   try {
     run(opened.db)
   } finally {
-    opened.db.close()
+    opened.close()
   }
 }
 

@@ -2,22 +2,23 @@
 //
 // One transaction: discard every row, insert the epoch row plus the replacement
 // items, move the session projection, and retire any repair marker — this
-// republished history is exactly what the marker was holding out for.
+// republished history is exactly what the marker was holding out for. The pages
+// the old rows held go back to the filesystem after the commit.
 
 import type {
   AgentJournalItemBody,
   AgentJournalItemIdentity,
   AgentSessionJournalIdentity
 } from '../../../shared/agent-session-journal-types'
-import type Database from '../../sqlite/sync-database'
+import type { JournalHostDatabase } from './journal-host-database'
 import type { JournalLoad } from './journal-open'
 import { clearJournalRepairMarker } from './journal-repair-marker'
 import { applyJournalRow, createJournalReducerState } from './journal-reducer'
 import { buildJournalItemRow, journalRowBase } from './journal-row-builders'
 import {
-  deleteAllJournalRows,
+  deleteJournalSessionRows,
   insertJournalRow,
-  upsertJournalSessionRow
+  publishJournalSessionEpoch
 } from './journal-row-table'
 import type { AgentJournalEpochReason, JournalRow } from './journal-row-schema'
 import { assertJournalFence } from './journal-write-guards'
@@ -29,7 +30,7 @@ export type JournalReplacementItem = {
 }
 
 export function replaceJournalEpoch(input: {
-  db: Database.Database
+  database: JournalHostDatabase
   identity: AgentSessionJournalIdentity
   reason: AgentJournalEpochReason
   fence: number
@@ -63,23 +64,20 @@ export function replaceJournalEpoch(input: {
     rows.push(row)
   }
 
-  input.db.exec('BEGIN IMMEDIATE')
-  try {
-    deleteAllJournalRows(input.db)
-    clearJournalRepairMarker(input.db, input.identity.sessionId)
+  const { sessionId } = input.identity
+  input.database.transaction((db) => {
+    deleteJournalSessionRows(db, sessionId)
+    clearJournalRepairMarker(db, sessionId)
     for (const row of rows) {
-      insertJournalRow(input.db, input.identity.sessionId, row)
+      insertJournalRow(db, sessionId, row)
     }
-    upsertJournalSessionRow(input.db, input.identity.sessionId, epoch, epochRow.ts)
-    input.db.exec('COMMIT')
-  } catch (error) {
-    input.db.exec('ROLLBACK')
-    throw error
-  }
+    publishJournalSessionEpoch(db, input.identity, epoch)
+  })
 
   // COMMIT landed: on disk the superseded rows are gone and this epoch is the
   // live one. The caller adopts that immediately, or a later failure leaves the
   // live store writing into an epoch whose rows were just deleted.
   state.oldestSequence = 1
   input.onPublished({ state, readOnly: false, corrupt: false, malformedRows: 0 })
+  void input.database.reclaimFreePages()
 }

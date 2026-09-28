@@ -17,12 +17,13 @@ import type {
   AgentSessionJournalIdentity
 } from '../../../shared/agent-session-journal-types'
 import type Database from '../../sqlite/sync-database'
-import { openJournalDatabase } from './journal-database'
-import { journalDatabaseFile } from './journal-paths'
 import { parseJournalRow, type JournalRow } from './journal-row-schema'
-import { loadJournal } from './journal-open'
 import type { openAgentSessionJournal } from './journal-store-factory'
-import { createTrackedJournalOpener } from './journal-store-test-open'
+import {
+  createTrackedJournalOpener,
+  openTestJournalHostDatabase,
+  loadTestJournal
+} from './journal-host-database-test-support'
 
 const IDENTITY: AgentSessionJournalIdentity = {
   sessionId: 'session-1',
@@ -52,7 +53,7 @@ function body(value: string): AgentJournalItemBody {
 function open(overrides: Partial<Parameters<typeof openAgentSessionJournal>[0]> = {}) {
   return journals.open({
     identity: IDENTITY,
-    journalDir: root,
+    stateDirectory: root,
     now: tick,
     mintEpoch: () => `epoch-${clock}`,
     ...overrides
@@ -60,11 +61,11 @@ function open(overrides: Partial<Parameters<typeof openAgentSessionJournal>[0]> 
 }
 
 async function withJournalDatabase(run: (db: Database.Database) => void): Promise<void> {
-  const opened = openJournalDatabase(journalDatabaseFile(root))
+  const opened = openTestJournalHostDatabase(root)
   try {
     run(opened.db)
   } finally {
-    opened.db.close()
+    opened.close()
   }
 }
 
@@ -172,14 +173,14 @@ describe('a sequence gap', () => {
 
     const repaired = await open()
     await repaired.close()
-    expect(loadJournal(root, IDENTITY.sessionId)).toMatchObject({ corrupt: true })
+    expect(loadTestJournal(root, IDENTITY.sessionId)).toMatchObject({ corrupt: true })
 
     // Same policy the emptied-epoch repair takes: a session that writes into the
     // epoch owns it, and a later import must not replace rows the user has seen.
     const writable = await open()
     await writable.appendItem(item(9), body('typed after the repair'), { fence: 1 })
     await writable.close()
-    expect(loadJournal(root, IDENTITY.sessionId)).toMatchObject({ corrupt: false })
+    expect(loadTestJournal(root, IDENTITY.sessionId)).toMatchObject({ corrupt: false })
   })
 
   // The disclosure is the repair talking about itself, not the session writing:
@@ -197,7 +198,7 @@ describe('a sequence gap', () => {
     const repaired = await open()
     expect(repaired.repair.malformedRows).toBe(1)
     await repaired.close()
-    expect(loadJournal(root, IDENTITY.sessionId)).toMatchObject({ corrupt: true })
+    expect(loadTestJournal(root, IDENTITY.sessionId)).toMatchObject({ corrupt: true })
   })
 })
 
@@ -253,13 +254,13 @@ describe('a missing epoch row', () => {
 
     const repaired = await open()
     await repaired.close()
-    expect(loadJournal(root, IDENTITY.sessionId)).toMatchObject({ corrupt: true })
+    expect(loadTestJournal(root, IDENTITY.sessionId)).toMatchObject({ corrupt: true })
 
     // A session that writes into the epoch owns it: its own rows are not a
     // repair placeholder, and a later import must not replace them.
     const writable = await open()
     await writable.appendItem(item(1), body('typed after the repair'), { fence: 1 })
     await writable.close()
-    expect(loadJournal(root, IDENTITY.sessionId)).toMatchObject({ corrupt: false })
+    expect(loadTestJournal(root, IDENTITY.sessionId)).toMatchObject({ corrupt: false })
   })
 })

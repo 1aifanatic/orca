@@ -22,6 +22,8 @@ export class RuntimeRpcShutdown extends RuntimeRpcMobilePairing {
     this.transports = []
     this.metadataOwnershipWatch?.stop()
     this.metadataOwnershipWatch = null
+    this.stopWaitingForJournalOwnership?.()
+    this.stopWaitingForJournalOwnership = null
     this.mobileSocketWiring = null
     this.detachWebSocketWiring = null
     const stopResults = await Promise.allSettled(

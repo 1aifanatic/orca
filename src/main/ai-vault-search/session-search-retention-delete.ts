@@ -1,13 +1,9 @@
 import { setImmediate as yieldToEventLoop } from 'node:timers/promises'
 import type SyncDatabase from '../sqlite/sync-database'
+import { reclaimFreePagesStep } from '../sqlite/sqlite-free-page-reclaim'
 import { deleteSearchMessages } from './session-search-message-rows'
 
 export const RETENTION_DELETE_ROWS_PER_STEP = 256
-// Why in step with the deletes rather than one sweep at the end: `auto_vacuum =
-// INCREMENTAL` holds every freed page until something asks for it back, and
-// asking for a whole purge's worth at once is one long stall (40 ms per 22 MB
-// freed, measured) instead of many short ones.
-const RECLAIM_PAGES_PER_STEP = 2000
 
 /**
  * Drops every file older than the cutoff, then hands its rows back in bounded
@@ -91,12 +87,13 @@ export async function drainOrphanedMessages(
       db.exec('ROLLBACK')
       throw error
     }
-    db.pragma(`incremental_vacuum(${RECLAIM_PAGES_PER_STEP})`)
+    // In step with the deletes rather than one sweep at the end: many short stalls, not one long one.
+    reclaimFreePagesStep(db)
     if (deleted < RETENTION_DELETE_ROWS_PER_STEP) {
       orphan = (nextOrphan.get() as { session_row_id: number } | undefined)?.session_row_id
     }
     await yieldStep()
   }
   // A `removeFile` frees its pages outside this loop and may leave none to drain.
-  db.pragma(`incremental_vacuum(${RECLAIM_PAGES_PER_STEP})`)
+  reclaimFreePagesStep(db)
 }

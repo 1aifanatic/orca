@@ -1,11 +1,15 @@
 // Where the structured agent-session wire becomes a live host on this runtime.
 //
 // Built on the first `agentSession.*` call rather than at startup: the record
-// store and the journals live under the profile's user-data path, which is not
+// store and the journal live under the profile's user-data path, which is not
 // final until Electron is ready, and a runtime that never serves a structured
 // session should not pay for a store it will never read. The slot the RPC layer
 // reads is module-level for the same reason the registry is — the runtime
 // service is already far past its size budget.
+//
+// Only the process holding the profile's journal owner lock installs a host. Any
+// other process, and an owner whose journal will not open, installs none and
+// answers every structured request with the refusal that says why.
 
 import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk'
 import { existsSync } from 'node:fs'
@@ -37,6 +41,14 @@ import {
   type ClaudeManagedAccountGateSettings
 } from '../native-chat/claude-structured-managed-account-support'
 import { AgentSessionRecordStore } from './agent-session-record-store'
+import { JournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database'
+import { journalOpenRefusalError } from '../native-chat/agent-session-journal/journal-open-failure'
+import {
+  claimStructuredAgentSessionJournal,
+  recordStructuredAgentSessionHostInstallRefusal,
+  releaseStructuredAgentSessionJournal,
+  structuredAgentSessionJournalOwnerRefusal
+} from './structured-agent-session-journal-ownership'
 import { agentSessionStorePath } from './agent-session-record-store-file'
 import { stopOrphanAgentSessionChildren } from './agent-session-orphan-child-reaper'
 import {
@@ -54,8 +66,7 @@ import {
   type RuntimeAgentAccountHomeResolver
 } from './structured-agent-model-catalog-wiring'
 
-/** Sibling of the journal tree rather than inside it: one file adjudicates every
- *  session's lease, while a journal is per session. */
+/** Beside the journal database: one file adjudicates every session's lease. */
 const RECORD_STORE_DIR_NAME = 'agent-sessions'
 
 export function hasPersistedStructuredAgentSessionStore(
@@ -67,7 +78,7 @@ export function hasPersistedStructuredAgentSessionStore(
 }
 
 export type StructuredAgentSessionRuntimeDeps = {
-  /** Host state root. The record store and the journal tree both hang off it. */
+  /** Host state root. The record store and the journal database both hang off it. */
   stateDirectory: string
   /** Execution host this runtime *is*. A record pinned elsewhere is not ours to
    *  probe and not ours to spawn for. */
@@ -121,9 +132,8 @@ export const CLAUDE_STRUCTURED_AUTH_POLICY_REQUIRED =
 /**
  * Runtimes whose teardown did not finish. `installing` is cleared regardless so
  * nothing new attaches, but dropping the runtime as well would strand every
- * journal the host retained for a retry: `tearDownStructuredAgentSessionHost`
- * deliberately keeps a failed close indexed, and only a later stop through this
- * same runtime can reach those entries again.
+ * conversation the host kept indexed for a retry — and the journal connection,
+ * which closes only once they are settled — so a later stop retries them here.
  */
 const pendingTeardown = new Set<InstalledRuntime>()
 
@@ -153,8 +163,9 @@ export async function waitForStructuredAgentSessionRecovery(): Promise<void> {
  *  test isolation take the same path, so neither can leave a live app-server.
  *
  *  A teardown that fails is RETRIED by the next stop rather than forgotten: the
- *  host keeps every journal whose close rejected, and this is the only handle
- *  onto that host once the module slot is cleared. */
+ *  host keeps every conversation it could not settle, and this is the only handle
+ *  onto that host once the module slot is cleared. The owner lock goes last, and
+ *  only once nothing is left to retry. */
 export async function stopStructuredAgentSessionRuntime(options?: {
   trigger?: AgentSessionResumeTrigger
 }): Promise<void> {
@@ -178,6 +189,9 @@ export async function stopStructuredAgentSessionRuntime(options?: {
     }
   }
   await agentModelCatalogStore.flushPersistence()
+  if (failures.length === 0 && pendingTeardown.size === 0) {
+    releaseStructuredAgentSessionJournal()
+  }
   if (failures.length === 1) {
     throw failures[0]
   }
@@ -193,12 +207,19 @@ async function install(deps: StructuredAgentSessionRuntimeDeps): Promise<Install
   if (typeof deps.resolveClaudeAuthPolicy !== 'function') {
     throw new Error(CLAUDE_STRUCTURED_AUTH_POLICY_REQUIRED)
   }
+  const journalDatabase = openOwnedJournalDatabase(deps.stateDirectory)
   const envResolvers = createStructuredAgentEnvironmentResolvers(deps)
   const { resolveCodexEnvironment, resolveClaudeInheritedEnv } = envResolvers
-  const store = await AgentSessionRecordStore.open({
-    directory: join(deps.stateDirectory, RECORD_STORE_DIR_NAME),
-    hostId: deps.hostId
-  })
+  let store: AgentSessionRecordStore
+  try {
+    store = await AgentSessionRecordStore.open({
+      directory: join(deps.stateDirectory, RECORD_STORE_DIR_NAME),
+      hostId: deps.hostId
+    })
+  } catch (error) {
+    journalDatabase.close()
+    throw error
+  }
   // Why: only the durable store can identify a provider child lost before record publication.
   void (deps.reapOrphanChildren ?? stopOrphanAgentSessionChildren)({ store }).catch((error) => {
     try {
@@ -300,7 +321,7 @@ async function install(deps: StructuredAgentSessionRuntimeDeps): Promise<Install
     store,
     adapter,
     recoveryCapsule: new AgentSessionRecoveryCapsule(deps.stateDirectory),
-    journalRoot: deps.stateDirectory,
+    journalDatabase,
     claimKeyId: deps.claimKeyId,
     probeOwner: createStructuredAgentSessionOwnerProbe(deps.hostId),
     probeOwners: createStructuredAgentSessionOwnerProbes(deps.hostId),
@@ -321,6 +342,28 @@ async function install(deps: StructuredAgentSessionRuntimeDeps): Promise<Install
   return {
     host,
     adapter,
+    journalDatabase,
     waitForRecovery: lifecycle.drain
+  }
+}
+
+/** The journal database, opened only under this process's owner lock. A refusal is recorded for
+ *  the gate and thrown to the caller; the next install tries again. */
+function openOwnedJournalDatabase(stateDirectory: string): JournalHostDatabase {
+  const lock = claimStructuredAgentSessionJournal(stateDirectory)
+  if (!lock) {
+    const refusal = structuredAgentSessionJournalOwnerRefusal()
+    throw refusal ?? new Error('the chat journal owner lock was refused')
+  }
+  try {
+    const opened = JournalHostDatabase.open(lock)
+    recordStructuredAgentSessionHostInstallRefusal(null)
+    return opened
+  } catch (error) {
+    console.warn('[structured-agent-session] opening the chat journal database failed', error)
+    // Nothing is renamed, deleted or rebuilt: the file is left exactly as it is.
+    const refusal = journalOpenRefusalError(error)
+    recordStructuredAgentSessionHostInstallRefusal(refusal)
+    throw refusal
   }
 }

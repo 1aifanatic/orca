@@ -1,0 +1,217 @@
+// One Orca process owns a profile's structured chats. Another on the same profile is refused
+// with words that say what to do, is never advertised to the CLI, and takes over when the owner
+// quits. An owner whose journal will not open refuses every chat and leaves the file alone.
+
+import { createHash } from 'node:crypto'
+import { existsSync } from 'node:fs'
+import { mkdtemp, readFile, rm, unlink, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { isAgentSessionRefusalError } from '../../shared/agent-session-wire-refusals'
+import { JOURNAL_DB_SCHEMA_VERSION } from '../native-chat/agent-session-journal/journal-database-schema'
+import { journalDatabasePath } from '../native-chat/agent-session-journal/journal-host-database'
+import {
+  holdJournalOwnerLockInChild,
+  probeJournalOwnerLockInChild,
+  type JournalOwnerLockHolder
+} from '../native-chat/agent-session-journal/journal-owner-lock-test-support'
+import { JOURNAL_NEWER_SCHEMA_MESSAGE } from '../native-chat/agent-session-journal/journal-open-failure'
+import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
+import Database from '../sqlite/sync-database'
+import { OrcaRuntimeService } from './orca-runtime'
+import { requireStructuredCleanupHost } from './rpc/methods/structured-agent-session-gate'
+import type { RpcContext } from './rpc/core'
+import { readRuntimeMetadata } from './runtime-metadata'
+import { OrcaRuntimeRpcServer } from './runtime-rpc'
+import {
+  JOURNAL_OWNER_REFUSAL_MESSAGES,
+  releaseStructuredAgentSessionJournal,
+  setJournalOwnerProcessKind,
+  type JournalOwnerProcessKind
+} from './structured-agent-session-journal-ownership'
+import {
+  ensureStructuredAgentSessionHost,
+  stopStructuredAgentSessionRuntime
+} from './structured-agent-session-runtime'
+
+let root: string
+let holder: JournalOwnerLockHolder | null = null
+
+// An in-process caller: the same build as the host, so the gate asks it for no capability.
+// oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the cleanup gate reads only `clientKind` and `clientCapabilities`.
+const IN_PROCESS = {} as RpcContext
+
+function install(): ReturnType<typeof ensureStructuredAgentSessionHost> {
+  return ensureStructuredAgentSessionHost({
+    stateDirectory: root,
+    hostId: 'local',
+    claimKeyId: 'key-1',
+    resolveWorkspacePath: async () => root,
+    resolveEnvironment: async () => ({}),
+    reapOrphanChildren: async () => [],
+    resolveClaudeAuthPolicy: () => ({ stripAuthEnv: true })
+  })
+}
+
+/** The refusal as the gate throws it for every structured request. */
+function gateRefusal(): { reason: unknown; message: string } {
+  try {
+    requireStructuredCleanupHost(IN_PROCESS)
+  } catch (error) {
+    if (isAgentSessionRefusalError(error)) {
+      return { reason: error.refusal.details?.reason, message: error.refusal.message }
+    }
+    throw error
+  }
+  throw new Error('the gate admitted the request')
+}
+
+async function digest(path: string): Promise<string> {
+  return createHash('sha256')
+    .update(await readFile(path))
+    .digest('hex')
+}
+
+beforeEach(async () => {
+  root = await mkdtemp(join(tmpdir(), 'orca-journal-ownership-'))
+})
+
+afterEach(async () => {
+  await holder?.kill()
+  holder = null
+  await stopStructuredAgentSessionRuntime().catch(() => undefined)
+  releaseStructuredAgentSessionJournal()
+  setJournalOwnerProcessKind('packaged')
+  vi.restoreAllMocks()
+  await rm(root, { recursive: true, force: true })
+})
+
+describe('a second process on the same profile', () => {
+  // T-dev-refusal, in its dev, packaged and orcad variants.
+  it.each<JournalOwnerProcessKind>(['dev-desktop', 'packaged', 'orcad'])(
+    'is refused with the %s words, and never opens the database',
+    async (kind) => {
+      holder = await holdJournalOwnerLockInChild(root)
+      setJournalOwnerProcessKind(kind)
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+      await expect(install()).rejects.toMatchObject({
+        refusal: {
+          code: 'agent_session_journal_unreadable',
+          message: JOURNAL_OWNER_REFUSAL_MESSAGES[kind],
+          details: { reason: 'journalUnavailable' }
+        }
+      })
+      expect(gateRefusal()).toEqual({
+        reason: 'journalUnavailable',
+        message: JOURNAL_OWNER_REFUSAL_MESSAGES[kind]
+      })
+      expect(getStructuredAgentSessionHost()).toBeNull()
+      expect(existsSync(journalDatabasePath(root))).toBe(false)
+      expect(console.warn).toHaveBeenCalledWith(
+        expect.stringContaining('agent-session-journal.owner; structured chats are read-refused')
+      )
+    }
+  )
+
+  // T-B1 / N-R3.3: when the owner dies, the refused process takes the lock itself and its next
+  // request runs the full install — not a flag flip.
+  it('takes over once the owner dies, with a full install', async () => {
+    holder = await holdJournalOwnerLockInChild(root)
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    await expect(install()).rejects.toMatchObject({
+      refusal: { details: { reason: 'journalUnavailable' } }
+    })
+
+    await holder.kill()
+    holder = null
+
+    // Its retry took the lock: no process refuses it any more, and nothing is installed yet.
+    await vi.waitFor(() => expect(gateRefusal().reason).toBe('hostDisabled'), { timeout: 10_000 })
+    await expect(install()).resolves.toBeDefined()
+    expect(getStructuredAgentSessionHost()).not.toBeNull()
+    expect(existsSync(journalDatabasePath(root))).toBe(true)
+    expect(await probeJournalOwnerLockInChild(root)).toBe('refused')
+  })
+
+  // Discovery points the CLI only at the process that owns the chats.
+  it('is not published to the CLI until it owns the chats', async () => {
+    holder = await holdJournalOwnerLockInChild(root)
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const server = new OrcaRuntimeRpcServer({
+      runtime: new OrcaRuntimeService(),
+      userDataPath: root,
+      journalStateDirectory: root
+    })
+    try {
+      await server.start()
+      expect(readRuntimeMetadata(root)).toBeNull()
+
+      await holder.kill()
+      holder = null
+      await vi.waitFor(() => expect(readRuntimeMetadata(root)?.pid).toBe(process.pid), {
+        timeout: 10_000
+      })
+    } finally {
+      await server.stop()
+    }
+  })
+})
+
+describe('the owner, when its journal will not open', () => {
+  // T-corrupt-open: the error surfaces, every chat says it cannot be loaded, and nothing is
+  // renamed, deleted or rebuilt.
+  it('refuses every chat and leaves a damaged file exactly as it is', async () => {
+    const path = journalDatabasePath(root)
+    await writeFile(path, 'not a database '.repeat(512))
+    const before = await digest(path)
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    await expect(install()).rejects.toMatchObject({
+      refusal: { message: 'Unable to load this chat.', details: { reason: 'journalCorrupt' } }
+    })
+    expect(gateRefusal()).toEqual({
+      reason: 'journalCorrupt',
+      message: 'Unable to load this chat.'
+    })
+    expect(await digest(path)).toBe(before)
+    expect(existsSync(`${path}-wal`)).toBe(false)
+    expect(existsSync(`${path}-shm`)).toBe(false)
+
+    // Once a person moves the file aside, the next request installs.
+    await unlink(path)
+    await expect(install()).resolves.toBeDefined()
+    expect(gateRefusal).toThrow('the gate admitted the request')
+  })
+
+  // T5: a newer build's database is refused as one that can clear, and left byte-identical.
+  it('refuses a database a newer Orca wrote, and leaves it byte-identical', async () => {
+    const path = journalDatabasePath(root)
+    const seeded = new Database(path)
+    seeded.pragma(`user_version = ${JOURNAL_DB_SCHEMA_VERSION + 1}`)
+    seeded.close()
+    const before = await digest(path)
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    await expect(install()).rejects.toMatchObject({
+      refusal: { message: JOURNAL_NEWER_SCHEMA_MESSAGE, details: { reason: 'journalUnavailable' } }
+    })
+    expect(gateRefusal()).toEqual({
+      reason: 'journalUnavailable',
+      message: JOURNAL_NEWER_SCHEMA_MESSAGE
+    })
+    expect(await digest(path)).toBe(before)
+  })
+})
+
+describe('releasing ownership', () => {
+  it('lets another process take the chats only after a clean stop', async () => {
+    await install()
+    expect(await probeJournalOwnerLockInChild(root)).toBe('refused')
+
+    await stopStructuredAgentSessionRuntime()
+
+    expect(await probeJournalOwnerLockInChild(root)).toBe('acquired')
+  })
+})

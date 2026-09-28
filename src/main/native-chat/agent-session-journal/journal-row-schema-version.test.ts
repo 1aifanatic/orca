@@ -3,9 +3,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { agentJournalTurnBody } from '../../../shared/agent-session-turn-record'
-import { openJournalDatabase } from './journal-database'
-import { journalDatabaseFile } from './journal-paths'
-import { createTrackedJournalOpener } from './journal-store-test-open'
+import {
+  createTrackedJournalOpener,
+  openTestJournalHostDatabase
+} from './journal-host-database-test-support'
 
 // Which rows an older host can still read: only rows that carry a turn item
 // are stamped with the version it does not know, and the epoch row never is.
@@ -33,7 +34,7 @@ describe('journal row schema versions', () => {
         providerHandle: { kind: 'codex', threadId: 'thread-1' }
       },
       now: () => 1_000,
-      journalDir: join(root, 'session-1')
+      stateDirectory: join(root, 'session-1')
     })
     const identity = { provider: 'orca' as const, clientMessageId: 'm1' }
     await journal.appendItem(
@@ -47,7 +48,7 @@ describe('journal row schema versions', () => {
       { fence: 1 }
     )
     await journal.close()
-    const opened = openJournalDatabase(journalDatabaseFile(join(root, 'session-1')))
+    const opened = openTestJournalHostDatabase(join(root, 'session-1'))
     try {
       const stored = opened.db
         .prepare('SELECT row_json FROM journal_rows ORDER BY seq')
@@ -60,7 +61,7 @@ describe('journal row schema versions', () => {
         ['item', 3]
       ])
     } finally {
-      opened.db.close()
+      opened.close()
     }
   })
 })
