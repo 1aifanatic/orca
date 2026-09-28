@@ -3,7 +3,7 @@
 // replay that finishes restorations a crash interrupted. All of it is gated on
 // the host capability — an incapable host gets no cards and no new fields.
 
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import type {
   AgentSessionQueuedMessageDeleteResult,
   AgentSessionSendResult
@@ -44,8 +44,6 @@ export function useMobileStructuredQueuedMessageControls(args: {
   client: RpcClient | null
   sessionId: string | null
   sessionKey: string
-  /** Names the caller the host keys mutations under; the clear-replay evidence derives from it. */
-  callerIdentity: string
   enabled: boolean
   queueCapable: boolean
   composerRestore: MobileQueuedComposerRestoreSeam | undefined
@@ -62,7 +60,6 @@ export function useMobileStructuredQueuedMessageControls(args: {
   composerWithdraw: () => QueuedComposerRestore | undefined
 } {
   const {
-    callerIdentity,
     client,
     composerRestore,
     enabled,
@@ -152,27 +149,23 @@ export function useMobileStructuredQueuedMessageControls(args: {
     const draftKey = composerRestore.readDraftKey()
     return draftKey ? { draftKey, appendText: composerRestore.appendText } : undefined
   }, [composerRestore, queueCapable])
-  // Finish restorations a reload interrupted, once per opened chat — result
-  // recovery only: the replay NEVER re-executes a Stop or a /clear (see
-  // replayQueuedRestoreOperations for the per-method evidence rules).
-  const replayedRestoreKeysRef = useRef(new Set<string>())
+  // Finish the Edits a previous app process left, once per pane per process; its
+  // Stop and /clear handles are released, never reissued (see the replay).
   useEffect(() => {
     if (!queueCapable || !client || !sessionId || !enabled || fence === null || !composerRestore) {
       return
     }
     const draftKey = composerRestore.readDraftKey()
-    if (!draftKey || replayedRestoreKeysRef.current.has(sessionKey)) {
+    if (!draftKey) {
       return
     }
-    replayedRestoreKeysRef.current.add(sessionKey)
     void replayQueuedRestoreOperations({
       client,
       sessionId,
       draftKey,
-      callerIdentity,
       expectedRuntimeFence: fence,
       appendText: composerRestore.appendText
     }).catch(() => undefined)
-  }, [callerIdentity, client, composerRestore, enabled, fence, queueCapable, sessionId, sessionKey])
+  }, [client, composerRestore, enabled, fence, queueCapable, sessionId])
   return { cards, send, delete: deleteDraft, edit, composerWithdraw }
 }

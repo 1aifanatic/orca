@@ -12,10 +12,10 @@ vi.mock('@react-native-async-storage/async-storage', () => ({ default: asyncStor
 import {
   discardQueuedRestoreOperation,
   getOrCreateQueuedRestoreOperation,
-  listQueuedRestoreOperations,
   queuedRestoreEntryKey,
   resetQueuedRestoreJournalForTests,
-  settleQueuedRestoreOperation
+  settleQueuedRestoreOperation,
+  takeRelaunchQueuedRestoreOperations
 } from './mobile-structured-queued-restore-journal'
 
 const NOW = 1_900_000_000_000
@@ -95,28 +95,56 @@ describe('mobile structured queued restore journal', () => {
     expect(restored).toEqual(['host\0worktree\0tab'])
   })
 
+  function editEntryInput(messageId = 'draft-1') {
+    const entryKey = queuedRestoreEntryKey({
+      sessionKey: 'chat-a',
+      method: 'agentSession.queuedMessageDelete',
+      fields: { messageId }
+    })
+    return {
+      ...stopEntryInput(),
+      entryKey,
+      method: 'agentSession.queuedMessageDelete' as const,
+      fields: { messageId }
+    }
+  }
+
   it('discards a definitively answered entry and prunes expired handles on read', async () => {
-    const { operationId } = await getOrCreateQueuedRestoreOperation(stopEntryInput())
-    await discardQueuedRestoreOperation({ entryKey: stopEntryInput().entryKey, operationId })
+    const { operationId } = await getOrCreateQueuedRestoreOperation(editEntryInput())
+    await discardQueuedRestoreOperation({ entryKey: editEntryInput().entryKey, operationId })
     expect(
-      await listQueuedRestoreOperations({ draftKey: 'host\0worktree\0tab', now: NOW })
+      await takeRelaunchQueuedRestoreOperations({ draftKey: 'host\0worktree\0tab', now: NOW })
     ).toEqual([])
 
-    await getOrCreateQueuedRestoreOperation(stopEntryInput('turn-2'))
+    resetQueuedRestoreJournalForTests()
+    await getOrCreateQueuedRestoreOperation(editEntryInput('draft-2'))
     const expired = NOW + AGENT_SESSION_MAX_OPERATION_REPLAY_AGE_MS + 1
     expect(
-      await listQueuedRestoreOperations({ draftKey: 'host\0worktree\0tab', now: expired })
+      await takeRelaunchQueuedRestoreOperations({ draftKey: 'host\0worktree\0tab', now: expired })
     ).toEqual([])
   })
 
-  it('lists only the named pane and survives an unreadable journal', async () => {
+  it("on relaunch releases the pane's Stop handles and hands back its Edits, once per process", async () => {
     await getOrCreateQueuedRestoreOperation(stopEntryInput())
+    await getOrCreateQueuedRestoreOperation(editEntryInput())
+    await getOrCreateQueuedRestoreOperation({ ...editEntryInput('other'), draftKey: 'other-pane' })
+    const taken = await takeRelaunchQueuedRestoreOperations({
+      draftKey: 'host\0worktree\0tab',
+      now: NOW
+    })
+    expect(taken.map((entry) => entry.method)).toEqual(['agentSession.queuedMessageDelete'])
+    // The Stop handle is gone for good; the other pane is untouched.
+    expect(values.get(STORAGE_KEY)).not.toContain('agentSession.cancel')
+    expect(values.get(STORAGE_KEY)).toContain('other-pane')
+    // A handle this process creates afterwards is its own in-flight one: never swept.
+    await getOrCreateQueuedRestoreOperation(stopEntryInput('turn-2'))
     expect(
-      (await listQueuedRestoreOperations({ draftKey: 'host\0worktree\0tab', now: NOW })).map(
-        (entry) => entry.draftKey
-      )
-    ).toEqual(['host\0worktree\0tab'])
-    expect(await listQueuedRestoreOperations({ draftKey: 'other-pane', now: NOW })).toEqual([])
+      await takeRelaunchQueuedRestoreOperations({ draftKey: 'host\0worktree\0tab', now: NOW })
+    ).toEqual([])
+    expect(values.get(STORAGE_KEY)).toContain('turn-2')
+  })
+
+  it('survives an unreadable journal', async () => {
     values.set(STORAGE_KEY, 'not json')
     // Unreadable bookkeeping must not gate a Stop: start over instead of throwing.
     const recreated = await getOrCreateQueuedRestoreOperation(stopEntryInput())

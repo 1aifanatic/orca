@@ -126,6 +126,16 @@ export function useMobileStructuredAgentSession(args: {
   })
   const { conversationCommands, invokeStructuredOption, optionSnapshot, setStructuredOption } =
     options
+  // Stable across renders, or the send callback is rebuilt on every streamed frame.
+  const sendController = useMemo(
+    () => ({
+      snapshot: optionSnapshot,
+      setOption: setStructuredOption,
+      invokeAction: invokeStructuredOption,
+      conversationCommands
+    }),
+    [conversationCommands, invokeStructuredOption, optionSnapshot, setStructuredOption]
+  )
 
   const sendWithOutcome = useMobileStructuredSendWithOutcome({
     agent,
@@ -139,12 +149,7 @@ export function useMobileStructuredAgentSession(args: {
     stateRef,
     commandPending: commandPendingRef,
     operationIds: operationIdsRef.current,
-    controller: {
-      snapshot: optionSnapshot,
-      setOption: setStructuredOption,
-      invokeAction: invokeStructuredOption,
-      conversationCommands
-    },
+    controller: sendController,
     onSendError
   })
   const { groupedDraft, respondPermission, respondQuestion } = useMobileStructuredPromptResponses({
@@ -178,7 +183,6 @@ export function useMobileStructuredAgentSession(args: {
     client,
     sessionId,
     sessionKey,
-    callerIdentity,
     enabled,
     queueCapable,
     composerRestore,

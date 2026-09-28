@@ -10,6 +10,7 @@ import {
   requestStructuredAgentSessionMutation,
   retainStructuredSessionOperationId
 } from './mobile-structured-agent-session-rpc'
+import { requestWithdrawingMutation } from './mobile-structured-queued-message-actions'
 import { queuedMessageBodyText } from './mobile-structured-queued-message-cards'
 import {
   discardQueuedRestoreOperation,
@@ -89,17 +90,22 @@ export async function dispatchMobileStructuredCommand(input: {
         handle?.operationId ??
         retainStructuredSessionOperationId(input.operationIds, key, input.operationIds.get(key))
       try {
-        const result =
-          await requestStructuredAgentSessionMutation<AgentSessionConversationCommandResult>({
-            client: input.client,
-            sessionId: input.sessionId,
-            expectedRuntimeFence: input.fence,
-            method: 'agentSession.conversationCommand',
-            fingerprintMethod: 'agentSession.conversationCommand',
-            fields: { command, ...(withdrawal ? { withdrawQueued: true as const } : {}) },
-            clientOperationId,
-            timeoutMs: Math.max(input.timeoutMs, 195_000)
-          })
+        const request = {
+          client: input.client,
+          sessionId: input.sessionId,
+          expectedRuntimeFence: input.fence,
+          method: 'agentSession.conversationCommand',
+          fingerprintMethod: 'agentSession.conversationCommand',
+          fields: { command, ...(withdrawal ? { withdrawQueued: true as const } : {}) },
+          clientOperationId,
+          timeoutMs: Math.max(input.timeoutMs, 195_000)
+        }
+        // A withdrawing clear re-asks a lost answer: only it carries the drafts' text back.
+        const result = withdrawal
+          ? await requestWithdrawingMutation<AgentSessionConversationCommandResult>(request)
+          : await requestStructuredAgentSessionMutation<AgentSessionConversationCommandResult>(
+              request
+            )
         if (
           result.status === 'unknown' ||
           (result.status === 'accepted' && result.value.state === 'unknown')
@@ -121,7 +127,7 @@ export async function dispatchMobileStructuredCommand(input: {
             }
           }
           if (handle) {
-            // Settled through the journal so a reload replay cannot restore twice.
+            // Settled through the journal so the bodies are restored exactly once.
             await settleQueuedRestoreOperation({ ...handle, restore: apply }).catch(apply)
           } else {
             apply()

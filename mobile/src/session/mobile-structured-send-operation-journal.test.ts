@@ -248,11 +248,36 @@ describe('mobile structured send operation journal', () => {
         now: NOW
       })
     ).resolves.toEqual({
+      operationKey: OPERATION_KEY,
       operationId,
       retained: true,
       payloadFingerprint,
       attachmentPaths: ['/tmp/original.png']
     })
+  })
+
+  it('replays an entry retained under the alternate key, and says which key matched', async () => {
+    const operationId = operationIdAt(NOW, 'e')
+    const alternateKey = 'b'.repeat(64)
+    await getOrCreatePersistedOperation({
+      operationKey: alternateKey,
+      callerIdentity: CALLER_IDENTITY,
+      payloadFingerprint: 'd'.repeat(64),
+      attachmentPaths: [],
+      createOperationId: () => operationId,
+      now: NOW
+    })
+    await expect(
+      getOrCreatePersistedOperation({
+        operationKey: OPERATION_KEY,
+        alternateOperationKey: alternateKey,
+        callerIdentity: CALLER_IDENTITY,
+        payloadFingerprint: 'd'.repeat(64),
+        attachmentPaths: [],
+        createOperationId: () => operationIdAt(NOW, 'f'),
+        now: NOW
+      })
+    ).resolves.toMatchObject({ operationKey: alternateKey, operationId, retained: true })
   })
 
   it('keeps an ambiguous id after the host replay window closes', async () => {

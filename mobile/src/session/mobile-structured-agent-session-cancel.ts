@@ -8,6 +8,7 @@ import {
   retainStructuredSessionOperationId,
   type StructuredAgentSessionMutationCallResult
 } from './mobile-structured-agent-session-rpc'
+import { requestWithdrawingMutation } from './mobile-structured-queued-message-actions'
 import { queuedMessageBodyText } from './mobile-structured-queued-message-cards'
 import {
   discardQueuedRestoreOperation,
@@ -96,16 +97,19 @@ export async function requestMobileStructuredAgentSessionCancel(args: {
   const clientOperationId =
     restoreHandle?.operationId ??
     retainStructuredSessionOperationId(operationIds, key, operationIds.get(key))
-  const result: StructuredAgentSessionMutationCallResult<AgentSessionCancelResult> =
-    await requestStructuredAgentSessionMutation<AgentSessionCancelResult>({
-      client,
-      method: 'agentSession.cancel',
-      fingerprintMethod: 'agentSession.cancel',
-      sessionId,
-      expectedRuntimeFence: current.fence,
-      fields,
-      clientOperationId
-    })
+  const request = {
+    client,
+    method: 'agentSession.cancel',
+    fingerprintMethod: 'agentSession.cancel',
+    sessionId,
+    expectedRuntimeFence: current.fence,
+    fields,
+    clientOperationId
+  }
+  // A withdrawing Stop re-asks a lost answer: only it carries the drafts' text back.
+  const result: StructuredAgentSessionMutationCallResult<AgentSessionCancelResult> = withdraw
+    ? await requestWithdrawingMutation<AgentSessionCancelResult>(request)
+    : await requestStructuredAgentSessionMutation<AgentSessionCancelResult>(request)
   // Cancel's plan recovers no unknown ledger row, so an id the host answered that
   // way earns the same refusal until it expires; keeping it leaves Stop unusable.
   // Transport doubt proves nothing about delivery, so it stays a replay.
@@ -123,8 +127,7 @@ export async function requestMobileStructuredAgentSessionCancel(args: {
         }
       }
       if (restoreHandle) {
-        // Settled through the journal so a concurrent reload replay cannot
-        // restore the same bodies twice.
+        // Settled through the journal so the bodies are restored exactly once.
         await settleQueuedRestoreOperation({ ...restoreHandle, restore: apply }).catch(apply)
       } else {
         apply()

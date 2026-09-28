@@ -17,10 +17,7 @@ const OperationEntrySchema = z
     operationId: z.string().max(128),
     callerFingerprint: z.string().regex(/^[0-9a-f]{64}$/),
     payloadFingerprint: z.string().regex(/^[0-9a-f]{64}$/),
-    attachmentPaths: z.array(z.string().max(4096)).max(128),
-    /** The `delivery` field the first attempt sent. Recorded so a replay keeps the
-     *  operation fingerprint stable even if the capability answer changed meanwhile. */
-    delivery: z.literal('queue-if-active').optional()
+    attachmentPaths: z.array(z.string().max(4096)).max(128)
   })
   .strict()
 const OperationJournalSchema = z
@@ -110,37 +107,43 @@ async function serialize<T>(action: () => Promise<T>): Promise<T> {
 
 export async function getOrCreateMobileStructuredSendOperation(input: {
   operationKey: string
+  /** The same intent under its other delivery: a retained entry there is replayed
+   *  as-is, so the key that matched — never a stored field — says how it was sent. */
+  alternateOperationKey?: string
   callerIdentity: string
   payloadFingerprint: string
   attachmentPaths: readonly string[]
   createOperationId: () => string
-  delivery?: 'queue-if-active'
   now?: number
 }): Promise<{
+  operationKey: string
   operationId: string
   retained: boolean
   payloadFingerprint: string
   attachmentPaths: string[]
-  delivery: 'queue-if-active' | undefined
 }> {
   return serialize(async () => {
     const now = input.now ?? Date.now()
     const callerFingerprint = mobileStructuredSendCallerFingerprint(input.callerIdentity)
     const journal = parseJournal(await AsyncStorage.getItem(STORAGE_KEY))
     const entries = journal.entries
-    const existing = entries.find((entry) => entry.operationKey === input.operationKey)
+    const existing =
+      entries.find((entry) => entry.operationKey === input.operationKey) ??
+      entries.find(
+        (entry) =>
+          input.alternateOperationKey !== undefined &&
+          entry.operationKey === input.alternateOperationKey
+      )
     if (existing) {
       if (existing.callerFingerprint !== callerFingerprint) {
         throw new Error('Structured send caller identity changed')
       }
       return {
+        operationKey: existing.operationKey,
         operationId: existing.operationId,
         retained: true,
         payloadFingerprint: existing.payloadFingerprint,
-        attachmentPaths: [...existing.attachmentPaths],
-        // A retained id must replay the recorded request exactly; the current
-        // capability answer never changes an in-doubt operation's fingerprint.
-        delivery: existing.delivery
+        attachmentPaths: [...existing.attachmentPaths]
       }
     }
     // Ambiguity has no TTL. At the fixed capacity, refusing a new send is safer
@@ -157,16 +160,15 @@ export async function getOrCreateMobileStructuredSendOperation(input: {
       operationId,
       callerFingerprint,
       payloadFingerprint: input.payloadFingerprint,
-      attachmentPaths: [...input.attachmentPaths],
-      ...(input.delivery ? { delivery: input.delivery } : {})
+      attachmentPaths: [...input.attachmentPaths]
     })
     await writeEntries([...entries, entry])
     return {
+      operationKey: input.operationKey,
       operationId,
       retained: false,
       payloadFingerprint: input.payloadFingerprint,
-      attachmentPaths: [...input.attachmentPaths],
-      delivery: input.delivery
+      attachmentPaths: [...input.attachmentPaths]
     }
   })
 }

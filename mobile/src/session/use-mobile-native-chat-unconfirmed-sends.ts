@@ -4,7 +4,7 @@
 // and surface the uncertainty only if the deadline passes without one. The
 // composer was already cleared at send time, so this never touches drafts.
 
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
 import type { NativeChatMessage } from '../../../src/shared/native-chat-types'
 import {
   findLandedUnconfirmedSends,
@@ -27,11 +27,14 @@ export function useMobileNativeChatUnconfirmedSends(args: {
 } {
   const { draftKey, pendingKey, messages } = args
   const messagesRef = useRef(messages)
-  messagesRef.current = messages
   const activeDraftKeyRef = useRef(draftKey)
-  activeDraftKeyRef.current = draftKey
   const activePendingKeyRef = useRef(pendingKey)
-  activePendingKeyRef.current = pendingKey
+  // Read only by the post-send hold, which runs after the commit that set them.
+  useLayoutEffect(() => {
+    messagesRef.current = messages
+    activeDraftKeyRef.current = draftKey
+    activePendingKeyRef.current = pendingKey
+  }, [draftKey, messages, pendingKey])
   const mountedRef = useRef(false)
   const unconfirmedRef = useRef<UnconfirmedSend[]>([])
   const holdUnconfirmedSend = useCallback(

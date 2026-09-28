@@ -1,8 +1,8 @@
 // The mid-turn queue on mobile: `delivery` rides only capability-gated sends,
 // published drafts render as cards (never optimistic bubbles), card actions map
-// to the queued-message RPCs, and a withdrawing Stop restores text through a
-// write-ahead persisted operation that survives reload. An incapable host gets
-// exactly today's requests.
+// to the queued-message RPCs, and a withdrawing Stop restores text exactly once
+// through a write-ahead operation — re-asked in-session when its answer is lost,
+// never reissued after a relaunch. An incapable host gets exactly today's requests.
 
 import { createElement } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
@@ -14,13 +14,13 @@ import type {
 import { structuredAgentSessionPayloadFingerprint } from '../../../src/shared/structured-agent-session-mutation'
 import type { RpcClient } from '../transport/rpc-client'
 import { markRpcDeliveryUnknown } from '../transport/rpc-delivery-ambiguity'
+import type { RpcResponse } from '../transport/types'
 import { resetMobileStructuredSendOperationJournalForTests } from './mobile-structured-send-operation-journal'
 import {
   getOrCreateQueuedRestoreOperation,
   queuedRestoreEntryKey,
   resetQueuedRestoreJournalForTests
 } from './mobile-structured-queued-restore-journal'
-import { expectedClearReplacementSessionId } from './mobile-structured-queued-message-actions'
 import { structuredSessionOperationId } from './structured-session-operation-id'
 import type { StructuredAgentSessionHostSupport } from './mobile-structured-agent-session-host-support'
 import { useMobileStructuredAgentSession } from './use-mobile-structured-agent-session'
@@ -43,8 +43,15 @@ const CAPABLE: StructuredAgentSessionHostSupport = {
 }
 const LEGACY: StructuredAgentSessionHostSupport = { ...CAPABLE, queuedMessages: false }
 
-function ok(result: unknown) {
-  return { ok: true, result, _meta: { runtimeId: 'runtime-1' } }
+function ok(result: unknown): RpcResponse {
+  return { id: 'request-1', ok: true, result, _meta: { runtimeId: 'runtime-1' } }
+}
+
+/** The fields one recorded request carried, read without asserting their shape. */
+function fieldsOf(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+    ? Object.fromEntries(Object.entries(value))
+    : {}
 }
 
 function mutationOk(value: unknown) {
@@ -130,12 +137,22 @@ describe('mobile structured queued messages', () => {
   let stored: Map<string, string>
   const onSendError = vi.fn()
   const appendText = vi.fn()
-  const sendRequest = vi.fn()
-  const subscribe = vi.fn((_method: string, _params: unknown, onData: (value: unknown) => void) => {
+  const sendRequest = vi.fn<RpcClient['sendRequest']>()
+  const subscribe = vi.fn<RpcClient['subscribe']>((_method, _params, onData) => {
     listener = onData
     return vi.fn()
   })
-  const client = { sendRequest, subscribe } as unknown as RpcClient
+  const client: RpcClient = {
+    sendRequest,
+    subscribe,
+    updateTerminalSubscriptionViewport: () => {},
+    getState: () => 'connected',
+    getReconnectAttempt: () => 0,
+    getLastConnectedAt: () => null,
+    onStateChange: () => () => {},
+    notifyForeground: () => {},
+    close: () => {}
+  }
 
   function Harness({
     hostSupport,
@@ -154,7 +171,7 @@ describe('mobile structured queued messages', () => {
       hostSupport,
       composerRestore: { readDraftKey: () => DRAFT_KEY, appendText },
       onSendError
-    } as never)
+    })
     return null
   }
 
@@ -181,6 +198,12 @@ describe('mobile structured queued messages', () => {
 
   function calls(method: string) {
     return sendRequest.mock.calls.filter(([calledMethod]) => calledMethod === method)
+  }
+
+  /** Params of the `index`th `method` request, and its envelope. */
+  function requestOf(method: string, index = 0) {
+    const params = fieldsOf(calls(method)[index]?.[1])
+    return { params, envelope: fieldsOf(params.envelope) }
   }
 
   beforeEach(() => {
@@ -219,12 +242,9 @@ describe('mobile structured queued messages', () => {
       await act(async () => {
         expect(await hook!.sendWithOutcome('queue me')).toBe('queued')
       })
-      const [, params] = calls('agentSession.send')[0]! as [
-        string,
-        { envelope: { payloadFingerprint: string }; body: unknown; delivery?: string }
-      ]
+      const { params, envelope } = requestOf('agentSession.send')
       expect(params.delivery).toBe('queue-if-active')
-      expect(params.envelope.payloadFingerprint).toBe(
+      expect(envelope.payloadFingerprint).toBe(
         structuredAgentSessionPayloadFingerprint({
           method: 'agentSession.send',
           sessionId: SESSION_ID,
@@ -260,12 +280,9 @@ describe('mobile structured queued messages', () => {
       await act(async () => {
         expect(await hook!.sendWithOutcome('plain send')).toBe('accepted')
       })
-      const [, params] = calls('agentSession.send')[0]! as [
-        string,
-        { envelope: { payloadFingerprint: string }; body: unknown }
-      ]
+      const { params, envelope } = requestOf('agentSession.send')
       expect('delivery' in params).toBe(false)
-      expect(params.envelope.payloadFingerprint).toBe(
+      expect(envelope.payloadFingerprint).toBe(
         structuredAgentSessionPayloadFingerprint({
           method: 'agentSession.send',
           sessionId: SESSION_ID,
@@ -274,7 +291,7 @@ describe('mobile structured queued messages', () => {
       )
     })
 
-    it('replays an ack-lost delivery send under one id and the recorded delivery field', async () => {
+    it('replays an ack-lost delivery send under one id and the delivery it was sent with', async () => {
       let attempts = 0
       sendRequest.mockImplementation(async (method) => {
         if (method === 'agentSession.send') {
@@ -296,12 +313,47 @@ describe('mobile structured queued messages', () => {
         expect(await hook!.sendWithOutcome('retry me')).toBe('unknown')
       })
       expect(attempts).toBe(2)
-      const [first, second] = calls('agentSession.send') as [string, Record<string, unknown>][]
-      expect((second[1] as { delivery?: string }).delivery).toBe('queue-if-active')
-      expect(
-        (second[1] as { envelope: { clientOperationId: string } }).envelope.clientOperationId
-      ).toBe((first[1] as { envelope: { clientOperationId: string } }).envelope.clientOperationId)
+      const first = requestOf('agentSession.send', 0)
+      const second = requestOf('agentSession.send', 1)
+      expect(second.params.delivery).toBe('queue-if-active')
+      expect(second.envelope.clientOperationId).toBe(first.envelope.clientOperationId)
+      // Nothing new is persisted: an older build still reads the send journal.
+      const journal = stored.get('orca:mobileStructuredSendOperations:v1') ?? ''
+      expect(journal).not.toContain('delivery')
     })
+  })
+
+  it('an identical send whose retained id replays as withdrawn goes out fresh', async () => {
+    let attempts = 0
+    sendRequest.mockImplementation(async (method) => {
+      if (method === 'agentSession.send') {
+        attempts += 1
+        if (attempts === 1) {
+          throw markRpcDeliveryUnknown(new Error('Connection closed'))
+        }
+        const state = attempts === 2 ? 'withdrawn' : 'waiting'
+        return mutationOk({
+          clientMessageId: `client-${attempts}`,
+          queued: { messageId: `client-${attempts}`, position: attempts, state }
+        })
+      }
+      return method === 'agentSession.options' ? ok({ models: [], current: {} }) : ok({})
+    })
+    await mountSession(CAPABLE)
+    await act(async () => {
+      expect(await hook!.sendWithOutcome('again')).toBe('unknown')
+    })
+    // A Stop withdrew the ack-lost draft and gave its text back; sending it again
+    // must not be swallowed as a replay of the withdrawn one.
+    await act(async () => {
+      expect(await hook!.sendWithOutcome('again')).toBe('queued')
+    })
+    expect(attempts).toBe(3)
+    const ids = [0, 1, 2].map(
+      (index) => requestOf('agentSession.send', index).envelope.clientOperationId
+    )
+    expect(ids[1]).toBe(ids[0])
+    expect(ids[2]).not.toBe(ids[0])
   })
 
   describe('cards from the published list', () => {
@@ -359,11 +411,7 @@ describe('mobile structured queued messages', () => {
       await act(async () => {
         expect(await hook!.queued.send('draft-1')).toBe(true)
       })
-      const [, params] = calls('agentSession.queuedMessageSend')[0]! as [
-        string,
-        { messageId: string }
-      ]
-      expect(params.messageId).toBe('draft-1')
+      expect(requestOf('agentSession.queuedMessageSend').params.messageId).toBe('draft-1')
     })
 
     it('Delete reads the union result: a dispatched draft was already sent', async () => {
@@ -434,10 +482,7 @@ describe('mobile structured queued messages', () => {
       await act(async () => {
         expect(await hook!.cancelPrompt()).toBe(true)
       })
-      const [, params] = calls('agentSession.cancel')[0]! as [
-        string,
-        { turnId: string; withdrawQueued?: true }
-      ]
+      const { params } = requestOf('agentSession.cancel')
       expect(params.turnId).toBe('turn-1')
       expect(params.withdrawQueued).toBe(true)
       // Write-ahead: the operation identity reached storage before the RPC left.
@@ -468,12 +513,44 @@ describe('mobile structured queued messages', () => {
       await act(async () => {
         expect(await hook!.cancelPrompt()).toBe(true)
       })
-      const [, params] = calls('agentSession.cancel')[0]! as [string, Record<string, unknown>]
-      expect('withdrawQueued' in params).toBe(false)
+      expect('withdrawQueued' in requestOf('agentSession.cancel').params).toBe(false)
       expect(asyncStorage.setItem).not.toHaveBeenCalledWith(
         'orca:mobileStructuredQueuedRestore:v1',
         expect.anything()
       )
+    })
+
+    it('a lost Stop answer is re-asked under the same id and restores once', async () => {
+      let attempts = 0
+      sendRequest.mockImplementation(async (method) => {
+        if (method === 'agentSession.cancel') {
+          attempts += 1
+          if (attempts === 1) {
+            throw markRpcDeliveryUnknown(new Error('Connection closed'))
+          }
+          return mutationOk({
+            cancelled: true,
+            turnId: 'turn-1',
+            withdrawnQueued: [
+              {
+                messageId: 'draft-1',
+                body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'one' }] }
+              }
+            ]
+          })
+        }
+        return method === 'agentSession.options' ? ok({ models: [], current: {} }) : ok({})
+      })
+      await mountSession(CAPABLE, snapshotEvent({ runningTurn: true }))
+      await act(async () => {
+        expect(await hook!.cancelPrompt()).toBe(true)
+      })
+      expect(calls('agentSession.cancel')).toHaveLength(2)
+      expect(requestOf('agentSession.cancel', 1).envelope.clientOperationId).toBe(
+        requestOf('agentSession.cancel', 0).envelope.clientOperationId
+      )
+      expect(appendText.mock.calls).toEqual([[DRAFT_KEY, 'one']])
+      expect(stored.has('orca:mobileStructuredQueuedRestore:v1')).toBe(false)
     })
 
     it('a persisted Stop NEVER re-executes on a later launch; its handle is dropped', async () => {
@@ -490,92 +567,85 @@ describe('mobile structured queued messages', () => {
       await act(async () => {
         expect(await hook!.cancelPrompt()).toBe(false)
       })
-      expect(calls('agentSession.cancel')).toHaveLength(1)
+      // Re-asked in-session, bounded, always under the one id.
+      expect(calls('agentSession.cancel')).toHaveLength(3)
+      expect(stored.has('orca:mobileStructuredQueuedRestore:v1')).toBe(true)
+      unmountSession()
+      // Remounting in the same process never releases it: an answer may still land.
+      await mountSession(CAPABLE, snapshotEvent({ runningTurn: true }))
+      await act(async () => {})
       expect(stored.has('orca:mobileStructuredQueuedRestore:v1')).toBe(true)
       unmountSession()
 
+      resetQueuedRestoreJournalForTests()
       stopAnswers()
       await mountSession(CAPABLE, snapshotEvent({ runningTurn: true }))
       await vi.waitFor(() =>
         expect(stored.has('orca:mobileStructuredQueuedRestore:v1')).toBe(false)
       )
-      expect(calls('agentSession.cancel')).toHaveLength(1)
+      expect(calls('agentSession.cancel')).toHaveLength(3)
       expect(appendText).not.toHaveBeenCalled()
     })
   })
 
-  describe('persisted /clear across relaunch', () => {
-    async function persistClearEntry(sourceSessionId: string): Promise<string> {
-      const entryKey = queuedRestoreEntryKey({
-        sessionKey: 'any',
-        method: 'agentSession.conversationCommand',
-        fields: { command: 'clear' }
-      })
+  describe('restore handles across relaunch', () => {
+    async function persistEntry(
+      method: 'agentSession.conversationCommand' | 'agentSession.queuedMessageDelete',
+      sessionId: string
+    ): Promise<string> {
+      const base = { sessionId, sessionKey: 'any', draftKey: DRAFT_KEY }
+      const input =
+        method === 'agentSession.conversationCommand'
+          ? { ...base, method, fields: { command: 'clear' as const } }
+          : { ...base, method, fields: { messageId: 'draft-1' } }
       const { operationId } = await getOrCreateQueuedRestoreOperation({
-        entryKey,
-        sessionId: sourceSessionId,
-        sessionKey: 'any',
-        draftKey: DRAFT_KEY,
-        method: 'agentSession.conversationCommand',
-        fields: { command: 'clear' },
+        ...input,
+        entryKey: queuedRestoreEntryKey({ sessionKey: 'any', method, fields: input.fields }),
         createOperationId: structuredSessionOperationId
       })
       return operationId
     }
 
-    it('killed before the clear reached the host: no command runs on relaunch', async () => {
-      await persistClearEntry(SESSION_ID)
-      await mountSession(CAPABLE)
-      await act(async () => {})
-      expect(calls('agentSession.conversationCommand')).toHaveLength(0)
-      // The handle stays for a same-id user retry until it expires on its own.
-      expect(stored.has('orca:mobileStructuredQueuedRestore:v1')).toBe(true)
-    })
+    it.each([SESSION_ID, 'clear-replacement'])(
+      'a persisted /clear never runs again on relaunch (pane on %s); its handle is dropped',
+      async (paneSessionId) => {
+        await persistEntry('agentSession.conversationCommand', SESSION_ID)
+        await mountSession(CAPABLE, snapshotEvent(), paneSessionId)
+        await vi.waitFor(() =>
+          expect(stored.has('orca:mobileStructuredQueuedRestore:v1')).toBe(false)
+        )
+        expect(calls('agentSession.conversationCommand')).toHaveLength(0)
+        expect(appendText).not.toHaveBeenCalled()
+      }
+    )
 
-    it('killed after the clear applied: the recorded text is restored exactly once', async () => {
-      const operationId = await persistClearEntry('session-src')
-      // The pane now shows the replacement session this very operation minted —
-      // the proof the clear committed, so a same-op reissue can only replay.
-      const replacement = expectedClearReplacementSessionId(
-        { sessionId: 'session-src', operationId },
-        ''
-      )
+    it('an interrupted Edit is finished on relaunch under its own id, exactly once', async () => {
+      const operationId = await persistEntry('agentSession.queuedMessageDelete', SESSION_ID)
       sendRequest.mockImplementation(async (method) => {
-        if (method === 'agentSession.conversationCommand') {
+        if (method === 'agentSession.queuedMessageDelete') {
           return mutationOk({
-            command: 'clear',
-            state: 'completed',
-            replacementSessionId: replacement,
-            withdrawnQueued: [
-              {
-                messageId: 'draft-1',
-                body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'held' }] }
-              }
-            ]
+            deleted: true,
+            messageId: 'draft-1',
+            body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'edit me' }] }
           })
         }
         return method === 'agentSession.options' ? ok({ models: [], current: {} }) : ok({})
       })
-      await mountSession(CAPABLE, snapshotEvent(), replacement)
-      await vi.waitFor(() => expect(calls('agentSession.conversationCommand')).toHaveLength(1))
-      const [, params] = calls('agentSession.conversationCommand')[0]! as [
-        string,
-        { envelope: { sessionId: string; clientOperationId: string }; withdrawQueued?: true }
-      ]
-      // The reissue targets the SOURCE under the recorded id: a pure replay.
-      expect(params.envelope.sessionId).toBe('session-src')
-      expect(params.envelope.clientOperationId).toBe(operationId)
-      expect(params.withdrawQueued).toBe(true)
-      await vi.waitFor(() => expect(appendText.mock.calls).toEqual([[DRAFT_KEY, 'held']]))
+      resetQueuedRestoreJournalForTests()
+      await mountSession(CAPABLE)
+      await vi.waitFor(() => expect(appendText.mock.calls).toEqual([[DRAFT_KEY, 'edit me']]))
+      expect(requestOf('agentSession.queuedMessageDelete').envelope.clientOperationId).toBe(
+        operationId
+      )
       await vi.waitFor(() =>
         expect(stored.has('orca:mobileStructuredQueuedRestore:v1')).toBe(false)
       )
       unmountSession()
 
-      // A second launch owes nothing.
-      await mountSession(CAPABLE, snapshotEvent(), replacement)
+      resetQueuedRestoreJournalForTests()
+      await mountSession(CAPABLE)
       await act(async () => {})
-      expect(calls('agentSession.conversationCommand')).toHaveLength(1)
+      expect(calls('agentSession.queuedMessageDelete')).toHaveLength(1)
       expect(appendText.mock.calls).toHaveLength(1)
     })
   })

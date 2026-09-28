@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { Clock, RotateCcw } from 'lucide-react-native'
 import { colors, radii, spacing, typography } from '../theme/mobile-theme'
@@ -23,26 +23,30 @@ export function MobileNativeChatQueuedMessages({
   onDelete,
   onEdit
 }: MobileNativeChatQueuedMessagesProps): React.JSX.Element | null {
-  // One in-flight action per card; a second tap must not double-consume.
-  const [busyId, setBusyId] = useState<string | null>(null)
+  // One in-flight action per card; a second tap must not double-consume. The ref
+  // closes the same-frame double tap the disabled state cannot.
+  const [busyIds, setBusyIds] = useState<ReadonlySet<string>>(() => new Set())
+  const inFlightRef = useRef(new Set<string>())
   if (!cards || cards.length === 0) {
     return null
   }
   const run = async (messageId: string, action?: (id: string) => Promise<boolean>) => {
-    if (busyId !== null || !action) {
+    if (inFlightRef.current.has(messageId) || !action) {
       return
     }
-    setBusyId(messageId)
+    inFlightRef.current.add(messageId)
+    setBusyIds(new Set(inFlightRef.current))
     try {
       await action(messageId)
     } finally {
-      setBusyId(null)
+      inFlightRef.current.delete(messageId)
+      setBusyIds(new Set(inFlightRef.current))
     }
   }
   return (
     <View style={styles.list}>
       {cards.map((card) => {
-        const busy = busyId === card.messageId
+        const busy = busyIds.has(card.messageId)
         const returned = card.state === 'returned'
         return (
           <View key={card.messageId} style={[styles.card, returned && styles.cardReturned]}>
@@ -61,6 +65,8 @@ export function MobileNativeChatQueuedMessages({
             </Text>
             <View style={styles.actions}>
               <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ disabled: busy }}
                 accessibilityLabel={returned ? 'Send this message again' : 'Send this message now'}
                 style={({ pressed }) => [styles.action, pressed && styles.pressed]}
                 disabled={busy}
@@ -70,6 +76,8 @@ export function MobileNativeChatQueuedMessages({
               </Pressable>
               {returned ? null : (
                 <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: busy }}
                   accessibilityLabel="Edit this queued message"
                   style={({ pressed }) => [styles.action, pressed && styles.pressed]}
                   disabled={busy}
@@ -79,6 +87,8 @@ export function MobileNativeChatQueuedMessages({
                 </Pressable>
               )}
               <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ disabled: busy }}
                 accessibilityLabel="Delete this queued message"
                 style={({ pressed }) => [styles.action, pressed && styles.pressed]}
                 disabled={busy}

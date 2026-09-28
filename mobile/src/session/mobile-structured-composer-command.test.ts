@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RpcClient } from '../transport/rpc-client'
+import { markRpcDeliveryUnknown } from '../transport/rpc-delivery-ambiguity'
 
 const asyncStorage = vi.hoisted(() => ({
   getItem: vi.fn(),
@@ -13,7 +14,9 @@ import { dispatchMobileStructuredCommand } from './mobile-structured-composer-co
 import { resetQueuedRestoreJournalForTests } from './mobile-structured-queued-restore-journal'
 
 function setup() {
-  const sendRequest = vi.fn(async (_method: string, _params: unknown, _options: unknown) => ({
+  const sendRequest = vi.fn<
+    (method: string, params: unknown, options: unknown) => Promise<unknown>
+  >(async () => ({
     ok: true,
     result: { ok: true, value: { command: 'compact', state: 'completed' } }
   }))
@@ -38,6 +41,13 @@ function setup() {
     timeoutMs: 15000
   }
   return { input, sendRequest }
+}
+/** The fields one recorded request carried, read without asserting their shape. */
+function requestFields(call: readonly unknown[] | undefined): Record<string, unknown> {
+  const params = call?.[1]
+  return typeof params === 'object' && params !== null
+    ? Object.fromEntries(Object.entries(params))
+    : {}
 }
 describe('mobile structured conversation commands', () => {
   let stored: Map<string, string>
@@ -123,8 +133,7 @@ describe('mobile structured conversation commands', () => {
   it('a plain /clear never carries withdrawQueued — an incapable host is untouched', async () => {
     const { input, sendRequest } = setup()
     expect(await dispatchMobileStructuredCommand({ ...input, text: '/clear' })).toBe('accepted')
-    const params = sendRequest.mock.calls[0]![1] as Record<string, unknown>
-    expect('withdrawQueued' in params).toBe(false)
+    expect('withdrawQueued' in requestFields(sendRequest.mock.calls[0])).toBe(false)
     expect(asyncStorage.setItem).not.toHaveBeenCalled()
   })
   it('a capable /clear withdraws drafts, persists ahead, and restores the text once', async () => {
@@ -144,7 +153,7 @@ describe('mobile structured conversation commands', () => {
           ]
         }
       }
-    } as never)
+    })
     const appendText = vi.fn()
     const outcome = await dispatchMobileStructuredCommand({
       ...input,
@@ -152,8 +161,7 @@ describe('mobile structured conversation commands', () => {
       clearWithdrawal: { draftKey: 'pane-1', appendText }
     })
     expect(outcome).toBe('accepted')
-    const params = sendRequest.mock.calls[0]?.[1] as { withdrawQueued?: true }
-    expect(params.withdrawQueued).toBe(true)
+    expect(requestFields(sendRequest.mock.calls[0]).withdrawQueued).toBe(true)
     // Write-ahead: the restore handle reached storage before the RPC left.
     expect(asyncStorage.setItem.mock.invocationCallOrder[0]).toBeLessThan(
       sendRequest.mock.invocationCallOrder[0]!
@@ -167,14 +175,14 @@ describe('mobile structured conversation commands', () => {
     sendRequest.mockResolvedValueOnce({
       ok: true,
       result: { ok: true, value: { command: 'clear', state: 'unknown' } }
-    } as never)
+    })
     sendRequest.mockResolvedValueOnce({
       ok: true,
       result: {
         ok: true,
         value: { command: 'clear', state: 'completed', withdrawnQueued: [] }
       }
-    } as never)
+    })
     const appendText = vi.fn()
     const withdrawal = { clearWithdrawal: { draftKey: 'pane-1', appendText } }
     expect(await dispatchMobileStructuredCommand({ ...input, text: '/clear', ...withdrawal })).toBe(
@@ -185,6 +193,38 @@ describe('mobile structured conversation commands', () => {
       'accepted'
     )
     expect(sendRequest.mock.calls[0]?.[1]).toEqual(sendRequest.mock.calls[1]?.[1])
+    expect(stored.size).toBe(0)
+  })
+  it('a capable /clear whose answer is lost re-asks the same id and restores once', async () => {
+    const { input, sendRequest } = setup()
+    sendRequest.mockRejectedValueOnce(markRpcDeliveryUnknown(new Error('Connection closed')))
+    sendRequest.mockResolvedValueOnce({
+      ok: true,
+      result: {
+        ok: true,
+        value: {
+          command: 'clear',
+          state: 'completed',
+          withdrawnQueued: [
+            {
+              messageId: 'draft-1',
+              body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'held' }] }
+            }
+          ]
+        }
+      }
+    })
+    const appendText = vi.fn()
+    expect(
+      await dispatchMobileStructuredCommand({
+        ...input,
+        text: '/clear',
+        clearWithdrawal: { draftKey: 'pane-1', appendText }
+      })
+    ).toBe('accepted')
+    expect(sendRequest).toHaveBeenCalledTimes(2)
+    expect(sendRequest.mock.calls[0]?.[1]).toEqual(sendRequest.mock.calls[1]?.[1])
+    expect(appendText.mock.calls).toEqual([['pane-1', 'held']])
     expect(stored.size).toBe(0)
   })
   it('keeps ordinary messages on the existing send path', async () => {

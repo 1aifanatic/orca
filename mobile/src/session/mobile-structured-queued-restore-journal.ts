@@ -1,11 +1,11 @@
 // Write-ahead persistence for the mutations that owe the composer text back:
-// a Stop that withdraws queued drafts, and an Edit that deletes one to reclaim
-// its body. The operation identity is persisted BEFORE the RPC — the order the
-// send journal already establishes — so a crash after the host withdrew but
-// before the text reached the composer keeps a replay handle: reissuing the
-// same operation id answers from the host's tombstone receipts. An entry is
-// removed only after its restoration ran (or the host definitively refused),
-// and every entry dies on its own once the host's replay window has passed.
+// a Stop or /clear that withdraws queued drafts, and an Edit that deletes one to
+// reclaim its body. The operation identity is persisted BEFORE the RPC — the
+// order the send journal already establishes — so the restore settles exactly
+// once however many times the answer is asked for. Across a relaunch only an
+// Edit is finished; a Stop or /clear handle is released, never reissued (see
+// takeRelaunchQueuedRestoreOperations). Every entry also dies on its own once
+// the host's replay window has passed.
 
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { z } from 'zod'
@@ -180,20 +180,41 @@ export function discardQueuedRestoreOperation(input: {
   })
 }
 
-/** Unsettled obligations for one pane, expired handles already pruned. Keyed by
- *  the composer scope rather than the session: a committed /clear supersedes its
- *  source, so the pane's session id changes while the obligation stays its own. */
-export function listQueuedRestoreOperations(input: {
+/** Panes whose previous-process handles this process already released. */
+const relaunchSweptDraftKeys = new Set<string>()
+
+/**
+ * Once per app process per pane: release every Stop and /clear handle an
+ * earlier process left — never reissued, because a reissue the host never
+ * admitted would EXECUTE the command — and hand back the Edit handles to
+ * finish. One serialized step, and never again in this process, so it cannot
+ * release a handle this process's own in-flight Stop or /clear still settles.
+ * Keyed by composer scope: a committed /clear moves the pane to a new session.
+ */
+export function takeRelaunchQueuedRestoreOperations(input: {
   draftKey: string
   now?: number
 }): Promise<QueuedRestoreEntry[]> {
   return serialize(async () => {
+    if (relaunchSweptDraftKeys.has(input.draftKey)) {
+      return []
+    }
+    relaunchSweptDraftKeys.add(input.draftKey)
     const entries = await readEntries(input.now ?? Date.now())
-    return entries.filter((entry) => entry.draftKey === input.draftKey)
+    const releases = (entry: QueuedRestoreEntry): boolean =>
+      entry.draftKey === input.draftKey && entry.method !== 'agentSession.queuedMessageDelete'
+    if (entries.some(releases)) {
+      await writeEntries(entries.filter((entry) => !releases(entry)))
+    }
+    return entries.filter(
+      (entry) =>
+        entry.draftKey === input.draftKey && entry.method === 'agentSession.queuedMessageDelete'
+    )
   })
 }
 
-/** Test-only: drain in-memory serialization while preserving durable storage. */
+/** Test-only: a fresh app process — serialization drained, relaunch sweep re-armed. */
 export function resetQueuedRestoreJournalForTests(): void {
   mutations.tail = Promise.resolve()
+  relaunchSweptDraftKeys.clear()
 }
