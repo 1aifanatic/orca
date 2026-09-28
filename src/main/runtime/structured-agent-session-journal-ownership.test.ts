@@ -292,6 +292,16 @@ describe('startup and other non-chat work without a structured host', () => {
     })
   })
 
+  function heldOnce(mock: ReturnType<typeof vi.fn>): () => void {
+    let release!: () => void
+    const held = new Promise<void>((resolve) => (release = resolve))
+    mock.mockImplementationOnce(async () => {
+      await held
+      return new Set<string>()
+    })
+    return release
+  }
+
   // The inventory must say "cannot tell", never "no chats": a client culls what an answer omits,
   // and the desktop then saves its chat tabs away.
   describe('the session-tabs inventory', () => {
@@ -425,6 +435,77 @@ describe('startup and other non-chat work without a structured host', () => {
       expect(frames).toEqual([expect.objectContaining({ tabs: chats })])
       expect(frames[0]).not.toHaveProperty('agentSessionsUnverifiable')
       expect(reconciled).toHaveBeenCalledOnce()
+    })
+
+    /** A startup whose host has a Claude chat once the takeover installs it. */
+    function takeoverRuntime() {
+      const reconciled = vi.fn(async () => undefined)
+      const started = startupRuntime(async () => {
+        const host = await install()
+        vi.spyOn(host, 'listSessionTabs').mockReturnValue([
+          { workspaceId: 'workspace-1', sessionId: 'claude-1', agent: 'claude' }
+        ])
+        vi.spyOn(host, 'setSessionTabVisibility').mockResolvedValue(undefined)
+        vi.spyOn(host, 'reconcileRestartLeases').mockImplementation(reconciled)
+        return host
+      })
+      publishWorktreeFrame(started.runtime)
+      return { ...started, reconciled }
+    }
+
+    const CLAUDE_CHAT = expect.objectContaining({ type: 'agent-session', sessionId: 'claude-1' })
+
+    it('pushes the chats when a list lands during the refused startup, after the takeover', async () => {
+      holder = await holdJournalOwnerLockInChild(root)
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+      const { runtime, refreshPtyRecords, reconciled } = takeoverRuntime()
+      const releaseRefresh = heldOnce(refreshPtyRecords)
+      const pushed: RuntimeMobileSessionTabsResult[] = []
+      const unsubscribe = runtime.onMobileSessionTabsChanged((frame) => pushed.push(frame))
+      const startup = runtime.prepareStructuredAgentSessionStartupRestoration()
+      await vi.waitFor(() => expect(refreshPtyRecords).toHaveBeenCalledOnce())
+
+      await holder.kill()
+      holder = null
+      await vi.waitFor(() => expect(gateRefusal().reason).toBe('hostDisabled'), { timeout: 10_000 })
+      // Still on the refused startup's memo, so this list cannot tell.
+      const listed = listInventory(runtime)
+      releaseRefresh()
+      await startup
+
+      expect((await listed)[0]).toMatchObject({ agentSessionsUnverifiable: true, tabs: [] })
+      await vi.waitFor(() => expect(pushed.at(-1)?.tabs).toEqual([CLAUDE_CHAT]), {
+        timeout: 10_000
+      })
+      unsubscribe()
+      expect(pushed.at(-1)).not.toHaveProperty('agentSessionsUnverifiable')
+      expect(reconciled).toHaveBeenCalledOnce()
+    })
+
+    it('pushes the chats when a list heals them during the takeover install', async () => {
+      holder = await holdJournalOwnerLockInChild(root)
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+      const { runtime, refreshPtyRecords } = takeoverRuntime()
+      expect((await listInventory(runtime))[0]).toMatchObject({ agentSessionsUnverifiable: true })
+      const releaseRefresh = heldOnce(refreshPtyRecords)
+      const pushed: RuntimeMobileSessionTabsResult[] = []
+      const unsubscribe = runtime.onMobileSessionTabsChanged((frame) => pushed.push(frame))
+
+      await holder.kill()
+      holder = null
+      // The takeover's own startup restoration is refreshing PTYs, with its host installed.
+      await vi.waitFor(() => expect(refreshPtyRecords).toHaveBeenCalledTimes(2), {
+        timeout: 10_000
+      })
+      const listed = listInventory(runtime)
+      releaseRefresh()
+
+      expect((await listed)[0]?.tabs).toEqual([CLAUDE_CHAT])
+      await vi.waitFor(() => expect(pushed.at(-1)?.tabs).toEqual([CLAUDE_CHAT]), {
+        timeout: 10_000
+      })
+      unsubscribe()
+      expect(pushed.at(-1)).not.toHaveProperty('agentSessionsUnverifiable')
     })
   })
 

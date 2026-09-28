@@ -303,17 +303,16 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
 
   protected async restoreStructuredAgentSessionsAfterTakeover(): Promise<void> {
     const refusedStartup = this.structuredAgentSessionStartupRestorePromise
-    await Promise.allSettled([refusedStartup, this.structuredAgentSessionTabRestorePromise])
+    await refusedStartup?.catch(() => undefined)
     if (this.structuredAgentSessionStartupRestorePromise === refusedStartup) {
       this.structuredAgentSessionStartupRestorePromise = null
     }
-    if (!this.structuredAgentSessionInventoryUnverifiable) {
-      await this.prepareStructuredAgentSessionStartupRestoration()
-      return
+    await this.prepareStructuredAgentSessionStartupRestoration()
+    // Install first, then ask: a list that ran on the refused startup may only now have finished.
+    await this.structuredAgentSessionTabRestorePromise?.catch(() => undefined)
+    if (this.structuredAgentSessionInventoryUnverifiable) {
+      await this.restoreStructuredAgentSessionTabs()
     }
-    await this.restoreStructuredAgentSessionTabs()
-    // The restore publishes quietly; subscribers still hold the frames that said "cannot tell".
-    this.notifyMobileSessionTabSnapshots()
   }
 
   protected hasPersistedStructuredAgentSessionStore(): boolean {
