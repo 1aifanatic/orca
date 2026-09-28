@@ -9,6 +9,7 @@ type XtermTerminalWithUnicodeCore = {
   }
 }
 
+// The headless ASCII source patch relies on this identity and charProperties(ASCII, 2) === 2.
 const ORCA_UNICODE_VERSION = 'orca-11-zwj'
 const UNICODE11_VERSION = '11'
 const ZERO_WIDTH_JOINER = 0x200d
