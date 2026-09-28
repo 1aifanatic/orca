@@ -22,6 +22,7 @@ import {
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { settleStaleStructuredAgentSessionState } from './structured-agent-session-dead-generation-settlement'
+import { structuredAgentSessionFailureWordsContext } from './structured-agent-session-send-preparation'
 import type {
   StructuredAgentSessionHostDeps,
   StructuredAgentSessionHostSession
@@ -142,7 +143,8 @@ async function settleGoneGeneration(
       sessionId: record.sessionId,
       fence: record.lease.runtimeFence,
       acquisitionGeneration: null,
-      deathEvidence: record.lease.deathEvidence ?? null
+      deathEvidence: record.lease.deathEvidence ?? null,
+      failureTextContext: structuredAgentSessionFailureWordsContext(record)
     })
   } catch (error) {
     // Best effort: the next open or acquire re-derives it.

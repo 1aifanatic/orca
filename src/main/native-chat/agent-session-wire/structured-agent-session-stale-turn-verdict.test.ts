@@ -12,10 +12,7 @@ import {
 } from '../../codex/codex-subagent-roster'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { createTrackedJournalOpener } from '../agent-session-journal/journal-store-test-open'
-import {
-  settleStaleStructuredAgentSessionState,
-  UNEXPECTED_PROVIDER_EXIT_OUTCOME
-} from './structured-agent-session-dead-generation-settlement'
+import { settleStaleStructuredAgentSessionState } from './structured-agent-session-dead-generation-settlement'
 import {
   runningTurnLifecycleRevisions,
   turnVerdictFromDeathEvidence,
@@ -489,7 +486,10 @@ describe('stale session state on a cold acquire', () => {
       // The probe's detail is Orca's, so the row carries none.
       expect(
         items.flatMap((item) => (item.body.kind === 'status' ? [item.body.text] : []))
-      ).toEqual(['recovered', UNEXPECTED_PROVIDER_EXIT_OUTCOME])
+      ).toEqual([
+        'recovered',
+        'The agent stopped while this response was in progress. You can continue in this conversation.'
+      ])
     } finally {
       await journals.closeAll()
       await rm(root, { recursive: true, force: true })

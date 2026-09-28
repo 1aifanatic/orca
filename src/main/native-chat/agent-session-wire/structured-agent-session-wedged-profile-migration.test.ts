@@ -36,7 +36,6 @@ import type { StructuredAgentSessionAdapter } from './structured-agent-session-a
 import { openAgentSessionJournal } from '../agent-session-journal/journal-store-factory'
 import { journalDirectoryFor } from '../agent-session-journal/journal-paths'
 import { AgentSessionJournal } from '../agent-session-journal/journal-store'
-import { UNEXPECTED_PROVIDER_EXIT_OUTCOME } from './structured-agent-session-dead-generation-settlement'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
 import type { StructuredAgentSessionHostDeps } from './structured-agent-session-host-types'
 import {
@@ -356,7 +355,7 @@ describe('already-wedged profiles become usable on load', () => {
         ...verdict
       })
       expect(activeStructuredAgentSessionTurnId(restoredJournal().snapshot().items)).toBe(null)
-      // The provider's own reason reaches the chat only from a watched exit; a probe's is Orca's.
+      // The row never carries the proof's detail, which is Orca's log text.
       const statusRows = restoredJournal()
         .snapshot()
         .items.flatMap((item) => (item.body.kind === 'status' ? [item.body.text] : []))
@@ -364,9 +363,7 @@ describe('already-wedged profiles become usable on load', () => {
         remote
           ? []
           : [
-              deathEvidence
-                ? 'The provider stopped while this response was in progress: provider exited: transport closed. You can continue in this conversation.'
-                : UNEXPECTED_PROVIDER_EXIT_OUTCOME
+              'Codex stopped while this response was in progress. You can continue in this conversation.'
             ]
       )
       // What the sidebar reads: every status this restart published says the chat is not working.

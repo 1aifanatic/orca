@@ -27,12 +27,9 @@ import {
 } from '../../../shared/agent-session-journal-producer'
 import { structuredAgentSessionPayloadFingerprint } from '../../../shared/structured-agent-session-mutation'
 import { journalItemRevisionIsStale } from './journal-item-revision'
-import {
-  acceptJournalSubmissionFromProviderItem,
-  applyJournalDispatchRow
-} from './journal-submission-dispatch-state'
 import type { JournalRow } from './journal-row-schema'
-import { dispatchRejectionWasTransportWriteFailure } from '../../../shared/structured-agent-session-dispatch-rejection'
+import { applyJournalDispatchRow } from './journal-dispatch-reducer'
+import { isWriteFailureSubmission } from '../../../shared/structured-agent-session-dispatch-rejection'
 
 export const MAX_JOURNAL_APPLIED_SETTLEMENT_IDS = 4_096
 
@@ -91,7 +88,7 @@ export function applyJournalRow(state: JournalReducerState, row: JournalRow): vo
       return
     }
     const itemId = resolveJournalItemId(state, row.itemId, row.body)
-    acceptJournalSubmissionFromProviderItem(state, row.itemId, itemId, row)
+    acceptSubmissionFromProviderItem(state, row.itemId, itemId, row)
     upsertItem(
       state,
       itemId,
@@ -116,7 +113,7 @@ export function applyJournalRow(state: JournalReducerState, row: JournalRow): vo
         }
         const { revision, body } = mutation
         const itemId = resolveJournalItemId(state, mutation.itemId, body)
-        acceptJournalSubmissionFromProviderItem(state, mutation.itemId, itemId, row)
+        acceptSubmissionFromProviderItem(state, mutation.itemId, itemId, row)
         const producer = journalBatchMutationProducer(row, mutation)
         const item = journalRenderItem(itemId, revision, body, row, producer, sequenceIndex)
         upsertItem(state, itemId, revision, item, row.fence)
@@ -183,7 +180,7 @@ export function resolveJournalItemId(
     .find(
       (candidate) =>
         candidate.dispatchState !== 'rejected' &&
-        !dispatchRejectionWasTransportWriteFailure(candidate.reason) &&
+        !isWriteFailureSubmission(candidate) &&
         candidate.payloadFingerprint === fingerprint &&
         state.items.get(agentJournalSubmissionKey(candidate.clientMessageId))?.revision === 0
     )
@@ -275,6 +272,39 @@ function applySubmission(
   })
   const itemId = agentJournalSubmissionKey(row.clientMessageId)
   upsertItem(state, itemId, 0, journalRenderItem(itemId, 0, row.body, row), row.fence)
+}
+
+function acceptSubmissionFromProviderItem(
+  state: JournalReducerState,
+  providerItemId: string,
+  resolvedItemId: string,
+  row: Pick<JournalRow, 'epoch' | 'seq' | 'fence' | 'ts'>
+): void {
+  if (providerItemId === resolvedItemId) {
+    return
+  }
+  const submission = [...state.submissions.values()].find(
+    (candidate) => agentJournalSubmissionKey(candidate.clientMessageId) === resolvedItemId
+  )
+  if (
+    !submission ||
+    submission.dispatchState === 'accepted' ||
+    submission.dispatchState === 'rejected'
+  ) {
+    return
+  }
+  submission.fence = row.fence
+  submission.dispatchState = 'accepted'
+  submission.providerItemId = providerItemId
+  submission.reason = null
+  submission.resolvedAt = row.ts
+  delete submission.recovered
+  state.receipts.set(submission.clientMessageId, {
+    clientMessageId: submission.clientMessageId,
+    providerItemId,
+    cursor: { epoch: row.epoch, sequence: row.seq },
+    acceptedAt: row.ts
+  })
 }
 
 /** Project the folded state into the client-facing snapshot. */
