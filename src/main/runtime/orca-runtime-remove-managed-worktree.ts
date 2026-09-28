@@ -93,6 +93,8 @@ export class OrcaRuntimeWithRemoveManagedWorktree extends OrcaRuntimeWithCreateM
         if (orphanOrFolderResult) {
           return orphanOrFolderResult
         }
+        const removeMetadataAndHistory = (): void =>
+          this.removeWorktreeMetadataAndHistory(store, removalTarget.id, 'removed', removalHostId)
         // One host for the whole removal. Listing on a different host from the one the prune and
         // the delete use is how an `executionHostId: 'ssh:*'`-only row got listed remotely and
         // deleted here; the route refuses rather than falling back to this machine.
@@ -141,7 +143,7 @@ export class OrcaRuntimeWithRemoveManagedWorktree extends OrcaRuntimeWithCreateM
               ),
             finishRemoval: () => {
               this.clearOptimisticReconcileToken(removalTarget.id)
-              this.removeWorktreeMetadataAndHistory(store, removalTarget.id, removalHostId)
+              removeMetadataAndHistory()
               this.preservedBranchCleanup.delete(removalTarget.id, cleanupHostId)
               this.invalidateResolvedWorktreeCache()
               this.invalidateWorktreeScanCacheForRepo(removalTarget.repoId)
@@ -193,7 +195,7 @@ export class OrcaRuntimeWithRemoveManagedWorktree extends OrcaRuntimeWithCreateM
             removedPushTarget
           )
           this.clearOptimisticReconcileToken(removalTarget.id)
-          this.removeWorktreeMetadataAndHistory(store, removalTarget.id, removalHostId)
+          removeMetadataAndHistory()
           this.invalidateResolvedWorktreeCache()
           this.invalidateWorktreeScanCacheForRepo(removalTarget.repoId)
           invalidateAuthorizedRootsCache()
@@ -236,7 +238,7 @@ export class OrcaRuntimeWithRemoveManagedWorktree extends OrcaRuntimeWithCreateM
                 removedPushTarget
               )
               this.clearOptimisticReconcileToken(removalTarget.id)
-              this.removeWorktreeMetadataAndHistory(store, removalTarget.id, removalHostId)
+              removeMetadataAndHistory()
               this.invalidateResolvedWorktreeCache()
               this.invalidateWorktreeScanCacheForRepo(removalTarget.repoId)
               invalidateAuthorizedRootsCache()
@@ -278,7 +280,7 @@ export class OrcaRuntimeWithRemoveManagedWorktree extends OrcaRuntimeWithCreateM
               this.preservedBranchCleanup.delete(removalTarget.id, cleanupHostId)
             }
             this.clearOptimisticReconcileToken(removalTarget.id)
-            this.removeWorktreeMetadataAndHistory(store, removalTarget.id, removalHostId)
+            removeMetadataAndHistory()
             this.invalidateResolvedWorktreeCache()
             this.invalidateWorktreeScanCacheForRepo(removalTarget.repoId)
             invalidateAuthorizedRootsCache()

@@ -1,6 +1,7 @@
 // @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
 import { OrcaRuntimeWithRemoveManagedWorktree } from './orca-runtime-remove-managed-worktree'
 import type { ExecutionHostId } from '../../shared/execution-host'
+import type { WorkspaceRemovalCause } from '../persistence/restoring-sessions/session-owner-removal'
 import type { RuntimeWorktreeRemovalTarget } from './runtime-worktree-selection'
 import { resolveRuntimeWorktreeRemovalTarget } from './runtime-worktree-removal-target'
 import type { RuntimeStore } from './runtime-store-contract'
@@ -40,6 +41,7 @@ export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWith
   protected removeWorktreeMetadataAndHistory(
     store: RuntimeStore,
     worktreeId: string,
+    cause: Exclude<WorkspaceRemovalCause, 'unlisted'>,
     hostId?: ExecutionHostId
   ): void {
     // Why: worktree IDs are path-derived and can be recreated, so removal must
@@ -53,8 +55,7 @@ export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWith
     )
     const acceptedRendererSnapshot = this.acceptedRendererMobileSnapshotByWorktree.get(worktreeId)
     const storedSnapshot = this.mobileSessionTabsByWorktree.get(worktreeId)
-    // Every caller has confirmed the removal.
-    store.removeWorktreeMeta(worktreeId, hostId, { cause: 'removed' })
+    store.removeWorktreeMeta(worktreeId, hostId, { cause })
     if (!preservesSameIdOwner) {
       // A paired PTY can outlive the delete acknowledgement; it must not be
       // rescued into a newly-created occupant of the same path-derived ID.

@@ -76,6 +76,7 @@ export async function removeOrphanOrFolderWorktree({
     runtime.removeWorktreeMetadataAndHistory(
       store,
       removalTarget.id,
+      'forgotten',
       cleanupHostId ?? orphanHost?.id
     )
     runtime.preservedBranchCleanup.delete(removalTarget.id, cleanupHostId)
@@ -113,7 +114,7 @@ export async function removeOrphanOrFolderWorktree({
     folderConnectionId
   )
   await deleteRemoteWorktreeHistory(folderSshPtyProvider, removalTarget.id)
-  runtime.removeWorktreeMetadataAndHistory(store, removalTarget.id, removalHostId)
+  runtime.removeWorktreeMetadataAndHistory(store, removalTarget.id, 'removed', removalHostId)
   runtime.preservedBranchCleanup.delete(removalTarget.id, cleanupHostId)
   runtime.invalidateResolvedWorktreeCache()
   runtime.notifyWorktreesChanged(repo.id)

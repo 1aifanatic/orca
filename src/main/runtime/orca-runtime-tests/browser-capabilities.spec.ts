@@ -515,7 +515,7 @@ describe('OrcaRuntimeService', () => {
       )
     } as never)
 
-    runtime['removeWorktreeMetadataAndHistory'](store as never, TEST_WORKTREE_ID)
+    runtime['removeWorktreeMetadataAndHistory'](store as never, TEST_WORKTREE_ID, 'removed')
 
     expect(closeTab).toHaveBeenCalledWith('page-a')
     expect(closeTab).toHaveBeenCalledWith('page-b')
@@ -534,7 +534,7 @@ describe('OrcaRuntimeService', () => {
     }
     internals.pairedRendererSessionOwnedPtyIds.add(ptyId)
 
-    runtime['removeWorktreeMetadataAndHistory'](store as never, TEST_WORKTREE_ID)
+    runtime['removeWorktreeMetadataAndHistory'](store as never, TEST_WORKTREE_ID, 'removed')
 
     expect(internals.pairedRendererSessionOwnedPtyIds.has(ptyId)).toBe(false)
   })
@@ -550,7 +550,7 @@ describe('OrcaRuntimeService', () => {
       `${TEST_REPO_ID}::/tmp/other`
     )
 
-    runtime['removeWorktreeMetadataAndHistory'](store as never, TEST_WORKTREE_ID)
+    runtime['removeWorktreeMetadataAndHistory'](store as never, TEST_WORKTREE_ID, 'removed')
 
     expect(host.takeCommands()).toEqual([
       expect.objectContaining({
@@ -579,7 +579,7 @@ describe('OrcaRuntimeService', () => {
     const host = attachClientBrowserHost(runtime)
     await publishClientHostedPage(runtime, host, 'page-removed', TEST_WORKTREE_ID)
 
-    runtime['removeWorktreeMetadataAndHistory'](store as never, TEST_WORKTREE_ID)
+    runtime['removeWorktreeMetadataAndHistory'](store as never, TEST_WORKTREE_ID, 'removed')
 
     // The store's surviving metadata stands in for a recreate at the same path: the ID resolves again.
     expect(runtime['buildHeadlessMobileSessionBrowserTabs'](TEST_WORKTREE_ID)).toEqual([])
@@ -594,7 +594,7 @@ describe('OrcaRuntimeService', () => {
     host.detachDelivery()
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-    runtime['removeWorktreeMetadataAndHistory'](store as never, TEST_WORKTREE_ID)
+    runtime['removeWorktreeMetadataAndHistory'](store as never, TEST_WORKTREE_ID, 'removed')
 
     expect(getRuntimeBrowserPageRegistry(runtime).getPage('page-removed')).toBeUndefined()
     expect(runtime['buildHeadlessMobileSessionBrowserTabs'](TEST_WORKTREE_ID)).toEqual([])
@@ -624,6 +624,7 @@ describe('OrcaRuntimeService', () => {
     runtime['removeWorktreeMetadataAndHistory'](
       runtimeStore as never,
       TEST_WORKTREE_ID,
+      'removed',
       'runtime:env-b'
     )
 
@@ -646,6 +647,7 @@ describe('OrcaRuntimeService', () => {
       removeWorktreeMetadataAndHistory: (
         runtimeStore: typeof store,
         worktreeId: string,
+        cause: 'removed',
         hostId: string
       ) => void
     }
@@ -655,6 +657,7 @@ describe('OrcaRuntimeService', () => {
     internals.removeWorktreeMetadataAndHistory(
       runtimeStore as typeof store,
       TEST_WORKTREE_ID,
+      'removed',
       'runtime:env-b'
     )
 
@@ -680,6 +683,7 @@ describe('OrcaRuntimeService', () => {
       removeWorktreeMetadataAndHistory: (
         runtimeStore: typeof store,
         worktreeId: string,
+        cause: 'removed',
         hostId: string
       ) => void
     }
@@ -690,6 +694,7 @@ describe('OrcaRuntimeService', () => {
     internals.removeWorktreeMetadataAndHistory(
       runtimeStore as typeof store,
       TEST_WORKTREE_ID,
+      'removed',
       'ssh:ssh-1'
     )
 
