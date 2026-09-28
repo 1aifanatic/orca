@@ -17,7 +17,6 @@ import type {
 } from './claude-structured-session-state'
 import { readClaudeFrameString } from './claude-structured-init-proof'
 import { claudeDispatchContentKey } from './claude-structured-dispatch-content'
-import { hasReachedAppVersion, isValidAppVersion } from '../../shared/app-version'
 
 /** Settles a provider-proven late outcome; replay rows independently reconcile acceptance. */
 export type ClaudeLateDispatchSettlement = (input: ClaudeLateDispatchOutcome) => void
@@ -156,41 +155,21 @@ export function resolveClaudeReplayTurn(
   return null
 }
 
-/** Oldest CLI whose per-turn root init is recorded in this repo (the measured
- *  per-turn system/init shape in `claude-structured-model-confirmation.test.ts`);
- *  2.1.280 re-measured first-hand across sequential turns, queued turns,
- *  background wakes and /compact (p3 captures). Below it, or with no reported
- *  version, every replay keeps the opener path. */
-export const CLAUDE_PER_TURN_INIT_VERSION_FLOOR = '2.1.258'
-
-function claudeCliEmitsPerTurnInit(session: ClaudeSession): boolean {
-  const version = session.cliVersion
-  return (
-    version !== null &&
-    isValidAppVersion(version) &&
-    hasReachedAppVersion(version, CLAUDE_PER_TURN_INIT_VERSION_FLOOR)
-  )
-}
-
 /** The provider's own cycle state decides a fold: the CLI folds a send into the
  *  request cycle that is running when the send arrives, and it replays a folded
  *  send mid-cycle with the client uuid ADOPTED (measured: fold-fresh/-resumed,
  *  two-steers, early-steer). So an adopted replay after the running cycle has
  *  done work is a delivery receipt, not a turn boundary; a cycle's first send is
- *  its opener. A new cycle announces itself with a root init (per-turn, measured
- *  — gated by the floor above), so a lost result cannot leave a stale turn
- *  swallowing the next turn's replay. A fresh replay uuid is not the measured
- *  fold shape and keeps the opener path. */
+ *  its opener. Adoption is the capability check, read off the frame itself: a
+ *  CLI that mints fresh replay uuids never qualifies. A new cycle announces
+ *  itself with a root init (per-turn, measured), so a lost result cannot leave a
+ *  stale turn swallowing the next turn's replay. */
 function claudeReplayIsFoldReceipt(
   session: ClaudeSession,
   waiter: ClaudeDispatchWaiter,
   replayUuid: string
 ): boolean {
-  return (
-    replayUuid === waiter.sentUuid &&
-    claudeCliEmitsPerTurnInit(session) &&
-    session.translator?.openTurnInLiveProviderCycle === true
-  )
+  return replayUuid === waiter.sentUuid && session.translator?.openTurnInLiveProviderCycle === true
 }
 
 function claudeResultUserMessageUuids(message: Record<string, unknown>): string[] {

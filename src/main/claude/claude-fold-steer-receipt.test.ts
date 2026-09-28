@@ -189,10 +189,10 @@ describe('Claude fold receipt for a mid-turn send (captured orders)', () => {
     expect(replayEventFor(rig.events, first)).toMatchObject({ startsTurn: true })
   })
 
-  it('session-start proof: the version adopted from the later init frame still enables the fold', async () => {
+  it('session-start proof: a hook-frame startup proof with init only at the first cycle still folds', async () => {
     // Live sessions prove the session from a SessionStart hook frame BEFORE
-    // system/init arrives (measured against the real CLI), so the version gate
-    // must read the version off whichever init frame carries it.
+    // system/init arrives (measured against the real CLI); nothing about the
+    // fold may depend on fields of the startup proof frame.
     const rig = await riggedAdapter({}, { initProof: 'session-start' })
     const first = await rig.dispatchAt(FOLD_FRESH_SEND_AT.first, 'client-first', FIRST_PROMPT)
     const framesFor = (steerUuid: string) =>
@@ -378,6 +378,70 @@ describe('Claude fold receipt for a mid-turn send (captured orders)', () => {
     })
   })
 
+  it('mid-turn auto-compaction emits no root init, so a steer after the boundary still folds', async () => {
+    // Measured (p4-autocompact, CLAUDE_CODE_AUTO_COMPACT_WINDOW forced): the
+    // boundary is `status compacting` + `compact_boundary` + a synthetic
+    // continuation user frame — and NO root init, so cycle work survives it.
+    const rig = await riggedAdapter()
+    const first = await rig.dispatchAt(14, 'client-first', FIRST_PROMPT)
+    rig.deliver(initFrame(234, PROVIDER_SESSION_ID))
+    rig.deliver(userReplay(2_437, PROVIDER_SESSION_ID, first, FIRST_PROMPT))
+    rig.deliver(assistantText(2_864, PROVIDER_SESSION_ID, 'reply-1', 'reading files'))
+    rig.deliver({
+      at: 11_518,
+      frame: {
+        type: 'system',
+        subtype: 'status',
+        status: 'compacting',
+        session_id: PROVIDER_SESSION_ID,
+        uuid: 'status-compacting-1'
+      }
+    })
+    rig.deliver({
+      at: 26_584,
+      frame: {
+        type: 'system',
+        subtype: 'compact_boundary',
+        session_id: PROVIDER_SESSION_ID,
+        uuid: 'compact-boundary-1',
+        compact_metadata: { trigger: 'auto', pre_tokens: 69_960, post_tokens: 9_311 }
+      }
+    })
+    rig.deliver({
+      at: 26_585,
+      frame: {
+        type: 'user',
+        session_id: PROVIDER_SESSION_ID,
+        parent_tool_use_id: null,
+        uuid: 'continuation-1',
+        isSynthetic: true,
+        message: {
+          role: 'user',
+          content: [{ type: 'text', text: 'This session is being continued.' }]
+        }
+      }
+    })
+    const steer = await rig.dispatchAt(26_987, 'client-steer', STEER_PROMPT)
+    rig.deliver(userReplay(34_601, PROVIDER_SESSION_ID, steer, STEER_PROMPT))
+    rig.deliver(assistantText(37_824, PROVIDER_SESSION_ID, 'reply-2', 'FIRST DONE banana'))
+    rig.deliver(
+      resultFrame(37_828, PROVIDER_SESSION_ID, 'result-1', {
+        userMessageUuids: [first, steer],
+        durationMs: 37_616,
+        numTurns: 6
+      })
+    )
+
+    expect([...new Set(rig.turns().map((turn) => turn.turnId))]).toEqual([first])
+    expect(rig.turns().every((turn) => turn.state !== 'interrupted')).toBe(true)
+    expect(replayEventFor(rig.events, steer)).not.toHaveProperty('startsTurn')
+    expect(rig.settled).toHaveBeenCalledWith({
+      sessionId: 'session-1',
+      clientMessageId: 'client-steer',
+      providerIdentity: { provider: 'claude', sessionId: PROVIDER_SESSION_ID, uuid: steer }
+    })
+  })
+
   it('miss: a steer whose replay trails the result keeps the opener path and its own turn', async () => {
     const rig = await riggedAdapter()
     const first = await rig.dispatchAt(MISS_SEND_AT.first, 'client-first', FIRST_PROMPT)
@@ -484,24 +548,6 @@ describe('Claude fold receipt boundaries (synthetic orders)', () => {
       'provider-resumed-1'
     ])
     expect(replayEventFor(rig.events, uuidB)).not.toHaveProperty('startsTurn')
-    expect(rig.settled).toHaveBeenCalledWith({
-      sessionId: 'session-1',
-      clientMessageId: 'client-b',
-      providerIdentity: { provider: 'claude', sessionId: PROVIDER_SESSION_ID, uuid: uuidB }
-    })
-  })
-
-  it('capability floor: with no reported CLI version, every adopted replay keeps the opener path', async () => {
-    const rig = await riggedAdapter({}, { initClaudeCodeVersion: null })
-    const uuidA = await rig.dispatchAt(10, 'client-a', 'first prompt')
-    rig.deliver(userReplay(1_000, PROVIDER_SESSION_ID, uuidA, 'first prompt'))
-    const uuidB = await rig.dispatchAt(1_500, 'client-b', STEER_PROMPT)
-    rig.deliver(userReplay(2_000, PROVIDER_SESSION_ID, uuidB, STEER_PROMPT))
-
-    // Below the per-turn-init floor the cycle signal is not trusted: today's
-    // opener behavior, with delivery still settled by the replay.
-    expect([...new Set(rig.turns().map((turn) => turn.turnId))]).toEqual([uuidA, uuidB])
-    expect(replayEventFor(rig.events, uuidB)).toMatchObject({ startsTurn: true })
     expect(rig.settled).toHaveBeenCalledWith({
       sessionId: 'session-1',
       clientMessageId: 'client-b',

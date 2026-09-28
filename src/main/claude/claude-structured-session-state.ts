@@ -176,8 +176,6 @@ export type ClaudeSession = {
   catalogAccess?: AgentModelCatalogSessionAccess
   /** CLI-advertised protocol capabilities from init; gates interrupt-receipt handling. */
   capabilities: readonly string[]
-  /** `claude_code_version` from the init frame; null when the CLI predates it. */
-  cliVersion: string | null
   backgroundTasks: ClaudeBackgroundTaskTracker
   /** Each child's own task frames, as evidence for the host's child records. */
   childWork: ClaudeChildWorkDecoder

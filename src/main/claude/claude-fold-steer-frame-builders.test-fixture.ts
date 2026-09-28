@@ -165,8 +165,7 @@ export function initFrame(at: number, sessionId: string): CapturedFoldFrame {
       session_id: sessionId,
       uuid: `init-${at}`,
       model: 'claude-sonnet-5',
-      apiKeySource: 'none',
-      claude_code_version: '2.1.280'
+      apiKeySource: 'none'
     }
   }
 }

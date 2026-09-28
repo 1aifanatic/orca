@@ -46,7 +46,6 @@ function sessionFor(setModel: ClaudeSession['connection']['setModel']): ClaudeSe
     confirmedOptions: new Set(),
     restoreSkippedOptions: new Set(),
     capabilities: [],
-    cliVersion: null,
     events: undefined,
     translator: null,
     startup: { ...createClaudeSessionStartup(), state: 'proven' }

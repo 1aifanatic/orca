@@ -51,19 +51,19 @@ export function fakeClaude(
     initSessionId?: string
     initUuid?: string
     initModel?: string
-    initProof?: 'init' | 'session-start' | 'none'
     initAccount?: unknown
     initCommands?: unknown
     /** The initialize result's `models`, which the SDK also answers `list_models` from. */
     initModels?: unknown[]
-    /** `claude_code_version` on the init frame; null omits it, as a CLI predating the field. */
-    initClaudeCodeVersion?: string | null
-    /** What `get_context_usage` answers; defaults to an empty, unusable report. */
+    /** 'session-start' (default) mirrors live: a SessionStart hook frame proves the
+     *  session and system/init arrives only when the first command starts a cycle.
+     *  'init' emits init at startup — an UNMEASURED shape, opt-in only. */
     contextUsage?: unknown
     exitBeforeInit?: string
     /** Host-clock delay before the CLI answers initialize, as on a loaded machine. */
     initDelayMs?: number
     settings?: unknown
+    initProof?: 'init' | 'session-start' | 'none'
     replayUuid?: string | null
     replayUuids?: (string | null)[]
     capabilities?: string[]
@@ -83,6 +83,22 @@ export function fakeClaude(
     return route ? route(params) : undefined
   }
   const openConnection: typeof openClaudeStreamJsonConnection = async (launch, handlers = {}) => {
+    let cycleInitEmitted = false
+    // Keys mirror the real system/init frame, which carries `model` but no
+    // effort of any kind: the current effort only comes back from get_settings.
+    // Never add a field the CLI does not send.
+    const emitCycleInit = (): void => {
+      cycleInitEmitted = true
+      handlers.onMessage?.({
+        type: 'system',
+        subtype: 'init',
+        session_id: options.initSessionId ?? PROVIDER_SESSION_ID,
+        uuid: options.initUuid ?? 'init-uuid',
+        model: options.initModel ?? 'claude-sonnet-5',
+        apiKeySource: 'none',
+        ...(options.capabilities ? { capabilities: options.capabilities } : {})
+      })
+    }
     const connection: FakeConnection = {
       launch,
       handlers,
@@ -104,7 +120,13 @@ export function fakeClaude(
           // The SDK rejects pending control requests once the transport ends.
           throw new Error('Query closed before response received')
         }
-        if (options.initProof === 'session-start') {
+        if (options.initProof === 'init') {
+          // UNMEASURED startup shape, kept only as an explicit opt-in: live
+          // sessions prove startup with a SessionStart hook frame instead.
+          emitCycleInit()
+        } else if (options.initProof !== 'none') {
+          // The live proof order (measured through Orca's adapter): SessionStart
+          // hook frames arrive first; system/init only when a cycle starts.
           handlers.onMessage?.({
             type: 'system',
             subtype: 'hook_started',
@@ -112,25 +134,19 @@ export function fakeClaude(
             session_id: options.initSessionId ?? PROVIDER_SESSION_ID,
             uuid: options.initUuid ?? 'init-uuid'
           })
-        } else if (options.initProof !== 'none') {
-          // Keys mirror the real system/init frame, which carries `model` but no
-          // effort of any kind: the current effort only comes back from
-          // get_settings. Never add a field the CLI does not send.
           handlers.onMessage?.({
             type: 'system',
-            subtype: 'init',
+            subtype: 'hook_response',
+            hook_name: 'SessionStart:startup',
             session_id: options.initSessionId ?? PROVIDER_SESSION_ID,
-            uuid: options.initUuid ?? 'init-uuid',
-            model: options.initModel ?? 'claude-sonnet-5',
-            apiKeySource: 'none',
-            ...(options.initClaudeCodeVersion === null
-              ? {}
-              : { claude_code_version: options.initClaudeCodeVersion ?? '2.1.280' }),
-            ...(options.capabilities ? { capabilities: options.capabilities } : {})
+            uuid: 'hook-response-uuid'
           })
         }
         return {
           models: options.initModels ?? [{ value: 'claude-sonnet', displayName: 'Sonnet' }],
+          // Capabilities ride the initialize result, where startup facts read
+          // them regardless of when the first init frame arrives.
+          ...(options.capabilities ? { capabilities: options.capabilities } : {}),
           ...(options.initCommands === undefined ? {} : { commands: options.initCommands }),
           ...(options.initAccount === undefined ? {} : { account: options.initAccount })
         }
@@ -189,6 +205,11 @@ export function fakeClaude(
           await beforeDispatch()
         }
         connection.sent.push(message)
+        // Live: the first command starts a request cycle, whose init precedes
+        // the replay. Later cycles are the test's own frames.
+        if (message.type === 'user' && !cycleInitEmitted && options.initProof !== 'none') {
+          emitCycleInit()
+        }
         if (message.type === 'user' && options.replayUuid !== null) {
           const configuredReplayUuid = options.replayUuids
             ? options.replayUuids[replayIndex++]
