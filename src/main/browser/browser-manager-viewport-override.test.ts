@@ -251,10 +251,8 @@ describe('browserManager', () => {
       return calls.at(-1)?.[1] as Record<string, unknown> | undefined
     }
 
-    // Why mobile: on the desktop branch the break is masked by coincidence — applyGoogleAuthUserAgent
-    // has already switched the WebContents UA to Firefox, and cleanElectronUserAgent passes a Firefox
-    // UA through untouched, so the stale-URL desktop path happens to emit Firefox anyway. The mobile
-    // branch derives a Chrome-shaped iPhone UA from that same base and exposes the real defect.
+    // Why mobile: a desktop preset installs no override at all, so only the mobile write can leave a
+    // Chrome-shaped UA standing on the auth host.
     it('does not leave the Chrome preset UA standing when a mobile preset lands mid-navigation onto an auth host', async () => {
       const { guest, debuggerSendCommand, presentedUserAgent } = makeGuest(
         4251,
