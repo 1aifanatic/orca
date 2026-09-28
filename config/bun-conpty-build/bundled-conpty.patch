@@ -24,7 +24,7 @@
          };
 +        if let Some(release) = self.conpty_api.release {
 +            // The bundled provider owns this opaque HPCON; never inspect its fields.
-+            unsafe { release(hpcon) };
++            unsafe { let _ = release(hpcon); };
 +            return;
 +        }
          // SAFETY: `hpcon` was returned from inbox `CreatePseudoConsole`, which
@@ -107,7 +107,7 @@
 +    create: unsafe extern "system" fn(windows::COORD, windows::HANDLE, windows::HANDLE, u32, *mut windows::HPCON) -> i32,
 +    resize: unsafe extern "system" fn(windows::HPCON, windows::COORD) -> i32,
 +    close: unsafe extern "system" fn(windows::HPCON),
-+    release: Option<unsafe extern "system" fn(windows::HPCON)>,
++    release: Option<unsafe extern "system" fn(windows::HPCON) -> i32>,
 +}
 +
 +#[cfg(windows)]
@@ -159,7 +159,7 @@
 +            create: symbol!("ConptyCreatePseudoConsole", unsafe extern "system" fn(windows::COORD, windows::HANDLE, windows::HANDLE, u32, *mut windows::HPCON) -> i32),
 +            resize: symbol!("ConptyResizePseudoConsole", unsafe extern "system" fn(windows::HPCON, windows::COORD) -> i32),
 +            close: symbol!("ConptyClosePseudoConsole", unsafe extern "system" fn(windows::HPCON)),
-+            release: Some(symbol!("ConptyReleasePseudoConsole", unsafe extern "system" fn(windows::HPCON))),
++            release: Some(symbol!("ConptyReleasePseudoConsole", unsafe extern "system" fn(windows::HPCON) -> i32)),
 +        };
 +        core::mem::forget(guard);
 +        Ok(api)
