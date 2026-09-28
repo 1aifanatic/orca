@@ -70,6 +70,33 @@ describe('readMacClipboardImageFileAsPng', () => {
     }
   })
 
+  it('accepts the extension-hidden Finder display name as text', async () => {
+    await expect(
+      readMacClipboardImageFileAsPng(
+        {
+          fileUrl: pathToFileURL(screenshotPath).href,
+          filenamesPlist: '',
+          text: 'Screenshot 2026-09-28 at 09.30.00'
+        },
+        deps
+      )
+    ).resolves.toBe(png)
+  })
+
+  it('matches an NFD file URL against NFC filename text', async () => {
+    const nfcName = 'Capture d\u2019\u00e9cran 2026-09-28 \u00e0 09.30.00.png'
+    const nfdPath = join(dir, nfcName.normalize('NFD'))
+    await writeFile(nfdPath, pngHeader())
+    for (const text of [nfcName, nfcName.replace(/\.png$/, '')]) {
+      await expect(
+        readMacClipboardImageFileAsPng(
+          { fileUrl: pathToFileURL(nfdPath).href, filenamesPlist: '', text },
+          deps
+        )
+      ).resolves.toBe(png)
+    }
+  })
+
   it.each([
     ['unrelated text', { text: 'look at this' }],
     ['a multi-file selection', { multi: true }],

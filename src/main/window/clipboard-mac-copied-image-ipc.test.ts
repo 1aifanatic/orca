@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const { handlers, clipboardRead, clipboardReadText, readMacClipboardImageFileAsPng, saveBuffer } =
   vi.hoisted(() => ({
     handlers: new Map<string, (...args: unknown[]) => unknown>(),
-    clipboardRead: vi.fn((format: string) =>
+    clipboardRead: vi.fn((format: string): string =>
       format === 'public.file-url' ? 'file:///Users/u/Desktop/Screenshot.png' : '<plist/>'
     ),
     clipboardReadText: vi.fn(() => 'Screenshot.png'),
@@ -22,7 +22,10 @@ vi.mock('electron', () => ({
   nativeImage: { createFromBuffer: vi.fn() }
 }))
 vi.mock('./dashboard-popout-window', () => ({ isDashboardPopoutRenderer: () => false }))
-vi.mock('./clipboard-mac-image-file', () => ({ readMacClipboardImageFileAsPng }))
+vi.mock('./clipboard-mac-image-file', () => ({
+  isMacClipboardFileUrl: (url: string) => url.startsWith('file://'),
+  readMacClipboardImageFileAsPng
+}))
 vi.mock('./clipboard-image-temp-file', () => ({ saveClipboardImageBufferAsTempFile: saveBuffer }))
 vi.mock('./clipboard-remote-file-copy', () => ({
   cleanupExpiredRemoteClipboardFiles: vi.fn(async () => undefined),
@@ -78,6 +81,20 @@ describe('clipboard:saveCopiedImageFileAsTempFile', () => {
         handlers.get('clipboard:saveCopiedImageFileAsTempFile')?.(mainEvent)
       ).resolves.toBeNull()
       expect(clipboardRead).not.toHaveBeenCalled()
+      expect(readMacClipboardImageFileAsPng).not.toHaveBeenCalled()
+    } finally {
+      platformSpy.mockRestore()
+    }
+  })
+
+  it('skips the text read when no file URL is on the clipboard', async () => {
+    const platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
+    clipboardRead.mockReturnValueOnce('')
+    try {
+      await expect(
+        handlers.get('clipboard:saveCopiedImageFileAsTempFile')?.(mainEvent)
+      ).resolves.toBeNull()
+      expect(clipboardReadText).not.toHaveBeenCalled()
       expect(readMacClipboardImageFileAsPng).not.toHaveBeenCalled()
     } finally {
       platformSpy.mockRestore()

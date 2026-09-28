@@ -38,7 +38,7 @@ import {
 } from './clipboard-remote-file-copy'
 import { saveClipboardImageBufferInRuntime } from './clipboard-runtime-image-upload'
 import { readWindowsClipboardImageFileAsPng } from './clipboard-windows-image-file'
-import { readMacClipboardImageFileAsPng } from './clipboard-mac-image-file'
+import { isMacClipboardFileUrl, readMacClipboardImageFileAsPng } from './clipboard-mac-image-file'
 import type { ClipboardImageFileDeps } from './clipboard-image-file-read'
 import { buildClipboardImageThumbnail } from './clipboard-image-thumbnail'
 import { writeClipboardTextAndVerify } from './clipboard-text-write-verify'
@@ -160,9 +160,14 @@ export function registerClipboardHandlers(store: Store): void {
       if (process.platform !== 'darwin' || !isTrustedClipboardRenderer(event.sender)) {
         return null
       }
+      // Why: bail before reading (possibly huge) text when no file was copied.
+      const fileUrl = clipboard.read('public.file-url')
+      if (!isMacClipboardFileUrl(fileUrl)) {
+        return null
+      }
       const png = await readMacClipboardImageFileAsPng(
         {
-          fileUrl: clipboard.read('public.file-url'),
+          fileUrl,
           filenamesPlist: clipboard.read('NSFilenamesPboardType'),
           text: clipboard.readText()
         },

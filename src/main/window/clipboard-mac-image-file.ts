@@ -19,7 +19,7 @@ function decodeCopiedImageFilePath({
   filenamesPlist,
   text
 }: MacClipboardImageFileFormats): string | null {
-  if (!fileUrl.startsWith('file://') || fileUrl.length > FILE_URL_MAX_CHARS) {
+  if (!isMacClipboardFileUrl(fileUrl)) {
     return null
   }
   // Why: public.file-url exposes only the first item of a Finder multi-selection.
@@ -38,12 +38,24 @@ function decodeCopiedImageFilePath({
   if (!CLIPBOARD_IMAGE_FILE_EXTENSIONS.has(posix.extname(filePath).toLowerCase())) {
     return null
   }
-  // Why: Finder adds the bare filename as text; any other text is real content to paste.
-  const trimmedText = text.trim()
-  if (trimmedText && trimmedText !== posix.basename(filePath) && trimmedText !== filePath) {
+  // Why: Finder adds the filename as text (extension dropped when hidden, as for
+  // screenshots); any other text is real content to paste.
+  const trimmedText = text.trim().normalize('NFC')
+  if (trimmedText && !finderFilenameTexts(filePath).has(trimmedText)) {
     return null
   }
   return filePath
+}
+
+function finderFilenameTexts(filePath: string): Set<string> {
+  // Why: NSURL yields NFD paths while Finder's filename text is NFC.
+  const path = filePath.normalize('NFC')
+  const name = posix.basename(path)
+  return new Set([path, name, name.slice(0, name.length - posix.extname(name).length)])
+}
+
+export function isMacClipboardFileUrl(fileUrl: string): boolean {
+  return fileUrl.startsWith('file://') && fileUrl.length <= FILE_URL_MAX_CHARS
 }
 
 export async function readMacClipboardImageFileAsPng(
