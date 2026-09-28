@@ -1,5 +1,8 @@
 // @vitest-environment happy-dom
 import type { AppState } from '@/store/types'
+import { act, createElement } from 'react'
+import { createRoot } from 'react-dom/client'
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
@@ -155,6 +158,42 @@ describe('workspace activation focus', () => {
     flushFrame()
     expect(mocks.focus).not.toHaveBeenCalled()
     expect(document.activeElement).toBe(input)
+  })
+
+  it('retains focus through composer dialog close with a previously focused editable input', async () => {
+    const previousInput = document.createElement('input')
+    const container = document.createElement('div')
+    document.body.append(previousInput, container)
+    previousInput.focus()
+    const root = createRoot(container)
+    try {
+      // The composer uses a controlled modal without a DialogTrigger or close autofocus handler.
+      await act(async () => {
+        root.render(
+          createElement(
+            Dialog,
+            { open: true },
+            createElement(
+              DialogContent,
+              { 'aria-describedby': undefined },
+              createElement(DialogTitle, null, 'New workspace'),
+              createElement('input', { 'aria-label': 'Workspace name' })
+            )
+          )
+        )
+      })
+      expect(document.activeElement?.getAttribute('aria-label')).toBe('Workspace name')
+      queueWorkspaceActivationTerminalFocus('wt-1', { primaryTabId: 'tab-1' })
+      await act(async () => root.render(null))
+      await act(async () => vi.advanceTimersByTime(0))
+      expect(previousInput.isConnected).toBe(true)
+      expect(document.activeElement).not.toBe(previousInput)
+      mocks.focus.mockReturnValue(true)
+      flushFrame()
+      expect(mocks.focus).toHaveBeenCalledWith('tab-1', null, 'wt-1')
+    } finally {
+      await act(async () => root.unmount())
+    }
   })
 
   it('keeps the post-palette request when terminal mounting briefly takes focus', () => {

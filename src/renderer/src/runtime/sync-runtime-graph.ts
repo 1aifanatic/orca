@@ -87,7 +87,7 @@ export function focusRuntimeTerminalSurface(
       return false
     }
     pane.terminal.focus()
-    return !pane.terminal.textarea || document.activeElement === pane.terminal.textarea
+    return !!pane.terminal.textarea && document.activeElement === pane.terminal.textarea
   }
   const resolution = resolveLeafIdForManager(tabId, leafId, manager)
   if (resolution.status !== 'resolved') {

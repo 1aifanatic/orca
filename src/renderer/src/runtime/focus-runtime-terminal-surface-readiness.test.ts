@@ -11,12 +11,15 @@ afterEach(() => {
 })
 
 describe('terminal focus readiness', () => {
-  function register(hasPane: boolean) {
+  function register(hasPane: boolean, hasTextarea = true) {
     const textarea = document.createElement('textarea')
     const pane = {
       id: 1,
       container: document.createElement('div'),
-      terminal: { textarea, focus: vi.fn(() => textarea.focus()) }
+      terminal: {
+        textarea: hasTextarea ? textarea : undefined,
+        focus: vi.fn(() => textarea.focus())
+      }
     }
     const manager = {
       getActivePane: () => (hasPane ? pane : undefined),
@@ -36,6 +39,11 @@ describe('terminal focus readiness', () => {
 
   it('does not report success before the active pane exists', () => {
     register(false)
+    expect(focusRuntimeTerminalSurface('restoring-tab', null, 'restoring-workspace')).toBe(false)
+  })
+
+  it('does not report success before the terminal textarea exists', () => {
+    register(true, false)
     expect(focusRuntimeTerminalSurface('restoring-tab', null, 'restoring-workspace')).toBe(false)
   })
 
