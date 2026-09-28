@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentSessionFailureFact } from '../../../../shared/agent-session-failure'
-import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
+import type {
+  AgentJournalRenderItem,
+  AgentJournalSubmission
+} from '../../../../shared/agent-session-journal-types'
 import {
   createStructuredAgentSessionOutboxEntry,
   type StructuredAgentSessionOutboxEntry
@@ -10,7 +13,6 @@ import {
   agentJournalItemKey,
   agentJournalSubmissionKey
 } from '../../../../shared/agent-session-journal-item-key'
-import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
 import { structuredAgentSessionStartFailureRowIdentity } from '../../../../shared/structured-agent-session-start-failure-row-key'
 import {
   structuredAgentSessionDeliveryNotices,
