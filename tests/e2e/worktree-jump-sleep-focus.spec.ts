@@ -59,6 +59,8 @@ test('Cmd+J focuses the terminal after waking a sleeping workspace', async ({
   const terminal = orcaPage.locator('[data-terminal-tab-id]:visible .xterm-helper-textarea').first()
   await orcaPage.screenshot({ path: testInfo.outputPath('wake-focus.png') })
   await expect(terminal).toBeFocused()
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 })
+  await cdp.detach()
   await orcaPage.keyboard.type('echo WAKE_KEYBOARD_OK')
   await orcaPage.keyboard.press('Enter')
   await waitForTerminalOutput(orcaPage, 'WAKE_KEYBOARD_OK')
