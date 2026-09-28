@@ -228,15 +228,22 @@ export function readAgentSessionFailureFact(value: unknown): AgentSessionFailure
 /** The provider-authored diagnostic an error carries, set only where it was composed. Follows the
  *  `cause` chain, since wrappers such as the acquisition errors keep the original as their cause. */
 export function providerDiagnosticOf(error: unknown): ProviderDiagnostic | undefined {
+  return providerDiagnosticWithin(error, 0)
+}
+
+// One depth bound across `cause` and aggregated errors, so an error that contains itself ends.
+function providerDiagnosticWithin(error: unknown, start: number): ProviderDiagnostic | undefined {
   let current: unknown = error
-  for (let depth = 0; depth < 6 && current instanceof Error; depth += 1) {
+  for (let depth = start; depth < 6 && current instanceof Error; depth += 1) {
     if ('providerDiagnostic' in current && isProviderDiagnostic(current.providerDiagnostic)) {
       return current.providerDiagnostic
     }
     if (current instanceof AggregateError) {
-      const found = current.errors.map(providerDiagnosticOf).find(Boolean)
-      if (found) {
-        return found
+      for (const inner of current.errors) {
+        const found = providerDiagnosticWithin(inner, depth + 1)
+        if (found) {
+          return found
+        }
       }
     }
     current = current.cause

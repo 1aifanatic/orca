@@ -28,6 +28,12 @@ describe('provider diagnostics', () => {
     )
   })
 
+  it('ends on an aggregate error that contains itself', () => {
+    const loop = new AggregateError([], 'loop')
+    loop.errors.push(loop)
+    expect(providerDiagnosticOf(loop)).toBeUndefined()
+  })
+
   it('is never inferred from an error that did not carry one', () => {
     // Orca's own wording, even when it quotes something that looks like a provider message.
     expect(
