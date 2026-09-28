@@ -1,5 +1,6 @@
 import {
   buildRegistry,
+  isRegistrationFencedUnsubscribe,
   isStreamingMethod,
   type RpcAnyMethodDeclaration,
   type RpcEnvelopeMeta,
@@ -109,11 +110,10 @@ export class RpcDispatcher {
           runtime: this.runtime,
           signal: options?.signal,
           connectionId: options?.connectionId,
-          // COMPAT(terminal request-addressed unsubscribe): fence for slot unsubscribes from phones without `requestId`.
-          subscriptionRegistrationVersion:
-            request.method === 'terminal.unsubscribe'
-              ? this.runtime.getSubscriptionRegistrationVersion()
-              : undefined,
+          // Session tabs always need this fence. COMPAT(terminal request-addressed unsubscribe): terminal only for phones without `requestId`.
+          subscriptionRegistrationVersion: isRegistrationFencedUnsubscribe(request.method)
+            ? this.runtime.getSubscriptionRegistrationVersion()
+            : undefined,
           requestId: request.id,
           clientId: options?.clientId,
           clientKind: options?.clientKind,
