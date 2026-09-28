@@ -14,7 +14,8 @@ import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/struc
 
 const mocks = vi.hoisted(() => ({
   call: vi.fn(),
-  withdrawUnsent: vi.fn()
+  withdrawUnsent: vi.fn(),
+  operations: 0
 }))
 let items: AgentJournalRenderItem[] = []
 let submissions: AgentJournalSubmission[] = []
@@ -35,7 +36,7 @@ vi.mock('./use-structured-agent-session-read', () => ({
 }))
 
 vi.mock('./use-structured-agent-session-outbox', () => ({
-  structuredSessionOperationId: () => 'operation-1',
+  structuredSessionOperationId: () => `operation-${++mocks.operations}`,
   useStructuredAgentSessionOutbox: () => ({
     outbox,
     blockedClientMessageId,
@@ -170,6 +171,39 @@ describe('Stop against a host that stops the conversation', () => {
       expect(cancels()).toEqual([expect.not.objectContaining({ turnId: expect.anything() })])
     }
   )
+
+  it('does not let a Stop the host could not settle refuse every later one', async () => {
+    submissions = [submission({ handoverRecorded: true, handedOverAt: 2 })]
+    const answers: (() => unknown)[] = [
+      () => {
+        throw new Error('the host threw while stopping')
+      },
+      () => ({
+        ok: false,
+        refusal: { code: 'agent_session_operation_unknown', message: 'Outcome unknown.' }
+      })
+    ]
+    mocks.call.mockImplementation(async (_target, method) =>
+      method === 'agentSession.cancel'
+        ? (answers.shift()?.() ?? { ok: true, value: { cancelled: true } })
+        : null
+    )
+    const { result } = render()
+
+    for (let press = 0; press < 3; press += 1) {
+      await act(async () => {
+        await result.current.stop()
+      })
+    }
+
+    const ids = cancels().map(
+      (params) => (params as { envelope: { clientOperationId: string } }).envelope.clientOperationId
+    )
+    // A press after transport doubt replays the same id; once the host answers that it cannot
+    // know that id's outcome, the next press is a new Stop.
+    expect(ids[1]).toBe(ids[0])
+    expect(ids[2]).not.toBe(ids[0])
+  })
 
   it('is hidden at rest, and with only a message that will not run', () => {
     expect(render().result.current.canStop).toBe(false)

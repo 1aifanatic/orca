@@ -107,7 +107,13 @@ export function useStructuredAgentSessionMutate(args: {
           : { kind: 'dropped' }
       }
       if (!result.ok) {
-        if (agentSessionRefusalOperationState(result.refusal.code) === 'settled-rejected') {
+        const operationState = agentSessionRefusalOperationState(result.refusal.code)
+        // Cancel's plan recovers no unknown ledger row, so its id would earn the same refusal until
+        // it expires; a Stop naming no turn has one key per session, so that is every later Stop.
+        if (
+          operationState === 'settled-rejected' ||
+          (operationState === 'unknown' && fingerprintMethod === 'agentSession.cancel')
+        ) {
           operationIds.current.delete(key)
         }
         return enabledRef.current && stateRef.current.fence === targetFence
