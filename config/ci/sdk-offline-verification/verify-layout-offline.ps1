@@ -41,7 +41,7 @@ function Run-Verify([string]$Case) {
   }
 }
 try {
-  foreach ($adapter in $adapters) { Disable-NetAdapter -Name $adapter.Name -Confirm:$false -ErrorAction Stop }
+  foreach ($adapter in $adapters) { Disable-NetAdapter -InputObject $adapter -Confirm:$false -ErrorAction Stop }
   if (@(Get-NetAdapter -IncludeHidden | Where-Object { $_.Status -eq 'Up' }).Count -ne 0) { throw 'Could not isolate network adapters' }
   $result = Run-Verify 'original'
   $results += $result
@@ -73,7 +73,7 @@ try {
     $results | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $Receipts 'verification-results.json')
     @{manifestSignatureVerified=$false;reason='Classify original and tampered logs before making a cryptographic claim';productInstalled=$false} | ConvertTo-Json | Set-Content (Join-Path $Receipts 'trust-claims.json')
   } finally {
-    foreach ($adapter in $adapters) { Enable-NetAdapter -Name $adapter.Name -Confirm:$false -ErrorAction Continue }
+    foreach ($adapter in $adapters) { Enable-NetAdapter -InputObject $adapter -Confirm:$false -ErrorAction Continue }
     $restoreDeadline=[DateTime]::UtcNow.AddSeconds(30)
     do {
       $current=@(Get-NetAdapter -IncludeHidden)
