@@ -84,6 +84,7 @@ export async function buildWorktreeStartupForDraft(
     isRemote: repoIsRemote(repo),
     ...(environment.agentArgs !== undefined ? { agentArgs: environment.agentArgs } : {})
   })
+  const telemetry = agentStartedTelemetry(agent, environment.launchSource)
   const draftPlan = buildAgentDraftLaunchPlan({ ...launchArgs, draft: content })
   if (draftPlan) {
     return {
@@ -94,7 +95,8 @@ export async function buildWorktreeStartupForDraft(
         ...(draftPlan.startupCommandDelivery
           ? { startupCommandDelivery: draftPlan.startupCommandDelivery }
           : {}),
-        ...(draftPlan.env ? { env: draftPlan.env } : {})
+        ...(draftPlan.env ? { env: draftPlan.env } : {}),
+        telemetry
       }
     }
   }
@@ -114,7 +116,8 @@ export async function buildWorktreeStartupForDraft(
       ...(startupPlan.startupCommandDelivery
         ? { startupCommandDelivery: startupPlan.startupCommandDelivery }
         : {}),
-      ...(startupPlan.env ? { env: startupPlan.env } : {})
+      ...(startupPlan.env ? { env: startupPlan.env } : {}),
+      telemetry
     },
     draftPaste: { agent, content }
   }

@@ -253,9 +253,7 @@ export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWith
       launchAgent: agent,
       startupCommandDelivery: startupPlan.startupCommandDelivery,
       // A bare command the user typed stays out of launch accounting, as before.
-      ...(opts.startupAgent
-        ? { telemetry: opts.telemetry ?? agentStartedTelemetry(agent, opts.launchSource) }
-        : {})
+      ...(opts.startupAgent ? { telemetry: agentStartedTelemetry(agent, opts.launchSource) } : {})
     }
   }
 }
