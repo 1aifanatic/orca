@@ -99,7 +99,6 @@ function render(queueFollowUps?: boolean) {
       target: { kind: 'local' },
       isVisible: true,
       composerScopeKey: 'scope-1',
-      tabId: 'tab-1',
       ...(queueFollowUps === undefined ? {} : { queueFollowUps })
     })
   )
