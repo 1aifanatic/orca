@@ -58,7 +58,7 @@ it('says a failed read with no refusal keeps retrying, and adds nothing of the h
   expect(screen.queryByText(/Toggle back to the terminal/)).toBeNull()
 })
 
-it('says a damaged history cannot load, without claiming Orca keeps trying', () => {
+it('says a damaged history cannot load in one line, without claiming Orca keeps trying', () => {
   mocks.status = 'error'
   mocks.readRefusal = journalRefusal('journalCorrupt')
   mocks.messages = []
@@ -66,11 +66,12 @@ it('says a damaged history cannot load, without claiming Orca keeps trying', () 
   renderPane()
 
   expect(screen.getAllByText('Unable to load this chat.')).toHaveLength(1)
+  expect(screen.queryByText('Could not load conversation')).toBeNull()
   expect(screen.queryByText(/keeps trying/)).toBeNull()
   expect(screen.queryByText(/agent_session_/)).toBeNull()
 })
 
-it("names a history that couldn't open right now, and that the pane keeps trying", () => {
+it("names a history that couldn't open right now once, and that the pane keeps trying", () => {
   mocks.status = 'error'
   mocks.readRefusal = journalRefusal('journalUnavailable')
   mocks.messages = []
@@ -78,6 +79,7 @@ it("names a history that couldn't open right now, and that the pane keeps trying
   renderPane()
 
   expect(screen.getAllByText("Orca couldn't open this chat's history right now.")).toHaveLength(1)
+  expect(screen.queryByText('Could not load conversation')).toBeNull()
   expect(
     screen.getByText('The transcript could not be read. Orca keeps trying to load it.')
   ).toBeTruthy()
