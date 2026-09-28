@@ -48,6 +48,8 @@ run([
   // Cold PowerShell and native launcher compilation must not starve unrelated lifecycle probes.
   ...(process.platform === 'win32' ? ['--no-file-parallelism'] : []),
   'src/relay/bun-relay-artifact.integration.test.ts',
+  'src/shared/child-process/fork-process-bun.integration.test.ts',
+  'src/shared/bun-owned-runtime-args.integration.test.ts',
   'src/main/providers/windows-bun-console.integration.test.ts',
   'src/relay/ai-vault-memory-monitor.integration.test.ts',
   'src/main/ai-vault-search/session-search-bun.integration.test.ts',
