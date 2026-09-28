@@ -24,6 +24,7 @@ import {
 } from './structured-agent-session-failure-text'
 import type { StructuredAgentSessionResumeOutcome } from './structured-agent-session-hold-resume'
 import type {
+  StructuredAgentSessionChildEndCause,
   StructuredAgentSessionEndedChild,
   StructuredAgentSessionHostSession,
   StructuredAgentSessionProviderChildIdentity
@@ -179,17 +180,17 @@ export class StructuredAgentSessionDeliveryLoop {
     if (!awaitedChild || (awaitedChild.phase === 'starting' && startFailure !== null)) {
       // The child waited on is gone, replaced by another, or settled its start without proving it.
       const ended = awaitedChild ? undefined : session.lastEndedChild
+      const endedFailure = ended ? structuredAgentSessionEndedChildFailure(ended) : undefined
       // A user's Stop is not a failure: the next step starts, or waits on, a child for what is
-      // queued. A host stop is: its cause is why the start did not land.
-      if (ended?.cause === 'user-stop') {
+      // queued.
+      if (endedFailure === null) {
         return 'continue'
       }
       return this.fail(sessionId, {
         startKey: awaited?.generation ?? null,
-        cause: ended
-          ? endedChildFailure(ended)
-          : // Gone with no end observed: nothing says the provider stopped.
-            { failure: startFailure ?? agentSessionFailureFact('startFailed') }
+        cause: endedFailure ??
+          // Gone with no end observed: nothing says the provider stopped.
+          { failure: startFailure ?? agentSessionFailureFact('startFailed') }
       })
     }
     const next = oldestQueuedSubmission(session)
@@ -249,19 +250,37 @@ function startThatFailedWhileQueued(
   ) {
     return null
   }
-  return { startKey: ended.generation, cause: endedChildFailure(ended) }
+  const cause = structuredAgentSessionEndedChildFailure(ended)
+  return cause ? { startKey: ended.generation, cause } : null
 }
 
-/** Why a queued message the child never took is rejected. The host stopping the child is Orca's
- *  cause, never the provider's. */
-function endedChildFailure(
+function providerEndFailure(
   ended: StructuredAgentSessionEndedChild
 ): StructuredAgentSessionStartFailureCause {
-  if (ended.cause === 'host-stop') {
-    return { hostFault: true }
-  }
   if (ended.duringStartup) {
     return { exit: ended.failure }
   }
   return { failure: ended.failure ?? agentSessionFailureFact('providerExited') }
+}
+
+// Every end cause, so a new one does not compile until it says whether it fails what is queued.
+const ENDED_CHILD_FAILURE = {
+  'user-stop': () => null,
+  // The host stopping the child is Orca's cause, never the provider's.
+  'host-stop': () => ({ hostFault: true }),
+  exit: providerEndFailure,
+  // The attach records its own fault as the end's failure.
+  'attach-failed': providerEndFailure,
+  // Reached only when an eviction's stop landed and a later step failed, leaving the conversation.
+  evict: providerEndFailure
+} satisfies Record<
+  StructuredAgentSessionChildEndCause,
+  (ended: StructuredAgentSessionEndedChild) => StructuredAgentSessionStartFailureCause | null
+>
+
+/** Why a queued message the child never took is rejected; null when its end fails nothing. */
+export function structuredAgentSessionEndedChildFailure(
+  ended: StructuredAgentSessionEndedChild
+): StructuredAgentSessionStartFailureCause | null {
+  return ENDED_CHILD_FAILURE[ended.cause](ended)
 }
