@@ -314,6 +314,7 @@ const DESKTOP_IRRELEVANT_PREFIXES = [
   'cloud/',
   '.github/workflows/cloud-',
   '.github/workflows/mobile.yml',
+  '.github/workflows/mobile-recording-replay.yml',
   '.github/workflows/mobile-ios-release.yml',
   '.github/workflows/mobile-android-release.yml'
 ]

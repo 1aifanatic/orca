@@ -38,10 +38,7 @@ async function certify(id: string, scenarios: RecordingScenario[]) {
         checkpoints.push({ ...checkpoint, id: `${scenario.id}:${checkpoint.id}` })
       }
     }
-    const golden = goldenRecording(root, input.baseline, scenarios, {
-      scenario: id,
-      checkpoints
-    })
+    const golden = goldenRecording(scenarios, { scenario: id, checkpoints })
     const bytes = goldenBytes(golden)
     if (run) {
       expect(bytes).toBe(first)
