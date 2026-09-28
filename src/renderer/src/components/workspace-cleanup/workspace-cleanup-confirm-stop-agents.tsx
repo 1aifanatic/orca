@@ -33,7 +33,7 @@ export function WorkspaceCleanupConfirmStopAgents({
               <Bot className="size-4" />
             </div>
             <div className="min-w-0">
-              <DialogTitle>
+              <DialogTitle className="text-base">
                 {count === 1
                   ? translate(
                       'components.workspace.cleanup.stopAgents.titleOne',
@@ -45,7 +45,7 @@ export function WorkspaceCleanupConfirmStopAgents({
                       { count }
                     )}
               </DialogTitle>
-              <DialogDescription className="mt-1.5">
+              <DialogDescription className="mt-1.5 text-xs leading-5">
                 {translate(
                   'components.workspace.cleanup.stopAgents.description',
                   'Deleting stops these agents. Work they are doing right now will be lost.'
