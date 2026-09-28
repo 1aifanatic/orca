@@ -160,21 +160,13 @@ for (const closeMode of ['terminal-close-cli', 'worker-release'] as const) {
     const workerBefore = terminalIdentity(worker)
     const workerPaneKey = `${worker.tabId}:${worker.leafId}`
     expect(worker.worktreeId).toBe(targetWorktreeId)
-    await orcaPage.evaluate(
-      ({ tabId, worktreeId }) => {
-        window.dispatchEvent(
-          new CustomEvent('orca-background-mount-terminal-worktree', {
-            detail: { worktreeId, tabIds: [tabId] }
-          })
-        )
-      },
-      { tabId: worker.tabId, worktreeId: targetWorktreeId }
-    )
-    await expect
-      .poll(() =>
-        orcaPage.evaluate((tabId) => Boolean(window.__paneManagers?.get(tabId)), workerBefore.tabId)
+    // Keep the never-opened worker dormant so foreground-shell cleanup cannot retire it first.
+    expect(
+      await orcaPage.evaluate(
+        (tabId) => Boolean(window.__paneManagers?.get(tabId)),
+        workerBefore.tabId
       )
-      .toBe(true)
+    ).toBe(false)
     expect(
       await orcaPage.evaluate(
         (worktreeId) => window.__store?.getState().everActivatedWorktreeIds.has(worktreeId),
