@@ -21,7 +21,9 @@ import { journalDatabasePath } from './journal-host-database'
 import type { AgentSessionJournal } from './journal-store'
 import {
   createTrackedJournalOpener,
-  openTestJournalHostDatabase
+  openTestJournalHostDatabase,
+  liveTestJournalRows,
+  insertTestJournalRowJson
 } from './journal-host-database-test-support'
 
 const IDENTITY: AgentSessionJournalIdentity = {
@@ -70,9 +72,8 @@ async function withDatabase(run: (db: Database.Database) => void): Promise<void>
 /** Appends a raw `row_json` the way a newer build or a bad write would leave it. */
 async function appendRawRow(epoch: string, seq: number, rowJson: string): Promise<void> {
   await withDatabase((db) => {
-    db.prepare(
-      'INSERT INTO journal_rows (session_id, epoch, seq, ts, row_json) VALUES (?, ?, ?, ?, ?)'
-    ).run(IDENTITY.sessionId, epoch, seq, 1, rowJson)
+    expect(liveTestJournalRows(db, IDENTITY.sessionId)[0]?.epoch).toBe(epoch)
+    insertTestJournalRowJson(db, IDENTITY.sessionId, seq, rowJson)
   })
 }
 
@@ -163,10 +164,8 @@ describe('axis 2: the row body shape', () => {
     await reopened.close()
     // Never skipped, never deleted: the row this build cannot read is still there.
     await withDatabase((db) => {
-      const stored = db.prepare('SELECT row_json FROM journal_rows WHERE seq = ?').get(nextSeq) as {
-        row_json: string
-      }
-      expect(stored.row_json).toContain('"v":99')
+      const stored = liveTestJournalRows(db, IDENTITY.sessionId).find((row) => row.seq === nextSeq)
+      expect(stored?.rowJson).toContain('"v":99')
     })
   })
 

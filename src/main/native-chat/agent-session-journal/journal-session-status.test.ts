@@ -37,8 +37,9 @@ function trustedStatuses(db: Database.Database): { session_id: string; status_js
   return db
     .prepare(
       `SELECT s.session_id, s.status_json FROM journal_sessions s
-       WHERE s.status_json IS NOT NULL AND s.status_seq = (
-         SELECT max(r.seq) FROM journal_rows r WHERE r.session_id = s.session_id AND r.epoch = s.epoch)`
+       WHERE s.status_json IS NOT NULL AND s.block * 4294967296 + s.status_seq = (
+         SELECT max(r.id) FROM journal_rows r
+         WHERE r.id >= s.block * 4294967296 AND r.id < (s.block + 1) * 4294967296)`
     )
     .all() as { session_id: string; status_json: string }[]
 }

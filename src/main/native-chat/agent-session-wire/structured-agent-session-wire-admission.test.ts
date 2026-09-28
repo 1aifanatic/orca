@@ -10,12 +10,12 @@ import type { AgentSessionSubscribeEvent } from '../../../shared/agent-session-w
 import { REMOTE_RUNTIME_MAX_OUTBOUND_JSON_BYTES } from '../../../shared/remote-runtime-memory-limits'
 import { mobileE2EETextPayloadAdmissionBytes } from '../../runtime/rpc/mobile-e2ee-outbound-admission'
 import { AGENT_SESSION_JOURNAL_SCHEMA_VERSION } from '../../../shared/agent-session-journal-types'
-import { insertJournalRow } from '../agent-session-journal/journal-row-table'
 import type { JournalRow } from '../agent-session-journal/journal-row-schema'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import {
   createTrackedJournalOpener,
-  openTestJournalHostDatabase
+  openTestJournalHostDatabase,
+  insertTestJournalRow
 } from '../agent-session-journal/journal-host-database-test-support'
 import { readAgentSessionHistory } from './agent-session-history-page'
 import { AgentSessionSubscribers } from './structured-agent-session-subscribers'
@@ -172,7 +172,7 @@ async function reopenWithOversizedRemoval(afterSequence: number): Promise<AgentS
   try {
     opened.db.exec('BEGIN IMMEDIATE')
     for (const row of rows) {
-      insertJournalRow(opened.db, SESSION, row)
+      insertTestJournalRow(opened.db, SESSION, row)
     }
     opened.db.exec('COMMIT')
   } finally {

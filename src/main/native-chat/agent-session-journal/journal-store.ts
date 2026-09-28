@@ -20,10 +20,6 @@ import type { AgentSessionContextUsage } from '../../../shared/agent-session-con
 import { latestStructuredAgentContextFacts } from '../../../shared/structured-agent-session-context-usage'
 import type { StructuredAgentSessionStatusProjection } from '../../../shared/structured-agent-session-projection'
 import {
-  STRUCTURED_AGENT_SESSION_STATUS_PROJECTION_VERSION,
-  type StructuredAgentSessionSavedStatus
-} from '../../../shared/structured-agent-session-saved-status'
-import {
   activeStructuredAgentSessionTurnIdBySequence,
   newestStructuredAgentSessionTurnBySequence
 } from '../../../shared/structured-agent-session-live-turn'
@@ -66,8 +62,7 @@ import { createJournalStoreCollaborators } from './journal-store-collaborators'
 import { journalStoreLoadedFields } from './journal-store-open'
 import type { JournalItemAppender } from './journal-item-appender'
 import type { JournalLifecycleBatchAppender } from './journal-lifecycle-batch-appender'
-import { writeJournalSessionStatus } from './journal-session-status'
-import { AgentSessionJournalError } from './journal-write-guards'
+import { JournalListingStatusWriter } from './journal-session-status'
 
 export { AgentSessionJournalError } from './journal-write-guards'
 
@@ -78,13 +73,14 @@ export class AgentSessionJournal {
   private readonly mintEpoch: () => string
 
   private state: JournalReducerState
+  /** The block the live epoch's rows are keyed under; moves with the epoch. */
+  private block = -1
   private readOnly = false
   private malformedRows = 0
   private openedCorrupt = false
   private openedThrough: AgentJournalCursor = { epoch: '', sequence: 0 }
   private onCommitted: (() => void) | null = null
-  /** The epoch and projection last saved, so an unchanged status is not written per row. */
-  private savedListingStatus: string | null = null
+  private readonly listingStatus: JournalListingStatusWriter
   private readonly queue: JournalWriteQueue
   private readonly rowWriter: JournalRowWriter
   private readonly epochController: JournalEpochController
@@ -100,6 +96,11 @@ export class AgentSessionJournal {
     this.state = createJournalReducerState(options.identity.sessionId, '')
     // Serializes sequence assignment with the durable write behind it.
     this.queue = new JournalWriteQueue(options.identity.sessionId)
+    this.listingStatus = new JournalListingStatusWriter({
+      sessionId: options.identity.sessionId,
+      database: () => this.database,
+      serialize: (run) => this.queue.serialize(run)
+    })
     const collaborators = createJournalStoreCollaborators({
       identity: this.identity,
       legacyDirectory: this.database.legacyDirectoryFor(this.identity),
@@ -108,6 +109,7 @@ export class AgentSessionJournal {
       serialize: (run) => this.queue.serialize(run),
       database: () => this.database,
       state: () => this.state,
+      block: () => this.block,
       readOnly: () => this.readOnly,
       setReadOnly: (readOnly) => {
         this.readOnly = readOnly
@@ -184,40 +186,11 @@ export class AgentSessionJournal {
     this.onCommitted = listener
   }
 
-  /**
-   * Saves the settled listing status at the fold's position, after the rows it describes have
-   * committed. Written only when the epoch or the projection changes, so about once per turn end.
-   * Bookkeeping: a failed write costs a later boot a miss, never a user action.
-   */
+  /** Saves the settled listing status at the fold's position, after the rows it describes. */
   saveListingStatus(projection: StructuredAgentSessionStatusProjection): void {
-    const cursor = this.cursor()
-    const key = `${cursor.epoch}\n${JSON.stringify(projection)}`
-    if (this.readOnly || key === this.savedListingStatus) {
-      return
+    if (!this.readOnly) {
+      this.listingStatus.save(this.cursor(), projection, this.state.lastActivityAt)
     }
-    const saved: StructuredAgentSessionSavedStatus = {
-      v: STRUCTURED_AGENT_SESSION_STATUS_PROJECTION_VERSION,
-      projection,
-      lastActivityAt: this.state.lastActivityAt
-    }
-    this.savedListingStatus = key
-    this.queue
-      .serialize(async () =>
-        writeJournalSessionStatus(
-          this.database.db,
-          this.identity.sessionId,
-          cursor,
-          JSON.stringify(saved)
-        )
-      )
-      .catch((error: unknown) => {
-        if (this.savedListingStatus === key) {
-          this.savedListingStatus = null
-        }
-        if (!(error instanceof AgentSessionJournalError && error.code === 'journal_closed')) {
-          console.warn('[agent-session-journal] saving the listing status failed', error)
-        }
-      })
   }
 
   cursor = (): AgentJournalCursor => ({
@@ -279,8 +252,7 @@ export class AgentSessionJournal {
         rowsAfter: (afterSequence) =>
           readJournalRowsAfterCursor(
             this.database.db,
-            this.identity.sessionId,
-            this.state.epoch,
+            { epoch: this.state.epoch, block: this.block },
             afterSequence,
             limit
           ),

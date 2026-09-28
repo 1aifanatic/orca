@@ -12,11 +12,14 @@ import type {
   AgentSessionJournalIdentity
 } from '../../../shared/agent-session-journal-types'
 import { replayJournal } from '../agent-session-journal/journal-open'
-import { readJournalEpochRows } from '../agent-session-journal/journal-row-table'
 import {
   createTrackedJournalOpener,
   openTestJournalHostDatabase,
-  loadTestJournal
+  loadTestJournal,
+  readTestJournalRows,
+  deleteTestJournalRow,
+  insertTestJournalRowJson,
+  updateTestJournalRowJson
 } from '../agent-session-journal/journal-host-database-test-support'
 import type Database from '../../sqlite/sync-database'
 import {
@@ -118,7 +121,7 @@ async function withJournalDatabase(
 /** The same logical hole `findSequenceGap` detects at replay. */
 async function deleteRow(seq: number): Promise<void> {
   await withJournalDatabase(journalDir, (db) => {
-    db.prepare('DELETE FROM journal_rows WHERE session_id = ? AND seq = ?').run(CODEX_SESSION, seq)
+    deleteTestJournalRow(db, CODEX_SESSION, seq)
   })
 }
 
@@ -202,13 +205,10 @@ describe('openAgentSessionJournalWithRecovery', () => {
   it('opens a future row-body version read-only and leaves it exactly as found', async () => {
     const epoch = await seedJournal(1)
     await withJournalDatabase(journalDir, (db) => {
-      db.prepare(
-        'INSERT INTO journal_rows (session_id, epoch, seq, ts, row_json) VALUES (?, ?, ?, ?, ?)'
-      ).run(
+      insertTestJournalRowJson(
+        db,
         CODEX_SESSION,
-        epoch,
         3,
-        1,
         JSON.stringify({ v: 99, seq: 3, epoch, kind: 'item', fence: 1, ts: 1 })
       )
     })
@@ -224,7 +224,7 @@ describe('openAgentSessionJournalWithRecovery', () => {
     expect(opened.recovery).toBeNull()
     expect(opened.journal.isReadOnly).toBe(true)
     await withJournalDatabase(journalDir, (db) => {
-      const rows = readJournalEpochRows(db, CODEX_SESSION, epoch)
+      const rows = readTestJournalRows(db, CODEX_SESSION, epoch)
       expect(rows.some((entry) => entry.rowJson.includes('"v":99'))).toBe(true)
       expect(rows).toHaveLength(3)
     })
@@ -249,14 +249,10 @@ describe('openAgentSessionJournalWithRecovery', () => {
     const neighbourEpoch = other.epoch
     await other.close()
     const database = openTestJournalHostDatabase(journalDir)
-    const neighbourBefore = readJournalEpochRows(database.db, neighbour.sessionId, neighbourEpoch)
+    const neighbourBefore = readTestJournalRows(database.db, neighbour.sessionId, neighbourEpoch)
     await seedJournal(3)
     await withJournalDatabase(journalDir, (db) => {
-      db.prepare('UPDATE journal_rows SET row_json = ? WHERE session_id = ? AND seq = ?').run(
-        '}{',
-        CODEX_SESSION,
-        3
-      )
+      updateTestJournalRowJson(db, CODEX_SESSION, 3, '}{')
     })
 
     const opened = await openAgentSessionJournalWithRecovery({
@@ -271,7 +267,7 @@ describe('openAgentSessionJournalWithRecovery', () => {
     expect(opened.recovery?.imported).toBeGreaterThan(0)
     const reopened = await journals.open({ identity: neighbour, stateDirectory: journalDir })
     expect(reopened.epoch).toBe(neighbourEpoch)
-    expect(readJournalEpochRows(database.db, neighbour.sessionId, neighbourEpoch)).toEqual(
+    expect(readTestJournalRows(database.db, neighbour.sessionId, neighbourEpoch)).toEqual(
       neighbourBefore
     )
   })
@@ -421,7 +417,7 @@ describe('openAgentSessionJournalWithRecovery', () => {
     const epoch = reopened.journal.epoch
     await reopened.journal.close()
     await withJournalDatabase(journalDir, (db) => {
-      const rows = readJournalEpochRows(db, CODEX_SESSION, epoch)
+      const rows = readTestJournalRows(db, CODEX_SESSION, epoch)
       expect(JSON.parse(rows[0]?.rowJson ?? '{}')).toMatchObject({ kind: 'epoch', seq: 1 })
     })
   })
@@ -450,7 +446,7 @@ describe('openAgentSessionJournalWithRecovery', () => {
     const epoch = first.journal.epoch
     await first.journal.close()
     await withJournalDatabase(journalDir, (db) => {
-      const rows = readJournalEpochRows(db, CODEX_SESSION, epoch)
+      const rows = readTestJournalRows(db, CODEX_SESSION, epoch)
       expect(JSON.parse(rows[0]?.rowJson ?? '{}')).toMatchObject({
         kind: 'epoch',
         seq: 1,

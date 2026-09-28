@@ -8,6 +8,7 @@ export type JournalRowWriterDeps = {
   now: () => number
   serialize: <T>(run: () => Promise<T>) => Promise<T>
   database: () => JournalHostDatabase
+  block: () => number
   readOnly: () => boolean
   highestFence: () => number
   nextSequence: () => number
@@ -23,7 +24,7 @@ export class JournalRowWriter {
       const row = build(this.deps.nextSequence(), this.deps.now())
       assertJournalFence(row.fence, this.deps.highestFence())
       // One INSERT: the chat's epoch pointer moves only when the epoch does.
-      this.deps.database().transaction((db) => insertJournalRow(db, this.deps.sessionId, row))
+      this.deps.database().transaction((db) => insertJournalRow(db, this.deps.block(), row))
       // COMMIT landed, so the row is durable: adopt it before anything that can
       // fail. Rejecting here instead would leave the next append reusing a
       // sequence the table already holds.

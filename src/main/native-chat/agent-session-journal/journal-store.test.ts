@@ -23,7 +23,9 @@ import { AgentSessionJournalError, type AgentSessionJournal } from './journal-st
 import type { openAgentSessionJournal } from './journal-store-factory'
 import {
   createTrackedJournalOpener,
-  openTestJournalHostDatabase
+  openTestJournalHostDatabase,
+  liveTestJournalRows,
+  deleteTestJournalRow
 } from './journal-host-database-test-support'
 import type Database from '../../sqlite/sync-database'
 
@@ -249,7 +251,7 @@ describe('replay', () => {
     const before = journal.epoch
     await journal.close()
     await withJournalDatabase(root, (db) => {
-      db.prepare('DELETE FROM journal_rows WHERE seq = ?').run(3)
+      deleteTestJournalRow(db, IDENTITY.sessionId, 3)
     })
 
     const reopened = await open()
@@ -258,8 +260,8 @@ describe('replay', () => {
     // Sequences 4 and 5 are VALID rows that the gap at 3 made unreplayable.
     // Nothing preserves them; recovery rebuilds the epoch from provider history.
     await withJournalDatabase(root, (db) => {
-      const rows = db.prepare('SELECT seq FROM journal_rows ORDER BY seq').all()
-      expect(rows.map((row) => (row as { seq: number }).seq)).toEqual([1, 2])
+      const rows = liveTestJournalRows(db, IDENTITY.sessionId)
+      expect(rows.map((row) => row.seq)).toEqual([1, 2])
     })
     expect(reopened.repair).toEqual({ malformedRows: 0 })
   })
@@ -393,8 +395,7 @@ describe('on-disk layout', () => {
     expect(await readdir(root)).not.toContain('agent-session-journal')
     await journal.close()
     await withJournalDatabase(root, (db) => {
-      const row = db.prepare('SELECT row_json FROM journal_rows WHERE seq = 2').get()
-      expect((row as { row_json: string }).row_json).toContain('"kind":"item"')
+      expect(liveTestJournalRows(db, IDENTITY.sessionId)[1]?.rowJson).toContain('"kind":"item"')
       expect(db.prepare('SELECT epoch FROM journal_sessions').get()).toMatchObject({
         epoch: journal.epoch
       })

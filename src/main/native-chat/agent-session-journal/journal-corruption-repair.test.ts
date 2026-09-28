@@ -22,7 +22,10 @@ import type { openAgentSessionJournal } from './journal-store-factory'
 import {
   createTrackedJournalOpener,
   openTestJournalHostDatabase,
-  loadTestJournal
+  loadTestJournal,
+  liveTestJournalRows,
+  updateTestJournalRowJson,
+  deleteTestJournalRow
 } from './journal-host-database-test-support'
 
 const IDENTITY: AgentSessionJournalIdentity = {
@@ -73,10 +76,8 @@ async function withJournalDatabase(run: (db: Database.Database) => void): Promis
 function firstLiveRow(): Promise<JournalRow | null> {
   let row: JournalRow | null = null
   return withJournalDatabase((db) => {
-    const stored = db.prepare('SELECT row_json FROM journal_rows ORDER BY seq LIMIT 1').get() as
-      | { row_json: string }
-      | undefined
-    const parsed = stored ? parseJournalRow(stored.row_json) : null
+    const stored = liveTestJournalRows(db, IDENTITY.sessionId)[0]
+    const parsed = stored ? parseJournalRow(stored.rowJson) : null
     row = parsed?.ok ? parsed.row : null
   }).then(() => row)
 }
@@ -84,9 +85,7 @@ function firstLiveRow(): Promise<JournalRow | null> {
 function liveSequences(): Promise<number[]> {
   let sequences: number[] = []
   return withJournalDatabase((db) => {
-    sequences = (
-      db.prepare('SELECT seq FROM journal_rows ORDER BY seq').all() as { seq: number }[]
-    ).map((row) => row.seq)
+    sequences = liveTestJournalRows(db, IDENTITY.sessionId).map((row) => row.seq)
   }).then(() => sequences)
 }
 
@@ -108,7 +107,7 @@ describe('a malformed row', () => {
     await journal.appendItem(item(2), body('after the fault'), { fence: 1 })
     await journal.close()
     await withJournalDatabase((db) => {
-      db.prepare('UPDATE journal_rows SET row_json = ? WHERE seq = ?').run('{"not":"a row"}', 3)
+      updateTestJournalRowJson(db, IDENTITY.sessionId, 3, '{"not":"a row"}')
     })
 
     const reopened = await open()
@@ -123,7 +122,7 @@ describe('a malformed row', () => {
     await journal.appendItem(item(1), body('later'), { fence: 1 })
     await journal.close()
     await withJournalDatabase((db) => {
-      db.prepare('UPDATE journal_rows SET row_json = ? WHERE seq = ?').run('}{', 2)
+      updateTestJournalRowJson(db, IDENTITY.sessionId, 2, '}{')
     })
 
     const reopened = await open()
@@ -148,7 +147,7 @@ describe('a sequence gap', () => {
     // Sequence 1 is the epoch row, so the items occupy 2..6. Removing 4 leaves
     // 5 and 6 valid but unanchored.
     await withJournalDatabase((db) => {
-      db.prepare('DELETE FROM journal_rows WHERE seq = ?').run(4)
+      deleteTestJournalRow(db, IDENTITY.sessionId, 4)
     })
 
     const reopened = await open()
@@ -168,7 +167,7 @@ describe('a sequence gap', () => {
     }
     await journal.close()
     await withJournalDatabase((db) => {
-      db.prepare('DELETE FROM journal_rows WHERE seq = ?').run(4)
+      deleteTestJournalRow(db, IDENTITY.sessionId, 4)
     })
 
     const repaired = await open()
@@ -192,7 +191,7 @@ describe('a sequence gap', () => {
     }
     await journal.close()
     await withJournalDatabase((db) => {
-      db.prepare('UPDATE journal_rows SET row_json = ? WHERE seq = ?').run('}{', 3)
+      updateTestJournalRowJson(db, IDENTITY.sessionId, 3, '}{')
     })
 
     const repaired = await open()
@@ -227,7 +226,7 @@ describe('a missing epoch row', () => {
     })
     await journal.close()
     await withJournalDatabase((db) => {
-      db.prepare('DELETE FROM journal_rows WHERE seq = ?').run(1)
+      deleteTestJournalRow(db, IDENTITY.sessionId, 1)
     })
 
     const reopened = await open()
@@ -249,7 +248,7 @@ describe('a missing epoch row', () => {
     await journal.appendItem(item(0), body('anchor'), { fence: 1 })
     await journal.close()
     await withJournalDatabase((db) => {
-      db.prepare('DELETE FROM journal_rows WHERE seq = ?').run(1)
+      deleteTestJournalRow(db, IDENTITY.sessionId, 1)
     })
 
     const repaired = await open()

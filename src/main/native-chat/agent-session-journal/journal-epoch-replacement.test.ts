@@ -11,10 +11,11 @@ import type {
 import { journalDatabasePath, type JournalHostDatabase } from './journal-host-database'
 import { replaceJournalEpoch } from './journal-epoch-replacement'
 import type { JournalLoad } from './journal-open'
-import { readJournalEpochRows, readJournalSessionEpoch } from './journal-row-table'
+import { readJournalSessionEpoch } from './journal-row-table'
 import {
   createTrackedJournalOpener,
-  openTestJournalHostDatabase
+  openTestJournalHostDatabase,
+  readTestJournalRows
 } from './journal-host-database-test-support'
 
 const IDENTITY: AgentSessionJournalIdentity = {
@@ -83,7 +84,7 @@ describe('journal epoch replacement', () => {
     expect(published).toHaveLength(1)
     const epoch = readJournalSessionEpoch(database.db, IDENTITY.sessionId)
     expect(epoch).toBe(published[0]?.state.epoch)
-    expect(readJournalEpochRows(database.db, IDENTITY.sessionId, epoch ?? '')).toHaveLength(2)
+    expect(readTestJournalRows(database.db, IDENTITY.sessionId, epoch ?? '')).toHaveLength(2)
   })
 
   it('discards every superseded row in the same transaction', async () => {
@@ -97,7 +98,7 @@ describe('journal epoch replacement', () => {
     ])
 
     expect(journal.epoch).not.toBe(before)
-    expect(readJournalEpochRows(database.db, IDENTITY.sessionId, before)).toHaveLength(0)
+    expect(readTestJournalRows(database.db, IDENTITY.sessionId, before)).toHaveLength(0)
     expect(journal.snapshot().items.map((entry) => entry.body)).toEqual([
       { kind: 'status', text: 'republished' }
     ])

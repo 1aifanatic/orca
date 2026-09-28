@@ -11,11 +11,11 @@ import {
   REMOTE_RUNTIME_MAX_OUTBOUND_JSON_BYTES,
   serializeRemoteRuntimePayload
 } from '../../../shared/remote-runtime-memory-limits'
-import { insertJournalRow } from '../agent-session-journal/journal-row-table'
 import type { JournalRow } from '../agent-session-journal/journal-row-schema'
 import {
   createTrackedJournalOpener,
-  openTestJournalHostDatabase
+  openTestJournalHostDatabase,
+  insertTestJournalRow
 } from '../agent-session-journal/journal-host-database-test-support'
 import { StructuredAgentSessionStatusFeed } from './structured-agent-session-status-feed'
 import { MAX_RETAINED_SESSION_ACTIVITIES } from './structured-agent-session-activity-retention'
@@ -424,7 +424,7 @@ describe('AgentSessionSubscribers', () => {
     try {
       opened.db.exec('BEGIN IMMEDIATE')
       for (const row of rows) {
-        insertJournalRow(opened.db, SESSION, row)
+        insertTestJournalRow(opened.db, SESSION, row)
       }
       opened.db.exec('COMMIT')
     } finally {

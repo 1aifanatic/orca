@@ -18,7 +18,9 @@ import type { openAgentSessionJournal } from './journal-store-factory'
 import {
   createTrackedJournalOpener,
   openTestJournalHostDatabase,
-  loadTestJournal
+  loadTestJournal,
+  deleteTestJournalRow,
+  insertTestJournalRowJson
 } from './journal-host-database-test-support'
 
 const IDENTITY: AgentSessionJournalIdentity = {
@@ -157,7 +159,7 @@ describe('a chat whose history is still in the pre-SQLite format', () => {
     // where this branch and a repair meet.
     const opened = openTestJournalHostDatabase(root)
     try {
-      opened.db.prepare('DELETE FROM journal_rows WHERE seq = ?').run(1)
+      deleteTestJournalRow(opened.db, IDENTITY.sessionId, 1)
     } finally {
       opened.close()
     }
@@ -176,27 +178,22 @@ describe('a chat whose history is still in the pre-SQLite format', () => {
     const founded = await open()
     const epoch = founded.epoch
     await founded.close()
-    openTestJournalHostDatabase(root)
-      .db.prepare(
-        'INSERT INTO journal_rows (session_id, epoch, seq, ts, row_json) VALUES (?, ?, ?, ?, ?)'
-      )
-      .run(
-        IDENTITY.sessionId,
+    insertTestJournalRowJson(
+      openTestJournalHostDatabase(root).db,
+      IDENTITY.sessionId,
+      2,
+      JSON.stringify({
+        v: 99,
+        kind: 'item',
         epoch,
-        2,
-        1,
-        JSON.stringify({
-          v: 99,
-          kind: 'item',
-          epoch,
-          seq: 2,
-          fence: 1,
-          ts: 1,
-          itemId: 'future',
-          revision: 1,
-          body: { kind: 'status', text: 'from a newer build' }
-        })
-      )
+        seq: 2,
+        fence: 1,
+        ts: 1,
+        itemId: 'future',
+        revision: 1,
+        body: { kind: 'status', text: 'from a newer build' }
+      })
+    )
     await writeRemnant()
 
     const latched = await open()

@@ -15,11 +15,12 @@ import Database from '../../sqlite/sync-database'
 import { createStructuredAgentSessionRestartOfferWithdrawal } from '../agent-session-wire/structured-agent-session-restart-offer-withdrawal'
 import {
   createTrackedJournalOpener,
-  openTestJournalHostDatabase
+  openTestJournalHostDatabase,
+  readTestJournalRows
 } from './journal-host-database-test-support'
 import { journalDirectoryFor, legacyJournalDatabaseFile } from './journal-paths'
 import { importPerSessionJournal } from './journal-per-session-import'
-import { readJournalEpochRows, type JournalStoredRow } from './journal-row-table'
+import type { JournalStoredRow } from './journal-row-table'
 
 const IDENTITY: AgentSessionJournalIdentity = {
   sessionId: 'session-legacy',
@@ -62,7 +63,7 @@ async function historyRows(): Promise<{ epoch: string; rows: JournalStoredRow[] 
     { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: 'On it.' }] },
     { fence: 1 }
   )
-  const rows = readJournalEpochRows(
+  const rows = readTestJournalRows(
     openTestJournalHostDatabase(scratch).db,
     IDENTITY.sessionId,
     journal.epoch
@@ -123,7 +124,7 @@ describe('importing a per-chat journal', () => {
     expect(journal.epoch).toBe(epoch)
     expect(journal.cursor()).toEqual({ epoch, sequence: rows.length })
     expect(
-      readJournalEpochRows(openTestJournalHostDatabase(root).db, IDENTITY.sessionId, epoch)
+      readTestJournalRows(openTestJournalHostDatabase(root).db, IDENTITY.sessionId, epoch)
     ).toEqual(rows)
     expect(existsSync(legacyDir())).toBe(false)
     expect(existsSync(`${legacyDir()}.imported`)).toBe(true)

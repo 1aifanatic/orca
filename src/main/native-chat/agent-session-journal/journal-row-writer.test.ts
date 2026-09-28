@@ -10,14 +10,15 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { AGENT_SESSION_JOURNAL_SCHEMA_VERSION } from '../../../shared/agent-session-journal-types'
 import type { JournalHostDatabase } from './journal-host-database'
-import {
-  insertJournalRow,
-  readJournalEpochRows,
-  publishJournalSessionEpoch
-} from './journal-row-table'
 import type { JournalRow } from './journal-row-schema'
 import { JournalRowWriter } from './journal-row-writer'
-import { openTestJournalHostDatabase } from './journal-host-database-test-support'
+import { readJournalSessionPointer } from './journal-row-table'
+import {
+  openTestJournalHostDatabase,
+  readTestJournalRows,
+  insertTestJournalRow,
+  publishTestJournalEpoch
+} from './journal-host-database-test-support'
 
 const SESSION_ID = 'session-1'
 const EPOCH = 'epoch-1'
@@ -44,7 +45,7 @@ describe('journal row writer', () => {
   beforeEach(async () => {
     root = await mkdtemp(join(tmpdir(), 'orca-journal-row-writer-'))
     database = openTestJournalHostDatabase(root)
-    publishJournalSessionEpoch(database.db, { sessionId: SESSION_ID, workspaceId: 'ws-1' }, EPOCH)
+    publishTestJournalEpoch(database.db, SESSION_ID, EPOCH)
     readOnly = false
   })
 
@@ -65,6 +66,7 @@ describe('journal row writer', () => {
       now: () => 1,
       serialize: (run) => run(),
       database: () => database,
+      block: () => readJournalSessionPointer(database.db, SESSION_ID)?.block ?? -1,
       readOnly: () => readOnly,
       highestFence: () => 0,
       nextSequence: () => sequence,
@@ -79,13 +81,13 @@ describe('journal row writer', () => {
   it('rolls the transaction back and sets no latch when the insert fails', async () => {
     const { writer, committedRows } = writerHarness()
     // A row already occupies sequence 1, so the insert violates the primary key.
-    insertJournalRow(database.db, SESSION_ID, row(1, 1))
+    insertTestJournalRow(database.db, SESSION_ID, row(1, 1))
 
     await expect(writer.enqueue(row)).rejects.toThrow()
 
     expect(readOnly).toBe(false)
     expect(committedRows).toHaveLength(0)
-    expect(readJournalEpochRows(database.db, SESSION_ID, EPOCH)).toHaveLength(1)
+    expect(readTestJournalRows(database.db, SESSION_ID, EPOCH)).toHaveLength(1)
     // Still writable: there is no ambiguity for a latch to protect against.
     await expect(writer.enqueue((seq, ts) => row(seq + 1, ts))).resolves.toMatchObject({
       kind: 'item'

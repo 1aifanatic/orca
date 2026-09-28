@@ -15,7 +15,8 @@ import {
 import {
   iterateJournalEpochRows,
   readJournalRowsAfter,
-  readJournalSessionEpoch
+  readJournalSessionPointer,
+  type JournalBlockPointer
 } from './journal-row-table'
 import { JOURNAL_REPAIR_DISCLOSURE_ITEM_ID } from './journal-repair-disclosure'
 import { pendingJournalRepairSequence } from './journal-repair-marker'
@@ -26,6 +27,8 @@ const FIRST_JOURNAL_SEQUENCE = 1
 
 export type JournalLoad = {
   state: JournalReducerState
+  /** The block the live epoch's rows are keyed under. */
+  block: number
   /** A row from a future schema was met: no writes, no deletion. */
   readOnly: boolean
   /** Set when the surviving prefix is unusable and the caller must roll the epoch. */
@@ -40,10 +43,11 @@ export type JournalLoad = {
 
 /** Replays one chat from the host's database. Returns null when the chat has no journal yet. */
 export function replayJournal(db: Database.Database, sessionId: string): JournalLoad | null {
-  const epoch = readJournalSessionEpoch(db, sessionId)
-  if (!epoch) {
+  const pointer = readJournalSessionPointer(db, sessionId)
+  if (!pointer) {
     return null
   }
+  const { epoch } = pointer
   const state = createJournalReducerState(sessionId, epoch)
   const repairedFrom = pendingJournalRepairSequence(db, sessionId, epoch)
   let expectedSequence = FIRST_JOURNAL_SEQUENCE
@@ -56,7 +60,7 @@ export function replayJournal(db: Database.Database, sessionId: string): Journal
   let latched = false
   let truncateFrom: number | undefined
 
-  for (const entry of iterateJournalEpochRows(db, sessionId, epoch)) {
+  for (const entry of iterateJournalEpochRows(db, pointer)) {
     const parsed = parseJournalRow(entry.rowJson)
     if (!parsed.ok) {
       truncateFrom = entry.seq
@@ -96,6 +100,7 @@ export function replayJournal(db: Database.Database, sessionId: string): Journal
   state.oldestSequence = FIRST_JOURNAL_SEQUENCE
   return {
     state,
+    block: pointer.block,
     readOnly: latched,
     corrupt:
       gapSequence !== undefined ||
@@ -112,13 +117,12 @@ export function replayJournal(db: Database.Database, sessionId: string): Journal
  *  cannot parse, exactly as replay does. */
 export function readJournalRowsAfterCursor(
   db: Database.Database,
-  sessionId: string,
-  epoch: string,
+  pointer: JournalBlockPointer,
   afterSequence: number,
   limit?: number
 ): JournalRow[] {
   const rows: JournalRow[] = []
-  for (const stored of readJournalRowsAfter(db, sessionId, epoch, afterSequence, limit)) {
+  for (const stored of readJournalRowsAfter(db, pointer, afterSequence, limit)) {
     const parsed = parseJournalRow(stored.rowJson)
     if (!parsed.ok) {
       break

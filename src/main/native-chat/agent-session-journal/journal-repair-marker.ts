@@ -15,7 +15,7 @@
 
 import type Database from '../../sqlite/sync-database'
 import type { JournalHostDatabase } from './journal-host-database'
-import { deleteJournalRowSuffix } from './journal-row-table'
+import { deleteJournalRowSuffix, type JournalBlockPointer } from './journal-row-table'
 
 const SELECT_REPAIR = 'SELECT epoch, content_from FROM journal_repairs WHERE session_id = ?'
 const UPSERT_REPAIR = `INSERT INTO journal_repairs (session_id, epoch, content_from, repaired_at)
@@ -50,7 +50,7 @@ export function clearJournalRepairMarker(db: Database.Database, sessionId: strin
 export function deleteJournalRepairedSuffix(input: {
   database: JournalHostDatabase
   sessionId: string
-  epoch: string
+  pointer: JournalBlockPointer
   /** First sequence of the rejected suffix. */
   fromSeq: number
   /** First sequence left free once the suffix is gone. */
@@ -58,8 +58,13 @@ export function deleteJournalRepairedSuffix(input: {
   now: number
 }): number {
   const deleted = input.database.transaction((db) => {
-    const count = deleteJournalRowSuffix(db, input.sessionId, input.epoch, input.fromSeq)
-    db.prepare(UPSERT_REPAIR).run(input.sessionId, input.epoch, input.contentFrom, input.now)
+    const count = deleteJournalRowSuffix(db, input.pointer.block, input.fromSeq)
+    db.prepare(UPSERT_REPAIR).run(
+      input.sessionId,
+      input.pointer.epoch,
+      input.contentFrom,
+      input.now
+    )
     return count
   })
   void input.database.reclaimFreePages()

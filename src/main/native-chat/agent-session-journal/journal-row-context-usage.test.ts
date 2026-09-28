@@ -14,7 +14,9 @@ import type {
 import { parseJournalRow } from './journal-row-schema'
 import {
   createTrackedJournalOpener,
-  openTestJournalHostDatabase
+  openTestJournalHostDatabase,
+  liveTestJournalRows,
+  updateTestJournalRowJson
 } from './journal-host-database-test-support'
 
 const IDENTITY: AgentSessionJournalIdentity = {
@@ -114,16 +116,10 @@ describe('context facts on replayed turn rows', () => {
     await journal.close()
     const opened = openTestJournalHostDatabase(root)
     try {
-      const stored: unknown = opened.db
-        .prepare('SELECT row_json FROM journal_rows WHERE seq = 2')
-        .get()
-      const rowJson =
-        typeof stored === 'object' && stored !== null && 'row_json' in stored ? stored.row_json : ''
-      const future = JSON.parse(String(rowJson))
+      const rowJson = liveTestJournalRows(opened.db, IDENTITY.sessionId)[1]?.rowJson ?? ''
+      const future = JSON.parse(rowJson)
       future.body.contextUsage = { used: { kind: 'measured-later', tokens: 'many' } }
-      opened.db
-        .prepare('UPDATE journal_rows SET row_json = ? WHERE seq = 2')
-        .run(JSON.stringify(future))
+      updateTestJournalRowJson(opened.db, IDENTITY.sessionId, 2, JSON.stringify(future))
     } finally {
       opened.close()
     }

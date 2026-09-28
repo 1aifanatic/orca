@@ -27,7 +27,10 @@ import { RpcDispatcher } from '../dispatcher'
 import { closeStructuredAgentSessionChild } from '../../structured-agent-session-close'
 import { discardStructuredWorkerSession } from './orchestration-structured-worker-session'
 import { STRUCTURED_AGENT_SESSION_METHODS } from './structured-agent-session'
-import { openTestJournalHostDatabase } from '../../../native-chat/agent-session-journal/journal-host-database-test-support'
+import {
+  openTestJournalHostDatabase,
+  updateTestJournalRowJson
+} from '../../../native-chat/agent-session-journal/journal-host-database-test-support'
 
 const CLIENT = {
   clientId: 'device-1',
@@ -235,9 +238,7 @@ describe('the accessor', () => {
     await foundRestTestChat(rig)
     await rig.host.flushAllStreamedEvents()
     // A row that no longer parses: the recovering open keeps the readable prefix and rebuilds.
-    openTestJournalHostDatabase(rig.root)
-      .db.prepare('UPDATE journal_rows SET row_json = ? WHERE session_id = ? AND seq = ?')
-      .run('}{', SESSION, 2)
+    updateTestJournalRowJson(openTestJournalHostDatabase(rig.root).db, SESSION, 2, '}{')
     await rig.restart()
     setStructuredAgentSessionHost(rig.host)
 

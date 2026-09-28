@@ -5,10 +5,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AGENT_SESSION_JOURNAL_SCHEMA_VERSION } from '../../../shared/agent-session-journal-types'
 import type { JournalHostDatabase } from './journal-host-database'
 import { replayJournal } from './journal-open'
-import { insertJournalRow, publishJournalSessionEpoch } from './journal-row-table'
 import type { JournalRow } from './journal-row-schema'
 import * as reducer from './journal-reducer'
-import { openTestJournalHostDatabase } from './journal-host-database-test-support'
+import {
+  openTestJournalHostDatabase,
+  insertTestJournalRow,
+  publishTestJournalEpoch,
+  insertTestJournalRowJson
+} from './journal-host-database-test-support'
 
 let root: string
 let opened: JournalHostDatabase
@@ -43,13 +47,13 @@ function revision(seq: number, text = 'content'): JournalRow {
 }
 
 function put(row: JournalRow): void {
-  insertJournalRow(opened.db, sessionId, row)
+  insertTestJournalRow(opened.db, sessionId, row)
 }
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'orca-stream-replay-'))
   opened = openTestJournalHostDatabase(root)
-  publishJournalSessionEpoch(opened.db, { sessionId: sessionId, workspaceId: 'ws-1' }, epoch)
+  publishTestJournalEpoch(opened.db, sessionId, epoch)
 })
 
 afterEach(async () => {
@@ -131,9 +135,7 @@ describe('streaming journal replay', () => {
     put(anchor())
     put(revision(2))
     put(revision(4))
-    opened.db
-      .prepare('INSERT INTO journal_rows VALUES (?, ?, ?, ?, ?)')
-      .run(sessionId, epoch, 5, 5, '{')
+    insertTestJournalRowJson(opened.db, sessionId, 5, '{')
     const loaded = replayJournal(opened.db, sessionId)!
     expect(loaded).toMatchObject({
       readOnly: false,

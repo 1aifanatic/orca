@@ -18,6 +18,7 @@ type JournalDisclosure = JournalRepairDisclosure
 export function journalStoreLoadedFields(loaded: JournalLoad) {
   return {
     state: loaded.state,
+    block: loaded.block,
     readOnly: loaded.readOnly,
     malformedRows: loaded.malformedRows
   }

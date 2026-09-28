@@ -1,9 +1,10 @@
 // Republishing a live item set into a fresh epoch.
 //
-// One transaction: discard every row, insert the epoch row plus the replacement
-// items, move the session projection, and retire any repair marker — this
-// republished history is exactly what the marker was holding out for. The pages
-// the old rows held go back to the filesystem after the commit.
+// One transaction: discard the old block, insert the epoch row plus the
+// replacement items into a fresh one, move the session projection, and retire
+// any repair marker — this republished history is exactly what the marker was
+// holding out for. The pages the old rows held go back to the filesystem after
+// the commit.
 
 import type {
   AgentJournalItemBody,
@@ -16,9 +17,11 @@ import { clearJournalRepairMarker } from './journal-repair-marker'
 import { applyJournalRow, createJournalReducerState } from './journal-reducer'
 import { buildJournalItemRow, journalRowBase } from './journal-row-builders'
 import {
-  deleteJournalSessionRows,
+  allocateJournalBlock,
+  deleteJournalBlock,
   insertJournalRow,
-  publishJournalSessionEpoch
+  publishJournalSessionEpoch,
+  readJournalSessionPointer
 } from './journal-row-table'
 import type { AgentJournalEpochReason, JournalRow } from './journal-row-schema'
 import { assertJournalFence } from './journal-write-guards'
@@ -65,19 +68,24 @@ export function replaceJournalEpoch(input: {
   }
 
   const { sessionId } = input.identity
-  input.database.transaction((db) => {
-    deleteJournalSessionRows(db, sessionId)
+  const block = input.database.transaction((db) => {
+    const retired = readJournalSessionPointer(db, sessionId)
+    const fresh = allocateJournalBlock(db)
+    if (retired) {
+      deleteJournalBlock(db, retired.block)
+    }
     clearJournalRepairMarker(db, sessionId)
     for (const row of rows) {
-      insertJournalRow(db, sessionId, row)
+      insertJournalRow(db, fresh, row)
     }
-    publishJournalSessionEpoch(db, input.identity, epoch)
+    publishJournalSessionEpoch(db, input.identity, { epoch, block: fresh })
+    return fresh
   })
 
   // COMMIT landed: on disk the superseded rows are gone and this epoch is the
   // live one. The caller adopts that immediately, or a later failure leaves the
   // live store writing into an epoch whose rows were just deleted.
   state.oldestSequence = 1
-  input.onPublished({ state, readOnly: false, corrupt: false, malformedRows: 0 })
+  input.onPublished({ state, block, readOnly: false, corrupt: false, malformedRows: 0 })
   void input.database.reclaimFreePages()
 }

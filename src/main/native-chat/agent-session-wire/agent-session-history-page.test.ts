@@ -19,10 +19,10 @@ import {
   serializeRemoteRuntimePayload
 } from '../../../shared/remote-runtime-memory-limits'
 import { structuredAgentSessionPayloadFingerprint } from '../../../shared/structured-agent-session-mutation'
-import { insertJournalRow } from '../agent-session-journal/journal-row-table'
 import {
   createTrackedJournalOpener,
-  openTestJournalHostDatabase
+  openTestJournalHostDatabase,
+  insertTestJournalRow
 } from '../agent-session-journal/journal-host-database-test-support'
 import type {
   JournalItemRow,
@@ -488,7 +488,7 @@ async function reopenWithRawRows(rows: readonly RawSeedRow[]): Promise<AgentSess
   try {
     opened.db.exec('BEGIN IMMEDIATE')
     for (const row of full) {
-      insertJournalRow(opened.db, IDENTITY.sessionId, row)
+      insertTestJournalRow(opened.db, IDENTITY.sessionId, row)
     }
     opened.db.exec('COMMIT')
   } finally {

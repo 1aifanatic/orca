@@ -15,7 +15,14 @@ import Database from '../../sqlite/sync-database'
 import type { SqliteRow } from '../../sqlite/sqlite-statement'
 import type { JournalHostDatabase } from './journal-host-database'
 import { legacyJournalDatabaseFile } from './journal-paths'
-import { publishJournalSessionEpoch, readJournalSessionEpoch } from './journal-row-table'
+import {
+  allocateJournalBlock,
+  deleteJournalBlock,
+  journalRowId,
+  publishJournalSessionEpoch,
+  readJournalSessionEpoch,
+  readJournalSessionPointer
+} from './journal-row-table'
 
 /** The newest per-chat file shape any build wrote. */
 const LEGACY_JOURNAL_SCHEMA_VERSION = 2
@@ -28,9 +35,7 @@ const HAS_LEGACY_REPAIRS =
   "SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'journal_repairs'"
 const SELECT_LEGACY_REPAIR =
   'SELECT epoch, content_from, repaired_at FROM journal_repairs WHERE session_id = ?'
-const INSERT_ROW =
-  'INSERT INTO journal_rows (session_id, epoch, seq, ts, row_json) VALUES (?, ?, ?, ?, ?)'
-const DELETE_SESSION_ROWS = 'DELETE FROM journal_rows WHERE session_id = ?'
+const INSERT_ROW = 'INSERT INTO journal_rows (id, ts, row_json) VALUES (?, ?, ?)'
 const UPSERT_REPAIR = `INSERT INTO journal_repairs (session_id, epoch, content_from, repaired_at)
 VALUES (?, ?, ?, ?)
 ON CONFLICT(session_id) DO UPDATE SET
@@ -106,7 +111,11 @@ function copyLegacyJournal(
   }
   const repair = readLegacyRepair(source, sessionId)
   input.database.transaction((db) => {
-    db.prepare(DELETE_SESSION_ROWS).run(sessionId)
+    const retired = readJournalSessionPointer(db, sessionId)
+    const block = allocateJournalBlock(db)
+    if (retired) {
+      deleteJournalBlock(db, retired.block)
+    }
     const insert = db.prepare(INSERT_ROW)
     let afterSeq = Number.MIN_SAFE_INTEGER
     for (;;) {
@@ -115,7 +124,7 @@ function copyLegacyJournal(
         .all(sessionId, epoch, afterSeq, LEGACY_ROW_PAGE_SIZE)
       for (const row of page) {
         // Copied as stored: the bytes are the row, its epoch and sequence included.
-        insert.run(sessionId, epoch, row.seq, row.ts, row.row_json)
+        insert.run(journalRowId(block, Number(row.seq)), row.ts, row.row_json)
       }
       const last = page.at(-1)?.seq
       if (page.length < LEGACY_ROW_PAGE_SIZE || typeof last !== 'number') {
@@ -123,7 +132,7 @@ function copyLegacyJournal(
       }
       afterSeq = last
     }
-    publishJournalSessionEpoch(db, input.identity, epoch)
+    publishJournalSessionEpoch(db, input.identity, { epoch, block })
     if (repair) {
       db.prepare(UPSERT_REPAIR).run(
         sessionId,

@@ -15,9 +15,9 @@ import { journalDatabasePath } from './journal-host-database'
 import {
   closeTestJournalHostDatabases,
   createTrackedJournalOpener,
-  openTestJournalHostDatabase
+  openTestJournalHostDatabase,
+  readTestJournalRows
 } from './journal-host-database-test-support'
-import { readJournalEpochRows } from './journal-row-table'
 
 const IDENTITY: AgentSessionJournalIdentity = {
   sessionId: 'session-1',
@@ -131,7 +131,7 @@ describe('quit', () => {
     closeTestJournalHostDatabases()
     const reopened = openTestJournalHostDatabase(root)
     expect(
-      readJournalEpochRows(reopened.db, IDENTITY.sessionId, journal.epoch).map((row) => row.seq)
+      readTestJournalRows(reopened.db, IDENTITY.sessionId, journal.epoch).map((row) => row.seq)
     ).toEqual([1, 2])
   })
 })
