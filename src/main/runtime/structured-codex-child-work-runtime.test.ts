@@ -89,7 +89,8 @@ describe('structured Codex child work through the production runtime', () => {
     attachParams.envelope.clientOperationId = `${Date.now()}-${'1'.padStart(32, '0')}`
     const attached = await host.attach({ callerKey: 'runtime-test' }, attachParams)
     expect(attached).toMatchObject({ ok: true })
-    await host.hold(SESSION, 'desktop-chat:1')
+    // Creating the session starts its child; nothing else has to keep it running.
+    expect(connections).toHaveLength(1)
     const notify = (method: string, params: Record<string, unknown>) =>
       connections[0]?.onNotification?.(method, params)
     notify('turn/started', { threadId: THREAD, turn: { id: 'turn-1' } })
