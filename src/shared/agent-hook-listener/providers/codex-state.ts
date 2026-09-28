@@ -154,7 +154,8 @@ export function codexMainAgentStatusForPayload(
 export function seedCodexStateFromSnapshot(
   state: HookListenerState,
   paneKey: string,
-  payload: Pick<ParsedAgentStatusPayload, 'model' | 'state' | 'subagents' | 'mainAgent'>
+  payload: Pick<ParsedAgentStatusPayload, 'model' | 'state' | 'subagents' | 'mainAgent'>,
+  options?: { inferMainAgent?: boolean }
 ): void {
   const snapshots = payload.subagents ?? []
   if (snapshots.length > 0 && !state.codexSubagentRosterByPaneKey.has(paneKey)) {
@@ -171,6 +172,9 @@ export function seedCodexStateFromSnapshot(
         stateStartedAt: mainAgent.stateStartedAt,
         model: payload.model
       })
+      return
+    }
+    if (options?.inferMainAgent === false) {
       return
     }
     setCodexMainAgentTurnState(state, paneKey, {
@@ -223,10 +227,12 @@ export function reconcileRemoteCodexState(
   payload: ParsedAgentStatusPayload,
   previous: ParsedAgentStatusPayload | undefined
 ): ParsedAgentStatusPayload {
+  // Why: a child's event says nothing about the main agent, so a row it drove cannot seed one.
+  const seedOptions = { inferMainAgent: agentId === undefined }
   if (previous?.agentType === 'codex') {
-    seedCodexStateFromSnapshot(state, paneKey, previous)
+    seedCodexStateFromSnapshot(state, paneKey, previous, seedOptions)
   } else {
-    seedCodexStateFromSnapshot(state, paneKey, payload)
+    seedCodexStateFromSnapshot(state, paneKey, payload, seedOptions)
   }
 
   // Why: older relays send child identity without roster snapshots; keep their already-normalized aggregate authoritative.
@@ -273,10 +279,11 @@ export function reconcileRemoteCodexState(
   }
 
   const lead = state.codexLeadStateByPaneKey.get(paneKey)
-  if (!lead) {
+  if (!lead && !agentId) {
     return payload
   }
-  const resolution = resolveCodexPaneStatus(state, paneKey, lead)
+  // Why: with no record of the main agent, a child's event leaves the children alone to drive the row.
+  const resolution = resolveCodexPaneStatus(state, paneKey, lead ?? { state: 'done' })
   // Child lifecycle hooks commonly omit the root prompt. Preserve the last known
   // turn label while merging their roster/state so relay restarts do not blank it.
   const prompt =
@@ -290,7 +297,7 @@ export function reconcileRemoteCodexState(
     workingMode: resolution.workingMode,
     interrupted:
       resolution.stateName === 'done' && mainAgentTurnInterrupted(lead) ? true : undefined,
-    model: lead.model ?? payload.model,
+    model: lead?.model ?? payload.model,
     subagents: codexRosterToSnapshots(roster),
     // Why: after a relay restart a child event carries no `mainAgent`; main's copy fills it.
     mainAgent: codexMainAgentStatusForPayload(lead)

@@ -76,8 +76,9 @@ export function buildCodexChildDrivenStatusPayload(
   paneKey: string,
   hookPayload: Record<string, unknown>
 ): ParsedAgentStatusPayload | null {
-  // Why: a child event before any root event means the root is mid-turn; nothing else spawns.
-  const lead = state.codexLeadStateByPaneKey.get(paneKey) ?? { state: 'working' as const }
+  // Why: with no record of the main agent (its records were cleared, or it predates this host),
+  // the children alone drive the row; nothing would end an assumed-working main agent.
+  const lead = state.codexLeadStateByPaneKey.get(paneKey) ?? { state: 'done' as const }
   return buildCodexStatusPayload(state, eventName, '', paneKey, hookPayload, {
     ...resolveCodexPaneStatus(state, paneKey, lead),
     updateLead: false

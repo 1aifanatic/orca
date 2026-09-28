@@ -244,10 +244,13 @@ or none), because Codex's own app-server reports every aborted turn as
 interrupted. This settles the turn when its hook was lost or never registered
 (Codex before 0.150). The same reads cover the children: every child in the
 roster, whether a hook or the parent rollout announced it, is also read from its
-own rollout (named by its thread id), and it leaves the row on its own
-`SubagentStop`, once that rollout records its turn's end (Codex aborts a child
-without a `SubagentStop`), or when the session ends. The main agent's `Stop` or
-`Interrupt` never drops a child.
+own rollout (the file named by its thread id in its start date's folder), and it
+leaves the row on its own `SubagentStop`, once that rollout records its turn's
+end (Codex aborts a child without a `SubagentStop`), once that rollout stays
+unreadable for a minute, or when a new session starts in the pane. The main
+agent's `Stop` or `Interrupt` never drops a child. A child's event on a pane
+with no record of the main agent (its records were cleared, or a relay
+restarted) invents none: the children alone drive the row.
 The Codex TUI leaving the pane ends its row unless the row's work runs in
 Codex's shared background server (`cliExitEndsAgentRow`). That server keeps
 running a TUI's turn and children after the TUI exits ("Run in background", or
