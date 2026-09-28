@@ -211,10 +211,14 @@ LogLevel VERBOSE
   "[127.0.0.1]:$port $($keyFields[0]) $($keyFields[1])" | Set-Content -LiteralPath $known -Encoding ascii
   $nonce=[Guid]::NewGuid().ToString('N')
   $sshArgs=@('-v','-F','NUL','-T','-p',[string]$port,'-i',$clientKey,'-o','BatchMode=yes','-o','IdentitiesOnly=yes','-o','StrictHostKeyChecking=yes','-o',"UserKnownHostsFile=$known",'-o','ConnectTimeout=5',"$name@127.0.0.1")
-  $deadline=[DateTime]::UtcNow.AddSeconds(30);$probe=$null
+  $deadline=[DateTime]::UtcNow.AddSeconds(75);$probe=$null
+  $report.sshFirstLoginBudgetSeconds=60
   Write-Stage 'ssh-authentication-start'
   do {
-    $probe=Invoke-Bounded $ssh ($sshArgs+@("echo $nonce && whoami && echo %COMSPEC%")) 8 -AllowFailure
+    $remainingSeconds=[Math]::Max(1,[Math]::Min(60,[Math]::Floor(($deadline-[DateTime]::UtcNow).TotalSeconds)))
+    $attemptClock=[Diagnostics.Stopwatch]::StartNew()
+    try {$probe=Invoke-Bounded $ssh ($sshArgs+@("echo $nonce && whoami && echo %COMSPEC%")) $remainingSeconds -AllowFailure}
+    finally {$report.sshAttemptElapsedMs=$attemptClock.ElapsedMilliseconds;Write-Stage 'ssh-attempt-finished'}
     if($probe.code -eq 0){break};Start-Sleep -Milliseconds 250
   } while([DateTime]::UtcNow -lt $deadline)
   if($probe.code -ne 0 -or $probe.stdout -notmatch [regex]::Escape($nonce) -or $probe.stdout -notmatch "\\$name(?:\r?\n)" -or $probe.stdout -notmatch '(?i)cmd.exe'){throw 'Real SSH authentication/default-shell proof failed'}
@@ -265,9 +269,16 @@ LogLevel VERBOSE
     if($remaining.Count){throw 'Private SSH child processes remain; preserve files and discard ephemeral runner'}
     Write-Stage 'cleanup-user-profile-start' 
     if($sid){
-      $profiles=@(Get-CimInstance Win32_UserProfile | Where-Object SID -eq $sid)
+      $profileWait=[Diagnostics.Stopwatch]::StartNew()
+      do {
+        $profiles=@(Get-CimInstance Win32_UserProfile | Where-Object SID -eq $sid)
+        if(-not @($profiles | Where-Object Loaded).Count){break}
+        Start-Sleep -Milliseconds 500
+      } while($profileWait.Elapsed.TotalSeconds -lt 30)
+      $report.profileUnloadWaitMs=$profileWait.ElapsedMilliseconds
       $report.privateProfile=@($profiles | ForEach-Object {@{loaded=$_.Loaded;status=$_.Status}})
       Write-Stage 'cleanup-user-profile-observed'
+      if(@($profiles | Where-Object Loaded).Count){throw 'Private profile remains loaded after bounded wait; discard ephemeral runner'}
       $profiles | Remove-CimInstance
     }
     Write-Stage 'cleanup-user-profile-complete'
