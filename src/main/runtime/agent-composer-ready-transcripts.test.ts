@@ -28,13 +28,19 @@ function readCapture(name: string): { data: string; size: { cols: number; rows: 
 type WaitOutcome = { satisfied: boolean; blockedReason: unknown } | 'timeout'
 
 /** Paints `bytes` into a fresh pane, then runs both waits over the same fake clock. */
-async function replay(agent: TuiAgent, name: string, title: string, bytes?: string) {
+async function replay(
+  agent: TuiAgent,
+  name: string,
+  title: string,
+  bytes?: string,
+  grid?: { cols: number; rows: number }
+) {
   const { data, size } = readCapture(name)
   const { runtime, handle } = await createTranscriptPane({
     paneTitle: title,
     foregroundProcess: agent,
     launchAgent: agent,
-    size,
+    size: grid ?? size,
     data: ''
   })
   // Why after creation: the pane's own set-up awaits real timers.
@@ -140,35 +146,54 @@ describe('launch readiness on undeclared agents', () => {
   })
 })
 
-describe('launch readiness on declared composer-marker agents (codex, opencode)', () => {
+describe('launch readiness on a declared composer-marker agent (opencode)', () => {
   // The marker, read only while the agent owns the PTY, is what the watch reports ready on.
-  it.each([
-    ['codex', 'codex-composer-ready', '\u203a'],
-    ['opencode', 'opencode-composer-ready', '\x1b[?25h']
-  ] as const)(
-    'reads the captured %s composer marker, and nothing before it',
-    (agent, name, marker) => {
-      const { data } = readCapture(name)
-      const markerAt = data.indexOf(marker, data.indexOf('\x1b[?2004h'))
-      let emit: (chunk: string) => void = () => {}
-      const composer = watchAgentComposerReady(agent, {
-        subscribeToData: (listener) => {
-          emit = listener
-          return () => {}
-        },
-        readRecentOutput: () => undefined
-      })
-      emit(`${COMMAND_START}${data.slice(0, markerAt)}`)
-      expect(composer?.signal()).toBe('pending')
-      emit(data.slice(markerAt))
-      expect(composer?.signal()).toBe('ready')
-    }
-  )
+  it('reads the captured opencode composer marker, and nothing before it', () => {
+    const { data } = readCapture('opencode-composer-ready')
+    const markerAt = data.indexOf('\x1b[?25h', data.indexOf('\x1b[?2004h'))
+    let emit: (chunk: string) => void = () => {}
+    const composer = watchAgentComposerReady('opencode', {
+      subscribeToData: (listener) => {
+        emit = listener
+        return () => {}
+      },
+      readRecentOutput: () => undefined
+    })
+    emit(`${COMMAND_START}${data.slice(0, markerAt)}`)
+    expect(composer?.signal()).toBe('pending')
+    emit(data.slice(markerAt))
+    expect(composer?.signal()).toBe('ready')
+  })
+})
 
-  it('settles a launch wait on the captured codex composer', async () => {
-    // Codex's `OpenAI Codex` header is also a known ready screen, so a plain wait agrees here.
-    const { launch } = await replay('codex', 'codex-composer-ready', 'Terminal')
+describe("launch readiness on Codex, which the live screen's header rule owns", () => {
+  // Codex declares nothing: its header, read from the tail or the live screen, is tier-1 evidence
+  // that already settles every capture. Its `›` composer paints while the header still says
+  // `loading`, so a second Codex rule could only disagree with the header rule.
+  const CODEX_CAPTURES = [
+    'codex-0157-plain-ready',
+    'codex-0157-effort-override-embedded-warning',
+    'codex-0157-config-override-embedded-warning',
+    'codex-0157-no-daemon-effort-override'
+  ]
+
+  it.each(CODEX_CAPTURES)('settles a launch wait on %s exactly as a plain wait', async (name) => {
+    const { launch, plain } = await replay('codex', name, 'Terminal')
     expect(launch).toEqual({ satisfied: true, blockedReason: null })
+    expect(launch).toEqual(plain)
+  })
+
+  it('keeps the plain answer where a mismatched grid garbles the header', async () => {
+    // The composer glyph is on screen, but the header rule cannot confirm readiness at 80x24.
+    const { launch, plain } = await replay(
+      'codex',
+      'codex-0157-effort-override-embedded-warning',
+      'Terminal',
+      undefined,
+      { cols: 80, rows: 24 }
+    )
+    expect(plain).toBe('timeout')
+    expect(launch).toBe('timeout')
   })
 })
 

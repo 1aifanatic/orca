@@ -38,7 +38,6 @@ describe('launchReadiness declarations', () => {
       .filter(([, config]) => config.launchReadiness)
       .map(([agent, config]) => [agent, config.launchReadiness])
     expect(declared).toEqual([
-      ['codex', 'composer-marker'],
       ['opencode', 'composer-marker'],
       ['goose', 'composer-quiet']
     ])
@@ -58,7 +57,7 @@ describe('launchReadiness declarations', () => {
 })
 
 describe('watchAgentComposerReady', () => {
-  it.each(['aider', 'claude', 'claude-agent-teams', 'grok', 'opencode2'] as const)(
+  it.each(['aider', 'claude', 'claude-agent-teams', 'codex', 'grok', 'opencode2'] as const)(
     'does not watch %s, which declares no launch readiness',
     (agent) => {
       const composer = watchAgentComposerReady(agent, {

@@ -1,9 +1,0 @@
-{
-  "capturedAt": "2026-09-25T21:42:02.515Z",
-  "platform": "darwin",
-  "command": ["codex", "--no-daemon", "--dangerously-bypass-approvals-and-sandbox"],
-  "cols": 120,
-  "rows": 40,
-  "note": "codex-cli 0.157.0 standalone --no-daemon, isolated CODEX_HOME with a dummy API key and the folder trusted there, unreachable OPENAI_BASE_URL; no input sent",
-  "exitCode": 0
-}

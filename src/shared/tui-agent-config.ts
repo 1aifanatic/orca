@@ -116,7 +116,6 @@ const TUI_AGENT_CONFIG_SOURCE: Record<TuiAgent, TuiAgentConfigSource> = {
     windowsInputRecordPasteNewline: 'alt-enter',
     preflightTrust: 'codex',
     draftPasteReadySignal: 'codex-composer-prompt',
-    launchReadiness: 'composer-marker',
     draftPasteReadyTimeoutMs: 20_000,
     submitRetryDelayMs: 1200
   },
