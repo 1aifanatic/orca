@@ -126,7 +126,7 @@ describe('activity thread grouping', () => {
     expect(groups).toHaveLength(2)
     expect(groups[0].key).toBe('interrupted')
     expect(groups[0].label).toBe('Interrupted')
-    // Interrupted rows keep the done glyph (#2569); the header mirrors the row.
+    // A Stop keeps the done glyph (#2569), and so does a header whose every row is one.
     expect(groups[0].state).toBe('done')
     expect(groups[1].key).toBe('done')
     expect(groups[1].label).toBe('Done')

@@ -43,7 +43,7 @@ export function getActivityThreadGroup(
     return { key: 'all', label: '' }
   }
   if (groupBy === 'status') {
-    // Header dot mirrors its first (newest) row's; only Interrupted mixes a Stop's and a crash's.
+    // One thread's header; a built group's is folded over all its rows (statusGroupHeaderState).
     return {
       key: activityThreadStatusId(thread),
       label: threadAgentStateLabel(thread),
@@ -89,7 +89,15 @@ export function buildActivityThreadGroups(
   if (groupBy !== 'status') {
     return groups
   }
-  return groups.sort((a, b) => activityStatusRank(a.threads[0]) - activityStatusRank(b.threads[0]))
+  return groups
+    .map((group) => ({ ...group, state: statusGroupHeaderState(group.threads) }))
+    .sort((a, b) => activityStatusRank(a.threads[0]) - activityStatusRank(b.threads[0]))
+}
+
+// Interrupted mixes a Stop's done check with a crash's dot: the check heads it only when every row
+// draws it, so a crash never sits under a finished-looking header.
+function statusGroupHeaderState(threads: AgentPaneThread[]): AgentDotState {
+  return threads.map(threadAgentState).find((state) => state !== 'done') ?? 'done'
 }
 
 function buildThreadSearchText(thread: AgentPaneThread): string {
