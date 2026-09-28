@@ -3817,7 +3817,8 @@
             "floatingTerminalNewActivity": "{{label}}, new activity",
             "codexSignInSuccess": "Signed in to Codex",
             "codexSignInError": "Codex sign-in failed. Please try again.",
-            "cursorUsageMenu": "Cursor Usage"
+            "cursorUsageMenu": "Cursor Usage",
+            "hiddenUsageProviders": "Also: {{value0}}"
           },
           "StatusBarUsageEmptyCta": {
             "828c764a79": "Connect an account",
