@@ -207,8 +207,8 @@ describe('workspace cleanup removal of workspaces with a running agent', () => {
   it('drops an open stop step when the dialog is reopened mid-batch', async () => {
     useAppStore.setState({
       scanWorkspaceCleanup: vi.fn(() => new Promise<never>(() => {})),
-      hydrateWorkspaceCleanupFromCache: vi.fn(async () => {}),
-      hydrateWorkspaceSpaceFromCache: vi.fn(async () => {}),
+      hydrateWorkspaceCleanupFromCache: vi.fn(async () => false),
+      hydrateWorkspaceSpaceFromCache: vi.fn(async () => false),
       // The batch never settles, so it stays in flight across close and reopen.
       removeWorkspaceCleanupCandidates: vi.fn(() => new Promise<never>(() => {}))
     })
