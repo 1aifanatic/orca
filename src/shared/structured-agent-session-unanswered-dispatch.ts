@@ -1,6 +1,6 @@
 import type { AgentJournalSubmission } from './agent-session-journal-types'
 import { isQueuedAgentJournalSubmission } from './agent-session-queued-submission'
-import { isRecoveredStructuredAgentSessionDoubt } from './structured-agent-session-dispatch-rejection'
+import { structuredAgentSessionSubmissionSettlement } from './structured-agent-session-submission-settlement'
 
 /** One send the provider has neither opened a turn for nor refused; the rule is explained on
  *  `hasUnansweredStructuredAgentSessionDispatch`, which asks it of every send. */
@@ -14,9 +14,7 @@ export function isUnansweredStructuredAgentSessionDispatch(
   }
   return (
     (currentFence == null || submission.fence >= currentFence) &&
-    (submission.dispatchState === 'pending' ||
-      (submission.dispatchState === 'unknown' &&
-        !isRecoveredStructuredAgentSessionDoubt(submission)))
+    structuredAgentSessionSubmissionSettlement(submission) === 'open'
   )
 }
 

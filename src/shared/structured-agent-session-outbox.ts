@@ -11,10 +11,8 @@ import {
 } from './agent-session-refusal-retry'
 import type { AgentSessionMutationEnvelope } from './agent-session-wire'
 import { structuredAgentSessionPayloadFingerprint } from './structured-agent-session-mutation'
-import {
-  classifyDispatchRejection,
-  structuredAgentSessionSubmissionSettledAsSent
-} from './structured-agent-session-dispatch-rejection'
+import { classifyDispatchRejection } from './structured-agent-session-dispatch-rejection'
+import { structuredAgentSessionSubmissionSettlement } from './structured-agent-session-submission-settlement'
 
 /** `unconfirmed`: this client cannot tell whether the host recorded the send (a lost reply, a
  *  remount mid-send); a same-id resend asks it, and nothing may overtake it meanwhile.
@@ -197,36 +195,35 @@ export function reconcileStructuredAgentSessionOutbox(
   const settled = new Map(submissions.map((entry) => [entry.clientMessageId, entry]))
   return entries.flatMap((entry) => {
     const submission = settled.get(entry.clientMessageId)
-    // Settled as sent: the journal draws it, and the entry has nothing left to hold or retry.
-    if (submission && structuredAgentSessionSubmissionSettledAsSent(submission)) {
-      return []
+    if (!submission) {
+      return [entry]
     }
-    if (
-      submission?.dispatchState === 'rejected' &&
-      classifyDispatchRejection(submission).category === 'withdrawn'
-    ) {
-      return []
-    }
-    // The host holds it and may still reject it: kept, not a barrier, for a Retry that answer needs.
-    if (submission?.dispatchState === 'pending' || submission?.dispatchState === 'unknown') {
-      return entry.state === 'dispatching' ? [entry] : [{ ...entry, state: 'dispatching' as const }]
-    }
-    // Accepted, then not delivered — the agent never started, or its start was refused. The text
-    // and why stay here for the user's Retry, and nothing queues behind it. `unconfirmed` is how a
-    // remount reads an entry it left dispatching; the journal has since answered it.
-    if (
-      submission?.dispatchState === 'rejected' &&
-      (entry.state === 'dispatching' || entry.state === 'unconfirmed')
-    ) {
-      return [
-        {
-          ...entry,
-          state: 'rejected' as const,
-          lastFailure: structuredAgentSessionRejectedFailure(submission)
+    switch (structuredAgentSessionSubmissionSettlement(submission)) {
+      // The journal draws it, and the entry has nothing left to hold or retry.
+      case 'sent':
+        return []
+      // The host holds it and may still reject it: kept, not a barrier, for a Retry that answer needs.
+      case 'open':
+        return entry.state === 'dispatching'
+          ? [entry]
+          : [{ ...entry, state: 'dispatching' as const }]
+      case 'refused':
+        if (classifyDispatchRejection(submission).category === 'withdrawn') {
+          return []
         }
-      ]
+        // Accepted, then not delivered — the agent never started, or its start was refused. The
+        // text and why stay here for the user's Retry, and nothing queues behind it. `unconfirmed`
+        // is how a remount reads an entry it left dispatching; the journal has since answered it.
+        return entry.state === 'dispatching' || entry.state === 'unconfirmed'
+          ? [
+              {
+                ...entry,
+                state: 'rejected' as const,
+                lastFailure: structuredAgentSessionRejectedFailure(submission)
+              }
+            ]
+          : [entry]
     }
-    return [entry]
   })
 }
 

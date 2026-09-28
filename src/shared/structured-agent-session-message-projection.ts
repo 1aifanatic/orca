@@ -7,7 +7,7 @@ import {
   type StructuredAgentSessionOutboxEntry
 } from './structured-agent-session-outbox'
 import { projectStructuredItemsToNativeChat } from './structured-agent-session-projection'
-import { structuredAgentSessionSubmissionSettledAsSent } from './structured-agent-session-dispatch-rejection'
+import { structuredAgentSessionSubmissionSettlement } from './structured-agent-session-submission-settlement'
 
 export function projectStructuredAgentSessionMessages(
   items: readonly AgentJournalRenderItem[],
@@ -20,11 +20,7 @@ export function projectStructuredAgentSessionMessages(
   // An older host's inferred "not delivered" is drawn as the sent message it may well have been.
   const rejected = new Set(
     submissions
-      .filter(
-        (submission) =>
-          submission.dispatchState === 'rejected' &&
-          !structuredAgentSessionSubmissionSettledAsSent(submission)
-      )
+      .filter((submission) => structuredAgentSessionSubmissionSettlement(submission) === 'refused')
       .map((submission) => agentJournalSubmissionKey(submission.clientMessageId))
   )
   const visibleItems: AgentJournalRenderItem[] = []

@@ -11,6 +11,7 @@ import {
   journalAnswersInFlightSend,
   type StructuredAgentSessionSendDisposition
 } from '../../../../shared/structured-agent-session-send-disposition'
+import { structuredAgentSessionSubmissionSettlement } from '../../../../shared/structured-agent-session-submission-settlement'
 import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
 import { readOutbox, writeOutbox } from './structured-agent-session-outbox-storage'
 import {
@@ -95,7 +96,9 @@ export function useStructuredAgentSessionOutbox(args: {
     const current = outboxRef.current
     const hostOwns = new Set(
       submissions
-        .filter((submission) => submission.dispatchState !== 'rejected')
+        .filter(
+          (submission) => structuredAgentSessionSubmissionSettlement(submission) !== 'refused'
+        )
         .map((submission) => submission.clientMessageId)
     )
     const next = reconcileStructuredAgentSessionOutbox(current, submissions)
@@ -293,7 +296,11 @@ export function useStructuredAgentSessionOutbox(args: {
     // already rotated it.
     const recordedRejection =
       current?.state === 'rejected' && current.lastFailure?.kind === 'rejected'
-    if (current && (recordedRejection || submission?.dispatchState === 'rejected')) {
+    if (
+      current &&
+      (recordedRejection ||
+        (submission && structuredAgentSessionSubmissionSettlement(submission) === 'refused'))
+    ) {
       const rotated = outboxRef.current.map((entry) =>
         entry.clientMessageId === clientMessageId
           ? {

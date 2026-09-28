@@ -166,38 +166,6 @@ export function classifyDispatchRejection(
   return { category: KIND_CATEGORY[kind], verdict: KIND_VERDICT[kind], kind }
 }
 
-/** An `unknown` a crash or a dead agent settled for good, rather than one a live child may still
- *  answer. Hosts before the `recovered` flag reached the wire publish only the restart reason. */
-export function isRecoveredStructuredAgentSessionDoubt(
-  submission: Pick<AgentJournalSubmission, 'dispatchState' | 'reason' | 'recovered'>
-): boolean {
-  return (
-    submission.dispatchState === 'unknown' &&
-    (submission.recovered === true || submission.reason === 'host_restarted_before_acknowledgement')
-  )
-}
-
-/**
- * A send settled as sent, so a client has nothing left to hold or retry: the provider took it, or
- * a crash or a dead agent left it in doubt for good and the next message is how the chat
- * continues. A live `unknown` is not settled — it can still turn `rejected` — so a client keeps it
- * like a `pending`. An older host's `notDelivered` was only ever that same doubt, inferred from
- * the transcript, so it is drawn as sent rather than dropped from history. Such a host wrote no
- * session row, so that message carries no notice; sending again is how the chat continues.
- */
-export function structuredAgentSessionSubmissionSettledAsSent(
-  submission: Pick<AgentJournalSubmission, 'dispatchState' | 'reason' | 'recovered'> & {
-    rejection?: unknown
-  }
-): boolean {
-  return (
-    submission.dispatchState === 'accepted' ||
-    isRecoveredStructuredAgentSessionDoubt(submission) ||
-    (submission.dispatchState === 'rejected' &&
-      classifyDispatchRejection(submission).kind === 'notDelivered')
-  )
-}
-
 /** A submission that says Orca never handed it over, in any dispatch state: journals written
  *  before this state moved hold it as `unknown` carrying the marker. */
 export function isWriteFailureSubmission(

@@ -21,10 +21,8 @@ import {
   agentSessionFailureSentence,
   type AgentSessionFailureWordsContext
 } from './agent-session-failure-words'
-import {
-  classifyDispatchRejection,
-  structuredAgentSessionSubmissionSettledAsSent
-} from './structured-agent-session-dispatch-rejection'
+import { classifyDispatchRejection } from './structured-agent-session-dispatch-rejection'
+import { structuredAgentSessionSubmissionSettlement } from './structured-agent-session-submission-settlement'
 import {
   classifyStructuredAgentSessionSendFailure,
   requeueStructuredAgentSessionSendRefusal,
@@ -207,48 +205,33 @@ export function disposeStructuredAgentSessionSendResult(
     }
   }
   const submission = result.value.submission
-  // Sent, or left in doubt for good by a crash or a dead agent: the journal draws the message, and
-  // sending a new one is how the chat continues.
-  if (structuredAgentSessionSubmissionSettledAsSent(submission)) {
-    return {
-      entries: dropEntry(input),
-      error: null,
-      blockedClientMessageId: input.blockedClientMessageId
-    }
-  }
-  // A Stop's withdrawal failed nothing, first reply or replay: the entry leaves as the reconcile
-  // drops it, with no notice.
-  if (
-    submission.dispatchState === 'rejected' &&
-    classifyDispatchRejection(submission).category === 'withdrawn'
-  ) {
-    return {
-      entries: dropEntry(input),
-      error: null,
-      blockedClientMessageId: input.blockedClientMessageId
-    }
-  }
-  if (submission.dispatchState === 'rejected') {
-    return {
-      entries: replaceEntryState(
-        input,
-        'rejected',
-        structuredAgentSessionRejectedFailure(submission)
-      ),
-      error: null,
-      blockedClientMessageId: input.blockedClientMessageId
-    }
-  }
-  // `pending` is the host saying the message was written and is awaiting the
-  // provider's acknowledgement, which cannot arrive until the turn ahead of it
-  // ends. That is not doubt, and keeping order is no longer the reason to hold
-  // the entry -- the host fixed the order when it wrote the row. It stays
-  // because a `pending`, or a live `unknown`, can still settle `rejected`, and
-  // only the entry carries the retry state that answer needs.
-  return {
-    entries: replaceEntryState(input, 'dispatching'),
+  const settled = (
+    entries: StructuredAgentSessionOutboxEntry[]
+  ): StructuredAgentSessionSendDisposition => ({
+    entries,
     error: null,
     blockedClientMessageId: input.blockedClientMessageId
+  })
+  switch (structuredAgentSessionSubmissionSettlement(submission)) {
+    // Sent, or left in doubt for good by a crash or a dead agent: the journal draws the message,
+    // and sending a new one is how the chat continues.
+    case 'sent':
+      return settled(dropEntry(input))
+    // A Stop's withdrawal failed nothing, first reply or replay: the entry leaves as the
+    // reconcile drops it, with no notice. Any other refusal keeps the text for the user's Retry.
+    case 'refused':
+      return settled(
+        classifyDispatchRejection(submission).category === 'withdrawn'
+          ? dropEntry(input)
+          : replaceEntryState(input, 'rejected', structuredAgentSessionRejectedFailure(submission))
+      )
+    // `pending` is the host saying the message was written and is awaiting the provider's
+    // acknowledgement, which cannot arrive until the turn ahead of it ends. That is not doubt, and
+    // keeping order is no longer the reason to hold the entry -- the host fixed the order when it
+    // wrote the row. It stays because a `pending`, or a live `unknown`, can still settle
+    // `rejected`, and only the entry carries the retry state that answer needs.
+    case 'open':
+      return settled(replaceEntryState(input, 'dispatching'))
   }
 }
 
