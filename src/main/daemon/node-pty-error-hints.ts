@@ -61,10 +61,14 @@ export function getNodePtyRecoveryHint(diagnostic: NodePtyDiagnostic): string | 
   return null
 }
 
+function hasPtyAllocationHint(message: string): boolean {
+  return message.startsWith(PTY_ALLOCATION_HINT) || message.startsWith(LEGACY_PTY_ALLOCATION_HINT)
+}
+
 export function addNodePtyRecoveryHint(message: string): string {
   const diagnostic = parseNodePtyDiagnostic(message)
   if (!diagnostic) {
-    if (GENERIC_PTY_ALLOCATION_RE.test(message) && !message.startsWith(PTY_ALLOCATION_HINT)) {
+    if (GENERIC_PTY_ALLOCATION_RE.test(message) && !hasPtyAllocationHint(message)) {
       return `${PTY_ALLOCATION_HINT}\n${message}`
     }
     return message
@@ -74,7 +78,7 @@ export function addNodePtyRecoveryHint(message: string): string {
   if (
     !hint ||
     message.startsWith(hint) ||
-    (hint === PTY_ALLOCATION_HINT && message.startsWith(LEGACY_PTY_ALLOCATION_HINT)) ||
+    (hint === PTY_ALLOCATION_HINT && hasPtyAllocationHint(message)) ||
     (hint === TERMINAL_PROCESS_LIMIT_HINT && message.startsWith(LEGACY_TERMINAL_PROCESS_LIMIT_HINT))
   ) {
     return message

@@ -85,6 +85,12 @@ describe('node-pty diagnostic error hints', () => {
     )
   })
 
+  it('does not duplicate a legacy hint on unstructured openpty failures', () => {
+    const hinted = `${LEGACY_PTY_ALLOCATION_HINT} Failed to spawn shell "/bin/bash": openpty(3) failed.`
+
+    expect(addNodePtyRecoveryHint(hinted)).toBe(hinted)
+  })
+
   it('leaves unrelated and unhinted node-pty diagnostics unchanged', () => {
     expect(addNodePtyRecoveryHint('plain failure')).toBe('plain failure')
     expect(
