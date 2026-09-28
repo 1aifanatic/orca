@@ -108,6 +108,12 @@ describe('compareShellFingerprints', () => {
     )
   })
 
+  it('agrees the module count with its verb', () => {
+    expect(describePart({ kind: 'shellJs', variant: 'ota', platform: 'ios', modules: 1 })).toBe(
+      'shell JS (ota, ios): 1 module differs'
+    )
+  })
+
   it('caps named native inputs', () => {
     const inputs = ['a', 'b', 'c', 'd', 'e', 'f', 'g']
     expect(describePart({ kind: 'native', platform: 'ios', inputs })).toBe(

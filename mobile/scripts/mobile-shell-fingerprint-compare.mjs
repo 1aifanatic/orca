@@ -99,7 +99,7 @@ export function describePart(part) {
   const what =
     part.modules === 0
       ? 'bundle only, no source module differs (an inlined constant, a transform or a bundler change)'
-      : `${part.modules} module${part.modules === 1 ? '' : 's'} differ`
+      : `${part.modules} ${part.modules === 1 ? 'module differs' : 'modules differ'}`
   return `shell JS (${part.variant}, ${part.platform}): ${what}`
 }
 
