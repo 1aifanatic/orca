@@ -256,7 +256,8 @@ export function useStructuredAgentSessionOutbox(args: {
     const next = withdrawUnsentStructuredAgentSessionOutboxEntries(
       outboxRef.current,
       submissions,
-      blockedIdRef.current
+      blockedIdRef.current,
+      inFlightIdRef.current
     )
     if (next.length !== outboxRef.current.length) {
       restoreWithdrawn.byStop(outboxRef.current.filter((entry) => !next.includes(entry)))

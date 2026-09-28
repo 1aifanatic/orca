@@ -278,8 +278,36 @@ describe('a message a Stop took out of the outbox before the host held it', () =
 
     act(() => result.current.withdrawUnsent())
 
-    expect(result.current.outbox).toEqual([])
-    expect(readNativeChatDraftCache(PANE)).toBe('first\n\nsecond')
+    expect(result.current.outbox.map((entry) => entry.body.blocks)).toEqual([
+      [{ type: 'text', text: 'first' }]
+    ])
+    expect(readNativeChatDraftCache(PANE)).toBe('second')
+  })
+
+  it('gives back a send already on its way only when the host withdraws it', async () => {
+    answerSendsPending()
+    const reply = Promise.withResolvers<void>()
+    const answer = mocks.call.getMockImplementation()!
+    mocks.call.mockImplementationOnce(async (...args) => {
+      await reply.promise
+      return answer(...args)
+    })
+    const { result, rerender } = renderOutbox()
+    act(() => expect(result.current.send('hello')).toBe(true))
+    await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(1))
+    const id = result.current.outbox[0]!.clientMessageId
+
+    act(() => result.current.withdrawUnsent())
+    // It lands ahead of the Stop and reads as sent, not as back in the composer.
+    await act(async () => reply.resolve())
+    rerender({ submissions: [submission(id)] })
+    expect(readNativeChatDraftCache(PANE)).toBe('')
+    expect(result.current.outbox.map((entry) => entry.clientMessageId)).toEqual([id])
+
+    rerender({ submissions: [withdrawn(id)] })
+
+    await waitFor(() => expect(result.current.outbox).toEqual([]))
+    expect(readNativeChatDraftCache(PANE)).toBe('hello')
   })
 
   it('leaves a message waiting on Retry where it is, and gives back only what it withdrew', async () => {
@@ -298,11 +326,17 @@ describe('a message a Stop took out of the outbox before the host held it', () =
     mocks.call.mockImplementation(() => new Promise<never>(() => {}))
     const { result } = renderOutbox()
     act(() => expect(result.current.send('second')).toBe(true))
+    await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(1))
+    act(() => expect(result.current.send('third')).toBe(true))
+    const onItsWay = result.current.outbox[1]!.clientMessageId
 
     act(() => result.current.withdrawUnsent())
 
-    expect(result.current.outbox.map((entry) => entry.clientMessageId)).toEqual(['refused-1'])
-    expect(readNativeChatDraftCache(PANE)).toBe('second')
+    expect(result.current.outbox.map((entry) => entry.clientMessageId)).toEqual([
+      'refused-1',
+      onItsWay
+    ])
+    expect(readNativeChatDraftCache(PANE)).toBe('third')
   })
 })
 

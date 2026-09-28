@@ -26,16 +26,20 @@ function unsentStructuredAgentSessionOutboxEntry(
 
 /**
  * What a Stop leaves in the outbox: nothing the journal does not already hold may go out after it,
- * so every such entry goes, as a message the host withdraws leaves the chat. A send still on its way
- * reaches the host ahead of the Stop, which withdraws it there. One waiting on Retry keeps it.
+ * so every such entry goes, as a message the host withdraws leaves the chat. The send on its way
+ * stays: it reaches the host ahead of the Stop, and it comes back from the host's answer, since
+ * the agent may already have it. One waiting on Retry keeps it.
  */
 export function withdrawUnsentStructuredAgentSessionOutboxEntries(
   entries: readonly StructuredAgentSessionOutboxEntry[],
   submissions: readonly AgentJournalSubmission[],
-  blockedClientMessageId: string | null
+  blockedClientMessageId: string | null,
+  inFlightClientMessageId: string | null
 ): StructuredAgentSessionOutboxEntry[] {
   const unsent = unsentStructuredAgentSessionOutboxEntry(submissions, blockedClientMessageId)
-  return entries.filter((entry) => !unsent(entry))
+  return entries.filter(
+    (entry) => entry.clientMessageId === inFlightClientMessageId || !unsent(entry)
+  )
 }
 
 /** Whether a Stop has something here to withdraw: a message that would still go out on its own. */
