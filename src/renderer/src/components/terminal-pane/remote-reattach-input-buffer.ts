@@ -6,9 +6,22 @@ import type { PtyTransport } from './pty-transport-types'
 export function withRemoteReattachInputBuffer(transport: PtyTransport): PtyTransport {
   const sendAccepted = transport.sendInputAccepted?.bind(transport)
   let pending: ReturnType<typeof createPtyPreconnectInputBuffer> | null = null
+  let pendingExpectedId: string | null = null
   const clear = (): void => {
     pending?.clear()
     pending = null
+    pendingExpectedId = null
+  }
+  const flush = (
+    buffer: ReturnType<typeof createPtyPreconnectInputBuffer>,
+    expectedId: string
+  ): Promise<void> => {
+    return buffer.flush({
+      isCurrent: () => pending === buffer && transport.getPtyId() === expectedId,
+      sendInput: (data, kind) => transport.sendInput(data, kind),
+      sendInputImmediate: (data) => transport.sendInputImmediate(data),
+      ...(sendAccepted ? { sendInputAccepted: sendAccepted } : {})
+    })
   }
   const wrapped: PtyTransport = {
     ...transport,
@@ -18,22 +31,18 @@ export function withRemoteReattachInputBuffer(transport: PtyTransport): PtyTrans
       const buffer =
         expectedId && parseRemoteRuntimePtyId(expectedId) ? createPtyPreconnectInputBuffer() : null
       pending = buffer
+      pendingExpectedId = expectedId ?? null
       try {
         const result = await transport.connect(options)
-        if (buffer) {
-          await buffer.flush({
-            // A replacement endpoint must never receive the old terminal's unfinished command.
-            isCurrent: () => pending === buffer && transport.getPtyId() === expectedId,
-            sendInput: (data, kind) => transport.sendInput(data, kind),
-            sendInputImmediate: (data) => transport.sendInputImmediate(data),
-            ...(sendAccepted ? { sendInputAccepted: sendAccepted } : {})
-          })
+        if (buffer && expectedId) {
+          await flush(buffer, expectedId)
         }
         return result
       } finally {
         buffer?.clear()
         if (pending === buffer) {
           pending = null
+          pendingExpectedId = null
         }
       }
     },
@@ -53,6 +62,10 @@ export function withRemoteReattachInputBuffer(transport: PtyTransport): PtyTrans
       : {}),
     attach(options) {
       clear()
+      const expectedId = options.existingPtyId
+      const buffer = parseRemoteRuntimePtyId(expectedId) ? createPtyPreconnectInputBuffer() : null
+      pending = buffer
+      pendingExpectedId = expectedId
       transport.attach(options)
     },
     disconnect() {
@@ -73,5 +86,10 @@ export function withRemoteReattachInputBuffer(transport: PtyTransport): PtyTrans
     }
   }
   transport.setConnectForRecovery?.((options) => wrapped.connect(options))
+  transport.setConnectionReady?.(() => {
+    if (pending && pendingExpectedId) {
+      flush(pending, pendingExpectedId)
+    }
+  })
   return wrapped
 }

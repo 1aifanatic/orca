@@ -996,6 +996,7 @@ export function createRemoteRuntimePtyTransport(
     remotePtyId = toRemoteRuntimePtyId(hostHandle, currentRuntimeEnvironmentId)
     registerShutdownHandlers(remotePtyId)
     connected = true
+    notifyConnectionReady()
     desiredViewport = {
       cols: options.cols ?? 80,
       rows: options.rows ?? 24
@@ -1283,6 +1284,7 @@ export function createRemoteRuntimePtyTransport(
     unregisterShutdownHandlers(previousPtyId)
     registerShutdownHandlers(remotePtyId)
     connected = true
+    notifyConnectionReady()
     desiredViewport = {
       cols: options.cols ?? 80,
       rows: options.rows ?? 24
@@ -1341,6 +1343,7 @@ export function createRemoteRuntimePtyTransport(
         unregisterShutdownHandlers(replacedPtyId)
         registerShutdownHandlers(remotePtyId)
         connected = true
+        notifyConnectionReady()
         if (
           replacedPtyId &&
           (replacedPtyId !== remotePtyId || previousIncarnationId !== authoritativePtyIncarnationId)
@@ -2175,6 +2178,8 @@ export function createRemoteRuntimePtyTransport(
   }
 
   let connectForRecovery: PtyTransport['connect'] = (options) => transport.connect(options)
+  let onConnectionReady: (() => void) | null = null
+  const notifyConnectionReady = (): void => onConnectionReady?.()
   const transport: PtyTransport = {
     async connect(options) {
       cancelTerminalCreateRetryWait()
@@ -2378,6 +2383,7 @@ export function createRemoteRuntimePtyTransport(
         remotePtyId = toRemoteRuntimePtyId(handle, currentRuntimeEnvironmentId)
         registerShutdownHandlers(remotePtyId)
         connected = true
+        notifyConnectionReady()
         desiredViewport = {
           cols: options.cols ?? 80,
           rows: options.rows ?? 24
@@ -2789,6 +2795,9 @@ export function createRemoteRuntimePtyTransport(
 
     setConnectForRecovery(connect) {
       connectForRecovery = connect
+    },
+    setConnectionReady(onReady) {
+      onConnectionReady = onReady
     },
     destroy() {
       destroyed = true
