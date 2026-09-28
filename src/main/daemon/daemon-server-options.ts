@@ -1,5 +1,5 @@
 import type { DaemonFileLog } from './daemon-file-log'
-import type { SubprocessHandle } from './session-subprocess-handle'
+import type { TerminalHostOptions } from './terminal-host-options'
 
 export type DaemonServerOptions = {
   socketPath: string
@@ -29,14 +29,5 @@ export type DaemonServerOptions = {
   onPtySessionExit?: (sessionId: string) => void
   onAuthenticatedClientPair?: () => void
   log?: DaemonFileLog
-  spawnSubprocess: (opts: {
-    sessionId: string
-    cols: number
-    rows: number
-    cwd?: string
-    env?: Record<string, string>
-    command?: string
-    shellOverride?: string
-    isCanceled?: () => boolean
-  }) => SubprocessHandle | Promise<SubprocessHandle>
+  spawnSubprocess: TerminalHostOptions['spawnSubprocess']
 }

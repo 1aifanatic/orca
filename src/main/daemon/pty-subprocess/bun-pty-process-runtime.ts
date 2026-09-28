@@ -32,13 +32,22 @@ export function spawnBunPty(args: BunPtySpawnArgs, deps: SpawnBunPtyDeps = {}): 
   const exitListeners = new Set<(event: { exitCode: number; signal?: number }) => void>()
   const decoder = new TextDecoder()
   let pendingData = ''
+  let pendingDataError: Error | undefined
   let exited = false
   let exitCode = 0
   let exitSignal: number | undefined
 
   const emitData = (data: string): void => {
     if (dataListeners.size === 0) {
-      pendingData = (pendingData + data).slice(-512 * 1024)
+      if (pendingDataError) {
+        return
+      }
+      if (pendingData.length + data.length > 512 * 1024) {
+        pendingDataError = new Error('Terminal output arrived before its consumer was installed')
+        pendingData = ''
+        return
+      }
+      pendingData += data
       return
     }
     for (const listener of dataListeners) {
@@ -259,6 +268,9 @@ export function spawnBunPty(args: BunPtySpawnArgs, deps: SpawnBunPtyDeps = {}): 
     write: terminalIo.write,
     resize: terminalIo.resize,
     onData(listener) {
+      if (pendingDataError) {
+        throw pendingDataError
+      }
       if (pendingData) {
         const data = pendingData
         pendingData = ''

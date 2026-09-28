@@ -1,3 +1,6 @@
+import { PhysicalExitTracker } from '../../../shared/physical-exit-tracker'
+import { IMMEDIATE_KILL_PHYSICAL_EXIT_TIMEOUT_MS } from '../immediate-kill-reply-budget'
+import type { TerminalSpawnAttempt } from '../terminal-spawn-attempt'
 import type { TerminalProcess } from '../../../shared/terminal-process'
 import { waitForPromiseWithSignal } from '../../../shared/abort-signal-reason'
 import {
@@ -18,6 +21,8 @@ export type SpawnedDaemonPty = {
   reportsChildExitStatus: boolean
 }
 
+export class PtySpawnCleanupError extends Error {}
+
 type NativePtyRuntime = {
   canUseBunPty: typeof canUseBunPty
   spawnBunPty: typeof spawnBunPty
@@ -34,6 +39,10 @@ export async function spawnNativeDaemonPty(
     rows: number
     windowsFallbackAttempts: WindowsShellSpawnAttempt[]
     signal?: AbortSignal
+    onSpawnAttempt?: (
+      spawned: SpawnedDaemonPty,
+      discardNative: () => Promise<void>
+    ) => TerminalSpawnAttempt
     onMacosTccSpawnStrategy?: (strategy: 'wrapped' | 'direct') => void
   },
   runtime: NativePtyRuntime = { canUseBunPty, spawnBunPty }
@@ -46,7 +55,8 @@ export async function spawnNativeDaemonPty(
   const spawnAt = async (
     shellPath: string,
     shellArgs: string[],
-    cwd: string
+    cwd: string,
+    startupCommandDeliveredInShellArgs?: boolean
   ): Promise<TerminalProcess> => {
     args.signal?.throwIfAborted()
     const wrapped = wrapShellSpawnForMacosTccAttribution(shellPath, shellArgs, args.env)
@@ -59,19 +69,55 @@ export async function spawnNativeDaemonPty(
       cols: args.cols,
       rows: args.rows
     })
+    let attempt: TerminalSpawnAttempt | undefined
+    const physicalExit = new PhysicalExitTracker()
+    const exitSubscription = args.onSpawnAttempt
+      ? proc.onExit(() => physicalExit.markExited())
+      : undefined
+    const discardNative = async (): Promise<void> => {
+      proc.destroy()
+      await physicalExit.waitForExit(
+        IMMEDIATE_KILL_PHYSICAL_EXIT_TIMEOUT_MS,
+        () => new Error('Failed terminal spawn has not exited')
+      )
+      exitSubscription?.dispose()
+    }
     try {
+      attempt = args.onSpawnAttempt?.(
+        {
+          process: proc,
+          shellPath,
+          spawnCwd: cwd,
+          reportsChildExitStatus,
+          ...(startupCommandDeliveredInShellArgs === undefined
+            ? {}
+            : { startupCommandDeliveredInShellArgs })
+        },
+        discardNative
+      )
+      if (attempt?.failure) {
+        throw attempt.failure.error
+      }
       if (proc.waitForSpawn) {
         await waitForPromiseWithSignal(proc.waitForSpawn(), args.signal)
       }
       args.signal?.throwIfAborted()
     } catch (error) {
       try {
-        proc.destroy()
+        if (attempt) {
+          await attempt.discard()
+          exitSubscription?.dispose()
+        } else {
+          proc.destroy()
+        }
       } catch (cleanupError) {
-        console.warn('[daemon/pty] Failed shell launch cleanup failed:', cleanupError)
+        throw new PtySpawnCleanupError('Failed shell launch still owns a process', {
+          cause: cleanupError
+        })
       }
       throw error
     }
+    exitSubscription?.dispose()
     args.onMacosTccSpawnStrategy?.(wrapped.file === shellPath ? 'direct' : 'wrapped')
     return proc
   }
@@ -86,12 +132,21 @@ export async function spawnNativeDaemonPty(
     }
   } catch (primaryErr) {
     args.signal?.throwIfAborted()
-    if (process.platform !== 'win32' || primaryErr instanceof WindowsBunPtySpawnUnconfirmedError) {
+    if (
+      process.platform !== 'win32' ||
+      primaryErr instanceof WindowsBunPtySpawnUnconfirmedError ||
+      primaryErr instanceof PtySpawnCleanupError
+    ) {
       throw primaryErr
     }
     for (const attempt of args.windowsFallbackAttempts.slice(1)) {
       try {
-        const process = await spawnAt(attempt.shellPath, attempt.shellArgs, attempt.effectiveCwd)
+        const process = await spawnAt(
+          attempt.shellPath,
+          attempt.shellArgs,
+          attempt.effectiveCwd,
+          attempt.startupCommandDeliveredInShellArgs
+        )
         const message = primaryErr instanceof Error ? primaryErr.message : String(primaryErr)
         console.warn(
           `[daemon/pty] Primary shell "${args.shellPath}" failed (${message}), fell back to "${attempt.shellPath}"`
@@ -105,7 +160,10 @@ export async function spawnNativeDaemonPty(
         }
       } catch (error) {
         args.signal?.throwIfAborted()
-        if (error instanceof WindowsBunPtySpawnUnconfirmedError) {
+        if (
+          error instanceof WindowsBunPtySpawnUnconfirmedError ||
+          error instanceof PtySpawnCleanupError
+        ) {
           throw error
         }
         // This fallback shell also failed -- try the next link in the chain.

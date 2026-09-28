@@ -1,3 +1,4 @@
+import type { ObserveTerminalSpawnAttempt } from './terminal-spawn-attempt'
 import type { SubprocessHandle } from './session-subprocess-handle'
 import { normalizePtySize } from './daemon-pty-size'
 import { TerminalAttachCanceledError } from './daemon-errors'
@@ -36,6 +37,7 @@ export type PtySubprocessOptions = {
   isCanceled?: () => boolean
   /** Aborts in-progress cwd validation; `isCanceled` is only polled between steps. */
   cancelSignal?: AbortSignal
+  onSpawnAttempt?: ObserveTerminalSpawnAttempt
   onMacosTccSpawnStrategy?: (strategy: 'wrapped' | 'direct') => void
 }
 
@@ -87,6 +89,20 @@ export async function createPtySubprocess(opts: PtySubprocessOptions): Promise<S
     throw new TerminalAttachCanceledError(opts.sessionId)
   }
 
+  const makeHandle = (spawned: SpawnedDaemonPty): SubprocessHandle =>
+    createDaemonPtySubprocessHandle({
+      process: spawned.process,
+      shellPath: spawned.shellPath,
+      spawnCwd: spawned.spawnCwd,
+      env,
+      startupCommandDeliveredInShellArgs:
+        spawned.startupCommandDeliveredInShellArgs ?? launch.startupCommandDeliveredInShellArgs,
+      reportsChildExitStatus: spawned.reportsChildExitStatus,
+      requestedCwd: opts.cwd,
+      sessionId: opts.sessionId,
+      startupAgentRecognition: launch.startupAgentRecognition
+    })
+  let attemptHandle: SubprocessHandle | undefined
   let spawned: SpawnedDaemonPty
   try {
     spawned = await spawnNativeDaemonPty({
@@ -97,7 +113,18 @@ export async function createPtySubprocess(opts: PtySubprocessOptions): Promise<S
       cols: size.cols,
       rows: size.rows,
       windowsFallbackAttempts: launch.windowsFallbackAttempts,
-      onMacosTccSpawnStrategy: opts.onMacosTccSpawnStrategy
+      onMacosTccSpawnStrategy: opts.onMacosTccSpawnStrategy,
+      signal: opts.cancelSignal,
+      ...(opts.onSpawnAttempt
+        ? {
+            onSpawnAttempt: (attempt: SpawnedDaemonPty, discardNative: () => Promise<void>) => {
+              return opts.onSpawnAttempt!(() => {
+                attemptHandle = makeHandle(attempt)
+                return attemptHandle
+              }, discardNative)
+            }
+          }
+        : {})
     })
   } catch (error) {
     if (process.platform === 'win32') {
@@ -106,16 +133,5 @@ export async function createPtySubprocess(opts: PtySubprocessOptions): Promise<S
     throw error
   }
 
-  return createDaemonPtySubprocessHandle({
-    process: spawned.process,
-    shellPath: spawned.shellPath,
-    spawnCwd: spawned.spawnCwd,
-    env,
-    startupCommandDeliveredInShellArgs:
-      spawned.startupCommandDeliveredInShellArgs ?? launch.startupCommandDeliveredInShellArgs,
-    reportsChildExitStatus: spawned.reportsChildExitStatus,
-    requestedCwd: opts.cwd,
-    sessionId: opts.sessionId,
-    startupAgentRecognition: launch.startupAgentRecognition
-  })
+  return attemptHandle ?? makeHandle(spawned)
 }
