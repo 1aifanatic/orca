@@ -64,7 +64,7 @@ function settledRecord(rows: readonly Row[], turnId: string) {
     .findLast((body) => body.kind === 'turn' && body.turnId === turnId)
 }
 
-/** Codex's frames for a compaction that fails: the error, then the failed completion. */
+/** Codex's frames for a turn that fails: the error, then the failed completion. */
 function runFailedTurn(handle: (event: CodexStructuredSessionEvent) => unknown) {
   handle(notification('turn/started', { turn: { id: TURN_ID } }, 1_000))
   handle(
@@ -81,7 +81,10 @@ function runFailedTurn(handle: (event: CodexStructuredSessionEvent) => unknown) 
   handle(
     notification(
       'item/completed',
-      { turnId: TURN_ID, item: { type: 'agentMessage', id: 'agent-1', text: 'Compacting…' } },
+      {
+        turnId: TURN_ID,
+        item: { type: 'agentMessage', id: 'agent-1', text: 'Checking the build' }
+      },
       1_500
     )
   )
@@ -92,7 +95,7 @@ function runFailedTurn(handle: (event: CodexStructuredSessionEvent) => unknown) 
         threadId: THREAD_ID,
         turnId: TURN_ID,
         willRetry: false,
-        error: { message: 'Error running remote compact task' }
+        error: { message: 'stream disconnected before completion' }
       },
       2_000
     )
