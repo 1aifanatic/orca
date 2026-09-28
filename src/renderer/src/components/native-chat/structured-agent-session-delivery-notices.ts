@@ -2,9 +2,9 @@
 //
 // Derived from the outbox on every render and never stored: each failed or held message carries
 // its own typed failure, so each row words its own reason. Read through the drain's own rule: while
-// the queue is stopped, only the message it stopped on has a Retry. Another's would release the
-// queue and send the stopped message too, or wait unseen behind it. One waiting behind says nothing;
-// a rejected message holds nothing up, so it keeps its words and gets its Retry once the queue moves.
+// the queue is stopped, only the message it stopped on has a Retry; another's would wait unseen
+// behind it. One waiting behind says nothing; a rejected message holds nothing up, so it keeps its
+// words and gets its Retry once the queue moves.
 
 import { agentJournalSubmissionKey } from '../../../../shared/agent-session-journal-item-key'
 import {

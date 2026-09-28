@@ -286,7 +286,10 @@ export function useStructuredAgentSessionOutbox(args: {
   )
 
   const retry = (clientMessageId: string): void => {
-    blockedIdRef.current = null
+    // Another message's Retry must not send the one the queue is held on.
+    if (blockedIdRef.current === clientMessageId) {
+      blockedIdRef.current = null
+    }
     setError(null)
     const submission = submissions.find(
       (candidate) => candidate.clientMessageId === clientMessageId
