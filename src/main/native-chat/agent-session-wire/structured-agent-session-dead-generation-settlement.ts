@@ -204,6 +204,7 @@ export async function settleStaleStructuredAgentSessionState(input: {
   // Each turn is judged by the evidence only if it names that turn's owner.
   const verdictFor = (item: AgentJournalRenderItem) =>
     turnVerdictFromDeathEvidence(input.deathEvidence, journal, journal.itemFence(item.itemId))
+  // Per attempt: a retry re-partitions only what is left, and a reused chunk id would skip it.
   const generation = input.acquisitionGeneration ?? `seq-${journal.cursor().sequence}`
   const settlementId = `stale-session:${input.sessionId}:${input.fence}:${generation}`
   const mutations: JournalLifecycleMutationInput[] = []
@@ -219,13 +220,19 @@ export async function settleStaleStructuredAgentSessionState(input: {
     ...items.flatMap((item) => runningTurnLifecycleRevisions([item], verdictFor(item))),
     ...proven
   )
+  const evidence = input.deathEvidence
   if (
-    proven.length > 0 ||
-    items.some((item) => isInProgressItem(item) && verdictFor(item).state === 'interrupted')
+    evidence &&
+    (proven.length > 0 ||
+      items.some((item) => isInProgressItem(item) && verdictFor(item).state === 'interrupted'))
   ) {
     mutations.unshift({
       kind: 'item',
-      identity: { provider: 'orca', clientMessageId: settlementId },
+      // Named by the death it explains, so a retry after a partly written settle adds no second row.
+      identity: {
+        provider: 'orca',
+        clientMessageId: `stale-session:${input.sessionId}:death-${evidence.ownerFence ?? 'unowned'}-${evidence.observedAt}`
+      },
       // The death evidence is Orca's log text, never a sentence for a person: the row says only
       // that the provider stopped.
       body: {

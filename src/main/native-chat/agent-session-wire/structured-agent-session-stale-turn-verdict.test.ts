@@ -608,6 +608,64 @@ describe('stale session state on a cold acquire', () => {
     }
   })
 
+  it('adds one row for a death however many attempts its settle takes to write', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'orca-stale-session-'))
+    const journals = createTrackedJournalOpener()
+    let now = 100
+    try {
+      const journal = await journals.open({
+        identity: {
+          sessionId: 'session-1',
+          workspaceId: 'workspace-1',
+          hostId: 'local',
+          agent: 'codex',
+          providerHandle: { kind: 'codex', threadId: THREAD }
+        },
+        journalDir: root,
+        now: () => now
+      })
+      // Enough running turns that the settle writes two batches, and its retry two again.
+      for (let index = 0; index < 399; index++) {
+        const turnId = `turn-${index}`
+        await journal.appendItem(
+          { ...RUNNING_IDENTITY, turnId },
+          { kind: 'turn', turnId, state: 'running', startedAt: 100 },
+          { fence: 1 }
+        )
+      }
+      now = 9_000
+      const settle = () =>
+        settleStaleStructuredAgentSessionState({
+          journal,
+          sessionId: 'session-1',
+          fence: 2,
+          acquisitionGeneration: null,
+          deathEvidence: PROVEN
+        })
+      const turns = () =>
+        journal.snapshot().items.flatMap((item) => readAgentJournalTurn(item.body) ?? [])
+      const statusRows = () =>
+        journal.snapshot().items.filter((item) => item.body.kind === 'status')
+      const append = journal.appendLifecycleBatch.bind(journal)
+      const secondBatchFails = vi
+        .spyOn(journal, 'appendLifecycleBatch')
+        .mockImplementationOnce(append)
+        .mockRejectedValueOnce(new Error('disk full'))
+
+      await expect(settle()).rejects.toThrow('disk full')
+      secondBatchFails.mockRestore()
+      expect(turns().filter((turn) => turn.state === 'running')).toHaveLength(200)
+      expect(statusRows()).toHaveLength(1)
+
+      await settle()
+      expect(turns().filter((turn) => turn.state !== 'interrupted')).toEqual([])
+      expect(statusRows()).toHaveLength(1)
+    } finally {
+      await journals.closeAll()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('writes nothing when no turn is running and keys on the journal position without a generation', async () => {
     const idle = journalWith([
       lifecycleItem('turn-1', 'completed', 1, { startedAt: 10, completedAt: 20 })
