@@ -6,9 +6,10 @@ import {
   dispatchRejectionReasonIsInternal,
   dispatchWasWithdrawn
 } from '../../../src/shared/structured-agent-session-dispatch-rejection'
-import type {
-  AgentSessionQueuedMessage,
-  AgentSessionWithdrawnQueuedMessage
+import {
+  QUEUED_MESSAGE_PAUSED_SEND_FAILED,
+  type AgentSessionQueuedMessage,
+  type AgentSessionWithdrawnQueuedMessage
 } from '../../../src/shared/agent-session-wire'
 
 export type MobileQueuedMessageCard = {
@@ -38,11 +39,12 @@ function returnedLabel(reason: string | null | undefined): string {
 }
 
 function pausedLabel(reason: string | undefined): string {
-  if (reason === undefined) {
-    return 'Paused'
+  if (reason === QUEUED_MESSAGE_PAUSED_SEND_FAILED) {
+    return "Couldn't send — Send to retry"
   }
-  // The host may send a marker rather than copy; markers map to English here.
-  return dispatchRejectionReasonIsInternal(reason) ? "Couldn't send — Send to retry" : reason
+  // The wire carries markers, never copy; an unknown marker from a newer host
+  // reads as a plain pause rather than leaking on screen.
+  return 'Paused'
 }
 
 export function mobileQueuedMessageCards(

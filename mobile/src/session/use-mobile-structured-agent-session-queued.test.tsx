@@ -15,7 +15,13 @@ import { structuredAgentSessionPayloadFingerprint } from '../../../src/shared/st
 import type { RpcClient } from '../transport/rpc-client'
 import { markRpcDeliveryUnknown } from '../transport/rpc-delivery-ambiguity'
 import { resetMobileStructuredSendOperationJournalForTests } from './mobile-structured-send-operation-journal'
-import { resetQueuedRestoreJournalForTests } from './mobile-structured-queued-restore-journal'
+import {
+  getOrCreateQueuedRestoreOperation,
+  queuedRestoreEntryKey,
+  resetQueuedRestoreJournalForTests
+} from './mobile-structured-queued-restore-journal'
+import { expectedClearReplacementSessionId } from './mobile-structured-queued-message-actions'
+import { structuredSessionOperationId } from './structured-session-operation-id'
 import type { StructuredAgentSessionHostSupport } from './mobile-structured-agent-session-host-support'
 import { useMobileStructuredAgentSession } from './use-mobile-structured-agent-session'
 
@@ -131,10 +137,16 @@ describe('mobile structured queued messages', () => {
   })
   const client = { sendRequest, subscribe } as unknown as RpcClient
 
-  function Harness({ hostSupport }: { hostSupport: StructuredAgentSessionHostSupport }): null {
+  function Harness({
+    hostSupport,
+    sessionId = SESSION_ID
+  }: {
+    hostSupport: StructuredAgentSessionHostSupport
+    sessionId?: string
+  }): null {
     hook = useMobileStructuredAgentSession({
       client,
-      sessionId: SESSION_ID,
+      sessionId,
       sourceIdentity: 'host-a\0workspace-a',
       enabled: true,
       connected: true,
@@ -148,10 +160,13 @@ describe('mobile structured queued messages', () => {
 
   async function mountSession(
     hostSupport: StructuredAgentSessionHostSupport,
-    event: AgentSessionSubscribeEvent = snapshotEvent()
+    event: AgentSessionSubscribeEvent = snapshotEvent(),
+    sessionId?: string
   ): Promise<void> {
     act(() => {
-      renderer = create(createElement(Harness, { hostSupport }))
+      renderer = create(
+        createElement(Harness, { hostSupport, ...(sessionId ? { sessionId } : {}) })
+      )
     })
     await vi.waitFor(() => expect(listener).toEqual(expect.any(Function)))
     act(() => listener?.(event))
@@ -461,11 +476,12 @@ describe('mobile structured queued messages', () => {
       )
     })
 
-    it('finishes a lost Stop after reload — same operation id, one restoration', async () => {
-      let cancelAttempts = 0
+    it('a persisted Stop NEVER re-executes on a later launch; its handle is dropped', async () => {
+      // A cancel the host never received would run fresh if reissued —
+      // withdrawing the pane's current drafts and rejecting queued sends — so
+      // relaunch recovery drops the handle and the host keeps the cards.
       sendRequest.mockImplementation(async (method) => {
         if (method === 'agentSession.cancel') {
-          cancelAttempts += 1
           throw markRpcDeliveryUnknown(new Error('Connection closed'))
         }
         return method === 'agentSession.options' ? ok({ models: [], current: {} }) : ok({})
@@ -474,38 +490,93 @@ describe('mobile structured queued messages', () => {
       await act(async () => {
         expect(await hook!.cancelPrompt()).toBe(false)
       })
-      expect(cancelAttempts).toBe(1)
+      expect(calls('agentSession.cancel')).toHaveLength(1)
       expect(stored.has('orca:mobileStructuredQueuedRestore:v1')).toBe(true)
-      const firstCancel = calls('agentSession.cancel')[0]![1] as {
-        envelope: { clientOperationId: string }
-      }
       unmountSession()
 
       stopAnswers()
-      await mountSession(CAPABLE, snapshotEvent())
-      await vi.waitFor(() => expect(calls('agentSession.cancel')).toHaveLength(2))
-      const replay = calls('agentSession.cancel')[1]![1] as {
-        envelope: { clientOperationId: string }
-        withdrawQueued?: true
-      }
-      expect(replay.envelope.clientOperationId).toBe(firstCancel.envelope.clientOperationId)
-      expect(replay.withdrawQueued).toBe(true)
-      await vi.waitFor(() =>
-        expect(appendText.mock.calls).toEqual([
-          [DRAFT_KEY, 'one'],
-          [DRAFT_KEY, 'two']
-        ])
-      )
+      await mountSession(CAPABLE, snapshotEvent({ runningTurn: true }))
       await vi.waitFor(() =>
         expect(stored.has('orca:mobileStructuredQueuedRestore:v1')).toBe(false)
       )
+      expect(calls('agentSession.cancel')).toHaveLength(1)
+      expect(appendText).not.toHaveBeenCalled()
+    })
+  })
 
-      // A third open owes nothing: the tombstone-backed entry is spent.
-      unmountSession()
-      await mountSession(CAPABLE, snapshotEvent())
+  describe('persisted /clear across relaunch', () => {
+    async function persistClearEntry(sourceSessionId: string): Promise<string> {
+      const entryKey = queuedRestoreEntryKey({
+        sessionKey: 'any',
+        method: 'agentSession.conversationCommand',
+        fields: { command: 'clear' }
+      })
+      const { operationId } = await getOrCreateQueuedRestoreOperation({
+        entryKey,
+        sessionId: sourceSessionId,
+        sessionKey: 'any',
+        draftKey: DRAFT_KEY,
+        method: 'agentSession.conversationCommand',
+        fields: { command: 'clear' },
+        createOperationId: structuredSessionOperationId
+      })
+      return operationId
+    }
+
+    it('killed before the clear reached the host: no command runs on relaunch', async () => {
+      await persistClearEntry(SESSION_ID)
+      await mountSession(CAPABLE)
       await act(async () => {})
-      expect(calls('agentSession.cancel')).toHaveLength(2)
-      expect(appendText.mock.calls).toHaveLength(2)
+      expect(calls('agentSession.conversationCommand')).toHaveLength(0)
+      // The handle stays for a same-id user retry until it expires on its own.
+      expect(stored.has('orca:mobileStructuredQueuedRestore:v1')).toBe(true)
+    })
+
+    it('killed after the clear applied: the recorded text is restored exactly once', async () => {
+      const operationId = await persistClearEntry('session-src')
+      // The pane now shows the replacement session this very operation minted —
+      // the proof the clear committed, so a same-op reissue can only replay.
+      const replacement = expectedClearReplacementSessionId(
+        { sessionId: 'session-src', operationId },
+        ''
+      )
+      sendRequest.mockImplementation(async (method) => {
+        if (method === 'agentSession.conversationCommand') {
+          return mutationOk({
+            command: 'clear',
+            state: 'completed',
+            replacementSessionId: replacement,
+            withdrawnQueued: [
+              {
+                messageId: 'draft-1',
+                body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'held' }] }
+              }
+            ]
+          })
+        }
+        return method === 'agentSession.options' ? ok({ models: [], current: {} }) : ok({})
+      })
+      await mountSession(CAPABLE, snapshotEvent(), replacement)
+      await vi.waitFor(() => expect(calls('agentSession.conversationCommand')).toHaveLength(1))
+      const [, params] = calls('agentSession.conversationCommand')[0]! as [
+        string,
+        { envelope: { sessionId: string; clientOperationId: string }; withdrawQueued?: true }
+      ]
+      // The reissue targets the SOURCE under the recorded id: a pure replay.
+      expect(params.envelope.sessionId).toBe('session-src')
+      expect(params.envelope.clientOperationId).toBe(operationId)
+      expect(params.withdrawQueued).toBe(true)
+      await vi.waitFor(() => expect(appendText.mock.calls).toEqual([[DRAFT_KEY, 'held']]))
+      await vi.waitFor(() =>
+        expect(stored.has('orca:mobileStructuredQueuedRestore:v1')).toBe(false)
+      )
+      unmountSession()
+
+      // A second launch owes nothing.
+      await mountSession(CAPABLE, snapshotEvent(), replacement)
+      await act(async () => {})
+      expect(calls('agentSession.conversationCommand')).toHaveLength(1)
+      expect(appendText.mock.calls).toHaveLength(1)
     })
   })
 })

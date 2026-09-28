@@ -44,6 +44,8 @@ export function useMobileStructuredQueuedMessageControls(args: {
   client: RpcClient | null
   sessionId: string | null
   sessionKey: string
+  /** Names the caller the host keys mutations under; the clear-replay evidence derives from it. */
+  callerIdentity: string
   enabled: boolean
   queueCapable: boolean
   composerRestore: MobileQueuedComposerRestoreSeam | undefined
@@ -60,6 +62,7 @@ export function useMobileStructuredQueuedMessageControls(args: {
   composerWithdraw: () => QueuedComposerRestore | undefined
 } {
   const {
+    callerIdentity,
     client,
     composerRestore,
     enabled,
@@ -149,24 +152,27 @@ export function useMobileStructuredQueuedMessageControls(args: {
     const draftKey = composerRestore.readDraftKey()
     return draftKey ? { draftKey, appendText: composerRestore.appendText } : undefined
   }, [composerRestore, queueCapable])
-  // Finish restorations a reload interrupted, once per opened chat. Recorded
-  // operations replay from tombstones; nothing here can interrupt new work.
+  // Finish restorations a reload interrupted, once per opened chat — result
+  // recovery only: the replay NEVER re-executes a Stop or a /clear (see
+  // replayQueuedRestoreOperations for the per-method evidence rules).
   const replayedRestoreKeysRef = useRef(new Set<string>())
   useEffect(() => {
     if (!queueCapable || !client || !sessionId || !enabled || fence === null || !composerRestore) {
       return
     }
-    if (replayedRestoreKeysRef.current.has(sessionKey)) {
+    const draftKey = composerRestore.readDraftKey()
+    if (!draftKey || replayedRestoreKeysRef.current.has(sessionKey)) {
       return
     }
     replayedRestoreKeysRef.current.add(sessionKey)
     void replayQueuedRestoreOperations({
       client,
       sessionId,
-      sessionKey,
+      draftKey,
+      callerIdentity,
       expectedRuntimeFence: fence,
       appendText: composerRestore.appendText
     }).catch(() => undefined)
-  }, [client, composerRestore, enabled, fence, queueCapable, sessionId, sessionKey])
+  }, [callerIdentity, client, composerRestore, enabled, fence, queueCapable, sessionId, sessionKey])
   return { cards, send, delete: deleteDraft, edit, composerWithdraw }
 }

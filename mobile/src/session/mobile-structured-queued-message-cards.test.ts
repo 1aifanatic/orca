@@ -3,6 +3,7 @@ import {
   DISPATCH_REJECTED_CANCELLED,
   DISPATCH_REJECTED_HOST_RESTARTED
 } from '../../../src/shared/structured-agent-session-dispatch-rejection'
+import { QUEUED_MESSAGE_PAUSED_SEND_FAILED } from '../../../src/shared/agent-session-wire'
 import type { AgentSessionQueuedMessage } from '../../../src/shared/agent-session-wire'
 import { mobileQueuedMessageCards } from './mobile-structured-queued-message-cards'
 
@@ -45,15 +46,12 @@ describe('mobileQueuedMessageCards', () => {
     expect(card?.label).toBe('Waiting for your answer')
   })
 
-  it('labels a paused draft, preferring the surfaced failure copy', () => {
-    const cards = mobileQueuedMessageCards(
-      [
-        draft({ messageId: 'a', paused: true }),
-        draft({ messageId: 'b', position: 2, paused: true, pausedReason: 'Couldn’t send' })
-      ],
-      { pendingPrompt: false }
-    )
-    expect(cards.map((card) => card.label)).toEqual(['Paused', 'Couldn’t send'])
+  it('labels a reasonless pause — a Stop or restart hold — as plain Paused', () => {
+    const [card] = mobileQueuedMessageCards([draft({ messageId: 'a', paused: true })], {
+      pendingPrompt: false
+    })
+    expect(card?.label).toBe('Paused')
+    expect(card?.paused).toBe(true)
   })
 
   it('shows a returned card with its provider reason and holds drafts behind it', () => {
@@ -77,18 +75,17 @@ describe('mobileQueuedMessageCards', () => {
     expect(card?.label).toBe('Held back by Stop — Send to retry')
   })
 
-  it('maps a paused marker to English and shows readable pause copy verbatim', () => {
+  it('maps the send-failed pause marker to English and an unknown marker to a plain pause', () => {
     const cards = mobileQueuedMessageCards(
       [
-        draft({ messageId: 'a', paused: true, pausedReason: DISPATCH_REJECTED_HOST_RESTARTED }),
-        draft({ messageId: 'b', position: 2, paused: true, pausedReason: 'Couldn’t send' })
+        draft({ messageId: 'a', paused: true, pausedReason: QUEUED_MESSAGE_PAUSED_SEND_FAILED }),
+        // SAFETY: a newer host's marker this build has no vocabulary for.
+        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: simulates a marker from a newer host than this build's union.
+        draft({ messageId: 'b', position: 2, paused: true, pausedReason: 'later_marker' as never })
       ],
       { pendingPrompt: false }
     )
-    expect(cards.map((card) => card.label)).toEqual([
-      "Couldn't send — Send to retry",
-      'Couldn’t send'
-    ])
+    expect(cards.map((card) => card.label)).toEqual(["Couldn't send — Send to retry", 'Paused'])
   })
 
   it('never shows an internal rejection reason verbatim', () => {

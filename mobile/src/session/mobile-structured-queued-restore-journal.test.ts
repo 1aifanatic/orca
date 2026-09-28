@@ -98,16 +98,25 @@ describe('mobile structured queued restore journal', () => {
   it('discards a definitively answered entry and prunes expired handles on read', async () => {
     const { operationId } = await getOrCreateQueuedRestoreOperation(stopEntryInput())
     await discardQueuedRestoreOperation({ entryKey: stopEntryInput().entryKey, operationId })
-    expect(await listQueuedRestoreOperations({ sessionKey: 'chat-a', now: NOW })).toEqual([])
+    expect(
+      await listQueuedRestoreOperations({ draftKey: 'host\0worktree\0tab', now: NOW })
+    ).toEqual([])
 
     await getOrCreateQueuedRestoreOperation(stopEntryInput('turn-2'))
     const expired = NOW + AGENT_SESSION_MAX_OPERATION_REPLAY_AGE_MS + 1
-    expect(await listQueuedRestoreOperations({ sessionKey: 'chat-a', now: expired })).toEqual([])
+    expect(
+      await listQueuedRestoreOperations({ draftKey: 'host\0worktree\0tab', now: expired })
+    ).toEqual([])
   })
 
-  it('lists only the named chat and survives an unreadable journal', async () => {
+  it('lists only the named pane and survives an unreadable journal', async () => {
     await getOrCreateQueuedRestoreOperation(stopEntryInput())
-    expect(await listQueuedRestoreOperations({ sessionKey: 'chat-b', now: NOW })).toEqual([])
+    expect(
+      (await listQueuedRestoreOperations({ draftKey: 'host\0worktree\0tab', now: NOW })).map(
+        (entry) => entry.draftKey
+      )
+    ).toEqual(['host\0worktree\0tab'])
+    expect(await listQueuedRestoreOperations({ draftKey: 'other-pane', now: NOW })).toEqual([])
     values.set(STORAGE_KEY, 'not json')
     // Unreadable bookkeeping must not gate a Stop: start over instead of throwing.
     const recreated = await getOrCreateQueuedRestoreOperation(stopEntryInput())

@@ -180,14 +180,16 @@ export function discardQueuedRestoreOperation(input: {
   })
 }
 
-/** Unsettled obligations for one chat, expired handles already pruned. */
+/** Unsettled obligations for one pane, expired handles already pruned. Keyed by
+ *  the composer scope rather than the session: a committed /clear supersedes its
+ *  source, so the pane's session id changes while the obligation stays its own. */
 export function listQueuedRestoreOperations(input: {
-  sessionKey: string
+  draftKey: string
   now?: number
 }): Promise<QueuedRestoreEntry[]> {
   return serialize(async () => {
     const entries = await readEntries(input.now ?? Date.now())
-    return entries.filter((entry) => entry.sessionKey === input.sessionKey)
+    return entries.filter((entry) => entry.draftKey === input.draftKey)
   })
 }
 

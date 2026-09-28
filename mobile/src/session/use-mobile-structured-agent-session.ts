@@ -178,6 +178,7 @@ export function useMobileStructuredAgentSession(args: {
     client,
     sessionId,
     sessionKey,
+    callerIdentity,
     enabled,
     queueCapable,
     composerRestore,

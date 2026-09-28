@@ -3,11 +3,9 @@
 // answer from the host's op-stamped tombstone receipts, so one operation id is
 // one withdrawal and one restoration, however many times it is asked.
 
-import type {
-  AgentSessionCancelResult,
-  AgentSessionQueuedMessageDeleteResult
-} from '../../../src/shared/agent-session-wire'
+import type { AgentSessionQueuedMessageDeleteResult } from '../../../src/shared/agent-session-wire'
 import type { AgentSessionConversationCommandResult } from '../../../src/shared/agent-session-conversation-command'
+import { sha256 } from '../../../src/shared/sha256'
 import type { RpcClient } from '../transport/rpc-client'
 import { requestStructuredAgentSessionMutation } from './mobile-structured-agent-session-rpc'
 import { queuedMessageBodyText } from './mobile-structured-queued-message-cards'
@@ -111,40 +109,72 @@ function replayFields(entry: QueuedRestoreEntry): Record<string, unknown> {
 }
 
 /**
- * Finish restorations a reload interrupted: reissue each persisted operation
- * under its recorded id and settle the composer text from the replayed answer.
- * Safe against new work — a cancel names its recorded turn, so a late first run
- * can only stop the turn the user originally stopped, and a delete names its
- * draft. Transport doubt leaves the entry for the next open; a definite answer
- * without owed text discards it.
+ * The replacement id a committed clear mints for this exact operation — the host
+ * derives it from (source, caller key, operation id), and a mobile caller's key
+ * is its device token. The pane showing this id is PROOF the persisted clear
+ * already applied, so a same-op reissue can only replay the recorded outcome.
+ * If the host's recipe ever changes this fails CLOSED: no recovery, never a run.
+ */
+export function expectedClearReplacementSessionId(
+  entry: {
+    sessionId: string
+    operationId: string
+  },
+  callerIdentity: string
+): string {
+  const digest = sha256(
+    new TextEncoder().encode(JSON.stringify([entry.sessionId, callerIdentity, entry.operationId]))
+  )
+  return `clear-${Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('')}`
+}
+
+/**
+ * Finish restorations a reload interrupted — recovering RESULTS only, never
+ * re-executing a command. An operation the host never received would run fresh
+ * if reissued, so each method gets only the reissue its evidence makes safe:
+ *
+ * - Stop: dropped. The host cannot answer a cancel's outcome without running
+ *   it, and a fresh run would withdraw the pane's CURRENT drafts and reject
+ *   queued sends. Unwithdrawn drafts stay visible as cards; only the narrow
+ *   withdrew-then-died window loses its composer restore.
+ * - /clear: reissued only when the pane now shows the exact replacement session
+ *   this operation's commit would have minted — proof it applied, so the
+ *   same-op reissue replays the recorded text from tombstones. Anything else
+ *   leaves the entry for a same-id user retry until it expires.
+ * - Edit's delete: reissued against its own draft only. A recorded op replays;
+ *   an unrecorded one can touch nothing but the single draft the user asked to
+ *   withdraw, and a Send that raced it wins the compare-and-transition.
  */
 export async function replayQueuedRestoreOperations(input: {
   client: RpcClient
   sessionId: string
-  sessionKey: string
+  draftKey: string
+  callerIdentity: string
   expectedRuntimeFence: number
   appendText: QueuedRestoreTextSink
 }): Promise<void> {
-  const entries = await listQueuedRestoreOperations({ sessionKey: input.sessionKey }).catch(
+  const entries = await listQueuedRestoreOperations({ draftKey: input.draftKey }).catch(
     () => [] as QueuedRestoreEntry[]
   )
   for (const entry of entries) {
-    if (entry.sessionId !== input.sessionId) {
-      continue
-    }
     const request = { ...input, entry }
     if (entry.method === 'agentSession.cancel') {
-      await replayOne<AgentSessionCancelResult>(request, (value) =>
-        (value.withdrawnQueued ?? []).map((withdrawn) => queuedMessageBodyText(withdrawn.body))
-      )
+      await discardQueuedRestoreOperation({
+        entryKey: entry.entryKey,
+        operationId: entry.operationId
+      }).catch(() => undefined)
     } else if (entry.method === 'agentSession.conversationCommand') {
-      await replayOne<AgentSessionConversationCommandResult>(request, (value) =>
-        // A command still in doubt keeps its entry for the next open.
-        value.state === 'unknown'
-          ? null
-          : (value.withdrawnQueued ?? []).map((withdrawn) => queuedMessageBodyText(withdrawn.body))
-      )
-    } else {
+      if (input.sessionId === expectedClearReplacementSessionId(entry, input.callerIdentity)) {
+        await replayOne<AgentSessionConversationCommandResult>(request, (value) =>
+          // A command still in doubt keeps its entry for the next open.
+          value.state === 'unknown'
+            ? null
+            : (value.withdrawnQueued ?? []).map((withdrawn) =>
+                queuedMessageBodyText(withdrawn.body)
+              )
+        )
+      }
+    } else if (entry.sessionId === input.sessionId) {
       await replayOne<AgentSessionQueuedMessageDeleteResult>(request, (value) =>
         value.deleted ? [queuedMessageBodyText(value.body)] : []
       )
@@ -155,7 +185,6 @@ export async function replayQueuedRestoreOperations(input: {
 async function replayOne<TValue>(
   input: {
     client: RpcClient
-    sessionId: string
     expectedRuntimeFence: number
     appendText: QueuedRestoreTextSink
     entry: QueuedRestoreEntry
@@ -168,7 +197,9 @@ async function replayOne<TValue>(
     client: input.client,
     method: entry.method,
     fingerprintMethod: entry.method,
-    sessionId: input.sessionId,
+    // The operation's own recorded target — for a clear the pane has already
+    // moved to the replacement, but the tombstones live on the source.
+    sessionId: entry.sessionId,
     expectedRuntimeFence: input.expectedRuntimeFence,
     fields: replayFields(entry),
     clientOperationId: entry.operationId
