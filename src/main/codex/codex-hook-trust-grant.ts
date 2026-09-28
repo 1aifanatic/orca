@@ -7,6 +7,7 @@ import {
 import {
   classifyCodexTrustGrantError,
   emitCodexTrustGrantTelemetry,
+  type CodexTrustGrantErrorClass,
   type CodexTrustGrantFallbackReason,
   type CodexTrustGrantTelemetryLane,
   type CodexTrustGrantVerifyClass
@@ -59,7 +60,11 @@ export type { CodexTrustGrantFallbackReason, CodexTrustGrantTelemetryLane }
 
 export type CodexManagedTrustGrantOutcome =
   | { lane: 'rpc'; entries: CodexTrustEntry[] }
-  | { lane: 'fallback'; reason: CodexTrustGrantFallbackReason }
+  | {
+      lane: 'fallback'
+      reason: CodexTrustGrantFallbackReason
+      errorClass?: CodexTrustGrantErrorClass
+    }
 
 const diagnostics = {
   granted: 0,
@@ -93,6 +98,7 @@ function fallback(
   if (reason === 'verify-failed') {
     diagnostics.verifyFailed += 1
   }
+  const errorClass = reason === 'error' ? classifyCodexTrustGrantError(detail) : undefined
   console.warn(
     `[codex-trust-grant] falling back to self-computed trust (reason=${reason}, host=${plan.host.kind})`,
     detail ?? ''
@@ -102,10 +108,10 @@ function fallback(
     hostKind: plan.host.kind,
     lane: plan.telemetryLane,
     reason,
-    ...(reason === 'error' ? { errorClass: classifyCodexTrustGrantError(detail) } : {}),
+    ...(errorClass !== undefined ? { errorClass } : {}),
     ...(verifyClass !== undefined ? { verifyClass } : {})
   })
-  return { lane: 'fallback', reason }
+  return { lane: 'fallback', reason, ...(errorClass !== undefined ? { errorClass } : {}) }
 }
 
 function startTransientCooldown(hostKey: CodexAppServerHostKey): void {
@@ -243,7 +249,11 @@ async function runGrantAttempt(
       }
     )
   } catch (error) {
-    startTransientCooldown(hostKey)
+    // Why no cooldown for a timeout: a slow cold start is retried on the next
+    // launch rather than blocking the grant for minutes.
+    if (classifyCodexTrustGrantError(error) !== 'timeout') {
+      startTransientCooldown(hostKey)
+    }
     return fallback(plan, 'error', error)
   }
 }

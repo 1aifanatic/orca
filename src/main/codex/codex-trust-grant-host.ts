@@ -15,9 +15,9 @@ import {
   type CodexTrustGrantLedgerHome
 } from './codex-trust-grant-ledger'
 
-// Why: native sessions finish in ~100ms; WSL also pays cold-distro and
-// login-shell startup, but both stay hard-bounded on launch prep.
-const NATIVE_GRANT_TIMEOUT_MS = 10_000
+// Why: warm native sessions finish in ~100ms, but a cold start on a loaded Mac
+// took over 10 s. WSL also pays cold-distro and login-shell startup.
+const NATIVE_GRANT_TIMEOUT_MS = 30_000
 const WSL_GRANT_TIMEOUT_MS = 30_000
 
 export type CodexTrustGrantHost =

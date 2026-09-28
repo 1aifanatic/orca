@@ -18,7 +18,7 @@ import { getCodexManagedScriptFileName } from './codex-hook-identity'
 import {
   CODEX_TRUST_GRANT_TRANSIENT_RETRY_INTERVAL_MS,
   grantManagedCodexHookTrust,
-  type CodexTrustGrantFallbackReason
+  type CodexManagedTrustGrantOutcome
 } from './codex-hook-trust-grant'
 import {
   readCodexTrustGrantLedgerHomeForReconciliation,
@@ -55,6 +55,7 @@ export type RealHomeCodexHookLane = 'pending' | 'installed' | 'unavailable' | 'r
 let currentLane: RealHomeCodexHookLane = 'pending'
 let installRetryAfterMs = 0
 let ensureInFlight: Promise<RealHomeCodexHookLane> = Promise.resolve(currentLane)
+let queuedEnsure: { key: string; lane: Promise<RealHomeCodexHookLane> } | null = null
 
 export function getRealHomeCodexHookLane(): RealHomeCodexHookLane {
   return currentLane
@@ -90,11 +91,24 @@ export function ensureRealHomeCodexHookState(args: {
   // Concurrent pane launches must not interleave two of them, and the shared
   // config.toml lane keeps the write + grant pair ordered against the managed
   // installer's retired-form sweep of the same file.
-  const run = (): Promise<RealHomeCodexHookLane> => runRealHomeCodexHookEnsure(args)
+  const key = `${args.hooksEnabled}:${args.writePolicy}:${args.userDataPath}`
+  // Why: launches that queue behind a slow session share one follow-up run, so
+  // each waits for at most two sessions, not one per earlier launch.
+  if (queuedEnsure?.key === key) {
+    return queuedEnsure.lane
+  }
+  const run = (): Promise<RealHomeCodexHookLane> => {
+    if (queuedEnsure?.lane === lane) {
+      queuedEnsure = null
+    }
+    return runRealHomeCodexHookEnsure(args)
+  }
   // Why both handlers: a rejected predecessor must not poison every later
   // ensure for the process' lifetime.
-  ensureInFlight = ensureInFlight.then(run, run)
-  return ensureInFlight
+  const lane = ensureInFlight.then(run, run)
+  queuedEnsure = { key, lane }
+  ensureInFlight = lane
+  return lane
 }
 
 async function runRealHomeCodexHookEnsure(args: {
@@ -200,16 +214,26 @@ async function installRealHomeCodexHook(
   // may have trusted the identical entry meanwhile, and the grant client
   // already logged the fallback reason.
   withdrawUntrustedRealHomeWrites(plan.writes, material.command)
-  installRetryAfterMs = getInstallRetryAfterMs(grant.reason)
+  installRetryAfterMs = getInstallRetryAfterMs(grant)
   console.warn(
     `[codex-real-home-hooks] trust grant unavailable (${grant.reason}); managed lane kept`
   )
   return 'unavailable'
 }
 
-function getInstallRetryAfterMs(reason: CodexTrustGrantFallbackReason): number {
-  return reason === 'unsupported' || reason === 'unsupported-cached' || reason === 'disabled'
-    ? Number.POSITIVE_INFINITY
+function getInstallRetryAfterMs(
+  grant: Extract<CodexManagedTrustGrantOutcome, { lane: 'fallback' }>
+): number {
+  if (
+    grant.reason === 'unsupported' ||
+    grant.reason === 'unsupported-cached' ||
+    grant.reason === 'disabled'
+  ) {
+    return Number.POSITIVE_INFINITY
+  }
+  // Why: a slow cold start retries on the next launch instead of latching for minutes.
+  return grant.errorClass === 'timeout'
+    ? 0
     : Date.now() + CODEX_TRUST_GRANT_TRANSIENT_RETRY_INTERVAL_MS
 }
 
@@ -312,5 +336,6 @@ export const _internals = {
     currentLane = lane
     installRetryAfterMs = 0
     ensureInFlight = Promise.resolve(lane)
+    queuedEnsure = null
   }
 }
