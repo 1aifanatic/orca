@@ -168,8 +168,8 @@ export function markAntigravityWorkspaceTrusted(workspacePath: string): void {
 export function markCodexProjectTrusted(workspacePath: string): Promise<void> {
   const cwd = canonicalize(workspacePath)
   const trustRoot = resolveLinkedWorktreeMainRoot(cwd) ?? cwd
-  // Why: Codex takes the first answer on the cwd, then on the repository root above it; an entry Orca adds for the cwd would outrank the root's.
-  const lookupPaths = [...new Set([cwd, findCodexRepositoryRoot(cwd) ?? trustRoot])]
+  // Why: Codex takes the first answer on the cwd, then its checkout and repository roots; an entry Orca adds for the cwd would outrank theirs.
+  const lookupPaths = [...new Set([cwd, ...findCodexProjectRoots(cwd)])]
   const systemTomlPath = join(homedir(), '.codex', 'config.toml')
   // Why: Orca-launched Codex runs with an Orca-owned CODEX_HOME, so the trust
   // preset must also update the runtime config Codex will actually read.
@@ -197,15 +197,16 @@ export function markCodexProjectTrusted(workspacePath: string): Promise<void> {
   )
 }
 
-// Why: mirrors Codex's walk to the nearest `.git`, passing over a `.git` directory with no HEAD.
-function findCodexRepositoryRoot(cwd: string): string | null {
+// Why: mirrors Codex's walk to the nearest `.git` (passing over a `.git` directory with no HEAD), then the main checkout a linked worktree names.
+function findCodexProjectRoots(cwd: string): string[] {
   for (let dir = cwd; ; dir = dirname(dir)) {
     const marker = statGitMarker(dir)
     if (marker && (!marker.isDirectory() || existsSync(join(dir, '.git', 'HEAD')))) {
-      return marker.isDirectory() ? dir : resolveLinkedWorktreeMainRoot(dir)
+      const repositoryRoot = marker.isDirectory() ? dir : resolveLinkedWorktreeMainRoot(dir)
+      return repositoryRoot === null ? [dir] : [dir, repositoryRoot]
     }
     if (dirname(dir) === dir) {
-      return null
+      return []
     }
   }
 }

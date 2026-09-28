@@ -494,6 +494,31 @@ describe('markCodexProjectTrusted keeps the answer the user already gave', () =>
     expect(existsSync(runtimeConfigPath())).toBe(false)
   })
 
+  // Why: Codex reads the checkout holding the `.git` file before the main repository; for a submodule that checkout is where its own prompt records the answer.
+  it.each([
+    ['a linked worktree', 'worktrees'],
+    ['a submodule', 'modules']
+  ])(
+    'keeps an untrusted answer on %s checkout for a folder workspace opened on its subdirectory',
+    async (_label, metadataDir) => {
+      const repository = join(workspace, 'repo')
+      const checkout = join(workspace, 'checkout')
+      const subdirectory = join(checkout, 'packages', 'app')
+      const checkoutGitDir = join(repository, '.git', metadataDir, 'checkout')
+      mkdirSync(checkoutGitDir, { recursive: true })
+      mkdirSync(subdirectory, { recursive: true })
+      writeFileSync(join(checkout, '.git'), `gitdir: ${checkoutGitDir}\n`, 'utf-8')
+      writeFileSync(join(checkoutGitDir, 'gitdir'), join(checkout, '.git'), 'utf-8')
+      const original = [projectHeader(checkout), 'trust_level = "untrusted"', ''].join('\n')
+      seedSystemConfig(original)
+
+      await markCodexProjectTrusted(subdirectory)
+
+      expect(readFileSync(systemConfigPath(), 'utf-8')).toBe(original)
+      expect(existsSync(runtimeConfigPath())).toBe(false)
+    }
+  )
+
   it('trusts only the subdirectory when its repository has no answer', async () => {
     const repository = join(workspace, 'repo')
     const subdirectory = join(repository, 'packages', 'app')
