@@ -1,0 +1,61 @@
+name: Diagnostic offline Windows SDK and Rust links
+on:
+  push:
+    branches: [OrcaWin/np-offline-windows-sdk-link-diagnostic]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  link:
+    if: github.repository == 'stablyai/orca' && github.ref == 'refs/heads/OrcaWin/np-offline-windows-sdk-link-diagnostic'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      BASE: ubuntu@sha256:8feb4d8ca5354def3d8fce243717141ce31e2c428701f6682bd2fafe15388214
+      ORCA_BACKGROUND_LAUNCH: '1'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          sparse-checkout: config/ci/offline-xwin
+      - uses: actions/download-artifact@v5
+        with:
+          run-id: 36489759004
+          name: offline-xwin-extracted-sdk
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/sdk-artifact
+      - name: Acquire exact retained LLVM and pinned Rust components
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout --kill-after=30s 600s gh api repos/stablyai/orca/actions/artifacts/10990426637/zip > "$RUNNER_TEMP/llvm-inputs.zip"
+          python3 config/ci/offline-xwin/stage-link-inputs.py llvm "$RUNNER_TEMP/llvm-inputs.zip" "$RUNNER_TEMP/link-inputs"
+          python3 config/ci/offline-xwin/stage-link-inputs.py sdk "$RUNNER_TEMP/sdk-artifact/xwin-output.tar.gz" "$RUNNER_TEMP/winsysroot"
+          docker pull --platform linux/amd64 "$BASE"
+      - name: Install exact compiler inputs and link without networking
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir "$RUNNER_TEMP/link-results"
+          docker run --rm --network none --platform linux/amd64 --cpus 2 --memory 3g --pids-limit 256 \
+            -v "$RUNNER_TEMP/link-inputs/metadata:/metadata:ro" \
+            -v "$RUNNER_TEMP/link-inputs/packages:/packages:ro" \
+            -v "$RUNNER_TEMP/link-inputs/rust:/rust:ro" \
+            -v "$RUNNER_TEMP/winsysroot:/winsysroot:ro" \
+            -v "$GITHUB_WORKSPACE/config/ci/offline-xwin:/probe:ro" \
+            -v "$RUNNER_TEMP/link-results:/results" \
+            "$BASE" bash /probe/install-and-link.sh 2>&1 | tee "$RUNNER_TEMP/link-results/execution.log"
+          test -s "$RUNNER_TEMP/link-results/sdk-link/SUCCESS"
+      - name: Permit receipt retention
+        if: always()
+        shell: bash
+        run: sudo chown -R "$(id -u):$(id -g)" "$RUNNER_TEMP/link-results" || true
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: offline-windows-sdk-link-receipts
+          path: ${{ runner.temp }}/link-results
+          retention-days: 7

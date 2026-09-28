@@ -11,7 +11,8 @@ import socket
 import sys
 interfaces = [name for _, name in socket.if_nameindex()]
 routes = Path('/proc/self/net/route').read_text()
-receipt = {'interfaces': interfaces, 'ipv4Routes': routes,
+ipv6_routes = Path('/proc/self/net/ipv6_route').read_text()
+receipt = {'interfaces': interfaces, 'ipv4Routes': routes, 'ipv6Routes': ipv6_routes,
            'namespace': str(Path('/proc/self/ns/net').readlink()), 'socketProbes': []}
 if set(interfaces) != {'lo'}:
     raise SystemExit('network namespace still has external interfaces')
@@ -31,6 +32,8 @@ for probe in receipt['socketProbes']:
 route_rows = [line for line in routes.splitlines() if line.strip() and not line.startswith('Iface')]
 if route_rows:
     raise SystemExit('current process namespace still has IPv4 routes')
+if any(line.split()[-1] != 'lo' for line in ipv6_routes.splitlines() if line.strip()):
+    raise SystemExit('current process namespace still has external IPv6 routes')
 PY
 python3 "$script_dir/verify-offline-xwin.py" "$root"
 test ! -e "$root/output"
