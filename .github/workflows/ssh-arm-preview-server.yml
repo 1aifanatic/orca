@@ -1,0 +1,45 @@
+name: Windows ARM preview private SSH server qualification
+on:
+  push:
+    branches: [OrcaWin/np-arm-ssh-diagnostic]
+    paths: ['.github/workflows/ssh-arm-preview-server.yml', '.build/integration-audit/windows-arm-ssh-qualification/prove-preview-openssh.ps1', '.build/integration-audit/windows-arm-ssh-qualification/preview-native-inputs.json']
+  workflow_dispatch: {}
+permissions:
+  contents: read
+concurrency:
+  group: preview-arm-ssh-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  native_server:
+    if: github.repository == 'stablyai/orca' && github.ref == 'refs/heads/OrcaWin/np-arm-ssh-diagnostic'
+    runs-on: windows-11-arm
+    timeout-minutes: 20
+    env:
+      ORCA_BACKGROUND_LAUNCH: '1'
+      ORCA_ISOLATED_SSH_CI: '1'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          sparse-checkout: .build/integration-audit/windows-arm-ssh-qualification
+      - name: Parse diagnostic PowerShell before provisioning
+        shell: pwsh
+        run: |
+          $errors=$null; $tokens=$null
+          [Management.Automation.Language.Parser]::ParseFile((Join-Path $pwd '.build/integration-audit/windows-arm-ssh-qualification/prove-preview-openssh.ps1'),[ref]$tokens,[ref]$errors) | Out-Null
+          if($errors.Count){throw 'Diagnostic PowerShell parse failed'}
+      - name: Prove preview SSH server authentication and stock cmd dispatch
+        shell: pwsh
+        timeout-minutes: 15
+        run: |
+          $archive=Join-Path $env:RUNNER_TEMP 'preview-OpenSSH-ARM64.zip'
+          & "$env:WINDIR\System32\curl.exe" --fail --location --connect-timeout 15 --max-time 90 --output $archive 'https://github.com/PowerShell/Win32-OpenSSH/releases/download/10.0.0.0p2-Preview/OpenSSH-ARM64.zip'
+          if($LASTEXITCODE -ne 0){throw 'Pinned preview archive download failed'}
+          & .build/integration-audit/windows-arm-ssh-qualification/prove-preview-openssh.ps1 -Archive $archive -Receipt "$env:RUNNER_TEMP\preview-arm-ssh-server.json"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: preview-arm-ssh-server-${{ github.run_id }}
+          path: ${{ runner.temp }}/preview-arm-ssh-server.json
+          if-no-files-found: error
+          retention-days: 7
