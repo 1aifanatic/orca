@@ -407,9 +407,7 @@ describe('OrcaRuntimeService', () => {
       })
       // The repo resolved to the local host, so the metadata purge names it —
       // an unqualified purge would evict a same-id row owned by another host.
-      expect(removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'local', {
-        cause: 'removed'
-      })
+      expect(removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'local')
     } finally {
       gitSpy.mockRestore()
     }

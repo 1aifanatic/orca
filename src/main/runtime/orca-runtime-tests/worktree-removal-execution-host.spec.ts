@@ -120,9 +120,7 @@ describe('OrcaRuntimeService worktree removal execution host', () => {
       expect(provider.removeWorktree).toHaveBeenCalledWith(TEST_WORKTREE_PATH, true)
       expect(listWorktreesStrict).not.toHaveBeenCalled()
       expect(removeWorktree).not.toHaveBeenCalled()
-      expect(removeWorktreeMeta).toHaveBeenCalledWith(TEST_WORKTREE_ID, 'ssh:target-a', {
-        cause: 'removed'
-      })
+      expect(removeWorktreeMeta).toHaveBeenCalledWith(TEST_WORKTREE_ID, 'ssh:target-a')
       expect(metaById[TEST_WORKTREE_ID]).toBeUndefined()
     } finally {
       unregisterSshGitProvider('target-a')
@@ -154,9 +152,7 @@ describe('OrcaRuntimeService worktree removal execution host', () => {
       expect(listWorktreesStrict).not.toHaveBeenCalled()
       expect(removeWorktree).not.toHaveBeenCalled()
       expect(fsProvider.deletePath).not.toHaveBeenCalled()
-      expect(removeWorktreeMeta).toHaveBeenCalledWith(TEST_WORKTREE_ID, 'ssh:target-a', {
-        cause: 'removed'
-      })
+      expect(removeWorktreeMeta).toHaveBeenCalledWith(TEST_WORKTREE_ID, 'ssh:target-a')
     } finally {
       unregisterSshFilesystemProvider('target-a')
       unregisterSshGitProvider('target-a')

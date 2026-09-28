@@ -156,7 +156,7 @@ describe('host-qualified worktree metadata', () => {
     store.setWorktreeMetaForHost(worktreeId, 'local', { displayName: 'Local feature' })
     store.setWorktreeMetaForHost(worktreeId, 'ssh:build-box', { displayName: 'Remote feature' })
 
-    store.removeWorktreeMeta(worktreeId, 'local', { cause: 'removed' })
+    store.removeWorktreeMeta(worktreeId, 'local')
 
     expect(store.getWorktreeMetaForHost(worktreeId, 'local')).toBeUndefined()
     expect(store.getWorktreeMetaForHost(worktreeId, 'ssh:build-box')?.displayName).toBe(
@@ -169,7 +169,7 @@ describe('host-qualified worktree metadata', () => {
     store.setWorktreeMetaForHost(worktreeId, 'local', { displayName: 'Local feature' })
     store.setWorktreeMetaForHost(worktreeId, 'ssh:build-box', { displayName: 'Remote feature' })
 
-    store.removeWorktreeMeta(worktreeId, 'ssh:build-box', { cause: 'removed' })
+    store.removeWorktreeMeta(worktreeId, 'ssh:build-box')
 
     expect(store.getWorktreeMetaForHost(worktreeId, 'local')?.displayName).toBe('Local feature')
     expect(store.getWorktreeMetaForHost(worktreeId, 'ssh:build-box')).toBeUndefined()
@@ -265,7 +265,7 @@ describe('host-qualified worktree metadata', () => {
     store.setWorktreeMetaForHost(worktreeId, 'local', { displayName: 'Local feature' })
     store.setWorktreeMetaForHost(worktreeId, 'ssh:build-box', { displayName: 'Remote feature' })
 
-    store.removeWorktreeMeta(worktreeId, undefined, { cause: 'removed' })
+    store.removeWorktreeMeta(worktreeId)
 
     store.flush()
     const persisted = readDataFile() as PersistedState

@@ -4,7 +4,6 @@ import { killAllProcessesForWorktree } from '../../../runtime/worktree-teardown'
 import type { Store } from '../../../persistence/loading-store/store'
 import { getRepoExecutionHostId } from '../../../../shared/execution-host'
 import type { ExecutionHostId } from '../../../../shared/execution-host'
-import type { WorkspaceRemovalCause } from '../../../persistence/restoring-sessions/session-owner-removal'
 import type { Repo } from '../../../../shared/repo-types'
 import { hasWorktreeRemovalRepoOwnerOnOtherHost } from '../../../worktree-removal-repo-owner'
 import { getRepoIdFromWorktreeId } from '../../../../shared/worktree/id'
@@ -73,7 +72,6 @@ export function resolveWorktreeRemovalOwnerHostId(
 export function removeWorktreeMetadataAndTransientState(
   store: Store,
   worktreeId: string,
-  cause: Exclude<WorkspaceRemovalCause, 'unlisted'>,
   hostId?: ExecutionHostId,
   snapshotPruneBatchId?: string
 ): void {
@@ -85,7 +83,11 @@ export function removeWorktreeMetadataAndTransientState(
       hasWorktreeRemovalRepoOwnerOnOtherHost(store, repoId, hostId))
   )
   // Why: worktree IDs are path-derived and reusable; drop process-local caches before the same ID can map to a new workspace.
-  store.removeWorktreeMeta(worktreeId, hostId, { cause })
+  if (hostId) {
+    store.removeWorktreeMeta(worktreeId, hostId)
+  } else {
+    store.removeWorktreeMeta(worktreeId)
+  }
   if (!preservesSameIdOwner) {
     advertisedUrlWatcher.forgetWorktree(worktreeId)
     // Why: drop this worktree's localhost label routes so they don't accumulate in the proxy's route maps all session.

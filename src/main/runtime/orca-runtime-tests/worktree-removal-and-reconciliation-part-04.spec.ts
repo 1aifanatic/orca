@@ -417,9 +417,7 @@ describe('OrcaRuntimeService', () => {
       await rm(orphanPath, { recursive: true, force: true })
       vi.mocked(listWorktrees).mockResolvedValue([])
       await expect(runtime.removeManagedWorktree(worktreeId)).resolves.toEqual({})
-      expect(removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'local', {
-        cause: 'removed'
-      })
+      expect(removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'local')
     } finally {
       gitSpy.mockRestore()
       await rm(parentDir, { recursive: true, force: true })

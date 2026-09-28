@@ -61,7 +61,6 @@ export async function removeFolderWorkspace(
     removeWorktreeMetadataAndTransientState(
       store,
       args.worktreeId,
-      'removed',
       removalHostId,
       args.snapshotPruneBatchId
     )

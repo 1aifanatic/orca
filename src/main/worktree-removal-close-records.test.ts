@@ -1,7 +1,7 @@
 import { closeTestStores, createSqliteTestStore } from './persistence-test-harness'
-// Why this file exists: a workspace's removal or Forget must take its close records with it,
+// Why this file exists: removing a workspace's session rows must take its close records with it,
 // or they hold cap slots until the TTL and read as "emptied on purpose" for a new workspace at the
-// same path; a host that merely stops listing a worktree must leave them alone.
+// same path.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { rmSync, mkdtempSync } from 'node:fs'
 import { join } from 'node:path'
@@ -78,29 +78,26 @@ describe('close records on workspace removal', () => {
     rmSync(testState.dir, { recursive: true, force: true })
   })
 
-  it.each(['removed', 'forgotten'] as const)(
-    'drops only that worktree’s records when it is %s',
-    async (cause) => {
-      const store = await createStore()
-      store.setWorktreeMeta(REMOVED, {})
-      store.setWorkspaceSession(
-        sessionWithRecords(
-          records([
-            ['closed-removed', REMOVED],
-            ['closed-kept', KEPT]
-          ])
-        )
+  it('drops only the removed worktree’s records', async () => {
+    const store = await createStore()
+    store.setWorktreeMeta(REMOVED, {})
+    store.setWorkspaceSession(
+      sessionWithRecords(
+        records([
+          ['closed-removed', REMOVED],
+          ['closed-kept', KEPT]
+        ])
       )
+    )
 
-      store.removeWorktreeMeta(REMOVED, undefined, { cause })
+    store.removeWorktreeMeta(REMOVED)
 
-      expect(
-        Object.keys(store.getWorkspaceSession().closedTerminalTabTombstonesByTabId ?? {})
-      ).toEqual(['closed-kept'])
-    }
-  )
+    expect(
+      Object.keys(store.getWorkspaceSession().closedTerminalTabTombstonesByTabId ?? {})
+    ).toEqual(['closed-kept'])
+  })
 
-  it('drops the records in the SSH host’s partition on a confirmed remote removal', async () => {
+  it('drops the records in the SSH host’s partition on a remote removal', async () => {
     const store = await createStore()
     store.setWorktreeMeta(REMOVED, { hostId: SSH_HOST })
     store.setWorkspaceSession(
@@ -113,24 +110,11 @@ describe('close records on workspace removal', () => {
       SSH_HOST
     )
 
-    store.removeWorktreeMeta(REMOVED, SSH_HOST, { cause: 'removed' })
+    store.removeWorktreeMeta(REMOVED, SSH_HOST)
 
     expect(
       Object.keys(store.getWorkspaceSession(SSH_HOST).closedTerminalTabTombstonesByTabId ?? {})
     ).toEqual(['closed-kept'])
-  })
-
-  // Why: a host scan that stops listing a worktree is no proof it is gone.
-  it('keeps the records when the worktree only dropped out of its host’s listing', async () => {
-    const store = await createStore()
-    store.setWorktreeMeta(REMOVED, { hostId: SSH_HOST })
-    store.setWorkspaceSession(sessionWithRecords(records([['closed-removed', REMOVED]])), SSH_HOST)
-
-    store.removeWorktreeMeta(REMOVED, SSH_HOST, { cause: 'unlisted' })
-
-    expect(
-      store.getWorkspaceSession(SSH_HOST).closedTerminalTabTombstonesByTabId?.['closed-removed']
-    ).toBeDefined()
   })
 
   // Why: repo ids and paths repeat across hosts; the local owner of the same id is still live.
@@ -148,7 +132,7 @@ describe('close records on workspace removal', () => {
     store.setWorkspaceSession(sessionWithRecords(records([['local-tab', REMOVED]])))
     store.setWorkspaceSession(sessionWithRecords(records([['ssh-tab', REMOVED]])), SSH_HOST)
 
-    store.removeWorktreeMeta(REMOVED, SSH_HOST, { cause: 'removed' })
+    store.removeWorktreeMeta(REMOVED, SSH_HOST)
 
     expect(
       Object.keys(store.getWorkspaceSession().closedTerminalTabTombstonesByTabId ?? {})
@@ -225,7 +209,7 @@ describe('close records on workspace removal', () => {
       })
     )
 
-    store.removeWorktreeMeta(REMOVED, undefined, { cause: 'removed' })
+    store.removeWorktreeMeta(REMOVED)
     let map = store.getWorkspaceSession().closedTerminalTabTombstonesByTabId
     for (let index = 0; index < 2; index += 1) {
       map = recordClosedTerminalTabTombstone(

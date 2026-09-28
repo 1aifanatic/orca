@@ -143,7 +143,6 @@ export async function removeUnregisteredWorktree(
     removeWorktreeMetadataAndTransientState(
       store,
       args.worktreeId,
-      'removed',
       removalHostId,
       args.snapshotPruneBatchId
     )
@@ -197,7 +196,6 @@ export async function removeUnregisteredWorktree(
       removeWorktreeMetadataAndTransientState(
         store,
         args.worktreeId,
-        'removed',
         removalHostId,
         args.snapshotPruneBatchId
       )
@@ -245,7 +243,6 @@ export async function removeUnregisteredWorktree(
     removeWorktreeMetadataAndTransientState(
       store,
       args.worktreeId,
-      'removed',
       removalHostId,
       args.snapshotPruneBatchId
     )

@@ -177,7 +177,7 @@ describe('Store', () => {
     })
     const stale = structuredClone(store.getWorkspaceSession())
 
-    store.removeWorktreeMeta('wt1', undefined, { cause: 'removed' })
+    store.removeWorktreeMeta('wt1')
 
     expect(store.getWorkspaceSession().tabsByWorktree.wt1).toBeUndefined()
     expect(store.getWorkspaceSession().terminalLayoutsByTabId['old-tab']).toBeUndefined()
@@ -210,7 +210,7 @@ describe('Store', () => {
       }
     }
 
-    store.removeWorktreeMeta(worktreeId, undefined, { cause: 'removed' })
+    store.removeWorktreeMeta(worktreeId)
     expect(store.getWorkspaceSession().terminalTopologyRevisionByRepoId?.repo).toBe(1)
 
     store.setWorkspaceSession(stale)
@@ -238,7 +238,7 @@ describe('Store', () => {
     const revisionBeforeDelete =
       store.getWorkspaceSession().terminalTopologyRevisionByRepoId?.repo ?? 0
 
-    store.removeWorktreeMeta(worktreeId, undefined, { cause: 'removed' })
+    store.removeWorktreeMeta(worktreeId)
 
     expect(store.getWorkspaceSession().terminalTopologyRevisionByRepoId?.repo).toBe(
       revisionBeforeDelete + 1
@@ -294,7 +294,7 @@ describe('Store', () => {
         leafId: TEST_LEAF_1,
         ptyId: `pty-${index}`
       })
-      store.removeWorktreeMeta(worktreeId, undefined, { cause: 'removed' })
+      store.removeWorktreeMeta(worktreeId)
     }
 
     const session = store.getWorkspaceSession()
@@ -331,7 +331,7 @@ describe('Store', () => {
       'runtime:env-b'
     )
 
-    store.removeWorktreeMeta(worktreeId, undefined, { cause: 'removed' })
+    store.removeWorktreeMeta(worktreeId)
 
     expect(store.getWorkspaceSession().tabsByWorktree[worktreeId]).toBeUndefined()
     expect(store.getWorkspaceSession('runtime:env-a').tabsByWorktree[worktreeId]?.[0]?.id).toBe(

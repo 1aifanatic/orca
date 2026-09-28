@@ -78,7 +78,7 @@ describe('store signals to the worktree metadata prune gate', () => {
     } as unknown as WorkspaceSessionState)
     parkGate()
 
-    store.removeWorkspaceSessionStateForWorktree(WORKTREE_ID, undefined, { cause: 'removed' })
+    store.removeWorkspaceSessionStateForWorktree(WORKTREE_ID)
 
     expect(isLocalWorktreeMetadataPruneDue(REPO_ID)).toBe(true)
   })
@@ -88,7 +88,7 @@ describe('store signals to the worktree metadata prune gate', () => {
     store.setWorktreeMeta(WORKTREE_ID, { displayName: 'a', hostId: 'local' })
     parkGate()
 
-    store.removeWorktreeMeta(WORKTREE_ID, undefined, { cause: 'removed' })
+    store.removeWorktreeMeta(WORKTREE_ID)
 
     expect(isLocalWorktreeMetadataPruneDue(REPO_ID)).toBe(true)
   })

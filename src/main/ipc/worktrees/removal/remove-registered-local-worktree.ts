@@ -177,7 +177,6 @@ export async function removeRegisteredLocalWorktree(
         removeWorktreeMetadataAndTransientState(
           store,
           args.worktreeId,
-          'removed',
           removalHostId,
           args.snapshotPruneBatchId
         )
@@ -222,7 +221,6 @@ export async function removeRegisteredLocalWorktree(
     removeWorktreeMetadataAndTransientState(
       store,
       args.worktreeId,
-      'removed',
       removalHostId,
       args.snapshotPruneBatchId
     )

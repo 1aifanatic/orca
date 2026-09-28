@@ -17,8 +17,7 @@ import { findWorktreeIdForTab } from '../restoring-sessions/pane-identity-migrat
 import { invalidateLocalWorktreeMetadataPruneInputs } from '../../local-worktree-metadata-prune-gate'
 import {
   removeWorkspaceSessionOwner,
-  workspaceSessionPartitionIdsForHost,
-  type WorkspaceSessionOwnerRemovalOptions
+  workspaceSessionPartitionIdsForHost
 } from '../restoring-sessions/session-owner-removal'
 
 import type { StoreRuntimeState } from './store-runtime-state'
@@ -94,8 +93,8 @@ export class SessionHostPartitionOperations {
 
   removeWorkspaceSessionStateForWorktree(
     worktreeId: string,
-    hostId: ExecutionHostId | null | undefined,
-    options: WorkspaceSessionOwnerRemovalOptions
+    hostId?: ExecutionHostId | null,
+    options: { advanceTerminalTopologyRevision?: boolean } = {}
   ): void {
     for (const resolved of workspaceSessionPartitionIdsForHost(hostId)) {
       removeWorkspaceSessionOwnerInPartition(this, worktreeId, resolved, options)
@@ -123,14 +122,13 @@ export function removeWorkspaceSessionOwnerInPartition(
   owner: SessionHostPartitionOperations,
   worktreeId: string,
   resolved: ExecutionHostId,
-  options: WorkspaceSessionOwnerRemovalOptions
+  options: { advanceTerminalTopologyRevision?: boolean }
 ): void {
   if (!hasPersistedWorkspaceSession(owner, resolved)) {
     return
   }
   const current = owner.getWorkspaceSession(resolved)
   const session = removeWorkspaceSessionOwner(current, worktreeId, {
-    ...options,
     advanceTerminalTopologyRevision: options.advanceTerminalTopologyRevision ?? true
   })
   if (!session) {

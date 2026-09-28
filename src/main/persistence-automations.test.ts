@@ -695,7 +695,7 @@ describe('Store', () => {
     })
 
     const run = store.createAutomationRun(automation, new Date('2026-05-13T09:00:00Z').getTime())
-    store.removeWorktreeMeta('wt1', undefined, { cause: 'removed' })
+    store.removeWorktreeMeta('wt1')
 
     expect(run.workspaceDisplayName).toBe('Nightly workspace')
     expect(store.listAutomationRuns(automation.id)[0].workspaceDisplayName).toBe(

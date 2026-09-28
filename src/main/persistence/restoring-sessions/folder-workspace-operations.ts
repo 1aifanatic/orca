@@ -215,9 +215,7 @@ export class FolderWorkspacePersistenceOperations {
     if ((this.state.folderWorkspaces?.length ?? 0) === before) {
       return false
     }
-    removeWorkspaceSessionOwnerEverywhere(this.state, folderWorkspaceKey(id), {
-      cause: 'removed'
-    })
+    removeWorkspaceSessionOwnerEverywhere(this.state, folderWorkspaceKey(id))
     this.removeWorkspaceLineageForFolderParent(id)
     this.pruneMobileClientTabSelections((worktreeId) => worktreeId === folderWorkspaceKey(id))
     this.scheduleSave()

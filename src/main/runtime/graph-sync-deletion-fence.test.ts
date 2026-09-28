@@ -77,7 +77,7 @@ describe('graph-sync deletion fence', () => {
 
   type FenceInternals = RuntimeInternals & {
     removedMobileSessionWorktreeIds: Map<string, unknown>
-    removeWorktreeMetadataAndHistory: (store: unknown, worktreeId: string, cause: 'removed') => void
+    removeWorktreeMetadataAndHistory: (store: unknown, worktreeId: string) => void
     rendererGeneration: string | null
   }
 
@@ -108,7 +108,7 @@ describe('graph-sync deletion fence', () => {
     const recreate = (instanceId: string): void => {
       meta = { instanceId }
     }
-    const remove = (): void => internals.removeWorktreeMetadataAndHistory(store, WT, 'removed')
+    const remove = (): void => internals.removeWorktreeMetadataAndHistory(store, WT)
     return { runtime, internals, events, sync, recreate, remove }
   }
 

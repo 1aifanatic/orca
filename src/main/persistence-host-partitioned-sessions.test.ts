@@ -407,7 +407,7 @@ describe('Store host-partitioned workspace sessions', () => {
     store.setWorkspaceSession(session, 'runtime:env-a')
     store.setWorkspaceSession(session, 'runtime:env-b')
 
-    store.removeWorkspaceSessionStateForWorktree(worktreeId, 'runtime:env-a', { cause: 'removed' })
+    store.removeWorkspaceSessionStateForWorktree(worktreeId, 'runtime:env-a')
     store.setWorkspaceSession(session, 'runtime:env-a')
     store.flush()
 
@@ -447,7 +447,7 @@ describe('Store host-partitioned workspace sessions', () => {
     store.setWorkspaceSession(session, 'runtime:env-b')
     store.setWorktreeMeta(worktreeId, { hostId: 'runtime:env-a' })
 
-    store.removeWorktreeMeta(worktreeId, undefined, { cause: 'removed' })
+    store.removeWorktreeMeta(worktreeId)
 
     expect(store.getWorkspaceSession('runtime:env-a').tabsByWorktree[worktreeId]).toBeUndefined()
     // Only the owning host's partition and the local blob it may spill into are cleaned; a same-id
@@ -473,7 +473,7 @@ describe('Store host-partitioned workspace sessions', () => {
     store.setWorkspaceSession(makeSession(), 'ssh:conn-1')
     store.setWorktreeMeta(worktreeId, { hostId: 'ssh:conn-1' })
 
-    store.removeWorktreeMeta(worktreeId, 'ssh:conn-1', { cause: 'removed' })
+    store.removeWorktreeMeta(worktreeId, 'ssh:conn-1')
 
     for (const hostId of ['local', 'ssh:conn-1'] as const) {
       expect(store.getWorkspaceSession(hostId)).toMatchObject({
@@ -511,7 +511,7 @@ describe('Store host-partitioned workspace sessions', () => {
     )
     store.setWorktreeMeta(worktreeId, { hostId: 'runtime:env-a' })
 
-    store.removeWorktreeMeta(worktreeId, 'local', { cause: 'removed' })
+    store.removeWorktreeMeta(worktreeId, 'local')
 
     expect(
       store.getWorkspaceSession('runtime:env-a').terminalTopologyRevisionByRepoId?.['repo-split']
@@ -544,7 +544,7 @@ describe('Store host-partitioned workspace sessions', () => {
 
     // The confirmed removal target is env-b. Bare metadata belongs to the same-id
     // local owner and must not redirect the post-delete purge back to local.
-    store.removeWorktreeMeta(worktreeId, 'runtime:env-b', { cause: 'removed' })
+    store.removeWorktreeMeta(worktreeId, 'runtime:env-b')
 
     expect(store.getWorktreeMeta(worktreeId)?.hostId).toBe('local')
     expect(store.getWorktreeLineage(worktreeId)).toEqual(worktreeLineage)
@@ -581,7 +581,7 @@ describe('Store host-partitioned workspace sessions', () => {
     store.setWorkspaceSession(remoteSession, 'ssh:ssh-b')
     store.setWorktreeMeta(worktreeId, { hostId: 'ssh:ssh-b' })
 
-    store.removeWorktreeMeta(worktreeId, 'ssh:ssh-b', { cause: 'removed' })
+    store.removeWorktreeMeta(worktreeId, 'ssh:ssh-b')
 
     expect(store.getWorkspaceSession('local').tabsByWorktree[worktreeId]).toEqual([
       expect.objectContaining({ id: 'same-id-local-tab' })
@@ -602,7 +602,7 @@ describe('Store host-partitioned workspace sessions', () => {
     store.setWorkspaceSession(session, 'runtime:env-a')
     store.setWorkspaceSession(session, 'local')
 
-    store.removeWorktreeMeta(worktreeId, 'runtime:env-a', { cause: 'removed' })
+    store.removeWorktreeMeta(worktreeId, 'runtime:env-a')
 
     expect(store.getWorkspaceSession('runtime:env-a').tabsByWorktree[worktreeId]).toBeUndefined()
     expect(store.getWorkspaceSession('local').tabsByWorktree[worktreeId]).toBeUndefined()
@@ -620,7 +620,7 @@ describe('Store host-partitioned workspace sessions', () => {
       }
     }
 
-    store.removeWorkspaceSessionStateForWorktree(worktreeId, 'runtime:env-a', { cause: 'removed' })
+    store.removeWorkspaceSessionStateForWorktree(worktreeId, 'runtime:env-a')
     store.setWorkspaceSession(delayedSession, 'runtime:env-a')
 
     const session = store.getWorkspaceSession('runtime:env-a')

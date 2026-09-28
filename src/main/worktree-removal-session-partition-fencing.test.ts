@@ -70,7 +70,7 @@ describe('worktree removal across host session partitions', () => {
     const store = await createStore()
     store.setWorktreeMeta(STALE, { hostId: ENV_A })
 
-    store.removeWorktreeMeta(STALE, undefined, { cause: 'removed' })
+    store.removeWorktreeMeta(STALE)
 
     store.setWorkspaceSession(
       {
@@ -89,7 +89,7 @@ describe('worktree removal across host session partitions', () => {
     const store = await createStore()
     store.setWorktreeMeta(STALE, { hostId: ENV_A })
 
-    store.removeWorktreeMeta(STALE, undefined, { cause: 'removed' })
+    store.removeWorktreeMeta(STALE)
 
     expect(store.getWorkspaceSessionHostIds()).toEqual(['local'])
   })
@@ -97,7 +97,7 @@ describe('worktree removal across host session partitions', () => {
   it('does not materialize an unwritten host partition when removing session state directly', async () => {
     const store = await createStore()
 
-    store.removeWorkspaceSessionStateForWorktree(STALE, ENV_A, { cause: 'removed' })
+    store.removeWorkspaceSessionStateForWorktree(STALE, ENV_A)
 
     expect(store.getWorkspaceSessionHostIds()).toEqual(['local'])
   })
@@ -114,7 +114,7 @@ describe('worktree removal across host session partitions', () => {
       ENV_A
     )
 
-    store.removeWorktreeMeta(STALE, undefined, { cause: 'removed' })
+    store.removeWorktreeMeta(STALE)
 
     expect(store.getWorkspaceSession(ENV_A).tabsByWorktree[STALE]).toBeUndefined()
     expect(store.getWorkspaceSession(ENV_A).terminalTopologyRevisionByRepoId?.['repo-gone']).toBe(1)
@@ -148,7 +148,7 @@ describe('worktree removal across host session partitions', () => {
       ENV_A
     )
 
-    store.removeWorktreeMeta(STALE, undefined, { cause: 'removed' })
+    store.removeWorktreeMeta(STALE)
 
     expect(store.getWorkspaceSession().tabsByWorktree[STALE]).toBeUndefined()
     expect(store.getWorkspaceSession(ENV_A).tabsByWorktree[STALE]).toBeUndefined()
@@ -167,7 +167,7 @@ describe('worktree removal across host session partitions', () => {
       ENV_A
     )
 
-    store.removeWorktreeMeta(STALE, undefined, { cause: 'removed' })
+    store.removeWorktreeMeta(STALE)
 
     store.setWorkspaceSession({
       ...getDefaultWorkspaceSession(),
@@ -199,7 +199,7 @@ describe('worktree removal across host session partitions', () => {
       ENV_A
     )
 
-    store.removeWorktreeMeta(STALE, undefined, { cause: 'removed' })
+    store.removeWorktreeMeta(STALE)
 
     expect(store.getWorkspaceSession(ENV_A).terminalTopologyRevisionByRepoId?.['repo-gone']).toBe(1)
 
@@ -223,7 +223,7 @@ describe('worktree removal across host session partitions', () => {
       tabsByWorktree: { [LIVE]: [makeTerminalTab({ id: 'live-tab', worktreeId: LIVE })] }
     })
 
-    store.removeWorktreeMeta(STALE, undefined, { cause: 'removed' })
+    store.removeWorktreeMeta(STALE)
 
     expect(
       store.getWorkspaceSession().terminalTopologyRevisionByRepoId?.['repo-gone']

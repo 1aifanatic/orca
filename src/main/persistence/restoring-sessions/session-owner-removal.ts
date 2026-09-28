@@ -9,22 +9,7 @@ import { workspaceSessionPartitionHostId } from '../../../shared/workspace-sessi
 import { omitClosedTerminalTabRecordsForWorktrees } from '../../../shared/closed-terminal-tab-tombstones'
 import { cloneWorkspaceSessionState, deleteOwnerKeyedSessionFields } from './session-owner-fields'
 
-/** Why a workspace's rows are going. `removed`: Orca removed it, or git or its host confirmed it
- *  gone (including a folder or project removal). `forgotten`: the user chose Forget. `unlisted`: its
- *  host's scan stopped listing it, which is no proof it is gone. Callers state the cause; what each
- *  one takes with it is decided here. */
-export type WorkspaceRemovalCause = 'removed' | 'forgotten' | 'unlisted'
-
-export type WorkspaceSessionOwnerRemovalOptions = {
-  cause: WorkspaceRemovalCause
-  advanceTerminalTopologyRevision?: boolean
-}
-
-// Why unlisted keeps them: a wrong scan then costs only records waiting out their TTL.
-function removalDropsCloseRecords(cause: WorkspaceRemovalCause): boolean {
-  return cause !== 'unlisted'
-}
-
+// Why: a close record exists to answer for its workspace; once the workspace's rows go, so does it.
 function pruneCloseRecordsForOwners(
   next: WorkspaceSessionState,
   isRemovedOwner: (worktreeId: string) => boolean
@@ -101,7 +86,7 @@ export const workspaceSessionOwnerPartitionForHost = workspaceSessionPartitionHo
 export function removeWorkspaceSessionOwnerEverywhere(
   state: Pick<PersistedState, 'workspaceSession' | 'workspaceSessionsByHostId'>,
   ownerKey: string,
-  options: WorkspaceSessionOwnerRemovalOptions
+  options: { advanceTerminalTopologyRevision?: boolean } = {}
 ): void {
   state.workspaceSession = removeWorkspaceSessionOwner(state.workspaceSession, ownerKey, options)!
   const partitions = state.workspaceSessionsByHostId
@@ -120,7 +105,7 @@ export function removeWorkspaceSessionOwnerEverywhere(
 export function removeWorkspaceSessionOwner(
   session: WorkspaceSessionState | undefined,
   ownerKey: string,
-  options: WorkspaceSessionOwnerRemovalOptions
+  options: { advanceTerminalTopologyRevision?: boolean } = {}
 ): WorkspaceSessionState | undefined {
   if (!session) {
     return session
@@ -129,9 +114,7 @@ export function removeWorkspaceSessionOwner(
   const removedTabIds = new Set<string>()
   deleteOwnerKeyedSessionFields(next, ownerKey, removedTabIds, options)
   deleteScannedSessionFieldsForOwners(next, removedTabIds, (worktreeId) => worktreeId === ownerKey)
-  if (removalDropsCloseRecords(options.cause)) {
-    pruneCloseRecordsForOwners(next, (worktreeId) => worktreeId === ownerKey)
-  }
+  pruneCloseRecordsForOwners(next, (worktreeId) => worktreeId === ownerKey)
   return next
 }
 
@@ -141,8 +124,7 @@ export function removeWorkspaceSessionOwner(
 // host partitions, so the per-owner clones added up to O(worktrees × hosts).
 export function removeWorkspaceSessionOwners(
   session: WorkspaceSessionState | undefined,
-  ownerKeys: ReadonlySet<string>,
-  options: Pick<WorkspaceSessionOwnerRemovalOptions, 'cause'>
+  ownerKeys: ReadonlySet<string>
 ): WorkspaceSessionState | undefined {
   if (!session || ownerKeys.size === 0) {
     return session
@@ -155,8 +137,6 @@ export function removeWorkspaceSessionOwners(
   deleteScannedSessionFieldsForOwners(next, removedTabIds, (worktreeId) =>
     ownerKeys.has(worktreeId)
   )
-  if (removalDropsCloseRecords(options.cause)) {
-    pruneCloseRecordsForOwners(next, (worktreeId) => ownerKeys.has(worktreeId))
-  }
+  pruneCloseRecordsForOwners(next, (worktreeId) => ownerKeys.has(worktreeId))
   return next
 }

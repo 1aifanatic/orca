@@ -105,18 +105,14 @@ export function pruneWorktreeStateForRepo(
   const pruneLegacyLocalSession = hostId === null || hostId === LOCAL_EXECUTION_HOST_ID
   const pruneAllHostPartitions = hostId === null
   if (pruneLegacyLocalSession) {
-    state.workspaceSession = removeWorkspaceSessionOwners(
-      state.workspaceSession,
-      ownerKeysToPrune,
-      { cause: 'removed' }
-    )!
+    state.workspaceSession = removeWorkspaceSessionOwners(state.workspaceSession, ownerKeysToPrune)!
   }
   if (state.workspaceSessionsByHostId) {
     for (const [partitionHostId, session] of Object.entries(state.workspaceSessionsByHostId)) {
       if (!pruneAllHostPartitions && partitionHostId !== hostId) {
         continue
       }
-      const pruned = removeWorkspaceSessionOwners(session, ownerKeysToPrune, { cause: 'removed' })
+      const pruned = removeWorkspaceSessionOwners(session, ownerKeysToPrune)
       if (pruned) {
         state.workspaceSessionsByHostId[partitionHostId] = pruned
       }

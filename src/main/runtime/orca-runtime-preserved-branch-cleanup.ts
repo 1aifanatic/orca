@@ -247,7 +247,7 @@ export class OrcaRuntimeWithPreservedBranchCleanup extends OrcaRuntimeWithTermin
       ),
     cleanupRemovedFolderWorkspaceState: (worktreeId) => {
       if (this.store) {
-        this.removeWorktreeMetadataAndHistory(this.store, worktreeId, 'removed')
+        this.removeWorktreeMetadataAndHistory(this.store, worktreeId)
       }
     }
   })
