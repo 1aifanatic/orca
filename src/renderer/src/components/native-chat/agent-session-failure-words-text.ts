@@ -2,10 +2,12 @@
 // shared English as its fallback, so the host's row and desktop's notice never say it differently.
 
 import { translate } from '@/i18n/i18n'
+import { joinUiSentences } from '@/i18n/sentence-joining'
 import {
   AGENT_SESSION_FAILURE_COPY as COPY,
   type AgentSessionFailureCopyId,
   type AgentSessionFailureCopyValues,
+  type AgentSessionFailureLanguage,
   type AgentSessionFailureSay
 } from '../../../../shared/agent-session-failure-copy'
 
@@ -200,3 +202,8 @@ const PIECES: Record<AgentSessionFailureCopyId, (values: AgentSessionFailureCopy
 
 export const sayAgentSessionFailureTranslated: AgentSessionFailureSay = (id, values = {}) =>
   PIECES[id](values)
+
+export const AGENT_SESSION_FAILURE_TRANSLATED: AgentSessionFailureLanguage = {
+  say: sayAgentSessionFailureTranslated,
+  join: joinUiSentences
+}

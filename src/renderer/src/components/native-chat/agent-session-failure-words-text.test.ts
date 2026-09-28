@@ -21,7 +21,10 @@ import { AGENT_SESSION_WRITE_NOTICE_COPY } from '../../../../shared/agent-sessio
 import { agentSessionWriteNoticeParts } from '../../../../shared/agent-session-refusal-notice'
 import { agentSessionRefusalFailure } from '../../../../shared/agent-session-write-failure'
 import { structuredAgentSessionRejectionParts } from '../../../../shared/structured-agent-session-send-disposition'
-import { sayAgentSessionFailureTranslated } from './agent-session-failure-words-text'
+import {
+  AGENT_SESSION_FAILURE_TRANSLATED,
+  sayAgentSessionFailureTranslated
+} from './agent-session-failure-words-text'
 import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
 
 vi.mock('@/i18n/i18n', async (importOriginal) => {
@@ -110,7 +113,7 @@ describe('desktop words for a failure fact', () => {
         for (const surface of ['row', 'rejection'] as const) {
           for (const context of CONTEXTS) {
             expect(
-              agentSessionFailureSentence(fact, surface, context, sayAgentSessionFailureTranslated)
+              agentSessionFailureSentence(fact, surface, context, AGENT_SESSION_FAILURE_TRANSLATED)
             ).toBe(agentSessionFailureSentence(fact, surface, context))
           }
         }

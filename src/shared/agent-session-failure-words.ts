@@ -18,8 +18,9 @@ import {
   type SubmissionRejectionKind
 } from './agent-session-failure'
 import {
-  sayAgentSessionFailureEnglish,
+  AGENT_SESSION_FAILURE_ENGLISH,
   type AgentSessionFailureCopyId,
+  type AgentSessionFailureLanguage,
   type AgentSessionFailureSay
 } from './agent-session-failure-copy'
 import type { AgentSessionWireRefusalCode } from './agent-session-wire-refusals'
@@ -95,7 +96,8 @@ type Sentence = (
   context: AgentSessionFailureWordsContext,
   fact: AgentSessionFailureFact,
   surface: AgentSessionFailureSurface,
-  say: AgentSessionFailureSay
+  say: AgentSessionFailureSay,
+  join: AgentSessionFailureLanguage['join']
 ) => string
 
 function agent(say: AgentSessionFailureSay, { agentName }: AgentSessionFailureWordsContext) {
@@ -122,24 +124,23 @@ function quotingPersonDetail(
 function startRetry(
   say: AgentSessionFailureSay,
   { command, retryControl }: AgentSessionFailureWordsContext
-): string {
-  if (retryControl) {
-    return ''
-  }
-  return ` ${say(command === 'clear' ? 'runClearAgain' : 'sendToTryAgain')}`
+): string[] {
+  return retryControl ? [] : [say(command === 'clear' ? 'runClearAgain' : 'sendToTryAgain')]
 }
 
 function couldNot(verb: 'couldNotStart' | 'couldNotRestart'): Sentence {
-  return (context, fact, _surface, say) => {
+  return (context, fact, _surface, say, join) => {
     const failed = say(verb, agent(say, context))
     // Only a terminal agent an older build recorded holds a claim; quitting it frees the chat.
     if (fact.refusal?.details?.reason === 'claimConflicted') {
-      return `${failed} ${say('terminalAgentHoldsChat')} ${say('quitTerminalAgent')}`
+      return join([failed, say('terminalAgentHoldsChat'), say('quitTerminalAgent')])
     }
     const code = fact.refusal?.code
-    return code && !START_REFUSAL_RESUMABLE[code]
-      ? `${failed} ${say('startNewChat')}`
-      : `${failed}${startRetry(say, context)}`
+    return join(
+      code && !START_REFUSAL_RESUMABLE[code]
+        ? [failed, say('startNewChat')]
+        : [failed, ...startRetry(say, context)]
+    )
   }
 }
 
@@ -172,30 +173,36 @@ const ATTACHMENT_SENTENCES = {
 >
 
 const FAILURE_SENTENCES = {
-  providerStartFailed: (context, _fact, _surface, say) =>
-    `${say('providerStartFailed', agent(say, context))}${startRetry(say, context)}`,
+  providerStartFailed: (context, _fact, _surface, say, join) =>
+    join([say('providerStartFailed', agent(say, context)), ...startRetry(say, context)]),
   startFailed: couldNot('couldNotStart'),
   // Beside a Retry the resend is the button, but signing in is still a step to take first.
-  notSignedIn: (context, _fact, _surface, say) =>
-    `${say('notSignedIn', agent(say, context))} ${say(
-      context.retryControl
-        ? 'signInFirst'
-        : context.command === 'clear'
-          ? 'signInThenRunClear'
-          : 'signInThenSend'
-    )}`,
-  historyTooLarge: (_context, _fact, _surface, say) =>
-    `${say('historyTooLarge')} ${say('startNewChat')}`,
+  notSignedIn: (context, _fact, _surface, say, join) =>
+    join([
+      say('notSignedIn', agent(say, context)),
+      say(
+        context.retryControl
+          ? 'signInFirst'
+          : context.command === 'clear'
+            ? 'signInThenRunClear'
+            : 'signInThenSend'
+      )
+    ]),
+  historyTooLarge: (_context, _fact, _surface, say, join) =>
+    join([say('historyTooLarge'), say('startNewChat')]),
   managedAccountEnvOverride: (_context, _fact, _surface, say) => say('managedAccountEnvOverride'),
   accountSwitchInProgress: (_context, _fact, _surface, say) => say('accountSwitchInProgress'),
-  managedAccountUnsupported: (context, _fact, _surface, say) =>
-    `${say('managedAccountUnsupported')} ${say(
-      context.retryControl
-        ? 'chooseClaudeAccount'
-        : context.command === 'clear'
-          ? 'chooseClaudeAccountThenRunClear'
-          : 'chooseClaudeAccountThenSend'
-    )}`,
+  managedAccountUnsupported: (context, _fact, _surface, say, join) =>
+    join([
+      say('managedAccountUnsupported'),
+      say(
+        context.retryControl
+          ? 'chooseClaudeAccount'
+          : context.command === 'clear'
+            ? 'chooseClaudeAccountThenRunClear'
+            : 'chooseClaudeAccountThenSend'
+      )
+    ]),
   providerExited: (context, _fact, surface, say) =>
     say(surface === 'row' ? 'providerExitedRow' : 'providerExitedRejection', agent(say, context)),
   restartFailed: couldNot('couldNotRestart'),
@@ -237,10 +244,10 @@ export function agentSessionFailureSentence(
   surface: AgentSessionFailureSurface,
   context: AgentSessionFailureWordsContext = {},
   /** Desktop passes its translations; the host and the phone keep English. */
-  say: AgentSessionFailureSay = sayAgentSessionFailureEnglish
+  language: AgentSessionFailureLanguage = AGENT_SESSION_FAILURE_ENGLISH
 ): string {
   const sentence: Sentence = FAILURE_SENTENCES[fact.kind]
-  return sentence(context, fact, surface, say)
+  return sentence(context, fact, surface, language.say, language.join)
 }
 
 /** The markers released clients hide, for the rejections that had one before rows carried a fact.
