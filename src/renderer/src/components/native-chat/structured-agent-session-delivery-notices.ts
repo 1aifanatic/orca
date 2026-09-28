@@ -5,8 +5,13 @@
 // the queue is stopped, only the message it stopped on has a Retry; another's would wait unseen
 // behind it. One waiting behind says nothing; a rejected message holds nothing up, so it keeps its
 // words and gets its Retry once the queue moves.
+//
+// A message the host recorded and then rejected is worded from the journal's own fact, found by id;
+// the message keeps only a smaller copy, read when its submission is not loaded.
 
+import { readAgentSessionFailureFact } from '../../../../shared/agent-session-failure'
 import { agentJournalSubmissionKey } from '../../../../shared/agent-session-journal-item-key'
+import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 import {
   admitStructuredAgentSessionOutboxEntry,
   type StructuredAgentSessionOutboxEntry
@@ -19,7 +24,8 @@ import type { NativeChatDeliveryNotice } from './NativeChatMessageRow'
 
 function deliveryNoticeText(
   entry: StructuredAgentSessionOutboxEntry,
-  context: AgentSessionFailureWordsContext
+  context: AgentSessionFailureWordsContext,
+  recorded: AgentJournalSubmission | undefined
 ): string {
   if (entry.state === 'unconfirmed') {
     return translate(
@@ -29,7 +35,11 @@ function deliveryNoticeText(
   }
   return entry.lastFailure
     ? agentSessionWriteNoticeText(
-        structuredAgentSessionAttemptFailureParts(entry.lastFailure, context)
+        structuredAgentSessionAttemptFailureParts(
+          entry.lastFailure,
+          context,
+          readAgentSessionFailureFact(recorded?.rejection)
+        )
       )
     : translate(
         'auto.components.native.chat.NativeChatStructuredSession.93ef441197',
@@ -43,16 +53,27 @@ export function structuredAgentSessionDeliveryNotices(
   outbox: readonly StructuredAgentSessionOutboxEntry[],
   blockedClientMessageId: string | null,
   agentName: string,
-  retry: (clientMessageId: string) => void
+  retry: (clientMessageId: string) => void,
+  /** The journal's rows, whose rejected ones carry more of a rejection than the message keeps. */
+  submissions: readonly AgentJournalSubmission[]
 ): ReadonlyMap<string, NativeChatDeliveryNotice> {
   const admission = admitStructuredAgentSessionOutboxEntry(outbox, blockedClientMessageId)
   const held = admission.state === 'blocked' ? admission.entry.clientMessageId : null
+  const rejected = new Map(
+    submissions
+      .filter((submission) => submission.dispatchState === 'rejected')
+      .map((submission) => [submission.clientMessageId, submission])
+  )
   const notices = new Map<string, NativeChatDeliveryNotice>()
   for (const entry of outbox) {
     if (entry.state === 'rejected' || entry.clientMessageId === held) {
       // Its own Retry is the step, so the words leave out sending again.
       const retryControl = held === null || entry.clientMessageId === held
-      const text = deliveryNoticeText(entry, { agentName, retryControl })
+      const text = deliveryNoticeText(
+        entry,
+        { agentName, retryControl },
+        rejected.get(entry.clientMessageId)
+      )
       notices.set(
         agentJournalSubmissionKey(entry.clientMessageId),
         retryControl ? { text, onRetry: () => retry(entry.clientMessageId) } : { text }

@@ -147,6 +147,8 @@ export function useStructuredAgentSession(args: {
     loadOlder,
     prompts,
     outbox,
+    /** The journal's rows for sent messages, which carry a rejected message's whole fact. */
+    submissions: transportState.submissions,
     blockedClientMessageId: outboxController.blockedClientMessageId,
     send: (...input: Parameters<typeof outboxController.send>) =>
       !commandPending.current && outboxController.send(...input),

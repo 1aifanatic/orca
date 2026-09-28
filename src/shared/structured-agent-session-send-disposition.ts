@@ -16,9 +16,9 @@ import {
 } from './agent-session-refusal-notice'
 import type { AgentSessionWriteNoticePart } from './agent-session-write-notice-copy'
 import { agentSessionRefusalFailure } from './agent-session-write-failure'
+import type { AgentSessionFailureFact } from './agent-session-failure'
 import {
   agentSessionFailureSentence,
-  agentSessionRejectionMayHoldMarker,
   type AgentSessionFailureWordsContext
 } from './agent-session-failure-words'
 import { classifyDispatchRejection } from './structured-agent-session-dispatch-rejection'
@@ -27,8 +27,7 @@ import {
   requeueStructuredAgentSessionSendRefusal,
   structuredAgentSessionRejectedFailure,
   type StructuredAgentSessionAttemptFailure,
-  type StructuredAgentSessionOutboxEntry,
-  type StructuredAgentSessionRejectionFact
+  type StructuredAgentSessionOutboxEntry
 } from './structured-agent-session-outbox'
 
 export type StructuredAgentSessionSendDisposition = {
@@ -137,11 +136,11 @@ export function structuredAgentSessionRejectionParts(
   reason: string | null,
   write: 'send' | 'composer-send',
   /** The host's typed fact, which decides when the row carried one. */
-  fact?: StructuredAgentSessionRejectionFact,
+  fact?: AgentSessionFailureFact,
   context: AgentSessionFailureWordsContext = {}
 ): AgentSessionWriteNoticePart[] {
   if (fact) {
-    return rejectionFactParts(reason, write, fact, context)
+    return rejectionFactParts(write, fact, context)
   }
   if (reason === null) {
     return ['notDoneSend']
@@ -156,39 +155,35 @@ export function structuredAgentSessionRejectionParts(
 }
 
 function rejectionFactParts(
-  reason: string | null,
   write: 'send' | 'composer-send',
-  fact: StructuredAgentSessionRejectionFact,
+  fact: AgentSessionFailureFact,
   context: AgentSessionFailureWordsContext
 ): AgentSessionWriteNoticePart[] {
-  const { kind } = classifyDispatchRejection({ reason, rejection: fact })
+  const { kind } = classifyDispatchRejection({ reason: null, rejection: fact })
   if (kind === 'writeFailed') {
     return ['unreachable', ...agentSessionWriteNotDoneParts(write)]
   }
   // A fact this build cannot place proves only that the message did not happen.
-  if (!kind) {
-    return agentSessionWriteNotDoneParts(write)
-  }
-  const sentence = (words: AgentSessionFailureWordsContext): string =>
-    agentSessionFailureSentence({ ...fact, kind }, 'rejection', words)
-  if (reason === null || agentSessionRejectionMayHoldMarker(kind)) {
-    return [{ text: sentence(context) }]
-  }
-  // The host wrote the fact's sentence as the reason, with what the stored fact drops (a refusal,
-  // the provider's words): beside a Retry, reword only a reason the fact rebuilds exactly.
-  const { retryControl, ...written } = context
-  return retryControl && sentence(written) === reason
-    ? [{ text: sentence(context) }]
-    : [{ text: reason }]
+  return kind
+    ? [{ text: agentSessionFailureSentence({ ...fact, kind }, 'rejection', context) }]
+    : agentSessionWriteNotDoneParts(write)
 }
 
 /** What the Retry row says about why its message did not go through. */
 export function structuredAgentSessionAttemptFailureParts(
   failure: StructuredAgentSessionAttemptFailure,
-  context: AgentSessionFailureWordsContext = {}
+  context: AgentSessionFailureWordsContext = {},
+  /** The journal's whole fact for a recorded rejection, when its submission is loaded: the
+   *  message's own copy keeps only its kind and attachment. */
+  recorded?: AgentSessionFailureFact
 ): AgentSessionWriteNoticePart[] {
   return failure.kind === 'rejected'
-    ? structuredAgentSessionRejectionParts(failure.reason, 'send', failure.rejection, context)
+    ? structuredAgentSessionRejectionParts(
+        failure.reason,
+        'send',
+        recorded ?? failure.rejection,
+        context
+      )
     : agentSessionWriteNoticeParts(failure, 'send', context)
 }
 

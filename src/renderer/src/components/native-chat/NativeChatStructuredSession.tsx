@@ -27,6 +27,9 @@ import { structuredAgentLabel } from '@/lib/structured-agent-session-launch-labe
 import { NativeChatThreadGoalBanner } from './NativeChatThreadGoalBanner'
 import { structuredAgentSessionReadFailureNotice } from './structured-agent-session-read-failure-notice'
 import { structuredAgentSessionDeliveryNotices } from './structured-agent-session-delivery-notices'
+import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
+
+const NO_SUBMISSIONS: readonly AgentJournalSubmission[] = []
 
 export function NativeChatStructuredSession(
   props: Omit<NativeChatStructuredViewProps, 'mode'>
@@ -110,15 +113,20 @@ export function NativeChatStructuredSession(
     retryRef.current(clientMessageId)
   }, [])
   const agentLabel = structuredAgentLabel(props.agent === 'codex' ? 'codex' : 'claude')
+  // Only a rejected message reads the journal's rows, so a new batch of them re-renders no row else.
+  const rejectionRows = controller.outbox.some((entry) => entry.state === 'rejected')
+    ? controller.submissions
+    : NO_SUBMISSIONS
   const deliveryNotices = useMemo(
     () =>
       structuredAgentSessionDeliveryNotices(
         controller.outbox,
         controller.blockedClientMessageId,
         agentLabel,
-        retryDelivery
+        retryDelivery,
+        rejectionRows
       ),
-    [controller.outbox, controller.blockedClientMessageId, agentLabel, retryDelivery]
+    [controller.outbox, controller.blockedClientMessageId, agentLabel, retryDelivery, rejectionRows]
   )
   const viewState = selectNativeChatViewState(session, { readRetries: true })
   const readFailure =

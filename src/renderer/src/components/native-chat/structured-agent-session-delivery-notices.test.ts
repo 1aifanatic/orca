@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
+import type { AgentSessionFailureFact } from '../../../../shared/agent-session-failure'
 import { agentJournalSubmissionKey } from '../../../../shared/agent-session-journal-item-key'
+import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 import {
   createStructuredAgentSessionOutboxEntry,
   type StructuredAgentSessionOutboxEntry
@@ -24,9 +26,16 @@ function entry(
 
 function texts(
   outbox: StructuredAgentSessionOutboxEntry[],
-  blocked: string | null = null
+  blocked: string | null = null,
+  submissions: readonly AgentJournalSubmission[] = []
 ): Record<string, string> {
-  const notices = structuredAgentSessionDeliveryNotices(outbox, blocked, 'Claude', () => {})
+  const notices = structuredAgentSessionDeliveryNotices(
+    outbox,
+    blocked,
+    'Claude',
+    () => {},
+    submissions
+  )
   return Object.fromEntries([...notices].map(([id, notice]) => [id, notice.text]))
 }
 
@@ -50,7 +59,8 @@ describe('the notice on each message that did not go through', () => {
       ],
       null,
       'Claude',
-      retry
+      retry,
+      []
     )
 
     expect([...notices.keys()]).toEqual([
@@ -141,7 +151,13 @@ describe('the notice on each message that did not go through', () => {
       [[entry('stuck', { state: 'unconfirmed' }), entry('rejected', { state: 'rejected' })], null],
       [[entry('rejected', { state: 'rejected' }), entry('held')], 'held']
     ] as const) {
-      const notices = structuredAgentSessionDeliveryNotices([...outbox], blocked, 'Claude', retry)
+      const notices = structuredAgentSessionDeliveryNotices(
+        [...outbox],
+        blocked,
+        'Claude',
+        retry,
+        []
+      )
       expect(notices.get(agentJournalSubmissionKey('rejected'))).toEqual({
         text: 'Message was not sent.'
       })
@@ -191,21 +207,77 @@ describe('the notice on each message that did not go through', () => {
     ).toEqual({ [agentJournalSubmissionKey('rejected')]: shown })
   })
 
-  // The stored fact keeps less than the host wrote from, so it rewords only a reason it rebuilds.
-  it('keeps a reason its stored fact cannot rebuild, beside its Retry too', () => {
-    const rejected = (reason: string): StructuredAgentSessionOutboxEntry =>
-      entry('rejected', {
+  // The journal holds the whole fact; the message's own copy keeps only its kind and attachment.
+  it("words a recorded rejection from the journal's fact, whatever reason the host wrote", () => {
+    const rejected = (id: string): StructuredAgentSessionOutboxEntry =>
+      entry(id, {
         state: 'rejected',
-        lastFailure: { kind: 'rejected', reason, rejection: { kind: 'startFailed' } }
+        // An older host's words, and not the pane's agent name: never compared, never shown.
+        lastFailure: {
+          kind: 'rejected',
+          reason: "The agent couldn't be started.",
+          rejection: { kind: 'startFailed' }
+        }
       })
-    for (const reason of [
-      "Claude couldn't start. Start a new chat to continue.",
-      "Claude couldn't start. This chat is still open in a terminal agent. Quit that agent to continue the chat here."
-    ]) {
-      expect(texts([rejected(reason)])).toEqual({ [agentJournalSubmissionKey('rejected')]: reason })
-    }
-    expect(texts([rejected("Claude couldn't start. Send your message to try again.")])).toEqual({
-      [agentJournalSubmissionKey('rejected')]: "Claude couldn't start."
+    const recorded = (id: string, rejection: AgentSessionFailureFact): AgentJournalSubmission => ({
+      clientMessageId: id,
+      fence: 1,
+      payloadFingerprint: 'fingerprint',
+      dispatchState: 'rejected',
+      providerItemId: null,
+      reason: "The agent couldn't be started.",
+      rejection,
+      submittedAt: 1,
+      resolvedAt: 1
+    })
+    const facts: [string, AgentSessionFailureFact, string][] = [
+      [
+        'gone',
+        {
+          kind: 'startFailed',
+          refusal: {
+            code: 'agent_session_identity_required',
+            details: { reason: 'recordMissing' }
+          }
+        },
+        "Claude couldn't start. Start a new chat to continue."
+      ],
+      [
+        'claimed',
+        {
+          kind: 'startFailed',
+          refusal: { code: 'agent_session_conflict', details: { reason: 'claimConflicted' } }
+        },
+        "Claude couldn't start. This chat is still open in a terminal agent. Quit that agent to continue the chat here."
+      ],
+      [
+        'resumable',
+        { kind: 'startFailed', refusal: { code: 'agent_session_ownership_unknown' } },
+        "Claude couldn't start."
+      ],
+      [
+        'provider',
+        { kind: 'providerRejected', detail: { text: 'Image type .bmp', audience: 'person' } },
+        'The provider did not accept this message: Image type .bmp.'
+      ],
+      [
+        'logged',
+        { kind: 'providerRejected', detail: { text: 'HTTP 400 at /v1', audience: 'log' } },
+        'The provider did not accept this message.'
+      ]
+    ]
+    expect(
+      texts(
+        facts.map(([id]) => rejected(id)),
+        null,
+        facts.map(([id, fact]) => recorded(id, fact))
+      )
+    ).toEqual(
+      Object.fromEntries(facts.map(([id, , shown]) => [agentJournalSubmissionKey(id), shown]))
+    )
+    // Not loaded (older than the loaded page): the message's own copy, which has no refusal.
+    expect(texts([rejected('gone')])).toEqual({
+      [agentJournalSubmissionKey('gone')]: "Claude couldn't start."
     })
   })
 

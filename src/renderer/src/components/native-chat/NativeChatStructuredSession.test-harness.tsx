@@ -164,6 +164,7 @@ export function createStructuredSessionMocks() {
             loadOlder: mocks.loadOlder,
             prompts: mocks.promptItems,
             outbox: outbox.outbox,
+            submissions: mocks.submissions,
             blockedClientMessageId: outbox.blockedClientMessageId,
             send: outbox.send,
             retry: outbox.retry,

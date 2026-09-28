@@ -80,6 +80,7 @@ vi.mock('./use-structured-agent-session', async () => {
         loadOlder: vi.fn(),
         prompts: mocks.promptItems,
         outbox: outbox.outbox,
+        submissions: mocks.submissions,
         blockedClientMessageId: outbox.blockedClientMessageId,
         send: outbox.send,
         retry: outbox.retry,

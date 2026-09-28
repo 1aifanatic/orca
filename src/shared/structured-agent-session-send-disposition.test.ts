@@ -157,8 +157,7 @@ describe('what a rejection shows the user', () => {
   })
 })
 
-// A row that carries the host's fact is worded from it; the reason is read only as the fact's own
-// sentence, never classified again.
+// A row that carries the host's fact is worded from it; the reason is not read.
 describe('what a rejection with a typed fact shows the user', () => {
   it('says Orca could not hand the message over, whatever the reason holds', () => {
     expect(notice('provider_write_failed', { kind: 'writeFailed' })).toBe(
@@ -175,9 +174,11 @@ describe('what a rejection with a typed fact shows the user', () => {
     )
   })
 
-  it("shows the sentence the host wrote for the fact, with the agent's name it knew", () => {
-    const reason = 'Claude never finished starting, so Orca stopped it.'
-    expect(notice(reason, { kind: 'hostStopped' })).toBe(reason)
+  // The surface names the agent; the host's own sentence is never compared or shown.
+  it('words the fact itself, never the sentence the host wrote beside it', () => {
+    expect(
+      notice('Claude never finished starting, so Orca stopped it.', { kind: 'hostStopped' })
+    ).toBe('The agent never finished starting, so Orca stopped it.')
   })
 
   // The message keeps no fact it cannot place, so the host's sentence stands, as on an older host.
