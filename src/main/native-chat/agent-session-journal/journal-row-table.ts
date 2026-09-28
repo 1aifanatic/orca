@@ -21,7 +21,9 @@ export const JOURNAL_BLOCK_LIMIT = 2 ** 21
 export const JOURNAL_SEQUENCE_LIMIT = BLOCK_SPAN
 
 const SELECT_POINTER = 'SELECT epoch, block FROM journal_sessions WHERE session_id = ?'
-const SELECT_NEXT_BLOCK = 'SELECT coalesce(max(block), -1) + 1 AS next FROM journal_sessions'
+// Past every live block and every block an unfinished import reserved.
+const SELECT_NEXT_BLOCK = `SELECT coalesce(max(block), -1) + 1 AS next FROM (
+  SELECT block FROM journal_sessions UNION ALL SELECT block FROM journal_import_blocks)`
 // A new epoch invalidates the saved status, which was computed at a position of the old one.
 const PUBLISH_SESSION_EPOCH = `INSERT INTO journal_sessions (session_id, workspace_id, epoch, block)
 VALUES (?, ?, ?, ?)
@@ -67,7 +69,7 @@ export function readJournalSessionEpoch(db: Database.Database, sessionId: string
   return readJournalSessionPointer(db, sessionId)?.epoch ?? null
 }
 
-/** A block no chat's live epoch holds. Inside the transaction that publishes it. */
+/** A block no chat's live epoch or unfinished import holds. Inside the transaction that uses it. */
 export function allocateJournalBlock(db: Database.Database): number {
   const next = db.prepare(SELECT_NEXT_BLOCK).get()?.next
   const block = typeof next === 'number' ? next : 0

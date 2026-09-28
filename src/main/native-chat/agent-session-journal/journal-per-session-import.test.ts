@@ -16,14 +16,16 @@ import type { AgentSessionResumeMarker } from '../../../shared/agent-session-res
 import Database from '../../sqlite/sync-database'
 import { createStructuredAgentSessionRestartOfferWithdrawal } from '../agent-session-wire/structured-agent-session-restart-offer-withdrawal'
 import {
+  closeTestJournalHostDatabases,
   createTrackedJournalOpener,
+  liveTestJournalRows,
   openTestJournalHostDatabase,
   readTestJournalRows
 } from './journal-host-database-test-support'
 import { journalDirectoryFor, legacyJournalDatabaseFile } from './journal-paths'
 import { importPerSessionJournal } from './journal-per-session-import'
 import { JOURNAL_OLDER_BUILD_DISCLOSURE_IDENTITY } from './journal-per-session-reimport'
-import type { JournalStoredRow } from './journal-row-table'
+import { readJournalSessionPointer, type JournalStoredRow } from './journal-row-table'
 
 vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof NodeFs>()
@@ -121,6 +123,10 @@ function texts(journal: { snapshot: () => { items: { body: unknown }[] } }): str
   return JSON.stringify(journal.snapshot().items.map((entry) => entry.body))
 }
 
+function rowCount(db: Database.Database): number {
+  return Number(db.prepare('SELECT count(*) AS total FROM journal_rows').get()?.total)
+}
+
 function renameFails(): void {
   vi.mocked(renameSync).mockImplementation(() => {
     throw Object.assign(new Error('resource busy'), { code: 'EBUSY' })
@@ -185,6 +191,96 @@ describe('importing a per-chat journal', () => {
     expect(withdrawal.movedOn(marker)).toBe(false)
   })
 
+  it('copies in batches between turns of the event loop, and publishes the chat with the last', async () => {
+    const { epoch, rows } = await historyRows()
+    await writeLegacyJournal(epoch, rows)
+    const database = openTestJournalHostDatabase(root)
+    const turns: { published: boolean; copied: number }[] = []
+    let ticking = true
+    const tick = (): void => {
+      turns.push({
+        published: readJournalSessionPointer(database.db, IDENTITY.sessionId) !== null,
+        copied: rowCount(database.db)
+      })
+      if (ticking) {
+        setImmediate(tick)
+      }
+    }
+    setImmediate(tick)
+
+    await importPerSessionJournal({
+      database,
+      identity: IDENTITY,
+      legacyDirectory: legacyDir(),
+      batchRows: 1
+    })
+    ticking = false
+
+    // Other work ran while rows were copied, and none of it could see a partly copied chat.
+    expect(turns.filter((turn) => !turn.published && turn.copied > 0).length).toBeGreaterThan(0)
+    expect(turns.every((turn) => !turn.published || turn.copied === rows.length)).toBe(true)
+    expect(readTestJournalRows(database.db, IDENTITY.sessionId, epoch)).toEqual(rows)
+  })
+
+  // A quit between two batches: the next open copies the chat again from the start, with no
+  // duplicate or leftover row, and no other chat is ever handed the block the copy reserved.
+  it('copies a chat again cleanly after a copy stopped midway', async () => {
+    const { epoch, rows } = await historyRows()
+    await writeLegacyJournal(epoch, rows)
+    const database = openTestJournalHostDatabase(root)
+    setImmediate(() => closeTestJournalHostDatabases())
+
+    await expect(
+      importPerSessionJournal({
+        database,
+        identity: IDENTITY,
+        legacyDirectory: legacyDir(),
+        batchRows: 1
+      })
+    ).rejects.toMatchObject({ code: 'journal_closed' })
+    const reopened = openTestJournalHostDatabase(root)
+    const reserved = reopened.db.prepare('SELECT block FROM journal_import_blocks').get()?.block
+    expect(rowCount(reopened.db)).toBe(1)
+    expect(readJournalSessionPointer(reopened.db, IDENTITY.sessionId)).toBeNull()
+
+    const other = await journals.open({
+      identity: { ...IDENTITY, sessionId: 'session-other' },
+      stateDirectory: root
+    })
+    await other.appendItem(
+      item(1),
+      { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: 'another chat' }] },
+      { fence: 1 }
+    )
+    expect(readJournalSessionPointer(reopened.db, 'session-other')?.block).not.toBe(reserved)
+    const journal = await openChat()
+
+    expect(journal.cursor()).toEqual({ epoch, sequence: rows.length })
+    expect(readTestJournalRows(reopened.db, IDENTITY.sessionId, epoch)).toEqual(rows)
+    expect(rowCount(reopened.db)).toBe(
+      rows.length + liveTestJournalRows(reopened.db, 'session-other').length
+    )
+    expect(
+      reopened.db.prepare('SELECT count(*) AS total FROM journal_import_blocks').get()
+    ).toEqual({ total: 0 })
+  })
+
+  it('copies a chat once when two opens of it import at the same time', async () => {
+    const { epoch, rows } = await historyRows()
+    await writeLegacyJournal(epoch, rows)
+    const database = openTestJournalHostDatabase(root)
+    const input = { database, identity: IDENTITY, legacyDirectory: legacyDir(), batchRows: 1 }
+
+    const outcomes = await Promise.all([
+      importPerSessionJournal(input),
+      importPerSessionJournal(input)
+    ])
+
+    expect(outcomes).toEqual(['imported', 'absent'])
+    expect(readTestJournalRows(database.db, IDENTITY.sessionId, epoch)).toEqual(rows)
+    expect(rowCount(database.db)).toBe(rows.length)
+  })
+
   // T-R2B1: the copy committed and only the rename failed. Rows appended since, a restart, and a
   // reopen with the file still there: nothing is copied again, and nothing is lost.
   it('never copies the same file again after a failed rename, across a restart', async () => {
@@ -216,7 +312,7 @@ describe('importing a per-chat journal', () => {
     const database = openTestJournalHostDatabase(root)
     const io = Object.assign(new Error('disk I/O error'), { code: 'ERR_SQLITE_ERROR', errcode: 10 })
 
-    expect(() =>
+    await expect(
       importPerSessionJournal({
         database,
         identity: IDENTITY,
@@ -225,7 +321,7 @@ describe('importing a per-chat journal', () => {
           throw io
         }
       })
-    ).toThrow(io)
+    ).rejects.toThrow(io)
     expect(existsSync(legacyJournalDatabaseFile(legacyDir()))).toBe(true)
     expect(
       database.db.prepare('SELECT count(*) AS total FROM journal_sessions').get()

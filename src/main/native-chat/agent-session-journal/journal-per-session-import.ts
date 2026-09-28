@@ -6,12 +6,19 @@
 // same row after it. A file that reappears after a downgrade is copied again (see
 // journal-per-session-reimport.ts).
 //
+// The copy runs in bounded batches, each its own transaction, yielding the event loop between them.
+// The rows go into a block `journal_import_blocks` reserves, which no reader follows: the chat's
+// pointer, its repair and import markers land in the last batch, so the chat is imported all at once
+// or not at all. A try that stops midway leaves only that reserved block, which the next try clears
+// and copies again.
+//
 // The rename that retires the source runs only after the copy commits, to a name no earlier
 // retirement used. A read that fails leaves the file where it is for the next open, and the open
 // is refused rather than served empty: an empty chat founded here would take a new epoch the next
 // open's import could not reconcile.
 
 import { existsSync, renameSync } from 'node:fs'
+import { setImmediate as yieldToEventLoop } from 'node:timers/promises'
 import type { AgentSessionJournalIdentity } from '../../../shared/agent-session-journal-types'
 import Database from '../../sqlite/sync-database'
 import type { SqliteRow } from '../../sqlite/sqlite-statement'
@@ -34,7 +41,8 @@ import {
 
 /** The newest per-chat file shape any build wrote. */
 const LEGACY_JOURNAL_SCHEMA_VERSION = 2
-const LEGACY_ROW_PAGE_SIZE = 512
+/** Rows per batch: at most 31 ms per batch copying the largest real chat (68 MB, 3.3 KB rows). */
+const IMPORT_BATCH_ROWS = 512
 
 const SELECT_LEGACY_EPOCH = 'SELECT epoch FROM journal_sessions WHERE session_id = ?'
 const SELECT_LEGACY_TIP =
@@ -45,6 +53,9 @@ const HAS_LEGACY_TABLE = "SELECT 1 AS present FROM sqlite_master WHERE type = 't
 const SELECT_LEGACY_REPAIR =
   'SELECT epoch, content_from, repaired_at FROM journal_repairs WHERE session_id = ?'
 const INSERT_ROW = 'INSERT INTO journal_rows (id, ts, row_json) VALUES (?, ?, ?)'
+const SELECT_IMPORT_BLOCK = 'SELECT block FROM journal_import_blocks WHERE session_id = ?'
+const RESERVE_IMPORT_BLOCK = 'INSERT INTO journal_import_blocks (session_id, block) VALUES (?, ?)'
+const RELEASE_IMPORT_BLOCK = 'DELETE FROM journal_import_blocks WHERE session_id = ?'
 const UPSERT_REPAIR = `INSERT INTO journal_repairs (session_id, epoch, content_from, repaired_at)
 VALUES (?, ?, ?, ?)
 ON CONFLICT(session_id) DO UPDATE SET
@@ -54,6 +65,7 @@ export type PerSessionJournalImportDeps = {
   openSource?: (path: string) => Database.Database
   rename?: (from: string, to: string) => void
   now?: () => number
+  batchRows?: number
 }
 
 export type PerSessionJournalImportOutcome = 'absent' | 'imported' | 'already-imported'
@@ -73,7 +85,30 @@ export function importedLegacyJournalDirectory(
   return `${legacyDirectory}.imported-${epoch.slice(0, 8)}-${now}`
 }
 
-export function importPerSessionJournal(input: ImportInput): PerSessionJournalImportOutcome {
+/** Imports in flight, by database and chat: a second open of the same chat waits for the first. */
+const importsInFlight = new WeakMap<JournalHostDatabase, Map<string, Promise<unknown>>>()
+
+export function importPerSessionJournal(
+  input: ImportInput
+): Promise<PerSessionJournalImportOutcome> {
+  let inFlight = importsInFlight.get(input.database)
+  if (!inFlight) {
+    inFlight = new Map()
+    importsInFlight.set(input.database, inFlight)
+  }
+  const { sessionId } = input.identity
+  const run = (inFlight.get(sessionId) ?? Promise.resolve()).then(() => importOnce(input))
+  const settled = run.catch(() => undefined)
+  inFlight.set(sessionId, settled)
+  void settled.then(() => {
+    if (inFlight.get(sessionId) === settled) {
+      inFlight.delete(sessionId)
+    }
+  })
+  return run
+}
+
+async function importOnce(input: ImportInput): Promise<PerSessionJournalImportOutcome> {
   const sourcePath = legacyJournalDatabaseFile(input.legacyDirectory)
   if (!existsSync(sourcePath)) {
     return 'absent'
@@ -88,7 +123,7 @@ export function importPerSessionJournal(input: ImportInput): PerSessionJournalIm
     if (legacy) {
       plan = planPerSessionImport({ db: input.database.db, sessionId, legacy, current })
       if (plan.kind !== 'copied') {
-        copyLegacyJournal(input, source, legacy, plan)
+        await copyLegacyJournal(input, source, legacy, plan)
       }
     }
   } finally {
@@ -138,74 +173,120 @@ function readLegacyHead(
   return { epoch, tip: typeof tip === 'number' ? tip : 0 }
 }
 
-function* legacyRows(
+type ImportedRow = { seq: number; ts: number; rowJson: string }
+type ImportBatch = { rows: ImportedRow[]; last: boolean }
+
+/** The file's rows, one bounded page per batch, read as each batch is written. */
+function* legacyRowBatches(
   source: Database.Database,
   sessionId: string,
-  epoch: string
-): Generator<{ seq: number; ts: number; rowJson: string }> {
+  epoch: string,
+  batchRows: number
+): Generator<ImportBatch> {
+  const select = source.prepare(SELECT_LEGACY_ROWS)
   let afterSeq = Number.MIN_SAFE_INTEGER
   for (;;) {
-    const page = source
-      .prepare(SELECT_LEGACY_ROWS)
-      .all(sessionId, epoch, afterSeq, LEGACY_ROW_PAGE_SIZE)
-    for (const row of page) {
-      yield { seq: Number(row.seq), ts: Number(row.ts), rowJson: String(row.row_json) }
-    }
-    const last = page.at(-1)?.seq
-    if (page.length < LEGACY_ROW_PAGE_SIZE || typeof last !== 'number') {
+    const rows = select
+      .all(sessionId, epoch, afterSeq, batchRows)
+      .map((row) => ({ seq: Number(row.seq), ts: Number(row.ts), rowJson: String(row.row_json) }))
+    const lastSeq = rows.at(-1)?.seq
+    const last = rows.length < batchRows || lastSeq === undefined
+    yield { rows, last }
+    if (last) {
       return
     }
-    afterSeq = last
+    afterSeq = lastSeq
   }
 }
 
-/** One transaction: the rows, the chat's pointer, its repair marker and the import marker. */
-function copyLegacyJournal(
+function* arrayBatches(rows: readonly ImportedRow[], batchRows: number): Generator<ImportBatch> {
+  for (let from = 0; ; from += batchRows) {
+    const last = from + batchRows >= rows.length
+    yield { rows: rows.slice(from, from + batchRows), last }
+    if (last) {
+      return
+    }
+  }
+}
+
+/**
+ * Batches into a reserved block no reader follows; the last one publishes the chat's pointer, its
+ * repair marker and the import marker together.
+ */
+async function copyLegacyJournal(
   input: ImportInput,
   source: Database.Database,
   legacy: PerSessionJournalHead,
   plan: Exclude<PerSessionImportPlan, { kind: 'copied' }>
-): void {
+): Promise<void> {
   const { sessionId } = input.identity
   const epoch = plan.kind === 'again' ? plan.epoch : legacy.epoch
   const repair = readLegacyRepair(source, sessionId)
+  const batchRows = input.batchRows ?? IMPORT_BATCH_ROWS
   // A second copy is read whole: it is rewritten under a fresh epoch or gains a disclosure row.
-  const rows =
+  const batches =
     plan.kind === 'again'
-      ? reimportedJournalRows({
-          sessionId,
-          legacyEpoch: legacy.epoch,
-          epoch,
-          rows: [...legacyRows(source, sessionId, legacy.epoch)],
-          now: (input.now ?? Date.now)()
-        })
-      : legacyRows(source, sessionId, legacy.epoch)
-  input.database.transaction((db) => {
-    const retired = readJournalSessionPointer(db, sessionId)
-    const block = allocateJournalBlock(db)
-    if (retired) {
-      deleteJournalBlock(db, retired.block)
+      ? arrayBatches(
+          reimportedJournalRows({
+            sessionId,
+            legacyEpoch: legacy.epoch,
+            epoch,
+            rows: [...legacyRowBatches(source, sessionId, legacy.epoch, batchRows)].flatMap(
+              (batch) => batch.rows
+            ),
+            now: (input.now ?? Date.now)()
+          }),
+          batchRows
+        )
+      : legacyRowBatches(source, sessionId, legacy.epoch, batchRows)
+  let block: number | null = null
+  for (const batch of batches) {
+    if (block !== null) {
+      await yieldToEventLoop()
     }
-    const insert = db.prepare(INSERT_ROW)
-    for (const row of rows) {
-      // Copied as stored: the bytes are the row, its epoch and sequence included.
-      insert.run(journalRowId(block, row.seq), row.ts, row.rowJson)
-    }
-    publishJournalSessionEpoch(db, input.identity, { epoch, block })
-    if (repair) {
-      db.prepare(UPSERT_REPAIR).run(
-        sessionId,
-        repair.epoch === legacy.epoch ? epoch : repair.epoch,
-        repair.content_from,
-        repair.repaired_at
-      )
-    }
-    writePerSessionImportMarker(db, sessionId, legacy)
-  })
+    block = input.database.transaction((db) => {
+      const target = block ?? reserveImportBlock(db, sessionId)
+      const insert = db.prepare(INSERT_ROW)
+      for (const row of batch.rows) {
+        // Copied as stored: the bytes are the row, its epoch and sequence included.
+        insert.run(journalRowId(target, row.seq), row.ts, row.rowJson)
+      }
+      if (batch.last) {
+        const retired = readJournalSessionPointer(db, sessionId)
+        if (retired) {
+          deleteJournalBlock(db, retired.block)
+        }
+        publishJournalSessionEpoch(db, input.identity, { epoch, block: target })
+        db.prepare(RELEASE_IMPORT_BLOCK).run(sessionId)
+        if (repair) {
+          db.prepare(UPSERT_REPAIR).run(
+            sessionId,
+            repair.epoch === legacy.epoch ? epoch : repair.epoch,
+            repair.content_from,
+            repair.repaired_at
+          )
+        }
+        writePerSessionImportMarker(db, sessionId, legacy)
+      }
+      return target
+    })
+  }
   if (plan.kind === 'again') {
     // The block this copy replaced.
     void input.database.reclaimFreePages()
   }
+}
+
+/** The block this chat's copy goes into. One an earlier try left behind is emptied and reused. */
+function reserveImportBlock(db: Database.Database, sessionId: string): number {
+  const staged = db.prepare(SELECT_IMPORT_BLOCK).get(sessionId)?.block
+  if (typeof staged === 'number') {
+    deleteJournalBlock(db, staged)
+    return staged
+  }
+  const block = allocateJournalBlock(db)
+  db.prepare(RESERVE_IMPORT_BLOCK).run(sessionId, block)
+  return block
 }
 
 /** The per-chat repair marker, as stored; v1 files predate the table. */
