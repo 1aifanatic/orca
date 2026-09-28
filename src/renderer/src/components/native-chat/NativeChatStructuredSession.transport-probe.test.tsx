@@ -176,8 +176,11 @@ describe('NativeChatStructuredSession transport-unconfirmed sends', () => {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 3000))
     })
-    const texts = mocks.call.mock.calls.map((call) => call[2]?.body?.blocks?.[0]?.text)
-    expect(texts).toEqual(['first', 'second'])
+    // An array matches only at equal length, so this also pins that nothing was re-sent.
+    expect(mocks.call.mock.calls.map((call) => call[2])).toMatchObject([
+      { body: { blocks: [{ text: 'first' }] } },
+      { body: { blocks: [{ text: 'second' }] } }
+    ])
   }, 20000)
 
   it('still probes while streaming batches rebuild the submissions array', async () => {
