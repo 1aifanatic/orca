@@ -42,6 +42,11 @@ export type ScriptedClaudeBehavior = {
   optionWritesHang?: boolean
   /** Startup's own settings read goes unanswered. */
   startupSettingsReadHangs?: boolean
+  /** Every option write loses its answer while the CLI keeps running (not a refusal), so a
+   *  start that restores one faults. */
+  optionWritesFail?: boolean
+  /** The init frame names another provider session than the one launched. */
+  initNamesForeignSession?: boolean
 }
 
 export type ScriptedClaudeChild = {
@@ -91,7 +96,13 @@ export function createScriptedClaudeRuntime(sessionIds: readonly string[]) {
     const never = <T>(): Promise<T> => new Promise<T>(() => {})
     const optionWrite = (subtype: string): Promise<void> => {
       child.calls.push(subtype)
-      return control(subtype, () => (behavior.optionWritesHang ? never() : Promise.resolve()))
+      return control(subtype, () =>
+        behavior.optionWritesFail
+          ? Promise.reject(new Error('Query closed before response received'))
+          : behavior.optionWritesHang
+            ? never()
+            : Promise.resolve()
+      )
     }
     let settingsReads = 0
     const child: ScriptedClaudeChild = {
@@ -115,7 +126,7 @@ export function createScriptedClaudeRuntime(sessionIds: readonly string[]) {
             handlers.onMessage?.({
               type: 'system',
               subtype: 'init',
-              session_id: providerSessionId,
+              session_id: behavior.initNamesForeignSession ? 'foreign-session' : providerSessionId,
               model: 'claude-sonnet-5',
               apiKeySource: 'none'
             })
