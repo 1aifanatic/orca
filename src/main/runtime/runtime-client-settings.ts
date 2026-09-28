@@ -17,6 +17,7 @@ import type { ExecutionHostId } from '../../shared/execution-host'
 import type { TerminalQuickCommand } from '../../shared/terminal-quick-command-types'
 import { recordManagedHookInstallFailure } from '../agent-hooks/install-telemetry'
 import { applyAgentStatusHooksEnabled } from '../agent-hooks/managed-agent-hook-controls'
+import { isAgentStatusHooksEnabledForAgent } from '../agent-hooks/agent-status-hooks-setting'
 import type { RuntimeStore } from './runtime-store-contract'
 
 export type RuntimeClientSettings = Pick<
@@ -221,11 +222,7 @@ export class RuntimeClientSettingsController {
         onInstallError: recordManagedHookInstallFailure,
         shouldContinue: (agent) => {
           const current = this.store?.getSettings()
-          return (
-            current !== undefined &&
-            current.agentStatusHooksEnabled !== false &&
-            !current.disabledTuiAgents?.includes(agent)
-          )
+          return current !== undefined && isAgentStatusHooksEnabledForAgent(current, agent)
         }
       })
     })

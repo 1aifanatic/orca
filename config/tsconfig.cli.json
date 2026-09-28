@@ -4,6 +4,7 @@
     "../src/cli/**/*",
     "../src/shared/**/*",
     "../src/main/agent-state-file-reader.ts",
+    "../src/main/agent-hooks/agent-status-hooks-setting.ts",
     "../src/main/agent-hooks/grok-replay-guard.ts",
     "../src/main/claude/hook-script.ts",
     "../src/main/qoder/hook-service.ts",
