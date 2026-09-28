@@ -285,7 +285,7 @@ function matchesClipboardBinding(
 /**
  * On macOS an unselected Cmd+C belongs to an app that negotiated Kitty keyboard
  * reporting: apps like Codex capture the mouse, so their highlight is never an
- * xterm selection. Plain shells have no flags, so their Cmd+C still sends nothing.
+ * xterm selection. Without negotiation, unselected Cmd+C still sends nothing.
  */
 export function isAppOwnedCopyChord(
   event: XtermBypassEvent,

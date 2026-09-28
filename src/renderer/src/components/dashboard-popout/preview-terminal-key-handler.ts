@@ -111,7 +111,6 @@ export function installPreviewTerminalKeyHandler(args: {
     nativeOnlyShortcutTracker.prepareKeyDown(event)
     const keybindings = useAppStore.getState().keybindings
     if (keybindingMatchesAction('terminal.copySelection', event, platform, keybindings)) {
-      const selection = readTerminalClipboardSelection(terminal)
       if (
         isAppOwnedCopyChord(event, {
           isMac: platform === 'darwin',
@@ -121,6 +120,7 @@ export function installPreviewTerminalKeyHandler(args: {
       ) {
         return true
       }
+      const selection = readTerminalClipboardSelection(terminal)
       if (
         !selection &&
         platform !== 'darwin' &&
