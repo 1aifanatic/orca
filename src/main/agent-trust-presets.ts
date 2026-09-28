@@ -3,8 +3,9 @@ import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { writeFileAtomically } from './codex-accounts/fs-utils'
 import { getOrcaManagedCodexHomePath } from './codex/codex-home-paths'
-import { upsertProjectTrustLevel } from './codex/config-toml-trust'
+import { addProjectTrustLevel, readProjectTrustDecision } from './codex/config-toml-trust'
 import { runExclusivelyForCodexTrustConfig } from './codex/codex-trust-config-mutation-queue'
+import { withRealHomeWriteLock } from './codex/codex-hook-trust-queue'
 
 export type AgentTrustPreset = 'cursor' | 'copilot' | 'codex' | 'antigravity'
 
@@ -159,6 +160,9 @@ export function markAntigravityWorkspaceTrusted(workspacePath: string): void {
  *   [projects."<realpath>"]
  *   trust_level = "trusted"
  *
+ * Codex shows its trust prompt only for a project with no trust_level, so only
+ * that case is answered here; `untrusted` or any other value is the user's.
+ *
  * Verified against codex-rs/tui/src/onboarding/trust_directory.rs and
  * codex-rs/core/src/config/config_tests.rs in the Codex CLI source.
  */
@@ -173,8 +177,17 @@ export function markCodexProjectTrusted(workspacePath: string): Promise<void> {
   // reverted. Same runtime-before-system lock order the installer takes.
   return runExclusivelyForCodexTrustConfig(runtimeTomlPath, () =>
     runExclusivelyForCodexTrustConfig(systemTomlPath, async () => {
-      upsertProjectTrustLevel(systemTomlPath, absPath, 'trusted')
-      upsertProjectTrustLevel(runtimeTomlPath, absPath, 'trusted')
+      // Why compare first: every Codex launch lands here, and the real-home lock is only for writes.
+      if (readProjectTrustDecision(systemTomlPath, absPath) === null) {
+        // The locked add re-reads, so a choice another instance wrote while this waited is honoured.
+        await withRealHomeWriteLock(async () =>
+          addProjectTrustLevel(systemTomlPath, absPath, 'trusted')
+        )
+      }
+      // Why: the ~/.codex answer is the user's; never give the runtime home trust it withholds.
+      if (readProjectTrustDecision(systemTomlPath, absPath) === 'trusted') {
+        addProjectTrustLevel(runtimeTomlPath, absPath, 'trusted')
+      }
     })
   )
 }

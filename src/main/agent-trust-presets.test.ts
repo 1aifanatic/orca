@@ -6,11 +6,14 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
+  statSync,
+  utimesSync,
   writeFileSync
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type * as InstallLock from './agent-hooks/managed-hook-install-lock'
 
 const testState = {
   fakeHomeDir: '',
@@ -38,6 +41,11 @@ vi.mock('node:os', async () => {
   }
 })
 
+vi.mock('./agent-hooks/managed-hook-install-lock', async (importOriginal) => {
+  const actual = await importOriginal<typeof InstallLock>()
+  return { withManagedHookInstallLock: vi.fn(actual.withManagedHookInstallLock) }
+})
+
 const {
   markAntigravityWorkspaceTrusted,
   markCodexProjectTrusted,
@@ -46,6 +54,7 @@ const {
 } = await import('./agent-trust-presets')
 const { runExclusivelyForCodexTrustConfig } =
   await import('./codex/codex-trust-config-mutation-queue')
+const { withManagedHookInstallLock } = await import('./agent-hooks/managed-hook-install-lock')
 
 beforeEach(() => {
   testState.fakeHomeDir = mkdtempSync(join(tmpdir(), 'orca-trust-presets-'))
@@ -326,55 +335,133 @@ describe('markCodexProjectTrusted', () => {
       rmSync(workspace, { recursive: true, force: true })
     }
   })
+})
 
-  it('preserves existing config keys and updates an existing project block', async () => {
-    const workspace = mkdtempSync(join(tmpdir(), 'orca-codex-ws-'))
-    const realpath = realpathSync.native(workspace)
-    try {
-      const codexDir = join(testState.fakeHomeDir, '.codex')
-      const runtimeCodexDir = join(testState.userDataDir, 'codex-runtime-home', 'home')
-      mkdirSync(codexDir, { recursive: true })
-      mkdirSync(runtimeCodexDir, { recursive: true })
-      writeFileSync(
-        join(codexDir, 'config.toml'),
-        [
-          'model = "gpt-5.5"',
-          '',
-          `[projects."${escapeTomlBasicString(realpath)}"]`,
-          'notes = "keep"',
-          'trust_level = "untrusted"',
-          ''
-        ].join('\n'),
-        'utf-8'
-      )
-      writeFileSync(
-        join(runtimeCodexDir, 'config.toml'),
-        [
-          'sandbox_mode = "workspace-write"',
-          '',
-          `[projects."${escapeTomlBasicString(realpath)}"]`,
-          'notes = "keep-runtime"',
-          'trust_level = "untrusted"',
-          ''
-        ].join('\n'),
-        'utf-8'
-      )
+describe('markCodexProjectTrusted keeps the answer the user already gave', () => {
+  const systemConfigPath = (): string => join(testState.fakeHomeDir, '.codex', 'config.toml')
+  const runtimeConfigPath = (): string =>
+    join(testState.userDataDir, 'codex-runtime-home', 'home', 'config.toml')
+  const projectHeader = (path: string): string =>
+    `[projects."${escapeTomlBasicString(realpathSync.native(path))}"]`
+
+  function seedSystemConfig(content: string): void {
+    mkdirSync(join(testState.fakeHomeDir, '.codex'), { recursive: true })
+    writeFileSync(systemConfigPath(), content, 'utf-8')
+  }
+
+  function backdate(path: string): number {
+    const past = new Date(Date.now() - 60_000)
+    utimesSync(path, past, past)
+    return statSync(path).mtimeMs
+  }
+
+  let workspace = ''
+  beforeEach(() => {
+    workspace = mkdtempSync(join(tmpdir(), 'orca-codex-ws-'))
+    vi.mocked(withManagedHookInstallLock).mockClear()
+  })
+  afterEach(() => {
+    rmSync(workspace, { recursive: true, force: true })
+  })
+
+  it('keeps an explicit untrusted answer, and never trusts the project in the runtime home', async () => {
+    const original = [
+      'model = "gpt-5.5"',
+      '',
+      projectHeader(workspace),
+      'notes = "keep"',
+      'trust_level = "untrusted"',
+      ''
+    ].join('\n')
+    seedSystemConfig(original)
+
+    await markCodexProjectTrusted(workspace)
+
+    expect(readFileSync(systemConfigPath(), 'utf-8')).toBe(original)
+    expect(existsSync(runtimeConfigPath())).toBe(false)
+    expect(withManagedHookInstallLock).not.toHaveBeenCalled()
+  })
+
+  it.each(['trust_level = "Trusted"', 'trust_level = "maybe"', 'trust_level = trusted'])(
+    'leaves a value Codex cannot read as trusted or untrusted alone: %s',
+    async (trustLine) => {
+      const original = [projectHeader(workspace), trustLine, ''].join('\n')
+      seedSystemConfig(original)
 
       await markCodexProjectTrusted(workspace)
 
-      const written = readFileSync(join(codexDir, 'config.toml'), 'utf-8')
-      const runtimeWritten = readFileSync(join(runtimeCodexDir, 'config.toml'), 'utf-8')
-      expect(written).toContain('model = "gpt-5.5"')
-      expect(written).toContain('notes = "keep"')
-      expect(written).toContain('trust_level = "trusted"')
-      expect(written).not.toContain('trust_level = "untrusted"')
-      expect(runtimeWritten).toContain('sandbox_mode = "workspace-write"')
-      expect(runtimeWritten).toContain('notes = "keep-runtime"')
-      expect(runtimeWritten).toContain('trust_level = "trusted"')
-      expect(runtimeWritten).not.toContain('trust_level = "untrusted"')
-    } finally {
-      rmSync(workspace, { recursive: true, force: true })
+      expect(readFileSync(systemConfigPath(), 'utf-8')).toBe(original)
+      expect(existsSync(runtimeConfigPath())).toBe(false)
+      expect(withManagedHookInstallLock).not.toHaveBeenCalled()
     }
+  )
+
+  it('adds trusted once under the lock, leaving the rest of config.toml byte-identical', async () => {
+    const original = [
+      '# my settings',
+      "model = 'gpt-5.5'  # keep this spacing",
+      '',
+      '[projects."/somewhere/else"]',
+      'trust_level = "untrusted"',
+      ''
+    ].join('\n')
+    seedSystemConfig(original)
+
+    await markCodexProjectTrusted(workspace)
+
+    const trustBlock = `${projectHeader(workspace)}\ntrust_level = "trusted"\n`
+    expect(readFileSync(systemConfigPath(), 'utf-8')).toBe(`${original}\n${trustBlock}`)
+    expect(readFileSync(runtimeConfigPath(), 'utf-8')).toBe(trustBlock)
+    expect(withManagedHookInstallLock).toHaveBeenCalledTimes(1)
+
+    const systemMtime = backdate(systemConfigPath())
+    const runtimeMtime = backdate(runtimeConfigPath())
+    vi.mocked(withManagedHookInstallLock).mockClear()
+
+    await markCodexProjectTrusted(workspace)
+
+    expect(statSync(systemConfigPath()).mtimeMs).toBe(systemMtime)
+    expect(statSync(runtimeConfigPath()).mtimeMs).toBe(runtimeMtime)
+    expect(withManagedHookInstallLock).not.toHaveBeenCalled()
+  })
+
+  it('keeps an explicit untrusted answer on the repository root a linked worktree resolves to', async () => {
+    const repository = join(workspace, 'repo')
+    const worktree = join(workspace, 'worktrees', 'feature')
+    const worktreeGitDir = join(repository, '.git', 'worktrees', 'feature')
+    mkdirSync(worktreeGitDir, { recursive: true })
+    mkdirSync(worktree, { recursive: true })
+    writeFileSync(join(worktree, '.git'), `gitdir: ${worktreeGitDir}\n`, 'utf-8')
+    writeFileSync(join(worktreeGitDir, 'gitdir'), join(worktree, '.git'), 'utf-8')
+    const original = [projectHeader(repository), 'trust_level = "untrusted"', ''].join('\n')
+    seedSystemConfig(original)
+
+    await markCodexProjectTrusted(worktree)
+
+    expect(readFileSync(systemConfigPath(), 'utf-8')).toBe(original)
+    expect(existsSync(runtimeConfigPath())).toBe(false)
+  })
+
+  it('keeps an explicit untrusted answer on a folder workspace', async () => {
+    const folder = join(workspace, 'notes')
+    mkdirSync(folder)
+    const original = [projectHeader(folder), 'trust_level = "untrusted"', ''].join('\n')
+    seedSystemConfig(original)
+
+    await markCodexProjectTrusted(folder)
+
+    expect(readFileSync(systemConfigPath(), 'utf-8')).toBe(original)
+    expect(existsSync(runtimeConfigPath())).toBe(false)
+  })
+
+  it('keeps an untrusted answer the runtime home already holds', async () => {
+    const runtimeOriginal = [projectHeader(workspace), 'trust_level = "untrusted"', ''].join('\n')
+    mkdirSync(dirname(runtimeConfigPath()), { recursive: true })
+    writeFileSync(runtimeConfigPath(), runtimeOriginal, 'utf-8')
+
+    await markCodexProjectTrusted(workspace)
+
+    expect(readFileSync(runtimeConfigPath(), 'utf-8')).toBe(runtimeOriginal)
   })
 })
 

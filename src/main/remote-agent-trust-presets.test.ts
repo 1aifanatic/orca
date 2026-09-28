@@ -55,6 +55,24 @@ describe('markRemoteAgentWorkspaceTrusted', () => {
     )
   })
 
+  it('keeps an explicit untrusted Codex answer on the remote host', async () => {
+    const fsProvider = makeFsProvider({
+      readFile: vi.fn(async () => ({
+        content: '[projects."/real/repo/worktree"]\ntrust_level = "untrusted"\n',
+        isBinary: false
+      }))
+    })
+    mocks.getSshFilesystemProvider.mockReturnValue(fsProvider)
+
+    await markRemoteAgentWorkspaceTrusted({
+      preset: 'codex',
+      connectionId: 'ssh-1',
+      workspacePath: '/repo/worktree'
+    })
+
+    expect(fsProvider.writeFile).not.toHaveBeenCalled()
+  })
+
   it('writes Codex trust when the remote home is a Windows absolute path', async () => {
     const fsProvider = makeFsProvider({
       realpath: vi.fn(async () => 'C:/Users/alice/platform')
