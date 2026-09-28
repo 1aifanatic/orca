@@ -1,7 +1,9 @@
 // A chat's per-chat journal file from an earlier build is copied into the host's one database on
-// that chat's first open: verbatim, once, and retired only after the copy commits.
+// that chat's open: verbatim, and retired only after the copy commits. A file that reappears after
+// a downgrade is the newer history, and is copied again.
 
-import { existsSync } from 'node:fs'
+import type * as NodeFs from 'node:fs'
+import { existsSync, renameSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -20,7 +22,13 @@ import {
 } from './journal-host-database-test-support'
 import { journalDirectoryFor, legacyJournalDatabaseFile } from './journal-paths'
 import { importPerSessionJournal } from './journal-per-session-import'
+import { JOURNAL_OLDER_BUILD_DISCLOSURE_IDENTITY } from './journal-per-session-reimport'
 import type { JournalStoredRow } from './journal-row-table'
+
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof NodeFs>()
+  return { ...actual, renameSync: vi.fn(actual.renameSync) }
+})
 
 const IDENTITY: AgentSessionJournalIdentity = {
   sessionId: 'session-legacy',
@@ -43,13 +51,16 @@ function legacyDir(): string {
 }
 
 /** Real rows, written by today's store into a scratch database, as an earlier build wrote them. */
-async function historyRows(): Promise<{ epoch: string; rows: JournalStoredRow[] }> {
-  const scratch = join(root, 'scratch')
+async function historyRows(
+  epoch = 'epoch-from-the-earlier-build',
+  reply = 'On it.'
+): Promise<{ epoch: string; rows: JournalStoredRow[] }> {
+  const scratch = join(root, `scratch-${epoch}`)
   const journal = await journals.open({
     identity: IDENTITY,
     stateDirectory: scratch,
     now: () => (clock += 1),
-    mintEpoch: () => 'epoch-from-the-earlier-build'
+    mintEpoch: () => epoch
   })
   await journal.appendSubmission({
     clientMessageId: 'client-1',
@@ -60,7 +71,7 @@ async function historyRows(): Promise<{ epoch: string; rows: JournalStoredRow[] 
   })
   await journal.appendItem(
     item(1),
-    { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: 'On it.' }] },
+    { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: reply }] },
     { fence: 1 }
   )
   const rows = readTestJournalRows(
@@ -99,6 +110,28 @@ CREATE TABLE journal_repairs (session_id TEXT PRIMARY KEY, epoch TEXT NOT NULL,
   }
 }
 
+/** Every directory an import retired this chat's files to. */
+async function retired(): Promise<string[]> {
+  const parent = dirname(legacyDir())
+  const prefix = `${legacyDir().slice(parent.length + 1)}.imported-`
+  return (await readdir(parent)).filter((name) => name.startsWith(prefix))
+}
+
+function texts(journal: { snapshot: () => { items: { body: unknown }[] } }): string {
+  return JSON.stringify(journal.snapshot().items.map((entry) => entry.body))
+}
+
+function renameFails(): void {
+  vi.mocked(renameSync).mockImplementation(() => {
+    throw Object.assign(new Error('resource busy'), { code: 'EBUSY' })
+  })
+}
+
+async function renameWorks(): Promise<void> {
+  const actual = await vi.importActual<typeof NodeFs>('node:fs')
+  vi.mocked(renameSync).mockImplementation(actual.renameSync)
+}
+
 function openChat() {
   return journals.open({ identity: IDENTITY, stateDirectory: root, now: () => (clock += 1) })
 }
@@ -110,6 +143,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   vi.restoreAllMocks()
+  await renameWorks()
   await journals.closeAll()
   await rm(root, { recursive: true, force: true })
 })
@@ -127,7 +161,7 @@ describe('importing a per-chat journal', () => {
       readTestJournalRows(openTestJournalHostDatabase(root).db, IDENTITY.sessionId, epoch)
     ).toEqual(rows)
     expect(existsSync(legacyDir())).toBe(false)
-    expect(existsSync(`${legacyDir()}.imported`)).toBe(true)
+    expect(await retired()).toEqual([expect.stringMatching(/\.imported-epoch-fr-\d+$/)])
   })
 
   // T-B3: the upgrade restart is the restart that produced the offers. A new epoch or renumbered
@@ -152,12 +186,11 @@ describe('importing a per-chat journal', () => {
   })
 
   // T-R2B1: the copy committed and only the rename failed. Rows appended since, a restart, and a
-  // reopen with the file still there: nothing is imported again, and nothing is lost.
-  it('never imports again after a failed rename, across a restart', async () => {
+  // reopen with the file still there: nothing is copied again, and nothing is lost.
+  it('never copies the same file again after a failed rename, across a restart', async () => {
     const { epoch, rows } = await historyRows()
     await writeLegacyJournal(epoch, rows)
-    // A non-empty directory where the retired one goes: every rename fails, as a held handle would.
-    await mkdir(join(`${legacyDir()}.imported`, 'blocker'), { recursive: true })
+    renameFails()
     vi.spyOn(console, 'warn').mockImplementation(() => undefined)
 
     const journal = await openChat()
@@ -172,13 +205,8 @@ describe('importing a per-chat journal', () => {
 
     const reopened = await openChat()
     expect(reopened.cursor()).toEqual({ epoch, sequence: rows.length + 1 })
-    expect(JSON.stringify(reopened.snapshot().items)).toContain('after the upgrade')
-
-    // The next open retries only the rename, which now succeeds.
-    await rm(`${legacyDir()}.imported`, { recursive: true })
-    await journals.closeAll()
-    await openChat()
-    expect(existsSync(legacyDir())).toBe(false)
+    expect(texts(reopened)).toContain('after the upgrade')
+    expect(texts(reopened)).not.toContain(JOURNAL_OLDER_BUILD_DISCLOSURE_IDENTITY.clientMessageId)
   })
 
   // T-import-transient: a read that fails leaves the file for the next open, which imports it.
@@ -229,6 +257,77 @@ describe('importing a per-chat journal', () => {
     expect(JSON.stringify(journal.snapshot().items)).toContain('log.jsonl')
     await journals.closeAll()
     await openChat()
+    expect(existsSync(legacyDir())).toBe(false)
+  })
+
+  // T-B5: a downgrade, an older build writing the chat's history to a new per-chat file, and a
+  // re-upgrade — twice. The newer history wins each time, says so, and each file retires to its
+  // own name.
+  it('copies the newer history an older build wrote, on every re-upgrade', async () => {
+    const first = await historyRows()
+    await writeLegacyJournal(first.epoch, first.rows)
+    const upgraded = await openChat()
+    await upgraded.appendItem(
+      item(2),
+      { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: 'this build' }] },
+      { fence: 1 }
+    )
+    await journals.closeAll()
+
+    for (const [cycle, epoch] of ['epoch-downgrade-one', 'epoch-downgrade-two'].entries()) {
+      const older = await historyRows(epoch, `older build, cycle ${cycle + 1}`)
+      await writeLegacyJournal(older.epoch, older.rows)
+      await journals.closeAll()
+
+      const reopened = await openChat()
+      expect(reopened.epoch).toBe(epoch)
+      expect(texts(reopened)).toContain(`older build, cycle ${cycle + 1}`)
+      expect(texts(reopened)).not.toContain('this build')
+      expect(texts(reopened)).toContain('continued in an older version of Orca')
+      expect(existsSync(legacyDir())).toBe(false)
+      await journals.closeAll()
+    }
+    expect(await retired()).toHaveLength(3)
+  })
+
+  // N-R3.1: the rename failed, this build appended, and an older build then appended to that same
+  // file. Both advanced from the recorded tip under one epoch, so the copy takes a fresh one: a
+  // reader at this build's tip resets instead of silently skipping the older build's rows.
+  it('gives the copy a fresh epoch when both builds wrote past the same recorded tip', async () => {
+    const { epoch, rows } = await historyRows()
+    await writeLegacyJournal(epoch, rows)
+    renameFails()
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const journal = await openChat()
+    await journal.appendItem(
+      item(2),
+      { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: 'this build' }] },
+      { fence: 1 }
+    )
+    await journals.closeAll()
+    const olderRow = { ...JSON.parse(rows.at(-1)!.rowJson), seq: rows.length + 1 }
+    olderRow.body = {
+      kind: 'message',
+      role: 'assistant',
+      blocks: [{ type: 'text', text: 'older' }]
+    }
+    olderRow.itemId = `${olderRow.itemId}-older`
+    const legacy = new Database(legacyJournalDatabaseFile(legacyDir()))
+    legacy
+      .prepare('INSERT INTO journal_rows VALUES (?, ?, ?, ?, ?)')
+      .run(IDENTITY.sessionId, epoch, rows.length + 1, 1, JSON.stringify(olderRow))
+    legacy.close()
+    await renameWorks()
+
+    const reopened = await openChat()
+
+    expect(reopened.epoch).not.toBe(epoch)
+    expect(texts(reopened)).toContain('older')
+    expect(texts(reopened)).toContain('continued in an older version of Orca')
+    expect(reopened.readSince({ epoch, sequence: rows.length + 1 })).toEqual({
+      ok: false,
+      reset: 'epoch_changed'
+    })
     expect(existsSync(legacyDir())).toBe(false)
   })
 })

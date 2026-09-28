@@ -1,0 +1,117 @@
+// A per-chat file that reappears after its chat was copied in: an older build, run after a
+// downgrade, attached the chat and wrote its history there. That file is the newer history.
+//
+// `journal_imports` records which file each chat was copied from — its epoch and tip — in the
+// same transaction as the copy, so a file already copied (only its rename failed, across any
+// number of restarts) is never copied again, and a file that differs always is. Newest writer
+// wins, per chat, and the chat says so. When both builds advanced one epoch from the recorded
+// tip, the copy takes a fresh epoch, so every reader resets instead of silently skipping rows.
+
+import { randomUUID } from 'node:crypto'
+import type Database from '../../sqlite/sync-database'
+import { boundJournalStatusText } from './journal-prompt-body-bounds'
+import { applyJournalRow, createJournalReducerState } from './journal-reducer'
+import { buildJournalItemRow } from './journal-row-builders'
+import { parseJournalRow, serializeJournalRow, type JournalRow } from './journal-row-schema'
+import { readJournalTip, type JournalBlockPointer } from './journal-row-table'
+
+export type PerSessionJournalHead = { epoch: string; tip: number }
+
+const SELECT_MARKER = 'SELECT epoch, tip FROM journal_imports WHERE session_id = ?'
+const UPSERT_MARKER = `INSERT INTO journal_imports (session_id, epoch, tip) VALUES (?, ?, ?)
+ON CONFLICT(session_id) DO UPDATE SET epoch = excluded.epoch, tip = excluded.tip`
+
+export const JOURNAL_OLDER_BUILD_DISCLOSURE_IDENTITY = {
+  provider: 'orca',
+  clientMessageId: 'journal-continued-in-older-orca'
+} as const
+
+const OLDER_BUILD_DISCLOSURE =
+  'This chat was continued in an older version of Orca. Its history now comes from that version; anything this version recorded before then was replaced.'
+
+export function readPerSessionImportMarker(
+  db: Database.Database,
+  sessionId: string
+): PerSessionJournalHead | null {
+  const row = db.prepare(SELECT_MARKER).get(sessionId)
+  return typeof row?.epoch === 'string' && typeof row.tip === 'number'
+    ? { epoch: row.epoch, tip: row.tip }
+    : null
+}
+
+export function writePerSessionImportMarker(
+  db: Database.Database,
+  sessionId: string,
+  head: PerSessionJournalHead
+): void {
+  db.prepare(UPSERT_MARKER).run(sessionId, head.epoch, head.tip)
+}
+
+export type PerSessionImportPlan =
+  | { kind: 'first' }
+  | { kind: 'copied' }
+  /** The file is newer history: copied again, as `epoch`, with a row saying so. */
+  | { kind: 'again'; epoch: string }
+
+/** What a present per-chat file owes this chat, judged against what was last copied from it. */
+export function planPerSessionImport(input: {
+  db: Database.Database
+  sessionId: string
+  legacy: PerSessionJournalHead
+  current: JournalBlockPointer | null
+}): PerSessionImportPlan {
+  const marker = readPerSessionImportMarker(input.db, input.sessionId)
+  if (marker?.epoch === input.legacy.epoch && marker.tip === input.legacy.tip) {
+    return { kind: 'copied' }
+  }
+  if (!marker && !input.current) {
+    return { kind: 'first' }
+  }
+  // Both sides wrote past the recorded tip under one epoch: replacing it in place would leave a
+  // reader at this build's tip skipping the older build's rows.
+  const bothAdvanced =
+    marker !== null &&
+    input.current?.epoch === marker.epoch &&
+    input.legacy.epoch === marker.epoch &&
+    input.legacy.tip > marker.tip &&
+    readJournalTip(input.db, input.current.block) > marker.tip
+  return { kind: 'again', epoch: bothAdvanced ? randomUUID() : input.legacy.epoch }
+}
+
+/**
+ * The rows a second copy writes: the file's rows under `epoch` — byte-identical when the epoch is
+ * the file's own — then the row that says the chat continued in an older Orca.
+ */
+export function reimportedJournalRows(input: {
+  sessionId: string
+  legacyEpoch: string
+  epoch: string
+  rows: readonly { seq: number; ts: number; rowJson: string }[]
+  now: number
+}): { seq: number; ts: number; rowJson: string }[] {
+  const state = createJournalReducerState(input.sessionId, input.epoch)
+  const copied = input.rows.map((stored) => {
+    const parsed = parseJournalRow(stored.rowJson)
+    if (!parsed.ok) {
+      throw new Error(`per-chat journal row ${stored.seq} of ${input.sessionId} is unreadable`)
+    }
+    const row: JournalRow =
+      input.epoch === input.legacyEpoch ? parsed.row : { ...parsed.row, epoch: input.epoch }
+    applyJournalRow(state, row)
+    return input.epoch === input.legacyEpoch
+      ? stored
+      : { seq: stored.seq, ts: stored.ts, rowJson: serializeJournalRow(row) }
+  })
+  const disclosure = buildJournalItemRow({
+    state,
+    identity: JOURNAL_OLDER_BUILD_DISCLOSURE_IDENTITY,
+    body: { kind: 'status', text: boundJournalStatusText(OLDER_BUILD_DISCLOSURE) },
+    seq: state.lastSequence + 1,
+    fence: state.highestFence,
+    ts: input.now
+  })
+  return [
+    ...copied,
+    { seq: disclosure.seq, ts: disclosure.ts, rowJson: serializeJournalRow(disclosure) }
+  ]
+}

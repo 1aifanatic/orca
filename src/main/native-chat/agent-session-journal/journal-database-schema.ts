@@ -4,8 +4,9 @@
 // `journal_sessions` names each chat's live epoch and the block its rows sit in, and is written only
 // when that epoch changes, so an append is one INSERT. `journal_repairs`
 // carries at most one row per chat: the standing demand for a rebuild a partial repair leaves
-// behind (see journal-repair-marker.ts). `status_json` is the chat's last settled listing status,
-// trusted only where `status_seq` is still the tip of the live epoch.
+// behind (see journal-repair-marker.ts). `journal_imports` records which per-chat file each chat
+// was last copied from (journal-per-session-reimport.ts). `status_json` is the chat's last settled
+// listing status, trusted only where `status_seq` is still the tip of the live epoch.
 
 /** DB shape version, carried in `PRAGMA user_version`. Independent of the row body version
  *  (`JournalRow.v`): a newer build can change either alone. A newer version latches this build
@@ -32,6 +33,11 @@ CREATE TABLE IF NOT EXISTS journal_repairs (
   epoch        TEXT    NOT NULL,
   content_from INTEGER NOT NULL,
   repaired_at  INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS journal_imports (
+  session_id TEXT PRIMARY KEY,
+  epoch      TEXT    NOT NULL,
+  tip        INTEGER NOT NULL
 );
 `
 }
