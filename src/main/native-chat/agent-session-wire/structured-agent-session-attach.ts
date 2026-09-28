@@ -41,7 +41,7 @@ import type { AgentSessionRecordStore } from '../../runtime/agent-session-record
 import { agentSessionProviderHandleChainHead } from '../../../shared/agent-session-provider-handle'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { reconcileJournalSubmissionsAgainstHistory } from '../agent-session-journal/journal-restart-reconciliation'
-import type { ProviderHistoryWindow } from '../agent-session-journal/journal-submission-reconciler'
+import type { ProviderHistorySample } from '../agent-session-journal/journal-submission-reconciler'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { structuredAgentSessionRefusalMessage } from './structured-agent-session-refusal-message'
 
@@ -173,9 +173,9 @@ export type AttachedJournal = {
  * open — with provider history deciding the submissions that boundary could only doubt.
  *
  * Why the reconciliation belongs HERE and nowhere else: this runs after the
- * record store handed this host the lease and before `onAttached` starts a
- * provider child, so nothing can be appending to the provider's history while it
- * is read, and the window stays valid until the resume consumes it. Every other
+ * record store handed this host the lease and before `onAttached` lets anyone
+ * send, and the history it reads was pinned before this attach started a child,
+ * so what that child appends is never taken as evidence. Every other
  * settlement site — a proven child exit — runs while the host
  * may still start another child, and a read there could be overtaken before it
  * is acted on. Orca still never re-sends: this decides state only. A queued
@@ -189,8 +189,8 @@ export async function attachJournal(input: {
   /** The host's open conversation, whose journal the attach adopts. */
   openConversation: (record: AgentSessionRecord) => Promise<AgentSessionJournal>
   /** Provider history sampled before a new child is acquired. `null` means the
-   *  adapter had no usable history; omit to read lazily for direct callers. */
-  providerHistoryWindow?: ProviderHistoryWindow | null
+   *  adapter had no usable history; omit to sample here for direct callers. */
+  providerHistory?: ProviderHistorySample | null
 }): Promise<AttachedJournal> {
   const identity = journalIdentityFor(input.record, input.params)
   const fence = input.record.lease.runtimeFence
@@ -201,9 +201,7 @@ export async function attachJournal(input: {
     journal,
     fence,
     accountHome: input.record.accountHome,
-    ...(Object.hasOwn(input, 'providerHistoryWindow')
-      ? { history: input.providerHistoryWindow }
-      : {})
+    ...(Object.hasOwn(input, 'providerHistory') ? { history: input.providerHistory } : {})
   })
   return {
     journal,
@@ -229,15 +227,15 @@ async function reconcileAgainstProviderHistory(input: {
   journal: AgentSessionJournal
   fence: number
   accountHome: AgentSessionAccountHome
-  history?: ProviderHistoryWindow | null
+  history?: ProviderHistorySample | null
 }): Promise<string[]> {
   let history = input.history
   if (history === undefined) {
-    if (!input.adapter.providerHistoryWindow) {
+    if (!input.adapter.sampleProviderHistory) {
       return []
     }
     try {
-      history = await input.adapter.providerHistoryWindow({
+      history = await input.adapter.sampleProviderHistory({
         identity: input.identity,
         accountHome: input.accountHome
       })

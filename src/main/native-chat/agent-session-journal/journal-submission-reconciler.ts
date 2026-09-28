@@ -56,6 +56,14 @@ export type ProviderHistoryWindow = {
   recorded?: ProviderRecordedHistory | null
 }
 
+/**
+ * Provider history whose facts were fixed when it was taken — before a new child
+ * could start or append — and read only if a submission is actually in doubt.
+ */
+export type ProviderHistorySample = {
+  read: () => Promise<ProviderHistoryWindow | null>
+}
+
 export type ProviderRecordedHistory = {
   /** Journal keys of every user item in the history. */
   itemIds: ReadonlySet<string>

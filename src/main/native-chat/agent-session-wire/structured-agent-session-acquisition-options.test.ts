@@ -147,9 +147,14 @@ describe('structured session acquisition options', () => {
           }
         }
       })
-      sessionAdapter.providerHistoryWindow = vi.fn(async () => historyWindow())
+      // The sample fixes liveness when it is taken; parsing is left to `read`.
+      sessionAdapter.sampleProviderHistory = vi.fn(async () => {
+        const window = historyWindow()
+        return { read: () => readHistory(window) }
+      })
       return sessionAdapter
     }
+    const readHistory = vi.fn(async (window: ProviderHistoryWindow) => window)
 
     let firstJournal: AgentSessionJournal | undefined
     const first = await performAttach({
@@ -171,6 +176,8 @@ describe('structured session acquisition options', () => {
       }
     })
     expect(first).toMatchObject({ ok: true })
+    // Nothing was in doubt, so the transcript was never parsed.
+    expect(readHistory).not.toHaveBeenCalled()
     await firstJournal!.appendSubmission({
       clientMessageId: 'crashed-send',
       payloadFingerprint: digestPayload('deploy the thing'),
@@ -217,6 +224,7 @@ describe('structured session acquisition options', () => {
     })
 
     expect(second).toMatchObject({ ok: true, value: { unconfirmedClientMessageIds: [] } })
+    expect(readHistory).toHaveBeenCalledTimes(1)
     expect(second).toMatchObject({
       value: {
         page: { submissions: [{ clientMessageId: 'crashed-send', dispatchState: 'rejected' }] }

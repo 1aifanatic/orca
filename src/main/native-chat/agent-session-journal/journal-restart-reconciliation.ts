@@ -22,7 +22,11 @@ import {
 } from '../../../shared/agent-session-journal-item-key'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import type { AgentSessionJournal } from './journal-store'
-import { reconcileSubmissions, type ProviderHistoryWindow } from './journal-submission-reconciler'
+import {
+  reconcileSubmissions,
+  type ProviderHistorySample,
+  type ProviderHistoryWindow
+} from './journal-submission-reconciler'
 
 /**
  * Only a text-only body can be compared against provider content. A submission
@@ -92,20 +96,32 @@ function unseenHistory(
 /**
  * Decide what the crash boundary could only doubt. Returns the client message
  * ids this pass settled, so the attach result stops reporting them unconfirmed.
+ * History is read only when something is in doubt: most attaches have nothing
+ * to decide and should not pay for parsing the provider's whole transcript.
+ * A failed read is not an answer, so it leaves every submission as it was.
  */
 export async function reconcileJournalSubmissionsAgainstHistory(input: {
   journal: AgentSessionJournal
   fence: number
-  history: ProviderHistoryWindow
+  history: ProviderHistorySample
 }): Promise<string[]> {
   const submissions = comparableSubmissions(input.journal)
   if (submissions.length === 0) {
     return []
   }
+  let history: ProviderHistoryWindow | null
+  try {
+    history = await input.history.read()
+  } catch {
+    return []
+  }
+  if (!history) {
+    return []
+  }
   const settled: string[] = []
   for (const outcome of reconcileSubmissions({
     submissions,
-    history: unseenHistory(input.journal, input.history)
+    history: unseenHistory(input.journal, history)
   })) {
     if (outcome.outcome === 'unknown') {
       // Narrowing failed: the submission stays unconfirmed, so record why.

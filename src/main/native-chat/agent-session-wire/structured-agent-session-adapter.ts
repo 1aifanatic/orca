@@ -36,7 +36,7 @@ import {
 import type { SubmissionRejectionFact } from '../../../shared/agent-session-failure'
 import type { AgentJournalDispatchRejection } from '../../../shared/agent-session-failure-words'
 import type { AgentSessionPromptResponse } from '../../../shared/agent-session-question-answer'
-import type { ProviderHistoryWindow } from '../agent-session-journal/journal-submission-reconciler'
+import type { ProviderHistorySample } from '../agent-session-journal/journal-submission-reconciler'
 import type { StructuredAgentSessionEventSink } from './structured-agent-session-event-sink'
 import type { StructuredSessionCompactionResult } from './structured-session-compaction'
 import type { AgentSessionCreatePhaseRecorder } from '../../observability/agent-session-instrumentation'
@@ -343,12 +343,14 @@ export type StructuredAgentSessionAdapter = {
   /** Provider history for restart reconciliation, bounded to what the provider
    *  recorded after the journal's last committed item. Only the adapter can say
    *  whether the read has a proven start and whether a turn is still running, so
-   *  it owns both flags. Omit where the provider records no boundary-consistent
-   *  history; an omitted window leaves every unsettled submission `unknown`. */
-  providerHistoryWindow?(input: {
+   *  it owns both flags. Sampling fixes those facts and must stay cheap; the
+   *  sample's `read` does the parsing, and runs only when a submission is in doubt.
+   *  Omit where the provider records no boundary-consistent history; an omitted
+   *  sample leaves every unsettled submission `unknown`. */
+  sampleProviderHistory?(input: {
     identity: AgentSessionJournalIdentity
     accountHome: AgentSessionAccountHome
-  }): Promise<ProviderHistoryWindow | null>
+  }): Promise<ProviderHistorySample | null>
   /** Gracefully stops the structured owner after its event stream is drained. */
   /** Returns true only after the provider child exit is proven. A root-exit or processless verdict
    *  is thrown only once the session is finalized; read it through `stopAgentSessionProviderRoot`. */

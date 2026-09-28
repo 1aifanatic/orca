@@ -130,15 +130,17 @@ export async function interruptedRestart(
       closeSession,
       ...(work === 'submission' || work === 'send-after-reply'
         ? {
-            providerHistoryWindow: async () => ({
-              items: [],
-              boundaryConsistent: historyBoundaryConsistent,
-              turnInFlight: false,
-              recorded: {
-                itemIds: new Set<string>(),
-                itemIdsByFingerprint: new Map(),
-                provesAbsenceOf: () => historyBoundaryConsistent
-              }
+            sampleProviderHistory: async () => ({
+              read: async () => ({
+                items: [],
+                boundaryConsistent: historyBoundaryConsistent,
+                turnInFlight: false,
+                recorded: {
+                  itemIds: new Set<string>(),
+                  itemIdsByFingerprint: new Map(),
+                  provesAbsenceOf: () => historyBoundaryConsistent
+                }
+              })
             })
           }
         : {})

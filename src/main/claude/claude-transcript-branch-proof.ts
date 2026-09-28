@@ -1,15 +1,13 @@
-// Which bytes the branch graph gets to see. Every read here pins ONE descriptor
-// and ONE size before it starts, because a caller that walks the proven branch
-// afterwards must walk the same snapshot the proof was computed over — a second
-// read at a later size would vouch for rows nothing checked.
+// Which bytes the branch graph gets to see. A read pins ONE file and ONE size
+// before it starts, and every consumer of that read sees the same lines: a
+// caller that walks the proven branch must walk the snapshot the proof was
+// computed over, and bytes appended after the pin are never evidence.
 
-import { open } from 'node:fs/promises'
+import { open, stat } from 'node:fs/promises'
 import { splitTranscriptStreamLines } from '../native-chat/transcript-stream-lines'
 import {
-  ClaudeTranscriptMarkerMissingError,
-  ClaudeTranscriptPreviousCursorMissingError,
-  ClaudeTranscriptTailIncompleteError,
   createBranchProof,
+  unparsableTranscriptLine,
   type BranchProofInput,
   type ClaudeTranscriptBranchProof
 } from './claude-transcript-branch-graph'
@@ -24,49 +22,62 @@ function nonEmptyString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
 }
 
-type AncestryRecord = Record<string, unknown>
-
 export type ClaudeTranscriptBranchAncestry = {
   proof: ClaudeTranscriptBranchProof
   /** Leaf first, anchor excluded. */
   chain: string[]
 }
 
-/** Replay always proves from the file tail, so a caller-supplied tip has no meaning here. */
-type AncestryInput = Omit<BranchProofInput, 'tip'> & {
-  /** The ancestry walk stops here; the proof is what established it is reachable. */
-  ancestryAnchorUuid: string
-  /** The FIRST record carrying each chain uuid, in file order. */
-  onAncestorRecord: (record: AncestryRecord, uuid: string) => void
+function recordUuid(record: unknown): string | null {
+  return record && typeof record === 'object' && 'uuid' in record
+    ? nonEmptyString(record.uuid)
+    : null
 }
 
-function createAncestryReplay(
-  chain: readonly string[],
-  onRecord: (record: AncestryRecord, uuid: string) => void
-): (line: string) => void {
-  const pending = new Set(chain)
-  return (line) => {
-    if (!line.trim()) {
-      return
+/**
+ * The branch proof as one consumer of a shared line pass: the caller parses each
+ * line once and hands it to every consumer. A line the proof rejects ends the
+ * proof, not the read, so the other consumers still see the whole file.
+ */
+export function createClaudeBranchAncestryPass(
+  input: Omit<BranchProofInput, 'tip'> & {
+    /** The ancestry walk stops here; the proof is what established it is reachable. */
+    ancestryAnchorUuid: string
+  }
+) {
+  // Replay always proves from the file tail, where a resume by session id continues.
+  const builder = createBranchProof({ ...input, tip: 'file-tail' })
+  let failure: { error: unknown } | null = null
+  return { add, reject, finish }
+
+  /** Returns the record's uuid when it is the FIRST line carrying it, which is the
+   *  record the chain reports for that uuid; null otherwise or once the proof failed. */
+  function add(record: unknown, index: number): string | null {
+    if (failure) {
+      return null
     }
-    let parsed: unknown
+    const uuid = recordUuid(record)
+    const firstSeen = uuid !== null && !builder.has(uuid)
     try {
-      parsed = JSON.parse(line)
-    } catch {
-      // Unreachable while the proof runs first over the same bytes — it throws on
-      // any malformed line. Kept so a future reordering degrades, not corrupts.
-      return
+      builder.addParsed(record, index)
+    } catch (error) {
+      failure = { error }
+      return null
     }
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      return
+    return firstSeen ? uuid : null
+  }
+
+  function reject(terminated: boolean): void {
+    failure ??= { error: unparsableTranscriptLine(terminated) }
+  }
+
+  /** Throws for every branch the proof cannot vouch for. */
+  function finish(): ClaudeTranscriptBranchAncestry {
+    if (failure) {
+      throw failure.error
     }
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The parsed value is a non-array object checked above.
-    const record = parsed as AncestryRecord
-    const uuid = nonEmptyString(record.uuid)
-    // `delete` is the first-occurrence tie-break, not an optimisation.
-    if (uuid && pending.delete(uuid)) {
-      onRecord(record, uuid)
-    }
+    const proof = builder.finish()
+    return { proof, chain: builder.ancestryChain(proof.leafUuid, input.ancestryAnchorUuid) }
   }
 }
 
@@ -81,111 +92,54 @@ export function proveClaudeTranscriptBranchFromJsonl(
   return proof.finish()
 }
 
-type PinnedTranscriptLines = () => AsyncGenerator<{ line: string; terminated: boolean }>
+/** The transcript as it stood when pinned: this file, up to this size. */
+export type ClaudeTranscriptSnapshot = {
+  transcriptPath: string
+  size: number
+  dev: bigint
+  ino: bigint
+}
+
+/** One `stat`: cheap enough to take on every attach, before anything can append. */
+export async function pinClaudeTranscript(
+  transcriptPath: string
+): Promise<ClaudeTranscriptSnapshot> {
+  const stats = await stat(transcriptPath, { bigint: true })
+  return { transcriptPath, size: Number(stats.size), dev: stats.dev, ino: stats.ino }
+}
 
 /**
- * Run an attempt over ONE pinned snapshot: a single fd and a single `size`, so a
- * second pass cannot read bytes the first pass did not vouch for. A repair
- * appended while we read is finished once, at the larger size, by re-running the
- * WHOLE attempt — never by reading the tail at a size the graph pass never saw.
+ * Stream exactly the pinned bytes, once. Nothing appended after the pin is read,
+ * because a provider child started since may be what appended it. A file that is
+ * no longer the pinned one, or no longer holds the pinned bytes, throws rather
+ * than pass a different transcript off as the pinned one.
  */
-async function runPinnedTranscriptPasses<T>(
-  transcriptPath: string,
-  maxRecordBytes: number | undefined,
-  attempt: (readLines: PinnedTranscriptLines) => Promise<T>
-): Promise<T> {
-  const handle = await open(transcriptPath, 'r')
+export async function readPinnedClaudeTranscript(
+  snapshot: ClaudeTranscriptSnapshot,
+  maxRecordBytes: number,
+  onLine: (line: string, terminated: boolean) => void
+): Promise<void> {
+  const handle = await open(snapshot.transcriptPath, 'r')
   try {
-    let size = (await handle.stat()).size
-    let refreshed = false
-    while (true) {
-      const pinned = size
-      const readLines: PinnedTranscriptLines = async function* () {
-        if (pinned === 0) {
-          return
-        }
-        const stream = handle.createReadStream({ start: 0, end: pinned - 1, autoClose: false })
-        yield* splitTranscriptStreamLines(stream, maxRecordBytes)
-      }
-      try {
-        return await attempt(readLines)
-      } catch (error) {
-        if (
-          !(error instanceof ClaudeTranscriptMarkerMissingError) &&
-          !(error instanceof ClaudeTranscriptPreviousCursorMissingError) &&
-          !(error instanceof ClaudeTranscriptTailIncompleteError)
-        ) {
-          throw error
-        }
-        if (refreshed) {
-          throw new ClaudeTranscriptTailIncompleteError()
-        }
-        const nextSize = await handle.stat().then(
-          (current) => current.size,
-          () => size
-        )
-        if (nextSize <= size) {
-          throw error
-        }
-        // Finish an already-appended repair without making the caller retry.
-        size = nextSize
-        refreshed = true
-      }
+    const current = await handle.stat({ bigint: true })
+    if (
+      current.dev !== snapshot.dev ||
+      current.ino !== snapshot.ino ||
+      current.size < BigInt(snapshot.size)
+    ) {
+      throw new Error('Claude transcript was replaced or truncated after it was pinned')
+    }
+    if (snapshot.size === 0) {
+      return
+    }
+    const stream = handle.createReadStream({ start: 0, end: snapshot.size - 1, autoClose: false })
+    for await (const { line, terminated } of splitTranscriptStreamLines(stream, maxRecordBytes)) {
+      onLine(line, terminated)
+    }
+    if (stream.bytesRead !== snapshot.size) {
+      throw new Error('Claude transcript was truncated while it was read')
     }
   } finally {
     await handle.close()
   }
-}
-
-/**
- * Prove the branch from the file's last transcript row back to the anchor, then
- * replay the anchor..tail records off the SAME pinned bytes. Two bounded passes
- * instead of one whole-file string: the graph pass retains uuid/parentUuid only,
- * and the replay pass hands each chain record to the caller once and keeps
- * nothing, so neither pass holds the transcript.
- *
- * The replay runs only after `finish()` succeeds, so a growth retry can never
- * emit a record twice.
- */
-export async function replayClaudeTranscriptBranchAncestry(
-  input: AncestryInput & { transcriptPath: string; maxRecordBytes?: number }
-): Promise<ClaudeTranscriptBranchAncestry> {
-  return runPinnedTranscriptPasses(
-    input.transcriptPath,
-    input.maxRecordBytes,
-    async (readLines) => {
-      const builder = createBranchProof({ ...input, tip: 'file-tail' })
-      let index = 0
-      for await (const record of readLines()) {
-        builder.add(record.line, index++, record.terminated)
-      }
-      const proof = builder.finish()
-      const chain = builder.ancestryChain(proof.leafUuid, input.ancestryAnchorUuid)
-      if (chain.length > 0) {
-        const replay = createAncestryReplay(chain, input.onAncestorRecord)
-        for await (const record of readLines()) {
-          replay(record.line)
-        }
-      }
-      return { proof, chain }
-    }
-  )
-}
-
-/** The string-source twin of `replayClaudeTranscriptBranchAncestry`. */
-export function replayClaudeTranscriptBranchAncestryFromJsonl(
-  input: AncestryInput & { contents: string }
-): ClaudeTranscriptBranchAncestry {
-  const builder = createBranchProof({ ...input, tip: 'file-tail' })
-  const lines = input.contents.split('\n')
-  for (const [index, line] of lines.entries()) {
-    builder.add(line, index, index < lines.length - 1)
-  }
-  const proof = builder.finish()
-  const chain = builder.ancestryChain(proof.leafUuid, input.ancestryAnchorUuid)
-  const replay = createAncestryReplay(chain, input.onAncestorRecord)
-  for (const line of lines) {
-    replay(line)
-  }
-  return { proof, chain }
 }

@@ -10,9 +10,9 @@ type ReaderState = {
   closes: number
   handles: FileHandle[]
   bytesRead: number
-  statErrorOn: number
+  statError: boolean
   readError: boolean
-  afterStat: (() => Promise<void>) | null
+  afterOpen: (() => Promise<void>) | null
 }
 
 const state = vi.hoisted((): ReaderState => ({
@@ -21,9 +21,9 @@ const state = vi.hoisted((): ReaderState => ({
   closes: 0,
   handles: [],
   bytesRead: 0,
-  statErrorOn: 0,
+  statError: false,
   readError: false,
-  afterStat: null
+  afterOpen: null
 }))
 
 vi.mock('node:fs/promises', async (importOriginal) => {
@@ -37,17 +37,15 @@ vi.mock('node:fs/promises', async (importOriginal) => {
       }
       state.opens++
       state.handles.push(handle)
-      let statsRead = 0
       return {
-        stat: async () => {
-          statsRead++
-          if (statsRead === state.statErrorOn) {
+        stat: async (options?: Parameters<FileHandle['stat']>[0]) => {
+          if (state.statError) {
             throw new Error('Injected stat failure')
           }
-          const snapshot = await handle.stat()
-          const afterStat = state.afterStat
-          state.afterStat = null
-          await afterStat?.()
+          const snapshot = await handle.stat(options)
+          const afterOpen = state.afterOpen
+          state.afterOpen = null
+          await afterOpen?.()
           return snapshot
         },
         createReadStream: (options: Parameters<FileHandle['createReadStream']>[0]) => {
@@ -73,8 +71,10 @@ import { appendFile, mkdtemp, rename, rm, truncate, unlink, writeFile } from 'no
 import {
   ClaudeTranscriptPreviousCursorMissingError,
   ClaudeTranscriptTailIncompleteError,
-  replayClaudeTranscriptBranchAncestry,
-  replayClaudeTranscriptBranchAncestryFromJsonl
+  createClaudeBranchAncestryPass,
+  pinClaudeTranscript,
+  readPinnedClaudeTranscript,
+  type ClaudeTranscriptSnapshot
 } from './claude-transcript-branch-proof'
 
 const row = (uuid: string, parentUuid: string | null, extra = {}) =>
@@ -87,30 +87,52 @@ const ROOT = row('root', null)
 const CHILD = row('child', 'root')
 const SOURCE = ROOT + marker('root')
 let directory = ''
-let replayed: string[] = []
-// The live caller always anchors the replay at the cursor it already holds.
-const replay = (anchorUuid = 'root') =>
-  replayClaudeTranscriptBranchAncestry({
-    transcriptPath: state.path,
+
+async function readLines(snapshot: ClaudeTranscriptSnapshot): Promise<string[]> {
+  const lines: string[] = []
+  await readPinnedClaudeTranscript(snapshot, Infinity, (line) => lines.push(line))
+  return lines
+}
+
+/** The proof over `contents` as a shared line pass feeds it; `firstSeen` is what the pass reports. */
+function prove(contents: string, anchorUuid = 'root') {
+  const pass = createClaudeBranchAncestryPass({
     providerSessionId: 'provider',
     previousLeafUuid: anchorUuid,
-    ancestryAnchorUuid: anchorUuid,
-    onAncestorRecord: (_record, uuid) => replayed.push(uuid)
+    ancestryAnchorUuid: anchorUuid
   })
-const read = async (anchorUuid?: string) => (await replay(anchorUuid)).proof
+  const firstSeen: string[] = []
+  const lines = contents.split('\n')
+  for (const [index, line] of lines.entries()) {
+    if (!line.trim()) {
+      continue
+    }
+    let record: unknown
+    try {
+      record = JSON.parse(line)
+    } catch {
+      pass.reject(index < lines.length - 1)
+      continue
+    }
+    const uuid = pass.add(record, index)
+    if (uuid) {
+      firstSeen.push(uuid)
+    }
+  }
+  return { finish: () => pass.finish(), firstSeen }
+}
 
 beforeEach(async () => {
   directory = await mkdtemp(join(tmpdir(), 'orca-branch-streaming-'))
-  replayed = []
   Object.assign(state, {
     path: join(directory, 'transcript.jsonl'),
     opens: 0,
     closes: 0,
     handles: [],
     bytesRead: 0,
-    statErrorOn: 0,
+    statError: false,
     readError: false,
-    afterStat: null
+    afterOpen: null
   })
   await writeFile(state.path, SOURCE)
 })
@@ -128,7 +150,7 @@ afterEach(async () => {
   }
 })
 
-it('decodes UTF-8 across chunks and replays ancestry beyond large message bodies', async () => {
+it('decodes UTF-8 across chunks and frames lines beyond large message bodies', async () => {
   const prefix = JSON.stringify({ type: 'comment', content: '' }).indexOf('"content":"') + 11
   const comment = `${JSON.stringify({ type: 'comment', content: `${'x'.repeat(65535 - prefix)}🙂é漢字` })}\n`
   const contents =
@@ -137,73 +159,91 @@ it('decodes UTF-8 across chunks and replays ancestry beyond large message bodies
     CHILD +
     marker('child').trimEnd()
   await writeFile(state.path, contents)
-  const fromString: string[] = []
-  expect(await replay()).toEqual(
-    replayClaudeTranscriptBranchAncestryFromJsonl({
-      contents,
-      providerSessionId: 'provider',
-      previousLeafUuid: 'root',
-      ancestryAnchorUuid: 'root',
-      onAncestorRecord: (_record, uuid) => fromString.push(uuid)
-    })
-  )
-  expect(replayed).toEqual(fromString)
-  expect(replayed).toEqual(['child'])
+
+  expect(await readLines(await pinClaudeTranscript(state.path))).toEqual(contents.split('\n'))
+  expect(prove(contents).finish()).toEqual({
+    proof: { leafUuid: 'child', relation: 'descendant' },
+    chain: ['child']
+  })
+})
+
+it('reads only the pinned bytes while the same file grows', async () => {
+  const snapshot = await pinClaudeTranscript(state.path)
+  await appendFile(state.path, CHILD + marker('child'))
+  state.afterOpen = () => appendFile(state.path, ' '.repeat(1024 * 1024))
+
+  expect((await readLines(snapshot)).join('\n')).toBe(SOURCE)
+  expect(state.bytesRead).toBe(Buffer.byteLength(SOURCE))
+  expect(state.opens).toBe(1)
+})
+
+it.each([
+  [
+    'replaced',
+    async () => {
+      await rename(state.path, `${state.path}.original`)
+      await writeFile(state.path, ROOT + CHILD + marker('child'))
+    }
+  ],
+  ['truncated', () => truncate(state.path, 0)]
+] as const)('refuses a file %s after the pin', async (_name, change) => {
+  const snapshot = await pinClaudeTranscript(state.path)
+  await change()
+  await expect(readLines(snapshot)).rejects.toThrow('replaced or truncated')
+})
+
+it('refuses a file truncated while it is read', async () => {
+  const snapshot = await pinClaudeTranscript(state.path)
+  state.afterOpen = () => truncate(state.path, 3)
+  await expect(readLines(snapshot)).rejects.toThrow('truncated while it was read')
+})
+
+it('refuses a file unlinked after the pin', async () => {
+  const snapshot = await pinClaudeTranscript(state.path)
+  await unlink(state.path)
+  await expect(readLines(snapshot)).rejects.toMatchObject({ code: 'ENOENT' })
+})
+
+it.each(['stat', 'read'] as const)('awaits closure after a %s failure', async (failure) => {
+  const snapshot = await pinClaudeTranscript(state.path)
+  state.statError = failure === 'stat'
+  state.readError = failure === 'read'
+  await expect(readLines(snapshot)).rejects.toThrow(`Injected ${failure} failure`)
+})
+
+it('opens no stream for an empty pin', async () => {
+  await writeFile(state.path, '')
+  expect(await readLines(await pinClaudeTranscript(state.path))).toEqual([])
+  expect(state.bytesRead).toBe(0)
 })
 
 it.each([
   ['malformed middle', `{"broken":\n${SOURCE}`, false],
   ['unterminated malformed tail', `${SOURCE}{"broken":`, true],
   ['terminated malformed tail', `${SOURCE}{"broken":\n`, false]
-] as const)(
-  'preserves error classification for %s and closes the file',
-  async (_name, contents, incomplete) => {
-    await writeFile(state.path, contents)
-    const result = read()
-    await (incomplete
-      ? expect(result).rejects.toBeInstanceOf(ClaudeTranscriptTailIncompleteError)
-      : expect(result).rejects.not.toBeInstanceOf(ClaudeTranscriptTailIncompleteError))
+] as const)('preserves error classification for %s', (_name, contents, incomplete) => {
+  let error: unknown = null
+  try {
+    prove(contents).finish()
+  } catch (caught) {
+    error = caught
   }
-)
-
-it('proves only the original finite prefix while the same file grows', async () => {
-  state.afterStat = () => appendFile(state.path, CHILD + marker('child') + ' '.repeat(1024 * 1024))
-  expect(await read()).toEqual({ leafUuid: 'root', relation: 'same' })
-  expect(state.bytesRead).toBe(Buffer.byteLength(SOURCE))
+  expect(error).toBeInstanceOf(Error)
+  expect(error instanceof ClaudeTranscriptTailIncompleteError).toBe(incomplete)
 })
 
-it('replays the ancestry off the same pinned prefix the proof read', async () => {
-  const contents = ROOT + CHILD
-  await writeFile(state.path, contents)
-  state.afterStat = () => appendFile(state.path, row('grandchild', 'child'))
-  expect(await replay()).toEqual({
-    proof: { leafUuid: 'child', relation: 'descendant' },
-    chain: ['child']
-  })
-  expect(replayed).toEqual(['child'])
-  expect(state.bytesRead).toBe(Buffer.byteLength(contents) * 2)
+it('reports each uuid once, at its first line', () => {
+  const { finish, firstSeen } = prove(ROOT + CHILD + CHILD + marker('child'))
+  expect(finish().chain).toEqual(['child'])
+  expect(firstSeen).toEqual(['root', 'child'])
 })
 
-it.each([
-  ['empty', '', SOURCE, 'root'],
-  ['missing previous cursor', SOURCE, CHILD + marker('child'), 'child']
-] as const)(
-  'finishes a growing %s proof on the same open handle',
-  async (_name, contents, growth, anchor) => {
-    await writeFile(state.path, contents)
-    state.afterStat = () => appendFile(state.path, growth)
-    expect((await read(anchor)).leafUuid).toBe(anchor)
-    expect(state.opens).toBe(1)
-  }
-)
-
-it.each(['', SUMMARY])('keeps a static missing tip fatal', async (contents) => {
-  await writeFile(state.path, contents)
-  await expect(read()).rejects.toThrow('missing last-prompt marker')
+it.each(['', SUMMARY])('keeps a missing tip fatal', (contents) => {
+  expect(prove(contents).finish).toThrow('missing last-prompt marker')
 })
 
-it('preserves the typed static missing-cursor error for existing root reproof', async () => {
-  await expect(read('absent')).rejects.toBeInstanceOf(ClaudeTranscriptPreviousCursorMissingError)
+it('preserves the typed missing-cursor error for existing root reproof', () => {
+  expect(prove(SOURCE, 'absent').finish).toThrow(ClaudeTranscriptPreviousCursorMissingError)
 })
 
 it.each([
@@ -211,76 +251,6 @@ it.each([
   ['wrong session', ROOT + marker('root', 'foreign'), 'root', 'invalid last-prompt'],
   ['append order', CHILD + ROOT, 'root', 'parent row follows'],
   ['missing ancestor', CHILD, 'child', 'missing ancestor']
-] as const)(
-  'does not turn %s into a retry when the file grows',
-  async (_name, contents, anchor, message) => {
-    await writeFile(state.path, contents)
-    state.afterStat = () => appendFile(state.path, CHILD)
-    await expect(read(anchor)).rejects.toThrow(message)
-  }
-)
-
-it('does not infer growth from a failed second stat', async () => {
-  await writeFile(state.path, '')
-  state.afterStat = () => appendFile(state.path, SOURCE)
-  state.statErrorOn = 2
-  await expect(read()).rejects.toThrow('missing last-prompt marker')
-})
-
-it('keeps reading the original handle after pathname replacement', async () => {
-  state.afterStat = async () => {
-    await rename(state.path, `${state.path}.original`)
-    await writeFile(state.path, ROOT + CHILD + marker('child'))
-  }
-  expect((await read()).leafUuid).toBe('root')
-})
-
-it('does not use a replacement file to establish growth', async () => {
-  await writeFile(state.path, '')
-  state.afterStat = async () => {
-    await rename(state.path, `${state.path}.original`)
-    await writeFile(state.path, ROOT + CHILD + marker('child'))
-  }
-  await expect(read()).rejects.toThrow('missing last-prompt marker')
-})
-
-it('can finish an opened file after unlink', async () => {
-  state.afterStat = () => unlink(state.path)
-  expect((await read()).leafUuid).toBe('root')
-})
-
-it('does not infer growth from truncation', async () => {
-  state.afterStat = () => truncate(state.path, 0)
-  await expect(read()).rejects.toThrow('missing last-prompt marker')
-})
-
-it.each(['stat', 'read'] as const)('awaits closure after a %s failure', async (failure) => {
-  state.statErrorOn = failure === 'stat' ? 1 : 0
-  state.readError = failure === 'read'
-  await expect(read()).rejects.toThrow(`Injected ${failure} failure`)
-})
-
-it('completes a record appended after the first observed extent without caller retry', async () => {
-  const contents = ROOT + marker('root').slice(0, -5)
-  await writeFile(state.path, contents)
-  state.afterStat = () => appendFile(state.path, marker('root').slice(-5))
-  expect((await read()).leafUuid).toBe('root')
-  expect(state.opens).toBe(1)
-})
-
-it('validates the entire refreshed prefix instead of accepting a malformed repair', async () => {
-  const conflicting = row('root', 'foreign')
-  await writeFile(state.path, ROOT + conflicting.slice(0, -5))
-  state.afterStat = () => appendFile(state.path, conflicting.slice(-5))
-  await expect(read()).rejects.toThrow('conflicting ancestry')
-  expect(state.opens).toBe(1)
-})
-
-it('keeps an unfinished growing repair retryable after one internal refresh', async () => {
-  const torn = ROOT.slice(0, -5)
-  await writeFile(state.path, torn)
-  state.afterStat = () => appendFile(state.path, ' ')
-  await expect(read()).rejects.toBeInstanceOf(ClaudeTranscriptTailIncompleteError)
-  expect(state.opens).toBe(1)
-  expect(state.bytesRead).toBe(Buffer.byteLength(torn) * 2 + 1)
+] as const)('fails the proof on %s', (_name, contents, anchor, message) => {
+  expect(prove(contents, anchor).finish).toThrow(message)
 })

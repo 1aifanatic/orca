@@ -13,7 +13,7 @@ import { agentJournalItemKey } from '../../shared/agent-session-journal-item-key
 import type { AgentJournalSubmission } from '../../shared/agent-session-journal-types'
 import {
   claudeProviderHistoryWindowFromJsonl,
-  resolveClaudeProviderHistoryWindow
+  sampleClaudeProviderHistory
 } from './claude-structured-history-window'
 
 const PROVIDER_SESSION = 'provider-1'
@@ -78,7 +78,7 @@ describe('claudeProviderHistoryWindowFromJsonl', () => {
       'utf8'
     )
 
-    const window = await resolveClaudeProviderHistoryWindow({
+    const sample = await sampleClaudeProviderHistory({
       identity: {
         sessionId: ORCA_SESSION,
         workspaceId: 'workspace-1',
@@ -89,6 +89,7 @@ describe('claudeProviderHistoryWindowFromJsonl', () => {
       accountHomePath: accountHome,
       hasLiveSession: false
     })
+    const window = await sample?.read()
 
     expect(window?.items.map((item) => item.providerItemId)).toEqual(['u-1'])
   })
@@ -268,8 +269,7 @@ describe('claudeProviderHistoryWindowFromJsonl', () => {
   })
 
   it('refuses a malformed line rather than skipping past it into the window', () => {
-    // The branch proof runs first and throws on any unparseable record; the
-    // replay that follows only tolerates them because that pass already ran.
+    // An unparseable line ends the proof, though the read goes on for the recorded history.
     const contents = jsonl([ANCHOR, prompt('u-1', 'anchor', 'ship it')], 'u-1').replace(
       '{"type":"last-prompt"',
       'not json\n{"type":"last-prompt"'
@@ -282,6 +282,16 @@ describe('claudeProviderHistoryWindowFromJsonl', () => {
     const contents = jsonl([ANCHOR, prompt('u-1', 'anchor', 'ship it')], 'u-1')
 
     expect(read(contents, 'anchor', true).turnInFlight).toBe(true)
+  })
+
+  it('keeps a running turn running when the boundary cannot be vouched for', () => {
+    // A send absent from the whole file is still no proof while a turn is running.
+    const contents = jsonl([ANCHOR], 'anchor')
+
+    expect(read(contents, null, true)).toMatchObject({
+      boundaryConsistent: false,
+      turnInFlight: true
+    })
   })
 })
 

@@ -57,17 +57,20 @@ function window(overrides: Partial<ProviderHistoryWindow> = {}): ProviderHistory
   }
 }
 
-/** Only the surface `attachJournal` touches; every send-shaped method is a spy
- *  so a re-delivery would be visible rather than silent. */
-function adapterWith(providerHistoryWindow?: () => Promise<ProviderHistoryWindow | null>): {
+/** Every send-shaped method is a spy, so a re-delivery would be visible rather than silent. */
+function adapterWith(read?: () => Promise<ProviderHistoryWindow | null>): {
   adapter: StructuredAgentSessionAdapter
   dispatch: ReturnType<typeof vi.fn>
 } {
   const dispatch = vi.fn()
-  const adapter = {
+  const adapter: StructuredAgentSessionAdapter = {
+    acquire: vi.fn(),
     dispatch,
-    ...(providerHistoryWindow ? { providerHistoryWindow } : {})
-  } as unknown as StructuredAgentSessionAdapter
+    cancelTurn: vi.fn(),
+    answerPrompt: vi.fn(),
+    setOption: vi.fn(),
+    ...(read ? { sampleProviderHistory: async () => ({ read }) } : {})
+  }
   return { adapter, dispatch }
 }
 

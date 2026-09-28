@@ -1,4 +1,4 @@
-// The streaming contract the history window now reads under: two bounded passes
+// The streaming contract the history window now reads under: one bounded pass
 // over ONE pinned snapshot, and no whole-file buffer at any point. The previous
 // contract was a single bounded read, which made an oversized transcript report
 // an inconsistent boundary — that answer left reconciliation permanently
@@ -35,9 +35,9 @@ vi.mock('node:fs/promises', async (importOriginal) => {
       }
       state.opens += 1
       return {
-        stat: async () => {
-          const snapshot = await handle.stat()
-          state.observedStatBytes = snapshot.size
+        stat: async (options?: Parameters<FileHandle['stat']>[0]) => {
+          const snapshot = await handle.stat(options)
+          state.observedStatBytes = Number(snapshot.size)
           if (state.growth) {
             const growth = state.growth
             state.growth = ''
@@ -69,7 +69,9 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 })
 
 import { appendFile, mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { readClaudeProviderHistoryWindow } from './claude-structured-history-window'
+import { readClaudeProviderHistory } from './claude-structured-history-window'
+import { pinClaudeTranscript } from './claude-transcript-branch-proof'
+import { agentJournalItemKey } from '../../shared/agent-session-journal-item-key'
 
 const LEGACY_LIMIT = 16 * 1024 * 1024
 const SOURCE = `${[
@@ -93,9 +95,8 @@ const SOURCE = `${[
   .join('\n')}\n`
 let directory = ''
 
-const read = (previousLeafUuid: string | null = 'anchor') =>
-  readClaudeProviderHistoryWindow({
-    transcriptPath: state.path,
+const read = async (previousLeafUuid: string | null = 'anchor') =>
+  readClaudeProviderHistory(await pinClaudeTranscript(state.path), {
     providerSessionId: 'provider',
     previousLeafUuid,
     sessionId: 'orca',
@@ -155,30 +156,13 @@ describe('Claude provider history source budget', () => {
     expect(result.items.map((item) => item.providerItemId)).toEqual(['latest'])
   })
 
-  it('streams two passes over one descriptor rather than one whole-file read', async () => {
-    await read()
-    // One open for both passes: pass 2 must see the bytes pass 1 vouched for.
-    expect(state.opens).toBe(1)
-    expect(state.streams).toBe(2)
-    expect(state.bytesRead).toBe(2 * Buffer.byteLength(SOURCE))
-  })
-
-  it('opens no second pass when nothing followed the anchor', async () => {
-    await writeFile(
-      state.path,
-      SOURCE.split('\n')
-        // Only the record — `"latest"` alone would take the marker row with it,
-        // leaving an unprovable transcript that satisfies this test vacuously.
-        .filter((line) => !line.includes('"uuid":"latest"'))
-        .join('\n')
-        .replace('"leafUuid":"latest"', '"leafUuid":"anchor"')
-    )
-
+  it('streams one pass for the window and the recorded history together', async () => {
     const result = await read()
-
-    expect(result.boundaryConsistent).toBe(true)
-    expect(result.items).toEqual([])
+    expect(result.recorded?.itemIds.size).toBe(2)
+    // The proof, the window and the id lookup all come from the same bytes, read once.
+    expect(state.opens).toBe(1)
     expect(state.streams).toBe(1)
+    expect(state.bytesRead).toBe(Buffer.byteLength(SOURCE))
   })
 
   it('resolves a source past the legacy whole-file limit instead of refusing it', async () => {
@@ -191,7 +175,7 @@ describe('Claude provider history source budget', () => {
 
     expect(result.boundaryConsistent).toBe(true)
     expect(result.items.map((item) => item.providerItemId)).toEqual(['latest'])
-    expect(state.bytesRead).toBeGreaterThan(2 * LEGACY_LIMIT)
+    expect(state.bytesRead).toBeGreaterThan(LEGACY_LIMIT)
   })
 
   it('keeps resident bytes bounded by the chunk size, not the file size', async () => {
@@ -209,7 +193,7 @@ describe('Claude provider history source budget', () => {
     expect((await read()).boundaryConsistent).toBe(false)
   })
 
-  it('replays a concurrent repair at the grown size, not the pinned one', async () => {
+  it('never reads what was appended after the pin, even to finish a torn tail', async () => {
     const grown = `${JSON.stringify({
       type: 'user',
       uuid: 'grown',
@@ -218,20 +202,28 @@ describe('Claude provider history source budget', () => {
       message: { role: 'user', content: 'appended' }
     })}\n`
     const torn = Math.floor(grown.length / 2)
-    // A torn last record: the proof's first attempt fails, and the retry is what
-    // sees both the repair AND the record the window has to report.
     await writeFile(state.path, SOURCE + grown.slice(0, torn))
-    state.growth = grown.slice(torn)
+    const pinned = await pinClaudeTranscript(state.path)
+    // A child started after the pin may be the writer, so its bytes are no evidence.
+    await appendFile(state.path, grown.slice(torn))
 
-    const result = await read()
+    const result = await readClaudeProviderHistory(pinned, {
+      providerSessionId: 'provider',
+      previousLeafUuid: 'anchor',
+      sessionId: 'orca',
+      turnInFlight: false
+    })
 
-    // The retry re-runs BOTH passes at the new size: a pass 2 left at the old
-    // size would silently drop the record the proof just accepted.
-    expect(result.boundaryConsistent).toBe(true)
-    expect(result.items.map((item) => item.providerItemId)).toEqual(['latest', 'grown'])
-    // Failed graph pass, re-run graph pass, replay pass — all on the one descriptor.
-    expect(state.streams).toBe(3)
-    expect(state.opens).toBe(1)
+    expect(result.boundaryConsistent).toBe(false)
+    // The torn line may be the record, so the file does not prove its absence.
+    const grownKey = agentJournalItemKey({
+      provider: 'claude',
+      sessionId: 'provider',
+      uuid: 'grown'
+    })
+    expect(result.recorded?.provesAbsenceOf(grownKey)).toBe(false)
+    expect(state.streams).toBe(1)
+    expect(state.bytesRead).toBe(pinned.size)
   })
 
   it('preserves the inconsistent result on a read error', async () => {
@@ -239,9 +231,10 @@ describe('Claude provider history source budget', () => {
     expect((await read()).boundaryConsistent).toBe(false)
   })
 
-  it('does not open a source without an anchor', async () => {
-    expect((await read(null)).boundaryConsistent).toBe(false)
-    expect(state.opens).toBe(0)
-    expect(state.bytesRead).toBe(0)
+  it('still reads the recorded history, once, without an anchor', async () => {
+    const result = await read(null)
+    expect(result.boundaryConsistent).toBe(false)
+    expect(result.recorded?.itemIds.size).toBe(2)
+    expect(state.streams).toBe(1)
   })
 })

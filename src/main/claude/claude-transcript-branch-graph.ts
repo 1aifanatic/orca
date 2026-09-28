@@ -49,6 +49,11 @@ export class ClaudeTranscriptPreviousCursorMissingError extends Error {
   }
 }
 
+/** An unterminated line may still be mid-append; a terminated one is simply malformed. */
+function unparsableTranscriptLine(terminated: boolean): Error {
+  return terminated ? transcriptError('malformed JSONL') : new ClaudeTranscriptTailIncompleteError()
+}
+
 function proveMainLineAncestry(
   nodes: Map<string, TranscriptNode>,
   startUuid: string,
@@ -114,7 +119,7 @@ function createBranchProof(input: BranchProofInput) {
   let leafMarkerLineIndex = -1
   let tailUuid: string | null = null
   let tailLineIndex = -1
-  return { add, finish, ancestryChain }
+  return { add, addParsed, has: (uuid: string) => nodes.has(uuid), finish, ancestryChain }
 
   function add(line: string, index: number, terminated: boolean): void {
     if (!line.trim()) {
@@ -124,11 +129,13 @@ function createBranchProof(input: BranchProofInput) {
     try {
       record = JSON.parse(line)
     } catch {
-      if (!terminated) {
-        throw new ClaudeTranscriptTailIncompleteError()
-      }
-      throw transcriptError('malformed JSONL')
+      throw unparsableTranscriptLine(terminated)
     }
+    addParsed(record, index)
+  }
+
+  /** `add` for a line the caller already parsed, so a shared read parses each line once. */
+  function addParsed(record: unknown, index: number): void {
     if (typeof record !== 'object' || record === null || Array.isArray(record)) {
       throw transcriptError('non-object record')
     }
@@ -289,5 +296,5 @@ function createBranchProof(input: BranchProofInput) {
   }
 }
 
-export { ClaudeTranscriptMarkerMissingError, createBranchProof }
+export { ClaudeTranscriptMarkerMissingError, createBranchProof, unparsableTranscriptLine }
 export type { BranchProofInput }

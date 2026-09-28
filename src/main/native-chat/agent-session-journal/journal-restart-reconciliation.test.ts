@@ -4,7 +4,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import type {
   AgentJournalItemIdentity,
@@ -15,6 +15,7 @@ import { digestPayload } from './journal-payload-bounds'
 import { reconcileJournalSubmissionsAgainstHistory } from './journal-restart-reconciliation'
 import type {
   ProviderHistoryItem,
+  ProviderHistorySample,
   ProviderHistoryWindow,
   ProviderRecordedHistory
 } from './journal-submission-reconciler'
@@ -70,8 +71,10 @@ function history(uuid: string, text: string): ProviderHistoryItem {
 function window(
   items: ProviderHistoryItem[],
   overrides: Partial<ProviderHistoryWindow> = {}
-): ProviderHistoryWindow {
-  return { items, boundaryConsistent: true, turnInFlight: false, ...overrides }
+): ProviderHistorySample {
+  return {
+    read: async () => ({ items, boundaryConsistent: true, turnInFlight: false, ...overrides })
+  }
 }
 
 /** The whole transcript, holding these records; each is `[uuid, text]`. */
@@ -383,6 +386,36 @@ describe('reconcileJournalSubmissionsAgainstHistory', () => {
       history: window([], {
         recorded: { ...wholeHistory([]), provesAbsenceOf: () => false }
       })
+    })
+
+    expect(settled).toEqual([])
+    expect(journal.submissions()[0]?.dispatchState).toBe('unknown')
+  })
+
+  it('reads no history when nothing is in doubt', async () => {
+    const journal = await open()
+    await appendSend(journal, 'cm_1', 'uuid-sent')
+    await journal.resolveDispatch({
+      clientMessageId: 'cm_1',
+      state: 'accepted',
+      providerIdentity: claudeIdentity('uuid-sent'),
+      fence: 1
+    })
+    const read = vi.fn(window([]).read)
+
+    expect(
+      await reconcileJournalSubmissionsAgainstHistory({ journal, fence: 2, history: { read } })
+    ).toEqual([])
+    expect(read).not.toHaveBeenCalled()
+  })
+
+  it('leaves a send in doubt when reading history fails', async () => {
+    const journal = await reopenAfterCrash(undefined, undefined, 'uuid-sent')
+
+    const settled = await reconcileJournalSubmissionsAgainstHistory({
+      journal,
+      fence: 2,
+      history: { read: () => Promise.reject(new Error('transcript unreadable')) }
     })
 
     expect(settled).toEqual([])
