@@ -29,16 +29,6 @@ export const DISPATCH_REJECTED_CODEX_QUEUE_FULL = 'codex structured dispatch que
 /** The provider confirmed a queued frame was withdrawn before execution. */
 export const DISPATCH_REJECTED_CANCELLED = 'provider_cancelled_before_start'
 
-/** A Stop withdrew it before it ran: it will not land, and only its sender can send it again. */
-export function dispatchWasWithdrawn(
-  submission: Pick<AgentJournalSubmission, 'dispatchState' | 'reason'> | undefined
-): boolean {
-  // Why: legacy reason until the typed withdrawn category lands; then read that instead.
-  return (
-    submission?.dispatchState === 'rejected' && submission.reason === DISPATCH_REJECTED_CANCELLED
-  )
-}
-
 /** Legacy marker: accepted by a host process that ended before handing it to any provider.
  *  Read only; released clients print it raw, so new rows carry a sentence. */
 export const DISPATCH_REJECTED_HOST_RESTARTED = 'host_restarted_before_delivery'
@@ -174,6 +164,16 @@ export function classifyDispatchRejection(
     return { category: 'content', verdict: 'failure' }
   }
   return { category: KIND_CATEGORY[kind], verdict: KIND_VERDICT[kind], kind }
+}
+
+/** A Stop withdrew it before it ran: it will not land, and only its sender can send it again. */
+export function dispatchWasWithdrawn(
+  submission: Pick<AgentJournalSubmission, 'dispatchState' | 'reason' | 'rejection'> | undefined
+): boolean {
+  return (
+    submission?.dispatchState === 'rejected' &&
+    classifyDispatchRejection(submission).category === 'withdrawn'
+  )
 }
 
 /** A submission that says Orca never handed it over, in any dispatch state: journals written

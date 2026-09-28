@@ -104,10 +104,10 @@ function withdrawn(
   overrides: Partial<AgentJournalSubmission> = {}
 ): AgentJournalSubmission {
   return submission(clientMessageId, {
-    ...overrides,
     dispatchState: 'rejected',
     reason: DISPATCH_REJECTED_CANCELLED,
-    resolvedAt: 11
+    resolvedAt: 11,
+    ...overrides
   })
 }
 
@@ -200,6 +200,24 @@ describe('a message the host withdrew at a Stop', () => {
       ])
     }
   )
+
+  it('comes back when the host wrote the withdrawal as a typed fact in a sentence', async () => {
+    answerSendsPending()
+    const { result, rerender } = renderOutbox()
+    const id = await sendToHost(result, 'hello')
+
+    rerender({
+      submissions: [
+        withdrawn(id, {
+          reason: 'This message was withdrawn before the agent started it.',
+          rejection: { kind: 'cancelled' }
+        })
+      ]
+    })
+
+    await waitFor(() => expect(result.current.outbox).toEqual([]))
+    expect(readNativeChatDraftCache(PANE)).toBe('hello')
+  })
 
   it('comes back once, whatever replays the journal or shows the chat again', async () => {
     answerSendsPending()
