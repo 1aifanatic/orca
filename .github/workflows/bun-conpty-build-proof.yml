@@ -113,4 +113,8 @@ jobs:
           name: bun-conpty-${{ matrix.arch }}-qualification
           retention-days: 7
           if-no-files-found: warn
-          path: receipts
+          path: |
+            receipts
+            config/bun-conpty-build/full-preflight/project/package-lock.json
+            config/bun-conpty-build/full-preflight/project/node_modules/@vscode/windows-process-tree/build/config.gypi
+            config/bun-conpty-build/full-preflight/project/.build/windows-process-tree/${{ matrix.arch }}/windows-process-tree.node
