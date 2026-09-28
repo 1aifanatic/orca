@@ -24,7 +24,12 @@ describe.skipIf(process.platform === 'win32')('CLI launcher startup signals', ()
     })
 
     try {
-      launchBunCli('/bun', '/cli.js', [])
+      launchBunCli('/bun', '/cli.js', ['status'])
+      expect(spawn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          args: ['--no-env-file', '--config=/dev/null', '--no-install', '/cli.js', 'status']
+        })
+      )
       expect(child.kill).toHaveBeenCalledExactlyOnceWith('SIGINT')
     } finally {
       child.emit('exit', 0, null)

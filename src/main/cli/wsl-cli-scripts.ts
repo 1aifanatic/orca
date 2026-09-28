@@ -189,7 +189,7 @@ function buildDevCliEnv(cliEntryPath: string, appExecutable: string | undefined)
     '$env:ORCA_NODE_OPTIONS = $env:NODE_OPTIONS',
     '$env:ORCA_NODE_REPL_EXTERNAL_MODULE = $env:NODE_REPL_EXTERNAL_MODULE',
     'Remove-Item Env:NODE_OPTIONS, Env:NODE_REPL_EXTERNAL_MODULE -ErrorAction SilentlyContinue',
-    `$ForwardArgs = @(${quotePowerShellLiteral(cliEntryPath)}) + $ForwardArgs`
+    `$ForwardArgs = @('--no-env-file', '--config=NUL', '--no-install', ${quotePowerShellLiteral(cliEntryPath)}) + $ForwardArgs`
   ]
 }
 

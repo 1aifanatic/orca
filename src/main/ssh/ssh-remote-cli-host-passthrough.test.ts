@@ -327,6 +327,9 @@ describe('runHostOrcaCliPassthrough', () => {
     ]
     expect(execPath).toBe('/host/electron')
     expect(args).toEqual([
+      '--no-env-file',
+      process.platform === 'win32' ? '--config=NUL' : '--config=/dev/null',
+      '--no-install',
       '/host/app/out/cli/index.js',
       'orchestration',
       'task-create',

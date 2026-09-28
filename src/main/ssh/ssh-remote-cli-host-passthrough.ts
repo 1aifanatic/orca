@@ -1,3 +1,4 @@
+import { bunOwnedRuntimeArgs } from '../../shared/bun-owned-runtime-args'
 import { resolveBundledCliRuntimePath } from '../../shared/bundled-cli-runtime-path'
 // The SSH shim runs the bundled CLI so remote shells get the full command surface.
 import { app } from 'electron'
@@ -210,7 +211,7 @@ export async function runHostOrcaCliPassthrough(
 
   return await new Promise<RemoteOrcaCliResult>((resolve, reject) => {
     let settled = false
-    const child = spawn(execPath, [cliEntryPath, ...request.argv], {
+    const child = spawn(execPath, [...bunOwnedRuntimeArgs(), cliEntryPath, ...request.argv], {
       env,
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true

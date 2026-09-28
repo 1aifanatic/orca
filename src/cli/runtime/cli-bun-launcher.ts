@@ -1,3 +1,4 @@
+import { bunOwnedRuntimeArgs } from '../../shared/bun-owned-runtime-args'
 import { createServer, type Socket } from 'node:net'
 import { randomUUID } from 'node:crypto'
 import { constants } from 'node:os'
@@ -122,7 +123,7 @@ function spawnBunCli(
   try {
     child = spawnProcess({
       program: runtime,
-      args: [entry, ...args],
+      args: [...bunOwnedRuntimeArgs(), entry, ...args],
       env,
       // Detachment escapes Node's Windows job but cannot inherit console handles.
       detached: ownsProcessGroup || !!forwardWindowsSignal,

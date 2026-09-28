@@ -283,7 +283,14 @@ describe('CLI launch redirect: spawning', () => {
     expect(run).toHaveBeenCalledWith(
       expect.objectContaining({
         program: `${linux.resourcesPath}/cli-runtime/bun-runtime`,
-        args: [linux.cliEntryPath, 'status', '--json'],
+        args: [
+          '--no-env-file',
+          '--config=/dev/null',
+          '--no-install',
+          linux.cliEntryPath,
+          'status',
+          '--json'
+        ],
         stdio: 'inherit',
         timeoutMs: null,
         env: expect.objectContaining({

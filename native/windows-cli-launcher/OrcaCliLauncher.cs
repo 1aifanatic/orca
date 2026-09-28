@@ -104,7 +104,7 @@ internal static class OrcaCliLauncher
 
     private static string BuildArguments(string cliPath, string[] args)
     {
-        StringBuilder commandLine = new StringBuilder(QuoteArgument(cliPath));
+        StringBuilder commandLine = new StringBuilder("--no-env-file --config=NUL --no-install ").Append(QuoteArgument(cliPath));
         foreach (string arg in args)
         {
             commandLine.Append(' ');

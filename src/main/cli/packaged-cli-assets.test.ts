@@ -144,7 +144,9 @@ describe('packaged CLI assets', () => {
   itRunsUnixShell('replaces the shell process in packaged Unix launchers', async () => {
     for (const launcher of [linuxLauncherAsset, darwinLauncherAsset]) {
       const content = await readFile(launcher, 'utf8')
-      expect(content).toContain('exec "$BUN" "$CLI" "$@"')
+      expect(content).toContain(
+        'exec "$BUN" --no-env-file --config=/dev/null --no-install "$CLI" "$@"'
+      )
     }
   })
 
@@ -358,7 +360,14 @@ node -e 'console.log(JSON.stringify({
         orcaNodeReplExternalModule: string | null
       }
 
-      expect(payload.argv).toEqual([cliPath, '--help', 'two words'])
+      expect(payload.argv).toEqual([
+        '--no-env-file',
+        '--config=/dev/null',
+        '--no-install',
+        cliPath,
+        '--help',
+        'two words'
+      ])
       expect(payload.runAsNode).toBeUndefined()
       // Why: Electron's node bootstrap must not inherit these, but the CLI
       // still needs to see what the user set.
@@ -423,6 +432,9 @@ require('node:fs').writeFileSync(process.env.ORCA_TEST_LAUNCH_STATE, JSON.string
           runAsNode: string | null
         }
         expect(payload.argv).toEqual([
+          '--no-env-file',
+          '--config=/dev/null',
+          '--no-install',
           cliPath,
           'serve',
           '--recipe-json',

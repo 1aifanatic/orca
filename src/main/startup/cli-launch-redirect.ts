@@ -1,3 +1,4 @@
+import { bunOwnedRuntimeArgs } from '../../shared/bun-owned-runtime-args'
 import { existsSync } from 'node:fs'
 import { posix, win32 } from 'node:path'
 import { runProcessSync } from '../../shared/child-process/run-process'
@@ -73,7 +74,7 @@ export function maybeRedirectCliLaunch(
   try {
     const result = run({
       program: runtimePath,
-      args: [cliEntryPath, ...cliArgs],
+      args: [...bunOwnedRuntimeArgs(platform), cliEntryPath, ...cliArgs],
       env: childEnv,
       stdio: 'inherit',
       timeoutMs: null

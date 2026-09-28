@@ -39,10 +39,13 @@ async function verify(): Promise<void> {
     timeoutMs: 30_000
   })
   assert.equal(compiled.code, 0, compiled.stderr || compiled.stdout)
+  await writeFile(join(app, 'bunfig.toml'), 'preload = ["./preload.cjs"]\n')
+  await writeFile(join(app, 'preload.cjs'), 'throw new Error("Workspace preload executed")')
   const args = ['two words', 'a"b', 'line\nbreak', '', 'tail\\', 'quote\\"end', '$HOME']
   const result = await runProcess({
     program: launcher,
     args,
+    cwd: app,
     env: {
       ORCA_BACKGROUND_LAUNCH: '1',
       ORCA_APP_EXECUTABLE: '',

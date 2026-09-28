@@ -95,7 +95,7 @@ unset NODE_OPTIONS
 unset NODE_REPL_EXTERNAL_MODULE
 unset ELECTRON_RUN_AS_NODE
 unset BUN_OPTIONS
-exec "$BUN" "$CLI" "$@"
+exec "$BUN" --no-env-file --config=/dev/null --no-install "$CLI" "$@"
 `
 }
 
@@ -125,7 +125,7 @@ set NODE_OPTIONS=
 set NODE_REPL_EXTERNAL_MODULE=
 set ELECTRON_RUN_AS_NODE=
 set BUN_OPTIONS=
-"%BUN%" "%CLI%" %*
+"%BUN%" --no-env-file --config=NUL --no-install "%CLI%" %*
 `
 }
 

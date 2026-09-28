@@ -1,4 +1,4 @@
-import { copyFile, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
@@ -13,6 +13,9 @@ it.skipIf(!process.env.BUN_EXECUTABLE || process.platform === 'win32')(
     }
     const root = await mkdtemp(join(tmpdir(), "orca bin '$ "))
     try {
+      await writeFile(join(root, 'bunfig.toml'), 'preload = ["./preload.cjs"]\n')
+      await writeFile(join(root, 'preload.cjs'), 'throw new Error("Workspace preload executed")')
+      await writeFile(join(root, '.env'), 'ORCA_DOTENV_PROBE=loaded\n')
       const cli = join(root, 'out', 'cli')
       const runtimeDirectory = join(
         root,
@@ -25,7 +28,7 @@ it.skipIf(!process.env.BUN_EXECUTABLE || process.platform === 'win32')(
       await copyFile(join(process.cwd(), 'out/cli/cli-bin.js'), join(cli, 'cli-bin.js'))
       await writeFile(
         join(cli, 'index.js'),
-        'process.stdout.write(JSON.stringify({bun:process.versions.bun,args:process.argv.slice(2)}));process.exitCode=17'
+        'process.stdout.write(JSON.stringify({cwd:process.cwd(),dotenv:process.env.ORCA_DOTENV_PROBE??null,bun:process.versions.bun,args:process.argv.slice(2)}));process.exitCode=17'
       )
       const alias = join(root, 'alias.js')
       await symlink(join(cli, 'cli-bin.js'), alias)
@@ -37,11 +40,16 @@ it.skipIf(!process.env.BUN_EXECUTABLE || process.platform === 'win32')(
       const result = await runProcess({
         program: process.execPath,
         args: [alias, ...argv],
-        cwd: tmpdir(),
+        cwd: root,
         env: { ORCA_BACKGROUND_LAUNCH: '1' }
       })
       expect(result.code, result.stderr).toBe(17)
-      expect(JSON.parse(result.stdout)).toEqual({ bun: expect.any(String), args: argv })
+      expect(JSON.parse(result.stdout)).toEqual({
+        cwd: await realpath(root),
+        dotenv: null,
+        bun: expect.any(String),
+        args: argv
+      })
     } finally {
       await rm(root, { recursive: true, force: true })
     }

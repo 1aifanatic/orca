@@ -48,4 +48,4 @@ unset NODE_REPL_EXTERNAL_MODULE
 
 unset ELECTRON_RUN_AS_NODE
 unset BUN_OPTIONS
-exec "$BUN" "$CLI" "$@"
+exec "$BUN" --no-env-file --config=/dev/null --no-install "$CLI" "$@"
