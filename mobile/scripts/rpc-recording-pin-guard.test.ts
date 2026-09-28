@@ -5,12 +5,11 @@ import { afterAll, describe, expect, it } from 'vitest'
 import { runProcess } from '../../src/shared/child-process/run-process'
 import {
   assertReproductionSuitesExist,
-  checkPinAncestry,
   corpusProvenanceChanged,
   removeScratchWorktree,
-  repinInstruction,
   REPRODUCTION_SUITES
 } from './rpc-recording-pin-guard.mts'
+import { checkPinReachable, repinInstruction } from './rpc-recording-pin-reachability.mts'
 
 const scratch: string[] = []
 async function git(cwd: string, ...args: string[]): Promise<string> {
@@ -54,6 +53,45 @@ async function seedProvenance(repository: string): Promise<string> {
   return await commitAt(repository, RECORDER_FILE, 'recorder')
 }
 const MISSING_SHA = '0123456789abcdef0123456789abcdef01234567'
+const PIN_MANIFEST = 'mobile/rpc-foundation/pilot-scenarios.json'
+function pinManifest(baseline: string): string {
+  return JSON.stringify({ baseline, scenarios: [] })
+}
+/**
+ * A behaviour-change branch that pinned its own commit, squash-merged onto main as `(#7)`, with the
+ * host keeping the branch head at `refs/pull/7/head` the way GitHub does after the branch is gone.
+ */
+async function squashMergedPin(change: string) {
+  const work = await throwawayRepository()
+  await commit(work, 'one')
+  await git(work, 'switch', '--quiet', '--create', 'behaviour-change')
+  const branchPin = await commit(work, change)
+  await commitAt(work, PIN_MANIFEST, pinManifest(branchPin))
+  await git(work, 'switch', '--quiet', 'main')
+  await git(work, 'merge', '--quiet', '--squash', 'behaviour-change')
+  await git(work, 'commit', '--quiet', '--no-verify', '--message', `${change} (#7)`)
+  const remote = join(work, '..', 'remote.git')
+  await git(work, 'init', '--quiet', '--bare', remote)
+  await git(work, 'push', '--quiet', remote, 'main', 'behaviour-change:refs/pull/7/head')
+  await git(work, 'branch', '--quiet', '-D', 'behaviour-change')
+  return { work, remote, branchPin }
+}
+async function cloneMain(remote: string): Promise<string> {
+  const clone = join(remote, '..', `clone-${scratch.length}-${Date.now()}`)
+  await git(
+    join(remote, '..'),
+    'clone',
+    '--quiet',
+    '--single-branch',
+    '--branch',
+    'main',
+    remote,
+    clone
+  )
+  await git(clone, 'config', 'user.email', 'pin-guard@example.invalid')
+  await git(clone, 'config', 'user.name', 'Pin Guard')
+  return clone
+}
 
 // File scope, not per-suite: a suite-local hook fires before the later suites have made theirs.
 afterAll(async () => {
@@ -62,18 +100,18 @@ afterAll(async () => {
   }
 })
 
-describe('recording pin ancestry', () => {
+describe('recording pin reachability', () => {
   it('passes when the pin is the commit itself', async () => {
     const repository = await throwawayRepository()
     const first = await commit(repository, 'one')
-    expect(await checkPinAncestry(repository, first, first)).toMatchObject({ ok: true })
+    expect(await checkPinReachable(repository, first, first)).toMatchObject({ ok: true })
   })
 
   it('passes on ordinary drift: the tree has moved on, the pin is still reachable', async () => {
     const repository = await throwawayRepository()
     const pin = await commit(repository, 'one')
     const head = await commit(repository, 'two')
-    expect(await checkPinAncestry(repository, pin, head)).toMatchObject({ ok: true })
+    expect(await checkPinReachable(repository, pin, head)).toMatchObject({ ok: true })
   })
 
   it('passes on a branch that pinned its own commit, judged against that branch', async () => {
@@ -82,7 +120,7 @@ describe('recording pin ancestry', () => {
     await git(repository, 'switch', '--quiet', '--create', 'behaviour-change')
     const branchPin = await commit(repository, 'two')
     const branchHead = await commit(repository, 'three')
-    expect(await checkPinAncestry(repository, branchPin, branchHead)).toMatchObject({ ok: true })
+    expect(await checkPinReachable(repository, branchPin, branchHead)).toMatchObject({ ok: true })
   })
 
   it('passes a branch cut before main repinned, judged against the merge preview', async () => {
@@ -98,23 +136,54 @@ describe('recording pin ancestry', () => {
     await git(repository, 'merge', '--quiet', '--no-edit', 'main')
     const preview = await git(repository, 'rev-parse', 'HEAD')
     // The preview is the tree CI checks out and reads the pin from, so it is the tree to judge.
-    expect(await checkPinAncestry(repository, mainPin, preview)).toMatchObject({ ok: true })
+    expect(await checkPinReachable(repository, mainPin, preview)).toMatchObject({ ok: true })
     // The head sha would have failed this ordinary branch, and told the author to repin to it.
-    expect(await checkPinAncestry(repository, mainPin, branchHead)).toMatchObject({
+    expect(await checkPinReachable(repository, mainPin, branchHead)).toMatchObject({
       ok: false,
       failure: 'not-an-ancestor'
     })
   })
 
-  it('fails once that branch squash-merges and the pin leaves the history', async () => {
+  it('passes once that branch squash-merges, through the head its pull request keeps', async () => {
+    const { remote, branchPin } = await squashMergedPin('two')
+    // Only main: the branch is deleted, so the pin is nowhere in this clone until it is fetched.
+    const clone = await cloneMain(remote)
+    expect(await checkPinReachable(clone, branchPin, 'HEAD')).toMatchObject({
+      ok: true,
+      pullRequest: 7
+    })
+    const drifted = await commit(clone, 'later product change on main')
+    expect(await checkPinReachable(clone, branchPin, drifted)).toMatchObject({
+      ok: true,
+      pullRequest: 7
+    })
+    // The reproduction checks the pinned tree out next, which needs the fetched commit.
+    await git(clone, 'cat-file', '-e', `${branchPin}^{commit}`)
+  })
+
+  it("fails when the pull request's head no longer holds the pin", async () => {
+    const { remote, branchPin, work } = await squashMergedPin('two')
+    // A force-push after pinning: the pin is left in no ref the host keeps.
+    await git(work, 'push', '--quiet', '--force', remote, 'main:refs/pull/7/head')
+    await git(work, 'push', '--quiet', remote, `${branchPin}:refs/heads/stray`)
+    const clone = await cloneMain(remote)
+    await git(clone, 'fetch', '--quiet', 'origin', 'stray')
+    expect(await checkPinReachable(clone, branchPin, 'HEAD')).toMatchObject({
+      ok: false,
+      failure: 'not-an-ancestor'
+    })
+  })
+
+  it('fails once that branch squash-merges under a subject that names no pull request', async () => {
     const repository = await throwawayRepository()
     const base = await commit(repository, 'one')
     await git(repository, 'switch', '--quiet', '--create', 'behaviour-change')
     const branchPin = await commit(repository, 'two')
     await git(repository, 'switch', '--quiet', 'main')
     await git(repository, 'reset', '--quiet', '--hard', base)
+    await commitAt(repository, PIN_MANIFEST, pinManifest(branchPin))
     const squashed = await commit(repository, 'two, squashed')
-    const verdict = await checkPinAncestry(repository, branchPin, squashed)
+    const verdict = await checkPinReachable(repository, branchPin, squashed)
     expect(verdict).toMatchObject({ ok: false, failure: 'not-an-ancestor' })
     expect(verdict.ok).toBe(false)
     if (verdict.ok) {
@@ -128,7 +197,7 @@ describe('recording pin ancestry', () => {
   it('fails with the same instruction when the pin is no commit at all', async () => {
     const repository = await throwawayRepository()
     const head = await commit(repository, 'one')
-    const verdict = await checkPinAncestry(repository, MISSING_SHA, head)
+    const verdict = await checkPinReachable(repository, MISSING_SHA, head)
     expect(verdict).toMatchObject({ ok: false, failure: 'unreachable' })
     expect(verdict.ok ? '' : verdict.message).toContain('scripts/rpc-recording.mts --record')
   })
@@ -141,15 +210,15 @@ describe('recording pin ancestry', () => {
     const clone = join(repository, '..', 'shallow')
     await git(repository, 'clone', '--quiet', '--depth', '1', `file://${repository}`, clone)
     // The pin is real and reachable in the full repository; only the missing history hides it.
-    expect(await checkPinAncestry(repository, pin, head)).toMatchObject({ ok: true })
-    const verdict = await checkPinAncestry(clone, pin, 'HEAD')
+    expect(await checkPinReachable(repository, pin, head)).toMatchObject({ ok: true })
+    const verdict = await checkPinReachable(clone, pin, 'HEAD')
     expect(verdict).toMatchObject({ ok: false, failure: 'shallow' })
     expect(verdict.ok ? '' : verdict.message).toContain('fetch-depth: 0')
   })
 
   it('names the head and the pin in the instruction', () => {
     expect(
-      repinInstruction('a'.repeat(40), 'b'.repeat(40), 'is not an ancestor of this commit')
+      repinInstruction('a'.repeat(40), 'b'.repeat(40), 'is not a commit in this repository at all')
     ).toContain(`git switch -c repin-rpc-recording ${'b'.repeat(40)}`)
   })
 })

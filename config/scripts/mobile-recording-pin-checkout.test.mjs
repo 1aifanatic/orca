@@ -20,7 +20,7 @@ it('keeps full ancestry and credentials for lazy pinned-tree reads', () => {
   expect(workflow.on.push.branches).toEqual(['main'])
   expect(workflow.concurrency.group).toContain('github.sha')
   expect(job.steps.find((step) => step.name === 'Check the recording pin is reachable').run).toBe(
-    'pnpm exec tsx scripts/rpc-recording-pin-guard.mts ancestry'
+    'pnpm exec tsx scripts/rpc-recording-pin-guard.mts reachable'
   )
   const reproduce = job.steps.find(
     (step) => step.name === 'Reproduce the corpus from the pinned tree'
