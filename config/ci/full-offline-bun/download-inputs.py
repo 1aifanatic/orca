@@ -38,7 +38,7 @@ def retain(response, output, expected_bytes, expected_hash):
 def main(destination):
     plan = json.loads(Path(__file__).with_name('inputs.json').read_text())
     assets = plan['bootstrap'] + plan['native']
-    if len(assets) != 27 or sum(a.get('size', a.get('bytes')) for a in assets) > 1200 * 1024 * 1024:
+    if len(assets) != 29 or sum(a.get('size', a.get('bytes')) for a in assets) > 1200 * 1024 * 1024:
         raise ValueError('Unexpected full build acquisition envelope')
     destination.mkdir()
     (destination/'bootstrap').mkdir()
