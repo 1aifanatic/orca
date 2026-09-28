@@ -1,7 +1,7 @@
 // A chat's per-chat journal file from an earlier build is copied into the host's one database on
 // that chat's open: verbatim, and deleted only once the copy reads back as the file. A file that
-// reappears after a downgrade and carried the history on is the newer history, and is copied
-// again; one the older build started from nothing is left on disk, and the chat keeps its history.
+// reappears after a downgrade and carried the copied epoch on is the newer history, and is copied
+// again; one at any other epoch is set aside on disk, and the chat keeps its history.
 
 import type * as NodeFs from 'node:fs'
 import { existsSync, rmSync } from 'node:fs'
@@ -539,6 +539,53 @@ describe('importing a per-chat journal', () => {
     const keptRows = kept.prepare('SELECT seq, ts, row_json FROM journal_rows ORDER BY seq').all()
     kept.close()
     expect(keptRows.map((row) => row.row_json)).toEqual(older.rows.map((row) => row.rowJson))
+  })
+
+  // The older build started over and then rewound, so its file's epoch opens `handle_forked`: it
+  // still never held this build's history, and is set aside like any other epoch.
+  it('keeps the history when the older build rewound the chat it started over', async () => {
+    const first = await historyRows('epoch-original', 'ORIGINAL HISTORY')
+    await writeLegacyJournal(first.epoch, first.rows)
+    await openChat()
+    await journals.closeAll()
+    const older = await historyRows('epoch-older-rewound', 'typed in the older build')
+    const opening = JSON.parse(older.rows[0]!.rowJson)
+    expect(opening).toMatchObject({ kind: 'epoch', reason: 'session_created' })
+    const rewound = [
+      { ...older.rows[0]!, rowJson: JSON.stringify({ ...opening, reason: 'handle_forked' }) },
+      ...older.rows.slice(1)
+    ]
+    await writeLegacyJournal(older.epoch, rewound)
+    const bytes = await readFile(legacyJournalDatabaseFile(legacyDir()))
+
+    const reopened = await openChat()
+
+    expect(reopened.epoch).toBe(first.epoch)
+    expect(texts(reopened)).toContain('ORIGINAL HISTORY')
+    expect(texts(reopened)).not.toContain('typed in the older build')
+    expect((await readFile(legacyJournalDatabaseFile(legacyDir()))).equals(bytes)).toBe(true)
+  })
+
+  // The one file at another epoch that did descend from the copy: its delete failed and the older
+  // build rolled the epoch of the file it kept. It is set aside too; nothing this build has is lost.
+  it('sets aside a kept file the older build rolled to a new epoch', async () => {
+    const first = await historyRows('epoch-original', 'ORIGINAL HISTORY')
+    await writeLegacyJournal(first.epoch, first.rows)
+    removeFails()
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    await openChat()
+    await journals.closeAll()
+    await removeWorks()
+    const rolled = await historyRows('epoch-rolled-by-older', 'rolled in the older build')
+    await rm(legacyDir(), { recursive: true, force: true })
+    await writeLegacyJournal(rolled.epoch, rolled.rows)
+
+    const reopened = await openChat()
+
+    expect(reopened.epoch).toBe(first.epoch)
+    expect(texts(reopened)).toContain('ORIGINAL HISTORY')
+    expect(texts(reopened)).not.toContain('rolled in the older build')
+    expect(existsSync(legacyJournalDatabaseFile(legacyDir()))).toBe(true)
   })
 
   // Decided once and recorded: no later open reads the file again, after a restart or after the

@@ -3,8 +3,8 @@
 // Not `journal-legacy-import.ts`, which reads the PROVIDER's own transcript. This reads Orca's own
 // earlier `<legacyDir>/journal.db`, verbatim: the same epoch UUID and every sequence number, so a
 // cursor, an `acceptedSequence` or a restart offer taken before the upgrade still points at the
-// same row after it. A file that reappears after a downgrade is copied again, unless the older
-// build started it from nothing; that one is set aside, never read again (see
+// same row after it. A file that reappears after a downgrade is copied again only when it carried
+// the copied history on; any other is set aside, never read again (see
 // journal-per-session-reimport.ts).
 //
 // The copy runs in bounded batches, each its own transaction, yielding the event loop between them.
@@ -34,7 +34,8 @@ import {
   reimportedJournalRows,
   setAsidePerSessionJournal,
   writePerSessionImportMarker,
-  type PerSessionImportPlan
+  type PerSessionImportPlan,
+  type PerSessionJournalHead
 } from './journal-per-session-reimport'
 import {
   foldLegacyJournal,
@@ -45,7 +46,6 @@ import {
   readLegacyRepair,
   retireLegacyJournal,
   type ImportBatch,
-  type LegacyJournalHead,
   type ImportedRow
 } from './journal-per-session-source'
 import { parseJournalRow } from './journal-row-schema'
@@ -118,7 +118,7 @@ async function importOnce(input: ImportInput): Promise<PerSessionJournalImportOu
   }
   const current = readJournalSessionPointer(input.database.db, sessionId)
   const source = (input.openSource ?? openLegacySource)(sourcePath)
-  let legacy: LegacyJournalHead | null
+  let legacy: PerSessionJournalHead | null
   let plan: PerSessionImportPlan | null = null
   try {
     legacy = readLegacyHead(source, sessionId)
@@ -203,7 +203,7 @@ function* arrayBatches(rows: readonly ImportedRow[], batchRows: number): Generat
 async function copyLegacyJournal(
   input: ImportInput,
   source: Database.Database,
-  legacy: LegacyJournalHead,
+  legacy: PerSessionJournalHead,
   plan: Extract<PerSessionImportPlan, { kind: 'first' | 'again' }>
 ): Promise<void> {
   const { sessionId } = input.identity
