@@ -1,0 +1,34 @@
+name: Diagnostic pinned SDK bootstrapper identity
+on:
+  push:
+    branches: [OrcaWin/np-sdk-verifier-inspection]
+    paths: ['.github/workflows/sdk-bootstrapper-admission.yml', 'config/ci/sdk-verifier-inspection/inspect-bootstrapper.ps1']
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  inspect:
+    if: github.repository == 'stablyai/orca' && github.ref == 'refs/heads/OrcaWin/np-sdk-verifier-inspection'
+    runs-on: windows-2022
+    timeout-minutes: 10
+    env:
+      ORCA_BACKGROUND_LAUNCH: '1'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          sparse-checkout: config/ci/sdk-verifier-inspection
+      - name: Download fixed bootstrapper and verify identity without executing it
+        shell: pwsh
+        run: |
+          $file=Join-Path $env:RUNNER_TEMP 'vs_BuildTools-17.14.41.exe'
+          & "$env:WINDIR\System32\curl.exe" --fail --location --connect-timeout 15 --max-time 90 --max-filesize 33554432 --output $file 'https://download.visualstudio.microsoft.com/download/pr/bc92e2cb-33de-4a0c-995d-efa817f16b16/37bb0fb429d163ecebd272a865d11a37b906d152bef960da2ddb29c2e2fd6eeb/vs_BuildTools.exe'
+          if($LASTEXITCODE -ne 0){throw 'Bounded bootstrapper download failed'}
+          & config/ci/sdk-verifier-inspection/inspect-bootstrapper.ps1 -Bootstrapper $file -Receipt "$env:RUNNER_TEMP\bootstrapper-identity.json"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: sdk-bootstrapper-identity
+          path: ${{ runner.temp }}/bootstrapper-identity.json
+          if-no-files-found: error
+          retention-days: 7
