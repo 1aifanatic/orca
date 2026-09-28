@@ -1,10 +1,4 @@
 import { agentSessionFailureFact, providerDiagnosticOf } from '../../shared/agent-session-failure'
-import {
-  agentSessionFailureWords,
-  type AgentJournalDispatchRejection
-} from '../../shared/agent-session-failure-words'
-import type { SubmissionRejectionFact } from '../../shared/agent-session-failure'
-import { TUI_AGENT_DISPLAY_NAMES } from '../../shared/tui-agent-display-names'
 import type { AgentJournalMessageItem } from '../../shared/agent-session-journal-types'
 import type { NativeChatBlock } from '../../shared/native-chat-types'
 import type { AgentSessionDispatchOutcome } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
@@ -15,6 +9,10 @@ import {
 import { isCodexAppServerUnsupportedError } from './codex-app-server-session'
 import type { CodexDispatchEchoes } from './codex-structured-dispatch-echo'
 import { readCodexTurnId } from './codex-structured-thread-facts'
+import {
+  codexDispatchRejection,
+  codexTurnEndRejection
+} from './codex-structured-turn-end-settlement'
 import { decodeStructuredAgentSessionOptionValue } from '../../shared/structured-agent-session-option-codec'
 
 // Writing a Codex turn and learning which message landed where, which are not
@@ -22,7 +20,8 @@ import { decodeStructuredAgentSessionOptionValue } from '../../shared/structured
 // message issued while a turn is running is COALESCED into that turn: the same
 // turn id comes back, no second `turn/started` fires, and the user message is
 // echoed only when the running turn reaches it. So the response proves
-// admission and nothing about identity, which the echo settles later.
+// admission and nothing about identity, which the echo settles later. The turn
+// it names is kept with the send, so that turn's end can settle it.
 
 /** Keys Codex accepts as per-turn overrides. An unlisted key would otherwise
  *  become an arbitrary client-controlled `turn/start` parameter. Permission posture is owned by
@@ -94,7 +93,8 @@ function codexTurnOptions(host: CodexTurnHost): Record<string, string> {
 
 /**
  * Hands one submission to Codex. False means the bounded correlation window
- * refused it before the write; otherwise resolves when Codex has taken it.
+ * refused it before the write; otherwise resolves with the turn Codex answered
+ * it into, or null when the answer named none.
  */
 export async function startCodexTurn(
   host: CodexTurnHost,
@@ -104,7 +104,7 @@ export async function startCodexTurn(
     requestedAt?: number
     timeoutMs?: number
   }
-): Promise<boolean> {
+): Promise<{ turnId: string | null } | false> {
   // Armed before the write: the echo and `turn/started` can both land while the
   // response is in flight, and the start must snapshot this send in its frontier.
   if (!host.dispatchEchoes.arm(input.clientMessageId, input.requestedAt)) {
@@ -112,7 +112,7 @@ export async function startCodexTurn(
   }
   // Only this start's answer may name what a Stop interrupts; an earlier turn is not this one.
   host.startedTurnId = undefined
-  const response = await host.connection.request(
+  const answer = await host.connection.request(
     'turn/start',
     {
       threadId: host.threadId,
@@ -122,17 +122,9 @@ export async function startCodexTurn(
     },
     { timeoutMs: input.timeoutMs }
   )
-  host.startedTurnId = readCodexTurnId(response) ?? undefined
-  return true
-}
-
-/** A message Codex rejected, in the words that name Codex and its legacy markers. */
-function codexDispatchRejection(failure: SubmissionRejectionFact): AgentJournalDispatchRejection {
-  return agentSessionFailureWords(failure, {
-    surface: 'rejection',
-    agentName: TUI_AGENT_DISPLAY_NAMES.codex,
-    provider: 'codex'
-  })
+  const turnId = readCodexTurnId(answer)
+  host.startedTurnId = turnId ?? undefined
+  return { turnId }
 }
 
 /**
@@ -146,10 +138,9 @@ export async function dispatchCodexTurn(
   input: { clientMessageId: string; body: AgentJournalMessageItem; requestedAt?: number },
   timeoutMs: number | undefined
 ): Promise<AgentSessionDispatchOutcome> {
+  let answer: { turnId: string | null } | false
   try {
-    if (!(await startCodexTurn(session, { ...input, timeoutMs }))) {
-      return { state: 'rejected', ...codexDispatchRejection(agentSessionFailureFact('queueFull')) }
-    }
+    answer = await startCodexTurn(session, { ...input, timeoutMs })
   } catch (error) {
     if (isCodexAppServerRequestError(error) || isCodexAppServerUnsupportedError(error)) {
       // Codex answered and declined, so no echo for this write can arrive.
@@ -166,5 +157,13 @@ export async function dispatchCodexTurn(
     // Keep the correlation armed so a later echo can prove delivery.
     throw error
   }
-  return { state: 'admitted' }
+  if (!answer) {
+    return { state: 'rejected', ...codexDispatchRejection(agentSessionFailureFact('queueFull')) }
+  }
+  // An answer read after the turn it names already ended is settled by that end.
+  const endedFirst = answer.turnId
+    ? session.dispatchEchoes.bindTurn(input.clientMessageId, session.threadId, answer.turnId)
+    : null
+  const rejection = endedFirst ? codexTurnEndRejection(endedFirst) : null
+  return rejection ? { state: 'rejected', ...rejection } : { state: 'admitted' }
 }
