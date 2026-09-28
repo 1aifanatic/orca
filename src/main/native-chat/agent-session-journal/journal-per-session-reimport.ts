@@ -2,8 +2,9 @@
 // downgrade, attached the chat and wrote its history there. That file is the newer history.
 //
 // `journal_imports` records which file each chat was copied from — its epoch and tip — in the
-// same transaction as the copy, so a file already copied (only its rename failed, across any
-// number of restarts) is never copied again, and a file that differs always is. Newest writer
+// transaction that publishes the verified copy, so a file already copied (only its delete failed,
+// or a crash came first, across any number of restarts) is deleted, never copied again, and a
+// file that differs always is. Newest writer
 // wins, per chat, and the chat says so. When both builds advanced one epoch from the recorded
 // tip, the copy takes a fresh epoch, so every reader resets instead of silently skipping rows.
 

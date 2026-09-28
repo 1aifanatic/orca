@@ -1,10 +1,10 @@
 // A chat's per-chat journal file from an earlier build is copied into the host's one database on
-// that chat's open: verbatim, and retired only after the copy commits. A file that reappears after
-// a downgrade is the newer history, and is copied again.
+// that chat's open: verbatim, and deleted only once the copy reads back as the file. A file that
+// reappears after a downgrade is the newer history, and is copied again.
 
 import type * as NodeFs from 'node:fs'
-import { existsSync, renameSync } from 'node:fs'
-import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
+import { existsSync, rmSync } from 'node:fs'
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -29,7 +29,7 @@ import { readJournalSessionPointer, type JournalStoredRow } from './journal-row-
 
 vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof NodeFs>()
-  return { ...actual, renameSync: vi.fn(actual.renameSync) }
+  return { ...actual, rmSync: vi.fn(actual.rmSync) }
 })
 
 const IDENTITY: AgentSessionJournalIdentity = {
@@ -112,11 +112,11 @@ CREATE TABLE journal_repairs (session_id TEXT PRIMARY KEY, epoch TEXT NOT NULL,
   }
 }
 
-/** Every directory an import retired this chat's files to. */
-async function retired(): Promise<string[]> {
+/** Whatever is left of the chat's per-chat directory, or a copy of it, beside it. */
+async function leftovers(): Promise<string[]> {
   const parent = dirname(legacyDir())
-  const prefix = `${legacyDir().slice(parent.length + 1)}.imported-`
-  return (await readdir(parent)).filter((name) => name.startsWith(prefix))
+  const name = legacyDir().slice(parent.length + 1)
+  return existsSync(parent) ? (await readdir(parent)).filter((entry) => entry.startsWith(name)) : []
 }
 
 function texts(journal: { snapshot: () => { items: { body: unknown }[] } }): string {
@@ -127,15 +127,47 @@ function rowCount(db: Database.Database): number {
   return Number(db.prepare('SELECT count(*) AS total FROM journal_rows').get()?.total)
 }
 
-function renameFails(): void {
-  vi.mocked(renameSync).mockImplementation(() => {
+function removeFails(): void {
+  vi.mocked(rmSync).mockImplementation(() => {
     throw Object.assign(new Error('resource busy'), { code: 'EBUSY' })
   })
 }
 
-async function renameWorks(): Promise<void> {
+async function removeWorks(): Promise<void> {
   const actual = await vi.importActual<typeof NodeFs>('node:fs')
-  vi.mocked(renameSync).mockImplementation(actual.renameSync)
+  vi.mocked(rmSync).mockImplementation(actual.rmSync)
+}
+
+/** The file as it is, except that the copy's first read of rows loses the first one. */
+function losingFirstCopiedRow(path: string): Database.Database {
+  const source = new Database(path, { readonly: true, fileMustExist: true })
+  let lost = false
+  return new Proxy(source, {
+    get(target, key) {
+      if (key === 'prepare') {
+        return (sql: string) => {
+          const statement = target.prepare(sql)
+          if (lost || !sql.includes('seq > ?')) {
+            return statement
+          }
+          return new Proxy(statement, {
+            get(inner, name) {
+              if (name === 'all') {
+                return (...args: Parameters<typeof inner.all>) => {
+                  lost = true
+                  return inner.all(...args).slice(1)
+                }
+              }
+              const value = Reflect.get(inner, name)
+              return typeof value === 'function' ? value.bind(inner) : value
+            }
+          })
+        }
+      }
+      const value = Reflect.get(target, key)
+      return typeof value === 'function' ? value.bind(target) : value
+    }
+  })
 }
 
 function openChat() {
@@ -149,13 +181,13 @@ beforeEach(async () => {
 
 afterEach(async () => {
   vi.restoreAllMocks()
-  await renameWorks()
+  await removeWorks()
   await journals.closeAll()
   await rm(root, { recursive: true, force: true })
 })
 
 describe('importing a per-chat journal', () => {
-  it('copies the history verbatim on first open and retires the file', async () => {
+  it('copies the history verbatim on first open and deletes the file', async () => {
     const { epoch, rows } = await historyRows()
     await writeLegacyJournal(epoch, rows)
 
@@ -166,8 +198,8 @@ describe('importing a per-chat journal', () => {
     expect(
       readTestJournalRows(openTestJournalHostDatabase(root).db, IDENTITY.sessionId, epoch)
     ).toEqual(rows)
-    expect(existsSync(legacyDir())).toBe(false)
-    expect(await retired()).toEqual([expect.stringMatching(/\.imported-epoch-fr-\d+$/)])
+    // Verified, then deleted with its WAL files: no copy of it is kept.
+    expect(await leftovers()).toEqual([])
   })
 
   // T-B3: the upgrade restart is the restart that produced the offers. A new epoch or renumbered
@@ -281,12 +313,46 @@ describe('importing a per-chat journal', () => {
     expect(rowCount(database.db)).toBe(rows.length)
   })
 
-  // T-R2B1: the copy committed and only the rename failed. Rows appended since, a restart, and a
-  // reopen with the file still there: nothing is copied again, and nothing is lost.
-  it('never copies the same file again after a failed rename, across a restart', async () => {
+  it('keeps the file and refuses the chat when the copy does not read back as the file', async () => {
     const { epoch, rows } = await historyRows()
     await writeLegacyJournal(epoch, rows)
-    renameFails()
+    const database = openTestJournalHostDatabase(root)
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const input = {
+      database,
+      identity: IDENTITY,
+      legacyDirectory: legacyDir(),
+      openSource: losingFirstCopiedRow
+    }
+    const before = await readFile(legacyJournalDatabaseFile(legacyDir()))
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await expect(importPerSessionJournal(input)).rejects.toMatchObject({
+        refusal: { message: 'Unable to load this chat.', details: { reason: 'journalCorrupt' } }
+      })
+    }
+
+    expect((await readFile(legacyJournalDatabaseFile(legacyDir()))).equals(before)).toBe(true)
+    expect(readJournalSessionPointer(database.db, IDENTITY.sessionId)).toBeNull()
+    expect(
+      database.db.prepare('SELECT count(*) AS total FROM journal_imports').get()
+    ).toMatchObject({
+      total: 0
+    })
+    expect(errors).toHaveBeenCalledOnce()
+    // A copy that reads back whole then imports it, over what the refused ones left.
+    const journal = await openChat()
+    expect(readTestJournalRows(database.db, IDENTITY.sessionId, epoch)).toEqual(rows)
+    expect(journal.cursor()).toEqual({ epoch, sequence: rows.length })
+    expect(rowCount(database.db)).toBe(rows.length)
+  })
+
+  // T-R2B1: the copy committed and only the delete failed (a crash between them is the same). Rows appended since, a restart, and a
+  // reopen with the file still there: nothing is copied again, and nothing is lost.
+  it('never copies the same file again after a failed delete, and deletes it on the next open', async () => {
+    const { epoch, rows } = await historyRows()
+    await writeLegacyJournal(epoch, rows)
+    removeFails()
     vi.spyOn(console, 'warn').mockImplementation(() => undefined)
 
     const journal = await openChat()
@@ -298,11 +364,13 @@ describe('importing a per-chat journal', () => {
     expect(existsSync(legacyJournalDatabaseFile(legacyDir()))).toBe(true)
     // The process exits: the database closes and the owner lock goes with it.
     await journals.closeAll()
+    await removeWorks()
 
     const reopened = await openChat()
     expect(reopened.cursor()).toEqual({ epoch, sequence: rows.length + 1 })
     expect(texts(reopened)).toContain('after the upgrade')
     expect(texts(reopened)).not.toContain(JOURNAL_OLDER_BUILD_DISCLOSURE_IDENTITY.clientMessageId)
+    expect(await leftovers()).toEqual([])
   })
 
   // T-import-transient: a read that fails leaves the file for the next open, which imports it.
@@ -353,11 +421,12 @@ describe('importing a per-chat journal', () => {
     expect(JSON.stringify(journal.snapshot().items)).toContain('log.jsonl')
     await journals.closeAll()
     await openChat()
-    expect(existsSync(legacyDir())).toBe(false)
+    // The journal file goes; the transcript is the user's, and stays.
+    expect(await readdir(legacyDir())).toEqual(['log.jsonl'])
   })
 
   // A crash between creating the file and giving it the schema: the chat opens with no history, as
-  // it did when each chat opened its own file, and the file retires like any never-written one.
+  // it did when each chat opened its own file, and the file is deleted like any never-written one.
   it.each([
     ['empty', async (path: string) => writeFile(path, '')],
     [
@@ -377,13 +446,11 @@ describe('importing a per-chat journal', () => {
     expect(journal.snapshot().items).toEqual([])
     await journals.closeAll()
     await openChat()
-    expect(existsSync(legacyDir())).toBe(false)
-    expect(await retired()).toHaveLength(1)
+    expect(await leftovers()).toEqual([])
   })
 
   // T-B5: a downgrade, an older build writing the chat's history to a new per-chat file, and a
-  // re-upgrade — twice. The newer history wins each time, says so, and each file retires to its
-  // own name.
+  // re-upgrade — twice. The newer history wins each time, says so, and each file is deleted.
   it('copies the newer history an older build wrote, on every re-upgrade', async () => {
     const first = await historyRows()
     await writeLegacyJournal(first.epoch, first.rows)
@@ -408,16 +475,16 @@ describe('importing a per-chat journal', () => {
       expect(existsSync(legacyDir())).toBe(false)
       await journals.closeAll()
     }
-    expect(await retired()).toHaveLength(3)
+    expect(await leftovers()).toEqual([])
   })
 
-  // N-R3.1: the rename failed, this build appended, and an older build then appended to that same
+  // N-R3.1: the delete failed, this build appended, and an older build then appended to that same
   // file. Both advanced from the recorded tip under one epoch, so the copy takes a fresh one: a
   // reader at this build's tip resets instead of silently skipping the older build's rows.
   it('gives the copy a fresh epoch when both builds wrote past the same recorded tip', async () => {
     const { epoch, rows } = await historyRows()
     await writeLegacyJournal(epoch, rows)
-    renameFails()
+    removeFails()
     vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     const journal = await openChat()
     await journal.appendItem(
@@ -438,7 +505,7 @@ describe('importing a per-chat journal', () => {
       .prepare('INSERT INTO journal_rows VALUES (?, ?, ?, ?, ?)')
       .run(IDENTITY.sessionId, epoch, rows.length + 1, 1, JSON.stringify(olderRow))
     legacy.close()
-    await renameWorks()
+    await removeWorks()
 
     const reopened = await openChat()
 

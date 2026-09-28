@@ -1,7 +1,8 @@
 // Where a chat's history lived when the journal was one database per chat.
 //
-// Nothing writes here any more: the host's one database replaced it. The importer reads a file it
-// finds here once, on that chat's first open, and the pre-SQLite format remnant check looks here.
+// Nothing writes here any more: the host's one database replaced it. The importer copies a file it
+// finds here on that chat's first use and deletes it once the copy verifies; the pre-SQLite format
+// remnant check looks here too.
 // Host-side per-workspace state, keyed by hashed ids — never inside the user's working tree.
 
 import { createHash } from 'node:crypto'

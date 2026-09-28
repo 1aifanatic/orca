@@ -18,6 +18,11 @@ export type JournalOpenFailure = Exclude<
   'journalOwnedElsewhere'
 >
 
+/** A per-chat file whose copy did not read back as the file: the history is not usable here. */
+export class JournalImportMismatchError extends Error {
+  override readonly name = 'JournalImportMismatchError'
+}
+
 // Bounds a cause chain that loops back on itself.
 const MAX_CAUSE_DEPTH = 8
 
@@ -25,7 +30,7 @@ const MAX_CAUSE_DEPTH = 8
 export function classifyJournalOpenFailure(error: unknown): JournalOpenFailure {
   let current = error
   for (let depth = 0; depth < MAX_CAUSE_DEPTH && current !== undefined; depth += 1) {
-    if (isSqliteCorruption(current)) {
+    if (isSqliteCorruption(current) || current instanceof JournalImportMismatchError) {
       return 'journalCorrupt'
     }
     current = current instanceof Error ? current.cause : undefined
