@@ -2,7 +2,8 @@ import type { AgentTrustPreset } from './agent-trust-presets'
 import { addProjectTrustLevelInContent } from './codex/config-toml-trust'
 import { getActiveMultiplexer } from './ssh/ssh-target-registry'
 import { getSshFilesystemProvider } from './providers/ssh-filesystem-dispatch'
-import type { IFilesystemProvider } from './providers/types'
+import type { FileReadResult, IFilesystemProvider } from './providers/types'
+import { isENOENT } from './ipc/filesystem-path-containment'
 import {
   isWindowsAbsolutePathLike,
   normalizeRuntimePathSeparators
@@ -69,16 +70,24 @@ async function canonicalizeRemoteWorkspacePath(
   }
 }
 
+// Why: only a file that does not exist may seed empty; anything else would overwrite the user's config.
 async function readRemoteTextFile(
   fsProvider: IFilesystemProvider,
   filePath: string
 ): Promise<string> {
+  let result: FileReadResult
   try {
-    const result = await fsProvider.readFile(filePath)
-    return result.isBinary ? '' : result.content
-  } catch {
-    return ''
+    result = await fsProvider.readFile(filePath)
+  } catch (error) {
+    if (isENOENT(error)) {
+      return ''
+    }
+    throw error
   }
+  if (result.isBinary) {
+    throw new Error(`${filePath} is not a text file`)
+  }
+  return result.content
 }
 
 async function markRemoteCodexProjectTrusted(
