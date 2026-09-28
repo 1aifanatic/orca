@@ -9528,7 +9528,8 @@
               "openclaude": "オープンクロード",
               "omp": "ああ",
               "terminal": "ターミナル",
-              "agent": "Agent"
+              "agent": "Agent",
+              "queue": "キュー"
             },
             "agentDashboard": {
               "title": "Agent ダッシュボード",

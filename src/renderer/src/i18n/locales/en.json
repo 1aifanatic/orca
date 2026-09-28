@@ -9718,7 +9718,8 @@
               "openclaude": "openclaude",
               "omp": "omp",
               "terminal": "terminal",
-              "agent": "agent"
+              "agent": "agent",
+              "queue": "queue"
             },
             "agentDashboard": {
               "title": "Agent Dashboard",

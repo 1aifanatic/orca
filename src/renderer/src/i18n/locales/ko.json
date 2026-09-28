@@ -9491,7 +9491,8 @@
               "openclaude": "개방형",
               "omp": "펌프",
               "terminal": "터미널",
-              "agent": "에이전트"
+              "agent": "에이전트",
+              "queue": "대기열"
             },
             "agentDashboard": {
               "title": "에이전트 대시보드",

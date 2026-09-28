@@ -8370,7 +8370,8 @@
             "nativeChat": {
               "title": "Chat UI",
               "description": "Previsualiza la interfaz de chat de escritorio para sesiones de terminal de agentes compatibles.",
-              "grok": "grok"
+              "grok": "grok",
+              "queue": "cola"
             },
             "agentDashboard": {
               "title": "Panel de agentes",

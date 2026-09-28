@@ -9651,7 +9651,8 @@
               "openclaude": "openclaude",
               "omp": "omp",
               "terminal": "Terminal",
-              "agent": "agent"
+              "agent": "agent",
+              "queue": "file d'attente"
             },
             "agentDashboard": {
               "title": "Tableau de bord des agents",

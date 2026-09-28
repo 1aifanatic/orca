@@ -9491,7 +9491,8 @@
               "openclaude": "开放克劳德",
               "omp": "奥普",
               "terminal": "终端",
-              "agent": "代理"
+              "agent": "代理",
+              "queue": "队列"
             },
             "agentDashboard": {
               "title": "智能体仪表盘",
