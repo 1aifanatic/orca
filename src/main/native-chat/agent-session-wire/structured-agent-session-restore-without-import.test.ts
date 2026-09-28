@@ -1,6 +1,7 @@
 // Startup restore lists a chat that is still in its per-chat file from a read-only fold of that
-// file, and copies nothing: the copy waits for the chat's first real read or write. Restore stays
-// the cost it was when every chat had its own file, and opens no file it does not restore.
+// file, and copies nothing: the copy waits for the chat's first real read or write, which is
+// restore's own only for a chat the last run left mid-work. Restore stays the cost it was when
+// every chat had its own file, and opens no file it does not restore.
 
 import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
@@ -107,8 +108,15 @@ function legacyDirFor(sessionId: string): string {
   return journalDirectoryFor(root, { workspaceId: WORKSPACE_ID, sessionId })
 }
 
+/** What the run before the upgrade left open in a chat, for its restore to settle. */
+type MidWork = 'running tool call' | 'unresolved send'
+
 /** A chat as an earlier build left it: real rows in its own per-chat file, nothing in the host's. */
-async function seedLegacyChat(sessionId: string, replies = 1): Promise<JournalStoredRow[]> {
+async function seedLegacyChat(
+  sessionId: string,
+  replies = 1,
+  midWork?: MidWork
+): Promise<JournalStoredRow[]> {
   const scratch = join(root, `scratch-${sessionId}`)
   const identity = identityFor(sessionId)
   const journal = await openAgentSessionJournal({
@@ -123,17 +131,29 @@ async function seedLegacyChat(sessionId: string, replies = 1): Promise<JournalSt
     fence: 1,
     handoverRecorded: true
   })
-  await journal.resolveDispatch({
-    clientMessageId: `client-${sessionId}`,
-    fence: 1,
-    state: 'accepted',
-    providerIdentity: {
-      provider: 'codex',
-      threadId: `thread-${sessionId}`,
-      turnId: 't',
-      ordinal: 0
-    }
-  })
+  if (midWork === 'running tool call') {
+    await journal.appendItem(
+      { provider: 'codex', threadId: `thread-${sessionId}`, turnId: 't', ordinal: 50 },
+      { kind: 'tool-call', name: 'Read', input: {}, state: 'running' },
+      { fence: 1 }
+    )
+  }
+  await journal.resolveDispatch(
+    midWork === 'unresolved send'
+      ? // Handed over, and never answered.
+        { clientMessageId: `client-${sessionId}`, fence: 1, state: 'pending' }
+      : {
+          clientMessageId: `client-${sessionId}`,
+          fence: 1,
+          state: 'accepted',
+          providerIdentity: {
+            provider: 'codex',
+            threadId: `thread-${sessionId}`,
+            turnId: 't',
+            ordinal: 0
+          }
+        }
+  )
   for (let ordinal = 1; ordinal <= replies; ordinal += 1) {
     await journal.appendItem(
       { provider: 'codex', threadId: `thread-${sessionId}`, turnId: 't', ordinal },
@@ -281,6 +301,29 @@ describe('startup restore of chats still in their per-chat files', () => {
       restored.map((sessionId) => legacyJournalDatabaseFile(legacyDirFor(sessionId))).sort()
     )
   })
+
+  // Restore copies a chat only to write to it itself, settling what the last run left open (a
+  // turn, tool call, approval, question, send or subagent). A settled chat is never copied here.
+  it.each(['running tool call', 'unresolved send'] as const)(
+    'copies during restore only a chat it settles (%s)',
+    async (midWork) => {
+      const rows = await seedLegacyChat('chat-mid-work', 1, midWork)
+      await seedLegacyChat('chat-settled')
+
+      const { sessions } = await restore(['chat-mid-work', 'chat-settled'])
+
+      // Restore wrote a settlement to the chat left mid-work, so it copied that chat first.
+      const settled = sessions.get('chat-mid-work')!.journal
+      expect(settled.cursor().sequence).toBeGreaterThan(rows.length)
+      expect(
+        readTestJournalRows(hostDb(), 'chat-mid-work', rows[0]!.epoch).slice(0, rows.length)
+      ).toEqual(rows)
+      expect(existsSync(legacyFile('chat-mid-work'))).toBe(false)
+      expect(readJournalSessionPointer(hostDb(), 'chat-settled')).toBeNull()
+      expect(existsSync(legacyFile('chat-settled'))).toBe(true)
+      expect(importCount()).toBe(1)
+    }
+  )
 
   it('lets other work run while it reads a large per-chat file', async () => {
     // Past one batch of the file's rows.
