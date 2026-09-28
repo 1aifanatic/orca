@@ -15069,6 +15069,22 @@
         "label": "Contexto: {{used}} de {{window}} tokens, {{percent}} % usados",
         "title": "Contexto",
         "estimated": "Estimado a partir de la última respuesta."
+      },
+      "queuedMessages": {
+        "alreadySent": "Este mensaje ya se envió.",
+        "listLabel": "Mensajes en cola",
+        "pausedHold": "En pausa",
+        "behindReturnedHold": "En espera: un mensaje anterior necesita atención",
+        "awaitingAnswerHold": "Esperando tu respuesta",
+        "steer": "Enviar ahora",
+        "send": "Enviar",
+        "steerHint": "Enviar ahora sin esperar a que termine el turno",
+        "delete": "Eliminar",
+        "moreActions": "Más acciones",
+        "editMessage": "Editar mensaje",
+        "turnOffQueueing": "Desactivar la cola",
+        "withdrawnHold": "Detenido antes de enviarse",
+        "pausedSendFailed": "No se pudo enviar. Pulsa Enviar para reintentar."
       }
     },
     "tab": {
@@ -15132,6 +15148,13 @@
         "copySessionId": "Copiar ID de sesión",
         "copySessionIdSuccess": "ID de sesión copiado",
         "copySessionIdError": "No se pudo copiar el ID de sesión"
+      }
+    },
+    "settings": {
+      "nativeChat": {
+        "queueFollowUpsTitle": "Poner mensajes en cola",
+        "queueFollowUpsCopy": "Mientras el agente trabaja, Enter añade tu mensaje a una cola editable que se envía al terminar el turno. Desactivado, los mensajes a mitad de turno se envían de inmediato.",
+        "queueFollowUpsToggleLabel": "Alternar la cola de mensajes"
       }
     }
   },

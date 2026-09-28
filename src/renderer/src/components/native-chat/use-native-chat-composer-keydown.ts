@@ -6,6 +6,7 @@ import {
   type HistoryState,
   type NativeChatPickerItem
 } from './native-chat-composer-state'
+import { isMacPlatform } from './native-chat-shortcut'
 
 export type UseNativeChatComposerKeyDownArgs = {
   autocomplete: ComposerAutocomplete
@@ -18,6 +19,8 @@ export type UseNativeChatComposerKeyDownArgs = {
   dismissPicker: (triggerKey: string) => void
   interrupt: () => void
   send: () => void
+  /** Cmd/Ctrl+Enter: send the newest queued draft now; false falls through to send. */
+  steerQueued?: (() => boolean) | undefined
   setActiveSuggestion: Dispatch<SetStateAction<number>>
   setDraft: Dispatch<SetStateAction<string>>
   setCaret: Dispatch<SetStateAction<number>>
@@ -35,6 +38,7 @@ export function useNativeChatComposerKeyDown({
   dismissPicker,
   interrupt,
   send,
+  steerQueued,
   setActiveSuggestion,
   setDraft,
   setCaret,
@@ -92,6 +96,12 @@ export function useNativeChatComposerKeyDown({
         return
       }
       if (event.key === 'Enter' && !event.shiftKey) {
+        // Platform primary modifier only (AGENTS.md): ⌘ on Mac, Ctrl elsewhere.
+        const steerChord = isMacPlatform() ? event.metaKey : event.ctrlKey
+        if (steerChord && steerQueued?.()) {
+          event.preventDefault()
+          return
+        }
         event.preventDefault()
         send()
         return
@@ -127,6 +137,7 @@ export function useNativeChatComposerKeyDown({
       interrupt,
       isComposing,
       send,
+      steerQueued,
       setActiveSuggestion,
       setCaret,
       setDraft,

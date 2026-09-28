@@ -5,7 +5,6 @@ import {
   admitStructuredAgentSessionOutboxEntry,
   createStructuredAgentSessionOutboxEntry,
   reconcileStructuredAgentSessionOutbox,
-  withdrawUnsentStructuredAgentSessionOutboxEntries,
   type StructuredAgentSessionOutboxEntry
 } from '../../../../shared/structured-agent-session-outbox'
 import {
@@ -24,6 +23,8 @@ import { useStructuredAgentSessionOutboxOwnerChange } from '@/runtime/structured
 import { useStructuredAgentSessionOutboxUnconfirmedProbe } from './use-structured-agent-session-outbox-unconfirmed-probe'
 import { createBrowserUuid } from '@/lib/browser-uuid'
 import { useStructuredAgentSessionWithdrawnRestore } from './structured-agent-session-withdrawn-message-restore'
+import { useStructuredAgentSessionOutboxOwnership } from './use-structured-agent-session-outbox-ownership'
+import { retryStructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox-retry'
 
 export function structuredSessionOperationId(): string {
   return createStructuredAgentSessionOperationId(createBrowserUuid)
@@ -36,8 +37,23 @@ export function useStructuredAgentSessionOutbox(args: {
   submissions: readonly AgentJournalSubmission[]
   /** The composer that gets back what a Stop withdrew from this client's outbox. */
   composerScopeKey?: string
+  /** Stamp new sends `delivery: 'queue-if-active'` (capable host + setting on); the host
+   *  holds one as a draft only while the agent is working. */
+  queueDelivery?: boolean
+  /** Ids of the host's published drafts. A queued send whose acknowledgement was lost keeps
+   *  its entry here under the draft's own id; once the host visibly holds the draft, the
+   *  entry retires so the same text can never come back twice. */
+  queuedMessageIds?: readonly string[]
 }) {
-  const { composerScopeKey, fence, sessionId, submissions, target } = args
+  const {
+    composerScopeKey,
+    fence,
+    queueDelivery = false,
+    queuedMessageIds,
+    sessionId,
+    submissions,
+    target
+  } = args
   // What resends, unblocks and drops a send in flight besides a Retry or a new send; see the hook.
   const owner = useStructuredAgentSessionOutboxOwnerChange(target, fence)
   const restoreWithdrawn = useStructuredAgentSessionWithdrawnRestore(sessionId, composerScopeKey)
@@ -236,7 +252,11 @@ export function useStructuredAgentSessionOutbox(args: {
         sessionId,
         text,
         attachments,
-        queuedAt: Date.now()
+        queuedAt: Date.now(),
+        // Text-only: an image send keeps today's immediate path (host routes it there anyway).
+        ...(queueDelivery && attachments.length === 0
+          ? { delivery: 'queue-if-active' as const }
+          : {})
       })
       const next = [...outboxRef.current, entry]
       if (!writeOutbox(sessionId, next)) {
@@ -248,80 +268,32 @@ export function useStructuredAgentSessionOutbox(args: {
       setError(null)
       return true
     },
-    [sessionId]
+    [queueDelivery, sessionId]
   )
 
-  // Before the Stop goes out, so the drain has nothing left to send after it.
-  const withdrawUnsent = useCallback((): void => {
-    const next = withdrawUnsentStructuredAgentSessionOutboxEntries(
-      outboxRef.current,
-      submissions,
-      blockedIdRef.current
-    )
-    if (next.length !== outboxRef.current.length) {
-      restoreWithdrawn.byStop(outboxRef.current.filter((entry) => !next.includes(entry)))
-      outboxRef.current = next
-      setOutbox(next)
-      writeOutbox(sessionId, next)
-    }
-  }, [restoreWithdrawn, sessionId, submissions])
+  const { retire, withdrawUnsent } = useStructuredAgentSessionOutboxOwnership({
+    sessionId,
+    submissions,
+    queuedMessageIds,
+    outboxRef,
+    blockedIdRef,
+    setOutbox,
+    restoreWithdrawn
+  })
 
   const retry = (clientMessageId: string): void => {
     blockedIdRef.current = null
     setError(null)
-    const submission = submissions.find(
-      (candidate) => candidate.clientMessageId === clientMessageId
-    )
-    const current = outboxRef.current.find((entry) => entry.clientMessageId === clientMessageId)
-    // A provider-history reconciliation can settle an earlier unknown as
-    // rejected before the user presses Retry. Reusing that operation id only
-    // replays the settled rejection forever, so rotate the id for a safe resend.
-    if (
-      current &&
-      (submission?.dispatchState === 'rejected' ||
-        retryWithFreshClientMessageIdRef.current === clientMessageId)
-    ) {
-      retryWithFreshClientMessageIdRef.current = null
-      const rotated = outboxRef.current.map((entry) =>
-        entry.clientMessageId === clientMessageId
-          ? {
-              ...entry,
-              clientMessageId: structuredSessionOperationId(),
-              state: 'queued' as const,
-              lastAttemptAt: null,
-              retryAfterUnknownSubmittedAt: null
-            }
-          : entry
-      )
-      if (!writeOutbox(sessionId, rotated)) {
-        setError('Message could not be saved to the outbox')
-        return
-      }
-      outboxRef.current = rotated
-      setOutbox(rotated)
-      return
-    }
-    const retryAfterUnknownSubmittedAt =
-      submission?.dispatchState === 'unknown'
-        ? submission.submittedAt
-        : current?.state === 'unconfirmed'
-          ? -1
-          : null
-    const next = outboxRef.current.map((entry) =>
-      entry.clientMessageId === clientMessageId
-        ? {
-            ...entry,
-            state: 'queued' as const,
-            retryAfterUnknownSubmittedAt
-          }
-        : entry
-    )
-    if (!writeOutbox(sessionId, next)) {
-      setError('Message could not be saved to the outbox')
-      return
-    }
-    outboxRef.current = next
-    setOutbox(next)
+    retryStructuredAgentSessionOutboxEntry({
+      clientMessageId,
+      sessionId,
+      submissions,
+      outboxRef,
+      retryWithFreshClientMessageIdRef,
+      setOutbox,
+      setError,
+      createOperationId: structuredSessionOperationId
+    })
   }
   return {
     outbox,
@@ -329,6 +301,7 @@ export function useStructuredAgentSessionOutbox(args: {
     blockedClientMessageId: blockedIdRef.current,
     send,
     retry,
+    retire,
     withdrawUnsent
   }
 }

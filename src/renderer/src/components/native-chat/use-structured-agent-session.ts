@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useMemo, useRef } from 'react'
 import * as structuredConversationCommands from './structured-conversation-command-send'
 import type { AgentSessionPromptResult } from '../../../../shared/agent-session-wire'
 import { useStructuredAgentSessionOutbox } from './use-structured-agent-session-outbox'
@@ -12,7 +12,10 @@ import {
   supportsStructuredAgentSessionPromptCancel,
   supportsStructuredAgentSessionQuestionAnswers
 } from '@/runtime/structured-agent-session-client'
-import { useStructuredAgentSessionHostStopsConversation } from '@/runtime/structured-agent-session-host-capability'
+import {
+  useStructuredAgentSessionHostQueuesMessages,
+  useStructuredAgentSessionHostStopsConversation
+} from '@/runtime/structured-agent-session-host-capability'
 import { hasUnsentStructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
 import {
   legacyAgentSessionSelectedOptionId,
@@ -30,6 +33,8 @@ import type { StructuredAgentSessionLaunchView } from './use-native-chat-provisi
 import { useStructuredAgentSessionThreadGoal } from './use-structured-agent-session-thread-goal'
 import { useStructuredAgentSessionContextUsage } from './use-structured-agent-session-context-usage'
 import { useStructuredAgentSessionRailOutline } from './use-structured-agent-session-rail-outline'
+import { useStructuredAgentSessionQueuedMessages } from './use-structured-agent-session-queued-messages'
+import { structuredAgentSessionPaneKey } from '../../../../shared/structured-agent-session-projection'
 
 export type { StructuredPromptItem } from './structured-agent-session-message-projection'
 
@@ -47,6 +52,10 @@ export function useStructuredAgentSession(args: {
   launch?: StructuredAgentSessionLaunchView
   /** The composer that gets back what a Stop withdrew. */
   composerScopeKey?: string
+  /** The tab showing this chat; a /clear's restore targets the replacement session's pane. */
+  tabId?: string
+  /** The chat-wide "queue follow-ups" setting; off keeps mid-turn sends immediate. */
+  queueFollowUps?: boolean
 }) {
   const {
     agent,
@@ -54,7 +63,9 @@ export function useStructuredAgentSession(args: {
     isVisible,
     launch,
     providerStarting = false,
+    queueFollowUps = true,
     sessionId,
+    tabId,
     target,
     transportEnabled = true
   } = args
@@ -88,12 +99,21 @@ export function useStructuredAgentSession(args: {
     mutate,
     ...(launch ? { launch } : {})
   })
+  // Only a capable host may see `delivery`, the queuedMessage RPCs, or `withdrawQueued`;
+  // against anything older this client must look exactly like today's.
+  const queueCapable = useStructuredAgentSessionHostQueuesMessages(target)
+  const queuedMessageIds = useMemo(
+    () => (transportState.queuedMessages ?? []).map((message) => message.messageId),
+    [transportState.queuedMessages]
+  )
   const outboxController = useStructuredAgentSessionOutbox({
     sessionId,
     target,
     fence: transportState.fence,
     submissions: transportState.submissions,
-    composerScopeKey
+    composerScopeKey,
+    queueDelivery: queueCapable && queueFollowUps,
+    queuedMessageIds
   })
 
   const threadGoal = useStructuredAgentSessionThreadGoal({
@@ -133,10 +153,26 @@ export function useStructuredAgentSession(args: {
     outbox,
     transportState.submissions
   )
+  const queuedController = useStructuredAgentSessionQueuedMessages({
+    sessionId,
+    enabled: queueCapable && transportState.fence !== null,
+    queuedMessages: transportState.queuedMessages,
+    submissions: transportState.submissions,
+    hasPendingPrompt: prompts.length > 0,
+    composerScopeKey,
+    composerScopeKeyForSession: tabId
+      ? (targetSessionId: string) => structuredAgentSessionPaneKey(tabId, targetSessionId)
+      : undefined,
+    mutate,
+    write
+  })
   return {
     conversationCommands,
-    runConversationCommand: (command: AgentSessionConversationCommand) =>
-      structuredConversationCommands.sendStructuredConversationCommand({
+    runConversationCommand: (command: AgentSessionConversationCommand) => {
+      // Write-ahead (clear only): the marker precedes the RPC so a crash between the
+      // host withdrawing drafts and the composer restore cannot lose the text.
+      const clearOperationId = command === 'clear' ? queuedController.beginClearWithdrawal() : null
+      return structuredConversationCommands.sendStructuredConversationCommand({
         command,
         pending: commandPending,
         blocked: Boolean(
@@ -149,9 +185,21 @@ export function useStructuredAgentSession(args: {
           write<AgentSessionConversationCommandResult>(
             'agentSession.conversationCommand',
             'agentSession.conversationCommand',
-            { command }
-          )
-      }),
+            // A capable clear opts into withdrawing drafts so their text comes back in
+            // the result; an older host's strict schema never sees the key.
+            { command, ...(clearOperationId !== null ? { withdrawQueued: true } : {}) },
+            clearOperationId
+          ).then((outcome) => {
+            if (clearOperationId !== null) {
+              queuedController.settleClearWithdrawal(
+                clearOperationId,
+                outcome.kind === 'done' ? outcome.value : null
+              )
+            }
+            return outcome
+          })
+      })
+    },
     journalItems: transportState.journalItems,
     messages,
     status: transportEnabled ? state.status : 'ready',
@@ -176,13 +224,27 @@ export function useStructuredAgentSession(args: {
     canStop,
     stop: () => {
       if (stopsConversation) {
-        outboxController.withdrawUnsent()
-        return mutate('agentSession.cancel', 'agentSession.cancel', {})
+        const restoredLocally = outboxController.withdrawUnsent()
+        if (!queueCapable) {
+          return mutate('agentSession.cancel', 'agentSession.cancel', {})
+        }
+        // Withdraw host-held drafts too, independent of the queue-follow-ups setting:
+        // drafts queued before it was turned off still restore. Ids this client's own
+        // outbox withdrawal just restored are excluded, and entries the host answered
+        // for retire without a second restore — text never comes back twice.
+        return queuedController.stopWithdrawing(restoredLocally).then((result) => {
+          const withdrawn = result?.withdrawnQueued ?? []
+          if (withdrawn.length > 0) {
+            outboxController.retire(withdrawn.map((message) => message.messageId))
+          }
+          return result
+        })
       }
       return transportState.turnId
         ? mutate('agentSession.cancel', 'agentSession.cancel', { turnId: transportState.turnId })
         : Promise.resolve(null)
     },
+    queuedMessages: queuedController,
     cancel: async (turnId: string, prompt?: StructuredPromptCancelTarget) => {
       // Capability negotiation must complete before mutate constructs the payload
       // fingerprint and operation id: older hosts reject the strict prompt field.

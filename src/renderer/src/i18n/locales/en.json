@@ -3274,7 +3274,7 @@
             "missing": {
               "tui": {
                 "title": "This ZCode build has no terminal UI",
-                "description": "Orca's hooks installed correctly \u2014 the zcode on your PATH just cannot open a session. The ZCode desktop app bundles the agent runtime without its terminal UI. Install a zcode that ships the TUI, then run zcode outside Orca to confirm."
+                "description": "Orca's hooks installed correctly — the zcode on your PATH just cannot open a session. The ZCode desktop app bundles the agent runtime without its terminal UI. Install a zcode that ships the TUI, then run zcode outside Orca to confirm."
               }
             }
           },
@@ -3972,7 +3972,9 @@
             }
           },
           "tooltip": {
-            "zcode": { "mcp": "MCP" },
+            "zcode": {
+              "mcp": "MCP"
+            },
             "cedb7b99e3": "% used",
             "6d6df77f41": "No data available",
             "7f7f208060": "Monthly",
@@ -17836,6 +17838,22 @@
         "label": "Context {{used}} of {{window}} tokens, {{percent}}% used",
         "title": "Context",
         "estimated": "Estimated from the last response."
+      },
+      "queuedMessages": {
+        "pausedHold": "Paused",
+        "behindReturnedHold": "Waiting — a message ahead needs attention",
+        "awaitingAnswerHold": "Waiting for your answer",
+        "steer": "Steer",
+        "send": "Send",
+        "steerHint": "Send now without waiting for the turn to end",
+        "delete": "Delete",
+        "moreActions": "More actions",
+        "editMessage": "Edit message",
+        "turnOffQueueing": "Turn off queueing",
+        "listLabel": "Queued messages",
+        "alreadySent": "This message was already sent.",
+        "withdrawnHold": "Stopped before it was sent",
+        "pausedSendFailed": "Couldn't send — press Send to retry."
       }
     },
     "tab": {
@@ -18158,6 +18176,11 @@
             "spaces": "spaces"
           }
         }
+      },
+      "nativeChat": {
+        "queueFollowUpsTitle": "Queue follow-ups",
+        "queueFollowUpsCopy": "While the agent is working, Enter adds your message to an editable queue that sends when the turn ends. Off sends mid-turn messages immediately.",
+        "queueFollowUpsToggleLabel": "Toggle queue follow-ups"
       }
     }
   },

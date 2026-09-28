@@ -1,0 +1,263 @@
+// @vitest-environment happy-dom
+
+// Capability gating for mid-turn queueing at the session controller: only a
+// host advertising `agent-session.queued-messages.v1` gets `delivery`,
+// `withdrawQueued`, or card RPCs — anything older sees exactly today's client.
+// And a host-held draft is a card above the composer, never a transcript bubble.
+
+import { act, renderHook } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
+import type { AgentSessionQueuedMessage } from '../../../../shared/agent-session-wire'
+
+const mocks = vi.hoisted(() => ({
+  call: vi.fn(),
+  outboxArgs: Array.of<{ queueDelivery?: boolean }>(),
+  operations: 0
+}))
+let items: AgentJournalRenderItem[] = []
+let queuedMessages: AgentSessionQueuedMessage[] | undefined
+
+vi.mock('@/runtime/structured-agent-session-client', () => ({
+  callStructuredAgentSession: mocks.call,
+  supportsStructuredAgentSessionPromptCancel: vi.fn(async () => false)
+}))
+
+vi.mock('./use-structured-agent-session-read', () => ({
+  useStructuredAgentSessionRead: () => ({
+    state: {
+      fence: 3,
+      items,
+      submissions: [],
+      status: 'ready',
+      error: null,
+      hasOlder: false,
+      ...(queuedMessages !== undefined ? { queuedMessages } : {})
+    },
+    loadingOlder: false,
+    loadOlder: vi.fn()
+  })
+}))
+
+vi.mock('./use-structured-agent-session-outbox', () => ({
+  structuredSessionOperationId: () => `operation-${++mocks.operations}`,
+  useStructuredAgentSessionOutbox: (args: { queueDelivery?: boolean }) => {
+    mocks.outboxArgs.push(args)
+    return {
+      outbox: [],
+      blockedClientMessageId: null,
+      error: null,
+      send: vi.fn(),
+      retry: vi.fn(),
+      retire: vi.fn(),
+      withdrawUnsent: vi.fn(() => [])
+    }
+  }
+}))
+
+import {
+  AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY,
+  AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY
+} from '../../../../shared/protocol-version'
+import { setLocalRuntimeCapabilitiesForTests } from '@/runtime/local-runtime-capabilities'
+import { ConversationCommandParams } from '../../../../shared/rpc-contract/structured-agent-session-params'
+import { structuredAgentSessionPayloadFingerprint } from '../../../../shared/structured-agent-session-mutation'
+import { clearQueuedWithdrawalsForTests } from './structured-agent-session-queued-restore'
+import { useStructuredAgentSession } from './use-structured-agent-session'
+
+const RUNNING_TURN: AgentJournalRenderItem = {
+  itemId: 'turn-1',
+  revision: 1,
+  sequence: 1,
+  observedAt: 1,
+  body: { kind: 'turn', turnId: 'provider-turn', state: 'running' }
+}
+
+function draft(id: string): AgentSessionQueuedMessage {
+  return {
+    messageId: id,
+    position: 1,
+    body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: `queued ${id}` }] },
+    state: 'waiting'
+  }
+}
+
+function render(queueFollowUps?: boolean) {
+  return renderHook(() =>
+    useStructuredAgentSession({
+      sessionId: 'session-1',
+      agent: 'claude',
+      target: { kind: 'local' },
+      isVisible: true,
+      composerScopeKey: 'scope-1',
+      tabId: 'tab-1',
+      ...(queueFollowUps === undefined ? {} : { queueFollowUps })
+    })
+  )
+}
+
+function cancels(): unknown[] {
+  return mocks.call.mock.calls
+    .filter(([, method]) => method === 'agentSession.cancel')
+    .map(([, , params]) => params)
+}
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  mocks.outboxArgs.length = 0
+  mocks.call.mockImplementation(async (_target, method) =>
+    method === 'agentSession.cancel'
+      ? {
+          ok: true,
+          replayed: false,
+          fence: 3,
+          cursor: { epoch: 'e', sequence: 1 },
+          value: { cancelled: true }
+        }
+      : null
+  )
+  items = [RUNNING_TURN]
+  queuedMessages = undefined
+  localStorage.clear()
+  clearQueuedWithdrawalsForTests()
+})
+
+afterEach(() => {
+  setLocalRuntimeCapabilitiesForTests(null)
+  clearQueuedWithdrawalsForTests()
+})
+
+describe('against a capable host', () => {
+  beforeEach(() => {
+    setLocalRuntimeCapabilitiesForTests([
+      AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY,
+      AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY
+    ])
+  })
+
+  it('queues sends while the setting is on, immediately when it is off', () => {
+    render()
+    expect(mocks.outboxArgs.at(-1)?.queueDelivery).toBe(true)
+    mocks.outboxArgs.length = 0
+    render(false)
+    expect(mocks.outboxArgs.at(-1)?.queueDelivery).toBe(false)
+  })
+
+  it('Stop withdraws queued drafts, setting on or off', async () => {
+    const { result } = render(false)
+    await act(async () => {
+      await result.current.stop()
+    })
+    expect(cancels()).toEqual([expect.objectContaining({ withdrawQueued: true })])
+  })
+
+  it('/clear opts into withdrawing drafts and their text comes back in the result', async () => {
+    items = []
+    mocks.call.mockImplementation(async (_target, method) =>
+      method === 'agentSession.conversationCommand'
+        ? {
+            ok: true,
+            replayed: false,
+            fence: 3,
+            cursor: { epoch: 'e', sequence: 1 },
+            value: { command: 'clear', state: 'completed' }
+          }
+        : null
+    )
+    const { result } = render()
+    await act(async () => {
+      await result.current.runConversationCommand('clear')
+    })
+    const clearCall = mocks.call.mock.calls.find(
+      ([, method]) => method === 'agentSession.conversationCommand'
+    )
+    // The host's REAL strict schema accepts the request as sent.
+    const parsed = ConversationCommandParams.parse(clearCall?.[2])
+    expect(parsed.command).toBe('clear')
+    expect(parsed.withdrawQueued).toBe(true)
+    // Fingerprint parity with the host's digest (structured-conversation-command.ts
+    // digests `{ command, ...(params.withdrawQueued ? { withdrawQueued: true } : {}) }`);
+    // a mismatch would refuse the operation at admission.
+    expect(parsed.envelope.payloadFingerprint).toBe(
+      structuredAgentSessionPayloadFingerprint({
+        method: 'agentSession.conversationCommand',
+        sessionId: 'session-1',
+        fields: {
+          command: parsed.command,
+          ...(parsed.withdrawQueued ? { withdrawQueued: true } : {})
+        }
+      })
+    )
+  })
+
+  it('shows host-held drafts as cards, never as transcript bubbles', () => {
+    queuedMessages = [draft('draft-1')]
+    const { result } = render()
+    expect(result.current.queuedMessages.cards.map((card) => card.text)).toEqual(['queued draft-1'])
+    const transcriptText = JSON.stringify(result.current.messages)
+    expect(transcriptText).not.toContain('queued draft-1')
+  })
+})
+
+describe('against a host without the capability', () => {
+  beforeEach(() => {
+    setLocalRuntimeCapabilitiesForTests([AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY])
+  })
+
+  it('never asks for queue delivery, whatever the setting says', () => {
+    render()
+    expect(mocks.outboxArgs.at(-1)?.queueDelivery).toBe(false)
+  })
+
+  it("Stop stays exactly today's conversation Stop — no withdrawQueued key at all", async () => {
+    const { result } = render()
+    await act(async () => {
+      await result.current.stop()
+    })
+    const [params] = cancels()
+    expect(params).toBeDefined()
+    expect(params).not.toHaveProperty('withdrawQueued')
+  })
+
+  it("/clear stays exactly today's command — no withdrawQueued key", async () => {
+    items = []
+    mocks.call.mockImplementation(async (_target, method) =>
+      method === 'agentSession.conversationCommand'
+        ? {
+            ok: true,
+            replayed: false,
+            fence: 3,
+            cursor: { epoch: 'e', sequence: 1 },
+            value: { command: 'clear', state: 'completed' }
+          }
+        : null
+    )
+    const { result } = render()
+    await act(async () => {
+      await result.current.runConversationCommand('clear')
+    })
+    const clearCall = mocks.call.mock.calls.find(
+      ([, method]) => method === 'agentSession.conversationCommand'
+    )
+    const parsed = ConversationCommandParams.parse(clearCall?.[2])
+    expect('withdrawQueued' in parsed).toBe(false)
+    expect(parsed.envelope.payloadFingerprint).toBe(
+      structuredAgentSessionPayloadFingerprint({
+        method: 'agentSession.conversationCommand',
+        sessionId: 'session-1',
+        fields: { command: parsed.command }
+      })
+    )
+  })
+
+  it('steering the newest card is inert', () => {
+    queuedMessages = [draft('draft-1')]
+    const { result } = render()
+    expect(result.current.queuedMessages.steerNewest()).toBe(false)
+    expect(
+      mocks.call.mock.calls.filter(([, method]) =>
+        String(method).startsWith('agentSession.queuedMessage')
+      )
+    ).toHaveLength(0)
+  })
+})

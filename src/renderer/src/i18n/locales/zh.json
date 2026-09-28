@@ -17671,6 +17671,22 @@
         "label": "上下文 {{used}}/{{window}} token，已用 {{percent}}%",
         "title": "上下文",
         "estimated": "根据上一次响应的估算值。"
+      },
+      "queuedMessages": {
+        "alreadySent": "此消息已发送。",
+        "listLabel": "排队的消息",
+        "pausedHold": "已暂停",
+        "behindReturnedHold": "等待中 — 前面有一条消息需要处理",
+        "awaitingAnswerHold": "等待你的回答",
+        "steer": "立即发送",
+        "send": "发送",
+        "steerHint": "立即发送，无需等待本轮结束",
+        "delete": "删除",
+        "moreActions": "更多操作",
+        "editMessage": "编辑消息",
+        "turnOffQueueing": "关闭排队",
+        "withdrawnHold": "在发送前已停止",
+        "pausedSendFailed": "无法发送。点按发送以重试。"
       }
     },
     "tab": {
@@ -18033,6 +18049,11 @@
             "spaces": "空间"
           }
         }
+      },
+      "nativeChat": {
+        "queueFollowUpsTitle": "将后续消息加入队列",
+        "queueFollowUpsCopy": "Agent 工作时，按 Enter 会将消息加入可编辑的队列，并在本轮结束时发送。关闭后，轮次进行中的消息会立即发送。",
+        "queueFollowUpsToggleLabel": "切换后续消息队列"
       }
     }
   },

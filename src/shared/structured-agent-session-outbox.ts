@@ -29,6 +29,9 @@ export type StructuredAgentSessionOutboxEntry = {
   lastAttemptAt: number | null
   retryAfterUnknownSubmittedAt: number | null
   source?: 'launch'
+  /** Ask the host to hold the send as a draft while the agent is working. Decided once at
+   *  enqueue (capability + setting) so a retry replays the same operation fingerprint. */
+  delivery?: 'queue-if-active'
   /** Why the last attempt did not go through. Lives on the message so it goes when the message
    *  is sent again or delivered, instead of outliving it as a separate error. */
   lastFailure?: StructuredAgentSessionAttemptFailure
@@ -82,6 +85,7 @@ export function createStructuredAgentSessionOutboxEntry(args: {
   text: string
   attachments: readonly StructuredAgentSessionAttachment[]
   queuedAt: number
+  delivery?: 'queue-if-active'
 }): StructuredAgentSessionOutboxEntry {
   return {
     clientMessageId: args.clientMessageId,
@@ -91,7 +95,8 @@ export function createStructuredAgentSessionOutboxEntry(args: {
     state: 'queued',
     queuedAt: args.queuedAt,
     lastAttemptAt: null,
-    retryAfterUnknownSubmittedAt: null
+    retryAfterUnknownSubmittedAt: null,
+    ...(args.delivery ? { delivery: args.delivery } : {})
   }
 }
 
@@ -303,6 +308,7 @@ export function parseStructuredAgentSessionOutboxEntry(
         ? entry.retryAfterUnknownSubmittedAt
         : null,
     ...(entry.source === 'launch' ? { source: 'launch' as const } : {}),
+    ...(entry.delivery === 'queue-if-active' ? { delivery: 'queue-if-active' as const } : {}),
     ...(lastFailure ? { lastFailure } : {})
   }
 }
@@ -310,6 +316,7 @@ export function parseStructuredAgentSessionOutboxEntry(
 export type StructuredAgentSessionSendMutation = {
   envelope: AgentSessionMutationEnvelope
   body: AgentJournalMessageItem
+  delivery?: 'queue-if-active'
 }
 
 /** The `agentSession.send` arguments an entry stands for. Typed rather than wire-shaped so a host
@@ -318,7 +325,8 @@ export function structuredAgentSessionSendMutation(
   entry: StructuredAgentSessionOutboxEntry,
   expectedRuntimeFence: number
 ): StructuredAgentSessionSendMutation {
-  const fields = { body: entry.body }
+  // `delivery` joins the OPERATION fingerprint exactly as the host digests it; never the body's.
+  const fields = { body: entry.body, ...(entry.delivery ? { delivery: entry.delivery } : {}) }
   return {
     envelope: {
       sessionId: entry.sessionId,

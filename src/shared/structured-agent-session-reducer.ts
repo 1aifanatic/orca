@@ -7,6 +7,7 @@ import type {
   AgentSessionBackgroundTaskState,
   AgentSessionSlashCommand,
   AgentSessionHistoryPage,
+  AgentSessionQueuedMessage,
   AgentSessionSubscribeEvent,
   AgentSessionTurnActivity
 } from './agent-session-wire'
@@ -34,6 +35,8 @@ export type StructuredAgentSessionState = {
   status: 'idle' | 'loading' | 'ready' | 'error'
   error?: string
   backgroundTasks?: AgentSessionBackgroundTaskState | null
+  /** Host-held drafts. Absent = no claim yet (older host); `[]`/null = empty. */
+  queuedMessages?: AgentSessionQueuedMessage[] | null
   commands?: AgentSessionSlashCommand[] | null
   activity?: AgentSessionTurnActivity | null
   /** Absent until a frame from a host that stamps `hostNow` has been applied. */
@@ -74,6 +77,18 @@ function hostClockField(
 ): { hostClock?: StructuredAgentHostClock } {
   const hostClock = hostNow !== undefined ? { hostNow, receivedAt } : previous
   return hostClock ? { hostClock } : {}
+}
+
+/** First defined claim wins; no claim at all leaves the field absent (older host). */
+function queuedMessagesField(...claims: (AgentSessionQueuedMessage[] | null | undefined)[]): {
+  queuedMessages?: AgentSessionQueuedMessage[] | null
+} {
+  for (const claim of claims) {
+    if (claim !== undefined) {
+      return { queuedMessages: claim }
+    }
+  }
+  return {}
 }
 
 function replacePage(
@@ -185,6 +200,8 @@ export function reduceStructuredAgentSession(
     return {
       ...replacePage(action.page, action.page.fence ?? null, state.backgroundTasks, state.activity),
       commands: state.commands,
+      // Live subscription state stays authoritative over a possibly stale history answer.
+      ...queuedMessagesField(state.queuedMessages, action.page.queuedMessages),
       ...hostClockField(action.page.hostNow, receivedAt, state.hostClock)
     }
   }
@@ -218,6 +235,8 @@ export function reduceStructuredAgentSession(
     return {
       ...replacePage(event.page, event.fence, event.backgroundTasks, event.activity),
       commands: event.commands,
+      // A snapshot omits the list when unchanged since the last frame sent to this subscriber.
+      ...queuedMessagesField(event.queuedMessages, event.page.queuedMessages, state.queuedMessages),
       ...hostClockField(event.hostNow, receivedAt, state.hostClock)
     }
   }
@@ -240,6 +259,7 @@ export function reduceStructuredAgentSession(
     journalUnchanged &&
     (event.fence === undefined || event.fence === state.fence) &&
     (event.commands === undefined || event.commands === state.commands) &&
+    (event.queuedMessages === undefined || event.queuedMessages === state.queuedMessages) &&
     backgroundTaskStatesEqual(backgroundTasks, state.backgroundTasks) &&
     activity?.turnId === state.activity?.turnId &&
     activity?.text === state.activity?.text &&
@@ -273,6 +293,7 @@ export function reduceStructuredAgentSession(
     status: 'ready',
     error: undefined,
     commands: event.commands !== undefined ? event.commands : state.commands,
+    ...queuedMessagesField(event.queuedMessages, state.queuedMessages),
     ...(backgroundTasks !== undefined ? { backgroundTasks } : {}),
     ...(activity !== undefined ? { activity } : {}),
     ...(lostTurnRow ? { unloadedTurnRevisions: (state.unloadedTurnRevisions ?? 0) + 1 } : {}),

@@ -23,6 +23,8 @@ import { useNativeChatLaunchDraftSignal } from './use-native-chat-launch-draft-a
 import { NativeChatLaunchRetry } from './NativeChatLaunchRetry'
 import { useNativeChatProvisionalLaunch } from './use-native-chat-provisional-launch'
 import { NativeChatDeliveryRetry } from './NativeChatDeliveryRetry'
+import { NativeChatQueuedMessageList } from './NativeChatQueuedMessageList'
+import { useAppStore } from '../../store'
 import { useStructuredAgentSessionHostExecutionPhase } from './StructuredAgentSessionStatusBridge'
 import { structuredAgentLabel } from '@/lib/structured-agent-session-launch-label'
 import { NativeChatThreadGoalBanner } from './NativeChatThreadGoalBanner'
@@ -42,9 +44,13 @@ export function NativeChatStructuredSession(
     () => structuredAgentSessionPaneKey(props.tabId, props.sessionId),
     [props.sessionId, props.tabId]
   )
+  // Chat-wide: absent means on; only an explicit off keeps mid-turn sends immediate.
+  const queueFollowUps = useAppStore((store) => store.settings?.nativeChatQueueFollowUps !== false)
   const controller = useStructuredAgentSession({
     ...props,
     composerScopeKey: paneKey,
+    tabId: props.tabId,
+    queueFollowUps,
     providerStarting: startupPhase === 'starting',
     transportEnabled: provisionalLaunch.transportEnabled,
     ...(provisionalLaunch.launch ? { launch: provisionalLaunch.launch } : {})
@@ -273,6 +279,8 @@ export function NativeChatStructuredSession(
           onChange={(change) => void controller.threadGoal?.change(change)}
         />
       ) : null}
+      {/* Host-held drafts stack directly above the composer; they are never transcript rows. */}
+      <NativeChatQueuedMessageList controller={controller.queuedMessages} />
       {/* Prompt cards take the composer's slot, below the background-task dock. */}
       {prompt && approval ? (
         <NativeChatApprovalCard
@@ -327,6 +335,7 @@ export function NativeChatStructuredSession(
           canSend={!prompt}
           isWorking={controller.canStop}
           onStop={() => void controller.stop()}
+          steerQueued={controller.queuedMessages.steerNewest}
           structuredTransport={structuredTransport}
           launchSeed={{ ...launchDraftSignal, ownsTabWideLaunchDraft: true }}
         />

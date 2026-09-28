@@ -66,7 +66,8 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       onSwitchToTerminal,
       readTerminalScreen,
       launchSeed,
-      structuredTransport
+      structuredTransport,
+      steerQueued
     },
     ref
   ): React.JSX.Element {
@@ -342,6 +343,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       dismissPicker: dismiss,
       interrupt,
       send,
+      ...(steerQueued ? { steerQueued } : {}),
       setActiveSuggestion,
       setDraft,
       setCaret,

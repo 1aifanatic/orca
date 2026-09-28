@@ -17706,6 +17706,22 @@
         "label": "コンテキスト {{used}} / {{window}} トークン、{{percent}}% 使用済み",
         "title": "コンテキスト",
         "estimated": "最後の応答から推定。"
+      },
+      "queuedMessages": {
+        "alreadySent": "このメッセージはすでに送信されています。",
+        "listLabel": "キュー内のメッセージ",
+        "pausedHold": "一時停止中",
+        "behindReturnedHold": "待機中 — 前のメッセージの対応が必要です",
+        "awaitingAnswerHold": "回答を待っています",
+        "steer": "今すぐ送信",
+        "send": "送信",
+        "steerHint": "ターンの終了を待たずに今すぐ送信します",
+        "delete": "削除",
+        "moreActions": "その他の操作",
+        "editMessage": "メッセージを編集",
+        "turnOffQueueing": "キューへの追加をオフにする",
+        "withdrawnHold": "送信前に停止されました",
+        "pausedSendFailed": "送信できませんでした。「送信」を押して再試行してください。"
       }
     },
     "tab": {
@@ -18033,6 +18049,11 @@
             "spaces": "スペース"
           }
         }
+      },
+      "nativeChat": {
+        "queueFollowUpsTitle": "フォローアップをキューに入れる",
+        "queueFollowUpsCopy": "Agent の作業中は、Enter でメッセージが編集可能なキューに追加され、ターン終了時に送信されます。オフの場合、ターン中のメッセージは直ちに送信されます。",
+        "queueFollowUpsToggleLabel": "フォローアップのキューを切り替え"
       }
     }
   },

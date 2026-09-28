@@ -39,6 +39,8 @@ export function useStructuredAgentSessionTransportState(
     isWorking,
     turnActivity,
     turnTiming,
+    // null = no drafts or no claim; the projection treats both as an empty list.
+    queuedMessages: (enabled ? state.queuedMessages : null) ?? null,
     backgroundTasks: structuredSessionBackgroundTasksView(
       enabled ? state.backgroundTasks : null,
       turnId

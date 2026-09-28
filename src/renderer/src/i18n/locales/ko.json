@@ -17706,6 +17706,22 @@
         "label": "컨텍스트 {{used}}/{{window}} 토큰, {{percent}}% 사용",
         "title": "컨텍스트",
         "estimated": "마지막 응답 기준 추정치입니다."
+      },
+      "queuedMessages": {
+        "alreadySent": "이 메시지는 이미 전송되었습니다.",
+        "listLabel": "대기 중인 메시지",
+        "pausedHold": "일시 중지됨",
+        "behindReturnedHold": "대기 중 — 앞의 메시지에 확인이 필요합니다",
+        "awaitingAnswerHold": "답변을 기다리는 중",
+        "steer": "지금 보내기",
+        "send": "보내기",
+        "steerHint": "턴이 끝날 때까지 기다리지 않고 지금 보냅니다",
+        "delete": "삭제",
+        "moreActions": "추가 작업",
+        "editMessage": "메시지 편집",
+        "turnOffQueueing": "대기열 사용 안 함",
+        "withdrawnHold": "전송 전에 중지됨",
+        "pausedSendFailed": "보낼 수 없습니다. 보내기를 눌러 다시 시도하세요."
       }
     },
     "tab": {
@@ -18033,6 +18049,11 @@
             "spaces": "공백"
           }
         }
+      },
+      "nativeChat": {
+        "queueFollowUpsTitle": "후속 메시지 대기열에 추가",
+        "queueFollowUpsCopy": "Agent가 작업하는 동안 Enter 키를 누르면 메시지가 편집 가능한 대기열에 추가되어 턴이 끝날 때 전송됩니다. 끄면 턴 중의 메시지가 즉시 전송됩니다.",
+        "queueFollowUpsToggleLabel": "후속 메시지 대기열 전환"
       }
     }
   },

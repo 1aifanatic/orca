@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY,
+  AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY,
   type RuntimeCapability
 } from '../../../shared/protocol-version'
 import type { RuntimeClientTarget } from './runtime-client-target'
@@ -59,5 +60,14 @@ export function useStructuredAgentSessionHostStopsConversation(
   return useStructuredAgentSessionHostCapability(
     target,
     AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY
+  )
+}
+
+/** Whether the host holds mid-turn sends as drafts: only then may a client send `delivery`,
+ *  call the queuedMessage RPCs, or ask a Stop to withdraw drafts. */
+export function useStructuredAgentSessionHostQueuesMessages(target: RuntimeClientTarget): boolean {
+  return useStructuredAgentSessionHostCapability(
+    target,
+    AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY
   )
 }

@@ -17770,6 +17770,22 @@
         "label": "Contexte : {{used}} tokens sur {{window}}, {{percent}} % utilisés",
         "title": "Contexte",
         "estimated": "Estimation basée sur la dernière réponse."
+      },
+      "queuedMessages": {
+        "alreadySent": "Ce message a déjà été envoyé.",
+        "listLabel": "Messages en file d'attente",
+        "pausedHold": "En pause",
+        "behindReturnedHold": "En attente — un message précédent nécessite votre attention",
+        "awaitingAnswerHold": "En attente de votre réponse",
+        "steer": "Envoyer maintenant",
+        "send": "Envoyer",
+        "steerHint": "Envoyer maintenant sans attendre la fin du tour",
+        "delete": "Supprimer",
+        "moreActions": "Plus d'actions",
+        "editMessage": "Modifier le message",
+        "turnOffQueueing": "Désactiver la file d'attente",
+        "withdrawnHold": "Arrêté avant l'envoi",
+        "pausedSendFailed": "Envoi impossible. Appuyez sur Envoyer pour réessayer."
       }
     },
     "tab": {
@@ -18132,6 +18148,11 @@
             "spaces": "espaces"
           }
         }
+      },
+      "nativeChat": {
+        "queueFollowUpsTitle": "Mettre les messages en file d’attente",
+        "queueFollowUpsCopy": "Pendant que l'agent travaille, Entrée ajoute votre message à une file modifiable envoyée à la fin du tour. Désactivé, les messages en cours de tour sont envoyés immédiatement.",
+        "queueFollowUpsToggleLabel": "Activer ou désactiver la file d'attente"
       }
     }
   },

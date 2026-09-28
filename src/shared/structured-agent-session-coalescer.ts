@@ -28,6 +28,14 @@ function mergeBatch(
     ...(right.commands !== undefined || left.commands !== undefined
       ? { commands: right.commands !== undefined ? right.commands : left.commands }
       : {}),
+    // Whole-list publication, latest wins: dropping it here would lose a draft
+    // update that rode a coalesced token frame.
+    ...(right.queuedMessages !== undefined || left.queuedMessages !== undefined
+      ? {
+          queuedMessages:
+            right.queuedMessages !== undefined ? right.queuedMessages : left.queuedMessages
+        }
+      : {}),
     sessionId: right.sessionId,
     batch: {
       cursor: right.batch.cursor,
