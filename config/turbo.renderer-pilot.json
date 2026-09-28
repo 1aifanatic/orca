@@ -1,0 +1,19 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "tasks": {
+    "//#build:electron-vite": {
+      "inputs": [
+        "src/**",
+        "config/**",
+        "resources/**",
+        "electron.vite.config.ts",
+        "package.json",
+        "pnpm-lock.yaml",
+        "pnpm-workspace.yaml",
+        ".env*"
+      ],
+      "outputs": ["out/renderer/**"],
+      "env": ["ORCA_*", "NODE_ENV", "NODE_OPTIONS", "VITE_*", "SOURCE_DATE_EPOCH"]
+    }
+  }
+}

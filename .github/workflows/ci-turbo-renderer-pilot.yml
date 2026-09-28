@@ -1,0 +1,94 @@
+name: Turbo renderer cache pilot
+
+on:
+  pull_request:
+    paths: ['.github/workflows/ci-turbo-renderer-pilot.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: turbo-renderer-pilot-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  ORCA_BACKGROUND_LAUNCH: '1'
+  ORCA_ELECTRON_VITE_TARGET: renderer
+  TURBO_TELEMETRY_DISABLED: '1'
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/install-node-dependencies
+      - name: Install isolated Turbo and configure task
+        run: |
+          npm install --prefix "$RUNNER_TEMP/orca-turbo" --no-audit --no-fund --ignore-scripts turbo@2.11.5
+          echo "$RUNNER_TEMP/orca-turbo/node_modules/.bin" >> "$GITHUB_PATH"
+          cp config/turbo.renderer-pilot.json turbo.json
+          echo "ORCA_BENCH_PLATFORM=$(node -p 'process.platform + "-" + process.arch + "-" + process.version')" >> "$GITHUB_ENV"
+      - name: Build renderer and seed task cache
+        run: turbo run build:electron-vite --cache=local:rw -- --config config/electron-vite-target.config.cts --ignoreConfigWarning
+      - uses: actions/cache/save@v5
+        with:
+          path: .turbo/cache
+          key: turbo-renderer-pilot-v1-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+      - name: Record reference output
+        run: find out/renderer -type f -exec sha256sum {} + | sort > renderer-reference.sha256
+      - uses: actions/upload-artifact@v7
+        with:
+          name: renderer-reference-${{ github.run_attempt }}
+          path: renderer-reference.sha256
+
+  measure:
+    needs: seed
+    name: renderer sample ${{ matrix.sample }} cache ${{ matrix.cache }}
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        sample: [1, 2, 3]
+        cache: ['false', 'true']
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/install-node-dependencies
+      - name: Install isolated Turbo and configure task
+        if: matrix.cache == 'true'
+        run: |
+          npm install --prefix "$RUNNER_TEMP/orca-turbo" --no-audit --no-fund --ignore-scripts turbo@2.11.5
+          echo "$RUNNER_TEMP/orca-turbo/node_modules/.bin" >> "$GITHUB_PATH"
+          cp config/turbo.renderer-pilot.json turbo.json
+          echo "ORCA_BENCH_PLATFORM=$(node -p 'process.platform + "-" + process.arch + "-" + process.version')" >> "$GITHUB_ENV"
+      - name: Restore renderer task cache
+        if: matrix.cache == 'true'
+        id: cache
+        uses: actions/cache/restore@v5
+        with:
+          path: .turbo/cache
+          key: turbo-renderer-pilot-v1-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+          fail-on-cache-miss: true
+      - name: Baseline renderer build
+        if: matrix.cache == 'false'
+        run: node config/scripts/run-electron-vite-build.mjs --config config/electron-vite-target.config.cts --ignoreConfigWarning
+      - name: Cached renderer build
+        if: matrix.cache == 'true'
+        run: |
+          set -o pipefail
+          turbo run build:electron-vite --cache=local:rw -- --config config/electron-vite-target.config.cts --ignoreConfigWarning | tee turbo-result.log
+          rg 'cache hit' turbo-result.log
+      - uses: actions/download-artifact@v8
+        with:
+          name: renderer-reference-${{ github.run_attempt }}
+      - name: Verify byte-identical output
+        run: |
+          find out/renderer -type f -exec sha256sum {} + | sort > renderer-actual.sha256
+          diff -u renderer-reference.sha256 renderer-actual.sha256
