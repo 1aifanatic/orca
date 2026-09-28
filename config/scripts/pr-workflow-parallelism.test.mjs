@@ -1,6 +1,7 @@
 import { existsSync, globSync, readFileSync } from 'node:fs'
 import { parse } from 'yaml'
 import { describe, expect, it } from 'vitest'
+import { UNIT_EXCLUDE } from './ci-unit-files.mjs'
 import { mobileWebCheckArgs } from './run-mobile-web-app-checks.mjs'
 import { MOBILE_WEB_APP_DEPENDENCIES_REQUIRED_ENV } from './mobile-web-app-bundle-dependencies.mjs'
 
@@ -105,15 +106,13 @@ describe('PR workflow parallelism', () => {
     expect(nodeNextWorkflow.on.schedule).toHaveLength(1)
     expect(nodeNextWorkflow.on.workflow_dispatch).toBeNull()
     expect(sharedTest.strategy.matrix.node).toBe('${{ fromJSON(inputs.node_versions) }}')
-    expect(sharedTest.strategy.matrix.shard).toEqual(
-      Array.from({ length: 8 }, (_, index) => index + 1)
-    )
-    expect(sharedTest.strategy.matrix.shard_total).toEqual([8])
+    expect(sharedTest.strategy.matrix.shard).toBe('${{ fromJSON(needs.plan.outputs.shards) }}')
+    expect(sharedTest.needs).toBe('plan')
     expect(installStep.with['node-version']).toBe('${{ matrix.node }}')
     expect(installStep.with['cache-electron-package']).toBe('true')
-    expect(testStep.run).toContain('--shard=${{ matrix.shard }}/${{ matrix.shard_total }}')
+    expect(testStep.run).toContain('--shard=${{ matrix.shard.index }}/${{ matrix.shard.count }}')
     for (const testFile of nativeShellContractFiles) {
-      expect(testStep.run).toContain(`--exclude=${testFile}`)
+      expect(UNIT_EXCLUDE).toContain(testFile)
     }
     expect(primerInstall.with['native-runtime']).toBe('node')
     expect(primerInstall.with['node-version']).toBe('24')
@@ -339,9 +338,10 @@ describe('PR workflow parallelism', () => {
       (step) => step.uses === './.github/actions/install-node-dependencies'
     )
 
-    for (const jobName of ['typecheck', 'git_compatibility', 'xterm_patch_sync']) {
+    for (const jobName of ['typecheck', 'git_compatibility']) {
       expect(installFor(jobName).with, jobName).toBeUndefined()
     }
+    expect(installFor('xterm_patch_sync')).toBeUndefined()
     expect(installFor('static_analysis').with['native-runtime']).toBe('node')
     expect(installFor('shell_contracts').with['native-runtime']).toBe('node')
     expect(sharedTestInstall.with['native-runtime']).toBe('node')
@@ -456,7 +456,9 @@ describe('PR workflow parallelism', () => {
     expect(electronCacheResolution.if).toBe(
       "inputs.native-runtime == 'electron' || inputs.cache-electron-package == 'true'"
     )
-    expect(electronCache.if).toBe(electronCacheResolution.if)
+    expect(electronCache.if).toBe(
+      "(github.event_name != 'pull_request' || runner.os != 'Linux') && steps.electron-package-cache.outputs.version != ''"
+    )
     expect(electronCache.uses).toBe('actions/cache@v5')
     expect(electronCache.with.key).toContain('steps.electron-package-cache.outputs.version')
     expect(dependencyAction.inputs['cache-electron-package'].default).toBe('false')

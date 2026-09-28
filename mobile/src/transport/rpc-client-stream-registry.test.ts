@@ -177,6 +177,41 @@ describe('RpcClientStreamRegistry', () => {
     expect(registry.size()).toBe(0)
   })
 
+  it('ends one transcript stream on dispose and leaves a sibling on the same socket (U-03)', () => {
+    const { registry, sent } = createRegistry()
+    const disposeFirst = registry.subscribe('agentSession.subscribe', { sessionId: 's1' }, () => {})
+    registry.subscribe('agentSession.subscribe', { sessionId: 's2' }, () => {})
+    const [first] = sent
+
+    disposeFirst()
+    expect(sent.at(-1)).toMatchObject({
+      method: 'agentSession.unsubscribe',
+      params: { sessionId: 's1', subscriptionId: first!.id }
+    })
+    expect(sent.filter((request) => request.method === 'agentSession.unsubscribe')).toHaveLength(1)
+  })
+
+  it('names the terminal request it sent when unsubscribing, and keeps the slot for older hosts', () => {
+    const { registry, sent } = createRegistry()
+    const dispose = registry.subscribe(
+      'terminal.subscribe',
+      { terminal: 'term-1', client: { id: 'phone-1', type: 'mobile' } },
+      () => {}
+    )
+    const subscribe = sent[0]!
+
+    dispose()
+
+    expect(sent[1]).toMatchObject({
+      method: 'terminal.unsubscribe',
+      params: {
+        subscriptionId: 'term-1:phone-1',
+        client: { id: 'phone-1' },
+        requestId: subscribe.id
+      }
+    })
+  })
+
   it('keeps a disposed browser tombstone until ready can be unsubscribed', () => {
     const { registry, sent } = createRegistry()
     const dispose = registry.subscribe('browser.screencast', { page: 'page-1' }, () => {})

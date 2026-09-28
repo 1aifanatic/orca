@@ -219,7 +219,8 @@ export class RpcClientStreamRegistry {
     if (stream?.method === 'terminal.subscribe') {
       const params = buildTerminalUnsubscribeParams(stream.params)
       if (params) {
-        this.sendRpc('terminal.unsubscribe', params)
+        // Why: `requestId` names this exact request; hosts that predate it strip it and use the slot.
+        this.sendRpc('terminal.unsubscribe', { ...params, requestId: id })
       }
     } else if (stream && sessionTabsStream.holdUnsubscribe(stream)) {
       return
