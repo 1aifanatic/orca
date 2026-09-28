@@ -11,6 +11,7 @@ import { createCodexHookTrustEntry } from './codex-hook-identity'
 import { resolveCodexTrustGrantHost } from './codex-trust-grant-host'
 import {
   captureCodexTrustConfig,
+  readCodexTrustConfigGeneration,
   restoreCodexTrustConfig,
   type CodexTrustConfigSnapshot
 } from './codex-trust-config-rollback'
@@ -23,6 +24,12 @@ import type {
 } from './codex-user-hook-trust-rebase-client'
 
 type HooksByEvent = Record<string, HookDefinition[]>
+
+/** The pre-rebase config plus the generation the rebase left, for a later guarded restore. */
+export type CodexUserHookTrustRebaseRollback = {
+  snapshot: CodexTrustConfigSnapshot
+  written: Buffer | null
+}
 
 type RebaseSessionRunner = (
   request: CodexUserHookTrustRebaseRequest
@@ -111,7 +118,8 @@ function rollbackMutation(
     rollbackErrors.push(error)
   }
   try {
-    restoreCodexTrustConfig(tomlPath, snapshot)
+    // Why current bytes: Codex wrote them in the session that just failed.
+    restoreCodexTrustConfig(tomlPath, snapshot, readCodexTrustConfigGeneration(tomlPath, snapshot))
   } catch (error) {
     rollbackErrors.push(error)
   }
@@ -132,7 +140,7 @@ export function mutateRealHomeHooksPreservingUserTrust(args: {
   afterHooks: HooksByEvent
   writeHooks: () => void
   restoreHooks: () => void
-}): Promise<CodexTrustConfigSnapshot | null> {
+}): Promise<CodexUserHookTrustRebaseRollback | null> {
   const moves = getMovedCodexUserHookTrust(args.sourcePath, args.beforeHooks, args.afterHooks)
   if (moves.length === 0) {
     args.writeHooks()
@@ -150,7 +158,7 @@ async function rebaseMovedUserTrust(
     restoreHooks: () => void
   },
   moves: CodexUserHookTrustMove[]
-): Promise<CodexTrustConfigSnapshot | null> {
+): Promise<CodexUserHookTrustRebaseRollback | null> {
   const hostKey = getCodexAppServerHostKey({ kind: 'native' })
   if (!codexAppServerCapabilityCache.shouldTry(hostKey)) {
     throw new Error('codex app-server is marked unsupported on this host; trust rebase skipped')
@@ -202,7 +210,7 @@ async function rebaseMovedUserTrust(
     if (repaired.outcome !== 'repaired') {
       throw new Error('Unexpected Codex user hook trust repair result')
     }
-    return snapshot
+    return { snapshot, written: readCodexTrustConfigGeneration(args.tomlPath, snapshot) }
   } catch (error) {
     rememberRebaseSessionFailure(hostKey, error)
     if (hooksWritten) {

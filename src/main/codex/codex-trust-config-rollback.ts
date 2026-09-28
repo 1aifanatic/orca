@@ -66,11 +66,40 @@ export function captureCodexTrustConfig(tomlPath: string): CodexTrustConfigSnaps
   }
 }
 
-export function restoreCodexTrustConfig(
+/** The config's bytes now, or null when absent: what a later restore must still find. */
+export function readCodexTrustConfigGeneration(
   tomlPath: string,
   snapshot: CodexTrustConfigSnapshot
+): Buffer | null {
+  try {
+    return readFileSync(snapshot.restorePath ?? tomlPath)
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+      return null
+    }
+    throw error
+  }
+}
+
+/**
+ * Rolls config.toml back to `snapshot`, but only while it still holds `written`,
+ * the generation Orca's mutation left. A write that landed after it is newer than
+ * both, so it is left in place.
+ */
+export function restoreCodexTrustConfig(
+  tomlPath: string,
+  snapshot: CodexTrustConfigSnapshot,
+  written: Buffer | null
 ): void {
+  const current = readCodexTrustConfigGeneration(tomlPath, snapshot)
   if (!snapshot.existed) {
+    if (current === null) {
+      return
+    }
+    if (!isSameGeneration(current, written)) {
+      warnConfigChangedSinceOrcaWrote(tomlPath)
+      return
+    }
     try {
       unlinkSync(snapshot.restorePath ?? tomlPath)
     } catch (error) {
@@ -81,17 +110,15 @@ export function restoreCodexTrustConfig(
     return
   }
   const { restorePath } = snapshot
-  try {
-    if (readFileSync(restorePath).equals(snapshot.contents)) {
-      // Why: the RPC may change permissions without changing bytes; rollback
-      // restores the complete captured file state, not only its contents.
-      chmodSync(restorePath, snapshot.mode)
-      return
-    }
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-      throw error
-    }
+  if (current?.equals(snapshot.contents)) {
+    // Why: the RPC may change permissions without changing bytes; rollback
+    // restores the complete captured file state, not only its contents.
+    chmodSync(restorePath, snapshot.mode)
+    return
+  }
+  if (!isSameGeneration(current, written)) {
+    warnConfigChangedSinceOrcaWrote(tomlPath)
+    return
   }
   // Why: rollback protects config integrity too; direct truncating writes can
   // leave Codex unusable if Orca exits midway through recovery.
@@ -109,4 +136,12 @@ export function restoreCodexTrustConfig(
     }
     throw error
   }
+}
+
+function isSameGeneration(left: Buffer | null, right: Buffer | null): boolean {
+  return left === null || right === null ? left === right : left.equals(right)
+}
+
+function warnConfigChangedSinceOrcaWrote(tomlPath: string): void {
+  console.warn('[codex-trust-config] left a config.toml changed since Orca wrote it:', tomlPath)
 }

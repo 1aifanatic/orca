@@ -138,6 +138,7 @@
     "../src/main/codex/codex-hook-wsl-runtime.ts",
     "../src/main/codex/codex-managed-trust-reconciliation.ts",
     "../src/main/codex/codex-process-exit-deadline.ts",
+    "../src/main/codex/codex-real-home-hooks-json.ts",
     "../src/main/codex/codex-state-db.ts",
     "../src/main/codex/codex-trust-identity.ts",
     "../src/main/codex/codex-trust-config-rollback.ts",

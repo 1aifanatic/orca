@@ -22,7 +22,12 @@ import {
   type CodexTrustGrantLedgerEntry
 } from './codex-trust-grant-ledger'
 import type { CodexTrustEntry } from './config-toml-trust'
-import { captureCodexTrustConfig, restoreCodexTrustConfig } from './codex-trust-config-rollback'
+import {
+  captureCodexTrustConfig,
+  readCodexTrustConfigGeneration,
+  restoreCodexTrustConfig,
+  type CodexTrustConfigSnapshot
+} from './codex-trust-config-rollback'
 import { runExclusivelyForCodexTrustConfig } from './codex-trust-config-mutation-queue'
 import {
   resolveCodexTrustGrantHost,
@@ -130,6 +135,12 @@ type GrantAttempt = {
   startedAtMs: number
 }
 
+// Why current bytes: Codex, not Orca, wrote config.toml in the session that just
+// settled, so there is no Orca generation to compare; the restore follows at once.
+function restoreAfterSession(tomlPath: string, snapshot: CodexTrustConfigSnapshot): void {
+  restoreCodexTrustConfig(tomlPath, snapshot, readCodexTrustConfigGeneration(tomlPath, snapshot))
+}
+
 /** Post-session verification, ledger persistence and telemetry. Never throws for
  *  a verify failure — every rejection is a rolled-back fallback. */
 function completeGrant(
@@ -141,7 +152,7 @@ function completeGrant(
     detail: unknown,
     verifyClass: CodexTrustGrantVerifyClass
   ): CodexManagedTrustGrantOutcome => {
-    restoreCodexTrustConfig(plan.tomlPath, configSnapshot)
+    restoreAfterSession(plan.tomlPath, configSnapshot)
     startTransientCooldown(hostKey)
     return fallback(plan, 'verify-failed', detail, verifyClass)
   }
@@ -235,7 +246,7 @@ async function runGrantAttempt(
           // this one waited behind it; nothing was mutated, so nothing to undo.
           return fallback(plan, 'unsupported-cached')
         }
-        restoreCodexTrustConfig(plan.tomlPath, attempt.configSnapshot)
+        restoreAfterSession(plan.tomlPath, attempt.configSnapshot)
         transientRetryAfterByHost.delete(hostKey)
         return fallback(plan, 'unsupported', unsupportedError)
       },
@@ -248,7 +259,7 @@ async function runGrantAttempt(
       }
     )
   } catch (error) {
-    restoreCodexTrustConfig(plan.tomlPath, attempt.configSnapshot)
+    restoreAfterSession(plan.tomlPath, attempt.configSnapshot)
     startTransientCooldown(hostKey)
     return fallback(plan, 'error', error)
   }

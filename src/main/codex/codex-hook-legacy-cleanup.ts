@@ -4,11 +4,9 @@ import {
   createManagedCommandMatcher,
   hookDefinitionHasManagedCommand,
   readHooksJsonWithRaw,
-  removeManagedCommands,
-  writeHooksJson
+  removeManagedCommands
 } from '../agent-hooks/installer-utils'
 import { resolveHooksJsonWritePath } from '../agent-hooks/hook-config-write-path'
-import { writeFileAtomically } from '../codex-accounts/fs-utils'
 import { findManagedTomlBlocks } from '../agent-hooks/managed-toml-ownership'
 import { writeConfigAtomically, type CodexTrustEntry } from './config-toml-trust'
 import {
@@ -26,6 +24,7 @@ import {
 import { readCodexTrustGrantLedgerHomeForReconciliation } from './codex-managed-trust-reconciliation'
 import { runExclusivelyForCodexTrustConfig } from './codex-trust-config-mutation-queue'
 import { mutateRealHomeHooksPreservingUserTrust } from './codex-user-hook-trust-rebase'
+import { restoreRealHomeHooksJson, writeRealHomeHooksJson } from './codex-real-home-hooks-json'
 
 const LEGACY_ORCA_PROFILE_NAME = 'orca-agent-status'
 const LEGACY_ORCA_PROFILE_BLOCK_START = '# BEGIN ORCA AGENT STATUS HOOKS'
@@ -120,6 +119,7 @@ async function sweepLegacySystemManagedHooks(): Promise<void> {
     // Remove only stale Orca hook entries and preserve other managers' metadata.
     const hooksWritePath = resolveHooksJsonWritePath(legacyConfigPath)
     const previousMode = statSync(hooksWritePath).mode
+    let writtenRaw: string | null = null
     await mutateRealHomeHooksPreservingUserTrust({
       sourcePath: legacyConfigPath,
       runtimeHomePath: systemHomePath,
@@ -135,9 +135,10 @@ async function sweepLegacySystemManagedHooks(): Promise<void> {
           // never replace that newer dotfiles generation with our stale parse.
           throw new Error('System Codex hooks changed during trust repair')
         }
-        writeHooksJson(hooksWritePath, { ...config, hooks: nextHooks }, { preserveMode: true })
+        writtenRaw = writeRealHomeHooksJson(hooksWritePath, { ...config, hooks: nextHooks })
       },
-      restoreHooks: () => writeFileAtomically(hooksWritePath, previousRaw, { mode: previousMode })
+      restoreHooks: () =>
+        restoreRealHomeHooksJson(hooksWritePath, previousRaw, writtenRaw, previousMode)
     })
     // Why: stale dev/version entries can reference an older managed script
     // path that is not represented by the current grant ledger.

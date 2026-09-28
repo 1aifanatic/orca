@@ -4,10 +4,8 @@ import {
   MANAGED_HOOK_TIMEOUT_SECONDS,
   readHooksJsonWithRaw,
   removeManagedCommands,
-  writeHooksJson,
   writeManagedScript,
-  type HookDefinition,
-  type HooksConfig
+  type HookDefinition
 } from '../agent-hooks/installer-utils'
 import { resolveHooksJsonWritePath } from '../agent-hooks/hook-config-write-path'
 import {
@@ -16,7 +14,8 @@ import {
   getRealHomeConfigTomlPath,
   getRealHomeHooksJsonPath,
   reconcileManagedHookDefinition,
-  restoreRealHomeHooksJson
+  restoreRealHomeHooksJson,
+  writeRealHomeHooksJson
 } from './codex-real-home-hooks-json'
 import { getCodexManagedScriptFileName } from './codex-hook-identity'
 import {
@@ -171,9 +170,10 @@ async function installRealHomeCodexHook(userDataPath: string): Promise<RealHomeC
 
   const previousMode = previousRaw === null ? undefined : statSync(hooksWritePath).mode
   backupRealHomeHooksJsonOnce(userDataPath, previousRaw)
+  let writtenRaw: string | null = null
   // Why: unknown top-level fields belong to the user (other managers'
   // metadata); unlike the managed-home writer, preserve them verbatim.
-  const trustConfigSnapshot = await mutateRealHomeHooksPreservingUserTrust({
+  const trustRebase = await mutateRealHomeHooksPreservingUserTrust({
     sourcePath: hooksJsonPath,
     runtimeHomePath: getSystemCodexHomePath(),
     tomlPath: getRealHomeConfigTomlPath(),
@@ -181,11 +181,10 @@ async function installRealHomeCodexHook(userDataPath: string): Promise<RealHomeC
     afterHooks: nextHooks,
     writeHooks: () => {
       assertHooksJsonGeneration(hooksJsonPath, hooksWritePath, previousRaw)
-      writeHooksJson(hooksWritePath, { ...config, hooks: nextHooks } as HooksConfig, {
-        preserveMode: true
-      })
+      writtenRaw = writeRealHomeHooksJson(hooksWritePath, { ...config, hooks: nextHooks })
     },
-    restoreHooks: () => restoreRealHomeHooksJson(hooksWritePath, previousRaw, previousMode)
+    restoreHooks: () =>
+      restoreRealHomeHooksJson(hooksWritePath, previousRaw, writtenRaw, previousMode)
   })
 
   const grant = await grantManagedCodexHookTrust({
@@ -206,12 +205,16 @@ async function installRealHomeCodexHook(userDataPath: string): Promise<RealHomeC
   // bytes and keep this host on the managed-home lane; the grant client
   // already logged the fallback reason.
   try {
-    restoreRealHomeHooksJson(hooksWritePath, previousRaw, previousMode)
+    restoreRealHomeHooksJson(hooksWritePath, previousRaw, writtenRaw, previousMode)
   } finally {
     // Why: a user-trust rebase may have succeeded before the managed grant
     // failed. Roll both files back to the same pre-mutation generation.
-    if (trustConfigSnapshot) {
-      restoreCodexTrustConfig(getRealHomeConfigTomlPath(), trustConfigSnapshot)
+    if (trustRebase) {
+      restoreCodexTrustConfig(
+        getRealHomeConfigTomlPath(),
+        trustRebase.snapshot,
+        trustRebase.written
+      )
     }
   }
   installRetryAfterMs = getInstallRetryAfterMs(grant.reason)
@@ -264,6 +267,7 @@ async function sweepRealHomeCodexHook(): Promise<RealHomeCodexHookLane> {
   if (removedAny) {
     const hooksWritePath = resolveHooksJsonWritePath(hooksJsonPath)
     const previousMode = statSync(hooksWritePath).mode
+    let writtenRaw: string | null = null
     await mutateRealHomeHooksPreservingUserTrust({
       sourcePath: hooksJsonPath,
       runtimeHomePath: getSystemCodexHomePath(),
@@ -272,16 +276,10 @@ async function sweepRealHomeCodexHook(): Promise<RealHomeCodexHookLane> {
       afterHooks: nextHooks,
       writeHooks: () => {
         assertHooksJsonGeneration(hooksJsonPath, hooksWritePath, previousRaw)
-        writeHooksJson(
-          hooksWritePath,
-          {
-            ...config,
-            hooks: nextHooks
-          } as HooksConfig,
-          { preserveMode: true }
-        )
+        writtenRaw = writeRealHomeHooksJson(hooksWritePath, { ...config, hooks: nextHooks })
       },
-      restoreHooks: () => restoreRealHomeHooksJson(hooksWritePath, previousRaw, previousMode)
+      restoreHooks: () =>
+        restoreRealHomeHooksJson(hooksWritePath, previousRaw, writtenRaw, previousMode)
     })
     // Why: dead [hooks.state] blocks for a removed hook are Orca-owned records;
     // dropping them keeps the user's config.toml from accumulating orphans.

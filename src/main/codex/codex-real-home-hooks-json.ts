@@ -4,6 +4,7 @@ import { writeFileAtomically } from '../codex-accounts/fs-utils'
 import {
   buildManagedCommandHook,
   removeManagedCommands,
+  writeHooksJson,
   type HookDefinition
 } from '../agent-hooks/installer-utils'
 import { resolveHooksJsonWritePath } from '../agent-hooks/hook-config-write-path'
@@ -56,15 +57,40 @@ export function backupRealHomeHooksJsonOnce(
   writeFileAtomically(backupPath, previousRaw, { mode: 0o600 })
 }
 
+/** Writes Orca's generation of the real hooks.json and returns its exact bytes. */
+export function writeRealHomeHooksJson(
+  hooksWritePath: string,
+  config: Record<string, unknown>
+): string {
+  const serialized = `${JSON.stringify(config, null, 2)}\n`
+  writeHooksJson(hooksWritePath, config, { preserveMode: true, serialized })
+  return serialized
+}
+
+/**
+ * Rolls hooks.json back to `previousRaw`, but only while it still holds
+ * `writtenRaw`, the bytes Orca wrote. A save that landed during the trust
+ * session in between is newer than both, so it is left in place.
+ */
 export function restoreRealHomeHooksJson(
   hooksJsonPath: string,
   previousRaw: string | null,
+  writtenRaw: string | null,
   previousMode?: number
 ): void {
+  const currentRaw = existsSync(hooksJsonPath) ? readFileSync(hooksJsonPath, 'utf-8') : null
+  if (currentRaw === previousRaw) {
+    return
+  }
+  if (writtenRaw === null || currentRaw !== writtenRaw) {
+    console.warn(
+      '[codex-real-home-hooks] left a hooks.json changed since Orca wrote it:',
+      hooksJsonPath
+    )
+    return
+  }
   if (previousRaw === null) {
-    if (existsSync(hooksJsonPath)) {
-      unlinkSync(hooksJsonPath)
-    }
+    unlinkSync(hooksJsonPath)
     return
   }
   // Why: rollback is part of the safety boundary. Use the shared atomic
