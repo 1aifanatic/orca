@@ -21,6 +21,7 @@ export type ViewportGuestHandle = {
   debuggerAttach: ReturnType<typeof vi.fn>
   setGuestUserAgent: (ua: string) => void
   commitNavigationTo: (nextUrl: string) => void
+  webContentsUserAgent: () => string
   /** What navigator.userAgent reports: the latest applied CDP override, else the WebContents UA. */
   presentedUserAgent: () => string
   /** The CDP UA override Chromium holds, or null when none stands. */
@@ -96,6 +97,7 @@ export function createViewportGuestFactory(
       commitNavigationTo: (nextUrl: string) => {
         committedUrl = nextUrl
       },
+      webContentsUserAgent: () => currentUa,
       presentedUserAgent: () =>
         typeof cdpOverride?.userAgent === 'string' ? cdpOverride.userAgent : currentUa,
       standingUserAgentOverride: () => cdpOverride

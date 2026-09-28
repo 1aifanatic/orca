@@ -55,10 +55,11 @@ export abstract class BrowserManagerNavigation extends BrowserManagerVisibility 
     // desktop-clean — and for every tab sharing the session. One context, one identity: those workers
     // stay on the session identity, while emulation reaches documents and the emulated tab's dedicated
     // workers, which carry the owning webContentsId.
+    // Why the standing override and not the requested preset: the wire must match what the document
+    // presents, and a preset whose CDP write never landed (no debugger, a failed write) presents none.
     return resolveBrowserTabIdentity({
       url: request.url,
-      mobile:
-        request.webContentsId !== undefined && this.hasMobileViewportPreset(request.webContentsId),
+      mobile: standingOverride?.userAgentMetadata?.mobile === true,
       processIdentity
     })
   }

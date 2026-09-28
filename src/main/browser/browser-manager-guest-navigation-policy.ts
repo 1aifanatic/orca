@@ -91,7 +91,7 @@ export abstract class BrowserManagerGuestNavigationPolicy extends BrowserManager
     const didStartNavigationHandler = (
       _event: Electron.Event,
       url: string,
-      _isInPlace: boolean,
+      isInPlace: boolean,
       isMainFrame: boolean
     ): void => {
       if (!isMainFrame || isChromiumInternalErrorUrl(url)) {
@@ -100,7 +100,9 @@ export abstract class BrowserManagerGuestNavigationPolicy extends BrowserManager
       // Why: getURL() still reports the previous committed URL until this navigation commits, so
       // every UA writer must read the in-flight target or they disagree about the tab's host.
       this.startPendingNavigation(guest.id, url)
-      void this.applyTabIdentity(guest, url, { webContentsWritable: true })
+      // Why: a same-document navigation keeps the loading document, and setUserAgent() while it
+      // loads makes Chromium reload it — replaying a one-time OAuth callback that calls replaceState.
+      void this.applyTabIdentity(guest, url, { webContentsWritable: !isInPlace })
       this.certificateTrustController?.onMainFrameNavigationStarted(guest.id)
       // Why: a pre-registration failure belongs only to its own nav; a replacement nav must not replay it.
       this.pendingLoadFailuresByGuestId.delete(guest.id)

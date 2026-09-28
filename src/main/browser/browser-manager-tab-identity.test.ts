@@ -83,12 +83,12 @@ function openTab(url: string): { tab: string; id: number; handle: ViewportGuestH
   return { tab, id, handle }
 }
 
-function navigate(url: string): void {
+function navigate(url: string, { inPlace = false } = {}): void {
   const didStartNavigation = mocks.guestOnMock.mock.calls.findLast(
     ([event]) => event === 'did-start-navigation'
   )?.[1]
   expect(didStartNavigation).toBeTypeOf('function')
-  didStartNavigation(null, url, false, true)
+  didStartNavigation(null, url, inPlace, true)
 }
 
 async function observe(
@@ -272,5 +272,46 @@ describe('tab identity ownership', () => {
     const healed = await observe(opened, 'https://example.org/')
     expect(healed.presented).toBe(GUEST_CLEAN_UA)
     expect(healed.standingOverride).toBeNull()
+  })
+
+  // Why: setUserAgent() while a document loads makes Chromium reload it, and an OAuth callback that
+  // strips its code with replaceState would be requested twice — the one-time code replayed.
+  it('leaves the WebContents UA alone on a same-document navigation', async () => {
+    mocks.processUserAgentMode = 'clean'
+    mocks.processUserAgent = GUEST_CLEAN_UA
+    const opened = openTab(AUTH_URL)
+    const willRedirect = mocks.guestOnMock.mock.calls.findLast(
+      ([event]) => event === 'will-redirect'
+    )?.[1]
+    willRedirect({ preventDefault: vi.fn() }, `${ORDINARY_URL}callback?code=1`, false, true)
+    await flushViewportOps()
+
+    navigate(`${ORDINARY_URL}callback`, { inPlace: true })
+    expect(opened.handle.webContentsUserAgent()).toBe(googleAuthUserAgent())
+    expect((await observe(opened, ORDINARY_URL)).presented).toBe(GUEST_CLEAN_UA)
+
+    navigate('https://example.org/')
+    expect(opened.handle.webContentsUserAgent()).toBe(GUEST_CLEAN_UA)
+  })
+
+  // Why: a debugger that cannot attach (DevTools open on the guest) installs no mobile identity, so
+  // requests claiming one would disagree with the document's own navigator.userAgent.
+  it('keeps requests on the presented identity when a mobile preset cannot attach', async () => {
+    mocks.processUserAgentMode = 'clean'
+    mocks.processUserAgent = GUEST_CLEAN_UA
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const opened = openTab(ORDINARY_URL)
+    opened.handle.debuggerIsAttached.mockReturnValue(false)
+    opened.handle.debuggerAttach.mockImplementation(() => {
+      throw new Error('Another debugger is already attached')
+    })
+
+    await expect(browserManager.setViewportOverride(opened.tab, PRESETS.mobile)).resolves.toBe(
+      false
+    )
+    navigate('https://example.org/')
+    const observed = await observe(opened, 'https://example.org/')
+    expect(observed.presented).toBe(GUEST_CLEAN_UA)
+    expect(observed.requestIdentity).toEqual({ kind: 'process', userAgent: GUEST_CLEAN_UA })
   })
 })
