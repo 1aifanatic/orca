@@ -16,8 +16,10 @@ import {
 } from '../../../shared/structured-agent-session-dispatch-rejection'
 import Database from '../../sqlite/sync-database'
 import { journalDatabaseFile } from './journal-paths'
-import { QUEUED_MESSAGE_REPLAY_WINDOW_MS } from './journal-queued-messages'
-import { QueuedMessageNotConsumableError } from './journal-queued-messages'
+import {
+  QUEUED_MESSAGE_REPLAY_WINDOW_MS,
+  QueuedMessageNotConsumableError
+} from './journal-queued-messages'
 import type { AgentSessionJournal } from './journal-store'
 import { createTrackedJournalOpener } from './journal-store-test-open'
 

@@ -67,10 +67,8 @@ export function mobileStructuredSendDelivery(
     // too, never unknown; its text came back through the withdrawing Stop.
     return { outcome: 'accepted', operationIdSpent: true, error: null }
   }
-  const submission =
-    'submission' in result.value
-      ? (result.value.submission as AgentJournalSubmission | undefined)
-      : undefined
+  const submission: AgentJournalSubmission | undefined =
+    'submission' in result.value ? result.value.submission : undefined
   if (!submission || submission.dispatchState === 'unknown') {
     return { outcome: 'unknown', operationIdSpent: false, error: null }
   }

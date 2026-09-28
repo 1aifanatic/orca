@@ -71,6 +71,7 @@ export function insertQueuedMessage(
     now: number
   }
 ): QueuedMessageRow {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the statement selects exactly one aliased numeric column; better-sqlite3 types rows as unknown.
   const highest = db
     .prepare('SELECT COALESCE(MAX(position), 0) AS p FROM queued_messages WHERE session_id = ?')
     .get(input.sessionId) as { p?: number } | undefined
@@ -274,6 +275,7 @@ export function pruneQueuedMessages(
 }
 
 function toStoredRow(row: unknown): QueuedMessageRow | null {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: rows come from this file's own SELECTs, which name exactly these columns; better-sqlite3 types them as unknown.
   const record = row as {
     session_id: string
     message_id: string
@@ -290,6 +292,7 @@ function toStoredRow(row: unknown): QueuedMessageRow | null {
   }
   let body: AgentJournalMessageItem
   try {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: body_json is written only by insertQueuedMessage from a schema-validated AgentJournalMessageItem.
     body = JSON.parse(record.body_json) as AgentJournalMessageItem
   } catch {
     // Our own writer stringified it; an unreadable body is corruption, and a
