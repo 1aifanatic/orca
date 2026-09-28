@@ -152,14 +152,17 @@ export function activityThreadStatusId(thread: AgentPaneThread): ActivityThreadS
   if (thread.currentAgentEntry && agentVerdictDisplayMark(thread.currentAgentEntry) === 'failed') {
     return 'failed'
   }
-  const paneEntry = paneActivityEntry(thread)
   const state = threadCurrentState(thread) ?? 'done'
-  const verdictEntry = paneEntry ?? thread.latestEvent?.entry
+  const verdictEntry = threadVerdictEntry(thread)
   const verdictDot = verdictEntry ? agentVerdictDisplayMark(verdictEntry) : null
   if (!thread.currentAgentState && state === 'done' && verdictDot) {
     return verdictDot
   }
   return state
+}
+
+function threadVerdictEntry(thread: AgentPaneThread): AgentStatusEntry | undefined {
+  return paneActivityEntry(thread) ?? thread.latestEvent?.entry
 }
 
 // Why the pane's row: an answered ask's done predates the blocked event, and a clear can hide it.
@@ -180,10 +183,24 @@ function threadCurrentState(
   )
 }
 
-// Interrupted rows deliberately keep the done glyph (#2569); a failure is a fault and does not.
+// A user's Stop deliberately keeps the done glyph (#2569); a death nobody asked for, like a
+// failure, is news and does not.
 export function threadAgentState(thread: AgentPaneThread): AgentDotState {
   const id = activityThreadStatusId(thread)
-  return id === 'interrupted' ? 'done' : id
+  if (id !== 'interrupted') {
+    return id
+  }
+  const verdictEntry = threadVerdictEntry(thread)
+  switch (verdictEntry ? agentMainAgentVerdict(verdictEntry) : null) {
+    case 'cancellation':
+      return 'done'
+    case 'interruption':
+    case 'success':
+    case 'failure':
+    case 'unconfirmed':
+    case null:
+      return 'interrupted'
+  }
 }
 
 export function threadAgentStateLabel(thread: AgentPaneThread): string {

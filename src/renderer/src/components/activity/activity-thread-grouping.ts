@@ -43,7 +43,7 @@ export function getActivityThreadGroup(
     return { key: 'all', label: '' }
   }
   if (groupBy === 'status') {
-    // Header dot mirrors the row dot, so the two can never disagree.
+    // Header dot mirrors its first (newest) row's; only Interrupted mixes a Stop's and a crash's.
     return {
       key: activityThreadStatusId(thread),
       label: threadAgentStateLabel(thread),
