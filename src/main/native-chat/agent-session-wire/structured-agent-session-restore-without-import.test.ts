@@ -204,12 +204,18 @@ function importCount(): number {
   return Number(hostDb().prepare('SELECT count(*) AS n FROM journal_imports').get()?.n)
 }
 
-async function restore(sessionIds: readonly string[]) {
-  const sessions = new StructuredAgentSessionConversations({
+type LifetimeHost = Parameters<typeof createStructuredAgentSessionConversationLifetime>[0]
+
+function conversations(): StructuredAgentSessionConversations {
+  return new StructuredAgentSessionConversations({
     deliver: () => undefined,
     onDeliveryError: () => undefined,
     now: () => clock
   })
+}
+
+async function restore(sessionIds: readonly string[]) {
+  const sessions = conversations()
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: restore and an open conversation's read touch only `getRecord` and `listRecords`.
   const store = {
     getRecord: (sessionId: string) => recordFor(sessionId),
@@ -227,16 +233,20 @@ async function restore(sessionIds: readonly string[]) {
       sessions.set(sessionId, opened.session)
     }
   })
-  const lifetime = createStructuredAgentSessionConversationLifetime({
+  const context = (): StructuredAgentSessionLifetimeContext =>
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: reaching an open conversation reads only `deps.store` and `deps.adapter`.
-    context: () => ({ deps, now: () => clock }) as unknown as StructuredAgentSessionLifetimeContext,
-    sessions,
-    serialize: async (_sessionId, task) => task(),
-    open: async (sessionId) => sessions.get(sessionId) ?? null,
-    deliveryActive: () => false,
-    closeStatus: () => undefined
-  })
-  return { sessions, lifetime }
+    ({ deps, now: () => clock }) as unknown as StructuredAgentSessionLifetimeContext
+  const lifetimeOver = (listed: LifetimeHost['sessions'], open: LifetimeHost['open']) =>
+    createStructuredAgentSessionConversationLifetime({
+      context,
+      sessions: listed,
+      serialize: async (_sessionId, task) => task(),
+      open,
+      deliveryActive: () => false,
+      closeStatus: () => undefined
+    })
+  const lifetime = lifetimeOver(sessions, async (sessionId) => sessions.get(sessionId) ?? null)
+  return { sessions, lifetime, lifetimeOver }
 }
 
 function texts(items: readonly { body: unknown }[]): string {
@@ -388,6 +398,21 @@ describe('startup restore of chats still in their per-chat files', () => {
     expect(readTestJournalRows(hostDb(), 'chat-a', rows[0]!.epoch)).toEqual(rows)
     expect(since.ok && since.rows.map((row) => row.seq)).toEqual(rows.map((row) => row.seq))
     expect(existsSync(legacyDirFor('chat-a'))).toBe(false)
+  })
+
+  // A read queued behind restore's open of the same chat reaches it through its own open, not the
+  // listing: it still waits for the copy, and reads the chat from the one database.
+  it('makes a read whose open lands on the chat restore opened wait for its copy', async () => {
+    const rows = await seedLegacyChat('chat-a')
+    const { sessions, lifetimeOver } = await restore(['chat-a'])
+    const restored = sessions.get('chat-a')!
+    const lifetime = lifetimeOver(conversations(), async () => restored)
+
+    const { journal } = await lifetime.conversation('chat-a')
+    const since = journal.readSince({ epoch: rows[0]!.epoch, sequence: 0 })
+
+    expect(importCount()).toBe(1)
+    expect(since.ok && since.rows.map((row) => row.seq)).toEqual(rows.map((row) => row.seq))
   })
 
   it('copies a chat before its first write, and the write lands after its history', async () => {
