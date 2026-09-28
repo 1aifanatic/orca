@@ -29,7 +29,8 @@ export type CodexRolloutTurnLifecycle = {
 export type CodexRolloutTurnEnd = Pick<CodexRolloutTurnLifecycle, 'state' | 'abortReason'>
 
 /** The main agent's turns as its rollout recorded them: the one Codex has open, the latest one it
- *  started (open or not), and a bounded window of ended ones (oldest first). */
+ *  started (open or not; or ended, when the read began after its start), and a bounded window of
+ *  ended ones (oldest first). */
 export type CodexRolloutTurns = {
   openTurnId?: string
   latestTurnId?: string
@@ -85,6 +86,8 @@ export function recordCodexRolloutTurn(
   if (turns.openTurnId === turnId) {
     turns.openTurnId = undefined
   }
+  // Why: a first read begins at most one read back, so a long turn's start can precede it.
+  turns.latestTurnId ??= turnId
   turns.ended.delete(turnId)
   turns.ended.set(turnId, {
     state: lifecycle.state,

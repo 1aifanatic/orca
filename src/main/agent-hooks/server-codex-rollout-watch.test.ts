@@ -185,6 +185,31 @@ describe('a Codex turn that ended while Orca was down', () => {
     }
   })
 
+  it('settles a turn whose start is more than a read back once Orca starts again', async () => {
+    writeFileSync(rollout, turnMarker('task_started', 'turn-1'))
+    await runTurnThenStop()
+    // More than one 1 MiB read of the turn's own work: the restart's read begins past its start.
+    const filler = line({ type: 'response_item', payload: { text: 'x'.repeat(1_000) } })
+    appendFileSync(rollout, filler.repeat(1_200) + turnMarker('turn_aborted', 'turn-1'))
+
+    const server = new AgentHookServer()
+    await server.start({ env: 'production', userDataPath })
+    try {
+      await vi.waitFor(
+        () => {
+          expect(server.getStatusSnapshot()[0]).toMatchObject({
+            state: 'done',
+            interrupted: true,
+            mainAgent: { state: 'done', outcome: 'cancellation' }
+          })
+        },
+        { timeout: 3_000, interval: 50 }
+      )
+    } finally {
+      server.stop()
+    }
+  })
+
   it('leaves a turn still open in the rollout working', async () => {
     writeFileSync(rollout, turnMarker('task_started', 'turn-1'))
     await runTurnThenStop()
