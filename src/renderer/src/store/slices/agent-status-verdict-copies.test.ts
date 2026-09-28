@@ -6,7 +6,7 @@ import { buildPaneActivityEvents } from '@/components/activity/activity-pane-eve
 import { makeTab, makeWorktree } from '@/components/activity/ActivityPrototypePage-test-fixtures'
 import type { AppState } from '../types'
 import { agentMeta, agentTitle } from '@/components/activity/activity-thread-presentation'
-import { isPassiveCompletedHibernationEvidence } from '@/lib/sleeping-agent-pane-ownership'
+import { activationTreatsNoteAsFinished } from '@/lib/sleeping-agent-pane-ownership'
 import { resolveAgentStatusLiveEntryStateHistory } from './agent-status-live-entry-state-history'
 import { deriveAgentStatusLiveFacts } from './agent-status-live-facts'
 import {
@@ -117,10 +117,8 @@ describe('a failed done keeps its verdict in every copy', () => {
     })
     expect(isValidCompletedAgentHibernationEntry(failedDone())).toBe(false)
     // A live checkpoint of a turn that failed is still work the user owns.
-    expect(isPassiveCompletedHibernationEvidence(record({ mainAgent: FAILED_MAIN_AGENT }))).toBe(
-      false
-    )
-    expect(isPassiveCompletedHibernationEvidence(record())).toBe(true)
+    expect(activationTreatsNoteAsFinished(record({ mainAgent: FAILED_MAIN_AGENT }))).toBe(false)
+    expect(activationTreatsNoteAsFinished(record())).toBe(true)
   })
 
   it('keeps the main agent status through persistence, and drops only a malformed one', () => {
