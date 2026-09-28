@@ -1,0 +1,80 @@
+name: Diagnostic pinned Bun dependency caches
+on:
+  workflow_dispatch:
+    inputs:
+      inputs_release_tag:
+        description: Draft diagnostic release tag containing retained-inputs.tar.gz
+        required: true
+      inputs_asset:
+        description: Release asset filename
+        required: true
+        default: pinned-bun-retained-inputs.tar.gz
+      inputs_asset_sha256:
+        description: SHA256 of the release asset
+        required: true
+      inputs_ref:
+        description: Diagnostic branch containing the acquisition fixture
+        required: true
+        default: OrcaWin/np-bun-dependency-cache-diagnostic
+permissions:
+  contents: read
+concurrency:
+  group: diagnostic-bun-dependency-acquisition
+  cancel-in-progress: false
+jobs:
+  acquire:
+    if: github.ref == format('refs/heads/{0}', inputs.inputs_ref)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    env:
+      ORCA_BACKGROUND_LAUNCH: '1'
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Allocate disposable bounded acquisition filesystem
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = x86_64
+          truncate -s 10G "$RUNNER_TEMP/dependency-acquisition.ext4"
+          mkfs.ext4 -F "$RUNNER_TEMP/dependency-acquisition.ext4"
+          mkdir "$RUNNER_TEMP/dependency-acquisition"
+          sudo mount -o loop,nodev,nosuid "$RUNNER_TEMP/dependency-acquisition.ext4" "$RUNNER_TEMP/dependency-acquisition"
+          sudo chown "$(id -u):$(id -g)" "$RUNNER_TEMP/dependency-acquisition"
+      - name: Download retained inputs from draft diagnostic release
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir "$RUNNER_TEMP/dependency-acquisition/release"
+          gh release download "${{ inputs.inputs_release_tag }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "${{ inputs.inputs_asset }}" \
+            --dir "$RUNNER_TEMP/dependency-acquisition/release" \
+            --clobber
+          python3 config/ci/dependency-cache-acquisition/unpack-inputs.py \
+            "$RUNNER_TEMP/dependency-acquisition/release/${{ inputs.inputs_asset }}" \
+            "$RUNNER_TEMP/dependency-acquisition/inputs" \
+            "${{ inputs.inputs_asset_sha256 }}"
+      - name: Acquire frozen JS and Cargo caches with retained executables
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout --kill-after=30s 2400s python3 config/ci/dependency-cache-acquisition/acquire.py \
+            "$RUNNER_TEMP/dependency-acquisition/inputs" "$RUNNER_TEMP/dependency-acquisition/work"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: pinned-bun-dependency-caches
+          path: |
+            ${{ runner.temp }}/dependency-acquisition/work/receipts/
+            ${{ runner.temp }}/dependency-acquisition/work/dependency-caches.tar.gz
+          retention-days: 7
+      - name: Unmount disposable filesystem
+        if: always()
+        shell: bash
+        run: |
+          if mountpoint -q "$RUNNER_TEMP/dependency-acquisition"; then
+            sudo umount "$RUNNER_TEMP/dependency-acquisition"
+          fi

@@ -1,0 +1,105 @@
+{
+  "source": "744846f844374847c902b5e7fd59b4342a51ef99",
+  "tools": [
+    {
+      "id": "bun-bootstrap-x86_64",
+      "url": "https://pub-5e11e972747a44bf9aaf9394f185a982.r2.dev/releases/bun-v1.3.13/bun-linux-x64.zip",
+      "license": "MIT; bundled third-party notices",
+      "provenance": "Exact pinned upstream Dockerfile mirror URL",
+      "filename": "bun-bootstrap-x86_64-bun-linux-x64.zip",
+      "sha256": "79c0771fa8b92c33aae41e15a0e0d307ea99d0e2f00317c71c6c53237a78e25a",
+      "size": 39125828,
+      "downloadedAt": "2026-09-28",
+      "trust": "Observed TLS download hash; no detached-signature verification claimed"
+    },
+    {
+      "filename": "node-v24.3.0-linux-x64.tar.gz",
+      "url": "https://nodejs.org/dist/v24.3.0/node-v24.3.0-linux-x64.tar.gz",
+      "sha256": "bbeb5fb8113b44fc30f5a5887dbc0ab66af8e56139f5f9fbe7c7a1aa056246dc",
+      "size": 56874210
+    },
+    {
+      "package": "rustc",
+      "target": "x86_64-unknown-linux-gnu",
+      "url": "https://static.rust-lang.org/dist/2026-07-20/rustc-nightly-x86_64-unknown-linux-gnu.tar.xz",
+      "filename": "rustc-nightly-x86_64-unknown-linux-gnu.tar.xz",
+      "sha256": "a0e461ac8f2ec75b38cd9590188db2d90e0acde3279434194a0ecebd7c099fa0",
+      "size": 80585304
+    },
+    {
+      "package": "cargo",
+      "target": "x86_64-unknown-linux-gnu",
+      "url": "https://static.rust-lang.org/dist/2026-07-20/cargo-nightly-x86_64-unknown-linux-gnu.tar.xz",
+      "filename": "cargo-nightly-x86_64-unknown-linux-gnu.tar.xz",
+      "sha256": "4e5500fc62034d3b42450a921f408ee9e4aacd5e6de52a78fd736d6215889a38",
+      "size": 11627936
+    },
+    {
+      "package": "rust-std",
+      "target": "x86_64-unknown-linux-gnu",
+      "url": "https://static.rust-lang.org/dist/2026-07-20/rust-std-nightly-x86_64-unknown-linux-gnu.tar.xz",
+      "filename": "rust-std-nightly-x86_64-unknown-linux-gnu.tar.xz",
+      "sha256": "4b746e74f07cc3e3a16e1c0d367183eb5ca5374d6e87b9ab2002bbd463b3f8f0",
+      "size": 31035624
+    },
+    {
+      "package": "rust-std",
+      "target": "x86_64-pc-windows-msvc",
+      "url": "https://static.rust-lang.org/dist/2026-07-20/rust-std-nightly-x86_64-pc-windows-msvc.tar.xz",
+      "filename": "rust-std-nightly-x86_64-pc-windows-msvc.tar.xz",
+      "sha256": "ba96f3a8c48c40cb401e51e527a27e250a55122f169dfc5258174506bb62a896",
+      "size": 23122248
+    },
+    {
+      "package": "rust-std",
+      "target": "aarch64-pc-windows-msvc",
+      "url": "https://static.rust-lang.org/dist/2026-07-20/rust-std-nightly-aarch64-pc-windows-msvc.tar.xz",
+      "filename": "rust-std-nightly-aarch64-pc-windows-msvc.tar.xz",
+      "sha256": "6342c210441433253dfc3f99964778931ed172df9dfc14bfe0ebcc7887749790",
+      "size": 23126456
+    },
+    {
+      "package": "rust-src",
+      "target": "*",
+      "url": "https://static.rust-lang.org/dist/2026-07-20/rust-src-nightly.tar.xz",
+      "filename": "rust-src-nightly.tar.xz",
+      "sha256": "d4ffe57cc99d8846761bdbefc631bfd8f06fc001d7208576887e381c5709341a",
+      "size": 5804680
+    }
+  ],
+  "nativePathDependencies": [
+    {
+      "name": "lolhtml",
+      "url": "https://github.com/oven-sh/lol-html/archive/725ce499aa9b71e38b7a2d0a9fbb6d7294a4079e.tar.gz",
+      "sourceIdentity": "725ce499aa9b71e38b7a2d0a9fbb6d7294a4079e",
+      "platforms": [
+        "x64",
+        "arm64"
+      ],
+      "cacheKey": "d63099fc6ce4f6e5281d442e8feb24e9",
+      "bytes": 570130,
+      "sha256": "afd83edbe1a2d4accb72e869cd4218bb8665fda2b7cb2c5106fc4be80001a748",
+      "executed": false
+    },
+    {
+      "name": "rust-argon2",
+      "url": "https://github.com/sru-systems/rust-argon2/archive/ed81866f163f0c7026aa6fd8388adf37242eb32a.tar.gz",
+      "sourceIdentity": "ed81866f163f0c7026aa6fd8388adf37242eb32a",
+      "platforms": [
+        "x64",
+        "arm64"
+      ],
+      "cacheKey": "87c5404c7fc9aa9ce3a44b8b1929b357",
+      "bytes": 30025,
+      "sha256": "e77c797444f191faf488d49c76c4f45c10b3d9275e0364ee10b6d05cfbe57baf",
+      "executed": false
+    }
+  ],
+  "locks": {
+    "Cargo.lock": "5c3a9f56eef147f4110114694f44797d66290813513add281a5403f633c1e381",
+    "bun.lock": "cbf7580281d42a634da110c60541cccdc91f3ef563f37c15684a6f15ade0ed38",
+    "packages/bun-error/bun.lock": "e5f358227dd67c5c14ddbe5fe3348e2fbffb1399382909eda00e606b178a313d",
+    "src/node-fallbacks/bun.lock": "f2694f1fbc8689075bf005d90cecaeb393967cf96b735a8315198144278ea11d"
+  },
+  "argonPatchSha256": "253cd46b1759dd8aa0aa3ea25db424dcc611cd1554e27aa5989b2c1f2ed2e88e"
+}
