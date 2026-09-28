@@ -90,7 +90,13 @@ describe('RelayAgentHookServer Codex subagent transcript polling', () => {
     dirs.push(dir)
     const parentPath = join(dir, 'rollout-parent.jsonl')
     const turnMarker = (type: string): string =>
-      line({ type: 'event_msg', payload: { type, turn_id: 'turn-1' } })
+      line({
+        type: 'event_msg',
+        payload:
+          type === 'turn_aborted'
+            ? { type, turn_id: 'turn-1', reason: 'interrupted' }
+            : { type, turn_id: 'turn-1' }
+      })
     writeFileSync(parentPath, turnMarker('task_started'))
     const forward = vi.fn<(envelope: AgentHookRelayEnvelope) => void>()
     const server = new RelayAgentHookServer({ endpointDir: dir, forward })
@@ -130,6 +136,10 @@ describe('RelayAgentHookServer Codex subagent transcript polling', () => {
         },
         { timeout: 3_000, interval: 50 }
       )
+      // A read of the rollout, not a replay of the last hook: no hook name, no prompt boundary.
+      expect(forward.mock.calls.at(-1)?.[0]).toMatchObject({ source: 'codex', paneKey: PANE_KEY })
+      expect(forward.mock.calls.at(-1)?.[0].hookEventName).toBeUndefined()
+      expect(forward.mock.calls.at(-1)?.[0].hasExplicitPrompt).toBeUndefined()
     } finally {
       server.stop()
     }

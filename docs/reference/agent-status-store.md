@@ -229,10 +229,19 @@ server's re-check both refuse a Codex keypress inference
 (`isInconclusiveInterruptIntent`). Codex writes `turn_aborted` (or
 `task_complete`) to its rollout right after it runs the Interrupt (or Stop)
 hook, whether or not the hook was delivered, and it kills a slow Interrupt hook
-at 3 seconds, so the execution host's
-listener also reads the pane's parent rollout: every Codex event, and a
-one-second poll while the main agent's turn is open, settles that turn from the
-rollout when its hook was lost or never registered (Codex before 0.150).
+at 3 seconds, so the execution host (main for a local pane, the relay for an SSH
+one) also reads the pane's parent rollout. Every Codex event catches up on it
+first, and the Codex rollout watch (`codex-rollout-watch.ts`) reads it once a
+second while the main agent's turn is open (by its own record or the rollout's)
+or rollout-tracked children run. The watch reads; it never replays a hook body.
+It rebuilds the row from the current records and publishes it with no hook name
+or explicit prompt, so it restates the row rather than starting a turn, and its
+life follows the pane's records, not the identity of the row it last published.
+The rollout's turns are tracked by id: the open turn, plus a bounded window of
+ended turns with how each ended. Only a `turn_aborted` whose reason is
+`interrupted` is a cancellation; `replaced`, `review_ended` and `budget_limited`
+end the turn with no verdict. This settles the turn when its hook was lost or
+never registered (Codex before 0.150).
 
 Admission is one function, `normalizeAgentStatusPayload`, on the relay wire,
 IPC and disk. A malformed `mainAgent` drops the field and keeps the row. Old hosts
@@ -305,16 +314,26 @@ with their own child evidence.
 Codex rows bypass that hold, because Codex names the turn every fact belongs
 to. The Codex main agent record carries Codex's `turn_id` (on every root hook
 but `SessionStart`, and on the rollout's turn markers), and a turn ends once:
-after Interrupt for turn X, or once the rollout records X complete, a later
-fact for X (a hook the cancel overtook, a poll's replayed body, a Stop racing
-the Interrupt) restates it and changes nothing, while any root hook for another
-turn is Codex working again, including a turn Codex starts without a prompt.
-Stop alone does not end X for good: a Stop hook that blocks makes Codex
-continue the same turn, so a later root hook for X reads working again. The record lives only on the
-execution host's listener and is not persisted: hydration seeds it from the
-row's `mainAgent` without a turn id, and the next root hook teaches the id
-again. For a relayed pane the relay applies that rule to the raw hooks and its
-own rollout; main mirrors the relay's `mainAgent`, and keeps its copy only to
+after Interrupt for turn X, or once the rollout records X ended, a later
+fact for X (a hook the cancel overtook, a Stop racing the Interrupt) restates
+it and changes nothing, and so does a late hook for any turn the rollout already
+ended, while a root hook for any other turn is Codex working again, including a
+turn Codex starts without a prompt. Stop alone does not end X for good: a Stop
+hook that blocks makes Codex continue the same turn, so a later root hook for X
+reads working again. A root hook with no turn id (`SessionStart`, or a Codex
+build that omits it) belongs to the turn the rollout shows open, and a record
+with no id adopts that turn when the rollout shows it. `SessionStart` with
+source `compact` fires mid-turn in the same session and rollout, so it keeps
+the roster, the rollout state and the turn; only a real session start
+(startup, resume, clear, fork) drops them, and a changed rollout path resets
+the rollout state on its own. The record lives only on the execution host's
+listener and is not persisted: hydration seeds it from the row's `mainAgent`
+without a turn id, then reads the row's saved rollout (`providerSession.transcriptPath`)
+once, adopting the rollout's open turn or, with none open, its latest one, so a
+turn that ended while Orca was down settles on the watch's first tick. For a
+relayed pane the relay applies that rule to the raw hooks and its own rollout;
+main mirrors the relay's `mainAgent` and, for the relay's rollout observations
+(source `codex`, no hook name), its whole roster, and keeps its copy only to
 fill a child event a restarted relay publishes without one.
 
 ## PR 1b: the runtime's retained row store is deleted

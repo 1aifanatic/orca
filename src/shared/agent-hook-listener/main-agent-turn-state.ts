@@ -36,6 +36,6 @@ export type CodexLeadTurnState = {
   /** Codex's id for the turn this record describes: `turn_id` on every root hook but SessionStart,
    *  and on the rollout's turn markers. It decides whether a later fact restates this turn or
    *  starts another. Held only by the execution host's listener, never persisted: after a restart
-   *  the next root hook teaches it again. */
+   *  it is re-read from the rollout the saved row names. */
   turnId?: string
 }

@@ -80,10 +80,11 @@ export abstract class AgentHookServerStatusUpdate extends AgentHookServerStatusA
       this.emitEnrichedStatus(enriched)
       return enriched
     }
+    // Why `source`: a relay's Codex rollout observation carries no hook name, unlike an OSC row.
     const stateReconciledPayload =
       terminalOwnedPayload.connectionId &&
       terminalOwnedPayload.payload.agentType === 'codex' &&
-      terminalOwnedPayload.hookEventName
+      (terminalOwnedPayload.hookEventName || terminalOwnedPayload.source === 'codex')
         ? {
             ...terminalOwnedPayload,
             payload: reconcileRemoteCodexState(

@@ -296,8 +296,13 @@ describe('a lost Codex Interrupt, settled from the turn_aborted Codex writes aft
     dirs.length = 0
   })
 
+  // Shaped as Codex writes it: `turn_aborted` carries its `TurnAbortReason`.
   function rolloutLine(type: string, turnId: unknown): string {
-    return `${JSON.stringify({ type: 'event_msg', payload: { type, turn_id: turnId } })}\n`
+    const payload =
+      type === 'turn_aborted'
+        ? { type, turn_id: turnId, reason: 'interrupted' }
+        : { type, turn_id: turnId }
+    return `${JSON.stringify({ type: 'event_msg', payload })}\n`
   }
 
   /** The run's hooks up to its lost cancel, with the parent rollout moved to a writable file. */
@@ -334,7 +339,7 @@ describe('a lost Codex Interrupt, settled from the turn_aborted Codex writes aft
     }
   }
 
-  it('reads the cancel from turn_aborted within one poll, with no further hook', async () => {
+  it('reads the cancel from turn_aborted within one rollout read, with no further hook', async () => {
     const { rollout, turn, before, after, post } = setUp()
     // The capture itself: nothing restates or ends the main agent's turn after the Esc.
     expect(

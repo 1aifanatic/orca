@@ -23,9 +23,11 @@ import type { HookListenerState } from '../listener-state'
 import { resolvePrompt, resolveToolState } from '../prompt-fields'
 import { extractToolFields, isNewTurnEvent } from '../provider-event-routing'
 import { readString } from '../tool-input-preview'
+import { catchUpOnCodexParentRollout } from './codex-rollout-reader'
 import {
-  catchUpOnCodexParentRollout,
   codexMainAgentStatusForPayload,
+  codexRolloutOpenTurnId,
+  codexRolloutTurnEnd,
   getOrCreateCodexSubagentRoster,
   getOrCreateCodexSubagentTranscriptState,
   hasCodexTranscriptSubagents,
@@ -171,7 +173,10 @@ export function normalizeCodexEvent(
 
   const agentId = readString(hookPayload, 'agent_id')
   const transcriptPath = readFirstString(hookPayload, ['transcript_path', 'transcriptPath'])
-  if (eventName === 'SessionStart' && !agentId) {
+  // Why: compaction fires SessionStart mid-turn in the same session and rollout; only a real
+  // session start (startup, resume, clear, fork) may drop what the pane's rollout established.
+  const compaction = eventName === 'SessionStart' && readString(hookPayload, 'source') === 'compact'
+  if (eventName === 'SessionStart' && !agentId && !compaction) {
     // Why: a pane can host a new Codex process after the old one exited without child Stop hooks.
     state.codexSubagentRosterByPaneKey.delete(paneKey)
     state.codexSubagentTranscriptByPaneKey.delete(paneKey)
@@ -219,10 +224,19 @@ export function normalizeCodexEvent(
     stateName
   )
   const previousLead = state.codexLeadStateByPaneKey.get(paneKey)
+  const previousTurnId = previousLead?.turnId
+  // Why: SessionStart carries no turn_id. It belongs to the turn Codex has open, and a compaction
+  // continues the root's own turn while Codex has not ended it.
+  const turnId =
+    readString(hookPayload, 'turn_id') ??
+    codexRolloutOpenTurnId(state, paneKey) ??
+    (compaction && previousTurnId && !codexRolloutTurnEnd(state, paneKey, previousTurnId)
+      ? previousTurnId
+      : undefined)
   const record = setCodexMainAgentTurnState(state, paneKey, {
     state: ownedState,
     ...(eventName === 'Interrupt' ? { outcome: 'cancellation' as const } : {}),
-    turnId: readString(hookPayload, 'turn_id'),
+    turnId,
     model:
       normalizeOptionalField(hookPayload['model'], AGENT_MODEL_MAX_LENGTH) ??
       (eventName === 'SessionStart' ? undefined : previousLead?.model)

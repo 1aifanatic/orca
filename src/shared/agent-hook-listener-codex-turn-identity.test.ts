@@ -1,6 +1,6 @@
-// A Codex turn ends once. Codex's own report of the end (its Interrupt or Stop hook, or the marker
-// it writes to its rollout) settles the turn it names; once the turn is over, a later fact for it
-// is a restatement, and a fact for any other turn is Codex working again. A Stop alone is not the
+// A Codex turn ends once. Codex's own report of the end (its Interrupt hook, or the marker it
+// writes to its rollout) settles the turn it names; once the turn is over, a later fact for it is
+// a restatement, and a fact for any other turn is Codex working again. A Stop alone is not the
 // end: a Stop hook that blocks makes Codex continue the same turn.
 import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -8,13 +8,14 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   createHookListenerState,
+  seedLegacyAgentStatusForTests,
   type HookListenerState
 } from './agent-hook-listener/listener-state'
 import {
-  shouldPollHookTranscript,
-  transcriptPollUpdate
-} from './agent-hook-listener/transcript-poll-policy'
-import { normalizeAndAccept } from './agent-hook-listener-test-harness'
+  codexRolloutNeedsWatch,
+  observeCodexRollout
+} from './agent-hook-listener/providers/codex-rollout-reader'
+import { normalizeAndAccept, PANE_KEY } from './agent-hook-listener-test-harness'
 
 describe('the Codex main agent turn, decided by turn id', () => {
   let state: HookListenerState
@@ -106,8 +107,18 @@ describe("the Codex main agent turn, settled from Codex's rollout", () => {
     rmSync(dir, { recursive: true, force: true })
   })
 
-  function marker(type: string, turnId: string): string {
-    return `${JSON.stringify({ type: 'event_msg', payload: { type, turn_id: turnId } })}\n`
+  // Shapes as Codex writes them: `turn_aborted` carries its `TurnAbortReason` in snake_case.
+  function marker(type: string, turnId: string, reason = 'interrupted'): string {
+    const payload =
+      type === 'turn_aborted' ? { type, turn_id: turnId, reason } : { type, turn_id: turnId }
+    return `${JSON.stringify({ type: 'event_msg', payload })}\n`
+  }
+
+  function childStarted(threadId: string): string {
+    return `${JSON.stringify({
+      type: 'event_msg',
+      payload: { type: 'sub_agent_activity', agent_thread_id: threadId, kind: 'started' }
+    })}\n`
   }
 
   const hook = (payload: Record<string, unknown>) =>
@@ -134,10 +145,35 @@ describe("the Codex main agent turn, settled from Codex's rollout", () => {
     hook({ hook_event_name: 'UserPromptSubmit', prompt: 'go', turn_id: 'turn-1' })
     appendFileSync(rollout, marker('task_complete', 'turn-1'))
 
-    const replayed = hook({ hook_event_name: 'PreToolUse', turn_id: 'turn-1', tool_name: 'Bash' })
-    expect(replayed?.payload.mainAgent).toEqual({
+    const restated = hook({ hook_event_name: 'PreToolUse', turn_id: 'turn-1', tool_name: 'Bash' })
+    expect(restated?.payload.mainAgent).toEqual({
       state: 'done',
       stateStartedAt: expect.any(Number)
+    })
+  })
+
+  it.each([
+    ['replaced', 'a new task took the turn over'],
+    ['review_ended', 'review mode ended'],
+    ['budget_limited', 'the token budget ran out']
+  ])('reads an abort for %s (%s) as an end nobody cancelled', (reason) => {
+    hook({ hook_event_name: 'UserPromptSubmit', prompt: 'go', turn_id: 'turn-1' })
+    appendFileSync(rollout, marker('turn_aborted', 'turn-1', reason))
+
+    const observed = observeCodexRollout(state, PANE_KEY)
+    expect(observed?.payload).toMatchObject({ state: 'done', mainAgent: { state: 'done' } })
+    expect(observed?.payload.mainAgent?.outcome).toBeUndefined()
+    expect(observed?.payload.interrupted).toBeUndefined()
+  })
+
+  it("reads the current turn's end when a later turn's start lands in the same read", () => {
+    hook({ hook_event_name: 'UserPromptSubmit', prompt: 'go', turn_id: 'turn-1' })
+    appendFileSync(rollout, marker('turn_aborted', 'turn-1') + marker('task_started', 'turn-2'))
+
+    expect(observeCodexRollout(state, PANE_KEY)?.payload).toMatchObject({
+      state: 'done',
+      interrupted: true,
+      mainAgent: { state: 'done', outcome: 'cancellation' }
     })
   })
 
@@ -157,6 +193,16 @@ describe("the Codex main agent turn, settled from Codex's rollout", () => {
     }
   })
 
+  it('ignores a late hook for a turn the rollout ended while the next turn runs', () => {
+    hook({ hook_event_name: 'UserPromptSubmit', prompt: 'go', turn_id: 'turn-1' })
+    appendFileSync(rollout, marker('task_complete', 'turn-1') + marker('task_started', 'turn-2'))
+    hook({ hook_event_name: 'UserPromptSubmit', prompt: 'more', turn_id: 'turn-2' })
+
+    expect(hook({ hook_event_name: 'Stop', turn_id: 'turn-1' })?.payload.mainAgent).toMatchObject({
+      state: 'working'
+    })
+  })
+
   it("ignores another turn's end", () => {
     hook({ hook_event_name: 'UserPromptSubmit', prompt: 'go', turn_id: 'turn-2' })
     appendFileSync(rollout, marker('turn_aborted', 'turn-1'))
@@ -167,31 +213,73 @@ describe("the Codex main agent turn, settled from Codex's rollout", () => {
     ).toMatchObject({ state: 'working' })
   })
 
-  it('polls while the turn is open and stops once it ends', () => {
-    const working = hook({ hook_event_name: 'UserPromptSubmit', prompt: 'go', turn_id: 'turn-1' })!
-    expect(shouldPollHookTranscript(state, 'codex', working)).toBe(true)
-
+  it('adopts the open turn for hooks that carry no turn id, and settles it from the rollout', () => {
+    // SessionStart never carries turn_id, and some Codex builds omit it on every hook.
+    hook({ hook_event_name: 'SessionStart', source: 'startup' })
+    hook({ hook_event_name: 'UserPromptSubmit', prompt: 'go' })
     appendFileSync(rollout, marker('turn_aborted', 'turn-1'))
-    // The poll replays the last body; what it reads from the rollout is what it publishes.
-    const polled = hook({ hook_event_name: 'UserPromptSubmit', prompt: 'go', turn_id: 'turn-1' })!
-    expect(transcriptPollUpdate('codex', working, polled)?.payload.mainAgent).toMatchObject({
+
+    expect(observeCodexRollout(state, PANE_KEY)?.payload.mainAgent).toMatchObject({
       state: 'done',
       outcome: 'cancellation'
     })
-    expect(shouldPollHookTranscript(state, 'codex', polled)).toBe(false)
-    expect(transcriptPollUpdate('codex', polled, polled)).toBeUndefined()
   })
 
-  it('does not poll a turn it cannot settle: no rollout, or no turn id to match', () => {
+  it('keeps the roster and the turn through a mid-turn compaction', () => {
+    hook({ hook_event_name: 'UserPromptSubmit', prompt: 'go', turn_id: 'turn-1' })
+    hook({ hook_event_name: 'SubagentStart', agent_id: 'agent-1' })
+    const compacted = hook({ hook_event_name: 'SessionStart', source: 'compact' })
+    expect(compacted?.payload).toMatchObject({
+      state: 'working',
+      subagents: [expect.objectContaining({ id: 'agent-1' })]
+    })
+
+    appendFileSync(rollout, marker('turn_aborted', 'turn-1'))
+    expect(observeCodexRollout(state, PANE_KEY)?.payload).toMatchObject({
+      state: 'working',
+      mainAgent: { state: 'done', outcome: 'cancellation' },
+      subagents: [expect.objectContaining({ id: 'agent-1' })]
+    })
+  })
+
+  it('keeps the turn id through a compaction whose rollout shows no open turn', () => {
+    rmSync(rollout)
+    writeFileSync(rollout, childStarted('019fa65f-3144-7151-9c02-cff7a28f316f'))
+    hook({ hook_event_name: 'UserPromptSubmit', prompt: 'go', turn_id: 'turn-1' })
+    hook({ hook_event_name: 'SessionStart', source: 'compact' })
+    appendFileSync(rollout, marker('turn_aborted', 'turn-1'))
+
+    expect(observeCodexRollout(state, PANE_KEY)?.payload.mainAgent).toMatchObject({
+      state: 'done',
+      outcome: 'cancellation'
+    })
+  })
+
+  it('watches while a turn is open, publishing only what changed, and stops once it ends', () => {
+    hook({ hook_event_name: 'UserPromptSubmit', prompt: 'go', turn_id: 'turn-1' })
+    expect(codexRolloutNeedsWatch(state, PANE_KEY)).toBe(true)
+    expect(observeCodexRollout(state, PANE_KEY)).toBeUndefined()
+
+    appendFileSync(rollout, marker('turn_aborted', 'turn-1'))
+    const observed = observeCodexRollout(state, PANE_KEY)
+    // An observation restates the row: no hook name, no prompt boundary.
+    expect(observed).toMatchObject({
+      paneKey: PANE_KEY,
+      payload: { state: 'done', prompt: 'go', mainAgent: { outcome: 'cancellation' } }
+    })
+    expect(observed?.hookEventName).toBeUndefined()
+    expect(observed?.hasExplicitPrompt).toBeUndefined()
+    seedLegacyAgentStatusForTests(state, observed!)
+    expect(codexRolloutNeedsWatch(state, PANE_KEY)).toBe(false)
+  })
+
+  it('does not watch a pane with no rollout to read', () => {
     const noRollout = createHookListenerState()
-    const event = normalizeAndAccept(noRollout, 'codex', {
+    normalizeAndAccept(noRollout, 'codex', {
       hook_event_name: 'UserPromptSubmit',
       prompt: 'go',
       turn_id: 'turn-1'
-    })!
-    expect(shouldPollHookTranscript(noRollout, 'codex', event)).toBe(false)
-
-    const unnamed = hook({ hook_event_name: 'UserPromptSubmit', prompt: 'go' })!
-    expect(shouldPollHookTranscript(state, 'codex', unnamed)).toBe(false)
+    })
+    expect(codexRolloutNeedsWatch(noRollout, PANE_KEY)).toBe(false)
   })
 })
