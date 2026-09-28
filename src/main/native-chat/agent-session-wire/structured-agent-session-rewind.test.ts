@@ -344,6 +344,46 @@ describe('host rewind', () => {
     expect(await host.rewind(caller, await params(target))).toMatchObject({ ok: true })
   })
 
+  // The journal is replaced only once the provider proves the revert, so both still hold the turn.
+  it('settles an acknowledged revert the provider did not keep, so the chat attaches and sends', async () => {
+    const target = await seed()
+    const before = await host.journalSnapshot(HOST_TEST_SESSION)
+    rewind.mockImplementationOnce(async (input) => {
+      await input.onReverted?.()
+      throw new Error('history unavailable')
+    })
+    await expect(host.rewind(caller, await params(target))).rejects.toThrow('history unavailable')
+    expect(store.getRecord(HOST_TEST_SESSION)?.rewind).toMatchObject({
+      phase: 'prepared',
+      providerApplied: true
+    })
+    recoverRewind.mockResolvedValueOnce({ ok: false, reason: 'provider-refused' })
+    expect(
+      await host.attach(
+        caller,
+        hostTestAttachParams(store.getRecord(HOST_TEST_SESSION)!.lease.runtimeFence)
+      )
+    ).toMatchObject({ ok: true })
+    expect(await host.journalSnapshot(HOST_TEST_SESSION)).toEqual(before)
+    expect(store.getRecord(HOST_TEST_SESSION)?.rewind?.phase).toBe('refused')
+    const body = hostTestMessage('after the refused rewind')
+    expect(
+      await host.send(caller, {
+        body,
+        envelope: {
+          sessionId: HOST_TEST_SESSION,
+          clientOperationId: hostTestOperationId(),
+          expectedRuntimeFence: store.getRecord(HOST_TEST_SESSION)!.lease.runtimeFence,
+          payloadFingerprint: computeAgentSessionPayloadFingerprint({
+            method: 'agentSession.send',
+            sessionId: HOST_TEST_SESSION,
+            fields: { body }
+          })
+        }
+      })
+    ).toMatchObject({ ok: true })
+  })
+
   it('keeps host-stamped turn and goal rows through a Codex provider hydration', async () => {
     expect(await host.attach(caller, hostTestAttachParams(null))).toMatchObject({ ok: true })
     const message = (turnId: string) => ({
