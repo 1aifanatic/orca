@@ -147,7 +147,7 @@ describe('registerWorktreeHandlers', () => {
     expect(store.removeWorktreeMeta).toHaveBeenCalledWith(
       'repo-1::/workspace/already-deleted-wt',
       'local',
-      { pruneCloseRecords: true }
+      { cause: 'removed' }
     )
     expect(deleteWorktreeHistoryDirMock).toHaveBeenCalledWith(
       'repo-1::/workspace/already-deleted-wt'
@@ -172,7 +172,7 @@ describe('registerWorktreeHandlers', () => {
     expect(removeWorktreeMock).not.toHaveBeenCalled()
     expect(runtimeStub.clearOptimisticReconcileToken).toHaveBeenCalledWith(worktreeId)
     expect(store.removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'local', {
-      pruneCloseRecords: true
+      cause: 'removed'
     })
     expect(deleteWorktreeHistoryDirMock).toHaveBeenCalledWith(worktreeId)
     expect(mainWindow.webContents.send).toHaveBeenCalledWith('worktrees:changed', {
@@ -197,7 +197,7 @@ describe('registerWorktreeHandlers', () => {
     expect(store.removeWorktreeMeta).toHaveBeenCalledWith(
       'repo-1::/workspace/already-deleted-wt',
       'local',
-      { pruneCloseRecords: true }
+      { cause: 'removed' }
     )
     expect(deleteWorktreeHistoryDirMock).toHaveBeenCalledWith(
       'repo-1::/workspace/already-deleted-wt'
@@ -245,7 +245,7 @@ describe('registerWorktreeHandlers', () => {
       expect(removeWorktreeMock).not.toHaveBeenCalled()
       expect(runtimeStub.clearOptimisticReconcileToken).toHaveBeenCalledWith(worktreeId)
       expect(store.removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'local', {
-        pruneCloseRecords: true
+        cause: 'removed'
       })
       expect(deleteWorktreeHistoryDirMock).toHaveBeenCalledWith(worktreeId)
       expect(mainWindow.webContents.send).toHaveBeenCalledWith('worktrees:changed', {
@@ -342,7 +342,7 @@ describe('registerWorktreeHandlers', () => {
       expect(removeWorktreeMock).not.toHaveBeenCalled()
       expect(runtimeStub.clearOptimisticReconcileToken).toHaveBeenCalledWith(worktreeId)
       expect(store.removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'local', {
-        pruneCloseRecords: true
+        cause: 'removed'
       })
       expect(deleteWorktreeHistoryDirMock).toHaveBeenCalledWith(worktreeId)
       expect(mainWindow.webContents.send).toHaveBeenCalledWith('worktrees:changed', {

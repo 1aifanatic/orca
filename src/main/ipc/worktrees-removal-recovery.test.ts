@@ -162,7 +162,7 @@ describe('registerWorktreeHandlers', () => {
     await handlers['worktrees:remove'](null, { worktreeId, hostId: 'local' })
 
     expect(store.removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'local', {
-      pruneCloseRecords: true
+      cause: 'removed'
     })
     expect(advertisedUrlWatcherForgetWorktreeMock).not.toHaveBeenCalled()
     expect(deleteWorktreeHistoryDirMock).not.toHaveBeenCalled()
@@ -277,7 +277,7 @@ describe('registerWorktreeHandlers', () => {
     expect(store.removeWorktreeMeta).toHaveBeenCalledWith(
       'repo-1::/workspace/feature-wt',
       'local',
-      { pruneCloseRecords: true }
+      { cause: 'removed' }
     )
     expect(deleteWorktreeHistoryDirMock).toHaveBeenCalledWith('repo-1::/workspace/feature-wt')
     expect(mainWindow.webContents.send).toHaveBeenCalledWith('worktrees:changed', {
@@ -331,7 +331,7 @@ describe('registerWorktreeHandlers', () => {
           catalogVersion: anyCatalogVersion
         })
         expect(store.removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'local', {
-          pruneCloseRecords: true
+          cause: 'removed'
         })
         expect(finish).toHaveBeenLastCalledWith(true)
       } finally {
@@ -377,7 +377,7 @@ describe('registerWorktreeHandlers', () => {
         cwd: '/workspace/repo'
       })
       expect(store.removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'local', {
-        pruneCloseRecords: true
+        cause: 'removed'
       })
       expect(mainWindow.webContents.send).toHaveBeenCalledWith('worktrees:changed', {
         repoId: 'repo-1'
@@ -502,7 +502,7 @@ describe('registerWorktreeHandlers', () => {
         cwd: '/workspace/repo'
       })
       expect(store.removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'local', {
-        pruneCloseRecords: true
+        cause: 'removed'
       })
     }
   )
@@ -529,7 +529,7 @@ describe('registerWorktreeHandlers', () => {
         cwd: '/workspace/repo'
       })
       expect(store.removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'local', {
-        pruneCloseRecords: true
+        cause: 'removed'
       })
       expect((await lstat(markerPath)).isFile()).toBe(true)
     } finally {
@@ -618,7 +618,7 @@ describe('registerWorktreeHandlers', () => {
       store.removeWorktreeMeta.mock.invocationCallOrder[0]
     )
     expect(store.removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'local', {
-      pruneCloseRecords: true
+      cause: 'removed'
     })
     expect(advertisedUrlWatcherForgetWorktreeMock).toHaveBeenCalledWith(worktreeId)
     expect(deleteWorktreeHistoryDirMock).toHaveBeenCalledWith(worktreeId)
@@ -642,7 +642,7 @@ describe('registerWorktreeHandlers', () => {
     await handlers['worktrees:remove'](null, { worktreeId })
 
     expect(store.removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'local', {
-      pruneCloseRecords: true
+      cause: 'removed'
     })
     expect(mainWindow.webContents.send).toHaveBeenCalledWith('worktrees:changed', {
       repoId: 'repo-folder'
@@ -684,7 +684,7 @@ describe('registerWorktreeHandlers', () => {
       closeStructuredSessions: true
     })
     expect(store.removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'ssh:conn-1', {
-      pruneCloseRecords: true
+      cause: 'removed'
     })
     expect(advertisedUrlWatcherForgetWorktreeMock).not.toHaveBeenCalled()
     expect(deleteWorktreeHistoryDirMock).not.toHaveBeenCalled()

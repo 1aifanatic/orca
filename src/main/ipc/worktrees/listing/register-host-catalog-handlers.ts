@@ -143,7 +143,7 @@ export function registerHostCatalogHandlers(context: WorktreeIpcContext): void {
         if (meta.hostId && meta.hostId !== requestedExecutionHostId) {
           continue
         }
-        store.removeWorktreeMeta(worktreeId, requestedExecutionHostId)
+        store.removeWorktreeMeta(worktreeId, requestedExecutionHostId, { cause: 'unlisted' })
         forgottenWorktreeIds.push(worktreeId)
       }
       if (forgottenWorktreeIds.length > 0) {

@@ -145,7 +145,7 @@ describe('registerWorktreeHandlers', () => {
       expect(runtimeStub.clearOptimisticReconcileToken).toHaveBeenCalledWith(worktreeId)
       // The purge must be scoped to the same owner the sweep used, or the ssh:* partition keeps this worktree's session state.
       expect(store.removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'ssh:ssh-dead', {
-        pruneCloseRecords: true
+        cause: 'forgotten'
       })
       expect(advertisedUrlWatcherForgetWorktreeMock).toHaveBeenCalledWith(worktreeId)
       expect(deleteWorktreeHistoryDirMock).toHaveBeenCalledWith(worktreeId)
@@ -166,7 +166,7 @@ describe('registerWorktreeHandlers', () => {
       await expect(handlers['worktrees:forgetLocal'](null, { worktreeId })).resolves.toEqual({})
 
       expect(store.removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'local', {
-        pruneCloseRecords: true
+        cause: 'forgotten'
       })
       expect(mainWindow.webContents.send).toHaveBeenCalledWith('worktrees:changed', {
         repoId: 'repo-1'
@@ -235,7 +235,7 @@ describe('registerWorktreeHandlers', () => {
         'Access denied: unknown repository or worktree path'
       )
       expect(store.removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'runtime:env-1', {
-        pruneCloseRecords: true
+        cause: 'forgotten'
       })
       expect(runtimeStub.clearOptimisticReconcileToken).toHaveBeenCalledWith(worktreeId)
       expect(mainWindow.webContents.send).toHaveBeenCalledWith('worktrees:changed', {
@@ -268,7 +268,7 @@ describe('registerWorktreeHandlers', () => {
 
       // Without the resolved owner the purge resolves to [local] only and ssh:ssh-live keeps tabsByWorktree et al. forever.
       expect(store.removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'ssh:ssh-live', {
-        pruneCloseRecords: true
+        cause: 'forgotten'
       })
     })
 
@@ -316,7 +316,7 @@ describe('registerWorktreeHandlers', () => {
       await expect(handlers['worktrees:forgetLocal'](null, { worktreeId })).resolves.toEqual({})
 
       expect(store.removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'local', {
-        pruneCloseRecords: true
+        cause: 'forgotten'
       })
       expect(getSshPtyProviderMock).not.toHaveBeenCalled()
     })
@@ -362,7 +362,7 @@ describe('registerWorktreeHandlers', () => {
       ).resolves.toEqual({})
 
       expect(store.removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'ssh:removed', {
-        pruneCloseRecords: true
+        cause: 'forgotten'
       })
     })
   })

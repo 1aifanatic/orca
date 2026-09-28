@@ -78,24 +78,27 @@ describe('close records on workspace removal', () => {
     rmSync(testState.dir, { recursive: true, force: true })
   })
 
-  it('drops only the removed worktree’s records on a confirmed local removal', async () => {
-    const store = await createStore()
-    store.setWorktreeMeta(REMOVED, {})
-    store.setWorkspaceSession(
-      sessionWithRecords(
-        records([
-          ['closed-removed', REMOVED],
-          ['closed-kept', KEPT]
-        ])
+  it.each(['removed', 'forgotten'] as const)(
+    'drops only that worktree’s records when it is %s',
+    async (cause) => {
+      const store = await createStore()
+      store.setWorktreeMeta(REMOVED, {})
+      store.setWorkspaceSession(
+        sessionWithRecords(
+          records([
+            ['closed-removed', REMOVED],
+            ['closed-kept', KEPT]
+          ])
+        )
       )
-    )
 
-    store.removeWorktreeMeta(REMOVED, undefined, { pruneCloseRecords: true })
+      store.removeWorktreeMeta(REMOVED, undefined, { cause })
 
-    expect(
-      Object.keys(store.getWorkspaceSession().closedTerminalTabTombstonesByTabId ?? {})
-    ).toEqual(['closed-kept'])
-  })
+      expect(
+        Object.keys(store.getWorkspaceSession().closedTerminalTabTombstonesByTabId ?? {})
+      ).toEqual(['closed-kept'])
+    }
+  )
 
   it('drops the records in the SSH host’s partition on a confirmed remote removal', async () => {
     const store = await createStore()
@@ -110,24 +113,47 @@ describe('close records on workspace removal', () => {
       SSH_HOST
     )
 
-    store.removeWorktreeMeta(REMOVED, SSH_HOST, { pruneCloseRecords: true })
+    store.removeWorktreeMeta(REMOVED, SSH_HOST, { cause: 'removed' })
 
     expect(
       Object.keys(store.getWorkspaceSession(SSH_HOST).closedTerminalTabTombstonesByTabId ?? {})
     ).toEqual(['closed-kept'])
   })
 
-  // Why: a host scan that stops listing a worktree (or an unreachable host) is no proof it is gone.
-  it('keeps the records when the removal is not a confirmed one', async () => {
+  // Why: a host scan that stops listing a worktree is no proof it is gone.
+  it('keeps the records when the worktree only dropped out of its host’s listing', async () => {
     const store = await createStore()
     store.setWorktreeMeta(REMOVED, { hostId: SSH_HOST })
     store.setWorkspaceSession(sessionWithRecords(records([['closed-removed', REMOVED]])), SSH_HOST)
 
-    store.removeWorktreeMeta(REMOVED, SSH_HOST)
+    store.removeWorktreeMeta(REMOVED, SSH_HOST, { cause: 'unlisted' })
 
     expect(
       store.getWorkspaceSession(SSH_HOST).closedTerminalTabTombstonesByTabId?.['closed-removed']
     ).toBeDefined()
+  })
+
+  // Why: repo ids and paths repeat across hosts; the local owner of the same id is still live.
+  it('keeps a same-id worktree’s records on another host when one host’s copy is removed', async () => {
+    const store = await createStore()
+    const repo = { id: 'repo-a', displayName: 'A', badgeColor: 'gray', addedAt: 1 }
+    store.addRepo({ ...repo, path: '/workspace/repo-a' })
+    store.addRepo({
+      ...repo,
+      path: '/remote/repo-a',
+      connectionId: 'target-1',
+      executionHostId: SSH_HOST
+    })
+    store.setWorktreeMeta(REMOVED, { hostId: SSH_HOST })
+    store.setWorkspaceSession(sessionWithRecords(records([['local-tab', REMOVED]])))
+    store.setWorkspaceSession(sessionWithRecords(records([['ssh-tab', REMOVED]])), SSH_HOST)
+
+    store.removeWorktreeMeta(REMOVED, SSH_HOST, { cause: 'removed' })
+
+    expect(
+      Object.keys(store.getWorkspaceSession().closedTerminalTabTombstonesByTabId ?? {})
+    ).toEqual(['local-tab'])
+    expect(store.getWorkspaceSession(SSH_HOST).closedTerminalTabTombstonesByTabId).toEqual({})
   })
 
   it('drops a removed folder workspace’s records from every partition', async () => {
@@ -199,7 +225,7 @@ describe('close records on workspace removal', () => {
       })
     )
 
-    store.removeWorktreeMeta(REMOVED, undefined, { pruneCloseRecords: true })
+    store.removeWorktreeMeta(REMOVED, undefined, { cause: 'removed' })
     let map = store.getWorkspaceSession().closedTerminalTabTombstonesByTabId
     for (let index = 0; index < 2; index += 1) {
       map = recordClosedTerminalTabTombstone(

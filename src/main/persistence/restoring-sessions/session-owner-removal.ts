@@ -9,12 +9,20 @@ import { workspaceSessionPartitionHostId } from '../../../shared/workspace-sessi
 import { omitClosedTerminalTabRecordsForWorktrees } from '../../../shared/closed-terminal-tab-tombstones'
 import { cloneWorkspaceSessionState, deleteOwnerKeyedSessionFields } from './session-owner-fields'
 
-/** `pruneCloseRecords` is set only by a confirmed removal (git/provider remove, folder or repo
- *  removal, the user's Forget); a host that merely stops listing a worktree is no proof it is gone.
- *  Leaving it unset is the safe side: the records then only wait out their TTL. */
+/** Why a workspace's rows are going. `removed`: Orca removed it, or git or its host confirmed it
+ *  gone (including a folder or project removal). `forgotten`: the user chose Forget. `unlisted`: its
+ *  host's scan stopped listing it, which is no proof it is gone. Callers state the cause; what each
+ *  one takes with it is decided here. */
+export type WorkspaceRemovalCause = 'removed' | 'forgotten' | 'unlisted'
+
 export type WorkspaceSessionOwnerRemovalOptions = {
+  cause: WorkspaceRemovalCause
   advanceTerminalTopologyRevision?: boolean
-  pruneCloseRecords?: boolean
+}
+
+// Why unlisted keeps them: a wrong scan then costs only records waiting out their TTL.
+function removalDropsCloseRecords(cause: WorkspaceRemovalCause): boolean {
+  return cause !== 'unlisted'
 }
 
 function pruneCloseRecordsForOwners(
@@ -93,7 +101,7 @@ export const workspaceSessionOwnerPartitionForHost = workspaceSessionPartitionHo
 export function removeWorkspaceSessionOwnerEverywhere(
   state: Pick<PersistedState, 'workspaceSession' | 'workspaceSessionsByHostId'>,
   ownerKey: string,
-  options: WorkspaceSessionOwnerRemovalOptions = {}
+  options: WorkspaceSessionOwnerRemovalOptions
 ): void {
   state.workspaceSession = removeWorkspaceSessionOwner(state.workspaceSession, ownerKey, options)!
   const partitions = state.workspaceSessionsByHostId
@@ -112,7 +120,7 @@ export function removeWorkspaceSessionOwnerEverywhere(
 export function removeWorkspaceSessionOwner(
   session: WorkspaceSessionState | undefined,
   ownerKey: string,
-  options: WorkspaceSessionOwnerRemovalOptions = {}
+  options: WorkspaceSessionOwnerRemovalOptions
 ): WorkspaceSessionState | undefined {
   if (!session) {
     return session
@@ -121,7 +129,7 @@ export function removeWorkspaceSessionOwner(
   const removedTabIds = new Set<string>()
   deleteOwnerKeyedSessionFields(next, ownerKey, removedTabIds, options)
   deleteScannedSessionFieldsForOwners(next, removedTabIds, (worktreeId) => worktreeId === ownerKey)
-  if (options.pruneCloseRecords) {
+  if (removalDropsCloseRecords(options.cause)) {
     pruneCloseRecordsForOwners(next, (worktreeId) => worktreeId === ownerKey)
   }
   return next
@@ -134,7 +142,7 @@ export function removeWorkspaceSessionOwner(
 export function removeWorkspaceSessionOwners(
   session: WorkspaceSessionState | undefined,
   ownerKeys: ReadonlySet<string>,
-  options: Pick<WorkspaceSessionOwnerRemovalOptions, 'pruneCloseRecords'> = {}
+  options: Pick<WorkspaceSessionOwnerRemovalOptions, 'cause'>
 ): WorkspaceSessionState | undefined {
   if (!session || ownerKeys.size === 0) {
     return session
@@ -147,7 +155,7 @@ export function removeWorkspaceSessionOwners(
   deleteScannedSessionFieldsForOwners(next, removedTabIds, (worktreeId) =>
     ownerKeys.has(worktreeId)
   )
-  if (options.pruneCloseRecords) {
+  if (removalDropsCloseRecords(options.cause)) {
     pruneCloseRecordsForOwners(next, (worktreeId) => ownerKeys.has(worktreeId))
   }
   return next

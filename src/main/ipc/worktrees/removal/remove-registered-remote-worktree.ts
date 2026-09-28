@@ -91,6 +91,7 @@ export async function removeRegisteredRemoteWorktree(
     removeWorktreeMetadataAndTransientState(
       store,
       args.worktreeId,
+      'removed',
       removalHostId,
       args.snapshotPruneBatchId
     )

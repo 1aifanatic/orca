@@ -91,7 +91,7 @@ describe('Store', () => {
     const store = await createStore()
     store.setWorktreeMeta('a', { displayName: 'A' })
     store.setWorktreeMeta('b', { displayName: 'B' })
-    store.removeWorktreeMeta('a')
+    store.removeWorktreeMeta('a', undefined, { cause: 'removed' })
     expect(store.getWorktreeMeta('a')).toBeUndefined()
     expect(store.getWorktreeMeta('b')).toBeDefined()
   })
@@ -119,7 +119,7 @@ describe('Store', () => {
     store.setWorktreeMeta(lineage.worktreeId, { displayName: 'child' })
     store.setWorktreeLineage(lineage.worktreeId, lineage)
 
-    store.removeWorktreeMeta(lineage.worktreeId)
+    store.removeWorktreeMeta(lineage.worktreeId, undefined, { cause: 'removed' })
 
     expect(store.getWorktreeMeta(lineage.worktreeId)).toBeUndefined()
     expect(store.getWorktreeLineage(lineage.worktreeId)).toBeUndefined()
@@ -135,7 +135,7 @@ describe('Store', () => {
     expect(store.getWorkspaceLineage(lineage.childWorkspaceKey)).toEqual(lineage)
     expect(store.getAllWorkspaceLineage()).toEqual({ [lineage.childWorkspaceKey]: lineage })
 
-    store.removeWorktreeMeta('r1::/path/child')
+    store.removeWorktreeMeta('r1::/path/child', undefined, { cause: 'removed' })
 
     expect(store.getWorkspaceLineage(lineage.childWorkspaceKey)).toBeUndefined()
   })

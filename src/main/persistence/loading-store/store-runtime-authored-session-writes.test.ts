@@ -155,7 +155,7 @@ describe('Store keeps runtime-authored session fields across desktop writes', ()
       }
     })
 
-    store.removeWorkspaceSessionStateForWorktree(WT)
+    store.removeWorkspaceSessionStateForWorktree(WT, undefined, { cause: 'removed' })
 
     expect(
       Object.keys(store.getWorkspaceSession().clientHostedBrowserPagesByWorktree ?? {})

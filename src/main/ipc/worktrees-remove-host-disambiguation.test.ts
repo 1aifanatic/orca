@@ -319,7 +319,7 @@ describe('registerWorktreeHandlers', () => {
     expect(store.removeWorktreeMeta).toHaveBeenCalledWith(
       'repo-1::/remote/feature-wt',
       'ssh:conn-1',
-      { pruneCloseRecords: true }
+      { cause: 'removed' }
     )
   })
 
@@ -509,10 +509,10 @@ describe('registerWorktreeHandlers', () => {
     finishFirst()
     await expect(first).resolves.toEqual({})
     expect(store.removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'local', {
-      pruneCloseRecords: true
+      cause: 'forgotten'
     })
     expect(store.removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'ssh:conn-1', {
-      pruneCloseRecords: true
+      cause: 'forgotten'
     })
   })
 })

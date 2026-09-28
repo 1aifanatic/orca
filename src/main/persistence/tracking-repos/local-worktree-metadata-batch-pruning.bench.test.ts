@@ -72,7 +72,8 @@ describeBench('authoritative local metadata batch pruning', () => {
       delete legacy.state.worktreeMeta[worktreeId]
       legacy.state.workspaceSession = removeWorkspaceSessionOwner(
         legacy.state.workspaceSession,
-        worktreeId
+        worktreeId,
+        { cause: 'removed' }
       )!
     }
     pruneUnreferencedWorktreeIdentityMeta(legacy.state)

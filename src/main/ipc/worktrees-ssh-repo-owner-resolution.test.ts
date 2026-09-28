@@ -403,7 +403,9 @@ describe('registerWorktreeHandlers', () => {
       forgottenWorktreeIds: ['repo-1::/remote/deleted', 'repo-1::/remote/deleted-too']
     })
     expect(store.removeWorktreeMeta).toHaveBeenCalledTimes(2)
-    expect(store.removeWorktreeMeta).toHaveBeenCalledWith('repo-1::/remote/deleted', sshHostId)
+    expect(store.removeWorktreeMeta).toHaveBeenCalledWith('repo-1::/remote/deleted', sshHostId, {
+      cause: 'unlisted'
+    })
     const pruneTargets = [
       { worktreeId: 'repo-1::/remote/deleted', executionHostId: sshHostId },
       { worktreeId: 'repo-1::/remote/deleted-too', executionHostId: sshHostId }
@@ -488,7 +490,8 @@ describe('registerWorktreeHandlers', () => {
     expect(forgotten).toEqual({ forgottenWorktreeIds: ['repo-1::/home/orca/deleted'] })
     expect(store.removeWorktreeMeta).toHaveBeenCalledExactlyOnceWith(
       'repo-1::/home/orca/deleted',
-      runtimeHostId
+      runtimeHostId,
+      { cause: 'unlisted' }
     )
   })
 

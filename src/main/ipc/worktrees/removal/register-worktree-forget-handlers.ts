@@ -121,6 +121,7 @@ export function registerWorktreeForgetHandlers(context: WorktreeIpcContext): voi
         removeWorktreeMetadataAndTransientState(
           store,
           args.worktreeId,
+          'forgotten',
           ownerHost?.id,
           args.snapshotPruneBatchId
         )

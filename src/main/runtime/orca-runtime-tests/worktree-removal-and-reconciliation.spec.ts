@@ -515,7 +515,7 @@ describe('OrcaRuntimeService', () => {
     })
 
     expect(removeWorktreeMeta).toHaveBeenCalledWith(TEST_WORKTREE_ID, 'runtime:env-1', {
-      pruneCloseRecords: true
+      cause: 'removed'
     })
     expect(deleteWorktreeHistoryDirMock).toHaveBeenCalledWith(TEST_WORKTREE_ID)
     expect(invalidateAuthorizedRootsCacheMock).toHaveBeenCalled()

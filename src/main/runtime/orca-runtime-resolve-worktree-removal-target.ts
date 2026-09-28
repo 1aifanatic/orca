@@ -53,8 +53,8 @@ export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWith
     )
     const acceptedRendererSnapshot = this.acceptedRendererMobileSnapshotByWorktree.get(worktreeId)
     const storedSnapshot = this.mobileSessionTabsByWorktree.get(worktreeId)
-    // Every caller has confirmed the removal, so its close records go too.
-    store.removeWorktreeMeta(worktreeId, hostId, { pruneCloseRecords: true })
+    // Every caller has confirmed the removal.
+    store.removeWorktreeMeta(worktreeId, hostId, { cause: 'removed' })
     if (!preservesSameIdOwner) {
       // A paired PTY can outlive the delete acknowledgement; it must not be
       // rescued into a newly-created occupant of the same path-derived ID.

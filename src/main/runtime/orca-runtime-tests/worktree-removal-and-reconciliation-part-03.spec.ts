@@ -313,7 +313,7 @@ describe('OrcaRuntimeService', () => {
       // The repo resolved to the local host, so the metadata purge names it —
       // an unqualified purge would evict a same-id row owned by another host.
       expect(removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'local', {
-        pruneCloseRecords: true
+        cause: 'removed'
       })
       expect(deleteWorktreeHistoryDirMock).toHaveBeenCalledWith(worktreeId)
       expect(invalidateAuthorizedRootsCacheMock).toHaveBeenCalled()
@@ -341,7 +341,7 @@ describe('OrcaRuntimeService', () => {
       // The repo resolved to the local host, so the metadata purge names it —
       // an unqualified purge would evict a same-id row owned by another host.
       expect(removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'local', {
-        pruneCloseRecords: true
+        cause: 'removed'
       })
       expect(deleteWorktreeHistoryDirMock).toHaveBeenCalledWith(worktreeId)
       expect(invalidateAuthorizedRootsCacheMock).toHaveBeenCalled()
@@ -409,7 +409,7 @@ describe('OrcaRuntimeService', () => {
       removeWorktreeMeta.mock.invocationCallOrder[0]
     )
     expect(removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'ssh:ssh-1', {
-      pruneCloseRecords: true
+      cause: 'removed'
     })
   })
 
@@ -547,7 +547,7 @@ describe('OrcaRuntimeService', () => {
       // The repo resolved to the local host, so the metadata purge names it —
       // an unqualified purge would evict a same-id row owned by another host.
       expect(removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'local', {
-        pruneCloseRecords: true
+        cause: 'removed'
       })
       expect(deleteWorktreeHistoryDirMock).toHaveBeenCalledWith(worktreeId)
       expect(invalidateAuthorizedRootsCacheMock).toHaveBeenCalled()
@@ -620,7 +620,7 @@ describe('OrcaRuntimeService', () => {
       // The repo resolved to the local host, so the metadata purge names it —
       // an unqualified purge would evict a same-id row owned by another host.
       expect(removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'local', {
-        pruneCloseRecords: true
+        cause: 'removed'
       })
       expect(deleteWorktreeHistoryDirMock).toHaveBeenCalledWith(worktreeId)
       expect(invalidateAuthorizedRootsCacheMock).toHaveBeenCalled()

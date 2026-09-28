@@ -659,7 +659,7 @@ describe('OrcaRuntimeService', () => {
     )
 
     expect(removeWorktreeMeta).toHaveBeenCalledWith(TEST_WORKTREE_ID, 'runtime:env-b', {
-      pruneCloseRecords: true
+      cause: 'removed'
     })
     expect(internals.mobileSessionTabsByWorktree.get(TEST_WORKTREE_ID)).toBe(localSession)
   })
@@ -694,7 +694,7 @@ describe('OrcaRuntimeService', () => {
     )
 
     expect(removeWorktreeMeta).toHaveBeenCalledWith(TEST_WORKTREE_ID, 'ssh:ssh-1', {
-      pruneCloseRecords: true
+      cause: 'removed'
     })
     expect(internals.mobileSessionTabsByWorktree.get(TEST_WORKTREE_ID)).toBe(survivingSession)
     expect(deleteWorktreeHistoryDirMock).not.toHaveBeenCalled()

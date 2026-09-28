@@ -94,8 +94,8 @@ export class SessionHostPartitionOperations {
 
   removeWorkspaceSessionStateForWorktree(
     worktreeId: string,
-    hostId?: ExecutionHostId | null,
-    options: { advanceTerminalTopologyRevision?: boolean } = {}
+    hostId: ExecutionHostId | null | undefined,
+    options: WorkspaceSessionOwnerRemovalOptions
   ): void {
     for (const resolved of workspaceSessionPartitionIdsForHost(hostId)) {
       removeWorkspaceSessionOwnerInPartition(this, worktreeId, resolved, options)

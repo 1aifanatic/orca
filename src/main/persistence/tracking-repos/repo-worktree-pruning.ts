@@ -108,9 +108,7 @@ export function pruneWorktreeStateForRepo(
     state.workspaceSession = removeWorkspaceSessionOwners(
       state.workspaceSession,
       ownerKeysToPrune,
-      {
-        pruneCloseRecords: true
-      }
+      { cause: 'removed' }
     )!
   }
   if (state.workspaceSessionsByHostId) {
@@ -118,9 +116,7 @@ export function pruneWorktreeStateForRepo(
       if (!pruneAllHostPartitions && partitionHostId !== hostId) {
         continue
       }
-      const pruned = removeWorkspaceSessionOwners(session, ownerKeysToPrune, {
-        pruneCloseRecords: true
-      })
+      const pruned = removeWorkspaceSessionOwners(session, ownerKeysToPrune, { cause: 'removed' })
       if (pruned) {
         state.workspaceSessionsByHostId[partitionHostId] = pruned
       }

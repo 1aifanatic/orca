@@ -8,7 +8,8 @@ import { hasWorktreeRemovalRepoOwnerOnOtherHost } from '../../worktree-removal-r
 import { folderWorkspaceKey, worktreeWorkspaceKey } from '../../../shared/workspace-scope'
 import {
   workspaceSessionOwnerPartitionForHost,
-  workspaceSessionPartitionIdsForHost
+  workspaceSessionPartitionIdsForHost,
+  type WorkspaceRemovalCause
 } from '../restoring-sessions/session-owner-removal'
 import type { StoreRuntimeState } from './store-runtime-state'
 import type { WriteSchedulingOperations } from './write-scheduling'
@@ -129,9 +130,10 @@ export class MetadataLineageOperations {
 
   removeWorktreeMeta(
     worktreeId: string,
-    hostId?: ExecutionHostId | null,
-    options: { pruneCloseRecords?: boolean } = {}
+    hostId: ExecutionHostId | null | undefined,
+    options: { cause: WorkspaceRemovalCause }
   ): void {
+    const { sessions } = this[metadataLineageOperationsContext]
     // A host-qualified removal names the owner; the persisted host is the fallback.
     const persistedOwner =
       this[metadataLineageOperationsContext].runtime.state.worktreeMeta[worktreeId]?.hostId
@@ -160,10 +162,7 @@ export class MetadataLineageOperations {
     const partitions = new Set<ExecutionHostId>(
       workspaceSessionPartitionIdsForHost(owner).filter(
         (partition) =>
-          hasPersistedWorkspaceSession(
-            this[metadataLineageOperationsContext].sessions,
-            partition
-          ) &&
+          hasPersistedWorkspaceSession(sessions, partition) &&
           // The local partition can be a remote spill surface or a same-id owner.
           // Preserve it whenever another owner may still use the bare id.
           (!preservesSameIdSessionOwner || partition === ownerPartition)
@@ -174,17 +173,9 @@ export class MetadataLineageOperations {
     const fencedPartitions = new Set(
       [...partitions].filter(
         (partition) =>
-          partitionOwnsWorktreeTabs(
-            this[metadataLineageOperationsContext].sessions,
-            worktreeId,
-            partition
-          ) ||
+          partitionOwnsWorktreeTabs(sessions, worktreeId, partition) ||
           (partition === ownerPartition &&
-            !partitionHasOtherRepoWorktreeTabs(
-              this[metadataLineageOperationsContext].sessions,
-              worktreeId,
-              partition
-            ))
+            !partitionHasOtherRepoWorktreeTabs(sessions, worktreeId, partition))
       )
     )
     if (!preservesDifferentPersistedOwner) {
@@ -195,15 +186,10 @@ export class MetadataLineageOperations {
       ]
     }
     for (const partition of partitions) {
-      removeWorkspaceSessionOwnerInPartition(
-        this[metadataLineageOperationsContext].sessions,
-        worktreeId,
-        partition,
-        {
-          advanceTerminalTopologyRevision: fencedPartitions.has(partition),
-          pruneCloseRecords: options.pruneCloseRecords
-        }
-      )
+      removeWorkspaceSessionOwnerInPartition(sessions, worktreeId, partition, {
+        ...options,
+        advanceTerminalTopologyRevision: fencedPartitions.has(partition)
+      })
     }
     // Why: dropping a row can free the identity key that was vetoing an unrelated row's removal, so
     // the metadata prune needs to look again — it is otherwise waiting on evidence (#17775).

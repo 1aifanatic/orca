@@ -418,7 +418,7 @@ describe('OrcaRuntimeService', () => {
       vi.mocked(listWorktrees).mockResolvedValue([])
       await expect(runtime.removeManagedWorktree(worktreeId)).resolves.toEqual({})
       expect(removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'local', {
-        pruneCloseRecords: true
+        cause: 'removed'
       })
     } finally {
       gitSpy.mockRestore()

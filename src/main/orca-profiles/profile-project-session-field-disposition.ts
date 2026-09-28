@@ -128,8 +128,8 @@ export const WORKSPACE_SESSION_FIELD_DISPOSITION = {
     onRepoRemoval: 'prunedByBespokeRule',
     onTransfer: 'copiedByBespokeRule'
   },
-  // Owner-scoped after all, just not by this path: a confirmed worktree, folder or project removal
-  // prunes these by the record's worktreeId (removeWorkspaceSessionOwner's pruneCloseRecords).
+  // Owner-scoped after all, just not by this path: a worktree, folder or project removal prunes
+  // these by the record's worktreeId, for every removal cause except `unlisted`.
   // Moving a project between profiles has no owner scan, so they wait out the TTL and cap there.
   closedTerminalTabTombstonesByTabId: {
     onRepoRemoval: 'notRepoScoped',
