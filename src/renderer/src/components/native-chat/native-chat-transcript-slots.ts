@@ -55,7 +55,8 @@ export type NativeChatTranscriptSlot = {
 export type NativeChatTranscriptSlotsInput = {
   messages: readonly NativeChatMessage[]
   turnKeys: readonly (string | undefined)[]
-  latestUserIndex: number
+  /** The user message whose bar carries the live turn's status. */
+  activeTurnKey: string
   currentTurnKey: string | undefined
   receipts: ReadonlyMap<string, NativeChatResolvedPrompt>
   turnStatuses: {
@@ -77,7 +78,7 @@ export function buildNativeChatTranscriptSlots(
   const {
     messages,
     turnKeys,
-    latestUserIndex,
+    activeTurnKey,
     currentTurnKey,
     receipts,
     turnStatuses,
@@ -130,7 +131,7 @@ export function buildNativeChatTranscriptSlots(
     const turnKey = turnKeys[index]
     const receipt = receipts.get(message.id)
     const candidateStatus =
-      index === latestUserIndex
+      message.role === 'user' && message.id === activeTurnKey
         ? turnStatuses.active
         : message.role === 'user' && turnKey
           ? turnStatuses.completedByTurn[turnKey]

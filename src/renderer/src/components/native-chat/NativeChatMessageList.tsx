@@ -41,7 +41,10 @@ import { nativeChatReaderScrollInputHandlers } from './native-chat-reader-scroll
 
 import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
 import { isStructuredAgentSessionThinking } from '../../../../shared/structured-agent-session-live-turn'
-import type { NativeChatSettledTurns } from '../../../../shared/native-chat-turn-status'
+import {
+  selectNativeChatActiveTurnKey,
+  type NativeChatSettledTurns
+} from '../../../../shared/native-chat-turn-status'
 import {
   nativeChatTurnDiffs,
   type NativeChatDiffReveal,
@@ -69,6 +72,7 @@ export function NativeChatMessageList({
   allowFileUriLinks = false,
   workingStartedAt,
   settledTurns,
+  activeTurnOpenedBy = null,
   failedDeliveryMessageIds,
   showTurnStatus = true,
   showLiveTurnActivity = true,
@@ -88,6 +92,8 @@ export function NativeChatMessageList({
   workingStartedAt?: number | null
   /** Host-recorded turn durations keyed by user message id (structured lane). */
   settledTurns?: NativeChatSettledTurns
+  /** The user message the host says opened the running turn (structured lane). */
+  activeTurnOpenedBy?: string | null
   onLinkClick?: CommentMarkdownLinkClickHandler
   allowFileUriLinks?: boolean
   failedDeliveryMessageIds?: ReadonlySet<string>
@@ -178,9 +184,13 @@ export function NativeChatMessageList({
     () => (journalItems ? isStructuredAgentSessionThinking(journalItems) : false),
     [journalItems]
   )
+  const activeTurnKey = selectNativeChatActiveTurnKey(
+    messages,
+    showTurnStatus ? activeTurnOpenedBy : null
+  )
   const turnStatuses = useNativeChatTurnStatus({
     messages,
-    latestUserIndex,
+    activeTurnKey,
     isWorking: showTurnStatus && isWorking,
     workingStartedAt: showTurnStatus ? workingStartedAt : null,
     settledTurns: showTurnStatus ? settledTurns : null,
@@ -192,7 +202,7 @@ export function NativeChatMessageList({
       buildNativeChatTranscriptSlots({
         messages,
         turnKeys,
-        latestUserIndex,
+        activeTurnKey,
         currentTurnKey,
         receipts,
         turnStatuses,
@@ -203,10 +213,10 @@ export function NativeChatMessageList({
         lifecycleWorking
       }),
     [
+      activeTurnKey,
       currentTurnKey,
       expandedTurnIds,
       isWorking,
-      latestUserIndex,
       lifecycleWorking,
       messages,
       receipts,
