@@ -2726,7 +2726,7 @@
         "goalsUnsupported": "This agent doesn't support goals.",
         "historyUnavailable": "Orca couldn't open this chat's history right now.",
         "historyUnreadable": "Orca couldn't read this chat's saved history.",
-        "historyUnusable": "This chat's history couldn't be read, so it can't continue here.",
+        "historyUnusable": "Unable to load this chat.",
         "hostReconciling": "Orca is still checking on this chat after restarting.",
         "messagesUnsettled": "A message you sent earlier hasn't been confirmed yet.",
         "notDoneAnswer": "Your answer was not sent.",

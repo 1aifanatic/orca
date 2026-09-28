@@ -97,8 +97,7 @@ describe('a write whose conversation the host could not open', () => {
       refusal: {
         code: 'agent_session_journal_unreadable',
         details: { reason: 'journalCorrupt' },
-        message:
-          "This chat's history couldn't be read, so it can't continue here. Start a new chat to continue."
+        message: 'Unable to load this chat.'
       }
     })
   })

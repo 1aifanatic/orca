@@ -195,8 +195,8 @@ const REASON_WORDS = {
   agent_session_item_revision_stale: { promptMoved: codeWords('nothingLeft') },
   agent_session_already_resolved: { promptAlreadyResolved: codeWords('nothingLeft') },
   agent_session_journal_unreadable: {
-    // No retry reads past damage, so only a new chat continues.
-    journalCorrupt: causeWords('historyUnusable', 'goElsewhere', 'startNewChat'),
+    // No retry reads past damage, and the words name no step: it only can't load.
+    journalCorrupt: causeWords('historyUnusable', 'hostFinding'),
     // Says its step despite 'retry': released clients and the phone often show no Retry here.
     journalUnavailable: causeWords('historyUnavailable', 'retry', 'tryAgain')
   },

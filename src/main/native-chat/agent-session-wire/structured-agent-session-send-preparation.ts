@@ -86,7 +86,7 @@ export async function openConversationForWrite(
 
 // Released clients print a refusal's message for a send; it fits a Stop too.
 const JOURNAL_OPEN_MESSAGE: Record<JournalOpenFailure, string> = {
-  journalCorrupt: agentSessionWriteNoticeEnglish(['historyUnusable', 'startNewChat']),
+  journalCorrupt: agentSessionWriteNoticeEnglish(['historyUnusable']),
   journalUnavailable: agentSessionWriteNoticeEnglish(['historyUnavailable', 'tryAgain'])
 }
 

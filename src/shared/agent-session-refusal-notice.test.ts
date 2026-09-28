@@ -483,16 +483,8 @@ describe('a chat whose history the host could not open', () => {
     )
 
   it.each([
-    [
-      'journalCorrupt',
-      'read-history',
-      "This chat's history couldn't be read, so it can't continue here. Start a new chat to continue."
-    ],
-    [
-      'journalCorrupt',
-      'send',
-      "This chat's history couldn't be read, so it can't continue here. Your message was not sent. Start a new chat to continue."
-    ],
+    ['journalCorrupt', 'read-history', 'Unable to load this chat.'],
+    ['journalCorrupt', 'send', 'Unable to load this chat. Your message was not sent.'],
     [
       'journalUnavailable',
       'read-history',

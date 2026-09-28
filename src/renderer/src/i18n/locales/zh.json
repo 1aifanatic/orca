@@ -17327,7 +17327,7 @@
         "outcomeUnknown": "Orca 无法确认发生了什么。请查看聊天。",
         "questionChanged": "此问题已被回答或已更改。",
         "historyUnreadable": "Orca 无法读取此聊天的已保存历史记录。",
-        "historyUnusable": "无法读取此聊天的历史记录，因此无法在此继续。",
+        "historyUnusable": "无法加载此聊天。",
         "historyUnavailable": "Orca 目前无法打开此聊天的历史记录。",
         "unsupported": "运行此聊天的 Orca 不支持此操作。请更新 Orca 后重试。",
         "unreachable": "Orca 无法连接到智能体。",

@@ -17426,7 +17426,7 @@
         "outcomeUnknown": "Orca n'a pas pu confirmer ce qui s'est passé. Vérifiez le chat.",
         "questionChanged": "Cette question a déjà reçu une réponse ou a changé.",
         "historyUnreadable": "Orca n'a pas pu lire l'historique enregistré de ce chat.",
-        "historyUnusable": "L'historique de ce chat n'a pas pu être lu, il ne peut donc pas continuer ici.",
+        "historyUnusable": "Impossible de charger ce chat.",
         "historyUnavailable": "Orca n'a pas pu ouvrir l'historique de ce chat pour le moment.",
         "unsupported": "L'instance d'Orca qui exécute ce chat ne le prend pas en charge. Mettez Orca à jour, puis réessayez.",
         "unreachable": "Orca n'a pas pu joindre l'agent.",
