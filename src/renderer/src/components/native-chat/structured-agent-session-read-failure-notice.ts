@@ -5,18 +5,10 @@ import {
   agentSessionReadHistoryRefusalParts,
   agentSessionWriteNotDoneParts
 } from '../../../../shared/agent-session-refusal-notice'
-import type { AgentSessionWriteNoticeSentence } from '../../../../shared/agent-session-write-notice-copy'
+import { agentSessionNoticeSaysHistoryUnread } from '../../../../shared/agent-session-write-notice-copy'
 import type { AgentSessionRefusalReference } from '../../../../shared/agent-session-wire-refusals'
 import { isFinalAgentSessionReadRefusal } from '../../../../shared/structured-agent-session-read-refusal'
 import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
-
-// Each says the history didn't load, so a pane headed by one need not say it again.
-const SAYS_HISTORY_UNREAD: ReadonlySet<AgentSessionWriteNoticeSentence> = new Set([
-  'notDoneReadHistory',
-  'historyUnavailable',
-  'historyUnreadable',
-  'historyUnusable'
-])
 
 export type StructuredAgentSessionReadFailureNotice = {
   text: string
@@ -39,6 +31,6 @@ export function structuredAgentSessionReadFailureNotice(
     text: agentSessionWriteNoticeText(parts),
     named: refusal?.details?.reason !== undefined,
     final: isFinalAgentSessionReadRefusal(refusal),
-    saysUnread: parts.some((part) => typeof part === 'string' && SAYS_HISTORY_UNREAD.has(part))
+    saysUnread: agentSessionNoticeSaysHistoryUnread(parts)
   }
 }

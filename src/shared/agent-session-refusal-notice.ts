@@ -17,6 +17,7 @@ import {
 } from './agent-session-failure-words'
 import type { AgentSessionRefusalReason } from './agent-session-refusal-details'
 import {
+  AGENT_SESSION_HISTORY_UNREAD_CAUSES,
   AGENT_SESSION_WRITE_NOTICE_COPY,
   type AgentSessionWriteNoticePart,
   type AgentSessionWriteNoticeSentence
@@ -226,20 +227,13 @@ export function agentSessionRefusalReasonWords(
   return reason === undefined ? undefined : byReason?.[reason]
 }
 
-// Each already says the history was not read.
-const HISTORY_CAUSES: ReadonlySet<AgentSessionWriteNoticeSentence> = new Set([
-  'historyUnusable',
-  'historyUnavailable',
-  'historyUnreadable'
-])
-
 /** A cause, and that the request did not happen unless the cause already says so. */
 function causeParts(
   cause: AgentSessionWriteNoticeSentence,
   write: AgentSessionWriteKind
 ): AgentSessionWriteNoticeSentence[] {
   const saysNotDone =
-    (write === 'read-history' && HISTORY_CAUSES.has(cause)) ||
+    (write === 'read-history' && AGENT_SESSION_HISTORY_UNREAD_CAUSES.has(cause)) ||
     (cause === 'questionChanged' && write === 'answer')
   return saysNotDone ? [cause] : [cause, NOT_DONE[write]]
 }

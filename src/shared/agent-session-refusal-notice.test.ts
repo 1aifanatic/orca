@@ -14,6 +14,7 @@ import {
 } from './agent-session-refusal-notice'
 import {
   AGENT_SESSION_WRITE_NOTICE_COPY,
+  agentSessionNoticeSaysHistoryUnread,
   type AgentSessionWriteNoticeSentence
 } from './agent-session-write-notice-copy'
 import { AGENT_SESSION_REFUSAL_REASONS } from './agent-session-refusal-details'
@@ -558,6 +559,20 @@ describe('a chat whose history the host could not open', () => {
     expect(
       agentSessionReadHistoryRefusalParts('agent_session_journal_unreadable', details)
     ).toEqual(['historyUnreadable'])
+  })
+
+  // A pane headed by such words drops its own "didn't load", so each one must count.
+  it('knows which read notices already say the history did not load', () => {
+    for (const failure of [...FAILURES, ...REASONED]) {
+      for (const retryControl of [false, true]) {
+        const parts = agentSessionWriteNoticeParts(failure, 'read-history', { retryControl })
+        const notAboutTheRead =
+          mayHaveRun(failure) || codeOf(failure) === 'structured_agent_session_unsupported'
+        expect(agentSessionNoticeSaysHistoryUnread(parts), JSON.stringify(parts)).toBe(
+          !notAboutTheRead
+        )
+      }
+    }
   })
 
   it('says only that the history did not load for any other read refusal', () => {

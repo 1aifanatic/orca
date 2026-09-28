@@ -77,3 +77,19 @@ export type AgentSessionWriteNoticePart =
   | AgentSessionWriteNoticeSentence
   | { text: string }
   | AgentSessionWriteNoticeFailurePart
+
+/** Causes that already say the history didn't load, so no sentence after them says it again. */
+export const AGENT_SESSION_HISTORY_UNREAD_CAUSES: ReadonlySet<AgentSessionWriteNoticeSentence> =
+  new Set(['historyUnusable', 'historyUnavailable', 'historyUnreadable'])
+
+/** Whether these words already say the history didn't load, so a pane headed by them need not
+ *  say it again. */
+export function agentSessionNoticeSaysHistoryUnread(
+  parts: readonly AgentSessionWriteNoticePart[]
+): boolean {
+  return parts.some(
+    (part) =>
+      typeof part === 'string' &&
+      (part === 'notDoneReadHistory' || AGENT_SESSION_HISTORY_UNREAD_CAUSES.has(part))
+  )
+}
