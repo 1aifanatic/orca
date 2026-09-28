@@ -99,8 +99,8 @@ export function StatusBarSurface({
   return (
     <div
       ref={barRef}
-      // Why: one line at any width — density steps down first; overflow-clip (not hidden) so focusing a clipped control can't scroll the bar.
-      className="flex items-center h-6 min-h-[24px] px-3 gap-4 overflow-clip whitespace-nowrap border-t border-border bg-[var(--bg-titlebar,var(--card))] text-xs select-none shrink-0 relative"
+      // Why: one line at any width — density steps down first. overflow-clip (not hidden) so focus can't scroll the bar; the clip margin spares focus rings and badge dots.
+      className="flex items-center h-6 min-h-[24px] px-3 gap-4 overflow-clip [overflow-clip-margin:3px] whitespace-nowrap border-t border-border bg-[var(--bg-titlebar,var(--card))] text-xs select-none shrink-0 relative"
       onContextMenuCapture={(event) => {
         if (!shouldOpenStatusBarContextMenu(event.target)) {
           return
@@ -115,7 +115,7 @@ export function StatusBarSurface({
     >
       {/* Why: usage gives way first — what it drops stays one click away in its popover. */}
       <div
-        className="status-bar-usage-cluster flex min-w-0 flex-1 items-center overflow-clip"
+        className="status-bar-usage-cluster flex min-w-0 flex-1 items-center overflow-clip [overflow-clip-margin:3px]"
         data-overflowing={overflowing}
       >
         <div ref={usageRef} className="flex shrink-0 items-center gap-3">
