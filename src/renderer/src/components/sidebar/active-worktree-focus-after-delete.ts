@@ -4,6 +4,7 @@ import { activateAndRevealWorktree } from '@/lib/worktree-activation'
 import { isRuntimeOwnedSshTargetId, parseExecutionHostId } from '../../../../shared/execution-host'
 import type { Repo } from '../../../../shared/repo-types'
 import type { Worktree } from '../../../../shared/worktree/types'
+import type { WorktreeDeleteStateTarget } from '../../store/slices/worktree-helpers'
 import { getWorktreeVisitTimestamp } from '@/lib/worktree-visit-recency'
 import { getDeleteStateForWorktreeHost } from './worktree-delete-state-host-match'
 
@@ -108,4 +109,48 @@ export function prepareActiveWorktreeFocusAfterDelete(worktreeId: string): () =>
     state.activeWorktreeId === worktreeId
   const repoId = getWorktreeMapFromState(state).get(worktreeId)?.repoId ?? null
   return () => focusNextWorktreeAfterActiveDelete(worktreeId, repoId, wasViewing)
+}
+
+/**
+ * Before a batch delete starts, moves focus off the workspace the user is viewing when it is
+ * one of `targets`, so the store never clears the selection mid-batch. Call after `targets`
+ * are marked deleting so none of them can be picked. Never throws.
+ */
+export function moveFocusOffActiveWorktreeBeforeDelete(
+  targets: readonly (string | WorktreeDeleteStateTarget)[]
+): void {
+  // Why: callers start the deletes right after; a focus failure must not stop them.
+  try {
+    const state = useAppStore.getState()
+    const { activeWorktreeId, activeWorkspaceExecutionHostId } = state
+    if (
+      state.activeView !== 'terminal' ||
+      state.activePendingCreationId !== null ||
+      !activeWorktreeId
+    ) {
+      return
+    }
+    // A null active host is an unqualified selection, so the id alone identifies it.
+    const deletesActive = targets.some((target) =>
+      typeof target === 'string'
+        ? target === activeWorktreeId
+        : target.id === activeWorktreeId &&
+          (!target.hostId ||
+            !activeWorkspaceExecutionHostId ||
+            target.hostId === activeWorkspaceExecutionHostId)
+    )
+    const repoId = deletesActive
+      ? state.getKnownWorktreeById(activeWorktreeId, activeWorkspaceExecutionHostId ?? undefined)
+          ?.repoId
+      : undefined
+    if (!repoId) {
+      return
+    }
+    const nextWorktreeId = pickNextWorktreeIdAfterDelete(state, repoId, activeWorktreeId)
+    if (nextWorktreeId) {
+      activateAndRevealWorktree(nextWorktreeId, { revealInSidebar: false })
+    }
+  } catch (error) {
+    console.error('Could not move focus off a workspace being deleted', error)
+  }
 }

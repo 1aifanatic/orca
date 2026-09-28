@@ -14,7 +14,7 @@ import type {
 import { startWorkspaceCleanupBackgroundRemoval } from './workspace-cleanup-background-removal'
 import type { WorkspaceCleanupDeletionPhase } from './workspace-cleanup-candidate-row'
 import { createWorkspaceCleanupSnapshotPruneBatch } from './workspace-cleanup-snapshot-prune-batch'
-import { prepareWorkspaceCleanupActiveWorkspaceFocus } from './workspace-cleanup-active-workspace-focus'
+import { moveFocusOffActiveWorktreeBeforeDelete } from '../sidebar/active-worktree-focus-after-delete'
 
 type UnverifiedRemovalArgs = {
   setRowFailures: Dispatch<SetStateAction<Record<string, WorkspaceCleanupFailure>>>
@@ -49,8 +49,11 @@ export function useWorkspaceCleanupUnverifiedRemoval({
       const hostId = resolveWorkspaceCleanupRemovalHostId(candidate)
       setRowFailures((current) => withoutIdentity(current, identity))
       setDeletionPhaseByIdentity((current) => ({ ...current, [identity]: 'queued' }))
-      markQueued([hostId ? { id: candidate.worktreeId, hostId } : candidate.worktreeId])
-      const commitActiveWorkspaceFocus = prepareWorkspaceCleanupActiveWorkspaceFocus([candidate])
+      const deleteStateTargets = [
+        hostId ? { id: candidate.worktreeId, hostId } : candidate.worktreeId
+      ]
+      markQueued(deleteStateTargets)
+      moveFocusOffActiveWorktreeBeforeDelete(deleteStateTargets)
       startWorkspaceCleanupBackgroundRemoval({
         candidates: [candidate],
         removeCandidates,
@@ -62,7 +65,6 @@ export function useWorkspaceCleanupUnverifiedRemoval({
           if (mountedRef.current) {
             setDeletionPhaseByIdentity((current) => ({ ...current, [identity]: 'deleting' }))
           }
-          commitActiveWorkspaceFocus()
         },
         onRowFailed: (failure) => {
           clearQueuedDeleteState(failure.worktreeId, failure.executionHostId)
@@ -79,7 +81,6 @@ export function useWorkspaceCleanupUnverifiedRemoval({
           }
         },
         onLateResult: (result) => {
-          commitActiveWorkspaceFocus()
           if (mountedRef.current) {
             setDeletionPhaseByIdentity((current) => withoutIdentity(current, identity))
             applyLateResult(result, setRowFailures, onDeselect)

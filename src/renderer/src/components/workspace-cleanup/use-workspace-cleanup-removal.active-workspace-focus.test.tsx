@@ -100,15 +100,6 @@ function deferRemovals(): PendingRemoval[] {
   return pending
 }
 
-async function settleNext(pending: PendingRemoval[], index: number): Promise<void> {
-  await waitFor(() => expect(pending.length).toBeGreaterThan(index))
-  await act(async () => pending[index].settle(simulateRemoval(pending[index].ids)))
-}
-
-function isQueuedForDeletion(name: string): boolean {
-  return useAppStore.getState().deleteStateByWorktreeId[worktreeId(name)]?.isDeleting === true
-}
-
 async function runBatch(names: readonly string[]): Promise<void> {
   const { result } = renderRemoval()
   act(() => result.current.openConfirmRemove(names.map(candidateFor)))
@@ -116,10 +107,30 @@ async function runBatch(names: readonly string[]): Promise<void> {
   await waitFor(() => expect(result.current.removalInFlight).toBe(false))
 }
 
+async function settleNext(pending: PendingRemoval[], index: number): Promise<void> {
+  await waitFor(() => expect(pending.length).toBeGreaterThan(index))
+  await act(async () => pending[index].settle(simulateRemoval(pending[index].ids)))
+}
+
+async function settleAll(pending: PendingRemoval[], count: number): Promise<void> {
+  for (let index = 0; index < count; index += 1) {
+    await settleNext(pending, index)
+  }
+}
+
+function startBatch(names: readonly string[]) {
+  const rendered = renderRemoval()
+  act(() => rendered.result.current.openConfirmRemove(names.map(candidateFor)))
+  act(() => rendered.result.current.confirmRemove())
+  return rendered
+}
+
+const KEEP_FOCUS = [worktreeId('keep'), { revealInSidebar: false }] as const
+
 describe('workspace cleanup removal of the active workspace', () => {
   beforeEach(() => {
     vi.mocked(activateAndRevealWorktree).mockReset()
-    // Mirrors real activation so later rows see the new active workspace.
+    // Mirrors real activation so later reads see the new active workspace.
     vi.mocked(activateAndRevealWorktree).mockImplementation((id) => {
       useAppStore.setState({ activeWorktreeId: id })
       return false
@@ -127,48 +138,35 @@ describe('workspace cleanup removal of the active workspace', () => {
   })
 
   afterEach(() => {
-    vi.useRealTimers()
     useAppStore.setState(initialState, true)
     Reflect.deleteProperty(window, 'api')
   })
 
-  it('moves focus as soon as the active row is gone, skipping rows still queued', async () => {
+  it('moves focus at confirm, before any row is removed, skipping every row in the batch', async () => {
     seed('active')
     const pending = deferRemovals()
-    const { result } = renderRemoval()
-    act(() => result.current.openConfirmRemove(['c', 'active', 'longer-name'].map(candidateFor)))
-    act(() => result.current.confirmRemove())
+    const { result } = startBatch(['c', 'active', 'longer-name'])
 
-    // Removal order is longest path first: longer-name, active, then c.
-    await settleNext(pending, 0)
-    expect(activateAndRevealWorktree).not.toHaveBeenCalled()
-    await settleNext(pending, 1)
-
-    // c is queued and more recent than keep, so landing on keep proves queued rows are skipped.
-    expect(isQueuedForDeletion('c')).toBe(true)
+    // c and longer-name are more recent than keep, so landing on keep proves batch rows are skipped.
     expect(activateAndRevealWorktree).toHaveBeenCalledTimes(1)
-    expect(activateAndRevealWorktree).toHaveBeenCalledWith(worktreeId('keep'), {
-      revealInSidebar: false
-    })
+    expect(activateAndRevealWorktree).toHaveBeenCalledWith(...KEEP_FOCUS)
+    expect(useAppStore.getState().worktreesByRepo[REPO_ID]).toHaveLength(5)
 
-    await settleNext(pending, 2)
+    await settleAll(pending, 3)
     await waitFor(() => expect(result.current.removalInFlight).toBe(false))
     expect(activateAndRevealWorktree).toHaveBeenCalledTimes(1)
     expect(useAppStore.getState().activeWorktreeId).toBe(worktreeId('keep'))
   })
 
-  it('leaves an empty screen the user chose while later rows are still deleting', async () => {
+  it('never moves focus again once the batch is running, even onto an empty screen', async () => {
     seed('active')
     const pending = deferRemovals()
-    const { result } = renderRemoval()
-    act(() => result.current.openConfirmRemove(['c', 'active', 'longer-name'].map(candidateFor)))
-    act(() => result.current.confirmRemove())
+    const { result } = startBatch(['c', 'active', 'longer-name'])
     await settleNext(pending, 0)
-    await settleNext(pending, 1)
-    expect(activateAndRevealWorktree).toHaveBeenCalledTimes(1)
 
     // Closing the successor's last tab leaves no workspace selected on purpose.
     act(() => useAppStore.setState({ activeWorktreeId: null }))
+    await settleNext(pending, 1)
     await settleNext(pending, 2)
     await waitFor(() => expect(result.current.removalInFlight).toBe(false))
 
@@ -176,7 +174,58 @@ describe('workspace cleanup removal of the active workspace', () => {
     expect(useAppStore.getState().activeWorktreeId).toBeNull()
   })
 
-  it('keeps deleting later rows when the focus handoff throws', async () => {
+  it('leaves the user on the successor when the active workspace fails to delete', async () => {
+    seed('active')
+    const pending = deferRemovals()
+    const { result } = startBatch(['c', 'active', 'longer-name'])
+    await settleNext(pending, 0)
+
+    await waitFor(() => expect(pending.length).toBe(2))
+    await act(async () =>
+      pending[1].settle({
+        removedIds: [],
+        removedIdentities: [],
+        failures: [{ worktreeId: worktreeId('active'), displayName: 'active', message: 'locked' }]
+      })
+    )
+    await settleNext(pending, 2)
+    await waitFor(() => expect(result.current.removalInFlight).toBe(false))
+
+    expect(activateAndRevealWorktree).toHaveBeenCalledTimes(1)
+    expect(useAppStore.getState().activeWorktreeId).toBe(worktreeId('keep'))
+  })
+
+  it('does not move focus after the dialog closes mid-batch', async () => {
+    seed('active')
+    const pending = deferRemovals()
+    const { unmount } = startBatch(['c', 'active', 'longer-name'])
+    await settleNext(pending, 0)
+
+    unmount()
+    act(() => useAppStore.setState({ activeWorktreeId: null }))
+    await settleNext(pending, 1)
+    await settleNext(pending, 2)
+
+    expect(activateAndRevealWorktree).toHaveBeenCalledTimes(1)
+    expect(useAppStore.getState().activeWorktreeId).toBeNull()
+  })
+
+  it('moves focus at confirm when Delete anyway removes the active workspace', async () => {
+    seed('active')
+    const pending = deferRemovals()
+    useAppStore.setState({ beginUnverifiedRemovalConsent: () => 'attempt-1' })
+    const { result } = renderRemoval()
+
+    act(() => result.current.confirmUnverifiedRemoval(candidateFor('active')))
+    expect(activateAndRevealWorktree).toHaveBeenCalledWith(worktreeId('longer-name'), {
+      revealInSidebar: false
+    })
+
+    await settleNext(pending, 0)
+    expect(activateAndRevealWorktree).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps deleting when the focus handoff throws', async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.mocked(activateAndRevealWorktree).mockImplementationOnce(() => {
       throw new Error('activation failed')
@@ -185,84 +234,12 @@ describe('workspace cleanup removal of the active workspace', () => {
 
     await runBatch(['c', 'active', 'longer-name'])
 
+    expect(consoleError).toHaveBeenCalled()
     expect(useAppStore.getState().worktreesByRepo[REPO_ID]?.map((wt) => wt.id)).toEqual([
       worktreeId('main'),
       worktreeId('keep')
     ])
     consoleError.mockRestore()
-  })
-
-  it('keeps focus on the active workspace when its delete fails', async () => {
-    seed('active')
-    const pending = deferRemovals()
-    const { result } = renderRemoval()
-    act(() => result.current.openConfirmRemove(['c', 'active'].map(candidateFor)))
-    act(() => result.current.confirmRemove())
-
-    await waitFor(() => expect(pending.length).toBe(1))
-    await act(async () =>
-      pending[0].settle({
-        removedIds: [],
-        removedIdentities: [],
-        failures: [{ worktreeId: worktreeId('active'), displayName: 'active', message: 'locked' }]
-      })
-    )
-    await settleNext(pending, 1)
-    await waitFor(() => expect(result.current.removalInFlight).toBe(false))
-
-    expect(useAppStore.getState().activeWorktreeId).toBe(worktreeId('active'))
-    expect(activateAndRevealWorktree).not.toHaveBeenCalled()
-  })
-
-  it('hands focus off even when the dialog closed before the row settled', async () => {
-    seed('active')
-    const pending = deferRemovals()
-    const { result, unmount } = renderRemoval()
-    act(() => result.current.openConfirmRemove([candidateFor('active')]))
-    act(() => result.current.confirmRemove())
-    await waitFor(() => expect(pending.length).toBe(1))
-
-    unmount()
-    await settleNext(pending, 0)
-
-    expect(activateAndRevealWorktree).toHaveBeenCalledWith(worktreeId('longer-name'), {
-      revealInSidebar: false
-    })
-  })
-
-  it('hands focus off when the active row settles after the batch timed out', async () => {
-    vi.useFakeTimers()
-    seed('active')
-    const pending = deferRemovals()
-    const { result } = renderRemoval()
-    act(() => result.current.openConfirmRemove([candidateFor('active')]))
-    act(() => result.current.confirmRemove())
-
-    // Past the removal timeout and its grace period, so the batch settles without this row.
-    await act(async () => vi.advanceTimersByTimeAsync(130_000))
-    expect(result.current.removalInFlight).toBe(false)
-    expect(activateAndRevealWorktree).not.toHaveBeenCalled()
-
-    await act(async () => pending[0].settle(simulateRemoval(pending[0].ids)))
-
-    expect(activateAndRevealWorktree).toHaveBeenCalledWith(worktreeId('longer-name'), {
-      revealInSidebar: false
-    })
-  })
-
-  it('hands focus off after Delete anyway removes the active workspace', async () => {
-    seed('active')
-    useAppStore.setState({ beginUnverifiedRemovalConsent: () => 'attempt-1' })
-    const { result } = renderRemoval()
-
-    act(() => result.current.confirmUnverifiedRemoval(candidateFor('active')))
-
-    await waitFor(() =>
-      expect(activateAndRevealWorktree).toHaveBeenCalledWith(worktreeId('longer-name'), {
-        revealInSidebar: false
-      })
-    )
-    expect(activateAndRevealWorktree).toHaveBeenCalledTimes(1)
   })
 
   it('leaves focus alone when the batch does not include the active workspace', async () => {
@@ -271,6 +248,38 @@ describe('workspace cleanup removal of the active workspace', () => {
     await runBatch(['c', 'active'])
 
     expect(useAppStore.getState().activeWorktreeId).toBe(worktreeId('keep'))
+    expect(activateAndRevealWorktree).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['another view is open', { activeView: 'settings' as const }],
+    ['a workspace is being created', { activePendingCreationId: 'pending-1' }],
+    [
+      'the same id is active on another host',
+      { activeWorkspaceExecutionHostId: 'ssh:host-b' as const }
+    ]
+  ])('leaves focus alone when %s', async (_label, override) => {
+    seed('active')
+    useAppStore.setState(override)
+    const pending = deferRemovals()
+    const { result } = renderRemoval()
+    act(() =>
+      result.current.openConfirmRemove([
+        { ...candidateFor('active'), executionHostId: 'ssh:host-a' }
+      ])
+    )
+    act(() => result.current.confirmRemove())
+
+    expect(activateAndRevealWorktree).not.toHaveBeenCalled()
+    await waitFor(() => expect(pending.length).toBe(1))
+    await act(async () =>
+      pending[0].settle({
+        removedIds: [],
+        removedIdentities: [],
+        failures: [{ worktreeId: worktreeId('active'), displayName: 'active', message: 'locked' }]
+      })
+    )
+    await waitFor(() => expect(result.current.removalInFlight).toBe(false))
     expect(activateAndRevealWorktree).not.toHaveBeenCalled()
   })
 })

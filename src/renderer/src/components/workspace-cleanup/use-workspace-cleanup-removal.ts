@@ -15,8 +15,8 @@ import {
 } from './workspace-cleanup-background-removal'
 import { filterWorkspaceCleanupRemovalCandidates } from './workspace-cleanup-removal-candidates'
 import { createWorkspaceCleanupSnapshotPruneBatch } from './workspace-cleanup-snapshot-prune-batch'
-import { prepareWorkspaceCleanupActiveWorkspaceFocus } from './workspace-cleanup-active-workspace-focus'
 import { useWorkspaceCleanupUnverifiedRemoval } from './use-workspace-cleanup-unverified-removal'
+import { moveFocusOffActiveWorktreeBeforeDelete } from '../sidebar/active-worktree-focus-after-delete'
 
 export type WorkspaceCleanupRemovalController = {
   confirming: boolean
@@ -171,8 +171,7 @@ export function useWorkspaceCleanupRemoval({
       Object.fromEntries(removableIdentities.map((identity) => [identity, 'queued' as const]))
     )
     markWorktreesQueuedForDeletion(removableDeleteStateTargets)
-    const commitActiveWorkspaceFocus =
-      prepareWorkspaceCleanupActiveWorkspaceFocus(removableCandidates)
+    moveFocusOffActiveWorktreeBeforeDelete(removableDeleteStateTargets)
     const handleRemovalError = (): void => {
       for (const target of removableDeleteStateTargets) {
         if (typeof target === 'string') {
@@ -199,8 +198,6 @@ export function useWorkspaceCleanupRemoval({
               Object.fromEntries(Object.keys(current).map((identity) => [identity, 'deleting']))
             )
           }
-          // Why: progress follows each row, so focus moves as soon as the active row is gone.
-          commitActiveWorkspaceFocus()
         },
         onRowFailed: (failure) => {
           clearQueuedDeleteState(failure.worktreeId, failure.executionHostId)
@@ -234,7 +231,6 @@ export function useWorkspaceCleanupRemoval({
             // reached 'deleting'; clear its queued overlay like every other path.
             clearQueuedDeleteState(failure.worktreeId, failure.executionHostId)
           }
-          commitActiveWorkspaceFocus()
           if (!mountedRef.current || removalBatchIdRef.current !== removalBatchId) {
             return
           }
