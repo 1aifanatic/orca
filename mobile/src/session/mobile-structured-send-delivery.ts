@@ -64,7 +64,8 @@ export function mobileStructuredSendDelivery(
   if ('queued' in result.value && result.value.queued) {
     // The host holds (or already settled) the draft: the send is spent — a
     // later identical message is a new message. A withdrawn replay is spent
-    // too, never unknown: its card was deleted or carried by a /clear.
+    // too, never unknown: its card was deleted or carried by a /clear, and the
+    // resend below covers the case where the user meant it as a new message.
     // Only a dispatched replay reads as a plain accepted send: its submission
     // exists, so the transcript echo retires the optimistic bubble. Every other
     // state renders as a card, never a bubble.

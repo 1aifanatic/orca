@@ -8,18 +8,8 @@ import type { RpcClient } from '../transport/rpc-client'
 import type { MobileNativeChatSendOutcome } from './mobile-native-chat-send'
 import {
   requestStructuredAgentSessionMutation,
-  retainStructuredSessionOperationId,
-  type StructuredAgentSessionMutationCallResult
+  retainStructuredSessionOperationId
 } from './mobile-structured-agent-session-rpc'
-import { requestWithdrawingMutation } from './mobile-structured-queued-message-actions'
-import { queuedMessageBodyText } from './mobile-structured-queued-message-cards'
-import {
-  discardQueuedRestoreOperation,
-  getOrCreateQueuedRestoreOperation,
-  queuedRestoreEntryKey,
-  restoreQueuedTextOnce
-} from './mobile-structured-queued-restore-journal'
-import { structuredSessionOperationId } from './structured-session-operation-id'
 
 export async function dispatchMobileStructuredCommand(input: {
   text: string
@@ -32,9 +22,6 @@ export async function dispatchMobileStructuredCommand(input: {
   operationIds: Map<string, string>
   controller: StructuredAgentSessionComposerOptions
   canRun: () => boolean
-  /** Capable hosts only: /clear also withdraws queued drafts and this restores
-   *  their text, write-ahead persisted like the Stop path. */
-  clearWithdrawal?: { draftKey: string; appendText: (draftKey: string, text: string) => void }
   onError: (message: string) => void
   timeoutMs: number
 }): Promise<MobileNativeChatSendOutcome | null> {
@@ -59,79 +46,24 @@ export async function dispatchMobileStructuredCommand(input: {
         }
       }
       input.pending.current = true
-      const withdrawal = command === 'clear' ? input.clearWithdrawal : undefined
-      // The flag changes the fingerprint, so a retained plain-clear id must not replay it.
-      const key = `${input.sessionKey}:agentSession.conversationCommand:${command}${withdrawal ? ':withdraw' : ''}`
-      let handle: { entryKey: string; operationId: string } | null = null
-      if (withdrawal) {
-        const entryKey = queuedRestoreEntryKey({
-          sessionKey: input.sessionKey,
-          method: 'agentSession.conversationCommand',
-          fields: { command: 'clear' }
-        })
-        try {
-          // Persist-before-request, so a reload between the host's withdrawal
-          // and the composer restore keeps the replay handle.
-          const operation = await getOrCreateQueuedRestoreOperation({
-            entryKey,
-            sessionId: input.sessionId,
-            sessionKey: input.sessionKey,
-            draftKey: withdrawal.draftKey,
-            method: 'agentSession.conversationCommand',
-            fields: { command: 'clear' },
-            createOperationId: structuredSessionOperationId
-          })
-          handle = { entryKey, operationId: operation.operationId }
-        } catch {
-          // Bookkeeping never gates the command; run it without a durable handle.
-          handle = null
-        }
-      }
-      const clientOperationId =
-        handle?.operationId ??
-        retainStructuredSessionOperationId(input.operationIds, key, input.operationIds.get(key))
+      const key = `${input.sessionKey}:agentSession.conversationCommand:${command}`
+      const clientOperationId = retainStructuredSessionOperationId(
+        input.operationIds,
+        key,
+        input.operationIds.get(key)
+      )
       try {
-        const request = {
-          client: input.client,
-          sessionId: input.sessionId,
-          expectedRuntimeFence: input.fence,
-          method: 'agentSession.conversationCommand',
-          fingerprintMethod: 'agentSession.conversationCommand',
-          fields: { command, ...(withdrawal ? { withdrawQueued: true as const } : {}) },
-          clientOperationId,
-          timeoutMs: Math.max(input.timeoutMs, 195_000)
-        }
-        // Only a withdrawing clear owes text back. Its lost answer is re-asked in
-        // the background, so the composer is released after the first ask.
-        const settleWithdrawal = async (
-          answer: StructuredAgentSessionMutationCallResult<AgentSessionConversationCommandResult>
-        ): Promise<void> => {
-          if (!withdrawal) {
-            return
-          }
-          if (answer.status === 'accepted' && answer.value.state !== 'unknown') {
-            const texts = (answer.value.withdrawnQueued ?? []).map((entry) =>
-              queuedMessageBodyText(entry.body)
-            )
-            // Settled through the journal so the bodies are restored exactly once.
-            await restoreQueuedTextOnce(clientOperationId, handle, () => {
-              for (const text of texts) {
-                withdrawal.appendText(withdrawal.draftKey, text)
-              }
-            })
-          } else if (answer.status !== 'accepted' && answer.status !== 'unknown' && handle) {
-            // The host answered definitively without owing text; the handle is dead.
-            await discardQueuedRestoreOperation(handle).catch(() => undefined)
-          }
-        }
-        const result = withdrawal
-          ? await requestWithdrawingMutation<AgentSessionConversationCommandResult>(
-              request,
-              settleWithdrawal
-            )
-          : await requestStructuredAgentSessionMutation<AgentSessionConversationCommandResult>(
-              request
-            )
+        const result =
+          await requestStructuredAgentSessionMutation<AgentSessionConversationCommandResult>({
+            client: input.client,
+            sessionId: input.sessionId,
+            expectedRuntimeFence: input.fence,
+            method: 'agentSession.conversationCommand',
+            fingerprintMethod: 'agentSession.conversationCommand',
+            fields: { command },
+            clientOperationId,
+            timeoutMs: Math.max(input.timeoutMs, 195_000)
+          })
         if (
           result.status === 'unknown' ||
           (result.status === 'accepted' && result.value.state === 'unknown')

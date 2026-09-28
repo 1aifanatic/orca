@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RpcClient } from '../transport/rpc-client'
-import { markRpcDeliveryUnknown } from '../transport/rpc-delivery-ambiguity'
 
 const asyncStorage = vi.hoisted(() => ({
   getItem: vi.fn(),
@@ -11,7 +10,6 @@ const asyncStorage = vi.hoisted(() => ({
 vi.mock('@react-native-async-storage/async-storage', () => ({ default: asyncStorage }))
 
 import { dispatchMobileStructuredCommand } from './mobile-structured-composer-command'
-import { resetQueuedRestoreJournalForTests } from './mobile-structured-queued-restore-journal'
 
 function setup() {
   const sendRequest = vi.fn<
@@ -50,18 +48,8 @@ function requestFields(call: readonly unknown[] | undefined): Record<string, unk
     : {}
 }
 describe('mobile structured conversation commands', () => {
-  let stored: Map<string, string>
   beforeEach(() => {
     vi.clearAllMocks()
-    resetQueuedRestoreJournalForTests()
-    stored = new Map()
-    asyncStorage.getItem.mockImplementation(async (key: string) => stored.get(key) ?? null)
-    asyncStorage.setItem.mockImplementation(async (key: string, value: string) => {
-      stored.set(key, value)
-    })
-    asyncStorage.removeItem.mockImplementation(async (key: string) => {
-      stored.delete(key)
-    })
   })
   it.each(['/clear', '/compact'])(
     'uses the command RPC for %s without an ordinary send',
@@ -130,186 +118,15 @@ describe('mobile structured conversation commands', () => {
       expect(input.onError).toHaveBeenCalled()
     }
   )
-  it('a plain /clear never carries withdrawQueued — an incapable host is untouched', async () => {
+  it('/clear is a plain command on every host: no withdrawal fields, nothing persisted', async () => {
+    // The host carries queued cards to the replacement session itself; the
+    // client asks for nothing back and has nothing to restore.
     const { input, sendRequest } = setup()
     expect(await dispatchMobileStructuredCommand({ ...input, text: '/clear' })).toBe('accepted')
-    expect('withdrawQueued' in requestFields(sendRequest.mock.calls[0])).toBe(false)
+    const fields = requestFields(sendRequest.mock.calls[0])
+    expect(Object.keys(fields).sort()).toEqual(['command', 'envelope'])
+    expect(fields.command).toBe('clear')
     expect(asyncStorage.setItem).not.toHaveBeenCalled()
-  })
-  it('a capable /clear withdraws drafts, persists ahead, and restores the text once', async () => {
-    const { input, sendRequest } = setup()
-    sendRequest.mockResolvedValue({
-      ok: true,
-      result: {
-        ok: true,
-        value: {
-          command: 'clear',
-          state: 'completed',
-          withdrawnQueued: [
-            {
-              messageId: 'draft-1',
-              body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'held' }] }
-            }
-          ]
-        }
-      }
-    })
-    const appendText = vi.fn()
-    const outcome = await dispatchMobileStructuredCommand({
-      ...input,
-      text: '/clear',
-      clearWithdrawal: { draftKey: 'pane-1', appendText }
-    })
-    expect(outcome).toBe('accepted')
-    expect(requestFields(sendRequest.mock.calls[0]).withdrawQueued).toBe(true)
-    // Write-ahead: the restore handle reached storage before the RPC left.
-    expect(asyncStorage.setItem.mock.invocationCallOrder[0]).toBeLessThan(
-      sendRequest.mock.invocationCallOrder[0]!
-    )
-    expect(appendText.mock.calls).toEqual([['pane-1', 'held']])
-    // Settled: nothing left for a reload replay to restore again.
-    expect(stored.size).toBe(0)
-  })
-  it('an unconfirmed capable /clear keeps its restore handle and replays the same id', async () => {
-    const { input, sendRequest } = setup()
-    sendRequest.mockResolvedValueOnce({
-      ok: true,
-      result: { ok: true, value: { command: 'clear', state: 'unknown' } }
-    })
-    sendRequest.mockResolvedValueOnce({
-      ok: true,
-      result: {
-        ok: true,
-        value: { command: 'clear', state: 'completed', withdrawnQueued: [] }
-      }
-    })
-    const appendText = vi.fn()
-    const withdrawal = { clearWithdrawal: { draftKey: 'pane-1', appendText } }
-    expect(await dispatchMobileStructuredCommand({ ...input, text: '/clear', ...withdrawal })).toBe(
-      'unknown'
-    )
-    expect(stored.size).toBe(1)
-    expect(await dispatchMobileStructuredCommand({ ...input, text: '/clear', ...withdrawal })).toBe(
-      'accepted'
-    )
-    expect(sendRequest.mock.calls[0]?.[1]).toEqual(sendRequest.mock.calls[1]?.[1])
-    expect(stored.size).toBe(0)
-  })
-  it('a capable /clear whose answer is lost frees the composer, then re-asks the same id and restores once', async () => {
-    vi.useFakeTimers()
-    try {
-      const { input, sendRequest } = setup()
-      sendRequest.mockRejectedValueOnce(markRpcDeliveryUnknown(new Error('Connection closed')))
-      sendRequest.mockResolvedValueOnce({
-        ok: true,
-        result: {
-          ok: true,
-          value: {
-            command: 'clear',
-            state: 'completed',
-            withdrawnQueued: [
-              {
-                messageId: 'draft-1',
-                body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'held' }] }
-              }
-            ]
-          }
-        }
-      })
-      const appendText = vi.fn()
-      const withdrawal = { clearWithdrawal: { draftKey: 'pane-1', appendText } }
-      expect(
-        await dispatchMobileStructuredCommand({ ...input, text: '/clear', ...withdrawal })
-      ).toBe('unknown')
-      // Bookkeeping never holds the composer: the re-ask has not even started.
-      expect(input.pending.current).toBe(false)
-      expect(sendRequest).toHaveBeenCalledTimes(1)
-      await vi.advanceTimersByTimeAsync(1_000)
-      expect(sendRequest).toHaveBeenCalledTimes(2)
-      expect(sendRequest.mock.calls[0]?.[1]).toEqual(sendRequest.mock.calls[1]?.[1])
-      expect(appendText.mock.calls).toEqual([['pane-1', 'held']])
-      expect(stored.size).toBe(0)
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-  it("a user's retry racing the background re-ask of the same id restores the text once", async () => {
-    vi.useFakeTimers()
-    try {
-      const { input, sendRequest } = setup()
-      const answer = {
-        ok: true,
-        result: {
-          ok: true,
-          value: {
-            command: 'clear',
-            state: 'completed',
-            withdrawnQueued: [
-              {
-                messageId: 'draft-1',
-                body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'held' }] }
-              }
-            ]
-          }
-        }
-      }
-      sendRequest.mockRejectedValueOnce(markRpcDeliveryUnknown(new Error('Connection closed')))
-      sendRequest.mockResolvedValue(answer)
-      const appendText = vi.fn()
-      const withdrawal = { clearWithdrawal: { draftKey: 'pane-1', appendText } }
-      expect(
-        await dispatchMobileStructuredCommand({ ...input, text: '/clear', ...withdrawal })
-      ).toBe('unknown')
-      expect(
-        await dispatchMobileStructuredCommand({ ...input, text: '/clear', ...withdrawal })
-      ).toBe('accepted')
-      await vi.advanceTimersByTimeAsync(1_000)
-      expect(sendRequest).toHaveBeenCalledTimes(3)
-      expect(new Set(sendRequest.mock.calls.map((call) => JSON.stringify(call[1]))).size).toBe(1)
-      expect(appendText.mock.calls).toEqual([['pane-1', 'held']])
-      expect(stored.size).toBe(0)
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-  it('without a durable handle, a retry racing the background re-ask still restores once', async () => {
-    vi.useFakeTimers()
-    try {
-      const { input, sendRequest } = setup()
-      // The journal refuses the write-ahead: the clear runs anyway, handle-less.
-      asyncStorage.setItem.mockRejectedValue(new Error('storage full'))
-      sendRequest.mockRejectedValueOnce(markRpcDeliveryUnknown(new Error('Connection closed')))
-      sendRequest.mockResolvedValue({
-        ok: true,
-        result: {
-          ok: true,
-          value: {
-            command: 'clear',
-            state: 'completed',
-            withdrawnQueued: [
-              {
-                messageId: 'draft-1',
-                body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'held' }] }
-              }
-            ]
-          }
-        }
-      })
-      const appendText = vi.fn()
-      const withdrawal = { clearWithdrawal: { draftKey: 'pane-1', appendText } }
-      expect(
-        await dispatchMobileStructuredCommand({ ...input, text: '/clear', ...withdrawal })
-      ).toBe('unknown')
-      expect(
-        await dispatchMobileStructuredCommand({ ...input, text: '/clear', ...withdrawal })
-      ).toBe('accepted')
-      await vi.advanceTimersByTimeAsync(1_000)
-      expect(sendRequest).toHaveBeenCalledTimes(3)
-      expect(new Set(sendRequest.mock.calls.map((call) => JSON.stringify(call[1]))).size).toBe(1)
-      expect(appendText.mock.calls).toEqual([['pane-1', 'held']])
-    } finally {
-      vi.useRealTimers()
-    }
   })
   it('keeps ordinary messages on the existing send path', async () => {
     const { input, sendRequest } = setup()

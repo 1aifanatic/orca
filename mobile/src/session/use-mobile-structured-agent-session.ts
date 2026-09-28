@@ -36,7 +36,6 @@ import {
 } from './use-mobile-structured-send-with-outcome'
 import {
   useMobileStructuredQueuedMessageControls,
-  type MobileQueuedComposerRestoreSeam,
   type MobileStructuredQueuedMessageControls
 } from './use-mobile-structured-queued-message-controls'
 
@@ -76,16 +75,17 @@ export function useMobileStructuredAgentSession(args: {
   /** Capability facts from the shared runtime status probe; null follows the legacy wire. */
   hostSupport: StructuredAgentSessionHostSupport | null
   agent: string | null
-  composerRestore?: MobileQueuedComposerRestoreSeam
+  /** The active pane's live composer; Edit copies a card's text through it. */
+  appendComposerText?: (text: string) => void
   onSendError: (message: string) => void
   /** Called on any accepted queued-card action; retires the route's failure banner. */
   onActionResolved?: () => void
 }): StructuredMobileSession {
   const {
     agent,
+    appendComposerText,
     callerIdentity = '',
     client,
-    composerRestore,
     connected,
     sessionId,
     sourceIdentity = '',
@@ -145,7 +145,6 @@ export function useMobileStructuredAgentSession(args: {
     sessionKey,
     enabled,
     queueCapable,
-    composerRestore,
     stateRef,
     commandPending: commandPendingRef,
     operationIds: operationIdsRef.current,
@@ -179,25 +178,20 @@ export function useMobileStructuredAgentSession(args: {
     () => state.items.find(pendingStructuredQuestion) ?? null,
     [state.items]
   )
-  const { composerWithdraw, ...queued } = useMobileStructuredQueuedMessageControls({
-    client,
-    sessionId,
-    sessionKey,
-    enabled,
+  const queued = useMobileStructuredQueuedMessageControls({
     queueCapable,
-    composerRestore,
-    stateRef,
-    fence: state.fence,
     queuedMessages,
     pendingPrompt: approvalPrompt !== null || questionPrompt !== null,
     mutate,
+    appendComposerText,
     onSendError,
     ...(onActionResolved ? { onActionResolved } : {})
   })
+  // Stop never touches the queue: held cards stay on the host, visible on every
+  // device, and resume only from the user's own next action.
   const requestCancel = useCallback(
-    (prompt?: { itemId: string; expectedRevision: number }): Promise<boolean> => {
-      const withdraw = composerWithdraw()
-      return requestMobileStructuredAgentSessionCancel({
+    (prompt?: { itemId: string; expectedRevision: number }): Promise<boolean> =>
+      requestMobileStructuredAgentSessionCancel({
         client,
         enabled,
         onSendError,
@@ -206,20 +200,9 @@ export function useMobileStructuredAgentSession(args: {
         promptCancelSupported,
         sessionId,
         sessionKey,
-        stateRef,
-        ...(withdraw ? { withdraw } : {})
-      })
-    },
-    [
-      client,
-      composerWithdraw,
-      enabled,
-      onSendError,
-      promptCancelSupported,
-      sessionId,
-      sessionKey,
-      stateRef
-    ]
+        stateRef
+      }),
+    [client, enabled, onSendError, promptCancelSupported, sessionId, sessionKey, stateRef]
   )
 
   return {

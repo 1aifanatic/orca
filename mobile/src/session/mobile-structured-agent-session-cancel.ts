@@ -8,24 +8,8 @@ import {
   retainStructuredSessionOperationId,
   type StructuredAgentSessionMutationCallResult
 } from './mobile-structured-agent-session-rpc'
-import { requestWithdrawingMutation } from './mobile-structured-queued-message-actions'
-import { queuedMessageBodyText } from './mobile-structured-queued-message-cards'
-import {
-  discardQueuedRestoreOperation,
-  getOrCreateQueuedRestoreOperation,
-  queuedRestoreEntryKey,
-  restoreQueuedTextOnce
-} from './mobile-structured-queued-restore-journal'
-import { structuredSessionOperationId } from './structured-session-operation-id'
 
 type PromptIdentity = { itemId: string; expectedRevision: number }
-
-/** Where a withdrawing Stop puts the drafts' text back. */
-export type QueuedComposerRestore = {
-  /** Composer scope of the pane the Stop was issued from. */
-  draftKey: string
-  appendText: (draftKey: string, text: string) => void
-}
 
 export function pendingStructuredPromptIdentity(
   items: readonly AgentJournalRenderItem[]
@@ -46,10 +30,6 @@ export async function requestMobileStructuredAgentSessionCancel(args: {
   sessionKey: string
   operationIds: Map<string, string>
   promptCancelSupported: boolean | null
-  /** Present only when the host advertises queued messages AND this Stop names no
-   *  prompt: the cancel then also withdraws waiting/returned drafts and restores
-   *  their text through `withdraw.appendText`, write-ahead persisted per §5.1. */
-  withdraw?: QueuedComposerRestore
   prompt?: PromptIdentity
   onSendError: (message: string) => void
 }): Promise<boolean> {
@@ -60,84 +40,33 @@ export async function requestMobileStructuredAgentSessionCancel(args: {
     onSendError('Stop not sent')
     return false
   }
-  // The params schema allows withdrawQueued only on a plain conversation Stop.
-  const withdraw = args.prompt ? undefined : args.withdraw
   // Check the capability before fields enter either the fingerprint or operation key.
   const fields = {
     turnId,
-    ...(withdraw ? { withdrawQueued: true as const } : {}),
     ...(args.prompt && args.promptCancelSupported === true ? { prompt: args.prompt } : {})
   }
-  let restoreHandle: { entryKey: string; operationId: string } | null = null
-  if (withdraw) {
-    const entryKey = queuedRestoreEntryKey({
-      sessionKey,
-      method: 'agentSession.cancel',
-      fields: { turnId }
-    })
-    try {
-      // Persist-before-request: the replay handle survives a crash between the
-      // host's withdrawal and the composer restore below.
-      const operation = await getOrCreateQueuedRestoreOperation({
-        entryKey,
-        sessionId,
-        sessionKey,
-        draftKey: withdraw.draftKey,
-        method: 'agentSession.cancel',
-        fields: { turnId },
-        createOperationId: structuredSessionOperationId
-      })
-      restoreHandle = { entryKey, operationId: operation.operationId }
-    } catch {
-      // Bookkeeping never gates a Stop: proceed without a durable handle.
-      restoreHandle = null
-    }
-  }
   const key = `${sessionKey}:agentSession.cancel:${JSON.stringify(fields)}`
-  const clientOperationId =
-    restoreHandle?.operationId ??
-    retainStructuredSessionOperationId(operationIds, key, operationIds.get(key))
-  const request = {
-    client,
-    method: 'agentSession.cancel',
-    fingerprintMethod: 'agentSession.cancel',
-    sessionId,
-    expectedRuntimeFence: current.fence,
-    fields,
-    clientOperationId
-  }
+  const clientOperationId = retainStructuredSessionOperationId(
+    operationIds,
+    key,
+    operationIds.get(key)
+  )
+  const result: StructuredAgentSessionMutationCallResult<AgentSessionCancelResult> =
+    await requestStructuredAgentSessionMutation<AgentSessionCancelResult>({
+      client,
+      method: 'agentSession.cancel',
+      fingerprintMethod: 'agentSession.cancel',
+      sessionId,
+      expectedRuntimeFence: current.fence,
+      fields,
+      clientOperationId
+    })
   // Cancel's plan recovers no unknown ledger row, so an id the host answered that
   // way earns the same refusal until it expires; keeping it leaves Stop unusable.
   // Transport doubt proves nothing about delivery, so it stays a replay.
-  const settleOperationId = (
-    answer: StructuredAgentSessionMutationCallResult<AgentSessionCancelResult>
-  ): void => {
-    if (answer.status !== 'unknown' || answer.hostReportedOperationUnknown === true) {
-      operationIds.delete(key)
-    }
+  if (result.status !== 'unknown' || result.hostReportedOperationUnknown === true) {
+    operationIds.delete(key)
   }
-  // A withdrawing Stop re-asks a lost answer in the background: only it carries
-  // the drafts' text back, and it may land after this screen closed.
-  const result: StructuredAgentSessionMutationCallResult<AgentSessionCancelResult> = withdraw
-    ? await requestWithdrawingMutation<AgentSessionCancelResult>(request, async (answer) => {
-        settleOperationId(answer)
-        if (answer.status === 'accepted') {
-          const texts = (answer.value.withdrawnQueued ?? []).map((entry) =>
-            queuedMessageBodyText(entry.body)
-          )
-          // Settled through the journal so the bodies are restored exactly once.
-          await restoreQueuedTextOnce(clientOperationId, restoreHandle, () => {
-            for (const text of texts) {
-              withdraw.appendText(withdraw.draftKey, text)
-            }
-          })
-        } else if (restoreHandle) {
-          // The host answered without owing text (or burned the id); the handle is dead.
-          await discardQueuedRestoreOperation(restoreHandle).catch(() => undefined)
-        }
-      })
-    : await requestStructuredAgentSessionMutation<AgentSessionCancelResult>(request)
-  settleOperationId(result)
   if (result.status === 'accepted') {
     return true
   }

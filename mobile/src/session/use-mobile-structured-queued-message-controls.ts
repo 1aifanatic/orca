@@ -1,33 +1,20 @@
 // The queued-draft surface the structured session exposes: cards derived from
-// the published list, the Send-now / Delete / Edit actions, and the reload
-// replay that finishes restorations a crash interrupted. All of it is gated on
-// the host capability — an incapable host gets no cards and no new fields.
+// the published list and the Send-now / Delete / Edit actions. All of it is
+// gated on the host capability — an incapable host gets no cards and no new
+// fields. Nothing here is durable: the host owns the queue, and the published
+// list is the only truth a card action ever needs.
 
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import type {
   AgentSessionQueuedMessageDeleteResult,
   AgentSessionSendResult
 } from '../../../src/shared/agent-session-wire'
-import type { StructuredAgentSessionState } from '../../../src/shared/structured-agent-session-reducer'
-import type { RpcClient } from '../transport/rpc-client'
-import type { QueuedComposerRestore } from './mobile-structured-agent-session-cancel'
-import {
-  editMobileQueuedMessage,
-  replayQueuedRestoreOperations,
-  type QueuedRestoreTextSink
-} from './mobile-structured-queued-message-actions'
 import {
   mobileQueuedMessageCards,
   type MobileQueuedMessageCard
 } from './mobile-structured-queued-message-cards'
 import type { MobileQueuedMessageFeed } from './mobile-structured-queued-message-feed'
 import type { MobileStructuredAgentMutate } from './use-mobile-structured-agent-mutation'
-
-/** Composer scope + writer for Stop/Edit text restoration; absent = restore is dropped. */
-export type MobileQueuedComposerRestoreSeam = {
-  readDraftKey: () => string | null
-  appendText: QueuedRestoreTextSink
-}
 
 export type MobileStructuredQueuedMessageControls = {
   /** Host-held drafts as cards above the composer; empty off capable hosts. */
@@ -36,43 +23,29 @@ export type MobileStructuredQueuedMessageControls = {
   send: (messageId: string) => Promise<boolean>
   /** Discard the draft. */
   delete: (messageId: string) => Promise<boolean>
-  /** Withdraw the draft and put its text back in the composer. */
+  /** Copy the card's shown text into the composer, then delete the card. */
   edit: (messageId: string) => Promise<boolean>
 }
 
 export function useMobileStructuredQueuedMessageControls(args: {
-  client: RpcClient | null
-  sessionId: string | null
-  sessionKey: string
-  enabled: boolean
   queueCapable: boolean
-  composerRestore: MobileQueuedComposerRestoreSeam | undefined
-  stateRef: { readonly current: StructuredAgentSessionState }
-  fence: number | null
   queuedMessages: MobileQueuedMessageFeed
   pendingPrompt: boolean
   mutate: MobileStructuredAgentMutate
+  /** The active pane's live composer, Edit's copy target; absent = Edit refuses. */
+  appendComposerText: ((text: string) => void) | undefined
   onSendError: (message: string) => void
   /** Called on any accepted card action, so the route can retire a held failure banner. */
   onActionResolved?: () => void
-}): MobileStructuredQueuedMessageControls & {
-  /** What a capable Stop hands the cancel path, or undefined off capable hosts. */
-  composerWithdraw: () => QueuedComposerRestore | undefined
-} {
+}): MobileStructuredQueuedMessageControls {
   const {
-    client,
-    composerRestore,
-    enabled,
-    fence,
+    appendComposerText,
     mutate,
     onActionResolved,
     onSendError,
     pendingPrompt,
     queueCapable,
-    queuedMessages,
-    sessionId,
-    sessionKey,
-    stateRef
+    queuedMessages
   } = args
   const cards = useMemo(
     () => (queueCapable ? mobileQueuedMessageCards(queuedMessages, { pendingPrompt }) : []),
@@ -121,51 +94,17 @@ export function useMobileStructuredQueuedMessageControls(args: {
   )
   const edit = useCallback(
     async (messageId: string): Promise<boolean> => {
-      const currentFence = stateRef.current.fence
-      const restore = composerRestore
-      const draftKey = restore?.readDraftKey() ?? null
-      if (!client || !sessionId || !enabled || currentFence === null || !restore || !draftKey) {
+      const card = cards.find((candidate) => candidate.messageId === messageId)
+      if (!card || !appendComposerText) {
         return false
       }
-      return resolved(
-        await editMobileQueuedMessage({
-          client,
-          sessionId,
-          sessionKey,
-          expectedRuntimeFence: currentFence,
-          messageId,
-          draftKey,
-          appendText: restore.appendText,
-          onSendError
-        })
-      )
+      // Copy-first: the text is in the composer before any RPC can fail, so no
+      // Delete outcome — including a lost answer — can lose it. A failed Delete
+      // leaves the card beside the copy, visibly, never a silent duplicate.
+      appendComposerText(card.text)
+      return deleteDraft(messageId)
     },
-    [client, composerRestore, enabled, onSendError, resolved, sessionId, sessionKey, stateRef]
+    [appendComposerText, cards, deleteDraft]
   )
-  const composerWithdraw = useCallback((): QueuedComposerRestore | undefined => {
-    if (!queueCapable || !composerRestore) {
-      return undefined
-    }
-    const draftKey = composerRestore.readDraftKey()
-    return draftKey ? { draftKey, appendText: composerRestore.appendText } : undefined
-  }, [composerRestore, queueCapable])
-  // Finish the Edits a previous app process left, once per pane per process; its
-  // Stop and /clear handles are released, never reissued (see the replay).
-  useEffect(() => {
-    if (!queueCapable || !client || !sessionId || !enabled || fence === null || !composerRestore) {
-      return
-    }
-    const draftKey = composerRestore.readDraftKey()
-    if (!draftKey) {
-      return
-    }
-    void replayQueuedRestoreOperations({
-      client,
-      sessionId,
-      draftKey,
-      expectedRuntimeFence: fence,
-      appendText: composerRestore.appendText
-    }).catch(() => undefined)
-  }, [client, composerRestore, enabled, fence, queueCapable, sessionId])
-  return { cards, send, delete: deleteDraft, edit, composerWithdraw }
+  return { cards, send, delete: deleteDraft, edit }
 }

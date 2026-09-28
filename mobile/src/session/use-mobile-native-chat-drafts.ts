@@ -16,10 +16,6 @@ import {
   normalizeReconcileText
 } from './mobile-native-chat-draft-reconcile'
 import { useMobileNativeChatUnconfirmedSends } from './use-mobile-native-chat-unconfirmed-sends'
-import {
-  subscribeOwedComposerText,
-  takeOwedComposerText
-} from './mobile-native-chat-owed-composer-text'
 import { rebaseMobileNativeChatPendingBaselines } from './mobile-native-chat-pending-baseline'
 import { retireLandedMobileNativeChatPending } from './mobile-native-chat-pending-retirement'
 import {
@@ -65,6 +61,8 @@ export function useMobileNativeChatDrafts(args: {
 }): {
   composerText: string
   setComposerText: Dispatch<SetStateAction<string>>
+  /** Append after existing typing (newline-joined); a queued card's Edit copy lands here. */
+  appendComposerText: (text: string) => void
   getComposerEditGeneration: () => number
   pending: MobileNativeChatPendingMessage[]
   /** Phone-local previews rebound to the transcript message that replaced the
@@ -146,15 +144,21 @@ export function useMobileNativeChatDrafts(args: {
     },
     [draftKey]
   )
-  // Restored queued text goes after whatever is there, so newer typing is preserved.
-  const appendDraftText = useCallback((draftKey: string, text: string) => {
-    draftEditGenerationsRef.current.advance(draftKey)
-    setDrafts((previous) => {
-      const current = previous[draftKey] ?? ''
-      const next = current.length === 0 ? text : `${current}\n${text}`
-      return { ...previous, [draftKey]: next }
-    })
-  }, [])
+  // Copied queued-card text goes after whatever is there, so newer typing is preserved.
+  const appendComposerText = useCallback(
+    (text: string) => {
+      if (!draftKey || text.length === 0) {
+        return
+      }
+      draftEditGenerationsRef.current.advance(draftKey)
+      setDrafts((previous) => {
+        const current = previous[draftKey] ?? ''
+        const next = current.length === 0 ? text : `${current}\n${text}`
+        return { ...previous, [draftKey]: next }
+      })
+    },
+    [draftKey]
+  )
 
   const captureSendOrigin = useCallback(
     (text: string) => {
@@ -223,21 +227,6 @@ export function useMobileNativeChatDrafts(args: {
     },
     []
   )
-
-  // Withdrawn queued text lands whenever its pane is active, including text
-  // answered while this screen was closed.
-  useEffect(() => {
-    if (!draftKey) {
-      return
-    }
-    const drain = (): void => {
-      for (const text of takeOwedComposerText(draftKey)) {
-        appendDraftText(draftKey, text)
-      }
-    }
-    drain()
-    return subscribeOwedComposerText(drain)
-  }, [appendDraftText, draftKey])
 
   const { holdUnconfirmedSend } = useMobileNativeChatUnconfirmedSends({
     draftKey,
@@ -313,6 +302,7 @@ export function useMobileNativeChatDrafts(args: {
   return {
     composerText: draftKey ? (drafts[draftKey] ?? '') : '',
     setComposerText,
+    appendComposerText,
     getComposerEditGeneration: draftEditGenerationsRef.current.readComposer,
     pending,
     imagePreviewsByMessageId: pendingKey

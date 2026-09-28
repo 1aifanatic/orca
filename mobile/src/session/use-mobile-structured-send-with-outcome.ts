@@ -1,7 +1,7 @@
 // The structured composer's one send seam: a slash command dispatches as a
-// conversation command (with /clear's capability-gated draft withdrawal), and
-// everything else goes out as an `agentSession.send` — carrying
-// `delivery: 'queue-if-active'` only when the host advertises the queue.
+// conversation command, and everything else goes out as an
+// `agentSession.send` — carrying `delivery: 'queue-if-active'` only when the
+// host advertises the queue.
 
 import { useCallback } from 'react'
 import { activeStructuredAgentSessionTurnId } from '../../../src/shared/structured-agent-session-live-turn'
@@ -20,7 +20,6 @@ import {
   pendingStructuredApproval,
   pendingStructuredQuestion
 } from './mobile-structured-agent-prompts'
-import type { MobileQueuedComposerRestoreSeam } from './use-mobile-structured-queued-message-controls'
 
 export type StructuredMobileSendAttachment = StructuredAgentSessionAttachment & {
   id?: string
@@ -35,7 +34,6 @@ export function useMobileStructuredSendWithOutcome(args: {
   sessionKey: string
   enabled: boolean
   queueCapable: boolean
-  composerRestore: MobileQueuedComposerRestoreSeam | undefined
   stateRef: { readonly current: StructuredAgentSessionState }
   commandPending: { current: boolean }
   operationIds: Map<string, string>
@@ -55,7 +53,6 @@ export function useMobileStructuredSendWithOutcome(args: {
     callerIdentity,
     client,
     commandPending,
-    composerRestore,
     controller,
     enabled,
     onSendError,
@@ -87,16 +84,7 @@ export function useMobileStructuredSendWithOutcome(args: {
         return 'rejected'
       }
       const sendAttachments = attachments ?? []
-      const clearDraftScope = queueCapable ? (composerRestore?.readDraftKey() ?? null) : null
       const commandOutcome = await dispatchMobileStructuredCommand({
-        ...(clearDraftScope && composerRestore
-          ? {
-              clearWithdrawal: {
-                draftKey: clearDraftScope,
-                appendText: composerRestore.appendText
-              }
-            }
-          : {}),
         text,
         hasAttachments: Boolean(sendAttachments.length || images?.length),
         client,
@@ -142,7 +130,6 @@ export function useMobileStructuredSendWithOutcome(args: {
       callerIdentity,
       client,
       commandPending,
-      composerRestore,
       controller,
       enabled,
       onSendError,

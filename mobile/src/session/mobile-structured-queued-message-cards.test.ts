@@ -46,11 +46,11 @@ describe('mobileQueuedMessageCards', () => {
     expect(card?.label).toBe('Waiting for your answer')
   })
 
-  it('labels a reasonless pause — a Stop or restart hold — as plain Paused', () => {
+  it('labels a reasonless pause — a Stop or restart hold — with the resume promise', () => {
     const [card] = mobileQueuedMessageCards([draft({ messageId: 'a', paused: true })], {
       pendingPrompt: false
     })
-    expect(card?.label).toBe('Paused')
+    expect(card?.label).toBe('Paused — sends after your next message')
     expect(card?.paused).toBe(true)
   })
 
@@ -85,7 +85,10 @@ describe('mobileQueuedMessageCards', () => {
       ],
       { pendingPrompt: false }
     )
-    expect(cards.map((card) => card.label)).toEqual(["Couldn't send — Send to retry", 'Paused'])
+    expect(cards.map((card) => card.label)).toEqual([
+      "Couldn't send — Send to retry",
+      'Paused — sends after your next message'
+    ])
   })
 
   it('never shows an internal rejection reason verbatim', () => {

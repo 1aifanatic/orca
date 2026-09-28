@@ -82,6 +82,9 @@ export function useMobileNativeChatController(args: {
     nativeChatTranscriptIsLocalReadable
   })
 
+  // The lane runs before the drafts hook (fixed hook order); Edit's composer
+  // append reaches the drafts state through this ref, set below once they exist.
+  const appendComposerTextRef = useRef<(text: string) => void>(() => {})
   const { structuredSession: structuredNativeChat, session: nativeChatSession } =
     useMobileNativeChatSessionLane({
       client,
@@ -95,7 +98,7 @@ export function useMobileNativeChatController(args: {
       enabled: showNativeChat,
       connState,
       hostSupport: agentSessionHostSupport,
-      composerScope: { hostId, worktreeId, tabId: activeSessionTabId },
+      appendComposerTextRef,
       onSendError,
       onActionResolved: onSendResolved
     })
@@ -103,6 +106,7 @@ export function useMobileNativeChatController(args: {
     composerText: chatComposerText,
     setComposerText: setChatComposerText,
     getComposerEditGeneration: getChatComposerEditGeneration,
+    appendComposerText,
     pending: chatPending,
     imagePreviewsByMessageId: chatImagePreviewsByMessageId,
     captureSendOrigin,
@@ -260,7 +264,8 @@ export function useMobileNativeChatController(args: {
     })
   useLayoutEffect(() => {
     recordSessionOptionCommandRef.current = recordNativeChatSessionOptionCommand
-  }, [recordNativeChatSessionOptionCommand])
+    appendComposerTextRef.current = appendComposerText
+  }, [appendComposerText, recordNativeChatSessionOptionCommand])
   // Card actions retire the route's held failure banner too, not just sends.
   const answerAsk = useNativeChatAcceptedAction(handleNativeChatAnswerAsk, onSendResolved)
   const cancelAsk = useNativeChatAcceptedAction(handleNativeChatCancelAsk, onSendResolved)

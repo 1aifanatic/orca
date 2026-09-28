@@ -1,7 +1,7 @@
+import { useCallback } from 'react'
 import type { RpcClient } from '../transport/rpc-client'
 import type { ConnectionState } from '../transport/types'
 import type { StructuredAgentSessionHostSupport } from './mobile-structured-agent-session-host-support'
-import { useMobileNativeChatQueuedComposerRestore } from './use-mobile-native-chat-queued-composer-restore'
 import { useMobileNativeChatSession } from './use-mobile-native-chat-session'
 import { useMobileStructuredAgentSession } from './use-mobile-structured-agent-session'
 
@@ -18,7 +18,7 @@ export function useMobileNativeChatSessionLane({
   sourceIdentity,
   callerIdentity,
   hostSupport,
-  composerScope,
+  appendComposerTextRef,
   enabled,
   connState,
   onSendError,
@@ -35,8 +35,9 @@ export function useMobileNativeChatSessionLane({
   sourceIdentity: Parameters<typeof useMobileNativeChatSession>[0]['sourceIdentity']
   callerIdentity: string
   hostSupport: StructuredAgentSessionHostSupport | null
-  /** Composer scope withdrawn queued text is restored to. */
-  composerScope: { hostId: string; worktreeId: string; tabId: string | null }
+  /** The active pane's live composer; a queued card's Edit copies through it.
+   *  A ref because the drafts (and their append) mount after this lane. */
+  appendComposerTextRef: { readonly current: (text: string) => void }
   enabled: boolean
   connState: ConnectionState
   onSendError: (message: string) => void
@@ -46,7 +47,10 @@ export function useMobileNativeChatSessionLane({
   structuredSession: ReturnType<typeof useMobileStructuredAgentSession>
   session: ReturnType<typeof useMobileNativeChatSession>
 } {
-  const composerRestore = useMobileNativeChatQueuedComposerRestore(composerScope)
+  const appendComposerText = useCallback(
+    (text: string) => appendComposerTextRef.current(text),
+    [appendComposerTextRef]
+  )
   const bridgeSession = useMobileNativeChatSession({
     client,
     sourceIdentity,
@@ -60,7 +64,7 @@ export function useMobileNativeChatSessionLane({
     sourceIdentity,
     callerIdentity,
     hostSupport,
-    composerRestore,
+    appendComposerText,
     enabled,
     // Holds are connection-scoped; dropping this on transport loss lets the hook
     // reacquire the provider without clearing the cached transcript.

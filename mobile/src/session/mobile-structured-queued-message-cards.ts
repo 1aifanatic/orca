@@ -8,13 +8,12 @@ import {
 } from '../../../src/shared/structured-agent-session-dispatch-rejection'
 import {
   QUEUED_MESSAGE_PAUSED_SEND_FAILED,
-  type AgentSessionQueuedMessage,
-  type AgentSessionWithdrawnQueuedMessage
+  type AgentSessionQueuedMessage
 } from '../../../src/shared/agent-session-wire'
 
 export type MobileQueuedMessageCard = {
   messageId: string
-  /** The draft's text blocks joined for display and for Edit's composer restore. */
+  /** The draft's text blocks joined for display and for Edit's composer copy. */
   text: string
   state: 'waiting' | 'returned'
   paused: boolean
@@ -22,7 +21,7 @@ export type MobileQueuedMessageCard = {
   label: string
 }
 
-export function queuedMessageBodyText(body: AgentSessionWithdrawnQueuedMessage['body']): string {
+function queuedMessageBodyText(body: AgentSessionQueuedMessage['body']): string {
   return body.blocks.flatMap((block) => (block.type === 'text' ? [block.text] : [])).join('\n')
 }
 
@@ -43,8 +42,9 @@ function pausedLabel(reason: string | undefined): string {
     return "Couldn't send — Send to retry"
   }
   // The wire carries markers, never copy; an unknown marker from a newer host
-  // reads as a plain pause rather than leaking on screen.
-  return 'Paused'
+  // reads as the plain pause rather than leaking on screen. A pause holds until
+  // the user acts — Send now, or a new message that starts the next turn.
+  return 'Paused — sends after your next message'
 }
 
 export function mobileQueuedMessageCards(

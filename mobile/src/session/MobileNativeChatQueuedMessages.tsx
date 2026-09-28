@@ -11,7 +11,7 @@ export type MobileNativeChatQueuedMessagesProps = {
   /** Send-now (Steer) for a waiting card; retry-send for a returned one. */
   onSend?: (messageId: string) => Promise<boolean>
   onDelete?: (messageId: string) => Promise<boolean>
-  /** Withdraw the draft and put its text back in the composer. */
+  /** Copy the card's text into the composer, then delete the card. */
   onEdit?: (messageId: string) => Promise<boolean>
 }
 
