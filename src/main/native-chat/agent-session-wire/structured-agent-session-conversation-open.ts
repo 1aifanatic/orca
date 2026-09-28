@@ -1,18 +1,21 @@
 // The one way a conversation's journal becomes open on this host: for a send, for a reader, and
 // for an attach that finds none open.
 //
-// It opens with recovery, so an unusable journal is rebuilt rather than refused, and it marks what
-// an earlier host process handed over and left unanswered as in doubt, and settles what it left
-// running — the crash boundary. That
-// needs no lease: provider history decides such a row later, under a won lease, in the attach. A
-// row an earlier process accepted and never handed over is the delivery loop's, which the open
-// wakes. Nothing here starts a provider child.
+// It opens with recovery, so an unusable journal is rebuilt rather than refused, and it settles
+// what an earlier host process left behind — the crash boundary. A send it handed over and never
+// heard back about stays in doubt for good and is drawn as sent; what it left running is settled;
+// and one row says the session did not survive, so the next message is how the chat continues.
+// Nothing reads provider history to decide delivery. A row an earlier process accepted and never
+// handed over is the delivery loop's, which the open wakes. Nothing here starts a provider child.
 
 import type { AgentJournalResetReason } from '../../../shared/agent-session-journal-types'
 import { journalDirectoryFor } from '../agent-session-journal/journal-paths'
 import { openAgentSessionJournalWithRecovery } from './agent-session-journal-recovery'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
-import type { AgentSessionRecord } from '../../../shared/agent-session-record'
+import type {
+  AgentSessionDeathEvidence,
+  AgentSessionRecord
+} from '../../../shared/agent-session-record'
 import {
   attachFingerprintFields,
   journalIdentityFor,
@@ -40,9 +43,11 @@ export type StructuredAgentSessionConversationOpenDeps = {
   onEventSinkError?: StructuredAgentSessionHostDeps['onEventSinkError']
 }
 
-/** An acquisition's own open: its reserve cleared the record's death evidence, so it settles
- *  what the gone generation left running itself, from what it read before. */
-export type StructuredAgentSessionConversationOpenOptions = { acquisition?: boolean }
+/** An acquisition's own open: its reserve cleared the record's death evidence, so it passes what
+ *  it read before. */
+export type StructuredAgentSessionConversationOpenOptions = {
+  acquisition?: { deathEvidence: AgentSessionDeathEvidence | null }
+}
 
 export type StructuredAgentSessionConversationOpenContext = {
   deps: StructuredAgentSessionConversationOpenDeps
@@ -96,29 +101,31 @@ export async function openStructuredAgentSessionConversationJournal(
     fence,
     historyFilePath: (await deps.adapter.historyFilePath?.({ identity })) ?? null
   })
+  // A queued row found here is a leftover the delivery loop's first step rejects; a handed-over
+  // one stays in doubt. Marked first: the row below is written at most once, never twice.
+  let sendsLeftInDoubt = 0
   try {
-    // A queued row found here is a leftover the delivery loop's first step rejects; a handed-over
-    // one is only doubt, which provider history decides under a won lease.
-    await opened.journal.markPendingSubmissionsUnknown(fence)
+    sendsLeftInDoubt = (await opened.journal.markPendingSubmissionsUnknown(fence)).length
   } catch (error) {
     deps.onEventSinkError?.({ sessionId, error })
   }
   try {
     // No child in this process writes to a journal nobody had open, so whatever it shows running
     // belongs to a generation that is gone, whatever the lease still claims. Settled before any
-    // reader or child sees it.
-    if (!options.acquisition) {
-      await settleStaleStructuredAgentSessionState({
-        journal: opened.journal,
-        sessionId,
-        fence,
-        acquisitionGeneration: null,
-        deathEvidence: record.lease.deathEvidence ?? null,
-        failureTextContext: structuredAgentSessionFailureWordsContext(record)
-      })
-    }
+    // reader or child sees it — an acquisition's too, before its child's events drain.
+    await settleStaleStructuredAgentSessionState({
+      journal: opened.journal,
+      sessionId,
+      fence,
+      acquisitionGeneration: null,
+      deathEvidence: options.acquisition
+        ? options.acquisition.deathEvidence
+        : (record.lease.deathEvidence ?? null),
+      failureTextContext: structuredAgentSessionFailureWordsContext(record),
+      crashBoundary: { sendsLeftInDoubt }
+    })
   } catch (error) {
-    // Best effort: the next acquire re-derives it.
+    // Best effort: the next acquire re-derives what was left running.
     deps.onEventSinkError?.({ sessionId, error })
   }
   return {

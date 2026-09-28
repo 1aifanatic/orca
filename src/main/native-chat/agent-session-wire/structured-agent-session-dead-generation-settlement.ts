@@ -188,6 +188,9 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
  * death evidence each time, so nothing is owed in between. Only an observed exit earns an end time
  * and the exit copy. Must run before a new child's buffered events land, or a live turn would be
  * judged.
+ *
+ * Writes at most one row: the exit's, or at a crash boundary the one saying the session did not
+ * survive. Both come from here so one boundary can never show two.
  */
 export async function settleStaleStructuredAgentSessionState(input: {
   journal: AgentSessionJournal
@@ -195,8 +198,10 @@ export async function settleStaleStructuredAgentSessionState(input: {
   fence: number
   acquisitionGeneration: string | null
   deathEvidence: AgentSessionDeathEvidence | null
-  /** Who the exit row names. */
+  /** Who the row names. */
   failureTextContext?: AgentSessionFailureWordsContext
+  /** Set only by the conversation's open: how many sends it just left in doubt. */
+  crashBoundary?: { sendsLeftInDoubt: number }
 }): Promise<number> {
   const { journal } = input
   const items = journal.snapshot().items
@@ -212,19 +217,12 @@ export async function settleStaleStructuredAgentSessionState(input: {
     }
   }
   mutations.push(...runningTurnLifecycleRevisions(items, verdict))
-  if (verdict.state === 'interrupted' && items.some(isInProgressItem)) {
+  const row = staleSettlementRow(input, verdict, items.some(isInProgressItem))
+  if (row) {
     mutations.unshift({
       kind: 'item',
       identity: { provider: 'orca', clientMessageId: settlementId },
-      // The death evidence is Orca's log text, never a sentence for a person: the row says only
-      // that the provider stopped.
-      body: {
-        kind: 'status',
-        ...agentSessionFailureWords(agentSessionFailureFact('providerExited'), {
-          ...input.failureTextContext,
-          surface: 'row'
-        })
-      }
+      body: row
     })
   }
   for (const chunk of partitionJournalLifecycleMutations(settlementId, mutations)) {
@@ -236,6 +234,35 @@ export async function settleStaleStructuredAgentSessionState(input: {
     })
   }
   return mutations.length
+}
+
+/** The death evidence is Orca's log text, never a sentence for a person: a row says only that
+ *  the provider stopped, or that the session did not survive the restart. No Retry: sending a
+ *  new message is how the chat continues. */
+function staleSettlementRow(
+  input: Pick<
+    Parameters<typeof settleStaleStructuredAgentSessionState>[0],
+    'failureTextContext' | 'crashBoundary'
+  >,
+  verdict: StructuredAgentSessionTurnVerdict,
+  inProgress: boolean
+): AgentJournalItemBody | null {
+  const context = { ...input.failureTextContext, surface: 'row' as const }
+  if (verdict.state === 'interrupted' && inProgress) {
+    return {
+      kind: 'status',
+      ...agentSessionFailureWords(agentSessionFailureFact('providerExited'), context)
+    }
+  }
+  const boundary = input.crashBoundary
+  if (boundary && (inProgress || boundary.sendsLeftInDoubt > 0)) {
+    return {
+      kind: 'status',
+      tone: 'notice',
+      ...agentSessionFailureWords(agentSessionFailureFact('hostRestarted'), context)
+    }
+  }
+  return null
 }
 
 function terminalDeadGenerationBody(item: AgentJournalRenderItem): AgentJournalItemBody | null {

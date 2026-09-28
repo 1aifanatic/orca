@@ -337,4 +337,97 @@ describe('stale session state on a cold acquire', () => {
       expect.objectContaining({ settlementId: 'stale-session:session-1:14:seq-8' })
     )
   })
+
+  describe('the crash boundary writes at most one row', () => {
+    const boundaryRows = (batch: ReturnType<typeof journalWith>['appendLifecycleBatch']) =>
+      batch.mock.calls.flatMap(([input]) =>
+        (input as { mutations: { kind: string; body?: { kind: string } }[] }).mutations.filter(
+          (mutation) => mutation.body?.kind === 'status'
+        )
+      )
+
+    it('says the session did not survive when it left a send in doubt, with no Retry', async () => {
+      const { journal, appendLifecycleBatch } = journalWith([
+        lifecycleItem('turn-1', 'completed', 1, { startedAt: 10, completedAt: 20 })
+      ])
+      await settleStaleStructuredAgentSessionState({
+        journal,
+        sessionId: 'session-1',
+        fence: 14,
+        acquisitionGeneration: null,
+        deathEvidence: null,
+        failureTextContext: { agentName: 'Claude' },
+        crashBoundary: { sendsLeftInDoubt: 1 }
+      })
+      expect(boundaryRows(appendLifecycleBatch)).toEqual([
+        {
+          kind: 'item',
+          identity: { provider: 'orca', clientMessageId: 'stale-session:session-1:14:seq-8' },
+          body: {
+            kind: 'status',
+            tone: 'notice',
+            text: "Claude's session didn't survive the restart. Send a message to continue.",
+            failure: { kind: 'hostRestarted' }
+          }
+        }
+      ])
+    })
+
+    it('says it once for a running turn it could not see end', async () => {
+      const { journal, appendLifecycleBatch } = journalWith([
+        lifecycleItem('turn-2', 'running', 2, { startedAt: 30 })
+      ])
+      await settleStaleStructuredAgentSessionState({
+        journal,
+        sessionId: 'session-1',
+        fence: 14,
+        acquisitionGeneration: null,
+        deathEvidence: null,
+        crashBoundary: { sendsLeftInDoubt: 2 }
+      })
+      expect(boundaryRows(appendLifecycleBatch)).toMatchObject([
+        { body: { failure: { kind: 'hostRestarted' } } }
+      ])
+    })
+
+    it("keeps the observed exit's row instead of adding the restart's", async () => {
+      const { journal, appendLifecycleBatch } = journalWith([
+        lifecycleItem('turn-2', 'running', 2, { startedAt: 30 })
+      ])
+      await settleStaleStructuredAgentSessionState({
+        journal,
+        sessionId: 'session-1',
+        fence: 14,
+        acquisitionGeneration: null,
+        deathEvidence: { kind: 'exit-observed', detail: 'exit', observedAt: 500 },
+        crashBoundary: { sendsLeftInDoubt: 1 }
+      })
+      expect(boundaryRows(appendLifecycleBatch)).toMatchObject([
+        { body: { failure: { kind: 'providerExited' } } }
+      ])
+    })
+
+    it('writes no row with nothing in doubt, or outside a crash boundary', async () => {
+      const idle = journalWith([])
+      await settleStaleStructuredAgentSessionState({
+        journal: idle.journal,
+        sessionId: 'session-1',
+        fence: 14,
+        acquisitionGeneration: null,
+        deathEvidence: null,
+        crashBoundary: { sendsLeftInDoubt: 0 }
+      })
+      expect(idle.appendLifecycleBatch).not.toHaveBeenCalled()
+
+      const reacquired = journalWith([lifecycleItem('turn-2', 'running', 2)])
+      await settleStaleStructuredAgentSessionState({
+        journal: reacquired.journal,
+        sessionId: 'session-1',
+        fence: 14,
+        acquisitionGeneration: 'generation-2',
+        deathEvidence: null
+      })
+      expect(boundaryRows(reacquired.appendLifecycleBatch)).toEqual([])
+    })
+  })
 })
