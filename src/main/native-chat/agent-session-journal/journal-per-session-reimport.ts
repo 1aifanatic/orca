@@ -2,7 +2,8 @@
 // downgrade, attached the chat and wrote its history there. A file that carried the chat's
 // history on is the newer history. One the older build started from nothing, since the copy's
 // delete left it no file, holds none of this build's history: it stays on disk as it is, and never
-// replaces that history.
+// replaces that history. That is decided once and recorded in `journal_set_aside`, and the file is
+// never opened again: whatever an older build writes there later grows from its own start.
 //
 // `journal_imports` records which file each chat was copied from — its epoch and tip — in the
 // transaction that publishes the verified copy, so a file already copied (only its delete failed,
@@ -44,6 +45,23 @@ export function readPerSessionImportMarker(
     : null
 }
 
+const SELECT_SET_ASIDE = 'SELECT 1 AS present FROM journal_set_aside WHERE session_id = ?'
+const INSERT_SET_ASIDE = `INSERT INTO journal_set_aside (session_id, epoch, tip) VALUES (?, ?, ?)
+ON CONFLICT(session_id) DO NOTHING`
+
+export function isPerSessionJournalSetAside(db: Database.Database, sessionId: string): boolean {
+  return db.prepare(SELECT_SET_ASIDE).get(sessionId) !== undefined
+}
+
+/** Records the file an older build started over, as it was when set aside. */
+export function setAsidePerSessionJournal(
+  db: Database.Database,
+  sessionId: string,
+  head: PerSessionJournalHead
+): void {
+  db.prepare(INSERT_SET_ASIDE).run(sessionId, head.epoch, head.tip)
+}
+
 export function writePerSessionImportMarker(
   db: Database.Database,
   sessionId: string,
@@ -55,7 +73,7 @@ export function writePerSessionImportMarker(
 export type PerSessionImportPlan =
   | { kind: 'first' }
   | { kind: 'copied' }
-  /** An older build started the file from nothing: kept on disk, neither copied nor deleted. */
+  /** An older build started the file from nothing: set aside, neither copied nor deleted. */
   | { kind: 'kept' }
   /** The file is newer history: copied again, as `epoch`, with a row saying so. */
   | { kind: 'again'; epoch: string }

@@ -5,14 +5,15 @@
 // when that epoch changes, so an append is one INSERT. `journal_repairs`
 // carries at most one row per chat: the standing demand for a rebuild a partial repair leaves
 // behind (see journal-repair-marker.ts). `journal_imports` records which per-chat file each chat
-// was last copied from (journal-per-session-reimport.ts); `journal_import_blocks` the block a copy
-// still in progress writes into, which no reader follows. `status_json` is the chat's last settled
+// was last copied from (journal-per-session-reimport.ts), and `journal_set_aside` each chat whose
+// per-chat file an older build started over and which is never read again; `journal_import_blocks`
+// the block a copy still in progress writes into, which no reader follows. `status_json` is the chat's last settled
 // listing status, trusted only where `status_seq` is still the tip of the live epoch.
 
 /** DB shape version, carried in `PRAGMA user_version`. Independent of the row body version
  *  (`JournalRow.v`): a newer build can change either alone. A newer version latches this build
  *  out, so every change stays additive. */
-export const JOURNAL_DB_SCHEMA_VERSION = 1
+export const JOURNAL_DB_SCHEMA_VERSION = 2
 
 export function createJournalTablesSql(): string {
   return `
@@ -36,6 +37,11 @@ CREATE TABLE IF NOT EXISTS journal_repairs (
   repaired_at  INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS journal_imports (
+  session_id TEXT PRIMARY KEY,
+  epoch      TEXT    NOT NULL,
+  tip        INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS journal_set_aside (
   session_id TEXT PRIMARY KEY,
   epoch      TEXT    NOT NULL,
   tip        INTEGER NOT NULL

@@ -4,7 +4,8 @@
 // earlier `<legacyDir>/journal.db`, verbatim: the same epoch UUID and every sequence number, so a
 // cursor, an `acceptedSequence` or a restart offer taken before the upgrade still points at the
 // same row after it. A file that reappears after a downgrade is copied again, unless the older
-// build started it from nothing; that one is left on disk (see journal-per-session-reimport.ts).
+// build started it from nothing; that one is set aside, never read again (see
+// journal-per-session-reimport.ts).
 //
 // The copy runs in bounded batches, each its own transaction, yielding the event loop between them.
 // The rows go into a block `journal_import_blocks` reserves, which no reader follows. Once the
@@ -28,8 +29,10 @@ import { JournalImportMismatchError, journalOpenRefusalError } from './journal-o
 import { legacyJournalDatabaseFile } from './journal-paths'
 import {
   planPerSessionImport,
+  isPerSessionJournalSetAside,
   readPerSessionImportMarker,
   reimportedJournalRows,
+  setAsidePerSessionJournal,
   writePerSessionImportMarker,
   type PerSessionImportPlan
 } from './journal-per-session-reimport'
@@ -40,7 +43,7 @@ import {
   openLegacySource,
   readLegacyHead,
   readLegacyRepair,
-  removeLegacyJournal,
+  retireLegacyJournal,
   type ImportBatch,
   type LegacyJournalHead,
   type ImportedRow
@@ -110,6 +113,9 @@ async function importOnce(input: ImportInput): Promise<PerSessionJournalImportOu
     return 'absent'
   }
   const { sessionId } = input.identity
+  if (isPerSessionJournalSetAside(input.database.db, sessionId)) {
+    return 'kept'
+  }
   const current = readJournalSessionPointer(input.database.db, sessionId)
   const source = (input.openSource ?? openLegacySource)(sourcePath)
   let legacy: LegacyJournalHead | null
@@ -131,14 +137,15 @@ async function importOnce(input: ImportInput): Promise<PerSessionJournalImportOu
     if (!current) {
       return 'absent'
     }
-    retireLegacyJournal(input)
+    retireLegacyJournal(input.legacyDirectory, input.remove)
     return 'already-imported'
   }
   if (plan?.kind === 'kept') {
+    setAsidePerSessionJournal(input.database.db, sessionId, legacy)
     return 'kept'
   }
   // Also a file a crash left after its copy was recorded (`copied`): deleted now, not copied again.
-  retireLegacyJournal(input)
+  retireLegacyJournal(input.legacyDirectory, input.remove)
   if (plan?.kind === 'copied') {
     return 'already-imported'
   }
@@ -349,13 +356,4 @@ function reserveImportBlock(db: Database.Database, sessionId: string): number {
   const block = allocateJournalBlock(db)
   db.prepare(RESERVE_IMPORT_BLOCK).run(sessionId, block)
   return block
-}
-
-/** Best effort: the copy is committed, so a file left behind is deleted by the next open. */
-function retireLegacyJournal(input: ImportInput): void {
-  try {
-    removeLegacyJournal(input.legacyDirectory, input.remove)
-  } catch (error) {
-    console.warn(`[agent-session-journal] deleting imported ${input.legacyDirectory} failed`, error)
-  }
 }

@@ -132,16 +132,22 @@ export async function foldLegacyJournal(
 /**
  * Deletes the per-chat file and SQLite's WAL files beside it, then the directory if nothing else is
  * in it: a pre-SQLite transcript there is the user's, and stays. Its connection must be closed.
+ * Best effort: the copy is committed, so a file left behind is deleted by the next open.
  */
-export function removeLegacyJournal(
+export function retireLegacyJournal(
   legacyDirectory: string,
   remove: (path: string) => void = (path) => rmSync(path, { force: true })
 ): void {
   const file = legacyJournalDatabaseFile(legacyDirectory)
-  // The database first: a WAL left without it is never read, but a database left without its WAL
-  // would read back short of the tip it was copied at, and be copied again as newer history.
-  for (const path of [file, `${file}-wal`, `${file}-shm`]) {
-    remove(path)
+  try {
+    // The database first: a WAL left without it is never read, but a database left without its WAL
+    // would read back short of the tip it was copied at, and be copied again as newer history.
+    for (const path of [file, `${file}-wal`, `${file}-shm`]) {
+      remove(path)
+    }
+  } catch (error) {
+    console.warn(`[agent-session-journal] deleting imported ${legacyDirectory} failed`, error)
+    return
   }
   try {
     rmdirSync(legacyDirectory)

@@ -541,6 +541,45 @@ describe('importing a per-chat journal', () => {
     expect(keptRows.map((row) => row.row_json)).toEqual(older.rows.map((row) => row.rowJson))
   })
 
+  // Decided once and recorded: no later open reads the file again, after a restart or after the
+  // older build ran again and wrote more to it.
+  it('never reads a set-aside file again', async () => {
+    const first = await historyRows('epoch-original', 'ORIGINAL HISTORY')
+    await writeLegacyJournal(first.epoch, first.rows)
+    await openChat()
+    await journals.closeAll()
+    const older = await historyRows('epoch-older-fresh', 'typed in the older build')
+    await writeLegacyJournal(older.epoch, older.rows)
+    const reads: string[] = []
+    const countingSource = (path: string) => {
+      reads.push(path)
+      return new Database(path, { readonly: true, fileMustExist: true })
+    }
+    const importAgain = () =>
+      importPerSessionJournal({
+        database: openTestJournalHostDatabase(root),
+        identity: IDENTITY,
+        legacyDirectory: legacyDir(),
+        openSource: countingSource
+      })
+
+    expect(await importAgain()).toBe('kept')
+    expect(reads).toHaveLength(1)
+    closeTestJournalHostDatabases()
+    expect(await importAgain()).toBe('kept')
+    const row = { ...JSON.parse(older.rows.at(-1)!.rowJson), seq: older.rows.length + 1 }
+    const legacy = new Database(legacyJournalDatabaseFile(legacyDir()))
+    legacy
+      .prepare('INSERT INTO journal_rows VALUES (?, ?, ?, ?, ?)')
+      .run(IDENTITY.sessionId, older.epoch, row.seq, 1, JSON.stringify(row))
+    legacy.close()
+    expect(await importAgain()).toBe('kept')
+
+    expect(reads).toHaveLength(1)
+    expect(texts(await openChat())).toContain('ORIGINAL HISTORY')
+    expect(existsSync(legacyJournalDatabaseFile(legacyDir()))).toBe(true)
+  })
+
   // T-B5: a downgrade, an older build starting the chat over in a new per-chat file, and a
   // re-upgrade — twice. This build's history stays whole each time, and the file stays on disk.
   it('keeps this build’s history on every re-upgrade after an older build started the chat over', async () => {
