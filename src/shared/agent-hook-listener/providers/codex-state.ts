@@ -125,8 +125,8 @@ export function resolveCodexPaneStatus(
 }
 
 /** Where a Codex row that shows work has its session run: Codex's shared background server while
- *  the one for the pane's Codex home is running (a TUI started then connects to it), else the TUI
- *  itself. Only work in that server outlives the TUI. */
+ *  the one for the pane's Codex home is running (a TUI started then uses it unless run with
+ *  --no-daemon or excluded), else the TUI itself. Only work in that server outlives the TUI. */
 export function codexSessionRunner(
   state: HookListenerState,
   paneKey: string,

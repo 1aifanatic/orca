@@ -258,15 +258,16 @@ running a TUI's turn and children after the TUI exits ("Run in background", or
 "Exit" with a subagent still running), still posting hooks to the pane; an
 embedded Codex runs them in the TUI, so they end with it, even when it is killed
 mid-turn with no end marker written. The execution host says which, on every
-Codex row that shows work: `sessionRunner: 'background-server'` while the
-server of the rollout's Codex home is running, read from the pid record it keeps
-under `<CODEX_HOME>/app-server-daemon` (a TUI started while it runs connects to
-it). For that row the renderer's command-finished cleanup neither drops the row
-nor asks the host to clear the pane's records, and the host's reads end it. If
-the server itself dies (its record stays, its pid is gone), nothing can still run
-that work and it writes no end marker, so the watch ends the main agent's turn
-as cancelled and drops its children. A row from a host (an older relay) that
-does not report the field is retired on TUI exit, as before.
+Codex row that shows work: `sessionRunner: 'background-server'` while the server
+of the rollout's Codex home is running, read from the pid record it keeps under
+`<CODEX_HOME>/app-server-daemon` (a TUI started while it runs uses it, unless
+run with `--no-daemon` or excluded, e.g. for Bedrock sign-in). For that row the
+renderer's command-finished cleanup neither drops the row nor asks the host to
+clear the pane's records, and the host's reads end it. If the server itself dies
+(its record stays, its pid is gone), nothing can still run that work and it
+writes no end marker, so the watch ends the main agent's turn as cancelled and
+drops its children. A row from a host that does not report the field (an older
+paired host) is retired on TUI exit, as before.
 
 Admission is one function, `normalizeAgentStatusPayload`, on the relay wire,
 IPC and disk. A malformed `mainAgent` drops the field and keeps the row. Old hosts
