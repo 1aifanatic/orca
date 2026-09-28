@@ -19,6 +19,8 @@ const {
   stopStructuredWorker
 } = await import('./orchestration-structured-worker-lifecycle')
 const { readArchivedWorkerOutput } = await import('./orchestration/worker/worker-archive-read')
+const { stopStructuredWorkerForRelease } =
+  await import('./orchestration/worker/structured-worker-release-stop')
 
 const IDENTITY: StructuredWorkerIdentity = {
   handle: 'structworker_1',
@@ -143,6 +145,35 @@ describe('structured worker stop', () => {
     })
     expect(result).toMatchObject({ stopped: false, closeAttempted: true })
     expect(retireStructuredAgentSessionTabFromSnapshot).toHaveBeenCalled()
+  })
+
+  it.each([
+    {
+      deathEvidence: { kind: 'exit-observed', detail: 'closed', observedAt: 1 },
+      state: 'released'
+    },
+    { deathEvidence: null, state: 'release_unknown' }
+  ])('releases a worker only on death evidence: %j', async ({ deathEvidence, state }) => {
+    installHost({ claimStatus: 'released', deathEvidence, close: async () => {} })
+    const db = {
+      markWorkerTerminalReleaseUnknown: vi.fn(() => ({ release_error: 'not proven' })),
+      settleWorkerTerminalRelease: vi.fn(() => null)
+    }
+    const receipt = await stopStructuredWorkerForRelease({
+      structured: IDENTITY,
+      dispatchId: 'd1',
+      resource: { id: 'r1' } as never,
+      runtime: {
+        notifyMessageArrived: vi.fn(),
+        forgetStructuredSessionMail: vi.fn(),
+        retireStructuredAgentSessionTabFromSnapshot: vi.fn()
+      } as never,
+      db: db as never,
+      archiveSource: null,
+      archiveStatus: null
+    })
+    expect(receipt.state).toBe(state)
+    expect(db.settleWorkerTerminalRelease).toHaveBeenCalledTimes(state === 'released' ? 1 : 0)
   })
 
   it.each([{ hasSession: false }, { claimStatus: 'conflicted' }, { record: null }])(
