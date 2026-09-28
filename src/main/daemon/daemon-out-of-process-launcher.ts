@@ -114,6 +114,7 @@ export function createOutOfProcessLauncher(
         attributedReason,
         prepareReplacementRuntime: async () => {
           bunHost = await getReplacementRuntime()
+          return bunHost !== null
         },
         releaseAdoptionClient,
         preserveDaemon,

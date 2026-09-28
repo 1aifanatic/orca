@@ -33,7 +33,8 @@ type ReplacementPreflightOptions = {
   /** Absolute deadline for the whole adopt-or-replace decision; see DAEMON_RECOVERY_BUDGET_MS. */
   recoveryDeadlineMs: number
   attributedReason: DaemonReplaceReason | null
-  prepareReplacementRuntime: () => Promise<void>
+  /** False only when this runtime needs no artifact preparation. */
+  prepareReplacementRuntime: () => Promise<boolean>
   releaseAdoptionClient: () => void
   preserveDaemon: PreserveDaemon
   launchNonce: string
@@ -213,18 +214,21 @@ export async function prepareDaemonReplacement(
   }
 
   // Adoption needs no new artifacts; replacement must be ready before stopping its owner.
-  await prepareReplacementRuntime()
-  // Copying a runtime may take seconds; another client may have spawned during preparation.
-  const currentSessionCount = await getAliveDaemonSessionCount(
-    socketPath,
-    tokenPath,
-    recoveryDeadlineMs
-  )
-  if (
-    (currentSessionCount !== null && currentSessionCount > 0) ||
-    (cleanupProtocol && currentSessionCount === null)
-  ) {
-    return preserveDaemon(health === 'pty-spawn-unhealthy' ? 'fresh-spawns-unavailable' : undefined)
+  const preparedRuntime = await prepareReplacementRuntime()
+  if (preparedRuntime) {
+    // Artifact preparation invalidates the earlier count; an expired budget gives no new proof.
+    const currentSessionCount =
+      Date.now() < recoveryDeadlineMs
+        ? await getAliveDaemonSessionCount(socketPath, tokenPath, recoveryDeadlineMs)
+        : null
+    if (
+      (currentSessionCount !== null && currentSessionCount > 0) ||
+      (cleanupProtocol && currentSessionCount === null)
+    ) {
+      return preserveDaemon(
+        health === 'pty-spawn-unhealthy' ? 'fresh-spawns-unavailable' : undefined
+      )
+    }
   }
   if (cleanupProtocol) {
     confirmedReplacement = (await cleanupDaemonForProtocol(runtimeDir, PROTOCOL_VERSION)).cleaned

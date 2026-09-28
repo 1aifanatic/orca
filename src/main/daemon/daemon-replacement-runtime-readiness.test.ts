@@ -36,7 +36,7 @@ function options() {
     recoveryDeadlineMs: Date.now() + 1000,
     attributedReason: null,
     launchNonce: 'nonce',
-    prepareReplacementRuntime: vi.fn(async () => {}),
+    prepareReplacementRuntime: vi.fn(async () => true),
     releaseAdoptionClient: vi.fn(),
     preserveDaemon: vi.fn(async () => ({ adopted: true as const, shutdown: async () => {} }))
   }
@@ -103,3 +103,30 @@ it.each([1, null])(
     expect(mocks.kill).not.toHaveBeenCalled()
   }
 )
+
+it('retains the prior evidence without a redundant probe when no runtime is materialized', async () => {
+  mocks.identity.mockResolvedValue('mismatch')
+  const args = options()
+  args.prepareReplacementRuntime.mockResolvedValue(false)
+  await prepareDaemonReplacement(args)
+  expect(mocks.sessions).toHaveBeenCalledOnce()
+  expect(mocks.kill).toHaveBeenCalledOnce()
+})
+it('does not extend an exhausted budget or treat pre-copy emptiness as current proof', async () => {
+  mocks.identity.mockResolvedValue('mismatch')
+  const args = options()
+  const clock = vi.spyOn(Date, 'now')
+  clock.mockReturnValue(args.recoveryDeadlineMs - 100)
+  args.prepareReplacementRuntime.mockImplementation(async () => {
+    clock.mockReturnValue(args.recoveryDeadlineMs)
+    return true
+  })
+  try {
+    expect(await prepareDaemonReplacement(args)).toMatchObject({ adopted: true })
+    expect(mocks.sessions).toHaveBeenCalledOnce()
+    expect(mocks.cleanup).not.toHaveBeenCalled()
+    expect(mocks.kill).not.toHaveBeenCalled()
+  } finally {
+    clock.mockRestore()
+  }
+})
