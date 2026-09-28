@@ -25,7 +25,7 @@ import type { AgentChildWorkEvidence } from '../../shared/agent-status-child-wor
 import type { ClaudeBackgroundTaskTracker } from './claude-background-task-tracker'
 import type { ClaudeChildWorkDecoder } from './claude-child-work-decoder'
 import type { ClaudeSlashCommandCatalog } from './claude-slash-command-catalog'
-import type { ClaudeSessionStartupGate } from './claude-structured-session-startup-gate'
+import type { ClaudeSessionStartup } from './claude-structured-session-startup-state'
 
 export type ClaudeAuthDiagnostic = {
   apiKeySourceConfigured: boolean
@@ -70,7 +70,6 @@ export type ClaudeStructuredSessionEvent =
       cause?: 'unexpected-exit' | 'requested-close'
       fence?: number
       acquisitionGeneration?: string
-      settlementRetryRequired?: boolean
       /** Host clock when the end was observed. */
       observedAt?: number
       /** The child ended before proving startup, so reacquiring would repeat the same start. */
@@ -196,7 +195,7 @@ export type ClaudeSession = {
   events: StructuredAgentSessionEventSink | undefined
   unbindReadingControl?: () => void
   /** Published at spawn; init facts, option restore and queued prompts land when startup does. */
-  startup: ClaudeSessionStartupGate
+  startup: ClaudeSessionStartup
 }
 
 export function mintClaudeAcquisitionGeneration(deps: ClaudeStructuredSessionAdapterDeps): string {
@@ -210,7 +209,7 @@ export function mintClaudeAcquisitionGeneration(deps: ClaudeStructuredSessionAda
  */
 export type ClaudeSessionExit = {
   connection: ClaudeStreamJsonConnection
-  /** Full session identity retained until its child tree is proven gone. */
+  /** Full session identity retained until the exit settles. */
   session: ClaudeSession
   error: Error
   /** The exit path's first proof attempt; retries must observe this result. */

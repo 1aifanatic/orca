@@ -16,10 +16,8 @@ import { StructuredAgentSessionReadableRestorer } from './structured-agent-sessi
 import { StructuredAgentSessionRestartRestoreGate } from './structured-agent-session-restart-restore-gate'
 import type {
   StructuredAgentSessionHostDeps,
-  StructuredAgentSessionHostSession,
   StructuredAgentSessionReveal
 } from './structured-agent-session-host-types'
-import { retryPendingStructuredAgentSessionSettlement } from './structured-agent-session-settlement-retry'
 
 /** Throws its refusal as the code itself, matching `resumeHeldStructuredAgentSession`. */
 export async function revealStructuredAgentSession(
@@ -57,24 +55,17 @@ export async function revealStructuredAgentSession(
  */
 export function createStructuredAgentSessionHostRestore(
   deps: StructuredAgentSessionHostDeps,
-  sessions: Map<string, StructuredAgentSessionHostSession>,
-  now: () => number,
   wiring: Omit<
     ConstructorParameters<typeof StructuredAgentSessionReadableRestorer>[0],
-    'store' | 'journalRoot' | 'supportsRecord' | 'retrySettlement'
+    'openDeps' | 'supportsRecord'
   >
 ): {
   restoreReadableSessions: (sessionIds?: readonly string[]) => Promise<void>
   revealSession: (sessionId: string) => Promise<StructuredAgentSessionReveal>
-  /** One session, for a caller already inside its serialize. */
-  restoreReadableUnderSerialize: (sessionId: string) => Promise<boolean>
 } {
   const restorer = new StructuredAgentSessionReadableRestorer({
-    store: deps.store,
-    journalRoot: deps.journalRoot,
+    openDeps: deps,
     supportsRecord: (record) => adapterSupportsRecord(deps.adapter, record),
-    retrySettlement: (sessionId, params) =>
-      retryPendingStructuredAgentSessionSettlement({ deps, sessions, sessionId, params, now }),
     ...wiring
   })
   const gate = new StructuredAgentSessionRestartRestoreGate()
@@ -83,7 +74,6 @@ export function createStructuredAgentSessionHostRestore(
     revealSession: (sessionId) =>
       revealStructuredAgentSession(deps, sessionId, wiring.hasSession, (id) =>
         restorer.restoreOne(id)
-      ),
-    restoreReadableUnderSerialize: (sessionId) => restorer.restoreOneUnderSerialize(sessionId)
+      )
   }
 }
