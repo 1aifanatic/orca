@@ -153,6 +153,9 @@ export class CodexStructuredTurnCancellation {
     // A failed cancellation must not permanently divert the provider's later
     // completion for this turn. Let the normal completion path settle it.
     this.releaseCompletion(session, key)
+    if (acknowledged) {
+      return { cancelled: false, unconfirmed: true }
+    }
     if (!requestError) {
       return { cancelled: false }
     }

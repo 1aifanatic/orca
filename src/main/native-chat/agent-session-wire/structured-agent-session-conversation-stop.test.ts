@@ -218,6 +218,17 @@ describe('a Stop that names no turn', () => {
     ])
   })
 
+  it('says the Stop is unconfirmed, not that nothing ran, when the provider took it', async () => {
+    const { id, result } = send('hello')
+    await result
+    await eventually(async () => expect((await submission(id))?.handedOverAt).toBeDefined())
+    cancelTurn.mockResolvedValueOnce({ cancelled: false, unconfirmed: true })
+
+    expect(await stop()).toMatchObject({ ok: true, value: { cancelled: false } })
+
+    expect(await statusRows()).toEqual(['Cancellation was not confirmed.'])
+  })
+
   it('says it reached nothing when the provider had no turn to stop', async () => {
     const { id, result } = send('hello')
     await result

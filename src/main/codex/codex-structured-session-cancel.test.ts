@@ -228,7 +228,7 @@ describe('CodexStructuredSessionAdapter.cancelTurn', () => {
 
     await expect(
       adapter.cancelTurn({ sessionId: 'session-1', turnId: 'turn-1', fence: 7 })
-    ).resolves.toEqual({ cancelled: false })
+    ).resolves.toEqual({ cancelled: false, unconfirmed: true })
     expect(events).toContainEqual(expect.objectContaining({ method: 'turn/completed' }))
   })
 

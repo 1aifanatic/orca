@@ -219,10 +219,12 @@ export type StructuredAgentSessionSetOptionInput = {
   fence: number
 }
 
-/** `refusal`: the provider answered the Stop and declined it, in its own words when it gave any. */
+/** `refusal`: the provider answered the Stop and declined it, in its own words when it gave any.
+ *  `unconfirmed`: the provider took the Stop, but Orca could not confirm the turn's work ended. */
 export type AgentSessionCancelOutcome = {
   cancelled: boolean
   refusal?: { detail?: ProviderDiagnostic }
+  unconfirmed?: true
 }
 
 export type StructuredAgentSessionAdapter = {
