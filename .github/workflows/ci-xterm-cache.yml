@@ -23,7 +23,7 @@ env:
 jobs:
   seed:
     if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
@@ -45,3 +45,11 @@ jobs:
             ${{ runner.temp }}/xterm-patch-build/upstream/.git
             ${{ runner.temp }}/xterm-patch-build/upstream/node_modules
           key: ${{ steps.cache.outputs.cache-key }}
+      - name: Preserve fallback downloads
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            ~/.npm
+            ${{ runner.temp }}/xterm-patch-build/upstream/.git
+          key: xterm-upstream-${{ hashFiles('config/patches/xterm-upstream.json') }}

@@ -43,7 +43,19 @@ it('publishes only from main after a successful fresh verification, and skips wo
   expect(steps.indexOf(save)).toBeGreaterThan(steps.indexOf(verify))
   expect(verify.run).toContain('regenerate-xterm-patches.mjs --check')
   const pr = readYaml('../../.github/workflows/pr.yml').jobs.xterm_patch_sync.steps
+  expect(workflow.jobs.seed['runs-on']).toBe(
+    readYaml('../../.github/workflows/pr.yml').jobs.xterm_patch_sync['runs-on']
+  )
   expect(pr.some((step) => step.uses === './.github/actions/prepare-xterm-dependencies')).toBe(true)
   expect(pr.some((step) => /cache(?:\/save)?@/.test(step.uses ?? ''))).toBe(false)
   expect(pr.at(-1).run).toContain('regenerate-xterm-patches.mjs --check')
+})
+
+it('restores download fallback only on a miss and preserves its established key and paths', () => {
+  const fallback = action.runs.steps.at(-1)
+  const save = workflow.jobs.seed.steps.at(-1)
+  expect(fallback.if).toBe("steps.restore.outputs.cache-hit != 'true'")
+  expect(fallback.uses).toBe('actions/cache/restore@v5')
+  expect(fallback.with).toEqual(save.with)
+  expect(save.if).toBe("steps.cache.outputs.cache-hit != 'true'")
 })
