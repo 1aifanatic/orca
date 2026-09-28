@@ -10,13 +10,13 @@ import {
   type InternedRecording,
   type ValuePool
 } from './golden-value-pool'
+import { excerpt, firstDifference } from './golden-difference'
 import { adapterSha256 } from './adapter-digest'
 import { MOUNTED_OPERATION_MODULES } from './adapters/mounted-operation-modules'
 import { recorderSha256 } from './recorder-digest'
 import { scenarioSha256 } from './scenario-digest'
 import type { MountedOperationModule } from './mounted-operation-module'
 import type { Recording, RecordingScenario } from './recording-scenario'
-import type { RecordedValue } from './recording-values'
 
 export const RUNNER_VERSION = 1
 // 2 stamps every settlement with startedAt/settledAt on the pinned virtual clock.
@@ -157,52 +157,4 @@ export function compareGolden(expected: GoldenRecording, actual: GoldenRecording
   if (goldenBytes(pinned) !== goldenBytes(actual)) {
     throw new Error(`Recording differs: ${scenario} (encoding)`)
   }
-}
-export function firstDifference(
-  expected: RecordedValue,
-  actual: RecordedValue,
-  path = ''
-): { path: string; expected: RecordedValue; actual: RecordedValue } {
-  const here = { path, expected, actual }
-  if (
-    expected === null ||
-    actual === null ||
-    typeof expected !== 'object' ||
-    typeof actual !== 'object' ||
-    Array.isArray(expected) !== Array.isArray(actual)
-  ) {
-    return here
-  }
-  if (Array.isArray(expected) && Array.isArray(actual)) {
-    const index = expected.findIndex(
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: both sides are recorded observations, so every member is a RecordedValue.
-      (entry, at) => canonicalJson(entry) !== canonicalJson(actual[at] as RecordedValue)
-    )
-    return index === -1 || index >= actual.length
-      ? here
-      : firstDifference(
-          // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: both sides are recorded observations, so every member is a RecordedValue.
-          expected[index] as RecordedValue,
-          // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: both sides are recorded observations, so every member is a RecordedValue.
-          actual[index] as RecordedValue,
-          `${path}[${index}]`
-        )
-  }
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the array branch above already rejected a non-object pair.
-  const left = expected as Record<string, RecordedValue>
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the array branch above already rejected a non-object pair.
-  const right = actual as Record<string, RecordedValue>
-  const key = [...new Set([...Object.keys(left), ...Object.keys(right)])].sort().find(
-    (name) =>
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: both sides are recorded observations, so every member is a RecordedValue.
-      canonicalJson(left[name] as RecordedValue) !== canonicalJson(right[name] as RecordedValue)
-  )
-  return key === undefined || !(key in left) || !(key in right)
-    ? here
-    : // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: both sides are recorded observations, so every member is a RecordedValue.
-      firstDifference(left[key] as RecordedValue, right[key] as RecordedValue, `${path}.${key}`)
-}
-function excerpt(value: RecordedValue): string {
-  const json = JSON.stringify(value)
-  return json === undefined ? 'absent' : json.length > 600 ? `${json.slice(0, 600)}…` : json
 }

@@ -1,6 +1,6 @@
 import type { BridgeRpcClientDiagnostic } from '../../mobile-web-shell/bridge/bridge-rpc-client'
 import { readBridgeHostMessage } from '../../mobile-web-shell/bridge/bridge-envelope'
-import { firstDifference } from '../rpc-recording/golden-recording'
+import { firstDifference } from '../rpc-recording/golden-difference'
 import { canonicalJson, OBSERVATION_FIELDS } from '../rpc-recording/golden-value-pool'
 import type { Observation, Recording, RecordingScenario } from '../rpc-recording/recording-scenario'
 import { captureValue, type RecordedValue } from '../rpc-recording/recording-values'
