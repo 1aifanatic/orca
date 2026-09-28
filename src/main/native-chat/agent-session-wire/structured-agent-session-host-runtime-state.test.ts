@@ -62,6 +62,7 @@ function runtimeState(
   record: AgentSessionRecord | null,
   probeOwner: NonNullable<StructuredAgentSessionHostDeps['probeOwner']>
 ) {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the runtime state reads only store, probeOwner and optional deps; the rest of the host's deps are unused here.
   const deps = {
     store: { getRecord: () => record } as unknown as AgentSessionRecordStore,
     adapter: {},
@@ -133,6 +134,7 @@ describe('host runtime-state owner probe', () => {
       throw new Error('lease probe unavailable')
     })
     const record = liveRecord()
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the lease renewal under test reads only listRecords and getRecord from the store.
     const deps = {
       store: {
         listRecords: () => [record],
