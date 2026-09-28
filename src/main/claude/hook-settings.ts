@@ -16,7 +16,7 @@ import { quotePowerShellLiteral } from '../../shared/powershell-native-argument'
 import { wrapRuntimeHomeHookCommand } from '../agent-hooks/runtime-home-hook-command'
 import { wrapWindowsDirectCmdHookCommand } from '../agent-hooks/windows-direct-cmd-hook-command'
 import { isGitBashAvailable } from '../git-bash'
-import { claudeVersionSupportsSessionEnd } from './claude-hook-event-versions'
+import { claudeKnowsHookEvent, claudeVersionReaches } from './claude-hook-event-versions'
 
 export type ClaudeCompatibleHookSettings = {
   configDirName: '.claude' | '.openclaude'
@@ -61,7 +61,6 @@ export const CLAUDE_EVENTS = [
   // a pane 'working' while background children outlive the lead's turn.
   // TeammateIdle parks turn-based teammates without trusting their permanently
   // "running" background_tasks entry to gate the pane.
-  // Older Claude builds ignore unregistered event names (StopFailure precedent).
   {
     eventName: 'SubagentStart',
     definition: { hooks: [{ type: 'command', command: '' }] }
@@ -104,11 +103,24 @@ export const CLAUDE_EVENTS = [
 
 const CLAUDE_SESSION_END_EVENT = {
   eventName: 'SessionEnd',
+  // Why: Claude knows SessionEnd from 1.0.85, but 2.1.261 is the only version its delivery was measured on.
+  installFrom: '2.1.261',
   definition: { hooks: [{ type: 'command', command: '' }] }
 } as const
 
-export type ApplyManagedClaudeHooksOptions = {
-  claudeVersion?: string
+const CLAUDE_MANAGED_EVENTS = [...CLAUDE_EVENTS, CLAUDE_SESSION_END_EVENT] as const
+
+export type ClaudeManagedHookEvent = (typeof CLAUDE_MANAGED_EVENTS)[number]
+
+/** The managed events a Claude of this version accepts; see claude-hook-event-versions.ts. */
+export function getClaudeManagedHookEvents(
+  claudeVersion: string | null | undefined
+): ClaudeManagedHookEvent[] {
+  return CLAUDE_MANAGED_EVENTS.filter(
+    (event) =>
+      claudeKnowsHookEvent(claudeVersion, event.eventName) &&
+      (!('installFrom' in event) || claudeVersionReaches(claudeVersion, event.installFrom))
+  )
 }
 
 export function getConfigPath(settings = CLAUDE_HOOK_SETTINGS): string {
@@ -219,34 +231,34 @@ export function getRemoteManagedCommand(scriptPath: string): string {
   return getManagedCommand(scriptPath, { neutralJsonWhenMissing: true })
 }
 
+// Why: Orca's entry is also removed from every managed event NOT in `events`, so a Claude
+// downgrade stops carrying an event it would reject; user-written entries are always kept.
 export function applyManagedHooks(
   config: HooksConfig,
   hook: HookCommandConfig,
-  scriptFileName = getManagedScriptFileName(),
-  options: ApplyManagedClaudeHooksOptions = {}
+  scriptFileName: string,
+  events: readonly ClaudeManagedHookEvent[]
 ): HooksConfig {
   const nextHooks = { ...config.hooks }
   const isManagedCommand = createManagedCommandMatcher(scriptFileName)
-  const sessionEndCapable = claudeVersionSupportsSessionEnd(options.claudeVersion)
-  const events = sessionEndCapable ? [...CLAUDE_EVENTS, CLAUDE_SESSION_END_EVENT] : CLAUDE_EVENTS
+  const installed = new Set<string>(events.map((event) => event.eventName))
 
-  for (const event of events) {
-    const current = Array.isArray(nextHooks[event.eventName]) ? nextHooks[event.eventName] : []
-    const cleaned = removeManagedCommands(current, isManagedCommand)
-    const definition: HookDefinition = {
-      ...event.definition,
-      hooks: [hook]
+  for (const event of CLAUDE_MANAGED_EVENTS) {
+    const current = nextHooks[event.eventName]
+    if (installed.has(event.eventName)) {
+      const cleaned = Array.isArray(current) ? removeManagedCommands(current, isManagedCommand) : []
+      const definition: HookDefinition = { ...event.definition, hooks: [hook] }
+      nextHooks[event.eventName] = [...cleaned, definition]
+      continue
     }
-    nextHooks[event.eventName] = [...cleaned, definition]
-  }
-
-  if (!sessionEndCapable) {
-    const current = Array.isArray(nextHooks.SessionEnd) ? nextHooks.SessionEnd : []
+    if (!Array.isArray(current) || current.length === 0) {
+      continue
+    }
     const cleaned = removeManagedCommands(current, isManagedCommand)
     if (cleaned.length === 0) {
-      delete nextHooks.SessionEnd
+      delete nextHooks[event.eventName]
     } else {
-      nextHooks.SessionEnd = cleaned
+      nextHooks[event.eventName] = cleaned
     }
   }
 

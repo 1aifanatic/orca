@@ -22,6 +22,7 @@ import {
   applyManagedHooks,
   applyManagedStatusLine,
   CLAUDE_EVENTS,
+  getClaudeManagedHookEvents,
   CLAUDE_HOOK_SETTINGS,
   getManagedScriptFileName,
   getConfigPath,
@@ -38,7 +39,8 @@ import {
   hasSameManagedHookInvocation,
   removeManagedHooks,
   removeManagedStatusLine,
-  type ClaudeCompatibleHookSettings
+  type ClaudeCompatibleHookSettings,
+  type ClaudeManagedHookEvent
 } from './hook-settings'
 
 type ClaudeHookServiceOptions = {
@@ -64,7 +66,15 @@ export class ClaudeHookService {
     this.options = options
   }
 
-  getStatus(): AgentHookInstallStatus {
+  // Why: Claude's settings loader rejects events newer than the running CLI, so its set follows the
+  // resolved version; OpenClaude reads its own settings file and accepts every event Orca writes.
+  private managedEvents(options: ClaudeHookInstallOptions): readonly ClaudeManagedHookEvent[] {
+    return this.options.agent === 'claude'
+      ? getClaudeManagedHookEvents(options.claudeVersion)
+      : CLAUDE_EVENTS
+  }
+
+  getStatus(options: ClaudeHookInstallOptions = {}): AgentHookInstallStatus {
     const configPath = getConfigPath(this.options.settings)
     const scriptPath = getManagedScriptPath(this.options.settings)
     const config = readHooksJson(configPath)
@@ -82,7 +92,7 @@ export class ClaudeHookService {
     const expectedHook = getManagedLifecycleHook(scriptPath, this.options.settings)
     const missing: string[] = []
     let presentCount = 0
-    for (const event of CLAUDE_EVENTS) {
+    for (const event of this.managedEvents(options)) {
       const definitions = Array.isArray(config.hooks?.[event.eventName])
         ? config.hooks![event.eventName]!
         : []
@@ -145,7 +155,7 @@ export class ClaudeHookService {
       config,
       hook,
       getManagedScriptFileName(this.options.settings),
-      this.options.agent === 'claude' ? options : undefined
+      this.managedEvents(options)
     )
     writeManagedScript(
       scriptPath,
@@ -159,7 +169,7 @@ export class ClaudeHookService {
       nextConfig = this.installManagedStatusLine(nextConfig)
     }
     writeHooksJson(configPath, nextConfig)
-    return this.getStatus()
+    return this.getStatus(options)
   }
 
   // Why: the statusline feed is opportunistic (usage display, not agent status); a user who deleted the
@@ -215,7 +225,7 @@ export class ClaudeHookService {
         config,
         hook,
         remoteScriptFileName,
-        this.options.agent === 'claude' ? options : undefined
+        this.managedEvents(options)
       )
 
       // Why: write scripts before settings to avoid settings pointing to missing scripts.
