@@ -190,6 +190,23 @@ jobs:
             pnpm-lock.yaml
             mobile/pnpm-lock.yaml
 
+      # EXPERIMENT: measuring whether tsc hides inside this job's wall time.
+      # Why here and not later: tsc's heaviest batch peaks at 9 GiB and tsgolint holds ~5.8 GiB,
+      # which together exceed this 16 GB runner. So it is joined before the type-aware step and
+      # overlaps only the oxlint passes, which are small in memory.
+      - name: Cache TypeScript incremental state
+        uses: actions/cache@v5
+        with:
+          path: config/*.tsbuildinfo
+          key: tsbuildinfo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'config/tsconfig*.json') }}-${{ github.event.pull_request.base.sha }}
+          restore-keys: |
+            tsbuildinfo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'config/tsconfig*.json') }}-
+
+      - name: Typecheck
+        id: typecheck
+        background: true
+        run: pnpm run typecheck
+
       # Keep each check in its own log while sharing this runner.
       - name: Lint
         id: root-lint
@@ -205,6 +222,8 @@ jobs:
         id: native-code-quality
         background: true
         run: pnpm run audit:code-quality:native
+
+      - wait: typecheck
 
       - name: Enforce type-aware code-quality baseline
         run: pnpm run audit:code-quality:type-aware
