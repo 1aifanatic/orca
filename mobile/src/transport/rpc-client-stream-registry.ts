@@ -221,9 +221,7 @@ export class RpcClientStreamRegistry {
       if (params) {
         this.sendRpc('terminal.unsubscribe', params)
       }
-    } else if (stream && sessionTabsStream.awaitsRegistration(stream)) {
-      // Unsubscribe once the first snapshot shows the host registered it.
-      stream.cancelled = true
+    } else if (stream && sessionTabsStream.holdUnsubscribe(stream)) {
       return
     } else {
       const unsubscribe = buildStreamUnsubscribe(stream?.method, stream?.params, id)

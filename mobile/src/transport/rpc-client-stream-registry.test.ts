@@ -110,7 +110,7 @@ describe('RpcClientStreamRegistry', () => {
     const subscribe = sent[0]!
 
     dispose()
-    // The host registers only as it emits the first snapshot, so an earlier unsubscribe finds nothing.
+    // Older hosts register only as they emit the first snapshot, so an earlier unsubscribe finds nothing.
     expect(sent).toHaveLength(1)
 
     registry.handleResponse(streamingResponse(subscribe.id, { type: 'snapshot', tabs: [] }))
@@ -119,6 +119,8 @@ describe('RpcClientStreamRegistry', () => {
       method: 'session.tabs.unsubscribe',
       params: { worktree: 'wt-1', subscriptionId: subscribe.id }
     })
+    // A host that registered on arrival ends the stream; that end must not unsubscribe again.
+    registry.handleResponse(streamingResponse(subscribe.id, { type: 'end' }))
     expect(sent).toHaveLength(2)
     expect(events).toEqual([])
     expect(registry.size()).toBe(0)

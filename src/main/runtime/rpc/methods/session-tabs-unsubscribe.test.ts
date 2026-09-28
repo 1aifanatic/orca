@@ -95,6 +95,7 @@ async function subscribeTwiceToOneWorktree() {
   const runtime = {
     ...runtimeWithCleanup(registry.cleanup.bind(registry), registry.cleanupByPrefix.bind(registry)),
     registerSubscriptionCleanup: registry.register.bind(registry),
+    getSubscriptionRegistrationVersion: registry.getRegistrationVersion.bind(registry),
     onMobileSessionTabsChanged: () => () => {}
   } as unknown as OrcaRuntimeService
   const dispatcher = new RpcDispatcher({ runtime, methods: SESSION_TAB_METHODS })
@@ -115,7 +116,7 @@ async function subscribeTwiceToOneWorktree() {
 
 function runtimeWithCleanup(
   cleanupSubscription: (id: string) => void,
-  cleanupSubscriptionsByPrefix: (prefix: string) => void = vi.fn()
+  cleanupSubscriptionsByPrefix: (prefix: string, throughVersion?: number) => void = vi.fn()
 ): OrcaRuntimeService {
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the unsubscribe methods reach only these members; a missing one throws and fails the test.
   return {
