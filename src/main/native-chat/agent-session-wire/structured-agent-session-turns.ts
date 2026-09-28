@@ -54,6 +54,8 @@ export type AgentSessionTurnContext = {
   flushStreamedEvents: () => Promise<void>
   /** What the host holds about the child this dispatch is for, read at the moment it is needed. */
   providerChildPhase?: () => StructuredAgentSessionProviderChildPhase | undefined
+  /** Who a Stop's refusal row names. */
+  failureTextContext?: AgentSessionFailureWordsContext
   now: () => number
 }
 
@@ -296,7 +298,7 @@ export async function performCancel(
         kind: 'status',
         ...agentSessionFailureWords(
           agentSessionFailureFact('stopRefused', detail ? { detail } : {}),
-          { surface: 'row' }
+          { ...ctx.failureTextContext, surface: 'row' }
         )
       }
     }

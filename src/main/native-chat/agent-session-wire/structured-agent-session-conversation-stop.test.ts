@@ -201,7 +201,7 @@ describe('a Stop that names no turn', () => {
     expect(dispatch).not.toHaveBeenCalled()
   })
 
-  it('says why when the provider refused it, in its words', async () => {
+  it('says the agent did not stop, in its words, when it refused', async () => {
     const { id, result } = send('hello')
     await result
     await eventually(async () => expect((await submission(id))?.handedOverAt).toBeDefined())
@@ -213,9 +213,7 @@ describe('a Stop that names no turn', () => {
     expect(await stop()).toMatchObject({ ok: true, value: { cancelled: false } })
 
     expect(cancelTurn).toHaveBeenCalledOnce()
-    expect(await statusRows()).toEqual([
-      'Stop could not reach the agent: no active turn to interrupt.'
-    ])
+    expect(await statusRows()).toEqual(["Codex didn't stop: no active turn to interrupt."])
   })
 
   it('says the Stop is unconfirmed, not that nothing ran, when the provider took it', async () => {
@@ -229,7 +227,7 @@ describe('a Stop that names no turn', () => {
     expect(await statusRows()).toEqual(['Cancellation was not confirmed.'])
   })
 
-  it('says it reached nothing when the provider had no turn to stop', async () => {
+  it('says the agent had no turn to stop when it had none', async () => {
     const { id, result } = send('hello')
     await result
     await eventually(async () => expect((await submission(id))?.handedOverAt).toBeDefined())
@@ -237,9 +235,7 @@ describe('a Stop that names no turn', () => {
 
     expect(await stop()).toMatchObject({ ok: true, value: { cancelled: false } })
 
-    expect(await statusRows()).toEqual([
-      'Stop could not reach the agent: it had no turn running to stop.'
-    ])
+    expect(await statusRows()).toEqual(['Codex had no turn running to stop.'])
   })
 
   it('stops nothing when it reuses the id of a Stop the host already ran', async () => {

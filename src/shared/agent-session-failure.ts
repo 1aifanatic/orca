@@ -37,7 +37,7 @@ export const AGENT_SESSION_FAILURE_KINDS = [
   'compactionFailed',
   'compactionUnconfirmed',
   'cancelUnconfirmed',
-  /** A Stop naming no turn ended nothing while the chat read working. */
+  /** A Stop naming no turn reached the agent, which ended nothing while the chat read working. */
   'stopRefused',
   'answerUnconfirmed',
   'hostFault',

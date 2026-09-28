@@ -39,6 +39,7 @@ import {
   openForWrite,
   openWithAgent,
   sendPreparation,
+  structuredAgentSessionFailureWordsContext,
   structuredAgentSessionSendBlock
 } from './structured-agent-session-send-preparation'
 import {
@@ -193,8 +194,12 @@ export function cancelStructuredAgentSessionTurn(
             ctx.journal.submissions(),
             ctx.fence
           )
+        const record = context.deps.store.getRecord(ctx.sessionId)
         return child && inFlight
-          ? plan.run(ctx)
+          ? plan.run({
+              ...ctx,
+              failureTextContext: structuredAgentSessionFailureWordsContext(record)
+            })
           : { ok: true, value: { ...named, cancelled: withdrawn.length > 0 } }
       }
     },
