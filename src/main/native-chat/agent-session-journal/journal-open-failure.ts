@@ -66,14 +66,21 @@ function journalOpenFailureWords(error: unknown): { reason: JournalOpenFailure; 
   return { reason, message: JOURNAL_OPEN_MESSAGE[reason] }
 }
 
-/** The refusal a failed journal open answers with, as the wire carries it. */
+/** The refusal a failed journal open answers with, as the wire carries it. One already classified
+ *  passes through as it is: its own cause is not on it to classify again. */
 export function journalOpenRefusal(error: unknown): AgentSessionWireRefusal {
+  if (isAgentSessionRefusalError(error)) {
+    return error.refusal
+  }
   const { reason, message } = journalOpenFailureWords(error)
   return refuse('agent_session_journal_unreadable', { reason }, message)
 }
 
 /** The same refusal, thrown: for a host that could not open the journal at all. */
 export function journalOpenRefusalError(error: unknown): AgentSessionRefusalError {
+  if (isAgentSessionRefusalError(error)) {
+    return error
+  }
   const { reason, message } = journalOpenFailureWords(error)
   return agentSessionRefusalError('agent_session_journal_unreadable', { reason }, message)
 }

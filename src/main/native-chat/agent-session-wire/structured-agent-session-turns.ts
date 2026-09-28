@@ -23,6 +23,7 @@ import {
   type AgentSessionSendResult,
   type AgentSessionWireRefusal
 } from '../../../shared/agent-session-wire'
+import { isAgentSessionRefusalError } from '../../../shared/agent-session-wire-refusals'
 import { DISPATCH_DOUBT_PERSISTENCE_FAILED } from '../agent-session-journal/journal-dispatch-doubt-reasons'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { latestJournalDispatchObservation } from '../agent-session-journal/journal-dispatch-observation'
@@ -146,8 +147,10 @@ export async function performSend(
     await ctx.journal.appendSubmission({ ...input, fence: ctx.fence, handoverRecorded: true })
   } catch (error) {
     // Damage SQLite proves is the chat's, and no retry writes past it: say so, as an open does. So
-    // does a chat holding a newer Orca's rows, which only an update writes past.
+    // does a chat holding a newer Orca's rows, which only an update writes past, and a refusal the
+    // journal already classified (a copy that did not verify).
     if (
+      isAgentSessionRefusalError(error) ||
       classifyJournalOpenFailure(error) === 'journalCorrupt' ||
       isJournalWrittenByNewerOrca(error)
     ) {
