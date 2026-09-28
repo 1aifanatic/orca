@@ -21,8 +21,6 @@ import { getManagedStatusLineScript } from './statusline-script'
 import {
   applyManagedHooks,
   applyManagedStatusLine,
-  CLAUDE_EVENTS,
-  getClaudeManagedHookEvents,
   CLAUDE_HOOK_SETTINGS,
   getManagedScriptFileName,
   getConfigPath,
@@ -39,9 +37,13 @@ import {
   hasSameManagedHookInvocation,
   removeManagedHooks,
   removeManagedStatusLine,
-  type ClaudeCompatibleHookSettings,
-  type ClaudeManagedHookEvent
+  type ClaudeCompatibleHookSettings
 } from './hook-settings'
+import {
+  CLAUDE_EVENTS,
+  getClaudeManagedHookEvents,
+  type ClaudeManagedHookEvent
+} from './claude-managed-hook-events'
 
 type ClaudeHookServiceOptions = {
   agent: AgentHookInstallStatus['agent']

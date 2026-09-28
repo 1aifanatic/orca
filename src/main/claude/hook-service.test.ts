@@ -27,11 +27,8 @@ import type { SFTPWrapper } from 'ssh2'
 import { createManagedCommandMatcher, WINDOWS_CMD_SAFE_PATH } from '../agent-hooks/installer-utils'
 import { WINDOWS_HOOK_STDIN_DRAIN_LABEL } from '../agent-hooks/hook-stdin-contract'
 import { ClaudeHookService } from './hook-service'
-import {
-  CLAUDE_EVENTS,
-  getWindowsManagedLifecycleHook,
-  OPENCLAUDE_HOOK_SETTINGS
-} from './hook-settings'
+import { CLAUDE_EVENTS } from './claude-managed-hook-events'
+import { getWindowsManagedLifecycleHook, OPENCLAUDE_HOOK_SETTINGS } from './hook-settings'
 
 const CLAUDE_SCRIPT_FILE_NAME = process.platform === 'win32' ? 'claude-hook.cmd' : 'claude-hook.sh'
 const STATUSLINE_SCRIPT_FILE_NAME =

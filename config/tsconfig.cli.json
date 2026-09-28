@@ -7,6 +7,7 @@
     "../src/main/agent-hooks/grok-replay-guard.ts",
     "../src/main/claude/hook-script.ts",
     "../src/main/claude/claude-hook-event-versions.ts",
+    "../src/main/claude/claude-managed-hook-events.ts",
     "../src/main/agent-hooks/hook-stdin-contract.ts",
     "../src/main/agent-hooks/hook-post-command.ts",
     "../src/main/agent-hooks/hook-config-write-path.ts",
