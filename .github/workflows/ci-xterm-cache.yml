@@ -9,8 +9,9 @@ on:
       - 'config/scripts/regenerate-xterm-patches.mjs'
       - 'config/scripts/xterm-patch-text.mjs'
       - 'package.json'
-  pull_request:
-    paths: ['.github/workflows/ci-xterm-cache.yml']
+  # Refresh after Node patch releases or cache eviction without rebuilding on hits.
+  schedule:
+    - cron: '17 5 * * *'
   workflow_dispatch:
 permissions:
   contents: read
@@ -21,22 +22,19 @@ env:
   ORCA_BACKGROUND_LAUNCH: '1'
 jobs:
   seed:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: package.json
+          package-manager-cache: false
       - uses: ./.github/actions/prepare-xterm-dependencies
         id: cache
-      - name: Restore baseline downloads
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.npm
-            ${{ runner.temp }}/xterm-patch-build/upstream/.git
-          key: xterm-upstream-${{ hashFiles('config/patches/xterm-upstream.json') }}
       - name: Verify and populate dependencies
         if: steps.cache.outputs.cache-hit != 'true'
         run: node config/scripts/regenerate-xterm-patches.mjs --check --work-dir="$RUNNER_TEMP/xterm-patch-build"
@@ -47,38 +45,3 @@ jobs:
             ${{ runner.temp }}/xterm-patch-build/upstream/.git
             ${{ runner.temp }}/xterm-patch-build/upstream/node_modules
           key: ${{ steps.cache.outputs.cache-key }}
-  measure:
-    if: github.event_name == 'pull_request'
-    needs: seed
-    strategy:
-      fail-fast: false
-      max-parallel: 2
-      matrix:
-        sample: [1, 2, 3]
-        cache: [false, true]
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
-      - name: Restore baseline downloads
-        if: matrix.cache == false
-        uses: actions/cache/restore@v5
-        with:
-          path: |
-            ~/.npm
-            ${{ runner.temp }}/xterm-patch-build/upstream/.git
-          key: xterm-upstream-${{ hashFiles('config/patches/xterm-upstream.json') }}
-      - name: Restore installed dependencies
-        if: matrix.cache == true
-        id: cache
-        uses: ./.github/actions/prepare-xterm-dependencies
-      - name: Require treatment cache hit
-        if: matrix.cache == true
-        env:
-          CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
-        run: test "$CACHE_HIT" = true
-      - name: Verify patches
-        run: node config/scripts/regenerate-xterm-patches.mjs --check --work-dir="$RUNNER_TEMP/xterm-patch-build"
