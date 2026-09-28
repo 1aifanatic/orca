@@ -320,7 +320,12 @@ export async function removeRealHomeCodexHookForOptOut(): Promise<RealHomeCodexH
     currentLane = await runExclusivelyForCodexTrustConfig(getRealHomeConfigTomlPath(), async () => {
       const lane = await sweepRealHomeCodexHook()
       const systemHomePath = getSystemCodexHomePath()
-      if (readCodexTrustGrantLedgerHomeForReconciliation(systemHomePath) !== null) {
+      // Why 'removed' only: an unread or malformed file may still hold the entry,
+      // so its trust and the ledger that proves ownership must wait for a later pass.
+      if (
+        lane === 'removed' &&
+        readCodexTrustGrantLedgerHomeForReconciliation(systemHomePath) !== null
+      ) {
         // Why: the ledger outlives a sweep that removed the entry but not its trust.
         removeSystemManagedHookTrustEntries(systemHomePath, getRealHomeHooksJsonPath())
       }

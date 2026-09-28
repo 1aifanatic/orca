@@ -44,6 +44,10 @@ import {
   _internals
 } from './codex-real-home-hook-install'
 import { getCodexManagedHookInstallMaterial } from './hook-service'
+import {
+  readCodexTrustGrantLedgerHome,
+  writeCodexTrustGrantLedgerHome
+} from './codex-trust-grant-ledger'
 import { _internals as rebaseInternals } from './codex-user-hook-trust-rebase'
 
 let fakeHomeDir: string
@@ -415,6 +419,26 @@ describe('removeRealHomeCodexHookForOptOut', () => {
     mkdirSync(getRealHooksJsonPath())
 
     expect(await removeRealHomeCodexHookForOptOut()).toBe('unavailable')
+  })
+
+  it("keeps Orca's trust and its ledger when hooks.json cannot be read", async () => {
+    const entry: CodexTrustEntry = {
+      sourcePath: getRealHooksJsonPath(),
+      eventLabel: 'stop',
+      groupIndex: 0,
+      handlerIndex: 0,
+      command: getCodexManagedHookInstallMaterial().command,
+      timeoutSec: 10
+    }
+    writeFileSync(getRealConfigTomlPath(), upsertHookTrustEntriesInContent('', [entry]), 'utf-8')
+    writeCodexTrustGrantLedgerHome(join(fakeHomeDir, '.codex'), { binary: null, entries: {} })
+    mkdirSync(getRealHooksJsonPath())
+
+    expect(await removeRealHomeCodexHookForOptOut()).toBe('unavailable')
+
+    // The entry may still be there, so its trust must be too.
+    expect(readHookTrustEntries(getRealConfigTomlPath()).has(computeTrustKey(entry))).toBe(true)
+    expect(readCodexTrustGrantLedgerHome(join(fakeHomeDir, '.codex'))).not.toBeNull()
   })
 
   it('keeps the managed lane when hooks.json is malformed', async () => {
