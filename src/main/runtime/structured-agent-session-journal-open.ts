@@ -25,7 +25,7 @@ function logOpenFailureOnce(error: unknown): void {
 
 /** The journal database, opened only under this process's owner lock. A refusal is recorded for
  *  the gate and thrown to the caller; the next install tries again. A lock file that cannot be
- *  opened at all refuses like the database it guards. */
+ *  opened at all refuses like the database it guards, until the claim's retry takes the lock. */
 export function openOwnedJournalDatabase(stateDirectory: string): JournalHostDatabase {
   try {
     const lock = claimStructuredAgentSessionJournal(stateDirectory)

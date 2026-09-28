@@ -31,6 +31,7 @@ import { OrcaRuntimeService } from './orca-runtime'
 import { requireStructuredCleanupHost } from './rpc/methods/structured-agent-session-gate'
 import { assertLegacyAiVaultResumeCommandAllowed } from '../ai-vault/structured-session-ownership'
 import type { RpcContext } from './rpc/core'
+import { getRuntimeMetadataPath } from '../../shared/runtime-bootstrap'
 import { readRuntimeMetadata } from './runtime-metadata'
 import { OrcaRuntimeRpcServer } from './runtime-rpc'
 import {
@@ -163,6 +164,33 @@ describe('a second process on the same profile', () => {
 
       await holder.kill()
       holder = null
+      await vi.waitFor(() => expect(readRuntimeMetadata(root)?.pid).toBe(process.pid), {
+        timeout: 10_000
+      })
+    } finally {
+      await server.stop()
+    }
+  })
+
+  // Not opening the lock file proves no ownership: the process that does own the chats stays the
+  // one the CLI finds, until this one's retry takes the lock.
+  it('does not publish over the owner while its lock file will not open', async () => {
+    const lockPath = join(root, JOURNAL_OWNER_LOCK_FILE)
+    await writeFile(lockPath, 'not a database '.repeat(512))
+    const metadataPath = getRuntimeMetadataPath(root)
+    await writeFile(metadataPath, JSON.stringify({ pid: 999_999, runtimeId: 'the-owner' }))
+    const before = await digest(metadataPath)
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const server = new OrcaRuntimeRpcServer({
+      runtime: new OrcaRuntimeService(),
+      userDataPath: root,
+      journalStateDirectory: root
+    })
+    try {
+      await server.start()
+      expect(await digest(metadataPath)).toBe(before)
+
+      await unlink(lockPath)
       await vi.waitFor(() => expect(readRuntimeMetadata(root)?.pid).toBe(process.pid), {
         timeout: 10_000
       })
@@ -333,6 +361,12 @@ describe('startup and other non-chat work without a structured host', () => {
     expect(gateRefusal()).toEqual({
       reason: 'journalCorrupt',
       message: 'Unable to load this chat.'
+    })
+
+    // The claim keeps retrying; once the file opens, the takeover installs as it does after an owner quits.
+    await unlink(join(root, JOURNAL_OWNER_LOCK_FILE))
+    await vi.waitFor(() => expect(getStructuredAgentSessionHost()).not.toBeNull(), {
+      timeout: 10_000
     })
   })
 

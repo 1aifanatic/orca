@@ -21,8 +21,8 @@ import { resolveStructuredLaunchSeedOptions } from '../../shared/native-chat-ses
 import { hasPersistedStructuredAgentSessionStore as hasPersistedStructuredAgentSessionStoreOnDisk } from './structured-agent-session-runtime'
 import {
   ensureStructuredAgentSessionHostUnlessRefused,
-  onStructuredAgentSessionJournalOwned,
-  structuredAgentSessionJournalOwnerRefusal
+  isStructuredAgentSessionJournalClaimRefused,
+  onStructuredAgentSessionJournalOwned
 } from './structured-agent-session-journal-ownership'
 import { getProfileUserDataPath } from '../orca-profiles/profile-storage-paths'
 import { parseWslUncPath } from '../../shared/wsl-paths'
@@ -278,7 +278,7 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
     )
     // Read now: a host a chat request installs later is reconciled by the takeover's own run.
     const host = getStructuredAgentSessionHost()
-    if (!host && structuredAgentSessionJournalOwnerRefusal()) {
+    if (!host && isStructuredAgentSessionJournalClaimRefused()) {
       this.restoreAgainOnceJournalOwned()
     }
     await this.refreshMobileSessionPtyRecords()

@@ -154,9 +154,10 @@ export class RuntimeRpcLifecycle extends RuntimeRpcWebSocketDispatch {
     try {
       return claimStructuredAgentSessionJournal(this.journalStateDirectory) !== null
     } catch (error) {
-      // An unreadable lock file must not stop the runtime; chats report it on their own open.
+      // A lock file that will not open proves no ownership: the runtime runs undiscovered until
+      // the claim's retry takes the lock, and chats report the failure on their own open.
       console.error('[runtime] Claiming the chat journal owner lock failed:', error)
-      return true
+      return false
     }
   }
 
