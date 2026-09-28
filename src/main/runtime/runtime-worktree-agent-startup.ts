@@ -27,6 +27,11 @@ import type { RuntimeStore } from './runtime-store-contract'
 export type WorktreeStartupDraftPaste = { agent: TuiAgent; content: string }
 export type WorktreeStartupFollowup = { expectedProcess: string; prompt: string }
 
+/** A fresh agent the host builds always carries its `agent_started` record; dropping it fails to compile. */
+type AttributedWorktreeStartupLaunch = WorktreeStartupLaunch & {
+  telemetry: NonNullable<WorktreeStartupLaunch['telemetry']>
+}
+
 type StartupEnvironment = {
   repo: Repo
   settings: ReturnType<RuntimeStore['getSettings']>
@@ -41,7 +46,7 @@ export async function buildWorktreeStartupForDraft(
   environment: StartupEnvironment & { draft: string; requestedAgent?: TuiAgent }
 ): Promise<{
   agent: TuiAgent
-  startup: WorktreeStartupLaunch
+  startup: AttributedWorktreeStartupLaunch
   draftPaste?: WorktreeStartupDraftPaste
 } | null> {
   const content = environment.draft.trim()
@@ -132,7 +137,11 @@ export function buildWorktreeStartupForAgent(
       preferences?: AgentLaunchPreferences
     ) => Parameters<typeof buildAgentStartupPlan>[0]['sessionOptions'] | undefined
   }
-): { agent: TuiAgent; startup: WorktreeStartupLaunch; followup?: WorktreeStartupFollowup } {
+): {
+  agent: TuiAgent
+  startup: AttributedWorktreeStartupLaunch
+  followup?: WorktreeStartupFollowup
+} {
   const { agent, repo, settings } = environment
   if (!isTuiAgentEnabled(agent, settings.disabledTuiAgents)) {
     throw new Error('Selected agent is disabled. Choose an enabled agent before creating.')
