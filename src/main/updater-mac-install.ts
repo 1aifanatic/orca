@@ -25,6 +25,9 @@ export function registerMacUpdaterEvents({
 }): void {
   if (process.platform === 'darwin') {
     nativeUpdater.on('error', (error) => onNativeInstallEvent?.('error', error))
+    nativeUpdater.on('update-not-available', () => {
+      onNativeInstallEvent?.('error', new Error('The native updater found no update to install.'))
+    })
     nativeUpdater.on('update-downloaded', () => {
       const hasInstallableVersion = hasInstallableDownloadedVersion()
       handleMacInstallerReady(hasInstallableVersion, performQuitAndInstall, () => {
