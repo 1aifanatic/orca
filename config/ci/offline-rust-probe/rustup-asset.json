@@ -1,0 +1,16 @@
+{
+  "id": "rustup-x86_64",
+  "url": "https://static.rust-lang.org/rustup/archive/1.28.2/x86_64-unknown-linux-gnu/rustup-init",
+  "license": "MIT OR Apache-2.0",
+  "provenance": "New fixed bootstrap choice; historical sh.rustup.rs bytes not recorded",
+  "filename": "rustup-x86_64-rustup-init",
+  "sha256": "20a06e644b0d9bd2fbdbfd52d42540bdde820ea7df86e92e533c073da0cdd43c",
+  "size": 20889000,
+  "downloadedAt": "2026-09-28",
+  "trust": "Observed TLS download hash; no detached-signature verification claimed",
+  "publishedChecksum": {
+    "url": "https://static.rust-lang.org/rustup/archive/1.28.2/x86_64-unknown-linux-gnu/rustup-init.sha256",
+    "matches": true,
+    "signatureVerified": false
+  }
+}
