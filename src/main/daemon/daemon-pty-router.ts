@@ -28,9 +28,11 @@ export class DaemonPtyRouter implements IPtyProvider {
   constructor(opts: {
     current: DaemonPtyAdapter
     legacy: DaemonPtyAdapter[]
+    freshSpawnAdmission?: DaemonFreshSpawnAdmission
     probeFreshSpawn?: () => Promise<boolean>
   }) {
-    this.freshSpawns = new DaemonFreshSpawnAdmission(opts.probeFreshSpawn ?? null)
+    this.freshSpawns =
+      opts.freshSpawnAdmission ?? new DaemonFreshSpawnAdmission(opts.probeFreshSpawn ?? null)
     this.current = opts.current
     this.legacy = opts.legacy
     this.ownerResolver = new DaemonSessionOwnerResolver(this.allAdapters(), this.sessionAdapters)

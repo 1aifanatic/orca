@@ -1,10 +1,10 @@
+import { DaemonFreshSpawnAdmission } from './daemon-fresh-spawn-admission'
 import { rebindLocalProviderListeners } from '../ipc/pty'
 import {
   confirmSeededClaudeLivePtys,
   hasSeededUnconfirmedClaudePtys
 } from '../claude-accounts/live-pty-gate'
 import { isStartupDiagnosticsEnabled, logStartupDiagnostic } from '../startup/startup-diagnostics'
-import { checkDaemonHealth } from './daemon-health'
 import { collectPinnedDaemonVersions, pruneOldDaemonHosts } from './daemon-host-relocation'
 import {
   cleanupFailedDaemonAdoption,
@@ -21,7 +21,11 @@ import {
   attributeNextDaemonReplacement,
   createOutOfProcessLauncher
 } from './daemon-out-of-process-launcher'
-import type { DaemonProvider } from './daemon-provider-routing'
+import {
+  createDaemonProviderRouting,
+  resetDaemonFreshSpawnAdmission,
+  type DaemonProvider
+} from './daemon-provider-routing'
 import { getDaemonProvider, installDaemonProvider } from './daemon-provider-state'
 import { trackDaemonAdopted } from './daemon-adoption-telemetry-event'
 import { readDaemonPidRecord } from './daemon-endpoint-incarnation'
@@ -64,7 +68,7 @@ export async function retryDaemonPtyProvider(): Promise<void> {
   await pendingInitialization?.catch(() => {})
   const provider = getDaemonProvider()
   if (provider) {
-    if (provider instanceof DaemonPtyRouter && !(await provider.recoverFreshSpawnRouting(true))) {
+    if (!(await provider.recoverFreshSpawnRouting(true))) {
       throw new Error(
         'Terminal service is still unable to start new terminals. Existing terminals remain running.'
       )
@@ -95,7 +99,6 @@ async function initializeDaemonPtyProvider(
   const info = await newSpawner.ensureRunning()
   // Why: reclaim superseded daemon-host copies on EVERY launch (spawns are rare), keeping current + live-daemon-pinned versions.
   pruneOldDaemonHosts(collectPinnedDaemonVersions(runtimeDir))
-  const launchMode = newSpawner.getHandle()?.mode
   logDaemonMilestone('daemon-current-ready')
   if (signal?.aborted) {
     // Explicit cancellation releases adoption without installing a provider or killing live sessions.
@@ -111,7 +114,14 @@ async function initializeDaemonPtyProvider(
     return
   }
 
+  const freshSpawnAdmission = new DaemonFreshSpawnAdmission(null)
+  resetDaemonFreshSpawnAdmission(
+    freshSpawnAdmission,
+    info,
+    newSpawner.getHandle()?.mode === 'fresh-spawns-unavailable'
+  )
   const newAdapter = new DaemonPtyAdapter({
+    freshSpawnAdmission,
     socketPath: info.socketPath,
     tokenPath: info.tokenPath,
     pidPath: getDaemonPidPath(runtimeDir),
@@ -137,7 +147,12 @@ async function initializeDaemonPtyProvider(
         attributeNextDaemonReplacement(reason)
       }
       newSpawner.resetHandle()
-      await newSpawner.ensureRunning()
+      const replacement = await newSpawner.ensureRunning()
+      resetDaemonFreshSpawnAdmission(
+        freshSpawnAdmission,
+        replacement,
+        newSpawner.getHandle()?.mode === 'fresh-spawns-unavailable'
+      )
       return takeDaemonAdoptionLeaseRelease(newSpawner.getHandle())
     }
   })
@@ -149,19 +164,7 @@ async function initializeDaemonPtyProvider(
     releaseDaemonAdoptionLease(newSpawner.getHandle())
 
     legacyAdapters = await createLegacyDaemonAdapters(runtimeDir)
-    routedAdapter =
-      legacyAdapters.length > 0 || launchMode === 'fresh-spawns-unavailable'
-        ? new DaemonPtyRouter({
-            current: newAdapter,
-            legacy: legacyAdapters,
-            ...(launchMode === 'fresh-spawns-unavailable'
-              ? {
-                  probeFreshSpawn: async () =>
-                    (await checkDaemonHealth(info.socketPath, info.tokenPath)) === 'healthy'
-                }
-              : {})
-          })
-        : newAdapter
+    routedAdapter = createDaemonProviderRouting(newAdapter, legacyAdapters, freshSpawnAdmission)
     if (routedAdapter instanceof DaemonPtyRouter) {
       await routedAdapter.discoverLegacySessions()
     }

@@ -26,7 +26,7 @@ export function getDaemonSpawner(): DaemonSpawner | null {
 
 /** Existing sessions can remain attached while an unhealthy service refuses new terminals. */
 export function daemonOwnsFreshPersistentPtys(): boolean {
-  return adapter !== null && !(adapter instanceof DaemonPtyRouter && adapter.freshSpawnsUnavailable)
+  return adapter !== null && !adapter.freshSpawnsUnavailable
 }
 
 /** Endpoint coordinates of the daemon this process installed, for out-of-band health probes. */

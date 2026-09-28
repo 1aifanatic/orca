@@ -1,3 +1,4 @@
+import { DaemonFreshSpawnAdmission } from './daemon-fresh-spawn-admission'
 import { DaemonClient, type DaemonClientOptions } from './client'
 import { createDaemonAuditEligibilityTracker } from './daemon-audit-eligibility-event'
 import type {
@@ -67,6 +68,7 @@ export type DaemonPtyAdapterOptions = {
   historyPath?: string
   runtimeDir?: string
   packagedAppVersion?: string | null
+  freshSpawnAdmission?: DaemonFreshSpawnAdmission
   respawn?: (reason: DaemonRespawnReason) => Promise<void | (() => void)>
 }
 
@@ -98,6 +100,7 @@ export abstract class DaemonPtyRuntimeState {
   protected identityChangeListeners: ((event: DaemonIdentityChangeEvent) => void)[] = []
   protected historyManager: HistoryManager | null
   protected historyReader: HistoryReader | null
+  protected readonly freshSpawnAdmission: DaemonFreshSpawnAdmission
   protected respawnFn: DaemonPtyAdapterOptions['respawn'] | null
   protected runtimeDir: string | null
   protected packagedAppVersion: string | null
@@ -236,6 +239,7 @@ export abstract class DaemonPtyRuntimeState {
     })
     this.historyManager = opts.historyPath ? new HistoryManager(opts.historyPath) : null
     this.historyReader = opts.historyPath ? new HistoryReader(opts.historyPath) : null
+    this.freshSpawnAdmission = opts.freshSpawnAdmission ?? new DaemonFreshSpawnAdmission(null)
     this.respawnFn = opts.respawn ?? null
     this.runtimeDir = this.guest ? null : (opts.runtimeDir ?? opts.profileScope ?? null)
     this.packagedAppVersion = opts.packagedAppVersion ?? null

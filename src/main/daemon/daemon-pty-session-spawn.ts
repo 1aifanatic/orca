@@ -1,3 +1,4 @@
+import { admitDaemonSpawn } from './daemon-fresh-spawn-admission'
 import { recognizeAgentProcessFromCommandLine } from '../../shared/agent-process-recognition'
 import { shouldUseShellReadyStartupDelivery } from '../../shared/codex-startup-delivery'
 import { CODEX_SHELL_READY_TIMEOUT_MS } from './session-shell-ready-barrier'
@@ -117,7 +118,7 @@ export abstract class DaemonPtySessionSpawn extends DaemonPtySpawnResult {
     }
     const requestedSessionId = opts.sessionId!
     // Why: v30 daemons survive upgrades; reject their accidental create result before publication.
-    const attachOnly = opts.attachOnly === true
+    let attachOnly = opts.attachOnly === true
     const emulateLegacyAttachOnly =
       attachOnly && this.protocolVersion < STABLE_PANE_ATTACH_ONLY_DAEMON_PROTOCOL_VERSION
     let sessionId = requestedSessionId
@@ -191,6 +192,13 @@ export abstract class DaemonPtySessionSpawn extends DaemonPtySpawnResult {
     }
 
     await this.ensureConnected()
+    opts = await admitDaemonSpawn(
+      this.freshSpawnAdmission,
+      opts,
+      this.protocolVersion,
+      async () => (await this.getAppliedSize(sessionId)) !== null
+    )
+    attachOnly = opts.attachOnly === true
     // Why before createOrAttach: a preserved daemon may still think this session is backgrounded — from
     // a v19 that thins without a recoverable seq, or (#9993) from a pre-v29 that a previous desktop
     // handed 2031 scan authority to and can never retract it. Clear it before any bytes are attached.
@@ -297,17 +305,12 @@ export abstract class DaemonPtySessionSpawn extends DaemonPtySpawnResult {
     }
     this.clearExitedSessionState(sessionId, matchingExit.code, result.incarnationId)
     // Why: stream exit can beat the control reply or post-reply recovery work; return proof without republishing dead state.
-    const exitedResult: PtySpawnResult = {
+    return {
       id: sessionId,
       exitedBeforeSpawnReply: true,
       ...(result.incarnationId ? { incarnationId: result.incarnationId } : {}),
       ...(result.agentSessionEnsure ? { agentSessionEnsure: result.agentSessionEnsure } : {}),
       ...(!result.isNew ? { isReattach: true } : {})
     }
-    return exitedResult
-  }
-
-  didExitBeforeSpawnReply(result: PtySpawnResult): boolean {
-    return result.exitedBeforeSpawnReply === true
   }
 }

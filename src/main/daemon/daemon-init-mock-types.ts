@@ -1,3 +1,4 @@
+import type { DaemonFreshSpawnAdmission } from './daemon-fresh-spawn-admission'
 import type { Mock } from 'vitest'
 
 /** Fake DaemonSpawner instance every mocked `new DaemonSpawner()` records. */
@@ -16,6 +17,7 @@ export type MockAdapter = {
   options: {
     socketPath: string
     tokenPath: string
+    freshSpawnAdmission?: DaemonFreshSpawnAdmission
     historyPath?: string
     packagedAppVersion?: string | null
     respawn?: (
