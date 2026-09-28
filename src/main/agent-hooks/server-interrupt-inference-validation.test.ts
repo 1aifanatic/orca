@@ -37,7 +37,7 @@ describe('AgentHookServer listener replay', () => {
           paneKey: PANE,
           tabId: 'tab-1',
           worktreeId: 'wt-1',
-          payload: { state: 'working', prompt: 'long task', agentType: 'codex' }
+          payload: { state: 'working', prompt: 'long task', agentType: 'custom-agent' }
         },
         'conn-1'
       )
@@ -88,7 +88,7 @@ describe('AgentHookServer listener replay', () => {
         expect.objectContaining({
           state: 'working',
           prompt: 'long task',
-          agentType: 'codex'
+          agentType: 'custom-agent'
         })
       ])
     } finally {
@@ -278,7 +278,7 @@ describe('AgentHookServer listener replay', () => {
           paneKey: PANE,
           tabId: 'tab-1',
           worktreeId: 'wt-1',
-          payload: { state: 'waiting', prompt: 'permission', agentType: 'codex' }
+          payload: { state: 'waiting', prompt: 'permission', agentType: 'custom-agent' }
         },
         'conn-1'
       )
@@ -299,7 +299,7 @@ describe('AgentHookServer listener replay', () => {
           paneKey: FRESH_PANE,
           tabId: 'tab-fresh',
           worktreeId: 'wt-1',
-          payload: { state: 'working', prompt: 'old task', agentType: 'codex' }
+          payload: { state: 'working', prompt: 'old task', agentType: 'custom-agent' }
         },
         'conn-1'
       )
@@ -400,13 +400,11 @@ describe('the main agent fact on an inferred interrupt', () => {
     }
   })
 
-  it('folds a cancel of a working Codex main agent with the live child the row alone evidences', () => {
+  it('refuses a keypress cancel of a Codex main agent beside a live child: Codex reports its own', () => {
     vi.useFakeTimers()
     vi.setSystemTime(1_000)
     try {
       const server = new AgentHookServer()
-      // Why no hookEventName: such a row never reconciles into main's Codex cache, so the row's
-      // own subagents are the only child evidence — the seed must keep them from being retired.
       server.ingestRemote(
         {
           paneKey: PANE,
@@ -433,15 +431,8 @@ describe('the main agent fact on an inferred interrupt', () => {
           baselineAgentType: 'codex',
           intent: 'ctrl-c'
         })
-      ).toBe(true)
-      const inferred = server.getStatusSnapshot()[0]
-      expect(inferred).toMatchObject({
-        state: 'working',
-        mainAgent: { state: 'done', outcome: 'cancellation', stateStartedAt: 1_500 },
-        subagents: [expect.objectContaining({ id: 'child-1', state: 'working' })]
-      })
-      expect(inferred.interrupted).toBeUndefined()
-      expect(inferred.workingMode).toBeUndefined()
+      ).toBe(false)
+      expect(server.getStatusSnapshot()[0]).toEqual(baseline)
     } finally {
       vi.useRealTimers()
     }

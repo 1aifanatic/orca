@@ -8,6 +8,10 @@ import {
   type JsonRecord
 } from './codex-rollout-jsonl-cursor'
 
+import {
+  decodeCodexRolloutTurnLifecycle,
+  type CodexRolloutTurnLifecycle
+} from './codex-rollout-turn-lifecycle'
 import { readApprovalsReviewer } from './codex-subagent-reviewer'
 import type { CodexApprovalsReviewer } from './codex-subagent-reviewer'
 
@@ -41,6 +45,8 @@ export type CodexSubagentTranscriptState = {
   reviewersByPath: Map<string, CodexApprovalsReviewer>
   /** Who resolves this turn's approvals in the parent rollout. */
   approvalsReviewer?: CodexApprovalsReviewer
+  /** The last turn marker in the parent rollout: the main agent's turn as Codex recorded it. */
+  mainTurn?: CodexRolloutTurnLifecycle
 }
 
 // Why: Codex files each rollout under its OWN local start date, so a session running past midnight spawns children into a sibling day directory.
@@ -206,6 +212,7 @@ export function reconcileCodexSubagentTranscript(
     state.reviewersByPath.clear()
     // Why: a different rollout is a different session, so its predecessor's reviewer is void.
     state.approvalsReviewer = undefined
+    state.mainTurn = undefined
   }
   const parentRecords = readJsonlCursor(state.parent)
   // A stale reviewer must never turn an unreadable rollout into a hidden prompt.
@@ -214,6 +221,7 @@ export function reconcileCodexSubagentTranscript(
       ? undefined
       : (readApprovalsReviewer(parentRecords) ?? state.approvalsReviewer)
   for (const recordValue of parentRecords ?? []) {
+    state.mainTurn = decodeCodexRolloutTurnLifecycle(recordValue) ?? state.mainTurn
     const activity = readActivity(recordValue)
     if (!activity) {
       continue

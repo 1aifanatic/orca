@@ -1,9 +1,4 @@
-import type {
-  AgentMainAgentStatus,
-  AgentStatusState,
-  AgentWorkingMode,
-  ParsedAgentStatusPayload
-} from '../../agent-status-types'
+import type { AgentMainAgentStatus, ParsedAgentStatusPayload } from '../../agent-status-types'
 import {
   continueMainAgentStatus,
   foldAgentLeadStatus,
@@ -20,6 +15,7 @@ import {
 import {
   createCodexSubagentTranscriptState,
   hasTrackedCodexTranscriptSubagents,
+  reconcileCodexSubagentTranscript,
   type CodexSubagentTranscriptState
 } from '../../codex-subagent-transcript'
 import type { CodexLeadTurnState, HookListenerState } from '../listener-state'
@@ -52,7 +48,10 @@ export function hasCodexTranscriptSubagents(state: HookListenerState, paneKey: s
   return hasTrackedCodexTranscriptSubagents(state.codexSubagentTranscriptByPaneKey.get(paneKey))
 }
 
-/** The only writer of the root record; the root's clock keeps continuity across same-state writes. */
+/** The only writer of the root record; the root's clock keeps continuity across same-state writes.
+ *  A turn ends once: after it ends, a fact for that same turn (a hook the cancel overtook, a
+ *  replayed body, a Stop racing Interrupt) restates it and changes nothing. A fact for any other
+ *  turn is Codex working again, whether or not a prompt started it. */
 export function setCodexMainAgentTurnState(
   state: HookListenerState,
   paneKey: string,
@@ -60,26 +59,65 @@ export function setCodexMainAgentTurnState(
   now = Date.now()
 ): CodexLeadTurnState {
   const previous = state.codexLeadStateByPaneKey.get(paneKey)
+  if (previous?.state === 'done' && next.turnId !== undefined && previous.turnId === next.turnId) {
+    return previous
+  }
   const continued = continueMainAgentStatus(previous, next, now)
   const record: CodexLeadTurnState = {
     state: next.state,
     ...(continued.outcome ? { outcome: continued.outcome } : {}),
     stateStartedAt: continued.stateStartedAt,
-    model: next.model
+    model: next.model,
+    ...(next.turnId !== undefined ? { turnId: next.turnId } : {})
   }
   state.codexLeadStateByPaneKey.set(paneKey, record)
   return record
 }
 
-/** A root Stop that lands on an already finished turn (late, after an inferred cancel) restates
- *  that turn, so it keeps the recorded verdict; only a new turn clears it. */
-export function codexOutcomeRestatedByStop(
-  previous: CodexLeadTurnState | undefined,
-  nextState: CodexLeadTurnState['state']
-): Pick<CodexLeadTurnState, 'outcome'> {
-  return nextState === 'done' && previous?.state === 'done' && previous.outcome
-    ? { outcome: previous.outcome }
-    : {}
+/** Catches the pane up on its parent rollout, Codex's own record of the main agent's turn and of
+ *  its children, before any event is applied. A child's hook names its own rollout, so it reads
+ *  the parent a root event named earlier; that lets a poll replaying any body settle the root. */
+export function catchUpOnCodexParentRollout(
+  state: HookListenerState,
+  paneKey: string,
+  rootTranscriptPath: string | undefined
+): void {
+  const transcriptState = rootTranscriptPath
+    ? getOrCreateCodexSubagentTranscriptState(state, paneKey)
+    : state.codexSubagentTranscriptByPaneKey.get(paneKey)
+  const parentPath = rootTranscriptPath ?? transcriptState?.parent.filePath
+  if (!transcriptState || !parentPath) {
+    return
+  }
+  reconcileCodexSubagentTranscript(
+    transcriptState,
+    getOrCreateCodexSubagentRoster(state, paneKey),
+    parentPath
+  )
+  const ended = transcriptState.mainTurn
+  const lead = state.codexLeadStateByPaneKey.get(paneKey)
+  // Why: Codex writes a turn's end to its rollout before it runs the Interrupt or Stop hook, so
+  // this settles the turn when that hook is lost (Interrupt is capped at 3s) or never registered.
+  if (ended?.turnId && ended.state !== 'working' && lead?.turnId === ended.turnId) {
+    setCodexMainAgentTurnState(state, paneKey, {
+      state: 'done',
+      ...(ended.state === 'interrupted' ? { outcome: 'cancellation' } : {}),
+      turnId: ended.turnId,
+      model: lead.model
+    })
+  }
+}
+
+/** Whether the parent rollout can still settle the main agent: a turn Codex has not ended yet,
+ *  and the rollout to read its end from. */
+export function codexRolloutCanSettleMainAgent(state: HookListenerState, paneKey: string): boolean {
+  const lead = state.codexLeadStateByPaneKey.get(paneKey)
+  return (
+    lead !== undefined &&
+    lead.state !== 'done' &&
+    lead.turnId !== undefined &&
+    state.codexSubagentTranscriptByPaneKey.get(paneKey)?.parent.filePath !== undefined
+  )
 }
 
 /** The combined row state for a Codex pane: the root record and its roster through the same
@@ -144,33 +182,13 @@ export function seedCodexStateFromSnapshot(
   }
 }
 
-/** Sync the Codex lead record when the server infers an interrupt and fold it with the pane's
- *  roster, so delayed child events cannot restore stale working state and the synthesized row
- *  keeps the children the cancel left running (captured: Codex sends no hook on the interrupt). */
-export function markCodexLeadTurnInterrupted(
-  state: HookListenerState,
-  paneKey: string
-): { state: AgentStatusState; workingMode?: AgentWorkingMode; mainAgent?: AgentMainAgentStatus } {
-  const lead = state.codexLeadStateByPaneKey.get(paneKey)
-  const record = setCodexMainAgentTurnState(state, paneKey, {
-    state: 'done',
-    outcome: 'cancellation',
-    model: lead?.model
-  })
-  const resolved = resolveCodexPaneStatus(state, paneKey, record)
-  const mainAgent = codexMainAgentStatusForPayload(record)
-  return {
-    state: resolved.stateName,
-    ...(resolved.workingMode ? { workingMode: resolved.workingMode } : {}),
-    ...(mainAgent ? { mainAgent } : {})
-  }
-}
-
+/** The root record a relayed event implies when its row carries no `mainAgent` (a relay that lost
+ *  its records to a restart publishes none for a child event). */
 export function codexLeadStateForHookEvent(
   eventName: string | undefined,
   normalizedState?: ParsedAgentStatusPayload['state']
 ): CodexLeadTurnState['state'] | undefined {
-  if (eventName === 'Stop') {
+  if (eventName === 'Stop' || eventName === 'Interrupt') {
     return 'done'
   }
   if (eventName === 'PermissionRequest') {
@@ -217,16 +235,26 @@ export function reconcileRemoteCodexState(
     if (eventName === 'SubagentStop') {
       finishCodexSubagent(roster, agentId)
     }
-  } else {
+  } else if (eventName === 'SessionStart' || (eventName === 'Stop' && !payload.subagents)) {
+    roster.clear()
+  }
+  const previousLead = state.codexLeadStateByPaneKey.get(paneKey)
+  const mainAgent = payload.mainAgent
+  if (mainAgent && mainAgent.state !== 'blocked') {
+    // Why: the relay decided this from the raw hook and its own rollout (turn identity, a lost
+    // Interrupt), which main never sees; main keeps a copy, on its own clock, to outlive a relay
+    // restart.
+    setCodexMainAgentTurnState(state, paneKey, {
+      state: mainAgent.state,
+      ...(mainAgent.outcome ? { outcome: mainAgent.outcome } : {}),
+      model: payload.model ?? previousLead?.model
+    })
+  } else if (!agentId) {
     const leadState = codexLeadStateForHookEvent(eventName, payload.state)
-    if (eventName === 'SessionStart' || (eventName === 'Stop' && !payload.subagents)) {
-      roster.clear()
-    }
     if (leadState) {
-      const previousLead = state.codexLeadStateByPaneKey.get(paneKey)
       setCodexMainAgentTurnState(state, paneKey, {
         state: leadState,
-        ...codexOutcomeRestatedByStop(previousLead, leadState),
+        ...(eventName === 'Interrupt' ? { outcome: 'cancellation' as const } : {}),
         model: payload.model ?? previousLead?.model
       })
     }
@@ -252,7 +280,7 @@ export function reconcileRemoteCodexState(
       resolution.stateName === 'done' && mainAgentTurnInterrupted(lead) ? true : undefined,
     model: lead.model ?? payload.model,
     subagents: codexRosterToSnapshots(roster),
-    // Why: main's cache outlives a relay restart, so it is the main agent fact for a relayed row too.
+    // Why: after a relay restart a child event carries no `mainAgent`; main's copy fills it.
     mainAgent: codexMainAgentStatusForPayload(lead)
   }
 }

@@ -3,12 +3,8 @@ import {
   clearClaudeAnsweredQuestionWait
 } from '../../../shared/agent-hook-listener/providers/claude-roster-state'
 import {
-  markCodexLeadTurnInterrupted,
-  seedCodexStateFromSnapshot
-} from '../../../shared/agent-hook-listener/providers/codex-state'
-import {
   isAgentInterruptInputIntent,
-  isNavigationEscapeIntent,
+  isInconclusiveInterruptIntent,
   requiresDoubleEscapeInterrupt,
   type AgentInterruptInferenceRequest
 } from '../../../shared/agent-interrupt-intent'
@@ -74,7 +70,7 @@ export abstract class AgentHookServerStatusInference extends AgentHookServerRowO
     }
     // Why: re-checked here, not only in the renderer, so a stale or direct inference request
     // cannot route around the renderer's skip and synthesize a false stopped row.
-    if (isNavigationEscapeIntent(agentType, request.intent)) {
+    if (isInconclusiveInterruptIntent(agentType, request.intent)) {
       return false
     }
     const childWorkEvidenced =
@@ -89,27 +85,18 @@ export abstract class AgentHookServerStatusInference extends AgentHookServerRowO
       return false
     }
     // Why: whoever owns the provider records folds the cancel with the child work the turn left
-    // running. A local pane's listener record must learn it too, or a later child event re-emits
-    // the stale 'working' state. Claude's relayed records live on the relay, so its row is the only
-    // evidence there; Codex folds through main's own lead/roster cache for both, because relayed
-    // Codex rows are already reconciled against it (reconcileRemoteCodexState).
-    if (agentType === 'codex') {
-      // Why: a relayed row that never carried a hook event name is not reconciled into main's
-      // cache; the same seed reconcile uses keeps its children from being retired by the fold.
-      seedCodexStateFromSnapshot(this.state, existing.paneKey, payload)
-    }
-    const recordFolded =
+    // running. A local pane's listener record must learn it too, or a later child event re-emits the
+    // stale 'working' state; a relayed pane's records live on the relay, so only its row is evidence.
+    const local =
       agentType === 'claude' && !existing.connectionId
         ? markClaudeLeadTurnInterrupted(this.state, existing.paneKey)
-        : agentType === 'codex'
-          ? markCodexLeadTurnInterrupted(this.state, existing.paneKey)
-          : undefined
-    const rowFolded =
+        : undefined
+    const relayed =
       agentType === 'claude' && existing.connectionId
         ? foldMainAgentWithRowChildWork('done', existing)
         : undefined
-    const state = recordFolded?.state ?? rowFolded?.stateName ?? 'done'
-    const workingMode = recordFolded?.workingMode ?? rowFolded?.workingMode
+    const state = local?.state ?? relayed?.stateName ?? 'done'
+    const workingMode = local?.workingMode ?? relayed?.workingMode
     const inferred = this.applyNormalizedStatus({
       paneKey: existing.paneKey,
       tabId: existing.tabId,
@@ -132,7 +119,7 @@ export abstract class AgentHookServerStatusInference extends AgentHookServerRowO
         ...(state === 'done' ? { interrupted: true } : {}),
         // Why: idle children are display state; dropping them on an inferred interrupt blanks rows a later hook would restore.
         ...(payload.subagents ? { subagents: payload.subagents } : {}),
-        mainAgent: recordFolded?.mainAgent ?? {
+        mainAgent: local?.mainAgent ?? {
           state: 'done',
           outcome: 'cancellation',
           stateStartedAt: Date.now()

@@ -245,7 +245,7 @@ describe('Last-status persistence', () => {
         paneKey: PANE,
         tabId: 'tab-1',
         worktreeId: 'wt-1',
-        payload: { state: 'working', prompt: 'long task', agentType: 'codex' }
+        payload: { state: 'working', prompt: 'long task', agentType: 'custom-agent' }
       },
       'conn-1'
     )

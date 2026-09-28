@@ -707,7 +707,7 @@ describe('connectPanePty', () => {
           prompt: 'stop quickly',
           updatedAt: 1_000,
           stateStartedAt: 900,
-          agentType: 'codex',
+          agentType: 'gemini',
           terminalTitle: 'Codex',
           stateHistory: []
         }
@@ -720,7 +720,7 @@ describe('connectPanePty', () => {
         prompt: 'stop quickly',
         updatedAt: 1_100,
         stateStartedAt: 1_100,
-        agentType: 'codex',
+        agentType: 'gemini',
         terminalTitle: 'Codex',
         interrupted: true,
         stateHistory: [
@@ -765,7 +765,7 @@ describe('connectPanePty', () => {
       baselineUpdatedAt: 1_000,
       baselineStateStartedAt: 900,
       baselinePrompt: 'stop quickly',
-      baselineAgentType: 'codex',
+      baselineAgentType: 'gemini',
       intent: 'plain-escape'
     })
     expect(mockStoreState.dropAgentStatus).toHaveBeenCalledWith(paneKey)
@@ -794,7 +794,7 @@ describe('connectPanePty', () => {
           prompt: 'stop quickly',
           updatedAt: 1_000,
           stateStartedAt: 900,
-          agentType: 'codex',
+          agentType: 'gemini',
           terminalTitle: 'Codex',
           stateHistory: []
         }

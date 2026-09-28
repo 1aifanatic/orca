@@ -1,7 +1,4 @@
-import {
-  reconcileRemoteCodexState,
-  markCodexLeadTurnInterrupted
-} from '../../../shared/agent-hook-listener/providers/codex-state'
+import { reconcileRemoteCodexState } from '../../../shared/agent-hook-listener/providers/codex-state'
 import {
   resolveAgentStatusIdentity,
   shouldSuppressInheritedTerminalStatus
@@ -156,12 +153,6 @@ export abstract class AgentHookServerStatusUpdate extends AgentHookServerStatusA
     // restatement of a main agent the desktop cancelled must not replace the cancel.
     const latch = resolveCancelVerdictLatch(previous, attachedPayload, Date.now())
     if (latch.hold) {
-      if (
-        attachedPayload.payload.agentType === 'codex' &&
-        attachedPayload.payload.state === 'working'
-      ) {
-        markCodexLeadTurnInterrupted(this.state, attachedPayload.paneKey)
-      }
       this.commitStatusRowMutation(rowBefore, previous)
       return previous
     }

@@ -4,7 +4,6 @@ import {
   type HookListenerState
 } from './agent-hook-listener/listener-state'
 import {
-  markCodexLeadTurnInterrupted,
   reconcileRemoteCodexState,
   seedCodexStateFromSnapshot
 } from './agent-hook-listener/providers/codex-state'
@@ -40,7 +39,7 @@ describe('the Codex root record seeded from a durable row', () => {
     expect(state.codexLeadStateByPaneKey.get(PANE_KEY)).toMatchObject({ state: 'working' })
   })
 
-  it("republishes a relayed row with the mainAgent fact main holds, not the relay's", () => {
+  it('derives the main agent from a relayed root event whose row carries no mainAgent', () => {
     const reconciled = reconcileRemoteCodexState(
       state,
       PANE_KEY,
@@ -52,17 +51,53 @@ describe('the Codex root record seeded from a durable row', () => {
     expect(reconciled.mainAgent).toEqual({ state: 'done', stateStartedAt: expect.any(Number) })
   })
 
-  it('carries the cancellation Orca inferred into a late relayed Stop', () => {
-    markCodexLeadTurnInterrupted(state, PANE_KEY)
+  it('reads a relayed Interrupt with no mainAgent as a cancelled main agent', () => {
     const reconciled = reconcileRemoteCodexState(
       state,
       PANE_KEY,
-      'Stop',
+      'Interrupt',
       undefined,
       { state: 'done', prompt: 'ship', agentType: 'codex' },
       undefined
     )
     expect(reconciled.mainAgent).toMatchObject({ state: 'done', outcome: 'cancellation' })
+  })
+
+  it("mirrors the relay's own main agent fact and keeps it for a child event after a relay restart", () => {
+    // The relay read this cancel from Codex (its hook or its rollout); main sees only a child's event.
+    const cancelled = reconcileRemoteCodexState(
+      state,
+      PANE_KEY,
+      'PostToolUse',
+      'child',
+      {
+        state: 'working',
+        prompt: 'ship',
+        agentType: 'codex',
+        subagents: [{ id: 'child', state: 'working', startedAt: 1 }],
+        mainAgent: { state: 'done', outcome: 'cancellation', stateStartedAt: 5 }
+      },
+      undefined
+    )
+    expect(cancelled).toMatchObject({
+      state: 'working',
+      mainAgent: { state: 'done', outcome: 'cancellation' }
+    })
+    // A restarted relay publishes no mainAgent for a child event; main's copy fills it.
+    const afterRestart = reconcileRemoteCodexState(
+      state,
+      PANE_KEY,
+      'PreToolUse',
+      'child',
+      {
+        state: 'working',
+        prompt: '',
+        agentType: 'codex',
+        subagents: [{ id: 'child', state: 'working', startedAt: 1 }]
+      },
+      undefined
+    )
+    expect(afterRestart.mainAgent).toMatchObject({ state: 'done', outcome: 'cancellation' })
   })
 
   it('folds a relayed waiting child through the shared rule, keeping the root fact', () => {

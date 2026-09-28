@@ -1,7 +1,10 @@
 import type { AgentHookSource } from '../agent-hook-relay'
 import type { AgentHookEventPayload } from './listener-event'
 import type { HookListenerState } from './listener-state'
-import { hasCodexTranscriptSubagents } from './providers/codex-state'
+import {
+  codexRolloutCanSettleMainAgent,
+  hasCodexTranscriptSubagents
+} from './providers/codex-state'
 import { hasMuseSessionLog } from './providers/muse-events'
 
 /** Whether a pane's last hook body should be re-normalized on a timer to pick up transcript-only state. */
@@ -11,7 +14,12 @@ export function shouldPollHookTranscript(
   event: AgentHookEventPayload
 ): boolean {
   if (source === 'codex') {
-    return hasCodexTranscriptSubagents(state, event.paneKey)
+    // Why: Codex records a turn's end in its rollout before it runs the Interrupt or Stop hook, so
+    // polling while the turn is open recovers a lost hook within one tick; it stops once it ends.
+    return (
+      hasCodexTranscriptSubagents(state, event.paneKey) ||
+      codexRolloutCanSettleMainAgent(state, event.paneKey)
+    )
   }
   if (source === 'muse') {
     // Why: Muse's question tool fires no hook, so only its session log shows the wait and its answer.
@@ -35,7 +43,10 @@ export function transcriptPollUpdate<T extends AgentHookEventPayload>(
       ? { ...polled, hasExplicitPrompt: undefined, hookEventName: undefined }
       : undefined
   }
-  const subagentsChanged =
+  const changed =
+    polled.payload.state !== original.payload.state ||
+    polled.payload.mainAgent?.state !== original.payload.mainAgent?.state ||
+    polled.payload.mainAgent?.outcome !== original.payload.mainAgent?.outcome ||
     JSON.stringify(polled.payload.subagents) !== JSON.stringify(original.payload.subagents)
-  return subagentsChanged ? polled : undefined
+  return changed ? polled : undefined
 }

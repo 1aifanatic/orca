@@ -14,7 +14,6 @@ import {
   finishCodexSubagent,
   upsertCodexSubagent
 } from '../../codex-subagent-roster'
-import { reconcileCodexSubagentTranscript } from '../../codex-subagent-transcript'
 import {
   codexTurnApprovalsAreAutoReviewed,
   reconcileCodexSubagentReviewer
@@ -25,8 +24,8 @@ import { resolvePrompt, resolveToolState } from '../prompt-fields'
 import { extractToolFields, isNewTurnEvent } from '../provider-event-routing'
 import { readString } from '../tool-input-preview'
 import {
+  catchUpOnCodexParentRollout,
   codexMainAgentStatusForPayload,
-  codexOutcomeRestatedByStop,
   getOrCreateCodexSubagentRoster,
   getOrCreateCodexSubagentTranscriptState,
   hasCodexTranscriptSubagents,
@@ -147,6 +146,7 @@ export function normalizeCodexEvent(
   hookPayload: Record<string, unknown>
 ): ParsedAgentStatusPayload | null {
   if (eventName === 'SubagentStart' || eventName === 'SubagentStop') {
+    catchUpOnCodexParentRollout(state, paneKey, undefined)
     return normalizeCodexSubagentLifecycleEvent(state, eventName, paneKey, hookPayload)
   }
 
@@ -162,7 +162,7 @@ export function normalizeCodexEvent(
       ? 'working'
       : eventName === 'PermissionRequest' || isUserInputPreTool
         ? 'waiting'
-        : eventName === 'Stop'
+        : eventName === 'Stop' || eventName === 'Interrupt'
           ? 'done'
           : null
   if (!stateName) {
@@ -176,24 +176,12 @@ export function normalizeCodexEvent(
     state.codexSubagentRosterByPaneKey.delete(paneKey)
     state.codexSubagentTranscriptByPaneKey.delete(paneKey)
   }
+  catchUpOnCodexParentRollout(state, paneKey, agentId ? undefined : transcriptPath)
   if (agentId && transcriptPath && eventName === 'PermissionRequest') {
     const transcriptState = getOrCreateCodexSubagentTranscriptState(state, paneKey)
-    if (transcriptState.parent.filePath === transcriptPath) {
-      reconcileCodexSubagentTranscript(
-        transcriptState,
-        getOrCreateCodexSubagentRoster(state, paneKey),
-        transcriptPath
-      )
-    } else {
+    if (transcriptState.parent.filePath !== transcriptPath) {
       reconcileCodexSubagentReviewer(transcriptState, transcriptPath)
     }
-  }
-  if (transcriptPath && !agentId) {
-    reconcileCodexSubagentTranscript(
-      getOrCreateCodexSubagentTranscriptState(state, paneKey),
-      getOrCreateCodexSubagentRoster(state, paneKey),
-      transcriptPath
-    )
   }
   if (agentId) {
     // Why: reconcile the child rollout reviewer before classifying its approval, including after relay restart.
@@ -233,7 +221,8 @@ export function normalizeCodexEvent(
   const previousLead = state.codexLeadStateByPaneKey.get(paneKey)
   const record = setCodexMainAgentTurnState(state, paneKey, {
     state: ownedState,
-    ...codexOutcomeRestatedByStop(previousLead, ownedState),
+    ...(eventName === 'Interrupt' ? { outcome: 'cancellation' as const } : {}),
+    turnId: readString(hookPayload, 'turn_id'),
     model:
       normalizeOptionalField(hookPayload['model'], AGENT_MODEL_MAX_LENGTH) ??
       (eventName === 'SessionStart' ? undefined : previousLead?.model)
