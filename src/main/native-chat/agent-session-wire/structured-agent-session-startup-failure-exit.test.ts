@@ -91,7 +91,7 @@ describe('a provider that ends before it finished starting', () => {
               kind: 'status',
               text: 'Claude is not signed in for the selected account. Sign in, then send your message again.',
               tone: 'error',
-              failure: { kind: 'notSignedIn' }
+              failure: { kind: 'notSignedIn', startKey: GENERATION }
             }
           })
         ]
@@ -132,7 +132,8 @@ describe('a provider that ends before it finished starting', () => {
               tone: 'error',
               failure: {
                 kind: 'providerStartFailed',
-                detail: { text: REASON, audience: 'log' }
+                detail: { text: REASON, audience: 'log' },
+                startKey: GENERATION
               }
             }
           })

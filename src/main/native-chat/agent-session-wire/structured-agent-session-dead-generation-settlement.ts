@@ -20,8 +20,9 @@ import {
 } from '../../../shared/agent-session-failure-words'
 import { structuredAgentSessionStartFailure } from './structured-agent-session-failure-text'
 import {
-  hasStructuredAgentSessionStartFailureRow,
-  structuredAgentSessionStartFailureRow
+  structuredAgentSessionStartFailureRejection,
+  structuredAgentSessionStartFailureRow,
+  structuredAgentSessionStartFailureRowItemId
 } from './structured-agent-session-start-failure-row'
 import type { AgentSessionDeathEvidence } from '../../../shared/agent-session-record'
 import {
@@ -96,6 +97,14 @@ export function unfinishedStructuredAgentSessionWorkWasInterrupted(
   return outcomeItems.some((item) => !isCleanlySettled(currentItems.get(item.itemId)))
 }
 
+function startFailureRowBody(
+  journal: DeadGenerationJournal,
+  startKey: string
+): AgentJournalItemBody | undefined {
+  const itemId = structuredAgentSessionStartFailureRowItemId(startKey)
+  return journal.snapshot().items.find((item) => item.itemId === itemId)?.body
+}
+
 export async function settleStructuredAgentSessionDeadGeneration(input: {
   journal: DeadGenerationJournal
   sessionId: string
@@ -123,24 +132,33 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
     // child that never proved its start accepted nothing either — input is written only after it
     // initializes — so every send it was handed is rejected with the child's own diagnostic. A
     // proven child's handed-over sends stay in doubt.
-    const startupFailure = input.exitedDuringStartup
-      ? structuredAgentSessionStartFailure({ exit: input.exitFailure }, input.failureTextContext)
+    const startKey = input.exitedDuringStartup
+      ? (input.exitedDuringStartup.generation ?? input.settlementId)
       : null
+    const startupFailure =
+      startKey === null
+        ? null
+        : structuredAgentSessionStartFailureRejection(
+            startFailureRowBody(input.journal, startKey),
+            startKey,
+            structuredAgentSessionStartFailure(
+              { exit: input.exitFailure },
+              input.failureTextContext
+            )
+          )
     await (startupFailure
-      ? input.journal.rejectPendingSubmissions(input.fence, startupFailure)
+      ? input.journal.rejectPendingSubmissions(input.fence, startupFailure.words)
       : input.journal.markPendingSubmissionsUnknown(input.fence, input.pendingSubmissionReason))
     const items = input.journal.snapshot().items
     const mutations: JournalLifecycleMutationInput[] = []
-    if (showUnexpectedExitOutcome && input.exitedDuringStartup && startupFailure) {
-      const startKey = input.exitedDuringStartup.generation ?? input.settlementId
+    if (showUnexpectedExitOutcome && startKey !== null && startupFailure) {
       // A start a message waited on is the delivery loop's to record, before or after this exit,
       // in the words it rejected the message with; this row is for a command, goal or rewind start.
       // A row already written stays: rejected is terminal, so its words are not reworded.
       const recordedByDeliveryLoop =
-        input.journal.submissions?.().some(isQueuedAgentJournalSubmission) ||
-        hasStructuredAgentSessionStartFailureRow(items, startKey)
+        input.journal.submissions?.().some(isQueuedAgentJournalSubmission) || startupFailure.written
       if (!recordedByDeliveryLoop) {
-        mutations.push(structuredAgentSessionStartFailureRow(startKey, startupFailure))
+        mutations.push(structuredAgentSessionStartFailureRow(startKey, startupFailure.words))
       }
     } else if (showUnexpectedExitOutcome) {
       mutations.push({

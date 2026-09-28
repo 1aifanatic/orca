@@ -10,6 +10,8 @@ import {
   providerDiagnostic
 } from '../../../shared/agent-session-failure'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
+import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
+import { structuredAgentSessionStartFailureRow } from './structured-agent-session-start-failure-row'
 import {
   captureUnfinishedStructuredAgentSessionWork,
   settleStructuredAgentSessionDeadGeneration,
@@ -20,6 +22,7 @@ const UNEXPECTED_PROVIDER_EXIT_OUTCOME =
   'The agent stopped while this response was in progress. You can continue in this conversation.'
 
 const SESSION = 'session-dead-generation'
+const START_ROW = `orca:${encodeURIComponent('start-failure:generation-1')}`
 const THREAD = 'thread-1'
 let root: string
 let journal: AgentSessionJournal
@@ -315,18 +318,73 @@ describe('dead structured-session generation settlement', () => {
       exitedDuringStartup: { generation: 'generation-1' }
     })
 
-    // The sentence is Orca's; the stderr the exit carried rides as a log detail only.
+    // The sentence is Orca's; the stderr the exit carried rides as a log detail only. The message
+    // and the start's row name the start, the row's own key.
+    const reason = 'The agent stopped before it finished starting. Send your message to try again.'
+    const rejection = {
+      kind: 'providerStartFailed',
+      detail: { text: 'code 1\nnot signed in', audience: 'log' },
+      startKey: 'generation-1'
+    }
     expect(journal.submissions()).toEqual([
       expect.objectContaining({
         clientMessageId: 'client-held',
         dispatchState: 'rejected',
-        reason: 'The agent stopped before it finished starting. Send your message to try again.',
-        rejection: {
-          kind: 'providerStartFailed',
-          detail: { text: 'code 1\nnot signed in', audience: 'log' }
-        }
+        reason,
+        rejection
       })
     ])
+    expect(journal.itemBody(START_ROW)).toEqual({
+      kind: 'status',
+      text: reason,
+      tone: 'error',
+      failure: rejection
+    })
+  })
+
+  // An earlier report of the same start wrote its row first; its words are the start's.
+  it("rejects a send the start left pending in the start's row's words, leaving the row", async () => {
+    const first = agentSessionFailureWords(agentSessionFailureFact('notSignedIn'), {
+      surface: 'rejection'
+    })
+    const row = structuredAgentSessionStartFailureRow('generation-1', {
+      reason: first.reason,
+      rejection: { ...first.rejection, startKey: 'generation-1' }
+    })
+    await journal.appendLifecycleBatch({
+      settlementId: 'start-failure:generation-1',
+      fence: 7,
+      recovered: true,
+      mutations: [row]
+    })
+    const written = journal.itemBody(START_ROW)
+    await journal.appendSubmission({
+      clientMessageId: 'client-held',
+      payloadFingerprint: 'fingerprint',
+      body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'hello?' }] },
+      fence: 7
+    })
+
+    await settleStructuredAgentSessionDeadGeneration({
+      journal,
+      sessionId: SESSION,
+      fence: 7,
+      settlementId: `provider-exit:${SESSION}:7:generation-1`,
+      pendingSubmissionReason: 'provider_closed_before_acknowledgement',
+      verdict: { state: 'interrupted', completedAt: 1_000 },
+      exitFailure: agentSessionFailureFact('providerExited'),
+      exitedDuringStartup: { generation: 'generation-1' }
+    })
+
+    expect(journal.submissions()).toEqual([
+      expect.objectContaining({
+        clientMessageId: 'client-held',
+        dispatchState: 'rejected',
+        reason: first.reason,
+        rejection: { kind: 'notSignedIn', startKey: 'generation-1' }
+      })
+    ])
+    expect(journal.itemBody(START_ROW)).toEqual(written)
   })
 
   it("keeps a subagent's settled rows the subagent's, in one batch and after a reopen", async () => {
