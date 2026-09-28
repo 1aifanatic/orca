@@ -101,15 +101,3 @@ export const sayAgentSessionFailureEnglish: AgentSessionFailureSay = (id, values
     (placeholder, name: string) => filled.get(name) ?? placeholder
   )
 }
-
-/** How a surface words a failure: each piece in its language, and sentences run together its way. */
-export type AgentSessionFailureLanguage = {
-  say: AgentSessionFailureSay
-  join: (sentences: readonly string[]) => string
-}
-
-/** English, as the host and the phone say it. */
-export const AGENT_SESSION_FAILURE_ENGLISH: AgentSessionFailureLanguage = {
-  say: sayAgentSessionFailureEnglish,
-  join: (sentences) => sentences.join(' ')
-}

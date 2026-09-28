@@ -18,12 +18,12 @@ import {
   type SubmissionRejectionKind
 } from './agent-session-failure'
 import {
-  AGENT_SESSION_FAILURE_ENGLISH,
+  sayAgentSessionFailureEnglish,
   type AgentSessionFailureCopyId,
-  type AgentSessionFailureLanguage,
   type AgentSessionFailureSay
 } from './agent-session-failure-copy'
 import type { AgentSessionWireRefusalCode } from './agent-session-wire-refusals'
+import { joinSentences } from './sentence-joining'
 import {
   DISPATCH_REJECTED_CANCELLED,
   DISPATCH_REJECTED_CODEX_QUEUE_FULL,
@@ -96,8 +96,7 @@ type Sentence = (
   context: AgentSessionFailureWordsContext,
   fact: AgentSessionFailureFact,
   surface: AgentSessionFailureSurface,
-  say: AgentSessionFailureSay,
-  join: AgentSessionFailureLanguage['join']
+  say: AgentSessionFailureSay
 ) => string
 
 function agent(say: AgentSessionFailureSay, { agentName }: AgentSessionFailureWordsContext) {
@@ -129,14 +128,14 @@ function startRetry(
 }
 
 function couldNot(verb: 'couldNotStart' | 'couldNotRestart'): Sentence {
-  return (context, fact, _surface, say, join) => {
+  return (context, fact, _surface, say) => {
     const failed = say(verb, agent(say, context))
     // Only a terminal agent an older build recorded holds a claim; quitting it frees the chat.
     if (fact.refusal?.details?.reason === 'claimConflicted') {
-      return join([failed, say('terminalAgentHoldsChat'), say('quitTerminalAgent')])
+      return joinSentences([failed, say('terminalAgentHoldsChat'), say('quitTerminalAgent')])
     }
     const code = fact.refusal?.code
-    return join(
+    return joinSentences(
       code && !START_REFUSAL_RESUMABLE[code]
         ? [failed, say('startNewChat')]
         : [failed, ...startRetry(say, context)]
@@ -174,12 +173,12 @@ const ATTACHMENT_SENTENCES = {
 >
 
 const FAILURE_SENTENCES = {
-  providerStartFailed: (context, _fact, _surface, say, join) =>
-    join([say('providerStartFailed', agent(say, context)), ...startRetry(say, context)]),
+  providerStartFailed: (context, _fact, _surface, say) =>
+    joinSentences([say('providerStartFailed', agent(say, context)), ...startRetry(say, context)]),
   startFailed: couldNot('couldNotStart'),
   // Beside a Retry the resend is the button, but signing in is still a step to take first.
-  notSignedIn: (context, _fact, _surface, say, join) =>
-    join([
+  notSignedIn: (context, _fact, _surface, say) =>
+    joinSentences([
       say('notSignedIn', agent(say, context)),
       say(
         context.retryControl
@@ -189,12 +188,12 @@ const FAILURE_SENTENCES = {
             : 'signInThenSend'
       )
     ]),
-  historyTooLarge: (_context, _fact, _surface, say, join) =>
-    join([say('historyTooLarge'), say('startNewChat')]),
+  historyTooLarge: (_context, _fact, _surface, say) =>
+    joinSentences([say('historyTooLarge'), say('startNewChat')]),
   managedAccountEnvOverride: (_context, _fact, _surface, say) => say('managedAccountEnvOverride'),
   accountSwitchInProgress: (_context, _fact, _surface, say) => say('accountSwitchInProgress'),
-  managedAccountUnsupported: (context, _fact, _surface, say, join) =>
-    join([
+  managedAccountUnsupported: (context, _fact, _surface, say) =>
+    joinSentences([
       say('managedAccountUnsupported'),
       say(
         context.retryControl
@@ -245,10 +244,10 @@ export function agentSessionFailureSentence(
   surface: AgentSessionFailureSurface,
   context: AgentSessionFailureWordsContext = {},
   /** Desktop passes its translations; the host and the phone keep English. */
-  language: AgentSessionFailureLanguage = AGENT_SESSION_FAILURE_ENGLISH
+  say: AgentSessionFailureSay = sayAgentSessionFailureEnglish
 ): string {
   const sentence: Sentence = FAILURE_SENTENCES[fact.kind]
-  return sentence(context, fact, surface, language.say, language.join)
+  return sentence(context, fact, surface, say)
 }
 
 /** The markers released clients hide, for the rejections that had one before rows carried a fact.

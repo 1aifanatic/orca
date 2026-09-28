@@ -10,7 +10,6 @@ const toastError = vi.hoisted(() => vi.fn())
 vi.mock('sonner', () => ({ toast: { error: toastError } }))
 
 vi.mock('@/i18n/i18n', () => ({
-  getIntlLocale: () => 'en-US',
   translate: (_key: string, fallback: string, values?: Record<string, string | number>) => {
     if (!values) {
       return fallback

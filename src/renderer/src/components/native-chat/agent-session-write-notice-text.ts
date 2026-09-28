@@ -2,7 +2,6 @@
 // shared English as its fallback so desktop and mobile never say it differently.
 
 import { translate } from '@/i18n/i18n'
-import { joinUiSentences } from '@/i18n/sentence-joining'
 import { agentSessionFailureSentence } from '../../../../shared/agent-session-failure-words'
 import { agentSessionWriteNoticeParts } from '../../../../shared/agent-session-refusal-notice'
 import {
@@ -14,7 +13,8 @@ import type {
   AgentSessionWriteFailure,
   AgentSessionWriteKind
 } from '../../../../shared/agent-session-write-failure'
-import { AGENT_SESSION_FAILURE_TRANSLATED } from './agent-session-failure-words-text'
+import { joinSentences } from '../../../../shared/sentence-joining'
+import { sayAgentSessionFailureTranslated } from './agent-session-failure-words-text'
 
 const SENTENCES: Record<AgentSessionWriteNoticeSentence, () => string> = {
   notDoneReadHistory: () =>
@@ -116,7 +116,7 @@ const SENTENCES: Record<AgentSessionWriteNoticeSentence, () => string> = {
 }
 
 export function agentSessionWriteNoticeText(parts: readonly AgentSessionWriteNoticePart[]): string {
-  return joinUiSentences(
+  return joinSentences(
     parts.map((part) =>
       typeof part === 'string'
         ? SENTENCES[part]()
@@ -126,7 +126,7 @@ export function agentSessionWriteNoticeText(parts: readonly AgentSessionWriteNot
               part.failure,
               part.surface,
               part.context,
-              AGENT_SESSION_FAILURE_TRANSLATED
+              sayAgentSessionFailureTranslated
             )
     )
   )

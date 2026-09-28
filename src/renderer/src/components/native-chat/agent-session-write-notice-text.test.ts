@@ -71,7 +71,7 @@ describe('desktop words for a write that did not happen', () => {
     }
   })
 
-  it('joins a plugin language the way the language it declares does', async () => {
+  it("runs on after a plugin language's full stop, and keeps the space after English it left", async () => {
     const id = 'plugin:example.chinese/zh-TW' as const
     setRendererPluginLanguagePacks([
       {
@@ -95,5 +95,12 @@ describe('desktop words for a write that did not happen', () => {
     expect(agentSessionWriteNoticeText(['restartFailed', 'notDoneSend'])).toBe(
       '智能體無法重新啟動。您的訊息未傳送。'
     )
+    // The pack predates the failure words, so they fall back to English.
+    expect(
+      agentSessionWriteNoticeText([
+        'notDoneSend',
+        { failure: { kind: 'startFailed' }, surface: 'rejection', context: { agentName: 'Claude' } }
+      ])
+    ).toBe("您的訊息未傳送。Claude couldn't start. Send your message to try again.")
   })
 })

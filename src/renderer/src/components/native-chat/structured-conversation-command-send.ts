@@ -5,7 +5,7 @@ import type {
 import { readAgentSessionFailureFact } from '../../../../shared/agent-session-failure'
 import { agentSessionFailureSentence } from '../../../../shared/agent-session-failure-words'
 import { translate } from '@/i18n/i18n'
-import { AGENT_SESSION_FAILURE_TRANSLATED } from './agent-session-failure-words-text'
+import { sayAgentSessionFailureTranslated } from './agent-session-failure-words-text'
 import type { StructuredAgentSessionWriteOutcome } from './use-structured-agent-session-mutate'
 
 export async function sendStructuredConversationCommand(input: {
@@ -58,7 +58,7 @@ function conversationCommandFailureText(
   }
   // As the host words it: only a /clear whose new conversation failed to start names the agent.
   const context = result.command === 'clear' ? { agentName, command: 'clear' as const } : {}
-  return agentSessionFailureSentence(fact, 'row', context, AGENT_SESSION_FAILURE_TRANSLATED)
+  return agentSessionFailureSentence(fact, 'row', context, sayAgentSessionFailureTranslated)
 }
 
 export function isUnconfirmedConversationCommand(method: string, value: unknown): boolean {
