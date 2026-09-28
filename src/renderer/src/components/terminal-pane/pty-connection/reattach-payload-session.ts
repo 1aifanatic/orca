@@ -13,7 +13,6 @@ export type ReattachPayloadSession = Pick<
   | 'markHiddenOutputRestoreNeeded'
   | 'pane'
   | 'pendingReattachFit'
-  | 'reattachReplayResetSequence'
   | 'recordRendererOrderedSeq'
   | 'rememberReattachPayloadAgentSignal'
   | 'schedulePendingStartupCommandDelivery'
@@ -25,5 +24,6 @@ export type ReattachPayloadSession = Pick<
   | 'transport'
   | 'writeFreshShellViewportBlanking'
   | 'writeInputModeGround'
+  | 'writeReattachReplayReset'
   | 'writeReplayData'
 >

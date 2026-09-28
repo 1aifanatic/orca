@@ -197,7 +197,7 @@ describe('connectPanePty', () => {
       expect.any(Function)
     )
     expect(pane.terminal.write).not.toHaveBeenCalledWith(
-      replayEpilogue(POST_REPLAY_MODE_RESET),
+      replayEpilogue(POST_REPLAY_MODE_RESET, 0),
       expect.any(Function)
     )
 
@@ -462,7 +462,7 @@ describe('connectPanePty', () => {
     expect(writes.join('')).toContain('RESTORE-LIVE-STATE')
     expect(writes.join('')).not.toContain('ALT-FRAME-BODY')
     expect(writes).toContain(`${RESET_GRAPHIC_RENDITION}PREFIX-SCROLLBACKRESTORE-LIVE-STATE`)
-    expect(writes).toContainEqual(replayEpilogue(POST_REPLAY_MODE_RESET))
+    expect(writes).toContain(replayEpilogue(POST_REPLAY_MODE_RESET, 0))
   })
 
   it('resizes the pane to the snapshot grid before replaying daemon snapshot bytes (bug #7279)', async () => {

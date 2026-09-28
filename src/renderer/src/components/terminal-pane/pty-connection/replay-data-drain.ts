@@ -158,8 +158,12 @@ export function bindReplayDataDrain(session: ConnectPanePtySession): void {
         continue
       }
       if (clearBeforeReplay || data.length > 0) {
-        await session.writeReplayDataAsync(
-          session.reattachReplayResetSequence(data, false, alternateScreen, terminalOwner)
+        await session.writeReattachReplayReset(
+          data,
+          false,
+          alternateScreen,
+          terminalOwner,
+          session.writeReplayDataAsync
         )
         if (!isCurrentPayload()) {
           continue

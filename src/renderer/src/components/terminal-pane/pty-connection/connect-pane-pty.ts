@@ -161,14 +161,16 @@ export function connectPanePty(
   // Why: paneKey crosses PTY env, hook IPC, retained rows, and reload/replay.
   // Use the stable layout leaf UUID, not the renderer-local numeric pane id.
   session.cacheKey = makePaneKey(session.deps.tabId, session.pane.leafId)
-  // Why: xterm exposes no kitty read, so this mirror parses the same bytes xterm
-  // does (PTY output plus writeInputModeGround); see TerminalKittyKeyboardModeTracker.
+  // Why: xterm exposes no kitty read, so this mirror tracks the flags xterm's
+  // encoder applies; see TerminalKittyKeyboardModeTracker for its feeds.
   session.kittyKeyboardModes = (() => {
     const existing = session.deps.paneKittyKeyboardModesRef.current.get(session.pane.id)
     if (existing) {
       return existing
     }
-    const created = new TerminalKittyKeyboardModeTracker()
+    const created = new TerminalKittyKeyboardModeTracker({
+      kittyKeyboard: session.pane.terminal.options.vtExtensions?.kittyKeyboard === true
+    })
     session.deps.paneKittyKeyboardModesRef.current.set(session.pane.id, created)
     return created
   })()

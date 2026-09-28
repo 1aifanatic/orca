@@ -1,5 +1,4 @@
 import type { IDisposable } from '@xterm/xterm'
-import { readAppliedKittyKeyboardFlags } from '@/lib/pane-manager/terminal-keyboard-protocol'
 import type { ManagedPane, PaneManager } from '@/lib/pane-manager/pane-manager'
 import type { UseTerminalPaneLifecycleDeps } from './terminal-pane-lifecycle-types'
 import {
@@ -87,11 +86,7 @@ export function installTerminalPaneInputHandling(context: PaneInputContext): voi
           terminalElement: pane.terminal.element,
           isComposing: () => imeCompositionTracker.isActive(),
           sendInput: (data) => pane.terminal.input(data),
-          getKittyKeyboardFlags: () =>
-            readAppliedKittyKeyboardFlags(
-              pane.terminal,
-              paneKittyKeyboardModesRef.current.get(pane.id)
-            )
+          getKittyKeyboardFlags: () => paneKittyKeyboardModesRef.current.get(pane.id)?.flags ?? 0
         })
       : { claimKeyEvent: () => false, dispose: () => undefined }
   imeNativeTextForwarderDisposablesRef.current.set(pane.id, imeNativeTextForwarder)
@@ -200,10 +195,7 @@ export function installTerminalPaneInputHandling(context: PaneInputContext): voi
       isMac,
       isIosWeb,
       hasSelection: pane.terminal.hasSelection(),
-      kittyKeyboardFlags: readAppliedKittyKeyboardFlags(
-        pane.terminal,
-        paneKittyKeyboardModesRef.current.get(pane.id)
-      )
+      kittyKeyboardFlags: paneKittyKeyboardModesRef.current.get(pane.id)?.flags ?? 0
     })
     observeLinuxCandidateEvent()
     return !shouldBypass

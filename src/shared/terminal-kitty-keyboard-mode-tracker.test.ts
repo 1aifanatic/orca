@@ -344,4 +344,14 @@ describe('TerminalKittyKeyboardModeTracker', () => {
       expect(softReset.hasProvenBaseline).toBe(true)
     })
   })
+
+  // Why: xterm ignores CSI u while the protocol is withheld, so the mirror must stay at 0 too.
+  it('ignores kitty sequences and snapshot flags when the protocol is withheld', () => {
+    const tracker = new TerminalKittyKeyboardModeTracker({ kittyKeyboard: false })
+    tracker.scan('\x1b[>5u\x1b[=31u')
+    expect(tracker.flags).toBe(0)
+    tracker.resetForSnapshot()
+    tracker.restoreSnapshotFlags(31)
+    expect(tracker.flags).toBe(0)
+  })
 })

@@ -137,15 +137,18 @@ export function bindFreshSpawnFollowReset(session: ConnectPanePtySession): void 
   }
 
   /**
-   * Post-replay reset ending in the mirror's Kitty flags, already scanned into
-   * the mirror; the caller writes the result to xterm. Scanned first because a
-   * profile's `?1049l` moves both records to the other screen's slot.
+   * Writes a post-replay reset ending in the mirror's Kitty flags, through the
+   * mirror first. The restore is built after scanning the profile because its
+   * `?1049l` moves both records to the other screen's slot.
    */
-  session.replayEpilogue = (profile: string): string => {
+  session.writeReplayEpilogue = <T>(
+    profile: string,
+    write: (data: string) => T = session.writeReplayData
+  ): T => {
     session.kittyKeyboardModes.scan(profile)
     const kitty = buildKittyKeyboardRestore(session.kittyKeyboardModes.snapshotFlags)
     session.kittyKeyboardModes.scan(kitty)
-    return `${profile}${kitty}`
+    return write(`${profile}${kitty}`)
   }
 
   const chooseReattachReplayReset = (
@@ -177,14 +180,16 @@ export function bindFreshSpawnFollowReset(session: ConnectPanePtySession): void 
       : POST_REPLAY_REATTACH_RESET
   }
 
-  session.reattachReplayResetSequence = (
+  session.writeReattachReplayReset = <T>(
     payload: string,
     ownerProcessEnded = false,
     isAlternateScreen?: boolean,
-    terminalOwner?: 'shell'
-  ): string =>
-    session.replayEpilogue(
-      chooseReattachReplayReset(payload, ownerProcessEnded, isAlternateScreen, terminalOwner)
+    terminalOwner?: 'shell',
+    write: (data: string) => T = session.writeReplayData
+  ): T =>
+    session.writeReplayEpilogue(
+      chooseReattachReplayReset(payload, ownerProcessEnded, isAlternateScreen, terminalOwner),
+      write
     )
 
   session.consumeRestoredViewportBlankingMarker = (): boolean => {

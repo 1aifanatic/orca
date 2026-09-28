@@ -22,7 +22,6 @@ vi.mock('@xterm/xterm', () => ({
     customKeyHandler: ((event: KeyboardEvent) => boolean) | null = null
     element = document.createElement('div')
     modes = { bracketedPasteMode: false }
-    options = { vtExtensions: { kittyKeyboard: true } }
     unicode = { activeVersion: '6', versions: ['6', '11'], register: vi.fn() }
     write = vi.fn((_data: string, callback?: () => void) => callback?.())
     open = vi.fn()

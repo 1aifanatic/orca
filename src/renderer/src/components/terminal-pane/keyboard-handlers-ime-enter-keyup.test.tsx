@@ -56,8 +56,7 @@ function createHarness(options: { staleActivePane?: boolean } = {}): {
     terminal: {
       element: terminalElement,
       focus: vi.fn(),
-      getSelection: vi.fn(() => ''),
-      options: { vtExtensions: { kittyKeyboard: true } }
+      getSelection: vi.fn(() => '')
     }
   }
   const stalePane = {
@@ -66,8 +65,7 @@ function createHarness(options: { staleActivePane?: boolean } = {}): {
     terminal: {
       element: staleTerminalElement,
       focus: vi.fn(),
-      getSelection: vi.fn(() => ''),
-      options: { vtExtensions: { kittyKeyboard: true } }
+      getSelection: vi.fn(() => '')
     }
   }
   let activePane = options.staleActivePane ? stalePane : pane

@@ -91,13 +91,11 @@ export function createReattachPayloadHandlers(
             : daemonSnapshotReplay
         }`
       )
-      session.writeReplayData(
-        session.reattachReplayResetSequence(
-          daemonSnapshotReplay,
-          Boolean(ctx.connectResult.coldRestore),
-          ctx.connectResult.isAlternateScreen,
-          ctx.connectResult.snapshotTerminalOwner
-        )
+      session.writeReattachReplayReset(
+        daemonSnapshotReplay,
+        Boolean(ctx.connectResult.coldRestore),
+        ctx.connectResult.isAlternateScreen,
+        ctx.connectResult.snapshotTerminalOwner
       )
       if (ctx.connectResult.pendingEscapeTailAnsi) {
         // Why last: re-arm the dangling mid-escape after the reset (whose ESC would abort it) so the live continuation completes it (#7329).
@@ -198,13 +196,11 @@ export function createReattachPayloadHandlers(
         })) {
           session.writeReplayData(replayChunk)
         }
-        session.writeReplayData(
-          session.reattachReplayResetSequence(
-            modelData,
-            Boolean(ctx.connectResult?.coldRestore),
-            modelSnapshot.alternateScreen ?? ctx.connectResult?.isAlternateScreen,
-            modelSnapshot.terminalOwner
-          )
+        session.writeReattachReplayReset(
+          modelData,
+          Boolean(ctx.connectResult?.coldRestore),
+          modelSnapshot.alternateScreen ?? ctx.connectResult?.isAlternateScreen,
+          modelSnapshot.terminalOwner
         )
         if (modelSnapshot.pendingEscapeTailAnsi) {
           // Why last: re-arm the dangling mid-escape after the reset so the live continuation completes it (#7329).
@@ -237,12 +233,10 @@ export function createReattachPayloadHandlers(
         session.writeReplayData(
           `${ctx.connectResult.coldRestore ? RESET_GRAPHIC_RENDITION : ''}${ctx.connectResult.replay}`
         )
-        session.writeReplayData(
-          session.reattachReplayResetSequence(
-            ctx.connectResult.replay,
-            Boolean(ctx.connectResult.coldRestore),
-            ctx.connectResult.isAlternateScreen
-          )
+        session.writeReattachReplayReset(
+          ctx.connectResult.replay,
+          Boolean(ctx.connectResult.coldRestore),
+          ctx.connectResult.isAlternateScreen
         )
         session.sendFocusedReattachFocusInAfterReplay(ctx.ptyId, ctx.attemptGeneration)
         if (ctx.connectResult.coldRestore) {

@@ -210,7 +210,7 @@ describe('connectPanePty', () => {
     // Why: the relay's replay buffer holds full history, so clear xterm before writing to avoid duplicating prior-session content.
     expect(writes).toContain(`${RESET_GRAPHIC_RENDITION}\x1b[2J\x1b[3J\x1b[H`)
     expect(writes).toContain('restored-ssh-output')
-    expect(writes).toContainEqual(replayEpilogue(POST_REPLAY_REATTACH_RESET))
+    expect(writes).toContain(replayEpilogue(POST_REPLAY_REATTACH_RESET))
     expect(api.pty.signal).toHaveBeenCalledWith('leaf-session', 'SIGWINCH')
   })
 

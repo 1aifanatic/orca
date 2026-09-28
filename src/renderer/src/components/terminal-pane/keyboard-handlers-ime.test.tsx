@@ -59,8 +59,7 @@ function createHarness(bindings?: Map<number, ShortcutBinding>): {
     terminal: {
       element: terminalElement,
       focus: vi.fn(),
-      getSelection: vi.fn(() => ''),
-      options: { vtExtensions: { kittyKeyboard: true } }
+      getSelection: vi.fn(() => '')
     }
   }
   const manager = {

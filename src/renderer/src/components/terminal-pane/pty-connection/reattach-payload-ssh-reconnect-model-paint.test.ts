@@ -36,11 +36,12 @@ function createSession(
   fireLog: FireLog,
   overrides: Record<string, unknown> = {}
 ): ReattachPayloadSession {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the handlers under test read only these session members.
   return {
     pane: createPane(1),
     rememberReattachPayloadAgentSignal: vi.fn(),
     writeReplayData: vi.fn((data: string) => fireLog.push(`write:${data}`)),
-    reattachReplayResetSequence: vi.fn(() => '<reset>'),
+    writeReattachReplayReset: vi.fn(() => fireLog.push('write:<reset>')),
     sendFocusedReattachFocusInAfterReplay: vi.fn(),
     applySnapshotKittyKeyboardModes: vi.fn(() => fireLog.push('kitty:snapshot-baseline')),
     setRestoredSnapshotBaseline: vi.fn(),

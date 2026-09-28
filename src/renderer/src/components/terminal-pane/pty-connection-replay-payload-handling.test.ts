@@ -5,7 +5,7 @@ import {
   POST_REPLAY_REATTACH_RESET,
   RESET_TERMINAL_CURSOR_STYLE
 } from '../../../../shared/terminal-mode-reset-profiles'
-import { replayEpilogue, isReplayEpilogue } from './pty-connection-test-replay-epilogue'
+import { replayEpilogue } from './pty-connection-test-replay-epilogue'
 import { flushAsyncTicks } from './pty-connection-test-async'
 import {
   NORMAL_BUFFER_PROLOGUE,
@@ -673,9 +673,7 @@ describe('connectPanePty', () => {
     await flushAsyncTicks(8)
 
     const replayIndex = writes.indexOf('authoritative replay')
-    const resetIndex = writes.findIndex((data) =>
-      isReplayEpilogue(data, POST_REPLAY_REATTACH_RESET)
-    )
+    const resetIndex = writes.indexOf(replayEpilogue(POST_REPLAY_REATTACH_RESET))
     const liveIndex = writes.indexOf('NEWER-LIVE\r\n')
     expect(replayIndex).toBeGreaterThan(0)
     expect(resetIndex).toBeGreaterThan(replayIndex)
