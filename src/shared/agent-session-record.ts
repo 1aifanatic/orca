@@ -111,11 +111,11 @@ export type AgentSessionLease = {
   /** True from load until the host adjudicates it; no writer is granted while set. */
   unreconciled: boolean
   /**
-   * Lowest fence a future grant may use. Set only after the store recovers from its backup, where
-   * the commit that never landed may already have granted a fence the backup cannot show, or keeps
-   * a salvaged row over a newer quarantined copy of it. The
-   * CURRENT fence is deliberately left alone: `live` means a handle proven at exactly that number,
-   * so rewriting it would invalidate the record it is trying to save.
+   * Lowest fence a future grant may use. Set when the store recovers from its backup, where the
+   * commit that never landed may already have granted a fence the backup cannot show, and when it
+   * keeps a salvaged row over a newer quarantined copy of the same session. The CURRENT fence is
+   * deliberately left alone: `live` means a handle proven at exactly that number, so rewriting it
+   * would invalidate the record it is trying to save.
    */
   minimumNextFence?: number
   /** Null on a released lease when nothing proved its owner gone. */
