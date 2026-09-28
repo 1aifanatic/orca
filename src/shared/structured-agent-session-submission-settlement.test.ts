@@ -89,4 +89,10 @@ describe('structuredAgentSessionSubmissionSettlement', () => {
   it.each(CASES)('%s', (_name, shape, expected) => {
     expect(structuredAgentSessionSubmissionSettlement(shape)).toBe(expected)
   })
+
+  it('draws a state a newer host wrote as sent, never as nothing', () => {
+    // The wire schema admits any dispatch state string.
+    const future: Shape = JSON.parse('{"dispatchState":"superseded","reason":null}')
+    expect(structuredAgentSessionSubmissionSettlement(future)).toBe('sent')
+  })
 })

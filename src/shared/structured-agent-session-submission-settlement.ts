@@ -21,18 +21,21 @@ export function structuredAgentSessionSubmissionSettlement(
     rejection?: unknown
   }
 ): StructuredAgentSessionSubmissionSettlement {
-  switch (submission.dispatchState) {
-    case 'accepted':
-      return 'sent'
-    case 'pending':
-      return 'open'
-    case 'unknown':
-      // Hosts before the `recovered` flag reached the wire publish only the restart reason.
-      return submission.recovered === true ||
-        submission.reason === 'host_restarted_before_acknowledgement'
-        ? 'sent'
-        : 'open'
-    case 'rejected':
-      return classifyDispatchRejection(submission).kind === 'notDelivered' ? 'sent' : 'refused'
+  const { dispatchState } = submission
+  if (dispatchState === 'pending') {
+    return 'open'
   }
+  if (dispatchState === 'unknown') {
+    // Hosts before the `recovered` flag reached the wire publish only the restart reason.
+    return submission.recovered === true ||
+      submission.reason === 'host_restarted_before_acknowledgement'
+      ? 'sent'
+      : 'open'
+  }
+  if (dispatchState === 'rejected') {
+    return classifyDispatchRejection(submission).kind === 'notDelivered' ? 'sent' : 'refused'
+  }
+  // `accepted` — or a state a newer host wrote, since the wire admits any string here: to this
+  // build that is doubt, and doubt is drawn as sent.
+  return 'sent'
 }
