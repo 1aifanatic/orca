@@ -5,7 +5,8 @@ script_dir=$(cd -- "$(dirname -- "$0")" && pwd)
 # Require a fresh network namespace with no external interfaces or routes.
 python3 - <<'PY'
 from pathlib import Path
-if {p.name for p in Path('/sys/class/net').iterdir()} != {'lo'}:
+import socket
+if {name for _, name in socket.if_nameindex()} != {'lo'}:
     raise SystemExit('network namespace still has external interfaces')
 if len(Path('/proc/net/route').read_text().splitlines()) != 1:
     raise SystemExit('network namespace still has IPv4 routes')
