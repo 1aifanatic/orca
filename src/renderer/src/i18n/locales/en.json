@@ -17482,6 +17482,7 @@
         "questionChanged": "This question was already answered or has changed.",
         "historyUnreadable": "Orca couldn't read this chat's saved history.",
         "historyUnusable": "This chat's history couldn't be read, so it can't continue here.",
+        "historyUnavailable": "Orca couldn't open this chat's history right now.",
         "unsupported": "The Orca running this chat doesn't support this. Update Orca, then try again.",
         "unreachable": "Orca couldn't reach the agent.",
         "recordFailed": "Orca couldn't record it in this chat's history.",
@@ -17511,7 +17512,8 @@
         "waitMoment": "Wait a moment.",
         "recordUnreadable": "Orca couldn't read this chat's saved state.",
         "chatNotFound": "The Orca running this chat has no record of it.",
-        "startNewChat": "Start a new chat to continue."
+        "startNewChat": "Start a new chat to continue.",
+        "tryAgain": "Try again."
       },
       "taskList": {
         "title": "Tasks",

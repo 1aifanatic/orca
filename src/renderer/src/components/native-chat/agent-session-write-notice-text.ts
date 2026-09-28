@@ -42,6 +42,8 @@ const SENTENCES: Record<AgentSessionWriteNoticeSentence, () => string> = {
     translate('components.native-chat.writeNotice.historyUnreadable', COPY.historyUnreadable),
   historyUnusable: () =>
     translate('components.native-chat.writeNotice.historyUnusable', COPY.historyUnusable),
+  historyUnavailable: () =>
+    translate('components.native-chat.writeNotice.historyUnavailable', COPY.historyUnavailable),
   unsupported: () => translate('components.native-chat.writeNotice.unsupported', COPY.unsupported),
   unreachable: () => translate('components.native-chat.writeNotice.unreachable', COPY.unreachable),
   recordFailed: () =>
@@ -106,7 +108,8 @@ const SENTENCES: Record<AgentSessionWriteNoticeSentence, () => string> = {
   chatNotFound: () =>
     translate('components.native-chat.writeNotice.chatNotFound', COPY.chatNotFound),
   startNewChat: () =>
-    translate('components.native-chat.writeNotice.startNewChat', COPY.startNewChat)
+    translate('components.native-chat.writeNotice.startNewChat', COPY.startNewChat),
+  tryAgain: () => translate('components.native-chat.writeNotice.tryAgain', COPY.tryAgain)
 }
 
 export function agentSessionWriteNoticeText(parts: readonly AgentSessionWriteNoticePart[]): string {

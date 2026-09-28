@@ -25,6 +25,7 @@ export const AGENT_SESSION_WRITE_NOTICE_COPY = {
   questionChanged: 'This question was already answered or has changed.',
   historyUnreadable: "Orca couldn't read this chat's saved history.",
   historyUnusable: "This chat's history couldn't be read, so it can't continue here.",
+  historyUnavailable: "Orca couldn't open this chat's history right now.",
   unsupported: "The Orca running this chat doesn't support this. Update Orca, then try again.",
   unreachable: "Orca couldn't reach the agent.",
   recordFailed: "Orca couldn't record it in this chat's history.",
@@ -54,7 +55,8 @@ export const AGENT_SESSION_WRITE_NOTICE_COPY = {
   waitMoment: 'Wait a moment.',
   recordUnreadable: "Orca couldn't read this chat's saved state.",
   chatNotFound: 'The Orca running this chat has no record of it.',
-  startNewChat: START_NEW_CHAT
+  startNewChat: START_NEW_CHAT,
+  tryAgain: 'Try again.'
 } as const
 
 export type AgentSessionWriteNoticeSentence = keyof typeof AGENT_SESSION_WRITE_NOTICE_COPY

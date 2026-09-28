@@ -17361,6 +17361,7 @@
         "questionChanged": "이 질문은 이미 답변되었거나 변경되었습니다.",
         "historyUnreadable": "Orca가 이 채팅의 저장된 기록을 읽지 못했습니다.",
         "historyUnusable": "이 채팅의 기록을 읽지 못해 여기에서 계속할 수 없습니다.",
+        "historyUnavailable": "Orca가 지금 이 채팅의 기록을 열지 못했습니다.",
         "unsupported": "이 채팅을 실행 중인 Orca가 이 기능을 지원하지 않습니다. Orca를 업데이트한 후 다시 시도하세요.",
         "unreachable": "Orca가 에이전트에 연결하지 못했습니다.",
         "recordFailed": "Orca가 이 채팅의 기록에 저장하지 못했습니다.",
@@ -17390,7 +17391,8 @@
         "waitMoment": "잠시 기다리세요.",
         "recordUnreadable": "Orca가 이 채팅의 저장된 상태를 읽지 못했습니다.",
         "chatNotFound": "이 채팅을 실행하는 Orca에 이 채팅의 기록이 없습니다.",
-        "startNewChat": "계속하려면 새 채팅을 시작하세요."
+        "startNewChat": "계속하려면 새 채팅을 시작하세요.",
+        "tryAgain": "다시 시도하세요."
       },
       "composer": {
         "imageUnsupported": "이 에이전트는 이미지 붙여넣기를 지원하지 않습니다.",

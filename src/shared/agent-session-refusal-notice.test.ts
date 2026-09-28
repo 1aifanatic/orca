@@ -58,7 +58,7 @@ const CAUSES: Partial<Record<AgentSessionWireRefusalCode, AgentSessionWriteNotic
   // Only the pending-prompt check.
   agent_session_item_revision_stale: 'questionChanged',
   agent_session_already_resolved: 'questionChanged',
-  // No emitter on this host; the code names nothing else.
+  // Send preparation, for any failed open; the code names nothing else.
   agent_session_journal_unreadable: 'historyUnreadable',
   // On these writes, only an older host, or the phone reading an unknown method.
   structured_agent_session_unsupported: 'unsupported'
@@ -169,11 +169,7 @@ describe('the notice for every failure and write', () => {
   })
 
   it('names a cause only for a code on the allowlist', () => {
-    for (const { failure, write, parts, cell } of cells) {
-      if (write === 'read-history' && codeOf(failure) === 'agent_session_journal_unreadable') {
-        expect(parts, cell).toEqual(['historyUnusable', 'startNewChat'])
-        continue
-      }
+    for (const { failure, parts, cell } of cells) {
       const cause =
         failure.kind === 'unconfirmed'
           ? 'outcomeUnknown'
@@ -199,7 +195,8 @@ describe('the notice for every failure and write', () => {
   // - item_revision_stale / already_resolved: "Item <id> has moved on." (prompt-state)
   // - owner_restart_failed: "<agent> couldn't restart: <cause>.", where the cause is the resume's
   //   own refusal message, including the ledger's (send-preparation, hold-resume)
-  // - journal_unreadable: no emitter on this host; an older or newer one may send it.
+  // - journal_unreadable: "The conversation could not be opened: <error>" (send preparation, before
+  //   it named a reason)
   it('is never empty and never shows the host message', () => {
     for (const { failure, write, parts, cell } of cells) {
       expect(parts.length, cell).toBeGreaterThan(0)
@@ -328,7 +325,7 @@ describe('the notice for every reason a host names', () => {
       failure,
       write,
       parts: agentSessionWriteNoticeParts(failure, write),
-      words: agentSessionRefusalReasonWords(failure, write),
+      words: agentSessionRefusalReasonWords(failure),
       cell: `${reasonOf(failure)} x ${write}`
     }))
   )
@@ -349,12 +346,15 @@ describe('the notice for every reason a host names', () => {
     }
   })
 
+  // A retry is the control that sent the write; only an open that can clear says to try again.
   it('names a step exactly where the person has one to take', () => {
     for (const { words, cell } of cells) {
       if (words && 'cause' in words) {
-        expect(words.step !== undefined, cell).toBe(
+        const retryNow = words.action === 'retry' && words.step === 'tryAgain'
+        expect(words.step !== undefined && !retryNow, cell).toBe(
           words.action === 'wait' || words.action === 'actFirst' || words.action === 'goElsewhere'
         )
+        expect(retryNow, cell).toBe(words.cause === 'historyUnavailable')
       }
     }
   })
@@ -373,7 +373,8 @@ describe('the notice for every reason a host names', () => {
       const notDone = parts.filter((part) => typeof part === 'string' && part.startsWith('notDone'))
       const answeredAway = write === 'answer' && parts.includes('questionChanged')
       const unsupported = failure.code === 'structured_agent_session_unsupported'
-      const saysNotDone = parts.includes('historyUnusable')
+      const saysNotDone =
+        write === 'read-history' && failure.code === 'agent_session_journal_unreadable'
       expect(notDone, cell).toEqual(
         answeredAway || unsupported || saysNotDone ? [] : [NOT_DONE[write]]
       )
@@ -462,40 +463,53 @@ it('keeps a sentence the failure rows share word for word', () => {
   )
 })
 
-// A read of a chat's history is refused this way only for a journal file no retry can read.
-describe('a read of a chat history whose journal cannot be read', () => {
-  const FINAL =
-    "This chat's history couldn't be read, so it can't continue here. Start a new chat to continue."
+// A failed journal open says what happened to the history, not what was asked of it.
+describe('a chat whose history the host could not open', () => {
+  const notice = (details: unknown, write: AgentSessionWriteKind): string =>
+    agentSessionRefusalNotice(
+      JSON.parse(
+        JSON.stringify({ code: 'agent_session_journal_unreadable', message: HOST_TEXT, details })
+      ),
+      write
+    )
 
   it.each([
-    ['a host that names the reason', { reason: 'journalUnreadable' }],
-    ['a read that raises the bare code', undefined]
-  ] as const)(
-    'says the chat cannot continue here and to start a new one: %s',
-    (_label, details) => {
-      const parts = agentSessionReadHistoryRefusalParts('agent_session_journal_unreadable', details)
-      expect(parts).toEqual(['historyUnusable', 'startNewChat'])
-      expect(agentSessionWriteNoticeEnglish(parts)).toBe(FINAL)
-      expect(
-        agentSessionRefusalNotice(
-          { code: 'agent_session_journal_unreadable', message: HOST_TEXT, details },
-          'read-history'
-        )
-      ).toBe(FINAL)
-    }
-  )
+    [
+      'journalCorrupt',
+      'read-history',
+      "This chat's history couldn't be read, so it can't continue here. Start a new chat to continue."
+    ],
+    [
+      'journalCorrupt',
+      'send',
+      "This chat's history couldn't be read, so it can't continue here. Your message was not sent. Start a new chat to continue."
+    ],
+    [
+      'journalUnavailable',
+      'read-history',
+      "Orca couldn't open this chat's history right now. Try again."
+    ],
+    [
+      'journalUnavailable',
+      'send',
+      "Orca couldn't open this chat's history right now. Your message was not sent. Try again."
+    ]
+  ] as const)('%s on %s', (reason, write, expected) => {
+    expect(notice({ reason }, write)).toBe(expected)
+  })
 
-  it('keeps the words a write refused the same way has, whose cause can clear', () => {
+  // Damage can't be told apart from an open that can clear, so it never says to start over.
+  it.each([
+    ['an older host', undefined],
+    ['a reason an unreleased build wrote', { reason: 'journalUnreadable' }]
+  ])('promises nothing for a refusal that names no reason: %s', (_label, details) => {
+    expect(notice(details, 'read-history')).toBe("Orca couldn't read this chat's saved history.")
+    expect(notice(details, 'send')).toBe(
+      "Orca couldn't read this chat's saved history. Your message was not sent."
+    )
     expect(
-      agentSessionRefusalNotice(
-        {
-          code: 'agent_session_journal_unreadable',
-          message: HOST_TEXT,
-          details: { reason: 'journalUnreadable' }
-        },
-        'send'
-      )
-    ).toBe("Orca couldn't read this chat's saved history. Your message was not sent.")
+      agentSessionReadHistoryRefusalParts('agent_session_journal_unreadable', details)
+    ).toEqual(['historyUnreadable'])
   })
 
   it('says only that the history did not load for any other read refusal', () => {

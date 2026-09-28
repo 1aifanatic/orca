@@ -14942,6 +14942,7 @@
         "questionChanged": "Esta pregunta ya se respondió o ha cambiado.",
         "historyUnreadable": "Orca no pudo leer el historial guardado de este chat.",
         "historyUnusable": "No se pudo leer el historial de este chat, así que no puede continuar aquí.",
+        "historyUnavailable": "Orca no pudo abrir el historial de este chat en este momento.",
         "unsupported": "La versión de Orca que ejecuta este chat no lo admite. Actualice Orca y vuelva a intentarlo.",
         "unreachable": "Orca no pudo comunicarse con el agente.",
         "recordFailed": "Orca no pudo registrarlo en el historial de este chat.",
@@ -14971,7 +14972,8 @@
         "waitMoment": "Espere un momento.",
         "recordUnreadable": "Orca no pudo leer el estado guardado de este chat.",
         "chatNotFound": "La versión de Orca que ejecuta este chat no tiene ningún registro de él.",
-        "startNewChat": "Inicie un chat nuevo para continuar."
+        "startNewChat": "Inicie un chat nuevo para continuar.",
+        "tryAgain": "Vuelva a intentarlo."
       },
       "composer": {
         "imageUnsupported": "Este agente no admite pegar imágenes.",

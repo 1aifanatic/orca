@@ -6,8 +6,8 @@
 // own row names a cause only where every emitter of the code means it; it is also the words for a
 // host too old to send a reason. A notice says how to get past a refusal only where the person has
 // a step to take; retrying is the control that sent the write, except on the phone, whose message
-// goes back to the composer. Surfaces keep the fact and choose the words when they show it, so
-// nothing saved carries copy.
+// goes back to the composer, and a history that couldn't open right now says to try again.
+// Surfaces keep the fact and choose the words when they show it, so nothing saved carries copy.
 
 import type { AgentSessionFailureKind } from './agent-session-failure'
 import { agentSessionFailureSentence } from './agent-session-failure-words'
@@ -92,18 +92,6 @@ function causeWords(
   step?: AgentSessionWriteNoticeSentence
 ): AgentSessionRefusalReasonWords {
   return step ? { cause, step, action } : { cause, action }
-}
-
-/** A reason whose honest words differ when it refuses a read of the chat's history. */
-type AgentSessionRefusalReasonRow =
-  | AgentSessionRefusalReasonWords
-  | { readHistory: AgentSessionRefusalReasonWords; write: AgentSessionRefusalReasonWords }
-
-// A read raises it only for a journal file no retry can read, so only a new chat continues.
-const HISTORY_UNUSABLE: AgentSessionRefusalCauseWords = {
-  cause: 'historyUnusable',
-  step: 'startNewChat',
-  action: 'goElsewhere'
 }
 
 const AGENT_STARTING = causeWords('agentStarting', 'wait', 'waitForStart')
@@ -207,8 +195,9 @@ const REASON_WORDS = {
   agent_session_item_revision_stale: { promptMoved: codeWords('nothingLeft') },
   agent_session_already_resolved: { promptAlreadyResolved: codeWords('nothingLeft') },
   agent_session_journal_unreadable: {
-    // A write's covers any open that failed, which can clear.
-    journalUnreadable: { readHistory: HISTORY_UNUSABLE, write: codeWords('hostFinding') }
+    // No retry reads past damage, so only a new chat continues.
+    journalCorrupt: causeWords('historyUnusable', 'goElsewhere', 'startNewChat'),
+    journalUnavailable: causeWords('historyUnavailable', 'retry', 'tryAgain')
   },
   // Thrown, so a client meets these only as an RPC error; the code's words stand.
   structured_agent_session_unsupported: {
@@ -220,24 +209,26 @@ const REASON_WORDS = {
 } satisfies {
   [C in AgentSessionWireRefusalCode]: Record<
     AgentSessionRefusalReason<C>,
-    AgentSessionRefusalReasonRow
+    AgentSessionRefusalReasonWords
   >
 }
 
-/** The words and next step a reason gets on this request; undefined when the refusal names none. */
+/** The words and next step a reason gets; undefined when the refusal names none. */
 export function agentSessionRefusalReasonWords(
-  failure: AgentSessionWriteRefusal,
-  request: AgentSessionWriteKind
+  failure: AgentSessionWriteRefusal
 ): AgentSessionRefusalReasonWords | undefined {
   const reason = failure.details?.reason
-  const byReason: Partial<Record<string, AgentSessionRefusalReasonRow>> | undefined =
+  const byReason: Partial<Record<string, AgentSessionRefusalReasonWords>> | undefined =
     REASON_WORDS[failure.code]
-  const row = reason === undefined ? undefined : byReason?.[reason]
-  if (!row || !('readHistory' in row)) {
-    return row
-  }
-  return request === 'read-history' ? row.readHistory : row.write
+  return reason === undefined ? undefined : byReason?.[reason]
 }
+
+// Each already says the history was not read.
+const HISTORY_CAUSES: ReadonlySet<AgentSessionWriteNoticeSentence> = new Set([
+  'historyUnusable',
+  'historyUnavailable',
+  'historyUnreadable'
+])
 
 /** A cause, and that the request did not happen unless the cause already says so. */
 function causeParts(
@@ -245,7 +236,8 @@ function causeParts(
   write: AgentSessionWriteKind
 ): AgentSessionWriteNoticeSentence[] {
   const saysNotDone =
-    cause === 'historyUnusable' || (cause === 'questionChanged' && write === 'answer')
+    (write === 'read-history' && HISTORY_CAUSES.has(cause)) ||
+    (cause === 'questionChanged' && write === 'answer')
   return saysNotDone ? [cause] : [cause, NOT_DONE[write]]
 }
 
@@ -262,7 +254,7 @@ function reasonParts(
   failure: AgentSessionWriteRefusal,
   write: AgentSessionWriteKind
 ): AgentSessionWriteNoticePart[] | undefined {
-  const words = agentSessionRefusalReasonWords(failure, write)
+  const words = agentSessionRefusalReasonWords(failure)
   if (!words || 'words' in words) {
     return undefined
   }
@@ -319,11 +311,9 @@ export function agentSessionWriteNoticeParts(
     case 'agent_session_item_revision_stale':
     case 'agent_session_already_resolved':
       return causeParts('questionChanged', write)
-    // A read raises it with no reason, and only for a file no retry can read.
+    // A host that names no reason raised it for damage and for an open that can clear alike.
     case 'agent_session_journal_unreadable':
-      return write === 'read-history'
-        ? causeWordsParts(HISTORY_UNUSABLE, write)
-        : ['historyUnreadable', notDone]
+      return causeParts('historyUnreadable', write)
     case 'structured_agent_session_unsupported':
       return ['unsupported']
   }

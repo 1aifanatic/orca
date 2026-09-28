@@ -91,7 +91,12 @@ export const AGENT_SESSION_REFUSAL_REASONS = {
   ],
   agent_session_item_revision_stale: ['promptMoved'],
   agent_session_already_resolved: ['promptAlreadyResolved'],
-  agent_session_journal_unreadable: ['journalUnreadable'],
+  agent_session_journal_unreadable: [
+    /** SQLite reports the chat's journal damaged or not a database; no retry reads past it. */
+    'journalCorrupt',
+    /** Any other failed open, which can clear. */
+    'journalUnavailable'
+  ],
   structured_agent_session_unsupported: [
     'clientCapabilityMissing',
     'hostDisabled',

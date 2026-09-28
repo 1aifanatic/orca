@@ -17326,6 +17326,7 @@
         "questionChanged": "此问题已被回答或已更改。",
         "historyUnreadable": "Orca 无法读取此聊天的已保存历史记录。",
         "historyUnusable": "无法读取此聊天的历史记录，因此无法在此继续。",
+        "historyUnavailable": "Orca 目前无法打开此聊天的历史记录。",
         "unsupported": "运行此聊天的 Orca 不支持此操作。请更新 Orca 后重试。",
         "unreachable": "Orca 无法连接到智能体。",
         "recordFailed": "Orca 无法将其记录到此聊天的历史记录中。",
@@ -17355,7 +17356,8 @@
         "waitMoment": "请稍候。",
         "recordUnreadable": "Orca 无法读取此聊天的已保存状态。",
         "chatNotFound": "运行此聊天的 Orca 没有此聊天的记录。",
-        "startNewChat": "请开始新的聊天以继续。"
+        "startNewChat": "请开始新的聊天以继续。",
+        "tryAgain": "请重试。"
       },
       "composer": {
         "imageUnsupported": "此智能体不支持粘贴图片。",
