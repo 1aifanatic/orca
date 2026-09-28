@@ -348,17 +348,16 @@ async function install(deps: StructuredAgentSessionRuntimeDeps): Promise<Install
 }
 
 /** The journal database, opened only under this process's owner lock. A refusal is recorded for
- *  the gate and thrown to the caller; the next install tries again. */
+ *  the gate and thrown to the caller; the next install tries again. A lock file that cannot be
+ *  opened at all refuses like the database it guards. */
 function openOwnedJournalDatabase(stateDirectory: string): JournalHostDatabase {
-  const lock = claimStructuredAgentSessionJournal(stateDirectory)
-  if (!lock) {
-    const refusal = structuredAgentSessionJournalOwnerRefusal()
-    throw refusal ?? new Error('the chat journal owner lock was refused')
-  }
   try {
-    const opened = JournalHostDatabase.open(lock)
-    recordStructuredAgentSessionHostInstallRefusal(null)
-    return opened
+    const lock = claimStructuredAgentSessionJournal(stateDirectory)
+    if (lock) {
+      const opened = JournalHostDatabase.open(lock)
+      recordStructuredAgentSessionHostInstallRefusal(null)
+      return opened
+    }
   } catch (error) {
     console.warn('[structured-agent-session] opening the chat journal database failed', error)
     // Nothing is renamed, deleted or rebuilt: the file is left exactly as it is.
@@ -366,4 +365,8 @@ function openOwnedJournalDatabase(stateDirectory: string): JournalHostDatabase {
     recordStructuredAgentSessionHostInstallRefusal(refusal)
     throw refusal
   }
+  throw (
+    structuredAgentSessionJournalOwnerRefusal() ??
+    new Error('the chat journal owner lock was refused')
+  )
 }

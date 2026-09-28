@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { isAgentSessionRefusalError } from '../../shared/agent-session-wire-refusals'
 import { JOURNAL_DB_SCHEMA_VERSION } from '../native-chat/agent-session-journal/journal-database-schema'
 import { journalDatabasePath } from '../native-chat/agent-session-journal/journal-host-database'
+import { JOURNAL_OWNER_LOCK_FILE } from '../native-chat/agent-session-journal/journal-owner-lock'
 import {
   holdJournalOwnerLockInChild,
   probeJournalOwnerLockInChild,
@@ -263,6 +264,21 @@ describe('startup and other non-chat work without a structured host', () => {
       allowAttachedWindow: true,
       onlyRuntimeOwnedTerminals: true
     })
+    expect(gateRefusal()).toEqual({
+      reason: 'journalCorrupt',
+      message: 'Unable to load this chat.'
+    })
+  })
+
+  // Not a database, as a sync or restore tool can leave it: SQLite answers errcode 26 on its claim.
+  it('goes ahead when the owner lock file cannot be opened', async () => {
+    await writeFile(join(root, JOURNAL_OWNER_LOCK_FILE), 'not a database '.repeat(512))
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const { runtime, refreshPtyRecords } = startupRuntime()
+
+    await expectStartupWithoutHost(runtime)
+
+    expect(refreshPtyRecords).toHaveBeenCalledOnce()
     expect(gateRefusal()).toEqual({
       reason: 'journalCorrupt',
       message: 'Unable to load this chat.'
