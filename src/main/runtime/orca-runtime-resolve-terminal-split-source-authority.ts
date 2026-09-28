@@ -54,6 +54,10 @@ export class OrcaRuntimeWithResolveTerminalSplitSourceAuthority extends OrcaRunt
     )
     const rendererTab = this.tabs.get(tabId)
     const rendererLeaf = this.leaves.get(this.getLeafKey(tabId, leafId))
+    console.log(
+      'SPLIT_PROBE_GRAPH',
+      JSON.stringify({ worktreeId, tabId, leafId, ptyId, rendererTab, rendererLeaf })
+    )
     const rendererMounted = Boolean(
       rendererTab &&
       rendererLeaf &&
