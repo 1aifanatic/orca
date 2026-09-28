@@ -2751,16 +2751,24 @@ async function runWindowsNativeIoFailure(options) {
     );
     let output = "";
     let exitCount = 0;
+    let finalOutputBeforeExit = false;
     proc.onData((data) => {
       output += data;
     });
     const exited = new Promise((resolve) => {
       proc.onExit(({ exitCode }) => {
+        finalOutputBeforeExit = output.includes("FINAL_STATE_END");
         exitCount++;
         resolve(exitCode);
       });
     });
-    return { proc, exited, output: () => output, exitCount: () => exitCount };
+    return {
+      proc,
+      exited,
+      output: () => output,
+      exitCount: () => exitCount,
+      finalOutputBeforeExit: () => finalOutputBeforeExit
+    };
   };
   const uncaught = [];
   const onUncaught = (error) => {
@@ -2820,19 +2828,27 @@ async function runWindowsNativeIoFailure(options) {
       victimExitCount: victim.exitCount(),
       witnessExitCount: witness.exitCount(),
       witnessWritable: true,
-      finalOutputBeforeExit: victim.output().includes("FINAL_STATE_END"),
+      finalOutputBeforeExit: victim.finalOutputBeforeExit(),
       uncaught
     };
   } finally {
-    for (const terminal of terminals) {
-      terminal.proc.kill();
+    try {
+      await bounded(
+        Promise.all(
+          terminals.map(async ({ proc, exited }) => {
+            try {
+              proc.kill();
+              await exited;
+            } finally {
+              proc.destroy();
+            }
+          })
+        )
+      );
+    } finally {
+      await (0, import_promises2.setTimeout)(1500);
+      process.off("uncaughtException", onUncaught);
     }
-    await bounded(Promise.all(terminals.map((t) => t.exited)));
-    for (const terminal of terminals) {
-      terminal.proc.destroy();
-    }
-    await (0, import_promises2.setTimeout)(1500);
-    process.off("uncaughtException", onUncaught);
   }
 }
 // Annotate the CommonJS export names for ESM import in node:
