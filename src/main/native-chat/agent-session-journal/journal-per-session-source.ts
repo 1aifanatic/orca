@@ -9,6 +9,7 @@ import { startJournalRowFold, type JournalLoad } from './journal-open'
 import { legacyJournalDatabaseFile } from './journal-paths'
 import type { PerSessionJournalHead } from './journal-per-session-reimport'
 import { pendingJournalRepairSequence } from './journal-repair-marker'
+import { parseJournalRow } from './journal-row-schema'
 
 /** The newest per-chat file shape any build wrote. */
 const LEGACY_JOURNAL_SCHEMA_VERSION = 2
@@ -20,6 +21,8 @@ const SELECT_LEGACY_TIP =
   'SELECT max(seq) AS tip FROM journal_rows WHERE session_id = ? AND epoch = ?'
 const SELECT_LEGACY_ROWS = `SELECT seq, ts, row_json FROM journal_rows
 WHERE session_id = ? AND epoch = ? AND seq > ? ORDER BY seq ASC LIMIT ?`
+const SELECT_LEGACY_FIRST_ROW = `SELECT row_json FROM journal_rows
+WHERE session_id = ? AND epoch = ? ORDER BY seq ASC LIMIT 1`
 const HAS_LEGACY_TABLE = "SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = ?"
 const SELECT_LEGACY_REPAIR =
   'SELECT epoch, content_from, repaired_at FROM journal_repairs WHERE session_id = ?'
@@ -42,10 +45,13 @@ export function openLegacySource(path: string): Database.Database {
   }
 }
 
+/** The file's epoch and tip, and whether a build that found no history for the chat opened it. */
+export type LegacyJournalHead = PerSessionJournalHead & { startedFresh: boolean }
+
 export function readLegacyHead(
   source: Database.Database,
   sessionId: string
-): PerSessionJournalHead | null {
+): LegacyJournalHead | null {
   // Created but never given its schema (a crash between the two): no history, as an empty file.
   if (!source.prepare(HAS_LEGACY_TABLE).get('journal_sessions')) {
     return null
@@ -55,7 +61,14 @@ export function readLegacyHead(
     return null
   }
   const tip = source.prepare(SELECT_LEGACY_TIP).get(sessionId, epoch)?.tip
-  return { epoch, tip: typeof tip === 'number' ? tip : 0 }
+  const first = source.prepare(SELECT_LEGACY_FIRST_ROW).get(sessionId, epoch)?.row_json
+  const opened = typeof first === 'string' ? parseJournalRow(first) : null
+  return {
+    epoch,
+    tip: typeof tip === 'number' ? tip : 0,
+    startedFresh:
+      opened?.ok === true && opened.row.kind === 'epoch' && opened.row.reason === 'session_created'
+  }
 }
 
 /** The file's rows, one bounded page per batch, read as each batch is written. */

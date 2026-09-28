@@ -3,8 +3,8 @@
 // Not `journal-legacy-import.ts`, which reads the PROVIDER's own transcript. This reads Orca's own
 // earlier `<legacyDir>/journal.db`, verbatim: the same epoch UUID and every sequence number, so a
 // cursor, an `acceptedSequence` or a restart offer taken before the upgrade still points at the
-// same row after it. A file that reappears after a downgrade is copied again (see
-// journal-per-session-reimport.ts).
+// same row after it. A file that reappears after a downgrade is copied again, unless the older
+// build started it from nothing; that one is left on disk (see journal-per-session-reimport.ts).
 //
 // The copy runs in bounded batches, each its own transaction, yielding the event loop between them.
 // The rows go into a block `journal_import_blocks` reserves, which no reader follows. Once the
@@ -31,8 +31,7 @@ import {
   readPerSessionImportMarker,
   reimportedJournalRows,
   writePerSessionImportMarker,
-  type PerSessionImportPlan,
-  type PerSessionJournalHead
+  type PerSessionImportPlan
 } from './journal-per-session-reimport'
 import {
   foldLegacyJournal,
@@ -43,6 +42,7 @@ import {
   readLegacyRepair,
   removeLegacyJournal,
   type ImportBatch,
+  type LegacyJournalHead,
   type ImportedRow
 } from './journal-per-session-source'
 import { parseJournalRow } from './journal-row-schema'
@@ -73,7 +73,7 @@ export type PerSessionJournalImportDeps = {
   batchRows?: number
 }
 
-export type PerSessionJournalImportOutcome = 'absent' | 'imported' | 'already-imported'
+export type PerSessionJournalImportOutcome = 'absent' | 'imported' | 'already-imported' | 'kept'
 
 type ImportInput = {
   database: JournalHostDatabase
@@ -112,13 +112,13 @@ async function importOnce(input: ImportInput): Promise<PerSessionJournalImportOu
   const { sessionId } = input.identity
   const current = readJournalSessionPointer(input.database.db, sessionId)
   const source = (input.openSource ?? openLegacySource)(sourcePath)
-  let legacy: PerSessionJournalHead | null
+  let legacy: LegacyJournalHead | null
   let plan: PerSessionImportPlan | null = null
   try {
     legacy = readLegacyHead(source, sessionId)
     if (legacy) {
       plan = planPerSessionImport({ db: input.database.db, sessionId, legacy, current })
-      if (plan.kind !== 'copied') {
+      if (plan.kind === 'first' || plan.kind === 'again') {
         await copyLegacyJournal(input, source, legacy, plan)
       }
     }
@@ -133,6 +133,9 @@ async function importOnce(input: ImportInput): Promise<PerSessionJournalImportOu
     }
     retireLegacyJournal(input)
     return 'already-imported'
+  }
+  if (plan?.kind === 'kept') {
+    return 'kept'
   }
   // Also a file a crash left after its copy was recorded (`copied`): deleted now, not copied again.
   retireLegacyJournal(input)
@@ -193,8 +196,8 @@ function* arrayBatches(rows: readonly ImportedRow[], batchRows: number): Generat
 async function copyLegacyJournal(
   input: ImportInput,
   source: Database.Database,
-  legacy: PerSessionJournalHead,
-  plan: Exclude<PerSessionImportPlan, { kind: 'copied' }>
+  legacy: LegacyJournalHead,
+  plan: Extract<PerSessionImportPlan, { kind: 'first' | 'again' }>
 ): Promise<void> {
   const { sessionId } = input.identity
   const epoch = plan.kind === 'again' ? plan.epoch : legacy.epoch

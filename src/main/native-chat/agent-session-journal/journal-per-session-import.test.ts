@@ -1,6 +1,7 @@
 // A chat's per-chat journal file from an earlier build is copied into the host's one database on
 // that chat's open: verbatim, and deleted only once the copy reads back as the file. A file that
-// reappears after a downgrade is the newer history, and is copied again.
+// reappears after a downgrade and carried the history on is the newer history, and is copied
+// again; one the older build started from nothing is left on disk, and the chat keeps its history.
 
 import type * as NodeFs from 'node:fs'
 import { existsSync, rmSync } from 'node:fs'
@@ -510,10 +511,40 @@ describe('importing a per-chat journal', () => {
     expect(await leftovers()).toEqual([])
   })
 
-  // T-B5: a downgrade, an older build writing the chat's history to a new per-chat file, and a
-  // re-upgrade — twice. The newer history wins each time, says so, and each file is deleted.
-  it('copies the newer history an older build wrote, on every re-upgrade', async () => {
-    const first = await historyRows()
+  // F-L6-1: the copy deleted the file, so the older build found none and started the chat over.
+  // The re-upgrade must neither let that start replace the history nor delete what it wrote.
+  it('keeps the history, and the older build’s file untouched, after a downgrade round trip', async () => {
+    const first = await historyRows('epoch-original', 'ORIGINAL HISTORY')
+    await writeLegacyJournal(first.epoch, first.rows)
+    expect(texts(await openChat())).toContain('ORIGINAL HISTORY')
+    await journals.closeAll()
+    expect(existsSync(legacyDir())).toBe(false)
+    const older = await historyRows('epoch-older-fresh', 'typed in the older build')
+    await writeLegacyJournal(older.epoch, older.rows)
+    const file = legacyJournalDatabaseFile(legacyDir())
+    const bytes = await readFile(file)
+
+    for (let open = 0; open < 2; open += 1) {
+      const reopened = await openChat()
+      expect(reopened.epoch).toBe(first.epoch)
+      expect(texts(reopened)).toContain('ORIGINAL HISTORY')
+      expect(texts(reopened)).not.toContain('typed in the older build')
+      expect(texts(reopened)).not.toContain('continued in an older version of Orca')
+      await journals.closeAll()
+    }
+    const database = openTestJournalHostDatabase(root)
+    expect(readTestJournalRows(database.db, IDENTITY.sessionId, first.epoch)).toEqual(first.rows)
+    expect((await readFile(file)).equals(bytes)).toBe(true)
+    const kept = new Database(file, { readonly: true })
+    const keptRows = kept.prepare('SELECT seq, ts, row_json FROM journal_rows ORDER BY seq').all()
+    kept.close()
+    expect(keptRows.map((row) => row.row_json)).toEqual(older.rows.map((row) => row.rowJson))
+  })
+
+  // T-B5: a downgrade, an older build starting the chat over in a new per-chat file, and a
+  // re-upgrade — twice. This build's history stays whole each time, and the file stays on disk.
+  it('keeps this build’s history on every re-upgrade after an older build started the chat over', async () => {
+    const first = await historyRows('epoch-original', 'ORIGINAL HISTORY')
     await writeLegacyJournal(first.epoch, first.rows)
     const upgraded = await openChat()
     await upgraded.appendItem(
@@ -522,21 +553,65 @@ describe('importing a per-chat journal', () => {
       { fence: 1 }
     )
     await journals.closeAll()
+    const older = await historyRows('epoch-downgrade', 'older build, cycle 1')
+    await writeLegacyJournal(older.epoch, older.rows)
 
-    for (const [cycle, epoch] of ['epoch-downgrade-one', 'epoch-downgrade-two'].entries()) {
-      const older = await historyRows(epoch, `older build, cycle ${cycle + 1}`)
-      await writeLegacyJournal(older.epoch, older.rows)
-      await journals.closeAll()
-
+    for (const cycle of [1, 2]) {
+      if (cycle === 2) {
+        // The second downgrade finds the file it wrote the first time, and carries it on.
+        const row = { ...JSON.parse(older.rows.at(-1)!.rowJson), seq: older.rows.length + 1 }
+        row.body = {
+          kind: 'message',
+          role: 'assistant',
+          blocks: [{ type: 'text', text: 'cycle 2' }]
+        }
+        const legacy = new Database(legacyJournalDatabaseFile(legacyDir()))
+        legacy
+          .prepare('INSERT INTO journal_rows VALUES (?, ?, ?, ?, ?)')
+          .run(IDENTITY.sessionId, older.epoch, row.seq, 1, JSON.stringify(row))
+        legacy.close()
+      }
       const reopened = await openChat()
-      expect(reopened.epoch).toBe(epoch)
-      expect(texts(reopened)).toContain(`older build, cycle ${cycle + 1}`)
-      expect(texts(reopened)).not.toContain('this build')
-      expect(texts(reopened)).toContain('continued in an older version of Orca')
-      expect(existsSync(legacyDir())).toBe(false)
+      expect(reopened.epoch).toBe(first.epoch)
+      expect(texts(reopened)).toContain('ORIGINAL HISTORY')
+      expect(texts(reopened)).toContain('this build')
+      expect(texts(reopened)).not.toContain('older build, cycle 1')
+      expect(texts(reopened)).not.toContain('cycle 2')
+      expect(texts(reopened)).not.toContain('continued in an older version of Orca')
+      expect(existsSync(legacyJournalDatabaseFile(legacyDir()))).toBe(true)
       await journals.closeAll()
     }
-    expect(await leftovers()).toEqual([])
+  })
+
+  // The delete failed, so the older build found the copied file and carried its epoch on: that file
+  // is the newer history, copied again under the same epoch, with the row that says so.
+  it('copies again a file an older build carried on under the copied epoch', async () => {
+    const { epoch, rows } = await historyRows()
+    await writeLegacyJournal(epoch, rows)
+    removeFails()
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    await openChat()
+    await journals.closeAll()
+    const olderRow = { ...JSON.parse(rows.at(-1)!.rowJson), seq: rows.length + 1 }
+    olderRow.body = {
+      kind: 'message',
+      role: 'assistant',
+      blocks: [{ type: 'text', text: 'older' }]
+    }
+    olderRow.itemId = `${olderRow.itemId}-older`
+    const legacy = new Database(legacyJournalDatabaseFile(legacyDir()))
+    legacy
+      .prepare('INSERT INTO journal_rows VALUES (?, ?, ?, ?, ?)')
+      .run(IDENTITY.sessionId, epoch, rows.length + 1, 1, JSON.stringify(olderRow))
+    legacy.close()
+    await removeWorks()
+
+    const reopened = await openChat()
+
+    expect(reopened.epoch).toBe(epoch)
+    expect(texts(reopened)).toContain('older')
+    expect(texts(reopened)).toContain('continued in an older version of Orca')
+    expect(existsSync(legacyDir())).toBe(false)
   })
 
   // N-R3.1: the delete failed, this build appended, and an older build then appended to that same

@@ -1,12 +1,15 @@
 // A per-chat file that reappears after its chat was copied in: an older build, run after a
-// downgrade, attached the chat and wrote its history there. That file is the newer history.
+// downgrade, attached the chat and wrote its history there. A file that carried the chat's
+// history on is the newer history. One the older build started from nothing, since the copy's
+// delete left it no file, holds none of this build's history: it stays on disk as it is, and never
+// replaces that history.
 //
 // `journal_imports` records which file each chat was copied from — its epoch and tip — in the
 // transaction that publishes the verified copy, so a file already copied (only its delete failed,
 // or a crash came first, across any number of restarts) is deleted, never copied again, and a
-// file that differs always is. Newest writer
-// wins, per chat, and the chat says so. When both builds advanced one epoch from the recorded
-// tip, the copy takes a fresh epoch, so every reader resets instead of silently skipping rows.
+// file that carried the history on always is. Newest writer wins, per chat, and the chat says so.
+// When both builds advanced one epoch from the recorded tip, the copy takes a fresh epoch, so every
+// reader resets instead of silently skipping rows.
 
 import { randomUUID } from 'node:crypto'
 import type Database from '../../sqlite/sync-database'
@@ -15,6 +18,7 @@ import { applyJournalRow, createJournalReducerState } from './journal-reducer'
 import { buildJournalItemRow } from './journal-row-builders'
 import { parseJournalRow, serializeJournalRow, type JournalRow } from './journal-row-schema'
 import { readJournalTip, type JournalBlockPointer } from './journal-row-table'
+import type { LegacyJournalHead } from './journal-per-session-source'
 
 export type PerSessionJournalHead = { epoch: string; tip: number }
 
@@ -51,6 +55,8 @@ export function writePerSessionImportMarker(
 export type PerSessionImportPlan =
   | { kind: 'first' }
   | { kind: 'copied' }
+  /** An older build started the file from nothing: kept on disk, neither copied nor deleted. */
+  | { kind: 'kept' }
   /** The file is newer history: copied again, as `epoch`, with a row saying so. */
   | { kind: 'again'; epoch: string }
 
@@ -58,7 +64,7 @@ export type PerSessionImportPlan =
 export function planPerSessionImport(input: {
   db: Database.Database
   sessionId: string
-  legacy: PerSessionJournalHead
+  legacy: LegacyJournalHead
   current: JournalBlockPointer | null
 }): PerSessionImportPlan {
   const marker = readPerSessionImportMarker(input.db, input.sessionId)
@@ -67,6 +73,11 @@ export function planPerSessionImport(input: {
   }
   if (!marker && !input.current) {
     return { kind: 'first' }
+  }
+  // This build holds the chat (a pointer or a marker), so a file an older build started from
+  // nothing is not its history: copying it would replace everything this build has.
+  if (input.legacy.startedFresh && input.legacy.epoch !== marker?.epoch) {
+    return { kind: 'kept' }
   }
   // Both sides wrote past the recorded tip under one epoch: replacing it in place would leave a
   // reader at this build's tip skipping the older build's rows.
