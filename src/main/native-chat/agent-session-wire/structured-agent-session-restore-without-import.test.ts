@@ -4,13 +4,14 @@
 // every chat had its own file, and opens no file it does not restore.
 
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { AgentSessionResumeMarker } from '../../../shared/agent-session-resume-marker'
 import { latestStructuredAgentSessionPrompt } from '../../../shared/structured-agent-session-projection'
+import { AgentSessionRefusalError } from '../../../shared/agent-session-wire-refusals'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import Database from '../../sqlite/sync-database'
 import type * as SyncDatabaseModule from '../../sqlite/sync-database'
@@ -260,6 +261,7 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
+  vi.restoreAllMocks()
   closeTestJournalHostDatabases()
   await rm(root, { recursive: true, force: true })
 })
@@ -414,6 +416,30 @@ describe('startup restore of chats still in their per-chat files', () => {
     expect(importCount()).toBe(1)
     expect(since.ok && since.rows.map((row) => row.seq)).toEqual(rows.map((row) => row.seq))
   })
+
+  // Whether the read finds the chat restore listed, or opens it and lands on the one restore opened.
+  it.each(['listed', 'opened'] as const)(
+    'refuses a read of the chat restore %s when its copy meets damage, never with the storage text',
+    async (reach) => {
+      await seedLegacyChat('chat-a')
+      const { sessions, lifetime, lifetimeOver } = await restore(['chat-a'])
+      const restored = sessions.get('chat-a')!
+      await rm(legacyDirFor('chat-a'), { recursive: true, force: true })
+      await mkdir(legacyDirFor('chat-a'), { recursive: true })
+      await writeFile(legacyFile('chat-a'), 'not a database, and never was one')
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+      const reader =
+        reach === 'listed' ? lifetime : lifetimeOver(conversations(), async () => restored)
+
+      const read = reader.conversation('chat-a')
+
+      await expect(read).rejects.toBeInstanceOf(AgentSessionRefusalError)
+      await expect(read).rejects.toMatchObject({
+        message: 'agent_session_journal_unreadable',
+        refusal: { details: { reason: 'journalCorrupt' } }
+      })
+    }
+  )
 
   it('copies a chat before its first write, and the write lands after its history', async () => {
     const rows = await seedLegacyChat('chat-a')
