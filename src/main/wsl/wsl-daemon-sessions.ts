@@ -1,3 +1,4 @@
+import { retainedWslDaemonProtocolVersion } from './wsl-daemon-protocol'
 import { WslDaemonOwnerAdmission } from './wsl-daemon-owner-admission'
 import { bunOwnedRuntimeArgs } from '../../shared/bun-owned-runtime-args'
 import { createHash } from 'node:crypto'
@@ -157,6 +158,7 @@ export class WslDaemonSessions {
     prepared?: PreparedWslDaemonEndpoint
   ): Promise<AdmittedConnection> {
     const signal = this.lifetime.signal
+    const protocolVersion = retainedWslDaemonProtocolVersion(endpoint)
     const shell = await readGuestShell(endpoint, signal)
     signal.throwIfAborted()
     const historyId = createHash('sha256')
@@ -171,6 +173,7 @@ export class WslDaemonSessions {
     )
     const adapter = new DaemonPtyAdapter({
       respawn: admission.recover,
+      protocolVersion,
       profileScope: this.options.profileScope,
       historyPath: join(this.options.historyRoot, historyId),
       guest: {

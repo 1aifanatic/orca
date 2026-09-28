@@ -35,6 +35,30 @@ const recovery: WslDaemonRecovery = {
 }
 
 describe('persisted guest daemon endpoint identity', () => {
+  it('roundtrips optional owner protocol metadata while preserving strict endpoint validation', () => {
+    const versioned = { ...recovery, endpoint: { ...recovery.endpoint, protocolVersion: 36 } }
+    const loaded = new Store({
+      serializedState: JSON.stringify({ wslPtyConsumerRecoveries: [versioned] })
+    })
+    expect(loaded.getWslDaemonRecovery(recovery)).toEqual(versioned)
+    expect(normalizeWslDaemonRecovery(recovery)).toEqual(recovery)
+    for (const protocolVersion of [0, -1, 1.5, '36', null, Number.MAX_SAFE_INTEGER + 1]) {
+      expect(
+        normalizeWslDaemonRecovery({
+          ...recovery,
+          endpoint: { ...recovery.endpoint, protocolVersion }
+        })
+      ).toBeNull()
+    }
+    expect(
+      normalizeWslDaemonRecovery({
+        ...versioned,
+        endpoint: { ...versioned.endpoint, token: 'secret' }
+      })
+    ).toBeNull()
+    loaded.freezeWrites()
+  })
+
   it('roundtrips JSON without copying any guest authentication token', () => {
     const loaded = new Store({
       serializedState: JSON.stringify({ wslPtyConsumerRecoveries: [recovery] })

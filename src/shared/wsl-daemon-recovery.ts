@@ -26,7 +26,8 @@ const endpoint = z
     envBinary: guestPath,
     socket: guestPath,
     tokenPath: guestPath,
-    serverBuildId: identity
+    serverBuildId: identity,
+    protocolVersion: z.number().int().positive().safe().optional()
   })
   .strict()
 export const wslDaemonIncarnationSchema = z

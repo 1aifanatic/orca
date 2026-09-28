@@ -1,3 +1,4 @@
+import { PROTOCOL_VERSION } from '../daemon/daemon-protocol-version'
 import { proveWslDaemonIncarnationExited } from './wsl-daemon-incarnation'
 import { bunOwnedRuntimeArgs } from '../../shared/bun-owned-runtime-args'
 import { createHash } from 'node:crypto'
@@ -109,6 +110,7 @@ export async function prepareWslDaemonEndpoint(
       distro,
       entry: posix.join(guestDirectory, entryName),
       serverBuildId: artifactId,
+      protocolVersion: PROTOCOL_VERSION,
       distributionId,
       userName,
       userId,

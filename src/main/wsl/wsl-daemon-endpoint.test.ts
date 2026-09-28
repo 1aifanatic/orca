@@ -1,3 +1,4 @@
+import { PROTOCOL_VERSION } from '../daemon/daemon-protocol-version'
 import { proveWslDaemonIncarnationExited } from './wsl-daemon-incarnation'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { readFile } from 'node:fs/promises'
@@ -57,7 +58,8 @@ it('installs only the daemon bundle with captured-owner guards and a private tok
   )
   expect(prepared.endpoint).toMatchObject({
     userName: 'captured',
-    distributionId: 'registered-distro'
+    distributionId: 'registered-distro',
+    protocolVersion: PROTOCOL_VERSION
   })
   expect(prepared.endpoint.tokenPath).toBe(`${plan.ownerDirectory}/token`)
   expect(Object.isFrozen(prepared.endpoint)).toBe(true)
