@@ -39,7 +39,7 @@ describe.skipIf(process.platform === 'win32')('WSL Bun launcher scripts', () => 
       })
       expect(installed.code, installed.stderr).toBe(0)
       const executable = join(home, "bun '$ literal")
-      await writeFile(executable, '#!/bin/sh\nprintf "%s" "$1"\n')
+      await writeFile(executable, '#!/bin/sh\nprintf "%s\\n" "$@"\n')
       await chmod(executable, 0o700)
       const directoryPath = join(home, '.orca-wsl', directory, 'bun', version)
       const launched = await runProcess({
@@ -48,7 +48,12 @@ describe.skipIf(process.platform === 'win32')('WSL Bun launcher scripts', () => 
         env
       })
       expect(launched.code, launched.stderr).toBe(0)
-      expect(launched.stdout).toBe(join(directoryPath, filename))
+      expect(launched.stdout.trimEnd().split('\n')).toEqual([
+        '--no-env-file',
+        '--config=/dev/null',
+        '--no-install',
+        join(directoryPath, filename)
+      ])
       const missing = await runProcess({
         program: '/bin/sh',
         args: [join(directoryPath, 'launch.sh')],

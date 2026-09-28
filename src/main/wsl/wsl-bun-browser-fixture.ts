@@ -1,3 +1,4 @@
+import { bunOwnedRuntimeArgs } from '../../shared/bun-owned-runtime-args'
 import { once } from 'node:events'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -32,6 +33,7 @@ export async function verifyWslBunBrowserRelay(options: {
     })
   const echo = spawnGuest([
     executable,
+    ...bunOwnedRuntimeArgs('linux'),
     '-e',
     `
     const net = require('node:net');

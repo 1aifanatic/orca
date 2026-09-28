@@ -1,3 +1,4 @@
+import { bunOwnedRuntimeArgs } from '../../shared/bun-owned-runtime-args'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -97,9 +98,13 @@ it.skipIf(process.platform !== 'win32' || !distro)(
       ).rejects.toBe(lostAcknowledgement)
       const executable = await ensureWslBunRuntime(isolated)
       expect(executable.startsWith(`${home}/.cache/orca/runtimes/`)).toBe(true)
-      expect(await run({ program: executable, args: ['--version'], loginPath: 'none' })).toBe(
-        ORCAD_BUN_VERSION
-      )
+      expect(
+        await run({
+          program: executable,
+          args: [...bunOwnedRuntimeArgs('linux'), '--print', 'process.versions.bun'],
+          loginPath: 'none'
+        })
+      ).toBe(ORCAD_BUN_VERSION)
       setMainHttpClient({
         fetch: async () => {
           throw new Error('Cached runtime must not access the network')
@@ -110,9 +115,13 @@ it.skipIf(process.platform !== 'win32' || !distro)(
       await run({ script: `printf damaged > ${shellEscape(executable)}`, loginPath: 'none' })
       const repaired = await ensureWslBunRuntime(isolated)
       expect(repaired).not.toBe(executable)
-      expect(await run({ program: repaired, args: ['--version'], loginPath: 'none' })).toBe(
-        ORCAD_BUN_VERSION
-      )
+      expect(
+        await run({
+          program: repaired,
+          args: [...bunOwnedRuntimeArgs('linux'), '--print', 'process.versions.bun'],
+          loginPath: 'none'
+        })
+      ).toBe(ORCAD_BUN_VERSION)
       expect(await ensureWslBunRuntime(isolated)).toBe(repaired)
       expect(await run({ program: 'cat', args: [executable], loginPath: 'none' })).toBe('damaged')
       expect(

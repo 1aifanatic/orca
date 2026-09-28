@@ -1,3 +1,4 @@
+import { bunOwnedRuntimeArgs } from '../../shared/bun-owned-runtime-args'
 // Launch/install plumbing for the guest-resident WSL agent-hook relay:
 // bundle resolution on the Windows side, the guest launch/install scripts,
 // and the sentinel wait that turns a wsl.exe child's stdio into a
@@ -88,7 +89,7 @@ export function buildGuestLaunchScript(version: string): string {
     'runtime="$1"',
     `case "$runtime" in /*) ;; *) exit ${WSL_HOOK_RELAY_RUNTIME_UNAVAILABLE_EXIT_CODE};; esac`,
     `[ -x "$runtime" ] || exit ${WSL_HOOK_RELAY_RUNTIME_UNAVAILABLE_EXIT_CODE}`,
-    `exec "$runtime" "$d/${WSL_HOOK_RELAY_BUNDLE_NAME}"`,
+    `exec "$runtime" ${bunOwnedRuntimeArgs('linux').join(' ')} "$d/${WSL_HOOK_RELAY_BUNDLE_NAME}"`,
     ''
   ].join('\n')
 }

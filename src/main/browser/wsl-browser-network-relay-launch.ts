@@ -1,3 +1,4 @@
+import { bunOwnedRuntimeArgs } from '../../shared/bun-owned-runtime-args'
 import { buildWslExecArgs } from '../../shared/wsl-login-shell-command'
 import {
   assertWslRuntimeDistroRunning,
@@ -80,7 +81,7 @@ export function buildWslBrowserNetworkGuestLaunchScript(version: string): string
     'runtime="$1"',
     `case "$runtime" in /*) ;; *) exit ${WSL_BROWSER_NETWORK_RELAY_RUNTIME_UNAVAILABLE_EXIT_CODE};; esac`,
     `[ -x "$runtime" ] || exit ${WSL_BROWSER_NETWORK_RELAY_RUNTIME_UNAVAILABLE_EXIT_CODE}`,
-    `exec "$runtime" "$d/${WSL_BROWSER_NETWORK_RELAY_BUNDLE_NAME}"`,
+    `exec "$runtime" ${bunOwnedRuntimeArgs('linux').join(' ')} "$d/${WSL_BROWSER_NETWORK_RELAY_BUNDLE_NAME}"`,
     ''
   ].join('\n')
 }

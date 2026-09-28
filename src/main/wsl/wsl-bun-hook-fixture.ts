@@ -1,3 +1,4 @@
+import { bunOwnedRuntimeArgs } from '../../shared/bun-owned-runtime-args'
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
 import { readFile } from 'node:fs/promises'
@@ -72,6 +73,7 @@ export async function verifyWslBunHookRelay(options: {
     const status = await run({
       program: executable,
       args: [
+        ...bunOwnedRuntimeArgs('linux'),
         '-e',
         `const response = await fetch('http://127.0.0.1:${port}/hook/claude', {
         method: 'POST', headers: {'Content-Type':'application/json','X-Orca-Agent-Hook-Token':${JSON.stringify(token)}},
