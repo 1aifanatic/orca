@@ -278,8 +278,9 @@ LogLevel VERBOSE
       $report.profileUnloadWaitMs=$profileWait.ElapsedMilliseconds
       $report.privateProfile=@($profiles | ForEach-Object {@{loaded=$_.Loaded;status=$_.Status}})
       Write-Stage 'cleanup-user-profile-observed'
-      if(@($profiles | Where-Object Loaded).Count){throw 'Private profile remains loaded after bounded wait; discard ephemeral runner'}
-      $profiles | Remove-CimInstance
+      $loadedProfiles=@($profiles | Where-Object Loaded)
+      $report.profileCleanup=if($loadedProfiles.Count){'Loaded profile retained for disposable CI VM destruction'}else{'Unloaded profile removed'}
+      $profiles | Where-Object {-not $_.Loaded} | Remove-CimInstance
     }
     Write-Stage 'cleanup-user-profile-complete'
     Write-Stage 'cleanup-user-start'
@@ -289,7 +290,7 @@ LogLevel VERBOSE
     Remove-Item -LiteralPath $root -Recurse -Force
     Write-Stage 'cleanup-private-files-complete'
     if($report.status -eq 'proof-passed-cleanup-pending'){$report.status='passed'}
-    $report.cleanup=@('private service stopped/deleted','owned sshd exit verified','private user/profile removed','private keys removed')
+    $report.cleanup=@('private service stopped/deleted','owned sshd exit verified','private account removed; profile disposition recorded separately','private keys removed')
   } catch {$report.status='failed';$report.cleanup=@('cleanup unverifiable; discard ephemeral runner');$report.cleanupError=$_.Exception.Message}
   Write-Stage 'finished'
 }
