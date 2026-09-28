@@ -39,7 +39,7 @@ vi.mock('../codex/codex-real-home-hook-install', () => ({
 // Why: the real predicate, without loading every agent's hook service.
 vi.mock(
   '../agent-hooks/managed-agent-hook-controls',
-  async () => await import('../agent-hooks/agent-status-hooks-setting')
+  async () => await import('../../shared/agent-status-hooks-setting')
 )
 vi.mock('../wsl', () => ({ getDefaultWslDistro: () => 'Ubuntu' }))
 vi.mock('../codex/codex-home-paths', () => ({

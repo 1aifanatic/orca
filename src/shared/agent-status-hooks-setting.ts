@@ -1,13 +1,13 @@
-import type { GlobalSettings } from '../../shared/global-settings-types'
-import type { TuiAgent } from '../../shared/tui-agent'
-import { isTuiAgentEnabled } from '../../shared/tui-agent-selection'
+import type { GlobalSettings } from './global-settings-types'
+import type { TuiAgent } from './tui-agent'
+import { isTuiAgentEnabled } from './tui-agent-selection'
 
 export type AgentStatusHooksSettings =
   | Partial<Pick<GlobalSettings, 'agentStatusHooksEnabled' | 'disabledTuiAgents'>>
   | null
   | undefined
 
-// Why a light module: the CLI's per-launch Codex preflight reads these without loading every hook service.
+// Why shared: the CLI compiles shared/ itself, so its per-launch Codex preflight needs no out/main entry.
 export function isAgentStatusHooksEnabled(
   settings: Partial<Pick<GlobalSettings, 'agentStatusHooksEnabled'>> | null | undefined
 ): boolean {

@@ -11,7 +11,7 @@ import { resolveHooksJsonWritePath } from '../agent-hooks/hook-config-write-path
 import {
   isAgentStatusHooksEnabledForAgent,
   type AgentStatusHooksSettings
-} from '../agent-hooks/agent-status-hooks-setting'
+} from '../../shared/agent-status-hooks-setting'
 import { writeFileAtomically } from '../codex-accounts/fs-utils'
 import { findManagedTomlBlocks } from '../agent-hooks/managed-toml-ownership'
 import { writeConfigAtomically, type CodexTrustEntry } from './config-toml-trust'
