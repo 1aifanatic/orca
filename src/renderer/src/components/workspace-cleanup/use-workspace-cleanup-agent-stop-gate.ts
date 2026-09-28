@@ -35,15 +35,10 @@ export function useWorkspaceCleanupAgentStopGate(): WorkspaceCleanupAgentStopGat
         useAppStore.getState(),
         candidates.map((candidate) => candidate.worktreeId)
       )
-      const sameAction =
-        request !== null &&
-        (request.unverifiedCandidate === null
-          ? unverifiedCandidate === null
-          : unverifiedCandidate !== null &&
-            getWorkspaceCleanupCandidateIdentity(request.unverifiedCandidate) ===
-              getWorkspaceCleanupCandidateIdentity(unverifiedCandidate))
       const approvedIdentities = new Set(
-        sameAction ? request.candidates.map(getWorkspaceCleanupCandidateIdentity) : []
+        request && isSameAction(request, unverifiedCandidate)
+          ? request.candidates.map(getWorkspaceCleanupCandidateIdentity)
+          : []
       )
       const liveCandidates = candidates.filter((candidate) =>
         liveWorktreeIds.has(candidate.worktreeId)
@@ -70,4 +65,17 @@ export function useWorkspaceCleanupAgentStopGate(): WorkspaceCleanupAgentStopGat
   const clear = useCallback(() => setRequest(null), [])
 
   return { request, approve, clear }
+}
+
+function isSameAction(
+  request: WorkspaceCleanupAgentStopRequest,
+  unverifiedCandidate: WorkspaceCleanupCandidate | null
+): boolean {
+  if (request.unverifiedCandidate === null || unverifiedCandidate === null) {
+    return request.unverifiedCandidate === unverifiedCandidate
+  }
+  return (
+    getWorkspaceCleanupCandidateIdentity(request.unverifiedCandidate) ===
+    getWorkspaceCleanupCandidateIdentity(unverifiedCandidate)
+  )
 }
