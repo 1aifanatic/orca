@@ -10,6 +10,7 @@
 
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import { DISPATCH_REJECTED_PROVIDER_CLOSED } from '../../../shared/structured-agent-session-dispatch-rejection'
+import { DISPATCH_DOUBT_PROVIDER_EXITED } from '../agent-session-journal/journal-dispatch-doubt-reasons'
 import {
   evictStructuredAgentSession,
   STRUCTURED_AGENT_SESSION_EVICTION_STEPS,
@@ -80,11 +81,10 @@ function owedProviderChildWindDown(
 /**
  * The agent goes to rest; the conversation stays. Runs the eviction steps under a deadline. A step
  * that fails — or runs out of time — aborts the rest and leaves the wind-down owed, so the next
- * stop is a real retry; a failed drain, settlement or recovery is only reported, though a failed
- * settlement stays owed for the next stop. A stop that cannot prove the exit still ends the child,
- * and runs recovery on its lease. `ending` is how the child's end is told: a user's Stop, the host
- * stopping it for a cause (with its text), a start the child was seen to die in, or an eviction
- * the conversation's close follows.
+ * stop is a real retry; a failed drain, settlement or recovery is only reported. A stop that cannot
+ * prove the exit still ends the child, and runs recovery on its lease. `ending` is how the child's
+ * end is told: a user's Stop, the host stopping it for a cause (with its text), a start the child
+ * was seen to die in, or an eviction the conversation's close follows.
  */
 export async function stopStructuredAgentSessionAgentUnderSerialize(
   context: StructuredAgentSessionLifetimeContext,
@@ -108,7 +108,6 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
   session.owesProviderChildWindDown = owed
   const stopping = session.child
   let settlementError: unknown
-  let settled = false
   const eviction: StructuredAgentSessionEvictionContext = {
     sessionId,
     // The retry must not re-stop a child the adapter already proved gone, so this stays honest.
@@ -141,7 +140,7 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
     onBestEffortStepFailure: (error) => context.deps.onEventSinkError?.({ sessionId, error }),
     discardSink: () => context.runtimeState.discardEventSink(sessionId),
     settleWork: async () => {
-      const settlementWritten = await settleEndedStructuredAgentSessionChildWork({
+      const settled = await settleEndedStructuredAgentSessionChildWork({
         journal: session.journal,
         sessionId,
         child: owed ?? {
@@ -154,11 +153,10 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
           settlementError = error
         }
       })
-      if (!settlementWritten) {
+      if (!settled) {
         // Without the cause the report names the step and nothing else.
         throw new Error('dead generation work settlement failed', { cause: settlementError })
       }
-      settled = true
     },
     releaseLease: async () => {
       const released =
@@ -173,9 +171,7 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
           rootGone: endedChildRootGone(session, owed),
           ...(ending.reason ? { reason: ending.reason } : {})
         }))
-      // A settlement that failed stays owed, so the sweep's retry writes it: with no child, only a
-      // send's attach would re-derive it otherwise.
-      session.owesProviderChildWindDown = settled ? undefined : owed
+      session.owesProviderChildWindDown = undefined
       // A death seen here is the exit the provider's own event would have released and published;
       // whichever gets there first releases, so its readers hear the new fence exactly once. Any
       // other stop leaves them their own fence.
@@ -211,6 +207,29 @@ function endedChildRootGone(
     ended.fence === owed.fence &&
     ended.rootGone
   )
+}
+
+/** Marks in doubt, as the open would, a send an ended child was handed and never answered. With no
+ *  child left to answer it, it is all that keeps the handle from closing, and the reopen settles
+ *  the rest. For a caller inside serialize with no child; false when it could not be written. */
+export async function markLeftoverStructuredAgentSessionSendsUnknown(
+  context: StructuredAgentSessionLifetimeContext,
+  sessionId: string
+): Promise<boolean> {
+  const session = context.sessions.get(sessionId)
+  if (!session || session.journal.pendingSubmissions().length === 0) {
+    return true
+  }
+  try {
+    await session.journal.markPendingSubmissionsUnknown(
+      structuredAgentSessionConversationFence(context.deps.store, sessionId),
+      DISPATCH_DOUBT_PROVIDER_EXITED
+    )
+    return true
+  } catch (error) {
+    context.deps.onEventSinkError?.({ sessionId, error })
+    return false
+  }
 }
 
 /** Whether the conversation's handle is only a cache now: no child, no wind-down owed, and nothing

@@ -19,6 +19,7 @@ import {
 } from './structured-agent-session-adapter'
 import { providerStartupFailureOutcome } from './structured-agent-session-dead-generation-settlement'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
+import { STRUCTURED_AGENT_SESSION_IDLE_MS } from './structured-agent-session-idle-sweep'
 import {
   HOST_TEST_NOW as NOW,
   HOST_TEST_SESSION as SESSION,
@@ -50,6 +51,8 @@ let stopOwnerProcess: Mock<(pid: number, signal: 'SIGTERM' | 'SIGKILL') => void>
 /** Thrown by the next owner probe, once. */
 let ownerProbeFailure: Error | null
 let hostErrors: unknown[]
+/** The host's clock; only the sweep tests move it. */
+let clock: number
 
 function eventually(assertion: () => void | Promise<void>): Promise<void> {
   return vi.waitFor(assertion, { timeout: 10_000 })
@@ -100,7 +103,7 @@ function startHost(): void {
       return ownerProbe
     },
     stopOwnerProcess,
-    now: () => NOW,
+    now: () => clock,
     onEventSinkError: ({ error }) => hostErrors.push(error)
   })
 }
@@ -115,6 +118,7 @@ beforeEach(async () => {
   resetHostTestOperationIds()
   adapterExtras = {}
   hostErrors = []
+  clock = NOW
   ownerProbe = GONE
   ownerProbeFailure = null
   stopOwnerProcess = vi.fn(() => {
@@ -668,24 +672,38 @@ describe('bookkeeping that fails after the child ended', () => {
     expect(await submission(handed)).toMatchObject({ dispatchState: 'unknown', recovered: true })
   })
 
-  it('retries a settlement that could not be written at the next sweep, with no send', async () => {
+  it('retries a settlement that could not be written on each sweep, then lets the handle go, with no send', async () => {
     const handed = await childLeftWorkOpen()
     const journal = conversation()?.journal
     if (!journal) {
       throw new Error('conversation not open')
     }
-    vi.spyOn(journal, 'markPendingSubmissionsUnknown').mockRejectedValueOnce(new Error('disk full'))
+    // The stop's own settlement and the first sweep's retry fail; the second retry lands.
+    vi.spyOn(journal, 'markPendingSubmissionsUnknown')
+      .mockRejectedValueOnce(new Error('disk full'))
+      .mockRejectedValueOnce(new Error('disk full'))
     await host.close(SESSION)
     expect(hostErrors).toContainEqual(expect.objectContaining({ step: 'settle-dead-generation' }))
     expect(lease()).toMatchObject(CONCLUDED)
     const before = hostActivity()
+    const sweep = () => {
+      clock += STRUCTURED_AGENT_SESSION_IDLE_MS + 1
+      return host['lifetime'].idleSweep.tick()
+    }
 
-    await host['lifetime'].idleSweep.tick()
-
+    await sweep()
     // Read from the handle that stayed open, not a reopen that would re-derive it on its own.
     expect(host.hasSession(SESSION)).toBe(true)
+    expect((await submission(handed))?.dispatchState).toBe('pending')
+
+    await sweep()
+    expect(host.hasSession(SESSION)).toBe(true)
     expect(await submission(handed)).toMatchObject({ dispatchState: 'unknown' })
-    expect((await item(OPEN_TURN))?.body).toMatchObject({ state: 'interrupted' })
+
+    // Nothing pins the handle now; the reopen settles the turn and the card the child left.
+    await sweep()
+    expect(host.hasSession(SESSION)).toBe(false)
+    expect((await item(OPEN_TURN))?.body).not.toMatchObject({ state: 'running' })
     expect((await item(OPEN_QUESTION))?.body).toMatchObject({ resolution: { state: 'cancelled' } })
     expect(hostActivity()).toEqual(before)
   })
