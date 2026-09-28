@@ -5,7 +5,6 @@
 // public entry point here takes the session's serialize once and calls the under-serialize forms,
 // because the queue is not reentrant.
 
-import { TUI_AGENT_DISPLAY_NAMES } from '../../../shared/tui-agent-display-names'
 import {
   AgentSessionRefusalError,
   agentSessionRefusalError
@@ -70,12 +69,11 @@ export function createStructuredAgentSessionConversationLifetime(host: {
       return record !== null && deps().hasOpenDispatch?.(record) === true
     },
     stopAgent,
-    // A host stop with its reason: the delivery loop waiting on this child writes the one error
-    // row and rejects what is queued with it.
+    // A host stop: the delivery loop waiting on this child writes the one error row and rejects
+    // what is queued with it, both worded from the hostStopped fact.
     stopStartingAgent: (sessionId) =>
       stopStructuredAgentSessionAgentUnderSerialize(host.context(), sessionId, {
-        cause: 'host-stop',
-        reason: `${TUI_AGENT_DISPLAY_NAMES[sessions.get(sessionId)?.params.provider ?? 'claude']} never finished starting, so Orca stopped it.`
+        cause: 'host-stop'
       }),
     closeConversation,
     onError: (sessionId, error) => deps().onEventSinkError?.({ sessionId, error }),
