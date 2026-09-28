@@ -1,0 +1,93 @@
+name: Diagnostic combined offline Cargo build-std
+on:
+  push:
+    branches: [OrcaWin/np-combined-build-std-diagnostic]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: diagnostic-combined-build-std
+  cancel-in-progress: false
+jobs:
+  build-std:
+    if: github.repository == 'stablyai/orca' && github.ref == 'refs/heads/OrcaWin/np-combined-build-std-diagnostic'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 80
+    env:
+      BASE: ubuntu@sha256:8feb4d8ca5354def3d8fce243717141ce31e2c428701f6682bd2fafe15388214
+      ORCA_BACKGROUND_LAUNCH: '1'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          sparse-checkout: config/ci/combined-build-std
+      - name: Allocate bounded diagnostic storage
+        run: |
+          set -euo pipefail
+          truncate -s 12G "$RUNNER_TEMP/build-std.ext4"
+          mkfs.ext4 -F "$RUNNER_TEMP/build-std.ext4"
+          mkdir "$RUNNER_TEMP/build-std"
+          sudo mount -o loop,nodev,nosuid "$RUNNER_TEMP/build-std.ext4" "$RUNNER_TEMP/build-std"
+          sudo chown "$(id -u):$(id -g)" "$RUNNER_TEMP/build-std"
+      - name: Stage exact retained archives and compose verified vendor
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/build-std"
+          timeout --kill-after=30s 600s gh api repos/stablyai/orca/actions/artifacts/10990426637/zip > llvm.zip
+          timeout --kill-after=30s 600s gh api repos/stablyai/orca/actions/artifacts/11000172185/zip > dependencies.zip
+          timeout --kill-after=30s 900s python3 "$GITHUB_WORKSPACE/config/ci/combined-build-std/stage-link-inputs.py" llvm llvm.zip inputs
+          python3 "$GITHUB_WORKSPACE/config/ci/combined-build-std/test_vendor_composition.py"
+          python3 "$GITHUB_WORKSPACE/config/ci/combined-build-std/stage-combined-vendor.py" dependencies.zip inputs/rust vendors
+          docker pull --platform linux/amd64 "$BASE"
+          mkdir results work
+          docker image inspect "$BASE" > results/base-image.json
+      - name: Compile runtime and shim standard-library feature sets without networking
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/build-std"
+          name="orca-build-std-$GITHUB_RUN_ID"
+          docker create --name "$name" --network none --platform linux/amd64 --cpus 2 --memory 8g --pids-limit 512 \
+            -v "$root/inputs/metadata:/metadata:ro" -v "$root/inputs/packages:/packages:ro" \
+            -v "$root/inputs/rust:/rust:ro" -v "$root/vendors/combined/vendor:/vendor:ro" \
+            -v "$root/vendors/combined/receipt.json:/vendor-receipt.json:ro" \
+            -v "$root/work:/work" -v "$root/results:/results" \
+            -v "$GITHUB_WORKSPACE/config/ci/combined-build-std:/probe:ro" \
+            "$BASE" bash /probe/qualify-build-std.sh
+          trap 'docker rm -f "$name" >/dev/null 2>&1 || true' EXIT
+          docker inspect "$name" > "$root/results/container.json"
+          docker start -a "$name" > "$root/results/execution.log" 2>&1 &
+          attached=$!
+          started=$SECONDS
+          while kill -0 "$attached" 2>/dev/null; do
+            bytes=$(docker inspect --size --format '{{.SizeRw}}' "$name")
+            if test "$bytes" -gt 4294967296 || test "$((SECONDS-started))" -gt 3900; then
+              echo 'Container writable-layer or wall-clock budget exceeded' > "$root/results/BUDGET_EXCEEDED"
+              docker kill "$name"
+              wait "$attached" || true
+              exit 1
+            fi
+            sleep 5
+          done
+          wait "$attached"
+          test "$(docker inspect --format '{{.State.ExitCode}}' "$name")" = 0
+          test -s "$root/results/build-std/SUCCESS"
+      - name: Permit receipt retention
+        if: always()
+        run: sudo chown -R "$(id -u):$(id -g)" "$RUNNER_TEMP/build-std/results" || true
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: combined-build-std-receipts
+          path: |
+            ${{ runner.temp }}/build-std/results/
+            ${{ runner.temp }}/build-std/vendors/combined/receipt.json
+            ${{ runner.temp }}/build-std/inputs/rust/decoded-components.json
+          retention-days: 7
+      - name: Unmount diagnostic storage
+        if: always()
+        run: |
+          docker rm -f "orca-build-std-$GITHUB_RUN_ID" >/dev/null 2>&1 || true
+          if mountpoint -q "$RUNNER_TEMP/build-std"; then sudo umount "$RUNNER_TEMP/build-std"; fi
