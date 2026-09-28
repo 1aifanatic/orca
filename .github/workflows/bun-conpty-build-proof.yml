@@ -1,10 +1,9 @@
-name: Bundled ConPTY native Windows native I/O failure qualification
+name: Private Linux terminal package-layout Ubuntu20 floor qualification
 on:
   push:
     branches: [OrcaWin/np-bun-conpty-build-proof]
 permissions:
   contents: read
-  actions: read
 concurrency:
   group: bun-conpty-build-proof
   cancel-in-progress: false
@@ -14,60 +13,45 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: windows-2022
+          - os: ubuntu-22.04
             arch: x64
-            sourceRun: 36379211508
-            candidateDir: conpty-x64
-            providerDir: conpty-x64
-            sha256: e1704a213d9e1634920d5b7d97b9d97f637b232059fb152a0f0bd48930ad463e
-          - os: windows-11-arm
+            bunArch: x64
+            zipSha: 36368faef7527875d5ffa52e53cd48021741f2a83eb6208a8dd64068d422a913
+            binarySha: a83d263767d839e4d2649ca8e35d07159c7afc99afdc96d731ced29e056dda0c
+          - os: ubuntu-24.04-arm
             arch: arm64
-            sourceRun: 36380797727
-            candidateDir: conpty-aarch64
-            providerDir: conpty
-            sha256: 9ca4184dd4e4dc7f9575075ab4ce6b00fb1feac59110d68c660177c5447ad526
+            bunArch: aarch64
+            zipSha: 54328bbc2d9c8e0c9f892c544d66c57a83b84139e34909e5ee81758f1ac8fda7
+            binarySha: 616f267a34278ff5ac282df37ffdfba1d7141f4f6926bca99af2cd6ef3ad32b1
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 8
+    timeout-minutes: 15
     env:
       ORCA_BACKGROUND_LAUNCH: '1'
+    defaults:
+      run:
+        working-directory: config/bun-conpty-build/linux-floor
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-          sparse-checkout: config/bun-conpty-build
-      - uses: actions/download-artifact@v4
+          sparse-checkout: config/bun-conpty-build/linux-floor
+      - uses: actions/setup-node@v6
         with:
-          name: bun-conpty-candidate
-          run-id: ${{ matrix.sourceRun }}
-          github-token: ${{ github.token }}
-          path: candidate
-      - uses: actions/download-artifact@v4
-        with:
-          name: bun-conpty-${{ matrix.arch }}-qualification
-          run-id: 36391706570
-          github-token: ${{ github.token }}
-          path: qualified-package
-      - name: Exercise actual native I/O failures with qualified artifacts
-        shell: pwsh
+          node-version: '24'
+      - name: Prepare pinned private package layout
         run: |
-          $ErrorActionPreference = 'Stop'
-          New-Item -ItemType Directory -Force receipts | Out-Null
-          $runtime = (Resolve-Path 'candidate/${{ matrix.candidateDir }}/bun.exe').Path
-          if ((Get-FileHash $runtime -Algorithm SHA256).Hash.ToLowerInvariant() -ne '${{ matrix.sha256 }}') { throw 'Candidate runtime hash mismatch' }
-          $qualified = (Resolve-Path qualified-package).Path
-          $addon = Join-Path $qualified 'config/bun-conpty-build/full-preflight/project/.build/windows-process-tree/${{ matrix.arch }}/windows-process-tree.node'
-          $manifest = Get-Content (Join-Path $qualified 'receipts/full-artifact-manifest.json') -Raw | ConvertFrom-Json
-          $addonHash = (Get-FileHash $addon -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($addonHash -ne $manifest.manifest.'windows-process-tree.node') { throw 'Qualified addon hash mismatch' }
-          $fixture = (Resolve-Path 'config/bun-conpty-build/native-io-failure').Path
-          Copy-Item $addon (Join-Path $fixture 'windows-process-tree.node')
-          $env:BUN_CONPTY_LIBRARY = (Resolve-Path 'config/bun-conpty-build/arm64-qualification/${{ matrix.providerDir }}/conpty.dll').Path
-          @{ runtimeSha256 = '${{ matrix.sha256 }}'; addonSha256 = $addonHash; addonRun = 36391706570; arch = '${{ matrix.arch }}' } | ConvertTo-Json | Set-Content receipts/io-inputs.json
-          & $runtime --no-env-file test (Join-Path $fixture 'native-io-failure.test.mjs') --timeout 70000 2>&1 | Tee-Object -FilePath receipts/io.log
-          if ($LASTEXITCODE -ne 0) { throw 'Native I/O qualification failed' }
+          npm install --ignore-scripts --no-audit --no-fund
+          bash prepare-package.sh '${{ matrix.arch }}' '${{ matrix.bunArch }}' '${{ matrix.zipSha }}' '${{ matrix.binarySha }}'
+      - name: Run unchanged production floor runner
+        run: |
+          set -o pipefail
+          node config/scripts/run-linux-packaged-terminal-floor-smoke.mjs --app-dir private-package 2>&1 | tee receipts/qualification.log
+      - name: Record remaining diagnostic containers
+        if: always()
+        run: docker ps -a --filter name=orca-terminal-floor- --format '{{json .}}' > receipts/remaining-containers.jsonl
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: bun-native-io-${{ matrix.arch }}
+          name: linux-terminal-floor-${{ matrix.arch }}
           retention-days: 7
-          path: receipts
+          path: config/bun-conpty-build/linux-floor/receipts
