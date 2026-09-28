@@ -86,6 +86,21 @@ it("names a history that couldn't open right now once, and that the pane keeps t
   expect(screen.queryByText(/Try again/)).toBeNull()
 })
 
+it("says only that it keeps trying under a code's own words that the history didn't load", () => {
+  mocks.status = 'error'
+  mocks.readRefusal = {
+    code: 'agent_session_checkpoint_stale',
+    details: { reason: 'fenceStale' }
+  } as const
+  mocks.messages = []
+
+  renderPane()
+
+  expect(screen.getAllByText("This chat's history couldn't be loaded.")).toHaveLength(1)
+  expect(screen.getByText('Orca keeps trying to load it.')).toBeTruthy()
+  expect(screen.queryByText(/could not be read/)).toBeNull()
+})
+
 it('says only that it is reconnecting, not as an error, when a failure names nothing', () => {
   mocks.status = 'error'
 

@@ -19,8 +19,8 @@ export function NativeChatEmptyState({
   message?: string
   /** The chat's own sentence for the failure, said once: it takes the generic title's place. */
   headline?: string
-  /** The headline already says the history couldn't be opened, so the retrying line says only
-   *  that Orca keeps trying. */
+  /** The headline already says the history didn't load, so the retrying line says only that
+   *  Orca keeps trying. */
   headlineSaysUnread?: boolean
   agent?: NativeChatSession['agent']
   /** The read retries on its own (structured chat), so the error says so instead of pointing
