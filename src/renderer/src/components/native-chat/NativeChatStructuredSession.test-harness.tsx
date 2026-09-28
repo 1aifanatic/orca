@@ -3,6 +3,7 @@ import { vi } from 'vitest'
 import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
 import type { AgentSessionBackgroundTask } from '../../../../shared/agent-session-wire'
 import type { AgentSessionWriteRefusal } from '../../../../shared/agent-session-write-failure'
+import type { AgentSessionRefusalReference } from '../../../../shared/agent-session-wire-refusals'
 import type { NativeChatApprovalCardProps } from './NativeChatApprovalCard'
 import type { NativeChatQuestionCardProps } from './NativeChatQuestionCard'
 import type { NativeChatLaunchSeed } from './native-chat-composer-types'
@@ -50,7 +51,7 @@ export function createStructuredSessionMocks() {
     controllerProps: nullable<{ transportEnabled?: boolean }>(),
     mode: 'static' as 'static' | 'outbox',
     status: 'ready' as 'idle' | 'loading' | 'ready' | 'error',
-    readError: nullable<string>(),
+    readRefusal: undefined as AgentSessionRefusalReference | undefined,
     messages: null as null | unknown[],
     messageListProps: initialMessageListProps,
     composerProps: null as null | {
@@ -125,7 +126,8 @@ export function createStructuredSessionMocks() {
                     }
                   ]),
             status: mocks.status,
-            error: mocks.readError ?? outbox.error,
+            error: outbox.error,
+            readRefusal: mocks.readRefusal,
             hasOlder: mocks.hasOlder,
             loadingOlder: mocks.loadingOlder,
             olderHistoryGeneration: mocks.olderHistoryGeneration,
@@ -245,7 +247,7 @@ export function createStructuredSessionMocks() {
     mocks.controllerProps = null
     mocks.mode = 'static'
     mocks.status = 'ready'
-    mocks.readError = null
+    mocks.readRefusal = undefined
     mocks.messages = null
     mocks.messageListProps = null
     mocks.composerProps = null

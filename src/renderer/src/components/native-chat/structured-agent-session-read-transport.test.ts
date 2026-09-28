@@ -311,6 +311,81 @@ describe('structured agent-session read transport unattached refusals', () => {
     }
   })
 
+  it('hands the pane the refusal a read met, and stops reconnecting only past damage', async () => {
+    vi.useFakeTimers()
+    try {
+      const journalRefusal = (reason: string) => ({
+        code: 'runtime_error',
+        message: 'agent_session_journal_unreadable',
+        data: { refusal: { code: 'agent_session_journal_unreadable', details: { reason } } }
+      })
+      const applyError = vi.fn()
+      const transport = startWithHydration(async () => undefined, applyError)
+      await flushPromises()
+      expect(attempts).toHaveLength(1)
+
+      // An open that can clear keeps reconnecting.
+      attempts[0].onError(journalRefusal('journalUnavailable'))
+      attempts[0].closed.resolve({ unsubscribe: attempts[0].unsubscribe })
+      await flushPromises()
+      expect(applyError).toHaveBeenLastCalledWith('agent_session_journal_unreadable', {
+        code: 'agent_session_journal_unreadable',
+        details: { reason: 'journalUnavailable' }
+      })
+      await vi.advanceTimersByTimeAsync(750)
+      expect(attempts).toHaveLength(2)
+
+      // Damage no retry reads past: decided from the reason, not the message, which is the same.
+      attempts[1].onError(journalRefusal('journalCorrupt'))
+      attempts[1].closed.resolve({ unsubscribe: attempts[1].unsubscribe })
+      await flushPromises()
+      expect(applyError).toHaveBeenLastCalledWith('agent_session_journal_unreadable', {
+        code: 'agent_session_journal_unreadable',
+        details: { reason: 'journalCorrupt' }
+      })
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(attempts).toHaveLength(2)
+      transport.dispose()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('reads a thrown hydrate refusal the same way, and a new run reads again', async () => {
+    vi.useFakeTimers()
+    try {
+      const corrupt = Object.assign(new Error('agent_session_journal_unreadable'), {
+        response: {
+          error: {
+            code: 'runtime_error',
+            message: 'agent_session_journal_unreadable',
+            data: {
+              refusal: {
+                code: 'agent_session_journal_unreadable',
+                details: { reason: 'journalCorrupt' }
+              }
+            }
+          }
+        }
+      })
+      const hydrate = vi.fn(async () => {
+        throw corrupt
+      })
+      const first = startWithHydration(hydrate, vi.fn())
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(attempts).toHaveLength(0)
+      first.dispose()
+
+      // Reopening the chat is a new run, which reads again.
+      const second = startWithHydration(hydrate, vi.fn())
+      await flushPromises()
+      expect(hydrate).toHaveBeenCalledTimes(2)
+      second.dispose()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('re-opens after a failed open and leaves the error once the conversation reads (P2-04)', async () => {
     vi.useFakeTimers()
     try {

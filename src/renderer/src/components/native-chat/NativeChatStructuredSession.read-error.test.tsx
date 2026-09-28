@@ -26,13 +26,7 @@ afterEach(() => {
   resetStructuredSessionMocks()
 })
 
-// The read transport always hands the pane the host's words, so the retrying line must not hide
-// behind them; those words show once, on the status line.
-it('says a failed read keeps retrying, and shows the host message once', () => {
-  mocks.status = 'error'
-  mocks.readError = 'journal unreadable'
-  mocks.messages = []
-
+function renderPane(): void {
   render(
     <NativeChatStructuredSession
       isVisible
@@ -43,11 +37,56 @@ it('says a failed read keeps retrying, and shows the host message once', () => {
       agent="codex"
     />
   )
+}
+
+function journalRefusal(reason: 'journalCorrupt' | 'journalUnavailable') {
+  return { code: 'agent_session_journal_unreadable', details: { reason } } as const
+}
+
+// The host's message and code never reach the pane; it words the refusal, and says it once.
+it('says a failed read with no refusal keeps retrying, and adds nothing of the host', () => {
+  mocks.status = 'error'
+  mocks.messages = []
+
+  renderPane()
 
   expect(screen.getByText('Could not load conversation')).toBeTruthy()
   expect(
     screen.getByText('The transcript could not be read. Orca keeps trying to load it.')
   ).toBeTruthy()
-  expect(screen.getAllByText('journal unreadable')).toHaveLength(1)
+  expect(screen.queryByText(/history couldn't be loaded/)).toBeNull()
   expect(screen.queryByText(/Toggle back to the terminal/)).toBeNull()
+})
+
+it('says a damaged history cannot load, without claiming Orca keeps trying', () => {
+  mocks.status = 'error'
+  mocks.readRefusal = journalRefusal('journalCorrupt')
+  mocks.messages = []
+
+  renderPane()
+
+  expect(screen.getAllByText('Unable to load this chat.')).toHaveLength(1)
+  expect(screen.queryByText(/keeps trying/)).toBeNull()
+  expect(screen.queryByText(/agent_session_/)).toBeNull()
+})
+
+it("names a history that couldn't open right now, with no step the pane already takes", () => {
+  mocks.status = 'error'
+  mocks.readRefusal = journalRefusal('journalUnavailable')
+  mocks.messages = []
+
+  renderPane()
+
+  expect(screen.getAllByText("Orca couldn't open this chat's history right now.")).toHaveLength(1)
+  expect(screen.queryByText(/Try again/)).toBeNull()
+})
+
+it('words a failed reconnect beside a transcript it keeps', () => {
+  mocks.status = 'error'
+  mocks.readRefusal = journalRefusal('journalUnavailable')
+
+  renderPane()
+
+  expect(screen.getByTestId('message-list')).toBeTruthy()
+  expect(screen.getByText("Orca couldn't open this chat's history right now.")).toBeTruthy()
 })

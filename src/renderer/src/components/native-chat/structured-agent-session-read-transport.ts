@@ -3,8 +3,11 @@ import type { AgentSessionSubscribeEvent } from '../../../../shared/agent-sessio
 import { createStructuredAgentSessionEventCoalescer } from '../../../../shared/structured-agent-session-coalescer'
 import {
   AGENT_SESSION_UNATTACHED_READ_GRACE_MS,
+  isFinalAgentSessionReadRefusal,
   isUnattachedAgentSessionReadRefusal
 } from '../../../../shared/structured-agent-session-read-refusal'
+import type { AgentSessionRefusalReference } from '../../../../shared/agent-session-wire-refusals'
+import { readAgentSessionErrorRefusal } from '../../../../shared/agent-session-write-failure'
 import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
 import { subscribeStructuredAgentSession } from '@/runtime/structured-agent-session-client'
 
@@ -52,7 +55,8 @@ function createReconnectScheduler(args: { shouldStop: () => boolean; reconnect: 
 
 export function startStructuredAgentSessionReadTransport(args: {
   applyEvent: (event: AgentSessionSubscribeEvent) => void
-  applyError: (message: string) => void
+  /** `message` is the failure's own text, for logs; `refusal` is what a surface words. */
+  applyError: (message: string, refusal?: AgentSessionRefusalReference) => void
   getCursor: () => AgentJournalCursor | null
   onHistoryReadInvalidated: () => void
   hydrate?: (shouldStop: () => boolean) => Promise<void>
@@ -64,6 +68,8 @@ export function startStructuredAgentSessionReadTransport(args: {
 } {
   let stopped = false
   let connected = false
+  // A refusal no retry reads past ends reconnecting for this run; reopening the chat starts another.
+  let failedFinally = false
   let unattachedSince: number | null = null
   let opening = false
   let openGeneration = 0
@@ -76,7 +82,7 @@ export function startStructuredAgentSessionReadTransport(args: {
     }
   })
   const reconnectScheduler = createReconnectScheduler({
-    shouldStop: () => stopped || connected,
+    shouldStop: () => stopped || connected || failedFinally,
     reconnect: () => void open()
   })
   const isCurrentOpenGeneration = (candidate: number): boolean =>
@@ -95,16 +101,25 @@ export function startStructuredAgentSessionReadTransport(args: {
    * A window, not a mute. An unattached read still refusing past the grace is no longer
    * transitional, so the pane is owed the failure rather than a spinner that never resolves.
    */
+  const applyReadFailure = (error: unknown): void => {
+    const refusal = readAgentSessionErrorRefusal(error)
+    failedFinally = isFinalAgentSessionReadRefusal(refusal)
+    if (refusal) {
+      args.applyError(readFailureText(error), refusal)
+    } else {
+      args.applyError(readFailureText(error))
+    }
+  }
   const reportReadFailure = (error: unknown): void => {
     if (!isUnattachedAgentSessionReadRefusal(error)) {
       clearUnattachedReadGrace()
-      args.applyError(readFailureText(error))
+      applyReadFailure(error)
       return
     }
     const now = Date.now()
     unattachedSince ??= now
     if (now - unattachedSince >= AGENT_SESSION_UNATTACHED_READ_GRACE_MS) {
-      args.applyError(readFailureText(error))
+      applyReadFailure(error)
     }
   }
   const captureHistoryReadGuard = (): (() => boolean) => {

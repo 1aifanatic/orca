@@ -30,9 +30,15 @@ it('shows the host message in place of the terminal-backed default', () => {
   expect(screen.queryByText(/Toggle back to the terminal/)).toBeNull()
 })
 
-it('keeps the structured chat retrying line when the host sent a message', () => {
-  render(<NativeChatEmptyState kind="error" retrying message="disk full" />)
-  expect(
-    screen.getByText('The transcript could not be read. Orca keeps trying to load it.')
-  ).toBeInTheDocument()
+// The structured chat passes words only from the notice table, never the host's.
+it("puts the structured chat's own words for the failure in place of its retrying line", () => {
+  render(
+    <NativeChatEmptyState
+      kind="error"
+      retrying
+      message="Orca couldn't open this chat's history right now."
+    />
+  )
+  expect(screen.getByText("Orca couldn't open this chat's history right now.")).toBeInTheDocument()
+  expect(screen.queryByText(/keeps trying/)).toBeNull()
 })

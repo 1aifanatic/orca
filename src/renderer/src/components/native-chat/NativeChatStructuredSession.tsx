@@ -26,6 +26,7 @@ import { NativeChatDeliveryRetry } from './NativeChatDeliveryRetry'
 import { useStructuredAgentSessionHostExecutionPhase } from './StructuredAgentSessionStatusBridge'
 import { structuredAgentLabel } from '@/lib/structured-agent-session-launch-label'
 import { NativeChatThreadGoalBanner } from './NativeChatThreadGoalBanner'
+import { structuredAgentSessionReadFailureNotice } from './structured-agent-session-read-failure-notice'
 
 export function NativeChatStructuredSession(
   props: Omit<NativeChatStructuredViewProps, 'mode'>
@@ -101,6 +102,10 @@ export function NativeChatStructuredSession(
     [controller, props.agent, props.sessionId]
   )
   const viewState = selectNativeChatViewState(session, { readRetries: true })
+  const readFailure =
+    controller.status === 'error'
+      ? structuredAgentSessionReadFailureNotice(controller.readRefusal)
+      : null
   const fontScale = useNativeChatFontScale(viewState.kind === 'ready')
   const imageRuntimeContext = useNativeChatImageRuntimeContext(props.tabId)
   const { onLinkClick, linkActionRequest, closeLinkActions } = useNativeChatLinkActions(
@@ -217,7 +222,11 @@ export function NativeChatStructuredSession(
         {viewState.kind === 'loading' ? (
           <NativeChatEmptyState kind="loading" />
         ) : viewState.kind === 'error' ? (
-          <NativeChatEmptyState kind="error" retrying />
+          <NativeChatEmptyState
+            kind="error"
+            retrying={!readFailure?.final}
+            {...(readFailure?.named ? { message: readFailure.text } : {})}
+          />
         ) : viewState.kind === 'empty' ? (
           <NativeChatEmptyState kind="empty" agent={props.agent} />
         ) : (
@@ -254,7 +263,10 @@ export function NativeChatStructuredSession(
         sessionId={props.sessionId}
         agentLabel={structuredAgentLabel(props.agent === 'codex' ? 'codex' : 'claude')}
         startupPhase={startupPhase}
-        error={controller.error}
+        // Said once: on the pane when the failure took it, else here beside the transcript.
+        error={
+          viewState.kind === 'error' ? controller.error : (readFailure?.text ?? controller.error)
+        }
         composerError={composerError}
         isVisible={props.isVisible}
         backgroundTasks={controller.backgroundTasks}
