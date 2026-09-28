@@ -50,6 +50,17 @@ describe('Claude statusLine by resolved version', () => {
     expect(readSettings().statusLine?.command).toContain('claude-statusline')
   })
 
+  it('keeps the user opt-out across a downgrade and upgrade', () => {
+    const service = new ClaudeHookService()
+    service.install({ claudeVersion: '2.1.261' })
+    const { statusLine: _optedOut, ...rest } = readSettings()
+    writeFileSync(settingsPath, JSON.stringify(rest))
+
+    service.install({ claudeVersion: '1.0.63' })
+    service.install({ claudeVersion: '2.1.261' })
+    expect(readSettings().statusLine).toBeUndefined()
+  })
+
   it('never removes a user statusLine for an old Claude', () => {
     mkdirSync(join(tmpHome, '.claude'), { recursive: true })
     writeFileSync(settingsPath, JSON.stringify({ statusLine: USER_STATUS_LINE }))
