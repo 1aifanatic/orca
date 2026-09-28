@@ -78,6 +78,44 @@ describe('restart journal restoration', () => {
     expect(peak).toBe(4)
   })
 
+  it('lets the event loop run between chats', async () => {
+    // Counts turns of the event loop while the restore runs; each open below is synchronous.
+    let turns = 0
+    let ticking = true
+    const tick = (): void => {
+      turns += 1
+      if (ticking) {
+        setImmediate(tick)
+      }
+    }
+    setImmediate(tick)
+    const turnsSeen = new Set<number>()
+    restoreRead.mockImplementation(async () => {
+      turnsSeen.add(turns)
+      return null
+    })
+    const records = Array.from(
+      { length: 12 },
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the restore reads only the record's session id here.
+      (_, index) => ({ sessionId: `session-${index}` }) as AgentSessionRecord
+    )
+
+    await restoreStructuredAgentSessionsOnRestart({
+      openDeps: NO_OPEN_DEPS,
+      records,
+      reconcile: async () => null,
+      resolveRecovery: async () => undefined,
+      serialize: async (_sessionId, task) => task(),
+      hasSession: () => false,
+      onReadable: () => undefined
+    })
+    ticking = false
+
+    expect(restoreRead).toHaveBeenCalledTimes(records.length)
+    // At most one chat per worker between two turns: never the whole restore in one task.
+    expect(turnsSeen.size).toBeGreaterThanOrEqual(records.length / 4)
+  })
+
   it('settles what a gone generation left running after recovery resolution, before publishing', async () => {
     const calls: string[] = []
     const params: AgentSessionAttachParams = {
