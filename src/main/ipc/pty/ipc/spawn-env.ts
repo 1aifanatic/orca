@@ -12,7 +12,6 @@ import {
   CLAUDE_AUTH_SWITCH_IN_PROGRESS_MESSAGE,
   hasClaudeAuthEnvConflict
 } from '../../../claude-accounts/environment'
-import { LocalPtyProvider } from '../../../providers/local-pty-provider'
 import { resolvePathEnvKey } from '../../../pty/windows-environment-path'
 import { routesFreshSpawnsToLocalProvider } from '../host-env/fresh-spawn-routing'
 import { stripRemotePaneEnvWhenHooksDisabled } from '../provider/liveness'
@@ -72,6 +71,7 @@ export async function assemblePtyIpcSpawnEnv(ctx: PtyIpcSpawnState): Promise<voi
   ctx.stablePaneKey = verifiedPaneKey ?? ctx.migrationUnsupportedPaneKey ?? ctx.metadataPaneKey
   ctx.baseEnv = baseEnvWithAuth ? { ...baseEnvWithAuth } : undefined
   const shouldRefreshAgentTeamsEnv =
+    (!ctx.wslGuest || ctx.wslGuest.fresh) &&
     !ctx.preAdoptedStablePane &&
     !args.connectionId &&
     ctx.deps.runtime !== undefined &&
@@ -83,9 +83,7 @@ export async function assemblePtyIpcSpawnEnv(ctx: PtyIpcSpawnState): Promise<voi
   ctx.effectiveLaunchConfig = args.launchConfig
   const shouldPreAllocateTerminalHandle =
     ctx.deps.runtime !== undefined &&
-    ((!(ctx.provider instanceof LocalPtyProvider) &&
-      !routesFreshSpawnsToLocalProvider(ctx.provider)) ||
-      shouldRefreshAgentTeamsEnv)
+    (!routesFreshSpawnsToLocalProvider(ctx.provider) || shouldRefreshAgentTeamsEnv)
   const runtime = ctx.deps.runtime
   ctx.preAllocatedHandle = shouldPreAllocateTerminalHandle
     ? (ctx.preAdoptedStablePane?.owner.handle ??

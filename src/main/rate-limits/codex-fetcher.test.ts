@@ -30,8 +30,8 @@ vi.mock('../codex-cli/command', () => ({
   resolveCodexCommand: resolveCodexCommandMock
 }))
 
-vi.mock('node-pty', () => ({
-  spawn: ptySpawnMock
+vi.mock('./hidden-daemon-pty', () => ({
+  spawnHiddenDaemonPty: ptySpawnMock
 }))
 
 vi.mock('../codex/codex-state-db', () => ({
@@ -117,6 +117,7 @@ function makePtyTerm() {
       dataHandler = callback
       return makeDisposable()
     }),
+    onError: vi.fn(() => ({ dispose: vi.fn() })),
     onExit: vi.fn((callback: () => void) => {
       exitHandler = callback
       return makeDisposable()
@@ -222,6 +223,7 @@ describe('fetchCodexRateLimits', () => {
     })
     ptySpawnMock.mockReturnValue({
       onData: vi.fn(() => onDataDisposable),
+      onError: vi.fn(() => ({ dispose: vi.fn() })),
       onExit: vi.fn(() => onExitDisposable),
       write: vi.fn(),
       kill: killMock
@@ -328,6 +330,7 @@ describe('fetchCodexRateLimits', () => {
         ptyHandlers.onData = callback
         return makeDisposable()
       }),
+      onError: vi.fn(() => ({ dispose: vi.fn() })),
       onExit: vi.fn(() => makeDisposable()),
       write: vi.fn(),
       kill: vi.fn()
@@ -824,6 +827,7 @@ describe('fetchCodexRateLimits', () => {
         ptyHandlers.onData = callback
         return makeDisposable()
       }),
+      onError: vi.fn(() => ({ dispose: vi.fn() })),
       onExit: vi.fn(() => makeDisposable()),
       write: vi.fn(),
       kill: vi.fn()

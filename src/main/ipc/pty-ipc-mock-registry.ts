@@ -142,6 +142,7 @@ export const piTitlebarExtensionModuleMock = () => ({
 })
 
 export const pwshModuleMock = () => ({
+  isPwshAvailable: isPwshAvailableMock,
   isPwshAvailableAsync: isPwshAvailableMock
 })
 

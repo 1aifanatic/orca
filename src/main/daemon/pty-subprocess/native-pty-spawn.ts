@@ -1,20 +1,16 @@
-import type * as pty from 'node-pty'
+import type { TerminalProcess } from '../../../shared/terminal-process'
 import { waitForPromiseWithSignal } from '../../../shared/abort-signal-reason'
 import {
   hostReportsChildExitStatus,
   wrapShellSpawnForMacosTccAttribution
 } from '../../providers/macos-tcc-login-shell'
 import type { WindowsShellSpawnAttempt } from '../../providers/windows-shell-fallback-chain'
-import { assignHostProcessToKillOnCloseJob } from '../../windows/windows-pty-job'
 
 import { canUseBunPty, spawnBunPty } from './bun-pty-process'
 import { WindowsBunPtySpawnUnconfirmedError } from './windows-bun-pty-spawn-receipt'
 
-async function loadNodePty(): Promise<typeof pty> {
-  return import('node-pty')
-}
 export type SpawnedDaemonPty = {
-  process: pty.IPty
+  process: TerminalProcess
   shellPath: string
   spawnCwd: string
   startupCommandDeliveredInShellArgs?: boolean
@@ -42,55 +38,40 @@ export async function spawnNativeDaemonPty(
   },
   runtime: NativePtyRuntime = { canUseBunPty, spawnBunPty }
 ): Promise<SpawnedDaemonPty> {
+  args.signal?.throwIfAborted()
+  if (!runtime.canUseBunPty()) {
+    throw new Error('Terminal service requires the bundled Bun runtime')
+  }
   let reportsChildExitStatus = true
   const spawnAt = async (
     shellPath: string,
     shellArgs: string[],
     cwd: string
-  ): Promise<pty.IPty> => {
+  ): Promise<TerminalProcess> => {
     args.signal?.throwIfAborted()
     const wrapped = wrapShellSpawnForMacosTccAttribution(shellPath, shellArgs, args.env)
     reportsChildExitStatus = hostReportsChildExitStatus(wrapped.file)
-    if (runtime.canUseBunPty()) {
-      const proc = runtime.spawnBunPty({
-        file: wrapped.file,
-        args: wrapped.args,
-        cwd,
-        env: args.env,
-        cols: args.cols,
-        rows: args.rows
-      })
-      try {
-        if (proc.waitForSpawn) {
-          await waitForPromiseWithSignal(proc.waitForSpawn(), args.signal)
-        }
-        args.signal?.throwIfAborted()
-      } catch (error) {
-        try {
-          proc.destroy()
-        } catch (cleanupError) {
-          console.warn('[daemon/pty] Failed shell launch cleanup failed:', cleanupError)
-        }
-        throw error
-      }
-      args.onMacosTccSpawnStrategy?.(wrapped.file === shellPath ? 'direct' : 'wrapped')
-      return proc
-    }
-    const nodePty = await loadNodePty()
-    // Why: children inherit job membership, so the host job must exist before the first Windows PTY.
-    if (process.platform === 'win32') {
-      assignHostProcessToKillOnCloseJob()
-    }
-    const proc = nodePty.spawn(wrapped.file, wrapped.args, {
-      name: args.env.TERM ?? 'xterm-256color',
-      cols: args.cols,
-      rows: args.rows,
+    const proc = runtime.spawnBunPty({
+      file: wrapped.file,
+      args: wrapped.args,
       cwd,
       env: args.env,
-      // Why: bundled ConPTY has the wrap-marker behavior xterm expects.
-      ...(process.platform === 'win32' ? { useConptyDll: true } : {})
+      cols: args.cols,
+      rows: args.rows
     })
-    reportsChildExitStatus = hostReportsChildExitStatus(wrapped.file)
+    try {
+      if (proc.waitForSpawn) {
+        await waitForPromiseWithSignal(proc.waitForSpawn(), args.signal)
+      }
+      args.signal?.throwIfAborted()
+    } catch (error) {
+      try {
+        proc.destroy()
+      } catch (cleanupError) {
+        console.warn('[daemon/pty] Failed shell launch cleanup failed:', cleanupError)
+      }
+      throw error
+    }
     args.onMacosTccSpawnStrategy?.(wrapped.file === shellPath ? 'direct' : 'wrapped')
     return proc
   }

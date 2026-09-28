@@ -29,3 +29,10 @@ main/wsl.ts
 # point of the module (#16463). A failed stat drops to the next candidate for
 # that one call and is re-asked on the next, so there is no value to pin.
 main/wsl-interop-spawn-directory.ts
+
+# Dormant WSL relay/snapshot compatibility surfaces. Their catches only retire a
+# best-effort stream or return an unavailable restore surface; no result is cached
+# or used to claim guest discovery. They are removed with the relay retirement.
+main/wsl/wsl-guest-artifact-install-script.ts
+main/wsl/wsl-pty-restore-surface.ts
+main/wsl/wsl-relay-output-binding.ts

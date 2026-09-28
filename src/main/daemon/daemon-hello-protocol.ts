@@ -22,3 +22,8 @@ export type HelloResponse = {
   error?: string
   daemonIdentity?: DaemonEndpointIdentity
 }
+
+export type PingRequest = {
+  id: string
+  type: 'ping'
+}

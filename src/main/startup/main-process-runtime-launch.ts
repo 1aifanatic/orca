@@ -8,8 +8,8 @@ import {
 } from '../persistence'
 import { OrcaRuntimeRpcServer } from '../runtime/runtime-rpc'
 import { registerMobileHandlers } from '../ipc/mobile'
-import { getLocalPtyProvider, registerHeadlessPtyRuntime } from '../ipc/pty'
-import { LocalPtyProvider } from '../providers/local-pty-provider'
+import { registerHeadlessPtyRuntime } from '../ipc/pty'
+import { daemonOwnsFreshPersistentPtys } from '../daemon/daemon-provider-state'
 import { HEADLESS_RUNTIME_WINDOW_ID } from '../../shared/runtime-types'
 import { OffscreenBrowserBackend } from '../browser/offscreen-browser-backend'
 import { browserManager } from '../browser/browser-manager'
@@ -55,7 +55,7 @@ function settleDesktopActivation(): void {
     return
   }
   settleServeDesktopActivation(gate, {
-    hasPersistentPtyProvider: !(getLocalPtyProvider() instanceof LocalPtyProvider)
+    hasPersistentPtyProvider: daemonOwnsFreshPersistentPtys()
   })
 }
 
@@ -141,10 +141,14 @@ async function launchServeMode(
     runtime,
     prepareCodexRuntimeHomeForLaunch,
     () => state.store!.getSettings(),
-    (target) => state.claudeRuntimeAuth!.prepareForClaudeLaunch(target),
+    (target, execution) => state.claudeRuntimeAuth!.prepareForClaudeLaunch(target, execution),
     state.store!,
     prepareCodexSessionResumeForLaunch,
-    { onCodexHomePtySpawned: handleCodexHomePtySpawned, onPtyExit: handlePtyExit }
+    {
+      onCodexHomePtySpawned: handleCodexHomePtySpawned,
+      onPtyExit: handlePtyExit,
+      wslDaemonSessions: state.wslDaemonSessions
+    }
   )
   await runtime.refreshRestoredOrchestrationAuthority()
   await runtime.reconcileLegacyWorkerTerminals()

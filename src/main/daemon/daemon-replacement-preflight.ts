@@ -23,7 +23,7 @@ import { PROTOCOL_VERSION } from './types'
 // would spin hot for the whole budget.
 export const WEDGED_DAEMON_GRACE_RETRIES = 11
 
-type PreserveDaemon = (mode?: 'degraded-new-pty-fallback') => Promise<DaemonProcessHandle>
+type PreserveDaemon = (mode?: 'fresh-spawns-unavailable') => Promise<DaemonProcessHandle>
 
 type ReplacementPreflightOptions = {
   runtimeDir: string
@@ -183,9 +183,9 @@ export async function prepareDaemonReplacement(
     if (liveSessionCount !== null && liveSessionCount > 0) {
       if (health === 'pty-spawn-unhealthy') {
         console.warn(
-          `[daemon] DEGRADED MODE: preserving daemon that failed the PTY spawn health check because it owns ${liveSessionCount} live session${liveSessionCount === 1 ? '' : 's'}. Existing sessions keep working; fresh terminals run on the local provider WITHOUT daemon persistence until you restart the daemon (Manage Sessions → Restart).`
+          `[daemon] DEGRADED MODE: preserving daemon that failed the PTY spawn health check because it owns ${liveSessionCount} live session${liveSessionCount === 1 ? '' : 's'}. Existing sessions keep their owner; new terminals require a successful terminal-service health check. Retry after the service recovers.`
         )
-        return preserveDaemon('degraded-new-pty-fallback')
+        return preserveDaemon('fresh-spawns-unavailable')
       }
       console.warn(
         `[daemon] Preserving daemon that failed the health check because it owns ${liveSessionCount} live session${liveSessionCount === 1 ? '' : 's'}`
@@ -220,10 +220,10 @@ export async function prepareDaemonReplacement(
     // no daemon at all, and we have just proved something still answers the endpoint —
     // so adopt it in degraded mode: existing sessions keep working, new PTYs run locally.
     console.warn(
-      '[daemon] DEGRADED MODE: adopting a daemon that could not be confirmed stopped. Existing sessions keep working; fresh terminals run on the local provider WITHOUT daemon persistence until you restart the daemon (Manage Sessions → Restart).'
+      '[daemon] DEGRADED MODE: adopting a daemon that could not be confirmed stopped. Existing sessions keep their owner; new terminals require a successful terminal-service health check. Retry after the service recovers.'
     )
     try {
-      return await preserveDaemon('degraded-new-pty-fallback')
+      return await preserveDaemon('fresh-spawns-unavailable')
     } catch {
       // It died between the probe and the adoption; the endpoint is genuinely free now.
       throw new DaemonEndpointOwnershipError(

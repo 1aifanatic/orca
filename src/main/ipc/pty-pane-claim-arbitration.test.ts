@@ -70,17 +70,6 @@ describe('registerPtyHandlers', () => {
       getSize(ptyId: string): { cols: number; rows: number } | null
     }
     let controller: RuntimeResizeController | null = null
-    const proc = {
-      onData: vi.fn(),
-      onExit: vi.fn(),
-      write: vi.fn(),
-      resize: vi.fn(() => {
-        throw new Error('resize failed')
-      }),
-      kill: vi.fn(),
-      process: 'zsh',
-      pid: 12345
-    }
     const runtime = {
       setPtyController: vi.fn((value) => {
         controller = value
@@ -94,7 +83,11 @@ describe('registerPtyHandlers', () => {
       onPtyExit: vi.fn(),
       onPtyData: vi.fn()
     }
-    spawnMock.mockReturnValue(proc)
+    const provider = createAgentClaimProvider({ spawn: vi.fn(async () => ({ id: 'resize-pty' })) })
+    provider.resize.mockImplementation(() => {
+      throw new Error('resize failed')
+    })
+    setLocalPtyProvider(provider as never)
 
     registerPtyHandlers(mainWindow as never, runtime as never)
     const resizeController = controller as unknown as RuntimeResizeController

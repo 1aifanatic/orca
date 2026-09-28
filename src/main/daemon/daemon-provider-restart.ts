@@ -1,5 +1,4 @@
 import { rebindLocalProviderListeners, unbindLocalProviderListeners } from '../ipc/pty'
-import { DegradedDaemonPtyProvider } from './degraded-daemon-pty-provider'
 import {
   cleanupFailedDaemonAdoption,
   releaseDaemonAdoptionLease,
@@ -53,19 +52,12 @@ async function runRestartDaemon(): Promise<RestartDaemonResult> {
   const legacyAdapters = getLegacyDaemonAdapters(currentAdapter)
 
   // Step 1: synthesize pty:exit for every active session BEFORE teardown — the daemon's shutdown path never fans onExit to clients (session.ts:246-252), so the renderer would otherwise never see exits.
-  const fallbackKilledCount =
-    currentAdapter instanceof DegradedDaemonPtyProvider
-      ? await currentAdapter.shutdownFallbackSessions()
-      : 0
   const currentDaemonSessionIds =
-    currentAdapter instanceof DegradedDaemonPtyProvider
-      ? currentAdapter.getCurrentDaemonSessionIds()
-      : []
-  const killedCount =
-    new Set([...currentOnly.getActiveSessionIds(), ...currentDaemonSessionIds]).size +
-    fallbackKilledCount
+    currentAdapter instanceof DaemonPtyRouter ? currentAdapter.getCurrentDaemonSessionIds() : []
+  const killedCount = new Set([...currentOnly.getActiveSessionIds(), ...currentDaemonSessionIds])
+    .size
   currentOnly.fanoutSyntheticExits(-1)
-  if (currentAdapter instanceof DegradedDaemonPtyProvider) {
+  if (currentAdapter instanceof DaemonPtyRouter) {
     currentAdapter.fanoutCurrentDaemonSyntheticExits(-1)
   }
 

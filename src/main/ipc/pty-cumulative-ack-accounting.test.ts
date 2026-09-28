@@ -86,7 +86,7 @@ describe('registerPtyHandlers', () => {
         rendererInFlightPtyCount: 0
       })
 
-      vi.runOnlyPendingTimers()
+      vi.advanceTimersByTime(0)
       expect(getPtyDataSendCalls()).toHaveLength(33)
     } finally {
       vi.useRealTimers()
@@ -131,22 +131,22 @@ describe('registerPtyHandlers', () => {
       const spawnResult = await spawnAndSaturateRendererDeliveryGate(mockProc)
       const ackData = getPtyAckDataListener()
       expect(getPtyDataSendCalls()).toHaveLength(32)
-      expect(vi.getTimerCount()).toBe(0)
+      expect(vi.getTimerCount()).toBe(1)
 
       ackData(null, { id: spawnResult.id, processedChars: 0 })
       expect(getPtyRendererDeliveryDebugSnapshot().flushScheduled).toBe(true)
-      expect(vi.getTimerCount()).toBe(1)
+      expect(vi.getTimerCount()).toBe(2)
       ackData(null, { id: spawnResult.id, processedChars: 0 })
       ackData(null, { id: spawnResult.id, processedChars: -1 })
-      expect(vi.getTimerCount()).toBe(1)
+      expect(vi.getTimerCount()).toBe(2)
 
-      vi.runOnlyPendingTimers()
+      vi.advanceTimersByTime(1)
       expect(getPtyDataSendCalls()).toHaveLength(32)
       expect(getPtyRendererDeliveryDebugSnapshot().flushScheduled).toBe(false)
-      expect(vi.getTimerCount()).toBe(0)
+      expect(vi.getTimerCount()).toBe(1)
 
       ackData(null, { id: spawnResult.id, processedChars: 16 * 1024 })
-      vi.runOnlyPendingTimers()
+      vi.advanceTimersByTime(1)
       expect(getPtyDataSendCalls()).toHaveLength(33)
     } finally {
       vi.useRealTimers()

@@ -130,6 +130,11 @@ export class Session {
     return this.termination.beginTermination()
   }
 
+  get shellProcessId(): number | undefined {
+    const handle = this.subprocess
+    return handle.getShellProcessId ? handle.getShellProcessId() : handle.pid
+  }
+
   get pid(): number {
     return this.subprocess.pid
   }
@@ -303,13 +308,8 @@ export class Session {
     const wasTerminating = this.termination.isTerminating && this._state !== 'exited'
     const clientsToNotify = wasTerminating ? this.output.snapshotClients() : []
     if (wasTerminating) {
-      try {
-        this.subprocess.forceKill()
-      } catch {
-        /* child may already be gone */
-      }
+      this.termination.forceKillForDisposal()
       this._exitCode = -1
-      this.termination.clearTerminating()
     }
 
     this.#teardownSubprocess()

@@ -1,6 +1,7 @@
 import type { SubprocessHandle } from './session-subprocess-handle'
 import { normalizePtySize } from './daemon-pty-size'
 import { TerminalAttachCanceledError } from './daemon-errors'
+import { waitForTerminalAttachOperation } from './terminal-attach-cancellation'
 import { createDaemonPtyEnvironment } from './pty-subprocess/spawn-environment'
 import { createPtyShellLaunchPlan } from './pty-subprocess/shell-launch-plan'
 import { spawnNativeDaemonPty, type SpawnedDaemonPty } from './pty-subprocess/native-pty-spawn'
@@ -70,7 +71,11 @@ export async function checkPtySpawnHealth(): Promise<void> {
 export async function createPtySubprocess(opts: PtySubprocessOptions): Promise<SubprocessHandle> {
   const size = normalizePtySize(opts.cols, opts.rows)
   const env = createDaemonPtyEnvironment(opts)
-  const launch = createPtyShellLaunchPlan(opts, env)
+  const launch = await waitForTerminalAttachOperation(
+    createPtyShellLaunchPlan(opts, env),
+    opts.cancelSignal,
+    opts.sessionId
+  )
 
   await preflightPtySpawn({
     validationCwd: launch.validationCwd,

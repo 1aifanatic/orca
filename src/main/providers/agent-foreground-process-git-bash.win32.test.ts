@@ -51,7 +51,7 @@ describeOnWindows("Git Bash launcher shell proof with Orca's real launch", () =>
         env: extraEnv
       }
       const env = createDaemonPtyEnvironment(opts)
-      const plan = createPtyShellLaunchPlan(opts, env)
+      const plan = await createPtyShellLaunchPlan(opts, env)
       expect(isGitForWindowsBashLauncherPath(plan.shellPath)).toBe(true)
       expect(plan.shellArgs.join(' ')).toContain('exec "$BASH"')
       const spawned = await spawnNativeDaemonPty(

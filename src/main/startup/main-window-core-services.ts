@@ -111,9 +111,10 @@ export function attachMainWindowCoreServices(
     store,
     runtime,
     prepareCodexRuntimeHomeForLaunch,
-    (target) => claudeRuntimeAuth.prepareForClaudeLaunch(target),
+    (target, execution) => claudeRuntimeAuth.prepareForClaudeLaunch(target, execution),
     {
       prepareCodexSessionResume: prepareCodexSessionResumeForLaunch,
+      wslDaemonSessions: state.wslDaemonSessions,
       awaitLocalPtyStartup: () => state.localPtyStartupReady,
       awaitLocalPtyProviderStartup: () => state.localPtyProviderStartupReady,
       onBeforeRendererReload: ({ ignoreCache, webContentsId }) => {

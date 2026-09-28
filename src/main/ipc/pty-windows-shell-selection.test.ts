@@ -118,7 +118,11 @@ describe('registerPtyHandlers', () => {
       process.env.COMSPEC = 'C:\\Windows\\system32\\cmd.exe'
 
       registerPtyHandlers(mainWindow as never)
-      await handlers.get('pty:spawn')!(null, { cols: 80, rows: 24 })
+      await handlers.get('pty:spawn')!(null, {
+        cols: 80,
+        rows: 24,
+        shellOverride: process.env.COMSPEC
+      })
 
       expect(spawnMock).toHaveBeenCalledWith(
         'C:\\Windows\\system32\\cmd.exe',
@@ -130,7 +134,11 @@ describe('registerPtyHandlers', () => {
       process.env.COMSPEC = 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe'
 
       registerPtyHandlers(mainWindow as never)
-      await handlers.get('pty:spawn')!(null, { cols: 80, rows: 24 })
+      await handlers.get('pty:spawn')!(null, {
+        cols: 80,
+        rows: 24,
+        shellOverride: process.env.COMSPEC
+      })
 
       expect(spawnMock).toHaveBeenCalledWith(
         'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
@@ -142,7 +150,11 @@ describe('registerPtyHandlers', () => {
       process.env.COMSPEC = 'C:\\Program Files\\PowerShell\\7\\pwsh.exe'
 
       registerPtyHandlers(mainWindow as never)
-      await handlers.get('pty:spawn')!(null, { cols: 80, rows: 24 })
+      await handlers.get('pty:spawn')!(null, {
+        cols: 80,
+        rows: 24,
+        shellOverride: process.env.COMSPEC
+      })
 
       expect(spawnMock).toHaveBeenCalledWith(
         'C:\\Program Files\\PowerShell\\7\\pwsh.exe',
@@ -154,7 +166,11 @@ describe('registerPtyHandlers', () => {
       process.env.COMSPEC = 'C:\\Windows\\system32\\cmd.exe'
 
       registerPtyHandlers(mainWindow as never)
-      await handlers.get('pty:spawn')!(null, { cols: 80, rows: 24 })
+      await handlers.get('pty:spawn')!(null, {
+        cols: 80,
+        rows: 24,
+        shellOverride: process.env.COMSPEC
+      })
 
       const spawnCall = spawnMock.mock.calls.at(-1)!
       const env = spawnCall[2].env as Record<string, string>
@@ -165,17 +181,25 @@ describe('registerPtyHandlers', () => {
       process.env.PYTHONUTF8 = '0'
 
       registerPtyHandlers(mainWindow as never)
-      await handlers.get('pty:spawn')!(null, { cols: 80, rows: 24 })
+      await handlers.get('pty:spawn')!(null, {
+        cols: 80,
+        rows: 24,
+        shellOverride: process.env.COMSPEC
+      })
 
       const spawnCall = spawnMock.mock.calls.at(-1)!
       const env = spawnCall[2].env as Record<string, string>
       expect(env.PYTHONUTF8).toBe('0')
     })
-    it('launches Git Bash from COMSPEC as an interactive login shell', async () => {
+    it('launches explicitly selected Git Bash as an interactive login shell', async () => {
       process.env.COMSPEC = 'C:\\Program Files\\Git\\bin\\bash.exe'
 
       registerPtyHandlers(mainWindow as never)
-      await handlers.get('pty:spawn')!(null, { cols: 80, rows: 24 })
+      await handlers.get('pty:spawn')!(null, {
+        cols: 80,
+        rows: 24,
+        shellOverride: process.env.COMSPEC
+      })
 
       expect(spawnMock).toHaveBeenCalledWith(
         'C:\\Program Files\\Git\\bin\\bash.exe',

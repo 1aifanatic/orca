@@ -46,7 +46,7 @@ export type MockAdapterConstructor = new (opts: MockAdapter['options']) => MockA
 
 /** Handle the fake spawner hands back from ensureRunning/getHandle. */
 export type MockSpawnerHandle = {
-  mode?: 'degraded-new-pty-fallback'
+  mode?: 'fresh-spawns-unavailable'
   adopted?: true
   releaseAdoptionLease?: () => void
   shutdown: () => Promise<void>
@@ -95,7 +95,7 @@ export type MockLocalPtyProvider = {
 export type EnsureRunningOverride = () => Promise<{
   socketPath: string
   tokenPath: string
-  mode?: 'degraded-new-pty-fallback'
+  mode?: 'fresh-spawns-unavailable'
   adopted?: true
 }>
 

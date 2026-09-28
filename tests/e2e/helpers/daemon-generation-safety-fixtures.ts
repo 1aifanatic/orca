@@ -73,6 +73,26 @@ export async function launchDaemonGeneration(options: {
   const tokenPath = getDaemonTokenPath(runtime.daemonDir, protocolVersion)
   const logPath = path.join(runtime.rootDir, `${label}.daemon.log`)
   let startupLog = ''
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    NODE_PATH: path.join(process.cwd(), 'node_modules'),
+    ORCA_USER_DATA_PATH: runtime.userDataDir,
+    ORCA_BACKGROUND_LAUNCH: '1'
+  }
+  for (const key of [
+    'ELECTRON_RUN_AS_NODE',
+    'NODE_OPTIONS',
+    'BUN_OPTIONS',
+    'BUN_INSPECT',
+    'BUN_INSPECT_BRK',
+    'BUN_INSPECT_WAIT',
+    'BUN_CONPTY_LIBRARY'
+  ]) {
+    delete env[key]
+  }
+  if (runtime.bunRuntime.conptyLibraryPath) {
+    env.BUN_CONPTY_LIBRARY = runtime.bunRuntime.conptyLibraryPath
+  }
   const child = fork(
     runtime.entryPath,
     [
@@ -89,14 +109,10 @@ export async function launchDaemonGeneration(options: {
     ],
     {
       cwd: runtime.userDataDir,
-      execPath: runtime.electronPath,
+      execPath: runtime.bunRuntime.execPath,
+      execArgv: ['--no-env-file'],
       windowsHide: true,
-      env: {
-        ...process.env,
-        ELECTRON_RUN_AS_NODE: '1',
-        NODE_PATH: path.join(process.cwd(), 'node_modules'),
-        ORCA_USER_DATA_PATH: runtime.userDataDir
-      },
+      env,
       stdio: ['ignore', 'ignore', 'pipe', 'ipc']
     }
   )

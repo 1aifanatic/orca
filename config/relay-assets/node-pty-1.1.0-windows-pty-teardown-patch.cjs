@@ -3,7 +3,7 @@ const { readFileSync, renameSync, rmSync, writeFileSync } = require('node:fs')
 const { join, resolve } = require('node:path')
 
 /**
- * Release the ConPTY teardown handles a relay's npm-installed node-pty never releases.
+ * Legacy SSH compatibility: repair npm-installed node-pty ConPTY teardown handles.
  *
  * Two files, and the ORDER of one of the edits is the whole fix.
  *
@@ -12,7 +12,7 @@ const { join, resolve } = require('node:path')
  * `_inSocket`, and it wraps a real Windows named-pipe handle from `fs.openSync(term.conin, 'w')`.
  * Every terminal leaks one File handle for the life of the host process.
  *
- * The obvious fix -- and the placement `config/patches/node-pty@1.1.0.patch` uses -- releases it at
+ * The obvious fix -- and the placement the retired desktop node-pty patch used -- releases it at
  * the TOP of the branch, before `_getConsoleProcessList()` forks and before the native kill. That is
  * measurably worse than leaving the leak alone: teardown aborts partway, the forked console-list
  * agent is never reaped, and both pipe handles stay alive instead of one. This asset releases it at
@@ -38,7 +38,7 @@ const { join, resolve } = require('node:path')
  * DELIBERATE DIVERGENCE FROM THE DESKTOP, AND WHY IT IS NOT A DESKTOP-TERMINAL BUG: the two hosts
  * do not run the same branch of `kill()`. node-pty defaults `_useConptyDll` to false
  * (`windowsPtyAgent.js`). Every desktop site that opens a terminal pane sets it true --
- * `local-pty-utils.ts` (two) and `native-pty-spawn.ts` -- as does the `windows-conpty-warmup.ts`
+ * the former desktop PTY spawn path (two) and `native-pty-spawn.ts` -- as does the `windows-conpty-warmup.ts`
  * warm-up, so all of those take the `else` branch, where UPSTREAM ALREADY destroys the input
  * socket. The relay passes no such option (`src/relay/pty-handler.ts`), so it takes the
  * `!useConptyDll` branch -- the one this asset and the desktop patch both edit.

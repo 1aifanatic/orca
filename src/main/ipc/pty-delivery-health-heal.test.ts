@@ -86,8 +86,8 @@ describe('registerPtyHandlers', () => {
         vi.advanceTimersByTime(1)
       }
       mockProc.emitData('stuck-output')
-      // Only the probe's hygiene timeout remains; the dispatcher-ready handshake already drained the pending flush.
-      expect(vi.getTimerCount()).toBe(1)
+      // The daemon's pause failsafe and the delivery probe have independent lifetimes.
+      expect(vi.getTimerCount()).toBe(2)
 
       destroyed = true
       mockProc.emitData('post-destroy output')

@@ -156,6 +156,7 @@ export type IPtyProvider = {
    * and callers must keep functioning without them (the pending-output cap
    * still bounds memory when pause is unavailable).
    */
+  hasPtyDeliveryPauseAdapter?: () => boolean
   pauseProducer?: (id: string) => void
   resumeProducer?: (id: string) => void
   /**

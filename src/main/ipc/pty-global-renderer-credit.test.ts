@@ -227,7 +227,7 @@ describe('registerPtyHandlers', () => {
         pendingPtyCount: 1,
         flushScheduled: false
       })
-      expect(vi.getTimerCount()).toBe(0)
+      expect(vi.getTimerCount()).toBe(1)
 
       proc.emitExit(0)
 

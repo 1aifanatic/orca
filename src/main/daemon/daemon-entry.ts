@@ -1,11 +1,4 @@
-/**
- * Daemon entry point — runs as a standalone Node.js process.
- *
- * Usage: node daemon-entry.js --socket /path/to/sock --token /path/to/token
- *
- * Signals readiness to parent via IPC: { type: 'ready' }
- * Shuts down cleanly on SIGTERM.
- */
+/** Standalone Bun daemon; reports readiness over IPC and drains sessions on SIGTERM. */
 import { readFileSync } from 'node:fs'
 import { startDaemon, type DaemonHandle } from './daemon-main'
 import { createPtySubprocess } from './pty-subprocess'

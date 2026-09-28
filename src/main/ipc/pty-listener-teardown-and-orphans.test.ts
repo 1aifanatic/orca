@@ -12,7 +12,7 @@ import * as livePtyGate from '../claude-accounts/live-pty-gate'
 import { registerPtyHandlers, setLocalPtyProvider, getLocalPtyProvider } from './pty'
 import { join } from 'node:path'
 // Why resolved rather than hardcoded: the wrapper tree is content-addressed.
-import { getShellReadyWrapperRoot } from '../providers/local-pty-shell-ready-wrapper-root'
+import { getShellReadyWrapperRoot } from '../daemon/shell-ready'
 
 vi.mock('electron', () => import('./pty-ipc-mock-registry').then((m) => m.electronModuleMock()))
 vi.mock('fs', () => import('./pty-ipc-mock-registry').then((m) => m.fsModuleMock()))
@@ -96,7 +96,7 @@ describe('registerPtyHandlers', () => {
         })
       )
       expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Primary shell "/opt/homebrew/bin/bash" failed')
+        expect.stringContaining('Preferred shell "/opt/homebrew/bin/bash" is unavailable')
       )
     } finally {
       warnSpy.mockRestore()
@@ -209,6 +209,10 @@ describe('registerPtyHandlers', () => {
       pid: 12345
     }
     const runtime = {
+      createPreAllocatedTerminalHandle: vi.fn(() => 'term_test'),
+      registerPreAllocatedHandleForPty: vi.fn(),
+      registerPty: vi.fn(),
+      markPtyStopRequested: vi.fn(),
       setPtyController: vi.fn(),
       noteTerminalSpawnCommand: vi.fn(),
       onPtySpawned: vi.fn(),
@@ -236,7 +240,7 @@ describe('registerPtyHandlers', () => {
     await vi.waitFor(() => expect(onExitDisposable.dispose).toHaveBeenCalledTimes(1))
     expect(onDataDisposable.dispose).toHaveBeenCalledTimes(1)
   })
-  it('retains the PTY exit listener through did-finish-load orphan cleanup', async () => {
+  it('retains daemon PTY listeners across renderer reload until physical exit', async () => {
     const onDataDisposable = makeDisposable()
     const onExitDisposable = makeDisposable()
     let exitCb: ((info: { exitCode: number }) => void) | undefined
@@ -254,6 +258,10 @@ describe('registerPtyHandlers', () => {
       pid: 12345
     }
     const runtime = {
+      createPreAllocatedTerminalHandle: vi.fn(() => 'term_test'),
+      registerPreAllocatedHandleForPty: vi.fn(),
+      registerPty: vi.fn(),
+      markPtyStopRequested: vi.fn(),
       setPtyController: vi.fn(),
       noteTerminalSpawnCommand: vi.fn(),
       onPtySpawned: vi.fn(),
@@ -276,19 +284,18 @@ describe('registerPtyHandlers', () => {
     }
     await handlers.get('pty:spawn')!(null, { cols: 80, rows: 24 })
 
-    // First load after spawn only advances generation; the second sees this PTY as from a prior load and kills it as orphaned.
+    // Renderer reload does not transfer termination authority from the daemon.
     didFinishLoad()
     didFinishLoad()
 
-    expect(onDataDisposable.dispose.mock.invocationCallOrder[0]).toBeLessThan(
-      killSpy.mock.invocationCallOrder[0]
-    )
+    expect(killSpy).not.toHaveBeenCalled()
+    expect(onDataDisposable.dispose).not.toHaveBeenCalled()
     expect(onExitDisposable.dispose).not.toHaveBeenCalled()
 
     exitCb?.({ exitCode: -1 })
     expect(onExitDisposable.dispose).toHaveBeenCalledTimes(1)
   })
-  it('removes the previous orphan-cleanup listener from its original webContents', () => {
+  it('removes the previous renderer-reset listener from its original webContents', () => {
     const firstWindow = {
       isDestroyed: () => false,
       isFocused: () => true,
@@ -313,11 +320,11 @@ describe('registerPtyHandlers', () => {
     }
 
     registerPtyHandlers(firstWindow as never)
-    // Two listeners on the first (LocalPtyProvider) window: the renderer-gate reset and the orphan cleanup.
+    // The daemon owns terminal lifetime; only renderer delivery resets on load.
     const firstWindowLoadHandlers = firstWindow.webContents.on.mock.calls.filter(
       ([eventName]) => eventName === 'did-finish-load'
     )
-    expect(firstWindowLoadHandlers).toHaveLength(2)
+    expect(firstWindowLoadHandlers).toHaveLength(1)
 
     setLocalPtyProvider({
       spawn: vi.fn(),
@@ -339,7 +346,7 @@ describe('registerPtyHandlers', () => {
         handler
       )
     }
-    // The non-Local provider keeps orphan cleanup off the second window — only the renderer-gate reset listener remains.
+    // Re-registering keeps exactly one delivery-reset listener.
     expect(
       secondWindow.webContents.on.mock.calls.filter(
         ([eventName]) => eventName === 'did-finish-load'
@@ -359,6 +366,10 @@ describe('registerPtyHandlers', () => {
       pid: 12345
     }
     const runtime = {
+      createPreAllocatedTerminalHandle: vi.fn(() => 'term_test'),
+      registerPreAllocatedHandleForPty: vi.fn(),
+      registerPty: vi.fn(),
+      markPtyStopRequested: vi.fn(),
       setPtyController: vi.fn(),
       onPtySpawned: vi.fn(),
       onPtyData: vi.fn(),
@@ -402,8 +413,7 @@ describe('registerPtyHandlers', () => {
 
     markClaudePtyExitedSpy.mockRestore()
   })
-  // Why: guard against over-suppression — with no recovery reload in flight the sweep MUST still reclaim genuinely orphaned local PTYs.
-  it('still sweeps orphaned local PTYs when no recovery reload is in flight', async () => {
+  it('preserves daemon terminals across ordinary reload and reports subsequent physical exit', async () => {
     let exitCb: ((info: { exitCode: number }) => void) | undefined
     const killSpy = vi.fn(() => {
       queueMicrotask(() => exitCb?.({ exitCode: -1 }))
@@ -421,6 +431,10 @@ describe('registerPtyHandlers', () => {
       pid: 12345
     }
     const runtime = {
+      createPreAllocatedTerminalHandle: vi.fn(() => 'term_test'),
+      registerPreAllocatedHandleForPty: vi.fn(),
+      registerPty: vi.fn(),
+      markPtyStopRequested: vi.fn(),
       setPtyController: vi.fn(),
       onPtySpawned: vi.fn(),
       onPtyData: vi.fn(),
@@ -455,7 +469,12 @@ describe('registerPtyHandlers', () => {
     didFinishLoad()
     await Promise.resolve()
 
-    expect(killSpy).toHaveBeenCalled()
+    expect(killSpy).not.toHaveBeenCalled()
+    expect(runtime.onPtyExit).not.toHaveBeenCalled()
+    expect(
+      (await getLocalPtyProvider().listProcesses()).some((info) => info.id === spawnResult.id)
+    ).toBe(true)
+    exitCb?.({ exitCode: -1 })
     expect(runtime.onPtyExit).toHaveBeenCalledWith(spawnResult.id, -1, spawnResult.incarnationId, {
       providerExitObserved: true,
       cause: { kind: 'unknown', reason: 'stop_unverified' }
@@ -468,6 +487,10 @@ describe('registerPtyHandlers', () => {
     const killSpyA = vi.fn()
     const killSpyB = vi.fn()
     const runtime = {
+      createPreAllocatedTerminalHandle: vi.fn(() => 'term_test'),
+      registerPreAllocatedHandleForPty: vi.fn(),
+      registerPty: vi.fn(),
+      markPtyStopRequested: vi.fn(),
       setPtyController: vi.fn(),
       onPtySpawned: vi.fn(),
       onPtyData: vi.fn(),
@@ -549,7 +572,7 @@ describe('registerPtyHandlers', () => {
     })) as { id: string }
 
     await expect(handlers.get('pty:kill')!(null, { id: spawnResult.id })).rejects.toThrow(
-      'already dead'
+      'kill ESRCH'
     )
 
     expect((await getLocalPtyProvider().listProcesses()).map(({ id }) => id)).toContain(

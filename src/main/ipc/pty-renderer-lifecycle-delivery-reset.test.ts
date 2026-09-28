@@ -199,7 +199,8 @@ describe('registerPtyHandlers', () => {
       expect(mainWindow.webContents.send).toHaveBeenCalledTimes(32)
       vi.advanceTimersByTime(1)
       expect(mainWindow.webContents.send).toHaveBeenCalledTimes(32)
-      expect(vi.getTimerCount()).toBe(0)
+      // The daemon retains its producer-pause failsafe independently of renderer scheduling.
+      expect(vi.getTimerCount()).toBe(1)
       expect(getPtyRendererDeliveryDebugSnapshot()).toMatchObject({
         rendererInFlightChars: 512 * 1024,
         pendingChars: 88 * 1024,

@@ -10,7 +10,7 @@ import { _setWslCachesForTests } from '../wsl'
 import { registerPtyHandlers } from './pty'
 import { join } from 'node:path'
 // Why resolved rather than hardcoded: the wrapper tree is content-addressed.
-import { getShellReadyWrapperRoot } from '../providers/local-pty-shell-ready-wrapper-root'
+import { getShellReadyWrapperRoot } from '../daemon/shell-ready'
 
 vi.mock('electron', () => import('./pty-ipc-mock-registry').then((m) => m.electronModuleMock()))
 vi.mock('fs', () => import('./pty-ipc-mock-registry').then((m) => m.fsModuleMock()))
@@ -298,7 +298,7 @@ describe('registerPtyHandlers', () => {
 
     // Why: the startup-cwd guard normalizes separators, so the provider sees the forward-slash UNC form.
     existsSyncMock.mockImplementation((targetPath: string) => {
-      if (targetPath === '//wsl.localhost/Ubuntu/home/jin/missing') {
+      if (targetPath.replaceAll('\\', '/') === '//wsl.localhost/Ubuntu/home/jin/missing') {
         return false
       }
       return true

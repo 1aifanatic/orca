@@ -103,20 +103,23 @@ describe('daemon-init: runRestartDaemon (7-step sequence)', () => {
     ensureRunningOverrides.push(async () => ({
       socketPath: '/fake/degraded-socket',
       tokenPath: '/fake/degraded-token',
-      mode: 'degraded-new-pty-fallback'
+      mode: 'fresh-spawns-unavailable'
     }))
     await mod.initDaemonPtyProvider()
 
-    const { DegradedDaemonPtyProvider } = await import('./degraded-daemon-pty-provider')
+    const { DaemonPtyRouter } = await import('./daemon-pty-router')
     const provider = mod.getDaemonProvider()
-    expect(provider).toBeInstanceOf(DegradedDaemonPtyProvider)
-    const degradedProvider = provider as InstanceType<typeof DegradedDaemonPtyProvider>
+    expect(provider).toBeInstanceOf(DaemonPtyRouter)
+    if (!(provider instanceof DaemonPtyRouter)) {
+      throw new Error('Expected daemon router')
+    }
+    const degradedProvider = provider
 
     const originalAdapter = adapterInstances[0]
     originalAdapter.listProcesses.mockResolvedValueOnce([
       { id: 'preserved-current-session', cwd: '/repo', title: 'shell' }
     ])
-    await degradedProvider.discoverDaemonSessions()
+    await degradedProvider.discoverLegacySessions()
 
     const order: string[] = []
     degradedProvider.onExit((payload) => {

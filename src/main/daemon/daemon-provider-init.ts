@@ -1,4 +1,4 @@
-import { getLocalPtyProvider, rebindLocalProviderListeners } from '../ipc/pty'
+import { rebindLocalProviderListeners } from '../ipc/pty'
 import {
   confirmSeededClaudeLivePtys,
   hasSeededUnconfirmedClaudePtys
@@ -22,8 +22,7 @@ import {
   createOutOfProcessLauncher
 } from './daemon-out-of-process-launcher'
 import type { DaemonProvider } from './daemon-provider-routing'
-import { installDaemonProvider } from './daemon-provider-state'
-import { DegradedDaemonPtyProvider } from './degraded-daemon-pty-provider'
+import { getDaemonProvider, installDaemonProvider } from './daemon-provider-state'
 import { trackDaemonAdopted } from './daemon-adoption-telemetry-event'
 import { readDaemonPidRecord } from './daemon-endpoint-incarnation'
 import { trackDaemonRetired } from './daemon-lifecycle-event'
@@ -44,7 +43,38 @@ function logDaemonMilestone(event: string, details: Record<string, unknown> = {}
   }
 }
 
-export async function initDaemonPtyProvider(
+let pendingInitialization: Promise<void> | null = null
+let initializationOptions: { macosLoginSessionWatch?: boolean } = {}
+
+export function initDaemonPtyProvider(
+  signal?: AbortSignal,
+  options: { macosLoginSessionWatch?: boolean } = {}
+): Promise<void> {
+  if (pendingInitialization) {
+    return pendingInitialization
+  }
+  initializationOptions = { ...options }
+  pendingInitialization = initializeDaemonPtyProvider(signal, options).finally(() => {
+    pendingInitialization = null
+  })
+  return pendingInitialization
+}
+
+export async function retryDaemonPtyProvider(): Promise<void> {
+  await pendingInitialization?.catch(() => {})
+  const provider = getDaemonProvider()
+  if (provider) {
+    if (provider instanceof DaemonPtyRouter && !(await provider.recoverFreshSpawnRouting(true))) {
+      throw new Error(
+        'Terminal service is still unable to start new terminals. Existing terminals remain running.'
+      )
+    }
+    return
+  }
+  await initDaemonPtyProvider(undefined, initializationOptions)
+}
+
+async function initializeDaemonPtyProvider(
   signal?: AbortSignal,
   options: { macosLoginSessionWatch?: boolean } = {}
 ): Promise<void> {
@@ -68,7 +98,7 @@ export async function initDaemonPtyProvider(
   const launchMode = newSpawner.getHandle()?.mode
   logDaemonMilestone('daemon-current-ready')
   if (signal?.aborted) {
-    // Why: fail-open may already have spawned fallback PTYs; don't install late, but retire an empty daemon (live sessions reject it and survive).
+    // Explicit cancellation releases adoption without installing a provider or killing live sessions.
     const abortedStartupAdapter = new DaemonPtyAdapter({
       socketPath: info.socketPath,
       tokenPath: info.tokenPath,
@@ -120,28 +150,23 @@ export async function initDaemonPtyProvider(
 
     legacyAdapters = await createLegacyDaemonAdapters(runtimeDir)
     routedAdapter =
-      launchMode === 'degraded-new-pty-fallback'
-        ? new DegradedDaemonPtyProvider({
+      legacyAdapters.length > 0 || launchMode === 'fresh-spawns-unavailable'
+        ? new DaemonPtyRouter({
             current: newAdapter,
             legacy: legacyAdapters,
-            fallback: getLocalPtyProvider(),
-            probeCurrentDaemonSpawn: async () =>
-              (await checkDaemonHealth(info.socketPath, info.tokenPath)) === 'healthy'
+            ...(launchMode === 'fresh-spawns-unavailable'
+              ? {
+                  probeFreshSpawn: async () =>
+                    (await checkDaemonHealth(info.socketPath, info.tokenPath)) === 'healthy'
+                }
+              : {})
           })
-        : legacyAdapters.length > 0
-          ? new DaemonPtyRouter({
-              current: newAdapter,
-              legacy: legacyAdapters
-            })
-          : newAdapter
-    if (routedAdapter instanceof DegradedDaemonPtyProvider) {
-      // Why: preserved daemon can't create fresh terminals; discover its live session ids so only they route to it (fresh panes fall back locally).
-      await routedAdapter.discoverDaemonSessions()
-    } else if (routedAdapter instanceof DaemonPtyRouter) {
+        : newAdapter
+    if (routedAdapter instanceof DaemonPtyRouter) {
       await routedAdapter.discoverLegacySessions()
     }
     if (signal?.aborted) {
-      // Why: same late-swap guard after legacy discovery; release uninstalled adapter leases without killing live sessions.
+      // Cancellation can also arrive while discovering legacy sessions.
       await routedAdapter.disconnectOnly()
       return
     }
@@ -196,10 +221,7 @@ async function reconcileSeededClaudeLivePtys(provider: DaemonProvider): Promise<
     return
   }
   try {
-    const adapters =
-      provider instanceof DaemonPtyRouter || provider instanceof DegradedDaemonPtyProvider
-        ? provider.getAllAdapters()
-        : [provider]
+    const adapters = provider instanceof DaemonPtyRouter ? provider.getAllAdapters() : [provider]
     const results = await Promise.allSettled(adapters.map((entry) => entry.listSessions()))
     if (results.some((result) => result.status === 'rejected')) {
       console.warn('[daemon] Keeping seeded Claude live-PTY gate — session listing failed')

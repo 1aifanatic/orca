@@ -36,7 +36,6 @@ vi.mock('../ipc/pty', () => ({
   getLocalPtyProvider: vi.fn(),
   registerHeadlessPtyRuntime: vi.fn()
 }))
-vi.mock('../providers/local-pty-provider', () => ({ LocalPtyProvider: class {} }))
 vi.mock('../browser/offscreen-browser-backend', () => ({ OffscreenBrowserBackend: class {} }))
 vi.mock('../browser/browser-manager', () => ({ browserManager: {} }))
 vi.mock('./main-process-relay-status', () => ({

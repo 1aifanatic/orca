@@ -1,3 +1,4 @@
+import { preparePtyIpcWslRoute } from './spawn-wsl-route'
 import {
   isWslShellName,
   resolveLocalWindowsTerminalRuntimeOptions
@@ -7,7 +8,6 @@ import { isClaudeAuthSwitchInProgress } from '../../../claude-accounts/live-pty-
 import { CLAUDE_AUTH_SWITCH_IN_PROGRESS_MESSAGE } from '../../../claude-accounts/environment'
 import { mintPtySessionId } from '../../../daemon/pty-session-id'
 import { resolveWslSessionContext } from '../../../daemon/wsl-session-context'
-import { LocalPtyProvider } from '../../../providers/local-pty-provider'
 import { normalizeWindowsTerminalCwd } from '../../../providers/windows-shell-args'
 import { wslUncDirectoryExistsAsync } from '../../../wsl'
 import { getCodexSelectionTargetForPty } from '../host-env/codex-home'
@@ -23,10 +23,7 @@ export async function preparePtyIpcSpawnPreflight(ctx: PtyIpcSpawnState): Promis
   const args = ctx.args
   // Establish daemon identity before the first await so hidden delivery is gated before byte zero.
   ctx.provider = getProvider(args.connectionId)
-  ctx.isDaemonHostSpawn =
-    !args.connectionId &&
-    !(ctx.provider instanceof LocalPtyProvider) &&
-    !routesFreshSpawnsToLocalProvider(ctx.provider)
+  ctx.isDaemonHostSpawn = !args.connectionId && !routesFreshSpawnsToLocalProvider(ctx.provider)
   ctx.isMintedSessionId = args.sessionId === undefined && ctx.isDaemonHostSpawn
   ctx.effectiveSessionId =
     args.sessionId ?? (ctx.isDaemonHostSpawn ? mintPtySessionId(args.worktreeId) : undefined)
@@ -156,17 +153,41 @@ export async function preparePtyIpcSpawnPreflight(ctx: PtyIpcSpawnState): Promis
     ctx.startupCwdFallback =
       didFallbackToWorkspaceRootCwd && ctx.cwd ? { kind: 'worktree', cwd: ctx.cwd } : undefined
   }
+  ctx.terminalRuntimeOptions =
+    process.platform === 'win32' && !args.connectionId
+      ? resolveLocalWindowsTerminalRuntimeOptions({
+          requestedShellOverride: args.shellOverride,
+          settings: ctx.deps.getSettings?.(),
+          projectRuntime: args.projectRuntime,
+          fallbackHostShell: process.env.COMSPEC || 'powershell.exe'
+        })
+      : {
+          shellOverride:
+            args.shellOverride ??
+            (ctx.deps.getSettings?.()?.terminalDefaultShell?.trim() || undefined),
+          terminalWindowsWslDistro: null
+        }
+  // Why: daemon host-env setup needs a stable id BEFORE provider.spawn so buildPtyHostEnv hooks/Pi cleanup can run; daemon still honors opts.sessionId ?? mint().
+  // Note: sessionId is STABLE across daemon restarts by design — do NOT simplify to a fresh UUID per spawn; that orphans reconnectable state.
+  // Why: only clear ids minted in THIS request on failure — a caller-supplied args.sessionId may name an existing PTY we must not clobber.
+  ctx.expectedWslDistro = !args.connectionId
+    ? (resolveWslSessionContext({
+        cwd: ctx.cwd,
+        sessionId: ctx.effectiveSessionId,
+        shellOverride: ctx.terminalRuntimeOptions.shellOverride,
+        terminalWindowsWslDistro: ctx.terminalRuntimeOptions.terminalWindowsWslDistro
+      })?.distro ?? null)
+    : null
+  await preparePtyIpcWslRoute(ctx)
   ctx.spawnTiming.mark('preflight')
-  const freshSpawnRecovery = ctx.preAdoptedStablePane
-    ? undefined
-    : recoverFreshSpawnProviderRouting(ctx.provider, args.connectionId, args.sessionId)
+  const freshSpawnRecovery =
+    ctx.preAdoptedStablePane || ctx.wslGuest
+      ? undefined
+      : recoverFreshSpawnProviderRouting(ctx.provider, args.connectionId, args.sessionId)
   if (freshSpawnRecovery) {
     await freshSpawnRecovery
     const previousHiddenMarkId = ctx.preSpawnHiddenMarkId
-    ctx.isDaemonHostSpawn =
-      !args.connectionId &&
-      !(ctx.provider instanceof LocalPtyProvider) &&
-      !routesFreshSpawnsToLocalProvider(ctx.provider)
+    ctx.isDaemonHostSpawn = !args.connectionId && !routesFreshSpawnsToLocalProvider(ctx.provider)
     ctx.isMintedSessionId = args.sessionId === undefined && ctx.isDaemonHostSpawn
     ctx.effectiveSessionId =
       args.sessionId ?? (ctx.isDaemonHostSpawn ? mintPtySessionId(args.worktreeId) : undefined)
@@ -192,44 +213,25 @@ export async function preparePtyIpcSpawnPreflight(ctx: PtyIpcSpawnState): Promis
     }
   }
   ctx.isClaudeLaunch =
-    !ctx.preAdoptedStablePane && !args.connectionId && isClaudeLaunchCommand(args.command)
+    !ctx.preAdoptedStablePane &&
+    !args.connectionId &&
+    (!ctx.wslGuest || ctx.wslGuest.fresh) &&
+    isClaudeLaunchCommand(args.command)
   if (ctx.isClaudeLaunch && isClaudeAuthSwitchInProgress()) {
     throw new Error(CLAUDE_AUTH_SWITCH_IN_PROGRESS_MESSAGE)
   }
-  ctx.terminalRuntimeOptions =
-    process.platform === 'win32' && !args.connectionId
-      ? resolveLocalWindowsTerminalRuntimeOptions({
-          requestedShellOverride: args.shellOverride,
-          settings: ctx.deps.getSettings?.(),
-          projectRuntime: args.projectRuntime,
-          fallbackHostShell: process.env.COMSPEC || 'powershell.exe'
-        })
-      : {
-          shellOverride:
-            args.shellOverride ??
-            (ctx.deps.getSettings?.()?.terminalDefaultShell?.trim() || undefined),
-          terminalWindowsWslDistro: null
-        }
-  const initialShellOverride = ctx.terminalRuntimeOptions.shellOverride
-  // Why: daemon host-env setup needs a stable id BEFORE provider.spawn so buildPtyHostEnv hooks/Pi cleanup can run; daemon still honors opts.sessionId ?? mint().
-  // Note: sessionId is STABLE across daemon restarts by design — do NOT simplify to a fresh UUID per spawn; that orphans reconnectable state.
-  // Why: only clear ids minted in THIS request on failure — a caller-supplied args.sessionId may name an existing PTY we must not clobber.
-  ctx.expectedWslDistro = !args.connectionId
-    ? (resolveWslSessionContext({
-        cwd: ctx.cwd,
-        sessionId: ctx.effectiveSessionId,
-        shellOverride: ctx.terminalRuntimeOptions.shellOverride,
-        terminalWindowsWslDistro: ctx.terminalRuntimeOptions.terminalWindowsWslDistro
-      })?.distro ?? null)
-    : null
-  const initialSelectionTarget = getCodexSelectionTargetForPty(
-    initialShellOverride,
-    ctx.cwd,
-    ctx.expectedWslDistro
-  )
+  const initialSelectionTarget = ctx.wslGuest
+    ? { runtime: 'wsl' as const, wslDistro: ctx.wslGuest.execution.distro }
+    : getCodexSelectionTargetForPty(
+        ctx.terminalRuntimeOptions.shellOverride,
+        ctx.cwd,
+        ctx.expectedWslDistro
+      )
   ctx.claudeAuth =
     ctx.isClaudeLaunch && ctx.deps.prepareClaudeAuth
-      ? await ctx.deps.prepareClaudeAuth(initialSelectionTarget)
+      ? ctx.wslGuest
+        ? await ctx.deps.prepareClaudeAuth(initialSelectionTarget, ctx.wslGuest.execution)
+        : await ctx.deps.prepareClaudeAuth(initialSelectionTarget)
       : null
   ctx.spawnTiming.mark('auth')
 }
