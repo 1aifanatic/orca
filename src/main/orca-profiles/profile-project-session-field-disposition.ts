@@ -128,9 +128,9 @@ export const WORKSPACE_SESSION_FIELD_DISPOSITION = {
     onRepoRemoval: 'prunedByBespokeRule',
     onTransfer: 'copiedByBespokeRule'
   },
-  // Residue: keyed by tab id and pruned by neither path, like remoteSessionIdsByTabId. Bounded
-  // anyway -- every write and every pull merge runs it through the TTL and cap in
-  // shared/closed-terminal-tab-tombstones.ts, and a resolved host retires its own entries.
+  // Owner-scoped after all, just not by this path: a confirmed worktree, folder or project removal
+  // prunes these by the record's worktreeId (removeWorkspaceSessionOwner's pruneCloseRecords).
+  // Moving a project between profiles has no owner scan, so they wait out the TTL and cap there.
   closedTerminalTabTombstonesByTabId: {
     onRepoRemoval: 'notRepoScoped',
     onTransfer: 'notTransferred'

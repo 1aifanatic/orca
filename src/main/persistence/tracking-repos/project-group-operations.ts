@@ -106,7 +106,9 @@ export class ProjectGroupPersistenceOperations {
       if (deletedGroupIds.has(workspace.projectGroupId)) {
         removedFolderWorkspaceKeys.add(folderWorkspaceKey(workspace.id))
         // Every partition, not just the local blob: the same reason `removeFolderWorkspace` does.
-        removeWorkspaceSessionOwnerEverywhere(this.state, folderWorkspaceKey(workspace.id))
+        removeWorkspaceSessionOwnerEverywhere(this.state, folderWorkspaceKey(workspace.id), {
+          pruneCloseRecords: true
+        })
         this.removeWorkspaceLineageForFolderParent(workspace.id)
       }
     }

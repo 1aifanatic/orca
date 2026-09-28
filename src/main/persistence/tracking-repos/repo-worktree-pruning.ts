@@ -74,6 +74,11 @@ export function pruneWorktreeStateForRepo(
         (tombstone) => tombstone.worktreeId
       )
     )
+    collectPrefixedKeys(
+      Object.values(session?.closedTerminalTabTombstonesByTabId ?? {}).map(
+        (record) => record.worktreeId
+      )
+    )
   }
   collectPrefixedKeys(Object.keys(state.worktreeMeta))
   collectScannedRecordOwners(state.workspaceSession)
@@ -100,14 +105,22 @@ export function pruneWorktreeStateForRepo(
   const pruneLegacyLocalSession = hostId === null || hostId === LOCAL_EXECUTION_HOST_ID
   const pruneAllHostPartitions = hostId === null
   if (pruneLegacyLocalSession) {
-    state.workspaceSession = removeWorkspaceSessionOwners(state.workspaceSession, ownerKeysToPrune)!
+    state.workspaceSession = removeWorkspaceSessionOwners(
+      state.workspaceSession,
+      ownerKeysToPrune,
+      {
+        pruneCloseRecords: true
+      }
+    )!
   }
   if (state.workspaceSessionsByHostId) {
     for (const [partitionHostId, session] of Object.entries(state.workspaceSessionsByHostId)) {
       if (!pruneAllHostPartitions && partitionHostId !== hostId) {
         continue
       }
-      const pruned = removeWorkspaceSessionOwners(session, ownerKeysToPrune)
+      const pruned = removeWorkspaceSessionOwners(session, ownerKeysToPrune, {
+        pruneCloseRecords: true
+      })
       if (pruned) {
         state.workspaceSessionsByHostId[partitionHostId] = pruned
       }

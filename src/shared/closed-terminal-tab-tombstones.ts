@@ -12,7 +12,8 @@ const TERMINAL_TAB_CLOSE_REASONS = [
  *  Why it must exist: absence alone cannot distinguish "never told" from "closed", so without it a
  *  host snapshot or a late spawn commit brings the tab back, and an emptied workspace reads as one
  *  that was never initialized. Safe because tab ids are uuids: a closed id never legitimately
- *  returns. Nothing acknowledges it away; it dies by TTL or the per-host cap. */
+ *  returns. Nothing acknowledges it away; it dies by TTL, the per-host cap, or a confirmed removal
+ *  of its workspace. */
 export type ClosedTerminalTabTombstone = {
   closedAt: number
   worktreeId: string
@@ -54,6 +55,20 @@ export function recordClosedTerminalTabTombstone(
   now: number
 ): ClosedTerminalTabTombstonesByTabId {
   return pruneClosedTerminalTabTombstones({ ...map, [tabId]: { ...record, closedAt: now } }, now)
+}
+
+/** Drops the records of removed workspaces. Returns the same map when none match, so a caller
+ *  can tell whether anything changed. */
+export function omitClosedTerminalTabRecordsForWorktrees(
+  map: ClosedTerminalTabTombstonesByTabId | undefined,
+  isRemovedOwner: (worktreeId: string) => boolean
+): ClosedTerminalTabTombstonesByTabId | undefined {
+  if (!map || !Object.values(map).some((record) => isRemovedOwner(record.worktreeId))) {
+    return map
+  }
+  return Object.fromEntries(
+    Object.entries(map).filter(([, record]) => !isRemovedOwner(record.worktreeId))
+  )
 }
 
 /** Whether a tab id was closed within the TTL, by the record's own worktree. The TTL is checked

@@ -312,7 +312,9 @@ describe('OrcaRuntimeService', () => {
       expect(removeWorktree).not.toHaveBeenCalled()
       // The repo resolved to the local host, so the metadata purge names it —
       // an unqualified purge would evict a same-id row owned by another host.
-      expect(removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'local')
+      expect(removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'local', {
+        pruneCloseRecords: true
+      })
       expect(deleteWorktreeHistoryDirMock).toHaveBeenCalledWith(worktreeId)
       expect(invalidateAuthorizedRootsCacheMock).toHaveBeenCalled()
       expect(notifier.worktreesChanged).toHaveBeenCalledWith(TEST_REPO_ID)
@@ -338,7 +340,9 @@ describe('OrcaRuntimeService', () => {
       expect(removeWorktree).not.toHaveBeenCalled()
       // The repo resolved to the local host, so the metadata purge names it —
       // an unqualified purge would evict a same-id row owned by another host.
-      expect(removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'local')
+      expect(removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'local', {
+        pruneCloseRecords: true
+      })
       expect(deleteWorktreeHistoryDirMock).toHaveBeenCalledWith(worktreeId)
       expect(invalidateAuthorizedRootsCacheMock).toHaveBeenCalled()
       expect(notifier.worktreesChanged).toHaveBeenCalledWith(TEST_REPO_ID)
@@ -404,7 +408,9 @@ describe('OrcaRuntimeService', () => {
     expect(deleteWorktreeHistory.mock.invocationCallOrder[0]).toBeLessThan(
       removeWorktreeMeta.mock.invocationCallOrder[0]
     )
-    expect(removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'ssh:ssh-1')
+    expect(removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'ssh:ssh-1', {
+      pruneCloseRecords: true
+    })
   })
 
   it('routes SSH runtime orphan-directory history cleanup through the PTY owner', async () => {
@@ -540,7 +546,9 @@ describe('OrcaRuntimeService', () => {
       expect(removeWorktree).not.toHaveBeenCalled()
       // The repo resolved to the local host, so the metadata purge names it —
       // an unqualified purge would evict a same-id row owned by another host.
-      expect(removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'local')
+      expect(removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'local', {
+        pruneCloseRecords: true
+      })
       expect(deleteWorktreeHistoryDirMock).toHaveBeenCalledWith(worktreeId)
       expect(invalidateAuthorizedRootsCacheMock).toHaveBeenCalled()
       expect(notifier.worktreesChanged).toHaveBeenCalledWith(TEST_REPO_ID)
@@ -611,7 +619,9 @@ describe('OrcaRuntimeService', () => {
       expect(removeWorktree).not.toHaveBeenCalled()
       // The repo resolved to the local host, so the metadata purge names it —
       // an unqualified purge would evict a same-id row owned by another host.
-      expect(removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'local')
+      expect(removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'local', {
+        pruneCloseRecords: true
+      })
       expect(deleteWorktreeHistoryDirMock).toHaveBeenCalledWith(worktreeId)
       expect(invalidateAuthorizedRootsCacheMock).toHaveBeenCalled()
       expect(notifier.worktreesChanged).toHaveBeenCalledWith(TEST_REPO_ID)

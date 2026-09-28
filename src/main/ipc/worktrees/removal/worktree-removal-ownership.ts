@@ -83,10 +83,11 @@ export function removeWorktreeMetadataAndTransientState(
       hasWorktreeRemovalRepoOwnerOnOtherHost(store, repoId, hostId))
   )
   // Why: worktree IDs are path-derived and reusable; drop process-local caches before the same ID can map to a new workspace.
+  // Every caller has confirmed the removal (or the user chose Forget), so its close records go too.
   if (hostId) {
-    store.removeWorktreeMeta(worktreeId, hostId)
+    store.removeWorktreeMeta(worktreeId, hostId, { pruneCloseRecords: true })
   } else {
-    store.removeWorktreeMeta(worktreeId)
+    store.removeWorktreeMeta(worktreeId, undefined, { pruneCloseRecords: true })
   }
   if (!preservesSameIdOwner) {
     advertisedUrlWatcher.forgetWorktree(worktreeId)

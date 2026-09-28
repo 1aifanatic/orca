@@ -318,7 +318,8 @@ describe('registerWorktreeHandlers', () => {
     // The whole point: without the repo's host the ownerless row would clear the local session instead.
     expect(store.removeWorktreeMeta).toHaveBeenCalledWith(
       'repo-1::/remote/feature-wt',
-      'ssh:conn-1'
+      'ssh:conn-1',
+      { pruneCloseRecords: true }
     )
   })
 
@@ -507,7 +508,11 @@ describe('registerWorktreeHandlers', () => {
 
     finishFirst()
     await expect(first).resolves.toEqual({})
-    expect(store.removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'local')
-    expect(store.removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'ssh:conn-1')
+    expect(store.removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'local', {
+      pruneCloseRecords: true
+    })
+    expect(store.removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'ssh:conn-1', {
+      pruneCloseRecords: true
+    })
   })
 })

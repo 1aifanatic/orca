@@ -127,7 +127,11 @@ export class MetadataLineageOperations {
     return updated
   }
 
-  removeWorktreeMeta(worktreeId: string, hostId?: ExecutionHostId | null): void {
+  removeWorktreeMeta(
+    worktreeId: string,
+    hostId?: ExecutionHostId | null,
+    options: { pruneCloseRecords?: boolean } = {}
+  ): void {
     // A host-qualified removal names the owner; the persisted host is the fallback.
     const persistedOwner =
       this[metadataLineageOperationsContext].runtime.state.worktreeMeta[worktreeId]?.hostId
@@ -196,7 +200,8 @@ export class MetadataLineageOperations {
         worktreeId,
         partition,
         {
-          advanceTerminalTopologyRevision: fencedPartitions.has(partition)
+          advanceTerminalTopologyRevision: fencedPartitions.has(partition),
+          pruneCloseRecords: options.pruneCloseRecords
         }
       )
     }

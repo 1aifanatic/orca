@@ -17,7 +17,8 @@ import { findWorktreeIdForTab } from '../restoring-sessions/pane-identity-migrat
 import { invalidateLocalWorktreeMetadataPruneInputs } from '../../local-worktree-metadata-prune-gate'
 import {
   removeWorkspaceSessionOwner,
-  workspaceSessionPartitionIdsForHost
+  workspaceSessionPartitionIdsForHost,
+  type WorkspaceSessionOwnerRemovalOptions
 } from '../restoring-sessions/session-owner-removal'
 
 import type { StoreRuntimeState } from './store-runtime-state'
@@ -122,13 +123,14 @@ export function removeWorkspaceSessionOwnerInPartition(
   owner: SessionHostPartitionOperations,
   worktreeId: string,
   resolved: ExecutionHostId,
-  options: { advanceTerminalTopologyRevision?: boolean }
+  options: WorkspaceSessionOwnerRemovalOptions
 ): void {
   if (!hasPersistedWorkspaceSession(owner, resolved)) {
     return
   }
   const current = owner.getWorkspaceSession(resolved)
   const session = removeWorkspaceSessionOwner(current, worktreeId, {
+    ...options,
     advanceTerminalTopologyRevision: options.advanceTerminalTopologyRevision ?? true
   })
   if (!session) {
