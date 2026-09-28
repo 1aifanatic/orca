@@ -8,11 +8,15 @@ import type SyncDatabase from './sync-database'
 
 export const RECLAIM_PAGES_PER_STEP = 2000
 
+export function freePageCount(db: SyncDatabase): number {
+  return Number(db.pragma('freelist_count', { simple: true }) ?? 0)
+}
+
 /** One bounded step, run to completion. Returns the pages still on the freelist. */
 export function reclaimFreePagesStep(
   db: SyncDatabase,
   maxPages: number = RECLAIM_PAGES_PER_STEP
 ): number {
   db.pragma(`incremental_vacuum(${maxPages})`)
-  return Number(db.pragma('freelist_count', { simple: true }) ?? 0)
+  return freePageCount(db)
 }

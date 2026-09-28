@@ -8,7 +8,7 @@ import { setImmediate as yieldToEventLoop } from 'node:timers/promises'
 import { join } from 'node:path'
 import type { AgentSessionJournalIdentity } from '../../../shared/agent-session-journal-types'
 import type Database from '../../sqlite/sync-database'
-import { reclaimFreePagesStep } from '../../sqlite/sqlite-free-page-reclaim'
+import { freePageCount, reclaimFreePagesStep } from '../../sqlite/sqlite-free-page-reclaim'
 import { openJournalDatabase } from './journal-database'
 import type { JournalOwnerLock } from './journal-owner-lock'
 import { journalDirectoryFor } from './journal-paths'
@@ -100,14 +100,14 @@ export class JournalHostDatabase {
   private async runReclaim(): Promise<void> {
     try {
       await yieldToEventLoop()
-      let previous = Number.POSITIVE_INFINITY
       while (this.connection) {
+        const before = freePageCount(this.connection)
         const remaining = reclaimFreePagesStep(this.connection)
-        // A step that frees nothing (a file created without incremental auto-vacuum) ends the pass.
-        if (remaining === 0 || remaining >= previous) {
+        // A step that frees nothing (a file created without incremental auto-vacuum) ends the pass;
+        // pages a delete freed since the last step do not.
+        if (remaining === 0 || remaining >= before) {
           return
         }
-        previous = remaining
         await yieldToEventLoop()
       }
     } catch (error) {
