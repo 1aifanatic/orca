@@ -46,7 +46,15 @@ export function nativeInputName(id) {
 
 /** Pure verdict over two `compute` records; `changed` is null when they cannot be compared. */
 export function compareShellFingerprints(base, head) {
-  if (base?.format !== FINGERPRINT_FORMAT || head?.format !== FINGERPRINT_FORMAT) {
+  if (!base || !head) {
+    return {
+      changed: null,
+      reason: 'a fingerprint record is missing or unreadable',
+      parts: [],
+      files: null
+    }
+  }
+  if (base.format !== FINGERPRINT_FORMAT || head.format !== FINGERPRINT_FORMAT) {
     return { changed: null, reason: 'fingerprint format differs', parts: [], files: null }
   }
   const parts = []

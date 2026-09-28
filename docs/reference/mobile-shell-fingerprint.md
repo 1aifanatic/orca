@@ -72,7 +72,8 @@ when a later push makes the shell unchanged. It is left alone on forks and on un
 
 ## When it runs
 
-The workflow runs for changes under `mobile/` and `src/shared/`, which are the only places the
-shell bundles draw modules from. It skips `mobile/rpc-foundation/`, test files and Markdown, which
-never enter a bundle. The root lockfile and `config/patches/` are left out because mobile is its
-own pnpm project and no bundle module resolves from the root `node_modules`.
+The workflow runs for changes under `mobile/` and `src/shared/`, the root `pnpm-lock.yaml` and
+`patches/`, and its own scripts and workflow. Covering all of `src/shared/` closes the gap
+`mobile.yml` has, whose paths list only a few shared files although the shell bundles import many.
+It skips `mobile/rpc-foundation/` and test files: no module in any exported shell bundle comes from
+either.

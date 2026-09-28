@@ -1,12 +1,10 @@
-name: Mobile Shell Fingerprint
+name: Mobile shell fingerprint
 
 # Informative, never failing: does this change need a mobile store release, or does OTA deliver it?
 # See docs/reference/mobile-shell-fingerprint.md.
 #
-# Why these paths: every module in the four shell bundles comes from mobile/ or src/shared/, and
-# no mobile source outside tests and scripts imports any other part of the repo. The root lockfile
-# and config/patches never reach the shell: mobile is its own pnpm project, and no bundle module
-# resolves from the root node_modules. Goldens, tests and docs never enter a bundle.
+# Why the exclusions: every module in the four exported shell bundles comes from mobile/ or
+# src/shared/, and none is a test file or anything under mobile/rpc-foundation/.
 on:
   pull_request:
     types:
@@ -16,11 +14,12 @@ on:
     paths: &shell-paths
       - 'mobile/**'
       - 'src/shared/**'
+      - 'pnpm-lock.yaml'
+      - 'patches/**'
+      - 'mobile/scripts/mobile-shell-fingerprint*'
       - '.github/workflows/mobile-shell-fingerprint.yml'
       - '!mobile/rpc-foundation/**'
-      - '!mobile/**/*.test.*'
-      - '!src/shared/**/*.test.*'
-      - '!mobile/**/*.md'
+      - '!**/*.test.*'
   push:
     branches:
       - main

@@ -1,3 +1,7 @@
+import { spawnSync } from 'node:child_process'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -229,5 +233,46 @@ describe('native digest', () => {
     expect(nativeSourcesDigest(tracked)).not.toBe(
       nativeSourcesDigest([{ type: 'contents', id: 'expoConfig', hash: 'c2' }])
     )
+  })
+})
+
+// The workflow's Report step runs with `if: always()`, so a failed compute reaches `compare` as a
+// missing or unreadable record file.
+describe('compare command', () => {
+  const script = join(import.meta.dirname, 'mobile-shell-fingerprint.mjs')
+
+  function runCompare(files: string[], extra: string[] = []) {
+    return spawnSync(process.execPath, [script, 'compare', ...files, ...extra], {
+      encoding: 'utf8'
+    })
+  }
+
+  it.each([
+    ['missing', (dir: string) => join(dir, 'absent.json')],
+    [
+      'unreadable',
+      (dir: string) => {
+        const file = join(dir, 'truncated.json')
+        writeFileSync(file, '{"format":1,"nat')
+        return file
+      }
+    ]
+  ])('answers unknown, exit 0, when a record is %s', (_label, makeBase) => {
+    const dir = mkdtempSync(join(tmpdir(), 'shell-fingerprint-test-'))
+    try {
+      const head = join(dir, 'head.json')
+      writeFileSync(head, JSON.stringify(record()))
+      const files = [makeBase(dir), head]
+      const markdown = runCompare(files)
+      expect(markdown.status).toBe(0)
+      expect(markdown.stdout).toBe(
+        '### Mobile shell: verdict unknown — a fingerprint record is missing or unreadable\n'
+      )
+      const json = runCompare(files, ['--json'])
+      expect(json.status).toBe(0)
+      expect(JSON.parse(json.stdout).changed).toBeNull()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
