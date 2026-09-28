@@ -1,8 +1,7 @@
 import type { AgentSessionBackgroundTask } from '../../shared/agent-session-wire'
 import type { CodexBackgroundTaskEvent } from './codex-background-task-frames'
-import { codexCommandOutlivesTurn } from './codex-command-lifecycle'
 import { readRecord, readString } from './codex-item-field-readers'
-import { readCodexThreadItem, type CodexThreadItem } from './codex-structured-item-translation'
+import { readCodexThreadItem } from './codex-structured-item-translation'
 import { MAX_CODEX_ITEM_STREAM_METADATA_BYTES } from './codex-item-stream-retention'
 
 const MAX_SETTLED_COMMANDS = 128
@@ -10,8 +9,10 @@ const MAX_DESCRIPTION_CHARS = 512
 
 type Command = { threadId: string; task: AgentSessionBackgroundTask; bytes: number }
 
-/** A tracked command whose process exited, with the item that said so. */
-export type CodexBackgroundCommandExit = { threadId: string; taskId: string; item: CodexThreadItem }
+/** A command process starting, or ending: it exited, its thread closed, or the session ended. */
+export type CodexBackgroundCommandChange =
+  | { type: 'started'; threadId: string; task: AgentSessionBackgroundTask }
+  | { type: 'ended'; threadId: string; taskId: string }
 
 /** The label's reserved share of the description. Reserved, not merely capped:
  *  a label free to spend the whole budget clips away the command it qualifies,
@@ -68,27 +69,16 @@ export class CodexBackgroundCommandTracker {
     )
   }
 
-  observe(event: CodexBackgroundTaskEvent): CodexBackgroundCommandExit | null {
+  observe(event: CodexBackgroundTaskEvent): CodexBackgroundCommandChange | null {
     const parsed = this.parse(event)
     if (!parsed || this.settled.has(parsed.key)) {
       return null
     }
-    const { key, command, completed, item } = parsed
-    const existing = this.commands.get(key)
+    const { key, command, completed } = parsed
     if (completed) {
-      if (existing) {
-        this.liveBytes -= existing.bytes
-        this.commands.delete(key)
-      }
-      const bytes = Buffer.byteLength(key, 'utf8') + 256
-      if (this.liveBytes + bytes <= this.maxMetadataBytes) {
-        this.settled.set(key, bytes)
-        this.settledBytes += bytes
-      }
-      this.trimSettled()
-      return existing ? { threadId: existing.threadId, taskId: existing.task.id, item } : null
+      return this.end(key)
     }
-    if (existing) {
+    if (this.commands.has(key)) {
       return null
     }
     if (this.liveBytes + command.bytes > this.maxMetadataBytes) {
@@ -97,7 +87,14 @@ export class CodexBackgroundCommandTracker {
     this.commands.set(key, command)
     this.liveBytes += command.bytes
     this.trimSettled()
-    return null
+    return { type: 'started', threadId: command.threadId, task: command.task }
+  }
+
+  /** The thread closed: Codex stops its processes first, so none of them can report an exit. */
+  endThread(threadId: string): CodexBackgroundCommandChange[] {
+    return [...this.commands]
+      .filter(([, command]) => command.threadId === threadId)
+      .flatMap(([key]) => this.end(key) ?? [])
   }
 
   tasks(
@@ -117,18 +114,45 @@ export class CodexBackgroundCommandTracker {
       })
   }
 
-  /** The live persistent commands one thread launched, as the strip would publish them. */
+  /** The live commands one thread launched, as the strip would publish them. */
   threadTasks(threadId: string): AgentSessionBackgroundTask[] {
     return [...this.commands.values()]
       .filter((command) => command.threadId === threadId)
       .map((command) => command.task)
   }
 
-  clear(): void {
+  /** The session ended, and every command with it. */
+  clear(): CodexBackgroundCommandChange[] {
+    const ended = [...this.commands.values()].map(
+      ({ threadId, task }): CodexBackgroundCommandChange => ({
+        type: 'ended',
+        threadId,
+        taskId: task.id
+      })
+    )
     this.commands.clear()
     this.settled.clear()
     this.liveBytes = 0
     this.settledBytes = 0
+    return ended
+  }
+
+  /** Retires the key so a replayed frame cannot start the command again. */
+  private end(key: string): CodexBackgroundCommandChange | null {
+    const existing = this.commands.get(key)
+    if (existing) {
+      this.liveBytes -= existing.bytes
+      this.commands.delete(key)
+    }
+    const bytes = Buffer.byteLength(key, 'utf8') + 256
+    if (this.liveBytes + bytes <= this.maxMetadataBytes) {
+      this.settled.set(key, bytes)
+      this.settledBytes += bytes
+    }
+    this.trimSettled()
+    return existing
+      ? { type: 'ended', threadId: existing.threadId, taskId: existing.task.id }
+      : null
   }
 
   private trimSettled(): void {
@@ -147,12 +171,14 @@ export class CodexBackgroundCommandTracker {
 
   private parse(
     event: CodexBackgroundTaskEvent
-  ): { key: string; command: Command; completed: boolean; item: CodexThreadItem } | null {
+  ): { key: string; command: Command; completed: boolean } | null {
     if (event.method !== 'item/started' && event.method !== 'item/completed') {
       return null
     }
+    // Any command may outlive its turn; `source` says only how Codex launched it. A stdin write
+    // starts no process: it reaches one already tracked.
     const item = readCodexThreadItem(readRecord(event.params).item)
-    if (!item || !codexCommandOutlivesTurn(item)) {
+    if (item?.type !== 'commandExecution' || item.source === 'unifiedExecInteraction') {
       return null
     }
     const key = JSON.stringify([event.threadId, item.id])
@@ -174,7 +200,6 @@ export class CodexBackgroundCommandTracker {
     return {
       key,
       completed,
-      item,
       command: {
         ...value,
         bytes:

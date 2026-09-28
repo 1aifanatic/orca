@@ -3,19 +3,21 @@
 //
 // The background-task tracker already follows which child exists, which turn it runs and how that
 // turn ended (the executions), and which command process is still running (the command tracker).
-// This module keeps what only the records read — the tool a child has open, what it said last, its
-// usage, whether it waits on the user — and after each frame re-derives the whole observation of
-// the child that frame was about. Edges are stamped with the host clock when drained, after the
-// journal handled the frame, so the host never holds a record ahead of the frame's own rows. A
-// parent turn ending is never evidence here: Codex children outlive the turn that spawned them, so
-// only a child's own turn, or the session, ends it.
+// A command is a record from its process start until it stops, and then its record goes: the
+// tracker says when, and this module only mirrors it. This module keeps what only the records
+// read — the tool a child has open, what it said last, its usage, whether it waits on the user —
+// and after each frame re-derives the whole observation of the child that frame was about. Edges
+// are stamped with the host clock when drained, after the journal handled the frame, so the host
+// never holds a record ahead of the frame's own rows. A parent turn ending is never evidence here:
+// Codex children outlive the turn that spawned them, so only a child's own turn, or the session,
+// ends it.
 
 import type { AgentSessionBackgroundTask } from '../../shared/agent-session-wire'
 import type {
   AgentChildWorkEvidence,
   AgentChildWorkLiveObservation
 } from '../../shared/agent-status-child-work-evidence'
-import type { CodexBackgroundCommandExit } from './codex-background-command-tracker'
+import type { CodexBackgroundCommandChange } from './codex-background-command-tracker'
 import type {
   CodexBackgroundTaskEvent,
   CodexBackgroundTaskFrame
@@ -24,7 +26,6 @@ import {
   codexChildMessageText,
   codexChildToolCall,
   codexChildTurnOutcome,
-  codexCommandOutcome,
   codexToolCallEnded,
   type CodexChildToolCall
 } from './codex-child-work-translation'
@@ -71,6 +72,7 @@ function commandLive(task: AgentSessionBackgroundTask, ownerId: string | null) {
     child: {
       handle: { idKind: 'task_id', id: task.id },
       kind: 'command',
+      // Its own process, not a turn's: no turn ending may settle it.
       residency: 'background',
       state: 'working',
       ...(task.description ? { description: task.description } : {}),
@@ -82,8 +84,6 @@ function commandLive(task: AgentSessionBackgroundTask, ownerId: string | null) {
 
 export class CodexChildWorkEvidence {
   private readonly facts = new Map<string, ChildFacts>()
-  /** Commands handed to the host: each outlived the turn that launched it and still runs. */
-  private readonly recordedCommands = new Set<string>()
   private pending: CodexPendingChildWork[] = []
 
   constructor(
@@ -92,27 +92,14 @@ export class CodexChildWorkEvidence {
     private readonly liveCommands: (threadId: string) => readonly AgentSessionBackgroundTask[]
   ) {}
 
-  /** After the tracker applied the frame: which command process it saw exit, and the child the
-   *  frame is about. */
+  /** After the tracker applied the frame: which command processes it saw start or stop, and the
+   *  child the frame is about. */
   observe(
     event: CodexBackgroundTaskEvent,
     frame: CodexBackgroundTaskFrame | null,
-    exit: CodexBackgroundCommandExit | null
+    commands: readonly CodexBackgroundCommandChange[]
   ): void {
-    if (exit && this.recordedCommands.delete(exit.taskId)) {
-      const outcome = codexCommandOutcome(exit.item)
-      this.pending.push((observedAt) => ({
-        type: 'ended',
-        observedAt,
-        handle: { idKind: 'task_id', id: exit.taskId },
-        outcome
-      }))
-    }
-    // Codex runs every agent shell alike and never says one was left running, so a shell is work
-    // of its own only once it outlives its turn; until then it is the agent's open call.
-    if (frame?.kind === 'turn' || frame?.kind === 'turn-ended') {
-      this.recordCommandsOf(frame.threadId)
-    }
+    this.queueCommands(commands)
     const threadId = this.childThread(event, frame)
     if (threadId === null) {
       return
@@ -124,10 +111,11 @@ export class CodexChildWorkEvidence {
     this.queueChild(threadId)
   }
 
-  /** The provider session is gone: no child it still ran can report its own ending. */
-  clear(): void {
+  /** The provider session is gone, with the commands it ended: no child it still ran can report
+   *  its own ending. */
+  clear(commands: readonly CodexBackgroundCommandChange[]): void {
     this.facts.clear()
-    this.recordedCommands.clear()
+    this.queueCommands(commands)
     this.pending.push((observedAt) => ({ type: 'session-ended', observedAt }))
   }
 
@@ -150,15 +138,21 @@ export class CodexChildWorkEvidence {
     return threadId === this.primaryThreadId ? null : threadId
   }
 
-  /** A turn of this thread began or ended, so every command it still runs outlived its turn. A
-   *  command belongs to the child thread that launched it; the session's own agent is no owner. */
-  private recordCommandsOf(threadId: string): void {
-    const ownerId = threadId === this.primaryThreadId ? null : threadId
-    for (const task of this.liveCommands(threadId)) {
-      if (!this.recordedCommands.has(task.id)) {
-        this.recordedCommands.add(task.id)
-        this.pending.push(commandLive(task, ownerId))
+  /** A command belongs to the child thread that launched it; the session's own agent is no owner.
+   *  A stopped command leaves no record: it has nothing left to report. */
+  private queueCommands(commands: readonly CodexBackgroundCommandChange[]): void {
+    for (const command of commands) {
+      if (command.type === 'started') {
+        const ownerId = command.threadId === this.primaryThreadId ? null : command.threadId
+        this.pending.push(commandLive(command.task, ownerId))
+        continue
       }
+      const { taskId } = command
+      this.pending.push((observedAt) => ({
+        type: 'removed',
+        observedAt,
+        handle: { idKind: 'task_id', id: taskId }
+      }))
     }
   }
 
@@ -286,9 +280,7 @@ export class CodexChildWorkEvidence {
    *  the owner is recorded, say again whose it is. */
   private requeueOwnedBy(threadId: string): void {
     for (const task of this.liveCommands(threadId)) {
-      if (this.recordedCommands.has(task.id)) {
-        this.pending.push(commandLive(task, threadId))
-      }
+      this.pending.push(commandLive(task, threadId))
     }
     for (const spawned of this.executions.workingChildren()) {
       const facts = this.facts.get(spawned.agentThreadId)

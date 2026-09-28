@@ -86,16 +86,3 @@ export function codexChildTurnOutcome(state: NativeChatSubagentState): AgentChil
       return 'unknown'
   }
 }
-
-/** A persistent command's exit: a zero (or unreported) exit code is the only success, as the
- *  command's own transcript row reads it; a declined command never ran. */
-export function codexCommandOutcome(item: CodexThreadItem): AgentChildWorkOutcome {
-  const status = readString(item, 'status')
-  if (status === 'completed') {
-    return typeof item.exitCode === 'number' && item.exitCode !== 0 ? 'failed' : 'succeeded'
-  }
-  if (status === 'failed') {
-    return 'failed'
-  }
-  return status === 'declined' ? 'cancelled' : 'unknown'
-}

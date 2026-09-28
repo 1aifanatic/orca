@@ -58,7 +58,13 @@ export class CodexBackgroundTaskTracker {
 
   observe(event: CodexBackgroundTaskEvent): boolean {
     const itemEvent = event.method === 'item/started' || event.method === 'item/completed'
-    const commandExit = itemEvent ? this.commands.observe(event) : null
+    const command = itemEvent ? this.commands.observe(event) : null
+    const commands =
+      event.method === 'thread/closed'
+        ? this.commands.endThread(event.threadId)
+        : command
+          ? [command]
+          : []
     const frame = readCodexBackgroundTaskFrame(event, this.primaryThreadId)
     if (frame?.kind === 'subagent') {
       this.executions.register(
@@ -72,9 +78,9 @@ export class CodexBackgroundTaskTracker {
     } else if (frame && frame.threadId !== this.primaryThreadId) {
       this.executions.observeTurn(frame.threadId, frame.turnId, frame.state)
     }
-    this.childWork.observe(event, frame, commandExit)
+    this.childWork.observe(event, frame, commands)
     if (!frame) {
-      return itemEvent ? this.refresh() : false
+      return itemEvent || commands.length > 0 ? this.refresh() : false
     }
     // A primary-turn frame only prompts a republish: turn end reveals children,
     // it never settles them. Codex `spawn_agent` children keep reporting well
@@ -84,8 +90,7 @@ export class CodexBackgroundTaskTracker {
 
   clear(): boolean {
     this.executions.clear()
-    this.commands.clear()
-    this.childWork.clear()
+    this.childWork.clear(this.commands.clear())
     return this.refresh()
   }
 
