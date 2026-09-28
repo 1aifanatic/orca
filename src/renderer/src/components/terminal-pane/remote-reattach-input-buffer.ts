@@ -10,7 +10,7 @@ export function withRemoteReattachInputBuffer(transport: PtyTransport): PtyTrans
     pending?.clear()
     pending = null
   }
-  return {
+  const wrapped: PtyTransport = {
     ...transport,
     async connect(options) {
       clear()
@@ -72,4 +72,6 @@ export function withRemoteReattachInputBuffer(transport: PtyTransport): PtyTrans
       return transport.destroy?.(options)
     }
   }
+  transport.setConnectForRecovery?.((options) => wrapped.connect(options))
+  return wrapped
 }

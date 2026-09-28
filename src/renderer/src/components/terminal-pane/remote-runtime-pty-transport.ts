@@ -886,7 +886,7 @@ export function createRemoteRuntimePtyTransport(
       return true
     }
     if (lastConnectOptions) {
-      void transport.connect(lastConnectOptions)
+      void connectForRecovery(lastConnectOptions)
       return true
     }
     return false
@@ -2174,6 +2174,7 @@ export function createRemoteRuntimePtyTransport(
     flushPendingClaimInput(nextStream)
   }
 
+  let connectForRecovery: PtyTransport['connect'] = (options) => transport.connect(options)
   const transport: PtyTransport = {
     async connect(options) {
       cancelTerminalCreateRetryWait()
@@ -2716,7 +2717,7 @@ export function createRemoteRuntimePtyTransport(
         recovery.currentPhase === 'disconnected'
       ) {
         recovery.begin()
-        void transport.connect(lastConnectOptions)
+        void connectForRecovery(lastConnectOptions)
         return true
       }
       // Why: online/resume fires a parked retry; the button must not be weaker than an event (#12684).
@@ -2786,6 +2787,9 @@ export function createRemoteRuntimePtyTransport(
       return stream.serializeBufferOutcome(opts)
     },
 
+    setConnectForRecovery(connect) {
+      connectForRecovery = connect
+    },
     destroy() {
       destroyed = true
       setAttachmentUnavailable()
