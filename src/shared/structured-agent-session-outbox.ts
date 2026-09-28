@@ -156,24 +156,27 @@ export function requeueStructuredAgentSessionSendRefusal(
   createOperationId: () => string,
   retainOperationId = false
 ): StructuredAgentSessionOutboxEntry {
-  const refusalSettled =
-    agentSessionRefusalOperationState(refusal.code) === 'settled-rejected' ||
-    (refusal.code === 'agent_session_ownership_unknown' &&
-      agentSessionOwnerVerdictAllowsFreshOperationId(refusal.details?.ownerVerdict))
+  const refusalSettled = agentSessionRefusalOperationState(refusal.code) === 'settled-rejected'
+  // An exited owner runs nothing under the old id, so a new one can't collide; the message still
+  // holds the head, since nothing recorded it.
+  const ownerExited =
+    refusal.code === 'agent_session_ownership_unknown' &&
+    agentSessionOwnerVerdictAllowsFreshOperationId(refusal.details?.ownerVerdict)
   if (
-    !refusalSettled ||
+    !(refusalSettled || ownerExited) ||
     retainOperationId ||
     entry.state === 'unconfirmed' ||
     entry.retryAfterUnknownSubmittedAt !== null
   ) {
     return { ...entry, state: 'queued' }
   }
-  // Only here is the refusal proof the message never landed: an earlier attempt under this id, or
-  // one whose delivery was in doubt, may have, so those stay queued behind the block.
+  // Only here may the id rotate: an earlier attempt under this id, or one whose delivery was in
+  // doubt, may have landed, so those stay queued behind the block. Only a settled refusal proves
+  // the message never landed and so releases the queue.
   return {
     ...entry,
     clientMessageId: createOperationId(),
-    state: 'rejected',
+    state: refusalSettled ? 'rejected' : 'queued',
     lastAttemptAt: null,
     retryAfterUnknownSubmittedAt: null
   }
