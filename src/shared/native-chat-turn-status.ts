@@ -1,9 +1,10 @@
 // Turn-status derivation and copy for the native-chat turn rows — the "Working for N /
-// Worked for N" bar under the user's message and the live line at the turn's tail —
-// shared by the desktop renderer (as its i18n fallback strings) and the mobile app
+// Worked for N / Failed after N" bar under the user's message and the live line at the
+// turn's tail — shared by the desktop renderer (as its i18n fallback strings) and the mobile app
 // (used directly — mobile ships English only) so the two surfaces never drift.
 // Everything here is pure; each platform owns its own clock.
 
+import type { AgentJournalTurnOutcome } from './agent-turn-outcome'
 import type { NativeChatMessage } from './native-chat-types'
 
 export const NATIVE_CHAT_TURN_STATUS_COPY = {
@@ -11,6 +12,7 @@ export const NATIVE_CHAT_TURN_STATUS_COPY = {
   working: 'Working…',
   workingFor: 'Working for {{value0}}',
   workedFor: 'Worked for {{value0}}',
+  failedAfter: 'Failed after {{value0}}',
   toggleDetails: 'Toggle turn details',
   responding: 'Agent is responding'
 } as const
@@ -30,18 +32,28 @@ export function formatNativeChatDuration(seconds: number): string {
   return `${hours}h ${minutes % 60}m ${remainingSeconds}s`
 }
 
-/** The turn bar's copy key and duration: the running clock, then the settled one.
- *  Desktop maps this onto `translate`; mobile formats it directly. */
+type NativeChatTurnStatusKey = 'workingFor' | 'workedFor' | 'failedAfter'
+
+/** The turn bar's copy key and duration: the running clock, then the settled one,
+ *  which names a provider failure. Only `failure` does: an unknown verdict is not
+ *  success, but it is not a fault either. Desktop maps this onto `translate`;
+ *  mobile formats it directly. */
 export function describeNativeChatTurnStatus({
   workedSeconds,
-  elapsedSeconds
+  elapsedSeconds,
+  outcome
 }: {
   workedSeconds?: number | null
   elapsedSeconds: number
-}): { key: 'workingFor' | 'workedFor'; duration: string } {
-  return workedSeconds != null
-    ? { key: 'workedFor', duration: formatNativeChatDuration(workedSeconds) }
-    : { key: 'workingFor', duration: formatNativeChatDuration(elapsedSeconds) }
+  outcome?: AgentJournalTurnOutcome | null
+}): { key: NativeChatTurnStatusKey; duration: string } {
+  if (workedSeconds == null) {
+    return { key: 'workingFor', duration: formatNativeChatDuration(elapsedSeconds) }
+  }
+  return {
+    key: outcome === 'failure' ? 'failedAfter' : 'workedFor',
+    duration: formatNativeChatDuration(workedSeconds)
+  }
 }
 
 /** The two readings that label a live turn's tail line, carried together so a
@@ -85,6 +97,7 @@ export function formatNativeChatActiveTurnLabel(input: {
 export function formatNativeChatTurnStatusLabel(input: {
   workedSeconds?: number | null
   elapsedSeconds: number
+  outcome?: AgentJournalTurnOutcome | null
 }): string {
   const { key, duration } = describeNativeChatTurnStatus(input)
   return NATIVE_CHAT_TURN_STATUS_COPY[key].replaceAll('{{value0}}', duration)
@@ -99,6 +112,8 @@ export type NativeChatTurnStatus = {
   startedAt: number | null
   thinking: boolean
   workedSeconds: number | null
+  /** The host's verdict on a settled turn; absent is unknown (and every local clock). */
+  outcome?: AgentJournalTurnOutcome
 }
 
 export type NativeChatTurnTimingByTurn = Readonly<Record<string, NativeChatTurnTiming>>
@@ -199,7 +214,11 @@ export function reduceNativeChatTurnTiming(
 
 /** A turn duration the execution host recorded, which outranks anything this
  *  platform observed locally. */
-export type NativeChatSettledTurn = { startedAt: number; workedSeconds: number }
+export type NativeChatSettledTurn = {
+  startedAt: number
+  workedSeconds: number
+  outcome?: AgentJournalTurnOutcome
+}
 
 /** Per turn: the host's duration, or null when the host recorded the turn but
  *  has no duration to show (still running, or its end was never observed).
@@ -242,7 +261,8 @@ export function selectNativeChatTurnStatuses(
     completedByTurn[turnKey] = {
       startedAt: settled.startedAt,
       thinking: false,
-      workedSeconds: settled.workedSeconds
+      workedSeconds: settled.workedSeconds,
+      ...(settled.outcome ? { outcome: settled.outcome } : {})
     }
   }
   const activeTiming = timingByTurn[activeTurnKey]

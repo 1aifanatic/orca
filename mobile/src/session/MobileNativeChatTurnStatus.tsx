@@ -7,6 +7,7 @@ import {
   NATIVE_CHAT_TURN_STATUS_COPY,
   nativeChatElapsedSeconds
 } from '../../../src/shared/native-chat-turn-status'
+import type { AgentJournalTurnOutcome } from '../../../src/shared/agent-turn-outcome'
 import { colors, spacing, typography } from '../theme/mobile-theme'
 
 /** Seconds tick only while a turn is actually counting, so a settled transcript
@@ -32,17 +33,19 @@ function useElapsedSeconds(startedAt: number | null, counting: boolean): number 
 export function MobileNativeChatTurnStatus({
   startedAt,
   workedSeconds,
+  outcome,
   expanded = false,
   onToggleExpanded
 }: {
   startedAt: number | null
   workedSeconds?: number | null
+  outcome?: AgentJournalTurnOutcome
   expanded?: boolean
   onToggleExpanded?: () => void
 }): React.JSX.Element {
   const settled = workedSeconds != null
   const elapsedSeconds = useElapsedSeconds(startedAt, !settled)
-  const label = formatNativeChatTurnStatusLabel({ workedSeconds, elapsedSeconds })
+  const label = formatNativeChatTurnStatusLabel({ workedSeconds, elapsedSeconds, outcome })
 
   if (settled && onToggleExpanded) {
     return (

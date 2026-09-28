@@ -68,6 +68,7 @@ describe('native-chat shared copy matches the English catalog', () => {
 
   it('keeps the interpolation placeholders the catalog expects', () => {
     expect(NATIVE_CHAT_TURN_STATUS_COPY.workedFor).toContain('{{value0}}')
+    expect(NATIVE_CHAT_TURN_STATUS_COPY.failedAfter).toContain('{{value0}}')
     expect(NATIVE_CHAT_TURN_STATUS_COPY.workingFor).toContain('{{value0}}')
     expect(NATIVE_CHAT_TOOL_ACTIVITY_COPY.countN).toContain('{{value0}}')
     expect(NATIVE_CHAT_TOOL_ACTIVITY_COPY.runningPreview).toContain('{{preview}}')

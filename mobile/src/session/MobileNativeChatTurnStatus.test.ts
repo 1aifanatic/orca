@@ -47,6 +47,7 @@ describe('MobileNativeChatTurnStatus', () => {
   function render(props: {
     startedAt: number | null
     workedSeconds?: number | null
+    outcome?: 'failure'
     expanded?: boolean
     onToggleExpanded?: () => void
   }): ReactTestRenderer {
@@ -81,6 +82,11 @@ describe('MobileNativeChatTurnStatus', () => {
     const tree = render({ startedAt: Date.now(), workedSeconds: 5 })
     expect(tree.root.findAllByType('Pressable' as never)).toHaveLength(0)
     expect(labels(tree.root)).toEqual(['Worked for 5s'])
+  })
+
+  it('says "Failed after" for a turn the provider failed', () => {
+    const tree = render({ startedAt: Date.now(), workedSeconds: 184, outcome: 'failure' })
+    expect(labels(tree.root)).toEqual(['Failed after 3m 4s'])
   })
 
   it('holds no interval once the turn has settled', () => {

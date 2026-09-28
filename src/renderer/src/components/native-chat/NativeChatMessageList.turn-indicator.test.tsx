@@ -742,6 +742,33 @@ describe('NativeChatMessageList turn indicator', () => {
     expect(screen.queryByText(/Working for/)).toBeNull()
   })
 
+  it("says a failed turn failed, from the host's verdict on that turn", () => {
+    const messages = ['user-ok', 'user-failed'].map((id, index) => ({
+      id,
+      role: 'user' as const,
+      blocks: [{ type: 'text' as const, text: id }],
+      timestamp: index,
+      source: 'transcript' as const
+    }))
+    render(
+      <NativeChatMessageList
+        session={{ ...session, status: 'ready', messages }}
+        isWorking={false}
+        workingStartedAt={null}
+        expandSignal={false}
+        fontScale={1}
+        settledTurns={
+          new Map([
+            ['user-ok', { startedAt: 1, workedSeconds: 17, outcome: 'success' as const }],
+            ['user-failed', { startedAt: 2, workedSeconds: 51, outcome: 'failure' as const }]
+          ])
+        }
+      />
+    )
+    expect(screen.getByText('Worked for 17s')).toBeInTheDocument()
+    expect(screen.getByText('Failed after 51s')).toBeInTheDocument()
+  })
+
   it("uses the completed caret to expand that turn's tool details", () => {
     const startedAt = Date.now() - 3000
     render(

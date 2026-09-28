@@ -1,5 +1,6 @@
 import { ChevronRight } from 'lucide-react'
 import { translate } from '@/i18n/i18n'
+import type { AgentJournalTurnOutcome } from '../../../../shared/agent-turn-outcome'
 import {
   describeNativeChatTurnStatus,
   formatNativeChatDuration,
@@ -14,31 +15,41 @@ export { formatNativeChatDuration }
 export function NativeChatWorkingStatus({
   startedAt,
   workedSeconds,
+  outcome,
   expanded = false,
   onToggleExpanded
 }: {
   startedAt: number | null
   workedSeconds?: number | null
+  outcome?: AgentJournalTurnOutcome
   expanded?: boolean
   onToggleExpanded?: () => void
 }): React.JSX.Element {
   const elapsedSeconds = useNativeChatElapsedSeconds(startedAt, workedSeconds == null)
 
-  const { key, duration } = describeNativeChatTurnStatus({ workedSeconds, elapsedSeconds })
+  const { key, duration } = describeNativeChatTurnStatus({
+    workedSeconds,
+    elapsedSeconds,
+    outcome
+  })
   const label =
-    key === 'workedFor'
+    key === 'failedAfter'
       ? translate(
-          'components.native-chat.status.workedFor',
-          NATIVE_CHAT_TURN_STATUS_COPY.workedFor,
-          {
-            value0: duration
-          }
-        )
-      : translate(
-          'components.native-chat.status.workingFor',
-          NATIVE_CHAT_TURN_STATUS_COPY.workingFor,
+          'components.native-chat.status.failedAfter',
+          NATIVE_CHAT_TURN_STATUS_COPY.failedAfter,
           { value0: duration }
         )
+      : key === 'workedFor'
+        ? translate(
+            'components.native-chat.status.workedFor',
+            NATIVE_CHAT_TURN_STATUS_COPY.workedFor,
+            { value0: duration }
+          )
+        : translate(
+            'components.native-chat.status.workingFor',
+            NATIVE_CHAT_TURN_STATUS_COPY.workingFor,
+            { value0: duration }
+          )
   // `tabular-nums`: the live clock reflows its own label every second otherwise.
   const className =
     'flex min-h-8 items-center gap-1 border-b border-border text-sm text-muted-foreground tabular-nums'

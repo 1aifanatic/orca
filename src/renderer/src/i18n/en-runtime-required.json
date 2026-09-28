@@ -2690,6 +2690,7 @@
         }
       },
       "status": {
+        "failedAfter": "Failed after {{value0}}",
         "responding": "Agent is responding",
         "thinking": "Thinking",
         "toggleDetails": "Toggle turn details",

@@ -9,7 +9,8 @@ import type {
   AgentJournalSubmission,
   AgentJournalTurnLifecycleState
 } from './agent-session-journal-types'
-import { readAgentJournalTurn } from './agent-session-turn-record'
+import { readAgentJournalTurn, readAgentJournalTurnOutcome } from './agent-session-turn-record'
+import type { AgentJournalTurnOutcome } from './agent-turn-outcome'
 import type { NativeChatSettledTurn, NativeChatSettledTurns } from './native-chat-turn-status'
 
 export type StructuredAgentTurnTiming = {
@@ -29,6 +30,8 @@ export type StructuredAgentTurnTiming = {
   /** Host clock when the lifecycle row was appended; with `startedAt` it gives
    *  the host-side lag a client must subtract to anchor a live counter. */
   observedAt: number
+  /** The provider's verdict; absent is unknown, never success. */
+  outcome?: AgentJournalTurnOutcome
 }
 
 function readTiming(
@@ -59,6 +62,7 @@ function readTiming(
   // last host revision), never past this turn's own start: the provider opens it only after.
   const queuedUntil =
     precedingTurnEndedAt === undefined ? undefined : Math.min(precedingTurnEndedAt, startedAt)
+  const outcome = readAgentJournalTurnOutcome(turn)
   return {
     state,
     startedAt,
@@ -68,7 +72,8 @@ function readTiming(
     ...(requested !== undefined && queuedUntil !== undefined && queuedUntil > requested
       ? { queuedUntil }
       : {}),
-    observedAt: item.observedAt
+    observedAt: item.observedAt,
+    ...(outcome !== null ? { outcome } : {})
   }
 }
 
@@ -292,7 +297,11 @@ function settledTurnsOf(
       userItemId,
       workedSeconds === null || timing === null
         ? null
-        : { startedAt: timing.startedAt, workedSeconds }
+        : {
+            startedAt: timing.startedAt,
+            workedSeconds,
+            ...(timing.outcome ? { outcome: timing.outcome } : {})
+          }
     )
   }
   for (const submission of submissions) {
