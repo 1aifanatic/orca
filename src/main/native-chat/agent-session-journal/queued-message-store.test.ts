@@ -568,6 +568,14 @@ describe('holds', () => {
     ).resolves.toBeUndefined()
   })
 
+  it('a withdraw naming no drafts touches nothing — a capable Stop with no drafts costs no write', async () => {
+    const journal = await open()
+    await journal.close()
+    await expect(
+      journal.queuedMessages.withdraw({ messageIds: [], settledByOp: 'c\u0000op' })
+    ).resolves.toEqual([])
+  })
+
   it('holds reach only waiting rows', async () => {
     const journal = await open()
     await queueDraft(journal, 'draft-1')

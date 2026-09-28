@@ -146,6 +146,10 @@ export class JournalQueuedMessages {
     messageIds: readonly string[]
     settledByOp: string
   }): Promise<QueuedMessageRow[]> {
+    if (input.messageIds.length === 0) {
+      // Every capable Stop calls this; one with no drafts must cost no write transaction.
+      return Promise.resolve([])
+    }
     return this.deps.serialize(async () => {
       assertJournalWritable(this.deps.readOnly(), this.deps.sessionId)
       const { db } = this.deps.database()
