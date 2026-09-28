@@ -132,15 +132,15 @@ async function send(text: string): Promise<string> {
   return sent.value.clientMessageId
 }
 
-function dispatch(clientMessageId: string) {
-  const submission = host
-    .journalSnapshot(SESSION)
-    .submissions.find((entry) => entry.clientMessageId === clientMessageId)
+async function dispatch(clientMessageId: string) {
+  const submission = (await host.journalSnapshot(SESSION)).submissions.find(
+    (entry) => entry.clientMessageId === clientMessageId
+  )
   return { state: submission?.dispatchState, reason: submission?.reason }
 }
 
-function status(): string {
-  const snapshot = host.journalSnapshot(SESSION)
+async function status(): Promise<string> {
+  const snapshot = await host.journalSnapshot(SESSION)
   return projectStructuredAgentSessionStatus(
     snapshot.items,
     snapshot.submissions,
@@ -166,14 +166,14 @@ it('withdraws a follow-up Claude queued behind the running turn when that turn i
     uuid: connection.sent.at(-1)!.uuid
   })
   await settled()
-  expect(dispatch(first).state).toBe('accepted')
-  const turnId = activeStructuredAgentSessionTurnId(host.journalSnapshot(SESSION).items)
+  expect((await dispatch(first)).state).toBe('accepted')
+  const turnId = activeStructuredAgentSessionTurnId((await host.journalSnapshot(SESSION)).items)
   expect(turnId).not.toBeNull()
 
   const followUp = await send('And then this.')
   await settled()
   queued.push(String(connection.sent.at(-1)!.uuid))
-  expect(dispatch(followUp).state).toBe('pending')
+  expect((await dispatch(followUp)).state).toBe('pending')
 
   const stopped = await host.cancel(CALLER, {
     envelope: envelope('agentSession.cancel', { turnId }),
@@ -189,6 +189,9 @@ it('withdraws a follow-up Claude queued behind the running turn when that turn i
   })
   await settled()
 
-  expect(dispatch(followUp)).toEqual({ state: 'rejected', reason: DISPATCH_REJECTED_CANCELLED })
-  expect(status()).toBe('idle')
+  expect(await dispatch(followUp)).toEqual({
+    state: 'rejected',
+    reason: DISPATCH_REJECTED_CANCELLED
+  })
+  expect(await status()).toBe('idle')
 }, 15_000)
