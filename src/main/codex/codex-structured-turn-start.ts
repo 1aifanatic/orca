@@ -3,6 +3,7 @@ import type { AgentJournalMessageItem } from '../../shared/agent-session-journal
 import type { NativeChatBlock } from '../../shared/native-chat-types'
 import type { AgentSessionDispatchOutcome } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import {
+  CODEX_DEFAULT_REQUEST_TIMEOUT_MS,
   isCodexAppServerRequestError,
   type CodexAppServerConnection
 } from './codex-app-server-connection'
@@ -13,6 +14,7 @@ import {
   codexDispatchRejection,
   codexTurnEndRejection
 } from './codex-structured-turn-end-settlement'
+import type { CodexTurnOpenHolds } from './codex-structured-turn-open-hold'
 import { decodeStructuredAgentSessionOptionValue } from '../../shared/structured-agent-session-option-codec'
 
 // Writing a Codex turn and learning which message landed where, which are not
@@ -47,7 +49,9 @@ export type CodexTurnHost = {
   reportedOptions?: { model?: string }
   fastModeTierByModel: ReadonlyMap<string, string>
   dispatchEchoes: CodexDispatchEchoes
-  startedTurnId?: string
+  /** Primary-thread turns Codex reported started and not yet ended. */
+  activeTurnIds?: ReadonlySet<string>
+  turnOpenHolds: CodexTurnOpenHolds
 }
 
 function turnInputFor(body: AgentJournalMessageItem): Record<string, unknown>[] {
@@ -110,8 +114,6 @@ export async function startCodexTurn(
   if (!host.dispatchEchoes.arm(input.clientMessageId, input.requestedAt)) {
     return false
   }
-  // Only this start's answer may name what a Stop interrupts; an earlier turn is not this one.
-  host.startedTurnId = undefined
   const answer = await host.connection.request(
     'turn/start',
     {
@@ -122,9 +124,7 @@ export async function startCodexTurn(
     },
     { timeoutMs: input.timeoutMs }
   )
-  const turnId = readCodexTurnId(answer)
-  host.startedTurnId = turnId ?? undefined
-  return { turnId }
+  return { turnId: readCodexTurnId(answer) }
 }
 
 /**
@@ -138,6 +138,7 @@ export async function dispatchCodexTurn(
   input: { clientMessageId: string; body: AgentJournalMessageItem; requestedAt?: number },
   timeoutMs: number | undefined
 ): Promise<AgentSessionDispatchOutcome> {
+  const deadlineAt = Date.now() + (timeoutMs ?? CODEX_DEFAULT_REQUEST_TIMEOUT_MS)
   let answer: { turnId: string | null } | false
   try {
     answer = await startCodexTurn(session, { ...input, timeoutMs })
@@ -164,6 +165,13 @@ export async function dispatchCodexTurn(
   const endedFirst = answer.turnId
     ? session.dispatchEchoes.bindTurn(input.clientMessageId, session.threadId, answer.turnId)
     : null
-  const rejection = endedFirst ? codexTurnEndRejection(endedFirst) : null
-  return rejection ? { state: 'rejected', ...rejection } : { state: 'admitted' }
+  if (endedFirst) {
+    const rejection = codexTurnEndRejection(endedFirst)
+    return rejection ? { state: 'rejected', ...rejection } : { state: 'admitted' }
+  }
+  // Codex refuses an interrupt before it opens the turn, so a Stop queued behind this waits for it.
+  if (answer.turnId && !session.activeTurnIds?.has(answer.turnId)) {
+    await session.turnOpenHolds.hold(answer.turnId, deadlineAt)
+  }
+  return { state: 'admitted' }
 }

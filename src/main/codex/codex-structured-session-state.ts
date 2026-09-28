@@ -10,6 +10,10 @@ import type {
   openCodexAppServerConnection
 } from './codex-app-server-connection'
 import { CodexAcquisitionWindow } from './codex-structured-acquisition-window'
+import {
+  createCodexTurnOpenHolds,
+  type CodexTurnOpenHolds
+} from './codex-structured-turn-open-hold'
 import type { CodexDispatchEchoes } from './codex-structured-dispatch-echo'
 import type { AgentSessionBackgroundTaskState } from '../../shared/agent-session-wire'
 import type { CodexBackgroundTaskTracker } from './codex-background-task-tracker'
@@ -115,10 +119,11 @@ export type CodexSession = {
   threadId: string
   historyPath: string | null
   historyMode?: 'legacy' | 'paginated'
+  /** Primary-thread turns Codex reported started and not yet ended, as read off the wire: what
+   *  rewind waits out and what a Stop naming no turn interrupts when the journal shows none. */
   activeTurnIds?: Set<string>
-  /** The turn the latest `turn/start` answered with; what a Stop naming no turn interrupts
-   *  before the journal shows one. Cleared as each start is sent, so never an earlier turn. */
-  startedTurnId?: string
+  /** Sends' handovers waiting for the turn Codex answered them into to open. */
+  turnOpenHolds: CodexTurnOpenHolds
   dispatchPending?: boolean
   prompts: CodexAcquisitionWindow['prompts']
   options: Map<string, string>
@@ -149,8 +154,17 @@ export function mintCodexAcquisitionGeneration(deps: CodexStructuredSessionAdapt
 export function codexSessionLifecycle(
   fence: number,
   acquisitionGeneration: string
-): Pick<CodexSession, 'ended' | 'requestedClose' | 'fence' | 'acquisitionGeneration'> {
-  return { ended: false, requestedClose: false, fence, acquisitionGeneration }
+): Pick<
+  CodexSession,
+  'ended' | 'requestedClose' | 'fence' | 'acquisitionGeneration' | 'turnOpenHolds'
+> {
+  return {
+    ended: false,
+    requestedClose: false,
+    fence,
+    acquisitionGeneration,
+    turnOpenHolds: createCodexTurnOpenHolds()
+  }
 }
 
 export function requireLiveCodexSession(

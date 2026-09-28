@@ -1,4 +1,5 @@
 import { createCodexDispatchEchoes } from './codex-structured-dispatch-echo'
+import { createCodexTurnOpenHolds } from './codex-structured-turn-open-hold'
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentSessionJournalIdentity } from '../../shared/agent-session-journal-types'
 import type {
@@ -106,6 +107,7 @@ describe('Codex structured session close lifecycle', () => {
       reportedOptions: {},
       fastModeTierByModel: new Map(),
       dispatchEchoes: createCodexDispatchEchoes(),
+      turnOpenHolds: createCodexTurnOpenHolds(),
       translator
     }
     const sessions = new Map([['session-1', session]])

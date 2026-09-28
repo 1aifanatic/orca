@@ -18,10 +18,10 @@ type CancelInput = Parameters<StructuredAgentSessionAdapter['cancelTurn']>[0]
 type AnswerInput = Parameters<StructuredAgentSessionAdapter['answerPrompt']>[0]
 
 /**
- * A Stop that names no turn: interrupt the turn the journal shows, or else the one the latest
- * `turn/start` answered with — the gap before `turn/started` lands, which no client can name. A
- * `turn/start` still unanswered is never seen here: its handover holds the session's queue, which
- * Stop waits in. One that failed left no turn id, so nothing is interrupted.
+ * A Stop that names no turn: interrupt the turn the journal shows, or else the one Codex reported
+ * started and not yet ended, which the journal can trail by a publish. A send's handover, which a
+ * Stop queues behind, lasts until its turn opens, so an answered turn Codex has not opened is never
+ * the target: Codex would refuse it.
  */
 function cancelCodexConversation(
   input: Parameters<typeof cancelCodexStructuredTurn>[0],
@@ -32,7 +32,7 @@ function cancelCodexConversation(
   // A turn the journal shows that Codex has not started yet (a compaction's) has nothing to stop.
   const turnId =
     liveTurnId === null
-      ? session.startedTurnId
+      ? [...(session.activeTurnIds ?? [])].at(-1)
       : compactions.providerTurnId(request.sessionId, liveTurnId)
   if (!turnId) {
     return Promise.resolve({ cancelled: false })

@@ -1,5 +1,6 @@
 // A Codex send the turn it went into never took: the Stop that interrupts that turn
-// withdraws it, and nothing reads as working after. Driven through the shipped host,
+// withdraws it, and nothing reads as working after. A Stop sent before Codex opens that
+// turn waits for it to open, since Codex refuses an interrupt until then. Driven through the shipped host,
 // journal and Codex adapter; only the Codex child is fake, keeping Codex 0.157's
 // turn bookkeeping.
 
@@ -13,6 +14,7 @@ import type {
   openCodexAppServerConnection
 } from '../codex/codex-app-server-connection'
 import { codexTurnLifecycleFake } from '../codex/codex-turn-lifecycle-fake'
+import { settledWithin } from '../codex/codex-structured-dispatch-test-support'
 import { computeAgentSessionPayloadFingerprint } from '../../shared/agent-session-mutation-envelope'
 import type { AgentJournalSubmission } from '../../shared/agent-session-journal-types'
 import { classifyDispatchRejection } from '../../shared/structured-agent-session-dispatch-rejection'
@@ -50,6 +52,7 @@ let host: StructuredAgentSessionHost
 let fence: number
 let handlers: CodexAppServerConnectionHandlers | undefined
 let answers: number
+let interrupts: number
 let turns: ReturnType<typeof codexTurnLifecycleFake>
 let operations = 0
 
@@ -78,10 +81,10 @@ async function send(text: string): Promise<string> {
   return sent.value.clientMessageId
 }
 
-async function stop(turnId: string): Promise<void> {
+async function stop(turnId?: string): Promise<void> {
   const stopped = await host.cancel(CALLER, {
-    envelope: envelope('agentSession.cancel', { turnId }),
-    turnId
+    envelope: envelope('agentSession.cancel', turnId === undefined ? {} : { turnId }),
+    ...(turnId === undefined ? {} : { turnId })
   })
   if (!stopped.ok) {
     throw new Error(JSON.stringify(stopped.refusal))
@@ -111,6 +114,7 @@ function verdictOf(submissions: readonly AgentJournalSubmission[], clientMessage
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'orca-codex-turn-end-'))
   answers = 0
+  interrupts = 0
   turns = codexTurnLifecycleFake(
     THREAD,
     () => (method, params) => handlers?.onNotification?.(method, params)
@@ -135,6 +139,7 @@ beforeEach(async () => {
           return turns.routes['turn/start']()
         }
         if (method === 'turn/interrupt') {
+          interrupts += 1
           return turns.routes['turn/interrupt'](params)
         }
         return {}
@@ -213,5 +218,26 @@ describe('a Codex send its turn ended without taking it', () => {
     expect(verdictOf(after.submissions, opening)).toBe('accepted')
     expect(verdictOf(after.submissions, followUp)).toBe('withdrawn')
     expect(after.owesWork).toBe(false)
+  })
+})
+
+describe('a Stop sent after Codex answered a cold send, before it opened the turn', () => {
+  it('waits for the turn to open, then stops it and withdraws the send', async () => {
+    const sent = await send('look around')
+    await vi.waitFor(() => expect(answers).toBe(1))
+
+    const stopping = stop()
+    // Unheld, it would reach Codex now, which would refuse it, and be done.
+    expect(await settledWithin(stopping, 1_000)).toBe('held')
+    expect(interrupts).toBe(0)
+    turns.start()
+    await stopping
+
+    expect(interrupts).toBe(1)
+    expect(turns.turnId).toBeNull()
+    await vi.waitFor(async () =>
+      expect(verdictOf((await settled()).submissions, sent)).toBe('withdrawn')
+    )
+    expect((await settled()).owesWork).toBe(false)
   })
 })

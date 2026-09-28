@@ -43,7 +43,8 @@ export type CodexAppServerLaunch = {
   envToDelete?: readonly string[]
 }
 
-const DEFAULT_REQUEST_TIMEOUT_MS = 30_000
+/** A request's deadline when its caller names none. */
+export const CODEX_DEFAULT_REQUEST_TIMEOUT_MS = 30_000
 const GRACEFUL_EXIT_MS = 1_500
 const FORCED_EXIT_MS = 1_000
 const STDERR_TAIL_MAX_BYTES = 8192
@@ -207,7 +208,7 @@ export async function openCodexAppServerConnection(
       return Promise.reject(buildExitError())
     }
     const id = nextRequestId++
-    const timeoutMs = options.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS
+    const timeoutMs = options.timeoutMs ?? CODEX_DEFAULT_REQUEST_TIMEOUT_MS
     return new Promise<unknown>((resolve, reject) => {
       // Why: per request, not per session — a chat session outlives every call,
       // so only the individual call can carry a deadline.

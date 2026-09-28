@@ -54,6 +54,7 @@ export function handleCodexSessionExit(input: {
   // Nothing can echo for this child any more; the journal's pending-submission
   // recovery is what settles the sends these were armed for.
   session.dispatchEchoes.clear()
+  session.turnOpenHolds.releaseAll()
   session.backgroundTasks.clear()
   input.onBackgroundTasksChanged?.(input.sessionId, null)
   session.unbindReadingControl?.()
