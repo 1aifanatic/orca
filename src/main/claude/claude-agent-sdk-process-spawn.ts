@@ -17,7 +17,7 @@ export type ClaudeCodeProcessSpawn = {
    * token. On POSIX it is the provider supervisor's, which outlives Claude by construction.
    */
   readonly pid: number | undefined
-  /** Whether the child is the POSIX supervisor, whose SIGTERM stops Claude and then itself. */
+  /** The spawn spec's verdict, so the close ladder never re-decides it. False until the SDK spawns. */
   readonly supervised: boolean
   readonly stderrTail: string
 }
@@ -48,7 +48,7 @@ export function createClaudeCodeProcessSpawn(
 ): ClaudeCodeProcessSpawn {
   let child: ClaudeCodeChild | null = null
   let stderrTail = ''
-  const supervised = platform !== 'win32'
+  let supervised = false
   return {
     spawn: (options) => {
       const spec = createProviderSpawnSpec(
@@ -71,6 +71,7 @@ export function createClaudeCodeProcessSpawn(
         stdio: ['pipe', 'pipe', 'pipe']
       })
       child = spawned
+      supervised = spec.supervised
       // The SDK drains stderr only for its own local spawn, so a custom spawner must:
       // otherwise the child blocks on a full pipe and exit errors lose their tail.
       spawned.stderr.setEncoding('utf8').on('data', (chunk: string) => {
@@ -84,7 +85,9 @@ export function createClaudeCodeProcessSpawn(
     get pid() {
       return child?.pid
     },
-    supervised,
+    get supervised() {
+      return supervised
+    },
     get stderrTail() {
       return stderrTail
     }

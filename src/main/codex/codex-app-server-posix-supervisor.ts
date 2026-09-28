@@ -166,13 +166,22 @@ export function createProviderSpawnSpec(
   launch: CodexAppServerLaunch,
   childEnv: NodeJS.ProcessEnv,
   platform: NodeJS.Platform
-): { program: string; args: string[]; env: NodeJS.ProcessEnv; cwd: string; detached: boolean } {
-  const supervised = platform === 'win32' ? null : supervisedPosixLaunch(launch, childEnv)
+): {
+  program: string
+  args: string[]
+  env: NodeJS.ProcessEnv
+  cwd: string
+  detached: boolean
+  /** The child is the supervisor, whose SIGTERM stops the provider and then itself. */
+  supervised: boolean
+} {
+  const supervisor = platform === 'win32' ? null : supervisedPosixLaunch(launch, childEnv)
   return {
-    program: supervised?.command ?? launch.command,
-    args: supervised?.args ?? launch.args,
-    env: supervised?.env ?? childEnv,
+    program: supervisor?.command ?? launch.command,
+    args: supervisor?.args ?? launch.args,
+    env: supervisor?.env ?? childEnv,
     cwd: launch.cwd ?? process.cwd(),
-    detached: platform !== 'win32'
+    detached: platform !== 'win32',
+    supervised: supervisor !== null
   }
 }

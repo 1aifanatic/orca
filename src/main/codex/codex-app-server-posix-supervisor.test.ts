@@ -68,7 +68,8 @@ describe('structured provider supervision', () => {
       args: ['app-server', '--flag'],
       env: { PATH: '/bin' },
       cwd: '/work/repo',
-      detached: false
+      detached: false,
+      supervised: false
     })
   })
 })
