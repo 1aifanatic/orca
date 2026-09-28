@@ -171,7 +171,8 @@ export function classifyDispatchRejection(
  * a crash or a dead agent left it in doubt for good and the next message is how the chat
  * continues. A live `unknown` is not settled — it can still turn `rejected` — so a client keeps it
  * like a `pending`. An older host's `notDelivered` was only ever that same doubt, inferred from
- * the transcript, so it is drawn as sent rather than dropped from history.
+ * the transcript, so it is drawn as sent rather than dropped from history. Such a host wrote no
+ * session row, so that message carries no notice; sending again is how the chat continues.
  */
 export function structuredAgentSessionSubmissionSettledAsSent(
   submission: Pick<AgentJournalSubmission, 'dispatchState' | 'reason' | 'recovered'> & {
