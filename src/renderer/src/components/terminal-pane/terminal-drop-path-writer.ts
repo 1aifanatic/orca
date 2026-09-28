@@ -58,16 +58,25 @@ export async function writeTerminalDropPathsToCapturedTarget({
     // shell-escaped, space-separated behaviour for use in shell commands.
     //
     // Image payloads carry no trailing space of their own, so when an image is
-    // immediately followed by a non-image path the two would otherwise collide
-    // (`<bracketed-paste>/repo/a.ts`). Add a single separating space in that
-    // case only — back-to-back image pastes are self-delimiting and a stray
-    // space between them would land in the TUI input.
+    // immediately followed by another path the two would otherwise collide
+    // (`<bracketed-paste>/repo/a.ts`). Add a single separating space unless
+    // both are raw image pastes — those are self-delimiting for TUIs, and a
+    // stray space between them would land in the TUI input. Keep it when
+    // either side is shell-escaped: a shell ignores paste boundaries, so
+    // `'/a (1).png''/b (2).png'` would otherwise become one argument.
+    const pathIsImage = isImageDropPath(path)
+    const pathIsRawPasteImage = pathIsImage && canPasteImageDropPathRaw(path, targetShell)
     const nextPath = paths[index + 1]
-    const needsSeparatorAfterImage = nextPath !== undefined && !isImageDropPath(nextPath)
-    const payload = isImageDropPath(path)
+    const nextPathIsRawPasteImage =
+      nextPath !== undefined &&
+      isImageDropPath(nextPath) &&
+      canPasteImageDropPathRaw(nextPath, targetShell)
+    const needsSeparatorAfterImage =
+      nextPath !== undefined && !(pathIsRawPasteImage && nextPathIsRawPasteImage)
+    const payload = pathIsImage
       ? separateImagePasteFromFollowingText(
           wrapTerminalBracketedPasteText(
-            canPasteImageDropPathRaw(path, targetShell) ? path : shellEscapePath(path, targetShell)
+            pathIsRawPasteImage ? path : shellEscapePath(path, targetShell)
           ),
           needsSeparatorAfterImage
         )
