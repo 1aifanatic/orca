@@ -15,12 +15,8 @@ import {
   isAgentSessionOperationRow,
   type AgentSessionOperationRow
 } from '../../shared/agent-session-operation-ledger'
-import {
-  AGENT_SESSION_RECORD_SCHEMA_VERSION,
-  isPersistedAgentSessionRecord,
-  type AgentSessionRecord
-} from '../../shared/agent-session-record'
-import { normalizeLegacyHandoffRecord } from '../../shared/agent-session-legacy-handoff-lease'
+import type { AgentSessionRecord } from '../../shared/agent-session-record'
+import { decodeStoredAgentSessionRecord } from './agent-session-stored-record-decode'
 import { agentSessionStoreBackupPath as backupPath } from './agent-session-record-store-write'
 export { saveAgentSessionStore } from './agent-session-record-store-write'
 import { parseAgentSessionTabTable, type AgentSessionTabTable } from './agent-session-tab-table'
@@ -144,25 +140,13 @@ function parseState(
   let legacyHandoffLeasesNormalized = false
   if (typeof file.records === 'object' && file.records !== null) {
     for (const [sessionId, value] of Object.entries(file.records)) {
-      const decoded = isPersistedAgentSessionRecord(value)
-        ? normalizeLegacyHandoffRecord(value)
-        : null
-      const record = decoded?.record ?? null
-      if (record?.sessionId === sessionId) {
-        state.records.set(sessionId, record)
+      const decoded = decodeStoredAgentSessionRecord(sessionId, value)
+      if ('record' in decoded) {
+        state.records.set(sessionId, decoded.record)
         // Why: mapped while parsing, so every revision is taken over the same normalized state.
-        legacyHandoffLeasesNormalized ||= decoded?.normalized === true
+        legacyHandoffLeasesNormalized ||= decoded.normalized
       } else {
-        const valueSchemaVersion =
-          typeof value === 'object' &&
-          value !== null &&
-          (value as { schemaVersion?: unknown }).schemaVersion
-        const reason = record
-          ? 'record_key_session_id_mismatch'
-          : valueSchemaVersion === AGENT_SESSION_RECORD_SCHEMA_VERSION
-            ? 'current_shape_invalid'
-            : 'unsupported_schema'
-        state.unreadableRecords.set(sessionId, { reason, raw: value })
+        state.unreadableRecords.set(sessionId, { reason: decoded.reason, raw: value })
         needsRewrite ||= schemaVersion === AGENT_SESSION_STORE_SCHEMA_VERSION
       }
     }
@@ -182,7 +166,20 @@ function parseState(
         }
         continue
       }
-      state.unreadableRecords.set(sessionId, { reason: unusable.reason, raw: unusable.raw })
+      // Why: the verdict is only this build's to keep if this build still cannot read the bytes;
+      // a row an older build quarantined must not refuse its session forever after a roll-forward.
+      const requalified = decodeStoredAgentSessionRecord(sessionId, unusable.raw)
+      if (!('record' in requalified)) {
+        state.unreadableRecords.set(sessionId, { reason: unusable.reason, raw: unusable.raw })
+        continue
+      }
+      // A live row wins: nothing admits a new record under a quarantined id, so a live one is a
+      // salvaged successor that may already carry later fences the quarantined bytes predate.
+      if (!state.records.has(sessionId)) {
+        state.records.set(sessionId, requalified.record)
+        legacyHandoffLeasesNormalized ||= requalified.normalized
+      }
+      needsRewrite ||= schemaVersion === AGENT_SESSION_STORE_SCHEMA_VERSION
     }
   }
   if (typeof file.operations === 'object' && file.operations !== null) {

@@ -1,5 +1,5 @@
 // Unreadable session records: quarantine when nothing can vouch for the session, salvage
-// when the previous committed state can.
+// when the previous committed state can, and restore a quarantined row this build can read.
 
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -86,6 +86,22 @@ async function corruptPrimaryRecord(): Promise<string> {
   return filePath
 }
 
+/** The store after an older build that could not decode the record committed twice: the row
+ *  sits only in the quarantine of both the primary and the backup. */
+async function quarantineRecordInBothCopies(
+  mutateRaw: (record: Record<string, unknown>) => void = () => {}
+): Promise<string> {
+  const filePath = agentSessionStorePath(directory)
+  const raw = JSON.parse(await readFile(filePath, 'utf-8'))
+  const record = raw.records['session-alpha']
+  mutateRaw(record)
+  delete raw.records['session-alpha']
+  raw.unusableRecords['session-alpha'] = { reason: 'current_shape_invalid', raw: record }
+  const payload = JSON.stringify(raw)
+  await Promise.all([writeFile(filePath, payload), writeFile(`${filePath}.bak`, payload)])
+  return filePath
+}
+
 beforeEach(async () => {
   directory = await mkdtemp(join(tmpdir(), 'orca-agent-session-salvage-'))
 })
@@ -163,5 +179,77 @@ describe('unreadable session records', () => {
       claimStatus: 'reserved',
       runtimeFence: 3
     })
+  })
+
+  it('restores a quarantined record this build can read and persists the restore', async () => {
+    await establishOwner(await open())
+    const filePath = await quarantineRecordInBothCopies()
+
+    const reopened = await open()
+    expect(reopened.isSessionUnreadable('session-alpha')).toBe(false)
+    expect(reopened.getRecord('session-alpha')?.lease).toMatchObject({
+      runtimeFence: 1,
+      unreconciled: true
+    })
+    const persisted = JSON.parse(await readFile(filePath, 'utf-8'))
+    expect(persisted.records['session-alpha'].sessionId).toBe('session-alpha')
+    expect(persisted.unusableRecords).not.toHaveProperty('session-alpha')
+
+    await reopened.reconcileOnRestart({
+      probe: async () => ({ outcome: 'pid-absent' }),
+      now: NOW + 1
+    })
+    const reserved = await reopened.reserveOwner(
+      reserveRequest({ expectedFence: 2, spawnToken: 'spawn-b' })
+    )
+    expect(reserved.record.lease.claimStatus).toBe('reserved')
+    const reloaded = await open()
+    expect(reloaded.isSessionUnreadable('session-alpha')).toBe(false)
+    expect(reloaded.getRecord('session-alpha')?.lease.runtimeFence).toBe(3)
+  })
+
+  it('keeps a quarantined record this build still cannot read refused', async () => {
+    await establishOwner(await open())
+    const filePath = await quarantineRecordInBothCopies((record) => {
+      record.schemaVersion = 999
+    })
+    const before = await readFile(filePath, 'utf-8')
+
+    const reopened = await open()
+    expect(reopened.getRecord('session-alpha')).toBeNull()
+    expect(reopened.isSessionUnreadable('session-alpha')).toBe(true)
+    await expect(reopened.reserveOwner(reserveRequest())).rejects.toThrow(
+      'execution_owner_reconciling'
+    )
+    await expect(readFile(filePath, 'utf-8')).resolves.toBe(before)
+  })
+
+  it('keeps the live record over a readable quarantined copy of the same session', async () => {
+    const first = await open()
+    await establishOwner(first)
+    const filePath = agentSessionStorePath(directory)
+    const stale = JSON.parse(await readFile(filePath, 'utf-8')).records['session-alpha']
+    await first.setJournalCheckpoint({
+      sessionId: 'session-alpha',
+      fence: 1,
+      checkpoint: { epoch: 1, sequence: 1 },
+      now: NOW
+    })
+    const raw = JSON.parse(await readFile(filePath, 'utf-8'))
+    raw.unusableRecords['session-alpha'] = { reason: 'current_shape_invalid', raw: stale }
+    await writeFile(filePath, JSON.stringify(raw))
+
+    const reopened = await open()
+    expect(reopened.getRecord('session-alpha')?.lease.journalCheckpoint).toEqual({
+      epoch: 1,
+      sequence: 1
+    })
+    expect(reopened.isSessionUnreadable('session-alpha')).toBe(false)
+    const persisted = JSON.parse(await readFile(filePath, 'utf-8'))
+    expect(persisted.records['session-alpha'].lease.journalCheckpoint).toEqual({
+      epoch: 1,
+      sequence: 1
+    })
+    expect(persisted.unusableRecords).not.toHaveProperty('session-alpha')
   })
 })
