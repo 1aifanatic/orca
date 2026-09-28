@@ -1,9 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
-import { dispatchMobileStructuredCommand } from './mobile-structured-composer-command'
-import {
-  structuredAgentSessionSendBody,
-  type StructuredAgentSessionAttachment
-} from '../../../src/shared/structured-agent-session-outbox'
 import { encodeNativeChatTranscriptIdentity } from '../../../src/shared/native-chat-transcript-retention'
 import type { MobileNativeChatSendOutcome } from './mobile-native-chat-send'
 import { projectStructuredAgentSessionMessages } from '../../../src/shared/structured-agent-session-message-projection'
@@ -19,7 +14,6 @@ import {
   projectStructuredPermission,
   projectStructuredQuestion
 } from './mobile-structured-agent-prompts'
-import { timeoutForDeadline } from './mobile-structured-agent-session-rpc'
 import type { RpcClient } from '../transport/rpc-client'
 import type { MobileChatPermission } from './mobile-native-chat-permission'
 import type { MobileChatQuestion } from './mobile-native-chat-question'
@@ -30,7 +24,6 @@ import { useMobileStructuredPromptResponses } from './use-mobile-structured-prom
 import type { StructuredAgentSessionHostSupport } from './mobile-structured-agent-session-host-support'
 import { useMobileStructuredAgentOptions } from './use-mobile-structured-agent-options'
 import { useMobileStructuredAgentTurnTiming } from './use-mobile-structured-agent-turn-timing'
-import { sendMobileStructuredAgentSessionMessage } from './mobile-structured-agent-session-send'
 import { useMobileStructuredSendOperationReconciliation } from './use-mobile-structured-send-operation-reconciliation'
 import {
   pendingStructuredPromptIdentity,
@@ -38,15 +31,14 @@ import {
 } from './mobile-structured-agent-session-cancel'
 import { useMobileStructuredAgentMutate } from './use-mobile-structured-agent-mutation'
 import {
+  useMobileStructuredSendWithOutcome,
+  type StructuredMobileSendAttachment
+} from './use-mobile-structured-send-with-outcome'
+import {
   useMobileStructuredQueuedMessageControls,
   type MobileQueuedComposerRestoreSeam,
   type MobileStructuredQueuedMessageControls
 } from './use-mobile-structured-queued-message-controls'
-
-type StructuredMobileAttachment = StructuredAgentSessionAttachment & {
-  id?: string
-  contentFingerprint?: string
-}
 
 type StructuredMobileSession = ReturnType<typeof useMobileStructuredAgentOptions> &
   ReturnType<typeof useMobileStructuredAgentTurnTiming> & {
@@ -59,7 +51,7 @@ type StructuredMobileSession = ReturnType<typeof useMobileStructuredAgentOptions
       text: string,
       images?: string[],
       deadline?: number,
-      attachments?: readonly StructuredMobileAttachment[]
+      attachments?: readonly StructuredMobileSendAttachment[]
     ) => Promise<MobileNativeChatSendOutcome>
     cancel: () => void
     permission: MobileChatPermission | null
@@ -135,87 +127,26 @@ export function useMobileStructuredAgentSession(args: {
   const { conversationCommands, invokeStructuredOption, optionSnapshot, setStructuredOption } =
     options
 
-  const sendWithOutcome = useCallback(
-    async (
-      text: string,
-      images?: string[],
-      deadline?: number,
-      attachments?: readonly StructuredMobileAttachment[]
-    ): Promise<MobileNativeChatSendOutcome> => {
-      const currentFence = stateRef.current.fence
-      if (!client || !sessionId || !enabled || currentFence === null) {
-        onSendError('Message not sent (disconnected)')
-        return 'rejected'
-      }
-      const timeoutMs = timeoutForDeadline(deadline)
-      if (timeoutMs === null) {
-        onSendError('Message not sent')
-        return 'rejected'
-      }
-      if (attachments === undefined && images !== undefined && images.length > 0) {
-        onSendError('Message not sent')
-        return 'rejected'
-      }
-      const sendAttachments = attachments ?? []
-      const commandOutcome = await dispatchMobileStructuredCommand({
-        text,
-        hasAttachments: Boolean(sendAttachments.length || images?.length),
-        client,
-        sessionId,
-        fence: currentFence,
-        sessionKey,
-        pending: commandPendingRef,
-        operationIds: operationIdsRef.current,
-        controller: {
-          agent: agent === 'claude' ? 'claude' : 'codex',
-          snapshot: optionSnapshot,
-          setOption: setStructuredOption,
-          invokeAction: invokeStructuredOption,
-          conversationCommands
-        },
-        canRun: () =>
-          !activeStructuredAgentSessionTurnId(stateRef.current.items) &&
-          !stateRef.current.items.some(
-            (item) => pendingStructuredApproval(item) || pendingStructuredQuestion(item)
-          ),
-        onError: onSendError,
-        timeoutMs
-      })
-      if (commandOutcome !== null) {
-        return commandOutcome
-      }
-      const body = structuredAgentSessionSendBody(text, sendAttachments)
-      if (body.blocks.length === 0) {
-        return 'rejected'
-      }
-      return sendMobileStructuredAgentSessionMessage({
-        client,
-        sessionId,
-        sessionKey,
-        callerIdentity,
-        expectedRuntimeFence: currentFence,
-        text,
-        attachments: sendAttachments,
-        ...(queueCapable ? { delivery: 'queue-if-active' as const } : {}),
-        deadline,
-        onError: onSendError
-      })
+  const sendWithOutcome = useMobileStructuredSendWithOutcome({
+    agent,
+    callerIdentity,
+    client,
+    sessionId,
+    sessionKey,
+    enabled,
+    queueCapable,
+    composerRestore,
+    stateRef,
+    commandPending: commandPendingRef,
+    operationIds: operationIdsRef.current,
+    controller: {
+      snapshot: optionSnapshot,
+      setOption: setStructuredOption,
+      invokeAction: invokeStructuredOption,
+      conversationCommands
     },
-    [
-      agent,
-      callerIdentity,
-      client,
-      conversationCommands,
-      enabled,
-      invokeStructuredOption,
-      onSendError,
-      optionSnapshot,
-      queueCapable,
-      sessionId,
-      sessionKey,
-      setStructuredOption
-    ]
-  )
+    onSendError
+  })
   const { groupedDraft, respondPermission, respondQuestion } = useMobileStructuredPromptResponses({
     stateRef,
     sessionKey,

@@ -7,6 +7,7 @@ import type {
   AgentSessionCancelResult,
   AgentSessionQueuedMessageDeleteResult
 } from '../../../src/shared/agent-session-wire'
+import type { AgentSessionConversationCommandResult } from '../../../src/shared/agent-session-conversation-command'
 import type { RpcClient } from '../transport/rpc-client'
 import { requestStructuredAgentSessionMutation } from './mobile-structured-agent-session-rpc'
 import { queuedMessageBodyText } from './mobile-structured-queued-message-cards'
@@ -98,11 +99,15 @@ export async function editMobileQueuedMessage(input: {
 }
 
 function replayFields(entry: QueuedRestoreEntry): Record<string, unknown> {
-  // A persisted cancel entry is always a withdrawing Stop; the flag is not
-  // stored because it is implied, but the wire fields must match the original.
-  return entry.method === 'agentSession.cancel'
-    ? { turnId: entry.fields.turnId, withdrawQueued: true }
-    : { messageId: entry.fields.messageId }
+  // A persisted cancel or clear entry is always a withdrawing one; the flag is
+  // not stored because it is implied, but the wire fields must match the original.
+  if (entry.method === 'agentSession.cancel') {
+    return { turnId: entry.fields.turnId, withdrawQueued: true }
+  }
+  if (entry.method === 'agentSession.conversationCommand') {
+    return { command: entry.fields.command, withdrawQueued: true }
+  }
+  return { messageId: entry.fields.messageId }
 }
 
 /**
@@ -132,6 +137,13 @@ export async function replayQueuedRestoreOperations(input: {
       await replayOne<AgentSessionCancelResult>(request, (value) =>
         (value.withdrawnQueued ?? []).map((withdrawn) => queuedMessageBodyText(withdrawn.body))
       )
+    } else if (entry.method === 'agentSession.conversationCommand') {
+      await replayOne<AgentSessionConversationCommandResult>(request, (value) =>
+        // A command still in doubt keeps its entry for the next open.
+        value.state === 'unknown'
+          ? null
+          : (value.withdrawnQueued ?? []).map((withdrawn) => queuedMessageBodyText(withdrawn.body))
+      )
     } else {
       await replayOne<AgentSessionQueuedMessageDeleteResult>(request, (value) =>
         value.deleted ? [queuedMessageBodyText(value.body)] : []
@@ -148,7 +160,8 @@ async function replayOne<TValue>(
     appendText: QueuedRestoreTextSink
     entry: QueuedRestoreEntry
   },
-  owedTexts: (value: TValue) => string[]
+  /** Null = the answer proves nothing yet; keep the entry. */
+  owedTexts: (value: TValue) => string[] | null
 ): Promise<void> {
   const { entry } = input
   const result = await requestStructuredAgentSessionMutation<TValue>({
@@ -162,6 +175,9 @@ async function replayOne<TValue>(
   })
   if (result.status === 'accepted') {
     const texts = owedTexts(result.value)
+    if (texts === null) {
+      return
+    }
     await settleQueuedRestoreOperation({
       entryKey: entry.entryKey,
       operationId: entry.operationId,

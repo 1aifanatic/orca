@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { DISPATCH_REJECTED_HOST_RESTARTED } from '../../../src/shared/structured-agent-session-dispatch-rejection'
+import {
+  DISPATCH_REJECTED_CANCELLED,
+  DISPATCH_REJECTED_HOST_RESTARTED
+} from '../../../src/shared/structured-agent-session-dispatch-rejection'
 import type { AgentSessionQueuedMessage } from '../../../src/shared/agent-session-wire'
 import { mobileQueuedMessageCards } from './mobile-structured-queued-message-cards'
 
@@ -64,6 +67,28 @@ describe('mobileQueuedMessageCards', () => {
     expect(cards[0]?.label).toBe('Steering is unavailable')
     expect(cards[0]?.state).toBe('returned')
     expect(cards[1]?.label).toBe('Waiting — a message ahead needs attention')
+  })
+
+  it('maps a Stop-withdrawn returned card to its own English copy', () => {
+    const [card] = mobileQueuedMessageCards(
+      [draft({ messageId: 'a', state: 'returned', returnedReason: DISPATCH_REJECTED_CANCELLED })],
+      { pendingPrompt: false }
+    )
+    expect(card?.label).toBe('Held back by Stop — Send to retry')
+  })
+
+  it('maps a paused marker to English and shows readable pause copy verbatim', () => {
+    const cards = mobileQueuedMessageCards(
+      [
+        draft({ messageId: 'a', paused: true, pausedReason: DISPATCH_REJECTED_HOST_RESTARTED }),
+        draft({ messageId: 'b', position: 2, paused: true, pausedReason: 'Couldn’t send' })
+      ],
+      { pendingPrompt: false }
+    )
+    expect(cards.map((card) => card.label)).toEqual([
+      "Couldn't send — Send to retry",
+      'Couldn’t send'
+    ])
   })
 
   it('never shows an internal rejection reason verbatim', () => {

@@ -42,6 +42,17 @@ const RestoreEntrySchema = z.discriminatedUnion('method', [
       operationId: z.string().max(128),
       fields: z.object({ messageId: z.string().min(1).max(512) }).strict()
     })
+    .strict(),
+  z
+    .object({
+      method: z.literal('agentSession.conversationCommand'),
+      entryKey: z.string().regex(/^[0-9a-f]{64}$/),
+      sessionId: z.string().min(1).max(512),
+      sessionKey: z.string().min(1).max(512),
+      draftKey: z.string().min(1).max(512),
+      operationId: z.string().max(128),
+      fields: z.object({ command: z.literal('clear') }).strict()
+    })
     .strict()
 ])
 
