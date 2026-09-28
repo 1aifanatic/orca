@@ -1,0 +1,62 @@
+name: Diagnostic bounded SDK layout acquisition
+on:
+  push:
+    branches: [OrcaWin/np-sdk-layout-acquisition]
+    paths: ['.github/workflows/sdk-layout-acquisition.yml', 'config/ci/sdk-layout-acquisition/**']
+  workflow_dispatch: {}
+permissions:
+  contents: read
+concurrency:
+  group: sdk-layout-acquisition-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  acquire:
+    if: github.repository == 'stablyai/orca' && github.ref == 'refs/heads/OrcaWin/np-sdk-layout-acquisition'
+    runs-on: windows-2022
+    timeout-minutes: 55
+    env:
+      ORCA_BACKGROUND_LAUNCH: '1'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          sparse-checkout: config/ci/sdk-layout-acquisition
+      - name: Parse diagnostic scripts before acquiring inputs
+        shell: pwsh
+        run: |
+          Get-ChildItem config/ci/sdk-layout-acquisition -Filter '*.ps1' | ForEach-Object {
+            $errors=$null; $tokens=$null
+            [Management.Automation.Language.Parser]::ParseFile($_.FullName,[ref]$tokens,[ref]$errors) | Out-Null
+            if ($errors.Count) { throw "Diagnostic PowerShell parse failed: $($_.Name)" }
+          }
+      - name: Acquire restricted layout on bounded disposable volume
+        id: acquire
+        timeout-minutes: 47
+        shell: pwsh
+        run: ./config/ci/sdk-layout-acquisition/acquire-layout.ps1 -ReceiptRoot "$env:RUNNER_TEMP\sdk-layout-receipts"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: sdk-layout-acquisition-receipts
+          path: |
+            ${{ runner.temp }}/sdk-layout-receipts/
+            !${{ runner.temp }}/sdk-layout-receipts/sdk-layout.vhdx
+          retention-days: 7
+      - uses: actions/upload-artifact@v7
+        if: success()
+        with:
+          name: sdk-layout-retained-inputs
+          path: ${{ steps.acquire.outputs.layout_path }}/
+          compression-level: 0
+          retention-days: 7
+      - name: Detach scratch volume
+        if: always()
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'sdk-layout-receipts'
+          $vhd = Join-Path $root 'sdk-layout.vhdx'
+          if (Test-Path $vhd) {
+            @("select vdisk file=`"$vhd`"", 'detach vdisk') | Set-Content (Join-Path $root 'detach-disk.txt')
+            & "$env:WINDIR\System32\diskpart.exe" /s (Join-Path $root 'detach-disk.txt')
+            if ($LASTEXITCODE -ne 0) { throw 'Scratch detach failed; discard disposable runner' }
+          }
