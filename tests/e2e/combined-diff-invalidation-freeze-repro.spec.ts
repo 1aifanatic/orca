@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { rmSync } from 'node:fs'
+import { rmSync, writeFileSync } from 'node:fs'
 import type { Page } from '@stablyai/playwright-test'
 import { test, expect } from './helpers/orca-app'
 import { waitForSessionReady } from './helpers/store'
@@ -210,6 +210,9 @@ test.describe('Combined diff invalidation freeze repro (STA-3420)', () => {
       console.log(`staged diff opened for burst ${JSON.stringify(opened)}`)
       expect(opened.editorCount).toBeGreaterThan(0)
 
+      const cdp = await orcaPage.context().newCDPSession(orcaPage)
+      await cdp.send('Profiler.enable')
+      await cdp.send('Profiler.start')
       const measurement = await orcaPage.evaluate(
         async ({ wId, repoPath, relativePaths, burstDurationMs }) => {
           const intervalMs = 50
@@ -298,6 +301,9 @@ test.describe('Combined diff invalidation freeze repro (STA-3420)', () => {
         }
       )
 
+      const { profile } = await cdp.send('Profiler.stop')
+      writeFileSync(test.info().outputPath('renderer.cpuprofile'), JSON.stringify(profile))
+      await cdp.detach()
       console.log(`external-change burst measurement ${JSON.stringify(measurement)}`)
       expect(measurement.sectionRowCount).toBe(1)
       expect(measurement.stuckLoadingRowCount).toBe(0)
