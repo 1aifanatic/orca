@@ -23,6 +23,13 @@ export function withRemoteReattachInputBuffer(transport: PtyTransport): PtyTrans
       ...(sendAccepted ? { sendInputAccepted: sendAccepted } : {})
     })
   }
+  const ensurePending = (): ReturnType<typeof createPtyPreconnectInputBuffer> => {
+    if (!pending) {
+      pending = createPtyPreconnectInputBuffer()
+      pendingExpectedId = transport.getPtyId()
+    }
+    return pending
+  }
   const wrapped: PtyTransport = {
     ...transport,
     async connect(options) {
@@ -47,16 +54,17 @@ export function withRemoteReattachInputBuffer(transport: PtyTransport): PtyTrans
       }
     },
     sendInput(data, kind) {
-      return kind !== 'query-reply' && pending?.isBuffering()
-        ? pending.enqueue(data, 'ordinary', kind)
-        : transport.sendInput(data, kind)
+      if (kind !== 'query-reply' && (pending?.isBuffering() === true || !transport.isConnected())) {
+        return ensurePending().enqueue(data, 'ordinary', kind)
+      }
+      return transport.sendInput(data, kind)
     },
     // Emulator replies stay on the immediate path; replay must not retain them as user input.
     ...(sendAccepted
       ? {
           sendInputAccepted: (data, kind) =>
-            kind !== 'query-reply' && pending?.isBuffering()
-              ? pending.enqueueAccepted(data, kind)
+            kind !== 'query-reply' && (pending?.isBuffering() === true || !transport.isConnected())
+              ? ensurePending().enqueueAccepted(data, kind)
               : sendAccepted(data, kind)
         }
       : {}),
@@ -87,8 +95,11 @@ export function withRemoteReattachInputBuffer(transport: PtyTransport): PtyTrans
   }
   transport.setConnectForRecovery?.((options) => wrapped.connect(options))
   transport.setConnectionReady?.(() => {
-    if (pending && pendingExpectedId) {
-      flush(pending, pendingExpectedId)
+    if (pending) {
+      const expectedId = pendingExpectedId ?? transport.getPtyId()
+      if (expectedId) {
+        void flush(pending, expectedId)
+      }
     }
   })
   return wrapped
