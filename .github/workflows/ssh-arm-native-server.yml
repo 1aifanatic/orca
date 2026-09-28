@@ -1,0 +1,42 @@
+name: Windows ARM native private SSH server qualification
+on:
+  push:
+    branches: [OrcaWin/np-arm-ssh-diagnostic]
+    paths: ['.github/workflows/ssh-arm-native-server.yml', '.build/integration-audit/windows-arm-ssh-qualification/prove-openssh.ps1']
+  workflow_dispatch: {}
+permissions:
+  contents: read
+concurrency:
+  group: native-arm-ssh-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  native_server:
+    if: github.repository == 'stablyai/orca' && github.ref == 'refs/heads/OrcaWin/np-arm-ssh-diagnostic'
+    runs-on: windows-11-arm
+    timeout-minutes: 20
+    env:
+      ORCA_BACKGROUND_LAUNCH: '1'
+      ORCA_ISOLATED_SSH_CI: '1'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          sparse-checkout: .build/integration-audit/windows-arm-ssh-qualification
+      - name: Parse diagnostic PowerShell before provisioning
+        shell: pwsh
+        run: |
+          $errors=$null; $tokens=$null
+          [Management.Automation.Language.Parser]::ParseFile((Join-Path $pwd '.build/integration-audit/windows-arm-ssh-qualification/prove-openssh.ps1'),[ref]$tokens,[ref]$errors) | Out-Null
+          if($errors.Count){throw 'Diagnostic PowerShell parse failed'}
+      - name: Prove OS SSH server authentication and stock cmd dispatch
+        shell: pwsh
+        timeout-minutes: 15
+        run: |
+          & .build/integration-audit/windows-arm-ssh-qualification/prove-openssh.ps1 -Receipt "$env:RUNNER_TEMP\native-arm-ssh-server.json"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: native-arm-ssh-server-${{ github.run_id }}
+          path: ${{ runner.temp }}/native-arm-ssh-server.json
+          if-no-files-found: error
+          retention-days: 7
