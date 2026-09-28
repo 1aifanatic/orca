@@ -252,6 +252,32 @@ describe('OrcaRuntimeService', () => {
     })
   })
 
+  it('attributes a fresh agent session the host builds as unknown', async () => {
+    const spawn = vi.fn().mockResolvedValue({ id: 'pty-session' })
+    const runtime = new OrcaRuntimeService(store)
+    runtime.setPtyController({
+      spawn,
+      write: () => true,
+      kill: () => true,
+      getForegroundProcess: async () => null
+    })
+
+    await runtime.createAgentSession(
+      {
+        clientOperationId: `${Date.now()}-${'cd'.repeat(16)}`,
+        worktree: `id:${TEST_WORKTREE_ID}`,
+        agent: 'claude'
+      },
+      { clientId: 'remote-desktop', clientKind: 'runtime' }
+    )
+
+    expect(spawn.mock.calls[0]?.[0]?.telemetry).toEqual({
+      agent_kind: 'claude-code',
+      launch_source: 'unknown',
+      request_kind: 'new'
+    })
+  })
+
   it('leaves a bare agent command the user typed out of launch attribution', async () => {
     const spawn = vi.fn().mockResolvedValue({ id: 'pty-bare' })
     const runtime = new OrcaRuntimeService(store)
