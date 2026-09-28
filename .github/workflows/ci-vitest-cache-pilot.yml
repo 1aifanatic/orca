@@ -1,0 +1,109 @@
+name: Vitest filesystem cache pilot
+
+on:
+  pull_request:
+    paths: ['.github/workflows/ci-vitest-cache-pilot.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vitest-cache-pilot-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  ORCA_BACKGROUND_LAUNCH: '1'
+  ORCA_BALANCE_UNIT_SHARDS: '1'
+
+jobs:
+  seed:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/install-node-dependencies
+        with:
+          native-runtime: node
+          node-version: '24'
+          cache-electron-package: 'true'
+      - run: node config/scripts/install-electron-package-binary.mjs
+      - name: Resolve cache identity
+        id: identity
+        run: echo "key=vitest-fs-pilot-v1-$RUNNER_ARCH-$(node -p process.versions.node)-$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+      - name: Seed full CI shard cache
+        env:
+          ORCA_PILOT_FS_CACHE: 'true'
+        run: |
+          export ORCA_SHARD_SOURCE_SHA="$(git rev-parse HEAD)"
+          node node_modules/vitest/vitest.mjs run --config config/vitest.hosted-cache-pilot.config.ts --shard=4/8
+      - name: Upload filesystem cache
+        uses: actions/cache/save@v5
+        with:
+          path: .tmp/ci-vitest-pilot-cache
+          key: ${{ steps.identity.outputs.key }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: vitest-reference-${{ github.run_attempt }}
+          path: ci-shards/unit-timings.json
+
+  measure:
+    needs: seed
+    name: unit shard sample ${{ matrix.sample }} cache ${{ matrix.cache }}
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        sample: [1, 2, 3]
+        cache: ['false', 'true']
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/install-node-dependencies
+        with:
+          native-runtime: node
+          node-version: '24'
+          cache-electron-package: 'true'
+      - run: node config/scripts/install-electron-package-binary.mjs
+      - name: Resolve cache identity
+        id: identity
+        run: echo "key=vitest-fs-pilot-v1-$RUNNER_ARCH-$(node -p process.versions.node)-$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+      - name: Restore filesystem cache
+        if: matrix.cache == 'true'
+        uses: actions/cache/restore@v5
+        with:
+          path: .tmp/ci-vitest-pilot-cache
+          key: ${{ steps.identity.outputs.key }}
+          fail-on-cache-miss: true
+      - name: Run full CI shard
+        env:
+          ORCA_PILOT_FS_CACHE: ${{ matrix.cache }}
+        run: |
+          export ORCA_SHARD_SOURCE_SHA="$(git rev-parse HEAD)"
+          node node_modules/vitest/vitest.mjs run --config config/vitest.hosted-cache-pilot.config.ts --shard=4/8
+      - uses: actions/download-artifact@v8
+        with:
+          name: vitest-reference-${{ github.run_attempt }}
+          path: reference/
+      - name: Verify unchanged test inventory
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict'
+          import { readFileSync } from 'node:fs'
+          const read = (path) => JSON.parse(readFileSync(path, 'utf8'))
+          const actual = read('ci-shards/unit-timings.json')
+          const reference = read('reference/unit-timings.json')
+          assert.equal(actual.unhandledErrors, 0)
+          assert.deepEqual(actual.results, reference.results)
+          assert.equal(actual.sourceSha, reference.sourceSha)
+          NODE
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: vitest-sample-${{ matrix.sample }}-${{ matrix.cache }}-${{ github.run_attempt }}
+          path: ci-shards/
