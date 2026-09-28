@@ -1,6 +1,6 @@
 import { DaemonPtyAdapter } from '../daemon/daemon-pty-adapter'
 import { DaemonPtyRouter } from '../daemon/daemon-pty-router'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import {
   openCodeBuildPtyEnvMock,
   openCodeClearPtyMock,
@@ -172,6 +172,7 @@ describe('registerPtyHandlers', () => {
         legacy: [],
         probeFreshSpawn: recoverFreshSpawnRouting
       })
+      onTestFinished(() => provider.dispose())
       setLocalPtyProvider(provider)
       const controller = registerAgentClaimController()
       const worktreeId = 'repo::/tmp/recovered-daemon-routing'
@@ -210,6 +211,7 @@ describe('registerPtyHandlers', () => {
       legacy: [],
       probeFreshSpawn: recoverFreshSpawnRouting
     })
+    onTestFinished(() => provider.dispose())
     setLocalPtyProvider(provider)
     const controller = registerAgentClaimController()
 
