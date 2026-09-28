@@ -12,3 +12,10 @@ export const PrepareCodexForWslPaneParams = z
       .regex(/^[^\\/\r\n]+$/)
   })
   .strict()
+
+export const PrepareCodexForPaneParams = z
+  .object({
+    codexHome: z.string().max(4_096),
+    orcaCodexHome: z.string().max(4_096)
+  })
+  .strict()

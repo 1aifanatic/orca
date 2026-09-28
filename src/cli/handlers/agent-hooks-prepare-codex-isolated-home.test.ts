@@ -15,7 +15,10 @@ import { getManagedCommand } from '../../main/codex/codex-hook-definition'
 import { _internals as grantInternals } from '../../main/codex/codex-hook-trust-grant'
 import { _internals as rebaseInternals } from '../../main/codex/codex-user-hook-trust-rebase'
 
-const { homes } = vi.hoisted(() => ({ homes: { current: '' } }))
+const { homes, call } = vi.hoisted(() => ({
+  homes: { current: '' },
+  call: vi.fn<() => Promise<unknown>>()
+}))
 
 vi.mock('node:os', async () => {
   const actual = await vi.importActual<typeof NodeOs>('node:os')
@@ -26,9 +29,7 @@ vi.mock('electron', () => ({
 }))
 vi.mock('../runtime-client', () => ({
   RuntimeClient: class {
-    async call() {
-      return { result: { settings: { agentStatusHooksEnabled: true, disabledTuiAgents: [] } } }
-    }
+    call = call
   },
   RuntimeClientError: Error,
   getDefaultUserDataPath: () => process.env.ORCA_USER_DATA_PATH
@@ -38,6 +39,7 @@ import { main } from '../index'
 
 const SCRIPT_NAME = process.platform === 'win32' ? 'codex-hook.cmd' : 'codex-hook.sh'
 let root: string
+let appHome: string
 let realHome: string
 let managedHome: string
 
@@ -67,7 +69,7 @@ function listTree(dir: string): Map<string, { bytes: string; mtimeMs: number }> 
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'orca-prepare-codex-isolated-home-'))
-  const appHome = join(root, 'app-home')
+  appHome = join(root, 'app-home')
   const appUserData = join(root, 'app-user-data')
   realHome = join(root, 'real-home')
   managedHome = join(appUserData, 'codex-runtime-home', 'home')
@@ -78,13 +80,13 @@ beforeEach(() => {
     join(managedHome, 'hooks.json'),
     `${JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: 'command', command: appCommand }] }] } }, null, 2)}\n`
   )
-  mkdirSync(join(realHome, '.codex'), { recursive: true })
-  mkdirSync(join(realHome, '.orca', 'agent-hooks'), { recursive: true })
-  writeFileSync(join(realHome, '.codex', 'hooks.json'), '{\n  "hooks": {}\n}\n')
-  writeFileSync(join(realHome, '.codex', 'config.toml'), 'model = "user-model"\n')
-  writeFileSync(join(realHome, '.orca', 'agent-hooks', SCRIPT_NAME), '# another Orca wrote this\n')
-  // Why: login(1) hands the pane the real HOME, while the app keeps its own.
-  homes.current = realHome
+  for (const home of [appHome, realHome]) {
+    mkdirSync(join(home, '.codex'), { recursive: true })
+    mkdirSync(join(home, '.orca', 'agent-hooks'), { recursive: true })
+    writeFileSync(join(home, '.codex', 'hooks.json'), '{\n  "hooks": {}\n}\n')
+    writeFileSync(join(home, '.codex', 'config.toml'), 'model = "user-model"\n')
+    writeFileSync(join(home, '.orca', 'agent-hooks', SCRIPT_NAME), '# another Orca wrote this\n')
+  }
   vi.stubEnv('ORCA_USER_DATA_PATH', appUserData)
   vi.stubEnv('CODEX_HOME', managedHome)
   vi.stubEnv('ORCA_CODEX_HOME', managedHome)
@@ -94,6 +96,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  call.mockReset()
   grantInternals.setGrantSessionRunner(null)
   rebaseInternals.setSessionRunner(null)
   rebaseInternals.resetRetryState()
@@ -103,15 +106,26 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true })
 })
 
-it("writes nothing from a login(1) pane whose HOME is not its app's", async () => {
+// Why: the pane shell can run under the real HOME (login(1)) or the app's own;
+// only the app may write a Codex home, whether it answers or is not running.
+it.each([
+  ['the real HOME, and the app answers', 'real', { result: null }],
+  ['the real HOME, and the app is not running', 'real', new Error('runtime_unavailable')],
+  ["the app's HOME, and the app answers", 'app', { result: null }],
+  ["the app's HOME, and the app is not running", 'app', new Error('runtime_unavailable')]
+])('writes nothing from a pane under %s', async (_case, paneHome, answer) => {
+  homes.current = paneHome === 'real' ? realHome : appHome
+  if (answer instanceof Error) {
+    call.mockRejectedValue(answer)
+  } else {
+    call.mockResolvedValue(answer)
+  }
   vi.spyOn(console, 'log').mockImplementation(() => {})
   vi.spyOn(console, 'warn').mockImplementation(() => {})
-  const realBefore = listTree(realHome)
-  const managedBefore = listTree(managedHome)
+  const before = [realHome, appHome, managedHome].map(listTree)
 
   await main(['agent', 'hooks', 'prepare-codex'])
 
   expect(process.exitCode).toBeUndefined()
-  expect(listTree(realHome)).toEqual(realBefore)
-  expect(listTree(managedHome)).toEqual(managedBefore)
+  expect([realHome, appHome, managedHome].map(listTree)).toEqual(before)
 })

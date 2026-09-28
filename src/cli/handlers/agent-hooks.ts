@@ -10,10 +10,7 @@ import {
 } from '../runtime-client'
 import type { AgentHookInstallStatus } from '../../shared/agent-hook-types'
 import { DEFAULT_LOCAL_ORCA_PROFILE_ID } from '../../shared/orca-profiles'
-import { normalizeDisabledTuiAgents } from '../../shared/tui-agent-selection'
 import type { GlobalSettings } from '../../shared/global-settings-types'
-import { prepareManagedCodexHomeBeforeShellLaunch } from '../../main/codex/managed-home-shell-preflight'
-import { isAgentStatusHooksEnabledForAgent } from '../../main/agent-hooks/agent-status-hooks-setting'
 import type { ProfileStateOfflineLocation } from '../../main/persistence/profile-state/profile-state-offline-settings'
 
 type AgentHookCommandResult = {
@@ -24,7 +21,7 @@ type AgentHookCommandResult = {
 }
 
 // Covers managed-home verification, WSL identity, trust grant, and bounded app-server reap.
-const WSL_CODEX_PREPARE_TIMEOUT_MS = 50_000
+const CODEX_PANE_PREPARE_TIMEOUT_MS = 50_000
 
 async function getDataPath(): Promise<string> {
   return (
@@ -67,26 +64,6 @@ async function readAdmittedHookSettingsFromDisk(): Promise<
   return readAgentHookSettingsFromProfileState(
     (await getProfileStateLocation()) ?? legacyProfileStateLocation()
   )
-}
-
-async function readHookSettings(
-  client: RuntimeClient
-): Promise<Pick<GlobalSettings, 'agentStatusHooksEnabled' | 'disabledTuiAgents'>> {
-  try {
-    const response = await client.call<{
-      settings?: Pick<GlobalSettings, 'agentStatusHooksEnabled' | 'disabledTuiAgents'>
-    }>('settings.get', undefined, { timeoutMs: 1_000 })
-    const settings = response.result.settings
-    if (settings && typeof settings.agentStatusHooksEnabled === 'boolean') {
-      return {
-        agentStatusHooksEnabled: settings.agentStatusHooksEnabled,
-        disabledTuiAgents: normalizeDisabledTuiAgents(settings.disabledTuiAgents)
-      }
-    }
-  } catch {
-    // The active profile on disk is the offline fallback.
-  }
-  return readHookSettingsFromDisk()
 }
 
 async function updateEnabledOnDisk(enabled: boolean): Promise<{
@@ -199,26 +176,22 @@ async function setAgentHooksEnabled(
 export const AGENT_HOOK_HANDLERS: Record<string, CommandHandler> = {
   'agent hooks prepare-codex': async ({ client, flags }) => {
     rejectRemoteHookSelection(flags)
-    if (process.env.WSL_DISTRO_NAME?.trim()) {
-      try {
-        await client.call(
-          'agentHooks.prepareCodexForWslPane',
-          {
-            codexHome: process.env.CODEX_HOME ?? '',
-            orcaCodexHome: process.env.ORCA_CODEX_HOME ?? '',
-            wslDistro: process.env.WSL_DISTRO_NAME
-          },
-          { timeoutMs: WSL_CODEX_PREPARE_TIMEOUT_MS }
-        )
-      } catch {
-        // Best effort: old or unavailable runtimes must not block Codex launch.
-      }
-      return
+    // Why the app: this process runs in the pane, whose HOME can be the real one
+    // under login(1), so it never writes agent config itself.
+    const codexHome = process.env.CODEX_HOME ?? ''
+    const orcaCodexHome = process.env.ORCA_CODEX_HOME ?? ''
+    const options = { timeoutMs: CODEX_PANE_PREPARE_TIMEOUT_MS }
+    try {
+      await (process.env.WSL_DISTRO_NAME?.trim()
+        ? client.call(
+            'agentHooks.prepareCodexForWslPane',
+            { codexHome, orcaCodexHome, wslDistro: process.env.WSL_DISTRO_NAME },
+            options
+          )
+        : client.call('agentHooks.prepareCodexForPane', { codexHome, orcaCodexHome }, options))
+    } catch {
+      // Best effort: old or unavailable runtimes must not block Codex launch.
     }
-    await prepareManagedCodexHomeBeforeShellLaunch({
-      userDataPath: getDefaultUserDataPath(),
-      hooksEnabled: isAgentStatusHooksEnabledForAgent(await readHookSettings(client), 'codex')
-    })
   },
   'agent hooks status': async ({ json, flags }) => {
     rejectRemoteHookSelection(flags)

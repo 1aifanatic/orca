@@ -2,10 +2,6 @@ import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { join, relative, resolve, sep } from 'node:path'
 import type { AgentHookInstallStatus } from '../../shared/agent-hook-types'
 import { normalizeRuntimePathForComparison } from '../../shared/cross-platform-path'
-import { quotePowerShellLiteral } from '../../shared/powershell-native-argument'
-import { readHooksJson } from '../agent-hooks/installer-utils'
-import { quotePosixShellString } from '../agent-hooks/posix-hook-command'
-import { getConfigPath, getManagedScriptPath } from './codex-hook-definition'
 import { codexHookService } from './hook-service'
 
 type ShellPreflightEnvironment = {
@@ -82,37 +78,11 @@ export function resolveManagedCodexShellPreflightHome(
 }
 
 /**
- * True when the managed home's hooks run this process's own shared script,
- * which proves the app that installed them shares this process's HOME.
- */
-function managedHomeRunsOwnScript(runtimeHomePath: string): boolean {
-  const scriptPath = getManagedScriptPath()
-  // Why the writers' own quoting: an apostrophe in the home path is escaped in the command.
-  const quotedPaths = [quotePosixShellString(scriptPath), quotePowerShellLiteral(scriptPath)]
-  const hooks = readHooksJson(getConfigPath(runtimeHomePath))?.hooks ?? {}
-  return Object.values(hooks).some(
-    (definitions) =>
-      Array.isArray(definitions) &&
-      definitions.some((definition) =>
-        (definition.hooks ?? []).some(
-          (hook) =>
-            hook.command === scriptPath ||
-            quotedPaths.some((quoted) => hook.command?.includes(quoted))
-        )
-      )
-  )
-}
-
-/**
- * Shell-startup preflight for a managed CODEX_HOME.
- *
- * Async because the Codex install awaits an app-server trust-grant session
- * in-process. The old lane forked that session through spawnSync purely to
- * borrow an event loop; the CLI already has one, so awaiting here removes a
- * whole ELECTRON_RUN_AS_NODE process from every managed-home shell launch.
+ * Pane-launch preparation for a managed CODEX_HOME, run in the app on the CLI's
+ * request. The home must be one this app's userData owns.
  */
 export async function prepareManagedCodexHomeBeforeShellLaunch(args: {
-  env?: ShellPreflightEnvironment
+  env: ShellPreflightEnvironment
   userDataPath: string
   hooksEnabled: boolean
   install?: (runtimeHomePath: string) => AgentHookInstallStatus | Promise<AgentHookInstallStatus>
@@ -120,16 +90,9 @@ export async function prepareManagedCodexHomeBeforeShellLaunch(args: {
   if (!args.hooksEnabled) {
     return null
   }
-  const env = args.env ?? {
-    CODEX_HOME: process.env.CODEX_HOME,
-    ORCA_CODEX_HOME: process.env.ORCA_CODEX_HOME
-  }
-  const runtimeHomePath = resolveManagedCodexShellPreflightHome(env, args.userDataPath)
-  // Why: a login(1) pane gets the real HOME even under an isolated-HOME app,
-  // and installing from here would write that real home. The app installed
-  // this home at pane spawn, so only repair one this HOME's app wrote.
-  if (!runtimeHomePath || !managedHomeRunsOwnScript(runtimeHomePath)) {
+  const runtimeHomePath = resolveManagedCodexShellPreflightHome(args.env, args.userDataPath)
+  if (!runtimeHomePath) {
     return null
   }
-  return (args.install ?? ((home) => codexHookService.install(home)))(runtimeHomePath)
+  return (args.install ?? ((home) => codexHookService.installForLaunchPrep(home)))(runtimeHomePath)
 }
