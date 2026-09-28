@@ -4,9 +4,11 @@ import type {
 } from '../../../shared/agent-session-wire'
 import {
   requeueStructuredAgentSessionSendRefusal,
+  stageStructuredAgentSessionOutboxEntryForSend,
   structuredAgentSessionSendRequest,
   type StructuredAgentSessionOutboxEntry
 } from '../../../shared/structured-agent-session-outbox'
+import { agentSessionRefusalFailure } from '../../../shared/agent-session-write-failure'
 import { createStructuredAgentSessionOperationId } from '../../../shared/structured-agent-session-mutation'
 import {
   mutateStructuredAgentSessionLaunchPrompt,
@@ -92,11 +94,9 @@ async function dispatchStructuredLaunchPrompt(
   receipt: LaunchReceipt
 ): Promise<boolean> {
   if (
-    !mutateEntry(entry, (current) => ({
-      ...current,
-      state: 'dispatching',
-      lastAttemptAt: Date.now()
-    }))
+    !mutateEntry(entry, (current) =>
+      stageStructuredAgentSessionOutboxEntryForSend(current, Date.now())
+    )
   ) {
     return false
   }
@@ -112,7 +112,7 @@ async function dispatchStructuredLaunchPrompt(
       mutateEntry(entry, (current) =>
         requeueStructuredAgentSessionSendRefusal(
           current,
-          result.refusal.code,
+          agentSessionRefusalFailure(result.refusal),
           () => createStructuredAgentSessionOperationId(createBrowserUuid),
           entry.lastAttemptAt !== null
         )

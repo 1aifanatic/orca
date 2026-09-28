@@ -162,3 +162,83 @@ describe('MessageRow send mode', () => {
     expect(screen.queryByText('Sent as goal')).not.toBeInTheDocument()
   })
 })
+
+describe('a user message that did not go through', () => {
+  function renderUser(deliveryNotice?: { text: string; onRetry?: () => void }) {
+    return render(
+      <MessageRow
+        message={{
+          id: 'message',
+          role: 'user',
+          timestamp: 0,
+          source: 'transcript',
+          blocks: [{ type: 'text', text: 'Message text' }]
+        }}
+        expandSignal={false}
+        onScrollMessageToTop={vi.fn()}
+        deliveryNotice={deliveryNotice}
+      />
+    )
+  }
+
+  it('says why under the message, with a Retry that sends this one', () => {
+    const onRetry = vi.fn()
+    renderUser({ text: "The agent couldn't restart. Your message was not sent.", onRetry })
+
+    expect(
+      screen.getByText("The agent couldn't restart. Your message was not sent.")
+    ).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(onRetry).toHaveBeenCalledOnce()
+  })
+
+  it('offers no Retry where the surface cannot send it again', () => {
+    renderUser({ text: 'Not delivered — check the terminal' })
+
+    expect(screen.getByText('Not delivered — check the terminal')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
+  })
+
+  it('says nothing when it went through', () => {
+    renderUser()
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
+  })
+})
+
+describe("MessageRow — a subagent's row speaks as that subagent", () => {
+  function renderAgentRow(agentId: string | undefined, subagentLabel?: string) {
+    return render(
+      <MessageRow
+        message={{
+          id: 'message',
+          role: 'assistant',
+          timestamp: 0,
+          source: 'transcript',
+          blocks: [{ type: 'text', text: 'The PR is CLEAN.' }],
+          ...(agentId === undefined ? {} : { agentId })
+        }}
+        expandSignal={false}
+        onScrollMessageToTop={vi.fn()}
+        subagentLabel={subagentLabel}
+      />
+    )
+  }
+
+  it('names the subagent that wrote the row', () => {
+    renderAgentRow('task-1', 'explore the lane')
+    expect(
+      screen.getByRole('note', { name: 'Written by subagent explore the lane' })
+    ).toBeInTheDocument()
+    expect(screen.getByText('The PR is CLEAN.')).toBeInTheDocument()
+  })
+
+  it('still marks the row as a subagent when no loaded roster names it', () => {
+    renderAgentRow('task-9')
+    expect(screen.getByRole('note', { name: 'Subagent' })).toBeInTheDocument()
+  })
+
+  it("adds nothing to the session's own row", () => {
+    renderAgentRow(undefined, 'explore the lane')
+    expect(screen.queryByRole('note')).toBeNull()
+  })
+})

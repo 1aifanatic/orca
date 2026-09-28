@@ -7,7 +7,8 @@ import type { SpawnOptions as SdkSpawnOptions } from '@anthropic-ai/claude-agent
 import { spawnProcess } from '../../shared/child-process/run-process'
 import type { ProcessSpec } from '../../shared/child-process/process-spec'
 import {
-  DEFAULT_PROVIDER_SUPERVISOR_GRACE_MS,
+  PROVIDER_SIGTERM_GRACE_MS,
+  PROVIDER_STDIN_END_GRACE_MS,
   PROVIDER_SUPERVISOR_MAX_STOP_MS
 } from '../codex/codex-app-server-posix-supervisor'
 import { proveClaudeChildExit } from './claude-agent-sdk-exit-proof'
@@ -178,7 +179,7 @@ describe.runIf(process.platform !== 'win32')('Claude under the POSIX provider su
     await expect(close()).resolves.toBe(true)
 
     // Claude's own SIGTERM reap ran at once, not after the supervisor's stdin-end grace.
-    expect(Date.now() - startedAt).toBeLessThan(DEFAULT_PROVIDER_SUPERVISOR_GRACE_MS)
+    expect(Date.now() - startedAt).toBeLessThan(PROVIDER_STDIN_END_GRACE_MS)
     expect(existsSync(marker)).toBe(true)
     await expect(exit).resolves.toEqual({ code: null, signal: 'SIGTERM' })
     expect(alive(pids.claude)).toBe(false)
@@ -192,7 +193,7 @@ describe.runIf(process.platform !== 'win32')('Claude under the POSIX provider su
     await expect(close()).resolves.toBe(true)
 
     const elapsed = Date.now() - startedAt
-    expect(elapsed).toBeGreaterThanOrEqual(DEFAULT_PROVIDER_SUPERVISOR_GRACE_MS)
+    expect(elapsed).toBeGreaterThanOrEqual(PROVIDER_SIGTERM_GRACE_MS)
     expect(elapsed).toBeLessThan(PROVIDER_SUPERVISOR_MAX_STOP_MS + 1_000)
     // The supervisor's own SIGTERM stop finished the job; nothing forced the supervisor itself.
     await expect(exit).resolves.toEqual({ code: null, signal: 'SIGTERM' })
