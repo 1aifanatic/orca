@@ -147,7 +147,7 @@ describe('hook inbox', () => {
   })
 
   it('reaps a pane that died while Orca was closed instead of leaving its replay working', async () => {
-    const commitClaude = (name: string, payload: object) =>
+    const commitClaude = (name: string, payload: Record<string, unknown>) =>
       writeFileSync(
         join(inboxDir(), name),
         [
