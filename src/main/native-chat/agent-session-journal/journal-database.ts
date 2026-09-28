@@ -11,6 +11,8 @@ import { createJournalTablesSql, JOURNAL_DB_SCHEMA_VERSION } from './journal-dat
 export const JOURNAL_BUSY_TIMEOUT_MS = 5000
 /** Bounds the WAL a checkpoint leaves behind; SQLite truncates it back to this after a reset. */
 export const JOURNAL_SIZE_LIMIT_BYTES = 32 * 1024 * 1024
+/** Every commit but a first-use copy's batches, which no reader follows until a synced commit. */
+export const JOURNAL_SYNCHRONOUS = 'FULL'
 
 /** A newer build wrote this database: this build neither reads nor writes it. */
 export class JournalDatabaseNewerSchemaError extends Error {
@@ -62,7 +64,7 @@ function configureJournalPragmas(db: Database.Database, stored: number): void {
   // write-ahead submission row must be on disk before the adapter dispatches anything. FULL alone
   // does not survive power loss on macOS, whose fsync leaves the drive cache unflushed; checkpoint
   // fullfsync makes each checkpoint use F_FULLFSYNC (a no-op elsewhere).
-  db.pragma('synchronous = FULL')
+  db.pragma(`synchronous = ${JOURNAL_SYNCHRONOUS}`)
   db.pragma('checkpoint_fullfsync = ON')
   db.pragma(`journal_size_limit = ${JOURNAL_SIZE_LIMIT_BYTES}`)
 }
@@ -75,13 +77,44 @@ function createJournalSchema(db: Database.Database, stored: number): void {
   if (stored >= JOURNAL_DB_SCHEMA_VERSION) {
     return
   }
-  db.exec('BEGIN IMMEDIATE')
-  try {
+  runJournalTransaction(db, () => {
     db.exec(createJournalTablesSql())
     db.pragma(`user_version = ${JOURNAL_DB_SCHEMA_VERSION}`)
+  })
+}
+
+/**
+ * One IMMEDIATE transaction, its COMMIT inside the failure boundary: SQLite can leave a transaction
+ * open after a failed COMMIT, and on the shared connection every later BEGIN would then fail. The
+ * caller gets the original error; a ROLLBACK that fails too goes to `onStranded`. `run` is
+ * synchronous by contract: an await inside it would let another chat's statements land in this
+ * transaction.
+ */
+export function runJournalTransaction<T>(
+  db: Database.Database,
+  run: (db: Database.Database) => T,
+  onStranded: () => void = () => undefined
+): T {
+  db.exec('BEGIN IMMEDIATE')
+  try {
+    const result = run(db)
+    if (result instanceof Promise) {
+      throw new Error('a chat journal transaction must not await')
+    }
     db.exec('COMMIT')
+    return result
   } catch (error) {
-    db.exec('ROLLBACK')
+    if (db.isTransaction) {
+      try {
+        db.exec('ROLLBACK')
+      } catch (rollbackError) {
+        console.warn(
+          '[agent-session-journal] rolling back a failed transaction failed',
+          rollbackError
+        )
+        onStranded()
+      }
+    }
     throw error
   }
 }

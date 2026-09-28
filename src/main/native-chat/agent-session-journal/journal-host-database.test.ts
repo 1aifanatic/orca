@@ -19,6 +19,7 @@ import {
   readTestJournalRows
 } from './journal-host-database-test-support'
 import { deleteJournalBlock, journalRowId } from './journal-row-table'
+import type Database from '../../sqlite/sync-database'
 
 const IDENTITY: AgentSessionJournalIdentity = {
   sessionId: 'session-1',
@@ -28,11 +29,40 @@ const IDENTITY: AgentSessionJournalIdentity = {
   providerHandle: { kind: 'codex', threadId: 'thread-1' }
 }
 
+const OTHER: AgentSessionJournalIdentity = {
+  ...IDENTITY,
+  sessionId: 'session-2',
+  providerHandle: { kind: 'codex', threadId: 'thread-2' }
+}
+
+const SUBMISSION = {
+  clientMessageId: 'msg-1',
+  payloadFingerprint: 'e'.repeat(64),
+  body: {
+    kind: 'message' as const,
+    role: 'user' as const,
+    blocks: [{ type: 'text' as const, text: 'hi' }]
+  },
+  fence: 1
+}
+
 let root: string
 const journals = createTrackedJournalOpener()
 
 function item(ordinal: number): AgentJournalItemIdentity {
   return { provider: 'codex', threadId: 'thread-1', turnId: 'turn-1', ordinal }
+}
+
+/** The next row insert breaks a deferred foreign key, so its transaction's COMMIT fails and SQLite
+ *  leaves the transaction open, as it may for a COMMIT that fails on its own. */
+function failCommits(db: Database.Database): () => void {
+  db.exec(`CREATE TEMP TABLE commit_probe_parent (id INTEGER PRIMARY KEY);
+CREATE TEMP TABLE commit_probe_child (
+  parent INTEGER REFERENCES commit_probe_parent (id) DEFERRABLE INITIALLY DEFERRED
+);
+CREATE TEMP TRIGGER commit_probe AFTER INSERT ON main.journal_rows
+BEGIN INSERT INTO commit_probe_child (parent) VALUES (1); END`)
+  return () => db.exec('DROP TRIGGER temp.commit_probe')
 }
 
 function text(value: string) {
@@ -96,6 +126,73 @@ setTimeout(() => { db.exec('COMMIT'); db.close() }, 200)`,
     vi.mocked(database.db.exec).mockImplementation(exec)
     await expect(journal.appendItem(item(2), text('next'), { fence: 1 })).resolves.toBeDefined()
     expect(journal.snapshot().items.map((entry) => entry.body)).toEqual([text('next')])
+  })
+
+  it('frees the connection after a failed COMMIT: nothing adopted, published or acknowledged', async () => {
+    const journal = await journals.open({ identity: IDENTITY, stateDirectory: root })
+    const other = await journals.open({ identity: OTHER, stateDirectory: root })
+    const connection = openTestJournalHostDatabase(root).db
+    const published = vi.fn()
+    journal.observeCommits(published)
+    const cursor = journal.cursor()
+    const rows = () =>
+      readTestJournalRows(connection, IDENTITY.sessionId, journal.epoch).map((row) => row.seq)
+    const rowsBefore = rows()
+    const stopFailing = failCommits(connection)
+
+    await expect(journal.appendSubmission(SUBMISSION)).rejects.toThrow(
+      'FOREIGN KEY constraint failed'
+    )
+    expect(connection.isTransaction).toBe(false)
+    stopFailing()
+
+    expect(published).not.toHaveBeenCalled()
+    expect(journal.cursor()).toEqual(cursor)
+    expect(journal.submissions()).toEqual([])
+    expect(rows()).toEqual(rowsBefore)
+    await expect(
+      other.appendItem(item(1), text('another chat'), { fence: 1 })
+    ).resolves.toBeDefined()
+  })
+
+  it('refuses every chat while a failed transaction will not roll back, then serves them', async () => {
+    const other = await journals.open({ identity: OTHER, stateDirectory: root })
+    const database = openTestJournalHostDatabase(root)
+    const connection = database.db
+    const exec = connection.exec.bind(connection)
+    let rollbackFails = true
+    vi.spyOn(connection, 'exec').mockImplementation((sql) => {
+      if (sql === 'ROLLBACK' && rollbackFails) {
+        throw Object.assign(new Error('disk I/O error'), { code: 'ERR_SQLITE_ERROR', errcode: 10 })
+      }
+      exec(sql)
+    })
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const stopFailing = failCommits(connection)
+
+    // A first-use copy's batch, under the unsynced level. Its caller gets the COMMIT's own error.
+    expect(() =>
+      database.unsyncedTransaction((db) =>
+        db
+          .prepare('INSERT INTO journal_rows (id, ts, row_json) VALUES (?, ?, ?)')
+          .run(journalRowId(99, 1), 1, '{}')
+      )
+    ).toThrow('FOREIGN KEY constraint failed')
+    expect(connection.isTransaction).toBe(true)
+    await expect(other.appendItem(item(1), text('refused'), { fence: 1 })).rejects.toMatchObject({
+      refusal: {
+        code: 'agent_session_journal_unreadable',
+        details: { reason: 'journalUnavailable' }
+      }
+    })
+
+    rollbackFails = false
+    expect(database.db.isTransaction).toBe(false)
+    stopFailing()
+    // Restored with the ROLLBACK: no later commit runs at the copy's unsynced level.
+    expect(Number(connection.pragma('synchronous', { simple: true }))).toBe(2)
+    await expect(other.appendItem(item(1), text('served'), { fence: 1 })).resolves.toBeDefined()
+    expect(readTestJournalRows(connection, OTHER.sessionId, other.epoch)).not.toHaveLength(0)
   })
 
   it('refuses a transaction body that awaits', () => {

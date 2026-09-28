@@ -9,7 +9,8 @@ import { join } from 'node:path'
 import type { AgentSessionJournalIdentity } from '../../../shared/agent-session-journal-types'
 import type Database from '../../sqlite/sync-database'
 import { freePageCount, reclaimFreePagesStep } from '../../sqlite/sqlite-free-page-reclaim'
-import { openJournalDatabase } from './journal-database'
+import { JOURNAL_SYNCHRONOUS, openJournalDatabase, runJournalTransaction } from './journal-database'
+import { journalOpenRefusalError } from './journal-open-failure'
 import type { JournalOwnerLock } from './journal-owner-lock'
 import { journalDirectoryFor } from './journal-paths'
 import { AgentSessionJournalError } from './journal-write-guards'
@@ -23,6 +24,8 @@ export function journalDatabasePath(stateDirectory: string): string {
 export class JournalHostDatabase {
   private connection: Database.Database | null
   private reclaiming: Promise<void> | null = null
+  /** A failed transaction's ROLLBACK failed too, so the transaction may still be open. */
+  private stranded = false
 
   private constructor(
     readonly stateDirectory: string,
@@ -48,29 +51,21 @@ export class JournalHostDatabase {
   }
 
   get db(): Database.Database {
-    if (!this.connection) {
+    const connection = this.connection
+    if (!connection) {
       throw new AgentSessionJournalError('journal_closed', 'the chat journal database is closed')
     }
-    return this.connection
+    if (this.stranded) {
+      this.rollBackStrandedTransaction(connection)
+    }
+    return connection
   }
 
-  /** One IMMEDIATE transaction. `run` is synchronous by contract: an await inside it would let
-   *  another chat's statements land in this transaction on the shared connection. */
+  /** One IMMEDIATE transaction; see `runJournalTransaction`. */
   transaction<T>(run: (db: Database.Database) => T): T {
-    const db = this.db
-    db.exec('BEGIN IMMEDIATE')
-    let result: T
-    try {
-      result = run(db)
-      if (result instanceof Promise) {
-        throw new Error('a chat journal transaction must not await')
-      }
-    } catch (error) {
-      db.exec('ROLLBACK')
-      throw error
-    }
-    db.exec('COMMIT')
-    return result
+    return runJournalTransaction(this.db, run, () => {
+      this.stranded = true
+    })
   }
 
   /**
@@ -79,12 +74,15 @@ export class JournalHostDatabase {
    * in the same task, so no other chat's commit runs under it.
    */
   unsyncedTransaction<T>(run: (db: Database.Database) => T): T {
-    const synchronous = Number(this.db.pragma('synchronous', { simple: true }))
-    this.db.pragma('synchronous = NORMAL')
+    const db = this.db
+    db.pragma('synchronous = NORMAL')
     try {
       return this.transaction(run)
     } finally {
-      this.db.pragma(`synchronous = ${synchronous}`)
+      // SQLite refuses the change inside a transaction; freeing a stranded one restores it.
+      if (!db.isTransaction) {
+        db.pragma(`synchronous = ${JOURNAL_SYNCHRONOUS}`)
+      }
     }
   }
 
@@ -112,12 +110,30 @@ export class JournalHostDatabase {
     connection?.close()
   }
 
+  /**
+   * A failed transaction whose ROLLBACK failed too is still open: every later BEGIN would fail
+   * inside it and every read would see rows that never committed. Each use retries the ROLLBACK,
+   * and until one goes through every chat is refused the way a journal that will not open is.
+   */
+  private rollBackStrandedTransaction(connection: Database.Database): void {
+    if (connection.isTransaction) {
+      try {
+        connection.exec('ROLLBACK')
+      } catch (error) {
+        throw journalOpenRefusalError(error)
+      }
+    }
+    connection.pragma(`synchronous = ${JOURNAL_SYNCHRONOUS}`)
+    this.stranded = false
+  }
+
   private async runReclaim(): Promise<void> {
     try {
       await yieldToEventLoop()
-      while (this.connection) {
-        const before = freePageCount(this.connection)
-        const remaining = reclaimFreePagesStep(this.connection)
+      while (!this.isClosed) {
+        const db = this.db
+        const before = freePageCount(db)
+        const remaining = reclaimFreePagesStep(db)
         // A step that frees nothing (a file created without incremental auto-vacuum) ends the pass;
         // pages a delete freed since the last step do not.
         if (remaining === 0 || remaining >= before) {
