@@ -9,7 +9,10 @@ import type {
   AgentJournalRenderItem,
   AgentJournalSubmission
 } from '../../../../shared/agent-session-journal-types'
-import { DISPATCH_REJECTED_CANCELLED } from '../../../../shared/structured-agent-session-dispatch-rejection'
+import {
+  DISPATCH_REJECTED_CANCELLED,
+  DISPATCH_REJECTED_WRITE_FAILED
+} from '../../../../shared/structured-agent-session-dispatch-rejection'
 
 type SendParams = { envelope?: { clientOperationId: string } }
 type ReadState = { submissions: AgentJournalSubmission[]; items: AgentJournalRenderItem[] }
@@ -238,6 +241,21 @@ describe('a message the host withdrew at a Stop', () => {
     expect(readNativeChatDraftCache(PANE)).toBe('hello\n\nhello')
   })
 
+  it('keeps a message refused for any other reason on its Retry, and gives nothing back', async () => {
+    answerSendsPending()
+    const { result, rerender } = renderOutbox()
+    const id = await sendToHost(result, 'hello')
+
+    rerender({
+      submissions: [
+        submission(id, { dispatchState: 'rejected', reason: DISPATCH_REJECTED_WRITE_FAILED })
+      ]
+    })
+
+    await waitFor(() => expect(result.current.outbox[0]?.state).toBe('rejected'))
+    expect(readNativeChatDraftCache(PANE)).toBe('')
+  })
+
   it('drops a withdrawn launch prompt where no composer shows the chat', () => {
     const launch = enqueueStructuredAgentSessionLaunchPrompt(SESSION, 'launch text')!
     const { result, rerender } = renderOutbox(null)
@@ -262,6 +280,29 @@ describe('a message a Stop took out of the outbox before the host held it', () =
 
     expect(result.current.outbox).toEqual([])
     expect(readNativeChatDraftCache(PANE)).toBe('first\n\nsecond')
+  })
+
+  it('leaves a message waiting on Retry where it is, and gives back only what it withdrew', async () => {
+    writeOutbox(SESSION, [
+      {
+        clientMessageId: 'refused-1',
+        sessionId: SESSION,
+        body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'refused' }] },
+        previewUris: [],
+        state: 'rejected',
+        queuedAt: 1,
+        lastAttemptAt: null,
+        retryAfterUnknownSubmittedAt: null
+      }
+    ])
+    mocks.call.mockImplementation(() => new Promise<never>(() => {}))
+    const { result } = renderOutbox()
+    act(() => expect(result.current.send('second')).toBe(true))
+
+    act(() => result.current.withdrawUnsent())
+
+    expect(result.current.outbox.map((entry) => entry.clientMessageId)).toEqual(['refused-1'])
+    expect(readNativeChatDraftCache(PANE)).toBe('second')
   })
 })
 
