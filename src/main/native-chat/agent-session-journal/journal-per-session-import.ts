@@ -8,7 +8,7 @@
 //
 // The copy runs in bounded batches, each its own transaction, yielding the event loop between them.
 // The rows go into a block `journal_import_blocks` reserves, which no reader follows. Once the
-// copied block reads back as the file does (items, submissions, epoch, tip), one transaction
+// copied block reads back as the file does (epoch, tip, rows, items, submissions), one transaction
 // publishes the chat's pointer with its repair and import markers, so the chat is imported all at
 // once or not at all. A try that stops midway leaves only that reserved block, which the next try
 // clears and copies again. A copy that does not read back as the file is never published: the
@@ -23,7 +23,7 @@ import { setImmediate as yieldToEventLoop } from 'node:timers/promises'
 import type { AgentSessionJournalIdentity } from '../../../shared/agent-session-journal-types'
 import type Database from '../../sqlite/sync-database'
 import type { JournalHostDatabase } from './journal-host-database'
-import { foldJournalRows, type JournalLoad } from './journal-open'
+import type { JournalLoad } from './journal-open'
 import { JournalImportMismatchError, journalOpenRefusalError } from './journal-open-failure'
 import { legacyJournalDatabaseFile } from './journal-paths'
 import {
@@ -46,14 +46,14 @@ import {
   type ImportedRow
 } from './journal-per-session-source'
 import { parseJournalRow } from './journal-row-schema'
+import { applyJournalRow, createJournalReducerState } from './journal-reducer'
 import {
   allocateJournalBlock,
   deleteJournalBlock,
-  iterateJournalEpochRows,
   journalRowId,
   publishJournalSessionEpoch,
-  readJournalSessionPointer,
-  readJournalTip
+  readJournalRowsAfter,
+  readJournalSessionPointer
 } from './journal-row-table'
 
 const INSERT_ROW = 'INSERT INTO journal_rows (id, ts, row_json) VALUES (?, ?, ?)'
@@ -227,20 +227,12 @@ async function copyLegacyJournal(
     })
   }
   const target = block ?? input.database.transaction((db) => reserveImportBlock(db, sessionId))
-  verifyCopiedJournal(
+  await verifyCopiedJournal(
     input,
-    { epoch, block: target },
-    {
-      load: rewritten
-        ? foldJournalRows({
-            sessionId,
-            pointer: { epoch, block: -1 },
-            repairedFrom: null,
-            rows: rewritten
-          })
-        : foldLegacyJournal(source, sessionId, legacy),
-      tip: rewritten ? (rewritten.at(-1)?.seq ?? 0) : legacy.tip
-    }
+    rewritten
+      ? arrayBatches(rewritten, batchRows)
+      : legacyRowBatches(source, sessionId, legacy.epoch, batchRows),
+    { epoch, block: target }
   )
   input.database.transaction((db) => {
     const retired = readJournalSessionPointer(db, sessionId)
@@ -269,28 +261,19 @@ async function copyLegacyJournal(
 const loggedMismatches = new Set<string>()
 
 /**
- * The copied block, read back from the host's database, against the chat the file holds: the same
- * items, submissions, epoch and tip, or the copy is refused and never published.
+ * The copied block, read back from the host's database, against a second read of what was copied:
+ * the same epoch, tip, row count, items and submissions, or the copy is refused and never
+ * published. Both reads go a batch at a time, so no check holds the main thread longer than a copy
+ * batch does.
  */
-function verifyCopiedJournal(
+async function verifyCopiedJournal(
   input: ImportInput,
-  copied: { epoch: string; block: number },
-  expected: { load: JournalLoad; tip: number }
-): void {
+  expected: Iterable<ImportBatch>,
+  copied: { epoch: string; block: number }
+): Promise<void> {
   const { sessionId } = input.identity
-  const db = input.database.db
-  const read = foldJournalRows({
-    sessionId,
-    pointer: copied,
-    repairedFrom: null,
-    rows: iterateJournalEpochRows(db, copied)
-  })
-  const first = iterateJournalEpochRows(db, copied).next()
-  const parsed = first.done ? null : parseJournalRow(first.value.rowJson)
-  const facts = (load: JournalLoad, epoch: string | null, tip: number) =>
-    `${epoch}:${tip}:${load.state.items.size}:${load.state.submissions.size}`
-  const want = facts(expected.load, copied.epoch, expected.tip)
-  const got = facts(read, parsed?.ok ? parsed.row.epoch : null, readJournalTip(db, copied.block))
+  const want = await copyFacts(sessionId, expected)
+  const got = await copyFacts(sessionId, copiedBatches(input, copied))
   if (want === got) {
     return
   }
@@ -302,6 +285,49 @@ function verifyCopiedJournal(
     console.error(`[agent-session-journal] ${error.message}; ${input.legacyDirectory} is kept`)
   }
   throw journalOpenRefusalError(error)
+}
+
+/** Epoch, tip, row count, items and submissions, folded a batch at a time. */
+async function copyFacts(sessionId: string, batches: Iterable<ImportBatch>): Promise<string> {
+  const state = createJournalReducerState(sessionId, '')
+  let epoch: string | null = null
+  let tip = 0
+  let rows = 0
+  let first = true
+  for (const batch of batches) {
+    if (!first) {
+      await yieldToEventLoop()
+    }
+    first = false
+    rows += batch.rows.length
+    for (const row of batch.rows) {
+      tip = Math.max(tip, row.seq)
+      const parsed = parseJournalRow(row.rowJson)
+      if (parsed.ok) {
+        epoch ??= parsed.row.epoch
+        applyJournalRow(state, parsed.row)
+      }
+    }
+  }
+  return `${epoch}:${tip}:${rows}:${state.items.size}:${state.submissions.size}`
+}
+
+function* copiedBatches(
+  input: ImportInput,
+  copied: { epoch: string; block: number }
+): Generator<ImportBatch> {
+  const batchRows = input.batchRows ?? IMPORT_BATCH_ROWS
+  let afterSeq = 0
+  for (;;) {
+    const rows = readJournalRowsAfter(input.database.db, copied, afterSeq, batchRows)
+    const lastSeq = rows.at(-1)?.seq
+    const last = rows.length < batchRows || lastSeq === undefined
+    yield { rows, last }
+    if (last) {
+      return
+    }
+    afterSeq = lastSeq
+  }
 }
 
 /** The block this chat's copy goes into. One an earlier try left behind is emptied and reused. */
