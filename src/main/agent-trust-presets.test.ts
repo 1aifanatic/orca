@@ -519,6 +519,24 @@ describe('markCodexProjectTrusted keeps the answer the user already gave', () =>
     }
   )
 
+  // Why: Codex passes over a `.git` directory with no HEAD, so the checkout it reads is the one above.
+  it('keeps an untrusted repository root above a nested `.git` directory with no HEAD', async () => {
+    const repository = join(workspace, 'repo')
+    const nested = join(repository, 'vendor', 'lib')
+    const subdirectory = join(nested, 'src')
+    mkdirSync(join(repository, '.git'), { recursive: true })
+    writeFileSync(join(repository, '.git', 'HEAD'), 'ref: refs/heads/main\n', 'utf-8')
+    mkdirSync(join(nested, '.git'), { recursive: true })
+    mkdirSync(subdirectory, { recursive: true })
+    const original = [projectHeader(repository), 'trust_level = "untrusted"', ''].join('\n')
+    seedSystemConfig(original)
+
+    await markCodexProjectTrusted(subdirectory)
+
+    expect(readFileSync(systemConfigPath(), 'utf-8')).toBe(original)
+    expect(existsSync(runtimeConfigPath())).toBe(false)
+  })
+
   it('trusts only the subdirectory when its repository has no answer', async () => {
     const repository = join(workspace, 'repo')
     const subdirectory = join(repository, 'packages', 'app')
