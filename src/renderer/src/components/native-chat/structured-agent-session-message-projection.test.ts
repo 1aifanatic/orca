@@ -46,6 +46,10 @@ describe('structured agent session message projection', () => {
   it.each([
     ['left in doubt by a restart', { dispatchState: 'unknown' as const, recovered: true as const }],
     [
+      'left in doubt by a restart on a host that omits the recovered flag',
+      { dispatchState: 'unknown' as const, reason: 'host_restarted_before_acknowledgement' }
+    ],
+    [
       "rejected by an older host's not-delivered verdict",
       { dispatchState: 'rejected' as const, reason: 'not_delivered' }
     ]

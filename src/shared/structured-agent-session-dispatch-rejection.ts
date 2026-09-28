@@ -166,6 +166,17 @@ export function classifyDispatchRejection(
   return { category: KIND_CATEGORY[kind], verdict: KIND_VERDICT[kind], kind }
 }
 
+/** An `unknown` a crash or a dead agent settled for good, rather than one a live child may still
+ *  answer. Hosts before the `recovered` flag reached the wire publish only the restart reason. */
+export function isRecoveredStructuredAgentSessionDoubt(
+  submission: Pick<AgentJournalSubmission, 'dispatchState' | 'reason' | 'recovered'>
+): boolean {
+  return (
+    submission.dispatchState === 'unknown' &&
+    (submission.recovered === true || submission.reason === 'host_restarted_before_acknowledgement')
+  )
+}
+
 /**
  * A send settled as sent, so a client has nothing left to hold or retry: the provider took it, or
  * a crash or a dead agent left it in doubt for good and the next message is how the chat
@@ -181,7 +192,7 @@ export function structuredAgentSessionSubmissionSettledAsSent(
 ): boolean {
   return (
     submission.dispatchState === 'accepted' ||
-    (submission.dispatchState === 'unknown' && submission.recovered === true) ||
+    isRecoveredStructuredAgentSessionDoubt(submission) ||
     (submission.dispatchState === 'rejected' &&
       classifyDispatchRejection(submission).kind === 'notDelivered')
   )
