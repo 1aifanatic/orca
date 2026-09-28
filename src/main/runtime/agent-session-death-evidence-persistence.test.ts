@@ -88,7 +88,7 @@ describe('death evidence on disk', () => {
   })
 })
 
-describe('a failed acquisition parked in recovery', () => {
+describe('a failed acquisition', () => {
   const NOW = 1_800_000_000_000
   const OPERATION_ID = `${NOW}-${'1'.padStart(32, '0')}`
 
@@ -133,37 +133,70 @@ describe('a failed acquisition parked in recovery', () => {
   it.each([
     ['before the owner proved its handle', false],
     ['after the owner proved its handle', true]
-  ] as const)('keeps the last proof of life, not the failure, %s', async (_when, proved) => {
-    const store = await open()
-    const fence = await spawnedOwner(store)
-    if (proved) {
-      await store.proveOwner({
-        sessionId: SESSION,
-        fence,
-        link: {
-          linkId: 'link-1',
-          handle: { provider: 'claude', sessionId: 'provider-session-1', leafUuid: null },
-          origin: 'created',
-          mintedAtFence: fence,
-          observedAt: NOW
-        },
-        now: NOW
+  ] as const)(
+    'parks in recovery keeping the last proof of life, not the failure, %s',
+    async (_when, proved) => {
+      const store = await open()
+      const fence = await spawnedOwner(store)
+      if (proved) {
+        await store.proveOwner({
+          sessionId: SESSION,
+          fence,
+          link: {
+            linkId: 'link-1',
+            handle: { provider: 'claude', sessionId: 'provider-session-1', leafUuid: null },
+            origin: 'created',
+            mintedAtFence: fence,
+            observedAt: NOW
+          },
+          now: NOW
+        })
+        await store.settleFailedPostAcquisitionAttachment(unproven(fence, NOW + 60_000))
+      } else {
+        await store.settleFailedAcquisition(unproven(fence, NOW + 60_000))
+      }
+      expect(store.getRecord(SESSION)?.lease).toMatchObject({
+        handoffStage: 'recovering',
+        lastRenewedAt: NOW
       })
-      await store.settleFailedPostAcquisitionAttachment(unproven(fence, NOW + 60_000))
-    } else {
-      await store.settleFailedAcquisition(unproven(fence, NOW + 60_000))
-    }
-    expect(store.getRecord(SESSION)?.lease).toMatchObject({
-      handoffStage: 'recovering',
-      lastRenewedAt: NOW
-    })
 
-    const evicted = await store.evictProvenDeadOwner({
-      sessionId: SESSION,
-      expectedFence: fence,
-      probe: { outcome: 'pid-absent' },
-      now: NOW + 120_000
-    })
-    expect(evicted.lease.deathEvidence).toMatchObject({ lastProvenAliveAt: NOW })
-  })
+      const evicted = await store.evictProvenDeadOwner({
+        sessionId: SESSION,
+        expectedFence: fence,
+        probe: { outcome: 'pid-absent' },
+        now: NOW + 120_000
+      })
+      expect(evicted.lease.deathEvidence).toMatchObject({ lastProvenAliveAt: NOW })
+    }
+  )
+
+  it.each(['exit-proven', 'root-exit-observed', 'processless'] as const)(
+    'names its own fence in the proof when cleanup settles it %s',
+    async (exitProof) => {
+      const store = await open()
+      const fence = await spawnedOwner(store)
+      const settled =
+        exitProof === 'processless'
+          ? await store.settleFailedAcquisition({ ...unproven(fence, NOW), exitProof })
+          : await (async () => {
+              await store.proveOwner({
+                sessionId: SESSION,
+                fence,
+                link: {
+                  linkId: 'link-1',
+                  handle: { provider: 'claude', sessionId: 'provider-session-1', leafUuid: null },
+                  origin: 'created',
+                  mintedAtFence: fence,
+                  observedAt: NOW
+                },
+                now: NOW
+              })
+              return store.settleFailedPostAcquisitionAttachment({
+                ...unproven(fence, NOW),
+                exitProof
+              })
+            })()
+      expect(settled.lease.deathEvidence).toMatchObject({ ownerFence: fence })
+    }
+  )
 })
