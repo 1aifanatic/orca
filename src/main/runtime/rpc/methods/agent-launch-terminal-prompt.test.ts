@@ -18,18 +18,25 @@ type SendFn = (
   options: Record<string, unknown>
 ) => Promise<SendResult>
 
-function runtimeStub(overrides: { wait?: unknown; send?: SendFn }) {
-  const waitForTerminal = vi.fn(async () => overrides.wait ?? { satisfied: true, status: 'idle' })
+function runtimeStub(overrides: { wait?: unknown; waits?: unknown[]; send?: SendFn }) {
+  const queued = [...(overrides.waits ?? [])]
+  const waitForTerminal = vi.fn(
+    async () => queued.shift() ?? overrides.wait ?? { satisfied: true, status: 'idle' }
+  )
+  const waitForFreshWorkerComposer = vi.fn(async () => undefined)
   const sendTerminalAgentPrompt = vi.fn<SendFn>(
     overrides.send ?? (async () => ({ handle: 'term_1', accepted: true, bytesWritten: 12 }))
   )
   return {
     waitForTerminal,
+    waitForFreshWorkerComposer,
     sendTerminalAgentPrompt,
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the deliverer reaches exactly these two runtime methods; anything else would throw rather than read a wrong value.
-    runtime: { waitForTerminal, sendTerminalAgentPrompt } as unknown as Parameters<
-      typeof deliverTerminalAgentLaunchPrompt
-    >[0]['runtime']
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the deliverer reaches exactly these three runtime methods; anything else would throw rather than read a wrong value.
+    runtime: {
+      waitForTerminal,
+      waitForFreshWorkerComposer,
+      sendTerminalAgentPrompt
+    } as unknown as Parameters<typeof deliverTerminalAgentLaunchPrompt>[0]['runtime']
   }
 }
 
@@ -48,6 +55,7 @@ describe('writing a launch prompt into a terminal agent', () => {
     const delivered = await deliverTerminalAgentLaunchPrompt({
       runtime: stub.runtime,
       handle: 'term_1',
+      agent: 'claude',
       text: 'do the thing'
     })
 
@@ -70,6 +78,7 @@ describe('writing a launch prompt into a terminal agent', () => {
     const delivered = await deliverTerminalAgentLaunchPrompt({
       runtime: stub.runtime,
       handle: 'term_1',
+      agent: 'claude',
       text: 'do the thing'
     })
 
@@ -87,6 +96,7 @@ describe('writing a launch prompt into a terminal agent', () => {
     const delivered = await deliverTerminalAgentLaunchPrompt({
       runtime: stub.runtime,
       handle: 'term_1',
+      agent: 'claude',
       text: 'do the thing'
     })
 
@@ -103,6 +113,7 @@ describe('writing a launch prompt into a terminal agent', () => {
     const delivered = await deliverTerminalAgentLaunchPrompt({
       runtime: stub.runtime,
       handle: 'term_1',
+      agent: 'claude',
       text: 'do the thing'
     })
 
@@ -115,6 +126,7 @@ describe('writing a launch prompt into a terminal agent', () => {
     const delivered = await deliverTerminalAgentLaunchPrompt({
       runtime: stub.runtime,
       handle: 'term_1',
+      agent: 'claude',
       text: 'do the thing'
     })
 
@@ -128,10 +140,93 @@ describe('writing a launch prompt into a terminal agent', () => {
       await deliverTerminalAgentLaunchPrompt({
         runtime: stub.runtime,
         handle: 'term_1',
+        agent: 'claude',
         text: '   '
       })
     ).toBe(false)
     expect(stub.waitForTerminal).not.toHaveBeenCalled()
     expect(stub.sendTerminalAgentPrompt).not.toHaveBeenCalled()
   })
+
+  it('waits out a blocking prompt the user dismisses, then writes', async () => {
+    const blocked = { satisfied: false, status: 'running', blockedReason: 'trust-prompt' }
+    const stub = runtimeStub({ waits: [blocked, blocked, { satisfied: true, status: 'running' }] })
+    const clock = fakeClock()
+
+    const delivered = await deliverTerminalAgentLaunchPrompt({
+      runtime: stub.runtime,
+      handle: 'term_1',
+      agent: 'claude',
+      text: 'do the thing',
+      clock
+    })
+
+    expect(delivered).toBe(true)
+    expect(stub.waitForTerminal).toHaveBeenCalledTimes(3)
+    // Each re-wait spends only what is left of the one launch budget.
+    expect(stub.waitForTerminal.mock.calls.at(-1)?.[1]).toMatchObject({ timeoutMs: 58_000 })
+    expect(stub.sendTerminalAgentPrompt).toHaveBeenCalledTimes(1)
+  })
+
+  it('writes nothing into a blocking prompt still up when the budget ends', async () => {
+    const stub = runtimeStub({
+      wait: { satisfied: false, status: 'running', blockedReason: 'trust-prompt' }
+    })
+
+    const delivered = await deliverTerminalAgentLaunchPrompt({
+      runtime: stub.runtime,
+      handle: 'term_1',
+      agent: 'claude',
+      text: 'do the thing',
+      clock: fakeClock()
+    })
+
+    expect(delivered).toBe(false)
+    expect(stub.sendTerminalAgentPrompt).not.toHaveBeenCalled()
+    // One check per second of a 60 s budget, then it stops rather than spinning.
+    expect(stub.waitForTerminal.mock.calls.length).toBeLessThanOrEqual(60)
+  })
+
+  it.each(['zcode', 'dsh'] as const)(
+    'waits for %s’s composer marker, its only launch readiness',
+    async (agent) => {
+      const stub = runtimeStub({})
+
+      const delivered = await deliverTerminalAgentLaunchPrompt({
+        runtime: stub.runtime,
+        handle: 'term_1',
+        agent,
+        text: 'do the thing'
+      })
+
+      expect(delivered).toBe(true)
+      expect(stub.waitForFreshWorkerComposer).toHaveBeenCalledWith('term_1', agent, 60_000)
+      expect(stub.waitForTerminal).not.toHaveBeenCalled()
+    }
+  )
+
+  it('keeps the text when an agent shows no readiness evidence at all', async () => {
+    // The no-evidence decision point currently reports not-ready: nothing is pasted blind.
+    const stub = runtimeStub({ wait: { satisfied: false, status: 'running' } })
+
+    const delivered = await deliverTerminalAgentLaunchPrompt({
+      runtime: stub.runtime,
+      handle: 'term_1',
+      agent: 'goose',
+      text: 'do the thing'
+    })
+
+    expect(delivered).toBe(false)
+    expect(stub.sendTerminalAgentPrompt).not.toHaveBeenCalled()
+  })
 })
+
+function fakeClock() {
+  let now = 0
+  return {
+    now: () => now,
+    sleep: async (ms: number) => {
+      now += ms
+    }
+  }
+}

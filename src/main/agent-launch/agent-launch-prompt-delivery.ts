@@ -87,7 +87,11 @@ export async function deliverTerminalLaunchPrompt(
   if (!intent.prompt || intent.prompt.delivery !== 'submit') {
     return NOT_DELIVERED
   }
-  const delivered = await surfaces.deliverTerminalPrompt?.({ handle, prompt: intent.prompt })
+  const delivered = await surfaces.deliverTerminalPrompt?.({
+    handle,
+    agent: intent.agent,
+    prompt: intent.prompt
+  })
   return delivered ? HANDED_TO_TERMINAL : NOT_DELIVERED
 }
 

@@ -7,11 +7,11 @@
  * Mobile, the CLI and orchestration got an agent and no prompt. The host owns the PTY, so it can
  * write into one whether or not any window is open on it.
  *
- * This is the half argv cannot serve. An agent whose CLI takes the prompt as an argument gets it on
- * the launch command instead (`agentPromptRidesLaunchCommand`), where it is in the process's argv
- * at exec time and no readiness race exists. What reaches here is a `stdin-after-start` agent,
- * whose CLI accepts no such argument, and a reused terminal, whose process was already running
- * before this launch existed.
+ * This is the half the launch command cannot serve. An argv agent's prompt rides that command when
+ * its typed line can carry it (`startup-line-prompt-carry`), and then no readiness race exists. What
+ * reaches here is a `stdin-after-start` agent, whose CLI accepts no such argument; a prompt too long
+ * or multi-line for the typed line; and a reused terminal, whose process was already running before
+ * this launch existed. Readiness is `waitForLaunchedAgentComposer`, the one the worker start uses.
  *
  * Nothing here writes to a PTY itself. `sendTerminalAgentPrompt` is the runtime's one agent-prompt
  * writer: it frames the text as a bracketed paste so multi-line and special-character content is
@@ -22,13 +22,57 @@
  */
 
 import { randomUUID } from 'node:crypto'
+import type { TuiAgent } from '../../../../shared/tui-agent'
+import type { RuntimeTerminalWait } from '../../../../shared/runtime-terminal-contracts'
 import { isAgentPromptStalledError } from '../../agent-prompt-submission-verification'
+import {
+  waitForLaunchedAgentComposer,
+  type LaunchedAgentReadinessRuntime
+} from '../../launched-agent-composer-readiness'
 import type { OrcaRuntimeService } from '../../orca-runtime'
 
 /** The same budget orchestration gives a worker to reach its composer before dispatching to it. */
 const AGENT_READY_TIMEOUT_MS = 60_000
+/** How often a launch re-checks a blocking prompt the user may still dismiss. */
+const BLOCKED_RECHECK_MS = 1_000
 
-type TerminalPromptRuntime = Pick<OrcaRuntimeService, 'waitForTerminal' | 'sendTerminalAgentPrompt'>
+type TerminalPromptRuntime = LaunchedAgentReadinessRuntime &
+  Pick<OrcaRuntimeService, 'sendTerminalAgentPrompt'>
+
+type ReadinessClock = { now: () => number; sleep: (ms: number) => Promise<void> }
+
+const REAL_CLOCK: ReadinessClock = {
+  now: () => Date.now(),
+  sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/**
+ * The launched agent's readiness, waiting out a blocking prompt until the budget ends.
+ *
+ * A trust or update dialog is the user's to answer, and they often do within seconds; giving up on
+ * the first sight of it dropped a prompt the pane was about to accept. A dialog still up when the
+ * budget ends is reported as it is, and nothing is written into it.
+ */
+async function waitThroughBlockingPrompts(
+  runtime: TerminalPromptRuntime,
+  handle: string,
+  agent: TuiAgent,
+  clock: ReadinessClock
+): Promise<RuntimeTerminalWait | undefined> {
+  const deadline = clock.now() + AGENT_READY_TIMEOUT_MS
+  for (;;) {
+    const wait = await waitForLaunchedAgentComposer(
+      runtime,
+      handle,
+      agent,
+      Math.max(0, deadline - clock.now())
+    )
+    if (!wait?.blockedReason || wait.satisfied || deadline - clock.now() <= BLOCKED_RECHECK_MS) {
+      return wait
+    }
+    await clock.sleep(BLOCKED_RECHECK_MS)
+  }
+}
 
 /**
  * Whether the text reached the pane.
@@ -47,18 +91,22 @@ type TerminalPromptRuntime = Pick<OrcaRuntimeService, 'waitForTerminal' | 'sendT
 export async function deliverTerminalAgentLaunchPrompt(args: {
   runtime: TerminalPromptRuntime
   handle: string
+  agent: TuiAgent
   text: string
+  clock?: ReadinessClock
 }): Promise<boolean> {
   if (args.text.trim().length === 0) {
     return false
   }
   try {
-    const wait = await args.runtime.waitForTerminal(args.handle, {
-      condition: 'tui-idle',
-      timeoutMs: AGENT_READY_TIMEOUT_MS
-    })
-    // An unsatisfied wait is a composer that never opened — a trust prompt, an update prompt, a
-    // dead process. Pasting anyway would answer whatever question is on screen with the prompt.
+    const wait = await waitThroughBlockingPrompts(
+      args.runtime,
+      args.handle,
+      args.agent,
+      args.clock ?? REAL_CLOCK
+    )
+    // An unsatisfied wait is a composer that never opened — a dialog left up, a dead process, an
+    // agent that showed no readiness. Pasting anyway would answer whatever is on screen with it.
     if (wait && !wait.satisfied) {
       console.warn(
         `[agent-launch] the terminal agent did not become ready (${wait.status}); its launch prompt was not delivered`

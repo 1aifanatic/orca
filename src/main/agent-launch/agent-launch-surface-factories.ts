@@ -63,7 +63,12 @@ export type AgentLaunchSurfaceFactory = {
    * carry; and a reused terminal, whose process was already running before this launch existed. `false` for every failure, on the same rule the structured
    * twin follows — a launch whose agent is running must not fail because its text did not land.
    */
-  deliverTerminalPrompt?(args: { handle: string; prompt: AgentLaunchPrompt }): Promise<boolean>
+  deliverTerminalPrompt?(args: {
+    handle: string
+    /** The launched agent, whose own readiness signal the write waits for. */
+    agent: TuiAgent
+    prompt: AgentLaunchPrompt
+  }): Promise<boolean>
 }
 
 /** `fence` is the lease the create was admitted at, carried so the launch prompt's send can fill its

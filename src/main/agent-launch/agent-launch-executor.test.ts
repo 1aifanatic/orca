@@ -334,6 +334,7 @@ describe('delivering a launch prompt to a terminal agent', () => {
     expect(result.prompt).toEqual({ delivery: 'submit', outcome: 'handed-to-terminal' })
     expect(h.deliverTerminalPrompt).toHaveBeenCalledWith({
       handle: 'term_1',
+      agent: 'aider',
       prompt: SUBMIT
     })
     // Folding it into argv would have appended it as an argument the CLI does not accept.
@@ -365,7 +366,11 @@ describe('delivering a launch prompt to a terminal agent', () => {
     expect(h.createTerminalAgent.mock.calls[0]?.[0]).toMatchObject({
       startupPrompt: 'do the thing'
     })
-    expect(h.deliverTerminalPrompt).toHaveBeenCalledWith({ handle: 'term_1', prompt: SUBMIT })
+    expect(h.deliverTerminalPrompt).toHaveBeenCalledWith({
+      handle: 'term_1',
+      agent: 'claude',
+      prompt: SUBMIT
+    })
   })
 
   it('pastes into an agent-first create’s startup terminal when its typed line could not carry the prompt', async () => {
@@ -375,6 +380,7 @@ describe('delivering a launch prompt to a terminal agent', () => {
     expect(result.prompt).toEqual({ delivery: 'submit', outcome: 'handed-to-terminal' })
     expect(h.deliverTerminalPrompt).toHaveBeenCalledWith({
       handle: 'term_agent_first',
+      agent: 'claude',
       prompt: SUBMIT
     })
   })
@@ -392,6 +398,7 @@ describe('delivering a launch prompt to a terminal agent', () => {
     expect(result.prompt).toEqual({ delivery: 'submit', outcome: 'handed-to-terminal' })
     expect(h.deliverTerminalPrompt).toHaveBeenCalledWith({
       handle: 'term_existing',
+      agent: 'claude',
       prompt: SUBMIT
     })
   })
