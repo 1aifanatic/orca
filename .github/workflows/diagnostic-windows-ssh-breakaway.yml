@@ -1,0 +1,71 @@
+name: Diagnostic standard-user Windows SSH breakaway
+on:
+  push:
+    branches: [OrcaWin/np-windows-ssh-breakaway-diagnostic]
+permissions:
+  contents: read
+jobs:
+  probe:
+    if: github.repository == 'stablyai/orca' && github.ref == 'refs/heads/OrcaWin/np-windows-ssh-breakaway-diagnostic'
+    runs-on: windows-11-arm
+    timeout-minutes: 15
+    env:
+      ORCA_BACKGROUND_LAUNCH: '1'
+      ORCA_ISOLATED_SSH_CI: '1'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          sparse-checkout: config/ci/windows-ssh-breakaway
+      - name: Compile helper and parse scripts before provisioning
+        shell: pwsh
+        run: |
+          $root=Join-Path $pwd 'config/ci/windows-ssh-breakaway'
+          foreach($file in @('prove-preview-openssh.ps1','invoke-breakaway.ps1')){
+            $errors=$null;$tokens=$null
+            [Management.Automation.Language.Parser]::ParseFile((Join-Path $root $file),[ref]$tokens,[ref]$errors)|Out-Null
+            if($errors.Count){throw 'Diagnostic script parse failed'}
+          }
+          $helperRoot=Join-Path ($env:SystemDrive + '\') ('orca-breakaway-'+[Guid]::NewGuid().ToString('N'))
+          New-Item -ItemType Directory $helperRoot|Out-Null
+          "BREAKAWAY_HELPER_ROOT=$helperRoot"|Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $compiler=Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
+          if(-not (Test-Path $compiler)){$compiler=Join-Path $env:WINDIR 'Microsoft.NET/Framework/v4.0.30319/csc.exe'}
+          if(-not (Test-Path $compiler)){throw 'Existing framework compiler unavailable'}
+          & $compiler /nologo /target:exe /optimize+ /warnaserror+ ('/out:'+(Join-Path $helperRoot 'probe.exe')) (Join-Path $root 'BreakawayProbe.cs')
+          if($LASTEXITCODE -ne 0){throw 'Helper compilation failed'}
+          @{source=(Get-FileHash (Join-Path $root 'BreakawayProbe.cs') -Algorithm SHA256).Hash;binary=(Get-FileHash (Join-Path $helperRoot 'probe.exe') -Algorithm SHA256).Hash;architecture=[Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()}|ConvertTo-Json|Set-Content "$env:RUNNER_TEMP/breakaway-build.json"
+      - name: Prove witness survives independent standard-user SSH transports
+        shell: pwsh
+        run: |
+          $root=Join-Path $pwd 'config/ci/windows-ssh-breakaway'
+          $archive=Join-Path $env:RUNNER_TEMP 'preview-OpenSSH-ARM64.zip'
+          & "$env:WINDIR/System32/curl.exe" --fail --location --connect-timeout 15 --max-time 90 --output $archive 'https://github.com/PowerShell/Win32-OpenSSH/releases/download/10.0.0.0p2-Preview/OpenSSH-ARM64.zip'
+          if($LASTEXITCODE -ne 0){throw 'SSH archive fetch failed'}
+          $helper=Join-Path $env:BREAKAWAY_HELPER_ROOT 'probe.exe'
+          $controller=Join-Path $root 'invoke-breakaway.ps1'
+          $callback={param($user,$port,$identity,$known)
+            $sid=(Get-LocalUser -Name $user).SID.Value
+            $runnerSid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+            & icacls.exe $env:BREAKAWAY_HELPER_ROOT /inheritance:r /grant:r '*S-1-5-18:F' '*S-1-5-32-544:F' "*$($runnerSid):F" "*$($sid):RX" /T|Out-Null
+            if($LASTEXITCODE -ne 0){throw 'Private helper ACL failed'}
+            & $controller -Username $user -Port $port -IdentityFile $identity -KnownHosts $known -Executable $helper -Receipt "$env:RUNNER_TEMP/breakaway-witness.json"
+          }.GetNewClosure()
+          & (Join-Path $root 'prove-preview-openssh.ps1') -Archive $archive -Receipt "$env:RUNNER_TEMP/breakaway-server.json" -ProductionRouteProbe $callback
+      - name: Remove helper only after confirmed witness cleanup
+        if: always()
+        shell: pwsh
+        run: |
+          $receipt="$env:RUNNER_TEMP/breakaway-witness.json"
+          if((Test-Path $receipt) -and ((Get-Content $receipt -Raw|ConvertFrom-Json).cleanup -eq 'verified-exited-and-directory-removed')){
+            Remove-Item -LiteralPath $env:BREAKAWAY_HELPER_ROOT -Recurse -Force
+          }
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: standard-user-breakaway-receipts
+          path: |
+            ${{ runner.temp }}/breakaway-build.json
+            ${{ runner.temp }}/breakaway-witness.json
+            ${{ runner.temp }}/breakaway-server.json
+          retention-days: 7
