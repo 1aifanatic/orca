@@ -270,65 +270,78 @@ describe('headless serve update install handoff', () => {
     ).toHaveLength(1)
   })
 
-  it('hands a supervised install to the serve parent before native quit and cleanup', async () => {
-    const lifecycle: string[] = []
-    const daemonSession = { alive: true }
-    const send = vi.fn()
-    const disconnectPairedClients = vi.fn(() => lifecycle.push('paired-clients-disconnected'))
-    appMock.on('will-quit', disconnectPairedClients)
-    requestServeUpdateHandoffMock.mockImplementation(() => {
-      lifecycle.push('handoff-persisted')
-      return true
-    })
-    autoUpdaterMock.checkForUpdates.mockImplementation(() => {
-      autoUpdaterMock.emit('checking-for-update')
-      queueMicrotask(() => autoUpdaterMock.emit('update-available', { version: '1.0.61' }))
-      return Promise.resolve(null)
-    })
-    autoUpdaterMock.quitAndInstall.mockImplementation(() => {
-      lifecycle.push('native-quit-and-install')
-      appMock.emit('will-quit', { preventDefault: vi.fn() })
-    })
-    killAllPtyMock.mockImplementation(() => lifecycle.push('in-process-pty-cleanup'))
+  it.each([false, true])(
+    'handles a windowless supervised install with cleanup failure=%s',
+    async (cleanupFails) => {
+      const lifecycle: string[] = []
+      const daemonSession = { alive: true }
+      const disconnectPairedClients = vi.fn(() => lifecycle.push('paired-clients-disconnected'))
+      appMock.on('will-quit', disconnectPairedClients)
+      requestServeUpdateHandoffMock.mockImplementation(() => {
+        lifecycle.push('handoff-persisted')
+        return true
+      })
+      autoUpdaterMock.checkForUpdates.mockImplementation(() => {
+        autoUpdaterMock.emit('checking-for-update')
+        queueMicrotask(() => autoUpdaterMock.emit('update-available', { version: '1.0.61' }))
+        return Promise.resolve(null)
+      })
+      autoUpdaterMock.quitAndInstall.mockImplementation(() => {
+        lifecycle.push('native-quit-and-install')
+        appMock.emit('will-quit', { preventDefault: vi.fn() })
+      })
+      killAllPtyMock.mockImplementation(() => lifecycle.push('in-process-pty-cleanup'))
 
-    const { checkForUpdatesFromMenu, downloadUpdate, quitAndInstall, setupAutoUpdater } =
-      await loadUpdaterModule()
-    setupAutoUpdater({ webContents: { send } } as never, {
-      getLastUpdateCheckAt: () => Date.now(),
-      installMode: 'supervised-headless-serve',
-      onBeforeQuit: () => {
-        lifecycle.push('pre-quit-checkpoint')
+      const { checkForUpdatesFromMenu, downloadUpdate, quitAndInstall, setupAutoUpdater } =
+        await loadUpdaterModule()
+      setupAutoUpdater(null, {
+        getLastUpdateCheckAt: () => Date.now(),
+        installMode: 'supervised-headless-serve',
+        onBeforeQuitFailure: 'abort',
+        onBeforeQuit: () => {
+          lifecycle.push('pre-quit-checkpoint')
+          if (cleanupFails) {
+            throw new Error('profile export failed')
+          }
+        }
+      })
+      checkForUpdatesFromMenu()
+      await vi.advanceTimersByTimeAsync(0)
+      downloadUpdate()
+      autoUpdaterMock.emit('update-downloaded', { version: '1.0.61' })
+      const nativeReadyHandler = nativeUpdaterMock.on.mock.calls.find(
+        ([event]) => event === 'update-downloaded'
+      )?.[1] as (() => void) | undefined
+      nativeReadyHandler?.()
+
+      quitAndInstall()
+      quitAndInstall()
+      await vi.advanceTimersByTimeAsync(100)
+      quitAndInstall()
+
+      if (cleanupFails) {
+        expect(requestServeUpdateHandoffMock).not.toHaveBeenCalled()
+        expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled()
+        expect(killAllPtyMock).not.toHaveBeenCalled()
+        expect(disconnectPairedClients).not.toHaveBeenCalled()
+        return
       }
-    })
-    checkForUpdatesFromMenu()
-    await vi.advanceTimersByTimeAsync(0)
-    downloadUpdate()
-    autoUpdaterMock.emit('update-downloaded', { version: '1.0.61' })
-    const nativeReadyHandler = nativeUpdaterMock.on.mock.calls.find(
-      ([event]) => event === 'update-downloaded'
-    )?.[1] as (() => void) | undefined
-    nativeReadyHandler?.()
-
-    quitAndInstall()
-    quitAndInstall()
-    await vi.advanceTimersByTimeAsync(100)
-    quitAndInstall()
-
-    expect(requestServeUpdateHandoffMock).toHaveBeenCalledWith('1.0.61')
-    expect(autoUpdaterMock.autoInstallOnAppQuit).toBe(false)
-    expect(autoUpdaterMock.autoRunAppAfterInstall).toBe(false)
-    expect(autoUpdaterMock.downloadUpdate).toHaveBeenCalledOnce()
-    expect(autoUpdaterMock.quitAndInstall).toHaveBeenCalledWith(true, false)
-    expect(autoUpdaterMock.quitAndInstall).toHaveBeenCalledOnce()
-    expect(daemonSession).toEqual({ alive: true })
-    expect(lifecycle).toEqual([
-      'pre-quit-checkpoint',
-      'handoff-persisted',
-      'native-quit-and-install',
-      'paired-clients-disconnected',
-      'in-process-pty-cleanup'
-    ])
-  })
+      expect(requestServeUpdateHandoffMock).toHaveBeenCalledWith('1.0.61')
+      expect(autoUpdaterMock.autoInstallOnAppQuit).toBe(false)
+      expect(autoUpdaterMock.autoRunAppAfterInstall).toBe(false)
+      expect(autoUpdaterMock.downloadUpdate).toHaveBeenCalledOnce()
+      expect(autoUpdaterMock.quitAndInstall).toHaveBeenCalledWith(true, false)
+      expect(autoUpdaterMock.quitAndInstall).toHaveBeenCalledOnce()
+      expect(daemonSession).toEqual({ alive: true })
+      expect(lifecycle).toEqual([
+        'pre-quit-checkpoint',
+        'handoff-persisted',
+        'native-quit-and-install',
+        'paired-clients-disconnected',
+        'in-process-pty-cleanup'
+      ])
+    }
+  )
 
   it('keeps the serving owner intact when the supervisor handoff cannot be persisted', async () => {
     const send = vi.fn()
