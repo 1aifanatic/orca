@@ -3,13 +3,32 @@ set -euo pipefail
 root=${1:?}
 script_dir=$(cd -- "$(dirname -- "$0")" && pwd)
 # Require a fresh network namespace with no external interfaces or routes.
-python3 - <<'PY'
+python3 - "$root" <<'PY'
 from pathlib import Path
+import errno
+import json
 import socket
-if {name for _, name in socket.if_nameindex()} != {'lo'}:
+import sys
+interfaces = [name for _, name in socket.if_nameindex()]
+routes = Path('/proc/self/net/route').read_text()
+receipt = {'interfaces': interfaces, 'ipv4Routes': routes,
+           'namespace': str(Path('/proc/self/ns/net').readlink()), 'socketProbes': []}
+if set(interfaces) != {'lo'}:
     raise SystemExit('network namespace still has external interfaces')
-if len(Path('/proc/net/route').read_text().splitlines()) != 1:
-    raise SystemExit('network namespace still has IPv4 routes')
+for family, address in ((socket.AF_INET, ('192.0.2.1', 443)),
+                        (socket.AF_INET6, ('2001:db8::1', 443))):
+    with socket.socket(family, socket.SOCK_STREAM) as probe:
+        probe.settimeout(1)
+        result = probe.connect_ex(address)
+    receipt['socketProbes'].append({'address': address[0], 'errno': result})
+    if result not in (errno.ENETUNREACH, errno.EHOSTUNREACH):
+        raise SystemExit(f'network isolation probe unexpected result: {result}')
+print(json.dumps(receipt, indent=2))
+destination = Path(sys.argv[1]) / 'receipt'
+destination.mkdir(exist_ok=True)
+(destination / 'network-isolation.json').write_text(json.dumps(receipt, indent=2) + '\n')
+if len([line for line in routes.splitlines() if line.strip()]) != 1:
+    raise SystemExit('current process namespace still has IPv4 routes')
 PY
 python3 "$script_dir/verify-offline-xwin.py" "$root"
 test ! -e "$root/output"
