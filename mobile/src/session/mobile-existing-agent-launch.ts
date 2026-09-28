@@ -10,11 +10,8 @@ import type { AgentLaunchPrompt, AgentLaunchResult } from '../../../src/shared/a
 import type { TuiAgent } from '../../../src/shared/tui-agent'
 import type { RpcClient } from '../transport/rpc-client'
 import { agentLaunchReplayRun } from '../tasks/mobile-workspace-create-operations'
-import {
-  agentLaunchExistingParams,
-  isAgentLaunchReplayUnsupportedRefusal,
-  readAgentLaunchSupport
-} from '../tasks/agent-launch-request'
+import { agentLaunchExistingParams, readAgentLaunchSupport } from '../tasks/agent-launch-request'
+import { classifyAgentLaunchReplayRefusal } from '../../../src/shared/agent-launch-replay-refusal'
 import { sendReplayingAmbiguousDelivery } from '../tasks/replay-on-ambiguous-delivery'
 import { structuredSessionOperationId } from './structured-session-operation-id'
 
@@ -108,19 +105,14 @@ function classifyLaunchRefusal(
   error: { code?: string; message?: string },
   replayed: boolean
 ): MobileExistingAgentLaunch {
-  if (isAgentLaunchReplayUnsupportedRefusal(error)) {
-    // Only a refusal of the first send proves nothing ran; after a replay it may be a replacement
-    // connection whose capability list hasn't landed, answering for an attempt that did start.
-    return replayed
-      ? { kind: 'unknown', message: AGENT_LAUNCH_UNCONFIRMED_MESSAGE }
-      : { kind: 'unsupported' }
+  switch (classifyAgentLaunchReplayRefusal(error, replayed)) {
+    case 'unsupported':
+      return { kind: 'unsupported' }
+    case 'unknown':
+      return { kind: 'unknown', message: AGENT_LAUNCH_UNCONFIRMED_MESSAGE }
+    case 'failed': {
+      const message = error.message?.trim()
+      return { kind: 'failed', message: message || "Couldn't start the agent." }
+    }
   }
-  if (
-    error.code === 'agent_session_operation_unknown' ||
-    error.code === 'agent_session_operation_expired'
-  ) {
-    return { kind: 'unknown', message: AGENT_LAUNCH_UNCONFIRMED_MESSAGE }
-  }
-  const message = error.message?.trim()
-  return { kind: 'failed', message: message || "Couldn't start the agent." }
 }

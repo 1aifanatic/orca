@@ -125,12 +125,14 @@ export const AGENT_LAUNCH_CALLER_PROFILES: readonly AgentLaunchCallerProfile[] =
     id: 'git-history-explain-commit',
     caller:
       'src/renderer/src/components/right-sidebar/source-control/sync/use-git-history-commit-actions.ts',
-    sourceMarkers: ['prompt: explainPrompt', "promptDelivery: 'submit-after-ready'"],
+    // The fallback for a host without the hosted launch; the button itself goes to the host.
+    sourceMarkers: ["launchSource: 'explain_commit'", "promptDelivery: 'submit-after-ready'"],
     args: {
       agent: 'codex',
       worktreeId: 'wt-1',
       prompt: PROMPT,
-      promptDelivery: 'submit-after-ready'
+      promptDelivery: 'submit-after-ready',
+      launchSource: 'explain_commit'
     },
     passesBeforeSurfaceOpen: false,
     passesLaunchPlan: false,
@@ -211,7 +213,7 @@ export const AGENT_LAUNCH_CALLER_PROFILES: readonly AgentLaunchCallerProfile[] =
     sourceMarkers: [
       'agentArgs: recipe.agentArgs',
       "promptDelivery: 'submit-after-ready'",
-      'beforeSurfaceOpen: () => {'
+      'beforeSurfaceOpen: revealTargetWorktree'
     ],
     args: {
       agent: 'codex',

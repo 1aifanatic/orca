@@ -138,11 +138,5 @@ export function isAgentLaunchUnsupportedRefusal(error: {
   return (error.message ?? '').includes('agent_launch_unsupported')
 }
 
-/** The `agent.launchReplay` twin: an older host rejects the method rather than a field. */
-export function isAgentLaunchReplayUnsupportedRefusal(error: { code?: string }): boolean {
-  return (
-    error.code === 'method_not_found' ||
-    error.code === 'forbidden' ||
-    error.code === 'agent_launch_replay_unsupported'
-  )
-}
+// The `agent.launchReplay` twin lives in shared so the desktop classifies refusals the same way.
+export { isAgentLaunchReplayUnsupportedRefusal } from '../../../src/shared/agent-launch-replay-refusal'

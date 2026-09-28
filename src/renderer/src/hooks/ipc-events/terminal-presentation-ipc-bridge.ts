@@ -10,6 +10,8 @@ import { initialAgentTabViewModeProps } from '@/lib/native-chat-initial-view-mod
 import { getConnectionIdFromState } from '@/lib/connection-context'
 import { isNativeChatTranscriptLocalReadable } from '@/lib/native-chat-transcript-readability'
 import { tryMakePaneKey } from './agent-status-routing'
+import { takeAgentLaunchTabReservation } from '@/lib/agent-launch-tab-reservations'
+import { persistAgentLaunchTabOrder } from '@/lib/launch-agent-tab-order'
 import { useAppStore } from '../../store'
 import {
   activateExistingLeafInLayout,
@@ -47,11 +49,20 @@ export function registerTerminalPresentationIpcBridge(unsubs: (() => void)[]): v
       }) => {
         try {
           const store = useAppStore.getState()
-          const terminalPresentation = resolveTerminalPresentation({
-            presentation,
-            activate,
-            focus
-          })
+          // Why: a caller that minted this tab id recorded where the tab goes; the host cannot know.
+          const reservation =
+            ptyId && tabId !== undefined && !splitFromLeafId
+              ? takeAgentLaunchTabReservation(tabId, worktreeId)
+              : null
+          const terminalPresentation = reservation
+            ? reservation.focus
+              ? 'focused'
+              : 'background'
+            : resolveTerminalPresentation({
+                presentation,
+                activate,
+                focus
+              })
           const shouldActivate = terminalPresentation === 'focused'
           const shouldSurfaceOwner = terminalPresentation !== 'background' && surfaceOwner !== false
           if (shouldActivate) {
@@ -83,15 +94,15 @@ export function registerTerminalPresentationIpcBridge(unsubs: (() => void)[]): v
           const tab =
             reusedTab ??
             (ptyId
-              ? store.createTab(worktreeId, undefined, undefined, {
+              ? store.createTab(worktreeId, reservation?.groupId, undefined, {
                   initialPtyId: ptyId,
                   activate: shouldActivate,
                   ...(launchAgent
                     ? {
                         launchAgent,
                         // Why: a paired client resolved explicit mode before PTY materialization; only omitted mode uses host defaults.
-                        ...(viewMode
-                          ? { viewMode }
+                        ...((reservation?.viewMode ?? viewMode)
+                          ? { viewMode: reservation?.viewMode ?? viewMode }
                           : initialAgentTabViewModeProps(store.settings, {
                               agent: launchAgent,
                               nativeChatTranscriptIsLocalReadable:
@@ -213,6 +224,16 @@ export function registerTerminalPresentationIpcBridge(unsubs: (() => void)[]): v
           }
           if (ptyId && terminalPresentation === 'background') {
             requestBackgroundTerminalWorktreeMount({ worktreeId, tabIds: [tab.id] })
+          }
+          if (reservation && !reusedTab) {
+            // Why: a launched tab joins the end of the tab bar, as a renderer-created one does.
+            persistAgentLaunchTabOrder(worktreeId, tab.id)
+            try {
+              reservation.onRevealed?.(tab.id)
+            } catch (error) {
+              // Bookkeeping: the tab exists either way, and the host's reveal must not fail over it.
+              console.error('agent launch reveal callback failed', error)
+            }
           }
           if (requestId) {
             // Why: attest the actual binding; recovery callers compare it with their expected identity.
