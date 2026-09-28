@@ -5,7 +5,10 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { agentJournalItemKey } from '../../shared/agent-session-journal-item-key'
+import {
+  agentJournalItemKey,
+  parseAgentJournalItemKey
+} from '../../shared/agent-session-journal-item-key'
 import type { AgentSessionJournalIdentity } from '../../shared/agent-session-journal-types'
 import { createTrackedJournalOpener } from '../native-chat/agent-session-journal/journal-store-test-open'
 import type { StructuredAgentSessionAdapter } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
@@ -16,6 +19,12 @@ import {
   mintClaudeDispatchIdentity
 } from './claude-structured-dispatch-content'
 import { sessionFor, userMessage } from './claude-structured-dispatch-test-support'
+import {
+  acquired,
+  fakeClaude,
+  PROVIDER_SESSION_ID,
+  USER_MESSAGE
+} from './claude-structured-session-test-support'
 
 const IDENTITY: AgentSessionJournalIdentity = {
   sessionId: 'session-1',
@@ -112,5 +121,33 @@ describe('handing a send over under its identity', () => {
       dispatchState: 'unknown',
       handedOverItemId: agentJournalItemKey(identity)
     })
+  })
+})
+
+describe('the Claude adapter handing a send over', () => {
+  it('writes the frame under the id the journal recorded for it', async () => {
+    const claude = fakeClaude({ replayUuid: null })
+    const adapter = await acquired(claude)
+    const journal = await journals.open({ identity: IDENTITY, journalDir: root })
+    await journal.appendSubmission({
+      clientMessageId: 'cm-1',
+      payloadFingerprint: 'fingerprint',
+      body: USER_MESSAGE,
+      fence: 7,
+      handoverRecorded: true
+    })
+
+    await handOverSubmission(
+      { sessionId: 'session-1', journal, fence: 7, adapter },
+      journal.submissions()[0]!
+    )
+
+    const recorded = parseAgentJournalItemKey(journal.submissions()[0]?.handedOverItemId ?? '')
+    const uuid =
+      recorded?.provider === 'claude' && recorded.sessionId === PROVIDER_SESSION_ID
+        ? recorded.uuid
+        : null
+    expect(uuid).toEqual(expect.any(String))
+    expect(claude.connections[0]?.sent[0]).toMatchObject({ uuid })
   })
 })
