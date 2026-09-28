@@ -437,7 +437,8 @@ describe('browserManager', () => {
   // process identity until the next direct navigation can restore the WebContents UA and clear it.
   it('never clears the override onto a stale Firefox WebContents UA and heals it on the next navigation', async () => {
     browserMocks.processUserAgent = GUEST_CLEAN_UA
-    const { guest, debuggerSendCommand } = makeViewportGuest(9001)
+    const { guest, debuggerSendCommand, presentedUserAgent, standingUserAgentOverride } =
+      makeViewportGuest(9001)
     webContentsFromIdMock.mockReturnValue(guest)
     browserManager.attachGuestPolicies(guest as never)
     browserManager.registerGuest({
@@ -467,17 +468,18 @@ describe('browserManager', () => {
     debuggerSendCommand.mockClear()
     willRedirect({ preventDefault: vi.fn() }, 'https://myaccount.google.com/', false, true)
     await flushViewportOps()
-    expect(guest.getUserAgent as () => string).toHaveReturnedWith(googleAuthUserAgent())
     expect(debuggerSendCommand).toHaveBeenLastCalledWith('Emulation.setUserAgentOverride', {
       userAgent: GUEST_CLEAN_UA
     })
+    expect(presentedUserAgent()).toBe(GUEST_CLEAN_UA)
 
     debuggerSendCommand.mockClear()
     didStartNavigation(null, 'https://github.com/', false, true)
     await flushViewportOps()
-    expect((guest.getUserAgent as () => string)()).toBe(GUEST_CLEAN_UA)
     expect(debuggerSendCommand).toHaveBeenLastCalledWith('Emulation.setUserAgentOverride', {
       userAgent: ''
     })
+    expect(standingUserAgentOverride()).toBeNull()
+    expect(presentedUserAgent()).toBe(GUEST_CLEAN_UA)
   })
 })
