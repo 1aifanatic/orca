@@ -332,6 +332,39 @@ describe('a Codex turn that ended while Orca was down', () => {
       server.stop()
     }
   })
+
+  it('does not bring back a row that was dropped while its turn was open', async () => {
+    writeFileSync(rollout, turnMarker('task_started', 'turn-1'))
+    const first = new AgentHookServer()
+    await first.start({ env: 'production', userDataPath })
+    await postHookEvent(
+      first,
+      buildBody({
+        hook_event_name: 'UserPromptSubmit',
+        prompt: 'go',
+        session_id: 'root-session',
+        transcript_path: rollout,
+        turn_id: 'turn-1'
+      }),
+      '/hook/codex'
+    )
+    // The CLI exited mid-turn: the row is dropped, keeping only its resume identity.
+    first.dropStatusEntry(PANE)
+    first.flushStatusPersistSync()
+    first.stop()
+    appendFileSync(rollout, turnMarker('turn_aborted', 'turn-1'))
+
+    const server = new AgentHookServer()
+    await server.start({ env: 'production', userDataPath })
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 1_500))
+      expect(server.getStatusSnapshot()).toEqual([
+        expect.objectContaining({ providerSessionOnly: true, state: 'working' })
+      ])
+    } finally {
+      server.stop()
+    }
+  })
 })
 
 describe('the Codex rollout watch on an SSH host', () => {

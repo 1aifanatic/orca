@@ -62,14 +62,23 @@ export function catchUpOnCodexParentRollout(
   }
 }
 
+/** The pane's Codex row, unless a drop left only its resume identity (`providerSessionOnly`):
+ *  the rollout restates a row, it never brings back one that was removed. */
+function liveCodexRow(
+  state: HookListenerState,
+  paneKey: string
+): AgentHookEventPayload | undefined {
+  const current = state.lastStatusByPaneKey.get(paneKey)
+  return current?.payload.agentType === 'codex' && !current.providerSessionOnly
+    ? current
+    : undefined
+}
+
 /** Whether the rollout can still change a Codex row: a root turn open by its own record or by the
  *  rollout's, or children, each of which is read from its own rollout. */
 export function codexRolloutNeedsWatch(state: HookListenerState, paneKey: string): boolean {
   const transcriptState = state.codexSubagentTranscriptByPaneKey.get(paneKey)
-  if (
-    state.lastStatusByPaneKey.get(paneKey)?.payload.agentType !== 'codex' ||
-    !transcriptState?.parent.filePath
-  ) {
+  if (!liveCodexRow(state, paneKey) || !transcriptState?.parent.filePath) {
     return false
   }
   const lead = state.codexLeadStateByPaneKey.get(paneKey)
@@ -116,8 +125,8 @@ export function observeCodexRollout(
   state: HookListenerState,
   paneKey: string
 ): AgentHookEventPayload | undefined {
-  const current = state.lastStatusByPaneKey.get(paneKey)
-  if (current?.payload.agentType !== 'codex') {
+  const current = liveCodexRow(state, paneKey)
+  if (!current) {
     return undefined
   }
   catchUpOnCodexParentRollout(state, paneKey, undefined)
