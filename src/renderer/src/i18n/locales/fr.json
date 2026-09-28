@@ -18306,6 +18306,7 @@
       "needsInput": "attend une réponse",
       "working": "en cours",
       "stopped": "arrêté",
+      "failed": "échoué",
       "finished": "terminé"
     }
   },
