@@ -90,7 +90,7 @@ export function createStructuredSessionMocks() {
     approvalCardProps: initialApprovalCardProps,
     questionCardProps: null as NativeChatQuestionCardProps | null,
     promptItems: [] as AgentJournalRenderItem[],
-    journalItems: [] as AgentJournalRenderItem[],
+    journalItems: new Array<AgentJournalRenderItem>(),
     respond: vi.fn<(...args: never[]) => unknown>(),
     cancel: vi.fn<(...args: never[]) => unknown>(),
     handlePasteEvent: vi.fn<(...args: never[]) => unknown>(),
