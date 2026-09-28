@@ -71,7 +71,7 @@ export async function assemblePtyIpcSpawnEnv(ctx: PtyIpcSpawnState): Promise<voi
   ctx.stablePaneKey = verifiedPaneKey ?? ctx.migrationUnsupportedPaneKey ?? ctx.metadataPaneKey
   ctx.baseEnv = baseEnvWithAuth ? { ...baseEnvWithAuth } : undefined
   const shouldRefreshAgentTeamsEnv =
-    (!ctx.wslGuest || ctx.wslGuest.fresh) &&
+    (!ctx.wslGuest || ctx.wslGuest.fresh || ctx.wslGuest.coldRestore) &&
     !ctx.preAdoptedStablePane &&
     !args.connectionId &&
     ctx.deps.runtime !== undefined &&

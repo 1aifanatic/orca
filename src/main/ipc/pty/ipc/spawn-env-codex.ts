@@ -34,7 +34,7 @@ export async function assemblePtyIpcSpawnCodexEnv(ctx: PtyIpcSpawnState): Promis
   ctx.codexSelectionTarget = ctx.wslGuest
     ? { runtime: 'wsl', wslDistro: ctx.wslGuest.execution.distro }
     : getCodexSelectionTargetForPty(ctx.effectiveShellOverride, ctx.cwd, ctx.expectedWslDistro)
-  if (ctx.wslGuest && !ctx.wslGuest.fresh) {
+  if (ctx.wslGuest && !ctx.wslGuest.fresh && !ctx.wslGuest.coldRestore) {
     ctx.env = ctx.baseEnv
     return
   }

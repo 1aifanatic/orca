@@ -8,6 +8,7 @@ export type WslDaemonSpawnRoute = Readonly<{
   execution: WslAccountExecutionContext
   prepared: PreparedWslGuestSpawnOwner
   fresh: boolean
+  coldRestore?: boolean
 }>
 
 /** Existing unencoded IDs retain their Windows owner; only fresh WSL terminals change backend. */
@@ -32,6 +33,11 @@ export async function prepareWslDaemonSpawnRoute(args: {
       throw new Error('WSL terminal owner is unavailable on this host')
     }
     const connection = await args.sessions.reconnect(owner, args.signal)
+    const live = await connection.provider.probePtyLiveness(args.sessionId!)
+    args.signal?.throwIfAborted()
+    if (live === null) {
+      throw new Error('WSL terminal liveness is unverifiable; refusing cold restore')
+    }
     return Object.freeze({
       connection,
       prepared: Object.freeze({ owner: connection.owner, endpoint: connection.endpoint }),
@@ -41,7 +47,8 @@ export async function prepareWslDaemonSpawnRoute(args: {
         userId: connection.endpoint.userId,
         home: connection.endpoint.home
       }),
-      fresh: false
+      fresh: false,
+      coldRestore: live === false
     })
   }
   if (

@@ -10,6 +10,15 @@ export async function prepareRuntimeGuestSpawnOptions(ctx: RuntimePtySpawnState)
   if (!ctx.wslGuest) {
     return
   }
+  if (!ctx.wslGuest.fresh && !ctx.wslGuest.coldRestore) {
+    ctx.spawnOptions.attachOnly = true
+    return
+  }
+  if (ctx.wslGuest.coldRestore) {
+    ctx.spawnOptions.sessionId = ctx.effectiveSessionAppId
+    ctx.spawnOptions.isNewSession = false
+    ctx.spawnOptions.attachOnly = false
+  }
   const settings = ctx.deps.getSettings?.()
   const environment = getAppEnvironment()
   ctx.spawnOptions = await prepareWslGuestTerminalSpawn(
@@ -31,7 +40,8 @@ export async function prepareRuntimeGuestSpawnOptions(ctx: RuntimePtySpawnState)
       routeBrowserOpensToClient: ctx.deps.runtime?.shouldRelayTerminalBrowserOpens?.(),
       deferGitConfigGuardToDaemon: true
     },
-    ctx.args.signal
+    ctx.args.signal,
+    ctx.wslGuest.coldRestore ? 'confirmed-exited' : undefined
   )
   ctx.env = ctx.spawnOptions.env
   if (ctx.env) {

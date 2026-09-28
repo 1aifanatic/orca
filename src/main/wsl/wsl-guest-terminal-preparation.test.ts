@@ -176,6 +176,7 @@ it.each([true, false])(
         endpoint: daemon.endpoint
       }),
       expect.anything(),
+      undefined,
       undefined
     )
   }
@@ -207,6 +208,7 @@ it('keeps the daemon owner captured while hook readiness awaits', async () => {
       endpoint: expect.objectContaining({ userName: 'alice', home: '/home/alice' })
     }),
     expect.anything(),
+    undefined,
     undefined
   )
 })
@@ -263,4 +265,50 @@ it('accepts a selected account UNC path using registered distro casing', async (
     options.env,
     expect.objectContaining({ selectedCodexHomePath: '/home/alice/.codex', wslDistro: 'ubuntu' })
   )
+})
+
+it('prepares a confirmed exited terminal with its raw guest identity and current account', async () => {
+  const daemon = {
+    owner: prepared.owner,
+    endpoint: {
+      ...prepared.endpoint,
+      userId: '1000',
+      home: '/home/alice',
+      envBinary: '/usr/bin/env',
+      tokenPath: '/token'
+    }
+  }
+  const sessionId = toAppWslPtyId(prepared.owner, 'pty2:owner:1')
+  const result = await prepareWslGuestTerminalSpawn(
+    daemon,
+    { ...options, sessionId, isNewSession: false, command: 'claude --resume current' },
+    policy,
+    undefined,
+    'confirmed-exited'
+  )
+  expect(result).toMatchObject({
+    sessionId,
+    isNewSession: false,
+    command: 'claude --resume current'
+  })
+  expect(buildPtyHostEnv).toHaveBeenCalledWith(
+    'pty2:owner:1',
+    options.env,
+    expect.objectContaining({ wslUser: 'alice', selectedCodexHomePath: '/home/alice/.codex' })
+  )
+  vi.clearAllMocks()
+  await expect(
+    prepareWslGuestTerminalSpawn(
+      daemon,
+      {
+        ...options,
+        sessionId: toAppWslPtyId({ ...prepared.owner, relayBuildId: 'foreign' }, 'pty2:owner:1'),
+        isNewSession: false
+      },
+      policy,
+      undefined,
+      'confirmed-exited'
+    )
+  ).rejects.toThrow()
+  expect(buildPtyHostEnv).not.toHaveBeenCalled()
 })

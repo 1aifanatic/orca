@@ -26,15 +26,27 @@ export async function prepareWslGuestTerminalSpawn(
   captured: PreparedWslGuestSpawnOwner,
   options: PtySpawnOptions,
   policy: BuildPtyHostEnvOptions,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  mode?: 'confirmed-exited'
 ): Promise<PtySpawnOptions> {
   const prepared = capturedWslGuestSpawnOwner(captured)
   throwIfSignalAborted(signal)
+  if (
+    mode === 'confirmed-exited' &&
+    (!prepared.daemon || !options.sessionId || options.isNewSession)
+  ) {
+    throw new Error('Cold restore requires an existing guest daemon terminal identity')
+  }
   if (options.sessionId && !options.isNewSession) {
     toRelayWslPtyId(prepared.owner, options.sessionId)
-    return prepareWslGuestSpawnOptions(prepared, options, signal)
+    if (mode !== 'confirmed-exited') {
+      return prepareWslGuestSpawnOptions(prepared, options, signal)
+    }
   }
-  if (options.attachOnly || (options.sessionId && parseAppWslPtyId(options.sessionId))) {
+  if (
+    options.attachOnly ||
+    (mode !== 'confirmed-exited' && options.sessionId && parseAppWslPtyId(options.sessionId))
+  ) {
     throw new Error('Guest spawn preparation cannot replace an existing terminal owner')
   }
   const { userName: user, distro } = prepared.endpoint
@@ -95,7 +107,13 @@ export async function prepareWslGuestTerminalSpawn(
     }
   }
   throwIfSignalAborted(signal)
-  const env = buildPtyHostEnv(options.sessionId, { ...options.env }, ownedPolicy)
+  const env = buildPtyHostEnv(
+    mode === 'confirmed-exited'
+      ? toRelayWslPtyId(prepared.owner, options.sessionId)
+      : options.sessionId,
+    { ...options.env },
+    ownedPolicy
+  )
   return prepareWslGuestSpawnOptions(
     prepared,
     {
@@ -106,6 +124,7 @@ export async function prepareWslGuestTerminalSpawn(
         getInheritedAgentHookEnvKeysToDelete(env)
       )
     },
-    signal
+    signal,
+    mode
   )
 }

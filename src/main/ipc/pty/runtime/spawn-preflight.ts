@@ -112,7 +112,7 @@ export async function prepareRuntimePtySpawn(
     ctx.expectedWslDistro = ctx.wslGuest.connection.owner.distro
     ctx.isDaemonHostSpawn = true
     ctx.isNewDaemonSession = ctx.wslGuest.fresh
-    ctx.isClaudeLaunch &&= ctx.wslGuest.fresh
+    ctx.isClaudeLaunch &&= ctx.wslGuest.fresh || ctx.wslGuest.coldRestore === true
     ctx.sessionId ??= args.agentSessionCreateOperationId
       ? ptySessionIdForAgentCreateOperation(args.worktreeId, args.agentSessionCreateOperationId)
       : mintPtySessionId(args.worktreeId)
@@ -143,7 +143,7 @@ export async function prepareRuntimePtySpawn(
     ctx.expectedWslDistro
   )
   const codexResumePreparation =
-    ctx.preAdoptedStablePane || (ctx.wslGuest && !ctx.wslGuest.fresh)
+    ctx.preAdoptedStablePane || (ctx.wslGuest && !ctx.wslGuest.fresh && !ctx.wslGuest.coldRestore)
       ? null
       : ctx.deps.prepareCodexResumeHome({
           connectionId: args.connectionId,
@@ -208,7 +208,9 @@ export async function prepareRuntimePtySpawn(
       launchAgent: isTuiAgent(args.launchAgent) ? args.launchAgent : undefined
     })) ?? null
   ctx.selectedCodexHomePath =
-    !ctx.preAdoptedStablePane && !args.connectionId && (!ctx.wslGuest || ctx.wslGuest.fresh)
+    !ctx.preAdoptedStablePane &&
+    !args.connectionId &&
+    (!ctx.wslGuest || ctx.wslGuest.fresh || ctx.wslGuest.coldRestore)
       ? getCompatibleSelectedCodexHomePath(
           ctx.codexSelectionTarget,
           codexResumeHome

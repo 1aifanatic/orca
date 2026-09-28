@@ -273,3 +273,37 @@ it('accepts UNC paths with registered casing for a canonical fresh owner', async
     })
   )
 })
+
+it('translates a positively absent daemon session without reminting its ID or inheriting desktop paths', async () => {
+  run.mockResolvedValue('ready')
+  const id = toAppWslPtyId(daemon.owner, 'retained')
+  const result = await prepareOptions(
+    daemon,
+    {
+      cols: 80,
+      rows: 24,
+      sessionId: id,
+      isNewSession: false,
+      cwd: '\\\\wsl$\\Ubuntu\\work',
+      worktreeId: 'folder',
+      historyIsolationEnabled: true,
+      env: { PATH: 'C:\\bin', HOME: 'C:\\Users\\bob', ORCA_USER_DATA_PATH: 'C:\\profile' }
+    },
+    undefined,
+    'confirmed-exited'
+  )
+  expect(result).toMatchObject({
+    sessionId: id,
+    isNewSession: false,
+    cwd: '/work',
+    shellOverride: '/bin/bash',
+    env: { HOME: '/home/user', PATH: '/usr/bin' }
+  })
+  expect(result.env?.HISTFILE).toContain('/home/user/.orca-wsl/')
+  expect(runWslProcess).toHaveBeenCalledWith(
+    expect.objectContaining({
+      user: 'user',
+      env: expect.not.objectContaining({ PATH: 'C:\\bin', HOME: 'C:\\Users\\bob' })
+    })
+  )
+})

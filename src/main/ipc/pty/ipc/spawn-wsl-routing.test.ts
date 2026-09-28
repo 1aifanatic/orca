@@ -77,6 +77,7 @@ function fixture(args: Partial<PtySpawnIpcArgs> = {}) {
     }
   })
   const provider = new WslDaemonPtyProvider(owner, adapter)
+  vi.spyOn(provider, 'probePtyLiveness').mockResolvedValue(true)
   const connection = { owner, endpoint, provider }
   const sessions = new WslDaemonSessions({
     profileScope: '/profile',
@@ -282,5 +283,49 @@ it('passes captured user to Codex selection and avoids desktop backfill probes o
   expect(prepareResume).toHaveBeenCalledWith(expect.objectContaining({ wslExecution: execution }))
   expect(ensureCodexStateDbBackfillRecoveryStarted).not.toHaveBeenCalled()
   expect(buildPtyHostEnv).not.toHaveBeenCalled()
+  adapter.dispose()
+})
+
+it('cold restores the same absent guest ID with captured-user auth and guest environment preparation', async () => {
+  const id = toAppWslPtyId(owner, 'guest-pty')
+  const { ctx, provider, fresh, auth, selected, spawn, adapter } = fixture({
+    sessionId: id,
+    command: 'claude --resume current'
+  })
+  vi.mocked(provider.probePtyLiveness).mockResolvedValue(false)
+  await preparePtyIpcSpawnPreflight(ctx)
+  await assemblePtyIpcSpawnEnv(ctx)
+  await buildPtyIpcSpawnOptions(ctx)
+  expect(ctx.wslGuest).toMatchObject({ fresh: false, coldRestore: true })
+  expect(fresh).not.toHaveBeenCalled()
+  expect(auth).toHaveBeenCalledWith(expect.anything(), execution)
+  expect(selected).toHaveBeenCalled()
+  expect(prepareWslGuestTerminalSpawn).toHaveBeenCalledWith(
+    expect.objectContaining({ owner, endpoint }),
+    expect.objectContaining({ sessionId: id, isNewSession: false, attachOnly: false }),
+    expect.anything(),
+    undefined,
+    'confirmed-exited'
+  )
+  await executePtyIpcSpawn(ctx)
+  expect(spawn).toHaveBeenCalledWith(
+    expect.objectContaining({
+      sessionId: id,
+      isNewSession: false,
+      attachOnly: false,
+      command: 'claude --resume current'
+    })
+  )
+  adapter.dispose()
+})
+it('refuses retained guest restore when the admitted owner cannot prove session absence', async () => {
+  const { ctx, provider, fresh, auth, spawn, adapter } = fixture({
+    sessionId: toAppWslPtyId(owner, 'guest-pty')
+  })
+  vi.mocked(provider.probePtyLiveness).mockResolvedValue(null)
+  await expect(preparePtyIpcSpawnPreflight(ctx)).rejects.toThrow('unverifiable')
+  expect(fresh).not.toHaveBeenCalled()
+  expect(auth).not.toHaveBeenCalled()
+  expect(spawn).not.toHaveBeenCalled()
   adapter.dispose()
 })

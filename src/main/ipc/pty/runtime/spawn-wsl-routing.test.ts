@@ -295,3 +295,41 @@ it('prepares captured-user hooks for an already-materialized runtime guest pane'
     hooksEnabled: true
   })
 })
+
+it('prepares same-ID runtime cold restore with captured guest account context', async () => {
+  vi.mocked(prepareWslDaemonSpawnRoute).mockResolvedValue({ ...route(false), coldRestore: true })
+  const deps = makeDeps()
+  deps.getSelectedCodexHomePath = vi.fn(async () => null)
+  deps.prepareClaudeAuth = vi.fn(async () => ({
+    configDir: '/home/alice/.claude',
+    envPatch: {},
+    stripAuthEnv: false,
+    provenance: 'test'
+  }))
+  deps.prepareCodexResumeHome = vi.fn(() => null)
+  const id = toAppWslPtyId(owner, 'pty2:kept:1')
+  const ctx = createRuntimePtySpawnState(deps, {
+    cols: 80,
+    rows: 24,
+    sessionId: id,
+    command: 'claude --resume current'
+  })
+  await prepareRuntimePtySpawn(ctx)
+  await buildRuntimePtySpawnOptions(ctx)
+  expect(ctx.spawnOptions).toMatchObject({
+    sessionId: id,
+    isNewSession: false,
+    attachOnly: false,
+    command: 'claude --resume current'
+  })
+  expect(deps.prepareClaudeAuth).toHaveBeenCalledWith(expect.anything(), endpoint)
+  expect(deps.prepareCodexResumeHome).toHaveBeenCalled()
+  expect(prepareWslGuestTerminalSpawn).toHaveBeenCalledWith(
+    expect.anything(),
+    expect.objectContaining({ sessionId: id }),
+    expect.anything(),
+    undefined,
+    'confirmed-exited'
+  )
+  ctx.finishTerminalInstall()
+})

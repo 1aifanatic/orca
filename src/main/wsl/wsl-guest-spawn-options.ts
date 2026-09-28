@@ -75,19 +75,28 @@ function parseEnvironment(value: string): Record<string, string> {
 export async function prepareWslGuestSpawnOptions(
   captured: PreparedWslGuestSpawnOwner,
   options: PtySpawnOptions,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  mode?: 'confirmed-exited'
 ): Promise<PtySpawnOptions> {
   const prepared = capturedWslGuestSpawnOwner(captured)
   const { owner } = prepared
   const execution = createRunningWslRuntimeRunner(owner.distro, signal, prepared.endpoint.userName)
+  if (
+    mode === 'confirmed-exited' &&
+    (!prepared.daemon || !options.sessionId || options.isNewSession)
+  ) {
+    throw new Error('Cold restore requires an existing guest daemon terminal identity')
+  }
   if (options.sessionId && !options.isNewSession) {
     toRelayWslPtyId(owner, options.sessionId)
-    return { ...options, isNewSession: false }
+    if (mode !== 'confirmed-exited') {
+      return { ...options, isNewSession: false }
+    }
   }
   if (options.attachOnly) {
     throw new Error('A WSL attach cannot create a new terminal')
   }
-  if (options.sessionId && parseAppWslPtyId(options.sessionId)) {
+  if (mode !== 'confirmed-exited' && options.sessionId && parseAppWslPtyId(options.sessionId)) {
     throw new Error('A WSL terminal identity cannot be reminted as a fresh spawn')
   }
   const accountExecution = {

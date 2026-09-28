@@ -6,7 +6,7 @@ export async function preparePtyIpcWslOptions(ctx: PtyIpcSpawnState): Promise<vo
   if (!ctx.wslGuest || ctx.preAdoptedStablePane) {
     return
   }
-  if (!ctx.wslGuest.fresh) {
+  if (!ctx.wslGuest.fresh && !ctx.wslGuest.coldRestore) {
     ctx.spawnOptions.sessionId = ctx.effectiveSessionAppId
     ctx.spawnOptions.attachOnly = true
     return
@@ -14,14 +14,23 @@ export async function preparePtyIpcWslOptions(ctx: PtyIpcSpawnState): Promise<vo
   if (!ctx.guestHostEnvPolicy || !ctx.effectiveSessionId) {
     throw new Error('Guest terminal launch policy is unavailable')
   }
+  if (ctx.wslGuest.coldRestore) {
+    ctx.spawnOptions.sessionId = ctx.effectiveSessionAppId
+    ctx.spawnOptions.isNewSession = false
+    ctx.spawnOptions.attachOnly = false
+  }
   try {
     ctx.spawnOptions = await prepareWslGuestTerminalSpawn(
       ctx.wslGuest.prepared,
       ctx.spawnOptions,
-      ctx.guestHostEnvPolicy
+      ctx.guestHostEnvPolicy,
+      undefined,
+      ctx.wslGuest.coldRestore ? 'confirmed-exited' : undefined
     )
   } catch (error) {
-    clearProviderPtyState(ctx.effectiveSessionId)
+    if (ctx.isMintedSessionId) {
+      clearProviderPtyState(ctx.effectiveSessionId)
+    }
     throw error
   }
 }

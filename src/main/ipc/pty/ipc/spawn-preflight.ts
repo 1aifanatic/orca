@@ -215,7 +215,7 @@ export async function preparePtyIpcSpawnPreflight(ctx: PtyIpcSpawnState): Promis
   ctx.isClaudeLaunch =
     !ctx.preAdoptedStablePane &&
     !args.connectionId &&
-    (!ctx.wslGuest || ctx.wslGuest.fresh) &&
+    (!ctx.wslGuest || ctx.wslGuest.fresh || ctx.wslGuest.coldRestore === true) &&
     isClaudeLaunchCommand(args.command)
   if (ctx.isClaudeLaunch && isClaudeAuthSwitchInProgress()) {
     throw new Error(CLAUDE_AUTH_SWITCH_IN_PROGRESS_MESSAGE)
