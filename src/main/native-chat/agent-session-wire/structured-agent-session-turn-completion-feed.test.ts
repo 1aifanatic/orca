@@ -9,6 +9,7 @@ import type { AgentSessionTurnCompletionEvent } from '../../../shared/agent-sess
 import {
   DISPATCH_REJECTED_CANCELLED,
   DISPATCH_REJECTED_HOST_RESTARTED,
+  DISPATCH_REJECTED_NOT_DELIVERED,
   DISPATCH_REJECTED_PROVIDER_CLOSED
 } from '../../../shared/structured-agent-session-dispatch-rejection'
 import { projectStructuredAgentSessionStatusState } from '../../../shared/structured-agent-session-projection'
@@ -440,7 +441,8 @@ describe('a request the agent or its start refused', () => {
   it.each([
     DISPATCH_REJECTED_CANCELLED,
     DISPATCH_REJECTED_HOST_RESTARTED,
-    DISPATCH_REJECTED_PROVIDER_CLOSED
+    DISPATCH_REJECTED_PROVIDER_CLOSED,
+    DISPATCH_REJECTED_NOT_DELIVERED
   ])('never notifies a send %s, alone or after a turn', (reason) => {
     const alone = harness()
     alone.listen()
@@ -459,6 +461,29 @@ describe('a request the agent or its start refused', () => {
     h.setJournal(
       [userEntry('m1', 1), settledTurn, userEntry('m2', 3)],
       [accepted, refused('m2', reason)]
+    )
+    h.observe()
+    expect(h.outcomes()).toEqual([['t1', 'success']])
+  })
+
+  it('never notifies a crash-stranded send that restart reconciliation finds undelivered', () => {
+    const h = afterSuccessfulTurn()
+    const items = [userEntry('m1', 1), settledTurn, userEntry('m2', 3)]
+    const accepted = sent('m1', { dispatchState: 'accepted' })
+    h.setJournal(items, [accepted, sent('m2', { dispatchState: 'unknown', recovered: true })], 2)
+    h.observe()
+    h.setJournal(
+      items,
+      [
+        accepted,
+        sent('m2', {
+          dispatchState: 'rejected',
+          reason: DISPATCH_REJECTED_NOT_DELIVERED,
+          fence: 2,
+          recovered: true
+        })
+      ],
+      2
     )
     h.observe()
     expect(h.outcomes()).toEqual([['t1', 'success']])
