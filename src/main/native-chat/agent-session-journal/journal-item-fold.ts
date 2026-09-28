@@ -51,14 +51,16 @@ export function upsertJournalItem(
     existing.body.kind === 'message' &&
     existing.body.role === 'user' &&
     parseAgentJournalItemKey(itemId)?.provider === 'orca'
+  const { sequenceIndex: _revisedAt, ...revised } = next
   state.items.set(itemId, {
-    ...next,
+    ...revised,
     // Settlements, prompt answers and reopen sweeps revise rows any agent wrote
     // without naming one; each would otherwise hand a subagent's row to the session.
     ...(namesAgentJournalProducer(next) ? {} : agentJournalLinkageFields(existing)),
     // Provider history may normalize text or omit local attachments from the original send.
     body: submitted ? existing.body : next.body,
     sequence: existing.sequence,
+    ...(existing.sequenceIndex !== undefined ? { sequenceIndex: existing.sequenceIndex } : {}),
     observedAt: existing.observedAt,
     turnScope: existing.turnScope ?? next.turnScope
   })

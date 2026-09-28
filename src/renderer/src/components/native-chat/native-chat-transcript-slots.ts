@@ -130,8 +130,8 @@ export function buildNativeChatTranscriptSlots(
     settledTurnKeys,
     expandedTurnKeys
   })
-  // A settled turn's status draws at its first row: the message that opened it, or — for a turn
-  // the provider opened on its own — the first thing it produced.
+  // A turn's bar draws at its first row: the message that opened it, or — for a turn the provider
+  // opened on its own — the first thing it produced.
   const firstRowOfTurn = new Map<string, number>()
   for (const [index, turnKey] of turnKeys.entries()) {
     if (turnKey !== undefined && !firstRowOfTurn.has(turnKey)) {
@@ -142,18 +142,14 @@ export function buildNativeChatTranscriptSlots(
   for (const [index, message] of messages.entries()) {
     const turnKey = turnKeys[index]
     const receipt = receipts.get(message.id)
-    // The live turn's status draws only on the message that opened it; one the provider opened on
-    // its own has none, so the transcript-tail indicator alone carries it until it settles.
     const candidateStatus =
       turnKey === undefined || firstRowOfTurn.get(turnKey) !== index
         ? undefined
-        : turnKey !== currentTurnKey
-          ? turnStatuses.completedByTurn[turnKey]
-          : message.role === 'user'
-            ? turnStatuses.active
-            : undefined
-    const status =
-      showTurnStatus && candidateStatus?.workedSeconds != null ? candidateStatus : undefined
+        : turnKey === currentTurnKey
+          ? turnStatuses.active
+          : turnStatuses.completedByTurn[turnKey]
+    // The live turn's bar carries its running clock; it settles in place.
+    const status = showTurnStatus ? (candidateStatus ?? undefined) : undefined
     const turnDiff = turnKey && turnKeys[index + 1] !== turnKey ? turnDiffs.get(turnKey) : undefined
     const folded = foldedRows.has(index)
     // Skipping a folded row entirely is what keeps windowing honest: a counted

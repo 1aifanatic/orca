@@ -4,10 +4,11 @@
 //
 // Rules: highest revision wins, a tombstone removes, a late lower revision is
 // dropped rather than resurrecting stale content, and ordering is by the
-// sequence of the row that CREATED an item (a later revision updates the body,
-// it does not move the bubble) — except a queued message, which sits where its
-// handover put it. Producer linkage is likewise the creating write's: a
-// revision naming no producer keeps it, one naming any replaces it.
+// position (sequence, then place in the row) of the write that CREATED an item
+// (a later revision updates the body, it does not move the bubble) — except a
+// queued message, which sits where its handover put it. Producer linkage is
+// likewise the creating write's: a revision naming no producer keeps it, one
+// naming any replaces it.
 
 import type {
   AgentJournalAcceptanceReceipt,
@@ -16,6 +17,7 @@ import type {
   AgentJournalSubmission
 } from '../../../shared/agent-session-journal-types'
 import { journalBatchMutationProducer, journalRenderItem } from './journal-render-item'
+import { compareAgentJournalItems } from '../../../shared/agent-session-journal-position'
 import {
   agentJournalSubmissionKey,
   parseAgentJournalItemKey
@@ -102,26 +104,18 @@ export function applyJournalRow(state: JournalReducerState, row: JournalRow): vo
     if (state.appliedSettlementIds.has(row.settlementId)) {
       return
     }
-    for (const mutation of row.mutations) {
+    for (const [sequenceIndex, mutation] of row.mutations.entries()) {
       if (mutation.kind === 'item') {
         if (journalItemRevisionIsStale(state, mutation.itemId, mutation.revision)) {
           continue
         }
-        const itemId = resolveJournalItemId(state, mutation.itemId, mutation.body)
+        const { revision, body } = mutation
+        const itemId = resolveJournalItemId(state, mutation.itemId, body)
         acceptSubmissionFromProviderItem(state, mutation.itemId, itemId, row)
-        upsertJournalItem(
-          state,
-          itemId,
-          mutation.revision,
-          journalRenderItem(
-            itemId,
-            mutation.revision,
-            mutation.body,
-            row,
-            statedOrDerivedTurnScope(state, mutation),
-            journalBatchMutationProducer(row, mutation)
-          )
-        )
+        const producer = journalBatchMutationProducer(row, mutation)
+        const scope = statedOrDerivedTurnScope(state, mutation)
+        const item = journalRenderItem(itemId, revision, body, row, scope, producer, sequenceIndex)
+        upsertJournalItem(state, itemId, revision, item)
       } else {
         removeJournalItem(state, resolveItemId(state, mutation.itemId), mutation.revision)
       }
@@ -203,9 +197,9 @@ function resolveItemId(state: JournalReducerState, itemId: string): string {
 
 /** Project the folded state into the client-facing snapshot. */
 export function renderJournalState(state: JournalReducerState): AgentJournalSnapshot {
-  // Sequence is the sole ordering key; map insertion order is not, because a
-  // re-created item re-enters the map after the items that followed it.
-  const items = [...state.items.values()].sort((a, b) => a.sequence - b.sequence)
+  // The journal position is the sole ordering key; map insertion order is not,
+  // because a re-created item re-enters the map after the items that followed it.
+  const items = [...state.items.values()].sort(compareAgentJournalItems)
   return {
     sessionId: state.sessionId,
     cursor: { epoch: state.epoch, sequence: state.lastSequence },

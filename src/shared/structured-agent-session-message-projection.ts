@@ -1,5 +1,6 @@
 import type { AgentJournalRenderItem, AgentJournalSubmission } from './agent-session-journal-types'
 import { agentJournalSubmissionKey } from './agent-session-journal-item-key'
+import { agentJournalItemPosition } from './agent-session-journal-position'
 import { isQueuedAgentJournalSubmission } from './agent-session-queued-submission'
 import type { NativeChatMessage } from './native-chat-types'
 import {
@@ -21,7 +22,15 @@ export function projectStructuredAgentSessionMessages(
       .filter((submission) => submission.dispatchState === 'rejected')
       .map((submission) => agentJournalSubmissionKey(submission.clientMessageId))
   )
-  const visibleItems = items.filter((item) => !rejected.has(item.itemId))
+  const visibleItems: AgentJournalRenderItem[] = []
+  const refused = new Map<string, AgentJournalRenderItem>()
+  for (const item of items) {
+    if (rejected.has(item.itemId)) {
+      refused.set(item.itemId, item)
+    } else {
+      visibleItems.push(item)
+    }
+  }
   const journalled = new Set(visibleItems.map((item) => item.itemId))
   // Not delivered yet, so nothing the agent does meanwhile — a command it waits behind — comes
   // after it. Its handover places it in the conversation.
@@ -44,12 +53,18 @@ export function projectStructuredAgentSessionMessages(
     ...held,
     ...optimistic
       .filter((entry) => !journalled.has(agentJournalSubmissionKey(entry.clientMessageId)))
-      .map((entry): NativeChatMessage => ({
-        id: agentJournalSubmissionKey(entry.clientMessageId),
-        role: 'user',
-        source: 'transcript',
-        timestamp: entry.queuedAt,
-        blocks: entry.body.blocks
-      }))
+      .map((entry): NativeChatMessage => {
+        const id = agentJournalSubmissionKey(entry.clientMessageId)
+        const recorded = refused.get(id)
+        return {
+          id,
+          role: 'user',
+          source: 'transcript',
+          timestamp: entry.queuedAt,
+          blocks: entry.body.blocks,
+          // A send the journal recorded before refusing it keeps its place there.
+          ...(recorded ? { journalPosition: agentJournalItemPosition(recorded) } : {})
+        }
+      })
   ]
 }

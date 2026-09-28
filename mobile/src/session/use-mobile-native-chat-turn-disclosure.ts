@@ -119,7 +119,7 @@ export function useMobileNativeChatTurnDisclosure({
     },
     [scopeKey]
   )
-  // A settled turn's status draws at its first row.
+  // A turn's bar draws at its first row.
   const firstRowOfTurn = useMemo(() => {
     const first = new Map<string, number>()
     for (const [index, turnKey] of turnKeys.entries()) {
@@ -136,9 +136,12 @@ export function useMobileNativeChatTurnDisclosure({
     (listIndex: number, message: NativeChatMessage): MobileNativeChatTurnRow => {
       const index = waiting.indexById?.get(message.id) ?? listIndex
       const turnKey = turnKeys[index]
+      // The live turn's bar carries its running clock; it settles in place.
       const turnStatus =
         enabled && turnKey !== undefined && firstRowOfTurn.get(turnKey) === index
-          ? (completedByTurn[turnKey] ?? null)
+          ? turnKey === activeTurnKey
+            ? active
+            : (completedByTurn[turnKey] ?? null)
           : null
       return {
         turnStatus,
@@ -164,6 +167,7 @@ export function useMobileNativeChatTurnDisclosure({
       liveTurnKey,
       enabled,
       activeTurnKey,
+      active,
       completedByTurn,
       expandedTurnIds,
       isWorking

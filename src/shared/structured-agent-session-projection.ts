@@ -10,6 +10,7 @@ import {
   type AgentJournalSubmission,
   type AgentJournalTurnOutcome
 } from './agent-session-journal-types'
+import { agentJournalItemRowOrigin } from './agent-session-journal-position'
 import {
   AGENT_STATUS_TOOL_INPUT_MAX_LENGTH,
   AGENT_STATUS_TOOL_NAME_MAX_LENGTH
@@ -171,11 +172,9 @@ export function projectStructuredItemToNativeChat(
   const sentAs = item.body.kind === 'message' ? item.body.sentAs : undefined
   const message: NativeChatMessage | null = projected
     ? {
-        id: item.itemId,
+        ...agentJournalItemRowOrigin(item),
         role: projected.role,
         blocks: projected.blocks,
-        timestamp: item.observedAt,
-        source: 'transcript',
         // A send mode this build cannot name renders as an ordinary message.
         ...(sentAs !== undefined && isAgentJournalMessageSendMode(sentAs) ? { sentAs } : {})
       }
