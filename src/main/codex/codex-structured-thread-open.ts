@@ -97,18 +97,19 @@ export async function openCodexThread(
   timeoutMs: number | undefined
 ): Promise<CodexOpenedThread> {
   const resumeThreadId = launch.resumeThreadId
-  const threadSettings = {
-    cwd: launch.cwd,
-    ...launch.permissionPolicy,
-    ...(launch.model ? { model: launch.model } : {})
-  }
+  const threadSettings = { cwd: launch.cwd, ...launch.permissionPolicy }
   const startThread = (): Promise<unknown> =>
-    connection.request('thread/start', threadSettings, { timeoutMs })
+    connection.request(
+      'thread/start',
+      { ...threadSettings, ...(launch.model ? { model: launch.model } : {}) },
+      { timeoutMs }
+    )
   let supersededThreadId: string | undefined
   let opened: unknown
   if (!resumeThreadId) {
     opened = await startThread()
   } else {
+    // No model: naming one makes Codex skip the thread's saved model, provider and effort.
     const resumeParams = {
       threadId: resumeThreadId,
       ...threadSettings,

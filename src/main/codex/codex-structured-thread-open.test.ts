@@ -275,12 +275,8 @@ describe('openCodexThread', () => {
         2_000
       )
 
-      expect(request).toHaveBeenNthCalledWith(
-        1,
-        'thread/resume',
-        expect.objectContaining({ threadId: 'thread-unsaved', model: 'gpt-chosen' }),
-        { timeoutMs: 2_000 }
-      )
+      // A resume keeps the thread's own saved model, provider and effort, which naming one skips.
+      expect(request.mock.calls[0]?.[1]).not.toHaveProperty('model')
       expect(request).toHaveBeenLastCalledWith(
         'thread/start',
         { cwd: '/workspace', model: 'gpt-chosen' },
