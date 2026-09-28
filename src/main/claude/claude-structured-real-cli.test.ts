@@ -8,6 +8,7 @@ import type { AgentSessionJournalIdentity } from '../../shared/agent-session-jou
 import { resolveClaudeCommand } from '../codex-cli/command'
 import { resolveSessionFilePath } from '../native-chat/session-file-resolver'
 import { getSpawnArgsForWindows } from '../win32-utils'
+import { resolveRealClaudeCliGate } from './claude-real-cli-test-gate'
 import { CLAUDE_STRUCTURED_BASE_OPTIONS } from './claude-structured-launch-resolution'
 import {
   ClaudeStructuredSessionAdapter,
@@ -16,35 +17,20 @@ import {
 import type { ClaudeStructuredSessionAdapterDeps } from './claude-structured-session-state'
 
 const command = resolveClaudeCommand()
-const versionLaunch = getSpawnArgsForWindows(command, ['--version'])
-const realClaudeAvailable =
-  spawnSync(versionLaunch.spawnCmd, versionLaunch.spawnArgs, {
-    stdio: 'ignore',
-    windowsHide: true,
-    timeout: 5_000
-  }).status === 0
-const authStatusLaunch = getSpawnArgsForWindows(command, ['auth', 'status', '--json'])
-/** The CLI's own account report — the only source of truth for where it writes that
- *  is not derived from Orca's own path expressions. */
-const realClaudeAuthStatus = (() => {
-  if (!realClaudeAvailable) {
-    return null
-  }
-  const result = spawnSync(authStatusLaunch.spawnCmd, authStatusLaunch.spawnArgs, {
+const gate = resolveRealClaudeCliGate(process.env, (args) => {
+  const launch = getSpawnArgsForWindows(command, [...args])
+  const result = spawnSync(launch.spawnCmd, launch.spawnArgs, {
     encoding: 'utf8',
     windowsHide: true,
     timeout: 5_000
   })
-  if (result.status !== 0) {
-    return null
-  }
-  try {
-    return JSON.parse(result.stdout) as { loggedIn?: boolean; projectsDirectory?: string }
-  } catch {
-    return null
-  }
-})()
+  return { status: result.status, stdout: result.stdout ?? '' }
+})
+/** The CLI's own account report — the only source of truth for where it writes that
+ *  is not derived from Orca's own path expressions. */
+const realClaudeAuthStatus = gate.authStatus
 const realClaudeAuthenticated = realClaudeAuthStatus?.loggedIn === true
+const suiteTitle = `Claude structured real CLI handshake${gate.skipReason ? ` (skipped: ${gate.skipReason})` : ''}`
 
 function realAdapter(
   providerSessionId: string,
@@ -105,7 +91,7 @@ async function waitForResolvedTranscript(
   }
 }
 
-describe.skipIf(!realClaudeAvailable)('Claude structured real CLI handshake', () => {
+describe.skipIf(gate.skipReason !== null)(suiteTitle, () => {
   it.skipIf(!realClaudeAuthenticated)(
     'proves a pre-minted session before the first user message',
     async () => {
