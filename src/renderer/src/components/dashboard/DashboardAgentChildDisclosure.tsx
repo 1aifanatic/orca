@@ -53,6 +53,7 @@ export function DashboardAgentChildDisclosure({
       >
         {timestamp}
       </span>
+      {/* Why: align the 12px icon with adjacent row icons while keeping its 24px hit target. */}
       <Button
         variant="ghost"
         size="icon-xs"
@@ -62,7 +63,7 @@ export function DashboardAgentChildDisclosure({
         onPointerDown={(event) => event.stopPropagation()}
         onKeyDown={stopKeyDown}
         data-agent-child-disclosure-button=""
-        className="col-start-1 row-start-1"
+        className="col-start-1 row-start-1 -mr-1.5"
         aria-label={translate(
           'auto.components.dashboard.DashboardAgentChildDisclosure.1b57ce9fa4',
           '{{value0}} {{value1}} child {{value2}}',
