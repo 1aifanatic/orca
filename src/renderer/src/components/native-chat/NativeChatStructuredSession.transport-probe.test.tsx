@@ -176,9 +176,7 @@ describe('NativeChatStructuredSession transport-unconfirmed sends', () => {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 3000))
     })
-    const texts = mocks.call.mock.calls.map(
-      (call) => (call[2] as { body?: { blocks?: { text?: string }[] } }).body?.blocks?.[0]?.text
-    )
+    const texts = mocks.call.mock.calls.map((call) => call[2]?.body?.blocks?.[0]?.text)
     expect(texts).toEqual(['first', 'second'])
   }, 20000)
 

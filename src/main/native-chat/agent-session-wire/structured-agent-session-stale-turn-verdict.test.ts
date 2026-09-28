@@ -182,7 +182,12 @@ describe('running turn lifecycle revisions', () => {
 
 describe('stale session state on a cold acquire', () => {
   function journalWith(items: AgentJournalRenderItem[]) {
-    const appendLifecycleBatch = vi.fn(async () => ({ epoch: 'epoch-1', sequence: 9 }))
+    const appendLifecycleBatch = vi.fn(
+      async (_batch: { mutations: readonly { kind: string; body?: { kind: string } }[] }) => ({
+        epoch: 'epoch-1',
+        sequence: 9
+      })
+    )
     const journal = {
       snapshot: () => ({ items }),
       cursor: () => ({ epoch: 'epoch-1', sequence: 8 }),
@@ -341,9 +346,7 @@ describe('stale session state on a cold acquire', () => {
   describe('the crash boundary writes at most one row', () => {
     const boundaryRows = (batch: ReturnType<typeof journalWith>['appendLifecycleBatch']) =>
       batch.mock.calls.flatMap(([input]) =>
-        (input as { mutations: { kind: string; body?: { kind: string } }[] }).mutations.filter(
-          (mutation) => mutation.body?.kind === 'status'
-        )
+        input.mutations.filter((mutation) => mutation.body?.kind === 'status')
       )
 
     it('says the session did not survive when it left a send in doubt, with no Retry', async () => {
