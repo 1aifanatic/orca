@@ -3,6 +3,7 @@ import type { CodexBackgroundTaskEvent } from './codex-background-task-frames'
 import { readRecord, readString } from './codex-item-field-readers'
 import { readCodexThreadItem } from './codex-structured-item-translation'
 import { MAX_CODEX_ITEM_STREAM_METADATA_BYTES } from './codex-item-stream-retention'
+import type { CodexAbandonedCommand } from './codex-prompt-registry'
 
 const MAX_SETTLED_COMMANDS = 128
 const MAX_DESCRIPTION_CHARS = 512
@@ -95,6 +96,11 @@ export class CodexBackgroundCommandTracker {
     return [...this.commands]
       .filter(([, command]) => command.threadId === threadId)
       .flatMap(([key]) => this.end(key) ?? [])
+  }
+
+  /** Its approval went unanswered until its turn ended, so its process never started. */
+  endUnapproved(command: CodexAbandonedCommand): CodexBackgroundCommandChange | null {
+    return this.end(JSON.stringify([command.threadId, command.itemId]))
   }
 
   tasks(

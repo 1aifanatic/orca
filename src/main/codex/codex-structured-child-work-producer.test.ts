@@ -423,6 +423,58 @@ describe('Codex structured child-work producer', () => {
     expect(fold('done', recordedLiveness())).toEqual({ stateName: 'done' })
   })
 
+  it('ends an approval left unanswered when its turn ends: Codex never ran the command', async () => {
+    const { adapter, codex, send, records, recordedLiveness, display, byDescription } =
+      await producer()
+    const approve = (threadId: string, turnId: string, itemId: string, command: string) => {
+      // The approval path starts the item before it asks, and drops the question at turn end.
+      send(shellFrame('item/started', threadId, turnId, itemId, command, 'agent'))
+      codex.connections[0]!.handlers.onServerRequest?.({
+        id: `approval-${itemId}`,
+        method: 'item/commandExecution/requestApproval',
+        params: { itemId, threadId, turnId }
+      })
+    }
+    send(turn('turn/started', THREAD_ID, 'p1'))
+    send(turn('turn/started', REVIEWER, 'r1'))
+    send(spawned(REVIEWER, 'review', 'p1'))
+    approve(REVIEWER, 'r1', 'call-child', 'npm run e2e')
+    approve(THREAD_ID, 'p1', 'call-main', 'npm run dev')
+    expect(records().filter((record) => record.kind === 'command')).toHaveLength(2)
+    // The user stops the child, then the main agent, each at its approval.
+    send(turn('turn/completed', REVIEWER, 'r1', 'interrupted'))
+    expect(byDescription('npm run e2e')).toBeUndefined()
+    expect(display('review')).toBe('interrupted')
+    send(turn('turn/completed', THREAD_ID, 'p1', 'interrupted'))
+    expect(byDescription('npm run dev')).toBeUndefined()
+    expect(adapter.backgroundTaskState('session-1')).toBeNull()
+    expect(fold('done', recordedLiveness())).toEqual({ stateName: 'done' })
+  })
+
+  it('keeps an answered approval running past its turn', async () => {
+    const { adapter, codex, send, byDescription } = await producer()
+    send(turn('turn/started', THREAD_ID, 'p1'))
+    send(shellFrame('item/started', THREAD_ID, 'p1', 'call-1', 'npm run dev', 'agent'))
+    codex.connections[0]!.handlers.onServerRequest?.({
+      id: 'approval-1',
+      method: 'item/commandExecution/requestApproval',
+      params: { itemId: 'call-1', threadId: THREAD_ID, turnId: 'p1' }
+    })
+    await adapter.answerPrompt({
+      sessionId: 'session-1',
+      itemId: 'call-1',
+      kind: 'approval',
+      response: { kind: 'option', optionId: 'accept' },
+      fence: 7,
+      commit: async () => {}
+    })
+    send(turn('turn/completed', THREAD_ID, 'p1'))
+    expect(byDescription('npm run dev')).toMatchObject({ membership: 'live' })
+    expect(adapter.backgroundTaskState('session-1')?.tasks).toEqual([
+      expect.objectContaining({ kind: 'command', description: 'npm run dev' })
+    ])
+  })
+
   it("numbers a child's runs as the journal does: a row's attempt is its record's generation", async () => {
     const { send, byDescription, stampOf } = await producer()
     const says = (turnId: string, text: string) =>

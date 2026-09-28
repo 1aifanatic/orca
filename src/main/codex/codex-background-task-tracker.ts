@@ -10,6 +10,7 @@ import {
 import { CodexSubagentExecutions } from './codex-subagent-executions'
 import { CodexBackgroundCommandTracker } from './codex-background-command-tracker'
 import { CodexChildWorkEvidence } from './codex-child-work-evidence'
+import type { CodexAbandonedCommand } from './codex-prompt-registry'
 import type { CodexStructuredSessionAdapterDeps } from './codex-structured-session-state'
 import { boundSubagentField } from './codex-subagent-group-body'
 
@@ -56,15 +57,21 @@ export class CodexBackgroundTaskTracker {
     return this.commands.canObserve(event)
   }
 
-  observe(event: CodexBackgroundTaskEvent): boolean {
+  /** `unapproved`: commands whose approval the journal dropped with this frame's turn ending. */
+  observe(
+    event: CodexBackgroundTaskEvent,
+    unapproved: readonly CodexAbandonedCommand[] = []
+  ): boolean {
     const itemEvent = event.method === 'item/started' || event.method === 'item/completed'
     const command = itemEvent ? this.commands.observe(event) : null
-    const commands =
-      event.method === 'thread/closed'
+    const commands = [
+      ...unapproved.flatMap((abandoned) => this.commands.endUnapproved(abandoned) ?? []),
+      ...(event.method === 'thread/closed'
         ? this.commands.endThread(event.threadId)
         : command
           ? [command]
-          : []
+          : [])
+    ]
     const frame = readCodexBackgroundTaskFrame(event, this.primaryThreadId)
     if (frame?.kind === 'subagent') {
       this.executions.register(

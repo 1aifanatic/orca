@@ -156,7 +156,7 @@ export class CodexStructuredSessionAdapter implements StructuredAgentSessionAdap
       this.compactions.codex(event.sessionId, event.method, event.params)
       // After the admission check, so a refused frame is observed by the strip
       // only on the retry that also reaches the journal.
-      if (session.backgroundTasks.observe(event)) {
+      if (session.backgroundTasks.observe(event, session.prompts.takeAbandonedCommands())) {
         this.deps.onBackgroundTasksChanged?.(event.sessionId, session.backgroundTasks.state)
       }
       // After the journal and the parent's republished row, never ahead of either.
