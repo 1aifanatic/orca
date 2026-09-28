@@ -18,6 +18,7 @@ import { useAppStore } from '@/store'
 import { makeTab } from '@/store/slices/store-test-helpers'
 import { makeCandidate } from './workspace-cleanup-presentation-fixtures'
 import { useWorkspaceCleanupRemoval } from './use-workspace-cleanup-removal'
+import { useWorkspaceCleanupDialogLifecycle } from './use-workspace-cleanup-dialog-lifecycle'
 
 const initialState = useAppStore.getInitialState()
 const LEAF_ID = '11111111-1111-4111-8111-111111111111'
@@ -201,5 +202,30 @@ describe('workspace cleanup removal of workspaces with a running agent', () => {
     await waitFor(() => expect(calls).toHaveLength(1))
     expect(calls[0].options?.unverifiedRemovalConsent).toBeDefined()
     expect(approvedBlockersById(calls)[worktreeId('b')]).toContain('live-agent')
+  })
+
+  it('drops an open stop step when the dialog is reopened mid-batch', async () => {
+    useAppStore.setState({
+      scanWorkspaceCleanup: vi.fn(() => new Promise<never>(() => {})),
+      hydrateWorkspaceCleanupFromCache: vi.fn(async () => {}),
+      hydrateWorkspaceSpaceFromCache: vi.fn(async () => {}),
+      // The batch never settles, so it stays in flight across close and reopen.
+      removeWorkspaceCleanupCandidates: vi.fn(() => new Promise<never>(() => {}))
+    })
+    startAgent('b')
+    const { result } = renderHook(() => useWorkspaceCleanupDialogLifecycle())
+    act(() => useAppStore.getState().openModal('workspace-cleanup'))
+    act(() => result.current.removal.openConfirmRemove([candidateFor('a')]))
+    act(() => result.current.removal.confirmRemove())
+    expect(result.current.removal.removalInFlight).toBe(true)
+
+    act(() => result.current.removal.confirmUnverifiedRemoval(candidateFor('b')))
+    expect(result.current.removal.agentStopRequest).not.toBeNull()
+
+    act(() => useAppStore.getState().closeModal())
+    act(() => useAppStore.getState().openModal('workspace-cleanup'))
+
+    expect(result.current.removal.agentStopRequest).toBeNull()
+    expect(result.current.removal.removalInFlight).toBe(true)
   })
 })
