@@ -405,6 +405,30 @@ describe('Stop and Delete', () => {
     await eventually(async () => expect(await submission(draftId)).toBeDefined())
   })
 
+  it('a capable Stop whose hold write fails still withdraws the waiting drafts and returns their text', async () => {
+    await workingSend()
+    const queued = await send('kept by the stop', 'queue-if-active').result
+    if (!queued.ok || !('queued' in queued.value)) {
+      throw new Error('expected a queued receipt')
+    }
+    const hold = vi
+      .spyOn(JournalQueuedMessages.prototype, 'hold')
+      .mockRejectedValueOnce(new Error('disk full'))
+    try {
+      expect(await stop(true)).toMatchObject({
+        ok: true,
+        value: {
+          withdrawnQueued: [
+            { messageId: queued.value.queued.messageId, body: hostTestMessage('kept by the stop') }
+          ]
+        }
+      })
+    } finally {
+      hold.mockRestore()
+    }
+    expect(await drafts()).toHaveLength(0)
+  })
+
   it('Delete hands back the body and answers a replay from the tombstone', async () => {
     await workingSend()
     const queued = await send('delete me', 'queue-if-active').result

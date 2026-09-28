@@ -559,6 +559,15 @@ describe('holds', () => {
     })
   })
 
+  it('a hold naming no drafts touches nothing — a Stop with no drafts costs no write', async () => {
+    const journal = await open()
+    await journal.close()
+    // A closed handle would refuse any transaction; an empty hold never opens one.
+    await expect(
+      journal.queuedMessages.hold({ messageIds: [], reason: 'stopped' })
+    ).resolves.toBeUndefined()
+  })
+
   it('holds reach only waiting rows', async () => {
     const journal = await open()
     await queueDraft(journal, 'draft-1')

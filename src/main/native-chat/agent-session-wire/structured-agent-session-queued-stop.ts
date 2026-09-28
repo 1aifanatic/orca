@@ -18,16 +18,21 @@ import {
 async function holdWithdrawableQueuedMessages(
   ctx: AgentSessionTurnContext
 ): Promise<QueuedMessageRow[]> {
+  let frontier: QueuedMessageRow[]
   try {
-    const frontier = withdrawableQueuedMessages(ctx.journal)
+    frontier = withdrawableQueuedMessages(ctx.journal)
+  } catch {
+    return []
+  }
+  try {
     await ctx.journal.queuedMessages.hold({
       messageIds: frontier.filter((row) => row.state === 'waiting').map((row) => row.messageId),
       reason: 'stopped'
     })
-    return frontier
   } catch {
-    return []
+    // A failed hold must not shrink what a capable Stop withdraws.
   }
+  return frontier
 }
 
 /** Stop step (3): compare-and-transition the frontier, one transaction stamped

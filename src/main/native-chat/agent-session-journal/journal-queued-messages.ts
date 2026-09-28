@@ -113,6 +113,10 @@ export class JournalQueuedMessages {
    *  restart and dies with the session's journal; withdraw and consume clear
    *  it in their own UPDATE. */
   hold(input: { messageIds: readonly string[]; reason: QueuedMessageHoldReason }): Promise<void> {
+    if (input.messageIds.length === 0) {
+      // Every Stop calls this; one with no drafts must cost no write transaction.
+      return Promise.resolve()
+    }
     return this.deps.serialize(async () => {
       assertJournalWritable(this.deps.readOnly(), this.deps.sessionId)
       const { db } = this.deps.database()
