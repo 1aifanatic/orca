@@ -32,6 +32,8 @@ function readQoderState(
     case 'StopFailure':
     case 'SessionEnd':
       return 'done'
+    case 'PostCompact':
+      return payload.trigger === 'manual' ? 'done' : null
     case 'Notification':
       if (
         payload.notification_type === 'permission_prompt' ||
@@ -75,7 +77,7 @@ export function normalizeQoderEvent(
     interactivePrompt: snapshot.interactivePrompt,
     lastAssistantMessage: snapshot.lastAssistantMessage,
     lastAssistantMessageIsToolOutput: snapshot.lastAssistantMessageIsToolOutput,
-    sessionBoundary: eventName === 'SessionStart' ? true : undefined,
+    sessionBoundary: eventName === 'SessionStart' || eventName === 'PostCompact' ? true : undefined,
     interrupted: eventName === 'Stop' && hookPayload.is_interrupt === true ? true : undefined,
     mainAgent:
       eventName === 'StopFailure'

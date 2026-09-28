@@ -11,7 +11,8 @@ export const QODER_HOOK_EVENTS = [
   'PermissionRequest',
   'Stop',
   'StopFailure',
-  'Notification'
+  'Notification',
+  'PostCompact'
 ] as const
 
 export const qoderHookService = new ClaudeHookService({

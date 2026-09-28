@@ -27,7 +27,13 @@ describe('Qoder agent identity and lifecycle', () => {
       expect(isExpectedAgentProcess(command, 'qodercli')).toBe(true)
     }
     expect(recognizeAgentProcessFromCommandLine('qodercli --print hello')).toBeNull()
-    for (const args of ['-o json', '--input-format=stream-json', '--remote-control session']) {
+    for (const args of [
+      '-o json',
+      '--input-format=stream-json',
+      '--remote-control session',
+      '--acp',
+      '--delete-session 1'
+    ]) {
       expect(recognizeAgentProcessFromCommandLine(`qodercli ${args}`)).toBeNull()
     }
     expect(recognizeAgentProcessFromCommandLine('qodercli --prompt-interactive hello')?.agent).toBe(
@@ -130,3 +136,25 @@ it.each(['darwin', 'linux', 'win32'] as const)(
     )
   }
 )
+
+it('does not rewrite DSH titles containing a pipe as Qoder', () => {
+  const title = '✦ 🐋 refactor parser | run tests'
+  expect(normalizeTerminalTitle(title)).toBe(title)
+  expect(getAgentLabel(title)).not.toBe('Qoder CLI')
+  expect(detectAgentStatusFromTitle(title)).not.toBe('working')
+})
+
+it('settles manual compaction without interrupting automatic compaction', () => {
+  const state = createHookListenerState()
+  const send = (hook_event_name: string, extra = {}) =>
+    normalizeAndAccept(state, 'qoder', { hook_event_name, ...extra })
+  expect(send('UserPromptSubmit', { prompt: 'Refactor' })?.payload.state).toBe('working')
+  expect(send('PreCompact', { trigger: 'manual' })).toBeNull()
+  expect(send('PostCompact', { trigger: 'auto' })).toBeNull()
+  expect(send('SessionStart', { source: 'compact' })).toBeNull()
+  expect(send('PostCompact', { trigger: 'manual' })?.payload).toMatchObject({
+    state: 'done',
+    sessionBoundary: true,
+    agentType: 'qoder'
+  })
+})

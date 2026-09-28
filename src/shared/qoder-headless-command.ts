@@ -17,7 +17,13 @@ export function isQoderHeadlessCommand(tokens: readonly string[]): boolean {
     if (name === '--input-format' && value === 'stream-json') {
       return true
     }
-    if (name === '--remote-control' || name === '--remote' || name === '--list-sessions') {
+    if (
+      name === '--remote-control' ||
+      name === '--remote' ||
+      name === '--list-sessions' ||
+      name === '--delete-session' ||
+      name === '--acp'
+    ) {
       return true
     }
   }
