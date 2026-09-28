@@ -23,6 +23,7 @@ import type { HookListenerState } from '../listener-state'
 import { resolvePrompt, resolveToolState } from '../prompt-fields'
 import { extractToolFields, isNewTurnEvent } from '../provider-event-routing'
 import { readString } from '../tool-input-preview'
+import { recordCodexChildRollout } from '../../codex-subagent-transcript'
 import { catchUpOnCodexParentRollout } from './codex-rollout-reader'
 import {
   codexMainAgentStatusForPayload,
@@ -85,6 +86,20 @@ export function buildCodexChildDrivenStatusPayload(
   })
 }
 
+/** A child's own hooks name its rollout (`transcript_path`), which the parent's reads then use. */
+function recordChildRolloutFromHook(
+  state: HookListenerState,
+  paneKey: string,
+  agentId: string,
+  transcriptPath: string | undefined
+): void {
+  const transcriptState = state.codexSubagentTranscriptByPaneKey.get(paneKey)
+  const child = state.codexSubagentRosterByPaneKey.get(paneKey)?.get(agentId)
+  if (transcriptState && child) {
+    recordCodexChildRollout(transcriptState, agentId, transcriptPath, child.startedAt)
+  }
+}
+
 export function normalizeCodexSubagentLifecycleEvent(
   state: HookListenerState,
   eventName: 'SubagentStart' | 'SubagentStop',
@@ -106,6 +121,12 @@ export function normalizeCodexSubagentLifecycleEvent(
         state: 'working'
       },
       Date.now()
+    )
+    recordChildRolloutFromHook(
+      state,
+      paneKey,
+      agentId,
+      readFirstString(hookPayload, ['transcript_path', 'transcriptPath'])
     )
   } else {
     finishCodexSubagent(roster, agentId)
@@ -209,6 +230,7 @@ export function normalizeCodexEvent(
       },
       Date.now()
     )
+    recordChildRolloutFromHook(state, paneKey, agentId, transcriptPath)
     return buildCodexChildDrivenStatusPayload(state, eventName, paneKey, hookPayload)
   }
 

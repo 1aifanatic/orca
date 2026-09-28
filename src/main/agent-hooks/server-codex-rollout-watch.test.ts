@@ -155,6 +155,71 @@ describe('the Codex rollout watch', () => {
   })
 })
 
+// Codex files a rollout under its own start date. A child's hooks name its rollout, so a child
+// whose later turn comes days after it was spawned is still read from the right file.
+describe("a Codex child's own rollout", () => {
+  let home: string
+  let server: AgentHookServer
+
+  beforeEach(async () => {
+    home = mkdtempSync(join(tmpdir(), 'codex-child-rollout-'))
+    server = new AgentHookServer()
+    await server.start({ env: 'production' })
+  })
+
+  afterEach(() => {
+    server.stop()
+    rmSync(home, { recursive: true, force: true })
+  })
+
+  it('is read from the path its hooks name, not looked up by date folder', async () => {
+    const parentDay = join(home, 'sessions', '2020', '01', '01')
+    const childDay = join(home, 'sessions', '2020', '01', '02')
+    mkdirSync(parentDay, { recursive: true })
+    mkdirSync(childDay, { recursive: true })
+    const rollout = join(parentDay, 'rollout-2020-01-01T10-00-00-root.jsonl')
+    const childRollout = join(childDay, `rollout-2020-01-02T10-00-00-${CHILD_ID}.jsonl`)
+    writeFileSync(rollout, turnMarker('task_started', 'turn-1'))
+    writeFileSync(childRollout, turnMarker('task_started', 'child-turn'))
+    const post = async (payload: Record<string, unknown>): Promise<void> => {
+      await expect(
+        postHookEvent(server, buildBody({ session_id: 'root-session', ...payload }), '/hook/codex')
+      ).resolves.toMatchObject({ status: 204 })
+    }
+    await post({
+      hook_event_name: 'UserPromptSubmit',
+      prompt: 'go',
+      turn_id: 'turn-1',
+      transcript_path: rollout
+    })
+    await post({ hook_event_name: 'Interrupt', turn_id: 'turn-1', transcript_path: rollout })
+    // The child's later turn, today: neither the parent's day folder nor today's holds its file.
+    await post({
+      hook_event_name: 'PreToolUse',
+      agent_id: CHILD_ID,
+      turn_id: 'child-turn',
+      transcript_path: childRollout,
+      tool_name: 'Bash'
+    })
+    expect(server.getStatusSnapshot()[0]).toMatchObject({
+      state: 'working',
+      subagents: [expect.objectContaining({ id: CHILD_ID, state: 'working' })]
+    })
+
+    // Codex aborted the child: no SubagentStop, only its rollout's record.
+    appendFileSync(childRollout, turnMarker('turn_aborted', 'child-turn'))
+    await vi.waitFor(
+      () => {
+        expect(server.getStatusSnapshot()[0]).toMatchObject({
+          state: 'done',
+          mainAgent: { state: 'done', outcome: 'cancellation' }
+        })
+      },
+      { timeout: 3_000, interval: 50 }
+    )
+  })
+})
+
 describe('a Codex turn that ended while Orca was down', () => {
   let userDataPath: string
   let dir: string

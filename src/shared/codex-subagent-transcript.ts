@@ -176,6 +176,26 @@ function childIsComplete(records: JsonRecord[]): boolean {
   return complete
 }
 
+/** Records the child rollout a child's own hook names, so the child is read there rather than
+ *  looked up by date folder, which misses a child whose later turn comes on another day. */
+export function recordCodexChildRollout(
+  state: CodexSubagentTranscriptState,
+  childId: string,
+  transcriptPath: string | undefined,
+  startedAt: number
+): void {
+  const path = normalizedTranscriptPath(transcriptPath)
+  if (!path || !SAFE_THREAD_ID.test(childId) || !basename(path).endsWith(`-${childId}.jsonl`)) {
+    return
+  }
+  const tracked = state.subagents.get(childId)
+  if (!tracked) {
+    state.subagents.set(childId, { offset: 0, carry: '', startedAt, filePath: path })
+  } else if (!tracked.filePath) {
+    tracked.filePath = path
+  }
+}
+
 export function createCodexSubagentTranscriptState(): CodexSubagentTranscriptState {
   return {
     parent: { offset: 0, carry: '' },
