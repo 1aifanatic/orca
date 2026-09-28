@@ -410,14 +410,14 @@ describe('a published child that dies while it proves its start', () => {
           itemId: `orca:${encodeURIComponent(`start-failure:${child.acquisitionGeneration}`)}`,
           text: TEXT,
           tone: 'error',
-          failure: START_FAILURE
+          failure: { ...START_FAILURE, startKey: child.acquisitionGeneration }
         }
       ])
       for (const id of [first, second]) {
         expect(await submission(id)).toMatchObject({
           dispatchState: 'rejected',
           reason: TEXT,
-          rejection: START_FAILURE
+          rejection: { ...START_FAILURE, startKey: child.acquisitionGeneration }
         })
       }
       expect(rejectedIn(events, second)).toBe(true)
@@ -466,7 +466,7 @@ describe('a start another operation made that dies while a sent message waits on
         itemId: `orca:${encodeURIComponent(`start-failure:${operationChild.acquisitionGeneration}`)}`,
         text: TEXT,
         tone: 'error',
-        failure: START_FAILURE
+        failure: { ...START_FAILURE, startKey: operationChild.acquisitionGeneration }
       }
     ])
     expect(rejectedIn(events, id)).toBe(true)
@@ -549,7 +549,12 @@ describe('a child that ends before its message is handed over', () => {
       rejection: failure
     })
     expect(await statusRows()).toEqual([
-      { itemId: expect.any(String), text: (await submission(id))?.reason, tone: 'error', failure }
+      {
+        itemId: expect.any(String),
+        text: (await submission(id))?.reason,
+        tone: 'error',
+        failure: { ...failure, startKey: 'generation-2' }
+      }
     ])
     expect(rejectedIn(events, id)).toBe(true)
     await eventually(() => expect(host['conversationDelivery'].loop.isRunning(SESSION)).toBe(false))
@@ -730,12 +735,10 @@ describe('how a stopped child ends the start its loop was waiting on', () => {
     await eventually(async () => expect((await submission(second))?.dispatchState).toBe('rejected'))
     // The sentence is the constructor's, not the reason the stop was given.
     const text = 'Codex never finished starting, so Orca stopped it.'
-    expect(await submission(second)).toMatchObject({
-      reason: text,
-      rejection: { kind: 'hostStopped' }
-    })
+    const failure = { kind: 'hostStopped', startKey: 'generation-2' }
+    expect(await submission(second)).toMatchObject({ reason: text, rejection: failure })
     expect(await statusRows()).toEqual([
-      { itemId: expect.any(String), text, tone: 'error', failure: { kind: 'hostStopped' } }
+      { itemId: expect.any(String), text, tone: 'error', failure }
     ])
     expect(dispatch).not.toHaveBeenCalled()
   })

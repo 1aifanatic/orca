@@ -332,9 +332,11 @@ describe('a start the chat needed and did not get', () => {
     // Orca's spawn error goes to the log; the row and every message say what failed, typed. The
     // child is gone, but no exit was observed, so nothing blames the provider.
     expect(rows[0]).toBe("Codex couldn't restart. Send your message to try again.")
+    // No child was published, so the start is keyed by the oldest message it was for.
     const failure = {
       kind: 'restartFailed',
-      refusal: { code: 'agent_session_operation_invalid', details: { ownerVerdict: 'exited' } }
+      refusal: { code: 'agent_session_operation_invalid', details: { ownerVerdict: 'exited' } },
+      startKey: first
     }
     expect(await errorFailures()).toEqual([failure])
     for (const id of [first, second]) {
@@ -444,7 +446,7 @@ describe('a start the chat needed and did not get', () => {
 
     await eventually(async () => expect((await submission(id))?.dispatchState).toBe('rejected'))
     expect(await errorRows()).toEqual([row.text])
-    expect(await errorFailures()).toEqual([row.failure])
+    expect(await errorFailures()).toEqual([{ ...row.failure, startKey: id }])
     const framedRows = events.flatMap((event) =>
       event.type === 'batch' || event.type === 'snapshot'
         ? (event.type === 'batch' ? event.batch.items : event.page.items).filter(

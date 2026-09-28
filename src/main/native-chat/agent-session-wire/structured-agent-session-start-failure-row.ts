@@ -52,16 +52,15 @@ export async function recordStructuredAgentSessionStartFailure(
     return
   }
   const startKey = failure.startKey ?? oldest.clientMessageId
+  // The row and each message it rejects name this start, so a reader pairs them by identity.
+  const words = { reason: failure.reason, rejection: { ...failure.rejection, startKey } }
   await session.journal.appendLifecycleBatch({
     settlementId: `start-failure:${startKey}`,
     fence: session.fence,
     recovered: true,
-    mutations: [structuredAgentSessionStartFailureRow(startKey, failure)]
+    mutations: [structuredAgentSessionStartFailureRow(startKey, words)]
   })
-  await session.journal.rejectQueuedSubmissions(session.fence, {
-    reason: failure.reason,
-    rejection: failure.rejection
-  })
+  await session.journal.rejectQueuedSubmissions(session.fence, words)
 }
 
 export function oldestQueuedSubmission(
