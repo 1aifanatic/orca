@@ -8,6 +8,7 @@
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type {
+  StructuredAgentSessionChildEndCause,
   StructuredAgentSessionEndedChild,
   StructuredAgentSessionHostSession,
   StructuredAgentSessionProviderChild,
@@ -64,7 +65,22 @@ export function failedProviderChildStart(
   session: Pick<ChildBearer, 'child' | 'lastEndedChild'>
 ): StructuredAgentSessionEndedChild | null {
   const ended = session.lastEndedChild
-  return !session.child && ended?.duringStartup && ended.cause !== 'user-stop' ? ended : null
+  return !session.child && ended?.duringStartup && childEndFailsItsStart(ended.cause) ? ended : null
+}
+
+/** Whether a child that ended this way, still starting, failed its start. A stop the user aimed at
+ *  this chat is their cancellation, never a failure; a host's own stop is why the start did not land. */
+export function childEndFailsItsStart(cause: StructuredAgentSessionChildEndCause): boolean {
+  switch (cause) {
+    case 'user-stop':
+    case 'user-close':
+      return false
+    case 'exit':
+    case 'attach-failed':
+    case 'host-stop':
+    case 'evict':
+      return true
+  }
 }
 
 function matchingChild(

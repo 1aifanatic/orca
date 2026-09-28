@@ -672,6 +672,22 @@ describe('how a stopped child ends the start its loop was waiting on', () => {
     expect(statusRows()).toEqual([])
   })
 
+  it('records no failure when the user closed the chat while its child started', async () => {
+    // The close's stop alone: a close that aborts after it leaves the conversation indexed.
+    const second = await stoppedWhileStarting(() =>
+      host['serialize'](SESSION, () =>
+        stopStructuredAgentSessionAgentUnderSerialize(host['lifetimeContext'](), SESSION, {
+          cause: 'user-close'
+        })
+      )
+    )
+
+    await settleLoop()
+    expect(conversation()?.lastEndedChild).toMatchObject({ cause: 'user-close' })
+    expect(submission(second)?.dispatchState).not.toBe('rejected')
+    expect(statusRows()).toEqual([])
+  })
+
   it('fails the start after a host stop, with the stop as the reason (R2)', async () => {
     const reason = 'Claude never finished starting, so Orca stopped it.'
     const second = await stoppedWhileStarting(() =>

@@ -26,7 +26,10 @@ import {
   oldestQueuedSubmission,
   recordStructuredAgentSessionStartFailure
 } from './structured-agent-session-start-failure-row'
-import { failedProviderChildStart } from './structured-agent-session-provider-child'
+import {
+  childEndFailsItsStart,
+  failedProviderChildStart
+} from './structured-agent-session-provider-child'
 import { handOverSubmission } from './structured-agent-session-turns'
 
 export type StructuredAgentSessionDeliveryLoopDeps = {
@@ -171,9 +174,9 @@ export class StructuredAgentSessionDeliveryLoop {
     if (!awaitedChild || (awaitedChild.phase === 'starting' && startFailure !== null)) {
       // The child waited on is gone, replaced by another, or settled its start without proving it.
       const ended = awaitedChild ? undefined : session.lastEndedChild
-      // A user's Stop is not a failure: the next step starts, or waits on, a child for what is
-      // queued. A host stop is: its cause is why the start did not land.
-      if (ended?.cause === 'user-stop') {
+      // A user's Stop or close is not a failure: the next step starts, or waits on, a child for
+      // what is queued. A host stop is: its cause is why the start did not land.
+      if (ended && !childEndFailsItsStart(ended.cause)) {
         return 'continue'
       }
       return this.fail(sessionId, {
