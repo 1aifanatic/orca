@@ -19,14 +19,14 @@ import type {
 } from '../../../shared/agent-session-wire'
 import type { AgentChildWorkEvidence } from '../../../shared/agent-status-child-work-evidence'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
-import { projectStructuredAgentSessionStatusState } from '../../../shared/structured-agent-session-projection'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { StructuredAgentSessionProviderChild } from './structured-agent-session-host-types'
 import { structuredAgentSessionProviderSessionMetadata } from './structured-agent-session-history-result'
+import { structuredStatusChildWork } from './structured-agent-session-status-child-work'
 import {
-  newestRootTurnId,
-  structuredStatusChildWork
-} from './structured-agent-session-status-child-work'
+  StructuredAgentSessionJournalProjections,
+  type StructuredAgentSessionStatusState
+} from './structured-agent-session-status-journal-projection'
 import { structuredStatusSummariesEqual } from './structured-agent-session-status-summary-equality'
 import {
   StructuredAgentSessionStatusOwnership,
@@ -35,9 +35,7 @@ import {
 
 export type { StructuredAgentSessionStatusSink } from './structured-agent-session-status-ownership'
 
-export type StructuredAgentSessionStatusState = ReturnType<
-  typeof projectStructuredAgentSessionStatusState
->
+export type { StructuredAgentSessionStatusState } from './structured-agent-session-status-journal-projection'
 
 export type StructuredAgentSessionStatusSubscriber = {
   id: string
@@ -93,15 +91,6 @@ export function createStructuredAgentSessionHostStatusFeed(args: {
   })
 }
 
-type JournalProjection = {
-  epoch: string
-  sequence: number
-  readOnly: boolean
-  fence: number | undefined
-  state: StructuredAgentSessionStatusState
-  rootTurnId: string | null
-}
-
 export class StructuredAgentSessionStatusFeed {
   private readonly ownership = new StructuredAgentSessionStatusOwnership(() =>
     this.deps.statusSink?.()
@@ -110,8 +99,7 @@ export class StructuredAgentSessionStatusFeed {
   private readonly published = new Map<string, AgentSessionStatusSummary>()
   /** The newest root turn each session was last projected with; a new one retires settled children. */
   private readonly rootTurns = new Map<string, string | null>()
-  // Task progress must not sort and scan an unchanged conversation. Journal identity owns cleanup.
-  private readonly journalProjections = new WeakMap<AgentSessionJournal, JournalProjection>()
+  private readonly projections = new StructuredAgentSessionJournalProjections()
 
   constructor(private readonly deps: StructuredAgentSessionStatusFeedDeps) {}
 
@@ -195,7 +183,7 @@ export class StructuredAgentSessionStatusFeed {
   ): StructuredAgentSessionStatusState | null {
     const session = this.deps.sessions.get(sessionId)
     const source = journal ?? session?.journal
-    return source ? this.projectionFor(source, this.deps.getRecord(sessionId)).state : null
+    return source ? this.projections.read(source, this.deps.getRecord(sessionId)).state : null
   }
 
   /** Re-projects one session after its journal changed; equal projections are not re-sent. */
@@ -206,7 +194,7 @@ export class StructuredAgentSessionStatusFeed {
     }
     const source = journal ?? session.journal
     const record = this.deps.getRecord(sessionId)
-    const projection = this.projectionFor(source, record)
+    const projection = this.projections.read(source, record)
     this.retireSettledChildrenOnNewTurn(sessionId, session, projection.rootTurnId)
     const summary = this.summaryFor(sessionId, session, source, record, projection.state)
     const previous = this.published.get(sessionId)
@@ -342,42 +330,6 @@ export class StructuredAgentSessionStatusFeed {
       console.warn('[structured-session-status] child work observer failed', error)
     }
     return true
-  }
-
-  private projectionFor(
-    journal: AgentSessionJournal,
-    record: AgentSessionRecord | null
-  ): JournalProjection {
-    // An unreadable journal projects as "no turn": the chat itself shows the reset.
-    const cursor = journal.cursor()
-    const readOnly = journal.isReadOnly
-    // The conversation's fence, which a child's end moves: its unanswered sends stop counting.
-    const fence = record?.lease.runtimeFence
-    let projection = this.journalProjections.get(journal)
-    if (
-      !projection ||
-      projection.epoch !== cursor.epoch ||
-      projection.sequence !== cursor.sequence ||
-      projection.readOnly !== readOnly ||
-      projection.fence !== fence
-    ) {
-      // A journalled submission bumps `lastSequence`, so the send-time working
-      // signal reaches the cache; the lease fence does not, hence the extra key.
-      const snapshot = readOnly ? null : journal.snapshot()
-      projection = {
-        ...cursor,
-        readOnly,
-        fence,
-        state: projectStructuredAgentSessionStatusState(
-          snapshot?.items ?? [],
-          snapshot?.submissions ?? [],
-          fence
-        ),
-        rootTurnId: newestRootTurnId(snapshot?.items ?? [])
-      }
-      this.journalProjections.set(journal, projection)
-    }
-    return projection
   }
 
   /** A failing sink must never cost the subscribers their status event. */
