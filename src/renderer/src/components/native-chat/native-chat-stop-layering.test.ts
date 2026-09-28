@@ -16,7 +16,11 @@ describe('native chat layering', () => {
       expect(source(path)).toContain('<RetainedPaneHost')
     }
     expect(css).not.toMatch(/\.native-chat-pane-shell:has\(\[data-native-chat-working/)
-    expect(css).toMatch(/\[data-sonner-toaster\][^{]*\{[^}]*z-index:\s*40\s*!important;/s)
+    expect(css).toMatch(
+      /\[data-sonner-toaster\][^{]*\{[^}]*z-index:\s*var\(--toaster-z-index,\s*40\)\s*!important;/s
+    )
+    // A :has() before the toaster in one selector froze large diffs; it must stay on body alone.
+    expect(css).not.toMatch(/:has\([^{]*\)\s+\[data-sonner-toaster\]/)
   })
 
   it('publishes working state from both structured and bridge chat roots', () => {
