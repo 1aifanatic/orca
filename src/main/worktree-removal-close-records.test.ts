@@ -1,5 +1,5 @@
 import { closeTestStores, createSqliteTestStore } from './persistence-test-harness'
-// Why this file exists: a confirmed removal must take the removed workspace's close records with it,
+// Why this file exists: a workspace's removal or Forget must take its close records with it,
 // or they hold cap slots until the TTL and read as "emptied on purpose" for a new workspace at the
 // same path; a host that merely stops listing a worktree must leave them alone.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
