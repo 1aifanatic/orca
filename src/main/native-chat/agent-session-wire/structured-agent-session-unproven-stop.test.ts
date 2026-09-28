@@ -230,6 +230,17 @@ async function expectRecoveryConcludedWithoutASend(before: HostActivity): Promis
   expect(lease()).toMatchObject({ claimStatus: 'live', handoffStage: null })
 }
 
+/** Recovery could not verify the owner, so it released the lease without a signal, with no send and
+ *  no new child since `before`; the next send starts plainly and signals nothing either. */
+async function expectUnverifiedOwnerReleasedWithoutASignal(before: HostActivity): Promise<void> {
+  expect(lease()).toMatchObject({ ...CONCLUDED, deathEvidence: null })
+  expect(hostActivity()).toEqual(before)
+  const next = await accept('next')
+  await eventually(() => expect(submission(next)?.dispatchState).toBe('accepted'))
+  expect(acquire).toHaveBeenCalledTimes(before.starts + 1)
+  expect(stopOwnerProcess).not.toHaveBeenCalled()
+}
+
 describe('a stop that cannot prove its child exited (C′ trigger 1)', () => {
   it('at an idle eviction: the child ends, and its wind-down concludes the lease before any send (W40)', async () => {
     await deliveredOnce()
@@ -517,19 +528,16 @@ describe('an attach that fails after acquiring and cannot prove its child gone (
     await expectRecoveryConcludedWithoutASend({ ...before, starts: before.starts + 1 })
   })
 
-  it('reports a recovery that throws, and the attach keeps its own failure', async () => {
+  it('releases an owner whose probe throws, unsignalled, and reports it; the attach keeps its own failure', async () => {
     const crash = new Error('owner probe crashed')
+    const before = hostActivity()
 
     await failedAttachWithUnprovenExit(() => {
       ownerProbeFailure = crash
     })
 
     expect(hostErrors).toContain(crash)
-    // Nothing concluded, so the latch stays for the next start to re-derive.
-    expect(lease()).toMatchObject({ claimStatus: 'live', handoffStage: 'recovering' })
-    const next = await accept('next')
-    await eventually(() => expect(submission(next)?.dispatchState).toBe('accepted'))
-    expect(stopOwnerProcess).toHaveBeenCalledWith(OWNER_PID, 'SIGTERM')
+    await expectUnverifiedOwnerReleasedWithoutASignal({ ...before, starts: before.starts + 1 })
   })
 })
 
@@ -547,26 +555,18 @@ describe("a stop's recovery whose owner probe cannot answer", () => {
     expect(hostActivity()).toEqual(before)
   })
 
-  it('reports a probe that throws, finishes the stop, and lets the next send through', async () => {
+  it('reads a probe that throws as an owner it cannot verify: released unsignalled, and reported', async () => {
     await deliveredOnce()
     closeSession.mockResolvedValueOnce(false)
     const crash = new Error('owner probe crashed')
     ownerProbeFailure = crash
+    const before = hostActivity()
 
     await host.close(SESSION)
 
     expect(host.hasSession(SESSION)).toBe(false)
-    expect(hostErrors).toContainEqual(
-      expect.objectContaining({ step: 'resolve-recovery', cause: crash })
-    )
-    expect(lease()).toMatchObject({
-      claimStatus: 'live',
-      handoffStage: 'recovering',
-      ownerProcess: { pid: OWNER_PID }
-    })
-    const next = await accept('next')
-    await eventually(() => expect(submission(next)?.dispatchState).toBe('accepted'))
-    expect(stopOwnerProcess).toHaveBeenCalledWith(OWNER_PID, 'SIGTERM')
+    expect(hostErrors).toContain(crash)
+    await expectUnverifiedOwnerReleasedWithoutASignal(before)
   })
 })
 

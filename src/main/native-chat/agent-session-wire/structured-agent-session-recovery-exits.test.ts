@@ -181,16 +181,16 @@ describe('recovery exits', () => {
 
     // The resume fails at owner proof and cleanup cannot prove exit: the settlement
     // keeps the reservation latched at `recovering` with its committed owner identity. The
-    // attach's own recovery cannot conclude it, as a crash right after the settlement would not.
+    // attach's own recovery cannot write its conclusion, as a crash right after the settlement
+    // would not.
     vi.spyOn(store, 'proveOwner').mockRejectedValueOnce(new Error('handle proof lost'))
+    vi.spyOn(store, 'transitionHandoff').mockRejectedValueOnce(new Error('disk full'))
     openHost({
       mintSpawnToken: () => 'spawn-b',
-      probeOwner: async (record) => {
-        if (record.lease.handoffStage === 'recovering') {
-          throw new Error('owner probe unavailable')
-        }
-        return { outcome: 'pid-absent' }
-      }
+      probeOwner: async (record) =>
+        record.lease.handoffStage === 'recovering'
+          ? { outcome: 'indeterminate', reason: 'owner probe unavailable' }
+          : { outcome: 'pid-absent' }
     })
     await expect(host.attach(CALLER, hostTestAttachParams(2))).rejects.toThrow(
       'agent_session_acquisition_exit_unproven'
