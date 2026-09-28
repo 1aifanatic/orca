@@ -101,7 +101,11 @@ try {
   Write-Stage 'private-user-group-complete'
   # No administrator membership, real runner auth files or global DefaultShell modifications.
   Invoke-Bounded icacls.exe @($root,'/inheritance:r','/grant:r','*S-1-5-18:(OI)(CI)F','*S-1-5-32-544:(OI)(CI)F',"*$($sid):(RX)") | Out-Null
-  Invoke-Bounded icacls.exe @($sshDir,'/inheritance:r','/grant:r','*S-1-5-18:(OI)(CI)F','*S-1-5-32-544:(OI)(CI)F',"*$($sid):(OI)(CI)RX",'/T') | Out-Null
+  # /T visits files too: grant direct rights instead of directory-only inheritance flags.
+  $runnerSid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+  Invoke-Bounded icacls.exe @($sshDir,'/inheritance:r','/grant:r','*S-1-5-18:F','*S-1-5-32-544:F',"*$($runnerSid):F","*$($sid):RX",'/T') | Out-Null
+  $report.nativeAcl=@{directory=(Get-Acl -LiteralPath $sshDir).Sddl;keygen=(Get-Acl -LiteralPath $keygen).Sddl}
+  Write-Stage 'native-acl-recorded'
   $hostKey=Join-Path $root 'host_key';$clientKey=Join-Path $root 'client_key'
   Write-Stage 'private-key-create-start'
   Invoke-Bounded $keygen @('-q','-t','ed25519','-N','','-f',$hostKey) | Out-Null
