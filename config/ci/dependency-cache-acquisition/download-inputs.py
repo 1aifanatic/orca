@@ -47,7 +47,8 @@ def main(destination):
         name = asset.get('filename', asset.get('cacheKey'))
         check_url(asset['url'])
         partial = destination / (name + '.partial')
-        with opener.open(asset['url'], timeout=30) as response:
+        request = urllib.request.Request(asset['url'], headers={'User-Agent': 'orca-bun-diagnostic/1.0'})
+        with opener.open(request, timeout=30) as response:
             check_url(response.url)
             retain(response, partial, asset.get('size', asset.get('bytes')), asset['sha256'])
             final_url = response.url
