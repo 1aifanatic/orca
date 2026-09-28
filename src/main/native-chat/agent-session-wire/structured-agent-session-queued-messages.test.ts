@@ -480,27 +480,6 @@ describe('Stop and Delete', () => {
     })
   })
 
-  it('Send-now overrides only its own card: the other stopped drafts stay paused', async () => {
-    const working = await workingSend()
-    const first = await send('sent now', 'queue-if-active').result
-    const second = await send('stays paused', 'queue-if-active').result
-    if (!first.ok || !('queued' in first.value) || !second.ok || !('queued' in second.value)) {
-      throw new Error('expected queued receipts')
-    }
-    await stop()
-    await settleAccepted(working, 'a')
-    const firstId = first.value.queued.messageId
-    const secondId = second.value.queued.messageId
-    expect(await sendNow(firstId)).toMatchObject({
-      ok: true,
-      value: { submission: expect.anything() }
-    })
-    await settleAccepted(firstId, 'b')
-    await new Promise((resolve) => setTimeout(resolve, 250))
-    expect(await submission(secondId)).toBeUndefined()
-    expect(await drafts()).toEqual([{ messageId: secondId, state: 'waiting', paused: true }])
-  })
-
   it('a Stop whose hold write fails still interrupts; only the pause is lost, and it is reported', async () => {
     await workingSend()
     const queued = await send('kept by the stop', 'queue-if-active').result

@@ -15,14 +15,12 @@ import type {
 } from '../../../shared/agent-session-wire'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { QueuedMessageNotConsumableError } from '../agent-session-journal/journal-queued-messages'
-import {
-  isUnsettledQueuedMessage,
-  type QueuedMessageRow
-} from '../agent-session-journal/queued-message-table'
+import type { QueuedMessageRow } from '../agent-session-journal/queued-message-table'
 import { admitAndRunAgentSessionMutation } from './structured-agent-session-mutation-admission'
 import type { MutationPlan } from './structured-agent-session-mutation-plans'
 import { structuredQueueHold } from './structured-agent-session-queued-messages'
 import { structuredAgentSessionHostInstance } from './structured-agent-session-queued-pause'
+import { awaitUserSendTurn, unsettledQueuedMessages } from './structured-agent-session-queued-stop'
 import type { StructuredAgentSessionMutationContext } from './structured-agent-session-host-mutations'
 import type { StructuredAgentSessionCaller } from './structured-agent-session-host-types'
 import {
@@ -43,13 +41,6 @@ function submissionFor(
   clientMessageId: string
 ): AgentJournalSubmission | undefined {
   return ctx.journal.submissions().find((entry) => entry.clientMessageId === clientMessageId)
-}
-
-/** The one unsettled-card predicate Stop's hold, /clear's carry and the budget
- *  share: waiting or returned. Pending/unknown/accepted deliveries stay
- *  outside it. */
-export function unsettledQueuedMessages(journal: AgentSessionJournal): QueuedMessageRow[] {
-  return journal.queuedMessages.list().filter(isUnsettledQueuedMessage)
 }
 
 /** One transaction, stamped with the operation's caller-scoped key so a replay
@@ -217,11 +208,12 @@ export function sendQueuedStructuredAgentMessage(
         }
         throw error
       }
-      context.wakeDelivery(ctx.sessionId)
       const submission = submissionFor(ctx, submissionId)
       if (!submission) {
         throw new Error('agent_session_submission_lost')
       }
+      awaitUserSendTurn(context.sessions.get(ctx.sessionId), submission)
+      context.wakeDelivery(ctx.sessionId)
       return { ok: true, value: { clientMessageId: submissionId, submission } }
     },
     replay: (ctx) => {

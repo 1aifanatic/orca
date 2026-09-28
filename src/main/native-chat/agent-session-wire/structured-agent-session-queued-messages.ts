@@ -25,6 +25,7 @@ import {
   queuedMessageHeld,
   structuredAgentSessionHostInstance
 } from './structured-agent-session-queued-pause'
+import { awaitUserSendTurn } from './structured-agent-session-queued-stop'
 import { structuredAgentSessionPayloadFingerprint } from '../../../shared/structured-agent-session-mutation'
 
 /** Budget at accept, in the send schema's own unit (`Buffer.byteLength` of the
@@ -346,6 +347,8 @@ export class StructuredAgentSessionQueuedMessageDrain {
         .catch(() => {})
       throw error
     }
+    // A draft is the user's own send, so its turn starting lifts a Stop's pause.
+    awaitUserSendTurn(session, journal.submission(next.messageId))
     this.deps.wakeDelivery(sessionId)
   }
 }

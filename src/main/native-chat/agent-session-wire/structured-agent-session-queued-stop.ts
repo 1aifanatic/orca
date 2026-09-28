@@ -4,18 +4,21 @@
 // stay published as paused, and Send-now overrides the hold per card. The
 // pause dies when a user send made AFTER the Stop actually starts a turn — the
 // provider accepts it — never at the host's acceptance (a send whose start
-// fails would release the drafts into the same failure), and never for a
-// queued draft's conversion, orchestration mail or a restart continuation. The
-// held cards then drain after that turn. Both writes go through the draft
+// fails would release the drafts into the same failure). A consumed draft is a
+// user send too (drafts are only ever a client's own); orchestration mail and a
+// restart continuation never lift. The held cards then drain after that turn. Both writes go through the draft
 // store, whose commit notification publishes and wakes the drain; and both are
 // bookkeeping — a failure is reported and never gates the interrupt or the send.
 
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
+import {
+  isUnsettledQueuedMessage,
+  type QueuedMessageRow
+} from '../agent-session-journal/queued-message-table'
 import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
 import type { AgentSessionTurnContext } from './structured-agent-session-turns'
-import { unsettledQueuedMessages } from './structured-agent-session-queued-mutations'
 import { structuredAgentSessionHostInstance } from './structured-agent-session-queued-pause'
 
 function reportQueuedHoldFailure(sessionId: string, step: string, error: unknown): void {
@@ -23,6 +26,13 @@ function reportQueuedHoldFailure(sessionId: string, step: string, error: unknown
     sessionId,
     error: error instanceof Error ? error.message : String(error)
   })
+}
+
+/** The one unsettled-card predicate Stop's hold, /clear's carry and the budget
+ *  share: waiting or returned. Pending/unknown/accepted deliveries stay
+ *  outside it. */
+export function unsettledQueuedMessages(journal: AgentSessionJournal): QueuedMessageRow[] {
+  return journal.queuedMessages.list().filter(isUnsettledQueuedMessage)
 }
 
 /** Stop's queued-draft step, before the interrupt: hold the waiting frontier at
@@ -47,9 +57,10 @@ export async function holdQueuedMessagesForStop(
   }
 }
 
-/** A client's own send the host just recorded for handover: remembered until
- *  the provider answers it. Only a submission still provably unwritten counts —
- *  a replay of an older send must not lift a later Stop's pause. */
+/** A client's own send the host just recorded for handover — a direct send, or
+ *  a draft's consumption by the drain or Send-now: remembered until the
+ *  provider answers it. Only a submission still provably unwritten counts — a
+ *  replay of an older send must not lift a later Stop's pause. */
 export function awaitUserSendTurn(
   session: StructuredAgentSessionHostSession | undefined,
   submission: AgentJournalSubmission | undefined

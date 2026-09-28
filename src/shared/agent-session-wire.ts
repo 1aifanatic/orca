@@ -351,8 +351,9 @@ export type AgentSessionCancelResult = {
 /** The draft could not be converted into a send; an explicit Send retries it. */
 export const QUEUED_MESSAGE_PAUSED_SEND_FAILED = 'send_failed' as const
 
-/** Held by a Stop, a /clear carry, or a host restart: the user's next send
- *  lifts it once that send's turn starts, and Send-now overrides it per card. */
+/** Held by a Stop, a /clear carry, or a host restart: the user's next send —
+ *  typed, or a queued card sent or drained — lifts it once that send's turn
+ *  starts, and Send-now overrides it per card. */
 export const QUEUED_MESSAGE_PAUSED_STOPPED = 'stopped' as const
 
 export type AgentSessionQueuedMessagePausedReason =

@@ -85,8 +85,8 @@ export type StructuredAgentSessionHostSession = {
    *  exit — an eviction that aborts after that point must still finish it on the next close. */
   owesProviderChildWindDown?: StructuredAgentSessionProviderChildIdentity
   lastEndedChild?: StructuredAgentSessionEndedChild
-  /** Client sends accepted for handover since the last Stop, until the provider answers each; the
-   *  first it accepts lifts the queue's Stop pause. In memory only: a restart or eviction forgets
+  /** Client sends — direct, or a consumed draft — accepted for handover since the last Stop, until
+   *  the provider answers each; the first it accepts lifts the queue's Stop pause. In memory only: a restart or eviction forgets
    *  them, which leaves the cards held for the user's next send — never sends them unasked. */
   userSendsAwaitingTurn?: Set<string>
 }
