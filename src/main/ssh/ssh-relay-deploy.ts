@@ -1481,32 +1481,32 @@ function windowsRelayLaunchCommand(
   ripgrepPath?: string
 ): string {
   const relayScript = joinRemotePath(hostPlatform, remoteDir, 'relay.js')
-  // Why: the relay asks Bun's CreateProcessW FFI to break away from sshd's job.
-  const quoted = (value: string): string => `"${value.replace(/"/g, '\\"')}"`
-  const relayCommandLine = [
-    quoted(nodePath),
+  const args = [
     '--no-env-file',
     '--config=NUL',
     '--no-install',
-    quoted(relayScript),
-    '--detached',
+    relayScript,
+    '--spawn-detached',
     '--grace-time',
     String(graceTime),
     '--sock-path',
-    quoted(sockPath),
+    sockPath,
     '--credential-file',
-    quoted(credentialFile),
+    credentialFile,
     '--endpoint-dir',
-    quoted(endpointDir),
-    // Why: --log-file owns rotation; shell redirects still capture pre-JS boot/crash output.
+    endpointDir,
     '--log-file',
-    quoted(logFile),
-    ...(ripgrepPath ? ['--ripgrep-path', quoted(ripgrepPath)] : []),
-    `1>${quoted(logFile)}`,
-    `2>${quoted(errFile)}`
-  ].join(' ')
-  const detachedLaunch = `& ${powerShellLiteral(nodePath)} --no-env-file --config=NUL --no-install ${powerShellLiteral(relayScript)} --spawn-detached --spawn-command ${powerShellLiteral(relayCommandLine)}; if ($LASTEXITCODE -ne 0) { throw "Bun detached launch failed with exit $LASTEXITCODE" }`
-  return commandWithNodePath(hostPlatform, nodePath, remoteDir, [detachedLaunch].join('; '))
+    logFile,
+    '--launch-error-file',
+    errFile,
+    ...(ripgrepPath ? ['--ripgrep-path', ripgrepPath] : [])
+  ]
+  return commandWithNodePath(
+    hostPlatform,
+    nodePath,
+    remoteDir,
+    `& ${powerShellLiteral(nodePath)} ${args.map(powerShellLiteral).join(' ')}; if ($LASTEXITCODE -ne 0) { throw "Bun detached launch failed with exit $LASTEXITCODE" }`
+  )
 }
 
 async function probeWindowsRelayPipe(

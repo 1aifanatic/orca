@@ -1,6 +1,10 @@
 // Orca Relay — remote-host daemon and reconnect bridge entry point.
 
-import { parseRelayLaunchOptions, readRelayEndpointCredential } from './relay-launch-options'
+import {
+  detachedRelayArguments,
+  parseRelayLaunchOptions,
+  readRelayEndpointCredential
+} from './relay-launch-options'
 import { runRelayConnectChannel } from './relay-connect-channel'
 import { runRelayOrcaCliChannel } from './relay-orca-cli-channel'
 import { runRelayDaemon } from './relay-daemon'
@@ -24,15 +28,16 @@ async function main(): Promise<void> {
     return
   }
   if (options.spawnDetachedMode) {
-    const marker = process.argv.indexOf('--spawn-detached')
-    const args = marker === -1 ? [] : process.argv.slice(marker + 1)
-    const commandMarker = args.indexOf('--spawn-command')
-    if (commandMarker === -1 || !args[commandMarker + 1]) {
-      throw new Error('Detached launch command is unavailable')
+    if (!options.logFile || !options.launchErrorFile) {
+      throw new Error('Detached relay launch requires stdout and stderr paths')
     }
-    const command = args[commandMarker + 1]
-    const comspec = process.env.ComSpec ?? 'C:\\Windows\\System32\\cmd.exe'
-    const pid = launchDetachedWindowsRelay(comspec, ['/d', '/s', '/c', command], process.cwd())
+    const pid = launchDetachedWindowsRelay({
+      executable: process.execPath,
+      args: detachedRelayArguments(process.argv[1], options),
+      cwd: process.cwd(),
+      stdoutPath: options.logFile,
+      stderrPath: options.launchErrorFile
+    })
     process.stdout.write(`launched ${pid}\n`)
     return
   }

@@ -3,7 +3,11 @@ import { rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { parseRelayLaunchOptions, readRelayEndpointCredential } from './relay-launch-options'
+import {
+  detachedRelayArguments,
+  parseRelayLaunchOptions,
+  readRelayEndpointCredential
+} from './relay-launch-options'
 
 describe('relay launch options', () => {
   const temporaryDirectories: string[] = []
@@ -39,11 +43,52 @@ describe('relay launch options', () => {
       connectMode: true,
       detached: true,
       cliMode: false,
+      spawnDetachedMode: false,
+      launchErrorFile: undefined,
+      ripgrepPath: undefined,
       sockPath: 'relay-endpoint',
       endpointDir: 'hooks',
       logFile: 'relay.log',
       credentialFile: 'relay.credential'
     })
+  })
+
+  it('forwards launch values as argv without recursive launch or shell expansion', () => {
+    const options = parseRelayLaunchOptions([
+      'bun',
+      'relay.js',
+      '--spawn-detached',
+      '--grace-time',
+      '0',
+      '--sock-path',
+      '--spawn-detached',
+      '--credential-file',
+      'C:\\a & %USER%\\credential',
+      '--log-file',
+      'C:\\logs with spaces\\out.log',
+      '--launch-error-file',
+      'err.log'
+    ])
+    const args = detachedRelayArguments('C:\\relay root\\relay.js', options)
+    expect(args).toEqual([
+      '--no-env-file',
+      '--config=NUL',
+      '--no-install',
+      'C:\\relay root\\relay.js',
+      '--detached',
+      '--grace-time',
+      '0',
+      '--sock-path',
+      '--spawn-detached',
+      '--log-file',
+      'C:\\logs with spaces\\out.log',
+      '--credential-file',
+      'C:\\a & %USER%\\credential'
+    ])
+    const reparsed = parseRelayLaunchOptions(['bun', ...args.slice(3)])
+    expect(reparsed.spawnDetachedMode).toBe(false)
+    expect(reparsed.sockPath).toBe('--spawn-detached')
+    expect(reparsed.launchErrorFile).toBeUndefined()
   })
 
   it('reads the bundled ripgrep path, which older launch commands omit', () => {

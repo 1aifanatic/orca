@@ -18,7 +18,8 @@ export type RelayLaunchOptions = {
   connectMode: boolean
   detached: boolean
   cliMode: boolean
-  spawnDetachedMode: boolean
+  spawnDetachedMode?: boolean
+  launchErrorFile?: string
   sockPath: string
   endpointDir?: string
   logFile?: string
@@ -33,6 +34,7 @@ export function parseRelayLaunchOptions(argv: string[]): RelayLaunchOptions {
   let detached = false
   let cliMode = false
   let spawnDetachedMode = false
+  let launchErrorFile: string | undefined
   let sockPath = ''
   let endpointDir: string | undefined
   let logFile: string | undefined
@@ -52,6 +54,8 @@ export function parseRelayLaunchOptions(argv: string[]): RelayLaunchOptions {
       cliMode = true
     } else if (argv[i] === '--spawn-detached') {
       spawnDetachedMode = true
+    } else if (argv[i] === '--launch-error-file' && argv[i + 1]) {
+      launchErrorFile = argv[++i]
     } else if (argv[i] === '--detached') {
       detached = true
     } else if (argv[i] === '--sock-path' && argv[i + 1]) {
@@ -80,12 +84,31 @@ export function parseRelayLaunchOptions(argv: string[]): RelayLaunchOptions {
     detached,
     cliMode,
     spawnDetachedMode,
+    launchErrorFile,
     sockPath,
     endpointDir,
     logFile,
     credentialFile,
     ripgrepPath
   }
+}
+
+export function detachedRelayArguments(entrypoint: string, options: RelayLaunchOptions): string[] {
+  return [
+    '--no-env-file',
+    '--config=NUL',
+    '--no-install',
+    entrypoint,
+    '--detached',
+    '--grace-time',
+    String(options.graceTimeMs / 1000),
+    '--sock-path',
+    options.sockPath,
+    ...(options.endpointDir ? ['--endpoint-dir', options.endpointDir] : []),
+    ...(options.logFile ? ['--log-file', options.logFile] : []),
+    ...(options.credentialFile ? ['--credential-file', options.credentialFile] : []),
+    ...(options.ripgrepPath ? ['--ripgrep-path', options.ripgrepPath] : [])
+  ]
 }
 
 export function readRelayEndpointCredential(
