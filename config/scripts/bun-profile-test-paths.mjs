@@ -1,5 +1,7 @@
 export function bunProfileTestPaths({ artifact = false } = {}) {
   return [
+    'src/shared/bun-owned-runtime-args.integration.test.ts',
+    'src/shared/child-process/fork-process-bun.integration.test.ts',
     'src/main/persistence/profile-state',
     'src/main/persistence/loading-store/profile-state',
     'src/main/sqlite',
