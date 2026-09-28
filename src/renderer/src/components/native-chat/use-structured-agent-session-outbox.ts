@@ -7,25 +7,30 @@ import {
   reconcileStructuredAgentSessionOutbox,
   type StructuredAgentSessionOutboxEntry
 } from '../../../../shared/structured-agent-session-outbox'
-import type { StructuredAgentSessionSendDisposition } from '../../../../shared/structured-agent-session-send-disposition'
+import {
+  journalAnswersInFlightSend,
+  type StructuredAgentSessionSendDisposition
+} from '../../../../shared/structured-agent-session-send-disposition'
 import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
 import { readOutbox, writeOutbox } from './structured-agent-session-outbox-storage'
 import {
   dispatchStructuredAgentSessionOutboxEntry,
-  hasInFlightLaunchDispatch,
-  readMountedStructuredAgentSessionOutbox
+  readMountedStructuredAgentSessionOutbox,
+  requeueInterruptedStructuredAgentSessionDispatches
 } from './structured-agent-session-outbox-dispatch'
 import { getStructuredAgentLaunchPromptDispatch } from '@/lib/structured-agent-session-launch-prompt'
+import { useStructuredAgentSessionOutboxOwnerChange } from '@/runtime/structured-agent-session-accepted-send-capability'
+import { createBrowserUuid } from '@/lib/browser-uuid'
 
 export function structuredSessionOperationId(): string {
-  return createStructuredAgentSessionOperationId(() => crypto.randomUUID())
+  return createStructuredAgentSessionOperationId(createBrowserUuid)
 }
 
 const UNCONFIRMED_PROBE_BASE_DELAY_MS = 1_000
 /** No attempt ceiling: a transport outage outlives any fixed budget, and giving up
  *  restores the wedge this fixes. Growth caps the rate at one status query per 16s.
- *  A refusal that blocks the head still ends probing until a fence change or a manual
- *  Retry, because the entry leaves `unconfirmed` -- pre-existing, not closed here. */
+ *  A refusal that blocks the head still ends probing until a manual Retry (or, on an older
+ *  host, a fence change), because the entry leaves `unconfirmed`. */
 const UNCONFIRMED_PROBE_MAX_DELAY_MS = 16_000
 
 export function useStructuredAgentSessionOutbox(args: {
@@ -35,7 +40,8 @@ export function useStructuredAgentSessionOutbox(args: {
   submissions: readonly AgentJournalSubmission[]
 }) {
   const { fence, sessionId, submissions, target } = args
-  const targetKey = target.kind === 'local' ? 'local' : `environment:${target.environmentId}`
+  // What resends, unblocks and drops a send in flight besides a Retry or a new send; see the hook.
+  const owner = useStructuredAgentSessionOutboxOwnerChange(target, fence)
   const [outbox, setOutbox] = useState<StructuredAgentSessionOutboxEntry[]>(() =>
     readMountedStructuredAgentSessionOutbox(sessionId, fence, readOutbox)
   )
@@ -46,7 +52,6 @@ export function useStructuredAgentSessionOutbox(args: {
   const inFlightIdRef = useRef<string | null>(null)
   const dispatchGenerationRef = useRef(0)
   const blockedIdRef = useRef<string | null>(null)
-  const retryWithFreshClientMessageIdRef = useRef<string | null>(null)
   const probeAttemptsRef = useRef({ id: null as string | null, attempts: 0 })
   const [error, setError] = useState<string | null>(null)
   const [errorSession, setErrorSession] = useState(sessionId)
@@ -65,21 +70,16 @@ export function useStructuredAgentSessionOutbox(args: {
     dispatchGenerationRef.current += 1
     inFlightIdRef.current = null
     blockedIdRef.current = null
-    retryWithFreshClientMessageIdRef.current = null
     probeAttemptsRef.current = { id: null, attempts: 0 }
-  }, [fence, sessionId, targetKey])
+  }, [owner.ownerChange, owner.targetKey, sessionId])
 
   useEffect(() => {
     const sessionChanged = outboxSessionRef.current !== sessionId
     outboxSessionRef.current = sessionId
     const current = sessionChanged
-      ? readMountedStructuredAgentSessionOutbox(sessionId, fence, readOutbox)
+      ? readMountedStructuredAgentSessionOutbox(sessionId, owner.fenceRef.current, readOutbox)
       : outboxRef.current
-    const next = current.map((entry) =>
-      entry.state === 'dispatching' && !hasInFlightLaunchDispatch(entry, fence)
-        ? { ...entry, state: 'queued' as const }
-        : entry
-    )
+    const next = requeueInterruptedStructuredAgentSessionDispatches(current, owner.fenceRef.current)
     if (
       sessionChanged ||
       next.some((entry, index) => entry !== current[index]) ||
@@ -89,7 +89,7 @@ export function useStructuredAgentSessionOutbox(args: {
       setOutbox(next)
       writeOutbox(sessionId, next)
     }
-  }, [fence, sessionId, target])
+  }, [owner.fenceRef, owner.ownerChange, sessionId, target])
 
   useEffect(() => {
     const current = outboxRef.current
@@ -102,7 +102,7 @@ export function useStructuredAgentSessionOutbox(args: {
         .map((submission) => submission.clientMessageId)
     )
     const next = reconcileStructuredAgentSessionOutbox(current, submissions)
-    const admittedInFlight = inFlightIdRef.current !== null && hostOwns.has(inFlightIdRef.current)
+    const admittedInFlight = journalAnswersInFlightSend(submissions, inFlightIdRef.current)
     if (
       admittedInFlight ||
       next.some((entry, index) => entry !== current[index]) ||
@@ -137,7 +137,6 @@ export function useStructuredAgentSessionOutbox(args: {
       // drain, so a later microtask would leave the queue with no trigger to move on.
       inFlightIdRef.current = null
       blockedIdRef.current = disposition.blockedClientMessageId
-      retryWithFreshClientMessageIdRef.current = disposition.retryWithFreshClientMessageId
       setError(disposition.error)
       outboxRef.current = disposition.entries
       setOutbox(disposition.entries)
@@ -239,7 +238,7 @@ export function useStructuredAgentSessionOutbox(args: {
   const probeSettled =
     probeId !== null && submissions.some((submission) => submission.clientMessageId === probeId)
   useEffect(() => {
-    if (probeId === null || probeSettled || fence === null) {
+    if (probeId === null || probeSettled || !owner.attached) {
       return
     }
     const attempts = probeAttemptsRef.current.id === probeId ? probeAttemptsRef.current.attempts : 0
@@ -256,7 +255,7 @@ export function useStructuredAgentSessionOutbox(args: {
       Math.min(UNCONFIRMED_PROBE_BASE_DELAY_MS * 2 ** attempts, UNCONFIRMED_PROBE_MAX_DELAY_MS)
     )
     return () => clearTimeout(timer)
-  }, [fence, probeId, probeSettled, sessionId, targetKey])
+  }, [owner.attached, owner.ownerChange, owner.targetKey, probeId, probeSettled, sessionId])
 
   const send = useCallback(
     (text: string, attachments: readonly { path: string; previewUri: string }[] = []): boolean => {
@@ -284,21 +283,22 @@ export function useStructuredAgentSessionOutbox(args: {
   )
 
   const retry = (clientMessageId: string): void => {
-    blockedIdRef.current = null
+    // Another message's Retry must not send the one the queue is held on.
+    if (blockedIdRef.current === clientMessageId) {
+      blockedIdRef.current = null
+    }
     setError(null)
     const submission = submissions.find(
       (candidate) => candidate.clientMessageId === clientMessageId
     )
     const current = outboxRef.current.find((entry) => entry.clientMessageId === clientMessageId)
-    // A provider-history reconciliation can settle an earlier unknown as
-    // rejected before the user presses Retry. Reusing that operation id only
-    // replays the settled rejection forever, so rotate the id for a safe resend.
-    if (
-      current &&
-      (submission?.dispatchState === 'rejected' ||
-        retryWithFreshClientMessageIdRef.current === clientMessageId)
-    ) {
-      retryWithFreshClientMessageIdRef.current = null
+    // The host settled this id as rejected, and reusing it only replays that forever, so rotate the
+    // id for a safe resend. Read from the message itself, which outlives a restart, or from a
+    // reconciliation that settled an earlier unknown before the outbox caught up. A refusal that
+    // settled the message already rotated it.
+    const recordedRejection =
+      current?.state === 'rejected' && current.lastFailure?.kind === 'rejected'
+    if (current && (recordedRejection || submission?.dispatchState === 'rejected')) {
       const rotated = outboxRef.current.map((entry) =>
         entry.clientMessageId === clientMessageId
           ? {

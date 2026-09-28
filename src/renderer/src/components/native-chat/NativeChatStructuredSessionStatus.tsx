@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { translate } from '@/i18n/i18n'
 import { NativeChatBackgroundTasksStatus } from './NativeChatBackgroundTasksStatus'
 import type { StructuredSessionBackgroundTasksView } from './structured-session-background-tasks-view'
 
@@ -12,7 +13,13 @@ const NO_STOPPING_TASKS: ReadonlySet<string> = new Set()
 
 export function NativeChatStructuredSessionStatus(props: {
   sessionId: string
+  /** What to call the agent in copy about its process. */
+  agentLabel: string
+  /** The host's word on the provider child; `starting` is published but not yet answering. */
+  startupPhase: 'starting' | 'ready' | null
   error: string | null
+  /** A read the pane is reconnecting on its own: said plainly, not as an error. */
+  reconnecting?: boolean
   composerError: string | null
   isVisible: boolean
   backgroundTasks: StructuredSessionBackgroundTasksView
@@ -54,6 +61,20 @@ export function NativeChatStructuredSessionStatus(props: {
 
   return (
     <>
+      {props.startupPhase === 'starting' ? (
+        <p className="mx-auto w-full max-w-4xl px-4 py-1 text-xs text-muted-foreground">
+          {translate(
+            'auto.components.native.chat.NativeChatStructuredSessionStatus.starting',
+            '{{value0}} is still starting. Messages wait until it is ready; close this chat to give up on it.',
+            { value0: props.agentLabel }
+          )}
+        </p>
+      ) : null}
+      {props.reconnecting && !props.error ? (
+        <p className="mx-auto w-full max-w-4xl px-4 py-1 text-xs text-muted-foreground">
+          {translate('components.native-chat.state.reconnecting', 'Reconnecting to this chat…')}
+        </p>
+      ) : null}
       {props.error || props.composerError ? (
         <p className="mx-auto w-full max-w-4xl px-4 py-1 text-xs text-destructive">
           {props.error ?? props.composerError}
