@@ -20,6 +20,7 @@ import {
 import { JOURNAL_NEWER_SCHEMA_MESSAGE } from '../native-chat/agent-session-journal/journal-open-failure'
 import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
 import Database from '../sqlite/sync-database'
+import type { RuntimeNavigationTarget } from '../../shared/runtime-navigation'
 import type { RuntimeMobileSessionTabsResult } from '../../shared/runtime-types'
 import { OrcaRuntimeService } from './orca-runtime'
 import { requireStructuredCleanupHost } from './rpc/methods/structured-agent-session-gate'
@@ -343,6 +344,36 @@ describe('startup and other non-chat work without a structured host', () => {
         expect.objectContaining({ worktree: 'workspace-1', agentSessionsUnverifiable: true })
       ])
     })
+
+    // A tap's reply goes straight back to the tapping client, not through the list.
+    it.each<RuntimeNavigationTarget>(['caller', 'clients'])(
+      'marks a %s navigation reply unverifiable while another process owns the chats',
+      async (navigation) => {
+        holder = await holdJournalOwnerLockInChild(root)
+        vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+        const { runtime } = startupRuntime()
+        publishWorktreeFrame(runtime)
+        await listInventory(runtime)
+        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the runtime's own protected navigation step, called as `session.tabs.activate` does.
+        const internal = runtime as unknown as {
+          applyMobileSessionTabNavigation(
+            snapshot: RuntimeMobileSessionTabsResult,
+            activeTabId: string,
+            navigation: RuntimeNavigationTarget,
+            clientNavigationId?: string
+          ): RuntimeMobileSessionTabsResult
+        }
+
+        const reply = internal.applyMobileSessionTabNavigation(
+          WORKTREE_FRAME,
+          'agent-session:claude-1',
+          navigation,
+          'phone-1'
+        )
+
+        expect(reply).toMatchObject({ worktree: 'workspace-1', agentSessionsUnverifiable: true })
+      }
+    )
 
     it('lists no chats as a real answer once the owner has a host', async () => {
       const { runtime } = startupRuntime()
