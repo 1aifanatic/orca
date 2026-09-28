@@ -14,7 +14,7 @@ export function NativeChatEmptyState({
   message?: string
   agent?: NativeChatSession['agent']
   /** The read retries on its own (structured chat), so the error says so instead of pointing
-   *  back to the terminal. */
+   *  back to the terminal. The host's message is on the pane's status line already. */
   retrying?: boolean
 }): React.JSX.Element {
   const copy = emptyStateCopy(kind, message, agent, retrying)
@@ -65,17 +65,16 @@ function emptyStateCopy(
           'components.native-chat.state.error.title',
           NATIVE_CHAT_EMPTY_STATE_COPY.error.title
         ),
-        subtitle:
-          message ??
-          (retrying
-            ? translate(
-                'components.native-chat.state.error.retryingSubtitle',
-                NATIVE_CHAT_EMPTY_STATE_COPY.retryingError.subtitle
-              )
-            : translate(
-                'components.native-chat.state.error.subtitle',
-                NATIVE_CHAT_EMPTY_STATE_COPY.error.subtitle
-              ))
+        subtitle: retrying
+          ? translate(
+              'components.native-chat.state.error.retryingSubtitle',
+              NATIVE_CHAT_EMPTY_STATE_COPY.retryingError.subtitle
+            )
+          : (message ??
+            translate(
+              'components.native-chat.state.error.subtitle',
+              NATIVE_CHAT_EMPTY_STATE_COPY.error.subtitle
+            ))
       }
     case 'not-agent':
       return {

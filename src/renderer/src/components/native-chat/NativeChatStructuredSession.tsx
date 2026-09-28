@@ -217,7 +217,7 @@ export function NativeChatStructuredSession(
         {viewState.kind === 'loading' ? (
           <NativeChatEmptyState kind="loading" />
         ) : viewState.kind === 'error' ? (
-          <NativeChatEmptyState kind="error" message={viewState.message} retrying />
+          <NativeChatEmptyState kind="error" retrying />
         ) : viewState.kind === 'empty' ? (
           <NativeChatEmptyState kind="empty" agent={props.agent} />
         ) : (
