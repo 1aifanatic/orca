@@ -412,8 +412,9 @@
   z-index: 40 !important;
 }
 
-/* Keep errors above standard modal backdrops at the existing popover tier. */
-body:has([data-slot='dialog-overlay'], [data-slot='sheet-overlay']) [data-sonner-toaster] {
+/* Keep errors above standard modal backdrops at the existing popover tier.
+   Overlays portal straight into body; `>` keeps this :has() off every nested DOM change. */
+body:has(> [data-slot='dialog-overlay'], > [data-slot='sheet-overlay']) [data-sonner-toaster] {
   z-index: 60 !important;
 }
 
