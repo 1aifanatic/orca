@@ -15,8 +15,9 @@ const EXEC_GUARDED_SH = /^if \[ -x ('(?:[^']|'\\'')*') \]; then \/bin\/sh \1; fi
 const BARE_CAT_FILE_GUARDED_SH =
   /^if \[ -f ('(?:[^']|'\\'')*') \] && \[ -r \1 \] && \[ -x \1 \]; then \/bin\/sh \1; else cat >\/dev\/null 2>&1 \|\| :; fi$/
 // Windows' real-home lane (#9501 until #10221 took Windows off it) wrapped the
-// launcher in an encoded command for a non-cmd-safe script path. Today's
-// launcher is never encoded, so this can only match the retired one.
+// launcher in an encoded command for a non-cmd-safe script path. Codex's current
+// launcher is unencoded, and the shared encoded launcher since #14825 prefixes
+// its payload, so the exact payload check below matches only the retired form.
 const ENCODED_POWERSHELL =
   /^\S+\/powershell\.exe -NoProfile -ExecutionPolicy Bypass -EncodedCommand ([A-Za-z0-9+/]+={0,2})$/
 const DECODED_LAUNCHER_PATH = /^if \(Test-Path -LiteralPath ('(?:[^']|'')*') -PathType Leaf\) /

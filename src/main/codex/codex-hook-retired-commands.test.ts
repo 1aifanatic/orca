@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildWindowsHookPowerShellCommand,
-  wrapPosixHookCommand
+  wrapPosixHookCommand,
+  wrapWindowsHookCommand
 } from '../agent-hooks/installer-utils'
 import { getManagedCommand, getManagedScriptPath } from './codex-hook-definition'
 import { isRetiredCodexHookCommand } from './codex-hook-retired-commands'
@@ -51,6 +52,10 @@ describe('isRetiredCodexHookCommand', () => {
     [
       "today's Windows launcher",
       buildWindowsHookPowerShellCommand('C:\\Users\\Jo Smith\\.orca\\agent-hooks\\codex-hook.cmd')
+    ],
+    [
+      "today's shared encoded launcher",
+      wrapWindowsHookCommand('C:\\Users\\Jo Smith\\.orca\\agent-hooks\\codex-hook.cmd')
     ],
     ['a user script with the same name', '/bin/sh "/u/bin/codex-hook.sh"'],
     [
