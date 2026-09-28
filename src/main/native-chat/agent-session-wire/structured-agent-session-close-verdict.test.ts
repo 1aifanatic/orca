@@ -136,6 +136,49 @@ describe('a turn cut short by closing its provider', () => {
     expect(turn).toMatchObject({ state: 'interrupted', outcome: 'cancellation' })
   })
 
+  it("records the user's close on a turn whose start landed only as the provider stopped", async () => {
+    // A send echo still in flight when the close arrives: the journal has no turn yet.
+    await attach()
+    await host.flushStreamedEvents(SESSION)
+
+    await host.close(SESSION, { requestedByUser: true })
+
+    const { turn } = await settledTurn()
+    expect(turn).toMatchObject({ state: 'interrupted', outcome: 'cancellation' })
+  })
+
+  it('leaves a turn cut off before the close as news', async () => {
+    providerEnd = null
+    await attach()
+    const events = hostTestState().acquire.mock.calls[0]?.[0].events
+    // An earlier death the user already saw as Interrupted, then closed.
+    events?.appendItem(CUT_TURN, {
+      kind: 'turn',
+      turnId: 'cut-turn',
+      state: 'interrupted',
+      startedAt: 1_000,
+      requestedAt: 1_000,
+      completedAt: 1_200
+    })
+    await host.flushStreamedEvents(SESSION)
+
+    await host.close(SESSION, { requestedByUser: true })
+
+    const { turn } = await settledTurn()
+    expect(turn).toMatchObject({ state: 'interrupted', completedAt: 1_200 })
+    expect(turn).not.toHaveProperty('outcome')
+  })
+
+  it('keeps a turn the provider finished during the stop as finished', async () => {
+    providerEnd = { state: 'completed', outcome: 'success', completedAt: 1_500 }
+    await runningTurn()
+
+    await host.close(SESSION, { requestedByUser: true })
+
+    const { turn } = await settledTurn()
+    expect(turn).toMatchObject({ state: 'completed', outcome: 'success' })
+  })
+
   it('keeps a verdict the provider gave on its way out', async () => {
     // How Codex records a turn it reports failed.
     providerEnd = { state: 'interrupted', outcome: 'failure', completedAt: 1_500 }

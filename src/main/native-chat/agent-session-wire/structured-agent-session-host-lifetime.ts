@@ -35,7 +35,7 @@ import {
   settleStructuredAgentSessionDeadGeneration,
   settleUserStoppedTurns
 } from './structured-agent-session-dead-generation-settlement'
-import { runningTurnItemIds } from './structured-agent-session-stale-turn-verdict'
+import { endedTurnItemIds } from './structured-agent-session-stale-turn-verdict'
 
 export type StructuredAgentSessionLifetimeContext = {
   deps: StructuredAgentSessionHostDeps
@@ -134,11 +134,12 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
   const owed = owedProviderChildWindDown(session)
   session.owesProviderChildWindDown = owed
   const stopping = session.child
-  // Read before the stop: the provider settles its open turn on the way out, with no verdict.
-  const cutTurnItemIds =
+  // Read before the stop: the provider settles its open turn on the way out, with no verdict, and
+  // may journal a turn whose start was still in flight.
+  const endedBeforeStop =
     ending.cause === 'user-stop' || ending.requestedByUser
-      ? runningTurnItemIds(session.journal.snapshot().items)
-      : new Set<string>()
+      ? endedTurnItemIds(session.journal.snapshot().items)
+      : null
   let settlementError: unknown
   const eviction: StructuredAgentSessionEvictionContext = {
     sessionId,
@@ -171,14 +172,16 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
         owed?.fence ?? structuredAgentSessionConversationFence(context.deps.store, sessionId)
       const settlementId = `expected-close:${sessionId}:${fence}:${owed?.generation ?? 'unknown'}`
       // A turn the user cut short from this chat is their cancellation; any other cut is news.
-      await settleUserStoppedTurns({
-        journal: session.journal,
-        fence,
-        settlementId: `user-stop:${settlementId}`,
-        cutTurnItemIds,
-        completedAt: context.now(),
-        onError: (error) => context.deps.onEventSinkError?.({ sessionId, error })
-      })
+      if (endedBeforeStop) {
+        await settleUserStoppedTurns({
+          journal: session.journal,
+          fence,
+          settlementId: `user-stop:${settlementId}`,
+          endedBeforeStop,
+          completedAt: context.now(),
+          onError: (error) => context.deps.onEventSinkError?.({ sessionId, error })
+        })
+      }
       const settled = await settleStructuredAgentSessionDeadGeneration({
         journal: session.journal,
         sessionId,

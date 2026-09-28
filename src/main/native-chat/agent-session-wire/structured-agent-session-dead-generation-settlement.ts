@@ -150,14 +150,15 @@ export async function settleUserStoppedTurns(input: {
   journal: DeadGenerationJournal
   fence: number
   settlementId: string
-  cutTurnItemIds: ReadonlySet<string>
+  /** The turns already over before the stop. */
+  endedBeforeStop: ReadonlySet<string>
   completedAt: number
   onError: (error: unknown) => void
 }): Promise<void> {
   try {
     const revisions = userStoppedTurnRevisions(
       input.journal.snapshot().items,
-      input.cutTurnItemIds,
+      input.endedBeforeStop,
       input.completedAt
     )
     for (const chunk of partitionJournalLifecycleMutations(input.settlementId, revisions)) {

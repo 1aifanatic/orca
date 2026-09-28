@@ -75,28 +75,31 @@ function settledLifecycle(
     : { ...kept, state: verdict.state }
 }
 
-/** The turns a stop can cut short, read before it reaches the provider. */
-export function runningTurnItemIds(items: readonly AgentJournalRenderItem[]): ReadonlySet<string> {
+/** The turns already over before a stop reaches the provider: the only ones it cannot have cut. */
+export function endedTurnItemIds(items: readonly AgentJournalRenderItem[]): ReadonlySet<string> {
   return new Set(
     items
-      .filter((item) => readAgentJournalTurn(item.body)?.state === 'running')
+      .filter((item) => {
+        const state = readAgentJournalTurn(item.body)?.state
+        return state !== undefined && state !== 'running'
+      })
       .map((item) => item.itemId)
   )
 }
 
 /**
  * A stop the user aimed at this chat is their cancellation, on every turn it cut short: one still
- * running, or one the provider settled on its way out with no verdict of its own. A verdict the
- * provider did give stands.
+ * running, or one the provider settled on its way out with no verdict of its own. That includes a
+ * turn whose start landed only as the provider stopped. A verdict the provider did give stands.
  */
 export function userStoppedTurnRevisions(
   items: readonly AgentJournalRenderItem[],
-  cutTurnItemIds: ReadonlySet<string>,
+  endedBeforeStop: ReadonlySet<string>,
   completedAt: number
 ): JournalLifecycleMutationInput[] {
   const revisions: JournalLifecycleMutationInput[] = []
   for (const item of items) {
-    if (!cutTurnItemIds.has(item.itemId)) {
+    if (endedBeforeStop.has(item.itemId)) {
       continue
     }
     const turn = readAgentJournalTurn(item.body)
