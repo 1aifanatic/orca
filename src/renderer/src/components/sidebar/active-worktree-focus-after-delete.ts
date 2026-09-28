@@ -43,13 +43,13 @@ function isHostedOnRuntimeOwnedSshTarget(
 function pickNextWorktreeIdAfterDelete(
   state: AppStoreState,
   repoId: string,
-  deletedWorktreeId: string
+  deletedWorktreeIds: ReadonlySet<string>
 ): string | null {
   const deleteState = state.deleteStateByWorktreeId
   const repoById = getRepoMapFromState(state)
   const siblings = (state.worktreesByRepo[repoId] ?? []).filter(
     (worktree) =>
-      worktree.id !== deletedWorktreeId &&
+      !deletedWorktreeIds.has(worktree.id) &&
       !getDeleteStateForWorktreeHost(worktree, deleteState)?.isDeleting &&
       // Skip siblings hosted on the now-destroyed runtime-owned SSH target (see helper).
       !isHostedOnRuntimeOwnedSshTarget(worktree, repoById)
@@ -85,7 +85,7 @@ function focusNextWorktreeAfterActiveDelete(
   ) {
     return
   }
-  const nextWorktreeId = pickNextWorktreeIdAfterDelete(state, repoId, deletedWorktreeId)
+  const nextWorktreeId = pickNextWorktreeIdAfterDelete(state, repoId, new Set([deletedWorktreeId]))
   if (nextWorktreeId) {
     // Keep successor focus from replacing the deleted row's spatial context.
     activateAndRevealWorktree(nextWorktreeId, { revealInSidebar: false })
@@ -113,8 +113,7 @@ export function prepareActiveWorktreeFocusAfterDelete(worktreeId: string): () =>
 
 /**
  * Before a batch delete starts, moves focus off the workspace the user is viewing when it is
- * one of `targets`, so the store never clears the selection mid-batch. Call after `targets`
- * are marked deleting so none of them can be picked. Never throws.
+ * one of `targets`, so the store never clears the selection mid-batch. Never throws.
  */
 export function moveFocusOffActiveWorktreeBeforeDelete(
   targets: readonly (string | WorktreeDeleteStateTarget)[]
@@ -146,7 +145,11 @@ export function moveFocusOffActiveWorktreeBeforeDelete(
     if (!repoId) {
       return
     }
-    const nextWorktreeId = pickNextWorktreeIdAfterDelete(state, repoId, activeWorktreeId)
+    // Why ids, not delete state: a target qualified as `local` misses an unhosted row's delete state.
+    const batchWorktreeIds = new Set(
+      targets.map((target) => (typeof target === 'string' ? target : target.id))
+    )
+    const nextWorktreeId = pickNextWorktreeIdAfterDelete(state, repoId, batchWorktreeIds)
     if (nextWorktreeId) {
       activateAndRevealWorktree(nextWorktreeId, { revealInSidebar: false })
     }
