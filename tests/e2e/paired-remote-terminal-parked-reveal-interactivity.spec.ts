@@ -288,6 +288,10 @@ async function probeInteractivity(
   )
   const paneGrid = await readActivePaneGrid(page, target.webTabId)
   const diagnostics = await readPaneDiagnostics(page, worktreeId, target.webTabId)
+  await test.info().attach(`paired-terminal-${name}`, {
+    body: await page.screenshot(),
+    contentType: 'image/png'
+  })
   let paintedAfterFlip = paintedLive
   if (!paintedLive) {
     await openClientTab(page, worktreeId, flipTo.webTabId)
