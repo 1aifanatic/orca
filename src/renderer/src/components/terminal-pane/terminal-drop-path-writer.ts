@@ -46,28 +46,29 @@ export async function writeTerminalDropPathsToCapturedTarget({
       return { sentAnyPath, targetCurrent: false, pathsWritten, failureReason: 'target-stale' }
     }
     // Why: image drops are attachment payloads for terminal TUIs, which detect
-    // them from a bracketed paste of the raw (un-escaped) path — mirroring the
-    // clipboard screenshot flow (terminal-clipboard-paste.ts, issue #2842).
-    // Shell-escaping would corrupt the file-existence check those tools run on
-    // the pasted path, so safe image paths bypass it. Unsafe image paths and
-    // non-image drops keep the original shell-escaped, space-separated
-    // behaviour for use in shell commands.
+    // them from a bracketed paste of the path — mirroring the clipboard
+    // screenshot flow (terminal-clipboard-paste.ts, issue #2842). Every image
+    // drop is framed as a paste; only its text differs. Safe image paths are
+    // pasted raw, because escaping would corrupt the file-existence check those
+    // tools run on the pasted path. Image paths with shell metacharacters
+    // (`download (1).png`) keep their shell-escaped text so a shell still gets
+    // a quoted argument; agent TUIs strip the quotes before that check. Unframed,
+    // the escaped text reaches the TUI as typed keystrokes and stays plain text
+    // instead of becoming an attachment. Non-image drops keep the original
+    // shell-escaped, space-separated behaviour for use in shell commands.
     //
     // Image payloads carry no trailing space of their own, so when an image is
     // immediately followed by a non-image path the two would otherwise collide
     // (`<bracketed-paste>/repo/a.ts`). Add a single separating space in that
     // case only — back-to-back image pastes are self-delimiting and a stray
     // space between them would land in the TUI input.
-    const pathIsRawPasteImage = isImageDropPath(path) && canPasteImageDropPathRaw(path, targetShell)
     const nextPath = paths[index + 1]
-    const nextPathIsRawPasteImage =
-      nextPath !== undefined &&
-      isImageDropPath(nextPath) &&
-      canPasteImageDropPathRaw(nextPath, targetShell)
-    const needsSeparatorAfterImage = nextPath !== undefined && !nextPathIsRawPasteImage
-    const payload = pathIsRawPasteImage
+    const needsSeparatorAfterImage = nextPath !== undefined && !isImageDropPath(nextPath)
+    const payload = isImageDropPath(path)
       ? separateImagePasteFromFollowingText(
-          wrapTerminalBracketedPasteText(path),
+          wrapTerminalBracketedPasteText(
+            canPasteImageDropPathRaw(path, targetShell) ? path : shellEscapePath(path, targetShell)
+          ),
           needsSeparatorAfterImage
         )
       : `${shellEscapePath(path, targetShell)} `
