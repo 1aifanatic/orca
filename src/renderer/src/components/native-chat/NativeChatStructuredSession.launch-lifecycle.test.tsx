@@ -31,8 +31,8 @@ const NOT_SIGNED_IN = {
   code: 'agent_session_operation_invalid',
   details: { reason: 'notSignedIn' }
 } as const
-const NOT_SIGNED_IN_TEXT =
-  'The agent is not signed in for the selected account. Sign in, then send your message again.'
+// Retry beside it is the resend, so the words stop at the cause.
+const NOT_SIGNED_IN_TEXT = 'Codex is not signed in for the selected account.'
 
 function sessionView(): React.JSX.Element {
   return (
@@ -114,6 +114,33 @@ describe('NativeChatStructuredSession launch lifecycle', () => {
 
     expect(screen.getByText(`Chat could not be started. ${NOT_SIGNED_IN_TEXT}`)).toBeTruthy()
     expect(screen.queryByText(/agent_session_/)).toBeNull()
+  })
+
+  it("keeps a step the Retry doesn't take, and drops one it does", () => {
+    mocks.launchLifecycle = 'failed'
+    mocks.launchFailure = {
+      kind: 'refused',
+      code: 'agent_session_conflict',
+      details: { reason: 'claimConflicted' }
+    }
+    const { rerender } = render(sessionView())
+    expect(
+      screen.getByText(
+        'Chat could not be started. This chat is still open in a terminal agent. Quit that agent to continue the chat here.'
+      )
+    ).toBeTruthy()
+
+    mocks.launchFailure = {
+      kind: 'refused',
+      code: 'agent_session_journal_unreadable',
+      details: { reason: 'journalUnavailable' }
+    }
+    rerender(sessionView())
+    expect(
+      screen.getByText(
+        "Chat could not be started. Orca couldn't open this chat's history right now."
+      )
+    ).toBeTruthy()
   })
 
   it('says only that the chat could not start when the refusal names no reason', () => {

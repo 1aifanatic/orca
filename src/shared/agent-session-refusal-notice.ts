@@ -267,20 +267,26 @@ function reasonParts(
   return causeWordsParts(words, write)
 }
 
-/** What stopped a refused write and the step past it, without saying which write did not happen:
- *  for a line that already says so, such as a chat that could not start. Empty when the refusal
- *  names no reason with words of its own. */
+/** What stopped a refused write, without saying which write did not happen: for a line that
+ *  already says so and shows its own Retry, such as a chat that could not start. The Retry is the
+ *  step for a reason whose action is to retry, and for sending again; any other step stays. Empty
+ *  when the refusal names no reason with words of its own. */
 export function agentSessionRefusalCauseParts(
-  failure: AgentSessionWriteFailure
+  failure: AgentSessionWriteFailure,
+  context: { agentName?: string } = {}
 ): AgentSessionWriteNoticePart[] {
   const words = failure.kind === 'refused' ? agentSessionRefusalReasonWords(failure) : undefined
   if (!words || 'words' in words) {
     return []
   }
   if ('fact' in words) {
-    return [{ text: agentSessionFailureSentence({ kind: words.fact }, 'rejection') }]
+    const sentence = agentSessionFailureSentence({ kind: words.fact }, 'rejection', {
+      ...context,
+      retryControl: true
+    })
+    return [{ text: sentence }]
   }
-  return words.step ? [words.cause, words.step] : [words.cause]
+  return words.step && words.action !== 'retry' ? [words.cause, words.step] : [words.cause]
 }
 
 export function agentSessionWriteNoticeParts(

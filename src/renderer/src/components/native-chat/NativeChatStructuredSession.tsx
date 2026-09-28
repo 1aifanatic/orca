@@ -118,6 +118,7 @@ export function NativeChatStructuredSession(
       ),
     [controller.outbox, controller.blockedClientMessageId, retryDelivery]
   )
+  const agentLabel = structuredAgentLabel(props.agent === 'codex' ? 'codex' : 'claude')
   const viewState = selectNativeChatViewState(session, { readRetries: true })
   const readFailure =
     controller.status === 'error'
@@ -270,16 +271,19 @@ export function NativeChatStructuredSession(
       <NativeChatLaunchRetry
         lifecycle={provisionalLaunch.lifecycle}
         failure={provisionalLaunch.failure}
+        agentLabel={agentLabel}
         onRetry={provisionalLaunch.retry}
       />
       <NativeChatStructuredSessionStatus
         sessionId={props.sessionId}
-        agentLabel={structuredAgentLabel(props.agent === 'codex' ? 'codex' : 'claude')}
+        agentLabel={agentLabel}
         startupPhase={startupPhase}
-        // Said once: on the pane when the failure took it, else here beside the transcript.
+        // Said once: on the pane when the failure took it, else here beside the transcript. A
+        // failure that names nothing is only the pane reconnecting.
         error={
-          viewState.kind === 'error' ? controller.error : (readFailure?.text ?? controller.error)
+          viewState.kind === 'error' || !readFailure?.named ? controller.error : readFailure.text
         }
+        reconnecting={viewState.kind !== 'error' && readFailure !== null && !readFailure.named}
         composerError={composerError}
         isVisible={props.isVisible}
         backgroundTasks={controller.backgroundTasks}

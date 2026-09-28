@@ -9,9 +9,12 @@ import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
 export function NativeChatLaunchRetry({
   lifecycle,
   failure = null,
+  agentLabel,
   onRetry
 }: {
   lifecycle: StructuredAgentSessionLaunchLifecycle | null
+  /** Names the agent in a start failure's words. */
+  agentLabel?: string
   /** The host's refusal behind the failed start; its message is never shown. */
   failure?: AgentSessionWriteRefusal | null
   onRetry: () => void
@@ -31,7 +34,9 @@ export function NativeChatLaunchRetry({
         )
   const cause =
     lifecycle === 'failed' && failure
-      ? agentSessionWriteNoticeText(agentSessionRefusalCauseParts(failure))
+      ? agentSessionWriteNoticeText(
+          agentSessionRefusalCauseParts(failure, agentLabel ? { agentName: agentLabel } : {})
+        )
       : ''
   return (
     <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-3 px-4 py-1 text-xs text-destructive">

@@ -70,7 +70,7 @@ it('says a damaged history cannot load, without claiming Orca keeps trying', () 
   expect(screen.queryByText(/agent_session_/)).toBeNull()
 })
 
-it("names a history that couldn't open right now, with no step the pane already takes", () => {
+it("names a history that couldn't open right now, and that the pane keeps trying", () => {
   mocks.status = 'error'
   mocks.readRefusal = journalRefusal('journalUnavailable')
   mocks.messages = []
@@ -78,7 +78,21 @@ it("names a history that couldn't open right now, with no step the pane already 
   renderPane()
 
   expect(screen.getAllByText("Orca couldn't open this chat's history right now.")).toHaveLength(1)
+  expect(
+    screen.getByText('The transcript could not be read. Orca keeps trying to load it.')
+  ).toBeTruthy()
   expect(screen.queryByText(/Try again/)).toBeNull()
+})
+
+it('says only that it is reconnecting, not as an error, when a failure names nothing', () => {
+  mocks.status = 'error'
+
+  renderPane()
+
+  expect(screen.getByTestId('message-list')).toBeTruthy()
+  const reconnecting = screen.getByText('Reconnecting to this chat…')
+  expect(reconnecting.className).not.toContain('text-destructive')
+  expect(screen.queryByText(/history couldn't be loaded/)).toBeNull()
 })
 
 it('words a failed reconnect beside a transcript it keeps', () => {

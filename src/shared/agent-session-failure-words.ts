@@ -53,6 +53,8 @@ export type AgentSessionFailureWordsContext = {
   /** The conversation command a failed start was for, so the next step is to run it again
    *  rather than to send a message. */
   command?: 'clear'
+  /** The surface shows its own Retry beside the words, so they leave out sending again. */
+  retryControl?: boolean
 }
 
 /**
@@ -110,7 +112,10 @@ function retryStep({ command }: AgentSessionFailureWordsContext): string {
 }
 
 /** The next step after a start or restart that failed: the command, or the message, again. */
-function startRetry({ command }: AgentSessionFailureWordsContext): string {
+function startRetry({ command, retryControl }: AgentSessionFailureWordsContext): string {
+  if (retryControl) {
+    return ''
+  }
   return command === 'clear' ? ' Run /clear again.' : ' Send your message to try again.'
 }
 
@@ -163,7 +168,10 @@ const FAILURE_SENTENCES = {
     `${context.agentName ?? 'The agent'} stopped before it finished starting.${startRetry(context)}`,
   startFailed: couldNot('start'),
   notSignedIn: (context) =>
-    `${context.agentName ?? 'The agent'} is not signed in for the selected account. Sign in, then ${retryStep(context)}.`,
+    // "Not signed in" already says what to do; beside a Retry the resend step is the button.
+    context.retryControl
+      ? `${context.agentName ?? 'The agent'} is not signed in for the selected account.`
+      : `${context.agentName ?? 'The agent'} is not signed in for the selected account. Sign in, then ${retryStep(context)}.`,
   historyTooLarge: () =>
     `This conversation's history is too large to restore here. ${START_NEW_CHAT}`,
   managedAccountEnvOverride: () =>
@@ -171,7 +179,7 @@ const FAILURE_SENTENCES = {
   accountSwitchInProgress: () =>
     'A Claude account switch is in progress. Try again after it finishes.',
   managedAccountUnsupported: (context) =>
-    `While a Claude account is added in WSL, Claude chats need a Windows Claude account. Choose or add one in Claude Accounts settings, then ${retryStep(context)}.`,
+    `While a Claude account is added in WSL, Claude chats need a Windows Claude account. Choose or add one in Claude Accounts settings${context.retryControl ? '' : `, then ${retryStep(context)}`}.`,
   providerExited: ({ agentName }, _, surface) =>
     surface === 'row'
       ? `${agentName ?? 'The agent'} stopped while this response was in progress. You can continue in this conversation.`
