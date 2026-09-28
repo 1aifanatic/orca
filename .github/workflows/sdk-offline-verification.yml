@@ -1,0 +1,59 @@
+name: Diagnostic retained SDK offline verification
+on:
+  push:
+    branches: [OrcaWin/np-sdk-offline-verification]
+    paths: ['.github/workflows/sdk-offline-verification.yml', 'config/ci/sdk-offline-verification/**']
+  workflow_dispatch: {}
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify:
+    if: github.repository == 'stablyai/orca' && github.ref == 'refs/heads/OrcaWin/np-sdk-offline-verification'
+    runs-on: windows-2022
+    timeout-minutes: 40
+    env:
+      ORCA_BACKGROUND_LAUNCH: '1'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          sparse-checkout: config/ci/sdk-offline-verification
+      - name: Parse verifier before acquiring inputs
+        shell: pwsh
+        run: |
+          Get-ChildItem config/ci/sdk-offline-verification -Filter '*.ps1' | ForEach-Object {
+            $errors=$null; $tokens=$null
+            [Management.Automation.Language.Parser]::ParseFile($_.FullName,[ref]$tokens,[ref]$errors) | Out-Null
+            if($errors.Count){throw "PowerShell parse failed: $($_.Name)"}
+          }
+      - name: Acquire exact retained layout artifact and signed bootstrapper
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $items=gh api repos/stablyai/orca/actions/runs/36476269793/artifacts | ConvertFrom-Json
+          if($LASTEXITCODE -ne 0){throw 'Artifact lookup failed'}
+          $artifacts=@($items.artifacts | Where-Object {$_.name -eq 'sdk-layout-retained-inputs' -and !$_.expired})
+          if($artifacts.Count -ne 1){throw 'Expected one retained layout artifact'}
+          # Fetch binary bytes through authenticated HTTP rather than PowerShell text redirection.
+          $headers=@{Authorization="Bearer $env:GH_TOKEN";Accept='application/vnd.github+json'}
+          Invoke-WebRequest -Uri "https://api.github.com/repos/stablyai/orca/actions/artifacts/$($artifacts[0].id)/zip" -Headers $headers -OutFile "$env:RUNNER_TEMP\sdk-layout.zip" -TimeoutSec 300
+          python config/ci/sdk-offline-verification/extract-layout.py "$env:RUNNER_TEMP\sdk-layout.zip" "$env:RUNNER_TEMP\sdk-layout"
+          if($LASTEXITCODE -ne 0){throw 'Artifact extraction failed'}
+          & "$env:WINDIR\System32\curl.exe" --fail --location --max-time 90 --max-filesize 33554432 --output "$env:RUNNER_TEMP\vs_BuildTools.exe" 'https://download.visualstudio.microsoft.com/download/pr/bc92e2cb-33de-4a0c-995d-efa817f16b16/37bb0fb429d163ecebd272a865d11a37b906d152bef960da2ddb29c2e2fd6eeb/vs_BuildTools.exe'
+          if($LASTEXITCODE -ne 0){throw 'Bootstrapper fetch failed'}
+      - name: Verify original and altered copies with all active network adapters disabled
+        shell: pwsh
+        run: ./config/ci/sdk-offline-verification/verify-layout-offline.ps1 -Layout "$env:RUNNER_TEMP\sdk-layout" -Bootstrapper "$env:RUNNER_TEMP\vs_BuildTools.exe" -Receipts "$env:RUNNER_TEMP\sdk-verification"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: sdk-offline-verification-receipts
+          path: |
+            ${{ runner.temp }}/sdk-verification/**/*.json
+            ${{ runner.temp }}/sdk-verification/**/*.log
+            ${{ runner.temp }}/sdk-verification/**/stdout.txt
+            ${{ runner.temp }}/sdk-verification/**/stderr.txt
+          retention-days: 7
