@@ -262,9 +262,9 @@ export function claudeDispatchContentKey(content: readonly unknown[]): string {
 }
 
 /**
- * Claude records a user frame under the frame's own `uuid` (measured against the real CLI), so the
- * id is chosen before the hand-over is journaled. A command is left to content: what Claude writes
- * for one is not the prompt Orca sent.
+ * Claude records a user frame under the frame's own `uuid` — its row's, or for a frame folded into
+ * a running turn its attachment's `source_uuid` — so the id is chosen before the hand-over is
+ * journaled. A command is left to content: what Claude writes for one is not the prompt Orca sent.
  */
 export function mintClaudeDispatchIdentity(
   providerSessionId: string,
