@@ -7,7 +7,8 @@ import type { AgentJournalResetReason } from '../../../shared/agent-session-jour
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import {
   openStructuredAgentSessionConversation,
-  type OpenedStructuredAgentSessionConversation
+  type OpenedStructuredAgentSessionConversation,
+  type StructuredAgentSessionConversationOpenOptions
 } from './structured-agent-session-conversation-open'
 import { StructuredAgentSessionDeliveryLoop } from './structured-agent-session-delivery-loop'
 import type { StructuredAgentSessionResumeOutcome } from './structured-agent-session-agent-start'
@@ -23,7 +24,10 @@ import { recoverStructuredRewind } from './structured-rewind-recovery'
 export type StructuredAgentSessionConversationDelivery = {
   loop: StructuredAgentSessionDeliveryLoop
   /** For a caller inside the session's serialize. */
-  open: (sessionId: string) => Promise<StructuredAgentSessionHostSession | null>
+  open: (
+    sessionId: string,
+    options?: StructuredAgentSessionConversationOpenOptions
+  ) => Promise<StructuredAgentSessionHostSession | null>
   /** Indexes a conversation some other open produced, as `open` would have. */
   adoptOpened: (
     sessionId: string,
@@ -75,16 +79,16 @@ export function createStructuredAgentSessionConversationDelivery(input: {
   return {
     loop,
     adoptOpened,
-    open: (sessionId) =>
-      openStructuredAgentSessionConversation({ deps, sessions, adoptOpened }, sessionId)
+    open: (sessionId, options) =>
+      openStructuredAgentSessionConversation({ deps, sessions, adoptOpened }, sessionId, options)
   }
 }
 
 /**
  * A compaction or rewind found prepared when the conversation opens was started under a child
  * this process no longer has — the open runs only when none is indexed — so nothing will finish
- * it, and left alone it refuses every send until a view attaches. Settled here instead of by a
- * start inside acceptance. A Codex rewind only its provider can prove stays for the attach.
+ * it, and left alone it refuses every send, so no agent would ever start to. Settled here instead
+ * of by a start inside acceptance. A Codex rewind only its provider can prove stays for the attach.
  */
 async function settleInterruptedCommands(
   deps: StructuredAgentSessionHostDeps,

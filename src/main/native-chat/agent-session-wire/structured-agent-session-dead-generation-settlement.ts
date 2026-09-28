@@ -177,7 +177,7 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
     const items = input.journal.snapshot().items
     const mutations: JournalLifecycleMutationInput[] = []
     if (showUnexpectedExitOutcome && input.exitedDuringStartup) {
-      // Until views stop starting children, a start can die with nothing queued for the loop.
+      // A start for a command, goal change or rewind can die with nothing queued for the loop.
       mutations.push(
         structuredAgentSessionStartFailureRow(
           input.exitedDuringStartup.generation ?? input.settlementId,
