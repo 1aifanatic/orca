@@ -568,6 +568,7 @@ describe("SSH: the user's Disconnect holds until the user connects", () => {
     const userConnect = invoke('ssh:connect')
     mockConnectionManager.connect.mockClear()
     runtime.notifySshRelayReady.mockClear()
+    mockPortForwardManager.addForward.mockClear()
     finishDisconnect()
 
     await disconnect
@@ -579,6 +580,7 @@ describe("SSH: the user's Disconnect holds until the user connects", () => {
     expect(mockConnectionManager.getConnection(TARGET.id)).toBeDefined()
     expect(activeSessions.get(TARGET.id)?.getState()).toBe('ready')
     expect(runtime.notifySshRelayReady).toHaveBeenLastCalledWith(TARGET.id)
+    expect(mockPortForwardManager.addForward).toHaveBeenCalledTimes(1)
   })
 
   it("(ii) after the user's Connect, a relay reconnect restores forwards and republishes", async () => {
