@@ -151,11 +151,12 @@ export function bindFreshSpawnFollowReset(session: ConnectPanePtySession): void 
     return write(`${profile}${kitty}`)
   }
 
-  const chooseReattachReplayReset = (
+  /** Picks the post-replay reset profile for a reattach; the caller writes it via writeReplayEpilogue. */
+  session.chooseReattachReplayReset = (
     payload: string,
-    ownerProcessEnded: boolean,
-    isAlternateScreen: boolean | undefined,
-    terminalOwner: 'shell' | undefined
+    ownerProcessEnded = false,
+    isAlternateScreen?: boolean,
+    terminalOwner?: 'shell'
   ): string => {
     // Why a cold restore overrides the agent signal: liveness is read from the
     // pane's status and title, both of which are persisted, so after a cold
@@ -179,18 +180,6 @@ export function bindFreshSpawnFollowReset(session: ConnectPanePtySession): void 
       ? POST_REPLAY_REATTACH_RESET_KEEP_MOUSE
       : POST_REPLAY_REATTACH_RESET
   }
-
-  session.writeReattachReplayReset = <T>(
-    payload: string,
-    ownerProcessEnded = false,
-    isAlternateScreen?: boolean,
-    terminalOwner?: 'shell',
-    write: (data: string) => T = session.writeReplayData
-  ): T =>
-    session.writeReplayEpilogue(
-      chooseReattachReplayReset(payload, ownerProcessEnded, isAlternateScreen, terminalOwner),
-      write
-    )
 
   session.consumeRestoredViewportBlankingMarker = (): boolean => {
     return session.deps.restoredViewportBlankingPanesRef?.current.delete(session.pane.id) ?? false

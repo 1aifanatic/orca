@@ -55,7 +55,6 @@ export function bindStartFreshSpawn(session: ConnectPanePtySession): void {
     session.resetFreshSpawnFollowOutput()
     // Why: a fresh spawn is a new process, so a restart-in-place must not
     // inherit the old TUI's screen, mouse or kitty modes in xterm or the mirror.
-    session.kittyKeyboardModes.reset()
     session.writeInputModeGround(PROCESS_BOUNDARY_GROUND)
     session.prepareFreshShellViewportForSpawn(options)
     const coldRestoreOverride =

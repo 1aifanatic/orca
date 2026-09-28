@@ -196,7 +196,7 @@ describe('connectPanePty kitty keyboard restore', () => {
     expect(mirror?.flags).toBe(0)
   })
 
-  it('grounds xterm and the mirror together before a restart-in-place spawns', async () => {
+  it('grounds xterm and the mirror with one scanned write before a restart-in-place spawns', async () => {
     const { connectPanePty } = await import('./pty-connection')
     transportFactoryQueue.push(createMockTransport())
     const pane = createPane(91)
@@ -206,20 +206,13 @@ describe('connectPanePty kitty keyboard restore', () => {
     const mirror = new TerminalKittyKeyboardModeTracker()
     mirror.scan('\x1b[?1049h\x1b[>5u')
     deps.paneKittyKeyboardModesRef.current.set(pane.id, mirror)
-    const reset = vi.spyOn(mirror, 'reset')
-    const scan = vi.spyOn(mirror, 'scan')
 
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: pane-connection mocks cover the members connectPanePty reads.
     connectPanePty(pane as never, createManager(91) as never, deps as never)
     await flushAsyncTicks(20)
 
     expect(pane.terminal.write).toHaveBeenCalledWith(PROCESS_BOUNDARY_GROUND, expect.any(Function))
-    const groundScan = scan.mock.calls.findIndex(([data]) => data === PROCESS_BOUNDARY_GROUND)
-    expect(groundScan).toBeGreaterThanOrEqual(0)
-    expect(reset.mock.invocationCallOrder[0]).toBeLessThan(
-      scan.mock.invocationCallOrder[groundScan]!
-    )
-    expect(mirror.flags).toBe(0)
+    expect(mirror.snapshotFlags).toBe(0)
     expect(mirror.isAlternateScreen).toBe(false)
   })
 })

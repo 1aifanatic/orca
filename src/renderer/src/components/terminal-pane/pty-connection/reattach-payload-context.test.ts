@@ -16,7 +16,8 @@ function createSession(overrides: Record<string, unknown> = {}): ReattachPayload
     rememberReattachPayloadAgentSignal: vi.fn(),
     writeReplayData: vi.fn(),
     writeInputModeGround: vi.fn(),
-    writeReattachReplayReset: vi.fn(),
+    chooseReattachReplayReset: vi.fn(() => '<reset>'),
+    writeReplayEpilogue: vi.fn(),
     sendFocusedReattachFocusInAfterReplay: vi.fn(),
     kittyKeyboardModes: {
       hasProvenBaseline: true,

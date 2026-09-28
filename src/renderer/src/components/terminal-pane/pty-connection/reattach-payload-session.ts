@@ -5,6 +5,7 @@ export type ReattachPayloadSession = Pick<
   | 'applyColdRestoreAgentResumeStartup'
   | 'applySnapshotKittyKeyboardModes'
   | 'buildColdRestoreAgentResumeStartup'
+  | 'chooseReattachReplayReset'
   | 'clearSleepingRecordAfterColdRestoreSpawn'
   | 'consumeRestoredViewportBlankingMarker'
   | 'createReattachGridPush'
@@ -24,6 +25,6 @@ export type ReattachPayloadSession = Pick<
   | 'transport'
   | 'writeFreshShellViewportBlanking'
   | 'writeInputModeGround'
-  | 'writeReattachReplayReset'
+  | 'writeReplayEpilogue'
   | 'writeReplayData'
 >
