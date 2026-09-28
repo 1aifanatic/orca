@@ -88,18 +88,16 @@ export function installInterruptInputIntent(session: ConnectPanePtySession): voi
       current.agentType === entry.agentType
     const inferredFromEntry =
       options?.allowInferredInterrupt === true &&
+      current.state === 'done' &&
+      current.interrupted === true &&
       current.prompt === entry.prompt &&
       current.agentType === entry.agentType &&
-      ((current.state === 'done' &&
-        current.interrupted === true &&
-        current.stateHistory?.some(
-          (history) =>
-            history.state === entry.state &&
-            history.prompt === entry.prompt &&
-            history.startedAt === entry.stateStartedAt
-        ) === true) ||
-        // Why: child work can hold the cancelled main agent's row working, but the exited CLI took that work with it.
-        (entry.mainAgent?.state === 'working' && current.mainAgent?.outcome === 'cancellation'))
+      current.stateHistory?.some(
+        (history) =>
+          history.state === entry.state &&
+          history.prompt === entry.prompt &&
+          history.startedAt === entry.stateStartedAt
+      ) === true
     if (!unchanged && !inferredFromEntry) {
       return
     }
