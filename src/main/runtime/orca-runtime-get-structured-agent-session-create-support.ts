@@ -238,10 +238,19 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
 
   restoreStructuredAgentSessionTabs(): Promise<void> {
     this.structuredAgentSessionTabRestorePromise ??=
-      this.restoreStructuredAgentSessionTabsOnce().catch((error) => {
-        this.structuredAgentSessionTabRestorePromise = null
-        throw error
-      })
+      this.restoreStructuredAgentSessionTabsOnce().then(
+        () => {
+          // Only a host's answer is final: without one, the next caller restores again, so a later
+          // lock takeover or journal open republishes the chats.
+          if (this.structuredAgentSessionInventoryUnverifiable) {
+            this.structuredAgentSessionTabRestorePromise = null
+          }
+        },
+        (error) => {
+          this.structuredAgentSessionTabRestorePromise = null
+          throw error
+        }
+      )
     return this.structuredAgentSessionTabRestorePromise
   }
 

@@ -285,6 +285,98 @@ describe('startup and other non-chat work without a structured host', () => {
     })
   })
 
+  // The inventory must say "cannot tell", never "no chats": a client culls what an answer omits,
+  // and the desktop then saves its chat tabs away.
+  describe('the session-tabs inventory', () => {
+    /** The worktree's frame as the renderer's own graph publication leaves it: no chat rows. */
+    function publishWorktreeFrame(runtime: OrcaRuntimeService): void {
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the runtime's own protected store, called as its graph publication does.
+      const internal = runtime as unknown as {
+        storeMobileSessionSnapshot(worktreeId: string, snapshot: unknown): unknown
+      }
+      internal.storeMobileSessionSnapshot('workspace-1', {
+        worktree: 'workspace-1',
+        publicationEpoch: 'renderer-epoch',
+        snapshotVersion: 1,
+        activeGroupId: null,
+        activeTabId: null,
+        activeTabType: null,
+        tabs: []
+      })
+    }
+
+    async function listInventory(runtime: OrcaRuntimeService) {
+      await runtime.restoreStructuredAgentSessionTabs()
+      return runtime.listAllMobileSessionTabs()
+    }
+
+    it('marks chats unverifiable while another process owns them', async () => {
+      holder = await holdJournalOwnerLockInChild(root)
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+      const { runtime } = startupRuntime()
+      publishWorktreeFrame(runtime)
+
+      const frames = await listInventory(runtime)
+
+      expect(frames).toEqual([
+        expect.objectContaining({ worktree: 'workspace-1', agentSessionsUnverifiable: true })
+      ])
+    })
+
+    it('marks chats unverifiable when the owner cannot open its journal', async () => {
+      await writeFile(journalDatabasePath(root), 'not a database '.repeat(512))
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+      const { runtime } = startupRuntime()
+      publishWorktreeFrame(runtime)
+
+      const frames = await listInventory(runtime)
+
+      expect(frames).toEqual([
+        expect.objectContaining({ worktree: 'workspace-1', agentSessionsUnverifiable: true })
+      ])
+    })
+
+    it('lists no chats as a real answer once the owner has a host', async () => {
+      const { runtime } = startupRuntime()
+      publishWorktreeFrame(runtime)
+
+      const frames = await listInventory(runtime)
+
+      expect(frames).toHaveLength(1)
+      expect(frames[0]).not.toHaveProperty('agentSessionsUnverifiable')
+      expect(getStructuredAgentSessionHost()).not.toBeNull()
+    })
+
+    it('restores again after a takeover, publishing the chats and clearing the mark', async () => {
+      holder = await holdJournalOwnerLockInChild(root)
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+      const { runtime } = startupRuntime()
+      publishWorktreeFrame(runtime)
+      expect((await listInventory(runtime))[0]).toMatchObject({ agentSessionsUnverifiable: true })
+
+      await holder.kill()
+      holder = null
+      await vi.waitFor(() => expect(gateRefusal().reason).toBe('hostDisabled'), { timeout: 10_000 })
+      // The first chat request after the takeover installs the host, as the read RPCs do.
+      const host = await install()
+      // The host's open conversations stand in for the chats its readable restore reopens.
+      vi.spyOn(host, 'listSessionTabs').mockReturnValue([
+        { workspaceId: 'workspace-1', sessionId: 'claude-1', agent: 'claude' },
+        { workspaceId: 'workspace-1', sessionId: 'codex-1', agent: 'codex' }
+      ])
+      vi.spyOn(host, 'setSessionTabVisibility').mockResolvedValue(undefined)
+
+      const frames = await listInventory(runtime)
+
+      expect(frames).toHaveLength(1)
+      expect(frames[0]).not.toHaveProperty('agentSessionsUnverifiable')
+      expect(frames[0]?.tabs).toEqual([
+        expect.objectContaining({ type: 'agent-session', sessionId: 'claude-1', agent: 'claude' }),
+        expect.objectContaining({ type: 'agent-session', sessionId: 'codex-1', agent: 'codex' })
+      ])
+    })
+  })
+
   it('lets a terminal resume command through while another process owns the chats', async () => {
     holder = await holdJournalOwnerLockInChild(root)
     vi.spyOn(console, 'warn').mockImplementation(() => undefined)

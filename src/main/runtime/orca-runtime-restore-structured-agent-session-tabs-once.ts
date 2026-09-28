@@ -86,6 +86,9 @@ export class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce extends OrcaRu
         notify: false
       })
     }
+    // No host means no one can say which chats exist; with none on disk, empty is the answer.
+    this.structuredAgentSessionInventoryUnverifiable =
+      !host && this.hasPersistedStructuredAgentSessionStore()
   }
 
   async publishStructuredAgentSessionTab(input: {
