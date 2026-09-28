@@ -4,6 +4,7 @@
 
 import {
   QUEUED_MESSAGE_PAUSED_SEND_FAILED,
+  QUEUED_MESSAGE_PAUSED_STOPPED,
   type AgentSessionQueuedMessage
 } from '../../../shared/agent-session-wire'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
@@ -21,11 +22,16 @@ function computePublishedQueuedMessages(journal: AgentSessionJournal): AgentSess
       continue
     }
     const paused = row.state === 'waiting' && queuedMessageHeld(row)
-    // The stored reason is a typed marker; an unknown one reads as a plain hold.
-    const pausedReason =
-      paused && row.holdReason === QUEUED_MESSAGE_PAUSED_SEND_FAILED
+    // The stored reason is a typed marker; an unknown one reads as a plain
+    // hold. A held row with NO stored reason is the derived restart hold,
+    // which lifts exactly like a Stop's — so it publishes as 'stopped'.
+    const pausedReason = !paused
+      ? undefined
+      : row.holdReason === QUEUED_MESSAGE_PAUSED_SEND_FAILED
         ? QUEUED_MESSAGE_PAUSED_SEND_FAILED
-        : undefined
+        : row.holdReason === QUEUED_MESSAGE_PAUSED_STOPPED || row.holdReason === null
+          ? QUEUED_MESSAGE_PAUSED_STOPPED
+          : undefined
     published.push({
       messageId: row.messageId,
       position: row.position,

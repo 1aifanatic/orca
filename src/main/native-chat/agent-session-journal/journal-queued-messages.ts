@@ -24,7 +24,7 @@ import {
   listQueuedMessages,
   pruneQueuedMessages,
   queuedMessagesSettledByOp,
-  releaseQueuedMessageHolds,
+  releaseStopShapedQueuedMessageHolds,
   returnDispatchedQueuedMessage,
   withdrawQueuedMessages,
   type QueuedMessageHoldReason,
@@ -144,11 +144,17 @@ export class JournalQueuedMessages {
     })
   }
 
-  /** Lift one hold reason from every waiting row — Stop's pause lasts until the
-   *  user next starts a turn. Guarded by the cached list, so the sends that have
-   *  nothing to lift (almost all of them) cost no write transaction. */
-  releaseHolds(input: { reason: QueuedMessageHoldReason }): Promise<void> {
-    if (!this.list().some((row) => row.state === 'waiting' && row.holdReason === input.reason)) {
+  /** Lift the stop-shaped holds — a stored 'stopped', and the derived restart
+   *  hold, whose row is adopted into the given instance — because the user next
+   *  started a turn. `send_failed` stays for its explicit Send. Guarded by the
+   *  cached list, so the sends that have nothing to lift (almost all of them)
+   *  cost no write transaction. */
+  releaseStopHolds(input: { hostInstance: string }): Promise<void> {
+    const stopShaped = (row: QueuedMessageRow) =>
+      row.state === 'waiting' &&
+      (row.holdReason === 'stopped' ||
+        (row.holdReason === null && row.hostInstance !== input.hostInstance))
+    if (!this.list().some(stopShaped)) {
       return Promise.resolve()
     }
     return this.deps.serialize(async () => {
@@ -157,9 +163,9 @@ export class JournalQueuedMessages {
       db.exec('BEGIN IMMEDIATE')
       let released: number
       try {
-        released = releaseQueuedMessageHolds(db, {
+        released = releaseStopShapedQueuedMessageHolds(db, {
           sessionId: this.deps.sessionId,
-          reason: input.reason
+          hostInstance: input.hostInstance
         })
         db.exec('COMMIT')
       } catch (error) {
@@ -180,7 +186,7 @@ export class JournalQueuedMessages {
     settledByOp: string
   }): Promise<QueuedMessageRow[]> {
     if (input.messageIds.length === 0) {
-      // Every capable Stop calls this; one with no drafts must cost no write transaction.
+      // Delete races and empty carries land here; neither may cost a write transaction.
       return Promise.resolve([])
     }
     return this.deps.serialize(async () => {

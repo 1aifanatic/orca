@@ -593,17 +593,28 @@ describe('holds', () => {
     })
   })
 
-  it("releaseHolds lifts only the named reason: Stop's pause dies, send_failed stays", async () => {
+  it("releaseStopHolds lifts stop-shaped holds only: a stored 'stopped' and the restart hold; send_failed stays", async () => {
     const journal = await open()
     await queueDraft(journal, 'draft-1')
     await queueDraft(journal, 'draft-2')
-    await queueDraft(journal, 'draft-3')
+    // Written by another host instance: held by derivation, no stored reason.
+    await journal.queuedMessages.insert({
+      messageId: 'draft-restart',
+      body: message('written before the restart'),
+      fingerprint: 'fp-draft-restart',
+      hostInstance: 'proc-0'
+    })
     await journal.queuedMessages.hold({ messageIds: ['draft-1'], reason: 'stopped' })
     await journal.queuedMessages.hold({ messageIds: ['draft-2'], reason: 'send_failed' })
-    await journal.queuedMessages.releaseHolds({ reason: 'stopped' })
+    await journal.queuedMessages.releaseStopHolds({ hostInstance: 'proc-1' })
     expect(journal.queuedMessages.get('draft-1')?.holdReason).toBeNull()
     expect(journal.queuedMessages.get('draft-2')?.holdReason).toBe('send_failed')
-    expect(journal.queuedMessages.get('draft-3')?.holdReason).toBeNull()
+    // The restart-held row is adopted into the lifting instance — the same fact
+    // the derivation reads, so nothing else needs to change for it to unpause.
+    expect(journal.queuedMessages.get('draft-restart')).toMatchObject({
+      holdReason: null,
+      hostInstance: 'proc-1'
+    })
   })
 
   it('a release with nothing to lift changes nothing and fires no commit notification', async () => {
@@ -611,8 +622,8 @@ describe('holds', () => {
     await queueDraft(journal, 'draft-1')
     await journal.queuedMessages.hold({ messageIds: ['draft-1'], reason: 'send_failed' })
     const revision = journal.queuedMessages.revision()
-    // Every dispatched user send calls this; one with no stopped holds must not publish.
-    await journal.queuedMessages.releaseHolds({ reason: 'stopped' })
+    // Every dispatched user send calls this; one with no stop-shaped holds must not publish.
+    await journal.queuedMessages.releaseStopHolds({ hostInstance: 'proc-1' })
     expect(journal.queuedMessages.revision()).toBe(revision)
     expect(journal.queuedMessages.get('draft-1')?.holdReason).toBe('send_failed')
   })

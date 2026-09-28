@@ -334,7 +334,7 @@ export class StructuredAgentSessionQueuedMessageDrain {
       )
     } catch (error) {
       if (error instanceof QueuedMessageNotConsumableError) {
-        // Lost a race with a Send-now, Delete or Stop; their transition stands.
+        // Lost a race with a Send-now or Delete; their transition stands.
         return
       }
       // Pre-consume failure: the draft stays waiting, held with the marker on

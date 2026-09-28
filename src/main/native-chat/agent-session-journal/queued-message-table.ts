@@ -14,7 +14,7 @@ export type QueuedMessageState = 'waiting' | 'dispatched' | 'returned' | 'withdr
 
 /** Why a waiting draft is held from auto-sending. Stored on the row — the hold
  *  must survive handle eviction and restart, and it dies with the session's
- *  journal. Values are wire markers (`send_failed` maps to `pausedReason`);
+ *  journal. Both values are wire markers (they publish as `pausedReason`);
  *  a reader treats an unknown value as a plain hold. */
 export type QueuedMessageHoldReason = 'stopped' | 'send_failed'
 
@@ -149,20 +149,23 @@ export function holdQueuedMessages(
   return held
 }
 
-/** Lift one hold reason from every waiting row — Stop's pause dies when the
- *  user next starts a turn. Other reasons (`send_failed`) are untouched: they
+/** Lift the stop-shaped holds when the user next starts a turn: a stored
+ *  'stopped' (Stop, /clear carry) and the DERIVED restart hold — that row is
+ *  adopted into the current host instance, the same fact the derivation reads,
+ *  so no second copy exists. `send_failed` and unknown markers stay: they
  *  release only through an explicit Send. Returns how many rows it lifted. */
-export function releaseQueuedMessageHolds(
+export function releaseStopShapedQueuedMessageHolds(
   db: Database.Database,
-  input: { sessionId: string; reason: QueuedMessageHoldReason }
+  input: { sessionId: string; hostInstance: string }
 ): number {
   return Number(
     db
       .prepare(
-        `UPDATE queued_messages SET hold_reason = NULL
-         WHERE session_id = ? AND state = 'waiting' AND hold_reason = ?`
+        `UPDATE queued_messages SET hold_reason = NULL, host_instance = ?
+         WHERE session_id = ? AND state = 'waiting'
+           AND (hold_reason = 'stopped' OR (hold_reason IS NULL AND host_instance <> ?))`
       )
-      .run(input.sessionId, input.reason).changes ?? 0
+      .run(input.hostInstance, input.sessionId, input.hostInstance).changes ?? 0
   )
 }
 

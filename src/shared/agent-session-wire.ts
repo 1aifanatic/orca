@@ -351,7 +351,13 @@ export type AgentSessionCancelResult = {
 /** The draft could not be converted into a send; an explicit Send retries it. */
 export const QUEUED_MESSAGE_PAUSED_SEND_FAILED = 'send_failed' as const
 
-export type AgentSessionQueuedMessagePausedReason = typeof QUEUED_MESSAGE_PAUSED_SEND_FAILED
+/** Held by a Stop, a /clear carry, or a host restart: the user's next
+ *  dispatched send lifts it, and Send-now overrides it per card. */
+export const QUEUED_MESSAGE_PAUSED_STOPPED = 'stopped' as const
+
+export type AgentSessionQueuedMessagePausedReason =
+  | typeof QUEUED_MESSAGE_PAUSED_STOPPED
+  | typeof QUEUED_MESSAGE_PAUSED_SEND_FAILED
 
 /** One draft the host holds for this conversation, published whole-list on the
  *  subscribe stream and on history pages. Text-only v1. */
@@ -362,9 +368,11 @@ export type AgentSessionQueuedMessage = {
   state: 'waiting' | 'returned'
   /** Derived at publish: a Stop, a pre-consume failure, or a host restart holds it. */
   paused?: true
-  /** Why a failure holds it, as a marker the client localizes; absent for a
-   *  Stop's or a restart's hold. A client must treat an unknown marker as a
-   *  plain pause, so a newer host can add one. */
+  /** Why it is held, as a marker the client localizes: 'stopped' (a Stop, a
+   *  /clear carry, or a restart — "sends after your next message"), or
+   *  'send_failed' ("couldn't send"; only an explicit Send releases it). A
+   *  client must treat an unknown marker as a plain pause, so a newer host can
+   *  add one. */
   pausedReason?: AgentSessionQueuedMessagePausedReason
   /** The stored effective rejection. Clients decide showability with
    *  `dispatchRejectionReasonIsInternal`, exactly as for rejected submissions;

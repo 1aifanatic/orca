@@ -8,6 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   QUEUED_MESSAGE_PAUSED_SEND_FAILED,
+  QUEUED_MESSAGE_PAUSED_STOPPED,
   type AgentSessionQueuedMessage,
   type AgentSessionSubscribeEvent
 } from '../../../shared/agent-session-wire'
@@ -237,12 +238,37 @@ describe('held drafts', () => {
     await settleAccepted(working, 'a')
     await host.close(SESSION)
     expect(await drafts()).toMatchObject([{ messageId: draftId, state: 'waiting', paused: true }])
+    // The restart hold reads exactly like a Stop's: "sends after your next message".
+    const page = await host.history({ sessionId: SESSION, direction: 'tail' })
+    expect(page.ok && page.page.queuedMessages?.[0]?.pausedReason).toBe(
+      QUEUED_MESSAGE_PAUSED_STOPPED
+    )
     await new Promise((resolve) => setTimeout(resolve, 250))
     expect(await submission(draftId)).toBeUndefined()
     expect(await sendNow(draftId)).toMatchObject({
       ok: true,
       value: { submission: expect.anything() }
     })
+  })
+
+  it("a restart-held draft also lifts on the user's next dispatched send, exactly like a Stop's hold", async () => {
+    const working = await workingSend()
+    const queued = await send('written before the restart', 'queue-if-active').result
+    if (!queued.ok || !('queued' in queued.value)) {
+      throw new Error('expected a queued receipt')
+    }
+    const draftId = queued.value.queued.messageId
+    rotateStructuredAgentSessionHostInstanceForTests()
+    await settleAccepted(working, 'a')
+    await new Promise((resolve) => setTimeout(resolve, 250))
+    expect(await submission(draftId)).toBeUndefined()
+    expect(await drafts()).toEqual([{ messageId: draftId, state: 'waiting', paused: true }])
+    // The user's send adopts the row into the running instance and lifts it.
+    const next = send('user starts a new turn')
+    await next.result
+    expect(await drafts()).toEqual([{ messageId: draftId, state: 'waiting' }])
+    await settleAccepted(next.id, 'b')
+    await eventually(async () => expect(await submission(draftId)).toBeDefined())
   })
 
   it('a failed conversion leaves the draft waiting and paused with its error; Send retries', async () => {
@@ -307,6 +333,12 @@ describe('Stop and Delete', () => {
     expect(await drafts()).toEqual([
       { messageId: first.value.queued.messageId, state: 'waiting', paused: true },
       { messageId: second.value.queued.messageId, state: 'waiting', paused: true }
+    ])
+    // Published with the 'stopped' marker: "sends after your next message".
+    const page = await host.history({ sessionId: SESSION, direction: 'tail' })
+    expect(page.ok && page.page.queuedMessages?.map((entry) => entry.pausedReason)).toEqual([
+      QUEUED_MESSAGE_PAUSED_STOPPED,
+      QUEUED_MESSAGE_PAUSED_STOPPED
     ])
     // A lost acknowledgement replays the settled Stop; still no text, no field.
     const replayed = await stop(operationId, { callerKey: 'client-2' })

@@ -10,6 +10,7 @@
 
 import type { AgentSessionTurnContext } from './structured-agent-session-turns'
 import { unsettledQueuedMessages } from './structured-agent-session-queued-mutations'
+import { structuredAgentSessionHostInstance } from './structured-agent-session-queued-pause'
 
 function reportQueuedHoldFailure(sessionId: string, step: string, error: unknown): void {
   console.warn(`[agent-session] ${step} skipped:`, {
@@ -35,13 +36,16 @@ export async function holdQueuedMessagesForStop(ctx: AgentSessionTurnContext): P
   }
 }
 
-/** The pause's death: the user starting a turn supersedes the Stop that paused
- *  the queue, so the 'stopped' holds lift in the send's own serialized step and
+/** The pause's death: the user starting a turn supersedes whatever paused the
+ *  queue — a Stop, a /clear carry, or a host restart (that row is adopted into
+ *  this instance) — so those holds lift in the send's own serialized step and
  *  the cards drain once that turn settles. `send_failed` holds stay — they
  *  release only through an explicit Send. */
 export async function releaseStopHeldQueuedMessages(ctx: AgentSessionTurnContext): Promise<void> {
   try {
-    await ctx.journal.queuedMessages.releaseHolds({ reason: 'stopped' })
+    await ctx.journal.queuedMessages.releaseStopHolds({
+      hostInstance: structuredAgentSessionHostInstance()
+    })
   } catch (error) {
     reportQueuedHoldFailure(ctx.sessionId, "a send's stopped-hold release", error)
   }
