@@ -144,8 +144,9 @@ function couldNot(verb: 'couldNotStart' | 'couldNotRestart'): Sentence {
   }
 }
 
+// The number only; each language's sentence carries its own unit.
 function megabytes(bytes: number): string {
-  return `${Math.round((bytes / BYTES_PER_MB) * 10) / 10} MB`
+  return String(Math.round((bytes / BYTES_PER_MB) * 10) / 10)
 }
 
 const ATTACHMENT_SENTENCES = {

@@ -41,14 +41,14 @@ export const AGENT_SESSION_FAILURE_COPY = {
   attachmentEmpty: 'An image on this message is empty, so the message was not sent.',
   attachmentTooLarge: 'An image on this message is too large, so the message was not sent.',
   attachmentLargerThan:
-    'An image on this message is larger than {{size}}, so the message was not sent.',
+    'An image on this message is larger than {{size}} MB, so the message was not sent.',
   attachmentTooMany: 'This message has too many images, so it was not sent.',
   attachmentAtMost:
     '{{agent}} accepts at most {{limit}} images in one message, so this message was not sent.',
   attachmentTotalTooLarge:
     'The images on this message are too large together, so the message was not sent.',
   attachmentTotalMoreThan:
-    'The images on this message add up to more than {{size}}, so the message was not sent.',
+    'The images on this message add up to more than {{size}} MB, so the message was not sent.',
   attachmentUnsupportedType:
     '{{agent}} accepts only PNG, JPEG, GIF, and WebP images, so this message was not sent.',
   attachmentNotAFile: "An image on this message isn't a file, so the message was not sent.",

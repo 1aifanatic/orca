@@ -43,7 +43,7 @@ const NOTICE_PIECES: readonly AgentSessionFailureCopyId[] = [
 ]
 // Kana, and kanji whose simplified Chinese form differs (続 is 续, 読 is 读, ...).
 const JAPANESE_ONLY = /[\u3040-\u30ff続読変済図気帰戻検択転権単圧応対発処実証覧関専]/u
-const VALUES = { agent: 'Claude', detail: 'Image type .bmp', limit: '20', size: '5 MB' }
+const VALUES = { agent: 'Claude', detail: 'Image type .bmp', limit: '20', size: '5' }
 
 function factsFor(kind: AgentSessionFailureFact['kind']): AgentSessionFailureFact[] {
   const facts: AgentSessionFailureFact[] = [
@@ -150,6 +150,23 @@ describe('desktop words for a failure fact', () => {
         structuredAgentSessionRejectionParts(null, 'send', { kind: 'providerExited' }, {})
       )
     ).toBe("L'agent s'est arrêté avant l'envoi de ce message.")
+  })
+
+  it("says an image's size limit in the reader's unit", async () => {
+    await i18n.changeLanguage('fr')
+    const sentence = (reason: 'tooLarge' | 'totalTooLarge', megabytes: number) =>
+      agentSessionFailureSentence(
+        { kind: 'attachmentInvalid', attachment: { reason, limit: megabytes * 1024 * 1024 } },
+        'rejection',
+        {},
+        AGENT_SESSION_FAILURE_TRANSLATED
+      )
+    expect(sentence('tooLarge', 5)).toBe(
+      "Une image de ce message dépasse 5 Mo, le message n'a donc pas été envoyé."
+    )
+    expect(sentence('totalTooLarge', 20)).toBe(
+      "Les images de ce message dépassent 20 Mo au total, le message n'a donc pas été envoyé."
+    )
   })
 
   it('shows a host sentence with no fact beside it as written', async () => {
