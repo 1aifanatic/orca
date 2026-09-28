@@ -21,7 +21,7 @@ type AgentHookCommandResult = {
 }
 
 // Covers managed-home verification, WSL identity, trust grant, and bounded app-server reap.
-const CODEX_PANE_PREPARE_TIMEOUT_MS = 50_000
+const WSL_CODEX_PREPARE_TIMEOUT_MS = 50_000
 
 async function getDataPath(): Promise<string> {
   return (
@@ -176,19 +176,21 @@ async function setAgentHooksEnabled(
 export const AGENT_HOOK_HANDLERS: Record<string, CommandHandler> = {
   'agent hooks prepare-codex': async ({ client, flags }) => {
     rejectRemoteHookSelection(flags)
-    // Why the app: this process runs in the pane, whose HOME can be the real one
-    // under login(1), so it never writes agent config itself.
-    const codexHome = process.env.CODEX_HOME ?? ''
-    const orcaCodexHome = process.env.ORCA_CODEX_HOME ?? ''
-    const options = { timeoutMs: CODEX_PANE_PREPARE_TIMEOUT_MS }
+    if (!process.env.WSL_DISTRO_NAME?.trim()) {
+      // Why a no-op, kept for one release: the app prepares native Codex homes
+      // itself, and pane shell wrappers from older builds still call this command.
+      return
+    }
     try {
-      await (process.env.WSL_DISTRO_NAME?.trim()
-        ? client.call(
-            'agentHooks.prepareCodexForWslPane',
-            { codexHome, orcaCodexHome, wslDistro: process.env.WSL_DISTRO_NAME },
-            options
-          )
-        : client.call('agentHooks.prepareCodexForPane', { codexHome, orcaCodexHome }, options))
+      await client.call(
+        'agentHooks.prepareCodexForWslPane',
+        {
+          codexHome: process.env.CODEX_HOME ?? '',
+          orcaCodexHome: process.env.ORCA_CODEX_HOME ?? '',
+          wslDistro: process.env.WSL_DISTRO_NAME
+        },
+        { timeoutMs: WSL_CODEX_PREPARE_TIMEOUT_MS }
+      )
     } catch {
       // Best effort: old or unavailable runtimes must not block Codex launch.
     }

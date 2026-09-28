@@ -1,28 +1,16 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { OrcaRuntimeService } from '../../orca-runtime'
 import { eraseRpcMethods, isStreamingMethod, type RpcContext } from '../core'
 
-const { installForLaunchPrepMock, installForRuntimeHomeSerializedMock, realpathMock, appPaths } =
-  vi.hoisted(() => ({
-    installForLaunchPrepMock: vi.fn(),
-    installForRuntimeHomeSerializedMock: vi.fn(),
-    realpathMock: vi.fn(),
-    appPaths: { userData: '' }
-  }))
+const { installForRuntimeHomeSerializedMock, realpathMock } = vi.hoisted(() => ({
+  installForRuntimeHomeSerializedMock: vi.fn(),
+  realpathMock: vi.fn()
+}))
 
 vi.mock('../../../codex/hook-service', () => ({
-  codexHookService: {
-    installForLaunchPrep: installForLaunchPrepMock,
-    installForRuntimeHomeSerialized: installForRuntimeHomeSerializedMock
-  }
+  codexHookService: { installForRuntimeHomeSerialized: installForRuntimeHomeSerializedMock }
 }))
 vi.mock('node:fs/promises', () => ({ realpath: realpathMock }))
-vi.mock('../../../../shared/app-environment', () => ({
-  getAppEnvironment: () => ({ getPath: () => appPaths.userData })
-}))
 
 import { AGENT_HOOK_METHODS } from './agent-hooks'
 import {
@@ -34,10 +22,12 @@ const LINUX_HOME = '/home/jin/.local/share/orca/codex-runtime-home/home'
 const RUNTIME_HOME =
   '\\\\wsl.localhost\\Ubuntu-24.04\\home\\jin\\.local\\share\\orca\\codex-runtime-home\\home'
 
-function prepareMethod(name = 'agentHooks.prepareCodexForWslPane') {
-  const method = eraseRpcMethods(AGENT_HOOK_METHODS).find((candidate) => candidate.name === name)
+function prepareMethod() {
+  const method = eraseRpcMethods(AGENT_HOOK_METHODS).find(
+    (candidate) => candidate.name === 'agentHooks.prepareCodexForWslPane'
+  )
   if (!method || isStreamingMethod(method)) {
-    throw new Error(`Missing ${name} request method`)
+    throw new Error('Missing agentHooks.prepareCodexForWslPane request method')
   }
   return method
 }
@@ -151,80 +141,5 @@ describe('agent hook RPC methods', () => {
         wslDistro: 'Ubuntu\\..\\host'
       })
     ).toThrow()
-  })
-})
-
-describe('agentHooks.prepareCodexForPane', () => {
-  let userDataPath: string
-
-  beforeEach(() => {
-    installForLaunchPrepMock.mockReset()
-    userDataPath = mkdtempSync(join(tmpdir(), 'orca-prepare-codex-pane-'))
-    appPaths.userData = userDataPath
-  })
-
-  afterEach(() => {
-    rmSync(userDataPath, { recursive: true, force: true })
-  })
-
-  function paneParams(codexHome: string) {
-    return prepareMethod('agentHooks.prepareCodexForPane').params!.parse({
-      codexHome,
-      orcaCodexHome: codexHome
-    })
-  }
-
-  it("installs the pane's home in the app when this app's userData owns it", async () => {
-    const home = join(userDataPath, 'codex-runtime-home', 'home')
-    mkdirSync(home, { recursive: true })
-    const status = { agent: 'codex', state: 'installed' }
-    installForLaunchPrepMock.mockResolvedValue(status)
-
-    await expect(
-      prepareMethod('agentHooks.prepareCodexForPane').handler(paneParams(home), {
-        runtime: runtimeWithSettings()
-      })
-    ).resolves.toBe(status)
-    expect(installForLaunchPrepMock).toHaveBeenCalledExactlyOnceWith(home)
-  })
-
-  it("refuses a home outside this app's userData", async () => {
-    const outside = mkdtempSync(join(tmpdir(), 'orca-prepare-codex-other-app-'))
-    const home = join(outside, 'codex-runtime-home', 'home')
-    mkdirSync(home, { recursive: true })
-    try {
-      await expect(
-        prepareMethod('agentHooks.prepareCodexForPane').handler(paneParams(home), {
-          runtime: runtimeWithSettings()
-        })
-      ).resolves.toBeNull()
-      expect(installForLaunchPrepMock).not.toHaveBeenCalled()
-    } finally {
-      rmSync(outside, { recursive: true, force: true })
-    }
-  })
-
-  it.each([
-    [false, []],
-    [true, ['codex']]
-  ])('does not install when hooks are disabled (%s, %j)', async (enabled, disabledTuiAgents) => {
-    const home = join(userDataPath, 'codex-runtime-home', 'home')
-    mkdirSync(home, { recursive: true })
-
-    await expect(
-      prepareMethod('agentHooks.prepareCodexForPane').handler(paneParams(home), {
-        runtime: runtimeWithSettings(enabled, disabledTuiAgents)
-      })
-    ).resolves.toBeNull()
-    expect(installForLaunchPrepMock).not.toHaveBeenCalled()
-  })
-
-  it.each(['runtime', 'mobile'] as const)('rejects non-local %s callers', async (clientKind) => {
-    await expect(
-      prepareMethod('agentHooks.prepareCodexForPane').handler(paneParams('/tmp/home'), {
-        runtime: runtimeWithSettings(),
-        clientKind
-      })
-    ).rejects.toThrow(/only available to the local Orca CLI/)
   })
 })

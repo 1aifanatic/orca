@@ -19,6 +19,7 @@ export type CodexShellLaunchPreflightCommandOptions = {
 }
 
 /** Absolute path of the Orca CLI the preflight must execute, or null to skip it.
+ *  Only a WSL pane's call does work; on a native host the command is a no-op.
  *
  *  Why absolute: the value rides in ORCA_CODEX_LAUNCH_PREFLIGHT and is invoked
  *  from the codex() wrapper, which shell-ready emits *after* the user's profile

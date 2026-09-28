@@ -107,19 +107,13 @@ afterEach(() => {
 })
 
 // Why: the pane shell can run under the real HOME (login(1)) or the app's own;
-// only the app may write a Codex home, whether it answers or is not running.
+// on a native host the pane step neither writes a Codex home nor asks the app to.
 it.each([
-  ['the real HOME, and the app answers', 'real', { result: null }],
-  ['the real HOME, and the app is not running', 'real', new Error('runtime_unavailable')],
-  ["the app's HOME, and the app answers", 'app', { result: null }],
-  ["the app's HOME, and the app is not running", 'app', new Error('runtime_unavailable')]
-])('writes nothing from a pane under %s', async (_case, paneHome, answer) => {
+  ['the real HOME', 'real'],
+  ["the app's HOME", 'app']
+])('writes nothing from a pane under %s', async (_case, paneHome) => {
   homes.current = paneHome === 'real' ? realHome : appHome
-  if (answer instanceof Error) {
-    call.mockRejectedValue(answer)
-  } else {
-    call.mockResolvedValue(answer)
-  }
+  call.mockResolvedValue({ result: null })
   vi.spyOn(console, 'log').mockImplementation(() => {})
   vi.spyOn(console, 'warn').mockImplementation(() => {})
   const before = [realHome, appHome, managedHome].map(listTree)
@@ -127,5 +121,6 @@ it.each([
   await main(['agent', 'hooks', 'prepare-codex'])
 
   expect(process.exitCode).toBeUndefined()
+  expect(call).not.toHaveBeenCalled()
   expect([realHome, appHome, managedHome].map(listTree)).toEqual(before)
 })

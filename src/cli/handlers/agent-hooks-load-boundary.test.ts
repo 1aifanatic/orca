@@ -18,22 +18,31 @@ vi.mock('../../main/persistence/profile-state/profile-state-access', () => {
 vi.mock('../profile-state-location', () => {
   throw new Error('Profile location loaded during online preparation')
 })
-vi.mock('../../main/codex/managed-home-shell-preflight', () => {
+vi.mock('../../main/codex/codex-hook-local-install', () => {
   throw new Error('The Codex installer loaded in the pane CLI')
 })
 
 afterEach(() => {
+  call.mockClear()
   vi.unstubAllEnvs()
   vi.restoreAllMocks()
   process.exitCode = undefined
 })
 
-it('prepares Codex through the runtime without loading profile storage or an installer', async () => {
+it('prepares a WSL pane through the runtime without loading profile storage or an installer', async () => {
+  vi.stubEnv('WSL_DISTRO_NAME', 'Ubuntu')
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+  await main(['agent', 'hooks', 'prepare-codex'])
+  expect(error).not.toHaveBeenCalled()
+  expect(call).toHaveBeenCalledWith('agentHooks.prepareCodexForWslPane', expect.any(Object), {
+    timeoutMs: 50_000
+  })
+})
+
+it('loads nothing and asks nothing for a native pane', async () => {
   vi.stubEnv('WSL_DISTRO_NAME', '')
   const error = vi.spyOn(console, 'error').mockImplementation(() => {})
   await main(['agent', 'hooks', 'prepare-codex'])
   expect(error).not.toHaveBeenCalled()
-  expect(call).toHaveBeenCalledWith('agentHooks.prepareCodexForPane', expect.any(Object), {
-    timeoutMs: 50_000
-  })
+  expect(call).not.toHaveBeenCalled()
 })

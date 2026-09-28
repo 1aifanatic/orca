@@ -430,20 +430,17 @@ describe('agent hooks CLI handler', () => {
     }
   )
 
-  it('asks the app to prepare a native pane home, deciding nothing itself', async () => {
+  it('does nothing for a native pane, so an old shell wrapper still exits 0', async () => {
     const home = '/Users/jin/Library/Application Support/orca/codex-runtime-home/home'
     vi.stubEnv('CODEX_HOME', home)
     vi.stubEnv('ORCA_CODEX_HOME', home)
     vi.stubEnv('WSL_DISTRO_NAME', '')
-    callMock.mockResolvedValue({ result: { state: 'installed' } })
 
     await main(['agent', 'hooks', 'prepare-codex'], userDataPath)
 
-    expect(callMock).toHaveBeenCalledExactlyOnceWith(
-      'agentHooks.prepareCodexForPane',
-      { codexHome: home, orcaCodexHome: home },
-      { timeoutMs: 50_000 }
-    )
+    expect(callMock).not.toHaveBeenCalled()
+    expect(getCliStatusMock).not.toHaveBeenCalled()
+    expect(process.exitCode).toBeUndefined()
   })
 
   it('forwards WSL pane routing to the runtime exactly once', async () => {
@@ -462,13 +459,10 @@ describe('agent hooks CLI handler', () => {
     )
   })
 
-  it.each([
-    ['native', ''],
-    ['WSL', 'Ubuntu']
-  ])('fails open when %s runtime preparation is unavailable', async (_lane, wslDistro) => {
+  it('fails open when WSL runtime preparation is unavailable', async () => {
     vi.stubEnv('CODEX_HOME', '/home/jin/.local/share/orca/codex-runtime-home/home')
     vi.stubEnv('ORCA_CODEX_HOME', '/home/jin/.local/share/orca/codex-runtime-home/home')
-    vi.stubEnv('WSL_DISTRO_NAME', wslDistro)
+    vi.stubEnv('WSL_DISTRO_NAME', 'Ubuntu')
     callMock.mockRejectedValue(new Error('method_not_found'))
 
     await expect(main(['agent', 'hooks', 'prepare-codex'], userDataPath)).resolves.toBeUndefined()
