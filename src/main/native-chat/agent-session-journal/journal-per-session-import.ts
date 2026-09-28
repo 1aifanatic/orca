@@ -145,9 +145,9 @@ async function importOnce(input: ImportInput): Promise<PerSessionJournalImportOu
  * already in the host's database or was copied before (the reimport rules decide), its file holds
  * no chat, or its fold needs a repair written. The file is closed before this returns.
  */
-export function previewPerSessionJournal(
+export async function previewPerSessionJournal(
   input: Pick<ImportInput, 'database' | 'identity' | 'legacyDirectory' | 'openSource'>
-): JournalLoad | null {
+): Promise<JournalLoad | null> {
   const { sessionId } = input.identity
   const db = input.database.db
   const sourcePath = legacyJournalDatabaseFile(input.legacyDirectory)
@@ -164,7 +164,7 @@ export function previewPerSessionJournal(
     if (!legacy) {
       return null
     }
-    const loaded = foldLegacyJournal(source, sessionId, legacy)
+    const loaded = await foldLegacyJournal(source, sessionId, legacy)
     return loaded.corrupt || loaded.readOnly || loaded.truncateFrom !== undefined ? null : loaded
   } finally {
     source.close()

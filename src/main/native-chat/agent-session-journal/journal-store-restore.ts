@@ -23,7 +23,7 @@ export async function restoreJournalStore(
     legacyDirectory: host.legacyDirectory
   }
   // A restore reads a chat still in its per-chat file from there, and copies it before its first use.
-  const preview = host.deferPerSessionImport ? previewPerSessionJournal(source) : null
+  const preview = host.deferPerSessionImport ? await previewPerSessionJournal(source) : null
   if (preview) {
     host.owe(async () => {
       await importPerSessionJournal(source)

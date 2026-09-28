@@ -26,6 +26,7 @@ import {
   readJournalSessionPointer,
   type JournalStoredRow
 } from '../agent-session-journal/journal-row-table'
+import { previewPerSessionJournal } from '../agent-session-journal/journal-per-session-import'
 import { openAgentSessionJournal } from '../agent-session-journal/journal-store-factory'
 import { journalIdentityFor } from './structured-agent-session-attach'
 import { attachParamsForRecord } from './structured-agent-session-conversation-open'
@@ -279,6 +280,31 @@ describe('startup restore of chats still in their per-chat files', () => {
     expect(readOnlyOpens.sort()).toEqual(
       restored.map((sessionId) => legacyJournalDatabaseFile(legacyDirFor(sessionId))).sort()
     )
+  })
+
+  it('lets other work run while it reads a large per-chat file', async () => {
+    // Past one batch of the file's rows.
+    const rows = await seedLegacyChat('chat-a', 520)
+    let turns = 0
+    let ticking = true
+    const tick = (): void => {
+      turns += 1
+      if (ticking) {
+        setImmediate(tick)
+      }
+    }
+
+    setImmediate(tick)
+    const folded = await previewPerSessionJournal({
+      database: openTestJournalHostDatabase(root),
+      identity: identityFor('chat-a'),
+      legacyDirectory: legacyDirFor('chat-a')
+    })
+    ticking = false
+
+    expect(turns).toBeGreaterThan(0)
+    expect(folded?.state.lastSequence).toBe(rows.length)
+    expect(openReadOnly.size).toBe(0)
   })
 
   // T-B3 for a chat restore did not copy: the offer taken before the upgrade still stands.

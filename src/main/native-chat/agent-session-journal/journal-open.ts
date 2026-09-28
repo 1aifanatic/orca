@@ -56,13 +56,31 @@ export function replayJournal(db: Database.Database, sessionId: string): Journal
 }
 
 /** Folds one epoch's stored rows, in sequence order, wherever they are stored. */
-export function foldJournalRows(input: {
+export function foldJournalRows(
+  input: JournalRowFoldInput & { rows: Iterable<{ seq: number; rowJson: string }> }
+): JournalLoad {
+  const fold = startJournalRowFold(input)
+  for (const entry of input.rows) {
+    if (!fold.add(entry)) {
+      break
+    }
+  }
+  return fold.finish()
+}
+
+export type JournalRowFoldInput = {
   sessionId: string
   pointer: JournalBlockPointer
   /** The sequence a pending repair on this epoch left free. */
   repairedFrom: number | null
-  rows: Iterable<{ seq: number; rowJson: string }>
-}): JournalLoad {
+}
+
+/** The same fold, fed a row at a time, for a caller that yields between batches of rows. */
+export function startJournalRowFold(input: JournalRowFoldInput): {
+  /** False once the fold has stopped: the rest of the rows are not read. */
+  add: (entry: { seq: number; rowJson: string }) => boolean
+  finish: () => JournalLoad
+} {
   const { pointer, repairedFrom } = input
   const state = createJournalReducerState(input.sessionId, pointer.epoch)
   let expectedSequence = FIRST_JOURNAL_SEQUENCE
@@ -75,22 +93,22 @@ export function foldJournalRows(input: {
   let latched = false
   let truncateFrom: number | undefined
 
-  for (const entry of input.rows) {
+  const add = (entry: { seq: number; rowJson: string }): boolean => {
     const parsed = parseJournalRow(entry.rowJson)
     if (!parsed.ok) {
       truncateFrom = entry.seq
       latched = parsed.unreadable
       malformedRows = parsed.unreadable ? 0 : 1
-      break
+      return false
     }
     const row = parsed.row
     // Parse past a gap so an unreadable future row still latches read-only.
     if (gapSequence !== undefined) {
-      continue
+      return true
     }
     if (row.seq !== expectedSequence) {
       gapSequence = row.seq
-      continue
+      return true
     }
     expectedSequence += 1
     if (row.seq === FIRST_JOURNAL_SEQUENCE) {
@@ -101,7 +119,7 @@ export function foldJournalRows(input: {
       }
     }
     if (!anchor) {
-      continue
+      return true
     }
     applyJournalRow(state, row)
     const disclosure = row.kind === 'item' && row.itemId === JOURNAL_REPAIR_DISCLOSURE_ITEM_ID
@@ -109,23 +127,27 @@ export function foldJournalRows(input: {
       repairHasContent ||= repairedFrom !== null && row.seq >= repairedFrom
       providerHasContent ||= row.seq >= FIRST_JOURNAL_SEQUENCE + 1
     }
+    return true
   }
-  // Anchor rejection takes precedence over a gap, which takes precedence over malformed rows.
-  truncateFrom = unanchoredSequence ?? gapSequence ?? truncateFrom
-  state.oldestSequence = FIRST_JOURNAL_SEQUENCE
-  return {
-    state,
-    block: pointer.block,
-    readOnly: latched,
-    corrupt:
-      gapSequence !== undefined ||
-      malformedRows > 0 ||
-      (!latched && !anchor) ||
-      (repairedFrom !== null && !repairHasContent) ||
-      (anchor?.reason === 'unreconcilable_prefix' && !providerHasContent),
-    malformedRows,
-    ...(truncateFrom !== undefined && !latched ? { truncateFrom } : {})
+  const finish = (): JournalLoad => {
+    // Anchor rejection takes precedence over a gap, which takes precedence over malformed rows.
+    truncateFrom = unanchoredSequence ?? gapSequence ?? truncateFrom
+    state.oldestSequence = FIRST_JOURNAL_SEQUENCE
+    return {
+      state,
+      block: pointer.block,
+      readOnly: latched,
+      corrupt:
+        gapSequence !== undefined ||
+        malformedRows > 0 ||
+        (!latched && !anchor) ||
+        (repairedFrom !== null && !repairHasContent) ||
+        (anchor?.reason === 'unreconcilable_prefix' && !providerHasContent),
+      malformedRows,
+      ...(truncateFrom !== undefined && !latched ? { truncateFrom } : {})
+    }
   }
+  return { add, finish }
 }
 
 /** Rows after a cursor, in sequence order. Stops at the first row this build
