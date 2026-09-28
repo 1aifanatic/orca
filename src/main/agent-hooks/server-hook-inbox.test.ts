@@ -100,7 +100,8 @@ function commitRecord(name: string, payload: CodexHookPayload): void {
   )
 }
 
-describe('hook inbox', () => {
+// Why: Windows hosts open no inbox until a Windows hook commits to one.
+describe.skipIf(process.platform === 'win32')('hook inbox', () => {
   it('advertises the inbox in the endpoint file only once it drains it', async () => {
     const server = await startServer()
     expect(readFileSync(server.endpointFilePath!, 'utf8')).toContain('ORCA_AGENT_HOOK_INBOX=1\n')

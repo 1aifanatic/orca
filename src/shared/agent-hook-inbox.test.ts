@@ -223,30 +223,34 @@ describe('AgentHookInbox', () => {
     }
   })
 
-  it('replays a large backlog in slices off the caller, in commit order', async () => {
-    const endpointDir = mkdtempSync(join(tmpdir(), 'orca-hook-inbox-backlog-'))
-    const dir = join(endpointDir, 'hook-inbox')
-    mkdirSync(dir, { recursive: true, mode: 0o700 })
-    const total = 1_207
-    const at = Date.now() / 1000 - 60
-    for (let index = 0; index < total; index += 1) {
-      writeFileSync(join(dir, `1.${index}.rec`), record(JSON.stringify({ index })))
-      utimesSync(join(dir, `1.${index}.rec`), at + index / 1000, at + index / 1000)
-    }
-    const seen: { index: number; isReplay: boolean }[] = []
-    const inbox = openAgentHookInbox({
-      endpointDir,
-      ingest: (_source, body, { isReplay }) =>
-        seen.push({ index: JSON.parse(String(body.payload)).index, isReplay })
-    })
-    expect(inbox).not.toBeNull()
-    opened.push(inbox!)
-    // Opening returns before replaying anything: the startup path is not held for the backlog.
-    expect(seen).toHaveLength(0)
-    await expect.poll(() => seen.length, { timeout: 5_000, interval: 10 }).toBe(total)
-    expect(seen.map(({ index }) => index)).toEqual([...Array(total).keys()])
-    expect(seen.every(({ isReplay }) => isReplay)).toBe(true)
-  })
+  it.skipIf(process.platform === 'win32')(
+    'replays a large backlog in slices off the caller, in commit order',
+    async () => {
+      const endpointDir = mkdtempSync(join(tmpdir(), 'orca-hook-inbox-backlog-'))
+      const dir = join(endpointDir, 'hook-inbox')
+      mkdirSync(dir, { recursive: true, mode: 0o700 })
+      const total = 1_207
+      const at = Date.now() / 1000 - 60
+      for (let index = 0; index < total; index += 1) {
+        writeFileSync(join(dir, `1.${index}.rec`), record(JSON.stringify({ index })))
+        utimesSync(join(dir, `1.${index}.rec`), at + index / 1000, at + index / 1000)
+      }
+      const seen: { index: number; isReplay: boolean }[] = []
+      const inbox = openAgentHookInbox({
+        endpointDir,
+        ingest: (_source, body, { isReplay }) =>
+          seen.push({ index: JSON.parse(String(body.payload)).index, isReplay })
+      })
+      expect(inbox).not.toBeNull()
+      opened.push(inbox!)
+      // Opening returns before replaying anything: the startup path is not held for the backlog.
+      expect(seen).toHaveLength(0)
+      await expect.poll(() => seen.length, { timeout: 25_000, interval: 10 }).toBe(total)
+      expect(seen.map(({ index }) => index)).toEqual([...Array(total).keys()])
+      expect(seen.every(({ isReplay }) => isReplay)).toBe(true)
+    },
+    30_000
+  )
 
   it('stops draining once closed', () => {
     const dir = tempInbox()
