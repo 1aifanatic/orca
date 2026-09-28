@@ -228,8 +228,17 @@ export class StructuredAgentSessionQueuedMessageDrain {
       return
     }
     // Cheap pre-check so token streams do not pay a serialized step per delta.
+    // Skipping while working is safe: whatever ends the work is itself a commit
+    // that schedules again, and the step re-reads every gate after its flush.
     try {
-      if (oldestActionableQueuedMessage(journal.queuedMessages.list()) === null) {
+      if (
+        oldestActionableQueuedMessage(journal.queuedMessages.list()) === null ||
+        isStructuredAgentSessionMainAgentWorking(
+          journal.activeTurnId(),
+          journal.submissions(),
+          this.deps.conversationFence(sessionId)
+        )
+      ) {
         return
       }
     } catch {
