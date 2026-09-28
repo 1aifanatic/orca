@@ -5,9 +5,9 @@ import {
   admitStructuredAgentSessionOutboxEntry,
   createStructuredAgentSessionOutboxEntry,
   reconcileStructuredAgentSessionOutbox,
-  withdrawUnsentStructuredAgentSessionOutboxEntries,
   type StructuredAgentSessionOutboxEntry
 } from '../../../../shared/structured-agent-session-outbox'
+import { withdrawUnsentStructuredAgentSessionOutboxEntries } from '../../../../shared/structured-agent-session-outbox-stop-withdrawal'
 import {
   journalAnswersInFlightSend,
   type StructuredAgentSessionSendDisposition

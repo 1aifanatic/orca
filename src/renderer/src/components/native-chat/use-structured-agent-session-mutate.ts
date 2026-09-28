@@ -15,7 +15,7 @@ import {
   agentSessionRefusalFailure,
   agentSessionRpcErrorFailure,
   agentSessionWriteKindForMethod as writeKind
-} from '../../../../shared/agent-session-refusal-notice'
+} from '../../../../shared/agent-session-write-failure'
 import { agentSessionRefusalOperationState } from '../../../../shared/agent-session-refusal-retry'
 import { structuredAgentSessionPayloadFingerprint } from '../../../../shared/structured-agent-session-mutation'
 import { structuredAgentSessionWriteNamesItsTarget } from '../../../../shared/structured-agent-session-operation-identity'
