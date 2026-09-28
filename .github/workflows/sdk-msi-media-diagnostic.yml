@@ -1,0 +1,52 @@
+name: Diagnostic retained SDK MSI Media mapping
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [OrcaWin/np-sdk-msi-media-diagnostic]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  media:
+    if: github.repository == 'stablyai/orca' && github.ref == 'refs/heads/OrcaWin/np-sdk-msi-media-diagnostic'
+    runs-on: windows-2022
+    timeout-minutes: 15
+    env:
+      ORCA_BACKGROUND_LAUNCH: '1'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          sparse-checkout: config/ci/sdk-msi-media
+      - name: Parse script
+        shell: pwsh
+        run: |
+          $errors=$null; $tokens=$null
+          [Management.Automation.Language.Parser]::ParseFile((Join-Path $pwd 'config/ci/sdk-msi-media/read-msi-media.ps1'),[ref]$tokens,[ref]$errors) | Out-Null
+          if($errors.Count){throw 'PowerShell parse failed'}
+      - name: Fetch exact retained artifact and extract nine verified MSI files
+        timeout-minutes: 8
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $items=gh api repos/stablyai/orca/actions/runs/36476269793/artifacts | ConvertFrom-Json
+          if($LASTEXITCODE -ne 0){throw 'Artifact lookup failed'}
+          $artifacts=@($items.artifacts | Where-Object {$_.name -eq 'sdk-layout-retained-inputs' -and !$_.expired})
+          if($artifacts.Count -ne 1){throw 'Expected one retained layout artifact'}
+          $headers=@{Authorization="Bearer $env:GH_TOKEN";Accept='application/vnd.github+json'}
+          Invoke-WebRequest -Uri "https://api.github.com/repos/stablyai/orca/actions/artifacts/$($artifacts[0].id)/zip" -Headers $headers -OutFile "$env:RUNNER_TEMP\sdk-layout.zip" -TimeoutSec 300
+          python config/ci/sdk-msi-media/extract-media-inputs.py "$env:RUNNER_TEMP\sdk-layout.zip" "$env:RUNNER_TEMP\media-inputs"
+          if($LASTEXITCODE -ne 0){throw 'Pinned MSI extraction failed'}
+      - name: Read MSI Media tables without installation
+        timeout-minutes: 3
+        shell: pwsh
+        run: ./config/ci/sdk-msi-media/read-msi-media.ps1 -Inputs "$env:RUNNER_TEMP\media-inputs" -Receipt "$env:RUNNER_TEMP\msi-media.json"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: sdk-msi-media
+          path: ${{ runner.temp }}/msi-media.json
+          if-no-files-found: error
+          retention-days: 7

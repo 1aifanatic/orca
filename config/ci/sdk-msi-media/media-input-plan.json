@@ -1,0 +1,1606 @@
+{
+  "catalogSha256": "f0a50ea157222c29abd5ea6ff01bfc3c33b04e011c5e45ee2ca38ef0778e5643",
+  "primaryInputs": [
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\Windows SDK Desktop Headers arm64-x86_en-us.msi",
+      "sha256": "bd2c39e59c62e9f81382f843f7df2d47a6f2cc865ee612f7ed42d27086895552",
+      "size": 446464,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/df535cbd9800eb2e513f3f8763990a50/windows%20sdk%20desktop%20headers%20arm64-x86_en-us.msi",
+      "retainedBytes": 446464,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/Windows SDK Desktop Headers arm64-x86_en-us.msi",
+      "cachePath": "dl/Win11SDK_10.0.26100_arm64_headers.msi",
+      "retained": true
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\Windows SDK Desktop Headers x64-x86_en-us.msi",
+      "sha256": "d189ca50e5632b546795922e2262794c068d6ff301860feb4522b8b93cbb3ba8",
+      "size": 450560,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/ed222baa6d1d1dc09fb45a1827e7892a/windows%20sdk%20desktop%20headers%20x64-x86_en-us.msi",
+      "retainedBytes": 450560,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/Windows SDK Desktop Headers x64-x86_en-us.msi",
+      "cachePath": "dl/Win11SDK_10.0.26100_x64_headers.msi",
+      "retained": true
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\Windows SDK Desktop Headers x86-x86_en-us.msi",
+      "sha256": "f1e5159feb948ce90a81dcc6a427dde844610230cb6ed787e35d422de527a5f8",
+      "size": 790528,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/7fad2c686fb58ea9e6dc0308a2df142f/windows%20sdk%20desktop%20headers%20x86-x86_en-us.msi",
+      "retainedBytes": 790528,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/Windows SDK Desktop Headers x86-x86_en-us.msi",
+      "cachePath": "dl/Win11SDK_10.0.26100_headers.msi",
+      "retained": true
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\Windows SDK Desktop Libs arm64-x86_en-us.msi",
+      "sha256": "21f16dd88e22467ac0663520426f972f2bd1d9925ae7d8c2baf9e5288bf9ec6c",
+      "size": 528384,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/9dc0c0f35bfcc3c7ee96d61ecc818b08/windows%20sdk%20desktop%20libs%20arm64-x86_en-us.msi",
+      "retainedBytes": 528384,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/Windows SDK Desktop Libs arm64-x86_en-us.msi",
+      "cachePath": "dl/Win11SDK_10.0.26100_libs_aarch64.msi",
+      "retained": true
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\Windows SDK Desktop Libs x64-x86_en-us.msi",
+      "sha256": "2e956ca1cf17800b0f9811a6249b945f045addf18ee85ffe7aea99ec6c27243a",
+      "size": 528384,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/a7dce16da158fe456395566e2dafd23d/windows%20sdk%20desktop%20libs%20x64-x86_en-us.msi",
+      "retainedBytes": 528384,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/Windows SDK Desktop Libs x64-x86_en-us.msi",
+      "cachePath": "dl/Win11SDK_10.0.26100_libs_x86_64.msi",
+      "retained": true
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\Windows SDK for Windows Store Apps Headers OnecoreUap-x86_en-us.msi",
+      "sha256": "be5ee13ccc98b87211b4f3686972b00fa16f20f266fe9dc5572d62f001e0547c",
+      "size": 471040,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/95de969f19c09fe411b779c2e2f06f0d/windows%20sdk%20for%20windows%20store%20apps%20headers%20onecoreuap-x86_en-us.msi",
+      "retainedBytes": 471040,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/Windows SDK for Windows Store Apps Headers OnecoreUap-x86_en-us.msi",
+      "cachePath": "dl/Win11SDK_10.0.26100_store_headers_onecoreuap.msi",
+      "retained": true
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\Windows SDK for Windows Store Apps Headers-x86_en-us.msi",
+      "sha256": "c9f78ae3e730ea1789a37001e204a970099d2acc555cc537fb45ea0bb23b347c",
+      "size": 1060864,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/06062c286c5533d4d2c47e613ae44793/windows%20sdk%20for%20windows%20store%20apps%20headers-x86_en-us.msi",
+      "retainedBytes": 1060864,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/Windows SDK for Windows Store Apps Headers-x86_en-us.msi",
+      "cachePath": "dl/Win11SDK_10.0.26100_store_headers.msi",
+      "retained": true
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\Windows SDK for Windows Store Apps Libs-x86_en-us.msi",
+      "sha256": "1381535d2f6b1894a092da67f8a8fb048a4dfe8060ce75b3275affa81b02586e",
+      "size": 528384,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/079ca63878193e064d8aa000670f0db3/windows%20sdk%20for%20windows%20store%20apps%20libs-x86_en-us.msi",
+      "retainedBytes": 528384,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/Windows SDK for Windows Store Apps Libs-x86_en-us.msi",
+      "cachePath": "dl/Win11SDK_10.0.26100_store_libs.msi",
+      "retained": true
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\Windows SDK OnecoreUap Headers x86-x86_en-us.msi",
+      "sha256": "09725127b70e645fd0c86f004a1b0204ae72d685d70b2e3856efc00533aaeec3",
+      "size": 495616,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/bf4c8a484028b6e592a6a9d818c21777/windows%20sdk%20onecoreuap%20headers%20x86-x86_en-us.msi",
+      "retainedBytes": 495616,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/Windows SDK OnecoreUap Headers x86-x86_en-us.msi",
+      "cachePath": "dl/Win11SDK_10.0.26100_uap_headers.msi",
+      "retained": true
+    }
+  ],
+  "cabCandidates": [
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\03fbc2dfe9d3e7bb2389c7ed18c6ad3e.cab",
+      "sha256": "cd8a8515edfdd27d8807cceb466cc4c57c46f0e40523ab3b5d19bb816debf09d",
+      "size": 750427,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/dc3145d76d16e49f51025ebe149e31b0/03fbc2dfe9d3e7bb2389c7ed18c6ad3e.cab",
+      "retainedBytes": 750427,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/03fbc2dfe9d3e7bb2389c7ed18c6ad3e.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\05047a45609f311645eebcac2739fc4c.cab",
+      "sha256": "902003e4976c7bc4bcda9f31f1d835b8072235532412770f66b0bc9f0882cb7e",
+      "size": 230296,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/67a9b258981565b78c46484efbed6945/05047a45609f311645eebcac2739fc4c.cab",
+      "retainedBytes": 230296,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/05047a45609f311645eebcac2739fc4c.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\05254f60ea43b4e3959b17cdb03268c0.cab",
+      "sha256": "cfc5fba20300cc814e537381313acc616f2f9b6f3843bc330697e2a5e5a4dc72",
+      "size": 666782,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/9a7d9a4b99e16e9fc62e870586938c7d/05254f60ea43b4e3959b17cdb03268c0.cab",
+      "retainedBytes": 666782,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/05254f60ea43b4e3959b17cdb03268c0.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\07a57cdb41ba28cced14005f087267be.cab",
+      "sha256": "1f350449f6f598a4d9b316e69ad9b845db8e8d919b8b34f5c07b32598f6de319",
+      "size": 103680,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/2487cb3527b23ee3c6f081e01c2a1bc0/07a57cdb41ba28cced14005f087267be.cab",
+      "retainedBytes": 103680,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/07a57cdb41ba28cced14005f087267be.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\08e9468089f54c8455f59fd9bb48fcec.cab",
+      "sha256": "ae5b02b0aa46399b0be359db7b85aefc7a699ab1d8a3ec16ae91ef4e0bcfefe2",
+      "size": 74917,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/274dafdcb005561fddfc98939996cba6/08e9468089f54c8455f59fd9bb48fcec.cab",
+      "retainedBytes": 74917,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/08e9468089f54c8455f59fd9bb48fcec.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\126c039acc6f1c0a9426a128efb713e7.cab",
+      "sha256": "5a7bc7ba00d6edc4291b106a904b8df200201ee53bb4b075aa8bc04e09ccc2fb",
+      "size": 1562758,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/517cb596d23320929e3a86cc85b8ed13/126c039acc6f1c0a9426a128efb713e7.cab",
+      "retainedBytes": 1562758,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/126c039acc6f1c0a9426a128efb713e7.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\12a529d45b148a2d28290a8a7535b37b.cab",
+      "sha256": "b23757ead1dca04c9e38bae815c58b3e79a5f6bbeca3e1f0f44c50963200cceb",
+      "size": 1053435,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/42eb47265f49caa964de7f413ca79450/12a529d45b148a2d28290a8a7535b37b.cab",
+      "retainedBytes": 1053435,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/12a529d45b148a2d28290a8a7535b37b.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\13bf5f9b75a9d1c9f44ba5d34a14227f.cab",
+      "sha256": "52a9ab35d8014f2107997f9f1e4e6d0b615c2db4c7698f8da6cc00c3d239ff7b",
+      "size": 95422,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/fdb77bc83cf66edbbafa184172d5b826/13bf5f9b75a9d1c9f44ba5d34a14227f.cab",
+      "retainedBytes": 95422,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/13bf5f9b75a9d1c9f44ba5d34a14227f.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\13d68b8a7b6678a368e2d13ff4027521.cab",
+      "sha256": "0b26ede2d22ea531d921269dfffcd14cc71d6932cac0f2720fcec37079286643",
+      "size": 390500,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/2160d8b73fe2e4fea3e2097084a081cd/13d68b8a7b6678a368e2d13ff4027521.cab",
+      "retainedBytes": 390500,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/13d68b8a7b6678a368e2d13ff4027521.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\15369c02f0856bfd3d570cd8a8107b55.cab",
+      "sha256": "353fa8450c1edb5470b0986370e5df7541d59a2f6508aa0ee5131c6c2376fc87",
+      "size": 911490,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/4a1e0172d3c2b48ee4d9319631113a87/15369c02f0856bfd3d570cd8a8107b55.cab",
+      "retainedBytes": 911490,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/15369c02f0856bfd3d570cd8a8107b55.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\1623efce9d1a46396798f44a7bc769e9.cab",
+      "sha256": "33ce42eec8982a8c1c33a3c695045e595b0df09dcaeb766b30ca5faadd93dc1e",
+      "size": 456911,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/760b322e7bdf4980840556f1daa149b6/1623efce9d1a46396798f44a7bc769e9.cab",
+      "retainedBytes": 456911,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/1623efce9d1a46396798f44a7bc769e9.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\16ab2ea2187acffa6435e334796c8c89.cab",
+      "sha256": "d29e10bb5ce2e28957b5635b6eeb6a491fdb311c925b398443451f953f399bc2",
+      "size": 666803,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/d56a87b40b1de33c2c39a1a3d009e148/16ab2ea2187acffa6435e334796c8c89.cab",
+      "retainedBytes": 666803,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/16ab2ea2187acffa6435e334796c8c89.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\19248fabbb2098a7b88c4a2786066bcc.cab",
+      "sha256": "6ccbd0b699534b8cc24784e9fbbf242196332053313075c334c126e90c8a21e7",
+      "size": 782585,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/2e009aabfde2988589258b1c79f89411/19248fabbb2098a7b88c4a2786066bcc.cab",
+      "retainedBytes": 782585,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/19248fabbb2098a7b88c4a2786066bcc.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\1de82860db02f762c5f65a73daa31f3e.cab",
+      "sha256": "317270932ab9f5f30817bdaf788791ce071439bd8fab8960ad180c2bd9edf34c",
+      "size": 14700335,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/da1f3b8b16c2110601ac7359f653873d/1de82860db02f762c5f65a73daa31f3e.cab",
+      "retainedBytes": 14700335,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/1de82860db02f762c5f65a73daa31f3e.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\1f32e9acf0bb1e6a5f485cd8670cd8e1.cab",
+      "sha256": "bfd13fa127622764eeaa3de5572f6c850a735896cf515e4575359915ea868a3e",
+      "size": 22175,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/6012a993d8839e256725bded1e0c3fa3/1f32e9acf0bb1e6a5f485cd8670cd8e1.cab",
+      "retainedBytes": 22175,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/1f32e9acf0bb1e6a5f485cd8670cd8e1.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\20e79882c0bf37840a94a4ce06bc571e.cab",
+      "sha256": "115ef4c40f07c8694a1e747423f505f7c10b59e7a8872be2572918e426fd4b52",
+      "size": 2020557,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/c769769bb83c2e2e0b9815c51dc88887/20e79882c0bf37840a94a4ce06bc571e.cab",
+      "retainedBytes": 2020557,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/20e79882c0bf37840a94a4ce06bc571e.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\220daf459e79c5d26366654b1b482e87.cab",
+      "sha256": "2cbf336cb3b14f59d9259bf2d3786bd3ff48fefdf041f8bc29aaa62ccd65bc8d",
+      "size": 97459,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/b597af63e6bf3632c6bfb280004546c6/220daf459e79c5d26366654b1b482e87.cab",
+      "retainedBytes": 97459,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/220daf459e79c5d26366654b1b482e87.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\262fa3187c00a1f695e0c3eeb7ecf423.cab",
+      "sha256": "678cd941cf0e11c860514e4e7c042cbffcba58aec6ed4156163e90c735ab3b6a",
+      "size": 1606317,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/a52d8cbded8afa8246e7ea93295722eb/262fa3187c00a1f695e0c3eeb7ecf423.cab",
+      "retainedBytes": 1606317,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/262fa3187c00a1f695e0c3eeb7ecf423.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\2630bae9681db6a9f6722366f47d055c.cab",
+      "sha256": "8af58a5ddeb256460c1563040c2eb6fbaba98cd9256c43b7ada85ed691b482d5",
+      "size": 7616218,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/3ae346135327a40e607f140ce3622d2f/2630bae9681db6a9f6722366f47d055c.cab",
+      "retainedBytes": 7616218,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/2630bae9681db6a9f6722366f47d055c.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\263104e5ce3a72f68151a93d88a3f22f.cab",
+      "sha256": "281b6c3ab8248b9b1b00659f7a48207a5cfddad58d8ec4c670292839f73a5d97",
+      "size": 19219,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/c7e5cac24110bc6d2592b50f3649d0ba/263104e5ce3a72f68151a93d88a3f22f.cab",
+      "retainedBytes": 19219,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/263104e5ce3a72f68151a93d88a3f22f.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\26ea25236f12b23db661acf268a70cfa.cab",
+      "sha256": "a6d81007e50b1881d58e802ef4402ff16c62ff4960b41c4263057e3173981919",
+      "size": 93999,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/2e095f72f39ad2f54b930abcfb65eefe/26ea25236f12b23db661acf268a70cfa.cab",
+      "retainedBytes": 93999,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/26ea25236f12b23db661acf268a70cfa.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\2a30b5d1115d515c6ddd8cd6b5173835.cab",
+      "sha256": "b0f56fe41409081c910495b0798885996eb2aff8e030217b515856157b815efd",
+      "size": 94038,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/af7fe3431b7d0f55bff2e05f936ed6cb/2a30b5d1115d515c6ddd8cd6b5173835.cab",
+      "retainedBytes": 94038,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/2a30b5d1115d515c6ddd8cd6b5173835.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\2dd914bb5abd9365f932d15eede09c52.cab",
+      "sha256": "a9c6ee80fd44bf9cdcabcb6af826e0722d4c8e483dde70a981ca057711001e65",
+      "size": 1369389,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/e0cbc8a5bccf7059ad5bff84a27efff9/2dd914bb5abd9365f932d15eede09c52.cab",
+      "retainedBytes": 1369389,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/2dd914bb5abd9365f932d15eede09c52.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\2e876dd22fa5e6785f137e3422dd50ec.cab",
+      "sha256": "bd490c2da3b5837261d43791a02ea3bb6aef1de787f52bec5e7dd638bfb77f51",
+      "size": 9216010,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/2f5955d08b28c63142f927aa3696c15a/2e876dd22fa5e6785f137e3422dd50ec.cab",
+      "retainedBytes": 9216010,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/2e876dd22fa5e6785f137e3422dd50ec.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\306e26e920fd32cb02bf538b4e799a0d.cab",
+      "sha256": "4e2bdb867bc7c56e5944d82bb8cc8e686dda698a3d64245a045c3ef37fdc8daf",
+      "size": 169220,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/680ae23ab3e739b371b9f9802da94569/306e26e920fd32cb02bf538b4e799a0d.cab",
+      "retainedBytes": 169220,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/306e26e920fd32cb02bf538b4e799a0d.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\3e2f7be479e3679d700ce0782e4cc318.cab",
+      "sha256": "0ae0ea0d8c43d3ecf0cfe69b31cb19f6ea1f8323f3bef2521ef9a8e4ed08d343",
+      "size": 32793626,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/c7916cbab0e9d67679392b61ae8b5ec2/3e2f7be479e3679d700ce0782e4cc318.cab",
+      "retainedBytes": 32793626,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/3e2f7be479e3679d700ce0782e4cc318.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\4035a83dc8e73244d15d1196d55059c3.cab",
+      "sha256": "577063ebb8a8e9e04d4d44f3cb7fd63fd5c4499742fd54c111a74247f2d1b6e5",
+      "size": 19408,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/f75b4fd859e50eb5ff223216a2adb159/4035a83dc8e73244d15d1196d55059c3.cab",
+      "retainedBytes": 19408,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/4035a83dc8e73244d15d1196d55059c3.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\40d92f424eff54b03db4c51669f9a8d6.cab",
+      "sha256": "69c225dc80675088e8d19451e3ab352427a00379a3154a83b0974a1808ceaa4c",
+      "size": 194277,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/859fa7408c06d01043b3f5df308dfc92/40d92f424eff54b03db4c51669f9a8d6.cab",
+      "retainedBytes": 194277,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/40d92f424eff54b03db4c51669f9a8d6.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\43d52fdb99b86048e15fbd34f5b99cb5.cab",
+      "sha256": "1ad0113ab87d5107e2b35f73d8342802d816c32757302bf9891eb941b25949e3",
+      "size": 253065,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/ba6184a0b776134f20fb541b68bb4d6d/43d52fdb99b86048e15fbd34f5b99cb5.cab",
+      "retainedBytes": 253065,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/43d52fdb99b86048e15fbd34f5b99cb5.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\43fd989a0684600a8c4dda7a6373eb59.cab",
+      "sha256": "0db68ced7048a12b8890f2abd79523b34b29484b110ff59755663118f1070019",
+      "size": 47677,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/73b686165664fc0e9aa7bb209aace91d/43fd989a0684600a8c4dda7a6373eb59.cab",
+      "retainedBytes": 47677,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/43fd989a0684600a8c4dda7a6373eb59.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\44472e2321abba45e828de25827264a3.cab",
+      "sha256": "bf9a4ee11d41fe1c0433b02ba27a8542a544f7b8c9313e7aba1b0084058fbab9",
+      "size": 23283,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/31d599b45829ece93795037f2f9da232/44472e2321abba45e828de25827264a3.cab",
+      "retainedBytes": 23283,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/44472e2321abba45e828de25827264a3.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\463ad1b0783ebda908fd6c16a4abfe93.cab",
+      "sha256": "43c40559098a2c1efbef6af16f97a44fd80b3bb9fe8ae117c4e6f9f3f852b8e8",
+      "size": 218021,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/637a623c788980d4a7edf6d84e34ed70/463ad1b0783ebda908fd6c16a4abfe93.cab",
+      "retainedBytes": 218021,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/463ad1b0783ebda908fd6c16a4abfe93.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\47133212c2f5ccf49392d7762293a075.cab",
+      "sha256": "f6e618f6a344a0e6556f4aabe31b736fcdb7fa6b537cb8aae4650d5396c672fd",
+      "size": 1632448,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/1441cfd03074617e45c23f76f2467f7f/47133212c2f5ccf49392d7762293a075.cab",
+      "retainedBytes": 1632448,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/47133212c2f5ccf49392d7762293a075.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\4a4c678668584fc994ead5b99ccf7f03.cab",
+      "sha256": "ffcaa1a818539e71cfbb12e9fa2a87cef30f33089b0d20bc1e6c6fd24abf2014",
+      "size": 437868,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/a629a4c46dcf16eea949fbd0f710dba8/4a4c678668584fc994ead5b99ccf7f03.cab",
+      "retainedBytes": 437868,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/4a4c678668584fc994ead5b99ccf7f03.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\4ad4df991deb0eaa1f79f896b959d580.cab",
+      "sha256": "a20463ef1d2ab312d5a9784d46cd37020e1932ee741a9f679c4ddc216fa65cd6",
+      "size": 1546948,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/360f1df444ae7fc96bd3469323d6d35d/4ad4df991deb0eaa1f79f896b959d580.cab",
+      "retainedBytes": 1546948,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/4ad4df991deb0eaa1f79f896b959d580.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\4c59234340aaf3a96ec480c1aad8d179.cab",
+      "sha256": "ca23424a57895bdafa3ff190da678530f5da4af7912688a5fc2ae589eef0086a",
+      "size": 609561,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/5be20ac4f70b0e2f4d968a6a11283c1c/4c59234340aaf3a96ec480c1aad8d179.cab",
+      "retainedBytes": 609561,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/4c59234340aaf3a96ec480c1aad8d179.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\4dc69cc131b3f4fdde53e76d759509dc.cab",
+      "sha256": "ef149adb54c96575b249df9547b50cb272374bc5d261e2f62ef31fc7df9142b4",
+      "size": 462379,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/f7b951a8c080cc77f772a312e6ff751b/4dc69cc131b3f4fdde53e76d759509dc.cab",
+      "retainedBytes": 462379,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/4dc69cc131b3f4fdde53e76d759509dc.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\4e2dea081242e821596b58b31bc22cca.cab",
+      "sha256": "778434baeeb33a0ed08e668882954b2cda37b04af44f573cdcf6047ec0109f11",
+      "size": 18680,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/b7ce232be3f34a8c000f05295cfbf90d/4e2dea081242e821596b58b31bc22cca.cab",
+      "retainedBytes": 18680,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/4e2dea081242e821596b58b31bc22cca.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\4ec14c5368b7642563c070cd168960a8.cab",
+      "sha256": "59823100ddfe9030851ac765e90de0e1875e908737f426ece8c3a00de6e15cda",
+      "size": 1885152,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/85cc7f3e9603153cc10ecd7e341724c4/4ec14c5368b7642563c070cd168960a8.cab",
+      "retainedBytes": 1885152,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/4ec14c5368b7642563c070cd168960a8.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\4fe4c8b88812f5339018c0eef95acdb9.cab",
+      "sha256": "cadd61caab00b5ad3ef449efb54f8a7b1a43a7cfb85f321b544ca578b14e179b",
+      "size": 26653,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/9992f4e9621a59b8bd9a57cd62e0d567/4fe4c8b88812f5339018c0eef95acdb9.cab",
+      "retainedBytes": 26653,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/4fe4c8b88812f5339018c0eef95acdb9.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\50ce7925226cb6ab8e0fe9ad9fd58433.cab",
+      "sha256": "27f65257e3efd66116c9fd5339a387ab6501bc260fb8fef2bd10e16899b9de05",
+      "size": 7471051,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/44eafe4091d53b0437661642021fa0b8/50ce7925226cb6ab8e0fe9ad9fd58433.cab",
+      "retainedBytes": 7471051,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/50ce7925226cb6ab8e0fe9ad9fd58433.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\53174a8154da07099db041b9caffeaee.cab",
+      "sha256": "32ed51da59f3252ba263a0134c131a8a31297fd14136a7f94cecb0b810e6d207",
+      "size": 15676146,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/6e18e5ea54a755917bc5e3fd1cbd7551/53174a8154da07099db041b9caffeaee.cab",
+      "retainedBytes": 15676146,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/53174a8154da07099db041b9caffeaee.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\5509e4710313421be8d5e7cfbfde4d30.cab",
+      "sha256": "d749eedae9bb6fd52db819b2285a676fb6ab5f8b227a5a14a00044bf55f43d1a",
+      "size": 1045394,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/695110ee6d3a4671df2a1ac15eacfffc/5509e4710313421be8d5e7cfbfde4d30.cab",
+      "retainedBytes": 1045394,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/5509e4710313421be8d5e7cfbfde4d30.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\559dbc3a49a69c6adf60b1c87b4df71b.cab",
+      "sha256": "9f44a2d144213e7a7fc76a4c6f60bf620ed167e5fab6f2e031da370d0fb598d4",
+      "size": 18564,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/6541b1cf955d1cea070c87f5e18f42ca/559dbc3a49a69c6adf60b1c87b4df71b.cab",
+      "retainedBytes": 18564,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/559dbc3a49a69c6adf60b1c87b4df71b.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\563138901adf40a699df4654138ac397.cab",
+      "sha256": "6ce22e9456ab2f5e7c898819178f73e41900f748e9e103a45ddcb0c00acfd035",
+      "size": 1434591,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/8f2dcd9c2f219d60bc1c7ab0adb94b45/563138901adf40a699df4654138ac397.cab",
+      "retainedBytes": 1434591,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/563138901adf40a699df4654138ac397.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\56a114848fda9a7e47bad4b3fc4be9a6.cab",
+      "sha256": "5698388eaec1f948c13563a02d3d78622200c45188b4f955dd07f601ba0ea73f",
+      "size": 7809397,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/b08e51769aaecb665ce39138a83647e0/56a114848fda9a7e47bad4b3fc4be9a6.cab",
+      "retainedBytes": 7809397,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/56a114848fda9a7e47bad4b3fc4be9a6.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\576cff9c50e8085ab8d9c28ee12bac3e.cab",
+      "sha256": "68c498f6706a0b4dedd57c0d6e351f65344d4613071031f92db7fc6d2ccf9b04",
+      "size": 666796,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/13a825096903781fdd317460038b3dce/576cff9c50e8085ab8d9c28ee12bac3e.cab",
+      "retainedBytes": 666796,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/576cff9c50e8085ab8d9c28ee12bac3e.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\58314d0646d7e1a25e97c902166c3155.cab",
+      "sha256": "ec209a224c9b2d31f3409208d30f5a6335c55217ad384d6212c833ac83360eba",
+      "size": 16603242,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/cb954f8bc3015e25cfd985a5fff3452a/58314d0646d7e1a25e97c902166c3155.cab",
+      "retainedBytes": 16603242,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/58314d0646d7e1a25e97c902166c3155.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\590d28783ff280b8b0016c3492433241.cab",
+      "sha256": "16b45c0b457995a56def95406557a4fe3fa57c7a1dcb0736fe6eb162c42f7f88",
+      "size": 9020389,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/d85fb3791150a62a29395bef4512125f/590d28783ff280b8b0016c3492433241.cab",
+      "retainedBytes": 9020389,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/590d28783ff280b8b0016c3492433241.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\598442d9f84639d200d4f3af477da95c.cab",
+      "sha256": "670383674e304ce1c736576937bbe890afd4be43f44c17dbe1605bb0cbf06174",
+      "size": 59227,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/6b2630c96c8b87f5702a01c8170dbb4e/598442d9f84639d200d4f3af477da95c.cab",
+      "retainedBytes": 59227,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/598442d9f84639d200d4f3af477da95c.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\5a22e5cde814b041749fb271547f4dd5.cab",
+      "sha256": "57e7e309413d05b781ae76d1b5c54dc7aff350b6a460920f1f358e8003aabdfb",
+      "size": 15542250,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/03cfd7ea3b3116d5d32d11df101dea24/5a22e5cde814b041749fb271547f4dd5.cab",
+      "retainedBytes": 15542250,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/5a22e5cde814b041749fb271547f4dd5.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\5c9ecffb06ed5f4fe5fb7db86bf7328b.cab",
+      "sha256": "232ee7d3bfc312c683e0c8407df10fa138879b2996bee333ebd61705965d0e63",
+      "size": 368350,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/63010079f348bf1e7eb6f941b4782496/5c9ecffb06ed5f4fe5fb7db86bf7328b.cab",
+      "retainedBytes": 368350,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/5c9ecffb06ed5f4fe5fb7db86bf7328b.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\5cf1d61a223a02ff2f52fe05f058d52e.cab",
+      "sha256": "174d26ba1979fa2b8980165e361e7fc4e1822b6d0b4fc6b35c3f0b5cb2c4f6bd",
+      "size": 1242793,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/cd9d77a3f038e2ab70cbd8751f5e0d40/5cf1d61a223a02ff2f52fe05f058d52e.cab",
+      "retainedBytes": 1242793,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/5cf1d61a223a02ff2f52fe05f058d52e.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\5f6cfec263cd265cf3b0d97fd78ddf05.cab",
+      "sha256": "27f207feeada5b360860c3908f5cca45fb6b6a43958fa6d2c785199187da5ef2",
+      "size": 3100184,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/a948af3572507fba3b2ae3a10eac3add/5f6cfec263cd265cf3b0d97fd78ddf05.cab",
+      "retainedBytes": 3100184,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/5f6cfec263cd265cf3b0d97fd78ddf05.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\61d57a7a82309cd161a854a6f4619e52.cab",
+      "sha256": "a29f471c9a242aab488f9afa067d45f7a462f1c12fc892d66652be7f37a619d1",
+      "size": 9506654,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/ce88775024f6b22848b03dad4af285a9/61d57a7a82309cd161a854a6f4619e52.cab",
+      "retainedBytes": 9506654,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/61d57a7a82309cd161a854a6f4619e52.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\66c7c64126fbf84f47ccec556d149b12.cab",
+      "sha256": "f65349cc0422451d1ad1e6bef4771d86605e7e13284f45c2bab2d5d604cd4a67",
+      "size": 19033,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/85ce3fe90c8178dd2e94c01f448a2e24/66c7c64126fbf84f47ccec556d149b12.cab",
+      "retainedBytes": 19033,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/66c7c64126fbf84f47ccec556d149b12.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\67c9fd1fab36154e6e7e429610cd67c8.cab",
+      "sha256": "453aec009db83becce61fa1af16c9890d1c87d92106a3d4e85f3ca3a97e8005f",
+      "size": 770995,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/71f66a0a97b6734d613804ceb08328ae/67c9fd1fab36154e6e7e429610cd67c8.cab",
+      "retainedBytes": 770995,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/67c9fd1fab36154e6e7e429610cd67c8.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\67fb2af3d2219b403e419535a547c019.cab",
+      "sha256": "cb662c96fdcec9671900fb188851b326c5f2e53bff387abb9aed81305ed39f89",
+      "size": 99414,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/58b95de0137ca25ec0a774036132c713/67fb2af3d2219b403e419535a547c019.cab",
+      "retainedBytes": 99414,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/67fb2af3d2219b403e419535a547c019.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\685f3d4691f444bc382762d603a99afc.cab",
+      "sha256": "3268cf2e5bacfb75ccaa8fe4feceba6d85836d3874566c79dc2f9e09b0424efd",
+      "size": 1155835,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/77402beb0a8905cb9a7df34f8cd01873/685f3d4691f444bc382762d603a99afc.cab",
+      "retainedBytes": 1155835,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/685f3d4691f444bc382762d603a99afc.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\68a5a2b14625f935761325cddfadca11.cab",
+      "sha256": "dbd5206688af73581def06c8bf2dcde88cf4340c2f37b5a6f7c4e9d98b1bac0d",
+      "size": 2435734,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/2c205f0ced1f17f3cb47409b018c54ba/68a5a2b14625f935761325cddfadca11.cab",
+      "retainedBytes": 2435734,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/68a5a2b14625f935761325cddfadca11.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\68de71e3e2fb9941ee5b7c77500c0508.cab",
+      "sha256": "a5df26654d49533e70596f234eefbfc57b60de73339a15de121a425fe31bdb5b",
+      "size": 18797577,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/74df559a22a30545b599371ae69022c1/68de71e3e2fb9941ee5b7c77500c0508.cab",
+      "retainedBytes": 18797577,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/68de71e3e2fb9941ee5b7c77500c0508.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\69661e20556b3ca9456b946c2c881ddd.cab",
+      "sha256": "bef5b038fce288fa1db234bd61c3e450abecc02f5a386248625073a83010f61e",
+      "size": 18745734,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/944d105a33e16da614cbf2a17da22954/69661e20556b3ca9456b946c2c881ddd.cab",
+      "retainedBytes": 18745734,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/69661e20556b3ca9456b946c2c881ddd.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\6b12414fdb1b4978419abcd383206c09.cab",
+      "sha256": "721c477111f4b20eb0aa12e5849740e834c8ce0939800ead3f8616c6db7cf321",
+      "size": 18538,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/c4b25b33e32a004e4641366de527a820/6b12414fdb1b4978419abcd383206c09.cab",
+      "retainedBytes": 18538,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/6b12414fdb1b4978419abcd383206c09.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\6b5a91701fdb98ac8bc4af6e238e0390.cab",
+      "sha256": "f933f8cf6d37ae46d060c8a732d0f8e041d6d7aeede666c336a9646741d939e9",
+      "size": 2007811,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/298428e62d083b9f261928a313f30e05/6b5a91701fdb98ac8bc4af6e238e0390.cab",
+      "retainedBytes": 2007811,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/6b5a91701fdb98ac8bc4af6e238e0390.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\6e86d5003787b5a44d77f0142b20f2ff.cab",
+      "sha256": "507f6aa6a8380cf9dcee7c4450aab7b4e18d1fc11b77c64509494c64120d287e",
+      "size": 104255,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/6738dd01eac784c2229b680c2cb8276f/6e86d5003787b5a44d77f0142b20f2ff.cab",
+      "retainedBytes": 104255,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/6e86d5003787b5a44d77f0142b20f2ff.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\6ee7bbee8435130a869cf971694fd9e2.cab",
+      "sha256": "04728e326214d8960a188614995b65a3e9e33f93eaf13dd3ca16fe513cdff0de",
+      "size": 26146004,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/9a7bacb65de148f099902218ada3394b/6ee7bbee8435130a869cf971694fd9e2.cab",
+      "retainedBytes": 26146004,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/6ee7bbee8435130a869cf971694fd9e2.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\703316c9de0a32acf316d03b1cffc559.cab",
+      "sha256": "bd827c04acb7976c9e1997676255277a1f41da46739f9ecebae5c3698e12234b",
+      "size": 9449625,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/94f38047f8d83044b4ea1922718a6688/703316c9de0a32acf316d03b1cffc559.cab",
+      "retainedBytes": 9449625,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/703316c9de0a32acf316d03b1cffc559.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\73b80f421d7f3df5a71bd772f56bf3ae.cab",
+      "sha256": "952c359c276d4f3daf7b59a72ce5a27e4094c1293a8769906e3c5f32df6401e5",
+      "size": 98153,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/c14bbd300eb8d18cc5092cd6fb305ded/73b80f421d7f3df5a71bd772f56bf3ae.cab",
+      "retainedBytes": 98153,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/73b80f421d7f3df5a71bd772f56bf3ae.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\766c0ffd568bbb31bf7fb6793383e24a.cab",
+      "sha256": "c590f816f3bb15a79a0bf815ca942aeec4a36c08fd66fa35a243c86b4f8bac7d",
+      "size": 8176880,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/b4a6e43a0c35ad8d4e8957eb581443ec/766c0ffd568bbb31bf7fb6793383e24a.cab",
+      "retainedBytes": 8176880,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/766c0ffd568bbb31bf7fb6793383e24a.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\78fa3c824c2c48bd4a49ab5969adaaf7.cab",
+      "sha256": "6f9096bc7c182383c22a947d1b2c994d78d1742ca25163fad8fd8c2c848419c5",
+      "size": 54881173,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/721e7f21ddaab126788f6f8b5c3725b4/78fa3c824c2c48bd4a49ab5969adaaf7.cab",
+      "retainedBytes": 54881173,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/78fa3c824c2c48bd4a49ab5969adaaf7.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\7afc7b670accd8e3cc94cfffd516f5cb.cab",
+      "sha256": "1d99dc10063c05e8b34b82af18db61c080809456d471674d0272f071526df0ab",
+      "size": 1053493,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/fdde52f2c4a6db47e015e514a79c3454/7afc7b670accd8e3cc94cfffd516f5cb.cab",
+      "retainedBytes": 1053493,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/7afc7b670accd8e3cc94cfffd516f5cb.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\7c3667a45d36470bf3cb648878a6ac2e.cab",
+      "sha256": "86140957571b82e3957bc899da8d8f6a6ff177ca828f7fdaf097114eaa142205",
+      "size": 778294,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/c52d0c0ca9705ce9548a20d767c352fc/7c3667a45d36470bf3cb648878a6ac2e.cab",
+      "retainedBytes": 778294,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/7c3667a45d36470bf3cb648878a6ac2e.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\8016f7584c8fbeff0b032c65f4173e78.cab",
+      "sha256": "79a0989449dac1b180eecbb7ab59256f27025034d8cb75412793a74f7a2bae3d",
+      "size": 41245,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/d56d5999f7d2aacc0339550c995a0a69/8016f7584c8fbeff0b032c65f4173e78.cab",
+      "retainedBytes": 41245,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/8016f7584c8fbeff0b032c65f4173e78.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\8038f3cc95dc4b7d0346cb2ab7e044ff.cab",
+      "sha256": "cfc4a1f9f6423c2de002d1659409e51bffc005ed1401987e6000b137a7f36054",
+      "size": 1053623,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/6bcfcc2f0aceaccfc1adca4797ad080b/8038f3cc95dc4b7d0346cb2ab7e044ff.cab",
+      "retainedBytes": 1053623,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/8038f3cc95dc4b7d0346cb2ab7e044ff.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\8125ee239710f33ea485965f76fae646.cab",
+      "sha256": "afca62a1e32f28fad347f7610c6ef663506a798db78ac4e4cf545aeaa4c5d1d3",
+      "size": 5779649,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/e97c5af6189039047f84fbb140167fc6/8125ee239710f33ea485965f76fae646.cab",
+      "retainedBytes": 5779649,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/8125ee239710f33ea485965f76fae646.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\818d2d3634f0efb6e64d7e7c8ca5f98b.cab",
+      "sha256": "285d740dc8d842cbcf08eb15df2cccc0756aef8865efc27ba3b290363debf556",
+      "size": 113861,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/fd8b3d21212d7433876048066242ef39/818d2d3634f0efb6e64d7e7c8ca5f98b.cab",
+      "retainedBytes": 113861,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/818d2d3634f0efb6e64d7e7c8ca5f98b.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\838060235bcd28bf40ef7532c50ee032.cab",
+      "sha256": "bc3d7f43e248d0c040980608bc6cafe827137242d29bbda7832108c64987f69b",
+      "size": 19198,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/f8189451b307136e422f3e5ca5dcd8c9/838060235bcd28bf40ef7532c50ee032.cab",
+      "retainedBytes": 19198,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/838060235bcd28bf40ef7532c50ee032.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\89d9bbd87f7a5560bafa520a4ebfdf17.cab",
+      "sha256": "532f98e57d8fefd945864a56957b2b713f7d2ba2c844d2bca83b6103c9e56042",
+      "size": 91569,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/3d83099c2634ce3dc003ca2e269f159a/89d9bbd87f7a5560bafa520a4ebfdf17.cab",
+      "retainedBytes": 91569,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/89d9bbd87f7a5560bafa520a4ebfdf17.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\8ce0662e0e014576121e526f53d8f6b5.cab",
+      "sha256": "a3e22cacb553a1590c08dfa1afb7bc8eacab8ef237f35a10277ac9b051e41f45",
+      "size": 446208,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/5870f84e918d63ec4a1b36a1b7ebdc81/8ce0662e0e014576121e526f53d8f6b5.cab",
+      "retainedBytes": 446208,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/8ce0662e0e014576121e526f53d8f6b5.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\8da73ae89e24f0b5cdf1787799c2a65f.cab",
+      "sha256": "e24039473bcc57d456ea2eaf4b5b8a58b6873604615746d7df9bed460a68b38f",
+      "size": 1503744,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/03f472e438ad0287f7f890192d3f5499/8da73ae89e24f0b5cdf1787799c2a65f.cab",
+      "retainedBytes": 1503744,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/8da73ae89e24f0b5cdf1787799c2a65f.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\8daf1f236e631041cdaa802ddb9ccc3d.cab",
+      "sha256": "1935f24d6f0fe19f1a1720b40d7834f44053a3e57c71fe79f351854d810f6daf",
+      "size": 111097,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/c7f09ff8426f47eef5d33c31a37900ed/8daf1f236e631041cdaa802ddb9ccc3d.cab",
+      "retainedBytes": 111097,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/8daf1f236e631041cdaa802ddb9ccc3d.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\8e4755178e6b5bcba8d3538c3630b7a5.cab",
+      "sha256": "296670d9fed15c149cfb5655cd9e86ee9d91a1662a243632f572311b68c5501a",
+      "size": 1143297,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/13b9b5f3d776a95e256e64184a7d5f82/8e4755178e6b5bcba8d3538c3630b7a5.cab",
+      "retainedBytes": 1143297,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/8e4755178e6b5bcba8d3538c3630b7a5.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\8fe3c1ca244ece932599eb0b61855d8f.cab",
+      "sha256": "2b018dcee73ad70a2e4ac35b9eca42b3b92f68e384a7823039d5a19b0ec2f451",
+      "size": 95297,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/c79e37df62e244c9e8385c9b32052627/8fe3c1ca244ece932599eb0b61855d8f.cab",
+      "retainedBytes": 95297,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/8fe3c1ca244ece932599eb0b61855d8f.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\90e1202895672ce81992e71be30528cc.cab",
+      "sha256": "154e409539008c04691f399ff2c2f22f3f77c84c659eabd1fd2c5ced07225b17",
+      "size": 357394,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/d26a0810252437d367e60f8b208f3fdc/90e1202895672ce81992e71be30528cc.cab",
+      "retainedBytes": 357394,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/90e1202895672ce81992e71be30528cc.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\931721e121ef91707ddcb6cac354d95c.cab",
+      "sha256": "2cfb9fdedfbe917ec475360600ab476561e4000b55a7c3b59385e2f1abb378e9",
+      "size": 18701,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/a7cf8448cfd6622fa6c0a7eaa6dc33b7/931721e121ef91707ddcb6cac354d95c.cab",
+      "retainedBytes": 18701,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/931721e121ef91707ddcb6cac354d95c.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\93a74a1d34a22ae9d2e1ccc5208ad21a.cab",
+      "sha256": "1d1480714c75790621d86d243f597f1d3322b3dc90a19d83b5a229a0d35b15fd",
+      "size": 482753,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/5f6b694b92165b2ee8aeeff21bf597f4/93a74a1d34a22ae9d2e1ccc5208ad21a.cab",
+      "retainedBytes": 482753,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/93a74a1d34a22ae9d2e1ccc5208ad21a.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\94521fd1a9c57258998d60ce60dc43c3.cab",
+      "sha256": "7b6375cb60a2ec5b5b79f98375ce478e6ce13aca7d0e047b52548b0c8b03eb77",
+      "size": 1905800,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/674b35011f141b519c8455629ba0855b/94521fd1a9c57258998d60ce60dc43c3.cab",
+      "retainedBytes": 1905800,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/94521fd1a9c57258998d60ce60dc43c3.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\948a611cd2aca64b1e5113ffb7b95d5f.cab",
+      "sha256": "b6a9ed3b431d2aa75f6608a5b6547b4e45bd6394d89d2011938eecb1c3eea6cd",
+      "size": 884976,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/4bae0c8d5c81ee73e2f0effe77d954ac/948a611cd2aca64b1e5113ffb7b95d5f.cab",
+      "retainedBytes": 884976,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/948a611cd2aca64b1e5113ffb7b95d5f.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\96076045170fe5db6d5dcf14b6f6688e.cab",
+      "sha256": "82d970f5b628250ef72467d0826260c6a9f32252f42daa3c31fed2a23170170e",
+      "size": 678655,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/510c03213f78beff83c9149c96da2ab6/96076045170fe5db6d5dcf14b6f6688e.cab",
+      "retainedBytes": 678655,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/96076045170fe5db6d5dcf14b6f6688e.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\9a7145bc3b132e5da6d44c0ab4a1af70.cab",
+      "sha256": "27db9c6df30eab8f2eb4cfecd366d698ff47609a2e4ebb5647957fff5f3b6207",
+      "size": 7914269,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/6bf376f97c56ec712cc2dc3b5e1eb643/9a7145bc3b132e5da6d44c0ab4a1af70.cab",
+      "retainedBytes": 7914269,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/9a7145bc3b132e5da6d44c0ab4a1af70.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\9ba47e440ec2fbe9a3d32a53bf0f68dc.cab",
+      "sha256": "95a0ecf0933a3ae122d5ce9cdd689d3937d06c59117a1f10dd7fc8a7d6c7eb95",
+      "size": 469924,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/a2a66abf414f741477cff8220015a21e/9ba47e440ec2fbe9a3d32a53bf0f68dc.cab",
+      "retainedBytes": 469924,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/9ba47e440ec2fbe9a3d32a53bf0f68dc.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\a17683486ace64c3f9a1cacb81ee0260.cab",
+      "sha256": "3d523267e4cd49fcbdd1c23f30e375059dcc425cf7a31155bf372c9f08fdaac0",
+      "size": 101654,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/ba290b8442019d6a206f22fa9e8cb77b/a17683486ace64c3f9a1cacb81ee0260.cab",
+      "retainedBytes": 101654,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/a17683486ace64c3f9a1cacb81ee0260.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\a1e2a83aa8a71c48c742eeaff6e71928.cab",
+      "sha256": "29f8ed0537b49087321dfb7cce60aad7252900ecfbd81d6336fdb67056778a5d",
+      "size": 27764279,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/87fede232add653343acc94dbdac4118/a1e2a83aa8a71c48c742eeaff6e71928.cab",
+      "retainedBytes": 27764279,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/a1e2a83aa8a71c48c742eeaff6e71928.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\a330840cf08ad4d210703c9acd1bf2b8.cab",
+      "sha256": "3c5e06113c26f836abf4e950b94ead51ba11247ad3d8faa0b8211d7f68987f77",
+      "size": 1078523,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/8851c2ea587838bd4623295bf01ae58f/a330840cf08ad4d210703c9acd1bf2b8.cab",
+      "retainedBytes": 1078523,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/a330840cf08ad4d210703c9acd1bf2b8.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\a35cd6c9233b6ba3da66eecaa9190436.cab",
+      "sha256": "6628f837de3195849b6e67195fef616140836336ee347c03bf9add3105d27acc",
+      "size": 1919726,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/5ee94d74c862c49835bb989a5be1989c/a35cd6c9233b6ba3da66eecaa9190436.cab",
+      "retainedBytes": 1919726,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/a35cd6c9233b6ba3da66eecaa9190436.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\a68c0988d16ee124783efd98074dcbf9.cab",
+      "sha256": "d2bfb6ddc31c6a48744b4004f124722ebf606b7cd305391bc34b0857238cf2e3",
+      "size": 19223,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/80c2a91a0f0ea850f4891d1db71f09b9/a68c0988d16ee124783efd98074dcbf9.cab",
+      "retainedBytes": 19223,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/a68c0988d16ee124783efd98074dcbf9.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\a76e4219ecb0f1c0006a6fe080c54ad9.cab",
+      "sha256": "03d0921968c85ce2d95dba402626549bca3cba6abeb48087a256bb9c3164199b",
+      "size": 8312768,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/b9f8e75c81f5e5546d02e3e0cf3e7e6b/a76e4219ecb0f1c0006a6fe080c54ad9.cab",
+      "retainedBytes": 8312768,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/a76e4219ecb0f1c0006a6fe080c54ad9.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\aa9c58552bdb82dae4ed48ece081cfe3.cab",
+      "sha256": "03e7a479ec18c20cfbf1c860ae4a98bb791b320e6137f2eb15f7e1d43adae835",
+      "size": 1575770,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/7f4e2059f2d0e4eadcca304dd9dd7412/aa9c58552bdb82dae4ed48ece081cfe3.cab",
+      "retainedBytes": 1575770,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/aa9c58552bdb82dae4ed48ece081cfe3.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\ac4ddfcf1101c483559a5f6e36f1ef2d.cab",
+      "sha256": "08ff2379eef3a6775d2e670c862567f3495343e5d30dc5389990e18d6a90cab0",
+      "size": 20937,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/0fb20cb96b8f55628a95ae944bff46a9/ac4ddfcf1101c483559a5f6e36f1ef2d.cab",
+      "retainedBytes": 20937,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/ac4ddfcf1101c483559a5f6e36f1ef2d.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\b0656253ef2f688d2982eafa2e73f621.cab",
+      "sha256": "de70f656de01fd2f2e17539b4a50ddd66e2b0ac4486dfbf870cf4dc499db24c7",
+      "size": 32762,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/07311fb08fb7f55dc89e36c4a69b32e5/b0656253ef2f688d2982eafa2e73f621.cab",
+      "retainedBytes": 32762,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/b0656253ef2f688d2982eafa2e73f621.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\b1a824e2952532fe8fd0145f5d148d25.cab",
+      "sha256": "68914155c673bf5f38fbef8502f142a194a46c0abe4c5b62944dc0b755bcb0c2",
+      "size": 408125,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/303734b2966fbb47611bf30a56f1696d/b1a824e2952532fe8fd0145f5d148d25.cab",
+      "retainedBytes": 408125,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/b1a824e2952532fe8fd0145f5d148d25.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\b1a8ecf890b4ffddd05e8c9422f55db7.cab",
+      "sha256": "33a044c36af28ba67feb277cc12f96ee4eefa85f7b8720ce5b3a649d64883584",
+      "size": 159495,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/05d18f9d6ddbf2066c787fa4dd9117f7/b1a8ecf890b4ffddd05e8c9422f55db7.cab",
+      "retainedBytes": 159495,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/b1a8ecf890b4ffddd05e8c9422f55db7.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\b2f03f34ff83ec013b9e45c7cd8e8a73.cab",
+      "sha256": "a17b9674b79ac4c8d9c4516c41d6f32fcde041bdb07ec7f0758c16ee8a62ecac",
+      "size": 156894,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/be7bcaf329bbeef873a874aee49456b7/b2f03f34ff83ec013b9e45c7cd8e8a73.cab",
+      "retainedBytes": 156894,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/b2f03f34ff83ec013b9e45c7cd8e8a73.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\b4eea6c909a31ab051e6f9b6218beec8.cab",
+      "sha256": "39c6bab7981aad85629d5a8b54fd3831d04b5de5099acf006edd5b3bdc58a358",
+      "size": 379000,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/b1b12526de0bd88b4d7d65b289819274/b4eea6c909a31ab051e6f9b6218beec8.cab",
+      "retainedBytes": 379000,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/b4eea6c909a31ab051e6f9b6218beec8.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\b5f177b84c0ec473cbd69557634b27cd.cab",
+      "sha256": "90a10d7b9c4333b87f2abb3d575bdfd9a7a02417613c98dd1e65358038de922d",
+      "size": 18691,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/85c779385bf7829f3f988cafdd9a9cc6/b5f177b84c0ec473cbd69557634b27cd.cab",
+      "retainedBytes": 18691,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/b5f177b84c0ec473cbd69557634b27cd.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\b80b7321357f7c9f281536f9440dfe68.cab",
+      "sha256": "f4417618f207a6af7971f1266e86e175807b1be07fb5df727a56eaac9678dbc7",
+      "size": 18901,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/6e38671936c5e8ebfc3ba4283795c3e3/b80b7321357f7c9f281536f9440dfe68.cab",
+      "retainedBytes": 18901,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/b80b7321357f7c9f281536f9440dfe68.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\b82881a61b7477bd4eb5de2cd5037fe2.cab",
+      "sha256": "7df7d66a1c1d9f4f64b5d071dc706a6e2fde59cbd4c2b7cc6eac02cf0582bd22",
+      "size": 27927506,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/b763bd4d7efe740fed4f47584af65d00/b82881a61b7477bd4eb5de2cd5037fe2.cab",
+      "retainedBytes": 27927506,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/b82881a61b7477bd4eb5de2cd5037fe2.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\b913ca15956d14df2d4b1f11ae07885b.cab",
+      "sha256": "e334ef611a5e5c73316468565f208ae35fd358a58315b567fb4f59c842441888",
+      "size": 226747,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/0ff516e9a87e686c2b1ee345ff69a44d/b913ca15956d14df2d4b1f11ae07885b.cab",
+      "retainedBytes": 226747,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/b913ca15956d14df2d4b1f11ae07885b.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\be06eca425b0c3c2f4de61cbfe9bc7a7.cab",
+      "sha256": "77c2f54dc82cb93c4c2c5608bdcc25fcbc1c3864cae28b85b29257e6df33d407",
+      "size": 226699,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/cd671dd41220c313b4e091789c834c8d/be06eca425b0c3c2f4de61cbfe9bc7a7.cab",
+      "retainedBytes": 226699,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/be06eca425b0c3c2f4de61cbfe9bc7a7.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\beb5360d2daaa3167dea7ad16c28f996.cab",
+      "sha256": "6feaabf4b1b09b4e3210adddb12c8c8d6702d731da033784ef0330488f5bef51",
+      "size": 609253,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/b0082c046bf17896e9730ca9f40200ac/beb5360d2daaa3167dea7ad16c28f996.cab",
+      "retainedBytes": 609253,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/beb5360d2daaa3167dea7ad16c28f996.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\c0aa6d435b0851bf34365aadabd0c20f.cab",
+      "sha256": "b9e05d77c4e719d4f394b5a66328cfb2df2a80914785545eeb049a69fcb11d3c",
+      "size": 4951894,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/6699951ca96b8696e87c51e6b45d524a/c0aa6d435b0851bf34365aadabd0c20f.cab",
+      "retainedBytes": 4951894,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/c0aa6d435b0851bf34365aadabd0c20f.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\c1be9e93e88be3f6207f5cc074775d81.cab",
+      "sha256": "44c6935d42e9ae35798e0ab2d56b4de458e41c863f6d22bbc03490fd454b85b7",
+      "size": 97667,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/f9eecf729bb87bc3396a58539cbcfa49/c1be9e93e88be3f6207f5cc074775d81.cab",
+      "retainedBytes": 97667,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/c1be9e93e88be3f6207f5cc074775d81.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\c2aabf6ea5c1d348ec22f3aeb92f8656.cab",
+      "sha256": "f6479bc17c44cceb20de4e752fe29260b10be12de0a09ca0e664c5f132c18d9d",
+      "size": 18885,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/a0b6b23790ffcae0d8b830456eeda3de/c2aabf6ea5c1d348ec22f3aeb92f8656.cab",
+      "retainedBytes": 18885,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/c2aabf6ea5c1d348ec22f3aeb92f8656.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\c4d38a2c963178a1a3469ca3d913768e.cab",
+      "sha256": "23e917da442368fd73a007d211314bbddbe310464f1b6906fe7ca23614c4aa33",
+      "size": 21175,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/5922e25c084f0151532597508035ec3c/c4d38a2c963178a1a3469ca3d913768e.cab",
+      "retainedBytes": 21175,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/c4d38a2c963178a1a3469ca3d913768e.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\cd9128b760c06a010e1621af6528432e.cab",
+      "sha256": "c1845644795dc43cb25da0baa1d1a3f13a4f3616649e7d7abdff7a006600f5da",
+      "size": 65469,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/c48d5532a63b108d0842ac248058fe4c/cd9128b760c06a010e1621af6528432e.cab",
+      "retainedBytes": 65469,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/cd9128b760c06a010e1621af6528432e.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\cdea5502a35d09ddfbcda12e3a391dc0.cab",
+      "sha256": "76a16062cc9764cceb9f0a4e1f43fdea97affa70752c83542562fc1f30fb9e60",
+      "size": 7596870,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/b2d1f784d9f524b43e107fcb420e7cad/cdea5502a35d09ddfbcda12e3a391dc0.cab",
+      "retainedBytes": 7596870,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/cdea5502a35d09ddfbcda12e3a391dc0.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\d117bb4bc77abadc7c603552e122e513.cab",
+      "sha256": "225b9f2f52626455941298901c07cd1b4be5fc66e08faf5d47850812781872c6",
+      "size": 583244,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/d725535d14f6351e15a6d62cc90a0bfa/d117bb4bc77abadc7c603552e122e513.cab",
+      "retainedBytes": 583244,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/d117bb4bc77abadc7c603552e122e513.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\d1de88680a8e53fe75e01e94dc0ed767.cab",
+      "sha256": "9d88fa269dc02fd3fde50a056c04d6dfcc5b8a15739ae0f3e7ac51cc1c88f5b8",
+      "size": 46971,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/f5ae8b50cc21a7ed5bcace1a38fe8fa3/d1de88680a8e53fe75e01e94dc0ed767.cab",
+      "retainedBytes": 46971,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/d1de88680a8e53fe75e01e94dc0ed767.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\d3e405ab232f8aca8c5b6a48a913d6b0.cab",
+      "sha256": "977ae9374c9f06ca2c32d1792c16eb5c7d871185c50a89c8ea51c1cf4cab1946",
+      "size": 935416,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/fbeab12e1c070a983ca2819ccf65b64c/d3e405ab232f8aca8c5b6a48a913d6b0.cab",
+      "retainedBytes": 935416,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/d3e405ab232f8aca8c5b6a48a913d6b0.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\d67259e233ce975d91c3b02d483becad.cab",
+      "sha256": "3c3ea42bda9a6257924f9b02b7f2d0245bea1fc1835a191e99d6ddaa54725c10",
+      "size": 14165340,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/7ac71ee323f92242a3bd58466e62c1bb/d67259e233ce975d91c3b02d483becad.cab",
+      "retainedBytes": 14165340,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/d67259e233ce975d91c3b02d483becad.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\d95da93904819b1f7e68adb98b49a9c7.cab",
+      "sha256": "bc3beabebc0a9f161bbbe69dbce0075019ca6e40f5df5a8b2342a8a2ab25b22a",
+      "size": 42017,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/8528492e1ce2a653db74d3988d9ee96b/d95da93904819b1f7e68adb98b49a9c7.cab",
+      "retainedBytes": 42017,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/d95da93904819b1f7e68adb98b49a9c7.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\dcfb1aa345e349091a44e86ce1766566.cab",
+      "sha256": "d512a8751e0a338028e1ac168d80b5a7722c2830677a6cd617cf5e4be87be353",
+      "size": 93964,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/50bfa8338d9ce2920b2d7ee499a9b4d4/dcfb1aa345e349091a44e86ce1766566.cab",
+      "retainedBytes": 93964,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/dcfb1aa345e349091a44e86ce1766566.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\de111c3d435b0785b31b28c386ee691f.cab",
+      "sha256": "d993e77090a87d9120965278ddb6f95841c0a3e8bfc88647e985f02298369480",
+      "size": 18989,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/1372878d21c87ccd9f558d8df64eb80d/de111c3d435b0785b31b28c386ee691f.cab",
+      "retainedBytes": 18989,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/de111c3d435b0785b31b28c386ee691f.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\e10768bb6e9d0ea730280336b697da66.cab",
+      "sha256": "46e21578a4cfce3bd6e4eacc10b92121a825ce443cc2f6cce84b07e37b9d21bc",
+      "size": 7328808,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/b2915dcb648d1087f4a5ef20f17c9825/e10768bb6e9d0ea730280336b697da66.cab",
+      "retainedBytes": 7328808,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/e10768bb6e9d0ea730280336b697da66.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\e10f8811d44b50885777f56f8272f66b.cab",
+      "sha256": "26132fe0b658e0d5d002503db9db56fe3f556ac49e01aa5f6fff9ae21e882309",
+      "size": 609219,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/decccfacd1cd1a6c373d8e99d59c1765/e10f8811d44b50885777f56f8272f66b.cab",
+      "retainedBytes": 609219,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/e10f8811d44b50885777f56f8272f66b.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\e24dd258b3bbfa69c0842948fe0dd670.cab",
+      "sha256": "38f15a60b6dac64a7eba63c9684274c99908817e7f041cfd34b849475e6d3bb3",
+      "size": 166844,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/37b6f2be981f052bb72f975d819bb698/e24dd258b3bbfa69c0842948fe0dd670.cab",
+      "retainedBytes": 166844,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/e24dd258b3bbfa69c0842948fe0dd670.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\e3bfdbe21d5f48f62e6347294e6e8492.cab",
+      "sha256": "581d89c4572d247bec2a6df4dd5565ecfed64342b356fb6715d3d13b78f59960",
+      "size": 107469,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/a775ecbfd07575cb0018be16f4a5c632/e3bfdbe21d5f48f62e6347294e6e8492.cab",
+      "retainedBytes": 107469,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/e3bfdbe21d5f48f62e6347294e6e8492.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\e3d1b35aecfccda1b4af6fe5988ac4be.cab",
+      "sha256": "b62dca92fa3a59a6a811d181adfb3c033c44b44b4d99892662294e3e4c34e2ba",
+      "size": 15463439,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/47a79691f3a507955a38814a04cf616e/e3d1b35aecfccda1b4af6fe5988ac4be.cab",
+      "retainedBytes": 15463439,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/e3d1b35aecfccda1b4af6fe5988ac4be.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\e59830bab4961666e8d8c2af1e5fa771.cab",
+      "sha256": "c7789ad04b9b0f6fb31c3139bb18a847e9f754bcff5f956ae7d1738047098cff",
+      "size": 207581,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/4b82d4c0829aa41dd55ecd3f27b75c34/e59830bab4961666e8d8c2af1e5fa771.cab",
+      "retainedBytes": 207581,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/e59830bab4961666e8d8c2af1e5fa771.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\e5c4b31ff9997ac5603f4f28cd7df602.cab",
+      "sha256": "18b92105b56f44043e7de7286dae9e1acd8e7beccd0ccf40f85cb56cf00662b9",
+      "size": 1932592,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/2defba1d2b5b18909e533c61160aee93/e5c4b31ff9997ac5603f4f28cd7df602.cab",
+      "retainedBytes": 1932592,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/e5c4b31ff9997ac5603f4f28cd7df602.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\e87de81a902e0c8cde9e1355c3ff5f3f.cab",
+      "sha256": "b93046f97bfbe8652a13bf5cfb0ccdccf71637c4294b0a0856a27c687c76460d",
+      "size": 1708890,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/b86e4b16fb786ce9a6125c6bfcab46ec/e87de81a902e0c8cde9e1355c3ff5f3f.cab",
+      "retainedBytes": 1708890,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/e87de81a902e0c8cde9e1355c3ff5f3f.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\e89e3dcbb016928c7e426238337d69eb.cab",
+      "sha256": "4e5f0346d59faae3742c79d48df74f221b202da347f5751cc3e53156941368f1",
+      "size": 920606,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/e37c4e19cf7a02f7b6f243de3316c9ea/e89e3dcbb016928c7e426238337d69eb.cab",
+      "retainedBytes": 920606,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/e89e3dcbb016928c7e426238337d69eb.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\e98fa5eb5fee6ce17a7a69d585870b7c.cab",
+      "sha256": "afbe085b2daba00895e10e9c5be3dcc9d3ecdfc4665a5e631050373fc99b3e06",
+      "size": 1436297,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/14a676ba58e225c69d0f70b19ff0b1f5/e98fa5eb5fee6ce17a7a69d585870b7c.cab",
+      "retainedBytes": 1436297,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/e98fa5eb5fee6ce17a7a69d585870b7c.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\ec0637c03f99046936d32d51e13a392a.cab",
+      "sha256": "d6881b03e4fd187112d66d447e83360bbcd68cb69364c2d800293571a4068c6c",
+      "size": 18556,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/55fb777f9601389e8c3d5c6c117a3127/ec0637c03f99046936d32d51e13a392a.cab",
+      "retainedBytes": 18556,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/ec0637c03f99046936d32d51e13a392a.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\ec9ab4bbb809719605d27da343b909e8.cab",
+      "sha256": "ab511b28c1af3f681a59d91df216d6618170bca9d3926138beffc7cc13c96c0d",
+      "size": 107442,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/c4b1b22215b696ddc610dd86dcc5070a/ec9ab4bbb809719605d27da343b909e8.cab",
+      "retainedBytes": 107442,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/ec9ab4bbb809719605d27da343b909e8.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\ec9d39539c27e8cf5ad39bffce00c34e.cab",
+      "sha256": "9fba6392246a7e9ca8b98581247ba0699c11abb2002927a41a3a4a124f5f2212",
+      "size": 234328,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/e9ce89024b30285633d8613e6b602a22/ec9d39539c27e8cf5ad39bffce00c34e.cab",
+      "retainedBytes": 234328,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/ec9d39539c27e8cf5ad39bffce00c34e.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\eca0aa33de85194cd50ed6e0aae0156f.cab",
+      "sha256": "c0c6cc329d2be2ddba902649c46efb9064186c2185445451602c90d9c7eb3dd8",
+      "size": 42174,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/827f1b56c1f9090dca62cf5bef23d094/eca0aa33de85194cd50ed6e0aae0156f.cab",
+      "retainedBytes": 42174,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/eca0aa33de85194cd50ed6e0aae0156f.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\ed4d1c6b9811d81e3cebc553ae604f0d.cab",
+      "sha256": "fdd06cda47472586752e719dc67c7a145b6fef32eacb6e293dcb2525d4e12fb5",
+      "size": 18680,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/95d1db5aaeedff59ee646ddf221abbc6/ed4d1c6b9811d81e3cebc553ae604f0d.cab",
+      "retainedBytes": 18680,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/ed4d1c6b9811d81e3cebc553ae604f0d.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\ed5aa2f399092df3084cce671f072cac.cab",
+      "sha256": "6ac51feeaeb81ac3a1f00f40e263dead13f932d2bc11c8fd286fb49b14a3e501",
+      "size": 1518547,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/65b5de707ce050b13f2df9cfcd477a8a/ed5aa2f399092df3084cce671f072cac.cab",
+      "retainedBytes": 1518547,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/ed5aa2f399092df3084cce671f072cac.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\ef4472fd7552490fd759075186ed2ec8.cab",
+      "sha256": "44fa2f089ff4d7865c791708c5978dd1e8163647d9faaf6ba7e0b2e52317eba8",
+      "size": 264143,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/09823ce9df65871be53ebe3c34701113/ef4472fd7552490fd759075186ed2ec8.cab",
+      "retainedBytes": 264143,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/ef4472fd7552490fd759075186ed2ec8.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\f105a73f98cfc88c7b64d8f7b39a474c.cab",
+      "sha256": "78a042e663567e2ab2488aa81c8b12954b72a32c7bb90dbba7c3aab7facb7517",
+      "size": 59269,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/81c32bdeb8461c05aea7386044b0862b/f105a73f98cfc88c7b64d8f7b39a474c.cab",
+      "retainedBytes": 59269,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/f105a73f98cfc88c7b64d8f7b39a474c.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\f2e05dfd38ed343d3de77209cf3ecdae.cab",
+      "sha256": "c536e6742d56a05c47310c23e09a9e5a5552d914f5752ff9050eee88e009bcf9",
+      "size": 1240695,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/107cd9d9170325d1ded9e4cc47a9c4cc/f2e05dfd38ed343d3de77209cf3ecdae.cab",
+      "retainedBytes": 1240695,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/f2e05dfd38ed343d3de77209cf3ecdae.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\f4661eda3692e166927c14c96164150a.cab",
+      "sha256": "c1cc9e73acf7e2f6ef4c24f0753197200328621cfd70467c11cbbb0774400087",
+      "size": 1010038,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/e5a8ca8b40ba461a111dea5cc5871370/f4661eda3692e166927c14c96164150a.cab",
+      "retainedBytes": 1010038,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/f4661eda3692e166927c14c96164150a.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\f7b25543b47329ef932ad391c72c4ab7.cab",
+      "sha256": "d963b573a47af04623a73f4ce24e6c16ee57c946ce7d3729832939d5a1ff2184",
+      "size": 89488,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/9de9b47708c7b2b2354331669a7f89e0/f7b25543b47329ef932ad391c72c4ab7.cab",
+      "retainedBytes": 89488,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/f7b25543b47329ef932ad391c72c4ab7.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\f9b24c8280986c0683fbceca5326d806.cab",
+      "sha256": "154f4a24ec22ea0c932709f0e1a2c443946b42c14291a49a280ab4ea0eaa504d",
+      "size": 7245228,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/66f36d1686d2dde0cfa99a5160a9571d/f9b24c8280986c0683fbceca5326d806.cab",
+      "retainedBytes": 7245228,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/f9b24c8280986c0683fbceca5326d806.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\f9ff50431335056fb4fbac05b8268204.cab",
+      "sha256": "355cc1e65b9e5f02a0b3a4f32d02f9241b97030d3527166eff6a372d5d0e1bac",
+      "size": 19158,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/8383be7caac218b9afd6a3564dbb0984/f9ff50431335056fb4fbac05b8268204.cab",
+      "retainedBytes": 19158,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/f9ff50431335056fb4fbac05b8268204.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\fe38b2fd0d440e3c6740b626f51a22fc.cab",
+      "sha256": "afcbe5f2696bdacf801c3c2c758659a5e2861551fb9e78b4dd04a835a0ecdf80",
+      "size": 19199,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/b9cf12a0a3769ec70d9a059ae2776cb0/fe38b2fd0d440e3c6740b626f51a22fc.cab",
+      "retainedBytes": 19199,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/fe38b2fd0d440e3c6740b626f51a22fc.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\fef2cfedd6135e0ed85290b83f3682c3.cab",
+      "sha256": "01f034bd5f84a5e4bd7f75ef1b2becf7d75b87749794d8d9659dbdf7672a5050",
+      "size": 761906,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/7cb08267a7d1a4d91bb5cf20878231ea/fef2cfedd6135e0ed85290b83f3682c3.cab",
+      "retainedBytes": 761906,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/fef2cfedd6135e0ed85290b83f3682c3.cab"
+    },
+    {
+      "package": "Win11SDK_10.0.26100",
+      "fileName": "Installers\\ff8dd5a961e46b5d05906ac4b7a5ba37.cab",
+      "sha256": "56cb5452fbb1d6106ff9e271d5cee6cfbbec6bfaad24b82580a7c5b38e434734",
+      "size": 18527,
+      "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/b38ef9283d3aeb4e667e00f4fe726f32/ff8dd5a961e46b5d05906ac4b7a5ba37.cab",
+      "retainedBytes": 18527,
+      "catalogSizeMatches": true,
+      "layoutPath": "Win11SDK_10.0.26100,version=10.0.26100.15,productarch=neutral/Installers/ff8dd5a961e46b5d05906ac4b7a5ba37.cab"
+    }
+  ],
+  "historicalUcrtMissing": true
+}
