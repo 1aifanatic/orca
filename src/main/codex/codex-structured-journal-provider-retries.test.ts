@@ -1,14 +1,21 @@
 // A Codex stream error it is about to retry reads as one warning that updates in place, not a
 // red row per attempt: the transcript shows how the reconnect is going, once.
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type {
   AgentJournalItemBody,
   AgentJournalItemIdentity
 } from '../../shared/agent-session-journal-types'
 import { agentJournalItemKey } from '../../shared/agent-session-journal-item-key'
+import { classifyProviderFrame } from '../native-chat/agent-session-wire/provider-frame-disposition'
+import type * as Disposition from '../native-chat/agent-session-wire/provider-frame-disposition'
 import type { StructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
 import { createCodexJournalTranslator } from './codex-structured-journal-translation'
 import type { CodexStructuredSessionEvent } from './codex-structured-session-adapter'
+
+vi.mock('../native-chat/agent-session-wire/provider-frame-disposition', async (importOriginal) => {
+  const actual = await importOriginal<typeof Disposition>()
+  return { ...actual, classifyProviderFrame: vi.fn(actual.classifyProviderFrame) }
+})
 
 const THREAD_ID = 'thread-abc'
 const TURN_ID = 'turn-1'
@@ -202,5 +209,38 @@ describe('a Codex stream error it is about to retry', () => {
       expect.objectContaining({ kind: 'turn', state: 'completed', outcome: 'failure' })
     )
     expect(retryRows(rows)).toHaveLength(1)
+  })
+
+  it('costs a streaming delta nothing while no retry run is open', () => {
+    const { translator } = harness()
+    translator.handle(notification('turn/started', { turn: { id: TURN_ID } }))
+    translator.handle(
+      notification('item/started', {
+        turnId: TURN_ID,
+        item: { type: 'agentMessage', id: 'item-1', text: '' }
+      })
+    )
+    vi.mocked(classifyProviderFrame).mockClear()
+
+    for (let index = 0; index < 5; index += 1) {
+      translator.handle(
+        notification('item/agentMessage/delta', { turnId: TURN_ID, itemId: 'item-1', delta: 'a' })
+      )
+    }
+
+    // Classifying walks the whole payload; the retry run is the only reader here.
+    expect(classifyProviderFrame).not.toHaveBeenCalled()
+  })
+
+  it('still ends its run on a streaming delta', () => {
+    const { translator, rows } = harness()
+    translator.handle(notification('turn/started', { turn: { id: TURN_ID } }))
+    translator.handle(retrying('Reconnecting... 1/5'))
+    translator.handle(
+      notification('item/agentMessage/delta', { turnId: TURN_ID, itemId: 'item-1', delta: 'a' })
+    )
+    translator.handle(retrying('Reconnecting... 1/5'))
+
+    expect(retryRows(rows)).toHaveLength(2)
   })
 })

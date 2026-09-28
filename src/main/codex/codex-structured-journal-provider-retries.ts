@@ -114,7 +114,11 @@ export class CodexJournalProviderRetries {
 
   /** Called for every frame but a retry: one that can journal a row ends its thread's run. */
   observe(event: CodexStructuredSessionEvent): void {
-    if (event.type !== 'ended' && codexFrameMayJournal(event)) {
+    // Checked first: classifying walks the whole payload, and nearly every frame has no run open.
+    if (event.type === 'ended' || !this.openRuns.has(event.threadId)) {
+      return
+    }
+    if (codexFrameMayJournal(event)) {
       this.openRuns.delete(event.threadId)
     }
   }
