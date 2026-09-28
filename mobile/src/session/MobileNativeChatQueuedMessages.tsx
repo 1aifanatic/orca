@@ -4,8 +4,6 @@ import { Clock, RotateCcw } from 'lucide-react-native'
 import { colors, radii, spacing, typography } from '../theme/mobile-theme'
 import type { MobileQueuedMessageCard } from './mobile-structured-queued-message-cards'
 
-export type { MobileQueuedMessageCard }
-
 export type MobileNativeChatQueuedMessagesProps = {
   cards?: MobileQueuedMessageCard[]
   /** Send-now (Steer) for a waiting card; retry-send for a returned one. */

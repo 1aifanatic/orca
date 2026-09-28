@@ -8,6 +8,7 @@ import {
 } from '../../../src/shared/structured-agent-session-dispatch-rejection'
 import {
   QUEUED_MESSAGE_PAUSED_SEND_FAILED,
+  QUEUED_MESSAGE_PAUSED_STOPPED,
   type AgentSessionQueuedMessage
 } from '../../../src/shared/agent-session-wire'
 
@@ -41,10 +42,12 @@ function pausedLabel(reason: string | undefined): string {
   if (reason === QUEUED_MESSAGE_PAUSED_SEND_FAILED) {
     return "Couldn't send — Send to retry"
   }
-  // The wire carries markers, never copy; an unknown marker from a newer host
-  // reads as the plain pause rather than leaking on screen. A pause holds until
-  // the user acts — Send now, or a new message that starts the next turn.
-  return 'Paused — sends after your next message'
+  if (reason === QUEUED_MESSAGE_PAUSED_STOPPED) {
+    // A Stop, /clear carry, or restart hold: the user's next sent message lifts it.
+    return 'Paused — sends after your next message'
+  }
+  // Absent or unknown (newer host) marker: a plain pause, promising no release rule.
+  return 'Paused'
 }
 
 export function mobileQueuedMessageCards(

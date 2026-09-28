@@ -9,9 +9,10 @@
 import { createElement } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type {
-  AgentSessionQueuedMessage,
-  AgentSessionSubscribeEvent
+import {
+  QUEUED_MESSAGE_PAUSED_STOPPED,
+  type AgentSessionQueuedMessage,
+  type AgentSessionSubscribeEvent
 } from '../../../src/shared/agent-session-wire'
 import { structuredAgentSessionPayloadFingerprint } from '../../../src/shared/structured-agent-session-mutation'
 import type { RpcClient } from '../transport/rpc-client'
@@ -558,7 +559,17 @@ describe('mobile structured queued messages', () => {
       expect(asyncStorage.setItem).not.toHaveBeenCalled()
       expect(hook!.queued.cards.map((card) => card.messageId)).toEqual(['draft-1'])
       // The host's hold arrives on the published list; the card explains itself.
-      act(() => listener?.(batchEvent([queuedDraft({ messageId: 'draft-1', paused: true })])))
+      act(() =>
+        listener?.(
+          batchEvent([
+            queuedDraft({
+              messageId: 'draft-1',
+              paused: true,
+              pausedReason: QUEUED_MESSAGE_PAUSED_STOPPED
+            })
+          ])
+        )
+      )
       expect(hook!.queued.cards[0]).toMatchObject({
         messageId: 'draft-1',
         paused: true,

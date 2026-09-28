@@ -3,7 +3,10 @@ import {
   DISPATCH_REJECTED_CANCELLED,
   DISPATCH_REJECTED_HOST_RESTARTED
 } from '../../../src/shared/structured-agent-session-dispatch-rejection'
-import { QUEUED_MESSAGE_PAUSED_SEND_FAILED } from '../../../src/shared/agent-session-wire'
+import {
+  QUEUED_MESSAGE_PAUSED_SEND_FAILED,
+  QUEUED_MESSAGE_PAUSED_STOPPED
+} from '../../../src/shared/agent-session-wire'
 import type { AgentSessionQueuedMessage } from '../../../src/shared/agent-session-wire'
 import { mobileQueuedMessageCards } from './mobile-structured-queued-message-cards'
 
@@ -46,12 +49,20 @@ describe('mobileQueuedMessageCards', () => {
     expect(card?.label).toBe('Waiting for your answer')
   })
 
-  it('labels a reasonless pause — a Stop or restart hold — with the resume promise', () => {
+  it('labels a stopped pause — a Stop, /clear carry or restart hold — with the resume promise', () => {
+    const [card] = mobileQueuedMessageCards(
+      [draft({ messageId: 'a', paused: true, pausedReason: QUEUED_MESSAGE_PAUSED_STOPPED })],
+      { pendingPrompt: false }
+    )
+    expect(card?.label).toBe('Paused — sends after your next message')
+    expect(card?.paused).toBe(true)
+  })
+
+  it('labels a reasonless pause as a plain pause, promising no release rule', () => {
     const [card] = mobileQueuedMessageCards([draft({ messageId: 'a', paused: true })], {
       pendingPrompt: false
     })
-    expect(card?.label).toBe('Paused — sends after your next message')
-    expect(card?.paused).toBe(true)
+    expect(card?.label).toBe('Paused')
   })
 
   it('shows a returned card with its provider reason and holds drafts behind it', () => {
@@ -85,10 +96,7 @@ describe('mobileQueuedMessageCards', () => {
       ],
       { pendingPrompt: false }
     )
-    expect(cards.map((card) => card.label)).toEqual([
-      "Couldn't send — Send to retry",
-      'Paused — sends after your next message'
-    ])
+    expect(cards.map((card) => card.label)).toEqual(["Couldn't send — Send to retry", 'Paused'])
   })
 
   it('never shows an internal rejection reason verbatim', () => {
