@@ -520,6 +520,13 @@ describe('codex turn lifecycle rows', () => {
             durationMs: 2_400,
             items: []
           },
+          {
+            id: 'turn-unplaced',
+            status: 'someFutureStatus',
+            startedAt: 1_700_000_170,
+            completedAt: 1_700_000_171,
+            items: []
+          },
           { id: 'turn-open', status: 'inProgress', startedAt: 1_700_000_200, items: [] },
           { id: 'turn-untimed', status: 'completed', items: [] }
         ]
@@ -565,6 +572,18 @@ describe('codex turn lifecycle rows', () => {
           startedAt: 1_700_000_150_000,
           completedAt: 1_700_000_152_000,
           durationMs: 2_400
+        }
+      },
+      {
+        // Ended, but not a status this build can place: no verdict, never a clean finish.
+        key: 'legacy:codex:session-1:turn-lifecycle%3Aturn-unplaced',
+        body: {
+          kind: 'turn',
+          turnId: 'turn-unplaced',
+          state: 'completed',
+          userItemId: 'codex:thread-abc:turn-unplaced:0',
+          startedAt: 1_700_000_170_000,
+          completedAt: 1_700_000_171_000
         }
       }
     ])
