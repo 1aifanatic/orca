@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { waitForPromiseWithSignal } from '../../shared/abort-signal-reason'
 import {
   normalizeWslDaemonRecovery,
+  sameWslDaemonEndpoint,
   type PersistedWslDaemonEndpoint
 } from '../../shared/wsl-daemon-recovery'
 import { wslPtyOwnerKey } from '../../shared/wsl-pty-consumer-recovery'
@@ -121,7 +122,7 @@ export class WslDaemonSessions {
     }
     const key = wslPtyOwnerKey(owner)
     let entry = this.entries.get(key)
-    if (entry && JSON.stringify(entry.endpoint) !== JSON.stringify(record.endpoint)) {
+    if (entry && !sameWslDaemonEndpoint(entry.endpoint, record.endpoint)) {
       return Promise.reject(new Error('WSL daemon owner endpoint cannot change'))
     }
     if (!entry) {

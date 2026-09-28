@@ -193,3 +193,23 @@ it('rolls back refused incarnation admission without losing the prior durable ow
   await rejected
   expect(store.getWslDaemonRecovery(recovery)?.incarnation).toEqual(oldIncarnation)
 })
+
+it('admits equivalent protocol metadata without changing the persisted owner identity', async () => {
+  const { store } = await fixture()
+  await store.upsertWslDaemonRecovery(recovery)
+  const versioned = { ...recovery, endpoint: { ...recovery.endpoint, protocolVersion: 36 } }
+  await store.upsertWslDaemonRecovery(versioned)
+  expect(store.getWslDaemonRecovery(recovery)).toEqual(recovery)
+  await expect(
+    store.upsertWslDaemonRecovery({
+      ...versioned,
+      endpoint: { ...versioned.endpoint, protocolVersion: 37 }
+    })
+  ).rejects.toThrow('cannot change')
+  await expect(
+    store.upsertWslDaemonRecovery({
+      ...versioned,
+      endpoint: { ...versioned.endpoint, userName: 'bob' }
+    })
+  ).rejects.toThrow('cannot change')
+})

@@ -60,3 +60,22 @@ export function normalizeWslDaemonRecovery(value: unknown): WslDaemonRecovery | 
   const parsed = recovery.safeParse(value)
   return parsed.success ? parsed.data : null
 }
+
+// Guest-owned terminals first shipped at v36; absent metadata has a fixed meaning.
+export const INITIAL_WSL_DAEMON_PROTOCOL_VERSION = 36
+
+export function sameWslDaemonEndpoint(
+  left: PersistedWslDaemonEndpoint,
+  right: PersistedWslDaemonEndpoint
+): boolean {
+  return (
+    JSON.stringify({
+      ...left,
+      protocolVersion: left.protocolVersion ?? INITIAL_WSL_DAEMON_PROTOCOL_VERSION
+    }) ===
+    JSON.stringify({
+      ...right,
+      protocolVersion: right.protocolVersion ?? INITIAL_WSL_DAEMON_PROTOCOL_VERSION
+    })
+  )
+}

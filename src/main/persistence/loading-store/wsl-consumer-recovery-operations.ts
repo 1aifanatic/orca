@@ -1,5 +1,6 @@
 import {
   normalizeWslDaemonRecovery,
+  sameWslDaemonEndpoint,
   type WslDaemonIncarnation,
   type WslDaemonRecovery
 } from '../../../shared/wsl-daemon-recovery'
@@ -78,7 +79,7 @@ export class WslConsumerRecoveryOperations {
         }
         const current = rows.find((row) => wslPtyOwnerKey(row) === key)
         if (current && isWslDaemonRecovery(current)) {
-          if (JSON.stringify(current.endpoint) !== JSON.stringify(normalized.endpoint)) {
+          if (!sameWslDaemonEndpoint(current.endpoint, normalized.endpoint)) {
             return { value: new Error('WSL daemon owner identity cannot change'), persist: false }
           }
           if (JSON.stringify(current.incarnation) === JSON.stringify(normalized.incarnation)) {

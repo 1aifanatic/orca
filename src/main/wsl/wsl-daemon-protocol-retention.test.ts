@@ -13,7 +13,7 @@ import { WslDaemonSessions } from './wsl-daemon-sessions'
 import { toAppWslPtyId } from '../../shared/wsl-pty-id'
 import type { WslDaemonRecovery } from '../../shared/wsl-daemon-recovery'
 import { createWslDaemonTransport } from './wsl-daemon-transport'
-import { startRetainedWslDaemonOwner } from './wsl-daemon-endpoint'
+import { prepareWslDaemonEndpoint, startRetainedWslDaemonOwner } from './wsl-daemon-endpoint'
 
 // A v37 desktop reconnects to the original v36 guest, including records without metadata.
 vi.mock('../daemon/daemon-protocol-version', async (original) => {
@@ -97,7 +97,7 @@ async function fixture(protocolVersion?: number) {
   }
   const sessions = new WslDaemonSessions({ store, profileScope: '/profile', historyRoot: dir })
   cleanup.push(() => sessions.dispose())
-  return { sessions, owner, terminal, subprocess, spawn, store }
+  return { sessions, owner, terminal, subprocess, spawn, store, endpoint: record.endpoint }
 }
 
 it.each([36, undefined])(
@@ -125,5 +125,40 @@ it.each([35, 999])(
     expect(startRetainedWslDaemonOwner).not.toHaveBeenCalled()
     expect(store.upsertWslDaemonRecovery).not.toHaveBeenCalled()
     expect(subprocess.kill).not.toHaveBeenCalled()
+  }
+)
+
+it('reuses a missing-version owner for fresh preparation of the same v36 artifact', async () => {
+  const { sessions, owner, endpoint, spawn, store } = await fixture()
+  const retained = await sessions.reconnect(owner)
+  vi.mocked(prepareWslDaemonEndpoint).mockResolvedValue({
+    owner,
+    endpoint: { ...endpoint, protocolVersion: 36 },
+    entry: endpoint.entry,
+    path: '/bin',
+    artifactId: endpoint.serverBuildId
+  })
+  const fresh = await sessions.prepareFresh(owner.distro)
+  expect(fresh.connection).toBe(retained)
+  await fresh.connection.provider.spawn({ cols: 80, rows: 24, isNewSession: true })
+  expect(spawn).toHaveBeenCalledTimes(2)
+  expect(store.getWslDaemonRecovery().endpoint).toEqual(endpoint)
+  expect(startRetainedWslDaemonOwner).not.toHaveBeenCalled()
+})
+
+it.each([{ protocolVersion: 37 }, { userName: 'bob' }])(
+  'refuses a changed owner endpoint after missing-version reconnect: %s',
+  async (change) => {
+    const { sessions, owner, endpoint } = await fixture()
+    await sessions.reconnect(owner)
+    vi.mocked(prepareWslDaemonEndpoint).mockResolvedValue({
+      owner,
+      endpoint: { ...endpoint, protocolVersion: 36, ...change },
+      entry: endpoint.entry,
+      path: '/bin',
+      artifactId: endpoint.serverBuildId
+    })
+    await expect(sessions.prepareFresh(owner.distro)).rejects.toThrow('cannot change')
+    expect(startRetainedWslDaemonOwner).not.toHaveBeenCalled()
   }
 )
