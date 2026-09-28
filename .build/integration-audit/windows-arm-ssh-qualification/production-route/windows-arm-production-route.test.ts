@@ -20,6 +20,20 @@ function textField(value: Record<string, unknown>, key: string): string {
   if (typeof text !== 'string' || !text) throw new Error(`Missing ${key}`)
   return text
 }
+function classifyFailure(error: unknown): Record<string, unknown> {
+  const message = error instanceof Error ? error.message : ''
+  const categories = [
+    ['sftp', /sftp|subsystem/i], ['permission', /permission|access.denied/i],
+    ['missing-file', /not.found|ENOENT|missing/i], ['timeout', /timed?.?out|timeout/i],
+    ['runtime', /bun|runtime/i], ['integrity', /hash|sha256|integrity/i],
+    ['connection', /connection|channel|socket/i], ['mock-contract', /not a function|mock/i]
+  ] as const
+  return {
+    kind: error instanceof Error ? error.constructor.name.replace(/[^a-zA-Z0-9_]/g, '').slice(0,64) : typeof error,
+    categories: categories.filter(([,pattern]) => pattern.test(message)).map(([label]) => label),
+    frames: error instanceof Error ? [...(error.stack ?? '').matchAll(/([a-zA-Z0-9_-]+\.(?:ts|js|mjs|cjs)):(\d+):(\d+)/g)].slice(0,8).map(match => `${match[1]}:${match[2]}:${match[3]}`) : []
+  }
+}
 const configPath = process.env.ORCA_SSH_PROBE_CONFIG
 it.skipIf(!configPath)('native ARM OpenSSH deploy preserves the owned shell across transport loss', { timeout: 600_000 }, async () => {
   expect(process.platform).toBe('win32')
@@ -44,10 +58,17 @@ it.skipIf(!configPath)('native ARM OpenSSH deploy preserves the owned shell acro
   const shellIdentities: {pid:number;creationTimeMs:number}[]=[]
   let output = ''
   let deploymentStarted=false
-  const receipts: Record<string, unknown> = { source, instance, cleanupVerified: false }
+  let stage='connecting'
+  const stages: string[]=[]
+  const receipts: Record<string, unknown> = { source, instance, cleanupVerified: false, stages }
   const deploy = async (): Promise<void> => {
     deploymentStarted=true
-    const result = await deployAndLaunchRelay(conn, undefined, 60, instance)
+    stage='deployment'
+    const allowedProgress=['Detecting remote platform...', 'Checking existing relay...', 'Uploading relay...', 'Installing native dependencies...', 'Starting relay...']
+    const result = await deployAndLaunchRelay(conn, status => {
+      if (allowedProgress.includes(status)) { stage=status; if(stages.length < 32) stages.push(status) }
+    }, 60, instance)
+    stage='artifact-and-runtime-identity'
     expect(result.platform).toBe('win32-arm64')
     expect(result.nodePath?.toLowerCase()).toContain('bun')
     if (!result.remoteRelayDir) throw new Error('Missing actual remote relay directory')
@@ -129,6 +150,9 @@ it.skipIf(!configPath)('native ARM OpenSSH deploy preserves the owned shell acro
     if (!freshShell?.creationTimeMs) throw new Error('Fresh shell identity unverifiable')
     shellIdentities.push({pid:freshShell.pid,creationTimeMs:freshShell.creationTimeMs})
     await mux!.request('pty.shutdown',{id:fresh,immediate:true});terminals.delete(fresh)
+  } catch (error) {
+    receipts.primaryFailure={stage,...classifyFailure(error)}
+    throw new Error('Production SSH route failed; inspect sanitized primaryFailure receipt')
   } finally {
     try {
       if (!mux && daemon) { await conn.disconnect(); conn = createConnection(); await conn.connect(); await deploy() }
@@ -148,6 +172,9 @@ it.skipIf(!configPath)('native ARM OpenSSH deploy preserves the owned shell acro
       }
       receipts.cleanupVerified=Boolean(daemon) || !deploymentStarted
       if (!receipts.cleanupVerified) throw new Error('Deployment may have launched an unobserved relay; cleanup unverifiable')
+    } catch (error) {
+      receipts.cleanupFailure=classifyFailure(error)
+      throw error
     } finally {
       mux?.dispose()
       await conn.disconnect()

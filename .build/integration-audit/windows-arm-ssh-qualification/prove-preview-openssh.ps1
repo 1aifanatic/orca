@@ -183,6 +183,7 @@ AllowTcpForwarding no
 AllowAgentForwarding no
 PermitTunnel no
 PermitTTY no
+Subsystem sftp internal-sftp
 LogLevel VERBOSE
 "@ | Set-Content -LiteralPath $config -Encoding ascii
   Write-Stage 'server-config-validate-start'
