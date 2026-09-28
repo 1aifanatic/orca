@@ -277,6 +277,20 @@ async function probeInteractivity(
   const token = `probe-${name}`
   // Why: a human types once the pane looks restored; typing earlier would race the reattach.
   const restoredBuffer = await waitForPaneMarker(page, target.webTabId, 'READY:', REVEAL_BUDGET_MS)
+  const inputProbe = await page.evaluateHandle((id) => {
+    const pane = window.__paneManagers?.get(id)?.getActivePane?.()
+    const bytes: string[] = []
+    const subscription = pane?.terminal.onData((data) => bytes.push(data))
+    return {
+      read: () => ({
+        bytes,
+        focused: document.activeElement?.outerHTML,
+        connected: pane?.container.isConnected,
+        text: pane?.serializeAddon?.serialize?.()
+      }),
+      stop: () => subscription?.dispose()
+    }
+  }, target.webTabId)
   await focusActiveTerminalInput(page)
   await page.keyboard.type(token)
   await page.keyboard.press('Enter')
@@ -286,6 +300,14 @@ async function probeInteractivity(
     `LINE:${token}`,
     LIVE_PAINT_BUDGET_MS
   )
+  console.log(
+    'INPUT_DIAGNOSTIC',
+    name,
+    await inputProbe.evaluate((probe) => probe.read()),
+    readSink(target.sinkPath)
+  )
+  await inputProbe.evaluate((probe) => probe.stop())
+  await inputProbe.dispose()
   const paneGrid = await readActivePaneGrid(page, target.webTabId)
   const diagnostics = await readPaneDiagnostics(page, worktreeId, target.webTabId)
   let paintedAfterFlip = paintedLive
