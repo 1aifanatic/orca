@@ -1,0 +1,59 @@
+name: Diagnostic offline xwin extraction
+on:
+  workflow_dispatch:
+    inputs:
+      cache_run_id:
+        description: Actions run containing the assembled cache artifact
+        required: true
+      cache_artifact:
+        description: Exact assembled-cache artifact name
+        required: true
+      xwin_run_id:
+        description: Actions run containing the pinned xwin archive artifact
+        required: true
+      xwin_artifact:
+        description: Exact xwin artifact name
+        required: true
+      manifest_run_id:
+        description: Actions run containing the verified VisualStudio.vsman artifact
+        required: true
+      manifest_artifact:
+        description: Exact manifest artifact name
+        required: true
+permissions:
+  contents: read
+  actions: read
+jobs:
+  extract:
+    if: github.repository == 'stablyai/orca' && github.ref == 'refs/heads/OrcaWin/np-offline-xwin-extraction-diagnostic'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with: {persist-credentials: false, sparse-checkout: .build/repaint-diagnosis/offline-xwin-cache-preparation}
+      - name: Allocate bounded network-isolated workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          truncate -s 4G "$RUNNER_TEMP/xwin.ext4"; mkfs.ext4 -F "$RUNNER_TEMP/xwin.ext4"
+          mkdir "$RUNNER_TEMP/xwin"; sudo mount -o loop,nodev,nosuid "$RUNNER_TEMP/xwin.ext4" "$RUNNER_TEMP/xwin"
+          sudo chown "$UID:$GID" "$RUNNER_TEMP/xwin"
+      - uses: actions/download-artifact@v5
+        with: {run-id: ${{ inputs.cache_run_id }}, name: ${{ inputs.cache_artifact }}, github-token: ${{ github.token }}, path: ${{ runner.temp }}/xwin/cache}
+      - uses: actions/download-artifact@v5
+        with: {run-id: ${{ inputs.xwin_run_id }}, name: ${{ inputs.xwin_artifact }}, github-token: ${{ github.token }}, path: ${{ runner.temp }}/xwin/tool}
+      - uses: actions/download-artifact@v5
+        with: {run-id: ${{ inputs.manifest_run_id }}, name: ${{ inputs.manifest_artifact }}, github-token: ${{ github.token }}, path: ${{ runner.temp }}/xwin/manifest}
+      - name: Verify inputs and run xwin with networking disabled
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .build/repaint-diagnosis/offline-xwin-cache-preparation/verify-offline-xwin.py "$RUNNER_TEMP/xwin"
+          timeout --kill-after=30s 900s unshare --net --mount-proc -- bash .build/repaint-diagnosis/offline-xwin-cache-preparation/run-offline-xwin.sh "$RUNNER_TEMP/xwin"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with: {name: offline-xwin-receipt, path: ${{ runner.temp }}/xwin/receipt, retention-days: 7}
+      - name: Unmount workspace
+        if: always()
+        shell: bash
+        run: if mountpoint -q "$RUNNER_TEMP/xwin"; then sudo umount "$RUNNER_TEMP/xwin"; fi
