@@ -7,7 +7,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { mkdtemp } from 'node:fs/promises'
-import { homedir, tmpdir } from 'node:os'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type {
@@ -24,10 +24,17 @@ import {
 import {
   realClaudeAuthenticated,
   realClaudeAvailable,
-  realClaudeCommand
+  realClaudeCommand,
+  realClaudeLaunchHome
 } from './claude-real-cli-availability-test-support'
 
 const SESSION_ID = 'real-cli-fold'
+// Pins the live proof order (SessionStart hook frame before system/init) and lets the
+// Bash steps run unprompted, whatever the config dir under test configures.
+const LIVE_SHAPE_SETTINGS = JSON.stringify({
+  hooks: { SessionStart: [{ hooks: [{ type: 'command', command: 'echo' }] }] },
+  permissions: { allow: ['Bash(sleep:*)'] }
+})
 
 function identity(providerSessionId: string): AgentSessionJournalIdentity {
   return {
@@ -55,7 +62,7 @@ describe.skipIf(!realClaudeAvailable)('Claude structured real CLI fold', () => {
     'keeps one turn row when the CLI folds a mid-turn send',
     async () => {
       const providerSessionId = randomUUID()
-      const claudeConfigDir = process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), '.claude')
+      const { claudeConfigDir, env } = realClaudeLaunchHome()
       const cwd = await mkdtemp(join(tmpdir(), 'orca-real-fold-'))
       const events: ClaudeStructuredSessionEvent[] = []
       const turnRows: NonNullable<ReturnType<typeof readAgentJournalTurn>>[] = []
@@ -73,8 +80,16 @@ describe.skipIf(!realClaudeAvailable)('Claude structured real CLI fold', () => {
       const adapter = new ClaudeStructuredSessionAdapter({
         resolveLaunch: async () => ({
           pathToClaudeCodeExecutable: realClaudeCommand,
-          options: { ...CLAUDE_STRUCTURED_BASE_OPTIONS, sessionId: providerSessionId },
+          options: {
+            ...CLAUDE_STRUCTURED_BASE_OPTIONS,
+            extraArgs: {
+              ...CLAUDE_STRUCTURED_BASE_OPTIONS.extraArgs,
+              settings: LIVE_SHAPE_SETTINGS
+            },
+            sessionId: providerSessionId
+          },
           cwd,
+          env,
           claudeConfigDir,
           providerSessionId,
           resumeLeafUuid: null,
@@ -93,6 +108,15 @@ describe.skipIf(!realClaudeAvailable)('Claude structured real CLI fold', () => {
           events: sink
         })
         await adapter.awaitStarted(SESSION_ID)
+        // Startup proved from the SessionStart hook frame, with no init (so no version) yet.
+        expect(
+          events.some(
+            (event) =>
+              event.type === 'message' &&
+              event.message.type === 'system' &&
+              event.message.subtype === 'init'
+          )
+        ).toBe(false)
 
         await expect(
           adapter.dispatch({

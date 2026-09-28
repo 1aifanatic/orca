@@ -2,6 +2,9 @@
 // suite skips on. Probed once per test process.
 
 import { spawnSync } from 'node:child_process'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
+import { CLAUDE_AUTH_ENV_VARS } from '../claude-accounts/environment'
 import { resolveClaudeCommand } from '../codex-cli/command'
 import { getSpawnArgsForWindows } from '../win32-utils'
 
@@ -38,3 +41,20 @@ export const realClaudeAuthStatus = (() => {
 })()
 
 export const realClaudeAuthenticated = realClaudeAuthStatus?.loggedIn === true
+
+/** The config dir and env auth the availability probe above saw, for a real-CLI launch.
+ *  The connection strips an inherited CLAUDE_CONFIG_DIR and inherited auth vars, so
+ *  without these the child silently runs against ~/.claude whatever the probe checked. */
+export function realClaudeLaunchHome(): { claudeConfigDir: string; env: Record<string, string> } {
+  const env: Record<string, string> = {}
+  for (const key of CLAUDE_AUTH_ENV_VARS) {
+    const value = process.env[key]
+    if (value) {
+      env[key] = value
+    }
+  }
+  return {
+    claudeConfigDir: process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), '.claude'),
+    env
+  }
+}
