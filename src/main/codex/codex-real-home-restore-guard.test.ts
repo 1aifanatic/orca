@@ -3,7 +3,6 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import type * as NodeOs from 'node:os'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { wrapPosixHookCommand } from '../agent-hooks/installer-utils'
 
 const { homedirMock, grantMock } = vi.hoisted(() => ({
   homedirMock: vi.fn<() => string>(),
@@ -69,13 +68,12 @@ it('keeps a hooks.json save that lands during a failed real-home grant', async (
 })
 
 it('keeps a hooks.json save that lands during a failed legacy-sweep trust repair', async () => {
-  const scriptPath = join(
-    homeDir,
-    '.orca',
-    'agent-hooks',
-    process.platform === 'win32' ? 'codex-hook.cmd' : 'codex-hook.sh'
-  )
-  const legacyCommand = process.platform === 'win32' ? scriptPath : wrapPosixHookCommand(scriptPath)
+  // Why a retired form (#1536): the sweep never removes the current entry.
+  const quoted = `'${join(homeDir, '.orca', 'agent-hooks', 'codex-hook.sh')}'`
+  const legacyCommand =
+    process.platform === 'win32'
+      ? join(userDataDir, 'agent-hooks', 'codex-hook.cmd')
+      : `if [ -x ${quoted} ]; then /bin/sh ${quoted}; fi`
   writeFileSync(
     hooksJsonPath(),
     `${JSON.stringify(

@@ -40,6 +40,7 @@ vi.mock('./codex-hook-trust-grant', () => ({
 import {
   ensureRealHomeCodexHookState,
   getRealHomeCodexHookLane,
+  removeRealHomeCodexHookForOptOut,
   _internals
 } from './codex-real-home-hook-install'
 import { getCodexManagedHookInstallMaterial } from './hook-service'
@@ -409,21 +410,17 @@ describe('ensureRealHomeCodexHookState (install)', () => {
   })
 })
 
-describe('ensureRealHomeCodexHookState (opt-out sweep)', () => {
+describe('removeRealHomeCodexHookForOptOut', () => {
   it('keeps the managed lane when hooks.json cannot be read', async () => {
     mkdirSync(getRealHooksJsonPath())
 
-    expect(
-      await ensureRealHomeCodexHookState({ hooksEnabled: false, userDataPath: userDataDir })
-    ).toBe('unavailable')
+    expect(await removeRealHomeCodexHookForOptOut()).toBe('unavailable')
   })
 
   it('keeps the managed lane when hooks.json is malformed', async () => {
     writeFileSync(getRealHooksJsonPath(), '{ not json', 'utf-8')
 
-    expect(
-      await ensureRealHomeCodexHookState({ hooksEnabled: false, userDataPath: userDataDir })
-    ).toBe('unavailable')
+    expect(await removeRealHomeCodexHookForOptOut()).toBe('unavailable')
     expect(readFileSync(getRealHooksJsonPath(), 'utf-8')).toBe('{ not json')
   })
 
@@ -458,9 +455,7 @@ describe('ensureRealHomeCodexHookState (opt-out sweep)', () => {
       return { outcome: 'repaired', repaired: 1 }
     })
 
-    expect(
-      await ensureRealHomeCodexHookState({ hooksEnabled: false, userDataPath: userDataDir })
-    ).toBe('removed')
+    expect(await removeRealHomeCodexHookForOptOut()).toBe('removed')
     expect(operations).toEqual(['inspect-user-hook-trust', 'repair-user-hook-trust'])
     expect(readRealHooksJson().hooks?.Stop).toEqual([{ hooks: [before] }, { hooks: [after] }])
   })
@@ -496,9 +491,7 @@ describe('ensureRealHomeCodexHookState (opt-out sweep)', () => {
       }
     })
 
-    expect(
-      await ensureRealHomeCodexHookState({ hooksEnabled: false, userDataPath: userDataDir })
-    ).toBe('unavailable')
+    expect(await removeRealHomeCodexHookForOptOut()).toBe('unavailable')
 
     expect(operations).toEqual(['inspect-user-hook-trust'])
     expect(readFileSync(getRealHooksJsonPath(), 'utf-8')).toBe(concurrentSave)
@@ -519,10 +512,7 @@ describe('ensureRealHomeCodexHookState (opt-out sweep)', () => {
     await ensureRealHomeCodexHookState({ hooksEnabled: true, userDataPath: userDataDir })
     expect(readRealHooksJson().hooks?.Stop).toHaveLength(2)
 
-    const lane = await ensureRealHomeCodexHookState({
-      hooksEnabled: false,
-      userDataPath: userDataDir
-    })
+    const lane = await removeRealHomeCodexHookForOptOut()
 
     expect(lane).toBe('removed')
     const config = readRealHooksJson()
@@ -537,10 +527,7 @@ describe('ensureRealHomeCodexHookState (opt-out sweep)', () => {
   })
 
   it('no-ops the sweep when the real home has no hooks.json', async () => {
-    const lane = await ensureRealHomeCodexHookState({
-      hooksEnabled: false,
-      userDataPath: userDataDir
-    })
+    const lane = await removeRealHomeCodexHookForOptOut()
 
     expect(lane).toBe('removed')
     expect(existsSync(getRealHooksJsonPath())).toBe(false)
@@ -588,9 +575,7 @@ describe('ensureRealHomeCodexHookState (opt-out sweep)', () => {
     ]
     writeFileSync(getRealConfigTomlPath(), upsertHookTrustEntriesInContent('', entries), 'utf-8')
 
-    expect(
-      await ensureRealHomeCodexHookState({ hooksEnabled: false, userDataPath: userDataDir })
-    ).toBe('removed')
+    expect(await removeRealHomeCodexHookForOptOut()).toBe('removed')
 
     expect(readRealHooksJson().hooks?.Stop).toEqual([
       { hooks: [{ type: 'command', command: userCommand }] }

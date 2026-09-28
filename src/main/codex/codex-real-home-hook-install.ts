@@ -23,8 +23,12 @@ import {
   grantManagedCodexHookTrust,
   type CodexTrustGrantFallbackReason
 } from './codex-hook-trust-grant'
-import { removeCodexManagedHookTrustEntries } from './codex-managed-trust-reconciliation'
-import { getCodexManagedHookInstallMaterial } from './hook-service'
+import {
+  readCodexTrustGrantLedgerHomeForReconciliation,
+  removeCodexManagedHookTrustEntries
+} from './codex-managed-trust-reconciliation'
+import { removeSystemManagedHookTrustEntries } from './codex-hook-trust-cleanup'
+import { getCodexManagedHookInstallMaterial } from './codex-hook-definition'
 import { getSystemCodexHomePath } from './codex-home-paths'
 import type { CodexTrustEntry } from './config-toml-trust'
 import { restoreCodexTrustConfig } from './codex-trust-config-rollback'
@@ -41,7 +45,8 @@ import { runExclusivelyForSystemTrustConfig } from './codex-hook-trust-queue'
  * - 'unavailable': the grant lane could not trust the entry (old binary,
  *   unsupported RPC, verify failure). The entry is rolled back and the host
  *   stays on the managed-home lane.
- * - 'removed': hooks are opted out; Orca entries are swept from the real home.
+ * - 'removed': hooks are off here. Launch prep leaves the real home as it is;
+ *   only an explicit opt-out strips Orca's entry, since other Orcas share it.
  */
 export type RealHomeCodexHookLane = 'pending' | 'installed' | 'unavailable' | 'removed'
 
@@ -63,8 +68,8 @@ export function isRealHomeCodexHookLaneUsable(): boolean {
 }
 
 /**
- * Ensures the real-home hook state matches the settings: installs and trusts
- * the Orca status hook when enabled, sweeps it when opted out. Idempotent;
+ * Installs and trusts the Orca status hook in the real home when hooks are on,
+ * and writes nothing when they are off. Idempotent;
  * repeat calls are cheap — an unchanged hooks.json write no-ops and a valid
  * grant ledger skips the RPC session entirely.
  * Never throws: any failure logs and leaves the host on the managed lane.
@@ -93,21 +98,26 @@ async function runRealHomeCodexHookEnsure(args: {
   hooksEnabled: boolean
   userDataPath: string
 }): Promise<RealHomeCodexHookLane> {
+  if (!args.hooksEnabled) {
+    // Why: this runs for launch prep and startup, and the entry is shared by
+    // every Orca on this HOME; removing it is the explicit opt-out's job.
+    currentLane = 'removed'
+    installRetryAfterMs = 0
+    return currentLane
+  }
   try {
     // Why inside the try: resolving the real home can throw too, and this
     // function is the module's "never throws" boundary.
     currentLane = await runExclusivelyForSystemTrustConfig(() =>
-      args.hooksEnabled ? installRealHomeCodexHook(args.userDataPath) : sweepRealHomeCodexHook()
+      installRealHomeCodexHook(args.userDataPath)
     )
-    if (!args.hooksEnabled || currentLane === 'installed') {
+    if (currentLane === 'installed') {
       installRetryAfterMs = 0
     }
   } catch (error) {
     console.warn('[codex-real-home-hooks] ensure failed; staying on managed lane:', error)
     currentLane = 'unavailable'
-    if (args.hooksEnabled) {
-      installRetryAfterMs = Date.now() + CODEX_TRUST_GRANT_TRANSIENT_RETRY_INTERVAL_MS
-    }
+    installRetryAfterMs = Date.now() + CODEX_TRUST_GRANT_TRANSIENT_RETRY_INTERVAL_MS
   }
   return currentLane
 }
@@ -299,6 +309,28 @@ async function sweepRealHomeCodexHook(): Promise<RealHomeCodexHookLane> {
     }
   }
   return 'removed'
+}
+
+/**
+ * The user's explicit opt-out: strips Orca's entry and its trust from the real
+ * ~/.codex. Joins the system lane an opt-out caller already holds.
+ */
+export async function removeRealHomeCodexHookForOptOut(): Promise<RealHomeCodexHookLane> {
+  try {
+    currentLane = await runExclusivelyForSystemTrustConfig(async () => {
+      const lane = await sweepRealHomeCodexHook()
+      const systemHomePath = getSystemCodexHomePath()
+      if (readCodexTrustGrantLedgerHomeForReconciliation(systemHomePath) !== null) {
+        // Why: the ledger outlives a sweep that removed the entry but not its trust.
+        removeSystemManagedHookTrustEntries(systemHomePath, getRealHomeHooksJsonPath())
+      }
+      return lane
+    })
+  } catch (error) {
+    console.warn('[codex-real-home-hooks] opt-out cleanup failed; staying on managed lane:', error)
+    currentLane = 'unavailable'
+  }
+  return currentLane
 }
 
 export const _internals = {

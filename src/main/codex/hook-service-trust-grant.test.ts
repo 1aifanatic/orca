@@ -193,7 +193,7 @@ describe('CodexHookService app-server trust grant lane', () => {
     expect(readFileSync(join(managedHome, 'config.toml'))).toEqual(firstToml)
   })
 
-  it('retries ledger-proven real-home trust cleanup after the hook is already gone', async () => {
+  it('retries ledger-proven real-home trust cleanup on opt-out after the hook is already gone', async () => {
     prepareSystemHome()
     const systemHome = join(tmpHome, '.codex')
     const hooksPath = join(systemHome, 'hooks.json')
@@ -223,7 +223,7 @@ describe('CodexHookService app-server trust grant lane', () => {
     })
     installCodexLikeGrantRunner()
 
-    expect((await new CodexHookService().install()).state).toBe('installed')
+    await new CodexHookService().remove()
 
     expect(readHookTrustEntries(configPath).has(trustKey)).toBe(false)
     expect(readCodexTrustGrantLedgerHome(systemHome)).toBeNull()
@@ -231,7 +231,7 @@ describe('CodexHookService app-server trust grant lane', () => {
 
   // Why: ordinary Windows CI tokens cannot create file symlinks without Developer Mode.
   it.skipIf(process.platform === 'win32')(
-    'keeps a real-home symlink and rebases later user trust during flag-off cleanup',
+    'keeps a real-home symlink and rebases later user trust during an explicit opt-out',
     async () => {
       prepareSystemHome()
       const systemHome = join(tmpHome, '.codex')
@@ -273,7 +273,7 @@ describe('CodexHookService app-server trust grant lane', () => {
       })
       installCodexLikeGrantRunner()
 
-      expect((await new CodexHookService().install()).state).toBe('installed')
+      await new CodexHookService().remove()
 
       expect(lstatSync(hooksPath).isSymbolicLink()).toBe(true)
       expect(JSON.parse(readFileSync(targetPath, 'utf-8')).hooks.Stop).toEqual([
@@ -284,7 +284,7 @@ describe('CodexHookService app-server trust grant lane', () => {
   )
 
   it.skipIf(process.platform === 'win32')(
-    'preserves restrictive real-home hooks permissions during flag-off cleanup',
+    'preserves restrictive real-home hooks permissions during an explicit opt-out',
     async () => {
       prepareSystemHome()
       const hooksPath = join(tmpHome, '.codex', 'hooks.json')
@@ -296,7 +296,7 @@ describe('CodexHookService app-server trust grant lane', () => {
       chmodSync(hooksPath, 0o600)
       installCodexLikeGrantRunner()
 
-      expect((await new CodexHookService().install()).state).toBe('installed')
+      await new CodexHookService().remove()
 
       expect(statSync(hooksPath).mode & 0o777).toBe(0o600)
     }
