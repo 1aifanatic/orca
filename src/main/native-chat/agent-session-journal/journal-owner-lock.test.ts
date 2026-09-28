@@ -79,8 +79,8 @@ describe('the owner lock', () => {
   })
 
   // T-owner-copy (N-R1): a POSIX close of ANY descriptor on the lock's inode drops the whole
-  // process's lock. Nothing that walks or copies userData in the owning process may open it.
-  it('survives every walk of the state directory the owning process makes', async () => {
+  // process's lock. These two run in the owner's state directory; neither may drop it.
+  it('stays held through the runtime socket sweep and the profile-state recovery copy', async () => {
     expect(acquire()).not.toBeNull()
     await writeFile(join(root, 'o-999999-stale.sock'), '')
     await writeFile(join(root, 'orca-data.json'), '{}')
