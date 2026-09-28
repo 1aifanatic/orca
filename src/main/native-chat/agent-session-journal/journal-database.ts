@@ -58,9 +58,12 @@ function configureJournalPragmas(db: Database.Database, stored: number): void {
   db.pragma('journal_mode = WAL')
   db.pragma(`busy_timeout = ${JOURNAL_BUSY_TIMEOUT_MS}`)
   db.pragma('foreign_keys = ON')
-  // Why FULL rather than the house NORMAL: the write-ahead submission row must survive a power
-  // loss before the adapter dispatches anything, and NORMAL in WAL mode does not fsync at commit.
+  // Why FULL rather than the house NORMAL: NORMAL in WAL mode does not fsync at commit, and the
+  // write-ahead submission row must be on disk before the adapter dispatches anything. FULL alone
+  // does not survive power loss on macOS, whose fsync leaves the drive cache unflushed; checkpoint
+  // fullfsync makes each checkpoint use F_FULLFSYNC (a no-op elsewhere).
   db.pragma('synchronous = FULL')
+  db.pragma('checkpoint_fullfsync = ON')
   db.pragma(`journal_size_limit = ${JOURNAL_SIZE_LIMIT_BYTES}`)
 }
 
