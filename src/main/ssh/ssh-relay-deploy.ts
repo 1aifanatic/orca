@@ -735,14 +735,14 @@ async function probeRequiredNativeDeps(
           hostPlatform,
           nodePath,
           remoteDir,
-          `try { & ${powerShellLiteral(nodePath)} -e ${powerShellNativeArg(probeJs)}; if ($LASTEXITCODE -ne 0) { 'MISSING' } } catch { 'MISSING' }`
+          `try { & ${powerShellLiteral(nodePath)} --no-env-file --config=NUL --no-install -e ${powerShellNativeArg(probeJs)}; if ($LASTEXITCODE -ne 0) { 'MISSING' } } catch { 'MISSING' }`
         )
       : // Keep runtime startup errors separate from the probe verdict.
         commandWithNodePath(
           hostPlatform,
           nodePath,
           remoteDir,
-          `(${escapedNode} -e ${shellEscape(probeJs)} || echo MISSING)`
+          `(${escapedNode} --no-env-file --config=/dev/null --no-install -e ${shellEscape(probeJs)} || echo MISSING)`
         )
     const probe = await execHostCommand(conn, hostPlatform, command, {
       signal,
@@ -1057,7 +1057,7 @@ async function launchRelay(
       console.log('[ssh-relay] Existing relay socket found, attempting reconnect...')
       try {
         const channel = await conn.exec(
-          `cd ${escapedDir} && ${escapedNode} relay.js --connect --sock-path ${shellEscape(sockFile)} --credential-file ${shellEscape(credentialFile)}`,
+          `cd ${escapedDir} && ${escapedNode} --no-env-file --config=/dev/null --no-install relay.js --connect --sock-path ${shellEscape(sockFile)} --credential-file ${shellEscape(credentialFile)}`,
           { signal }
         )
         const transport = await waitForSentinel(channel, signal)
@@ -1105,7 +1105,7 @@ async function launchRelay(
   const endpointDirArg =
     sockFile === defaultSockFile ? '' : ` --endpoint-dir ${shellEscape(endpointDir)}`
   const ripgrepPathArg = ripgrepPath ? ` --ripgrep-path ${shellEscape(ripgrepPath)}` : ''
-  const launchCmd = `cd ${escapedDir} && nohup ${escapedNode} relay.js --detached --grace-time ${graceTime} --sock-path ${shellEscape(sockFile)}${endpointDirArg} --credential-file ${shellEscape(credentialFile)} --log-file ${shellEscape(logFile)}${ripgrepPathArg} > ${shellEscape(logFile)} 2>&1 </dev/null &`
+  const launchCmd = `cd ${escapedDir} && nohup ${escapedNode} --no-env-file --config=/dev/null --no-install relay.js --detached --grace-time ${graceTime} --sock-path ${shellEscape(sockFile)}${endpointDirArg} --credential-file ${shellEscape(credentialFile)} --log-file ${shellEscape(logFile)}${ripgrepPathArg} > ${shellEscape(logFile)} 2>&1 </dev/null &`
   const launchChannel = await conn.exec(launchCmd, { signal })
   launchChannel.on('data', () => {})
   launchChannel.on('error', () => {})
@@ -1126,7 +1126,7 @@ async function launchRelay(
         // Why: probe via node (guaranteed present) not python3/socat/perl; pass the socket path as argv[1] to dodge -e quoting issues.
         const result = await execCommand(
           conn,
-          `${escapedNode} -e 'var s=require("net").connect(process.argv[1]);s.on("connect",function(){s.destroy();process.stdout.write("READY")});s.on("error",function(){process.stdout.write("WAITING")})' ${shellEscape(sockFile)} 2>/dev/null || (test -S ${shellEscape(sockFile)} && echo READY || echo WAITING)`,
+          `${escapedNode} --no-env-file --config=/dev/null --no-install -e 'var s=require("net").connect(process.argv[1]);s.on("connect",function(){s.destroy();process.stdout.write("READY")});s.on("error",function(){process.stdout.write("WAITING")})' ${shellEscape(sockFile)} 2>/dev/null || (test -S ${shellEscape(sockFile)} && echo READY || echo WAITING)`,
           { signal }
         )
         if (result.trim() === 'READY') {
@@ -1155,7 +1155,7 @@ async function launchRelay(
 
   // Why: backgrounded relay's stdout goes to a log file, not the exec channel; --connect bridges this channel to its Unix socket.
   const channel = await conn.exec(
-    `cd ${escapedDir} && ${escapedNode} relay.js --connect --sock-path ${shellEscape(sockFile)} --credential-file ${shellEscape(credentialFile)}`,
+    `cd ${escapedDir} && ${escapedNode} --no-env-file --config=/dev/null --no-install relay.js --connect --sock-path ${shellEscape(sockFile)} --credential-file ${shellEscape(credentialFile)}`,
     { signal }
   )
   return {
@@ -1464,7 +1464,7 @@ function windowsRelayConnectCommand(
     hostPlatform,
     nodePath,
     remoteDir,
-    `& ${powerShellLiteral(nodePath)} relay.js --connect --sock-path ${powerShellLiteral(sockPath)} --credential-file ${powerShellLiteral(credentialFile)}`
+    `& ${powerShellLiteral(nodePath)} --no-env-file --config=NUL --no-install relay.js --connect --sock-path ${powerShellLiteral(sockPath)} --credential-file ${powerShellLiteral(credentialFile)}`
   )
 }
 
@@ -1485,6 +1485,9 @@ function windowsRelayLaunchCommand(
   const quoted = (value: string): string => `"${value.replace(/"/g, '\\"')}"`
   const relayCommandLine = [
     quoted(nodePath),
+    '--no-env-file',
+    '--config=NUL',
+    '--no-install',
     quoted(relayScript),
     '--detached',
     '--grace-time',
@@ -1578,7 +1581,7 @@ function windowsRelayProbeCommand(
     hostPlatform,
     nodePath,
     remoteDir,
-    `& ${powerShellLiteral(nodePath)} -e ${powerShellNativeArg(js)} ${powerShellNativeArg(sockPath)}`
+    `& ${powerShellLiteral(nodePath)} --no-env-file --config=NUL --no-install -e ${powerShellNativeArg(js)} ${powerShellNativeArg(sockPath)}`
   )
 }
 
@@ -1614,6 +1617,9 @@ function windowsRelayWaitCommand(
     remoteDir,
     [
       `& ${powerShellLiteral(nodePath)}`,
+      '--no-env-file',
+      '--config=NUL',
+      '--no-install',
       '-e',
       powerShellNativeArg(js),
       powerShellNativeArg(sockPath),

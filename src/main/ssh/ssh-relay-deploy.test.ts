@@ -184,6 +184,11 @@ describe('deployAndLaunchRelay', () => {
 
     await deployAndLaunchRelay(conn)
 
+    const runtimeCommands = mockExecCommand.mock.calls
+      .map((call) => call[1])
+      .filter((command) => command.includes('--no-env-file'))
+    expect(runtimeCommands.length).toBeGreaterThan(1)
+    expect(runtimeCommands.every((command) => command.includes('--no-install'))).toBe(true)
     expect(mockExecCommand).toHaveBeenCalledWith(
       conn,
       "printf '\\n%s ' '__ORCA_REMOTE_PLATFORM__'; uname -sm",

@@ -562,8 +562,8 @@ jobs:
 
       - name: Test real shell contracts
         run: |
+          node config/scripts/run-bun-profile-tests.mjs --maxWorkers=1 src/main/daemon/repro-13767-shell-ready-marker-lost-to-exec.test.ts
           pnpm exec vitest run --config config/vitest.config.ts --maxWorkers=1 \
-            src/main/daemon/repro-13767-shell-ready-marker-lost-to-exec.test.ts \
             src/main/daemon/shell-ready.test.ts \
             src/main/daemon/node-pty-fd-leak.test.ts \
             src/main/providers/local-pty-shell-ready-zsh-launch-environment.test.ts \

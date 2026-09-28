@@ -873,6 +873,7 @@ export class PtyHandler {
     const startup = managed.startupCommand
     if (startup?.waitForShellReady) {
       startup.promptProbe = createShellPromptReadinessProbe({
+        ptyPid: managed.pty.pid,
         slavePath: readPtySlavePath(managed.pty),
         shellPath: managed.shellPath,
         shellCwd: managed.shellCwd,
