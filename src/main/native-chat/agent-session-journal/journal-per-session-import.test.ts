@@ -142,33 +142,26 @@ async function removeWorks(): Promise<void> {
 /** The file as it is, except that the copy's first read of rows loses the first one. */
 function losingFirstCopiedRow(path: string): Database.Database {
   const source = new Database(path, { readonly: true, fileMustExist: true })
+  const prepare = source.prepare.bind(source)
   let lost = false
-  return new Proxy(source, {
-    get(target, key) {
-      if (key === 'prepare') {
-        return (sql: string) => {
-          const statement = target.prepare(sql)
-          if (lost || !sql.includes('seq > ?')) {
-            return statement
-          }
-          return new Proxy(statement, {
-            get(inner, name) {
-              if (name === 'all') {
-                return (...args: Parameters<typeof inner.all>) => {
-                  lost = true
-                  return inner.all(...args).slice(1)
-                }
-              }
-              const value = Reflect.get(inner, name)
-              return typeof value === 'function' ? value.bind(inner) : value
-            }
-          })
-        }
-      }
-      const value = Reflect.get(target, key)
-      return typeof value === 'function' ? value.bind(target) : value
+  source.prepare = (sql: string) => {
+    const statement = prepare(sql)
+    if (lost || !sql.includes('seq > ?')) {
+      return statement
     }
-  })
+    const all = statement.all.bind(statement)
+    // Why: prepare caches statements, so this one is handed out again after it has lost its row.
+    statement.all = (...args: Parameters<typeof all>) => {
+      const rows = all(...args)
+      if (lost) {
+        return rows
+      }
+      lost = true
+      return rows.slice(1)
+    }
+    return statement
+  }
+  return source
 }
 
 function openChat() {
@@ -499,7 +492,7 @@ describe('importing a per-chat journal', () => {
         db.close()
       }
     ]
-  ])('opens a chat whose per-chat file is %s as having no history', async (_shape, create) => {
+  ])('opens a chat whose per-chat file is %s as having no history', async (_fileState, create) => {
     await mkdir(legacyDir(), { recursive: true })
     await create(legacyJournalDatabaseFile(legacyDir()))
 
