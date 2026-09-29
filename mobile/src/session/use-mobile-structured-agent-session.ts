@@ -181,6 +181,7 @@ export function useMobileStructuredAgentSession(args: {
   const queued = useMobileStructuredQueuedMessageControls({
     queueCapable,
     queuedMessages,
+    submissions: state.submissions,
     pendingPrompt: approvalPrompt !== null || questionPrompt !== null,
     mutate,
     appendComposerText,

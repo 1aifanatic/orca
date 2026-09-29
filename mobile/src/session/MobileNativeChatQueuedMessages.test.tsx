@@ -36,7 +36,7 @@ describe('MobileNativeChatQueuedMessages', () => {
               text: 'fix me',
               state: 'returned',
               paused: false,
-              label: "Couldn't send — Send to retry"
+              label: "Couldn't send — tap Send to retry"
             }
           ],
           onSend: vi.fn(async () => true),

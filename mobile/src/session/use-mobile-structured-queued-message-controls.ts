@@ -5,6 +5,7 @@
 // list is the only truth a card action ever needs.
 
 import { useCallback, useMemo } from 'react'
+import type { AgentJournalSubmission } from '../../../src/shared/agent-session-journal-types'
 import type {
   AgentSessionQueuedMessageDeleteResult,
   AgentSessionSendResult
@@ -33,6 +34,7 @@ export type MobileStructuredQueuedMessageControls = {
 export function useMobileStructuredQueuedMessageControls(args: {
   queueCapable: boolean
   queuedMessages: MobileQueuedMessageFeed
+  submissions: readonly AgentJournalSubmission[]
   pendingPrompt: boolean
   mutate: MobileStructuredAgentMutate
   /** The active pane's live composer, Edit's copy target; absent = Edit refuses. False when
@@ -49,11 +51,13 @@ export function useMobileStructuredQueuedMessageControls(args: {
     onSendError,
     pendingPrompt,
     queueCapable,
-    queuedMessages
+    queuedMessages,
+    submissions
   } = args
   const cards = useMemo(
-    () => (queueCapable ? mobileQueuedMessageCards(queuedMessages, { pendingPrompt }) : []),
-    [pendingPrompt, queueCapable, queuedMessages]
+    () =>
+      queueCapable ? mobileQueuedMessageCards(queuedMessages, submissions, { pendingPrompt }) : [],
+    [pendingPrompt, queueCapable, queuedMessages, submissions]
   )
   const resolved = useCallback(
     (accepted: boolean): boolean => {

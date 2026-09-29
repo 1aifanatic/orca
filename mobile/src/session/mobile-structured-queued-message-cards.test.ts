@@ -30,12 +30,12 @@ function draft(overrides: Partial<AgentSessionQueuedMessage> & { messageId: stri
 
 describe('mobileQueuedMessageCards', () => {
   it('renders nothing without a published list', () => {
-    expect(mobileQueuedMessageCards(null, { pendingPrompt: false })).toEqual([])
-    expect(mobileQueuedMessageCards([], { pendingPrompt: false })).toEqual([])
+    expect(mobileQueuedMessageCards(null, [], { pendingPrompt: false })).toEqual([])
+    expect(mobileQueuedMessageCards([], [], { pendingPrompt: false })).toEqual([])
   })
 
   it('labels a plain waiting draft with the queue promise', () => {
-    const [card] = mobileQueuedMessageCards([draft({ messageId: 'a' })], {
+    const [card] = mobileQueuedMessageCards([draft({ messageId: 'a' })], [], {
       pendingPrompt: false
     })
     expect(card).toEqual({
@@ -48,7 +48,7 @@ describe('mobileQueuedMessageCards', () => {
   })
 
   it('labels a waiting draft behind a pending prompt', () => {
-    const [card] = mobileQueuedMessageCards([draft({ messageId: 'a' })], {
+    const [card] = mobileQueuedMessageCards([draft({ messageId: 'a' })], [], {
       pendingPrompt: true
     })
     expect(card?.label).toBe('Waiting for your answer')
@@ -57,6 +57,7 @@ describe('mobileQueuedMessageCards', () => {
   it('labels a stopped pause — a Stop, /clear carry or restart hold — with the resume promise', () => {
     const [card] = mobileQueuedMessageCards(
       [draft({ messageId: 'a', paused: true, pausedReason: QUEUED_MESSAGE_PAUSED_STOPPED })],
+      [],
       { pendingPrompt: false }
     )
     expect(card?.label).toBe('Paused — sends after your next message')
@@ -64,7 +65,7 @@ describe('mobileQueuedMessageCards', () => {
   })
 
   it('labels a reasonless pause as a plain pause, promising no release rule', () => {
-    const [card] = mobileQueuedMessageCards([draft({ messageId: 'a', paused: true })], {
+    const [card] = mobileQueuedMessageCards([draft({ messageId: 'a', paused: true })], [], {
       pendingPrompt: false
     })
     expect(card?.label).toBe('Paused')
@@ -76,6 +77,7 @@ describe('mobileQueuedMessageCards', () => {
     })
     const cards = mobileQueuedMessageCards(
       [draft({ messageId: 'a', ...returnedAs(refused) }), draft({ messageId: 'b', position: 2 })],
+      [],
       { pendingPrompt: false }
     )
     expect(cards[0]?.label).toContain('Steering is unavailable')
@@ -83,9 +85,24 @@ describe('mobileQueuedMessageCards', () => {
     expect(cards[1]?.label).toBe('Waiting — a message ahead needs attention')
   })
 
+  it('hides a waiting card whose submission arrived, never a returned one', () => {
+    const cards = mobileQueuedMessageCards(
+      [
+        draft({ messageId: 'returned', ...returnedAs(agentSessionFailureFact('hostRestarted')) }),
+        draft({ messageId: 'drained', position: 2 }),
+        draft({ messageId: 'waiting', position: 3 })
+      ],
+      [{ clientMessageId: 'returned' }, { clientMessageId: 'drained' }],
+      { pendingPrompt: false }
+    )
+    expect(cards.map((card) => card.messageId)).toEqual(['returned', 'waiting'])
+    expect(cards[1]?.label).toBe('Waiting — a message ahead needs attention')
+  })
+
   it('maps a Stop-withdrawn returned card to its own English copy', () => {
     const [card] = mobileQueuedMessageCards(
       [draft({ messageId: 'a', ...returnedAs(agentSessionFailureFact('cancelled')) })],
+      [],
       { pendingPrompt: false }
     )
     expect(card?.label).toBe('Stopped before it was sent')
@@ -101,6 +118,7 @@ describe('mobileQueuedMessageCards', () => {
           returnedRejection: { kind: 'cancelled' }
         })
       ],
+      [],
       { pendingPrompt: false }
     )
     expect(card?.label).toBe('Stopped before it was sent')
@@ -109,6 +127,7 @@ describe('mobileQueuedMessageCards', () => {
   it('words a host-restart returned card from its fact, as a rejected send', () => {
     const [card] = mobileQueuedMessageCards(
       [draft({ messageId: 'a', ...returnedAs(agentSessionFailureFact('hostRestarted')) })],
+      [],
       { pendingPrompt: false }
     )
     expect(card?.label).toBe('Orca restarted before this message was sent.')
@@ -118,9 +137,13 @@ describe('mobileQueuedMessageCards', () => {
     const refused = agentSessionFailureFact('providerRejected', {
       detail: { text: 'stack trace for the log', audience: 'log' }
     })
-    const [card] = mobileQueuedMessageCards([draft({ messageId: 'a', ...returnedAs(refused) })], {
-      pendingPrompt: false
-    })
+    const [card] = mobileQueuedMessageCards(
+      [draft({ messageId: 'a', ...returnedAs(refused) })],
+      [],
+      {
+        pendingPrompt: false
+      }
+    )
     expect(card?.label).not.toContain('stack trace')
   })
 
@@ -134,6 +157,7 @@ describe('mobileQueuedMessageCards', () => {
           returnedRejection: { kind: 'laterKind' }
         })
       ],
+      [],
       { pendingPrompt: false }
     )
     expect(card?.label).toBe('Words for a kind a newer host added.')
@@ -147,9 +171,10 @@ describe('mobileQueuedMessageCards', () => {
         // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: simulates a marker from a newer host than this build's union.
         draft({ messageId: 'b', position: 2, paused: true, pausedReason: 'later_marker' as never })
       ],
+      [],
       { pendingPrompt: false }
     )
-    expect(cards.map((card) => card.label)).toEqual(["Couldn't send — Send to retry", 'Paused'])
+    expect(cards.map((card) => card.label)).toEqual(["Couldn't send — tap Send to retry", 'Paused'])
   })
 
   it('never shows an internal rejection reason verbatim, even from a host that wrote no fact', () => {
@@ -161,6 +186,7 @@ describe('mobileQueuedMessageCards', () => {
           returnedReason: DISPATCH_REJECTED_HOST_RESTARTED
         })
       ],
+      [],
       { pendingPrompt: false }
     )
     expect(card?.label).toBe('Your message was not sent.')

@@ -3,6 +3,7 @@
 // draft's own state plus the live facts the client already holds.
 
 import { readAgentSessionFailureFact } from '../../../src/shared/agent-session-failure'
+import type { AgentJournalSubmission } from '../../../src/shared/agent-session-journal-types'
 import { agentSessionWriteNoticeEnglish } from '../../../src/shared/agent-session-refusal-notice'
 import { dispatchWasWithdrawn } from '../../../src/shared/structured-agent-session-dispatch-rejection'
 import { structuredAgentSessionAttemptFailureParts } from '../../../src/shared/structured-agent-session-send-disposition'
@@ -47,7 +48,7 @@ function returnedLabel(
 
 function pausedLabel(reason: string | undefined): string {
   if (reason === QUEUED_MESSAGE_PAUSED_SEND_FAILED) {
-    return "Couldn't send — Send to retry"
+    return "Couldn't send — tap Send to retry"
   }
   if (reason === QUEUED_MESSAGE_PAUSED_STOPPED) {
     // A Stop, /clear carry, or restart hold: the user's next sent message lifts it.
@@ -57,16 +58,25 @@ function pausedLabel(reason: string | undefined): string {
   return 'Paused'
 }
 
+/** Cards in published order. A waiting card whose submission already arrived is hidden, as the
+ *  desktop hides it: on a multi-page catch-up the shrunk list rides only the final page, so the
+ *  bubble and the card would otherwise briefly show together. Returned cards always show: their
+ *  submission exists precisely because it was refused. */
 export function mobileQueuedMessageCards(
   queuedMessages: readonly AgentSessionQueuedMessage[] | null,
+  submissions: readonly Pick<AgentJournalSubmission, 'clientMessageId'>[],
   facts: { pendingPrompt: boolean }
 ): MobileQueuedMessageCard[] {
   if (!queuedMessages || queuedMessages.length === 0) {
     return []
   }
+  const consumed = new Set(submissions.map((submission) => submission.clientMessageId))
   let behindReturned = false
   const cards: MobileQueuedMessageCard[] = []
   for (const draft of queuedMessages) {
+    if (draft.state !== 'returned' && consumed.has(draft.messageId)) {
+      continue
+    }
     const paused = draft.paused === true
     const label =
       draft.state === 'returned'

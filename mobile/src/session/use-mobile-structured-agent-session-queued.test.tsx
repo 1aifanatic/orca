@@ -14,6 +14,7 @@ import {
   type AgentSessionQueuedMessage,
   type AgentSessionSubscribeEvent
 } from '../../../src/shared/agent-session-wire'
+import type { AgentJournalSubmission } from '../../../src/shared/agent-session-journal-types'
 import { structuredAgentSessionPayloadFingerprint } from '../../../src/shared/structured-agent-session-mutation'
 import type { RpcClient } from '../transport/rpc-client'
 import { markRpcDeliveryUnknown } from '../transport/rpc-delivery-ambiguity'
@@ -78,6 +79,7 @@ function queuedDraft(
 function snapshotEvent(input?: {
   queuedMessages?: AgentSessionQueuedMessage[] | null
   runningTurn?: boolean
+  submissions?: AgentJournalSubmission[]
 }): AgentSessionSubscribeEvent {
   return {
     type: 'snapshot',
@@ -100,7 +102,7 @@ function snapshotEvent(input?: {
           ]
         : [],
       removedItemIds: [],
-      submissions: [],
+      submissions: input?.submissions ?? [],
       window: { oldest: null, newest: null, nextCursor: { epoch: 'epoch-1', sequence: 0 } },
       liveCursor: { epoch: 'epoch-1', sequence: 0 },
       hasOlder: false,
@@ -543,6 +545,31 @@ describe('mobile structured queued messages', () => {
       expect(hook!.queued.cards).toHaveLength(1)
       act(() => listener?.(batchEvent(null)))
       expect(hook!.queued.cards).toEqual([])
+    })
+
+    it('hides a waiting card whose submission already arrived, as the desktop does', async () => {
+      await mountSession(
+        CAPABLE,
+        snapshotEvent({
+          queuedMessages: [
+            queuedDraft({ messageId: 'drained' }),
+            queuedDraft({ messageId: 'still-waiting' })
+          ],
+          submissions: [
+            {
+              clientMessageId: 'drained',
+              fence: 3,
+              payloadFingerprint: 'fp',
+              dispatchState: 'pending',
+              providerItemId: null,
+              reason: null,
+              submittedAt: 10,
+              resolvedAt: null
+            }
+          ]
+        })
+      )
+      expect(hook!.queued.cards.map((card) => card.messageId)).toEqual(['still-waiting'])
     })
 
     it('shows no cards from an incapable host even if a list arrives', async () => {
