@@ -198,24 +198,26 @@ describe('writing a launch prompt into a terminal agent', () => {
     expect(stub.waitForTerminal.mock.calls.length).toBeLessThanOrEqual(60)
   })
 
-  it.each(['zcode', 'dsh', 'grok'] as const)(
-    'waits for %s’s composer marker, its only launch readiness',
-    async (agent) => {
-      const stub = runtimeStub({})
+  it.each(['zcode', 'dsh', 'grok'] as const)('waits for %s’s composer readiness', async (agent) => {
+    const stub = runtimeStub({})
 
-      const delivered = await deliverTerminalAgentLaunchPrompt({
-        runtime: stub.runtime,
-        handle: 'term_1',
-        agent,
-        freshLaunch: true,
-        text: 'do the thing'
-      })
+    const delivered = await deliverTerminalAgentLaunchPrompt({
+      runtime: stub.runtime,
+      handle: 'term_1',
+      agent,
+      freshLaunch: true,
+      text: 'do the thing'
+    })
 
-      expect(delivered).toBe(true)
-      expect(stub.waitForFreshWorkerComposer).toHaveBeenCalledWith('term_1', agent, 60_000)
-      expect(stub.waitForTerminal).not.toHaveBeenCalled()
-    }
-  )
+    expect(delivered).toBe(true)
+    expect(stub.waitForFreshWorkerComposer).toHaveBeenCalledWith(
+      'term_1',
+      agent,
+      60_000,
+      expect.anything()
+    )
+    expect(stub.waitForTerminal).not.toHaveBeenCalled()
+  })
 
   it('keeps the text when an agent shows no readiness evidence at all', async () => {
     // Nothing is pasted blind.

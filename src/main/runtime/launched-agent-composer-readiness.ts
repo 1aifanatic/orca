@@ -21,6 +21,13 @@ import type { OrcaRuntimeService } from './orca-runtime'
  */
 const COMPOSER_MARKER_READINESS_AGENTS: ReadonlySet<TuiAgent> = new Set(['zcode', 'dsh', 'grok'])
 
+/**
+ * Composer-marker agents that can also render inline, where the marker's alternate-screen anchor
+ * never arrives (`grok-inline-startup-pty-trace.ts`). The quiet window after bracketed paste stays
+ * armed for them as the floor, as the desktop's own paste and worktree.create's draft paste use it.
+ */
+const INLINE_RENDERING_COMPOSER_AGENTS: ReadonlySet<TuiAgent> = new Set(['grok'])
+
 export type LaunchedAgentReadinessRuntime = Pick<
   OrcaRuntimeService,
   'waitForTerminal' | 'waitForFreshWorkerComposer'
@@ -37,7 +44,9 @@ export async function waitForLaunchedAgentComposer(
   timeoutMs: number
 ): Promise<RuntimeTerminalWait | undefined> {
   if (COMPOSER_MARKER_READINESS_AGENTS.has(agent)) {
-    await runtime.waitForFreshWorkerComposer(handle, agent, timeoutMs)
+    await runtime.waitForFreshWorkerComposer(handle, agent, timeoutMs, {
+      requireComposerMarker: !INLINE_RENDERING_COMPOSER_AGENTS.has(agent)
+    })
     return undefined
   }
   // An agent that shows no readiness evidence comes back unsatisfied, so the caller keeps its text.

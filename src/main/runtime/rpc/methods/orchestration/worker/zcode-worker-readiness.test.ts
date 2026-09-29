@@ -18,7 +18,8 @@ describe('composer-marker first dispatch readiness', () => {
         expect(h.runtime.waitForFreshWorkerComposer).toHaveBeenCalledWith(
           'term_worker',
           agent,
-          60_000
+          60_000,
+          expect.anything()
         )
       )
       expect(h.runtime.waitForTerminal).not.toHaveBeenCalled()

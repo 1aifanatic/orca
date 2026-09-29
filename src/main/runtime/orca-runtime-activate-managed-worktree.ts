@@ -208,11 +208,12 @@ export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListM
     pasteWorktreeStartupDraftWhenReady(this.getWorktreeStartupReadinessHost(), handle, draft)
   }
 
-  /** Only for a newly launched worker, before its first dispatch input. */
+  /** Only for a newly launched agent, before its first input. */
   async waitForFreshWorkerComposer(
     handle: string,
     agent: TuiAgent,
-    timeoutMs: number
+    timeoutMs: number,
+    { requireComposerMarker = true }: { requireComposerMarker?: boolean } = {}
   ): Promise<void> {
     const initialPtyId =
       this.getLivePtyForHandle(handle)?.pty.ptyId ?? this.getLiveLeafForHandle(handle).leaf.ptyId
@@ -220,7 +221,7 @@ export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListM
       { ...this.getWorktreeStartupReadinessHost(), getPtyId: () => initialPtyId },
       handle,
       agent,
-      { timeoutMs, requireComposerMarker: true }
+      { timeoutMs, requireComposerMarker }
     )
     if (!ptyId) {
       throw new Error('timeout')
