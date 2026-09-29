@@ -1,24 +1,22 @@
 // Why this exists: Orca used to build a spare checkout under `<workspace root>/.orca-preparing`
 // while the create composer was open. That feature is gone, so every spare an older build left on
-// disk — registered with Git and locked, or an orphaned directory — has to be reclaimed once.
+// disk — registered with Git (locked or not), or an orphaned directory — has to be reclaimed once.
+//
+// Why read Git's files instead of listing worktrees: the on-disk records work on every Git version
+// (the listing's lock reason needs 2.31+), and once the leftovers are gone a launch costs a few
+// directory reads and spawns no Git at all.
 
-import { lstat, readdir, readFile, rmdir } from 'node:fs/promises'
-import { isAbsolute, join, resolve } from 'node:path'
+import { lstat, mkdtemp, readdir, readFile, rm, rmdir } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { dirname, isAbsolute, join, resolve } from 'node:path'
 import {
-  isWorktreeCreatePreparation,
   parseWorktreePreparationOwnerPid,
   parseWorktreePreparationPathOwnerPid,
   WORKTREE_CREATE_PREPARATION_DIRECTORY
 } from '../shared/worktree/create-preparation'
 import { isFolderRepo } from '../shared/repo-kind'
-import type { Repo } from '../shared/repo-types'
 import { windowsLongPathGitArgs } from '../shared/windows-long-path-git-args'
-import type { GitWorktreeExecOptions } from './git/worktree-operation-options'
-import {
-  gitExecOptions,
-  WORKTREE_REMOVAL_REGISTRATION_TIMEOUT_MS
-} from './git/worktree-operation-options'
-import { listWorktreeGraph } from './git/worktree-listing'
+import { WORKTREE_REMOVAL_REGISTRATION_TIMEOUT_MS } from './git/worktree-operation-options'
 import { gitExecFileAsync } from './git/runner'
 import { runWithGitReadCacheInvalidation } from './git/status'
 import { bumpWorktreeScanGeneration } from './git/worktree-scan-cache'
@@ -27,22 +25,33 @@ import { whenLocalWorktreeCreatesSettle } from './git/local-worktree-create-acti
 import { removeHostTree } from './host-tree-removal'
 import { computeWorkspaceRoot, getWorktreePathSettings } from './ipc/worktree-logic'
 import type { Store } from './persistence'
-import { getLocalProjectWorktreeGitOptions } from './project-runtime-git-options'
+import {
+  getLocalProjectWorktreeGitOptions,
+  type LocalProjectWorktreeGitOptions
+} from './project-runtime-git-options'
 import { parseWslPath } from './wsl'
 
 // `<pid>-<uuid v4>`, as the retired pool named them.
 const PREPARATION_ENTRY_PATTERN =
   /^\d+-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
-export type RetiredPreparationSweepTarget = {
-  repo: Repo
-  workspaceRoot: string
-  gitOptions: GitWorktreeExecOptions
+export type RetiredPreparationSweepRepo = LocalProjectWorktreeGitOptions & { path: string }
+
+export type RetiredPreparationSweepTargets = {
+  /** Folders whose `.orca-preparing` may hold spares of any repo, including ones Orca dropped. */
+  workspaceRoots: readonly string[]
+  /** Local repos whose registrations may carry a spare's lock outside those folders. */
+  repos: readonly RetiredPreparationSweepRepo[]
 }
+
+/** Where a repo's `git worktree` commands run: through its own routing when Orca knows it. */
+type WorktreeGitHost = { cwd: string; args: string[]; wslDistro?: string; repoPath?: string }
 
 export type RetiredPreparationSweepDeps = {
   isProcessAlive?: (pid: number) => boolean
 }
+
+type SweepResult = { reclaimed: number; removedDirectories: number }
 
 function isProcessAliveDefault(pid: number): boolean {
   try {
@@ -54,190 +63,300 @@ function isProcessAliveDefault(pid: number): boolean {
   }
 }
 
-function reclaimOptions(repoPath: string, options: GitWorktreeExecOptions) {
-  return {
-    ...gitExecOptions(repoPath, { ...options, admissionTier: 'background' as const }),
-    timeout: WORKTREE_REMOVAL_REGISTRATION_TIMEOUT_MS
+/** Null for a path that does not exist; any other failure throws, so the caller keeps the entry. */
+async function nullWhenMissing<T>(read: Promise<T>): Promise<T | null> {
+  try {
+    return await read
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+      return null
+    }
+    throw error
   }
 }
 
-async function runPreparationGit(
-  repoPath: string,
-  worktreePath: string,
+async function readTrimmedFile(path: string): Promise<string | undefined> {
+  try {
+    return (await readFile(path, 'utf-8')).trim()
+  } catch {
+    return undefined
+  }
+}
+
+/** The admin directory a checkout's `.git` file names; null once Git no longer knows the checkout. */
+async function findAdminDir(checkoutPath: string): Promise<string | null> {
+  const pointer = await nullWhenMissing(readFile(join(checkoutPath, '.git'), 'utf-8'))
+  const gitDir = pointer && /^gitdir:\s*(.+)$/m.exec(pointer)?.[1]?.trim()
+  if (!gitDir) {
+    return null
+  }
+  const adminDir = resolve(checkoutPath, gitDir)
+  return (await nullWhenMissing(lstat(adminDir))) ? adminDir : null
+}
+
+async function findCommonDirOfGitDir(gitDir: string): Promise<string> {
+  const commonDir = await readTrimmedFile(join(gitDir, 'commondir'))
+  return commonDir ? resolve(gitDir, commonDir) : gitDir
+}
+
+async function findRepoCommonDir(repoPath: string): Promise<string | null> {
+  const dotGit = join(repoPath, '.git')
+  const dotGitStat = await lstat(dotGit).catch(() => null)
+  if (dotGitStat?.isDirectory()) {
+    return dotGit
+  }
+  // A `.git` file makes the repo itself a linked checkout; no `.git` at all, a bare repo.
+  const gitDir = dotGitStat ? await findAdminDir(repoPath) : repoPath
+  return gitDir ? findCommonDirOfGitDir(gitDir) : null
+}
+
+function runBackgroundGit(
+  cwd: string,
   args: string[],
-  options: GitWorktreeExecOptions
+  options: { env?: NodeJS.ProcessEnv; wslDistro?: string } = {}
+): Promise<{ stdout: string }> {
+  return gitExecFileAsync([...windowsLongPathGitArgs(cwd), ...args], {
+    cwd,
+    admissionTier: 'background',
+    timeout: WORKTREE_REMOVAL_REGISTRATION_TIMEOUT_MS,
+    ...options
+  })
+}
+
+async function runWorktreeCommand(
+  host: WorktreeGitHost,
+  worktreePath: string,
+  args: string[]
 ): Promise<void> {
   try {
     await runWithGitReadCacheInvalidation(() =>
-      gitExecFileAsync(
-        [...windowsLongPathGitArgs(repoPath), 'worktree', ...args, worktreePath],
-        reclaimOptions(repoPath, options)
-      )
+      runBackgroundGit(host.cwd, [...host.args, 'worktree', ...args, worktreePath], {
+        wslDistro: host.wslDistro
+      })
     )
   } finally {
     invalidateWslLinkedWorktreeGitRouting(worktreePath)
-    bumpWorktreeScanGeneration(repoPath)
+    if (host.repoPath) {
+      bumpWorktreeScanGeneration(host.repoPath)
+    }
   }
 }
 
-/** Reclaims one repo's locked spares whose owning Orca process is gone; returns how many. */
-async function sweepRegisteredPreparations(
-  target: RetiredPreparationSweepTarget,
-  isProcessAlive: (pid: number) => boolean
-): Promise<number> {
-  const { repo, gitOptions } = target
-  let reclaimed = 0
-  const worktrees = await listWorktreeGraph(repo.path, {
-    ...gitOptions,
-    admissionTier: 'background',
-    includeCreatePreparations: true
-  })
-  for (const worktree of worktrees.filter(isWorktreeCreatePreparation)) {
-    const lockOwnerPid = parseWorktreePreparationOwnerPid(worktree.lockReason)
-    // A live owner is an older Orca still running; it owns its spare until it exits.
-    if (!lockOwnerPid || isProcessAlive(lockOwnerPid)) {
+/** True when every file in the checkout is HEAD's own: a spare whose checkout never finished. */
+async function holdsOnlyHeadContent(checkoutPath: string): Promise<boolean> {
+  // A scratch index, so the check never writes the checkout's own index.
+  const scratch = await mkdtemp(join(tmpdir(), 'orca-retired-spare-'))
+  const env = { ...process.env, GIT_INDEX_FILE: join(scratch, 'index') }
+  try {
+    await runBackgroundGit(checkoutPath, ['read-tree', 'HEAD'], { env })
+    const { stdout } = await runBackgroundGit(
+      checkoutPath,
+      ['status', '--porcelain', '--ignore-submodules=none'],
+      { env }
+    )
+    // Files the checkout never wrote read as deleted; anything else is content someone added.
+    return stdout.split('\n').every((line) => line === '' || line.startsWith(' D '))
+  } finally {
+    await rm(scratch, { recursive: true, force: true })
+  }
+}
+
+/** Reclaims one dead owner's spare directory; returns what it reclaimed, if anything. */
+async function reclaimSpareDirectory(
+  sparePath: string,
+  ownerPid: number,
+  hostByCommonDir: ReadonlyMap<string, WorktreeGitHost>
+): Promise<keyof SweepResult | null> {
+  // Never follow a symlink out of the folder.
+  if (!(await lstat(sparePath)).isDirectory()) {
+    return null
+  }
+  const adminDir = await findAdminDir(sparePath)
+  if (!adminDir) {
+    await removeHostTree(sparePath)
+    return 'removedDirectories'
+  }
+  const commonDir = await findCommonDirOfGitDir(adminDir)
+  // A repo no longer in Orca is reached through its Git directory.
+  const host = hostByCommonDir.get(commonDir) ?? {
+    cwd: commonDir,
+    args: [`--git-dir=${commonDir}`]
+  }
+  const lockReason = await readTrimmedFile(join(adminDir, 'locked'))
+  if (lockReason !== undefined) {
+    // Any other lock is the user's, or another process's spare.
+    if (parseWorktreePreparationOwnerPid(lockReason) !== ownerPid) {
+      return null
+    }
+    // Git 2.25 removes a locked worktree with the doubled --force.
+    await runWorktreeCommand(host, sparePath, ['remove', '--force', '--force'])
+    return 'reclaimed'
+  }
+  // Older builds locked a spare only after its checkout, and an unlocked one shows in the sidebar,
+  // so it may hold user work: Git's own clean check decides, except for a checkout that never
+  // finished (no index yet), which Git always calls dirty.
+  const hasIndex = (await lstat(join(adminDir, 'index')).catch(() => null)) !== null
+  const neverCheckedOut = !hasIndex && (await holdsOnlyHeadContent(sparePath))
+  await runWorktreeCommand(host, sparePath, neverCheckedOut ? ['remove', '--force'] : ['remove'])
+  return 'reclaimed'
+}
+
+async function sweepPreparationFolder(
+  workspaceRoot: string,
+  isOwnerRunning: (pid: number) => boolean,
+  hostByCommonDir: ReadonlyMap<string, WorktreeGitHost>
+): Promise<SweepResult> {
+  const result: SweepResult = { reclaimed: 0, removedDirectories: 0 }
+  const preparationRoot = join(workspaceRoot, WORKTREE_CREATE_PREPARATION_DIRECTORY)
+  let entries: string[]
+  try {
+    // lstat: a symlinked folder is not ours to walk.
+    if (!(await lstat(preparationRoot)).isDirectory()) {
+      return result
+    }
+    entries = await readdir(preparationRoot)
+  } catch {
+    return result
+  }
+  for (const entry of entries) {
+    const ownerPid = Number(entry.split('-')[0])
+    if (!PREPARATION_ENTRY_PATTERN.test(entry) || isOwnerRunning(ownerPid)) {
       continue
     }
-    await whenLocalWorktreeCreatesSettle()
-    const pathOwnerPid = parseWorktreePreparationPathOwnerPid(worktree.path)
+    const sparePath = join(preparationRoot, entry)
     try {
-      if (worktree.branch && pathOwnerPid === null) {
-        // A crash after the spare was moved to the user's path left a real worktree: keep it, drop
-        // only the lock that hides it.
-        await runPreparationGit(repo.path, worktree.path, ['unlock'], gitOptions)
+      const reclaimed = await reclaimSpareDirectory(sparePath, ownerPid, hostByCommonDir)
+      if (reclaimed) {
+        result[reclaimed] += 1
+      }
+    } catch (error) {
+      console.warn(`[worktrees] Could not reclaim retired spare checkout ${sparePath}`, error)
+    }
+  }
+  // Only succeeds once empty, so a live older Orca's spare (or a user's file) keeps the folder.
+  await rmdir(preparationRoot).catch(() => {})
+  return result
+}
+
+/** Reclaims dead owners' locks the folders cannot reach; returns how many. */
+async function sweepLockedRegistrations(
+  commonDir: string,
+  host: WorktreeGitHost,
+  isOwnerRunning: (pid: number) => boolean
+): Promise<number> {
+  const adminRoot = join(commonDir, 'worktrees')
+  let adminNames: string[]
+  try {
+    adminNames = await readdir(adminRoot)
+  } catch {
+    return 0
+  }
+  let reclaimed = 0
+  for (const adminName of adminNames) {
+    const adminDir = join(adminRoot, adminName)
+    const lockOwnerPid = parseWorktreePreparationOwnerPid(
+      await readTrimmedFile(join(adminDir, 'locked'))
+    )
+    if (!lockOwnerPid || isOwnerRunning(lockOwnerPid)) {
+      continue
+    }
+    const gitFile = await readTrimmedFile(join(adminDir, 'gitdir'))
+    if (!gitFile) {
+      continue
+    }
+    // Kept as Git wrote it: a WSL repo's Git recorded a Linux path that only it can resolve.
+    const worktreePath = dirname(isAbsolute(gitFile) ? gitFile : resolve(adminDir, gitFile))
+    const pathOwnerPid = parseWorktreePreparationPathOwnerPid(worktreePath)
+    try {
+      if (pathOwnerPid === null) {
+        // A crash after the spare was moved to the user's path left their worktree: drop only the
+        // lock that hides it (unlock never deletes).
+        await runWorktreeCommand(host, worktreePath, ['unlock'])
       } else if (pathOwnerPid === lockOwnerPid) {
-        // Git 2.25 removes a locked worktree with the doubled --force.
-        await runPreparationGit(
-          repo.path,
-          worktree.path,
-          ['remove', '--force', '--force'],
-          gitOptions
-        )
+        // The spare's directory is gone, or sits in a folder no longer configured.
+        await runWorktreeCommand(host, worktreePath, ['remove', '--force', '--force'])
       } else {
         continue
       }
       reclaimed += 1
     } catch (error) {
-      console.warn(`[worktrees] Could not reclaim retired spare checkout ${worktree.path}`, error)
+      console.warn(`[worktrees] Could not reclaim retired spare checkout ${worktreePath}`, error)
     }
   }
   return reclaimed
 }
 
-/** True when the directory's `.git` pointer still names an existing admin entry. */
-async function isStillRegistered(entryPath: string): Promise<boolean> {
-  let pointer: string
-  try {
-    pointer = await readFile(join(entryPath, '.git'), 'utf-8')
-  } catch {
-    return false
-  }
-  const gitDir = /^gitdir:\s*(.+)$/m.exec(pointer)?.[1]?.trim()
-  if (!gitDir) {
-    return false
-  }
-  try {
-    await lstat(isAbsolute(gitDir) ? gitDir : resolve(entryPath, gitDir))
-    return true
-  } catch {
-    return false
-  }
-}
-
-/** Deletes unregistered spare directories whose owning process is gone; returns how many. */
-async function sweepOrphanedPreparationDirectories(
-  workspaceRoot: string,
-  isProcessAlive: (pid: number) => boolean
-): Promise<number> {
-  if (parseWslPath(workspaceRoot)) {
-    return 0
-  }
-  const preparationRoot = join(workspaceRoot, WORKTREE_CREATE_PREPARATION_DIRECTORY)
-  let entries: string[]
-  try {
-    const rootStat = await lstat(preparationRoot)
-    if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) {
-      return 0
-    }
-    entries = await readdir(preparationRoot)
-  } catch {
-    return 0
-  }
-  let removed = 0
-  for (const entry of entries) {
-    if (!PREPARATION_ENTRY_PATTERN.test(entry)) {
-      continue
-    }
-    const ownerPid = Number(entry.split('-')[0])
-    const entryPath = join(preparationRoot, entry)
-    if (isProcessAlive(ownerPid) || (await isStillRegistered(entryPath))) {
-      continue
-    }
-    await whenLocalWorktreeCreatesSettle()
-    try {
-      await removeHostTree(entryPath)
-      removed += 1
-    } catch (error) {
-      console.warn(`[worktrees] Could not delete retired spare checkout ${entryPath}`, error)
+/**
+ * Background and one item at a time: spare folders first (they reach every repo's spares), then
+ * the locks they cannot reach. Never throws.
+ */
+export async function sweepRetiredWorktreeCreatePreparations(
+  targets: RetiredPreparationSweepTargets,
+  deps: RetiredPreparationSweepDeps = {}
+): Promise<SweepResult> {
+  const isProcessAlive = deps.isProcessAlive ?? isProcessAliveDefault
+  // This build never creates spares, so one naming this process is an older Orca's reused pid.
+  const isOwnerRunning = (pid: number): boolean => pid !== process.pid && isProcessAlive(pid)
+  await whenLocalWorktreeCreatesSettle()
+  const hostByCommonDir = new Map<string, WorktreeGitHost>()
+  for (const repo of targets.repos) {
+    const commonDir = await findRepoCommonDir(repo.path).catch(() => null)
+    if (commonDir) {
+      const host = { cwd: repo.path, args: [], wslDistro: repo.wslDistro, repoPath: repo.path }
+      hostByCommonDir.set(commonDir, host)
     }
   }
-  // Only succeeds once empty, so a live older Orca's spare keeps the folder.
-  await rmdir(preparationRoot).catch(() => {})
-  return removed
+  const result: SweepResult = { reclaimed: 0, removedDirectories: 0 }
+  for (const workspaceRoot of new Set(targets.workspaceRoots)) {
+    const folder = await sweepPreparationFolder(workspaceRoot, isOwnerRunning, hostByCommonDir)
+    result.reclaimed += folder.reclaimed
+    result.removedDirectories += folder.removedDirectories
+  }
+  for (const [commonDir, host] of hostByCommonDir) {
+    result.reclaimed += await sweepLockedRegistrations(commonDir, host, isOwnerRunning)
+  }
+  if (result.reclaimed + result.removedDirectories > 0) {
+    console.log(
+      `[worktrees] Reclaimed ${result.reclaimed} retired spare checkout registration(s) and ${result.removedDirectories} director(ies)`
+    )
+  }
+  return result
 }
 
 /**
- * Background, one repo at a time: registrations first so Git forgets a spare before its directory
- * goes, then any directory Git no longer knows about. Never throws.
+ * Local repos only. A WSL repo's spare folder is skipped: resolving its root can block the main
+ * thread on `wsl.exe`, and its Git recorded Linux paths this process cannot follow. Its locked
+ * spares are still reclaimed through its registrations, by its own Git.
  */
-export async function sweepRetiredWorktreeCreatePreparations(
-  targets: readonly RetiredPreparationSweepTarget[],
-  deps: RetiredPreparationSweepDeps = {}
-): Promise<{ reclaimed: number; removedDirectories: number }> {
-  const isProcessAlive = deps.isProcessAlive ?? isProcessAliveDefault
-  let reclaimed = 0
-  let removedDirectories = 0
-  const workspaceRoots = new Set<string>()
-  for (const target of targets) {
-    if (target.repo.connectionId || isFolderRepo(target.repo)) {
-      continue
-    }
-    workspaceRoots.add(target.workspaceRoot)
-    try {
-      reclaimed += await sweepRegisteredPreparations(target, isProcessAlive)
-    } catch (error) {
-      console.warn(`[worktrees] Could not list ${target.repo.path} for retired spares`, error)
-    }
-  }
-  for (const workspaceRoot of workspaceRoots) {
-    removedDirectories += await sweepOrphanedPreparationDirectories(workspaceRoot, isProcessAlive)
-  }
-  if (reclaimed + removedDirectories > 0) {
-    console.log(
-      `[worktrees] Reclaimed ${reclaimed} retired spare checkout registration(s) and ${removedDirectories} director(ies)`
-    )
-  }
-  return { reclaimed, removedDirectories }
-}
-
 export function collectRetiredPreparationSweepTargets(
   store: Store
-): RetiredPreparationSweepTarget[] {
+): RetiredPreparationSweepTargets {
   const settings = store.getSettings()
-  const targets: RetiredPreparationSweepTarget[] = []
+  const workspaceRoots = new Set<string>()
+  const repos: RetiredPreparationSweepRepo[] = []
   for (const repo of store.getRepos()) {
     if (repo.connectionId || isFolderRepo(repo)) {
       continue
     }
+    let gitOptions: LocalProjectWorktreeGitOptions
     try {
-      targets.push({
-        repo,
-        workspaceRoot: computeWorkspaceRoot(repo.path, getWorktreePathSettings(repo, settings)),
-        gitOptions: getLocalProjectWorktreeGitOptions(store, repo)
-      })
+      gitOptions = getLocalProjectWorktreeGitOptions(store, repo)
     } catch {
-      // A repo with an unusable configured base path never had a spare to reclaim.
+      // A project runtime awaiting repair runs no Git.
+      continue
+    }
+    repos.push({ path: repo.path, ...gitOptions })
+    if (parseWslPath(repo.path) || gitOptions.wslDistro) {
+      continue
+    }
+    try {
+      const workspaceRoot = computeWorkspaceRoot(repo.path, getWorktreePathSettings(repo, settings))
+      if (!parseWslPath(workspaceRoot)) {
+        workspaceRoots.add(workspaceRoot)
+      }
+    } catch {
+      // A repo with an unusable configured base path never had a spare folder there.
     }
   }
-  return targets
+  return { workspaceRoots: [...workspaceRoots], repos }
 }
