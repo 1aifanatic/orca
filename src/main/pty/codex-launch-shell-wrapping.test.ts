@@ -5,19 +5,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { shouldUseShellReadyStartupDelivery } from '../../shared/codex-startup-delivery'
 import { selectShellStartupFeatures } from '../shell-startup-features'
 
-// Why: the codex --no-daemon wrapper only reaches shells Orca wraps, so both an
-// Orca Codex launch and a plain tab (a typed codex) must be wrapped.
+// Why: the codex --no-daemon wrapper only reaches shells Orca wraps. Every Orca
+// Codex launch is wrapped; a plain zsh or fish tab is too, for a typed codex.
+// A plain bash tab is not: its --rcfile wrapper would drop login-shell mode.
 const COMMAND = "codex 'fix the bug'"
 const NO_DAEMON = 'set -- --no-daemon "$@"'
 const FISH_NO_DAEMON = 'set argv --no-daemon $argv'
 const CASES: [shell: string, launch: string, command: string | undefined, marker: string][] = [
-  ['/bin/bash', NO_DAEMON],
-  ['/bin/zsh', NO_DAEMON],
-  ['/usr/bin/fish', FISH_NO_DAEMON]
-].flatMap(([shell, marker]): typeof CASES => [
-  [shell, 'a Codex launch', COMMAND, marker],
-  [shell, 'a plain tab', undefined, marker]
-])
+  ['/bin/bash', 'a Codex launch', COMMAND, NO_DAEMON],
+  ['/bin/zsh', 'a Codex launch', COMMAND, NO_DAEMON],
+  ['/bin/zsh', 'a plain tab', undefined, NO_DAEMON],
+  ['/usr/bin/fish', 'a Codex launch', COMMAND, FISH_NO_DAEMON],
+  ['/usr/bin/fish', 'a plain tab', undefined, FISH_NO_DAEMON]
+]
 
 function launchFeatures(shellPath: string, command: string | undefined) {
   // Why an empty env: a system-default Codex home, with hooks off and history
@@ -76,5 +76,18 @@ describe.skipIf(process.platform === 'win32')('Orca Codex launch shells carry th
     expect(
       wrapperText(getShellLaunchConfig(shell, launchFeatures(shell, command), command))
     ).toContain(marker)
+  })
+
+  it.each([
+    ['daemon', '../daemon/shell-ready'],
+    ['local', '../providers/local-pty-shell-ready']
+  ])('%s transport keeps a plain bash tab an unwrapped login shell', async (_transport, path) => {
+    const { getShellLaunchConfig } = await import(path)
+
+    expect(getShellLaunchConfig('/bin/bash', launchFeatures('/bin/bash', undefined))).toEqual({
+      args: null,
+      env: {},
+      supportsReadyMarker: false
+    })
   })
 })

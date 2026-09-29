@@ -6,7 +6,7 @@ import {
   getPowerShellOsc133Bootstrap,
   isPowerShellExecutableName
 } from '../powershell-osc133-bootstrap'
-import { getFishCodexShellLaunchPreflight } from '../pty/codex-shell-launch-preflight'
+import { getFishCodexShellLaunchPreflight } from '../../shared/codex-shell-function'
 import { getFishShellReadyInitCommand } from '../shell-templates'
 import {
   encodeShellStartupFeatures,
@@ -114,7 +114,7 @@ export type ShellLaunchConfig = {
   supportsReadyMarker: boolean
 }
 
-const UNWRAPPED: ShellLaunchConfig = {
+export const UNWRAPPED: ShellLaunchConfig = {
   args: null,
   env: {},
   supportsReadyMarker: false
@@ -122,7 +122,7 @@ const UNWRAPPED: ShellLaunchConfig = {
 
 /**
  * The one launch-config entry point: args + env for a shell that should start
- * with exactly `features` enabled.
+ * with exactly `features` enabled. An empty selection wraps only zsh and fish.
  */
 export function getShellLaunchConfig(
   shellPath: string,
@@ -130,7 +130,9 @@ export function getShellLaunchConfig(
 ): ShellLaunchConfig {
   const shellName = pathWin32.basename(basename(shellPath)).toLowerCase()
 
-  // Why zsh, bash and fish wrap with no feature: the wrapper defines the codex function a typed launch needs.
+  // Why zsh and fish wrap with no feature: the wrapper defines the codex function a
+  // typed launch needs, and both keep their normal login startup. bash does not:
+  // its --rcfile wrapper would make every plain tab a non-login shell.
   if (shellName === 'zsh') {
     if (!ensureShellReadyWrappers()) {
       // Why plain login zsh: ZDOTDIR pointed at an incomplete wrapper dir makes
@@ -149,7 +151,7 @@ export function getShellLaunchConfig(
   }
 
   if (shellName === 'bash') {
-    if (!ensureShellReadyWrappers()) {
+    if (features.length === 0 || !ensureShellReadyWrappers()) {
       return UNWRAPPED
     }
     return {

@@ -308,7 +308,7 @@ describe('resolveWindowsShellLaunchArgs', () => {
     expect(result.startupCommandDeliveredInShellArgs).toBeUndefined()
   })
 
-  it('wraps every Git Bash tab and keeps the lifecycle markers for a startup command only', () => {
+  it('keeps a plain Git Bash tab a login shell and wraps one with a startup command', () => {
     const plain = resolveWindowsShellLaunchArgs(
       'C:\\Program Files\\Git\\bin\\bash.exe',
       'C:\\Users\\alice',
@@ -322,12 +322,12 @@ describe('resolveWindowsShellLaunchArgs', () => {
       "codex 'fix the bug'"
     )
 
-    expect(plain.shellArgs[1]).toContain('export ORCA_SHELL_FEATURES=; exec "$BASH" --rcfile')
-    expect(launched.shellArgs[1]).toContain(
-      'export ORCA_SHELL_FEATURES=markers; exec "$BASH" --rcfile'
-    )
+    expect(plain.shellArgs).toEqual([
+      '-c',
+      'chcp.com 65001 >/dev/null 2>&1; exec "$BASH" --login -i'
+    ])
     // Why: without a preflight, only the rcfile carries the codex --no-daemon wrapper.
-    expect(readFileSync(getGitBashRcfilePath(plain.shellArgs[1]), 'utf8')).toContain(
+    expect(readFileSync(getGitBashRcfilePath(launched.shellArgs[1]), 'utf8')).toContain(
       'set -- --no-daemon "$@"'
     )
     expect(launched.startupCommandDeliveredInShellArgs).toBeUndefined()

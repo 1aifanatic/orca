@@ -13,7 +13,6 @@ import {
   getPowerShellOsc133Bootstrap
 } from '../powershell-osc133-bootstrap'
 import { quoteStartupArg } from '../../shared/tui-agent-startup-shell'
-import { SHELL_STARTUP_FEATURE_ENV } from '../shell-startup-features'
 
 /** cmd.exe's own documented ceiling; callers that go through sshd budget below it. */
 export const CMD_EXE_COMMAND_LINE_MAX_CHARS = 8191
@@ -30,9 +29,12 @@ const CMD_CODEX_LAUNCH_PREFLIGHT = `if defined ORCA_CODEX_LAUNCH_PREFLIGHT call 
 // `&&`) keeps startup working even if chcp.com is missing.
 const GIT_BASH_UTF8_LOGIN_COMMAND = 'chcp.com 65001 >/dev/null 2>&1; exec "$BASH" --login -i'
 
-// Why always the rcfile: it defines the codex function a typed launch needs. Only
-// panes that carry Orca's launch prep keep the OSC 133 lifecycle they had before.
-function getGitBashLaunchCommand(commandMarkers: boolean): string {
+// Why the rcfile for a startup command: it defines the codex wrapper Orca's launches need.
+function getGitBashLaunchCommand(useWrapper: boolean): string {
+  if (!useWrapper) {
+    return GIT_BASH_UTF8_LOGIN_COMMAND
+  }
+
   ensureShellReadyWrappersAt()
   const wrapperArgs = getBashWrapperLaunchArgs()
   if (!wrapperArgs) {
@@ -41,7 +43,7 @@ function getGitBashLaunchCommand(commandMarkers: boolean): string {
   const bashArgs = [...wrapperArgs, '-i']
     .map((arg) => (arg.startsWith('-') ? arg : quotePosixShell(arg.replace(/\\/g, '/'))))
     .join(' ')
-  return `chcp.com 65001 >/dev/null 2>&1; export ${SHELL_STARTUP_FEATURE_ENV}=${commandMarkers ? 'markers' : ''}; exec "$BASH" ${bashArgs}`
+  return `chcp.com 65001 >/dev/null 2>&1; exec "$BASH" ${bashArgs}`
 }
 
 /** Result of resolving a Windows shell to its launch args + effective cwd.

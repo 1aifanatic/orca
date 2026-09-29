@@ -7,7 +7,7 @@
 import { BASH_PROMPT_COMMAND_COMPOSITION_BLOCK } from '../bash-prompt-command-composition'
 import { WSL_MANAGED_CLI_PATH_RESTORE } from '../wsl-managed-cli-path-restore'
 import { getPosixOmpShellWrapper } from '../pty/omp-shell-wrapper'
-import { getPosixCodexShellLaunchPreflight } from '../pty/codex-shell-launch-preflight'
+import { getPosixCodexShellLaunchPreflight } from '../../shared/codex-shell-function'
 import { getBashStartupCommandPromptBlock } from '../pty/posix-shell-startup-command'
 import { BASH_FEATURE_CHANNEL_BLOCK, SHELL_STARTUP_IDENTITY_MARKER_BLOCK } from '../shell-templates'
 import { SHELL_READY_MARKER_ESCAPED } from './local-pty-shell-ready-marker'
@@ -20,8 +20,6 @@ ${SHELL_STARTUP_IDENTITY_MARKER_BLOCK}
 # lines, so nothing this shell later spawns can see or inherit the selection.
 __orca_ready_marker=""
 __orca_has_feature ready && __orca_ready_marker=1
-__orca_command_markers=""
-__orca_has_feature markers && __orca_command_markers=1
 unset _orca_shell_features
 unset -f __orca_has_feature
 [[ -f /etc/profile ]] && source /etc/profile
@@ -36,7 +34,7 @@ fi
 # a single literal paste (ESC[200~…ESC[201~). Without it, older readline builds
 # treat each embedded newline as Enter and mangle the prompt into PS2
 # continuation. Modern readline defaults this on; force it for the rest.
-[[ -n "$__orca_command_markers" && $- == *i* ]] && bind 'set enable-bracketed-paste on' 2>/dev/null
+[[ $- == *i* ]] && bind 'set enable-bracketed-paste on' 2>/dev/null
 # Why: preserve bash's normal login-shell contract. Many users already source
 # ~/.bashrc from ~/.bash_profile; forcing ~/.bashrc again here would duplicate
 # PATH edits, hooks, and prompt init in Orca startup-command shells.
@@ -57,12 +55,6 @@ ${getPosixOmpShellWrapper()}
 # Why: Codex must keep using Orca's runtime CODEX_HOME after profile scripts.
 [[ -n "\${ORCA_CODEX_HOME:-}" ]] && export CODEX_HOME="\${ORCA_CODEX_HOME}"
 ${getPosixCodexShellLaunchPreflight()}
-# Why: a pane wrapped only for the codex function keeps bash's own prompt and traps.
-if [[ -z "$__orca_command_markers" ]]; then
-  unset __orca_command_markers __orca_ready_marker
-  return 0
-fi
-unset __orca_command_markers
 # Why: emit OSC 133 C/D so terminal-command-lifecycle can drop stale agent
 # status when the foreground command (e.g. an interrupted Claude/Codex CLI)
 # exits — mirrors the zsh wrapper. Without this, bash users (default on most

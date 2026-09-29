@@ -26,7 +26,10 @@ import {
   resolveWindowsShellLaunchArgs
 } from '../../providers/windows-shell-args'
 import { resolveUnixShellPath } from '../../providers/local-pty-utils'
-import { selectShellStartupFeatures } from '../../shell-startup-features'
+import {
+  keepsConfiguredShellUnwrapped,
+  selectShellStartupFeatures
+} from '../../shell-startup-features'
 import { parseWslPath } from '../../wsl'
 import { addWslEnvKeys } from '../../wsl-env'
 import {
@@ -35,7 +38,7 @@ import {
 } from '../../../shared/agent-process-recognition'
 import { ORCA_HERMES_STARTUP_QUERY_ENV } from '../../../shared/hermes-startup-query'
 import { WINDOWS_GIT_BASH_SHELL } from '../../../shared/windows-terminal-shell'
-import { getShellLaunchConfig, resolvePtyShellPath } from '../shell-ready'
+import { getShellLaunchConfig, resolvePtyShellPath, UNWRAPPED } from '../shell-ready'
 import { resolveWslSessionContext } from '../wsl-session-context'
 import { finalizeDaemonPtyEnvironment, rescrubDaemonPtyEnvironment } from './spawn-environment'
 import type { PtySubprocessOptions } from '../pty-subprocess'
@@ -198,16 +201,16 @@ export function createPtyShellLaunchPlan(
           shellPath
         }))
     delete env.ORCA_SHELL_FEATURES
-    const shellLaunch = getShellLaunchConfig(
+    const features = selectShellStartupFeatures({
       shellPath,
-      selectShellStartupFeatures({
-        shellPath,
-        env,
-        hasStartupCommand: Boolean(opts.command),
-        waitsForShellReady,
-        emitsStartupIdentity: waitsForShellReady
-      })
-    )
+      env,
+      hasStartupCommand: Boolean(opts.command),
+      waitsForShellReady,
+      emitsStartupIdentity: waitsForShellReady
+    })
+    const shellLaunch = keepsConfiguredShellUnwrapped(features, opts)
+      ? UNWRAPPED
+      : getShellLaunchConfig(shellPath, features)
     Object.assign(env, shellLaunch.env)
     shellArgs =
       !opts.command && !opts.launchAgent && opts.terminalShellArgs !== undefined

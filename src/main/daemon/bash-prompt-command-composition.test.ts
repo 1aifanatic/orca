@@ -29,7 +29,7 @@ function runInteractiveBash(
     {
       input,
       encoding: 'utf8',
-      env: { ...process.env, HOME: tempHome, ORCA_SHELL_FEATURES: 'markers,ready', TERM: 'xterm' },
+      env: { ...process.env, HOME: tempHome, ORCA_SHELL_FEATURES: 'ready', TERM: 'xterm' },
       timeout: 5000
     }
   )

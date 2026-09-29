@@ -98,9 +98,8 @@ function launchCodexThroughRcfile(fixture: Fixture, preflightValue: string): voi
       PATH: ['/usr/bin', '/bin', '/usr/sbin', '/sbin'].join(delimiter),
       TERM: 'dumb',
       SHELL: '/bin/bash',
-      // Why markers only: the lifecycle block is the oracle, and without identity
-      // or ready the rcfile emits no marker into stdout.
-      ORCA_SHELL_FEATURES: 'markers',
+      // Why no ORCA_SHELL_FEATURES: absent means no features, so the rcfile
+      // emits neither the identity nor the readiness marker into stdout.
       ORCA_CODEX_HOME: join(fixture.root, 'codex-home'),
       ORCA_CODEX_LAUNCH_PREFLIGHT: preflightValue
     }

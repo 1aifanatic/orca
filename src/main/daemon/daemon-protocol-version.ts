@@ -1,5 +1,5 @@
 // Why: daemons survive app updates, so wire behavior must be version-gated.
-// v38 wraps plain bash, zsh and fish tabs so a typed codex gets --no-daemon; older owners stay attachable.
+// v38 wraps plain zsh and fish tabs so a typed codex gets --no-daemon; older owners stay attachable.
 export const PROTOCOL_VERSION = 38
 export const CODEX_FUNCTION_IN_PLAIN_SHELLS_DAEMON_PROTOCOL_VERSION = 38
 export const CODEX_NO_DAEMON_SHELL_LAUNCH_DAEMON_PROTOCOL_VERSION = 37

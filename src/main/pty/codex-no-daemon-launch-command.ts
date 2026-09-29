@@ -3,7 +3,7 @@ import { runProcess } from '../../shared/child-process/run-process'
 import { tokenizeStartupCommand } from '../../shared/tui-agent-startup-shell'
 import { resolveLocalWindowsAgentStartupShell } from '../../shared/windows-terminal-shell'
 import { resolveCommandOnLocalPath } from '../ipc/command-path-resolver'
-import { CODEX_SHARED_SERVER_ARGS } from './codex-shell-launch-preflight'
+import { CODEX_SHARED_SERVER_ARGS } from '../../shared/codex-shell-function'
 
 const CODEX_EXECUTABLE = /^codex(\.(exe|cmd|bat|ps1))?$/i
 const SHARED_SERVER_ARGS: ReadonlySet<string> = new Set(CODEX_SHARED_SERVER_ARGS)

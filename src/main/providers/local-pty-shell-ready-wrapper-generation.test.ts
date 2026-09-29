@@ -110,7 +110,7 @@ function runInteractiveBashRcfile(
       env: {
         ...process.env,
         HOME: tempDir,
-        ORCA_SHELL_FEATURES: 'markers,ready',
+        ORCA_SHELL_FEATURES: 'ready',
         TERM: process.env.TERM || 'xterm'
       },
       timeout: 5000

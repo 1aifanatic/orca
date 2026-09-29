@@ -10,7 +10,7 @@ import {
   getPowerShellOsc133Bootstrap,
   isPowerShellExecutableName
 } from '../powershell-osc133-bootstrap'
-import { getFishCodexShellLaunchPreflight } from '../pty/codex-shell-launch-preflight'
+import { getFishCodexShellLaunchPreflight } from '../../shared/codex-shell-function'
 import { POSIX_SHELL_STARTUP_COMMAND_ENV } from '../pty/posix-shell-startup-command'
 import { getFishShellReadyInitCommand } from '../shell-templates'
 import {
@@ -39,7 +39,7 @@ export type ShellReadyLaunchConfig = {
   supportsReadyMarker: boolean
 }
 
-const UNWRAPPED: ShellReadyLaunchConfig = {
+export const UNWRAPPED: ShellReadyLaunchConfig = {
   args: null,
   env: {},
   supportsReadyMarker: false
@@ -60,7 +60,7 @@ export function getBashWrapperLaunchArgs(): string[] | null {
 
 /**
  * The one launch-config entry point: args + env for a shell that should start
- * with exactly `features` enabled.
+ * with exactly `features` enabled. An empty selection wraps only zsh and fish.
  */
 export function getShellLaunchConfig(
   shellPath: string,
@@ -73,7 +73,7 @@ export function getShellLaunchConfig(
       ? [...features, 'startup' as const]
       : features
 
-  // Why zsh, bash and fish wrap with no feature: the wrapper defines the codex function a typed launch needs.
+  // Why zsh and fish wrap with no feature: see daemon/shell-ready.ts.
   if (shellName === 'zsh') {
     if (!wrapperTreeUsable()) {
       // Why plain login zsh: ZDOTDIR pointed at an incomplete wrapper dir makes
@@ -95,6 +95,9 @@ export function getShellLaunchConfig(
   }
 
   if (shellName === 'bash') {
+    if (features.length === 0) {
+      return UNWRAPPED
+    }
     ensureShellReadyWrappers()
     const args = getBashWrapperLaunchArgs()
     if (!args) {

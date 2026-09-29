@@ -1,4 +1,5 @@
 import { encodePowerShellCommand } from './powershell-command-encoding'
+import { getPosixCodexShellLaunchPreflight } from './codex-shell-function'
 import {
   nativeWindowsPathToPosixShellPath,
   resolveSetupRunnerCommand,
@@ -141,7 +142,8 @@ function buildPosixStartupScript(
     'done'
   ].join(' ')
 
-  return script
+  // Why: this `bash -lc` never reads Orca's shell wrapper, so it defines the codex function itself.
+  return `${getPosixCodexShellLaunchPreflight()}${script}`
 }
 
 function buildPosixStartupSuccessCommand(startupCommand: string): string {
