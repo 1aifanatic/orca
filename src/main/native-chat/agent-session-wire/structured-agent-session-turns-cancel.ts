@@ -9,7 +9,7 @@ import {
   structuredAgentSessionCommandWasStopped,
   structuredAgentSessionStopNoteIdentity
 } from './structured-agent-session-command-turn'
-import { validatePendingPrompt } from './structured-agent-session-prompt-state'
+import { settledPrompt, validatePendingPrompt } from './structured-agent-session-prompt-state'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
 
 export async function performCancel(
@@ -28,7 +28,16 @@ export async function performCancel(
   if (input.prompt) {
     const validated = validatePendingPrompt(ctx, input.prompt)
     if (!validated.ok) {
-      return validated
+      // Another Cancel of a prompt already cancelled: nothing is left to do.
+      return settledPrompt(ctx, input.prompt.itemId)?.prompt.resolution.state === 'cancelled'
+        ? {
+            ok: true,
+            value: {
+              ...(input.turnId !== undefined ? { turnId: input.turnId } : {}),
+              cancelled: false
+            }
+          }
+        : validated
     }
   }
   let cancelled = false
