@@ -1706,7 +1706,6 @@
         "notConnected": "Non connecté",
         "notePasteTooLarge": "Le contenu collé est trop volumineux pour le champ de note.",
         "waitForSetupBeforeAgent": "Attendre la fin du setup avant de démarrer l'agent",
-        "waitForSetupBeforeAgentHelp": "Activez cette option quand le setup installe des dépendances, des serveurs MCP ou des fichiers de configuration dont l'agent a besoin au démarrage.",
         "destroyDisabled": "destroy désactivé",
         "destroyConfigured": "destroy configuré",
         "noDestroyConfigured": "pas de destroy",
@@ -4070,7 +4069,12 @@
             "checkLabel": "{{value0}} chats à vérifier",
             "checkAriaOne": "1 chat à vérifier après la reprise. Cliquez pour plus de détails.",
             "checkAria": "{{value0}} chats à vérifier après la reprise. Cliquez pour plus de détails.",
-            "checkTooltip": "Chats qu'Orca n'a pas pu reprendre, ou dont il n'a pas pu confirmer la reprise, après le redémarrage. Cliquez pour plus de détails."
+            "checkTooltip": "Chats qu'Orca n'a pas pu reprendre, ou dont il n'a pas pu confirmer la reprise, après le redémarrage. Cliquez pour plus de détails.",
+            "resumingLabelOne": "Reprise d’1 conversation",
+            "resumingLabel": "Reprise de {{value0}} conversations",
+            "resumingAriaOne": "Reprise d’1 conversation. Cliquez pour voir les détails.",
+            "resumingAria": "Reprise de {{value0}} conversations. Cliquez pour voir les détails.",
+            "resumingTooltip": "Restauration des conversations interrompues et demande de poursuite…"
           }
         }
       },
@@ -7991,8 +7995,7 @@
           "81057d5f71": "Enregistrement...",
           "da37d6f10e": "Copier",
           "3149964b66": "Copied",
-          "waitForSetupBeforeAgent": "Attendre la fin du setup avant de démarrer l'agent",
-          "waitForSetupBeforeAgentHelp": "Activez cette option quand le setup installe des dépendances, des serveurs MCP ou des fichiers de configuration dont l'agent a besoin au démarrage."
+          "waitForSetupBeforeAgent": "Attendre la fin du setup avant de démarrer l'agent"
         },
         "RepositoryIconPicker": {
           "2b7d27b93c": "Utiliser la couleur de dépôt {{value0}}",
@@ -17747,6 +17750,7 @@
       "railEmptyMessage": "Message",
       "ask": {
         "awaiting": "En attente de la saisie de l'utilisateur :",
+        "awaitingUnnamed": "En attente de la saisie de l'utilisateur",
         "asked": "Demandé:",
         "questionCount": "{{value0}} questions"
       },
@@ -18174,6 +18178,9 @@
           }
         }
       }
+    },
+    "agentChildRow": {
+      "ended": "Terminé"
     }
   },
   "dashboardPopout": {
@@ -18493,5 +18500,63 @@
   },
   "common": {
     "retry": "Réessayer"
+  },
+  "fileExplorer": {
+    "root": {
+      "label": "Racine de l’explorateur",
+      "full": "Racine du dépôt",
+      "viewing": "Vue : {{path}}",
+      "back": "Revenir à {{path}}",
+      "searchScope": "Portée : fichiers de l’espace de travail",
+      "retry": "Réessayer",
+      "omittedFiles": "Les fichiers exclus par le checkout partiel ne sont pas recherchés.",
+      "viewOnly": "Checkout partiel · Changer de vue ne modifie pas les fichiers extraits.",
+      "sparseStatus": "Extraction partielle",
+      "scopeDetails": "À propos de la portée de l’extraction partielle",
+      "scopeExplanation": "Le sélecteur de dossiers change l’affichage, pas les fichiers extraits. La racine du dépôt inclut les fichiers extraits à la racine et dans les dossiers parents.",
+      "searchExplanation": "Noms filtre le dossier affiché. Contenu recherche dans tout l’espace de travail. Les fichiers exclus de l’extraction partielle ne sont pas recherchés.",
+      "findInFolder": "Rechercher dans {{path}}",
+      "folderLoadError": "Impossible de charger ce dossier :",
+      "emptyFolder": "Aucun fichier dans ce dossier"
+    }
+  },
+  "sparsePreset": {
+    "nameRequired": "Le nom est obligatoire.",
+    "nameTooLong": "Le nom doit contenir au maximum 80 caractères.",
+    "nameExists": "Un préréglage nommé « {{name}} » existe déjà.",
+    "name": "Nom",
+    "namePlaceholder": "Application web et interface partagée",
+    "directories": "Répertoires",
+    "pathHelp": "Un répertoire relatif au dépôt par ligne. Les espaces dans les chemins sont conservés.",
+    "coneHelp": "Git conserve également les fichiers à la racine du dépôt et dans les dossiers parents de ces répertoires.",
+    "cancel": "Annuler",
+    "save": "Enregistrer le préréglage",
+    "new": "Nouveau préréglage de checkout partiel",
+    "edit": "Modifier le préréglage de checkout partiel",
+    "description": "Choisissez les dossiers à extraire dans un nouvel espace de travail.",
+    "saveFailed": "Impossible d’enregistrer le préréglage. Réessayez.",
+    "loading": "Chargement des préréglages...",
+    "details": "Quels fichiers sont extraits ?",
+    "finishEditing": "Enregistrez ou annulez le préréglage pour poursuivre la création de votre espace de travail.",
+    "pathInstructions": "Un dossier par ligne, avec un chemin relatif à la racine du dépôt.",
+    "retryLoad": "Réessayer de charger les préréglages",
+    "fullCheckout": "Extraction complète",
+    "checkoutPreset": "Préréglage d’extraction",
+    "search": "Rechercher un préréglage…",
+    "noMatches": "Aucun préréglage correspondant.",
+    "allFiles": "Tous les fichiers du dépôt",
+    "editNamed": "Modifier {{name}}",
+    "addPath": "Add a folder",
+    "findPath": "Find a folder…",
+    "noPathMatches": "No folders found.",
+    "repositoryRoot": "Repository root",
+    "loadingPaths": "Reading folders…",
+    "pathsUnavailable": "Could not read this folder. Type the path instead.",
+    "pathAdded": "Added",
+    "openFolder": "Open {{name}}",
+    "findOrTypePath": "Find a folder, or type any path…",
+    "addTypedPath": "Add",
+    "noDirectories": "No folders added yet.",
+    "removePath": "Remove {{name}}"
   }
 }

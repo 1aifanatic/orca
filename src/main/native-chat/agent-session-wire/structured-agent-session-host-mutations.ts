@@ -21,6 +21,7 @@ import type {
   AgentSessionThreadGoalChange,
   AgentSessionThreadGoalResult
 } from '../../../shared/agent-session-wire'
+import { isStructuredAgentSessionMainAgentWorking } from '../../../shared/structured-agent-session-main-agent-working'
 import {
   agentSessionFailureWords,
   type AgentJournalDispatchRejection
@@ -38,6 +39,7 @@ import {
   openForWrite,
   openWithAgent,
   sendPreparation,
+  structuredAgentSessionFailureWordsContext,
   structuredAgentSessionSendBlock
 } from './structured-agent-session-send-preparation'
 import {
@@ -76,7 +78,8 @@ export type StructuredAgentSessionMutationContext = {
   now: () => number
 }
 
-function mutate<TValue>(
+/** Admits the envelope and runs the plan inside the session's serialize. */
+export function mutateStructuredAgentSession<TValue>(
   context: StructuredAgentSessionMutationContext,
   caller: StructuredAgentSessionCaller,
   envelope: AgentSessionMutationEnvelope,
@@ -111,7 +114,7 @@ export function sendStructuredAgentSessionTurn(
   }
 ): Promise<AgentSessionMutationResult<AgentSessionSendResult>> {
   const plan = sendPlan(params)
-  return mutate(
+  return mutateStructuredAgentSession(
     context,
     caller,
     params.envelope,
@@ -138,34 +141,27 @@ export function cancelStructuredAgentSessionTurn(
   caller: StructuredAgentSessionCaller,
   params: {
     envelope: AgentSessionMutationEnvelope
-    turnId: string
+    turnId?: string
     scope?: 'background-tasks'
     taskId?: string
     prompt?: { itemId: string; expectedRevision: number }
   }
 ): Promise<AgentSessionMutationResult<AgentSessionCancelResult>> {
-  const command = context.deps.store.getRecord(params.envelope.sessionId)?.conversationCommand
-  // Interrupts must reach a provider while the command awaits its terminal frame.
-  const cancellationContext =
-    command?.command === 'compact' && command.phase === 'prepared'
-      ? {
-          ...context,
-          serialize: <T>(sessionId: string, task: () => Promise<T>) =>
-            context.serialize(`compact-cancel:${sessionId}`, task)
-        }
-      : context
-  const plan = cancelPlan(params)
   if (params.scope || params.prompt) {
-    return mutate(
-      cancellationContext,
+    return mutateStructuredAgentSession(
+      context,
       caller,
       params.envelope,
-      plan,
+      cancelPlan(params),
       openForWrite(context, params.envelope)
     )
   }
-  return mutate(
-    cancellationContext,
+  const plan = cancelPlan({
+    ...params,
+    stopChild: () => context.stopAgent(params.envelope.sessionId)
+  })
+  return mutateStructuredAgentSession(
+    context,
     caller,
     params.envelope,
     {
@@ -176,15 +172,29 @@ export function cancelStructuredAgentSessionTurn(
           ctx.fence,
           agentSessionFailureWords(agentSessionFailureFact('cancelled'), { surface: 'rejection' })
         )
+        const named = params.turnId !== undefined ? { turnId: params.turnId } : {}
         const child = context.sessions.get(ctx.sessionId)?.child
         if (child?.phase === 'starting') {
           // A start that may never land is the one thing here Stop has to end; the chat stays.
           await context.stopAgent(ctx.sessionId)
-          return { ok: true, value: { turnId: params.turnId, cancelled: true } }
+          return { ok: true, value: { ...named, cancelled: true } }
         }
-        return child
-          ? plan.run(ctx)
-          : { ok: true, value: { turnId: params.turnId, cancelled: withdrawn.length > 0 } }
+        // A Stop naming no turn ends nothing more unless the session reads working, by the rule
+        // every session list and the chat's own Stop read it.
+        const inFlight =
+          params.turnId !== undefined ||
+          isStructuredAgentSessionMainAgentWorking(
+            ctx.journal.activeTurnId(),
+            ctx.journal.submissions(),
+            ctx.fence
+          )
+        const record = context.deps.store.getRecord(ctx.sessionId)
+        return child && inFlight
+          ? plan.run({
+              ...ctx,
+              failureTextContext: structuredAgentSessionFailureWordsContext(record)
+            })
+          : { ok: true, value: { ...named, cancelled: withdrawn.length > 0 } }
       }
     },
     openForWrite(context, params.envelope)
@@ -196,7 +206,7 @@ export function respondToStructuredAgentSessionPrompt(
   caller: StructuredAgentSessionCaller,
   params: AgentSessionPromptRequest & { envelope: AgentSessionMutationEnvelope }
 ): Promise<AgentSessionMutationResult<AgentSessionPromptResult>> {
-  return mutate(
+  return mutateStructuredAgentSession(
     context,
     caller,
     params.envelope,
@@ -214,7 +224,7 @@ export async function setStructuredAgentSessionOption(
   await context.deps.adapter.awaitOptionWritable?.(params.envelope.sessionId)
   const plan = setOptionPlan(params)
   const atRest = () => !context.sessions.get(params.envelope.sessionId)?.child
-  return mutate(
+  return mutateStructuredAgentSession(
     context,
     caller,
     params.envelope,
@@ -239,7 +249,7 @@ export function changeStructuredAgentSessionThreadGoal(
   caller: StructuredAgentSessionCaller,
   params: { envelope: AgentSessionMutationEnvelope; change: AgentSessionThreadGoalChange }
 ): Promise<AgentSessionMutationResult<AgentSessionThreadGoalResult>> {
-  return mutate(
+  return mutateStructuredAgentSession(
     context,
     caller,
     params.envelope,

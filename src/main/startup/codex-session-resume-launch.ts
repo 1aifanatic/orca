@@ -7,7 +7,8 @@ import { prepareLegacySharedCodexSessionResume } from '../codex/codex-legacy-ses
 import { ManagedCodexHomeTemporarilyUnavailableError } from '../codex-accounts/host-codex-managed-home-ownership'
 import { codexHookService } from '../codex/hook-service'
 import { ensureRealHomeCodexHookState } from '../codex/codex-real-home-hook-install'
-import { isAgentStatusHooksEnabled } from '../agent-hooks/managed-agent-hook-controls'
+import { ensureCodexDaemonSocketGuard } from '../codex/codex-config-mirror'
+import { isAgentStatusHooksEnabledForAgent } from '../agent-hooks/managed-agent-hook-controls'
 import { markCodexProjectTrusted } from '../agent-trust-presets'
 import { awaitAgentTrustWriteWithinDeadline } from '../agent-trust-write-deadline'
 import { getOrcaManagedCodexHomePath, getSystemCodexHomePath } from '../codex/codex-home-paths'
@@ -95,7 +96,7 @@ export async function prepareCodexSessionResumeForLaunch(args: {
       const isSystemHome =
         normalizeRuntimePathForComparison(resumeHome) ===
         normalizeRuntimePathForComparison(systemHomePath)
-      const hooksEnabled = isAgentStatusHooksEnabled(store.getSettings())
+      const hooksEnabled = isAgentStatusHooksEnabledForAgent(store.getSettings(), 'codex')
       try {
         if (isSystemHome) {
           await ensureRealHomeCodexHookState({
@@ -110,6 +111,10 @@ export async function prepareCodexSessionResumeForLaunch(args: {
       } catch (error) {
         // Why: hook repair is best-effort; session provenance must still win over the currently selected home.
         console.warn('[codex-hook-service] failed to prepare automatic resume home:', error)
+      }
+      if (!isSystemHome) {
+        // Why: this pins the resumed pane's CODEX_HOME, and hook repair above can skip or fail before its config mirror applies the daemon guard.
+        ensureCodexDaemonSocketGuard(resumeHome)
       }
       return resumeHome
     }

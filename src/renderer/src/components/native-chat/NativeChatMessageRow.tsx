@@ -51,7 +51,6 @@ export const MessageRow = memo(function MessageRow({
   onLinkClick,
   allowFileUriLinks = false,
   deliveryNotice,
-  structuredActivityUi = true,
   folded = false,
   subagentLabel,
   runtimeContext
@@ -69,7 +68,6 @@ export const MessageRow = memo(function MessageRow({
   onLinkClick?: CommentMarkdownLinkClickHandler
   allowFileUriLinks?: boolean
   deliveryNotice?: NativeChatDeliveryNotice
-  structuredActivityUi?: boolean
   /** Behind a folded turn: the row keeps only what outlives the turn. */
   folded?: boolean
   /** The roster's name for the subagent that wrote this row, when one names it. */
@@ -278,7 +276,6 @@ export const MessageRow = memo(function MessageRow({
           expandSignal={expandSignal}
           activeTurnIsWorking={activeTurnIsWorking}
           trailing={trailingRun}
-          structuredActivityUi={structuredActivityUi}
           disclosureId={message.id}
         />
       ) : null}
