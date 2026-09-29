@@ -17,6 +17,7 @@ import { assertWorktreeCleanForRemoval } from './worktree-removal-preflight'
 import { withRepoRefMaintenancePaused } from './local-repo-ref-maintenance'
 import { bumpWorktreeScanGeneration, listWorktrees } from './worktree-scan-cache'
 import { invalidateSparseCheckoutState } from './worktree-sparse-checkout-cache'
+import { runUnderWorktreeDeleteLimit } from './worktree-delete-limit'
 
 /**
  * Remove a worktree.
@@ -66,26 +67,32 @@ async function performRemoveWorktree(
   // Why long paths: creation checks out with them on Windows, so deleting without them fails with
   // "Filename too long" (#6433) and leaves the branch behind via the Windows recovery.
   const longPathArgs = windowsLongPathGitArgs(repoPath)
-  const execOptions = { ...gitExecOptions(repoPath, options), ...removalGitEnv() }
+  const execOptions = {
+    ...gitExecOptions(repoPath, options),
+    ...removalGitEnv(),
+    admissionExempt: true as const
+  }
   const args = [...longPathArgs, 'worktree', 'remove']
   if (force) {
     args.push('--force')
   }
   args.push(worktreePath)
-  try {
-    await gitExecFileAsync(args, execOptions)
-  } catch (error) {
-    if (force || !isSubmoduleWorktreeRemovalRefusal(error)) {
-      throw error
+  await runUnderWorktreeDeleteLimit(async () => {
+    try {
+      await gitExecFileAsync(args, execOptions)
+    } catch (error) {
+      if (force || !isSubmoduleWorktreeRemovalRefusal(error)) {
+        throw error
+      }
+      // Why: Git refuses non-force removal of a worktree with an initialised submodule even when clean; re-prove cleanliness, then --force.
+      await assertWorktreeCleanForRemoval(worktreePath, false, options)
+      await gitExecFileAsync(
+        [...longPathArgs, 'worktree', 'remove', '--force', worktreePath],
+        execOptions
+      )
     }
-    // Why: Git refuses non-force removal of a worktree with an initialised submodule even when clean; re-prove cleanliness, then --force.
-    await assertWorktreeCleanForRemoval(worktreePath, false, options)
-    await gitExecFileAsync(
-      [...longPathArgs, 'worktree', 'remove', '--force', worktreePath],
-      execOptions
-    )
-  }
-  await removeCheckoutLeftByGit(worktreePath, options)
+    await removeCheckoutLeftByGit(worktreePath, options)
+  })
 
   if (!branchName) {
     return {}

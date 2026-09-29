@@ -241,8 +241,10 @@ branch refs/heads/main
     await removeWorktree('/repo', '/repo-feature')
 
     // A large checkout takes Git 30 s or more to delete; any timeout here would cut that short.
+    // Exempt from general admission: deletes queue under their own limit instead.
     expect(gitExecFileAsyncMock).toHaveBeenCalledWith(['worktree', 'remove', '/repo-feature'], {
-      cwd: '/repo'
+      cwd: '/repo',
+      admissionExempt: true
     })
     expect(getGitCalls()).not.toContain('git worktree prune')
     expect(getGitCalls()).toContain('git branch -d -- feature/test')
