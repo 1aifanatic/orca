@@ -166,11 +166,17 @@ export function consumeQueuedMessageInTransaction(
 
 /** Compare-and-transition unsettled rows (waiting ∪ returned) to withdrawn
  *  tombstones stamped with the operation's caller-scoped key, kept only so a
- *  replay of the settling operation answers "spent". Returns the rows actually
- *  transitioned; their text stays in this database, never on the wire. */
+ *  replay of the settling operation answers "spent"; null when the host itself
+ *  withdrew it. Returns the rows actually transitioned; their text stays in
+ *  this database, never on the wire. */
 export function withdrawQueuedMessages(
   db: Database.Database,
-  input: { sessionId: string; messageIds: readonly string[]; settledByOp: string; now: number }
+  input: {
+    sessionId: string
+    messageIds: readonly string[]
+    settledByOp: string | null
+    now: number
+  }
 ): QueuedMessageRow[] {
   const withdrawn: QueuedMessageRow[] = []
   for (const messageId of input.messageIds) {

@@ -10,7 +10,6 @@ import {
   AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS,
   AGENT_SESSION_OPERATION_FUTURE_SKEW_MS
 } from '../../../shared/agent-session-host-authority'
-import { journalDispatchRowNewlyRejects } from './journal-dispatch-settlement'
 import type { JournalReducerState } from './journal-reducer'
 import type { JournalRow } from './journal-row-schema'
 import {
@@ -25,13 +24,16 @@ import {
   insertQueuedMessage,
   listQueuedMessages,
   queuedMessagesSettledByOp,
-  settleRejectedQueuedMessage,
   withdrawQueuedMessages,
   type QueuedMessageHoldReason,
   type QueuedMessageRow
 } from './queued-message-table'
 import { pruneQueuedMessages } from './queued-message-retention'
-import { queuedMessageSettlementOwed, settleOwedQueuedMessages } from './queued-message-settlement'
+import {
+  queuedMessageSettlementOwed,
+  settleOwedQueuedMessages,
+  settleQueuedMessagesForRow
+} from './queued-message-settlement'
 import { AgentSessionJournalError, assertJournalWritable } from './journal-write-guards'
 
 /** Tombstones must outlive the window in which their operation id could still be admitted as new. */
@@ -216,33 +218,16 @@ export class JournalQueuedMessages {
     })
   }
 
-  /**
-   * The standing writer hook: within the append's transaction, settle a
-   * `dispatched` draft only when the row being committed NEWLY settles the
-   * draft's current consumed submission to `rejected` — a refusal returns it,
-   * a withdrawal (a Stop, a restart) sends it back to waiting. Decided by the
-   * same function the reducer folds rows through, so a row the journal's
-   * settlement rules ignore never alters a draft.
-   */
+  /** The standing writer hook, within the append's transaction
+   *  (`settleQueuedMessagesForRow`). */
   onRowInTransaction(db: Database.Database, row: JournalRow): void {
-    if (row.kind !== 'dispatch' || row.state !== 'rejected') {
-      return
-    }
-    const submission = this.deps.state().submissions.get(row.clientMessageId)
-    if (!journalDispatchRowNewlyRejects(submission, row)) {
-      return
-    }
-    if (
-      settleRejectedQueuedMessage(db, {
-        sessionId: this.deps.sessionId,
-        consumedRef: row.clientMessageId,
-        reason: row.reason,
-        rejection: row.rejection,
-        now: this.deps.now()
-      })
-    ) {
-      this.changeRevision++
-    }
+    this.changeRevision += settleQueuedMessagesForRow(db, {
+      sessionId: this.deps.sessionId,
+      state: this.deps.state(),
+      drafts: this.list(),
+      row,
+      now: this.deps.now()
+    })
   }
 
   /** The in-transaction consume for `appendSubmission`; a false compare-and-set
