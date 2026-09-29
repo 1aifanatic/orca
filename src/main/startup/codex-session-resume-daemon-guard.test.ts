@@ -97,8 +97,7 @@ describe('Codex session resume daemon socket guard', () => {
   function resume(): ReturnType<typeof prepareCodexSessionResumeForLaunch> {
     return prepareCodexSessionResumeForLaunch({
       providerSession: { key: 'session_id', id: 'abc' },
-      target: { runtime: 'host' },
-      workspacePath: join(root, 'workspace')
+      target: { runtime: 'host' }
     })
   }
 

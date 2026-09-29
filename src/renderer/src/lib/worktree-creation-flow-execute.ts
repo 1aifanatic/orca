@@ -148,7 +148,7 @@ export async function executeWorktreeCreation(
   // `createWorktree` already inserted the real worktree row. Leaving for an app
   // view keeps the create in the background, while selecting another workspace
   // means the user still expects this task-launch handoff when it becomes ready;
-  // the entry guard prevents a late trust preflight from reviving a cancelled create.
+  // the entry guard keeps a cancelled create from being revived.
   const completionState = useAppStore.getState()
   const shouldActivateOnCompletion =
     completionState.pendingWorktreeCreations[creationId] !== undefined &&

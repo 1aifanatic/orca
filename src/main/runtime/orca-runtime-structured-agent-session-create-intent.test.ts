@@ -52,7 +52,6 @@ describe('structured agent-session create intent', () => {
     })
 
     expect(prepareCodexStructuredLaunch).toHaveBeenCalledWith({
-      workspacePath: '/repos/workspace-1',
       launchEnv: expect.objectContaining({ CODEX_HOME: '/configured/home' })
     })
     expect(intent.accountHome).toEqual({
@@ -82,7 +81,6 @@ describe('structured agent-session create intent', () => {
     // no cleared account selection — the read-only sibling answers instead.
     expect(prepareCodexStructuredLaunch).not.toHaveBeenCalled()
     expect(resolveCodexStructuredLaunchHome).toHaveBeenCalledWith({
-      workspacePath: '',
       launchEnv: expect.objectContaining({ CODEX_HOME: '/configured/home' })
     })
     expect(accountHome).toEqual({ variable: 'CODEX_HOME', path: '/accounts/selected/home' })
