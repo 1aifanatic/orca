@@ -5,6 +5,7 @@ import {
   CLIPBOARD_IMAGE_TOO_LARGE_ERROR,
   assertClipboardImageByteLengthWithinLimit,
   assertClipboardImageDimensionsWithinLimit,
+  clipboardFormatsIncludeImage,
   clipboardImageThumbnailSize,
   type ClipboardImageThumbnail
 } from '../../../../shared/clipboard-image'
@@ -227,5 +228,5 @@ export async function clipboardHasImage(): Promise<boolean | null> {
     return null
   }
   const items = await navigator.clipboard.read()
-  return items.some((item) => item.types.some((type) => type.startsWith('image/')))
+  return items.some((item) => clipboardFormatsIncludeImage(item.types))
 }

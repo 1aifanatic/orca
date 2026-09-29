@@ -26,6 +26,7 @@ const {
   clipboardReadBufferMock,
   clipboardWriteTextMock,
   clipboardReadImageMock,
+  clipboardAvailableFormatsMock,
   clipboardWriteImageMock,
   clipboardWriteBufferMock,
   nativeImageCreateFromBufferMock,
@@ -62,6 +63,7 @@ const {
   clipboardReadBufferMock: vi.fn(),
   clipboardWriteTextMock: vi.fn(),
   clipboardReadImageMock: vi.fn(),
+  clipboardAvailableFormatsMock: vi.fn(),
   clipboardWriteImageMock: vi.fn(),
   clipboardWriteBufferMock: vi.fn(),
   nativeImageCreateFromBufferMock: vi.fn(),
@@ -109,6 +111,7 @@ vi.mock('electron', () => ({
     readBuffer: clipboardReadBufferMock,
     writeText: clipboardWriteTextMock,
     readImage: clipboardReadImageMock,
+    availableFormats: clipboardAvailableFormatsMock,
     writeImage: clipboardWriteImageMock,
     writeBuffer: clipboardWriteBufferMock
   },
@@ -876,13 +879,17 @@ describe('registerClipboardHandlers', () => {
     expect(clipboardWriteImageMock).not.toHaveBeenCalled()
   })
 
-  it.each([true, false])('reports empty=%s without requiring a thumbnail', (empty) => {
+  it.each([
+    [['text/plain'], false],
+    [['text/plain', 'image/png'], true]
+  ])('reports image presence for %j from the format list without decoding', (formats, expected) => {
     setTrustedClipboardRendererWebContentsId(17)
-    clipboardReadImageMock.mockReturnValue({ isEmpty: () => empty })
+    clipboardAvailableFormatsMock.mockReturnValue(formats)
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: registering handlers never reads the store for clipboard image presence.
     registerClipboardHandlers({} as never)
     const probe = getRegisteredHandlers().get('clipboard:hasImage')
-    expect(probe?.(makeClipboardEvent())).toBe(!empty)
+    expect(probe?.(makeClipboardEvent())).toBe(expected)
+    expect(clipboardReadImageMock).not.toHaveBeenCalled()
     expect(() => probe?.(makeClipboardEvent({ id: 42 }))).toThrow()
   })
 })

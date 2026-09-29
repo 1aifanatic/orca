@@ -24,6 +24,7 @@ import {
   assertClipboardImageBase64LengthWithinLimit,
   assertClipboardImageByteLengthWithinLimit,
   assertClipboardImageDimensionsWithinLimit,
+  clipboardFormatsIncludeImage,
   type ClipboardImageThumbnail
 } from '../../shared/clipboard-image'
 import {
@@ -120,7 +121,7 @@ export function registerClipboardHandlers(store: Store): void {
   })
   ipcMain.handle('clipboard:hasImage', (event): boolean => {
     assertTrustedClipboardSender(event)
-    return !clipboard.readImage().isEmpty()
+    return clipboardFormatsIncludeImage(clipboard.availableFormats())
   })
   // Why: terminals need to detect clipboard images to support tools like Claude
   // Code that accept image input via paste. Writes the clipboard image to a
