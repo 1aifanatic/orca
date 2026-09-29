@@ -19,7 +19,7 @@
     "ios": {
       "componentProvider": {
         "OrcaSelectableText": "OrcaSelectableText",
-        "OrcaSelectableTextRun": "OrcaSelectableTextRun"
+        "OrcaSelectableTextRun": "OrcaSelectableText"
       }
     },
     "outputDir": {

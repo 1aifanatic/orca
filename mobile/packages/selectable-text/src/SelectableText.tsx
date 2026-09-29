@@ -66,7 +66,7 @@ function flattenFragments(children: ReactNode): ReactNode[] {
   )
 }
 
-// Each run mounts a native view, so adjacent plain strings share one.
+// Each run is a shadow node, so adjacent plain strings share one.
 function joinAdjacentText(children: ReactNode[]): ReactNode[] {
   const joined: ReactNode[] = []
   for (const child of children) {

@@ -3,6 +3,7 @@
 #import "OrcaSelectableTextAttributedString.h"
 #import <UIKit/UIKit.h>
 #include <react/renderer/components/view/ViewShadowNode.h>
+#include <react/renderer/mounting/ShadowView.h>
 #include <react/renderer/textlayoutmanager/TextMeasureCache.h>
 #include <react/utils/SimpleThreadSafeCache.h>
 #include <react/utils/hash_combine.h>
@@ -218,6 +219,10 @@ Size OrcaSelectableTextShadowNode::measureContent(
 
         fragment.string = props.text;
         fragment.textAttributes = textAttributes;
+        // Stamps the run's event emitter into the string for taps; like BaseTextShadowNode, keeps no props or state.
+        fragment.parentShadowView = ShadowView{*textViewChild};
+        fragment.parentShadowView.props = nullptr;
+        fragment.parentShadowView.state = nullptr;
 
         // Ranges are UTF-16 offsets into the NSString that measurement and drawing build.
         const size_t fragmentLength = [NSString stringWithUTF8String:props.text.c_str()].length;

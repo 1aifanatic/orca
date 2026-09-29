@@ -1,7 +1,7 @@
 #import "OrcaSelectableText.h"
 #import "OrcaSelectableTextShadowNode.h"
 #import "OrcaSelectableTextComponentDescriptor.h"
-#import "OrcaSelectableTextRun.h"
+#import "OrcaSelectableTextRunComponentDescriptor.h"
 #import "OrcaSelectableTextAttributedString.h"
 #import "OrcaSelectableTextLayoutManager.h"
 #import <React/RCTConversions.h>
@@ -31,6 +31,12 @@ using namespace facebook::react;
 + (ComponentDescriptorProvider)componentDescriptorProvider
 {
   return concreteComponentDescriptorProvider<OrcaSelectableTextComponentDescriptor>();
+}
+
+// Runs have no view class; codegen maps their name to this class so it registers them.
++ (std::vector<ComponentDescriptorProvider>)supplementalComponentDescriptorProviders
+{
+  return {concreteComponentDescriptorProvider<OrcaSelectableTextRunComponentDescriptor>()};
 }
 
 - (instancetype)initWithFrame:(CGRect)frame
@@ -240,12 +246,12 @@ using namespace facebook::react;
   return [sender locationInView:_textView];
 }
 
-- (OrcaSelectableTextRun*)getTouchChild:(CGPoint)location
+- (std::shared_ptr<const OrcaSelectableTextRunEventEmitter>)getTouchChild:(CGPoint)location
 {
   NSLayoutManager *layoutManager = _textView.layoutManager;
   NSTextContainer *textContainer = _textView.textContainer;
   if (layoutManager.numberOfGlyphs == 0) {
-    return nil;
+    return nullptr;
   }
   // The nearest glyph can be across a paragraph gap or hanging indent; only a tap on it counts.
   const NSUInteger glyphIndex = [layoutManager glyphIndexForPoint:location
@@ -257,27 +263,14 @@ using namespace facebook::react;
   const CGRect lineRect = [layoutManager lineFragmentUsedRectForGlyphAtIndex:glyphIndex effectiveRange:nil];
   if (location.x < CGRectGetMinX(glyphRect) || location.x > CGRectGetMaxX(glyphRect) ||
       location.y < CGRectGetMinY(lineRect) || location.y > CGRectGetMaxY(lineRect)) {
-    return nil;
+    return nullptr;
   }
   const auto charIndex = [layoutManager characterIndexForGlyphAtIndex:glyphIndex];
-
-  int currIndex = -1;
-  for (UIView* child in self.subviews) {
-    if (![child isKindOfClass:[OrcaSelectableTextRun class]]) {
-      continue;
-    }
-
-    OrcaSelectableTextRun* textChild = (OrcaSelectableTextRun*)child;
-
-    // This is UTF16 code units!!
-    currIndex += textChild.text.length;
-
-    if (charIndex <= currIndex) {
-      return textChild;
-    }
-  }
-
-  return nil;
+  NSData *eventEmitterWrapper = [_textView.textStorage attribute:RCTAttributedStringEventEmitterKey
+                                                         atIndex:charIndex
+                                                  effectiveRange:nil];
+  return std::dynamic_pointer_cast<const OrcaSelectableTextRunEventEmitter>(
+      RCTUnwrapEventEmitter(eventEmitterWrapper));
 }
 
 - (void)handlePressIfNecessary:(UITapGestureRecognizer*)sender
@@ -286,7 +279,7 @@ using namespace facebook::react;
   const auto child = [self getTouchChild:location];
 
   if (child) {
-    [child onPress];
+    child->onPress({});
   }
 }
 
@@ -296,7 +289,7 @@ using namespace facebook::react;
   const auto child = [self getTouchChild:location];
 
   if (child) {
-    [child onLongPress];
+    child->onLongPress({});
   }
 }
 

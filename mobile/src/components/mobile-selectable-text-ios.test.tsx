@@ -85,6 +85,10 @@ describe('iOS selectable text boundary', () => {
     )
     const spans = nodes(tree, 'OrcaSelectableTextRun')
     expect(spans.map((node) => node.props.text).join('')).toBe('same file')
+    // Native taps dispatch to whichever run holds the glyph; only the link's run handles them.
+    expect(spans.filter((node) => node.props.onPress).map((node) => node.props.text)).toEqual([
+      'file'
+    ])
     act(() => spans.find((node) => node.props.text === 'file')!.props.onPress())
     expect(onOpenFile).toHaveBeenCalledExactlyOnceWith('src/main.ts')
     expect(errors.mock.calls.filter((args) => String(args[0]).includes('same key'))).toEqual([])
