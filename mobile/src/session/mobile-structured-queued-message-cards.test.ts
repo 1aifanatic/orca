@@ -88,7 +88,7 @@ describe('mobileQueuedMessageCards', () => {
       [draft({ messageId: 'a', ...returnedAs(agentSessionFailureFact('cancelled')) })],
       { pendingPrompt: false }
     )
-    expect(card?.label).toBe('Held back by Stop — Send to retry')
+    expect(card?.label).toBe('Stopped before it was sent')
   })
 
   it('reads a Stop withdrawal from the fact, whatever sentence rides beside it', () => {
@@ -103,7 +103,7 @@ describe('mobileQueuedMessageCards', () => {
       ],
       { pendingPrompt: false }
     )
-    expect(card?.label).toBe('Held back by Stop — Send to retry')
+    expect(card?.label).toBe('Stopped before it was sent')
   })
 
   it('words a host-restart returned card from its fact, as a rejected send', () => {
@@ -136,7 +136,7 @@ describe('mobileQueuedMessageCards', () => {
       ],
       { pendingPrompt: false }
     )
-    expect(card?.label).toBe('Your message was not sent. Send it again.')
+    expect(card?.label).toBe('Your message was not sent.')
   })
 
   it('maps the send-failed pause marker to English and an unknown marker to a plain pause', () => {
@@ -163,6 +163,6 @@ describe('mobileQueuedMessageCards', () => {
       ],
       { pendingPrompt: false }
     )
-    expect(card?.label).toBe('Your message was not sent. Send it again.')
+    expect(card?.label).toBe('Your message was not sent.')
   })
 })
