@@ -162,6 +162,8 @@ describe('logSingleInstanceLockFailure', () => {
     expect(line.trimEnd()).not.toContain('\n')
     expect(line).toContain(`the profile at ${userDataPath}`)
     expect(line).toContain('ORCA_DEV_USER_DATA_PATH=')
+    // A background or serve instance shows no window, so the line claims none.
+    expect(line).not.toMatch(/focus|window/i)
   })
 })
 

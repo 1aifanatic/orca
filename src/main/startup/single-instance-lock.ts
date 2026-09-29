@@ -87,7 +87,7 @@ export function singleInstanceLockFailureMessage(options: {
   if (!options.isDevDesktop) {
     return SINGLE_INSTANCE_LOCK_FAILURE_MESSAGE
   }
-  return `[single-instance] Another Orca dev instance is already running on the profile at ${options.userDataPath}; exiting this launch after focusing its window. To run another dev copy at the same time, give it its own profile: ORCA_DEV_USER_DATA_PATH=<another directory> pnpm dev`
+  return `[single-instance] Another Orca dev instance is already running on the profile at ${options.userDataPath}; exiting this launch after passing it this launch's request. To run another dev copy at the same time, give it its own profile: ORCA_DEV_USER_DATA_PATH=<another directory> pnpm dev`
 }
 
 export function logSingleInstanceLockFailure(
