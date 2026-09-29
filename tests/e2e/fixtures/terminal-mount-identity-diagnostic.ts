@@ -7,23 +7,27 @@ export async function installMountIdentityDiagnostic(page: Page): Promise<void> 
     }
   })
   await page.evaluate(() => {
-    window.__store?.subscribe((state, previous) => {
-      if (state.tabsByWorktree === previous.tabsByWorktree) {
-        return
-      }
-      const before = new Set(
-        Object.values(previous.tabsByWorktree)
-          .flat()
-          .map((tab) => tab.id)
-      )
-      const added = Object.values(state.tabsByWorktree)
-        .flat()
-        .filter((tab) => !before.has(tab.id))
-      if (added.length) {
+    let previousSnapshot = ''
+    let remaining = 200
+    window.__store?.subscribe((state) => {
+      const rows = Object.entries(state.tabsByWorktree)
+        .filter(([id]) => id.includes('live-mount'))
+        .flatMap(([, tabs]) =>
+          tabs.map((tab) => ({
+            id: tab.id,
+            ptyId: tab.ptyId,
+            layout: state.terminalLayoutsByTabId[tab.id],
+            ptyIds: state.ptyIdsByTabId[tab.id]
+          }))
+        )
+      const snapshot = JSON.stringify(rows)
+      if (snapshot !== previousSnapshot && remaining > 0) {
+        remaining -= 1
         console.log(
           '[mount-identity]',
-          JSON.stringify({ added, stack: new Error('tab added').stack })
+          JSON.stringify({ rows, stack: new Error('bindings changed').stack })
         )
+        previousSnapshot = snapshot
       }
     })
   })

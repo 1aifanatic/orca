@@ -13,6 +13,7 @@ import { defineConfig } from '@stablyai/playwright-test'
  * Tests use _electron.launch() to start the app — no manual setup needed.
  */
 export default defineConfig({
+  repeatEach: 8,
   testDir: './e2e',
   globalSetup: './e2e/global-setup.ts',
   globalTeardown: './e2e/global-teardown.ts',
