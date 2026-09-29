@@ -177,8 +177,7 @@ export const AGENT_HOOK_HANDLERS: Record<string, CommandHandler> = {
   'agent hooks prepare-codex': async ({ client, flags }) => {
     rejectRemoteHookSelection(flags)
     if (!process.env.WSL_DISTRO_NAME?.trim()) {
-      // Why a no-op, kept for one release: the app prepares native Codex homes
-      // itself, and pane shell wrappers from older builds still call this command.
+      // Why a no-op: native pane wrappers from builds up to v1.4.216 still call it; delete once no supported build's wrapper does.
       return
     }
     try {
