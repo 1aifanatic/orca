@@ -16,6 +16,8 @@ import { createRuntimePtySpawnState } from './runtime/spawn-state'
 import type { PtyRuntimeControllerDeps } from './runtime/controller-deps'
 
 type BuildInput = {
+  worktreeId?: string
+  cwd?: string
   connectionId?: string
   launchAgent?: TuiAgent
   command?: string
@@ -66,11 +68,12 @@ function makeDeps(): PtySpawnIpcDeps & PtyRuntimeControllerDeps {
 function seed(
   ctx: Pick<
     PtyIpcSpawnState,
-    'env' | 'launchCommand' | 'claudeAuth' | 'expectedWslDistro' | 'preAdoptedStablePane'
+    'env' | 'cwd' | 'launchCommand' | 'claudeAuth' | 'expectedWslDistro' | 'preAdoptedStablePane'
   >,
   input: BuildInput
 ): void {
   ctx.env = { CLAUDE_CONFIG_DIR: '/cfg' }
+  ctx.cwd = input.cwd
   ctx.launchCommand = input.command
   ctx.claudeAuth = input.claudeAuth ?? null
   ctx.expectedWslDistro = input.wslDistro ?? null
@@ -81,7 +84,7 @@ async function build(route: 'renderer' | 'runtime', input: BuildInput) {
   const args = {
     cols: 80,
     rows: 24,
-    worktreeId: 'repo-1::/repo/wt',
+    worktreeId: input.worktreeId ?? 'repo-1::/repo/wt',
     connectionId: input.connectionId,
     launchAgent: input.launchAgent,
     command: input.command
@@ -118,6 +121,16 @@ describe.each(['renderer', 'runtime'] as const)('%s spawn builder agent trust', 
       wslDistro: 'Ubuntu',
       connectionId: null
     })
+  })
+
+  it('trusts Codex in a floating terminal at the resolved folder it starts in', async () => {
+    await build(route, {
+      worktreeId: 'global-floating-terminal',
+      cwd: '/Users/me',
+      launchAgent: 'codex',
+      command: 'codex'
+    })
+    expect(applyAgentWorkspaceTrust).toHaveBeenCalledWith('codex', '/Users/me', expect.anything())
   })
 
   it('holds the spawn until the trust write settles', async () => {

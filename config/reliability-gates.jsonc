@@ -361,8 +361,8 @@
       "motivatingLinks": [
         "https://github.com/stablyai/orca/blob/main/src/main/agent-workspace-trust.ts"
       ],
-      "invariant": "A fresh PTY launch of an agent with a trust preset pre-trusts its workspace root before the provider spawn, in both spawn builders, on the host that runs the agent: main for local and WSL launches, the SSH relay on its own disk for SSH launches. It never waits past the preset's deadline: 20 s for local Codex, the short budget for every other write, local or on the relay. A failed or abandoned write lets the launch proceed untrusted, so the agent asks. Restored or reattached panes, spawns with no launch command and the setting turned off are never trusted; for an agent whose trust on a home covers the folders below it (Claude, Copilot, Qoder), no writer stores a path that is a root, a home or a folder above one, and an unknown home writes nothing; Codex, Cursor and Antigravity, whose trust on a home covers only the home, trust it as they did before; and a WSL launch never writes the Windows home.",
-      "oracle": "A trust write held pending keeps each builder from returning until it settles. A never-settling local Codex write resolves the dispatcher only after the long deadline; a never-settling local Claude write resolves after the short budget with a named warning. Rejected and throwing writes, and a throwing guard, resolve with a warning. Restored panes, spawns without a command and the setting off make no dispatcher call. An SSH launch returns the relay field for every preset and calls no writer, and the relay's pty.spawn starts no process until that launch's trust call settles. A home, a folder above one, a root, a symlink to a home and a missing path that climbs back to the home through `..` write no Claude, Copilot or Qoder trust file, on this machine and on the relay, and the home writes Codex, Cursor and Antigravity trust.",
+      "invariant": "A fresh PTY launch of an agent with a trust preset pre-trusts its workspace root (for Codex, whose lookup keys on its start folder, the folder it starts in, including a floating terminal's) before the provider spawn, in both spawn builders, on the host that runs the agent: main for local and WSL launches, the SSH relay on its own disk for SSH launches. It never waits past the preset's deadline: 20 s for local Codex, the short budget for every other write, local or on the relay. A failed or abandoned write lets the launch proceed untrusted, so the agent asks. Restored or reattached panes, spawns with no launch command and the setting turned off are never trusted; for an agent whose trust on a home covers the folders below it (Claude, Copilot, Qoder), no writer stores a path that is a root, a home or a folder above one, and an unknown home writes nothing; Codex, Cursor and Antigravity, whose trust on a home covers only the home, trust it as they did before; and a WSL launch never writes the Windows home.",
+      "oracle": "A trust write held pending keeps each builder from returning until it settles. A never-settling local Codex write resolves the dispatcher only after the long deadline; a never-settling local Claude write resolves after the short budget with a named warning. Rejected and throwing writes, and a throwing guard, resolve with a warning. Restored panes, spawns without a command and the setting off make no dispatcher call; Codex in a floating terminal or a workspace subfolder is trusted at that folder, and every other preset at the workspace root. An SSH launch returns the relay field for every preset and calls no writer, and the relay's pty.spawn starts no process until that launch's trust call settles. A home, a folder above one, a root, a symlink to a home and a missing path that climbs back to the home through `..` write no Claude, Copilot or Qoder trust file, on this machine and on the relay, and the home writes Codex, Cursor and Antigravity trust.",
       "commands": [
         "ORCA_BACKGROUND_LAUNCH=1 pnpm exec vitest run --config config/vitest.config.ts src/main/ipc/pty/spawn-options-agent-workspace-trust.test.ts src/main/agent-workspace-trust-spawn.test.ts src/main/agent-workspace-trust.test.ts src/main/execution-host-workspace-trust.test.ts src/relay/agent-workspace-trust-spawn.test.ts src/relay/agent-workspace-trust-spawn-guard-failure.test.ts src/relay/pty-handler-agent-workspace-trust.test.ts"
       ],
@@ -379,6 +379,7 @@
         {
           "file": "src/main/ipc/pty/spawn-options-agent-workspace-trust.test.ts",
           "assertions": [
+            "trusts Codex in a floating terminal at the resolved folder it starts in",
             "holds the spawn until the trust write settles",
             "never re-runs trust for a restored pane or a spawn with no launch command"
           ]
@@ -387,7 +388,9 @@
           "file": "src/main/agent-workspace-trust-spawn.test.ts",
           "assertions": [
             "does nothing with the setting off",
-            "does nothing for a restored or reattached pane"
+            "does nothing for a restored or reattached pane",
+            "trusts Codex in a floating terminal at the folder it starts in",
+            "trusts Codex at a subfolder it starts in, which its lookup keys on"
           ]
         },
         {
@@ -436,8 +439,8 @@
           "platform": "macos",
           "command": "ORCA_BACKGROUND_LAUNCH=1 pnpm exec vitest run --config config/vitest.config.ts src/main/ipc/pty/spawn-options-agent-workspace-trust.test.ts src/main/agent-workspace-trust-spawn.test.ts src/main/agent-workspace-trust.test.ts src/main/execution-host-workspace-trust.test.ts src/relay/agent-workspace-trust-spawn.test.ts src/relay/agent-workspace-trust-spawn-guard-failure.test.ts src/relay/pty-handler-agent-workspace-trust.test.ts",
           "result": "passed",
-          "durationSeconds": 1.66,
-          "summary": "204 tests across seven suites pass, run through node_modules/.bin/vitest with a throwaway HOME. No native launch, PTY or live SSH host."
+          "durationSeconds": 1.34,
+          "summary": "195 tests across seven suites pass, run through node_modules/.bin/vitest with a throwaway HOME. No native launch, PTY or live SSH host."
         }
       ],
       "runtimeBudget": {
@@ -450,7 +453,7 @@
       },
       "redGreenEvidence": {
         "status": "complete",
-        "evidence": "Each named case failed with its fix removed and passed restored: the builder's await turned into a fire-and-forget call fails the hold case; guarding every preset fails each Codex, Cursor and Antigravity home case, and guarding none fails each Claude, Copilot and Qoder home, root, symlink and `..` case; dropping the unknown-home rule fails every no-home case; the relay deriving only Claude from launchAgent fails each non-Claude relay case; the dispatcher handing only Claude to the relay fails each SSH preset case; dropping the relay's Antigravity return fails its case; letting the host writer's catch rethrow fails every guard-failure case; dropping resolve() from the guard's forms fails the missing `..` path case for every guarded preset; removing the relay handler's trust call, or not awaiting it, fails the relay handler case."
+        "evidence": "Each named case failed with its fix removed and passed restored: the builder's await turned into a fire-and-forget call fails the hold case; guarding every preset fails each Codex, Cursor and Antigravity home case, and guarding none fails each Claude, Copilot and Qoder home, root, symlink and `..` case; dropping the unknown-home rule fails every no-home case; the relay deriving only Claude from launchAgent fails each non-Claude relay case; the dispatcher handing only Claude to the relay fails each SSH preset case; dropping the relay's Antigravity return fails its case; letting the host writer's catch rethrow fails every guard-failure case; dropping resolve() from the guard's forms fails the missing `..` path case for every guarded preset; marking Codex as trusted at the workspace root, or a builder dropping the start folder, fails the Codex floating-terminal and subfolder cases; removing the relay handler's trust call, or not awaiting it, fails the relay handler case."
       },
       "performanceBudget": {
         "required": true,

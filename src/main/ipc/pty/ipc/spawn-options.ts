@@ -96,6 +96,7 @@ export async function buildPtyIpcSpawnOptions(
   const trustWrite = applyAgentWorkspaceTrustToSpawn({
     launchAgent: args.launchAgent,
     worktreeId: args.worktreeId,
+    cwd: ctx.cwd,
     store: ctx.deps.store,
     isFreshLaunch: !ctx.preAdoptedStablePane && ctx.launchCommand !== undefined,
     settings: ctx.deps.getSettings?.(),

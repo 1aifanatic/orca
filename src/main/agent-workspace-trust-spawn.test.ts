@@ -16,6 +16,7 @@ function spawnArgs(overrides: Partial<Parameters<typeof applyAgentWorkspaceTrust
   return {
     launchAgent: 'claude',
     worktreeId: 'repo-1::/repo/wt',
+    cwd: undefined,
     store,
     isFreshLaunch: true,
     settings: { agentWorkspaceTrustEnabled: true },
@@ -122,6 +123,34 @@ describe('applyAgentWorkspaceTrustToSpawn', () => {
     expect(spawnOptions).toEqual({ agentWorkspaceTrust: { workspacePath: '/srv/wt' } })
   })
 
+  it('trusts Codex in a floating terminal at the folder it starts in', async () => {
+    await applyAgentWorkspaceTrustToSpawn(
+      spawnArgs({ launchAgent: 'codex', worktreeId: 'global-floating-terminal', cwd: '/Users/me' })
+    )
+    expect(applyAgentWorkspaceTrust).toHaveBeenCalledWith('codex', '/Users/me', expect.anything())
+  })
+
+  it('trusts Codex at a subfolder it starts in, which its lookup keys on', async () => {
+    await applyAgentWorkspaceTrustToSpawn(
+      spawnArgs({ launchAgent: 'codex', worktreeId: 'folder:fw-1', cwd: '/notes/sub' })
+    )
+    expect(applyAgentWorkspaceTrust).toHaveBeenCalledWith('codex', '/notes/sub', expect.anything())
+  })
+
+  it.each(PRESET_AGENTS.filter((agent) => agent !== 'codex'))(
+    'trusts the workspace root for %s, whose trust covers its subfolders or matches the root',
+    async (agent) => {
+      await applyAgentWorkspaceTrustToSpawn(
+        spawnArgs({ launchAgent: agent, worktreeId: 'folder:fw-1', cwd: '/notes/sub' })
+      )
+      expect(applyAgentWorkspaceTrust).toHaveBeenCalledWith(
+        TUI_AGENT_CONFIG[agent].preflightTrust,
+        '/notes',
+        expect.anything()
+      )
+    }
+  )
+
   it('treats an unset setting as on', async () => {
     await applyAgentWorkspaceTrustToSpawn(spawnArgs({ settings: undefined }))
     expect(applyAgentWorkspaceTrust).toHaveBeenCalledTimes(1)
@@ -130,7 +159,11 @@ describe('applyAgentWorkspaceTrustToSpawn', () => {
   it.each([
     ['an agent with no trust preset', { launchAgent: 'gemini' }],
     ['a plain terminal with no declared agent', { launchAgent: undefined }],
-    ['a floating terminal', { worktreeId: 'global-floating-terminal' }],
+    ['a floating terminal', { worktreeId: 'global-floating-terminal', cwd: '/Users/me' }],
+    [
+      'Codex with no start folder and no workspace',
+      { launchAgent: 'codex', worktreeId: 'global-floating-terminal' }
+    ],
     ['an unknown folder workspace', { worktreeId: 'folder:missing' }],
     ['a spawn with no workspace', { worktreeId: undefined }]
   ])('does nothing, and gives the builder nothing to await, for %s', (_label, overrides) => {

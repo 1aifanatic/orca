@@ -154,6 +154,15 @@ describe('applyWorkspaceTrustOnThisHost', () => {
     }
   )
 
+  it('trusts the exact subfolder Codex starts in, inside a folder that is not a repo', async () => {
+    const subfolder = join(root, 'notes', 'sub')
+    mkdirSync(subfolder, { recursive: true })
+    await applyWorkspaceTrustOnThisHost('codex', subfolder, thisHost())
+    expect(readFileSync(join(state.home, '.codex', 'config.toml'), 'utf-8')).toContain(
+      `[projects."${subfolder}"]`
+    )
+  })
+
   it("trusts a worktree's main checkout for Codex when that checkout is not a home", async () => {
     const mainCheckout = join(root, 'repo')
     const worktree = join(root, 'worktrees', 'feature')

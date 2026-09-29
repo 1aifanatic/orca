@@ -46,6 +46,20 @@ export const AGENT_TRUST_INHERITS_FROM_A_HOME: Record<AgentTrustPreset, boolean>
   antigravity: false
 }
 
+/**
+ * Agents whose lookup keys on the folder they start in, so Orca trusts that folder, not the
+ * workspace root, even outside any workspace. Codex checks its start folder, then that folder's
+ * repo root; a non-git workspace root above the start folder is neither.
+ */
+export const AGENT_TRUST_KEYED_BY_START_FOLDER: Record<AgentTrustPreset, boolean> = {
+  claude: false,
+  codex: true,
+  cursor: false,
+  copilot: false,
+  qoder: false,
+  antigravity: false
+}
+
 // Why resolve() too: Claude stores it, and it collapses `..` even where realpath fails.
 function withResolvedForm(path: string): string[] {
   try {

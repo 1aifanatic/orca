@@ -6,6 +6,7 @@ import {
   type AgentTrustLaunchContext,
   type AgentTrustSpawnFields
 } from './agent-workspace-trust'
+import { AGENT_TRUST_KEYED_BY_START_FOLDER } from './execution-host-workspace-trust'
 
 /**
  * The one place Orca pre-trusts a workspace: every Orca-started agent PTY passes
@@ -19,6 +20,8 @@ export function applyAgentWorkspaceTrustToSpawn(
     launchAgent: unknown
     /** Worktree or folder workspace id; its root is the folder the agent is trusted in. */
     worktreeId: string | undefined
+    /** The resolved folder the agent starts in; floating terminals have only this. */
+    cwd: string | undefined
     store: { getFolderWorkspace: (id: string) => { folderPath: string } | undefined } | undefined
     isFreshLaunch: boolean
     settings: Pick<GlobalSettings, 'agentWorkspaceTrustEnabled'> | null | undefined
@@ -31,11 +34,17 @@ export function applyAgentWorkspaceTrustToSpawn(
   const preset = isTuiAgent(args.launchAgent)
     ? TUI_AGENT_CONFIG[args.launchAgent].preflightTrust
     : undefined
-  const workspacePath = resolveTerminalWorkspacePath(
+  if (!preset) {
+    return null
+  }
+  const workspaceRoot = resolveTerminalWorkspacePath(
     args.worktreeId,
     (folderWorkspaceId) => args.store?.getFolderWorkspace(folderWorkspaceId)?.folderPath
   )
-  if (!preset || !workspacePath) {
+  const workspacePath = AGENT_TRUST_KEYED_BY_START_FOLDER[preset]
+    ? args.cwd || workspaceRoot
+    : workspaceRoot
+  if (!workspacePath) {
     return null
   }
   return applyAgentWorkspaceTrust(preset, workspacePath, {
