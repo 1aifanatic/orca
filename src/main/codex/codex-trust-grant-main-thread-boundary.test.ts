@@ -55,6 +55,6 @@ describe('codex trust grant main-thread boundary', () => {
     const host = readFileSync(join(CODEX_DIR, 'codex-trust-grant-host.ts'), 'utf8')
     expect(host).toContain('export async function resolveCodexTrustGrantHost(')
     const realHome = readFileSync(join(CODEX_DIR, 'codex-real-home-hook-install.ts'), 'utf8')
-    expect(realHome).toContain('}): Promise<RealHomeCodexHookLane> {')
+    expect(realHome).toContain('export async function ensureRealHomeCodexHookState(')
   })
 })

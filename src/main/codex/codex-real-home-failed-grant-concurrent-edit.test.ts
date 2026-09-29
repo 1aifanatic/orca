@@ -38,7 +38,7 @@ async function ensureRealHomeCodexHookState(
   args: Parameters<typeof startRealHomeCodexHookEnsure>[0]
 ): ReturnType<typeof startRealHomeCodexHookEnsure> {
   await startRealHomeCodexHookEnsure(args)
-  return realHomeInternals.settledLaneForTesting()
+  return realHomeInternals.settledVerdictForTesting()
 }
 
 // Why this file (QA case 9): a trust session that fails while someone else edits
@@ -50,7 +50,7 @@ afterEach(() => {
   vi.useRealTimers()
 })
 beforeEach(() => {
-  realHomeInternals.setLaneForTesting('pending')
+  realHomeInternals.resetForTesting('pending')
   vi.spyOn(console, 'warn').mockImplementation(() => {})
 })
 const USER_HOOK: HookDefinition = { hooks: [{ type: 'command', command: 'user-hook.sh' }] }

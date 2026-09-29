@@ -45,7 +45,7 @@ async function ensureRealHomeCodexHookState(
   args: Parameters<typeof startRealHomeCodexHookEnsure>[0]
 ): ReturnType<typeof startRealHomeCodexHookEnsure> {
   await startRealHomeCodexHookEnsure(args)
-  return _internals.settledLaneForTesting()
+  return _internals.settledVerdictForTesting()
 }
 import { getCodexManagedHookInstallMaterial } from './codex-hook-definition'
 
@@ -67,7 +67,7 @@ beforeEach(() => {
   vi.stubEnv('ORCA_USER_DATA_PATH', userDataDir)
   homedirMock.mockReturnValue(homeDir)
   mkdirSync(join(homeDir, '.codex'), { recursive: true })
-  _internals.setLaneForTesting('pending')
+  _internals.resetForTesting('pending')
   vi.spyOn(console, 'warn').mockImplementation(() => {})
 })
 

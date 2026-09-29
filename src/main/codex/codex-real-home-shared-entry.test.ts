@@ -115,7 +115,7 @@ describe('the shared real-home Codex entry', () => {
 
   it('survives launch prep on the real-home lane with hooks off', async () => {
     seedSharedEntry()
-    realHomeInternals.setLaneForTesting('installed')
+    realHomeInternals.resetForTesting('installed')
     const before = snapshotRealCodexHome()
 
     expect(

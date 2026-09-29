@@ -36,9 +36,11 @@ import {
   _internals as realHomeInternals,
   ensureRealHomeCodexHookState,
   isRealHomeCodexHookLaneUsable,
-  removeRealHomeCodexHookForOptOut
+  removeRealHomeCodexHookForOptOut,
+  setRealHomeCodexHooksEnabledReader
 } from './codex-real-home-hook-install'
 import { cleanupLegacySystemManagedHooks } from './codex-hook-legacy-cleanup'
+import { runExclusivelyForCodexTrustConfig } from './codex-trust-config-mutation-queue'
 import { getCodexManagedHookInstallMaterial } from './codex-hook-definition'
 import { createCodexHookTrustEntry } from './codex-hook-identity'
 import { getOrcaManagedCodexHomePath } from './codex-home-paths'
@@ -95,19 +97,47 @@ function orcaEntryTrust(): string[] {
   )
 }
 
+/** The trust keys of the handlers in hooks.json that run `command`. */
+function keysRunning(command: string): Set<string> {
+  return new Set(
+    Object.entries(readHooks()).flatMap(([eventName, definitions]) =>
+      definitions.flatMap((definition, groupIndex) =>
+        (definition.hooks ?? []).flatMap((hook, handlerIndex) => {
+          const entry =
+            hook.command === command
+              ? createCodexHookTrustEntry(
+                  hooksPath(),
+                  eventName,
+                  groupIndex,
+                  handlerIndex,
+                  definition,
+                  hook
+                )
+              : null
+          return entry ? [normalizeHookTrustKeyForLookup(computeTrustKey(entry))] : []
+        })
+      )
+    )
+  )
+}
+
 type AppServer = { sessions: number; start: () => void }
 
 /**
  * An app-server whose start takes `coldStartMs`, ending when `start()` is called.
  * Past the session deadline it times out, as the real session does.
  */
-function installAppServer(coldStartMs: number, failure?: Error): AppServer {
+function installAppServer(
+  coldStartMs: number,
+  failure?: Error,
+  grant: typeof grantInternals = grantInternals
+): AppServer {
   let start: () => void = () => {}
   const started = new Promise<void>((resolve) => {
     start = resolve
   })
   const server: AppServer = { sessions: 0, start: () => start() }
-  grantInternals.setGrantSessionRunner(async (request: CodexHookTrustGrantRequest) => {
+  grant.setGrantSessionRunner(async (request: CodexHookTrustGrantRequest) => {
     server.sessions += 1
     await started
     if (coldStartMs > request.invocation.timeoutMs) {
@@ -117,6 +147,13 @@ function installAppServer(coldStartMs: number, failure?: Error): AppServer {
     }
     if (failure) {
       throw failure
+    }
+    // Why: Codex lists what hooks.json holds when it answers, not what the install wrote.
+    const listed = keysRunning(request.managedCommand)
+    if (
+      !request.expectedTrustKeys.every((key) => listed.has(normalizeHookTrustKeyForLookup(key)))
+    ) {
+      return { outcome: 'verify-failed', reason: 'list mismatch', reasonClass: 'list-mismatch' }
     }
     const entries = request.expectedTrustKeys.map((key) => {
       const entry = { ...parseTrustKey(key)!, command: request.managedCommand, timeoutSec: 10 }
@@ -150,7 +187,7 @@ function launch(): ReturnType<typeof ensureRealHomeCodexHookState> {
 let warn: ReturnType<typeof vi.spyOn>
 
 beforeEach(() => {
-  realHomeInternals.setLaneForTesting('pending')
+  realHomeInternals.resetForTesting('pending')
   resolveCodexCommandMock.mockReturnValue(process.execPath)
   mkdirSync(join(homes.tmpHome, '.codex'), { recursive: true })
   writeFileSync(hooksPath(), `${JSON.stringify({ hooks: { Stop: [USER_HOOK] } }, null, 2)}\n`)
@@ -167,15 +204,15 @@ describe('a slow codex app-server start', () => {
     const server = installAppServer(15_000)
 
     const startedAt = performance.now()
-    expect(await launch()).toBe('granting')
-    expect(await launch()).toBe('granting')
+    expect(await launch()).toBe('approving')
+    expect(await launch()).toBe('approving')
     expect(performance.now() - startedAt).toBeLessThan(1_000)
     // Why: a launch that finds trust not ready uses the managed home.
     expect(isRealHomeCodexHookLaneUsable()).toBe(false)
     expect(orcaHandlerCount()).toBe(getCodexManagedHookInstallMaterial().events.length)
 
     server.start()
-    expect(await realHomeInternals.settledLaneForTesting()).toBe('installed')
+    expect(await realHomeInternals.settledVerdictForTesting()).toBe('installed')
 
     expect(await launch()).toBe('installed')
     expect(isRealHomeCodexHookLaneUsable()).toBe(true)
@@ -186,8 +223,8 @@ describe('a slow codex app-server start', () => {
     const hung = installAppServer(10 * 60_000)
     hung.start()
 
-    expect(await launch()).toBe('granting')
-    expect(await realHomeInternals.settledLaneForTesting()).toBe('unavailable')
+    expect(await launch()).toBe('approving')
+    expect(await realHomeInternals.settledVerdictForTesting()).toBe('unavailable')
     // Why: the failed attempt takes back its own unapproved adds, so nothing asks for review.
     expect(orcaHandlerCount()).toBe(0)
     const events = getCodexManagedHookInstallMaterial().events.length
@@ -199,8 +236,8 @@ describe('a slow codex app-server start', () => {
 
     const recovered = installAppServer(0)
     recovered.start()
-    expect(await launch()).toBe('granting')
-    expect(await realHomeInternals.settledLaneForTesting()).toBe('installed')
+    expect(await launch()).toBe('approving')
+    expect(await realHomeInternals.settledVerdictForTesting()).toBe('installed')
     expect(recovered.sessions).toBe(1)
   })
 
@@ -209,8 +246,8 @@ describe('a slow codex app-server start', () => {
     let server = installAppServer(10 * 60_000)
     server.start()
     const timesOut = async (): Promise<void> => {
-      expect(await launch()).toBe('granting')
-      expect(await realHomeInternals.settledLaneForTesting()).toBe('unavailable')
+      expect(await launch()).toBe('approving')
+      expect(await realHomeInternals.settledVerdictForTesting()).toBe('unavailable')
     }
     const waitsFor = async (ms: number): Promise<void> => {
       vi.setSystemTime(Date.now() + ms - 1)
@@ -230,8 +267,8 @@ describe('a slow codex app-server start', () => {
     server = installAppServer(0)
     server.start()
     await waitsFor(300_000)
-    expect(await launch()).toBe('granting')
-    expect(await realHomeInternals.settledLaneForTesting()).toBe('installed')
+    expect(await launch()).toBe('approving')
+    expect(await realHomeInternals.settledVerdictForTesting()).toBe('installed')
 
     // Why a ledger miss: it forces a fresh approval, which then times out again.
     rmSync(join(dirname(getOrcaManagedCodexHomePath()), 'trust-grant-ledger.json'))
@@ -250,15 +287,15 @@ describe('a slow codex app-server start', () => {
     const cold = installAppServer(10 * 60_000)
     cold.start()
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      expect(await launch()).toBe('granting')
-      expect(await realHomeInternals.settledLaneForTesting()).toBe('unavailable')
+      expect(await launch()).toBe('approving')
+      expect(await realHomeInternals.settledVerdictForTesting()).toBe('unavailable')
     }
 
     const warm = installAppServer(0)
     warm.start()
     vi.setSystemTime(Date.now() + 10_000)
-    expect(await launch()).toBe('granting')
-    expect(await realHomeInternals.settledLaneForTesting()).toBe('installed')
+    expect(await launch()).toBe('approving')
+    expect(await realHomeInternals.settledVerdictForTesting()).toBe('installed')
     expect(warm.sessions).toBe(1)
   })
 
@@ -284,33 +321,33 @@ describe('a slow codex app-server start', () => {
       }
     })
 
-    expect(await launch()).toBe('granting')
+    expect(await launch()).toBe('approving')
     await vi.advanceTimersByTimeAsync(CODEX_BACKGROUND_TRUST_GRANT_TIMEOUT_MS)
     // Why: the session is still alive, so a launch now must not start a second one.
-    expect(await launch()).toBe('granting')
+    expect(await launch()).toBe('approving')
     await vi.advanceTimersByTimeAsync(spawnMs)
-    expect(await realHomeInternals.settledLaneForTesting()).toBe('unavailable')
+    expect(await realHomeInternals.settledVerdictForTesting()).toBe('unavailable')
     expect(maxInFlight).toBe(1)
     expect(orcaHandlerCount()).toBe(0)
   })
 
   it('keeps already-trusted Orca entries trusted when a later re-grant fails', async () => {
     installAppServer(0).start()
-    expect(await launch()).toBe('granting')
-    expect(await realHomeInternals.settledLaneForTesting()).toBe('installed')
+    expect(await launch()).toBe('approving')
+    expect(await realHomeInternals.settledVerdictForTesting()).toBe('installed')
     const events = getCodexManagedHookInstallMaterial().events.length
     expect(orcaEntryTrust()).toEqual(Array(events).fill('trusted'))
 
     // Why a ledger miss: another Orca profile keeps its own ledger for this shared home.
     rmSync(join(dirname(getOrcaManagedCodexHomePath()), 'trust-grant-ledger.json'))
-    realHomeInternals.setLaneForTesting('pending')
+    realHomeInternals.resetForTesting('pending')
     const failing = installAppServer(
       0,
       new Error('codex app-server exited before completing the session')
     )
     failing.start()
-    expect(await launch()).toBe('granting')
-    expect(await realHomeInternals.settledLaneForTesting()).toBe('unavailable')
+    expect(await launch()).toBe('approving')
+    expect(await realHomeInternals.settledVerdictForTesting()).toBe('unavailable')
 
     expect(failing.sessions).toBe(1)
     expect(orcaEntryTrust()).toEqual(Array(events).fill('trusted'))
@@ -324,34 +361,145 @@ describe('a slow codex app-server start', () => {
     )
     failing.start()
 
-    expect(await launch()).toBe('granting')
-    expect(await realHomeInternals.settledLaneForTesting()).toBe('unavailable')
+    expect(await launch()).toBe('approving')
+    expect(await realHomeInternals.settledVerdictForTesting()).toBe('unavailable')
     expect(await launch()).toBe('unavailable')
     expect(failing.sessions).toBe(1)
 
     vi.setSystemTime(Date.now() + 10_001)
-    expect(await launch()).toBe('granting')
-    await realHomeInternals.settledLaneForTesting()
+    expect(await launch()).toBe('approving')
+    await realHomeInternals.settledVerdictForTesting()
     expect(failing.sessions).toBe(2)
   })
 
-  it('re-adds the entry when hooks go off and on during an approval, one session at a time', async () => {
+  it('re-adds the entry after an approval that hooks off and on outlived has settled', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    let hooksOn = true
+    setRealHomeCodexHooksEnabledReader(() => hooksOn)
     const server = installAppServer(0)
     const events = getCodexManagedHookInstallMaterial().events.length
-    expect(await launch()).toBe('granting')
+    expect(await launch()).toBe('approving')
+    hooksOn = false
     expect(await removeRealHomeCodexHookForOptOut()).toBe('removed')
     expect(orcaHandlerCount()).toBe(0)
-
-    expect(await launch()).toBe('granting')
-    expect(orcaHandlerCount()).toBe(events)
+    // Why: a session is still live, whatever the opt-out concluded.
     expect(isRealHomeCodexHookLaneUsable()).toBe(false)
-    // Why: the second approval waits for the first session to end.
-    expect(server.sessions).toBe(1)
+
+    hooksOn = true
+    // Why: the running session still owns this attempt; re-adding now would start a second one.
+    expect(await launch()).toBe('approving')
+    expect(orcaHandlerCount()).toBe(0)
+    expect(isRealHomeCodexHookLaneUsable()).toBe(false)
 
     server.start()
-    expect(await realHomeInternals.settledLaneForTesting()).toBe('installed')
+    // Why: Codex lists the hooks.json the opt-out emptied, so that session cannot approve.
+    expect(await realHomeInternals.settledVerdictForTesting()).toBe('unavailable')
+    expect(server.sessions).toBe(1)
+    vi.setSystemTime(Date.now() + 10_001)
+    expect(await launch()).toBe('approving')
+    expect(orcaHandlerCount()).toBe(events)
+    expect(await realHomeInternals.settledVerdictForTesting()).toBe('installed')
+    expect(server.sessions).toBe(2)
     expect(orcaEntryTrust()).toEqual(Array(events).fill('trusted'))
   })
+
+  it('keeps the lane unusable while hooks read off during an approval, and settles as removed', async () => {
+    let hooksOn = true
+    setRealHomeCodexHooksEnabledReader(() => hooksOn)
+    const server = installAppServer(0)
+    expect(await launch()).toBe('approving')
+
+    // Why: the settings flipped, and the opt-out sweep has not run yet.
+    hooksOn = false
+    expect(
+      await ensureRealHomeCodexHookState({
+        hooksEnabled: false,
+        userDataPath: homes.userDataDir,
+        writePolicy: 'add-missing-only'
+      })
+    ).toBe('approving')
+    expect(isRealHomeCodexHookLaneUsable()).toBe(false)
+
+    server.start()
+    expect(await realHomeInternals.settledVerdictForTesting()).toBe('removed')
+    expect(server.sessions).toBe(1)
+  })
+
+  it('settles under the config.toml lane, after a writer that holds it', async () => {
+    const failing = installAppServer(
+      0,
+      new Error('codex app-server exited before completing the session')
+    )
+    const events = getCodexManagedHookInstallMaterial().events.length
+    expect(await launch()).toBe('approving')
+    let release: () => void = () => {}
+    const holder = runExclusivelyForCodexTrustConfig(
+      configPath(),
+      () => new Promise<void>((resolve) => (release = resolve))
+    )
+
+    failing.start()
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(orcaHandlerCount()).toBe(events)
+    release()
+    await holder
+    expect(await realHomeInternals.settledVerdictForTesting()).toBe('unavailable')
+    expect(orcaHandlerCount()).toBe(0)
+  })
+
+  it("stays on the managed home when hooks come back on inside a failed approval's retry window", async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    let hooksOn = true
+    setRealHomeCodexHooksEnabledReader(() => hooksOn)
+    const failing = installAppServer(
+      0,
+      new Error('codex app-server exited before completing the session')
+    )
+    expect(await launch()).toBe('approving')
+    hooksOn = false
+    failing.start()
+    expect(await realHomeInternals.settledVerdictForTesting()).toBe('removed')
+
+    hooksOn = true
+    expect(await launch()).toBe('unavailable')
+    expect(isRealHomeCodexHookLaneUsable()).toBe(false)
+    vi.setSystemTime(Date.now() + 10_001)
+    expect(await launch()).toBe('approving')
+    await realHomeInternals.settledVerdictForTesting()
+  })
+
+  it.skipIf(process.platform === 'win32')(
+    'runs an app-start conversion that arrives during an approval once it settles',
+    async () => {
+      const server = installAppServer(0)
+      expect(await launch()).toBe('approving')
+      // Why: an older build's pane launch added its own form beside Orca's entry meanwhile.
+      const older = join(homes.tmpHome, '.orca', 'agent-hooks', 'codex-hook.sh')
+      const hooks = readHooks()
+      hooks.Stop = [...hooks.Stop, { hooks: [{ type: 'command', command: older, timeout: 10 }] }]
+      writeFileSync(hooksPath(), `${JSON.stringify({ hooks }, null, 2)}\n`)
+      const stopCommands = (): (string | undefined)[] =>
+        readHooks().Stop.flatMap((definition) =>
+          (definition.hooks ?? []).map((hook) => hook.command)
+        )
+
+      expect(
+        await ensureRealHomeCodexHookState({
+          hooksEnabled: true,
+          userDataPath: homes.userDataDir,
+          writePolicy: 'convert-older-forms'
+        })
+      ).toBe('approving')
+      expect(stopCommands()).toContain(older)
+
+      server.start()
+      expect(await realHomeInternals.settledVerdictForTesting()).toBe('installed')
+      expect(stopCommands()).not.toContain(older)
+      expect(orcaEntryTrust()).toEqual(
+        Array(getCodexManagedHookInstallMaterial().events.length).fill('trusted')
+      )
+    }
+  )
 
   it('has one retry schedule: turning hooks off and on after a failure retries at once', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
@@ -360,8 +508,8 @@ describe('a slow codex app-server start', () => {
       new Error('codex app-server exited before completing the session')
     )
     failing.start()
-    expect(await launch()).toBe('granting')
-    expect(await realHomeInternals.settledLaneForTesting()).toBe('unavailable')
+    expect(await launch()).toBe('approving')
+    expect(await realHomeInternals.settledVerdictForTesting()).toBe('unavailable')
 
     await ensureRealHomeCodexHookState({
       hooksEnabled: false,
@@ -370,8 +518,8 @@ describe('a slow codex app-server start', () => {
     })
     const recovered = installAppServer(0)
     recovered.start()
-    expect(await launch()).toBe('granting')
-    expect(await realHomeInternals.settledLaneForTesting()).toBe('installed')
+    expect(await launch()).toBe('approving')
+    expect(await realHomeInternals.settledVerdictForTesting()).toBe('installed')
     expect(recovered.sessions).toBe(1)
   })
 
@@ -397,8 +545,8 @@ describe('a slow codex app-server start', () => {
       })
       upsertHookTrustEntries(configPath(), [{ ...userAt(1), trustedHash: 'sha256:user-approved' }])
 
-      expect(await launch()).toBe('granting')
-      expect(await realHomeInternals.settledLaneForTesting()).toBe('unavailable')
+      expect(await launch()).toBe('approving')
+      expect(await realHomeInternals.settledVerdictForTesting()).toBe('unavailable')
       await cleanupLegacySystemManagedHooks()
 
       expect(readHooks().Stop).toEqual([USER_HOOK])

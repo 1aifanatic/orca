@@ -41,7 +41,7 @@ vi.mock('./codex-hook-trust-grant', () => ({
 
 import {
   ensureRealHomeCodexHookState as startRealHomeCodexHookEnsure,
-  getRealHomeCodexHookLane,
+  getRealHomeCodexHookVerdict,
   removeRealHomeCodexHookForOptOut,
   _internals
 } from './codex-real-home-hook-install'
@@ -51,7 +51,7 @@ async function ensureRealHomeCodexHookState(
   args: Parameters<typeof startRealHomeCodexHookEnsure>[0]
 ): ReturnType<typeof startRealHomeCodexHookEnsure> {
   await startRealHomeCodexHookEnsure(args)
-  return _internals.settledLaneForTesting()
+  return _internals.settledVerdictForTesting()
 }
 import { getCodexManagedHookInstallMaterial } from './hook-service'
 import {
@@ -97,7 +97,7 @@ beforeEach(() => {
   process.env.ORCA_USER_DATA_PATH = userDataDir
   homedirMock.mockReturnValue(fakeHomeDir)
   mkdirSync(join(fakeHomeDir, '.codex'), { recursive: true })
-  _internals.setLaneForTesting('pending')
+  _internals.resetForTesting('pending')
 })
 
 afterEach(() => {
@@ -112,9 +112,8 @@ afterEach(() => {
 })
 
 describe('ensureRealHomeCodexHookState (install)', () => {
-  // Why (#16441): the ensure chain is process-wide; a rejection that escapes it
-  // would return the same rejected promise to every later pane launch, with no
-  // retry and no cooldown recovery.
+  // Why (#16441): every pane launch queues on one process-wide lane, so a failure
+  // must resolve to a verdict and leave later ensures their retry.
   it('recovers from a home-resolution failure instead of poisoning later ensures', async () => {
     grantSucceeds()
     homedirMock.mockImplementationOnce(() => {
@@ -336,7 +335,7 @@ describe('ensureRealHomeCodexHookState (install)', () => {
     })
 
     expect(lane).toBe('unavailable')
-    expect(getRealHomeCodexHookLane()).toBe('unavailable')
+    expect(getRealHomeCodexHookVerdict()).toBe('unavailable')
     expect(readFileSync(getRealHooksJsonPath(), 'utf-8')).toBe(userRaw)
   })
 

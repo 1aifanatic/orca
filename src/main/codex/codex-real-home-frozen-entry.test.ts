@@ -47,7 +47,7 @@ async function ensureRealHomeCodexHookState(
   args: Parameters<typeof startRealHomeCodexHookEnsure>[0]
 ): ReturnType<typeof startRealHomeCodexHookEnsure> {
   await startRealHomeCodexHookEnsure(args)
-  return realHomeInternals.settledLaneForTesting()
+  return realHomeInternals.settledVerdictForTesting()
 }
 import { getCodexManagedHookInstallMaterial } from './codex-hook-definition'
 
@@ -160,7 +160,7 @@ describe('the frozen real-home Codex entry', () => {
     expect(readFileSync(`${hooksPath()}.bak`, 'utf-8')).toBe(olderRaw)
 
     for (const policy of ['add-missing-only', 'add-missing-only', 'convert-older-forms'] as const) {
-      realHomeInternals.setLaneForTesting('pending')
+      realHomeInternals.resetForTesting('pending')
       expect(await ensure(policy)).toBe('installed')
     }
 
@@ -178,7 +178,7 @@ describe('the frozen real-home Codex entry', () => {
     const secondUserData = mkdtempSync(join(tmpdir(), 'orca-codex-second-instance-'))
 
     try {
-      realHomeInternals.setLaneForTesting('pending')
+      realHomeInternals.resetForTesting('pending')
       expect(await ensure('convert-older-forms', secondUserData)).toBe('installed')
       expect(await ensure('add-missing-only', secondUserData)).toBe('installed')
     } finally {

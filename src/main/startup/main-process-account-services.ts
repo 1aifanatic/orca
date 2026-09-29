@@ -19,7 +19,11 @@ import { createAccountRuntimeTargetSettingsSync } from '../rate-limits/account-r
 import { normalizeCodexRuntimeSelection } from '../codex-accounts/runtime-selection'
 import { normalizeClaudeRuntimeSelection } from '../claude-accounts/runtime-selection'
 import { agentHookServer } from '../agent-hooks/server'
-import { isRealHomeCodexHookLaneUsable } from '../codex/codex-real-home-hook-install'
+import {
+  isRealHomeCodexHookLaneUsable,
+  setRealHomeCodexHooksEnabledReader
+} from '../codex/codex-real-home-hook-install'
+import { isAgentStatusHooksEnabledForAgent } from '../agent-hooks/managed-agent-hook-controls'
 import { resolveHostCodexSessionSourceHome } from '../codex/codex-session-source-home'
 import { browserManager } from '../browser/browser-manager'
 import { mainProcessState as state } from './main-process-state'
@@ -41,6 +45,9 @@ export function initializeMainProcessAccountServices(): void {
   // Why: an incapable trust-grant host must fall back to the managed home for
   // every consumer (PTY env, rate limits, commit messages) in one place.
   state.codexRuntimeHome.setRealHomeLaneGate(() => isRealHomeCodexHookLaneUsable())
+  setRealHomeCodexHooksEnabledReader(() =>
+    isAgentStatusHooksEnabledForAgent(store.getSettings(), 'codex')
+  )
   state.codexSessionMigration = createCodexSessionMigrationScheduler({
     isEligible: () =>
       state.codexRuntimeHome?.isHostSystemDefaultSessionMigrationEligible() === true,

@@ -3,6 +3,7 @@ import type * as Os from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { HookDefinition } from '../agent-hooks/installer-utils'
+import type { TuiAgent } from '../../shared/tui-agent'
 import type {
   CodexHookTrustGrantRequest,
   CodexHookTrustGrantSessionResult
@@ -15,11 +16,15 @@ import { isCodexManagedCommand, setupCodexHookHomes } from '../codex/hook-servic
 // waits only on that home's own setup, which is bounded by its inline approval.
 // A resume has no other home, so it waits for that one approval to settle.
 
-const { getPathMock, homedirMock, resolveCodexCommandMock } = vi.hoisted(() => ({
-  getPathMock: vi.fn<(name: string) => string>(),
-  homedirMock: vi.fn<() => string>(),
-  resolveCodexCommandMock: vi.fn<() => string>()
-}))
+const { getPathMock, homedirMock, resolveCodexCommandMock, settings } = vi.hoisted(() => {
+  const disabledTuiAgents: TuiAgent[] = []
+  return {
+    getPathMock: vi.fn<(name: string) => string>(),
+    homedirMock: vi.fn<() => string>(),
+    resolveCodexCommandMock: vi.fn<() => string>(),
+    settings: { agentStatusHooksEnabled: true, disabledTuiAgents }
+  }
+})
 
 vi.mock('electron', () => ({ app: { getPath: getPathMock } }))
 vi.mock('os', async (importOriginal) => {
@@ -73,14 +78,22 @@ vi.mock('./main-process-state', async () => {
         prepareForCodexLaunchAsync: async () =>
           isRealHomeCodexHookLaneUsable() ? null : getOrcaManagedCodexHomePath()
       },
-      store: { getSettings: () => ({ agentStatusHooksEnabled: true, disabledTuiAgents: [] }) }
+      store: { getSettings: () => settings }
     }
   }
 })
 
 const { CODEX_BACKGROUND_TRUST_GRANT_TIMEOUT_MS, _internals: grantInternals } =
   await import('../codex/codex-hook-trust-grant')
-const { _internals: realHomeInternals } = await import('../codex/codex-real-home-hook-install')
+const {
+  _internals: realHomeInternals,
+  ensureRealHomeCodexHookState,
+  isRealHomeCodexHookLaneUsable,
+  removeRealHomeCodexHookForOptOut,
+  setRealHomeCodexHooksEnabledReader
+} = await import('../codex/codex-real-home-hook-install')
+const { isAgentStatusHooksEnabledForAgent } =
+  await import('../../shared/agent-status-hooks-setting')
 const { getOrcaManagedCodexHomePath } = await import('../codex/codex-home-paths')
 const { prepareCodexRuntimeHomeForLaunch } = await import('./codex-launch-preparation')
 const { prepareCodexSessionResumeForLaunch } = await import('./codex-session-resume-launch')
@@ -178,12 +191,55 @@ function launch(workspacePath: string): Promise<string | null> {
   })
 }
 
+/** Real-home sessions time out at their own limit, as on a cold host; managed homes approve. */
+function timeOutRealHomeSessions(): { outcomes: string[] } {
+  const outcomes: string[] = []
+  const record = { outcomes }
+  grantInternals.setGrantSessionRunner(async (request: CodexHookTrustGrantRequest) => {
+    if (!isRealHomeSession(request)) {
+      return approveAll(request)
+    }
+    if (record.outcomes.length > 0) {
+      // Why: a later session lists what hooks.json holds now, as Codex does.
+      const listed = realHomeOrcaEntryTrust().length
+      const outcome = listed === request.expectedTrustKeys.length ? 'granted' : 'list-mismatch'
+      record.outcomes.push(outcome)
+      return outcome === 'granted'
+        ? approveAll(request)
+        : { outcome: 'verify-failed', reason: 'list mismatch', reasonClass: 'list-mismatch' }
+    }
+    return new Promise<never>((_resolve, reject) =>
+      setTimeout(() => {
+        record.outcomes.push('timeout')
+        reject(new CodexAppServerTimeoutError('codex app-server session timed out'))
+      }, request.invocation.timeoutMs)
+    )
+  })
+  return record
+}
+
+/** Starts resumes together and records when each would spawn, from now. */
+function resumeTogether(count: number): { spawnedAt: number[]; done: Promise<unknown> } {
+  const startedAt = Date.now()
+  const spawnedAt: number[] = []
+  const done = Promise.all(
+    Array.from({ length: count }, (_unused, index) =>
+      resume().then(() => {
+        spawnedAt[index] = Date.now() - startedAt
+      })
+    )
+  )
+  return { spawnedAt, done }
+}
+
 afterEach(() => {
   vi.useRealTimers()
 })
 
 beforeEach(() => {
-  realHomeInternals.setLaneForTesting('pending')
+  realHomeInternals.resetForTesting('pending')
+  settings.agentStatusHooksEnabled = true
+  setRealHomeCodexHooksEnabledReader(() => isAgentStatusHooksEnabledForAgent(settings, 'codex'))
   resolveCodexCommandMock.mockReturnValue(process.execPath)
   mkdirSync(join(homes.tmpHome, '.codex'), { recursive: true })
   writeFileSync(join(homes.tmpHome, '.codex', 'hooks.json'), '{"hooks":{}}\n')
@@ -230,7 +286,7 @@ describe('a Codex launch while the real-home approval hangs', () => {
       expect(systemConfig.match(/trust_level = "trusted"/g)).toHaveLength(2)
     } finally {
       release()
-      await realHomeInternals.settledLaneForTesting()
+      await realHomeInternals.settledVerdictForTesting()
     }
   })
 
@@ -282,7 +338,7 @@ describe('a Codex launch while the real-home approval hangs', () => {
       release()
       // Why: a failed assertion must not leave a managed session holding the lane.
       await vi.advanceTimersByTimeAsync(60_000)
-      await realHomeInternals.settledLaneForTesting()
+      await realHomeInternals.settledVerdictForTesting()
     }
   })
 })
@@ -351,5 +407,101 @@ describe('a Codex resume into the real ~/.codex while its approval runs', () => 
     const trust = realHomeOrcaEntryTrust()
     expect(trust.length).toBeGreaterThan(0)
     expect(trust.every((state) => state === 'trusted')).toBe(true)
+  })
+  it.each(['pending', 'installed', 'unavailable', 'removed'] as const)(
+    'makes resumes restored together from %s share one session, each spawning at its limit',
+    async (verdict) => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+      realHomeInternals.resetForTesting(verdict)
+      const record = timeOutRealHomeSessions()
+      const restored = resumeTogether(3)
+      let launchSettled = false
+      const launched = launch(workspaceDirs()[0]).finally(() => {
+        launchSettled = true
+      })
+
+      await vi.advanceTimersByTimeAsync(0)
+      // Why: a launch never waits on the approval the resumes wait for.
+      expect(launchSettled).toBe(true)
+      expect(await launched).toBe(getOrcaManagedCodexHomePath())
+      await vi.advanceTimersByTimeAsync(CODEX_BACKGROUND_TRUST_GRANT_TIMEOUT_MS)
+      await restored.done
+      expect(record.outcomes).toEqual(['timeout'])
+      expect(restored.spawnedAt).toEqual(Array(3).fill(CODEX_BACKGROUND_TRUST_GRANT_TIMEOUT_MS))
+      expect(realHomeOrcaEntryTrust()).toEqual([])
+    }
+  )
+
+  it('shares the approval the startup check started with panes restored after it', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    const record = timeOutRealHomeSessions()
+    expect(
+      await ensureRealHomeCodexHookState({
+        hooksEnabled: true,
+        userDataPath: homes.userDataDir,
+        writePolicy: 'convert-older-forms'
+      })
+    ).toBe('approving')
+    const restored = resumeTogether(3)
+
+    await vi.advanceTimersByTimeAsync(CODEX_BACKGROUND_TRUST_GRANT_TIMEOUT_MS)
+    await restored.done
+    expect(record.outcomes).toEqual(['timeout'])
+    expect(restored.spawnedAt).toEqual(Array(3).fill(CODEX_BACKGROUND_TRUST_GRANT_TIMEOUT_MS))
+  })
+
+  it('runs no session on a plan a failed approval already withdrew', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    const record = timeOutRealHomeSessions()
+    const restored = resumeTogether(2)
+
+    await vi.advanceTimersByTimeAsync(CODEX_BACKGROUND_TRUST_GRANT_TIMEOUT_MS)
+    await restored.done
+    expect(record.outcomes).toEqual(['timeout'])
+
+    // Why: the next check writes and approves from what hooks.json holds now.
+    await resume()
+    expect(record.outcomes).toEqual(['timeout', 'granted'])
+    expect(realHomeOrcaEntryTrust().every((state) => state === 'trusted')).toBe(true)
+  })
+
+  it('keeps a resume waiting when hooks read off mid-approval while Orca entries are unapproved', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    timeOutRealHomeSessions()
+    await ensureRealHomeCodexHookState({
+      hooksEnabled: true,
+      userDataPath: homes.userDataDir,
+      writePolicy: 'add-missing-only'
+    })
+    // Why: the settings flipped, and the opt-out sweep has not run yet.
+    settings.agentStatusHooksEnabled = false
+    const restored = resumeTogether(1)
+
+    await vi.advanceTimersByTimeAsync(0)
+    expect(restored.spawnedAt).toEqual([])
+    expect(isRealHomeCodexHookLaneUsable()).toBe(false)
+    await vi.advanceTimersByTimeAsync(CODEX_BACKGROUND_TRUST_GRANT_TIMEOUT_MS)
+    await restored.done
+    expect(restored.spawnedAt).toEqual([CODEX_BACKGROUND_TRUST_GRANT_TIMEOUT_MS])
+    expect(realHomeOrcaEntryTrust()).toEqual([])
+  })
+
+  it('lets a resume start once the opt-out removed the unapproved entries', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    timeOutRealHomeSessions()
+    await ensureRealHomeCodexHookState({
+      hooksEnabled: true,
+      userDataPath: homes.userDataDir,
+      writePolicy: 'add-missing-only'
+    })
+    settings.agentStatusHooksEnabled = false
+    await removeRealHomeCodexHookForOptOut()
+    const restored = resumeTogether(1)
+
+    await vi.advanceTimersByTimeAsync(0)
+    await restored.done
+    expect(restored.spawnedAt).toEqual([0])
+    await vi.advanceTimersByTimeAsync(CODEX_BACKGROUND_TRUST_GRANT_TIMEOUT_MS)
+    await realHomeInternals.settledVerdictForTesting()
   })
 })

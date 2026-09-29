@@ -42,7 +42,7 @@ async function ensureRealHomeCodexHookState(
   args: Parameters<typeof startRealHomeCodexHookEnsure>[0]
 ): ReturnType<typeof startRealHomeCodexHookEnsure> {
   await startRealHomeCodexHookEnsure(args)
-  return realHomeInternals.settledLaneForTesting()
+  return realHomeInternals.settledVerdictForTesting()
 }
 import { getCodexManagedHookInstallMaterial } from './codex-hook-definition'
 
@@ -176,7 +176,7 @@ function everyEvent(groups: (command: string) => HookDefinition[]): HooksFile {
 }
 
 beforeEach(() => {
-  realHomeInternals.setLaneForTesting('pending')
+  realHomeInternals.resetForTesting('pending')
   resolveCodexCommandMock.mockReturnValue(process.execPath)
   installCodexLikeGrant()
   vi.spyOn(console, 'warn').mockImplementation(() => {})

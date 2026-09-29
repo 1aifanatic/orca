@@ -1,11 +1,8 @@
 import {
   createManagedCommandMatcher,
-  MANAGED_HOOK_TIMEOUT_SECONDS,
   readHooksJsonWithRaw,
-  removeManagedCommands,
   writeHooksJson,
-  writeManagedScript,
-  type HookDefinition
+  writeManagedScript
 } from '../agent-hooks/installer-utils'
 import { resolveHooksJsonWritePath } from '../agent-hooks/hook-config-write-path'
 import {
@@ -18,61 +15,88 @@ import { getCodexManagedScriptFileName } from './codex-hook-identity'
 import {
   CODEX_TRUST_GRANT_TRANSIENT_RETRY_INTERVAL_MS,
   findCurrentManagedCodexHookTrust,
+  type CodexManagedTrustGrantOutcome,
   type CodexManagedTrustGrantPlan
 } from './codex-hook-trust-grant'
-import {
-  readCodexTrustGrantLedgerHomeForReconciliation,
-  removeCodexManagedHookTrustEntries
-} from './codex-managed-trust-reconciliation'
+import { readCodexTrustGrantLedgerHomeForReconciliation } from './codex-managed-trust-reconciliation'
 import { removeSystemManagedHookTrustEntries } from './codex-hook-trust-cleanup'
 import { getCodexManagedHookInstallMaterial } from './codex-hook-definition'
 import { getSystemCodexHomePath } from './codex-home-paths'
 import { mutateRealHomeHooksPreservingUserTrust } from './codex-user-hook-trust-moves'
-import { runExclusivelyForCodexTrustConfig } from './codex-trust-config-mutation-queue'
+import { sweepRealHomeCodexHook } from './codex-real-home-hook-sweep'
+import {
+  runExclusivelyForCodexTrustConfig,
+  runOutsideCodexTrustConfigLanes
+} from './codex-trust-config-mutation-queue'
 import {
   planRealHomeCodexHookEntries,
+  type RealHomeCodexHookSlotWrite,
   type RealHomeCodexHookWritePolicy
 } from './codex-real-home-hook-entry-plan'
 import {
-  _internals as backgroundGrantInternals,
-  runRealHomeBackgroundGrant,
+  _internals as approvalInternals,
+  describeRealHomeApprovalRetry,
+  hasUnapprovedRealHomeOrcaEntry,
+  recordRealHomeApprovalOutcome,
+  requestRealHomeCodexApproval,
   type RealHomeBackgroundGrant
 } from './codex-real-home-background-grant'
+import { withdrawUntrustedRealHomeWrites } from './codex-real-home-hook-withdrawal'
 
 export type { RealHomeCodexHookWritePolicy }
 
 /**
- * Real-home Codex hook lane for the system-default selection (flag ON).
+ * What the real-home check last concluded, for the routing gate (flag ON,
+ * system default). Output only: no decision in this module reads it.
  *
  * - 'pending': no attempt yet this process; routing may optimistically use the
  *   real home (reads are hook-free and the install runs before pane spawns).
- * - 'granting': the entry is written, and Codex's approval runs in the
- *   background. Launches use the managed home until it lands.
+ * - 'approving': the entry is written, and Codex's approval runs in the
+ *   background. Launches use the managed home until it lands; a resume waits.
  * - 'installed': every managed event in ~/.codex/hooks.json has an Orca entry,
  *   and the frozen ones are trusted by codex itself through the app-server grant.
  * - 'unavailable': the grant lane could not trust the entry (old binary,
- *   unsupported RPC, verify failure). An entry this call wrote that is still
- *   untrusted is withdrawn, and the host stays on the managed-home lane.
+ *   unsupported RPC, verify failure), or its retry window is still open. An
+ *   entry the attempt wrote that is still untrusted is withdrawn.
  * - 'removed': hooks are off here. Launch prep leaves the real home as it is;
  *   only an explicit opt-out strips Orca's entry, since other Orcas share it.
  */
-export type RealHomeCodexHookLane = 'pending' | 'granting' | 'installed' | 'unavailable' | 'removed'
+export type RealHomeCodexHookVerdict =
+  | 'pending'
+  | 'approving'
+  | 'installed'
+  | 'unavailable'
+  | 'removed'
 
-let currentLane: RealHomeCodexHookLane = 'pending'
-// Why: a background grant settles the lane only if nothing set it since.
-let laneGeneration = 0
-let installRetryAfterMs = 0
-let ensureInFlight: Promise<RealHomeCodexHookLane> = Promise.resolve(currentLane)
-let backgroundGrant: Promise<void> | null = null
-
-function setLane(lane: RealHomeCodexHookLane): RealHomeCodexHookLane {
-  currentLane = lane
-  laneGeneration += 1
-  return lane
+type RealHomeCodexHookIntent = {
+  hooksEnabled: boolean
+  userDataPath: string
+  writePolicy: RealHomeCodexHookWritePolicy
 }
 
-export function getRealHomeCodexHookLane(): RealHomeCodexHookLane {
-  return currentLane
+type Approval = {
+  /** What this attempt wrote; only its own settle withdraws it. */
+  writes: readonly RealHomeCodexHookSlotWrite[]
+  command: string
+  /** Settles once Codex approved, or this attempt's unapproved adds are withdrawn. */
+  done: Promise<void>
+}
+
+let verdict: RealHomeCodexHookVerdict = 'pending'
+// Why: at most one Codex approval session per process.
+let approval: Approval | null = null
+// Why: an app-start conversion that could not run yet; the next install runs it.
+let conversionOwed: { userDataPath: string } | null = null
+let installRetryAfterMs = 0
+let readCodexHooksEnabled: () => boolean = () => true
+
+export function getRealHomeCodexHookVerdict(): RealHomeCodexHookVerdict {
+  return verdict
+}
+
+/** The settings' answer, read when an approval settles after its caller has gone. */
+export function setRealHomeCodexHooksEnabledReader(read: () => boolean): void {
+  readCodexHooksEnabled = read
 }
 
 /**
@@ -81,7 +105,7 @@ export function getRealHomeCodexHookLane(): RealHomeCodexHookLane {
  * can diverge from PTY, rate-limit, or commit-message routing.
  */
 export function isRealHomeCodexHookLaneUsable(): boolean {
-  return currentLane !== 'unavailable' && currentLane !== 'granting'
+  return approval === null && verdict !== 'unavailable' && verdict !== 'approving'
 }
 
 /**
@@ -92,102 +116,135 @@ export function isRealHomeCodexHookLaneUsable(): boolean {
  * the RPC session. Never waits on a session: Codex's approval runs in the
  * background. Never throws: any failure logs and leaves the managed lane.
  */
-export function ensureRealHomeCodexHookState(args: {
-  hooksEnabled: boolean
-  userDataPath: string
-  writePolicy: RealHomeCodexHookWritePolicy
-}): Promise<RealHomeCodexHookLane> {
-  // Why: the grant client caches failed probes, but writing and withdrawing the
-  // entry before consulting it still adds work to every pane launch.
-  if (args.hooksEnabled && currentLane === 'unavailable' && Date.now() < installRetryAfterMs) {
-    return Promise.resolve(currentLane)
+export async function ensureRealHomeCodexHookState(
+  intent: RealHomeCodexHookIntent
+): Promise<RealHomeCodexHookVerdict> {
+  try {
+    // Why one lane-held step: finding no approval running and starting one are
+    // atomic, and the lane also orders this write against the retired-form sweep.
+    return await runExclusivelyForCodexTrustConfig(getRealHomeConfigTomlPath(), () =>
+      reconcileRealHomeCodexHook(intent)
+    )
+  } catch (error) {
+    return failRealHomeCodexHookCheck(error)
   }
-  if (args.hooksEnabled && currentLane === 'granting') {
-    // Why: a launch never waits on Codex's approval; it uses the managed home until it lands.
-    return Promise.resolve(currentLane)
-  }
-  // Why: this mutates the user's real ~/.codex and the module's lane state.
-  // Concurrent pane launches must not interleave two of them, and the shared
-  // config.toml lane keeps the write ordered against the managed installer's
-  // retired-form sweep of the same file.
-  const run = (): Promise<RealHomeCodexHookLane> => runRealHomeCodexHookEnsure(args)
-  // Why both handlers: a rejected predecessor must not poison every later
-  // ensure for the process' lifetime.
-  ensureInFlight = ensureInFlight.then(run, run)
-  return ensureInFlight
 }
 
 /**
  * For a resume that must run in the real home, with no managed home to fall
- * back to: while Orca's entry there awaits Codex's approval, waits for that one
- * in-flight grant, which its session's 30 s limit bounds. It settles only once
- * Codex approved the entry or the grant withdrew its own unapproved adds.
+ * back to: while an approval runs and Codex would put an Orca entry up for
+ * review, waits for that one approval, which its session's 30 s limit bounds.
  */
-export async function awaitRealHomeCodexHookTrust(): Promise<RealHomeCodexHookLane> {
-  if (currentLane === 'granting') {
-    await backgroundGrant
+export async function awaitRealHomeCodexHookTrust(): Promise<void> {
+  const current = approval
+  if (current && hasUnapprovedRealHomeOrcaEntry(current.command)) {
+    await current.done
   }
-  return currentLane
 }
 
-async function runRealHomeCodexHookEnsure(args: {
-  hooksEnabled: boolean
-  userDataPath: string
-  writePolicy: RealHomeCodexHookWritePolicy
-}): Promise<RealHomeCodexHookLane> {
-  if (!args.hooksEnabled) {
+async function reconcileRealHomeCodexHook(
+  intent: RealHomeCodexHookIntent
+): Promise<RealHomeCodexHookVerdict> {
+  if (intent.writePolicy === 'convert-older-forms') {
+    conversionOwed = { userDataPath: intent.userDataPath }
+  }
+  if (approval) {
+    // Why: a launch never waits on Codex's approval, and the running one covers
+    // add-missing; an owed conversion runs when it settles.
+    return (verdict = 'approving')
+  }
+  if (!intent.hooksEnabled) {
     // Why: this runs for launch prep and startup, and the entry is shared by
     // every Orca on this HOME; removing it is the explicit opt-out's job.
     installRetryAfterMs = 0
-    return setLane('removed')
+    return (verdict = 'removed')
   }
-  try {
-    // Why inside the try: resolving the real home can throw too, and this
-    // function is the module's "never throws" boundary.
-    const install = await runExclusivelyForCodexTrustConfig(getRealHomeConfigTomlPath(), () =>
-      installRealHomeCodexHook(args.userDataPath, args.writePolicy)
-    )
-    if (install.lane === 'installed') {
+  if (Date.now() < installRetryAfterMs) {
+    // Why: writing and withdrawing the entry again before then only adds work to every launch.
+    return (verdict = 'unavailable')
+  }
+  const writePolicy = conversionOwed ? 'convert-older-forms' : intent.writePolicy
+  conversionOwed = null
+  const install = await installRealHomeCodexHook(intent.userDataPath, writePolicy)
+  if (!install.grant) {
+    if (install.verdict === 'installed') {
       installRetryAfterMs = 0
     }
-    setLane(install.lane)
-    if (install.grant) {
-      startBackgroundGrant(install.grant)
-    }
-  } catch (error) {
-    console.warn('[codex-real-home-hooks] ensure failed; staying on managed lane:', error)
-    installRetryAfterMs = Date.now() + CODEX_TRUST_GRANT_TRANSIENT_RETRY_INTERVAL_MS
-    setLane('unavailable')
+    return (verdict = install.verdict)
   }
-  return currentLane
+  approval = startApproval(install.grant)
+  return (verdict = 'approving')
 }
 
-function startBackgroundGrant(grant: RealHomeBackgroundGrant): void {
-  const generation = laneGeneration
-  // Why chained: hooks turned off and on during a grant start another, and
-  // Codex's approval must still run one session at a time.
-  const run: Promise<void> = (backgroundGrant ?? Promise.resolve())
-    .then(() =>
-      runRealHomeBackgroundGrant(grant, (lane, retryAfterMs) => {
-        // Why: only if nothing set the lane since, such as hooks turned off.
-        if (laneGeneration === generation) {
-          installRetryAfterMs = retryAfterMs
-          setLane(lane)
-        }
-      })
+function failRealHomeCodexHookCheck(error: unknown): RealHomeCodexHookVerdict {
+  console.warn('[codex-real-home-hooks] ensure failed; staying on managed lane:', error)
+  installRetryAfterMs = Date.now() + CODEX_TRUST_GRANT_TRANSIENT_RETRY_INTERVAL_MS
+  return (verdict = 'unavailable')
+}
+
+function startApproval(grant: RealHomeBackgroundGrant): Approval {
+  const adds = { writes: grant.writes, command: grant.command }
+  // Why outside the lane: the session holds none, and its settle queues for it like any writer.
+  const done = runOutsideCodexTrustConfigLanes(async () => {
+    const outcome = await requestRealHomeCodexApproval(grant.plan)
+    try {
+      await runExclusivelyForCodexTrustConfig(getRealHomeConfigTomlPath(), () =>
+        settleApproval(adds, outcome)
+      )
+    } catch (error) {
+      // Why: a settle that cannot run must still end the flight, or every check answers 'approving'.
+      approval = null
+      failRealHomeCodexHookCheck(error)
+    }
+  })
+  return { ...adds, done }
+}
+
+async function settleApproval(
+  adds: Omit<Approval, 'done'>,
+  outcome: CodexManagedTrustGrantOutcome | null
+): Promise<void> {
+  const approved = outcome?.lane === 'rpc'
+  let withdrawn = 0
+  if (!approved) {
+    // Why: an untrusted Orca entry surfaces as "Hooks need review". Withdraw only
+    // what this attempt wrote, and only while it is still untrusted: another
+    // Orca may have trusted the identical entry meanwhile.
+    try {
+      withdrawn = withdrawUntrustedRealHomeWrites(adds.writes, adds.command)
+    } catch (error) {
+      console.warn('[codex-real-home-hooks] background trust grant failed:', error)
+    }
+  }
+  installRetryAfterMs = recordRealHomeApprovalOutcome(outcome)
+  approval = null
+  // Why from the settings: hooks turned off during the session must not read as usable.
+  verdict = !readCodexHooksEnabled() ? 'removed' : approved ? 'installed' : 'unavailable'
+  if (outcome?.lane !== 'rpc') {
+    console.warn(
+      `[codex-real-home-hooks] Codex did not approve Orca's entry (${outcome?.reason ?? 'error'}); ` +
+        `withdrew ${withdrawn} unapproved entr${withdrawn === 1 ? 'y' : 'ies'} this attempt added; ` +
+        `managed lane kept, ${describeRealHomeApprovalRetry(installRetryAfterMs)}`
     )
-    .finally(() => {
-      if (backgroundGrant === run) {
-        backgroundGrant = null
-      }
-    })
-  backgroundGrant = run
+  }
+  const owed = conversionOwed
+  if (owed) {
+    try {
+      await reconcileRealHomeCodexHook({
+        hooksEnabled: readCodexHooksEnabled(),
+        userDataPath: owed.userDataPath,
+        writePolicy: 'convert-older-forms'
+      })
+    } catch (error) {
+      failRealHomeCodexHookCheck(error)
+    }
+  }
 }
 
 async function installRealHomeCodexHook(
   userDataPath: string,
   writePolicy: RealHomeCodexHookWritePolicy
-): Promise<{ lane: RealHomeCodexHookLane; grant?: RealHomeBackgroundGrant }> {
+): Promise<{ verdict: RealHomeCodexHookVerdict; grant?: RealHomeBackgroundGrant }> {
   const material = getCodexManagedHookInstallMaterial()
   const hooksJsonPath = getRealHomeHooksJsonPath()
   const hooksWritePath = resolveHooksJsonWritePath(hooksJsonPath)
@@ -199,13 +256,13 @@ async function installRealHomeCodexHook(
     // entry the managed lane keeps status working for this host.
     console.warn('[codex-real-home-hooks] could not parse', hooksJsonPath, '- managed lane kept')
     installRetryAfterMs = Date.now() + CODEX_TRUST_GRANT_TRANSIENT_RETRY_INTERVAL_MS
-    return { lane: 'unavailable' }
+    return { verdict: 'unavailable' }
   }
   if (Object.keys(config).some((key) => key !== 'hooks')) {
     // Why: Codex rejects unknown root keys instead of ignoring them. Avoid a
     // transient rewrite of a user-owned file that the trust RPC cannot load.
     installRetryAfterMs = Date.now() + CODEX_TRUST_GRANT_TRANSIENT_RETRY_INTERVAL_MS
-    return { lane: 'unavailable' }
+    return { verdict: 'unavailable' }
   }
 
   // Why: the same script the managed lane maintains; deploying here too keeps
@@ -236,7 +293,7 @@ async function installRealHomeCodexHook(
   }
   if (plan.managedEntries.length === 0) {
     // Why: every event holds an entry of another form, which its writer keeps trusted.
-    return { lane: 'installed' }
+    return { verdict: 'installed' }
   }
 
   const grantPlan: CodexManagedTrustGrantPlan = {
@@ -250,85 +307,19 @@ async function installRealHomeCodexHook(
     background: true
   }
   if (await findCurrentManagedCodexHookTrust(grantPlan)) {
-    return { lane: 'installed' }
+    return { verdict: 'installed' }
   }
   return {
-    lane: 'granting',
+    verdict: 'approving',
     grant: { plan: grantPlan, writes: plan.writes, command: material.command }
   }
-}
-
-async function sweepRealHomeCodexHook(): Promise<RealHomeCodexHookLane> {
-  const hooksJsonPath = getRealHomeHooksJsonPath()
-  // Why: single read — the pre-write generation guard must compare against
-  // the exact bytes this sweep's parse came from.
-  const { raw: previousRaw, config } = readHooksJsonWithRaw(hooksJsonPath)
-  if (!config) {
-    // Why: a failed or malformed read proves no cleanup; keep the managed lane
-    // until a later pass can inspect and remove the real-home entry.
-    return 'unavailable'
-  }
-  if (!config.hooks || previousRaw === null) {
-    return 'removed'
-  }
-  const isManagedCommand = createManagedCommandMatcher(getCodexManagedScriptFileName())
-  const material = getCodexManagedHookInstallMaterial()
-  const nextHooks: Record<string, HookDefinition[]> = { ...config.hooks }
-  let removedAny = false
-  for (const [eventName, definitions] of Object.entries(nextHooks)) {
-    if (!Array.isArray(definitions)) {
-      continue
-    }
-    const cleaned = removeManagedCommands(definitions, isManagedCommand)
-    if (
-      cleaned.length !== definitions.length ||
-      cleaned.some((definition, index) => definition !== definitions[index])
-    ) {
-      removedAny = true
-    }
-    if (cleaned.length === 0) {
-      delete nextHooks[eventName]
-    } else {
-      nextHooks[eventName] = cleaned
-    }
-  }
-  if (removedAny) {
-    const hooksWritePath = resolveHooksJsonWritePath(hooksJsonPath)
-    mutateRealHomeHooksPreservingUserTrust({
-      sourcePath: hooksJsonPath,
-      tomlPath: getRealHomeConfigTomlPath(),
-      beforeHooks: config.hooks,
-      afterHooks: nextHooks,
-      writeHooks: () => {
-        assertHooksJsonGeneration(hooksJsonPath, hooksWritePath, previousRaw)
-        writeHooksJson(hooksWritePath, { ...config, hooks: nextHooks }, { preserveMode: true })
-      }
-    })
-    // Why: dead [hooks.state] blocks for a removed hook are Orca-owned records;
-    // dropping them keeps the user's config.toml from accumulating orphans.
-    // Verify ownership by the expected hash or grant ledger: stale/mixed hook
-    // groups must never make Orca delete a user's trust record at the same key.
-    try {
-      removeCodexManagedHookTrustEntries({
-        tomlPath: getRealHomeConfigTomlPath(),
-        runtimeHomePath: getSystemCodexHomePath(),
-        sourcePath: hooksJsonPath,
-        command: material.command,
-        managedEventLabels: new Set(Object.values(material.eventLabel)),
-        timeoutSec: MANAGED_HOOK_TIMEOUT_SECONDS
-      })
-    } catch (error) {
-      console.warn('[codex-real-home-hooks] failed to drop Orca trust entries:', error)
-    }
-  }
-  return 'removed'
 }
 
 /**
  * The user's explicit opt-out: strips Orca's entry and its trust from the real
  * ~/.codex. Joins the system lane an opt-out caller already holds.
  */
-export async function removeRealHomeCodexHookForOptOut(): Promise<RealHomeCodexHookLane> {
+export async function removeRealHomeCodexHookForOptOut(): Promise<RealHomeCodexHookVerdict> {
   try {
     const lane = await runExclusivelyForCodexTrustConfig(getRealHomeConfigTomlPath(), async () => {
       const lane = await sweepRealHomeCodexHook()
@@ -344,26 +335,29 @@ export async function removeRealHomeCodexHookForOptOut(): Promise<RealHomeCodexH
       }
       return lane
     })
-    setLane(lane)
+    verdict = lane
   } catch (error) {
     console.warn('[codex-real-home-hooks] opt-out cleanup failed; staying on managed lane:', error)
-    setLane('unavailable')
+    verdict = 'unavailable'
   }
-  return currentLane
+  return verdict
 }
 
 export const _internals = {
-  setLaneForTesting(lane: RealHomeCodexHookLane): void {
-    setLane(lane)
+  resetForTesting(state: RealHomeCodexHookVerdict): void {
+    verdict = state
+    approval = null
+    conversionOwed = null
     installRetryAfterMs = 0
-    ensureInFlight = Promise.resolve(lane)
-    backgroundGrant = null
-    backgroundGrantInternals.resetTimeoutStreakForTesting()
+    readCodexHooksEnabled = () => true
+    approvalInternals.resetTimeoutStreakForTesting()
   },
-  /** The lane once any background grant has settled. */
-  async settledLaneForTesting(): Promise<RealHomeCodexHookLane> {
-    await ensureInFlight
-    await backgroundGrant
-    return currentLane
+  /** The verdict once every queued check and any approval it started have settled. */
+  async settledVerdictForTesting(): Promise<RealHomeCodexHookVerdict> {
+    await runExclusivelyForCodexTrustConfig(getRealHomeConfigTomlPath(), async () => {})
+    while (approval) {
+      await approval.done
+    }
+    return verdict
   }
 }

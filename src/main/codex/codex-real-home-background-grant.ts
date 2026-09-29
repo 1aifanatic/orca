@@ -1,15 +1,14 @@
-import { getRealHomeConfigTomlPath } from './codex-real-home-hooks-json'
+import { readHooksJsonWithRaw } from '../agent-hooks/installer-utils'
+import { getRealHomeConfigTomlPath, getRealHomeHooksJsonPath } from './codex-real-home-hooks-json'
 import {
   grantManagedCodexHookTrust,
   type CodexManagedTrustGrantOutcome,
   type CodexManagedTrustGrantPlan
 } from './codex-hook-trust-grant'
+import { createCodexHookTrustEntry } from './codex-hook-identity'
+import { readOrcaEntryTrust } from './codex-real-home-entry-trust'
 import type { RealHomeCodexHookSlotWrite } from './codex-real-home-hook-entry-plan'
-import { withdrawUntrustedRealHomeWrites } from './codex-real-home-hook-withdrawal'
-import {
-  runExclusivelyForCodexTrustConfig,
-  runOutsideCodexTrustConfigLanes
-} from './codex-trust-config-mutation-queue'
+import { readHookTrustEntries } from './config-toml-trust'
 
 // Why seconds: a background grant blocks no launch, and a long latch at boot
 // keeps ~/.codex off its hooks long after the app-server recovers.
@@ -27,61 +26,38 @@ export type RealHomeBackgroundGrant = {
   command: string
 }
 
-type SettleLane = (lane: 'installed' | 'unavailable', retryAfterMs: number) => void
-
-/**
- * Codex's approval of a real-home entry, off the launch path. On failure it
- * withdraws what that install added and is still unapproved.
- */
-export function runRealHomeBackgroundGrant(
-  grant: RealHomeBackgroundGrant,
-  settle: SettleLane
-): Promise<void> {
-  // Why outside the caller's lane: the withdrawal takes the config.toml lane
-  // itself once the install has released it, like any later writer.
-  return runOutsideCodexTrustConfigLanes(async () => {
-    const outcome = await grantManagedCodexHookTrust(grant.plan)
-    if (outcome.lane === 'rpc') {
-      consecutiveTimeouts = 0
-      settle('installed', 0)
-      return
-    }
-    // Why: an untrusted Orca entry surfaces as "Hooks need review". Withdraw only
-    // what this install wrote, and only while it is still untrusted: another
-    // Orca may have trusted the identical entry meanwhile.
-    const withdrawn = await runExclusivelyForCodexTrustConfig(
-      getRealHomeConfigTomlPath(),
-      async () => withdrawUntrustedRealHomeWrites(grant.writes, grant.command)
-    )
-    const retryAfterMs = getInstallRetryAfterMs(outcome)
-    settle('unavailable', retryAfterMs)
-    console.warn(
-      `[codex-real-home-hooks] Codex did not approve Orca's entry (${outcome.reason}); ` +
-        `withdrew ${withdrawn} unapproved entr${withdrawn === 1 ? 'y' : 'ies'} this attempt added; ` +
-        `managed lane kept, ${describeRetry(retryAfterMs)}`
-    )
-  }).catch((error: unknown) => {
+/** Codex's approval of real-home entries; null when the attempt threw. Never throws. */
+export async function requestRealHomeCodexApproval(
+  plan: CodexManagedTrustGrantPlan
+): Promise<CodexManagedTrustGrantOutcome | null> {
+  try {
+    return await grantManagedCodexHookTrust(plan)
+  } catch (error) {
     console.warn('[codex-real-home-hooks] background trust grant failed:', error)
-    consecutiveTimeouts = 0
-    settle('unavailable', Date.now() + CODEX_BACKGROUND_TRUST_GRANT_RETRY_INTERVAL_MS)
-  })
+    return null
+  }
 }
 
-function getInstallRetryAfterMs(
-  grant: Extract<CodexManagedTrustGrantOutcome, { lane: 'fallback' }>
+/** Records an approval's outcome and returns when the next attempt may run. */
+export function recordRealHomeApprovalOutcome(
+  outcome: CodexManagedTrustGrantOutcome | null
 ): number {
+  if (outcome?.lane === 'rpc') {
+    consecutiveTimeouts = 0
+    return 0
+  }
   if (
-    grant.reason === 'unsupported' ||
-    grant.reason === 'unsupported-cached' ||
-    grant.reason === 'disabled'
+    outcome?.reason === 'unsupported' ||
+    outcome?.reason === 'unsupported-cached' ||
+    outcome?.reason === 'disabled'
   ) {
     return Number.POSITIVE_INFINITY
   }
-  if (grant.errorClass !== 'timeout') {
+  if (outcome?.errorClass !== 'timeout') {
     consecutiveTimeouts = 0
     return Date.now() + CODEX_BACKGROUND_TRUST_GRANT_RETRY_INTERVAL_MS
   }
-  // Why: a slow cold start retries on the next launch instead of latching for minutes.
+  // Why: the first slow cold starts retry on the next launch instead of latching for minutes.
   consecutiveTimeouts += 1
   if (consecutiveTimeouts < TIMEOUTS_BEFORE_BACKOFF) {
     return 0
@@ -93,12 +69,50 @@ function getInstallRetryAfterMs(
   return Date.now() + TIMEOUT_BACKOFF_MS[step]
 }
 
-function describeRetry(retryAfterMs: number): string {
+export function describeRealHomeApprovalRetry(retryAfterMs: number): string {
   if (retryAfterMs === Number.POSITIVE_INFINITY) {
     return 'not retrying'
   }
   const delayMs = retryAfterMs - Date.now()
   return delayMs > 0 ? `retrying in ${Math.ceil(delayMs / 1000)} s` : 'retrying on the next launch'
+}
+
+/**
+ * Whether ~/.codex holds an entry with `command` that Codex would put up for
+ * review. An unreadable file reads as yes: the caller's wait is bounded.
+ */
+export function hasUnapprovedRealHomeOrcaEntry(command: string): boolean {
+  try {
+    const hooksJsonPath = getRealHomeHooksJsonPath()
+    const { config } = readHooksJsonWithRaw(hooksJsonPath)
+    const trustStates = readHookTrustEntries(getRealHomeConfigTomlPath())
+    return Object.entries(config?.hooks ?? {}).some(
+      ([eventName, definitions]) =>
+        Array.isArray(definitions) &&
+        definitions.some(
+          (definition, groupIndex) =>
+            Array.isArray(definition.hooks) &&
+            definition.hooks.some((hook, handlerIndex) => {
+              if (hook.command !== command) {
+                return false
+              }
+              const entry = createCodexHookTrustEntry(
+                hooksJsonPath,
+                eventName,
+                groupIndex,
+                handlerIndex,
+                definition,
+                hook
+              )
+              const trust = entry ? readOrcaEntryTrust(entry, trustStates) : 'untrusted'
+              return trust === 'untrusted' || trust === 'stale'
+            })
+        )
+    )
+  } catch (error) {
+    console.warn('[codex-real-home-hooks] could not read Orca entry approval:', error)
+    return true
+  }
 }
 
 export const _internals = {
