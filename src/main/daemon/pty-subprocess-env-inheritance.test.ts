@@ -301,6 +301,9 @@ describe('createPtySubprocess', () => {
     spawnMock.mockReturnValue(mockPtyProcess())
     const saved = process.env.ORCA_CODEX_LAUNCH_PREFLIGHT
     process.env.ORCA_CODEX_LAUNCH_PREFLIGHT = '/other/orca/bin/orca'
+    // Why: shell features are selected on the POSIX spawn path, so pin it on Windows runners too.
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform')
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'linux' })
     try {
       await createPtySubprocess({
         sessionId: 'test',
@@ -310,6 +313,9 @@ describe('createPtySubprocess', () => {
         ...(requested === undefined ? {} : { env: { ORCA_CODEX_LAUNCH_PREFLIGHT: requested } })
       })
     } finally {
+      if (platform) {
+        Object.defineProperty(process, 'platform', platform)
+      }
       if (saved === undefined) {
         delete process.env.ORCA_CODEX_LAUNCH_PREFLIGHT
       } else {
