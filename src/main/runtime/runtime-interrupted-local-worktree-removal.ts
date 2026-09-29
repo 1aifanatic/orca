@@ -1,4 +1,7 @@
+import { lstat } from 'node:fs/promises'
+import { join } from 'node:path'
 import type { RemoveWorktreeResult } from '../../shared/worktree/create-types'
+import { assertWorktreeUnlockedForRemoval } from '../../shared/worktree/removal'
 import type { WorktreeRemovalOutcome } from '../../shared/worktree/removal-outcome'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import type { Store } from '../persistence'
@@ -8,6 +11,7 @@ import { resolveWorktreeRemovalMetadata } from '../worktree-removal-repo-owner'
 import type { RuntimePreservedBranchCleanup } from './runtime-preserved-branch-cleanup'
 import { listWorktreesStrict } from '../git/worktree'
 import { finishUnregisteredWorktreeRemoval } from '../git/worktree-removal'
+import { getErrorCode } from '../git/worktree-operation-options'
 import { areWorktreePathsEqual } from '../git/worktree-path-comparison'
 import { getLocalProjectWorktreeGitOptions } from '../project-runtime-git-options'
 import { findRegisteredDeletableWorktree } from '../worktree-removal-safety'
@@ -126,8 +130,14 @@ async function finishInterruptedLocalWorktreeRemoval(
       `Worktree registration changed during deletion: ${record.worktreePath}. Retry deletion.`
     )
   }
+  // Why: Git deletes `.git` wherever it falls in directory order (early on NTFS) and refuses to
+  // remove a checkout left without it; its registration and this record prove the rest is ours.
+  const lostGitLink = deletable ? await isCheckoutMissingGitLink(record.worktreePath) : false
+  if (lostGitLink) {
+    assertWorktreeUnlockedForRemoval(deletable)
+  }
   const gate = await args.acquireWatcherRemoval(record.worktreePath)
-  if (deletable) {
+  if (deletable && !lostGitLink) {
     return finishRuntimeLocalWorktreeRemoval(finishArgs, deletable, gate, args.stopSignal)
   }
   let result: RemoveWorktreeResult
@@ -146,4 +156,18 @@ async function finishInterruptedLocalWorktreeRemoval(
   await cleanupRemovedWorktreePushTarget(finishArgs)
   args.finishRemoval(result, true, record.head)
   return result
+}
+
+async function isCheckoutMissingGitLink(worktreePath: string): Promise<boolean> {
+  try {
+    await lstat(worktreePath)
+  } catch {
+    return false
+  }
+  try {
+    await lstat(join(worktreePath, '.git'))
+    return false
+  } catch (error) {
+    return getErrorCode(error) === 'ENOENT'
+  }
 }

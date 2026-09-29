@@ -134,6 +134,31 @@ describe('finishing an interrupted worktree removal after a restart', () => {
     expect(purged).toEqual([`repo-1::${worktreePath}`])
   })
 
+  it('finishes a checkout whose .git file Git had already deleted', async () => {
+    // Git deletes in directory order; without `.git` it refuses the checkout ("validation failed").
+    await unlink(join(worktreePath, '.git'))
+
+    const { outcome, purged } = await finishAfterRestart()
+
+    expect(outcome).toMatchObject({ status: 'removed' })
+    expect(existsSync(worktreePath)).toBe(false)
+    expect(await git(['worktree', 'list'])).not.toContain(worktreePath)
+    expect(await git(['branch', '--list', 'feature'])).toBe('')
+    expect(purged).toEqual([`repo-1::${worktreePath}`])
+  })
+
+  it('leaves a locked checkout alone even when its .git file is gone', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await git(['worktree', 'lock', worktreePath])
+    await unlink(join(worktreePath, '.git'))
+
+    const { outcome, purged } = await finishAfterRestart()
+
+    expect(outcome).toMatchObject({ status: 'failed' })
+    expect(existsSync(join(worktreePath, 'seed.txt'))).toBe(true)
+    expect(purged).toEqual([])
+  })
+
   it('deletes the branch when Git finished the checkout but the quit came before the branch', async () => {
     await git(['worktree', 'remove', worktreePath])
 
