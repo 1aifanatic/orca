@@ -77,6 +77,7 @@ import {
   type PtyIngressEmission
 } from '../shared/pty-startup-ingress'
 import { resolvePtyOwnerBackend, type PtyOwnerBackend } from '../shared/pty-owner-backend'
+import { setPtyOwnerHostColors } from '../shared/pty-owner-color-query-colors'
 import { RecentPtyOutputBuffer } from '../main/runtime/recent-pty-output-buffer'
 import { TerminalShellRecoveryBarrier } from '../main/daemon/terminal-shell-recovery-barrier'
 import { confirmPtyShellForeground } from '../main/daemon/pty-subprocess/pty-shell-foreground-confirmation'
@@ -1150,6 +1151,10 @@ export class PtyHandler {
 
     this.dispatcher.onNotification('pty.data', (p) => this.writeData(p))
     this.dispatcher.onNotification('pty.resize', (p) => this.resize(p))
+    // A notification, so a client newer than this relay is ignored rather than refused.
+    this.dispatcher.onNotification('pty.setColorQueryReplyColors', (p) =>
+      setPtyOwnerHostColors(p.colors)
+    )
   }
 
   private isLikelyInteractiveRedraw(data: string): boolean {

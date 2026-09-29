@@ -40,9 +40,6 @@ type ExpectedEcho = { projections: readonly EchoProjection[]; remainingBytes: nu
 // per-read budget is then spent inside the echo itself. This is a backstop against a
 // pathological stream, set well above any splash an echo could arrive behind.
 const ECHO_SEARCH_BUDGET_BYTES = 256 * 1024
-// Why far tighter past the deadline: a reply still on the wire at expiry deserves the
-// read or two its echo takes, but nothing beyond it — see reset().
-const ECHO_POST_DEADLINE_BUDGET_BYTES = 512
 // Live replies make the queue session-lived, so cap it under query floods.
 const MAX_TRACKED_ECHOES = 64
 
@@ -126,17 +123,6 @@ export class PtyStartupReplyDelivery {
       if (expected.remainingBytes <= 0) {
         this.expectedEchoes.splice(index, 1)
       }
-    }
-  }
-
-  /**
-   * Startup window closed. Replies already on the wire stay recognizable, but only across
-   * the next few hundred bytes: an unbounded projection would keep deleting matching
-   * spans out of ordinary output for the rest of the session.
-   */
-  reset(): void {
-    for (const expected of this.expectedEchoes) {
-      expected.remainingBytes = Math.min(expected.remainingBytes, ECHO_POST_DEADLINE_BUDGET_BYTES)
     }
   }
 

@@ -1,7 +1,14 @@
-import { answerStartupColorQuery } from './pty-startup-color-query-answer'
 import { parsePtyStartupQuery } from './pty-startup-query'
+import {
+  getPtyOwnerHostColors,
+  resolvePtyOwnerColorQueryColors
+} from './pty-owner-color-query-colors'
 import { TerminalKittyKeyboardModeTracker } from './terminal-kitty-keyboard-mode-tracker'
-import type { TerminalOscColorQuerySlot } from './terminal-osc-color-reply'
+import {
+  terminalOscColorQueryReplies,
+  type TerminalOscColorQueryReplyColors,
+  type TerminalOscColorQuerySlot
+} from './terminal-osc-color-reply'
 import type { PtyStartupIngressIntent } from './pty-startup-ingress-intent'
 import type { PtyOwnerBackend } from './pty-owner-backend'
 import { PtyStartupReplyDelivery } from './pty-startup-reply-delivery'
@@ -26,25 +33,28 @@ const MAX_QUERY_CANDIDATE_CHARS = 64
 // Why this long: a torn echo whose halves straddle this window is released raw, so
 // anything under relay jitter reinstates the leak (#12112). Almost nothing is risked
 // by waiting, because the timer is rarely what ends a hold — the next read is, and
-// the startup deadline and snapshot barrier both cap the wait independently. The
+// the snapshot barrier caps the wait independently. The
 // exposure is at most one projection's worth of echo-shaped bytes on an already idle
 // pane, which is why the guess is allowed to be slow rather than tight.
 const ECHO_CONTINUATION_HOLD_MS = 500
 
 /**
- * Serialized source-side startup classifier. Its raw sequence begins after
- * shell-ready preprocessing and every accepted range is emitted exactly once.
+ * Serialized source-side classifier. Its raw sequence begins after shell-ready
+ * preprocessing and every accepted range is emitted exactly once.
+ *
+ * It is the only OSC 10/11 answerer for its PTY, for the PTY's whole life: every
+ * query is answered and stripped here, so no downstream view ever sees one to answer
+ * twice. Kitty keyboard queries alone keep a startup window.
  */
 export class PtyStartupIngress {
   private readonly intent: PtyStartupIngressIntent | undefined
+  private readonly resolveHostColors: () => TerminalOscColorQueryReplyColors | null
   private readonly ownerBackend: PtyOwnerBackend
   private readonly delivery: PtyStartupReplyDelivery
   private readonly onEmission: (emission: PtyIngressEmission) => void
   private readonly operations: PtyStartupIngressOperation[] = []
-  private readonly answeredSlots = new Set<TerminalOscColorQuerySlot>()
   private processing = false
   private closed = false
-  private queryOpen: boolean
   private kittyQueryOpen: boolean
   private readonly kittyModes = new TerminalKittyKeyboardModeTracker()
   private rawHighWater = 0
@@ -55,12 +65,12 @@ export class PtyStartupIngress {
 
   constructor(options: PtyStartupIngressOptions) {
     this.intent = options.intent
+    this.resolveHostColors = options.resolveHostColors ?? getPtyOwnerHostColors
     this.ownerBackend = options.ownerBackend ?? 'posix-pty'
     this.delivery = new PtyStartupReplyDelivery(this.ownerBackend, options.write)
     this.onEmission = options.onEmission
-    this.queryOpen = options.intent !== undefined
     this.kittyQueryOpen = options.intent?.kittyKeyboardProtocol === true
-    if (options.intent) {
+    if (options.intent && this.kittyQueryOpen) {
       this.deadlineTimer = setTimeout(
         () => this.enqueue({ kind: 'expire' }),
         Math.max(0, options.intent.deadlineMs)
@@ -132,25 +142,16 @@ export class PtyStartupIngress {
         this.processEchoSpan(operation.chunk)
         return
       case 'close-query':
+        // Why only Kitty: colour authority never hands off, and the echo hold survives
+        // too, because a reply already on the wire is still Orca's to swallow.
         this.kittyQueryOpen = false
         if (this.queryPending?.data.startsWith('\x1b[')) {
           this.releaseQueryPending()
         }
-        if (this.ownerBackend !== 'windows-conpty') {
-          this.queryOpen = false
-          // Why the echo hold deliberately survives this, unlike `snapshot`: the
-          // handoff ends query *authority*, but a reply already on the wire is still
-          // Orca's to swallow. Releasing here would show the first half of an echo
-          // split across the boundary and orphan the second.
-          this.releaseQueryPending()
-        }
-        // Why: ConPTY cannot safely transfer color-query authority to a downstream view.
         return
       case 'expire':
-        this.queryOpen = false
         this.kittyQueryOpen = false
         this.releasePendingInSourceOrder(false)
-        this.delivery.reset()
         this.clearDeadline()
         return
       case 'snapshot':
@@ -158,7 +159,6 @@ export class PtyStartupIngress {
         this.releasePendingInSourceOrder(false)
         return
       case 'teardown':
-        this.queryOpen = false
         this.kittyQueryOpen = false
         this.releasePendingInSourceOrder(true)
         this.delivery.close()
@@ -250,10 +250,6 @@ export class PtyStartupIngress {
     const input = combinePtyIngressSourceSpans(this.queryPending, span)
     this.queryPending = null
     const suppressConptyQuery = this.ownerBackend === 'windows-conpty'
-    if ((!this.queryOpen || !this.intent) && !this.kittyQueryOpen && !suppressConptyQuery) {
-      this.emit(input, false)
-      return
-    }
 
     let scanOffset = 0
     let emittedOffset = 0
@@ -288,10 +284,12 @@ export class PtyStartupIngress {
       const answered =
         query.kind === 'kitty'
           ? this.delivery.answer(`\x1b[?${this.kittyModes.flags}u`)
-          : this.queryOpen && this.intent && this.answerQuery(query.slots)
+          : this.answerColorQuery(query.slots)
       if (query.kind === 'kitty' && answered) {
         this.kittyQueryOpen = false
       }
+      // A failed write passes the query on, except under ConPTY, whose ESC-stripped
+      // echo of a downstream reply would leak into a cooked shell (#9651).
       if (answered || (suppressConptyQuery && query.kind !== 'kitty')) {
         this.emit(querySpan, true, '')
       } else {
@@ -302,12 +300,16 @@ export class PtyStartupIngress {
     }
   }
 
-  private answerQuery(slots: readonly TerminalOscColorQuerySlot[]): boolean {
-    const answered = answerStartupColorQuery(this.intent, slots, this.answeredSlots, this.delivery)
-    if (this.answeredSlots.has(10) && this.answeredSlots.has(11)) {
-      this.queryOpen = false
+  private answerColorQuery(slots: readonly TerminalOscColorQuerySlot[]): boolean {
+    const colors = resolvePtyOwnerColorQueryColors(this.resolveHostColors(), this.intent?.colors)
+    let wroteAny = false
+    for (const reply of terminalOscColorQueryReplies(colors, slots) ?? []) {
+      if (!this.delivery.answer(reply)) {
+        return wroteAny
+      }
+      wroteAny = true
     }
-    return answered
+    return wroteAny
   }
 
   private releaseQueryPending(): void {
@@ -323,13 +325,12 @@ export class PtyStartupIngress {
    * bytes. `classifyRead` only ever arms one — it either keeps a viable query and
    * returns, or releases a disproven one before holding the echo — so this is defense
    * against a future second arming site, not a live inversion.
+   *
+   * A torn colour query is held until teardown: released raw, its halves would reach
+   * a view that has no authority to answer it.
    */
-  private releasePendingInSourceOrder(includeConptyQuery: boolean): void {
-    if (
-      includeConptyQuery ||
-      this.ownerBackend !== 'windows-conpty' ||
-      this.queryPending?.data.startsWith('\x1b[')
-    ) {
+  private releasePendingInSourceOrder(includeColorQuery: boolean): void {
+    if (includeColorQuery || this.queryPending?.data.startsWith('\x1b[')) {
       this.releaseQueryPending()
     }
     const pending = this.takeEchoPending()

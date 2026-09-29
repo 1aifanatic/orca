@@ -2,6 +2,7 @@ import { LocalPtyProvider } from '../../../providers/local-pty-provider'
 import type { IPtyProvider } from '../../../providers/types'
 import { parseAppSshPtyId, toAppSshPtyId, toRelaySshPtyId } from '../../../providers/ssh-pty-id'
 import { ptyOwnership } from './ownership-state'
+import type { TerminalOscColorQueryReplyColors } from '../../../../shared/terminal-osc-color-reply'
 
 // ─── Provider Registry ──────────────────────────────────────────────
 // Routes PTY operations by connectionId (null = local provider).
@@ -9,6 +10,32 @@ import { ptyOwnership } from './ownership-state'
 export let localProvider: IPtyProvider = new LocalPtyProvider()
 export const sshProviders = new Map<string, IPtyProvider>()
 export const sshProvidersByGeneration = new Map<number, IPtyProvider>()
+let colorQueryReplyColors: TerminalOscColorQueryReplyColors | null = null
+
+// Why push to every owner: each process that owns PTYs (in-process, daemon, relay) answers
+// OSC 10/11 itself, so a theme change must reach it before its next query, not at spawn.
+// Why never push "unknown": a daemon outlives the app and keeps the last run's theme.
+function pushColorQueryReplyColors(provider: IPtyProvider): void {
+  if (!colorQueryReplyColors) {
+    return
+  }
+  try {
+    provider.setColorQueryReplyColors?.(colorQueryReplyColors)
+  } catch {
+    /* Best-effort; the owner keeps answering from its last or default colours. */
+  }
+}
+
+export function publishColorQueryReplyColors(colors: TerminalOscColorQueryReplyColors): void {
+  colorQueryReplyColors = colors
+  for (const { provider } of registeredPtyProviders()) {
+    pushColorQueryReplyColors(provider)
+  }
+}
+
+export function _resetColorQueryReplyColorsForTest(): void {
+  colorQueryReplyColors = null
+}
 
 export type RegisteredPtyProvider = {
   provider: IPtyProvider
@@ -101,6 +128,7 @@ export function tryGetProviderForAgentSessionOwner(ptyId: string): IPtyProvider 
 /** Register an SSH PTY provider for a connection. */
 export function registerSshPtyProvider(connectionId: string, provider: IPtyProvider): void {
   sshProviders.set(connectionId, provider)
+  pushColorQueryReplyColors(provider)
   const generation = (provider as { providerGeneration?: number }).providerGeneration
   if (Number.isSafeInteger(generation) && generation! > 0) {
     sshProvidersByGeneration.set(generation!, provider)
@@ -133,4 +161,5 @@ export function getLocalPtyProvider(): IPtyProvider {
  *  Call before registerPtyHandlers so the IPC layer routes through the daemon. */
 export function setLocalPtyProvider(provider: IPtyProvider): void {
   localProvider = provider
+  pushColorQueryReplyColors(provider)
 }
