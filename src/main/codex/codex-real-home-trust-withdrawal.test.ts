@@ -8,12 +8,11 @@ import { wrapPosixHookCommand, type HookDefinition } from '../agent-hooks/instal
 import type { CodexManagedTrustGrantPlan } from './codex-hook-trust-grant'
 import { computeTrustedHash, upsertHookTrustEntries } from './config-toml-trust'
 
-const { homedirMock, grantMock, beforeTrustRead } = vi.hoisted(() => ({
-  homedirMock: vi.fn<() => string>(),
-  grantMock: vi.fn(),
+const { homedirMock, grantMock, beforeTrustRead } = vi.hoisted(() => {
   // Why: the withdrawal's only step between its hooks.json read and write.
-  beforeTrustRead: { run: null as (() => void) | null }
-}))
+  const beforeTrustRead: { run: (() => void) | null } = { run: null }
+  return { homedirMock: vi.fn<() => string>(), grantMock: vi.fn(), beforeTrustRead }
+})
 
 vi.mock('node:os', async () => {
   const actual = await vi.importActual<typeof NodeOs>('node:os')
