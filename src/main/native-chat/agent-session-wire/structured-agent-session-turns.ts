@@ -285,7 +285,6 @@ export async function performCancel(
     cancelled = outcome.cancelled
     if (
       !cancelled &&
-      input.turnId !== undefined &&
       input.withdrewQueued &&
       !outcome.unconfirmed &&
       !isStructuredAgentSessionMainAgentWorking(
@@ -294,22 +293,22 @@ export async function performCancel(
         ctx.fence
       )
     ) {
-      // The Stop ended what was queued, which is how a Stop naming no turn reports the same case.
-      // Whether anything still runs is read from the journal: providers differ on refusing a turn
-      // that has ended, and an unconfirmed interrupt may have left the turn running.
+      // A Stop that withdrew what was queued and left nothing working ended what it was sent for,
+      // named or not. The journal judges it: providers differ on refusing a turn that has ended.
       cancelled = true
       note = null
-    } else if (!cancelled && input.turnId !== undefined) {
-      note = { kind: 'status', text: 'The provider had already finished this turn.' }
-    } else if (!cancelled && input.prompt) {
-      note = null
     } else if (!cancelled && outcome.unconfirmed) {
+      // Before the named-turn row: the provider took the interrupt, so the turn may still run.
       note = {
         kind: 'status',
         ...agentSessionFailureWords(agentSessionFailureFact('cancelUnconfirmed'), {
           surface: 'row'
         })
       }
+    } else if (!cancelled && input.turnId !== undefined) {
+      note = { kind: 'status', text: 'The provider had already finished this turn.' }
+    } else if (!cancelled && input.prompt) {
+      note = null
     } else if (!cancelled) {
       // Sent only while the chat reads working, so a Stop that ended nothing must say why.
       const detail = outcome.refusal?.detail

@@ -318,6 +318,6 @@ describe('a Stop that names its turn, as an older client sends it', () => {
     queued.release()
 
     expect(await submission(queued.id)).toMatchObject({ dispatchState: 'rejected' })
-    expect(await statusRows()).not.toEqual([])
+    expect(await statusRows()).toEqual(['Cancellation was not confirmed.'])
   })
 })

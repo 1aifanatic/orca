@@ -244,3 +244,81 @@ describe('performCancel', () => {
     expect(journal.snapshot().items).toEqual([])
   })
 })
+
+describe('what a conversation Stop reports when the provider stopped nothing', () => {
+  async function cancelWith(
+    outcome: Awaited<ReturnType<StructuredAgentSessionAdapter['cancelTurn']>>,
+    input: { turnId?: string; withdrewQueued?: boolean },
+    running = false
+  ) {
+    root = await mkdtemp(join(tmpdir(), 'orca-turn-cancel-report-'))
+    const journal = await journals.open({ identity: IDENTITY, journalDir: root })
+    if (running) {
+      await journal.appendItem(
+        {
+          provider: 'legacy',
+          agent: 'codex',
+          sessionId: 'session-1',
+          recordId: 'turn-lifecycle:turn-1'
+        },
+        {
+          kind: 'status',
+          text: 'Agent is working…',
+          turnLifecycle: { turnId: 'turn-1', state: 'running' }
+        },
+        { fence: 1 }
+      )
+    }
+    const ctx: AgentSessionTurnContext = {
+      sessionId: 'session-1',
+      journal,
+      fence: 1,
+      adapter: {
+        acquire: vi.fn(),
+        dispatch: vi.fn(),
+        closeSession: vi.fn(),
+        cancelTurn: vi.fn(async () => outcome),
+        answerPrompt: vi.fn(),
+        setOption: vi.fn()
+      },
+      persistOptions: async () => undefined,
+      resolvedBy: 'client-1',
+      publish: vi.fn(),
+      flushStreamedEvents: async () => undefined,
+      now: () => 1
+    }
+    const result = await performCancel(ctx, { clientOperationId: 'cancel-report-1', ...input })
+    const rows = journal
+      .snapshot()
+      .items.flatMap((item) =>
+        item.body.kind === 'status' && !item.body.turnLifecycle ? [item.body.text] : []
+      )
+    return { cancelled: result.ok && result.value.cancelled, rows }
+  }
+
+  it('reports a Stop naming no turn that withdrew what was queued, with nothing left working, as a success', async () => {
+    expect(await cancelWith({ cancelled: false }, { withdrewQueued: true })).toEqual({
+      cancelled: true,
+      rows: []
+    })
+  })
+
+  it('keeps a Stop naming no turn not cancelled while the journal still reads working', async () => {
+    const reported = await cancelWith({ cancelled: false }, { withdrewQueued: true }, true)
+    expect(reported.cancelled).toBe(false)
+    expect(reported.rows).toHaveLength(1)
+    expect(reported.rows).not.toContain('The provider had already finished this turn.')
+  })
+
+  it.each([false, true])(
+    'says a named Stop the provider left unconfirmed is unconfirmed, not that the turn had finished (withdrew: %s)',
+    async (withdrewQueued) => {
+      expect(
+        await cancelWith(
+          { cancelled: false, unconfirmed: true },
+          { turnId: 'turn-1', withdrewQueued }
+        )
+      ).toEqual({ cancelled: false, rows: ['Cancellation was not confirmed.'] })
+    }
+  )
+})
