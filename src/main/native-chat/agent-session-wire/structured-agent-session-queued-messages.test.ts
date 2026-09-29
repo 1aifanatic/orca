@@ -606,13 +606,14 @@ describe('/clear', () => {
       throw new Error('expected a replacement session')
     }
     // The source's cards are spent tombstones; the replacement shows them on a
-    // paused queue until the user acts: Resume, or their next send starting its turn.
+    // queue paused by the clear — not "because you interrupted" — until the user
+    // acts: Resume, or their next send starting its turn.
     expect(await drafts()).toHaveLength(0)
     expect(await drafts(replacementId)).toEqual([
       { messageId: firstId, state: 'waiting' },
       { messageId: secondId, state: 'waiting' }
     ])
-    expect(await rig.queuePause(replacementId)).toEqual({ reason: 'stopped' })
+    expect(await rig.queuePause(replacementId)).toEqual({ reason: 'cleared' })
     // Paused from before the first carried card lands: the idle replacement auto-sends nothing.
     await new Promise((resolve) => setTimeout(resolve, 250))
     expect((await host.journalSnapshot(replacementId)).submissions).toHaveLength(0)
@@ -625,6 +626,33 @@ describe('/clear', () => {
       ok: true,
       value: { submission: expect.anything() }
     })
+  })
+
+  it("the replacement's 'cleared' pause lifts through Resume exactly like a Stop's", async () => {
+    const [firstId] = await pausedDrafts()
+    const cleared = await clear(hostTestOperationId())
+    const replacementId = cleared.ok ? cleared.value.replacementSessionId : undefined
+    if (!replacementId) {
+      throw new Error('expected a replacement session')
+    }
+    expect(await rig.queuePause(replacementId)).toEqual({ reason: 'cleared' })
+    const resumed = await host.queuedMessagesResume(CALLER, {
+      envelope: envelope(
+        {},
+        'agentSession.queuedMessagesResume',
+        hostTestOperationId(),
+        replacementId
+      )
+    })
+    expect(resumed).toMatchObject({ ok: true, value: { resumed: true } })
+    expect(await rig.queuePause(replacementId)).toBeNull()
+    await eventually(async () =>
+      expect(
+        (await host.journalSnapshot(replacementId)).submissions.some(
+          (entry) => entry.queuedMessageId === firstId
+        )
+      ).toBe(true)
+    )
   })
 
   it('a returned card carries over as a plain waiting draft on the paused replacement', async () => {
@@ -648,7 +676,7 @@ describe('/clear', () => {
     // The refusal belonged to the source's submissions; on the replacement the
     // text is simply a waiting draft again, behind the replacement's pause.
     expect(await drafts(replacementId)).toEqual([{ messageId: draftId, state: 'waiting' }])
-    expect(await rig.queuePause(replacementId)).toEqual({ reason: 'stopped' })
+    expect(await rig.queuePause(replacementId)).toEqual({ reason: 'cleared' })
     expect(await drafts()).toHaveLength(0)
   })
 

@@ -76,7 +76,7 @@ export async function withdrawQueuedMessagesForOperation(
  * /clear's carry: the source's unsettled drafts become rows on the replacement
  * session — the SAME for every client version, with no text on the wire — so the
  * cards stay visible where the user now is. The replacement's queue starts
- * paused, as after a Stop: the cards were written for the context /clear just
+ * paused ('cleared'), lifted exactly like a Stop's: the cards were written for the context /clear just
  * discarded, so they wait for the user's next turn there, or Resume, rather than
  * sending into the fresh context unasked. The pause is recorded before the first
  * insert, so the drain never sees a carried card unpaused. Runs after the
@@ -106,7 +106,7 @@ export async function carryQueuedMessagesToClearReplacement(
     if (!replacement) {
       throw new Error('the replacement journal is not open')
     }
-    await replacement.queuedMessages.recordPause()
+    await replacement.queuedMessages.recordPause('cleared')
     for (const row of rows) {
       // A returned card carries over as a plain waiting draft — its refusal
       // belonged to the source's submissions. The fingerprint is re-scoped to the
