@@ -9,6 +9,7 @@ import type { RuntimeTerminalWaitBlockedReason } from '../../shared/runtime-type
 import type { TuiAgent } from '../../shared/tui-agent'
 import { findAntigravityReadyPromptIndex } from './antigravity-terminal-readiness'
 import {
+  findCodexHeaderIndex,
   findCodexReadyPromptIndex,
   findCodexScreenReadyPromptIndex,
   isCodexProvisionalStartupText
@@ -130,6 +131,7 @@ export function findActionableTerminalWaitBlockedSignal(
 function findDismissedStartupModalIndex(normalized: string): number | null {
   const indexes = [
     findCodexReadyPromptIndex(normalized),
+    findCodexHeaderIndex(normalized),
     findAntigravityReadyPromptIndex(normalized),
     findCursorActivePromptIndex(normalized),
     findMuseReadyPromptIndex(normalized)

@@ -3,7 +3,8 @@ import { createTranscriptPane } from './agent-transcript-pane-test-harness'
 import {
   finalTranscriptFrame,
   readTranscriptFixture,
-  replayTranscript
+  replayTranscript,
+  type ReplayFrame
 } from './agent-transcript-replay-test-harness'
 import { detectTerminalWaitBlockedReason, isKnownReadyPromptBody } from './terminal-wait-detection'
 
@@ -22,6 +23,13 @@ const LIVE_STATUS_ROW_RE = /\b(?:default|minimal|low|medium|high|xhigh) ·/
 
 function showsLiveStatusRow(screenLines: string[]): boolean {
   return screenLines.some((line) => LIVE_STATUS_ROW_RE.test(line.toLowerCase()))
+}
+
+// Why stitched: no capture spans answering the announcement. Codex repaints every cell once a
+// startup dialog closes, so the greeting capture's paints stand in for that repaint.
+function answeredAnnouncement(): string {
+  const greeting = readTranscriptFixture(GREETING)
+  return readTranscriptFixture(MODEL_ANNOUNCEMENT) + greeting.slice(greeting.indexOf('\x1b[?2026h'))
 }
 
 describe('Codex 0.158 readiness from captured bytes', () => {
@@ -59,16 +67,33 @@ describe('Codex 0.158 readiness from captured bytes', () => {
     expect(detectTerminalWaitBlockedReason(waitText)).toBe('codex-model-migration-prompt')
   })
 
+  it('stops reporting the model announcement once Codex repaints its chat after it', async () => {
+    let last: ReplayFrame | null = null
+    for await (const frame of replayTranscript(answeredAnnouncement(), 120, 40)) {
+      last = frame
+    }
+    // Presence precondition: the answered dialog's choices are still in the text copy.
+    expect(last?.waitText).toContain('Try new model')
+    expect(detectTerminalWaitBlockedReason(last?.waitText ?? '')).toBeNull()
+  })
+
   describe('through the runtime', () => {
-    async function codexPane(name: string) {
+    async function codexPane(name: string, data = readTranscriptFixture(name)) {
       return createTranscriptPane({
         paneTitle: 'Terminal',
         foregroundProcess: 'codex',
         launchAgent: 'codex',
-        data: readTranscriptFixture(name),
+        data,
         size: { cols: 120, rows: 40 }
       })
     }
+
+    it('settles a tui-idle wait once the model announcement has been answered', async () => {
+      const { runtime, handle } = await codexPane(MODEL_ANNOUNCEMENT, answeredAnnouncement())
+      await expect(
+        runtime.waitForTerminal(handle, { condition: 'tui-idle', timeoutMs: 5_000 })
+      ).resolves.toMatchObject({ condition: 'tui-idle', satisfied: true })
+    }, 15_000)
 
     it('settles a tui-idle wait on the greeting layout', async () => {
       const { runtime, handle } = await codexPane(GREETING)

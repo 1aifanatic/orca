@@ -10,6 +10,13 @@ export function findCodexReadyPromptIndex(normalized: string): number | null {
   return readySegment.includes('model:') && readySegment.includes('directory:') ? headerIndex : null
 }
 
+// Why: Codex repaints its whole screen, header included, once a startup dialog closes, and the
+// dialog never draws the header; 0.158's header has no labels, so the header alone marks it answered.
+export function findCodexHeaderIndex(normalized: string): number | null {
+  const index = normalized.lastIndexOf('openai codex (v')
+  return index === -1 ? null : index
+}
+
 const CODEX_HEADER_LOADING_RE = /(?:model|directory):\s+loading/
 // Codex 0.158+ greeting layout: an unboxed `>_ OpenAI Codex (vX)` row, then the bare directory.
 const CODEX_COMPACT_HEADER_RE = /^\s*>_ openai codex \(v[^)]*\)\s*$/m
@@ -26,19 +33,19 @@ function readCodexHeaderBox(screen: string): { index: number; header: string } |
 
 // Why the text copy: Codex 0.157 leaves its alternate screen while it starts its daemon, so the live
 // screen shows no header then; the text copy keeps the provisional header until the live chat paints
-// its status row after it (a later model repaint rewrites only the value, never the `model:` label).
+// its footer after it (a later model repaint rewrites only the value, never the `model:` label).
 export function isCodexProvisionalStartupText(normalized: string): boolean {
   const headerIndex = normalized.lastIndexOf('openai codex')
   if (headerIndex === -1) {
     return false
   }
   const loading = /model:\s+loading/.exec(normalized.slice(headerIndex))
-  return loading !== null && !hasCodexLiveStatusRowBelow(normalized, headerIndex + loading.index)
+  return loading !== null && !hasCodexLiveFooterBelow(normalized, headerIndex + loading.index)
 }
 
-// Why: only Codex's live chat fills the status row under the composer (default items: model,
-// directory, thread, joined by `·`); the provisional startup screen shows just its own hints.
-function hasCodexLiveStatusRowBelow(text: string, from: number): boolean {
+// Why: only Codex's live chat draws a `·` under the composer: the status row (items joined by `·`),
+// `← for agents · ? for shortcuts` on daemon sessions, or `⚠ N warning · f2 to view`.
+function hasCodexLiveFooterBelow(text: string, from: number): boolean {
   return text.includes('·', from)
 }
 
@@ -61,7 +68,7 @@ export function findCodexScreenReadyPromptIndex(screen: string): number | null {
     : null
 }
 
-// Why the status row: the compact header looks the same on the provisional startup screen, which
+// Why the live footer: the compact header looks the same on the provisional startup screen, which
 // can still give way to a startup dialog (model announcement) before the live chat takes over.
 function findCodexCompactScreenReadyIndex(screen: string, headerEnd: number): boolean {
   const directory = screen
@@ -69,7 +76,5 @@ function findCodexCompactScreenReadyIndex(screen: string, headerEnd: number): bo
     .split('\n')
     .find((row) => row.trim() !== '')
     ?.trim()
-  return (
-    Boolean(directory) && directory !== 'loading' && hasCodexLiveStatusRowBelow(screen, headerEnd)
-  )
+  return Boolean(directory) && directory !== 'loading' && hasCodexLiveFooterBelow(screen, headerEnd)
 }
