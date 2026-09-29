@@ -8,6 +8,11 @@ import {
 import type { RuntimeTerminalWaitBlockedReason } from '../../shared/runtime-types'
 import type { TuiAgent } from '../../shared/tui-agent'
 import { findAntigravityReadyPromptIndex } from './antigravity-terminal-readiness'
+import {
+  findCodexReadyPromptIndex,
+  findCodexScreenReadyPromptIndex,
+  isCodexProvisionalStartupScreen
+} from './codex-terminal-readiness'
 import { startOfLastLines, startOfLastNonBlankLines } from './terminal-wait-tail-window'
 
 const EXPLICIT_IDLE_TITLE_RE = /(^|\s)(ready|idle|done)(\s|$|[.!?])/i
@@ -54,8 +59,10 @@ export function isKnownReadyPromptPreview(preview: string): boolean {
  *
  * Why the screen: Codex repaints its header by cell diff (`ESC[5;3Hdir ESC[5;7Hctory:`), which
  * only a grid reassembles — the line-folded wait text reads `dirctory:` forever.
- * Why it can only add readiness: a grid out of step with the PTY (size mismatch, resize
- * mid-paint) garbles the header, so the text rules keep every verdict they give today.
+ * Why the screen only vetoes Codex's provisional header: a grid out of step with the PTY (size
+ * mismatch, resize mid-paint) garbles the header, so otherwise the text rules keep their verdicts.
+ * The provisional screen always reads `model: loading`, and 0.157 discards typed input while it
+ * starts its daemon behind it, so a text match there must not count.
  */
 export function isKnownReadyPromptBody(
   waitText: string,
@@ -65,18 +72,19 @@ export function isKnownReadyPromptBody(
   if (agent === 'qoder') {
     return isQoderComposerReady(readScreenLines())
   }
-  if (isKnownReadyPromptPreview(waitText)) {
-    return true
-  }
+  const textReady = isKnownReadyPromptPreview(waitText)
   // Why the agent gate: another agent's screen can merely mention "OpenAI Codex".
   if (agent !== null && agent !== 'codex') {
-    return false
+    return textReady
   }
   const screenLines = readScreenLines()
   if (screenLines === null) {
-    return false
+    return textReady
   }
   const screen = screenLines.join('\n').toLowerCase()
+  if (textReady) {
+    return !isCodexProvisionalStartupScreen(screen)
+  }
   return isReadyPromptUnblocked(screen, findCodexScreenReadyPromptIndex(screen))
 }
 
@@ -169,36 +177,8 @@ function findMuseReadyPromptIndex(normalized: string): number | null {
     : null
 }
 
-function findCodexReadyPromptIndex(normalized: string): number | null {
-  const headerIndex = normalized.lastIndexOf('openai codex')
-  if (headerIndex === -1) {
-    return null
-  }
-  const readySegment = normalized.slice(headerIndex)
-  // Why: Codex prints permissions only in YOLO mode; the stable ready header is OpenAI Codex + model + directory.
-  return readySegment.includes('model:') && readySegment.includes('directory:') ? headerIndex : null
-}
-
-const CODEX_HEADER_LOADING_RE = /(?:model|directory):\s+loading/
-
-// Why the header box only: chat below it can mention "OpenAI Codex" or `model: loading`.
-// Why `loading`: a header still loading is not ready; the screen must not add readiness early.
-function findCodexScreenReadyPromptIndex(screen: string): number | null {
-  const headerIndex = screen.indexOf('openai codex')
-  if (headerIndex === -1) {
-    return null
-  }
-  const boxEnd = screen.indexOf('╰', headerIndex)
-  const header = screen.slice(headerIndex, boxEnd === -1 ? undefined : boxEnd)
-  return header.includes('model:') &&
-    header.includes('directory:') &&
-    !CODEX_HEADER_LOADING_RE.test(header)
-    ? headerIndex
-    : null
-}
-
 export const TERMINAL_WAIT_BLOCKED_SENTINEL_RE =
-  /update available|choose working directory to|codex just got an upgrade|hooks need review|do you trust|trust this|trusted workspace|press enter to (?:confirm|continue|view|insert)|press t to trust|permission required|requires permission|allow once|allow always|run this command\?/i
+  /update available|choose working directory to|codex just got an upgrade|try new model|hooks need review|do you trust|trust this|trusted workspace|press enter to (?:confirm|continue|view|insert)|press t to trust|permission required|requires permission|allow once|allow always|run this command\?/i
 
 // Why text at all: cursor-agent has no approval hook, so the key-bound menu is the only authority.
 const CURSOR_APPROVAL_CHOICE_MARKERS = [
@@ -282,6 +262,11 @@ function findBlockedSignalInLiveWindow(
     normalized.includes('press enter to continue', modelMigrationIndex)
   ) {
     candidates.push({ reason: 'codex-model-migration-prompt', index: modelMigrationIndex })
+  }
+  // Why the choices: Codex 0.158's announcement heading names the model; its two choices do not change.
+  const modelChoiceIndex = normalized.lastIndexOf('try new model')
+  if (modelChoiceIndex !== -1 && normalized.includes('use existing model', modelChoiceIndex)) {
+    candidates.push({ reason: 'codex-model-migration-prompt', index: modelChoiceIndex })
   }
   const hooksIndex = normalized.lastIndexOf('hooks need review')
   if (hooksIndex !== -1 && normalized.includes('press enter to confirm', hooksIndex)) {

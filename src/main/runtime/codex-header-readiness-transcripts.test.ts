@@ -1,14 +1,12 @@
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { HeadlessEmulator } from '../daemon/headless-emulator'
 import { createTranscriptPane } from './agent-transcript-pane-test-harness'
-import { projectTerminalVisibleLines } from './orca-runtime-terminal-projection'
-import { normalizeTerminalChunk } from './terminal-ansi-normalization'
-import { appendNormalizedToTailBuffer } from './terminal-tail-buffer'
-import { buildPreview } from './terminal-tail-state'
+import {
+  finalTranscriptFrame as finalFrame,
+  readTranscriptFixture as readFixture,
+  replayTranscript as replay,
+  type ReplayFrame
+} from './agent-transcript-replay-test-harness'
 import { isKnownReadyPromptBody, isKnownReadyPromptPreview } from './terminal-wait-detection'
-import { buildTerminalWaitText } from './terminal-wait-tail-state'
 
 vi.mock('electron', () => ({
   BrowserWindow: { fromId: vi.fn(() => null) },
@@ -17,61 +15,27 @@ vi.mock('electron', () => ({
   app: { getPath: vi.fn(() => '/tmp') }
 }))
 
-// codex-cli 0.157.1 recordings at 120x40 (see each .meta.json); STA-8628.
+// codex-cli 0.157 recordings at 120x40 (see each .meta.json); STA-8628.
 const PLAIN = 'codex-0157-plain-ready'
 const EFFORT_OVERRIDE = 'codex-0157-effort-override-embedded-warning'
 const CONFIG_OVERRIDE = 'codex-0157-config-override-embedded-warning'
 const NO_DAEMON = 'codex-0157-no-daemon-effort-override'
-const ALL_FIXTURES = [PLAIN, EFFORT_OVERRIDE, CONFIG_OVERRIDE, NO_DAEMON]
-const CHUNK_CHARS = 64
-
-function readFixture(name: string): string {
-  return readFileSync(join(__dirname, '__fixtures__', `${name}.txt`), 'utf8')
-}
-
-type ReplayFrame = { screenLines: string[]; waitText: string }
-
-/** Feeds the bytes the way onPtyData does: one emulator grid, one line-folded wait text. */
-async function* replay(data: string, cols: number, rows: number): AsyncGenerator<ReplayFrame> {
-  const emulator = new HeadlessEmulator({ cols, rows })
-  let lines: string[] = []
-  let partialLine = ''
-  let pendingAnsi = ''
-  let redrawCursor: ReturnType<typeof appendNormalizedToTailBuffer>['redrawCursor'] = null
-  try {
-    for (let offset = 0; offset < data.length; offset += CHUNK_CHARS) {
-      const chunk = data.slice(offset, offset + CHUNK_CHARS)
-      await emulator.write(chunk)
-      const normalized = normalizeTerminalChunk(chunk, pendingAnsi)
-      pendingAnsi = normalized.pendingAnsi
-      const tail = appendNormalizedToTailBuffer(lines, partialLine, normalized.text, redrawCursor)
-      lines = tail.lines
-      partialLine = tail.partialLine
-      redrawCursor = tail.redrawCursor
-      yield {
-        screenLines: projectTerminalVisibleLines(emulator).lines,
-        waitText: buildTerminalWaitText(lines, partialLine, buildPreview(lines, partialLine))
-      }
-    }
-  } finally {
-    emulator.dispose()
-  }
-}
-
-async function finalFrame(name: string, cols: number, rows: number): Promise<ReplayFrame> {
-  let last: ReplayFrame | null = null
-  for await (const frame of replay(readFixture(name), cols, rows)) {
-    last = frame
-  }
-  if (!last) {
-    throw new Error(`empty fixture ${name}`)
-  }
-  return last
-}
-
+// Fresh CODEX_HOME: the provisional header stays up while Codex installs and starts its daemon.
+const FRESH_HOME = 'codex-0157-fresh-home-daemon-install'
+const ALL_FIXTURES = [PLAIN, EFFORT_OVERRIDE, CONFIG_OVERRIDE, NO_DAEMON, FRESH_HOME]
 function screenShowsLoadingHeader(screenLines: string[]): boolean {
   const screen = screenLines.join('\n').toLowerCase()
   return screen.includes('openai codex') && /(?:model|directory):\s+loading/.test(screen)
+}
+
+// Codex's default status row opens with `<model> <effort> ·`; only the live chat paints it.
+const LIVE_STATUS_ROW_RE = /\b(?:default|minimal|low|medium|high|xhigh) · /
+
+function screenShowsProvisionalStartup(screenLines: string[]): boolean {
+  return (
+    screenShowsLoadingHeader(screenLines) &&
+    !screenLines.some((line) => LIVE_STATUS_ROW_RE.test(line.toLowerCase()))
+  )
 }
 
 describe('Codex 0.157 header readiness from captured bytes', () => {
@@ -104,6 +68,26 @@ describe('Codex 0.157 header readiness from captured bytes', () => {
     }
   )
 
+  // Why: 0.157 discards input typed during its daemon start, behind the provisional header.
+  it.each(ALL_FIXTURES)(
+    '%s: never ready while the screen shows the provisional `model: loading` startup screen',
+    async (name) => {
+      let sawTextOnlyReadiness = false
+      for await (const frame of replay(readFixture(name), 120, 40)) {
+        if (screenShowsProvisionalStartup(frame.screenLines)) {
+          sawTextOnlyReadiness ||= isKnownReadyPromptPreview(frame.waitText)
+          expect(isKnownReadyPromptBody(frame.waitText, 'codex', () => frame.screenLines)).toBe(
+            false
+          )
+        }
+      }
+      // Presence precondition for the text-copy fixtures: the text rules alone would say ready here.
+      if (name === PLAIN || name === FRESH_HOME) {
+        expect(sawTextOnlyReadiness).toBe(true)
+      }
+    }
+  )
+
   // Why these sizes: grids out of step with the 120x40 recording garble the header (review of #23475).
   describe.each([
     [120, 40],
@@ -111,14 +95,11 @@ describe('Codex 0.157 header readiness from captured bytes', () => {
     [30, 50],
     [108, 30],
     [60, 5]
-  ])('at %ix%i the screen never takes readiness away from the text rules', (cols, rows) => {
+  ])('at %ix%i the screen never takes a settled header away from the text rules', (cols, rows) => {
     it.each(ALL_FIXTURES)('%s', async (name) => {
-      for await (const frame of replay(readFixture(name), cols, rows)) {
-        if (isKnownReadyPromptPreview(frame.waitText)) {
-          expect(isKnownReadyPromptBody(frame.waitText, 'codex', () => frame.screenLines)).toBe(
-            true
-          )
-        }
+      const { screenLines, waitText } = await finalFrame(name, cols, rows)
+      if (isKnownReadyPromptPreview(waitText)) {
+        expect(isKnownReadyPromptBody(waitText, 'codex', () => screenLines)).toBe(true)
       }
     })
   })
