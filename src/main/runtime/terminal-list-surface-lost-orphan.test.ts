@@ -348,6 +348,7 @@ describe('runtime-owned terminal projection gaps', () => {
         leaves: [leaf('tab-kept', KEPT_LEAF, KEPT_PTY)]
       }
       runtime.syncWindowGraph(1, { ...graph, mobileSessionTabs: [snapshot] })
+      runtime.markRuntimeOwned(DROPPED_PTY)
       expect((await runtime.listTerminals(`id:${WORKTREE_ID}`)).terminals).toEqual(before.terminals)
       runtime.syncWindowGraph(1, {
         ...graph,
