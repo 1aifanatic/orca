@@ -203,20 +203,36 @@ describe('a slow codex app-server start', () => {
     expect(recovered.sessions).toBe(1)
   })
 
-  it('settles a grant that never answers at its deadline, and the next launch retries', async () => {
+  it('runs one session at a time, ended by its own deadline', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
-    // Why never started: the hang outlives the session's own timeout, as a stuck probe would.
-    installAppServer(0)
+    const spawnMs = 500
+    let inFlight = 0
+    let maxInFlight = 0
+    grantInternals.setGrantSessionRunner(async (request: CodexHookTrustGrantRequest) => {
+      inFlight += 1
+      maxInFlight = Math.max(maxInFlight, inFlight)
+      try {
+        // Why: the real session starts its kill timer once the app-server has spawned.
+        await new Promise((resolve) => setTimeout(resolve, spawnMs))
+        return await new Promise<never>((_resolve, reject) =>
+          setTimeout(
+            () => reject(new CodexAppServerTimeoutError('codex app-server session timed out')),
+            request.invocation.timeoutMs
+          )
+        )
+      } finally {
+        inFlight -= 1
+      }
+    })
 
     expect(await launch()).toBe('granting')
     await vi.advanceTimersByTimeAsync(CODEX_BACKGROUND_TRUST_GRANT_TIMEOUT_MS)
-    expect(await realHomeInternals.settledLaneForTesting()).toBe('unavailable')
-    expect(orcaHandlerCount()).toBe(0)
-
-    const recovered = installAppServer(0)
-    recovered.start()
+    // Why: the session is still alive, so a launch now must not start a second one.
     expect(await launch()).toBe('granting')
-    expect(await realHomeInternals.settledLaneForTesting()).toBe('installed')
+    await vi.advanceTimersByTimeAsync(spawnMs)
+    expect(await realHomeInternals.settledLaneForTesting()).toBe('unavailable')
+    expect(maxInFlight).toBe(1)
+    expect(orcaHandlerCount()).toBe(0)
   })
 
   it('keeps already-trusted Orca entries trusted when a later re-grant fails', async () => {

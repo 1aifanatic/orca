@@ -1,7 +1,6 @@
 import { getRealHomeConfigTomlPath } from './codex-real-home-hooks-json'
 import {
   CODEX_BACKGROUND_TRUST_GRANT_RETRY_INTERVAL_MS,
-  CODEX_BACKGROUND_TRUST_GRANT_TIMEOUT_MS,
   grantManagedCodexHookTrust,
   type CodexManagedTrustGrantOutcome,
   type CodexManagedTrustGrantPlan
@@ -32,7 +31,7 @@ export function runRealHomeBackgroundGrant(
   // Why outside the caller's lane: the withdrawal takes the config.toml lane
   // itself once the install has released it, like any later writer.
   return runOutsideCodexTrustConfigLanes(async () => {
-    const outcome = await grantWithinDeadline(grant.plan)
+    const outcome = await grantManagedCodexHookTrust(grant.plan)
     if (outcome.lane === 'rpc') {
       settle('installed', 0)
       return
@@ -55,25 +54,6 @@ export function runRealHomeBackgroundGrant(
     console.warn('[codex-real-home-hooks] background trust grant failed:', error)
     settle('unavailable', Date.now() + CODEX_BACKGROUND_TRUST_GRANT_RETRY_INTERVAL_MS)
   })
-}
-
-// Why: the session has its own timeout; a hang anywhere else in the grant must
-// not leave the lane 'granting', and every ensure skipped, for good.
-async function grantWithinDeadline(
-  plan: CodexManagedTrustGrantPlan
-): Promise<CodexManagedTrustGrantOutcome> {
-  let timer: ReturnType<typeof setTimeout> | undefined
-  const expired = new Promise<CodexManagedTrustGrantOutcome>((resolve) => {
-    timer = setTimeout(
-      () => resolve({ lane: 'fallback', reason: 'error', errorClass: 'timeout' }),
-      CODEX_BACKGROUND_TRUST_GRANT_TIMEOUT_MS
-    )
-  })
-  try {
-    return await Promise.race([grantManagedCodexHookTrust(plan), expired])
-  } finally {
-    clearTimeout(timer)
-  }
 }
 
 function getInstallRetryAfterMs(
