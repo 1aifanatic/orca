@@ -34,11 +34,13 @@ function queuedAnswer(clientMessageId: string, state: 'waiting' | 'withdrawn'): 
 /** Each `agentSession.send` answered in turn: a lost answer, or a queued draft in that state. */
 function hostAnswering(answers: readonly ('lost' | 'waiting' | 'withdrawn')[]) {
   const ids: string[] = []
+  const deliveries: unknown[] = []
   const sendRequest = vi.fn<RpcClient['sendRequest']>(async (_method, params) => {
     const envelope = Object(Object(params).envelope)
     const id = String(envelope.clientOperationId)
     const answer = answers[ids.length]
     ids.push(id)
+    deliveries.push(Object(params).delivery)
     if (answer === 'lost' || answer === undefined) {
       throw markRpcDeliveryUnknown(new Error('Connection closed'))
     }
@@ -55,7 +57,21 @@ function hostAnswering(answers: readonly ('lost' | 'waiting' | 'withdrawn')[]) {
     notifyForeground: () => {},
     close: () => {}
   }
-  return { client, ids }
+  return { client, ids, deliveries }
+}
+
+function sendAgain(client: RpcClient, onError: (message: string) => void, queue = true) {
+  return sendMobileStructuredAgentSessionMessage({
+    client,
+    sessionId: 'session-1',
+    sessionKey: 'host-a:session-1',
+    callerIdentity: 'device-a',
+    expectedRuntimeFence: 3,
+    text: 'again',
+    attachments: [],
+    ...(queue ? { delivery: 'queue-if-active' as const } : {}),
+    onError
+  })
 }
 
 describe('a resend past a saved record storage would not clear', () => {
@@ -72,6 +88,33 @@ describe('a resend past a saved record storage would not clear', () => {
     asyncStorage.removeItem.mockImplementation(async (key: string) => {
       stored.delete(key)
     })
+  })
+
+  it('replays its own id once storage recovers, even without the queue capability now', async () => {
+    const { client, ids, deliveries } = hostAnswering([
+      'lost',
+      'withdrawn',
+      'lost',
+      'withdrawn',
+      'waiting'
+    ])
+    const onError = vi.fn()
+    expect(await sendAgain(client, onError)).toBe('unknown')
+    asyncStorage.setItem.mockRejectedValue(new Error('disk full'))
+    asyncStorage.removeItem.mockRejectedValue(new Error('disk full'))
+    expect(await sendAgain(client, onError)).toBe('unknown')
+    // Storage recovers: the lost send's record now clears, and the queue capability is gone.
+    asyncStorage.setItem.mockImplementation(async (key: string, value: string) => {
+      stored.set(key, value)
+    })
+    asyncStorage.removeItem.mockImplementation(async (key: string) => {
+      stored.delete(key)
+    })
+    expect(await sendAgain(client, onError, false)).toBe('queued')
+    expect(ids).toHaveLength(5)
+    // The resend's id is replayed, as first sent, never replaced by a fresh one.
+    expect(ids[4]).toBe(ids[2])
+    expect(deliveries[4]).toBe('queue-if-active')
   })
 
   it('replays its own id on a retry after a lost answer, and reports the record only once sent', async () => {

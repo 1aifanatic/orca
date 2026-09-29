@@ -42,6 +42,9 @@ export async function sendMobileStructuredAgentSessionMessage(input: {
    *  record, so failing storage never blocks the send; its id is kept in memory for this app run,
    *  so a retry after a lost answer replays it rather than sending again. */
   bypassRetainedRecord?: true
+  /** Internal: on that resend, the key the withdrawn record matched. The remembered id is keyed
+   *  by it, so a capability change since the lost answer never mints another id. */
+  resendOperationKey?: string
 }): Promise<MobileNativeChatSendOutcome> {
   const timeoutMs = timeoutForDeadline(input.deadline)
   if (timeoutMs === null) {
@@ -79,24 +82,37 @@ export async function sendMobileStructuredAgentSessionMessage(input: {
     })
   const queuedOperationKey = operationKeyFor('queue-if-active')
   const immediateOperationKey = operationKeyFor(undefined)
+  const requestedOperationKey = input.delivery ? queuedOperationKey : immediateOperationKey
+  const attachmentPaths = input.attachments.map((attachment) => attachment.path)
+  const resendKey = input.resendOperationKey ?? requestedOperationKey
   let operation: Awaited<ReturnType<typeof getOrCreateMobileStructuredSendOperation>>
   try {
-    operation = input.bypassRetainedRecord
-      ? bypassOperation(
-          input.delivery ? queuedOperationKey : immediateOperationKey,
-          requestedPayloadFingerprint,
-          input.attachments.map((attachment) => attachment.path)
-        )
-      : await getOrCreateMobileStructuredSendOperation({
-          operationKey: input.delivery ? queuedOperationKey : immediateOperationKey,
-          // A retained id replays exactly as first sent, whatever the capability says now;
-          // a host that refuses that request shape retires it, so the next send goes out fresh.
-          alternateOperationKey: input.delivery ? immediateOperationKey : queuedOperationKey,
-          callerIdentity: input.callerIdentity,
-          payloadFingerprint: requestedPayloadFingerprint,
-          attachmentPaths: input.attachments.map((attachment) => attachment.path),
-          createOperationId: structuredSessionOperationId
-        })
+    if (input.bypassRetainedRecord) {
+      operation = bypassOperation(resendKey, requestedPayloadFingerprint, attachmentPaths)
+    } else if (
+      input.resendOperationKey !== undefined &&
+      bypassedMobileStructuredSendOperationId(resendKey) !== undefined
+    ) {
+      // Storage recovered after a bypassed resend's answer was lost: that id is replayed, never
+      // replaced by a fresh one that could deliver the message twice.
+      operation = await adoptBypassedOperation({
+        operationKey: resendKey,
+        callerIdentity: input.callerIdentity,
+        payloadFingerprint: requestedPayloadFingerprint,
+        attachmentPaths
+      })
+    } else {
+      operation = await getOrCreateMobileStructuredSendOperation({
+        operationKey: requestedOperationKey,
+        // A retained id replays exactly as first sent, whatever the capability says now;
+        // a host that refuses that request shape retires it, so the next send goes out fresh.
+        alternateOperationKey: input.delivery ? immediateOperationKey : queuedOperationKey,
+        callerIdentity: input.callerIdentity,
+        payloadFingerprint: requestedPayloadFingerprint,
+        attachmentPaths,
+        createOperationId: structuredSessionOperationId
+      })
+    }
   } catch {
     input.onError('Message not sent')
     return 'rejected'
@@ -157,6 +173,7 @@ export async function sendMobileStructuredAgentSessionMessage(input: {
     const resent = await sendMobileStructuredAgentSessionMessage({
       ...input,
       resendingAfterWithdrawal: true,
+      resendOperationKey: operationKey,
       ...(released ? {} : { bypassRetainedRecord: true as const })
     })
     // Only when the resend is known to have gone out; an unconfirmed one may not have.
@@ -195,5 +212,31 @@ function bypassOperation(
     retained: bypassed !== undefined,
     payloadFingerprint,
     attachmentPaths
+  }
+}
+
+/** A remembered bypassed id handed back to the saved record once storage works again: the record
+ *  replays it, and memory lets it go. Should storage fail again, memory keeps replaying it. */
+async function adoptBypassedOperation(input: {
+  operationKey: string
+  callerIdentity: string
+  payloadFingerprint: string
+  attachmentPaths: string[]
+}): Promise<Awaited<ReturnType<typeof getOrCreateMobileStructuredSendOperation>>> {
+  const operationId = bypassedMobileStructuredSendOperationId(input.operationKey)
+  if (operationId === undefined) {
+    throw new Error('No bypassed send id to adopt')
+  }
+  try {
+    const recorded = await getOrCreateMobileStructuredSendOperation({
+      ...input,
+      createOperationId: () => operationId
+    })
+    if (recorded.operationId === operationId) {
+      forgetBypassedMobileStructuredSendOperation(input.operationKey, operationId)
+    }
+    return { ...recorded, retained: true }
+  } catch {
+    return bypassOperation(input.operationKey, input.payloadFingerprint, input.attachmentPaths)
   }
 }

@@ -77,7 +77,7 @@ export function mobileStructuredSendDelivery(
   }
   const submission: AgentJournalSubmission | undefined =
     'submission' in result.value ? result.value.submission : undefined
-  if (submission?.queuedMessageId === result.value.clientMessageId) {
+  if (submission !== undefined && submission.queuedMessageId === result.value.clientMessageId) {
     // The host says this id's queued draft was handed off as that submission: the send reached
     // it, so the id is spent now, not when a stream that may never carry the hand-off shows it.
     // Which send the phone meant stays unconfirmed, as for any retained replay of a live send.

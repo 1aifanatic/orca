@@ -248,9 +248,10 @@ export async function clearMobileStructuredQueuedSendOperations(input: {
   })
 }
 
-/** Ids sent past a saved record storage would not clear, by operation key, for this app run
- *  only: a retry of that text replays the same id instead of minting another, which could
- *  deliver it twice. Dies with the app, or when the host answers the id as spent. */
+/** Ids sent past a saved record storage would not clear, keyed by the operation key that record
+ *  matched, for this app run only: a retry of that text replays the same id instead of minting
+ *  another, which could deliver it twice. An entry dies at app restart, when the host answers the
+ *  id as spent, or when a saved record takes the id over; a replay the host keeps keeps it. */
 const bypassedOperationIds = new Map<string, string>()
 
 export function bypassedMobileStructuredSendOperationId(operationKey: string): string | undefined {

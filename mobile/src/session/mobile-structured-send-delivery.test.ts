@@ -90,6 +90,18 @@ describe('mobileStructuredSendDelivery', () => {
     })
   })
 
+  it('never spends a retained id on a malformed answer with no submission and no id', () => {
+    const malformed: StructuredAgentSessionMutationCallResult<AgentSessionSendResult> = {
+      status: 'accepted',
+      value: JSON.parse('{}')
+    }
+    expect(mobileStructuredSendDelivery(malformed, true)).toEqual({
+      outcome: 'unknown',
+      operationIdSpent: false,
+      error: null
+    })
+  })
+
   it('does not report a retained payload replay as a new accepted send', () => {
     for (const dispatchState of ['accepted', 'pending'] as const) {
       expect(mobileStructuredSendDelivery(accepted(dispatchState), true)).toEqual({
