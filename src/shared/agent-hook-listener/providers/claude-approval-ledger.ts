@@ -211,9 +211,10 @@ function recordAnnouncedCall(
 function sweepClaudeApprovalsAtTurnBoundary(
   records: readonly ClaudeApprovalRecord[],
   eventName: unknown,
-  endsTurn: boolean
+  endsTurn: boolean,
+  opensUserTurn: boolean
 ): readonly ClaudeApprovalRecord[] | undefined {
-  if (endsTurn || eventName === 'UserPromptSubmit' || eventName === 'SessionStart') {
+  if (endsTurn || opensUserTurn || eventName === 'SessionStart') {
     return []
   }
   if (eventName === 'Stop' || eventName === 'StopFailure') {
@@ -274,6 +275,9 @@ export function foldClaudeApprovalEvent(input: {
   raisesQuestionWait: boolean
   /** This event closes the turn, so the ledger is swept whatever state it is in. */
   endsTurn: boolean
+  /** A prompt the user typed, which opens a new turn. A harness-injected `UserPromptSubmit` does not:
+   *  it arrives inside the running turn (reusing its prompt_id) and answers no permission prompt. */
+  opensUserTurn: boolean
   /** Present for a durable re-delivery of an event from a prior runtime. */
   replay?: HookReplayEvidence
 }): ClaudeApprovalFold {
@@ -292,7 +296,8 @@ export function foldClaudeApprovalEvent(input: {
   const swept = sweepClaudeApprovalsAtTurnBoundary(
     carriedOver?.approvals ?? [],
     eventName,
-    input.endsTurn
+    input.endsTurn,
+    input.opensUserTurn
   )
   if (swept) {
     // Why: whatever the turn never answered for died with it, and nothing may be inherited by the
@@ -310,7 +315,14 @@ export function foldClaudeApprovalEvent(input: {
     ...(toolCall ? { toolCall } : {}),
     ...(announcedCalls ? { announcedCalls } : {})
   }
-  const settled = settleObservedCall(carriedOver?.approvals ?? [], toolCall)
+  const settled = settleObservedCall(
+    carriedOver?.approvals ?? [],
+    // Why: the main agent taking an injected prompt has moved past its own question, as a new call would show.
+    toolCall ??
+      (eventName === 'UserPromptSubmit' && agentId === undefined
+        ? { toolName: '', completesCall: false }
+        : undefined)
+  )
   if (!input.raisesWait || !claudeReplayMayRaiseWait(input.replay)) {
     return { ...carried, approvals: settled }
   }

@@ -13,7 +13,11 @@ import {
 import type { HookReplayEvidence } from '../listener-event'
 import type { HookListenerState } from '../listener-state'
 import { readFirstString } from '../interactive-tool'
-import { shouldIgnoreCompactContinuationUserPromptSubmit } from '../prompt-fields'
+import {
+  extractPromptText,
+  shouldIgnoreCompactContinuationUserPromptSubmit
+} from '../prompt-fields'
+import { hasExplicitUserPrompt } from '../provider-event-routing'
 import { readString } from '../tool-input-preview'
 import {
   buildClaudeCachedLeadStatusPayload,
@@ -175,6 +179,11 @@ export function normalizeClaudeEvent(
       : {}),
     raisesQuestionWait: isAskUserQuestionWait,
     endsTurn: isManualCompactCompletion,
+    // Why the row's own classifier: an injected prompt (a task notification, a teammate's message)
+    // lands inside the running turn, so it must answer exactly what it did when the server held the row.
+    opensUserTurn:
+      eventName === 'UserPromptSubmit' &&
+      hasExplicitUserPrompt('claude', eventName, extractPromptText(hookPayload), promptText),
     replay
   })
   // Why: a replayed prompt the ledger refused (see claudeReplayMayRaiseWait) re-states the pane's
@@ -314,7 +323,7 @@ export function normalizeClaudeEvent(
       ? Date.now()
       : undefined
 
-  // Why: only a main agent turn end reaches here with a wait outstanding, and what it left is a child's prompt.
+  // Why: only a main agent turn end or an injected prompt reaches here with a wait outstanding.
   const holdsChildWait =
     previousLead !== undefined && !isWaitingInducing && claudeHasOutstandingApproval(approvals)
   if (holdsChildWait) {
