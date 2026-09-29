@@ -37,6 +37,8 @@ export type ViewportGuestHandle = {
   debuggerAttach: ReturnType<typeof vi.fn>
   /** Flips what isCrashed() reports, as a renderer death and its reload do. */
   setRendererCrashed: (crashed: boolean) => void
+  /** A CDP command sent on the guest's debugger by someone other than the manager (an agent). */
+  sendForeignCdpCommand: (method: string, params?: Record<string, unknown>) => unknown
   setGuestUserAgent: (ua: string) => void
   commitNavigationTo: (nextUrl: string) => void
   webContentsUserAgent: () => string
@@ -114,6 +116,7 @@ export function createViewportGuestFactory(
       setRendererCrashed: (crashed: boolean) => {
         rendererCrashed = crashed
       },
+      sendForeignCdpCommand: sendCommand,
       setGuestUserAgent: (ua: string) => {
         currentUa = ua
       },

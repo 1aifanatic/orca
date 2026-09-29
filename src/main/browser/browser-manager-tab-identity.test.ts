@@ -142,7 +142,9 @@ async function observe(
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the resolver reads no Session member.
       session: handle.guest.session as Electron.Session,
       url,
-      webContentsId: id
+      webContentsId: id,
+      // The header Chromium builds for the document: whatever the page itself presents.
+      currentUserAgent: handle.presentedUserAgent()
     })
   }
 }
@@ -194,8 +196,8 @@ describe('tab identity ownership', () => {
         const expected =
           mode === 'clean' && url === AUTH_URL ? googleAuthUserAgent() : processUserAgent
         expect(desktop.presented).toBe(expected)
-        expect(desktop.requestIdentity.userAgent).toBe(expected)
-        expect(desktop.requestIdentity.kind).toBe(
+        expect(desktop.requestIdentity?.userAgent).toBe(expected)
+        expect(desktop.requestIdentity?.kind).toBe(
           expected === processUserAgent ? 'process' : 'google-auth'
         )
       }
@@ -207,8 +209,8 @@ describe('tab identity ownership', () => {
       expect(observed.standingOverride).toMatchObject({
         userAgentMetadata: expect.objectContaining({ mobile: true, platform: 'iOS' })
       })
-      expect(observed.requestIdentity.kind).toBe('mobile')
-      expect(observed.requestIdentity.userAgent).toBe(observed.presented)
+      expect(observed.requestIdentity?.kind).toBe('mobile')
+      expect(observed.requestIdentity?.userAgent).toBe(observed.presented)
     })
 
     it('keeps the Google sign-in identity ahead of a mobile preset only in clean mode', async () => {
@@ -216,10 +218,10 @@ describe('tab identity ownership', () => {
       expectClientHintsKept(observed)
       if (mode === 'clean') {
         expect(observed.presented).toBe(googleAuthUserAgent())
-        expect(observed.requestIdentity.kind).toBe('google-auth')
+        expect(observed.requestIdentity?.kind).toBe('google-auth')
       } else {
         expect(observed.presented).toContain('iPhone')
-        expect(observed.requestIdentity.kind).toBe('mobile')
+        expect(observed.requestIdentity?.kind).toBe('mobile')
       }
     })
 
@@ -246,7 +248,7 @@ describe('tab identity ownership', () => {
       for (const preset of ['none', 'desktop', 'mobile'] as const) {
         const observed = await presentWith(url, preset)
         expect(observed.presented).not.toMatch(APP_TOKENS)
-        expect(observed.requestIdentity.userAgent).not.toMatch(APP_TOKENS)
+        expect(observed.requestIdentity?.userAgent).not.toMatch(APP_TOKENS)
       }
     }
   })
@@ -462,7 +464,7 @@ describe('tab identity ownership', () => {
     expect(opened.handle.webContentsUserAgent()).toBe(GUEST_CLEAN_UA)
     const observed = await observe(opened, AUTH_URL)
     expect(observed.presented).toBe(googleAuthUserAgent())
-    expect(observed.requestIdentity.kind).toBe('google-auth')
+    expect(observed.requestIdentity?.kind).toBe('google-auth')
   })
 
   // Why: a debugger that cannot attach (DevTools open on the guest) installs no mobile identity, so
@@ -484,5 +486,44 @@ describe('tab identity ownership', () => {
     const observed = await observe(opened, 'https://example.org/')
     expect(observed.presented).toBe(GUEST_CLEAN_UA)
     expect(observed.requestIdentity).toEqual({ kind: 'process', userAgent: GUEST_CLEAN_UA })
+  })
+
+  // Why: an agent's Emulation.setUserAgentOverride reaches the guest through Orca's CDP endpoint,
+  // not through the identity owner. Restamping the process UA left the server seeing Chrome, with
+  // no client hints, while the page reported the agent's device.
+  describe.each(MODES)('with an automation client override in %s mode', (mode, processUA) => {
+    const AGENT_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AgentDevice/1.0'
+
+    beforeEach(() => {
+      mocks.processUserAgentMode = mode
+      mocks.processUserAgent = processUA
+    })
+
+    async function agentWrites(
+      opened: { handle: ViewportGuestHandle },
+      userAgent: string
+    ): Promise<void> {
+      await opened.handle.sendForeignCdpCommand('Emulation.setUserAgentOverride', { userAgent })
+      await flushViewportOps()
+    }
+
+    it('leaves the agent UA on the wire across navigations', async () => {
+      const opened = openTab(ORDINARY_URL)
+      await agentWrites(opened, AGENT_UA)
+      navigate('https://example.org/')
+
+      const observed = await observe(opened, 'https://example.org/')
+      expect(observed.presented).toBe(AGENT_UA)
+      expect(observed.requestIdentity).toBeUndefined()
+    })
+
+    it('restamps the tab identity once the agent clears its override', async () => {
+      const opened = openTab(ORDINARY_URL)
+      await agentWrites(opened, AGENT_UA)
+      await agentWrites(opened, '')
+
+      const observed = await observe(opened, ORDINARY_URL)
+      expect(observed.requestIdentity).toEqual({ kind: 'process', userAgent: processUA })
+    })
   })
 })

@@ -18,7 +18,7 @@ import { BrowserManagerVisibility } from './browser-manager-visibility'
 export abstract class BrowserManagerNavigation extends BrowserManagerVisibility {
   resolveBrowserGuestRequestUserAgent(
     request: Parameters<BrowserSessionRequestUserAgentResolver>[0]
-  ): BrowserTabIdentity {
+  ): BrowserTabIdentity | undefined {
     const processIdentity = getBrowserProcessUserAgentIdentity()
     const googleAuth = googleAuthTabIdentity()
     const pendingNavigation =
@@ -49,6 +49,18 @@ export abstract class BrowserManagerNavigation extends BrowserManagerVisibility 
     }
     if (googleAuthEnabled && standingOverride?.userAgent === googleAuth.userAgent) {
       return googleAuth
+    }
+    // A UA this tab never wrote is an automation client's own CDP override (an agent emulating a
+    // device). The document already presents it and Chromium puts it on the wire with matching
+    // hints, so restamping the process UA would leave the server seeing a different browser.
+    if (
+      request.webContentsId !== undefined &&
+      !standingOverride &&
+      request.currentUserAgent !== undefined &&
+      request.currentUserAgent !== processIdentity.userAgent &&
+      request.currentUserAgent !== googleAuth.userAgent
+    ) {
+      return undefined
     }
     // Shared and service worker requests carry no webContentsId, and resolving a session-wide mobile
     // intent for one put the mobile UA on the wire for a context whose own navigator.userAgent is
