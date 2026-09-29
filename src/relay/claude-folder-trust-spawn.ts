@@ -1,7 +1,6 @@
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { parseClaudeFolderTrustSpawnRequest } from '../shared/claude-folder-trust-spawn-request'
-import { isTooBroadToPreTrust } from '../shared/home-or-filesystem-root'
 import {
   grantClaudeWorkspaceTrust,
   resolveClaudeGlobalConfigFile
@@ -10,6 +9,7 @@ import {
   awaitAgentTrustWriteWithinDeadline,
   SHORT_AGENT_TRUST_WRITE_DEADLINE_MS
 } from '../main/agent-trust-write-deadline'
+import { isLocalFolderTooBroadToPreTrust } from '../main/local-folder-trust-breadth'
 
 /**
  * Why here: this host owns the file Claude reads, so the lock, the re-read under it,
@@ -27,7 +27,7 @@ export async function applyRelayClaudeFolderTrust(
   }
   const keyStyle = process.platform === 'win32' ? 'win32' : 'posix'
   const homeDir = (keyStyle === 'win32' ? spawnEnv.USERPROFILE : spawnEnv.HOME) || homedir()
-  if (isTooBroadToPreTrust(request.workspacePath, [homeDir, homedir()])) {
+  if (isLocalFolderTooBroadToPreTrust(request.workspacePath, [homeDir, homedir()])) {
     return
   }
   const configFile = resolveClaudeGlobalConfigFile({

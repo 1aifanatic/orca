@@ -5,6 +5,7 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -65,6 +66,17 @@ describe('applyRelayClaudeFolderTrust', () => {
   it("never pre-trusts the relay host's home folder", async () => {
     writeFileSync(join(root, '.claude.json'), '{}')
     await applyRelayClaudeFolderTrust({ workspacePath: root }, { HOME: root }, HOST_SHELL)
+    expect(readFileSync(join(root, '.claude.json'), 'utf-8')).toBe('{}')
+  })
+
+  it("never pre-trusts the relay host's home through a symlink to it", async () => {
+    writeFileSync(join(root, '.claude.json'), '{}')
+    symlinkSync(root, join(workspace, 'home-link'), 'junction')
+    await applyRelayClaudeFolderTrust(
+      { workspacePath: join(workspace, 'home-link') },
+      { HOME: root },
+      HOST_SHELL
+    )
     expect(readFileSync(join(root, '.claude.json'), 'utf-8')).toBe('{}')
   })
 

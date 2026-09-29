@@ -57,7 +57,9 @@ describe('markRemoteAgentWorkspaceTrusted', () => {
 
   it('writes Codex trust when the remote home is a Windows absolute path', async () => {
     const fsProvider = makeFsProvider({
-      realpath: vi.fn(async () => 'C:/Users/alice/platform')
+      realpath: vi.fn(async (path: string) =>
+        path === 'C:\\Users\\alice\\platform' ? 'C:/Users/alice/platform' : path
+      )
     })
     mocks.getActiveMultiplexer.mockReturnValue({
       request: vi.fn(async () => ({ resolvedPath: 'C:\\Users\\alice\\' }))
@@ -86,6 +88,24 @@ describe('markRemoteAgentWorkspaceTrusted', () => {
         preset,
         connectionId: 'ssh-1',
         workspacePath: '/home/u'
+      })
+    }
+
+    expect(fsProvider.createDir).not.toHaveBeenCalled()
+    expect(fsProvider.writeFile).not.toHaveBeenCalled()
+  })
+
+  it('never pre-trusts the resolved folder behind a symlinked remote home', async () => {
+    const fsProvider = makeFsProvider({
+      realpath: vi.fn(async (path: string) => path.replace(/^\/home\//, '/var/home/'))
+    })
+    mocks.getSshFilesystemProvider.mockReturnValue(fsProvider)
+
+    for (const preset of ['codex', 'cursor', 'copilot', 'qoder'] as const) {
+      await markRemoteAgentWorkspaceTrusted({
+        preset,
+        connectionId: 'ssh-1',
+        workspacePath: '/var/home/u'
       })
     }
 
@@ -127,7 +147,9 @@ describe('markRemoteAgentWorkspaceTrusted', () => {
 
   it('sanitizes Windows path characters in remote Cursor trust marker paths', async () => {
     const fsProvider = makeFsProvider({
-      realpath: vi.fn(async () => 'C:/Users/alice/platform')
+      realpath: vi.fn(async (path: string) =>
+        path === 'C:\\Users\\alice\\platform' ? 'C:/Users/alice/platform' : path
+      )
     })
     mocks.getActiveMultiplexer.mockReturnValue({
       request: vi.fn(async () => ({ resolvedPath: 'C:/Users/alice/' }))

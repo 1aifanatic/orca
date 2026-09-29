@@ -1,4 +1,12 @@
-import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync
+} from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -157,6 +165,36 @@ describe('applyAgentWorkspaceTrust on this machine', () => {
       mocks.claudeGrant
     ]) {
       expect(writer).not.toHaveBeenCalled()
+    }
+  })
+
+  it('never pre-trusts a home reached through a symlink, since the writers store the realpath', async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'orca-agent-trust-home-')))
+    try {
+      const home = join(root, 'home')
+      mkdirSync(home)
+      symlinkSync(home, join(root, 'home-link'), 'junction')
+      const cases = [
+        [join(root, 'home-link'), home],
+        [home, join(root, 'home-link')]
+      ]
+      for (const [workspacePath, homePath] of cases) {
+        const context = { ...noConfig, env: { ...noConfig.env, HOME: homePath } }
+        for (const preset of ['claude', 'codex', 'cursor', 'copilot', 'qoder'] as const) {
+          await applyAgentWorkspaceTrust(preset, workspacePath, context)
+        }
+      }
+      for (const writer of [
+        mocks.codex,
+        mocks.cursor,
+        mocks.copilot,
+        mocks.qoder,
+        mocks.claudeGrant
+      ]) {
+        expect(writer).not.toHaveBeenCalled()
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true })
     }
   })
 

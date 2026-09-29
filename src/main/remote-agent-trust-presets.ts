@@ -31,8 +31,16 @@ export async function markRemoteAgentWorkspaceTrusted(args: {
     return
   }
 
-  const workspacePath = await canonicalizeRemoteWorkspacePath(fsProvider, args.workspacePath)
-  if ([workspacePath, args.workspacePath].some((path) => isTooBroadToPreTrust(path, [home]))) {
+  // Why: the writers store the resolved workspace, so compare it against the resolved home too.
+  const [workspacePath, resolvedHome] = await Promise.all([
+    canonicalizeRemoteWorkspacePath(fsProvider, args.workspacePath),
+    canonicalizeRemoteWorkspacePath(fsProvider, home)
+  ])
+  if (
+    [workspacePath, args.workspacePath].some((path) =>
+      isTooBroadToPreTrust(path, [home, resolvedHome])
+    )
+  ) {
     return
   }
   if (args.preset === 'qoder') {

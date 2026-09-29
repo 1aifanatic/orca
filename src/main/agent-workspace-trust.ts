@@ -21,6 +21,7 @@ import type { ClaudeRuntimeAuthPreparation } from './claude-accounts/runtime-aut
 import type { ClaudeFolderTrustSpawnRequest } from '../shared/claude-folder-trust-spawn-request'
 import { parseWslUncPath } from '../shared/wsl-paths'
 import { isTooBroadToPreTrust } from '../shared/home-or-filesystem-root'
+import { isLocalFolderTooBroadToPreTrust } from './local-folder-trust-breadth'
 import { getCachedWslHome } from './wsl-home-cache'
 
 /** What a trust writer needs to reach the file the launched agent will read. */
@@ -100,11 +101,17 @@ function startTrustWrite(
       workspacePath
     })
   }
-  if (preset === 'claude') {
-    return writeLocalClaude(workspacePath, context)
-  }
   // Why: the other writers target this host's home, which a WSL guest agent never reads.
-  return isWslLaunch(workspacePath, context) ? null : writeLocalPreset(preset, workspacePath)
+  if (preset !== 'claude' && isWslLaunch(workspacePath, context)) {
+    return null
+  }
+  if (isLocalFolderTooBroadToPreTrust(workspacePath, localHomePaths(workspacePath, context))) {
+    // Why: trust on a home, a folder above one or a root would cover the home for some agents.
+    return null
+  }
+  return preset === 'claude'
+    ? writeLocalClaude(workspacePath, context)
+    : writeLocalPreset(preset, workspacePath)
 }
 
 /**
@@ -117,18 +124,15 @@ export async function applyAgentWorkspaceTrust(
   context: AgentTrustLaunchContext
 ): Promise<AgentTrustSpawnFields> {
   try {
-    if (
-      isTooBroadToPreTrust(
-        workspacePath,
-        context.connectionId ? [] : localHomePaths(workspacePath, context)
-      )
-    ) {
-      // Why: trust on a home, a folder above one or a root would cover the home for some agents.
-      return {}
-    }
-    if (preset === 'claude' && context.connectionId) {
-      // Why: the relay owns the remote file, its lock and the agent's final env.
-      return { claudeFolderTrust: { workspacePath } }
+    if (context.connectionId) {
+      if (isTooBroadToPreTrust(workspacePath, [])) {
+        // Why: the SSH host checks its own home; a root is too broad on any host.
+        return {}
+      }
+      if (preset === 'claude') {
+        // Why: the relay owns the remote file, its lock and the agent's final env.
+        return { claudeFolderTrust: { workspacePath } }
+      }
     }
     const write = startTrustWrite(preset, workspacePath, context)
     if (write) {
