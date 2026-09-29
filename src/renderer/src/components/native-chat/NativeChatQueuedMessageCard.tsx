@@ -127,7 +127,7 @@ export function NativeChatQueuedMessageCard({
     <li
       data-queued-message-id={card.messageId}
       data-queued-message-state={card.state}
-      className="flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-card-foreground"
+      className="flex items-center gap-2 px-2.5 py-1.5"
     >
       {returned || card.pausedReason === QUEUED_MESSAGE_PAUSED_SEND_FAILED ? (
         <AlertCircle className="size-3.5 shrink-0 text-destructive" aria-hidden />
@@ -158,10 +158,12 @@ export function NativeChatQueuedMessageCard({
           </Button>
         </TooltipTrigger>
         <TooltipContent side="top" sideOffset={4}>
-          {sendNow.hint}
-          {showsSteerShortcut ? (
-            <ShortcutKeyCombo keys={[isMac ? '⌘' : 'Ctrl', isMac ? '⏎' : 'Enter']} />
-          ) : null}
+          <span className="flex items-center gap-2">
+            <span>{sendNow.hint}</span>
+            {showsSteerShortcut ? (
+              <ShortcutKeyCombo keys={[isMac ? '⌘' : 'Ctrl', isMac ? '⏎' : 'Enter']} />
+            ) : null}
+          </span>
         </TooltipContent>
       </Tooltip>
       <Tooltip>

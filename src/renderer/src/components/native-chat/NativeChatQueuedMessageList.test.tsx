@@ -307,6 +307,63 @@ describe('NativeChatQueuedMessageList', () => {
     expect(container.querySelectorAll('.lucide-list-end')).toHaveLength(1)
   })
 
+  it('one bordered box holds the pause row and every card, rows divided, cards unbordered', () => {
+    renderList(
+      controller(
+        [
+          card({ messageId: 'waiting', hold: 'queue-paused' }),
+          card({ messageId: 'refused', state: 'returned', hold: 'returned', position: 2 }),
+          card({ messageId: 'failed', hold: 'paused', pausedReason: 'send_failed', position: 3 })
+        ],
+        { reason: 'stopped' }
+      )
+    )
+    const list = screen.getByRole('list')
+    const box = list.parentElement!
+    expect(box.className.split(' ')).toEqual(
+      expect.arrayContaining(['rounded-md', 'border', 'border-border', 'bg-card', 'divide-y'])
+    )
+    // The pause row is the box's first row, outside the list; the list is its second.
+    expect(box.children).toHaveLength(2)
+    expect(box.firstElementChild?.textContent).toContain('Queue paused because you interrupted')
+    expect(box.lastElementChild).toBe(list)
+    expect(list.className.split(' ')).toContain('divide-y')
+    const rows = within(list).getAllByRole('listitem')
+    expect(rows).toHaveLength(3)
+    for (const row of rows) {
+      expect(row.className.split(' ')).not.toContain('border')
+      expect(row.className.split(' ')).not.toContain('rounded-md')
+    }
+    // Captions still render on their own rows.
+    expect(rows[2]?.textContent).toContain("Couldn't send — press Send to retry.")
+  })
+
+  it('without a pause the box holds only the list, one card or many', () => {
+    for (const count of [1, 4]) {
+      const view = renderList(
+        controller(
+          Array.from({ length: count }, (_, index) =>
+            card({ messageId: `draft-${index}`, position: index })
+          )
+        )
+      )
+      const list = screen.getByRole('list')
+      expect(list.parentElement?.children).toHaveLength(1)
+      expect(within(list).getAllByRole('listitem')).toHaveLength(count)
+      view.unmount()
+    }
+  })
+
+  it('the Steer tooltip spaces its hint from the shortcut chips', async () => {
+    renderList(controller([card({ messageId: 'newest' })]))
+    fireEvent.focus(screen.getByRole('button', { name: 'Steer' }))
+    const hint = await screen.findAllByText('Submit without interrupting the model')
+    const group = hint[0]!.parentElement!
+    expect(group.tagName).toBe('SPAN')
+    expect(group.className).toBe('flex items-center gap-2')
+    expect(group.children).toHaveLength(2)
+  })
+
   it('cards keep Steer, Delete and More actions while the queue is paused', () => {
     const owner = controller([card({ messageId: 'waiting', hold: 'queue-paused' })], {
       reason: 'stopped'

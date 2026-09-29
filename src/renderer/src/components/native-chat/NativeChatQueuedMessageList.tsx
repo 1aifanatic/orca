@@ -39,33 +39,36 @@ export function NativeChatQueuedMessageList({
   return (
     <div aria-live="polite">
       {cards.length > 0 ? (
-        <div ref={queueRef} className="mx-auto flex w-full max-w-4xl flex-col gap-1 px-4 py-1">
-          {pause ? (
-            <NativeChatQueuePauseRow
-              pause={pause}
-              resuming={controller.resuming}
-              onResume={() => refocusAfter(controller.resume())}
-            />
-          ) : null}
-          <ul
-            aria-label={translate(
-              'components.native-chat.queuedMessages.listLabel',
-              'Queued messages'
-            )}
-            className="flex flex-col gap-1"
-          >
-            {cards.map((card) => (
-              <NativeChatQueuedMessageCard
-                key={card.messageId}
-                card={card}
-                showsSteerShortcut={card === newest}
-                onSteer={() => refocusAfter(controller.steer(card.messageId))}
-                onDelete={() => refocusAfter(controller.remove(card.messageId))}
-                onEdit={() => refocusAfter(controller.edit(card.messageId))}
-                onTurnOffQueueing={() => void updateSettings({ nativeChatQueueFollowUps: false })}
+        <div ref={queueRef} className="mx-auto w-full max-w-4xl px-4 py-1">
+          {/* One box: the pause row, when shown, is its first row, and each card a row below it. */}
+          <div className="divide-y divide-border rounded-md border border-border bg-card text-card-foreground">
+            {pause ? (
+              <NativeChatQueuePauseRow
+                pause={pause}
+                resuming={controller.resuming}
+                onResume={() => refocusAfter(controller.resume())}
               />
-            ))}
-          </ul>
+            ) : null}
+            <ul
+              aria-label={translate(
+                'components.native-chat.queuedMessages.listLabel',
+                'Queued messages'
+              )}
+              className="divide-y divide-border"
+            >
+              {cards.map((card) => (
+                <NativeChatQueuedMessageCard
+                  key={card.messageId}
+                  card={card}
+                  showsSteerShortcut={card === newest}
+                  onSteer={() => refocusAfter(controller.steer(card.messageId))}
+                  onDelete={() => refocusAfter(controller.remove(card.messageId))}
+                  onEdit={() => refocusAfter(controller.edit(card.messageId))}
+                  onTurnOffQueueing={() => void updateSettings({ nativeChatQueueFollowUps: false })}
+                />
+              ))}
+            </ul>
+          </div>
         </div>
       ) : null}
     </div>
@@ -106,7 +109,7 @@ function NativeChatQueuePauseRow({
 }): React.JSX.Element {
   const text = queuePauseText(pause)
   return (
-    <div className="flex items-center gap-2 px-2.5 text-xs text-muted-foreground">
+    <div className="flex items-center gap-2 px-2.5 py-1.5 text-xs text-muted-foreground">
       <Pause className="size-3.5 shrink-0" aria-hidden />
       <p className="min-w-0 flex-1 truncate" title={text}>
         {text}
