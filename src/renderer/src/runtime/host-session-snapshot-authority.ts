@@ -51,9 +51,9 @@ export function hostSnapshotAffirmsClientHostedPages(
  * Whether a snapshot's `agent-session` rows are the host's answer about which chats exist.
  *
  * Narrower than {@link hostSnapshotAffirmsWorktreeContents} for the same reason as client-hosted
- * pages: a runtime refused its chats (another Orca owns them, or the journal will not open) is
- * authoritative about terminals but cannot list a single chat. Its empty chat set is "cannot
- * tell", and culling on it would delete tabs whose chats are safe on disk.
+ * pages: a runtime whose chat journal will not open is authoritative about terminals but cannot
+ * list a single chat. Its empty chat set is "cannot tell", and culling on it would delete tabs
+ * whose chats are safe on disk.
  */
 export function hostSnapshotAffirmsAgentSessions(snapshot: AgentSessionPublication): boolean {
   return hostSnapshotAffirmsWorktreeContents(snapshot) && !snapshot.agentSessionsUnverifiable

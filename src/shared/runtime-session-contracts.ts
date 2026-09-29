@@ -265,9 +265,9 @@ export type RuntimeMobileSessionTabsResult = {
    */
   clientHostedPagesUnreconciled?: true
   /**
-   * Set while this runtime has no structured-chat host that can say which chats exist: another
-   * Orca process owns them, or the chat journal will not open. The snapshot is still authoritative
-   * about everything else, but its missing `agent-session` rows mean "cannot tell", not "closed".
+   * Set while this runtime has no structured-chat host that can say which chats exist because the
+   * chat journal will not open. The snapshot is still authoritative about everything else, but its
+   * missing `agent-session` rows mean "cannot tell", not "closed".
    *
    * Cleared by the first tab restore a host answers. Not bounded by a deadline: the chats are
    * durable on disk, so holding their tabs strands nothing.

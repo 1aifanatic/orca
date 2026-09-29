@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 
-// A runtime refused its chats (another Orca owns them, or the journal will not open) still answers
-// the tab inventory, but cannot list a single chat. Its empty chat set must not delete the saved
-// chat tabs, or the next session save persists their placement away.
+// A runtime whose chat journal will not open still answers the tab inventory, but cannot list a
+// single chat. Its empty chat set must not delete the saved chat tabs, or the next session save
+// persists their placement away.
 
 import { afterEach, describe, expect, it } from 'vitest'
 import type { RuntimeMobileSessionTabsResult } from '../../../shared/runtime-types'
