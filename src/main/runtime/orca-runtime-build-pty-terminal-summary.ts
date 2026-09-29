@@ -28,6 +28,20 @@ export class OrcaRuntimeWithBuildPtyTerminalSummary extends OrcaRuntimeWithGetPt
     const title = getLatestPtyTitle(pty)
     const pane = parsePaneKey(pty.paneKey ?? '')
     const orphaned = !ptyHoldsRecordedSurface(pty, this.ptySurfaceTopology())
+    if (orphaned && pty.worktreeId.includes('live-mount')) {
+      console.log(
+        '[mount-orphan]',
+        JSON.stringify({
+          ptyId: pty.ptyId,
+          tabId: pty.tabId,
+          paneKey: pty.paneKey,
+          owned: pty.runtimeSessionOwned,
+          sequence: this.graphSequence,
+          stamp: pty.surfaceRecordedAtGraphSequence,
+          graphLeaf: pane && this.leaves.get(this.getLeafKey(pane.tabId, pane.leafId))
+        })
+      )
+    }
     // A live process awaiting its pane binding is not evidence of an orphan.
     if (
       orphaned &&
