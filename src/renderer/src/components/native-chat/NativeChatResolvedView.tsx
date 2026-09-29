@@ -16,6 +16,7 @@ import { NativeChatEmptyState } from './NativeChatEmptyState'
 import { useNativeChatInteractiveSend } from './use-native-chat-interactive-send'
 import { shouldClearNativeChatWorkingSuppression } from './native-chat-working-suppression'
 import { resolveNativeChatTerminalTurn } from './native-chat-terminal-turn'
+import { useNativeChatTerminalTurnTiming } from './use-native-chat-terminal-turn-timing'
 import {
   appendPendingSendCache,
   launchPromptAsMessage,
@@ -324,6 +325,7 @@ export function NativeChatResolvedView({
     interrupted: workingInterrupted,
     hasPromptCard: promptCard !== null
   })
+  const turnTiming = useNativeChatTerminalTurnTiming(paneKey, session.messages, turnActive)
 
   const stopAgent = useCallback(() => {
     setWorkingInterrupted(true)
@@ -408,8 +410,7 @@ export function NativeChatResolvedView({
             isWorking={turnActive}
             expandSignal={false}
             fontScale={fontScale.scale}
-            // Host-stamped at each state change; the turn keeps its earliest anchor.
-            workingStartedAt={turnActive ? hookWorkingEpoch : null}
+            {...turnTiming}
             awaitingInput={awaitingInput}
             onLinkClick={onLinkClick}
             allowFileUriLinks={fileLinkContext !== null}

@@ -181,6 +181,58 @@ describe('NativeChatResolvedView turn status', () => {
     expect(screen.queryByText('Asked:')).toBeNull()
   })
 
+  // Answering a terminal-only prompt means leaving the chat, which remounts it on return.
+  it('counts a turn it first sees after a wait from the turn start, not the last state', () => {
+    retained.session = transcript('working', false)
+    setStatus({ state: 'working' }, 5_000)
+    const live = useAppStore.getState().agentStatusByPaneKey[paneKey]!
+    const now = Date.now()
+    useAppStore.setState((store) => ({
+      agentStatusByPaneKey: {
+        ...store.agentStatusByPaneKey,
+        [paneKey]: {
+          ...live,
+          stateHistory: [
+            { state: 'working', prompt: live.prompt, startedAt: now - 90_000 },
+            { state: 'waiting', prompt: live.prompt, startedAt: now - 40_000 }
+          ]
+        }
+      }
+    }))
+
+    renderPane()
+
+    expect(screen.getByText('Working for 1m 30s')).toBeInTheDocument()
+  })
+
+  it('folds finished turns from history behind their transcript duration', () => {
+    const at = Date.parse('2026-09-28T10:00:00.000Z')
+    retained.session = transcript('ready', false, [
+      { ...userTurn, timestamp: at },
+      {
+        id: 'answer-1',
+        role: 'assistant',
+        blocks: [{ type: 'text', text: 'Renamed.' }],
+        timestamp: at + 45_000,
+        source: 'transcript'
+      },
+      {
+        id: 'user-2',
+        role: 'user',
+        blocks: [{ type: 'text', text: 'Now add tests' }],
+        timestamp: at + 100_000,
+        source: 'transcript'
+      }
+    ])
+    setStatus({ state: 'done' }, 60_000)
+
+    renderPane()
+
+    expect(screen.getByText('Worked for 45s')).toBeInTheDocument()
+    // The latest turn has no recorded end, and this pane never watched it.
+    expect(screen.getAllByText(/Work(ing|ed) for/)).toHaveLength(1)
+  })
+
   it('stays quiet on a settled turn it never watched', () => {
     retained.session = transcript('ready', false)
     setStatus({ state: 'done' }, 60_000)

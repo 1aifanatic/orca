@@ -90,8 +90,8 @@ export function NativeChatMessageList({
   /** Chat-only text multiplier (1 = default), driven by the zoom shortcuts. */
   fontScale: number
   workingStartedAt?: number | null
-  /** Host-recorded turn durations keyed by user message id. Absent, a settled turn
-   *  shows the duration this list observed, if it saw the turn run. */
+  /** Recorded turn durations keyed by user message id (the host's, or the transcript's).
+   *  A turn missing here shows the duration this list observed, if it saw the turn run. */
   settledTurns?: NativeChatSettledTurns
   onLinkClick?: CommentMarkdownLinkClickHandler
   allowFileUriLinks?: boolean

@@ -1,3 +1,12 @@
+import type { AgentStatusEntry } from '../../../../shared/agent-status-types'
+import {
+  isInterruptedStatusMessage,
+  type NativeChatMessage
+} from '../../../../shared/native-chat-types'
+import type {
+  NativeChatSettledTurn,
+  NativeChatSettledTurns
+} from '../../../../shared/native-chat-turn-status'
 import type { NativeChatAwaitingInput } from './NativeChatMessageList'
 import { shouldShowNativeChatWorking } from './native-chat-working-suppression'
 
@@ -34,4 +43,61 @@ export function resolveNativeChatTerminalTurn(args: {
     // A prompt only the terminal shows is the one wait the transcript has to report.
     awaitingInput: hasPromptCard ? 'shown' : turnActive && hookAwaitingInput ? 'unshown' : null
   }
+}
+
+/**
+ * When the pane's current turn began, by its hook: the start of the unbroken run of mid-turn
+ * states under the current prompt. The current state's own start is only the last leg, so a pane
+ * mounted after the agent waited on the reader (answered in the terminal) would restart the clock.
+ * A changed prompt ends the run: an interrupted wait leaves no hook, so the next turn follows it.
+ */
+export function nativeChatHookTurnStartedAt(
+  entry: Pick<AgentStatusEntry, 'state' | 'prompt' | 'stateStartedAt' | 'stateHistory'> | undefined
+): number | null {
+  if (!entry) {
+    return null
+  }
+  let startedAt = entry.stateStartedAt
+  if (entry.state === 'done') {
+    return startedAt
+  }
+  for (let index = entry.stateHistory.length - 1; index >= 0; index -= 1) {
+    const previous = entry.stateHistory[index]!
+    if (previous.state === 'done' || previous.prompt !== entry.prompt) {
+      break
+    }
+    startedAt = Math.min(startedAt, previous.startedAt)
+  }
+  return startedAt
+}
+
+/**
+ * Durations of the transcript's finished turns, from its own timestamps (one clock): a turn runs
+ * from its prompt to the agent's last timestamped row or its interruption. Other system rows (file
+ * mentions, extension notes) can land long after, next to the following prompt. The latest turn is
+ * left out, since nothing here says it has ended, and so is a turn missing either end, which keeps
+ * what the pane observed.
+ */
+export function nativeChatTranscriptSettledTurns(
+  messages: readonly NativeChatMessage[]
+): NativeChatSettledTurns {
+  const settled = new Map<string, NativeChatSettledTurn>()
+  let turn: { id: string; startedAt: number | null; endedAt: number | null } | null = null
+  for (const message of messages) {
+    if (message.role !== 'user') {
+      const agentRow = message.role !== 'system' || isInterruptedStatusMessage(message)
+      if (turn && agentRow && message.timestamp != null) {
+        turn.endedAt = Math.max(turn.endedAt ?? message.timestamp, message.timestamp)
+      }
+      continue
+    }
+    if (turn?.startedAt != null && turn.endedAt != null) {
+      settled.set(turn.id, {
+        startedAt: turn.startedAt,
+        workedSeconds: Math.max(0, Math.floor((turn.endedAt - turn.startedAt) / 1000))
+      })
+    }
+    turn = { id: message.id, startedAt: message.timestamp, endedAt: null }
+  }
+  return settled
 }
