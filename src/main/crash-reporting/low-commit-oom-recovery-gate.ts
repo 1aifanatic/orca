@@ -1,6 +1,6 @@
 import type { CrashReportDetailValue } from '../../shared/crash-reporting'
 import { preGoneSystemMemoryDetails } from './pre-gone-host-memory'
-import { SYSTEM_MEMORY_KEY_PREFIX } from './system-memory-details'
+import { getSystemMemoryDetails, SYSTEM_MEMORY_KEY_PREFIX } from './system-memory-details'
 
 // Why: when Windows commit is exhausted by another program, a recovery reload OOMs again within seconds
 // (launch 13084: 3.5 s after the reload; launch 22912: 34 s), so a repeat OOM on a starved host asks the user instead.
@@ -13,6 +13,8 @@ export type LowCommitOomVerdict = {
   /** Pre-gone MEMORYSTATUSEX.ullAvailPageFile, i.e. commit still available. */
   availableCommitMB: number
   sincePreviousOomMs: number
+  /** 'gone-time' when no sampler tick landed since the previous OOM and the gate read commit itself. */
+  commitReading: 'pre-gone' | 'gone-time'
 }
 
 export type LowCommitOomRecoveryGate = {
@@ -22,10 +24,26 @@ export type LowCommitOomRecoveryGate = {
   recordRecoveredDeath: (details: Electron.RenderProcessGoneDetails, goneAt: number) => void
 }
 
+type MemoryDetails = Record<string, CrashReportDetailValue>
+
+function usablePreGoneCommitMB(sample: MemoryDetails, sincePreviousOomMs: number): number | null {
+  const availableCommitMB = sample[`${SYSTEM_MEMORY_KEY_PREFIX}PreGoneSwapFreeMB`]
+  const sampleAgeMs = sample[`${SYSTEM_MEMORY_KEY_PREFIX}PreGoneSampleAgeMs`]
+  if (
+    typeof availableCommitMB !== 'number' ||
+    typeof sampleAgeMs !== 'number' ||
+    sampleAgeMs > LOW_COMMIT_MAX_SAMPLE_AGE_MS ||
+    // Why: a reading from before the previous OOM misses the commit that corpse released.
+    sampleAgeMs >= sincePreviousOomMs
+  ) {
+    return null
+  }
+  return availableCommitMB
+}
+
 export function createLowCommitOomRecoveryGate(
-  readPreGoneDetails: (
-    now: number
-  ) => Record<string, CrashReportDetailValue> = preGoneSystemMemoryDetails
+  readPreGoneDetails: (now: number) => MemoryDetails = preGoneSystemMemoryDetails,
+  readGoneTimeDetails: () => MemoryDetails = getSystemMemoryDetails
 ): LowCommitOomRecoveryGate {
   let previousOomAt: number | null = null
   return {
@@ -40,20 +58,24 @@ export function createLowCommitOomRecoveryGate(
       ) {
         return null
       }
-      const sample = readPreGoneDetails(now)
-      const availableCommitMB = sample[`${SYSTEM_MEMORY_KEY_PREFIX}PreGoneSwapFreeMB`]
-      const sampleAgeMs = sample[`${SYSTEM_MEMORY_KEY_PREFIX}PreGoneSampleAgeMs`]
+      const sincePreviousOomMs = now - previous
+      const preGoneMB = usablePreGoneCommitMB(readPreGoneDetails(now), sincePreviousOomMs)
+      // Why fall back: a 10 s sampler misses most ~3.5 s repeat loops. A gone-time read sees commit the corpse
+      // already released, so it can only over-report and miss a prompt, never raise a false one.
+      const goneTimeMB =
+        preGoneMB === null ? readGoneTimeDetails()[`${SYSTEM_MEMORY_KEY_PREFIX}SwapFreeMB`] : null
+      const availableCommitMB = preGoneMB ?? goneTimeMB
       if (
         typeof availableCommitMB !== 'number' ||
-        typeof sampleAgeMs !== 'number' ||
-        sampleAgeMs > LOW_COMMIT_MAX_SAMPLE_AGE_MS ||
-        // Why: a reading from before the previous OOM misses the commit that corpse released.
-        sampleAgeMs >= now - previous ||
         availableCommitMB >= LOW_COMMIT_AVAILABLE_MB_THRESHOLD
       ) {
         return null
       }
-      return { availableCommitMB, sincePreviousOomMs: now - previous }
+      return {
+        availableCommitMB,
+        sincePreviousOomMs,
+        commitReading: preGoneMB === null ? 'gone-time' : 'pre-gone'
+      }
     },
     recordRecoveredDeath: (details, goneAt) => {
       if (details.reason === 'oom') {

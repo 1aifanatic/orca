@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { withPlatform } from '../window/createMainWindow-test-harness'
 import {
   createLowCommitOomRecoveryGate,
@@ -18,14 +18,22 @@ function sample(swapFreeMB: number | undefined, ageMs = 4_000) {
   })
 }
 
+// A gone-time read that resolved no commit field, as off-Electron.
+const NO_GONE_TIME_READING = () => ({})
+
+function goneTime(swapFreeMB: number) {
+  return () => ({ systemMemorySwapFreeMB: swapFreeMB })
+}
+
 function observeTwice(
   read: ReturnType<typeof sample>,
   second = OOM,
   gapMs = RELOAD_OOM - FIRST_OOM,
-  platform: NodeJS.Platform = 'win32'
+  platform: NodeJS.Platform = 'win32',
+  readGoneTime: () => Record<string, number> = NO_GONE_TIME_READING
 ) {
   return withPlatform(platform, () => {
-    const gate = createLowCommitOomRecoveryGate(read)
+    const gate = createLowCommitOomRecoveryGate(read, readGoneTime)
     const first = gate.assess(OOM, FIRST_OOM)
     gate.recordRecoveredDeath(OOM, FIRST_OOM)
     return [first, gate.assess(second, FIRST_OOM + gapMs)]
@@ -36,7 +44,7 @@ describe('createLowCommitOomRecoveryGate', () => {
   it('holds the reload of a repeat OOM with 60 MB of commit left', () => {
     expect(observeTwice(sample(60))).toEqual([
       null,
-      { availableCommitMB: 60, sincePreviousOomMs: 34_100 }
+      { availableCommitMB: 60, sincePreviousOomMs: 34_100, commitReading: 'pre-gone' }
     ])
   })
 
@@ -65,7 +73,7 @@ describe('createLowCommitOomRecoveryGate', () => {
   // Launch 13084 (Scan-31): 12:20:37.207 then 12:22:59.975; each OOM restarts the window.
   it('measures the window from the most recent OOM', () => {
     const verdicts = withPlatform('win32', () => {
-      const gate = createLowCommitOomRecoveryGate(sample(60, 2_000))
+      const gate = createLowCommitOomRecoveryGate(sample(60, 2_000), NO_GONE_TIME_READING)
       return [
         '2026-09-29T12:06:19.869Z',
         '2026-09-29T12:20:37.207Z',
@@ -81,19 +89,45 @@ describe('createLowCommitOomRecoveryGate', () => {
   })
 
   // Launch 13084: the repeat OOM came 3.458 s after the previous one, inside one 10 s sampler tick.
-  it('ignores a reading taken before the previous OOM released its commit', () => {
+  describe('when no sampler tick landed since the previous OOM', () => {
     const gapMs = 3_458
-    expect(observeTwice(sample(60, 5_000), OOM, gapMs)[1]).toBeNull()
-    expect(observeTwice(sample(60, gapMs), OOM, gapMs)[1]).toBeNull()
-    expect(observeTwice(sample(60, 1_000), OOM, gapMs)[1]).toEqual({
-      availableCommitMB: 60,
-      sincePreviousOomMs: gapMs
+
+    it.each([
+      ['taken before the previous OOM', 5_000],
+      ['taken exactly at the previous OOM', gapMs],
+      ['stale', 31_000]
+    ])('reads commit at gone time instead of trusting a reading %s', (_label, ageMs) => {
+      expect(observeTwice(sample(744, ageMs), OOM, gapMs, 'win32', goneTime(60))[1]).toEqual({
+        availableCommitMB: 60,
+        sincePreviousOomMs: gapMs,
+        commitReading: 'gone-time'
+      })
+    })
+
+    it('reloads when the gone-time reading shows commit recovered (2029 MB)', () => {
+      expect(observeTwice(sample(60, 5_000), OOM, gapMs, 'win32', goneTime(2_029))[1]).toBeNull()
+    })
+
+    it('prefers a reading taken after the previous OOM over the gone-time one', () => {
+      expect(observeTwice(sample(60, 1_000), OOM, gapMs, 'win32', goneTime(2_029))[1]).toEqual({
+        availableCommitMB: 60,
+        sincePreviousOomMs: gapMs,
+        commitReading: 'pre-gone'
+      })
+    })
+
+    it('reads nothing on macOS or Linux', () => {
+      const readGoneTime = vi.fn(goneTime(60))
+      for (const platform of ['darwin', 'linux'] as const) {
+        expect(observeTwice(sample(60, 5_000), OOM, gapMs, platform, readGoneTime)[1]).toBeNull()
+      }
+      expect(readGoneTime).not.toHaveBeenCalled()
     })
   })
 
   it('does not start the repeat window for an OOM that was never recovered', () => {
     const verdict = withPlatform('win32', () => {
-      const gate = createLowCommitOomRecoveryGate(sample(60, 2_000))
+      const gate = createLowCommitOomRecoveryGate(sample(60, 2_000), NO_GONE_TIME_READING)
       gate.assess(OOM, FIRST_OOM)
       return gate.assess(OOM, RELOAD_OOM)
     })

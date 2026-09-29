@@ -61,7 +61,8 @@ function hostWithAvailableCommit(swapFreeMB: number): void {
 
 async function runOomSequence(
   platform: NodeJS.Platform,
-  commitAtEachOomMB: readonly (number | null)[]
+  commitAtEachOomMB: readonly (number | null)[],
+  goneTimeCommitMB?: number
 ): Promise<{ reloads: number; onRendererRecoveryExhausted: ReturnType<typeof vi.fn> }> {
   const onRendererRecoveryExhausted = vi.fn()
   const { browserWindowInstance, windowHandlers } = createRendererRecoveryWindowHarness()
@@ -74,6 +75,10 @@ async function runOomSequence(
       withPlatform(platform, () => hostWithAvailableCommit(commitMB))
     }
     vi.setSystemTime(goneAt)
+    if (goneTimeCommitMB !== undefined) {
+      // Only the host changes; no sampler tick commits it.
+      setSystemMemoryInfoReaderForTest(() => ({ swapFree: goneTimeCommitMB * 1024 }))
+    }
     withPlatform(platform, () => windowHandlers['render-process-gone']?.({}, OOM))
     await vi.advanceTimersByTimeAsync(250)
   }
@@ -116,26 +121,45 @@ describe('Windows renderer OOM recovery under exhausted commit', () => {
       expect.objectContaining({
         details: OOM,
         cause: 'low-commit',
-        lowCommit: { availableCommitMB: EXHAUSTED_COMMIT_MB, sincePreviousOomMs: 3_458 }
+        lowCommit: {
+          availableCommitMB: EXHAUSTED_COMMIT_MB,
+          sincePreviousOomMs: 3_458,
+          commitReading: 'pre-gone'
+        }
       })
     )
   })
 
-  it('does not trust a reading taken before the previous OOM released its commit', async () => {
+  // The common field case: the 10 s sampler has no tick in the 3.458 s between the two OOMs.
+  it('reads commit at gone time when no sampler tick landed since the previous OOM', async () => {
     const { reloads, onRendererRecoveryExhausted } = await runOomSequence('win32', [
       HEALTHY_FIRST_OOM_COMMIT_MB,
       EXHAUSTED_COMMIT_MB,
       null,
       EXHAUSTED_COMMIT_MB
     ])
-    expect(reloads).toBe(3)
+    expect(reloads).toBe(2)
     expect(onRendererRecoveryExhausted).toHaveBeenCalledOnce()
     expect(onRendererRecoveryExhausted).toHaveBeenCalledWith(
       expect.objectContaining({
         cause: 'low-commit',
-        lowCommit: { availableCommitMB: EXHAUSTED_COMMIT_MB, sincePreviousOomMs: 139_310 }
+        lowCommit: {
+          availableCommitMB: EXHAUSTED_COMMIT_MB,
+          sincePreviousOomMs: 3_458,
+          commitReading: 'gone-time'
+        }
       })
     )
+  })
+
+  it('keeps reloading when the gone-time read shows commit recovered and no tick landed', async () => {
+    const { reloads, onRendererRecoveryExhausted } = await runOomSequence(
+      'win32',
+      [HEALTHY_FIRST_OOM_COMMIT_MB, EXHAUSTED_COMMIT_MB, null, null],
+      RECOVERED_COMMIT_MB
+    )
+    expect(reloads).toBe(4)
+    expect(onRendererRecoveryExhausted).not.toHaveBeenCalled()
   })
 
   it('keeps auto-reloading repeat OOMs once commit has recovered', async () => {
