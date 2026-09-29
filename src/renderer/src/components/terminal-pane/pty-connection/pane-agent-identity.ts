@@ -181,9 +181,13 @@ export function installPaneAgentIdentity(session: ConnectPanePtySession): void {
       }
     },
     hasKnownAgentIdentity: session.paneHasKnownAgentIdentity,
-    onConfirmedShellForeground: (reason, agentExited) => {
-      // Why: with main as the parser its host fact is the one exit publisher; bytes make it ours.
-      if (agentExited && !session.mainSideEffectAuthority) {
+    onConfirmedShellForeground: (reason, agentExit) => {
+      // Why: main publishes marked exits from its own facts; our own read-confirmed exit also
+      // covers main's reads failing at that exit. A second exit signal is a no-op downstream.
+      if (
+        agentExit === 'read-confirmed' ||
+        (agentExit === 'marked' && !session.mainSideEffectAuthority)
+      ) {
         session.onAgentExited?.()
       }
       // Why: a confirmed local shell proves any hibernation record for this pane is stale;
@@ -344,7 +348,9 @@ export function installPaneAgentIdentity(session: ConnectPanePtySession): void {
       session.visibleForegroundSampleSettled = false
       // Why: typed commands can be aliases, so they only widen the bounded
       // process-confirmation window; they never become routing evidence.
-      session.paneForegroundAgentTracker.onCommandStarted(session.commandInferredPaneAgent)
+      session.paneForegroundAgentTracker.onCommandStarted(session.commandInferredPaneAgent, {
+        shellMarked: true
+      })
     },
     onCommandFinished: session.handleCommandFinished
   })

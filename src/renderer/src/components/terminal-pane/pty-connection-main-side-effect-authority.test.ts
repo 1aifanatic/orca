@@ -716,4 +716,42 @@ describe('connectPanePty', () => {
     await vi.advanceTimersByTimeAsync(400)
     expect(reads()).toBeGreaterThan(baseline)
   })
+
+  it('exits Chat only at a 133;D that closes a command the shell started', async () => {
+    vi.useFakeTimers()
+    mockStoreState.settings = { ...mockStoreState.settings, terminalMainSideEffectAuthority: false }
+    const { connectPanePty } = await import('./pty-connection')
+    vi.mocked(window.api.pty.confirmForegroundProcess).mockResolvedValue('zsh')
+    const dataCallbackRef: { current: ((data: string) => void) | null } = { current: null }
+    const ptyId = 'pty-first-prompt-command-finished'
+    const transport = createMockTransport(ptyId)
+    transport.connect.mockImplementation(async ({ callbacks }: { callbacks: ConnectCallbacks }) => {
+      dataCallbackRef.current = callbacks.onData ?? null
+      return { id: ptyId }
+    })
+    transportFactoryQueue.push(transport)
+    const paneKey = makePaneKey('tab-1', LEAF_1)
+    const deps = createDeps({ isVisibleRef: { current: false } })
+
+    connectPanePty(createPane(1) as never, createManager(1) as never, deps as never)
+    await vi.advanceTimersByTimeAsync(20)
+    await flushAsyncTicks()
+    const launch = {
+      launchConfig: { agentArgs: '', agentEnv: {} },
+      identity: { agentType: 'claude' }
+    }
+    mockStoreState.agentLaunchConfigByPaneKey[paneKey] = launch
+
+    // A user shell integration's first-prompt D, before the launched agent's command starts.
+    dataCallbackRef.current?.('\x1b]133;D;0\x07')
+    await vi.advanceTimersByTimeAsync(350)
+    await flushAsyncTicks()
+    expect(deps.onAgentExitedRef.current).not.toHaveBeenCalled()
+
+    mockStoreState.agentLaunchConfigByPaneKey[paneKey] = launch
+    dataCallbackRef.current?.('\x1b]133;C\x07\x1b]133;D;0\x07')
+    await vi.advanceTimersByTimeAsync(350)
+    await flushAsyncTicks()
+    expect(deps.onAgentExitedRef.current).toHaveBeenCalledExactlyOnceWith(LEAF_1)
+  })
 })

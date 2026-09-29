@@ -578,6 +578,53 @@ describe('connectPanePty', () => {
       }
     )
 
+    it.each([
+      ['after its own read saw the agent', 'claude', true],
+      ['from a shell sample that never saw the agent', 'zsh', false]
+    ])(
+      'with main as the parser, a renderer-confirmed shell %s (first read %s) exits Chat: %s',
+      async (_label, firstRead, exitsChat) => {
+        vi.useFakeTimers()
+        mockStoreState.settings = {
+          ...mockStoreState.settings,
+          terminalMainSideEffectAuthority: true
+        }
+        const confirm = vi.mocked(window.api.pty.confirmForegroundProcess)
+        confirm.mockResolvedValue(firstRead)
+        vi.mocked(window.api.pty.getForegroundProcess).mockResolvedValue(firstRead)
+        const ptyId = `pty-renderer-confirmed-exit-${firstRead}`
+        const tabId = `tab-${ptyId}`
+        mockStoreState.tabsByWorktree = { 'wt-1': [{ id: tabId, ptyId }] }
+        const { deps } = await connectRestoredPaneForForegroundSampling({
+          ptyId,
+          tabId,
+          launchAgent: 'claude'
+        })
+        const ladder = VISIBLE_PTY_SETTLE_MS + WRAPPER_RESOLVE_RETRY_MS + SECOND_WRAPPER_RETRY_MS
+        await vi.advanceTimersByTimeAsync(ladder)
+        await flushAsyncTicks()
+        expect(deps.onAgentExitedRef.current).not.toHaveBeenCalled()
+
+        // Main's own reads at the exit failed, so this 133;D carries no agent-exited fact.
+        confirm.mockResolvedValue('zsh')
+        vi.mocked(window.api.pty.getForegroundProcess).mockResolvedValue('zsh')
+        const handler = await import('./terminal-side-effect-facts-handler')
+        handler._dispatchTerminalSideEffectBatchForTest({
+          ptyId,
+          seq: 1,
+          facts: [{ kind: 'command-finished', exitCode: 0 }]
+        })
+        await vi.advanceTimersByTimeAsync(ladder)
+        await flushAsyncTicks()
+
+        if (exitsChat) {
+          expect(deps.onAgentExitedRef.current).toHaveBeenCalledWith(LEAF_1)
+        } else {
+          expect(deps.onAgentExitedRef.current).not.toHaveBeenCalled()
+        }
+      }
+    )
+
     it('fails closed when a warm reattach has no persisted launch identity', async () => {
       vi.useFakeTimers()
       const ptyId = 'pty-reattach-missing-launch-identity'

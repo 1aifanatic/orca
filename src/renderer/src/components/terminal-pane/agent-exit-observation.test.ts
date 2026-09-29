@@ -155,7 +155,7 @@ describe('agent exit observation', () => {
       })
       tracker.onVisiblePtyBound(true)
       await vi.advanceTimersByTimeAsync(8000)
-      expect(shell).toHaveBeenCalledExactlyOnceWith('visible-pty', false)
+      expect(shell).toHaveBeenCalledExactlyOnceWith('visible-pty', 'none')
       tracker.dispose()
     })
 
@@ -173,7 +173,7 @@ describe('agent exit observation', () => {
       })
       tracker.onAgentExitCandidate()
       await vi.advanceTimersByTimeAsync(8000)
-      expect(shell).toHaveBeenCalledExactlyOnceWith('visible-pty', true)
+      expect(shell).toHaveBeenCalledExactlyOnceWith('visible-pty', 'marked')
       tracker.dispose()
     })
 
@@ -186,7 +186,7 @@ describe('agent exit observation', () => {
       h.exitAgent()
       h.tracker.onCommandFinished()
       await vi.advanceTimersByTimeAsync(400)
-      expect(h.shell).toHaveBeenCalledExactlyOnceWith('command-finished', true)
+      expect(h.shell).toHaveBeenCalledExactlyOnceWith('command-finished', 'read-confirmed')
       expect(h.read).toHaveBeenCalledTimes(2)
       h.tracker.dispose()
     })
@@ -207,10 +207,11 @@ describe('agent exit observation', () => {
     ])('retires the agent at the 133;D on %s', async (_label, evidence) => {
       vi.useFakeTimers()
       const h = remoteTracker(evidence)
+      h.tracker.onCommandStarted(null, { shellMarked: true })
       h.exitAgent()
       h.tracker.onCommandFinished()
       await vi.advanceTimersByTimeAsync(400)
-      expect(h.shell).toHaveBeenCalledExactlyOnceWith('command-finished', true)
+      expect(h.shell).toHaveBeenCalledExactlyOnceWith('command-finished', 'marked')
       expect(h.read).toHaveBeenCalledOnce()
       h.tracker.dispose()
     })
@@ -220,7 +221,7 @@ describe('agent exit observation', () => {
       const h = remoteTracker(() => posixEvidence('shell', 'windows'))
       h.tracker.onAgentExitCandidate()
       await vi.advanceTimersByTimeAsync(400)
-      expect(h.shell).toHaveBeenCalledExactlyOnceWith('visible-pty', true)
+      expect(h.shell).toHaveBeenCalledExactlyOnceWith('visible-pty', 'marked')
       expect(h.read).toHaveBeenCalledOnce()
       h.tracker.dispose()
     })
@@ -243,6 +244,76 @@ describe('agent exit observation', () => {
       await vi.advanceTimersByTimeAsync(8000)
       expect(h.shell).not.toHaveBeenCalled()
       h.tracker.dispose()
+    })
+
+    it.each([
+      ['a local shell', () => ({ pty: 'pty-1', read: vi.fn().mockResolvedValue('zsh') })],
+      [
+        'a host that cannot read the foreground',
+        () => {
+          const h = remoteTracker(() => posixEvidence('shell', 'windows'))
+          h.tracker.dispose()
+          return { pty: SSH_PTY_ID, read: h.read }
+        }
+      ]
+    ])('does not call a 133;D before any command started an exit on %s', async (_label, make) => {
+      vi.useFakeTimers()
+      const { pty, read } = make()
+      const shell = vi.fn()
+      const tracker = createPaneForegroundAgentTracker({
+        getPtyId: () => pty,
+        isTrackablePtyId: () => true,
+        isRemotePtyId: (id) => id === SSH_PTY_ID,
+        getExpectedIncarnationId: () => 'inc-1',
+        readForegroundProcess: read,
+        confirmForegroundProcess: read,
+        publish: vi.fn(),
+        hasKnownAgentIdentity: () => true,
+        onConfirmedShellForeground: shell
+      })
+      // A user shell integration's first-prompt D, before the launched agent's command starts.
+      tracker.onCommandFinished()
+      await vi.advanceTimersByTimeAsync(8000)
+      expect(shell).toHaveBeenCalledExactlyOnceWith('command-finished', 'none')
+      tracker.onCommandStarted(null, { shellMarked: true })
+      tracker.onCommandFinished()
+      await vi.advanceTimersByTimeAsync(8000)
+      expect(shell).toHaveBeenLastCalledWith('command-finished', 'marked')
+      tracker.dispose()
+    })
+
+    it('calls a shell read-confirmed only after a read saw the agent in this PTY', async () => {
+      vi.useFakeTimers()
+      let ptyId = 'pty-1'
+      const shell = vi.fn()
+      const read = vi.fn().mockResolvedValue('claude')
+      const tracker = createPaneForegroundAgentTracker({
+        getPtyId: () => ptyId,
+        isTrackablePtyId: () => true,
+        readForegroundProcess: read,
+        confirmForegroundProcess: read,
+        publish: vi.fn(),
+        hasKnownAgentIdentity: () => true,
+        onConfirmedShellForeground: shell
+      })
+      tracker.onVisiblePtyBound(true)
+      await vi.advanceTimersByTimeAsync(400)
+      read.mockResolvedValue('zsh')
+      tracker.onCommandFinished()
+      await vi.advanceTimersByTimeAsync(400)
+      expect(shell).toHaveBeenCalledExactlyOnceWith('command-finished', 'read-confirmed')
+
+      // A replacement PTY in the same pane never inherits the earlier sighting.
+      read.mockResolvedValue('claude')
+      tracker.onVisiblePtyBound(true)
+      await vi.advanceTimersByTimeAsync(400)
+      ptyId = 'pty-2'
+      read.mockResolvedValue('zsh')
+      tracker.onCommandFinished()
+      await vi.advanceTimersByTimeAsync(8000)
+      expect(shell).toHaveBeenCalledTimes(2)
+      expect(shell.mock.calls.at(-1)?.[1]).not.toBe('read-confirmed')
+      tracker.dispose()
     })
 
     it('keeps the agent when the host could not be read at the 133;D', async () => {
