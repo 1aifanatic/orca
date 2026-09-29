@@ -267,16 +267,18 @@ function parseWslSessionBridgeSummary(stdout: string): WslCodexSessionBridgeSumm
   if (typeof summary.scannedFiles !== 'number' || typeof summary.linkedFiles !== 'number') {
     return null
   }
-  const pendingRollouts = lines
-    .slice(0, -1)
-    .filter((line) => parseCodexRolloutThreadId(line) !== null)
+  // Why: count every listed marker, not just Codex-shaped names, so one odd `rollout-*.jsonl`
+  // cannot fail the count on every launch and strand the home's whole index heal.
+  const markerLines = lines.slice(0, -1).filter((line) => line.startsWith('rollout-'))
   // Why: a clipped or noisy list would index the wrong set; its markers wait for the next launch.
   const pendingComplete =
-    typeof summary.pendingFiles === 'number' && summary.pendingFiles === pendingRollouts.length
+    typeof summary.pendingFiles === 'number' && summary.pendingFiles === markerLines.length
   return {
     scannedFiles: summary.scannedFiles,
     linkedFiles: summary.linkedFiles,
-    pendingRollouts: pendingComplete ? pendingRollouts : [],
+    pendingRollouts: pendingComplete
+      ? markerLines.filter((line) => parseCodexRolloutThreadId(line) !== null)
+      : [],
     bridgeFailed: false
   }
 }

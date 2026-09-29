@@ -190,6 +190,27 @@ describe('startWslCodexSessionBridgeInBackground', () => {
     expect(healPending).not.toHaveBeenCalled()
   })
 
+  it('still indexes the other markers when one marker name is not a Codex thread', async () => {
+    runWslProcessMock
+      .mockResolvedValueOnce(bridgeResult([NEWER, 'rollout-notes.jsonl']))
+      .mockResolvedValue(markerClearResult)
+    const healPending = vi.fn<typeof healPendingCodexAccountThreads>(async () => ({
+      outcome: 'completed' as const,
+      healedThreads: 1,
+      missingThreads: 0,
+      failedThreads: 0
+    }))
+
+    await startWslCodexSessionBridgeInBackground(TARGET, {
+      openStateDb: vi.fn(async () => true),
+      healPending
+    })
+
+    expect([...(healPending.mock.calls[0]?.[1] ?? [])]).toEqual([
+      ['22222222-2222-4222-8222-222222222222', '2026-09-02T10-00-00']
+    ])
+  })
+
   it('does nothing after quit starts', async () => {
     stopping.value = true
     const openStateDb = vi.fn(async () => true)
