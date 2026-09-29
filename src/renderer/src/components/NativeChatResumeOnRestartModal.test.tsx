@@ -333,6 +333,11 @@ it('keeps a dialog reopened mid-resume open over the chats still offered', async
   expect(document.querySelector('[role="dialog"]')).toBeNull()
   await act(async () => button('1 chat to resume').click())
   expect(document.querySelector('[role="dialog"]')).not.toBeNull()
+  // Mid-run the ticks say what is running, so the chat left out reads as left out.
+  const rowC = () => document.querySelector('[role="checkbox"][aria-label*="Prompt c"]')
+  expect(checkbox(0).getAttribute('data-state')).toBe('checked')
+  expect(checkbox(1).getAttribute('data-state')).toBe('checked')
+  expect(rowC()?.getAttribute('data-state')).toBe('unchecked')
 
   await act(async () =>
     continued.resolve({
@@ -341,6 +346,7 @@ it('keeps a dialog reopened mid-resume open over the chats still offered', async
       sessions: [third]
     })
   )
+  expect(rowC()?.getAttribute('data-state')).toBe('checked')
   const dialog = document.querySelector('[role="dialog"]')
   expect(dialog?.textContent).toContain('Prompt c')
   expect(dialog?.textContent).not.toContain('Prompt a')
@@ -762,6 +768,11 @@ it('keeps a dialog reopened mid-retry open when the retry settles', async () => 
   expect(document.querySelector('[role="dialog"]')).toBeNull()
   await act(async () => button('1 chat to resume').click())
   expect(document.querySelector('[role="dialog"]')).not.toBeNull()
+  // Only the retried row is running, so only it reads as ticked until the retry settles.
+  const tick = (prompt: string) =>
+    document.querySelector(`[role="checkbox"][aria-label*="${prompt}"]`)?.getAttribute('data-state')
+  expect(tick('Prompt a')).toBe('unchecked')
+  expect(tick('Prompt b')).toBe('checked')
 
   await act(async () =>
     continued.resolve({
@@ -772,6 +783,7 @@ it('keeps a dialog reopened mid-retry open when the retry settles', async () => 
     })
   )
   expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Prompt a')
+  expect(tick('Prompt a')).toBe('checked')
 })
 
 // The user's case: the only row is a failure the host says a retry cannot fix. Ticking it could

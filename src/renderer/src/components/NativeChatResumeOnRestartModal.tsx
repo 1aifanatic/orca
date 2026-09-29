@@ -83,7 +83,8 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
   const updateSettings = useAppStore((store) => store.updateSettings)
   const [dontAskAgain, setDontAskAgain] = useState(false)
   // The store's: the resume outlives this dialog, which can close or reopen mid-run.
-  const busy = useNativeChatRestartResuming().length > 0
+  const resuming = useNativeChatRestartResuming()
+  const busy = resuming.length > 0
   /** The user's own ticks and unticks, over each row's default. Tracked as OVERRIDES rather than a
    *  selection because the list is the host's and arrives — and shrinks — under an open dialog; a
    *  stored selection would need seeding from an effect every time it changed. */
@@ -113,6 +114,8 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
     [rows, overrides, failureBySession]
   )
   const selected = useMemo(() => new Set(chosen), [chosen])
+  // Mid-run the ticks show what is running; this opening's own ticks may name chats left out of it.
+  const ticked = useMemo(() => (busy ? new Set(resuming) : selected), [busy, resuming, selected])
 
   const toggleSelected = useCallback((sessionId: string, checked: boolean) => {
     setOverrides((current) => new Map(current).set(sessionId, checked))
@@ -223,7 +226,7 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
             candidates={rows}
             listedAt={listedAt}
             busy={busy}
-            selected={selected}
+            selected={ticked}
             onToggle={toggleSelected}
             failureFor={(sessionId) => failureBySession.get(sessionId)}
             onFailureAction={(action, sessionId) => void actOnFailure(action, sessionId)}
