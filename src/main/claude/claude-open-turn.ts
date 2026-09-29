@@ -7,6 +7,7 @@
 import type { AgentSessionContextUsage } from '../../shared/agent-session-context-usage'
 import type { AgentJournalItemIdentity } from '../../shared/agent-session-journal-types'
 import type { StructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
+import type { StructuredAgentSessionStopCause } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import {
   claudeTurnLifecycleIdentity,
   claudeTurnLifecycleItem,
@@ -26,6 +27,9 @@ export type ClaudeOpenTurnDeps = {
 
 export class ClaudeOpenTurn {
   private current: ClaudeCurrentTurn | null = null
+  /** The stop Orca sent, held against the turn it was sent to: it reads only while that turn is open. */
+  private sentStop: { turn: ClaudeCurrentTurn; cause: StructuredAgentSessionStopCause } | null =
+    null
   /** Provider output may not reopen a turn after the session ended or a turn
    *  failed: nothing would ever close the turn it opened, and the row would read
    *  working for the life of the session. Only an accepted send lifts it. */
@@ -61,6 +65,26 @@ export class ClaudeOpenTurn {
 
   get isOpen(): boolean {
     return this.current !== null
+  }
+
+  get stop(): StructuredAgentSessionStopCause | null {
+    return this.current && this.sentStop?.turn === this.current ? this.sentStop.cause : null
+  }
+
+  /** Orca is stopping `turnId`. False when that turn is no longer the open one. */
+  recordStop(turnId: string, cause: StructuredAgentSessionStopCause): boolean {
+    if (this.current?.turnId !== turnId) {
+      return false
+    }
+    this.sentStop = { turn: this.current, cause }
+    return true
+  }
+
+  /** The provider refused the stop, so the turn goes on as if none was sent. */
+  withdrawStop(turnId: string): void {
+    if (this.current?.turnId === turnId) {
+      this.sentStop = null
+    }
   }
 
   /** Open a turn, ending whichever one was still open. A new turn starting is the

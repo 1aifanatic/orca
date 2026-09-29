@@ -172,11 +172,13 @@ export async function cancelClaudeStructuredTurn(input: {
           (dispatchAdmissionAllowsCancellation() || dispatchAdmissionExpired)))
   let interruptConfirmed = false
   try {
+    // A turn is cancelled only at a client's request, so the stop is the user's.
     const result = await cancelClaudeTurn(
       session,
       timeoutMs,
       isCurrent,
-      input.onDispatchSettledLate
+      input.onDispatchSettledLate,
+      { turnId: request.turnId, cause: 'user-stop' }
     )
     if (result.cancelled && claim && cancellationObserved) {
       interruptConfirmed = true

@@ -248,6 +248,8 @@ describe('answerClaudePrompt', () => {
         resolve: resolvePrompt
       },
       currentTurnId: null,
+      recordTurnStop: () => true,
+      withdrawTurnStop: () => {},
       flush: vi.fn(),
       contextActivity: 0,
       markContextActivity: vi.fn(),

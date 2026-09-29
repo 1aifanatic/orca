@@ -4,6 +4,7 @@ import {
 } from '../native-chat/agent-session-wire/structured-agent-session-stale-turn-verdict'
 import type { AgentSessionDeltaCoalescerDeps } from '../native-chat/agent-session-wire/agent-session-delta-coalescer'
 import type { StructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
+import type { StructuredAgentSessionStopCause } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import type { ClaudeJournalTranslator } from './claude-journal-translator-contract'
 import {
   claudeStreamingMessageBody,
@@ -215,15 +216,17 @@ export function createClaudeJournalTranslator(
         // diagnostic below still runs: a child's failure is reportable even when
         // it ends no turn.
         const settlesTurn = isRootClaudeFrame(event.message)
+        let stop: StructuredAgentSessionStopCause | null = null
         if (settlesTurn) {
           prompts.retryPendingCancellations()
           turn.suppressReopenOnFailure(event.message.is_error === true)
           // The turn is over however it ended, so a foreground child still
           // reported as working will never be settled by an event.
           subagents.settleTurn(turn.groupKey)
+          stop = turn.stop
           context.settle(
             event.message,
-            claudeTurnEndForResult(event.message, event.observedAt ?? Date.now())
+            claudeTurnEndForResult(event.message, event.observedAt ?? Date.now(), stop)
           )
           // The turn is over. A block still awaiting its final keeps the text the
           // flush above journaled, but its live state goes: an interrupted turn
@@ -232,7 +235,7 @@ export function createClaudeJournalTranslator(
           streamedText.settle()
         }
         const kind = claudeProviderFrameKind(event.message)
-        const failure = claudeResultFailure(event.message)
+        const failure = claudeResultFailure(event.message, stop)
         if (failure || !isSettledClaudeResultKind(kind)) {
           providerFallback.append(
             kind,
@@ -288,6 +291,8 @@ export function createClaudeJournalTranslator(
     get currentTurnId() {
       return turn.id
     },
+    recordTurnStop: (turnId, cause) => turn.recordStop(turnId, cause),
+    withdrawTurnStop: (turnId) => turn.withdrawStop(turnId),
     flush: streamedText.flush,
     childToolOwner: childQueries.childToolOwner,
     childActivity: childQueries.childActivity,

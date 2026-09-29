@@ -5,6 +5,7 @@ import type {
 } from '../../shared/agent-session-journal-types'
 import { agentJournalItemKey } from '../../shared/agent-session-journal-item-key'
 import { agentJournalTurnBody } from '../../shared/agent-session-turn-record'
+import type { StructuredAgentSessionStopCause } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import type { StructuredAgentSessionAppendOptions } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
 import { claudeResultOutcome } from './claude-result-outcome'
 
@@ -36,9 +37,10 @@ export type ClaudeTurnEnd = {
  *  is still a turn the host watched finish, and only `outcome` says it failed. */
 export function claudeTurnEndForResult(
   message: Record<string, unknown>,
-  completedAt: number
+  completedAt: number,
+  stop: StructuredAgentSessionStopCause | null = null
 ): ClaudeTurnEnd {
-  const outcome = claudeResultOutcome(message)
+  const outcome = claudeResultOutcome(message, stop)
   const durationMs = message.duration_ms
   return {
     state: outcome === 'cancellation' ? 'interrupted' : 'completed',

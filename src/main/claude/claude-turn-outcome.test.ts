@@ -240,3 +240,128 @@ describe('a turn end the host inferred', () => {
     ).toMatchObject({ key: 'interruptedAfter', duration: '12s' })
   })
 })
+
+describe("a user's Stop inside a live turn", () => {
+  // Claude CLIs before 2.1.91 send no terminal_reason, and later ones may omit it.
+  const cutShort = { type: 'result', subtype: 'error_during_execution', is_error: true }
+
+  function settledTurn(items: ReturnType<typeof sinkState>['items'], turnId: string) {
+    return items
+      .map((item) => readAgentJournalTurn(item.body))
+      .findLast((turn) => turn?.turnId === turnId && turn.state !== 'running')
+  }
+
+  function providerRows(items: ReturnType<typeof sinkState>['items']): number {
+    return items.filter(
+      (item) =>
+        item.identity.provider === 'orca' &&
+        item.identity.clientMessageId.startsWith('provider-frame:')
+    ).length
+  }
+
+  it('reads an error result with no terminal reason as the cancellation it asked for', () => {
+    const state = sinkState()
+    const translator = createClaudeJournalTranslator({ sink: state.sink })
+    translator.handle(userTurn('user-1'))
+
+    expect(translator.recordTurnStop('user-1', 'user-stop')).toBe(true)
+    translator.handle({ type: 'message', sessionId: 'orca-session', message: cutShort })
+
+    expect(settledTurn(state.items, 'user-1')).toMatchObject({
+      state: 'interrupted',
+      outcome: 'cancellation'
+    })
+    expect(providerRows(state.items)).toBe(0)
+  })
+
+  it.each([
+    ['no terminal reason', cutShort],
+    [
+      'a failure terminal reason',
+      { ...cutShort, terminal_reason: 'api_error', result: 'API Error' }
+    ]
+  ])('keeps a result with %s and no Stop a failure', (_label, frame) => {
+    const state = sinkState()
+    const translator = createClaudeJournalTranslator({ sink: state.sink })
+    translator.handle(userTurn('user-1'))
+
+    translator.handle({ type: 'message', sessionId: 'orca-session', message: frame })
+
+    expect(settledTurn(state.items, 'user-1')).toMatchObject({
+      state: 'completed',
+      outcome: 'failure'
+    })
+    expect(providerRows(state.items)).toBe(1)
+  })
+
+  it('keeps a turn that finished during the Stop a success', () => {
+    const state = sinkState()
+    const translator = createClaudeJournalTranslator({ sink: state.sink })
+    translator.handle(userTurn('user-1'))
+
+    translator.recordTurnStop('user-1', 'user-stop')
+    translator.handle({
+      type: 'message',
+      sessionId: 'orca-session',
+      message: { type: 'result', subtype: 'success', is_error: false }
+    })
+
+    expect(settledTurn(state.items, 'user-1')).toMatchObject({ outcome: 'success' })
+  })
+
+  it('does not carry a Stop onto the next turn', () => {
+    const state = sinkState()
+    const translator = createClaudeJournalTranslator({ sink: state.sink })
+    translator.handle(userTurn('user-1'))
+    translator.recordTurnStop('user-1', 'user-stop')
+    // Superseded before its result: the Stop was for user-1 only.
+    translator.handle(userTurn('user-2'))
+    translator.handle({ type: 'message', sessionId: 'orca-session', message: cutShort })
+    // A late Stop names a turn that already ended.
+    expect(translator.recordTurnStop('user-2', 'user-stop')).toBe(false)
+    translator.handle(userTurn('user-3'))
+    translator.handle({ type: 'message', sessionId: 'orca-session', message: cutShort })
+
+    expect(settledTurn(state.items, 'user-2')).toMatchObject({ outcome: 'failure' })
+    expect(settledTurn(state.items, 'user-3')).toMatchObject({ outcome: 'failure' })
+  })
+
+  it('ends the Stop with its turn, so a result after the turn settled reads on its own', () => {
+    const state = sinkState()
+    const translator = createClaudeJournalTranslator({ sink: state.sink })
+    translator.handle(userTurn('user-1'))
+    translator.recordTurnStop('user-1', 'user-stop')
+    translator.handle({
+      type: 'message',
+      sessionId: 'orca-session',
+      message: { type: 'system', subtype: 'session_state_changed', state: 'idle' }
+    })
+
+    translator.handle({ type: 'message', sessionId: 'orca-session', message: cutShort })
+
+    expect(providerRows(state.items)).toBe(1)
+  })
+
+  it('forgets a Stop the CLI refused', () => {
+    const state = sinkState()
+    const translator = createClaudeJournalTranslator({ sink: state.sink })
+    translator.handle(userTurn('user-1'))
+
+    translator.recordTurnStop('user-1', 'user-stop')
+    translator.withdrawTurnStop('user-1')
+    translator.handle({ type: 'message', sessionId: 'orca-session', message: cutShort })
+
+    expect(settledTurn(state.items, 'user-1')).toMatchObject({ outcome: 'failure' })
+  })
+
+  it('does not read a host stop as the user asking', () => {
+    const state = sinkState()
+    const translator = createClaudeJournalTranslator({ sink: state.sink })
+    translator.handle(userTurn('user-1'))
+
+    translator.recordTurnStop('user-1', 'host-stop')
+    translator.handle({ type: 'message', sessionId: 'orca-session', message: cutShort })
+
+    expect(settledTurn(state.items, 'user-1')).toMatchObject({ outcome: 'failure' })
+  })
+})

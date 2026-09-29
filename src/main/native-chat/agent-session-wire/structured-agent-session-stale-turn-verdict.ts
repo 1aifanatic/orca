@@ -46,15 +46,22 @@ export function turnVerdictForChildEnd(
   cause: StructuredAgentSessionChildEndCause,
   completedAt: number
 ): Extract<StructuredAgentSessionTurnVerdict, { state: 'interrupted' }> {
+  return stopIsTheUsers(cause)
+    ? { state: 'interrupted', completedAt, outcome: 'cancellation' }
+    : { state: 'interrupted', completedAt }
+}
+
+/** Whether the user asked for this end. Only then is a cut turn their cancellation. */
+export function stopIsTheUsers(cause: StructuredAgentSessionChildEndCause): boolean {
   switch (cause) {
     case 'user-stop':
     case 'user-close':
-      return { state: 'interrupted', completedAt, outcome: 'cancellation' }
+      return true
     case 'host-stop':
     case 'evict':
     case 'exit':
     case 'attach-failed':
-      return { state: 'interrupted', completedAt }
+      return false
   }
 }
 
