@@ -34,7 +34,10 @@ import {
   structuredAgentSessionSendBlock
 } from './structured-agent-session-send-preparation'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
-import { compactInFlightContext } from './structured-conversation-command-lane'
+import {
+  compactInFlightContext,
+  conversationOperationWaitRefusal
+} from './structured-conversation-command-lane'
 
 function invalid(message: string): {
   ok: false
@@ -128,14 +131,11 @@ export async function carryQueuedMessagesToClearReplacement(
 
 function mutateQueued<TValue>(
   context: StructuredAgentSessionMutationContext,
+  lane: StructuredAgentSessionMutationContext,
   caller: StructuredAgentSessionCaller,
   envelope: AgentSessionMutationEnvelope,
   plan: MutationPlan<TValue>
 ): Promise<AgentSessionMutationResult<TValue>> {
-  // A /compact holds the main lane for its whole provider call: Delete answers
-  // at once, and Send-now reaches its `command` refusal at once, on the side
-  // lane draft-only sends use. The drain stays on the main lane, behind it.
-  const lane = compactInFlightContext(context, envelope.sessionId) ?? context
   return lane.serialize(envelope.sessionId, () =>
     admitAndRunAgentSessionMutation({
       store: context.deps.store,
@@ -242,7 +242,13 @@ export function sendQueuedStructuredAgentMessage(
       return submission ? { clientMessageId: submission.clientMessageId, submission } : null
     }
   }
-  return mutateQueued(context, caller, params.envelope, plan)
+  // A /compact holds the main lane for its whole provider call, so the refusal
+  // is answered before any lane: a Send queued on the side lane could outlive
+  // the compaction and append unserialized against the main lane.
+  if (compactInFlightContext(context, params.envelope.sessionId)) {
+    return Promise.resolve(conversationOperationWaitRefusal())
+  }
+  return mutateQueued(context, context, caller, params.envelope, plan)
 }
 
 /** Delete = discard, with no body in the answer: the card leaving the published
@@ -290,5 +296,8 @@ export function deleteQueuedStructuredAgentMessage(
       return replayed ? { deleted: true, messageId } : null
     }
   }
-  return mutateQueued(context, caller, params.envelope, plan)
+  // Answers at once during a /compact on the side lane draft-only sends use; its
+  // compare-and-set withdrawal is safe on either lane. The drain stays behind it.
+  const lane = compactInFlightContext(context, params.envelope.sessionId) ?? context
+  return mutateQueued(context, lane, caller, params.envelope, plan)
 }

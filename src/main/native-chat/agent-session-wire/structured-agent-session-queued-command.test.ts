@@ -7,6 +7,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
+import { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import {
   createQueuedMessageTestRig,
@@ -155,6 +156,36 @@ describe('a /compact in flight', () => {
     }
     expect(await settled).toMatchObject({ ok: true, value: { command: 'compact' } })
     await eventually(async () => expect(await rig.submission(keptId)).toBeDefined())
+  })
+
+  it('Send-now is refused before any lane, never queued behind a side-lane Stop to run after the compaction', async () => {
+    const { finish, settled } = await compactInFlight()
+    const keptId = await queuedId(rig.send('queued while compacting', 'queue-if-active').result)
+    // A Stop on the side lane, parked inside its withdrawal step.
+    let releaseStop: () => void = () => undefined
+    const stopParked = new Promise<void>((resolve) => (releaseStop = resolve))
+    const withdraw = AgentSessionJournal.prototype.rejectQueuedSubmissions
+    const parked = vi
+      .spyOn(AgentSessionJournal.prototype, 'rejectQueuedSubmissions')
+      .mockImplementation(async function (this: AgentSessionJournal, ...args) {
+        if (args[1].rejection.kind === 'cancelled') {
+          await stopParked
+        }
+        return withdraw.apply(this, args)
+      })
+    const stopped = rig.stop()
+    try {
+      await eventually(() => expect(parked).toHaveBeenCalled())
+      const hung = new Promise<'hung'>((resolve) => setTimeout(() => resolve('hung'), 2_000))
+      expect(await Promise.race([rig.sendNow(keptId), hung])).toEqual(WAIT_REFUSAL)
+    } finally {
+      finish()
+      await settled
+      releaseStop()
+      await stopped
+      parked.mockRestore()
+    }
+    expect(await rig.submission(keptId)).toBeUndefined()
   })
 
   it('an immediate or image send keeps the refusal it gets today', async () => {
