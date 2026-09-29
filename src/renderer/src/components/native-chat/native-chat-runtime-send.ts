@@ -1,8 +1,8 @@
-import { sendNativeChatObservedWrites } from './native-chat-observed-send'
 // Runtime send for native chat: clear any unsubmitted TUI line, write the framed
 // body, then Enter as a SEPARATE delayed pty write. Kept apart from the pure
 // byte builders in native-chat-send.ts so those stay IO-free and unit-testable.
 
+import { sendNativeChatObservedWrites } from './native-chat-observed-send'
 import {
   sendRuntimePtyInput,
   sendRuntimePtyInputVerified

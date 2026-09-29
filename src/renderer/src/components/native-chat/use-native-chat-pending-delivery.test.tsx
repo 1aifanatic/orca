@@ -104,6 +104,17 @@ describe('terminal Chat pending delivery', () => {
       expect(result.current.pending).toEqual([])
     }
   )
+  it('keeps a failed send through Stop while dropping sends Stop may have cancelled', () => {
+    const { result } = render()
+    act(() => {
+      result.current.reject(result.current.record('refused'))
+      result.current.record('in flight')
+    })
+    act(() => result.current.clear())
+    expect(result.current.pending.map((entry) => [entry.text, entry.delivery])).toEqual([
+      ['refused', 'rejected']
+    ])
+  })
   it('keeps the hold deadline across a remount', async () => {
     const first = render()
     act(() => {

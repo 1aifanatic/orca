@@ -80,7 +80,11 @@ export function useNativeChatPendingDelivery(args: {
       ),
     [save]
   )
-  const clear = useCallback(() => save(() => []), [save])
+  // Why keep outcomes: Stop cannot affect a settled failure, and its bubble holds the only copy.
+  const clear = useCallback(
+    () => save((entries) => entries.filter((entry) => entry.delivery)),
+    [save]
+  )
 
   // A lost acknowledgment is the only unconfirmed trigger: an ordinary send, including one Claude
   // queues mid-turn, has no transport doubt and stays pending until its row lands.
