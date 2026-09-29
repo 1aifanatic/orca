@@ -11,19 +11,22 @@ import type {
   AgentJournalItemIdentity,
   AgentJournalMessageItem
 } from '../../../shared/agent-session-journal-types'
-import {
-  agentSessionSendSubmission,
-  type AgentSessionCancelResult,
-  type AgentSessionMutationEnvelope,
-  type AgentSessionMutationResult,
-  type AgentSessionOptionResult,
-  type AgentSessionPromptResult,
-  type AgentSessionSendResult,
-  type AgentSessionThreadGoalChange,
-  type AgentSessionThreadGoalResult
+import type {
+  AgentSessionCancelResult,
+  AgentSessionMutationEnvelope,
+  AgentSessionMutationResult,
+  AgentSessionOptionResult,
+  AgentSessionPromptResult,
+  AgentSessionSendResult,
+  AgentSessionThreadGoalChange,
+  AgentSessionThreadGoalResult
 } from '../../../shared/agent-session-wire'
-import { DISPATCH_REJECTED_CANCELLED } from '../../../shared/structured-agent-session-dispatch-rejection'
 import { isStructuredAgentSessionMainAgentWorking } from '../../../shared/structured-agent-session-main-agent-working'
+import {
+  agentSessionFailureWords,
+  type AgentJournalDispatchRejection
+} from '../../../shared/agent-session-failure-words'
+import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import type { AgentSessionPromptRequest } from './structured-agent-session-turns-prompt'
 import { threadGoalPlan } from './structured-agent-session-thread-goal'
 import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
@@ -36,6 +39,7 @@ import {
   openForWrite,
   openWithAgent,
   sendPreparation,
+  structuredAgentSessionFailureWordsContext,
   structuredAgentSessionSendBlock
 } from './structured-agent-session-send-preparation'
 import {
@@ -45,15 +49,9 @@ import {
   setOptionPlan,
   type MutationPlan
 } from './structured-agent-session-mutation-plans'
-import { maybeQueueStructuredAgentSessionSend } from './structured-agent-session-queued-messages'
-import {
-  compactInFlightContext,
-  conversationOperationWaitRefusal
-} from './structured-conversation-command-lane'
-import {
-  awaitUserSendTurn,
-  holdQueuedMessagesForStop
-} from './structured-agent-session-queued-stop'
+import { runQueueableStructuredAgentSessionSend } from './structured-agent-session-queued-send'
+import { compactInFlightContext } from './structured-conversation-command-lane'
+import { holdQueuedMessagesForStop } from './structured-agent-session-queued-stop'
 import type {
   StructuredAgentSessionCaller,
   StructuredAgentSessionHostDeps,
@@ -137,35 +135,15 @@ export function sendStructuredAgentSessionTurn(
     params.envelope,
     {
       ...plan,
-      run: async (ctx) => {
-        // The queue decision runs first: a capable send during a transient hold
-        // (a /compact in flight — the command controller lets it through) queues
-        // rather than being refused; only a `blocked` hold — which never queues —
-        // falls through to the refusal.
-        const queued = await maybeQueueStructuredAgentSessionSend(context, ctx, params)
-        if (queued) {
-          return queued
-        }
-        if (params.draftOnly) {
-          return conversationOperationWaitRefusal()
-        }
-        const blocked = structuredAgentSessionSendBlock(context.deps.store.getRecord(ctx.sessionId))
-        if (blocked) {
-          return blocked
-        }
-        const accepted = await plan.run(ctx)
-        if (accepted.ok) {
-          // Lifts a Stop's queue pause only once the provider accepts it.
-          if (params.userSend) {
-            awaitUserSendTurn(
-              context.sessions.get(ctx.sessionId),
-              agentSessionSendSubmission(accepted.value)
-            )
-          }
-          context.wakeDelivery(ctx.sessionId)
-        }
-        return accepted
-      }
+      run: (ctx) =>
+        runQueueableStructuredAgentSessionSend(
+          context,
+          ctx,
+          params,
+          async () =>
+            structuredAgentSessionSendBlock(context.deps.store.getRecord(ctx.sessionId)) ??
+            (await plan.run(ctx))
+        )
     },
     sendPreparation(context, params.envelope)
   )
@@ -209,7 +187,7 @@ export function cancelStructuredAgentSessionTurn(
         // Stop withdraws every queued SUBMISSION first, whatever the start or the child is doing.
         const withdrawn = await ctx.journal.rejectQueuedSubmissions(
           ctx.fence,
-          DISPATCH_REJECTED_CANCELLED
+          agentSessionFailureWords(agentSessionFailureFact('cancelled'), { surface: 'rejection' })
         )
         const named = params.turnId !== undefined ? { turnId: params.turnId } : {}
         const child = context.sessions.get(ctx.sessionId)?.child
@@ -227,10 +205,13 @@ export function cancelStructuredAgentSessionTurn(
             ctx.journal.submissions(),
             ctx.fence
           )
-        if (child && inFlight) {
-          return plan.run(ctx)
-        }
-        return { ok: true, value: { ...named, cancelled: withdrawn.length > 0 } }
+        const record = context.deps.store.getRecord(ctx.sessionId)
+        return child && inFlight
+          ? plan.run({
+              ...ctx,
+              failureTextContext: structuredAgentSessionFailureWordsContext(record)
+            })
+          : { ok: true, value: { ...named, cancelled: withdrawn.length > 0 } }
       }
     },
     openForWrite(context, params.envelope)
@@ -300,7 +281,10 @@ export async function settleStructuredAgentSessionLateDispatch(
   input: {
     sessionId: string
     clientMessageId: string
-  } & ({ providerIdentity: AgentJournalItemIdentity } | { state: 'rejected'; reason: string })
+  } & (
+    | { providerIdentity: AgentJournalItemIdentity }
+    | ({ state: 'rejected' } & AgentJournalDispatchRejection)
+  )
 ): Promise<void> {
   const session = context.sessions.get(input.sessionId)
   if (!session) {
@@ -320,6 +304,7 @@ export async function settleStructuredAgentSessionLateDispatch(
           clientMessageId: input.clientMessageId,
           state: 'rejected',
           reason: input.reason,
+          rejection: input.rejection,
           fence
         }
   )

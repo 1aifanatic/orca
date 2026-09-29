@@ -194,8 +194,8 @@ describe('NativeChatStructuredSession', () => {
     expect(mocks.loadOlder).toHaveBeenCalledOnce()
   })
 
-  // Turn status and transcript image previews shipped Codex-first. Every
-  // structured session renders through the same list, so neither is agent-gated.
+  // Transcript image previews shipped Codex-first. Every structured session
+  // renders through the same list, so they are not agent-gated.
   it.each(['codex', 'claude'] as const)(
     'renders the same structured transcript chrome for %s',
     (agent) => {
@@ -210,7 +210,6 @@ describe('NativeChatStructuredSession', () => {
         />
       )
 
-      expect(mocks.messageListProps?.showTurnStatus).toBe(true)
       expect(mocks.messageListProps?.runtimeContext).not.toBeUndefined()
     }
   )
@@ -233,7 +232,7 @@ describe('NativeChatStructuredSession', () => {
 
     expect(mocks.messageListProps).toMatchObject({
       isWorking: true,
-      showLiveTurnActivity: false
+      awaitingInput: 'shown'
     })
     expect(
       document
@@ -248,13 +247,13 @@ describe('NativeChatStructuredSession', () => {
       itemId: 'legacy-question-item',
       expectedRevision: 1
     })
-    expect(mocks.messageListProps?.showLiveTurnActivity).toBe(false)
+    expect(mocks.messageListProps?.awaitingInput).toBe('shown')
 
     mocks.promptItems = []
     rerender(view())
     expect(mocks.messageListProps).toMatchObject({
       isWorking: true,
-      showLiveTurnActivity: true
+      awaitingInput: null
     })
     expect(screen.getByTestId('structured-composer')).toBeTruthy()
     expect(mocks.composerProps?.isWorking).toBe(true)
@@ -302,7 +301,7 @@ describe('NativeChatStructuredSession', () => {
 
     expect(mocks.messageListProps).toMatchObject({
       isWorking: true,
-      showLiveTurnActivity: false
+      awaitingInput: 'shown'
     })
     expect(mocks.approvalCardProps?.approval.title).toBe('Allow command?')
     expect(screen.queryByTestId('structured-composer')).toBeNull()
@@ -313,7 +312,7 @@ describe('NativeChatStructuredSession', () => {
       kind: 'option',
       optionId: 'allow'
     })
-    expect(mocks.messageListProps?.showLiveTurnActivity).toBe(false)
+    expect(mocks.messageListProps?.awaitingInput).toBe('shown')
 
     act(() => mocks.approvalCardProps?.onCancel?.())
     expect(mocks.cancel).toHaveBeenCalledWith('turn-approval', {

@@ -1,15 +1,17 @@
+import { readAgentSessionFailureFact, type AgentSessionFailureFact } from './agent-session-failure'
 import type { AgentJournalMessageItem, AgentJournalSubmission } from './agent-session-journal-types'
 import {
   parseAgentSessionWriteFailure,
-  type AgentSessionWriteFailure
-} from './agent-session-refusal-notice'
-import { agentSessionRefusalOperationState } from './agent-session-refusal-retry'
-import type {
-  AgentSessionMutationEnvelope,
-  AgentSessionWireRefusalCode
-} from './agent-session-wire'
+  type AgentSessionWriteFailure,
+  type AgentSessionWriteRefusal
+} from './agent-session-write-failure'
+import {
+  agentSessionOwnerVerdictAllowsFreshOperationId,
+  agentSessionRefusalOperationState
+} from './agent-session-refusal-retry'
+import type { AgentSessionMutationEnvelope } from './agent-session-wire'
 import { structuredAgentSessionPayloadFingerprint } from './structured-agent-session-mutation'
-import { dispatchWasWithdrawn } from './structured-agent-session-dispatch-rejection'
+import { classifyDispatchRejection } from './structured-agent-session-dispatch-rejection'
 
 /** `rejected`: the host settled the send as not delivered. The drain never sends it again on its
  *  own and nothing queues behind it; only the user's Retry does. */
@@ -34,11 +36,40 @@ export type StructuredAgentSessionOutboxEntry = {
   lastFailure?: StructuredAgentSessionAttemptFailure
 }
 
+/** A host's rejection fact as a message keeps it: never its provider detail, whose log text is not
+ *  kept client-side, or its refusal. The journal row keeps the whole fact, and words the notice
+ *  while it is loaded; this copy words it when it is not. */
+export type StructuredAgentSessionRejectionFact = Pick<
+  AgentSessionFailureFact,
+  'kind' | 'attachment'
+>
+
 /** Kept as the fact, not the words: the Retry row chooses those when it shows the entry. */
 export type StructuredAgentSessionAttemptFailure =
   | AgentSessionWriteFailure
   /** The host recorded the message and the provider turned it down, with the provider's reason. */
-  | { kind: 'rejected'; reason: string | null }
+  | { kind: 'rejected'; reason: string | null; rejection?: StructuredAgentSessionRejectionFact }
+
+/** The failure a rejected submission leaves on its message. A fact this build cannot place is
+ *  dropped, leaving the reason. */
+export function structuredAgentSessionRejectedFailure(submission: {
+  reason: string | null
+  rejection?: unknown
+}): Extract<StructuredAgentSessionAttemptFailure, { kind: 'rejected' }> {
+  const fact = readAgentSessionFailureFact(submission.rejection)
+  return {
+    kind: 'rejected',
+    reason: submission.reason,
+    ...(fact
+      ? {
+          rejection: {
+            kind: fact.kind,
+            ...(fact.attachment ? { attachment: fact.attachment } : {})
+          }
+        }
+      : {})
+  }
+}
 
 function parseStructuredAgentSessionAttemptFailure(
   value: unknown
@@ -51,7 +82,10 @@ function parseStructuredAgentSessionAttemptFailure(
     'reason' in value
   ) {
     return value.reason === null || typeof value.reason === 'string'
-      ? { kind: 'rejected', reason: value.reason }
+      ? structuredAgentSessionRejectedFailure({
+          reason: value.reason,
+          rejection: 'rejection' in value ? value.rejection : undefined
+        })
       : undefined
   }
   return parseAgentSessionWriteFailure(value)
@@ -119,25 +153,31 @@ export function stageStructuredAgentSessionOutboxEntryForSend(
 
 export function requeueStructuredAgentSessionSendRefusal(
   entry: StructuredAgentSessionOutboxEntry,
-  code: AgentSessionWireRefusalCode,
+  refusal: AgentSessionWriteRefusal,
   createOperationId: () => string,
   retainOperationId = false
 ): StructuredAgentSessionOutboxEntry {
-  const refusalState = agentSessionRefusalOperationState(code)
+  const refusalSettled = agentSessionRefusalOperationState(refusal.code) === 'settled-rejected'
+  // An exited owner runs nothing under the old id, so a new one can't collide; the message still
+  // holds the head, since nothing recorded it.
+  const ownerExited =
+    refusal.code === 'agent_session_ownership_unknown' &&
+    agentSessionOwnerVerdictAllowsFreshOperationId(refusal.details?.ownerVerdict)
   if (
-    refusalState !== 'settled-rejected' ||
+    !(refusalSettled || ownerExited) ||
     retainOperationId ||
     entry.state === 'unconfirmed' ||
     entry.retryAfterUnknownSubmittedAt !== null
   ) {
     return { ...entry, state: 'queued' }
   }
-  // Only here is the refusal proof the message never landed: an earlier attempt under this id, or
-  // one whose delivery was in doubt, may have, so those stay queued behind the block.
+  // Only here may the id rotate: an earlier attempt under this id, or one whose delivery was in
+  // doubt, may have landed, so those stay queued behind the block. Only a settled refusal proves
+  // the message never landed and so releases the queue.
   return {
     ...entry,
     clientMessageId: createOperationId(),
-    state: 'rejected',
+    state: refusalSettled ? 'rejected' : 'queued',
     lastAttemptAt: null,
     retryAfterUnknownSubmittedAt: null
   }
@@ -153,7 +193,10 @@ export function reconcileStructuredAgentSessionOutbox(
     if (submission?.dispatchState === 'accepted') {
       return []
     }
-    if (dispatchWasWithdrawn(submission)) {
+    if (
+      submission?.dispatchState === 'rejected' &&
+      classifyDispatchRejection(submission).category === 'withdrawn'
+    ) {
       return []
     }
     if (submission?.dispatchState === 'pending') {
@@ -170,7 +213,7 @@ export function reconcileStructuredAgentSessionOutbox(
         {
           ...entry,
           state: 'rejected' as const,
-          lastFailure: { kind: 'rejected' as const, reason: submission.reason }
+          lastFailure: structuredAgentSessionRejectedFailure(submission)
         }
       ]
     }
@@ -183,52 +226,6 @@ export function reconcileStructuredAgentSessionOutbox(
     }
     return [entry]
   })
-}
-
-/** Whether only the user's Retry sends this entry again: a refused one, the one the drain stopped
- *  on, or one in doubt the unconfirmed probe leaves alone. `NativeChatDeliveryRetry` offers it. */
-function awaitsStructuredAgentSessionRetry(
-  entry: StructuredAgentSessionOutboxEntry,
-  blockedClientMessageId: string | null
-): boolean {
-  return (
-    entry.state === 'rejected' ||
-    entry.clientMessageId === blockedClientMessageId ||
-    (entry.state === 'unconfirmed' && entry.retryAfterUnknownSubmittedAt !== null)
-  )
-}
-
-function unsentStructuredAgentSessionOutboxEntry(
-  submissions: readonly AgentJournalSubmission[],
-  blockedClientMessageId: string | null
-): (entry: StructuredAgentSessionOutboxEntry) => boolean {
-  const held = new Set(submissions.map((submission) => submission.clientMessageId))
-  return (entry) =>
-    !held.has(entry.clientMessageId) &&
-    !awaitsStructuredAgentSessionRetry(entry, blockedClientMessageId)
-}
-
-/**
- * What a Stop leaves in the outbox: nothing the journal does not already hold may go out after it,
- * so every such entry goes, as a message the host withdraws leaves the chat. A send still on its way
- * reaches the host ahead of the Stop, which withdraws it there. One waiting on Retry keeps it.
- */
-export function withdrawUnsentStructuredAgentSessionOutboxEntries(
-  entries: readonly StructuredAgentSessionOutboxEntry[],
-  submissions: readonly AgentJournalSubmission[],
-  blockedClientMessageId: string | null
-): StructuredAgentSessionOutboxEntry[] {
-  const unsent = unsentStructuredAgentSessionOutboxEntry(submissions, blockedClientMessageId)
-  return entries.filter((entry) => !unsent(entry))
-}
-
-/** Whether a Stop has something here to withdraw: a message that would still go out on its own. */
-export function hasUnsentStructuredAgentSessionOutboxEntry(
-  entries: readonly StructuredAgentSessionOutboxEntry[],
-  submissions: readonly AgentJournalSubmission[],
-  blockedClientMessageId: string | null
-): boolean {
-  return entries.some(unsentStructuredAgentSessionOutboxEntry(submissions, blockedClientMessageId))
 }
 
 export type StructuredAgentSessionOutboxAdmission =
