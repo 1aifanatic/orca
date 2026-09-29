@@ -77,6 +77,9 @@ export type JournalSubmissionConsume = {
   expect: 'waiting' | 'returned'
   /** The operation ledger's caller-scoped key; null for the host's own drain. */
   settledByOp: string | null
+  /** The host process handing it off, stamped on the draft so a hand-off withdrawn back to
+   *  waiting belongs to the process that sent it, not the one that first wrote the card. */
+  hostInstance?: string
 }
 
 export type JournalItemAppendInput = {

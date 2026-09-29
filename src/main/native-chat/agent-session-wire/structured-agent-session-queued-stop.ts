@@ -11,6 +11,7 @@ import {
   isUnsettledQueuedMessage,
   type QueuedMessageRow
 } from '../agent-session-journal/queued-message-table'
+import { isPausableQueuedMessage } from '../agent-session-journal/queued-message-pause-table'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
 
 /** The one unsettled-card predicate /clear's carry and the budget share:
@@ -20,9 +21,9 @@ export function unsettledQueuedMessages(journal: AgentSessionJournal): QueuedMes
 }
 
 /**
- * Runs a Stop and records its queue pause at the point it takes effect: after
- * it withdrew the queued sends, as it reaches the agent — or, reaching no agent,
- * once it withdrew something. The Stop calls `tookEffect` there. A Stop that
+ * Runs a Stop and records its queue pause at the point it takes effect — after
+ * it withdrew the queued sends, as it reaches the agent, or, reaching no agent,
+ * once it withdrew something — and only over cards the queue then holds. The Stop calls `tookEffect` there. A Stop that
  * throws before then changed nothing and recorded nothing, so there is nothing
  * to undo; one that fails after it keeps the pause, since the interrupt may have
  * landed. A draft whose hand-off the Stop withdrew is back to waiting in its own
@@ -35,7 +36,9 @@ export async function runStopWithQueuePause<TValue>(
 ): Promise<TurnOutcome<TValue>> {
   let recorded = false
   return stop(async () => {
-    if (recorded) {
+    // A pause is over the cards it can hold back — the withdrawal's sent-back
+    // hand-offs included. With none it would only catch a card typed long after.
+    if (recorded || !ctx.journal.queuedMessages.list().some(isPausableQueuedMessage)) {
       return
     }
     recorded = true

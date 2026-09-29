@@ -6,6 +6,7 @@ import {
   type UnreadAgentSessionFailureFact
 } from '../../../shared/agent-session-failure'
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
+import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import { journalDispatchRowApplies } from './journal-dispatch-settlement'
 import type { JournalReducerState } from './journal-reducer'
 import type { JournalRow } from './journal-row-schema'
@@ -38,6 +39,9 @@ export function applyJournalDispatchRow(
   } else {
     delete submission.recovered
   }
+  if (row.state === 'accepted') {
+    notePersonTurnAccepted(state, submission)
+  }
   if (row.state !== 'accepted' || !row.providerItemId) {
     return
   }
@@ -65,4 +69,17 @@ function unreadFailureFact(value: unknown): UnreadAgentSessionFailureFact | unde
     value.kind
     ? { kind: value.kind }
     : undefined
+}
+
+/** A person's turn the provider accepted: the fact the queue's pause is lifted by. */
+export function notePersonTurnAccepted(
+  state: JournalReducerState,
+  submission: Pick<AgentJournalSubmission, 'origin' | 'acceptedSequence'>
+): void {
+  if (submission.origin === 'client' && submission.acceptedSequence !== undefined) {
+    state.latestPersonTurnSequence = Math.max(
+      state.latestPersonTurnSequence,
+      submission.acceptedSequence
+    )
+  }
 }

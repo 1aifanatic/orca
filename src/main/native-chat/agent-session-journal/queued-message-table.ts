@@ -12,6 +12,7 @@ import type { UnreadAgentSessionFailureFact } from '../../../shared/agent-sessio
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
 import { rejectedDraftSettlement } from './journal-dispatch-settlement'
 import { readStoredRejectionFact } from './journal-dispatch-reducer'
+import { retireQueuePauseIfEmpty } from './queued-message-pause-table'
 
 export type QueuedMessageState = 'waiting' | 'dispatched' | 'returned' | 'withdrawn'
 
@@ -137,6 +138,8 @@ export function consumeQueuedMessageInTransaction(
     /** The fresh submission id; never the draft's own id. */
     consumedAs: string
     settledByOp: string | null
+    /** The handing-off process; absent keeps the row's own. */
+    hostInstance?: string
     now: number
   }
 ): boolean {
@@ -147,18 +150,23 @@ export function consumeQueuedMessageInTransaction(
     .prepare(
       `UPDATE queued_messages
        SET state = 'dispatched', hold_reason = NULL, returned_reason = NULL, returned_rejection = NULL,
-           settled_at = ?, settled_by_op = ?, consumed_as = ?
+           settled_at = ?, settled_by_op = ?, consumed_as = ?, host_instance = COALESCE(?, host_instance)
        WHERE session_id = ? AND message_id = ? AND state = ?`
     )
     .run(
       input.now,
       input.settledByOp,
       input.consumedAs,
+      input.hostInstance ?? null,
       input.sessionId,
       input.messageId,
       input.expect
     )
-  return Number(changed.changes ?? 0) === 1
+  if (Number(changed.changes ?? 0) !== 1) {
+    return false
+  }
+  retireQueuePauseIfEmpty(db, input.sessionId)
+  return true
 }
 
 /** Compare-and-transition unsettled rows (waiting ∪ returned) to withdrawn
@@ -193,6 +201,9 @@ export function withdrawQueuedMessages(
       settledAt: input.now,
       settledByOp: input.settledByOp
     })
+  }
+  if (withdrawn.length > 0) {
+    retireQueuePauseIfEmpty(db, input.sessionId)
   }
   return withdrawn
 }
@@ -238,6 +249,9 @@ export function settleRejectedQueuedMessage(
             input.sessionId,
             input.consumedRef
           )
+  if (settlement.state === 'returned') {
+    retireQueuePauseIfEmpty(db, input.sessionId)
+  }
   return Number(changed.changes ?? 0) > 0
 }
 
