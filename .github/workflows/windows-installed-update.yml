@@ -1,0 +1,184 @@
+name: Isolated Windows installed lifecycle diagnostic
+# A -> B -> A NSIS transitions across Bun runtime generations, then genuine uninstall.
+# A bundles the production-pinned Bun; B bundles the admitted patched stable candidate.
+on:
+  push:
+    branches: [OrcaWin/np-installed-windows-update-diagnostic]
+    paths:
+      - '.github/workflows/windows-installed-update.yml'
+      - 'config/ci/windows-installed-update/**'
+  workflow_dispatch: {}
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: installed-windows-diagnostic-${{ github.ref }}
+  cancel-in-progress: false
+env:
+  PRODUCER_RUN: '36503596770'
+  SSH_TOOLS_SHA: c24adccff0118b490f531ee9ffffb8c0f084bcce
+jobs:
+  windows_watcher:
+    if: github.repository == 'stablyai/orca' && github.ref == 'refs/heads/OrcaWin/np-installed-windows-update-diagnostic'
+    uses: ./.github/workflows/windows-watcher-artifacts.yml
+    with:
+      ref: ${{ github.sha }}
+      artifact_prefix: windows-watcher-installed-update
+  package:
+    needs: windows_watcher
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { label: A, ordinal: 1, arch: x64, runner: windows-2022 }
+          - { label: B, ordinal: 2, arch: x64, runner: windows-2022 }
+          # Native arm64 installers are not shipped today; x64 below also runs emulated on ARM.
+          - { label: A, ordinal: 1, arch: arm64, runner: windows-11-arm }
+          - { label: B, ordinal: 2, arch: arm64, runner: windows-11-arm }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    env:
+      ORCA_BACKGROUND_LAUNCH: '1'
+      NODE_OPTIONS: --max-old-space-size=4096
+      ORCA_BUILD_COMMIT: ${{ github.sha }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Derive distinct diagnostic version
+        run: |
+          $base=(node -p "require('./package.json').version").Trim()
+          if($base -notmatch '^\d+\.\d+\.\d+$'){throw "Unexpected base version $base"}
+          "ORCA_LOCAL_BUILD_VERSION=$base-winqual.${{ github.run_number }}.${{ matrix.ordinal }}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - uses: actions/checkout@v6
+        if: matrix.label == 'B'
+        with:
+          ref: ${{ env.SSH_TOOLS_SHA }}
+          path: .build/ssh-provider-tools
+          sparse-checkout: config/ci/windows-ssh-provider
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        if: matrix.label == 'B'
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ env.PRODUCER_RUN }}
+          name: full-offline-patched-bun
+          path: .build/producer
+      - name: Retain real producer run identity
+        if: matrix.label == 'B'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/stablyai/orca/actions/runs/$env:PRODUCER_RUN" | Out-File -Encoding utf8NoBOM .build/producer/producer-run.json
+          if($LASTEXITCODE -ne 0){throw 'Producer identity lookup failed'}
+      - uses: pnpm/setup@v2
+        with:
+          install: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: package.json
+      - name: Install dependencies
+        run: |
+          pnpm install --frozen-lockfile
+          if($LASTEXITCODE -ne 0){throw 'Dependency install failed'}
+      - uses: ./.github/actions/install-mobile-dependencies
+      - uses: ./.github/actions/load-windows-watcher-artifacts
+        with:
+          artifact_prefix: windows-watcher-installed-update
+      - name: Admit candidate and apply the B-only Bun pin overlay
+        if: matrix.label == 'B'
+        run: |
+          $dir='config/ci/windows-installed-update'
+          New-Item -ItemType Directory -Force .build/receipts | Out-Null
+          node "$dir/admit-candidate.mjs" .build/ssh-provider-tools/config/ci/windows-ssh-provider .build/producer . $env:PRODUCER_RUN .build/receipts/admission.json
+          if($LASTEXITCODE -ne 0){throw 'Candidate admission failed'}
+          node "$dir/apply-candidate-overlay.mjs" . .build/receipts/admission.json .build/receipts/overlay.json
+          if($LASTEXITCODE -ne 0){throw 'Candidate overlay failed'}
+      - name: Build Windows process-table addon for the relay
+        run: |
+          node config/scripts/build-windows-process-tree-relay-addon.mjs --arch=${{ matrix.arch }}
+          if($LASTEXITCODE -ne 0){throw 'Relay addon build failed'}
+      - name: Build app
+        env:
+          ORCA_REQUIRE_RELAY_NATIVE_ADDONS: ${{ matrix.arch }}
+        run: |
+          pnpm build:release
+          if($LASTEXITCODE -ne 0){throw 'Build failed'}
+      - name: Package unsigned installer without publishing
+        run: |
+          node config/scripts/ensure-native-runtime.mjs --runtime=electron
+          if($LASTEXITCODE -ne 0){throw 'Native runtime preparation failed'}
+          pnpm exec electron-builder --config config/electron-builder.config.cjs --win nsis --${{ matrix.arch }} --publish never
+          if($LASTEXITCODE -ne 0){throw 'Packaging failed'}
+      - name: Receipt packaged generation
+        run: |
+          $extra=@()
+          if('${{ matrix.label }}' -eq 'B'){$extra=@('--admission','.build/receipts/admission.json','--overlay','.build/receipts/overlay.json')}
+          node config/ci/windows-installed-update/receipt-package.mjs --label ${{ matrix.label }} --arch ${{ matrix.arch }} --version $env:ORCA_LOCAL_BUILD_VERSION --source $env:GITHUB_SHA --dist dist --output "$env:RUNNER_TEMP/package" @extra
+          if($LASTEXITCODE -ne 0){throw 'Package receipt failed'}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows-installed-${{ matrix.label }}-${{ matrix.arch }}
+          path: ${{ runner.temp }}/package/*
+          if-no-files-found: error
+          retention-days: 7
+  qualify:
+    needs: package
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x64, runner: windows-2022 }
+          - { arch: x64, runner: windows-11-arm }
+          - { arch: arm64, runner: windows-11-arm }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    env:
+      ORCA_BACKGROUND_LAUNCH: '1'
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with: { name: 'windows-installed-A-${{ matrix.arch }}', path: '${{ runner.temp }}/input-A' }
+      - uses: actions/download-artifact@v8
+        with: { name: 'windows-installed-B-${{ matrix.arch }}', path: '${{ runner.temp }}/input-B' }
+      - uses: ./.github/actions/install-node-dependencies
+        with: { native-runtime: none }
+      - name: Admit inputs and check the evidence oracle offline
+        run: |
+          $dir='config/ci/windows-installed-update'
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP/result" | Out-Null
+          node "$dir/verify-inputs.mjs" "$env:RUNNER_TEMP/input-A" "$env:RUNNER_TEMP/input-B" ${{ matrix.arch }} $env:GITHUB_SHA "$env:RUNNER_TEMP/result/inputs.json"
+          if($LASTEXITCODE -ne 0){throw 'Input admission failed'}
+          node "$dir/evidence-oracle.check.mjs"
+          if($LASTEXITCODE -ne 0){throw 'Evidence oracle failed'}
+          node "$dir/prepare.mjs" "$env:RUNNER_TEMP/tools"
+          if($LASTEXITCODE -ne 0){throw 'Tool preparation failed'}
+      - name: Installed A -> B -> A lifecycle and genuine uninstall
+        timeout-minutes: 45
+        run: |
+          $t="$env:RUNNER_TEMP/tools"
+          node "$t/run-installed.mjs" "--input-a=$env:RUNNER_TEMP/input-A" "--input-b=$env:RUNNER_TEMP/input-B" "--rpc=$t/qualification-rpc.cjs" "--retire=$t/daemon-retire.cjs" "--receipt=$env:RUNNER_TEMP/result/lifecycle-receipt.json"
+          if($LASTEXITCODE -ne 0){throw 'Installed lifecycle qualification failed'}
+      - name: Retain receipts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-installed-result-${{ matrix.arch }}-${{ matrix.runner }}-${{ github.run_id }}
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/result/
+            ${{ runner.temp }}/input-A/build-receipt.json
+            ${{ runner.temp }}/input-B/build-receipt.json
+            ${{ runner.temp }}/input-B/admission.json
+            ${{ runner.temp }}/input-B/overlay.json
