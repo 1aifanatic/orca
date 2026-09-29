@@ -121,7 +121,13 @@ export function useStructuredAgentSessionOutbox(args: {
       next.some((entry, index) => entry !== current[index]) ||
       next.length !== current.length
     ) {
-      restoreWithdrawn.byHost(current, submissions)
+      // A withdrawn send the host also publishes as a returned card is that card's text; the
+      // composer never gets a second copy, whichever of the two effects runs first.
+      const held = new Set(queuedMessageIds)
+      restoreWithdrawn.byHost(
+        current.filter((entry) => !held.has(entry.clientMessageId)),
+        submissions
+      )
       outboxRef.current = next
       setOutbox(next)
       writeOutbox(sessionId, next)
@@ -142,7 +148,7 @@ export function useStructuredAgentSessionOutbox(args: {
     ) {
       setError(null)
     }
-  }, [restoreWithdrawn, sessionId, submissions])
+  }, [queuedMessageIds, restoreWithdrawn, sessionId, submissions])
 
   // The one place that owns the refs, the React state and the storage write.
   const applyDisposition = useCallback(
