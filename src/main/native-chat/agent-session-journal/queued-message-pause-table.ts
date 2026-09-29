@@ -81,34 +81,37 @@ export function clearQueuePause(
 
 type QueueCardState = { state: string; holdReason: string | null }
 
-/**
- * Whether a pause holds back anything Resume would send: a card waiting, with
- * no hold of its own, and not behind a returned card — which blocks everything
- * after it until the user acts, exactly as the drain reads it. A returned card
- * waits for the user anyway, and a held one for its own Send. The one rule the
- * publication, a Stop's record and the fact's retirement all read.
- */
+/** A card a pause holds back: waiting, with no hold of its own, wherever it sits.
+ *  While one exists the pause is KEPT — a Stop records it, and it is retired only
+ *  once none remains — so deleting a returned card that blocks such cards leaves
+ *  them paused rather than sending them unasked. */
+export function isPausableQueuedMessage(row: QueueCardState): boolean {
+  return row.state === 'waiting' && row.holdReason === null
+}
+
+/** Whether Resume would send anything: a pausable card not behind a returned one,
+ *  which blocks everything after it until the user acts, exactly as the drain
+ *  reads it. Only then is the kept pause PUBLISHED, so its header never offers a
+ *  Resume that sends nothing. */
 export function hasResumableQueuedMessage(rows: readonly QueueCardState[]): boolean {
   for (const row of rows) {
     if (row.state === 'returned') {
       return false
     }
-    if (row.state === 'waiting' && row.holdReason === null) {
+    if (isPausableQueuedMessage(row)) {
       return true
     }
   }
   return false
 }
 
-/** A pause is over the cards it paused: once none is left Resume would send
- *  (`hasResumableQueuedMessage`), the fact goes too, in the same transaction as
- *  the write that took the last one, so it can never outlive them and catch a
- *  card typed long after. */
+/** A pause is over the cards it paused: once none is left it holds back
+ *  (`isPausableQueuedMessage`), the fact goes too, in the same transaction as the
+ *  write that took the last one, so it can never outlive them and catch a card
+ *  typed long after. */
 export function retireQueuePauseIfEmpty(db: Database.Database, sessionId: string): number {
   const rows = db
-    .prepare(
-      `SELECT state, hold_reason FROM queued_messages WHERE session_id = ? ORDER BY position ASC`
-    )
+    .prepare('SELECT state, hold_reason FROM queued_messages WHERE session_id = ?')
     .all(sessionId)
     .flatMap((row) =>
       typeof row === 'object' &&
@@ -120,7 +123,7 @@ export function retireQueuePauseIfEmpty(db: Database.Database, sessionId: string
         ? [{ state: row.state, holdReason: row.hold_reason }]
         : []
     )
-  if (hasResumableQueuedMessage(rows)) {
+  if (rows.some(isPausableQueuedMessage)) {
     return 0
   }
   return Number(

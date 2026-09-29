@@ -268,18 +268,14 @@ describe('a pause only over cards Resume could send', () => {
     expect(journal?.queuedMessages.pause()).toBeNull()
   })
 
-  it('a waiting card behind a returned one publishes no pause, and the fact is retired', async () => {
+  it('a returned card blocking the paused cards hides the pause but keeps it; deleting that card shows it again, and only Resume sends', async () => {
     const working = await rig.workingSend()
-    const refusedId = await queuedDraft('refused before the stop')
+    const refusedId = await queuedDraft('refused after the stop')
     const behindId = await queuedDraft('waits behind the card')
     await rig.settleAccepted(working, 'a')
-    await eventually(async () => expect(await rig.handoff(refusedId)).toBeDefined())
-    const journal = rig.host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)?.journal
-    if (!journal) {
-      throw new Error('expected the conversation open')
-    }
-    // Paused while the refused card's hand-off is still out: the card behind it is resumable.
-    await journal.queuedMessages.recordPause('stopped')
+    await handedOver(refusedId)
+    // The Stop interrupts the refused card's turn and pauses the card behind it.
+    await rig.stop()
     expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
     await rig.settleRejected(await rig.handoffId(refusedId), 'provider refused this payload')
     await eventually(async () =>
@@ -288,9 +284,18 @@ describe('a pause only over cards Resume could send', () => {
         { messageId: behindId, state: 'waiting' }
       ])
     )
-    // The returned card blocks the one behind it, so Resume would send nothing.
+    const journal = rig.host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)?.journal
+    if (!journal) {
+      throw new Error('expected the conversation open')
+    }
+    // Resume would send nothing past the returned card, so no header offers it; the pause stays.
     expect(await rig.queuePause()).toBeNull()
-    expect(journal.queuedMessages.pause()).toBeNull()
+    expect(journal.queuedMessages.pause()).toMatchObject({ reason: 'stopped' })
+    // Deleting the blocking card shows the pause again: the card behind it does not send unasked.
+    expect(await rig.deleteQueued(refusedId)).toMatchObject({ ok: true, value: { deleted: true } })
+    await expectPaused(behindId)
+    expect(await rig.resume()).toMatchObject({ ok: true, value: { resumed: true } })
+    await eventually(async () => expect(await rig.handoff(behindId)).toBeDefined())
   })
 
   it('a restart over only a card held by its own failed send publishes no pause', async () => {
