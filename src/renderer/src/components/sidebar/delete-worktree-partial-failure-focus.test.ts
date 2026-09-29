@@ -158,14 +158,18 @@ describe('deleting the viewed workspace when the delete partly fails', () => {
 
   it('leaves the user in place when the follow-up refresh itself fails', async () => {
     const store = seed()
-    mockApi.worktrees.remove.mockRejectedValueOnce(PARTIAL_FAILURE)
+    mockApi.worktrees.remove.mockImplementationOnce(async () => {
+      // Emptied selection, so only the refresh's answer keeps the committer from acting.
+      store.setState({ activeWorktreeId: null })
+      throw PARTIAL_FAILURE
+    })
     mockApi.worktrees.list.mockRejectedValue(new Error('git unavailable'))
 
     await runWorktreeDeleteWithToast({ id: viewed.id, executionHostId: null }, 'viewed')
     await settle()
 
     expect(activateAndRevealWorktree).not.toHaveBeenCalled()
-    expect(store.getState().activeWorktreeId).toBe(viewed.id)
+    expect(store.getState().activeWorktreeId).toBeNull()
     mockApi.worktrees.list.mockReset()
   })
 
