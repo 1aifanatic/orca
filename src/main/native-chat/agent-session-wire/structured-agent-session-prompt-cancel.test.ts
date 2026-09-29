@@ -163,7 +163,7 @@ describe('performCancel for a pending prompt', () => {
             resolvedAt: null
           }
         },
-        { fence: 1 }
+        { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
       )
     })
     const ctx = context(journal, cancelTurn, flush)
@@ -198,7 +198,7 @@ describe('performCancel for a pending prompt', () => {
         ...current.body,
         resolution: { state: 'resolved', selectedOptionId: 'allow', resolvedBy: 'c', resolvedAt: 1 }
       },
-      { fence: 1 }
+      { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     )
     const cancelTurn = vi.fn(async () => ({ cancelled: true }))
 
