@@ -25,27 +25,29 @@ export async function applyRelayClaudeFolderTrust(
   if (!request || launch.wslShell) {
     return
   }
-  const keyStyle = process.platform === 'win32' ? 'win32' : 'posix'
-  const homeDir = (keyStyle === 'win32' ? spawnEnv.USERPROFILE : spawnEnv.HOME) || homedir()
-  if (isLocalFolderTooBroadToPreTrust(request.workspacePath, [homeDir, homedir()])) {
-    return
-  }
-  const configFile = resolveClaudeGlobalConfigFile({
-    env: spawnEnv,
-    homeDir,
-    style: keyStyle,
-    exists: existsSync
-  })
-  // Why: trust bookkeeping must never stall the spawn; this write is on the relay's own disk,
-  // so it gets the local budget, and a miss means Claude asks.
-  await awaitAgentTrustWriteWithinDeadline(
-    grantClaudeWorkspaceTrust({ configFile, keyStyle }, request.workspacePath).then(() => {}),
-    {
-      preset: 'claude',
-      workspacePath: request.workspacePath,
-      deadlineMs: SHORT_AGENT_TRUST_WRITE_DEADLINE_MS
+  try {
+    const keyStyle = process.platform === 'win32' ? 'win32' : 'posix'
+    const homeDir = (keyStyle === 'win32' ? spawnEnv.USERPROFILE : spawnEnv.HOME) || homedir()
+    if (isLocalFolderTooBroadToPreTrust(request.workspacePath, [homeDir, homedir()])) {
+      return
     }
-  ).catch((error: unknown) => {
+    const configFile = resolveClaudeGlobalConfigFile({
+      env: spawnEnv,
+      homeDir,
+      style: keyStyle,
+      exists: existsSync
+    })
+    // Why: trust bookkeeping must never stall the spawn; this write is on the relay's own disk,
+    // so it gets the local budget, and a miss means Claude asks.
+    await awaitAgentTrustWriteWithinDeadline(
+      grantClaudeWorkspaceTrust({ configFile, keyStyle }, request.workspacePath).then(() => {}),
+      {
+        preset: 'claude',
+        workspacePath: request.workspacePath,
+        deadlineMs: SHORT_AGENT_TRUST_WRITE_DEADLINE_MS
+      }
+    )
+  } catch (error) {
     console.warn('[claude-trust] relay grant failed; Claude will ask instead', error)
-  })
+  }
 }
