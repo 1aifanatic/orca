@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   _resetLocalWorktreeCreateActivityForTests,
+  createLocalWorktreeCreateDeferral,
   holdLocalWorktreeCreate,
   isLocalWorktreeCreateInFlight,
   runWithLocalWorktreeCreateHold,
@@ -69,5 +70,40 @@ describe('local worktree create activity', () => {
       })
     ).rejects.toThrow('create failed')
     expect(isLocalWorktreeCreateInFlight()).toBe(false)
+  })
+})
+
+describe('local worktree create deferral', () => {
+  it('holds off while a create runs and wakes the producer when it settles', async () => {
+    const onSettle = vi.fn()
+    const deferral = createLocalWorktreeCreateDeferral(onSettle, 1_000)
+    expect(deferral.shouldDefer()).toBe(false)
+
+    const release = holdLocalWorktreeCreate()
+    expect(deferral.shouldDefer()).toBe(true)
+    expect(deferral.shouldDefer()).toBe(true)
+    release()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(onSettle).toHaveBeenCalledOnce()
+    expect(deferral.shouldDefer()).toBe(false)
+  })
+
+  it('stops holding off at the deadline until no create is in flight', async () => {
+    vi.useFakeTimers()
+    const onSettle = vi.fn()
+    const deferral = createLocalWorktreeCreateDeferral(onSettle, 1_000)
+    const release = holdLocalWorktreeCreate()
+    expect(deferral.shouldDefer()).toBe(true)
+
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(onSettle).toHaveBeenCalledOnce()
+    expect(deferral.shouldDefer()).toBe(false)
+
+    release()
+    expect(deferral.shouldDefer()).toBe(false)
+    holdLocalWorktreeCreate()
+    // A new stretch of creates is held again.
+    expect(deferral.shouldDefer()).toBe(true)
   })
 })

@@ -74,6 +74,44 @@ export function whenLocalWorktreeCreatesSettle(
   })
 }
 
+export type LocalWorktreeCreateDeferral = {
+  /** True while the producer should hold off; starts the wait that calls `onSettle` once. */
+  shouldDefer: () => boolean
+}
+
+/**
+ * For a producer that re-checks on every wake (a queue drain) instead of awaiting. It holds off
+ * while creates run and is woken through `onSettle`; once a stretch of creates outlasts the
+ * deadline it stops holding off until no create is in flight.
+ */
+export function createLocalWorktreeCreateDeferral(
+  onSettle: () => void,
+  deadlineMs: number = LOCAL_WORKTREE_CREATE_IDLE_DEADLINE_MS
+): LocalWorktreeCreateDeferral {
+  let waiting = false
+  let deadlinePassed = false
+  return {
+    shouldDefer() {
+      if (activeCreates === 0) {
+        deadlinePassed = false
+        return false
+      }
+      if (deadlinePassed) {
+        return false
+      }
+      if (!waiting) {
+        waiting = true
+        void whenLocalWorktreeCreatesSettle(deadlineMs).then(() => {
+          waiting = false
+          deadlinePassed = activeCreates > 0
+          onSettle()
+        })
+      }
+      return true
+    }
+  }
+}
+
 export function _resetLocalWorktreeCreateActivityForTests(): void {
   activeCreates = 0
   const waiters = settleWaiters

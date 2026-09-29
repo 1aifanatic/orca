@@ -18,10 +18,12 @@ import type { PRRefreshQueue, PRRefreshQueueEntry } from './pr-refresh-queue'
 import { prRefreshRateLimitPausedUntil } from './pr-refresh-rate-limit-gate'
 import type { PRRefreshRetryState } from './pr-refresh-retry-state'
 import type { PRRefreshVisibility } from './pr-refresh-visibility'
+import { createLocalWorktreeCreateDeferral } from '../git/local-worktree-create-activity'
 
 export class PRRefreshQueueDrainer {
   private draining = false
   private timer: ReturnType<typeof setTimeout> | null = null
+  private readonly createDeferral = createLocalWorktreeCreateDeferral(() => this.schedule(0))
 
   constructor(
     private readonly queue: PRRefreshQueue,
@@ -122,6 +124,18 @@ export class PRRefreshQueueDrainer {
           return
         }
 
+        if (this.isHeldForLocalCreate(next)) {
+          // Local background refreshes run git (base fetch, merge-tree) on the disk a create is
+          // checking out on; manual and SSH refreshes are not held.
+          const runnable = this.ordered().find(
+            (entry) => entry.dueAt <= Date.now() && !this.isHeldForLocalCreate(entry)
+          )
+          if (!runnable) {
+            return
+          }
+          next = runnable
+        }
+
         let delay = this.pacing.entryDelay(next)
         if (delay > 0) {
           const runnable = this.ordered().find(
@@ -220,6 +234,14 @@ export class PRRefreshQueueDrainer {
     } finally {
       this.draining = false
     }
+  }
+
+  private isHeldForLocalCreate(entry: PRRefreshQueueEntry): boolean {
+    return (
+      isBackground(entry.reason) &&
+      !entry.candidate.connectionId &&
+      this.createDeferral.shouldDefer()
+    )
   }
 
   private notePacingDelay(entry: PRRefreshQueueEntry): void {

@@ -15,6 +15,10 @@ import {
   whenWorktreeTrashDeletionsSettled,
   WORKTREE_TRASH_DIR_NAME
 } from './worktree-trash'
+import {
+  _resetLocalWorktreeCreateActivityForTests,
+  holdLocalWorktreeCreate
+} from './git/local-worktree-create-activity'
 
 let scratchDir = ''
 
@@ -236,5 +240,25 @@ describe('collectWorktreeTrashSweepRoots', () => {
     } finally {
       Object.defineProperty(process, 'platform', { configurable: true, value: originalPlatform })
     }
+  })
+})
+
+describe('scheduleWorktreeTrashDeletion during a local create', () => {
+  afterEach(() => {
+    _resetLocalWorktreeCreateActivityForTests()
+  })
+
+  it('waits for the create to settle before deleting, so it never competes with the checkout', async () => {
+    const trashPath = join(scratchDir, WORKTREE_TRASH_DIR_NAME, 'wt-1-abcdef01')
+    await createWorktreeDirectory(trashPath)
+    const release = holdLocalWorktreeCreate()
+
+    scheduleWorktreeTrashDeletion(trashPath)
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(existsSync(trashPath)).toBe(true)
+
+    release()
+    await whenWorktreeTrashDeletionsSettled()
+    expect(existsSync(trashPath)).toBe(false)
   })
 })
