@@ -266,7 +266,6 @@ export function buildPtyHostEnv(
       isPackaged: opts.isPackaged,
       isWsl: opts.isWsl,
       managedHomePath: opts.selectedCodexHomePath,
-      userDataPath: opts.userDataPath,
       resourcesPath: opts.resourcesPath
     })
     if (preflightCommand) {
