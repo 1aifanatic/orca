@@ -1,6 +1,7 @@
-import { foregroundAgentVerdict } from '../../shared/foreground-agent-verdict'
+import { judgeForegroundAgent } from '../../shared/foreground-agent-verdict'
 import {
   detectAgentStatusFromTitle,
+  isClaudeManagementTitle,
   isOpenCodeNativeTitle,
   isQuarterCircleSpinnerOnlyAgentTitle,
   isShellProcess,
@@ -93,7 +94,9 @@ export class RuntimeTerminalAgentStatusQuery {
     if (explicitStatus) {
       // Why: permission titles can linger after hooks report the agent resumed.
       // Fresh hook state is tighter, but current shell/management evidence wins.
-      const isRunningAgent = !(await this.terminalHasShellForegroundProcess(handle, ptyId))
+      const isRunningAgent =
+        !(terminal.title !== null && isClaudeManagementTitle(terminal.title)) &&
+        !(await this.terminalHasShellForegroundProcess(handle, ptyId))
       this.assertTerminalAgentStatusPtyBinding(handle, ptyId)
       return {
         handle,
@@ -254,7 +257,8 @@ export class RuntimeTerminalAgentStatusQuery {
     // prove that some recognized agent still owns this exact PTY.
     return (
       this.deps.getController() === controller &&
-      foregroundAgentVerdict(confirmedProcess) === 'exited'
+      judgeForegroundAgent({ kind: 'process-name', processName: confirmedProcess }).verdict ===
+        'exited'
     )
   }
 }

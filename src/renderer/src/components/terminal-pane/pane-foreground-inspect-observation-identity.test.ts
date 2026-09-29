@@ -69,12 +69,12 @@ describe('pane foreground inspect observation identity', () => {
 
     // The superseded read's continuation commits its epoch first.
     settle(0)
-    expect((await superseded).remoteEvidenceVerdict).toBe('live')
+    expect((await superseded).judgement.verdict).toBe('live')
 
     settle(1)
     const result = await reissued
-    expect(result.remoteEvidenceVerdict).toBe('live')
-    expect(result.processName).toBe('claude')
+    expect(result.judgement.verdict).toBe('live')
+    expect(result.judgement.processName).toBe('claude')
   })
 
   it('degrades the second overlapping read to `unverifiable` when one observation is shared', async () => {
@@ -85,11 +85,11 @@ describe('pane foreground inspect observation identity', () => {
     await flush()
 
     settle(0)
-    expect((await superseded).remoteEvidenceVerdict).toBe('live')
+    expect((await superseded).judgement.verdict).toBe('live')
 
     settle(1)
     const result = await reissued
-    expect(result.remoteEvidenceVerdict).toBe('unverifiable')
-    expect(result.processName).toBeNull()
+    expect(result.judgement.verdict).toBe('unverifiable')
+    expect(result.judgement.processName).toBeNull()
   })
 })

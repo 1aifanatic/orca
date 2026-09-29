@@ -2,7 +2,6 @@ import {
   isAgentForegroundWrapperProcess,
   recognizeAgentProcess
 } from '../../../../shared/agent-process-recognition'
-import { foregroundAgentVerdict } from '../../../../shared/foreground-agent-verdict'
 import type { TuiAgent } from '../../../../shared/tui-agent'
 import type { PaneForegroundAgentEntry } from '@/store/slices/pane-foreground-agent'
 import type { RuntimeTerminalProcessInspection } from '@/runtime/runtime-terminal-inspection'
@@ -39,9 +38,13 @@ type PaneForegroundAgentTrackerDeps = {
    *  133;D before any command-start read has recorded its own evidence. */
   hasKnownAgentIdentity?: () => boolean
   /** Fired when a confirming read proves the foreground genuinely returned to a
-   *  shell (agent exited). Lets callers clear a stale agent-named tab title that
-   *  the shell never repaints. */
-  onConfirmedShellForeground?: (reason: 'visible-pty' | 'command-finished') => void
+   *  shell. Lets callers clear a stale agent-named tab title that the shell never
+   *  repaints. `agentExited` is false when only a launch/hook expectation was
+   *  retired: a slow boot also shows the shell, so that is never an agent exit. */
+  onConfirmedShellForeground?: (
+    reason: 'visible-pty' | 'command-finished',
+    agentExited: boolean
+  ) => void
   onCommandFinishedUnavailable?: () => void
   onVisibleForegroundSettled?: (outcome: 'agent' | 'shell' | 'inconclusive') => void
 }
@@ -58,6 +61,8 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
   /** True while any read is scheduled or running, whatever its authority. */
   hasReadInFlight: () => boolean
   onVisiblePtyBound: (expectsAgent?: boolean) => boolean
+  /** A neutral title followed the agent's own status title; confirm whether it exited. */
+  onAgentExitCandidate: () => boolean
   onCommandStarted: (expectedAgent?: TuiAgent | null) => void
   /** True when pane identity must remain visible until an async shell confirmation. */
   onCommandFinished: () => boolean
@@ -144,10 +149,11 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
       hasForegroundAgentEvidence ||
       hasKnownAgentEvidence ||
       hasAgentExpectation
-    const { processName, remoteEvidenceVerdict, expectedIncarnationId, remote } = await readProcess(
+    const { judgement, expectedIncarnationId, remote } = await readProcess(
       ptyId,
       requiresRoutingConfirmation
     )
+    const { processName, verdict } = judgement
     // Why: a pane key can be rebound while process inspection is pending; the
     // old PTY's identity must never publish into its replacement session.
     if (
@@ -159,12 +165,7 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
       settleAbortedRead(generation)
       return
     }
-    const recognized =
-      remoteEvidenceVerdict === 'live'
-        ? recognizeAgentProcess(processName)
-        : remoteEvidenceVerdict !== null
-          ? null
-          : recognizeAgentProcess(processName)
+    const recognized = verdict === 'live' ? recognizeAgentProcess(processName) : null
     if (recognized) {
       hasForegroundAgentEvidence = true
       hasAgentExpectation = false
@@ -185,8 +186,12 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
     const retryDelay = WRAPPER_RESOLVE_RETRY_DELAYS_MS[retryIndex]
     const hasConfirmationExpectation =
       hasForegroundAgentEvidence || hasKnownAgentEvidence || hasAgentExpectation
+    // Why: a re-read cannot change a host's structural answer or its fenced shell fact.
+    const settledByHost = !judgement.canCertifyExit || (remote && verdict === 'exited')
     const shouldRetryExpectedIdentity =
-      hasConfirmationExpectation && (reason !== 'command-finished' || processName === null)
+      hasConfirmationExpectation &&
+      !settledByHost &&
+      (reason !== 'command-finished' || processName === null)
     const shouldRetry =
       retryDelay !== undefined &&
       (shouldRetryExpectedIdentity ||
@@ -199,7 +204,7 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
       return
     }
     if (reason === 'command') {
-      if (!processName?.trim() || remoteEvidenceVerdict === 'unverifiable') {
+      if (!processName?.trim()) {
         return
       }
       hasAgentExpectation = false
@@ -209,49 +214,69 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
       return
     }
     if (reason === 'visible-pty') {
-      if (
-        (hasForegroundAgentEvidence || hasKnownAgentEvidence) &&
-        foregroundAgentVerdict(processName) === 'exited'
-      ) {
-        hasForegroundAgentEvidence = false
-        hasKnownAgentEvidence = false
-        hasAgentExpectation = false
-        deps.publish({ agent: null, shellForeground: true })
-        deps.onConfirmedShellForeground?.(reason)
+      if ((hasForegroundAgentEvidence || hasKnownAgentEvidence) && verdict === 'exited') {
+        confirmShellForeground(reason)
         deps.onVisibleForegroundSettled?.('shell')
       } else {
         deps.onVisibleForegroundSettled?.('inconclusive')
       }
       return
     }
-    if (reason === 'command-finished') {
-      if (processName === null) {
-        if (remoteEvidenceVerdict !== null && remoteEvidenceVerdict !== 'live') {
-          deps.onCommandFinishedUnavailable?.()
-          return
-        }
-        deps.onCommandFinishedUnavailable?.()
-        return
-      }
-      if (foregroundAgentVerdict(processName) !== 'exited') {
-        deps.onCommandFinishedUnavailable?.()
-        // Why: this read may have replaced a cancelled visible-pty confirmation.
-        // It publishes nothing, so without settling here the capability it was
-        // asked to revalidate would be retained with no read left to clear it.
-        deps.onVisibleForegroundSettled?.('inconclusive')
-        return
-      }
-      // Why: the 133;D fired AND the foreground shows no agent — together that is
-      // real prompt proof, so the agent truly exited. Reset the evidence so the
-      // pane's ordinary shell commands go back to the no-RPC finished path.
-      hasForegroundAgentEvidence = false
-      hasKnownAgentEvidence = false
-      hasAgentExpectation = false
-      deps.publish({ agent: null, shellForeground: true })
-      // Why: confirmed exit — let callers clear a stale agent title the shell
-      // won't repaint (a plain `codex`/`grok` leaves its OSC title behind).
-      deps.onConfirmedShellForeground?.(reason)
+    // Why: 133;D is the shell's own mark; where no read can ever show a shell it retires the agent.
+    if (verdict === 'exited' || (!judgement.canCertifyExit && hasConfirmationExpectation)) {
+      confirmShellForeground(reason)
+      return
     }
+    deps.onCommandFinishedUnavailable?.()
+    if (processName !== null) {
+      // Why: this read may have replaced a cancelled visible-pty confirmation.
+      // It publishes nothing, so without settling here the capability it was
+      // asked to revalidate would be retained with no read left to clear it.
+      deps.onVisibleForegroundSettled?.('inconclusive')
+    }
+  }
+
+  const confirmShellForeground = (reason: 'visible-pty' | 'command-finished'): void => {
+    // Why: an exit needs an agent seen in this pane, or the shell's own 133;D ending the command.
+    const agentExited = reason === 'command-finished' || hasForegroundAgentEvidence
+    // Why: reset the evidence so the pane's ordinary shell commands go back to
+    // the no-RPC finished path.
+    hasForegroundAgentEvidence = false
+    hasKnownAgentEvidence = false
+    hasAgentExpectation = false
+    deps.publish({ agent: null, shellForeground: true })
+    // Why: confirmed exit — let callers clear a stale agent title the shell
+    // won't repaint (a plain `codex`/`grok` leaves its OSC title behind).
+    deps.onConfirmedShellForeground?.(reason, agentExited)
+  }
+
+  const bindVisiblePty = (expectsAgent: boolean, agentObserved: boolean): boolean => {
+    // Why: command-start and command-finished reads own the exit decision;
+    // visibility recovery is lower-authority and must never cancel them.
+    if (
+      scheduledReadReason === 'command' ||
+      activeReadReason === 'command' ||
+      scheduledReadReason === 'command-finished' ||
+      activeReadReason === 'command-finished'
+    ) {
+      return false
+    }
+    const hadReadBeforeVisibleBind = hasPendingRead()
+    cancelPendingRead()
+    if (!trackablePtyId()) {
+      releaseRetainedCapability(hadReadBeforeVisibleBind)
+      return false
+    }
+    if (expectsAgent || deps.hasKnownAgentIdentity?.() === true) {
+      hasKnownAgentEvidence = true
+    }
+    if (agentObserved) {
+      hasForegroundAgentEvidence = true
+    }
+    // Why: restored/manual agent panes can become visible while Codex is
+    // already foreground, so no OSC 133 command-start event will seed the tab icon.
+    scheduleRead(VISIBLE_PTY_SETTLE_MS, 0, 'visible-pty')
+    return true
   }
 
   return {
@@ -262,29 +287,11 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
       return hasPendingRead()
     },
     onVisiblePtyBound(expectsAgent = false) {
-      // Why: command-start and command-finished reads own the exit decision;
-      // visibility recovery is lower-authority and must never cancel them.
-      if (
-        scheduledReadReason === 'command' ||
-        activeReadReason === 'command' ||
-        scheduledReadReason === 'command-finished' ||
-        activeReadReason === 'command-finished'
-      ) {
-        return false
-      }
-      const hadReadBeforeVisibleBind = hasPendingRead()
-      cancelPendingRead()
-      if (!trackablePtyId()) {
-        releaseRetainedCapability(hadReadBeforeVisibleBind)
-        return false
-      }
-      if (expectsAgent || deps.hasKnownAgentIdentity?.() === true) {
-        hasKnownAgentEvidence = true
-      }
-      // Why: restored/manual agent panes can become visible while Codex is
-      // already foreground, so no OSC 133 command-start event will seed the tab icon.
-      scheduleRead(VISIBLE_PTY_SETTLE_MS, 0, 'visible-pty')
-      return true
+      return bindVisiblePty(expectsAgent, false)
+    },
+    onAgentExitCandidate() {
+      // Why: the title tracker saw the agent's own status title, so the agent was observed.
+      return bindVisiblePty(true, true)
     },
     onCommandStarted(expectedAgent = null) {
       const hadReadBeforeCommandStart = hasPendingRead()

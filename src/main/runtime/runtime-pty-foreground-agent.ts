@@ -1,6 +1,9 @@
-import { foregroundAgentVerdict } from '../../shared/foreground-agent-verdict'
+import {
+  judgeForegroundAgent,
+  observeHostInspection,
+  type ForegroundAgentJudgement
+} from '../../shared/foreground-agent-verdict'
 import { admitRemoteForegroundEvidence } from '../../shared/remote-foreground-evidence-admission'
-import { isClientOnlyUnverifiableInspection } from '../../shared/terminal-process-inspection'
 import { parseAppSshPtyId } from '../../shared/ssh-pty-id'
 import { recognizeAgentProcess } from '../../shared/agent-process-recognition'
 import type { RuntimePtyController } from './runtime-pty-controller-contract'
@@ -41,11 +44,18 @@ export class RuntimePtyForegroundAgent {
     }
     if (pending?.controller === controller) {
       return pending.promise.then(
-        () => this.read(ptyId, afterTitle) ?? { controller, process: null, available: false }
+        () =>
+          this.read(ptyId, afterTitle) ?? {
+            controller,
+            judgement: judgeForegroundAgent({ kind: 'unavailable' })
+          }
       )
     }
-    const unavailable: PtyForegroundProcessRead = { controller, process: null, available: false }
-    let processRead: Promise<string | null>
+    const unavailable: PtyForegroundProcessRead = {
+      controller,
+      judgement: judgeForegroundAgent({ kind: 'unavailable' })
+    }
+    let processRead: Promise<ForegroundAgentJudgement>
     try {
       processRead = this.readProcess(controller, ptyId)
     } catch {
@@ -61,9 +71,9 @@ export class RuntimePtyForegroundAgent {
     let entry: PtyForegroundProcessReadEntry
     const incarnationId = this.deps.getPty(ptyId)?.incarnationId
     const promise = processRead
-      .then((process) =>
+      .then((judgement) =>
         this.deps.getPty(ptyId)?.incarnationId === incarnationId
-          ? { controller, process, available: true }
+          ? { controller, judgement }
           : unavailable
       )
       .catch(() => unavailable)
@@ -104,6 +114,30 @@ export class RuntimePtyForegroundAgent {
     return entry.promise
   }
 
+  /** Exit confirmation and `pty.foregroundAgent` come from this one current-incarnation read. */
+  confirm(ptyId: string, afterTitle = 0): Promise<PtyForegroundProcessRead> | null {
+    const pty = this.deps.getPty(ptyId)
+    const read = this.read(ptyId, afterTitle)
+    if (!pty || !read) {
+      return read
+    }
+    const incarnationId = pty.incarnationId
+    return read.then((result) => {
+      if (this.isCurrent(ptyId, pty, incarnationId, result)) {
+        this.apply(ptyId, pty, result.judgement)
+      }
+      return result
+    })
+  }
+
+  /** The shell's own 133;D retired an agent on a host that cannot prove a shell by read. */
+  markExited(ptyId: string): void {
+    const pty = this.deps.getPty(ptyId)
+    if (pty) {
+      this.apply(ptyId, pty, { verdict: 'exited', processName: null, canCertifyExit: false })
+    }
+  }
+
   getPending(ptyId: string, afterTitle: number): Promise<boolean> | undefined {
     return this.refreshes.has(ptyId) ? this.refresh(ptyId, afterTitle) : undefined
   }
@@ -139,16 +173,33 @@ export class RuntimePtyForegroundAgent {
     }
     const incarnationId = pty.incarnationId
     const result = await this.read(ptyId, afterTitle)
-    if (!result || result.controller !== this.deps.getController() || !result.available) {
+    return result && this.isCurrent(ptyId, pty, incarnationId, result)
+      ? this.apply(ptyId, pty, result.judgement)
+      : false
+  }
+
+  private isCurrent(
+    ptyId: string,
+    pty: ForegroundPty,
+    incarnationId: string | null | undefined,
+    result: PtyForegroundProcessRead
+  ): boolean {
+    return (
+      result.controller === this.deps.getController() &&
+      this.deps.getPty(ptyId) === pty &&
+      pty.connected &&
+      pty.incarnationId === incarnationId
+    )
+  }
+
+  private apply(ptyId: string, pty: ForegroundPty, judgement: ForegroundAgentJudgement): boolean {
+    if (judgement.verdict === 'unverifiable') {
       return false
     }
-    if (this.deps.getPty(ptyId) !== pty || !pty.connected || pty.incarnationId !== incarnationId) {
-      return false
-    }
-    if (foregroundAgentVerdict(result.process) === 'unverifiable') {
-      return false
-    }
-    const agent = recognizeAgentProcess(result.process)?.agent ?? null
+    const agent =
+      judgement.verdict === 'live'
+        ? (recognizeAgentProcess(judgement.processName)?.agent ?? null)
+        : null
     if (pty.foregroundAgent === agent) {
       return false
     }
@@ -160,15 +211,19 @@ export class RuntimePtyForegroundAgent {
   private async readProcess(
     controller: RuntimePtyController,
     ptyId: string
-  ): Promise<string | null> {
+  ): Promise<ForegroundAgentJudgement> {
     const pty = this.deps.getPty(ptyId)
     if (!pty?.connectionId) {
       const cached = await controller.getForegroundProcess(ptyId)
       if (recognizeAgentProcess(cached)) {
-        return cached
+        return judgeForegroundAgent({ kind: 'process-name', processName: cached })
       }
       // Cached display names cannot certify that the agent returned to its shell.
-      return controller.confirmForegroundProcess ? controller.confirmForegroundProcess(ptyId) : null
+      return judgeForegroundAgent(
+        controller.confirmForegroundProcess
+          ? { kind: 'process-name', processName: await controller.confirmForegroundProcess(ptyId) }
+          : { kind: 'unavailable' }
+      )
     }
     const incarnationId = pty.incarnationId
     const started = performance.now()
@@ -176,18 +231,18 @@ export class RuntimePtyForegroundAgent {
       ptyId,
       incarnationId ? { expectedIncarnationId: incarnationId } : {}
     )
-    if (!inspection || isClientOnlyUnverifiableInspection(inspection)) {
-      return null
-    }
-    const evidence = admitRemoteForegroundEvidence(inspection.foregroundProcessEvidence, {
-      expectedPtyId: parseAppSshPtyId(ptyId)?.relayPtyId ?? ptyId,
-      expectedIncarnationId: incarnationId,
-      requestStartedAtMonotonic: started,
-      receivedAtMonotonic: performance.now(),
-      lastAuthorityGeneration: null,
-      lastObservationEpoch: -1
-    })
-    return evidence?.verdict === 'live' ? evidence.processName : null
+    return judgeForegroundAgent(
+      observeHostInspection(inspection, (evidence) =>
+        admitRemoteForegroundEvidence(evidence, {
+          expectedPtyId: parseAppSshPtyId(ptyId)?.relayPtyId ?? ptyId,
+          expectedIncarnationId: incarnationId,
+          requestStartedAtMonotonic: started,
+          receivedAtMonotonic: performance.now(),
+          lastAuthorityGeneration: null,
+          lastObservationEpoch: -1
+        })
+      )
+    )
   }
 
   private deleteRead(ptyId: string, entry: PtyForegroundProcessReadEntry): void {

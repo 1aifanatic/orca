@@ -1,6 +1,5 @@
 // @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
 import { startSpan } from '../observability/tracer'
-import { foregroundAgentVerdict } from '../../shared/foreground-agent-verdict'
 import { selectFreshExplicitAgentStatus } from './runtime-hook-agent-row-selection'
 import { OrcaRuntimeWithControllerKnowsPtyIsLive } from './orca-runtime-controller-knows-pty-is-live'
 import type { RuntimeTerminalAgentStatus } from '../../shared/runtime-types'
@@ -69,7 +68,7 @@ export class OrcaRuntimeWithSerializeAgentPromptSubmission extends OrcaRuntimeWi
     ptyId: string,
     afterTitleObservation = 0
   ): Promise<PtyForegroundProcessRead> | null {
-    return this.ptyForegroundAgent.read(ptyId, afterTitleObservation)
+    return this.ptyForegroundAgent.confirm(ptyId, afterTitleObservation)
   }
 
   protected confirmPtyAgentExit(ptyId: string, recoverCompletedHook = false): void {
@@ -113,14 +112,11 @@ export class OrcaRuntimeWithSerializeAgentPromptSubmission extends OrcaRuntimeWi
         this.confirmPtyAgentExit(ptyId, true)
         return
       }
-      if (
-        result.controller === this.ptyController &&
-        result.available &&
-        recognizeAgentProcess(result.process) !== null
-      ) {
+      const { verdict, processName } = result.judgement
+      if (result.controller === this.ptyController && verdict === 'live') {
         // Codex's final native spinner can arrive after its done hook, then clear to the cwd.
         const confirmedStatus =
-          recoverCompletedHook && recognizeAgentProcess(result.process)?.agent === 'codex'
+          recoverCompletedHook && recognizeAgentProcess(processName)?.agent === 'codex'
             ? 'idle'
             : undefined
         const restoredStatus = this.ptyTitleTrackersByPtyId
@@ -152,24 +148,69 @@ export class OrcaRuntimeWithSerializeAgentPromptSubmission extends OrcaRuntimeWi
       if (
         !recoverCompletedHook &&
         result.controller === this.ptyController &&
-        result.available &&
-        foregroundAgentVerdict(result.process) === 'exited'
+        verdict === 'exited'
       ) {
-        startSpan('terminal.agent-exit-decision', {
-          attributes: {
-            reason: 'title-exit-candidate',
-            evidenceSource: 'host-foreground-confirmation',
-            verdict: 'exited'
-          }
-        }).end()
-        this.recordTerminalSideEffectFact(ptyId, {
-          kind: 'agent-exited',
-          evidence: 'foreground-shell'
-        })
+        this.publishPtyAgentExit(ptyId, 'title-exit-candidate', 'foreground-shell')
       } else {
         this.ptyTitleTrackersByPtyId.get(ptyId)?.tracker.restoreLastAgentExit()
       }
     })
+  }
+
+  /**
+   * The shell's own 133;D ends an agent this PTY held once a read shows a shell, or at once on a
+   * host that can never show one. A PTY that held no agent pays no read.
+   */
+  protected confirmPtyAgentExitAtCommandFinished(ptyId: string): void {
+    const pty = this.ptysById.get(ptyId)
+    // Why launchAgent counts: Orca's shell integration emits 133;D only after the command it ran.
+    if (!pty?.connected || (!pty.launchAgent && !pty.foregroundAgent && !pty.lastAgentStatus)) {
+      return
+    }
+    const incarnationId = pty.incarnationId
+    // Why +0.5: newer than every title seen so far and older than the next, so a read begun
+    // before this 133;D is never reused and a later title never reuses this one.
+    const afterBoundary = this.titleObservationSequence + 0.5
+    void this.readPtyForegroundProcessFromController(ptyId, afterBoundary)?.then((result) => {
+      const current = this.ptysById.get(ptyId)
+      const { verdict, canCertifyExit } = result.judgement
+      if (
+        current !== pty ||
+        !current.connected ||
+        current.incarnationId !== incarnationId ||
+        result.controller !== this.ptyController ||
+        verdict === 'live' ||
+        (verdict === 'unverifiable' && canCertifyExit)
+      ) {
+        return
+      }
+      if (verdict === 'unverifiable') {
+        this.ptyForegroundAgent.markExited(ptyId)
+      }
+      // Why: a stale agent title would otherwise make every later 133;D look like an agent's.
+      current.lastAgentStatus = null
+      this.publishPtyAgentExit(
+        ptyId,
+        'command-finished',
+        verdict === 'exited' ? 'foreground-shell' : 'command-finished'
+      )
+    })
+  }
+
+  private publishPtyAgentExit(
+    ptyId: string,
+    reason: 'title-exit-candidate' | 'command-finished',
+    evidence: 'foreground-shell' | 'command-finished'
+  ): void {
+    startSpan('terminal.agent-exit-decision', {
+      attributes: {
+        reason,
+        evidenceSource:
+          evidence === 'foreground-shell' ? 'host-foreground-confirmation' : 'osc-133',
+        verdict: 'exited'
+      }
+    }).end()
+    this.recordTerminalSideEffectFact(ptyId, { kind: 'agent-exited', evidence })
   }
 
   /**

@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { RuntimePtyForegroundAgent } from './runtime-pty-foreground-agent'
 import type { RuntimePtyController } from './runtime-pty-controller-contract'
 import type { RuntimePtyWorktreeRecord } from './runtime-terminal-state-records'
+import { resolveRemoteForegroundEvidence } from '../providers/agent-foreground-process-batch'
+import type { ProcessTableRow } from '../../shared/process-table-snapshot'
 
 function setup(remote = false) {
   const pty: Pick<
@@ -83,52 +85,72 @@ describe('foreground identity on unknown observations', () => {
     await pending
     expect(h.pty.foregroundAgent).toBe('claude')
   })
-  it.each(['missing', 'unverifiable', 'wrong-incarnation', 'stale', 'live'] as const)(
-    'admits only fresh matching SSH evidence: %s',
-    async (kind) => {
-      const h = setup(true)
-      h.replace({
-        write: () => true,
-        kill: () => true,
-        getForegroundProcess: async () => 'zsh',
-        inspectProcess: async () => ({
-          foregroundProcess: 'zsh',
-          hasChildProcesses: false,
-          ...(kind === 'missing'
-            ? {}
-            : {
-                foregroundProcessEvidence:
-                  kind === 'unverifiable'
-                    ? {
-                        verdict: 'unverifiable' as const,
-                        reason: 'inspection_failed',
-                        authorityGeneration: 'host-1',
-                        observationEpoch: 1,
-                        capturedAgeMs: 0,
-                        ptyId: 'pty-1',
-                        ptyIncarnationId: 'generation-1'
-                      }
-                    : {
-                        verdict: 'live' as const,
-                        processName: 'zsh',
-                        fence: {
-                          platform: 'posix' as const,
-                          shellPid: 10,
-                          shellStartTime: '100',
-                          tty: '/dev/pts/1',
-                          foregroundPgid: 10
-                        },
-                        authorityGeneration: 'host-1',
-                        observationEpoch: 1,
-                        capturedAgeMs: kind === 'stale' ? 10000 : 0,
-                        ptyId: 'pty-1',
-                        ptyIncarnationId: kind === 'wrong-incarnation' ? 'old' : 'generation-1'
-                      }
-              })
-        })
+  it.each([
+    ['an old relay without evidence', 'missing', 'claude'],
+    ['stale evidence', 'stale', 'claude'],
+    ['evidence for another incarnation', 'wrong-incarnation', 'claude'],
+    ['an SSH-to-Windows host', 'windows', 'claude'],
+    ['another program in front', 'vim', 'claude'],
+    ['an old host that cannot mark the shell', 'old-host-shell', 'claude'],
+    ['the shell back at its prompt', 'shell', null]
+  ] as const)('on SSH, %s leaves foregroundAgent %j', async (_label, kind, expected) => {
+    const h = setup(true)
+    h.replace({
+      write: () => true,
+      kill: () => true,
+      getForegroundProcess: async () => 'zsh',
+      inspectProcess: async () => ({
+        foregroundProcess: 'zsh',
+        hasChildProcesses: false,
+        ...(kind === 'missing' ? {} : { foregroundProcessEvidence: hostEvidence(kind) })
       })
-      await h.agent.refresh('pty-1')
-      expect(h.pty.foregroundAgent).toBe(kind === 'live' ? null : 'claude')
-    }
-  )
+    })
+    await h.agent.refresh('pty-1')
+    expect(h.pty.foregroundAgent).toBe(expected)
+  })
+  it('clears foregroundAgent from the same read that confirms an exit', async () => {
+    const h = setup()
+    h.confirm.mockResolvedValue('zsh')
+    const result = await h.agent.confirm('pty-1')
+    expect(result?.judgement.verdict).toBe('exited')
+    expect(h.pty.foregroundAgent).toBeNull()
+    expect(h.touched).toHaveBeenCalledOnce()
+  })
 })
+
+/** Host evidence built by the same builder the relay and daemon use, from one process table. */
+function hostEvidence(
+  kind: 'stale' | 'wrong-incarnation' | 'windows' | 'vim' | 'old-host-shell' | 'shell'
+): unknown {
+  const shell: ProcessTableRow = {
+    pid: 10,
+    ppid: 1,
+    pgid: 10,
+    tpgid: kind === 'vim' ? 11 : 10,
+    tty: '/dev/pts/1',
+    startTime: '100',
+    stat: 'Ss',
+    command: '-zsh'
+  }
+  const rows: ProcessTableRow[] =
+    kind === 'vim'
+      ? [shell, { ...shell, pid: 11, ppid: 10, pgid: 11, stat: 'S+', command: 'vim notes.md' }]
+      : [shell]
+  const evidence = resolveRemoteForegroundEvidence(
+    { rootPid: 10, fallbackProcess: 'zsh' },
+    {
+      ptyId: 'pty-1',
+      ptyIncarnationId: kind === 'wrong-incarnation' ? 'old' : 'generation-1',
+      authorityGeneration: 'host-1',
+      observationEpoch: 1,
+      capturedAgeMs: kind === 'stale' ? 10000 : 0,
+      platform: kind === 'windows' ? 'win32' : 'linux'
+    },
+    rows
+  )
+  if (kind === 'old-host-shell' && evidence.verdict === 'live') {
+    const { shellForeground: _omitted, ...legacy } = evidence
+    return legacy
+  }
+  return evidence
+}

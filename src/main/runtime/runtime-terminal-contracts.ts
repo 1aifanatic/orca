@@ -18,6 +18,7 @@ import type { RuntimeTerminalSend } from '../../shared/runtime-terminal-contract
 import type { RuntimeTerminalWriteOptions } from './runtime-terminal-writer'
 import type { TerminalInputKind } from '../../shared/terminal-input-kind'
 import type { RuntimePtyController } from './runtime-pty-controller-contract'
+import type { ForegroundAgentJudgement } from '../../shared/foreground-agent-verdict'
 import type { RuntimeAgentRowSnapshot } from './runtime-worktree-agent-rows'
 import type { WorkerTerminalHostScope } from './orchestration/worker-terminal-process-liveness'
 
@@ -111,8 +112,7 @@ export type PtyForegroundAgentRefresh = {
 
 export type PtyForegroundProcessRead = {
   controller: RuntimePtyController
-  process: string | null
-  available: boolean
+  judgement: ForegroundAgentJudgement
 }
 
 export type PtyForegroundProcessReadEntry = {
