@@ -40,7 +40,8 @@ export function queuedMessageCardCaption(card: QueuedMessageCard): string | null
       return agentSessionWriteNoticeText(
         structuredAgentSessionAttemptFailureParts(
           { kind: 'rejected', reason },
-          {},
+          // The card's own Send is the retry, so the words leave out sending again.
+          { retryControl: true },
           readAgentSessionFailureFact(card.returnedRejection)
         )
       )

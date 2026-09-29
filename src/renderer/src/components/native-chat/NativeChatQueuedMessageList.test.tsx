@@ -160,6 +160,23 @@ describe('NativeChatQueuedMessageList', () => {
     expect(row.textContent).not.toContain('Your message was not sent.')
   })
 
+  it('the words leave out sending again: the card offers its own Send', () => {
+    renderList(
+      controller([
+        card({
+          messageId: 'undelivered',
+          state: 'returned',
+          hold: 'returned',
+          returnedReason: 'not_delivered',
+          returnedRejection: { kind: 'notDelivered' }
+        })
+      ])
+    )
+    const row = screen.getByRole('listitem')
+    expect(row.textContent).toContain('This message was not delivered.')
+    expect(row.textContent).not.toContain('Send it again')
+  })
+
   it("a Stop's withdrawal is read from the fact, whatever sentence the reason carries", () => {
     renderList(
       controller([
