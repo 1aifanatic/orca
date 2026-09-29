@@ -10,10 +10,7 @@ import { DashboardAgentRowToolStep } from './DashboardAgentRowToolStep'
 import { showsAgentToolPreview } from '@/lib/agent-row-tool-preview'
 import { agentNoUpdateLabel, formatCompactDuration } from '@/lib/agent-row-decay-state'
 import { agentRowDotState as asDotState } from '@/lib/agent-row-dot-state'
-import {
-  agentTurnStoppedByUser,
-  agentVerdictDisplayMark
-} from '../../../../shared/agent-main-agent-verdict'
+import { agentVerdictDisplayMark } from '../../../../shared/agent-main-agent-verdict'
 import { agentVerdictStatusLine } from '@/lib/agent-verdict-status-line'
 import type { DashboardAgentRow as DashboardAgentRowData } from './useDashboardData'
 import { getAgentRowPrimaryText } from '@/lib/agent-row-primary-text'
@@ -33,7 +30,7 @@ function stateDotTooltipLabel(
   dotState: AgentDotState,
   now: number
 ): string {
-  if (dotState === 'interrupted' || dotState === 'done') {
+  if (dotState === 'interrupted') {
     return agentVerdictStatusLine(agent.entry) ?? agentStateLabel(dotState)
   }
   // Why: report the observation, not a verdict on the agent — the elapsed gap is what
@@ -143,8 +140,7 @@ const DashboardAgentRow = React.memo(function DashboardAgentRow({
   const toolInput = showsTool ? (agent.entry.toolInput?.trim() ?? '') : ''
   const lastAssistantMessage = agent.entry.lastAssistantMessage?.trim() ?? ''
   const verdictDotState = agentVerdictDisplayMark(agent.entry)
-  // A user's Stop marks done but keeps its "interrupted" tag.
-  const isInterrupted = verdictDotState === 'interrupted' || verdictDotState === 'done'
+  const isInterrupted = verdictDotState === 'interrupted'
   const lineage = agent.lineage
   const isLineageChild = lineage?.depth === 1
   const lineageChildCount = lineage?.childCount ?? 0
@@ -305,7 +301,6 @@ const DashboardAgentRow = React.memo(function DashboardAgentRow({
       <DashboardAgentRowMessage
         expanded={expanded}
         isInterrupted={isInterrupted}
-        stoppedByUser={agentTurnStoppedByUser(agent.entry)}
         lastAssistantMessage={lastAssistantMessage}
       />
     </div>

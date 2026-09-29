@@ -315,34 +315,31 @@ describe('DashboardAgentRow', () => {
     )
   }
 
-  it('renders a crash-cut row with the red dot and plain text on the secondary line', () => {
+  it('renders a crash-cut row as failed, with the red dot and no interrupted tag', () => {
     const markup = renderEndedRow({
       mainAgent: { state: 'done', outcome: 'interruption', stateStartedAt: 2_000 }
     })
-    const promptIndex = markup.indexOf('Give me a quick update')
-    const interruptedIndex = markup.indexOf('>interrupted<')
 
-    // Why: interrupted keeps the leading red dot, but the plain text belongs
-    // on the response line so it does not compete with the user's prompt.
-    expect(markup).toContain('data-slot="tooltip-trigger"')
-    expect(markup).toContain('aria-label="Interrupted"')
-    expect(markup).not.toContain('Interrupted by user')
+    expect(markup).toContain('aria-label="Failed"')
     expect(markup).toContain('bg-red-500')
-    expect(markup).not.toContain('data-slot="badge"')
-    expect(interruptedIndex).toBeGreaterThan(promptIndex)
+    expect(markup).not.toContain('>interrupted<')
     expect(markup).not.toContain('lucide-circle-check')
   })
 
   it.each([
     ['recorded', { mainAgent: { state: 'done', outcome: 'cancellation', stateStartedAt: 2_000 } }],
     ["an old host's flag", { interrupted: true }]
-  ] as const)("renders a user's Stop (%s) with the done check, still saying so", (_, ending) => {
+  ] as const)("renders a user's Stop (%s) as interrupted, with plain text on the secondary line", (_, ending) => {
     const markup = renderEndedRow(ending)
+    const promptIndex = markup.indexOf('Give me a quick update')
+    const interruptedIndex = markup.indexOf('>interrupted<')
 
-    expect(markup).toContain('lucide-circle-check')
-    expect(markup).not.toContain('bg-red-500')
+    // Why: the plain text belongs on the response line so it does not compete with the prompt.
+    expect(markup).toContain('data-slot="tooltip-trigger"')
     expect(markup).toContain('aria-label="Interrupted by user"')
-    expect(markup).toContain('>interrupted<')
+    expect(markup).not.toContain('data-slot="badge"')
+    expect(interruptedIndex).toBeGreaterThan(promptIndex)
+    expect(markup).not.toContain('lucide-circle-check')
   })
 
   it('reserves a real working tool line before tool metadata arrives', () => {

@@ -3,16 +3,14 @@ import {
   type AgentMainAgentVerdictSource
 } from '../../../shared/agent-main-agent-verdict'
 
-/** The line an agent row shows in place of its preview once its verdict marks it. A user's Stop
- *  marks done but still says so; a turn cut off by a crash reads plainly interrupted. */
+/** The line an agent row shows in place of its preview once its verdict marks it. Only a user's
+ *  Stop reads interrupted; a turn cut off by a crash reads failed, as a failure does. */
 export function agentVerdictStatusLine(entry: AgentMainAgentVerdictSource): string | null {
   switch (agentVerdictDisplayMark(entry)) {
     case 'failed':
       return 'Failed'
-    case 'done':
-      return 'Interrupted by user'
     case 'interrupted':
-      return 'Interrupted'
+      return 'Interrupted by user'
     case 'unconfirmed':
       return 'Couldn’t confirm'
     case null:

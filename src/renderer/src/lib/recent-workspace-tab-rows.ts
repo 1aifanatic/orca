@@ -98,15 +98,15 @@ export function resolveRecentWorkspaceTabStatus(
     )
     return hasForegroundWork ? 'working' : 'monitoring'
   }
-  if (verdicts.has('interrupted')) {
-    return 'interrupted'
-  }
   if (verdicts.has('unconfirmed')) {
     return 'unconfirmed'
   }
-  // Why: attention demotes a user's Stop, but its tab still reads done.
-  if (explicit === 'done' || verdicts.has('done')) {
-    return 'done'
+  // Why: attention demotes a user's Stop, but its tab still says it was interrupted.
+  if (verdicts.has('interrupted')) {
+    return 'interrupted'
+  }
+  if (explicit === 'done') {
+    return explicit
   }
   return tabHasLivePty(paneSources.ptyIdsByTabId, row.terminalTab.id) ? 'active' : 'inactive'
 }

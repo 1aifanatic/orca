@@ -47,28 +47,22 @@ export function agentMainAgentVerdict(row: AgentMainAgentVerdictSource): AgentTu
 }
 
 /**
- * What the verdict marks on the agent's own display. A failure outranks every combined state: it
- * is news the user must see even while subagents still run. Every other end marks only a row that
- * is itself done, so a main agent's live child work still reads working, as a clean finish does.
- * A user's Stop marks done: interrupted means cut short by something other than the user.
+ * What the verdict marks on the agent's own display. A fault, whether the turn failed or something
+ * other than the user cut it short, reads failed and outranks every combined state: it is news the
+ * user must see even while subagents still run. A user's Stop reads interrupted, and an unproven
+ * end unconfirmed, only on a row that is itself done, so live child work still reads working.
  */
 export function agentVerdictDisplayMark(
   row: AgentMainAgentVerdictSource
-): 'failed' | 'interrupted' | 'unconfirmed' | 'done' | null {
-  const verdict = agentMainAgentVerdict(row)
-  if (verdict === 'failure') {
-    return 'failed'
-  }
-  if (row.state !== 'done') {
-    return null
-  }
-  switch (verdict) {
-    case 'cancellation':
-      return 'done'
+): 'failed' | 'interrupted' | 'unconfirmed' | null {
+  switch (agentMainAgentVerdict(row)) {
+    case 'failure':
     case 'interruption':
-      return 'interrupted'
+      return 'failed'
+    case 'cancellation':
+      return row.state === 'done' ? 'interrupted' : null
     case 'unconfirmed':
-      return 'unconfirmed'
+      return row.state === 'done' ? 'unconfirmed' : null
     case 'success':
     case null:
       return null

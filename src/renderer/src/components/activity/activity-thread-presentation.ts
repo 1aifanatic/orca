@@ -156,8 +156,7 @@ export function activityThreadStatusId(thread: AgentPaneThread): ActivityThreadS
   const verdictEntry = threadVerdictEntry(thread)
   const verdictDot = verdictEntry ? agentVerdictDisplayMark(verdictEntry) : null
   if (!thread.currentAgentState && state === 'done' && verdictDot) {
-    // Why: Activity still groups a user's Stop apart from a finish; threadAgentState draws its check.
-    return verdictDot === 'done' ? 'interrupted' : verdictDot
+    return verdictDot
   }
   return state
 }

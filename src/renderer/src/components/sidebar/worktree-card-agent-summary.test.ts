@@ -90,7 +90,7 @@ describe('worktree card agent summary', () => {
     expect(eligible).toContain('data-slot="tooltip-trigger"')
   })
 
-  it("lists a crash-cut turn as interrupted before clean completions, and a user's Stop as done", () => {
+  it("lists a crash-cut turn as failed and a user's Stop as interrupted, before clean completions", () => {
     const done = monitoringAgent()
     done.state = 'done'
     done.entry.state = 'done'
@@ -110,16 +110,16 @@ describe('worktree card agent summary', () => {
       entry: { ...done.entry, paneKey: 'tab-1:leaf-3', interrupted: true }
     }
 
-    expect(getAgentDotState(interrupted)).toBe('interrupted')
-    expect(getCompactAgentSecondary(interrupted, 0)).toBe('Interrupted')
-    expect(getAgentDotState(stopped)).toBe('done')
+    expect(getAgentDotState(interrupted)).toBe('failed')
+    expect(getCompactAgentSecondary(interrupted, 0)).toBe('Failed')
+    expect(getAgentDotState(stopped)).toBe('interrupted')
     expect(getCompactAgentSecondary(stopped, 0)).toBe('Interrupted by user')
     expect(summarizeAgents([done, interrupted, stopped], 'Agents')).toBe(
-      'Agents: 1 interrupted, 2 done'
+      'Agents: 1 failed, 1 interrupted, 1 done'
     )
   })
 
-  it('lists a failed turn as failed, not done, ahead of an interrupted one', () => {
+  it("lists a failed turn as failed, not done, ahead of a user's Stop", () => {
     const done = monitoringAgent()
     done.state = 'done'
     done.entry.state = 'done'
@@ -139,13 +139,13 @@ describe('worktree card agent summary', () => {
       entry: {
         ...done.entry,
         paneKey: 'tab-1:leaf-2',
-        mainAgent: { state: 'done' as const, outcome: 'interruption' as const, stateStartedAt: 1 }
+        mainAgent: { state: 'done' as const, outcome: 'cancellation' as const, stateStartedAt: 1 }
       }
     }
 
     expect(getAgentDotState(failed)).toBe('failed')
     expect(getCompactAgentSecondary(failed, 0)).toBe('Failed')
-    expect(getCompactAgentSecondary(interrupted, 0)).toBe('Interrupted')
+    expect(getCompactAgentSecondary(interrupted, 0)).toBe('Interrupted by user')
     expect(summarizeAgents([done, interrupted, failed], 'Agents')).toBe(
       'Agents: 1 failed, 1 interrupted, 1 done'
     )

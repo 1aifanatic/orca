@@ -227,13 +227,13 @@ export function resolveWorktreeStatus(args: {
   if (args.hasRetainedFailed) {
     return 'failed'
   }
-  // A turn cut short follows live states, but must not collapse into success.
-  if (args.hasInterrupted) {
-    return 'interrupted'
-  }
-  // Why: an end Orca cannot prove is not a finish either; a proven one outranks it.
+  // Why: an end Orca cannot prove is not a finish, and unlike a user's Stop it is news.
   if (args.hasUnconfirmed) {
     return 'unconfirmed'
+  }
+  // A user's Stop follows every state that is news, but must not collapse into success.
+  if (args.hasInterrupted) {
+    return 'interrupted'
   }
   if (args.hasLiveDone || args.hasRetainedDone) {
     return 'done'

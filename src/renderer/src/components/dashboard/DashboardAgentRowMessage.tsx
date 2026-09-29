@@ -8,16 +8,14 @@ import { translate } from '@/i18n/i18n'
 
 type DashboardAgentRowMessageProps = {
   expanded: boolean
+  /** The user stopped the turn; a crash that cut it off reads failed instead. */
   isInterrupted: boolean
-  /** Whether the user asked for the stop; a crash that cut the turn off did not. */
-  stoppedByUser: boolean
   lastAssistantMessage: string
 }
 
 export function DashboardAgentRowMessage({
   expanded,
   isInterrupted,
-  stoppedByUser,
   lastAssistantMessage
 }: DashboardAgentRowMessageProps): React.JSX.Element | null {
   // These rows are the sidebar's only boot-visible markdown, so warm the chunk as
@@ -36,17 +34,10 @@ export function DashboardAgentRowMessage({
       {isInterrupted ? (
         <span
           className="shrink-0 text-[10px] leading-snug text-muted-foreground/80"
-          aria-label={
-            stoppedByUser
-              ? translate(
-                  'auto.components.dashboard.DashboardAgentRowMessage.1ec01cef03',
-                  'Interrupted by user'
-                )
-              : translate(
-                  'auto.components.activity.ActivityPrototypePage.interrupted',
-                  'Interrupted'
-                )
-          }
+          aria-label={translate(
+            'auto.components.dashboard.DashboardAgentRowMessage.1ec01cef03',
+            'Interrupted by user'
+          )}
         >
           {translate(
             'auto.components.dashboard.DashboardAgentRowMessage.0a01046763',

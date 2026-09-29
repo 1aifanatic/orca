@@ -189,8 +189,8 @@ describe('cross-version worktree ps verdict', () => {
     expect(dotStates(newBuild, rows)).toEqual({
       'failed-done': 'done',
       'failed-working': 'working',
-      // A user's Stop marks done on a new phone; an old one draws it interrupted (above).
-      stopped: 'done',
+      // Both phones draw a user's Stop interrupted; only the new one draws it muted.
+      stopped: 'interrupted',
       'crash-cut': 'done',
       unproven: 'done'
     })
@@ -203,8 +203,8 @@ describe('cross-version worktree ps verdict', () => {
     expect(dotStates(newBuild, rows)).toEqual({
       'failed-done': 'failed',
       'failed-working': 'failed',
-      stopped: 'done',
-      'crash-cut': 'interrupted',
+      stopped: 'interrupted',
+      'crash-cut': 'failed',
       unproven: 'unconfirmed'
     })
     expect(rows['failed-working']).toMatchObject({

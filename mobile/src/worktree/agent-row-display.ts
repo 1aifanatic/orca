@@ -48,25 +48,19 @@ export function agentRowVerdict(row: AgentRowVerdictSource): AgentTurnOutcome | 
   return row.state === 'done' && row.interrupted ? 'cancellation' : null
 }
 
-// A failure outranks every state; every other end marks only a row that is itself done. A user's
-// Stop marks done: interrupted means cut short by something other than the user.
+// A fault (a failure, or a turn cut short by something other than the user) reads failed and
+// outranks every state; a user's Stop and an unproven end mark only a row that is itself done.
 export function agentRowVerdictMark(
   row: AgentRowVerdictSource
-): 'failed' | 'interrupted' | 'unconfirmed' | 'done' | null {
-  const verdict = agentRowVerdict(row)
-  if (verdict === 'failure') {
-    return 'failed'
-  }
-  if (row.state !== 'done') {
-    return null
-  }
-  switch (verdict) {
-    case 'cancellation':
-      return 'done'
+): 'failed' | 'interrupted' | 'unconfirmed' | null {
+  switch (agentRowVerdict(row)) {
+    case 'failure':
     case 'interruption':
-      return 'interrupted'
+      return 'failed'
+    case 'cancellation':
+      return row.state === 'done' ? 'interrupted' : null
     case 'unconfirmed':
-      return 'unconfirmed'
+      return row.state === 'done' ? 'unconfirmed' : null
     case 'success':
     case null:
       return null

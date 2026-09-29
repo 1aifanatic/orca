@@ -80,11 +80,12 @@ function formatAgentNotificationStatusText(args: NotificationDispatchRequest): s
     return translateMain('notifications.agentStatus.finished', 'finished')
   }
   switch (args.agentTurnOutcome) {
+    // A turn cut short by anything but the user is a fault, as a failure is.
     case 'failure':
-      return translateMain('notifications.agentStatus.failed', 'failed')
-    // Why: an end the user did not ask for, or one Orca cannot prove, still never reads finished.
-    case 'cancellation':
     case 'interruption':
+      return translateMain('notifications.agentStatus.failed', 'failed')
+    // Why: a Stop the user asked for, or an end Orca cannot prove, still never reads finished.
+    case 'cancellation':
     case 'unconfirmed':
       return translateMain('notifications.agentStatus.stopped', 'stopped')
     case 'success':

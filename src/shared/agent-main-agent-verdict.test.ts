@@ -49,29 +49,27 @@ describe('agentMainAgentVerdict', () => {
       expect(agentTurnEndedUncleanly(row), label).toBe(verdict !== null && verdict !== 'success')
       expect(agentTurnStoppedByUser(row), label).toBe(verdict === 'cancellation')
       expect(agentVerdictDisplayMark(row), label).toBe(
-        verdict === 'failure'
+        verdict === 'failure' || verdict === 'interruption'
           ? 'failed'
           : row.state !== 'done'
             ? null
             : verdict === 'cancellation'
-              ? 'done'
-              : verdict === 'interruption'
-                ? 'interrupted'
-                : verdict === 'unconfirmed'
-                  ? 'unconfirmed'
-                  : null
+              ? 'interrupted'
+              : verdict === 'unconfirmed'
+                ? 'unconfirmed'
+                : null
       )
     }
   })
 
-  it('reads a main agent that failed while its subagent still works as failed', () => {
-    const row = {
-      state: 'working' as const,
-      mainAgent: { state: 'done' as const, outcome: 'failure' as const }
+  it.each(['failure', 'interruption'] as const)(
+    'reads a main agent whose turn ended in %s while its subagent still works as failed',
+    (outcome) => {
+      const row = { state: 'working' as const, mainAgent: { state: 'done' as const, outcome } }
+      expect(agentMainAgentVerdict(row)).toBe(outcome)
+      expect(agentVerdictDisplayMark(row)).toBe('failed')
     }
-    expect(agentMainAgentVerdict(row)).toBe('failure')
-    expect(agentVerdictDisplayMark(row)).toBe('failed')
-  })
+  )
 
   it('keeps a success or a stop with live subagent work reading working', () => {
     for (const outcome of ['success', 'cancellation'] as const) {
@@ -97,24 +95,24 @@ describe('agentMainAgentVerdict', () => {
     expect(agentMainAgentVerdict({ state: 'done', interrupted: true })).toBe('cancellation')
   })
 
-  it("marks a done row by its verdict: a user's Stop reads done, only a cut-short turn interrupted", () => {
+  it("marks a done row by its verdict: a user's Stop reads interrupted, any other cut failed", () => {
     for (const [outcome, mark] of [
       ['success', null],
       ['failure', 'failed'],
-      ['cancellation', 'done'],
-      ['interruption', 'interrupted'],
+      ['cancellation', 'interrupted'],
+      ['interruption', 'failed'],
       ['unconfirmed', 'unconfirmed']
     ] as const) {
       const row = { state: 'done' as const, mainAgent: { state: 'done' as const, outcome } }
       expect(agentVerdictDisplayMark(row), outcome).toBe(mark)
     }
     // An old host's legacy flag is a user's Stop too.
-    expect(agentVerdictDisplayMark({ state: 'done', interrupted: true })).toBe('done')
+    expect(agentVerdictDisplayMark({ state: 'done', interrupted: true })).toBe('interrupted')
   })
 
-  it('reads a crash-cut turn as interrupted and an unproven end as unconfirmed, neither a stop', () => {
+  it('reads a crash-cut turn as failed and an unproven end as unconfirmed, neither a stop', () => {
     for (const [outcome, mark] of [
-      ['interruption', 'interrupted'],
+      ['interruption', 'failed'],
       ['unconfirmed', 'unconfirmed']
     ] as const) {
       const row = { state: 'done' as const, mainAgent: { state: 'done' as const, outcome } }

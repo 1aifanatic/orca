@@ -16,8 +16,9 @@ const SUMMARY_STATE_ORDER: AgentDotState[] = [
   'failed',
   'working',
   'monitoring',
-  'interrupted',
   'unconfirmed',
+  // Why: a user's Stop is not news, but it is not a finish either.
+  'interrupted',
   'done',
   // Why: below every reporting state, above true idle — the pane is still held.
   'unverifiable',

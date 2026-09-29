@@ -50,18 +50,21 @@ describe('agentDotState', () => {
     expect(agentDotState(row({ state: 'unknown-state' as never }), 0)).toBe('idle')
   })
 
-  it("reports the verdict of a done row: failed, or a user's Stop (also an old host's flag) as done", () => {
-    expect(agentDotState(row({ state: 'done', interrupted: true }), 0)).toBe('done')
+  it("reports the verdict of a done row: failed, or a user's Stop (also an old host's flag) as interrupted", () => {
+    expect(agentDotState(row({ state: 'done', interrupted: true }), 0)).toBe('interrupted')
     expect(agentDotState(row({ state: 'done', ...mainAgentDone('failure') }), 0)).toBe('failed')
     expect(
       agentDotState(row({ state: 'done', ...mainAgentDone('cancellation'), interrupted: true }), 0)
-    ).toBe('done')
+    ).toBe('interrupted')
     expect(agentDotState(row({ state: 'done', ...mainAgentDone('success') }), 0)).toBe('done')
   })
 
-  it('reads a crash-cut turn as interrupted and an unproven end as unconfirmed', () => {
+  it('reads a crash-cut turn as failed and an unproven end as unconfirmed', () => {
     expect(agentDotState(row({ state: 'done', ...mainAgentDone('interruption') }), 0)).toBe(
-      'interrupted'
+      'failed'
+    )
+    expect(agentDisplayLabel(row({ state: 'done', ...mainAgentDone('interruption') }), 0)).toBe(
+      'Failed'
     )
     expect(agentDotState(row({ state: 'done', ...mainAgentDone('unconfirmed') }), 0)).toBe(
       'unconfirmed'
@@ -81,7 +84,10 @@ describe('agentDotState', () => {
   it('shows a main agent that failed while its subagents still run as failed', () => {
     expect(agentDotState(row({ state: 'working', ...mainAgentDone('failure') }), 0)).toBe('failed')
     expect(agentDotState(row({ state: 'waiting', ...mainAgentDone('failure') }), 0)).toBe('failed')
-    // Only a failure outranks live work; a success or a stop with live subagents reads working.
+    expect(agentDotState(row({ state: 'working', ...mainAgentDone('interruption') }), 0)).toBe(
+      'failed'
+    )
+    // Only a fault outranks live work; a success or a stop with live subagents reads working.
     expect(agentDotState(row({ state: 'working', ...mainAgentDone('success') }), 0)).toBe('working')
     expect(
       agentDotState(
@@ -133,7 +139,7 @@ describe('agentDotState', () => {
     expect(agentDotState(row({ state: 'done', updatedAt: 0 }), stale)).toBe('done')
     expect(
       agentDotState(row({ state: 'done', updatedAt: 0, ...mainAgentDone('interruption') }), stale)
-    ).toBe('interrupted')
+    ).toBe('failed')
   })
 })
 
