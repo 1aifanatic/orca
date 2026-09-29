@@ -15,10 +15,10 @@ import {
   getAgentStatusHooksTitle
 } from './agent-status-hooks-copy'
 import {
-  getClaudeWorktreeTrustDescription,
-  getClaudeWorktreeTrustSearchKeywords,
-  getClaudeWorktreeTrustTitle
-} from './claude-worktree-trust-copy'
+  getAgentWorkspaceTrustDescription,
+  getAgentWorkspaceTrustSearchKeywords,
+  getAgentWorkspaceTrustTitle
+} from './agent-workspace-trust-copy'
 import { getAgentCacheTimerSearchEntries } from './agent-cache-timer-search'
 import { translate } from '@/i18n/i18n'
 import { searchKeywords, translateSearchKeyword, uniqueKeywords } from './settings-search-keywords'
@@ -114,9 +114,9 @@ const getAllAgentsPaneSearchEntries = createLocalizedCatalog(() => [
     keywords: getAgentStatusHooksSearchKeywords()
   },
   {
-    title: getClaudeWorktreeTrustTitle(),
-    description: getClaudeWorktreeTrustDescription(),
-    keywords: getClaudeWorktreeTrustSearchKeywords()
+    title: getAgentWorkspaceTrustTitle(),
+    description: getAgentWorkspaceTrustDescription(),
+    keywords: getAgentWorkspaceTrustSearchKeywords()
   },
   {
     title: getAgentGeneratedTabTitlesTitle(),

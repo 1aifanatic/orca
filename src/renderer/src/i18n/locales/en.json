@@ -9173,9 +9173,9 @@
             "0d1c334987": "lid",
             "ff8de8a2ad": "display",
             "0d752916f8": "hooks",
-            "claude-trust-trust": "trust",
-            "claude-trust-folder": "folder",
-            "claude-trust-worktree": "worktree",
+            "agent-trust-trust": "trust",
+            "agent-trust-folder": "folder",
+            "agent-trust-worktree": "worktree",
             "6984d4291a": "status",
             "13b20636a6": "waiting",
             "8599603496": "done",
@@ -10928,6 +10928,10 @@
           "7707c15abb": "Agent status hooks",
           "a68a642835": "Shows working, waiting, and done states in Orca. Turn off to remove Orca-managed hooks and stop reinstalling them."
         },
+        "agent-workspace-trust-copy": {
+          "title": "Trust the folder when Orca starts an agent",
+          "description": "Agents Orca starts skip their \"trust this folder?\" prompt in that worktree or folder, so the project's agent hooks and settings run without asking first. Turning this off stops new trust; folders already trusted stay trusted. While it is off, agents Orca starts unattended, such as orchestration workers, automations and agents started from your phone, stop at the trust question until someone answers it."
+        },
         "agent-generated-tab-title-copy": {
           "19ad21615a": "Auto-generate tab titles",
           "b036c7a409": "Derive short stable tab names from the first known agent prompt. Manual renames always win."
@@ -12224,10 +12228,6 @@
           "usageLabel": "Usage",
           "noAllowance": "Cursor reported no usage allowance for this account.",
           "staleUsage": "Last known usage — the latest refresh failed: {{reason}}"
-        },
-        "claude-worktree-trust-copy": {
-          "title": "Trust worktrees Orca creates for Claude",
-          "description": "When Orca starts Claude in a worktree it created, Claude skips its \"trust this folder?\" prompt, so the repo's Claude hooks and settings run without asking first. Claude still asks in folders and checkouts you added yourself, and in worktrees of pull requests from forks."
         }
       },
       "right": {
@@ -17807,6 +17807,7 @@
       },
       "ask": {
         "awaiting": "Awaiting user input:",
+        "awaitingUnnamed": "Awaiting user input",
         "asked": "Asked:",
         "questionCount": "{{value0}} questions"
       },

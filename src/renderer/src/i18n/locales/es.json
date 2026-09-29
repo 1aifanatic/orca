@@ -7900,9 +7900,9 @@
             "0d1c334987": "tapa",
             "ff8de8a2ad": "pantalla",
             "0d752916f8": "hooks",
-            "claude-trust-trust": "confianza",
-            "claude-trust-folder": "carpeta",
-            "claude-trust-worktree": "worktree",
+            "agent-trust-trust": "confianza",
+            "agent-trust-folder": "carpeta",
+            "agent-trust-worktree": "worktree",
             "6984d4291a": "estado",
             "13b20636a6": "esperando",
             "8599603496": "hecho",
@@ -9486,6 +9486,10 @@
           "7707c15abb": "Hooks de estado del agente",
           "a68a642835": "Muestra los estados trabajando, esperando y completado en Orca. Desactívalo para quitar los hooks administrados por Orca y dejar de reinstalarlos."
         },
+        "agent-workspace-trust-copy": {
+          "title": "Confiar en la carpeta cuando Orca inicia un agente",
+          "description": "Los agentes que inicia Orca omiten su pregunta \"trust this folder?\" en ese worktree o carpeta, así que los hooks y ajustes de agente del proyecto se ejecutan sin preguntar antes. Si lo desactivas, Orca deja de añadir confianza nueva; las carpetas que ya son de confianza lo siguen siendo. Mientras esté desactivado, los agentes que Orca inicia sin supervisión, como los workers de orquestación, las automatizaciones y los agentes iniciados desde tu teléfono, se detienen en la pregunta de confianza hasta que alguien la responda."
+        },
         "agent-generated-tab-title-copy": {
           "19ad21615a": "Generar títulos de pestañas automáticamente",
           "b036c7a409": "Deriva nombres de pestañas breves y estables a partir del primer prompt conocido del agente. Los cambios de nombre manuales siempre tienen prioridad."
@@ -10496,10 +10500,6 @@
           "usageDescription": "Cursor factura dos cuotas que se restablecen con tu ciclo de facturación, más gasto bajo demanda cuando se agotan.",
           "usageLabel": "Uso",
           "usageTitle": "Uso mensual del plan"
-        },
-        "claude-worktree-trust-copy": {
-          "title": "Confiar en los worktrees que Orca crea para Claude",
-          "description": "Cuando Orca inicia Claude en un worktree que creó, Claude omite su pregunta \"trust this folder?\", así que los hooks y ajustes de Claude del repositorio se ejecutan sin preguntar antes. Claude sigue preguntando en las carpetas y los checkouts que agregaste tú, y en los worktrees de pull requests de forks."
         }
       },
       "right": {

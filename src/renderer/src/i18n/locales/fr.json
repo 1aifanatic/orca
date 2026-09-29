@@ -9109,9 +9109,9 @@
             "0d1c334987": "couvercle",
             "ff8de8a2ad": "écran",
             "0d752916f8": "hooks",
-            "claude-trust-trust": "confiance",
-            "claude-trust-folder": "dossier",
-            "claude-trust-worktree": "worktree",
+            "agent-trust-trust": "confiance",
+            "agent-trust-folder": "dossier",
+            "agent-trust-worktree": "worktree",
             "6984d4291a": "statut",
             "13b20636a6": "en attente",
             "8599603496": "terminé",
@@ -10859,6 +10859,10 @@
           "7707c15abb": "Hooks de statut des agents",
           "a68a642835": "Affiche les états en cours, en attente et terminé dans Orca. Désactivez pour supprimer les hooks gérés par Orca et arrêter de les réinstaller."
         },
+        "agent-workspace-trust-copy": {
+          "title": "Faire confiance au dossier quand Orca lance un agent",
+          "description": "Les agents lancés par Orca ignorent leur question « trust this folder? » dans ce worktree ou ce dossier : les hooks et paramètres d'agent du projet s'exécutent donc sans demander d'abord. Désactiver cette option arrête toute nouvelle confiance ; les dossiers déjà approuvés le restent. Tant qu'elle est désactivée, les agents qu'Orca lance sans surveillance, comme les workers d'orchestration, les automatisations et les agents lancés depuis votre téléphone, s'arrêtent à la question de confiance jusqu'à ce que quelqu'un y réponde."
+        },
         "agent-generated-tab-title-copy": {
           "19ad21615a": "Générer automatiquement les titres des onglets",
           "b036c7a409": "Déduit des noms d'onglets courts et stables à partir de la première requête connue de l'agent. Les renommages manuels ont toujours priorité."
@@ -12160,10 +12164,6 @@
           "usageDescription": "Cursor facture deux enveloppes qui se réinitialisent avec votre cycle de facturation, plus des dépenses à la demande une fois épuisées.",
           "usageLabel": "Utilisation",
           "usageTitle": "Utilisation mensuelle du forfait"
-        },
-        "claude-worktree-trust-copy": {
-          "title": "Faire confiance aux worktrees créés par Orca pour Claude",
-          "description": "Quand Orca lance Claude dans un worktree qu'il a créé, Claude ignore sa question « trust this folder? » : les hooks et paramètres Claude du dépôt s'exécutent donc sans demander d'abord. Claude continue de demander dans les dossiers et checkouts que vous avez ajoutés vous-même, ainsi que dans les worktrees de pull requests provenant de forks."
         }
       },
       "right": {
@@ -17752,6 +17752,7 @@
       "railEmptyMessage": "Message",
       "ask": {
         "awaiting": "En attente de la saisie de l'utilisateur :",
+        "awaitingUnnamed": "En attente de la saisie de l'utilisateur",
         "asked": "Demandé:",
         "questionCount": "{{value0}} questions"
       },

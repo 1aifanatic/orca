@@ -15,9 +15,9 @@ import {
 } from './agent-generated-tab-title-copy'
 import { getAgentStatusHooksDescription, getAgentStatusHooksTitle } from './agent-status-hooks-copy'
 import {
-  getClaudeWorktreeTrustDescription,
-  getClaudeWorktreeTrustTitle
-} from './claude-worktree-trust-copy'
+  getAgentWorkspaceTrustDescription,
+  getAgentWorkspaceTrustTitle
+} from './agent-workspace-trust-copy'
 import {
   SettingsSegmentedControl,
   SettingsSubsectionHeader,
@@ -260,7 +260,7 @@ export function AgentsPane({
       />
       <AgentStatusHooksSetting settings={settings} updateSettings={updateSettings} />
       {!isPairedWebClientWindow() ? (
-        <ClaudeWorktreeTrustSetting settings={settings} updateSettings={updateSettings} />
+        <AgentWorkspaceTrustSetting settings={settings} updateSettings={updateSettings} />
       ) : null}
       <AgentGeneratedTabTitlesSetting settings={settings} updateSettings={updateSettings} />
       {!isPairedWebClientWindow() ? (
@@ -303,16 +303,16 @@ export function AgentStatusHooksSetting({ settings, updateSettings }: AgentsPane
   )
 }
 
-export function ClaudeWorktreeTrustSetting({ settings, updateSettings }: AgentsPaneProps) {
-  const enabled = settings.claudeTrustOrcaWorktrees !== false
+export function AgentWorkspaceTrustSetting({ settings, updateSettings }: AgentsPaneProps) {
+  const enabled = settings.agentWorkspaceTrustEnabled !== false
   return (
     <section className="space-y-3">
       <SettingsSwitchRow
-        label={getClaudeWorktreeTrustTitle()}
-        description={getClaudeWorktreeTrustDescription()}
+        label={getAgentWorkspaceTrustTitle()}
+        description={getAgentWorkspaceTrustDescription()}
         checked={enabled}
-        onChange={() => updateSettings({ claudeTrustOrcaWorktrees: !enabled })}
-        ariaLabel={getClaudeWorktreeTrustTitle()}
+        onChange={() => updateSettings({ agentWorkspaceTrustEnabled: !enabled })}
+        ariaLabel={getAgentWorkspaceTrustTitle()}
       />
     </section>
   )

@@ -9,9 +9,9 @@ import { useAppStore } from '../../store'
 import { getAgentGeneratedTabTitlesTitle } from './agent-generated-tab-title-copy'
 import { getAgentStatusHooksTitle } from './agent-status-hooks-copy'
 import {
-  getClaudeWorktreeTrustDescription,
-  getClaudeWorktreeTrustTitle
-} from './claude-worktree-trust-copy'
+  getAgentWorkspaceTrustDescription,
+  getAgentWorkspaceTrustTitle
+} from './agent-workspace-trust-copy'
 import { getAgentAwakeDescription, getAgentAwakeTitle } from './agent-awake-copy'
 import { AgentAwakeSetting } from './AgentAwakeSetting'
 import { AgentRuntimeSetting } from './AgentRuntimeSetting'
@@ -21,7 +21,7 @@ import {
   AgentPermissionsSetting,
   AgentGeneratedTabTitlesSetting,
   AgentStatusHooksSetting,
-  ClaudeWorktreeTrustSetting,
+  AgentWorkspaceTrustSetting,
   AgentsPane,
   getAgentsPaneSearchEntries,
   buildAgentAvailabilitySettingsUpdate,
@@ -370,17 +370,18 @@ describe('AgentsPane', () => {
     })
   })
 
-  it('defaults Claude worktree trust on and toggles it off', () => {
+  it('defaults agent folder trust on and toggles it off', () => {
     const updateSettings = vi.fn()
-    const element = ClaudeWorktreeTrustSetting({
+    const element = AgentWorkspaceTrustSetting({
       settings: getDefaultSettings('/tmp'),
       updateSettings
     })
 
-    const trustSwitch = findSwitchRow(element, getClaudeWorktreeTrustTitle())
+    const trustSwitch = findSwitchRow(element, getAgentWorkspaceTrustTitle())
     expect(trustSwitch.props.checked).toBe(true)
-    expect(getClaudeWorktreeTrustDescription()).toContain('hooks')
-    expect(getClaudeWorktreeTrustDescription()).toContain('forks')
+    expect(getAgentWorkspaceTrustDescription()).toContain('hooks')
+    expect(getAgentWorkspaceTrustDescription()).toContain('already trusted stay trusted')
+    expect(getAgentWorkspaceTrustDescription()).toContain('unattended')
 
     const onChange: unknown = trustSwitch.props.onChange
     expect(typeof onChange).toBe('function')
@@ -388,7 +389,7 @@ describe('AgentsPane', () => {
       onChange()
     }
 
-    expect(updateSettings).toHaveBeenCalledWith({ claudeTrustOrcaWorktrees: false })
+    expect(updateSettings).toHaveBeenCalledWith({ agentWorkspaceTrustEnabled: false })
   })
 
   it('toggles generated tab titles with the next value', () => {

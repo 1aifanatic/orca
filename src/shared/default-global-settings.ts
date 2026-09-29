@@ -220,7 +220,7 @@ export function buildDefaultSettings(args: {
     agentDefaultEnv: { ...DEFAULT_TUI_AGENT_ENV },
     agentYoloDefaultsMigrated: true,
     agentStatusHooksEnabled: true,
-    claudeTrustOrcaWorktrees: true,
+    agentWorkspaceTrustEnabled: true,
     tabAutoGenerateTitle: false,
     confirmClosePinnedTab: true,
     editorPreviewTabsEnabled: true,

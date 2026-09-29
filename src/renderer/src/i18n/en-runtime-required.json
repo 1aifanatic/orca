@@ -1576,6 +1576,9 @@
             "042c551bc5": "config",
             "0d1c334987": "lid",
             "0d752916f8": "hooks",
+            "agent-trust-trust": "trust",
+            "agent-trust-folder": "folder",
+            "agent-trust-worktree": "worktree",
             "13b20636a6": "waiting",
             "167daeb5e9": "command",
             "2afd3b5858": "enable",
@@ -1605,9 +1608,6 @@
             "c1317fe641": "restore",
             "c64059f50d": "prompt",
             "cbdd7f3b9e": "Choose whether installed agents are detected on this device or in WSL.",
-            "claude-trust-folder": "folder",
-            "claude-trust-trust": "trust",
-            "claude-trust-worktree": "worktree",
             "d8f3a8b8a0": "default",
             "dbc8aca6b0": "sleep",
             "e2b7c0dcd7": "github",
@@ -2677,6 +2677,7 @@
       "ask": {
         "asked": "Asked:",
         "awaiting": "Awaiting user input:",
+        "awaitingUnnamed": "Awaiting user input",
         "questionCount": "{{value0}} questions"
       },
       "composer": {
