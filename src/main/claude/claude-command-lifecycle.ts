@@ -1,14 +1,33 @@
 // What Claude's per-command `command_lifecycle` frames (msg_lifecycle_v1) settle.
 //
-// `cancelled` is not by itself a withdrawal: a command the CLI already started also ends
-// `cancelled` when its turn is interrupted or fails (measured on 2.1.280). Only a command
-// cancelled before it started was withdrawn. That frame lands ahead of the control answer, so
-// it settles the send even when the interrupt or cancel_async_message answer is lost.
+// A terminal state for a command that never started is a verdict: `cancelled` was withdrawn,
+// `discarded` was dropped when the CLI ended its session, `refused` was declined before it
+// queued. None ran. Once a command has started, the same states only mean its turn ended — an
+// interrupt or a hard failure (measured on 2.1.280) — so it may be in the conversation: doubt.
+// These frames land ahead of the control answer, so they settle a send even when that is lost.
 
-import { settleCancelledClaudeDispatchWaiters } from './claude-structured-dispatch'
+import {
+  agentSessionFailureFact,
+  type SubmissionRejectionKind
+} from '../../shared/agent-session-failure'
+import { DISPATCH_DOUBT_PROVIDER_ENDED_UNANSWERED } from '../native-chat/agent-session-journal/journal-dispatch-doubt-reasons'
+import {
+  rejectClaudeDispatchWaiters,
+  releaseClaudeDispatchWaitersInDoubt
+} from './claude-structured-dispatch'
 import { readClaudeFrameString } from './claude-structured-init-proof'
 import type { ClaudeLateDispatchSettlement } from './claude-replay-turn-resolution'
 import type { ClaudeSession } from './claude-structured-session-state'
+
+const UNSTARTED_VERDICT = {
+  cancelled: 'cancelled',
+  discarded: 'notDelivered',
+  refused: 'providerRejected'
+} satisfies Record<string, SubmissionRejectionKind>
+
+function isTerminalState(state: unknown): state is keyof typeof UNSTARTED_VERDICT {
+  return state === 'cancelled' || state === 'discarded' || state === 'refused'
+}
 
 export function observeClaudeCommandLifecycle(
   session: ClaudeSession,
@@ -27,7 +46,19 @@ export function observeClaudeCommandLifecycle(
   if (state === 'started' || (state === 'queued' && waiter.commandLifecycle !== 'started')) {
     // Forward only: a redelivered command re-emits `queued`, but it has still started.
     waiter.commandLifecycle = state
-  } else if (state === 'cancelled' && waiter.commandLifecycle !== 'started') {
-    settleCancelledClaudeDispatchWaiters(session, [waiter.sentUuid], onSettledLate)
+  } else if (isTerminalState(state) && waiter.commandLifecycle === 'started') {
+    releaseClaudeDispatchWaitersInDoubt(
+      session,
+      [waiter],
+      DISPATCH_DOUBT_PROVIDER_ENDED_UNANSWERED,
+      onSettledLate
+    )
+  } else if (isTerminalState(state)) {
+    rejectClaudeDispatchWaiters(
+      session,
+      [waiter.sentUuid],
+      agentSessionFailureFact(UNSTARTED_VERDICT[state]),
+      onSettledLate
+    )
   }
 }

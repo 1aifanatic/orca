@@ -87,6 +87,8 @@ export type ClaudeLateDispatchOutcome =
       providerIdentity: AgentJournalItemIdentity
     }
   | ({ clientMessageId: string; state: 'rejected' } & AgentJournalDispatchRejection)
+  /** The CLI took the send and let it go unanswered: it may have run, so it is never re-sent. */
+  | { clientMessageId: string; state: 'unknown'; reason: string }
 
 export type ClaudeStructuredSessionAdapterDeps = {
   resolveLaunch: (input: {

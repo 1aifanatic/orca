@@ -264,7 +264,8 @@ export function changeStructuredAgentSessionThreadGoal(
   )
 }
 
-/** Settle provider-proven delivery independently of an in-flight client mutation. */
+/** Settle a provider-proven outcome independently of an in-flight client mutation. `unknown` is
+ *  released doubt: the provider let the send go unanswered, so nothing re-sends it. */
 export async function settleStructuredAgentSessionLateDispatch(
   context: StructuredAgentSessionMutationContext,
   input: {
@@ -273,6 +274,7 @@ export async function settleStructuredAgentSessionLateDispatch(
   } & (
     | { providerIdentity: AgentJournalItemIdentity }
     | ({ state: 'rejected' } & AgentJournalDispatchRejection)
+    | { state: 'unknown'; reason: string }
   )
 ): Promise<void> {
   const session = context.sessions.get(input.sessionId)
@@ -289,13 +291,21 @@ export async function settleStructuredAgentSessionLateDispatch(
           providerIdentity: input.providerIdentity,
           fence
         }
-      : {
-          clientMessageId: input.clientMessageId,
-          state: 'rejected',
-          reason: input.reason,
-          rejection: input.rejection,
-          fence
-        }
+      : input.state === 'unknown'
+        ? {
+            clientMessageId: input.clientMessageId,
+            state: 'unknown',
+            reason: input.reason,
+            fence,
+            recovered: true
+          }
+        : {
+            clientMessageId: input.clientMessageId,
+            state: 'rejected',
+            reason: input.reason,
+            rejection: input.rejection,
+            fence
+          }
   )
 }
 
