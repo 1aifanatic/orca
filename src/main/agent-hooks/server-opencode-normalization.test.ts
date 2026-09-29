@@ -282,10 +282,18 @@ describe('OpenCode main agent from the root session state', () => {
     expect(payload?.mainAgent).toEqual({ state: 'done', stateStartedAt: expect.any(Number) })
   })
 
-  it.each(['opencode2', 'mimo-code'] as const)('publishes no main agent for %s', (source) => {
+  it('publishes the root verdict from the OpenCode 2 launch entry', () => {
     const payload = normalize(
       { hook_event_name: 'SessionIdle', root_state: 'done', root_turn_error_name: 'APIError' },
-      source
+      'opencode2'
+    )
+    expect(payload?.mainAgent).toMatchObject({ state: 'done', outcome: 'failure' })
+  })
+
+  it('publishes no main agent for mimo-code', () => {
+    const payload = normalize(
+      { hook_event_name: 'SessionIdle', root_state: 'done', root_turn_error_name: 'APIError' },
+      'mimo-code'
     )
     expect(payload?.state).toBe('done')
     expect(payload?.mainAgent).toBeUndefined()

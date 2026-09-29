@@ -85,9 +85,9 @@ export function normalizeOpenCodeFamilyEvent(
       resetOnNewTurn: resetsTurn
     }
   )
-  // Why: mimo-code and the opencode2 binary share the plugin, but their root-state reports are unverified.
+  // Why: mimo-code shares the plugin, but its root-state reports are unverified.
   const mainAgent =
-    source === 'opencode'
+    source === 'opencode' || source === 'opencode2'
       ? resolveOpenCodeMainAgent(state, paneKey, eventName, hookPayload)
       : undefined
 
