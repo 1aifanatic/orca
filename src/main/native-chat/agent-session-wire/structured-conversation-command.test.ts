@@ -2,6 +2,7 @@ import { cp, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS } from '../../../shared/agent-session-host-authority'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import type { AgentSessionConversationCommand } from '../../../shared/agent-session-conversation-command'
 import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
@@ -358,6 +359,16 @@ describe('a clear that never committed', () => {
     expect(store.listVisibleSessionIds()).toEqual([replacement])
   })
 
+  // Its id is too old to start anything now, and it started nothing to finish.
+  it('lets a clear under a new operation id commit a day after a try that started nothing', async () => {
+    refuseReplacementStartOnce()
+    await expect(host.conversationCommand(caller, commandParams('clear'))).rejects.toThrow()
+    clock += AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS + 60_000
+    const params = commandParams('clear')
+    params.envelope.clientOperationId = `${clock}-${'a'.repeat(32)}`
+    await clearCommits(params)
+  })
+
   it('reruns under the same operation id and starts exactly one replacement', async () => {
     refuseReplacementStartOnce()
     const params = commandParams('clear')
@@ -412,20 +423,6 @@ describe('a clear that never committed', () => {
     expect(host.collaboratorsForTests().sessions.get(orphan!)?.child).toBeTruthy()
     return orphan!
   }
-
-  // Nothing points at that replacement, so nothing lists, opens or starts it. Its agent is the
-  // only thing it holds, and it ends the way every quiet agent does.
-  it('leaves a replacement it never pointed at unlisted, and its agent stopped once idle', async () => {
-    const orphan = await clearThatDiesBeforeItsCommit()
-    const replacement = await clearCommits()
-    expect(replacement).not.toBe(orphan)
-    expect(store.listVisibleSessionIds()).toEqual([replacement])
-    expect(host.conversationReplacements().map((entry) => entry.sessionId)).toEqual([replacement])
-    clock += STRUCTURED_AGENT_SESSION_IDLE_MS + 1
-    await host.collaboratorsForTests().lifetime.idleSweep.tick()
-    expect(host.collaboratorsForTests().sessions.has(orphan)).toBe(false)
-    expect(store.getRecord(orphan)?.lease).toMatchObject({ claimStatus: 'released' })
-  })
 
   function otherRecordIds(): string[] {
     return store
@@ -540,19 +537,102 @@ describe('a clear that never committed', () => {
     expect(store.listVisibleSessionIds()).toEqual([HOST_TEST_SESSION])
   })
 
-  it('starts nothing for that replacement after a crash, and releases what it held', async () => {
+  // The client mints a fresh operation id per press; the host still finds that press's earlier try.
+  it('retried under a fresh operation id while its replacement runs, finishes onto it and starts no other', async () => {
+    const orphan = await clearThatDiesBeforeItsCommit()
+    const result = await host.conversationCommand(caller, commandParams('clear'))
+    expect(result).toMatchObject({
+      ok: true,
+      value: { phase: 'committed', state: 'completed', replacementSessionId: orphan }
+    })
+    expect(result.ok && result.value.error).toBeFalsy()
+    expect(otherRecordIds()).toEqual([orphan])
+    expect(startsFor(orphan)).toBe(1)
+    expect(store.listVisibleSessionIds()).toEqual([orphan])
+    expect(host.conversationReplacements().map((entry) => entry.sessionId)).toEqual([orphan])
+    expect(await sendTo(orphan, 'first message')).toMatchObject({ ok: true })
+  })
+
+  it('retried under a fresh operation id after a restart, finishes onto the replacement it started', async () => {
     const orphan = await clearThatDiesBeforeItsCommit()
     await restartHost()
     await host.restoreReadableSessions(store.listVisibleSessionIds())
-    const replacement = await clearCommits()
-    expect(store.listVisibleSessionIds()).toEqual([replacement])
-    expect(host.conversationReplacements().map((entry) => entry.sessionId)).toEqual([replacement])
-    expect(host.collaboratorsForTests().sessions.has(orphan)).toBe(false)
-    const started = vi.mocked(adapter.acquire).mock.calls.map(([input]) => input.identity.sessionId)
-    expect(started.filter((sessionId) => sessionId === orphan)).toHaveLength(1)
+    const result = await host.conversationCommand(caller, commandParams('clear'))
+    expect(result).toMatchObject({
+      ok: true,
+      value: { phase: 'committed', state: 'completed', replacementSessionId: orphan }
+    })
+    expect(otherRecordIds()).toEqual([orphan])
+    expect(startsFor(orphan)).toBe(1)
     expect(store.getRecord(orphan)?.lease).toMatchObject({
       claimStatus: 'released',
       ownerProcess: null
     })
+    await expectClearedOnto(orphan)
+  })
+
+  it("refuses another window's /clear while this one's replacement runs, and runs it once that stops", async () => {
+    const otherWindow = { callerKey: 'mobile' }
+    const orphan = await clearThatDiesBeforeItsCommit()
+    expect(await host.conversationCommand(otherWindow, commandParams('clear'))).toMatchObject({
+      ok: false,
+      refusal: { details: { reason: 'conversationCommandInFlight' } }
+    })
+    expect(otherRecordIds()).toEqual([orphan])
+    clock += STRUCTURED_AGENT_SESSION_IDLE_MS + 1
+    await host.collaboratorsForTests().lifetime.idleSweep.tick()
+    const result = await host.conversationCommand(otherWindow, commandParams('clear'))
+    expect(result).toMatchObject({
+      ok: true,
+      value: { state: 'completed', replacementSessionId: expect.any(String) }
+    })
+    const replacement = result.ok ? result.value.replacementSessionId! : ''
+    expect(replacement).not.toBe(orphan)
+    // Nothing points at the first window's replacement, so nothing lists, opens or starts it.
+    expect(store.listVisibleSessionIds()).toEqual([replacement])
+    expect(host.conversationReplacements().map((entry) => entry.sessionId)).toEqual([replacement])
+    expect(host.collaboratorsForTests().sessions.has(orphan)).toBe(false)
+    expect(store.getRecord(orphan)?.lease).toMatchObject({ claimStatus: 'released' })
+    expect(startsFor(orphan)).toBe(1)
+  })
+
+  function failNextReplacementStart() {
+    vi.mocked(adapter.acquire).mockRejectedValueOnce(
+      new AgentSessionAcquisitionRefusal('Codex is not signed in.', 'notSignedIn')
+    )
+  }
+
+  // The other window's failure is the conversation's latest; this window's own still ended its try.
+  it('starts a new replacement for a /clear after one that committed its failure, in either window', async () => {
+    for (const each of [caller, { callerKey: 'mobile' }]) {
+      failNextReplacementStart()
+      expect(await host.conversationCommand(each, commandParams('clear'))).toMatchObject({
+        ok: true,
+        value: { replacementSessionId: undefined, failure: { kind: 'notSignedIn' } }
+      })
+    }
+    const failed = otherRecordIds()
+    expect(failed).toHaveLength(2)
+    const replacement = await clearCommits()
+    expect(failed).not.toContain(replacement)
+    expect(startsFor(replacement)).toBe(1)
+    expect(store.listVisibleSessionIds()).toEqual([replacement])
+  })
+
+  it('starts a new replacement after a committed failure whose ledger settlement was lost', async () => {
+    failNextReplacementStart()
+    const persist = store.recordOperationOutcome.bind(store)
+    vi.spyOn(store, 'recordOperationOutcome').mockImplementation(async (input) => {
+      if (input.outcome.status === 'succeeded' && input.outcome.conversationCommand) {
+        throw new Error('crash')
+      }
+      return persist(input)
+    })
+    await expect(host.conversationCommand(caller, commandParams('clear'))).rejects.toThrow('crash')
+    vi.mocked(store.recordOperationOutcome).mockRestore()
+    const [failed] = otherRecordIds()
+    const replacement = await clearCommits()
+    expect(replacement).not.toBe(failed)
+    expect(store.listVisibleSessionIds()).toEqual([replacement])
   })
 })

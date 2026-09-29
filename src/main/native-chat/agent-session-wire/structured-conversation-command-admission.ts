@@ -15,6 +15,10 @@ function blocked(
   return refuse('agent_session_operation_invalid', { reason }, message)
 }
 
+export function conversationCommandInFlight(): AgentSessionWireRefusal {
+  return blocked('conversationCommandInFlight', 'Wait for the conversation operation to finish.')
+}
+
 /**
  * Why a conversation command may not run now; null when it may.
  *
