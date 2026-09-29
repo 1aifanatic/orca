@@ -1,8 +1,9 @@
-# Ephemeral CI only. Preview ZIP server qualification, not inbox capability coverage.
-param([Parameter(Mandatory=$true)][string]$Receipt,[Parameter(Mandatory=$true)][string]$Archive,[Parameter(Mandatory=$true)][ValidateSet('arm64','x64')][string]$Arch,[scriptblock]$ProductionRouteProbe)
+# Ephemeral CI only. Preview ZIP or inbox capability binaries, always under a private service and account.
+param([Parameter(Mandatory=$true)][string]$Receipt,[string]$Archive,[Parameter(Mandatory=$true)][ValidateSet('arm64','x64')][string]$Arch,[ValidateSet('preview','inbox')][string]$Server='preview',[scriptblock]$ProductionRouteProbe)
 $ErrorActionPreference = 'Stop'
 $target=@{arm64=@{os='Arm64';folder='OpenSSH-ARM64';machine='0xAA64';archive='698c6aec31c1dd0fb996206e8741f4531a97355686b5431ef347d531b07fcd42'};x64=@{os='X64';folder='OpenSSH-Win64';machine='0x8664';archive='23f50f3458c4c5d0b12217c6a5ddfde0137210a30fa870e98b29827f7b43aba5'}}[$Arch]
-$report = @{scope='Microsoft Win32-OpenSSH 10.0.0.0p2-Preview $Arch private loopback authentication and stock cmd.exe dispatch; NOT inbox server or relay deployment'; status='running'; imageVersion=$env:ImageVersion; cleanup=@('not-confirmed'); globalBootstrapCleanup='Not qualified: service bootstrap may create ProgramData SSH and OpenSSH registry entries; disposable CI VM destruction is the boundary'; observations=@(); stages=@(); diagnosticCaptureFailures=@()}
+$scopeServer=if($Server -eq 'inbox'){'Windows inbox OpenSSH.Server capability binaries'}else{'Microsoft Win32-OpenSSH 10.0.0.0p2-Preview'}
+$report = @{scope="$scopeServer $Arch private loopback authentication and stock cmd.exe dispatch"; server=$Server; status='running'; imageVersion=$env:ImageVersion; cleanup=@('not-confirmed'); globalBootstrapCleanup='Not qualified: service bootstrap may create ProgramData SSH and OpenSSH registry entries; disposable CI VM destruction is the boundary'; observations=@(); stages=@(); diagnosticCaptureFailures=@()}
 $script:receiptWritten=$false
 function Write-Stage([string]$Stage) {
   $timestamp=[DateTime]::UtcNow.ToString('o')
@@ -23,7 +24,14 @@ if ($env:GITHUB_ACTIONS -ne 'true' -or $env:ORCA_ISOLATED_SSH_CI -ne '1' -or [Ru
 $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $admin) { throw 'Administrative private service/account setup required' }
 Write-Stage 'existing-server-query-start'
-if(Get-Service sshd -ErrorAction SilentlyContinue){throw 'Refuse an existing global SSH server'}
+$inboxDir=Join-Path $env:WINDIR 'System32\OpenSSH'
+function Assert-GlobalServerDormant {
+  $global=Get-CimInstance Win32_Service -Filter "Name='sshd'"
+  if(-not $global){return}
+  # Inbox mode may register the global service; it must stay stopped and never be started here.
+  if($Server -ne 'inbox' -or $global.State -ne 'Stopped' -or $global.PathName.Trim('"') -ne (Join-Path $inboxDir 'sshd.exe')){throw 'Refuse an existing global SSH server'}
+}
+Assert-GlobalServerDormant
 Write-Stage 'existing-server-query-complete'
 Write-Stage 'default-shell-query-start'
 $registry = Get-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\OpenSSH' -ErrorAction SilentlyContinue
@@ -38,7 +46,7 @@ New-Item -ItemType Directory -Path $root | Out-Null
 Write-Stage 'private-directory-create-complete'
 $report.root=$root
 $createdUser=$false; $createdService=$false; $sid=$null; $ownedServerPid=$null
-$sshDir=Join-Path $root $target.folder
+$sshDir=if($Server -eq 'inbox'){$inboxDir}else{Join-Path $root $target.folder}
 $sshdLog=Join-Path $root 'private-sshd.log'
 $serviceStartAttempt=$null
 function Diagnostic-Categories([string]$Text) {
@@ -119,31 +127,50 @@ function Machine([string]$Path){
   try{$reader=[IO.BinaryReader]::new($file);$file.Position=0x3c;$position=$reader.ReadInt32();$file.Position=$position;if($reader.ReadUInt32()-ne 0x00004550){throw 'Invalid PE'};return ('0x{0:X4}'-f $reader.ReadUInt16())}finally{$file.Dispose()}
 }
 try {
-  Write-Stage 'preview-archive-verify-start'
-  $expectedArchive=$target.archive
-  if((Get-FileHash -LiteralPath $Archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expectedArchive){throw 'Preview archive hash mismatch'}
-  $report.archiveSha256=$expectedArchive
-  Write-Stage 'preview-archive-verify-complete'
-  Write-Stage 'preview-extract-start'
-  # The exact hash is checked before extraction; never execute included installer scripts.
-  [IO.Compression.ZipFile]::ExtractToDirectory($Archive,$root)
-  Write-Stage 'preview-extract-complete'
-  Write-Stage 'preview-native-input-verification-start'
-  $manifest=Get-Content -LiteralPath (Join-Path $PSScriptRoot "preview-native-inputs-$Arch.json") -Raw | ConvertFrom-Json
-  if($manifest.archiveSha256 -ne $expectedArchive -or $manifest.files.Count -ne 15){throw 'Preview input manifest mismatch'}
-  $nativeFiles=@(Get-ChildItem -LiteralPath $sshDir -File | Where-Object {$_.Extension -in @('.exe','.dll')})
-  if($nativeFiles.Count -ne $manifest.files.Count){throw 'Unexpected preview native input count'}
-  $verified=@()
-  foreach($file in $nativeFiles){
-    $expected=@($manifest.files | Where-Object name -eq $file.Name)
-    if($expected.Count -ne 1 -or (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected[0].sha256){throw 'Preview native input hash mismatch'}
-    if((Machine $file.FullName) -ne $target.machine){throw "Preview native input is not $Arch"}
-    $signature=Get-AuthenticodeSignature -LiteralPath $file.FullName
-    if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch '(?:^|, )O=Microsoft Corporation(?:,|$)'){throw 'Preview native input Microsoft signature invalid'}
-    $verified+=@{name=$file.Name;sha256=$expected[0].sha256;machine=$target.machine;signature='Valid';publisher=$signature.SignerCertificate.Subject}
+  if($Server -eq 'preview'){
+    Write-Stage 'preview-archive-verify-start'
+    if(-not $Archive){throw 'Preview mode requires the pinned archive'}
+    $expectedArchive=$target.archive
+    if((Get-FileHash -LiteralPath $Archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expectedArchive){throw 'Preview archive hash mismatch'}
+    $report.archiveSha256=$expectedArchive
+    Write-Stage 'preview-archive-verify-complete'
+    Write-Stage 'preview-extract-start'
+    # The exact hash is checked before extraction; never execute included installer scripts.
+    [IO.Compression.ZipFile]::ExtractToDirectory($Archive,$root)
+    Write-Stage 'preview-extract-complete'
+    Write-Stage 'preview-native-input-verification-start'
+    $manifest=Get-Content -LiteralPath (Join-Path $PSScriptRoot "preview-native-inputs-$Arch.json") -Raw | ConvertFrom-Json
+    if($manifest.archiveSha256 -ne $expectedArchive -or $manifest.files.Count -ne 15){throw 'Preview input manifest mismatch'}
+    $nativeFiles=@(Get-ChildItem -LiteralPath $sshDir -File | Where-Object {$_.Extension -in @('.exe','.dll')})
+    if($nativeFiles.Count -ne $manifest.files.Count){throw 'Unexpected preview native input count'}
+    $verified=@()
+    foreach($file in $nativeFiles){
+      $expected=@($manifest.files | Where-Object name -eq $file.Name)
+      if($expected.Count -ne 1 -or (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected[0].sha256){throw 'Preview native input hash mismatch'}
+      if((Machine $file.FullName) -ne $target.machine){throw "Preview native input is not $Arch"}
+      $signature=Get-AuthenticodeSignature -LiteralPath $file.FullName
+      if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch '(?:^|, )O=Microsoft Corporation(?:,|$)'){throw 'Preview native input Microsoft signature invalid'}
+      $verified+=@{name=$file.Name;sha256=$expected[0].sha256;machine=$target.machine;signature='Valid';publisher=$signature.SignerCertificate.Subject}
+    }
+    $report.nativeInputs=$verified
+    Write-Stage 'preview-native-input-verification-complete'
+  } else {
+    Write-Stage 'inbox-capability-start'
+    $capability=Get-WindowsCapability -Online -Name 'OpenSSH.Server~~~~0.0.1.0'
+    $report.inboxCapabilityInitialState=[string]$capability.State
+    if($capability.State -ne 'Installed'){Add-WindowsCapability -Online -Name 'OpenSSH.Server~~~~0.0.1.0' | Out-Null}
+    Assert-GlobalServerDormant
+    Write-Stage 'inbox-capability-complete'
+    $verified=@()
+    foreach($name in @('sshd.exe','ssh.exe','ssh-keygen.exe','sftp.exe','sftp-server.exe')){
+      $path=Join-Path $sshDir $name
+      if((Machine $path) -ne $target.machine){throw "Inbox native input is not $Arch"}
+      $signature=Get-AuthenticodeSignature -LiteralPath $path
+      if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch '(?:^|, )O=Microsoft Corporation(?:,|$)'){throw 'Inbox native input Microsoft signature invalid'}
+      $verified+=@{name=$name;sha256=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant();version=(Get-Item -LiteralPath $path).VersionInfo.FileVersion;machine=$target.machine;signature='Valid'}
+    }
+    $report.nativeInputs=$verified
   }
-  $report.nativeInputs=$verified
-  Write-Stage 'preview-native-input-verification-complete'
   $sshd=Join-Path $sshDir 'sshd.exe';$ssh=Join-Path $sshDir 'ssh.exe';$keygen=Join-Path $sshDir 'ssh-keygen.exe'
   $password=ConvertTo-SecureString ([Guid]::NewGuid().ToString('N')+'aA!7') -AsPlainText -Force
   Write-Stage 'private-user-collision-query-start'
@@ -161,7 +188,8 @@ try {
   Invoke-Bounded icacls.exe @($root,'/inheritance:r','/grant:r','*S-1-5-18:(OI)(CI)F','*S-1-5-32-544:(OI)(CI)F',"*$($sid):(RX)") | Out-Null
   # /T visits files too: grant direct rights instead of directory-only inheritance flags.
   $runnerSid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-  Invoke-Bounded icacls.exe @($sshDir,'/inheritance:r','/grant:r','*S-1-5-18:F','*S-1-5-32-544:F',"*$($runnerSid):F","*$($sid):RX",'/T') | Out-Null
+  # Never rewrite System32 ACLs; only the private preview copy is re-permissioned.
+  if($Server -eq 'preview'){Invoke-Bounded icacls.exe @($sshDir,'/inheritance:r','/grant:r','*S-1-5-18:F','*S-1-5-32-544:F',"*$($runnerSid):F","*$($sid):RX",'/T') | Out-Null}
   $report.nativeAcl=@{directory=(Get-Acl -LiteralPath $sshDir).Sddl;keygen=(Get-Acl -LiteralPath $keygen).Sddl}
   Write-Stage 'native-acl-recorded'
   $hostKey=Join-Path $root 'host_key';$clientKey=Join-Path $root 'client_key'
@@ -216,6 +244,8 @@ LogLevel DEBUG1
   Write-Stage 'private-service-create-complete'
   Invoke-Bounded sc.exe @('privs',$serviceName,'SeAssignPrimaryTokenPrivilege/SeTcbPrivilege/SeBackupPrivilege/SeRestorePrivilege/SeImpersonatePrivilege') | Out-Null
   Write-Stage 'private-service-start-start'
+  $preexisting=@(Get-CimInstance Win32_Process | Where-Object {$_.ExecutablePath -and $_.ExecutablePath.StartsWith($sshDir+'\',[StringComparison]::OrdinalIgnoreCase)} | ForEach-Object {"$($_.ProcessId)/$($_.CreationDate.Ticks)"})
+  $report.preexistingServerDirectoryProcesses=$preexisting.Count
   $serviceStartAttempt=[DateTime]::Now.AddSeconds(-1)
   Start-Service -Name $serviceName
   Write-Stage 'private-service-start-complete'
@@ -274,7 +304,7 @@ LogLevel DEBUG1
     if($createdService -and $privateService -and ($privateService.PathName -notlike "*$root*" -or ($ownedServerPid -and $privateService.ProcessId -and $privateService.ProcessId -ne $ownedServerPid))){throw 'Private service identity changed; refuse stop'}
     Write-Stage 'cleanup-child-accounting-start'
     $rows=@(Get-CimInstance Win32_Process)
-    $ownedChildren=@($rows | Where-Object {$_.ExecutablePath -and $_.ExecutablePath.StartsWith($sshDir+'\',[StringComparison]::OrdinalIgnoreCase)})
+    $ownedChildren=@($rows | Where-Object {$_.ExecutablePath -and $_.ExecutablePath.StartsWith($sshDir+'\',[StringComparison]::OrdinalIgnoreCase) -and "$($_.ProcessId)/$($_.CreationDate.Ticks)" -notin $preexisting})
     $report.childrenBeforeStop=@($ownedChildren | ForEach-Object {@{pid=$_.ProcessId;parentPid=$_.ParentProcessId;created=$_.CreationDate.ToUniversalTime().ToString('o');image=[IO.Path]::GetFileName($_.ExecutablePath)}})
     Write-Stage 'cleanup-child-accounting-complete'
     Write-Stage 'cleanup-service-stop-delete-start' 
@@ -294,7 +324,7 @@ LogLevel DEBUG1
     Write-Stage 'cleanup-child-exit-start'
     $childDeadline=[DateTime]::UtcNow.AddSeconds(10)
     do {
-      $remaining=@(Get-CimInstance Win32_Process | Where-Object {$_.ExecutablePath -and $_.ExecutablePath.StartsWith($sshDir+'\',[StringComparison]::OrdinalIgnoreCase)})
+      $remaining=@(Get-CimInstance Win32_Process | Where-Object {$_.ExecutablePath -and $_.ExecutablePath.StartsWith($sshDir+'\',[StringComparison]::OrdinalIgnoreCase) -and "$($_.ProcessId)/$($_.CreationDate.Ticks)" -notin $preexisting})
       if(-not $remaining.Count){break};Start-Sleep -Milliseconds 200
     } while([DateTime]::UtcNow -lt $childDeadline)
     $report.childrenAfterStop=@($remaining | ForEach-Object {@{pid=$_.ProcessId;parentPid=$_.ParentProcessId;created=$_.CreationDate.ToUniversalTime().ToString('o');image=[IO.Path]::GetFileName($_.ExecutablePath)}})

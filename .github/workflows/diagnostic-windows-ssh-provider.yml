@@ -23,12 +23,20 @@ jobs:
         include:
           - arch: arm64
             runner: windows-11-arm
+            server: preview
             archive: OpenSSH-ARM64.zip
           - arch: x64
             runner: windows-2022
+            server: preview
             archive: OpenSSH-Win64.zip
+          - arch: arm64
+            runner: windows-11-arm
+            server: inbox
+          - arch: x64
+            runner: windows-2022
+            server: inbox
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 45
+    timeout-minutes: ${{ matrix.server == 'inbox' && 60 || 45 }}
     env:
       ORCA_BACKGROUND_LAUNCH: '1'
       ORCA_ISOLATED_SSH_CI: '1'
@@ -122,21 +130,25 @@ jobs:
           }
       - name: Qualify standard-user SSH deployment, loaded provider and exact resize replay
         shell: pwsh
-        timeout-minutes: 18
+        # Capability installation can take several minutes on a fresh image.
+        timeout-minutes: ${{ matrix.server == 'inbox' && 30 || 18 }}
         run: |
           $tools=Join-Path $pwd '.build/qualification-tools/config/ci/windows-ssh-provider'
           $sourceRoot=$pwd.Path
-          $archive=Join-Path $env:RUNNER_TEMP 'preview-${{ matrix.archive }}'
-          & "$env:WINDIR\System32\curl.exe" --fail --location --connect-timeout 15 --max-time 90 --output $archive 'https://github.com/PowerShell/Win32-OpenSSH/releases/download/10.0.0.0p2-Preview/${{ matrix.archive }}'
-          if($LASTEXITCODE -ne 0){throw 'SSH archive fetch failed'}
+          $archive=''
+          if('${{ matrix.server }}' -eq 'preview'){
+            $archive=Join-Path $env:RUNNER_TEMP 'preview-${{ matrix.archive }}'
+            & "$env:WINDIR\System32\curl.exe" --fail --location --connect-timeout 15 --max-time 90 --output $archive 'https://github.com/PowerShell/Win32-OpenSSH/releases/download/10.0.0.0p2-Preview/${{ matrix.archive }}'
+            if($LASTEXITCODE -ne 0){throw 'SSH archive fetch failed'}
+          }
           $callback={param($user,$port,$identity,$known)
             & (Join-Path $tools 'invoke-provider-route.ps1') -SourceRoot $sourceRoot -SourceCommit $env:QUALIFICATION_SOURCE_SHA -Username $user -Port $port -IdentityFile $identity -KnownHosts $known -ReceiptRoot "$env:RUNNER_TEMP\provider-route" -CandidateReceipt $env:CANDIDATE_RECEIPT -CandidateReceiptSha256 $env:CANDIDATE_RECEIPT_SHA256 -Arch '${{ matrix.arch }}'
           }.GetNewClosure()
-          & (Join-Path $tools 'preview-ssh/prove-preview-openssh.ps1') -Archive $archive -Arch '${{ matrix.arch }}' -Receipt "$env:RUNNER_TEMP\provider-server.json" -ProductionRouteProbe $callback 2>&1 | Tee-Object .build/ssh-provider-receipts/native-route.log
+          & (Join-Path $tools 'preview-ssh/prove-preview-openssh.ps1') -Archive $archive -Arch '${{ matrix.arch }}' -Server '${{ matrix.server }}' -Receipt "$env:RUNNER_TEMP\provider-server.json" -ProductionRouteProbe $callback 2>&1 | Tee-Object .build/ssh-provider-receipts/native-route.log
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: stable-bun-${{ matrix.arch }}-ssh-provider-receipts
+          name: stable-bun-${{ matrix.arch }}-${{ matrix.server }}-ssh-provider-receipts
           path: |
             .build/ssh-provider-receipts/
             .build/producer/results/
