@@ -58,9 +58,13 @@ export async function proveRepaint(options: {
   const script = join(directory, 'repaint.cjs')
   const settled = join(directory, 'settled')
   const dimensions = join(directory, 'dimensions')
-  const source = `const fs=require('node:fs');process.stdout.write('\\x1bc');let i=0;const timer=setInterval(()=>{process.stdout.write(${JSON.stringify(korean)}+'\\r\\n'+${JSON.stringify(latin)}+'\\r\\n');if(++i===8){clearInterval(timer);process.stdout.write('',()=>fs.writeFileSync(${JSON.stringify(settled)},''));}},25);setInterval(()=>fs.writeFileSync(${JSON.stringify(dimensions)},String(process.stdout.columns)),20);setTimeout(()=>process.exit(0),45000);`
+  const dimensionLog = join(directory, 'dimensions.log')
+  // Diagnostic: log cached columns beside a fresh GetConsoleScreenBufferInfo read, SIGWINCH count and exit time.
+  const source = `const fs=require('node:fs');const tty=require('node:tty');process.stdout.write('\\x1bc');let i=0;const timer=setInterval(()=>{process.stdout.write(${JSON.stringify(korean)}+'\\r\\n'+${JSON.stringify(latin)}+'\\r\\n');if(++i===8){clearInterval(timer);process.stdout.write('',()=>fs.writeFileSync(${JSON.stringify(settled)},''));}},25);let winch=0,last='',beat=0;process.on('SIGWINCH',()=>winch++);const log=(extra)=>fs.appendFileSync(${JSON.stringify(dimensionLog)},JSON.stringify({t:Date.now(),pid:process.pid,...extra})+'\\n');log({start:true});setInterval(()=>{const cached=process.stdout.columns;let fresh=null;try{fresh=new tty.WriteStream(1).columns}catch(e){fresh=String(e)}fs.writeFileSync(${JSON.stringify(dimensions)},String(cached));const key=cached+'/'+fresh+'/'+winch;if(key!==last||++beat%50===0){last=key;log({cached,fresh,winch})}},20);process.on('exit',(code)=>log({exit:code}));setTimeout(()=>process.exit(0),45000);`
   writeFileSync(script, source)
   const events: Event[] = []
+  const timeline: { t: number; mark: string; detail?: unknown }[] = []
+  const mark = (name: string, detail?: unknown) => timeline.push({ t: Date.now(), mark: name, detail })
   let id = ''
   let lastOutput = performance.now()
   let overflow = false
@@ -74,6 +78,7 @@ export async function proveRepaint(options: {
       }
       events.push({ data: message.data })
       lastOutput = performance.now()
+      mark('data', Buffer.byteLength(message.data))
     }
   })
   const quiet = async (cols: number) => {
@@ -89,6 +94,10 @@ export async function proveRepaint(options: {
         return
       await delay(25)
     }
+    mark('settle-timeout', {
+      cols,
+      dimensions: existsSync(dimensions) ? readFileSync(dimensions, 'utf8') : null
+    })
     throw new Error('Fixture did not settle')
   }
   try {
@@ -106,13 +115,18 @@ export async function proveRepaint(options: {
       id,
       data: `& ${powerShellLiteral(options.runtime)} --no-env-file --config=NUL --no-install ${powerShellLiteral(script)}\r`
     })
+    mark('command-sent')
     await quiet(40)
+    mark('settled', 40)
     const initial = assertEight(events)
+    mark('observe-provider-start')
     const provider = await options.observeProvider()
+    mark('observe-provider-end')
     const settledWidths: { cols: number; lines: string[] }[] = [{ cols: 40, lines: initial }]
     for (const cols of [31, 47]) {
       events.push({ resizeTo: cols })
       options.mux.notify('pty.resize', { id, cols, rows: 12 })
+      mark('resize-sent', cols)
       const applied = await options.mux.request('pty.getSize', { id })
       assert(
         applied &&
@@ -124,9 +138,11 @@ export async function proveRepaint(options: {
         'pty.getSize returned an invalid applied-size response'
       )
       events.push({ appliedSize: { cols: applied.cols, rows: applied.rows } })
+      mark('applied-size', { cols: applied.cols, rows: applied.rows })
       // Give the remote resize time to arrive before measuring output quiescence.
       await delay(350)
       await quiet(cols)
+      mark('settled', cols)
       settledWidths.push({ cols, lines: assertEight(events) })
     }
     const final = assertEight(events)
@@ -145,7 +161,19 @@ export async function proveRepaint(options: {
     subscription()
     writeFileSync(
       options.receiptPath,
-      JSON.stringify({ directory, terminalId: id, events }, null, 2)
+      JSON.stringify(
+        {
+          directory,
+          terminalId: id,
+          events,
+          timeline,
+          dimensionLog: existsSync(dimensionLog)
+            ? readFileSync(dimensionLog, 'utf8').split('\n').filter(Boolean)
+            : []
+        },
+        null,
+        2
+      )
     )
   }
 }
