@@ -472,21 +472,32 @@ describe('PowerShell Codex shell launch preflight', () => {
     expect(result.stdout.trim()).toBe('args=--no-daemon hi')
   })
 
-  it.skipIf(!pwshAvailable)(
-    'leaves $LASTEXITCODE as it was when that Codex cannot run at all',
-    () => {
+  it.skipIf(!pwshAvailable).each([
+    { home: 'no managed home', managedHome: false },
+    // Why: hook prep is a native call whose own exit 0 must not reach the caller.
+    { home: 'a managed home', managedHome: true }
+  ])(
+    'leaves LASTEXITCODE as it was when that Codex cannot run at all ($home)',
+    ({ managedHome }) => {
       const root = mkdtempSync(join(tmpdir(), 'orca-codex-pwsh-blocked-'))
       const bin = join(root, 'bin')
       roots.push(root)
       mkdirSync(bin)
       // Stands in for npm's codex.ps1 under an execution policy that refuses it.
       writeFileSync(join(bin, 'codex.ps1'), "throw 'blocked by execution policy'\n")
+      const isWindows = process.platform === 'win32'
+      const preflight = join(bin, isWindows ? 'orca-test.cmd' : 'orca-test')
+      writeExecutable(preflight, isWindows ? '@exit /b 0\r\n' : '#!/bin/sh\nexit 0\n')
       const env: NodeJS.ProcessEnv = {
         ...process.env,
         PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`,
-        ORCA_CODEX_LAUNCH_POLICY: '1'
+        ORCA_CODEX_LAUNCH_POLICY: '1',
+        ORCA_CODEX_LAUNCH_PREFLIGHT: preflight,
+        ORCA_CODEX_HOME: join(root, 'managed-home')
       }
-      delete env.ORCA_CODEX_HOME
+      if (!managedHome) {
+        delete env.ORCA_CODEX_HOME
+      }
 
       const result = spawnSync(
         'pwsh',

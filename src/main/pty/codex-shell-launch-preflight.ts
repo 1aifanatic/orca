@@ -131,6 +131,9 @@ end
 set -e __orca_codex_type`
 }
 
+// Why $LASTEXITCODE is restored before the launch: hook prep and the probe must not leak their
+// status past a Codex the shell refuses to run (a policy-blocked codex.ps1). Why Get-Variable:
+// it is unset before any native command, and Set-StrictMode throws on reading it.
 export function getPowerShellCodexShellLaunchPreflight(): string {
   return `${powerShellCodexInteractiveArgv()}
 ${powerShellCodexNoDaemonProbe()}
@@ -138,6 +141,7 @@ $orcaCodexCommand = Get-Command codex -ErrorAction SilentlyContinue | Select-Obj
 if ($env:ORCA_CODEX_LAUNCH_POLICY -and $orcaCodexCommand -and
     $orcaCodexCommand.CommandType -in @("Application", "ExternalScript")) {
     function Global:codex {
+        $orcaPriorExitCode = Get-Variable -Name LASTEXITCODE -Scope Global -ValueOnly -ErrorAction Ignore
         if ($env:ORCA_CODEX_HOME -and $env:ORCA_CODEX_LAUNCH_PREFLIGHT) {
             try {
                 & $env:ORCA_CODEX_LAUNCH_PREFLIGHT agent hooks prepare-codex *> $null
@@ -154,6 +158,7 @@ if ($env:ORCA_CODEX_LAUNCH_POLICY -and $orcaCodexCommand -and
         if ((__OrcaCodexInteractive -Tokens $args) -and (__OrcaCodexSupportsNoDaemon $orcaCodexExecutable.Source)) {
             $orcaCodexFlags = @('--no-daemon')
         }
+        $global:LASTEXITCODE = $orcaPriorExitCode
         & $orcaCodexExecutable.Source @orcaCodexFlags @args
         $global:LASTEXITCODE = $LASTEXITCODE
     }
