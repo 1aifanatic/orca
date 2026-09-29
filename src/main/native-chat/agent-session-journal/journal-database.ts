@@ -7,6 +7,7 @@
 import Database from '../../sqlite/sync-database'
 import { hardenSqliteDatabaseFiles } from '../../sqlite/harden-database-files'
 import { createJournalTablesSql, JOURNAL_DB_SCHEMA_VERSION } from './journal-database-schema'
+import { JournalUnreleasedSchemaError } from './journal-open-failure'
 
 export const JOURNAL_BUSY_TIMEOUT_MS = 5000
 /** Bounds the WAL a checkpoint leaves behind; SQLite truncates it back to this after a reset. */
@@ -40,8 +41,10 @@ export function openJournalDatabase(dbPath: string): OpenJournalDatabase {
   let transferred = false
   try {
     if (stored !== 0 && stored < JOURNAL_DB_SCHEMA_VERSION) {
-      // Only unreleased development builds wrote these shapes; left as found, never migrated.
-      throw new Error(`chat journal ${dbPath} uses unreleased schema ${stored}; move it aside`)
+      // No retry reads past it, so every chat says it can't load; the log says what to do.
+      throw new JournalUnreleasedSchemaError(
+        `chat journal ${dbPath} uses unreleased schema ${stored}, written by an unreleased development build of Orca; move the file aside and Orca starts a new one`
+      )
     }
     configureJournalPragmas(probe, stored)
     createJournalSchema(probe, stored)

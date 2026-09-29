@@ -24,14 +24,24 @@ export class JournalImportMismatchError extends Error {
   override readonly name = 'JournalImportMismatchError'
 }
 
+/** A database only an unreleased development build wrote: left as found, never migrated. */
+export class JournalUnreleasedSchemaError extends Error {
+  override readonly name = 'JournalUnreleasedSchemaError'
+}
+
 // Bounds a cause chain that loops back on itself.
 const MAX_CAUSE_DEPTH = 8
 
-/** Damage only where the storage says so; anything unproven can clear. */
+/** Unusable only where proven: damage the storage reports, a copy that did not verify, or a file
+ *  only an unreleased build wrote. Anything unproven can clear. */
 export function classifyJournalOpenFailure(error: unknown): JournalOpenFailure {
   let current = error
   for (let depth = 0; depth < MAX_CAUSE_DEPTH && current !== undefined; depth += 1) {
-    if (isSqliteCorruption(current) || current instanceof JournalImportMismatchError) {
+    if (
+      isSqliteCorruption(current) ||
+      current instanceof JournalImportMismatchError ||
+      current instanceof JournalUnreleasedSchemaError
+    ) {
       return 'journalCorrupt'
     }
     current = current instanceof Error ? current.cause : undefined

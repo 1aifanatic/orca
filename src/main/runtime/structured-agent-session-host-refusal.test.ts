@@ -98,6 +98,34 @@ describe('a process whose journal will not open', () => {
     expect(gateRefusal).toThrow('the gate admitted the request')
   })
 
+  // A database from an unreleased build of this change: never migrated or renamed, so it reads as
+  // damage, and the log says where it is and what to do.
+  it('refuses a database an unreleased build wrote as unusable, and says to move it aside', async () => {
+    const path = journalDatabasePath(root)
+    const earlier = new Database(path)
+    earlier.exec('CREATE TABLE journal_rows (id INTEGER PRIMARY KEY, row_json TEXT NOT NULL)')
+    earlier.pragma('user_version = 2')
+    earlier.close()
+    const before = await digest(path)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await expect(install()).rejects.toMatchObject({
+        refusal: { message: 'Unable to load this chat.', details: { reason: 'journalCorrupt' } }
+      })
+    }
+    expect(gateRefusal()).toEqual({
+      reason: 'journalCorrupt',
+      message: 'Unable to load this chat.'
+    })
+    expect(warn).toHaveBeenCalledOnce()
+    const logged = String(warn.mock.calls[0]?.[1])
+    expect(logged).toContain(path)
+    expect(logged).toContain('unreleased development build')
+    expect(logged).toContain('move the file aside')
+    expect(await digest(path)).toBe(before)
+  })
+
   // T5: a newer build's database is not refused: the host installs over it read-only, so chats
   // stay visible, and the file is left byte-identical.
   it('installs over a database a newer Orca wrote, and leaves it byte-identical', async () => {

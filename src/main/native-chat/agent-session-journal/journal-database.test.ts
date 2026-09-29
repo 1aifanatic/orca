@@ -12,6 +12,7 @@ import {
 } from './journal-database'
 import { JOURNAL_DB_SCHEMA_VERSION } from './journal-database-schema'
 import { journalDatabasePath } from './journal-host-database'
+import { JournalUnreleasedSchemaError } from './journal-open-failure'
 import {
   deleteJournalEpochRows,
   deleteJournalRowSuffix,
@@ -244,6 +245,7 @@ INSERT INTO journal_sessions VALUES ('s1', 'ws', 'e1', 0, NULL, NULL);`)
     const before = await digest(dbPath)
 
     expect(() => openJournalDatabase(dbPath)).toThrow(`unreleased schema ${version}`)
+    expect(() => openJournalDatabase(dbPath)).toThrow(JournalUnreleasedSchemaError)
 
     expect(await digest(dbPath)).toBe(before)
     await expect(stat(`${dbPath}-wal`)).rejects.toThrow()
