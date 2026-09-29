@@ -59,10 +59,10 @@ function hostIdForRow(candidate: AgentStatusPtyInventoryCandidate): ExecutionHos
 /**
  * Read one PTY's liveness in the one vocabulary Orca has for it.
  *
- * A recorded `exited` is the only thing here strong enough to stand alone: it can only have been
- * written by a host-delivered exit frame, which is also the only way a remote PTY can ever earn a
- * death certificate. Everything else re-asks the owning provider, because an inventory's own
- * silence is the union of "dead" and "minted before the provider restarted".
+ * A recorded `exited` is the only thing here strong enough to stand alone: it is written only when
+ * the owning host certified the exit during this runtime, which is also the only way a remote PTY
+ * can ever earn a death certificate. Everything else re-asks the owning provider, because an
+ * inventory's own silence is the union of "dead" and "minted before the provider restarted".
  */
 async function readPtyVerdict(
   ptyId: string,

@@ -20,13 +20,14 @@ export type AgentStatusPtyInventoryCandidate = Readonly<{
 
 export abstract class AgentHookServerPtyInventorySettlement extends AgentHookServerTabCleanup {
   /**
-   * Rows whose "this agent is still working" claim only a PTY could retire.
+   * Rows whose state claim (any state, `done` included, and its latches) only a PTY could retire.
    *
    * A PTY that dies while Orca is down never runs the teardown that clears pane state, so hydrate
    * rebuilds rows and latches that no later hook can retire: the pane gates `working` for the rest
    * of its life. The host-scoped PTY inventory is the one thing that re-derives the truth behind
-   * that latch, so it gets the candidates and settles them — for every agent and every host, not
-   * just the one vendor a startup sweep used to cover.
+   * that latch, so it gets the candidates for every agent, and settles those whose owning host
+   * certifies the exit. A remote row settles only on a recorded exit: a relay's listing omits ids
+   * its previous incarnation minted, so its silence is never a death.
    *
    * Fence: a pane that has produced status in THIS runtime is never offered. It has a live
    * producer, and an inventory must not adjudicate a conversation it is not part of.

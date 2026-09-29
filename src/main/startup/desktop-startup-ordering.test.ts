@@ -137,7 +137,10 @@ describe('startup ordering', () => {
       'utf8'
     )
     const probeStart = source.indexOf('export async function probePtyLivenessFromRuntimeController')
-    const probeEnd = source.indexOf('export async function attachPtyFromRuntimeController', probeStart)
+    const probeEnd = source.indexOf(
+      'export async function attachPtyFromRuntimeController',
+      probeStart
+    )
     const probe = source.slice(probeStart, probeEnd)
 
     expect(probeStart).toBeGreaterThanOrEqual(0)

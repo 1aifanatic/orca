@@ -155,7 +155,7 @@ describe('agent status settled through the host PTY inventory', () => {
     }
   )
 
-  it('settles a remote pane on the relay-certified exit its own inventory cannot prove', async () => {
+  it('settles a remote pane only on a host-certified exit in the register', async () => {
     const server = await restartWithWorkingRow({
       agentType: 'gemini',
       connectionId: SSH_TARGET,
@@ -166,8 +166,8 @@ describe('agent status settled through the host PTY inventory', () => {
         await settleWith(server, {
           connectionId: SSH_TARGET,
           queriedHostIds: [SSH_HOST_ID],
-          // The relay's own listing omits every id minted before it restarted, so absence alone
-          // is not a death certificate; the host-delivered exit frame in the register is.
+          // Injected: the in-memory register holds `exited` only once the relay certified this
+          // PTY's exit in this runtime; a remote PTY that died while Orca was down never gets one.
           livenessVerdict: () => ({ status: 'exited' }),
           probePtyLiveness: () => null
         })
@@ -178,7 +178,7 @@ describe('agent status settled through the host PTY inventory', () => {
     }
   })
 
-  it('leaves a remote pane alone when the relay only failed to list it', async () => {
+  it('leaves a remote pane alone when the answering relay merely omits its PTY', async () => {
     const server = await restartWithWorkingRow({
       agentType: 'gemini',
       connectionId: SSH_TARGET,
@@ -189,6 +189,7 @@ describe('agent status settled through the host PTY inventory', () => {
         await settleWith(server, {
           connectionId: SSH_TARGET,
           queriedHostIds: [SSH_HOST_ID],
+          // A restarted relay omits every id its predecessor minted, live or not.
           livenessVerdict: () => null,
           probePtyLiveness: () => null
         })
@@ -456,9 +457,7 @@ describe('the three fences the deleted startup reaper carried', () => {
 
       // The row moved on after the candidate was read.
       expect(
-        server.settlePtyInventoryAbsence([
-          { ...candidate!, receivedAt: candidate!.receivedAt - 1 }
-        ])
+        server.settlePtyInventoryAbsence([{ ...candidate!, receivedAt: candidate!.receivedAt - 1 }])
       ).toBe(0)
       expect(paneState(server)).toBe('working')
 
