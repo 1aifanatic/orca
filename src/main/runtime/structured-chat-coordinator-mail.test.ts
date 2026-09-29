@@ -17,6 +17,10 @@ import type { AgentJournalRenderItem } from '../../shared/agent-session-journal-
 import { computeAgentSessionPayloadFingerprint } from '../../shared/agent-session-mutation-envelope'
 import { ORCHESTRATION_CONTRACT_VERSION } from '../../shared/protocol-version'
 import { attachFingerprintFields } from '../native-chat/agent-session-wire/structured-agent-session-attach'
+import {
+  AgentSessionAcquisitionRefusal,
+  AgentSessionPreSpawnError
+} from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import type { StructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-host'
 import { OrcaRuntimeService } from './orca-runtime'
 import { OrchestrationDb } from './orchestration/db'
@@ -46,13 +50,23 @@ type FakeConnection = Omit<CodexAppServerConnection, 'closed'> & {
 }
 
 /** How the fake provider misbehaves; reset before each test. */
-const providerFaults = { dieBeforeEveryEcho: false, refuseTurnStarts: 0 }
+const providerFaults: {
+  dieBeforeEveryEcho: boolean
+  refuseTurnStarts: number
+  /** Refuses every start with this error while set. */
+  refuseStart: (() => Error) | null
+  starts: number
+} = { dieBeforeEveryEcho: false, refuseTurnStarts: 0, refuseStart: null, starts: 0 }
 
 function fakeCodex() {
   const connections: FakeConnection[] = []
   let turnCounter = 0
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a fake answering the JSON-RPC calls the adapter makes, as the shipped integration test does.
   const openConnection = (async (_launch, handlers = {}) => {
+    providerFaults.starts += 1
+    if (providerFaults.refuseStart) {
+      throw providerFaults.refuseStart()
+    }
     const connection: FakeConnection = {
       handlers,
       threadId: null,
@@ -352,6 +366,8 @@ beforeEach(async () => {
   operations = 0
   providerFaults.dieBeforeEveryEcho = false
   providerFaults.refuseTurnStarts = 0
+  providerFaults.refuseStart = null
+  providerFaults.starts = 0
   root = await mkdtemp(join(tmpdir(), 'orca-structured-coordinator-mail-'))
   codex = fakeCodex()
   db = new OrchestrationDb(':memory:')
@@ -517,7 +533,8 @@ describe('a worker result reaches the structured chat that coordinates it', () =
     expect(await sendUserMessage(COORDINATOR, 'again')).toMatchObject({ ok: true })
     await vi.waitFor(() => expect(codex.connections.length).toBe(before + 1), WAIT)
     const revived = connectionFor(COORDINATOR)
-    await vi.waitFor(() => expect(revived.turns).toHaveLength(1), WAIT)
+    // The pointer may queue behind the message before its turn runs; the message is still first.
+    await vi.waitFor(() => expect(revived.turns.length).toBeGreaterThanOrEqual(1), WAIT)
     expect(revived.turns[0]!.text).toContain('again')
     await settleTurn(COORDINATOR, 0)
     await vi.waitFor(() => expect(revived.turns).toHaveLength(2), WAIT)
@@ -539,6 +556,79 @@ describe('a worker result reaches the structured chat that coordinates it', () =
     // A fixed window, not a poll: a respawn loop would restart it several times in it.
     await new Promise((resolve) => setTimeout(resolve, 1_500))
     expect(codex.connections.length - before).toBe(0)
+  })
+
+  /** Mail for a chat whose agent is stopped and whose every start is refused; resolves after it. */
+  async function refusedStartsFor(
+    refusal: () => Error
+  ): Promise<{ runId: string; starts: number }> {
+    await openChat(COORDINATOR)
+    const { runId, taskId } = await coordinatorRunAndTask()
+    await host.close(COORDINATOR)
+    providerFaults.refuseStart = refusal
+    const before = providerFaults.starts
+    await finishWorker(taskId)
+    await vi.waitFor(() => expect(providerFaults.starts).toBe(before + 1), WAIT)
+    await vi.waitFor(
+      () => expect(db.getUndeliveredUnreadMessages(`run:${runId}`, undefined, {})).toHaveLength(1),
+      WAIT
+    )
+    // A fixed window, not a poll: a retry loop would start it several times in it.
+    await new Promise((resolve) => setTimeout(resolve, 1_500))
+    return { runId, starts: providerFaults.starts - before }
+  }
+
+  /** Fires both edges and waits until every gate read they started has answered. */
+  async function edgesAnswered(): Promise<void> {
+    const reads = vi.spyOn(host, 'journalSnapshot')
+    runtime.onStructuredSessionStatusForMail({ sessionId: COORDINATOR, status: null })
+    runtime.onStructuredSessionStatusForMail({ sessionId: COORDINATOR, status: 'idle' })
+    await vi.waitFor(() => expect(reads).toHaveBeenCalled(), WAIT)
+    await Promise.all(reads.mock.results.map((read) => read.value))
+    await new Promise((resolve) => setImmediate(resolve))
+    reads.mockRestore()
+  }
+
+  it('waits for the next message after a start the person must fix, and retries nothing before it', async () => {
+    const { runId, starts } = await refusedStartsFor(
+      () => new AgentSessionAcquisitionRefusal('not signed in', 'notSignedIn')
+    )
+    expect(starts).toBe(1)
+    // A later edge would only start it to be refused again.
+    const before = providerFaults.starts
+    await edgesAnswered()
+    expect(providerFaults.starts).toBe(before)
+    expect(db.getUndeliveredUnreadMessages(`run:${runId}`, undefined, {})).toHaveLength(1)
+
+    // Signed in, the person's next message starts the agent, and the pointer follows its turn.
+    providerFaults.refuseStart = null
+    expect(await sendUserMessage(COORDINATOR, 'again')).toMatchObject({ ok: true })
+    await vi.waitFor(() => expect(providerFaults.starts).toBe(before + 1), WAIT)
+    const revived = connectionFor(COORDINATOR)
+    // The pointer may queue behind the message before its turn runs; the message is still first.
+    await vi.waitFor(() => expect(revived.turns.length).toBeGreaterThanOrEqual(1), WAIT)
+    expect(revived.turns[0]!.text).toContain('again')
+    await settleTurn(COORDINATOR, 0)
+    await vi.waitFor(() => expect(revived.turns).toHaveLength(2), WAIT)
+    expect(revived.turns[1]!.text).toMatch(POINTER)
+  })
+
+  it('points mail at the first edge after an account switch settles, with no message needed', async () => {
+    const { starts } = await refusedStartsFor(
+      () =>
+        new AgentSessionPreSpawnError(new Error('switching accounts'), {
+          reason: 'accountSwitchInProgress'
+        })
+    )
+    // Its refusal's own edges came before the give-back, so nothing looped.
+    expect(starts).toBe(1)
+    providerFaults.refuseStart = null
+    const before = providerFaults.starts
+    runtime.onStructuredSessionStatusForMail({ sessionId: COORDINATOR, status: 'idle' })
+    await vi.waitFor(() => expect(providerFaults.starts).toBe(before + 1), WAIT)
+    const revived = connectionFor(COORDINATOR)
+    await vi.waitFor(() => expect(revived.turns).toHaveLength(1), WAIT)
+    expect(revived.turns[0]!.text).toMatch(POINTER)
   })
 
   it('still points mail after a send a healthy agent refused, at its next idle edge', async () => {

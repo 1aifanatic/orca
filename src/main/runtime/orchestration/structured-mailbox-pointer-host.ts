@@ -15,7 +15,7 @@ import type {
 } from './structured-mailbox-pointer-delivery'
 import type { AgentJournalSnapshot } from '../../../shared/agent-session-journal-types'
 import {
-  providerFailedLatestSend,
+  latestSendHoldsMail,
   structuredSessionGateFacts,
   type StructuredSessionGateFacts
 } from './structured-session-pointer-delivery'
@@ -51,13 +51,13 @@ export async function readStructuredSessionGateFacts(
   return snapshot ? structuredSessionGateFacts(snapshot.items) : null
 }
 
-/** The pointer lane's gate: the shared idle facts, plus whether the provider failed the last send. */
+/** The pointer lane's gate: the shared idle facts, plus whether the latest send holds the mail. */
 async function readPointerGateFacts(sessionId: string): Promise<StructuredSessionGateFacts | null> {
   const snapshot = await readSessionJournal(sessionId)
   return snapshot
     ? {
         ...structuredSessionGateFacts(snapshot.items),
-        providerFailedLastSend: providerFailedLatestSend(snapshot.submissions)
+        latestSendHoldsMail: latestSendHoldsMail(snapshot.submissions)
       }
     : null
 }

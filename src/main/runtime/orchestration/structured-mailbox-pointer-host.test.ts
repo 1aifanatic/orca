@@ -2,6 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentJournalRenderItem } from '../../../shared/agent-session-journal-types'
 import { ORCHESTRATION_READINESS_TIMEOUT_MS } from '../../../shared/orchestration-timing-budgets'
 import { DISPATCH_DOUBT_PROVIDER_EXITED } from '../../native-chat/agent-session-journal/journal-dispatch-doubt-reasons'
+import {
+  AGENT_SESSION_FAILURE_KINDS,
+  type AgentSessionFailureKind
+} from '../../../shared/agent-session-failure'
 
 const hostRef: { current: unknown } = { current: null }
 
@@ -51,59 +55,96 @@ describe('structured mailbox pointer host', () => {
     expect(await createStructuredMailboxPointerHost().readGateFacts('s1')).toEqual({
       turnRunning: true,
       awaitingHuman: false,
-      providerFailedLastSend: false
+      latestSendHoldsMail: false
     })
   })
 
-  it.each([
-    [
-      'its provider exited before echoing it',
-      'unknown',
-      DISPATCH_DOUBT_PROVIDER_EXITED,
-      undefined,
-      true
-    ],
-    ['its provider exited while starting', 'rejected', 'x', 'providerStartFailed', true],
-    ['the agent could not start', 'rejected', 'x', 'startFailed', true],
-    ['the agent could not restart', 'rejected', 'x', 'restartFailed', true],
-    ['a write on a live agent failed', 'rejected', 'x', 'writeFailed', false],
-    ['the provider refused the turn', 'rejected', 'x', 'providerRejected', false],
-    ['the queue was full', 'rejected', 'x', 'queueFull', false],
-    ['the user stopped it', 'rejected', 'x', 'cancelled', false],
-    [
-      'a write outcome was lost',
-      'unknown',
-      'provider_write_outcome_unknown: gone',
-      undefined,
-      false
-    ],
-    [
-      'Orca closed the agent itself',
-      'unknown',
-      'provider_closed_before_acknowledgement',
-      undefined,
-      false
-    ],
-    ['it ran', 'accepted', null, undefined, false]
-  ] as const)(
-    'holds mail after a latest send whose %s: %s',
-    async (_label, dispatchState, reason, kind, held) => {
-      // Only a provider that died or could not start is held: pointing again would start it again.
+  // Every failure kind, held or delivered; a new kind fails to compile here until it is placed.
+  const HELD_AFTER_REJECTION = {
+    providerExited: true,
+    providerStartFailed: true,
+    startFailed: true,
+    restartFailed: true,
+    hostStopped: true,
+    notSignedIn: true,
+    historyTooLarge: true,
+    managedAccountEnvOverride: true,
+    managedAccountUnsupported: true,
+    accountSwitchInProgress: false,
+    cancelled: false,
+    hostRestarted: false,
+    chatClosed: false,
+    notDelivered: false,
+    providerRejected: false,
+    attachmentInvalid: false,
+    attachmentUnreadable: false,
+    emptyMessage: false,
+    queueFull: false,
+    writeFailed: false,
+    hostFault: false,
+    // Status-row kinds: never why a send was rejected, so never a hold.
+    compactionFailed: false,
+    compactionUnconfirmed: false,
+    cancelUnconfirmed: false,
+    answerUnconfirmed: false,
+    providerRetrying: false
+  } satisfies Record<AgentSessionFailureKind, boolean>
+
+  it('places every failure kind', () => {
+    expect(Object.keys(HELD_AFTER_REJECTION).sort()).toEqual(
+      [...AGENT_SESSION_FAILURE_KINDS].sort()
+    )
+  })
+
+  it.each(AGENT_SESSION_FAILURE_KINDS.map((kind) => [kind, HELD_AFTER_REJECTION[kind]] as const))(
+    'after a latest send rejected as %s, holds the mail: %s',
+    async (kind, held) => {
       const earlier = { dispatchState: 'accepted', reason: null }
-      const latest = { dispatchState, reason, ...(kind ? { rejection: { kind } } : {}) }
+      const latest = { dispatchState: 'rejected', reason: 'x', rejection: { kind } }
       hostRef.current = { journalSnapshot: () => ({ items: [], submissions: [earlier, latest] }) }
       expect(await createStructuredMailboxPointerHost().readGateFacts('s1')).toMatchObject({
-        providerFailedLastSend: held
+        latestSendHoldsMail: held
       })
     }
   )
+
+  it.each([
+    ['its provider exited before echoing it', DISPATCH_DOUBT_PROVIDER_EXITED, true],
+    ['a write outcome was lost', 'provider_write_outcome_unknown: gone', false],
+    ['Orca closed the agent itself', 'provider_closed_before_acknowledgement', false],
+    ['Orca restarted', 'host_restarted_before_acknowledgement', false]
+  ] as const)(
+    'after a latest send in doubt because %s, holds the mail: %s',
+    async (_label, reason, held) => {
+      // Only a death holds: pointing again would start that provider again.
+      hostRef.current = {
+        journalSnapshot: () => ({ items: [], submissions: [{ dispatchState: 'unknown', reason }] })
+      }
+      expect(await createStructuredMailboxPointerHost().readGateFacts('s1')).toMatchObject({
+        latestSendHoldsMail: held
+      })
+    }
+  )
+
+  it('holds nothing after a latest send that ran, or a rejection this build cannot place', async () => {
+    for (const latest of [
+      { dispatchState: 'accepted', reason: null },
+      { dispatchState: 'rejected', reason: 'x', rejection: { kind: 'someFutureKind' } },
+      { dispatchState: 'rejected', reason: 'legacy sentence' }
+    ]) {
+      hostRef.current = { journalSnapshot: () => ({ items: [], submissions: [latest] }) }
+      expect(await createStructuredMailboxPointerHost().readGateFacts('s1')).toMatchObject({
+        latestSendHoldsMail: false
+      })
+    }
+  })
 
   it('clears the hold once a later send runs', async () => {
     const died = { dispatchState: 'unknown', reason: DISPATCH_DOUBT_PROVIDER_EXITED }
     const ran = { dispatchState: 'accepted', reason: null }
     hostRef.current = { journalSnapshot: () => ({ items: [], submissions: [died, ran] }) }
     expect(await createStructuredMailboxPointerHost().readGateFacts('s1')).toMatchObject({
-      providerFailedLastSend: false
+      latestSendHoldsMail: false
     })
   })
 
