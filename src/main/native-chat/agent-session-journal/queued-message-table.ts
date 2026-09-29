@@ -104,49 +104,6 @@ export function insertQueuedMessage(
   }
 }
 
-/** Hold waiting drafts from auto-sending (a Stop, a failed conversion). The
- *  hold retires with the row: consume and withdraw clear it in their own
- *  UPDATE. Returns how many rows the hold newly reached. */
-export function holdQueuedMessages(
-  db: Database.Database,
-  input: {
-    sessionId: string
-    messageIds: readonly string[]
-    reason: QueuedMessageHoldReason
-  }
-): number {
-  const update = db.prepare(
-    `UPDATE queued_messages SET hold_reason = ?
-     WHERE session_id = ? AND message_id = ? AND state = 'waiting'
-       AND (hold_reason IS NULL OR hold_reason <> ?)`
-  )
-  let held = 0
-  for (const messageId of input.messageIds) {
-    held += Number(update.run(input.reason, input.sessionId, messageId, input.reason).changes ?? 0)
-  }
-  return held
-}
-
-/** Lift the stop-shaped holds once a user send starts its turn: a stored
- *  'stopped' (Stop, /clear carry) and the DERIVED restart hold — that row is
- *  adopted into the current host instance, the same fact the derivation reads,
- *  so no second copy exists. `send_failed` and unknown markers stay: they
- *  release only through an explicit Send. Returns how many rows it lifted. */
-export function releaseStopShapedQueuedMessageHolds(
-  db: Database.Database,
-  input: { sessionId: string; hostInstance: string }
-): number {
-  return Number(
-    db
-      .prepare(
-        `UPDATE queued_messages SET hold_reason = NULL, host_instance = ?
-         WHERE session_id = ? AND state = 'waiting'
-           AND (hold_reason = 'stopped' OR (hold_reason IS NULL AND host_instance <> ?))`
-      )
-      .run(input.hostInstance, input.sessionId, input.hostInstance).changes ?? 0
-  )
-}
-
 export function listQueuedMessages(db: Database.Database, sessionId: string): QueuedMessageRow[] {
   return db
     .prepare(`SELECT ${COLUMNS} FROM queued_messages WHERE session_id = ? ORDER BY position ASC`)

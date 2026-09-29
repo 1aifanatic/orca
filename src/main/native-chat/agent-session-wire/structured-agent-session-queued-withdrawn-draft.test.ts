@@ -4,8 +4,9 @@
 // whole queue drains one per turn in queue order, the withdrawn draft first,
 // under a fresh submission id.
 
-import { afterEach, beforeEach, expect, it } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { QUEUED_MESSAGE_PAUSED_STOPPED } from '../../../shared/agent-session-wire'
+import { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { HOST_TEST_SESSION as SESSION } from './structured-agent-session-host-test-data'
 import {
   createQueuedMessageTestRig,
@@ -94,4 +95,38 @@ it('Stop, then a user send: the withdrawn draft and the paused cards behind it d
   await rig.settleAccepted(b, 'b')
   await eventually(async () => expect(await rig.submission(c)).toBeDefined())
   expect(await rig.drafts()).toEqual([])
+})
+
+it('a Stop that fails after withdrawing a consumed draft releases it, and it sends again under a fresh id', async () => {
+  const working = await rig.workingSend()
+  const a = await queuedDraft('A')
+  let release: () => void = () => undefined
+  rig.awaitStarted.mockImplementationOnce(
+    () => new Promise<undefined>((resolve) => (release = () => resolve(undefined)))
+  )
+  await rig.settleAccepted(working, 'working')
+  await eventually(async () => expect(await rig.submission(a)).toBeDefined())
+  const withdraw = AgentSessionJournal.prototype.rejectQueuedSubmissions
+  const failing = vi
+    .spyOn(AgentSessionJournal.prototype, 'rejectQueuedSubmissions')
+    .mockImplementation(async function (this: AgentSessionJournal, ...args) {
+      const withdrawn = await withdraw.apply(this, args)
+      // Only the Stop's own withdrawal fails, after it landed; the delivery loop's pass through.
+      if (args[1].rejection.kind === 'cancelled') {
+        throw new Error('disk full')
+      }
+      return withdrawn
+    })
+  try {
+    await expect(rig.stop()).rejects.toThrow('disk full')
+  } finally {
+    failing.mockRestore()
+    release()
+  }
+  expect((await rig.submission(a))?.dispatchState).toBe('rejected')
+  const before = new Set([working, a])
+  await eventually(async () => {
+    expect((await submissionIds()).filter((id) => !before.has(id))).toHaveLength(1)
+    expect(await rig.drafts()).toEqual([])
+  })
 })

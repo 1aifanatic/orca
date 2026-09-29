@@ -13,12 +13,13 @@
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
+import type { QueuedMessageHoldChange } from '../agent-session-journal/queued-message-holds'
 import {
   isUnsettledQueuedMessage,
   type QueuedMessageRow
 } from '../agent-session-journal/queued-message-table'
 import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
-import type { AgentSessionTurnContext } from './structured-agent-session-turns'
+import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
 import { structuredAgentSessionHostInstance } from './structured-agent-session-queued-pause'
 
 function reportQueuedHoldFailure(sessionId: string, step: string, error: unknown): void {
@@ -41,14 +42,26 @@ export function unsettledQueuedMessages(journal: AgentSessionJournal): QueuedMes
  *  the Stop then withdraws rejoins this hold at its own position, through the
  *  journal's settlement of that withdrawal. Stored on the rows, so the pause
  *  survives handle eviction and restart. A user send made BEFORE this Stop no
- *  longer lifts anything, even if its turn still starts. */
-export async function holdQueuedMessagesForStop(
+ *  longer lifts anything, even if its turn still starts. A Stop that fails
+ *  (throws or is refused) changes nothing, so it undoes exactly what it added
+ *  here — never an earlier Stop's or a restart's hold. */
+export async function runStopWithQueueHold<TValue>(
   ctx: AgentSessionTurnContext,
-  session: StructuredAgentSessionHostSession | undefined
-): Promise<void> {
+  session: StructuredAgentSessionHostSession | undefined,
+  stop: () => Promise<TurnOutcome<TValue>>
+): Promise<TurnOutcome<TValue>> {
+  const awaitingBefore = [...(session?.userSendsAwaitingTurn ?? [])]
   session?.userSendsAwaitingTurn?.clear()
+  // Drafts this Stop's withdrawal may send back to waiting under its hold.
+  const dispatchedBefore = new Set(
+    ctx.journal.queuedMessages
+      .list()
+      .filter((row) => row.state === 'dispatched')
+      .map((row) => row.messageId)
+  )
+  let held: QueuedMessageHoldChange[] = []
   try {
-    await ctx.journal.queuedMessages.hold({
+    held = await ctx.journal.queuedMessages.hold({
       messageIds: unsettledQueuedMessages(ctx.journal)
         .filter((row) => row.state === 'waiting')
         .map((row) => row.messageId),
@@ -56,6 +69,33 @@ export async function holdQueuedMessagesForStop(
     })
   } catch (error) {
     reportQueuedHoldFailure(ctx.sessionId, "Stop's queued-draft hold", error)
+  }
+  const undo = async (): Promise<void> => {
+    for (const id of awaitingBefore) {
+      session?.userSendsAwaitingTurn?.add(id)
+    }
+    const requeued = ctx.journal.queuedMessages
+      .list()
+      .filter((row) => dispatchedBefore.has(row.messageId) && row.state === 'waiting')
+      .map((row) => ({ messageId: row.messageId, previousHold: null }))
+    try {
+      await ctx.journal.queuedMessages.restoreHolds({
+        from: 'stopped',
+        changes: [...held, ...requeued]
+      })
+    } catch (error) {
+      reportQueuedHoldFailure(ctx.sessionId, "a failed Stop's queued-draft hold undo", error)
+    }
+  }
+  try {
+    const outcome = await stop()
+    if (!outcome.ok) {
+      await undo()
+    }
+    return outcome
+  } catch (error) {
+    await undo()
+    throw error
   }
 }
 

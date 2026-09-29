@@ -617,7 +617,7 @@ describe('holds', () => {
     // A closed handle would refuse any transaction; an empty hold never opens one.
     await expect(
       journal.queuedMessages.hold({ messageIds: [], reason: 'stopped' })
-    ).resolves.toBeUndefined()
+    ).resolves.toEqual([])
   })
 
   it('a withdraw naming no drafts touches nothing — a Delete race with no rows costs no write', async () => {
@@ -643,6 +643,30 @@ describe('holds', () => {
       state: 'returned',
       holdReason: null
     })
+  })
+
+  it('undoing a hold gives each row back the hold it replaced, and leaves a row re-held since alone', async () => {
+    const journal = await open()
+    await queueDraft(journal, 'draft-failed')
+    await queueDraft(journal, 'draft-plain')
+    await queueDraft(journal, 'draft-stopped')
+    await journal.queuedMessages.hold({ messageIds: ['draft-failed'], reason: 'send_failed' })
+    await journal.queuedMessages.hold({ messageIds: ['draft-stopped'], reason: 'stopped' })
+    const held = await journal.queuedMessages.hold({
+      messageIds: ['draft-failed', 'draft-plain', 'draft-stopped'],
+      reason: 'stopped'
+    })
+    // Already 'stopped' before: not this hold's to undo.
+    expect(held).toEqual([
+      { messageId: 'draft-failed', previousHold: 'send_failed' },
+      { messageId: 'draft-plain', previousHold: null }
+    ])
+    await journal.queuedMessages.restoreHolds({ from: 'stopped', changes: held })
+    expect(journal.queuedMessages.list().map((row) => [row.messageId, row.holdReason])).toEqual([
+      ['draft-failed', 'send_failed'],
+      ['draft-plain', null],
+      ['draft-stopped', 'stopped']
+    ])
   })
 
   it("releaseStopHolds lifts stop-shaped holds only: a stored 'stopped' and the restart hold; send_failed stays", async () => {
