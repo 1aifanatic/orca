@@ -28,6 +28,7 @@ import {
   type QueuedMessageHoldReason,
   type QueuedMessageRow
 } from './queued-message-table'
+import { draftsDeliveredByAppliedEcho } from './queued-message-delivered-echo'
 import { pruneQueuedMessages } from './queued-message-retention'
 import {
   queuedMessageSettlementOwed,
@@ -262,13 +263,19 @@ export class JournalQueuedMessages {
     return queuedMessageSettlementOwed(this.list(), this.deps.state().submissions)
   }
 
+  /** Waiting drafts a skipped echo hook left unwithdrawn; reads every item, so only the drain
+   *  step asks, right before a draft would send. */
+  deliveredByEchoOwed(): boolean {
+    return draftsDeliveredByAppliedEcho(this.deps.state(), this.list()).length > 0
+  }
+
   /** Applies owed settlements now, so a skipped live transition heals without a reopen. */
   settleOwed(): Promise<void> {
     return this.transact(
       (db) =>
         settleOwedQueuedMessages(db, {
           sessionId: this.deps.sessionId,
-          submissions: this.deps.state().submissions,
+          state: this.deps.state(),
           now: this.deps.now()
         }),
       (settled) => settled > 0
@@ -305,7 +312,7 @@ export class JournalQueuedMessages {
       try {
         changed += settleOwedQueuedMessages(db, {
           sessionId: this.deps.sessionId,
-          submissions,
+          state: this.deps.state(),
           now
         })
         changed += pruneQueuedMessages(db, {

@@ -68,7 +68,8 @@ export class JournalRowWriter {
     } catch (error) {
       db.exec(`ROLLBACK TO ${BOOKKEEPING_SAVEPOINT}`)
       db.exec(`RELEASE ${BOOKKEEPING_SAVEPOINT}`)
-      // The open-time repair re-derives what this missed from the committed row.
+      // The draft store re-derives what this missed from the committed rows: at open, and in
+      // the drain step before a draft sends.
       console.warn('[journal-append] row bookkeeping skipped:', {
         sessionId: this.deps.sessionId,
         kind: row.kind,

@@ -321,8 +321,8 @@ export class StructuredAgentSessionQueuedMessageDrain {
     }
     await this.deps.flushStreamedEvents(sessionId)
     const journal = session.journal
-    if (journal.queuedMessages.settlementOwed()) {
-      // The live settlement hook was skipped; heal now rather than at the next open.
+    if (journal.queuedMessages.settlementOwed() || journal.queuedMessages.deliveredByEchoOwed()) {
+      // A live per-row hook was skipped; heal now, before a draft sends, rather than at reopen.
       await journal.queuedMessages.settleOwed().catch((error: unknown) => {
         this.deps.onError(sessionId, error)
       })
