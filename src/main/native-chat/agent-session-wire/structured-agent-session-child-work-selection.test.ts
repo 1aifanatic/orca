@@ -7,7 +7,7 @@ import {
   STRUCTURED_STRIP_CHILD_WORK_LIMIT as LIMIT,
   structuredSidebarChildWork,
   structuredStripChildWork
-} from '../../../shared/structured-agent-session-child-work-selection'
+} from '../../../shared/agent-child-work-listing'
 import {
   attach,
   hostTestState,

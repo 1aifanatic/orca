@@ -14,7 +14,7 @@ import type { AgentSessionBackgroundTask } from '../../../shared/agent-session-w
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import { agentChildWorkViewsEqual } from '../../../shared/agent-status-child-work-view-wire'
 import { structuredChildWorkLegacyTasks } from '../../../shared/structured-agent-session-child-work-legacy'
-import { structuredSidebarChildWork } from '../../../shared/structured-agent-session-child-work-selection'
+import { structuredSidebarChildWork } from '../../../shared/agent-child-work-listing'
 
 /** An evidence clock that advanced by less than this does not re-broadcast a summary.
  *  Invariant: every reader of the summary's child clocks shows staleness no finer than this (today,

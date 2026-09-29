@@ -5,7 +5,7 @@ import type {
 } from '../../../shared/agent-session-wire'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import { structuredChildWorkLegacyTasks } from '../../../shared/structured-agent-session-child-work-legacy'
-import { structuredStripChildWork } from '../../../shared/structured-agent-session-child-work-selection'
+import { structuredStripChildWork } from '../../../shared/agent-child-work-listing'
 import { readStructuredAgentSessionHistoryResult } from './structured-agent-session-history-result'
 import type {
   AgentSessionSubscribers,
