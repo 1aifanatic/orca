@@ -1,0 +1,30 @@
+name: Diagnostic Windows detached relay launch
+on:
+  push:
+    branches: [OrcaWin/np-windows-detached-launch-native-diagnostic]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native:
+    if: github.repository == 'stablyai/orca' && github.ref == 'refs/heads/OrcaWin/np-windows-detached-launch-native-diagnostic'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, windows-11-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      ORCA_BACKGROUND_LAUNCH: '1'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/install-node-dependencies
+        with:
+          native-runtime: none
+      - name: Verify native detached launcher with pinned Bun
+        shell: pwsh
+        run: |
+          node config/scripts/run-bun-profile-tests.mjs src/relay/windows-detached-launch.integration.test.ts
+          if ($LASTEXITCODE -ne 0) { throw 'Native launcher qualification failed' }
