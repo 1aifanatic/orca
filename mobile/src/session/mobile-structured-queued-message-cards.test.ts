@@ -85,7 +85,7 @@ describe('mobileQueuedMessageCards', () => {
     expect(cards[1]?.label).toBe('Waiting — a message ahead needs attention')
   })
 
-  it('hides a waiting card whose submission arrived, never a returned one', () => {
+  it('hides a waiting card once its hand-off arrived, never a returned one', () => {
     const cards = mobileQueuedMessageCards(
       [
         draft({ messageId: 'returned', ...returnedAs(agentSessionFailureFact('hostRestarted')) }),
@@ -93,8 +93,8 @@ describe('mobileQueuedMessageCards', () => {
         draft({ messageId: 'waiting', position: 3 })
       ],
       [
-        { clientMessageId: 'returned', dispatchState: 'rejected' },
-        { clientMessageId: 'drained', dispatchState: 'pending' }
+        { queuedMessageId: 'returned', dispatchState: 'rejected' },
+        { queuedMessageId: 'drained', dispatchState: 'pending' }
       ],
       { pendingPrompt: false }
     )
@@ -102,9 +102,9 @@ describe('mobileQueuedMessageCards', () => {
     expect(cards[1]?.label).toBe('Waiting — a message ahead needs attention')
   })
 
-  it('shows a draft a Stop requeued beside its rejected first submission', () => {
-    // The requeued draft keeps its id; its withdrawn submission stays in the journal as rejected
-    // and the transcript hides it, so hiding the card too would leave the text unreachable.
+  it('shows a draft a Stop requeued beside its rejected hand-off', () => {
+    // The requeued draft keeps its id; its withdrawn hand-off stays in the journal as rejected and
+    // the transcript hides it, so hiding the card too would leave the text unreachable.
     const cards = mobileQueuedMessageCards(
       [
         draft({ messageId: 'requeued' }),
@@ -112,9 +112,9 @@ describe('mobileQueuedMessageCards', () => {
         draft({ messageId: 'sent', position: 3 })
       ],
       [
-        { clientMessageId: 'requeued', dispatchState: 'rejected' },
-        { clientMessageId: 'sending', dispatchState: 'pending' },
-        { clientMessageId: 'sent', dispatchState: 'accepted' }
+        { queuedMessageId: 'requeued', dispatchState: 'rejected' },
+        { queuedMessageId: 'sending', dispatchState: 'pending' },
+        { queuedMessageId: 'sent', dispatchState: 'accepted' }
       ],
       { pendingPrompt: false }
     )

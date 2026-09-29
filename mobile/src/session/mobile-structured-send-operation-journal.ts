@@ -191,7 +191,9 @@ export async function clearMobileStructuredSendOperation(input: {
   })
 }
 
-/** Reconcile an ack-lost operation once the authoritative journal settles it. */
+/** Reconcile an ack-lost operation once the authoritative journal settles it, or hands it off:
+ *  a submission naming the operation's id as its `queuedMessageId` is that send's queued draft
+ *  going out, in whatever state, so the send reached the host and its id is spent. */
 export async function clearMobileStructuredSettledSendOperations(input: {
   submissions: readonly AgentJournalSubmission[]
 }): Promise<void> {
@@ -202,13 +204,20 @@ export async function clearMobileStructuredSettledSendOperations(input: {
         : []
     )
   )
-  if (settled.size === 0) {
+  const handedOff = new Set(
+    input.submissions.flatMap((submission) =>
+      submission.queuedMessageId !== undefined ? [submission.queuedMessageId] : []
+    )
+  )
+  if (settled.size === 0 && handedOff.size === 0) {
     return
   }
   return serialize(async () => {
     const journal = parseJournal(await AsyncStorage.getItem(STORAGE_KEY))
     const entries = journal.entries.filter(
-      (entry) => !settled.has(`${entry.payloadFingerprint}\u0000${entry.operationId}`)
+      (entry) =>
+        !settled.has(`${entry.payloadFingerprint}\u0000${entry.operationId}`) &&
+        !handedOff.has(entry.operationId)
     )
     if (entries.length !== journal.entries.length) {
       await writeEntries(entries)

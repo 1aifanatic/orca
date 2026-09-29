@@ -58,28 +58,30 @@ function pausedLabel(reason: string | undefined): string {
   return 'Paused'
 }
 
-/** Cards in published order. A waiting card whose submission already arrived is hidden, as the
- *  desktop hides it: on a multi-page catch-up the shrunk list rides only the final page, so the
- *  bubble and the card would otherwise briefly show together. Returned cards always show: their
- *  submission exists precisely because it was refused. A rejected submission hides nothing: beside
- *  a waiting draft it means a Stop requeued it, and the transcript does not show it either. */
+/** Cards in published order. A waiting card is hidden once a live hand-off of it arrived — a
+ *  submission naming it as its `queuedMessageId` that was not rejected — as the desktop hides it:
+ *  on a multi-page catch-up the shrunk list rides only the final page, so the bubble and the card
+ *  would otherwise briefly show together. A rejected hand-off is what sent the draft back, so it
+ *  hides nothing. Returned cards always show. */
 export function mobileQueuedMessageCards(
   queuedMessages: readonly AgentSessionQueuedMessage[] | null,
-  submissions: readonly Pick<AgentJournalSubmission, 'clientMessageId' | 'dispatchState'>[],
+  submissions: readonly Pick<AgentJournalSubmission, 'queuedMessageId' | 'dispatchState'>[],
   facts: { pendingPrompt: boolean }
 ): MobileQueuedMessageCard[] {
   if (!queuedMessages || queuedMessages.length === 0) {
     return []
   }
-  const consumed = new Set(
+  const handedOff = new Set(
     submissions.flatMap((submission) =>
-      submission.dispatchState === 'rejected' ? [] : [submission.clientMessageId]
+      submission.queuedMessageId !== undefined && submission.dispatchState !== 'rejected'
+        ? [submission.queuedMessageId]
+        : []
     )
   )
   let behindReturned = false
   const cards: MobileQueuedMessageCard[] = []
   for (const draft of queuedMessages) {
-    if (draft.state !== 'returned' && consumed.has(draft.messageId)) {
+    if (draft.state !== 'returned' && handedOff.has(draft.messageId)) {
       continue
     }
     const paused = draft.paused === true

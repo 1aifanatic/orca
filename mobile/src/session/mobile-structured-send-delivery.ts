@@ -77,12 +77,6 @@ export function mobileStructuredSendDelivery(
   }
   const submission: AgentJournalSubmission | undefined =
     'submission' in result.value ? result.value.submission : undefined
-  if (submission && submission.clientMessageId !== result.value.clientMessageId) {
-    // The replayed id named a queued draft the host has since sent under another id, so nothing
-    // will ever settle this id: it is spent. Whether this send repeats that one or is new, the
-    // phone cannot tell, so it reads as unconfirmed, as any retained replay of a live send does.
-    return { outcome: 'unknown', operationIdSpent: true, error: null }
-  }
   if (!submission || submission.dispatchState === 'unknown') {
     return { outcome: 'unknown', operationIdSpent: false, error: null }
   }

@@ -65,22 +65,27 @@ describe('mobileStructuredSendDelivery', () => {
     }
   })
 
-  it('spends a replayed id whose draft the host later sent under another id', () => {
-    // Nothing will ever settle the replayed id; which send this is stays unconfirmed.
-    const drained = structuredSendResultFixture('accepted')
-    if (!('submission' in drained)) {
+  it("reads a replay answered by its draft's hand-off as unconfirmed; the stream spends the id", () => {
+    // The hand-off names the replayed id as its draft; it paints no optimistic bubble, and the
+    // record is spent once the live submissions carry that link.
+    const handedOff = structuredSendResultFixture('accepted')
+    if (!('submission' in handedOff)) {
       throw new Error('expected a submission answer')
     }
     const replay: StructuredAgentSessionMutationCallResult<AgentSessionSendResult> = {
       status: 'accepted',
       value: {
         clientMessageId: 'retained-draft-id',
-        submission: { ...drained.submission, clientMessageId: 'fresh-id' }
+        submission: {
+          ...handedOff.submission,
+          clientMessageId: 'fresh-id',
+          queuedMessageId: 'retained-draft-id'
+        }
       }
     }
     expect(mobileStructuredSendDelivery(replay, true)).toEqual({
       outcome: 'unknown',
-      operationIdSpent: true,
+      operationIdSpent: false,
       error: null
     })
   })

@@ -187,6 +187,39 @@ describe('mobile structured send operation journal', () => {
     expect(values.size).toBe(0)
   })
 
+  it("clears an id a draft hand-off names, whatever that hand-off's state", async () => {
+    const sessionKey = 'host-a:session-a'
+    const payloadFingerprint = '9'.repeat(64)
+    const operationKey = mobileStructuredSendOperationKey({
+      sessionKey,
+      intentFingerprint: payloadFingerprint
+    })
+    const operationId = operationIdAt(NOW, '7')
+    await getOrCreateMobileStructuredSendOperation({
+      operationKey,
+      payloadFingerprint,
+      createOperationId: () => operationId,
+      now: NOW
+    })
+    // The drain handed the draft off under a fresh id; only the link names this send.
+    await clearMobileStructuredSettledSendOperations({
+      submissions: [
+        {
+          clientMessageId: operationIdAt(NOW + 1, '8'),
+          queuedMessageId: operationId,
+          fence: 1,
+          payloadFingerprint,
+          dispatchState: 'pending',
+          providerItemId: null,
+          reason: null,
+          submittedAt: NOW + 1,
+          resolvedAt: null
+        }
+      ]
+    })
+    expect(values.size).toBe(0)
+  })
+
   it('does not clear a newer id for an older matching-payload submission', async () => {
     const sessionKey = 'host-a:session-a'
     const payloadFingerprint = 'e'.repeat(64)

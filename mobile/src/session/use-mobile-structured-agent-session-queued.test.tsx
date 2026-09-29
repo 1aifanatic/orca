@@ -61,6 +61,24 @@ function mutationOk(value: unknown) {
   })
 }
 
+/** A settled submission; `queuedMessageId` marks it as that draft's hand-off. */
+function acceptedSubmission(
+  clientMessageId: string,
+  queuedMessageId?: string
+): AgentJournalSubmission {
+  return {
+    clientMessageId,
+    ...(queuedMessageId ? { queuedMessageId } : {}),
+    fence: 3,
+    payloadFingerprint: 'fp',
+    dispatchState: 'accepted',
+    providerItemId: `item-${clientMessageId}`,
+    reason: null,
+    submittedAt: 10,
+    resolvedAt: 11
+  }
+}
+
 function queuedDraft(
   overrides: Partial<AgentSessionQueuedMessage> & { messageId: string }
 ): AgentSessionQueuedMessage {
@@ -113,7 +131,8 @@ function snapshotEvent(input?: {
 }
 
 function batchEvent(
-  queuedMessages?: AgentSessionQueuedMessage[] | null
+  queuedMessages?: AgentSessionQueuedMessage[] | null,
+  submissions: AgentJournalSubmission[] = []
 ): AgentSessionSubscribeEvent {
   return {
     type: 'batch',
@@ -122,7 +141,7 @@ function batchEvent(
       cursor: { epoch: 'epoch-1', sequence: 2 },
       items: [],
       removedItemIds: [],
-      submissions: []
+      submissions
     },
     ...(queuedMessages !== undefined ? { queuedMessages } : {})
   }
@@ -533,55 +552,75 @@ describe('mobile structured queued messages', () => {
     )
   })
 
-  it('a replay the host answers with the draft it later sent under another id spends the record', async () => {
+  describe('a lost answer, then Stop, then the drain under a fresh id', () => {
     const journalKey = 'orca:mobileStructuredSendOperations:v1'
     let attempts = 0
     let lostId = ''
-    sendRequest.mockImplementation(async (method, params) => {
-      if (method === 'agentSession.send') {
-        attempts += 1
-        const id = String(fieldsOf(fieldsOf(params).envelope).clientOperationId)
-        if (attempts === 1) {
-          lostId = id
-          throw markRpcDeliveryUnknown(new Error('Connection closed'))
-        }
-        if (id === lostId) {
-          // A Stop requeued the draft and it later drained under a fresh id.
+
+    beforeEach(() => {
+      attempts = 0
+      lostId = ''
+      sendRequest.mockImplementation(async (method, params) => {
+        if (method === 'agentSession.send') {
+          attempts += 1
+          const id = String(fieldsOf(fieldsOf(params).envelope).clientOperationId)
+          if (attempts === 1) {
+            lostId = id
+            throw markRpcDeliveryUnknown(new Error('Connection closed'))
+          }
+          if (id === lostId) {
+            // The replay answers with the hand-off, which names the replayed id as its draft.
+            return mutationOk({
+              clientMessageId: id,
+              submission: acceptedSubmission('fresh-hand-off', id)
+            })
+          }
           return mutationOk({
             clientMessageId: id,
-            submission: {
-              clientMessageId: 'drained-under-fresh-id',
-              fence: 3,
-              payloadFingerprint: 'fp',
-              dispatchState: 'accepted',
-              providerItemId: 'item-1',
-              reason: null,
-              submittedAt: 10,
-              resolvedAt: 11
-            }
+            queued: { messageId: id, position: 1, state: 'waiting' }
           })
         }
-        return mutationOk({
-          clientMessageId: id,
-          queued: { messageId: id, position: 1, state: 'waiting' }
-        })
-      }
-      return method === 'agentSession.options' ? ok({ models: [], current: {} }) : ok({})
+        return method === 'agentSession.options' ? ok({ models: [], current: {} }) : ok({})
+      })
     })
-    await mountSession(CAPABLE)
-    await act(async () => {
-      expect(await hook!.sendWithOutcome('again')).toBe('unknown')
+
+    it('spends the record once the stream carries the hand-off naming it; a direct send does not', async () => {
+      await mountSession(CAPABLE)
+      await act(async () => {
+        expect(await hook!.sendWithOutcome('again')).toBe('unknown')
+      })
+      expect(stored.get(journalKey)).toContain(lostId)
+      // A direct send's submission names no draft, so it settles nothing here.
+      act(() => listener?.(batchEvent(undefined, [acceptedSubmission('someone-else')])))
+      await act(async () => {})
+      expect(stored.get(journalKey)).toContain(lostId)
+      // The drain's hand-off went out under a fresh id and names the lost send's draft.
+      act(() => listener?.(batchEvent(undefined, [acceptedSubmission('fresh-hand-off', lostId)])))
+      await vi.waitFor(() => expect(stored.has(journalKey)).toBe(false))
+      await act(async () => {
+        expect(await hook!.sendWithOutcome('again')).toBe('queued')
+      })
+      expect(attempts).toBe(2)
+      expect(requestOf('agentSession.send', 1).envelope.clientOperationId).not.toBe(lostId)
     })
-    expect(stored.get(journalKey)).toContain(lostId)
-    // No submission will ever settle the lost id, so this answer is what spends it.
-    await act(async () => {
-      expect(await hook!.sendWithOutcome('again')).toBe('unknown')
+
+    it('reads a replay answered by the hand-off as unconfirmed, and the linked stream spends it', async () => {
+      await mountSession(CAPABLE)
+      await act(async () => {
+        expect(await hook!.sendWithOutcome('again')).toBe('unknown')
+      })
+      // The host holds that message now; the phone paints no bubble for it.
+      await act(async () => {
+        expect(await hook!.sendWithOutcome('again')).toBe('unknown')
+      })
+      expect(requestOf('agentSession.send', 1).envelope.clientOperationId).toBe(lostId)
+      act(() => listener?.(batchEvent(undefined, [acceptedSubmission('fresh-hand-off', lostId)])))
+      await vi.waitFor(() => expect(stored.has(journalKey)).toBe(false))
+      await act(async () => {
+        expect(await hook!.sendWithOutcome('again')).toBe('queued')
+      })
+      expect(requestOf('agentSession.send', 2).envelope.clientOperationId).not.toBe(lostId)
     })
-    expect(stored.has(journalKey)).toBe(false)
-    await act(async () => {
-      expect(await hook!.sendWithOutcome('again')).toBe('queued')
-    })
-    expect(requestOf('agentSession.send', 2).envelope.clientOperationId).not.toBe(lostId)
   })
 
   describe('cards from the published list', () => {
@@ -606,7 +645,7 @@ describe('mobile structured queued messages', () => {
       expect(hook!.queued.cards).toEqual([])
     })
 
-    it('hides a waiting card whose submission already arrived, as the desktop does', async () => {
+    it('hides a waiting card once a submission names it as its hand-off, as the desktop does', async () => {
       await mountSession(
         CAPABLE,
         snapshotEvent({
@@ -614,21 +653,21 @@ describe('mobile structured queued messages', () => {
             queuedDraft({ messageId: 'drained' }),
             queuedDraft({ messageId: 'still-waiting' })
           ],
-          submissions: [
-            {
-              clientMessageId: 'drained',
-              fence: 3,
-              payloadFingerprint: 'fp',
-              dispatchState: 'pending',
-              providerItemId: null,
-              reason: null,
-              submittedAt: 10,
-              resolvedAt: null
-            }
-          ]
+          submissions: [acceptedSubmission('fresh-hand-off-id', 'drained')]
         })
       )
       expect(hook!.queued.cards.map((card) => card.messageId)).toEqual(['still-waiting'])
+    })
+
+    it('never hides a card by a direct send that merely shares its id', async () => {
+      await mountSession(
+        CAPABLE,
+        snapshotEvent({
+          queuedMessages: [queuedDraft({ messageId: 'same-id' })],
+          submissions: [acceptedSubmission('same-id')]
+        })
+      )
+      expect(hook!.queued.cards.map((card) => card.messageId)).toEqual(['same-id'])
     })
 
     it('shows no cards from an incapable host even if a list arrives', async () => {
@@ -646,8 +685,10 @@ describe('mobile structured queued messages', () => {
         if (method === 'agentSession.queuedMessageSend') {
           return mutationOk({
             clientMessageId: 'draft-1',
+            // Every hand-off goes out under a fresh id and names its draft.
             submission: {
-              clientMessageId: 'draft-1',
+              clientMessageId: 'hand-off-1',
+              queuedMessageId: 'draft-1',
               fence: 3,
               payloadFingerprint: 'fp',
               dispatchState: 'pending',
