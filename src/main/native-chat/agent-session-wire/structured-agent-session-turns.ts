@@ -13,31 +13,31 @@ import {
 } from '../../../shared/agent-session-failure-words'
 import type {
   AgentJournalMessageItem,
-  AgentJournalStatusItem,
   AgentJournalSubmission
 } from '../../../shared/agent-session-journal-types'
 import {
   refuse,
-  type AgentSessionCancelResult,
   type AgentSessionRefusalReason,
   type AgentSessionSendResult,
   type AgentSessionWireRefusal
 } from '../../../shared/agent-session-wire'
 import { DISPATCH_DOUBT_PERSISTENCE_FAILED } from '../agent-session-journal/journal-dispatch-doubt-reasons'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
-import { latestJournalDispatchObservation } from '../agent-session-journal/journal-dispatch-observation'
 import type {
-  AgentSessionCancelOutcome,
   AgentSessionDispatchOutcome,
   StructuredAgentSessionAdapter,
   StructuredAgentSessionProviderChildPhase
 } from './structured-agent-session-adapter'
 import { structuredAgentSessionStartFailure } from './structured-agent-session-failure-text'
-import { validatePendingPrompt } from './structured-agent-session-prompt-state'
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
-import { isStructuredAgentSessionMainAgentWorking } from '../../../shared/structured-agent-session-main-agent-working'
+import {
+  handOverStructuredAgentSessionCommand,
+  structuredAgentSessionHandoverOrigin,
+  type StructuredAgentSessionCommandHandoverContext
+} from './structured-agent-session-command-turn'
 export { performSetOption } from './structured-agent-session-turns-options'
 export { performPrompt } from './structured-agent-session-turns-prompt'
+export { performCancel } from './structured-agent-session-turns-cancel'
 
 export type AgentSessionTurnContext = {
   sessionId: string
@@ -100,14 +100,6 @@ async function dispatchSafely(
   }
 }
 
-async function appendStatus(
-  ctx: AgentSessionTurnContext,
-  clientMessageId: string,
-  body: AgentJournalStatusItem
-): Promise<void> {
-  await ctx.journal.appendItem({ provider: 'orca', clientMessageId }, body, { fence: ctx.fence })
-}
-
 /**
  * One id, one delivery. A submission that already exists replays its recorded
  * outcome and NEVER goes back on the wire, whatever state it is in and whatever
@@ -155,13 +147,7 @@ export async function performSend(
   }
 }
 
-export type AgentSessionHandoverContext = Pick<
-  AgentSessionTurnContext,
-  'sessionId' | 'journal' | 'fence' | 'adapter' | 'providerChildPhase'
-> & {
-  /** Who a start failure met at dispatch names, as the start's own row does. */
-  failureTextContext?: AgentSessionFailureWordsContext
-}
+export type AgentSessionHandoverContext = StructuredAgentSessionCommandHandoverContext
 
 /**
  * Hands one queued submission to the provider. The `dispatch{pending}` row goes first: a crash
@@ -182,10 +168,25 @@ export async function handOverSubmission(
     })
     return
   }
-  await ctx.journal.resolveDispatch({ clientMessageId, state: 'pending', fence: ctx.fence })
-  // The row written at acceptance is the send's instant on the host clock; the turn this
-  // dispatch opens records it so the live counter never re-anchors at turn-open.
-  const outcome = await dispatchSafely(ctx, clientMessageId, body, submission.submittedAt)
+  if (body.command) {
+    await handOverStructuredAgentSessionCommand(ctx, submission, body)
+    return
+  }
+  // The message joins the turn running at handover, a steer, or opens its own.
+  await ctx.journal.resolveDispatch({
+    clientMessageId,
+    state: 'pending',
+    fence: ctx.fence,
+    turnScope: ctx.journal.liveTurnScope()
+  })
+  // The handover row's instant on the host clock; the turn this dispatch opens records it so the
+  // live counter never re-anchors at turn-open.
+  const outcome = await dispatchSafely(
+    ctx,
+    clientMessageId,
+    body,
+    structuredAgentSessionHandoverOrigin(ctx.journal, submission)
+  )
   // An admission needs no dispatch row: the submission is already pending.
   if (outcome.state === 'admitted') {
     return
@@ -237,120 +238,4 @@ function requireSubmission(
     throw new Error('agent_session_submission_lost')
   }
   return submission
-}
-
-/** Claude's echo accepts a send one sink write before its turn row lands, so read after the drain.
- *  A failed drain reads working: bookkeeping never talks a Stop out of stopping. */
-export async function isMainAgentWorkingOnceFlushed(
-  ctx: Pick<AgentSessionTurnContext, 'journal' | 'fence' | 'flushStreamedEvents'>
-): Promise<boolean> {
-  try {
-    await ctx.flushStreamedEvents()
-  } catch {
-    return true
-  }
-  return isStructuredAgentSessionMainAgentWorking(
-    ctx.journal.activeTurnId(),
-    ctx.journal.submissions(),
-    ctx.fence
-  )
-}
-
-export async function performCancel(
-  ctx: AgentSessionTurnContext,
-  input: {
-    clientOperationId: string
-    /** Absent: whatever the conversation has in flight; present: only while that turn is current. */
-    turnId?: string
-    scope?: 'background-tasks'
-    taskId?: string
-    prompt?: { itemId: string; expectedRevision: number }
-    /** The host already withdrew queued messages for this Stop. */
-    withdrewQueued?: boolean
-  }
-): Promise<TurnOutcome<AgentSessionCancelResult>> {
-  if (input.prompt) {
-    const validated = validatePendingPrompt(ctx, input.prompt)
-    if (!validated.ok) {
-      return validated
-    }
-  }
-  let cancelled = false
-  let note: AgentJournalStatusItem | null = { kind: 'status', text: 'Cancellation requested.' }
-  try {
-    const dispatchStatus = latestJournalDispatchObservation(ctx.journal, ctx.fence)
-    const outcome: AgentSessionCancelOutcome = input.scope
-      ? {
-          cancelled:
-            (
-              await ctx.adapter.stopBackgroundTasks?.({
-                sessionId: ctx.sessionId,
-                fence: ctx.fence,
-                ...(input.taskId ? { taskId: input.taskId } : {})
-              })
-            )?.cancelled === true
-        }
-      : await ctx.adapter.cancelTurn({
-          sessionId: ctx.sessionId,
-          ...(input.turnId !== undefined ? { turnId: input.turnId } : {}),
-          fence: ctx.fence,
-          // The journal is what the client read to name a turn, so it is what judges the request.
-          resolveLiveTurnId: () => ctx.journal.activeTurnId(),
-          ...(dispatchStatus ? { dispatchStatus } : {}),
-          ...(input.prompt ? { prompt: { itemId: input.prompt.itemId } } : {})
-        })
-    cancelled = outcome.cancelled
-    if (
-      !cancelled &&
-      input.withdrewQueued &&
-      !outcome.unconfirmed &&
-      !(await isMainAgentWorkingOnceFlushed(ctx))
-    ) {
-      // A Stop that withdrew what was queued and left nothing working ended what it was sent for,
-      // named or not. The journal judges it: providers differ on refusing a turn that has ended.
-      cancelled = true
-      note = null
-    } else if (!cancelled && outcome.unconfirmed) {
-      // Before the named-turn row: the provider took the interrupt, so the turn may still run.
-      note = {
-        kind: 'status',
-        ...agentSessionFailureWords(agentSessionFailureFact('cancelUnconfirmed'), {
-          surface: 'row'
-        })
-      }
-    } else if (!cancelled && input.turnId !== undefined) {
-      note = { kind: 'status', text: 'The provider had already finished this turn.' }
-    } else if (!cancelled && input.prompt) {
-      note = null
-    } else if (!cancelled) {
-      // Sent only while the chat reads working, so a Stop that ended nothing must say why.
-      const detail = outcome.refusal?.detail
-      note = {
-        kind: 'status',
-        ...agentSessionFailureWords(
-          agentSessionFailureFact('stopRefused', detail ? { detail } : {}),
-          { ...ctx.failureTextContext, surface: 'row' }
-        )
-      }
-    }
-  } catch (error) {
-    if (input.prompt) {
-      throw error
-    }
-    // The adapter's error is Orca's; the row says only that the stop is unconfirmed.
-    note = {
-      kind: 'status',
-      ...agentSessionFailureWords(agentSessionFailureFact('cancelUnconfirmed'), { surface: 'row' })
-    }
-  }
-  if (cancelled && input.prompt) {
-    await ctx.flushStreamedEvents()
-  }
-  const value = { ...(input.turnId !== undefined ? { turnId: input.turnId } : {}), cancelled }
-  if (input.scope || note === null) {
-    return { ok: true, value }
-  }
-  // Keyed by the operation id so a replayed cancel upserts one item, not two.
-  await appendStatus(ctx, input.clientOperationId, note)
-  return { ok: true, value }
 }

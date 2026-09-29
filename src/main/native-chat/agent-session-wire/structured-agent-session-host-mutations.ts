@@ -28,7 +28,10 @@ import {
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import type { AgentSessionPromptRequest } from './structured-agent-session-turns-prompt'
 import { threadGoalPlan } from './structured-agent-session-thread-goal'
-import { isMainAgentWorkingOnceFlushed, performCancel } from './structured-agent-session-turns'
+import {
+  isMainAgentWorkingOnceFlushed,
+  performCancel
+} from './structured-agent-session-turns-cancel'
 import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
 import {
   admitAndRunAgentSessionMutation,
@@ -78,7 +81,8 @@ export type StructuredAgentSessionMutationContext = {
   now: () => number
 }
 
-function mutate<TValue>(
+/** Admits the envelope and runs the plan inside the session's serialize. */
+export function mutateStructuredAgentSession<TValue>(
   context: StructuredAgentSessionMutationContext,
   caller: StructuredAgentSessionCaller,
   envelope: AgentSessionMutationEnvelope,
@@ -113,7 +117,7 @@ export function sendStructuredAgentSessionTurn(
   }
 ): Promise<AgentSessionMutationResult<AgentSessionSendResult>> {
   const plan = sendPlan(params)
-  return mutate(
+  return mutateStructuredAgentSession(
     context,
     caller,
     params.envelope,
@@ -146,28 +150,21 @@ export function cancelStructuredAgentSessionTurn(
     prompt?: { itemId: string; expectedRevision: number }
   }
 ): Promise<AgentSessionMutationResult<AgentSessionCancelResult>> {
-  const command = context.deps.store.getRecord(params.envelope.sessionId)?.conversationCommand
-  // Interrupts must reach a provider while the command awaits its terminal frame.
-  const cancellationContext =
-    command?.command === 'compact' && command.phase === 'prepared'
-      ? {
-          ...context,
-          serialize: <T>(sessionId: string, task: () => Promise<T>) =>
-            context.serialize(`compact-cancel:${sessionId}`, task)
-        }
-      : context
-  const plan = cancelPlan(params)
   if (params.scope || params.prompt) {
-    return mutate(
-      cancellationContext,
+    return mutateStructuredAgentSession(
+      context,
       caller,
       params.envelope,
-      plan,
+      cancelPlan(params),
       openForWrite(context, params.envelope)
     )
   }
-  return mutate(
-    cancellationContext,
+  const plan = cancelPlan({
+    ...params,
+    stopChild: () => context.stopAgent(params.envelope.sessionId)
+  })
+  return mutateStructuredAgentSession(
+    context,
     caller,
     params.envelope,
     {
@@ -195,6 +192,7 @@ export function cancelStructuredAgentSessionTurn(
               {
                 clientOperationId: params.envelope.clientOperationId,
                 ...named,
+                stopChild: () => context.stopAgent(params.envelope.sessionId),
                 withdrewQueued: withdrawn.length > 0
               }
             )
@@ -210,7 +208,7 @@ export function respondToStructuredAgentSessionPrompt(
   caller: StructuredAgentSessionCaller,
   params: AgentSessionPromptRequest & { envelope: AgentSessionMutationEnvelope }
 ): Promise<AgentSessionMutationResult<AgentSessionPromptResult>> {
-  return mutate(
+  return mutateStructuredAgentSession(
     context,
     caller,
     params.envelope,
@@ -228,7 +226,7 @@ export async function setStructuredAgentSessionOption(
   await context.deps.adapter.awaitOptionWritable?.(params.envelope.sessionId)
   const plan = setOptionPlan(params)
   const atRest = () => !context.sessions.get(params.envelope.sessionId)?.child
-  return mutate(
+  return mutateStructuredAgentSession(
     context,
     caller,
     params.envelope,
@@ -253,7 +251,7 @@ export function changeStructuredAgentSessionThreadGoal(
   caller: StructuredAgentSessionCaller,
   params: { envelope: AgentSessionMutationEnvelope; change: AgentSessionThreadGoalChange }
 ): Promise<AgentSessionMutationResult<AgentSessionThreadGoalResult>> {
-  return mutate(
+  return mutateStructuredAgentSession(
     context,
     caller,
     params.envelope,

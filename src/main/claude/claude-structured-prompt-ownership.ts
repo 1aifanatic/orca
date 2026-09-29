@@ -3,7 +3,6 @@ import {
   AgentSessionPromptUnavailableError,
   type StructuredAgentSessionAdapter
 } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
-import type { StructuredSessionCompaction } from '../native-chat/agent-session-wire/structured-session-compaction'
 import { CLAUDE_DEFAULT_REQUEST_TIMEOUT_MS } from './claude-agent-sdk-control-requests'
 import {
   answerClaudePrompt,
@@ -82,12 +81,11 @@ function cancelClaudeConversation(
 export async function cancelClaudeStructuredTurn(input: {
   request: CancelInput
   sessions: Map<string, ClaudeSession>
-  compactions: StructuredSessionCompaction
   timeoutMs?: number
   admitPromptCancellation: (session: ClaudeSession, promptKey: string) => boolean
   onDispatchSettledLate?: ClaudeLateDispatchSettlement
 }): Promise<{ cancelled: boolean }> {
-  const { request, sessions, compactions, timeoutMs } = input
+  const { request, sessions, timeoutMs } = input
   const session = requireSession(sessions, request.sessionId)
   const acquisitionGeneration = session.acquisitionGeneration
   const prompt = request.prompt
@@ -103,7 +101,7 @@ export async function cancelClaudeStructuredTurn(input: {
   if (
     !prompt &&
     (requestedTurnId === undefined ||
-      (!compactions.ownsTurn(request.sessionId, requestedTurnId) &&
+      (session.translator?.commandTurnId !== requestedTurnId &&
         (liveTurnId === requestedTurnId ||
           (liveTurnId === null && session.dispatchWaiters.length > 0))))
   ) {
@@ -155,7 +153,8 @@ export async function cancelClaudeStructuredTurn(input: {
   const dispatchAdmissionAllowsCancellation = (): boolean =>
     dispatchAdmissionIsCurrent() ||
     (Boolean(prompt) && supportsClaudeQueuedInterruptCancellation(session))
-  const compactionOwnsTurn = (): boolean => compactions.ownsTurn(request.sessionId, requestedTurnId)
+  const compactionOwnsTurn = (): boolean =>
+    session.translator !== null && session.translator.commandTurnId === requestedTurnId
   const isCurrent = (): boolean =>
     sessions.get(request.sessionId) === session &&
     session.fence === request.fence &&
@@ -170,7 +169,14 @@ export async function cancelClaudeStructuredTurn(input: {
     const result = await cancelClaudeTurn(
       session,
       timeoutMs,
-      isCurrent,
+      () => {
+        const current = isCurrent()
+        // Read with the result that ends it: a stopped command reports no compaction.
+        if (current && compactionOwnsTurn()) {
+          session.translator?.commandInterruptRequested(requestedTurnId)
+        }
+        return current
+      },
       input.onDispatchSettledLate
     )
     if (result.cancelled && claim && cancellationObserved) {
