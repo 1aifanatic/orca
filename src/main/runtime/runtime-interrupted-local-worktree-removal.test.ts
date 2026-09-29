@@ -9,7 +9,7 @@ import { promisify } from 'node:util'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Repo } from '../../shared/repo-types'
 import { removeTree } from '../../shared/windows-transient-lock-removal'
-import type { WorktreeRemovalOutcome } from '../../shared/worktree/removal-outcome'
+import type { RemoveWorktreeResult } from '../../shared/worktree/create-types'
 import type { Store } from '../persistence'
 import type * as HostTreeRemoval from '../host-tree-removal'
 import { removeHostTree } from '../host-tree-removal'
@@ -20,9 +20,9 @@ import { areWorktreePathsEqual } from '../git/worktree-path-comparison'
 import {
   _resetPendingWorktreeRemovalsForTests,
   _settlePendingWorktreeRemovalsForTests,
-  isWorktreeRemovalPending,
   loadWorktreeRemovalRecords,
-  resumeInterruptedWorktreeRemovals
+  resumeInterruptedWorktreeRemovals,
+  waitForPendingWorktreeRemoval
 } from '../worktree-background-removal'
 import {
   readWorktreeRemovalRecords,
@@ -90,8 +90,12 @@ afterEach(async () => {
   await removeTree(scratchDir)
 })
 
+type FinishOutcome =
+  | ({ status: 'removed' } & RemoveWorktreeResult)
+  | { status: 'failed'; error: string }
+
 async function finishAfterRestart(options: { repoGone?: boolean; head?: string } = {}): Promise<{
-  outcome: WorktreeRemovalOutcome | undefined
+  outcome: FinishOutcome
   purged: string[]
   remember: ReturnType<typeof vi.fn>
 }> {
@@ -108,14 +112,15 @@ async function finishAfterRestart(options: { repoGone?: boolean; head?: string }
   }
   await writeWorktreeRemovalRecords(recordsDir, () => [record])
   await loadWorktreeRemovalRecords(recordsDir)
-  expect(isWorktreeRemovalPending(record.worktreeId)).toBe(true)
+  // A request that joins before the finish starts gets the finish's result.
+  const joined = waitForPendingWorktreeRemoval(record.worktreeId)
+  expect(joined).toBeDefined()
 
   const storeStub = {
     getRepo: (id: string) => (id === repo.id && !options.repoGone ? repo : undefined),
     getRepos: () => (options.repoGone ? [] : [repo]),
     getWorktreeMeta: () => undefined
   }
-  const outcomes: WorktreeRemovalOutcome[] = []
   const purged: string[] = []
   const remember = vi.fn()
   resumeInterruptedWorktreeRemovals((interrupted) =>
@@ -130,17 +135,17 @@ async function finishAfterRestart(options: { repoGone?: boolean; head?: string }
       },
       purge: ({ worktreeId }) => purged.push(worktreeId),
       onRemoved: () => {},
-      publish: (_repoId, outcome) => {
-        if (outcome) {
-          outcomes.push(outcome)
-        }
-      }
+      publish: () => {}
     })
+  )
+  const outcome: FinishOutcome = await joined!.then(
+    (result) => ({ status: 'removed' as const, ...result }),
+    (error: unknown) => ({ status: 'failed' as const, error: String(error) })
   )
   await _settlePendingWorktreeRemovalsForTests()
   expect(await readWorktreeRemovalRecords(recordsDir)).toEqual([])
-  expect(isWorktreeRemovalPending(record.worktreeId)).toBe(false)
-  return { outcome: outcomes.at(-1), purged, remember }
+  expect(waitForPendingWorktreeRemoval(record.worktreeId)).toBeUndefined()
+  return { outcome, purged, remember }
 }
 
 describe('finishing an interrupted worktree removal after a restart', () => {

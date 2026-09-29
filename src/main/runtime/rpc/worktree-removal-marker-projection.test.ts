@@ -47,7 +47,7 @@ function psResult(): RuntimeWorktreePsResult {
 
 describe('worktree listings while a checkout is being deleted', () => {
   beforeEach(() => {
-    startBackgroundWorktreeRemoval({
+    void startBackgroundWorktreeRemoval({
       removal: {
         worktreeId: removingId,
         repoId: 'repo-1',
@@ -57,7 +57,6 @@ describe('worktree listings while a checkout is being deleted', () => {
         force: false
       },
       run: () => new Promise(() => {}),
-      catalogVersion: () => ({ epoch: 'e', sequence: 1 }),
       publish: () => {}
     })
   })

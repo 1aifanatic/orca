@@ -3,10 +3,8 @@ import { join } from 'node:path'
 import type { RemoveWorktreeResult } from '../../shared/worktree/create-types'
 import type { GitWorktreeInfo } from '../../shared/worktree/types'
 import { assertWorktreeUnlockedForRemoval } from '../../shared/worktree/removal'
-import type { WorktreeRemovalOutcome } from '../../shared/worktree/removal-outcome'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import type { Store } from '../persistence'
-import { getLocalWorktreeCatalogVersion } from '../local-worktree-scan-generation'
 import type { BackgroundWorktreeRemovalJob } from '../worktree-background-removal'
 import { resolveWorktreeRemovalMetadata } from '../worktree-removal-repo-owner'
 import type { RuntimePreservedBranchCleanup } from './runtime-preserved-branch-cleanup'
@@ -33,7 +31,7 @@ type InterruptedWorktreeRemovalHost = {
   /** Drops the worktree's host state (metadata, history, caches), as every removal path does. */
   purge: (record: WorktreeRemovalRecord) => void
   onRemoved: (record: WorktreeRemovalRecord) => void
-  publish: (repoId: string, outcome?: WorktreeRemovalOutcome) => void
+  publish: (repoId: string) => void
 }
 
 /** The background job that finishes one interrupted removal on this host. */
@@ -73,8 +71,7 @@ export function interruptedLocalWorktreeRemovalJob(
       host.onRemoved(record)
       return result
     },
-    catalogVersion: () => getLocalWorktreeCatalogVersion(record.repoId),
-    publish: (outcome) => host.publish(record.repoId, outcome)
+    publish: () => host.publish(record.repoId)
   }
 }
 

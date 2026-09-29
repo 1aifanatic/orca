@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 import { resetWorktreeTestSshHostHome } from '../../worktree-removal-test-ssh-host-home'
+import { _settlePendingWorktreeRemovalsForTests } from '../../worktree-background-removal'
 
 import {
   OrcaRuntimeService,
@@ -299,6 +300,35 @@ describe('OrcaRuntimeService', () => {
     finishRemoval.resolve()
     await expect(Promise.all([first, second])).resolves.toEqual([{}, {}])
     expect(removeWorktree).toHaveBeenCalledTimes(1)
+  })
+
+  it('answers a client that cannot wait as soon as Git starts deleting', async () => {
+    const runtime = createWorktreeRemovalRuntime()
+    const removeStarted = deferred<void>()
+    const finishRemoval = deferred<void>()
+    vi.mocked(removeWorktree).mockImplementation(async () => {
+      removeStarted.resolve()
+      await finishRemoval.promise
+      return {}
+    })
+
+    const accepted = runtime.removeManagedWorktree(TEST_WORKTREE_ID, {
+      waitForBackgroundRemoval: false
+    })
+    await removeStarted.promise
+    await expect(accepted).resolves.toEqual({ removing: true })
+    finishRemoval.resolve()
+    await _settlePendingWorktreeRemovalsForTests()
+  })
+
+  it('replies to a waiting client with the error of a delete that fails after acceptance', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const runtime = createWorktreeRemovalRuntime()
+    vi.mocked(removeWorktree).mockRejectedValue(new Error('permission denied'))
+
+    await expect(runtime.removeManagedWorktree(TEST_WORKTREE_ID)).rejects.toThrow(
+      'permission denied'
+    )
   })
 
   it('treats forced runtime deletion of an already-missing unregistered worktree as cleanup', async () => {

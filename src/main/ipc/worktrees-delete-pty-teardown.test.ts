@@ -145,11 +145,10 @@ describe('registerWorktreeHandlers', () => {
     ])
     expect(store.removeWorktreeMeta).toHaveBeenCalledTimes(1)
     expect(deleteWorktreeHistoryDirMock).toHaveBeenCalledTimes(1)
-    // One publication when the row starts showing as removing, one with the outcome.
+    // One notice when the row starts showing as removing, one after it has left the table.
     expect(mainWindow.webContents.send).toHaveBeenCalledTimes(2)
     expect(mainWindow.webContents.send).toHaveBeenLastCalledWith('worktrees:changed', {
-      repoId: 'repo-1',
-      removalOutcome: expect.objectContaining({ status: 'removed' })
+      repoId: 'repo-1'
     })
   })
 

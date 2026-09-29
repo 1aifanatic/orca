@@ -28,8 +28,6 @@ import {
   invalidateRuntimeClientEventReplay
 } from './runtime-environment-subscription-selection'
 import type { WorktreeEventRuntime } from './worktree-event-runtime'
-import { applyBackgroundWorktreeRemovalOutcome } from './background-worktree-removal-bridge'
-import { noteBackgroundWorktreeRemovalEventGap } from '../../store/slices/worktrees/teardown/background-worktree-removal'
 
 export function registerRuntimeClientIpcBridge(
   unsubs: (() => void)[],
@@ -112,12 +110,6 @@ export function registerRuntimeClientIpcBridge(
       return
     }
     if (event.type === 'worktreesChanged') {
-      if (event.removalOutcome) {
-        applyBackgroundWorktreeRemovalOutcome(
-          toRuntimeExecutionHostId(environmentId),
-          event.removalOutcome
-        )
-      }
       void ensureRuntimeEventRepoKnown(environmentId, event.repoId).then(() =>
         worktreeChangeRefreshQueue.enqueue({
           repoId: event.repoId,
@@ -146,8 +138,6 @@ export function registerRuntimeClientIpcBridge(
     getDesiredEnvironmentIds: () => getRuntimeClientEventEnvironmentIds(useAppStore.getState()),
     getSubscriptionKey: (environmentId) => buildRuntimeClientEventEnvironmentKey([environmentId]),
     subscribe: (environmentId, onEvent, onError, isCurrent) => {
-      // Why: events emitted before this subscription existed were not delivered to it.
-      noteBackgroundWorktreeRemovalEventGap(toRuntimeExecutionHostId(environmentId))
       const sshGeneration = getEnvironmentSshStateGeneration(environmentId)
       const runtimeGeneration = getRuntimeEnvironmentConnectionGeneration(environmentId)
       const runtimeRevision = getRuntimeEnvironmentRevision(environmentId)
@@ -167,7 +157,6 @@ export function registerRuntimeClientIpcBridge(
           if (!isCurrent()) {
             return
           }
-          noteBackgroundWorktreeRemovalEventGap(toRuntimeExecutionHostId(environmentId))
           invalidateRuntimeClientEventReplay({
             getSshStateReference: () => useAppStore.getState().sshStateByEnvironment,
             refreshRuntimeStatus: () => {

@@ -26,8 +26,6 @@ import { findRegisteredDeletableWorktree } from '../worktree-removal-safety'
 import { CLIENT_REMOVAL_HOME } from '../worktree-removal-home-guard'
 import type { RuntimeStore } from './runtime-store-contract'
 import type { RuntimeWorktreeRemovalTarget } from './runtime-worktree-selection'
-import type { WorktreeRemovalOutcome } from '../../shared/worktree/removal-outcome'
-import { getLocalWorktreeCatalogVersion } from '../local-worktree-scan-generation'
 import { removesInBackground, startBackgroundWorktreeRemoval } from '../worktree-background-removal'
 
 export async function removeRuntimeRegisteredLocalWorktree(args: {
@@ -59,7 +57,7 @@ export async function removeRuntimeRegisteredLocalWorktree(args: {
   ) => void
   /** Fired when Git finished, not on acceptance. */
   onRemoved: () => void
-  publish: (outcome?: WorktreeRemovalOutcome) => void
+  publish: () => void
 }): Promise<RemoveWorktreeResult & { warning?: string }> {
   const { repo, registeredWorktree, localOptions } = args
   const canonicalPath = registeredWorktree.path
@@ -149,9 +147,9 @@ export async function removeRuntimeRegisteredLocalWorktree(args: {
     args.publish()
     return { ...result, ...acceptedFields }
   }
-  // Why background: every refusal above already ran; Git's 20-35 s delete must not outlast client
-  // request timeouts, and clients read the host's `removing` marker until it finishes.
-  startBackgroundWorktreeRemoval({
+  // Why detached: every refusal above already ran, and Git's 20-35 s delete must finish even when the
+  // request that asked for it times out; other views read the host's `removing` marker meanwhile.
+  void startBackgroundWorktreeRemoval({
     removal: {
       worktreeId: args.target.id,
       repoId: repo.id,
@@ -165,8 +163,7 @@ export async function removeRuntimeRegisteredLocalWorktree(args: {
       args.onRemoved()
       return result
     },
-    catalogVersion: () => getLocalWorktreeCatalogVersion(repo.id),
-    publish: (outcome) => args.publish(outcome)
+    publish: () => args.publish()
   })
   return { removing: true, ...acceptedFields }
 }

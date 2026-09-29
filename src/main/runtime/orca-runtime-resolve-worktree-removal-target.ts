@@ -58,7 +58,7 @@ export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWith
           this.purgeRemovedWorktree(store, worktreeId, repoId, LOCAL_EXECUTION_HOST_ID),
         onRemoved: ({ worktreeId, worktreePath }) =>
           this.emitWorktreeLifecycle({ kind: 'removed', worktreeId, path: worktreePath }),
-        publish: (repoId, outcome) => this.publishWorktreeRemovalChange(repoId, outcome)
+        publish: (repoId) => this.publishWorktreeRemovalChange(repoId)
       })
     )
   }

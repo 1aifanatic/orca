@@ -1,6 +1,3 @@
-import { LOCAL_EXECUTION_HOST_ID } from '../../../../shared/execution-host'
-import type { WorktreeRemovalOutcome } from '../../../../shared/worktree/removal-outcome'
-import { applyBackgroundWorktreeRemovalOutcome } from './background-worktree-removal-bridge'
 import { applyWorktreeHeadIdentities } from '../worktree-head-identity-apply'
 import type { WorktreeChangeRefreshQueue } from '../worktree-change-refresh-queue'
 import { useAppStore } from '../../store'
@@ -36,18 +33,13 @@ export function registerProjectCatalogIpcBridge(
       async (data: {
         repoId: string
         renamed?: { oldWorktreeId: string; newWorktreeId: string }
-        removalOutcome?: WorktreeRemovalOutcome
       }) => {
-        const { removalOutcome, ...change } = data
-        if (removalOutcome) {
-          applyBackgroundWorktreeRemovalOutcome(LOCAL_EXECUTION_HOST_ID, removalOutcome)
-        }
         // Why: preserve this event's local origin across queue delays and runtime
         // focus changes; otherwise an unbound repo can refresh from the wrong host.
         // A folder rename changes the worktree id; handleWorktreesChanged re-keys
         // state and shields it from the deletion diff.
         worktreeChangeRefreshQueue.enqueue({
-          ...change,
+          ...data,
           forceLocalOwner: true
         })
       }

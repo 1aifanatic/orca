@@ -40,7 +40,6 @@ import {
   stopPtysForDestructiveWorktreeRemoval
 } from './worktree-removal-ownership'
 import { preservedBranchCleanupScopeKey } from '../../../../shared/preserved-branch-cleanup'
-import { getLocalWorktreeCatalogVersion } from '../../../local-worktree-scan-generation'
 import {
   removesInBackground,
   startBackgroundWorktreeRemoval
@@ -150,9 +149,9 @@ export async function removeRegisteredLocalWorktree(
     runtime.publishWorktreeRemovalChange(repoId)
     return result
   }
-  // Why background: Git deletes the checkout in its own process for 20-35 s on a large tree; every
-  // refusal above already ran, and clients read the host's `removing` marker until it finishes.
-  startBackgroundWorktreeRemoval({
+  // Why detached: every refusal above already ran, and Git's 20-35 s delete must finish even when the
+  // request that asked for it goes away; other views read the host's `removing` marker meanwhile.
+  void startBackgroundWorktreeRemoval({
     removal: {
       worktreeId: args.worktreeId,
       repoId,
@@ -170,8 +169,7 @@ export async function removeRegisteredLocalWorktree(
       })
       return result
     },
-    catalogVersion: () => getLocalWorktreeCatalogVersion(repoId),
-    publish: (outcome) => runtime.publishWorktreeRemovalChange(repoId, outcome)
+    publish: () => runtime.publishWorktreeRemovalChange(repoId)
   })
   return { removing: true }
 }

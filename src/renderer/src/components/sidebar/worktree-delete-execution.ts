@@ -5,6 +5,7 @@ import {
   normalizeRuntimePathForComparison
 } from '../../../../shared/cross-platform-path'
 import type { Worktree } from '../../../../shared/worktree/types'
+import { LOCAL_EXECUTION_HOST_ID } from '../../../../shared/execution-host'
 import {
   composeWorktreeHostIdentity,
   getWorktreeHostIdentity
@@ -109,6 +110,10 @@ export async function runWorktreeDeletesInParallel(
         const deletedInGroup: WorktreeRemovalTarget[] = []
         const failedInGroup: (typeof group)[number][] = []
         const started: { path: string; settled: Promise<void> }[] = []
+        // Why only this machine's repos run in parallel: its host serializes the branch cleanup per
+        // repo and limits concurrent deletes, while SSH and paired (possibly older) hosts race the
+        // repo's ref locks when one repo deletes in parallel (#2259).
+        const serialized = (group[0]?.hostId ?? LOCAL_EXECUTION_HOST_ID) !== LOCAL_EXECUTION_HOST_ID
         for (const target of group) {
           // A descendant's outcome decides whether its ancestor may be deleted at all.
           const descendants = started.filter((earlier) =>
@@ -117,10 +122,6 @@ export async function runWorktreeDeletesInParallel(
           if (descendants.length > 0) {
             await Promise.all(descendants.map((earlier) => earlier.settled))
           }
-          let markAccepted: () => void = () => {}
-          const accepted = new Promise<void>((resolve) => {
-            markAccepted = resolve
-          })
           const settled = runInWorktreeDeleteTurn(target.id, async () => {
             // A queued target may be recreated while an earlier repo sibling is deleting.
             // Why by host (STA-4343): the id-keyed map keeps ONE row per `repoId::path`,
@@ -146,7 +147,6 @@ export async function runWorktreeDeletesInParallel(
               {
                 ...options,
                 focusSuccessorOnDelete: false,
-                onAccepted: markAccepted,
                 suppressPreservedBranchToast: aggregatePreservedBranches,
                 ...(snapshotPruneBatch ? { snapshotPruneBatchId: snapshotPruneBatch.batchId } : {}),
                 onPreservedBranch: (branch) => {
@@ -162,11 +162,10 @@ export async function runWorktreeDeletesInParallel(
               failedInGroup.push(target)
             }
           })
-          void settled.catch(() => {})
           started.push({ path: target.path, settled })
-          // Why: same-repo deletes queue only until the host accepts; it serializes their ref
-          // cleanup itself, and Git's 20-35 s checkout delete must not run one repo sibling at a time.
-          await Promise.race([accepted, settled])
+          if (serialized) {
+            await settled
+          }
         }
         await Promise.all(started.map((entry) => entry.settled))
         return deletedInGroup

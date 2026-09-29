@@ -8,7 +8,6 @@ import type {
   WorktreeRemoteBranchConflictEvent
 } from '../../shared/worktree/base-ref-drift-types'
 import type { CreateWorktreeResult } from '../../shared/worktree/create-types'
-import type { WorktreeRemovalOutcome } from '../../shared/worktree/removal-outcome'
 import type { WorktreeStartupLaunch } from '../../shared/worktree/launch-types'
 import type {
   RuntimeBrowserDriverState,
@@ -26,11 +25,7 @@ export type RuntimeNotifier = {
     selector?: { kind: 'self' } | { kind: 'ssh'; targetId: string } | { kind: 'orphan' }
     reason?: 'definition' | 'run' | 'usage'
   }): void
-  worktreesChanged(
-    repoId: string,
-    renamed?: { oldWorktreeId: string; newWorktreeId: string },
-    removalOutcome?: WorktreeRemovalOutcome
-  ): void
+  worktreesChanged(repoId: string, renamed?: { oldWorktreeId: string; newWorktreeId: string }): void
   worktreeBaseStatus?(event: WorktreeBaseStatusEvent): void
   worktreeRemoteBranchConflict?(event: WorktreeRemoteBranchConflictEvent): void
   reposChanged(): void

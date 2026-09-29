@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { WorktreeRemovalOutcome } from '../shared/worktree/removal-outcome'
 import {
   _resetPendingWorktreeRemovalsForTests,
   _settlePendingWorktreeRemovalsForTests,
   assertNoPendingWorktreeRemovalConflict,
-  isWorktreeRemovalPending,
+  finishAcceptedWorktreeRemoval,
   projectPendingWorktreeRemovals,
   removesInBackground,
-  startBackgroundWorktreeRemoval
+  startBackgroundWorktreeRemoval,
+  waitForPendingWorktreeRemoval
 } from './worktree-background-removal'
 
 const removal = {
@@ -18,7 +18,8 @@ const removal = {
   deleteBranch: true,
   force: false
 }
-const catalogVersion = { epoch: 'e', sequence: 7 }
+const isPending = (hostId?: string): boolean =>
+  waitForPendingWorktreeRemoval(removal.worktreeId, hostId) !== undefined
 
 function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
   let resolve!: (value: T) => void
@@ -33,77 +34,78 @@ describe('background worktree removal', () => {
     _resetPendingWorktreeRemovalsForTests()
   })
 
-  it('accepts before Git finishes and publishes the outcome after the row leaves the table', async () => {
+  it('resolves with the delete result once Git finishes, after the row has left the table', async () => {
     const git = deferred<{ preservedBranch: { branchName: string; head: string } }>()
-    const published: { outcome?: WorktreeRemovalOutcome; pendingAtPublish: boolean }[] = []
-    startBackgroundWorktreeRemoval({
+    const pendingAtPublish: boolean[] = []
+    const result = startBackgroundWorktreeRemoval({
       removal,
       run: () => git.promise,
-      catalogVersion: () => catalogVersion,
-      publish: (outcome) =>
-        published.push({ outcome, pendingAtPublish: isWorktreeRemovalPending(removal.worktreeId) })
+      publish: () => pendingAtPublish.push(isPending())
     })
 
-    expect(isWorktreeRemovalPending(removal.worktreeId)).toBe(true)
-    expect(published).toEqual([{ outcome: undefined, pendingAtPublish: true }])
+    expect(isPending()).toBe(true)
+    expect(pendingAtPublish).toEqual([true])
 
     git.resolve({ preservedBranch: { branchName: 'feature', head: 'abc' } })
-    await _settlePendingWorktreeRemovalsForTests()
-
-    expect(isWorktreeRemovalPending(removal.worktreeId)).toBe(false)
-    // A refetch the outcome triggers must not see the row as still removing.
-    expect(published[1]).toEqual({
-      outcome: {
-        worktreeId: removal.worktreeId,
-        status: 'removed',
-        preservedBranch: { branchName: 'feature', head: 'abc' },
-        catalogVersion
-      },
-      pendingAtPublish: false
+    await expect(result).resolves.toEqual({
+      preservedBranch: { branchName: 'feature', head: 'abc' }
     })
+    await _settlePendingWorktreeRemovalsForTests()
+    expect(isPending()).toBe(false)
+    // A refetch the end notice triggers must not see the row as still removing.
+    expect(pendingAtPublish).toEqual([true, false])
   })
 
-  it('publishes a failure and clears the row so a retry starts over', async () => {
+  it('gives a request that joins a running delete that delete’s result', async () => {
+    const git = deferred<{ preservedBranch: { branchName: string; head: string } }>()
+    const run = vi.fn(() => git.promise)
+    void startBackgroundWorktreeRemoval({ removal, run, publish: () => {} })
+
+    const joined = finishAcceptedWorktreeRemoval(
+      { removing: true, warning: 'hook skipped' },
+      removal.worktreeId
+    )
+    git.resolve({ preservedBranch: { branchName: 'feature', head: 'abc' } })
+
+    await expect(joined).resolves.toEqual({
+      warning: 'hook skipped',
+      preservedBranch: { branchName: 'feature', head: 'abc' }
+    })
+    expect(run).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects with the delete error and clears the row so a retry starts over', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const publish = vi.fn()
-    startBackgroundWorktreeRemoval({
+    const result = startBackgroundWorktreeRemoval({
       removal,
       run: async () => {
         throw new Error('Failed to delete worktree at /work/feature. Permission denied')
       },
-      catalogVersion: () => catalogVersion,
-      publish
+      publish: () => {}
     })
+    await expect(result).rejects.toThrow('Permission denied')
     await _settlePendingWorktreeRemovalsForTests()
-
-    expect(isWorktreeRemovalPending(removal.worktreeId)).toBe(false)
-    expect(publish).toHaveBeenLastCalledWith({
-      worktreeId: removal.worktreeId,
-      status: 'failed',
-      error: 'Failed to delete worktree at /work/feature. Permission denied'
-    })
+    expect(isPending()).toBe(false)
   })
 
   it('keeps the table consistent when publishing throws', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
-    startBackgroundWorktreeRemoval({
+    void startBackgroundWorktreeRemoval({
       removal,
       run: async () => ({}),
-      catalogVersion: () => catalogVersion,
       publish: () => {
         throw new Error('window gone')
       }
     })
     await _settlePendingWorktreeRemovalsForTests()
-    expect(isWorktreeRemovalPending(removal.worktreeId)).toBe(false)
+    expect(isPending()).toBe(false)
   })
 
   it('refuses a create at the same path or branch while Git deletes', async () => {
     const git = deferred<Record<string, never>>()
-    startBackgroundWorktreeRemoval({
+    void startBackgroundWorktreeRemoval({
       removal,
       run: () => git.promise,
-      catalogVersion: () => catalogVersion,
       publish: () => {}
     })
 
@@ -131,21 +133,19 @@ describe('background worktree removal', () => {
   })
 
   it('answers only for this host: a same-id row on an SSH host is not being removed here', () => {
-    startBackgroundWorktreeRemoval({
+    void startBackgroundWorktreeRemoval({
       removal,
       run: () => new Promise(() => {}),
-      catalogVersion: () => catalogVersion,
       publish: () => {}
     })
-    expect(isWorktreeRemovalPending(removal.worktreeId, 'local')).toBe(true)
-    expect(isWorktreeRemovalPending(removal.worktreeId, 'ssh:box')).toBe(false)
+    expect(isPending('local')).toBe(true)
+    expect(isPending('ssh:box')).toBe(false)
   })
 
   it('marks rows for clients that read the marker and omits them for clients that do not', () => {
-    startBackgroundWorktreeRemoval({
+    void startBackgroundWorktreeRemoval({
       removal,
       run: () => new Promise(() => {}),
-      catalogVersion: () => catalogVersion,
       publish: () => {}
     })
     const rows = [

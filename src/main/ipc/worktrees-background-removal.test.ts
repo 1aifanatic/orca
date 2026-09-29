@@ -1,18 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   addWorktreeMock,
-  handleMock,
   listWorktreesMock,
   removeWorktreeMock
 } from './worktrees-test-module-mocks'
 import { handlers, setupWorktreeHandlers, store } from './worktrees-test-harness'
 import { mockKnownFeatureWorktree } from './worktrees-test-fixtures'
-import type { WorktreeRuntimeStub } from './worktrees-test-runtime-stub'
 import type { RemoveWorktreeResult } from '../../shared/worktree/create-types'
-import {
-  _resetPendingWorktreeRemovalsForTests,
-  _settlePendingWorktreeRemovalsForTests
-} from '../worktree-background-removal'
+import { _resetPendingWorktreeRemovalsForTests } from '../worktree-background-removal'
 
 vi.mock('electron', async () =>
   (await import('./worktrees-test-module-mocks')).electronModuleMock()
@@ -96,13 +91,9 @@ vi.mock('../runtime/worktree-teardown', async () =>
 )
 vi.mock('./pty', async () => (await import('./worktrees-test-module-mocks')).ptyModuleMock())
 
-type RawHandler = (event: unknown, args: unknown) => Promise<Record<string, unknown>>
-
-// The harness waits for the outcome the way the renderer does; these tests read the raw reply.
-function rawRemoveHandler(): RawHandler {
-  const call = handleMock.mock.calls.findLast(([channel]) => channel === 'worktrees:remove')
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: ipcMain.handle's second argument is the registered handler.
-  return call?.[1] as RawHandler
+function remove(args: Record<string, unknown>): Promise<RemoveWorktreeResult> {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: worktrees:remove resolves a RemoveWorktreeResult.
+  return handlers['worktrees:remove'](null, args) as Promise<RemoveWorktreeResult>
 }
 
 type ListedRow = { id: string; removing?: true }
@@ -134,23 +125,19 @@ function blockGitRemove(): {
 const featureId = 'repo-1::/workspace/feature-wt'
 
 describe('worktrees:remove in the background', () => {
-  let runtimeStub: WorktreeRuntimeStub
-
   beforeEach(() => {
-    runtimeStub = setupWorktreeHandlers()
+    setupWorktreeHandlers()
   })
 
   afterEach(() => {
     _resetPendingWorktreeRemovalsForTests()
   })
 
-  it('accepts before Git finishes and lists the row as removing until it does', async () => {
+  it('replies once Git finishes, listing the row as removing until then', async () => {
     const worktrees = mockKnownFeatureWorktree()
     const git = blockGitRemove()
 
-    await expect(rawRemoveHandler()(null, { worktreeId: featureId })).resolves.toMatchObject({
-      removing: true
-    })
+    const reply = remove({ worktreeId: featureId })
     await vi.waitFor(() => expect(removeWorktreeMock).toHaveBeenCalledTimes(1))
     expect(store.removeWorktreeMeta).not.toHaveBeenCalled()
 
@@ -160,31 +147,25 @@ describe('worktrees:remove in the background', () => {
 
     listWorktreesMock.mockResolvedValue([worktrees[0]])
     git.release({ preservedBranch: { branchName: 'feature', head: 'feature' } })
-    await _settlePendingWorktreeRemovalsForTests()
 
+    const result = await reply
+    expect(result).toMatchObject({ preservedBranch: { branchName: 'feature', head: 'feature' } })
+    expect(result.removing).toBeUndefined()
     expect(store.removeWorktreeMeta).toHaveBeenCalledWith(featureId, 'local')
-    expect(runtimeStub.removalOutcomes.get(featureId)).toMatchObject({
-      status: 'removed',
-      preservedBranch: { branchName: 'feature', head: 'feature' }
-    })
     const after = await listRepoRows()
     expect(after.map((row) => row.id)).not.toContain(featureId)
   })
 
-  it('publishes a failure after acceptance and lists the row normally again', async () => {
+  it('replies with the delete error and lists the row normally again', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     mockKnownFeatureWorktree()
     const git = blockGitRemove()
 
-    await rawRemoveHandler()(null, { worktreeId: featureId })
+    const reply = remove({ worktreeId: featureId })
     await vi.waitFor(() => expect(removeWorktreeMock).toHaveBeenCalledTimes(1))
     git.fail(new Error('permission denied'))
-    await _settlePendingWorktreeRemovalsForTests()
 
-    expect(runtimeStub.removalOutcomes.get(featureId)).toMatchObject({
-      status: 'failed',
-      error: expect.stringContaining('permission denied')
-    })
+    await expect(reply).rejects.toThrow('permission denied')
     expect(store.removeWorktreeMeta).not.toHaveBeenCalled()
     const rows = await listRepoRows()
     expect(rows.find((row) => row.id === featureId)).toBeDefined()
@@ -192,10 +173,7 @@ describe('worktrees:remove in the background', () => {
 
     // A retry is a fresh removal, not a join onto the failed one.
     removeWorktreeMock.mockResolvedValue({})
-    await expect(rawRemoveHandler()(null, { worktreeId: featureId })).resolves.toMatchObject({
-      removing: true
-    })
-    await _settlePendingWorktreeRemovalsForTests()
+    await expect(remove({ worktreeId: featureId })).resolves.not.toHaveProperty('removing')
     expect(removeWorktreeMock).toHaveBeenCalledTimes(2)
   })
 
@@ -203,21 +181,21 @@ describe('worktrees:remove in the background', () => {
     mockKnownFeatureWorktree()
     const git = blockGitRemove()
 
-    await rawRemoveHandler()(null, { worktreeId: featureId })
+    const first = remove({ worktreeId: featureId })
     await vi.waitFor(() => expect(removeWorktreeMock).toHaveBeenCalledTimes(1))
-    await expect(
-      rawRemoveHandler()(null, { worktreeId: featureId, force: true, hostId: 'local' })
-    ).resolves.toMatchObject({ removing: true })
+    const repeat = remove({ worktreeId: featureId, force: true, hostId: 'local' })
 
-    git.release()
-    await _settlePendingWorktreeRemovalsForTests()
+    git.release({ preservedBranch: { branchName: 'feature', head: 'feature' } })
+    const preserved = { preservedBranch: { branchName: 'feature', head: 'feature' } }
+    await expect(first).resolves.toMatchObject(preserved)
+    await expect(repeat).resolves.toMatchObject(preserved)
     expect(removeWorktreeMock).toHaveBeenCalledTimes(1)
   })
 
   it('gives a create with the same name the next free name while the delete runs', async () => {
     mockKnownFeatureWorktree()
     blockGitRemove()
-    await rawRemoveHandler()(null, { worktreeId: featureId })
+    void remove({ worktreeId: featureId }).catch(() => {})
     await vi.waitFor(() => expect(removeWorktreeMock).toHaveBeenCalledTimes(1))
 
     addWorktreeMock.mockResolvedValue({})

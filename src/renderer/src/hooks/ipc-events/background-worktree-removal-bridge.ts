@@ -1,17 +1,11 @@
-import type { ExecutionHostId } from '../../../../shared/execution-host'
-import { getRepoIdFromWorktreeId } from '../../../../shared/worktree/id'
-import type { WorktreeRemovalOutcome } from '../../../../shared/worktree/removal-outcome'
 import type { Worktree } from '../../../../shared/worktree/types'
 import { getWorktreeHostIdentity } from '../../../../shared/worktree/host-qualified-identity'
 import { getDeleteStateForWorktreeHost } from '@/components/sidebar/worktree-delete-state-host-match'
 import { useAppStore } from '../../store'
-import type { AppState } from '../../store/types'
 import {
-  rowHostId,
-  setBackgroundWorktreeRemovalRowsLookup,
-  settleBackgroundWorktreeRemoval,
-  settleBackgroundWorktreeRemovalsFromRows
-} from '../../store/slices/worktrees/teardown/background-worktree-removal'
+  UNFINISHED_WORKTREE_REMOVAL_ERROR,
+  settleHostWorktreeRemovals
+} from '../../store/slices/worktrees/teardown/host-worktree-removal-state'
 
 type HostMarkedRow = Pick<Worktree, 'id' | 'hostId'>
 type AppStoreApi = Pick<typeof useAppStore, 'getState' | 'setState'>
@@ -24,28 +18,20 @@ function deleteStateKey(row: HostMarkedRow): string {
   return row.hostId ? getWorktreeHostIdentity(row) : row.id
 }
 
-function rowsForWorktree(state: AppState, worktreeId: string): Worktree[] {
-  const repoId = getRepoIdFromWorktreeId(worktreeId)
-  return [
-    ...(state.worktreesByRepo[repoId] ?? []),
-    ...(state.detectedWorktreesByRepo[repoId]?.worktrees ?? [])
-  ]
-}
-
-/** Keeps the existing Deleting card state set while the host lists a row as removing. */
+/**
+ * Shows the existing Deleting card while the host lists a row as removing, for views that did not
+ * ask for the delete. The row leaving means it finished; the row returning unmarked means it did not.
+ */
 export function reconcileHostWorktreeRemovals(store: AppStoreApi = useAppStore): void {
+  settleHostWorktreeRemovals()
   const state = store.getState()
-  settleBackgroundWorktreeRemovalsFromRows((worktreeId) => rowsForWorktree(state, worktreeId))
   const marked: HostMarkedRow[] = []
-  const seen = new Set<string>()
+  const listed = new Map<string, Worktree>()
   for (const rows of Object.values(state.worktreesByRepo)) {
     for (const row of rows) {
-      if (!row.removing) {
-        continue
-      }
       const key = deleteStateKey(row)
-      seen.add(key)
-      if (hostMarkedDeleteStates.has(key)) {
+      listed.set(key, row)
+      if (!row.removing || hostMarkedDeleteStates.has(key)) {
         continue
       }
       const current = getDeleteStateForWorktreeHost(row, state.deleteStateByWorktreeId)
@@ -60,37 +46,25 @@ export function reconcileHostWorktreeRemovals(store: AppStoreApi = useAppStore):
     state.markWorktreesDeleting(marked)
   }
   for (const [key, row] of hostMarkedDeleteStates) {
-    if (seen.has(key)) {
+    const listedRow = listed.get(key)
+    if (listedRow?.removing) {
       continue
     }
     hostMarkedDeleteStates.delete(key)
-    if (store.getState().deleteStateByWorktreeId[key]?.isDeleting) {
+    if (!store.getState().deleteStateByWorktreeId[key]?.isDeleting) {
+      continue
+    }
+    if (!listedRow) {
       store.getState().clearWorktreeDeleteState(row.id, row.hostId)
-    }
-  }
-}
-
-/** Routes a host's removal outcome to the delete that asked for it, or onto a host-marked card. */
-export function applyBackgroundWorktreeRemovalOutcome(
-  hostId: ExecutionHostId,
-  outcome: WorktreeRemovalOutcome,
-  store: AppStoreApi = useAppStore
-): void {
-  if (settleBackgroundWorktreeRemoval(hostId, outcome) || outcome.status !== 'failed') {
-    return
-  }
-  for (const [key, row] of hostMarkedDeleteStates) {
-    if (row.id !== outcome.worktreeId || rowHostId(row) !== hostId) {
       continue
     }
-    hostMarkedDeleteStates.delete(key)
     store.setState((s) => ({
       deleteStateByWorktreeId: {
         ...s.deleteStateByWorktreeId,
         [key]: {
           isDeleting: false,
           ...(row.hostId ? { executionHostId: row.hostId } : {}),
-          error: outcome.error,
+          error: UNFINISHED_WORKTREE_REMOVAL_ERROR,
           canForceDelete: false,
           forceDeleteReason: null
         }
@@ -100,10 +74,6 @@ export function applyBackgroundWorktreeRemovalOutcome(
 }
 
 export function registerBackgroundWorktreeRemovalBridge(unsubs: (() => void)[]): void {
-  setBackgroundWorktreeRemovalRowsLookup((worktreeId) =>
-    rowsForWorktree(useAppStore.getState(), worktreeId)
-  )
-  unsubs.push(() => setBackgroundWorktreeRemovalRowsLookup(null))
   let previousRows = useAppStore.getState().worktreesByRepo
   let previousDetected = useAppStore.getState().detectedWorktreesByRepo
   unsubs.push(

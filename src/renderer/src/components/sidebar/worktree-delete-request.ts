@@ -28,8 +28,6 @@ export type WorktreeDeleteWithToastOptions = {
   snapshotPruneBatchId?: string
   // Batch deletion commits one focus handoff after all targets settle.
   focusSuccessorOnDelete?: boolean
-  /** See `RemoveWorktreeOptions.onAccepted`. */
-  onAccepted?: () => void
 }
 
 export function toWorktreeDeleteIdentities(

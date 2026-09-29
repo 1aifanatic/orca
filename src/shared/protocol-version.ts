@@ -262,9 +262,9 @@ export const WORKTREE_VISIBILITY_DEFAULTS_RUNTIME_CAPABILITY =
   'worktree.visibility-defaults.v1' as const
 export const WORKTREE_VISIBILITY_SOURCE_DEFAULTS_RUNTIME_CAPABILITY =
   'worktree.visibility-source-defaults.v1' as const
-// Why: the host answers worktree.rm on acceptance and deletes in the background while Git still
-// lists the checkout. A client that cannot read `removing` would re-show that row as a normal
-// workspace, so the host leaves rows under removal out of listings for clients without this.
+// Why: Git's checkout delete outlives worktree.rm's older client timeouts. A client with this waits
+// for the reply and shows `removing` rows as Deleting; one without it is answered on acceptance and
+// would re-show that row as a normal workspace, so the host leaves such rows out of its listings.
 export const WORKTREE_BACKGROUND_REMOVAL_RUNTIME_CAPABILITY =
   'worktree.background-removal.v1' as const
 // Why: older hosts drop automation.list's selector and answer with the whole authority, so a scoped client must not read that as one host's rows.

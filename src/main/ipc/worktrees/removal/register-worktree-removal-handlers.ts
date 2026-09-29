@@ -12,7 +12,10 @@ import {
   getWorktreeRemovalOptionsKey
 } from './worktree-removal-coordinator'
 import { resolveRepoForExecutionHost } from '../repo-host-ownership'
-import { isWorktreeRemovalPending } from '../../../worktree-background-removal'
+import {
+  finishAcceptedWorktreeRemoval,
+  waitForPendingWorktreeRemoval
+} from '../../../worktree-background-removal'
 
 export function registerWorktreeRemovalHandlers(context: WorktreeIpcContext): void {
   const { store, options, worktreeRemovalsInFlight } = context
@@ -27,9 +30,10 @@ export function registerWorktreeRemovalHandlers(context: WorktreeIpcContext): vo
       }
       // The resolved repo supplies host ownership when legacy callers omit args.hostId.
       const removalHostId = getRepoExecutionHostId(repo)
-      // Why: a retry or a second client asking while Git still deletes joins that removal.
-      if (isWorktreeRemovalPending(args.worktreeId, removalHostId)) {
-        return { removing: true, catalogVersion: getLocalWorktreeCatalogVersion(repoId) }
+      // Why: a retry or a second window asking while Git still deletes joins that removal.
+      const pending = waitForPendingWorktreeRemoval(args.worktreeId, removalHostId)
+      if (pending) {
+        return { ...(await pending), catalogVersion: getLocalWorktreeCatalogVersion(repoId) }
       }
       const inFlightKey = getWorktreeRemovalInFlightKey(args.worktreeId, removalHostId)
       const optionsKey = getWorktreeRemovalOptionsKey(args)
@@ -43,7 +47,7 @@ export function registerWorktreeRemovalHandlers(context: WorktreeIpcContext): vo
 
       // Why: concurrent stale-toast/double-click/sidebar races can hit the same worktree; share the op so only one path touches Git and disk.
       const removal = withWorktreeSpan({ stage: 'remove', path: worktreePath }, async () => {
-        const result = await executeWorktreeRemoval(
+        const accepted = await executeWorktreeRemoval(
           context,
           args,
           repo,
@@ -51,23 +55,22 @@ export function registerWorktreeRemovalHandlers(context: WorktreeIpcContext): vo
           worktreePath,
           removalHostId
         )
+        const result = await finishAcceptedWorktreeRemoval(accepted, args.worktreeId, removalHostId)
+        // A background job reports its own lifecycle when Git finishes.
+        if (!accepted.removing) {
+          options?.onWorktreeLifecycle?.({
+            kind: 'removed',
+            worktreeId: args.worktreeId,
+            path: worktreePath
+          })
+        }
         // Why stamped inside the shared promise: a coalesced second caller gets the same reply,
         // naming the catalog this removal produced.
         return { ...result, catalogVersion: getLocalWorktreeCatalogVersion(repoId) }
       })
       worktreeRemovalsInFlight.set(inFlightKey, { optionsKey, promise: removal })
       try {
-        const result = await removal
-        if (result.removing) {
-          // The background job reports its own lifecycle when Git finishes.
-          return result
-        }
-        options?.onWorktreeLifecycle?.({
-          kind: 'removed',
-          worktreeId: args.worktreeId,
-          path: parseWorktreeId(args.worktreeId).worktreePath
-        })
-        return result
+        return await removal
       } finally {
         if (worktreeRemovalsInFlight.get(inFlightKey)?.promise === removal) {
           worktreeRemovalsInFlight.delete(inFlightKey)

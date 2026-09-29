@@ -135,7 +135,7 @@ export function createRemoveWorktree(
           hostId,
           force,
           skipArchive,
-          forgetLocalOnly,
+          get,
           target,
           options,
           assertCurrent: () => removalGenerationGuard?.assertCurrent()

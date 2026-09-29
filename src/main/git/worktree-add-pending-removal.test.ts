@@ -24,7 +24,7 @@ import {
 registerWorktreeSuiteHooks()
 
 function startDeleting(): void {
-  startBackgroundWorktreeRemoval({
+  void startBackgroundWorktreeRemoval({
     removal: {
       worktreeId: 'repo-1::/repo-feature',
       repoId: 'repo-1',
@@ -34,7 +34,6 @@ function startDeleting(): void {
       force: false
     },
     run: () => new Promise(() => {}),
-    catalogVersion: () => ({ epoch: 'e', sequence: 1 }),
     publish: () => {}
   })
 }

@@ -6,7 +6,10 @@ import {
 } from '../worktree-removal-repo-owner'
 import type { RemoveWorktreeResult } from '../../shared/worktree/create-types'
 import { getRepoExecutionHostId, parseExecutionHostId } from '../../shared/execution-host'
-import { isWorktreeRemovalPending } from '../worktree-background-removal'
+import {
+  finishAcceptedWorktreeRemoval,
+  waitForPendingWorktreeRemoval
+} from '../worktree-background-removal'
 import { preservedBranchCleanupScopeKey } from '../../shared/preserved-branch-cleanup'
 import {
   getRuntimeWorktreeRemovalOptionsKey,
@@ -51,8 +54,9 @@ export class OrcaRuntimeWithRemoveManagedWorktree extends OrcaRuntimeWithCreateM
     const cleanupHostId = parseExecutionHostId(hostId)?.id
     const removalTarget = await this.resolveWorktreeRemovalTarget(worktreeSelector, cleanupHostId)
     // Why: a retry or a second client asking while Git still deletes joins that removal.
-    if (isWorktreeRemovalPending(removalTarget.id, cleanupHostId)) {
-      return { removing: true }
+    const pending = waitForPendingWorktreeRemoval(removalTarget.id, cleanupHostId)
+    if (pending) {
+      return options.waitForBackgroundRemoval ? await pending : { removing: true }
     }
     const emitRemoved = (): void =>
       this.emitWorktreeLifecycle({
@@ -76,7 +80,9 @@ export class OrcaRuntimeWithRemoveManagedWorktree extends OrcaRuntimeWithCreateM
       optionsKey
     )
     if (inFlightRemoval) {
-      return inFlightRemoval
+      return options.waitForBackgroundRemoval
+        ? finishAcceptedWorktreeRemoval(await inFlightRemoval, removalTarget.id, cleanupHostId)
+        : inFlightRemoval
     }
     const removal = (async (): Promise<RemoveWorktreeResult & { warning?: string }> => {
       return withWorktreeSpan({ stage: 'remove', path: removalTarget.path }, async () => {
@@ -280,18 +286,20 @@ export class OrcaRuntimeWithRemoveManagedWorktree extends OrcaRuntimeWithCreateM
             purgeRemovedWorktree()
           },
           onRemoved: emitRemoved,
-          publish: (outcome) => this.publishWorktreeRemovalChange(repo.id, outcome)
+          publish: () => this.publishWorktreeRemovalChange(repo.id)
         })
       })
     })()
     this.removeManagedWorktreeInFlight.track(cleanupScopeKey, optionsKey, removal)
     try {
-      const result = await removal
+      const accepted = await removal
       // A background removal emits this when Git finishes instead.
-      if (!result.removing) {
+      if (!accepted.removing) {
         emitRemoved()
       }
-      return result
+      return options.waitForBackgroundRemoval
+        ? finishAcceptedWorktreeRemoval(accepted, removalTarget.id, cleanupHostId)
+        : accepted
     } finally {
       this.removeManagedWorktreeInFlight.release(cleanupScopeKey, removal)
     }
