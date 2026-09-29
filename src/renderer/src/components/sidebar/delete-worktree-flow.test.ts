@@ -246,7 +246,8 @@ describe('delete worktree flow', () => {
         { id: 'wt-1', executionHostId: null },
         false,
         {
-          suppressPreservedBranchToast: true
+          suppressPreservedBranchToast: true,
+          onAccepted: expect.any(Function)
         }
       )
     )
@@ -261,7 +262,8 @@ describe('delete worktree flow', () => {
       { id: 'wt-2', executionHostId: null },
       false,
       {
-        suppressPreservedBranchToast: true
+        suppressPreservedBranchToast: true,
+        onAccepted: expect.any(Function)
       }
     )
     expect(toast.info).toHaveBeenCalledWith(
@@ -306,7 +308,8 @@ describe('delete worktree flow', () => {
     expect(mocks.state.openModal).not.toHaveBeenCalled()
     expect(mocks.state.removeWorktree).toHaveBeenCalledWith(
       { id: 'wt-1', executionHostId: null },
-      false
+      false,
+      { onAccepted: expect.any(Function) }
     )
     await vi.waitFor(() => {
       expect(onDeleted).toHaveBeenCalledWith([{ id: 'wt-1', executionHostId: null }])

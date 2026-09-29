@@ -444,4 +444,32 @@ branch refs/heads/feature/test
     )
     expect(getGitCalls()).not.toContain('git config --remove-section branch.feature/test')
   })
+
+  it('runs branch cleanup for one repo one removal at a time, not the checkout deletes', async () => {
+    let releaseFirstBranchDelete: () => void = () => {}
+    const firstBranchDelete = new Promise<void>((resolve) => {
+      releaseFirstBranchDelete = resolve
+    })
+    gitExecFileAsyncMock.mockImplementation(async (args: string[]) => {
+      if (args.join(' ') === 'branch -d -- feature/a') {
+        await firstBranchDelete
+      }
+      return { stdout: '', stderr: '' }
+    })
+
+    const first = removeWorktree('/repo', '/repo-a', false, {
+      knownRemovedWorktree: { branch: 'refs/heads/feature/a', head: 'aaa', locked: false }
+    })
+    await vi.waitFor(() => expect(getGitCalls()).toContain('git branch -d -- feature/a'))
+    const second = removeWorktree('/repo', '/repo-b', false, {
+      knownRemovedWorktree: { branch: 'refs/heads/feature/b', head: 'bbb', locked: false }
+    })
+    await vi.waitFor(() => expect(getGitCalls()).toContain('git worktree remove /repo-b'))
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(getGitCalls()).not.toContain('git branch -d -- feature/b')
+
+    releaseFirstBranchDelete()
+    await Promise.all([first, second])
+    expect(getGitCalls()).toContain('git branch -d -- feature/b')
+  })
 })

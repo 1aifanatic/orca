@@ -17,4 +17,6 @@ export type RemoveWorktreeOptions = {
   sameIdSurvivingHostId?: ExecutionHostId
   /** Both scan owners are in this cleanup batch, so neither is a survivor. */
   ignoreWorkspaceCleanupScanSurvivors?: boolean
+  /** Fires when the host has accepted the delete; its checkout may still be deleting. */
+  onAccepted?: () => void
 }

@@ -31,6 +31,7 @@ export async function dispatchWorktreeRemoval(args: {
   const removalHostId = backgroundRemovalHostId(args.target)
   const eventGapGeneration = beginBackgroundWorktreeRemovalRequest(removalHostId, args.worktreeId)
   const accepted = await requestWorktreeRemoval(args)
+  args.options?.onAccepted?.()
   // The card stays Deleting while the host's Git finishes; its outcome settles this.
   return accepted?.removing
     ? waitForBackgroundWorktreeRemoval({

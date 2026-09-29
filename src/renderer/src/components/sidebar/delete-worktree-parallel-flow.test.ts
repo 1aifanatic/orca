@@ -154,7 +154,8 @@ describe('runWorktreeDeletesInParallel', () => {
       { id: 'wt-1', executionHostId: null },
       false,
       {
-        suppressPreservedBranchToast: true
+        suppressPreservedBranchToast: true,
+        onAccepted: expect.any(Function)
       }
     )
     expect(mocks.state.removeWorktree).toHaveBeenNthCalledWith(
@@ -162,7 +163,8 @@ describe('runWorktreeDeletesInParallel', () => {
       { id: 'wt-2', executionHostId: null },
       false,
       {
-        suppressPreservedBranchToast: true
+        suppressPreservedBranchToast: true,
+        onAccepted: expect.any(Function)
       }
     )
     expect(mocks.state.markWorktreesDeleting).toHaveBeenCalledWith(['wt-1', 'wt-2'])
@@ -203,7 +205,8 @@ describe('runWorktreeDeletesInParallel', () => {
       { id: 'child', executionHostId: null },
       false,
       {
-        suppressPreservedBranchToast: true
+        suppressPreservedBranchToast: true,
+        onAccepted: expect.any(Function)
       }
     )
 
@@ -218,9 +221,51 @@ describe('runWorktreeDeletesInParallel', () => {
       { id: 'parent', executionHostId: null },
       false,
       {
-        suppressPreservedBranchToast: true
+        suppressPreservedBranchToast: true,
+        onAccepted: expect.any(Function)
       }
     )
+  })
+
+  it('starts the next same-repo delete once the host accepts the previous one', async () => {
+    const first = deferredDeleteResult()
+    mocks.state.removeWorktree.mockImplementationOnce(
+      (_target: unknown, _force: unknown, options?: { onAccepted?: () => void }) => {
+        options?.onAccepted?.()
+        return first.promise
+      }
+    )
+
+    const deleted = runDeletesForCurrentWorktrees([
+      { id: 'wt-1', displayName: 'one', repoId: 'repo-a', path: '/workspaces/one' },
+      { id: 'wt-2', displayName: 'two', repoId: 'repo-a', path: '/workspaces/two' }
+    ])
+
+    await vi.waitFor(() => expect(mocks.state.removeWorktree).toHaveBeenCalledTimes(2))
+    first.resolve({ ok: true })
+    await expect(deleted).resolves.toHaveLength(2)
+  })
+
+  it('keeps a parent delete waiting for an accepted child to finish', async () => {
+    const child = deferredDeleteResult()
+    mocks.state.removeWorktree.mockImplementationOnce(
+      (_target: unknown, _force: unknown, options?: { onAccepted?: () => void }) => {
+        options?.onAccepted?.()
+        return child.promise
+      }
+    )
+
+    const deleted = runDeletesForCurrentWorktrees([
+      { id: 'parent', displayName: 'parent', repoId: 'repo-a', path: '/workspaces/parent' },
+      { id: 'child', displayName: 'child', repoId: 'repo-a', path: '/workspaces/parent/child' }
+    ])
+
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(mocks.state.removeWorktree).toHaveBeenCalledTimes(1)
+    child.resolve({ ok: true })
+    await expect(deleted).resolves.toHaveLength(2)
+    expect(mocks.state.removeWorktree).toHaveBeenCalledTimes(2)
   })
 
   it('deletes nested workspaces before their parent within the same repo', async () => {
@@ -234,7 +279,8 @@ describe('runWorktreeDeletesInParallel', () => {
       { id: 'child', executionHostId: null },
       false,
       {
-        suppressPreservedBranchToast: true
+        suppressPreservedBranchToast: true,
+        onAccepted: expect.any(Function)
       }
     )
     expect(mocks.state.removeWorktree).toHaveBeenNthCalledWith(
@@ -242,7 +288,8 @@ describe('runWorktreeDeletesInParallel', () => {
       { id: 'parent', executionHostId: null },
       false,
       {
-        suppressPreservedBranchToast: true
+        suppressPreservedBranchToast: true,
+        onAccepted: expect.any(Function)
       }
     )
   })
@@ -261,7 +308,8 @@ describe('runWorktreeDeletesInParallel', () => {
       { id: 'wt-1', executionHostId: null },
       true,
       {
-        suppressPreservedBranchToast: true
+        suppressPreservedBranchToast: true,
+        onAccepted: expect.any(Function)
       }
     )
     expect(mocks.state.removeWorktree).toHaveBeenNthCalledWith(
@@ -269,7 +317,8 @@ describe('runWorktreeDeletesInParallel', () => {
       { id: 'wt-2', executionHostId: null },
       true,
       {
-        suppressPreservedBranchToast: true
+        suppressPreservedBranchToast: true,
+        onAccepted: expect.any(Function)
       }
     )
   })
@@ -293,7 +342,8 @@ describe('runWorktreeDeletesInParallel', () => {
     expect(mocks.state.removeWorktree).toHaveBeenCalledTimes(1)
     expect(mocks.state.removeWorktree).toHaveBeenCalledWith(
       { id: 'wt-1', executionHostId: null },
-      false
+      false,
+      { onAccepted: expect.any(Function) }
     )
     expect(toast.error).not.toHaveBeenCalled()
   })
@@ -328,13 +378,13 @@ describe('runWorktreeDeletesInParallel', () => {
       1,
       { id: 'shared', executionHostId: 'local' },
       false,
-      { suppressPreservedBranchToast: true }
+      { suppressPreservedBranchToast: true, onAccepted: expect.any(Function) }
     )
     expect(mocks.state.removeWorktree).toHaveBeenNthCalledWith(
       2,
       { id: 'shared', executionHostId: 'ssh:builder' },
       false,
-      { suppressPreservedBranchToast: true }
+      { suppressPreservedBranchToast: true, onAccepted: expect.any(Function) }
     )
   })
 
@@ -363,7 +413,8 @@ describe('runWorktreeDeletesInParallel', () => {
       { id: 'child', executionHostId: null },
       false,
       {
-        suppressPreservedBranchToast: true
+        suppressPreservedBranchToast: true,
+        onAccepted: expect.any(Function)
       }
     )
     expect(mocks.state.clearWorktreeDeleteState).toHaveBeenCalledWith('parent')
@@ -400,7 +451,7 @@ describe('runWorktreeDeletesInParallel', () => {
     expect(mocks.state.removeWorktree).toHaveBeenCalledWith(
       { id: hostBParent.id, executionHostId: hostBParent.hostId },
       false,
-      { suppressPreservedBranchToast: true }
+      { suppressPreservedBranchToast: true, onAccepted: expect.any(Function) }
     )
   })
 

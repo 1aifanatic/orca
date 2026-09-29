@@ -108,8 +108,20 @@ export async function runWorktreeDeletesInParallel(
       Array.from(groups.values()).map(async (group) => {
         const deletedInGroup: WorktreeRemovalTarget[] = []
         const failedInGroup: (typeof group)[number][] = []
+        const started: { path: string; settled: Promise<void> }[] = []
         for (const target of group) {
-          await runInWorktreeDeleteTurn(target.id, async () => {
+          // A descendant's outcome decides whether its ancestor may be deleted at all.
+          const descendants = started.filter((earlier) =>
+            isStrictDescendantPath(target.path, earlier.path)
+          )
+          if (descendants.length > 0) {
+            await Promise.all(descendants.map((earlier) => earlier.settled))
+          }
+          let markAccepted: () => void = () => {}
+          const accepted = new Promise<void>((resolve) => {
+            markAccepted = resolve
+          })
+          const settled = runInWorktreeDeleteTurn(target.id, async () => {
             // A queued target may be recreated while an earlier repo sibling is deleting.
             // Why by host (STA-4343): the id-keyed map keeps ONE row per `repoId::path`,
             // so on a two-host collision it can hand back the other host's row — whose
@@ -134,6 +146,7 @@ export async function runWorktreeDeletesInParallel(
               {
                 ...options,
                 focusSuccessorOnDelete: false,
+                onAccepted: markAccepted,
                 suppressPreservedBranchToast: aggregatePreservedBranches,
                 ...(snapshotPruneBatch ? { snapshotPruneBatchId: snapshotPruneBatch.batchId } : {}),
                 onPreservedBranch: (branch) => {
@@ -149,7 +162,13 @@ export async function runWorktreeDeletesInParallel(
               failedInGroup.push(target)
             }
           })
+          void settled.catch(() => {})
+          started.push({ path: target.path, settled })
+          // Why: same-repo deletes queue only until the host accepts; it serializes their ref
+          // cleanup itself, and Git's 20-35 s checkout delete must not run one repo sibling at a time.
+          await Promise.race([accepted, settled])
         }
+        await Promise.all(started.map((entry) => entry.settled))
         return deletedInGroup
       })
     )

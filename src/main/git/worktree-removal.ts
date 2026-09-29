@@ -18,6 +18,9 @@ import { withRepoRefMaintenancePaused } from './local-repo-ref-maintenance'
 import { bumpWorktreeScanGeneration, listWorktrees } from './worktree-scan-cache'
 import { invalidateSparseCheckoutState } from './worktree-sparse-checkout-cache'
 import { runUnderWorktreeDeleteLimit } from './worktree-delete-limit'
+import { runKeyedSerializedOperation } from '../cli/keyed-promise-queue'
+
+const branchCleanupQueueByRepo = new Map<string, Promise<void>>()
 
 /**
  * Remove a worktree.
@@ -103,8 +106,12 @@ async function performRemoveWorktree(
 
   // Why its own span: branch cleanup can reach the network (`fetch --prune`), so a stall here reads as
   // `git worktree remove` being slow unless it is timed separately.
-  return withSpan('worktree.remove.branch_delete', () =>
-    deleteBranchAfterWorktreeRemoval(repoPath, branchName, branchHead, options)
+  // Why serialized per repo: concurrent removals in one repo race `packed-refs.lock` and the
+  // remote-tracking ref locks of `fetch --prune` (#2259); the checkout deletes above need not wait.
+  return runKeyedSerializedOperation(branchCleanupQueueByRepo, repoPath, () =>
+    withSpan('worktree.remove.branch_delete', () =>
+      deleteBranchAfterWorktreeRemoval(repoPath, branchName, branchHead, options)
+    )
   )
 }
 
