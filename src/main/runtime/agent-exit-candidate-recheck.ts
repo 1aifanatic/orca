@@ -1,12 +1,15 @@
 import { FOREGROUND_CONFIRM_RETRY_DELAYS_MS } from '../../shared/foreground-agent-verdict'
 
-type Candidate = {
+/** The process whose neutral title raised the candidate, so a same-id replacement never answers it. */
+export type AgentExitCandidateOwner = {
   incarnationId: string | null
+  lifecycleGeneration: number
   titleObservedAt: number | null
-  timer: ReturnType<typeof setTimeout> | null
 }
 
-export type AgentExitRecheck = { attempt: number; titleObservedAt: number | null }
+type Candidate = { owner: AgentExitCandidateOwner; timer: ReturnType<typeof setTimeout> | null }
+
+export type AgentExitRecheck = AgentExitCandidateOwner & { attempt: number }
 
 /** The ladder is spent: the candidate waits for the host to be reached again. */
 export const SPENT_AGENT_EXIT_RECHECK = FOREGROUND_CONFIRM_RETRY_DELAYS_MS.length
@@ -23,18 +26,13 @@ export class AgentExitCandidateRechecks {
   constructor(private readonly recheck: (ptyId: string, recheck: AgentExitRecheck) => void) {}
 
   /** False when the ladder is spent; the candidate then waits for one reconnect re-read. */
-  scheduleNext(
-    ptyId: string,
-    incarnationId: string | null,
-    titleObservedAt: number | null,
-    attempt: number
-  ): boolean {
+  scheduleNext(ptyId: string, owner: AgentExitCandidateOwner, attempt: number): boolean {
     this.clear(ptyId)
     const delay = FOREGROUND_CONFIRM_RETRY_DELAYS_MS[attempt]
     if (attempt >= FINAL_AGENT_EXIT_RECHECK) {
       return false
     }
-    const candidate: Candidate = { incarnationId, titleObservedAt, timer: null }
+    const candidate: Candidate = { owner, timer: null }
     this.byPtyId.set(ptyId, candidate)
     if (delay === undefined) {
       return false
@@ -43,7 +41,7 @@ export class AgentExitCandidateRechecks {
       candidate.timer = null
       if (this.byPtyId.get(ptyId) === candidate) {
         this.byPtyId.delete(ptyId)
-        this.recheck(ptyId, { attempt: attempt + 1, titleObservedAt })
+        this.recheck(ptyId, { ...owner, attempt: attempt + 1 })
       }
     }, delay)
     candidate.timer.unref?.()
@@ -51,18 +49,13 @@ export class AgentExitCandidateRechecks {
   }
 
   /** The host answered for this PTY again: re-read a candidate the ladder left undecided, once. */
-  recheckAfterContact(ptyId: string, incarnationId: string | null): void {
+  recheckAfterContact(ptyId: string): void {
     const candidate = this.byPtyId.get(ptyId)
     if (!candidate || candidate.timer !== null) {
       return
     }
     this.byPtyId.delete(ptyId)
-    if (candidate.incarnationId === incarnationId) {
-      this.recheck(ptyId, {
-        attempt: FINAL_AGENT_EXIT_RECHECK,
-        titleObservedAt: candidate.titleObservedAt
-      })
-    }
+    this.recheck(ptyId, { ...candidate.owner, attempt: FINAL_AGENT_EXIT_RECHECK })
   }
 
   clear(ptyId: string): void {

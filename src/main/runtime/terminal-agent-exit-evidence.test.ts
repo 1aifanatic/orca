@@ -71,6 +71,7 @@ function setup() {
     { initialTitle: 'Claude ready' }
   )
   const read = vi.fn().mockResolvedValue(readResult(controller, null))
+  const lifecycle = { generation: 1 }
   Object.assign(runtime, {
     ptysById: new Map([['pty-1', pty]]),
     handleByPtyId: new Map(),
@@ -81,9 +82,10 @@ function setup() {
     getLeavesForPty: () => [],
     resolvePtyTuiIdleWaiters: () => {},
     titleObservationSequence: 1,
-    ptyForegroundAgent: { markExited }
+    ptyForegroundAgent: { markExited },
+    getPtyLifecycleGeneration: () => lifecycle.generation
   })
-  return { runtime, facts, controller, pty, tracker, read, markExited }
+  return { runtime, facts, controller, pty, tracker, read, markExited, lifecycle }
 }
 
 describe('host-confirmed agent exit', () => {
@@ -389,6 +391,44 @@ describe('re-deriving an exit candidate the first read could not answer', () => 
     await vi.advanceTimersByTimeAsync(60_000)
     expect(h.read).toHaveBeenCalledTimes(4)
     expect(h.facts).toEqual([])
+    h.tracker.dispose()
+  })
+
+  it('never re-reads an old candidate into a same-id replacement incarnation', async () => {
+    vi.useFakeTimers()
+    const h = setup()
+    h.read.mockResolvedValueOnce(unanswered(h))
+    h.tracker.handleChunk('\x1b]0;workspace\x07')
+    await vi.advanceTimersByTimeAsync(0)
+    // The respawned agent's shell is still booting when the ladder would fire.
+    h.pty.incarnationId = 'inc-2'
+    h.read.mockResolvedValue(readResult(h.controller, 'zsh'))
+    await vi.advanceTimersByTimeAsync(60_000)
+    h.runtime.markPtyLivenessLive('pty-1')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(h.facts).toEqual([])
+    expect(h.read).toHaveBeenCalledOnce()
+    h.tracker.dispose()
+  })
+
+  it('drops a candidate whose read was still out when its process exited', async () => {
+    vi.useFakeTimers()
+    const h = setup()
+    let answer: (result: ReturnType<typeof unanswered>) => void = () => {}
+    h.read.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)))
+    h.tracker.handleChunk('\x1b]0;workspace\x07')
+    // The PTY exits and a same-id shell respawns before the host answers.
+    h.lifecycle.generation += 1
+    h.pty.connected = false
+    h.runtime.dispose()
+    answer(unanswered(h))
+    await vi.advanceTimersByTimeAsync(0)
+    h.pty.connected = true
+    h.read.mockResolvedValue(readResult(h.controller, 'zsh'))
+    h.runtime.markPtyLivenessLive('pty-1')
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(h.facts).toEqual([])
+    expect(h.read).toHaveBeenCalledOnce()
     h.tracker.dispose()
   })
 

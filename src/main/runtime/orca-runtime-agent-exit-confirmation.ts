@@ -72,10 +72,7 @@ export class OrcaRuntimeWithAgentExitConfirmation extends OrcaRuntimeWithSeriali
 
   markPtyLivenessLive(ptyId: string, observedNoLaterThan?: number): void {
     super.markPtyLivenessLive(ptyId, observedNoLaterThan)
-    this.agentExitRechecks.recheckAfterContact(
-      ptyId,
-      this.ptysById.get(ptyId)?.incarnationId ?? null
-    )
+    this.agentExitRechecks.recheckAfterContact(ptyId)
   }
 
   registerPty(
@@ -83,10 +80,7 @@ export class OrcaRuntimeWithAgentExitConfirmation extends OrcaRuntimeWithSeriali
   ): void {
     super.registerPty(...args)
     // Why: a reattach is renewed contact with the host that could not answer.
-    this.agentExitRechecks.recheckAfterContact(
-      args[0],
-      this.ptysById.get(args[0])?.incarnationId ?? null
-    )
+    this.agentExitRechecks.recheckAfterContact(args[0])
   }
 
   protected disposePtyTitleTracker(ptyId: string): void {

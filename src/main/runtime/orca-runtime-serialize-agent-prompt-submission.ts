@@ -87,8 +87,21 @@ export class OrcaRuntimeWithSerializeAgentPromptSubmission extends OrcaRuntimeWi
       return
     }
     const incarnationId = pty?.incarnationId
-    const generation = recoverCompletedHook ? this.getPtyLifecycleGeneration(ptyId) : null
+    const generation = this.getPtyLifecycleGeneration(ptyId)
+    // Why: a candidate belongs to the process whose title raised it, never a same-id replacement.
+    if (
+      recheck &&
+      (recheck.incarnationId !== (incarnationId ?? null) ||
+        recheck.lifecycleGeneration !== generation)
+    ) {
+      return
+    }
     const titleObservedAt = recheck ? recheck.titleObservedAt : (pty?.lastOscTitleAt ?? null)
+    const candidateOwner = {
+      incarnationId: incarnationId ?? null,
+      lifecycleGeneration: generation,
+      titleObservedAt
+    }
     const foregroundRead = this.readPtyForegroundProcessFromController(
       ptyId,
       pty?.lastOscTitleAt ?? 0
@@ -98,8 +111,7 @@ export class OrcaRuntimeWithSerializeAgentPromptSubmission extends OrcaRuntimeWi
       if (pty && !recoverCompletedHook) {
         this.agentExitRechecks.scheduleNext(
           ptyId,
-          pty.incarnationId,
-          titleObservedAt,
+          candidateOwner,
           Math.max(recheck?.attempt ?? 0, SPENT_AGENT_EXIT_RECHECK)
         )
       }
@@ -114,7 +126,8 @@ export class OrcaRuntimeWithSerializeAgentPromptSubmission extends OrcaRuntimeWi
       if (
         current !== pty ||
         current.incarnationId !== incarnationId ||
-        (recoverCompletedHook && this.getPtyLifecycleGeneration(ptyId) !== generation)
+        // Why: an exit or provider reset ended the process this read was asked about.
+        this.getPtyLifecycleGeneration(ptyId) !== generation
       ) {
         return
       }
@@ -190,12 +203,7 @@ export class OrcaRuntimeWithSerializeAgentPromptSubmission extends OrcaRuntimeWi
       if (
         decides &&
         result.judgement.blindness === undefined &&
-        this.agentExitRechecks.scheduleNext(
-          ptyId,
-          incarnationId,
-          titleObservedAt,
-          recheck?.attempt ?? 0
-        )
+        this.agentExitRechecks.scheduleNext(ptyId, candidateOwner, recheck?.attempt ?? 0)
       ) {
         return
       }
