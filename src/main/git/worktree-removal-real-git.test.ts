@@ -2,13 +2,15 @@
 // deregisters and refuses, or that deleting a checkout leaves Node's file pool free.
 import { execFile } from 'node:child_process'
 import { existsSync, statSync } from 'node:fs'
-import { link, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises'
+import { link, mkdir, mkdtemp, readFile, realpath, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { performance } from 'node:perf_hooks'
 import { promisify } from 'node:util'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { removeTree } from '../../shared/windows-transient-lock-removal'
 import { listWorktreesStrict, removeWorktree } from './worktree'
+import { areWorktreePathsEqual } from './worktree-path-comparison'
 import { isPrunableGitFileWorktree } from '../worktree-prunable-git-file'
 import { removeStaleLocalWorktreeRegistration } from '../local-worktree-removal-recovery'
 import { sweepStaleWorktreeTrash, WORKTREE_TRASH_DIR_NAME } from '../worktree-trash'
@@ -23,6 +25,13 @@ let worktreePath = ''
 async function git(args: string[], cwd: string): Promise<string> {
   const { stdout } = await execFileAsync('git', args, { cwd })
   return stdout
+}
+
+// Why parsed: Git prints forward slashes on Windows, so raw text never contains a joined path.
+async function isRegistered(path: string): Promise<boolean> {
+  return (await listWorktreesStrict(repoPath)).some((worktree) =>
+    areWorktreePathsEqual(worktree.path, path)
+  )
 }
 
 beforeEach(async () => {
@@ -47,7 +56,7 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
-  await rm(scratchDir, { recursive: true, force: true })
+  await removeTree(scratchDir)
 })
 
 describe('worktree removal against the real Git binary', () => {
@@ -55,7 +64,7 @@ describe('worktree removal against the real Git binary', () => {
     await removeWorktree(repoPath, worktreePath, false, { deleteBranch: false })
 
     expect(existsSync(worktreePath)).toBe(false)
-    expect(await git(['worktree', 'list'], repoPath)).not.toContain(worktreePath)
+    expect(await isRegistered(worktreePath)).toBe(false)
     expect(existsSync(join(workspaceRoot, 'repo', WORKTREE_TRASH_DIR_NAME))).toBe(false)
   })
 
@@ -65,7 +74,7 @@ describe('worktree removal against the real Git binary', () => {
 
     await removeWorktree(repoPath, worktreePath, false, { deleteBranch: false })
 
-    expect(await git(['worktree', 'list'], repoPath)).toContain(siblingPath)
+    expect(await isRegistered(siblingPath)).toBe(true)
     expect(existsSync(siblingPath)).toBe(true)
   })
 
@@ -80,7 +89,7 @@ describe('worktree removal against the real Git binary', () => {
 
     await expect(removeWorktree(repoPath, worktreePath, false)).rejects.toThrow()
     expect(existsSync(join(worktreePath, 'seed.txt'))).toBe(true)
-    expect(await git(['worktree', 'list'], repoPath)).toContain(worktreePath)
+    expect(await isRegistered(worktreePath)).toBe(true)
   })
 
   it('does not delete a checkout through a malformed registration that names its git file', async () => {
@@ -105,7 +114,9 @@ describe('worktree removal against the real Git binary', () => {
     const adminPath = marker.trim().replace(/^gitdir: /, '')
     await writeFile(join(adminPath, 'gitdir'), `${join(markerPath, '.git')}\n`)
     await writeFile(join(worktreePath, 'untracked.txt'), 'keep this work\n')
-    const row = (await listWorktreesStrict(repoPath)).find((entry) => entry.path === markerPath)
+    const row = (await listWorktreesStrict(repoPath)).find((entry) =>
+      areWorktreePathsEqual(entry.path, markerPath)
+    )
     expect(row).toBeDefined()
     if (!row) {
       throw new Error('Missing malformed registration')
@@ -113,7 +124,7 @@ describe('worktree removal against the real Git binary', () => {
     expect(await isPrunableGitFileWorktree(row)).toBe(true)
 
     const result = await removeStaleLocalWorktreeRegistration({
-      canonicalWorktreePath: markerPath,
+      canonicalWorktreePath: row.path,
       repoPath,
       localWorktreeGitOptions: {},
       registeredWorktree: row,
@@ -124,9 +135,7 @@ describe('worktree removal against the real Git binary', () => {
     expect(await readFile(markerPath, 'utf8')).toBe(marker)
     expect(await readFile(join(worktreePath, 'untracked.txt'), 'utf8')).toBe('keep this work\n')
     expect(await git(['rev-parse', 'refs/heads/feature'], repoPath)).toBe(`${row.head}\n`)
-    expect((await listWorktreesStrict(repoPath)).some((entry) => entry.path === markerPath)).toBe(
-      false
-    )
+    expect(await isRegistered(markerPath)).toBe(false)
     expect(existsSync(adminPath)).toBe(false)
   })
 

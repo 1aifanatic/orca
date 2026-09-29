@@ -2,18 +2,21 @@
 // come from Git and disk, whatever point the earlier run reached.
 import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, realpath, rm, unlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Repo } from '../../shared/repo-types'
+import { removeTree } from '../../shared/windows-transient-lock-removal'
 import type { WorktreeRemovalOutcome } from '../../shared/worktree/removal-outcome'
 import type { Store } from '../persistence'
 import type * as HostTreeRemoval from '../host-tree-removal'
 import { removeHostTree } from '../host-tree-removal'
 import type * as WorktreeGitFileRestore from '../git/worktree-git-file-restore'
 import { restoreMissingWorktreeGitFile } from '../git/worktree-git-file-restore'
+import { listWorktreesStrict } from '../git/worktree'
+import { areWorktreePathsEqual } from '../git/worktree-path-comparison'
 import {
   _resetPendingWorktreeRemovalsForTests,
   _settlePendingWorktreeRemovalsForTests,
@@ -56,6 +59,13 @@ async function git(args: string[], cwd = repoPath): Promise<string> {
   return stdout
 }
 
+// Why parsed: Git prints forward slashes on Windows, so raw text never contains a joined path.
+async function isRegistered(path: string): Promise<boolean> {
+  return (await listWorktreesStrict(repoPath)).some((worktree) =>
+    areWorktreePathsEqual(worktree.path, path)
+  )
+}
+
 beforeEach(async () => {
   // realpath: macOS hands out /var/... temp paths while Git reports /private/var/....
   scratchDir = await realpath(await mkdtemp(join(tmpdir(), 'orca-interrupted-removal-')))
@@ -77,7 +87,7 @@ beforeEach(async () => {
 afterEach(async () => {
   _resetPendingWorktreeRemovalsForTests()
   vi.mocked(removeHostTree).mockClear()
-  await rm(scratchDir, { recursive: true, force: true })
+  await removeTree(scratchDir)
 })
 
 async function finishAfterRestart(options: { repoGone?: boolean; head?: string } = {}): Promise<{
@@ -145,7 +155,7 @@ describe('finishing an interrupted worktree removal after a restart', () => {
       outcome && 'preservedBranch' in outcome ? outcome.preservedBranch : undefined
     ).toBeUndefined()
     expect(existsSync(worktreePath)).toBe(false)
-    expect(await git(['worktree', 'list'])).not.toContain(worktreePath)
+    expect(await isRegistered(worktreePath)).toBe(false)
     expect(await git(['branch', '--list', 'feature'])).toBe('')
     expect(purged).toEqual([`repo-1::${worktreePath}`])
   })
@@ -159,10 +169,30 @@ describe('finishing an interrupted worktree removal after a restart', () => {
 
     expect(outcome).toMatchObject({ status: 'removed' })
     expect(existsSync(worktreePath)).toBe(false)
-    expect(await git(['worktree', 'list'])).not.toContain(worktreePath)
+    expect(await isRegistered(worktreePath)).toBe(false)
     expect(await git(['branch', '--list', 'feature'])).toBe('')
     expect(purged).toEqual([`repo-1::${worktreePath}`])
     // Git's process deleted it, not Orca's.
+    expect(removeHostTree).not.toHaveBeenCalled()
+  })
+
+  it('lets Git finish a relative-path checkout whose .git file it had already deleted', async (ctx) => {
+    await git(['worktree', 'remove', worktreePath])
+    try {
+      await git(['worktree', 'add', '-q', '--relative-paths', worktreePath, 'feature'])
+    } catch {
+      // Git before 2.48 has no relative-path worktrees.
+      ctx.skip()
+    }
+    await unlink(join(worktreePath, '.git'))
+    await unlink(join(worktreePath, 'seed.txt'))
+
+    const { outcome, purged } = await finishAfterRestart()
+
+    expect(outcome).toMatchObject({ status: 'removed' })
+    expect(existsSync(worktreePath)).toBe(false)
+    expect(await isRegistered(worktreePath)).toBe(false)
+    expect(purged).toEqual([`repo-1::${worktreePath}`])
     expect(removeHostTree).not.toHaveBeenCalled()
   })
 
@@ -176,7 +206,7 @@ describe('finishing an interrupted worktree removal after a restart', () => {
     expect(outcome).toMatchObject({ status: 'removed' })
     expect(removeHostTree).toHaveBeenCalledWith(worktreePath)
     expect(existsSync(worktreePath)).toBe(false)
-    expect(await git(['worktree', 'list'])).not.toContain(worktreePath)
+    expect(await isRegistered(worktreePath)).toBe(false)
     expect(await git(['branch', '--list', 'feature'])).toBe('')
     expect(purged).toEqual([`repo-1::${worktreePath}`])
   })
@@ -192,7 +222,7 @@ describe('finishing an interrupted worktree removal after a restart', () => {
 
     expect(outcome).toMatchObject({ status: 'failed' })
     expect(existsSync(join(worktreePath, 'unsaved.txt'))).toBe(true)
-    expect(await git(['worktree', 'list'])).toContain(worktreePath)
+    expect(await isRegistered(worktreePath)).toBe(true)
     expect(purged).toEqual([])
   })
 
@@ -295,7 +325,7 @@ describe('finishing an interrupted worktree removal after a restart', () => {
 
     expect(outcome).toMatchObject({ status: 'failed' })
     expect(existsSync(worktreePath)).toBe(true)
-    expect(await git(['worktree', 'list'])).toContain(worktreePath)
+    expect(await isRegistered(worktreePath)).toBe(true)
     expect(purged).toEqual([])
   })
 
