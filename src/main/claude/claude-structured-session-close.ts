@@ -12,19 +12,19 @@ import {
   AgentSessionPreSpawnError
 } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import type { ClaudeStreamJsonConnection } from './claude-stream-json-connection'
-import type { ClaudeJournalTranslator } from './claude-structured-journal-translation'
+import type { ClaudeJournalTranslator } from './claude-journal-translator-contract'
 import type { ClaudePromptRegistry } from './claude-structured-prompt-replies'
 import type { AgentSessionBackgroundTaskState } from '../../shared/agent-session-wire'
 import { closeProcessRegistry } from '../../shared/child-process/close-process-registry'
 import { retireClaudeDispatchWaiters } from './claude-structured-dispatch'
 import { settledClaudeTurnEndLeaf } from './claude-structured-resume-point'
 
-/** The root's own exit was seen first-hand; only its descendants went unverified. */
+/** The root's own exit was seen first-hand. The lease follows the root, so a descendant
+ *  left unverified or seen alive does not hold it. */
 export function claudeRootExitObserved(
   connection: ClaudeStreamJsonConnection | null | undefined
 ): boolean {
-  const verdict = connection?.exitVerdict
-  return verdict?.root === 'exited' && verdict.tree === 'unverifiable'
+  return connection?.exitVerdict.root === 'exited'
 }
 
 export function claudeAcquisitionCleanupError(

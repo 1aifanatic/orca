@@ -21,6 +21,7 @@
 //     the retry has to stay a replay. Rotating here is what sent one message to a
 //     model five times.
 
+import type { AgentJournalSubmission } from '../../../src/shared/agent-session-journal-types'
 import type { AgentSessionSendResult } from '../../../src/shared/agent-session-wire'
 import { agentSessionRefusalOperationState } from '../../../src/shared/agent-session-refusal-retry'
 import { structuredAgentSessionRejectionNotice } from '../../../src/shared/structured-agent-session-send-disposition'
@@ -57,10 +58,17 @@ export function mobileStructuredSendDelivery(
     return {
       outcome: 'rejected',
       operationIdSpent: !retained,
-      error: result.message === 'Request not sent' ? 'Message not sent' : result.message
+      error: result.message
     }
   }
-  const submission = result.value.submission as AgentSessionSendResult['submission'] | undefined
+  if ('queued' in result.value && result.value.queued) {
+    // The host holds (or already settled) the draft: the send is spent — a
+    // later identical message is a new message. A withdrawn replay is spent
+    // too, never unknown: its card was deleted or carried by a /clear.
+    return { outcome: 'accepted', operationIdSpent: true, error: null }
+  }
+  const submission: AgentJournalSubmission | undefined =
+    'submission' in result.value ? result.value.submission : undefined
   if (!submission || submission.dispatchState === 'unknown') {
     return { outcome: 'unknown', operationIdSpent: false, error: null }
   }
@@ -68,7 +76,7 @@ export function mobileStructuredSendDelivery(
     return {
       outcome: 'rejected',
       operationIdSpent: true,
-      error: structuredAgentSessionRejectionNotice(submission.reason)
+      error: structuredAgentSessionRejectionNotice(submission.reason, 'composer-send')
     }
   }
   if (retained) {

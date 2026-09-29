@@ -106,7 +106,7 @@ export const RPC_SUBSCRIPTION_SITES: readonly RpcSubscriptionSite[] = [
   {
     file: 'src/session/use-mobile-structured-agent-state.ts',
     method: 'agentSession.subscribe',
-    release: 'connection-close',
+    release: 'params',
     coverage: { kind: 'unwritten-scenario' }
   },
   // The session tab snapshot. Mountable behind the reconciliation controller the hook already

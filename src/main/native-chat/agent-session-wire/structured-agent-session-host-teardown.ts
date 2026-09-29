@@ -7,8 +7,12 @@
 // nothing can ever close them.
 
 import type { AgentSessionResumeTrigger } from '../../../shared/agent-session-resume-marker'
+import { SUPERVISED_GRACEFUL_EXIT_MS } from '../../claude/claude-child-exit-proof-ladder'
+import { PROVIDER_SUPERVISOR_MAX_STOP_MS } from '../../codex/codex-app-server-posix-supervisor'
+import { SNAPSHOT_DRAIN_TIMEOUT_MS } from './structured-agent-session-eviction'
 import type { StructuredAgentSessionRestartResume } from './structured-agent-session-restart-resume-host'
 import {
+  abandonQueuedStructuredAgentSessionMessages,
   evictOwnedStructuredAgentSessions,
   type StructuredAgentSessionLifetimeContext
 } from './structured-agent-session-host-lifetime'
@@ -22,12 +26,20 @@ export type StructuredAgentSessionTeardownPhase = {
 }
 
 /** Advisory persistence must not hold shutdown open. */
-const RESUME_MARKER_RECORD_TIMEOUT_MS = 2_000
+export const RESUME_MARKER_RECORD_TIMEOUT_MS = 2_000
 
-/** Eight steps at ten seconds each would outlast the global quit deadline, and a quit that dies
- *  mid-eviction leaves the lease unreleased — the exact state restart has to clean up. Bounded
- *  well below that deadline so the phases after this one still get to run. */
-const CHILD_EVICTION_TIMEOUT_MS = 8_000
+/** Covers a provider's stop observed late on a loaded host. */
+export const EVICTION_MARGIN_MS = 1_000
+
+/** A quit that dies mid-eviction leaves the lease unreleased — the exact state restart has to
+ *  clean up — so this covers the sink drain plus the longest supervised provider close, well below
+ *  the global quit deadline so later phases still run. A close's tree-kill fallback is outside it:
+ *  once main exits the supervisor stops its group itself, and next launch's recovery settles the
+ *  lease. Windows closes have no supervisor and wait less. */
+export const CHILD_EVICTION_TIMEOUT_MS =
+  SNAPSHOT_DRAIN_TIMEOUT_MS +
+  Math.max(SUPERVISED_GRACEFUL_EXIT_MS, PROVIDER_SUPERVISOR_MAX_STOP_MS) +
+  EVICTION_MARGIN_MS
 
 /** Bounds a phase without swallowing its failure, which `withTimeout` alone would. */
 async function withPhaseTimeout(run: () => Promise<void>, timeoutMs: number): Promise<void> {
@@ -46,9 +58,9 @@ async function withPhaseTimeout(run: () => Promise<void>, timeoutMs: number): Pr
 
 /** The quit-path phase order, which is load-bearing rather than incidental. */
 export function structuredAgentSessionHostTeardownPhases(collaborators: {
-  holds: { dispose: () => Promise<void> | void }
+  idleSweep: { dispose: () => Promise<void> | void }
   runtimeState: {
-    stopLeaseRenewal: () => void
+    stopLeaseRenewal: () => Promise<void> | void
     flushAllEventSinks: () => Promise<void>
   }
   tasks: { drainAttaches: () => Promise<void> }
@@ -68,7 +80,7 @@ export function structuredAgentSessionHostTeardownPhases(collaborators: {
         }
       }
     },
-    { name: 'dispose-holds', run: () => collaborators.holds.dispose() },
+    { name: 'dispose-idle-sweep', run: () => collaborators.idleSweep.dispose() },
     { name: 'stop-lease-renewal', run: () => collaborators.runtimeState.stopLeaseRenewal() },
     { name: 'drain-attaches', run: () => collaborators.tasks.drainAttaches() },
     {
@@ -93,6 +105,8 @@ export async function tearDownStructuredAgentSessionHost(input: {
   sessions: Map<string, StructuredAgentSessionHostSession>
   retainSessionIds?: ReadonlySet<string>
   acknowledgeSessionRelease?: (sessionId: string) => void
+  /** Quit closes every conversation, so it settles what they still queue as a close does. */
+  abandonQueued?: (sessionId: string, session: StructuredAgentSessionHostSession) => Promise<void>
 }): Promise<void> {
   const failures: unknown[] = []
   for (const phase of input.phases) {
@@ -107,7 +121,12 @@ export async function tearDownStructuredAgentSessionHost(input: {
     ([sessionId]) => !input.retainSessionIds?.has(sessionId)
   )
   // `allSettled`, so one rejected close cannot skip the others.
-  const closed = await Promise.allSettled(entries.map(([, session]) => session.journal.close()))
+  const closed = await Promise.allSettled(
+    entries.map(async ([sessionId, session]) => {
+      await input.abandonQueued?.(sessionId, session)
+      await session.journal.close()
+    })
+  )
   closed.forEach((result, index) => {
     const sessionId = entries[index]?.[0]
     if (result.status === 'fulfilled') {
@@ -133,7 +152,7 @@ export async function tearDownStructuredAgentSessionHost(input: {
 
 export async function flushStructuredAgentSessionHost(
   context: StructuredAgentSessionLifetimeContext &
-    Pick<Parameters<typeof structuredAgentSessionHostTeardownPhases>[0], 'holds' | 'tasks'> & {
+    Pick<Parameters<typeof structuredAgentSessionHostTeardownPhases>[0], 'idleSweep' | 'tasks'> & {
       restartResume: StructuredAgentSessionRestartResume
       serialize: (sessionId: string, task: () => Promise<void>) => Promise<void>
       trigger: AgentSessionResumeTrigger
@@ -160,6 +179,8 @@ export async function flushStructuredAgentSessionHost(
     sessions: context.sessions,
     retainSessionIds,
     acknowledgeSessionRelease: (sessionId) =>
-      context.deps.adapter.acknowledgeSessionRelease?.(sessionId)
+      context.deps.adapter.acknowledgeSessionRelease?.(sessionId),
+    abandonQueued: (sessionId, session) =>
+      abandonQueuedStructuredAgentSessionMessages(context.deps, sessionId, session.journal)
   })
 }

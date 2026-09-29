@@ -40,6 +40,7 @@ export type StructuredClaudeRuntimeAdapterDeps = {
     state: AgentSessionBackgroundTaskState | null
   ) => void
   onDispatchSettledLate?: ClaudeStructuredSessionAdapterDeps['onDispatchSettledLate']
+  onSessionIdle?: ClaudeStructuredSessionAdapterDeps['onSessionIdle']
   onChildWorkEvidence?: ClaudeStructuredSessionAdapterDeps['onChildWorkEvidence']
 }
 
@@ -60,12 +61,12 @@ export function structuredClaudeLifecycleEvent(
       type: 'ended',
       sessionId: event.sessionId,
       reason: event.reason,
+      ...(event.failure ? { failure: event.failure } : {}),
       cause: event.cause,
       fence: event.fence,
       acquisitionGeneration: event.acquisitionGeneration,
-      ...(event.settlementRetryRequired
-        ? { settlementRetryRequired: event.settlementRetryRequired }
-        : {}),
+      // The instant the translator ended the open turn at; the host reads the exit's turn by it.
+      ...(event.observedAt === undefined ? {} : { observedAt: event.observedAt }),
       ...(event.startupUnproven ? { startupUnproven: event.startupUnproven } : {})
     }
   }
@@ -132,6 +133,7 @@ export function createStructuredClaudeRuntimeAdapter(
       ? { onBackgroundTasksChanged: deps.onBackgroundTasksChanged }
       : {}),
     ...(deps.onDispatchSettledLate ? { onDispatchSettledLate: deps.onDispatchSettledLate } : {}),
+    ...(deps.onSessionIdle ? { onSessionIdle: deps.onSessionIdle } : {}),
     ...(deps.onChildWorkEvidence ? { onChildWorkEvidence: deps.onChildWorkEvidence } : {}),
     ...(deps.openClaudeConnection ? { openConnection: deps.openClaudeConnection } : {}),
     ...(deps.readProcessStartTime ? { readProcessStartTime: deps.readProcessStartTime } : {}),

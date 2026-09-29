@@ -34,10 +34,10 @@ const {
   registerOrcaProfileHandlersMock,
   registerCodexAccountHandlersMock,
   registerAgentHookHandlersMock,
-  registerAgentTrustHandlersMock,
   registerClaudeAccountHandlersMock,
   registerMiniMaxCredentialsHandlersMock,
   registerGrokAccountHandlersMock,
+  registerCursorAccountHandlersMock,
   registerClipboardHandlersMock,
   setTrustedClipboardRendererWebContentsIdMock,
   registerUpdaterHandlersMock,
@@ -101,10 +101,10 @@ const {
   registerOrcaProfileHandlersMock: vi.fn(),
   registerCodexAccountHandlersMock: vi.fn(),
   registerAgentHookHandlersMock: vi.fn(),
-  registerAgentTrustHandlersMock: vi.fn(),
   registerClaudeAccountHandlersMock: vi.fn(),
   registerMiniMaxCredentialsHandlersMock: vi.fn(),
   registerGrokAccountHandlersMock: vi.fn(),
+  registerCursorAccountHandlersMock: vi.fn(),
   registerClipboardHandlersMock: vi.fn(),
   setTrustedClipboardRendererWebContentsIdMock: vi.fn(),
   registerUpdaterHandlersMock: vi.fn(),
@@ -328,10 +328,6 @@ vi.mock('../agent-hooks', () => ({
   registerAgentHookHandlers: registerAgentHookHandlersMock
 }))
 
-vi.mock('../agent-trust', () => ({
-  registerAgentTrustHandlers: registerAgentTrustHandlersMock
-}))
-
 vi.mock('../claude-accounts', () => ({
   registerClaudeAccountHandlers: registerClaudeAccountHandlersMock
 }))
@@ -342,6 +338,10 @@ vi.mock('../minimax-credentials', () => ({
 
 vi.mock('../grok-accounts', () => ({
   registerGrokAccountHandlers: registerGrokAccountHandlersMock
+}))
+
+vi.mock('../cursor-accounts', () => ({
+  registerCursorAccountHandlers: registerCursorAccountHandlersMock
 }))
 
 vi.mock('../../window/attach-main-window-services', () => ({
@@ -432,7 +432,6 @@ describe('registerCoreHandlers', () => {
     registerOrcaProfileHandlersMock.mockReset()
     registerCodexAccountHandlersMock.mockReset()
     registerAgentHookHandlersMock.mockReset()
-    registerAgentTrustHandlersMock.mockReset()
     registerClaudeAccountHandlersMock.mockReset()
     registerMiniMaxCredentialsHandlersMock.mockReset()
     registerClipboardHandlersMock.mockReset()
@@ -528,6 +527,7 @@ describe('registerCoreHandlers', () => {
     expect(registerClaudeAccountHandlersMock).toHaveBeenCalledWith(claudeAccounts)
     expect(registerMiniMaxCredentialsHandlersMock).toHaveBeenCalledWith(rateLimits)
     expect(registerGrokAccountHandlersMock).toHaveBeenCalled()
+    expect(registerCursorAccountHandlersMock).toHaveBeenCalled()
     expect(registerRateLimitHandlersMock).toHaveBeenCalledWith(rateLimits, codexAccounts)
     expect(registerGitHubHandlersMock).toHaveBeenCalledWith(store, stats)
     expect(registerLinearHandlersMock).toHaveBeenCalled()
@@ -552,7 +552,7 @@ describe('registerCoreHandlers', () => {
     expect(registerLocalhostWorktreeLabelHandlersMock).toHaveBeenCalledWith(store)
     expect(registerTelemetryHandlersMock).toHaveBeenCalledWith(store)
     expect(registerOrcaProfileHandlersMock).toHaveBeenCalledWith(store, { onBeforeRelaunch })
-    expect(registerSessionHandlersMock).toHaveBeenCalledWith(store)
+    expect(registerSessionHandlersMock).toHaveBeenCalledWith(store, runtime)
     expect(registerUIHandlersMock).toHaveBeenCalledWith(store, {
       isDashboardPopoutRenderer: isDashboardPopoutRendererMock
     })
