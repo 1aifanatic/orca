@@ -461,6 +461,28 @@ describe('startup restore of chats still in their per-chat files', () => {
     expect(importCount()).toBe(1)
   })
 
+  it("copies a chat before its first queued message, which lands as that chat's draft", async () => {
+    const rows = await seedLegacyChat('chat-a')
+    const { sessions } = await restore(['chat-a'])
+    const journal = sessions.get('chat-a')!.journal
+    expect(journal.importPending).toBe(true)
+
+    await journal.queuedMessages.insert({
+      messageId: 'draft-1',
+      body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'later' }] },
+      fingerprint: 'fp-draft-1',
+      hostInstance: 'proc-1'
+    })
+
+    expect(journal.importPending).toBe(false)
+    expect(readTestJournalRows(hostDb(), 'chat-a', rows[0]!.epoch)).toEqual(rows)
+    expect(existsSync(legacyFile('chat-a'))).toBe(false)
+    expect(importCount()).toBe(1)
+    expect(journal.queuedMessages.list()).toMatchObject([
+      { messageId: 'draft-1', state: 'waiting' }
+    ])
+  })
+
   it('never shows a read racing the copy a partly copied chat', async () => {
     // Past one import batch, so the copy yields to other work between batches.
     const rows = await seedLegacyChat('chat-a', 520)
