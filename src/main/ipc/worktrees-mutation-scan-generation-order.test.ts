@@ -257,6 +257,46 @@ describe('worktree mutation scan-generation ordering', () => {
     expect(witness.after).toBeGreaterThan(witness.during ?? Infinity)
     expect(replySequence(result)).toBeGreaterThanOrEqual(witness.after ?? Infinity)
   })
+
+  // Why: git can drop the worktree and then fail on its folder; an SSH listing that began before
+  // must still be overtaken, since the generation is its only guard against a stale read.
+  it('bumps the generation before the first step after an SSH git worktree remove fails', async () => {
+    const repo = {
+      id: 'repo-ssh',
+      path: '/remote/repo',
+      displayName: 'ssh',
+      badgeColor: '#000',
+      addedAt: 0,
+      connectionId: 'conn-1'
+    }
+    const witness: GenerationWitness = {}
+    const provider = {
+      listWorktrees: vi.fn(async () => [
+        { ...createdRow('/remote/repo', 'main'), isMainWorktree: true },
+        createdRow('/remote/feature-wt', 'feature')
+      ]),
+      removeWorktree: vi.fn(async () => {
+        witness.during = getLocalWorktreeScanGeneration(repo.id)
+        throw new Error("error: failed to delete '/remote/feature-wt': Permission denied")
+      }),
+      worktreeIsClean: vi.fn(async () => ({ clean: true }))
+    }
+    store.getRepos.mockReturnValue([repo])
+    store.getRepo.mockReturnValue(repo)
+    getSshGitProviderMock.mockReturnValue(provider)
+    runtimeStub.acquireFileWatcherRemoval.mockResolvedValue({
+      finish: vi.fn(async () => witnessAfter(witness, repo.id))
+    })
+
+    await expect(
+      handlers['worktrees:remove'](null, {
+        worktreeId: 'repo-ssh::/remote/feature-wt',
+        force: true
+      })
+    ).rejects.toThrow('Permission denied')
+
+    expect(witness.after).toBeGreaterThan(witness.during ?? Infinity)
+  })
 })
 
 describe('listing after a local removal that partly fails', () => {

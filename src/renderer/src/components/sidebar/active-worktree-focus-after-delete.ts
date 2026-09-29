@@ -127,15 +127,11 @@ export async function commitFocusIfFailedDeleteRemovedWorktree(
   const hostId = target.executionHostId ?? undefined
   const row = getWorktreeOnHostFromState(useAppStore.getState(), target.id, hostId)
   if (row) {
-    try {
-      await useAppStore.getState().fetchWorktrees(row.repoId, {
-        requireAuthoritative: true,
-        ...(hostId ? { executionHostId: hostId } : {})
-      })
-    } catch (error) {
-      console.warn('Failed to refresh workspaces after a failed delete:', error)
-      return
-    }
+    // Why no catch: a failed refresh resolves false and leaves the row listed, so nothing moves.
+    await useAppStore.getState().fetchWorktrees(row.repoId, {
+      requireAuthoritative: true,
+      ...(hostId ? { executionHostId: hostId } : {})
+    })
     if (getWorktreeOnHostFromState(useAppStore.getState(), target.id, hostId)) {
       return
     }
