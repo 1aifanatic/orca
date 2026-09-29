@@ -701,33 +701,60 @@ describe("the queue's Stop fact", () => {
 
   it("a /clear's replacement records its pause as 'cleared', read back the same way", async () => {
     let journal = await open()
+    await queueDraft(journal, 'draft-1')
     await journal.queuedMessages.recordPause('cleared')
     await journal.close()
     journal = await open()
     expect(journal.queuedMessages.pause()).toMatchObject({ reason: 'cleared' })
   })
 
-  it('retires with the last card it can hold back, in the write that took it: a hold of its own, or a refusal', async () => {
+  it('retires in the write that takes the last card it holds back: a hold of its own', async () => {
     const journal = await open()
     await queueDraft(journal, 'draft-held')
-    await journal.queuedMessages.recordPause('stopped')
+    expect(await journal.queuedMessages.recordPause('stopped')).toBe(true)
     await journal.queuedMessages.hold({ messageIds: ['draft-held'], reason: 'send_failed' })
     expect(journal.queuedMessages.pause()).toBeNull()
-    await queueDraft(journal, 'draft-refused')
-    await consumeDraft(journal, 'draft-refused')
-    await journal.queuedMessages.recordPause('stopped')
-    await journal.resolveDispatch({
-      clientMessageId: 'sub-draft-refused',
-      state: 'rejected',
-      ...refusal('refused'),
-      fence: 0
-    })
-    expect(journal.queuedMessages.get('draft-refused')?.state).toBe('returned')
+  })
+
+  it('records nothing over a queue with no card it holds back, judged in its own transaction', async () => {
+    const journal = await open()
+    expect(await journal.queuedMessages.recordPause('stopped')).toBe(false)
     expect(journal.queuedMessages.pause()).toBeNull()
+    await queueDraft(journal, 'draft-1')
+    expect(await journal.queuedMessages.recordPause('stopped')).toBe(true)
+    expect(journal.queuedMessages.pause()).not.toBeNull()
+  })
+
+  it('a hand-off whose return to waiting is still owed (its hook skipped) keeps the pause', async () => {
+    const journal = await open()
+    await queueDraft(journal, 'draft-sent')
+    await queueDraft(journal, 'draft-other')
+    await consumeDraft(journal, 'draft-sent')
+    expect(await journal.queuedMessages.recordPause('stopped')).toBe(true)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const hook = vi
+      .spyOn(JournalQueuedMessages.prototype, 'onRowInTransaction')
+      .mockImplementationOnce(() => {
+        throw new Error('bookkeeping failed')
+      })
+    try {
+      await journal.rejectQueuedSubmissions(0, STOP_WITHDRAWAL)
+    } finally {
+      hook.mockRestore()
+      warn.mockRestore()
+    }
+    expect(journal.queuedMessages.get('draft-sent')?.state).toBe('dispatched')
+    // The only waiting card goes; the owed one is still a card the pause holds back.
+    await journal.queuedMessages.withdraw({ messageIds: ['draft-other'], settledByOp: 'c\u0000op' })
+    expect(journal.queuedMessages.pause()).not.toBeNull()
+    await journal.queuedMessages.settleOwed()
+    expect(journal.queuedMessages.get('draft-sent')?.state).toBe('waiting')
+    expect(journal.queuedMessages.pause()).not.toBeNull()
   })
 
   it('lifting retires only the Stop fact it judged, never one recorded since', async () => {
     const journal = await open()
+    await queueDraft(journal, 'draft-1')
     await journal.queuedMessages.recordPause('stopped')
     const judged = journal.queuedMessages.pause()
     await journal.appendItem(
