@@ -69,8 +69,8 @@ export function mergeNativeChatLiveSession(input: NativeChatLiveMergeInput): Nat
     transcriptLifecycle,
     hookHasWorkingSubagents ?? false
   )
-  // Why live work still wins: 'working' is what drives Stop-vs-Send, the typing
-  // indicator and the streaming preview, so forcing 'loading' over it renders an
+  // Why live work still wins: 'working' is what drives Stop-vs-Send, the turn
+  // status and the streaming preview, so forcing 'loading' over it renders an
   // idle pane while the agent works. A known session with nothing to show yet is
   // held on the loading surface by selectNativeChatViewState instead.
   if (loading && status !== 'working') {
@@ -82,6 +82,22 @@ export function mergeNativeChatLiveSession(input: NativeChatLiveMergeInput): Nat
     sessionId,
     agent
   }
+}
+
+/**
+ * Whether the agent stopped mid-turn for the reader (`blocked` and `waiting` both mean a human
+ * must decide). Reconciled like 'working': an interrupt at the prompt fires no hook, so only the
+ * transcript's terminal marker can end a wait the hook never cleared.
+ */
+export function nativeChatHookAwaitsInput(
+  hookState: AgentStatusState | null,
+  stateStartedAt: number | null | undefined,
+  transcriptLifecycle: NativeChatTurnLifecycle | undefined
+): boolean {
+  return (
+    (hookState === 'blocked' || hookState === 'waiting') &&
+    !lifecycleTerminatesCurrentTurn(transcriptLifecycle, stateStartedAt)
+  )
 }
 
 /** Slack for comparing transcript timestamps to hook receipt times across hosts. */

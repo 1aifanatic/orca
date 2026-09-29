@@ -68,7 +68,6 @@ export type NativeChatTranscriptSlotsInput = {
     completedByTurn: Readonly<Record<string, NativeChatTurnStatus>>
   }
   turnDiffs: ReadonlyMap<string, NativeChatTurnDiff>
-  showTurnStatus: boolean
   /** Turns the reader opened. Everything else with a duration stays folded. */
   expandedTurnKeys: ReadonlySet<string>
   isWorking: boolean
@@ -89,7 +88,6 @@ export function buildNativeChatTranscriptSlots(
     receipts,
     turnStatuses,
     turnDiffs,
-    showTurnStatus,
     expandedTurnKeys,
     isWorking,
     lifecycleWorking,
@@ -135,11 +133,9 @@ export function buildNativeChatTranscriptSlots(
     }
   }
   const settledTurnKeys = new Set(
-    showTurnStatus
-      ? Object.entries(turnStatuses.completedByTurn)
-          .filter(([, status]) => status.workedSeconds != null)
-          .map(([turnKey]) => turnKey)
-      : []
+    Object.entries(turnStatuses.completedByTurn)
+      .filter(([, status]) => status.workedSeconds != null)
+      .map(([turnKey]) => turnKey)
   )
   const { foldedRows, foldableTurnKeys } = nativeChatTurnFold({
     rows: foldRows,
@@ -157,7 +153,7 @@ export function buildNativeChatTranscriptSlots(
           ? turnStatuses.completedByTurn[turnKey]
           : undefined
     // The live turn's bar carries its running clock; it settles in place.
-    const status = showTurnStatus ? (candidateStatus ?? undefined) : undefined
+    const status = candidateStatus ?? undefined
     const turnDiff = turnKey && turnKeys[index + 1] !== turnKey ? turnDiffs.get(turnKey) : undefined
     const folded = foldedRows.has(index)
     // Skipping a folded row entirely is what keeps windowing honest: a counted
