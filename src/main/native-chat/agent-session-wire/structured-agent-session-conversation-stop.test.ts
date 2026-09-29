@@ -274,4 +274,35 @@ describe('a Stop that names its turn, as an older client sends it', () => {
     expect(cancelTurn).toHaveBeenCalledWith(expect.objectContaining({ turnId: 'turn-1' }))
     expect(await statusRows()).toEqual([ALREADY_FINISHED])
   })
+
+  async function queueOnHost(): Promise<{ id: string; release: () => void }> {
+    const started = Promise.withResolvers<undefined>()
+    awaitStarted.mockImplementationOnce(() => started.promise)
+    const { id, result } = send('hello')
+    await result
+    await eventually(() => expect(awaitStarted).toHaveBeenCalled())
+    return { id, release: () => started.resolve(undefined) }
+  }
+
+  it('reports success with no row when it withdrew a queued message and the turn had ended', async () => {
+    const queued = await queueOnHost()
+    cancelTurn.mockResolvedValueOnce({ cancelled: false })
+
+    expect(await stop('turn-1')).toMatchObject({ ok: true, value: { cancelled: true } })
+    queued.release()
+
+    expect(await submission(queued.id)).toMatchObject({ dispatchState: 'rejected' })
+    expect(await statusRows()).toEqual([])
+  })
+
+  it('does not report success when the provider left the interrupt unconfirmed', async () => {
+    const queued = await queueOnHost()
+    cancelTurn.mockResolvedValueOnce({ cancelled: false, unconfirmed: true })
+
+    expect(await stop('turn-1')).toMatchObject({ ok: true, value: { cancelled: false } })
+    queued.release()
+
+    expect(await submission(queued.id)).toMatchObject({ dispatchState: 'rejected' })
+    expect(await statusRows()).not.toEqual([])
+  })
 })

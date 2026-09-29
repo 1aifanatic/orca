@@ -282,8 +282,15 @@ export async function performCancel(
           ...(input.prompt ? { prompt: { itemId: input.prompt.itemId } } : {})
         })
     cancelled = outcome.cancelled
-    if (!cancelled && input.turnId !== undefined && input.withdrewQueued) {
+    if (
+      !cancelled &&
+      input.turnId !== undefined &&
+      input.withdrewQueued &&
+      !outcome.unconfirmed &&
+      !outcome.refusal
+    ) {
       // The Stop ended what was queued, which is how a Stop naming no turn reports the same case.
+      // A provider that took or refused the interrupt still has a turn the withdrawal did not end.
       cancelled = true
       note = null
     } else if (!cancelled && input.turnId !== undefined) {
