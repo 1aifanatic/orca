@@ -57,10 +57,11 @@ function claudeLiveTurnId(session: ClaudeSession, request: CancelInput): string 
 }
 
 /**
- * A Stop that names no turn, or names the live one: the conversation asked to stop whatever this
- * child has in flight. Claude's interrupt is session-scoped, so there is no turn identity to check —
- * only that this is still the child the host judged, and that it has a turn open or a written
- * message whose turn has not opened yet (the gap before its echo, which no client can name).
+ * A Stop that names no turn, names the live one, or names one that ended before a written
+ * follow-up opened its own: the conversation asked to stop whatever this child has in flight.
+ * Claude's interrupt is session-scoped, so there is no turn identity to check — only that this is
+ * still the child the host judged, and that it has a turn open or a written message whose turn has
+ * not opened yet (the gap before its echo, which no client can name).
  */
 function cancelClaudeConversation(
   session: ClaudeSession,
@@ -95,13 +96,16 @@ export async function cancelClaudeStructuredTurn(input: {
     return { cancelled: false }
   }
   const requestedTurnId = request.turnId
+  const liveTurnId = claudeLiveTurnId(session, request)
   // Naming the live turn asks for exactly what the conversation Stop interrupts, so a follow-up's
-  // pending handover is no reason to hold it; the queue sweep settles that follow-up.
+  // pending handover is no reason to hold it; the queue sweep settles that follow-up. With nothing
+  // live, a written follow-up whose turn has not opened is one the naming client has not seen start.
   if (
     !prompt &&
     (requestedTurnId === undefined ||
       (!compactions.ownsTurn(request.sessionId, requestedTurnId) &&
-        claudeLiveTurnId(session, request) === requestedTurnId))
+        (liveTurnId === requestedTurnId ||
+          (liveTurnId === null && session.dispatchWaiters.length > 0))))
   ) {
     return cancelClaudeConversation(
       session,

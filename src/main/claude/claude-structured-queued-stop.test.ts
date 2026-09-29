@@ -81,14 +81,34 @@ async function acquired(
   return { adapter, bodies, connection: claude.connections[0]! }
 }
 
-function runningTurnId(bodies: Map<string, AgentJournalItemBody>): string {
+function openTurnId(bodies: Map<string, AgentJournalItemBody>): string | null {
   for (const body of bodies.values()) {
     const turn = readAgentJournalTurn(body)
     if (turn?.state === 'running') {
       return turn.turnId
     }
   }
-  throw new Error('expected a running turn')
+  return null
+}
+
+function runningTurnId(bodies: Map<string, AgentJournalItemBody>): string {
+  const turnId = openTurnId(bodies)
+  if (turnId === null) {
+    throw new Error('expected a running turn')
+  }
+  return turnId
+}
+
+function completeTurn(connection: FakeConnection, uuid: string): void {
+  connection.handlers.onMessage?.({
+    type: 'result',
+    subtype: 'success',
+    uuid,
+    session_id: PROVIDER_SESSION_ID,
+    is_error: false,
+    terminal_reason: 'completed',
+    duration_ms: 12
+  })
 }
 
 /** Writes a send and opens its turn with the echo, which adopts the client uuid. */
@@ -240,15 +260,7 @@ describe('Stop with a follow-up Claude queued behind the running turn', () => {
     const { adapter, bodies, connection } = await acquired(cli.claude, settlements)
     await sendAndOpen(adapter, connection, 'client-a')
     const olderTurnId = runningTurnId(bodies)
-    connection.handlers.onMessage?.({
-      type: 'result',
-      subtype: 'success',
-      uuid: 'result-a',
-      session_id: PROVIDER_SESSION_ID,
-      is_error: false,
-      terminal_reason: 'completed',
-      duration_ms: 12
-    })
+    completeTurn(connection, 'result-a')
     await sendAndOpen(adapter, connection, 'client-b')
     const liveTurnId = runningTurnId(bodies)
     await send(adapter, 'client-c')
@@ -260,6 +272,27 @@ describe('Stop with a follow-up Claude queued behind the running turn', () => {
     expect(runningTurnId(bodies)).toBe(liveTurnId)
     expect(settlements.filter((settlement) => settlement.clientMessageId === 'client-c')).toEqual(
       []
+    )
+  })
+
+  it('withdraws a follow-up whose turn has not opened when the turn the Stop names already ended', async () => {
+    const settlements: Settlement[] = []
+    const cli = claudeCli({ initProof: 'init', capabilities: CAPABILITIES })
+    const { adapter, bodies, connection } = await acquired(cli.claude, settlements)
+    await sendAndOpen(adapter, connection, 'client-a')
+    const shownTurnId = runningTurnId(bodies)
+    await send(adapter, 'client-b')
+    cli.queue(String(connection.sent.at(-1)!.uuid))
+    // The phone's copy still shows the first turn, which ends before its Stop lands.
+    completeTurn(connection, 'result-a')
+    expect(openTurnId(bodies)).toBeNull()
+
+    await expect(namedStop(adapter, shownTurnId)).resolves.toEqual({ cancelled: true })
+    expect(connection.calls.find((call) => call.subtype === 'interrupt')?.params).toEqual({
+      cancelQueued: true
+    })
+    expect(settlements.filter((settlement) => settlement.clientMessageId === 'client-b')).toEqual(
+      WITHDRAWN
     )
   })
 })
