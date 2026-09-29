@@ -30,6 +30,9 @@ export class AnalyticsSessionIdStore {
     if (providerSessionIds.some((id) => !providerSessionIdSchema.safeParse(id).success)) {
       throw new Error('Invalid provider session ID')
     }
+    if (providerSessionIds.length === 0) {
+      return []
+    }
     // Serialize reads as well as writes so no caller sees an ID before it is durable.
     const operation = this.pending.then(async () => {
       const identities = this.identities ?? (await this.load())

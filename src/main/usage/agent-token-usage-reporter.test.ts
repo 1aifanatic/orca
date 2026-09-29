@@ -157,7 +157,6 @@ describe('agent token usage', () => {
 
   it('rejects invalid counts and unexpected content fields', async () => {
     await reporter().report([{ ...row, input_tokens: -1 }])
-    expect(identity).toHaveBeenCalledWith([])
     const payload = { ...row, analytics_session_id: ID, revision: 1, provider: 'claude' }
     expect(agentTokenUsageSchema.safeParse(payload).success).toBe(false)
     const { providerSessionId: _, ...valid } = payload

@@ -90,13 +90,6 @@ describe('AnalyticsSessionIdStore', () => {
     expect(write).toHaveBeenCalledOnce()
   })
 
-  it('rejects a batch containing an invalid key without minting any ID', async () => {
-    await expect(createStore().getOrCreate(['valid', ''])).rejects.toThrow(
-      'Invalid provider session ID'
-    )
-    expect(existsSync(file)).toBe(false)
-  })
-
   it('restores the ID after a restart or session resume', async () => {
     const original = createStore()
     const id = await idFor(original, 'resumed-session')
@@ -127,9 +120,11 @@ describe('AnalyticsSessionIdStore', () => {
   })
 
   it.each(['', '   ', 'x'.repeat(1025)])(
-    'rejects invalid keys without creating a mapping',
+    'rejects a batch with an invalid key without minting any ID',
     async (key) => {
-      await expect(idFor(createStore(), key)).rejects.toThrow('Invalid provider session ID')
+      await expect(createStore().getOrCreate(['valid', key])).rejects.toThrow(
+        'Invalid provider session ID'
+      )
       expect(existsSync(file)).toBe(false)
     }
   )

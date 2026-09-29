@@ -46,7 +46,6 @@ export class AgentTokenUsageReporter {
     if (!isTelemetryEnabled()) {
       return
     }
-    const previous = this.snapshots ?? (await this.load())
     const rows = sessions.flatMap(({ providerSessionId, ...counts }) => {
       const parsed = agentTokenCountsSchema.safeParse(counts)
       return parsed.success ? [{ providerSessionId, counts: parsed.data }] : []
@@ -55,6 +54,7 @@ export class AgentTokenUsageReporter {
     if (!isTelemetryEnabled()) {
       return
     }
+    const previous = this.snapshots ?? (await this.load())
     const next = new Map(previous)
     let changed = false
     for (const [index, { counts }] of rows.entries()) {
