@@ -62,13 +62,27 @@ afterEach(() => {
 })
 
 describe('desktop and paired-web pending delivery', () => {
-  it('waits through a long queued turn, checks a fresh read after idle, and keeps text recoverable', async () => {
+  it('keeps a send made during a busy turn pending, with no check, after that turn ends', async () => {
+    // Claude folds such a send into the running turn as a record the transcript reader drops.
     const { result, rerender } = renderHook(() => useNativeChatPendingDelivery(args))
     act(() => result.current.record('follow up'))
     await tick(120_000)
+    mocks.status = status('done', 2)
+    rerender()
+    await tick(120_000)
     expect(mocks.read).not.toHaveBeenCalled()
     expect(result.current.notices.size).toBe(0)
-    mocks.status = status('done', 2)
+    expect(result.current.pending[0]?.delivery).toBeUndefined()
+  })
+  it('checks a send into an idle agent after its turn ends and keeps the text recoverable', async () => {
+    mocks.status = status('done', 1)
+    const { result, rerender } = renderHook(() => useNativeChatPendingDelivery(args))
+    act(() => result.current.record('follow up'))
+    mocks.status = status('working', 2)
+    rerender()
+    await tick(120_000)
+    expect(mocks.read).not.toHaveBeenCalled()
+    mocks.status = status('done', 3)
     rerender()
     await tick(0)
     expect(mocks.read).toHaveBeenCalledOnce()
@@ -77,7 +91,18 @@ describe('desktop and paired-web pending delivery', () => {
     act(() => [...result.current.notices.values()][0]?.onDismiss?.())
     expect(result.current.pending).toEqual([])
   })
+  it('flags a send an idle agent never starts a turn for, such as Claude having exited', async () => {
+    mocks.status = status('done', 1)
+    const { result } = renderHook(() => useNativeChatPendingDelivery(args))
+    act(() => result.current.record('lost'))
+    await tick(19_000)
+    expect(mocks.read).not.toHaveBeenCalled()
+    await tick(1_000)
+    expect(mocks.read).toHaveBeenCalledOnce()
+    expect(result.current.pending[0]?.delivery).toBe('unconfirmed')
+  })
   it('uses the fresh read when the status arrives before the transcript stream', async () => {
+    mocks.status = status('done', 1)
     const { result, rerender } = renderHook(() => useNativeChatPendingDelivery(args))
     act(() => result.current.record('one\ntwo'))
     mocks.read.mockResolvedValue({
@@ -126,6 +151,8 @@ describe('desktop and paired-web pending delivery', () => {
       result.current.reject(id)
     })
     expect([...result.current.notices.values()][0]?.text).toBe('Message not sent')
+    mocks.status = status('done', 1)
+    rerender()
     act(() => result.current.record('uncertain'))
     mocks.read.mockResolvedValue({ error: 'disconnected' })
     mocks.status = status('done', 2)
@@ -145,6 +172,8 @@ describe('desktop and paired-web pending delivery', () => {
       ({ paneKey }) => useNativeChatPendingDelivery({ ...args, paneKey }),
       { initialProps: { paneKey: 'pane' } }
     )
+    mocks.status = status('done', 1)
+    rerender({ paneKey: 'pane' })
     act(() => result.current.record('old'))
     mocks.status = status('done', 2)
     rerender({ paneKey: 'pane' })

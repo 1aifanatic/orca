@@ -50,6 +50,7 @@ const boundary: NativeChatMessage = {
 }
 const working: NativeChatDeliveryStatus = { state: 'working', stateStartedAt: 1 }
 const idle: NativeChatDeliveryStatus = { state: 'done', stateStartedAt: 2 }
+const idleBefore: NativeChatDeliveryStatus = { state: 'done', stateStartedAt: 0 }
 const base = {
   hostId: 'host',
   worktreeId: 'folder',
@@ -74,7 +75,7 @@ async function tick(ms: number) {
   })
 }
 
-it('keeps a long queued send pending, then reads on idle and provides a dismissible notice', async () => {
+it('keeps a send made during a busy turn pending, with no check, after that turn ends', async () => {
   const { result, rerender } = renderHook(
     ({ status }) =>
       useMobileNativeChatDrafts({ ...base, deliveryTracking: { status, readTranscript } }),
@@ -84,9 +85,28 @@ it('keeps a long queued send pending, then reads on idle and provides a dismissi
     const origin = result.current.captureSendOrigin('follow up')!
     result.current.acceptSend(origin, 'follow up')
   })
+  rerender({ status: idle })
   await tick(120_000)
   expect(readTranscript).not.toHaveBeenCalled()
   expect(result.current.pending[0]?.delivery).toBeUndefined()
+})
+
+it('checks a send into an idle agent after its turn ends and provides a dismissible notice', async () => {
+  const { result, rerender } = renderHook(
+    ({ status }) =>
+      useMobileNativeChatDrafts({ ...base, deliveryTracking: { status, readTranscript } }),
+    { initialProps: { status: idleBefore } }
+  )
+  act(() => {
+    const origin = result.current.captureSendOrigin('follow up')!
+    result.current.acceptSend(origin, 'follow up')
+  })
+  rerender({ status: working })
+  await tick(120_000)
+  expect(readTranscript).not.toHaveBeenCalled()
+  const pendingBefore = result.current.pending
+  rerender({ status: working })
+  expect(result.current.pending).toBe(pendingBefore)
   rerender({ status: idle })
   await tick(0)
   expect(readTranscript).toHaveBeenCalledOnce()
@@ -104,7 +124,7 @@ it('uses the same lifecycle for a lost write acknowledgment and permits a late t
         messages,
         deliveryTracking: { status, readTranscript }
       }),
-    { initialProps: { status: working, messages: [boundary] } }
+    { initialProps: { status: idleBefore, messages: [boundary] } }
   )
   const report = vi.fn()
   act(() =>
@@ -114,6 +134,7 @@ it('uses the same lifecycle for a lost write acknowledgment and permits a late t
       report
     )
   )
+  rerender({ status: working, messages: [boundary] })
   await tick(120_000)
   expect(report).not.toHaveBeenCalled()
   expect(result.current.pending).toHaveLength(1)
