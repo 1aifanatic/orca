@@ -91,6 +91,35 @@ describe('relay launch options', () => {
     expect(reparsed.launchErrorFile).toBeUndefined()
   })
 
+  it('preserves every daemon option across the detached launcher', () => {
+    const options = parseRelayLaunchOptions([
+      'bun',
+      'relay.js',
+      '--spawn-detached',
+      '--grace-time',
+      '123',
+      '--sock-path',
+      'pipe-name',
+      '--endpoint-dir',
+      'C:/hooks & tools',
+      '--credential-file',
+      'C:/秘密/credential',
+      '--log-file',
+      'C:/logs/relay.log',
+      '--launch-error-file',
+      'C:/logs/relay.err.log',
+      '--ripgrep-path',
+      'C:/tools/rg.exe'
+    ])
+    const args = detachedRelayArguments('C:/relay/relay.js', options)
+    expect(parseRelayLaunchOptions(['bun', ...args.slice(3)])).toEqual({
+      ...options,
+      detached: true,
+      spawnDetachedMode: false,
+      launchErrorFile: undefined
+    })
+  })
+
   it('reads the bundled ripgrep path, which older launch commands omit', () => {
     expect(
       parseRelayLaunchOptions([
