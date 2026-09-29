@@ -38,6 +38,9 @@ export type AgentModelCatalogSuccess = {
 
 export type AgentModelCatalogProbe = (accountHomePath: string) => Promise<AgentModelCatalogSuccess>
 
+/** Who lists: a live session asks the child it already runs; a probe spawns a throwaway one. */
+export type AgentModelCatalogLister = AgentModelCatalogSuccess['origin']
+
 type CatalogFailure = { detail: string; failedAt: number }
 
 /** A live session's handle into the store, pinned at spawn to the account home
@@ -81,7 +84,10 @@ function listingKey(entry: AgentModelCatalogEntry): string {
 export class AgentModelCatalogStore {
   private readonly entries = new Map<string, AgentModelCatalogEntry>()
   private readonly failures = new Map<string, CatalogFailure>()
-  private readonly refreshes = new Map<string, Promise<AgentModelCatalogEntry | null>>()
+  private readonly refreshes: Record<
+    AgentModelCatalogLister,
+    Map<string, Promise<AgentModelCatalogEntry | null>>
+  > = { 'live-session': new Map(), probe: new Map() }
   private persistence: AgentModelCatalogPersistence | null = null
   private readonly now: () => number
 
@@ -176,36 +182,43 @@ export class AgentModelCatalogStore {
     this.failures.set(fingerprint, { detail, failedAt: this.now() })
   }
 
-  /** Joins an in-flight refresh for the key rather than starting a second.
+  /** Joins an in-flight refresh by the same lister rather than starting a second. A live
+   *  session never joins a probe: a probe that hangs must not decide whether a chat starts.
    *  Resolves with the entry on success and null on failure — never rejects. */
   refresh(
     fingerprint: string,
     agent: 'claude' | 'codex',
+    lister: AgentModelCatalogLister,
     listModels: () => Promise<AgentModelCatalogSuccess>
   ): Promise<AgentModelCatalogEntry | null> {
-    const inFlight = this.refreshes.get(fingerprint)
+    const refreshes = this.refreshes[lister]
+    const inFlight = refreshes.get(fingerprint)
     if (inFlight) {
       return inFlight
     }
     const run = listModels().then(
       (success) => {
-        this.refreshes.delete(fingerprint)
+        refreshes.delete(fingerprint)
         return this.recordSuccess(fingerprint, agent, success)
       },
       (error: unknown) => {
-        this.refreshes.delete(fingerprint)
+        refreshes.delete(fingerprint)
         this.recordFailure(fingerprint, error instanceof Error ? error.message : String(error))
         return null
       }
     )
-    this.refreshes.set(fingerprint, run)
+    refreshes.set(fingerprint, run)
     return run
   }
 
   /** True when a read should kick a background refresh: nothing known or the
    *  entry aged out, and no failure is still inside its TTL. */
   shouldRefresh(fingerprint: string): boolean {
-    if (this.refreshes.has(fingerprint) || this.hasActiveFailure(fingerprint)) {
+    if (
+      this.refreshes['live-session'].has(fingerprint) ||
+      this.refreshes.probe.has(fingerprint) ||
+      this.hasActiveFailure(fingerprint)
+    ) {
       return false
     }
     const entry = this.entries.get(fingerprint)
