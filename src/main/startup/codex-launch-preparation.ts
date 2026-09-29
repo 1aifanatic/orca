@@ -7,7 +7,6 @@ import { codexHookService } from '../codex/hook-service'
 import { getDefaultWslDistro } from '../wsl'
 import { isAgentStatusHooksEnabledForAgent } from '../agent-hooks/managed-agent-hook-controls'
 import { ensureRealHomeCodexHookState } from '../codex/codex-real-home-hook-install'
-import { reportCodexSharedServerInOwnedHome } from '../codex/codex-shared-server-probe'
 import { mainProcessState as state } from './main-process-state'
 
 export async function prepareCodexRuntimeHomeForLaunch(
@@ -73,10 +72,6 @@ export async function prepareCodexRuntimeHomeForLaunch(
     // Why: Codex runs on the user's real ~/.codex; the managed-home hook
     // install below would target a home Codex never reads on this lane.
     return null
-  }
-  if (runtimeHomePath && target?.runtime !== 'wsl') {
-    // Why: report-only; the owned home's config cannot stop this launch joining a server already running.
-    void reportCodexSharedServerInOwnedHome(runtimeHomePath)
   }
   const hookTarget =
     target?.runtime === 'wsl'

@@ -15,10 +15,12 @@ import { parseTomlKeyPath, parseTomlTableHeaderPath } from './config-toml-key-pa
  * Codex >= 0.157 auto-starts one shared app-server per CODEX_HOME that runs every
  * later session's hooks and tools with the first session's environment and dies
  * with it. #23900's `--no-daemon` covers launches through Orca's `codex` shell
- * function; this is the backup for every other launch (cmd.exe, scripts, absolute
- * paths) in homes Orca owns: those homes never auto-start the server. It cannot
- * stop joining one that is already running; see codex-shared-server-probe.ts.
- * Long homes also exceed `sun_path`, so there Codex cannot start at all otherwise.
+ * function; this is the backup for launches that skip it (cmd.exe, scripts,
+ * absolute paths) in homes Orca owns, which never auto-start the server. It does
+ * not stop a launch joining a server already running there. Long homes also
+ * exceed `sun_path`, where Codex cannot start at all without it; most account
+ * homes are that long, so the new reach is mainly the shared runtime home on
+ * Windows, and on Linux when it is not on the real-home lane.
  */
 const DAEMON_SOCKET_SEGMENTS = ['app-server-control', 'app-server-control.sock']
 export const CODEX_DAEMON_OVERRIDE_MARKER = '# orca: no shared Codex server in an Orca-owned home'
@@ -59,59 +61,52 @@ export function codexDaemonSocketPathExceedsLimit(
 }
 
 const unguardableHomesWarned = new Set<string>()
+const overriddenHomesWarned = new Set<string>()
 
 /**
- * Applies Orca's daemon override to a home Orca owns. Whose setting wins: an
- * explicit `daemon_auto_start` the user wrote (mirrored from ~/.codex or set in
- * this home) is kept, because only the socket limit makes a shared server
- * impossible rather than unwanted. `ORCA_CODEX_ISOLATE` is a pane variable the
- * host cannot see, so it governs only #23900's `--no-daemon`, never this file.
+ * Forces `daemon_auto_start = false` into a home Orca owns, even over a user's
+ * explicit `true` mirrored from ~/.codex, matching the shell function, which adds
+ * `--no-daemon` regardless of config. Callers pass only Orca's runtime homes; the
+ * user's ~/.codex reaches the mirror solely as its read-only source.
  */
 export function applyCodexDaemonSocketGuard(
   config: string,
-  homePath: string,
+  orcaOwnedHomePath: string,
   platform = process.platform
 ): string {
-  // Why: the user's own home is theirs to configure; Orca writes only into homes it created.
-  if (isUserCodexHome(homePath)) {
-    return stripCodexDaemonOverride(config)
-  }
-  const socketTooLong = codexDaemonSocketPathExceedsLimit(homePath, platform)
-  if (!socketTooLong && hasUserDaemonAutoStartSetting(config)) {
-    return stripCodexDaemonOverride(config)
-  }
   // Why: upsert rewrites an existing daemon_auto_start line in place, so re-applying is a no-op.
   const guarded = upsertTableSettingsInContent(
     config,
     'features',
     new Map([['daemon_auto_start', DAEMON_OVERRIDE_RAW]])
   )
-  if (
-    !guarded.includes(CODEX_DAEMON_OVERRIDE_MARKER) &&
-    !/\bdaemon_auto_start\s*=\s*false\b/.test(guarded) &&
-    !unguardableHomesWarned.has(homePath)
-  ) {
-    // Why: an inline `features = {...}` or `[[features]]` blocks the upsert; say so once instead of failing silently.
-    unguardableHomesWarned.add(homePath)
-    const consequence = socketTooLong
+  const applied = guarded.includes(CODEX_DAEMON_OVERRIDE_MARKER)
+  if (applied && hasUserDaemonAutoStartEnabled(config)) {
+    warnOncePerHome(
+      overriddenHomesWarned,
+      orcaOwnedHomePath,
+      `[codex-config] Your Codex config sets features.daemon_auto_start = true; Orca turns it off in its own Codex home ${orcaOwnedHomePath} so each Orca tab runs its own Codex server. ~/.codex/config.toml is unchanged.`
+    )
+  }
+  if (!applied && !/\bdaemon_auto_start\s*=\s*false\b/.test(guarded)) {
+    const consequence = codexDaemonSocketPathExceedsLimit(orcaOwnedHomePath, platform)
       ? 'Codex may fail with "path must be shorter than SUN_LEN"'
       : "Codex may start a shared background server that runs every tab's hooks with one tab's environment"
-    console.warn(
-      `[codex-config] Could not turn off Codex daemon auto-start in ${homePath}: its config defines features in a form Orca cannot extend. ${consequence}; add daemon_auto_start = false to features in ~/.codex/config.toml.`
+    // Why: an inline `features = {...}` or `[[features]]` blocks the upsert; say so once instead of failing silently.
+    warnOncePerHome(
+      unguardableHomesWarned,
+      orcaOwnedHomePath,
+      `[codex-config] Could not turn off Codex daemon auto-start in ${orcaOwnedHomePath}: its config defines features in a form Orca cannot extend. ${consequence}; rewrite features in ~/.codex/config.toml as a [features] table so Orca can add the setting to its own copy.`
     )
   }
   return guarded
 }
 
-// Why: Orca's own homes all end in `home`; a `.codex` home is the user's even if a caller mis-routes it here.
-function isUserCodexHome(homePath: string): boolean {
-  const spelled = parseWslUncPath(homePath)?.linuxPath ?? homePath
-  return (
-    spelled
-      .replace(/[\\/]+$/, '')
-      .split(/[\\/]/)
-      .at(-1) === '.codex'
-  )
+function warnOncePerHome(warned: Set<string>, homePath: string, message: string): void {
+  if (!warned.has(homePath)) {
+    warned.add(homePath)
+    console.warn(message)
+  }
 }
 
 function isCodexDaemonOverrideLine(line: string): boolean {
@@ -119,8 +114,8 @@ function isCodexDaemonOverrideLine(line: string): boolean {
   return CODEX_DAEMON_OVERRIDE_MARKERS.some((marker) => trimmed.endsWith(marker))
 }
 
-/** True when a `features.daemon_auto_start` value that Orca did not write is present. */
-function hasUserDaemonAutoStartSetting(config: string): boolean {
+/** True when the config sets `features.daemon_auto_start = true` in a line Orca did not write. */
+function hasUserDaemonAutoStartEnabled(config: string): boolean {
   let scan = createTomlLineScanState()
   let inPreamble = true
   let inFeatures = false
@@ -142,14 +137,15 @@ function hasUserDaemonAutoStartSetting(config: string): boolean {
       continue
     }
     const path = key.segments.join('.')
-    if (inFeatures && path === 'daemon_auto_start') {
+    const value = line.slice(key.end + 1)
+    if (
+      ((inFeatures && path === 'daemon_auto_start') ||
+        (inPreamble && path === 'features.daemon_auto_start')) &&
+      /^\s*true\b/.test(value)
+    ) {
       return true
     }
-    if (inPreamble && path === 'features.daemon_auto_start') {
-      return true
-    }
-    // Why: Orca never writes an inline features table, so a key inside one is the user's.
-    if (inPreamble && path === 'features' && /\bdaemon_auto_start\s*=/.test(line.slice(key.end))) {
+    if (inPreamble && path === 'features' && /\bdaemon_auto_start\s*=\s*true\b/.test(value)) {
       return true
     }
   }
