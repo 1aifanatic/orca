@@ -70,13 +70,11 @@ function createEventBus(): {
 
 describe.each(['opencode', 'opencode2'] as const)('%s plugin disposal by host', (agent) => {
   let tempDir: string
-  let savedFetch: typeof globalThis.fetch
   let savedEnv: Record<string, string | undefined>
   let names: string[]
 
   beforeEach(() => {
     tempDir = mkdtempSync(join(tmpdir(), 'orca-opencode-dispose-host-'))
-    savedFetch = globalThis.fetch
     savedEnv = {}
     for (const key of ENV_KEYS) {
       savedEnv[key] = process.env[key]
@@ -87,14 +85,17 @@ describe.each(['opencode', 'opencode2'] as const)('%s plugin disposal by host', 
     process.env.ORCA_AGENT_HOOK_PORT = '59999'
     process.env.ORCA_AGENT_HOOK_TOKEN = 'test-token'
     names = []
-    globalThis.fetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      names.push(String(JSON.parse(String(init?.body)).payload?.hook_event_name))
-      return new Response('{}', { status: 200 })
-    }) as typeof globalThis.fetch
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        names.push(String(JSON.parse(String(init?.body)).payload?.hook_event_name))
+        return new Response('{}', { status: 200 })
+      })
+    )
   })
 
   afterEach(() => {
-    globalThis.fetch = savedFetch
+    vi.unstubAllGlobals()
     for (const key of ENV_KEYS) {
       if (savedEnv[key] === undefined) {
         delete process.env[key]
