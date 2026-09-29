@@ -32,7 +32,7 @@ export type WslCodexSessionBridgeLinuxPaths = {
 export type WslCodexSessionBridgeSummary = {
   scannedFiles: number
   linkedFiles: number
-  /** Rollout file names Codex has yet to index, from the markers in `indexPendingRoot`. */
+  /** Marker names in `indexPendingRoot`: rollout file names Codex has yet to index. */
   pendingRollouts: string[]
   /** Some rollout could not be linked; the rest of the summary is still accurate. */
   bridgeFailed: boolean
@@ -137,12 +137,23 @@ async function bridgeAndIndexWslCodexSessions(
   const summary = await syncWslCodexSessionsIntoManagedHome(target)
   const pendingThreads = new Map<string, string>()
   const markerByThreadId = new Map<string, string>()
+  const markersWithoutThread: string[] = []
   for (const rolloutName of summary.pendingRollouts) {
     const rollout = parseCodexRolloutThreadId(rolloutName)
     if (rollout) {
       pendingThreads.set(rollout.threadId, rollout.rolloutStamp)
       markerByThreadId.set(rollout.threadId, rolloutName)
+    } else {
+      markersWithoutThread.push(rolloutName)
     }
+  }
+  if (markersWithoutThread.length > 0) {
+    // Why: no thread id means thread/read can never settle it, so it would be reported forever.
+    await clearIndexPendingMarkers(target.distro, paths, markersWithoutThread).catch(
+      (error: unknown) => {
+        console.warn('[codex-session-bridge] Could not clear WSL index markers:', error)
+      }
+    )
   }
   if (pendingThreads.size > 0 && !isCodexAccountSessionBridgeStopping()) {
     await dependencies.healPending(target.managedCodexHomePath, pendingThreads, {
@@ -164,9 +175,20 @@ async function clearSettledIndexPendingMarkers(
   settled: readonly CodexSettledThreadRead[],
   markerByThreadId: ReadonlyMap<string, string>
 ): Promise<void> {
-  const markers = settled
-    .filter(({ outcome }) => outcome !== 'failed')
-    .flatMap(({ threadId }) => markerByThreadId.get(threadId) ?? [])
+  await clearIndexPendingMarkers(
+    distro,
+    paths,
+    settled
+      .filter(({ outcome }) => outcome !== 'failed')
+      .flatMap(({ threadId }) => markerByThreadId.get(threadId) ?? [])
+  )
+}
+
+async function clearIndexPendingMarkers(
+  distro: string,
+  paths: WslCodexSessionBridgeLinuxPaths,
+  markers: readonly string[]
+): Promise<void> {
   if (markers.length === 0) {
     return
   }
@@ -276,9 +298,7 @@ function parseWslSessionBridgeSummary(stdout: string): WslCodexSessionBridgeSumm
   return {
     scannedFiles: summary.scannedFiles,
     linkedFiles: summary.linkedFiles,
-    pendingRollouts: pendingComplete
-      ? markerLines.filter((line) => parseCodexRolloutThreadId(line) !== null)
-      : [],
+    pendingRollouts: pendingComplete ? markerLines : [],
     bridgeFailed: false
   }
 }

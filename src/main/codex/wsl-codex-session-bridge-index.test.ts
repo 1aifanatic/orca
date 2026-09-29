@@ -190,7 +190,7 @@ describe('startWslCodexSessionBridgeInBackground', () => {
     expect(healPending).not.toHaveBeenCalled()
   })
 
-  it('still indexes the other markers when one marker name is not a Codex thread', async () => {
+  it('indexes the other markers and clears one whose name is not a Codex thread', async () => {
     runWslProcessMock
       .mockResolvedValueOnce(bridgeResult([NEWER, 'rollout-notes.jsonl']))
       .mockResolvedValue(markerClearResult)
@@ -208,6 +208,11 @@ describe('startWslCodexSessionBridgeInBackground', () => {
 
     expect([...(healPending.mock.calls[0]?.[1] ?? [])]).toEqual([
       ['22222222-2222-4222-8222-222222222222', '2026-09-02T10-00-00']
+    ])
+    // thread/read can never settle it, so it must not be reported on every launch.
+    expect(runWslProcessMock.mock.calls[1]?.[0].args).toEqual([
+      `${LINUX_HOME}/.orca-index-pending`,
+      'rollout-notes.jsonl'
     ])
   })
 
