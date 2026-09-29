@@ -50,9 +50,9 @@ export abstract class BrowserManagerNavigation extends BrowserManagerVisibility 
     if (googleAuthEnabled && standingOverride?.userAgent === googleAuth.userAgent) {
       return googleAuth
     }
-    // A UA this tab never wrote is an automation client's own CDP override (an agent emulating a
-    // device). The document already presents it and Chromium puts it on the wire with matching
-    // hints, so restamping the process UA would leave the server seeing a different browser.
+    // With no Orca override standing, an unfamiliar UA is what Chromium presents on its own: an
+    // automation client's CDP override (an agent emulating a device), or our clear still in flight.
+    // The document already shows it with matching hints; restamping would contradict the page.
     if (
       request.webContentsId !== undefined &&
       !standingOverride &&
