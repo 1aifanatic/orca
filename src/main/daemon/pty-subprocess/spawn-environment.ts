@@ -192,6 +192,10 @@ export function createDaemonPtyEnvironment(opts: PtySubprocessOptions): Record<s
   if (opts.env?.ORCA_HISTFILE === undefined) {
     delete env.ORCA_HISTFILE
   }
+  // Why: an inherited copy names another Orca's CLI and would wrap every pane.
+  if (opts.env?.ORCA_CODEX_LAUNCH_PREFLIGHT === undefined) {
+    delete env.ORCA_CODEX_LAUNCH_PREFLIGHT
+  }
   removeInheritedDevAgentHookEndpoint(env, opts.env)
   delete env.ELECTRON_RUN_AS_NODE
   removeAppImageRuntimeEnv(env)

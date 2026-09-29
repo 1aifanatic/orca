@@ -294,6 +294,37 @@ describe('createPtySubprocess', () => {
     expect(env.ORCA_SHELL_FEATURES).toBe(expected === undefined ? undefined : 'history')
   })
 
+  it.each([
+    ['drops an inherited Codex launch preflight', undefined],
+    ['keeps the launcher this spawn injected', '/Applications/Orca.app/Contents/Resources/bin/orca']
+  ])('%s', async (_name, requested) => {
+    spawnMock.mockReturnValue(mockPtyProcess())
+    const saved = process.env.ORCA_CODEX_LAUNCH_PREFLIGHT
+    process.env.ORCA_CODEX_LAUNCH_PREFLIGHT = '/other/orca/bin/orca'
+    try {
+      await createPtySubprocess({
+        sessionId: 'test',
+        cols: 80,
+        rows: 24,
+        shellOverride: '/bin/bash',
+        ...(requested === undefined ? {} : { env: { ORCA_CODEX_LAUNCH_PREFLIGHT: requested } })
+      })
+    } finally {
+      if (saved === undefined) {
+        delete process.env.ORCA_CODEX_LAUNCH_PREFLIGHT
+      } else {
+        process.env.ORCA_CODEX_LAUNCH_PREFLIGHT = saved
+      }
+    }
+
+    const env = spawnMock.mock.calls.at(-1)?.[2].env
+    expect(env.ORCA_CODEX_LAUNCH_PREFLIGHT).toBe(requested)
+    // Why: the preflight is an overlay key, so a stale copy would wrap the pane.
+    expect(env.ORCA_SHELL_FEATURES?.split(',').includes('overlay') ?? false).toBe(
+      requested !== undefined
+    )
+  })
+
   it('does not inherit ELECTRON_RUN_AS_NODE from the daemon process env', async () => {
     // Why: the daemon is forked with ELECTRON_RUN_AS_NODE=1. If that flag
     // reaches user shells, nested Electron commands run as plain Node.
