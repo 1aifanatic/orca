@@ -531,6 +531,13 @@ describe('hook-less agent rows identified by the foreground process', () => {
       })
     ).toHaveLength(0)
     expect(rowsFor({ title: 'Terminal 1', launchAgent: 'codex' })).toHaveLength(0)
+    // Git Bash has no command marks, so its prompt title is what retires a stale process read.
+    expect(
+      rowsFor({
+        title: 'MINGW64:/c/Users/dev/demo-repo',
+        foreground: { agent: 'codex', shellForeground: false }
+      })
+    ).toHaveLength(0)
     // The PTY exited.
     expect(
       rowsFor({
