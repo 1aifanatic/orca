@@ -1,5 +1,6 @@
 import { useLayoutEffect, useMemo, useState } from 'react'
 import {
+  NATIVE_CHAT_UNANCHORED_TURN_KEY,
   reduceNativeChatTurnTiming,
   selectNativeChatTurnStatuses,
   type NativeChatSettledTurns,
@@ -11,7 +12,7 @@ export type { NativeChatTurnStatus }
 
 export function useNativeChatTurnStatus({
   turnKeys,
-  liveTurnKey,
+  barTurnKey,
   isWorking,
   workingStartedAt,
   settledTurns,
@@ -19,7 +20,8 @@ export function useNativeChatTurnStatus({
 }: {
   /** Each row's turn, as `nativeChatTurnMembership` places it. */
   turnKeys: readonly (string | undefined)[]
-  liveTurnKey: string | undefined
+  /** The turn whose bar carries the live clock (`nativeChatTurnMembership`). */
+  barTurnKey: string | undefined
   isWorking: boolean
   workingStartedAt?: number | null
   /** Host-recorded durations; they outrank whatever this client observed. */
@@ -30,7 +32,7 @@ export function useNativeChatTurnStatus({
   active: NativeChatTurnStatus | null
   completedByTurn: Readonly<Record<string, NativeChatTurnStatus>>
 } {
-  const activeTurnKey = liveTurnKey ?? '__unanchored__'
+  const activeTurnKey = barTurnKey ?? NATIVE_CHAT_UNANCHORED_TURN_KEY
   const [timingByTurn, setTimingByTurn] = useState<NativeChatTurnTimingByTurn>({})
   const validTurnKeys = useMemo(
     () => new Set(turnKeys.filter((turnKey) => turnKey !== undefined)),

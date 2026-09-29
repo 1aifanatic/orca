@@ -95,6 +95,7 @@ function sessionHoldingTurn(turnId: string | null): ReturnType<typeof sessionFor
   session.dispatchSequence = 1
   session.translator = {
     handle: vi.fn(),
+    openTurnInLiveProviderCycle: false,
     journalPrompts: { cancel: vi.fn(), resolve: vi.fn() },
     currentTurnId: turnId,
     commandTurnId: null,
@@ -279,6 +280,7 @@ describe('Claude turn ownership', () => {
       session.dispatchSequence = 1
       session.translator = {
         handle: vi.fn(),
+        openTurnInLiveProviderCycle: false,
         journalPrompts: { cancel: vi.fn(), resolve: vi.fn() },
         currentTurnId: 'turn-1',
         commandTurnId: null,

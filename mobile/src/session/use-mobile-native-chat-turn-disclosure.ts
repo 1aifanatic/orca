@@ -8,14 +8,17 @@ import {
   type NativeChatTurnMembership
 } from '../../../src/shared/native-chat-turn-membership'
 import {
-  MOBILE_UNANCHORED_TURN_KEY,
   useMobileNativeChatTurnStatus,
   type NativeChatTurnStatus
 } from './use-mobile-native-chat-turn-status'
 
 const EMPTY_TURN_IDS: ReadonlySet<string> = new Set()
 const NONE_WAITING = { listMessages: null, waitingRows: [], indexById: null } as const
-const NO_MEMBERSHIP: NativeChatTurnMembership = { turnKeys: [], liveTurnKey: undefined }
+const NO_MEMBERSHIP: NativeChatTurnMembership = {
+  turnKeys: [],
+  liveTurnKey: undefined,
+  barTurnKey: undefined
+}
 const MAX_EXPANDED_TURNS = 128
 
 export type MobileNativeChatTurnRow = {
@@ -67,7 +70,7 @@ export function useMobileNativeChatTurnDisclosure({
 } {
   // Resolve each row's turn, and which turn is live, once from the turn record when the host
   // states scopes.
-  const { turnKeys, liveTurnKey } = useMemo(
+  const { turnKeys, liveTurnKey, barTurnKey } = useMemo(
     () => (enabled ? nativeChatTurnMembership(messages, turnJournal) : NO_MEMBERSHIP),
     [enabled, messages, turnJournal]
   )
@@ -87,7 +90,7 @@ export function useMobileNativeChatTurnDisclosure({
   }, [enabled, messages, turnJournal])
   const turnStatuses = useMobileNativeChatTurnStatus({
     turnKeys,
-    liveTurnKey,
+    barTurnKey,
     enabled,
     isWorking,
     workingStartedAt,
@@ -151,13 +154,9 @@ export function useMobileNativeChatTurnDisclosure({
         // transcript, defeating the row's memo; caching one per turn would mean
         // writing a ref during render, which react-freeze can discard.
         turnKey: turnKey && turnStatus?.workedSeconds != null ? turnKey : undefined,
-        // With no user boundary at all, the session's working state stays authoritative.
-        activeTurnIsWorking:
-          enabled &&
-          isWorking &&
-          (liveTurnKey !== undefined
-            ? turnKey === liveTurnKey
-            : turnKey === undefined && activeTurnKey === MOBILE_UNANCHORED_TURN_KEY)
+        // Liveness follows the live turn's rows, not the bar's owner. With no user boundary at all,
+        // the session's working state stays authoritative.
+        activeTurnIsWorking: enabled && isWorking && turnKey === liveTurnKey
       }
     },
     [

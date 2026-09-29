@@ -165,11 +165,8 @@ export function NativeChatMessageList({
   const showTypingIndicator = showTurnStatus
     ? isWorking
     : shouldShowNativeChatTypingIndicator({ messages, isWorking })
-  const { turnKeys, liveTurnKey: currentTurnKey } = useNativeChatTurnMembership(
-    messages,
-    journalItems,
-    journalSubmissions
-  )
+  const membership = useNativeChatTurnMembership(messages, journalItems, journalSubmissions)
+  const { turnKeys, liveTurnKey: currentTurnKey, barTurnKey } = membership
   const turnDiffs = useMemo(
     () =>
       journalItems
@@ -185,7 +182,7 @@ export function NativeChatMessageList({
   )
   const turnStatuses = useNativeChatTurnStatus({
     turnKeys,
-    liveTurnKey: currentTurnKey,
+    barTurnKey,
     isWorking: showTurnStatus && isWorking,
     workingStartedAt: showTurnStatus ? workingStartedAt : null,
     settledTurns: showTurnStatus ? settledTurns : null,
@@ -197,6 +194,7 @@ export function NativeChatMessageList({
       buildNativeChatTranscriptSlots({
         messages,
         turnKeys,
+        activeTurnKey: barTurnKey,
         currentTurnKey,
         receipts,
         turnStatuses,
@@ -208,6 +206,7 @@ export function NativeChatMessageList({
         subagentLabels
       }),
     [
+      barTurnKey,
       currentTurnKey,
       expandedTurnIds,
       isWorking,

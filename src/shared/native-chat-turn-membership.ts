@@ -13,7 +13,8 @@ import { isRootAgentJournalItem } from './agent-session-journal-producer'
 import type {
   AgentJournalRenderItem,
   AgentJournalSubmission,
-  AgentJournalTurnLifecycle
+  AgentJournalTurnLifecycle,
+  AgentJournalTurnScope
 } from './agent-session-journal-types'
 import { readAgentJournalTurn } from './agent-session-turn-record'
 import type { NativeChatRole } from './native-chat-types'
@@ -94,6 +95,10 @@ export type NativeChatTurnMembership = {
   /** The turn live now: the running root turn's anchor, else the newest user row's turn (a send
    *  whose turn has not opened yet). A turn the provider opened on its own is live without one. */
   liveTurnKey: string | undefined
+  /** The turn whose bar carries the running clock. It is `liveTurnKey`, except where the host states
+   *  no scope: rows then group by position, so a message sent mid-turn heads the live rows while
+   *  the bar stays on the prompt the running turn's record names. */
+  barTurnKey: string | undefined
 }
 
 /**
@@ -104,11 +109,23 @@ export function nativeChatTurnMembership(
   messages: readonly { id: string; role: NativeChatRole }[],
   journal?: NativeChatTurnJournal | null
 ): NativeChatTurnMembership {
-  if (!journal || !hostStatesTurnScopes(journal.items)) {
+  if (!journal) {
     const turnKeys = positionalTurnKeys(messages)
-    return { turnKeys, liveTurnKey: newestUserTurnKey(messages, turnKeys) }
+    const liveTurnKey = newestUserTurnKey(messages, turnKeys)
+    return { turnKeys, liveTurnKey, barTurnKey: liveTurnKey }
   }
   const anchors = structuredAgentTurnAnchors(journal.items, journal.submissions)
+  const running = liveStructuredAgentSessionTurnScope(journal.items)
+  const runningKey = running.kind === 'turn' ? anchors.get(running.turnItemId) : undefined
+  if (!hostStatesTurnScopes(journal.items)) {
+    const turnKeys = positionalTurnKeys(messages)
+    const liveTurnKey = newestUserTurnKey(messages, turnKeys)
+    return {
+      turnKeys,
+      liveTurnKey,
+      barTurnKey: runningOpenedBy(journal.items, running, runningKey) ?? liveTurnKey
+    }
+  }
   const anchoring = new Set(anchors.values())
   const scopes = new Map(journal.items.map((item) => [item.itemId, item.turnScope]))
   const turnKeys = messages.map((message) => {
@@ -120,9 +137,8 @@ export function nativeChatTurnMembership(
     }
     return anchoring.has(message.id) ? message.id : (turnKey ?? message.id)
   })
-  const running = liveStructuredAgentSessionTurnScope(journal.items)
-  const runningKey = running.kind === 'turn' ? anchors.get(running.turnItemId) : undefined
-  return { turnKeys, liveTurnKey: runningKey ?? newestUserTurnKey(messages, turnKeys) }
+  const liveTurnKey = runningKey ?? newestUserTurnKey(messages, turnKeys)
+  return { turnKeys, liveTurnKey, barTurnKey: liveTurnKey }
 }
 
 /**
@@ -149,6 +165,22 @@ function commandTurnRunning(items: readonly AgentJournalRenderItem[]): boolean {
     running.kind === 'turn' &&
     isStructuredAgentSessionCommandTurn(readAgentJournalTurn(bodyOf(running.turnItemId)), bodyOf)
   )
+}
+
+/** The user entry the running turn's record names as its opener; undefined when it names none (an
+ *  older host) or anchors on itself (a turn the provider opened). */
+function runningOpenedBy(
+  items: readonly AgentJournalRenderItem[],
+  running: AgentJournalTurnScope,
+  runningKey: string | undefined
+): string | undefined {
+  if (running.kind !== 'turn' || runningKey === running.turnItemId) {
+    return undefined
+  }
+  const record = readAgentJournalTurn(
+    items.find((item) => item.itemId === running.turnItemId)?.body
+  )
+  return record?.userItemId === undefined ? undefined : runningKey
 }
 
 function newestUserTurnKey(

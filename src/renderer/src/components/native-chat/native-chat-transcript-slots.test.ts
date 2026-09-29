@@ -44,6 +44,7 @@ function build(
   return buildNativeChatTranscriptSlots({
     messages,
     turnKeys,
+    activeTurnKey: undefined,
     currentTurnKey: undefined,
     receipts: new Map<string, NativeChatResolvedPrompt>(),
     turnStatuses: NO_STATUSES,
@@ -118,6 +119,7 @@ describe('transcript slots', () => {
     const status: NativeChatTurnStatus = { startedAt: 1, thinking: false, workedSeconds: 4 }
     const slots = build([text('u', '', 'user')], {
       currentTurnKey: 'u',
+      activeTurnKey: 'u',
       turnStatuses: { active: status, completedByTurn: {} }
     })
     expect(slots).toHaveLength(1)
@@ -148,6 +150,7 @@ describe('transcript slots', () => {
     const status: NativeChatTurnStatus = { startedAt: 1, thinking: false, workedSeconds: null }
     const slots = build([text('u', 'ask', 'user'), text('a', 'answer')], {
       currentTurnKey: 'u',
+      activeTurnKey: 'u',
       turnStatuses: { active: status, completedByTurn: {} },
       isWorking: true
     })
@@ -311,11 +314,16 @@ describe('the live turn', () => {
     journal: AgentJournalRenderItem[] | null,
     overrides: Partial<Parameters<typeof buildNativeChatTranscriptSlots>[0]>
   ) {
-    const { turnKeys, liveTurnKey } = nativeChatTurnMembership(
+    const { turnKeys, liveTurnKey, barTurnKey } = nativeChatTurnMembership(
       rows,
       journal ? { items: journal, submissions: [] } : null
     )
-    return build(rows, { turnKeys, currentTurnKey: liveTurnKey, ...overrides })
+    return build(rows, {
+      turnKeys,
+      currentTurnKey: liveTurnKey,
+      activeTurnKey: barTurnKey,
+      ...overrides
+    })
   }
   const slotOf = (slots: ReturnType<typeof build>, id: string) =>
     slots.find((slot) => slot.message.id === id)
