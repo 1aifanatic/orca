@@ -474,6 +474,28 @@ describe('terminal side-effect fact channel', () => {
     )
   })
 
+  it.each([
+    { presence: 'unverifiable' as const, exited: true },
+    { presence: 'exited' as const, exited: true },
+    { presence: 'live' as const, exited: false }
+  ])('confirms an exit title from hook presence $presence', async ({ presence, exited }) => {
+    const checkPresence = vi.fn(async () => presence)
+    const { runtime, batches } = createSideEffectRuntime(checkPresence)
+    syncSinglePty(runtime)
+    const getForegroundProcess = vi.fn(async () => 'zsh')
+    runtime.setPtyController({ write: () => true, kill: () => true, getForegroundProcess })
+    runtime.ingestSyntheticTitleFrame('pty-1', '\x1b]0;Codex ready\x07')
+
+    runtime.onPtyData('pty-1', '\x1b]0;~/repo\x07', 100)
+
+    await vi.waitFor(() => expect(checkPresence).toHaveBeenCalled())
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    // Why: an unanswered process check (Codex, SSH, Windows) must still reach the foreground read.
+    expect(batches.flatMap((batch) => batch.facts).some((f) => f.kind === 'agent-exited')).toBe(
+      exited
+    )
+  })
+
   it('treats synchronous foreground read failures as unavailable', async () => {
     const { runtime, batches } = createSideEffectRuntime()
     syncSinglePty(runtime)

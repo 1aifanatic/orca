@@ -36,21 +36,12 @@ export async function readAgentProcess(pid: number): Promise<AgentProcessObserva
       }
       return { verdict: 'live', startTime: `${boot}:${fields[19]}`, zombie: fields[0] === 'Z' }
     }
-    if (process.platform === 'win32') {
-      const { readWindowsProcessCreationTime } =
-        await import('../main/windows/windows-process-table')
-      const startTime = readWindowsProcessCreationTime(pid)
-      if (startTime !== null) {
-        return { verdict: 'live', startTime: String(startTime), zombie: false }
-      }
-      // A native null includes denied access and missing capability, not just absence.
-      return { verdict: 'unverifiable' }
-    }
     if (process.platform === 'darwin') {
       const result = await runProcess({
         program: '/bin/ps',
         args: ['-p', String(pid), '-o', 'stat=,lstart='],
-        env: { ...process.env, LC_ALL: 'C', LANG: 'C' },
+        // Why: lstart is local time; the hook capture pins the same zone so the strings compare.
+        env: { ...process.env, TZ: 'UTC0', LC_ALL: 'C', LANG: 'C' },
         timeoutMs: 1000,
         maxOutputBytes: 4096
       })
@@ -71,6 +62,7 @@ export async function readAgentProcess(pid: number): Promise<AgentProcessObserva
   } catch {
     return { verdict: 'unverifiable' }
   }
+  // Why: no Windows hook captures an identity yet, so there is nothing to compare against.
   return { verdict: 'unverifiable' }
 }
 

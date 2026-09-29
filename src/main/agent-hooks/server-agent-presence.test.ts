@@ -41,18 +41,32 @@ async function hook(
   server: AgentHookServer,
   event: string,
   session = 'session-a',
-  reason?: string
+  reason?: string,
+  pid?: number
 ): Promise<void> {
+  const agentProcess =
+    pid === undefined
+      ? undefined
+      : JSON.stringify({ pid, platform: process.platform, startTime: `birth-${pid}` })
   const response = await postHookEvent(
     server,
-    buildBody({
-      hook_event_name: event,
-      session_id: session,
-      source: 'startup',
-      reason
-    })
+    buildBody(
+      {
+        hook_event_name: event,
+        session_id: session,
+        source: 'startup',
+        reason,
+        ...(event === 'UserPromptSubmit' ? { prompt: `${session} task` } : {})
+      },
+      { agentProcess }
+    )
   )
   expect(response.status).toBe(204)
+}
+
+function state(server: AgentHookServer): string | null {
+  const row = server.getStatusSnapshot().find((entry) => entry.paneKey === PANE)
+  return row && !row.providerSessionOnly ? row.state : null
 }
 
 function visible(server: AgentHookServer): boolean {
@@ -82,6 +96,31 @@ describe('host-owned hook presence', () => {
       expect(visible(server)).toBe(false)
     }
   )
+
+  it('keeps the pane owned by its agent while a nested agent in it starts and ends', async () => {
+    const server = await createServer()
+    await hook(server, 'SessionStart', 'outer', undefined, 4001)
+    await hook(server, 'UserPromptSubmit', 'outer', undefined, 4001)
+    await hook(server, 'SessionStart', 'nested', undefined, 4002)
+    await hook(server, 'UserPromptSubmit', 'nested', undefined, 4002)
+    await hook(server, 'SessionEnd', 'nested', 'other', 4002)
+    expect(visible(server)).toBe(true)
+    await hook(server, 'PostToolUse', 'outer', undefined, 4001)
+    expect(state(server)).toBe('working')
+    await hook(server, 'SessionEnd', 'outer', 'other', 4001)
+    expect(visible(server)).toBe(false)
+  })
+
+  it('lets the next session replace a switched one even if its SessionStart was lost', async () => {
+    const server = await createServer()
+    await hook(server, 'SessionStart', 'session-a', undefined, 4001)
+    await hook(server, 'SessionEnd', 'session-a', 'clear', 4001)
+    await hook(server, 'Stop', 'session-a', undefined, 4001)
+    await hook(server, 'UserPromptSubmit', 'session-b', undefined, 4001)
+    expect(state(server)).toBe('working')
+    await hook(server, 'SessionEnd', 'session-b', 'other', 4001)
+    expect(visible(server)).toBe(false)
+  })
 
   it('does not resurrect an ended session on a late Stop', async () => {
     const server = await createServer()

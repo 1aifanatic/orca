@@ -1,4 +1,5 @@
 import { createTerminalTitleTracker } from '../shared/terminal-output-side-effects'
+import { getDecorativeTitleGateKey } from '../shared/agent-decorative-title-signature'
 import { FreebuffStatusProjection } from './freebuff-status-projection'
 import { applyRelayAgentWorkspaceTrust } from './agent-workspace-trust-spawn'
 /* oxlint-disable max-lines */
@@ -714,13 +715,13 @@ export class PtyHandler {
     return this.graceTimeMs
   }
 
-  /** Subscribe to PTY-exit events (relay-hook server uses this to evict per-paneKey caches). */
   private agentPresenceTrigger: ((paneKey: string) => void) | null = null
 
   setAgentPresenceTrigger(listener: ((paneKey: string) => void) | null): void {
     this.agentPresenceTrigger = listener
   }
 
+  /** Subscribe to PTY-exit events (relay-hook server uses this to evict per-paneKey caches). */
   setExitListener(listener: PtyExitListener | null): void {
     this.exitListener = listener
   }
@@ -1029,8 +1030,16 @@ export class PtyHandler {
         this.agentPresenceTrigger?.(managed.paneKey)
       }
     }
+    let lastTitleGateKey: string | null = null
     const presenceTriggers = createTerminalTitleTracker({
-      onTitle: recheckAgentPresence,
+      onTitle: (normalizedTitle, rawTitle, meta) => {
+        // Why: spinner frames arrive several times a second; only a real title change re-checks.
+        const gateKey = getDecorativeTitleGateKey(rawTitle, normalizedTitle)
+        if (gateKey !== lastTitleGateKey && !meta?.staleWorkingTitleClear) {
+          recheckAgentPresence()
+        }
+        lastTitleGateKey = gateKey
+      },
       onCommandFinished: recheckAgentPresence
     })
     managed.pty.onData((data: string) => {

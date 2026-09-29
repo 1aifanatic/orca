@@ -1,6 +1,6 @@
 // @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
 import { OrcaRuntimeWithEmitDaemonPtyTransientFact } from './orca-runtime-emit-daemon-pty-transient-fact'
-import { getDecorativeAgentTitleSignature } from '../../shared/agent-decorative-title-signature'
+import { getDecorativeTitleGateKey } from '../../shared/agent-decorative-title-signature'
 import { shouldEmitTitleFactForFrame } from './decorative-title-fact-emission'
 import type { RuntimePtyTitleTrackerEntry } from './runtime-terminal-state-records'
 import { createTerminalTitleTracker } from '../../shared/terminal-output-side-effects'
@@ -37,11 +37,7 @@ export class OrcaRuntimeWithGetUnpersistedTrackedTitleForPty extends OrcaRuntime
 
   /** Decorative comparison key: only recognized agent titles fold leading spinner frames. */
   protected makeDecorativeTitleGateKey(rawTitle: string, normalizedTitle: string): string {
-    // Stable Pi/Gemini/Grok display normalization also defines their semantic gate.
-    const normalizedSignature =
-      rawTitle === normalizedTitle ? null : getDecorativeAgentTitleSignature(normalizedTitle)
-    const signature = normalizedSignature ?? getDecorativeAgentTitleSignature(rawTitle)
-    return signature === null ? `literal\u0000${normalizedTitle}` : `agent\u0000${signature}`
+    return getDecorativeTitleGateKey(rawTitle, normalizedTitle)
   }
 
   protected getOrCreatePtyTitleTrackerEntry(ptyId: string): RuntimePtyTitleTrackerEntry {

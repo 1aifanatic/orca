@@ -98,7 +98,8 @@ export class OrcaRuntimeWithSerializeAgentPromptSubmission extends OrcaRuntimeWi
       if (this.ptysById.get(ptyId) !== current || current?.incarnationId !== incarnation) {
         return
       }
-      if (verdict === null) {
+      // Why: an unanswered process check falls back to the foreground read, which itself never exits on silence.
+      if (verdict === null || verdict === 'unverifiable') {
         this.confirmLegacyPtyAgentExit(ptyId, recoverCompletedHook)
       } else if (verdict === 'exited' && !recoverCompletedHook) {
         this.recordTerminalSideEffectFact(ptyId, { kind: 'agent-exited' })

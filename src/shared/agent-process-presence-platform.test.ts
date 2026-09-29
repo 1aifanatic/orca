@@ -1,12 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { readAgentProcess } from './agent-process-presence-probe'
 
-const nativeRead = vi.hoisted(() => vi.fn())
 const run = vi.hoisted(() => vi.fn())
 const read = vi.hoisted(() => vi.fn())
-vi.mock('../main/windows/windows-process-table', () => ({
-  readWindowsProcessCreationTime: nativeRead
-}))
 vi.mock('./child-process/run-process', () => ({ runProcess: run }))
 vi.mock('node:fs/promises', () => ({ readFile: read }))
 const hostProcess = process
@@ -19,21 +15,11 @@ afterEach(() => {
 })
 
 describe('platform process evidence', () => {
-  it('never turns Windows native null or unavailable capability into exit', async () => {
+  it('leaves Windows unanswered until a Windows hook captures an identity', async () => {
     platform('win32')
-    nativeRead.mockReturnValue(null)
     expect(await readAgentProcess(4242)).toEqual({ verdict: 'unverifiable' })
-    nativeRead.mockImplementation(() => {
-      throw new Error('missing addon')
-    })
-    expect(await readAgentProcess(4242)).toEqual({ verdict: 'unverifiable' })
-    nativeRead.mockReturnValue(100)
-    expect(await readAgentProcess(4242)).toEqual({
-      verdict: 'live',
-      startTime: '100',
-      zombie: false
-    })
     expect(run).not.toHaveBeenCalled()
+    expect(read).not.toHaveBeenCalled()
   })
 
   it('treats a missing macOS utility as unanswered', async () => {

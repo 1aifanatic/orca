@@ -9,9 +9,9 @@ import { readAgentProcessIdentity } from '../../shared/agent-process-presence'
 import { probeAgentProcessPresence } from '../../shared/agent-process-presence-probe'
 
 describe('Claude outer hook process capture', () => {
-  it.skipIf(process.platform === 'win32')(
-    'captures the parent before the managed script shell, under an empty environment',
-    async () => {
+  it.skipIf(process.platform === 'win32').each([undefined, 'Asia/Tokyo'])(
+    'captures the parent before the managed script shell, under an empty environment (TZ=%s)',
+    async (timeZone) => {
       const home = await mkdtemp(join(tmpdir(), 'orca-presence-hook-'))
       try {
         const dir = join(home, '.orca', 'agent-hooks')
@@ -29,6 +29,9 @@ describe('Claude outer hook process capture', () => {
             '-i',
             `HOME=${home}`,
             'PATH=/usr/bin:/bin',
+            'ORCA_PANE_KEY=presence-test-pane',
+            // Why: the agent's shell zone may differ from Orca's; the identity must not.
+            ...(timeZone ? [`TZ=${timeZone}`] : []),
             '/bin/sh',
             '-c',
             wrapRuntimeHomeHookCommand('claude-hook')
