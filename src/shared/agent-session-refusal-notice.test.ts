@@ -422,11 +422,8 @@ describe('the notice for every reason a host names', () => {
       const notDone = parts.filter((part) => typeof part === 'string' && part.startsWith('notDone'))
       const answeredAway = write === 'answer' && parts.includes('questionChanged')
       const unsupported = failure.code === 'structured_agent_session_unsupported'
-      // Every journal cause says the history did not load, except one naming another Orca.
       const saysNotDone =
-        write === 'read-history' &&
-        failure.code === 'agent_session_journal_unreadable' &&
-        failure.details?.reason !== 'journalOwnedElsewhere'
+        write === 'read-history' && failure.code === 'agent_session_journal_unreadable'
       expect(notDone, cell).toEqual(
         answeredAway || unsupported || saysNotDone ? [] : [NOT_DONE[write]]
       )
@@ -540,30 +537,6 @@ describe('a chat whose history the host could not open', () => {
     ]
   ] as const)('%s on %s', (reason, write, expected) => {
     expect(notice({ reason }, write)).toBe(expected)
-  })
-
-  // The step is this process's own way past the owner, by how it was started. A kind this build
-  // does not know, or none from a host that sent it, reads as the packaged app's.
-  it.each([
-    [
-      'dev-desktop',
-      'Quit that Orca to use chats here, or start this one with its own profile (ORCA_DEV_USER_DATA_PATH).'
-    ],
-    ['packaged', 'Quit that Orca to use chats here.'],
-    [
-      'orcad',
-      'Stop that Orca to use chats here, or give this one its own data folder (ORCA_USER_DATA).'
-    ],
-    [undefined, 'Quit that Orca to use chats here.'],
-    ['a-kind-from-a-newer-host', 'Quit that Orca to use chats here.']
-  ])('says chats are open in another Orca, for process kind %s', (processKind, step) => {
-    const details = { reason: 'journalOwnedElsewhere', processKind }
-    expect(notice(details, 'read-history')).toBe(
-      `Chats are open in another Orca using this profile. This chat's history couldn't be loaded. ${step}`
-    )
-    expect(notice(details, 'send')).toBe(
-      `Chats are open in another Orca using this profile. Your message was not sent. ${step}`
-    )
   })
 
   // Damage can't be told apart from an open that can clear, so it never says to start over.

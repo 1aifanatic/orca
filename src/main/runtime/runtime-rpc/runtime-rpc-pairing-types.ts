@@ -50,12 +50,6 @@ export type OrcaRuntimeRpcServerOptions = {
    */
   pinnedBindHost?: string
   webClientRoot?: string
-  /**
-   * The state directory whose structured chats this runtime serves. When set, `orca-runtime.json`
-   * is published only once this process holds that directory's chat journal owner lock, so the
-   * CLI is never pointed at a process that does not own the chats.
-   */
-  journalStateDirectory?: string
   // Why: test-only overrides for the two constants below; production must not pass these (defaults set by §3.1).
   keepaliveIntervalMs?: number
   longPollCap?: number

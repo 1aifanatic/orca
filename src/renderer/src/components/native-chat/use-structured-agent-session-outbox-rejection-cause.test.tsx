@@ -470,7 +470,7 @@ describe('a send the host refused by throwing', () => {
           data: {
             refusal: {
               code: 'agent_session_journal_unreadable',
-              details: { reason: 'journalOwnedElsewhere', processKind: 'packaged' }
+              details: { reason: 'journalCorrupt' }
             }
           }
         }
@@ -491,11 +491,11 @@ describe('a send the host refused by throwing', () => {
       expect(result.current.outbox[0]?.lastFailure).toEqual({
         kind: 'refused',
         code: 'agent_session_journal_unreadable',
-        details: { reason: 'journalOwnedElsewhere', processKind: 'packaged' }
+        details: { reason: 'journalCorrupt' }
       })
     )
     expect(shownFailure(result.current.outbox[0])).toBe(
-      'Chats are open in another Orca using this profile. Your message was not sent. Quit that Orca to use chats here.'
+      'Unable to load this chat. Your message was not sent.'
     )
   })
 })

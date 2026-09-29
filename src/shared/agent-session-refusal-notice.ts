@@ -18,7 +18,6 @@ import {
 import type { AgentSessionRefusalReason } from './agent-session-refusal-details'
 import {
   AGENT_SESSION_WRITE_NOTICE_COPY,
-  JOURNAL_OWNED_ELSEWHERE_STEP,
   type AgentSessionWriteNoticePart,
   type AgentSessionWriteNoticeSentence
 } from './agent-session-write-notice-copy'
@@ -201,9 +200,7 @@ const REASON_WORDS = {
     // No retry reads past damage, and the words name no step: it only can't load.
     journalCorrupt: causeWords('historyUnusable', 'hostFinding'),
     // Says its step despite 'retry' unless a Retry stands beside it: the phone often has none.
-    journalUnavailable: causeWords('historyUnavailable', 'retry', 'tryAgain'),
-    // The step is the packaged app's; `processKind` picks another way past the owner.
-    journalOwnedElsewhere: causeWords('chatsOpenElsewhere', 'actFirst', 'quitOtherOrca')
+    journalUnavailable: causeWords('historyUnavailable', 'retry', 'tryAgain')
   },
   // Thrown, so a client meets these only as an RPC error; the code's words stand.
   structured_agent_session_unsupported: {
@@ -226,12 +223,7 @@ export function agentSessionRefusalReasonWords(
   const reason = failure.details?.reason
   const byReason: Partial<Record<string, AgentSessionRefusalReasonWords>> | undefined =
     REASON_WORDS[failure.code]
-  const words = reason === undefined ? undefined : byReason?.[reason]
-  // Only the owner refusal records a process kind, which picks its step past the owner.
-  const kind = failure.code === 'agent_session_journal_unreadable' && failure.details?.processKind
-  return kind && words && 'cause' in words
-    ? { ...words, step: JOURNAL_OWNED_ELSEWHERE_STEP[kind] }
-    : words
+  return reason === undefined ? undefined : byReason?.[reason]
 }
 
 // Each already says the history was not read.

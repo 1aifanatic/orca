@@ -1,9 +1,5 @@
 import type { RuntimeTransportMetadata } from '../../../shared/runtime-bootstrap'
 import { watchRuntimeMetadataOwnership } from '../runtime-metadata-ownership-watch'
-import {
-  claimStructuredAgentSessionJournal,
-  onStructuredAgentSessionJournalOwned
-} from '../structured-agent-session-journal-ownership'
 import type { RpcTransport } from '../rpc/transport'
 import { UnixSocketTransport } from '../rpc/unix-socket-transport'
 import { WebSocketTransport } from '../rpc/ws-transport'
@@ -113,29 +109,8 @@ export class RuntimeRpcLifecycle extends RuntimeRpcWebSocketDispatch {
     this.activeTransports = activeTransports
     this.transports = transportsMeta
 
-    if (!this.ownsStructuredChats()) {
-      // Why: only the process owning this profile's chats is discoverable; the owner quitting
-      // hands the lock here, and this publishes then.
-      this.stopWaitingForJournalOwnership = onStructuredAgentSessionJournalOwned(() => {
-        this.stopWaitingForJournalOwnership?.()
-        this.stopWaitingForJournalOwnership = null
-        if (this.activeTransports.length === 0) {
-          return
-        }
-        try {
-          this.publishMetadata()
-        } catch (error) {
-          console.error(
-            '[runtime] Publishing runtime metadata after taking chat ownership failed:',
-            error
-          )
-        }
-      })
-      return
-    }
-
     try {
-      this.publishMetadata()
+      this.writeMetadata()
     } catch (error) {
       // Why: a runtime that can't publish metadata is invisible to the CLI — close transports rather than run undiscoverable.
       this.activeTransports = []
@@ -143,26 +118,7 @@ export class RuntimeRpcLifecycle extends RuntimeRpcWebSocketDispatch {
       await Promise.all(activeTransports.map((t) => t.stop().catch(() => {}))).catch(() => {})
       throw error
     }
-  }
 
-  /** Taken before `orca-runtime.json` is written: a process that does not own the chats never
-   *  advertises itself as the one that does. */
-  private ownsStructuredChats(): boolean {
-    if (this.journalStateDirectory === undefined) {
-      return true
-    }
-    try {
-      return claimStructuredAgentSessionJournal(this.journalStateDirectory) !== null
-    } catch (error) {
-      // A lock file that will not open proves no ownership: the runtime runs undiscovered until
-      // the claim's retry takes the lock, and chats report the failure on their own open.
-      console.error('[runtime] Claiming the chat journal owner lock failed:', error)
-      return false
-    }
-  }
-
-  private publishMetadata(): void {
-    this.writeMetadata()
     this.metadataOwnershipWatch = watchRuntimeMetadataOwnership({
       userDataPath: this.userDataPath,
       ownedPid: this.pid,

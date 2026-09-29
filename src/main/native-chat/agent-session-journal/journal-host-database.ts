@@ -1,9 +1,10 @@
 // The host's one chat journal database: every structured chat on this state directory, in one
-// file, on one connection, opened only by the process holding the owner lock.
+// file, on one connection. The app and orcad instance locks keep a second process off a profile.
 //
 // A chat's store owns no connection. It goes through this object, so there is nothing per chat to
 // open, close, retry or leak, and the connection closes exactly once, last, at host teardown.
 
+import { mkdirSync } from 'node:fs'
 import { setImmediate as yieldToEventLoop } from 'node:timers/promises'
 import { join } from 'node:path'
 import type { AgentSessionJournalIdentity } from '../../../shared/agent-session-journal-types'
@@ -11,7 +12,6 @@ import type Database from '../../sqlite/sync-database'
 import { freePageCount, reclaimFreePagesStep } from '../../sqlite/sqlite-free-page-reclaim'
 import { JOURNAL_SYNCHRONOUS, openJournalDatabase, runJournalTransaction } from './journal-database'
 import { journalOpenRefusalError } from './journal-open-failure'
-import type { JournalOwnerLock } from './journal-owner-lock'
 import { journalDirectoryFor } from './journal-paths'
 import { AgentSessionJournalError } from './journal-write-guards'
 
@@ -34,12 +34,8 @@ export class JournalHostDatabase {
     this.connection = connection
   }
 
-  /** Takes the lock as proof of ownership: no other path opens this file. */
-  static open(lock: JournalOwnerLock): JournalHostDatabase {
-    if (!lock.isHeld) {
-      throw new Error('the chat journal opens only under a held owner lock')
-    }
-    const stateDirectory = lock.stateDirectory
+  static open(stateDirectory: string): JournalHostDatabase {
+    mkdirSync(stateDirectory, { recursive: true })
     return new JournalHostDatabase(
       stateDirectory,
       openJournalDatabase(journalDatabasePath(stateDirectory))
@@ -104,7 +100,7 @@ export class JournalHostDatabase {
   }
 
   /** Last, after every store has drained. A close that fails keeps the handle, so the retried
-   *  teardown closes this same connection before the owner lock goes. */
+   *  teardown closes this same connection. */
   close(): void {
     this.connection?.close()
     this.connection = null

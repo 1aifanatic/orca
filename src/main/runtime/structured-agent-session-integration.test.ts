@@ -427,7 +427,7 @@ describe('a structured codex session over agentSession.*', () => {
       fence: 0,
       options: { filePath: rollout }
     })
-    // The previous process exits, and its owner lock with it.
+    // The previous process exits, closing its database.
     await journals.closeAll()
 
     const created = await ok<{ page: { items: AgentJournalRenderItem[] } }>(

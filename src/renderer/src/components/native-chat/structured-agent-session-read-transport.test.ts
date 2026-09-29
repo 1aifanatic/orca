@@ -400,23 +400,23 @@ describe('structured agent-session read transport unattached refusals', () => {
       data: { refusal: { code: 'agent_session_journal_unreadable', details } }
     }
   }
-  const OWNED_BY_DEV_ORCA = {
+  const JOURNAL_CORRUPT = {
     code: 'agent_session_journal_unreadable',
-    details: { reason: 'journalOwnedElsewhere', processKind: 'dev-desktop' }
+    details: { reason: 'journalCorrupt' }
   }
 
-  it("hands the pane the owner refusal's process kind from the stream and a rejected read", async () => {
+  it("hands the pane a thrown refusal's reason from the stream and a rejected read", async () => {
     vi.useFakeTimers()
     try {
       const applyError = vi.fn()
       const streamed = startWithHydration(async () => undefined, applyError)
       await flushPromises()
-      attempts[0].onError(thrownRefusal(OWNED_BY_DEV_ORCA.details))
+      attempts[0].onError(thrownRefusal(JOURNAL_CORRUPT.details))
       attempts[0].closed.resolve({ unsubscribe: attempts[0].unsubscribe })
       await flushPromises()
       expect(applyError).toHaveBeenCalledExactlyOnceWith(
         'agent_session_journal_unreadable',
-        OWNED_BY_DEV_ORCA
+        JOURNAL_CORRUPT
       )
       streamed.dispose()
 
@@ -424,7 +424,7 @@ describe('structured agent-session read transport unattached refusals', () => {
       const refused = new RuntimeRpcCallError({
         id: 'req-1',
         ok: false,
-        error: thrownRefusal(OWNED_BY_DEV_ORCA.details)
+        error: thrownRefusal(JOURNAL_CORRUPT.details)
       })
       const rejected = startWithHydration(async () => {
         throw refused
@@ -432,7 +432,7 @@ describe('structured agent-session read transport unattached refusals', () => {
       await flushPromises()
       expect(rejectedError).toHaveBeenCalledExactlyOnceWith(
         'agent_session_journal_unreadable',
-        OWNED_BY_DEV_ORCA
+        JOURNAL_CORRUPT
       )
       rejected.dispose()
     } finally {

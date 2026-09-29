@@ -96,7 +96,7 @@ export type StructuredAgentSessionHostDeps = {
   adapter: StructuredAgentSessionAdapter
   /** Optional advisory recovery storage, independent of conversation backups. */
   recoveryCapsule?: AgentSessionRecoveryCapsule
-  /** The host's one chat journal database, opened under the owner lock. */
+  /** The host's one chat journal database. */
   journalDatabase: JournalHostDatabase
   claimKeyId: string
   probeOwner?: (record: AgentSessionRecord) => Promise<AgentSessionOwnerProbe>

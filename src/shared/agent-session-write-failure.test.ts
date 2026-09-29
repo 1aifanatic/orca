@@ -165,24 +165,24 @@ describe('a refusal a failed request carried in its error', () => {
     })
   })
 
-  it("keeps the owner refusal's reason and process kind", () => {
-    const owner = {
+  it("keeps a journal refusal's reason", () => {
+    const corrupt = {
       code: 'agent_session_journal_unreadable',
-      details: { reason: 'journalOwnedElsewhere', processKind: 'dev-desktop' }
+      details: { reason: 'journalCorrupt' }
     }
     // Not "Orca couldn't confirm what happened": the host refused it before running it.
     expect(
-      agentSessionThrownFailure(saved({ ...payload, data: { refusal: owner } }), 'runtime_error')
+      agentSessionThrownFailure(saved({ ...payload, data: { refusal: corrupt } }), 'runtime_error')
     ).toEqual({
       kind: 'refused',
-      ...owner
+      ...corrupt
     })
   })
 
-  it("degrades a reason or kind another build added to the code's own words", () => {
+  it("degrades a reason another build added to the code's own words", () => {
     const newer = {
       code: 'agent_session_journal_unreadable',
-      details: { reason: 'journalFromTheFuture', processKind: 'phone' }
+      details: { reason: 'journalFromTheFuture' }
     }
     expect(
       agentSessionThrownFailure({ ...payload, data: { refusal: newer } }, 'runtime_error')

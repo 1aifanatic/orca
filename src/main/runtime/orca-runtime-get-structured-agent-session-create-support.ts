@@ -19,11 +19,7 @@ import {
 } from './structured-agent-account-home'
 import { resolveStructuredLaunchSeedOptions } from '../../shared/native-chat-session-option-defaults'
 import { hasPersistedStructuredAgentSessionStore as hasPersistedStructuredAgentSessionStoreOnDisk } from './structured-agent-session-runtime'
-import {
-  ensureStructuredAgentSessionHostUnlessRefused,
-  isStructuredAgentSessionJournalClaimRefused,
-  onStructuredAgentSessionJournalOwned
-} from './structured-agent-session-journal-ownership'
+import { ensureStructuredAgentSessionHostUnlessRefused } from './structured-agent-session-host-refusal'
 import { getProfileUserDataPath } from '../orca-profiles/profile-storage-paths'
 import { parseWslUncPath } from '../../shared/wsl-paths'
 import { parseWorkspaceKey } from '../../shared/workspace-scope'
@@ -244,8 +240,8 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
     this.structuredAgentSessionTabRestorePromise ??=
       this.restoreStructuredAgentSessionTabsOnce().then(
         () => {
-          // Only a host's answer is final: without one, the next caller restores again, so a later
-          // lock takeover or journal open republishes the chats.
+          // Only a host's answer is final: without one, the next caller restores again, so a journal
+          // that opens later republishes the chats.
           if (this.structuredAgentSessionInventoryUnverifiable) {
             this.structuredAgentSessionTabRestorePromise = null
           }
@@ -276,43 +272,8 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
     await ensureStructuredAgentSessionHostUnlessRefused(() =>
       this.ensureStructuredAgentSessionHost()
     )
-    // Read now: a host a chat request installs later is reconciled by the takeover's own run.
-    const host = getStructuredAgentSessionHost()
-    if (!host && isStructuredAgentSessionJournalClaimRefused()) {
-      this.restoreAgainOnceJournalOwned()
-    }
     await this.refreshMobileSessionPtyRecords()
-    await host?.reconcileRestartLeases()
-  }
-
-  /** A takeover makes this process the owner: startup restoration runs once more, now with a
-   *  host, and a client told "cannot tell" gets the chats pushed, since nothing lists on its own. */
-  protected restoreAgainOnceJournalOwned(): void {
-    this.stopAwaitingStructuredAgentSessionJournal?.()
-    this.stopAwaitingStructuredAgentSessionJournal = onStructuredAgentSessionJournalOwned(() => {
-      this.stopAwaitingStructuredAgentSessionJournal?.()
-      this.stopAwaitingStructuredAgentSessionJournal = null
-      this.restoreStructuredAgentSessionsAfterTakeover().catch((error) => {
-        console.error(
-          '[structured-agent-session] restoring chats after taking ownership failed',
-          error
-        )
-      })
-    })
-  }
-
-  protected async restoreStructuredAgentSessionsAfterTakeover(): Promise<void> {
-    const refusedStartup = this.structuredAgentSessionStartupRestorePromise
-    await refusedStartup?.catch(() => undefined)
-    if (this.structuredAgentSessionStartupRestorePromise === refusedStartup) {
-      this.structuredAgentSessionStartupRestorePromise = null
-    }
-    await this.prepareStructuredAgentSessionStartupRestoration()
-    // Install first, then ask: a list that ran on the refused startup may only now have finished.
-    await this.structuredAgentSessionTabRestorePromise?.catch(() => undefined)
-    if (this.structuredAgentSessionInventoryUnverifiable) {
-      await this.restoreStructuredAgentSessionTabs()
-    }
+    await getStructuredAgentSessionHost()?.reconcileRestartLeases()
   }
 
   protected hasPersistedStructuredAgentSessionStore(): boolean {

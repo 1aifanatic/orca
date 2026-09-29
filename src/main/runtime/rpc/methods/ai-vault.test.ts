@@ -26,7 +26,7 @@ import {
   AiVaultPrepareSessionResumeParams
 } from './ai-vault'
 import { agentSessionRefusalError } from '../../../../shared/agent-session-wire-refusals'
-import { recordStructuredAgentSessionHostInstallRefusal } from '../../structured-agent-session-journal-ownership'
+import { recordStructuredAgentSessionHostInstallRefusal } from '../../structured-agent-session-host-refusal'
 import {
   configureAiVaultSessionSources,
   listAiVaultSessions,

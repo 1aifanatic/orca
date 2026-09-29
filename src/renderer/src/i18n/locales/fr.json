@@ -17459,10 +17459,6 @@
         "recordUnreadable": "Orca n'a pas pu lire l'état enregistré de ce chat.",
         "chatNotFound": "L'instance d'Orca qui exécute ce chat n'en a aucune trace.",
         "startNewChat": "Démarrez un nouveau chat pour continuer.",
-        "chatsOpenElsewhere": "Les chats sont ouverts dans un autre Orca qui utilise ce profil.",
-        "quitOtherOrca": "Quittez cet Orca pour utiliser les chats ici.",
-        "quitOtherOrcaOrUseDevProfile": "Quittez cet Orca pour utiliser les chats ici, ou démarrez celui-ci avec son propre profil (ORCA_DEV_USER_DATA_PATH).",
-        "stopOtherOrcaOrUseDataFolder": "Arrêtez cet Orca pour utiliser les chats ici, ou attribuez à celui-ci son propre dossier de données (ORCA_USER_DATA).",
         "tryAgain": "Réessayez."
       },
       "composer": {

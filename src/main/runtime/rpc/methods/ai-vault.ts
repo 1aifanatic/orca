@@ -17,7 +17,7 @@ import {
   assertLegacyAiVaultResumeAllowed,
   projectStructuredAiVaultSessions
 } from '../../../ai-vault/structured-session-ownership'
-import { ensureStructuredAgentSessionHostUnlessRefused } from '../../structured-agent-session-journal-ownership'
+import { ensureStructuredAgentSessionHostUnlessRefused } from '../../structured-agent-session-host-refusal'
 import {
   AiVaultListSessionsParams,
   AiVaultPrepareSessionResumeParams,

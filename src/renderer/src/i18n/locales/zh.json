@@ -17360,10 +17360,6 @@
         "recordUnreadable": "Orca 无法读取此聊天的已保存状态。",
         "chatNotFound": "运行此聊天的 Orca 没有此聊天的记录。",
         "startNewChat": "请开始新的聊天以继续。",
-        "chatsOpenElsewhere": "聊天已在使用此配置文件的另一个 Orca 中打开。",
-        "quitOtherOrca": "请退出该 Orca，以便在此处使用聊天。",
-        "quitOtherOrcaOrUseDevProfile": "请退出该 Orca 以在此处使用聊天，或使用独立的配置文件（ORCA_DEV_USER_DATA_PATH）启动此 Orca。",
-        "stopOtherOrcaOrUseDataFolder": "请停止该 Orca 以在此处使用聊天，或为此 Orca 指定独立的数据文件夹（ORCA_USER_DATA）。",
         "tryAgain": "请重试。"
       },
       "composer": {

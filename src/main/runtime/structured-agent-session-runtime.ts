@@ -7,9 +7,8 @@
 // reads is module-level for the same reason the registry is — the runtime
 // service is already far past its size budget.
 //
-// Only the process holding the profile's journal owner lock installs a host. Any
-// other process, and an owner whose journal will not open, installs none and
-// answers every structured request with the refusal that says why.
+// A process whose journal will not open installs none and answers every
+// structured request with the refusal that says why.
 
 import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk'
 import { existsSync } from 'node:fs'
@@ -41,11 +40,7 @@ import {
   type ClaudeManagedAccountGateSettings
 } from '../native-chat/claude-structured-managed-account-support'
 import { AgentSessionRecordStore } from './agent-session-record-store'
-import {
-  releaseStructuredAgentSessionJournal,
-  stopRetryingStructuredAgentSessionJournalClaim
-} from './structured-agent-session-journal-ownership'
-import { openOwnedJournalDatabase } from './structured-agent-session-journal-open'
+import { openStructuredAgentSessionJournalDatabase } from './structured-agent-session-journal-open'
 import { agentSessionStorePath } from './agent-session-record-store-file'
 import {
   createStructuredAgentSessionOwnerProbe,
@@ -159,38 +154,30 @@ export async function waitForStructuredAgentSessionRecovery(): Promise<void> {
  *
  *  A teardown that fails is RETRIED by the next stop rather than forgotten: the
  *  host keeps every conversation it could not settle, and this is the only handle
- *  onto that host once the module slot is cleared. The owner lock goes last, and
- *  only once nothing is left to retry. */
+ *  onto that host once the module slot is cleared. */
 export async function stopStructuredAgentSessionRuntime(options?: {
   trigger?: AgentSessionResumeTrigger
 }): Promise<void> {
-  stopRetryingStructuredAgentSessionJournalClaim()
   const trigger = options?.trigger ?? structuredAgentSessionTeardownTrigger()
-  const failures: unknown[] = []
-  // An install that began while this stop awaited (a takeover already under way) is torn down
-  // too: no journal connection may outlive the lock.
+  const pending = installing
+  installing = null
+  setStructuredAgentSessionHost(null)
   const outstanding = [...pendingTeardown]
   pendingTeardown.clear()
-  do {
-    const pending = installing
-    installing = null
-    setStructuredAgentSessionHost(null)
-    const installed = await pending?.catch(() => null)
-    for (const runtime of [...outstanding.splice(0), ...(installed ? [installed] : [])]) {
-      try {
-        await tearDownRuntime(runtime, trigger)
-      } catch (error) {
-        pendingTeardown.add(runtime)
-        failures.push(error)
-      }
-    }
-    await agentModelCatalogStore.flushPersistence()
-  } while (installing)
-  // An install a pass awaited registered its host after that pass cleared the slot.
-  setStructuredAgentSessionHost(null)
-  if (failures.length === 0 && pendingTeardown.size === 0) {
-    releaseStructuredAgentSessionJournal()
+  const installed = pending ? await pending.catch(() => null) : null
+  if (installed) {
+    outstanding.push(installed)
   }
+  const failures: unknown[] = []
+  for (const runtime of outstanding) {
+    try {
+      await tearDownRuntime(runtime, trigger)
+    } catch (error) {
+      pendingTeardown.add(runtime)
+      failures.push(error)
+    }
+  }
+  await agentModelCatalogStore.flushPersistence()
   if (failures.length === 1) {
     throw failures[0]
   }
@@ -206,7 +193,7 @@ async function install(deps: StructuredAgentSessionRuntimeDeps): Promise<Install
   if (typeof deps.resolveClaudeAuthPolicy !== 'function') {
     throw new Error(CLAUDE_STRUCTURED_AUTH_POLICY_REQUIRED)
   }
-  const journalDatabase = openOwnedJournalDatabase(deps.stateDirectory)
+  const journalDatabase = openStructuredAgentSessionJournalDatabase(deps.stateDirectory)
   const envResolvers = createStructuredAgentEnvironmentResolvers(deps)
   const { resolveCodexEnvironment, resolveClaudeInheritedEnv } = envResolvers
   let store: AgentSessionRecordStore

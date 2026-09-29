@@ -14,10 +14,7 @@ import { isSqliteCorruption } from '../../sqlite/sqlite-read-failure'
 import { JournalDatabaseNewerSchemaError } from './journal-database'
 import { AgentSessionJournalError } from './journal-write-guards'
 
-export type JournalOpenFailure = Exclude<
-  AgentSessionRefusalReason<'agent_session_journal_unreadable'>,
-  'journalOwnedElsewhere'
->
+export type JournalOpenFailure = AgentSessionRefusalReason<'agent_session_journal_unreadable'>
 
 /** A per-chat file whose copy did not read back as the file: the history is not usable here. */
 export class JournalImportMismatchError extends Error {

@@ -106,21 +106,3 @@ it('words a failed reconnect beside a transcript it keeps', () => {
   expect(screen.getByTestId('message-list')).toBeTruthy()
   expect(screen.getByText("Orca couldn't open this chat's history right now.")).toBeTruthy()
 })
-
-it('says chats are open in another Orca once, with the step for how this one was started', () => {
-  mocks.status = 'error'
-  mocks.readRefusal = {
-    code: 'agent_session_journal_unreadable',
-    details: { reason: 'journalOwnedElsewhere', processKind: 'dev-desktop' }
-  }
-  mocks.messages = []
-
-  renderPane()
-
-  expect(
-    screen.getAllByText(
-      "Chats are open in another Orca using this profile. This chat's history couldn't be loaded. Quit that Orca to use chats here, or start this one with its own profile (ORCA_DEV_USER_DATA_PATH)."
-    )
-  ).toHaveLength(1)
-  expect(screen.queryByText(/agent_session_/)).toBeNull()
-})

@@ -13,7 +13,7 @@ import { getStructuredAgentSessionHost } from '../../../native-chat/agent-sessio
 import type { StructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-host'
 import type { StructuredAgentSessionCaller } from '../../../native-chat/agent-session-wire/structured-agent-session-host-types'
 import type { RpcContext } from '../core'
-import { structuredAgentSessionHostRefusal } from '../../structured-agent-session-journal-ownership'
+import { structuredAgentSessionHostRefusal } from '../../structured-agent-session-host-refusal'
 import {
   supportsStructuredAgentSessionCapability,
   supportsStructuredAgentSessions
@@ -72,9 +72,8 @@ export function requireStructuredCleanupHost(ctx: RpcContext): StructuredAgentSe
 }
 
 /**
- * The host, or why there is none. A process whose chats another Orca owns, or whose journal would
- * not open, says so under every getter — cleanup included: nothing here can stop a child it never
- * started, and the words tell the user where their chats are.
+ * The host, or why there is none. A process whose journal would not open says so under every
+ * getter — cleanup included: nothing here can stop a child it never started.
  */
 function requireHostOrRefusal(): StructuredAgentSessionHost {
   const host = getStructuredAgentSessionHost()

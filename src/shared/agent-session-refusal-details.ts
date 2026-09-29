@@ -95,9 +95,7 @@ export const AGENT_SESSION_REFUSAL_REASONS = {
     /** SQLite reports the chat's journal damaged or not a database; no retry reads past it. */
     'journalCorrupt',
     /** Any other failed open, which can clear. */
-    'journalUnavailable',
-    /** Another Orca process on this profile owns the chats; it clears when that one quits. */
-    'journalOwnedElsewhere'
+    'journalUnavailable'
   ],
   structured_agent_session_unsupported: [
     'clientCapabilityMissing',
@@ -128,15 +126,6 @@ type PromptFacts = {
 
 type NoFacts = Record<never, never>
 
-/** How the process refused a profile's chats was started, which decides its way past the owner. */
-export type AgentSessionJournalProcessKind = 'dev-desktop' | 'packaged' | 'orcad'
-
-const JOURNAL_PROCESS_KINDS: readonly AgentSessionJournalProcessKind[] = [
-  'dev-desktop',
-  'packaged',
-  'orcad'
-]
-
 /** The facts a code carries beside its reason. */
 type AgentSessionRefusalFactsByCode = {
   agent_session_operation_invalid: RewindFacts
@@ -154,10 +143,7 @@ type AgentSessionRefusalFactsByCode = {
   agent_session_operation_conflict: NoFacts
   agent_session_operation_expired: NoFacts
   agent_session_operation_capacity: NoFacts
-  agent_session_journal_unreadable: {
-    /** Sent with `journalOwnedElsewhere`: the refused process, not the owner. */
-    processKind?: AgentSessionJournalProcessKind
-  }
+  agent_session_journal_unreadable: NoFacts
   structured_agent_session_unsupported: NoFacts
   agent_session_owner_restart_failed: NoFacts
 }
@@ -194,20 +180,14 @@ export type AgentSessionLegacyRefusalFields = {
   rewindReason?: AgentSessionRewindReason
 }
 
-/** Every fact a reader keeps: the legacy fields, and the ones only details carry. */
-type AgentSessionRefusalFactFields = AgentSessionLegacyRefusalFields & {
-  processKind?: AgentSessionJournalProcessKind
-}
-
 const FACT_KEYS_BY_CODE: Partial<
-  Record<AgentSessionWireRefusalCode, readonly (keyof AgentSessionRefusalFactFields)[]>
+  Record<AgentSessionWireRefusalCode, readonly (keyof AgentSessionLegacyRefusalFields)[]>
 > = {
   agent_session_operation_invalid: ['rewindReason'],
   agent_session_operation_unknown: ['rewindReason'],
   agent_session_checkpoint_stale: ['currentFence'],
   agent_session_item_revision_stale: ['currentRevision', 'resolution'],
-  agent_session_already_resolved: ['currentRevision', 'resolution'],
-  agent_session_journal_unreadable: ['processKind']
+  agent_session_already_resolved: ['currentRevision', 'resolution']
 }
 
 const OWNER_VERDICTS: readonly AgentSessionOwnerVerdict[] = ['live', 'unverifiable', 'exited']
@@ -217,9 +197,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function readFact(
-  key: keyof AgentSessionRefusalFactFields,
+  key: keyof AgentSessionLegacyRefusalFields,
   value: unknown
-): AgentSessionRefusalFactFields {
+): AgentSessionLegacyRefusalFields {
   switch (key) {
     case 'currentFence':
       return Number.isSafeInteger(value) && typeof value === 'number' ? { currentFence: value } : {}
@@ -236,10 +216,6 @@ function readFact(
     case 'rewindReason': {
       const rewindReason = AGENT_SESSION_REWIND_REASONS.find((reason) => reason === value)
       return rewindReason ? { rewindReason } : {}
-    }
-    case 'processKind': {
-      const processKind = JOURNAL_PROCESS_KINDS.find((kind) => kind === value)
-      return processKind ? { processKind } : {}
     }
   }
 }
@@ -265,7 +241,7 @@ export function readAgentSessionRefusalDetails<C extends AgentSessionWireRefusal
     return undefined
   }
   const keys = [...(FACT_KEYS_BY_CODE[code] ?? []), 'ownerVerdict' as const]
-  const facts = keys.reduce<AgentSessionRefusalFactFields>(
+  const facts = keys.reduce<AgentSessionLegacyRefusalFields>(
     (kept, key) => ({ ...kept, ...readFact(key, value[key]) }),
     {}
   )

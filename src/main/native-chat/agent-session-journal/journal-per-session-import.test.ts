@@ -453,7 +453,7 @@ describe('importing a per-chat journal', () => {
       { fence: 1 }
     )
     expect(existsSync(legacyJournalDatabaseFile(legacyDir()))).toBe(true)
-    // The process exits: the database closes and the owner lock goes with it.
+    // The process exits and the database closes.
     await journals.closeAll()
     await removeWorks()
 

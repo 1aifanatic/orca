@@ -1,7 +1,6 @@
-// The host journal database for a test's state directory, opened the one way production opens it:
-// under a held owner lock. One per directory per test process, as one per state directory per
-// host process in production, so a test that "restarts" a host on the same directory reads the
-// same database the way a restarted host would.
+// The host journal database for a test's state directory. One per directory per test process, as
+// one per state directory per host process in production, so a test that "restarts" a host on the
+// same directory reads the same database the way a restarted host would.
 
 import { resolve } from 'node:path'
 import { JournalHostDatabase } from './journal-host-database'
@@ -18,33 +17,27 @@ import {
   type JournalStoredRow
 } from './journal-row-table'
 import type Database from '../../sqlite/sync-database'
-import { tryAcquireJournalOwnerLock, type JournalOwnerLock } from './journal-owner-lock'
 import type { AgentSessionJournal } from './journal-store'
 import type { AgentSessionJournalOptions } from './journal-store-contracts'
 import { openAgentSessionJournal } from './journal-store-factory'
 
-const opened = new Map<string, { lock: JournalOwnerLock; database: JournalHostDatabase }>()
+const opened = new Map<string, JournalHostDatabase>()
 
 export function openTestJournalHostDatabase(stateDirectory: string): JournalHostDatabase {
   const directory = resolve(stateDirectory)
   const existing = opened.get(directory)
-  if (existing && !existing.database.isClosed) {
-    return existing.database
+  if (existing && !existing.isClosed) {
+    return existing
   }
-  const lock = existing?.lock.isHeld ? existing.lock : tryAcquireJournalOwnerLock(directory)
-  if (!lock) {
-    throw new Error(`another process owns the chat journal in ${directory}`)
-  }
-  const database = JournalHostDatabase.open(lock)
-  opened.set(directory, { lock, database })
+  const database = JournalHostDatabase.open(directory)
+  opened.set(directory, database)
   return database
 }
 
-/** Closes every database this process opened for tests, then releases their locks. */
+/** Closes every database this process opened for tests. */
 export function closeTestJournalHostDatabases(): void {
-  for (const { lock, database } of opened.values()) {
+  for (const database of opened.values()) {
     database.close()
-    lock.release()
   }
   opened.clear()
 }
@@ -57,7 +50,7 @@ export type TestJournalOptions = Omit<AgentSessionJournalOptions, 'database'> & 
 export type TrackedJournalOpener = {
   open: (options: TestJournalOptions) => Promise<AgentSessionJournal>
   track: <T extends AgentSessionJournal>(journal: T) => T
-  /** Drains every tracked journal, then closes the databases and releases their locks. */
+  /** Drains every tracked journal, then closes the databases. */
   closeAll: () => Promise<void>
 }
 

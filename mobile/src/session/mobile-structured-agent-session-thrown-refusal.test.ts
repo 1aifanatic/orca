@@ -8,33 +8,32 @@ import {
 
 // As `mapRuntimeError` sends a thrown refusal (pinned in `src/main/runtime/rpc/errors.test.ts`):
 // its message is the bare code, and its reason rides in data.
-const THROWN_OWNER_REFUSAL = {
+const THROWN_JOURNAL_REFUSAL = {
   code: 'runtime_error',
   message: 'agent_session_journal_unreadable',
   data: {
     refusal: {
       code: 'agent_session_journal_unreadable',
-      details: { reason: 'journalOwnedElsewhere', processKind: 'packaged' }
+      details: { reason: 'journalCorrupt' }
     }
   }
 }
 
 function refusingClient(): RpcClient {
-  const sendRequest = async () => ({ id: 'req-1', ok: false, error: THROWN_OWNER_REFUSAL })
+  const sendRequest = async () => ({ id: 'req-1', ok: false, error: THROWN_JOURNAL_REFUSAL })
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the paths under test reach only `sendRequest`.
   return { sendRequest } as unknown as RpcClient
 }
 
 describe('a refusal the host threw', () => {
   it("reads a chat's history failure in the refusal's words, from a stream or a request", async () => {
-    const words =
-      "Chats are open in another Orca using this profile. This chat's history couldn't be loaded. Quit that Orca to use chats here."
+    const words = 'Unable to load this chat.'
     // The stream's error frame, as the RPC client hands it over.
     expect(
       agentSessionReadFailureText({
         type: 'error',
-        message: THROWN_OWNER_REFUSAL.message,
-        error: THROWN_OWNER_REFUSAL
+        message: THROWN_JOURNAL_REFUSAL.message,
+        error: THROWN_JOURNAL_REFUSAL
       })
     ).toBe(words)
     const thrown = await callAgentSession(refusingClient(), 'agentSession.history', {}).catch(
@@ -59,8 +58,7 @@ describe('a refusal the host threw', () => {
 
     expect(result).toEqual({
       status: 'failed',
-      message:
-        "Chats are open in another Orca using this profile. The agent wasn't stopped. Quit that Orca to use chats here."
+      message: "Unable to load this chat. The agent wasn't stopped."
     })
   })
 })

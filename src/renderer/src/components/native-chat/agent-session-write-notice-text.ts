@@ -109,20 +109,6 @@ const SENTENCES: Record<AgentSessionWriteNoticeSentence, () => string> = {
     translate('components.native-chat.writeNotice.chatNotFound', COPY.chatNotFound),
   startNewChat: () =>
     translate('components.native-chat.writeNotice.startNewChat', COPY.startNewChat),
-  chatsOpenElsewhere: () =>
-    translate('components.native-chat.writeNotice.chatsOpenElsewhere', COPY.chatsOpenElsewhere),
-  quitOtherOrca: () =>
-    translate('components.native-chat.writeNotice.quitOtherOrca', COPY.quitOtherOrca),
-  quitOtherOrcaOrUseDevProfile: () =>
-    translate(
-      'components.native-chat.writeNotice.quitOtherOrcaOrUseDevProfile',
-      COPY.quitOtherOrcaOrUseDevProfile
-    ),
-  stopOtherOrcaOrUseDataFolder: () =>
-    translate(
-      'components.native-chat.writeNotice.stopOtherOrcaOrUseDataFolder',
-      COPY.stopOtherOrcaOrUseDataFolder
-    ),
   tryAgain: () => translate('components.native-chat.writeNotice.tryAgain', COPY.tryAgain)
 }
 

@@ -14976,10 +14976,6 @@
         "recordUnreadable": "Orca no pudo leer el estado guardado de este chat.",
         "chatNotFound": "La versión de Orca que ejecuta este chat no tiene ningún registro de él.",
         "startNewChat": "Inicie un chat nuevo para continuar.",
-        "chatsOpenElsewhere": "Los chats están abiertos en otro Orca que usa este perfil.",
-        "quitOtherOrca": "Cierre ese Orca para usar los chats aquí.",
-        "quitOtherOrcaOrUseDevProfile": "Cierre ese Orca para usar los chats aquí, o inicie este con su propio perfil (ORCA_DEV_USER_DATA_PATH).",
-        "stopOtherOrcaOrUseDataFolder": "Detenga ese Orca para usar los chats aquí, o asigne a este su propia carpeta de datos (ORCA_USER_DATA).",
         "tryAgain": "Vuelva a intentarlo."
       },
       "composer": {

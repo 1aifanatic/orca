@@ -17395,10 +17395,6 @@
         "recordUnreadable": "Orca가 이 채팅의 저장된 상태를 읽지 못했습니다.",
         "chatNotFound": "이 채팅을 실행하는 Orca에 이 채팅의 기록이 없습니다.",
         "startNewChat": "계속하려면 새 채팅을 시작하세요.",
-        "chatsOpenElsewhere": "이 프로필을 사용하는 다른 Orca에서 채팅이 열려 있습니다.",
-        "quitOtherOrca": "여기에서 채팅을 사용하려면 해당 Orca를 종료하세요.",
-        "quitOtherOrcaOrUseDevProfile": "여기에서 채팅을 사용하려면 해당 Orca를 종료하거나, 이 Orca를 별도의 프로필(ORCA_DEV_USER_DATA_PATH)로 시작하세요.",
-        "stopOtherOrcaOrUseDataFolder": "여기에서 채팅을 사용하려면 해당 Orca를 중지하거나, 이 Orca에 별도의 데이터 폴더(ORCA_USER_DATA)를 지정하세요.",
         "tryAgain": "다시 시도하세요."
       },
       "composer": {
