@@ -293,14 +293,14 @@ describe('Codex 0.157 header readiness from captured bytes', () => {
           '  gpt-6-sol high · ~/repo/app'
         ].join('\r\n')
       })
-      // Why a text read: the visible-screen probe must not be what settles the wait.
+      // Why no screen: the visible-screen probe must not be what settles the wait.
       vi.spyOn(runtime, 'readTerminal').mockResolvedValue({
         handle,
         status: 'running',
         tail: [],
         truncated: false,
         nextCursor: null,
-        source: 'text'
+        source: 'screen-unavailable'
       })
       await expect(
         runtime.waitForTerminal(handle, { condition: 'tui-idle', timeoutMs: 2_500 })
