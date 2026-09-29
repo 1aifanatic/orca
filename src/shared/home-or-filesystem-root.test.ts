@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { isHomeOrFilesystemRoot } from './home-or-filesystem-root'
+import { isTooBroadToPreTrust } from './home-or-filesystem-root'
 
-describe('isHomeOrFilesystemRoot', () => {
+describe('isTooBroadToPreTrust', () => {
   it.each([
     ['/'],
     ['C:\\'],
@@ -10,25 +10,31 @@ describe('isHomeOrFilesystemRoot', () => {
     ['\\\\wsl.localhost\\Ubuntu\\'],
     ['//wsl$/Ubuntu']
   ])('treats %s as a filesystem root', (folderPath) => {
-    expect(isHomeOrFilesystemRoot(folderPath, [])).toBe(true)
+    expect(isTooBroadToPreTrust(folderPath, [])).toBe(true)
   })
 
   it('matches a home however its separators, trailing slash or drive case are spelled', () => {
-    expect(isHomeOrFilesystemRoot('/home/u/', ['/home/u'])).toBe(true)
-    expect(isHomeOrFilesystemRoot('c:\\users\\alice', [null, 'C:/Users/alice/'])).toBe(true)
+    expect(isTooBroadToPreTrust('/home/u/', ['/home/u'])).toBe(true)
+    expect(isTooBroadToPreTrust('c:\\users\\alice', [null, 'C:/Users/alice/'])).toBe(true)
     expect(
-      isHomeOrFilesystemRoot('\\\\wsl.localhost\\Ubuntu\\home\\u', [
+      isTooBroadToPreTrust('\\\\wsl.localhost\\Ubuntu\\home\\u', [
         undefined,
         '\\\\wsl$\\Ubuntu\\home\\u'
       ])
     ).toBe(true)
   })
 
+  it('refuses a folder above a home, which would cover the home too', () => {
+    expect(isTooBroadToPreTrust('/home', ['/home/u'])).toBe(true)
+    expect(isTooBroadToPreTrust('/Users/', [null, '/Users/alice'])).toBe(true)
+    expect(isTooBroadToPreTrust('C:\\Users', ['c:/users/alice'])).toBe(true)
+  })
+
   it('leaves folders inside a home, and other folders, alone', () => {
-    expect(isHomeOrFilesystemRoot('/home/u/repo', ['/home/u'])).toBe(false)
-    expect(isHomeOrFilesystemRoot('/home', ['/home/u'])).toBe(false)
-    expect(isHomeOrFilesystemRoot('C:\\Users\\alice\\repo', ['C:\\Users\\alice'])).toBe(false)
-    expect(isHomeOrFilesystemRoot('\\\\server\\share\\repo', [])).toBe(false)
-    expect(isHomeOrFilesystemRoot('/srv/wt', [null, undefined])).toBe(false)
+    expect(isTooBroadToPreTrust('/home/u/repo', ['/home/u'])).toBe(false)
+    expect(isTooBroadToPreTrust('/home/u2', ['/home/u'])).toBe(false)
+    expect(isTooBroadToPreTrust('C:\\Users\\alice\\repo', ['C:\\Users\\alice'])).toBe(false)
+    expect(isTooBroadToPreTrust('\\\\server\\share\\repo', [])).toBe(false)
+    expect(isTooBroadToPreTrust('/srv/wt', [null, undefined])).toBe(false)
   })
 })

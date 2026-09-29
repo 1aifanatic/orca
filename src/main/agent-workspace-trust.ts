@@ -20,7 +20,7 @@ import {
 import type { ClaudeRuntimeAuthPreparation } from './claude-accounts/runtime-auth/runtime-auth-types'
 import type { ClaudeFolderTrustSpawnRequest } from '../shared/claude-folder-trust-spawn-request'
 import { parseWslUncPath } from '../shared/wsl-paths'
-import { isHomeOrFilesystemRoot } from '../shared/home-or-filesystem-root'
+import { isTooBroadToPreTrust } from '../shared/home-or-filesystem-root'
 import { getCachedWslHome } from './wsl-home-cache'
 
 /** What a trust writer needs to reach the file the launched agent will read. */
@@ -117,12 +117,12 @@ export async function applyAgentWorkspaceTrust(
   context: AgentTrustLaunchContext
 ): Promise<AgentTrustSpawnFields> {
   if (
-    isHomeOrFilesystemRoot(
+    isTooBroadToPreTrust(
       workspacePath,
       context.connectionId ? [] : localHomePaths(workspacePath, context)
     )
   ) {
-    // Why: trust on a home or a root would cover every folder under it for some agents.
+    // Why: trust on a home, a folder above one or a root would cover the home for some agents.
     return {}
   }
   if (preset === 'claude' && context.connectionId) {

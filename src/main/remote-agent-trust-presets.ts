@@ -9,7 +9,7 @@ import {
   isWindowsAbsolutePathLike,
   normalizeRuntimePathSeparators
 } from '../shared/cross-platform-path'
-import { isHomeOrFilesystemRoot } from '../shared/home-or-filesystem-root'
+import { isTooBroadToPreTrust } from '../shared/home-or-filesystem-root'
 
 export async function markRemoteAgentWorkspaceTrusted(args: {
   preset: AgentTrustPreset
@@ -23,7 +23,7 @@ export async function markRemoteAgentWorkspaceTrusted(args: {
   }
 
   const workspacePath = await canonicalizeRemoteWorkspacePath(fsProvider, args.workspacePath)
-  if ([workspacePath, args.workspacePath].some((path) => isHomeOrFilesystemRoot(path, [home]))) {
+  if ([workspacePath, args.workspacePath].some((path) => isTooBroadToPreTrust(path, [home]))) {
     return
   }
   if (args.preset === 'qoder') {

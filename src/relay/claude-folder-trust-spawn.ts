@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { parseClaudeFolderTrustSpawnRequest } from '../shared/claude-folder-trust-spawn-request'
-import { isHomeOrFilesystemRoot } from '../shared/home-or-filesystem-root'
+import { isTooBroadToPreTrust } from '../shared/home-or-filesystem-root'
 import {
   grantClaudeWorkspaceTrust,
   resolveClaudeGlobalConfigFile
@@ -27,7 +27,7 @@ export async function applyRelayClaudeFolderTrust(
   }
   const keyStyle = process.platform === 'win32' ? 'win32' : 'posix'
   const homeDir = (keyStyle === 'win32' ? spawnEnv.USERPROFILE : spawnEnv.HOME) || homedir()
-  if (isHomeOrFilesystemRoot(request.workspacePath, [homeDir, homedir()])) {
+  if (isTooBroadToPreTrust(request.workspacePath, [homeDir, homedir()])) {
     return
   }
   const configFile = resolveClaudeGlobalConfigFile({
