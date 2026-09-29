@@ -182,6 +182,7 @@ function buildTitleDerivedAgentRow(args: {
   const agentType = resolveTitleDerivedPaneAgent({
     title,
     defaultTitle: args.tab.defaultTitle,
+    titleShowsActivity: Boolean(titleStatus && label),
     titleAgentType,
     launchAgentType: args.ownerAgentType,
     foreground: args.paneForegroundAgentByPaneKey[paneKey]
@@ -189,7 +190,7 @@ function buildTitleDerivedAgentRow(args: {
   if (!agentType) {
     return null
   }
-  // Why: the title sets activity only; a plain title on a process- or launch-identified pane is idle.
+  // Why: the title sets activity only; a plain title on a process-identified pane is idle.
   const status = titleStatus ?? 'idle'
   const rowLabel = agentType === titleAgentType && label ? label : formatAgentTypeLabel(agentType)
   const rowState = titleStatusToRowState(status)

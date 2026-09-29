@@ -158,6 +158,13 @@ export function createParkedTerminalCommandStatusPolicy(options: {
       // Why: the finished command may have moved HEAD or the index (an agent running
       // `git checkout` in a parked worktree); nudge git UI now instead of waiting for a poll.
       dispatchTerminalCommandFinishedEvent(worktreeId, bestEffortExitCode)
+      // Why: no tracker can confirm a parked pane's foreground, so a command boundary leaves its
+      // last process read unverified — retire it like the mounted ladder's unavailable path, or an
+      // agent that exited while parked keeps its identity. Reveal re-reads the process.
+      const state = useAppStore.getState()
+      if (state.paneForegroundAgentByPaneKey[paneKey]?.agent) {
+        state.setPaneForegroundAgent(paneKey, { agent: null, shellForeground: false })
+      }
       // Why: drop the same-turn status row only for SSH PTYs — exact parity with the mounted
       // path, whose foreground tracker refuses SSH ids and drops un-probed. Local PTYs need
       // pty-connection's process-confirm ladder to tell a leaked nested-shell 133;D from a

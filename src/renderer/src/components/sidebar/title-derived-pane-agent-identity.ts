@@ -1,10 +1,6 @@
 import { titleShowsNoAgent } from '../../../../shared/agent-detection'
 import type { AgentType } from '../../../../shared/agent-status-types'
 import { resolveCompatibleAgentTypeForOwner } from '../../../../shared/agent-title-owner'
-import {
-  resolvePaneAgentIdentity,
-  type PaneAgentEvidence
-} from '../../../../shared/pane-agent-identity-resolver'
 import { isClaudeIdentityFrameTitle } from '../../../../shared/terminal-title-agent-type'
 import type { PaneForegroundAgentEntry } from '@/store/slices/pane-foreground-agent'
 
@@ -52,40 +48,38 @@ export function resolveTitleDerivedAgentType(
   return agentType
 }
 
-/** The foreground-process facts a hook-less row reads; the rest of the entry is routing state. */
+/** The pane's foreground-process read as the tracker publishes it; routing fields are omitted. */
 export type TitleDerivedPaneForeground = Pick<PaneForegroundAgentEntry, 'agent' | 'shellForeground'>
 
 /**
- * Which agent a hook-less pane runs, ranked by the canonical resolver: the foreground process,
- * then the agent Orca launched, then the title. Null means the pane shows no agent row.
+ * Which agent a hook-less pane runs, in the tab icon's order: the foreground process, then the
+ * title, then the agent Orca launched. Null means the pane shows no agent row.
  *
- * Only facts that die with the agent may keep a row whose title names no agent (Codex retitles
- * itself to the project name, #23767): the process read clears on exit, and launch ownership is
- * dropped once the process tracker proves the shell is back. A shell or default title retires
- * both, matching the tab's launched-agent exit rule.
+ * Only the process read may keep a row whose title shows no agent activity (Codex retitles itself
+ * to the project name, #23767): the mounted pane's tracker re-derives it at every command
+ * boundary and clears it when the shell returns. The launch record is a tab-scoped latch with no
+ * run id, so it stays a fallback for titles that show activity, and ranks below a title that
+ * names a different agent (pane reuse).
  */
 export function resolveTitleDerivedPaneAgent(args: {
   title: string
   defaultTitle?: string
+  titleShowsActivity: boolean
   titleAgentType: AgentType | null
   launchAgentType: AgentType | null
   foreground: TitleDerivedPaneForeground | undefined
 }): AgentType | null {
-  const evidence: PaneAgentEvidence<AgentType>[] = []
-  // Why: a shell/default title retires process and launch facts, never an agent the title names.
-  const titleShowsExit = titleShowsNoAgent(args.title, args.defaultTitle)
-  const processAgent = titleShowsExit ? null : args.foreground?.agent
-  if (processAgent) {
-    // Why: OMP's nested pi process must not take an OMP-launched pane from its owner.
-    const agent =
-      resolveCompatibleAgentTypeForOwner(processAgent, args.launchAgentType) ?? processAgent
-    evidence.push({ source: 'process', agent })
-  }
-  if (args.launchAgentType && !titleShowsExit && args.foreground?.shellForeground !== true) {
-    evidence.push({ source: 'launch', agent: args.launchAgentType })
-  }
-  if (args.titleAgentType) {
-    evidence.push({ source: 'title', agent: args.titleAgentType })
-  }
-  return resolvePaneAgentIdentity<AgentType>({ evidence }).agent
+  // Why: a shell/default title is exit evidence the process read may not have caught up with.
+  const processAgent = titleShowsNoAgent(args.title, args.defaultTitle)
+    ? null
+    : args.foreground?.agent
+  // Why: OMP's nested pi process must not take an OMP-launched pane from its owner.
+  const ownedProcessAgent = processAgent
+    ? (resolveCompatibleAgentTypeForOwner(processAgent, args.launchAgentType) ?? processAgent)
+    : null
+  return (
+    ownedProcessAgent ??
+    args.titleAgentType ??
+    (args.titleShowsActivity ? args.launchAgentType : null)
+  )
 }

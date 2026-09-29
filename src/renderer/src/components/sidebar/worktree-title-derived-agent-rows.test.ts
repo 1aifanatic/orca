@@ -242,7 +242,7 @@ describe('buildTitleDerivedAgentRows', () => {
     ).toEqual([['codex', 'working', 'Codex', '⠼ demo-repo']])
   })
 
-  it('keeps launch identity over a conflicting title', () => {
+  it('keeps explicit title identity over the launched agent', () => {
     const launchAgent: TuiAgent = 'claude'
     const rows = buildWorktreeAgentRows({
       tabs: [makeTab('tab-1', { launchAgent })],
@@ -256,7 +256,7 @@ describe('buildTitleDerivedAgentRows', () => {
       now: 2000
     })
 
-    expect(rows.map((row) => [row.agentType, row.state])).toEqual([['claude', 'working']])
+    expect(rows.map((row) => [row.agentType, row.state])).toEqual([['codex', 'working']])
   })
 
   it('produces no row for a spinner-only title when the tab has no launch identity', () => {
@@ -388,9 +388,9 @@ describe('buildTitleDerivedAgentRows', () => {
       })
 
     expect(rowsFor('⠋ Claude Code').map((row) => row.agentType)).toEqual(['claude'])
-    // Launch ownership outranks a conflicting title while nothing proves the launched agent left.
-    expect(rowsFor('✳ Claude Code', 'opencode').map((row) => row.agentType)).toEqual(['opencode'])
-    // Pane reuse: the user exited OpenCode and ran claude; the process read hands the pane over.
+    // Pane reuse: the user exited OpenCode and ran claude in the same pane. The launch record is
+    // a latch with no run id, so the title outranks it even before any process read.
+    expect(rowsFor('✳ Claude Code', 'opencode').map((row) => row.agentType)).toEqual(['claude'])
     expect(
       rowsFor('✳ Claude Code', 'opencode', { agent: 'claude', shellForeground: false }).map(
         (row) => row.agentType
@@ -417,8 +417,8 @@ describe('buildTitleDerivedAgentRows', () => {
 })
 
 // #23767: Codex retitles its pane to the project name, so a title-gated row vanished while
-// Codex kept running. Identity now comes from process and launch facts; the title sets activity.
-describe('hook-less agent rows identified by process and launch evidence', () => {
+// Codex kept running. A live process read now identifies the pane; the title sets activity.
+describe('hook-less agent rows identified by the foreground process', () => {
   const PANE_KEY = makePaneKey('tab-1', LEAF_ID_1)
 
   function rowsFor(args: {
@@ -449,12 +449,26 @@ describe('hook-less agent rows identified by process and launch evidence', () =>
     rows.map((row) => [row.agentType, row.state, row.entry.prompt, row.entry.lastAssistantMessage])
 
   it('keeps a launched Codex row when Codex retitles the pane to the project name', () => {
-    expect(summarize(rowsFor({ title: 'Codex', launchAgent: 'codex' }))).toEqual([
+    const foreground = { agent: 'codex' as const, shellForeground: false }
+    expect(summarize(rowsFor({ title: 'Codex', launchAgent: 'codex', foreground }))).toEqual([
       ['codex', 'idle', 'Codex', 'Idle']
     ])
-    expect(summarize(rowsFor({ title: 'demo-repo', launchAgent: 'codex' }))).toEqual([
+    expect(summarize(rowsFor({ title: 'demo-repo', launchAgent: 'codex', foreground }))).toEqual([
       ['codex', 'idle', 'Codex', 'Idle']
     ])
+  })
+
+  it('never keeps a plain-title row on the launch record alone', () => {
+    // No process read (WSL, a launch that never started), or a read that found no agent (after an
+    // SSH exit, or a parked pane's boundary retiring its unconfirmable read): no row, as before.
+    expect(rowsFor({ title: 'demo-repo', launchAgent: 'codex' })).toHaveLength(0)
+    expect(
+      rowsFor({
+        title: 'demo-repo',
+        launchAgent: 'codex',
+        foreground: { agent: null, shellForeground: false }
+      })
+    ).toHaveLength(0)
   })
 
   it('rows a hand-typed agent from its foreground process, whatever its title says', () => {
@@ -500,7 +514,7 @@ describe('hook-less agent rows identified by process and launch evidence', () =>
   })
 
   it('drops the row once the agent is really gone', () => {
-    // The process tracker proved the shell is back, which retires the launch record too.
+    // The process tracker proved the shell is back.
     expect(
       rowsFor({
         title: 'demo-repo',
@@ -508,7 +522,7 @@ describe('hook-less agent rows identified by process and launch evidence', () =>
         foreground: { agent: null, shellForeground: true }
       })
     ).toHaveLength(0)
-    // A shell or default title outlives neither a process read nor a launch record.
+    // A shell or default title outranks a process read that has not caught up yet.
     expect(
       rowsFor({
         title: 'zsh',

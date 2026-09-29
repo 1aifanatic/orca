@@ -23,6 +23,7 @@ type MockStoreState = {
   setAgentStatus: ReturnType<typeof vi.fn>
   dropAgentStatus: ReturnType<typeof vi.fn>
   clearAgentLaunchConfig: ReturnType<typeof vi.fn>
+  setPaneForegroundAgent: ReturnType<typeof vi.fn>
 }
 
 let mockStoreState: MockStoreState
@@ -53,7 +54,8 @@ function makeMockStoreState(): MockStoreState {
     runtimePaneTitlesByTabId: { [TAB_ID]: { [PANE_ID]: '✳ Build feature' } },
     setAgentStatus: vi.fn(),
     dropAgentStatus: vi.fn(),
-    clearAgentLaunchConfig: vi.fn()
+    clearAgentLaunchConfig: vi.fn(),
+    setPaneForegroundAgent: vi.fn()
   }
 }
 
@@ -92,6 +94,33 @@ describe('createParkedTerminalCommandStatusPolicy', () => {
 
   afterEach(() => {
     vi.useRealTimers()
+  })
+
+  // #23767: a Codex that exits while parked must not keep its process identity (and sidebar row).
+  it('retires an unconfirmable process read at a parked command boundary', async () => {
+    mockStoreState.paneForegroundAgentByPaneKey[PANE_KEY] = {
+      agent: 'codex',
+      shellForeground: false,
+      routingTrusted: true
+    }
+    const policy = await createPolicy(PTY_ID_LOCAL)
+
+    policy.onCommandFinished(0)
+
+    expect(mockStoreState.setPaneForegroundAgent).toHaveBeenCalledWith(PANE_KEY, {
+      agent: null,
+      shellForeground: false
+    })
+    policy.dispose()
+  })
+
+  it('leaves a pane with no process identity untouched at a parked command boundary', async () => {
+    const policy = await createPolicy(PTY_ID_SSH)
+
+    policy.onCommandFinished(0)
+
+    expect(mockStoreState.setPaneForegroundAgent).not.toHaveBeenCalled()
+    policy.dispose()
   })
 
   it('seeds a Command Code working row with the current pane title', async () => {
