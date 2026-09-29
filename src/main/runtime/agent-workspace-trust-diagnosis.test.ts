@@ -111,7 +111,7 @@ describe('diagnosing a worker stalled at the trust screen (#23847)', () => {
     expect(error.message).toContain(join(home, 'config.toml'))
     expect(error.message).not.toMatch(/\.\.$/)
     expect(error.recovery).toBe(
-      `Start codex in ${workspace} once and choose to trust the folder (or fix the file named above), then start the worker again.`
+      `Start codex in ${workspace} once and choose to trust the folder (or fix the cause above), then start the worker again.`
     )
   })
 
@@ -144,7 +144,7 @@ describe('diagnosing a worker stalled at the trust screen (#23847)', () => {
     expect(diagnosis).toEqual({ kind: 'written' })
     const error = blockedError('codex', diagnosis)
     expect(error.message).toContain(
-      "Orca's trust write has now landed, so starting the worker again should get past this screen."
+      'Orca has now written trust for it; if the earlier write simply had not landed yet, starting the worker again gets past this screen.'
     )
     expect(error.recovery).toMatch(/^Start the worker again; if codex still asks/)
   })
@@ -171,7 +171,7 @@ describe('diagnosing a worker stalled at the trust screen (#23847)', () => {
     const diagnosis = await pending
     expect(diagnosis).toEqual({ kind: 'still-waiting' })
     expect(blockedError('codex', diagnosis).message).toContain(
-      "Orca's trust write is still waiting behind another codex config change."
+      "Orca's trust write for codex did not finish within a few seconds, so it could not confirm it."
     )
     releaseLane()
     await held

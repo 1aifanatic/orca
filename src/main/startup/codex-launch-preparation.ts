@@ -90,11 +90,11 @@ export async function prepareCodexRuntimeHomeForLaunch(
     return null
   }
   if (
-    // Why: the shared runtime home was just written above on the same lane; a second pass there only adds a wait.
-    isSeparateCodexLaunchHome(runtimeHomePath) &&
     target?.runtime !== 'wsl' &&
     launchContext?.launchAgent === 'codex' &&
-    launchContext.workspacePath
+    launchContext.workspacePath &&
+    // Why: the shared runtime home was just written above on the same lane; a second pass there only adds a wait.
+    isSeparateCodexLaunchHome(runtimeHomePath)
   ) {
     try {
       // Why (#23847): write the home this launch actually reads; a per-account home otherwise waits on a copy from ~/.codex.

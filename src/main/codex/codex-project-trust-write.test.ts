@@ -24,6 +24,8 @@ vi.mock('node:os', async () => {
 })
 
 const { markCodexProjectTrusted } = await import('../agent-trust-presets')
+const { CodexConfigTomlEditRefusedError, reportCodexTrustWriteRefusals } =
+  await import('./codex-config-toml-checked-edit')
 const { markCodexProjectTrustedInHome } = await import('./codex-project-trust-write')
 
 let workspace: string
@@ -61,8 +63,12 @@ describe('Codex workspace trust writes (#23847)', () => {
     writeFileSync(systemConfigPath(), brokenUserConfig, 'utf-8')
 
     const failure = markCodexProjectTrusted(workspace)
-    await expect(failure).rejects.toThrow('1 of 2 config files')
+    // Why: the refusal itself, not a wrapper, so refusal reporting logs it once per file.
+    await expect(failure).rejects.toBeInstanceOf(CodexConfigTomlEditRefusedError)
     await expect(failure).rejects.toThrow(`${systemConfigPath()} unchanged (line 3)`)
+    expect(reportCodexTrustWriteRefusals(await failure.catch((error: unknown) => error))).toEqual(
+      []
+    )
 
     expect(readFileSync(runtimeConfigPath(), 'utf-8')).toContain('trust_level = "trusted"')
     expect(readFileSync(systemConfigPath(), 'utf-8')).toBe(brokenUserConfig)

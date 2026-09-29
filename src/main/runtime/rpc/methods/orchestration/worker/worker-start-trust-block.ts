@@ -41,7 +41,8 @@ export function createWorkerStartTrustBlockedError(args: {
   }
   if (diagnosis?.kind === 'written') {
     return new WorkerStartTrustBlockedError(
-      `${prompt} Orca's trust write has now landed, so starting the worker again should get past this screen.`,
+      // Why: the write can land in a config the agent never reads (e.g. a WSL shell on a Windows folder), so don't promise.
+      `${prompt} Orca has now written trust for it; if the earlier write simply had not landed yet, starting the worker again gets past this screen.`,
       `Start the worker again; if ${agent} still asks, start it in ${folder} once and choose to trust the folder.`
     )
   }
@@ -51,7 +52,7 @@ export function createWorkerStartTrustBlockedError(args: {
       : diagnosis.kind === 'failed'
         ? `Orca could not pre-trust it: ${diagnosis.detail.replace(/\.+$/, '')}.`
         : diagnosis.kind === 'still-waiting'
-          ? `Orca's trust write is still waiting behind another ${agent} config change.`
+          ? `Orca's trust write for ${agent} did not finish within a few seconds, so it could not confirm it.`
           : diagnosis.host === 'wsl'
             ? `Orca does not pre-trust folders for ${agent} inside WSL.`
             : diagnosis.host === 'ssh'
@@ -59,6 +60,6 @@ export function createWorkerStartTrustBlockedError(args: {
               : `Orca does not pre-trust folders for ${agent}.`
   return new WorkerStartTrustBlockedError(
     `${prompt} ${cause}`,
-    `${trustOnce}${diagnosis?.kind === 'failed' ? ' (or fix the file named above)' : ''}, then start the worker again.`
+    `${trustOnce}${diagnosis?.kind === 'failed' ? ' (or fix the cause above)' : ''}, then start the worker again.`
   )
 }

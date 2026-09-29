@@ -24,7 +24,9 @@ export function writeCodexProjectTrust(
     const message = error instanceof Error ? error.message : String(error)
     return {
       configPath,
-      error: new Error(`could not write ${configPath}: ${message}`, { cause: error })
+      error: message.includes(configPath)
+        ? error
+        : new Error(`could not write ${configPath}: ${message}`, { cause: error })
     }
   }
 }
