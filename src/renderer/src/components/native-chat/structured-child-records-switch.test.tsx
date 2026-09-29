@@ -197,6 +197,7 @@ function Surfaces(props: { roster: AgentSessionBackgroundTaskState }): React.JSX
         sessionId={tab.entityId}
         agentLabel="Claude"
         startupPhase="ready"
+        startupChildKey={null}
         paneKey={PANE_KEY}
         error={null}
         composerError={null}
