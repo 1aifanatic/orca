@@ -21,6 +21,11 @@ import { getCodexConfigSyncStatus, reportCodexConfigSyncOutcome } from './config
 import { preserveRuntimeConflictValues } from './codex-config-settings-preservation'
 import { applyCodexDaemonSocketGuard } from './codex-daemon-socket-path-guard'
 import {
+  ensureCodexDaemonSocketGuard,
+  refuseUserCodexHomeAsTarget,
+  writeCodexDaemonSocketGuard
+} from './codex-owned-home-daemon-guard'
+import {
   deduplicateProjectTomlSections,
   getMcpServerTomlSectionName,
   getProjectTrustLevel,
@@ -39,6 +44,9 @@ export function syncSystemConfigIntoManagedCodexHome(
     systemHomePath: getSystemCodexHomePath()
   }
 ): void {
+  if (refuseUserCodexHomeAsTarget(homes.runtimeHomePath, homes.systemHomePath)) {
+    return
+  }
   if (!mirrorSystemConfigIntoManagedCodexHome(homes)) {
     // Why: a stalled settings mirror must not also withhold the daemon guard,
     // or Codex starts a shared server here (or cannot start at all in a long home).
@@ -116,28 +124,6 @@ function mirrorSystemConfigIntoManagedCodexHome(homes: CodexSettingsPromotionHom
     mirroredMcpServerRoot: mirrorResult.mirroredMcpServerRoot
   })
   return true
-}
-
-/** Applies only the daemon guard, for passes that have no source config to mirror. */
-export function ensureCodexDaemonSocketGuard(runtimeHomePath: string): void {
-  try {
-    const observation = observeAgentStateFile(join(runtimeHomePath, 'config.toml'))
-    if (observation.kind !== 'indeterminate') {
-      writeCodexDaemonSocketGuard(
-        runtimeHomePath,
-        observation.kind === 'present' ? observation.value : null
-      )
-    }
-  } catch (error) {
-    console.warn('[codex-config] Failed to apply the Codex daemon socket guard:', error)
-  }
-}
-
-function writeCodexDaemonSocketGuard(runtimeHomePath: string, runtimeConfig: string | null): void {
-  const guarded = applyCodexDaemonSocketGuard(runtimeConfig ?? '', runtimeHomePath)
-  if (guarded !== (runtimeConfig ?? '')) {
-    writeFileAtomicallyIfUnchanged(join(runtimeHomePath, 'config.toml'), runtimeConfig, guarded)
-  }
 }
 
 /**

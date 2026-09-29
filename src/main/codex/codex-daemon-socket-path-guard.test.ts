@@ -22,6 +22,7 @@ import {
   syncSystemConfigIntoLegacySharedCodexHome,
   syncSystemConfigIntoManagedCodexHome
 } from './codex-config-mirror'
+import { ensureCodexDaemonSocketGuard } from './codex-owned-home-daemon-guard'
 import { getCodexConfigSyncStatus } from './config-sync-stall'
 import { getCodexSettingsBaselinePath } from './config-settings-baseline'
 import { extractOrdinaryCodexSettings } from './config-toml-runtime-owned-sections'
@@ -309,6 +310,23 @@ describe('syncSystemConfigIntoManagedCodexHome daemon guard', () => {
     expect(
       warn.mock.calls.filter(([m]) => String(m).includes('daemon_auto_start = true'))
     ).toHaveLength(1)
+    warn.mockRestore()
+  })
+
+  it("refuses the user's own home as the target even when its spelling differs", () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const systemConfig = 'model = "gpt-5"\n'
+    writeFileSync(join(systemHomePath, 'config.toml'), systemConfig)
+    syncSystemConfigIntoManagedCodexHome({ runtimeHomePath: `${systemHomePath}/`, systemHomePath })
+    ensureCodexDaemonSocketGuard(`${systemHomePath}//`, systemHomePath)
+    expect(readFileSync(join(systemHomePath, 'config.toml'), 'utf-8')).toBe(systemConfig)
+    // Refused before any disk access, so an unreachable distro path is safe here.
+    syncSystemConfigIntoManagedCodexHome({
+      runtimeHomePath: '\\\\wsl.localhost\\Ubuntu\\home\\u\\.codex',
+      systemHomePath: '\\\\wsl$\\ubuntu\\home\\u\\.codex'
+    })
+    const refusals = warn.mock.calls.filter(([m]) => String(m).includes('Refusing to write'))
+    expect(refusals).toHaveLength(2)
     warn.mockRestore()
   })
 

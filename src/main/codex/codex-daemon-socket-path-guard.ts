@@ -67,7 +67,8 @@ const overriddenHomesWarned = new Set<string>()
  * Forces `daemon_auto_start = false` into a home Orca owns, even over a user's
  * explicit `true` mirrored from ~/.codex, matching the shell function, which adds
  * `--no-daemon` regardless of config. Callers pass only Orca's runtime homes; the
- * user's ~/.codex reaches the mirror solely as its read-only source.
+ * user's ~/.codex reaches the mirror solely as its read-only source. Profile-level
+ * (`[profiles.X.features]`) and `-c` overrides still win; that is accepted.
  */
 export function applyCodexDaemonSocketGuard(
   config: string,
@@ -85,7 +86,7 @@ export function applyCodexDaemonSocketGuard(
     warnOncePerHome(
       overriddenHomesWarned,
       orcaOwnedHomePath,
-      `[codex-config] Your Codex config sets features.daemon_auto_start = true; Orca turns it off in its own Codex home ${orcaOwnedHomePath} so each Orca tab runs its own Codex server. ~/.codex/config.toml is unchanged.`
+      `[codex-config] A Codex config sets features.daemon_auto_start = true; Orca turns it off in its own Codex home ${orcaOwnedHomePath} so each Orca tab runs its own Codex server. Orca never edits ~/.codex/config.toml; a value set only inside ${orcaOwnedHomePath} is replaced there.`
     )
   }
   if (!applied && !/\bdaemon_auto_start\s*=\s*false\b/.test(guarded)) {

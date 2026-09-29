@@ -7,7 +7,7 @@ import { prepareLegacySharedCodexSessionResume } from '../codex/codex-legacy-ses
 import { ManagedCodexHomeTemporarilyUnavailableError } from '../codex-accounts/host-codex-managed-home-ownership'
 import { codexHookService } from '../codex/hook-service'
 import { ensureRealHomeCodexHookState } from '../codex/codex-real-home-hook-install'
-import { ensureCodexDaemonSocketGuard } from '../codex/codex-config-mirror'
+import { ensureCodexDaemonSocketGuard } from '../codex/codex-owned-home-daemon-guard'
 import { isAgentStatusHooksEnabledForAgent } from '../agent-hooks/managed-agent-hook-controls'
 import { markCodexProjectTrusted } from '../agent-trust-presets'
 import { awaitAgentTrustWriteWithinDeadline } from '../agent-trust-write-deadline'

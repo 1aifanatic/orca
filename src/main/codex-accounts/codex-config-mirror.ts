@@ -2,10 +2,8 @@ import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { parseWslUncPath } from '../../shared/wsl-paths'
-import {
-  ensureCodexDaemonSocketGuard,
-  syncSystemConfigIntoManagedCodexHome
-} from '../codex/codex-config-mirror'
+import { syncSystemConfigIntoManagedCodexHome } from '../codex/codex-config-mirror'
+import { ensureCodexDaemonSocketGuard } from '../codex/codex-owned-home-daemon-guard'
 import { readCodexTopLevelModelProvider } from '../codex/codex-model-provider-config'
 import type { Store } from '../persistence'
 import { toWindowsWslPath } from '../wsl'
