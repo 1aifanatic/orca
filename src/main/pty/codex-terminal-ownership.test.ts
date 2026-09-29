@@ -1,4 +1,4 @@
-import { chmod, mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { delimiter, isAbsolute, join } from 'node:path'
@@ -71,8 +71,10 @@ exit "\${TEST_EXIT_CODE:-0}"
   await writeFile(
     preflight,
     `#!/bin/sh
+[ -z "$TEST_PREFLIGHT_LOG" ] || printf '%s\\n' "$*" >> "$TEST_PREFLIGHT_LOG"
 [ "$4" = --launch-executable ] || exit 0
 [ "$5" = "$TEST_EXECUTABLE" ] || exit 11
+[ -z "$TEST_PREP_NOISE" ] || printf '%s\\n' "$TEST_PREP_NOISE"
 [ "$TEST_CAPABILITY" = yes ] || exit 0
 printf '%s\\n' --no-daemon
 `
@@ -113,6 +115,39 @@ for (const spec of shells) {
           )
         }
       })
+
+      it.each([
+        { command: "codex 'hello world'", flagged: true, argv: '<--no-daemon><hello world>' },
+        { command: 'codex exec hello', flagged: false, argv: '<exec><hello>' }
+      ])(
+        'prepares hooks in exactly one CLI call for $command, even when prep logs to stdout',
+        async ({ command, flagged, argv }) => {
+          const fixture = await sandbox()
+          const log = join(fixture.root, 'preflight-calls')
+          const result = await runProcess({
+            program: spec.shell,
+            args: [...spec.args, '-c', `${spec.wrapper}\n${command}`],
+            cwd: fixture.root,
+            env: {
+              ...process.env,
+              PATH: fixture.bin,
+              ORCA_CODEX_LAUNCH_PREFLIGHT: fixture.preflight,
+              TEST_EXECUTABLE: fixture.executable,
+              TEST_CAPABILITY: 'yes',
+              TEST_PREP_NOISE: '[codex-trust-grant] granted 1 managed hook entries',
+              TEST_PREFLIGHT_LOG: log,
+              TEST_SERVER_IDENTITY: join(fixture.root, 'identity')
+            },
+            timeoutMs: 5_000
+          })
+          expect(result.code, result.stderr).toBe(0)
+          expect(result.stdout.trim().split('\n').at(-1)).toBe(argv)
+          const calls = (await readFile(log, 'utf8')).trim().split('\n')
+          expect(calls).toHaveLength(1)
+          expect(calls[0].startsWith('agent hooks prepare-codex')).toBe(true)
+          expect(calls[0].includes('--launch-executable')).toBe(flagged)
+        }
+      )
 
       it.each([
         { command: "codex 'hello world'", capability: 'unknown', argv: '<hello world>' },

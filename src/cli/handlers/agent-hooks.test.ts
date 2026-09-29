@@ -439,40 +439,95 @@ describe('agent hooks CLI handler', () => {
   )
 
   it.each([true, false])(
-    'returns a launch flag only for proven executable support (%s)',
+    'prepares hooks and returns a launch flag only for proven executable support (%s)',
     async (supported) => {
       vi.stubEnv('ORCA_TERMINAL_HANDLE', 'term-test')
-      vi.stubEnv('WSL_DISTRO_NAME', 'Ubuntu')
-      callMock.mockResolvedValue({ result: { supported } })
+      vi.stubEnv('WSL_DISTRO_NAME', '')
+      getDefaultUserDataPathMock.mockReturnValue(userDataPath)
+      callMock.mockImplementation(async (method: string) => {
+        if (method === 'agentHooks.codexTerminalLaunchCapability') {
+          return { result: { supported } }
+        }
+        throw new Error('runtime unavailable')
+      })
       const output = vi.spyOn(process.stdout, 'write').mockReturnValue(true)
       await main(
         ['agent', 'hooks', 'prepare-codex', '--launch-executable', '/opt/codex'],
         userDataPath
       )
-      expect(callMock).toHaveBeenCalledExactlyOnceWith(
+      expect(callMock).toHaveBeenCalledWith(
         'agentHooks.codexTerminalLaunchCapability',
-        {
-          executablePath: '/opt/codex',
-          terminalHandle: 'term-test',
-          wslDistro: 'Ubuntu'
-        },
+        { executablePath: '/opt/codex', terminalHandle: 'term-test' },
         { timeoutMs: 2_000 }
       )
       expect(output.mock.calls.flat().join('')).toBe(supported ? '--no-daemon\n' : '')
-      expect(prepareManagedCodexHomeBeforeShellLaunchMock).not.toHaveBeenCalled()
+      // Why: the wrapper makes this its only CLI call for an interactive launch.
+      expect(prepareManagedCodexHomeBeforeShellLaunchMock).toHaveBeenCalledOnce()
     }
   )
 
+  it('routes a WSL pane launch to both WSL hook prep and the distro capability', async () => {
+    vi.stubEnv('ORCA_TERMINAL_HANDLE', 'term-test')
+    vi.stubEnv('WSL_DISTRO_NAME', 'Ubuntu')
+    callMock.mockImplementation(async (method: string) =>
+      method === 'agentHooks.codexTerminalLaunchCapability'
+        ? { result: { supported: true } }
+        : { result: { state: 'installed' } }
+    )
+    const output = vi.spyOn(process.stdout, 'write').mockReturnValue(true)
+    await main(
+      ['agent', 'hooks', 'prepare-codex', '--launch-executable', '/opt/codex'],
+      userDataPath
+    )
+    expect(callMock).toHaveBeenCalledTimes(2)
+    expect(callMock).toHaveBeenCalledWith(
+      'agentHooks.codexTerminalLaunchCapability',
+      { executablePath: '/opt/codex', terminalHandle: 'term-test', wslDistro: 'Ubuntu' },
+      { timeoutMs: 2_000 }
+    )
+    expect(callMock).toHaveBeenCalledWith(
+      'agentHooks.prepareCodexForWslPane',
+      expect.objectContaining({ wslDistro: 'Ubuntu' }),
+      { timeoutMs: 50_000 }
+    )
+    expect(output.mock.calls.flat().join('')).toBe('--no-daemon\n')
+    expect(prepareManagedCodexHomeBeforeShellLaunchMock).not.toHaveBeenCalled()
+  })
+
+  it('returns the launch verdict even when hook prep fails', async () => {
+    vi.stubEnv('WSL_DISTRO_NAME', '')
+    getDefaultUserDataPathMock.mockReturnValue(userDataPath)
+    callMock.mockImplementation(async (method: string) => {
+      if (method === 'agentHooks.codexTerminalLaunchCapability') {
+        return { result: { supported: true } }
+      }
+      throw new Error('runtime unavailable')
+    })
+    prepareManagedCodexHomeBeforeShellLaunchMock.mockRejectedValue(new Error('trust write failed'))
+    const output = vi.spyOn(process.stdout, 'write').mockReturnValue(true)
+    await main(
+      ['agent', 'hooks', 'prepare-codex', '--launch-executable', '/opt/codex'],
+      userDataPath
+    )
+    expect(output.mock.calls.flat().join('')).toBe('--no-daemon\n')
+  })
+
   it('returns no launch flag when the runtime is older or unreachable, without retrying', async () => {
+    vi.stubEnv('WSL_DISTRO_NAME', '')
+    getDefaultUserDataPathMock.mockReturnValue(userDataPath)
     callMock.mockRejectedValue(new Error('method_not_found'))
     const output = vi.spyOn(process.stdout, 'write').mockReturnValue(true)
     await main(
       ['agent', 'hooks', 'prepare-codex', '--launch-executable', '/opt/codex'],
       userDataPath
     )
-    expect(callMock).toHaveBeenCalledOnce()
+    expect(
+      callMock.mock.calls.filter(
+        ([method]) => method === 'agentHooks.codexTerminalLaunchCapability'
+      )
+    ).toHaveLength(1)
     expect(output).not.toHaveBeenCalled()
-    expect(prepareManagedCodexHomeBeforeShellLaunchMock).not.toHaveBeenCalled()
+    expect(prepareManagedCodexHomeBeforeShellLaunchMock).toHaveBeenCalledOnce()
   })
 
   it('prepares managed Codex trust with the current hooks setting', async () => {

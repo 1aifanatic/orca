@@ -84,15 +84,18 @@ if [[ -n "\${ORCA_CODEX_LAUNCH_PREFLIGHT:-}" && -x "\${ORCA_CODEX_LAUNCH_PREFLIG
   # Why the function reserved word: it suppresses alias expansion of the name,
   # which otherwise rewrites this header at parse time and aborts the whole file.
   function codex {
-    "\${ORCA_CODEX_LAUNCH_PREFLIGHT}" agent hooks prepare-codex >/dev/null 2>&1 || :
-    local __orca_executable __orca_flag
+    local __orca_executable __orca_flag=''
     __orca_executable="$(__orca_codex_path)"
+    # Why one CLI call: it prepares hooks and answers capability together.
     if [ -n "$__orca_executable" ] && [ -x "$__orca_executable" ] && __orca_codex_interactive "$@"; then
       __orca_flag="$("\${ORCA_CODEX_LAUNCH_PREFLIGHT}" agent hooks prepare-codex --launch-executable "$__orca_executable" --launch-wsl-distro "\${WSL_DISTRO_NAME:-}" 2>/dev/null)" || __orca_flag=''
-      if [ "$__orca_flag" = --no-daemon ]; then
-        "$__orca_executable" --no-daemon "$@"
-        return $?
-      fi
+    else
+      "\${ORCA_CODEX_LAUNCH_PREFLIGHT}" agent hooks prepare-codex >/dev/null 2>&1 || :
+    fi
+    # Why the last line: hook prep may log to stdout before the verdict.
+    if [ "\${__orca_flag##*$'\\n'}" = --no-daemon ]; then
+      "$__orca_executable" --no-daemon "$@"
+      return $?
     fi
     command codex "$@"
   }
@@ -109,14 +112,16 @@ export function getFishCodexShellLaunchPreflight(): string {
 set -l __orca_codex_type (type -t codex 2>/dev/null)
 if test -x "$ORCA_CODEX_LAUNCH_PREFLIGHT"; and test "$__orca_codex_type" = file
   function codex
-    command "$ORCA_CODEX_LAUNCH_PREFLIGHT" agent hooks prepare-codex >/dev/null 2>&1; or true
     set -l executable (command -v codex 2>/dev/null)
+    set -l flag
     if test -n "$executable"; and __orca_codex_interactive $argv
-      set -l flag (command "$ORCA_CODEX_LAUNCH_PREFLIGHT" agent hooks prepare-codex --launch-executable "$executable" --launch-wsl-distro "$WSL_DISTRO_NAME" 2>/dev/null)
-      if test "$flag" = --no-daemon
-        command "$executable" --no-daemon $argv
-        return $status
-      end
+      set flag (command "$ORCA_CODEX_LAUNCH_PREFLIGHT" agent hooks prepare-codex --launch-executable "$executable" --launch-wsl-distro "$WSL_DISTRO_NAME" 2>/dev/null)
+    else
+      command "$ORCA_CODEX_LAUNCH_PREFLIGHT" agent hooks prepare-codex >/dev/null 2>&1; or true
+    end
+    if set -q flag[1]; and test "$flag[-1]" = --no-daemon
+      command "$executable" --no-daemon $argv
+      return $status
     end
     command codex $argv
   end
@@ -130,22 +135,21 @@ $orcaCodexCommand = Get-Command codex -ErrorAction SilentlyContinue | Select-Obj
 if ($env:ORCA_CODEX_LAUNCH_PREFLIGHT -and $orcaCodexCommand -and
     $orcaCodexCommand.CommandType -in @("Application", "ExternalScript")) {
     function Global:codex {
+        $orcaCodexExecutable = Get-Command codex -CommandType Application,ExternalScript -ErrorAction SilentlyContinue | Select-Object -First 1
+        $orcaCodexFlags = @()
         try {
-            & $env:ORCA_CODEX_LAUNCH_PREFLIGHT agent hooks prepare-codex *> $null
+            if ($orcaCodexExecutable -and (__OrcaCodexInteractive -Tokens $args)) {
+                $flag = & $env:ORCA_CODEX_LAUNCH_PREFLIGHT agent hooks prepare-codex --launch-executable $orcaCodexExecutable.Source 2>$null
+                if ($LASTEXITCODE -eq 0 -and @($flag)[-1] -eq '--no-daemon') { $orcaCodexFlags = @('--no-daemon') }
+            } else {
+                & $env:ORCA_CODEX_LAUNCH_PREFLIGHT agent hooks prepare-codex *> $null
+            }
         } catch {
         }
-        $orcaCodexExecutable = Get-Command codex -CommandType Application,ExternalScript -ErrorAction SilentlyContinue | Select-Object -First 1
         if (-not $orcaCodexExecutable) {
             Write-Error "codex executable not found"
             $global:LASTEXITCODE = 127
             return
-        }
-        $orcaCodexFlags = @()
-        if (__OrcaCodexInteractive -Tokens $args) {
-            try {
-                $flag = & $env:ORCA_CODEX_LAUNCH_PREFLIGHT agent hooks prepare-codex --launch-executable $orcaCodexExecutable.Source 2>$null
-                if ($LASTEXITCODE -eq 0 -and $flag -eq '--no-daemon') { $orcaCodexFlags = @('--no-daemon') }
-            } catch { }
         }
         & $orcaCodexExecutable.Source @orcaCodexFlags @args
         $global:LASTEXITCODE = $LASTEXITCODE

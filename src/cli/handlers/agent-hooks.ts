@@ -195,52 +195,70 @@ async function setAgentHooksEnabled(
   }
 }
 
+async function prepareCodexBeforeShellLaunch(client: RuntimeClient): Promise<void> {
+  if (process.env.WSL_DISTRO_NAME?.trim()) {
+    try {
+      await client.call(
+        'agentHooks.prepareCodexForWslPane',
+        {
+          codexHome: process.env.CODEX_HOME ?? '',
+          orcaCodexHome: process.env.ORCA_CODEX_HOME ?? '',
+          wslDistro: process.env.WSL_DISTRO_NAME
+        },
+        { timeoutMs: WSL_CODEX_PREPARE_TIMEOUT_MS }
+      )
+    } catch {
+      // Best effort: old or unavailable runtimes must not block Codex launch.
+    }
+    return
+  }
+  const settings = await readHookSettings(client)
+  await prepareManagedCodexHomeBeforeShellLaunch({
+    userDataPath: getDefaultUserDataPath(),
+    hooksEnabled: settings.agentStatusHooksEnabled && !settings.disabledTuiAgents.includes('codex')
+  })
+}
+
+async function readCodexLaunchCapability(
+  client: RuntimeClient,
+  executablePath: string,
+  wslDistroFlag: string | boolean | undefined
+): Promise<boolean> {
+  const wslDistro = wslDistroFlag ?? process.env.WSL_DISTRO_NAME
+  try {
+    const response = await client.call<{ supported?: boolean }>(
+      'agentHooks.codexTerminalLaunchCapability',
+      {
+        executablePath,
+        terminalHandle: process.env.ORCA_TERMINAL_HANDLE ?? '',
+        ...(typeof wslDistro === 'string' && wslDistro ? { wslDistro } : {})
+      },
+      { timeoutMs: 2_000 }
+    )
+    return response.result.supported === true
+  } catch {
+    // Older or unreachable hosts retain their existing launch behavior.
+    return false
+  }
+}
+
 export const AGENT_HOOK_HANDLERS: Record<string, CommandHandler> = {
   'agent hooks prepare-codex': async ({ client, flags }) => {
-    const executablePath = flags.get('launch-executable')
-    if (typeof executablePath === 'string') {
-      const wslDistro = flags.get('launch-wsl-distro') ?? process.env.WSL_DISTRO_NAME
-      try {
-        const response = await client.call<{ supported?: boolean }>(
-          'agentHooks.codexTerminalLaunchCapability',
-          {
-            executablePath,
-            terminalHandle: process.env.ORCA_TERMINAL_HANDLE ?? '',
-            ...(typeof wslDistro === 'string' && wslDistro ? { wslDistro } : {})
-          },
-          { timeoutMs: 2_000 }
-        )
-        if (response.result.supported === true) {
-          process.stdout.write('--no-daemon\n')
-        }
-      } catch {
-        /* Older or unreachable hosts retain their existing launch behavior. */
-      }
-      return
-    }
     rejectRemoteHookSelection(flags)
-    if (process.env.WSL_DISTRO_NAME?.trim()) {
-      try {
-        await client.call(
-          'agentHooks.prepareCodexForWslPane',
-          {
-            codexHome: process.env.CODEX_HOME ?? '',
-            orcaCodexHome: process.env.ORCA_CODEX_HOME ?? '',
-            wslDistro: process.env.WSL_DISTRO_NAME
-          },
-          { timeoutMs: WSL_CODEX_PREPARE_TIMEOUT_MS }
-        )
-      } catch {
-        // Best effort: old or unavailable runtimes must not block Codex launch.
-      }
+    const executablePath = flags.get('launch-executable')
+    if (typeof executablePath !== 'string') {
+      await prepareCodexBeforeShellLaunch(client)
       return
     }
-    const settings = await readHookSettings(client)
-    await prepareManagedCodexHomeBeforeShellLaunch({
-      userDataPath: getDefaultUserDataPath(),
-      hooksEnabled:
-        settings.agentStatusHooksEnabled && !settings.disabledTuiAgents.includes('codex')
-    })
+    // Why one process: each CLI start sits in front of the Codex launch, so the
+    // wrapper asks for hook prep and launch capability in a single call.
+    const [supported] = await Promise.all([
+      readCodexLaunchCapability(client, executablePath, flags.get('launch-wsl-distro')),
+      prepareCodexBeforeShellLaunch(client).catch(() => undefined)
+    ])
+    if (supported) {
+      process.stdout.write('--no-daemon\n')
+    }
   },
   'agent hooks status': async ({ json, flags }) => {
     rejectRemoteHookSelection(flags)
