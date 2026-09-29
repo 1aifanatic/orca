@@ -25,12 +25,14 @@ import {
   NativeChatWaitingTranscriptItems
 } from './NativeChatTranscriptItems'
 import type { NativeChatTranscriptRowContext } from './NativeChatTranscriptRow'
+import type { NativeChatDeliveryNotice } from './NativeChatMessageRow'
 import {
   buildNativeChatTranscriptSlots,
   splitNativeChatSlotsWaitingBehindLiveTurn,
   nativeChatSlotIndexOf
 } from './native-chat-transcript-slots'
 import { useNativeChatTranscriptWindow } from './use-native-chat-transcript-window'
+import { useNativeChatTurnMembership } from './use-native-chat-turn-membership'
 import { useNativeChatTranscriptScroll } from './use-native-chat-transcript-scroll'
 import { useNativeChatOlderHistoryAutoload } from './use-native-chat-older-history-autoload'
 import { NativeChatOlderHistoryRow } from './NativeChatOlderHistoryRow'
@@ -47,8 +49,8 @@ import type {
   AgentJournalRenderItem,
   AgentJournalSubmission
 } from '../../../../shared/agent-session-journal-types'
-import { nativeChatTurnMembership } from '../../../../shared/native-chat-turn-membership'
 import { isStructuredAgentSessionThinking } from '../../../../shared/structured-agent-session-live-turn'
+import { nativeChatSubagentLabels } from '../../../../shared/native-chat-subagent-attribution'
 import type { NativeChatSettledTurns } from '../../../../shared/native-chat-turn-status'
 import {
   nativeChatTurnDiffs,
@@ -78,7 +80,7 @@ export function NativeChatMessageList({
   allowFileUriLinks = false,
   workingStartedAt,
   settledTurns,
-  failedDeliveryMessageIds,
+  deliveryNotices,
   showTurnStatus = true,
   showLiveTurnActivity = true,
   turnActivity,
@@ -101,7 +103,7 @@ export function NativeChatMessageList({
   settledTurns?: NativeChatSettledTurns
   onLinkClick?: CommentMarkdownLinkClickHandler
   allowFileUriLinks?: boolean
-  failedDeliveryMessageIds?: ReadonlySet<string>
+  deliveryNotices?: ReadonlyMap<string, NativeChatDeliveryNotice>
   /** Turn timing and disclosure are available on structured agent sessions. */
   showTurnStatus?: boolean
   /** Whether the active turn's foreground activity row should be visible. */
@@ -157,20 +159,16 @@ export function NativeChatMessageList({
     // Structured sessions show goal state in the banner above the composer.
     return journalItems ? omitNativeChatThreadGoalRows(projected) : projected
   }, [journalItems, projectMessages, session.messages])
+  const subagentLabels = useMemo(() => nativeChatSubagentLabels(messages), [messages])
   const taskListPredecessors = useMemo(() => nativeChatTaskListPredecessors(messages), [messages])
   const taskListState = useMemo(() => nativeChatTaskListState(messages), [messages])
   const showTypingIndicator = showTurnStatus
     ? isWorking
     : shouldShowNativeChatTypingIndicator({ messages, isWorking })
-  // Resolve each row's turn, and which turn is live, once from the turn record when the host
-  // states scopes.
-  const { turnKeys, liveTurnKey: currentTurnKey } = useMemo(
-    () =>
-      nativeChatTurnMembership(
-        messages,
-        journalItems ? { items: journalItems, submissions: journalSubmissions ?? [] } : null
-      ),
-    [journalItems, journalSubmissions, messages]
+  const { turnKeys, liveTurnKey: currentTurnKey } = useNativeChatTurnMembership(
+    messages,
+    journalItems,
+    journalSubmissions
   )
   const turnDiffs = useMemo(
     () =>
@@ -206,7 +204,8 @@ export function NativeChatMessageList({
         showTurnStatus,
         expandedTurnKeys: expandedTurnIds,
         isWorking,
-        lifecycleWorking
+        lifecycleWorking,
+        subagentLabels
       }),
     [
       currentTurnKey,
@@ -216,6 +215,7 @@ export function NativeChatMessageList({
       messages,
       receipts,
       showTurnStatus,
+      subagentLabels,
       turnDiffs,
       turnKeys,
       turnStatuses
@@ -338,7 +338,7 @@ export function NativeChatMessageList({
       revealedDiff,
       taskListPredecessors,
       expandedTurnIds,
-      failedDeliveryMessageIds,
+      deliveryNotices,
       allowFileUriLinks,
       runtimeContext,
       onLinkClick,
@@ -350,7 +350,7 @@ export function NativeChatMessageList({
       allowFileUriLinks,
       expandSignal,
       expandedTurnIds,
-      failedDeliveryMessageIds,
+      deliveryNotices,
       onLinkClick,
       revealDiff,
       revealedDiff,

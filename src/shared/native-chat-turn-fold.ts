@@ -9,6 +9,7 @@
 // Shared because desktop and mobile both draw this disclosure, and a fold that
 // hides a different row on each surface is the same bug twice.
 
+import { isRootAgentJournalItem } from './agent-session-journal-producer'
 import type { NativeChatRole } from './native-chat-types'
 
 /** What the fold needs to know about one transcript row. Deliberately not a
@@ -27,6 +28,8 @@ export type NativeChatTurnFoldRow = {
   /** Whether the row reports how its turn ended — an error, or a compaction's result. A fold
    *  that hid it would leave the turn's status as the only trace of why it stopped. */
   reportsTurnOutcome: boolean
+  /** The subagent that produced the row. Absent ⇒ the session's own agent. */
+  agentId?: string
 }
 
 export type NativeChatTurnFold = {
@@ -42,14 +45,21 @@ export const NATIVE_CHAT_EMPTY_TURN_FOLD: NativeChatTurnFold = {
   foldableTurnKeys: new Set()
 }
 
-/** The index of each turn's answer: its last assistant row that renders prose.
- *  A turn with no such row has no answer, and folds whole. */
+/** The index of each turn's answer: the last prose the session's own agent
+ *  wrote. A subagent that is still narrating after its parent's last word would
+ *  otherwise stand as the turn's only visible reply. A turn with no such row has
+ *  no answer, and folds whole. */
 export function nativeChatTurnAnswerRows(
   rows: readonly NativeChatTurnFoldRow[]
 ): ReadonlyMap<string, number> {
   const answers = new Map<string, number>()
   for (const [index, row] of rows.entries()) {
-    if (row.turnKey !== undefined && row.role === 'assistant' && row.rendersProse) {
+    if (
+      row.turnKey !== undefined &&
+      row.role === 'assistant' &&
+      row.rendersProse &&
+      isRootAgentJournalItem(row)
+    ) {
       answers.set(row.turnKey, index)
     }
   }

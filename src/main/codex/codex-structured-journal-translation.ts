@@ -11,9 +11,8 @@ import { restoreCodexJournalThread } from './codex-structured-journal-translatio
 import { CodexJournalTurnBoundaries } from './codex-structured-journal-translation-turn-boundaries'
 import { createCodexJournalTranslatorWriters } from './codex-structured-journal-translation-writers'
 import { publishCodexTurnLifecycle } from './codex-structured-journal-translation-turns'
-import { readCodexProviderVerdict } from './codex-structured-journal-provider-verdicts'
 import { createCodexThreadItemRouter } from './codex-structured-journal-thread-item-routing'
-import { readCodexTurnId } from './codex-structured-thread-facts'
+import { codexThreadStoppedRunning, readCodexTurnId } from './codex-structured-thread-facts'
 import type { CodexStructuredSessionEvent } from './codex-structured-session-adapter'
 
 export type {
@@ -45,8 +44,7 @@ export function createCodexJournalTranslator(
     items,
     compactions,
     goals,
-    prompts,
-    settleOversizedNotification
+    prompts
   } = createCodexJournalTranslatorWriters(deps)
   const flushStreams = (): CodexJournalTranslationAdmission =>
     items.streams.flush() ? CODEX_JOURNAL_ADMITTED : { accepted: false, reason: 'backpressure' }
@@ -209,10 +207,6 @@ export function createCodexJournalTranslator(
         )
       }
       if (event.type === 'provider-frame') {
-        const settlement = settleOversizedNotification(event)
-        if (settlement && !settlement.accepted) {
-          return settlement
-        }
         return genericFrames.appendUnhandled(event.kind, event.payload, event.threadId)
       }
       if (event.method === 'turn/started' || event.method === 'turn/completed') {
@@ -253,28 +247,24 @@ export function createCodexJournalTranslator(
           return publishActivity(event, routed)
         }
       }
-      const verdict = readCodexProviderVerdict(event.method, event.params)
+      // A thread that stopped running settles no open turn: Codex clears `running`
+      // on every error, and an open turn ends on its `turn/completed`. It releases
+      // a send whose dispatch was never answered, which nothing else re-derives live.
       if (
-        verdict === 'thread-stopped-running' &&
+        event.method === 'thread/status/changed' &&
+        codexThreadStoppedRunning(event.params) &&
         event.threadId === (deps.primaryThreadId?.() ?? null)
       ) {
         primaryThreadStoppedRunning = true
         reportPrimaryThreadStoppedRunning()
       }
-      // The row carries the provider's sentence and is written first, so it lands
-      // inside the turn this same frame is about to end.
+      // A turn-ending `error` is a row inside the turn it names; the failed
+      // `turn/completed` Codex sends after it is that turn's end.
       const unhandled = genericFrames.appendUnhandled(
         `notification:${event.method}`,
         event.params,
         event.threadId
       )
-      if (unhandled.accepted && verdict === 'turn-failed') {
-        const failed = turnBoundaries.fail(event)
-        if (!failed.accepted) {
-          return failed
-        }
-        reportPrimaryThreadStoppedRunning()
-      }
       return publishActivity(event, unhandled)
     },
     beginCommand: (command) => commands.begin(command),

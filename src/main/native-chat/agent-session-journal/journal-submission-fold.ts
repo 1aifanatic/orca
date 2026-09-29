@@ -31,7 +31,13 @@ export function applyJournalSubmission(
   const turnScope = row.handoverRecorded
     ? AGENT_JOURNAL_THREAD_SCOPE
     : statedOrDerivedTurnScope(state, row)
-  upsertJournalItem(state, itemId, 0, journalRenderItem(itemId, 0, row.body, row, turnScope))
+  upsertJournalItem(
+    state,
+    itemId,
+    0,
+    journalRenderItem(itemId, 0, row.body, row, turnScope),
+    row.fence
+  )
 }
 
 /** A queued message joins the conversation where it was handed over, not where it was accepted:

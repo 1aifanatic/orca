@@ -8,7 +8,6 @@ import { CodexJournalGenericFrames } from './codex-structured-journal-generic-fr
 import { CodexJournalGoals } from './codex-structured-journal-goals'
 import { CodexJournalItems } from './codex-structured-journal-items'
 import { CodexJournalPrompts } from './codex-structured-journal-prompts'
-import { createCodexOversizedNotificationSettler } from './codex-structured-journal-translation-frames'
 import { CodexJournalActiveTurns } from './codex-structured-journal-translation-turn-state'
 import { CodexJournalTurnScopes } from './codex-journal-turn-scopes'
 import { CodexJournalCommandTurn } from './codex-journal-command-turn'
@@ -58,7 +57,6 @@ export function createCodexJournalTranslatorWriters(deps: CodexJournalTranslator
       producerDeps,
       (threadId, itemId) => items.detailFor(threadId, itemId),
       activeTurn
-    ),
-    settleOversizedNotification: createCodexOversizedNotificationSettler(producerDeps, items)
+    )
   }
 }
