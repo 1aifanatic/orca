@@ -12,7 +12,7 @@ export type QueuedMessageSubmissionVerdict =
   | 'terminal-not-refused'
   /** Absent from the current epoch. */
   | 'absent'
-  /** Effectively rejected; the open-time repair returns it rather than pruning. */
+  /** Effectively rejected; the open-time repair settles it rather than pruning. */
   | 'rejected'
 
 /**

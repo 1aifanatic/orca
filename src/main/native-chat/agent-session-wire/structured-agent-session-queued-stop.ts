@@ -37,7 +37,9 @@ export function unsettledQueuedMessages(journal: AgentSessionJournal): QueuedMes
 
 /** Stop's queued-draft step, before the interrupt: hold the waiting frontier at
  *  the serialized stop step — sends accepted after it are new work, and
- *  `returned` rows never auto-send anyway. Stored on the rows, so the pause
+ *  `returned` rows never auto-send anyway. A consumed draft whose submission
+ *  the Stop then withdraws rejoins this hold at its own position, through the
+ *  journal's settlement of that withdrawal. Stored on the rows, so the pause
  *  survives handle eviction and restart. A user send made BEFORE this Stop no
  *  longer lifts anything, even if its turn still starts. */
 export async function holdQueuedMessagesForStop(

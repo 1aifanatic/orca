@@ -6,6 +6,7 @@
 // teardown and no idle sweep. The drain re-reads every gate inside its own
 // serialized step, so there is no loop state to disagree with the journal.
 
+import { randomUUID } from 'node:crypto'
 import type {
   AgentJournalMessageItem,
   AgentJournalRenderItem
@@ -14,7 +15,10 @@ import {
   QUEUED_MESSAGE_PAUSED_SEND_FAILED,
   type AgentSessionWireRefusal
 } from '../../../shared/agent-session-wire'
-import { isUnsettledQueuedMessage } from '../agent-session-journal/queued-message-table'
+import {
+  isUnsettledQueuedMessage,
+  queuedMessageNeedsFreshSubmissionId
+} from '../agent-session-journal/queued-message-table'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import { isStructuredAgentSessionMainAgentWorking } from '../../../shared/structured-agent-session-main-agent-working'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
@@ -328,10 +332,12 @@ export class StructuredAgentSessionQueuedMessageDrain {
     if (structuredQueueHold({ journal, record, fence }) !== null) {
       return
     }
+    // A draft a withdrawal sent back to waiting has spent its own id.
+    const submissionId = queuedMessageNeedsFreshSubmissionId(next) ? randomUUID() : next.messageId
     try {
       await journal.appendSubmission(
         {
-          clientMessageId: next.messageId,
+          clientMessageId: submissionId,
           payloadFingerprint: next.fingerprint,
           body: next.body,
           fence,
@@ -354,7 +360,7 @@ export class StructuredAgentSessionQueuedMessageDrain {
       throw error
     }
     // A draft is the user's own send, so its turn starting lifts a Stop's pause.
-    awaitUserSendTurn(session, journal.submission(next.messageId))
+    awaitUserSendTurn(session, journal.submission(submissionId))
     this.deps.wakeDelivery(sessionId)
   }
 }

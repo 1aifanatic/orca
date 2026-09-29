@@ -3,7 +3,7 @@
 // draft when the work settles, Stop holds the queue (never withdrawing text)
 // until a user send starts its turn and lifts the pause, /clear carries the
 // cards to its replacement session, and a refused conversion comes back as a
-// returned card.
+// returned card while a withdrawn one waits again.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -12,7 +12,6 @@ import {
   type AgentSessionQueuedMessage,
   type AgentSessionSubscribeEvent
 } from '../../../shared/agent-session-wire'
-import { DISPATCH_REJECTED_CANCELLED } from '../../../shared/structured-agent-session-dispatch-rejection'
 import { ConversationCommandParams } from '../../../shared/rpc-contract/structured-agent-session-params'
 import { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { JournalQueuedMessages } from '../agent-session-journal/journal-queued-messages'
@@ -372,17 +371,18 @@ describe('Stop and Delete', () => {
     return { draftId, release: () => release() }
   }
 
-  it("a Stop between consume and the agent's receipt leaves the text as a returned card", async () => {
+  it("a Stop between consume and the agent's receipt sends the draft back to waiting, paused like the rest", async () => {
     const { draftId, release } = await consumedButNotHandedOver()
     const stopped = await stop()
     release()
     expect(stopped).toMatchObject({ ok: true })
-    expect(await drafts()).toMatchObject([{ messageId: draftId, state: 'returned' }])
+    expect(await drafts()).toEqual([{ messageId: draftId, state: 'waiting', paused: true }])
+    // Nothing failed, so the card carries no refusal: it reads like any Stop-paused card.
     const page = await host.history({ sessionId: SESSION, direction: 'tail' })
-    expect(page.ok && page.page.queuedMessages?.[0]).toMatchObject({
-      returnedReason: DISPATCH_REJECTED_CANCELLED,
-      returnedRejection: { kind: 'cancelled' }
-    })
+    const card = page.ok ? page.page.queuedMessages?.[0] : undefined
+    expect(card?.pausedReason).toBe(QUEUED_MESSAGE_PAUSED_STOPPED)
+    expect(card).not.toHaveProperty('returnedReason')
+    expect(card).not.toHaveProperty('returnedRejection')
     expect(dispatch).toHaveBeenCalledTimes(1)
   })
 
