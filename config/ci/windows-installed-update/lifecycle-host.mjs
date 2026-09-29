@@ -2,7 +2,7 @@
 // Bundled by prepare.mjs so child processes go through src/shared/child-process.
 import { existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { createServer } from 'node:net'
-import { join } from 'node:path'
+import { join, win32 } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { runProcess, spawnProcess } from '../../../src/shared/child-process/run-process.ts'
 import { hashIdentity } from './installed-layout.mjs'
@@ -56,7 +56,16 @@ export async function uninstallEntries() {
   if (result.code !== 0) {
     throw new Error('Uninstall registry query failed')
   }
-  return JSON.parse(result.stdout.trim()).entries
+  return JSON.parse(result.stdout.trim()).entries.map((entry) => ({
+    ...entry,
+    location: entry.location || uninstallerDirectory(entry.quiet)
+  }))
+}
+
+// Per-user NSIS installs leave InstallLocation empty; the uninstaller lives in the install root.
+function uninstallerDirectory(quiet) {
+  const executable = /^"([^"]+\\Uninstall [^"\\]+\.exe)"/u.exec(quiet ?? '')?.[1]
+  return executable ? win32.dirname(executable) : ''
 }
 
 /** `extra` mirrors electron-updater's NsisUpdater argv; a fresh install passes none. */
