@@ -11,7 +11,8 @@ import type { CodexSession } from './codex-structured-session-state'
 import {
   AGENT_MODEL_CATALOG_FRESH_MS,
   AGENT_MODEL_CATALOG_VALIDATION_MIN_AGE_MS,
-  AgentModelCatalogStore
+  AgentModelCatalogStore,
+  type AgentModelCatalogProbe
 } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
 
 const FINGERPRINT = 'fp-session-account'
@@ -105,7 +106,8 @@ describe('Codex session options through the host catalog store', () => {
   it('restores a new chat from its own connection while a session-less probe hangs', async () => {
     const store = new AgentModelCatalogStore()
     // Opening the chat's picker kicked the host probe for this account; its Codex never answers.
-    void store.refresh(FINGERPRINT, 'codex', {}, () => new Promise<never>(() => {}))
+    const hungProbe: AgentModelCatalogProbe = () => new Promise<never>(() => {})
+    void store.refresh(FINGERPRINT, 'codex', hungProbe, () => hungProbe('/homes/a'))
     const request = vi.fn(async () => listAnswer('gpt-live'))
     const session = storeSession(request, store)
     // The acquire-time restore read: joining the probe would fail the chat at the probe's deadline.

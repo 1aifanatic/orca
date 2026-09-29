@@ -14,6 +14,8 @@ import {
   AGENT_MODEL_CATALOG_FAILURE_TTL_MS,
   AGENT_MODEL_CATALOG_FRESH_MS,
   AgentModelCatalogStore,
+  type AgentModelCatalogProbe,
+  type AgentModelCatalogSessionAccess,
   type AgentModelCatalogSuccess
 } from './agent-model-catalog-store'
 
@@ -32,6 +34,11 @@ function success(...ids: string[]): AgentModelCatalogSuccess {
     fastModeTierByModel: new Map([[ids[0]!, 'fast-tier']]),
     origin: 'live-session'
   }
+}
+
+/** A live session's per-spawn handle; each call is a distinct lister. */
+function liveLister(store: AgentModelCatalogStore): AgentModelCatalogSessionAccess {
+  return { store, fingerprint: 'fp-1', accountHomePath: '/homes/a' }
 }
 
 describe('agent model catalog store', () => {
@@ -79,7 +86,7 @@ describe('agent model catalog store', () => {
     const fetch = vi.fn(
       () => new Promise<AgentModelCatalogSuccess>((resolve) => (settle = resolve))
     )
-    const session = {}
+    const session = liveLister(store)
     const first = store.refresh('fp-1', 'codex', session, fetch)
     const second = store.refresh('fp-1', 'codex', session, fetch)
     expect(fetch).toHaveBeenCalledTimes(1)
@@ -92,15 +99,14 @@ describe('agent model catalog store', () => {
   it('never makes a live session wait on another lister that hangs', async () => {
     const store = new AgentModelCatalogStore()
     let failProbe!: (error: Error) => void
-    const probe = store.refresh(
-      'fp-1',
-      'codex',
-      {},
-      () => new Promise<AgentModelCatalogSuccess>((_resolve, reject) => (failProbe = reject))
-    )
+    const hungProbe: AgentModelCatalogProbe = () =>
+      new Promise<AgentModelCatalogSuccess>((_resolve, reject) => (failProbe = reject))
+    const probe = store.refresh('fp-1', 'codex', hungProbe, () => hungProbe('/homes/a'))
     expect(store.shouldRefresh('fp-1')).toBe(false)
 
-    const live = await store.refresh('fp-1', 'codex', {}, async () => success('gpt-live'))
+    const live = await store.refresh('fp-1', 'codex', liveLister(store), async () =>
+      success('gpt-live')
+    )
     expect(live!.models[0]!.id).toBe('gpt-live')
 
     // The probe still reports its own failure; the live listing it lost to stays served.
@@ -117,10 +123,10 @@ describe('agent model catalog store', () => {
     const slow = store.refresh(
       'fp-1',
       'codex',
-      {},
+      liveLister(store),
       () => new Promise<AgentModelCatalogSuccess>((resolve) => (settleSlow = resolve))
     )
-    await store.refresh('fp-1', 'codex', {}, async () => success('gpt-fast'))
+    await store.refresh('fp-1', 'codex', liveLister(store), async () => success('gpt-fast'))
     at += AGENT_MODEL_CATALOG_FRESH_MS
     expect(store.shouldRefresh('fp-1')).toBe(false)
 
@@ -133,7 +139,7 @@ describe('agent model catalog store', () => {
 
   it('records a failed refresh as a failure and resolves null without rejecting', async () => {
     const store = new AgentModelCatalogStore()
-    const entry = await store.refresh('fp-1', 'codex', {}, async () => {
+    const entry = await store.refresh('fp-1', 'codex', liveLister(store), async () => {
       throw new Error('no provider')
     })
     expect(entry).toBeNull()

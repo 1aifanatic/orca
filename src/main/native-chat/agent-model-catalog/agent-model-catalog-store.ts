@@ -38,8 +38,8 @@ export type AgentModelCatalogSuccess = {
 
 export type AgentModelCatalogProbe = (accountHomePath: string) => Promise<AgentModelCatalogSuccess>
 
-/** Who lists, by identity: a live session's own connection, or the session-less probe. */
-export type AgentModelCatalogLister = object
+/** Who lists, by identity: a live session's per-spawn handle, or the session-less probe. */
+export type AgentModelCatalogLister = AgentModelCatalogSessionAccess | AgentModelCatalogProbe
 
 type CatalogFailure = { detail: string; failedAt: number }
 

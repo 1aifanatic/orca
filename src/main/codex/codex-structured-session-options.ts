@@ -52,22 +52,17 @@ async function fetchCodexListingThroughStore(
   if (!access) {
     return fetchCodexModelCatalogListing({ connection: session.connection, timeoutMs })
   }
-  const entry = await access.store.refresh(
-    access.fingerprint,
-    'codex',
-    session.connection,
-    async () => {
-      const listing = await fetchCodexModelCatalogListing({
-        connection: session.connection,
-        timeoutMs
-      })
-      return {
-        models: listing.models,
-        fastModeTierByModel: listing.fastModeTierByModel,
-        origin: 'live-session'
-      }
+  const entry = await access.store.refresh(access.fingerprint, 'codex', access, async () => {
+    const listing = await fetchCodexModelCatalogListing({
+      connection: session.connection,
+      timeoutMs
+    })
+    return {
+      models: listing.models,
+      fastModeTierByModel: listing.fastModeTierByModel,
+      origin: 'live-session'
     }
-  )
+  })
   if (!entry) {
     throw new Error(access.store.failureDetail(access.fingerprint) ?? 'codex model listing failed')
   }
