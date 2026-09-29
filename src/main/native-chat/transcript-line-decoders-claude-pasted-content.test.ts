@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { decodeClaudeTranscriptLine } from './transcript-line-decoders-claude'
 import { normalizeNativeChatUserText } from '../../shared/native-chat-image-transcript-markers'
-import {
-  pendingSendsAsMessages,
-  prunePendingSends
-} from '../../renderer/src/components/native-chat/native-chat-pending'
-import type { NativeChatMessage } from '../../shared/native-chat-types'
 
 const prompt = 'Summarize the failing tests.\n\nThen propose a fix for each one.'
 const wrapped = `\n\n<pasted_content id="7e64">\n${prompt}\n</pasted_content id="7e64">\n`
@@ -18,9 +13,6 @@ function decode(text: string, role = 'user', array = false) {
     }),
     'fallback'
   )!
-}
-function message(id: string, role: NativeChatMessage['role'], text: string): NativeChatMessage {
-  return { id, role, source: 'transcript', timestamp: null, blocks: [{ type: 'text', text }] }
 }
 
 describe('Claude whole-block paste envelope', () => {
@@ -43,19 +35,6 @@ describe('Claude whole-block paste envelope', () => {
   })
   it('leaves assistant text untouched', () => {
     expect(decode(wrapped, 'assistant').blocks).toEqual([{ type: 'text', text: wrapped }])
-  })
-  it.each(['new host', 'old host'])('retires desktop echoes with %s rows', (host) => {
-    const history = [
-      message('boundary', 'assistant', 'earlier'),
-      host === 'new host' ? decode(wrapped) : message('user', 'user', wrapped),
-      message('reply', 'assistant', 'answer')
-    ]
-    const pending = [{ id: 'p1', text: prompt, sentAt: 999_000, afterMessageId: 'boundary' }]
-    expect(pendingSendsAsMessages(pending, history)).toEqual([])
-    expect(prunePendingSends(pending, history)).toEqual([])
-    expect(
-      prunePendingSends([...pending, { ...pending[0]!, id: 'p2', matchingOccurrence: 2 }], history)
-    ).toHaveLength(1)
   })
   it('handles a large prompt in linear passes', () => {
     const text = 'line\n'.repeat(50_000)

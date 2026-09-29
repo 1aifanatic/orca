@@ -14,10 +14,9 @@ import {
   clearConfirmDurationMs,
   clearThenWrite,
   clearUnsubmittedAgentInput,
-  sendNativeChatMessage,
-  type NativeChatSendHandle,
   type NativeChatSendOptions
-} from './native-chat-runtime-send'
+} from './native-chat-input-clear'
+import { sendNativeChatMessage, type NativeChatSendHandle } from './native-chat-runtime-send'
 
 export const NATIVE_CHAT_IMAGE_ATTACHMENT_SETTLE_MS = 300
 

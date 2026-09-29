@@ -2,10 +2,11 @@ import { sendRuntimePtyInputVerified } from '@/runtime/runtime-terminal-inspecti
 import type { getSettingsForAgentTabRuntimeOwner } from '@/lib/agent-paste-draft'
 import { enqueueNativeChatPtySend } from './native-chat-pty-send-queue'
 import {
+  clearConfirmDurationMs,
   clearThenWrite,
   clearUnsubmittedAgentInput,
   type NativeChatSendOptions
-} from './native-chat-runtime-send'
+} from './native-chat-input-clear'
 
 /** Observe write refusals without mistaking transport success for provider acceptance. */
 export function sendNativeChatObservedWrites(
@@ -16,7 +17,8 @@ export function sendNativeChatObservedWrites(
 ) {
   return enqueueNativeChatPtySend(
     ptyId,
-    writes.reduce((total, write) => total + write.delayBeforeMs, 0),
+    writes.reduce((total, write) => total + write.delayBeforeMs, 0) +
+      clearConfirmDurationMs(options),
     ({ isCancelled, delay, markSubmitted }) => {
       const writeAt = (index: number): void => {
         if (isCancelled()) {
