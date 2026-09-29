@@ -1,7 +1,8 @@
 # Ephemeral CI only. Preview ZIP server qualification, not inbox capability coverage.
-param([Parameter(Mandatory=$true)][string]$Receipt,[Parameter(Mandatory=$true)][string]$Archive,[scriptblock]$ProductionRouteProbe)
+param([Parameter(Mandatory=$true)][string]$Receipt,[Parameter(Mandatory=$true)][string]$Archive,[Parameter(Mandatory=$true)][ValidateSet('arm64','x64')][string]$Arch,[scriptblock]$ProductionRouteProbe)
 $ErrorActionPreference = 'Stop'
-$report = @{scope='Microsoft Win32-OpenSSH 10.0.0.0p2-Preview ARM64 private loopback authentication and stock cmd.exe dispatch; NOT inbox server or relay deployment'; status='running'; imageVersion=$env:ImageVersion; cleanup=@('not-confirmed'); globalBootstrapCleanup='Not qualified: service bootstrap may create ProgramData SSH and OpenSSH registry entries; disposable CI VM destruction is the boundary'; observations=@(); stages=@(); diagnosticCaptureFailures=@()}
+$target=@{arm64=@{os='Arm64';folder='OpenSSH-ARM64';machine='0xAA64';archive='698c6aec31c1dd0fb996206e8741f4531a97355686b5431ef347d531b07fcd42'};x64=@{os='X64';folder='OpenSSH-Win64';machine='0x8664';archive='23f50f3458c4c5d0b12217c6a5ddfde0137210a30fa870e98b29827f7b43aba5'}}[$Arch]
+$report = @{scope='Microsoft Win32-OpenSSH 10.0.0.0p2-Preview $Arch private loopback authentication and stock cmd.exe dispatch; NOT inbox server or relay deployment'; status='running'; imageVersion=$env:ImageVersion; cleanup=@('not-confirmed'); globalBootstrapCleanup='Not qualified: service bootstrap may create ProgramData SSH and OpenSSH registry entries; disposable CI VM destruction is the boundary'; observations=@(); stages=@(); diagnosticCaptureFailures=@()}
 $script:receiptWritten=$false
 function Write-Stage([string]$Stage) {
   $timestamp=[DateTime]::UtcNow.ToString('o')
@@ -18,7 +19,7 @@ function Write-Stage([string]$Stage) {
 }
 Write-Stage 'preflight-start'
 if(-not $script:receiptWritten){throw 'Initial progress receipt unavailable; refuse provisioning'}
-if ($env:GITHUB_ACTIONS -ne 'true' -or $env:ORCA_ISOLATED_SSH_CI -ne '1' -or [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString() -ne 'Arm64') { throw 'Requires isolated native ARM64 GitHub runner' }
+if ($env:GITHUB_ACTIONS -ne 'true' -or $env:ORCA_ISOLATED_SSH_CI -ne '1' -or [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString() -ne $target.os) { throw "Requires isolated native $Arch GitHub runner" }
 $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $admin) { throw 'Administrative private service/account setup required' }
 Write-Stage 'existing-server-query-start'
@@ -37,7 +38,7 @@ New-Item -ItemType Directory -Path $root | Out-Null
 Write-Stage 'private-directory-create-complete'
 $report.root=$root
 $createdUser=$false; $createdService=$false; $sid=$null; $ownedServerPid=$null
-$sshDir=Join-Path $root 'OpenSSH-ARM64'
+$sshDir=Join-Path $root $target.folder
 $sshdLog=Join-Path $root 'private-sshd.log'
 $serviceStartAttempt=$null
 function Diagnostic-Categories([string]$Text) {
@@ -119,7 +120,7 @@ function Machine([string]$Path){
 }
 try {
   Write-Stage 'preview-archive-verify-start'
-  $expectedArchive='698c6aec31c1dd0fb996206e8741f4531a97355686b5431ef347d531b07fcd42'
+  $expectedArchive=$target.archive
   if((Get-FileHash -LiteralPath $Archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expectedArchive){throw 'Preview archive hash mismatch'}
   $report.archiveSha256=$expectedArchive
   Write-Stage 'preview-archive-verify-complete'
@@ -128,7 +129,7 @@ try {
   [IO.Compression.ZipFile]::ExtractToDirectory($Archive,$root)
   Write-Stage 'preview-extract-complete'
   Write-Stage 'preview-native-input-verification-start'
-  $manifest=Get-Content -LiteralPath (Join-Path $PSScriptRoot 'preview-native-inputs.json') -Raw | ConvertFrom-Json
+  $manifest=Get-Content -LiteralPath (Join-Path $PSScriptRoot "preview-native-inputs-$Arch.json") -Raw | ConvertFrom-Json
   if($manifest.archiveSha256 -ne $expectedArchive -or $manifest.files.Count -ne 15){throw 'Preview input manifest mismatch'}
   $nativeFiles=@(Get-ChildItem -LiteralPath $sshDir -File | Where-Object {$_.Extension -in @('.exe','.dll')})
   if($nativeFiles.Count -ne $manifest.files.Count){throw 'Unexpected preview native input count'}
@@ -136,10 +137,10 @@ try {
   foreach($file in $nativeFiles){
     $expected=@($manifest.files | Where-Object name -eq $file.Name)
     if($expected.Count -ne 1 -or (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected[0].sha256){throw 'Preview native input hash mismatch'}
-    if((Machine $file.FullName) -ne '0xAA64'){throw 'Preview native input is not ARM64'}
+    if((Machine $file.FullName) -ne $target.machine){throw "Preview native input is not $Arch"}
     $signature=Get-AuthenticodeSignature -LiteralPath $file.FullName
     if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch '(?:^|, )O=Microsoft Corporation(?:,|$)'){throw 'Preview native input Microsoft signature invalid'}
-    $verified+=@{name=$file.Name;sha256=$expected[0].sha256;machine='0xAA64';signature='Valid';publisher=$signature.SignerCertificate.Subject}
+    $verified+=@{name=$file.Name;sha256=$expected[0].sha256;machine=$target.machine;signature='Valid';publisher=$signature.SignerCertificate.Subject}
   }
   $report.nativeInputs=$verified
   Write-Stage 'preview-native-input-verification-complete'

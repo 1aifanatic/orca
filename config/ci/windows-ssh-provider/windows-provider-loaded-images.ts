@@ -6,6 +6,9 @@ import { runProcess } from '../../shared/child-process/run-process'
 import { readWindowsProcessTableFresh } from '../windows/windows-process-table'
 import { WINDOWS_CONPTY_FILES } from '../../shared/windows-conpty-release'
 
+// Hashes for the runner's own architecture; the harness never cross-deploys.
+const providerHashes = WINDOWS_CONPTY_FILES[process.arch === 'x64' ? 'x64' : 'arm64']
+
 export async function inspectProviderImages(
   daemon: { pid: number; creationTimeMs?: number },
   relayDirectory: string
@@ -90,12 +93,12 @@ export async function inspectProviderImages(
     )
     assert.equal(
       createHash('sha256').update(readFileSync(image.path)).digest('hex'),
-      WINDOWS_CONPTY_FILES.arm64['OpenConsole.exe']
+      providerHashes['OpenConsole.exe']
     )
   }
   assert.equal(
     createHash('sha256').update(readFileSync(evidence.modules[0])).digest('hex'),
-    WINDOWS_CONPTY_FILES.arm64['conpty.dll']
+    providerHashes['conpty.dll']
   )
   const after = await readWindowsProcessTableFresh()
   for (const original of [daemon, ...consoles]) {
@@ -112,5 +115,5 @@ export async function inspectProviderImages(
       assert(typeof row.creationTimeMs === 'number', 'descendant cleanup identity unavailable')
       return { pid: row.pid, creationTimeMs: row.creationTimeMs }
     })
-  return { ...evidence, providerHashes: WINDOWS_CONPTY_FILES.arm64, daemon, descendantIdentities }
+  return { ...evidence, providerHashes, daemon, descendantIdentities }
 }

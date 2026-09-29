@@ -1,4 +1,4 @@
-name: Diagnostic stable Bun ARM SSH provider qualification
+name: Diagnostic stable Bun Windows SSH provider qualification
 on:
   push:
     branches: [OrcaWin/np-windows-ssh-provider-diagnostic]
@@ -7,7 +7,7 @@ permissions:
   contents: read
   actions: read
 concurrency:
-  group: arm-ssh-provider-${{ github.ref }}
+  group: windows-ssh-provider-${{ github.ref }}
   cancel-in-progress: false
 jobs:
   windows_watcher:
@@ -17,7 +17,17 @@ jobs:
       ref: 2084c58ba5410106ce61153a9fb16cdb4b6e5301
   qualify:
     needs: windows_watcher
-    runs-on: windows-11-arm
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: windows-11-arm
+            archive: OpenSSH-ARM64.zip
+          - arch: x64
+            runner: windows-2022
+            archive: OpenSSH-Win64.zip
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     env:
       ORCA_BACKGROUND_LAUNCH: '1'
@@ -63,29 +73,29 @@ jobs:
         shell: pwsh
         run: |
           $tools=Join-Path $pwd '.build/qualification-tools/config/ci/windows-ssh-provider'
-          node (Join-Path $tools 'verify-bun-output.mjs') candidate .build/producer . arm64 .build/ssh-provider-receipts/candidate.json $env:PRODUCER_RUN
+          node (Join-Path $tools 'verify-bun-output.mjs') candidate .build/producer . ${{ matrix.arch }} .build/ssh-provider-receipts/candidate.json $env:PRODUCER_RUN
           if($LASTEXITCODE -ne 0){throw 'Stable producer/candidate admission failed'}
           $receipt=(Resolve-Path .build/ssh-provider-receipts/candidate.json).Path
           $hash=(Get-FileHash -Algorithm SHA256 -LiteralPath $receipt).Hash.ToLowerInvariant()
           "CANDIDATE_RECEIPT=$receipt" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "CANDIDATE_RECEIPT_SHA256=$hash" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          @{candidateReceiptSha256=$hash;producerRun=$env:PRODUCER_RUN;product=$env:QUALIFICATION_SOURCE_SHA;candidateOverride=$true;expectedSourcePin=$false;scope='diagnostic in-memory ARM executable pin and private cache only'} | ConvertTo-Json | Set-Content .build/ssh-provider-receipts/admission.json
+          @{candidateReceiptSha256=$hash;producerRun=$env:PRODUCER_RUN;product=$env:QUALIFICATION_SOURCE_SHA;candidateOverride=$true;expectedSourcePin=$false;scope='diagnostic in-memory ${{ matrix.arch }} executable pin and private cache only'} | ConvertTo-Json | Set-Content .build/ssh-provider-receipts/admission.json
       - name: Build production relay artifacts and native process table
         shell: pwsh
         run: |
-          node config/scripts/build-cli-runtime.mjs --platform win32 --arch arm64
+          node config/scripts/build-cli-runtime.mjs --platform win32 --arch ${{ matrix.arch }}
           if($LASTEXITCODE -ne 0){throw 'CLI runtime build failed'}
-          node config/scripts/build-windows-process-tree-relay-addon.mjs --arch=arm64
+          node config/scripts/build-windows-process-tree-relay-addon.mjs --arch=${{ matrix.arch }}
           if($LASTEXITCODE -ne 0){throw 'Native process-table build failed'}
-          $env:ORCA_REQUIRE_RELAY_NATIVE_ADDONS='arm64'
+          $env:ORCA_REQUIRE_RELAY_NATIVE_ADDONS='${{ matrix.arch }}'
           node config/scripts/build-relay.mjs
           if($LASTEXITCODE -ne 0){throw 'Relay build failed'}
       - name: Run watcher fault harness with production-pinned CLI Bun
         shell: pwsh
         timeout-minutes: 5
         run: |
-          Write-Output 'Scope: production-pinned bundled CLI Bun; actual SSH provider qualification separately uses the admitted stable candidate.' | Tee-Object .build/ssh-provider-receipts/watcher-fault-arm64.log
-          node config/scripts/relay-watcher-fault-harness.mjs 2>&1 | Tee-Object -Append .build/ssh-provider-receipts/watcher-fault-arm64.log
+          Write-Output 'Scope: production-pinned bundled CLI Bun; actual SSH provider qualification separately uses the admitted stable candidate.' | Tee-Object .build/ssh-provider-receipts/watcher-fault-${{ matrix.arch }}.log
+          node config/scripts/relay-watcher-fault-harness.mjs 2>&1 | Tee-Object -Append .build/ssh-provider-receipts/watcher-fault-${{ matrix.arch }}.log
           if($LASTEXITCODE -ne 0){throw 'Production-pinned CLI Bun watcher fault harness failed'}
       - name: Parse and typecheck all fixture code before provisioning
         shell: pwsh
@@ -99,7 +109,7 @@ jobs:
           & (Join-Path $tools 'preview-ssh/test-preview-diagnostics.ps1')
           $copied=[Collections.Generic.List[string]]::new()
           try {
-            foreach($name in @('windows-arm-provider-route.test.ts','windows-provider-candidate.ts','windows-provider-repaint.ts','windows-provider-loaded-images.ts')){
+            foreach($name in @('windows-provider-route.test.ts','windows-provider-candidate.ts','windows-provider-repaint.ts','windows-provider-loaded-images.ts')){
               $destination=Join-Path $pwd "src/main/ssh/$name"
               if(Test-Path -LiteralPath $destination){throw 'Fixture destination already exists'}
               Copy-Item -LiteralPath (Join-Path $tools $name) -Destination $destination
@@ -116,23 +126,23 @@ jobs:
         run: |
           $tools=Join-Path $pwd '.build/qualification-tools/config/ci/windows-ssh-provider'
           $sourceRoot=$pwd.Path
-          $archive=Join-Path $env:RUNNER_TEMP 'preview-OpenSSH-ARM64.zip'
-          & "$env:WINDIR\System32\curl.exe" --fail --location --connect-timeout 15 --max-time 90 --output $archive 'https://github.com/PowerShell/Win32-OpenSSH/releases/download/10.0.0.0p2-Preview/OpenSSH-ARM64.zip'
+          $archive=Join-Path $env:RUNNER_TEMP 'preview-${{ matrix.archive }}'
+          & "$env:WINDIR\System32\curl.exe" --fail --location --connect-timeout 15 --max-time 90 --output $archive 'https://github.com/PowerShell/Win32-OpenSSH/releases/download/10.0.0.0p2-Preview/${{ matrix.archive }}'
           if($LASTEXITCODE -ne 0){throw 'SSH archive fetch failed'}
           $callback={param($user,$port,$identity,$known)
-            & (Join-Path $tools 'invoke-provider-route.ps1') -SourceRoot $sourceRoot -SourceCommit $env:QUALIFICATION_SOURCE_SHA -Username $user -Port $port -IdentityFile $identity -KnownHosts $known -ReceiptRoot "$env:RUNNER_TEMP\arm-provider-route" -CandidateReceipt $env:CANDIDATE_RECEIPT -CandidateReceiptSha256 $env:CANDIDATE_RECEIPT_SHA256
+            & (Join-Path $tools 'invoke-provider-route.ps1') -SourceRoot $sourceRoot -SourceCommit $env:QUALIFICATION_SOURCE_SHA -Username $user -Port $port -IdentityFile $identity -KnownHosts $known -ReceiptRoot "$env:RUNNER_TEMP\provider-route" -CandidateReceipt $env:CANDIDATE_RECEIPT -CandidateReceiptSha256 $env:CANDIDATE_RECEIPT_SHA256 -Arch '${{ matrix.arch }}'
           }.GetNewClosure()
-          & (Join-Path $tools 'preview-ssh/prove-preview-openssh.ps1') -Archive $archive -Receipt "$env:RUNNER_TEMP\arm-provider-server.json" -ProductionRouteProbe $callback 2>&1 | Tee-Object .build/ssh-provider-receipts/native-route.log
+          & (Join-Path $tools 'preview-ssh/prove-preview-openssh.ps1') -Archive $archive -Arch '${{ matrix.arch }}' -Receipt "$env:RUNNER_TEMP\provider-server.json" -ProductionRouteProbe $callback 2>&1 | Tee-Object .build/ssh-provider-receipts/native-route.log
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: stable-bun-arm-ssh-provider-receipts
+          name: stable-bun-${{ matrix.arch }}-ssh-provider-receipts
           path: |
             .build/ssh-provider-receipts/
             .build/producer/results/
             .build/producer/work/source-cache-receipt.json
             .build/producer/producer-run.json
-            ${{ runner.temp }}/arm-provider-server.json
-            ${{ runner.temp }}/arm-provider-route/production-route.json
-            ${{ runner.temp }}/arm-provider-route/repaint-events.json
+            ${{ runner.temp }}/provider-server.json
+            ${{ runner.temp }}/provider-route/production-route.json
+            ${{ runner.temp }}/provider-route/repaint-events.json
           retention-days: 7

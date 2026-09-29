@@ -274,13 +274,14 @@ it('does not retain unknown identifiers, paths, numeric source echoes or incompl
 })
 const configPath = process.env.ORCA_SSH_PROBE_CONFIG
 it(
-  'native ARM OpenSSH candidate provider preserves all settled rows and shell state',
+  'native OpenSSH candidate provider preserves all settled rows and shell state',
   { timeout: 600_000 },
   async () => {
     if (!configPath || !process.env.ORCA_SSH_PROBE_STATE)
       throw new Error('Explicit private SSH fixture configuration is required')
     expect(process.platform).toBe('win32')
-    expect(process.arch).toBe('arm64')
+    expect(['arm64', 'x64']).toContain(process.arch)
+    const platform = `win32-${process.arch}` as const
     const config = record(JSON.parse(readFileSync(configPath!, 'utf8')))
     const source = textField(config, 'sourceCommit')
     expect(source).toMatch(/^[a-f0-9]{40}$/)
@@ -289,7 +290,7 @@ it(
     const port = config.port
     if (typeof port !== 'number' || !Number.isInteger(port))
       throw new Error('Invalid private SSH port')
-    const instance = `arm-native-${randomUUID()}`
+    const instance = `${process.arch}-native-${randomUUID()}`
     const createConnection = (): SshConnection =>
       new SshConnection(
         {
@@ -347,7 +348,7 @@ it(
         instance
       )
       stage = 'artifact-and-runtime-identity'
-      expect(result.platform).toBe('win32-arm64')
+      expect(result.platform).toBe(platform)
       expect(result.nodePath?.toLowerCase()).toContain('bun')
       if (!result.remoteRelayDir) throw new Error('Missing actual remote relay directory')
       const artifactHashes: Record<string, string> = {}
@@ -358,7 +359,7 @@ it(
         ...RELAY_WINDOWS_CONPTY_FILENAMES
       ]) {
         const expected = createHash('sha256')
-          .update(readFileSync(join(process.cwd(), 'out', 'relay', 'win32-arm64', filename)))
+          .update(readFileSync(join(process.cwd(), 'out', 'relay', platform, filename)))
           .digest('hex')
         const actual = createHash('sha256')
           .update(readFileSync(join(result.remoteRelayDir, filename)))
@@ -370,7 +371,7 @@ it(
       const runtimePath = result.nodePath
       if (!runtimePath) throw new Error('Missing actual runtime executable')
       const runtimeHash = createHash('sha256').update(readFileSync(runtimePath)).digest('hex')
-      expect(runtimeHash).toBe(ORCAD_BUN_RELEASE_ASSETS['win32-arm64'].executableSha256)
+      expect(runtimeHash).toBe(ORCAD_BUN_RELEASE_ASSETS[platform].executableSha256)
       remoteRelayDirectory = result.remoteRelayDir
       deployedRuntime = runtimePath
       receipts.runtime = {

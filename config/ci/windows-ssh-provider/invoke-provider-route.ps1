@@ -7,7 +7,8 @@ param(
  [Parameter(Mandatory=$true)][string]$KnownHosts,
  [Parameter(Mandatory=$true)][string]$ReceiptRoot,
  [Parameter(Mandatory=$true)][string]$CandidateReceipt,
- [Parameter(Mandatory=$true)][string]$CandidateReceiptSha256
+ [Parameter(Mandatory=$true)][string]$CandidateReceiptSha256,
+ [Parameter(Mandatory=$true)][ValidateSet('arm64','x64')][string]$Arch
 )
 $ErrorActionPreference='Stop'
 if($env:GITHUB_ACTIONS -ne 'true' -or $env:ORCA_ISOLATED_SSH_CI -ne '1'){throw 'Disposable CI only'}
@@ -22,7 +23,7 @@ if($knownExisted){$priorKnown=[IO.File]::ReadAllBytes($knownPath)}
 try {
  $observed=(& git rev-parse HEAD).Trim()
  if($LASTEXITCODE -ne 0 -or $observed -ne $SourceCommit){throw 'Source checkout mismatch'}
- if(!(Test-Path 'out\relay\win32-arm64\relay.js')){throw 'Build real relay artifacts before server provisioning'}
+ if(!(Test-Path "out\relay\win32-$Arch\relay.js")){throw 'Build real relay artifacts before server provisioning'}
  New-Item -ItemType Directory -Path $ReceiptRoot -Force | Out-Null
  New-Item -ItemType Directory -Path (Split-Path $knownPath) -Force | Out-Null
  $pinned=[IO.File]::ReadAllText($KnownHosts)
@@ -35,13 +36,13 @@ try {
  $env:ORCA_RELAY_PATH=Join-Path $SourceRoot 'out\relay'
  $env:ORCA_SSH_PROBE_CONFIG=Join-Path $ReceiptRoot 'config.json'
  @{sourceCommit=$SourceCommit;observedSourceCommit=$observed;username=$Username;port=$Port;identityFile=$IdentityFile;candidateReceiptPath=$CandidateReceipt;candidateReceiptSha256=$CandidateReceiptSha256;receiptPath=(Join-Path $ReceiptRoot 'production-route.json')} | ConvertTo-Json | Set-Content $env:ORCA_SSH_PROBE_CONFIG
- foreach($name in @('windows-arm-provider-route.test.ts','windows-provider-candidate.ts','windows-provider-repaint.ts','windows-provider-loaded-images.ts')) {
+ foreach($name in @('windows-provider-route.test.ts','windows-provider-candidate.ts','windows-provider-repaint.ts','windows-provider-loaded-images.ts')) {
   $destination=Join-Path $SourceRoot "src\main\ssh\$name"
   if(Test-Path -LiteralPath $destination){throw 'Diagnostic source destination already exists'}
   Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination $destination
   $copiedPaths.Add($destination)
  }
- & node node_modules/vitest/vitest.mjs run --config config/vitest.config.ts src/main/ssh/windows-arm-provider-route.test.ts --no-file-parallelism --reporter=verbose
+ & node node_modules/vitest/vitest.mjs run --config config/vitest.config.ts src/main/ssh/windows-provider-route.test.ts --no-file-parallelism --reporter=verbose
  if($LASTEXITCODE -ne 0){throw 'Production SSH route qualification failed'}
  $result=Get-Content (Join-Path $ReceiptRoot 'production-route.json') -Raw | ConvertFrom-Json
  if(!$result.sameShellState -or !$result.cleanupVerified -or !$result.sourcePinRestored -or !$result.candidateAdmission.candidateOverride -or $result.repaint.koreanRows -ne 8 -or $result.repaint.latinRows -ne 8 -or !$result.repaint.exactRowsOnly -or !$result.repaint.provider.modules){throw 'Provider route cleanup/evidence incomplete'}

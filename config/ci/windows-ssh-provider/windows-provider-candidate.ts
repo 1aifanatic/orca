@@ -24,17 +24,19 @@ export function installCandidateOverride(config: Record<string, unknown>, state:
   assert.equal(receipt.patch, '276f475c90c6761c58b9f56b3f4bfafa079d0c29c5861b23d2320c9ff39c35fb')
   assert.equal(receipt.product, '2084c58ba5410106ce61153a9fb16cdb4b6e5301')
   assert.equal(String(receipt.producerRun), '36503596770')
-  assert.equal(receipt.architecture, 'arm64')
+  assert(process.arch === 'arm64' || process.arch === 'x64')
+  assert.equal(receipt.architecture, process.arch)
+  const platform = `win32-${process.arch}` as const
   assert(typeof receipt.binary === 'string' && /^[a-f0-9]{64}$/.test(receipt.sha256))
   assert.equal(
     createHash('sha256').update(readFileSync(receipt.binary)).digest('hex'),
     receipt.sha256
   )
-  const cache = join(state, 'orcad-artifacts', 'bun', `v${ORCAD_BUN_VERSION}`, 'win32-arm64')
+  const cache = join(state, 'orcad-artifacts', 'bun', `v${ORCAD_BUN_VERSION}`, platform)
   mkdirSync(cache, { recursive: true })
   copyFileSync(receipt.binary, join(cache, 'bun-runtime.exe'))
-  const original = ORCAD_BUN_RELEASE_ASSETS['win32-arm64'].executableSha256
-  ORCAD_BUN_RELEASE_ASSETS['win32-arm64'].executableSha256 = receipt.sha256
+  const original = ORCAD_BUN_RELEASE_ASSETS[platform].executableSha256
+  ORCAD_BUN_RELEASE_ASSETS[platform].executableSha256 = receipt.sha256
   return {
     receipt: {
       ...receipt,
@@ -45,7 +47,7 @@ export function installCandidateOverride(config: Record<string, unknown>, state:
       scope: 'diagnostic process only; private cache; production deployment validation retained'
     },
     restore: () => {
-      ORCAD_BUN_RELEASE_ASSETS['win32-arm64'].executableSha256 = original
+      ORCAD_BUN_RELEASE_ASSETS[platform].executableSha256 = original
     }
   }
 }
