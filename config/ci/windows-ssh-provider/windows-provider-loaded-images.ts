@@ -32,27 +32,44 @@ export async function inspectProviderImages(
   for (const row of consoles)
     assert(row.creationTimeMs, 'OpenConsole creation identity unavailable')
   // Scoped module/image query only; process enumeration uses the existing native table.
-  const script = `$ErrorActionPreference='Stop'; $daemon=[Diagnostics.Process]::GetProcessById(${daemon.pid}); $modules=@($daemon.Modules | Where-Object {$_.ModuleName -ieq 'conpty.dll'} | ForEach-Object {$_.FileName}); $images=@(${consoles.map((row) => row.pid).join(',')} | ForEach-Object { $p=[Diagnostics.Process]::GetProcessById($_); @{pid=$p.Id;path=$p.MainModule.FileName;creationTimeMs=([DateTimeOffset]$p.StartTime.ToUniversalTime()).ToUnixTimeMilliseconds()} }); @{modules=$modules;images=$images} | ConvertTo-Json -Depth 4 -Compress`
-  const result = await runProcess({
-    program: join(
-      process.env.SystemRoot ?? 'C:\\Windows',
-      'System32',
-      'WindowsPowerShell',
-      'v1.0',
-      'powershell.exe'
-    ),
-    args: ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script],
-    timeoutMs: 15000,
-    env: { ORCA_BACKGROUND_LAUNCH: '1' },
-    maxOutputBytes: 65536
-  })
-  if (result.timedOut || result.code !== 0) {
-    const stderr = result.stderr.replace(/[^\x20-\x7e\r\n]/g, '').slice(0, 512)
-    throw new Error(
-      `scoped provider module inspection failed (code=${String(result.code)} timedOut=${String(result.timedOut)} stderr=${stderr})`
-    )
+  const runInspection = async (script: string, label: string) => {
+    const result = await runProcess({
+      program: join(
+        process.env.SystemRoot ?? 'C:\\Windows',
+        'System32',
+        'WindowsPowerShell',
+        'v1.0',
+        'powershell.exe'
+      ),
+      args: ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script],
+      timeoutMs: 15000,
+      env: { ORCA_BACKGROUND_LAUNCH: '1' },
+      maxOutputBytes: 65536
+    })
+    if (result.timedOut || result.code !== 0) {
+      const stderr = result.stderr.replace(/[^\x20-\x7e\r\n]/g, '').slice(0, 512)
+      throw new Error(
+        `${label} inspection failed (code=${String(result.code)} timedOut=${String(result.timedOut)} stderr=${stderr})`
+      )
+    }
+    return JSON.parse(result.stdout)
   }
-  const evidence = JSON.parse(result.stdout)
+  const daemonEvidence = await runInspection(
+    `$ErrorActionPreference='Stop'; $p=[Diagnostics.Process]::GetProcessById(${daemon.pid}); @($p.Modules | Where-Object {$_.ModuleName -ieq 'conpty.dll'} | ForEach-Object {$_.FileName}) | ConvertTo-Json -Compress`,
+    'daemon module'
+  )
+  const imageEvidence = await Promise.all(
+    consoles.map((row) =>
+      runInspection(
+        `$ErrorActionPreference='Stop'; $p=[Diagnostics.Process]::GetProcessById(${row.pid}); @{pid=$p.Id;path=$p.MainModule.FileName;creationTimeMs=([DateTimeOffset]$p.StartTime.ToUniversalTime()).ToUnixTimeMilliseconds()} | ConvertTo-Json -Compress`,
+        `OpenConsole ${row.pid}`
+      )
+    )
+  )
+  const evidence = {
+    modules: Array.isArray(daemonEvidence) ? daemonEvidence : [daemonEvidence],
+    images: imageEvidence
+  }
   assert(Array.isArray(evidence.modules) && evidence.modules.length === 1)
   const samePath = (a: string, b: string) =>
     realpathSync(a).toLowerCase() === realpathSync(b).toLowerCase()
