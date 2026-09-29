@@ -239,9 +239,16 @@ function requireSubmission(
   return submission
 }
 
-/** Claude's echo accepts a send one sink write before its turn row lands, so read after the drain. */
-async function isMainAgentWorkingOnceFlushed(ctx: AgentSessionTurnContext): Promise<boolean> {
-  await ctx.flushStreamedEvents()
+/** Claude's echo accepts a send one sink write before its turn row lands, so read after the drain.
+ *  A failed drain reads working: bookkeeping never talks a Stop out of stopping. */
+export async function isMainAgentWorkingOnceFlushed(
+  ctx: Pick<AgentSessionTurnContext, 'journal' | 'fence' | 'flushStreamedEvents'>
+): Promise<boolean> {
+  try {
+    await ctx.flushStreamedEvents()
+  } catch {
+    return true
+  }
   return isStructuredAgentSessionMainAgentWorking(
     ctx.journal.activeTurnId(),
     ctx.journal.submissions(),

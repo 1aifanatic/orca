@@ -21,7 +21,6 @@ import type {
   AgentSessionThreadGoalChange,
   AgentSessionThreadGoalResult
 } from '../../../shared/agent-session-wire'
-import { isStructuredAgentSessionMainAgentWorking } from '../../../shared/structured-agent-session-main-agent-working'
 import {
   agentSessionFailureWords,
   type AgentJournalDispatchRejection
@@ -29,7 +28,7 @@ import {
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import type { AgentSessionPromptRequest } from './structured-agent-session-turns-prompt'
 import { threadGoalPlan } from './structured-agent-session-thread-goal'
-import { performCancel } from './structured-agent-session-turns'
+import { isMainAgentWorkingOnceFlushed, performCancel } from './structured-agent-session-turns'
 import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
 import {
   admitAndRunAgentSessionMutation,
@@ -188,13 +187,7 @@ export function cancelStructuredAgentSessionTurn(
         }
         // A Stop naming no turn ends nothing more unless the session reads working, by the rule
         // every session list and the chat's own Stop read it.
-        const inFlight =
-          params.turnId !== undefined ||
-          isStructuredAgentSessionMainAgentWorking(
-            ctx.journal.activeTurnId(),
-            ctx.journal.submissions(),
-            ctx.fence
-          )
+        const inFlight = params.turnId !== undefined || (await isMainAgentWorkingOnceFlushed(ctx))
         const record = context.deps.store.getRecord(ctx.sessionId)
         return child && inFlight
           ? performCancel(
