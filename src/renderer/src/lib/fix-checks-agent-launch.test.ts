@@ -231,7 +231,7 @@ describe('startFixChecksAgent', () => {
       )
     })
 
-    it('counts the launch as started when the host kept the prompt, and hands the prompt over', async () => {
+    it('claims no success when the host kept the prompt, and hands the prompt over', async () => {
       mocks.launchSourceControlAgent.mockResolvedValue({ kind: 'launched', promptDelivered: false })
       const { startFixChecksAgent } = await import('./fix-checks-agent-launch')
 
@@ -242,7 +242,7 @@ describe('startFixChecksAgent', () => {
           basePrompt: 'Fix checks',
           launchSource: 'task_page'
         })
-      ).resolves.toBe(true)
+      ).resolves.toBe(false)
 
       expect(mocks.showNotDelivered).toHaveBeenCalledWith({ agent: 'codex', prompt: 'Fix checks' })
     })

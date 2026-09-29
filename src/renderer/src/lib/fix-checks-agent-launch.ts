@@ -218,7 +218,8 @@ export async function startFixChecksAgent(args: StartFixChecksAgentArgs): Promis
         )
         return false
       }
-      return settleSourceControlAgentLaunch(hosted, { agent, prompt: commandInput }).started
+      // Callers announce success on true; a prompt the host kept already has its own notice.
+      return settleSourceControlAgentLaunch(hosted, { agent, prompt: commandInput }).promptDelivered
     }
     const result = launchAgentInNewTab({
       agent,
