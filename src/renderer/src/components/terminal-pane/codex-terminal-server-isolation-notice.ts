@@ -62,7 +62,7 @@ function showCodexTerminalServerIsolationNotice(): void {
       id: 'codex-terminal-server-isolation-notice',
       description: translate(
         'terminal.codexTerminalServerIsolationNotice.description',
-        'This makes status more reliable. You can turn it back on in Settings.'
+        'This makes agent status more reliable. You can turn it back on in Settings.'
       ),
       duration: Infinity,
       action: {
