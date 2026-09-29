@@ -19,11 +19,11 @@ export function installCandidateOverride(config: Record<string, unknown>, state:
     'preverified admission receipt changed'
   )
   const receipt = JSON.parse(bytes.toString('utf8'))
-  assert.equal(receipt.producer, '34d1c11c67cbd1a653da1d07796daf7a1b0f2a7d')
+  assert.equal(receipt.producer, 'dfb15cae6ba7a5dceabb6d3d66f93be1a6c13328')
   assert.equal(receipt.source, '744846f844374847c902b5e7fd59b4342a51ef99')
-  assert.equal(receipt.patch, '276f475c90c6761c58b9f56b3f4bfafa079d0c29c5861b23d2320c9ff39c35fb')
-  assert.equal(receipt.product, '2084c58ba5410106ce61153a9fb16cdb4b6e5301')
-  assert.equal(String(receipt.producerRun), '36503596770')
+  assert.equal(receipt.patch, '920a6f0398bf9ae3528538255a1cceb23e11ded30097099e597c5ab5fff3ed05')
+  assert.equal(receipt.product, '2e65b114802f4cd1803cee9483c141e80d73453e')
+  assert.equal(String(receipt.producerRun), '36620077577')
   assert(process.arch === 'arm64' || process.arch === 'x64')
   assert.equal(receipt.architecture, process.arch)
   const platform = `win32-${process.arch}` as const

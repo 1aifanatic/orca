@@ -14,7 +14,7 @@ jobs:
     if: github.repository == 'stablyai/orca' && github.ref == 'refs/heads/OrcaWin/np-windows-ssh-provider-diagnostic'
     uses: ./.github/workflows/windows-watcher-artifacts.yml
     with:
-      ref: 2084c58ba5410106ce61153a9fb16cdb4b6e5301
+      ref: 2e65b114802f4cd1803cee9483c141e80d73453e
   qualify:
     needs: windows_watcher
     strategy:
@@ -40,12 +40,12 @@ jobs:
     env:
       ORCA_BACKGROUND_LAUNCH: '1'
       ORCA_ISOLATED_SSH_CI: '1'
-      QUALIFICATION_SOURCE_SHA: 2084c58ba5410106ce61153a9fb16cdb4b6e5301
-      PRODUCER_RUN: '36503596770'
+      QUALIFICATION_SOURCE_SHA: 2e65b114802f4cd1803cee9483c141e80d73453e
+      PRODUCER_RUN: '36620077577'
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: 2084c58ba5410106ce61153a9fb16cdb4b6e5301
+          ref: 2e65b114802f4cd1803cee9483c141e80d73453e
           persist-credentials: false
       - uses: actions/checkout@v6
         with:
@@ -63,7 +63,7 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           github-token: ${{ github.token }}
-          run-id: '36503596770'
+          run-id: '36620077577'
           name: full-offline-patched-bun
           path: .build/producer
       - name: Retain real producer run identity
