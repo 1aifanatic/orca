@@ -468,8 +468,10 @@ describe('a slow codex app-server start', () => {
     await realHomeInternals.settledVerdictForTesting()
   })
 
+  // Why: app start's conversion is the first check, so none can meet an approval;
+  // were one to, its settle must still write nothing a resume it releases could meet.
   it.skipIf(process.platform === 'win32')(
-    'runs an app-start conversion that arrives during an approval once it settles',
+    'converts nothing during an approval, and its settle writes no new entry',
     async () => {
       const server = installAppServer(0)
       expect(await launch()).toBe('approving')
@@ -478,10 +480,7 @@ describe('a slow codex app-server start', () => {
       const hooks = readHooks()
       hooks.Stop = [...hooks.Stop, { hooks: [{ type: 'command', command: older, timeout: 10 }] }]
       writeFileSync(hooksPath(), `${JSON.stringify({ hooks }, null, 2)}\n`)
-      const stopCommands = (): (string | undefined)[] =>
-        readHooks().Stop.flatMap((definition) =>
-          (definition.hooks ?? []).map((hook) => hook.command)
-        )
+      const before = readFileSync(hooksPath(), 'utf-8')
 
       expect(
         await ensureRealHomeCodexHookState({
@@ -490,14 +489,11 @@ describe('a slow codex app-server start', () => {
           writePolicy: 'convert-older-forms'
         })
       ).toBe('approving')
-      expect(stopCommands()).toContain(older)
 
       server.start()
       expect(await realHomeInternals.settledVerdictForTesting()).toBe('installed')
-      expect(stopCommands()).not.toContain(older)
-      expect(orcaEntryTrust()).toEqual(
-        Array(getCodexManagedHookInstallMaterial().events.length).fill('trusted')
-      )
+      expect(readFileSync(hooksPath(), 'utf-8')).toBe(before)
+      expect(server.sessions).toBe(1)
     }
   )
 

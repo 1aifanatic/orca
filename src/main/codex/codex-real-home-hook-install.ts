@@ -85,8 +85,6 @@ type Approval = {
 let verdict: RealHomeCodexHookVerdict = 'pending'
 // Why: at most one Codex approval session per process.
 let approval: Approval | null = null
-// Why: an app-start conversion that could not run yet; the next install runs it.
-let conversionOwed: { userDataPath: string } | null = null
 let installRetryAfterMs = 0
 let readCodexHooksEnabled: () => boolean = () => true
 
@@ -145,12 +143,9 @@ export async function awaitRealHomeCodexHookTrust(): Promise<void> {
 async function reconcileRealHomeCodexHook(
   intent: RealHomeCodexHookIntent
 ): Promise<RealHomeCodexHookVerdict> {
-  if (intent.writePolicy === 'convert-older-forms') {
-    conversionOwed = { userDataPath: intent.userDataPath }
-  }
   if (approval) {
     // Why: a launch never waits on Codex's approval, and the running one covers
-    // add-missing; an owed conversion runs when it settles.
+    // add-missing. App start's conversion is the process's first check, so none waits here.
     return (verdict = 'approving')
   }
   if (!intent.hooksEnabled) {
@@ -163,9 +158,7 @@ async function reconcileRealHomeCodexHook(
     // Why: writing and withdrawing the entry again before then only adds work to every launch.
     return (verdict = 'unavailable')
   }
-  const writePolicy = conversionOwed ? 'convert-older-forms' : intent.writePolicy
-  conversionOwed = null
-  const install = await installRealHomeCodexHook(intent.userDataPath, writePolicy)
+  const install = await installRealHomeCodexHook(intent.userDataPath, intent.writePolicy)
   if (!install.grant) {
     if (install.verdict === 'installed') {
       installRetryAfterMs = 0
@@ -226,18 +219,6 @@ async function settleApproval(
         `withdrew ${withdrawn} unapproved entr${withdrawn === 1 ? 'y' : 'ies'} this attempt added; ` +
         `managed lane kept, ${describeRealHomeApprovalRetry(installRetryAfterMs)}`
     )
-  }
-  const owed = conversionOwed
-  if (owed) {
-    try {
-      await reconcileRealHomeCodexHook({
-        hooksEnabled: readCodexHooksEnabled(),
-        userDataPath: owed.userDataPath,
-        writePolicy: 'convert-older-forms'
-      })
-    } catch (error) {
-      failRealHomeCodexHookCheck(error)
-    }
   }
 }
 
@@ -347,7 +328,6 @@ export const _internals = {
   resetForTesting(state: RealHomeCodexHookVerdict): void {
     verdict = state
     approval = null
-    conversionOwed = null
     installRetryAfterMs = 0
     readCodexHooksEnabled = () => true
     approvalInternals.resetTimeoutStreakForTesting()
