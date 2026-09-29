@@ -130,29 +130,26 @@ export async function createRuntimeLocalGitWorktree(args: {
     isGeneratedWorktreeCreateName(args.effectiveSanitizedName!)
   let addResult: AddWorktreeResult
   try {
-    if (sparseDirectories.length > 0) {
-      addResult =
-        (await addSparseWorktree(
-          args.repo.path,
-          args.worktreePath,
-          args.branchName,
-          sparseDirectories,
-          args.baseBranch,
-          args.settings.refreshLocalBaseRefOnWorktreeCreate,
-          addOptions
-        )) ?? {}
-    } else {
-      addResult =
-        (await addWorktree(
-          args.repo.path,
-          args.worktreePath,
-          args.branchName,
-          args.baseBranch,
-          args.settings.refreshLocalBaseRefOnWorktreeCreate,
-          false,
-          addOptions
-        )) ?? {}
-    }
+    addResult =
+      (sparseDirectories.length > 0
+        ? await addSparseWorktree(
+            args.repo.path,
+            args.worktreePath,
+            args.branchName,
+            sparseDirectories,
+            args.baseBranch,
+            args.settings.refreshLocalBaseRefOnWorktreeCreate,
+            addOptions
+          )
+        : await addWorktree(
+            args.repo.path,
+            args.worktreePath,
+            args.branchName,
+            args.baseBranch,
+            args.settings.refreshLocalBaseRefOnWorktreeCreate,
+            false,
+            addOptions
+          )) ?? {}
   } catch (error) {
     if (shouldRetireGeneratedName && failedWorktreeCreationNeedsRetirement(error)) {
       await retireGeneratedWorktreeName(

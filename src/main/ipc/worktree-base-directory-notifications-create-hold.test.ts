@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type * as HeadIdentityRefreshModule from './worktree-head-identity-refresh'
 
 const notifyCatalogMock = vi.hoisted(() => vi.fn())
 const notifyStatusMock = vi.hoisted(() => vi.fn())
@@ -10,7 +11,7 @@ vi.mock('./worktree-remote', () => ({
   notifyWorktreeGitStatusMetadataChanged: notifyStatusMock
 }))
 vi.mock('./worktree-head-identity-refresh', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('./worktree-head-identity-refresh')>()),
+  ...(await importOriginal<typeof HeadIdentityRefreshModule>()),
   refreshWorktreeHeadIdentities: vi.fn(async () => undefined)
 }))
 

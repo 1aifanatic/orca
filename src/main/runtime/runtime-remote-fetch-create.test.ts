@@ -1,14 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type * as RunnerModule from '../git/runner'
+import type * as RefMaintenanceModule from '../git/local-repo-ref-maintenance'
 
 const gitExecFileAsyncMock = vi.hoisted(() => vi.fn())
 
 vi.mock('../git/runner', async (importOriginal) => ({
-  ...((await importOriginal()) as Record<string, unknown>),
+  ...(await importOriginal<typeof RunnerModule>()),
   gitExecFileAsync: gitExecFileAsyncMock
 }))
 
 vi.mock('../git/local-repo-ref-maintenance', async (importOriginal) => ({
-  ...((await importOriginal()) as Record<string, unknown>),
+  ...(await importOriginal<typeof RefMaintenanceModule>()),
   armLocalRepoRefMaintenance: vi.fn(),
   setRepoRefMaintenanceBusyProbe: vi.fn()
 }))
