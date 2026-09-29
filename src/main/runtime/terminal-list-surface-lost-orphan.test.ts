@@ -259,6 +259,58 @@ describe('terminal inventory after a pane is dropped', () => {
 })
 
 describe('runtime-owned terminal projection gaps', () => {
+  it.each([false, true])(
+    'adopts the host binding before a bound graph leaf exists (empty leaf: %s)',
+    async (emptyLeaf) => {
+      const runtime = makeRuntime()
+      runtime.syncWindowGraph(1, {
+        tabs: [tab('tab-kept', KEPT_LEAF), tab('tab-dropped', DROPPED_LEAF)],
+        leaves: [
+          leaf('tab-kept', KEPT_LEAF, KEPT_PTY),
+          ...(emptyLeaf ? [{ ...leaf('tab-dropped', DROPPED_LEAF, DROPPED_PTY), ptyId: null }] : [])
+        ]
+      })
+      runtime.registerPty(DROPPED_PTY, WORKTREE_ID, null, {
+        tabId: 'tab-dropped',
+        leafId: DROPPED_LEAF,
+        incarnationId: DROPPED_INCARNATION
+      })
+      runtime.markRuntimeOwned(DROPPED_PTY)
+      const before = (await runtime.listTerminals(`id:${WORKTREE_ID}`)).terminals.find(
+        ({ ptyId }) => ptyId === DROPPED_PTY
+      )
+      runtime.syncWindowGraph(1, {
+        tabs: [tab('tab-kept', KEPT_LEAF), tab('tab-dropped', DROPPED_LEAF)],
+        leaves: [
+          leaf('tab-kept', KEPT_LEAF, KEPT_PTY),
+          { ...leaf('tab-dropped', DROPPED_LEAF, DROPPED_PTY), ptyId: null }
+        ]
+      })
+      const after = (await runtime.listTerminals(`id:${WORKTREE_ID}`)).terminals.find(
+        ({ ptyId }) => ptyId === DROPPED_PTY
+      )
+      expect(before).toBeDefined()
+      expect(after).toEqual(before)
+      expect(runtime.projectedPty('tab-dropped', DROPPED_LEAF)).toBe(DROPPED_PTY)
+    }
+  )
+
+  it('does not choose between two live host owners of the same pane', () => {
+    const runtime = makeRuntime()
+    runtime.markRuntimeOwned(DROPPED_PTY)
+    runtime.registerPty('competing-pty', WORKTREE_ID, null, {
+      tabId: 'tab-dropped',
+      leafId: DROPPED_LEAF,
+      incarnationId: 'competing-incarnation'
+    })
+    runtime.markRuntimeOwned('competing-pty')
+    runtime.syncWindowGraph(1, {
+      tabs: [tab('tab-dropped', DROPPED_LEAF)],
+      leaves: [{ ...leaf('tab-dropped', DROPPED_LEAF, DROPPED_PTY), ptyId: null }]
+    })
+    expect(runtime.projectedPty('tab-dropped', DROPPED_LEAF)).toBeNull()
+  })
+
   it.each(['removed', 'replaced', 'moved'] as const)(
     'retains a published unmounted pane until it is explicitly %s',
     async (change) => {
