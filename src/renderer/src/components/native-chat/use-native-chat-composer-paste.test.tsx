@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import type { NativeChatAttachmentOwner } from './native-chat-attachment-upload'
@@ -7,7 +7,8 @@ import type { NativeChatAttachmentOwner } from './native-chat-attachment-upload'
 const mocks = vi.hoisted(() => ({
   saveClipboardImageAsTempFile: vi.fn(),
   readClipboardText: vi.fn(),
-  readClipboardImageThumbnail: vi.fn()
+  readClipboardImageThumbnail: vi.fn(),
+  clipboardHasImage: vi.fn()
 }))
 
 vi.mock('@/i18n/i18n', () => ({
@@ -29,7 +30,8 @@ vi.stubGlobal('window', {
     ui: {
       saveClipboardImageAsTempFile: mocks.saveClipboardImageAsTempFile,
       readClipboardText: mocks.readClipboardText,
-      readClipboardImageThumbnail: mocks.readClipboardImageThumbnail
+      readClipboardImageThumbnail: mocks.readClipboardImageThumbnail,
+      clipboardHasImage: mocks.clipboardHasImage
     }
   }
 })
@@ -82,6 +84,7 @@ function createChipStore(): {
 }
 
 type ProbeArgs = {
+  targetKey?: string
   agent?: 'claude' | 'omp'
   disabled: boolean
   resolveAttachmentOwner: () => NativeChatAttachmentOwner
@@ -109,16 +112,22 @@ async function renderProbe(args: {
   store?: ReturnType<typeof createChipStore>
   insertTypedText?: (text: string) => boolean
   setNotice?: (notice: string | null) => void
-}): Promise<{ latest: () => HookApi; setDisabled: (disabled: boolean) => Promise<void> }> {
+}): Promise<{
+  latest: () => HookApi
+  setDisabled: (disabled: boolean) => Promise<void>
+  setTarget: (key: string) => Promise<void>
+}> {
   const container = document.createElement('div')
   document.body.append(container)
   const store = args.store ?? createChipStore()
   let api: HookApi | null = null
   root = createRoot(container)
+  let targetKey = 'session-1'
   const render = async (disabled: boolean): Promise<void> => {
     await act(async () => {
       root?.render(
         createElement(Probe, {
+          targetKey,
           agent: args.agent ?? 'claude',
           disabled,
           resolveAttachmentOwner: args.resolveAttachmentOwner,
@@ -143,23 +152,30 @@ async function renderProbe(args: {
       }
       return api
     },
-    setDisabled: render
+    setDisabled: render,
+    setTarget: async (key) => {
+      targetKey = key
+      await render(false)
+    }
   }
 }
 
-function imagePasteEvent(): {
-  clipboardData: DataTransfer
-  preventDefault: () => void
-  defaultPrevented: boolean
-} {
-  return {
-    clipboardData: {
-      items: [{ type: 'image/png', getAsFile: () => new Blob([], { type: 'image/png' }) }]
-    } as unknown as DataTransfer,
-    preventDefault: vi.fn(),
-    defaultPrevented: false
+function imagePasteEvent(text = ''): ClipboardEvent {
+  const data = new DataTransfer()
+  data.items.add(new File(['image'], 'image.png', { type: 'image/png' }))
+  if (text) {
+    data.setData('text/plain', text)
   }
+  return new ClipboardEvent('paste', { clipboardData: data, cancelable: true })
 }
+
+beforeEach(() => {
+  vi.resetAllMocks()
+  mocks.readClipboardText.mockResolvedValue('')
+  mocks.readClipboardImageThumbnail.mockResolvedValue(null)
+  mocks.clipboardHasImage.mockResolvedValue(false)
+  mocks.saveClipboardImageAsTempFile.mockResolvedValue(null)
+})
 
 const sshOwner: NativeChatAttachmentOwner = {
   kind: 'ssh',
@@ -178,6 +194,7 @@ afterEach(() => {
 
 describe('useNativeChatComposerPaste', () => {
   it('does not save a clipboard image locally for a remote runtime', async () => {
+    mocks.clipboardHasImage.mockResolvedValue(true)
     const setNotice = vi.fn()
     const store = createChipStore()
     const probe = await renderProbe({
@@ -375,9 +392,10 @@ describe('useNativeChatComposerPaste', () => {
     expect(attachResolvedPaths).toHaveBeenCalledWith(['C:\\Temp\\orca-paste-3.png'], null)
   })
 
-  it('stops pasteFromClipboard on a failed save instead of falling through to text', async () => {
+  it('inserts text independently of a failed image save', async () => {
     mocks.readClipboardImageThumbnail.mockResolvedValue(null)
     mocks.saveClipboardImageAsTempFile.mockRejectedValue(new Error('sftp down'))
+    mocks.readClipboardText.mockResolvedValue('안녕하세요')
     const insertTypedText = vi.fn()
     const setNotice = vi.fn()
     const probe = await renderProbe({
@@ -389,8 +407,7 @@ describe('useNativeChatComposerPaste', () => {
       probe.latest().pasteFromClipboard()
     })
     expect(setNotice).toHaveBeenCalledWith('sftp down')
-    expect(mocks.readClipboardText).not.toHaveBeenCalled()
-    expect(insertTypedText).not.toHaveBeenCalled()
+    expect(insertTypedText).toHaveBeenCalledWith('안녕하세요')
   })
 
   it('still falls through to text when the clipboard holds no image', async () => {
@@ -451,4 +468,170 @@ describe('useNativeChatComposerPaste', () => {
     })
     expect(setNotice.mock.calls.every(([notice]) => notice === null)).toBe(true)
   })
+})
+
+describe('composer paste intake regressions', () => {
+  it.each(['local', 'ssh', 'runtime', 'not-ready'] as const)(
+    'inserts text without waiting for an image operation on %s',
+    async (kind) => {
+      mocks.readClipboardText.mockResolvedValue('안녕하세요\nhello')
+      mocks.saveClipboardImageAsTempFile.mockReturnValue(new Promise(() => {}))
+      mocks.clipboardHasImage.mockReturnValue(new Promise(() => {}))
+      const insertTypedText = vi.fn(() => true)
+      const setNotice = vi.fn()
+      const probe = await renderProbe({
+        resolveAttachmentOwner: () => (kind === 'ssh' ? sshOwner : { kind }),
+        insertTypedText,
+        setNotice
+      })
+      await act(async () => probe.latest().pasteFromClipboard())
+      expect(insertTypedText).toHaveBeenCalledExactlyOnceWith('안녕하세요\nhello')
+      expect(setNotice.mock.calls.filter(([notice]) => notice !== null)).toHaveLength(0)
+      if (kind === 'runtime' || kind === 'not-ready') {
+        expect(mocks.saveClipboardImageAsTempFile).not.toHaveBeenCalled()
+      }
+    }
+  )
+
+  it.each([false, true, null, 'error'] as const)(
+    'preserves remote text when image presence is %s',
+    async (presence) => {
+      if (presence === 'error') {
+        mocks.clipboardHasImage.mockRejectedValue(new Error('denied'))
+      } else {
+        mocks.clipboardHasImage.mockResolvedValue(presence)
+      }
+      mocks.readClipboardText.mockResolvedValue('hello')
+      const insertTypedText = vi.fn(() => true)
+      const setNotice = vi.fn()
+      const probe = await renderProbe({
+        resolveAttachmentOwner: () => ({ kind: 'runtime' }),
+        insertTypedText,
+        setNotice
+      })
+      await act(async () => probe.latest().pasteFromClipboard())
+      expect(insertTypedText).toHaveBeenCalledExactlyOnceWith('hello')
+      expect(setNotice.mock.calls.filter(([notice]) => notice !== null)).toHaveLength(
+        presence === true ? 1 : 0
+      )
+    }
+  )
+
+  it.each(['local', 'ssh', 'runtime', 'not-ready'] as const)(
+    'preserves mixed event text with %s attachments and deduplicates capture',
+    async (kind) => {
+      const insertTypedText = vi.fn(() => true)
+      const probe = await renderProbe({
+        resolveAttachmentOwner: () => (kind === 'ssh' ? sshOwner : { kind }),
+        insertTypedText
+      })
+      const event = imagePasteEvent('caption')
+      await act(async () => {
+        probe.latest().handlePaste(event)
+        probe.latest().handlePaste(event)
+      })
+      expect(insertTypedText).toHaveBeenCalledExactlyOnceWith('caption')
+      expect(mocks.readClipboardText).not.toHaveBeenCalled()
+    }
+  )
+
+  it.each(['unmount', 'replace', 'disable'] as const)(
+    'drops late text and pending images after target %s',
+    async (change) => {
+      let finishText = (_text: string): void => {}
+      let finishImage = (_path: string): void => {}
+      mocks.readClipboardText.mockReturnValue(
+        new Promise<string>((resolve) => {
+          finishText = resolve
+        })
+      )
+      mocks.saveClipboardImageAsTempFile.mockReturnValue(
+        new Promise<string>((resolve) => {
+          finishImage = resolve
+        })
+      )
+      mocks.readClipboardImageThumbnail.mockResolvedValue({
+        dataUrl: 'data:image/png;base64,AA',
+        width: 1,
+        height: 1
+      })
+      const store = createChipStore()
+      const insertTypedText = vi.fn(() => true)
+      const probe = await renderProbe({
+        resolveAttachmentOwner: () => ({ kind: 'local' }),
+        insertTypedText,
+        store
+      })
+      await act(async () => probe.latest().pasteFromClipboard())
+      expect(store.chips).toHaveLength(1)
+      if (change === 'unmount') {
+        await act(async () => {
+          root?.unmount()
+          root = null
+        })
+      } else if (change === 'replace') {
+        await probe.setTarget('session-2')
+      } else {
+        await probe.setDisabled(true)
+      }
+      await act(async () => {
+        finishText('stale')
+        finishImage('/tmp/stale.png')
+      })
+      expect(insertTypedText).not.toHaveBeenCalled()
+      expect(store.chips).toHaveLength(0)
+    }
+  )
+
+  it('rejects an image saved across SSH connection replacement', async () => {
+    let owner = sshOwner
+    let finish = (_path: string): void => {}
+    mocks.saveClipboardImageAsTempFile.mockReturnValue(
+      new Promise<string>((resolve) => {
+        finish = resolve
+      })
+    )
+    const store = createChipStore()
+    const probe = await renderProbe({ resolveAttachmentOwner: () => owner, store })
+    await act(async () => probe.latest().handlePaste(imagePasteEvent()))
+    owner = { ...sshOwner, expectedSshConnectionGeneration: 5 }
+    await act(async () => finish('/tmp/old-host.png'))
+    expect(store.chips).toHaveLength(0)
+  })
+})
+
+it('inserts event text locally without any clipboard API access', async () => {
+  const insertTypedText = vi.fn(() => true)
+  const probe = await renderProbe({
+    resolveAttachmentOwner: () => ({ kind: 'runtime' }),
+    insertTypedText
+  })
+  const data = new DataTransfer()
+  data.setData('text/plain', '한글\nplain')
+  const event = new ClipboardEvent('paste', { clipboardData: data, cancelable: true })
+  await act(async () => probe.latest().handlePaste(event))
+  expect(insertTypedText).toHaveBeenCalledExactlyOnceWith('한글\nplain')
+  expect(event.defaultPrevented).toBe(true)
+  expect(mocks.readClipboardText).not.toHaveBeenCalled()
+  expect(mocks.clipboardHasImage).not.toHaveBeenCalled()
+  expect(mocks.saveClipboardImageAsTempFile).not.toHaveBeenCalled()
+})
+
+it('refuses oversized event text without inserting it', async () => {
+  const insertTypedText = vi.fn(() => true)
+  const setNotice = vi.fn()
+  const probe = await renderProbe({
+    resolveAttachmentOwner: () => ({ kind: 'runtime' }),
+    insertTypedText,
+    setNotice
+  })
+  const data = new DataTransfer()
+  data.setData('text/plain', 'x'.repeat(1025))
+  await act(async () =>
+    probe
+      .latest()
+      .handlePaste(new ClipboardEvent('paste', { clipboardData: data, cancelable: true }))
+  )
+  expect(insertTypedText).not.toHaveBeenCalled()
+  expect(setNotice).toHaveBeenCalledWith(expect.stringContaining('too large'))
 })

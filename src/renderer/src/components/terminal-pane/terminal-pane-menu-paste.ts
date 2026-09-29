@@ -1,3 +1,4 @@
+import { requestNativeChatOverlayPaste } from '@/lib/native-chat-paste-request'
 import type { ManagedPane, PaneManager } from '@/lib/pane-manager/pane-manager'
 import type { PtyTransport } from './pty-transport'
 import { getConnectionId } from '@/lib/connection-context'
@@ -112,6 +113,9 @@ export const pasteTerminalPaneMenuClipboard = async (
   source: Extract<TerminalPasteSource, 'context-menu' | 'right-click'>
 ): Promise<void> => {
   if (!pane) {
+    return
+  }
+  if (requestNativeChatOverlayPaste(pane.container)) {
     return
   }
   const { tabId, worktreeId, forceBracketedMultilineTextPaste, onPasteError } = context

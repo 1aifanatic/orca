@@ -1,5 +1,10 @@
 import { useCallback, useEffect } from 'react'
 import type { RefObject } from 'react'
+import { isEditableTarget } from '@/lib/editable-target'
+import {
+  NativeChatPasteRequest,
+  NATIVE_CHAT_PASTE_REQUEST_EVENT
+} from '@/lib/native-chat-paste-request'
 import { APP_MENU_PASTE_EVENT } from '@/lib/app-menu-paste'
 import { pasteTextIntoTextControl, TEXT_CONTROL_PASTE_MAX_BYTES } from '@/lib/text-control-paste'
 import type { NativeChatComposerHandle } from './NativeChatComposer'
@@ -31,8 +36,11 @@ export function useNativeChatPasteBridge({
       const text = await window.api.ui
         .readClipboardText({ maxBytes: TEXT_CONTROL_PASTE_MAX_BYTES })
         .catch(() => '')
-      if (text.length > 0) {
-        await pasteTextIntoTextControl(answerInput, text, { source: 'programmatic' })
+      if (text.length > 0 && questionAnswerInputRef?.current === answerInput) {
+        await pasteTextIntoTextControl(answerInput, text, {
+          source: 'programmatic',
+          canContinue: () => questionAnswerInputRef?.current === answerInput
+        })
       }
     })()
   }, [composerRef, questionAnswerInputRef])
@@ -43,22 +51,77 @@ export function useNativeChatPasteBridge({
     if (!root) {
       return
     }
+    const deliverEvent = (event: ClipboardEvent | NativeChatPasteRequest): void => {
+      const composer = composerRef.current
+      if (composer) {
+        composer.handlePasteEvent(event)
+        event.preventDefault()
+        return
+      }
+      const answerInput = questionAnswerInputRef?.current
+      if (answerInput) {
+        const text = event.clipboardData?.getData('text/plain')
+        event.preventDefault()
+        if (text) {
+          void pasteTextIntoTextControl(answerInput, text, {
+            source: 'programmatic',
+            canContinue: () => questionAnswerInputRef?.current === answerInput
+          })
+        }
+      }
+    }
     const onPaste = (event: ClipboardEvent): void => {
-      composerRef.current?.handlePasteEvent(event)
+      if (event.defaultPrevented) {
+        return
+      }
+      if (isEditableTarget(event.target)) {
+        // Only the composer field owns image capture; search/answer inputs keep native paste.
+        if (event.target instanceof Element && event.target.closest('[data-composer-scope-key]')) {
+          composerRef.current?.handlePasteEvent(event)
+        }
+        return
+      }
+      deliverEvent(event)
+    }
+    const onPasteRequest = (event: Event): void => {
+      if (!(event instanceof NativeChatPasteRequest)) {
+        return
+      }
+      if (!composerRef.current && !questionAnswerInputRef?.current) {
+        return
+      }
+      if (event.clipboardData) {
+        deliverEvent(event)
+      } else {
+        event.preventDefault()
+        pasteClipboardIntoComposer()
+      }
     }
     root.addEventListener('paste', onPaste, { capture: true })
+    root.addEventListener(NATIVE_CHAT_PASTE_REQUEST_EVENT, onPasteRequest)
     return () => {
       root.removeEventListener('paste', onPaste, { capture: true })
+      root.removeEventListener(NATIVE_CHAT_PASTE_REQUEST_EVENT, onPasteRequest)
     }
-  }, [composerRef, rootRef])
+  }, [composerRef, rootRef, questionAnswerInputRef, pasteClipboardIntoComposer])
 
   useEffect(() => {
     const onAppMenuPaste = (event: Event): void => {
+      if (event.defaultPrevented) {
+        return
+      }
       const root = rootRef.current
       const activeElement = document.activeElement
       // The app-menu paste event is window-scoped; only claim it when focus is
       // inside this chat pane so multiple panes don't all react to one Cmd+V.
       if (!root || !(activeElement instanceof Element) || !root.contains(activeElement)) {
+        return
+      }
+      if (
+        isEditableTarget(activeElement) &&
+        !activeElement.closest('[data-composer-scope-key]') &&
+        activeElement !== questionAnswerInputRef?.current
+      ) {
         return
       }
       // No paste target mounted: leave the event unclaimed so the shared

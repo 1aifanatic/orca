@@ -221,3 +221,11 @@ export async function saveClipboardImageAsTempFileInRuntime(
     throw error
   }
 }
+
+export async function clipboardHasImage(): Promise<boolean | null> {
+  if (!navigator.clipboard?.read) {
+    return null
+  }
+  const items = await navigator.clipboard.read()
+  return items.some((item) => item.types.some((type) => type.startsWith('image/')))
+}

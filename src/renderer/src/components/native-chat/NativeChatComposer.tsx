@@ -1,4 +1,7 @@
-import type { NativeChatComposerInput } from './native-chat-composer-input'
+import {
+  insertNativeChatPastedText,
+  type NativeChatComposerInput
+} from './native-chat-composer-input'
 import { forwardRef, useCallback, useImperativeHandle, useState } from 'react'
 import { useAppStore } from '../../store'
 import { useNativeChatComposerInterrupt } from './use-native-chat-composer-interrupt'
@@ -204,6 +207,13 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
     })
 
     const { handlePaste, pasteFromClipboard } = useNativeChatComposerPaste({
+      targetKey: JSON.stringify([
+        paneKey,
+        targetPtyId,
+        structuredTransport?.sessionId,
+        structuredTransport?.worktreeId,
+        structuredTransport?.runtimeEnvironmentId
+      ]),
       agent,
       disabled,
       caret,
@@ -212,7 +222,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       beginPendingImageAttachment,
       resolvePendingImageAttachment,
       dropPendingImageAttachment,
-      insertTypedText,
+      insertTypedText: (text) => insertNativeChatPastedText(textareaRef.current, text),
       setCaret,
       setNotice
     })

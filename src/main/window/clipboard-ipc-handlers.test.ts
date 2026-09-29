@@ -552,6 +552,7 @@ describe('registerClipboardHandlers', () => {
     expect(removeHandlerMock).toHaveBeenCalledWith('clipboard:writeFile')
     expect(removeHandlerMock).toHaveBeenCalledWith('clipboard:saveImageAsTempFile')
     expect(removeHandlerMock).toHaveBeenCalledWith('clipboard:readImageThumbnail')
+    expect(removeHandlerMock).toHaveBeenCalledWith('clipboard:hasImage')
   })
 
   it('does not inspect FileNameW when an empty image clipboard is read outside Windows', async () => {
@@ -873,5 +874,15 @@ describe('registerClipboardHandlers', () => {
 
     expect(nativeImageCreateFromBufferMock).toHaveBeenCalled()
     expect(clipboardWriteImageMock).not.toHaveBeenCalled()
+  })
+
+  it.each([true, false])('reports empty=%s without requiring a thumbnail', (empty) => {
+    setTrustedClipboardRendererWebContentsId(17)
+    clipboardReadImageMock.mockReturnValue({ isEmpty: () => empty })
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: registering handlers never reads the store for clipboard image presence.
+    registerClipboardHandlers({} as never)
+    const probe = getRegisteredHandlers().get('clipboard:hasImage')
+    expect(probe?.(makeClipboardEvent())).toBe(!empty)
+    expect(() => probe?.(makeClipboardEvent({ id: 42 }))).toThrow()
   })
 })

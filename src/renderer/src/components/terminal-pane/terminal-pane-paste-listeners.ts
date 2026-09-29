@@ -9,6 +9,7 @@ import {
 } from './terminal-clipboard-event-paste'
 import { assertClipboardTextWithinLimitWithYield } from '../../../../shared/clipboard-text'
 import { pasteTerminalClipboard } from './terminal-clipboard-paste'
+import { requestNativeChatOverlayPaste } from '@/lib/native-chat-paste-request'
 import { APP_MENU_PASTE_EVENT } from '@/lib/app-menu-paste'
 import {
   APP_MENU_SELECTION_ACTION_EVENT,
@@ -69,6 +70,21 @@ export function registerTerminalPanePasteListeners({
         !event.altKey)
     )
   }
+  const routeChatPaste = (
+    target: EventTarget | null,
+    data: DataTransfer | null = null
+  ): boolean => {
+    if (!(target instanceof Element)) {
+      return false
+    }
+    if (isEditableTarget(target)) {
+      return false
+    }
+    const pane = managerRef.current
+      ?.getPanes()
+      .find((candidate) => candidate.container.contains(target))
+    return pane ? requestNativeChatOverlayPaste(pane.container, data) : false
+  }
   const onKeyPaste = (event: KeyboardEvent): void => {
     const target = event.target
     if (
@@ -102,14 +118,6 @@ export function registerTerminalPanePasteListeners({
     }
     event.preventDefault()
     event.stopPropagation()
-    const manager = managerRef.current
-    if (!manager) {
-      return
-    }
-    const pane = manager.getActivePane() ?? manager.getPanes()[0]
-    if (!pane) {
-      return
-    }
     suppressNextNativePaste = true
     if (pasteSuppressionTimerId !== null) {
       window.clearTimeout(pasteSuppressionTimerId)
@@ -118,6 +126,17 @@ export function registerTerminalPanePasteListeners({
       pasteSuppressionTimerId = null
       suppressNextNativePaste = false
     }, 0)
+    if (routeChatPaste(target)) {
+      return
+    }
+    const manager = managerRef.current
+    if (!manager) {
+      return
+    }
+    const pane = manager.getActivePane() ?? manager.getPanes()[0]
+    if (!pane) {
+      return
+    }
     pasteFromClipboard(pane, 'keyboard')
   }
 
@@ -141,6 +160,9 @@ export function registerTerminalPanePasteListeners({
     }
     event.preventDefault()
     event.stopPropagation()
+    if (routeChatPaste(target, event.clipboardData)) {
+      return
+    }
     const manager = managerRef.current
     if (!manager) {
       return
@@ -160,6 +182,9 @@ export function registerTerminalPanePasteListeners({
   }
 
   const onAppMenuPaste = (event: Event): void => {
+    if (event.defaultPrevented) {
+      return
+    }
     const activeElementAtDispatch = document.activeElement
     if (
       !(activeElementAtDispatch instanceof Element) ||
@@ -171,6 +196,9 @@ export function registerTerminalPanePasteListeners({
     }
     event.preventDefault()
     event.stopPropagation()
+    if (routeChatPaste(activeElementAtDispatch)) {
+      return
+    }
     const manager = managerRef.current
     if (!manager) {
       return

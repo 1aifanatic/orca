@@ -143,3 +143,14 @@ describe('native chat skill editor', () => {
     expect(container.querySelector('[data-native-chat-skill]')).toBeNull()
   })
 })
+
+it('replaces the selection with literal pasted text as one undoable edit', async () => {
+  const { input, editor } = setup('hello world')
+  act(() => input.setSelectionRange(6, 11))
+  await act(async () => input.insertText?.('안녕\n$literal'))
+  expect(input.value).toBe('hello 안녕\n$literal')
+  await act(async () => {
+    editor.commands.undo()
+  })
+  expect(input.value).toBe('hello world')
+})
