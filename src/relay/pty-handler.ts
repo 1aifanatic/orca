@@ -1921,7 +1921,9 @@ export class PtyHandler {
       { id, paneKey, shell, command, launchAgent },
       envToDelete
     )
-    await applyRelayClaudeFolderTrust(params.claudeFolderTrust, spawnEnv)
+    await applyRelayClaudeFolderTrust(params.claudeFolderTrust, spawnEnv, {
+      wslShell: isRelayWslShell(shell)
+    })
     const worktreeId =
       typeof params.worktreeId === 'string' ? params.worktreeId : env?.ORCA_WORKTREE_ID
     const historyIsolationEnabled = params.historyIsolationEnabled === true

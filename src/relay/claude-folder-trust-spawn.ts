@@ -17,10 +17,12 @@ import {
  */
 export async function applyRelayClaudeFolderTrust(
   rawRequest: unknown,
-  spawnEnv: Record<string, string | undefined>
+  spawnEnv: Record<string, string | undefined>,
+  launch: { wslShell: boolean }
 ): Promise<void> {
   const request = parseClaudeFolderTrustSpawnRequest(rawRequest)
-  if (!request) {
+  // Why: a Claude inside a WSL guest reads the guest's config, not this Windows host's.
+  if (!request || launch.wslShell) {
     return
   }
   const keyStyle = process.platform === 'win32' ? 'win32' : 'posix'

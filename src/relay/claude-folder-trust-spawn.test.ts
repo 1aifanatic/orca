@@ -13,6 +13,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { applyRelayClaudeFolderTrust } from './claude-folder-trust-spawn'
 import { buildSshPtySpawnRequest } from '../main/providers/ssh-pty-spawn-request'
 
+const HOST_SHELL = { wslShell: false }
+
 let root: string
 let configDir: string
 let workspace: string
@@ -34,7 +36,8 @@ describe('applyRelayClaudeFolderTrust', () => {
   it("grants in the remote host's own config, named by the merged spawn env", async () => {
     await applyRelayClaudeFolderTrust(
       { workspacePath: workspace },
-      { CLAUDE_CONFIG_DIR: configDir, HOME: root }
+      { CLAUDE_CONFIG_DIR: configDir, HOME: root },
+      HOST_SHELL
     )
     expect(JSON.parse(readFileSync(join(configDir, '.claude.json'), 'utf-8'))).toEqual({
       oauthAccount: { x: 1 },
@@ -44,30 +47,39 @@ describe('applyRelayClaudeFolderTrust', () => {
 
   it('falls back to HOME/.claude.json when the spawn env names no config dir', async () => {
     writeFileSync(join(root, '.claude.json'), '{}')
-    await applyRelayClaudeFolderTrust({ workspacePath: workspace }, { HOME: root })
+    await applyRelayClaudeFolderTrust({ workspacePath: workspace }, { HOME: root }, HOST_SHELL)
     expect(JSON.parse(readFileSync(join(root, '.claude.json'), 'utf-8'))).toEqual({
       projects: { [workspace]: { hasTrustDialogAccepted: true } }
     })
   })
 
+  it("never writes this host's config for a Claude started in a WSL guest", async () => {
+    await applyRelayClaudeFolderTrust(
+      { workspacePath: workspace },
+      { CLAUDE_CONFIG_DIR: configDir, HOME: root },
+      { wslShell: true }
+    )
+    expect(readFileSync(join(configDir, '.claude.json'), 'utf-8')).toBe('{"oauthAccount":{"x":1}}')
+  })
+
   it("never pre-trusts the relay host's home folder", async () => {
     writeFileSync(join(root, '.claude.json'), '{}')
-    await applyRelayClaudeFolderTrust({ workspacePath: root }, { HOME: root })
+    await applyRelayClaudeFolderTrust({ workspacePath: root }, { HOME: root }, HOST_SHELL)
     expect(readFileSync(join(root, '.claude.json'), 'utf-8')).toBe('{}')
   })
 
   it('never creates a config file Claude has not written', async () => {
     const emptyHome = join(root, 'empty-home')
     mkdirSync(emptyHome)
-    await applyRelayClaudeFolderTrust({ workspacePath: workspace }, { HOME: emptyHome })
+    await applyRelayClaudeFolderTrust({ workspacePath: workspace }, { HOME: emptyHome }, HOST_SHELL)
     expect(existsSync(join(emptyHome, '.claude.json'))).toBe(false)
   })
 
   it('ignores a spawn with no, a malformed, or an earlier-shaped request', async () => {
     const env = { CLAUDE_CONFIG_DIR: configDir, HOME: root }
-    await applyRelayClaudeFolderTrust(undefined, env)
-    await applyRelayClaudeFolderTrust({ workspacePath: 42 }, env)
-    await applyRelayClaudeFolderTrust({ worktreeRoot: workspace, trusted: true }, env)
+    await applyRelayClaudeFolderTrust(undefined, env, HOST_SHELL)
+    await applyRelayClaudeFolderTrust({ workspacePath: 42 }, env, HOST_SHELL)
+    await applyRelayClaudeFolderTrust({ worktreeRoot: workspace, trusted: true }, env, HOST_SHELL)
     expect(readFileSync(join(configDir, '.claude.json'), 'utf-8')).toBe('{"oauthAccount":{"x":1}}')
   })
 })
