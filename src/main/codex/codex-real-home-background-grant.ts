@@ -17,7 +17,7 @@ const CODEX_BACKGROUND_TRUST_GRANT_RETRY_INTERVAL_MS = 10_000
 // ~/.codex/hooks.json and start a 30 s session on every launch for good.
 const TIMEOUTS_BEFORE_BACKOFF = 3
 const TIMEOUT_BACKOFF_MS = [10_000, 60_000, 5 * 60_000]
-// Why process-scoped: app start begins at zero, so a slow boot never latches.
+// Why process-scoped, reset only by a success: app start begins at zero, so a slow boot never latches.
 let consecutiveTimeouts = 0
 
 export type RealHomeBackgroundGrant = {
@@ -54,7 +54,6 @@ export function recordRealHomeApprovalOutcome(
     return Number.POSITIVE_INFINITY
   }
   if (outcome?.errorClass !== 'timeout') {
-    consecutiveTimeouts = 0
     return Date.now() + CODEX_BACKGROUND_TRUST_GRANT_RETRY_INTERVAL_MS
   }
   // Why: the first slow cold starts retry on the next launch instead of latching for minutes.

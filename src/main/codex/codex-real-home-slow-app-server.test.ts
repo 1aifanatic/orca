@@ -501,6 +501,55 @@ describe('a slow codex app-server start', () => {
     }
   )
 
+  it('keeps the timeout streak through other failures', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    const attempt = async (server: AppServer): Promise<void> => {
+      server.start()
+      expect(await launch()).toBe('approving')
+      expect(await realHomeInternals.settledVerdictForTesting()).toBe('unavailable')
+    }
+
+    await attempt(installAppServer(10 * 60_000))
+    await attempt(installAppServer(10 * 60_000))
+    await attempt(
+      installAppServer(0, new Error('codex app-server exited before completing the session'))
+    )
+    vi.setSystemTime(Date.now() + 10_001)
+    // Why: the third timeout in a row, counting past the failure between them.
+    await attempt(installAppServer(10 * 60_000))
+    vi.setSystemTime(Date.now() + 9_999)
+    expect(await launch()).toBe('unavailable')
+    vi.setSystemTime(Date.now() + 1)
+    expect(await launch()).toBe('approving')
+    await realHomeInternals.settledVerdictForTesting()
+  })
+
+  it('starts the timeout streak from zero at app start', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      installAppServer(10 * 60_000).start()
+      expect(await launch()).toBe('approving')
+      expect(await realHomeInternals.settledVerdictForTesting()).toBe('unavailable')
+    }
+    expect(await launch()).toBe('unavailable')
+
+    vi.resetModules()
+    const restarted = await import('./codex-real-home-hook-install')
+    const restartedGrant = await import('./codex-hook-trust-grant')
+    installAppServer(10 * 60_000, undefined, restartedGrant._internals).start()
+    const restartedLaunch = (): ReturnType<typeof ensureRealHomeCodexHookState> =>
+      restarted.ensureRealHomeCodexHookState({
+        hooksEnabled: true,
+        userDataPath: homes.userDataDir,
+        writePolicy: 'add-missing-only'
+      })
+    expect(await restartedLaunch()).toBe('approving')
+    expect(await restarted._internals.settledVerdictForTesting()).toBe('unavailable')
+    // Why: the first timeout since the restart retries on the next launch.
+    expect(await restartedLaunch()).toBe('approving')
+    await restarted._internals.settledVerdictForTesting()
+  })
+
   it('has one retry schedule: turning hooks off and on after a failure retries at once', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     const failing = installAppServer(
