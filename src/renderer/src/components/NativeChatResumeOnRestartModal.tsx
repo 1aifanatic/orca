@@ -29,7 +29,8 @@ import {
   continueNativeChatRestartOffer,
   dismissNativeChatRestartOffer,
   getNativeChatRestartOffer,
-  useNativeChatRestartOffer
+  useNativeChatRestartOffer,
+  useNativeChatRestartResuming
 } from './native-chat-resume-on-restart-store'
 
 /**
@@ -42,9 +43,12 @@ import {
  * The "don't ask again" box removes the PROMPT, never a safety check — an opted-in launch calls
  * the same RPC, which re-derives the same predicate and staggers the same way.
  *
+ * Resume hands off to the status bar, as a skill update does: the dialog closes at once and the
+ * status-bar entry carries the resume, then any chat it could not carry on.
+ *
  * A chat an earlier resume could not carry on is listed too, as the same row plus what went wrong
  * and what to do; selecting it and resuming is a retry, unless the host says a retry cannot run.
- * The dialog stays open while any remain, so the outcome is never left to a toast.
+ * A row's own retry keeps the dialog open while failures remain, since that is the list being read.
  *
  * Closing is a SNOOZE, so looking around before deciding cannot remove the recovery. Dismiss all is
  * the explicit path that deletes the durable records.
@@ -78,7 +82,8 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
   )
   const updateSettings = useAppStore((store) => store.updateSettings)
   const [dontAskAgain, setDontAskAgain] = useState(false)
-  const [busy, setBusy] = useState(false)
+  // The store's: the resume outlives this dialog, which can close or reopen mid-run.
+  const busy = useNativeChatRestartResuming().length > 0
   /** The user's own ticks and unticks, over each row's default. Tracked as OVERRIDES rather than a
    *  selection because the list is the host's and arrives — and shrinks — under an open dialog; a
    *  stored selection would need seeding from an effect every time it changed. */
@@ -112,17 +117,16 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
   }, [dontAskAgain, updateSettings])
 
   const resume = useCallback(
-    async (sessionIds: string[]): Promise<void> => {
-      setBusy(true)
-      try {
-        void persistPreference()
-        await continueNativeChatRestartOffer(sessionIds)
-      } finally {
-        setBusy(false)
-        // Stays open when a chat did not carry on: its row now says what to do about it.
-        if (getNativeChatRestartOffer().failed.length === 0) {
-          consumeNativeChatResumeOnRestartDialogRequest()
-        }
+    async (sessionIds: string[], { handOff }: { handOff: boolean }): Promise<void> => {
+      void persistPreference()
+      if (handOff) {
+        consumeNativeChatResumeOnRestartDialogRequest()
+      }
+      await continueNativeChatRestartOffer(sessionIds)
+      // A dialog still open (a row retry) or reopened mid-run stays open when a chat did not carry
+      // on: its row now says what to do about it.
+      if (getNativeChatRestartOffer().failed.length === 0) {
+        consumeNativeChatResumeOnRestartDialogRequest()
       }
     },
     [persistPreference]
@@ -148,7 +152,7 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
       return
     }
     if (action === 'retry') {
-      await resume([sessionId])
+      await resume([sessionId], { handOff: false })
       return
     }
     const failure = failureBySession.get(sessionId)
@@ -173,7 +177,7 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
     <Dialog
       open
       onOpenChange={(next) => {
-        if (!next && !busy) {
+        if (!next) {
           snooze()
         }
       }}
@@ -258,7 +262,7 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
             variant="default"
             size="sm"
             disabled={busy || chosen.length === 0}
-            onClick={() => void resume(chosen)}
+            onClick={() => void resume(chosen, { handOff: true })}
           >
             {busy
               ? translate('auto.components.NativeChatResumeOnRestartModal.resuming', 'Resuming…')

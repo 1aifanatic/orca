@@ -50,8 +50,19 @@ let launch: Promise<void> | undefined
  *  a re-read that raced it must neither pre-empt nor undo. */
 let actionsBegun = 0
 let actionsSettled = 0
+/** The chats each in-flight continue call names, so the status bar can report the resume after
+ *  the dialog that started it has closed. Held only for the call's lifetime; never persisted. */
+const resumeBatches = new Set<readonly string[]>()
+const NOTHING_RESUMING: readonly string[] = []
+let resuming: readonly string[] = NOTHING_RESUMING
 const listeners = new Set<() => void>()
 const LAUNCH_READ_RETRY_DELAYS_MS = [100, 250, 500] as const
+
+function emit(): void {
+  for (const listener of listeners) {
+    listener()
+  }
+}
 
 /** The snapshot object is replaced HERE and nowhere else — never during a render — so every
  *  `useSyncExternalStore` reader sees the same reference until a host answer or a user action
@@ -59,9 +70,12 @@ const LAUNCH_READ_RETRY_DELAYS_MS = [100, 250, 500] as const
 function publish(next: NativeChatRestartOffer): void {
   offer = next
   syncOfferedChatWatch()
-  for (const listener of listeners) {
-    listener()
-  }
+  emit()
+}
+
+function syncResuming(): void {
+  resuming = resumeBatches.size === 0 ? NOTHING_RESUMING : [...new Set([...resumeBatches].flat())]
+  emit()
 }
 
 /**
@@ -167,6 +181,10 @@ export function getNativeChatRestartOffer(): NativeChatRestartOffer {
   return offer
 }
 
+export function getNativeChatRestartResuming(): readonly string[] {
+  return resuming
+}
+
 function subscribe(listener: () => void): () => void {
   listeners.add(listener)
   return () => {
@@ -253,6 +271,9 @@ export async function continueNativeChatRestartOffer(
   reported: readonly string[] = sessionIds ?? []
 ): Promise<void> {
   actionsBegun += 1
+  const batch = [...reported]
+  resumeBatches.add(batch)
+  syncResuming()
   try {
     const result = await callStructuredAgentSession<
       HostOfferPayload & {
@@ -278,6 +299,8 @@ export async function continueNativeChatRestartOffer(
     announceRestartUnconfirmed(reported.length)
   } finally {
     actionsSettled += 1
+    resumeBatches.delete(batch)
+    syncResuming()
   }
 }
 
@@ -361,10 +384,17 @@ export function useNativeChatRestartOffer(enabled: boolean): NativeChatRestartOf
   return useSyncExternalStore(subscribe, getNativeChatRestartOffer, getNativeChatRestartOffer)
 }
 
+/** The chats a resume is carrying on right now, whichever surface started it. */
+export function useNativeChatRestartResuming(): readonly string[] {
+  return useSyncExternalStore(subscribe, getNativeChatRestartResuming, getNativeChatRestartResuming)
+}
+
 /** @internal - tests need a clean module between cases. */
 export function _resetNativeChatRestartOffer(): void {
   releaseOfferedChatWatch()
   offer = EMPTY
+  resumeBatches.clear()
+  resuming = NOTHING_RESUMING
   actionsBegun = 0
   actionsSettled = 0
   launch = undefined

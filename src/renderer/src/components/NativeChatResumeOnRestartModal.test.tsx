@@ -271,6 +271,44 @@ it('never re-offers a resumed chat when the status entry reopens the dialog', as
   expect(document.querySelectorAll('[role="checkbox"]')).toHaveLength(2)
 })
 
+// The resume outlives the dialog, as a skill update does: the status bar carries it while in flight.
+it('closes on Resume and shows the resume in the status bar until the host answers', async () => {
+  const continued = Promise.withResolvers<unknown>()
+  rpc.mockImplementation((_target, method) =>
+    method === 'agentSession.restartResumable'
+      ? Promise.resolve({ sessions: offered })
+      : continued.promise
+  )
+  await mount(
+    <>
+      <NativeChatResumeOnRestartModal />
+      <NativeChatResumeStatusSegment iconOnly={false} />
+    </>
+  )
+  await act(async () => button('Resume 2 chats').click())
+  expect(document.querySelector('[role="dialog"]')).toBeNull()
+  expect(button('Resuming 2 chats. Click to open details.').textContent).toBe('Resuming 2 chats')
+  // Counted once, as in flight, not also as still to resume.
+  expect(document.body.textContent).not.toContain('chats to resume')
+
+  // Reopening mid-run shows the run, without a re-read that could race the host's answer.
+  const reads = rpc.mock.calls.length
+  await act(async () => button('Resuming 2 chats').click())
+  expect(rpc.mock.calls.length).toBe(reads)
+  expect(button('Resuming…').disabled).toBe(true)
+
+  await act(async () =>
+    continued.resolve({
+      resumed: offered.map(({ sessionId }) => ({ sessionId, outcome: 'resumed' })),
+      continued: offered.map(({ sessionId }) => ({ sessionId, outcome: 'continued' })),
+      sessions: []
+    })
+  )
+  expect(document.body.textContent).not.toContain('Resuming')
+  expect(document.querySelector('[role="dialog"]')).toBeNull()
+  expect(toast).toHaveBeenCalledWith('Resumed 2 chats and asked them to continue')
+})
+
 // Resuming spends the host's claims, so the offer has to shrink with it. A count left standing over
 // chats the host already handed back sends the user to a status entry that re-reads, finds nothing,
 // and does nothing.
@@ -507,7 +545,7 @@ function dialogControls(): (string | null)[] {
 
 // The old toast said "1 chat could not be continued" and vanished. The chat now stays in the same
 // dialog — same title, checkboxes and footer — with its row saying what went wrong and what to do.
-it('keeps a chat the resume could not carry on in the same dialog, with what to do', async () => {
+it('lists a chat the resume could not carry on when the dialog reopens, with what to do', async () => {
   let remaining: unknown[] = []
   rpc.mockImplementation(async (_target, method) =>
     method === 'agentSession.restartResumable'
@@ -525,6 +563,9 @@ it('keeps a chat the resume could not carry on in the same dialog, with what to 
   )
   await mount(<NativeChatResumeOnRestartModal />)
   await act(async () => button('Resume 2 chats').click())
+  // Resume hands off to the status bar; its failure entry (or the toast's Show) reopens the list.
+  expect(document.querySelector('[role="dialog"]')).toBeNull()
+  await act(async () => requestNativeChatResumeOnRestartDialog())
   const dialog = document.querySelector('[role="dialog"]')
   expect(dialog).not.toBeNull()
   // Unchanged chrome: the title, the preference box, and the two footer actions.
