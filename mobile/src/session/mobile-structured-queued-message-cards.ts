@@ -9,8 +9,8 @@ import { dispatchWasWithdrawn } from '../../../src/shared/structured-agent-sessi
 import { structuredAgentSessionAttemptFailureParts } from '../../../src/shared/structured-agent-session-send-disposition'
 import {
   QUEUED_MESSAGE_PAUSED_SEND_FAILED,
-  QUEUED_MESSAGE_PAUSED_STOPPED,
-  type AgentSessionQueuedMessage
+  type AgentSessionQueuedMessage,
+  type AgentSessionQueuePause
 } from '../../../src/shared/agent-session-wire'
 
 export type MobileQueuedMessageCard = {
@@ -46,16 +46,25 @@ function returnedLabel(
   )
 }
 
+/** One card's own hold: only a failed conversion; the queue's pause is its header row. */
 function pausedLabel(reason: string | undefined): string {
   if (reason === QUEUED_MESSAGE_PAUSED_SEND_FAILED) {
     return "Couldn't send — tap Send to retry"
   }
-  if (reason === QUEUED_MESSAGE_PAUSED_STOPPED) {
-    // A Stop, /clear carry, or restart hold: the user's next sent message lifts it.
-    return 'Paused — sends after your next message'
-  }
   // Absent or unknown (newer host) marker: a plain pause, promising no release rule.
   return 'Paused'
+}
+
+const QUEUE_PAUSE_LABELS: Readonly<Record<string, string>> = {
+  stopped: 'Queue paused because you interrupted',
+  restarted: 'Queue paused because Orca restarted',
+  cleared: 'Queue paused after you cleared the conversation'
+}
+
+/** The paused queue's header row. A reason this build does not know (a newer host's) reads as a
+ *  plain pause. */
+export function mobileQueuePauseLabel(pause: Pick<AgentSessionQueuePause, 'reason'>): string {
+  return QUEUE_PAUSE_LABELS[pause.reason] ?? 'Queue paused'
 }
 
 /** Cards in published order. A waiting card is hidden once a live hand-off of it arrived — a
@@ -66,7 +75,7 @@ function pausedLabel(reason: string | undefined): string {
 export function mobileQueuedMessageCards(
   queuedMessages: readonly AgentSessionQueuedMessage[] | null,
   submissions: readonly Pick<AgentJournalSubmission, 'queuedMessageId' | 'dispatchState'>[],
-  facts: { pendingPrompt: boolean }
+  facts: { pendingPrompt: boolean; queuePaused?: boolean }
 ): MobileQueuedMessageCard[] {
   if (!queuedMessages || queuedMessages.length === 0) {
     return []
@@ -92,9 +101,12 @@ export function mobileQueuedMessageCards(
           ? pausedLabel(draft.pausedReason)
           : behindReturned
             ? 'Waiting — a message ahead needs attention'
-            : facts.pendingPrompt
-              ? 'Waiting for your answer'
-              : 'Queued — sends when the current turn ends'
+            : facts.queuePaused
+              ? // The header row says why and offers Resume; the card promises no send time.
+                'Queued'
+              : facts.pendingPrompt
+                ? 'Waiting for your answer'
+                : 'Queued — sends when the current turn ends'
     cards.push({
       messageId: draft.messageId,
       text: queuedMessageBodyText(draft.body),

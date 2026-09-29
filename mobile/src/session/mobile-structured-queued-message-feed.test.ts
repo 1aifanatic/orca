@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type {
   AgentSessionQueuedMessage,
+  AgentSessionQueuePause,
   AgentSessionSubscribeEvent
 } from '../../../src/shared/agent-session-wire'
-import { reduceMobileQueuedMessageFeed } from './mobile-structured-queued-message-feed'
+import {
+  reduceMobileQueuePause,
+  reduceMobileQueuedMessageFeed
+} from './mobile-structured-queued-message-feed'
 
 function draft(messageId: string, position: number): AgentSessionQueuedMessage {
   return {
@@ -14,14 +18,30 @@ function draft(messageId: string, position: number): AgentSessionQueuedMessage {
   }
 }
 
-function batch(queuedMessages?: AgentSessionQueuedMessage[] | null): AgentSessionSubscribeEvent {
+function batch(
+  queuedMessages?: AgentSessionQueuedMessage[] | null,
+  queuePause?: AgentSessionQueuePause | null
+): AgentSessionSubscribeEvent {
   return {
     type: 'batch',
     sessionId: 'session-1',
     batch: { cursor: { epoch: 'e', sequence: 1 }, items: [], removedItemIds: [], submissions: [] },
-    ...(queuedMessages !== undefined ? { queuedMessages } : {})
+    ...(queuedMessages !== undefined ? { queuedMessages } : {}),
+    ...(queuePause !== undefined ? { queuePause } : {})
   }
 }
+
+describe('reduceMobileQueuePause', () => {
+  it('rides with the list: a frame without the list keeps it, one with the list states it', () => {
+    const paused = reduceMobileQueuePause(null, batch([draft('a', 1)], { reason: 'stopped' }))
+    expect(paused).toEqual({ reason: 'stopped' })
+    expect(reduceMobileQueuePause(paused, batch())).toBe(paused)
+    expect(reduceMobileQueuePause(paused, batch([draft('a', 1)], { reason: 'stopped' }))).toBe(
+      paused
+    )
+    expect(reduceMobileQueuePause(paused, batch([draft('a', 1)]))).toBeNull()
+  })
+})
 
 describe('reduceMobileQueuedMessageFeed', () => {
   it('holds no claim until the host publishes the field', () => {

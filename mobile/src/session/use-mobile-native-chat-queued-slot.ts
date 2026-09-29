@@ -28,17 +28,19 @@ export function useMobileNativeChatQueuedSlot(
   const { composerInputRef, editQueuedMessage } = useMobileNativeChatQueuedEditFocus(
     queuedMessages.onEdit
   )
-  const { cards, onSend, onDelete } = queuedMessages
+  const { cards, onSend, onDelete, pause, onResume } = queuedMessages
   return useMemo(
     () => ({
       cards: createElement(MobileNativeChatQueuedMessages, {
         cards,
         onSend,
         onDelete,
-        onEdit: editQueuedMessage
+        onEdit: editQueuedMessage,
+        pause,
+        onResume
       }),
       composerInputRef
     }),
-    [cards, composerInputRef, editQueuedMessage, onDelete, onSend]
+    [cards, composerInputRef, editQueuedMessage, onDelete, onResume, onSend, pause]
   )
 }

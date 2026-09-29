@@ -65,7 +65,9 @@ export function MobileNativeChatOverlay({
     cards: queued.cards,
     onSend: queued.send,
     onDelete: queued.delete,
-    onEdit: queued.edit
+    onEdit: queued.edit,
+    pause: queued.pause,
+    onResume: queued.resume
   })
   if (!controller.showNativeChat) {
     return null

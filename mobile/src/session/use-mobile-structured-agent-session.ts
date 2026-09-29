@@ -102,7 +102,7 @@ export function useMobileStructuredAgentSession(args: {
   const commandPendingRef = useRef(false)
   useEffect(() => () => operationIdsRef.current.clear(), [])
   const stateArgs = { client, sessionId, sessionKey, enabled, connected }
-  const { state, stateRef, queuedMessages, loadingOlder, loadEarlier } =
+  const { state, stateRef, queuedMessages, queuePause, loadingOlder, loadEarlier } =
     useMobileStructuredAgentState(stateArgs)
   useMobileStructuredSendOperationReconciliation(state.submissions, queuedMessages)
 
@@ -181,6 +181,7 @@ export function useMobileStructuredAgentSession(args: {
   const queued = useMobileStructuredQueuedMessageControls({
     queueCapable,
     queuedMessages,
+    queuePause,
     submissions: state.submissions,
     pendingPrompt: approvalPrompt !== null || questionPrompt !== null,
     mutate,

@@ -8,13 +8,17 @@ import { useCallback, useMemo } from 'react'
 import type { AgentJournalSubmission } from '../../../src/shared/agent-session-journal-types'
 import type {
   AgentSessionQueuedMessageDeleteResult,
+  AgentSessionQueuedMessagesResumeResult,
   AgentSessionSendResult
 } from '../../../src/shared/agent-session-wire'
 import {
   mobileQueuedMessageCards,
   type MobileQueuedMessageCard
 } from './mobile-structured-queued-message-cards'
-import type { MobileQueuedMessageFeed } from './mobile-structured-queued-message-feed'
+import type {
+  MobileQueuedMessageFeed,
+  MobileQueuePause
+} from './mobile-structured-queued-message-feed'
 import type { MobileStructuredAgentMutate } from './use-mobile-structured-agent-mutation'
 
 /** `onCopied` runs once the card's text is in the composer, before its Delete leaves. */
@@ -29,11 +33,16 @@ export type MobileStructuredQueuedMessageControls = {
   delete: (messageId: string) => Promise<boolean>
   /** Copy the card's shown text into the composer, then delete the card. */
   edit: MobileQueuedMessageEdit
+  /** The whole queue's pause, shown above the cards; null when it sends on its own. */
+  pause: MobileQueuePause
+  /** Lift the queue's pause, so the waiting cards drain. */
+  resume: () => Promise<boolean>
 }
 
 export function useMobileStructuredQueuedMessageControls(args: {
   queueCapable: boolean
   queuedMessages: MobileQueuedMessageFeed
+  queuePause: MobileQueuePause
   submissions: readonly AgentJournalSubmission[]
   pendingPrompt: boolean
   mutate: MobileStructuredAgentMutate
@@ -52,12 +61,18 @@ export function useMobileStructuredQueuedMessageControls(args: {
     pendingPrompt,
     queueCapable,
     queuedMessages,
+    queuePause,
     submissions
   } = args
   const cards = useMemo(
     () =>
-      queueCapable ? mobileQueuedMessageCards(queuedMessages, submissions, { pendingPrompt }) : [],
-    [pendingPrompt, queueCapable, queuedMessages, submissions]
+      queueCapable
+        ? mobileQueuedMessageCards(queuedMessages, submissions, {
+            pendingPrompt,
+            queuePaused: queuePause !== null
+          })
+        : [],
+    [pendingPrompt, queueCapable, queuePause, queuedMessages, submissions]
   )
   const resolved = useCallback(
     (accepted: boolean): boolean => {
@@ -125,5 +140,20 @@ export function useMobileStructuredQueuedMessageControls(args: {
     },
     [appendComposerText, cards, deleteQueued]
   )
-  return { cards, send, delete: deleteDraft, edit }
+  // Through the same mutation seam as Delete: a refusal reaches the send-error banner.
+  const resume = useCallback(
+    async (): Promise<boolean> =>
+      resolved(
+        (
+          await mutate<AgentSessionQueuedMessagesResumeResult>(
+            'agentSession.queuedMessagesResume',
+            'agentSession.queuedMessagesResume',
+            {}
+          )
+        ).status === 'accepted'
+      ),
+    [mutate, resolved]
+  )
+  const pause = queueCapable ? queuePause : null
+  return { cards, send, delete: deleteDraft, edit, pause, resume }
 }

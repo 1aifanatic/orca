@@ -79,7 +79,7 @@ describe('MobileNativeChatQueuedMessages', () => {
     expect(lineCap('Queued — sends when the current turn ends')).toBe(1)
   })
 
-  it('reads Steer on a waiting card and plain Send on a paused one, which has no turn to jump', async () => {
+  it('reads Steer on a waiting card and plain Send on one whose own send failed', async () => {
     const mounted = create(createElement('View'))
     renderer = mounted
     await act(async () => {
@@ -91,7 +91,7 @@ describe('MobileNativeChatQueuedMessages', () => {
               text: 'later',
               state: 'waiting',
               paused: true,
-              label: 'Paused — sends after your next message'
+              label: "Couldn't send — tap Send to retry"
             },
             {
               messageId: 'waiting-1',
@@ -110,7 +110,7 @@ describe('MobileNativeChatQueuedMessages', () => {
     expect(mounted.root.findByProps({ accessibilityLabel: 'Send this message' })).toBeTruthy()
     expect(
       mounted.root.findByProps({
-        accessibilityLabel: 'Send now without waiting for the turn to end'
+        accessibilityLabel: 'Submit without interrupting the model'
       })
     ).toBeTruthy()
     const labels = mounted.root
@@ -118,6 +118,86 @@ describe('MobileNativeChatQueuedMessages', () => {
       .map((node) => node.props.children)
       .filter((child) => child === 'Send' || child === 'Steer' || child === 'Send now')
     expect(labels).toEqual(['Send', 'Steer'])
+  })
+
+  describe('a paused queue', () => {
+    const waiting = {
+      messageId: 'waiting-1',
+      text: 'next',
+      state: 'waiting' as const,
+      paused: false,
+      label: 'Queued'
+    }
+
+    async function mountPaused(
+      props: Partial<Parameters<typeof MobileNativeChatQueuedMessages>[0]>
+    ): Promise<ReactTestRenderer> {
+      const mounted = create(createElement('View'))
+      renderer = mounted
+      await act(async () => {
+        mounted.update(
+          createElement(MobileNativeChatQueuedMessages, {
+            cards: [waiting],
+            onSend: vi.fn(async () => true),
+            ...props
+          })
+        )
+      })
+      return mounted
+    }
+
+    function texts(mounted: ReactTestRenderer): unknown[] {
+      return mounted.root
+        .findAll((node) => String(node.type) === 'Text')
+        .map((node) => node.props.children)
+    }
+
+    it('heads the cards with why the queue is paused, for each reason', async () => {
+      const labels = {
+        stopped: 'Queue paused because you interrupted',
+        restarted: 'Queue paused because Orca restarted',
+        cleared: 'Queue paused after you cleared the conversation'
+      } as const
+      for (const [reason, label] of Object.entries(labels)) {
+        // SAFETY: 'cleared' is a reason a newer host sends; the row must word it already.
+        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a reason newer than this build's union, as the host will send it.
+        const mounted = await mountPaused({ pause: { reason } as never })
+        expect(texts(mounted)).toContain(label)
+      }
+    })
+
+    it('shows no header without a pause or without cards', async () => {
+      expect(texts(await mountPaused({ pause: null }))).not.toContain(
+        'Queue paused because you interrupted'
+      )
+      const empty = await mountPaused({ cards: [], pause: { reason: 'stopped' } })
+      expect(empty.toJSON()).toBeNull()
+    })
+
+    it('Resume asks the host to lift the pause, once per tap', async () => {
+      const onResume = vi.fn(async () => true)
+      const mounted = await mountPaused({ pause: { reason: 'restarted' }, onResume })
+      const resume = mounted.root.findByProps({
+        accessibilityLabel: 'Resume sending the queued messages'
+      })
+      const resolved: unknown = resume.props.style({ pressed: false })
+      const style = Object.assign({}, ...(Array.isArray(resolved) ? resolved : [resolved]))
+      expect(style.minHeight).toBeGreaterThanOrEqual(44)
+      await act(async () => resume.props.onPress())
+      expect(onResume).toHaveBeenCalledTimes(1)
+    })
+
+    it('keeps Steer on its cards: one card can still go beside the paused rest', async () => {
+      const onSend = vi.fn(async () => true)
+      const mounted = await mountPaused({ pause: { reason: 'stopped' }, onSend })
+      const steer = mounted.root.findByProps({
+        accessibilityLabel: 'Submit without interrupting the model'
+      })
+      expect(texts(mounted)).toContain('Steer')
+      expect(texts(mounted)).not.toContain('Send')
+      await act(async () => steer.props.onPress())
+      expect(onSend).toHaveBeenCalledWith('waiting-1')
+    })
   })
 
   it('gives every card action at least a 44pt touch target', async () => {

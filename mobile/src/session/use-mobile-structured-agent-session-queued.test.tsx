@@ -1,7 +1,8 @@
 // The mid-turn queue on mobile: `delivery` rides only capability-gated sends,
 // published drafts render as cards (never optimistic bubbles), and card actions
-// map to the queued-message RPCs. Stop never touches the queue — held cards
-// stay on the host as paused cards and no text travels back over the wire.
+// map to the queued-message RPCs. Stop never touches the queue — its cards
+// stay on the host under a queue-level pause, lifted by Resume, and no text
+// travels back over the wire.
 // Edit copies the card's shown text into the composer before its delete
 // leaves, so no RPC outcome can lose it. An incapable host gets exactly
 // today's requests.
@@ -9,19 +10,24 @@
 import { createElement } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  QUEUED_MESSAGE_PAUSED_STOPPED,
-  type AgentSessionQueuedMessage,
-  type AgentSessionSubscribeEvent
-} from '../../../src/shared/agent-session-wire'
-import type { AgentJournalSubmission } from '../../../src/shared/agent-session-journal-types'
 import { structuredAgentSessionPayloadFingerprint } from '../../../src/shared/structured-agent-session-mutation'
 import type { RpcClient } from '../transport/rpc-client'
 import { markRpcDeliveryUnknown } from '../transport/rpc-delivery-ambiguity'
-import type { RpcResponse } from '../transport/types'
 import { resetMobileStructuredSendOperationJournalForTests } from './mobile-structured-send-operation-journal'
 import type { StructuredAgentSessionHostSupport } from './mobile-structured-agent-session-host-support'
 import { useMobileStructuredAgentSession } from './use-mobile-structured-agent-session'
+import {
+  CAPABLE,
+  LEGACY,
+  SESSION_ID,
+  acceptedSubmission,
+  batchEvent,
+  fieldsOf,
+  mutationOk,
+  ok,
+  queuedDraft,
+  snapshotEvent
+} from './use-mobile-structured-agent-session-queued.test-fixture'
 
 const asyncStorage = vi.hoisted(() => ({
   getItem: vi.fn(),
@@ -30,122 +36,6 @@ const asyncStorage = vi.hoisted(() => ({
 }))
 
 vi.mock('@react-native-async-storage/async-storage', () => ({ default: asyncStorage }))
-
-const SESSION_ID = 'session-1'
-
-const CAPABLE: StructuredAgentSessionHostSupport = {
-  promptCancel: false,
-  questionAnswers: false,
-  queuedMessages: true
-}
-const LEGACY: StructuredAgentSessionHostSupport = { ...CAPABLE, queuedMessages: false }
-
-function ok(result: unknown): RpcResponse {
-  return { id: 'request-1', ok: true, result, _meta: { runtimeId: 'runtime-1' } }
-}
-
-/** The fields one recorded request carried, read without asserting their shape. */
-function fieldsOf(value: unknown): Record<string, unknown> {
-  return typeof value === 'object' && value !== null
-    ? Object.fromEntries(Object.entries(value))
-    : {}
-}
-
-function mutationOk(value: unknown) {
-  return ok({
-    ok: true,
-    replayed: false,
-    fence: 3,
-    cursor: { epoch: 'epoch-1', sequence: 1 },
-    value
-  })
-}
-
-/** A settled submission; `queuedMessageId` marks it as that draft's hand-off. */
-function acceptedSubmission(
-  clientMessageId: string,
-  queuedMessageId?: string
-): AgentJournalSubmission {
-  return {
-    clientMessageId,
-    ...(queuedMessageId ? { queuedMessageId } : {}),
-    fence: 3,
-    payloadFingerprint: 'fp',
-    dispatchState: 'accepted',
-    providerItemId: `item-${clientMessageId}`,
-    reason: null,
-    submittedAt: 10,
-    resolvedAt: 11
-  }
-}
-
-function queuedDraft(
-  overrides: Partial<AgentSessionQueuedMessage> & { messageId: string }
-): AgentSessionQueuedMessage {
-  return {
-    position: 1,
-    body: {
-      kind: 'message',
-      role: 'user',
-      blocks: [{ type: 'text', text: `text of ${overrides.messageId}` }]
-    },
-    state: 'waiting',
-    ...overrides
-  }
-}
-
-function snapshotEvent(input?: {
-  queuedMessages?: AgentSessionQueuedMessage[] | null
-  runningTurn?: boolean
-  submissions?: AgentJournalSubmission[]
-}): AgentSessionSubscribeEvent {
-  return {
-    type: 'snapshot',
-    sessionId: SESSION_ID,
-    fence: 3,
-    page: {
-      sessionId: SESSION_ID,
-      epoch: 'epoch-1',
-      fence: 3,
-      direction: 'tail',
-      items: input?.runningTurn
-        ? [
-            {
-              itemId: 'turn-item-1',
-              revision: 1,
-              body: { kind: 'turn', turnId: 'turn-1', state: 'running' },
-              sequence: 1,
-              observedAt: 1
-            }
-          ]
-        : [],
-      removedItemIds: [],
-      submissions: input?.submissions ?? [],
-      window: { oldest: null, newest: null, nextCursor: { epoch: 'epoch-1', sequence: 0 } },
-      liveCursor: { epoch: 'epoch-1', sequence: 0 },
-      hasOlder: false,
-      hasNewer: false
-    },
-    ...(input?.queuedMessages !== undefined ? { queuedMessages: input.queuedMessages } : {})
-  }
-}
-
-function batchEvent(
-  queuedMessages?: AgentSessionQueuedMessage[] | null,
-  submissions: AgentJournalSubmission[] = []
-): AgentSessionSubscribeEvent {
-  return {
-    type: 'batch',
-    sessionId: SESSION_ID,
-    batch: {
-      cursor: { epoch: 'epoch-1', sequence: 2 },
-      items: [],
-      removedItemIds: [],
-      submissions
-    },
-    ...(queuedMessages !== undefined ? { queuedMessages } : {})
-  }
-}
 
 describe('mobile structured queued messages', () => {
   let renderer: ReactTestRenderer | null = null
@@ -813,7 +703,7 @@ describe('mobile structured queued messages', () => {
   })
 
   describe('Stop leaves the queue alone', () => {
-    it('a capable Stop is a plain cancel; the cards stay and read as paused', async () => {
+    it('a capable Stop is a plain cancel; the cards stay and the queue reads as paused', async () => {
       sendRequest.mockImplementation(async (method) => {
         if (method === 'agentSession.cancel') {
           return mutationOk({ cancelled: true, turnId: 'turn-1' })
@@ -837,23 +727,51 @@ describe('mobile structured queued messages', () => {
       expect(appendText).not.toHaveBeenCalled()
       expect(asyncStorage.setItem).not.toHaveBeenCalled()
       expect(hook!.queued.cards.map((card) => card.messageId)).toEqual(['draft-1'])
-      // The host's hold arrives on the published list; the card explains itself.
+      // The host's pause is the queue's, published beside the list; the card itself is not held.
       act(() =>
-        listener?.(
-          batchEvent([
-            queuedDraft({
-              messageId: 'draft-1',
-              paused: true,
-              pausedReason: QUEUED_MESSAGE_PAUSED_STOPPED
-            })
-          ])
-        )
+        listener?.(batchEvent([queuedDraft({ messageId: 'draft-1' })], [], { reason: 'stopped' }))
       )
+      expect(hook!.queued.pause).toEqual({ reason: 'stopped' })
       expect(hook!.queued.cards[0]).toMatchObject({
         messageId: 'draft-1',
-        paused: true,
-        label: 'Paused — sends after your next message'
+        paused: false,
+        label: 'Queued'
       })
+      // A frame without the list leaves the pause alone; one that publishes the list states it.
+      act(() => listener?.(batchEvent()))
+      expect(hook!.queued.pause).toEqual({ reason: 'stopped' })
+      act(() => listener?.(batchEvent([queuedDraft({ messageId: 'draft-1' })], [], null)))
+      expect(hook!.queued.pause).toBeNull()
+    })
+
+    it('Resume lifts the pause through its RPC, and a refusal reaches the error banner', async () => {
+      let refuse = false
+      sendRequest.mockImplementation(async (method) => {
+        if (method === 'agentSession.queuedMessagesResume') {
+          return refuse
+            ? ok({
+                ok: false,
+                refusal: { code: 'agent_session_operation_invalid', message: 'Could not resume.' }
+              })
+            : mutationOk({ resumed: true })
+        }
+        return method === 'agentSession.options' ? ok({ models: [], current: {} }) : ok({})
+      })
+      await mountSession(
+        CAPABLE,
+        snapshotEvent({ queuedMessages: [queuedDraft({ messageId: 'draft-1' })] })
+      )
+      await act(async () => {
+        expect(await hook!.queued.resume()).toBe(true)
+      })
+      expect(Object.keys(requestOf('agentSession.queuedMessagesResume').params)).toEqual([
+        'envelope'
+      ])
+      refuse = true
+      await act(async () => {
+        expect(await hook!.queued.resume()).toBe(false)
+      })
+      expect(onSendError).toHaveBeenCalledWith(expect.any(String))
     })
 
     it('an incapable Stop is exactly today’s cancel', async () => {

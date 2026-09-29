@@ -2,12 +2,12 @@ import { describe, expect, it } from 'vitest'
 import { agentSessionFailureFact } from '../../../src/shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../src/shared/agent-session-failure-words'
 import { DISPATCH_REJECTED_HOST_RESTARTED } from '../../../src/shared/structured-agent-session-dispatch-rejection'
-import {
-  QUEUED_MESSAGE_PAUSED_SEND_FAILED,
-  QUEUED_MESSAGE_PAUSED_STOPPED
-} from '../../../src/shared/agent-session-wire'
+import { QUEUED_MESSAGE_PAUSED_SEND_FAILED } from '../../../src/shared/agent-session-wire'
 import type { AgentSessionQueuedMessage } from '../../../src/shared/agent-session-wire'
-import { mobileQueuedMessageCards } from './mobile-structured-queued-message-cards'
+import {
+  mobileQueuePauseLabel,
+  mobileQueuedMessageCards
+} from './mobile-structured-queued-message-cards'
 
 /** A returned card as the host publishes it: the refusal's sentence and its typed fact. */
 function returnedAs(fact: Parameters<typeof agentSessionFailureWords>[0]) {
@@ -54,14 +54,28 @@ describe('mobileQueuedMessageCards', () => {
     expect(card?.label).toBe('Waiting for your answer')
   })
 
-  it('labels a stopped pause — a Stop, /clear carry or restart hold — with the resume promise', () => {
-    const [card] = mobileQueuedMessageCards(
-      [draft({ messageId: 'a', paused: true, pausedReason: QUEUED_MESSAGE_PAUSED_STOPPED })],
-      [],
-      { pendingPrompt: false }
+  it('promises no send time on a waiting card of a paused queue; its header row explains', () => {
+    const [card] = mobileQueuedMessageCards([draft({ messageId: 'a' })], [], {
+      pendingPrompt: false,
+      queuePaused: true
+    })
+    expect(card?.label).toBe('Queued')
+    expect(card?.paused).toBe(false)
+  })
+
+  it('words the paused queue by reason, and one this build does not know as a plain pause', () => {
+    expect(mobileQueuePauseLabel({ reason: 'stopped' })).toBe(
+      'Queue paused because you interrupted'
     )
-    expect(card?.label).toBe('Paused — sends after your next message')
-    expect(card?.paused).toBe(true)
+    expect(mobileQueuePauseLabel({ reason: 'restarted' })).toBe(
+      'Queue paused because Orca restarted'
+    )
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: reasons newer than this build's union, as a newer host sends them.
+    const newer = (reason: string) => ({ reason }) as never
+    expect(mobileQueuePauseLabel(newer('cleared'))).toBe(
+      'Queue paused after you cleared the conversation'
+    )
+    expect(mobileQueuePauseLabel(newer('later_reason'))).toBe('Queue paused')
   })
 
   it('labels a reasonless pause as a plain pause, promising no release rule', () => {

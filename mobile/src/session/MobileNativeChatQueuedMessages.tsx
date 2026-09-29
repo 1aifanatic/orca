@@ -2,16 +2,27 @@ import { useRef, useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { Clock, RotateCcw } from 'lucide-react-native'
 import { colors, radii, spacing, typography } from '../theme/mobile-theme'
-import type { MobileQueuedMessageCard } from './mobile-structured-queued-message-cards'
+import {
+  mobileQueuePauseLabel,
+  type MobileQueuedMessageCard
+} from './mobile-structured-queued-message-cards'
+import type { MobileQueuePause } from './mobile-structured-queued-message-feed'
 import type { MobileQueuedMessageEdit } from './use-mobile-structured-queued-message-controls'
+
+/** The Resume row's in-flight key: NUL never appears in a draft's operation id. */
+const RESUME_KEY = '\u0000resume'
 
 export type MobileNativeChatQueuedMessagesProps = {
   cards?: MobileQueuedMessageCard[]
-  /** Steer for a waiting card; plain Send for a paused or returned one. */
+  /** Steer for a waiting card, the paused queue's included; plain Send for a card whose own send
+   *  failed, or a returned one. */
   onSend?: (messageId: string) => Promise<boolean>
   onDelete?: (messageId: string) => Promise<boolean>
   /** Copy the card's text into the composer, then delete the card. */
   onEdit?: MobileQueuedMessageEdit
+  /** The whole queue's pause: a header row above the cards, with Resume. */
+  pause?: MobileQueuePause
+  onResume?: () => Promise<boolean>
 }
 
 /** The host-held queued drafts, as editable cards between transcript and
@@ -20,7 +31,9 @@ export function MobileNativeChatQueuedMessages({
   cards,
   onSend,
   onDelete,
-  onEdit
+  onEdit,
+  pause,
+  onResume
 }: MobileNativeChatQueuedMessagesProps): React.JSX.Element | null {
   // One in-flight action per card; a second tap must not double-consume. The ref
   // closes the same-frame double tap the disabled state cannot.
@@ -42,12 +55,29 @@ export function MobileNativeChatQueuedMessages({
       setBusyIds(new Set(inFlightRef.current))
     }
   }
+  const resuming = busyIds.has(RESUME_KEY)
   return (
     <View style={styles.list}>
+      {pause ? (
+        <View style={styles.pauseRow}>
+          <Text style={styles.pauseLabel}>{mobileQueuePauseLabel(pause)}</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ disabled: resuming }}
+            accessibilityLabel="Resume sending the queued messages"
+            style={({ pressed }) => [styles.action, pressed && styles.pressed]}
+            disabled={resuming}
+            onPress={() => void run(RESUME_KEY, onResume && (() => onResume()))}
+          >
+            <Text style={styles.actionLabel}>Resume</Text>
+          </Pressable>
+        </View>
+      ) : null}
       {cards.map((card) => {
         const busy = busyIds.has(card.messageId)
         const returned = card.state === 'returned'
-        // "Steer" names jumping the running turn; a paused or returned card waits on none.
+        // "Steer" submits beside the running turn, the paused queue's cards too; a card whose own
+        // send failed, or a returned one, is sent again.
         const sendLabel = returned || card.paused ? 'Send' : 'Steer'
         return (
           <View key={card.messageId} style={[styles.card, returned && styles.cardReturned]}>
@@ -74,7 +104,7 @@ export function MobileNativeChatQueuedMessages({
                     ? 'Send this message again'
                     : card.paused
                       ? 'Send this message'
-                      : 'Send now without waiting for the turn to end'
+                      : 'Submit without interrupting the model'
                 }
                 style={({ pressed }) => [styles.action, pressed && styles.pressed]}
                 disabled={busy}
@@ -119,6 +149,18 @@ const ACTION_TARGET_INSET_VERTICAL = (MIN_TOUCH_TARGET - ACTION_ROW_HEIGHT) / 2
 const ACTION_TARGET_INSET_HORIZONTAL = spacing.md / 2
 
 const styles = StyleSheet.create({
+  pauseRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginVertical: -ACTION_TARGET_INSET_VERTICAL,
+    marginRight: -ACTION_TARGET_INSET_HORIZONTAL
+  },
+  pauseLabel: {
+    flex: 1,
+    color: colors.textMuted,
+    fontSize: typography.metaSize
+  },
   list: {
     marginHorizontal: spacing.lg,
     marginVertical: spacing.xs,
