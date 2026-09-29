@@ -1,4 +1,4 @@
-import { agentMainAgentVerdict } from './agent-main-agent-verdict'
+import { agentVerdictDisplayMark } from './agent-main-agent-verdict'
 import type { AgentMainAgentStatus } from './main-agent-status'
 
 export const ORCHESTRATION_FLEET_ATTENTION_CATEGORIES = [
@@ -90,12 +90,12 @@ export function projectOrchestrationFleetAttention(
   }
 }
 
-/** The `mainTurnFailed` fact. Without `mainAgent` a row can carry no failure, so the combined
- *  row state never changes the answer. */
+/** The `mainTurnFailed` fact: whatever the agent's own display draws as Failed. The Failed mark
+ *  ignores the combined row state, so the main agent's record alone answers it. */
 export function isFleetMainTurnFailed(mainAgent: AgentMainAgentStatus | undefined): boolean {
   return (
     mainAgent !== undefined &&
-    agentMainAgentVerdict({ state: mainAgent.state, mainAgent }) === 'failure'
+    agentVerdictDisplayMark({ state: mainAgent.state, mainAgent }) === 'failed'
   )
 }
 

@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { agentVerdictDisplayMark } from './agent-main-agent-verdict'
+import { AGENT_STATUS_STATES } from './agent-status-types'
+import { AGENT_JOURNAL_TURN_OUTCOMES } from './agent-turn-outcome'
 import {
   isFleetMainTurnFailed,
   projectOrchestrationFleetAttention
@@ -100,7 +103,15 @@ describe('orchestration fleet attention', () => {
     ).toEqual(['failure'])
   })
 
-  it('derives the failed main turn from the main agent record alone', () => {
+  it('raises failure exactly when the agent display draws the main agent as Failed', () => {
+    for (const state of AGENT_STATUS_STATES) {
+      for (const outcome of [undefined, ...AGENT_JOURNAL_TURN_OUTCOMES]) {
+        const mainAgent = { state, stateStartedAt: 1, ...(outcome ? { outcome } : {}) }
+        expect(isFleetMainTurnFailed(mainAgent)).toBe(
+          agentVerdictDisplayMark({ state, mainAgent }) === 'failed'
+        )
+      }
+    }
     expect(isFleetMainTurnFailed({ state: 'done', outcome: 'failure', stateStartedAt: 1 })).toBe(
       true
     )
