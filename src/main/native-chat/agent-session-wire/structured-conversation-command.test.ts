@@ -671,4 +671,25 @@ describe('a clear that never committed', () => {
     expect(result.ok && result.value.error).toBeFalsy()
     expect(result.ok && result.value.replacementSessionId).not.toBe(failed)
   })
+
+  it('starts afresh when a retry after a restart follows a try whose start never answered', async () => {
+    let hostDies!: (error: Error) => void
+    vi.mocked(adapter.acquire).mockImplementationOnce(
+      () => new Promise((_, reject) => (hostDies = reject))
+    )
+    const dying = host.conversationCommand(caller, commandParams('clear')).catch(() => {})
+    await vi.waitFor(() => expect(otherRecordIds()).toHaveLength(1))
+    const [interrupted] = otherRecordIds()
+    await restartHost()
+    await host.restoreReadableSessions(store.listVisibleSessionIds())
+    const result = await host.conversationCommand(caller, commandParams('clear'))
+    expect(result).toMatchObject({
+      ok: true,
+      value: { state: 'completed', replacementSessionId: expect.any(String) }
+    })
+    expect(result.ok && result.value.error).toBeFalsy()
+    expect(result.ok && result.value.replacementSessionId).not.toBe(interrupted)
+    hostDies(new Error('the host that started it is gone'))
+    await dying
+  })
 })

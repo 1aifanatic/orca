@@ -103,8 +103,8 @@ function clearTryToFinish(
         callerKey,
         clearReplacementIds(sessionId, callerKey, row.operationId).attachOperationId
       )
-      // A start that failed left nothing to finish, and replaying it would repeat that failure.
-      if (start && start.outcome.status !== 'failed') {
+      // Only a start that succeeded left a conversation to finish; replaying any other repeats it.
+      if (start?.outcome.status === 'succeeded') {
         earliest = row.operationId
       }
     }
