@@ -11,7 +11,7 @@ import { powerShellLiteral } from './ssh-remote-powershell'
 // Exact fixture and oracle from pty-repaint-wide-char-buffer.bun.test.ts.
 const korean = '안녕하세요 오르카 테스트입니다. 결론부터 말씀드리면 시각적 피로도'
 const latin = 'roadmap/complete-overhaul-backlog-history.md (1.75) R-08)'
-type Event = { data: string } | { resizeTo: number }
+type Event = { data: string } | { resizeTo: number } | { appliedSize: { cols: number; rows: number } }
 class ProbeEmulator extends HeadlessEmulator {
   lines(): string[] {
     return readWrappedLineGlyphs(this.terminal).filter((line) => line.length > 0)
@@ -22,7 +22,7 @@ function assertEight(events: Event[]): string[] {
   try {
     for (const event of events) {
       if ('resizeTo' in event) emulator.resize(event.resizeTo, 12)
-      else emulator.writeSync(event.data)
+      else if ('data' in event) emulator.writeSync(event.data)
     }
     const lines = emulator.lines()
     const ko = korean.replace(/\s+/g, '')
@@ -113,6 +113,17 @@ export async function proveRepaint(options: {
     for (const cols of [31, 47]) {
       events.push({ resizeTo: cols })
       options.mux.notify('pty.resize', { id, cols, rows: 12 })
+      const applied = await options.mux.request('pty.getSize', { id })
+      assert(
+        applied &&
+          typeof applied === 'object' &&
+          'cols' in applied &&
+          'rows' in applied &&
+          typeof applied.cols === 'number' &&
+          typeof applied.rows === 'number',
+        'pty.getSize returned an invalid applied-size response'
+      )
+      events.push({ appliedSize: { cols: applied.cols, rows: applied.rows } })
       // Give the remote resize time to arrive before measuring output quiescence.
       await delay(350)
       await quiet(cols)
