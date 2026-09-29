@@ -4,6 +4,7 @@ import {
   wrapPosixHookCommand,
   wrapWindowsHookCommand
 } from '../agent-hooks/installer-utils'
+import { buildCodexHookCommand } from './codex-hook-command-form'
 import { getManagedCommand, getManagedScriptPath } from './codex-hook-definition'
 import { isRetiredCodexHookCommand } from './codex-hook-retired-commands'
 
@@ -45,6 +46,14 @@ describe('isRetiredCodexHookCommand', () => {
   // sweeping either would strip a live entry another Orca relies on.
   it.each([
     ["this build's command", getManagedCommand(getManagedScriptPath())],
+    [
+      "this build's cmd spelling for a spaced profile",
+      buildCodexHookCommand('C:\\Users\\Jo Smith\\.orca\\agent-hooks\\codex-hook.cmd', 'win32')
+    ],
+    [
+      'the PowerShell-text form that app start converts',
+      "<# orca-agent-hook-form=1 #> if ($env:ORCA_PANE_KEY) { & 'C:/Users/Jo Smith/.orca/agent-hooks/codex-hook.cmd' }; exit 0"
+    ],
     ["an older build's command", wrapPosixHookCommand('/other/.orca/agent-hooks/codex-hook.sh')],
     [
       "an older build's Windows launcher",

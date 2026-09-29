@@ -3,20 +3,31 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { runProcess } from '../../shared/child-process/run-process'
-import { createManagedCommandMatcher } from '../agent-hooks/installer-utils'
+import { createManagedCommandMatcher, type HookDefinition } from '../agent-hooks/installer-utils'
 import {
   buildCodexHookCommand,
   CODEX_HOOK_COMMAND_FORM,
   readCodexHookCommandForm
 } from './codex-hook-command-form'
+import { getCodexManagedHookInstallMaterial } from './codex-hook-definition'
+import { planRealHomeCodexHookEntries } from './codex-real-home-hook-entry-plan'
 
 // Why goldens: these bytes are shared by every Orca on a HOME. Changing them
 // without a form bump makes builds rewrite each other's entry again.
 const POSIX_GOLDEN =
   ': orca-agent-hook-form=1; if [ -n "${ORCA_PANE_KEY-}" ] && [ -n "${ORCA_AGENT_HOOK_ROOT-}" ] && [ -f "${ORCA_AGENT_HOOK_ROOT-}/agent-hooks/codex-hook.sh" ]; then /bin/sh "${ORCA_AGENT_HOOK_ROOT-}/agent-hooks/codex-hook.sh" || :; elif [ -z "${ORCA_AGENT_HOOK_ROOT-}" ] && [ -n "${ORCA_PANE_KEY-}" ] && [ -n "${ORCA_AGENT_HOOK_PORT-}" ] && [ -f "${HOME-}/.orca/agent-hooks/codex-hook.sh" ]; then /bin/sh "${HOME-}/.orca/agent-hooks/codex-hook.sh" || :; else { command -p cat 2>/dev/null || cat; } >/dev/null 2>&1 || :; fi'
 const WINDOWS_BARE_GOLDEN = 'C:/Users/alice/.orca/agent-hooks/codex-hook.cmd'
-const WINDOWS_POWERSHELL_GOLDEN =
-  "<# orca-agent-hook-form=1 #> if ($env:ORCA_PANE_KEY -and $env:ORCA_AGENT_HOOK_ROOT -and (Test-Path -LiteralPath (Join-Path $env:ORCA_AGENT_HOOK_ROOT 'agent-hooks\\codex-hook.cmd') -PathType Leaf)) { & (Join-Path $env:ORCA_AGENT_HOOK_ROOT 'agent-hooks\\codex-hook.cmd') } elseif (-not $env:ORCA_AGENT_HOOK_ROOT -and $env:ORCA_PANE_KEY -and $env:ORCA_AGENT_HOOK_PORT -and (Test-Path -LiteralPath 'C:/Users/测试 O''Brien/.orca/agent-hooks/codex-hook.cmd' -PathType Leaf)) { & 'C:/Users/测试 O''Brien/.orca/agent-hooks/codex-hook.cmd' } else { if (-not $env:ORCA_AGENT_HOOK_PORT -or -not $env:ORCA_AGENT_HOOK_TOKEN -or -not $env:ORCA_PANE_KEY) { exit 0 }; [Console]::In.ReadToEnd() | Out-Null }; exit 0"
+const WINDOWS_CMD_GOLDEN = 'cmd --% /d /c @"C:/Users/First Last/.orca/agent-hooks/codex-hook.cmd"'
+// Why kept: dev builds of this form wrote it for a spaced profile path; app start converts it.
+const WINDOWS_POWERSHELL_TEXT =
+  "<# orca-agent-hook-form=1 #> if ($env:ORCA_PANE_KEY -and $env:ORCA_AGENT_HOOK_ROOT -and (Test-Path -LiteralPath (Join-Path $env:ORCA_AGENT_HOOK_ROOT 'agent-hooks\\codex-hook.cmd') -PathType Leaf)) { & (Join-Path $env:ORCA_AGENT_HOOK_ROOT 'agent-hooks\\codex-hook.cmd') } elseif (-not $env:ORCA_AGENT_HOOK_ROOT -and $env:ORCA_PANE_KEY -and $env:ORCA_AGENT_HOOK_PORT -and (Test-Path -LiteralPath 'C:/Users/First Last/.orca/agent-hooks/codex-hook.cmd' -PathType Leaf)) { & 'C:/Users/First Last/.orca/agent-hooks/codex-hook.cmd' } else { if (-not $env:ORCA_AGENT_HOOK_PORT -or -not $env:ORCA_AGENT_HOOK_TOKEN -or -not $env:ORCA_PANE_KEY) { exit 0 }; [Console]::In.ReadToEnd() | Out-Null }; exit 0"
+
+function windowsCommandFor(profileDirName: string): string {
+  return buildCodexHookCommand(
+    `C:\\Users\\${profileDirName}\\.orca\\agent-hooks\\codex-hook.cmd`,
+    'win32'
+  )
+}
 
 describe('frozen Codex hook command', () => {
   it('matches the form 1 goldens', () => {
@@ -28,8 +39,34 @@ describe('frozen Codex hook command', () => {
       buildCodexHookCommand('C:\\Users\\alice\\.orca\\agent-hooks\\codex-hook.cmd', 'win32')
     ).toBe(WINDOWS_BARE_GOLDEN)
     expect(
-      buildCodexHookCommand("C:\\Users\\测试 O'Brien\\.orca\\agent-hooks\\codex-hook.cmd", 'win32')
-    ).toBe(WINDOWS_POWERSHELL_GOLDEN)
+      buildCodexHookCommand('C:\\Users\\First Last\\.orca\\agent-hooks\\codex-hook.cmd', 'win32')
+    ).toBe(WINDOWS_CMD_GOLDEN)
+  })
+
+  it.each([' ', '&', '^', '$', '`', "'", '!', '(', ')', 'é', '测'])(
+    'takes the cmd spelling for a profile path holding %j',
+    (character) => {
+      const name = `a${character}b`
+      expect(windowsCommandFor(name)).toBe(
+        `cmd --% /d /c @"C:/Users/${name}/.orca/agent-hooks/codex-hook.cmd"`
+      )
+    }
+  )
+
+  it.each(['alice', 'Alice.Smith-2', 'a_b', 'ALICE~1'])(
+    'keeps the bare path for the safe profile path %s',
+    (name) => {
+      expect(windowsCommandFor(name)).toBe(`C:/Users/${name}/.orca/agent-hooks/codex-hook.cmd`)
+    }
+  )
+
+  it('writes the same Windows bytes for a path in either slash direction', () => {
+    for (const name of ['alice', 'First Last']) {
+      const backslashed = `C:\\Users\\${name}\\.orca\\agent-hooks\\codex-hook.cmd`
+      expect(buildCodexHookCommand(backslashed, 'win32')).toBe(
+        buildCodexHookCommand(backslashed.replaceAll('\\', '/'), 'win32')
+      )
+    }
   })
 
   it('writes identical POSIX bytes whatever the home or build', () => {
@@ -38,7 +75,7 @@ describe('frozen Codex hook command', () => {
     )
   })
 
-  it.each([POSIX_GOLDEN, WINDOWS_BARE_GOLDEN, WINDOWS_POWERSHELL_GOLDEN])(
+  it.each([POSIX_GOLDEN, WINDOWS_BARE_GOLDEN, WINDOWS_CMD_GOLDEN])(
     'keeps the script name in plain text so every older build still recognizes it',
     (command) => {
       const isOrca = createManagedCommandMatcher(
@@ -64,6 +101,41 @@ describe('frozen Codex hook command', () => {
         WINDOWS_BARE_GOLDEN
       )
     ).toBe(0)
+  })
+})
+
+describe('the Windows spelling change', () => {
+  const hooksWith = (command: string): Record<string, HookDefinition[]> => ({
+    Stop: [
+      { hooks: [{ type: 'command', command, timeout: 10 }] },
+      { hooks: [{ type: 'command', command: 'user-hook.cmd' }] }
+    ]
+  })
+  const plan = (command: string, policy: 'add-missing-only' | 'convert-older-forms') =>
+    planRealHomeCodexHookEntries({
+      hooks: hooksWith(command),
+      sourcePath: 'C:/Users/First Last/.codex/hooks.json',
+      material: {
+        ...getCodexManagedHookInstallMaterial(),
+        events: ['Stop'],
+        command: WINDOWS_CMD_GOLDEN
+      },
+      isOrcaCommand: createManagedCommandMatcher('codex-hook.cmd'),
+      policy
+    })
+
+  it('converts the PowerShell-text form to the cmd spelling once, in its slot, at app start', () => {
+    const converted = plan(WINDOWS_POWERSHELL_TEXT, 'convert-older-forms')
+    expect(converted.changed).toBe(true)
+    expect(converted.hooks.Stop).toEqual([
+      { hooks: [{ type: 'command', command: WINDOWS_CMD_GOLDEN, timeout: 10 }] },
+      { hooks: [{ type: 'command', command: 'user-hook.cmd' }] }
+    ])
+    expect(plan(WINDOWS_CMD_GOLDEN, 'convert-older-forms').changed).toBe(false)
+  })
+
+  it('leaves the PowerShell-text form alone on a pane launch', () => {
+    expect(plan(WINDOWS_POWERSHELL_TEXT, 'add-missing-only').changed).toBe(false)
   })
 })
 

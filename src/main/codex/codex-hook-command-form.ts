@@ -1,5 +1,3 @@
-import { quotePowerShellLiteral } from '../../shared/powershell-native-argument'
-
 /**
  * The Codex hook command every Orca build writes, frozen per form.
  *
@@ -14,12 +12,11 @@ const FORM_MARKER = /orca-agent-hook-form=(\d+)/
 
 // Why literals, not the shared hook constants: a change there must not move these bytes.
 const POSIX_STDIN_DRAIN = '{ command -p cat 2>/dev/null || cat; } >/dev/null 2>&1 || :'
-const POWERSHELL_ORCA_ENV_GUARD =
-  'if (-not $env:ORCA_AGENT_HOOK_PORT -or -not $env:ORCA_AGENT_HOOK_TOKEN -or -not $env:ORCA_PANE_KEY) { exit 0 }'
 
-// Why a bare path: it runs under every Windows host Codex uses: PowerShell 7 or
-// 5.1 from the turn's shell, else %COMSPEC% /C. It cannot carry a marker, so
-// later forms change the script, never this path.
+// Why: a path of only these runs bare under every Windows host Codex uses
+// (PowerShell 7 or 5.1 from the turn's shell, else %COMSPEC% /C); any other
+// character takes the cmd spelling. Neither spelling can carry a marker, so
+// later forms change the script, never these bytes.
 const WINDOWS_BARE_PATH = /^[A-Za-z0-9_.:/~-]+$/
 
 function buildPosixCommand(): string {
@@ -41,16 +38,9 @@ function buildWindowsCommand(scriptPath: string): string {
   if (WINDOWS_BARE_PATH.test(forwardSlashPath)) {
     return forwardSlashPath
   }
-  // Why: a profile path with a space or quote is not one PowerShell token.
-  // PowerShell only: under Codex's %COMSPEC% /C fallback this form fails.
-  const quoted = quotePowerShellLiteral(forwardSlashPath)
-  const rootScript = "(Join-Path $env:ORCA_AGENT_HOOK_ROOT 'agent-hooks\\codex-hook.cmd')"
-  return [
-    `<# orca-agent-hook-form=${CODEX_HOOK_COMMAND_FORM} #>`,
-    `if ($env:ORCA_PANE_KEY -and $env:ORCA_AGENT_HOOK_ROOT -and (Test-Path -LiteralPath ${rootScript} -PathType Leaf)) { & ${rootScript} }`,
-    `elseif (-not $env:ORCA_AGENT_HOOK_ROOT -and $env:ORCA_PANE_KEY -and $env:ORCA_AGENT_HOOK_PORT -and (Test-Path -LiteralPath ${quoted} -PathType Leaf)) { & ${quoted} }`,
-    `else { ${POWERSHELL_ORCA_ENV_GUARD}; [Console]::In.ReadToEnd() | Out-Null }; exit 0`
-  ].join(' ')
+  // Why: `--%` passes the rest to cmd.exe verbatim under PowerShell, and the `@`
+  // stops cmd.exe stripping the quotes around a path holding & or ^.
+  return `cmd --% /d /c @"${forwardSlashPath}"`
 }
 
 /** `scriptPath` is the shared script at `~/.orca/agent-hooks`; only Windows forms embed it. */
