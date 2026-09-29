@@ -18092,9 +18092,9 @@
           "candidateName": "{{value0}} on {{value1}}"
         },
         "stopAgents": {
-          "titleOne": "An agent is running in 1 workspace",
-          "titleMany": "Agents are running in {{count}} workspaces",
-          "description": "Deleting stops these agents. Work they are doing right now will be lost.",
+          "titleMany": "Stop these agents?",
+          "descriptionOne": "Deleting will stop the agent's current work.",
+          "descriptionMany": "Deleting will stop these agents' current work.",
           "confirm": "Stop agents and delete"
         }
       }

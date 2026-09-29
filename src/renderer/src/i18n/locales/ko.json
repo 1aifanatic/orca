@@ -17962,9 +17962,9 @@
           "candidateName": "{{value1}}의 {{value0}}"
         },
         "stopAgents": {
-          "titleOne": "워크스페이스 1개에서 에이전트가 실행 중입니다",
-          "titleMany": "워크스페이스 {{count}}개에서 에이전트가 실행 중입니다",
-          "description": "삭제하면 이 에이전트가 중지됩니다. 지금 진행 중인 작업은 손실됩니다.",
+          "titleMany": "이 agent들을 중지할까요?",
+          "descriptionOne": "삭제하면 agent의 현재 작업이 중지됩니다.",
+          "descriptionMany": "삭제하면 이 agent들의 현재 작업이 중지됩니다.",
           "confirm": "에이전트 중지 후 삭제"
         }
       }

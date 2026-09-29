@@ -17927,9 +17927,9 @@
           "candidateName": "{{value0}} 在 {{value1}} 上"
         },
         "stopAgents": {
-          "titleOne": "1 个工作区中有代理正在运行",
-          "titleMany": "{{count}} 个工作区中有代理正在运行",
-          "description": "删除将停止这些代理。它们当前正在进行的工作将会丢失。",
+          "titleMany": "停止这些智能体？",
+          "descriptionOne": "删除将停止智能体当前任务。",
+          "descriptionMany": "删除将停止这些智能体当前任务。",
           "confirm": "停止代理并删除"
         }
       }

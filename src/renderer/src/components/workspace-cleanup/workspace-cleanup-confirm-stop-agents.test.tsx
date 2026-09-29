@@ -55,8 +55,8 @@ describe('WorkspaceCleanupConfirmStopAgents', () => {
       )
     )
 
-    expect(container.textContent).toContain('Agents are running in 2 workspaces')
-    expect(container.textContent).toContain('Deleting stops these agents.')
+    expect(container.textContent).toContain('Stop these agents?')
+    expect(container.textContent).toContain("Deleting will stop these agents' current work.")
     for (const candidate of candidates) {
       expect(
         container.querySelector(
@@ -69,5 +69,20 @@ describe('WorkspaceCleanupConfirmStopAgents', () => {
     act(() => buttons.find((button) => button.textContent === 'Stop agents and delete')?.click())
     expect(onBack).toHaveBeenCalledTimes(1)
     expect(onConfirm).toHaveBeenCalledTimes(1)
+  })
+
+  it('reuses the close-terminal wording for a single agent', () => {
+    act(() =>
+      root.render(
+        <WorkspaceCleanupConfirmStopAgents
+          candidates={[makeFacetCandidate({ worktreeId: 'repo-1::/b', displayName: 'b' })]}
+          onBack={vi.fn()}
+          onConfirm={vi.fn()}
+        />
+      )
+    )
+
+    expect(container.textContent).toContain('Stop this agent?')
+    expect(container.textContent).toContain("Deleting will stop the agent's current work.")
   })
 })

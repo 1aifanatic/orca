@@ -18026,9 +18026,9 @@
           "candidateName": "{{value0}} sur {{value1}}"
         },
         "stopAgents": {
-          "titleOne": "Un agent est en cours d'exécution dans 1 espace de travail",
-          "titleMany": "Des agents sont en cours d'exécution dans {{count}} espaces de travail",
-          "description": "La suppression arrête ces agents. Le travail qu'ils effectuent en ce moment sera perdu.",
+          "titleMany": "Arrêter ces agents ?",
+          "descriptionOne": "La suppression interrompra le travail en cours de l'agent.",
+          "descriptionMany": "La suppression interrompra le travail en cours de ces agents.",
           "confirm": "Arrêter les agents et supprimer"
         }
       }

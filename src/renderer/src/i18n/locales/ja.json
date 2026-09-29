@@ -17962,9 +17962,9 @@
           "candidateName": "{{value0}}、{{value1}}"
         },
         "stopAgents": {
-          "titleOne": "1 個のワークスペースで Agent が実行中です",
-          "titleMany": "{{count}} 個のワークスペースで Agent が実行中です",
-          "description": "削除するとこれらの Agent は停止します。現在実行中の作業は失われます。",
+          "titleMany": "これらの Agent を停止しますか?",
+          "descriptionOne": "削除すると、Agent の現在の作業が停止します。",
+          "descriptionMany": "削除すると、これらの Agent の現在の作業が停止します。",
           "confirm": "Agent を停止して削除"
         }
       }

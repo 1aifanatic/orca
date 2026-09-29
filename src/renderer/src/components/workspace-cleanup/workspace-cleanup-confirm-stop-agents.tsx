@@ -36,20 +36,24 @@ export function WorkspaceCleanupConfirmStopAgents({
               <DialogTitle>
                 {count === 1
                   ? translate(
-                      'components.workspace.cleanup.stopAgents.titleOne',
-                      'An agent is running in 1 workspace'
+                      'auto.components.terminal.pane.CloseTerminalDialog.stop_agent_title',
+                      'Stop this agent?'
                     )
                   : translate(
                       'components.workspace.cleanup.stopAgents.titleMany',
-                      'Agents are running in {{count}} workspaces',
-                      { count }
+                      'Stop these agents?'
                     )}
               </DialogTitle>
               <DialogDescription className="mt-1.5">
-                {translate(
-                  'components.workspace.cleanup.stopAgents.description',
-                  'Deleting stops these agents. Work they are doing right now will be lost.'
-                )}
+                {count === 1
+                  ? translate(
+                      'components.workspace.cleanup.stopAgents.descriptionOne',
+                      "Deleting will stop the agent's current work."
+                    )
+                  : translate(
+                      'components.workspace.cleanup.stopAgents.descriptionMany',
+                      "Deleting will stop these agents' current work."
+                    )}
               </DialogDescription>
             </div>
           </div>
