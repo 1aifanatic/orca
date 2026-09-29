@@ -745,6 +745,19 @@ describe('mobile structured queued messages', () => {
       expect(hook!.queued.pause).toBeNull()
     })
 
+    it('shows no pause while Resume would send nothing: only returned, blocked or failed cards', async () => {
+      const returned = queuedDraft({ messageId: 'r', state: 'returned', returnedReason: 'refused' })
+      const behind = queuedDraft({ messageId: 'b', position: 2 })
+      const failed = queuedDraft({ messageId: 'f', paused: true, pausedReason: 'send_failed' })
+      await mountSession(CAPABLE, snapshotEvent({ queuedMessages: [] }))
+      for (const list of [[returned], [returned, behind], [failed]]) {
+        act(() => listener?.(batchEvent(list, [], { reason: 'stopped' })))
+        expect(hook!.queued.pause).toBeNull()
+      }
+      act(() => listener?.(batchEvent([failed, behind], [], { reason: 'stopped' })))
+      expect(hook!.queued.pause).toEqual({ reason: 'stopped' })
+    })
+
     it('Resume lifts the pause through its RPC, and a refusal reaches the error banner', async () => {
       let refuse = false
       sendRequest.mockImplementation(async (method) => {

@@ -12,6 +12,7 @@ import type {
   AgentSessionSendResult
 } from '../../../src/shared/agent-session-wire'
 import {
+  mobileQueueHasResumableCard,
   mobileQueuedMessageCards,
   type MobileQueuedMessageCard
 } from './mobile-structured-queued-message-cards'
@@ -158,6 +159,7 @@ export function useMobileStructuredQueuedMessageControls(args: {
       ),
     [mutate, resolved]
   )
-  const pause = queueCapable ? queuePause : null
+  // The header shows only while Resume would send something, as on desktop.
+  const pause = queueCapable && mobileQueueHasResumableCard(cards) ? queuePause : null
   return { cards, send, delete: deleteDraft, edit, pause, resume, sessionKey }
 }

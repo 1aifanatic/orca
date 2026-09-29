@@ -61,6 +61,20 @@ const QUEUE_PAUSE_LABELS: Readonly<Record<string, string>> = {
   cleared: 'Queue paused after you cleared the conversation'
 }
 
+/** Whether Resume would send anything: a waiting card with no hold of its own, ahead of any
+ *  returned card. The drain stops at a returned card, so cards behind one never go. */
+export function mobileQueueHasResumableCard(cards: readonly MobileQueuedMessageCard[]): boolean {
+  for (const card of cards) {
+    if (card.state === 'returned') {
+      return false
+    }
+    if (!card.paused) {
+      return true
+    }
+  }
+  return false
+}
+
 /** The paused queue's header row. A reason this build does not know (a newer host's) reads as a
  *  plain pause. */
 export function mobileQueuePauseLabel(pause: Pick<AgentSessionQueuePause, 'reason'>): string {

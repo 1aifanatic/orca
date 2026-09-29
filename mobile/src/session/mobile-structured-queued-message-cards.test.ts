@@ -5,6 +5,7 @@ import { DISPATCH_REJECTED_HOST_RESTARTED } from '../../../src/shared/structured
 import { QUEUED_MESSAGE_PAUSED_SEND_FAILED } from '../../../src/shared/agent-session-wire'
 import type { AgentSessionQueuedMessage } from '../../../src/shared/agent-session-wire'
 import {
+  mobileQueueHasResumableCard,
   mobileQueuePauseLabel,
   mobileQueuedMessageCards
 } from './mobile-structured-queued-message-cards'
@@ -74,6 +75,28 @@ describe('mobileQueuedMessageCards', () => {
     )
     expect(cards.map((card) => card.label)).toEqual(["Couldn't send — tap Send to retry", 'Queued'])
     expect(cards[0]?.paused).toBe(true)
+  })
+
+  it('finds something for Resume to send only in a waiting card with no hold, ahead of a returned one', () => {
+    const resumable = (drafts: AgentSessionQueuedMessage[]) =>
+      mobileQueueHasResumableCard(
+        mobileQueuedMessageCards(drafts, [], { pendingPrompt: false, queuePaused: true })
+      )
+    const returned = draft({
+      messageId: 'r',
+      ...returnedAs(agentSessionFailureFact('hostRestarted'))
+    })
+    const failed = draft({
+      messageId: 'f',
+      paused: true,
+      pausedReason: QUEUED_MESSAGE_PAUSED_SEND_FAILED
+    })
+    const waiting = draft({ messageId: 'w', position: 2 })
+    expect(resumable([returned])).toBe(false)
+    expect(resumable([returned, waiting])).toBe(false)
+    expect(resumable([failed])).toBe(false)
+    expect(resumable([failed, waiting])).toBe(true)
+    expect(resumable([waiting, { ...returned, position: 3 }])).toBe(true)
   })
 
   it('words the paused queue by reason, and one this build does not know as a plain pause', () => {
