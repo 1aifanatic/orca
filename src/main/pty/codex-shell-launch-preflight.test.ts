@@ -132,6 +132,7 @@ function runAliasLaunch(
         PATH: `${bin}:${process.env.PATH ?? ''}`,
         CODEX_HOME: home,
         ORCA_CODEX_HOME: home,
+        ORCA_CODEX_LAUNCH_POLICY: '1',
         ORCA_CODEX_LAUNCH_PREFLIGHT: join(bin, 'orca-test')
       }
     }
@@ -178,6 +179,7 @@ function expectNamedAliasSurvives(shell: string, enableAliases: string): void {
       env: {
         ...process.env,
         PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`,
+        ORCA_CODEX_LAUNCH_POLICY: '1',
         ORCA_CODEX_LAUNCH_PREFLIGHT: join(bin, 'orca-test'),
         ORCA_CODEX_HOME: '/orca/managed/home'
       }
@@ -275,7 +277,12 @@ describe.skipIf(process.platform === 'win32')('Codex shell launch preflight', ()
           ],
           {
             encoding: 'utf-8',
-            env: { ...process.env, PATH: root, ORCA_CODEX_LAUNCH_PREFLIGHT: 'orca-test' }
+            env: {
+              ...process.env,
+              PATH: root,
+              ORCA_CODEX_LAUNCH_POLICY: '1',
+              ORCA_CODEX_LAUNCH_PREFLIGHT: 'orca-test'
+            }
           }
         )
 
@@ -291,6 +298,7 @@ describe.skipIf(process.platform === 'win32')('Codex shell launch preflight', ()
         '--no-config',
         '-c',
         [
+          'set -gx ORCA_CODEX_LAUNCH_POLICY 1',
           'set -gx ORCA_CODEX_LAUNCH_PREFLIGHT missing-preflight',
           'function codex; echo custom-codex; end',
           getFishCodexShellLaunchPreflight(),
@@ -311,8 +319,8 @@ describe.skipIf(process.platform === 'win32')('Codex shell launch preflight', ()
 
   // Regression for #16893: an unquoted `(type -t codex)` expands to zero words when
   // codex is absent, so `test` saw `= file` (2 args) and printed "Missing argument
-  // at index 3" on every fish pane launch. Needs a valid executable
-  // ORCA_CODEX_LAUNCH_PREFLIGHT so the `and` chain reaches the second `test`, and
+  // at index 3" on every fish pane launch. Needs ORCA_CODEX_LAUNCH_POLICY set
+  // so the `and` chain reaches the second `test`, and
   // the real `-l -C` launch shape both shell-ready call sites use.
   it.skipIf(!fishAvailable)('stays silent and installs no wrapper when codex is absent', () => {
     const { bin, preflight } = createFishSandbox('orca-codex-fish-absent-')
@@ -320,7 +328,10 @@ describe.skipIf(process.platform === 'win32')('Codex shell launch preflight', ()
     const result = spawnSync(
       join(bin, 'fish'),
       ['--no-config', '-l', '-C', getFishCodexShellLaunchPreflight(), '-c', FISH_STATE_PROBE],
-      { encoding: 'utf-8', env: { PATH: bin, ORCA_CODEX_LAUNCH_PREFLIGHT: preflight } }
+      {
+        encoding: 'utf-8',
+        env: { PATH: bin, ORCA_CODEX_LAUNCH_POLICY: '1', ORCA_CODEX_LAUNCH_PREFLIGHT: preflight }
+      }
     )
 
     expect(result.stderr).not.toContain('Missing argument')
@@ -339,6 +350,7 @@ describe.skipIf(process.platform === 'win32')('Codex shell launch preflight', ()
         encoding: 'utf-8',
         env: {
           PATH: bin,
+          ORCA_CODEX_LAUNCH_POLICY: '1',
           ORCA_CODEX_LAUNCH_PREFLIGHT: preflight,
           ORCA_CODEX_HOME: '/orca/managed/home'
         }
@@ -364,7 +376,10 @@ describe.skipIf(process.platform === 'win32')('Codex shell launch preflight', ()
         '-c',
         FISH_STATE_PROBE
       ],
-      { encoding: 'utf-8', env: { PATH: bin, ORCA_CODEX_LAUNCH_PREFLIGHT: preflight } }
+      {
+        encoding: 'utf-8',
+        env: { PATH: bin, ORCA_CODEX_LAUNCH_POLICY: '1', ORCA_CODEX_LAUNCH_PREFLIGHT: preflight }
+      }
     )
 
     expect(result.stderr).not.toContain('Missing argument')
@@ -398,6 +413,7 @@ describe('PowerShell Codex shell launch preflight', () => {
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`,
+      ORCA_CODEX_LAUNCH_POLICY: '1',
       ORCA_CODEX_LAUNCH_PREFLIGHT: join(bin, 'unused-preflight'),
       TEST_CODEX_ACCEPTS: accepts
     }
@@ -435,6 +451,7 @@ describe('PowerShell Codex shell launch preflight', () => {
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`,
+      ORCA_CODEX_LAUNCH_POLICY: '1',
       ORCA_CODEX_LAUNCH_PREFLIGHT: join(bin, 'unused-preflight')
     }
     delete env.ORCA_CODEX_HOME
@@ -487,6 +504,7 @@ describe('PowerShell Codex shell launch preflight', () => {
         env: {
           ...process.env,
           PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`,
+          ORCA_CODEX_LAUNCH_POLICY: '1',
           ORCA_CODEX_LAUNCH_PREFLIGHT: join(bin, `orca-test${executableSuffix}`),
           ORCA_CODEX_HOME: '/orca/managed/home'
         }
@@ -691,6 +709,7 @@ describe.skipIf(process.platform === 'win32')('Codex preflight paths containing 
         env: {
           ...process.env,
           PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`,
+          ORCA_CODEX_LAUNCH_POLICY: '1',
           ORCA_CODEX_LAUNCH_PREFLIGHT: preflightPath,
           ORCA_CODEX_HOME: '/orca/managed/home'
         }
@@ -712,6 +731,7 @@ describe.skipIf(process.platform === 'win32')('Codex preflight paths containing 
       env: {
         ...process.env,
         PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`,
+        ORCA_CODEX_LAUNCH_POLICY: '1',
         ORCA_CODEX_LAUNCH_PREFLIGHT: preflightPath,
         ORCA_CODEX_HOME: '/orca/managed/home'
       }
@@ -738,6 +758,7 @@ describe.skipIf(process.platform === 'win32')('Codex preflight paths containing 
           env: {
             ...process.env,
             PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`,
+            ORCA_CODEX_LAUNCH_POLICY: '1',
             ORCA_CODEX_LAUNCH_PREFLIGHT: preflightPath,
             ORCA_CODEX_HOME: '/orca/managed/home'
           }

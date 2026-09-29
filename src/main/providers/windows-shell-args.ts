@@ -38,8 +38,8 @@ const CMD_CODEX_LAUNCH_PREFLIGHT = `(if defined ORCA_CODEX_LAUNCH_PREFLIGHT if d
 // `&&`) keeps startup working even if chcp.com is missing.
 const GIT_BASH_UTF8_LOGIN_COMMAND = 'chcp.com 65001 >/dev/null 2>&1; exec "$BASH" --login -i'
 
-function getGitBashLaunchCommand(codexLaunchPreflightCommand?: string): string {
-  if (!codexLaunchPreflightCommand) {
+function getGitBashLaunchCommand(codexLaunchPolicy: boolean): string {
+  if (!codexLaunchPolicy) {
     return GIT_BASH_UTF8_LOGIN_COMMAND
   }
 
@@ -80,6 +80,12 @@ export type WindowsShellLaunchArgs = {
 export type WindowsShellWslContext = {
   distro: string
   treatPosixCwdAsWsl?: boolean
+}
+
+/** The pane env keys that decide which Codex launch steps a Windows shell's args carry. */
+export type WindowsCodexLaunchEnv = {
+  ORCA_CODEX_LAUNCH_POLICY?: string
+  ORCA_CODEX_LAUNCH_PREFLIGHT?: string
 }
 
 /**
@@ -198,7 +204,7 @@ export function resolveWindowsShellLaunchArgs(
   defaultCwd: string,
   wslContext?: WindowsShellWslContext,
   startupCommand?: string,
-  codexLaunchPreflightCommand?: string
+  codexLaunchEnv?: WindowsCodexLaunchEnv
 ): WindowsShellLaunchArgs {
   const shellBasename = pathWin32.basename(shellPath).toLowerCase()
   const nativeCwd = normalizeWindowsTerminalCwd(cwd)
@@ -207,7 +213,7 @@ export function resolveWindowsShellLaunchArgs(
     const shellArgStartupCommand = getCmdShellArgStartupCommand(startupCommand)
     const startupCommands = [
       CMD_UTF8_SETUP_COMMAND,
-      ...(codexLaunchPreflightCommand ? [CMD_CODEX_LAUNCH_PREFLIGHT] : []),
+      ...(codexLaunchEnv?.ORCA_CODEX_LAUNCH_PREFLIGHT ? [CMD_CODEX_LAUNCH_PREFLIGHT] : []),
       ...(shellArgStartupCommand ? [shellArgStartupCommand] : [])
     ]
     return {
@@ -235,7 +241,7 @@ export function resolveWindowsShellLaunchArgs(
 
   if (isWindowsGitBashShellPath(shellPath)) {
     return {
-      shellArgs: ['-c', getGitBashLaunchCommand(codexLaunchPreflightCommand)],
+      shellArgs: ['-c', getGitBashLaunchCommand(Boolean(codexLaunchEnv?.ORCA_CODEX_LAUNCH_POLICY))],
       effectiveCwd: nativeCwd,
       validationCwd: nativeCwd
     }

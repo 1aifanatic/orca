@@ -101,6 +101,7 @@ function launchCodexThroughRcfile(fixture: Fixture, preflightValue: string): voi
       // Why no ORCA_SHELL_FEATURES: absent means no features, so the rcfile
       // emits neither the identity nor the readiness marker into stdout.
       ORCA_CODEX_HOME: join(fixture.root, 'codex-home'),
+      ORCA_CODEX_LAUNCH_POLICY: '1',
       ORCA_CODEX_LAUNCH_PREFLIGHT: preflightValue
     }
   })

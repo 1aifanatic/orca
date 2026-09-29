@@ -80,7 +80,7 @@ export function getRelayShellLaunchConfig(
     env: {},
     supportsReadyMarker: false
   }
-  if (env.ORCA_CODEX_LAUNCH_PREFLIGHT && isPowerShellExecutableName(shellName)) {
+  if (env.ORCA_CODEX_LAUNCH_POLICY && isPowerShellExecutableName(shellName)) {
     return {
       args: [
         // Why: pwsh on a POSIX host is a login shell only when -l comes first.
@@ -95,7 +95,7 @@ export function getRelayShellLaunchConfig(
       supportsReadyMarker: false
     }
   }
-  if (env.ORCA_CODEX_LAUNCH_PREFLIGHT && shellName === 'fish' && platform !== 'win32') {
+  if (env.ORCA_CODEX_LAUNCH_POLICY && shellName === 'fish' && platform !== 'win32') {
     return {
       args: ['-l', '-C', getFishCodexShellLaunchPreflight()],
       env: {},

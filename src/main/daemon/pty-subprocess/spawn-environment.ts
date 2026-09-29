@@ -192,9 +192,11 @@ export function createDaemonPtyEnvironment(opts: PtySubprocessOptions): Record<s
   if (opts.env?.ORCA_HISTFILE === undefined) {
     delete env.ORCA_HISTFILE
   }
-  // Why: an inherited copy names another Orca's CLI and would wrap every pane.
-  if (opts.env?.ORCA_CODEX_LAUNCH_PREFLIGHT === undefined) {
-    delete env.ORCA_CODEX_LAUNCH_PREFLIGHT
+  // Why: an inherited copy names another Orca's CLI or wraps a pane nothing asked to wrap.
+  for (const key of ['ORCA_CODEX_LAUNCH_PREFLIGHT', 'ORCA_CODEX_LAUNCH_POLICY'] as const) {
+    if (opts.env?.[key] === undefined) {
+      delete env[key]
+    }
   }
   removeInheritedDevAgentHookEndpoint(env, opts.env)
   delete env.ELECTRON_RUN_AS_NODE

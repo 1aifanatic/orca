@@ -8,6 +8,8 @@ export function buildSshPtySpawnEnv(args: {
   remoteCliBridgeEnv?: RemoteCliBridgeEnv
 }): Record<string, string> {
   const merged = { ...args.env }
+  // Why outside the bridge: the remote shell's Codex launch policy needs no Orca CLI; only hook prep does.
+  merged.ORCA_CODEX_LAUNCH_POLICY = '1'
   if (args.remoteCliBridgeEnv) {
     const pathDelimiter = args.remoteCliBridgeEnv.pathDelimiter ?? ':'
     const pathKey = merged.PATH !== undefined ? 'PATH' : merged.Path !== undefined ? 'Path' : null

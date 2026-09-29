@@ -123,7 +123,7 @@ export function createPtyShellLaunchPlan(
         resolveSafePtyDefaultCwd(),
         resolvedWslContext,
         opts.command,
-        env.ORCA_CODEX_LAUNCH_PREFLIGHT
+        env
       )
       shellArgs = resolved.shellArgs
       spawnCwd = resolved.effectiveCwd
@@ -151,7 +151,7 @@ export function createPtyShellLaunchPlan(
               resolveSafePtyDefaultCwd(),
               { distro: codexHomeWslInfo.distro },
               opts.command,
-              env.ORCA_CODEX_LAUNCH_PREFLIGHT
+              env
             )
             shellArgs = resolved.shellArgs
             spawnCwd = resolved.effectiveCwd

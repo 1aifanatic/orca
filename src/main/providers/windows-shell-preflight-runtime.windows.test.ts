@@ -134,7 +134,7 @@ describeWindows('Windows Codex shell preflight runtime', () => {
       root,
       undefined,
       'echo launched>cmd-started & exit /b 0',
-      preflight
+      { ORCA_CODEX_LAUNCH_PREFLIGHT: preflight }
     )
 
     await runPty({
@@ -166,7 +166,7 @@ describeWindows('Windows Codex shell preflight runtime', () => {
       root,
       undefined,
       'echo launched>cmd-started & exit /b 0',
-      preflight
+      { ORCA_CODEX_LAUNCH_PREFLIGHT: preflight }
     )
     const env: NodeJS.ProcessEnv = {
       ...process.env,
@@ -203,14 +203,10 @@ describeWindows('Windows Codex shell preflight runtime', () => {
     process.env.ORCA_USER_DATA_PATH = join(root, 'user data')
 
     try {
-      const resolved = resolveWindowsShellLaunchArgs(
-        gitBash,
-        root,
-        root,
-        undefined,
-        undefined,
-        preflight
-      )
+      const resolved = resolveWindowsShellLaunchArgs(gitBash, root, root, undefined, undefined, {
+        ORCA_CODEX_LAUNCH_POLICY: '1',
+        ORCA_CODEX_LAUNCH_PREFLIGHT: preflight
+      })
       await runPty({
         shellPath: gitBash,
         shellArgs: resolved.shellArgs,
@@ -219,6 +215,7 @@ describeWindows('Windows Codex shell preflight runtime', () => {
           ...withPathEntry(process.env, join(root, 'bin')),
           CHERE_INVOKING: '1',
           HOME: root,
+          ORCA_CODEX_LAUNCH_POLICY: '1',
           ORCA_CODEX_LAUNCH_PREFLIGHT: preflight,
           ORCA_CODEX_HOME: root,
           ORCA_PREFLIGHT_MARKER: preflightMarker,

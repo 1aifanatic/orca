@@ -307,7 +307,7 @@ describe('createPtySubprocess', () => {
     expect(handle!.startupCommandDeliveredInShellArgs).toBeUndefined()
   })
 
-  it('launches Git Bash with login args and CHERE_INVOKING on Windows', async () => {
+  it('launches Git Bash with login args and CHERE_INVOKING on Windows, wrapped without a launcher', async () => {
     const proc = mockPtyProcess()
     spawnMock.mockReturnValue(proc)
     const platform = Object.getOwnPropertyDescriptor(process, 'platform')
@@ -321,7 +321,8 @@ describe('createPtySubprocess', () => {
         rows: 24,
         cwd: 'C:\\Users\\jin\\repo',
         shellOverride: 'C:\\PortableGit\\bin\\bash.exe',
-        env: { ORCA_CODEX_LAUNCH_PREFLIGHT: CODEX_LAUNCH_PREFLIGHT }
+        // Why no preflight: the launch policy must not depend on a launcher Git Bash can run.
+        env: { ORCA_CODEX_LAUNCH_POLICY: '1' }
       })
     } finally {
       if (platform) {
@@ -341,7 +342,7 @@ describe('createPtySubprocess', () => {
         cwd: 'C:\\Users\\jin\\repo',
         env: expect.objectContaining({
           CHERE_INVOKING: '1',
-          ORCA_CODEX_LAUNCH_PREFLIGHT: CODEX_LAUNCH_PREFLIGHT
+          ORCA_CODEX_LAUNCH_POLICY: '1'
         })
       })
     )

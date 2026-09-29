@@ -66,12 +66,13 @@ export function finalizeWindowsLocalPtySpawnEnvironment(args: {
   }
 
   const shellBasename = pathWin32.basename(plan.shellPath).toLowerCase()
-  const codexLaunchPreflightCommand = env.ORCA_CODEX_LAUNCH_PREFLIGHT
+  // Why split: cmd.exe only runs hook prep, while Git Bash's wrapper carries the launch policy.
+  const cmdRunsHookPrep = shellBasename === 'cmd.exe' && Boolean(env.ORCA_CODEX_LAUNCH_PREFLIGHT)
   if (
-    codexLaunchPreflightCommand &&
-    (shellBasename === 'cmd.exe' || isWindowsGitBashShellPath(plan.shellPath))
+    cmdRunsHookPrep ||
+    (isWindowsGitBashShellPath(plan.shellPath) && Boolean(env.ORCA_CODEX_LAUNCH_POLICY))
   ) {
-    if (shellBasename === 'cmd.exe') {
+    if (cmdRunsHookPrep) {
       // Why: node-pty backslash-escapes argv quotes; expand the quote inside cmd.exe instead.
       env[ORCA_CODEX_LAUNCH_PREFLIGHT_CMD_QUOTE_ENV] = '"'
     }
@@ -81,7 +82,7 @@ export function finalizeWindowsLocalPtySpawnEnvironment(args: {
       plan.defaultCwd,
       plan.launchWslContext,
       spawn.command,
-      codexLaunchPreflightCommand
+      env
     )
     plan.shellArgs = resolved.shellArgs
     plan.effectiveCwd = resolved.effectiveCwd

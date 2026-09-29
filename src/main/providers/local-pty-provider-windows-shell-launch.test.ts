@@ -589,10 +589,8 @@ describe('LocalPtyProvider', () => {
       process.env.ProgramFiles = 'C:\\Program Files'
       provider.configure({
         getWindowsShell: () => 'git-bash',
-        buildSpawnEnv: (_id, env) => ({
-          ...env,
-          ORCA_CODEX_LAUNCH_PREFLIGHT: CODEX_LAUNCH_PREFLIGHT
-        })
+        // Why no preflight: the launch policy must not depend on a launcher Git Bash can run.
+        buildSpawnEnv: (_id, env) => ({ ...env, ORCA_CODEX_LAUNCH_POLICY: '1' })
       })
 
       try {
@@ -625,7 +623,7 @@ describe('LocalPtyProvider', () => {
           env: expect.objectContaining({
             CHERE_INVOKING: '1',
             PYTHONUTF8: '1',
-            ORCA_CODEX_LAUNCH_PREFLIGHT: CODEX_LAUNCH_PREFLIGHT
+            ORCA_CODEX_LAUNCH_POLICY: '1'
           })
         })
       )

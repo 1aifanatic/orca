@@ -295,12 +295,18 @@ describe('createPtySubprocess', () => {
   })
 
   it.each([
-    ['drops an inherited Codex launch preflight', undefined],
-    ['keeps the launcher this spawn injected', '/Applications/Orca.app/Contents/Resources/bin/orca']
-  ])('%s', async (_name, requested) => {
+    ['drops an inherited Codex launch preflight', 'ORCA_CODEX_LAUNCH_PREFLIGHT', undefined],
+    [
+      'keeps the launcher this spawn injected',
+      'ORCA_CODEX_LAUNCH_PREFLIGHT',
+      '/Applications/Orca.app/Contents/Resources/bin/orca'
+    ],
+    ['drops an inherited Codex launch policy', 'ORCA_CODEX_LAUNCH_POLICY', undefined],
+    ['keeps the launch policy this spawn injected', 'ORCA_CODEX_LAUNCH_POLICY', '1']
+  ] as const)('%s', async (_name, key, requested) => {
     spawnMock.mockReturnValue(mockPtyProcess())
-    const saved = process.env.ORCA_CODEX_LAUNCH_PREFLIGHT
-    process.env.ORCA_CODEX_LAUNCH_PREFLIGHT = '/other/orca/bin/orca'
+    const saved = process.env[key]
+    process.env[key] = key === 'ORCA_CODEX_LAUNCH_POLICY' ? '1' : '/other/orca/bin/orca'
     // Why: shell features are selected on the POSIX spawn path, so pin it on Windows runners too.
     const platform = Object.getOwnPropertyDescriptor(process, 'platform')
     Object.defineProperty(process, 'platform', { configurable: true, value: 'linux' })
@@ -310,24 +316,24 @@ describe('createPtySubprocess', () => {
         cols: 80,
         rows: 24,
         shellOverride: '/bin/bash',
-        ...(requested === undefined ? {} : { env: { ORCA_CODEX_LAUNCH_PREFLIGHT: requested } })
+        ...(requested === undefined ? {} : { env: { [key]: requested } })
       })
     } finally {
       if (platform) {
         Object.defineProperty(process, 'platform', platform)
       }
       if (saved === undefined) {
-        delete process.env.ORCA_CODEX_LAUNCH_PREFLIGHT
+        delete process.env[key]
       } else {
-        process.env.ORCA_CODEX_LAUNCH_PREFLIGHT = saved
+        process.env[key] = saved
       }
     }
 
     const env = spawnMock.mock.calls.at(-1)?.[2].env
-    expect(env.ORCA_CODEX_LAUNCH_PREFLIGHT).toBe(requested)
-    // Why: the preflight is an overlay key, so a stale copy would wrap the pane.
+    expect(env[key]).toBe(requested)
+    // Why: the policy is an overlay key, so a stale copy would wrap the pane.
     expect(env.ORCA_SHELL_FEATURES?.split(',').includes('overlay') ?? false).toBe(
-      requested !== undefined
+      key === 'ORCA_CODEX_LAUNCH_POLICY' && requested !== undefined
     )
   })
 

@@ -35,9 +35,9 @@ end
 # absent, leaving "test = file" — fish then errors instead of failing closed.
 # Quoting in place is not the fix; fish never substitutes inside double quotes.
 set -l __orca_codex_type (type -t codex 2>/dev/null)
-if test -x "$ORCA_CODEX_LAUNCH_PREFLIGHT"; and test "$__orca_codex_type" = file
+if test -n "$ORCA_CODEX_LAUNCH_POLICY"; and test "$__orca_codex_type" = file
   function codex
-    if test -n "$ORCA_CODEX_HOME"
+    if test -n "$ORCA_CODEX_HOME"; and test -x "$ORCA_CODEX_LAUNCH_PREFLIGHT"
       command "$ORCA_CODEX_LAUNCH_PREFLIGHT" agent hooks prepare-codex >/dev/null 2>&1; or true
     end
     set -l executable (command -v codex 2>/dev/null)

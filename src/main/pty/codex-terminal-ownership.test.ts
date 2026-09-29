@@ -109,6 +109,7 @@ function launch(
     // Why: this suite may itself run inside an Orca pane.
     ORCA_CODEX_HOME: undefined,
     PATH: fixture.bin,
+    ORCA_CODEX_LAUNCH_POLICY: '1',
     ORCA_CODEX_LAUNCH_PREFLIGHT: fixture.preflight,
     TEST_PREFLIGHT_LOG: fixture.log,
     TEST_SERVER_IDENTITY: join(fixture.root, 'identity'),
@@ -175,6 +176,40 @@ for (const spec of shells) {
           }
         }
       )
+
+      it.each([
+        { name: 'no launcher', preflight: () => undefined },
+        { name: 'a missing launcher', preflight: (f: Fixture) => join(f.bin, 'missing') },
+        // Like orca-dev.cmd under Git Bash: present, but not executable to this shell.
+        { name: 'a non-executable launcher', preflight: (f: Fixture) => join(f.bin, 'orca.cmd') }
+      ])(
+        'adds the flag without a usable Orca launcher and skips only hook prep: $name',
+        async ({ preflight }) => {
+          const fixture = await sandbox()
+          const launcher = join(fixture.bin, 'orca.cmd')
+          await writeFile(launcher, `#!/bin/sh\nprintf '%s\\n' "$*" >> "${fixture.log}"\n`)
+          const result = await launch(spec, fixture, "codex 'hello world'", {
+            TEST_CODEX_VERSION: '0.158.0',
+            ORCA_CODEX_HOME: '/managed/home',
+            ORCA_CODEX_LAUNCH_PREFLIGHT: preflight(fixture)
+          })
+          expect(result.code, result.stderr).toBe(0)
+          expect(result.stdout.trim().split('\n').at(-1)).toBe('<--no-daemon><hello world>')
+          expect(await readLines(fixture.log)).toEqual([])
+        }
+      )
+
+      it('leaves codex untouched in a pane Orca did not mark for the launch policy', async () => {
+        const fixture = await sandbox()
+        const result = await launch(spec, fixture, "codex 'hello world'", {
+          TEST_CODEX_VERSION: '0.158.0',
+          ORCA_CODEX_HOME: '/managed/home',
+          ORCA_CODEX_LAUNCH_POLICY: undefined
+        })
+        expect(result.code, result.stderr).toBe(0)
+        expect(result.stdout.trim().split('\n').at(-1)).toBe('<hello world>')
+        expect(await readLines(fixture.log)).toEqual([])
+      })
 
       it.each([
         { version: '0.156.0', flagged: true },

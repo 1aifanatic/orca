@@ -91,7 +91,7 @@ describe('getRelayShellLaunchConfig', () => {
   it('installs the Codex version gate for a login fish', () => {
     const config = getRelayShellLaunchConfig(
       '/usr/bin/fish',
-      { ORCA_CODEX_LAUNCH_PREFLIGHT: '/remote/orca' },
+      { ORCA_CODEX_LAUNCH_POLICY: '1' },
       'linux'
     )
     expect(config.args.slice(0, 2)).toEqual(['-l', '-C'])
@@ -109,11 +109,7 @@ describe('getRelayShellLaunchConfig', () => {
   ])(
     'installs the encoded Codex version gate for $shell on $platform',
     ({ shell, platform, leading }) => {
-      const config = getRelayShellLaunchConfig(
-        shell,
-        { ORCA_CODEX_LAUNCH_PREFLIGHT: '/remote/orca' },
-        platform
-      )
+      const config = getRelayShellLaunchConfig(shell, { ORCA_CODEX_LAUNCH_POLICY: '1' }, platform)
       expect(config.args.slice(0, leading.length)).toEqual(leading)
       expect(config.args.slice(-2, -1)).toEqual(['-EncodedCommand'])
       const script = Buffer.from(config.args.at(-1) ?? '', 'base64').toString('utf16le')
@@ -197,8 +193,7 @@ describe('getRelayShellLaunchConfig', () => {
     'repairs worktree history on a remote pane whose host reports no CLI bridge',
     () => {
       // Why this env shape: a host too old to report its platform leaves
-      // remoteCliBridgeEnv null, so the pane carries no overlay key at all.
-      // It is the one pane class the relay was NOT already wrapping, and
+      // remoteCliBridgeEnv null, so the pane carries no CLI overlay, and
       // leaving it unwrapped silently loses its worktree history.
       const env = buildSshPtySpawnEnv({ env: { HOME: homeDir, PATH: '/usr/bin:/bin' } })
       env.ORCA_HISTFILE = join(homeDir, 'orca-history', 'zsh_history')
@@ -206,14 +201,26 @@ describe('getRelayShellLaunchConfig', () => {
       const config = getRelayShellLaunchConfig('/bin/zsh', env)
 
       expect(config.env.ZDOTDIR).toBe(join(homeDir, '.orca-relay', 'shell-ready', 'zsh'))
-      expect(config.env.ORCA_SHELL_FEATURES).toBe('history')
+      expect(config.env.ORCA_SHELL_FEATURES?.split(',')).toContain('history')
+    }
+  )
+
+  it.skipIf(process.platform === 'win32')(
+    'wraps a remote zsh with no CLI bridge for the Codex launch policy',
+    () => {
+      const env = buildSshPtySpawnEnv({ env: { HOME: homeDir, PATH: '/usr/bin:/bin' } })
+
+      const config = getRelayShellLaunchConfig('/bin/zsh', env)
+
+      expect(config.env.ZDOTDIR).toBe(join(homeDir, '.orca-relay', 'shell-ready', 'zsh'))
+      expect(config.env.ORCA_SHELL_FEATURES?.split(',')).toContain('overlay')
     }
   )
 
   it.skipIf(process.platform === 'win32')(
     'keeps a remote zsh with nothing Orca-owned on the plain login path',
     () => {
-      const env = buildSshPtySpawnEnv({ env: { HOME: homeDir, PATH: '/usr/bin:/bin' } })
+      const env = { HOME: homeDir, PATH: '/usr/bin:/bin' }
 
       expect(getRelayShellLaunchConfig('/bin/zsh', env)).toEqual({
         args: ['-l'],

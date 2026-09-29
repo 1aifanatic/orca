@@ -87,13 +87,13 @@ ${buildPosixCommandPathLookupScript({ kind: 'literal', value: 'codex' }, { resul
 # Why || : twice — zsh alone aborts inside the substitution, but every shell's
 # assignment adopts its exit status, so an absent codex trips set -e in bash too.
 __orca_codex_binary="$(unalias codex 2>/dev/null || :; command -v codex 2>/dev/null || :)"
-if [[ -n "\${ORCA_CODEX_LAUNCH_PREFLIGHT:-}" && -x "\${ORCA_CODEX_LAUNCH_PREFLIGHT}" && -n "\${__orca_codex_binary:-}" && -x "\${__orca_codex_binary}" ]]; then
+if [[ -n "\${ORCA_CODEX_LAUNCH_POLICY:-}" && -n "\${__orca_codex_binary:-}" && -x "\${__orca_codex_binary}" ]]; then
   # Why the function reserved word: it suppresses alias expansion of the name,
   # which otherwise rewrites this header at parse time and aborts the whole file.
   function codex {
     local __orca_executable
-    # Why gated: hook prep only repairs an Orca-managed home, so other panes skip the CLI start.
-    if [ -n "\${ORCA_CODEX_HOME:-}" ]; then
+    # Why gated: hook prep only repairs an Orca-managed home, and needs a launcher this shell can run.
+    if [ -n "\${ORCA_CODEX_HOME:-}" ] && [ -n "\${ORCA_CODEX_LAUNCH_PREFLIGHT:-}" ] && [ -x "\${ORCA_CODEX_LAUNCH_PREFLIGHT}" ]; then
       "\${ORCA_CODEX_LAUNCH_PREFLIGHT}" agent hooks prepare-codex >/dev/null 2>&1 || :
     fi
     __orca_executable="$(__orca_codex_path)"
@@ -115,9 +115,9 @@ ${fishCodexNoDaemonProbe()}
 # absent, leaving "test = file" — fish then errors instead of failing closed.
 # Quoting in place is not the fix; fish never substitutes inside double quotes.
 set -l __orca_codex_type (type -t codex 2>/dev/null)
-if test -x "$ORCA_CODEX_LAUNCH_PREFLIGHT"; and test "$__orca_codex_type" = file
+if test -n "$ORCA_CODEX_LAUNCH_POLICY"; and test "$__orca_codex_type" = file
   function codex
-    if test -n "$ORCA_CODEX_HOME"
+    if test -n "$ORCA_CODEX_HOME"; and test -x "$ORCA_CODEX_LAUNCH_PREFLIGHT"
       command "$ORCA_CODEX_LAUNCH_PREFLIGHT" agent hooks prepare-codex >/dev/null 2>&1; or true
     end
     set -l executable (command -v codex 2>/dev/null)
@@ -135,10 +135,10 @@ export function getPowerShellCodexShellLaunchPreflight(): string {
   return `${powerShellCodexInteractiveArgv()}
 ${powerShellCodexNoDaemonProbe()}
 $orcaCodexCommand = Get-Command codex -ErrorAction SilentlyContinue | Select-Object -First 1
-if ($env:ORCA_CODEX_LAUNCH_PREFLIGHT -and $orcaCodexCommand -and
+if ($env:ORCA_CODEX_LAUNCH_POLICY -and $orcaCodexCommand -and
     $orcaCodexCommand.CommandType -in @("Application", "ExternalScript")) {
     function Global:codex {
-        if ($env:ORCA_CODEX_HOME) {
+        if ($env:ORCA_CODEX_HOME -and $env:ORCA_CODEX_LAUNCH_PREFLIGHT) {
             try {
                 & $env:ORCA_CODEX_LAUNCH_PREFLIGHT agent hooks prepare-codex *> $null
             } catch {

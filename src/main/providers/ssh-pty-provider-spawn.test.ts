@@ -233,7 +233,7 @@ describe('spawn', () => {
       cols: 80,
       rows: 24,
       cwd: undefined,
-      env: { [POWERLEVEL10K_WIZARD_DISABLE_ENV]: 'true' }
+      env: { [POWERLEVEL10K_WIZARD_DISABLE_ENV]: 'true', ORCA_CODEX_LAUNCH_POLICY: '1' }
     })
     expect(result).toEqual({ id: scopedPty1 })
     expect(provider.hasPty(scopedPty1)).toBe(true)
@@ -281,7 +281,7 @@ describe('spawn', () => {
       cols: 120,
       rows: 40,
       cwd: '/home/user',
-      env: { FOO: 'bar', [POWERLEVEL10K_WIZARD_DISABLE_ENV]: 'true' }
+      env: { FOO: 'bar', [POWERLEVEL10K_WIZARD_DISABLE_ENV]: 'true', ORCA_CODEX_LAUNCH_POLICY: '1' }
     })
   })
 
@@ -319,7 +319,7 @@ describe('spawn', () => {
       cols: 120,
       rows: 40,
       cwd: undefined,
-      env: { [POWERLEVEL10K_WIZARD_DISABLE_ENV]: 'true' },
+      env: { [POWERLEVEL10K_WIZARD_DISABLE_ENV]: 'true', ORCA_CODEX_LAUNCH_POLICY: '1' },
       paneKey: 'tab-a:leaf-a',
       tabId: 'tab-a'
     })
@@ -341,7 +341,7 @@ describe('spawn', () => {
       cols: 120,
       rows: 40,
       cwd: undefined,
-      env: { [POWERLEVEL10K_WIZARD_DISABLE_ENV]: 'true' },
+      env: { [POWERLEVEL10K_WIZARD_DISABLE_ENV]: 'true', ORCA_CODEX_LAUNCH_POLICY: '1' },
       shellOverride: 'powershell.exe',
       terminalWindowsWslDistro: 'Ubuntu',
       worktreeId: 'repo-1::/remote/wt',
@@ -362,7 +362,7 @@ describe('spawn', () => {
       cols: 120,
       rows: 40,
       cwd: undefined,
-      env: { [POWERLEVEL10K_WIZARD_DISABLE_ENV]: 'already-set' }
+      env: { [POWERLEVEL10K_WIZARD_DISABLE_ENV]: 'already-set', ORCA_CODEX_LAUNCH_POLICY: '1' }
     })
   })
 
@@ -380,7 +380,7 @@ describe('spawn', () => {
       cols: 120,
       rows: 40,
       cwd: undefined,
-      env: {},
+      env: { ORCA_CODEX_LAUNCH_POLICY: '1' },
       envToDelete: [POWERLEVEL10K_WIZARD_DISABLE_ENV]
     })
   })
@@ -405,6 +405,7 @@ describe('spawn', () => {
       rows: 40,
       cwd: undefined,
       env: {
+        ORCA_CODEX_LAUNCH_POLICY: '1',
         TERM: 'screen-256color',
         [POWERLEVEL10K_WIZARD_DISABLE_ENV]: 'true'
       },
@@ -430,7 +431,7 @@ describe('spawn', () => {
       cols: 120,
       rows: 40,
       cwd: undefined,
-      env: { [POWERLEVEL10K_WIZARD_DISABLE_ENV]: 'true' },
+      env: { [POWERLEVEL10K_WIZARD_DISABLE_ENV]: 'true', ORCA_CODEX_LAUNCH_POLICY: '1' },
       command: 'echo from-runtime',
       commandDelivery: 'provider',
       startupCommandDelivery: 'shell-ready'
@@ -457,6 +458,7 @@ describe('spawn', () => {
       rows: 40,
       cwd: undefined,
       env: {
+        ORCA_CODEX_LAUNCH_POLICY: '1',
         PATH: '/home/user/.orca-relay/bin:/usr/bin',
         ORCA_TERMINAL_HANDLE: 'term_ssh',
         [POWERLEVEL10K_WIZARD_DISABLE_ENV]: 'true',
@@ -489,6 +491,7 @@ describe('spawn', () => {
       rows: 40,
       cwd: undefined,
       env: {
+        ORCA_CODEX_LAUNCH_POLICY: '1',
         ORCA_TERMINAL_HANDLE: 'term_ssh',
         [POWERLEVEL10K_WIZARD_DISABLE_ENV]: 'true',
         ORCA_CODEX_LAUNCH_PREFLIGHT: '/home/user/.orca-relay/bin/orca',
@@ -521,6 +524,7 @@ describe('spawn', () => {
       rows: 40,
       cwd: undefined,
       env: {
+        ORCA_CODEX_LAUNCH_POLICY: '1',
         Path: 'C:/Users/me/.orca-relay/bin;C:/Windows/System32;C:/Tools',
         [POWERLEVEL10K_WIZARD_DISABLE_ENV]: 'true',
         ORCA_CODEX_LAUNCH_PREFLIGHT: 'C:\\Users\\me\\.orca-relay\\bin\\orca.exe',

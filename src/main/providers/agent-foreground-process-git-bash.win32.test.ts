@@ -113,8 +113,8 @@ describeOnWindows("Git Bash launcher shell proof with Orca's real launch", () =>
 
   it.each([
     ['login shell', {}],
-    // Why: with the Codex preflight set, the exec'd shell runs Orca's --rcfile wrapper.
-    ['rcfile wrapper', { ORCA_CODEX_LAUNCH_PREFLIGHT: 'C:\\orca-missing-preflight.exe' }]
+    // Why: with the Codex launch policy set, the exec'd shell runs Orca's --rcfile wrapper.
+    ['rcfile wrapper', { ORCA_CODEX_LAUNCH_POLICY: '1' }]
   ])(
     'confirms an idle %s prompt, refutes a running command, and confirms again',
     async (_label, extraEnv) => {

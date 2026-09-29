@@ -10,6 +10,10 @@ import { getPowerShellCodexShellLaunchPreflight } from '../pty/codex-shell-launc
 import { getShellReadyWrapperRoot } from './local-pty-shell-ready-wrapper-root'
 
 const CODEX_LAUNCH_PREFLIGHT = 'C:\\Program Files\\Orca\\orca.exe'
+const CODEX_LAUNCH_ENV = {
+  ORCA_CODEX_LAUNCH_POLICY: '1',
+  ORCA_CODEX_LAUNCH_PREFLIGHT: CODEX_LAUNCH_PREFLIGHT
+}
 const CMD_CODEX_LAUNCH_PREFLIGHT =
   '(if defined ORCA_CODEX_LAUNCH_PREFLIGHT if defined ORCA_CODEX_HOME call %ORCA_CODEX_LAUNCH_PREFLIGHT_CMD_QUOTE%%ORCA_CODEX_LAUNCH_PREFLIGHT%%ORCA_CODEX_LAUNCH_PREFLIGHT_CMD_QUOTE% agent hooks prepare-codex > nul 2>&1)'
 
@@ -65,7 +69,7 @@ describe('resolveWindowsShellLaunchArgs', () => {
       'C:\\Users\\alice',
       undefined,
       undefined,
-      CODEX_LAUNCH_PREFLIGHT
+      CODEX_LAUNCH_ENV
     )
     expect(result.shellArgs).toEqual(['/K', `chcp 65001 > nul & ${CMD_CODEX_LAUNCH_PREFLIGHT}`])
     expect(result.startupCommandDeliveredInShellArgs).toBeUndefined()
@@ -80,7 +84,7 @@ describe('resolveWindowsShellLaunchArgs', () => {
       'C:\\Users\\alice',
       undefined,
       'codex --no-alt-screen',
-      CODEX_LAUNCH_PREFLIGHT
+      CODEX_LAUNCH_ENV
     )
     expect(result.shellArgs).toEqual([
       '/K',
@@ -110,7 +114,7 @@ describe('resolveWindowsShellLaunchArgs', () => {
       'C:\\Users\\alice',
       undefined,
       `codex ${'x'.repeat(7000)}`,
-      CODEX_LAUNCH_PREFLIGHT
+      CODEX_LAUNCH_ENV
     )
     expect(result.shellArgs).toEqual(['/K', `chcp 65001 > nul & ${CMD_CODEX_LAUNCH_PREFLIGHT}`])
     expect(result.startupCommandDeliveredInShellArgs).toBeUndefined()
@@ -255,7 +259,7 @@ describe('resolveWindowsShellLaunchArgs', () => {
       'C:\\Users\\alice',
       undefined,
       undefined,
-      CODEX_LAUNCH_PREFLIGHT
+      CODEX_LAUNCH_ENV
     )
 
     expect(withWindowsPreflight).toEqual(baseline)
@@ -312,7 +316,7 @@ describe('resolveWindowsShellLaunchArgs', () => {
       'C:\\Users\\alice',
       undefined,
       undefined,
-      CODEX_LAUNCH_PREFLIGHT
+      CODEX_LAUNCH_ENV
     )
 
     // Why: Git Bash inherits the ConPTY OEM code page (CP437), so a byte-writing
@@ -345,12 +349,35 @@ describe('resolveWindowsShellLaunchArgs', () => {
       'C:\\Users\\alice',
       undefined,
       'codex --no-alt-screen',
-      CODEX_LAUNCH_PREFLIGHT
+      CODEX_LAUNCH_ENV
     )
 
     expect(result.shellArgs[1]).toContain('chcp.com 65001')
     expect(result.shellArgs[1]).toContain('--rcfile')
     expect(result.startupCommandDeliveredInShellArgs).toBeUndefined()
+  })
+
+  it('wraps Git Bash for the launch policy even without a launcher, and gives cmd.exe no prep', () => {
+    // Why: a dev build's orca-dev.cmd, or no verified launcher, must not cost the pane its policy.
+    const gitBash = resolveWindowsShellLaunchArgs(
+      'C:\\Program Files\\Git\\bin\\bash.exe',
+      'C:\\Users\\alice',
+      'C:\\Users\\alice',
+      undefined,
+      undefined,
+      { ORCA_CODEX_LAUNCH_POLICY: '1' }
+    )
+    const cmd = resolveWindowsShellLaunchArgs(
+      'cmd.exe',
+      'C:\\Users\\alice',
+      'C:\\Users\\alice',
+      undefined,
+      undefined,
+      { ORCA_CODEX_LAUNCH_POLICY: '1' }
+    )
+
+    expect(gitBash.shellArgs[1]).toContain('--rcfile')
+    expect(cmd.shellArgs).toEqual(['/K', 'chcp 65001 > nul'])
   })
 
   it('quotes a spaced preflight path through each shell environment', () => {
@@ -360,7 +387,7 @@ describe('resolveWindowsShellLaunchArgs', () => {
       'C:\\Users\\alice',
       undefined,
       undefined,
-      CODEX_LAUNCH_PREFLIGHT
+      CODEX_LAUNCH_ENV
     )
     const gitBash = resolveWindowsShellLaunchArgs(
       'C:\\Program Files\\Git\\bin\\bash.exe',
@@ -368,7 +395,7 @@ describe('resolveWindowsShellLaunchArgs', () => {
       'C:\\Users\\alice',
       undefined,
       undefined,
-      CODEX_LAUNCH_PREFLIGHT
+      CODEX_LAUNCH_ENV
     )
 
     expect(cmd.shellArgs[1]).toContain(
@@ -406,7 +433,7 @@ describe('resolveWindowsShellLaunchArgs', () => {
       'C:\\Users\\alice',
       undefined,
       'codex',
-      CODEX_LAUNCH_PREFLIGHT
+      CODEX_LAUNCH_ENV
     )
     expect(result).toEqual(baseline)
     expect(result.shellArgs).toEqual(expectedWslArgs('/mnt/c/Users/alice/code'))

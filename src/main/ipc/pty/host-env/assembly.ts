@@ -287,8 +287,10 @@ export function buildPtyHostEnv(
   } else if (opts.stripInheritedOrcaCodexHome) {
     stripInheritedOrcaCodexHomeOverride(baseEnv)
   }
+  // Why every pane: typed Codex needs the launch policy even with hooks off, a
+  // system home, or no launcher this build can verify; hook prep alone needs that.
+  baseEnv.ORCA_CODEX_LAUNCH_POLICY = '1'
   delete baseEnv.ORCA_CODEX_LAUNCH_PREFLIGHT
-  // Why every pane: typed Codex needs the launch policy even with hooks off or a system home.
   const preflightCommand = resolveCodexShellLaunchPreflightCommand({
     isPackaged: opts.isPackaged,
     isWsl: opts.isWsl,

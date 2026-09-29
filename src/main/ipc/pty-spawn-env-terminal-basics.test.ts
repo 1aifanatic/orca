@@ -420,7 +420,7 @@ describe('registerPtyHandlers', () => {
       // wrapper inherits, so the preflight must carry the CLI's verified absolute path.
       expect(env.ORCA_CODEX_LAUNCH_PREFLIGHT).toBe(BUNDLED_CLI_PATH)
     })
-    it('skips the Codex launch preflight when the bundled CLI is not executable', async () => {
+    it('skips only hook prep, never the launch policy, when the bundled CLI is not executable', async () => {
       const env = await withBundledCli(
         () => spawnAndGetEnv(undefined, undefined, () => TEST_CODEX_HOME),
         { launcherExecutable: false }
@@ -428,6 +428,13 @@ describe('registerPtyHandlers', () => {
 
       expect(env.CODEX_HOME).toBe(TEST_CODEX_HOME)
       expect(env.ORCA_CODEX_LAUNCH_PREFLIGHT).toBeUndefined()
+      expect(env.ORCA_CODEX_LAUNCH_POLICY).toBe('1')
+    })
+    it('marks a system-default-home pane for the launch policy with no launcher at all', async () => {
+      const env = await spawnAndGetEnv(undefined, { ORCA_CODEX_LAUNCH_POLICY: undefined })
+
+      expect(env.ORCA_CODEX_HOME).toBeUndefined()
+      expect(env.ORCA_CODEX_LAUNCH_POLICY).toBe('1')
     })
     // Why (STA-4270): profile scripts run before the codex() wrapper and routinely prepend
     // directories to PATH, so a scratch `orca` there must never become the preflight.
