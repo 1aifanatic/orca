@@ -6,9 +6,8 @@
  * The address names a conversation, not one session of it: any session of a `/clear` lineage names
  * the lineage root's address (`canonicalOrcaSessionId`), and mail reaches the lineage's live session.
  *
- * A released lease does not end a session. The host evicts a chat nobody is looking at 15s after
- * its last turn and hands its lease back, and mail must wake it again (resume on demand). For mail,
- * a conversation has ended only when its chat was closed.
+ * A released lease does not end a session: the host stops an idle chat's agent, and the send that
+ * points its mail starts it again. For mail, a conversation has ended only when its chat was closed.
  */
 
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'

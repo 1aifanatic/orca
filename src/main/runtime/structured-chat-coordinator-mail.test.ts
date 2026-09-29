@@ -469,16 +469,17 @@ describe('a worker result reaches the structured chat that coordinates it', () =
     expect(revived.turns[0]!.text).toMatch(POINTER)
   })
 
-  it('wakes a coordinator the host evicted, and delivers once it is back', async () => {
+  it('points a coordinator whose agent is not running through the send alone, which starts it', async () => {
     await openChat(COORDINATOR)
     const { taskId } = await coordinatorRunAndTask()
-    // What the release clock does to a chat nobody is looking at: child stopped, lease released.
+    // What the idle sweep leaves of a chat nobody is looking at: agent stopped, no map entry.
     await host.close(COORDINATOR)
     expect(host.hasSession(COORDINATOR)).toBe(false)
     const before = codex.connections.length
 
     await finishWorker(taskId)
 
+    // Nothing holds or wakes the session first: the pointer's accepted send starts its agent.
     await vi.waitFor(() => expect(codex.connections.length).toBe(before + 1), WAIT)
     const revived = connectionFor(COORDINATOR)
     await vi.waitFor(() => expect(revived.turns).toHaveLength(1), WAIT)

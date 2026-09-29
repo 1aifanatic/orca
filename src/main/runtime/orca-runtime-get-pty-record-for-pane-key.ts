@@ -197,7 +197,7 @@ export class OrcaRuntimeWithGetPtyRecordForPaneKey extends OrcaRuntimeWithPruneM
 
   /**
    * Every structured session's status change reaches here. At its idle edge, retry what is parked
-   * on it and re-derive the mailboxes it owns, so mail it could not take earlier (evicted, closed)
+   * on it and re-derive the mailboxes it owns, so mail it could not take earlier (mid-turn, closed)
    * is pointed again. Workers and chats alike: this is not per-dispatch.
    */
   onStructuredSessionStatusForMail(summary: {

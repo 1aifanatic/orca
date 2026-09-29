@@ -61,32 +61,8 @@ export async function readStructuredSessionGateFacts(
   }
 }
 
-let wakeHolds = 0
-
 export function createStructuredMailboxPointerHost(): StructuredMailboxPointerHost {
   return {
-    // Mail is what wakes a session nobody is looking at: the host evicts an unheld chat after its
-    // last turn, and without this its coordinator mail would wait forever for a re-attach.
-    async wake(sessionId) {
-      const host = getStructuredAgentSessionHost()
-      if (!host) {
-        return null
-      }
-      const holderId = `orchestration:mail:${++wakeHolds}`
-      try {
-        await host.hold(sessionId, holderId)
-      } catch (error) {
-        // A lease another owner holds, or a resume the provider refused; delivery retains. Logged:
-        // a coordinator that never wakes is otherwise indistinguishable from one with no mail.
-        console.warn('[orchestration] could not wake a structured session for its mail', {
-          sessionId,
-          error: error instanceof Error ? error.message : String(error)
-        })
-        return null
-      }
-      return () => host.release(sessionId, holderId)
-    },
-
     readGateFacts(sessionId) {
       return readStructuredSessionGateFacts(sessionId)
     },

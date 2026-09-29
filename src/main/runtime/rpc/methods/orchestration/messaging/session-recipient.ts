@@ -5,7 +5,7 @@
  *
  * Mail that no Run or Dispatch owns is stored at the conversation's `session:<root id>` and pointed
  * at its live session as a turn, so any session of a `/clear` lineage is a valid spelling. A
- * released lease is not a refusal (delivery resumes an evicted chat); a closed chat, another host,
+ * released lease is not a refusal (the pointer's send starts its agent); a closed chat, another host,
  * and an unknown id are, before anything is stored.
  */
 

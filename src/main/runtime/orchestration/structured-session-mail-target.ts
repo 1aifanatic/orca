@@ -93,7 +93,7 @@ export function structuredSessionAddressTarget(
 /**
  * Every mailbox a session reads for itself: the Runs it coordinates and its own direct mail.
  * Re-derived from the database on each idle edge rather than remembered, so mail that arrived
- * while the session could not take it (closed, evicted) is found again.
+ * while the session could not take it (mid-turn, closed) is found again.
  */
 export function structuredSessionOwnedMailboxes(sessionId: string, db: OrchestrationDb): string[] {
   const party = isOrcaSessionId(sessionId) ? addressableSessionParty(sessionId, db) : null

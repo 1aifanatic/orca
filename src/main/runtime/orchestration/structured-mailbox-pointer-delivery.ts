@@ -9,7 +9,7 @@
  *
  * Coordinators are in scope here, unlike the PTY lane's reasoning: a PTY coordinator blocks in
  * `check --wait`, where a waiter preempts pointer delivery, but a structured coordinator is a chat
- * session whose turn ends — so nothing else would ever wake it for its own `run:` mail.
+ * session whose turn ends — so nothing else would ever prompt it for its own `run:` mail.
  */
 
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
@@ -66,11 +66,6 @@ export type StructuredMailboxPointerHost = {
   }) => Promise<StructuredPointerSendOutcome>
   /** Current lease fence; `null` when no record backs the session any more. */
   currentFence: (sessionId: string) => number | null
-  /**
-   * Holds the session for one attempt, resuming its provider child if the host evicted it; the
-   * returned release hands it back to the host's release clock. Null when it cannot be resumed.
-   */
-  wake?: (sessionId: string) => Promise<(() => void) | null>
 }
 
 type StructuredPointerDeliveryDependencies<TWaiter extends OrchestrationMessageWaiter> = {
@@ -184,22 +179,8 @@ export class OrchestrationStructuredMailboxPointerDelivery<
     }
   }
 
+  // A session whose agent is not running needs nothing first: an accepted send starts it.
   private async attempt(
-    db: OrchestrationDb,
-    mailboxHandle: string,
-    target: StructuredPointerTarget,
-    unread: readonly { id: string; type: string; sequence: number }[],
-    reservedTypes: ReadonlySet<string> | undefined
-  ): Promise<void> {
-    const release = await this.deps.host.wake?.(target.sessionId)
-    try {
-      await this.attemptAwake(db, mailboxHandle, target, unread, reservedTypes)
-    } finally {
-      release?.()
-    }
-  }
-
-  private async attemptAwake(
     db: OrchestrationDb,
     mailboxHandle: string,
     target: StructuredPointerTarget,
