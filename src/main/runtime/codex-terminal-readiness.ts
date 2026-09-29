@@ -43,8 +43,9 @@ export function isCodexProvisionalStartupText(normalized: string): boolean {
   return loading !== null && !hasCodexLiveFooterBelow(normalized, headerIndex + loading.index)
 }
 
-// Why: only Codex's live chat draws a `·` under the composer: the status row (items joined by `·`),
-// `← for agents · ? for shortcuts` on daemon sessions, or `⚠ N warning · f2 to view`.
+// Why: the live chat draws a `·` below the header: the status row (items joined by `·`),
+// `← for agents · ? for shortcuts` on daemon sessions, or `⚠ N warning · f2 to view`. Startup
+// dialogs' key hints draw one too (`enter continue · esc skip`); only the blocked matchers stop those.
 function hasCodexLiveFooterBelow(text: string, from: number): boolean {
   return text.includes('·', from)
 }
