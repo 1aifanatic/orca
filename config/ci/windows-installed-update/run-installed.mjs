@@ -239,6 +239,11 @@ async function continuity(stage, owner, live, worktreeId) {
   receipt.stages.push({ stage, owner: current, terminals })
 }
 // Pre-PTY stale-bundle replacement is darwin-only (resolvePackagedDarwinAppVersion); on Windows a
+// Decodes a PowerShell -EncodedCommand so the receipt names which script a shell runs.
+function encodedPowerShell(command) {
+  const encoded = /-EncodedCommand\s+([A-Za-z0-9+/=]+)/u.exec(command ?? '')?.[1]
+  return encoded ? Buffer.from(encoded, 'base64').toString('utf16le').slice(0, 1500) : undefined
+}
 function descendantsOf(table, pid) {
   const found = []
   const frontier = [pid]
@@ -255,7 +260,9 @@ function descendantsOf(table, pid) {
     pid: row.pid,
     ppid: row.ppid,
     name: row.name,
-    command: row.command?.slice(0, 300)
+    created: row.created,
+    command: row.command?.slice(0, 300),
+    script: encodedPowerShell(row.command)
   }))
 }
 const ptyHostCount = (table, owner) =>
@@ -468,6 +475,12 @@ try {
 
   await transitionTo('B', ownerA, live)
   await continuity('B (A-owned sessions)', ownerA, live, worktrees.git)
+  const afterUpdate = await processTable()
+  receipt.stages.push({
+    stage: 'B tree before close',
+    shells: live.map((item) => item.shell),
+    tree: afterUpdate ? descendantsOf(afterUpdate, ownerA.pid) : 'unverifiable'
+  })
   const decoys = plantDecoys(ownerA.generation)
   const pinned = await identify(pinner.pid)
   check('decoy pin process verifiable', Boolean(pinned?.created))
