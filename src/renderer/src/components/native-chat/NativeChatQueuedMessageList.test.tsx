@@ -143,6 +143,38 @@ describe('NativeChatQueuedMessageList', () => {
     expect(screen.queryByRole('button', { name: 'Steer' })).toBeNull()
   })
 
+  it('a returned card is worded from its typed fact, exactly as a rejected submission', () => {
+    renderList(
+      controller([
+        card({
+          messageId: 'restarted',
+          state: 'returned',
+          hold: 'returned',
+          returnedReason: 'host_restarted_before_delivery',
+          returnedRejection: { kind: 'hostRestarted' }
+        })
+      ])
+    )
+    const row = screen.getByRole('listitem')
+    expect(row.textContent).toContain('Orca restarted before this message was sent.')
+    expect(row.textContent).not.toContain('Your message was not sent.')
+  })
+
+  it("a Stop's withdrawal is read from the fact, whatever sentence the reason carries", () => {
+    renderList(
+      controller([
+        card({
+          messageId: 'stopped',
+          state: 'returned',
+          hold: 'returned',
+          returnedReason: 'This message was withdrawn before the agent started it.',
+          returnedRejection: { kind: 'cancelled' }
+        })
+      ])
+    )
+    expect(screen.getByRole('listitem').textContent).toContain('Stopped before it was sent')
+  })
+
   it("a provider's own refusal words are shown verbatim", () => {
     renderList(
       controller([

@@ -10,7 +10,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { ShortcutKeyCombo } from '@/components/ShortcutKeyCombo'
 import { translate } from '@/i18n/i18n'
 import { structuredAgentSessionAttemptFailureParts } from '../../../../shared/structured-agent-session-send-disposition'
-import { DISPATCH_REJECTED_CANCELLED } from '../../../../shared/structured-agent-session-dispatch-rejection'
+import { classifyDispatchRejection } from '../../../../shared/structured-agent-session-dispatch-rejection'
+import { readAgentSessionFailureFact } from '../../../../shared/agent-session-failure'
 import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
 import {
   QUEUED_MESSAGE_PAUSED_SEND_FAILED,
@@ -22,22 +23,28 @@ import type { QueuedMessageCard } from './structured-agent-session-queued-cards'
 /** The visible caption under the text; the default waiting hold needs none. */
 export function queuedMessageCardCaption(card: QueuedMessageCard): string | null {
   switch (card.hold) {
-    case 'returned':
+    case 'returned': {
+      // Read exactly as a rejected submission: the typed fact decides, the reason is the fallback.
+      const reason = card.returnedReason ?? null
       // A consumed draft whose submission a Stop withdrew is not a failure of the
       // message — say what happened rather than "not sent".
-      if (card.returnedReason === DISPATCH_REJECTED_CANCELLED) {
+      if (
+        classifyDispatchRejection({ reason, rejection: card.returnedRejection }).category ===
+        'withdrawn'
+      ) {
         return translate(
           'components.native-chat.queuedMessages.withdrawnHold',
           'Stopped before it was sent'
         )
       }
-      // The stored effective refusal, worded exactly as a rejected submission would be.
       return agentSessionWriteNoticeText(
-        structuredAgentSessionAttemptFailureParts({
-          kind: 'rejected',
-          reason: card.returnedReason ?? null
-        })
+        structuredAgentSessionAttemptFailureParts(
+          { kind: 'rejected', reason },
+          {},
+          readAgentSessionFailureFact(card.returnedRejection)
+        )
       )
+    }
     case 'paused':
       // Markers localize; an absent or unknown one (newer host) is a plain pause, never shown raw.
       if (card.pausedReason === QUEUED_MESSAGE_PAUSED_STOPPED) {

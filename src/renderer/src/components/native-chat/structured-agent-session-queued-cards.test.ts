@@ -58,7 +58,11 @@ describe('queued message cards', () => {
   it('a returned card carries its stored reason and blocks the label of drafts behind it', () => {
     const cards = projectQueuedMessageCards(
       [
-        draft('failed', 1, { state: 'returned', returnedReason: 'agent_session_write_failed' }),
+        draft('failed', 1, {
+          state: 'returned',
+          returnedReason: 'agent_session_write_failed',
+          returnedRejection: { kind: 'writeFailed' }
+        }),
         draft('behind', 2)
       ],
       [],
@@ -67,7 +71,8 @@ describe('queued message cards', () => {
     expect(cards[0]).toMatchObject({
       state: 'returned',
       hold: 'returned',
-      returnedReason: 'agent_session_write_failed'
+      returnedReason: 'agent_session_write_failed',
+      returnedRejection: { kind: 'writeFailed' }
     })
     expect(cards[1]?.hold).toBe('behind-returned')
   })

@@ -1,6 +1,7 @@
 // What the queued-message cards above the composer show, derived per publish —
 // the wire carries no hold label (§ labels are client policy, not host state).
 
+import type { UnreadAgentSessionFailureFact } from '../../../../shared/agent-session-failure'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 import type { AgentSessionQueuedMessage } from '../../../../shared/agent-session-wire'
 import {
@@ -25,6 +26,8 @@ export type QueuedMessageCard = {
   hold: QueuedMessageCardHold
   pausedReason?: string
   returnedReason?: string | null
+  /** The typed fact the returned card's submission settled with; read like its `rejection`. */
+  returnedRejection?: UnreadAgentSessionFailureFact
 }
 
 function queuedMessageCardText(body: AgentSessionQueuedMessage['body']): string {
@@ -67,7 +70,10 @@ export function projectQueuedMessageCards(
       state: message.state,
       hold,
       ...(message.pausedReason !== undefined ? { pausedReason: message.pausedReason } : {}),
-      ...(message.returnedReason !== undefined ? { returnedReason: message.returnedReason } : {})
+      ...(message.returnedReason !== undefined ? { returnedReason: message.returnedReason } : {}),
+      ...(message.returnedRejection !== undefined
+        ? { returnedRejection: message.returnedRejection }
+        : {})
     }
   })
 }
