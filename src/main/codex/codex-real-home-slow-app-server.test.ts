@@ -34,7 +34,6 @@ vi.mock('../codex-cli/command', () => ({ resolveCodexCommand: resolveCodexComman
 
 import {
   _internals as realHomeInternals,
-  awaitRealHomeCodexHookTrust,
   ensureRealHomeCodexHookState,
   isRealHomeCodexHookLaneUsable
 } from './codex-real-home-hook-install'
@@ -180,22 +179,6 @@ describe('a slow codex app-server start', () => {
     expect(await launch()).toBe('installed')
     expect(isRealHomeCodexHookLaneUsable()).toBe(true)
     expect(server.sessions).toBe(1)
-  })
-
-  it('lets a resume into the real home wait until the grant settles', async () => {
-    const server = installAppServer(15_000)
-    expect(await launch()).toBe('granting')
-
-    let settled = false
-    const resumed = awaitRealHomeCodexHookTrust().then((lane) => {
-      settled = true
-      return lane
-    })
-    await new Promise((resolve) => setTimeout(resolve, 50))
-    expect(settled).toBe(false)
-
-    server.start()
-    expect(await resumed).toBe('installed')
   })
 
   it('starts no cooldown after a timeout: the next launch tries again at once', async () => {

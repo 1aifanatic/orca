@@ -73,8 +73,7 @@ vi.mock('./main-process-state', async () => {
   }
 })
 
-const { CODEX_BACKGROUND_TRUST_GRANT_TIMEOUT_MS, _internals: grantInternals } =
-  await import('../codex/codex-hook-trust-grant')
+const { _internals: grantInternals } = await import('../codex/codex-hook-trust-grant')
 const { _internals: realHomeInternals } = await import('../codex/codex-real-home-hook-install')
 const { getOrcaManagedCodexHomePath } = await import('../codex/codex-home-paths')
 const { prepareCodexRuntimeHomeForLaunch } = await import('./codex-launch-preparation')
@@ -201,7 +200,7 @@ describe('a Codex launch while the real-home approval hangs', () => {
 })
 
 describe('a Codex resume into the real ~/.codex while its approval runs', () => {
-  it('spawns once Codex approves the entry, never beside an unapproved one', async () => {
+  it('starts at once, and the entry is approved when the grant lands', async () => {
     let approve: () => void = () => {}
     const approval = new Promise<void>((resolve) => {
       approve = resolve
@@ -227,27 +226,11 @@ describe('a Codex resume into the real ~/.codex while its approval runs', () => 
       }
     })
 
-    const resumed = resume()
-    expect(await settlesWithin(resumed, 200)).toBe(false)
+    expect(await settlesWithin(resume(), 200)).toBe(true)
     approve()
-    await resumed
+    await realHomeInternals.settledLaneForTesting()
     const trust = realHomeOrcaEntryTrust()
     expect(trust.length).toBeGreaterThan(0)
     expect(trust.every((state) => state === 'trusted')).toBe(true)
-  })
-
-  it('spawns at the approval deadline with the unapproved entries withdrawn', async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
-    grantInternals.setGrantSessionRunner(() => new Promise(() => {}))
-    let spawned = false
-    const resumed = resume().then(() => {
-      spawned = true
-    })
-
-    await vi.advanceTimersByTimeAsync(CODEX_BACKGROUND_TRUST_GRANT_TIMEOUT_MS - 1)
-    expect(spawned).toBe(false)
-    await vi.advanceTimersByTimeAsync(1)
-    await resumed
-    expect(realHomeOrcaEntryTrust()).toEqual([])
   })
 })

@@ -116,16 +116,6 @@ export function ensureRealHomeCodexHookState(args: {
   return ensureInFlight
 }
 
-/**
- * For a resume that must run in the real home, with no managed home to fall
- * back to: waits until a background grant settles, which its deadline bounds.
- * Settled means Codex approved the entry or the grant withdrew it.
- */
-export async function awaitRealHomeCodexHookTrust(): Promise<RealHomeCodexHookLane> {
-  await backgroundGrant
-  return currentLane
-}
-
 async function runRealHomeCodexHookEnsure(args: {
   hooksEnabled: boolean
   userDataPath: string
