@@ -57,7 +57,7 @@ SimpleThreadSafeCache<OrcaSelectableTextMeasureKey, Size, kSimpleThreadSafeCache
   return cache;
 }
 
-// React Native's text measurer can't see paragraph indents, so measure with the view's TextKit stack.
+// Measure with the same TextKit setup the view draws with, so measured and drawn heights can't drift.
 Size measureWithTextKit(const OrcaSelectableTextMeasureKey &key)
 {
   const auto &constraints = key.layoutConstraints;
