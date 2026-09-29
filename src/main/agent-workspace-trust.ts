@@ -1,27 +1,18 @@
 import { homedir } from 'node:os'
-import { markQoderWorkspaceTrusted } from './qoder/workspace-trust'
-import {
-  type AgentTrustPreset,
-  markAntigravityWorkspaceTrusted,
-  markCodexProjectTrusted,
-  markCopilotFolderTrusted,
-  markCursorWorkspaceTrusted
-} from './agent-trust-presets'
 import {
   AGENT_TRUST_WRITE_DEADLINE_MS,
   SHORT_AGENT_TRUST_WRITE_DEADLINE_MS,
   awaitAgentTrustWriteWithinDeadline
 } from './agent-trust-write-deadline'
+import type { AgentTrustPreset } from './agent-trust-presets'
 import { markRemoteAgentWorkspaceTrusted } from './remote-agent-trust-presets'
-import {
-  grantClaudeWorkspaceTrust,
-  resolveLocalClaudeTrustConfig
-} from './claude/claude-folder-trust-file'
+import { resolveLocalClaudeTrustConfig } from './claude/claude-folder-trust-file'
 import type { ClaudeRuntimeAuthPreparation } from './claude-accounts/runtime-auth/runtime-auth-types'
 import type { ClaudeFolderTrustSpawnRequest } from '../shared/claude-folder-trust-spawn-request'
 import { parseWslUncPath } from '../shared/wsl-paths'
 import { isTooBroadToPreTrust } from '../shared/home-or-filesystem-root'
-import { isLocalFolderTooBroadToPreTrust } from './local-folder-trust-breadth'
+import { applyWorkspaceTrustOnThisHost } from './execution-host-workspace-trust'
+import { getLocalCodexTrustConfigFiles } from './codex/codex-home-paths'
 import { getCachedWslHome } from './wsl-home-cache'
 
 /** What a trust writer needs to reach the file the launched agent will read. */
@@ -40,36 +31,6 @@ export type AgentTrustSpawnFields = {
   claudeFolderTrust?: ClaudeFolderTrustSpawnRequest
 }
 
-function writeLocalPreset(
-  preset: Exclude<AgentTrustPreset, 'claude'>,
-  workspacePath: string
-): Promise<void> {
-  switch (preset) {
-    case 'codex':
-      return markCodexProjectTrusted(workspacePath)
-    case 'cursor':
-      return Promise.resolve().then(() => markCursorWorkspaceTrusted(workspacePath))
-    case 'copilot':
-      return Promise.resolve().then(() => markCopilotFolderTrusted(workspacePath))
-    case 'qoder':
-      return Promise.resolve().then(() => markQoderWorkspaceTrusted(workspacePath))
-    case 'antigravity':
-      return Promise.resolve().then(() => markAntigravityWorkspaceTrusted(workspacePath))
-  }
-}
-
-async function writeLocalClaude(workspacePath: string, context: AgentTrustLaunchContext) {
-  const target = resolveLocalClaudeTrustConfig({
-    workspacePath,
-    env: { ...process.env, ...context.env },
-    claudeAuth: context.claudeAuth,
-    wslDistro: context.wslDistro
-  })
-  if (target) {
-    await grantClaudeWorkspaceTrust(target, workspacePath)
-  }
-}
-
 function isWslLaunch(workspacePath: string, context: AgentTrustLaunchContext): boolean {
   return (
     Boolean(context.wslDistro) ||
@@ -81,37 +42,10 @@ function isWslLaunch(workspacePath: string, context: AgentTrustLaunchContext): b
 /** Homes an agent on this machine may read trust under; SSH hosts check their own. */
 function localHomePaths(workspacePath: string, context: AgentTrustLaunchContext) {
   const wslWorkspace = parseWslUncPath(workspacePath)
-  return [
-    homedir(),
-    context.env?.HOME,
-    context.env?.USERPROFILE,
-    wslWorkspace ? getCachedWslHome(wslWorkspace.distro) : null
-  ]
-}
-
-function startTrustWrite(
-  preset: AgentTrustPreset,
-  workspacePath: string,
-  context: AgentTrustLaunchContext
-): Promise<void> | null {
-  if (context.connectionId) {
-    return markRemoteAgentWorkspaceTrusted({
-      preset,
-      connectionId: context.connectionId,
-      workspacePath
-    })
-  }
-  // Why: the other writers target this host's home, which a WSL guest agent never reads.
-  if (preset !== 'claude' && isWslLaunch(workspacePath, context)) {
-    return null
-  }
-  if (isLocalFolderTooBroadToPreTrust(workspacePath, localHomePaths(workspacePath, context))) {
-    // Why: trust on a home, a folder above one or a root would cover the home for some agents.
-    return null
-  }
-  return preset === 'claude'
-    ? writeLocalClaude(workspacePath, context)
-    : writeLocalPreset(preset, workspacePath)
+  // Why: a WSL guest agent reads trust under the guest's home; an uncached one means write nothing.
+  return wslWorkspace
+    ? [getCachedWslHome(wslWorkspace.distro)]
+    : [homedir(), context.env?.HOME, context.env?.USERPROFILE]
 }
 
 /**
@@ -123,8 +57,8 @@ export async function applyAgentWorkspaceTrust(
   workspacePath: string,
   context: AgentTrustLaunchContext
 ): Promise<AgentTrustSpawnFields> {
-  try {
-    if (context.connectionId) {
+  if (context.connectionId) {
+    try {
       if (isTooBroadToPreTrust(workspacePath, [])) {
         // Why: the SSH host checks its own home; a root is too broad on any host.
         return {}
@@ -133,24 +67,40 @@ export async function applyAgentWorkspaceTrust(
         // Why: the relay owns the remote file, its lock and the agent's final env.
         return { claudeFolderTrust: { workspacePath } }
       }
+      await awaitAgentTrustWriteWithinDeadline(
+        markRemoteAgentWorkspaceTrusted({
+          preset,
+          connectionId: context.connectionId,
+          workspacePath
+        }),
+        // Why: SSH writes cross a possibly slow link.
+        { preset, workspacePath, deadlineMs: AGENT_TRUST_WRITE_DEADLINE_MS }
+      )
+    } catch (error) {
+      console.warn(
+        `[agent-trust] ${preset} trust for ${workspacePath} failed; the agent will ask`,
+        error
+      )
     }
-    const write = startTrustWrite(preset, workspacePath, context)
-    if (write) {
-      await awaitAgentTrustWriteWithinDeadline(write, {
-        preset,
-        workspacePath,
-        // Why: Codex queues behind a shared config lane, and SSH writes cross a possibly slow link.
-        deadlineMs:
-          preset === 'codex' || context.connectionId
-            ? AGENT_TRUST_WRITE_DEADLINE_MS
-            : SHORT_AGENT_TRUST_WRITE_DEADLINE_MS
-      })
-    }
-  } catch (error) {
-    console.warn(
-      `[agent-trust] ${preset} trust for ${workspacePath} failed; the agent will ask`,
-      error
-    )
+    return {}
   }
+  // Why: the other writers target this host's home, which a WSL guest agent never reads.
+  if (preset !== 'claude' && isWslLaunch(workspacePath, context)) {
+    return {}
+  }
+  await applyWorkspaceTrustOnThisHost(preset, workspacePath, () => ({
+    homes: localHomePaths(workspacePath, context),
+    claudeConfig: () =>
+      resolveLocalClaudeTrustConfig({
+        workspacePath,
+        env: { ...process.env, ...context.env },
+        claudeAuth: context.claudeAuth,
+        wslDistro: context.wslDistro
+      }),
+    codexConfigFiles: getLocalCodexTrustConfigFiles,
+    // Why: Codex queues behind a config lane it shares with Orca's hook installs.
+    deadlineMs:
+      preset === 'codex' ? AGENT_TRUST_WRITE_DEADLINE_MS : SHORT_AGENT_TRUST_WRITE_DEADLINE_MS
+  }))
   return {}
 }

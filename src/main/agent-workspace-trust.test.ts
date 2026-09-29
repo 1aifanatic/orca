@@ -12,8 +12,10 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as ClaudeFolderTrustFile from './claude/claude-folder-trust-file'
 
+const CODEX_CONFIG_FILES = ['/orca/codex-home/config.toml', '/home/u/.codex/config.toml']
+
 const mocks = vi.hoisted(() => ({
-  codex: vi.fn<(path: string) => Promise<void>>(async () => {}),
+  codex: vi.fn<(path: string, configFiles: readonly string[]) => Promise<void>>(async () => {}),
   cursor: vi.fn<(path: string) => void>(),
   copilot: vi.fn<(path: string) => void>(),
   antigravity: vi.fn<(path: string) => void>(),
@@ -23,10 +25,14 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('./agent-trust-presets', () => ({
+  resolveCodexProjectTrustRoot: (path: string) => path,
   markCodexProjectTrusted: mocks.codex,
   markCursorWorkspaceTrusted: mocks.cursor,
   markCopilotFolderTrusted: mocks.copilot,
   markAntigravityWorkspaceTrusted: mocks.antigravity
+}))
+vi.mock('./codex/codex-home-paths', () => ({
+  getLocalCodexTrustConfigFiles: () => CODEX_CONFIG_FILES
 }))
 vi.mock('./qoder/workspace-trust', () => ({ markQoderWorkspaceTrusted: mocks.qoder }))
 vi.mock('./remote-agent-trust-presets', () => ({ markRemoteAgentWorkspaceTrusted: mocks.remote }))
@@ -37,6 +43,7 @@ vi.mock('./claude/claude-folder-trust-file', async (importOriginal) => {
 })
 
 import { applyAgentWorkspaceTrust, type AgentTrustLaunchContext } from './agent-workspace-trust'
+import { clearWslHomeCache, rememberWslHome } from './wsl-home-cache'
 import {
   AGENT_TRUST_WRITE_DEADLINE_MS,
   SHORT_AGENT_TRUST_WRITE_DEADLINE_MS
@@ -76,7 +83,10 @@ describe('applyAgentWorkspaceTrust on this machine', () => {
     ['antigravity', mocks.antigravity]
   ] as const)('writes the %s preset for the workspace', async (preset, writer) => {
     await expect(applyAgentWorkspaceTrust(preset, WORKSPACE, local)).resolves.toEqual({})
-    expect(writer).toHaveBeenCalledWith(WORKSPACE)
+    expect(writer).toHaveBeenCalledWith(
+      WORKSPACE,
+      ...(preset === 'codex' ? [CODEX_CONFIG_FILES] : [])
+    )
     expect(mocks.remote).not.toHaveBeenCalled()
   })
 
@@ -209,6 +219,40 @@ describe('applyAgentWorkspaceTrust on this machine', () => {
       expect(writer).not.toHaveBeenCalled()
     }
     expect(mocks.antigravity).not.toHaveBeenCalled()
+  })
+  describe('for Claude in a WSL guest', () => {
+    const wslAuth = {
+      configDir: '\\\\wsl.localhost\\Ubuntu\\home\\u\\.claude',
+      runtime: 'wsl',
+      wslDistro: 'Ubuntu',
+      wslLinuxConfigDir: '/home/u/.claude',
+      envPatch: {},
+      stripAuthEnv: false,
+      provenance: 'test'
+    } as const
+    const wsl = { ...local, claudeAuth: wslAuth, wslDistro: 'Ubuntu' }
+
+    afterEach(() => {
+      clearWslHomeCache()
+    })
+
+    it("writes nothing while the guest's home is unknown", async () => {
+      await applyAgentWorkspaceTrust('claude', '\\\\wsl.localhost\\Ubuntu\\home\\u\\wt', wsl)
+      expect(mocks.claudeGrant).not.toHaveBeenCalled()
+    })
+
+    it("never pre-trusts the guest's home, however the distro is spelled", async () => {
+      rememberWslHome('Ubuntu', '\\\\wsl.localhost\\Ubuntu\\home\\u')
+      await applyAgentWorkspaceTrust('claude', '\\\\wsl$\\ubuntu\\home\\u', wsl)
+      expect(mocks.claudeGrant).not.toHaveBeenCalled()
+    })
+
+    it("grants a folder under the guest's known home", async () => {
+      rememberWslHome('ubuntu', '\\\\wsl.localhost\\Ubuntu\\home\\u')
+      mocks.claudeGrant.mockResolvedValueOnce('unchanged')
+      await applyAgentWorkspaceTrust('claude', '\\\\wsl.localhost\\Ubuntu\\home\\u\\wt', wsl)
+      expect(mocks.claudeGrant).toHaveBeenCalledTimes(1)
+    })
   })
 })
 

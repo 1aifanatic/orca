@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
-vi.mock('../main/local-folder-trust-breadth', () => ({
-  isLocalFolderTooBroadToPreTrust: () => {
+vi.mock('../shared/home-or-filesystem-root', () => ({
+  isTooBroadToPreTrust: () => {
     throw new Error('homedir unavailable')
   }
 }))

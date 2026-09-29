@@ -1,15 +1,9 @@
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { parseClaudeFolderTrustSpawnRequest } from '../shared/claude-folder-trust-spawn-request'
-import {
-  grantClaudeWorkspaceTrust,
-  resolveClaudeGlobalConfigFile
-} from '../main/claude/claude-folder-trust-file'
-import {
-  awaitAgentTrustWriteWithinDeadline,
-  SHORT_AGENT_TRUST_WRITE_DEADLINE_MS
-} from '../main/agent-trust-write-deadline'
-import { isLocalFolderTooBroadToPreTrust } from '../main/local-folder-trust-breadth'
+import { resolveClaudeGlobalConfigFile } from '../main/claude/claude-folder-trust-file'
+import { SHORT_AGENT_TRUST_WRITE_DEADLINE_MS } from '../main/agent-trust-write-deadline'
+import { applyWorkspaceTrustOnThisHost } from '../main/execution-host-workspace-trust'
 
 /**
  * Why here: this host owns the file Claude reads, so the lock, the re-read under it,
@@ -25,29 +19,23 @@ export async function applyRelayClaudeFolderTrust(
   if (!request || launch.wslShell) {
     return
   }
-  try {
+  await applyWorkspaceTrustOnThisHost('claude', request.workspacePath, () => {
     const keyStyle = process.platform === 'win32' ? 'win32' : 'posix'
     const homeDir = (keyStyle === 'win32' ? spawnEnv.USERPROFILE : spawnEnv.HOME) || homedir()
-    if (isLocalFolderTooBroadToPreTrust(request.workspacePath, [homeDir, homedir()])) {
-      return
+    return {
+      homes: [homeDir, homedir()],
+      claudeConfig: () => ({
+        configFile: resolveClaudeGlobalConfigFile({
+          env: spawnEnv,
+          homeDir,
+          style: keyStyle,
+          exists: existsSync
+        }),
+        keyStyle
+      }),
+      codexConfigFiles: () => [],
+      // Why: this write is on the relay's own disk, so it gets the local budget.
+      deadlineMs: SHORT_AGENT_TRUST_WRITE_DEADLINE_MS
     }
-    const configFile = resolveClaudeGlobalConfigFile({
-      env: spawnEnv,
-      homeDir,
-      style: keyStyle,
-      exists: existsSync
-    })
-    // Why: trust bookkeeping must never stall the spawn; this write is on the relay's own disk,
-    // so it gets the local budget, and a miss means Claude asks.
-    await awaitAgentTrustWriteWithinDeadline(
-      grantClaudeWorkspaceTrust({ configFile, keyStyle }, request.workspacePath).then(() => {}),
-      {
-        preset: 'claude',
-        workspacePath: request.workspacePath,
-        deadlineMs: SHORT_AGENT_TRUST_WRITE_DEADLINE_MS
-      }
-    )
-  } catch (error) {
-    console.warn('[claude-trust] relay grant failed; Claude will ask instead', error)
-  }
+  })
 }
