@@ -39,3 +39,13 @@ export function structuredAgentSessionSubmissionSettlement(
   // build that is doubt, and doubt is drawn as sent.
   return 'sent'
 }
+
+/** A Stop withdrew it before it ran: it will not land, and only its sender can send it again. */
+export function structuredAgentSessionSubmissionWasWithdrawn(
+  submission: Parameters<typeof structuredAgentSessionSubmissionSettlement>[0]
+): boolean {
+  return (
+    structuredAgentSessionSubmissionSettlement(submission) === 'refused' &&
+    classifyDispatchRejection(submission).category === 'withdrawn'
+  )
+}

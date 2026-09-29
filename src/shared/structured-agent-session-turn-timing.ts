@@ -113,7 +113,11 @@ function readStructuredAgentJournalTurns(
   // echoes the send, so for that gap the turn names a key no alias resolves yet.
   const inFlight = new Set(
     submissions
-      .filter((submission) => submission.dispatchState === 'pending' && !submission.providerItemId)
+      .filter(
+        (submission) =>
+          structuredAgentSessionSubmissionSettlement(submission) === 'open' &&
+          !submission.providerItemId
+      )
       .map((submission) => agentJournalSubmissionKey(submission.clientMessageId))
   )
   const byUserItem = new Map<string, StructuredAgentTurnTiming | null>()
