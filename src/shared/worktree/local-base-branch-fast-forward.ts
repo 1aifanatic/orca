@@ -40,28 +40,35 @@ export type LocalBaseBranchFastForwardOutcome =
   | { status: 'nothing_to_do' }
   | { status: LocalBaseRefRefreshStatus; ownerWorktreePath?: string }
 
-// Why: an update Orca makes on the user's behalf must not run their post-merge hooks (the create
-// waits on it), start auto-gc, autostash an edit that raced the cleanliness check, refuse an
-// unsigned tip the new workspace was already created from, or overwrite an ignored file (a `.env`)
-// at a path the new commit adds. Keys older Git does not know are ignored; `/dev/null/<hook>` never
-// exists, so no hook is found.
-const OWNER_FAST_FORWARD_ARGS = [
-  '-c',
-  'core.hooksPath=/dev/null',
-  '-c',
-  'gc.auto=0',
-  '-c',
-  'maintenance.auto=false',
-  '-c',
-  'merge.autoStash=false',
-  '-c',
-  'merge.verifySignatures=false',
-  'merge',
-  '--ff-only',
-  '--no-overwrite-ignore',
-  '--no-stat',
-  '-q'
-]
+// Why: an update Orca makes on the user's behalf must be a plain fast-forward whatever the user's
+// merge settings say: no post-merge hooks (the create waits on it), auto-gc or autostash, no
+// branch-level mergeOptions (`-s ours` or `--squash` there would drop or stage upstream), no
+// signature refusal of the tip the workspace was created from, and no overwrite of an ignored file
+// (a `.env`) at a path the new commit adds. Command-line flags beat config; keys older Git does not
+// know are ignored; `/dev/null/<hook>` never exists. Git 2.25 has no `ort` or `--no-autostash`.
+function ownerFastForwardArgs(branch: string, targetOid: string): string[] {
+  return [
+    '-c',
+    'core.hooksPath=/dev/null',
+    '-c',
+    'gc.auto=0',
+    '-c',
+    'maintenance.auto=false',
+    '-c',
+    'merge.autoStash=false',
+    '-c',
+    `branch.${branch}.mergeOptions=`,
+    'merge',
+    '--ff-only',
+    '-s',
+    'recursive',
+    '--no-verify-signatures',
+    '--no-overwrite-ignore',
+    '--no-stat',
+    '-q',
+    targetOid
+  ]
+}
 
 /** Read-only: how far local is behind, and whether its checkout would let it move. */
 export async function inspectLocalBaseBranch(
@@ -126,6 +133,11 @@ export async function fastForwardLocalBaseBranch(
   const { repoPath, fullRef, remoteTrackingRef } = refs
   const { localOid, remoteOid, ownerWorktreePath } = inspection
   const owner = ownerWorktreePath ? { ownerWorktreePath } : {}
+  const branch = fullRef.slice('refs/heads/'.length)
+  if (ownerWorktreePath && branch.includes('=')) {
+    // Why: `-c branch.<name>.mergeOptions=` splits at the first `=`, so such a name cannot be pinned.
+    return { status: 'skipped_error', ...owner }
+  }
   try {
     await retryOnGitLockContention(async () => {
       if (!ownerWorktreePath) {
@@ -147,8 +159,12 @@ export async function fastForwardLocalBaseBranch(
       if (head.trim() !== fullRef) {
         throw new Error(`${fullRef} is no longer checked out at ${ownerWorktreePath}`)
       }
-      await git.exec([...OWNER_FAST_FORWARD_ARGS, remoteOid], ownerWorktreePath)
+      await git.exec(ownerFastForwardArgs(branch, remoteOid), ownerWorktreePath)
     })
+    // Why: "updated" must mean local is exactly the target, whatever a merge setting did instead.
+    if (ownerWorktreePath && (await revParseCommit(git, repoPath, fullRef)) !== remoteOid) {
+      return { status: 'skipped_error', ...owner }
+    }
     return { status: 'updated', ...owner }
   } catch (error) {
     // Why: a concurrent update (another Orca, the user's own pull) may already have moved local.
@@ -176,7 +192,7 @@ export function toLocalBaseRefRefreshResult(
 
 function classifyFastForwardFailure(error: unknown): Exclude<LocalBaseRefRefreshStatus, 'updated'> {
   const text = readGitCommandFailureText(error)
-  if (/would be overwritten by merge/i.test(text)) {
+  if (/would be overwritten by merge|would lose untracked files/i.test(text)) {
     return 'skipped_dirty_worktree'
   }
   if (/Not possible to fast-forward/i.test(text)) {

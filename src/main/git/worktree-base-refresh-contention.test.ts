@@ -42,10 +42,11 @@ function commandOf(args: readonly string[]): string {
 }
 
 function installGitFake(fake: GitFake): void {
+  let localMain = 'old-main'
   gitExecFileAsyncMock.mockImplementation(async (args: string[]) => {
     const command = commandOf(args)
     if (command === 'rev-parse') {
-      return { stdout: args[2] === 'refs/heads/main^{commit}' ? 'old-main\n' : 'remote-main\n' }
+      return { stdout: args[2] === 'refs/heads/main^{commit}' ? `${localMain}\n` : 'remote-main\n' }
     }
     if (command === 'rev-list') {
       return { stdout: '0\t3\n' }
@@ -66,7 +67,9 @@ function installGitFake(fake: GitFake): void {
       throw Object.assign(new Error('not an ancestor'), { code: 1 })
     }
     if (command === 'merge' || command === 'update-ref') {
-      return fake.mutate()
+      const result = await fake.mutate()
+      localMain = 'remote-main'
+      return result
     }
     throw new Error(`unexpected git ${args.join(' ')}`)
   })
@@ -271,9 +274,9 @@ describe('refreshLocalBaseRefForWorktreeCreate runs one refresh at a time per br
     await expect(first).resolves.toMatchObject({ status: 'updated' })
     await expect(Promise.all(joiners)).resolves.toEqual([undefined, undefined])
     const commands = gitExecFileAsyncMock.mock.calls.map(([args]) => commandOf(args))
-    // Nothing ran for the joiners while the first held the checkout, then one inspection for all.
+    // Nothing ran for the joiners while the first held the checkout; after its post-move check, one inspection for all.
     expect(commands.slice(0, callsWhileFirstMerges).filter((c) => c === 'rev-list')).toHaveLength(1)
-    expect(commands.slice(callsWhileFirstMerges)).toEqual(['rev-parse', 'rev-parse'])
+    expect(commands.slice(callsWhileFirstMerges)).toEqual(['rev-parse', 'rev-parse', 'rev-parse'])
     expect(mutationCalls()).toHaveLength(1)
     expect(warn).not.toHaveBeenCalled()
     warn.mockRestore()

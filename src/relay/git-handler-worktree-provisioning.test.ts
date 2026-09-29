@@ -292,7 +292,14 @@ describe('GitHandler', () => {
 
       const merge = gitMock.mock.calls.find(([args]) => args.includes('merge'))
       expect(merge?.[0]).toEqual(
-        expect.arrayContaining(['core.hooksPath=/dev/null', '--ff-only', 'remote-oid'])
+        expect.arrayContaining([
+          'core.hooksPath=/dev/null',
+          'branch.main.mergeOptions=',
+          '--ff-only',
+          'recursive',
+          '--no-verify-signatures',
+          'remote-oid'
+        ])
       )
       expect(merge?.[1]).toBe('/repo')
       const commands = gitMock.mock.calls.map(([args]) => args[0])

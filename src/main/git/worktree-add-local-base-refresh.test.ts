@@ -68,6 +68,7 @@ describe('addWorktree', () => {
       .mockResolvedValueOnce({ stdout: '' }) // status --porcelain (in /repo)
       .mockResolvedValueOnce({ stdout: 'refs/heads/main\n' }) // symbolic-ref -q HEAD (in /repo)
       .mockResolvedValueOnce({ stdout: '' }) // merge --ff-only (in /repo)
+      .mockResolvedValueOnce({ stdout: 'remote-main\n' }) // rev-parse refs/heads/main after the merge
 
     const result = await addWorktree('/repo', '/repo-feature', 'feature/test', 'origin/main', true)
 
@@ -85,7 +86,8 @@ describe('addWorktree', () => {
       [['worktree', 'list', '--porcelain'], { cwd: '/repo' }],
       [['--no-optional-locks', 'status', '--porcelain', '--untracked-files=no'], { cwd: '/repo' }],
       [['symbolic-ref', '-q', 'HEAD'], { cwd: '/repo' }],
-      [ownerFastForwardArgs('remote-main'), { cwd: '/repo' }]
+      [ownerFastForwardArgs('remote-main'), { cwd: '/repo' }],
+      [['rev-parse', '--verify', 'refs/heads/main^{commit}'], { cwd: '/repo' }]
     ])
     expect(checkoutGitMock.mock.calls).toEqual([
       [
@@ -133,6 +135,7 @@ describe('addWorktree', () => {
             markMergeStarted()
           })
       ) // merge --ff-only, held until worktree add is running
+      .mockResolvedValueOnce({ stdout: 'remote-main\n' }) // rev-parse refs/heads/main after the merge
     // Would deadlock if the create awaited the refresh before starting the add.
     checkoutGitMock.mockImplementationOnce(async () => {
       await mergeStarted
@@ -159,6 +162,7 @@ describe('addWorktree', () => {
       .mockResolvedValueOnce({ stdout: '' }) // status --porcelain (in /repo-main-wt)
       .mockResolvedValueOnce({ stdout: 'refs/heads/main\n' }) // symbolic-ref (in /repo-main-wt)
       .mockResolvedValueOnce({ stdout: '' }) // merge --ff-only (in /repo-main-wt)
+      .mockResolvedValueOnce({ stdout: 'remote-main\n' }) // rev-parse refs/heads/main after the merge
 
     await addWorktree('/repo', '/repo-feature', 'feature/test', 'origin/main', true)
 
@@ -168,7 +172,12 @@ describe('addWorktree', () => {
         expect.objectContaining({ cwd: '/repo-main-wt' })
       ],
       [['symbolic-ref', '-q', 'HEAD'], expect.objectContaining({ cwd: '/repo-main-wt' })],
-      [ownerFastForwardArgs('remote-main'), expect.objectContaining({ cwd: '/repo-main-wt' })]
+      [ownerFastForwardArgs('remote-main'), expect.objectContaining({ cwd: '/repo-main-wt' })],
+      // Confirms local landed exactly on the target, read from the repo like the inspection.
+      [
+        ['rev-parse', '--verify', 'refs/heads/main^{commit}'],
+        expect.objectContaining({ cwd: '/repo' })
+      ]
     ])
   })
 
@@ -478,6 +487,7 @@ describe('addWorktree', () => {
       .mockResolvedValueOnce({ stdout: '' }) // status --porcelain
       .mockResolvedValueOnce({ stdout: 'refs/heads/main\n' }) // symbolic-ref -q HEAD
       .mockResolvedValueOnce({ stdout: '' }) // merge --ff-only
+      .mockResolvedValueOnce({ stdout: 'remote-upstream-main\n' }) // rev-parse refs/heads/main after the merge
 
     await addWorktree('/repo', '/repo-feature', 'feature/test', 'upstream/main', true)
 
@@ -507,9 +517,12 @@ function ownerFastForwardArgs(remoteOid: string): string[] {
     '-c',
     'merge.autoStash=false',
     '-c',
-    'merge.verifySignatures=false',
+    'branch.main.mergeOptions=',
     'merge',
     '--ff-only',
+    '-s',
+    'recursive',
+    '--no-verify-signatures',
     '--no-overwrite-ignore',
     '--no-stat',
     '-q',

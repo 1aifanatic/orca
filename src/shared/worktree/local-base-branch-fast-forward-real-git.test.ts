@@ -144,20 +144,49 @@ describe('fastForwardLocalBaseBranch against real Git', () => {
     expect(existsSync(marker)).toBe(true)
   })
 
-  it('moves main to an unsigned tip when the repo requires signed merges', async () => {
-    const fixture = await createBehindRepo()
-    fixture.git(['config', 'merge.verifySignatures', 'true'])
+  // Why: each setting is live (the control shows a plain `merge --ff-only` obeying it), yet the owner
+  // update must still land main exactly on the target as a fast-forward.
+  it.each([
+    ['merge.verifySignatures', 'true', 'refuses'],
+    ['branch.main.mergeOptions', '--verify-signatures', 'refuses'],
+    ['branch.main.mergeOptions', '-s ours', 'merge-commit'],
+    ['pull.twohead', 'ours', 'merge-commit'],
+    ['branch.main.mergeOptions', '--squash', 'stages-only']
+  ] as const)(
+    'fast-forwards main exactly to the target despite %s=%s',
+    async (key, value, control) => {
+      const fixture = await createBehindRepo()
+      fixture.git(['config', key, value])
 
-    const outcome = await fastForward(fixture, realGit(fixture).git)
+      const outcome = await fastForward(fixture, realGit(fixture).git)
 
-    expect(outcome).toMatchObject({ status: 'updated' })
-    expect(fixture.git(['rev-parse', 'main'])).toBe(fixture.remoteOid)
-    // Control: the setting is live, so only the override let the move through.
-    fixture.git(['reset', '--quiet', '--hard', fixture.localOid])
-    expect(() => fixture.git(['merge', '--ff-only', '--quiet', fixture.remoteOid])).toThrow(
-      /does not have a GPG signature/
-    )
-  })
+      expect(outcome).toMatchObject({ status: 'updated' })
+      expect(fixture.git(['rev-parse', 'main'])).toBe(fixture.remoteOid)
+      expect(fixture.git(['rev-list', '--parents', '-1', 'main'])).toBe(
+        `${fixture.remoteOid} ${fixture.localOid}`
+      )
+      expect(await readFile(join(fixture.repoPath, 'added.txt'), 'utf8')).toBe('from upstream\n')
+      expect(fixture.git(['status', '--porcelain'])).toBe('')
+
+      fixture.git(['reset', '--quiet', '--hard', fixture.localOid])
+      const plainMerge = () => fixture.git(['merge', '--ff-only', '--quiet', fixture.remoteOid])
+      if (control === 'refuses') {
+        expect(plainMerge).toThrow(/does not have a GPG signature/)
+        return
+      }
+      plainMerge()
+      if (control === 'merge-commit') {
+        // A merge commit that keeps local's tree and drops upstream's changes.
+        expect(fixture.git(['rev-list', '--parents', '-1', 'main'])).toMatch(
+          new RegExp(` ${fixture.localOid} ${fixture.remoteOid}$`)
+        )
+        expect(existsSync(join(fixture.repoPath, 'added.txt'))).toBe(false)
+      } else {
+        expect(fixture.git(['rev-parse', 'main'])).toBe(fixture.localOid)
+        expect(fixture.git(['status', '--porcelain'])).not.toBe('')
+      }
+    }
+  )
 
   it('keeps a tracked edit made after the inspection instead of overwriting it', async () => {
     const fixture = await createBehindRepo()

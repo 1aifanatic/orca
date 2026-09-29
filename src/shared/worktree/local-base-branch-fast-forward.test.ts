@@ -23,9 +23,12 @@ const OWNER_MERGE_ARGS = [
   '-c',
   'merge.autoStash=false',
   '-c',
-  'merge.verifySignatures=false',
+  'branch.main.mergeOptions=',
   'merge',
   '--ff-only',
+  '-s',
+  'recursive',
+  '--no-verify-signatures',
   '--no-overwrite-ignore',
   '--no-stat',
   '-q',
@@ -58,9 +61,11 @@ function createFakeGit(
     { path: '/repo-main', branch: 'refs/heads/main' }
   ]
 ) {
+  // Where the local branch points; a successful merge moves it to `afterMerge`, else its target.
+  const local: { oid: string; afterMerge?: string } = { oid: 'old-main' }
   const defaults: Record<string, Handler> = {
     'rev-parse': (args) => ({
-      stdout: args[2] === 'refs/heads/main^{commit}' ? 'old-main\n' : 'remote-main\n'
+      stdout: args[2]?.startsWith('refs/heads/') ? `${local.oid}\n` : 'remote-main\n'
     }),
     'rev-list': () => ({ stdout: '0\t3\n' }),
     status: () => ({ stdout: '' }),
@@ -83,13 +88,16 @@ function createFakeGit(
       if (reply instanceof Error) {
         throw reply
       }
+      if (commandOf(args) === 'merge') {
+        local.oid = local.afterMerge ?? args.at(-1) ?? ''
+      }
       return reply
     },
     listWorktrees: vi.fn(async () => worktrees())
   }
   const commands = () => calls.map(({ args }) => commandOf(args))
   const mutations = () => calls.filter(({ args }) => MUTATIONS.has(commandOf(args)))
-  return { git, calls, commands, mutations }
+  return { git, calls, commands, mutations, local }
 }
 
 afterEach(() => {
@@ -238,10 +246,78 @@ describe('fastForwardLocalBaseBranch', () => {
       status: 'updated',
       ownerWorktreePath: '/repo-main'
     })
-    expect(fake.calls.slice(-2)).toEqual([
+    expect(fake.calls.slice(-3)).toEqual([
       { args: ['symbolic-ref', '-q', 'HEAD'], cwd: '/repo-main' },
-      { args: OWNER_MERGE_ARGS, cwd: '/repo-main' }
+      { args: OWNER_MERGE_ARGS, cwd: '/repo-main' },
+      { args: ['rev-parse', '--verify', 'refs/heads/main^{commit}'], cwd: '/repo' }
     ])
+  })
+
+  it('pins the merge options of the branch being moved', async () => {
+    const refs = {
+      repoPath: '/repo',
+      fullRef: 'refs/heads/release/2.0',
+      remoteTrackingRef: 'refs/remotes/origin/release/2.0'
+    }
+    const fake = createFakeGit(
+      { 'symbolic-ref': () => ({ stdout: 'refs/heads/release/2.0\n' }) },
+      () => [{ path: '/repo-rel', branch: 'refs/heads/release/2.0' }]
+    )
+
+    await expect(fastForwardLocalBaseBranch(fake.git, refs)).resolves.toEqual({
+      status: 'updated',
+      ownerWorktreePath: '/repo-rel'
+    })
+    expect(fake.mutations()[0]?.args).toContain('branch.release/2.0.mergeOptions=')
+  })
+
+  // A merge setting (`-s ours`, `--squash`) the flags failed to override must not read as updated.
+  it.each([
+    ['created a merge commit instead', 'merge-commit'],
+    ['left local where it was', 'old-main']
+  ])('reports an error when the merge exits cleanly but %s', async (_case, afterMerge) => {
+    const fake = createFakeGit()
+    fake.local.afterMerge = afterMerge
+
+    await expect(fastForwardLocalBaseBranch(fake.git, REFS)).resolves.toEqual({
+      status: 'skipped_error',
+      ownerWorktreePath: '/repo-main'
+    })
+    expect(fake.calls.at(-1)).toEqual({
+      args: ['rev-parse', '--verify', 'refs/heads/main^{commit}'],
+      cwd: '/repo'
+    })
+  })
+
+  // `-c branch.<name>.mergeOptions=` splits at the first `=`, so the pin cannot name this branch.
+  it('does not merge into an owner checkout of a branch whose name contains =', async () => {
+    const refs = {
+      repoPath: '/repo',
+      fullRef: 'refs/heads/release=1',
+      remoteTrackingRef: 'refs/remotes/origin/release=1'
+    }
+    const fake = createFakeGit({}, () => [{ path: '/repo-rel', branch: 'refs/heads/release=1' }])
+
+    await expect(fastForwardLocalBaseBranch(fake.git, refs)).resolves.toEqual({
+      status: 'skipped_error',
+      ownerWorktreePath: '/repo-rel'
+    })
+    expect(fake.mutations()).toEqual([])
+    expect(fake.commands()).not.toContain('symbolic-ref')
+  })
+
+  it('still moves a branch whose name contains = when no worktree has it checked out', async () => {
+    const refs = {
+      repoPath: '/repo',
+      fullRef: 'refs/heads/release=1',
+      remoteTrackingRef: 'refs/remotes/origin/release=1'
+    }
+    const fake = createFakeGit({}, () => [])
+
+    await expect(fastForwardLocalBaseBranch(fake.git, refs)).resolves.toEqual({
+      status: 'updated'
+    })
+    expect(fake.mutations().map(({ args }) => args[0])).toEqual(['update-ref'])
   })
 
   it('does not merge into a checkout that switched branches after the inspection', async () => {
@@ -267,7 +343,13 @@ describe('fastForwardLocalBaseBranch', () => {
 
     await expect(pending).resolves.toEqual({ status: 'updated', ownerWorktreePath: '/repo-main' })
     // Each attempt re-confirms the owner's branch before merging.
-    expect(fake.commands().slice(-4)).toEqual(['symbolic-ref', 'merge', 'symbolic-ref', 'merge'])
+    expect(fake.commands().slice(-5)).toEqual([
+      'symbolic-ref',
+      'merge',
+      'symbolic-ref',
+      'merge',
+      'rev-parse'
+    ])
   })
 
   it('gives up after the retries when the lock never clears and local is still behind', async () => {
@@ -319,6 +401,10 @@ describe('fastForwardLocalBaseBranch', () => {
     ],
     [
       'error: The following untracked working tree files would be overwritten by merge:\n\tnew.txt',
+      'skipped_dirty_worktree'
+    ],
+    [
+      'error: Updating the following directories would lose untracked files in them:\n\tvendor',
       'skipped_dirty_worktree'
     ],
     ['fatal: Not possible to fast-forward, aborting.', 'skipped_not_fast_forward'],
