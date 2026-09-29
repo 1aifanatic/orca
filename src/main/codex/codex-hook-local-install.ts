@@ -122,7 +122,9 @@ export async function installCodexHooksExclusively(
       groupIndex: 0,
       handlerIndex: 0,
       command,
-      timeoutSec: MANAGED_HOOK_TIMEOUT_SECONDS
+      timeoutSec: MANAGED_HOOK_TIMEOUT_SECONDS,
+      // Why (#23289): re-derived every launch prep, so a stale `enabled = false` at Orca's position cannot silence it.
+      enabled: true
     })
   }
   const trustEntries: CodexTrustEntry[] = [...mirroredTrustEntries, ...managedTrustEntries]

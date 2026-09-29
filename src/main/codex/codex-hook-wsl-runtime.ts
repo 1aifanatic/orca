@@ -88,7 +88,9 @@ async function installManagedHooksIntoWslRuntimeExclusively(
       groupIndex: 0,
       handlerIndex: 0,
       command,
-      timeoutSec: MANAGED_HOOK_TIMEOUT_SECONDS
+      timeoutSec: MANAGED_HOOK_TIMEOUT_SECONDS,
+      // Why (#23289): Orca's own entry is always turned on with its hash.
+      enabled: true
     })
   }
 
