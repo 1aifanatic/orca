@@ -23,7 +23,7 @@ export function normalizeInitialData(data: unknown) {
 }
 
 export function updateMouseModeFromData(scope: TerminalDocumentScope, data: unknown) {
-  if (typeof data !== 'string' || data.length === 0) {
+  if (scope.hostMouseModes || typeof data !== 'string' || data.length === 0) {
     return
   }
   const input = scope.mouseModeScanTail + data
@@ -35,6 +35,7 @@ export function updateMouseModeFromData(scope: TerminalDocumentScope, data: unkn
   let match: RegExpExecArray | null
   while ((match = re.exec(input)) !== null) {
     if (match[0] === ESC + 'c') {
+      scope.mouseEncodingKnown = true
       scope.trackedMouseTrackingMode = 'none'
       scope.sgrMouseMode = false
       scope.sgrMousePixelsMode = false
@@ -63,10 +64,12 @@ export function updateMouseModeFromData(scope: TerminalDocumentScope, data: unkn
         scope.trackedMouseTrackingMode = enabled ? 'any' : 'none'
       }
       if (param === 1006) {
+        scope.mouseEncodingKnown = true
         scope.sgrMouseMode = enabled
         scope.sgrMousePixelsMode = false
       }
       if (param === 1016) {
+        scope.mouseEncodingKnown = true
         scope.sgrMouseMode = false
         scope.sgrMousePixelsMode = enabled
       }

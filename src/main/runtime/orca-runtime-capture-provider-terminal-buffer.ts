@@ -61,6 +61,11 @@ export class OrcaRuntimeWithCaptureProviderTerminalBuffer extends OrcaRuntimeWit
       const reconciledSnapshot = this.preferTrackedLastTitle(ptyId, {
         ...snapshot,
         seq: providerOffset + snapshot.seq,
+        ...(snapshot.mouseModes
+          ? {
+              mouseModes: { ...snapshot.mouseModes, seq: providerOffset + snapshot.mouseModes.seq }
+            }
+          : {}),
         ...(effectiveAlternateScreen !== undefined
           ? { alternateScreen: effectiveAlternateScreen }
           : {})

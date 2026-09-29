@@ -31,6 +31,7 @@ export function buildSnapshotFrameMeta(options: SnapshotFrameOptions): Record<st
     cwd: options.cwd,
     source: options.source,
     oscLinks: options.oscLinks,
+    ...(options.mouseModes ? { mouseModes: options.mouseModes } : {}),
     pendingEscapeTailAnsi: options.pendingEscapeTailAnsi,
     // Why conditional and additive: old clients ignore the unknown field,
     // and a new client must read absence as unknown rather than zero, so

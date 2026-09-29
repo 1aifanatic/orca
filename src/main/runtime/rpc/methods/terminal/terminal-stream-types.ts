@@ -1,3 +1,4 @@
+import type { TerminalMouseModes } from '../../../../../shared/terminal-mouse-modes'
 import type { TerminalOscLinkRange } from '../../../../../shared/terminal-osc-link-ranges'
 import type { TerminalSnapshotUnavailableReason } from '../../../../../shared/terminal-snapshot-unavailability'
 import type { TerminalSourceRangeLedger } from '../../terminal-source-range-ledger'
@@ -26,6 +27,7 @@ export type SnapshotFrameOptions = {
   oscLinks?: TerminalOscLinkRange[]
   pendingEscapeTailAnsi?: string
   /** Effective kitty flags proven at this frame's own `seq`. */
+  mouseModes?: TerminalMouseModes
   kittyKeyboardFlags?: number
   alternateScreen?: boolean
   terminalOwner?: 'shell'
@@ -43,6 +45,7 @@ export type SerializedSnapshot = {
   scrollbackRows: number
   truncatedByByteBudget: boolean
   pendingEscapeTailAnsi?: string
+  mouseModes?: TerminalMouseModes
   kittyKeyboardFlags?: number
   alternateScreen?: boolean
   terminalOwner?: 'shell'

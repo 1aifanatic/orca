@@ -17,6 +17,9 @@ export function isAlternateBufferActive(scope: TerminalDocumentScope) {
 }
 
 export function getMouseTrackingMode(scope: TerminalDocumentScope) {
+  if (scope.hostMouseModes) {
+    return scope.hostMouseModes.mouseTrackingMode
+  }
   try {
     if (scope.term && scope.term.modes && typeof scope.term.modes.mouseTrackingMode === 'string') {
       const mode = scope.term.modes.mouseTrackingMode
@@ -61,6 +64,10 @@ export function buildMouseWheelSequence(
   clientX: number,
   clientY: number
 ) {
+  // Tracking alone does not prove the legacy encoding after a partial replay.
+  if (!scope.mouseEncodingKnown) {
+    return ''
+  }
   const cell = viewportToMouseReportCell(scope, clientX, clientY)
   if (!cell) {
     return ''
@@ -169,7 +176,11 @@ export function isWheelMouseTrackingMode(mode: string) {
 }
 
 export function shouldRouteScrollToTerminalInput(scope: TerminalDocumentScope) {
-  return isWheelMouseTrackingMode(getMouseTrackingMode(scope)) || isAlternateBufferActive(scope)
+  const mode = getMouseTrackingMode(scope)
+  if (mode !== 'none' && !scope.mouseEncodingKnown) {
+    return false
+  }
+  return isWheelMouseTrackingMode(mode) || isAlternateBufferActive(scope)
 }
 
 export function buildMouseWheelScrollInput(
@@ -221,6 +232,10 @@ export function routeScrollLines(
   }
   const mouseTrackingMode = getMouseTrackingMode(scope)
   const alternateBufferActive = isAlternateBufferActive(scope)
+  if (mouseTrackingMode !== 'none' && !scope.mouseEncodingKnown) {
+    scope.term.scrollLines(lines)
+    return
+  }
   if (isWheelMouseTrackingMode(mouseTrackingMode)) {
     // Why: xterm sends wheel events to mouse-aware TUIs before considering
     // scrollback, even if the app stays on the normal buffer.

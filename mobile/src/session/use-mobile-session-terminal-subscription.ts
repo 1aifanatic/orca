@@ -1,3 +1,4 @@
+import { MobileTerminalMouseState } from './mobile-terminal-mouse-state'
 import { useCallback } from 'react'
 import { isTerminalOscLinkRanges } from '../../../src/shared/terminal-osc-link-ranges'
 import * as nativeChatTerminalStream from './mobile-native-chat-terminal-stream'
@@ -8,7 +9,7 @@ import {
   runTerminalViewportFitPass
 } from './mobile-terminal-viewport-resubscribe'
 import { updateTerminalCwdFromStreamEvent } from './mobile-session-route-helpers'
-import type { MobileDisplayMode } from './mobile-session-route-types'
+import { updateMobileTerminalDisplayMode } from './mobile-terminal-display-mode'
 import type { MobileSessionTerminalSubscriptionFoundationModel } from './use-mobile-session-terminal-subscription-foundation'
 
 /** Derived from constants, so it is read once rather than on every subscribe. */
@@ -113,6 +114,8 @@ export function useMobileSessionTerminalSubscription(
       )
 
       // Why: viewport is embedded in the subscribe params so the server auto-fits before serializing scrollback (no focus→safeFit race).
+      const mouseState = new MobileTerminalMouseState()
+      getTerminalRef(handle)?.write('', null)
       const unsub = subscribeMobileTerminalSafely(
         client,
         {
@@ -131,6 +134,7 @@ export function useMobileSessionTerminalSubscription(
           const data = result as Record<string, unknown>
           diagnostics.firstStreamEvent(handle, seq, data.type)
           if (data.type === 'end' || data.type === 'error') {
+            getTerminalRef(handle)?.write('', null)
             unsubscribeTerminalRef.current(handle)
             signalTerminalInventoryRecovery()
             return
@@ -169,9 +173,11 @@ export function useMobileSessionTerminalSubscription(
           } else if (eventSeq != null && data.type === 'scrollback') {
             layoutSeqRef.current.set(handle, eventSeq)
           }
+          mouseState.receive(data, getTerminalRef(handle))
           if (data.type === 'scrollback') {
             diagnostics.streamScrollback(handle, seq, eventSeq, data)
             if (initializedHandlesRef.current.has(handle)) {
+              getTerminalRef(handle)?.write('', mouseState.modes)
               return
             }
             updateTerminalCwdFromStreamEvent(handle, data, terminalCwdRef.current)
@@ -195,15 +201,16 @@ export function useMobileSessionTerminalSubscription(
               })
               return
             }
-            ref.init({ cols, rows, initialData, oscLinks, frame: terminalFrameRef.current })
+            ref.init({
+              cols,
+              rows,
+              initialData,
+              oscLinks,
+              mouseModes: mouseState.modes,
+              frame: terminalFrameRef.current
+            })
             initializedHandlesRef.current.add(handle)
-            if (data.displayMode) {
-              const displayMode = data.displayMode as MobileDisplayMode
-              // Why: same-mode frames must keep the Map identity, or every stream pass re-renders the whole route.
-              setTerminalModes((prev) =>
-                prev.get(handle) === displayMode ? prev : new Map(prev).set(handle, displayMode)
-              )
-            }
+            updateMobileTerminalDisplayMode(setTerminalModes, handle, data.displayMode)
             // Why: cold-start refit — init()'s fit can run against a transient scrollWidth, so re-fire against a settled DOM.
             scheduleDelayedAction(() => getTerminalRef(handle)?.resetZoom(), 200)
             // Why: a subscribe without a viewport (no reported cell box) measures after init and
@@ -267,6 +274,7 @@ export function useMobileSessionTerminalSubscription(
                 cols,
                 rows,
                 initialData: serialized,
+                mouseModes: mouseState.modes,
                 preserveScroll: true,
                 oscLinks,
                 frame: terminalFrameRef.current
@@ -274,17 +282,12 @@ export function useMobileSessionTerminalSubscription(
             } else {
               getTerminalRef(handle)?.resize(cols, rows, terminalFrameRef.current)
             }
-            if (data.displayMode) {
-              const displayMode = data.displayMode as MobileDisplayMode
-              // Why: same-mode frames must keep the Map identity, or every stream pass re-renders the whole route.
-              setTerminalModes((prev) =>
-                prev.get(handle) === displayMode ? prev : new Map(prev).set(handle, displayMode)
-              )
-            }
+            updateMobileTerminalDisplayMode(setTerminalModes, handle, data.displayMode)
             scheduleDelayedAction(() => getTerminalRef(handle)?.resetZoom(), 200)
           }
         },
         () => {
+          getTerminalRef(handle)?.write('', null)
           unsubscribeTerminalRef.current(handle)
           signalTerminalInventoryRecovery()
         }

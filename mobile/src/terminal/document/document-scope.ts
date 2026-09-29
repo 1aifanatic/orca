@@ -1,3 +1,4 @@
+import type { TerminalMouseModes } from '../../../../src/shared/terminal-mouse-modes'
 import type { TerminalLaidOutCellBox } from '../terminal-cell-box'
 import { DEFAULT_TERMINAL_THEME } from '../terminal-webview-html/theme'
 import {
@@ -79,6 +80,8 @@ export type TerminalDocumentState = {
   /** `terminal-init`: whether the terminal has ever reached ready. */
   everReady: boolean
   /** `mouse-mode-decset-scan`: the tail of the last chunk, in case a DECSET straddles two writes. */
+  hostMouseModes: TerminalMouseModes | undefined
+  mouseEncodingKnown: boolean
   mouseModeScanTail: string
   /** `mouse-mode-decset-scan`: the mouse tracking mode the TUI last asked for. */
   trackedMouseTrackingMode: string
@@ -262,6 +265,8 @@ function createTerminalDocumentState(): TerminalDocumentState {
       sgrMousePixelsMode: false
     },
     everReady: false,
+    hostMouseModes: undefined,
+    mouseEncodingKnown: false,
     mouseModeScanTail: '',
     trackedMouseTrackingMode: 'none',
     sgrMouseMode: false,

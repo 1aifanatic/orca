@@ -1,3 +1,4 @@
+import type { TerminalMouseModes } from '../../shared/terminal-mouse-modes'
 import type {
   AgentSessionClaimedSpawnResult,
   AgentSessionExecutionClaim,
@@ -149,6 +150,7 @@ export type RuntimePtyController = {
     rows: number
     seq?: number
     lastTitle?: string
+    mouseModes?: TerminalMouseModes
     kittyKeyboardFlags?: number
   } | null>
   /** Authoritative provider-owned snapshot for restored PTYs with no mounted renderer. */

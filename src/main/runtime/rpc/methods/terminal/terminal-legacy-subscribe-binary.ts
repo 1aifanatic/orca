@@ -117,48 +117,66 @@ export async function runTerminalBinarySubscription(args: TerminalSubscriptionAr
       sendFrame
     }
   )
-  const unsubscribeStreamData = runtime.subscribeToTerminalData(ptyId, (data, meta) => {
-    if (closed) {
-      return
-    }
-    if (buffering) {
-      const rawLength = meta?.rawLength
-      if (
-        typeof meta?.seq === 'number' &&
-        typeof rawLength === 'number' &&
-        rawLength === data.length
-      ) {
-        const scan = scanTerminalReplyQuerySequences(
-          data,
-          meta.seq - rawLength,
-          pendingQueryScanState
-        )
-        pendingQueryScanState = scan.state
-        for (const query of scan.queries) {
-          if (pendingQueryChars + query.data.length > TERMINAL_QUERY_REPLAY_MAX_CHARS) {
-            pendingQueryOverflowed = true
-            break
-          }
-          pendingQuerySequences.push(query)
-          pendingQueryChars += query.data.length
-        }
-      } else {
-        pendingQueryScanState = EMPTY_TERMINAL_REPLY_QUERY_SCAN_STATE
+  const unsubscribeStreamData = runtime.subscribeToTerminalData(
+    ptyId,
+    (data, meta) => {
+      if (closed) {
+        return
       }
-      const remainingBudget = Math.max(1, TERMINAL_MULTIPLEX_PENDING_MAX_BYTES - pendingOutputBytes)
-      const measurement = measureTerminalStreamByteLength(data, {
-        stopAfterBytes: remainingBudget
-      })
-      pendingOutput.push({ data, bytes: measurement.byteLength, meta })
-      pendingOutputBytes += measurement.byteLength
-      const trimmed = trimPendingOutputToBudget(pendingOutput, pendingOutputBytes)
-      pendingOutputBytes = trimmed.bytes
-      pendingOutputOverflowed ||= trimmed.overflowed
-      return
+      if (buffering) {
+        const rawLength = meta?.rawLength
+        if (
+          typeof meta?.seq === 'number' &&
+          typeof rawLength === 'number' &&
+          rawLength === data.length
+        ) {
+          const scan = scanTerminalReplyQuerySequences(
+            data,
+            meta.seq - rawLength,
+            pendingQueryScanState
+          )
+          pendingQueryScanState = scan.state
+          for (const query of scan.queries) {
+            if (pendingQueryChars + query.data.length > TERMINAL_QUERY_REPLAY_MAX_CHARS) {
+              pendingQueryOverflowed = true
+              break
+            }
+            pendingQuerySequences.push(query)
+            pendingQueryChars += query.data.length
+          }
+        } else {
+          pendingQueryScanState = EMPTY_TERMINAL_REPLY_QUERY_SCAN_STATE
+        }
+        const remainingBudget = Math.max(
+          1,
+          TERMINAL_MULTIPLEX_PENDING_MAX_BYTES - pendingOutputBytes
+        )
+        const measurement = measureTerminalStreamByteLength(data, {
+          stopAfterBytes: remainingBudget
+        })
+        pendingOutput.push({ data, bytes: measurement.byteLength, meta })
+        pendingOutputBytes += measurement.byteLength
+        const trimmed = trimPendingOutputToBudget(pendingOutput, pendingOutputBytes)
+        pendingOutputBytes = trimmed.bytes
+        pendingOutputOverflowed ||= trimmed.overflowed
+        return
+      }
+      outputBatcher?.push(data, meta)
+    },
+    (mouseModes) => {
+      if (closed) {
+        return
+      }
+      outputBatcher?.flush()
+      sendFrame(
+        TerminalStreamOpcode.Metadata,
+        encodeTerminalStreamJson({ mouseModes }),
+        mouseModes.seq
+      )
     }
-    outputBatcher?.push(data, meta)
-  })
+  )
   // Why: capture live bytes before mobile-fit awaits; registering presence first would suppress main while no view held the query.
+
   const releaseViewSubscriber = runtime.registerRemoteTerminalViewSubscriber(ptyId)
   unsubscribeData = () => {
     releaseViewSubscriber()

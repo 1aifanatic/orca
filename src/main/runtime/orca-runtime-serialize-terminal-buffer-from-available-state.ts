@@ -1,4 +1,5 @@
 // @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
+import type { TerminalMouseModes } from '../../shared/terminal-mouse-modes'
 import { OrcaRuntimeWithCreatePtyHeadlessTerminalState } from './orca-runtime-create-pty-headless-terminal-state'
 import type { TerminalOscLinkRange } from '../../shared/terminal-osc-link-ranges'
 import type { PtyProviderBufferSnapshot } from '../providers/types'
@@ -20,6 +21,7 @@ export class OrcaRuntimeWithSerializeTerminalBufferFromAvailableState extends Or
     oscLinks?: TerminalOscLinkRange[]
     alternateScreen?: boolean
     pendingEscapeTailAnsi?: string
+    mouseModes?: TerminalMouseModes
     kittyKeyboardFlags?: number
     terminalOwner?: 'shell'
   } | null> {
@@ -77,6 +79,7 @@ export class OrcaRuntimeWithSerializeTerminalBufferFromAvailableState extends Or
     source?: 'renderer'
     oscLinks?: TerminalOscLinkRange[]
     pendingEscapeTailAnsi?: string
+    mouseModes?: TerminalMouseModes
     kittyKeyboardFlags?: number
   } | null> {
     if (this.ptyController?.hasRendererSerializer?.(ptyId) === false) {
@@ -91,6 +94,7 @@ export class OrcaRuntimeWithSerializeTerminalBufferFromAvailableState extends Or
       lastTitle?: string
       oscLinks?: TerminalOscLinkRange[]
       pendingEscapeTailAnsi?: string
+      mouseModes?: TerminalMouseModes
       kittyKeyboardFlags?: number
     } | null = null
     try {

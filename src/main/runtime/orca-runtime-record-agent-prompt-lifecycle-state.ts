@@ -1,4 +1,5 @@
 // @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
+import type { TerminalMouseModes } from '../../shared/terminal-mouse-modes'
 import { OrcaRuntimeWithCreateTerminalSideEffectCommandCodeDetector } from './orca-runtime-create-terminal-side-effect-command-code-detector'
 import type { AgentStatus } from '../../shared/agent-detection'
 import { findLastCompleteOscTitleRange } from './orca-runtime-core'
@@ -183,9 +184,10 @@ export class OrcaRuntimeWithRecordAgentPromptLifecycleState extends OrcaRuntimeW
 
   subscribeToTerminalData(
     ptyId: string,
-    listener: (data: string, meta?: RuntimeTerminalDataMeta) => void
+    listener: (data: string, meta?: RuntimeTerminalDataMeta) => void,
+    onMouseModes?: (modes: TerminalMouseModes) => void
   ): () => void {
-    return this.terminalStreamConsumers.subscribe(ptyId, listener)
+    return this.terminalStreamConsumers.subscribe(ptyId, listener, onMouseModes)
   }
 
   setRemoteTerminalSourceRangeConsumerHooks(

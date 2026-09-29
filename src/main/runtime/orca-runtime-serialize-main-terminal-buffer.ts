@@ -1,4 +1,5 @@
 // @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
+import type { TerminalMouseModes } from '../../shared/terminal-mouse-modes'
 import { OrcaRuntimeWithAttachRemoteTerminalSourceRangeConsumer } from './orca-runtime-attach-remote-terminal-source-range-consumer'
 import type { TerminalOscLinkRange } from '../../shared/terminal-osc-link-ranges'
 import type { HeadlessSeedMetadata } from './runtime-terminal-state-records'
@@ -25,6 +26,7 @@ export class OrcaRuntimeWithSerializeMainTerminalBuffer extends OrcaRuntimeWithA
     alternateScreen?: boolean
     scrollbackAnsi?: string
     pendingEscapeTailAnsi?: string
+    mouseModes?: TerminalMouseModes
     terminalOwner?: 'shell'
   } | null> {
     return this.serializeHeadlessTerminalBuffer(ptyId, { ...opts, includeEmpty: true })
@@ -46,6 +48,7 @@ export class OrcaRuntimeWithSerializeMainTerminalBuffer extends OrcaRuntimeWithA
     alternateScreen?: boolean
     scrollbackAnsi?: string
     pendingEscapeTailAnsi?: string
+    mouseModes?: TerminalMouseModes
     terminalOwner?: 'shell'
   } | null> {
     const restoredSnapshot = await this.serializePreferredRestoredTerminalBuffer(ptyId, opts)

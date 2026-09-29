@@ -98,20 +98,36 @@ export async function initializeMultiplexStream(
   )
   onInstalled(stream)
 
-  const unsubscribeStreamData = runtime.subscribeToTerminalData(ptyId, (data, meta) => {
-    if (state.closed || streams.get(request.streamId) !== stream) {
-      return
+  const unsubscribeStreamData = runtime.subscribeToTerminalData(
+    ptyId,
+    (data, meta) => {
+      if (state.closed || streams.get(request.streamId) !== stream) {
+        return
+      }
+      if (stream.outputPaused) {
+        return
+      }
+      if (stream.buffering) {
+        appendPendingMultiplexOutput(stream, data, meta)
+        return
+      }
+      stream.outputBatcher.push(data, meta)
+    },
+    (mouseModes) => {
+      if (state.closed || streams.get(request.streamId) !== stream || stream.outputPaused) {
+        return
+      }
+      stream.outputBatcher.flush()
+      state.sendFrame(
+        request.streamId,
+        TerminalStreamOpcode.Metadata,
+        encodeTerminalStreamJson({ mouseModes }),
+        mouseModes.seq
+      )
     }
-    if (stream.outputPaused) {
-      return
-    }
-    if (stream.buffering) {
-      appendPendingMultiplexOutput(stream, data, meta)
-      return
-    }
-    stream.outputBatcher.push(data, meta)
-  })
+  )
   // Why: a multiplexed stream feeds a remote xterm view with query authority, so the main model responder yields while attached (terminal-query-authority.md).
+
   const releaseViewSubscriber = runtime.registerRemoteTerminalViewSubscriber(ptyId)
   stream.unsubscribeData = () => {
     releaseViewSubscriber()

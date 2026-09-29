@@ -1,3 +1,4 @@
+import type { TerminalMouseModes } from '../../shared/terminal-mouse-modes'
 import type { TerminalOutputSourceRange } from '../../shared/terminal-output-source-range'
 import type {
   RemoteTerminalSourceRangeConsumerHooks,
@@ -18,13 +19,45 @@ type TerminalDataListener = (data: string, meta?: RuntimeTerminalDataMeta) => vo
 
 export class RuntimeTerminalStreamConsumers {
   private readonly dataListeners = new Map<string, Set<TerminalDataListener>>()
+  private readonly mouseListeners = new Map<string, Set<(modes: TerminalMouseModes) => void>>()
+
+  subscribeMouseModes(ptyId: string, listener: (modes: TerminalMouseModes) => void): () => void {
+    const listeners = this.mouseListeners.get(ptyId) ?? new Set()
+    listeners.add(listener)
+    this.mouseListeners.set(ptyId, listeners)
+    return () => {
+      listeners.delete(listener)
+      if (listeners.size === 0) {
+        this.mouseListeners.delete(ptyId)
+      }
+    }
+  }
+
+  publishMouseModes(ptyId: string, modes: TerminalMouseModes): void {
+    for (const listener of this.mouseListeners.get(ptyId) ?? []) {
+      try {
+        listener(modes)
+      } catch (error) {
+        console.error('[runtime] terminal mouse-mode listener threw', error)
+      }
+    }
+  }
+
   private sourceRangeHooks: RemoteTerminalSourceRangeConsumerHooks | null = null
 
-  subscribe(ptyId: string, listener: TerminalDataListener): () => void {
+  subscribe(
+    ptyId: string,
+    listener: TerminalDataListener,
+    onMouseModes?: (modes: TerminalMouseModes) => void
+  ): () => void {
+    const unsubscribeMouseModes = onMouseModes
+      ? this.subscribeMouseModes(ptyId, onMouseModes)
+      : undefined
     const listeners = this.dataListeners.get(ptyId) ?? new Set<TerminalDataListener>()
     listeners.add(listener)
     this.dataListeners.set(ptyId, listeners)
     return () => {
+      unsubscribeMouseModes?.()
       listeners.delete(listener)
       if (listeners.size === 0) {
         this.dataListeners.delete(ptyId)

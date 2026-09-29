@@ -79,6 +79,7 @@ export async function runTerminalJsonSubscription(args: TerminalSubscriptionArgs
     truncated: isTerminalReadPayloadIncomplete(read),
     serialized: serialized?.data,
     oscLinks: serialized?.oscLinks,
+    mouseModes: serialized?.mouseModes,
     cwd: serialized?.cwd,
     // Why: an empty snapshot with no PTY size must still report the dims the fit
     // will produce — dimless frames re-armed the mobile fit loop (STA-3337).
@@ -90,10 +91,21 @@ export async function runTerminalJsonSubscription(args: TerminalSubscriptionArgs
   outputBatcher = createTerminalOutputBatcher((chunk) => {
     emit({ type: 'data', chunk })
   })
-  const unsubscribeStreamData = runtime.subscribeToTerminalData(ptyId, (data) => {
-    outputBatcher?.push(data)
-  })
+  const unsubscribeStreamData = runtime.subscribeToTerminalData(
+    ptyId,
+    (data) => {
+      outputBatcher?.push(data)
+    },
+    (mouseModes) => {
+      if (registration.released) {
+        return
+      }
+      outputBatcher?.flush()
+      emit({ type: 'metadata', mouseModes })
+    }
+  )
   // Why: the legacy JSON stream can feed a live xterm view, so register as a view subscriber; worst case is a withheld model reply, safer than a double reply.
+
   const releaseViewSubscriber = runtime.registerRemoteTerminalViewSubscriber(ptyId)
   unsubscribeData = () => {
     releaseViewSubscriber()

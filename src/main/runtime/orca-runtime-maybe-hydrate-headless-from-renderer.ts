@@ -1,4 +1,5 @@
 // @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
+import { parseTerminalMouseModes, sameTerminalMouseModes } from '../../shared/terminal-mouse-modes'
 import { splitFreebuffScreenUpdates } from '../../shared/freebuff-screen-status'
 import { OrcaRuntimeWithSerializeMainTerminalBuffer } from './orca-runtime-serialize-main-terminal-buffer'
 import { observeFreebuffTerminalStatus } from './freebuff-terminal-status'
@@ -172,6 +173,10 @@ export class OrcaRuntimeWithMaybeHydrateHeadlessFromRenderer extends OrcaRuntime
       // chain link; async scheduling cannot retroactively change it.
       // Why inside the chain: the ownership mirror must observe live bytes in
       // the same total order as seeds (seedOwner also runs on this chain).
+      const previousMouseModes = parseTerminalMouseModes({
+        ...state.emulator.getModes(),
+        seq: state.outputSequence
+      })
       state.ownership.scan(data)
       for (const chunk of splitFreebuffScreenUpdates(data, state.emulator.partialEscapeTailAnsi)) {
         await state.emulator.write(chunk, { forwardQueryReplies })
@@ -194,6 +199,17 @@ export class OrcaRuntimeWithMaybeHydrateHeadlessFromRenderer extends OrcaRuntime
         }
       }
       state.outputSequence = outputSequence
+      const mouseModes = parseTerminalMouseModes({
+        ...state.emulator.getModes(),
+        seq: outputSequence
+      })
+      if (
+        this.headlessTerminals.get(ptyId) === state &&
+        mouseModes &&
+        (!previousMouseModes || !sameTerminalMouseModes(previousMouseModes, mouseModes))
+      ) {
+        this.terminalStreamConsumers.publishMouseModes(ptyId, mouseModes)
+      }
     })
     // Legacy callers remain best-effort; bounded SSH admission observes the raw receipt.
     state.writeChain = completion.catch(() => {})
