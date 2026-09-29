@@ -25,7 +25,6 @@ const ORCA_CREATION_SOURCES = new Set<NonNullable<WorktreeMeta['orcaCreationSour
 const ORCA_OWNED_PROVENANCE_META_KEYS = [
   'orcaCreatedAt',
   'orcaCreationSource',
-  'orcaCreationContentOrigin',
   'orcaCreationWorkspaceLayout',
   'automationProvenance',
   'cliProvenance',
@@ -234,7 +233,7 @@ export async function canCleanupUnregisteredOrcaLeftoverDirectory(args: {
   return !(await args.isGitRepository(args.runtimeWorktreePath))
 }
 
-export function hasCurrentOrcaCreationProvenance(
+function hasCurrentOrcaCreationProvenance(
   meta: Pick<WorktreeMeta, 'orcaCreatedAt' | 'orcaCreationSource'> | null | undefined
 ): boolean {
   return (

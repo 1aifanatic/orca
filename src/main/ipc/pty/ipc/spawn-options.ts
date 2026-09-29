@@ -24,7 +24,7 @@ import { shouldSeedPreAttachPtySize } from '../delivery/attached-pty-size'
 import { getStartupTerminalIngressIntent } from '../../terminal-startup-color-query-replies'
 import { resolveConfiguredTerminalShellArgs } from '../configured-terminal-shell-args'
 import type { PtyIpcSpawnState } from './spawn-state'
-import { applyClaudeWorktreeTrustToSpawn } from '../../../claude/claude-worktree-trust-spawn'
+import { applyAgentWorkspaceTrustToSpawn } from '../../../agent-workspace-trust-spawn'
 
 /** Carries deletions to provider-owned environments, including persistent older daemons. */
 export async function buildPtyIpcSpawnOptions(
@@ -93,16 +93,16 @@ export async function buildPtyIpcSpawnOptions(
   if (args.worktreeId !== undefined) {
     ctx.spawnOptions.worktreeId = args.worktreeId
   }
-  await applyClaudeWorktreeTrustToSpawn({
-    store: ctx.deps.store,
-    connectionId: args.connectionId,
-    worktreeId: args.worktreeId,
+  await applyAgentWorkspaceTrustToSpawn({
     launchAgent: args.launchAgent,
-    command: ctx.launchCommand,
+    worktreeId: args.worktreeId,
+    store: ctx.deps.store,
+    isFreshLaunch: !ctx.preAdoptedStablePane && ctx.launchCommand !== undefined,
+    settings: ctx.deps.getSettings?.(),
     env: ctx.spawnEnv,
     claudeAuth: ctx.claudeAuth,
     wslDistro: ctx.expectedWslDistro,
-    isFreshLaunch: !ctx.preAdoptedStablePane && ctx.launchCommand !== undefined,
+    connectionId: args.connectionId ?? null,
     spawnOptions: ctx.spawnOptions
   })
   if (ctx.reservationPaneKey) {

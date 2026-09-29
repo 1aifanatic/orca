@@ -31,7 +31,7 @@ import {
   paneSpawnReservationsByOwnerKey
 } from '../pane/spawn-reservation'
 import type { RuntimePtySpawnState } from './spawn-state'
-import { applyClaudeWorktreeTrustToSpawn } from '../../../claude/claude-worktree-trust-spawn'
+import { applyAgentWorkspaceTrustToSpawn } from '../../../agent-workspace-trust-spawn'
 
 /** Headless spawns need the same host-side environment isolation as desktop spawns. */
 export async function buildRuntimePtySpawnOptions(
@@ -114,16 +114,16 @@ export async function buildRuntimePtySpawnOptions(
   if (args.worktreeId !== undefined) {
     ctx.spawnOptions.worktreeId = args.worktreeId
   }
-  await applyClaudeWorktreeTrustToSpawn({
-    store: ctx.deps.store,
-    connectionId: args.connectionId,
-    worktreeId: args.worktreeId,
+  await applyAgentWorkspaceTrustToSpawn({
     launchAgent: args.launchAgent,
-    command: ctx.launchCommand,
+    worktreeId: args.worktreeId,
+    store: ctx.deps.store,
+    isFreshLaunch: !ctx.preAdoptedStablePane && ctx.launchCommand !== undefined,
+    settings: ctx.deps.getSettings?.(),
     env: ctx.env,
     claudeAuth: ctx.claudeAuth,
     wslDistro: ctx.expectedWslDistro,
-    isFreshLaunch: !ctx.preAdoptedStablePane && ctx.launchCommand !== undefined,
+    connectionId: args.connectionId ?? null,
     spawnOptions: ctx.spawnOptions
   })
   ctx.hadSessionSizeBeforeAttach =

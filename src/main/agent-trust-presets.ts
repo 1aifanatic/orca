@@ -5,8 +5,9 @@ import { writeFileAtomically } from './codex-accounts/fs-utils'
 import { getOrcaManagedCodexHomePath } from './codex/codex-home-paths'
 import { upsertProjectTrustLevel } from './codex/config-toml-trust'
 import { runExclusivelyForCodexTrustConfig } from './codex/codex-trust-config-mutation-queue'
+import type { TuiAgentConfig } from '../shared/tui-agent-config'
 
-export type AgentTrustPreset = 'cursor' | 'copilot' | 'codex' | 'antigravity' | 'qoder'
+export type AgentTrustPreset = NonNullable<TuiAgentConfig['preflightTrust']>
 
 /**
  * Pre-mark a workspace as trusted for cursor-agent, GitHub Copilot CLI, or

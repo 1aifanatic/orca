@@ -51,7 +51,6 @@ import { reconcileManagedWslCliRegistrations } from '../cli/wsl-cli-registration
 import { createWslCliReconciliationStartupBarrier } from './wsl-cli-reconciliation-startup-barrier'
 import { isAgentStatusHooksEnabled } from '../agent-hooks/managed-agent-hook-controls'
 import { reportProfileStateWriteFailure } from './profile-state-write-failure'
-import { revokeAllClaudeWorktreeTrust } from '../claude/claude-worktree-trust-lifecycle'
 
 export async function initializeReadyFoundation(): Promise<void> {
   logStartupMilestone('app-ready')
@@ -247,9 +246,6 @@ export async function initializeReadyFoundation(): Promise<void> {
     if ('showMenuBarIcon' in updates) {
       // Why: Store is the mutation authority for all settings writes, so every macOS toggle updates the native item live.
       syncMacMenuBarIcon(settings.showMenuBarIcon !== false)
-    }
-    if ('claudeTrustOrcaWorktrees' in updates && settings.claudeTrustOrcaWorktrees === false) {
-      void revokeAllClaudeWorktreeTrust(store)
     }
     if ('agentStatusHooksEnabled' in updates) {
       // Why both directions: the ensure gate only blocks NEW relays, so off must stop the running

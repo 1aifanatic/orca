@@ -15,7 +15,6 @@ import {
   resolveClaudeAgentTeamsShimBin
 } from './claude-agent-teams-shim-env'
 import { applyClaudeEnvPatch } from '../claude-accounts/environment'
-import { convergeClaudeWorktreeTrustForLocalSpawn } from '../claude/claude-worktree-trust-spawn'
 
 export class OrcaRuntimeWithResolveTerminalSplitSourceAuthority extends OrcaRuntimeWithSplitPtyBackedTerminal {
   protected resolveTerminalSplitSourceAuthority(
@@ -139,14 +138,6 @@ export class OrcaRuntimeWithResolveTerminalSplitSourceAuthority extends OrcaRunt
     if (auth) {
       applyClaudeEnvPatch(baseEnv, auth.envPatch, { stripAuthEnv: auth.stripAuthEnv })
     }
-    // Why: the leader's Claude reads the config named by this final env, not the pane's.
-    await convergeClaudeWorktreeTrustForLocalSpawn({
-      store: this.store ?? undefined,
-      worktreeId: this.handles.get(args.handle)?.worktreeId,
-      launchEnv: baseEnv,
-      claudeAuth: null,
-      wslDistro: null
-    }).catch(() => {})
     const envToDelete = auth?.stripAuthEnv
       ? [...inheritedEnvKeys].filter((key) => !(key in baseEnv))
       : undefined

@@ -1,27 +1,14 @@
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
+import { parseClaudeFolderTrustSpawnRequest } from '../shared/claude-folder-trust-spawn-request'
 import {
-  parseClaudeFolderTrustSpawnRequest,
-  parseClaudeTrustConvergeRequests,
-  readClaudeTrustConfigEnv
-} from '../shared/claude-folder-trust-spawn-request'
-import { resolveClaudeGlobalConfigFile } from '../main/claude/claude-folder-trust-file'
+  grantClaudeWorkspaceTrust,
+  resolveClaudeGlobalConfigFile
+} from '../main/claude/claude-folder-trust-file'
 import {
-  convergeClaudeWorktreeTrustOnHost,
-  convergeClaudeWorktreesTrustOnHost,
-  type ClaudeWorktreeTrustHostRequest
-} from '../main/claude/claude-worktree-trust-host'
-
-function relayClaudeConfigTarget(
-  env: Record<string, string | undefined>
-): Pick<ClaudeWorktreeTrustHostRequest, 'configFile' | 'keyStyle'> {
-  const style = process.platform === 'win32' ? 'win32' : 'posix'
-  const homeDir = (style === 'win32' ? env.USERPROFILE : env.HOME) || homedir()
-  return {
-    configFile: resolveClaudeGlobalConfigFile({ env, homeDir, style, exists: existsSync }),
-    keyStyle: style
-  }
-}
+  awaitAgentTrustWriteWithinDeadline,
+  SHORT_AGENT_TRUST_WRITE_DEADLINE_MS
+} from '../main/agent-trust-write-deadline'
 
 /**
  * Why here: this host owns the file Claude reads, so the lock, the re-read under it,
@@ -35,18 +22,23 @@ export async function applyRelayClaudeFolderTrust(
   if (!request) {
     return
   }
-  await convergeClaudeWorktreeTrustOnHost({ ...request, ...relayClaudeConfigTarget(spawnEnv) })
-}
-
-/** `claudeTrust.converge`: resolve the same config file a spawn with the desktop's Claude env would. */
-export async function applyRelayClaudeTrustConverge(
-  params: Record<string, unknown>
-): Promise<void> {
-  const target = relayClaudeConfigTarget({
-    ...process.env,
-    ...readClaudeTrustConfigEnv(params.env)
+  const keyStyle = process.platform === 'win32' ? 'win32' : 'posix'
+  const homeDir = (keyStyle === 'win32' ? spawnEnv.USERPROFILE : spawnEnv.HOME) || homedir()
+  const configFile = resolveClaudeGlobalConfigFile({
+    env: spawnEnv,
+    homeDir,
+    style: keyStyle,
+    exists: existsSync
   })
-  await convergeClaudeWorktreesTrustOnHost(
-    parseClaudeTrustConvergeRequests(params.requests).map((request) => ({ ...request, ...target }))
-  )
+  // Why: trust bookkeeping must never fail or stall the spawn; a miss means Claude asks.
+  await awaitAgentTrustWriteWithinDeadline(
+    grantClaudeWorkspaceTrust({ configFile, keyStyle }, request.workspacePath).then(() => {}),
+    {
+      preset: 'claude',
+      workspacePath: request.workspacePath,
+      deadlineMs: SHORT_AGENT_TRUST_WRITE_DEADLINE_MS
+    }
+  ).catch((error: unknown) => {
+    console.warn('[claude-trust] relay grant failed; Claude will ask instead', error)
+  })
 }

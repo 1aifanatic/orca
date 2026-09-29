@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import {
   chmodSync,
+  existsSync,
   lstatSync,
   readFileSync,
   realpathSync,
@@ -8,15 +9,17 @@ import {
   statSync,
   writeFileSync
 } from 'node:fs'
-import { posix, win32 } from 'node:path'
+import { dirname, join, posix, resolve, win32 } from 'node:path'
+import { homedir } from 'node:os'
 import { lock } from 'proper-lockfile'
 import { renameFileWithWindowsRetry } from '../codex-accounts/fs-utils'
+import { parseWslUncPath } from '../../shared/wsl-paths'
+import type { ClaudeRuntimeAuthPreparation } from '../claude-accounts/runtime-auth/runtime-auth-types'
 
 export type ClaudeTrustPathStyle = 'posix' | 'win32'
 
 export type ClaudeFolderTrustOutcome =
   | 'granted'
-  | 'revoked'
   | 'unchanged'
   | 'missing-config'
   | 'locked'
@@ -67,13 +70,6 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-/** The only entry shape Orca writes; Claude's own entries always carry its project defaults. */
-function isOrcaOwnedTrustEntry(entry: unknown): boolean {
-  return (
-    isPlainObject(entry) && Object.keys(entry).length === 1 && entry.hasTrustDialogAccepted === true
-  )
-}
-
 export type ClaudeFolderTrustChange =
   | { kind: 'unchanged' }
   | { kind: 'refuse' }
@@ -81,39 +77,24 @@ export type ClaudeFolderTrustChange =
 
 export function applyClaudeFolderTrust(
   config: Record<string, unknown>,
-  args: {
-    folderKeys: readonly string[]
-    /** Keys Claude checks before its folder walk (the canonical repo root). */
-    inheritedTrustKeys: readonly string[]
-    trusted: boolean
-  }
+  folderKeys: readonly string[]
 ): ClaudeFolderTrustChange {
   if (config.projects !== undefined && !isPlainObject(config.projects)) {
     return { kind: 'refuse' }
   }
   const projects: Record<string, unknown> = { ...config.projects }
-  if (args.trusted) {
-    const alreadyTrusted = [...args.folderKeys, ...args.inheritedTrustKeys].some((key) => {
-      const entry = projects[key]
-      return isPlainObject(entry) && entry.hasTrustDialogAccepted === true
-    })
-    if (alreadyTrusted) {
-      return { kind: 'unchanged' }
-    }
-    for (const key of args.folderKeys) {
-      const entry = projects[key]
-      projects[key] = isPlainObject(entry)
-        ? { ...entry, hasTrustDialogAccepted: true }
-        : { hasTrustDialogAccepted: true }
-    }
-    return { kind: 'changed', config: { ...config, projects } }
-  }
-  const owned = args.folderKeys.filter((key) => isOrcaOwnedTrustEntry(projects[key]))
-  if (owned.length === 0) {
+  const alreadyTrusted = folderKeys.some((key) => {
+    const entry = projects[key]
+    return isPlainObject(entry) && entry.hasTrustDialogAccepted === true
+  })
+  if (alreadyTrusted) {
     return { kind: 'unchanged' }
   }
-  for (const key of owned) {
-    delete projects[key]
+  for (const key of folderKeys) {
+    const entry = projects[key]
+    projects[key] = isPlainObject(entry)
+      ? { ...entry, hasTrustDialogAccepted: true }
+      : { hasTrustDialogAccepted: true }
   }
   return { kind: 'changed', config: { ...config, projects } }
 }
@@ -176,22 +157,20 @@ function writeConfigAtomically(target: string, config: Record<string, unknown>):
 }
 
 /**
- * Brings `projects[<folder>].hasTrustDialogAccepted` to the desired state in Claude's
- * global config. Never creates the file, never breaks Claude's lock, and never
- * rewrites a file it could not read and parse.
+ * Sets `projects[<folder>].hasTrustDialogAccepted` in Claude's global config. Never
+ * creates the file, never breaks Claude's lock, and never rewrites a file it could
+ * not read and parse.
  */
-export async function convergeClaudeFolderTrust(args: {
+export async function grantClaudeFolderTrust(args: {
   configFile: string
   folderKeys: readonly string[]
-  inheritedTrustKeys: readonly string[]
-  trusted: boolean
 }): Promise<ClaudeFolderTrustOutcome> {
   const probe = readConfigAt(resolveConfigTarget(args.configFile))
   if (typeof probe === 'string') {
     return probe
   }
   // Why: most launches need nothing, so skip Claude's lock unless a write is due.
-  const planned = applyClaudeFolderTrust(probe.config, args).kind
+  const planned = applyClaudeFolderTrust(probe.config, args.folderKeys).kind
   if (planned !== 'changed') {
     return planned === 'refuse' ? 'unreadable' : 'unchanged'
   }
@@ -216,7 +195,7 @@ export async function convergeClaudeFolderTrust(args: {
     if (typeof current === 'string') {
       return current
     }
-    const change = applyClaudeFolderTrust(current.config, args)
+    const change = applyClaudeFolderTrust(current.config, args.folderKeys)
     if (change.kind === 'refuse') {
       return 'unreadable'
     }
@@ -224,8 +203,91 @@ export async function convergeClaudeFolderTrust(args: {
       return 'unchanged'
     }
     writeConfigAtomically(current.path, change.config)
-    return args.trusted ? 'granted' : 'revoked'
+    return 'granted'
   } finally {
     await release().catch(() => {})
   }
+}
+
+/** Keys for `workspacePath` as Claude will see it: the given and realpath'd forms. */
+export function claudeTrustKeysForHostPath(
+  workspacePath: string,
+  keyStyle: ClaudeTrustPathStyle,
+  toClaudePath: (hostPath: string) => string | null = (hostPath) => hostPath
+): string[] {
+  const forms = [resolve(workspacePath)]
+  try {
+    forms.push(realpathSync.native(workspacePath))
+  } catch {
+    // The resolved form alone still matches an unsymlinked path.
+  }
+  const keys = new Set<string>()
+  for (const form of forms) {
+    const claudePath = toClaudePath(form)
+    if (claudePath) {
+      keys.add(toClaudeTrustKey(claudePath, keyStyle))
+    }
+  }
+  return [...keys]
+}
+
+export type ClaudeTrustConfigTarget = {
+  configFile: string
+  keyStyle: ClaudeTrustPathStyle
+  /** Maps a host-native path to the path the Claude process sees (WSL UNC → Linux). */
+  toClaudePath?: (hostPath: string) => string | null
+}
+
+/** The config file a local or WSL-guest Claude will read, or null when Orca cannot tell. */
+export function resolveLocalClaudeTrustConfig(args: {
+  workspacePath: string
+  /** The final spawn env layered over this process's env. */
+  env: Record<string, string | undefined>
+  claudeAuth: ClaudeRuntimeAuthPreparation | null
+  wslDistro: string | null
+}): ClaudeTrustConfigTarget | null {
+  const { claudeAuth } = args
+  if (claudeAuth?.runtime === 'wsl' || args.wslDistro || parseWslUncPath(args.workspacePath)) {
+    // Why: a WSL guest reads its own config, reachable only through the auth prep's UNC dir;
+    // without a guest config dir, the prep's `configDir` is the Windows host's own file.
+    if (
+      claudeAuth?.runtime !== 'wsl' ||
+      !claudeAuth.wslLinuxConfigDir ||
+      !parseWslUncPath(args.workspacePath)
+    ) {
+      return null
+    }
+    const legacyFile = join(claudeAuth.configDir, '.config.json')
+    return {
+      configFile: existsSync(legacyFile)
+        ? legacyFile
+        : claudeAuth.envPatch.CLAUDE_CONFIG_DIR
+          ? join(claudeAuth.configDir, '.claude.json')
+          : join(dirname(claudeAuth.configDir), '.claude.json'),
+      keyStyle: 'posix',
+      toClaudePath: (hostPath) => parseWslUncPath(hostPath)?.linuxPath ?? null
+    }
+  }
+  const style = process.platform === 'win32' ? 'win32' : 'posix'
+  const homeDir = (style === 'win32' ? args.env.USERPROFILE : args.env.HOME) || homedir()
+  return {
+    configFile: resolveClaudeGlobalConfigFile({
+      env: args.env,
+      homeDir,
+      style,
+      exists: existsSync
+    }),
+    keyStyle: style
+  }
+}
+
+/** Grants trust for `workspacePath` in the config `target` names. */
+export async function grantClaudeWorkspaceTrust(
+  target: ClaudeTrustConfigTarget,
+  workspacePath: string
+): Promise<ClaudeFolderTrustOutcome> {
+  const folderKeys = claudeTrustKeysForHostPath(workspacePath, target.keyStyle, target.toClaudePath)
+  return folderKeys.length === 0
+    ? 'unchanged'
+    : grantClaudeFolderTrust({ configFile: target.configFile, folderKeys })
 }

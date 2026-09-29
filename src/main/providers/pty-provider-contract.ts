@@ -78,7 +78,7 @@ export type PtySpawnOptions = {
   isNewSession?: boolean
   /** Host setting forwarded additively to the process owner; old owners ignore it. */
   historyIsolationEnabled?: boolean
-  /** SSH only: desired Claude folder trust the relay applies before spawning; old relays ignore it. */
+  /** SSH only: workspace the relay marks trusted in Claude's config before spawning; old relays ignore it. */
   claudeFolderTrust?: ClaudeFolderTrustSpawnRequest
   /** Attach the named session atomically or fail without creating a process. */
   attachOnly?: boolean
