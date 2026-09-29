@@ -16,6 +16,7 @@ export function getStatusPluginPostSource(hookPathname: string): string[] {
     '    worktreeId: process.env.ORCA_WORKTREE_ID || "",',
     '    env: coords.env,',
     '    version: coords.version,',
+    '    ...(reportingOpenCodeMajor ? { opencodeMajor: reportingOpenCodeMajor } : {}),',
     '    payload: { hook_event_name: hookEventName, ...(extraProperties || {}) },',
     '  });',
     '  const controller = new AbortController();',

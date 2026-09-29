@@ -16,7 +16,11 @@ vi.mock('electron', () => ({
 
 import { _internals } from './hook-service'
 
-type Post = { paneKey?: string; payload?: { hook_event_name?: string; sessionID?: string } }
+type Post = {
+  paneKey?: string
+  opencodeMajor?: number
+  payload?: { hook_event_name?: string; sessionID?: string }
+}
 type BusEvent = { type: string; data: Record<string, unknown> }
 type PluginModule = {
   default?: { setup?: (ctx: unknown) => Promise<(() => Promise<void>) | undefined> }
@@ -303,6 +307,8 @@ describe('OpenCode 2 TUI reporter: each pane reports its own sessions', () => {
 
     expect(paneA.every((post) => post.paneKey === PANE_A)).toBe(true)
     expect(paneB.every((post) => post.paneKey === PANE_B)).toBe(true)
+    // Keeps the host's OpenCode 1 session binder off these posts.
+    expect([...paneA, ...paneB].every((post) => post.opencodeMajor === 2)).toBe(true)
     expect(new Set(paneA.map((post) => post.payload?.sessionID))).toEqual(new Set([SES_A]))
     expect(new Set(paneB.map((post) => post.payload?.sessionID))).toEqual(new Set([SES_B]))
     for (const [list, session] of [

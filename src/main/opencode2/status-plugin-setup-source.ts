@@ -81,6 +81,7 @@ async function tuiReportsPaneLifecycle() {
 }
 
 async function setupOpenCode2Status(ctx) {
+  reportingOpenCodeMajor = 2;
   const noop = async () => {};
   if (isOpenCode2TuiContext(ctx)) return setupOpenCode2Tui(ctx);
   let hooks;
