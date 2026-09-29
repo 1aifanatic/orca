@@ -183,3 +183,31 @@ it.skipIf(process.platform === 'win32')(
     expect(readFileSync(hooksJsonPath(), 'utf-8')).toBe(original)
   }
 )
+
+it.skipIf(process.platform === 'win32')(
+  'withdraws the copy the failed conversion wrote, not an earlier frozen copy in a matcher group',
+  async () => {
+    const older = wrapPosixHookCommand(join(homeDir, '.orca', 'agent-hooks', 'codex-hook.sh'))
+    const { command, events } = getCodexManagedHookInstallMaterial()
+    const matched = { matcher: 'Bash', hooks: [{ type: 'command' as const, command }] }
+    const original = writeHooks({
+      hooks: Object.fromEntries(
+        events.map((event) => [
+          event,
+          [matched, userHook('between.sh'), { hooks: [{ type: 'command', command: older }] }]
+        ])
+      )
+    })
+    grantMock.mockReturnValue({ lane: 'fallback', reason: 'error' })
+
+    expect(
+      await ensureRealHomeCodexHookState({
+        hooksEnabled: true,
+        userDataPath: userDataDir,
+        writePolicy: 'convert-older-forms'
+      })
+    ).toBe('unavailable')
+
+    expect(readFileSync(hooksJsonPath(), 'utf-8')).toBe(original)
+  }
+)

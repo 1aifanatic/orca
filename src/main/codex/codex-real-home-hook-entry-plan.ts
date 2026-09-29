@@ -19,6 +19,9 @@ export type RealHomeCodexHookWritePolicy = 'add-missing-only' | 'convert-older-f
 
 export type RealHomeCodexHookSlotWrite = {
   eventName: string
+  /** Where this call's handler landed, so a withdrawal acts on that copy only. */
+  groupIndex: number
+  handlerIndex: number
   /** The handler this call replaced in its slot, or null when it appended a group. */
   replaced: HookCommandConfig | null
 }
@@ -124,6 +127,19 @@ function movesUserHandler(
   )
 }
 
+function locateHandler(
+  definitions: HookDefinition[],
+  hook: HookCommandConfig
+): { groupIndex: number; handlerIndex: number } {
+  for (const [groupIndex, definition] of definitions.entries()) {
+    const handlerIndex = definition.hooks?.indexOf(hook) ?? -1
+    if (handlerIndex !== -1) {
+      return { groupIndex, handlerIndex }
+    }
+  }
+  throw new Error('written Codex hook handler is missing from its plan')
+}
+
 export function planRealHomeCodexHookEntries(args: {
   hooks: Record<string, HookDefinition[]>
   sourcePath: string
@@ -175,6 +191,7 @@ export function planRealHomeCodexHookEntries(args: {
       continue
     }
     let definitions = current
+    let written: { hook: HookCommandConfig; replaced: HookCommandConfig | null } | null = null
     // Why: an older build's entry still runs the shared script; converting it
     // is app start's job, so launches never fight a running older build.
     if (args.policy === 'convert-older-forms') {
@@ -183,10 +200,11 @@ export function planRealHomeCodexHookEntries(args: {
         // Why in place: the slot keeps its position, so no user trust key moves.
         const slot = current[keeper.groupIndex]!
         const slotHooks = [...slot.hooks!]
-        slotHooks[keeper.handlerIndex] = buildManagedCommandHook(command)
+        const hook = buildManagedCommandHook(command)
+        slotHooks[keeper.handlerIndex] = hook
         definitions = [...current]
         definitions[keeper.groupIndex] = { ...slot, hooks: slotHooks }
-        writes.push({ eventName, replaced: keeper.hook })
+        written = { hook, replaced: keeper.hook }
       }
       const others: OrcaUnit[] = [
         ...handlers.filter((handler) => handler !== keeper),
@@ -215,8 +233,17 @@ export function planRealHomeCodexHookEntries(args: {
         (handlers.length === 0 && directOrcaUnits.length === 0))
     ) {
       // Why last: no user hook's positional trust key moves.
-      definitions = [...definitions, { hooks: [buildManagedCommandHook(command)] }]
-      writes.push({ eventName, replaced: null })
+      const hook = buildManagedCommandHook(command)
+      definitions = [...definitions, { hooks: [hook] }]
+      written = { hook, replaced: null }
+    }
+    if (written) {
+      // Why after the duplicate drops: they can shift the written slot.
+      writes.push({
+        eventName,
+        ...locateHandler(definitions, written.hook),
+        replaced: written.replaced
+      })
     }
     if (definitions !== current) {
       hooks[eventName] = definitions

@@ -12,19 +12,6 @@ import { readHookTrustEntries } from './config-toml-trust'
 import { readOrcaEntryTrust } from './codex-real-home-entry-trust'
 import { mutateRealHomeHooksPreservingUserTrust } from './codex-user-hook-trust-rebase'
 
-function findHandler(
-  definitions: HookDefinition[],
-  command: string
-): { groupIndex: number; handlerIndex: number } | null {
-  for (const [groupIndex, definition] of definitions.entries()) {
-    const handlerIndex = (definition.hooks ?? []).findIndex((hook) => hook.command === command)
-    if (handlerIndex !== -1) {
-      return { groupIndex, handlerIndex }
-    }
-  }
-  return null
-}
-
 function withdrawHandler(
   definitions: HookDefinition[],
   location: { groupIndex: number; handlerIndex: number },
@@ -66,20 +53,23 @@ export function withdrawUntrustedRealHomeWrites(
   const trustStates = readHookTrustEntries(getRealHomeConfigTomlPath())
   const nextHooks: Record<string, HookDefinition[]> = { ...config.hooks }
   let withdrew = 0
-  for (const { eventName, replaced } of writes) {
+  for (const { eventName, replaced, ...location } of writes) {
     const definitions = nextHooks[eventName]
-    const location = Array.isArray(definitions) ? findHandler(definitions, command) : null
-    if (!definitions || !location) {
+    const definition = Array.isArray(definitions) ? definitions[location.groupIndex] : undefined
+    const handler = Array.isArray(definition?.hooks)
+      ? definition.hooks[location.handlerIndex]
+      : undefined
+    // Why: a copy that moved is not provably this call's; the next launch's grant retries it.
+    if (!definitions || !definition || handler?.command !== command) {
       continue
     }
-    const definition = definitions[location.groupIndex]!
     const entry = createCodexHookTrustEntry(
       hooksJsonPath,
       eventName,
       location.groupIndex,
       location.handlerIndex,
       definition,
-      definition.hooks![location.handlerIndex]!
+      handler
     )
     const trust = entry ? readOrcaEntryTrust(entry, trustStates) : 'untrusted'
     if (trust === 'trusted' || trust === 'disabled') {
