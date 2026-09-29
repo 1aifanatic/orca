@@ -242,9 +242,6 @@ export abstract class AgentHookServerStatusUpdate extends AgentHookServerStatusA
       return undefined
     }
     this.commitStatusRowMutation(rowBefore, enriched)
-    if (enriched.agentPresence && enriched.connectionId === null) {
-      void this.checkAgentPresence(enriched.paneKey)
-    }
     // Why skipped for structured rows: the serializer drops them, so the whole walk and stringify
     // can only ever reproduce the last file — once per debounce window for a streaming chat.
     if (!enriched.structuredHost) {

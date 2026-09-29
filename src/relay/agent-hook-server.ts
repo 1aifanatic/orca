@@ -105,7 +105,7 @@ export class RelayAgentHookServer {
       env: this.env,
       isListening: () => this.server !== null,
       applyEvent: (event, source, env, version) => {
-        this.applyEvent(event, source, env, version)
+        this.applyEvent(event, source, env, version, { checkPresence: false })
       }
     })
   }
@@ -277,7 +277,7 @@ export class RelayAgentHookServer {
     source: AgentHookSource,
     env?: string,
     version?: string,
-    options: { isReplay?: boolean } = {}
+    options: { isReplay?: boolean; checkPresence?: boolean } = {}
   ): void {
     const transitioned = transitionHookPresence(
       incoming,
@@ -313,7 +313,7 @@ export class RelayAgentHookServer {
     this.lastEnvelopeMetaByPaneKey.delete(event.paneKey)
     this.lastEnvelopeMetaByPaneKey.set(event.paneKey, { source, env, version })
     this.forward(buildRelayHookEnvelope(event, source, env, version, options))
-    if (event.agentPresence && !event.agentPresence.ended) {
+    if (options.checkPresence !== false && event.agentPresence && !event.agentPresence.ended) {
       void this.checkAgentPresence(event.paneKey)
     }
   }

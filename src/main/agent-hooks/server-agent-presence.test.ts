@@ -18,8 +18,20 @@ afterEach(() => {
   probe.mockResolvedValue('unverifiable')
 })
 
-async function createServer(): Promise<AgentHookServer> {
-  const server = new AgentHookServer()
+class PresenceTestServer extends AgentHookServer {
+  applyTranscriptUpdate(): void {
+    const row = this.state.lastStatusByPaneKey.get(PANE)
+    if (row) {
+      this.applyNormalizedStatus({
+        ...row,
+        payload: { ...row.payload, lastAssistantMessage: 'late transcript result' }
+      })
+    }
+  }
+}
+
+async function createServer(): Promise<PresenceTestServer> {
+  const server = new PresenceTestServer()
   servers.push(server)
   await server.start({ env: 'production' })
   return server
@@ -141,6 +153,23 @@ describe('host-owned hook presence', () => {
       },
       'ssh-1'
     )
+    expect(visible(server)).toBe(false)
+  })
+  it('checks real hooks but never a transcript retry status write', async () => {
+    const server = await createServer()
+    await hook(server, 'SessionStart')
+    expect(probe).toHaveBeenCalledOnce()
+    probe.mockClear()
+    probe.mockResolvedValue('exited')
+    server.applyTranscriptUpdate()
+    await Promise.resolve()
+    expect(
+      server.getStatusSnapshot().find((row) => row.paneKey === PANE)?.lastAssistantMessage
+    ).toBe('late transcript result')
+    expect(probe).not.toHaveBeenCalled()
+    expect(visible(server)).toBe(true)
+    await hook(server, 'Stop')
+    expect(probe).toHaveBeenCalledOnce()
     expect(visible(server)).toBe(false)
   })
 })
