@@ -14,7 +14,7 @@ import {
 import { notifyWorktreeGitStatusMetadataChanged } from './worktree-remote'
 import { notifyWatchedWorktreeCatalogChanged } from './watched-worktree-catalog-notification'
 import {
-  isLocalWorktreeCreateInFlight,
+  isBackgroundWorkHeldForLocalCreates,
   whenLocalWorktreeCreatesSettle
 } from '../git/local-worktree-create-activity'
 
@@ -71,59 +71,68 @@ export function scheduleWorktreeBaseNotification(
   clearTimeout(watch.notifyTimer ?? undefined)
   watch.notifyTimer = setTimeout(() => {
     watch.notifyTimer = null
-    if (
+    const holdStructure =
       !watch.connectionId &&
       watch.pendingStructureRepoIds.size > 0 &&
-      isLocalWorktreeCreateInFlight()
-    ) {
-      holdUntilLocalCreatesSettle(watch)
-      return
+      isBackgroundWorkHeldForLocalCreates()
+    flushWorktreeBaseNotification(watch, holdStructure)
+    if (holdStructure) {
+      flushStructureWhenLocalCreatesSettle(watch)
     }
-    flushWorktreeBaseNotification(watch)
   }, WATCH_DEBOUNCE_MS)
 }
 
 /**
  * A structural change fans out to full re-lists of every worktree in the repo. While a local
  * create is checking out, keep collecting those changes and deliver them once, when it settles
- * (or at the deadline). Status-only batches still go out at once.
+ * (or at the deadline). Status and head identity changes still go out at once.
  */
-function holdUntilLocalCreatesSettle(watch: WorktreeBaseNotificationWatch): void {
+function flushStructureWhenLocalCreatesSettle(watch: WorktreeBaseNotificationWatch): void {
   if (watch.heldForLocalCreate) {
     return
   }
   watch.heldForLocalCreate = true
   void whenLocalWorktreeCreatesSettle().then(() => {
     watch.heldForLocalCreate = false
-    flushWorktreeBaseNotification(watch)
+    flushWorktreeBaseNotification(watch, false)
   })
 }
 
-function flushWorktreeBaseNotification(watch: WorktreeBaseNotificationWatch): void {
+function flushWorktreeBaseNotification(
+  watch: WorktreeBaseNotificationWatch,
+  holdStructure: boolean
+): void {
   if (watch.disposed || watch.mainWindow.isDestroyed()) {
     clearPendingWorktreeBaseNotifications(watch)
     return
   }
-  const pendingStructure = [...watch.pendingStructureRepoIds]
-  const hasHeadIdentity = watch.pendingHeadIdentityRepoIds.size > 0
+  const pendingStructure = holdStructure ? [] : [...watch.pendingStructureRepoIds]
   const sourceControlRepoIds = new Set(
     [...watch.pendingGitStatusRepoIds, ...watch.pendingHeadIdentityRepoIds].filter(
-      (repoId) => !watch.pendingStructureRepoIds.has(repoId)
+      (repoId) => !pendingStructure.includes(repoId)
     )
   )
+  const refreshHeadIdentities =
+    supportsWorktreeHeadIdentityRefresh(watch) &&
+    (pendingStructure.length > 0 || watch.pendingHeadIdentityRepoIds.size > 0)
   const emitHeadIdentities = pendingStructure.length === 0
   const headIdentityScope = watch.pendingHeadIdentityScope
-  clearPendingWorktreeBaseNotifications(watch)
+  watch.pendingGitStatusRepoIds.clear()
+  watch.pendingHeadIdentityRepoIds.clear()
+  if (!holdStructure) {
+    watch.pendingStructureRepoIds.clear()
+  }
+  // A held structural change keeps its scope for the re-read that follows its delivery.
+  if (!holdStructure || refreshHeadIdentities) {
+    watch.pendingHeadIdentityScope = EMPTY_HEAD_IDENTITY_SCOPE
+  }
   for (const repoId of pendingStructure) {
     notifyWatchedWorktreeCatalogChanged(watch.mainWindow, repoId, watch.connectionId)
   }
   for (const repoId of sourceControlRepoIds) {
     notifyWorktreeGitStatusMetadataChanged(watch.mainWindow, repoId)
   }
-  if (
-    supportsWorktreeHeadIdentityRefresh(watch) &&
-    (pendingStructure.length > 0 || hasHeadIdentity)
-  ) {
+  if (refreshHeadIdentities) {
     void refreshWorktreeHeadIdentities(
       watch,
       watch.headIdentityRefresh,

@@ -10,7 +10,8 @@ vi.mock('../git/runner', () => ({ gitExecFileAsync: gitExecFileAsyncMock }))
 import { __resetPRConflictSummaryCachesForTests, getPRConflictSummary } from './conflict-summary'
 import {
   _resetLocalWorktreeCreateActivityForTests,
-  holdLocalWorktreeCreate
+  holdLocalWorktreeCreate,
+  LOCAL_WORKTREE_CREATE_IDLE_DEADLINE_MS
 } from '../git/local-worktree-create-activity'
 
 const handlers: Record<string, () => Promise<{ stdout: string }>> = {
@@ -80,6 +81,15 @@ describe('conflict summary while a local create runs', () => {
     await summary('head-3', 'background')
     release()
     await expect(summary('head-3', 'background')).resolves.toEqual(expectedSummary)
+    expect(gitExecFileAsyncMock.mock.calls.map(([argv]) => argv[0])).toContain('merge-tree')
+  })
+
+  it('computes normally once a stuck create outlasts the deadline', async () => {
+    vi.useFakeTimers()
+    holdLocalWorktreeCreate()
+    vi.advanceTimersByTime(LOCAL_WORKTREE_CREATE_IDLE_DEADLINE_MS)
+    vi.useRealTimers()
+    await expect(summary('head-4', 'background')).resolves.toEqual(expectedSummary)
     expect(gitExecFileAsyncMock.mock.calls.map(([argv]) => argv[0])).toContain('merge-tree')
   })
 })

@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Repo } from '../shared/repo-types'
 import {
   collectWorktreeTrashSweepRoots,
@@ -17,7 +17,8 @@ import {
 } from './worktree-trash'
 import {
   _resetLocalWorktreeCreateActivityForTests,
-  holdLocalWorktreeCreate
+  holdLocalWorktreeCreate,
+  LOCAL_WORKTREE_CREATE_IDLE_DEADLINE_MS
 } from './git/local-worktree-create-activity'
 
 let scratchDir = ''
@@ -246,6 +247,7 @@ describe('collectWorktreeTrashSweepRoots', () => {
 describe('scheduleWorktreeTrashDeletion during a local create', () => {
   afterEach(() => {
     _resetLocalWorktreeCreateActivityForTests()
+    vi.useRealTimers()
   })
 
   it('waits for the create to settle before deleting, so it never competes with the checkout', async () => {
@@ -260,5 +262,35 @@ describe('scheduleWorktreeTrashDeletion during a local create', () => {
     release()
     await whenWorktreeTrashDeletionsSettled()
     expect(existsSync(trashPath)).toBe(false)
+  })
+  it('waits one deadline in total behind a stuck create, not one per queued deletion', async () => {
+    const trashRoot = join(scratchDir, WORKTREE_TRASH_DIR_NAME)
+    const trashPaths = [join(trashRoot, 'wt-1-abcdef01'), join(trashRoot, 'wt-2-abcdef02')]
+    for (const trashPath of trashPaths) {
+      await createWorktreeDirectory(trashPath)
+    }
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    holdLocalWorktreeCreate()
+
+    for (const trashPath of trashPaths) {
+      scheduleWorktreeTrashDeletion(trashPath)
+    }
+    await vi.advanceTimersByTimeAsync(LOCAL_WORKTREE_CREATE_IDLE_DEADLINE_MS)
+    await whenWorktreeTrashDeletionsSettled()
+    expect(trashPaths.filter((trashPath) => existsSync(trashPath))).toEqual([])
+  })
+
+  it('sweeps every leftover entry after one deadline behind a stuck create', async () => {
+    const trashRoot = join(scratchDir, WORKTREE_TRASH_DIR_NAME)
+    const trashPaths = [join(trashRoot, 'wt-1-abcdef01'), join(trashRoot, 'wt-2-abcdef02')]
+    for (const trashPath of trashPaths) {
+      await createWorktreeDirectory(trashPath)
+    }
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    holdLocalWorktreeCreate()
+
+    const sweep = sweepStaleWorktreeTrash([scratchDir])
+    await vi.advanceTimersByTimeAsync(LOCAL_WORKTREE_CREATE_IDLE_DEADLINE_MS)
+    await expect(sweep).resolves.toEqual({ removed: 2 })
   })
 })

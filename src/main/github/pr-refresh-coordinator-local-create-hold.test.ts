@@ -43,11 +43,11 @@ describe('PR refresh queue during a local create', () => {
     const release = activity.holdLocalWorktreeCreate()
 
     coordinator.reportVisiblePRRefreshCandidates([makeCandidate()], 1, 1)
-    await vi.runOnlyPendingTimersAsync()
+    await vi.advanceTimersByTimeAsync(100)
     expect(getPRForBranchOutcomeMock).not.toHaveBeenCalled()
 
     release()
-    await vi.runOnlyPendingTimersAsync()
+    await vi.advanceTimersByTimeAsync(0)
     expect(getPRForBranchOutcomeMock).toHaveBeenCalledOnce()
   })
 
@@ -56,11 +56,10 @@ describe('PR refresh queue during a local create', () => {
     activity.holdLocalWorktreeCreate()
 
     coordinator.reportVisiblePRRefreshCandidates([makeCandidate()], 1, 1)
-    await vi.runOnlyPendingTimersAsync()
+    await vi.advanceTimersByTimeAsync(activity.LOCAL_WORKTREE_CREATE_IDLE_DEADLINE_MS - 1)
     expect(getPRForBranchOutcomeMock).not.toHaveBeenCalled()
 
-    await vi.advanceTimersByTimeAsync(activity.LOCAL_WORKTREE_CREATE_IDLE_DEADLINE_MS)
-    await vi.runOnlyPendingTimersAsync()
+    await vi.advanceTimersByTimeAsync(100)
     expect(getPRForBranchOutcomeMock).toHaveBeenCalledOnce()
   })
 
@@ -85,5 +84,47 @@ describe('PR refresh queue during a local create', () => {
     )
     await vi.runOnlyPendingTimersAsync()
     expect(getPRForBranchOutcomeMock).toHaveBeenCalledOnce()
+  })
+
+  it('runs an SSH refresh due later on time while a local refresh is held', async () => {
+    const { coordinator, activity } = await load()
+    activity.holdLocalWorktreeCreate()
+    coordinator.enqueuePRRefresh(makeCandidate(), 'visible', 40, 1)
+    await vi.advanceTimersByTimeAsync(10)
+    coordinator.enqueuePRRefresh(
+      makeCandidate({ connectionId: 'conn-1', cacheKey: 'ssh::feature/test', repoPath: '/ssh' }),
+      'post-push',
+      100,
+      1
+    )
+
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(getPRForBranchOutcomeMock.mock.calls.map(([repoPath]) => repoPath)).toEqual(['/ssh'])
+  })
+
+  it('never substitutes a held local refresh for a paced one', async () => {
+    const { coordinator, activity } = await load()
+    // Spend the background budget so the next SSH visible refresh has a pacing delay.
+    coordinator.reportVisiblePRRefreshCandidates(
+      [makeCandidate({ connectionId: 'conn-1', cacheKey: 'ssh1::b1', repoPath: '/ssh1' })],
+      1,
+      1
+    )
+    await vi.advanceTimersByTimeAsync(50)
+    getPRForBranchOutcomeMock.mockClear()
+    activity.holdLocalWorktreeCreate()
+
+    coordinator.reportVisiblePRRefreshCandidates(
+      [makeCandidate({ connectionId: 'conn-1', cacheKey: 'ssh2::b2', repoPath: '/ssh2' })],
+      2,
+      1
+    )
+    coordinator.enqueuePRRefresh(
+      makeCandidate({ cacheKey: '/repoB::b', repoPath: '/repoB', worktreeId: 'wt-b' }),
+      'active',
+      10
+    )
+    await vi.advanceTimersByTimeAsync(50)
+    expect(getPRForBranchOutcomeMock).not.toHaveBeenCalled()
   })
 })

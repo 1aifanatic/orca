@@ -3,14 +3,16 @@ import {
   _resetLocalWorktreeCreateActivityForTests,
   createLocalWorktreeCreateDeferral,
   holdLocalWorktreeCreate,
+  isBackgroundWorkHeldForLocalCreates,
   isLocalWorktreeCreateInFlight,
+  LOCAL_WORKTREE_CREATE_IDLE_DEADLINE_MS,
   runWithLocalWorktreeCreateHold,
   whenLocalWorktreeCreatesSettle
 } from './local-worktree-create-activity'
 
 afterEach(() => {
-  vi.useRealTimers()
   _resetLocalWorktreeCreateActivityForTests()
+  vi.useRealTimers()
 })
 
 async function isSettled(promise: Promise<unknown>): Promise<boolean> {
@@ -53,13 +55,39 @@ describe('local worktree create activity', () => {
   it('gives up waiting at the deadline so a stuck create cannot starve background work', async () => {
     vi.useFakeTimers()
     holdLocalWorktreeCreate()
-    const idle = whenLocalWorktreeCreatesSettle(1_000)
+    const idle = whenLocalWorktreeCreatesSettle()
 
-    await vi.advanceTimersByTimeAsync(999)
+    await vi.advanceTimersByTimeAsync(LOCAL_WORKTREE_CREATE_IDLE_DEADLINE_MS - 1)
     expect(await isSettled(idle)).toBe(false)
     await vi.advanceTimersByTimeAsync(1)
     expect(await isSettled(idle)).toBe(true)
     expect(isLocalWorktreeCreateInFlight()).toBe(true)
+    expect(isBackgroundWorkHeldForLocalCreates()).toBe(false)
+  })
+
+  it('counts the deadline from the first create, so a later waiter cannot wait a fresh one', async () => {
+    vi.useFakeTimers()
+    holdLocalWorktreeCreate()
+    await vi.advanceTimersByTimeAsync(LOCAL_WORKTREE_CREATE_IDLE_DEADLINE_MS - 1_000)
+    const late = whenLocalWorktreeCreatesSettle()
+    // An overlapping create joins the stretch instead of restarting its deadline.
+    holdLocalWorktreeCreate()
+
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(await isSettled(late)).toBe(true)
+    expect(await isSettled(whenLocalWorktreeCreatesSettle())).toBe(true)
+  })
+
+  it('holds again once a new stretch of creates starts', async () => {
+    vi.useFakeTimers()
+    const stuck = holdLocalWorktreeCreate()
+    await vi.advanceTimersByTimeAsync(LOCAL_WORKTREE_CREATE_IDLE_DEADLINE_MS)
+    expect(isBackgroundWorkHeldForLocalCreates()).toBe(false)
+
+    stuck()
+    holdLocalWorktreeCreate()
+    expect(isBackgroundWorkHeldForLocalCreates()).toBe(true)
+    expect(await isSettled(whenLocalWorktreeCreatesSettle())).toBe(false)
   })
 
   it('releases the hold when the create throws', async () => {
@@ -76,7 +104,7 @@ describe('local worktree create activity', () => {
 describe('local worktree create deferral', () => {
   it('holds off while a create runs and wakes the producer when it settles', async () => {
     const onSettle = vi.fn()
-    const deferral = createLocalWorktreeCreateDeferral(onSettle, 1_000)
+    const deferral = createLocalWorktreeCreateDeferral(onSettle)
     expect(deferral.shouldDefer()).toBe(false)
 
     const release = holdLocalWorktreeCreate()
@@ -92,11 +120,11 @@ describe('local worktree create deferral', () => {
   it('stops holding off at the deadline until no create is in flight', async () => {
     vi.useFakeTimers()
     const onSettle = vi.fn()
-    const deferral = createLocalWorktreeCreateDeferral(onSettle, 1_000)
+    const deferral = createLocalWorktreeCreateDeferral(onSettle)
     const release = holdLocalWorktreeCreate()
     expect(deferral.shouldDefer()).toBe(true)
 
-    await vi.advanceTimersByTimeAsync(1_000)
+    await vi.advanceTimersByTimeAsync(LOCAL_WORKTREE_CREATE_IDLE_DEADLINE_MS)
     expect(onSettle).toHaveBeenCalledOnce()
     expect(deferral.shouldDefer()).toBe(false)
 

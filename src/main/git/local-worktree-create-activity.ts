@@ -12,11 +12,38 @@
 export const LOCAL_WORKTREE_CREATE_IDLE_DEADLINE_MS = 2 * 60_000
 
 let activeCreates = 0
+// Why per episode (from the first create until none is in flight): a per-waiter deadline would let
+// every later batch or entry wait a fresh deadline behind the same stuck create.
+let episodeDeadlineTimer: ReturnType<typeof setTimeout> | null = null
+let episodeOutlastedDeadline = false
 let settleWaiters: (() => void)[] = []
+
+function wakeSettleWaiters(): void {
+  const waiters = settleWaiters
+  settleWaiters = []
+  for (const wake of waiters) {
+    wake()
+  }
+}
+
+function endEpisode(): void {
+  clearTimeout(episodeDeadlineTimer ?? undefined)
+  episodeDeadlineTimer = null
+  episodeOutlastedDeadline = false
+  wakeSettleWaiters()
+}
 
 /** Returns an idempotent release; call it in `finally`. */
 export function holdLocalWorktreeCreate(): () => void {
   activeCreates += 1
+  if (activeCreates === 1) {
+    episodeDeadlineTimer = setTimeout(() => {
+      episodeDeadlineTimer = null
+      episodeOutlastedDeadline = true
+      wakeSettleWaiters()
+    }, LOCAL_WORKTREE_CREATE_IDLE_DEADLINE_MS)
+    episodeDeadlineTimer.unref?.()
+  }
   let released = false
   return () => {
     if (released) {
@@ -25,11 +52,7 @@ export function holdLocalWorktreeCreate(): () => void {
     released = true
     activeCreates -= 1
     if (activeCreates === 0) {
-      const waiters = settleWaiters
-      settleWaiters = []
-      for (const wake of waiters) {
-        wake()
-      }
+      endEpisode()
     }
   }
 }
@@ -48,29 +71,23 @@ export function isLocalWorktreeCreateInFlight(): boolean {
 }
 
 /**
- * Resolves once no local create is in flight, or after `deadlineMs` so a stuck create can never
- * starve background work forever. Background producer entry points only.
+ * True while background producers should hold off: a create is in flight and this stretch of
+ * creates has not yet outlasted the deadline, so a stuck create can never starve them for long.
  */
-export function whenLocalWorktreeCreatesSettle(
-  deadlineMs: number = LOCAL_WORKTREE_CREATE_IDLE_DEADLINE_MS
-): Promise<void> {
-  if (activeCreates === 0) {
+export function isBackgroundWorkHeldForLocalCreates(): boolean {
+  return activeCreates > 0 && !episodeOutlastedDeadline
+}
+
+/**
+ * Resolves once background work is no longer held: no create is in flight, or the current stretch
+ * of creates outlasted the deadline. Background producer entry points only.
+ */
+export function whenLocalWorktreeCreatesSettle(): Promise<void> {
+  if (!isBackgroundWorkHeldForLocalCreates()) {
     return Promise.resolve()
   }
   return new Promise((resolve) => {
-    let settled = false
-    const finish = (): void => {
-      if (settled) {
-        return
-      }
-      settled = true
-      clearTimeout(timer)
-      settleWaiters = settleWaiters.filter((waiter) => waiter !== finish)
-      resolve()
-    }
-    const timer = setTimeout(finish, deadlineMs)
-    timer.unref?.()
-    settleWaiters.push(finish)
+    settleWaiters.push(resolve)
   })
 }
 
@@ -79,31 +96,20 @@ export type LocalWorktreeCreateDeferral = {
   shouldDefer: () => boolean
 }
 
-/**
- * For a producer that re-checks on every wake (a queue drain) instead of awaiting. It holds off
- * while creates run and is woken through `onSettle`; once a stretch of creates outlasts the
- * deadline it stops holding off until no create is in flight.
- */
+/** For a producer that re-checks on every wake (a queue drain) instead of awaiting. */
 export function createLocalWorktreeCreateDeferral(
-  onSettle: () => void,
-  deadlineMs: number = LOCAL_WORKTREE_CREATE_IDLE_DEADLINE_MS
+  onSettle: () => void
 ): LocalWorktreeCreateDeferral {
   let waiting = false
-  let deadlinePassed = false
   return {
     shouldDefer() {
-      if (activeCreates === 0) {
-        deadlinePassed = false
-        return false
-      }
-      if (deadlinePassed) {
+      if (!isBackgroundWorkHeldForLocalCreates()) {
         return false
       }
       if (!waiting) {
         waiting = true
-        void whenLocalWorktreeCreatesSettle(deadlineMs).then(() => {
+        void whenLocalWorktreeCreatesSettle().then(() => {
           waiting = false
-          deadlinePassed = activeCreates > 0
           onSettle()
         })
       }
@@ -114,9 +120,5 @@ export function createLocalWorktreeCreateDeferral(
 
 export function _resetLocalWorktreeCreateActivityForTests(): void {
   activeCreates = 0
-  const waiters = settleWaiters
-  settleWaiters = []
-  for (const wake of waiters) {
-    wake()
-  }
+  endEpisode()
 }

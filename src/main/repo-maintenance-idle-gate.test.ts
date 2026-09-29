@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const isOnBatteryPowerMock = vi.hoisted(() => vi.fn(() => false))
-const createInFlightMock = vi.hoisted(() => vi.fn(() => false))
 const hasRemovalsInFlightMock = vi.hoisted(() => vi.fn(() => false))
 const setProbeMock = vi.hoisted(() => vi.fn())
 const disposeMock = vi.hoisted(() => vi.fn(async () => {}))
@@ -21,10 +20,6 @@ vi.mock('electron', () => ({
   }
 }))
 
-vi.mock('./git/local-worktree-create-activity', () => ({
-  isLocalWorktreeCreateInFlight: createInFlightMock
-}))
-
 vi.mock('./ipc/worktrees/worktree-ipc-context', () => ({
   hasWorktreeRemovalsInFlight: hasRemovalsInFlightMock
 }))
@@ -36,6 +31,11 @@ vi.mock('./git/local-repo-ref-maintenance', () => ({
 }))
 
 import { installRepoMaintenanceIdleGate } from './repo-maintenance-idle-gate'
+import {
+  _resetLocalWorktreeCreateActivityForTests,
+  holdLocalWorktreeCreate,
+  LOCAL_WORKTREE_CREATE_IDLE_DEADLINE_MS
+} from './git/local-worktree-create-activity'
 
 function installProbe(
   overrides: Partial<{ isQuitting: () => boolean; getWorkingAgentCount: () => number }> = {}
@@ -50,7 +50,6 @@ function installProbe(
 
 beforeEach(() => {
   isOnBatteryPowerMock.mockReturnValue(false)
-  createInFlightMock.mockReturnValue(false)
   hasRemovalsInFlightMock.mockReturnValue(false)
   postponeMock.mockClear()
   powerListeners.clear()
@@ -60,6 +59,8 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  _resetLocalWorktreeCreateActivityForTests()
+  vi.useRealTimers()
   vi.restoreAllMocks()
 })
 
@@ -73,9 +74,18 @@ describe('repo maintenance idle gate', () => {
   })
 
   it('vetoes while a worktree create is in flight', () => {
-    createInFlightMock.mockReturnValue(true)
+    holdLocalWorktreeCreate()
 
     expect(installProbe().probe()).toBe(true)
+  })
+
+  it('stops vetoing once a stuck create outlasts the deadline', async () => {
+    vi.useFakeTimers()
+    holdLocalWorktreeCreate()
+    const { probe } = installProbe()
+
+    await vi.advanceTimersByTimeAsync(LOCAL_WORKTREE_CREATE_IDLE_DEADLINE_MS)
+    expect(probe()).toBe(false)
   })
 
   it('vetoes while a worktree removal is deleting refs', () => {

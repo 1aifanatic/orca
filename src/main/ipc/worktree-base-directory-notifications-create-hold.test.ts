@@ -3,6 +3,7 @@ import type * as HeadIdentityRefreshModule from './worktree-head-identity-refres
 
 const notifyCatalogMock = vi.hoisted(() => vi.fn())
 const notifyStatusMock = vi.hoisted(() => vi.fn())
+const refreshHeadIdentitiesMock = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => undefined))
 
 vi.mock('./watched-worktree-catalog-notification', () => ({
   notifyWatchedWorktreeCatalogChanged: notifyCatalogMock
@@ -12,7 +13,7 @@ vi.mock('./worktree-remote', () => ({
 }))
 vi.mock('./worktree-head-identity-refresh', async (importOriginal) => ({
   ...(await importOriginal<typeof HeadIdentityRefreshModule>()),
-  refreshWorktreeHeadIdentities: vi.fn(async () => undefined)
+  refreshWorktreeHeadIdentities: refreshHeadIdentitiesMock
 }))
 
 import {
@@ -50,6 +51,7 @@ beforeEach(() => {
   vi.useFakeTimers()
   notifyCatalogMock.mockReset()
   notifyStatusMock.mockReset()
+  refreshHeadIdentitiesMock.mockClear()
 })
 
 afterEach(() => {
@@ -83,6 +85,42 @@ describe('worktree watcher notifications during a local create', () => {
 
     await vi.advanceTimersByTimeAsync(LOCAL_WORKTREE_CREATE_IDLE_DEADLINE_MS)
     expect(notifyCatalogMock).toHaveBeenCalledOnce()
+  })
+
+  it('does not hold a later structural change another deadline behind the same stuck create', async () => {
+    holdLocalWorktreeCreate()
+    const target = watch()
+    scheduleWorktreeBaseNotification(target, { structureRepoIds: ['repo-1'] })
+    await vi.advanceTimersByTimeAsync(LOCAL_WORKTREE_CREATE_IDLE_DEADLINE_MS)
+    expect(notifyCatalogMock).toHaveBeenCalledOnce()
+
+    scheduleWorktreeBaseNotification(target, { structureRepoIds: ['repo-1'] })
+    await vi.advanceTimersByTimeAsync(300)
+    expect(notifyCatalogMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('sends status and head identity changes at once while a structural change is held', async () => {
+    const release = holdLocalWorktreeCreate()
+    const target = watch()
+    scheduleWorktreeBaseNotification(target, { structureRepoIds: ['repo-1'] })
+    await vi.advanceTimersByTimeAsync(300)
+    scheduleWorktreeBaseNotification(target, {
+      gitStatusRepoIds: ['repo-2'],
+      headIdentityRepoIds: ['repo-1']
+    })
+    await vi.advanceTimersByTimeAsync(300)
+    expect(notifyStatusMock.mock.calls.map(([, repoId]) => repoId).sort()).toEqual([
+      'repo-1',
+      'repo-2'
+    ])
+    expect(refreshHeadIdentitiesMock).toHaveBeenCalledOnce()
+    expect(refreshHeadIdentitiesMock.mock.calls[0][2]).toBe(true)
+    expect(notifyCatalogMock).not.toHaveBeenCalled()
+
+    release()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(notifyCatalogMock.mock.calls.map(([, repoId]) => repoId)).toEqual(['repo-1'])
+    expect(notifyStatusMock).toHaveBeenCalledTimes(2)
   })
 
   it('still sends status-only changes at once', async () => {

@@ -10,7 +10,7 @@ import {
   withLocalGitCapabilityCacheForExecution
 } from '../git/git-capability-state'
 import { resolveGitAdmissionTier } from '../git/command-runner/git-operation-executor'
-import { isLocalWorktreeCreateInFlight } from '../git/local-worktree-create-activity'
+import { isBackgroundWorkHeldForLocalCreates } from '../git/local-worktree-create-activity'
 import {
   __resetPRConflictSummaryDerivationCachesForTests,
   buildConflictSummaryCacheKey,
@@ -40,7 +40,7 @@ export async function getPRConflictSummary(
   localGitOptions: LocalGitExecOptions = {}
 ): Promise<PRConflictSummary | undefined> {
   if (
-    isLocalWorktreeCreateInFlight() &&
+    isBackgroundWorkHeldForLocalCreates() &&
     resolveGitAdmissionTier(localGitOptions.admissionTier) !== 'interactive'
   ) {
     // Why: a local create is checking out on the same disk. Background lookups (card polls, the
