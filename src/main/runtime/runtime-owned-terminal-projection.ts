@@ -3,7 +3,7 @@ import type {
   RuntimeMobileSessionTabsSnapshot,
   RuntimeSyncWindowGraph
 } from '../../shared/runtime-types'
-import { isTerminalLeafId, makePaneKey } from '../../shared/stable-pane-id'
+import { isTerminalLeafId } from '../../shared/stable-pane-id'
 
 export function collectRendererPublishedEmptyTerminalPanes(
   graph: Pick<RuntimeSyncWindowGraph, 'mobileSessionTabs' | 'unchangedMobileSessionWorktrees'>,
@@ -30,7 +30,7 @@ export function collectRendererPublishedEmptyTerminalPanes(
         boundPtyIds.add(tab.ptyId)
       } else {
         if (isTerminalLeafId(tab.leafId)) {
-          emptyPaneWorktrees.set(makePaneKey(tab.parentTabId, tab.leafId), worktreeId)
+          emptyPaneWorktrees.set(`${tab.parentTabId}::${tab.leafId}`, worktreeId)
         }
       }
     }
@@ -115,6 +115,7 @@ export function chooseProjectedPtyId(
 export function shouldPreservePublishedRuntimePane(
   paneKey: string,
   worktreeId: string,
+  tabId: string,
   ptyId: string,
   publishedWorktree: string | undefined,
   publishedPtyIds: ReadonlySet<string>,
