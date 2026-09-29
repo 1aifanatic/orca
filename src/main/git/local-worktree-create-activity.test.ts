@@ -4,7 +4,6 @@ import {
   createLocalWorktreeCreateDeferral,
   holdLocalWorktreeCreate,
   isBackgroundWorkHeldForLocalCreates,
-  isLocalWorktreeCreateInFlight,
   LOCAL_WORKTREE_CREATE_IDLE_DEADLINE_MS,
   runWithLocalWorktreeCreateHold,
   whenLocalWorktreeCreatesSettle
@@ -39,7 +38,7 @@ describe('local worktree create activity', () => {
     expect(await isSettled(idle)).toBe(false)
     second()
     expect(await isSettled(idle)).toBe(true)
-    expect(isLocalWorktreeCreateInFlight()).toBe(false)
+    expect(isBackgroundWorkHeldForLocalCreates()).toBe(false)
   })
 
   it('treats a repeated release as one release', async () => {
@@ -47,9 +46,9 @@ describe('local worktree create activity', () => {
     const second = holdLocalWorktreeCreate()
     first()
     first()
-    expect(isLocalWorktreeCreateInFlight()).toBe(true)
+    expect(isBackgroundWorkHeldForLocalCreates()).toBe(true)
     second()
-    expect(isLocalWorktreeCreateInFlight()).toBe(false)
+    expect(isBackgroundWorkHeldForLocalCreates()).toBe(false)
   })
 
   it('gives up waiting at the deadline so a stuck create cannot starve background work', async () => {
@@ -61,7 +60,6 @@ describe('local worktree create activity', () => {
     expect(await isSettled(idle)).toBe(false)
     await vi.advanceTimersByTimeAsync(1)
     expect(await isSettled(idle)).toBe(true)
-    expect(isLocalWorktreeCreateInFlight()).toBe(true)
     expect(isBackgroundWorkHeldForLocalCreates()).toBe(false)
   })
 
@@ -93,11 +91,11 @@ describe('local worktree create activity', () => {
   it('releases the hold when the create throws', async () => {
     await expect(
       runWithLocalWorktreeCreateHold(async () => {
-        expect(isLocalWorktreeCreateInFlight()).toBe(true)
+        expect(isBackgroundWorkHeldForLocalCreates()).toBe(true)
         throw new Error('create failed')
       })
     ).rejects.toThrow('create failed')
-    expect(isLocalWorktreeCreateInFlight()).toBe(false)
+    expect(isBackgroundWorkHeldForLocalCreates()).toBe(false)
   })
 })
 

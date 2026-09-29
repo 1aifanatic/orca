@@ -27,7 +27,7 @@ const REMOTE_FETCH_CACHE_MAX = 512
 
 export class RuntimeRemoteFetchController {
   private readonly fetchInflight = new Map<string, Promise<RemoteFetchResult>>()
-  // Base fetches that have reached git (a create's, or a refresh whose queue turn came); safe to join.
+  // Base fetches past the refresh chain (a create's, or a refresh whose chain turn came); creates join these.
   private readonly baseFetchesRunning = new Map<string, Promise<RemoteFetchResult>>()
   private readonly remoteFetchQueueTail = new Map<string, Promise<RemoteFetchResult>>()
   private readonly fetchLastCompletedAt = new Map<string, number>()
@@ -190,9 +190,9 @@ export class RuntimeRemoteFetchController {
 
   /**
    * The create's own base fetch. It never queues behind the shared refresh chain, where a queued
-   * background or speculative fetch could hold it, and joins only a fetch of the same base that
-   * has already reached git. A fetch that recently completed still counts, and any fetch already
-   * running in the repo still finishes first.
+   * background fetch could hold it, and joins a fetch of the same base only once that fetch has
+   * left the chain. A fetch that recently completed still counts, and any fetch already running in
+   * the repo still finishes first.
    */
   async refreshRemoteTrackingBaseForCreate(
     repoPath: string,
@@ -205,7 +205,7 @@ export class RuntimeRemoteFetchController {
       gitOptions
     )
     try {
-      return await this.runBaseFetch(key, repoPath, base, gitOptions, 'interactive')
+      return await this.runBaseFetch(key, repoPath, base, gitOptions)
     } finally {
       this.armRefMaintenance(repoPath, gitOptions)
     }
@@ -215,8 +215,7 @@ export class RuntimeRemoteFetchController {
     key: string,
     repoPath: string,
     base: RemoteTrackingBase,
-    gitOptions: GitOptions,
-    admissionTier?: 'interactive'
+    gitOptions: GitOptions
   ): Promise<RemoteFetchResult> {
     if (this.getFreshFetchCompletedAt(key) !== null) {
       return Promise.resolve({ ok: true })
@@ -225,13 +224,9 @@ export class RuntimeRemoteFetchController {
     if (running) {
       return running
     }
-    const promise = this.fetchRemoteTrackingBase(
-      key,
-      repoPath,
-      base,
-      gitOptions,
-      admissionTier
-    ).finally(() => this.baseFetchesRunning.delete(key))
+    const promise = this.fetchRemoteTrackingBase(key, repoPath, base, gitOptions).finally(() =>
+      this.baseFetchesRunning.delete(key)
+    )
     this.baseFetchesRunning.set(key, promise)
     return promise
   }
@@ -240,8 +235,7 @@ export class RuntimeRemoteFetchController {
     key: string,
     repoPath: string,
     base: RemoteTrackingBase,
-    gitOptions: GitOptions,
-    admissionTier?: 'interactive'
+    gitOptions: GitOptions
   ): Promise<RemoteFetchResult> {
     return gitExecFileAsync(
       [
@@ -254,7 +248,8 @@ export class RuntimeRemoteFetchController {
       {
         cwd: repoPath,
         ...gitOptions,
-        ...(admissionTier ? { admissionTier } : {}),
+        // Every base fetch is a create's, or the composer's early start of one that a create joins.
+        admissionTier: 'interactive',
         useConfiguredSshCommandForNetwork: true,
         timeout: REMOTE_FETCH_TIMEOUT_MS
       }

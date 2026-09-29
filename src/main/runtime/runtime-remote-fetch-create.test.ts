@@ -144,6 +144,37 @@ describe("a create's own base fetch", () => {
     ])
   })
 
+  it("keeps its lock priority when it joins the composer's refresh waiting at the fetch lock", async () => {
+    const controller = new RuntimeRemoteFetchController()
+    const runningFetch = controller.getOrStartRemoteFetch(repo, 'upstream')
+    await waitForSpawnCount(1)
+    const backgroundWaiter = controller.getOrStartRemoteFetch(repo, 'fork')
+    // Left the origin chain at once, so it is queued at the lock behind the background waiter's turn.
+    const prefetch = controller.getOrStartRemoteTrackingBaseRefresh(repo, base)
+    await settle()
+    const createFetch = controller.refreshRemoteTrackingBaseForCreate(repo, base)
+    await settle()
+
+    spawned.fetches[0]?.resolve(ok)
+    await waitForSpawnCount(2)
+    expect(spawnedArgs()[1]).toEqual(
+      expect.arrayContaining(['+refs/heads/main:refs/remotes/origin/main'])
+    )
+    spawned.fetches[1]?.resolve(ok)
+    await expect(Promise.all([prefetch, createFetch])).resolves.toEqual([
+      { ok: true },
+      { ok: true }
+    ])
+
+    await waitForSpawnCount(3)
+    expect(spawnedArgs()[2]).toEqual(['fetch', 'fork'])
+    spawned.fetches[2]?.resolve(ok)
+    await expect(Promise.all([runningFetch, backgroundWaiter])).resolves.toEqual([
+      { ok: true },
+      { ok: true }
+    ])
+  })
+
   it('reports a failed shared fetch to every create, and the next create fetches again', async () => {
     const controller = new RuntimeRemoteFetchController()
     const first = controller.refreshRemoteTrackingBaseForCreate(repo, base)

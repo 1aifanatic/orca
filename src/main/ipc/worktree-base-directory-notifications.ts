@@ -122,7 +122,7 @@ function flushWorktreeBaseNotification(
   if (!holdStructure) {
     watch.pendingStructureRepoIds.clear()
   }
-  // A held structural change keeps its scope for the re-read that follows its delivery.
+  // A held structural change keeps its scope for the re-read on delivery, unless the head refresh below takes it now.
   if (!holdStructure || refreshHeadIdentities) {
     watch.pendingHeadIdentityScope = EMPTY_HEAD_IDENTITY_SCOPE
   }

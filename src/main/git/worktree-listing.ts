@@ -293,7 +293,7 @@ function isPosixAbsolutePath(pathValue: string): boolean {
  * The worktree's path as `git worktree list` prints it: what Git recorded at `worktree add`, which
  * keeps the caller's letter case where `--show-toplevel` reports the on-disk case. On a
  * case-insensitive disk only this spelling keys the worktree the way every later scan will.
- * Undefined when the record is unreadable or relative (`worktree.useRelativePaths`).
+ * Relative when `worktree.useRelativePaths` (Git 2.48+) wrote it; undefined when unreadable.
  */
 async function readRecordedWorktreePath(
   worktreePath: string,
@@ -312,10 +312,7 @@ async function readRecordedWorktreePath(
     if (!recorded.endsWith('/.git')) {
       return undefined
     }
-    const recordedPath = recorded.slice(0, -'/.git'.length)
-    return posix.isAbsolute(recordedPath) || win32.isAbsolute(recordedPath)
-      ? recordedPath
-      : undefined
+    return recorded.slice(0, -'/.git'.length)
   } catch {
     return undefined
   }
@@ -323,9 +320,9 @@ async function readRecordedWorktreePath(
 
 /**
  * Reconstruct the listing row for a worktree `git worktree add` just created, by asking Git about
- * the worktree itself. Used when the listing fails or omits it, so a create does not abandon a
- * worktree Git already wrote to disk (#16520). Returns undefined unless Git resolves the path into
- * this repo's object store with the expected branch checked out.
+ * the worktree itself instead of listing every worktree. Returns undefined, leaving the caller to
+ * the listing, unless Git resolves the path into this repo's object store with the expected branch
+ * checked out, or when Git recorded the path relative.
  */
 export async function describeCreatedWorktree(
   repoPath: string,
@@ -334,7 +331,7 @@ export async function describeCreatedWorktree(
   options: GitWorktreeExecOptions = {}
 ): Promise<GitWorktreeInfo | undefined> {
   const expectedRef = `refs/heads/${normalizeLocalBranchRef(branch)}`
-  // Bound Git recovery after the bounded listing failed; filesystem canonicalization stays best effort.
+  // Bound the Git reads; filesystem canonicalization stays best effort.
   const deadlined: GitWorktreeExecOptions = {
     ...options,
     timeout: options.timeout ?? WORKTREE_LIST_TIMEOUT_MS
@@ -350,9 +347,14 @@ export async function describeCreatedWorktree(
   if (!created || checkedOutRef !== expectedRef || !head) {
     return undefined
   }
+  // Only the listing resolves a relative record (`--show-toplevel` gives the on-disk case); win32
+  // also counts POSIX-rooted paths absolute.
+  if (recordedPath !== undefined && !win32.isAbsolute(recordedPath)) {
+    return undefined
+  }
   if (!(await isSameRepoCommonDir(created.commonDir, [repoGitCommonDir]))) {
-    // Only now read the second opinion from disk: a `.git` on a hung mount pins a threadpool thread
-    // that no deadline can reclaim, so never pay that on the path where Git already agreed.
+    // Only now read the repo's `.git` from disk: on a hung mount it pins a threadpool thread no
+    // deadline reclaims. The record read above is safe: `worktree add` just wrote it.
     const repoDiskCommonDir = await readRepoCommonDirFromDisk(
       repoPath,
       deadlined.timeout ?? WORKTREE_LIST_TIMEOUT_MS

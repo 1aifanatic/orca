@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { resolveCreatedWorktree } from '../ipc/created-worktree-reconciliation'
 import { clearGitCapabilityStateForTests, getLocalGitCapabilityCache } from './git-capability-state'
 import { describeCreatedWorktree, listWorktreesStrict } from './worktree'
 
@@ -72,6 +73,40 @@ describe('describeCreatedWorktree against the real Git binary', () => {
     await expect(describeCreatedWorktree(repoPath, requestedPath, 'case-feature')).resolves.toEqual(
       listed
     )
+  })
+
+  it('leaves a relative gitdir record to the listing, which keeps the spelling Git was given', async (context) => {
+    const [major = 0, minor = 0] =
+      (await git(['--version'], repoPath))
+        .match(/(\d+)\.(\d+)/)
+        ?.slice(1)
+        .map(Number) ?? []
+    if (major < 2 || (major === 2 && minor < 48)) {
+      context.skip('worktree.useRelativePaths needs Git 2.48+')
+    }
+    // Case-mismatched on a case-insensitive disk, where `--show-toplevel` would answer `workspaces`.
+    const requestedPath = join(scratchDir, 'Workspaces', 'relative-feature')
+    await git(
+      [
+        '-c',
+        'worktree.useRelativePaths=true',
+        'worktree',
+        'add',
+        '-q',
+        requestedPath,
+        '-b',
+        'relative-feature'
+      ],
+      repoPath
+    )
+    const listed = (await listWorktreesStrict(repoPath)).find(
+      (worktree) => worktree.branch === 'refs/heads/relative-feature'
+    )
+    expect(listed?.path).toContain('Workspaces')
+
+    await expect(
+      resolveCreatedWorktree(repoPath, requestedPath, 'relative-feature')
+    ).resolves.toMatchObject({ created: listed, listingComplete: true })
   })
 
   it('accepts a fully qualified branch ref', async () => {

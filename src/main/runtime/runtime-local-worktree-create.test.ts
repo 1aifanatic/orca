@@ -78,7 +78,7 @@ vi.mock('../ipc/worktree-symlinks', () => ({
 }))
 
 import { createRuntimeLocalManagedWorktree } from './runtime-local-worktree-create'
-import { isLocalWorktreeCreateInFlight } from '../git/local-worktree-create-activity'
+import { isBackgroundWorkHeldForLocalCreates } from '../git/local-worktree-create-activity'
 
 const worktreePath = resolve('/worktrees', 'app')
 
@@ -146,19 +146,19 @@ describe('runtime create holds background work off', () => {
           finishAdd = () => resolve({})
         })
     )
-    expect(isLocalWorktreeCreateInFlight()).toBe(false)
+    expect(isBackgroundWorkHeldForLocalCreates()).toBe(false)
     const creation = createWorktree()
     await vi.waitFor(() => expect(mocks.add).toHaveBeenCalledOnce())
-    expect(isLocalWorktreeCreateInFlight()).toBe(true)
+    expect(isBackgroundWorkHeldForLocalCreates()).toBe(true)
     finishAdd()
     await creation
-    expect(isLocalWorktreeCreateInFlight()).toBe(false)
+    expect(isBackgroundWorkHeldForLocalCreates()).toBe(false)
   })
 
   it('releases the hold when the create fails', async () => {
     mocks.add.mockRejectedValue(new Error('add failed'))
     await expect(createWorktree()).rejects.toThrow('add failed')
-    expect(isLocalWorktreeCreateInFlight()).toBe(false)
+    expect(isBackgroundWorkHeldForLocalCreates()).toBe(false)
   })
 })
 
