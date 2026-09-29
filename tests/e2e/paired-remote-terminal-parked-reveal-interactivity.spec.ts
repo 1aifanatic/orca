@@ -289,7 +289,27 @@ async function probeInteractivity(
   let paneGrid = await readActivePaneGrid(page, target.webTabId)
   let ptyGrid = readPtyGridFromContent(readSink(target.sinkPath))
   console.log(`[paired-grid-initial] ${JSON.stringify({ name, paneGrid, ptyGrid })}`)
+  const diagnostics = await readPaneDiagnostics(page, worktreeId, target.webTabId)
+  const screenshotPath = test.info().outputPath(`paired-terminal-${name}.png`)
+  await page.screenshot({ path: screenshotPath })
+  await test.info().attach(`paired-terminal-${name}`, {
+    path: screenshotPath,
+    contentType: 'image/png'
+  })
+  let paintedAfterFlip = paintedLive
+  if (!paintedLive) {
+    await openClientTab(page, worktreeId, flipTo.webTabId)
+    await openClientTab(page, worktreeId, target.webTabId)
+    paintedAfterFlip = await waitForPaneMarker(
+      page,
+      target.webTabId,
+      `LINE:${token}`,
+      LIVE_PAINT_BUDGET_MS
+    )
+  }
+  // Preserve the scenario report even when geometry fails to converge.
   await expect
+    .configure({ soft: true })
     .poll(
       async () => {
         paneGrid = await readActivePaneGrid(page, target.webTabId)
@@ -312,24 +332,6 @@ async function probeInteractivity(
       }
     )
     .toMatchObject({ converged: true })
-  const diagnostics = await readPaneDiagnostics(page, worktreeId, target.webTabId)
-  const screenshotPath = test.info().outputPath(`paired-terminal-${name}.png`)
-  await page.screenshot({ path: screenshotPath })
-  await test.info().attach(`paired-terminal-${name}`, {
-    path: screenshotPath,
-    contentType: 'image/png'
-  })
-  let paintedAfterFlip = paintedLive
-  if (!paintedLive) {
-    await openClientTab(page, worktreeId, flipTo.webTabId)
-    await openClientTab(page, worktreeId, target.webTabId)
-    paintedAfterFlip = await waitForPaneMarker(
-      page,
-      target.webTabId,
-      `LINE:${token}`,
-      LIVE_PAINT_BUDGET_MS
-    )
-  }
   const sink = readSink(target.sinkPath)
   return {
     name,
