@@ -265,6 +265,9 @@ export function createCodexJournalTranslator(
         event.params,
         event.threadId
       )
+      if (unhandled.accepted && event.method === 'error') {
+        commands.errorShown(event.params)
+      }
       return publishActivity(event, unhandled)
     },
     beginCommand: (command) => commands.begin(command),
