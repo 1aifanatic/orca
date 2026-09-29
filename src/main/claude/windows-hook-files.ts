@@ -1,12 +1,13 @@
-import { existsSync, rmSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { AgentHookInstallStatus } from '../../shared/agent-hook-types'
 import { writeManagedScript } from '../agent-hooks/installer-utils'
-import { restoreManagedScript } from '../agent-hooks/managed-hook-script-refresh'
+import { restoreManagedScript, scriptStillExists } from '../agent-hooks/managed-hook-script-refresh'
 import {
   buildWindowsHookEnvironmentGuardLines,
   buildWindowsHookStdinDrainEpilogue
 } from '../agent-hooks/hook-stdin-contract'
+import { WINDOWS_CLAUDE_BACKGROUND_JOB_GUARD } from './hook-script'
 
 const PAYLOAD_FILE_NAME = 'claude-hook-impl.cmd'
 
@@ -32,16 +33,6 @@ export function installWindowsClaudeHookFiles(entryPath: string, payload: string
   writeManagedScript(entryPath, getWindowsClaudeHookEntry())
 }
 
-export function removeWindowsClaudeHookFiles(entryPath: string): string | null {
-  try {
-    rmSync(entryPath, { force: true })
-    rmSync(getWindowsClaudeHookPayloadPath(entryPath), { force: true })
-    return null
-  } catch (error) {
-    return `Hooks removed from settings, but script cleanup failed: ${String(error)}`
-  }
-}
-
 export function getWindowsClaudeHookEntry(): string {
   return [
     '@echo off',
@@ -50,11 +41,12 @@ export function getWindowsClaudeHookEntry(): string {
     `set "ORCA_CLAUDE_HOOK_IMPL=%~dp0${PAYLOAD_FILE_NAME}"`,
     'if not exist "%ORCA_CLAUDE_HOOK_IMPL%" goto :missing_impl',
     // Transfer control without CALL's second expansion of percent signs in the path.
+    // A payload that exists but cannot start (locked, quarantined) falls through to the neutral reply.
     '"%ORCA_CLAUDE_HOOK_IMPL%"',
-    'exit /b %errorlevel%',
     ':missing_impl',
     'echo {}',
     ...buildWindowsHookEnvironmentGuardLines(),
+    WINDOWS_CLAUDE_BACKGROUND_JOB_GUARD,
     ...buildWindowsHookStdinDrainEpilogue(),
     ''
   ].join('\r\n')
@@ -62,11 +54,10 @@ export function getWindowsClaudeHookEntry(): string {
 
 export async function refreshWindowsClaudeHookFiles(
   entryPath: string,
-  payload: string,
-  registered: boolean
+  payload: string
 ): Promise<void> {
-  // A deleted entry is repairable while settings still refer to it; an orphan payload is not consent.
-  if (!registered && !existsSync(entryPath)) {
+  // A surviving entry is Orca-owned; creating a missing one stays install()'s presence-gated job.
+  if (!(await scriptStillExists(entryPath))) {
     return
   }
   // Publish the payload first so a failed migration leaves the previous single-file hook intact.

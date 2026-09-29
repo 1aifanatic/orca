@@ -19,7 +19,6 @@ import { getManagedScript } from './hook-script'
 import {
   getWindowsClaudeHookFileStatus,
   installWindowsClaudeHookFiles,
-  removeWindowsClaudeHookFiles,
   refreshWindowsClaudeHookFiles
 } from './windows-hook-files'
 
@@ -149,13 +148,9 @@ export class ClaudeHookService {
   async refreshManagedScripts(): Promise<void> {
     const scriptPath = getManagedScriptPath(this.options.settings)
     const payload = this.managedScript()
-    if (this.usesWindowsEntry) {
-      const config = readHooksJson(getConfigPath(this.options.settings))
-      const registered = config !== null && removeManagedHooks(config, 'claude-hook.cmd').changed
-      await refreshWindowsClaudeHookFiles(scriptPath, payload, registered)
-    } else {
-      await refreshManagedScriptIfPresent(scriptPath, payload)
-    }
+    await (this.usesWindowsEntry
+      ? refreshWindowsClaudeHookFiles(scriptPath, payload)
+      : refreshManagedScriptIfPresent(scriptPath, payload))
     // Why: no agent gate — the statusline script only ever exists for claude, so presence is the gate.
     await refreshManagedScriptIfPresent(
       getStatusLineScriptPath(this.options.settings),
@@ -321,12 +316,6 @@ export class ClaudeHookService {
     )
     if (hooksChanged || statusLineChanged) {
       writeHooksJson(configPath, nextConfig)
-    }
-    const cleanupError =
-      this.usesWindowsEntry &&
-      removeWindowsClaudeHookFiles(getManagedScriptPath(this.options.settings))
-    if (cleanupError) {
-      return { ...this.getStatus(), state: 'error', detail: cleanupError }
     }
     if (this.options.agent === 'claude') {
       try {

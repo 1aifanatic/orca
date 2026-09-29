@@ -28,7 +28,7 @@ async function readExistingScript(scriptPath: string): Promise<ExistingScript> {
   }
 }
 
-async function scriptStillExists(scriptPath: string): Promise<boolean> {
+export async function scriptStillExists(scriptPath: string): Promise<boolean> {
   try {
     await stat(scriptPath)
     return true

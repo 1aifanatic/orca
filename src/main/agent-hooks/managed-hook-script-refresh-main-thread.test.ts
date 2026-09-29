@@ -86,6 +86,23 @@ describe('managed hook script refresh stays off the main thread', () => {
     expect(syncCallsUnderHome()).toEqual([])
   })
 
+  it('keeps the Windows Claude entry and payload refresh off the main thread', async () => {
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform')!
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+    try {
+      const hooksDir = join(state.home, '.orca', 'agent-hooks')
+      await mkdir(hooksDir, { recursive: true })
+      await writeFile(join(hooksDir, 'claude-hook.cmd'), 'stale', 'utf-8')
+      state.syncCalls = []
+
+      await MANAGED_AGENT_HOOK_SCRIPT_REFRESHERS.find(([agent]) => agent === 'claude')![1]()
+
+      expect(syncCallsUnderHome()).toEqual([])
+    } finally {
+      Object.defineProperty(process, 'platform', platform)
+    }
+  })
+
   it('keeps the event loop responsive while a HOME read is stalled', async () => {
     state.blockAsyncReads = true
     const refresh = MANAGED_AGENT_HOOK_SCRIPT_REFRESHERS[0][1]()

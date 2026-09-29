@@ -50,25 +50,31 @@ describe('Windows Claude hook files', () => {
     expect(body).toContain('DEVIN_PROJECT_DIR')
   })
 
-  it.each(['entry', 'payload', 'both'])(
-    'repairs missing %s from managed registration',
-    async (missing) => {
-      service.install()
-      if (missing !== 'payload') {
-        rmSync(entry)
-      }
-      if (missing !== 'entry') {
-        rmSync(payload)
-      }
-      expect(service.getStatus().state).toBe('partial')
-      const configBefore = readFileSync(settings, 'utf8')
-      await service.refreshManagedScripts()
-      expect(service.getStatus().state).toBe('installed')
-      expect(readFileSync(entry, 'utf8')).toBe(getWindowsClaudeHookEntry())
-      expect(readFileSync(payload, 'utf8')).toContain('/hook/claude')
-      expect(readFileSync(settings, 'utf8')).toBe(configBefore)
+  it('repairs a missing payload from the surviving entry without touching settings', async () => {
+    service.install()
+    rmSync(payload)
+    expect(service.getStatus().state).toBe('partial')
+    const configBefore = readFileSync(settings, 'utf8')
+    await service.refreshManagedScripts()
+    expect(service.getStatus().state).toBe('installed')
+    expect(readFileSync(entry, 'utf8')).toBe(getWindowsClaudeHookEntry())
+    expect(readFileSync(payload, 'utf8')).toContain('/hook/claude')
+    expect(readFileSync(settings, 'utf8')).toBe(configBefore)
+  })
+
+  it.each(['entry', 'both'])('leaves a missing %s to install()', async (missing) => {
+    service.install()
+    rmSync(entry)
+    if (missing === 'both') {
+      rmSync(payload)
     }
-  )
+    await service.refreshManagedScripts()
+    expect(existsSync(entry)).toBe(false)
+    expect(service.getStatus().state).toBe('partial')
+    expect(service.install().state).toBe('installed')
+    expect(readFileSync(entry, 'utf8')).toBe(getWindowsClaudeHookEntry())
+    expect(readFileSync(payload, 'utf8')).toContain('/hook/claude')
+  })
 
   it('leaves the old single-file entry intact when payload publication fails', async () => {
     mkdirSync(join(home.path, '.orca', 'agent-hooks'), { recursive: true })
@@ -97,11 +103,13 @@ describe('Windows Claude hook files', () => {
     expect(existsSync(settings)).toBe(false)
   })
 
-  it('does not install from an orphan payload or resurrect an uninstalled hook', async () => {
+  it('keeps inert scripts on uninstall and never creates an entry from an orphan payload', async () => {
     service.install()
     service.remove()
-    expect(existsSync(entry)).toBe(false)
-    expect(existsSync(payload)).toBe(false)
+    expect(JSON.stringify(readHooksJson(settings))).not.toContain('claude-hook.cmd')
+    // Like every other agent's script: a session still holding the old settings keeps answering.
+    expect(readFileSync(entry, 'utf8')).toBe(getWindowsClaudeHookEntry())
+    rmSync(entry)
     writeFileSync(payload, 'orphan payload')
     await service.refreshManagedScripts()
     expect(existsSync(entry)).toBe(false)

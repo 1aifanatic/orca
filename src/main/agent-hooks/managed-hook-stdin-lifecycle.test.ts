@@ -528,7 +528,7 @@ describe('Windows managed hook stdin structure', () => {
             // Why: the encoded launcher resolves %USERPROFILE% at run time, so redirecting it is
             // what makes the script vanish for that shape. The direct launcher (#18875) carries
             // an absolute path, so here it asserts only that a bogus profile changes nothing; its
-            // missing-script fallback is covered live in windows-direct-cmd-hook-command.test.ts.
+            // missing-entry failure (never exit 2) is covered live in windows-direct-cmd-hook-command.test.ts.
             name: 'missing managed script',
             env: hookEnvironment({ USERPROFILE: absentProfile })
           }
