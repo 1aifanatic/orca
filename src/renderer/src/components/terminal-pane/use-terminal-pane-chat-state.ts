@@ -181,17 +181,19 @@ export function useTerminalPaneChatState(controller: TerminalPaneTitleController
   )
   const handleConfirmedAgentExit = useCallback(
     (leafId: string): void => {
-      if (leafId !== chatLeafId) {
+      const activeLeafId = managerRef.current?.getActivePane()?.leafId ?? null
+      // Why: an unbound Chat request waits on the active leaf; that leaf's confirmed exit ends it.
+      const ownerLeafId = chatLeafId ?? (leafId === activeLeafId ? leafId : null)
+      if (leafId !== ownerLeafId) {
         return
       }
       const panes = managerRef.current?.getPanes() ?? []
-      const activeLeafId = managerRef.current?.getActivePane()?.leafId ?? null
       applyNativeChatLeafRoute(
         resolveNativeChatLeafRoute({
           isChatViewMode,
-          chatLeafId,
+          chatLeafId: ownerLeafId,
           activeLeafId,
-          chatLeafStillMounted: panes.some((pane) => pane.leafId === chatLeafId),
+          chatLeafStillMounted: panes.some((pane) => pane.leafId === ownerLeafId),
           activeLeafIsEligible: isChatEligibleForLeaf(activeLeafId),
           chatLeafHasConfirmedAgentExit: true
         })

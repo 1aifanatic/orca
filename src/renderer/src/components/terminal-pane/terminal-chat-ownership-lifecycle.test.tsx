@@ -229,6 +229,28 @@ describe('terminal chat ownership lifecycle', () => {
     expect(mocks.state.unifiedTabsByWorktree.wt[0].viewMode).toBe('terminal')
   })
 
+  it('ends an unbound chat request when the active leaf confirms its agent exited', () => {
+    const titles = mocks.state.runtimePaneTitlesByTabId.tab
+    mocks.state.runtimePaneTitlesByTabId.tab = { 1: 'zsh', 2: 'zsh' }
+    try {
+      const fixture = makeFixture()
+      const hook = renderHook(() => useFixture(fixture, null))
+      expect(hook.result.current.chatLeafId).toBeNull()
+      expect(mocks.state.unifiedTabsByWorktree.wt[0].viewMode).toBe('chat')
+      act(() => fixture.onAgentExitedRef.current(RIGHT))
+      expect(mocks.state.unifiedTabsByWorktree.wt[0].viewMode).toBe('chat')
+      act(() => fixture.onAgentExitedRef.current(LEFT))
+      expect(mocks.state.unifiedTabsByWorktree.wt[0].viewMode).toBe('terminal')
+      // A later agent in this pane must not auto-enter the abandoned Chat request.
+      mocks.state.runtimePaneTitlesByTabId.tab = titles
+      hook.rerender()
+      expect(hook.result.current.chatLeafId).toBeNull()
+      expect(mocks.state.unifiedTabsByWorktree.wt[0].viewMode).toBe('terminal')
+    } finally {
+      mocks.state.runtimePaneTitlesByTabId.tab = titles
+    }
+  })
+
   it('restores chat on the right with the left active and different numeric pane IDs', () => {
     const initialFixture = makeFixture()
     const original = renderHook(() => useFixture(initialFixture, RIGHT))
