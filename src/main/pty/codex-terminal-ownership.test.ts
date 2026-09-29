@@ -161,6 +161,17 @@ for (const spec of shells) {
         { command: 'codex app-server', capability: 'yes', argv: '<app-server>' },
         { command: 'codex --version', capability: 'yes', argv: '<--version>' },
         { command: 'codex --no-daemon hello', capability: 'yes', argv: '<--no-daemon><hello>' },
+        // Codex refuses --no-daemon beside --remote, including after resume or a prompt.
+        {
+          command: 'codex resume --remote ws://127.0.0.1:1',
+          capability: 'yes',
+          argv: '<resume><--remote><ws://127.0.0.1:1>'
+        },
+        {
+          command: 'codex hello --remote=ws://127.0.0.1:1',
+          capability: 'yes',
+          argv: '<hello><--remote=ws://127.0.0.1:1>'
+        },
         {
           command: "codex -m model 'hello world'",
           capability: 'yes',

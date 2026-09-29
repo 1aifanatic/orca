@@ -1,4 +1,5 @@
 import {
+  CODEX_NO_DAEMON_CONFLICTING_OPTIONS,
   CODEX_NONINTERACTIVE_COMMANDS,
   CODEX_TERMINAL_SWITCH_OPTIONS,
   CODEX_TERMINAL_VALUE_OPTIONS
@@ -7,7 +8,9 @@ import {
 export function posixCodexInteractiveArgv(): string {
   return `__orca_codex_interactive() {
   local __orca_arg
-  for __orca_arg in "$@"; do [ "$__orca_arg" != --no-daemon ] || return 1; done
+  for __orca_arg in "$@"; do
+    case "$__orca_arg" in ${CODEX_NO_DAEMON_CONFLICTING_OPTIONS.flatMap((flag) => [flag, `${flag}=*`]).join('|')}) return 1 ;; esac
+  done
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --) return 0 ;;
@@ -29,7 +32,9 @@ export function powerShellCodexInteractiveArgv(): string {
     values.map((value) => `'${value}'`).join(', ')
   return `function Global:__OrcaCodexInteractive {
     param([string[]]$Tokens)
-    if ('--no-daemon' -in $Tokens) { return $false }
+    foreach ($token in $Tokens) {
+        if ($token.Split('=')[0] -in @(${array(CODEX_NO_DAEMON_CONFLICTING_OPTIONS)})) { return $false }
+    }
     $values = @(${array(CODEX_TERMINAL_VALUE_OPTIONS)})
     $switches = @(${array(CODEX_TERMINAL_SWITCH_OPTIONS)})
     $commands = @(${array(CODEX_NONINTERACTIVE_COMMANDS)})
@@ -49,7 +54,12 @@ export function powerShellCodexInteractiveArgv(): string {
 
 export function fishCodexInteractiveArgv(): string {
   return `function __orca_codex_interactive
-  contains -- --no-daemon $argv; and return 1
+  for arg in $argv
+    switch $arg
+      case ${CODEX_NO_DAEMON_CONFLICTING_OPTIONS.flatMap((flag) => [flag, `'${flag}=*'`]).join(' ')}
+        return 1
+    end
+  end
   while test (count $argv) -gt 0
     switch $argv[1]
       case --

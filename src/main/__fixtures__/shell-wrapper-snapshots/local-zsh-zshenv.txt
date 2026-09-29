@@ -145,7 +145,9 @@ __orca_deferred_init() {
     [[ -n "${ORCA_CODEX_HOME:-}" ]] && export CODEX_HOME="${ORCA_CODEX_HOME}"
     __orca_codex_interactive() {
       local __orca_arg
-      for __orca_arg in "$@"; do [ "$__orca_arg" != --no-daemon ] || return 1; done
+      for __orca_arg in "$@"; do
+        case "$__orca_arg" in --no-daemon|--no-daemon=*|--remote|--remote=*) return 1 ;; esac
+      done
       while [ "$#" -gt 0 ]; do
         case "$1" in
           --) return 0 ;;

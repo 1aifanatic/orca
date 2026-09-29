@@ -15,6 +15,10 @@ export function codexSupportsNoDaemon(output: string): boolean {
   )
 }
 
+// Why scanned through every argument: resume/fork and a trailing flag after the
+// prompt still reach Codex, which refuses --no-daemon beside --remote.
+export const CODEX_NO_DAEMON_CONFLICTING_OPTIONS = ['--no-daemon', '--remote'] as const
+
 export const CODEX_TERMINAL_VALUE_OPTIONS = [
   '-c',
   '--config',
