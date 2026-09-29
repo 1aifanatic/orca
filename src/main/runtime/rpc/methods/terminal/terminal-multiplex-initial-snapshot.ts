@@ -97,7 +97,6 @@ export async function publishMultiplexInitialSnapshot(
       truncatedByByteBudget: serialized?.truncatedByByteBudget,
       source: serialized?.source,
       kittyKeyboardFlags: serialized?.kittyKeyboardFlags,
-      mouseModes: serialized?.mouseModes,
       alternateScreen: serialized?.alternateScreen,
       terminalOwner: serialized?.terminalOwner,
       oscLinks: serialized?.oscLinks,

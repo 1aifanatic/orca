@@ -1,4 +1,3 @@
-import type { TerminalMouseModes } from '../../shared/terminal-mouse-modes'
 import type { AgentStatus } from '../../shared/agent-detection'
 import type { AgentStatusState } from '../../shared/agent-status-types'
 import type { SleepingAgentLaunchConfig } from '../../shared/agent-session-resume'
@@ -146,7 +145,6 @@ export type RuntimeTerminalBufferSnapshot = {
   alternateScreen?: boolean
   scrollbackAnsi?: string
   pendingEscapeTailAnsi?: string
-  mouseModes?: TerminalMouseModes
   kittyKeyboardFlags?: number
 }
 

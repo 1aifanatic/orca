@@ -125,7 +125,6 @@ function subscriptionHarness(opts: {
     })
   return {
     order,
-    emit: (index: number, data: unknown) => act(() => handlers[index](data)),
     subscribe: () => act(() => subscribe!(HANDLE)),
     scrollback,
     terminal,
@@ -227,40 +226,5 @@ describe('a terminal first subscribe', () => {
       'init 120x40',
       'subscribe {"cols":55,"rows":44}'
     ])
-  })
-  it('keeps a newer mode update when an older snapshot arrives and resets on resubscribe', () => {
-    const harness = subscriptionHarness({ fit: PHONE, webReady: true, viewport: PHONE })
-    harness.subscribe()
-    const modes = {
-      seq: 50,
-      mouseTracking: true,
-      mouseTrackingMode: 'any',
-      sgrMouseMode: true,
-      sgrMousePixelsMode: false
-    }
-    harness.emit(0, { type: 'metadata', mouseModes: modes })
-    harness.emit(0, {
-      type: 'scrollback',
-      cols: 55,
-      rows: 44,
-      serialized: 'x',
-      mouseModes: { ...modes, seq: 40, sgrMouseMode: false }
-    })
-    expect(harness.terminal.init).toHaveBeenLastCalledWith(
-      expect.objectContaining({ mouseModes: modes })
-    )
-    harness.emit(0, { type: 'metadata', mouseModes: { ...modes, seq: 30, sgrMouseMode: false } })
-    expect(harness.terminal.write).toHaveBeenLastCalledWith('', modes)
-    harness.fields.unsubscribeTerminal(HANDLE)
-    harness.fields.initializedHandlesRef.current.delete(HANDLE)
-    harness.subscribe()
-    expect(harness.terminal.write).toHaveBeenLastCalledWith('', null)
-    harness.emit(1, { type: 'scrollback', cols: 55, rows: 44, serialized: 'x' })
-    expect(harness.terminal.init).toHaveBeenLastCalledWith(
-      expect.objectContaining({ mouseModes: undefined })
-    )
-    vi.mocked(harness.terminal.write).mockClear()
-    harness.emit(0, { type: 'metadata', mouseModes: { ...modes, seq: 100 } })
-    expect(harness.terminal.write).not.toHaveBeenCalled()
   })
 })

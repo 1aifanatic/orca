@@ -1,4 +1,3 @@
-import { parseTerminalMouseModes } from '../../shared/terminal-mouse-modes'
 import { normalizeDesktopTerminalSnapshotRows } from '../../shared/terminal-scrollback-policy'
 import { parseTerminalKittyKeyboardFlags } from '../../shared/terminal-kitty-keyboard-flags'
 import { boundSnapshot } from './daemon-durable-history-snapshot'
@@ -56,7 +55,6 @@ export abstract class DaemonPtyBufferSnapshots extends DaemonPtySessionControl {
       cwd: snapshot.cwd,
       lastTitle: snapshot.lastTitle,
       seq: snapshot.outputSequence,
-      mouseModes: parseTerminalMouseModes({ ...snapshot.modes, seq: snapshot.outputSequence }),
       source: 'headless',
       oscLinks: snapshot.oscLinks,
       alternateScreen: snapshot.modes.alternateScreen,

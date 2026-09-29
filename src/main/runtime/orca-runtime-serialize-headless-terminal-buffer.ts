@@ -1,5 +1,4 @@
 // @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
-import { parseTerminalMouseModes, type TerminalMouseModes } from '../../shared/terminal-mouse-modes'
 import { OrcaRuntimeWithVisibleSnapshotPreview } from './orca-runtime-visible-snapshot-preview'
 import type { TerminalOscLinkRange } from '../../shared/terminal-osc-link-ranges'
 import { parseTerminalKittyKeyboardFlags } from '../../shared/terminal-kitty-keyboard-flags'
@@ -21,7 +20,6 @@ export class OrcaRuntimeWithSerializeHeadlessTerminalBuffer extends OrcaRuntimeW
     oscLinks?: TerminalOscLinkRange[]
     alternateScreen?: boolean
     scrollbackAnsi?: string
-    mouseModes?: TerminalMouseModes
     kittyKeyboardFlags?: number
     terminalOwner?: 'shell'
     // Why: dangling mid-escape tail the restorer must write LAST, after any
@@ -50,7 +48,6 @@ export class OrcaRuntimeWithSerializeHeadlessTerminalBuffer extends OrcaRuntimeW
           cwd: snapshot.cwd ?? this.terminalCwdByPtyId.get(ptyId),
           lastTitle: snapshot.lastTitle,
           seq: state.outputSequence,
-          mouseModes: parseTerminalMouseModes({ ...snapshot.modes, seq: state.outputSequence }),
           source: 'headless' as const,
           oscLinks: snapshot.oscLinks,
           scrollbackAnsi: snapshot.scrollbackAnsi,

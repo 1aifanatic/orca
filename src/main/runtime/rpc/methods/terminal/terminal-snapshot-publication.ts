@@ -98,7 +98,6 @@ type SnapshotVariableMeta = Pick<
   | 'source'
   | 'seq'
   | 'kittyKeyboardFlags'
-  | 'mouseModes'
   | 'alternateScreen'
   | 'terminalOwner'
 >
@@ -129,7 +128,6 @@ export type MobileSnapshotByteBudget = {
     | 'oscLinks'
     | 'pendingEscapeTailAnsi'
     | 'kittyKeyboardFlags'
-    | 'mouseModes'
     | 'alternateScreen'
     | 'terminalOwner'
     | 'truncatedByByteBudget'
@@ -187,7 +185,6 @@ function budgetedPublication(
     oscLinks: serialized.oscLinks,
     pendingEscapeTailAnsi: serialized.pendingEscapeTailAnsi,
     kittyKeyboardFlags: serialized.kittyKeyboardFlags,
-    mouseModes: serialized.mouseModes,
     alternateScreen: serialized.alternateScreen,
     terminalOwner: serialized.terminalOwner,
     data
@@ -348,7 +345,6 @@ export async function sendMobileResizeRestream(
     source: serialized.source,
     cwd: serialized.cwd,
     oscLinks: serialized.oscLinks,
-    mouseModes: serialized.mouseModes,
     truncated: false,
     truncatedByByteBudget: serialized.truncatedByByteBudget,
     data: serialized.data

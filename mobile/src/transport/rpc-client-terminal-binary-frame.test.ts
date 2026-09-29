@@ -29,19 +29,4 @@ describe('handleTerminalBinaryFrame', () => {
 
     expect(listener).toHaveBeenCalledWith({ type: 'metadata', streamId: 42, cwd: '/repo/src' })
   })
-  it('preserves the host mode sequence independently of the frame header', () => {
-    const listener = vi.fn()
-    const mouseModes = {
-      seq: 50,
-      mouseTracking: true,
-      mouseTrackingMode: 'any',
-      sgrMouseMode: true,
-      sgrMousePixelsMode: false
-    }
-    handleTerminalBinaryFrame(encodeFrame(TerminalStreamOpcode.Metadata, 42, { mouseModes }), {
-      terminalSnapshots: new Map(),
-      getListener: () => listener
-    })
-    expect(listener).toHaveBeenCalledWith({ type: 'metadata', streamId: 42, mouseModes })
-  })
 })

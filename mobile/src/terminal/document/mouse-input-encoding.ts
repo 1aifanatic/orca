@@ -17,9 +17,6 @@ export function isAlternateBufferActive(scope: TerminalDocumentScope) {
 }
 
 export function getMouseTrackingMode(scope: TerminalDocumentScope) {
-  if (scope.hostMouseModes) {
-    return scope.hostMouseModes.mouseTrackingMode
-  }
   try {
     if (scope.term && scope.term.modes && typeof scope.term.modes.mouseTrackingMode === 'string') {
       const mode = scope.term.modes.mouseTrackingMode

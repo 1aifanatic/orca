@@ -33,14 +33,6 @@ function swipe() {
   }
 }
 
-const sgrModes = {
-  seq: 10,
-  mouseTracking: true,
-  mouseTrackingMode: 'any',
-  sgrMouseMode: true,
-  sgrMousePixelsMode: false
-}
-
 describe('mobile mouse encoding authority', () => {
   const mouse = useTerminalMouseWebViewHarness()
 
@@ -48,30 +40,6 @@ describe('mobile mouse encoding authority', () => {
     mouse.boot()
     mouse.activeTerminal().modes.mouseTrackingMode = 'any'
     message({ type: 'write', data: `${ESC}[?1003h` })
-    wheel()
-    expect(mouse.terminalInputBytes()).toBe('')
-  })
-
-  it('uses snapshot modes even when the replay contains no encoding enable', () => {
-    mouse.boot()
-    message({ type: 'init', cols: 40, rows: 24, initialData: '', mouseModes: sgrModes })
-    wheel()
-    expect(mouse.terminalInputBytes()).toContain(`${ESC}[<65;`)
-    expect(mouse.terminalInputBytes()).not.toContain(`${ESC}[M`)
-  })
-
-  it('uses ordered host updates and ignores the phone scanner and stale metadata', () => {
-    mouse.boot()
-    message({ type: 'mouse-modes', mouseModes: sgrModes })
-    message({ type: 'write', data: `${ESC}[?1006l` })
-    message({ type: 'mouse-modes', mouseModes: { ...sgrModes, seq: 9, sgrMouseMode: false } })
-    wheel()
-    expect(mouse.terminalInputBytes()).toContain(`${ESC}[<65;`)
-    mouse.clearPostedMessages()
-    message({
-      type: 'mouse-modes',
-      mouseModes: { ...sgrModes, seq: 11, mouseTracking: false, mouseTrackingMode: 'none' }
-    })
     wheel()
     expect(mouse.terminalInputBytes()).toBe('')
   })
@@ -96,14 +64,6 @@ describe('mobile mouse encoding authority', () => {
     wheel()
     expect(mouse.terminalInputBytes()).toBe('')
   })
-  it('uses host encoding for finger swipes as well as pointer wheels', () => {
-    mouse.boot()
-    message({ type: 'mouse-modes', mouseModes: sgrModes })
-    swipe()
-    expect(mouse.terminalInputBytes()).toContain(`${ESC}[<65;`)
-    expect(mouse.terminalInputBytes()).not.toContain(`${ESC}[M`)
-  })
-
   it('does not turn unknown encoding into arrow keys on an alternate screen', () => {
     mouse.boot()
     mouse.activeTerminal().modes.mouseTrackingMode = 'any'

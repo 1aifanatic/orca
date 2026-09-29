@@ -1,4 +1,3 @@
-import type { TerminalMouseModes } from '../../../src/shared/terminal-mouse-modes'
 import type { RuntimeMobileTerminalTheme } from '../../../src/shared/runtime-types'
 import type { TerminalOscLinkRange } from '../../../src/shared/terminal-osc-link-ranges'
 
@@ -6,7 +5,6 @@ import type { TerminalOscLinkRange } from '../../../src/shared/terminal-osc-link
 export type TerminalFrame = { width: number; height: number }
 
 export type TerminalWebViewCommand =
-  | { type: 'mouse-modes'; id?: number; mouseModes: TerminalMouseModes | null }
   | { type: 'ping'; id?: number }
   | { type: 'write'; id?: number; data: string }
   | {
@@ -14,7 +12,6 @@ export type TerminalWebViewCommand =
       id?: number
       cols: number
       rows: number
-      mouseModes?: TerminalMouseModes
       initialData?: string
       oscLinks?: TerminalOscLinkRange[]
       terminalTheme?: RuntimeMobileTerminalTheme

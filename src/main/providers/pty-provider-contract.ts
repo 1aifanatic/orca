@@ -1,4 +1,3 @@
-import type { TerminalMouseModes } from '../../shared/terminal-mouse-modes'
 import type { TuiAgent } from '../../shared/tui-agent'
 import type { AgentWorkspaceTrustSpawnRequest } from '../../shared/agent-workspace-trust-spawn-request'
 import type { PtyStartupIngressIntent } from '../../shared/pty-startup-ingress'
@@ -40,7 +39,6 @@ export type PtyProviderBufferSnapshot = {
   /** Effective kitty keyboard flags PROVEN at this snapshot's own `seq`
    *  boundary. Absent means the source could not prove them; readers must not
    *  rewrite that silence into a known `0`. */
-  mouseModes?: TerminalMouseModes
   kittyKeyboardFlags?: number
   /** Ordered ownership evidence proven at this snapshot's `seq`. */
   terminalOwner?: TerminalOwner

@@ -1,4 +1,3 @@
-import type { TerminalMouseModes } from '../../../src/shared/terminal-mouse-modes'
 import type { RuntimeMobileTerminalTheme } from '../../../src/shared/runtime-types'
 import type { TerminalOscLinkRange } from '../../../src/shared/terminal-osc-link-ranges'
 import type { StyleProp, ViewStyle } from 'react-native'
@@ -100,7 +99,6 @@ export type TerminalWebViewProps = {
 export type TerminalInit = {
   cols: number
   rows: number
-  mouseModes?: TerminalMouseModes
   initialData?: string
   preserveScroll?: boolean
   oscLinks?: TerminalOscLinkRange[]
@@ -111,7 +109,7 @@ export type TerminalWebViewHandle = {
   // Why: iOS can preserve the native view while discarding its JS/backing-store
   // state; foreground recovery must wait for the document to answer before replay.
   prepareForForegroundRecovery: () => void
-  write: (data: string, mouseModes?: TerminalMouseModes | null) => void
+  write: (data: string) => void
   init: (init: TerminalInit) => void
   resize: (cols: number, rows: number, frame: TerminalFrame | null) => void
   // Why: reflow the local xterm buffer (scrollback included) to a new width

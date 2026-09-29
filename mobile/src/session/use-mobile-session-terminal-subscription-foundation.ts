@@ -29,7 +29,6 @@ export function useMobileSessionTerminalSubscriptionFoundation(
 
   const unsubscribeTerminal = useCallback(
     (handle: string) => {
-      terminalRefs.current.get(handle)?.write('', null)
       terminalUnsubsRef.current.get(handle)?.()
       terminalUnsubsRef.current.delete(handle)
       subscribingHandlesRef.current.delete(handle)

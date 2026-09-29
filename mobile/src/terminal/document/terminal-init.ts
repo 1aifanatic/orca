@@ -1,4 +1,3 @@
-import { applyHostMouseModes } from './host-mouse-modes'
 import { emitKeyboardAvoidanceMetrics } from './keyboard-avoidance-metrics'
 import { MOBILE_TERMINAL_CARET_OPTIONS } from '../terminal-webview-html/theme'
 import { ESC } from './escape-introducers'
@@ -88,8 +87,7 @@ export function init(
   nextTheme: Parameters<typeof applyTerminalTheme>[1],
   nextFontScale: unknown,
   preserveScroll: boolean,
-  nextOscLinks: unknown,
-  mouseModes?: unknown
+  nextOscLinks: unknown
 ) {
   if (typeof nextFontScale === 'number' && nextFontScale > 0) {
     scope.currentTextScale = nextFontScale
@@ -124,7 +122,6 @@ export function init(
   scope.wheelAccumDeltaY = 0
   scope.mouseModeScanTail = ''
   scope.trackedMouseTrackingMode = 'none'
-  scope.hostMouseModes = undefined
   scope.mouseEncodingKnown = false
   scope.sgrMouseMode = false
   scope.sgrMousePixelsMode = false
@@ -139,9 +136,6 @@ export function init(
   // Why: normalizeInitialData can discard pre-alt-screen bytes. Keep the
   // mirrored modes aligned with exactly what this mobile xterm replays.
   updateMouseModeFromData(scope, replayData)
-  if (mouseModes !== undefined) {
-    applyHostMouseModes(scope, mouseModes)
-  }
   scope.activeAltScreenSnapshot = isAltScreenActive(replayData)
   scope.initialOscLinks = Array.isArray(nextOscLinks) ? nextOscLinks : []
   scope.initialOscLinkRowOffset = 0

@@ -23,7 +23,7 @@ export function normalizeInitialData(data: unknown) {
 }
 
 export function updateMouseModeFromData(scope: TerminalDocumentScope, data: unknown) {
-  if (scope.hostMouseModes || typeof data !== 'string' || data.length === 0) {
+  if (typeof data !== 'string' || data.length === 0) {
     return
   }
   const input = scope.mouseModeScanTail + data

@@ -1,4 +1,3 @@
-import type { TerminalMouseModes } from '../../../src/shared/terminal-mouse-modes'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { readTerminalCellBox, type TerminalCellBox } from './terminal-cell-box'
 import { fitDimensionsFromCell } from './terminal-grid-fit'
@@ -261,16 +260,10 @@ export function useTerminalWebViewController(
         armWebReadyWatchdog()
         pendingPingIdRef.current = sendToDocument({ type: 'ping' })
       },
-      write(data: string, mouseModes?: TerminalMouseModes | null) {
-        if (data) {
-          writeCoalescer.write(data)
-        }
-        if (mouseModes !== undefined) {
-          writeCoalescer.flushNow()
-          postMessage({ type: 'mouse-modes', mouseModes })
-        }
+      write(data: string) {
+        writeCoalescer.write(data)
       },
-      init({ cols, rows, initialData, preserveScroll, oscLinks, frame, mouseModes }: TerminalInit) {
+      init({ cols, rows, initialData, preserveScroll, oscLinks, frame }: TerminalInit) {
         // Why: arm a fresh ready promise BEFORE posting init. The document resolves it via the
         // 'ready' notify at the end of its rAF chain.
         promises.armReady()
@@ -279,7 +272,6 @@ export function useTerminalWebViewController(
         writeCoalescer.clear()
         postMessage({
           type: 'init',
-          mouseModes,
           cols,
           rows,
           initialData,

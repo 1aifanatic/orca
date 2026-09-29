@@ -1,4 +1,3 @@
-import { applyHostMouseModes } from './host-mouse-modes'
 import type { TerminalDocumentScope } from './document-scope'
 import { applyFitScale } from './fit-scale'
 import { notify } from './host-notify'
@@ -20,7 +19,6 @@ export type TerminalHostMessage = {
   type?: string
   cols?: number
   rows?: number
-  mouseModes?: unknown
   initialData?: unknown
   terminalTheme?: Parameters<typeof applyTerminalTheme>[1]
   fontScale?: number
@@ -66,8 +64,7 @@ export function handleMsg(scope: TerminalDocumentScope, msg: TerminalHostMessage
       msg.terminalTheme,
       msg.fontScale,
       msg.preserveScroll!,
-      msg.oscLinks,
-      msg.mouseModes
+      msg.oscLinks
     )
   } else if (msg.type === 'set-font-scale') {
     // Why: ignore RN echoing back the value a pinch just set (msg.fontScale ===
@@ -88,9 +85,6 @@ export function handleMsg(scope: TerminalDocumentScope, msg: TerminalHostMessage
   } else if (msg.type === 'reflow') {
     holdHostFrame(scope, msg)
     reflow(scope, msg.cols!, msg.rows!)
-  } else if (msg.type === 'mouse-modes') {
-    applyHostMouseModes(scope, msg.mouseModes)
-    emitModesIfChanged(scope)
   } else if (msg.type === 'write') {
     write(scope, msg.data!)
   } else if (msg.type === 'clear') {
@@ -100,7 +94,6 @@ export function handleMsg(scope: TerminalDocumentScope, msg: TerminalHostMessage
     scope.statusDotPendingSelector = false
     scope.afterDrainCallbacks = []
     scope.writesDraining = false
-    scope.hostMouseModes = undefined
     scope.mouseEncodingKnown = false
     scope.mouseModeScanTail = ''
     scope.trackedMouseTrackingMode = 'none'

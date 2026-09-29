@@ -1,4 +1,3 @@
-import type { TerminalMouseModes } from '../../../../src/shared/terminal-mouse-modes'
 import type { TerminalLaidOutCellBox } from '../terminal-cell-box'
 import { DEFAULT_TERMINAL_THEME } from '../terminal-webview-html/theme'
 import {
@@ -79,9 +78,9 @@ export type TerminalDocumentState = {
   lastEmittedModes: TerminalDocumentModes
   /** `terminal-init`: whether the terminal has ever reached ready. */
   everReady: boolean
-  /** `mouse-mode-decset-scan`: the tail of the last chunk, in case a DECSET straddles two writes. */
-  hostMouseModes: TerminalMouseModes | undefined
+  /** `mouse-mode-decset-scan`: whether replayed bytes proved the mouse encoding (1006/1016 set or reset, or RIS). */
   mouseEncodingKnown: boolean
+  /** `mouse-mode-decset-scan`: the tail of the last chunk, in case a DECSET straddles two writes. */
   mouseModeScanTail: string
   /** `mouse-mode-decset-scan`: the mouse tracking mode the TUI last asked for. */
   trackedMouseTrackingMode: string
@@ -265,7 +264,6 @@ function createTerminalDocumentState(): TerminalDocumentState {
       sgrMousePixelsMode: false
     },
     everReady: false,
-    hostMouseModes: undefined,
     mouseEncodingKnown: false,
     mouseModeScanTail: '',
     trackedMouseTrackingMode: 'none',

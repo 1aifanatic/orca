@@ -204,7 +204,6 @@ export async function publishLegacyBinaryInitialSnapshot(
     oscLinks: serialized?.oscLinks,
     alternateScreen: serialized?.alternateScreen,
     terminalOwner: serialized?.terminalOwner,
-    mouseModes: serialized?.mouseModes,
     data: serialized?.data ?? ''
   })
   console.log('[mobile-terminal-stream] snapshot', {
@@ -249,7 +248,6 @@ export async function publishLegacyBinaryInitialSnapshot(
       rows: recovery.rows,
       displayMode: state.displayMode,
       source: recovery.source,
-      mouseModes: recovery.mouseModes,
       truncated: false,
       truncatedByByteBudget: recovery.truncatedByByteBudget,
       data: recovery.data
