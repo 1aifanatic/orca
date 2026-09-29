@@ -21,6 +21,7 @@ const originalCodexHome = process.env.CODEX_HOME
 
 afterEach(() => {
   vi.useRealTimers()
+  vi.restoreAllMocks()
   if (originalCodexHome === undefined) {
     delete process.env.CODEX_HOME
   } else {
@@ -370,10 +371,9 @@ describe('openCodexAppServerConnection', () => {
     expect(frames).toEqual([])
     expect(warn.mock.calls.map((call) => call[0])).toEqual([
       `[codex-app-server] late reply to turn/interrupt after timeout (id ${id})`,
-      '[codex-app-server] reply to unknown request id 999'
+      '[codex-app-server] reply with no waiting request (id 999)'
     ])
     expect(warn.mock.calls[1][1]).toBe('no such request')
-    warn.mockRestore()
     await vi.advanceTimersByTimeAsync(0)
   })
 

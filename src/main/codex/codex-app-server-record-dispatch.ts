@@ -96,7 +96,7 @@ export function createCodexAppServerRecordDispatcher(input: {
       console.warn(
         timedOutMethod
           ? `[codex-app-server] late reply to ${timedOutMethod} after timeout (id ${message.id})`
-          : `[codex-app-server] reply to unknown request id ${message.id}`,
+          : `[codex-app-server] reply with no waiting request (id ${message.id})`,
         ...(typeof error === 'string' ? [error] : [])
       )
       return
