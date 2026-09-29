@@ -8,7 +8,7 @@ import {
   sanitizeRecentTabIds
 } from '../tab-group-state'
 import { buildActiveSurfacePatch } from './tabs-surface'
-import { collectLeavingWorktreeIds } from '../worktrees/teardown/worktree-delete-state'
+import { isWorktreeLeaving } from '../worktrees/teardown/worktree-delete-state'
 import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
 import { getActiveRuntimeTarget } from '@/runtime/runtime-rpc-client'
 import { beginStructuredAgentSessionTabClose } from '@/runtime/structured-agent-session-tab-retirement'
@@ -128,7 +128,7 @@ export function createTabsCloseActions(
           (current.tabsByWorktree[worktreeId] ?? []).length === 0 &&
           (current.browserTabsByWorktree[worktreeId] ?? []).length === 0 &&
           !current.openFiles.some((file) => file.worktreeId === worktreeId) &&
-          !collectLeavingWorktreeIds(current.deleteStateByWorktreeId).has(worktreeId)
+          !isWorktreeLeaving(current.deleteStateByWorktreeId, worktreeId)
         return {
           unifiedTabsByWorktree: { ...current.unifiedTabsByWorktree, [worktreeId]: nextTabs },
           groupsByWorktree: {

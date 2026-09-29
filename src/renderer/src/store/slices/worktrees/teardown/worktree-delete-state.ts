@@ -41,6 +41,14 @@ export function collectLeavingWorktreeIds(
   return ids
 }
 
+/** Every "last tab closed" deselect checks this: the delete owns focus once its shells exit. */
+export function isWorktreeLeaving(
+  states: Readonly<Record<string, WorktreeDeleteState>>,
+  worktreeId: string
+): boolean {
+  return collectLeavingWorktreeIds(states).has(worktreeId)
+}
+
 export function removeDeleteStatesForWorktreeIds(
   states: Readonly<Record<string, WorktreeDeleteState>>,
   worktreeIds: ReadonlySet<string>

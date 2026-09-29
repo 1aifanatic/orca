@@ -39,6 +39,8 @@ vi.mock('@/lib/agent-status', async (importOriginal) => {
 })
 
 import { installActiveWorktreeRemovalHandoff } from '@/lib/active-worktree-removal-handoff'
+import { closeTerminalTab } from '@/components/terminal/terminal-tab-actions'
+import { createWorkspaceTabCloseCommands } from '@/components/tab-group/workspace-tab-close-commands'
 
 const mockApi = createStoreCascadesMockApi()
 
@@ -108,6 +110,16 @@ describe('closing the last tab of the viewed workspace', () => {
 
     expect(store.getState().activeWorktreeId).toBe(VIEWED)
   })
+
+  it('keeps the selection when a split-group close finds the deleting workspace empty', () => {
+    const { store, tabId } = storeViewingWorkspaceWithOneTerminal()
+    store.getState().markWorktreesDeleting([VIEWED])
+    store.getState().closeTab(tabId)
+
+    createWorkspaceTabCloseCommands({ worktreeId: VIEWED, groupTabs: [] }).leaveWorktreeIfEmpty()
+
+    expect(store.getState().activeWorktreeId).toBe(VIEWED)
+  })
 })
 
 describe('in-Orca delete of the viewed workspace', () => {
@@ -117,6 +129,21 @@ describe('in-Orca delete of the viewed workspace', () => {
     // The backend stops the workspace's shells before git runs; the pane closes its tab on exit.
     mockApi.worktrees.remove.mockImplementationOnce(async () => {
       store.getState().closeTab(tabId)
+    })
+
+    const result = await store.getState().removeWorktree({ id: VIEWED, executionHostId: null })
+    await flush()
+
+    expect(result.ok).toBe(true)
+    expect(store.getState().activeWorktreeId).toBe(SIBLING)
+  })
+
+  it('moves to the sibling when the pane closes its tab on the delete-owned shell exit', async () => {
+    const { store, tabId } = storeViewingWorkspaceWithOneTerminal()
+    uninstall = installActiveWorktreeRemovalHandoff()
+    // The real pane path: a proven exit closes the tab through closeTerminalTab.
+    mockApi.worktrees.remove.mockImplementationOnce(async () => {
+      closeTerminalTab(tabId, { reason: 'pty-exit', lifecyclePtyId: 'pty-1' })
     })
 
     const result = await store.getState().removeWorktree({ id: VIEWED, executionHostId: null })
