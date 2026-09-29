@@ -173,6 +173,48 @@ describe("a Stop's queue pause", () => {
   })
 })
 
+describe('a pause is over the cards it paused', () => {
+  it('a Stop over an empty queue pauses nothing: a card typed during a later mail turn drains', async () => {
+    const working = await rig.workingSend()
+    await rig.stop()
+    await rig.settleAccepted(working, 'stopped')
+    const mail = rig.send('coordinator mail', undefined, { internal: true })
+    await mail.result
+    await eventually(async () =>
+      expect((await rig.submission(mail.id))?.handedOverAt).toBeDefined()
+    )
+    const followUp = await queuedDraft('typed during the mail turn')
+    await rig.settleAccepted(mail.id, 'mail')
+    await eventually(async () => expect(await rig.handoff(followUp)).toBeDefined())
+    expect(await rig.queuePause()).toBeNull()
+  })
+
+  it('a Stop over an empty queue pauses nothing: a correction typed before the turn ends drains', async () => {
+    const working = await rig.workingSend()
+    await rig.stop()
+    const correction = await queuedDraft('typed right after the stop')
+    await rig.settleAccepted(working, 'stopped')
+    await eventually(async () => expect(await rig.handoff(correction)).toBeDefined())
+  })
+
+  it('deleting the last paused card ends the pause, so a card typed later is not held by it', async () => {
+    const working = await rig.workingSend()
+    const only = await queuedDraft('paused, then deleted')
+    await rig.stop()
+    await rig.settleAccepted(working, 'stopped')
+    expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
+    expect(await rig.deleteQueued(only)).toMatchObject({ ok: true, value: { deleted: true } })
+    const mail = rig.send('coordinator mail', undefined, { internal: true })
+    await mail.result
+    await eventually(async () =>
+      expect((await rig.submission(mail.id))?.handedOverAt).toBeDefined()
+    )
+    const later = await queuedDraft('typed during the mail turn')
+    await rig.settleAccepted(mail.id, 'mail')
+    await eventually(async () => expect(await rig.handoff(later)).toBeDefined())
+  })
+})
+
 describe("a restart's pause", () => {
   it("once a person's turn ends it, stays ended when the conversation reopens", async () => {
     const working = await rig.workingSend()

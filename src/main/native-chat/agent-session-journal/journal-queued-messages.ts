@@ -96,30 +96,36 @@ export class JournalQueuedMessages {
     return queuedMessagesSettledByOp(this.deps.database().db, this.deps.sessionId, settledByOp)
   }
 
+  /** `pausedBy`: the queue is paused in the SAME transaction as this card lands
+   *  (a /clear's carry), so the drain never sees it unpaused and no pause fact
+   *  exists without a card under it. */
   insert(input: {
     messageId: string
     body: AgentJournalMessageItem
     fingerprint: string
     hostInstance: string
+    pausedBy?: QueuePauseReason
   }): Promise<QueuedMessageRow> {
-    return this.deps.serialize(async () => {
-      assertJournalWritable(this.deps.readOnly(), this.deps.sessionId)
-      const { db } = this.deps.database()
-      const existing = getQueuedMessage(db, this.deps.sessionId, input.messageId)
-      if (existing) {
-        // One id, one draft: admission replays a recorded operation before it
-        // gets here, so an existing row is the same accept landing twice.
-        return existing
-      }
-      const row = insertQueuedMessage(db, {
-        ...input,
-        sessionId: this.deps.sessionId,
-        now: this.deps.now()
-      })
-      this.changeRevision++
-      this.deps.committed()
-      return row
-    })
+    const { pausedBy, ...draft } = input
+    const { sessionId } = this.deps
+    let inserted = false
+    return this.transact(
+      (db) => {
+        const existing = getQueuedMessage(db, sessionId, draft.messageId)
+        if (existing) {
+          // One id, one draft: admission replays a recorded operation before it
+          // gets here, so an existing row is the same accept landing twice.
+          return existing
+        }
+        inserted = true
+        const row = insertQueuedMessage(db, { ...draft, sessionId, now: this.deps.now() })
+        if (pausedBy) {
+          recordQueuePause(db, { sessionId, fact: this.pauseFact(pausedBy) })
+        }
+        return row
+      },
+      () => inserted
+    )
   }
 
   /** Hold one waiting draft whose conversion failed. Stored on the row, so it
@@ -143,14 +149,18 @@ export class JournalQueuedMessages {
     return this.paused.fact
   }
 
-  /** A Stop (or a /clear's carry) took effect here: the queue is paused from this position on. */
+  /** A Stop took effect here: the queue is paused from this position on. */
   recordPause(reason: QueuePauseReason): Promise<void> {
-    const { epoch, lastSequence: sequence } = this.deps.state()
-    const fact: QueuePauseFact = { reason, epoch, sequence, recordedAt: this.deps.now() }
+    const fact = this.pauseFact(reason)
     return this.transact(
       (db) => recordQueuePause(db, { sessionId: this.deps.sessionId, fact }),
       () => true
     )
+  }
+
+  private pauseFact(reason: QueuePauseReason): QueuePauseFact {
+    const { epoch, lastSequence: sequence } = this.deps.state()
+    return { reason, epoch, sequence, recordedAt: this.deps.now() }
   }
 
   /** Ends the queue's pause: `stop` retires that Stop fact (never a later one),

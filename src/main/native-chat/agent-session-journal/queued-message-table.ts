@@ -12,6 +12,7 @@ import type { UnreadAgentSessionFailureFact } from '../../../shared/agent-sessio
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
 import { rejectedDraftSettlement } from './journal-dispatch-settlement'
 import { readStoredRejectionFact } from './journal-dispatch-reducer'
+import { retireQueuePauseIfEmpty } from './queued-message-pause-table'
 
 export type QueuedMessageState = 'waiting' | 'dispatched' | 'returned' | 'withdrawn'
 
@@ -158,7 +159,11 @@ export function consumeQueuedMessageInTransaction(
       input.messageId,
       input.expect
     )
-  return Number(changed.changes ?? 0) === 1
+  if (Number(changed.changes ?? 0) !== 1) {
+    return false
+  }
+  retireQueuePauseIfEmpty(db, input.sessionId)
+  return true
 }
 
 /** Compare-and-transition unsettled rows (waiting ∪ returned) to withdrawn
@@ -193,6 +198,9 @@ export function withdrawQueuedMessages(
       settledAt: input.now,
       settledByOp: input.settledByOp
     })
+  }
+  if (withdrawn.length > 0) {
+    retireQueuePauseIfEmpty(db, input.sessionId)
   }
   return withdrawn
 }

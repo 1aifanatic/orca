@@ -655,6 +655,28 @@ describe('/clear', () => {
     )
   })
 
+  it('a carry whose insert fails leaves no pause over the empty replacement', async () => {
+    await pausedDrafts()
+    const warned = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const insert = vi
+      .spyOn(JournalQueuedMessages.prototype, 'insert')
+      .mockRejectedValueOnce(new Error('disk full'))
+    let replacementId: string | undefined
+    try {
+      const cleared = await clear(hostTestOperationId())
+      replacementId = cleared.ok ? cleared.value.replacementSessionId : undefined
+    } finally {
+      insert.mockRestore()
+      warned.mockRestore()
+    }
+    if (!replacementId) {
+      throw new Error('expected a replacement session')
+    }
+    expect(await drafts(replacementId)).toHaveLength(0)
+    const journal = host.collaboratorsForTests().sessions.get(replacementId)?.journal
+    expect(journal?.queuedMessages.pause()).toBeNull()
+  })
+
   it('a returned card carries over as a plain waiting draft on the paused replacement', async () => {
     const working = await workingSend()
     const queued = await send('refused then cleared', 'queue-if-active').result

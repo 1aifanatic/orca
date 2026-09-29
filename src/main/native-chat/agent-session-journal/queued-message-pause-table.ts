@@ -78,3 +78,18 @@ export function clearQueuePause(
       .run(input.sessionId, input.fact.epoch, input.fact.sequence).changes ?? 0
   )
 }
+
+/** A pause is over the cards it paused: once no card is left waiting or returned,
+ *  the fact goes too, in the same transaction as the write that emptied the queue,
+ *  so it can never outlive them and catch a card typed long after. */
+export function retireQueuePauseIfEmpty(db: Database.Database, sessionId: string): number {
+  return Number(
+    db
+      .prepare(
+        `DELETE FROM queued_message_pauses WHERE session_id = ?
+           AND NOT EXISTS (SELECT 1 FROM queued_messages
+                           WHERE session_id = ? AND state IN ('waiting', 'returned'))`
+      )
+      .run(sessionId, sessionId).changes ?? 0
+  )
+}

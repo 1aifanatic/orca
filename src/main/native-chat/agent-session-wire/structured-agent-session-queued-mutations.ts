@@ -78,8 +78,9 @@ export async function withdrawQueuedMessagesForOperation(
  * cards stay visible where the user now is. The replacement's queue starts
  * paused ('cleared'), lifted exactly like a Stop's: the cards were written for the context /clear just
  * discarded, so they wait for the user's next turn there, or Resume, rather than
- * sending into the fresh context unasked. The pause is recorded before the first
- * insert, so the drain never sees a carried card unpaused. Runs after the
+ * sending into the fresh context unasked. Each card lands with the pause in one
+ * transaction, so the drain never sees a carried card unpaused and no pause is
+ * left over an empty queue if an insert fails. Runs after the
  * replacement's attach succeeded and before the clear commits. Each insert is
  * idempotent on (session, message), so the clear's rerun-while-prepared replays
  * it safely; the source rows are then tombstoned. Bookkeeping around the clear:
@@ -106,7 +107,6 @@ export async function carryQueuedMessagesToClearReplacement(
     if (!replacement) {
       throw new Error('the replacement journal is not open')
     }
-    await replacement.queuedMessages.recordPause('cleared')
     for (const row of rows) {
       // A returned card carries over as a plain waiting draft — its refusal
       // belonged to the source's submissions. The fingerprint is re-scoped to the
@@ -115,7 +115,8 @@ export async function carryQueuedMessagesToClearReplacement(
         messageId: row.messageId,
         body: row.body,
         fingerprint: queuedMessageFingerprint(input.replacementSessionId, row.body),
-        hostInstance: structuredAgentSessionHostInstance()
+        hostInstance: structuredAgentSessionHostInstance(),
+        pausedBy: 'cleared'
       })
     }
     await withdrawQueuedMessagesForOperation(ctx.journal, {
