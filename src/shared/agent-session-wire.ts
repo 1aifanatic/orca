@@ -1,3 +1,4 @@
+import type { UnreadAgentSessionFailureFact } from './agent-session-failure'
 import type {
   AgentSessionBackgroundTask,
   AgentSessionBackgroundTaskState
@@ -378,10 +379,12 @@ export type AgentSessionQueuedMessage = {
    *  client must treat an unknown marker as a plain pause, so a newer host can
    *  add one. */
   pausedReason?: AgentSessionQueuedMessagePausedReason
-  /** The stored effective rejection. Clients decide showability with
-   *  `dispatchRejectionReasonIsInternal`, exactly as for rejected submissions;
-   *  `dispatchWasWithdrawn` marks one a Stop withdrew before it reached the agent. */
+  /** A returned card's refusal: the `reason` and `rejection` pair its submission settled with.
+   *  Clients classify it from `returnedRejection` (falling back to `returnedReason` when a host
+   *  wrote no fact) exactly as they classify a rejected submission's `rejection`, e.g.
+   *  `classifyDispatchRejection({ reason: returnedReason, rejection: returnedRejection })`. */
   returnedReason?: string | null
+  returnedRejection?: UnreadAgentSessionFailureFact
 }
 
 /** No body: the card leaving the published list IS the outcome, so a lost

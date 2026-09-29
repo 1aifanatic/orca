@@ -8,7 +8,9 @@
 // rewind cannot delete.
 
 import type Database from '../../sqlite/sync-database'
+import type { UnreadAgentSessionFailureFact } from '../../../shared/agent-session-failure'
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
+import { readStoredRejectionFact } from './journal-dispatch-reducer'
 
 export type QueuedMessageState = 'waiting' | 'dispatched' | 'returned' | 'withdrawn'
 
@@ -37,7 +39,9 @@ export type QueuedMessageRow = {
   /** Non-null holds a waiting draft from auto-sending; typed values in
    *  `QueuedMessageHoldReason`, unknown strings read as a plain hold. */
   holdReason: string | null
+  /** A returned card's refusal, mirroring its submission's `reason` and `rejection` pair. */
   returnedReason: string | null
+  returnedRejection: UnreadAgentSessionFailureFact | null
   settledAt: number | null
   /** The operation ledger's caller-scoped key, making settled rows mutation receipts. */
   settledByOp: string | null
@@ -64,6 +68,7 @@ CREATE TABLE IF NOT EXISTS queued_messages (
   state           TEXT    NOT NULL,
   hold_reason     TEXT,
   returned_reason TEXT,
+  returned_rejection TEXT,
   settled_at      INTEGER,
   settled_by_op   TEXT,
   consumed_as     TEXT,
@@ -75,7 +80,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS queued_messages_consumed_as
 }
 
 const COLUMNS =
-  'session_id, message_id, position, body_json, fingerprint, created_at, host_instance, state, hold_reason, returned_reason, settled_at, settled_by_op, consumed_as'
+  'session_id, message_id, position, body_json, fingerprint, created_at, host_instance, state, hold_reason, returned_reason, returned_rejection, settled_at, settled_by_op, consumed_as'
 
 export function insertQueuedMessage(
   db: Database.Database,
@@ -98,7 +103,7 @@ export function insertQueuedMessage(
   const position = Number(highest?.p ?? 0) + 1
   db.prepare(
     `INSERT INTO queued_messages (${COLUMNS})
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'waiting', ?, NULL, NULL, NULL, NULL)`
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'waiting', ?, NULL, NULL, NULL, NULL, NULL)`
   ).run(
     input.sessionId,
     input.messageId,
@@ -120,6 +125,7 @@ export function insertQueuedMessage(
     state: 'waiting',
     holdReason: input.holdReason ?? null,
     returnedReason: null,
+    returnedRejection: null,
     settledAt: null,
     settledByOp: null,
     consumedAs: null
@@ -255,15 +261,27 @@ export function withdrawQueuedMessages(
  */
 export function returnDispatchedQueuedMessage(
   db: Database.Database,
-  input: { sessionId: string; consumedRef: string; reason: string | null; now: number }
+  input: {
+    sessionId: string
+    consumedRef: string
+    reason: string | null
+    rejection: UnreadAgentSessionFailureFact | undefined
+    now: number
+  }
 ): boolean {
   const changed = db
     .prepare(
       `UPDATE queued_messages
-       SET state = 'returned', returned_reason = ?, settled_at = ?
+       SET state = 'returned', returned_reason = ?, returned_rejection = ?, settled_at = ?
        WHERE session_id = ? AND state = 'dispatched' AND COALESCE(consumed_as, message_id) = ?`
     )
-    .run(input.reason, input.now, input.sessionId, input.consumedRef)
+    .run(
+      input.reason,
+      input.rejection ? JSON.stringify(input.rejection) : null,
+      input.now,
+      input.sessionId,
+      input.consumedRef
+    )
   return Number(changed.changes ?? 0) > 0
 }
 
@@ -282,56 +300,6 @@ export function queuedMessagesSettledByOp(
     .flatMap((row) => toStoredRow(row) ?? [])
 }
 
-/** What the loaded journal says about a dispatched draft's consumed submission. */
-export type QueuedMessageSubmissionVerdict =
-  /** Still owed an answer — a crash leftover the delivery loop will reject; keep the row. */
-  | 'pending'
-  /** `accepted` or `unknown`: terminal and not refused. */
-  | 'terminal-not-refused'
-  /** Absent from the current epoch. */
-  | 'absent'
-  /** Effectively rejected; the open-time repair returns it rather than pruning. */
-  | 'rejected'
-
-/**
- * Retention: `withdrawn` tombstones live for the operation-replay window;
- * a `dispatched` row only once its consumed submission is terminal-and-not-
- * refused or absent AND the window has passed — never while pending, so a slow
- * refusal can still return it. `waiting` and `returned` rows are never pruned.
- */
-export function pruneQueuedMessages(
-  db: Database.Database,
-  input: {
-    sessionId: string
-    now: number
-    replayWindowMs: number
-    submissionVerdict: (consumedRef: string) => QueuedMessageSubmissionVerdict
-  }
-): number {
-  const cutoff = input.now - input.replayWindowMs
-  const tombstones = db
-    .prepare(
-      `DELETE FROM queued_messages
-     WHERE session_id = ? AND state = 'withdrawn' AND settled_at IS NOT NULL AND settled_at < ?`
-    )
-    .run(input.sessionId, cutoff)
-  let pruned = Number(tombstones.changes ?? 0)
-  for (const row of listQueuedMessages(db, input.sessionId)) {
-    if (row.state !== 'dispatched' || row.settledAt === null || row.settledAt >= cutoff) {
-      continue
-    }
-    const verdict = input.submissionVerdict(row.consumedAs ?? row.messageId)
-    if (verdict === 'terminal-not-refused' || verdict === 'absent') {
-      db.prepare('DELETE FROM queued_messages WHERE session_id = ? AND message_id = ?').run(
-        input.sessionId,
-        row.messageId
-      )
-      pruned += 1
-    }
-  }
-  return pruned
-}
-
 function toStoredRow(row: unknown): QueuedMessageRow | null {
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: rows come from this file's own SELECTs, which name exactly these columns; better-sqlite3 types them as unknown.
   const record = row as {
@@ -345,6 +313,7 @@ function toStoredRow(row: unknown): QueuedMessageRow | null {
     state: string
     hold_reason: string | null
     returned_reason: string | null
+    returned_rejection: string | null
     settled_at: number | null
     settled_by_op: string | null
     consumed_as: string | null
@@ -378,8 +347,21 @@ function toStoredRow(row: unknown): QueuedMessageRow | null {
     state,
     holdReason: record.hold_reason,
     returnedReason: record.returned_reason,
+    returnedRejection: storedRejection(record.returned_rejection),
     settledAt: record.settled_at,
     settledByOp: record.settled_by_op,
     consumedAs: record.consumed_as
+  }
+}
+
+function storedRejection(json: string | null): UnreadAgentSessionFailureFact | null {
+  if (json === null) {
+    return null
+  }
+  try {
+    return readStoredRejectionFact(JSON.parse(json)) ?? null
+  } catch {
+    // The refusal stays readable from `returned_reason`; a bad fact must not lose the card.
+    return null
   }
 }
