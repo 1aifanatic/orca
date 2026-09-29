@@ -6,7 +6,13 @@ import {
 
 const { spawnMock, spawnSyncMock } = vi.hoisted(() => ({
   spawnMock: vi.fn(),
-  spawnSyncMock: vi.fn(() => ({ status: 1, signal: null, stdout: '', stderr: '', pid: 0 }))
+  spawnSyncMock: vi.fn<(program: string, args: readonly string[]) => unknown>(() => ({
+    status: 1,
+    signal: null,
+    stdout: '',
+    stderr: '',
+    pid: 0
+  }))
 }))
 
 // Why the lowest layer: nothing below this helper may start a process, whichever wrapper it uses.
