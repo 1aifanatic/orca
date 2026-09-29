@@ -18,6 +18,7 @@ import {
   agentSessionFailureWords,
   type AgentSessionFailureWordsContext
 } from '../../../shared/agent-session-failure-words'
+import { carryQueuedMessagesToClearReplacement } from './structured-agent-session-queued-mutations'
 
 /** A command's `error` is the sentence its row shows. */
 export function conversationCommandFailure(
@@ -116,6 +117,16 @@ export function runStructuredConversationCommand(
             command: completed,
             claimKeyId: context.deps.claimKeyId,
             now: context.now()
+          })
+          // Carry the source's drafts to the replacement, the same for every client version:
+          // the cards stay visible where the user now is, and no text rides the wire.
+          // Bookkeeping — a failure is reported and never fails the clear.
+          await carryQueuedMessagesToClearReplacement(ctx, {
+            replacementSessionId: completed.replacementSessionId,
+            openReplacementJournal: async () =>
+              (await context.openConversation(completed.replacementSessionId))?.journal,
+            callerKey: caller.callerKey,
+            operationId: clientOperationId
           })
           return { ok: true, value: completed }
         }
