@@ -92,10 +92,11 @@ export function createRemoveWorktree(
 
     try {
       // Why: forget-local touches no remote, so there's no archive hook to run or trust prompt needed.
+      // Why `get`: same-repo local deletes start together, and one approval must cover the rest.
       const skipArchive = forgetLocalOnly
         ? true
         : (await ensureHooksConfirmed(
-            get(),
+            get,
             getRepoIdFromWorktreeId(worktreeId),
             'archive',
             hostId,
