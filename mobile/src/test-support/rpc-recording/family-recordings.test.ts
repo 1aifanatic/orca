@@ -6,13 +6,7 @@ import { REPLY_MATRIX_NORMAL_RESULT_INVENTORY } from './reply-matrix-normal-resu
 import { runRecording } from './run-recording'
 import { pilotMountAdapters } from './pilot-mount-adapters'
 import { vitestRecordingScheduler } from './vitest-recording-scheduler'
-import {
-  compareGolden,
-  goldenBytes,
-  goldenRecording,
-  readGolden,
-  writeGolden
-} from './golden-recording'
+import { expectGoldenFile, goldenBytes, goldenRecording, writeGolden } from './golden-recording'
 import type { Recording, RecordingScenario } from './recording-scenario'
 import { determinismRuns } from './determinism-runs'
 
@@ -47,7 +41,7 @@ async function certify(id: string, scenarios: RecordingScenario[]) {
     if (process.env.RPC_FOUNDATION_MODE === '--record') {
       await writeGolden(directory, golden, '--record')
     } else {
-      compareGolden(readGolden(directory, id), golden)
+      await expectGoldenFile(directory, id, golden)
     }
   }
 }

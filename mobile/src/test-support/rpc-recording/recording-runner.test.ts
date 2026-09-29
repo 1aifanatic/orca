@@ -17,6 +17,7 @@ import { ScriptedRpcTransport } from './scripted-rpc-transport'
 import { vitestRecordingScheduler } from './vitest-recording-scheduler'
 import {
   compareGolden,
+  expectGoldenFile,
   GOLDEN_FORMAT_VERSION,
   goldenBytes,
   readGolden,
@@ -129,7 +130,7 @@ describe('recording boundaries', () => {
     }
   })
 
-  it('writes only in record mode and names the command for a missing, stale or hand-merged golden', async () => {
+  it('writes only in record mode and names the command for a missing or stale golden', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'rpc-recording-'))
     const golden = sampleGolden('test')
     try {
@@ -150,15 +151,48 @@ describe('recording boundaries', () => {
       expect(() => readGolden(directory, 'stale')).toThrow(
         `format version 5; this reader requires ${GOLDEN_FORMAT_VERSION}`
       )
+    } finally {
+      rmSync(directory, { recursive: true })
+    }
+  })
+
+  it('replays only a file that is exactly what rpc:record writes for the run', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'rpc-recording-'))
+    const golden = sampleGolden('exact')
+    const path = join(directory, 'exact.json')
+    try {
+      await writeGolden(directory, golden, '--record')
+      const written = readFileSync(path, 'utf8')
+      await expectGoldenFile(directory, 'exact', golden)
+      const sameRecording =
+        /holds the same recording but is not the file rpc:record writes for it[\s\S]*pnpm --dir mobile rpc:record exact/
+      // Each edit below decodes to the same recording, so only the file text can catch it.
+      writeFileSync(path, written.replace('{\n', '{\n  "baseline": "abc123",\n'))
+      await expect(expectGoldenFile(directory, 'exact', golden)).rejects.toThrow(sameRecording)
       writeFileSync(
-        join(directory, 'merged.json'),
-        JSON.stringify({
-          ...JSON.parse(readFileSync(join(directory, 'test.json'), 'utf8')),
-          baseline: 'abc123'
-        })
+        path,
+        written.replace(
+          '"goldenFormatVersion": 6,\n  "operation": "op",',
+          '"operation": "op",\n  "goldenFormatVersion": 6,'
+        )
       )
-      expect(() => readGolden(directory, 'merged')).toThrow(
-        'Golden merged has keys a recording never writes: baseline.'
+      await expect(expectGoldenFile(directory, 'exact', golden)).rejects.toThrow(sameRecording)
+      const file = goldenFile(golden)
+      writeFileSync(
+        path,
+        JSON.stringify({ ...file, values: { ...file.values, [valueHash('unread')]: 'unread' } })
+      )
+      await expect(expectGoldenFile(directory, 'exact', golden)).rejects.toThrow(
+        'Golden pool holds unreferenced values'
+      )
+      writeFileSync(path, written)
+      const moved = sampleGolden('exact')
+      moved.recording.checkpoints[0]!.observation.state = { phase: 'busy' }
+      await expect(expectGoldenFile(directory, 'exact', moved)).rejects.toThrow(
+        /Recording differs: exact\n {2}checkpoint settled field state\.phase/
+      )
+      await expect(expectGoldenFile(directory, 'absent', sampleGolden('absent'))).rejects.toThrow(
+        'No golden recorded for absent'
       )
     } finally {
       rmSync(directory, { recursive: true })

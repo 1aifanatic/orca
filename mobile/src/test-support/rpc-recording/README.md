@@ -147,11 +147,10 @@ recording branch's own commit, which a squash merge then made unreachable. Every
 rewrote all 787 headers and needed a follow-up pull request to repin main; version 6 dropped all of
 it. `rpc:diff` still reads the old files, so a diff across the change is a real diff.
 
-`compareGolden` reports every difference in one failure rather than the first: the identity fields
+A failed replay reports every difference at once rather than the first: the identity fields
 by name, the checkpoint list, then each (checkpoint, field, JSON path) with both resolved values,
-grouped where an append-only field re-states the same moved entry at later checkpoints. The field
-compares ignore key order, so the committed bytes are compared last. The failure ends with the
-command that re-records that golden.
+grouped where an append-only field re-states the same moved entry at later checkpoints. The failure
+ends with the command that re-records that golden.
 
 `mutants/` is unreachable from the recording drivers by rule, not by convention:
 `mutants/mutant-seam.test.ts` walks the static import graph from the two drivers and fails if any
@@ -219,12 +218,14 @@ early request every downstream checkpoint re-states — touches the same 16 file
 under version 2 that is ±17,100 lines and 1.03 MB of diff, and under version 3 ±3,764 lines and
 0.20 MB, because a moved entry no longer rewrites every field value that contains it.
 
-`readGolden` refuses any other `goldenFormatVersion` and any top-level key a recording never writes,
-checks that every pooled entry hashes to its own key and that no entry sits in the pool unreferenced
-— content addressing is what keeps an entry shared across checkpoints honest, and an unread entry
-would be content in the file that nothing compares. It then resolves hashes back to values, and
-`compareGolden` reports the scenario, the checkpoint id, the field, the JSON path inside it, and
-both resolved values.
+Replay passes only if the committed file is exactly the text `rpc:record` would write for the run,
+so nothing the file carries goes uncompared: a leftover header key, a stale pool entry, reordered
+keys or a hand edit all fail with the re-record command. When the text differs, `readGolden` decodes
+the file for the report: it refuses any other `goldenFormatVersion`, checks that every pooled entry
+hashes to its own key and that no entry sits in the pool unreferenced, and resolves hashes back to
+values; the report names the scenario, the checkpoint id, the field, the JSON path inside it, and
+both resolved values, or says every field matches and only the file text differs. `rpc:diff` decodes
+leniently instead, so it still reads the old formats.
 
 ### Prelude checkpoints
 
@@ -237,9 +238,9 @@ the same state through different inputs is evidence. Sibling schedules already d
 prefix, so they are unchanged.
 
 Nothing about a shared prelude is unverified. The `.prelude` scenario's checkpoints live in the same
-golden as the variants that start after them, and `compareGolden` walks every checkpoint in the
-file, so changing the prelude fails the golden it belongs to. The value pool does not weaken that:
-it is per-file and content-addressed, so a prelude entry a later checkpoint re-states is stored once
+golden as the variants that start after them, and replay compares every checkpoint in the file,
+so changing the prelude fails the golden it belongs to. The value pool does not weaken that: it is
+per-file and content-addressed, so a prelude entry a later checkpoint re-states is stored once
 and any change to it moves the hash in every checkpoint that reads it.
 
 Family matrices and schedule recordings retain both boundaries. Matrices execute

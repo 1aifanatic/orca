@@ -17,14 +17,6 @@ import type { Recording, RecordingScenario } from './recording-scenario'
 export const GOLDEN_FORMAT_VERSION = 6
 /** How many grouped differences one failure prints in full. */
 const REPORTED_DIFFERENCES = 8
-const GOLDEN_FILE_KEYS = new Set([
-  'goldenFormatVersion',
-  'operation',
-  'family',
-  'namedDeltas',
-  'values',
-  'recording'
-])
 export type GoldenRecording = {
   goldenFormatVersion: number
   operation: string
@@ -72,14 +64,6 @@ export function readGolden(directory: string, id: string): GoldenRecording {
       `Golden ${id} has format version ${JSON.stringify(version)}; this reader requires ${GOLDEN_FORMAT_VERSION}.\n${recordHint(id)}`
     )
   }
-  // Decoding drops any other top-level key, so one left behind (a hand-merged old header) would sit
-  // in the file uncompared.
-  const unknownKeys = Object.keys(file ?? {}).filter((key) => !GOLDEN_FILE_KEYS.has(key))
-  if (unknownKeys.length) {
-    throw new Error(
-      `Golden ${id} has keys a recording never writes: ${unknownKeys.join(', ')}.\n${recordHint(id)}`
-    )
-  }
   return { goldenFormatVersion: GOLDEN_FORMAT_VERSION, ...decodeGoldenFile(file, id) }
 }
 export async function writeGolden(
@@ -91,12 +75,18 @@ export async function writeGolden(
     throw new Error('Golden writes require --record')
   }
   mkdirSync(directory, { recursive: true })
-  const path = goldenPath(directory, golden.recording.scenario)
-  const result = await format(path, goldenBytes(golden), { printWidth: 100, trailingComma: 'none' })
+  writeFileSync(goldenPath(directory, golden.recording.scenario), await goldenFileText(golden))
+}
+/** The exact file text `rpc:record` writes for a golden. */
+async function goldenFileText(golden: GoldenRecording): Promise<string> {
+  const result = await format(`${golden.recording.scenario}.json`, goldenBytes(golden), {
+    printWidth: 100,
+    trailingComma: 'none'
+  })
   if (result.errors.length) {
     throw new Error('Cannot format golden')
   }
-  writeFileSync(path, result.code)
+  return result.code
 }
 function goldenPath(directory: string, id: string): string {
   if (!/^[a-z0-9][a-z0-9._-]*$/.test(id)) {
@@ -104,8 +94,43 @@ function goldenPath(directory: string, id: string): string {
   }
   return join(directory, `${id}.json`)
 }
+/**
+ * Replay passes only if the committed file is exactly what `rpc:record` would write for this run, so
+ * nothing the file carries (a leftover key, a stale pool entry, a hand edit) goes uncompared.
+ */
+export async function expectGoldenFile(
+  directory: string,
+  id: string,
+  actual: GoldenRecording
+): Promise<void> {
+  const path = goldenPath(directory, id)
+  if (existsSync(path) && readFileSync(path, 'utf8') === (await goldenFileText(actual))) {
+    return
+  }
+  const problems = recordingProblems(readGolden(directory, id), actual)
+  throw problems.length
+    ? recordingDiffers(id, problems)
+    : new Error(
+        `Golden ${id} holds the same recording but is not the file rpc:record writes for it (a hand edit, a leftover key, a stale pool entry, or keys in another order).\n${recordHint(id)}`
+      )
+}
+/** Value-based compare for a run checked against decoded values rather than a committed file. */
 export function compareGolden(expected: GoldenRecording, actual: GoldenRecording): void {
-  const scenario = actual.recording.scenario
+  const problems = recordingProblems(expected, actual)
+  // The field compares ignore key order and the re-encoded bytes do not, so the bytes decide last.
+  if (!problems.length && goldenBytes(expected) !== goldenBytes(actual)) {
+    problems.push('encoding: every field matches but the encoded bytes do not')
+  }
+  if (problems.length) {
+    throw recordingDiffers(actual.recording.scenario, problems)
+  }
+}
+function recordingDiffers(scenario: string, problems: readonly string[]): Error {
+  return new Error(
+    `Recording differs: ${scenario}\n  ${problems.join('\n  ')}\n${recordHint(scenario)}`
+  )
+}
+function recordingProblems(expected: GoldenRecording, actual: GoldenRecording): string[] {
   const problems: string[] = identityDifferences(expected, actual).map(
     (moved) =>
       `${moved.field}\n    expected ${JSON.stringify(moved.expected)}\n    actual   ${JSON.stringify(moved.actual)}`
@@ -132,13 +157,5 @@ export function compareGolden(expected: GoldenRecording, actual: GoldenRecording
   if (differences.length > REPORTED_DIFFERENCES) {
     problems.push(`… ${differences.length - REPORTED_DIFFERENCES} more differences`)
   }
-  // The field compares ignore key order and the re-encoded bytes do not, so the bytes decide last.
-  if (!problems.length && goldenBytes(expected) !== goldenBytes(actual)) {
-    problems.push('encoding: every field matches but the file bytes do not')
-  }
-  if (problems.length) {
-    throw new Error(
-      `Recording differs: ${scenario}\n  ${problems.join('\n  ')}\n${recordHint(scenario)}`
-    )
-  }
+  return problems
 }
