@@ -21,7 +21,6 @@ import { resolveLocalProjectRuntimeForWorktreeId } from '../local-project-runtim
 import { resolveBareAgentLaunchCommand } from './runtime-agent-launch-resolution'
 import { buildAgentStartupPlan } from '../../shared/tui-agent-startup'
 import { resolveAgentStartupPlanInputs } from '../../shared/agent-startup-plan-inputs'
-import { revokeClaudeWorktreeTrustForRemoval } from '../claude/claude-worktree-trust-lifecycle'
 import { agentStartedTelemetry } from '../agent-launch/agent-started-telemetry'
 
 export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWithRemoveManagedWorktree {
@@ -46,8 +45,6 @@ export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWith
   ): void {
     // Why: worktree IDs are path-derived and can be recreated, so removal must
     // purge history and process-local caches before the ID points at new state.
-    // Why: must read the worktree's provenance before its metadata is dropped below.
-    revokeClaudeWorktreeTrustForRemoval(store, worktreeId)
     const persistedHostId = store.getWorktreeMeta(worktreeId)?.hostId
     const repoId = splitWorktreeId(worktreeId)?.repoId
     const preservesSameIdOwner = Boolean(
@@ -245,8 +242,6 @@ export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWith
     if (opts.startupPrompt && startupPlan.followupPrompt) {
       throw new Error(`Agent ${agent} does not take a startup prompt on its launch command.`)
     }
-
-    await this.markWorkspaceTrustedForAgent(agent, workspace.connectionId, workspace.path)
 
     return {
       ...opts,

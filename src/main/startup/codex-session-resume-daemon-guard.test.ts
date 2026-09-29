@@ -20,7 +20,6 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('electron', () => ({ app: { getPath: vi.fn(() => '/tmp/orca-user-data') } }))
-vi.mock('../agent-trust-presets', () => ({ markCodexProjectTrusted: async () => {} }))
 vi.mock('../codex/hook-service', () => ({
   codexHookService: {
     installForLaunchPrep: mocks.installForLaunchPrep,
