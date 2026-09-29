@@ -6,8 +6,8 @@ const CODEX_HEADER_LINES = 6
 const CODEX_EMPTY_COMPOSER_RE = /^› ask codex to do anything\s*$/
 // Why not "working": reasoning summaries replace it, and a remapped key still ends this way.
 const CODEX_BUSY_STATUS_MARKER = 'to interrupt)'
-// Why 2: the status row sits right above the composer, at most a one-line tip between (120x40 corpus).
-const CODEX_STATUS_ROW_LINES = 2
+// Why only a tip: it is the one line Codex draws between its status row and the composer (120x40 corpus).
+const CODEX_STATUS_TIP_PREFIX = '└ tip:'
 
 // Why the header only: chat below it can mention "OpenAI Codex" or `model: loading`.
 function findCodexHeader(screen: string): { index: number; text: string } | null {
@@ -53,11 +53,11 @@ export function isCodexComposerReadyScreen(screen: string): boolean {
   return header === null || !CODEX_HEADER_LOADING_RE.test(header.text)
 }
 
-// Why only the rows above the composer: a finished answer can quote a status row verbatim.
+// Why only the row above the composer: a finished answer (or one above 0.158's timestamp) can quote it.
 function hasBusyStatusRowAbove(lines: readonly string[], composer: number): boolean {
-  return lines
-    .slice(0, composer)
-    .filter((line) => line.trim() !== '')
-    .slice(-CODEX_STATUS_ROW_LINES)
-    .some((line) => line.includes(CODEX_BUSY_STATUS_MARKER))
+  const above = lines.slice(0, composer).filter((line) => line.trim() !== '')
+  const row = above.at(-1)?.trimStart().startsWith(CODEX_STATUS_TIP_PREFIX)
+    ? above.at(-2)
+    : above.at(-1)
+  return row?.includes(CODEX_BUSY_STATUS_MARKER) ?? false
 }

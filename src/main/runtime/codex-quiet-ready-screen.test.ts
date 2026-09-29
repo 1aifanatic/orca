@@ -156,6 +156,24 @@ describe('Codex composer ready screen, frame by frame', () => {
     expect(isQuietReadyScreenBody('', 'codex', () => busy)).toBe(false)
   })
 
+  it("reads 0.158's turn timestamp above the composer as the end of a quoted status row", () => {
+    // Live 0.158 screen after a worker answered with a status row verbatim (STA-8834).
+    const screenLines = [
+      '  === TASK ===',
+      '  Reply with exactly this line and nothing else: • Working (0s • esc to interrupt) — then call worker_done.',
+      '• • Working (0s • esc to interrupt)',
+      '• Ran orca-dev orchestration send --from term_f496fcd2-a874-4fa6-a9bd-550a515ac928 --dispatch-capability dcap_PTgPpvf-B…',
+      '  └ Sent msg_ff7be3f25d7e',
+      '    + Show details',
+      '• • Working (0s • esc to interrupt)',
+      '  11:15 PM',
+      '› Ask Codex to do anything',
+      '  GPT-6-Sol medium · ~/orca-lanes/sta8834/live3/scratch · Report task outcome',
+      '  ? for shortcuts'
+    ]
+    expect(isQuietReadyScreenBody('', 'codex', () => screenLines)).toBe(true)
+  })
+
   it('settles a quiet composer under an answer asking "Would you like to proceed?"', () => {
     const screenLines = [
       '>_ OpenAI Codex (v0.158.0)',
