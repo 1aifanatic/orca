@@ -33,22 +33,51 @@ function buildPosixCommand(): string {
   ].join(' ')
 }
 
-function buildWindowsCommand(scriptPath: string): string {
+// Why an absolute, unquoted cmd.exe: under Codex's cmd.exe host a bare `cmd` is
+// found in the hook's cwd first (a repo's cmd.bat), and PowerShell reads a
+// quoted first token as an expression.
+const WINDOWS_DIRECTORY = /^[A-Za-z]:(?:\/[A-Za-z0-9_.~-]+)+$/
+const COMSPEC_IN_SYSTEM32 = /^(.+)\/system32\/cmd\.exe$/i
+// Why: still absolute when neither variable names a directory it can spell unquoted.
+const DEFAULT_WINDOWS_DIRECTORY = 'C:/Windows'
+
+type WindowsDirectoryEnv = Readonly<Record<string, string | undefined>>
+
+function toForwardSlashDirectory(path: string | undefined): string {
+  return (path ?? '').replaceAll('\\', '/').replace(/\/+$/, '')
+}
+
+function resolveWindowsDirectory(env: WindowsDirectoryEnv): string {
+  const systemRoot = toForwardSlashDirectory(env.SystemRoot)
+  if (WINDOWS_DIRECTORY.test(systemRoot)) {
+    return systemRoot
+  }
+  const comSpecRoot = COMSPEC_IN_SYSTEM32.exec(toForwardSlashDirectory(env.ComSpec))?.[1] ?? ''
+  return WINDOWS_DIRECTORY.test(comSpecRoot) ? comSpecRoot : DEFAULT_WINDOWS_DIRECTORY
+}
+
+function buildWindowsCommand(scriptPath: string, env: WindowsDirectoryEnv): string {
   const forwardSlashPath = scriptPath.replaceAll('\\', '/')
   if (WINDOWS_BARE_PATH.test(forwardSlashPath)) {
     return forwardSlashPath
   }
-  // Why: `--%` passes the rest to cmd.exe verbatim under PowerShell, and the `@`
-  // stops cmd.exe stripping the quotes around a path holding & or ^.
-  return `cmd --% /d /c @"${forwardSlashPath}"`
+  // Why: `--%` passes the rest to cmd.exe verbatim under PowerShell, /v:off keeps
+  // a registry-enabled delayed expansion from dropping a `!` in the path, and the
+  // `@` stops cmd.exe stripping the quotes around a path holding & or ^.
+  return `${resolveWindowsDirectory(env)}/System32/cmd.exe --% /d /v:off /c @"${forwardSlashPath}"`
 }
 
-/** `scriptPath` is the shared script at `~/.orca/agent-hooks`; only Windows forms embed it. */
+/**
+ * `scriptPath` is the shared script at `~/.orca/agent-hooks`; only Windows forms
+ * embed it. On Windows the bytes depend only on it and on %SystemRoot% (else
+ * %ComSpec%), both fixed per machine.
+ */
 export function buildCodexHookCommand(
   scriptPath: string,
-  platform: NodeJS.Platform = process.platform
+  platform: NodeJS.Platform = process.platform,
+  env: WindowsDirectoryEnv = process.env
 ): string {
-  return platform === 'win32' ? buildWindowsCommand(scriptPath) : buildPosixCommand()
+  return platform === 'win32' ? buildWindowsCommand(scriptPath, env) : buildPosixCommand()
 }
 
 /**

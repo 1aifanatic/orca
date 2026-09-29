@@ -47,8 +47,20 @@ describe('isRetiredCodexHookCommand', () => {
   it.each([
     ["this build's command", getManagedCommand(getManagedScriptPath())],
     [
-      "this build's cmd spelling for a spaced profile",
-      buildCodexHookCommand('C:\\Users\\Jo Smith\\.orca\\agent-hooks\\codex-hook.cmd', 'win32')
+      "this build's cmd.exe spelling for a spaced profile",
+      buildCodexHookCommand('C:\\Users\\Jo Smith\\.orca\\agent-hooks\\codex-hook.cmd', 'win32', {
+        SystemRoot: 'C:\\Windows'
+      })
+    ],
+    [
+      "this build's cmd.exe spelling with Windows on another drive",
+      buildCodexHookCommand('C:\\Users\\Jo Smith\\.orca\\agent-hooks\\codex-hook.cmd', 'win32', {
+        SystemRoot: 'D:\\Windows'
+      })
+    ],
+    [
+      'the bare-cmd spelling that the managed installer and app start convert',
+      'cmd --% /d /c @"C:/Users/Jo Smith/.orca/agent-hooks/codex-hook.cmd"'
     ],
     [
       'the PowerShell-text form that app start converts',

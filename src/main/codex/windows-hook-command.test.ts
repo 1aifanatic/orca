@@ -13,17 +13,23 @@ import {
 } from '../agent-hooks/installer-utils'
 
 vi.mock('electron', () => ({ app: { getPath: () => process.cwd() } }))
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => {
+  vi.restoreAllMocks()
+  vi.unstubAllEnvs()
+})
 
 describe('Codex Windows hook command', () => {
   it.each(['测试用户', '홍길동', '日本語', 'rené', '测试 用户', "测试 O'Brien"])(
     'runs the script through cmd.exe for %s without an encoded launcher',
     (profile) => {
       vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
+      vi.stubEnv('SystemRoot', 'D:\\Windows')
       const path = `C:\\Users\\${profile}\\.orca\\agent-hooks\\codex-hook.cmd`
       const command = getManagedCommand(path)
       expect(command).not.toMatch(/powershell\.exe|EncodedCommand|Set-ExecutionPolicy/)
-      expect(command).toBe(`cmd --% /d /c @"${path.replaceAll('\\', '/')}"`)
+      expect(command).toBe(
+        `D:/Windows/System32/cmd.exe --% /d /v:off /c @"${path.replaceAll('\\', '/')}"`
+      )
       expect(createManagedCommandMatcher('codex-hook.cmd')(command)).toBe(true)
       expect(wrapWindowsCmdHookCommand(path)).toContain('-EncodedCommand')
     }
