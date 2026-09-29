@@ -44,7 +44,9 @@ function counted<A extends unknown[], R>(call: (...args: A) => Promise<R>) {
   }
 }
 
-function useCountedRealFs(overrides: object = {}): void {
+type WalkFsOverrides = Record<string, (...args: never[]) => Promise<unknown>>
+
+function useCountedRealFs(overrides: WalkFsOverrides = {}): void {
   walkFs.inFlight = 0
   walkFs.maxInFlight = 0
   walkFs.current = {
