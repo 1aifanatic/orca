@@ -25,10 +25,15 @@ import {
 } from './structured-agent-session-start-failure-row'
 import type { AgentSessionDeathEvidence } from '../../../shared/agent-session-record'
 import {
+  provenUnverifiableTurnRevisions,
   runningTurnLifecycleRevisions,
   turnVerdictFromDeathEvidence,
   type StructuredAgentSessionTurnVerdict
 } from './structured-agent-session-stale-turn-verdict'
+import {
+  crashBoundaryExplainedProvenTurn,
+  staleSettlementRow
+} from './structured-agent-session-stale-settlement-row'
 
 /** Bounds the exit reason the lease keeps as log evidence; a provider diagnostic is held to the
  *  same cap. */
@@ -185,12 +190,12 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
 /**
  * Settles whatever a generation with no child in this process left running: found when a new child
  * is acquired, or when a chat is reopened for reading. Derived from the journal and the lease's
- * death evidence each time, so nothing is owed in between. Only an observed exit earns an end time
- * and the exit copy. Must run before a new child's buffered events land, or a live turn would be
- * judged.
+ * death evidence each time, so nothing is owed in between. Proven death ends the turn interrupted,
+ * and a proof written after an earlier settle revises what that settle left `unverifiable`. Must
+ * run before a new child's buffered events land, or a live turn would be judged.
  *
- * Writes at most one row: the exit's, or at a crash boundary the one saying the session did not
- * survive. Both come from here so one boundary can never show two.
+ * Writes at most one row per boundary: the exit's, or at a crash boundary the one saying the
+ * session did not survive. Both come from here so one boundary can never show two.
  */
 export async function settleStaleStructuredAgentSessionState(input: {
   journal: AgentSessionJournal
@@ -205,7 +210,10 @@ export async function settleStaleStructuredAgentSessionState(input: {
 }): Promise<number> {
   const { journal } = input
   const items = journal.snapshot().items
-  const verdict = turnVerdictFromDeathEvidence(input.deathEvidence)
+  // Each turn is judged by the evidence only if it names that turn's owner.
+  const verdictFor = (item: AgentJournalRenderItem) =>
+    turnVerdictFromDeathEvidence(input.deathEvidence, journal.itemFence(item.itemId))
+  // Per attempt: a retry re-partitions only what is left, and a reused chunk id would skip it.
   const generation = input.acquisitionGeneration ?? `seq-${journal.cursor().sequence}`
   const settlementId = `stale-session:${input.sessionId}:${input.fence}:${generation}`
   const mutations: JournalLifecycleMutationInput[] = []
@@ -216,14 +224,20 @@ export async function settleStaleStructuredAgentSessionState(input: {
       mutations.push({ kind: 'item', identity, body })
     }
   }
-  mutations.push(...runningTurnLifecycleRevisions(items, verdict))
-  const row = staleSettlementRow(input, verdict, items.some(isInProgressItem))
+  const proven = provenUnverifiableTurnRevisions(items, input.deathEvidence, journal)
+  mutations.push(
+    ...items.flatMap((item) => runningTurnLifecycleRevisions([item], verdictFor(item))),
+    ...proven
+  )
+  const inProgress = items.filter(isInProgressItem)
+  const row = staleSettlementRow(input, {
+    inProgress: inProgress.length > 0,
+    diedInProgress: inProgress.some((item) => verdictFor(item).state === 'interrupted'),
+    provenUnexplained:
+      proven.length > 0 && !crashBoundaryExplainedProvenTurn(input.deathEvidence, journal, items)
+  })
   if (row) {
-    mutations.unshift({
-      kind: 'item',
-      identity: { provider: 'orca', clientMessageId: settlementId },
-      body: row
-    })
+    mutations.unshift({ kind: 'item', ...row })
   }
   for (const chunk of partitionJournalLifecycleMutations(settlementId, mutations)) {
     await journal.appendLifecycleBatch({
@@ -234,35 +248,6 @@ export async function settleStaleStructuredAgentSessionState(input: {
     })
   }
   return mutations.length
-}
-
-/** The death evidence is Orca's log text, never a sentence for a person: a row says only that
- *  the provider stopped, or that the session did not survive the restart. No Retry: sending a
- *  new message is how the chat continues. */
-function staleSettlementRow(
-  input: Pick<
-    Parameters<typeof settleStaleStructuredAgentSessionState>[0],
-    'failureTextContext' | 'crashBoundary'
-  >,
-  verdict: StructuredAgentSessionTurnVerdict,
-  inProgress: boolean
-): AgentJournalItemBody | null {
-  const context = { ...input.failureTextContext, surface: 'row' as const }
-  if (verdict.state === 'interrupted' && inProgress) {
-    return {
-      kind: 'status',
-      ...agentSessionFailureWords(agentSessionFailureFact('providerExited'), context)
-    }
-  }
-  const boundary = input.crashBoundary
-  if (boundary && (inProgress || boundary.sendsLeftInDoubt > 0)) {
-    return {
-      kind: 'status',
-      tone: 'notice',
-      ...agentSessionFailureWords(agentSessionFailureFact('hostRestarted'), context)
-    }
-  }
-  return null
 }
 
 function terminalDeadGenerationBody(item: AgentJournalRenderItem): AgentJournalItemBody | null {
