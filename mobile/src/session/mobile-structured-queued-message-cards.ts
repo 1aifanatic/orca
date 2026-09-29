@@ -2,10 +2,13 @@
 // The wire carries no hold copy on purpose: the label is derived here from the
 // draft's own state plus the live facts the client already holds.
 
+import { readAgentSessionFailureFact } from '../../../src/shared/agent-session-failure'
 import {
-  dispatchRejectionReasonIsInternal,
-  dispatchWasWithdrawn
-} from '../../../src/shared/structured-agent-session-dispatch-rejection'
+  agentSessionWriteNoticeEnglish,
+  agentSessionWriteNotDoneParts
+} from '../../../src/shared/agent-session-refusal-notice'
+import { dispatchWasWithdrawn } from '../../../src/shared/structured-agent-session-dispatch-rejection'
+import { structuredAgentSessionRejectionParts } from '../../../src/shared/structured-agent-session-send-disposition'
 import {
   QUEUED_MESSAGE_PAUSED_SEND_FAILED,
   QUEUED_MESSAGE_PAUSED_STOPPED,
@@ -26,16 +29,22 @@ function queuedMessageBodyText(body: AgentSessionQueuedMessage['body']): string 
   return body.blocks.flatMap((block) => (block.type === 'text' ? [block.text] : [])).join('\n')
 }
 
-function returnedLabel(reason: string | null | undefined): string {
-  if (dispatchWasWithdrawn({ dispatchState: 'rejected', reason: reason ?? null })) {
+function returnedLabel(
+  draft: Pick<AgentSessionQueuedMessage, 'returnedReason' | 'returnedRejection'>
+): string {
+  const reason = draft.returnedReason ?? null
+  const rejection = draft.returnedRejection
+  if (dispatchWasWithdrawn({ dispatchState: 'rejected', reason, rejection })) {
     return 'Held back by Stop — Send to retry'
   }
-  // Same showability rule as rejected submissions: only a provider's own words
-  // are worth reading verbatim; our internal markers map to English here
-  // (mobile ships English only).
-  return reason && !dispatchRejectionReasonIsInternal(reason)
-    ? reason
-    : "Couldn't send — Send to retry"
+  const fact = readAgentSessionFailureFact(rejection)
+  // The words a rejected send gets, from the typed fact when the host wrote one. A fact this build
+  // cannot place proves only that the message did not go.
+  return agentSessionWriteNoticeEnglish(
+    rejection && !fact
+      ? agentSessionWriteNotDoneParts('composer-send')
+      : structuredAgentSessionRejectionParts(reason, 'composer-send', fact)
+  )
 }
 
 function pausedLabel(reason: string | undefined): string {
@@ -63,7 +72,7 @@ export function mobileQueuedMessageCards(
     const paused = draft.paused === true
     const label =
       draft.state === 'returned'
-        ? returnedLabel(draft.returnedReason)
+        ? returnedLabel(draft)
         : paused
           ? pausedLabel(draft.pausedReason)
           : behindReturned

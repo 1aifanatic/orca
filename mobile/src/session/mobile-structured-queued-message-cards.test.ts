@@ -1,14 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import {
-  DISPATCH_REJECTED_CANCELLED,
-  DISPATCH_REJECTED_HOST_RESTARTED
-} from '../../../src/shared/structured-agent-session-dispatch-rejection'
+import { agentSessionFailureFact } from '../../../src/shared/agent-session-failure'
+import { agentSessionFailureWords } from '../../../src/shared/agent-session-failure-words'
+import { DISPATCH_REJECTED_HOST_RESTARTED } from '../../../src/shared/structured-agent-session-dispatch-rejection'
 import {
   QUEUED_MESSAGE_PAUSED_SEND_FAILED,
   QUEUED_MESSAGE_PAUSED_STOPPED
 } from '../../../src/shared/agent-session-wire'
 import type { AgentSessionQueuedMessage } from '../../../src/shared/agent-session-wire'
 import { mobileQueuedMessageCards } from './mobile-structured-queued-message-cards'
+
+/** A returned card as the host publishes it: the refusal's sentence and its typed fact. */
+function returnedAs(fact: Parameters<typeof agentSessionFailureWords>[0]) {
+  const { reason, rejection } = agentSessionFailureWords(fact, { surface: 'rejection' })
+  return { state: 'returned' as const, returnedReason: reason, returnedRejection: rejection }
+}
 
 function draft(overrides: Partial<AgentSessionQueuedMessage> & { messageId: string }) {
   return {
@@ -65,25 +70,73 @@ describe('mobileQueuedMessageCards', () => {
     expect(card?.label).toBe('Paused')
   })
 
-  it('shows a returned card with its provider reason and holds drafts behind it', () => {
+  it("shows a returned card with the provider's own words and holds drafts behind it", () => {
+    const refused = agentSessionFailureFact('providerRejected', {
+      detail: { text: 'Steering is unavailable', audience: 'person' }
+    })
     const cards = mobileQueuedMessageCards(
-      [
-        draft({ messageId: 'a', state: 'returned', returnedReason: 'Steering is unavailable' }),
-        draft({ messageId: 'b', position: 2 })
-      ],
+      [draft({ messageId: 'a', ...returnedAs(refused) }), draft({ messageId: 'b', position: 2 })],
       { pendingPrompt: false }
     )
-    expect(cards[0]?.label).toBe('Steering is unavailable')
+    expect(cards[0]?.label).toContain('Steering is unavailable')
     expect(cards[0]?.state).toBe('returned')
     expect(cards[1]?.label).toBe('Waiting — a message ahead needs attention')
   })
 
   it('maps a Stop-withdrawn returned card to its own English copy', () => {
     const [card] = mobileQueuedMessageCards(
-      [draft({ messageId: 'a', state: 'returned', returnedReason: DISPATCH_REJECTED_CANCELLED })],
+      [draft({ messageId: 'a', ...returnedAs(agentSessionFailureFact('cancelled')) })],
       { pendingPrompt: false }
     )
     expect(card?.label).toBe('Held back by Stop — Send to retry')
+  })
+
+  it('reads a Stop withdrawal from the fact, whatever sentence rides beside it', () => {
+    const [card] = mobileQueuedMessageCards(
+      [
+        draft({
+          messageId: 'a',
+          state: 'returned',
+          returnedReason: 'This message was withdrawn before the agent started it.',
+          returnedRejection: { kind: 'cancelled' }
+        })
+      ],
+      { pendingPrompt: false }
+    )
+    expect(card?.label).toBe('Held back by Stop — Send to retry')
+  })
+
+  it('words a host-restart returned card from its fact, as a rejected send', () => {
+    const [card] = mobileQueuedMessageCards(
+      [draft({ messageId: 'a', ...returnedAs(agentSessionFailureFact('hostRestarted')) })],
+      { pendingPrompt: false }
+    )
+    expect(card?.label).toBe('Orca restarted before this message was sent.')
+  })
+
+  it("keeps a provider's log-only detail off the card", () => {
+    const refused = agentSessionFailureFact('providerRejected', {
+      detail: { text: 'stack trace for the log', audience: 'log' }
+    })
+    const [card] = mobileQueuedMessageCards([draft({ messageId: 'a', ...returnedAs(refused) })], {
+      pendingPrompt: false
+    })
+    expect(card?.label).not.toContain('stack trace')
+  })
+
+  it('reads a fact kind this build cannot place as not sent, not as its sentence', () => {
+    const [card] = mobileQueuedMessageCards(
+      [
+        draft({
+          messageId: 'a',
+          state: 'returned',
+          returnedReason: 'Words for a kind a newer host added.',
+          returnedRejection: { kind: 'laterKind' }
+        })
+      ],
+      { pendingPrompt: false }
+    )
+    expect(card?.label).toBe('Your message was not sent. Send it again.')
   })
 
   it('maps the send-failed pause marker to English and an unknown marker to a plain pause', () => {
@@ -99,7 +152,7 @@ describe('mobileQueuedMessageCards', () => {
     expect(cards.map((card) => card.label)).toEqual(["Couldn't send — Send to retry", 'Paused'])
   })
 
-  it('never shows an internal rejection reason verbatim', () => {
+  it('never shows an internal rejection reason verbatim, even from a host that wrote no fact', () => {
     const [card] = mobileQueuedMessageCards(
       [
         draft({
@@ -110,6 +163,6 @@ describe('mobileQueuedMessageCards', () => {
       ],
       { pendingPrompt: false }
     )
-    expect(card?.label).toBe("Couldn't send — Send to retry")
+    expect(card?.label).toBe('Your message was not sent. Send it again.')
   })
 })
