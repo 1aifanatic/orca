@@ -105,28 +105,52 @@ export function hasResumableQueuedMessage(rows: readonly QueueCardState[]): bool
   return false
 }
 
-/** A pause is over the cards it paused: once none is left it holds back
- *  (`isPausableQueuedMessage`), the fact goes too, in the same transaction as the
- *  write that took the last one, so it can never outlive them and catch a card
- *  typed long after. */
-export function retireQueuePauseIfEmpty(db: Database.Database, sessionId: string): number {
-  const rows = db
-    .prepare('SELECT state, hold_reason FROM queued_messages WHERE session_id = ?')
-    .all(sessionId)
-    .flatMap((row) =>
-      typeof row === 'object' &&
-      row !== null &&
-      'state' in row &&
-      typeof row.state === 'string' &&
-      'hold_reason' in row &&
-      (row.hold_reason === null || typeof row.hold_reason === 'string')
-        ? [{ state: row.state, holdReason: row.hold_reason }]
-        : []
+/** What a queue pause holds back, judged inside the caller's transaction: a waiting
+ *  card with no hold of its own (`isPausableQueuedMessage`, in SQL), or a dispatched
+ *  one whose settlement back to waiting is still owed — its hook was skipped, so the
+ *  row has not caught up with its rejected submission, which only the journal's
+ *  submissions can tell (`owedToWaiting`). */
+export function queuePauseHoldsBack(
+  db: Database.Database,
+  input: { sessionId: string; owedToWaiting: (consumedRef: string) => boolean }
+): boolean {
+  const pausable = db
+    .prepare(
+      `SELECT 1 FROM queued_messages
+       WHERE session_id = ? AND state = 'waiting' AND hold_reason IS NULL LIMIT 1`
     )
-  if (rows.some(isPausableQueuedMessage)) {
+    .get(input.sessionId)
+  if (pausable !== undefined) {
+    return true
+  }
+  return db
+    .prepare(
+      `SELECT consumed_as FROM queued_messages
+       WHERE session_id = ? AND state = 'dispatched' AND consumed_as IS NOT NULL`
+    )
+    .all(input.sessionId)
+    .some(
+      (row) =>
+        typeof row === 'object' &&
+        row !== null &&
+        'consumed_as' in row &&
+        typeof row.consumed_as === 'string' &&
+        input.owedToWaiting(row.consumed_as)
+    )
+}
+
+/** A pause is over the cards it paused: once it holds back none (`queuePauseHoldsBack`),
+ *  the fact goes too, in the same transaction as the write that took the last one, so
+ *  it can never outlive them and catch a card typed long after. */
+export function retireQueuePauseIfNothingHeld(
+  db: Database.Database,
+  input: { sessionId: string; owedToWaiting: (consumedRef: string) => boolean }
+): number {
+  if (queuePauseHoldsBack(db, input)) {
     return 0
   }
   return Number(
-    db.prepare('DELETE FROM queued_message_pauses WHERE session_id = ?').run(sessionId).changes ?? 0
+    db.prepare('DELETE FROM queued_message_pauses WHERE session_id = ?').run(input.sessionId)
+      .changes ?? 0
   )
 }

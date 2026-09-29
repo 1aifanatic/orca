@@ -16,8 +16,10 @@ import type { JournalSubmissionConsume } from './journal-store-contracts'
 import { adoptQueuedMessages, holdQueuedMessages } from './queued-message-holds'
 import {
   clearQueuePause,
+  queuePauseHoldsBack,
   readQueuePause,
   recordQueuePause,
+  retireQueuePauseIfNothingHeld,
   type QueuePauseFact,
   type QueuePauseReason
 } from './queued-message-pause-table'
@@ -32,8 +34,9 @@ import {
   type QueuedMessageRow
 } from './queued-message-table'
 import { draftsDeliveredByAppliedEcho } from './queued-message-delivered-echo'
-import { pruneQueuedMessages } from './queued-message-retention'
+import { pruneQueuedMessages, retainedSubmissionVerdict } from './queued-message-retention'
 import {
+  owedBackToWaiting,
   queuedMessageSettlementOwed,
   settleOwedQueuedMessages,
   settleQueuedMessagesForRow
@@ -156,13 +159,24 @@ export class JournalQueuedMessages {
     return this.paused.fact
   }
 
-  /** A Stop took effect here: the queue is paused from this position on. */
-  recordPause(reason: QueuePauseReason): Promise<void> {
+  /** A Stop took effect here: the queue is paused from this position on — if, judged in
+   *  the same transaction, it holds back a card at all. Returns whether it recorded. */
+  recordPause(reason: QueuePauseReason): Promise<boolean> {
     const fact = this.pauseFact(reason)
     return this.transact(
-      (db) => recordQueuePause(db, { sessionId: this.deps.sessionId, fact }),
-      () => true
+      (db) =>
+        queuePauseHoldsBack(db, this.pauseScope()) &&
+        (recordQueuePause(db, { sessionId: this.deps.sessionId, fact }), true),
+      (recorded) => recorded
     )
+  }
+
+  /** What `queuePauseHoldsBack` judges a pause by, from this journal's submissions. */
+  private pauseScope() {
+    return {
+      sessionId: this.deps.sessionId,
+      owedToWaiting: owedBackToWaiting(this.deps.state().submissions)
+    }
   }
 
   private pauseFact(reason: QueuePauseReason): QueuePauseFact {
@@ -217,14 +231,17 @@ export class JournalQueuedMessages {
       const { db } = this.deps.database()
       db.exec('BEGIN IMMEDIATE')
       let result: T
+      let retired: number
       try {
         result = run(db)
+        // Any draft write may take the last card a pause holds back.
+        retired = retireQueuePauseIfNothingHeld(db, this.pauseScope())
         db.exec('COMMIT')
       } catch (error) {
         db.exec('ROLLBACK')
         throw error
       }
-      if (changed(result)) {
+      if (changed(result) || retired > 0) {
         this.changeRevision++
         this.deps.committed()
       }
@@ -242,6 +259,7 @@ export class JournalQueuedMessages {
       row,
       now: this.deps.now()
     })
+    this.changeRevision += retireQueuePauseIfNothingHeld(db, this.pauseScope())
   }
 
   /** The in-transaction consume for `appendSubmission`; a false compare-and-set
@@ -263,6 +281,7 @@ export class JournalQueuedMessages {
     if (!consumed) {
       throw new QueuedMessageNotConsumableError(input.messageId, input.expect)
     }
+    retireQueuePauseIfNothingHeld(db, this.pauseScope())
     this.changeRevision++
   }
 
@@ -305,50 +324,28 @@ export class JournalQueuedMessages {
    * Open-time reconciliation, a re-derivation behind the stored fact: owed
    * settlements apply exactly as the live hook would have (covers consume →
    * crash → downgrade → upgrade, where the old build rejected the leftover with
-   * no hook), then retention runs.
+   * no hook), then retention runs; a pause left holding back nothing retires.
    */
   repairAndPrune(): Promise<void> {
-    return this.deps.serialize(async () => {
-      if (this.deps.readOnly()) {
-        return
-      }
-      const { db } = this.deps.database()
-      const submissions = this.deps.state().submissions
-      const now = this.deps.now()
-      let changed = 0
-      db.exec('BEGIN IMMEDIATE')
-      try {
-        changed += settleOwedQueuedMessages(db, {
-          sessionId: this.deps.sessionId,
-          state: this.deps.state(),
-          now
-        })
-        changed += pruneQueuedMessages(db, {
-          sessionId: this.deps.sessionId,
-          now,
-          replayWindowMs: QUEUED_MESSAGE_REPLAY_WINDOW_MS,
-          submissionVerdict: (consumedRef) => {
-            const submission = submissions.get(consumedRef)
-            if (!submission) {
-              return 'absent'
-            }
-            if (submission.dispatchState === 'accepted' || submission.dispatchState === 'unknown') {
-              return 'terminal-not-refused'
-            }
-            // The repair above already settled every rejected row.
-            return submission.dispatchState === 'rejected' ? 'rejected' : 'pending'
-          }
-        })
-        db.exec('COMMIT')
-      } catch (error) {
-        db.exec('ROLLBACK')
-        throw error
-      }
-      if (changed > 0) {
-        this.changeRevision++
-        this.deps.committed()
-      }
-    })
+    if (this.deps.readOnly()) {
+      return Promise.resolve()
+    }
+    const { sessionId } = this.deps
+    return this.transact(
+      (db) => {
+        const [now, state] = [this.deps.now(), this.deps.state()]
+        return (
+          settleOwedQueuedMessages(db, { sessionId, state, now }) +
+          pruneQueuedMessages(db, {
+            sessionId,
+            now,
+            replayWindowMs: QUEUED_MESSAGE_REPLAY_WINDOW_MS,
+            submissionVerdict: retainedSubmissionVerdict(state.submissions)
+          })
+        )
+      },
+      (changed) => changed > 0
+    ).then(() => undefined)
   }
 }
 

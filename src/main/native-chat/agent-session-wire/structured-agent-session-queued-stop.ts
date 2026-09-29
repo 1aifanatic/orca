@@ -11,7 +11,6 @@ import {
   isUnsettledQueuedMessage,
   type QueuedMessageRow
 } from '../agent-session-journal/queued-message-table'
-import { isPausableQueuedMessage } from '../agent-session-journal/queued-message-pause-table'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
 
 /** The one unsettled-card predicate /clear's carry and the budget share:
@@ -23,7 +22,8 @@ export function unsettledQueuedMessages(journal: AgentSessionJournal): QueuedMes
 /**
  * Runs a Stop and records its queue pause at the point it takes effect — after
  * it withdrew the queued sends, as it reaches the agent, or, reaching no agent,
- * once it withdrew something — and only over cards the queue then holds. The Stop calls `tookEffect` there. A Stop that
+ * once it withdrew something — and only over cards it then holds back. The Stop
+ * calls `tookEffect` there. A Stop that
  * throws before then changed nothing and recorded nothing, so there is nothing
  * to undo; one that fails after it keeps the pause, since the interrupt may have
  * landed. A draft whose hand-off the Stop withdrew is back to waiting in its own
@@ -34,21 +34,33 @@ export async function runStopWithQueuePause<TValue>(
   ctx: AgentSessionTurnContext,
   stop: (tookEffect: () => Promise<void>) => Promise<TurnOutcome<TValue>>
 ): Promise<TurnOutcome<TValue>> {
-  let recorded = false
+  let attempted = false
   return stop(async () => {
-    // A pause is over the cards it holds back — the withdrawal's sent-back
-    // hand-offs included. With none it would only catch a card typed long after.
-    if (recorded || !ctx.journal.queuedMessages.list().some(isPausableQueuedMessage)) {
+    if (attempted) {
       return
     }
-    recorded = true
+    attempted = true
+    const { queuedMessages } = ctx.journal
+    // A hand-off this Stop's withdrawal sent back may not have caught up yet (its hook
+    // was skipped): heal it first, as the drain would, so the pause sees it waiting.
     try {
-      await ctx.journal.queuedMessages.recordPause('stopped')
+      if (queuedMessages.settlementOwed()) {
+        await queuedMessages.settleOwed()
+      }
     } catch (error) {
-      console.warn("[agent-session] Stop's queue pause skipped:", {
-        sessionId: ctx.sessionId,
-        error: error instanceof Error ? error.message : String(error)
-      })
+      report(ctx, 'owed settlement', error)
     }
+    // Recorded only over a card it holds back — judged in its own transaction, which
+    // still counts an owed return to waiting if that heal failed.
+    await queuedMessages
+      .recordPause('stopped')
+      .catch((error: unknown) => report(ctx, 'queue pause', error))
+  })
+}
+
+function report(ctx: AgentSessionTurnContext, step: string, error: unknown): void {
+  console.warn(`[agent-session] Stop's ${step} skipped:`, {
+    sessionId: ctx.sessionId,
+    error: error instanceof Error ? error.message : String(error)
   })
 }
