@@ -299,7 +299,7 @@ export class StructuredAgentSessionHost {
   conversationReplacements = () => this.conversationCommands.replacements()
   /** Undefined means unavailable; an empty array is an authoritative catalog. */
   readCommands = (sessionId: string): SessionWire.AgentSessionCommandsResult => ({
-    commands: this.deps.adapter.readCommands?.(sessionId)
+    commands: this.clientDelivery.readCommands(sessionId)
   })
 
   /** From the record store, never the session map: an idle-released chat has no map entry. */

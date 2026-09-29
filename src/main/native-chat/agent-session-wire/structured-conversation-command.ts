@@ -44,7 +44,7 @@ export type ConversationReplacement = {
 
 /**
  * `/clear`: one write that points this conversation at a new, at-rest one and moves its tab there.
- * Nothing starts here; the new conversation's first send starts its agent.
+ * The new conversation's first send starts its agent.
  */
 export function runStructuredConversationCommand(
   context: StructuredAgentSessionMutationContext,

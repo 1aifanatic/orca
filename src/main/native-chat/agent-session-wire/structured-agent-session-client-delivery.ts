@@ -2,6 +2,7 @@ import { AgentSessionRefusalError } from '../../../shared/agent-session-wire-ref
 import type { AgentChildWorkEvidence } from '../../../shared/agent-status-child-work-evidence'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { AgentSessionSubscribers } from './structured-agent-session-subscribers'
+import { StructuredAgentSessionCommandMemory } from './structured-agent-session-command-memory'
 import type {
   StructuredAgentSessionHostDeps,
   StructuredAgentSessionHostSession
@@ -21,6 +22,7 @@ import {
 export class StructuredAgentSessionClientDelivery {
   readonly subscribers: AgentSessionSubscribers
   readonly waitForSendSettlement: StructuredAgentSessionSendSettlement['wait']
+  readonly readCommands: StructuredAgentSessionCommandMemory['read']
   private readonly statusFeed
   private readonly turnCompletionFeed
   private readonly sendSettlement
@@ -47,8 +49,9 @@ export class StructuredAgentSessionClientDelivery {
       this.requireJournal(sessionId)
     )
     this.waitForSendSettlement = this.sendSettlement.wait
+    this.readCommands = new StructuredAgentSessionCommandMemory(deps).read
     this.subscribers = new AgentSessionSubscribers({
-      readCommands: (sessionId) => deps().adapter.readCommands?.(sessionId),
+      readCommands: this.readCommands,
       onJournalPublished: (sessionId, journal) => this.publishJournal(sessionId, journal)
     })
   }
