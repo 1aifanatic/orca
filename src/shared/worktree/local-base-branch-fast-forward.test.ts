@@ -26,6 +26,7 @@ const OWNER_MERGE_ARGS = [
   'merge.verifySignatures=false',
   'merge',
   '--ff-only',
+  '--no-overwrite-ignore',
   '--no-stat',
   '-q',
   'remote-main'

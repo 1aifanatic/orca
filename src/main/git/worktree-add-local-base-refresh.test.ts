@@ -510,6 +510,7 @@ function ownerFastForwardArgs(remoteOid: string): string[] {
     'merge.verifySignatures=false',
     'merge',
     '--ff-only',
+    '--no-overwrite-ignore',
     '--no-stat',
     '-q',
     remoteOid

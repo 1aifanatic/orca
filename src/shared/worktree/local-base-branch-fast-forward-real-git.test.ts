@@ -110,6 +110,21 @@ describe('fastForwardLocalBaseBranch against real Git', () => {
     expect(fixture.git(['rev-parse', 'main'])).toBe(fixture.localOid)
   })
 
+  it('leaves an ignored file at a path the new commit adds, and does not move main', async () => {
+    const fixture = await createBehindRepo()
+    await writeFile(join(fixture.repoPath, '.git', 'info', 'exclude'), 'added.txt\n')
+    await writeFile(join(fixture.repoPath, 'added.txt'), 'SECRET=mine\n')
+
+    const outcome = await fastForward(fixture, realGit(fixture).git)
+
+    expect(outcome.status).toBe('skipped_dirty_worktree')
+    expect(await readFile(join(fixture.repoPath, 'added.txt'), 'utf8')).toBe('SECRET=mine\n')
+    expect(fixture.git(['rev-parse', 'main'])).toBe(fixture.localOid)
+    // Control: a plain fast-forward silently replaces the ignored file.
+    fixture.git(['merge', '--ff-only', '--quiet', fixture.remoteOid])
+    expect(await readFile(join(fixture.repoPath, 'added.txt'), 'utf8')).toBe('from upstream\n')
+  })
+
   it('moves main without running the post-merge hook of the checkout', async () => {
     const fixture = await createBehindRepo()
     const marker = join(fixture.repoPath, '..', 'hook-ran')

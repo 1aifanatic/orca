@@ -41,9 +41,10 @@ export type LocalBaseBranchFastForwardOutcome =
   | { status: LocalBaseRefRefreshStatus; ownerWorktreePath?: string }
 
 // Why: an update Orca makes on the user's behalf must not run their post-merge hooks (the create
-// waits on it), start auto-gc, autostash an edit that raced the cleanliness check, or refuse an
-// unsigned tip the new workspace was already created from. Keys older Git does not know are
-// ignored; `/dev/null/<hook>` never exists, so no hook is found.
+// waits on it), start auto-gc, autostash an edit that raced the cleanliness check, refuse an
+// unsigned tip the new workspace was already created from, or overwrite an ignored file (a `.env`)
+// at a path the new commit adds. Keys older Git does not know are ignored; `/dev/null/<hook>` never
+// exists, so no hook is found.
 const OWNER_FAST_FORWARD_ARGS = [
   '-c',
   'core.hooksPath=/dev/null',
@@ -57,6 +58,7 @@ const OWNER_FAST_FORWARD_ARGS = [
   'merge.verifySignatures=false',
   'merge',
   '--ff-only',
+  '--no-overwrite-ignore',
   '--no-stat',
   '-q'
 ]

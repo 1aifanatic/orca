@@ -316,6 +316,11 @@ describe('GitHandler', () => {
         expect(gitMock.mock.calls.some(([args]) => args.includes('merge'))).toBe(true)
       )
       const second = localDispatcher.callRequest('git.refreshLocalBaseRefForWorktreeCreate', params)
+      // Let the second request get past validation and as far as it can while the merge is held.
+      await vi.waitFor(() =>
+        expect(gitMock.mock.calls.filter(([args]) => args[0] === 'check-ref-format').length).toBe(4)
+      )
+      await new Promise((resolve) => setTimeout(resolve, 20))
       releaseMerge()
 
       await expect(first).resolves.toEqual({ status: 'updated', ownerWorktreePath: '/repo' })
