@@ -195,7 +195,7 @@ positional slots; absent, undefined and null are distinct `$rpc` tags. Literal o
 `$rpc` are escaped. Only object keys are sorted; array/effect order, options, budgets, settlement
 times and errors stay observable. Errors contain category, message and `isRpcDeliveryUnknown`, never
 stack paths, plus `code` and a recursively captured `cause` when the thrown error carries them.
-Platform is provenance; candidate comparison does not require the same operating system.
+A golden records no operating system, so comparison does not require the one it was recorded on.
 
 ### Value pool
 
