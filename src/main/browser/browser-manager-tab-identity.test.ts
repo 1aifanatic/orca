@@ -236,11 +236,11 @@ describe('tab identity ownership', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const opened = openTab(ORDINARY_URL)
     await browserManager.setViewportOverride(opened.tab, PRESETS.mobile)
-    opened.handle.debuggerSendCommand.mockImplementation(
-      (method: string, params?: { maxTouchPoints?: number }) =>
-        method === 'Emulation.setTouchEmulationEnabled' && params?.maxTouchPoints === 0
-          ? Promise.reject(new Error('Touch points must be between 1 and 16'))
-          : Promise.resolve(undefined)
+    // Rejects whatever the payload, so the test outlives a fix to the payload itself.
+    opened.handle.debuggerSendCommand.mockImplementation((method: string) =>
+      method === 'Emulation.setTouchEmulationEnabled'
+        ? Promise.reject(new Error('Touch points must be between 1 and 16'))
+        : Promise.resolve(undefined)
     )
 
     await expect(browserManager.setViewportOverride(opened.tab, PRESETS.desktop)).resolves.toBe(
