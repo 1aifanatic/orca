@@ -177,4 +177,31 @@ describe('an outbox entry the host handed off as a queued draft', () => {
     expect(view.result.current.send('next')).toBe(true)
     await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(2))
   })
+
+  it('a replay of a deleted card is answered spent: it leaves with no restore and no Retry', async () => {
+    mocks.call.mockImplementationOnce(async (_target, _method, params) => ({
+      ok: true,
+      replayed: true,
+      fence: 1,
+      cursor: { epoch: 'epoch-1', sequence: 1 },
+      value: {
+        clientMessageId: params.envelope.clientOperationId,
+        queued: { messageId: params.envelope.clientOperationId, position: 0, state: 'withdrawn' }
+      }
+    }))
+    const view = renderOutbox()
+    act(() => {
+      expect(view.result.current.send('deleted on another device')).toBe(true)
+    })
+    await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(1))
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 20)))
+    expect(view.result.current.outbox).toEqual([])
+    expect(view.result.current.blockedClientMessageId).toBeNull()
+    expect(view.result.current.error).toBeNull()
+    expect(readNativeChatDraftCache('scope')).toBe('')
+    act(() => {
+      expect(view.result.current.send('next')).toBe(true)
+    })
+    await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(2))
+  })
 })
