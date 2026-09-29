@@ -116,20 +116,20 @@ export async function applyAgentWorkspaceTrust(
   workspacePath: string,
   context: AgentTrustLaunchContext
 ): Promise<AgentTrustSpawnFields> {
-  if (
-    isTooBroadToPreTrust(
-      workspacePath,
-      context.connectionId ? [] : localHomePaths(workspacePath, context)
-    )
-  ) {
-    // Why: trust on a home, a folder above one or a root would cover the home for some agents.
-    return {}
-  }
-  if (preset === 'claude' && context.connectionId) {
-    // Why: the relay owns the remote file, its lock and the agent's final env.
-    return { claudeFolderTrust: { workspacePath } }
-  }
   try {
+    if (
+      isTooBroadToPreTrust(
+        workspacePath,
+        context.connectionId ? [] : localHomePaths(workspacePath, context)
+      )
+    ) {
+      // Why: trust on a home, a folder above one or a root would cover the home for some agents.
+      return {}
+    }
+    if (preset === 'claude' && context.connectionId) {
+      // Why: the relay owns the remote file, its lock and the agent's final env.
+      return { claudeFolderTrust: { workspacePath } }
+    }
     const write = startTrustWrite(preset, workspacePath, context)
     if (write) {
       await awaitAgentTrustWriteWithinDeadline(write, {
