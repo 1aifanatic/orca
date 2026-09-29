@@ -48,8 +48,11 @@ export function registerWorktreeRemovalHandlers(context: WorktreeIpcContext): vo
 
       // Why: concurrent stale-toast/double-click/sidebar races can hit the same worktree; share the op so only one path touches Git and disk.
       const removal = withWorktreeSpan({ stage: 'remove', path: worktreePath }, async () => {
-        const accept = (): Promise<RemoveWorktreeResult> =>
-          executeWorktreeRemoval(context, args, repo, repoId, worktreePath, removalHostId)
+        const accept = async (): Promise<RemoveWorktreeResult> =>
+          // Why: another client's removal of this worktree may have been accepted during the wait.
+          waitForPendingWorktreeRemoval(args.worktreeId, removalHostId)
+            ? { removing: true }
+            : executeWorktreeRemoval(context, args, repo, repoId, worktreePath, removalHostId)
         const accepted = await (repo.connectionId
           ? accept()
           : runSerializedWorktreeRemovalAcceptance(repo.path, accept))

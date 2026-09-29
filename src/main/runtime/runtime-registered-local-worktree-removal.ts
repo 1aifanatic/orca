@@ -26,15 +26,24 @@ import { findRegisteredDeletableWorktree } from '../worktree-removal-safety'
 import { CLIENT_REMOVAL_HOME } from '../worktree-removal-home-guard'
 import type { RuntimeStore } from './runtime-store-contract'
 import type { RuntimeWorktreeRemovalTarget } from './runtime-worktree-selection'
-import { removesInBackground, startBackgroundWorktreeRemoval } from '../worktree-background-removal'
+import {
+  removesInBackground,
+  startBackgroundWorktreeRemoval,
+  waitForPendingWorktreeRemoval
+} from '../worktree-background-removal'
 import { runSerializedWorktreeRemovalAcceptance } from '../worktree-removal-acceptance-queue'
 
 /** Runs after the previous same-repo removal was accepted; see runSerializedWorktreeRemovalAcceptance. */
 export function removeRuntimeRegisteredLocalWorktree(
   args: Parameters<typeof acceptRuntimeRegisteredLocalWorktreeRemoval>[0]
 ): Promise<RemoveWorktreeResult & { warning?: string }> {
-  return runSerializedWorktreeRemovalAcceptance(args.repo.path, () =>
-    acceptRuntimeRegisteredLocalWorktreeRemoval(args)
+  return runSerializedWorktreeRemovalAcceptance(
+    args.repo.path,
+    async (): Promise<RemoveWorktreeResult & { warning?: string }> =>
+      // Why: another client's removal of this worktree may have been accepted during the wait.
+      waitForPendingWorktreeRemoval(args.target.id)
+        ? { removing: true }
+        : acceptRuntimeRegisteredLocalWorktreeRemoval(args)
   )
 }
 

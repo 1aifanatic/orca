@@ -9,7 +9,10 @@ import {
 import { handlers, setupWorktreeHandlers, store } from './worktrees-test-harness'
 import { mockKnownFeatureWorktree } from './worktrees-test-fixtures'
 import type { RemoveWorktreeResult } from '../../shared/worktree/create-types'
-import { _resetPendingWorktreeRemovalsForTests } from '../worktree-background-removal'
+import {
+  _resetPendingWorktreeRemovalsForTests,
+  startBackgroundWorktreeRemoval
+} from '../worktree-background-removal'
 
 vi.mock('electron', async () =>
   (await import('./worktrees-test-module-mocks')).electronModuleMock()
@@ -230,6 +233,57 @@ describe('worktrees:remove in the background', () => {
     }
     await expect(first).resolves.not.toHaveProperty('removing')
     await expect(second).resolves.not.toHaveProperty('removing')
+  })
+
+  it('joins a removal another client got accepted while this request waited its turn', async () => {
+    const [main, feature] = mockKnownFeatureWorktree()
+    const secondId = 'repo-1::/workspace/second-wt'
+    listWorktreesMock.mockResolvedValue([
+      main,
+      feature,
+      { ...feature, path: '/workspace/second-wt', branch: 'second', head: 'second' }
+    ])
+    getEffectiveHooksMock.mockReturnValue({ scripts: { archive: 'true' } })
+    let releaseHook!: () => void
+    runHookMock.mockResolvedValue({ success: true, output: '' })
+    runHookMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releaseHook = () => resolve({ success: true, output: '' })
+        })
+    )
+    removeWorktreeMock.mockResolvedValue({})
+
+    const holdsTurn = remove({ worktreeId: secondId })
+    await vi.waitFor(() => expect(runHookMock).toHaveBeenCalledTimes(1))
+    const queued = remove({ worktreeId: featureId })
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    // Stands in for the runtime path (CLI, paired clients), which coalesces apart from this one.
+    let finishOther: ((result: RemoveWorktreeResult) => void) | undefined
+    void startBackgroundWorktreeRemoval({
+      removal: {
+        worktreeId: featureId,
+        repoId: 'repo-1',
+        repoPath: '/workspace/repo',
+        worktree: feature,
+        deleteBranch: true,
+        force: false
+      },
+      run: () =>
+        new Promise((resolve) => {
+          finishOther = resolve
+        }),
+      publish: () => {}
+    })
+    releaseHook()
+    await holdsTurn
+    await vi.waitFor(() => expect(finishOther).toBeDefined())
+
+    const preserved = { preservedBranch: { branchName: 'feature', head: 'feature' } }
+    finishOther?.(preserved)
+    await expect(queued).resolves.toMatchObject(preserved)
+    expect(runHookMock).toHaveBeenCalledTimes(1)
+    expect(removeWorktreeMock).toHaveBeenCalledTimes(1)
   })
 
   it('gives a create with the same name the next free name while the delete runs', async () => {

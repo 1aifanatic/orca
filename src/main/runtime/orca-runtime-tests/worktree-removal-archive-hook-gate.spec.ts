@@ -24,6 +24,8 @@ import {
   asArchiveHookRefusal
 } from '../../../shared/worktree/archive-hook-removal-gate'
 import { runSerializedWorktreeRemovalAcceptance } from '../../worktree-removal-acceptance-queue'
+import { startBackgroundWorktreeRemoval } from '../../worktree-background-removal'
+import type { RemoveWorktreeResult } from '../../../shared/worktree/create-types'
 
 function withArchiveHook(): void {
   vi.mocked(getEffectiveHooks).mockReturnValue({
@@ -229,6 +231,43 @@ describe('archive hook removal gate', () => {
     await siblingAccepted
     expect(sibling).toHaveBeenCalledTimes(1)
     await expect(removal).resolves.toEqual({})
+  })
+
+  it('joins a desktop removal of the same worktree accepted while this one waited', async () => {
+    const runtime = createWorktreeRemovalRuntime()
+    withArchiveHook()
+    vi.mocked(runHook).mockResolvedValue({ success: true, output: '' })
+    vi.mocked(removeWorktree).mockResolvedValue({})
+    const siblingTurn = deferred<void>()
+    void runSerializedWorktreeRemovalAcceptance(TEST_REPO_PATH, () => siblingTurn.promise)
+
+    const removal = runtime.removeManagedWorktree(TEST_WORKTREE_ID, {
+      force: false,
+      runHooks: true
+    })
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    // The desktop IPC path coalesces apart from this one; stand in for its accepted removal.
+    const desktopDelete = deferred<RemoveWorktreeResult>()
+    void startBackgroundWorktreeRemoval({
+      removal: {
+        worktreeId: TEST_WORKTREE_ID,
+        repoId: 'repo-1',
+        repoPath: TEST_REPO_PATH,
+        worktree: { path: TEST_WORKTREE_PATH, branch: 'feature', head: 'feature' },
+        deleteBranch: true,
+        force: false
+      },
+      run: () => desktopDelete.promise,
+      publish: () => {}
+    })
+    siblingTurn.resolve()
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    const preserved = { preservedBranch: { branchName: 'feature', head: 'feature' } }
+    desktopDelete.resolve(preserved)
+
+    await expect(removal).resolves.toMatchObject(preserved)
+    expect(runHook).not.toHaveBeenCalled()
+    expect(removeWorktree).not.toHaveBeenCalled()
   })
 
   it('does not coalesce an override retry onto the refusal already in flight', async () => {
