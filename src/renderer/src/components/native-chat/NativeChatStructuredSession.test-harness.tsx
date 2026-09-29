@@ -3,7 +3,10 @@ import { vi } from 'vitest'
 import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
 import type { QueuedMessageCard } from './structured-agent-session-queued-cards'
 import type { AgentSessionBackgroundTask } from '../../../../shared/agent-session-wire'
+import type { AgentSessionWriteRefusal } from '../../../../shared/agent-session-write-failure'
+import type { AgentSessionRefusalReference } from '../../../../shared/agent-session-wire-refusals'
 import type { NativeChatApprovalCardProps } from './NativeChatApprovalCard'
+import type { NativeChatDeliveryNotice } from './NativeChatMessageRow'
 import type { NativeChatQuestionCardProps } from './NativeChatQuestionCard'
 import type { NativeChatLaunchSeed } from './native-chat-composer-types'
 import type { NativeChatOlderPageResult } from './native-chat-pagination'
@@ -20,15 +23,41 @@ function nullable<T>(): T | null {
   return null
 }
 
+function absent<T>(): T | undefined {
+  return undefined
+}
+
+/** Stands in for the transcript: renders only each message's delivery notice and its Retry. */
+export function DeliveryNoticesMock({
+  notices
+}: {
+  notices?: ReadonlyMap<string, NativeChatDeliveryNotice>
+}): React.JSX.Element {
+  return (
+    <div data-testid="message-list">
+      {[...(notices ?? [])].map(([id, notice]) => (
+        <div key={id} data-message-id={id}>
+          <span>{notice.text}</span>
+          {notice.onRetry ? (
+            <button type="button" onClick={notice.onRetry}>
+              Retry
+            </button>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 type StructuredSessionMessageListProps = {
   allowFileUriLinks?: boolean
   isVisible?: boolean
   onLinkClick?: (...args: unknown[]) => void
-  showTurnStatus?: boolean
-  showLiveTurnActivity?: boolean
+  awaitingInput?: 'shown' | 'unshown' | null
   isWorking?: boolean
   runtimeContext?: unknown
   session?: { hasMore: boolean; loadingEarlier: boolean; loadEarlier: () => Promise<void> }
+  deliveryNotices?: ReadonlyMap<string, NativeChatDeliveryNotice>
 }
 
 const initialMessageListProps: StructuredSessionMessageListProps | null = null
@@ -44,13 +73,13 @@ export function createStructuredSessionMocks() {
     call: vi.fn<(...args: never[]) => unknown>(),
     fileLinkClick: vi.fn<(...args: never[]) => unknown>(),
     launchLifecycle: nullable<StructuredAgentSessionLaunchLifecycle>(),
-    launchFailureReason: nullable<string>(),
+    launchFailure: nullable<AgentSessionWriteRefusal>(),
     launchResumes: false,
     retryLaunch: vi.fn<(...args: never[]) => unknown>(),
     controllerProps: nullable<{ transportEnabled?: boolean }>(),
     mode: 'static' as 'static' | 'outbox',
     status: 'ready' as 'idle' | 'loading' | 'ready' | 'error',
-    readError: nullable<string>(),
+    readRefusal: absent<AgentSessionRefusalReference>(),
     messages: null as null | unknown[],
     messageListProps: initialMessageListProps,
     composerProps: nullable<{
@@ -62,6 +91,7 @@ export function createStructuredSessionMocks() {
     approvalCardProps: initialApprovalCardProps,
     questionCardProps: null as NativeChatQuestionCardProps | null,
     promptItems: [] as AgentJournalRenderItem[],
+    journalItems: new Array<AgentJournalRenderItem>(),
     respond: vi.fn<(...args: never[]) => unknown>(),
     cancel: vi.fn<(...args: never[]) => unknown>(),
     stop: vi.fn<() => unknown>(),
@@ -100,6 +130,8 @@ export function createStructuredSessionMocks() {
     useStructuredAgentSession: async () => {
       const { useStructuredAgentSessionOutbox } =
         await import('./use-structured-agent-session-outbox')
+      const { projectStructuredAgentSessionMessages } =
+        await import('../../../../shared/structured-agent-session-message-projection')
       return {
         useStructuredAgentSession: (props: {
           sessionId: string
@@ -114,11 +146,11 @@ export function createStructuredSessionMocks() {
             submissions: mocks.submissions as never
           })
           return {
-            journalItems: [],
+            journalItems: mocks.journalItems,
             messages:
               mocks.messages ??
               (mocks.mode === 'outbox'
-                ? []
+                ? projectStructuredAgentSessionMessages([], outbox.outbox, [])
                 : [
                     {
                       id: 'message-1',
@@ -134,13 +166,15 @@ export function createStructuredSessionMocks() {
                     }
                   ]),
             status: mocks.status,
-            error: mocks.readError ?? outbox.error,
+            error: outbox.error,
+            readRefusal: mocks.readRefusal,
             hasOlder: mocks.hasOlder,
             loadingOlder: mocks.loadingOlder,
             olderHistoryGeneration: mocks.olderHistoryGeneration,
             loadOlder: mocks.loadOlder,
             prompts: mocks.promptItems,
             outbox: outbox.outbox,
+            submissions: mocks.submissions,
             blockedClientMessageId: outbox.blockedClientMessageId,
             send: outbox.send,
             retry: outbox.retry,
@@ -201,7 +235,7 @@ export function createStructuredSessionMocks() {
       getStructuredAgentSessionLaunchResumes: () => mocks.launchResumes,
       useStructuredAgentSessionLaunchSelection: () => null,
       useStructuredAgentSessionLaunchLifecycle: () => mocks.launchLifecycle,
-      useStructuredAgentSessionLaunchFailureReason: () => mocks.launchFailureReason
+      useStructuredAgentSessionLaunchFailure: () => mocks.launchFailure
     }),
     useNativeChatFontScale: () => ({
       useNativeChatFontScale: () => ({ scale: 1 })
@@ -219,7 +253,7 @@ export function createStructuredSessionMocks() {
     nativeChatMessageList: () => ({
       NativeChatMessageList: (props: typeof mocks.messageListProps) => {
         mocks.messageListProps = props
-        return <div data-testid="message-list" />
+        return <DeliveryNoticesMock notices={props?.deliveryNotices} />
       }
     }),
     nativeChatComposer: () => ({
@@ -257,19 +291,20 @@ export function createStructuredSessionMocks() {
   const resetStructuredSessionMocks = (): void => {
     mocks.call.mockReset()
     mocks.launchLifecycle = null
-    mocks.launchFailureReason = null
+    mocks.launchFailure = null
     mocks.launchResumes = false
     mocks.retryLaunch.mockReset()
     mocks.controllerProps = null
     mocks.mode = 'static'
     mocks.status = 'ready'
-    mocks.readError = null
+    mocks.readRefusal = undefined
     mocks.messages = null
     mocks.messageListProps = null
     mocks.composerProps = null
     mocks.approvalCardProps = null
     mocks.questionCardProps = null
     mocks.promptItems = []
+    mocks.journalItems = []
     mocks.respond.mockReset()
     mocks.cancel.mockReset()
     mocks.stop.mockReset()

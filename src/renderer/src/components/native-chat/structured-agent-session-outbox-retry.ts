@@ -10,7 +10,6 @@ export function retryStructuredAgentSessionOutboxEntry(args: {
   sessionId: string
   submissions: readonly AgentJournalSubmission[]
   outboxRef: { current: StructuredAgentSessionOutboxEntry[] }
-  retryWithFreshClientMessageIdRef: { current: string | null }
   setOutbox: (entries: StructuredAgentSessionOutboxEntry[]) => void
   setError: (error: string | null) => void
   createOperationId: () => string
@@ -18,15 +17,13 @@ export function retryStructuredAgentSessionOutboxEntry(args: {
   const { clientMessageId, outboxRef, sessionId, setError, setOutbox, submissions } = args
   const submission = submissions.find((candidate) => candidate.clientMessageId === clientMessageId)
   const current = outboxRef.current.find((entry) => entry.clientMessageId === clientMessageId)
-  // A provider-history reconciliation can settle an earlier unknown as
-  // rejected before the user presses Retry. Reusing that operation id only
-  // replays the settled rejection forever, so rotate the id for a safe resend.
-  if (
-    current &&
-    (submission?.dispatchState === 'rejected' ||
-      args.retryWithFreshClientMessageIdRef.current === clientMessageId)
-  ) {
-    args.retryWithFreshClientMessageIdRef.current = null
+  // The host settled this id as rejected, and reusing it only replays that forever, so rotate the
+  // id for a safe resend. Read from the message itself, which outlives a restart, or from a
+  // reconciliation that settled an earlier unknown before the outbox caught up. A refusal that
+  // settled the message already rotated it.
+  const recordedRejection =
+    current?.state === 'rejected' && current.lastFailure?.kind === 'rejected'
+  if (current && (recordedRejection || submission?.dispatchState === 'rejected')) {
     const rotated = outboxRef.current.map((entry) =>
       entry.clientMessageId === clientMessageId
         ? {

@@ -10,10 +10,8 @@ import type {
   AgentJournalMessageItem,
   AgentSessionJournalIdentity
 } from '../../../shared/agent-session-journal-types'
-import {
-  DISPATCH_REJECTED_CANCELLED,
-  DISPATCH_REJECTED_HOST_RESTARTED
-} from '../../../shared/structured-agent-session-dispatch-rejection'
+import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
+import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import Database from '../../sqlite/sync-database'
 import { journalDatabaseFile } from './journal-paths'
 import {
@@ -45,6 +43,12 @@ function message(text: string): AgentJournalMessageItem {
 }
 
 const journals = createTrackedJournalOpener()
+const STOP_WITHDRAWAL = agentSessionFailureWords(agentSessionFailureFact('cancelled'), {
+  surface: 'rejection'
+})
+const HOST_RESTARTED = agentSessionFailureWords(agentSessionFailureFact('hostRestarted'), {
+  surface: 'rejection'
+})
 
 async function open(): Promise<AgentSessionJournal> {
   const journal = await journals.open({
@@ -252,12 +256,10 @@ describe('returned transition (D1/N4)', () => {
     await queueDraft(journal, 'draft-1')
     await consumeDraft(journal, 'draft-1')
     // The Stop's own withdrawal path: the queued (not handed over) submission.
-    expect(await journal.rejectQueuedSubmissions(0, DISPATCH_REJECTED_CANCELLED)).toEqual([
-      'draft-1'
-    ])
+    expect(await journal.rejectQueuedSubmissions(0, STOP_WITHDRAWAL)).toEqual(['draft-1'])
     expect(journal.queuedMessages.get('draft-1')).toMatchObject({
       state: 'returned',
-      returnedReason: DISPATCH_REJECTED_CANCELLED
+      returnedReason: STOP_WITHDRAWAL.reason
     })
     // Atomic with the rejection row: a crash before the Stop answered keeps the text.
     await journal.close()
@@ -265,7 +267,7 @@ describe('returned transition (D1/N4)', () => {
     journal = await open()
     expect(journal.queuedMessages.get('draft-1')).toMatchObject({
       state: 'returned',
-      returnedReason: DISPATCH_REJECTED_CANCELLED
+      returnedReason: STOP_WITHDRAWAL.reason
     })
   })
 
@@ -276,12 +278,12 @@ describe('returned transition (D1/N4)', () => {
     await journal.close()
     journal = await open()
     expect(journal.queuedMessages.get('draft-1')?.state).toBe('dispatched')
-    await journal.rejectQueuedSubmissions(0, DISPATCH_REJECTED_HOST_RESTARTED, (submission) =>
+    await journal.rejectQueuedSubmissions(0, HOST_RESTARTED, (submission) =>
       journal.wroteBeforeOpen(submission.acceptedSequence)
     )
     expect(journal.queuedMessages.get('draft-1')).toMatchObject({
       state: 'returned',
-      returnedReason: DISPATCH_REJECTED_HOST_RESTARTED
+      returnedReason: HOST_RESTARTED.reason
     })
   })
 
@@ -454,7 +456,7 @@ describe('open-time repair and retention', () => {
     let journal = await open()
     await queueDraft(journal, 'draft-1')
     await consumeDraft(journal, 'draft-1')
-    await journal.rejectQueuedSubmissions(0, DISPATCH_REJECTED_CANCELLED)
+    await journal.rejectQueuedSubmissions(0, STOP_WITHDRAWAL)
     await journal.close()
     const db = new Database(journalDatabaseFile(root))
     db.prepare(
@@ -465,7 +467,7 @@ describe('open-time repair and retention', () => {
     journal = await open()
     expect(journal.queuedMessages.get('draft-1')).toMatchObject({
       state: 'returned',
-      returnedReason: DISPATCH_REJECTED_CANCELLED
+      returnedReason: STOP_WITHDRAWAL.reason
     })
   })
 
@@ -479,10 +481,10 @@ describe('open-time repair and retention', () => {
     journal = await open()
     expect(journal.queuedMessages.get('draft-1')?.state).toBe('dispatched')
     // The delivery loop's leftover rejection now returns the card.
-    await journal.rejectQueuedSubmissions(0, DISPATCH_REJECTED_HOST_RESTARTED)
+    await journal.rejectQueuedSubmissions(0, HOST_RESTARTED)
     const row = journal.queuedMessages.get('draft-1')
     expect(row?.state).toBe('returned')
-    expect(row?.returnedReason).toBe(DISPATCH_REJECTED_HOST_RESTARTED)
+    expect(row?.returnedReason).toBe(HOST_RESTARTED.reason)
   })
 
   it('prunes accepted and withdrawn rows once the replay window passes, and never waiting or returned rows', async () => {

@@ -11,7 +11,7 @@ import {
   structuredAgentSessionSendRequest,
   type StructuredAgentSessionOutboxState
 } from './structured-agent-session-outbox'
-import { withdrawUnsentStructuredAgentSessionOutboxEntries } from './structured-agent-session-outbox-stop'
+import { withdrawUnsentStructuredAgentSessionOutboxEntries } from './structured-agent-session-outbox-stop-withdrawal'
 
 function entry(delivery?: 'queue-if-active') {
   return createStructuredAgentSessionOutboxEntry({
@@ -94,6 +94,7 @@ describe('outbox queue delivery', () => {
         at('plain-in-flight', 'dispatching')
       ],
       [],
+      null,
       null
     )
     expect(next.map((entry) => entry.clientMessageId)).toEqual(['in-flight', 'in-doubt'])

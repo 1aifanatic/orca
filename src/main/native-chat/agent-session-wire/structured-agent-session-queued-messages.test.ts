@@ -650,7 +650,7 @@ describe('/clear', () => {
     try {
       expect(await clear(operationId)).toMatchObject({
         ok: true,
-        value: { command: 'clear', state: 'completed', error: 'unsupported' }
+        value: { command: 'clear', state: 'completed', error: expect.any(String) }
       })
     } finally {
       attach.mockRestore()

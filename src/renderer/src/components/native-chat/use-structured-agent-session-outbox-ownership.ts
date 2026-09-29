@@ -7,7 +7,7 @@
 import { useCallback, useEffect } from 'react'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
-import { withdrawUnsentStructuredAgentSessionOutboxEntries } from '../../../../shared/structured-agent-session-outbox-stop'
+import { withdrawUnsentStructuredAgentSessionOutboxEntries } from '../../../../shared/structured-agent-session-outbox-stop-withdrawal'
 import { writeOutbox } from './structured-agent-session-outbox-storage'
 import type { useStructuredAgentSessionWithdrawnRestore } from './structured-agent-session-withdrawn-message-restore'
 
@@ -34,7 +34,8 @@ export function useStructuredAgentSessionOutboxOwnership(args: {
     const next = withdrawUnsentStructuredAgentSessionOutboxEntries(
       outboxRef.current,
       submissions,
-      blockedIdRef.current
+      blockedIdRef.current,
+      inFlightIdRef.current
     )
     if (next.length === outboxRef.current.length) {
       return
@@ -44,7 +45,7 @@ export function useStructuredAgentSessionOutboxOwnership(args: {
     outboxRef.current = next
     setOutbox(next)
     writeOutbox(sessionId, next)
-  }, [blockedIdRef, outboxRef, restoreWithdrawn, sessionId, setOutbox, submissions])
+  }, [blockedIdRef, inFlightIdRef, outboxRef, restoreWithdrawn, sessionId, setOutbox, submissions])
 
   // Drop host-owned entries without a restore: the published card is the text now.
   const retire = useCallback(

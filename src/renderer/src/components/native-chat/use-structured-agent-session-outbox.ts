@@ -67,7 +67,6 @@ export function useStructuredAgentSessionOutbox(args: {
   const inFlightIdRef = useRef<string | null>(null)
   const dispatchGenerationRef = useRef(0)
   const blockedIdRef = useRef<string | null>(null)
-  const retryWithFreshClientMessageIdRef = useRef<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [errorSession, setErrorSession] = useState(sessionId)
   // Render-time reset (react.dev: adjusting state when a prop changes), so the
@@ -85,7 +84,6 @@ export function useStructuredAgentSessionOutbox(args: {
     dispatchGenerationRef.current += 1
     inFlightIdRef.current = null
     blockedIdRef.current = null
-    retryWithFreshClientMessageIdRef.current = null
   }, [owner.ownerChange, owner.targetKey, sessionId])
 
   useEffect(() => {
@@ -153,7 +151,6 @@ export function useStructuredAgentSessionOutbox(args: {
       // drain, so a later microtask would leave the queue with no trigger to move on.
       inFlightIdRef.current = null
       blockedIdRef.current = disposition.blockedClientMessageId
-      retryWithFreshClientMessageIdRef.current = disposition.retryWithFreshClientMessageId
       setError(disposition.error)
       outboxRef.current = disposition.entries
       setOutbox(disposition.entries)
@@ -284,14 +281,16 @@ export function useStructuredAgentSessionOutbox(args: {
   })
 
   const retry = (clientMessageId: string): void => {
-    blockedIdRef.current = null
+    // Another message's Retry must not send the one the queue is held on.
+    if (blockedIdRef.current === clientMessageId) {
+      blockedIdRef.current = null
+    }
     setError(null)
     retryStructuredAgentSessionOutboxEntry({
       clientMessageId,
       sessionId,
       submissions,
       outboxRef,
-      retryWithFreshClientMessageIdRef,
       setOutbox,
       setError,
       createOperationId: structuredSessionOperationId

@@ -1,6 +1,6 @@
+import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
 import type { StructuredAgentSessionHostDeps } from './structured-agent-session-host-types'
 import type { StructuredAgentSessionMutationContext } from './structured-agent-session-host-mutations'
-import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
 
 /**
  * Releases sends the provider can no longer be holding.
