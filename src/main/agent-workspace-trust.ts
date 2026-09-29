@@ -1,16 +1,13 @@
 import { homedir } from 'node:os'
 import {
   AGENT_TRUST_WRITE_DEADLINE_MS,
-  SHORT_AGENT_TRUST_WRITE_DEADLINE_MS,
-  awaitAgentTrustWriteWithinDeadline
+  SHORT_AGENT_TRUST_WRITE_DEADLINE_MS
 } from './agent-trust-write-deadline'
 import type { AgentTrustPreset } from './agent-trust-presets'
-import { markRemoteAgentWorkspaceTrusted } from './remote-agent-trust-presets'
 import { resolveLocalClaudeTrustConfig } from './claude/claude-folder-trust-file'
 import type { ClaudeRuntimeAuthPreparation } from './claude-accounts/runtime-auth/runtime-auth-types'
-import type { ClaudeFolderTrustSpawnRequest } from '../shared/claude-folder-trust-spawn-request'
+import type { AgentWorkspaceTrustSpawnRequest } from '../shared/agent-workspace-trust-spawn-request'
 import { parseWslUncPath } from '../shared/wsl-paths'
-import { isTooBroadToPreTrust } from '../shared/home-or-filesystem-root'
 import { applyWorkspaceTrustOnThisHost } from './execution-host-workspace-trust'
 import { getLocalCodexTrustConfigFiles } from './codex/codex-home-paths'
 import { getCachedWslHome } from './wsl-home-cache'
@@ -28,7 +25,7 @@ export type AgentTrustLaunchContext = {
 
 /** Spawn fields the dispatcher asks the caller to forward to the process owner. */
 export type AgentTrustSpawnFields = {
-  claudeFolderTrust?: ClaudeFolderTrustSpawnRequest
+  agentWorkspaceTrust?: AgentWorkspaceTrustSpawnRequest
 }
 
 function isWslLaunch(workspacePath: string, context: AgentTrustLaunchContext): boolean {
@@ -58,31 +55,8 @@ export async function applyAgentWorkspaceTrust(
   context: AgentTrustLaunchContext
 ): Promise<AgentTrustSpawnFields> {
   if (context.connectionId) {
-    try {
-      if (isTooBroadToPreTrust(workspacePath, [])) {
-        // Why: the SSH host checks its own home; a root is too broad on any host.
-        return {}
-      }
-      if (preset === 'claude') {
-        // Why: the relay owns the remote file, its lock and the agent's final env.
-        return { claudeFolderTrust: { workspacePath } }
-      }
-      await awaitAgentTrustWriteWithinDeadline(
-        markRemoteAgentWorkspaceTrusted({
-          preset,
-          connectionId: context.connectionId,
-          workspacePath
-        }),
-        // Why: SSH writes cross a possibly slow link.
-        { preset, workspacePath, deadlineMs: AGENT_TRUST_WRITE_DEADLINE_MS }
-      )
-    } catch (error) {
-      console.warn(
-        `[agent-trust] ${preset} trust for ${workspacePath} failed; the agent will ask`,
-        error
-      )
-    }
-    return {}
+    // Why: the SSH host's relay writes on its own disk, under its own homes and the agent's final env.
+    return { agentWorkspaceTrust: { workspacePath } }
   }
   // Why: the other writers target this host's home, which a WSL guest agent never reads.
   if (preset !== 'claude' && isWslLaunch(workspacePath, context)) {

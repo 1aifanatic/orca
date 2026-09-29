@@ -44,8 +44,8 @@ export function applyAgentWorkspaceTrustToSpawn(
     wslDistro: args.wslDistro,
     connectionId: args.connectionId
   }).then((fields) => {
-    if (fields.claudeFolderTrust) {
-      args.spawnOptions.claudeFolderTrust = fields.claudeFolderTrust
+    if (fields.agentWorkspaceTrust) {
+      args.spawnOptions.agentWorkspaceTrust = fields.agentWorkspaceTrust
     }
   })
 }

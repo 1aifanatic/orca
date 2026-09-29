@@ -350,27 +350,29 @@
         "renderer PTY spawn builder",
         "runtime PTY spawn builder",
         "agent workspace trust dispatcher",
-        "remote (SSH) agent workspace trust writer",
-        "SSH relay Claude trust grant"
+        "execution-host workspace trust writer (main and SSH relay)",
+        "SSH relay agent workspace trust"
       ],
       "platforms": ["macos", "linux", "windows"],
       "providers": ["local", "daemon", "ssh", "wsl", "remote-runtime"],
       "coveredPlatforms": ["macos"],
       "coveredProviders": ["local", "ssh"],
-      "coverageNotes": "The actual renderer and runtime spawn-option builders with a mocked dispatcher, the spawn hook with a mocked dispatcher, the dispatcher with mocked preset writers and the real Claude config writer on a temp file, and the remote preset writer with a mocked SSH filesystem. Proves the builders await trust before returning, the fresh-launch and setting gates, the per-preset deadlines, and the home and root refusal. No native PTY, agent CLI, live SSH host or WSL guest.",
+      "coverageNotes": "The actual renderer and runtime spawn-option builders with a mocked dispatcher, the spawn hook with a mocked dispatcher, the dispatcher with mocked preset writers and the real Claude config writer on a temp file, the execution-host writer and the relay spawn function with every real preset writer under a throwaway home. Proves the builders await trust before returning, the fresh-launch and setting gates, the per-preset deadlines, that SSH launches hand every preset to the relay, and the refusal of any stored path that is a root, a home or a folder above one. No native PTY, agent CLI, live SSH host or WSL guest.",
       "motivatingLinks": [
         "https://github.com/stablyai/orca/blob/main/src/main/agent-workspace-trust.ts"
       ],
-      "invariant": "A fresh PTY launch of an agent with a trust preset pre-trusts its workspace root before the provider spawn, in both spawn builders, and never waits past the preset's deadline: 20 s for Codex and for SSH writes, the short local budget for every other local writer. A failed or abandoned write lets the launch proceed untrusted, so the agent asks. Restored or reattached panes, spawns with no launch command, the setting turned off, a home folder and a filesystem root are never trusted, and a WSL launch never writes the Windows home.",
-      "oracle": "A trust write held pending keeps each builder from returning until it settles. A never-settling local Codex or SSH write resolves the dispatcher only after the long deadline; a never-settling local Claude write resolves after the short budget with a named warning. Rejected and throwing writes resolve with a warning. Restored panes, spawns without a command and the setting off make no dispatcher call. A home or root workspace makes no writer call for any preset, locally, over SSH and on the relay.",
+      "invariant": "A fresh PTY launch of an agent with a trust preset pre-trusts its workspace root before the provider spawn, in both spawn builders, on the host that runs the agent: main for local and WSL launches, the SSH relay on its own disk for SSH launches. It never waits past the preset's deadline: 20 s for local Codex, the short budget for every other write, local or on the relay. A failed or abandoned write lets the launch proceed untrusted, so the agent asks. Restored or reattached panes, spawns with no launch command and the setting turned off are never trusted; no writer stores a path that is a root, a home or a folder above one (including Codex's hop to a worktree's main checkout); an unknown home writes nothing; and a WSL launch never writes the Windows home.",
+      "oracle": "A trust write held pending keeps each builder from returning until it settles. A never-settling local Codex write resolves the dispatcher only after the long deadline; a never-settling local Claude write resolves after the short budget with a named warning. Rejected and throwing writes, and a throwing guard, resolve with a warning. Restored panes, spawns without a command and the setting off make no dispatcher call. An SSH launch returns the relay field for every preset and calls no writer. A home, a folder above one, a root, a symlink to a home, and a Codex worktree whose main checkout is the home write no trust file for any preset, on this machine and on the relay.",
       "commands": [
-        "ORCA_BACKGROUND_LAUNCH=1 pnpm exec vitest run --config config/vitest.config.ts src/main/ipc/pty/spawn-options-agent-workspace-trust.test.ts src/main/agent-workspace-trust-spawn.test.ts src/main/agent-workspace-trust.test.ts src/main/remote-agent-trust-presets.test.ts"
+        "ORCA_BACKGROUND_LAUNCH=1 pnpm exec vitest run --config config/vitest.config.ts src/main/ipc/pty/spawn-options-agent-workspace-trust.test.ts src/main/agent-workspace-trust-spawn.test.ts src/main/agent-workspace-trust.test.ts src/main/execution-host-workspace-trust.test.ts src/relay/agent-workspace-trust-spawn.test.ts src/relay/agent-workspace-trust-spawn-guard-failure.test.ts"
       ],
       "testFiles": [
         "src/main/ipc/pty/spawn-options-agent-workspace-trust.test.ts",
         "src/main/agent-workspace-trust-spawn.test.ts",
         "src/main/agent-workspace-trust.test.ts",
-        "src/main/remote-agent-trust-presets.test.ts"
+        "src/main/execution-host-workspace-trust.test.ts",
+        "src/relay/agent-workspace-trust-spawn.test.ts",
+        "src/relay/agent-workspace-trust-spawn-guard-failure.test.ts"
       ],
       "assertionRefs": [
         {
@@ -392,14 +394,30 @@
           "assertions": [
             "contains a rejected or throwing write so the launch proceeds",
             "gives only Codex the long deadline its shared config lane needs",
-            "gives SSH writes the long deadline a slow link needs",
             "gives a local Claude write a short budget, after which Claude asks",
-            "never pre-trusts %s for any preset"
+            "never pre-trusts %s for any preset",
+            "hands an SSH %s launch to the relay instead of writing anything here"
           ]
         },
         {
-          "file": "src/main/remote-agent-trust-presets.test.ts",
-          "assertions": ["never pre-trusts the remote home folder"]
+          "file": "src/main/execution-host-workspace-trust.test.ts",
+          "assertions": [
+            "writes no %s trust",
+            "never stores the home for Codex through a worktree whose main checkout is the home",
+            "writes no %s trust when the host knows no home"
+          ]
+        },
+        {
+          "file": "src/relay/agent-workspace-trust-spawn.test.ts",
+          "assertions": [
+            "writes %s trust on the relay host's own disk",
+            "never stores the relay home for Codex through a worktree whose main checkout is the home",
+            "leaves Antigravity to ask, since its writer is unverified on SSH hosts"
+          ]
+        },
+        {
+          "file": "src/relay/agent-workspace-trust-spawn-guard-failure.test.ts",
+          "assertions": ["skips %s trust and never fails the spawn"]
         }
       ],
       "evidenceRuns": [
@@ -407,15 +425,15 @@
           "date": "2026-09-29",
           "runner": "local",
           "platform": "macos",
-          "command": "ORCA_BACKGROUND_LAUNCH=1 pnpm exec vitest run --config config/vitest.config.ts src/main/ipc/pty/spawn-options-agent-workspace-trust.test.ts src/main/agent-workspace-trust-spawn.test.ts src/main/agent-workspace-trust.test.ts src/main/remote-agent-trust-presets.test.ts",
+          "command": "ORCA_BACKGROUND_LAUNCH=1 pnpm exec vitest run --config config/vitest.config.ts src/main/ipc/pty/spawn-options-agent-workspace-trust.test.ts src/main/agent-workspace-trust-spawn.test.ts src/main/agent-workspace-trust.test.ts src/main/execution-host-workspace-trust.test.ts src/relay/agent-workspace-trust-spawn.test.ts src/relay/agent-workspace-trust-spawn-guard-failure.test.ts",
           "result": "passed",
-          "durationSeconds": 4.66,
-          "summary": "110 tests across four suites pass, run through node_modules/.bin/vitest with a throwaway HOME. No native launch, PTY or live SSH host."
+          "durationSeconds": 8.09,
+          "summary": "197 tests across six suites pass, run through node_modules/.bin/vitest with a throwaway HOME. No native launch, PTY or live SSH host."
         }
       ],
       "runtimeBudget": {
         "p95Seconds": 10,
-        "scope": "Focused mocked spawn-builder, hook, dispatcher and remote-writer suites; p95 not established."
+        "scope": "Focused spawn-builder, hook, dispatcher, execution-host writer and relay suites; p95 not established."
       },
       "flakeHistory": {
         "status": "not-started",
@@ -423,18 +441,18 @@
       },
       "redGreenEvidence": {
         "status": "complete",
-        "evidence": "Each named case failed with its fix removed and passed restored: the builder's await turned into a fire-and-forget call fails the hold case; the SSH clause removed from the long deadline fails the SSH deadline case; the home and root check removed from the dispatcher, the remote writer and the relay fails all seven home and root cases."
+        "evidence": "Each named case failed with its fix removed and passed restored: the builder's await turned into a fire-and-forget call fails the hold case; guarding the workspace instead of Codex's stored main checkout fails the Codex home case; dropping the unknown-home rule fails every no-home case; the relay deriving only Claude from launchAgent fails each non-Claude relay case; the dispatcher handing only Claude to the relay fails each SSH preset case; dropping the relay's Antigravity return fails its case; letting the host writer's catch rethrow fails every guard-failure case."
       },
       "performanceBudget": {
         "required": true,
-        "evidence": "Plain shells and agents without a preset add no trust I/O; the hook returns after the preset check. A local non-Codex write is capped at the short budget and a Codex or SSH write at 20 s, each by one timer cleared on settlement. The deadline bounds the wait, not the write: an abandoned write still lands later. The local Claude writer reads and parses Claude's config synchronously on the main thread before its lock."
+        "evidence": "Plain shells and agents without a preset add no trust I/O; the hook returns after the preset check. A local Codex write is capped at 20 s and every other write, local or on the relay, at the short budget, each by one timer cleared on settlement. An SSH launch adds no round trip: the field rides the existing pty.spawn request. The deadline bounds the wait, not the write: an abandoned write still lands later. The local Claude writer reads and parses Claude's config synchronously on the main thread before its lock."
       },
       "knownGaps": [
         "CI soak pending.",
         "No live agent CLI, PTY, trust prompt, native Electron app, SSH host or WSL guest was exercised.",
         "Abandoning a write at the deadline does not cancel it; a slow write can land after the agent already asked.",
         "The deadline values are reasoned caps, not measured p95s.",
-        "Antigravity over SSH has no remote writer, so it still asks."
+        "Antigravity over SSH is not written on the relay (its writer is unverified there), so it still asks."
       ],
       "promotionCriteria": [
         "Retain the hold, deadline and home or root red/green evidence; obtain native platform and SSH evidence and a CI soak before promotion."

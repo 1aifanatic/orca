@@ -1,5 +1,5 @@
 import { FreebuffStatusProjection } from './freebuff-status-projection'
-import { applyRelayClaudeFolderTrust } from './claude-folder-trust-spawn'
+import { applyRelayAgentWorkspaceTrust } from './agent-workspace-trust-spawn'
 /* oxlint-disable max-lines */
 import type { IPty } from 'node-pty'
 import { killWithDescendantSweep } from '../main/pty-descendant-termination'
@@ -1921,7 +1921,7 @@ export class PtyHandler {
       { id, paneKey, shell, command, launchAgent },
       envToDelete
     )
-    await applyRelayClaudeFolderTrust(params.claudeFolderTrust, spawnEnv, {
+    await applyRelayAgentWorkspaceTrust(params.agentWorkspaceTrust, launchAgent, spawnEnv, {
       wslShell: isRelayWslShell(shell)
     })
     const worktreeId =

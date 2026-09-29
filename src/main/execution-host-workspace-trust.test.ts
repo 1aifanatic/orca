@@ -1,9 +1,7 @@
 import {
-  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
-  readdirSync,
   realpathSync,
   rmSync,
   symlinkSync,
@@ -14,6 +12,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as Os from 'node:os'
 import type { AgentTrustPreset } from './agent-trust-presets'
+import { linkGitWorktree, workspaceTrustWritten } from './workspace-trust-test-fixtures'
 
 const state = vi.hoisted(() => ({ home: '' }))
 
@@ -60,33 +59,7 @@ function thisHost(overrides: Partial<WorkspaceTrustHost> = {}): () => WorkspaceT
 }
 
 function trustWritten(preset: AgentTrustPreset): boolean {
-  const home = state.home
-  switch (preset) {
-    case 'claude':
-      return 'projects' in JSON.parse(readFileSync(join(home, '.claude.json'), 'utf-8'))
-    case 'codex':
-      return existsSync(join(home, '.codex', 'config.toml'))
-    case 'cursor':
-      return (
-        existsSync(join(home, '.cursor', 'projects')) &&
-        readdirSync(join(home, '.cursor', 'projects')).length > 0
-      )
-    case 'copilot':
-      return existsSync(join(home, '.copilot', 'config.json'))
-    case 'qoder':
-      return existsSync(join(home, '.qoder', 'settings.json'))
-    case 'antigravity':
-      return existsSync(join(home, '.gemini', 'antigravity-cli', 'settings.json'))
-  }
-}
-
-/** A linked worktree at `worktree` whose main checkout is `mainCheckout`, as git lays it out. */
-function linkWorktree(mainCheckout: string, worktree: string): void {
-  const gitDir = join(mainCheckout, '.git', 'worktrees', 'feature')
-  mkdirSync(gitDir, { recursive: true })
-  mkdirSync(worktree, { recursive: true })
-  writeFileSync(join(worktree, '.git'), `gitdir: ${gitDir}\n`)
-  writeFileSync(join(gitDir, 'gitdir'), join(worktree, '.git'))
+  return workspaceTrustWritten(state.home, preset)
 }
 
 describe('applyWorkspaceTrustOnThisHost', () => {
@@ -130,7 +103,7 @@ describe('applyWorkspaceTrustOnThisHost', () => {
 
   it('never stores the home for Codex through a worktree whose main checkout is the home', async () => {
     const worktree = join(root, 'worktrees', 'feature')
-    linkWorktree(state.home, worktree)
+    linkGitWorktree(state.home, worktree)
     await applyWorkspaceTrustOnThisHost('codex', worktree, thisHost())
     expect(trustWritten('codex')).toBe(false)
   })
@@ -139,7 +112,7 @@ describe('applyWorkspaceTrustOnThisHost', () => {
     'still trusts that worktree itself for %s, which stores the worktree path',
     async (preset) => {
       const worktree = join(root, 'worktrees', 'feature')
-      linkWorktree(state.home, worktree)
+      linkGitWorktree(state.home, worktree)
       await applyWorkspaceTrustOnThisHost(preset, worktree, thisHost())
       expect(trustWritten(preset)).toBe(true)
     }
@@ -148,7 +121,7 @@ describe('applyWorkspaceTrustOnThisHost', () => {
   it("trusts a worktree's main checkout for Codex when that checkout is not a home", async () => {
     const mainCheckout = join(root, 'repo')
     const worktree = join(root, 'worktrees', 'feature')
-    linkWorktree(mainCheckout, worktree)
+    linkGitWorktree(mainCheckout, worktree)
     await applyWorkspaceTrustOnThisHost('codex', worktree, thisHost())
     const written = readFileSync(join(state.home, '.codex', 'config.toml'), 'utf-8')
     expect(written).toContain(`[projects."${mainCheckout}"]`)

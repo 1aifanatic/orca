@@ -20,7 +20,6 @@ const mocks = vi.hoisted(() => ({
   copilot: vi.fn<(path: string) => void>(),
   antigravity: vi.fn<(path: string) => void>(),
   qoder: vi.fn<(path: string) => void>(),
-  remote: vi.fn<(args: unknown) => Promise<void>>(async () => {}),
   claudeGrant: vi.fn<typeof ClaudeFolderTrustFile.grantClaudeWorkspaceTrust>()
 }))
 
@@ -35,7 +34,6 @@ vi.mock('./codex/codex-home-paths', () => ({
   getLocalCodexTrustConfigFiles: () => CODEX_CONFIG_FILES
 }))
 vi.mock('./qoder/workspace-trust', () => ({ markQoderWorkspaceTrusted: mocks.qoder }))
-vi.mock('./remote-agent-trust-presets', () => ({ markRemoteAgentWorkspaceTrusted: mocks.remote }))
 vi.mock('./claude/claude-folder-trust-file', async (importOriginal) => {
   const actual = await importOriginal<typeof ClaudeFolderTrustFile>()
   mocks.claudeGrant.mockImplementation(actual.grantClaudeWorkspaceTrust)
@@ -87,7 +85,6 @@ describe('applyAgentWorkspaceTrust on this machine', () => {
       WORKSPACE,
       ...(preset === 'codex' ? [CODEX_CONFIG_FILES] : [])
     )
-    expect(mocks.remote).not.toHaveBeenCalled()
   })
 
   it('contains a rejected or throwing write so the launch proceeds', async () => {
@@ -120,28 +117,6 @@ describe('applyAgentWorkspaceTrust on this machine', () => {
     warn.mockRestore()
   })
 
-  it('gives SSH writes the long deadline a slow link needs', async () => {
-    vi.useFakeTimers()
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const remoteWrite = pending()
-    mocks.remote.mockReturnValueOnce(remoteWrite.promise)
-    let settled = false
-    const cursor = applyAgentWorkspaceTrust('cursor', WORKSPACE, {
-      ...local,
-      connectionId: 'ssh-1'
-    }).then(() => {
-      settled = true
-    })
-    await vi.advanceTimersByTimeAsync(SHORT_AGENT_TRUST_WRITE_DEADLINE_MS + 1)
-    expect(settled).toBe(false)
-    await vi.advanceTimersByTimeAsync(AGENT_TRUST_WRITE_DEADLINE_MS)
-    await cursor
-    expect(settled).toBe(true)
-    expect(String(warn.mock.calls[0]?.[0])).toContain('did not settle')
-    remoteWrite.release()
-    warn.mockRestore()
-  })
-
   // Why: a config dir that does not exist keeps a regression here from writing a real config.
   const noConfig = { ...local, env: { CLAUDE_CONFIG_DIR: join(tmpdir(), 'orca-no-claude-config') } }
   it.each([
@@ -152,8 +127,7 @@ describe('applyAgentWorkspaceTrust on this machine', () => {
       { ...noConfig, env: { ...noConfig.env, HOME: '/home/agent' } }
     ],
     ['a filesystem root', '/', noConfig],
-    ['a drive root', 'C:\\', noConfig],
-    ['a filesystem root over SSH', '/', { ...noConfig, connectionId: 'ssh-1' }]
+    ['a drive root', 'C:\\', noConfig]
   ])('never pre-trusts %s for any preset', async (_label, workspacePath, context) => {
     for (const preset of [
       'claude',
@@ -171,7 +145,6 @@ describe('applyAgentWorkspaceTrust on this machine', () => {
       mocks.copilot,
       mocks.qoder,
       mocks.antigravity,
-      mocks.remote,
       mocks.claudeGrant
     ]) {
       expect(writer).not.toHaveBeenCalled()
@@ -300,20 +273,22 @@ describe('applyAgentWorkspaceTrust for Claude', () => {
     warn.mockRestore()
   })
 
-  it('hands an SSH launch to the relay instead of writing anything here', async () => {
-    await expect(
-      applyAgentWorkspaceTrust('claude', '/srv/wt', { ...local, connectionId: 'ssh-1' })
-    ).resolves.toEqual({ claudeFolderTrust: { workspacePath: '/srv/wt' } })
-    expect(mocks.remote).not.toHaveBeenCalled()
-  })
-
-  it('sends other presets over SSH to the remote writer', async () => {
-    await applyAgentWorkspaceTrust('antigravity', '/srv/wt', { ...local, connectionId: 'ssh-1' })
-    expect(mocks.remote).toHaveBeenCalledWith({
-      preset: 'antigravity',
-      connectionId: 'ssh-1',
-      workspacePath: '/srv/wt'
-    })
-    expect(mocks.antigravity).not.toHaveBeenCalled()
-  })
+  it.each(['claude', 'codex', 'cursor', 'copilot', 'qoder', 'antigravity'] as const)(
+    'hands an SSH %s launch to the relay instead of writing anything here',
+    async (preset) => {
+      await expect(
+        applyAgentWorkspaceTrust(preset, '/srv/wt', { ...local, connectionId: 'ssh-1' })
+      ).resolves.toEqual({ agentWorkspaceTrust: { workspacePath: '/srv/wt' } })
+      for (const writer of [
+        mocks.codex,
+        mocks.cursor,
+        mocks.copilot,
+        mocks.qoder,
+        mocks.antigravity,
+        mocks.claudeGrant
+      ]) {
+        expect(writer).not.toHaveBeenCalled()
+      }
+    }
+  )
 })

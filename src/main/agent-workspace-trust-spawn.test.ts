@@ -111,15 +111,15 @@ describe('applyAgentWorkspaceTrustToSpawn', () => {
     })
   })
 
-  it('forwards the relay field the dispatcher returns for an SSH Claude launch', async () => {
+  it('forwards the relay field the dispatcher returns for an SSH launch', async () => {
     applyAgentWorkspaceTrust.mockResolvedValueOnce({
-      claudeFolderTrust: { workspacePath: '/srv/wt' }
+      agentWorkspaceTrust: { workspacePath: '/srv/wt' }
     })
     const spawnOptions = {}
     await applyAgentWorkspaceTrustToSpawn(
       spawnArgs({ worktreeId: 'repo-1::/srv/wt', connectionId: 'ssh-1', spawnOptions })
     )
-    expect(spawnOptions).toEqual({ claudeFolderTrust: { workspacePath: '/srv/wt' } })
+    expect(spawnOptions).toEqual({ agentWorkspaceTrust: { workspacePath: '/srv/wt' } })
   })
 
   it('treats an unset setting as on', async () => {

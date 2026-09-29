@@ -149,15 +149,15 @@ describe.each(['renderer', 'runtime'] as const)('%s spawn builder agent trust', 
     expect(applyAgentWorkspaceTrust).not.toHaveBeenCalled()
   })
 
-  it('forwards the relay trust field on an SSH Claude spawn', async () => {
+  it('forwards the relay trust field on an SSH agent spawn', async () => {
     applyAgentWorkspaceTrust.mockResolvedValueOnce({
-      claudeFolderTrust: { workspacePath: '/repo/wt' }
+      agentWorkspaceTrust: { workspacePath: '/repo/wt' }
     })
     const options = await build(route, {
       connectionId: 'ssh-1',
-      launchAgent: 'claude',
-      command: 'claude'
+      launchAgent: 'codex',
+      command: 'codex'
     })
-    expect(options.claudeFolderTrust).toEqual({ workspacePath: '/repo/wt' })
+    expect(options.agentWorkspaceTrust).toEqual({ workspacePath: '/repo/wt' })
   })
 })
