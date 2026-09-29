@@ -38,6 +38,13 @@ export function normalizeColorQueryReplyColors(
   return answersBothSlots(colors) ? colors : null
 }
 
+export function colorQueryReplyColorsEqual(
+  a: TerminalOscColorQueryReplyColors | null,
+  b: TerminalOscColorQueryReplyColors | null
+): boolean {
+  return a?.foreground === b?.foreground && a?.background === b?.background
+}
+
 // Why process-wide: each process that owns PTYs (main, the daemon, a relay) serves one host,
 // so all its panes answer from one viewer theme, pushed to it by the app that shows them.
 let hostColors: TerminalOscColorQueryReplyColors | null = null
@@ -56,16 +63,13 @@ export function _resetPtyOwnerHostColorsForTest(): void {
 }
 
 /**
- * The PTY owner always answers. The host-wide theme wins over the colours the creating
- * viewer sent at spawn, so a theme change reaches old panes — except when that viewer is
- * a paired client on another machine, whose own theme is what its pane is painted with.
- * Orca's default theme answers when nothing has been reported yet.
+ * The PTY owner always answers. The host-wide viewer colours win over the colours sent at
+ * spawn, so a theme change reaches old panes; Orca's default theme answers when nothing has
+ * been reported yet.
  */
 export function resolvePtyOwnerColorQueryColors(
   host: TerminalOscColorQueryReplyColors | null | undefined,
-  spawn: TerminalOscColorQueryReplyColors | null | undefined,
-  spawnFromRemoteViewer = false
+  spawn: TerminalOscColorQueryReplyColors | null | undefined
 ): TerminalOscColorQueryReplyColors {
-  const ordered = spawnFromRemoteViewer ? [spawn, host] : [host, spawn]
-  return ordered.find(answersBothSlots) ?? ORCA_DEFAULT_COLOR_QUERY_REPLY_COLORS
+  return [host, spawn].find(answersBothSlots) ?? ORCA_DEFAULT_COLOR_QUERY_REPLY_COLORS
 }

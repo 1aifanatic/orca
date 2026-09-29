@@ -12,6 +12,14 @@ import {
   tmpdir
 } from '../orca-runtime-test-mocks.spec'
 import type { OrchestrationDb } from '../orchestration/db'
+import {
+  getTerminalViewColorQueryReplyColors,
+  getTerminalViewerColors
+} from '../terminal-view-attribute-store'
+import type {
+  TerminalViewAttributes,
+  TerminalViewRgb
+} from '../../../shared/terminal-view-attributes'
 import type {
   AgentSessionExecutionClaim,
   AgentSessionSurfaceBinding
@@ -32,6 +40,21 @@ import {
   makeWorkspaceSessionWithHeadlessTerminal,
   store
 } from '../orca-runtime-test-fixtures.spec'
+
+function viewAttributes(
+  foreground: TerminalViewRgb,
+  background: TerminalViewRgb
+): TerminalViewAttributes {
+  return {
+    foreground,
+    background,
+    cursor: [0xff, 0xff, 0xff],
+    ansi: Array.from({ length: 256 }, (): TerminalViewRgb => [0, 0, 0]),
+    colorSchemeMode: 'dark',
+    cursorStyle: 'block',
+    cursorBlink: false
+  }
+}
 
 describe('OrcaRuntimeService', () => {
   it('preserves SSH dispatch authority commitment across transient relay loss', async () => {
@@ -171,15 +194,7 @@ describe('OrcaRuntimeService', () => {
   })
 
   it('passes cached view colors to background agent spawns for source-owned startup replies', async () => {
-    setTerminalViewAttributes({
-      foreground: [0xff, 0xff, 0xff],
-      background: [0x28, 0x2c, 0x34],
-      cursor: [0xff, 0xff, 0xff],
-      ansi: Array.from({ length: 256 }, () => [0, 0, 0] as [number, number, number]),
-      colorSchemeMode: 'dark',
-      cursorStyle: 'block',
-      cursorBlink: false
-    })
+    setTerminalViewAttributes(viewAttributes([0xff, 0xff, 0xff], [0x28, 0x2c, 0x34]))
     const spawn = vi.fn().mockResolvedValue({ id: 'pty-bg' })
     const runtime = new OrcaRuntimeService(store)
     runtime.setPtyController({
@@ -199,10 +214,11 @@ describe('OrcaRuntimeService', () => {
         }
       })
     )
-    expect(spawn.mock.calls[0]?.[0]).not.toHaveProperty('terminalColorQuerySource')
   })
 
-  it("marks a caller's own colours so the PTY owner prefers them over the host theme", async () => {
+  it("makes the creating client's colours the host's viewer colours", async () => {
+    // A client that predates terminal.setViewerColors reports its theme only here.
+    setTerminalViewAttributes(viewAttributes([0xff, 0xff, 0xff], [0x28, 0x2c, 0x34]))
     const spawn = vi.fn().mockResolvedValue({ id: 'pty-remote-colors' })
     const runtime = new OrcaRuntimeService(store)
     runtime.setPtyController({
@@ -217,12 +233,17 @@ describe('OrcaRuntimeService', () => {
       terminalColorQueryReplies: { foreground: '#2e3434', background: '#ffffff' }
     })
 
+    expect(getTerminalViewerColors()).toEqual({ foreground: '#2e3434', background: '#ffffff' })
     expect(spawn).toHaveBeenCalledWith(
       expect.objectContaining({
-        terminalColorQueryReplies: { foreground: '#2e3434', background: '#ffffff' },
-        terminalColorQuerySource: 'remote-viewer'
+        terminalColorQueryReplies: { foreground: '#2e3434', background: '#ffffff' }
       })
     )
+    // The host desktop's own attributes, used by the hidden-pane responder, are untouched.
+    expect(getTerminalViewColorQueryReplyColors()).toEqual({
+      foreground: '#ffffff',
+      background: '#282c34'
+    })
   })
 
   it('does not register or publish a PTY incarnation that exited before spawn resolved', async () => {

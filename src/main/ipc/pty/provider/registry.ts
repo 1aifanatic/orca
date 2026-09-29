@@ -3,6 +3,7 @@ import type { IPtyProvider } from '../../../providers/types'
 import { parseAppSshPtyId, toAppSshPtyId, toRelaySshPtyId } from '../../../providers/ssh-pty-id'
 import { ptyOwnership } from './ownership-state'
 import type { TerminalOscColorQueryReplyColors } from '../../../../shared/terminal-osc-color-reply'
+import { colorQueryReplyColorsEqual } from '../../../../shared/pty-owner-color-query-colors'
 
 // ─── Provider Registry ──────────────────────────────────────────────
 // Routes PTY operations by connectionId (null = local provider).
@@ -27,6 +28,10 @@ function pushColorQueryReplyColors(provider: IPtyProvider): void {
 }
 
 export function publishColorQueryReplyColors(colors: TerminalOscColorQueryReplyColors): void {
+  // Why: a window focus re-asserts unchanged colours; that must not re-notify every daemon and relay.
+  if (colorQueryReplyColorsEqual(colorQueryReplyColors, colors)) {
+    return
+  }
   colorQueryReplyColors = colors
   for (const { provider } of registeredPtyProviders()) {
     pushColorQueryReplyColors(provider)

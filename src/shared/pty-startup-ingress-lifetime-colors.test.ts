@@ -37,20 +37,14 @@ describe('PTY owner colour replies for the terminal life', () => {
     expect(visible()).toBe('\x1b]11;#123456\x07\x1b]111\x07')
   })
 
-  it("answers a remote viewer's pane with that viewer's colours, not the host's", () => {
-    const remoteLight = { foreground: '#2e3434', background: '#ffffff' }
-    const remote = createHarness({
-      colors: remoteLight,
-      colorSource: 'remote-viewer',
-      deadlineMs: 5_000
-    })
-    const local = createHarness({ colors: remoteLight, deadlineMs: 5_000 })
+  it('answers with the viewer colours the host holds now, not the colours sent at spawn', () => {
+    // The last viewer to act may have changed theme since this pane was created.
+    const spawnedLight = { foreground: '#2e3434', background: '#ffffff' }
+    const { ingress, writes } = createHarness({ colors: spawnedLight, deadlineMs: 5_000 })
 
-    remote.ingress.accept(QUERY)
-    local.ingress.accept(QUERY)
+    ingress.accept(QUERY)
 
-    expect(remote.writes).toEqual(['\x1b]11;rgb:ffff/ffff/ffff\x1b\\'])
-    expect(local.writes).toEqual([HOST_BACKGROUND_REPLY])
+    expect(writes).toEqual([HOST_BACKGROUND_REPLY])
   })
 
   it('releases a torn candidate that never completes instead of withholding it forever', () => {

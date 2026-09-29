@@ -29,16 +29,6 @@ it('prefers host colours, then spawn colours, then the default, skipping unusabl
   expect(resolvePtyOwnerColorQueryColors(undefined, {})).toBe(ORCA_DEFAULT_COLOR_QUERY_REPLY_COLORS)
 })
 
-it("lets a remote viewer's creation colours outrank the host theme", () => {
-  // Desktop B (light) paired to host A (dark): the pane B created is painted with B's theme.
-  const hostDark = { foreground: '#ffffff', background: '#000000' }
-  const remoteLight = { foreground: '#000000', background: '#ffffff' }
-
-  expect(resolvePtyOwnerColorQueryColors(hostDark, remoteLight, true)).toEqual(remoteLight)
-  expect(resolvePtyOwnerColorQueryColors(hostDark, remoteLight, false)).toEqual(hostDark)
-  expect(resolvePtyOwnerColorQueryColors(hostDark, null, true)).toEqual(hostDark)
-})
-
 it('keeps only a wire pair that answers both slots', () => {
   expect(
     normalizeColorQueryReplyColors({ foreground: '#fff', background: 'rgb(1, 2, 3)' })

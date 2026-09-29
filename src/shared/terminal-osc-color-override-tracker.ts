@@ -1,5 +1,5 @@
 import type { TerminalOscColorQueryReplyColors } from './terminal-osc-color-reply'
-import { parseXColorSpec } from './terminal-view-attributes'
+import { parseXColorSpec, terminalViewRgbToCssHex } from './terminal-view-attributes'
 
 // Why a bound: a torn OSC is held across reads, and a runaway one must not grow forever.
 const MAX_PENDING_OSC_CHARS = 256
@@ -21,10 +21,6 @@ const OSC_TERMINATOR = /[\x07\x1b]/g
 /** Cheap prefilter so non-colour OSCs (titles, hyperlinks) are never sliced. */
 function mayBeColorOsc(input: string, bodyStart: number): boolean {
   return input[bodyStart] === '1' && (input[bodyStart + 1] === '0' || input[bodyStart + 1] === '1')
-}
-
-function toCssHex(rgb: readonly [number, number, number]): string {
-  return `#${rgb.map((channel) => channel.toString(16).padStart(2, '0')).join('')}`
 }
 
 /**
@@ -90,7 +86,7 @@ export class TerminalOscColorOverrideTracker {
       if (rgb) {
         const base = currentBase()
         this.resolve(base)
-        this.overrides = { ...this.overrides, [slot]: toCssHex(rgb) }
+        this.overrides = { ...this.overrides, [slot]: terminalViewRgbToCssHex(rgb) }
         this.overridesBase = baseKey(base)
       }
     }

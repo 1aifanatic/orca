@@ -47,4 +47,14 @@ describe('PTY owner colour publication', () => {
     expect(early.pushes).toEqual([DARK, LIGHT])
     expect(late.pushes).toEqual([LIGHT])
   })
+
+  it('does not re-push colours every owner already has', () => {
+    const local = new RecordingProvider()
+    setLocalPtyProvider(local)
+
+    publishColorQueryReplyColors(DARK)
+    publishColorQueryReplyColors({ ...DARK })
+
+    expect(local.pushes).toEqual([DARK])
+  })
 })

@@ -29,10 +29,6 @@ export class PtyOwnerColorQueryReplies {
   }
 
   private themeColors(): TerminalOscColorQueryReplyColors {
-    return resolvePtyOwnerColorQueryColors(
-      this.resolveHostColors(),
-      this.intent?.colors,
-      this.intent?.colorSource === 'remote-viewer'
-    )
+    return resolvePtyOwnerColorQueryColors(this.resolveHostColors(), this.intent?.colors)
   }
 }

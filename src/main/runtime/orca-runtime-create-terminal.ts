@@ -14,6 +14,12 @@ export class OrcaRuntimeWithCreateTerminal extends OrcaRuntimeWithTerminalCreate
     if (opts.startupAgent && worktreeSelector === undefined) {
       throw new Error(`startupAgent ${opts.startupAgent} requires a workspace selector.`)
     }
+    const callerColors = dependencies.normalizeColorQueryReplyColors(opts.terminalColorQueryReplies)
+    // Why: only a paired client sends its colours; creating a pane is acting as the viewer,
+    // which is how a client that predates terminal.setViewerColors still gets its theme.
+    if (callerColors) {
+      dependencies.setTerminalViewerColors(callerColors)
+    }
     const presentation = dependencies.resolveTerminalPresentation(opts)
     const requiresRendererFocus = opts.presentation === 'focused' || opts.focus === true
     const availableAuthoritativeWindow = this.getAvailableAuthoritativeWindow()
@@ -116,9 +122,7 @@ export class OrcaRuntimeWithCreateTerminal extends OrcaRuntimeWithTerminalCreate
           tabId,
           agentTeamsPlan?.env
         )
-        const terminalColorQueryReplies =
-          launchOpts.terminalColorQueryReplies ??
-          dependencies.getTerminalViewColorQueryReplyColors()
+        const terminalColorQueryReplies = dependencies.getTerminalViewerColors()
         if (launchOpts.signal?.aborted) {
           throw new Error('client_disconnected')
         }
@@ -149,10 +153,6 @@ export class OrcaRuntimeWithCreateTerminal extends OrcaRuntimeWithTerminalCreate
             leafId,
             ...(launchOpts.shellOverride ? { shellOverride: launchOpts.shellOverride } : {}),
             ...(terminalColorQueryReplies ? { terminalColorQueryReplies } : {}),
-            // Why: an RPC caller's colours are its own screen's, which the host theme must not override.
-            ...(launchOpts.terminalColorQueryReplies
-              ? { terminalColorQuerySource: 'remote-viewer' as const }
-              : {}),
             terminalKittyKeyboardProtocol: launchOpts.terminalKittyKeyboardProtocol,
             ...(launchOpts.agentSessionClaim
               ? {
