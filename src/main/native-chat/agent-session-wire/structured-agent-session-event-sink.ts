@@ -315,15 +315,16 @@ export function createDeferredStructuredAgentSessionEventSink(
             bytes: 64,
             // Bookkeeping: a failure is logged and the next exit (Stop, the child's end, the next
             // open) settles the send; it must never fail the sink and take the provider down.
-            run: (bound) =>
-              bound.journal
-                .markPendingSubmissionsUnknown(bound.fence, DISPATCH_DOUBT_TURN_SETTLED)
-                .then(
-                  () => undefined,
-                  (error: unknown) => {
-                    console.warn('[agent-session] settling sends at a turn end failed:', error)
-                  }
+            run: async (bound) => {
+              try {
+                await bound.journal.markPendingSubmissionsUnknown(
+                  bound.fence,
+                  DISPATCH_DOUBT_TURN_SETTLED
                 )
+              } catch (error) {
+                console.warn('[agent-session] settling sends at a turn end failed:', error)
+              }
+            }
           },
           { lifecycle: true }
         )

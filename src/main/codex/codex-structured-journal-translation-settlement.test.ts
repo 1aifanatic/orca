@@ -110,6 +110,7 @@ function deferredTarget(
         return { cursor: { epoch: 'e', sequence: log.length } }
       }),
       appendTombstone: vi.fn(async () => ({ epoch: 'e', sequence: log.length })),
+      markPendingSubmissionsUnknown: vi.fn(async () => []),
       appendLifecycleBatch: vi.fn(
         async (input: { mutations: readonly JournalLifecycleMutationInput[] }) => {
           for (const mutation of input.mutations) {
@@ -212,7 +213,8 @@ describe('codex journal translation', () => {
     expect(translator.handle(notification('turn/completed', { turn: { id: TURN_ID } }))).toEqual({
       accepted: true
     })
-    expect(deferred.state()).toMatchObject({ queuedOperations: 5, backpressured: true })
+    // The turn-over declaration after the end row is admitted across the watermark too.
+    expect(deferred.state()).toMatchObject({ queuedOperations: 6, backpressured: true })
 
     deferred.bind(deferredTarget(bodies, publishes))
     await expect(deferred.lifecycleBarrier()).resolves.toEqual({ ok: true })
