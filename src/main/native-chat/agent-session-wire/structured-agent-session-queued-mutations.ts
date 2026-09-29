@@ -34,6 +34,7 @@ import {
   structuredAgentSessionSendBlock
 } from './structured-agent-session-send-preparation'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
+import { compactInFlightContext } from './structured-conversation-command-lane'
 
 function invalid(message: string): {
   ok: false
@@ -131,7 +132,11 @@ function mutateQueued<TValue>(
   envelope: AgentSessionMutationEnvelope,
   plan: MutationPlan<TValue>
 ): Promise<AgentSessionMutationResult<TValue>> {
-  return context.serialize(envelope.sessionId, () =>
+  // A /compact holds the main lane for its whole provider call: Delete answers
+  // at once, and Send-now reaches its `command` refusal at once, on the side
+  // lane draft-only sends use. The drain stays on the main lane, behind it.
+  const lane = compactInFlightContext(context, envelope.sessionId) ?? context
+  return lane.serialize(envelope.sessionId, () =>
     admitAndRunAgentSessionMutation({
       store: context.deps.store,
       adapter: context.deps.adapter,
