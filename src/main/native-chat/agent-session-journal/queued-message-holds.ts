@@ -61,7 +61,7 @@ export function restoreQueuedMessageHolds(
  *  adopted into the current host instance, the same fact the derivation reads,
  *  so no second copy exists. `send_failed` and unknown markers stay: they
  *  release only through an explicit Send. Returns how many rows it lifted. */
-export function releaseStopShapedQueuedMessageHolds(
+export function releaseQueuePauseHolds(
   db: Database.Database,
   input: { sessionId: string; hostInstance: string }
 ): number {
