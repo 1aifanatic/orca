@@ -179,7 +179,7 @@ function findCodexReadyPromptIndex(normalized: string): number | null {
   return readySegment.includes('model:') && readySegment.includes('directory:') ? headerIndex : null
 }
 
-const CODEX_HEADER_LOADING_RE = /(?:model|directory):\s+loading/
+export const CODEX_HEADER_LOADING_RE = /(?:model|directory):\s+loading/
 
 // Why the header box only: chat below it can mention "OpenAI Codex" or `model: loading`.
 // Why `loading`: a header still loading is not ready; the screen must not add readiness early.
@@ -248,7 +248,7 @@ function isCursorApprovalChoiceLine(line: string): boolean {
 // Why bounded: answered dialogs and quoted prompt wording (agents grep this file and its specs) stay in the
 // retained tail; only a dialog owning the screen bottom is live. Real Codex dialogs (trust, hooks review,
 // update, exec approval) are 4-8 lines; the slack covers a wrapped command or a longer hook list.
-const LIVE_PROMPT_TAIL_LINES = 12
+export const LIVE_PROMPT_TAIL_LINES = 12
 
 function findTerminalWaitBlockedSignal(
   fullTail: string
