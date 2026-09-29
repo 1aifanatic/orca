@@ -6,7 +6,7 @@ import {
   updateTomlLineScanState
 } from './config-toml-line-scan'
 import { parseTomlTableHeaderPath } from './config-toml-key-path'
-import { parseStandardTableHeaderSegments } from './config-toml-syntax'
+import { mayNameTomlKeys, parseStandardTableHeaderSegments } from './config-toml-syntax'
 import {
   readTomlAssignmentValue,
   scanTomlStructure,
@@ -88,6 +88,9 @@ export function isRuntimePreservedTomlSection(header: string): boolean {
 }
 
 export function isRuntimeHookTrustTomlSection(header: string): boolean {
+  if (!mayNameTomlKeys(header, ['hooks', 'state'])) {
+    return false
+  }
   const segments = parseStandardTableHeaderSegments(header)
   // Why: Codex's config writer materializes the parent table on Windows. It is
   // part of runtime-owned trust and must survive the next config mirror too.

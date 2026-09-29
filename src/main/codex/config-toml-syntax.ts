@@ -20,15 +20,39 @@ export function escapeTomlBasicString(value: string): string {
 // Why (#22592): identity is the decoded key path, so `["hooks"."state"."k"]`
 // and `[hooks.state.'k']` are the same table Codex sees.
 export function parseHookStateTomlHeaderKey(line: string): string | null {
+  if (!mayNameTomlKeys(line, ['hooks', 'state'])) {
+    return null
+  }
   const segments = parseStandardTableHeaderSegments(line)
   return segments?.length === 3 && segments[0] === 'hooks' && segments[1] === 'state'
     ? (segments[2] ?? null)
     : null
 }
 
+// Only the canonical `[projects."path"]` whose path is printable with no `"` or `\`; else the full parse.
+const PLAIN_PROJECT_HEADER =
+  /^[ \t]*\[[ \t]*projects[ \t]*\.[ \t]*"([ !#-[\]-~\u0080-\uffff]*)"[ \t]*\][ \t]*(?:#.*)?$/
+
 export function parseProjectTomlHeaderPath(line: string): string | null {
-  const segments = parseStandardTableHeaderSegments(line)
+  if (!mayNameTomlKeys(line, ['projects'])) {
+    return null
+  }
+  const withoutCr = line.replace(/\r$/, '')
+  const plain = PLAIN_PROJECT_HEADER.exec(withoutCr)
+  if (plain) {
+    return plain[1] ?? null
+  }
+  const segments = parseStandardTableHeaderSegments(withoutCr)
   return segments?.length === 2 && segments[0] === 'projects' ? (segments[1] ?? null) : null
+}
+
+/**
+ * Why: header parsing runs per table on every mirror pass. A key spells its
+ * name literally unless a basic-string escape is used, so a line without the
+ * names and without a backslash cannot name that table.
+ */
+export function mayNameTomlKeys(line: string, keys: readonly string[]): boolean {
+  return line.includes('\\') || keys.every((key) => line.includes(key))
 }
 
 export function parseStandardTableHeaderSegments(line: string): readonly string[] | null {
