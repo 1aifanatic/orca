@@ -1,6 +1,3 @@
-// Codex rust-v0.156.0-alpha.1 (the first 0.156 build) added --no-daemon; 0.155.x has none.
-export const CODEX_NO_DAEMON_FIRST_VERSION = '0.156.0'
-
 // Why scanned through every argument: resume/fork and a trailing flag after the
 // prompt still reach Codex, which refuses --no-daemon beside --remote.
 export const CODEX_NO_DAEMON_CONFLICTING_OPTIONS = ['--no-daemon', '--remote'] as const

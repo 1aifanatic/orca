@@ -8,10 +8,10 @@ import {
   powerShellCodexInteractiveArgv
 } from './codex-terminal-argv-policy'
 import {
-  fishCodexVersionGate,
-  posixCodexVersionGate,
-  powerShellCodexVersionGate
-} from './codex-terminal-version-gate'
+  fishCodexNoDaemonProbe,
+  posixCodexNoDaemonProbe,
+  powerShellCodexNoDaemonProbe
+} from './codex-terminal-no-daemon-probe'
 
 const DEV_LAUNCHER_DIR = ['cli', 'bin']
 const DEV_COMMAND_NAME = 'orca-dev'
@@ -73,7 +73,7 @@ function isExecutableFileOnDisk(path: string, platform: NodeJS.Platform): boolea
 
 export function getPosixCodexShellLaunchPreflight(): string {
   return `${posixCodexInteractiveArgv()}
-${posixCodexVersionGate()}
+${posixCodexNoDaemonProbe()}
 __orca_codex_path() {
 ${buildPosixCommandPathLookupScript({ kind: 'literal', value: 'codex' }, { resultVariable: '__orca_lookup_result' })}
   printf '%s' "$__orca_lookup_result"
@@ -107,7 +107,7 @@ unset __orca_codex_binary
 
 export function getFishCodexShellLaunchPreflight(): string {
   return `${fishCodexInteractiveArgv()}
-${fishCodexVersionGate()}
+${fishCodexNoDaemonProbe()}
 # Why captured: an unquoted (type -t codex) expands to zero words when codex is
 # absent, leaving "test = file" — fish then errors instead of failing closed.
 # Quoting in place is not the fix; fish never substitutes inside double quotes.
@@ -130,7 +130,7 @@ set -e __orca_codex_type`
 
 export function getPowerShellCodexShellLaunchPreflight(): string {
   return `${powerShellCodexInteractiveArgv()}
-${powerShellCodexVersionGate()}
+${powerShellCodexNoDaemonProbe()}
 $orcaCodexCommand = Get-Command codex -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($env:ORCA_CODEX_LAUNCH_PREFLIGHT -and $orcaCodexCommand -and
     $orcaCodexCommand.CommandType -in @("Application", "ExternalScript")) {

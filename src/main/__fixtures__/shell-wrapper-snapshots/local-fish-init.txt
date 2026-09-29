@@ -29,10 +29,7 @@ function __orca_codex_interactive
   return 0
 end
 function __orca_codex_supports_no_daemon
-  set -l out (command $argv[1] --version </dev/null 2>/dev/null); or return 1
-  test (count $out) -eq 1; or return 1
-  set -l parts (string match -r -- '^codex-cli ([0-9]{1,9})\.([0-9]{1,9})\.[0-9]{1,9}(-[0-9A-Za-z.]+)?\r?$' $out); or return 1
-  test $parts[2] -gt 0; or begin; test $parts[2] -eq 0; and test $parts[3] -ge 156; end
+  command $argv[1] --no-daemon --version </dev/null >/dev/null 2>&1
 end
 # Why captured: an unquoted (type -t codex) expands to zero words when codex is
 # absent, leaving "test = file" — fish then errors instead of failing closed.

@@ -344,7 +344,8 @@ describe.skipIf(process.platform === 'win32')('Codex shell launch preflight', ()
       }
     )
 
-    expect(output.trim()).toBe('real codex hi')
+    // This stand-in exits 0 for any argv, so its --no-daemon probe succeeds.
+    expect(output.trim()).toBe('real codex --no-daemon hi')
     expect(existsSync(marker)).toBe(true)
   })
 
@@ -378,27 +379,26 @@ describe('PowerShell Codex shell launch preflight', () => {
   })
 
   it.skipIf(!pwshAvailable).each([
-    { version: '0.158.0', expected: 'args=--no-daemon hi' },
-    { version: '0.156.0-alpha.1', expected: 'args=--no-daemon hi' },
-    { version: '0.155.0', expected: 'args=hi' },
-    { version: 'unknown', expected: 'args=hi' }
-  ])('adds --no-daemon only for a proven Codex version: $version', ({ version, expected }) => {
-    const root = mkdtempSync(join(tmpdir(), 'orca-codex-pwsh-version-'))
+    { accepts: '1', expected: 'args=--no-daemon hi' },
+    { accepts: '0', expected: 'args=hi' }
+  ])('adds --no-daemon only when that Codex accepts it: $accepts', ({ accepts, expected }) => {
+    const root = mkdtempSync(join(tmpdir(), 'orca-codex-pwsh-probe-'))
     const bin = join(root, 'bin')
     roots.push(root)
     mkdirSync(bin)
     const isWindows = process.platform === 'win32'
+    // Like clap: an unknown --no-daemon fails before --version is reached.
     writeExecutable(
       join(bin, isWindows ? 'codex.cmd' : 'codex'),
       isWindows
-        ? '@echo off\r\nif "%~1"=="--version" (\r\n  echo codex-cli %TEST_CODEX_VERSION%\r\n  exit /b 0\r\n)\r\necho args=%*\r\n'
-        : '#!/bin/sh\nif [ "$1" = --version ]; then echo "codex-cli $TEST_CODEX_VERSION"; exit 0; fi\necho "args=$*"\n'
+        ? '@echo off\r\nif "%~1"=="--no-daemon" if not "%TEST_CODEX_ACCEPTS%"=="1" exit /b 2\r\nif "%~2"=="--version" (echo codex-cli 0.158.0 & exit /b 0)\r\necho args=%*\r\n'
+        : '#!/bin/sh\nif [ "$1" = --no-daemon ] && [ "$TEST_CODEX_ACCEPTS" != 1 ]; then exit 2; fi\nif [ "$2" = --version ]; then echo "codex-cli 0.158.0"; exit 0; fi\necho "args=$*"\n'
     )
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`,
       ORCA_CODEX_LAUNCH_PREFLIGHT: join(bin, 'unused-preflight'),
-      TEST_CODEX_VERSION: version
+      TEST_CODEX_ACCEPTS: accepts
     }
     delete env.ORCA_CODEX_HOME
 

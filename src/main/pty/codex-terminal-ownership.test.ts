@@ -52,23 +52,27 @@ async function sandbox() {
   const executable = join(bin, 'codex')
   const preflight = join(bin, 'orca-preflight')
   // A shared server retains its first launcher's environment; an owned launch does not.
-  // Like a version-manager shim, a .codex-version file in the cwd selects the version,
-  // and a build older than 0.156 refuses --no-daemon the way clap does.
+  // Like a version-manager shim, a .codex-version file in the cwd selects the version.
+  // Like clap, a build older than 0.156 refuses --no-daemon before it reaches --version.
   await writeFile(
     executable,
     `#!/bin/sh
 version=\${TEST_CODEX_VERSION-}
 [ ! -f .codex-version ] || version=$(/bin/cat .codex-version)
-if [ "$1" = --version ]; then
-  [ -z "$TEST_PROBE_LOG" ] || printf '%s\\n' "$version" >> "$TEST_PROBE_LOG"
-  if [ -n "\${TEST_VERSION_OUTPUT+set}" ]; then printf '%b' "$TEST_VERSION_OUTPUT"; else printf 'codex-cli %s\\n' "$version"; fi
-  exit "\${TEST_VERSION_EXIT:-0}"
-fi
 if [ "$1" = --no-daemon ]; then
-  case "$version" in
-    0.15[6-9].*|0.1[6-9][0-9].*|[1-9]*) ;;
+  case "\${TEST_NO_DAEMON:-$version}" in
+    accept|0.15[6-9].*|0.1[6-9][0-9].*|[1-9]*) ;;
     *) printf "error: unexpected argument '--no-daemon' found\\n" >&2; exit 2 ;;
   esac
+fi
+for arg in "$@"; do
+  if [ "$arg" = --version ]; then
+    [ -z "$TEST_PROBE_LOG" ] || printf '%s\\n' "$version" >> "$TEST_PROBE_LOG"
+    if [ -n "\${TEST_VERSION_OUTPUT+set}" ]; then printf '%b' "$TEST_VERSION_OUTPUT"; else printf 'codex-cli %s\\n' "$version"; fi
+    exit "\${TEST_VERSION_EXIT:-0}"
+  fi
+done
+if [ "$1" = --no-daemon ]; then
   printf '%s:%s:%s\\n' "$ORCA_PANE_KEY" "$ORCA_AGENT_LAUNCH_TOKEN" "$ORCA_TERMINAL_HANDLE"
 else
   if [ ! -f "$TEST_SERVER_IDENTITY" ]; then
@@ -173,32 +177,61 @@ for (const spec of shells) {
       )
 
       it.each([
-        { version: 'codex-cli 0.156.0\\n', flagged: true },
-        { version: 'codex-cli 0.156.0-alpha.1\\n', flagged: true },
-        { version: 'codex-cli 0.158.0', flagged: true },
-        { version: 'codex-cli 1.0.0\\r\\n', flagged: true },
-        { version: 'codex-cli 0.155.1\\n', flagged: false },
-        { version: 'codex-cli 0.155.0-alpha.9\\n', flagged: false },
-        { version: 'codex-cli 0.158\\n', flagged: false },
-        { version: 'codex-cli 0.158.0.1\\n', flagged: false },
-        { version: 'codex-cli 0.158.0-\\n', flagged: false },
-        { version: 'codex-cli 0.158.0 beta\\n', flagged: false },
-        { version: 'codex-cli 0.9999999999.0\\n', flagged: false },
-        { version: 'warning: update available\\ncodex-cli 0.158.0\\n', flagged: false },
-        { version: 'codex-cli 0.158.0\\nextra\\n', flagged: false },
-        { version: 'mise 2026.9.1 macos-arm64\\n', flagged: false },
+        { version: '0.156.0', flagged: true },
+        { version: '0.156.0-alpha.1', flagged: true },
+        { version: '0.158.0', flagged: true },
+        { version: '1.0.0', flagged: true },
+        { version: '0.155.1', flagged: false },
+        { version: '0.155.0-alpha.9', flagged: false },
         { version: '', flagged: false }
-      ])('adds the flag only for a proven version: $version', async ({ version, flagged }) => {
-        const fixture = await sandbox()
-        const result = await launch(spec, fixture, "codex 'hello world'", {
-          TEST_CODEX_VERSION: '0.158.0',
-          TEST_VERSION_OUTPUT: version
-        })
-        expect(result.code, result.stderr).toBe(0)
-        expect(result.stdout.trim().split('\n').at(-1)).toBe(
-          flagged ? '<--no-daemon><hello world>' : '<hello world>'
-        )
-      })
+      ])(
+        'adds the flag only when that Codex accepts it: $version',
+        async ({ version, flagged }) => {
+          const fixture = await sandbox()
+          const result = await launch(spec, fixture, "codex 'hello world'", {
+            TEST_CODEX_VERSION: version
+          })
+          expect(result.code, result.stderr).toBe(0)
+          expect(result.stdout.trim().split('\n').at(-1)).toBe(
+            flagged ? '<--no-daemon><hello world>' : '<hello world>'
+          )
+        }
+      )
+
+      it.each([
+        {
+          name: 'a source build reporting 0.0.0',
+          noDaemon: 'accept',
+          version: '0.0.0',
+          flagged: true
+        },
+        {
+          name: 'unparseable version text',
+          noDaemon: 'accept',
+          output: 'mise 2026.9.1\\n',
+          flagged: true
+        },
+        {
+          name: 'a later build that drops the flag',
+          noDaemon: 'reject',
+          version: '9.0.0',
+          flagged: false
+        }
+      ])(
+        'decides from the probe exit status, not the version text: $name',
+        async ({ noDaemon, version, output, flagged }) => {
+          const fixture = await sandbox()
+          const result = await launch(spec, fixture, "codex 'hello world'", {
+            TEST_CODEX_VERSION: version ?? '0.158.0',
+            TEST_NO_DAEMON: noDaemon,
+            TEST_VERSION_OUTPUT: output
+          })
+          expect(result.code, result.stderr).toBe(0)
+          expect(result.stdout.trim().split('\n').at(-1)).toBe(
+            flagged ? '<--no-daemon><hello world>' : '<hello world>'
+          )
+        }
+      )
 
       it('keeps a failed version probe on the unchanged launch', async () => {
         const fixture = await sandbox()

@@ -128,22 +128,7 @@ __orca_deferred_init() {
       return 0
     }
     __orca_codex_supports_no_daemon() {
-      local __orca_out __orca_rest __orca_major __orca_minor __orca_patch __orca_part
-      __orca_out="$("$1" --version </dev/null 2>/dev/null)" || return 1
-      __orca_out=${__orca_out%$'\r'}
-      case "$__orca_out" in "codex-cli "*.*.*) ;; *) return 1 ;; esac
-      __orca_rest=${__orca_out#codex-cli }
-      __orca_major=${__orca_rest%%.*}
-      __orca_rest=${__orca_rest#*.}
-      __orca_minor=${__orca_rest%%.*}
-      __orca_rest=${__orca_rest#*.}
-      __orca_patch=${__orca_rest%%-*}
-      __orca_rest=${__orca_rest#"$__orca_patch"}
-      for __orca_part in "$__orca_major" "$__orca_minor" "$__orca_patch"; do
-        case "$__orca_part" in ''|*[!0-9]*|??????????*) return 1 ;; esac
-      done
-      case "$__orca_rest" in '') ;; -|-*[!0-9A-Za-z.]*) return 1 ;; -*) ;; *) return 1 ;; esac
-      [ "$__orca_major" -gt 0 ] || { [ "$__orca_major" -eq 0 ] && [ "$__orca_minor" -ge 156 ]; }
+      "$1" --no-daemon --version </dev/null >/dev/null 2>&1
     }
     __orca_codex_path() {
     _orca_lookup_command='codex'
