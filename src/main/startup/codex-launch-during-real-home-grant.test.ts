@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import type * as Os from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { HookDefinition } from '../agent-hooks/installer-utils'
 import type { CodexHookTrustGrantRequest } from '../codex/codex-app-server-client'
 import { isCodexManagedCommand, setupCodexHookHomes } from '../codex/hook-service-test-harness'
 
@@ -98,10 +99,6 @@ function settlesWithin<T>(promise: Promise<T>, ms: number): Promise<boolean> {
       timer = setTimeout(() => resolve(false), ms)
     })
   ]).finally(() => clearTimeout(timer))
-}
-
-type HookDefinition = {
-  hooks?: { command?: string }[]
 }
 
 /** How Codex will treat each Orca entry in the real ~/.codex/hooks.json. */
