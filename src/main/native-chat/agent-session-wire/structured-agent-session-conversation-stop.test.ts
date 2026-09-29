@@ -2,6 +2,7 @@
 // queued, and interrupts a handed-over message even before the provider has opened its turn —
 // the gap no client can name a turn for. Against the real host, store and journal.
 
+import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -287,7 +288,8 @@ describe('a Stop that names no turn', () => {
           kind: 'status',
           text: 'Agent is working…',
           turnLifecycle: { turnId: 'turn-2', state: 'running' }
-        }
+        },
+        { turnScope: AGENT_JOURNAL_THREAD_SCOPE }
       )
       return drain(sessionId)
     })

@@ -267,7 +267,7 @@ describe('what a conversation Stop reports when the provider stopped nothing', (
           text: 'Agent is working…',
           turnLifecycle: { turnId: 'turn-1', state: 'running' }
         },
-        { fence: 1 }
+        { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
       )
     if (turnRow === 'running') {
       await openTurn()
