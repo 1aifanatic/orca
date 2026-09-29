@@ -1,5 +1,5 @@
 import { execFileSync, spawn, spawnSync } from 'node:child_process'
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
+import { mkdtemp, readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -8,6 +8,7 @@ import {
 } from './macos-computer-use-permissions'
 
 const resolveHelperAppPathMock = vi.hoisted(() => vi.fn())
+const removeHostTreeMock = vi.hoisted(() => vi.fn())
 const resolveHelperExecutablePathMock = vi.hoisted(() => vi.fn())
 const permissionStatusTempDir = '/tmp/orca-computer-use-permissions-test'
 const helperAppPath = '/Applications/Orca Computer Use.app'
@@ -70,9 +71,10 @@ vi.mock('child_process', () => ({
 vi.mock('fs/promises', () => ({
   mkdtemp: vi.fn(),
   readFile: vi.fn(),
-  rm: vi.fn(),
   stat: vi.fn()
 }))
+
+vi.mock('../host-tree-removal', () => ({ removeHostTree: removeHostTreeMock }))
 
 vi.mock('./macos-native-provider-paths', () => ({
   resolveMacOSComputerUseAppPath: resolveHelperAppPathMock,
@@ -88,7 +90,7 @@ describe('openComputerUsePermissions', () => {
     vi.mocked(execFileSync).mockReset()
     vi.mocked(mkdtemp).mockReset()
     vi.mocked(readFile).mockReset()
-    vi.mocked(rm).mockReset()
+    removeHostTreeMock.mockReset()
     vi.mocked(stat).mockReset()
     resolveHelperAppPathMock.mockReset()
     resolveHelperExecutablePathMock.mockReset()

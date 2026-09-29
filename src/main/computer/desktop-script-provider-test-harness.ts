@@ -4,18 +4,20 @@
 import { expect, vi } from 'vitest'
 import type { DesktopScriptRuntimeHost } from './desktop-script-runtime-host'
 
-const { execFileMock, operationFiles, mkdtempMock, rmMock, writeFileMock } = vi.hoisted(() => {
-  const files = new Map<string, string>()
-  return {
-    execFileMock: vi.fn(),
-    operationFiles: files,
-    mkdtempMock: vi.fn(async (prefix: string) => `${prefix}${files.size}`),
-    rmMock: vi.fn(async () => undefined),
-    writeFileMock: vi.fn(async (filePath: string, data: string | Buffer) => {
-      files.set(filePath, Buffer.isBuffer(data) ? data.toString('utf8') : data)
-    })
+const { execFileMock, operationFiles, mkdtempMock, removeHostTreeMock, writeFileMock } = vi.hoisted(
+  () => {
+    const files = new Map<string, string>()
+    return {
+      execFileMock: vi.fn(),
+      operationFiles: files,
+      mkdtempMock: vi.fn(async (prefix: string) => `${prefix}${files.size}`),
+      removeHostTreeMock: vi.fn(async () => undefined),
+      writeFileMock: vi.fn(async (filePath: string, data: string | Buffer) => {
+        files.set(filePath, Buffer.isBuffer(data) ? data.toString('utf8') : data)
+      })
+    }
   }
-})
+)
 
 vi.mock('child_process', () => ({
   execFile: execFileMock
@@ -23,9 +25,10 @@ vi.mock('child_process', () => ({
 
 vi.mock('fs/promises', () => ({
   mkdtemp: mkdtempMock,
-  rm: rmMock,
   writeFile: writeFileMock
 }))
+
+vi.mock('../host-tree-removal', () => ({ removeHostTree: removeHostTreeMock }))
 
 /** Builds a client on the one-shot bridge; pass a host to exercise serve mode. */
 export async function createDesktopScriptProviderClient(
@@ -42,7 +45,7 @@ export function resetDesktopScriptProviderTestHarness(): void {
   execFileMock.mockReset()
   operationFiles.clear()
   mkdtempMock.mockClear()
-  rmMock.mockClear()
+  removeHostTreeMock.mockClear()
   writeFileMock.mockClear()
 }
 
