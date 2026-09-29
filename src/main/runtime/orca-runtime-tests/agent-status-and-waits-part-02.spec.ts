@@ -459,6 +459,8 @@ describe('OrcaRuntimeService', () => {
           : 'Hooks need review. Press enter to confirm\n',
         Date.now() + 1000
       )
+      // The title transition's own identity refresh may confirm a non-agent cached name.
+      await vi.waitFor(() => expect(runtime.ptyForegroundProcessReads.size).toBe(0))
       getForegroundProcess.mockClear()
       confirmForegroundProcess.mockClear()
 

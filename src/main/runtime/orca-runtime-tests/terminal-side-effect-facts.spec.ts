@@ -415,11 +415,13 @@ describe('terminal side-effect fact channel', () => {
     batches.length = 0
 
     const getForegroundProcess = vi.fn().mockResolvedValueOnce('codex')
+    // Only a fresh read may certify the shell; the cached read above recognized the agent.
+    const confirmForegroundProcess = vi.fn().mockResolvedValue('zsh')
     runtime.setPtyController({
       write: () => true,
       kill: () => true,
       getForegroundProcess,
-      confirmForegroundProcess: getForegroundProcess
+      confirmForegroundProcess
     })
     runtime.onPtyData('pty-1', '\x1b]0;bichir\x07', 101)
 
@@ -450,6 +452,7 @@ describe('terminal side-effect fact channel', () => {
       })
     )
     expect(getForegroundProcess).toHaveBeenCalledTimes(2)
+    expect(confirmForegroundProcess).toHaveBeenCalledOnce()
   })
 
   it('does not confirm an agent exit from a foreground read predating its title', async () => {
@@ -460,11 +463,12 @@ describe('terminal side-effect fact channel', () => {
       resolveStaleRead = resolve
     })
     const getForegroundProcess = vi.fn().mockReturnValueOnce(staleRead).mockResolvedValueOnce('zsh')
+    const confirmForegroundProcess = vi.fn().mockResolvedValue('zsh')
     runtime.setPtyController({
       write: () => true,
       kill: () => true,
       getForegroundProcess,
-      confirmForegroundProcess: getForegroundProcess
+      confirmForegroundProcess
     })
 
     runtime.ingestSyntheticTitleFrame('pty-1', '\x1b]0;Codex ready\x07')
@@ -480,6 +484,38 @@ describe('terminal side-effect fact channel', () => {
         evidence: 'foreground-shell'
       })
     )
+  })
+
+  it('confirms an agent exit at the shell 133;D when the shell sets no title', async () => {
+    const { runtime, batches } = createSideEffectRuntime()
+    syncSinglePty(runtime)
+    const getForegroundProcess = vi.fn().mockResolvedValue('zsh')
+    const confirmForegroundProcess = vi.fn().mockResolvedValue('zsh')
+    runtime.setPtyController({
+      write: () => true,
+      kill: () => true,
+      getForegroundProcess,
+      confirmForegroundProcess
+    })
+    runtime.ingestSyntheticTitleFrame('pty-1', '\x1b]0;Codex ready\x07')
+    batches.length = 0
+
+    runtime.onPtyData('pty-1', '\x1b]133;D;0\x07', 100)
+
+    await vi.waitFor(() =>
+      expect(batches.flatMap((batch) => batch.facts)).toContainEqual({
+        kind: 'agent-exited',
+        evidence: 'foreground-shell'
+      })
+    )
+    const reads = confirmForegroundProcess.mock.calls.length
+    // The agent is retired, so an ordinary command's 133;D pays no read and publishes no exit.
+    runtime.onPtyData('pty-1', '\x1b]133;D;0\x07', 101)
+    await Promise.resolve()
+    expect(confirmForegroundProcess).toHaveBeenCalledTimes(reads)
+    expect(
+      batches.flatMap((batch) => batch.facts).filter((fact) => fact.kind === 'agent-exited')
+    ).toHaveLength(1)
   })
 
   it('treats synchronous foreground read failures as unavailable', async () => {
