@@ -5,10 +5,9 @@ import type { AgentTrustPreset } from './agent-trust-presets'
  * self-bounding. The local Codex writer queues on the per-`config.toml` lane
  * shared with managed-home hook installs, which hold it across their inline
  * trust grant (up to 10s native each, with no cap on how many are already
- * queued), and the SSH
- * writer chains a `session.resolveHome` round trip plus unbounded SFTP
- * read/write calls over a link that may be half-open. Without a cap the user
- * clicks "start agent" and nothing happens, with no error.
+ * queued), and the SSH writer chains a `session.resolveHome` round trip plus
+ * unbounded SFTP read/write calls over a link that may be half-open. Without a
+ * cap the user clicks "start agent" and nothing happens, with no error.
  *
  * 20s covers a native grant session holding the lane with headroom. Past that
  * we stop waiting and let the launch proceed *untrusted*: the write is never

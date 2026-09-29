@@ -133,10 +133,9 @@ function writingSessionRunner(args: {
 }
 
 describe('two Codex pane launches against one config.toml', () => {
-  it('does not let a failing launch roll back a concurrent launch that already succeeded', async () => {
-    // Why warm: on a cold host the shared capability probe incidentally
-    // serializes the two launches. Once the host is known-supported that
-    // dedupe is bypassed and the per-file lane is the only thing left.
+  it("leaves a concurrent grant's records in place when a sibling grant fails", async () => {
+    // Why warm: on a cold host the shared capability probe serializes the two
+    // grants. Once the host is known-supported, their sessions overlap.
     codexAppServerCapabilityCache.rememberSupported('native')
     const tomlPath = join(runtimeHomeDir, 'config.toml')
     const entries = [managedEntry('session_start')]
@@ -166,8 +165,7 @@ describe('two Codex pane launches against one config.toml', () => {
 
     expect(await doomed).toMatchObject({ lane: 'fallback', reason: 'verify-failed' })
     expect(await survivor).toMatchObject({ lane: 'rpc' })
-    // The doomed run's rollback must not resurrect the pre-grant file over
-    // the entries the survivor legitimately wrote.
+    // Why: a failed grant writes nothing back, so the survivor's records stay.
     const trust = readHookTrustEntries(tomlPath)
     const key = normalizeHookTrustKeyForLookup(computeTrustKey(entries[0]))
     expect(trust.get(key)?.trustedHash).toBe('sha256:survivor-session_start')
