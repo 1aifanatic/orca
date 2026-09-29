@@ -508,6 +508,50 @@ describe('PowerShell Codex shell launch preflight', () => {
     }
   )
 
+  it.skipIf(!pwshAvailable)(
+    'launches under Set-StrictMode before any native command has set $LASTEXITCODE',
+    () => {
+      const root = mkdtempSync(join(tmpdir(), 'orca-codex-pwsh-strict-'))
+      const bin = join(root, 'bin')
+      roots.push(root)
+      mkdirSync(bin)
+      const isWindows = process.platform === 'win32'
+      writeExecutable(
+        join(bin, isWindows ? 'codex.cmd' : 'codex'),
+        isWindows
+          ? '@echo off\r\nif "%~2"=="--version" exit /b 0\r\necho args=%*\r\n'
+          : '#!/bin/sh\nif [ "$2" = --version ]; then exit 0; fi\necho "args=$*"\n'
+      )
+      const env: NodeJS.ProcessEnv = {
+        ...process.env,
+        PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`,
+        ORCA_CODEX_LAUNCH_POLICY: '1'
+      }
+      // Why no managed home: hook prep is a native call that would set $LASTEXITCODE first.
+      delete env.ORCA_CODEX_HOME
+      delete env.ORCA_CODEX_LAUNCH_PREFLIGHT
+
+      const result = spawnSync(
+        'pwsh',
+        [
+          '-NoLogo',
+          '-NoProfile',
+          '-Command',
+          [
+            'Set-StrictMode -Version Latest',
+            '$ErrorActionPreference = "Stop"',
+            getPowerShellCodexShellLaunchPreflight(),
+            'codex hi'
+          ].join('\n')
+        ],
+        { encoding: 'utf-8', env }
+      )
+
+      expect(result.status, result.stderr).toBe(0)
+      expect(result.stdout.trim()).toBe('args=--no-daemon hi')
+    }
+  )
+
   it.skipIf(!pwshAvailable)('fails open when native errors are promoted', () => {
     const root = mkdtempSync(join(tmpdir(), 'orca-codex-pwsh-failure-'))
     const bin = join(root, 'bin')
