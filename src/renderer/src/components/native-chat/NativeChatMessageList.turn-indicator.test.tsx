@@ -167,7 +167,7 @@ describe('NativeChatMessageList turn indicator', () => {
         }}
         journalItems={[journalItem(1, turnItem), journalItem(2, reasoningRow)]}
         isWorking
-        showLiveTurnActivity={false}
+        awaitingInput="shown"
         expandSignal={false}
         fontScale={1}
       />
@@ -177,6 +177,38 @@ describe('NativeChatMessageList turn indicator', () => {
     expect(screen.queryByText(/Working for/)).toBeNull()
     expect(screen.queryByText('Thinking')).toBeNull()
     expect(screen.getByText('Running 1 command')).toHaveClass('animate-pulse')
+  })
+
+  // A terminal-backed pane can learn its agent is waiting without being handed
+  // the prompt; the tail then says so, in the row a question uses.
+  it('says the turn waits on the reader when no card shows the prompt', () => {
+    const { container } = render(
+      <NativeChatMessageList
+        session={{
+          ...session,
+          messages: [
+            {
+              id: 'user-wait',
+              role: 'user',
+              blocks: [{ type: 'text', text: 'Deploy it' }],
+              timestamp: 1,
+              source: 'transcript'
+            }
+          ]
+        }}
+        isWorking
+        workingStartedAt={Date.now() - 5000}
+        awaitingInput="unshown"
+        expandSignal={false}
+        fontScale={1}
+      />
+    )
+
+    expect(container.querySelector('[data-native-chat-ask-row="awaiting"]')).toHaveTextContent(
+      /^Awaiting user input$/
+    )
+    expect(container.querySelector('[data-native-chat-turn-activity]')).toBeNull()
+    expect(screen.getByText('Working for 5s')).toBeInTheDocument()
   })
 
   it('keeps the live row up after a tool settles', () => {
@@ -287,42 +319,6 @@ describe('NativeChatMessageList turn indicator', () => {
     expect(liveRun?.querySelector('.lucide-check')).toBeInTheDocument()
   })
 
-  it('keeps bridge chats on the legacy activity chrome', () => {
-    render(
-      <NativeChatMessageList
-        session={{
-          ...session,
-          status: 'working',
-          messages: [
-            {
-              id: 'bridge-tool',
-              role: 'assistant',
-              blocks: [
-                {
-                  type: 'tool-call',
-                  name: 'shell',
-                  input: { command: 'sleep 5' },
-                  state: 'running'
-                }
-              ],
-              timestamp: 1,
-              source: 'transcript'
-            }
-          ]
-        }}
-        isWorking
-        expandSignal={false}
-        fontScale={1}
-        showTurnStatus={false}
-      />
-    )
-
-    expect(screen.queryByText('Thinking')).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Toggle turn details' })).toBeNull()
-    expect(screen.queryByText('Running sleep 5')).toBeNull()
-    expect(document.querySelectorAll('.animate-bounce')).toHaveLength(3)
-  })
-
   it('replaces a bridge ask row and settles it from the FIFO tool result', () => {
     const user = {
       id: 'bridge-user',
@@ -356,7 +352,6 @@ describe('NativeChatMessageList turn indicator', () => {
         isWorking={false}
         expandSignal={false}
         fontScale={1}
-        showTurnStatus={false}
       />
     )
 
@@ -383,7 +378,6 @@ describe('NativeChatMessageList turn indicator', () => {
         isWorking={false}
         expandSignal={false}
         fontScale={1}
-        showTurnStatus={false}
       />
     )
 
@@ -745,15 +739,12 @@ describe('NativeChatMessageList turn indicator', () => {
         Node.DOCUMENT_POSITION_FOLLOWING
       )
 
-      // A settles in place: under its prompt, above B. Where the host states each row's turn, A's
-      // tool work is A's, so the settled bar becomes that work's fold toggle.
+      // A settles in place: under its prompt, above B. A's tool work is A's on either host (read
+      // from its scope, or from journal order), so the settled bar becomes that work's fold toggle.
       const expectSettledUnderA = () => {
         const settledA = screen
           .getByText('Worked for 17s')
           .closest('[data-native-chat-turn-status]')
-        if (!scoped) {
-          expect(settledA).toBe(barA)
-        }
         expect(screen.getByText('Run four sleeps').compareDocumentPosition(settledA!)).toBe(
           Node.DOCUMENT_POSITION_FOLLOWING
         )

@@ -10,7 +10,7 @@ import {
 } from '../../../../shared/native-chat-turn-membership'
 
 /** Each row's turn, and which turn is live, resolved once: from the turn record when the host
- *  states scopes, else by position. */
+ *  states scopes, else by journal order. */
 export function useNativeChatTurnMembership(
   messages: readonly NativeChatMessage[],
   journalItems: readonly AgentJournalRenderItem[] | undefined,

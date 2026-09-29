@@ -226,7 +226,7 @@ describe('explicit user-item attribution', () => {
     expect([...selectStructuredAgentTurnTimings(items).keys()]).toEqual(['claude:s:u1'])
   })
 
-  it('keys a turn whose named user item nobody journaled on its own record', () => {
+  it('anchors to the record itself when a keyed row names a user item nobody journaled', () => {
     const items = [
       user('orca:first'),
       lifecycle('auto', {
@@ -236,7 +236,8 @@ describe('explicit user-item attribution', () => {
         completedAt: 2_000
       })
     ]
-    // A turn the provider started itself: its time is its own, never the prompt before it.
+    // Never the preceding prompt, which did not open this turn; the record's own
+    // key gives the turn a bar at its own position instead.
     expect([...selectStructuredAgentTurnTimings(items).keys()]).toEqual([
       'legacy:codex:s:turn-lifecycle%3Aauto'
     ])
