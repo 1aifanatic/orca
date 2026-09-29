@@ -50,6 +50,7 @@ type Kernel32 = {
     startup: Pointer,
     result: Pointer
   ): number
+  GetLastError(): number
   CloseHandle(handle: Pointer): number
 }
 
@@ -92,9 +93,16 @@ export function launchDetachedWindowsRelay(options: WindowsDetachedRelayLaunch):
       args: ['ptr', 'ptr', 'ptr', 'ptr', 'i32', 'u32', 'ptr', 'ptr', 'ptr', 'ptr'],
       returns: 'i32'
     },
+    GetLastError: { args: [], returns: 'u32' },
     CloseHandle: { args: ['u64'], returns: 'i32' }
   })
   const api = library.symbols
+  const readLastErrorCode = api.GetLastError
+  function nativeFailureMessage(message: string): string {
+    // Last-error can change across FFI; keep it diagnostic, never a retry decision.
+    const hint = readLastErrorCode()
+    return hint ? `${message} (Win32 last-error hint ${hint})` : message
+  }
   const handles: Pointer[] = []
   let attributes: Uint8Array | undefined
   let attributeHandles: BigUint64Array | undefined
@@ -121,7 +129,7 @@ export function launchDetachedWindowsRelay(options: WindowsDetachedRelayLaunch):
         null
       )
       if (BigInt.asUintN(64, BigInt(handle)) === INVALID_HANDLE || handle === 0 || handle === 0n) {
-        throw new Error('Unable to open detached relay standard stream')
+        throw new Error(nativeFailureMessage('Unable to open detached relay standard stream'))
       }
       handles.push(handle)
       return handle
@@ -137,7 +145,7 @@ export function launchDetachedWindowsRelay(options: WindowsDetachedRelayLaunch):
     }
     const storage = new Uint8Array(Number(size[0]))
     if (!api.InitializeProcThreadAttributeList(ffi.ptr(storage), 1, 0, ffi.ptr(size))) {
-      throw new Error('Unable to initialize Windows handle allowlist')
+      throw new Error(nativeFailureMessage('Unable to initialize Windows handle allowlist'))
     }
     attributes = storage
     const allowed = new BigUint64Array([BigInt(input), BigInt(output), BigInt(error)])
@@ -153,7 +161,7 @@ export function launchDetachedWindowsRelay(options: WindowsDetachedRelayLaunch):
         null
       )
     ) {
-      throw new Error('Unable to restrict inherited Windows handles')
+      throw new Error(nativeFailureMessage('Unable to restrict inherited Windows handles'))
     }
     const startup = new Uint8Array(112)
     const startupView = new DataView(startup.buffer)
@@ -180,7 +188,9 @@ export function launchDetachedWindowsRelay(options: WindowsDetachedRelayLaunch):
         ffi.ptr(result)
       )
     ) {
-      throw new Error('Unable to start detached relay with Windows job breakaway')
+      throw new Error(
+        nativeFailureMessage('Unable to start detached relay with Windows job breakaway')
+      )
     }
     const processInfo = new DataView(result.buffer)
     handles.push(processInfo.getBigUint64(0, true), processInfo.getBigUint64(8, true))

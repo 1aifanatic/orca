@@ -102,6 +102,7 @@ function fixture(failAt = '') {
         return 1
       }
     ),
+    GetLastError: vi.fn(() => 5),
     CloseHandle: vi.fn()
   }
   const close = vi.fn()
@@ -128,7 +129,7 @@ describe('Windows relay job breakaway', () => {
     'closes only acquired handles after %s fails',
     (failAt) => {
       const { api, close } = fixture(failAt)
-      expect(() => launchDetachedWindowsRelay(options)).toThrow()
+      expect(() => launchDetachedWindowsRelay(options)).toThrow('Win32 last-error hint 5')
       const opened = failAt.startsWith('file-') ? Number(failAt.slice(5)) - 1 : 3
       expect(api.CloseHandle.mock.calls.flat()).toEqual(
         [101n, 102n, 103n].slice(0, opened).toReversed()
