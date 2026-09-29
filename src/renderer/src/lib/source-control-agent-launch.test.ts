@@ -212,6 +212,44 @@ describe('launching a source-control button’s agent through the host', () => {
     })
   })
 
+  it.each(['runtime_timeout', 'remote_runtime_unavailable'])(
+    'replays a paired host’s %s reply, which does not prove the launch never ran',
+    async (code) => {
+      mocks.callRuntimeRpc
+        .mockRejectedValueOnce(rpcRefusal(code, 'Timed out waiting for the remote Orca runtime'))
+        .mockResolvedValueOnce(launchResult({ delivery: 'submit', outcome: 'handed-to-terminal' }))
+
+      const result = await launchSourceControlAgent(ARGS)
+
+      expect(result).toEqual({ kind: 'launched', promptDelivered: true })
+      expect(mocks.callRuntimeRpc).toHaveBeenCalledTimes(2)
+      expect(sentParams(1)).toEqual(sentParams(0))
+    }
+  )
+
+  it('calls a paired host that keeps timing out unconfirmed, not failed', async () => {
+    mocks.callRuntimeRpc.mockRejectedValue(rpcRefusal('runtime_timeout'))
+
+    expect(await launchSourceControlAgent(ARGS)).toEqual({
+      kind: 'unknown',
+      message: SOURCE_CONTROL_AGENT_LAUNCH_UNCONFIRMED_MESSAGE
+    })
+  })
+
+  it('reports an unreachable paired host as failed instead of throwing past the caller', async () => {
+    mocks.getRuntimeEnvironmentIdForWorktree.mockReturnValue('env-1')
+    mocks.isWebRuntimeSessionActive.mockReturnValue(true)
+    mocks.runtimeEnvironmentSupportsCapability.mockRejectedValue(
+      new Error('Could not connect to the remote Orca runtime.')
+    )
+
+    await expect(launchSourceControlAgent(ARGS)).resolves.toEqual({
+      kind: 'failed',
+      message: 'Could not connect to the remote Orca runtime.'
+    })
+    expect(mocks.callRuntimeRpc).not.toHaveBeenCalled()
+  })
+
   it('treats a host that refuses the method on the first send as unsupported', async () => {
     mocks.callRuntimeRpc.mockRejectedValue(rpcRefusal('method_not_found'))
 

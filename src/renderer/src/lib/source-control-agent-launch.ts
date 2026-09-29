@@ -29,6 +29,7 @@ import { reserveAgentLaunchTab } from '@/lib/agent-launch-tab-reservations'
 import { createBrowserUuid } from '@/lib/browser-uuid'
 import { isAgentLaunchResult, type AgentLaunchResult } from '../../../shared/agent-launch-intent'
 import { classifyAgentLaunchReplayRefusal } from '../../../shared/agent-launch-replay-refusal'
+import { isRecoverableRemoteRuntimeConnectionError } from '../../../shared/remote-runtime-client-error-classification'
 import {
   AGENT_LAUNCH_PROMPT_CARRY_RUNTIME_CAPABILITY,
   AGENT_LAUNCH_REPLAY_REQUIRED_RUNTIME_CAPABILITY,
@@ -129,9 +130,12 @@ async function sendReplayingAmbiguousLaunch(
       return { result }
     } catch (error) {
       if (error instanceof RuntimeRpcCallError) {
-        return { refusal: error, replayed: attempt > 0 }
-      }
-      if (!isAmbiguousCreateFailure(error)) {
+        // A paired host's timeout or lost connection arrives as an error reply, yet the launch may
+        // have run: replay it, since a "failed" the user retries could start a second agent.
+        if (!isRecoverableRemoteRuntimeConnectionError(error)) {
+          return { refusal: error, replayed: attempt > 0 }
+        }
+      } else if (!isAmbiguousCreateFailure(error)) {
         throw error
       }
     }
@@ -143,7 +147,13 @@ export async function launchSourceControlAgent(
   args: SourceControlAgentLaunchArgs
 ): Promise<SourceControlAgentLaunchResult> {
   const trimmedPrompt = args.prompt.trim()
-  const target = await resolveLaunchTarget(args.worktreeId)
+  let target: RuntimeClientTarget | null
+  try {
+    target = await resolveLaunchTarget(args.worktreeId)
+  } catch (error) {
+    // An unreachable paired host fails its capability probe before anything is sent.
+    return { kind: 'failed', message: error instanceof Error ? error.message : String(error) }
+  }
   if (!target) {
     return { kind: 'unsupported' }
   }
