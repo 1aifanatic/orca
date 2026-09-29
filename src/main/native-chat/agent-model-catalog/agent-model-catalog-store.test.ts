@@ -110,6 +110,27 @@ describe('agent model catalog store', () => {
     expect(store.get('fp-1')!.models[0]!.id).toBe('gpt-live')
   })
 
+  it('holds back a probe until every lister settles, then lets the account refresh again', async () => {
+    let at = 1_000
+    const store = new AgentModelCatalogStore({ now: () => at })
+    let settleSlow!: (success: AgentModelCatalogSuccess) => void
+    const slow = store.refresh(
+      'fp-1',
+      'codex',
+      {},
+      () => new Promise<AgentModelCatalogSuccess>((resolve) => (settleSlow = resolve))
+    )
+    await store.refresh('fp-1', 'codex', {}, async () => success('gpt-fast'))
+    at += AGENT_MODEL_CATALOG_FRESH_MS
+    expect(store.shouldRefresh('fp-1')).toBe(false)
+
+    settleSlow(success('gpt-slow'))
+    await slow
+    at += AGENT_MODEL_CATALOG_FRESH_MS
+    // A leftover in-flight record here would suppress every later refresh for the account.
+    expect(store.shouldRefresh('fp-1')).toBe(true)
+  })
+
   it('records a failed refresh as a failure and resolves null without rejecting', async () => {
     const store = new AgentModelCatalogStore()
     const entry = await store.refresh('fp-1', 'codex', {}, async () => {
