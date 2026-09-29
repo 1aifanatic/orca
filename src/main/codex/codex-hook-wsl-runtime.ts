@@ -2,13 +2,13 @@ import { win32 as pathWin32 } from 'node:path'
 import type { AgentHookInstallStatus } from '../../shared/agent-hook-types'
 import {
   buildManagedCommandHook,
-  createManagedCommandMatcher,
   MANAGED_HOOK_TIMEOUT_SECONDS,
   readHooksJson,
   removeManagedCommands,
   writeManagedScript,
   type HookDefinition
 } from '../agent-hooks/installer-utils'
+import { createOrcaOwnedCodexHookMatcher } from './codex-hook-identity'
 import {
   normalizeCodexProjectPathForLookup,
   upsertHookTrustEntries,
@@ -58,7 +58,7 @@ async function installManagedHooksIntoWslRuntimeExclusively(
     }
   }
 
-  const isManagedCommand = createManagedCommandMatcher('codex-hook.sh')
+  const isManagedCommand = createOrcaOwnedCodexHookMatcher('codex-hook.sh')
   const command = wrapReadablePosixHookCommand(plan.commandScriptPath)
   const nextHooks = { ...config.hooks }
   const managedEvents = new Set<string>(CODEX_EVENTS)
@@ -157,7 +157,7 @@ export function refreshWslRuntimeUserHooks(
     }
   }
 
-  const isManagedCommand = createManagedCommandMatcher('codex-hook.sh')
+  const isManagedCommand = createOrcaOwnedCodexHookMatcher('codex-hook.sh')
   const nextHooks = { ...config.hooks }
   for (const [eventName, definitions] of Object.entries(nextHooks)) {
     if (!Array.isArray(definitions)) {

@@ -1,7 +1,6 @@
 import type { AgentHookInstallStatus } from '../../shared/agent-hook-types'
 import {
   buildManagedCommandHook,
-  createManagedCommandMatcher,
   MANAGED_HOOK_TIMEOUT_SECONDS,
   readHooksJson,
   removeManagedCommands,
@@ -23,7 +22,7 @@ import {
   getManagedScriptPath,
   writeCodexHooksJson
 } from './codex-hook-definition'
-import { getCodexManagedScriptFileName } from './codex-hook-identity'
+import { createOrcaOwnedCodexHookMatcher } from './codex-hook-identity'
 import { cleanupLegacyManagedHookRepresentations } from './codex-hook-legacy-cleanup'
 import { getManagedScript } from './codex-hook-script'
 import { grantManagedCodexHookTrust } from './codex-hook-trust-grant'
@@ -65,7 +64,7 @@ export async function installCodexHooksExclusively(
   }
 
   // Why: match by script filename (not exact command) so a fresh install sweeps stale entries from older builds or a different userData path.
-  const isManagedCommand = createManagedCommandMatcher(getCodexManagedScriptFileName())
+  const isManagedCommand = createOrcaOwnedCodexHookMatcher()
   const command = getManagedCommand(scriptPath)
   const hookPlan = getRuntimeHooksWithSystemUserHooks(config.hooks, isManagedCommand, configPath)
   if (!hookPlan) {
