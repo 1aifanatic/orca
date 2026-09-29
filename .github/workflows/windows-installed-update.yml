@@ -20,8 +20,8 @@ concurrency:
   group: installed-windows-diagnostic-${{ github.ref }}
   cancel-in-progress: false
 env:
-  PRODUCER_RUN: '36503596770'
-  SSH_TOOLS_SHA: c24adccff0118b490f531ee9ffffb8c0f084bcce
+  PRODUCER_RUN: '36620077577'
+  SSH_TOOLS_SHA: 1242f3c4c850a7c6c5e6798c573c99a292751e7d
 jobs:
   windows_watcher:
     if: github.repository == 'stablyai/orca' && github.ref == 'refs/heads/OrcaWin/np-installed-windows-update-diagnostic' && inputs.packages_run == ''
