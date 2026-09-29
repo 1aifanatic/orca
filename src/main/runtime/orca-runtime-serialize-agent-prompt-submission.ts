@@ -145,12 +145,25 @@ export class OrcaRuntimeWithSerializeAgentPromptSubmission extends OrcaRuntimeWi
         }
         return
       }
+      // Why: an SSH relay on Windows neither reads the foreground nor marks commands (OSC 133),
+      // so there the agent's own idle-to-neutral title is the only exit signal (base behaviour).
+      const titleIsOnlyExitSignal =
+        verdict === 'unverifiable' &&
+        !result.judgement.canCertifyExit &&
+        Boolean(current.connectionId)
       if (
         !recoverCompletedHook &&
         result.controller === this.ptyController &&
-        verdict === 'exited'
+        (verdict === 'exited' || titleIsOnlyExitSignal)
       ) {
-        this.publishPtyAgentExit(ptyId, 'title-exit-candidate', 'foreground-shell')
+        if (titleIsOnlyExitSignal) {
+          this.ptyForegroundAgent.markExited(ptyId)
+        }
+        this.publishPtyAgentExit(
+          ptyId,
+          'title-exit-candidate',
+          titleIsOnlyExitSignal ? 'agent-title' : 'foreground-shell'
+        )
       } else {
         this.ptyTitleTrackersByPtyId.get(ptyId)?.tracker.restoreLastAgentExit()
       }
@@ -200,13 +213,17 @@ export class OrcaRuntimeWithSerializeAgentPromptSubmission extends OrcaRuntimeWi
   private publishPtyAgentExit(
     ptyId: string,
     reason: 'title-exit-candidate' | 'command-finished',
-    evidence: 'foreground-shell' | 'command-finished'
+    evidence: 'foreground-shell' | 'command-finished' | 'agent-title'
   ): void {
     startSpan('terminal.agent-exit-decision', {
       attributes: {
         reason,
         evidenceSource:
-          evidence === 'foreground-shell' ? 'host-foreground-confirmation' : 'osc-133',
+          evidence === 'foreground-shell'
+            ? 'host-foreground-confirmation'
+            : evidence === 'agent-title'
+              ? 'osc-title'
+              : 'osc-133',
         verdict: 'exited'
       }
     }).end()

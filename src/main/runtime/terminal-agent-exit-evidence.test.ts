@@ -33,6 +33,7 @@ function setup() {
     lastAgentStatus: string | null
     launchAgent: string | null
     foregroundAgent: string | null
+    connectionId?: string
   } = {
     connected: true,
     incarnationId: 'inc-1',
@@ -100,6 +101,39 @@ describe('host-confirmed agent exit', () => {
       h.tracker.dispose()
     }
   )
+  it('retires an agent on its own title where the SSH host can neither read nor mark commands', async () => {
+    const h = setup()
+    h.pty.connectionId = 'ssh-windows'
+    h.read.mockResolvedValue({
+      controller: h.controller,
+      judgement: judgeForegroundAgent({
+        kind: 'host-evidence',
+        evidence: {
+          authorityGeneration: 'host-1',
+          observationEpoch: 1,
+          capturedAgeMs: 0,
+          ptyId: 'pty-1',
+          ptyIncarnationId: 'inc-1',
+          verdict: 'unverifiable',
+          reason: 'windows_ssh_foreground_unavailable'
+        }
+      })
+    })
+    h.tracker.handleChunk('\x1b]0;workspace\x07')
+    await Promise.resolve()
+    expect(h.facts).toEqual([{ kind: 'agent-exited', evidence: 'agent-title' }])
+    expect(h.markExited).toHaveBeenCalledWith('pty-1')
+    h.tracker.dispose()
+  })
+  it('keeps a local WSL agent through a neutral title; its shell marks the exit', async () => {
+    const h = setup()
+    h.read.mockResolvedValue(readResult(h.controller, 'wsl.exe'))
+    h.tracker.handleChunk('\x1b]0;workspace\x07')
+    await Promise.resolve()
+    expect(h.facts).toEqual([])
+    expect(h.markExited).not.toHaveBeenCalled()
+    h.tracker.dispose()
+  })
   it('ignores an observation after terminal incarnation replacement', async () => {
     const h = setup()
     h.read.mockResolvedValue(readResult(h.controller, 'zsh'))
