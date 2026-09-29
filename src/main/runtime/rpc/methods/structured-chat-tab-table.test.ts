@@ -260,6 +260,16 @@ describe('a chat tab across /clear', () => {
     expect(await send(replacement, 'still here')).toMatchObject({ ok: true, result: { ok: true } })
   })
 
+  // A worktree delete closes every chat in it; one that never started must not ask to be forced.
+  it('closes a replacement that never started as settled', async () => {
+    await createChat(HOST_TEST_SESSION)
+    const replacement = await clear(HOST_TEST_SESSION)
+    expect(await closeStructuredAgentSessionChild(replacement)).toEqual({
+      stopped: true,
+      closeAttempted: true
+    })
+  })
+
   it('puts a cleared chat back under the tab id it had when its close does not land', async () => {
     await createChat(HOST_TEST_SESSION)
     const replacement = await clear(HOST_TEST_SESSION)
