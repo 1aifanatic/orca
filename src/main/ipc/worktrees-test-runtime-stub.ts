@@ -4,6 +4,7 @@ export type WorktreeRuntimeStub = {
   resolveRemoteTrackingBase: ReturnType<typeof vi.fn>
   hasRemoteTrackingRef: ReturnType<typeof vi.fn>
   getOrStartRemoteTrackingBaseRefresh: ReturnType<typeof vi.fn>
+  refreshRemoteTrackingBaseForCreate: ReturnType<typeof vi.fn>
   getOrStartRemoteFetch: ReturnType<typeof vi.fn>
   fetchRemoteWithCache: ReturnType<typeof vi.fn>
   emitWorktreeBaseStatus: ReturnType<typeof vi.fn>
@@ -26,6 +27,7 @@ export function createWorktreeRuntimeStub(): WorktreeRuntimeStub {
     resolveRemoteTrackingBase: vi.fn().mockResolvedValue(null),
     hasRemoteTrackingRef: vi.fn().mockResolvedValue(false),
     getOrStartRemoteTrackingBaseRefresh: vi.fn().mockResolvedValue({ ok: true }),
+    refreshRemoteTrackingBaseForCreate: vi.fn().mockResolvedValue({ ok: true }),
     getOrStartRemoteFetch: vi.fn().mockResolvedValue({ ok: true }),
     fetchRemoteWithCache: vi.fn().mockResolvedValue(undefined),
     emitWorktreeBaseStatus: vi.fn(),

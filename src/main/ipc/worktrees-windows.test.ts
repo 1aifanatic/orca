@@ -302,6 +302,7 @@ describe('registerWorktreeHandlers – Windows path handling', () => {
       resolveRemoteTrackingBase: vi.fn().mockResolvedValue(null),
       hasRemoteTrackingRef: vi.fn().mockResolvedValue(false),
       getOrStartRemoteTrackingBaseRefresh: vi.fn().mockResolvedValue({ ok: true }),
+      refreshRemoteTrackingBaseForCreate: vi.fn().mockResolvedValue({ ok: true }),
       getOrStartRemoteFetch: vi.fn().mockResolvedValue({ ok: true }),
       fetchRemoteWithCache: vi.fn().mockResolvedValue(undefined),
       emitWorktreeBaseStatus: vi.fn(),

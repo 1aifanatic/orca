@@ -2443,7 +2443,7 @@ async function performLocalWorktreeCreate(
         remoteTrackingRefresh = {
           base: remoteTrackingBase,
           hadLocalBaseRef: hasRemoteTrackingBaseRef,
-          promise: runtime.getOrStartRemoteTrackingBaseRefresh(
+          promise: runtime.refreshRemoteTrackingBaseForCreate(
             repo.path,
             remoteTrackingBase,
             ...localWorktreeGitOptionArgs

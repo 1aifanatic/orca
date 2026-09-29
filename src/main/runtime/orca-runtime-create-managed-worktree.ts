@@ -163,7 +163,7 @@ export class OrcaRuntimeWithCreateManagedWorktree extends OrcaRuntimeWithGetWork
         hasRemoteTrackingRef: (path, base, ...options) =>
           this.hasRemoteTrackingRef(path, base, ...options),
         refreshRemoteTrackingBase: (path, base, ...options) =>
-          this.getOrStartRemoteTrackingBaseRefresh(path, base, ...options),
+          this.refreshRemoteTrackingBaseForCreate(path, base, ...options),
         fetchRemote: (path, remote, ...options) =>
           this.fetchRemoteWithCache(path, remote, ...options),
         onWorktreeMetadataPersisted: (persistedWorktree) =>

@@ -113,7 +113,7 @@ describe('registerWorktreeHandlers', () => {
     })
     runtimeStub.resolveRemoteTrackingBase.mockResolvedValue(remoteBase)
     runtimeStub.hasRemoteTrackingRef.mockResolvedValue(true)
-    runtimeStub.getOrStartRemoteTrackingBaseRefresh.mockImplementation(() => {
+    runtimeStub.refreshRemoteTrackingBaseForCreate.mockImplementation(() => {
       expect(resolveGitAdmissionTier()).toBe('interactive')
       return pendingFetch
     })
@@ -149,7 +149,7 @@ describe('registerWorktreeHandlers', () => {
     expect(earlyResult).toBe('pending')
     expect(addWorktreeMock).not.toHaveBeenCalled()
 
-    expect(runtimeStub.getOrStartRemoteTrackingBaseRefresh).toHaveBeenCalledWith(
+    expect(runtimeStub.refreshRemoteTrackingBaseForCreate).toHaveBeenCalledWith(
       '/workspace/repo',
       remoteBase
     )
@@ -184,7 +184,7 @@ describe('registerWorktreeHandlers', () => {
       baseBranch === 'origin/main' ? remoteBase : null
     )
     runtimeStub.hasRemoteTrackingRef.mockResolvedValue(true)
-    runtimeStub.getOrStartRemoteTrackingBaseRefresh.mockResolvedValue({
+    runtimeStub.refreshRemoteTrackingBaseForCreate.mockResolvedValue({
       ok: true,
       errorKind: 'git_error'
     })
@@ -222,7 +222,7 @@ describe('registerWorktreeHandlers', () => {
       '/workspace/repo',
       'origin/main'
     )
-    expect(runtimeStub.getOrStartRemoteTrackingBaseRefresh).toHaveBeenCalledWith(
+    expect(runtimeStub.refreshRemoteTrackingBaseForCreate).toHaveBeenCalledWith(
       '/workspace/repo',
       remoteBase
     )
@@ -239,7 +239,7 @@ describe('registerWorktreeHandlers', () => {
       worktreeBaseRef: 'develop'
     })
     runtimeStub.resolveRemoteTrackingBase.mockResolvedValue(null)
-    runtimeStub.getOrStartRemoteTrackingBaseRefresh.mockResolvedValue({
+    runtimeStub.refreshRemoteTrackingBaseForCreate.mockResolvedValue({
       ok: false,
       errorKind: 'git_error'
     })
@@ -331,7 +331,7 @@ describe('registerWorktreeHandlers', () => {
       requestedRef: 'team/feature',
       localRef: 'team/feature'
     })
-    expect(runtimeStub.getOrStartRemoteTrackingBaseRefresh).not.toHaveBeenCalled()
+    expect(runtimeStub.refreshRemoteTrackingBaseForCreate).not.toHaveBeenCalled()
     expect(addWorktreeMock).toHaveBeenCalledWith(
       '/workspace/repo',
       '/workspace/slash-local-base',
@@ -385,7 +385,7 @@ describe('registerWorktreeHandlers', () => {
       requestedRef: 'origin/main',
       localRef: 'main'
     })
-    expect(runtimeStub.getOrStartRemoteTrackingBaseRefresh).not.toHaveBeenCalled()
+    expect(runtimeStub.refreshRemoteTrackingBaseForCreate).not.toHaveBeenCalled()
     expect(addWorktreeMock).toHaveBeenCalledWith(
       '/workspace/repo',
       '/workspace/offline-local-main',
@@ -406,7 +406,7 @@ describe('registerWorktreeHandlers', () => {
     }
     runtimeStub.resolveRemoteTrackingBase.mockResolvedValue(remoteBase)
     runtimeStub.hasRemoteTrackingRef.mockResolvedValue(false)
-    runtimeStub.getOrStartRemoteTrackingBaseRefresh.mockResolvedValue({
+    runtimeStub.refreshRemoteTrackingBaseForCreate.mockResolvedValue({
       ok: false,
       errorKind: 'git_error'
     })
@@ -458,7 +458,7 @@ describe('registerWorktreeHandlers', () => {
       name: 'improve-dashboard'
     })) as CreateWorktreeResult
 
-    expect(runtimeStub.getOrStartRemoteTrackingBaseRefresh).toHaveBeenCalledWith(
+    expect(runtimeStub.refreshRemoteTrackingBaseForCreate).toHaveBeenCalledWith(
       '/workspace/repo',
       remoteBase
     )

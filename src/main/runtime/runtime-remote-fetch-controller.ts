@@ -27,6 +27,8 @@ const REMOTE_FETCH_CACHE_MAX = 512
 
 export class RuntimeRemoteFetchController {
   private readonly fetchInflight = new Map<string, Promise<RemoteFetchResult>>()
+  // Create fetches stay out of `fetchInflight` so nothing shares them; tracked only for busy probes.
+  private readonly createFetchesInflight = new Set<string>()
   private readonly remoteFetchQueueTail = new Map<string, Promise<RemoteFetchResult>>()
   private readonly fetchLastCompletedAt = new Map<string, number>()
   private readonly canonicalFetchKeyCache = new Map<string, string>()
@@ -83,7 +85,7 @@ export class RuntimeRemoteFetchController {
 
   private hasInflightFetchForRepo(repoKey: string): boolean {
     const prefix = `${repoKey}::`
-    for (const key of this.fetchInflight.keys()) {
+    for (const key of [...this.fetchInflight.keys(), ...this.createFetchesInflight]) {
       if (key.startsWith(prefix)) {
         return true
       }
@@ -180,38 +182,76 @@ export class RuntimeRemoteFetchController {
       if (this.getFreshFetchCompletedAt(key) !== null) {
         return { ok: true }
       }
-      return gitExecFileAsync(
-        [
-          ...GIT_FETCH_SKIP_AUTO_MAINTENANCE_CONFIG_ARGS,
-          'fetch',
-          '--no-tags',
-          base.remote,
-          `+refs/heads/${base.branch}:${base.ref}`
-        ],
-        {
-          cwd: repoPath,
-          ...gitOptions,
-          useConfiguredSshCommandForNetwork: true,
-          timeout: REMOTE_FETCH_TIMEOUT_MS
-        }
-      )
-        .then((): RemoteFetchResult => {
-          this.rememberFreshFetchCompletedAt(key)
-          return { ok: true }
-        })
-        .catch((err): RemoteFetchResult => {
-          console.warn(
-            `[refreshRemoteTrackingBase] ${base.base} refresh failed for ${repoPath}:`,
-            err
-          )
-          return { ok: false, errorKind: 'git_error' }
-        })
+      return this.fetchRemoteTrackingBase(key, repoPath, base, gitOptions)
     }).finally(() => {
       this.fetchInflight.delete(key)
       this.armRefMaintenance(repoPath, gitOptions)
     })
     this.fetchInflight.set(key, promise)
     return promise
+  }
+
+  /**
+   * The create's own base fetch. It neither joins nor queues behind the shared refresh chain,
+   * where a queued background or speculative fetch could hold it; a fetch that recently
+   * completed still counts, and a fetch already running in the repo still finishes first.
+   */
+  async refreshRemoteTrackingBaseForCreate(
+    repoPath: string,
+    base: RemoteTrackingBase,
+    gitOptions: GitOptions = {}
+  ): Promise<RemoteFetchResult> {
+    const key = await this.getCanonicalFetchKey(
+      repoPath,
+      `base:${base.remote}:${base.branch}`,
+      gitOptions
+    )
+    if (this.getFreshFetchCompletedAt(key) !== null) {
+      return { ok: true }
+    }
+    this.createFetchesInflight.add(key)
+    try {
+      return await this.fetchRemoteTrackingBase(key, repoPath, base, gitOptions, 'interactive')
+    } finally {
+      this.createFetchesInflight.delete(key)
+      this.armRefMaintenance(repoPath, gitOptions)
+    }
+  }
+
+  private fetchRemoteTrackingBase(
+    key: string,
+    repoPath: string,
+    base: RemoteTrackingBase,
+    gitOptions: GitOptions,
+    admissionTier?: 'interactive'
+  ): Promise<RemoteFetchResult> {
+    return gitExecFileAsync(
+      [
+        ...GIT_FETCH_SKIP_AUTO_MAINTENANCE_CONFIG_ARGS,
+        'fetch',
+        '--no-tags',
+        base.remote,
+        `+refs/heads/${base.branch}:${base.ref}`
+      ],
+      {
+        cwd: repoPath,
+        ...gitOptions,
+        ...(admissionTier ? { admissionTier } : {}),
+        useConfiguredSshCommandForNetwork: true,
+        timeout: REMOTE_FETCH_TIMEOUT_MS
+      }
+    )
+      .then((): RemoteFetchResult => {
+        this.rememberFreshFetchCompletedAt(key)
+        return { ok: true }
+      })
+      .catch((err): RemoteFetchResult => {
+        console.warn(
+          `[refreshRemoteTrackingBase] ${base.base} refresh failed for ${repoPath}:`,
+          err
+        )
+        return { ok: false, errorKind: 'git_error' }
+      })
   }
 
   async fetchRemoteWithCache(
