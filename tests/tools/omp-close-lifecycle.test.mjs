@@ -7,6 +7,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { runProcess } from '../../src/shared/child-process/run-process.ts'
+import { realAgentTestsEnabled } from '../../src/main/real-agent-tests-opt-in-test-support.ts'
 import {
   captureDescendantSnapshot,
   readProcessTable
@@ -44,7 +45,7 @@ const ownedPidRows = async (pids) => {
   }
   return result.stdout.trim()
 }
-it.skipIf(!binary || process.platform === 'win32')(
+it.skipIf(!binary || !realAgentTestsEnabled() || process.platform === 'win32')(
   'observes actual OMP under production owned-PTY closure policy',
   async () => {
     const fixtures = join(process.cwd(), '.bench-fixtures')

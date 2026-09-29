@@ -9,7 +9,7 @@ to represent OMP typed into a shell. This isolates termination policy; it does n
 exercise Agent button delivery or terminal-tab/handle routing.
 
 ```sh
-ORCA_BACKGROUND_LAUNCH=1 ORCA_OMP_PROBE_BINARY=/absolute/path/to/omp \
+ORCA_BACKGROUND_LAUNCH=1 ORCA_RUN_REAL_AGENT_TESTS=1 ORCA_OMP_PROBE_BINARY=/absolute/path/to/omp \
   node node_modules/vitest/vitest.mjs run --config config/vitest.config.ts \
   tests/tools/omp-close-lifecycle.test.mjs
 ```
@@ -17,7 +17,8 @@ ORCA_BACKGROUND_LAUNCH=1 ORCA_OMP_PROBE_BINARY=/absolute/path/to/omp \
 The probe defaults to zsh on macOS and bash on other POSIX hosts. Set
 `ORCA_OMP_PROBE_SHELL` to the absolute path of either shell to override. Windows
 is skipped. It requires the existing node-pty native dependency for the current
-Node runtime. The normal unit suite skips the test unless a binary is supplied.
+Node runtime. The normal unit suite skips the test unless a binary is supplied
+and `ORCA_RUN_REAL_AGENT_TESTS=1` is set.
 
 Each case waits five seconds for OMP startup, captures the owned process tree,
 requests explicit close or local quit cleanup, and verifies those exact process

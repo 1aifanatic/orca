@@ -11,12 +11,13 @@ import {
   readProcessTable
 } from '../../src/main/pty-descendant-termination.ts'
 import { runProcess } from '../../src/shared/child-process/run-process.ts'
+import { realAgentTestsEnabled } from '../../src/main/real-agent-tests-opt-in-test-support.ts'
 
 const binary = process.env.ORCA_OMP_PROBE_BINARY
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const quote = (value) => `'${value.replaceAll("'", "'\\''")}'`
 
-it.skipIf(!binary || process.platform === 'win32')(
+it.skipIf(!binary || !realAgentTestsEnabled() || process.platform === 'win32')(
   'closes actual OMP detached tools through the relay host',
   async () => {
     const fixtures = join(process.cwd(), '.bench-fixtures')

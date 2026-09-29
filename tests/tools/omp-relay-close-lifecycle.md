@@ -5,7 +5,7 @@ This opt-in probe uses a real installed OMP binary and native PTYs behind produc
 transport; no SSH connection or rendered client is exercised. OMP source is read-only.
 
 ```sh
-ORCA_BACKGROUND_LAUNCH=1 ORCA_OMP_PROBE_BINARY=/absolute/path/to/omp \
+ORCA_BACKGROUND_LAUNCH=1 ORCA_RUN_REAL_AGENT_TESTS=1 ORCA_OMP_PROBE_BINARY=/absolute/path/to/omp \
   ORCA_OMP_PROBE_SHELL=/bin/bash \
   node node_modules/vitest/vitest.mjs run --config config/vitest.config.ts \
   tests/tools/omp-relay-close-lifecycle.test.mjs
