@@ -52,19 +52,31 @@ export function reserveAgentLaunchTab(
   }
 }
 
-/** Consumes the reservation for a tab the host is revealing, if one is live for that workspace. */
-export function takeAgentLaunchTabReservation(
+/**
+ * The reservation for a tab the host is revealing, if one is live for that workspace.
+ *
+ * Claimed, not consumed: the reveal activates the workspace before it creates the tab, and that
+ * activation reconciles tabs, which would drop the reserved empty group if the reservation were
+ * already gone. The reveal consumes it once the tab exists.
+ */
+export function claimAgentLaunchTabReservation(
   tabId: string,
   worktreeId: string,
   now = Date.now()
-): AgentLaunchTabReservation | null {
+): { reservation: AgentLaunchTabReservation; consume: () => void } | null {
   sweepExpired(now)
   const entry = reservations.get(tabId)
   if (!entry || entry.reservation.worktreeId !== worktreeId) {
     return null
   }
-  reservations.delete(tabId)
-  return entry.reservation
+  return {
+    reservation: entry.reservation,
+    consume: () => {
+      if (reservations.get(tabId) === entry) {
+        reservations.delete(tabId)
+      }
+    }
+  }
 }
 
 /**

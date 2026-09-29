@@ -37,8 +37,9 @@ vi.mock('@/lib/agent-launch-prompt-not-delivered-notice', () => ({
 
 import { RuntimeRpcCallError } from '@/runtime/runtime-rpc-client'
 import {
+  type AgentLaunchTabReservation,
   agentLaunchTabReservationCountForTests,
-  takeAgentLaunchTabReservation
+  claimAgentLaunchTabReservation
 } from './agent-launch-tab-reservations'
 import {
   launchSourceControlAgent,
@@ -128,9 +129,11 @@ describe('launching a source-control button’s agent through the host', () => {
   })
 
   it('reserves the placement under the tab it asks for, so the reveal lands it in the button’s group', async () => {
-    let placement: ReturnType<typeof takeAgentLaunchTabReservation> = null
+    let placement: AgentLaunchTabReservation | null = null
     mocks.callRuntimeRpc.mockImplementation(async (_t, _m, params) => {
-      placement = takeAgentLaunchTabReservation(parsePaneKey(params.paneKey)!.tabId, 'wt-1')
+      placement =
+        claimAgentLaunchTabReservation(parsePaneKey(params.paneKey)!.tabId, 'wt-1')?.reservation ??
+        null
       return launchResult({ delivery: 'submit', outcome: 'handed-to-terminal' })
     })
 
@@ -142,9 +145,10 @@ describe('launching a source-control button’s agent through the host', () => {
   it('reports the surface accepted at the reveal, before the prompt’s delivery settles', async () => {
     const onLaunchAccepted = vi.fn()
     mocks.callRuntimeRpc.mockImplementation(async (_t, _m, params) => {
-      takeAgentLaunchTabReservation(parsePaneKey(params.paneKey)!.tabId, 'wt-1')?.onRevealed?.(
-        'tab'
-      )
+      claimAgentLaunchTabReservation(
+        parsePaneKey(params.paneKey)!.tabId,
+        'wt-1'
+      )?.reservation.onRevealed?.('tab')
       expect(onLaunchAccepted).toHaveBeenCalledOnce()
       return launchResult({ delivery: 'submit', outcome: 'handed-to-terminal' })
     })

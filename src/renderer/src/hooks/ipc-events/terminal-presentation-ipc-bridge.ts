@@ -10,7 +10,7 @@ import { initialAgentTabViewModeProps } from '@/lib/native-chat-initial-view-mod
 import { getConnectionIdFromState } from '@/lib/connection-context'
 import { isNativeChatTranscriptLocalReadable } from '@/lib/native-chat-transcript-readability'
 import { tryMakePaneKey } from './agent-status-routing'
-import { takeAgentLaunchTabReservation } from '@/lib/agent-launch-tab-reservations'
+import { claimAgentLaunchTabReservation } from '@/lib/agent-launch-tab-reservations'
 import { persistAgentLaunchTabOrder } from '@/lib/launch-agent-tab-order'
 import { useAppStore } from '../../store'
 import {
@@ -50,10 +50,11 @@ export function registerTerminalPresentationIpcBridge(unsubs: (() => void)[]): v
         try {
           const store = useAppStore.getState()
           // Why: a caller that minted this tab id recorded where the tab goes; the host cannot know.
-          const reservation =
+          const claim =
             ptyId && tabId !== undefined && !splitFromLeafId
-              ? takeAgentLaunchTabReservation(tabId, worktreeId)
+              ? claimAgentLaunchTabReservation(tabId, worktreeId)
               : null
+          const reservation = claim?.reservation ?? null
           const terminalPresentation = reservation
             ? reservation.focus
               ? 'focused'
@@ -225,6 +226,8 @@ export function registerTerminalPresentationIpcBridge(unsubs: (() => void)[]): v
           if (ptyId && terminalPresentation === 'background') {
             requestBackgroundTerminalWorktreeMount({ worktreeId, tabIds: [tab.id] })
           }
+          // The tab now holds its group, so the reservation no longer needs to.
+          claim?.consume()
           if (reservation && !reusedTab) {
             // Why: a launched tab joins the end of the tab bar, as a renderer-created one does.
             persistAgentLaunchTabOrder(worktreeId, tab.id)

@@ -52,6 +52,7 @@ vi.mock('./terminal-command-state', async (importOriginal) => ({
 
 import { registerTerminalPresentationIpcBridge } from './terminal-presentation-ipc-bridge'
 import {
+  agentLaunchReservedGroupIds,
   agentLaunchTabReservationCountForTests,
   reserveAgentLaunchTab
 } from '@/lib/agent-launch-tab-reservations'
@@ -124,6 +125,23 @@ describe('revealing a tab an agent launch reserved', () => {
     expect(mocks.focusTab).toHaveBeenCalledWith('tab-reserved', 'leaf-1', 'wt-1')
     expect(mocks.persistOrder).toHaveBeenCalledWith('wt-1', 'tab-reserved')
     expect(onRevealed).toHaveBeenCalledWith('tab-reserved')
+    expect(agentLaunchTabReservationCountForTests()).toBe(0)
+  })
+
+  // Why: activating the workspace reconciles tab groups, which drops an empty group no live
+  // reservation holds; the tab then fell back to the first group (live QA, 2 of 2 runs).
+  it('still holds the reserved group while it activates the workspace, before the tab exists', () => {
+    const heldDuringActivation: string[][] = []
+    mocks.activateWorktree.mockImplementation(() => {
+      heldDuringActivation.push([...agentLaunchReservedGroupIds('wt-1')])
+    })
+    releases.push(
+      reserveAgentLaunchTab('tab-reserved', { worktreeId: 'wt-1', groupId: 'group-2', focus: true })
+    )
+
+    reveal(hostReveal('tab-reserved'))
+
+    expect(heldDuringActivation).toEqual([['group-2']])
     expect(agentLaunchTabReservationCountForTests()).toBe(0)
   })
 
