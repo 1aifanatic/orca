@@ -14,7 +14,7 @@ import type { JournalReducerState } from './journal-reducer'
 import type { JournalRow } from './journal-row-schema'
 import {
   holdQueuedMessages,
-  releaseStopShapedQueuedMessageHolds,
+  releaseQueuePauseHolds,
   restoreQueuedMessageHolds,
   type QueuedMessageHoldChange
 } from './queued-message-holds'
@@ -160,16 +160,16 @@ export class JournalQueuedMessages {
    *  cached list, so the started turns with nothing to lift (almost all of them)
    *  cost no write transaction. */
   releaseStopHolds(input: { hostInstance: string }): Promise<void> {
-    const stopShaped = (row: QueuedMessageRow) =>
+    const pausedUntilNextSend = (row: QueuedMessageRow) =>
       row.state === 'waiting' &&
       (row.holdReason === 'stopped' ||
         (row.holdReason === null && row.hostInstance !== input.hostInstance))
-    if (!this.list().some(stopShaped)) {
+    if (!this.list().some(pausedUntilNextSend)) {
       return Promise.resolve()
     }
     return this.transact(
       (db) =>
-        releaseStopShapedQueuedMessageHolds(db, {
+        releaseQueuePauseHolds(db, {
           sessionId: this.deps.sessionId,
           hostInstance: input.hostInstance
         }),
