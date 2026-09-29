@@ -360,6 +360,17 @@ describe.each([
     await invoke(command, flagMap({ run: 'run_1', from: `session:${SESSION}` }))
     expect(callsTo(method)[0]?.[callerParam]).toBeUndefined()
   })
+
+  it('refuses a session address it would not send for the host to check, before any request', async () => {
+    // With --run no caller is sent, so a `session:` address the host alone could place (another
+    // chat's, or this chat's pre-/clear root) would be dropped unchecked.
+    for (const other of [`session:${ROOT}`, 'session:0b5e2d7c-9a41-4c3e-8f62-7d1a3e5b9c08']) {
+      await expect(invoke(command, flagMap({ run: 'run_1', from: other }))).rejects.toMatchObject({
+        code: 'consumer_fenced'
+      })
+    }
+    expect(callMock).not.toHaveBeenCalled()
+  })
 })
 
 describe('the identity a session presents', () => {

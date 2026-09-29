@@ -3,6 +3,7 @@ import { printResult } from '../../format'
 import { getOptionalStringFlag, getRequiredStringFlag } from '../../flags'
 import { RuntimeClientError } from '../../runtime-client'
 import { abbreviateOrchestrationTasks } from '../../../shared/orchestration-task-summary'
+import { refuseUnsentSessionAddress } from '../../session-caller-flags'
 import { callOrchestrationMutation } from './mutation-request'
 import { resolveCoordinatorTerminalHandle } from './terminal-identity'
 
@@ -38,6 +39,9 @@ export const ORCHESTRATION_TASK_HANDLERS: Record<string, CommandHandler> = {
   'orchestration task-list': async ({ flags, client, cwd, json }) => {
     const brief = flags.has('brief')
     const run = getOptionalStringFlag(flags, 'run')
+    if (run) {
+      refuseUnsentSessionAddress(flags, 'from')
+    }
     const callerTerminalHandle = run
       ? undefined
       : await resolveCoordinatorTerminalHandle(flags, cwd, client)
