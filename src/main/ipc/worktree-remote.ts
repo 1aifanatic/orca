@@ -23,7 +23,7 @@ import type {
   WorktreeCreateBaseFallback
 } from '../../shared/worktree/create-types'
 import type { WorktreeMeta } from '../../shared/worktree/meta-types'
-import { classifyWorktreeContentOrigin } from '../../shared/worktree/content-origin'
+import { resolveWorktreeContentOrigin } from './worktree-content-origin'
 import type {
   AutomationWorkspaceProvenance,
   CliWorkspaceProvenance,
@@ -2196,7 +2196,9 @@ export async function createRemoteWorktree(
     createdAt: now,
     orcaCreatedAt: now,
     orcaCreationSource: 'ssh',
-    orcaCreationContentOrigin: classifyWorktreeContentOrigin({
+    orcaCreationContentOrigin: await resolveWorktreeContentOrigin({
+      execGit: (gitArgs, cwd) => provider.exec(gitArgs, cwd),
+      repoPath: repo.path,
       baseBranch: args.baseBranch,
       pushTarget: preparedPushTarget
     }),
@@ -2899,7 +2901,9 @@ async function performLocalWorktreeCreate(
     createdAt: now,
     orcaCreatedAt: now,
     orcaCreationSource: 'desktop',
-    orcaCreationContentOrigin: classifyWorktreeContentOrigin({
+    orcaCreationContentOrigin: await resolveWorktreeContentOrigin({
+      execGit: (gitArgs, cwd) => gitExecFileAsync(gitArgs, { cwd, ...localWorktreeGitOptions }),
+      repoPath: repo.path,
       baseBranch: args.baseBranch,
       pushTarget: preparedPushTarget
     }),

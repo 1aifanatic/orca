@@ -5,7 +5,8 @@ import { getProjectHostSetupWorktreeMeta } from '../../shared/project-host-setup
 import type { GitWorktreeInfo, GitPushTarget, Worktree } from '../../shared/worktree/types'
 import type { Repo } from '../../shared/repo-types'
 import type { CreateWorktreeArgs } from '../../shared/worktree/create-types'
-import { classifyWorktreeContentOrigin } from '../../shared/worktree/content-origin'
+import { resolveWorktreeContentOrigin } from '../ipc/worktree-content-origin'
+import { gitExecFileAsync } from '../git/runner'
 import type { TuiAgent } from '../../shared/tui-agent'
 import { resolveWorktreeIncludePaths } from '../git/worktree-include-file'
 import { formatWorktreeIncludeCopyWarning } from '../ipc/worktree-include-copy-budget'
@@ -79,7 +80,9 @@ export async function materializeRuntimeLocalWorktree<T>(args: {
     createdAt: now,
     orcaCreatedAt: now,
     orcaCreationSource: 'runtime',
-    orcaCreationContentOrigin: classifyWorktreeContentOrigin({
+    orcaCreationContentOrigin: await resolveWorktreeContentOrigin({
+      execGit: (gitArgs, cwd) => gitExecFileAsync(gitArgs, { cwd, ...localWorktreeGitOptions }),
+      repoPath: repo.path,
       baseBranch: request.baseBranch,
       pushTarget: request.pushTarget
     }),
