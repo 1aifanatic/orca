@@ -35,7 +35,8 @@ vi.mock('../codex-cli/command', () => ({ resolveCodexCommand: resolveCodexComman
 import {
   _internals as realHomeInternals,
   ensureRealHomeCodexHookState,
-  isRealHomeCodexHookLaneUsable
+  isRealHomeCodexHookLaneUsable,
+  removeRealHomeCodexHookForOptOut
 } from './codex-real-home-hook-install'
 import { cleanupLegacySystemManagedHooks } from './codex-hook-legacy-cleanup'
 import { getCodexManagedHookInstallMaterial } from './codex-hook-definition'
@@ -274,6 +275,24 @@ describe('a slow codex app-server start', () => {
     expect(await launch()).toBe('granting')
     await realHomeInternals.settledLaneForTesting()
     expect(failing.sessions).toBe(2)
+  })
+
+  it('re-adds the entry when hooks go off and on during an approval, one session at a time', async () => {
+    const server = installAppServer(0)
+    const events = getCodexManagedHookInstallMaterial().events.length
+    expect(await launch()).toBe('granting')
+    expect(await removeRealHomeCodexHookForOptOut()).toBe('removed')
+    expect(orcaHandlerCount()).toBe(0)
+
+    expect(await launch()).toBe('granting')
+    expect(orcaHandlerCount()).toBe(events)
+    expect(isRealHomeCodexHookLaneUsable()).toBe(false)
+    // Why: the second approval waits for the first session to end.
+    expect(server.sessions).toBe(1)
+
+    server.start()
+    expect(await realHomeInternals.settledLaneForTesting()).toBe('installed')
+    expect(orcaEntryTrust()).toEqual(Array(events).fill('trusted'))
   })
 
   it('has one retry schedule: turning hooks off and on after a failure retries at once', async () => {

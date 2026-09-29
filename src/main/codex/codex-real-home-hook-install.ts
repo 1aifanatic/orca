@@ -101,8 +101,8 @@ export function ensureRealHomeCodexHookState(args: {
   if (args.hooksEnabled && currentLane === 'unavailable' && Date.now() < installRetryAfterMs) {
     return Promise.resolve(currentLane)
   }
-  if (args.hooksEnabled && backgroundGrant) {
-    // Why: a launch never waits on Codex's approval; it holds the config.toml lane.
+  if (args.hooksEnabled && currentLane === 'granting') {
+    // Why: a launch never waits on Codex's approval; it uses the managed home until it lands.
     return Promise.resolve(currentLane)
   }
   // Why: this mutates the user's real ~/.codex and the module's lane state.
@@ -150,15 +150,24 @@ async function runRealHomeCodexHookEnsure(args: {
 
 function startBackgroundGrant(grant: RealHomeBackgroundGrant): void {
   const generation = laneGeneration
-  backgroundGrant = runRealHomeBackgroundGrant(grant, (lane, retryAfterMs) => {
-    // Why: only if nothing set the lane since, such as hooks turned off.
-    if (laneGeneration === generation) {
-      installRetryAfterMs = retryAfterMs
-      setLane(lane)
-    }
-  }).finally(() => {
-    backgroundGrant = null
-  })
+  // Why chained: hooks turned off and on during a grant start another, and
+  // Codex's approval must still run one session at a time.
+  const run: Promise<void> = (backgroundGrant ?? Promise.resolve())
+    .then(() =>
+      runRealHomeBackgroundGrant(grant, (lane, retryAfterMs) => {
+        // Why: only if nothing set the lane since, such as hooks turned off.
+        if (laneGeneration === generation) {
+          installRetryAfterMs = retryAfterMs
+          setLane(lane)
+        }
+      })
+    )
+    .finally(() => {
+      if (backgroundGrant === run) {
+        backgroundGrant = null
+      }
+    })
+  backgroundGrant = run
 }
 
 async function installRealHomeCodexHook(
