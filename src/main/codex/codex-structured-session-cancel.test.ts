@@ -142,14 +142,14 @@ describe('CodexStructuredSessionAdapter.cancelTurn', () => {
         turnId: 'turn-1',
         fence: 7
       })
-    ).resolves.toEqual({ cancelled: false })
+    ).resolves.toEqual({ cancelled: false, refusal: {} })
     await expect(
       (await acquired(absent)).cancelTurn({
         sessionId: 'session-1',
         turnId: 'turn-1',
         fence: 7
       })
-    ).resolves.toEqual({ cancelled: false })
+    ).resolves.toEqual({ cancelled: false, refusal: {} })
   })
 
   it('rethrows an unsettled interrupt so the turn is not shown as cancelled', async () => {
@@ -228,14 +228,22 @@ describe('CodexStructuredSessionAdapter.cancelTurn', () => {
 
     await expect(
       adapter.cancelTurn({ sessionId: 'session-1', turnId: 'turn-1', fence: 7 })
-    ).resolves.toEqual({ cancelled: false })
+    ).resolves.toEqual({ cancelled: false, unconfirmed: true })
     expect(events).toContainEqual(expect.objectContaining({ method: 'turn/completed' }))
   })
 
   it('accepts an immediate resend after verified interruption', async () => {
     let nextTurn = 0
     const codex = fakeCodex()
-    codex.routes['turn/start'] = () => ({ turn: { id: `turn-${++nextTurn}` } })
+    codex.routes['turn/start'] = () => {
+      // Codex opens each turn it answers; a send's dispatch waits for that.
+      const turnId = `turn-${++nextTurn}`
+      codex.connections[0].handlers.onNotification?.('turn/started', {
+        threadId: THREAD_ID,
+        turn: { id: turnId }
+      })
+      return { turn: { id: turnId } }
+    }
     codex.routes['turn/interrupt'] = () => {
       completeTurn(codex)
       return {}
@@ -303,125 +311,5 @@ describe('CodexStructuredSessionAdapter.cancelTurn', () => {
       adapter.cancelTurn({ sessionId: 'session-1', turnId: 'turn-1', fence: 7 })
     ).rejects.toThrow('interrupt receipt lost')
     expect(events).toContainEqual(expect.objectContaining({ method: 'turn/completed' }))
-  })
-})
-
-describe('Codex Stop that names no turn', () => {
-  it('interrupts the turn turn/start answered with, before turn/started lands', async () => {
-    const codex = fakeCodex()
-    codex.routes['turn/start'] = () => ({ turn: { id: 'turn-started' } })
-    const adapter = await acquired(codex)
-    await adapter.dispatch({
-      sessionId: 'session-1',
-      clientMessageId: 'client-1',
-      body: USER_MESSAGE,
-      fence: 7
-    })
-
-    await expect(adapter.cancelTurn({ sessionId: 'session-1', fence: 7 })).resolves.toEqual({
-      cancelled: true
-    })
-    expect(codex.connections[0].calls.at(-1)).toEqual({
-      method: 'turn/interrupt',
-      params: { threadId: THREAD_ID, turnId: 'turn-started' }
-    })
-  })
-
-  it('interrupts the turn the journal shows over an older answer', async () => {
-    const codex = fakeCodex()
-    codex.routes['turn/start'] = () => ({ turn: { id: 'turn-started' } })
-    const adapter = await acquired(codex)
-    await adapter.dispatch({
-      sessionId: 'session-1',
-      clientMessageId: 'client-1',
-      body: USER_MESSAGE,
-      fence: 7
-    })
-
-    await adapter.cancelTurn({
-      sessionId: 'session-1',
-      fence: 7,
-      resolveLiveTurnId: () => 'turn-journal'
-    })
-    expect(codex.connections[0].calls.at(-1)).toEqual({
-      method: 'turn/interrupt',
-      params: { threadId: THREAD_ID, turnId: 'turn-journal' }
-    })
-  })
-
-  it('interrupts nothing before any turn started, or for another fence', async () => {
-    const codex = fakeCodex()
-    codex.routes['turn/start'] = () => ({ turn: { id: 'turn-started' } })
-    const adapter = await acquired(codex)
-
-    await expect(adapter.cancelTurn({ sessionId: 'session-1', fence: 7 })).resolves.toEqual({
-      cancelled: false
-    })
-    await adapter.dispatch({
-      sessionId: 'session-1',
-      clientMessageId: 'client-1',
-      body: USER_MESSAGE,
-      fence: 7
-    })
-    await expect(adapter.cancelTurn({ sessionId: 'session-1', fence: 6 })).resolves.toEqual({
-      cancelled: false
-    })
-    expect(codex.connections[0].calls.some((call) => call.method === 'turn/interrupt')).toBe(false)
-  })
-
-  it('interrupts no earlier turn when the latest turn/start went unanswered', async () => {
-    const codex = fakeCodex()
-    codex.routes['turn/start'] = () => ({ turn: { id: 'turn-earlier' } })
-    const adapter = await acquired(codex)
-    const send = (clientMessageId: string) =>
-      adapter.dispatch({ sessionId: 'session-1', clientMessageId, body: USER_MESSAGE, fence: 7 })
-    await send('client-1')
-    codex.routes['turn/start'] = () => {
-      throw new Error('codex app-server request timed out')
-    }
-    await expect(send('client-2')).rejects.toThrow('timed out')
-
-    await expect(adapter.cancelTurn({ sessionId: 'session-1', fence: 7 })).resolves.toEqual({
-      cancelled: false
-    })
-    expect(codex.connections[0].calls.some((call) => call.method === 'turn/interrupt')).toBe(false)
-  })
-
-  it('interrupts no earlier turn while a compaction the journal shows has not started', async () => {
-    const codex = fakeCodex()
-    codex.routes['turn/start'] = () => ({ turn: { id: 'turn-earlier' } })
-    const adapter = await acquired(codex)
-    await adapter.dispatch({
-      sessionId: 'session-1',
-      clientMessageId: 'client-1',
-      body: USER_MESSAGE,
-      fence: 7
-    })
-    const compaction = adapter.compact({
-      turnId: 'compact:operation-1',
-      sessionId: 'session-1',
-      fence: 7
-    })
-    await vi.waitFor(() =>
-      expect(codex.connections[0].calls.at(-1)?.method).toBe('thread/compact/start')
-    )
-
-    await expect(
-      adapter.cancelTurn({
-        sessionId: 'session-1',
-        fence: 7,
-        resolveLiveTurnId: () => 'compact:operation-1'
-      })
-    ).resolves.toEqual({ cancelled: false })
-    expect(codex.connections[0].calls.some((call) => call.method === 'turn/interrupt')).toBe(false)
-
-    const notify = codex.connections[0].handlers.onNotification!
-    notify('turn/started', { threadId: THREAD_ID, turn: { id: 'turn-compact' } })
-    notify('thread/compacted', { threadId: THREAD_ID })
-    notify('turn/completed', {
-      threadId: THREAD_ID,
-      turn: { id: 'turn-compact', status: 'completed' }
-    })
-    await expect(compaction).resolves.toEqual({})
   })
 })

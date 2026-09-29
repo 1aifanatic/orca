@@ -7,6 +7,7 @@ import type { AgentJournalResetReason } from '../../../shared/agent-session-jour
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import {
   openStructuredAgentSessionConversation,
+  resettleOpenStructuredAgentSessionConversation,
   type OpenedStructuredAgentSessionConversation,
   type StructuredAgentSessionConversationOpenOptions
 } from './structured-agent-session-conversation-open'
@@ -17,7 +18,7 @@ import type {
   StructuredAgentSessionHostSession
 } from './structured-agent-session-host-types'
 import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
-import { structuredAgentSessionStartFailureText } from './structured-agent-session-send-preparation'
+import { structuredAgentSessionFailureWordsContext } from './structured-agent-session-send-preparation'
 import { settleInterruptedCompaction } from './structured-compaction-recovery'
 import { recoverStructuredRewind } from './structured-rewind-recovery'
 
@@ -28,6 +29,8 @@ export type StructuredAgentSessionConversationDelivery = {
     sessionId: string,
     options?: StructuredAgentSessionConversationOpenOptions
   ) => Promise<StructuredAgentSessionHostSession | null>
+  /** Stops the loop and the resettle on a proof of death; quit's first step. */
+  dispose: () => void
   /** Indexes a conversation some other open produced, as `open` would have. */
   adoptOpened: (
     sessionId: string,
@@ -57,8 +60,8 @@ export function createStructuredAgentSessionConversationDelivery(input: {
     ensureProviderChild: input.ensureProviderChild,
     conversationFence: (sessionId) =>
       structuredAgentSessionConversationFence(deps.store, sessionId),
-    startFailureText: (sessionId, cause) =>
-      structuredAgentSessionStartFailureText(deps.store.getRecord(sessionId), cause),
+    failureTextContext: (sessionId) =>
+      structuredAgentSessionFailureWordsContext(deps.store.getRecord(sessionId)),
     onError: (sessionId, error) => deps.onEventSinkError?.({ sessionId, error })
   })
   const adoptOpened = async (
@@ -76,9 +79,26 @@ export function createStructuredAgentSessionConversationDelivery(input: {
       loop.wake(sessionId)
     }
   }
+  // A chat open before its owner's death was proven revises what its open settled. Queued, never
+  // awaited: the writer can hold this session's serialize (an attach recovering its lease).
+  const stopResettling = deps.store.onDeathEvidence((sessionId) => {
+    if (sessions.has(sessionId)) {
+      void input
+        .trackStart(
+          input.serialize(sessionId, () =>
+            resettleOpenStructuredAgentSessionConversation(deps, sessionId, sessions.get(sessionId))
+          )
+        )
+        .catch((error: unknown) => deps.onEventSinkError?.({ sessionId, error }))
+    }
+  })
   return {
     loop,
     adoptOpened,
+    dispose: () => {
+      loop.dispose()
+      stopResettling()
+    },
     open: (sessionId, options) =>
       openStructuredAgentSessionConversation({ deps, sessions, adoptOpened }, sessionId, options)
   }

@@ -2,6 +2,7 @@
 // that arrive while it runs see it.
 
 import type { AgentSessionWireRefusal } from '../../../shared/agent-session-wire'
+import { refuse } from '../../../shared/agent-session-wire-refusals'
 import type { StructuredAgentSessionMutationContext } from './structured-agent-session-host-mutations'
 
 export function conversationOperationWaitRefusal(): {
@@ -10,10 +11,11 @@ export function conversationOperationWaitRefusal(): {
 } {
   return {
     ok: false,
-    refusal: {
-      code: 'agent_session_operation_invalid',
-      message: 'Wait for the conversation operation to finish.'
-    }
+    refusal: refuse(
+      'agent_session_operation_invalid',
+      { reason: 'conversationCommandInFlight' },
+      'Wait for the conversation operation to finish.'
+    )
   }
 }
 

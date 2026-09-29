@@ -1,5 +1,6 @@
 // Append-only journal store for one agent session.
 
+import type { AgentJournalDispatchRejection } from '../../../shared/agent-session-failure-words'
 import { randomUUID } from 'node:crypto'
 import type {
   AgentJournalAcceptanceReceipt,
@@ -57,7 +58,7 @@ import type {
 import { queuedMessageConsumeHook, type JournalQueuedMessages } from './journal-queued-messages'
 import type { AgentJournalEpochReason, JournalRow } from './journal-row-schema'
 import { AgentSessionJournalError } from './journal-write-guards'
-import type { JournalRowWriter } from './journal-row-writer'
+import type { JournalRowTransactionHook, JournalRowWriter } from './journal-row-writer'
 import type { JournalEpochController } from './journal-epoch-controller'
 import { JournalConnectionCloser, JournalWriteQueue } from './journal-store-close'
 import { createJournalStoreCollaborators } from './journal-store-collaborators'
@@ -133,7 +134,7 @@ export class AgentSessionJournal {
         this.malformedRows = count
       },
       journal: () => this,
-      enqueue: (build) => this.enqueue(build)
+      enqueue: (build) => this.rowWriter.enqueue(build)
     })
     this.rowWriter = collaborators.rowWriter
     this.epochController = collaborators.epochController
@@ -242,10 +243,12 @@ export class AgentSessionJournal {
   /** Includes revisions and completion tombstones, whose timestamps disappear from render items. */
   lastActivityAt = (): number => this.state.lastActivityAt
 
+  /** Fence of the writer that created the item, while it is in the timeline. */
+  itemFence = (itemId: string): number | undefined => this.state.itemFences.get(itemId)
+
   submissions = (): AgentJournalSubmission[] => [...this.state.submissions.values()]
 
-  submission = (clientMessageId: string): AgentJournalSubmission | undefined =>
-    this.state.submissions.get(clientMessageId)
+  submission = (clientMessageId: string) => this.state.submissions.get(clientMessageId)
 
   pendingSubmissions = (): AgentJournalSubmission[] =>
     this.submissions().filter((entry) => entry.dispatchState === 'pending')
@@ -291,9 +294,7 @@ export class AgentSessionJournal {
     options: JournalTombstoneInput
   ): Promise<AgentJournalCursor> {
     const itemId = agentJournalItemKey(identity)
-    return this.enqueue(journalTombstoneRowBuilder(() => this.state, itemId, options.fence)).then(
-      (row) => ({ epoch: row.epoch, sequence: row.seq })
-    )
+    return this.appendRow(journalTombstoneRowBuilder(() => this.state, itemId, options.fence))
   }
 
   appendLifecycleBatch(input: JournalLifecycleBatchInput): Promise<AgentJournalCursor> {
@@ -311,14 +312,10 @@ export class AgentSessionJournal {
      *  state transition commits in the SAME transaction — exactly-once consume. */
     consume?: JournalSubmissionConsume
   ): Promise<AgentJournalCursor> {
-    return this.rowWriter
-      .enqueue(
-        journalSubmissionRowBuilder(() => this.state, this.identity.providerHandle, input),
-        consume
-          ? queuedMessageConsumeHook(this.queuedMessages, input.clientMessageId, consume)
-          : undefined
-      )
-      .then((row) => ({ epoch: row.epoch, sequence: row.seq }))
+    return this.appendRow(
+      journalSubmissionRowBuilder(() => this.state, this.identity.providerHandle, input),
+      consume && queuedMessageConsumeHook(this.queuedMessages, input.clientMessageId, consume)
+    )
   }
 
   /**
@@ -329,10 +326,7 @@ export class AgentSessionJournal {
    * string here would silently give the user a second copy of their own message.
    */
   resolveDispatch(input: ResolveDispatchInput): Promise<AgentJournalCursor> {
-    return this.enqueue(journalDispatchRowBuilder(() => this.state, input)).then((row) => ({
-      epoch: row.epoch,
-      sequence: row.seq
-    }))
+    return this.appendRow(journalDispatchRowBuilder(() => this.state, input))
   }
 
   /** Retire unanswered sends after their execution owner ended, without assuming delivery. */
@@ -341,17 +335,20 @@ export class AgentSessionJournal {
   }
 
   /** Reject unanswered sends after an owner that never proved its start ended: none was written. */
-  async rejectPendingSubmissions(fence: number, reason: string): Promise<string[]> {
-    return rejectJournalPendingSubmissions(this, fence, reason)
+  async rejectPendingSubmissions(
+    fence: number,
+    rejection: AgentJournalDispatchRejection
+  ): Promise<string[]> {
+    return rejectJournalPendingSubmissions(this, fence, rejection)
   }
 
   /** Reject sends accepted but never handed over, optionally only those `which` names. */
   async rejectQueuedSubmissions(
     fence: number,
-    reason: string,
+    rejection: AgentJournalDispatchRejection,
     which?: (submission: AgentJournalSubmission) => boolean
   ): Promise<string[]> {
-    return rejectJournalQueuedSubmissions(this, fence, reason, which)
+    return rejectJournalQueuedSubmissions(this, fence, rejection, which)
   }
 
   /** The escape hatch for corruption, an unreconcilable prefix, a forked handle,
@@ -387,7 +384,12 @@ export class AgentSessionJournal {
    * SAME reducer replay uses — all inside one serialized step, so concurrent
    * callers cannot interleave and mint the same sequence.
    */
-  private enqueue(build: (seq: number, ts: number) => JournalRow): Promise<JournalRow> {
-    return this.rowWriter.enqueue(build)
+  private appendRow(
+    build: (seq: number, ts: number) => JournalRow,
+    inTransaction?: JournalRowTransactionHook
+  ): Promise<AgentJournalCursor> {
+    return this.rowWriter
+      .enqueue(build, inTransaction)
+      .then((row) => ({ epoch: row.epoch, sequence: row.seq }))
   }
 }

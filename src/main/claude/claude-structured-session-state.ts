@@ -1,3 +1,5 @@
+import type { AgentJournalDispatchRejection } from '../../shared/agent-session-failure-words'
+import type { SubmissionRejectionFact } from '../../shared/agent-session-failure'
 import type {
   AgentJournalItemIdentity,
   AgentSessionJournalIdentity
@@ -40,7 +42,9 @@ export type ClaudeStructuredSessionEvent =
       type: 'message'
       sessionId: string
       message: Record<string, unknown>
-      /** Present only when this replay acknowledged Orca's in-flight dispatch. */
+      /** Present only when this replay acknowledged Orca's in-flight dispatch
+       *  AND opens a turn; a replay folded into the running turn settles
+       *  delivery without one. */
       startsTurn?: true
       /** Submission instant of the dispatch this replay acknowledged; the origin
        *  of the turn it opens. Absent when the host cannot name a send. */
@@ -66,6 +70,7 @@ export type ClaudeStructuredSessionEvent =
       type: 'ended'
       sessionId: string
       reason: string
+      failure?: SubmissionRejectionFact
       /** Present for first-hand child exits so the host can fence recovery. */
       cause?: 'unexpected-exit' | 'requested-close'
       fence?: number
@@ -81,7 +86,7 @@ export type ClaudeLateDispatchOutcome =
       clientMessageId: string
       providerIdentity: AgentJournalItemIdentity
     }
-  | { clientMessageId: string; state: 'rejected'; reason: string }
+  | ({ clientMessageId: string; state: 'rejected' } & AgentJournalDispatchRejection)
 
 export type ClaudeStructuredSessionAdapterDeps = {
   resolveLaunch: (input: {

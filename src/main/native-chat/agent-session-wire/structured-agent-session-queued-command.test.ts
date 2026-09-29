@@ -33,6 +33,7 @@ const WAIT_REFUSAL = {
   ok: false,
   refusal: {
     code: 'agent_session_operation_invalid',
+    details: { reason: 'conversationCommandInFlight' },
     message: 'Wait for the conversation operation to finish.'
   }
 }

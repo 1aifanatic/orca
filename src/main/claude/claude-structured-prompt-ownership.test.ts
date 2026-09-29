@@ -17,9 +17,9 @@ import {
   acquired,
   adapterFor,
   fakeClaude,
-  identityFor,
-  invokeCanUseTool
+  identityFor
 } from './claude-structured-session-test-support'
+import { invokeCanUseTool } from './claude-can-use-tool-test-support'
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
   let resolve = (): void => {}
@@ -269,7 +269,8 @@ describe('Claude live prompt ownership', () => {
       sessionId: 'session-1',
       clientMessageId: 'queued-message',
       state: 'rejected',
-      reason: 'provider_cancelled_before_start'
+      reason: 'provider_cancelled_before_start',
+      rejection: { kind: 'cancelled' }
     })
   })
 
