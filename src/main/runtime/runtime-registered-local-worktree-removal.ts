@@ -139,6 +139,9 @@ export async function removeRuntimeRegisteredLocalWorktree(args: {
         refreshed.head
       )
     } catch (error) {
+      // Why: git can drop the worktree before failing (its folder can't be deleted), so no exit below
+      // may leave a cached listing that still has it.
+      runWorktreeChangeInvalidators(repo.id)
       const recovered = await recoverLocalWindowsWorktreeRemoval({
         error,
         force: args.force,
@@ -170,9 +173,6 @@ export async function removeRuntimeRegisteredLocalWorktree(args: {
           ...(warning ? { warning } : {})
         }
       } else {
-        // Why: git can drop the worktree before failing (its folder can't be deleted), so a cached
-        // listing must not keep answering with it.
-        runWorktreeChangeInvalidators(repo.id)
         throw new Error(formatWorktreeRemovalError(error, canonicalPath, args.force))
       }
     }

@@ -4,8 +4,11 @@
 // the older one: it purges a new workspace, or restores a removed one.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { isWorktreeCatalogVersion } from '../../shared/worktree/catalog-version'
+import * as localWorktreeFilesystem from '../local-worktree-filesystem'
 import { getLocalWorktreeScanGeneration } from '../local-worktree-scan-generation'
 import {
+  ORIGINAL_PLATFORM,
+  setPlatform,
   addWorktreeMock,
   getActiveMultiplexerMock,
   getSshGitProviderMock,
@@ -261,36 +264,56 @@ describe('listing after a local removal that partly fails', () => {
     setupWorktreeHandlers()
   })
 
-  it('does not answer from a listing cached before git dropped the worktree', async () => {
-    mockKnownFeatureWorktree()
-    const listedPaths = async (): Promise<string[]> => {
-      const result = (await handlers['worktrees:listDetected'](null, { repoId: 'repo-1' })) as {
-        worktrees: { path: string }[]
-      }
-      return result.worktrees.map((worktree) => worktree.path)
-    }
-    expect(await listedPaths()).toContain('/workspace/feature-wt')
-    removeWorktreeMock.mockImplementation(async () => {
-      // Git dropped the registration, then failed deleting the folder.
-      listWorktreesMock.mockResolvedValue([
-        {
-          path: '/workspace/repo',
-          head: 'main',
-          branch: 'main',
-          isBare: false,
-          isMainWorktree: true
+  // Why Windows too: there the failure first goes through a recovery that retries the folder
+  // deletion, and that retry failing is its own exit.
+  it.each([
+    { platform: ORIGINAL_PLATFORM, folderRetry: 'Permission denied' },
+    { platform: 'win32' as const, folderRetry: 'EBUSY: resource busy or locked' }
+  ])(
+    'does not answer from a listing cached before git dropped the worktree ($platform)',
+    async ({ platform, folderRetry }) => {
+      mockKnownFeatureWorktree()
+      const listedPaths = async (): Promise<string[]> => {
+        const result = (await handlers['worktrees:listDetected'](null, { repoId: 'repo-1' })) as {
+          worktrees: { path: string }[]
         }
-      ])
-      throw new Error("error: failed to delete '/workspace/feature-wt': Operation not permitted")
-    })
-
-    await expect(
-      handlers['worktrees:remove'](null, {
-        worktreeId: 'repo-1::/workspace/feature-wt',
-        force: true
+        return result.worktrees.map((worktree) => worktree.path)
+      }
+      expect(await listedPaths()).toContain('/workspace/feature-wt')
+      const removePath = vi
+        .spyOn(localWorktreeFilesystem, 'removeLocalWorktreePath')
+        .mockRejectedValue(new Error(folderRetry))
+      removeWorktreeMock.mockImplementation(async () => {
+        // Git dropped the registration, then failed deleting the folder.
+        listWorktreesMock.mockResolvedValue([
+          {
+            path: '/workspace/repo',
+            head: 'main',
+            branch: 'main',
+            isBare: false,
+            isMainWorktree: true
+          }
+        ])
+        // Why only now: the removal's path checks before git ran stay on the host's rules.
+        setPlatform(platform)
+        throw Object.assign(new Error('git worktree remove failed'), {
+          stderr: "error: failed to delete '/workspace/feature-wt': Permission denied"
+        })
       })
-    ).rejects.toThrow()
 
-    expect(await listedPaths()).not.toContain('/workspace/feature-wt')
-  })
+      try {
+        await expect(
+          handlers['worktrees:remove'](null, {
+            worktreeId: 'repo-1::/workspace/feature-wt',
+            force: true
+          })
+        ).rejects.toThrow(folderRetry)
+      } finally {
+        setPlatform(ORIGINAL_PLATFORM)
+        removePath.mockRestore()
+      }
+
+      expect(await listedPaths()).not.toContain('/workspace/feature-wt')
+    }
+  )
 })
