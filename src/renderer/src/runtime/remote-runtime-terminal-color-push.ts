@@ -13,7 +13,7 @@ type ConnectedHost = { runtimeId: string; unsupported: boolean }
 export type RemoteRuntimeTerminalColorPush = {
   observeStatusSnapshot: (snapshot: RuntimeHostStatusSnapshot) => void
   setColors: (colors: TerminalOscColorQueryReplyColors) => void
-  /** This window gained focus: its viewer is acting again on every host it is connected to. */
+  /** This window gained focus: a headless host with several clients answers with its theme again. */
   pushToAllHosts: () => void
 }
 
@@ -33,8 +33,9 @@ function isPermanentRefusal(error: unknown): boolean {
 }
 
 /**
- * Each paired host answers its panes' OSC 10/11 with the theme of whichever viewer acted last,
- * so this client tells every host it is connected to its colours on connect, change and focus.
+ * A headless paired host answers its panes' OSC 10/11 with the theme of the client that pushed
+ * last, so this client pushes its colours to every connected host on connect, change and focus.
+ * A host with its own window keeps its own theme and ignores the push for its answers.
  */
 export function createRemoteRuntimeTerminalColorPush(
   call: PushCall
@@ -47,7 +48,7 @@ export function createRemoteRuntimeTerminalColorPush(
     if (!colors || !host || host.unsupported) {
       return
     }
-    // Best-effort: a failed push leaves the host answering with the last viewer's colours.
+    // Best-effort: a failed push leaves the host answering with the colours it already had.
     call(environmentId, colors).catch((error: unknown) => {
       if (isPermanentRefusal(error) && hosts.get(environmentId) === host) {
         host.unsupported = true

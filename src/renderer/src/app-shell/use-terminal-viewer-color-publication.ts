@@ -5,7 +5,7 @@ import { subscribeToPublishedTerminalViewColors } from '../components/terminal-p
 import { remoteRuntimeTerminalColorPush } from '../runtime/remote-runtime-terminal-color-push'
 import { useAppStore } from '../store'
 
-/** Keeps every PTY owner this window views answering OSC 10/11 with this window's theme. */
+/** Reports this window's terminal theme to its own host and to every paired host. */
 export function useTerminalViewerColorPublication(): void {
   const settings = useAppStore((s) => s.settings)
 

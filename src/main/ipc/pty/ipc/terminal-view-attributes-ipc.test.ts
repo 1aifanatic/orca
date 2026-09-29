@@ -5,9 +5,10 @@ import { LocalPtyProvider } from '../../../providers/local-pty-provider'
 import {
   _resetTerminalViewAttributesForTest,
   getTerminalViewAttributes,
-  reassertDesktopTerminalViewerColors,
+  getTerminalViewerColors,
+  setPairedViewerColors,
   setTerminalViewAttributes,
-  setTerminalViewerColors
+  setTerminalViewerColorsListener
 } from '../../../runtime/terminal-view-attribute-store'
 import type { TerminalViewAttributes } from '../../../../shared/terminal-view-attributes'
 import {
@@ -81,6 +82,8 @@ describe('seeding PTY owner colours from saved settings', () => {
 
 describe('one viewer colour value for every PTY owner', () => {
   const originalLocal = getLocalPtyProvider()
+  const settings = getDefaultSettings('/tmp')
+  const SEED = { foreground: '#ffffff', background: '#282c34' }
 
   afterEach(() => {
     _resetTerminalViewAttributesForTest()
@@ -91,48 +94,59 @@ describe('one viewer colour value for every PTY owner', () => {
   function install(): RecordingProvider {
     const owner = new RecordingProvider()
     setLocalPtyProvider(owner)
-    installTerminalViewAttributesIpc({})
+    installTerminalViewAttributesIpc({ getSettings: () => ({ ...settings, theme: 'dark' }) })
     return owner
   }
 
-  it('lets the viewer that acted last answer, without touching the desktop attributes', () => {
+  it("keeps this host's own window theme when a paired client pushes", () => {
     const owner = install()
     setTerminalViewAttributes(DESKTOP_ATTRIBUTES)
 
-    setTerminalViewerColors(CLIENT)
+    setPairedViewerColors(CLIENT)
 
-    expect(owner.pushes).toEqual([DESKTOP, CLIENT])
-    // The hidden-pane responder still answers OSC 4/12 from the desktop's own palette.
+    expect(getTerminalViewerColors()).toEqual(DESKTOP)
+    expect(owner.pushes).toEqual([SEED, DESKTOP])
     expect(getTerminalViewAttributes()).toBe(DESKTOP_ATTRIBUTES)
   })
 
-  it('hands the panes back to this desktop when its window regains focus', () => {
+  it("answers with a paired client's theme on a host with no window of its own", () => {
     const owner = install()
-    setTerminalViewAttributes(DESKTOP_ATTRIBUTES)
-    setTerminalViewerColors(CLIENT)
 
-    reassertDesktopTerminalViewerColors()
+    setPairedViewerColors(CLIENT)
 
-    expect(owner.pushes).toEqual([DESKTOP, CLIENT, DESKTOP])
+    expect(getTerminalViewerColors()).toEqual(CLIENT)
+    expect(owner.pushes).toEqual([SEED, CLIENT])
   })
 
-  it('treats an identical renderer re-push as this desktop acting again', () => {
+  it("switches to this host's window theme once its renderer pushes", () => {
     const owner = install()
+    setPairedViewerColors(CLIENT)
+
     setTerminalViewAttributes(DESKTOP_ATTRIBUTES)
-    setTerminalViewerColors(CLIENT)
+    setPairedViewerColors({ foreground: '#111111', background: '#eeeeee' })
 
-    setTerminalViewAttributes({ ...DESKTOP_ATTRIBUTES })
-
-    expect(owner.pushes).toEqual([DESKTOP, CLIENT, DESKTOP])
+    expect(getTerminalViewerColors()).toEqual(DESKTOP)
+    expect(owner.pushes).toEqual([SEED, CLIENT, DESKTOP])
   })
 
-  it('does not re-notify owners when a focus changes nothing', () => {
+  it('falls back to the saved theme until any viewer reports', () => {
     const owner = install()
+
+    expect(getTerminalViewerColors()).toEqual(SEED)
+    expect(owner.pushes).toEqual([SEED])
+  })
+
+  it('notifies once per change of the answered colours', () => {
+    install()
+    const published: unknown[] = []
+    setTerminalViewerColorsListener((colors) => published.push(colors))
+
+    setPairedViewerColors(CLIENT)
+    setPairedViewerColors({ ...CLIENT })
     setTerminalViewAttributes(DESKTOP_ATTRIBUTES)
+    setTerminalViewAttributes({ ...DESKTOP_ATTRIBUTES, cursorBlink: true })
+    setPairedViewerColors({ foreground: '#111111', background: '#eeeeee' })
 
-    reassertDesktopTerminalViewerColors()
-    setTerminalViewerColors({ ...DESKTOP })
-
-    expect(owner.pushes).toEqual([DESKTOP])
+    expect(published).toEqual([CLIENT, DESKTOP])
   })
 })

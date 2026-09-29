@@ -1,8 +1,8 @@
 import { getPtyIpc } from '../../pty-host-bindings'
 import {
   getTerminalViewerColors,
+  seedTerminalViewerColors,
   setTerminalViewAttributes,
-  setTerminalViewerColors,
   setTerminalViewerColorsListener
 } from '../../../runtime/terminal-view-attribute-store'
 import { validateTerminalViewAttributes } from '../../../../shared/terminal-view-attributes'
@@ -17,8 +17,8 @@ export function installTerminalViewAttributesIpc(
   const settings = session.getSettings?.()
   // Why seed from settings: a headless host may never hear from a viewer, and a desktop pane
   // can query before the first push lands; either way the owner should answer with the saved theme.
-  if (settings && !getTerminalViewerColors()) {
-    setTerminalViewerColors(
+  if (settings) {
+    seedTerminalViewerColors(
       resolveConfiguredTerminalColors(settings, session.options?.systemPrefersDark?.() ?? true)
     )
   }

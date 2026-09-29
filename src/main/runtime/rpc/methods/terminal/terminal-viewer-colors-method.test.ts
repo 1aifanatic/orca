@@ -26,7 +26,7 @@ function setViewerColors(params: unknown) {
 describe('terminal.setViewerColors', () => {
   afterEach(() => _resetTerminalViewAttributesForTest())
 
-  it("makes a paired client's colours the ones every PTY owner answers with", async () => {
+  it("makes a paired client's colours the ones a headless host answers with", async () => {
     const published: unknown[] = []
     setTerminalViewerColorsListener((colors) => published.push(colors))
     const colors = { foreground: '#2e3434', background: '#ffffff' }

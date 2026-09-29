@@ -22,9 +22,10 @@ import { colorQueryReplyColorsEqual } from '../../shared/pty-owner-color-query-c
 // the push, the runtime emulators consult it at reply time via the getter.
 let currentAttributes: TerminalViewAttributes | null = null
 
-// Why one value for every pane: the host shows the same panes to every viewer, so OSC 10/11
-// answer with the theme of whichever viewer acted last — this desktop or a paired client.
-let viewerColors: TerminalOscColorQueryReplyColors | null = null
+// Why one value for every pane: the host shows the same panes to every viewer. This host's own
+// window answers when it has one; a paired client's push answers only on a headless host.
+let pairedViewerColors: TerminalOscColorQueryReplyColors | null = null
+let seedColors: TerminalOscColorQueryReplyColors | null = null
 let viewerColorsListener: ((colors: TerminalOscColorQueryReplyColors) => void) | null = null
 
 // Why appliers (pattern of registerConptyDa1OverrideInstaller): each push
@@ -42,8 +43,6 @@ export function registerTerminalViewAttributesApplier(
 /** Called from the pty:terminalViewAttributes IPC handler with a validated
  *  payload. Last push wins (replies always use the freshest snapshot). */
 export function setTerminalViewAttributes(attributes: TerminalViewAttributes): void {
-  // Why before the dedupe: an identical re-push still means this desktop is the viewer again.
-  setTerminalViewerColors(terminalViewColorQueryReplyColors(attributes))
   // Why idempotent: the renderer publisher's dedupe is per-process, so a
   // fresh renderer (second window, reload, macOS re-activation) re-pushes
   // identical attributes. That is not a theme apply — fanning out would wipe
@@ -51,10 +50,12 @@ export function setTerminalViewAttributes(attributes: TerminalViewAttributes): v
   if (currentAttributes && terminalViewAttributesEqual(currentAttributes, attributes)) {
     return
   }
+  const before = getTerminalViewerColors()
   currentAttributes = attributes
   for (const applier of pushAppliers) {
     applier(attributes)
   }
+  notifyIfViewerColorsChanged(before)
 }
 
 export function getTerminalViewAttributes(): TerminalViewAttributes | null {
@@ -65,16 +66,31 @@ export function getTerminalViewColorQueryReplyColors(): TerminalOscColorQueryRep
   return currentAttributes ? terminalViewColorQueryReplyColors(currentAttributes) : null
 }
 
-export function setTerminalViewerColors(colors: TerminalOscColorQueryReplyColors): void {
-  if (colorQueryReplyColorsEqual(viewerColors, colors)) {
-    return
-  }
-  viewerColors = colors
-  viewerColorsListener?.(colors)
+/** The colours OSC 10/11 answer with on this host: its own window, else a paired client, else
+ *  the saved theme. */
+export function getTerminalViewerColors(): TerminalOscColorQueryReplyColors | null {
+  return getTerminalViewColorQueryReplyColors() ?? pairedViewerColors ?? seedColors
 }
 
-export function getTerminalViewerColors(): TerminalOscColorQueryReplyColors | null {
-  return viewerColors
+/** A paired client's theme, from terminal.setViewerColors or the colours on terminal.create. */
+export function setPairedViewerColors(colors: TerminalOscColorQueryReplyColors): void {
+  const before = getTerminalViewerColors()
+  pairedViewerColors = colors
+  notifyIfViewerColorsChanged(before)
+}
+
+/** The saved theme, answering until a viewer reports its colours. */
+export function seedTerminalViewerColors(colors: TerminalOscColorQueryReplyColors): void {
+  const before = getTerminalViewerColors()
+  seedColors = colors
+  notifyIfViewerColorsChanged(before)
+}
+
+function notifyIfViewerColorsChanged(before: TerminalOscColorQueryReplyColors | null): void {
+  const colors = getTerminalViewerColors()
+  if (colors && !colorQueryReplyColorsEqual(before, colors)) {
+    viewerColorsListener?.(colors)
+  }
 }
 
 /** One listener: the PTY IPC layer re-installs it on macOS re-activation. */
@@ -84,18 +100,11 @@ export function setTerminalViewerColorsListener(
   viewerColorsListener = listener
 }
 
-/** This desktop's window regained focus, so its own theme answers again. */
-export function reassertDesktopTerminalViewerColors(): void {
-  const colors = getTerminalViewColorQueryReplyColors()
-  if (colors) {
-    setTerminalViewerColors(colors)
-  }
-}
-
 /** Test seam: reset module state between tests. */
 export function _resetTerminalViewAttributesForTest(): void {
   currentAttributes = null
   pushAppliers.clear()
-  viewerColors = null
+  pairedViewerColors = null
+  seedColors = null
   viewerColorsListener = null
 }

@@ -12,10 +12,7 @@ import {
   tmpdir
 } from '../orca-runtime-test-mocks.spec'
 import type { OrchestrationDb } from '../orchestration/db'
-import {
-  getTerminalViewColorQueryReplyColors,
-  getTerminalViewerColors
-} from '../terminal-view-attribute-store'
+import { getTerminalViewerColors } from '../terminal-view-attribute-store'
 import type {
   TerminalViewAttributes,
   TerminalViewRgb
@@ -216,10 +213,32 @@ describe('OrcaRuntimeService', () => {
     )
   })
 
-  it("makes the creating client's colours the host's viewer colours", async () => {
-    // A client that predates terminal.setViewerColors reports its theme only here.
+  it("keeps a desktop host's own colours when a paired client creates a terminal", async () => {
     setTerminalViewAttributes(viewAttributes([0xff, 0xff, 0xff], [0x28, 0x2c, 0x34]))
     const spawn = vi.fn().mockResolvedValue({ id: 'pty-remote-colors' })
+    const runtime = new OrcaRuntimeService(store)
+    runtime.setPtyController({
+      spawn,
+      write: () => true,
+      kill: () => true,
+      getForegroundProcess: async () => null
+    })
+
+    await runtime.createTerminal(`path:${TEST_WORKTREE_PATH}`, {
+      command: 'codex',
+      terminalColorQueryReplies: { foreground: '#2e3434', background: '#ffffff' }
+    })
+
+    const hostColors = { foreground: '#ffffff', background: '#282c34' }
+    expect(getTerminalViewerColors()).toEqual(hostColors)
+    expect(spawn).toHaveBeenCalledWith(
+      expect.objectContaining({ terminalColorQueryReplies: hostColors })
+    )
+  })
+
+  it("takes the creating client's colours on a host with no window of its own", async () => {
+    // A client that predates terminal.setViewerColors reports its theme only here.
+    const spawn = vi.fn().mockResolvedValue({ id: 'pty-headless-remote-colors' })
     const runtime = new OrcaRuntimeService(store)
     runtime.setPtyController({
       spawn,
@@ -239,11 +258,6 @@ describe('OrcaRuntimeService', () => {
         terminalColorQueryReplies: { foreground: '#2e3434', background: '#ffffff' }
       })
     )
-    // The host desktop's own attributes, used by the hidden-pane responder, are untouched.
-    expect(getTerminalViewColorQueryReplyColors()).toEqual({
-      foreground: '#ffffff',
-      background: '#282c34'
-    })
   })
 
   it('does not register or publish a PTY incarnation that exited before spawn resolved', async () => {

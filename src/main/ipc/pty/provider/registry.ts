@@ -28,7 +28,7 @@ function pushColorQueryReplyColors(provider: IPtyProvider): void {
 }
 
 export function publishColorQueryReplyColors(colors: TerminalOscColorQueryReplyColors): void {
-  // Why: a window focus re-asserts unchanged colours; that must not re-notify every daemon and relay.
+  // Why: a re-install republishes unchanged colours; that must not re-notify every daemon and relay.
   if (colorQueryReplyColorsEqual(colorQueryReplyColors, colors)) {
     return
   }

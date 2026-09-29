@@ -15,10 +15,10 @@ export class OrcaRuntimeWithCreateTerminal extends OrcaRuntimeWithTerminalCreate
       throw new Error(`startupAgent ${opts.startupAgent} requires a workspace selector.`)
     }
     const callerColors = dependencies.normalizeColorQueryReplyColors(opts.terminalColorQueryReplies)
-    // Why: only a paired client sends its colours; creating a pane is acting as the viewer,
-    // which is how a client that predates terminal.setViewerColors still gets its theme.
+    // Why: only a paired client sends colours here; a client that predates
+    // terminal.setViewerColors reports its theme to a headless host only this way.
     if (callerColors) {
-      dependencies.setTerminalViewerColors(callerColors)
+      dependencies.setPairedViewerColors(callerColors)
     }
     const presentation = dependencies.resolveTerminalPresentation(opts)
     const requiresRendererFocus = opts.presentation === 'focused' || opts.focus === true

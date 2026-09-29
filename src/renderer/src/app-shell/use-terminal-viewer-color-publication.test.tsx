@@ -69,7 +69,7 @@ describe('useTerminalViewerColorPublication', () => {
     unmount()
   })
 
-  it('tells paired hosts this window is the viewer again when it gains focus', () => {
+  it('re-pushes the window colours to paired hosts when it gains focus', () => {
     const { unmount } = renderHook(() => useTerminalViewerColorPublication())
 
     window.dispatchEvent(new Event('focus'))

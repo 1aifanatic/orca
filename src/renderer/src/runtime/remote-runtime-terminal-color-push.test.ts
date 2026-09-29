@@ -87,7 +87,7 @@ describe("pushing this client's terminal colours to paired hosts", () => {
     ])
   })
 
-  it('re-pushes unchanged colours on focus, since another viewer may have acted since', () => {
+  it('re-pushes unchanged colours on focus, since another client may have pushed since', () => {
     const { calls, push } = harness()
     push.setColors(DARK)
     push.observeStatusSnapshot(snapshot('env-a'))

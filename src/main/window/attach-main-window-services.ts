@@ -38,7 +38,6 @@ import {
 import { startFolderRepoGitUpgradeWatch } from '../ipc/folder-repo-git-upgrade'
 import { scheduleMainWindowAutoUpdaterSetup } from './main-window-updater'
 import { registerRuntimeWindowLifecycle } from './runtime-window-lifecycle'
-import { reassertDesktopTerminalViewerColors } from '../runtime/terminal-view-attribute-store'
 
 export { ensureAutoUpdaterConfigured, registerUpdaterHandlers } from './main-window-updater'
 
@@ -127,8 +126,6 @@ export function attachMainWindowServices(
   registerTccPromptNoticeHandlers(mainWindow)
   scheduleMainWindowAutoUpdaterSetup(mainWindow, store, options)
   registerRuntimeWindowLifecycle(mainWindow, runtime)
-  // Why: a paired client that pushed its theme would otherwise answer for this desktop's panes too.
-  mainWindow.on('focus', reassertDesktopTerminalViewerColors)
 
   const allowedPermissions = new Set(['media', 'fullscreen', 'pointerLock'])
   mainWindow.webContents.session.setPermissionRequestHandler(

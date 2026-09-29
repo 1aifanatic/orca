@@ -38,7 +38,7 @@ describe('PTY owner colour replies for the terminal life', () => {
   })
 
   it('answers with the viewer colours the host holds now, not the colours sent at spawn', () => {
-    // The last viewer to act may have changed theme since this pane was created.
+    // The host's viewer may have changed theme since this pane was created.
     const spawnedLight = { foreground: '#2e3434', background: '#ffffff' }
     const { ingress, writes } = createHarness({ colors: spawnedLight, deadlineMs: 5_000 })
 
