@@ -2,6 +2,7 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from '
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type * as ClaudeFolderTrustFile from './claude/claude-folder-trust-file'
 
 const mocks = vi.hoisted(() => ({
   codex: vi.fn<(path: string) => Promise<void>>(async () => {}),
@@ -9,7 +10,8 @@ const mocks = vi.hoisted(() => ({
   copilot: vi.fn<(path: string) => void>(),
   antigravity: vi.fn<(path: string) => void>(),
   qoder: vi.fn<(path: string) => void>(),
-  remote: vi.fn<(args: unknown) => Promise<void>>(async () => {})
+  remote: vi.fn<(args: unknown) => Promise<void>>(async () => {}),
+  claudeGrant: vi.fn<(target: unknown, workspacePath: string) => Promise<unknown>>()
 }))
 
 vi.mock('./agent-trust-presets', () => ({
@@ -20,6 +22,11 @@ vi.mock('./agent-trust-presets', () => ({
 }))
 vi.mock('./qoder/workspace-trust', () => ({ markQoderWorkspaceTrusted: mocks.qoder }))
 vi.mock('./remote-agent-trust-presets', () => ({ markRemoteAgentWorkspaceTrusted: mocks.remote }))
+vi.mock('./claude/claude-folder-trust-file', async (importOriginal) => {
+  const actual = await importOriginal<typeof ClaudeFolderTrustFile>()
+  mocks.claudeGrant.mockImplementation(actual.grantClaudeWorkspaceTrust)
+  return { ...actual, grantClaudeWorkspaceTrust: mocks.claudeGrant }
+})
 
 import { applyAgentWorkspaceTrust, type AgentTrustLaunchContext } from './agent-workspace-trust'
 import {
@@ -95,7 +102,7 @@ describe('applyAgentWorkspaceTrust on this machine', () => {
     warn.mockRestore()
   })
 
-  it('gives every other preset a short budget, after which the agent asks', async () => {
+  it('gives SSH writes the long deadline a slow link needs', async () => {
     vi.useFakeTimers()
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const remoteWrite = pending()
@@ -107,9 +114,9 @@ describe('applyAgentWorkspaceTrust on this machine', () => {
     }).then(() => {
       settled = true
     })
-    await vi.advanceTimersByTimeAsync(SHORT_AGENT_TRUST_WRITE_DEADLINE_MS - 1)
+    await vi.advanceTimersByTimeAsync(SHORT_AGENT_TRUST_WRITE_DEADLINE_MS + 1)
     expect(settled).toBe(false)
-    await vi.advanceTimersByTimeAsync(2)
+    await vi.advanceTimersByTimeAsync(AGENT_TRUST_WRITE_DEADLINE_MS)
     await cursor
     expect(settled).toBe(true)
     expect(String(warn.mock.calls[0]?.[0])).toContain('did not settle')
@@ -151,6 +158,28 @@ describe('applyAgentWorkspaceTrust for Claude', () => {
     expect(JSON.parse(readFileSync(join(root, '.claude.json'), 'utf-8'))).toEqual({
       projects: { [root]: { hasTrustDialogAccepted: true } }
     })
+  })
+
+  it('gives a local Claude write a short budget, after which Claude asks', async () => {
+    vi.useFakeTimers()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const grant = pending()
+    mocks.claudeGrant.mockReturnValueOnce(grant.promise)
+    let settled = false
+    const claude = applyAgentWorkspaceTrust('claude', root, {
+      ...local,
+      env: { CLAUDE_CONFIG_DIR: root }
+    }).then(() => {
+      settled = true
+    })
+    await vi.advanceTimersByTimeAsync(SHORT_AGENT_TRUST_WRITE_DEADLINE_MS - 1)
+    expect(settled).toBe(false)
+    await vi.advanceTimersByTimeAsync(2)
+    await claude
+    expect(settled).toBe(true)
+    expect(String(warn.mock.calls[0]?.[0])).toContain('did not settle')
+    grant.release()
+    warn.mockRestore()
   })
 
   it('hands an SSH launch to the relay instead of writing anything here', async () => {

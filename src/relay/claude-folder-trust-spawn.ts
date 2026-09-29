@@ -30,7 +30,8 @@ export async function applyRelayClaudeFolderTrust(
     style: keyStyle,
     exists: existsSync
   })
-  // Why: trust bookkeeping must never fail or stall the spawn; a miss means Claude asks.
+  // Why: trust bookkeeping must never stall the spawn; this write is on the relay's own disk,
+  // so it gets the local budget, and a miss means Claude asks.
   await awaitAgentTrustWriteWithinDeadline(
     grantClaudeWorkspaceTrust({ configFile, keyStyle }, request.workspacePath).then(() => {}),
     {

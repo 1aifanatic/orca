@@ -17,7 +17,7 @@ import type { AgentTrustPreset } from './agent-trust-presets'
  */
 export const AGENT_TRUST_WRITE_DEADLINE_MS = 20_000
 
-/** Writers with no shared lock lane: a stall past this means the agent asks, not a frozen tab. */
+/** Local writers with no shared lock lane: a stall past this means the agent asks, not a frozen tab. */
 export const SHORT_AGENT_TRUST_WRITE_DEADLINE_MS = 1_500
 
 /**

@@ -112,9 +112,11 @@ export async function applyAgentWorkspaceTrust(
       await awaitAgentTrustWriteWithinDeadline(write, {
         preset,
         workspacePath,
-        // Why: only Codex queues behind a shared config lane that can legitimately hold it.
+        // Why: Codex queues behind a shared config lane, and SSH writes cross a possibly slow link.
         deadlineMs:
-          preset === 'codex' ? AGENT_TRUST_WRITE_DEADLINE_MS : SHORT_AGENT_TRUST_WRITE_DEADLINE_MS
+          preset === 'codex' || context.connectionId
+            ? AGENT_TRUST_WRITE_DEADLINE_MS
+            : SHORT_AGENT_TRUST_WRITE_DEADLINE_MS
       })
     }
   } catch (error) {
