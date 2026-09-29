@@ -131,6 +131,16 @@ export function claudeHasOutstandingApproval(
   return (records ?? []).length > 0
 }
 
+/** Only children are owed answers, so the pane is paused but the main agent itself is not. */
+export function claudeWaitIsChildOwned(
+  records: readonly ClaudeApprovalRecord[] | undefined
+): boolean {
+  return (
+    claudeHasOutstandingApproval(records) &&
+    (records ?? []).every((record) => record.agentId !== undefined)
+  )
+}
+
 export function claudeApprovalOwnedBy(
   records: readonly ClaudeApprovalRecord[] | undefined,
   ownsWait: (agentId: string) => boolean
@@ -181,17 +191,25 @@ function recordAnnouncedCall(
   return next
 }
 
-/** Every turn-ending path funnels through this one predicate, so no ending path can forget to
+/** Every turn-ending path funnels through this one sweep, so no ending path can forget to
  *  release what Claude never answered for. Spreading the clear across call sites is how a row
- *  strands when one path — an interrupt, a session swap, a crash — skips its own copy. */
-function isClaudeApprovalTurnBoundary(eventName: unknown, endsTurn: boolean): boolean {
-  return (
-    endsTurn ||
-    eventName === 'Stop' ||
-    eventName === 'StopFailure' ||
-    eventName === 'UserPromptSubmit' ||
-    eventName === 'SessionStart'
-  )
+ *  strands when one path — an interrupt, a session swap, a crash — skips its own copy.
+ *  Returns undefined when the event is not a boundary. */
+function sweepClaudeApprovalsAtTurnBoundary(
+  records: readonly ClaudeApprovalRecord[],
+  eventName: unknown,
+  endsTurn: boolean
+): readonly ClaudeApprovalRecord[] | undefined {
+  if (endsTurn || eventName === 'UserPromptSubmit' || eventName === 'SessionStart') {
+    return []
+  }
+  if (eventName === 'Stop' || eventName === 'StopFailure') {
+    // Why: the main agent's turn ending answers none of a background child's prompts; that
+    // child's own completion, its stop, or the next user prompt does.
+    const childOwned = records.filter((record) => record.agentId !== undefined)
+    return childOwned.length === records.length ? records : childOwned
+  }
+  return undefined
 }
 
 /** What the previous lead-turn record carries into this event's fold. */
@@ -240,11 +258,15 @@ export function foldClaudeApprovalEvent(input: {
           completesCall
         }
       : undefined
-  if (isClaudeApprovalTurnBoundary(eventName, input.endsTurn)) {
-    // Why: the single sweep every ending path funnels through. Whatever the turn never answered
-    // for died with it, and nothing may be inherited by the next turn — no TTL, no timer, just
-    // the boundary that already exists.
-    return { ...(toolCall ? { toolCall } : {}), approvals: [] }
+  const swept = sweepClaudeApprovalsAtTurnBoundary(
+    carriedOver?.approvals ?? [],
+    eventName,
+    input.endsTurn
+  )
+  if (swept) {
+    // Why: whatever the turn never answered for died with it, and nothing may be inherited by the
+    // next turn — no TTL, no timer, just the boundary that already exists.
+    return { ...(toolCall ? { toolCall } : {}), approvals: swept }
   }
   const key = announcedCallKey(agentId, call)
   // Why: record what Claude announced for this call BEFORE the prompt that follows it, so a

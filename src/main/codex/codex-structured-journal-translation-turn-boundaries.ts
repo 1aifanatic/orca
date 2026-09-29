@@ -27,6 +27,7 @@ import {
   readCodexTurnId,
   readCodexTurnStatus
 } from './codex-structured-thread-facts'
+import type { CodexRowLinkage } from './codex-subagent-linkage'
 
 type TurnBoundaryEvent = {
   sessionId: string
@@ -34,6 +35,14 @@ type TurnBoundaryEvent = {
   params: unknown
   observedAt?: number
   dispatchSequenceAtReceipt?: number
+}
+
+type TurnTerminal = {
+  state: 'completed' | 'interrupted'
+  completedAt: number
+  /** Null when Codex named no verdict, or when the host inferred this end itself. */
+  outcome?: AgentJournalTurnOutcome | null
+  durationMs?: number | null
 }
 
 /** Opens and settles the durable lifecycle row for each primary-thread turn. */
@@ -50,6 +59,7 @@ export class CodexJournalTurnBoundaries {
       clearPromptTurn?: (threadId: string, turnId: string) => void
       flushSuppression: () => CodexJournalTranslationAdmission
       resetActivity: (threadId: string) => void
+      linkageFor: CodexRowLinkage
       now?: () => number
     }
   ) {}
@@ -130,6 +140,8 @@ export class CodexJournalTurnBoundaries {
     return admission
   }
 
+  /** Codex ends every turn with exactly one `turn/completed`, a failed one after
+   *  its `error` frame included, so this is the only live end. */
   complete(event: TurnBoundaryEvent): CodexJournalTranslationAdmission {
     const suppressionAdmission = this.deps.flushSuppression()
     if (!suppressionAdmission.accepted) {
@@ -167,7 +179,8 @@ export class CodexJournalTurnBoundaries {
       streams: this.deps.items.streams,
       activeItems: this.deps.items.activeItems,
       pendingPrompts: this.deps.pendingPrompts,
-      ...(this.deps.clearPromptTurn ? { clearPromptTurn: this.deps.clearPromptTurn } : {})
+      ...(this.deps.clearPromptTurn ? { clearPromptTurn: this.deps.clearPromptTurn } : {}),
+      linkageFor: this.deps.linkageFor
     })
     if (admission.accepted) {
       if (turnLifecycle) {
@@ -187,17 +200,7 @@ export class CodexJournalTurnBoundaries {
 
   /** Terminal lifecycle for a remembered turn; `startedAt` is absent when the start was never seen.
    *  The verdict travels as one record so a caller cannot supply the state and drop the outcome. */
-  settled(
-    threadId: string,
-    turnId: string,
-    terminal: {
-      state: 'completed' | 'interrupted'
-      completedAt: number
-      /** Null when Codex named no verdict, or when the host inferred this end itself. */
-      outcome?: AgentJournalTurnOutcome | null
-      durationMs?: number | null
-    }
-  ): AgentJournalTurnLifecycle {
+  settled(threadId: string, turnId: string, terminal: TurnTerminal): AgentJournalTurnLifecycle {
     const startedAt = this.deps.activeTurns.startedAt(threadId, turnId)
     // Carried forward from the exact echoed send that was attributed to this turn.
     const requestOrigin = this.deps.activeTurns.requestOrigin(threadId, turnId)

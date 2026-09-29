@@ -1,3 +1,4 @@
+import { isQoderComposerReady } from './qoder-terminal-readiness'
 import { memoizeTitleClassification } from '../../shared/terminal-title-classification-memo'
 import {
   detectAgentStatusFromTitle,
@@ -5,11 +6,13 @@ import {
   type AgentStatus
 } from '../../shared/agent-detection'
 import type { RuntimeTerminalWaitBlockedReason } from '../../shared/runtime-types'
+import type { TuiAgent } from '../../shared/tui-agent'
+import { findAntigravityReadyPromptIndex } from './antigravity-terminal-readiness'
 import {
-  isTerminalWaitWhitespace,
-  startOfLastLines,
-  startOfLastNonBlankLines
-} from './terminal-wait-tail-window'
+  findCodexScreenReadyPromptIndex,
+  isCodexComposerReadyScreen
+} from './codex-terminal-readiness'
+import { startOfLastLines, startOfLastNonBlankLines } from './terminal-wait-tail-window'
 
 const EXPLICIT_IDLE_TITLE_RE = /(^|\s)(ready|idle|done)(\s|$|[.!?])/i
 const CLAUDE_IDLE_PREFIX = '\u2733'
@@ -46,24 +49,69 @@ export const detectExplicitIdleStatusFromTitle: (title: string) => AgentStatus |
 
 export function isKnownReadyPromptPreview(preview: string): boolean {
   const normalized = preview.toLowerCase()
-  const readyIndex = findKnownReadyPromptIndex(normalized)
+  return isReadyPromptUnblocked(normalized, findKnownReadyPromptIndex(normalized))
+}
+
+/**
+ * Tier 1 body evidence for every tui-idle site. `readScreenLines` yields the live emulator's
+ * visible grid, or null when the runtime has no trustworthy one.
+ *
+ * Why the screen: Codex repaints its header by cell diff (`ESC[5;3Hdir ESC[5;7Hctory:`), which
+ * only a grid reassembles — the line-folded wait text reads `dirctory:` forever.
+ * Why it can only add readiness: a grid out of step with the PTY (size mismatch, resize
+ * mid-paint) garbles the header, so the text rules keep every verdict they give today.
+ */
+export function isKnownReadyPromptBody(
+  waitText: string,
+  agent: TuiAgent | null,
+  readScreenLines: () => readonly string[] | null
+): boolean {
+  if (agent === 'qoder') {
+    return isQoderComposerReady(readScreenLines())
+  }
+  if (isKnownReadyPromptPreview(waitText)) {
+    return true
+  }
+  // Why the agent gate: another agent's screen can merely mention "OpenAI Codex".
+  if (agent !== null && agent !== 'codex') {
+    return false
+  }
+  const screen = readScreen(readScreenLines)
+  return screen !== null && isReadyPromptUnblocked(screen, findCodexScreenReadyPromptIndex(screen))
+}
+
+/**
+ * Tier 1b body evidence: a ready screen from an agent with no title rest signal. Unlike tier 1
+ * it only proves the TUI is up, so the ranking holds it to quiescence.
+ * Why codex panes only: a `cat`ed transcript or pager in an unknown pane can show the composer.
+ */
+export function isQuietReadyScreenBody(
+  waitText: string,
+  agent: TuiAgent | null,
+  readScreenLines: () => readonly string[] | null
+): boolean {
+  if (agent === 'codex') {
+    const screen = readScreen(readScreenLines)
+    return screen !== null && isCodexComposerReadyScreen(screen)
+  }
+  return (agent === null || agent === 'muse') && isMuseReadyPromptPreview(waitText)
+}
+
+function readScreen(readScreenLines: () => readonly string[] | null): string | null {
+  return readScreenLines()?.join('\n').toLowerCase() ?? null
+}
+
+function isReadyPromptUnblocked(normalized: string, readyIndex: number | null): boolean {
   if (readyIndex === null) {
     return false
   }
-  const antigravityReadyIndex = findAntigravityReadyPromptIndex(normalized)
-  const modelPickerIndex = findActiveAntigravityModelPickerIndex(normalized)
-  if (
-    antigravityReadyIndex !== null &&
-    modelPickerIndex !== null &&
-    modelPickerIndex > antigravityReadyIndex
-  ) {
-    return false
-  }
   const blockedSignal = findTerminalWaitBlockedSignal(normalized)
-  if (blockedSignal !== null && blockedSignal.index > readyIndex) {
-    return false
-  }
-  return true
+  return blockedSignal === null || blockedSignal.index <= readyIndex
+}
+
+export function isMuseReadyPromptPreview(preview: string): boolean {
+  const normalized = preview.toLowerCase()
+  return isReadyPromptUnblocked(normalized, findMuseReadyPromptIndex(normalized))
 }
 
 export function detectTerminalWaitBlockedReason(
@@ -92,7 +140,8 @@ function findDismissedStartupModalIndex(normalized: string): number | null {
   const indexes = [
     findCodexReadyPromptIndex(normalized),
     findAntigravityReadyPromptIndex(normalized),
-    findCursorActivePromptIndex(normalized)
+    findCursorActivePromptIndex(normalized),
+    findMuseReadyPromptIndex(normalized)
   ].filter((index): index is number => index !== null)
   return indexes.length > 0 ? Math.max(...indexes) : null
 }
@@ -126,6 +175,19 @@ function findCursorReadyPromptIndex(normalized: string): number | null {
   return CURSOR_BUSY_SPINNER_RE.test(normalized.slice(activeIndex)) ? null : activeIndex
 }
 
+// Why: Muse titles its OSC with the bare cwd and never updates it, so only the body can
+// prove the TUI is up. The voice-input composer is present even without loaded skills.
+function findMuseReadyPromptIndex(normalized: string): number | null {
+  const headerIndex = normalized.lastIndexOf('muse code')
+  if (headerIndex === -1) {
+    return null
+  }
+  const segment = normalized.slice(headerIndex)
+  return segment.includes('voice') && segment.includes('input') && segment.includes('❯')
+    ? headerIndex
+    : null
+}
+
 function findCodexReadyPromptIndex(normalized: string): number | null {
   const headerIndex = normalized.lastIndexOf('openai codex')
   if (headerIndex === -1) {
@@ -134,59 +196,6 @@ function findCodexReadyPromptIndex(normalized: string): number | null {
   const readySegment = normalized.slice(headerIndex)
   // Why: Codex prints permissions only in YOLO mode; the stable ready header is OpenAI Codex + model + directory.
   return readySegment.includes('model:') && readySegment.includes('directory:') ? headerIndex : null
-}
-
-function findAntigravityReadyPromptIndex(normalized: string): number | null {
-  const headerIndex = normalized.lastIndexOf('antigravity cli')
-  if (headerIndex === -1) {
-    return null
-  }
-  let lineStart = headerIndex
-  let promptIndex: number | null = null
-  let previousNonEmpty: { start: number; end: number } | null = null
-
-  // Why: a column-0 caret is ready; an indented `>` under `> draft` is a wrap, not an empty box.
-  for (let cursor = headerIndex; cursor <= normalized.length; cursor += 1) {
-    if (cursor < normalized.length && normalized.charCodeAt(cursor) !== 10) {
-      continue
-    }
-    let trimmedStart = lineStart
-    let trimmedEnd = cursor
-    while (trimmedStart < trimmedEnd && isTerminalWaitWhitespace(normalized, trimmedStart)) {
-      trimmedStart += 1
-    }
-    while (trimmedEnd > trimmedStart && isTerminalWaitWhitespace(normalized, trimmedEnd - 1)) {
-      trimmedEnd -= 1
-    }
-    if (lineStart > headerIndex && trimmedStart < trimmedEnd) {
-      if (
-        trimmedEnd - trimmedStart === 1 &&
-        normalized.charCodeAt(trimmedStart) === 62 &&
-        trimmedStart === lineStart &&
-        !(
-          previousNonEmpty !== null &&
-          normalized.charCodeAt(previousNonEmpty.start) === 62 &&
-          previousNonEmpty.end - previousNonEmpty.start > 1
-        )
-      ) {
-        promptIndex = trimmedStart
-      }
-      previousNonEmpty = { start: trimmedStart, end: trimmedEnd }
-    }
-    lineStart = cursor + 1
-  }
-
-  return promptIndex
-}
-
-// Why: the model picker keeps the ready composer's bare caret in scrollback while its selected row
-// is labeled, so that stale caret must not satisfy tui-idle until the picker emits its exit marker.
-function findActiveAntigravityModelPickerIndex(normalized: string): number | null {
-  const pickerIndex = normalized.lastIndexOf('switch model')
-  if (pickerIndex === -1 || normalized.lastIndexOf('antigravity cli') > pickerIndex) {
-    return null
-  }
-  return normalized.lastIndexOf('exited /model command') > pickerIndex ? null : pickerIndex
 }
 
 export const TERMINAL_WAIT_BLOCKED_SENTINEL_RE =
