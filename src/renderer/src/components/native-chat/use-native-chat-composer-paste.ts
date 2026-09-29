@@ -9,6 +9,7 @@ import { nativeChatPasteUnavailableNotice } from '@/lib/native-chat-paste-reques
 import {
   clipboardEventImageFile,
   clipboardEventPromptText,
+  readClipboardPasteText,
   type ClipboardEventLike
 } from './native-chat-clipboard-payload'
 import {
@@ -41,10 +42,6 @@ function ownerAcceptsClipboardImage(
   owner: NativeChatAttachmentOwner
 ): owner is Extract<NativeChatAttachmentOwner, { kind: 'local' | 'ssh' }> {
   return owner.kind === 'local' || owner.kind === 'ssh'
-}
-
-function ownerConnectionId(owner: NativeChatAttachmentOwner): string | null {
-  return owner.kind === 'ssh' ? owner.connectionId : null
 }
 
 export function useNativeChatComposerPaste({
@@ -130,12 +127,7 @@ export function useNativeChatComposerPaste({
   /** Settle the chip started at paste time, or attach directly when the paste
    *  produced no placeholder (no clipboard preview was available). */
   const settleImagePaste = useCallback(
-    (
-      pendingId: string | null,
-      path: string,
-      connectionId: string | null,
-      originalOwner: NativeChatAttachmentOwner
-    ) => {
+    (pendingId: string | null, path: string, originalOwner: NativeChatAttachmentOwner) => {
       if (!nativeChatAttachmentOwnerUnchanged(originalOwner, resolveAttachmentOwner())) {
         if (pendingId) {
           lifetime.pending.delete(pendingId)
@@ -144,6 +136,7 @@ export function useNativeChatComposerPaste({
         setNotice(nativeChatWorktreeNotReadyNotice())
         return
       }
+      const connectionId = originalOwner.kind === 'ssh' ? originalOwner.connectionId : null
       if (pendingId) {
         lifetime.pending.delete(pendingId)
         resolvePendingImageAttachment(pendingId, path, connectionId)
@@ -225,7 +218,7 @@ export function useNativeChatComposerPaste({
           }
           return
         }
-        settleImagePaste(pendingId, saved.tempPath, ownerConnectionId(owner), owner)
+        settleImagePaste(pendingId, saved.tempPath, owner)
         if (!text) {
           setCaret(caretAtPaste)
         }
@@ -253,14 +246,19 @@ export function useNativeChatComposerPaste({
       return
     }
     setNotice(null)
+    const insertText = (text: string): void => {
+      if (text && !(canPaste() && insertTypedText(text))) {
+        showPasteUnavailable()
+      }
+    }
     // Text belongs to the editor even when the attachment host is unavailable.
-    const textRead = window.api.ui
-      .readClipboardText({ maxBytes: NATIVE_CHAT_CONTEXT_PASTE_MAX_BYTES })
-      .then((text) => {
-        if (text && !(canPaste() && insertTypedText(text))) {
-          showPasteUnavailable()
+    // Text that only labels copied files waits for the image outcome instead.
+    const textRead = readClipboardPasteText(NATIVE_CHAT_CONTEXT_PASTE_MAX_BYTES)
+      .then((read) => {
+        if (!read.labelsFiles) {
+          insertText(read.text)
         }
-        return text
+        return read
       })
       .catch((error) => {
         if (canPaste()) {
@@ -271,12 +269,15 @@ export function useNativeChatComposerPaste({
     void (async () => {
       const owner = resolveAttachmentOwner()
       if (!ownerAcceptsClipboardImage(owner)) {
-        // Probe only an empty text read: in a browser each clipboard read can prompt the user.
-        if ((await textRead) !== '') {
+        const read = await textRead
+        // Probe only when no text was typed: in a browser each clipboard read can prompt the user.
+        if (!read || (read.text !== '' && !read.labelsFiles)) {
           return
         }
         const hasImage = await window.api.ui.clipboardHasImage().catch(() => null)
-        if (hasImage && canPaste()) {
+        if (!hasImage) {
+          insertText(read.text)
+        } else if (canPaste()) {
           setNotice(
             owner.kind === 'runtime'
               ? nativeChatLocalAttachmentUnsupportedNotice()
@@ -299,9 +300,14 @@ export function useNativeChatComposerPaste({
           lifetime.pending.delete(pendingId)
           dropPendingImageAttachment(pendingId)
         }
+        // A file's label is typed only when no image came with it.
+        const read = saved.status === 'empty' ? await textRead : null
+        if (read?.labelsFiles) {
+          insertText(read.text)
+        }
         return
       }
-      settleImagePaste(pendingId, saved.tempPath, ownerConnectionId(owner), owner)
+      settleImagePaste(pendingId, saved.tempPath, owner)
     })()
   }, [
     beginPendingImageAttachment,

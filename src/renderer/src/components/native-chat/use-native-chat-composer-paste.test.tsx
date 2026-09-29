@@ -8,7 +8,8 @@ const mocks = vi.hoisted(() => ({
   saveClipboardImageAsTempFile: vi.fn(),
   readClipboardText: vi.fn(),
   readClipboardImageThumbnail: vi.fn(),
-  clipboardHasImage: vi.fn()
+  clipboardHasImage: vi.fn(),
+  readClipboardFilePaths: vi.fn()
 }))
 
 vi.mock('@/i18n/i18n', () => ({
@@ -31,7 +32,8 @@ vi.stubGlobal('window', {
       saveClipboardImageAsTempFile: mocks.saveClipboardImageAsTempFile,
       readClipboardText: mocks.readClipboardText,
       readClipboardImageThumbnail: mocks.readClipboardImageThumbnail,
-      clipboardHasImage: mocks.clipboardHasImage
+      clipboardHasImage: mocks.clipboardHasImage,
+      readClipboardFilePaths: mocks.readClipboardFilePaths
     }
   }
 })
@@ -174,6 +176,7 @@ beforeEach(() => {
   mocks.readClipboardText.mockResolvedValue('')
   mocks.readClipboardImageThumbnail.mockResolvedValue(null)
   mocks.clipboardHasImage.mockResolvedValue(false)
+  mocks.readClipboardFilePaths.mockResolvedValue([])
   mocks.saveClipboardImageAsTempFile.mockResolvedValue(null)
 })
 
@@ -746,5 +749,93 @@ describe('file-manager copies', () => {
     })
     await act(async () => probe.latest().handlePaste(fileCopyEvent(files, text)))
     expect(insertTypedText).toHaveBeenCalledExactlyOnceWith(text)
+  })
+
+  it.each([
+    ['a path', '/home/me/shot.png'],
+    ['a file URL', 'file:///home/me/my%20shot.png']
+  ])('attaches a Linux file manager copy labelled by %s without typing it', async (_l, text) => {
+    mocks.saveClipboardImageAsTempFile.mockResolvedValue('/tmp/shot.png')
+    const insertTypedText = vi.fn(() => true)
+    const probe = await renderProbe({
+      resolveAttachmentOwner: () => ({ kind: 'local' }),
+      insertTypedText
+    })
+    const name = text.includes('my%20') ? 'my shot.png' : 'shot.png'
+    await act(async () => probe.latest().handlePaste(fileCopyEvent([png(name)], text)))
+    expect(insertTypedText).not.toHaveBeenCalled()
+  })
+
+  describe('from the app menu (macOS Cmd+V)', () => {
+    it.each([
+      ['a single file', 'shot.png', ['/Users/me/Desktop/shot.png']],
+      ['several files', 'a.png\rb.pdf', ['/Users/me/a.png', '/Users/me/b.pdf']]
+    ])('attaches %s without typing the Finder label', async (_label, text, paths) => {
+      mocks.readClipboardText.mockResolvedValue(text)
+      mocks.readClipboardFilePaths.mockResolvedValue(paths)
+      mocks.saveClipboardImageAsTempFile.mockResolvedValue('/tmp/shot.png')
+      const insertTypedText = vi.fn(() => true)
+      const attachResolvedPaths = vi.fn()
+      const probe = await renderProbe({
+        resolveAttachmentOwner: () => ({ kind: 'local' }),
+        insertTypedText,
+        attachResolvedPaths
+      })
+      await act(async () => probe.latest().pasteFromClipboard())
+      expect(insertTypedText).not.toHaveBeenCalled()
+      expect(attachResolvedPaths).toHaveBeenCalledExactlyOnceWith(['/tmp/shot.png'], null)
+    })
+
+    it('types the label when no image came with the files', async () => {
+      mocks.readClipboardText.mockResolvedValue('notes.txt')
+      mocks.readClipboardFilePaths.mockResolvedValue(['/Users/me/notes.txt'])
+      const insertTypedText = vi.fn(() => true)
+      const probe = await renderProbe({
+        resolveAttachmentOwner: () => sshOwner,
+        insertTypedText
+      })
+      await act(async () => probe.latest().pasteFromClipboard())
+      expect(insertTypedText).toHaveBeenCalledExactlyOnceWith('notes.txt')
+    })
+
+    it('types unrelated text at once, and when the file list cannot be read', async () => {
+      mocks.readClipboardText.mockResolvedValue('see attached')
+      mocks.readClipboardFilePaths.mockResolvedValue(['/Users/me/shot.png'])
+      mocks.saveClipboardImageAsTempFile.mockReturnValue(new Promise(() => {}))
+      const insertTypedText = vi.fn(() => true)
+      const probe = await renderProbe({
+        resolveAttachmentOwner: () => ({ kind: 'local' }),
+        insertTypedText
+      })
+      await act(async () => probe.latest().pasteFromClipboard())
+      expect(insertTypedText).toHaveBeenCalledExactlyOnceWith('see attached')
+
+      mocks.readClipboardText.mockResolvedValue('shot.png')
+      mocks.readClipboardFilePaths.mockRejectedValue(new Error('unavailable'))
+      await act(async () => probe.latest().pasteFromClipboard())
+      expect(insertTypedText).toHaveBeenLastCalledWith('shot.png')
+    })
+
+    it.each([
+      [true, 0, 1],
+      [false, 1, 0]
+    ])(
+      'on a remote runtime, image presence %s decides between the refusal and the label',
+      async (hasImage, inserts, notices) => {
+        mocks.readClipboardText.mockResolvedValue('shot.png')
+        mocks.readClipboardFilePaths.mockResolvedValue(['/Users/me/shot.png'])
+        mocks.clipboardHasImage.mockResolvedValue(hasImage)
+        const insertTypedText = vi.fn(() => true)
+        const setNotice = vi.fn()
+        const probe = await renderProbe({
+          resolveAttachmentOwner: () => ({ kind: 'runtime' }),
+          insertTypedText,
+          setNotice
+        })
+        await act(async () => probe.latest().pasteFromClipboard())
+        expect(insertTypedText).toHaveBeenCalledTimes(inserts)
+        expect(setNotice.mock.calls.filter(([notice]) => notice !== null)).toHaveLength(notices)
+      }
+    )
   })
 })
