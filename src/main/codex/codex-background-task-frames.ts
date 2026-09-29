@@ -26,10 +26,8 @@ export type CodexBackgroundTaskFrame =
     }
   | {
       /** A child thread that closed: it ran its last turn, and Codex never said how it went. */
-      kind: 'turn-ended'
+      kind: 'thread-closed'
       threadId: string
-      turnId: null
-      state: 'unverifiable'
     }
 
 export type CodexBackgroundTaskEvent = {
@@ -44,7 +42,7 @@ function readCodexChildThreadClosed(
   event: CodexBackgroundTaskEvent
 ): CodexBackgroundTaskFrame | null {
   return event.method === 'thread/closed'
-    ? { kind: 'turn-ended', threadId: event.threadId, turnId: null, state: 'unverifiable' }
+    ? { kind: 'thread-closed', threadId: event.threadId }
     : null
 }
 

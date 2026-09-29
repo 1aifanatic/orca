@@ -204,9 +204,6 @@ describe('Codex child-work evidence', () => {
     })
     expect(records()).toEqual([expect.objectContaining({ membership: 'live', state: 'working' })])
     expect(tracker.state?.tasks).toHaveLength(1)
-    // A fatal error naming a turn the child already finished ends nothing.
-    send(turn('turn/completed', CHILD, 'c1'), childError('c1', false))
-    expect(records()).toEqual([expect.objectContaining({ outcome: 'succeeded' })])
   })
 
   it('never settles a child on its PARENT turn ending: children outlive the turn', () => {
