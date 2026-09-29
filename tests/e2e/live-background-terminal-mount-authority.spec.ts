@@ -1,3 +1,4 @@
+import { installMountIdentityDiagnostic } from './fixtures/terminal-mount-identity-diagnostic'
 import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -533,6 +534,7 @@ test('adopts runtime-owned agent and Setup PTYs on first mount', async ({
     rmSync(sourceRepo, { recursive: true, force: true })
   })
   await waitForSessionReady(orcaPage)
+  await installMountIdentityDiagnostic(orcaPage)
   await installTerminalPtyWriteSpy(electronApp)
   const userDataDir = await electronApp.evaluate(({ app }) => app.getPath('userData'))
   const client = new RuntimeClient(userDataDir, 30_000, null, null)
