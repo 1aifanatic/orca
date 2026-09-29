@@ -340,7 +340,7 @@ it('keeps a never-checked-out spare holding files the user’s config hides from
   expect(await readFile(join(ignoredFileSpare, '.env'), 'utf-8')).toBe('SECRET=1\n')
 })
 
-it('deletes a spare Git pruned, but keeps one whose repo moved away', async () => {
+it('keeps a checked-out spare Git pruned, and one whose repo moved away', async () => {
   const root = await makeRoot()
   const repo = await makeRepo(root, 'repo')
   const movedRepo = await makeRepo(root, 'moved')
@@ -348,6 +348,7 @@ it('deletes a spare Git pruned, but keeps one whose repo moved away', async () =
   const spares = join(workspaceRoot, '.orca-preparing')
   const prunedSpare = join(spares, spareName(DEAD_PID, '11111111'))
   await addSpare(repo, prunedSpare)
+  await writeFile(join(prunedSpare, 'notes.md'), 'user notes\n')
   await rm(join(repo, '.git', 'worktrees', spareName(DEAD_PID, '11111111')), { recursive: true })
   const movedRepoSpare = join(spares, spareName(DEAD_PID, '22222222'))
   await addSpare(movedRepo, movedRepoSpare)
@@ -356,10 +357,10 @@ it('deletes a spare Git pruned, but keeps one whose repo moved away', async () =
 
   expect(await sweepDeadOwners(workspaceRoot, repo)).toEqual({
     reclaimed: 0,
-    removedDirectories: 1
+    removedDirectories: 0
   })
 
-  expect(existsSync(prunedSpare)).toBe(false)
+  expect(await readFile(join(prunedSpare, 'notes.md'), 'utf-8')).toBe('user notes\n')
   expect(await readFile(join(movedRepoSpare, 'file.txt'), 'utf-8')).toBe('user edit\n')
 })
 

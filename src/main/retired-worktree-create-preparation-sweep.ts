@@ -176,10 +176,8 @@ async function reclaimSpareDirectory(
   const adminDir = hasDotGit ? await readGitDirPointer(sparePath) : null
   if (!adminDir || !(await nullWhenMissing(lstat(adminDir)))) {
     // Git does not know it. With no `.git` it was never registered, or an older build's delete got
-    // past it; otherwise Git pruned it only if its repo is still there (a moved or renamed repo took
-    // the entry along), and a `.git` naming no admin directory is not ours to judge.
-    const repoHead = adminDir && join(dirname(dirname(adminDir)), 'HEAD')
-    if (hasDotGit && !(repoHead && (await nullWhenMissing(lstat(repoHead))))) {
+    // past it; a checkout Git pruned (its path moved, then any prune) may hold user work, so it stays.
+    if (hasDotGit) {
       return null
     }
     await whenLocalWorktreeCreatesSettle()
