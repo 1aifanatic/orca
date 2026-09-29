@@ -1,5 +1,5 @@
 // Render models for the host-held queued drafts shown above the composer.
-// The wire carries no hold copy on purpose: the label is derived here from the
+// The wire carries no hold copy on purpose: the caption is derived here from the
 // draft's own state plus the live facts the client already holds.
 
 import { readAgentSessionFailureFact } from '../../../src/shared/agent-session-failure'
@@ -19,15 +19,17 @@ export type MobileQueuedMessageCard = {
   text: string
   state: 'waiting' | 'returned'
   paused: boolean
-  /** One-line status under the text. */
-  label: string
+  /** Returned, or its own send failed: the row leads with an alert. */
+  needsAttention: boolean
+  /** Status under the text; null for a card plainly waiting its turn, the paused queue's too. */
+  caption: string | null
 }
 
 function queuedMessageBodyText(body: AgentSessionQueuedMessage['body']): string {
   return body.blocks.flatMap((block) => (block.type === 'text' ? [block.text] : [])).join('\n')
 }
 
-function returnedLabel(
+function returnedCaption(
   draft: Pick<AgentSessionQueuedMessage, 'returnedReason' | 'returnedRejection'>
 ): string {
   const reason = draft.returnedReason ?? null
@@ -46,8 +48,8 @@ function returnedLabel(
   )
 }
 
-/** One card's own hold: only a failed conversion; the queue's pause is its header row. */
-function pausedLabel(reason: string | undefined): string {
+/** One card's own hold: only a failed conversion; the queue's pause is the list's first row. */
+function pausedCaption(reason: string | undefined): string {
   if (reason === QUEUED_MESSAGE_PAUSED_SEND_FAILED) {
     return "Couldn't send — tap Send to retry"
   }
@@ -75,7 +77,7 @@ export function mobileQueueHasResumableCard(cards: readonly MobileQueuedMessageC
   return false
 }
 
-/** The paused queue's header row. A reason this build does not know (a newer host's) reads as a
+/** The paused queue's first row. A reason this build does not know (a newer host's) reads as a
  *  plain pause. */
 export function mobileQueuePauseLabel(pause: Pick<AgentSessionQueuePause, 'reason'>): string {
   return QUEUE_PAUSE_LABELS[pause.reason] ?? 'Queue paused'
@@ -108,25 +110,28 @@ export function mobileQueuedMessageCards(
       continue
     }
     const paused = draft.paused === true
-    const label =
+    const caption =
       draft.state === 'returned'
-        ? returnedLabel(draft)
+        ? returnedCaption(draft)
         : paused
-          ? pausedLabel(draft.pausedReason)
+          ? pausedCaption(draft.pausedReason)
           : behindReturned
             ? 'Waiting — a message ahead needs attention'
             : facts.queuePaused
-              ? // The header row says why and offers Resume; the card promises no send time.
-                'Queued'
+              ? // The pause row says why and offers Resume; the card promises no send time.
+                null
               : facts.pendingPrompt
                 ? 'Waiting for your answer'
-                : 'Queued — sends when the current turn ends'
+                : null
     cards.push({
       messageId: draft.messageId,
       text: queuedMessageBodyText(draft.body),
       state: draft.state,
       paused,
-      label
+      needsAttention:
+        draft.state === 'returned' ||
+        (paused && draft.pausedReason === QUEUED_MESSAGE_PAUSED_SEND_FAILED),
+      caption
     })
     if (draft.state === 'returned') {
       behindReturned = true

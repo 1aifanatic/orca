@@ -35,7 +35,7 @@ describe('mobileQueuedMessageCards', () => {
     expect(mobileQueuedMessageCards([], [], { pendingPrompt: false })).toEqual([])
   })
 
-  it('labels a plain waiting draft with the queue promise', () => {
+  it('captions nothing on a plain waiting draft, as the desktop row', () => {
     const [card] = mobileQueuedMessageCards([draft({ messageId: 'a' })], [], {
       pendingPrompt: false
     })
@@ -44,24 +44,26 @@ describe('mobileQueuedMessageCards', () => {
       text: 'body of a',
       state: 'waiting',
       paused: false,
-      label: 'Queued — sends when the current turn ends'
+      needsAttention: false,
+      caption: null
     })
   })
 
-  it('labels a waiting draft behind a pending prompt', () => {
+  it('captions a waiting draft behind a pending prompt', () => {
     const [card] = mobileQueuedMessageCards([draft({ messageId: 'a' })], [], {
       pendingPrompt: true
     })
-    expect(card?.label).toBe('Waiting for your answer')
+    expect(card?.caption).toBe('Waiting for your answer')
   })
 
-  it('promises no send time on a waiting card of a paused queue; its header row explains', () => {
+  it('captions nothing on a waiting card of a paused queue; its pause row explains', () => {
     const [card] = mobileQueuedMessageCards([draft({ messageId: 'a' })], [], {
       pendingPrompt: false,
       queuePaused: true
     })
-    expect(card?.label).toBe('Queued')
+    expect(card?.caption).toBeNull()
     expect(card?.paused).toBe(false)
+    expect(card?.needsAttention).toBe(false)
   })
 
   it("keeps a card's own failed send and reads a prompt's wait as queued under a paused queue", () => {
@@ -73,7 +75,7 @@ describe('mobileQueuedMessageCards', () => {
       [],
       { pendingPrompt: true, queuePaused: true }
     )
-    expect(cards.map((card) => card.label)).toEqual(["Couldn't send — tap Send to retry", 'Queued'])
+    expect(cards.map((card) => card.caption)).toEqual(["Couldn't send — tap Send to retry", null])
     expect(cards[0]?.paused).toBe(true)
   })
 
@@ -114,11 +116,11 @@ describe('mobileQueuedMessageCards', () => {
     expect(mobileQueuePauseLabel(newer)).toBe('Queue paused')
   })
 
-  it('labels a reasonless pause as a plain pause, promising no release rule', () => {
+  it('captions a reasonless pause as a plain pause, promising no release rule', () => {
     const [card] = mobileQueuedMessageCards([draft({ messageId: 'a', paused: true })], [], {
       pendingPrompt: false
     })
-    expect(card?.label).toBe('Paused')
+    expect(card?.caption).toBe('Paused')
   })
 
   it("shows a returned card with the provider's own words and holds drafts behind it", () => {
@@ -130,9 +132,11 @@ describe('mobileQueuedMessageCards', () => {
       [],
       { pendingPrompt: false }
     )
-    expect(cards[0]?.label).toContain('Steering is unavailable')
+    expect(cards[0]?.caption).toContain('Steering is unavailable')
     expect(cards[0]?.state).toBe('returned')
-    expect(cards[1]?.label).toBe('Waiting — a message ahead needs attention')
+    expect(cards[0]?.needsAttention).toBe(true)
+    expect(cards[1]?.caption).toBe('Waiting — a message ahead needs attention')
+    expect(cards[1]?.needsAttention).toBe(false)
   })
 
   it('hides a waiting card once its hand-off arrived, never a returned one', () => {
@@ -149,7 +153,7 @@ describe('mobileQueuedMessageCards', () => {
       { pendingPrompt: false }
     )
     expect(cards.map((card) => card.messageId)).toEqual(['returned', 'waiting'])
-    expect(cards[1]?.label).toBe('Waiting — a message ahead needs attention')
+    expect(cards[1]?.caption).toBe('Waiting — a message ahead needs attention')
   })
 
   it('shows a draft a Stop requeued beside its rejected hand-off', () => {
@@ -177,7 +181,7 @@ describe('mobileQueuedMessageCards', () => {
       [],
       { pendingPrompt: false }
     )
-    expect(card?.label).toBe('Stopped before it was sent')
+    expect(card?.caption).toBe('Stopped before it was sent')
   })
 
   it('reads a Stop withdrawal from the fact, whatever sentence rides beside it', () => {
@@ -193,7 +197,7 @@ describe('mobileQueuedMessageCards', () => {
       [],
       { pendingPrompt: false }
     )
-    expect(card?.label).toBe('Stopped before it was sent')
+    expect(card?.caption).toBe('Stopped before it was sent')
   })
 
   it('words a host-restart returned card from its fact, as a rejected send', () => {
@@ -202,7 +206,7 @@ describe('mobileQueuedMessageCards', () => {
       [],
       { pendingPrompt: false }
     )
-    expect(card?.label).toBe('Orca restarted before this message was sent.')
+    expect(card?.caption).toBe('Orca restarted before this message was sent.')
   })
 
   it("keeps a provider's log-only detail off the card", () => {
@@ -216,7 +220,7 @@ describe('mobileQueuedMessageCards', () => {
         pendingPrompt: false
       }
     )
-    expect(card?.label).not.toContain('stack trace')
+    expect(card?.caption).not.toContain('stack trace')
   })
 
   it("words a fact kind this build cannot place with the host's sentence", () => {
@@ -232,7 +236,7 @@ describe('mobileQueuedMessageCards', () => {
       [],
       { pendingPrompt: false }
     )
-    expect(card?.label).toBe('Words for a kind a newer host added.')
+    expect(card?.caption).toBe('Words for a kind a newer host added.')
   })
 
   it('maps the send-failed pause marker to English and an unknown marker to a plain pause', () => {
@@ -246,7 +250,12 @@ describe('mobileQueuedMessageCards', () => {
       [],
       { pendingPrompt: false }
     )
-    expect(cards.map((card) => card.label)).toEqual(["Couldn't send — tap Send to retry", 'Paused'])
+    expect(cards.map((card) => card.caption)).toEqual([
+      "Couldn't send — tap Send to retry",
+      'Paused'
+    ])
+    // Only a failed send alerts; a plain pause is not the card's fault.
+    expect(cards.map((card) => card.needsAttention)).toEqual([true, false])
   })
 
   it('never shows an internal rejection reason verbatim, even from a host that wrote no fact', () => {
@@ -261,6 +270,6 @@ describe('mobileQueuedMessageCards', () => {
       [],
       { pendingPrompt: false }
     )
-    expect(card?.label).toBe('Your message was not sent.')
+    expect(card?.caption).toBe('Your message was not sent.')
   })
 })

@@ -531,7 +531,8 @@ describe('mobile structured queued messages', () => {
           text: 'text of draft-1',
           state: 'waiting',
           paused: false,
-          label: 'Queued — sends when the current turn ends'
+          needsAttention: false,
+          caption: null
         }
       ])
       // A frame without the field leaves the list alone; null empties it.
@@ -736,7 +737,7 @@ describe('mobile structured queued messages', () => {
       expect(hook!.queued.cards[0]).toMatchObject({
         messageId: 'draft-1',
         paused: false,
-        label: 'Queued'
+        caption: null
       })
       // A frame without the list leaves the pause alone; one that publishes the list states it.
       act(() => listener?.(batchEvent()))

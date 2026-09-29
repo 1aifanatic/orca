@@ -14,16 +14,26 @@ vi.mock('react-native', () => ({
 }))
 
 vi.mock('lucide-react-native', () => ({
-  Clock: 'Clock',
-  RotateCcw: 'RotateCcw'
+  AlertCircle: 'AlertCircle',
+  CornerDownRight: 'CornerDownRight',
+  ListEnd: 'ListEnd',
+  MoreHorizontal: 'MoreHorizontal',
+  Pause: 'Pause',
+  Pencil: 'Pencil',
+  Play: 'Play',
+  Send: 'Send',
+  Trash2: 'Trash2'
 }))
+
+vi.mock('../components/ActionSheetModal', () => ({ ActionSheetModal: 'ActionSheetModal' }))
 
 const CARD = {
   messageId: 'waiting-1',
   text: 'next',
   state: 'waiting' as const,
   paused: false,
-  label: 'Queued'
+  needsAttention: false,
+  caption: null
 }
 
 function Slot({
