@@ -14,6 +14,11 @@ import {
   getAgentStatusHooksSearchKeywords,
   getAgentStatusHooksTitle
 } from './agent-status-hooks-copy'
+import {
+  getAgentWorkspaceTrustDescription,
+  getAgentWorkspaceTrustSearchKeywords,
+  getAgentWorkspaceTrustTitle
+} from './agent-workspace-trust-copy'
 import { getAgentCacheTimerSearchEntries } from './agent-cache-timer-search'
 import {
   getCodexTerminalServerIsolationDescription,
@@ -67,9 +72,11 @@ function expandAgentSearchText(value: string): string[] {
 type AgentsPaneSearchOptions = {
   includeAgentAwake?: boolean
   includeAgentRuntime?: boolean
+  includeAgentWorkspaceTrust?: boolean
 }
 
 const AGENT_AWAKE_SEARCH_ENTRY_ID = 'agent-awake'
+const AGENT_WORKSPACE_TRUST_SEARCH_ENTRY_ID = 'agent-workspace-trust'
 const AGENT_RUNTIME_SEARCH_ENTRY_ID = 'agent-runtime'
 
 const getAllAgentsPaneSearchEntries = createLocalizedCatalog(() => [
@@ -114,6 +121,12 @@ const getAllAgentsPaneSearchEntries = createLocalizedCatalog(() => [
     keywords: getAgentStatusHooksSearchKeywords()
   },
   {
+    title: getAgentWorkspaceTrustTitle(),
+    id: AGENT_WORKSPACE_TRUST_SEARCH_ENTRY_ID,
+    description: getAgentWorkspaceTrustDescription(),
+    keywords: getAgentWorkspaceTrustSearchKeywords()
+  },
+  {
     title: getCodexTerminalServerIsolationTitle(),
     description: getCodexTerminalServerIsolationDescription(),
     keywords: getCodexTerminalServerIsolationSearchKeywords()
@@ -155,12 +168,16 @@ const getAllAgentsPaneSearchEntries = createLocalizedCatalog(() => [
 
 export function getAgentsPaneSearchEntries({
   includeAgentAwake = true,
-  includeAgentRuntime = true
+  includeAgentRuntime = true,
+  includeAgentWorkspaceTrust = true
 }: AgentsPaneSearchOptions = {}) {
   const entries = getAllAgentsPaneSearchEntries()
   return entries.filter(
     (entry) =>
       (!('id' in entry) || entry.id !== AGENT_RUNTIME_SEARCH_ENTRY_ID || includeAgentRuntime) &&
-      (!('id' in entry) || entry.id !== AGENT_AWAKE_SEARCH_ENTRY_ID || includeAgentAwake)
+      (!('id' in entry) || entry.id !== AGENT_AWAKE_SEARCH_ENTRY_ID || includeAgentAwake) &&
+      (!('id' in entry) ||
+        entry.id !== AGENT_WORKSPACE_TRUST_SEARCH_ENTRY_ID ||
+        includeAgentWorkspaceTrust)
   )
 }
