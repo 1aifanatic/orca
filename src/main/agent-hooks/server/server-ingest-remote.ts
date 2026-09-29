@@ -1,3 +1,4 @@
+import { readAgentProcessPresence } from '../../../shared/agent-process-presence'
 import { track } from '../../telemetry/client'
 import { normalizeAgentStatusPayload } from '../../../shared/agent-status-types'
 import { restoreShedStatusFields } from '../../../shared/agent-hook-relay'
@@ -35,6 +36,8 @@ export abstract class AgentHookServerIngestRemote extends AgentHookServerIngestS
       launchToken?: string
       hasExplicitPrompt?: boolean
       promptInteractionKey?: string
+      agentPresence?: unknown
+      hookSessionEndReason?: unknown
       hookEventName?: string
       source?: unknown
       providerPromptId?: unknown
@@ -156,6 +159,7 @@ export abstract class AgentHookServerIngestRemote extends AgentHookServerIngestS
     )
     if (
       envelope.providerSessionOnly === true &&
+      !readAgentProcessPresence(envelope.agentPresence)?.ended &&
       !isValidPiProviderSessionOnly(providerSession, normalizedPayload.agentType)
     ) {
       return
@@ -256,6 +260,11 @@ export abstract class AgentHookServerIngestRemote extends AgentHookServerIngestS
     })
     const event: AgentHookEventPayload & { authorityRestartId?: string } = {
       paneKey,
+      agentPresence: readAgentProcessPresence(envelope.agentPresence),
+      hookSessionEndReason:
+        typeof envelope.hookSessionEndReason === 'string'
+          ? envelope.hookSessionEndReason
+          : undefined,
       source: effectiveSource,
       ...(restartedAuthority?.authorityRestartId
         ? { authorityRestartId: restartedAuthority.authorityRestartId }

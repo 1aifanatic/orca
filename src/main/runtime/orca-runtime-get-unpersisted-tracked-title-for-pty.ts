@@ -68,6 +68,9 @@ export class OrcaRuntimeWithGetUnpersistedTrackedTitleForPty extends OrcaRuntime
           const live = this.ptyTitleTrackersByPtyId.get(ptyId)
           const gateKey = this.makeDecorativeTitleGateKey(rawTitle, normalizedTitle)
           const decorativeOnly = live?.lastMobileTitleGateKey === gateKey
+          if (!decorativeOnly && !meta?.staleWorkingTitleClear) {
+            void this.recheckHookAgentPresenceForPty(ptyId)
+          }
           if (live) {
             live.lastMobileTitleGateKey = gateKey
           }
@@ -144,6 +147,7 @@ export class OrcaRuntimeWithGetUnpersistedTrackedTitleForPty extends OrcaRuntime
           this.confirmPtyAgentExit(ptyId)
         },
         onCommandFinished: (exitCode: number | null) => {
+          void this.recheckHookAgentPresenceForPty(ptyId)
           this.retirePtyAgentLaunchAuthority(ptyId)
           this.recordTerminalSideEffectFact(ptyId, { kind: 'command-finished', exitCode })
         },

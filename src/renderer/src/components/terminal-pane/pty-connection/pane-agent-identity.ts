@@ -122,8 +122,8 @@ export function installPaneAgentIdentity(session: ConnectPanePtySession): void {
     const reconcile = session.deferredConfirmedShellReconcile
     session.deferredCommandFinishedStatusDrop = null
     session.deferredConfirmedShellReconcile = null
-    dropStatus?.()
     if (options.confirmedShell) {
+      dropStatus?.()
       reconcile?.()
     }
   }

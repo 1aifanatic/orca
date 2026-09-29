@@ -1,3 +1,4 @@
+import { transitionHookPresence } from '../../../shared/agent-hook-presence-transition'
 import {
   reconcileRemoteCodexState,
   markCodexLeadTurnInterrupted
@@ -27,8 +28,22 @@ export abstract class AgentHookServerStatusUpdate extends AgentHookServerStatusA
     observedAt?: number,
     mutationBefore?: EnrichedAgentHookEventPayload
   ): EnrichedAgentHookEventPayload | undefined {
-    const { authorityRestartId, ...payload } = incoming
+    const transitioned = transitionHookPresence(
+      incoming,
+      this.state.lastStatusByPaneKey.get(incoming.paneKey)
+    )
+    if (!transitioned) {
+      return undefined
+    }
+    const { authorityRestartId, ...payload } = { ...incoming, ...transitioned }
     if (!this.canWriteLegacyStatusRow(payload)) {
+      return undefined
+    }
+    if (payload.agentPresence?.ended) {
+      this.reconcileEndedProcessForPaneKeys([payload.paneKey], {
+        preserveResumeIdentity: true,
+        endedPresence: payload.agentPresence
+      })
       return undefined
     }
     if (payload.hookEventName === 'UserPromptSubmit') {
@@ -227,6 +242,9 @@ export abstract class AgentHookServerStatusUpdate extends AgentHookServerStatusA
       return undefined
     }
     this.commitStatusRowMutation(rowBefore, enriched)
+    if (enriched.agentPresence && enriched.connectionId === null) {
+      void this.checkAgentPresence(enriched.paneKey)
+    }
     // Why skipped for structured rows: the serializer drops them, so the whole walk and stringify
     // can only ever reproduce the last file — once per debounce window for a streaming chat.
     if (!enriched.structuredHost) {

@@ -16,6 +16,8 @@ export function buildRelayHookEnvelope(
 ): AgentHookRelayEnvelope {
   return {
     source,
+    agentPresence: event.agentPresence,
+    hookSessionEndReason: event.hookSessionEndReason,
     paneKey: event.paneKey,
     ...(event.launchToken ? { launchToken: event.launchToken } : {}),
     tabId: event.tabId,

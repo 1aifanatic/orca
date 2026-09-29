@@ -1,3 +1,4 @@
+import { createTerminalTitleTracker } from '../shared/terminal-output-side-effects'
 import { FreebuffStatusProjection } from './freebuff-status-projection'
 import { applyRelayAgentWorkspaceTrust } from './agent-workspace-trust-spawn'
 /* oxlint-disable max-lines */
@@ -714,6 +715,12 @@ export class PtyHandler {
   }
 
   /** Subscribe to PTY-exit events (relay-hook server uses this to evict per-paneKey caches). */
+  private agentPresenceTrigger: ((paneKey: string) => void) | null = null
+
+  setAgentPresenceTrigger(listener: ((paneKey: string) => void) | null): void {
+    this.agentPresenceTrigger = listener
+  }
+
   setExitListener(listener: PtyExitListener | null): void {
     this.exitListener = listener
   }
@@ -1017,7 +1024,17 @@ export class PtyHandler {
         }
       })
     }
+    const recheckAgentPresence = (): void => {
+      if (managed.paneKey) {
+        this.agentPresenceTrigger?.(managed.paneKey)
+      }
+    }
+    const presenceTriggers = createTerminalTitleTracker({
+      onTitle: recheckAgentPresence,
+      onCommandFinished: recheckAgentPresence
+    })
     managed.pty.onData((data: string) => {
+      presenceTriggers.handleChunk(data)
       const startup = managed.startupCommand
       if (startup?.waitForShellReady && startup.outputScanState && !startup.delivered) {
         const scanned = scanShellStartupOutput(startup.outputScanState, data)
@@ -1039,6 +1056,7 @@ export class PtyHandler {
       }
     })
     managed.pty.onExit(({ exitCode }: { exitCode: number }) => {
+      presenceTriggers.dispose()
       managed.physicalExit?.markExited()
       if (managed.disposed) {
         return

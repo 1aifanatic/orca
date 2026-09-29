@@ -695,7 +695,7 @@ describe('connectPanePty', () => {
     dataCallbackRef.current?.('\x1b]133;D;0\x07')
     await vi.advanceTimersByTimeAsync(350 + 1200 + 6000)
 
-    expect(mockStoreState.clearAgentLaunchConfig).toHaveBeenCalledExactlyOnceWith(paneKey)
+    expect(mockStoreState.clearAgentLaunchConfig).not.toHaveBeenCalled()
     expect(mockStoreState.paneForegroundAgentByPaneKey[paneKey]).toEqual({
       agent: null,
       shellForeground: false

@@ -1,0 +1,59 @@
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { RelayAgentHookServer } from './agent-hook-server'
+import type { AgentHookRelayEnvelope } from '../shared/agent-hook-relay'
+import { makePaneKey } from '../shared/stable-pane-id'
+
+const probe = vi.hoisted(() =>
+  vi.fn(async (): Promise<'live' | 'unverifiable' | 'exited'> => 'unverifiable')
+)
+vi.mock('../shared/agent-process-presence-probe', () => ({ probeAgentProcessPresence: probe }))
+afterEach(() => {
+  probe.mockReset()
+  probe.mockResolvedValue('unverifiable')
+})
+
+const paneKey = makePaneKey('tab-1', '11111111-1111-4111-8111-111111111111')
+
+describe('relay process presence', () => {
+  it('keeps unavailable reads, preserves resume, and publishes a real exit without a window', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'relay-presence-'))
+    const forward = vi.fn<(envelope: AgentHookRelayEnvelope) => void>()
+    const server = new RelayAgentHookServer({ endpointDir: dir, forward })
+    try {
+      await server.start()
+      const { port, token } = server.getCoordinates()
+      const post = async (event: string, session: string, reason?: string) => {
+        const response = await fetch(`http://127.0.0.1:${port}/hook/claude`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Orca-Agent-Hook-Token': token },
+          body: JSON.stringify({
+            paneKey,
+            tabId: 'tab-1',
+            worktreeId: 'wt-1',
+            payload: { hook_event_name: event, session_id: session, source: 'startup', reason }
+          })
+        })
+        expect(response.status).toBe(204)
+      }
+      await post('SessionStart', 'a')
+      expect(forward.mock.lastCall?.[0].agentPresence?.sessionId).toBe('a')
+      await server.checkAgentPresence(paneKey)
+      expect(forward.mock.lastCall?.[0].agentPresence?.ended).toBeUndefined()
+      await post('SessionEnd', 'a', 'resume')
+      expect(forward.mock.lastCall?.[0].agentPresence?.sessionSwitch).toBe(true)
+      await post('SessionStart', 'b')
+      await post('SessionEnd', 'a', 'prompt_input_exit')
+      expect(forward.mock.lastCall?.[0].agentPresence?.sessionId).toBe('b')
+      probe.mockResolvedValue('exited')
+      await server.checkAgentPresence(paneKey)
+      expect(forward.mock.lastCall?.[0].agentPresence?.ended).toBe(true)
+      expect(forward.mock.lastCall?.[0].providerSessionOnly).toBe(true)
+    } finally {
+      server.stop()
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+})

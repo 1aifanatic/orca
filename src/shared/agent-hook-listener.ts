@@ -1,3 +1,4 @@
+import { readAgentProcessIdentity } from './agent-process-presence'
 import { normalizeAgentStatusPayload } from './agent-status-types'
 import type { AgentHookSource } from './agent-hook-relay'
 import { extractAgentProviderSession } from './agent-session-resume'
@@ -136,6 +137,38 @@ export function normalizeHookPayload(
     }
   }
 
+  const rootPresenceEvent =
+    (source === 'claude' || source === 'codex') &&
+    !readString(hookPayloadRecord, 'agent_id') &&
+    providerSession
+  const agentPresence = rootPresenceEvent
+    ? {
+        sessionId: providerSession.id,
+        process: source === 'claude' ? readAgentProcessIdentity(record.agentProcess) : undefined
+      }
+    : undefined
+  if (source === 'claude' && eventName === 'SessionEnd' && agentPresence) {
+    const payload =
+      previousStatus?.payload ??
+      normalizeAgentStatusPayload({ state: 'done', prompt: '', agentType: source })
+    if (!payload) {
+      return null
+    }
+    return {
+      paneKey,
+      source,
+      launchToken,
+      tabId,
+      worktreeId,
+      connectionId: null,
+      providerSession: providerSession ?? undefined,
+      hookEventName: 'SessionEnd',
+      hookSessionEndReason: readString(hookPayloadRecord, 'reason'),
+      agentPresence,
+      payload
+    }
+  }
+
   const extractedPrompt = extractPromptText(hookPayloadRecord)
   const promptText = extractedPrompt.text
   const dispatched = normalizeProviderEvent({
@@ -168,6 +201,7 @@ export function normalizeHookPayload(
   return {
     paneKey,
     source,
+    agentPresence,
     launchToken,
     tabId,
     worktreeId,

@@ -1,3 +1,4 @@
+import { buildHookProcessCapture } from '../agent-hooks/hook-process-capture'
 /** The managed Claude-compatible hook script, built for local, POSIX-remote and Windows targets.
  *  Split from hook-service.ts so the service owns install/status and this owns script text,
  *  mirroring the same split under src/main/cursor/. */
@@ -58,6 +59,7 @@ export function getManagedScript(
 
   return [
     '#!/bin/sh',
+    ...(source === 'claude' ? buildHookProcessCapture() : []),
     // Why: Claude-compatible permission hooks fail closed on empty stdout (#14818).
     'printf "{}\\n"',
     ...buildPosixHookPayloadCapture(),

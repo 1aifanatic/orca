@@ -489,10 +489,8 @@ describe('terminal side-effect fact channel', () => {
 
     runtime.onPtyData('pty-1', '\x1b]0;bichir\x07', 100)
 
-    await vi.waitFor(() =>
-      expect(batches.flatMap((batch) => batch.facts)).toContainEqual({ kind: 'agent-exited' })
-    )
-    expect(getForegroundProcess).toHaveBeenCalledOnce()
+    await vi.waitFor(() => expect(getForegroundProcess).toHaveBeenCalledOnce())
+    expect(batches.flatMap((batch) => batch.facts)).not.toContainEqual({ kind: 'agent-exited' })
   })
 
   it('aligns a restored session and pre-response bytes to the provider sequence', async () => {

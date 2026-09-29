@@ -6,6 +6,7 @@ import type { RuntimeTerminalAgentStatusSnapshot } from './runtime-terminal-agen
 import type { RuntimePtyWorktreeRecord } from './runtime-terminal-state-records'
 import { hasCompatibleAgentTitleIdentity } from '../../shared/agent-title-owner'
 import type { PtyForegroundProcessRead } from './runtime-terminal-contracts'
+import { isShellProcess } from '../../shared/shell-process-detection'
 import { recognizeAgentProcess } from '../../shared/agent-process-recognition'
 import type {
   AgentPromptActivity,
@@ -70,7 +71,44 @@ export class OrcaRuntimeWithSerializeAgentPromptSubmission extends OrcaRuntimeWi
     return this.ptyForegroundAgent.read(ptyId, afterTitleObservation)
   }
 
+  protected async recheckHookAgentPresenceForPty(
+    ptyId: string
+  ): Promise<'live' | 'unverifiable' | 'exited' | null> {
+    if (!this.checkHookAgentPresenceFn) {
+      return null
+    }
+    const verdicts = await Promise.all(
+      Array.from(this.collectAgentStatusPaneKeysForPty(ptyId), (paneKey) =>
+        this.checkHookAgentPresenceFn(paneKey)
+      )
+    )
+    if (verdicts.includes('live')) {
+      return 'live'
+    }
+    if (verdicts.includes('unverifiable')) {
+      return 'unverifiable'
+    }
+    return verdicts.includes('exited') ? 'exited' : null
+  }
+
   protected confirmPtyAgentExit(ptyId: string, recoverCompletedHook = false): void {
+    const current = this.ptysById.get(ptyId)
+    const incarnation = current?.incarnationId
+    void this.recheckHookAgentPresenceForPty(ptyId).then((verdict) => {
+      if (this.ptysById.get(ptyId) !== current || current?.incarnationId !== incarnation) {
+        return
+      }
+      if (verdict === null) {
+        this.confirmLegacyPtyAgentExit(ptyId, recoverCompletedHook)
+      } else if (verdict === 'exited' && !recoverCompletedHook) {
+        this.recordTerminalSideEffectFact(ptyId, { kind: 'agent-exited' })
+      } else {
+        this.ptyTitleTrackersByPtyId.get(ptyId)?.tracker.restoreLastAgentExit()
+      }
+    })
+  }
+
+  private confirmLegacyPtyAgentExit(ptyId: string, recoverCompletedHook: boolean): void {
     const pty = this.ptysById.get(ptyId)
     const handle = this.handleByPtyId.get(ptyId)
     if (
@@ -84,9 +122,7 @@ export class OrcaRuntimeWithSerializeAgentPromptSubmission extends OrcaRuntimeWi
     const titleObservedAt = pty?.lastOscTitleAt ?? null
     const foregroundRead = this.readPtyForegroundProcessFromController(ptyId, titleObservedAt ?? 0)
     if (!pty?.connected || !foregroundRead) {
-      if (!recoverCompletedHook) {
-        this.recordTerminalSideEffectFact(ptyId, { kind: 'agent-exited' })
-      }
+      this.ptyTitleTrackersByPtyId.get(ptyId)?.tracker.restoreLastAgentExit()
       return
     }
     void foregroundRead.then((result) => {
@@ -149,8 +185,16 @@ export class OrcaRuntimeWithSerializeAgentPromptSubmission extends OrcaRuntimeWi
         }
         return
       }
-      if (!recoverCompletedHook) {
+      if (
+        !recoverCompletedHook &&
+        result.controller === this.ptyController &&
+        result.available &&
+        typeof result.process === 'string' &&
+        isShellProcess(result.process)
+      ) {
         this.recordTerminalSideEffectFact(ptyId, { kind: 'agent-exited' })
+      } else {
+        this.ptyTitleTrackersByPtyId.get(ptyId)?.tracker.restoreLastAgentExit()
       }
     })
   }
