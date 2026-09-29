@@ -34,11 +34,11 @@ export function installAgentIdleWorkingHandlers(session: ConnectPanePtySession):
   session.onAgentExitCandidate = (): void => {
     // Why: the title tracker re-arms on unknown; with no identity left there is nothing to confirm.
     if (session.paneHasKnownAgentIdentity()) {
-      session.paneForegroundAgentTracker?.onVisiblePtyBound(true)
+      session.paneForegroundAgentTracker?.onAgentExitCandidate()
     }
   }
   session.onAgentExited = (): void => {
-    // Only host-confirmed shell evidence reaches this callback.
+    // Only a confirmed exit reaches this: the host's fact, or the renderer's own read in byte mode.
     session.deps.onAgentExitedRef.current(session.pane.leafId)
     session.clearSuppressedTitleSideEffects()
     session.clearCommandInferredPaneAgent()

@@ -549,6 +549,35 @@ describe('connectPanePty', () => {
       expect(resolveMockPaneWindowsShiftEnterEncoding(mockStoreState, cacheKey)).toBe('alt-enter')
     })
 
+    it.each([false, true])(
+      'keeps Chat through a slow agent boot that a visible sample sees as a shell (main authority %s)',
+      async (mainAuthority) => {
+        vi.useFakeTimers()
+        mockStoreState.settings = {
+          ...mockStoreState.settings,
+          terminalMainSideEffectAuthority: mainAuthority
+        }
+        // The launched agent has not started yet, so every rung of the ladder sees the shell.
+        vi.mocked(window.api.pty.confirmForegroundProcess).mockResolvedValue('zsh')
+        const ptyId = `pty-slow-agent-boot-${mainAuthority}`
+        const tabId = `tab-${ptyId}`
+        mockStoreState.tabsByWorktree = { 'wt-1': [{ id: tabId, ptyId }] }
+
+        const { deps } = await connectRestoredPaneForForegroundSampling({
+          ptyId,
+          tabId,
+          launchAgent: 'claude'
+        })
+        await vi.advanceTimersByTimeAsync(
+          VISIBLE_PTY_SETTLE_MS + WRAPPER_RESOLVE_RETRY_MS + SECOND_WRAPPER_RETRY_MS
+        )
+        await flushAsyncTicks()
+
+        expect(vi.mocked(window.api.pty.confirmForegroundProcess)).toHaveBeenCalled()
+        expect(deps.onAgentExitedRef.current).not.toHaveBeenCalled()
+      }
+    )
+
     it('fails closed when a warm reattach has no persisted launch identity', async () => {
       vi.useFakeTimers()
       const ptyId = 'pty-reattach-missing-launch-identity'

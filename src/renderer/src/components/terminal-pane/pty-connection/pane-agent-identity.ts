@@ -181,8 +181,11 @@ export function installPaneAgentIdentity(session: ConnectPanePtySession): void {
       }
     },
     hasKnownAgentIdentity: session.paneHasKnownAgentIdentity,
-    onConfirmedShellForeground: (reason) => {
-      session.onAgentExited?.()
+    onConfirmedShellForeground: (reason, agentExited) => {
+      // Why: with main as the parser its host fact is the one exit publisher; bytes make it ours.
+      if (agentExited && !session.mainSideEffectAuthority) {
+        session.onAgentExited?.()
+      }
       // Why: a confirmed local shell proves any hibernation record for this pane is stale;
       // otherwise the tab resolver can repaint the exited agent from sleeping occupancy.
       const state = useAppStore.getState()
@@ -262,6 +265,8 @@ export function installPaneAgentIdentity(session: ConnectPanePtySession): void {
     }
     session.deferredCommandFinishedStatusDrop = null
     session.deferredConfirmedShellReconcile = null
+    // Why: no confirming read is owed (untracked WSL panes, or no agent identity), so the D stands.
+    session.clearCommandInferredPaneAgentAfterPtySideEffects()
     dropStatus()
   }
   session.sampleVisiblePaneForegroundAgent = (forceRoutingConfirmation = false): void => {

@@ -177,15 +177,15 @@ export function startParkedTerminalByteWatcher(
       if (pendingBellNotification) {
         scheduleTerminalBellNotification()
       }
-    },
-    onAgentExited: (): void => {
-      commandStatusPolicy.onAgentExited()
-      // Only a host-confirmed exit retires the parked session.
-      useAppStore.getState().setCacheTimerStartedAt(paneKey, null)
     }
   }
+  // Why facts only: a parked byte parser has no process read, so its neutral titles prove nothing.
+  const onHostConfirmedAgentExit = (): void => {
+    commandStatusPolicy.onAgentExited()
+    useAppStore.getState().setCacheTimerStartedAt(paneKey, null)
+  }
 
-  // Why: command-lifecycle signals drive store-level policy only (git nudge, SSH same-turn
+  // Why: command-lifecycle signals drive store-level policy only (git nudge, confirmed-exit
   // status drop, Command Code seed/settle); the pane-coupled parts stay with the mounted pane.
   const commandStatusPolicy = createParkedTerminalCommandStatusPolicy({
     ptyId,
@@ -240,6 +240,7 @@ export function startParkedTerminalByteWatcher(
         // Why: ordinary park already has a pane-owned title; the flag below requests a snapshot only when no pane did.
         callbacks: {
           ...sideEffectCallbacks,
+          onAgentExited: onHostConfirmedAgentExit,
           onCommandFinished: commandStatusPolicy.onCommandFinished,
           onCommandCodeWorking: commandStatusPolicy.onCommandCodeWorking,
           onCommandCodeDone: commandStatusPolicy.onCommandCodeDone,

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createPtyOutputTitleObserver } from './pty-output-title-observer'
 import { createPaneForegroundAgentTracker } from './pane-foreground-agent-tracker'
+import type { RemoteForegroundEvidence } from '../../../../shared/foreground-process-evidence'
 import {
   _dispatchTerminalSideEffectBatchForTest,
   _resetTerminalSideEffectFactConsumersForTest,
@@ -25,24 +26,13 @@ describe('agent exit observation', () => {
     expect(candidate).toHaveBeenCalledTimes(2)
     observer.reset()
   })
-  it('treats an old host exit fact as a candidate, not a confirmed exit', () => {
+  it('accepts an old host exit fact as that host decided it', () => {
     const exited = vi.fn()
-    const candidate = vi.fn()
-    registerTerminalSideEffectFactConsumer({
-      ptyId: 'pty-1',
-      callbacks: { onAgentExited: exited, onAgentExitCandidate: candidate }
-    })
+    registerTerminalSideEffectFactConsumer({ ptyId: 'pty-1', callbacks: { onAgentExited: exited } })
     _dispatchTerminalSideEffectBatchForTest({
       ptyId: 'pty-1',
       seq: 1,
       facts: [{ kind: 'agent-exited' }]
-    })
-    expect(exited).not.toHaveBeenCalled()
-    expect(candidate).toHaveBeenCalledOnce()
-    _dispatchTerminalSideEffectBatchForTest({
-      ptyId: 'pty-1',
-      seq: 2,
-      facts: [{ kind: 'agent-exited', evidence: 'foreground-shell' }]
     })
     expect(exited).toHaveBeenCalledOnce()
   })
@@ -76,4 +66,160 @@ describe('agent exit observation', () => {
       tracker.dispose()
     }
   )
+
+  describe('startup and remote hosts', () => {
+    const SSH_PTY_ID = 'ssh:conn-1@@pty-1'
+    let epoch = 0
+
+    function remoteTracker(evidence: (rows: 'shell' | 'agent') => unknown) {
+      let foreground: 'shell' | 'agent' = 'agent'
+      const read = vi.fn(async () => ({
+        foregroundProcess: null,
+        hasChildProcesses: false,
+        foregroundProcessEvidence: evidence(foreground)
+      }))
+      const shell = vi.fn()
+      const publish = vi.fn()
+      const tracker = createPaneForegroundAgentTracker({
+        getPtyId: () => SSH_PTY_ID,
+        isTrackablePtyId: () => true,
+        isRemotePtyId: () => true,
+        getExpectedIncarnationId: () => 'inc-1',
+        readForegroundProcess: read,
+        confirmForegroundProcess: read,
+        publish,
+        hasKnownAgentIdentity: () => true,
+        onConfirmedShellForeground: shell
+      })
+      return {
+        tracker,
+        read,
+        shell,
+        publish,
+        exitAgent: () => {
+          foreground = 'shell'
+        }
+      }
+    }
+
+    /** The shapes `resolveRemoteForegroundEvidence` emits (its own tests pin them). */
+    function posixEvidence(
+      foreground: 'shell' | 'agent',
+      host: 'posix' | 'windows' = 'posix'
+    ): RemoteForegroundEvidence {
+      epoch += 1
+      const observation = {
+        ptyId: 'pty-1',
+        ptyIncarnationId: 'inc-1',
+        authorityGeneration: 'host-1',
+        observationEpoch: epoch,
+        capturedAgeMs: 0
+      }
+      if (host === 'windows') {
+        return {
+          ...observation,
+          verdict: 'unverifiable',
+          reason: 'windows_ssh_foreground_unavailable'
+        }
+      }
+      return {
+        ...observation,
+        verdict: 'live',
+        processName: foreground === 'agent' ? 'claude' : null,
+        shellForeground: foreground === 'shell',
+        fence: {
+          platform: 'posix',
+          shellPid: 10,
+          shellStartTime: '100',
+          tty: '/dev/pts/1',
+          foregroundPgid: foreground === 'shell' ? 10 : 11,
+          ...(foreground === 'agent' ? { process: { pid: 11, startTime: '101' } } : {})
+        }
+      }
+    }
+
+    it('retires a launch expectation on a boot-time shell sample without calling it an exit', async () => {
+      vi.useFakeTimers()
+      const shell = vi.fn()
+      const read = vi.fn().mockResolvedValue('zsh')
+      const tracker = createPaneForegroundAgentTracker({
+        getPtyId: () => 'pty-1',
+        isTrackablePtyId: () => true,
+        readForegroundProcess: read,
+        confirmForegroundProcess: read,
+        publish: vi.fn(),
+        onConfirmedShellForeground: shell
+      })
+      tracker.onVisiblePtyBound(true)
+      await vi.advanceTimersByTimeAsync(8000)
+      expect(shell).toHaveBeenCalledExactlyOnceWith('visible-pty', false)
+      tracker.dispose()
+    })
+
+    it('calls a shell after an observed agent title an exit', async () => {
+      vi.useFakeTimers()
+      const shell = vi.fn()
+      const read = vi.fn().mockResolvedValue('zsh')
+      const tracker = createPaneForegroundAgentTracker({
+        getPtyId: () => 'pty-1',
+        isTrackablePtyId: () => true,
+        readForegroundProcess: read,
+        confirmForegroundProcess: read,
+        publish: vi.fn(),
+        onConfirmedShellForeground: shell
+      })
+      tracker.onAgentExitCandidate()
+      await vi.advanceTimersByTimeAsync(8000)
+      expect(shell).toHaveBeenCalledExactlyOnceWith('visible-pty', true)
+      tracker.dispose()
+    })
+
+    it('confirms an SSH exit from host shell evidence at the first read after 133;D', async () => {
+      vi.useFakeTimers()
+      const h = remoteTracker((foreground) => posixEvidence(foreground))
+      h.tracker.onCommandFinished()
+      await vi.advanceTimersByTimeAsync(400)
+      expect(h.shell).not.toHaveBeenCalled()
+      h.exitAgent()
+      h.tracker.onCommandFinished()
+      await vi.advanceTimersByTimeAsync(400)
+      expect(h.shell).toHaveBeenCalledExactlyOnceWith('command-finished', true)
+      expect(h.read).toHaveBeenCalledTimes(2)
+      h.tracker.dispose()
+    })
+
+    it.each([
+      [
+        'an old host without the shell field',
+        (foreground: 'shell' | 'agent') => {
+          const evidence = posixEvidence(foreground)
+          if (evidence.verdict !== 'live') {
+            return evidence
+          }
+          const { shellForeground: _omitted, ...legacy } = evidence
+          return legacy
+        }
+      ],
+      ['an SSH-to-Windows host', () => posixEvidence('shell', 'windows')]
+    ])('retires the agent at the 133;D on %s', async (_label, evidence) => {
+      vi.useFakeTimers()
+      const h = remoteTracker(evidence)
+      h.exitAgent()
+      h.tracker.onCommandFinished()
+      await vi.advanceTimersByTimeAsync(400)
+      expect(h.shell).toHaveBeenCalledExactlyOnceWith('command-finished', true)
+      expect(h.read).toHaveBeenCalledOnce()
+      h.tracker.dispose()
+    })
+
+    it('keeps the agent when the host could not be read at the 133;D', async () => {
+      vi.useFakeTimers()
+      const h = remoteTracker(() => undefined)
+      h.read.mockRejectedValue(new Error('transport lost'))
+      h.tracker.onCommandFinished()
+      await vi.advanceTimersByTimeAsync(8000)
+      expect(h.shell).not.toHaveBeenCalled()
+      h.tracker.dispose()
+    })
+  })
 })
