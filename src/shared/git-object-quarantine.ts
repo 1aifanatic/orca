@@ -1,5 +1,7 @@
+import { mkdtemp, readdir, rename, stat } from 'node:fs/promises'
 import { posix, win32 } from 'node:path'
 import { isWindowsAbsolutePathLike } from './cross-platform-path'
+import { removeTree } from './windows-transient-lock-removal'
 
 /**
  * Runs a Git command whose object writes are throwaway (`merge-tree --write-tree`
@@ -14,17 +16,10 @@ export type GitObjectQuarantineEnv = {
 }
 
 export type GitObjectsDirectory = {
-  /** How the process creating and deleting the scratch dir spells `objects/`. */
+  /** How this process spells `objects/` when creating and deleting the scratch dir. */
   hostPath: string
   /** How the Git child spells the same directory (differs for WSL). */
   gitPath: string
-}
-
-export type GitObjectQuarantineHost = {
-  resolveObjectsDirectory: () => Promise<GitObjectsDirectory | undefined>
-  /** mkdtemp semantics: `prefix` plus a unique suffix, returns the created path. */
-  makeTempDirectory: (prefix: string) => Promise<string>
-  removeDirectory: (hostPath: string) => Promise<void>
 }
 
 export type GitObjectQuarantine = {
@@ -33,11 +28,17 @@ export type GitObjectQuarantine = {
 
 // Why inside `objects/` with a `tmp_objdir` prefix: that is where Git puts its own
 // quarantine dirs, it is on the Git host for native, WSL and SSH alike, and
-// `git prune` removes stale `tmp_*` entries if a crash ever strands one.
+// `git gc` expires stale `tmp_*` entries too.
 export const GIT_OBJECT_QUARANTINE_DIR_PREFIX = 'tmp_objdir-orca-merge-tree-'
 
-// Decided by path syntax, not by platform: a Windows main process drives WSL Git.
-function pathApiFor(value: string): typeof posix {
+// Why an hour: a run lives at most as long as a Git read (minutes), so anything older was
+// stranded by a crash or a failed delete, including repos where `git gc` never runs.
+export const STALE_GIT_OBJECT_QUARANTINE_AGE_MS = 60 * 60 * 1000
+
+const sweptObjectsDirectories = new Set<string>()
+
+/** Decided by path syntax, not by platform: a Windows main process drives WSL Git. */
+export function pathApiForGitPath(value: string): typeof posix {
   return isWindowsAbsolutePathLike(value) ? win32 : posix
 }
 
@@ -49,42 +50,99 @@ function alternateObjectDirectoriesValue(gitPath: string): string {
   return `"${gitPath.replace(/[\\"]/g, (char) => `\\${char}`)}"`
 }
 
+async function sweepStaleScratchDirectories(objectsHostPath: string): Promise<void> {
+  if (sweptObjectsDirectories.has(objectsHostPath)) {
+    return
+  }
+  sweptObjectsDirectories.add(objectsHostPath)
+  const path = pathApiForGitPath(objectsHostPath)
+  const entries = await readdir(objectsHostPath).catch(() => [])
+  const cutoff = Date.now() - STALE_GIT_OBJECT_QUARANTINE_AGE_MS
+  for (const entry of entries) {
+    if (!entry.startsWith(GIT_OBJECT_QUARANTINE_DIR_PREFIX)) {
+      continue
+    }
+    const scratch = path.join(objectsHostPath, entry)
+    const modified = await stat(scratch).then(
+      (stats) => stats.mtimeMs,
+      () => undefined
+    )
+    if (modified !== undefined && modified < cutoff) {
+      await removeTree(scratch).catch(() => {})
+    }
+  }
+}
+
+/**
+ * A partial clone fetches missing blobs on demand, and Git files that download
+ * as a pack in the scratch dir. Keep those packs so the next check does not
+ * download the same blobs again; merge-tree's own writes are loose objects.
+ */
+async function keepFetchedPacks(scratchHostPath: string, objectsHostPath: string): Promise<void> {
+  const path = pathApiForGitPath(objectsHostPath)
+  const scratchPackDir = path.join(scratchHostPath, 'pack')
+  const entries = await readdir(scratchPackDir).catch(() => [])
+  const packNames = entries
+    .filter((entry) => /^pack-[0-9a-f]+\.pack$/.test(entry))
+    .map((entry) => entry.slice(0, -'.pack'.length))
+  for (const packName of packNames) {
+    const files = entries.filter((entry) => entry.startsWith(`${packName}.`))
+    if (!files.includes(`${packName}.idx`)) {
+      continue
+    }
+    // Why `.idx` last: Git finds a pack through its index, so everything it names must already be in place.
+    const ordered = [...files.filter((file) => !file.endsWith('.idx')), `${packName}.idx`]
+    try {
+      for (const file of ordered) {
+        await rename(path.join(scratchPackDir, file), path.join(objectsHostPath, 'pack', file))
+      }
+    } catch {
+      // Why: a pack without its index is invisible to Git; the next lookup fetches it again.
+    }
+  }
+}
+
 /** Resolves the objects dir once per quarantine; each run gets its own scratch dir. */
-export function createGitObjectQuarantine(host: GitObjectQuarantineHost): GitObjectQuarantine {
+export function createGitObjectQuarantine(
+  resolveObjectsDirectory: () => Promise<GitObjectsDirectory | undefined>
+): GitObjectQuarantine {
   let objectsDirectory: Promise<GitObjectsDirectory | undefined> | undefined
-  const resolveObjectsDirectory = (): Promise<GitObjectsDirectory | undefined> => {
-    objectsDirectory ??= host.resolveObjectsDirectory().catch(() => undefined)
+  const resolveOnce = (): Promise<GitObjectsDirectory | undefined> => {
+    objectsDirectory ??= resolveObjectsDirectory().catch(() => undefined)
     return objectsDirectory
   }
 
   return {
     async run(command) {
-      const objects = await resolveObjectsDirectory()
+      const objects = await resolveOnce()
       let scratchHostPath: string | undefined
       if (objects) {
-        try {
-          scratchHostPath = await host.makeTempDirectory(
-            pathApiFor(objects.hostPath).join(objects.hostPath, GIT_OBJECT_QUARANTINE_DIR_PREFIX)
-          )
-        } catch {
-          // Why: bookkeeping must not block the user's action; run unquarantined.
-          scratchHostPath = undefined
-        }
+        await sweepStaleScratchDirectories(objects.hostPath)
+        const path = pathApiForGitPath(objects.hostPath)
+        scratchHostPath = await mkdtemp(
+          path.join(objects.hostPath, GIT_OBJECT_QUARANTINE_DIR_PREFIX)
+        ).catch(() => undefined)
       }
       if (!objects || !scratchHostPath) {
+        // Why: bookkeeping must not block the user's action; run unquarantined.
         return command(undefined)
       }
       try {
         return await command({
-          GIT_OBJECT_DIRECTORY: pathApiFor(objects.gitPath).join(
+          GIT_OBJECT_DIRECTORY: pathApiForGitPath(objects.gitPath).join(
             objects.gitPath,
-            pathApiFor(scratchHostPath).basename(scratchHostPath)
+            pathApiForGitPath(scratchHostPath).basename(scratchHostPath)
           ),
           GIT_ALTERNATE_OBJECT_DIRECTORIES: alternateObjectDirectoriesValue(objects.gitPath)
         })
       } finally {
-        await host.removeDirectory(scratchHostPath).catch(() => {})
+        await keepFetchedPacks(scratchHostPath, objects.hostPath)
+        await removeTree(scratchHostPath).catch(() => {})
       }
     }
   }
+}
+
+export function _resetGitObjectQuarantineSweepForTests(): void {
+  sweptObjectsDirectories.clear()
 }

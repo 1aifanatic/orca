@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { GIT_OBJECT_QUARANTINE_DIR_PREFIX } from './git-object-quarantine'
 
 /**
@@ -19,7 +20,29 @@ export type DivergentRepoFixture = {
   looseObjectCount: () => number
   scratchDirectories: () => string[]
   addWorktree: (name: string, branch: string) => string
+  /** A blob-less clone of the repo, so merge-tree must fetch file contents on demand. */
+  createPartialClone: () => PartialCloneFixture
   dispose: () => void
+}
+
+export type PartialCloneFixture = {
+  clonePath: string
+  looseObjectCount: () => number
+  /** Packs in the clone's real `objects/pack`, each named by its `.idx`. */
+  packCount: () => number
+  scratchDirectories: () => string[]
+}
+
+function looseObjectCountIn(objectsDir: string): number {
+  return readdirSync(objectsDir)
+    .filter((entry) => /^[0-9a-f]{2}$/.test(entry))
+    .reduce((count, entry) => count + readdirSync(join(objectsDir, entry)).length, 0)
+}
+
+function scratchDirectoriesIn(objectsDir: string): string[] {
+  return readdirSync(objectsDir).filter((entry) =>
+    entry.startsWith(GIT_OBJECT_QUARANTINE_DIR_PREFIX)
+  )
 }
 
 export function createDivergentRepoFixture(): DivergentRepoFixture {
@@ -77,16 +100,34 @@ export function createDivergentRepoFixture(): DivergentRepoFixture {
     linkedPath,
     commonDir,
     git,
-    looseObjectCount: () =>
-      readdirSync(objectsDir)
-        .filter((entry) => /^[0-9a-f]{2}$/.test(entry))
-        .reduce((count, entry) => count + readdirSync(join(objectsDir, entry)).length, 0),
-    scratchDirectories: () =>
-      readdirSync(objectsDir).filter((entry) => entry.startsWith(GIT_OBJECT_QUARANTINE_DIR_PREFIX)),
+    looseObjectCount: () => looseObjectCountIn(objectsDir),
+    scratchDirectories: () => scratchDirectoriesIn(objectsDir),
     addWorktree: (name, branch) => {
       const worktreePath = join(root, name)
       git(repoPath, 'worktree', 'add', '--quiet', worktreePath, branch)
       return worktreePath
+    },
+    createPartialClone: () => {
+      git(repoPath, 'config', 'uploadpack.allowFilter', 'true')
+      const clonePath = join(root, 'partial')
+      git(
+        root,
+        'clone',
+        '--quiet',
+        '--no-checkout',
+        '--filter=blob:none',
+        pathToFileURL(repoPath).href,
+        clonePath
+      )
+      const cloneObjectsDir = join(clonePath, '.git', 'objects')
+      return {
+        clonePath,
+        looseObjectCount: () => looseObjectCountIn(cloneObjectsDir),
+        packCount: () =>
+          readdirSync(join(cloneObjectsDir, 'pack')).filter((entry) => entry.endsWith('.idx'))
+            .length,
+        scratchDirectories: () => scratchDirectoriesIn(cloneObjectsDir)
+      }
     },
     dispose: () => rmSync(root, { recursive: true, force: true })
   }

@@ -31,7 +31,7 @@ describe('relay branch cleanup runs merge-tree against a scratch object store (r
     return dispatcher.callRequest('git.removeWorktree', { worktreePath })
   }
 
-  it('deletes a squash-merged branch without writing loose objects', async () => {
+  it('still deletes a squash-merged branch through the scratch store', async () => {
     const before = fixture.looseObjectCount()
 
     await expect(removeWorktreeFor('feature-squashed')).resolves.toEqual({})

@@ -100,6 +100,28 @@ describe('merge-tree runs against a scratch object store (real Git)', () => {
     expect(fixture.looseObjectCount()).toBeGreaterThan(before)
   })
 
+  it('keeps file contents a partial clone downloads, so the next check does not fetch them again', async () => {
+    const clone = fixture.createPartialClone()
+    const git = (...args: string[]): string => fixture.git(clone.clonePath, ...args).trim()
+    const base = git('rev-parse', 'origin/main')
+    const head = git('rev-parse', 'origin/feature-conflict')
+    const packsBefore = clone.packCount()
+    const looseBefore = clone.looseObjectCount()
+
+    const first = await getPRConflictSummary(clone.clonePath, 'main', base, head)
+    const packsAfterFirst = clone.packCount()
+    __resetPRConflictSummaryCachesForTests()
+    const second = await getPRConflictSummary(clone.clonePath, 'main', base, head)
+
+    expect(first?.files).toEqual(['shared.txt'])
+    expect(second?.files).toEqual(['shared.txt'])
+    // The first check fetched the missing blobs into the real store; the second found them there.
+    expect(packsAfterFirst).toBeGreaterThan(packsBefore)
+    expect(clone.packCount()).toBe(packsAfterFirst)
+    expect(clone.looseObjectCount()).toBe(looseBefore)
+    expect(clone.scratchDirectories()).toEqual([])
+  })
+
   it('removes the scratch directory when the Git command fails', async () => {
     const quarantine = createLocalGitObjectQuarantine(fixture.linkedPath)
     let scratch: string | undefined
