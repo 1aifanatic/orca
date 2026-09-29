@@ -21,13 +21,29 @@ import { isTooBroadToPreTrust } from '../shared/home-or-filesystem-root'
  * main describes this machine or a WSL guest, the SSH relay describes its own host.
  */
 export type WorkspaceTrustHost = {
-  /** Homes the agent may read trust under; when none is known, nothing is written. */
+  /** Homes the agent may read trust under; with none known, an agent that inherits trust writes nothing. */
   homes: readonly (string | null | undefined)[]
   /** The config Claude reads on this host, or null when this host cannot tell. */
   claudeConfig: () => ClaudeTrustConfigTarget | null
   /** Every config.toml the launched Codex may read, in the hook installer's lock order. */
   codexConfigFiles: () => readonly string[]
   deadlineMs: number
+}
+
+/**
+ * Whether trust on a home or a disk root would also trust the folders below it, per each agent's
+ * own lookup; such trust is never pre-written. Claude walks up parent folders (to the repo root,
+ * else the disk root); Copilot and Qoder accept any trusted ancestor. Codex matches its start
+ * folder or that folder's repo root, Antigravity the exact folder, and Cursor never inherits from
+ * a home, a folder above one or a shallow path.
+ */
+export const AGENT_TRUST_INHERITS_FROM_A_HOME: Record<AgentTrustPreset, boolean> = {
+  claude: true,
+  codex: false,
+  cursor: false,
+  copilot: true,
+  qoder: true,
+  antigravity: false
 }
 
 // Why resolve() too: Claude stores it, and it collapses `..` even where realpath fails.
@@ -80,9 +96,9 @@ async function writePreset(
 }
 
 /**
- * The one place a preset's trust is written, on the host that runs the agent. Refuses when the
- * path the writer would store covers a home, and never throws or waits past the host's
- * deadline: any failure or miss means the agent asks.
+ * The one place a preset's trust is written, on the host that runs the agent. For an agent that
+ * inherits trust from a home, refuses when the path the writer would store covers a home. Never
+ * throws or waits past the host's deadline: any failure or miss means the agent asks.
  */
 export async function applyWorkspaceTrustOnThisHost(
   preset: AgentTrustPreset,
@@ -91,11 +107,12 @@ export async function applyWorkspaceTrustOnThisHost(
 ): Promise<void> {
   try {
     const host = describeHost()
-    const homes = host.homes.filter((home): home is string => Boolean(home))
     const storedPath = storedTrustPath(preset, workspacePath)
-    // Why: some agents let trust on a folder cover everything inside it.
-    if (homes.length === 0 || wouldTrustAHome(storedPath, homes)) {
-      return
+    if (AGENT_TRUST_INHERITS_FROM_A_HOME[preset]) {
+      const homes = host.homes.filter((home): home is string => Boolean(home))
+      if (homes.length === 0 || wouldTrustAHome(storedPath, homes)) {
+        return
+      }
     }
     await awaitAgentTrustWriteWithinDeadline(writePreset(preset, storedPath, host), {
       preset,

@@ -357,12 +357,12 @@
       "providers": ["local", "daemon", "ssh", "wsl", "remote-runtime"],
       "coveredPlatforms": ["macos"],
       "coveredProviders": ["local", "ssh"],
-      "coverageNotes": "The actual renderer and runtime spawn-option builders with a mocked dispatcher, the spawn hook with a mocked dispatcher, the dispatcher with mocked preset writers and the real Claude config writer on a temp file, the execution-host writer and the relay spawn function with every real preset writer under a throwaway home, and the relay pty.spawn handler with a mocked trust function. Proves the builders await trust before returning, the fresh-launch and setting gates, the per-preset deadlines, that SSH launches hand every preset to the relay, and the refusal of any stored path that is a root, a home or a folder above one. No native PTY, agent CLI, live SSH host or WSL guest.",
+      "coverageNotes": "The actual renderer and runtime spawn-option builders with a mocked dispatcher, the spawn hook with a mocked dispatcher, the dispatcher with mocked preset writers and the real Claude config writer on a temp file, the execution-host writer and the relay spawn function with every real preset writer under a throwaway home, and the relay pty.spawn handler with a mocked trust function. Proves the builders await trust before returning, the fresh-launch and setting gates, the per-preset deadlines, that SSH launches hand every preset to the relay, and, for the agents that inherit trust from a home (Claude, Copilot, Qoder), the refusal of any stored path that is a root, a home or a folder above one, while Codex, Cursor and Antigravity still trust a home. No native PTY, agent CLI, live SSH host or WSL guest.",
       "motivatingLinks": [
         "https://github.com/stablyai/orca/blob/main/src/main/agent-workspace-trust.ts"
       ],
-      "invariant": "A fresh PTY launch of an agent with a trust preset pre-trusts its workspace root before the provider spawn, in both spawn builders, on the host that runs the agent: main for local and WSL launches, the SSH relay on its own disk for SSH launches. It never waits past the preset's deadline: 20 s for local Codex, the short budget for every other write, local or on the relay. A failed or abandoned write lets the launch proceed untrusted, so the agent asks. Restored or reattached panes, spawns with no launch command and the setting turned off are never trusted; no writer stores a path that is a root, a home or a folder above one (including Codex's hop to a worktree's main checkout); an unknown home writes nothing; and a WSL launch never writes the Windows home.",
-      "oracle": "A trust write held pending keeps each builder from returning until it settles. A never-settling local Codex write resolves the dispatcher only after the long deadline; a never-settling local Claude write resolves after the short budget with a named warning. Rejected and throwing writes, and a throwing guard, resolve with a warning. Restored panes, spawns without a command and the setting off make no dispatcher call. An SSH launch returns the relay field for every preset and calls no writer, and the relay's pty.spawn starts no process until that launch's trust call settles. A home, a folder above one, a root, a symlink to a home, a missing path that climbs back to the home through `..`, and a Codex worktree whose main checkout is the home write no trust file for any preset, on this machine and on the relay.",
+      "invariant": "A fresh PTY launch of an agent with a trust preset pre-trusts its workspace root before the provider spawn, in both spawn builders, on the host that runs the agent: main for local and WSL launches, the SSH relay on its own disk for SSH launches. It never waits past the preset's deadline: 20 s for local Codex, the short budget for every other write, local or on the relay. A failed or abandoned write lets the launch proceed untrusted, so the agent asks. Restored or reattached panes, spawns with no launch command and the setting turned off are never trusted; for an agent whose trust on a home covers the folders below it (Claude, Copilot, Qoder), no writer stores a path that is a root, a home or a folder above one, and an unknown home writes nothing; Codex, Cursor and Antigravity, whose trust on a home covers only the home, trust it as they did before; and a WSL launch never writes the Windows home.",
+      "oracle": "A trust write held pending keeps each builder from returning until it settles. A never-settling local Codex write resolves the dispatcher only after the long deadline; a never-settling local Claude write resolves after the short budget with a named warning. Rejected and throwing writes, and a throwing guard, resolve with a warning. Restored panes, spawns without a command and the setting off make no dispatcher call. An SSH launch returns the relay field for every preset and calls no writer, and the relay's pty.spawn starts no process until that launch's trust call settles. A home, a folder above one, a root, a symlink to a home and a missing path that climbs back to the home through `..` write no Claude, Copilot or Qoder trust file, on this machine and on the relay, and the home writes Codex, Cursor and Antigravity trust.",
       "commands": [
         "ORCA_BACKGROUND_LAUNCH=1 pnpm exec vitest run --config config/vitest.config.ts src/main/ipc/pty/spawn-options-agent-workspace-trust.test.ts src/main/agent-workspace-trust-spawn.test.ts src/main/agent-workspace-trust.test.ts src/main/execution-host-workspace-trust.test.ts src/relay/agent-workspace-trust-spawn.test.ts src/relay/agent-workspace-trust-spawn-guard-failure.test.ts src/relay/pty-handler-agent-workspace-trust.test.ts"
       ],
@@ -396,7 +396,8 @@
             "contains a rejected or throwing write so the launch proceeds",
             "gives only Codex the long deadline its shared config lane needs",
             "gives a local Claude write a short budget, after which Claude asks",
-            "never pre-trusts %s for any preset",
+            "never pre-trusts %s for an agent that inherits trust from it",
+            "trusts the home folder for Codex, Cursor and Antigravity, whose trust there stays there",
             "hands an SSH %s launch to the relay instead of writing anything here"
           ]
         },
@@ -404,7 +405,8 @@
           "file": "src/main/execution-host-workspace-trust.test.ts",
           "assertions": [
             "writes no %s trust",
-            "never stores the home for Codex through a worktree whose main checkout is the home",
+            "guards exactly the agents that inherit trust from a home",
+            "trusts a home folder workspace for %s, whose trust there covers only the home",
             "writes no %s trust when the host knows no home"
           ]
         },
@@ -412,7 +414,7 @@
           "file": "src/relay/agent-workspace-trust-spawn.test.ts",
           "assertions": [
             "writes %s trust on the relay host's own disk",
-            "never stores the relay home for Codex through a worktree whose main checkout is the home",
+            "trusts the relay home for %s, whose trust there covers only the home",
             "leaves Antigravity to ask, since its writer is unverified on SSH hosts"
           ]
         },
@@ -448,7 +450,7 @@
       },
       "redGreenEvidence": {
         "status": "complete",
-        "evidence": "Each named case failed with its fix removed and passed restored: the builder's await turned into a fire-and-forget call fails the hold case; guarding the workspace instead of Codex's stored main checkout fails the Codex home case; dropping the unknown-home rule fails every no-home case; the relay deriving only Claude from launchAgent fails each non-Claude relay case; the dispatcher handing only Claude to the relay fails each SSH preset case; dropping the relay's Antigravity return fails its case; letting the host writer's catch rethrow fails every guard-failure case; dropping resolve() from the guard's forms fails the missing `..` path case for every preset; removing the relay handler's trust call, or not awaiting it, fails the relay handler case."
+        "evidence": "Each named case failed with its fix removed and passed restored: the builder's await turned into a fire-and-forget call fails the hold case; guarding every preset fails each Codex, Cursor and Antigravity home case, and guarding none fails each Claude, Copilot and Qoder home, root, symlink and `..` case; dropping the unknown-home rule fails every no-home case; the relay deriving only Claude from launchAgent fails each non-Claude relay case; the dispatcher handing only Claude to the relay fails each SSH preset case; dropping the relay's Antigravity return fails its case; letting the host writer's catch rethrow fails every guard-failure case; dropping resolve() from the guard's forms fails the missing `..` path case for every guarded preset; removing the relay handler's trust call, or not awaiting it, fails the relay handler case."
       },
       "performanceBudget": {
         "required": true,

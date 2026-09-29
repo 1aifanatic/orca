@@ -22,6 +22,7 @@ vi.mock('node:os', async (importOriginal) => {
 })
 
 import {
+  AGENT_TRUST_INHERITS_FROM_A_HOME,
   applyWorkspaceTrustOnThisHost,
   type WorkspaceTrustHost
 } from './execution-host-workspace-trust'
@@ -32,6 +33,13 @@ const PRESETS: readonly AgentTrustPreset[] = [
   'cursor',
   'copilot',
   'qoder',
+  'antigravity'
+]
+// Why these three: each accepts trust from any ancestor folder, so trust on a home covers it all.
+const INHERITING_PRESETS: readonly AgentTrustPreset[] = ['claude', 'copilot', 'qoder']
+const EXACT_OR_SELF_LIMITING_PRESETS: readonly AgentTrustPreset[] = [
+  'codex',
+  'cursor',
   'antigravity'
 ]
 
@@ -95,7 +103,7 @@ describe('applyWorkspaceTrustOnThisHost', () => {
     ]
   ]
   describe.each(tooBroad)('for %s', (_label, arrange) => {
-    it.each(PRESETS)('writes no %s trust', async (preset) => {
+    it.each(INHERITING_PRESETS)('writes no %s trust', async (preset) => {
       const { workspace, homes } = arrange()
       await applyWorkspaceTrustOnThisHost(
         preset,
@@ -106,15 +114,38 @@ describe('applyWorkspaceTrustOnThisHost', () => {
     })
   })
 
-  it('never stores the home for Codex through a worktree whose main checkout is the home', async () => {
+  it('guards exactly the agents that inherit trust from a home', () => {
+    expect(PRESETS.filter((preset) => AGENT_TRUST_INHERITS_FROM_A_HOME[preset])).toEqual(
+      INHERITING_PRESETS
+    )
+  })
+
+  it.each(EXACT_OR_SELF_LIMITING_PRESETS)(
+    'trusts a home folder workspace for %s, whose trust there covers only the home',
+    async (preset) => {
+      await applyWorkspaceTrustOnThisHost(preset, state.home, thisHost())
+      expect(trustWritten(preset)).toBe(true)
+    }
+  )
+
+  it('trusts a home folder workspace for Codex under the key Codex looks up', async () => {
+    await applyWorkspaceTrustOnThisHost('codex', state.home, thisHost())
+    expect(readFileSync(join(state.home, '.codex', 'config.toml'), 'utf-8')).toContain(
+      `[projects."${state.home}"]`
+    )
+  })
+
+  it('trusts a Codex worktree whose main checkout is the home, as Codex would on "Yes"', async () => {
     const worktree = join(root, 'worktrees', 'feature')
     linkGitWorktree(state.home, worktree)
     await applyWorkspaceTrustOnThisHost('codex', worktree, thisHost())
-    expect(trustWritten('codex')).toBe(false)
+    expect(readFileSync(join(state.home, '.codex', 'config.toml'), 'utf-8')).toContain(
+      `[projects."${state.home}"]`
+    )
   })
 
   it.each(PRESETS.filter((preset) => preset !== 'codex'))(
-    'still trusts that worktree itself for %s, which stores the worktree path',
+    'trusts a worktree whose main checkout is the home for %s, which stores the worktree path',
     async (preset) => {
       const worktree = join(root, 'worktrees', 'feature')
       linkGitWorktree(state.home, worktree)
@@ -133,7 +164,7 @@ describe('applyWorkspaceTrustOnThisHost', () => {
     expect(written).not.toContain(`[projects."${worktree}"]`)
   })
 
-  it.each(PRESETS)('writes no %s trust when the host knows no home', async (preset) => {
+  it.each(INHERITING_PRESETS)('writes no %s trust when the host knows no home', async (preset) => {
     const workspace = join(root, 'projects', 'app')
     mkdirSync(workspace, { recursive: true })
     await applyWorkspaceTrustOnThisHost(

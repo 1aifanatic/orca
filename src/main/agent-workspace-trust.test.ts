@@ -128,27 +128,25 @@ describe('applyAgentWorkspaceTrust on this machine', () => {
     ],
     ['a filesystem root', '/', noConfig],
     ['a drive root', 'C:\\', noConfig]
-  ])('never pre-trusts %s for any preset', async (_label, workspacePath, context) => {
-    for (const preset of [
-      'claude',
-      'codex',
-      'cursor',
-      'copilot',
-      'qoder',
-      'antigravity'
-    ] as const) {
-      await expect(applyAgentWorkspaceTrust(preset, workspacePath, context)).resolves.toEqual({})
+  ])(
+    'never pre-trusts %s for an agent that inherits trust from it',
+    async (_label, workspacePath, context) => {
+      for (const preset of ['claude', 'copilot', 'qoder'] as const) {
+        await expect(applyAgentWorkspaceTrust(preset, workspacePath, context)).resolves.toEqual({})
+      }
+      for (const writer of [mocks.copilot, mocks.qoder, mocks.claudeGrant]) {
+        expect(writer).not.toHaveBeenCalled()
+      }
     }
-    for (const writer of [
-      mocks.codex,
-      mocks.cursor,
-      mocks.copilot,
-      mocks.qoder,
-      mocks.antigravity,
-      mocks.claudeGrant
-    ]) {
-      expect(writer).not.toHaveBeenCalled()
+  )
+
+  it('trusts the home folder for Codex, Cursor and Antigravity, whose trust there stays there', async () => {
+    for (const preset of ['codex', 'cursor', 'antigravity'] as const) {
+      await applyAgentWorkspaceTrust(preset, homedir(), noConfig)
     }
+    expect(mocks.codex).toHaveBeenCalledWith(homedir(), CODEX_CONFIG_FILES)
+    expect(mocks.cursor).toHaveBeenCalledWith(homedir())
+    expect(mocks.antigravity).toHaveBeenCalledWith(homedir())
   })
 
   it('never pre-trusts a home reached through a symlink, since the writers store the realpath', async () => {
@@ -163,17 +161,11 @@ describe('applyAgentWorkspaceTrust on this machine', () => {
       ]
       for (const [workspacePath, homePath] of cases) {
         const context = { ...noConfig, env: { ...noConfig.env, HOME: homePath } }
-        for (const preset of ['claude', 'codex', 'cursor', 'copilot', 'qoder'] as const) {
+        for (const preset of ['claude', 'copilot', 'qoder'] as const) {
           await applyAgentWorkspaceTrust(preset, workspacePath, context)
         }
       }
-      for (const writer of [
-        mocks.codex,
-        mocks.cursor,
-        mocks.copilot,
-        mocks.qoder,
-        mocks.claudeGrant
-      ]) {
+      for (const writer of [mocks.copilot, mocks.qoder, mocks.claudeGrant]) {
         expect(writer).not.toHaveBeenCalled()
       }
     } finally {

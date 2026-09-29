@@ -9,7 +9,7 @@ vi.mock('../shared/home-or-filesystem-root', () => ({
 import { applyRelayAgentWorkspaceTrust } from './agent-workspace-trust-spawn'
 
 describe('applyRelayAgentWorkspaceTrust when the breadth guard fails', () => {
-  it.each(['claude', 'codex', 'cursor', 'copilot', 'qoder'] as const)(
+  it.each(['claude', 'copilot', 'qoder'] as const)(
     'skips %s trust and never fails the spawn',
     async (agent) => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})

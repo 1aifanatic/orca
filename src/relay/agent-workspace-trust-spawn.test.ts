@@ -37,6 +37,9 @@ const AGENTS_WITH_A_RELAY_WRITER: [TuiAgent, AgentTrustPreset][] = [
   ['copilot', 'copilot'],
   ['qoder', 'qoder']
 ]
+const AGENTS_THAT_INHERIT_TRUST = AGENTS_WITH_A_RELAY_WRITER.filter(([, preset]) =>
+  ['claude', 'copilot', 'qoder'].includes(preset)
+)
 const ALL_PRESETS: AgentTrustPreset[] = [
   'claude',
   'codex',
@@ -140,7 +143,7 @@ describe('applyRelayAgentWorkspaceTrust', () => {
     expect(written).not.toContain(`[projects."${worktree}"]`)
   })
 
-  it('never stores the relay home for Codex through a worktree whose main checkout is the home', async () => {
+  it('trusts a Codex worktree whose main checkout is the relay home, as a local launch does', async () => {
     const worktree = join(root, 'worktrees', 'feature')
     linkGitWorktree(home, worktree)
     await applyRelayAgentWorkspaceTrust(
@@ -149,8 +152,26 @@ describe('applyRelayAgentWorkspaceTrust', () => {
       { HOME: home },
       HOST_SHELL
     )
-    expect(workspaceTrustWritten(home, 'codex')).toBe(false)
+    expect(readFileSync(join(home, '.codex', 'config.toml'), 'utf-8')).toContain(
+      `[projects."${home}"]`
+    )
   })
+
+  it.each([
+    ['codex', 'codex'],
+    ['cursor', 'cursor']
+  ] as const)(
+    'trusts the relay home for %s, whose trust there covers only the home',
+    async (agent, preset) => {
+      await applyRelayAgentWorkspaceTrust(
+        { workspacePath: home },
+        agent,
+        { HOME: home },
+        HOST_SHELL
+      )
+      expect(workspaceTrustWritten(home, preset)).toBe(true)
+    }
+  )
 
   const tooBroad: [string, () => string][] = [
     ['the relay home', () => home],
@@ -164,7 +185,7 @@ describe('applyRelayAgentWorkspaceTrust', () => {
     ]
   ]
   describe.each(tooBroad)('for %s', (_label, arrange) => {
-    it.each(AGENTS_WITH_A_RELAY_WRITER)('writes no %s trust', async (agent) => {
+    it.each(AGENTS_THAT_INHERIT_TRUST)('writes no %s trust', async (agent) => {
       await applyRelayAgentWorkspaceTrust(
         { workspacePath: arrange() },
         agent,

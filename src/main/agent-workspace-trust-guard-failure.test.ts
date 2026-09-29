@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
-  cursor: vi.fn<(path: string) => void>()
+  copilot: vi.fn<(path: string) => void>()
 }))
 
 vi.mock('../shared/home-or-filesystem-root', () => ({
@@ -11,8 +11,8 @@ vi.mock('../shared/home-or-filesystem-root', () => ({
 }))
 vi.mock('./agent-trust-presets', () => ({
   markCodexProjectTrusted: vi.fn(async () => {}),
-  markCursorWorkspaceTrusted: mocks.cursor,
-  markCopilotFolderTrusted: vi.fn(),
+  markCursorWorkspaceTrusted: vi.fn(),
+  markCopilotFolderTrusted: mocks.copilot,
   markAntigravityWorkspaceTrusted: vi.fn()
 }))
 
@@ -21,13 +21,13 @@ import { applyAgentWorkspaceTrust } from './agent-workspace-trust'
 describe('applyAgentWorkspaceTrust when the breadth guard fails', () => {
   it('writes nothing and never fails the launch', async () => {
     await expect(
-      applyAgentWorkspaceTrust('cursor', '/workspace/app', {
+      applyAgentWorkspaceTrust('copilot', '/workspace/app', {
         env: {},
         claudeAuth: null,
         wslDistro: null,
         connectionId: null
       })
     ).resolves.toEqual({})
-    expect(mocks.cursor).not.toHaveBeenCalled()
+    expect(mocks.copilot).not.toHaveBeenCalled()
   })
 })

@@ -5,7 +5,7 @@ const FILESYSTEM_ROOT_KEY = /^(?:\/|[a-z]:\/?|\/\/[^/]+(?:\/[^/]+)?)$/i
 
 /**
  * Whether `folderPath` is a filesystem root, a home folder or a folder above one. Pre-trusting
- * one would trust a home, because Claude and Copilot let a trusted folder cover its subfolders.
+ * one would trust a home for agents that let a trusted folder cover its subfolders.
  */
 export function isTooBroadToPreTrust(
   folderPath: string,
