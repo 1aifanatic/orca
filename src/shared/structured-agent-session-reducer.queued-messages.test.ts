@@ -172,4 +172,20 @@ describe('structured agent session reducer: queuedMessages', () => {
     })
     expect(resumed.queuePause).toBeNull()
   })
+
+  it('changes state for a pause-only update at an unchanged cursor, journal and list', () => {
+    const state = reduceStructuredAgentSession(hydrated([queued('draft-1', 1)]), {
+      type: 'event',
+      event: batch(1)
+    })
+    const after = reduceStructuredAgentSession(state, {
+      type: 'event',
+      event: {
+        ...batch(1),
+        queuedMessages: state.queuedMessages ?? null,
+        queuePause: { reason: 'stopped' }
+      }
+    })
+    expect(after.queuePause).toEqual({ reason: 'stopped' })
+  })
 })

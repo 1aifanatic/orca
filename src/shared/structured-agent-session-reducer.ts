@@ -268,6 +268,7 @@ export function reduceStructuredAgentSession(
     (event.fence === undefined || event.fence === state.fence) &&
     (event.commands === undefined || event.commands === state.commands) &&
     (event.queuedMessages === undefined || event.queuedMessages === state.queuedMessages) &&
+    (event.queuePause === undefined || event.queuePause === state.queuePause) &&
     backgroundTaskStatesEqual(backgroundTasks, state.backgroundTasks) &&
     activity?.turnId === state.activity?.turnId &&
     activity?.text === state.activity?.text &&

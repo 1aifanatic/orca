@@ -6,10 +6,10 @@
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+type ResumeParams = { envelope: { clientOperationId: string } }
+
 const mocks = vi.hoisted(() => ({
-  call: vi.fn<
-    (target: unknown, method: string, params: Record<string, unknown>) => Promise<unknown>
-  >(),
+  call: vi.fn<(target: unknown, method: string, params: ResumeParams) => Promise<unknown>>(),
   toastError: vi.fn()
 }))
 
@@ -75,5 +75,29 @@ describe('Resume on a paused queue', () => {
     expect(mocks.toastError).toHaveBeenCalledTimes(1)
     await act(() => result.current.resume())
     expect(mocks.toastError).toHaveBeenCalledTimes(2)
+  })
+
+  it('every press is its own operation: a failed Resume never pins the next one to its id', async () => {
+    // Resume names no target, so a replayed id would answer `{ resumed: false }` or repeat the
+    // same refusal instead of lifting whatever pause holds now.
+    mocks.call.mockRejectedValueOnce(new Error('socket closed'))
+    mocks.call.mockResolvedValueOnce({
+      ok: false,
+      refusal: { code: 'agent_session_operation_unknown', message: 'Unknown operation.' }
+    })
+    mocks.call.mockResolvedValueOnce({
+      ok: true,
+      replayed: false,
+      fence: 1,
+      cursor: { epoch: 'epoch-1', sequence: 1 },
+      value: { resumed: true }
+    })
+    const { result } = renderController()
+    for (let press = 0; press < 3; press += 1) {
+      await act(() => result.current.resume())
+    }
+    const ids = mocks.call.mock.calls.map(([, , params]) => params.envelope.clientOperationId)
+    expect(ids).toHaveLength(3)
+    expect(new Set(ids).size).toBe(3)
   })
 })
