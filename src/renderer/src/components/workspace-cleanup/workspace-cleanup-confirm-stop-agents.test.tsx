@@ -84,5 +84,8 @@ describe('WorkspaceCleanupConfirmStopAgents', () => {
 
     expect(container.textContent).toContain('Stop this agent?')
     expect(container.textContent).toContain("Deleting will stop the agent's current work.")
+    expect([...container.querySelectorAll('button')].map((button) => button.textContent)).toContain(
+      'Stop agent and delete'
+    )
   })
 })

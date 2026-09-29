@@ -104,7 +104,15 @@ export function WorkspaceCleanupConfirmStopAgents({
           </Button>
           <Button variant="destructive" onClick={onConfirm}>
             <Trash2 className="size-4" />
-            {translate('components.workspace.cleanup.stopAgents.confirm', 'Stop agents and delete')}
+            {count === 1
+              ? translate(
+                  'components.workspace.cleanup.stopAgents.confirmOne',
+                  'Stop agent and delete'
+                )
+              : translate(
+                  'components.workspace.cleanup.stopAgents.confirm',
+                  'Stop agents and delete'
+                )}
           </Button>
         </DialogFooter>
       </div>

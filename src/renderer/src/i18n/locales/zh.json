@@ -17930,7 +17930,8 @@
           "titleMany": "停止这些智能体？",
           "descriptionOne": "删除将停止智能体当前任务。",
           "descriptionMany": "删除将停止这些智能体当前任务。",
-          "confirm": "停止代理并删除"
+          "confirm": "停止智能体并删除",
+          "confirmOne": "停止智能体并删除"
         }
       }
     },

@@ -18029,7 +18029,8 @@
           "titleMany": "Arrêter ces agents ?",
           "descriptionOne": "La suppression interrompra le travail en cours de l'agent.",
           "descriptionMany": "La suppression interrompra le travail en cours de ces agents.",
-          "confirm": "Arrêter les agents et supprimer"
+          "confirm": "Arrêter les agents et supprimer",
+          "confirmOne": "Arrêter l'agent et supprimer"
         }
       }
     },

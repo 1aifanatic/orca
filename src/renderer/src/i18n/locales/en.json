@@ -18095,7 +18095,8 @@
           "titleMany": "Stop these agents?",
           "descriptionOne": "Deleting will stop the agent's current work.",
           "descriptionMany": "Deleting will stop these agents' current work.",
-          "confirm": "Stop agents and delete"
+          "confirm": "Stop agents and delete",
+          "confirmOne": "Stop agent and delete"
         }
       }
     },
