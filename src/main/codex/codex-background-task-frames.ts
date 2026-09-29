@@ -25,11 +25,9 @@ export type CodexBackgroundTaskFrame =
       state: NativeChatSubagentState
     }
   | {
-      /** A child turn that ended with no `turn/completed`. No `turnId`: the one it is running. */
-      kind: 'turn-ended'
+      /** A child thread that closed: it ran its last turn, and Codex never said how it went. */
+      kind: 'thread-closed'
       threadId: string
-      turnId: null
-      state: Extract<NativeChatSubagentState, 'unverifiable'>
     }
 
 export type CodexBackgroundTaskEvent = {
@@ -44,11 +42,11 @@ export type CodexBackgroundTaskEvent = {
  * a failed `turn/completed` for the same turn, which is that turn's end and carries the duration
  * and receipt time the error does not.
  */
-function readCodexChildTurnEnding(
+function readCodexChildThreadClosed(
   event: CodexBackgroundTaskEvent
 ): CodexBackgroundTaskFrame | null {
   return event.method === 'thread/closed'
-    ? { kind: 'turn-ended', threadId: event.threadId, turnId: null, state: 'unverifiable' }
+    ? { kind: 'thread-closed', threadId: event.threadId }
     : null
 }
 
@@ -57,7 +55,7 @@ export function readCodexBackgroundTaskFrame(
   primaryThreadId: string
 ): CodexBackgroundTaskFrame | null {
   // The session's own turn ends through the journal's turn boundaries, never here.
-  const ending = event.threadId === primaryThreadId ? null : readCodexChildTurnEnding(event)
+  const ending = event.threadId === primaryThreadId ? null : readCodexChildThreadClosed(event)
   if (ending) {
     return ending
   }
