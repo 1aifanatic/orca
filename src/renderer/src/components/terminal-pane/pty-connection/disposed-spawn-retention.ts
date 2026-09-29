@@ -17,6 +17,7 @@ export function shouldRetainDisposedPaneSpawn(
       : undefined) ?? state.deleteStateByWorktreeId?.[worktreeId]
   if (
     deleteState?.isDeleting &&
+    deleteState.phase !== 'queued' &&
     (!deleteState.executionHostId || deleteState.executionHostId === executionHostId)
   ) {
     return false

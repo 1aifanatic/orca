@@ -35,7 +35,9 @@ export function bindStartFreshSpawn(session: ConnectPanePtySession): void {
       }
     }
 
-    if (useAppStore.getState().deleteStateByWorktreeId?.[session.deps.worktreeId]?.isDeleting) {
+    const deleteState = useAppStore.getState().deleteStateByWorktreeId?.[session.deps.worktreeId]
+    // Queued rows keep their PTYs until their own removal starts, and can still fail and stay.
+    if (deleteState?.isDeleting && deleteState.phase !== 'queued') {
       // Why: the worktree is being deleted; its PTYs were just killed for the
       // filesystem teardown. A fresh shell must not spawn into a directory the
       // removal is about to delete (main fences it anyway), and the pane is
