@@ -11,6 +11,7 @@ import { ensureCodexDaemonSocketGuard } from '../codex/codex-config-mirror'
 import { isAgentStatusHooksEnabledForAgent } from '../agent-hooks/managed-agent-hook-controls'
 import { markCodexProjectTrusted } from '../agent-trust-presets'
 import { awaitAgentTrustWriteWithinDeadline } from '../agent-trust-write-deadline'
+import { reportCodexTrustWriteRefusals } from '../codex/codex-config-toml-checked-edit'
 import { getOrcaManagedCodexHomePath, getSystemCodexHomePath } from '../codex/codex-home-paths'
 import { normalizeRuntimePathForComparison } from '../../shared/cross-platform-path'
 import { mainProcessState as state } from './main-process-state'
@@ -90,7 +91,13 @@ export async function prepareCodexSessionResumeForLaunch(args: {
             workspacePath: args.workspacePath
           })
         } catch (error) {
-          console.warn('[codex-project-trust] failed to pre-mark resumed workspace:', error)
+          const unreported = reportCodexTrustWriteRefusals(error)
+          if (unreported.length > 0) {
+            console.warn(
+              '[codex-project-trust] failed to pre-mark resumed workspace:',
+              ...unreported
+            )
+          }
         }
       }
       const isSystemHome =

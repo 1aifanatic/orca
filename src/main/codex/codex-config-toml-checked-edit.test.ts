@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { parse } from 'smol-toml'
 import {
   readHookTrustEntriesFromContent,
@@ -7,7 +7,10 @@ import {
   upsertProjectTrustLevelInContent,
   type CodexTrustEntry
 } from './config-toml-trust'
-import { CodexConfigTomlEditRefusedError } from './codex-config-toml-checked-edit'
+import {
+  CodexConfigTomlEditRefusedError,
+  reportCodexTrustWriteRefusals
+} from './codex-config-toml-checked-edit'
 import { getTomlTable, readTomlValueAtPath } from './codex-config-toml-document'
 import { setHookTrustEnabledContent } from './config-toml-hook-trust-edit'
 import { repairOrcaCodexConfigDuplicates } from './codex-config-toml-repair'
@@ -308,5 +311,27 @@ describe('review follow-ups for the checked writer', () => {
     )
     const ownedOnly = broken.split('[mcp_servers.a]')[0]!
     expect(() => parse(upsertHookTrustEntriesInContent(ownedOnly, [hookEntry()]))).not.toThrow()
+  })
+})
+
+describe('refused trust writes are reported once per file', () => {
+  it('logs each refusal once, including inside an AggregateError, and returns other failures', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const refusal = new CodexConfigTomlEditRefusedError({
+        reason: 'input-invalid',
+        detail: 'the file is not valid TOML',
+        configPath: '/tmp/report-once-probe/config.toml'
+      })
+      const other = new Error('EACCES')
+      expect(
+        reportCodexTrustWriteRefusals(new AggregateError([refusal, other], 'trust write failed'))
+      ).toEqual([other])
+      expect(reportCodexTrustWriteRefusals(refusal)).toEqual([])
+      expect(warn).toHaveBeenCalledTimes(1)
+      expect(String(warn.mock.calls[0]?.[0])).toContain('/tmp/report-once-probe/config.toml')
+    } finally {
+      warn.mockRestore()
+    }
   })
 })

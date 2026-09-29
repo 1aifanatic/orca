@@ -17,6 +17,7 @@ import {
   markCursorWorkspaceTrusted
 } from '../agent-trust-presets'
 import { awaitAgentTrustWriteWithinDeadline } from '../agent-trust-write-deadline'
+import { reportCodexTrustWriteRefusals } from '../codex/codex-config-toml-checked-edit'
 import {
   detectInstalledAgentsWithShellPathHydration,
   detectRemoteAgents
@@ -207,8 +208,9 @@ export async function markLocalWorktreeTrusted(
     } else if (preset === 'antigravity') {
       markAntigravityWorkspaceTrusted(workspacePath)
     }
-  } catch {
+  } catch (error) {
     // Best-effort: the user can still accept the agent trust prompt manually.
+    reportCodexTrustWriteRefusals(error)
   }
 }
 
@@ -223,7 +225,8 @@ export async function markRemoteWorktreeTrusted(
   }
   try {
     await markRemoteAgentWorkspaceTrusted({ preset, connectionId, workspacePath })
-  } catch {
+  } catch (error) {
     // Best-effort: the user can still accept the remote agent trust prompt manually.
+    reportCodexTrustWriteRefusals(error)
   }
 }

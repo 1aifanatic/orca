@@ -186,6 +186,21 @@ export function reportCodexConfigTomlEditRefusal(
   reportCodexConfigOnce(error.configPath ?? context, `${context}: ${error.message}`)
 }
 
+/**
+ * Why: a refused trust write recurs on every launch until the user fixes the
+ * file, so it is reported once per file; returns the other failures for the caller.
+ */
+export function reportCodexTrustWriteRefusals(error: unknown): unknown[] {
+  const failures = error instanceof AggregateError ? error.errors : [error]
+  return failures.filter((failure) => {
+    if (!(failure instanceof CodexConfigTomlEditRefusedError)) {
+      return true
+    }
+    reportCodexConfigTomlEditRefusal(failure, 'Skipped marking a workspace trusted for Codex')
+    return false
+  })
+}
+
 export function clearCodexConfigTomlEditRefusalReport(configPath: string): void {
   reportedRefusals.delete(configPath)
 }

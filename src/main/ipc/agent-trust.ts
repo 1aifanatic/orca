@@ -9,6 +9,7 @@ import {
 } from '../agent-trust-presets'
 import { awaitAgentTrustWriteWithinDeadline } from '../agent-trust-write-deadline'
 import { markRemoteAgentWorkspaceTrusted } from '../remote-agent-trust-presets'
+import { reportCodexTrustWriteRefusals } from '../codex/codex-config-toml-checked-edit'
 
 /**
  * Why: cursor-agent, GitHub Copilot CLI, and Codex gate first-launch in an
@@ -57,9 +58,10 @@ export function registerAgentTrustHandlers(): void {
         } else if (args.preset === 'antigravity') {
           markAntigravityWorkspaceTrusted(args.workspacePath)
         }
-      } catch {
+      } catch (error) {
         // Best-effort: see Why above. The user can still accept the trust
         // prompt manually if writing the artifact fails.
+        reportCodexTrustWriteRefusals(error)
       }
     }
   )

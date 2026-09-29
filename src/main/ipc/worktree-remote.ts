@@ -159,6 +159,7 @@ import {
   markCursorWorkspaceTrusted
 } from '../agent-trust-presets'
 import { awaitAgentTrustWriteWithinDeadline } from '../agent-trust-write-deadline'
+import { reportCodexTrustWriteRefusals } from '../codex/codex-config-toml-checked-edit'
 import {
   getLocalProjectGitExecOptions,
   getLocalProjectWorktreeGitOptions,
@@ -456,8 +457,9 @@ async function spawnLocalStartupAndSetupTerminals(args: {
             workspacePath: worktree.path
           })
         }
-      } catch {
+      } catch (error) {
         // Best-effort: launch still proceeds and the agent can ask interactively.
+        reportCodexTrustWriteRefusals(error)
       }
     }
     const terminal = await runtime.createTerminal(`id:${worktree.id}`, {

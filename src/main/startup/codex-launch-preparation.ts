@@ -3,6 +3,7 @@ import type { CodexHomeLaunchContext } from '../ipc/pty'
 import type { CodexAccountSelectionTarget } from '../codex-accounts/runtime-selection'
 import { markCodexProjectTrusted } from '../agent-trust-presets'
 import { awaitAgentTrustWriteWithinDeadline } from '../agent-trust-write-deadline'
+import { reportCodexTrustWriteRefusals } from '../codex/codex-config-toml-checked-edit'
 import { codexHookService } from '../codex/hook-service'
 import { getDefaultWslDistro } from '../wsl'
 import { isAgentStatusHooksEnabledForAgent } from '../agent-hooks/managed-agent-hook-controls'
@@ -33,7 +34,10 @@ export async function prepareCodexRuntimeHomeForLaunch(
         }
       )
     } catch (error) {
-      console.warn('[codex-project-trust] failed to pre-mark launch workspace:', error)
+      const unreported = reportCodexTrustWriteRefusals(error)
+      if (unreported.length > 0) {
+        console.warn('[codex-project-trust] failed to pre-mark launch workspace:', ...unreported)
+      }
     }
   }
   const ensureRealHomeHooksIfSelected = async (): Promise<boolean> => {
