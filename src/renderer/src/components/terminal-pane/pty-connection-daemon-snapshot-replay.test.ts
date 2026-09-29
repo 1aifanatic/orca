@@ -769,7 +769,7 @@ describe('connectPanePty', () => {
     await flushAsyncTicks(8)
     replayCallback.current?.('blocking replay')
     await flushAsyncTicks(12)
-    expect(writes).toEqual(['\x1b[2J\x1b[3J\x1b[H'])
+    expect(writes).toEqual(['\x1b[?2026l\x1b[2J\x1b[3J\x1b[H'])
     reattachResult.resolve({ id: 'tab-pty', snapshot: 'stale authoritative snapshot' })
     await flushAsyncTicks(12)
     const resizeCallsBeforeReplacement = transport.resize.mock.calls.length

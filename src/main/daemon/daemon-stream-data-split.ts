@@ -3,6 +3,7 @@
  * chunking (the receiver's parser rejects oversized lines) and the safe-index
  * clamp shared by the batcher's bulk write slicing and keep-tail dropping.
  */
+import { resolveSynchronizedOutputSafeSplit } from '../../shared/terminal-synchronized-output-scan'
 import { encodeNdjson } from './ndjson'
 
 export function encodeStreamDataEvent(
@@ -36,6 +37,15 @@ function isHighSurrogate(value: number): boolean {
 
 function isLowSurrogate(value: number): boolean {
   return value >= 0xdc00 && value <= 0xdfff
+}
+
+/**
+ * Bulk-write split policy: frame-align first so a held remainder cannot strand an
+ * open DEC 2026 frame's closing \x1b[?2026l (xterm then paints nothing until its
+ * 1s timeout), then let the surrogate clamp have the final say.
+ */
+export function clampToSafeBulkWriteSplitIndex(value: string, end: number): number {
+  return clampToSafeSplitIndex(value, 0, resolveSynchronizedOutputSafeSplit(value, end))
 }
 
 export function clampToSafeSplitIndex(value: string, start: number, end: number): number {
