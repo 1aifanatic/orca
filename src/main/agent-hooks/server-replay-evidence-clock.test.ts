@@ -85,6 +85,19 @@ describe('the observation clock a relay replay must not restamp', () => {
     expect(row.evidenceObservedAt).toBe(T0)
   })
 
+  it('keeps the observation time for a replay that lands after the row was dismissed', () => {
+    ingest(server, { hook_event_name: 'UserPromptSubmit', prompt: 'do the thing' })
+    server.dropStatusEntry(PANE, { preserveResumeIdentity: false })
+
+    vi.setSystemTime(T0 + 25 * 60 * 1000)
+    ingest(
+      server,
+      { hook_event_name: 'UserPromptSubmit', prompt: 'do the thing' },
+      { isReplay: true }
+    )
+    expect(lastForPane().evidenceObservedAt).toBe(T0)
+  })
+
   it('lets a live event restamp the observation time after a replay', () => {
     ingest(server, { hook_event_name: 'UserPromptSubmit', prompt: 'do the thing' })
     vi.setSystemTime(T0 + 25 * 60 * 1000)

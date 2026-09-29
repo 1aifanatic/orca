@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { AgentHookServer, _internals } from './server'
-import { buildBody, postHookEvent, recentTs, PANE } from './server.test-fixtures'
+import { buildBody, postHookEvent, recentTs, PANE, GOOD_PANE } from './server.test-fixtures'
 
 const { getCohortAtEmitMock, trackMock } = vi.hoisted(() => ({
   getCohortAtEmitMock: vi.fn(),
@@ -307,6 +307,14 @@ describe('Last-status persistence', () => {
       )
 
       expect(server.getStatusSnapshot()[0]?.receivedAt).toBe(receivedAt + 1)
+      // A new pane on the same connection sorts after it too, while the clock still reads earlier.
+      server.ingestRemote(
+        { paneKey: GOOD_PANE, isReplay: true, payload: { state: 'working', agentType: 'claude' } },
+        'ssh-a'
+      )
+      expect(
+        server.getStatusSnapshot().find((entry) => entry.paneKey === GOOD_PANE)?.receivedAt
+      ).toBe(receivedAt + 2)
     } finally {
       server.stop()
     }
