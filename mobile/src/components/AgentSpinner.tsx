@@ -3,20 +3,22 @@ import { Activity } from 'lucide-react-native'
 import { Animated, Easing, StyleSheet, View } from 'react-native'
 import type { AgentWorkingMode } from '../../../src/shared/agent-status-types'
 import type { WorktreeDisplayStatus } from '../worktree/workspace-list-types'
+import { colors } from '../theme/mobile-theme'
 
 // Why: colors and sizing are 1:1 with the desktop StatusIndicator
 // (src/renderer/src/components/sidebar/StatusIndicator.tsx) so the mobile
 // worktree list reads identically to the sidebar — same yellow spinner for
 // 'working', same emerald dot for 'active'/'done', same neutral-500 @ 40%
-// for 'inactive', same red for 'permission'/'failed'/'interrupted'. Diverging palettes here lose
+// for 'inactive', same red for 'permission'/'failed'. Diverging palettes here lose
 // the design intent ('moving' vs 'alive' vs 'completed') the desktop encodes.
+// Why: a user's Stop is not news, so 'interrupted' is muted, never the fault red.
 const STATUS_COLORS: Record<WorktreeDisplayStatus, string> = {
   working: '#eab308',
   active: '#10b981',
   done: '#10b981',
   permission: '#ef4444',
   failed: '#ef4444',
-  interrupted: '#ef4444',
+  interrupted: colors.textMuted,
   inactive: 'rgba(115,115,115,0.4)'
 }
 
