@@ -158,6 +158,27 @@ describe('removing a worktree the host deletes in the background', () => {
     expect(deleteState(store)).toMatchObject({ isDeleting: false, error: 'Permission denied' })
   })
 
+  it('does not fail a retry with the failure of an earlier delete it did not wait on', async () => {
+    seedRow(store, { removing: true })
+    reconcileHostWorktreeRemovals(store)
+    applyBackgroundWorktreeRemovalOutcome(
+      'local',
+      { worktreeId, status: 'failed', error: 'Permission denied' },
+      store
+    )
+    seedRow(store)
+    reconcileHostWorktreeRemovals(store)
+
+    const retry = store.getState().removeWorktree({ id: worktreeId, executionHostId: 'local' })
+    await vi.waitFor(() => expect(mockApi.worktrees.remove).toHaveBeenCalled())
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(deleteState(store)).toMatchObject({ isDeleting: true, error: null })
+
+    settleBackgroundWorktreeRemoval('local', { worktreeId, status: 'removed' })
+    await expect(retry).resolves.toEqual({ ok: true })
+  })
+
   it('leaves a delete this renderer started to that flow', () => {
     seedRow(store, { removing: true })
     store.getState().markWorktreesDeleting([{ id: worktreeId, hostId: 'local' }])

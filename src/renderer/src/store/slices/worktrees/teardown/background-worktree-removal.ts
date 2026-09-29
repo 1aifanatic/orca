@@ -73,6 +73,17 @@ function finishedResult(
 }
 
 /**
+ * Drops any outcome buffered for this workspace before a new removal request is sent: it belongs
+ * to an earlier removal (another client's, or one settled from listings), never to this request.
+ */
+export function discardEarlierWorktreeRemovalOutcome(
+  hostId: ExecutionHostId,
+  worktreeId: string
+): void {
+  earlyOutcomes.delete(removalKey(hostId, worktreeId))
+}
+
+/**
  * Resolves when the host finishes a removal it accepted in the background, with the result an
  * inline removal would have returned, or rejects with the host's error.
  */
