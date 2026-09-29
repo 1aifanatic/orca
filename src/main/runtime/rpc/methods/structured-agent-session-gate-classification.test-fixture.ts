@@ -64,6 +64,7 @@ export const ADMISSION_METHODS = [
     method: 'agentSession.queuedMessageDelete',
     params: { envelope: envelope(), messageId: 'queued-1' }
   },
+  { method: 'agentSession.queuedMessagesResume', params: { envelope: envelope() } },
   {
     method: 'agentSession.rewind',
     params: { envelope: envelope(), itemId: 'chosen', expectedEpoch: 'epoch' }

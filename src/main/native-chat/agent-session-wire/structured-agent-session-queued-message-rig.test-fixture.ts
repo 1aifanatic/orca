@@ -9,6 +9,7 @@ import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
+import type { AgentSessionQueuePause } from '../../../shared/agent-session-wire'
 import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
@@ -213,14 +214,26 @@ export async function createQueuedMessageTestRig() {
     })
   }
 
-  /** What a host-process restart loses while the rows survive: the instance id
-   *  and the in-memory record of user sends awaiting their turn. */
-  function restartHostProcess(): void {
+  /** A host-process restart, as the queue sees it: the conversation closes, and
+   *  opens afresh under a new instance id while its rows survive. */
+  async function restartHostProcess(): Promise<void> {
+    await host.close(SESSION)
     rotateStructuredAgentSessionHostInstanceForTests()
-    const session = host.collaboratorsForTests().sessions.get(SESSION)
-    if (session) {
-      delete session.userSendsAwaitingTurn
+  }
+
+  /** The queue's published pause: null when it sends on its own. */
+  async function queuePause(sessionId = SESSION): Promise<AgentSessionQueuePause | null> {
+    const page = await host.history({ sessionId, direction: 'tail' })
+    if (!page.ok) {
+      throw new Error('history refused')
     }
+    return page.page.queuePause ?? null
+  }
+
+  function resume(clientOperationId = hostTestOperationId()) {
+    return host.queuedMessagesResume(QUEUED_RIG_CALLER, {
+      envelope: envelope({}, 'agentSession.queuedMessagesResume', clientOperationId)
+    })
   }
 
   async function dispose(): Promise<void> {
@@ -248,6 +261,8 @@ export async function createQueuedMessageTestRig() {
     settleAccepted,
     settleRejected,
     restartHostProcess,
+    queuePause,
+    resume,
     dispose
   }
 }

@@ -5,7 +5,6 @@
 // under a fresh submission id.
 
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { QUEUED_MESSAGE_PAUSED_STOPPED } from '../../../shared/agent-session-wire'
 import { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { HOST_TEST_SESSION as SESSION } from './structured-agent-session-host-test-data'
 import {
@@ -57,15 +56,10 @@ it('Stop, then a user send: the withdrawn draft and the paused cards behind it d
 
   expect(await rig.stop()).toMatchObject({ ok: true })
   release()
-  // A is back in its place, paused exactly like B and C: no returned card blocks them.
-  const paused = [a, b, c].map((messageId) => ({ messageId, state: 'waiting', paused: true }))
+  // A is back in its place, behind the same queue pause as B and C: no returned card blocks them.
+  const paused = [a, b, c].map((messageId) => ({ messageId, state: 'waiting' }))
   expect(await rig.drafts()).toEqual(paused)
-  const page = await rig.host.history({ sessionId: SESSION, direction: 'tail' })
-  expect(page.ok && page.page.queuedMessages?.map((card) => card.pausedReason)).toEqual([
-    QUEUED_MESSAGE_PAUSED_STOPPED,
-    QUEUED_MESSAGE_PAUSED_STOPPED,
-    QUEUED_MESSAGE_PAUSED_STOPPED
-  ])
+  expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
 
   const d = rig.send('D')
   await d.result

@@ -26,10 +26,9 @@ import { QueuedMessageNotConsumableError } from '../agent-session-journal/journa
 import type { QueuedMessageRow } from '../agent-session-journal/queued-message-table'
 import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
 import {
-  queuedMessageHeld,
-  structuredAgentSessionHostInstance
+  structuredAgentSessionHostInstance,
+  structuredQueuePause
 } from './structured-agent-session-queued-pause'
-import { awaitUserSendTurn } from './structured-agent-session-queued-stop'
 
 /** Budget at accept, in the send schema's own unit (`Buffer.byteLength` of the
  *  serialized blocks); refused readably rather than trimmed. */
@@ -57,21 +56,28 @@ export function pendingPromptExists(journal: Pick<AgentSessionJournal, 'visitIte
   return pending
 }
 
-/** Waiting, unpaused, and not positioned behind a returned card. The admission
- *  rule (§accept) and the drain's selection both read it. */
-function oldestActionableQueuedMessage(rows: readonly QueuedMessageRow[]): QueuedMessageRow | null {
+/** Waiting, not held on its own, not positioned behind a returned card, and the
+ *  queue not paused. The admission rule (§accept) and the drain's selection
+ *  both read it. */
+function oldestActionableQueuedMessage(
+  journal: Pick<
+    AgentSessionJournal,
+    'queuedMessages' | 'submissions' | 'cursor' | 'wroteBeforeOpen'
+  >
+): QueuedMessageRow | null {
+  const rows = journal.queuedMessages.list()
+  // Nothing waiting costs no pause derivation: this runs on every journal publish.
+  if (!rows.some((row) => row.state === 'waiting') || structuredQueuePause(journal) !== null) {
+    return null
+  }
   for (const row of rows) {
     if (row.state === 'returned') {
       // A returned card blocks everything after it until the user acts.
       return null
     }
-    if (row.state !== 'waiting') {
-      continue
+    if (row.state === 'waiting' && row.holdReason === null) {
+      return row
     }
-    if (queuedMessageHeld(row)) {
-      continue
-    }
-    return row
   }
   return null
 }
@@ -134,9 +140,10 @@ export function structuredQueueHold(input: {
 /**
  * Whether a `queue-if-active` send becomes a draft: any queue hold short of
  * `blocked`, or an actionable draft already exists (FIFO backlog — an
- * ADMISSION rule only, never a drain gate). A lone returned card, or only
- * paused drafts, does not trap a new send: the user acting now wins — Orca's
- * own queue policy, a stated deviation from held-head backlog counting.
+ * ADMISSION rule only, never a drain gate). A lone returned card, or a paused
+ * queue, does not trap a new send: the user acting now wins, and that send's
+ * turn starting is what lifts the pause — Orca's own queue policy, a stated
+ * deviation from held-head backlog counting.
  */
 export function shouldQueueStructuredAgentSessionSend(input: {
   journal: AgentSessionJournal
@@ -152,7 +159,7 @@ export function shouldQueueStructuredAgentSessionSend(input: {
   if (hold !== null) {
     return true
   }
-  return oldestActionableQueuedMessage(input.journal.queuedMessages.list()) !== null
+  return oldestActionableQueuedMessage(input.journal) !== null
 }
 
 /** A draft's payload fingerprint in the session that will send it: the reducer
@@ -288,7 +295,7 @@ export class StructuredAgentSessionQueuedMessageDrain {
     try {
       if (
         !journal.queuedMessages.settlementOwed() &&
-        (oldestActionableQueuedMessage(journal.queuedMessages.list()) === null ||
+        (oldestActionableQueuedMessage(journal) === null ||
           isStructuredAgentSessionMainAgentWorking(
             journal.activeTurnId(),
             journal.submissions(),
@@ -329,7 +336,7 @@ export class StructuredAgentSessionQueuedMessageDrain {
         this.deps.onError(sessionId, error)
       })
     }
-    const next = oldestActionableQueuedMessage(journal.queuedMessages.list())
+    const next = oldestActionableQueuedMessage(journal)
     if (!next) {
       return
     }
@@ -347,6 +354,8 @@ export class StructuredAgentSessionQueuedMessageDrain {
       await journal.appendSubmission(
         {
           clientMessageId: submissionId,
+          // The queue's own automatic send: it never ends a pause.
+          origin: 'host',
           payloadFingerprint: next.fingerprint,
           body: next.body,
           fence,
@@ -368,8 +377,6 @@ export class StructuredAgentSessionQueuedMessageDrain {
         .catch(() => {})
       throw error
     }
-    // A draft is the user's own send, so its turn starting lifts a Stop's pause.
-    awaitUserSendTurn(session, journal.submission(submissionId))
     this.deps.wakeDelivery(sessionId)
   }
 }

@@ -30,26 +30,22 @@ export function consumedSubmissionWasRejected(
 }
 
 /** What a consumed draft becomes when its submission is rejected. */
-export type RejectedDraftSettlement =
-  | { state: 'returned' }
-  | { state: 'waiting'; holdReason: 'stopped' | null }
+export type RejectedDraftSettlement = { state: 'returned' } | { state: 'waiting' }
 
 /**
  * Where no one failed the user — a Stop withdrew it, or a restart or close
  * interrupted it before hand-over — the draft goes back to waiting at its own
- * position, under the hold that same event put on the drafts behind it: a
- * Stop's 'stopped', or none, leaving a restart's hold to derive from the host
- * instance. A returned card would block those drafts on a failure that never
- * happened. A failure returns the card with its refusal for the user to act on.
+ * position, under whatever pauses the queue: the Stop's own pause, or the
+ * restart's, derived from the host instance. A returned card would block the
+ * drafts behind it on a failure that never happened. A failure returns the
+ * card with its refusal for the user to act on.
  */
 export function rejectedDraftSettlement(
   rejection: Pick<AgentJournalSubmission, 'reason'> & { rejection?: unknown }
 ): RejectedDraftSettlement {
-  const { category, verdict } = classifyDispatchRejection(rejection)
-  if (verdict !== null) {
-    return { state: 'returned' }
-  }
-  return { state: 'waiting', holdReason: category === 'withdrawn' ? 'stopped' : null }
+  return classifyDispatchRejection(rejection).verdict === null
+    ? { state: 'waiting' }
+    : { state: 'returned' }
 }
 
 /** True when committing this row NEWLY settles the submission to `rejected` —

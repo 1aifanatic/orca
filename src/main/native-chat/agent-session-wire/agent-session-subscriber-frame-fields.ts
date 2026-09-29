@@ -1,31 +1,32 @@
 // Which per-emit fields ride one subscriber frame: the provider command catalog
-// and the queued-draft list. Both are identity-deduplicated against the LAST
-// VALUE SENT — never advanced on a frame that withheld the field, or the final
-// replacement would be suppressed — and both attach whole to hydrating frames.
+// and the queue publication (the draft list with the queue's pause). Both are
+// identity-deduplicated against the LAST VALUE SENT — never advanced on a frame
+// that withheld the field, or the final replacement would be suppressed — and
+// both attach whole to hydrating frames.
 
 import type {
-  AgentSessionQueuedMessage,
   AgentSessionSlashCommand,
   AgentSessionSubscribeEvent
 } from '../../../shared/agent-session-wire'
+import type { QueuePublication } from './structured-agent-session-queued-publication'
 
 export type SubscriberFieldState = {
   sessionId: string
   commands?: AgentSessionSlashCommand[] | null
-  /** The last draft list actually SENT. */
-  queuedMessages?: AgentSessionQueuedMessage[]
+  /** The last queue publication actually SENT. */
+  queuePublication?: QueuePublication
 }
 
 export type SubscriberFieldHooks = {
   readCommands?: (sessionId: string) => AgentSessionSlashCommand[] | undefined
-  readQueuedMessages?: (sessionId: string) => AgentSessionQueuedMessage[] | undefined
+  readQueuePublication?: (sessionId: string) => QueuePublication | undefined
 }
 
 export type SubscriberFrame = {
   frame: AgentSessionSubscribeEvent
   commands: AgentSessionSlashCommand[] | null
   attachedQueued: boolean
-  queued: AgentSessionQueuedMessage[] | undefined
+  queued: QueuePublication | undefined
 }
 
 /** Builds the frame to emit; the caller stores the returned refs only after the
@@ -43,16 +44,18 @@ export function buildSubscriberFrame(
     (event.type !== 'batch' || commands !== subscriber.commands)
   // Withheld on intermediate catch-up pages (the caller says so), attached to
   // every hydrating frame, and to batches only when the list changed.
-  const queued = withholdQueued ? undefined : hooks.readQueuedMessages?.(subscriber.sessionId)
+  const queued = withholdQueued ? undefined : hooks.readQueuePublication?.(subscriber.sessionId)
   const attachedQueued =
     queued !== undefined &&
     event.type !== 'end' &&
-    (event.type !== 'batch' || queued !== subscriber.queuedMessages)
+    (event.type !== 'batch' || queued !== subscriber.queuePublication)
   return {
     frame: {
       ...event,
       ...(includeCommands ? { commands: commands ?? null } : {}),
-      ...(attachedQueued ? { queuedMessages: queued } : {})
+      ...(attachedQueued && queued
+        ? { queuedMessages: queued.queuedMessages, queuePause: queued.queuePause }
+        : {})
     },
     commands,
     attachedQueued,
@@ -61,14 +64,14 @@ export function buildSubscriberFrame(
 }
 
 /** Whether a caught-up publish with no rows still owes this subscriber a frame:
- *  draft inserts and pauses write no journal row, so an unchanged cursor must
- *  still deliver the changed list. */
+ *  draft inserts and pause changes write no journal row, so an unchanged cursor
+ *  must still deliver the changed publication. */
 export function subscriberQueuedMessagesChanged(
   hooks: SubscriberFieldHooks,
   subscriber: SubscriberFieldState
 ): boolean {
   return (
-    hooks.readQueuedMessages !== undefined &&
-    hooks.readQueuedMessages(subscriber.sessionId) !== subscriber.queuedMessages
+    hooks.readQueuePublication !== undefined &&
+    hooks.readQueuePublication(subscriber.sessionId) !== subscriber.queuePublication
   )
 }

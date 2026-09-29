@@ -12,12 +12,13 @@ import {
 } from '../../../shared/agent-session-host-authority'
 import type { JournalReducerState } from './journal-reducer'
 import type { JournalRow } from './journal-row-schema'
+import { adoptQueuedMessages, holdQueuedMessages } from './queued-message-holds'
 import {
-  holdQueuedMessages,
-  releaseQueuePauseHolds,
-  restoreQueuedMessageHolds,
-  type QueuedMessageHoldChange
-} from './queued-message-holds'
+  clearQueuePause,
+  readQueuePause,
+  recordQueuePause,
+  type QueuePauseFact
+} from './queued-message-pause-table'
 import {
   consumeQueuedMessageInTransaction,
   getQueuedMessage,
@@ -60,6 +61,7 @@ export class JournalQueuedMessages {
   /** Bumped on every draft-table write, so publication memos recompute only when they must. */
   private changeRevision = 0
   private listed: { revision: number; rows: readonly QueuedMessageRow[] } | null = null
+  private paused: { revision: number; fact: QueuePauseFact | null } | null = null
 
   constructor(private readonly deps: JournalQueuedMessagesDeps) {}
 
@@ -98,9 +100,6 @@ export class JournalQueuedMessages {
     body: AgentJournalMessageItem
     fingerprint: string
     hostInstance: string
-    /** Insert already held (a /clear carrying drafts across sessions), so the
-     *  row is never visible to the drain unheld. */
-    holdReason?: QueuedMessageHoldReason
   }): Promise<QueuedMessageRow> {
     return this.deps.serialize(async () => {
       assertJournalWritable(this.deps.readOnly(), this.deps.sessionId)
@@ -122,59 +121,50 @@ export class JournalQueuedMessages {
     })
   }
 
-  /** Hold waiting drafts from auto-sending — a Stop's frontier, a failed
-   *  conversion. Stored on the rows, so it survives handle eviction and
-   *  restart and dies with the session's journal; withdraw and consume clear
-   *  it in their own UPDATE. Returns the rows it newly reached, for an undo. */
-  hold(input: {
-    messageIds: readonly string[]
-    reason: QueuedMessageHoldReason
-  }): Promise<QueuedMessageHoldChange[]> {
-    if (input.messageIds.length === 0) {
-      // Every Stop calls this; one with no drafts must cost no write transaction.
-      return Promise.resolve([])
-    }
+  /** Hold one waiting draft whose conversion failed. Stored on the row, so it
+   *  survives handle eviction and restart; withdraw and consume clear it in their
+   *  own UPDATE. */
+  hold(input: { messageIds: readonly string[]; reason: QueuedMessageHoldReason }): Promise<void> {
     return this.transact(
       (db) => holdQueuedMessages(db, { ...input, sessionId: this.deps.sessionId }),
-      (held) => held.length > 0
+      (held) => held > 0
+    ).then(() => undefined)
+  }
+
+  /** Where the user's last Stop took effect, if it is still recorded; cached per revision. */
+  pause(): QueuePauseFact | null {
+    if (this.paused?.revision !== this.changeRevision) {
+      this.paused = {
+        revision: this.changeRevision,
+        fact: readQueuePause(this.deps.database().db, this.deps.sessionId)
+      }
+    }
+    return this.paused.fact
+  }
+
+  /** A Stop took effect here: the queue is paused from this journal position on. */
+  recordPause(): Promise<void> {
+    const { epoch, lastSequence: sequence } = this.deps.state()
+    const fact: QueuePauseFact = { reason: 'stopped', epoch, sequence, recordedAt: this.deps.now() }
+    return this.transact(
+      (db) => recordQueuePause(db, { sessionId: this.deps.sessionId, fact }),
+      () => true
     )
   }
 
-  /** Undo a `hold`: rows still under it get back the hold it replaced. */
-  restoreHolds(input: {
-    from: QueuedMessageHoldReason
-    changes: readonly QueuedMessageHoldChange[]
-  }): Promise<void> {
-    if (input.changes.length === 0) {
-      return Promise.resolve()
-    }
-    return this.transact(
-      (db) => restoreQueuedMessageHolds(db, { ...input, sessionId: this.deps.sessionId }),
-      (restored) => restored > 0
-    ).then(() => undefined)
-  }
-
-  /** Lift the stop-shaped holds — a stored 'stopped', and the derived restart
-   *  hold, whose row is adopted into the given instance — because the user next
-   *  started a turn. `send_failed` stays for its explicit Send. Guarded by the
-   *  cached list, so the started turns with nothing to lift (almost all of them)
-   *  cost no write transaction. */
-  releaseStopHolds(input: { hostInstance: string }): Promise<void> {
-    const pausedUntilNextSend = (row: QueuedMessageRow) =>
-      row.state === 'waiting' &&
-      (row.holdReason === 'stopped' ||
-        (row.holdReason === null && row.hostInstance !== input.hostInstance))
-    if (!this.list().some(pausedUntilNextSend)) {
-      return Promise.resolve()
-    }
+  /** Ends the queue's pause: `stop` retires that Stop fact (never a later one),
+   *  `adoptInto` adopts a restart's rows into this host instance. Returns whether
+   *  anything changed. */
+  liftPause(input: { stop: QueuePauseFact | null; adoptInto: string | null }): Promise<boolean> {
+    const { sessionId } = this.deps
     return this.transact(
       (db) =>
-        releaseQueuePauseHolds(db, {
-          sessionId: this.deps.sessionId,
-          hostInstance: input.hostInstance
-        }),
-      (released) => released > 0
-    ).then(() => undefined)
+        (input.stop ? clearQueuePause(db, { sessionId, fact: input.stop }) : 0) +
+        (input.adoptInto === null
+          ? 0
+          : adoptQueuedMessages(db, { sessionId, hostInstance: input.adoptInto })),
+      (changed) => changed > 0
+    ).then((changed) => changed > 0)
   }
 
   /** Compare-and-transition waiting ∪ returned rows to op-stamped tombstones,

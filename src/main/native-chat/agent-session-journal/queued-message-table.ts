@@ -15,11 +15,11 @@ import { readStoredRejectionFact } from './journal-dispatch-reducer'
 
 export type QueuedMessageState = 'waiting' | 'dispatched' | 'returned' | 'withdrawn'
 
-/** Why a waiting draft is held from auto-sending. Stored on the row — the hold
- *  must survive handle eviction and restart, and it dies with the session's
- *  journal. Both values are wire markers (they publish as `pausedReason`);
- *  a reader treats an unknown value as a plain hold. */
-export type QueuedMessageHoldReason = 'stopped' | 'send_failed'
+/** Why ONE waiting draft is held from auto-sending: its conversion failed.
+ *  Stored on the row, so it survives handle eviction and restart; a wire marker
+ *  (it publishes as `pausedReason`). A Stop or a restart pauses the whole queue
+ *  instead. A reader treats an unknown stored value as a plain hold. */
+export type QueuedMessageHoldReason = 'send_failed'
 
 /** Definitively unsettled: what Stop, /clear, Edit and the budget count, and
  *  what the published list shows. Pending/unknown/accepted deliveries and
@@ -37,7 +37,7 @@ export type QueuedMessageRow = {
   createdAt: number
   hostInstance: string
   state: QueuedMessageState
-  /** Non-null holds a waiting draft from auto-sending; typed values in
+  /** Non-null holds this one waiting draft from auto-sending; typed values in
    *  `QueuedMessageHoldReason`, unknown strings read as a plain hold. */
   holdReason: string | null
   /** A returned card's refusal, mirroring its submission's `reason` and `rejection` pair. */
@@ -64,9 +64,6 @@ export function insertQueuedMessage(
     fingerprint: string
     hostInstance: string
     now: number
-    /** Insert already held (a /clear carrying drafts across sessions): the row
-     *  must never be visible unheld, or the drain could send it first. */
-    holdReason?: QueuedMessageHoldReason
   }
 ): QueuedMessageRow {
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the statement selects exactly one aliased numeric column; better-sqlite3 types rows as unknown.
@@ -76,7 +73,7 @@ export function insertQueuedMessage(
   const position = Number(highest?.p ?? 0) + 1
   db.prepare(
     `INSERT INTO queued_messages (${COLUMNS})
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'waiting', ?, NULL, NULL, NULL, NULL, NULL)`
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'waiting', NULL, NULL, NULL, NULL, NULL, NULL)`
   ).run(
     input.sessionId,
     input.messageId,
@@ -84,8 +81,7 @@ export function insertQueuedMessage(
     JSON.stringify(input.body),
     input.fingerprint,
     input.now,
-    input.hostInstance,
-    input.holdReason ?? null
+    input.hostInstance
   )
   return {
     sessionId: input.sessionId,
@@ -96,7 +92,7 @@ export function insertQueuedMessage(
     createdAt: input.now,
     hostInstance: input.hostInstance,
     state: 'waiting',
-    holdReason: input.holdReason ?? null,
+    holdReason: null,
     returnedReason: null,
     returnedRejection: null,
     settledAt: null,
@@ -224,11 +220,11 @@ export function settleRejectedQueuedMessage(
       ? db
           .prepare(
             `UPDATE queued_messages
-             SET state = 'waiting', hold_reason = ?, consumed_as = NULL,
+             SET state = 'waiting', hold_reason = NULL, consumed_as = NULL,
                  returned_reason = NULL, returned_rejection = NULL, settled_at = NULL, settled_by_op = NULL
              WHERE session_id = ? AND state = 'dispatched' AND consumed_as = ?`
           )
-          .run(settlement.holdReason, input.sessionId, input.consumedRef)
+          .run(input.sessionId, input.consumedRef)
       : db
           .prepare(
             `UPDATE queued_messages
