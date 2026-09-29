@@ -23,15 +23,19 @@ export type MobileQueuedSlotProps = {
 export const NO_QUEUED_SLOT: MobileNativeChatQueuedSlot = {}
 
 export function useMobileNativeChatQueuedSlot(
-  queuedMessages: MobileNativeChatQueuedMessagesProps
+  queuedMessages: MobileNativeChatQueuedMessagesProps & {
+    /** One card list per conversation: a pending action in one never disables another's. */
+    sessionKey: string
+  }
 ): MobileNativeChatQueuedSlot {
   const { composerInputRef, editQueuedMessage } = useMobileNativeChatQueuedEditFocus(
     queuedMessages.onEdit
   )
-  const { cards, onSend, onDelete, pause, onResume } = queuedMessages
+  const { cards, onSend, onDelete, pause, onResume, sessionKey } = queuedMessages
   return useMemo(
     () => ({
       cards: createElement(MobileNativeChatQueuedMessages, {
+        key: sessionKey,
         cards,
         onSend,
         onDelete,
@@ -41,6 +45,6 @@ export function useMobileNativeChatQueuedSlot(
       }),
       composerInputRef
     }),
-    [cards, composerInputRef, editQueuedMessage, onDelete, onResume, onSend, pause]
+    [cards, composerInputRef, editQueuedMessage, onDelete, onResume, onSend, pause, sessionKey]
   )
 }

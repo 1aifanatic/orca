@@ -180,6 +180,7 @@ export function useMobileStructuredAgentSession(args: {
   )
   const queued = useMobileStructuredQueuedMessageControls({
     queueCapable,
+    sessionKey,
     queuedMessages,
     queuePause,
     submissions: state.submissions,

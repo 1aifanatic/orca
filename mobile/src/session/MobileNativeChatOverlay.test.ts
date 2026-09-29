@@ -47,7 +47,8 @@ function overlayElement(tick: Tick): ReturnType<typeof createElement> {
       delete: vi.fn(),
       edit: vi.fn(),
       pause: null,
-      resume: vi.fn()
+      resume: vi.fn(),
+      sessionKey: 'session-a'
     }
   } as unknown as MobileNativeChatController
   return createElement(MobileNativeChatOverlay, {

@@ -37,10 +37,13 @@ export type MobileStructuredQueuedMessageControls = {
   pause: MobileQueuePause
   /** Lift the queue's pause, so the waiting cards drain. */
   resume: () => Promise<boolean>
+  /** The conversation these belong to; the card list's in-flight guards never outlive it. */
+  sessionKey: string
 }
 
 export function useMobileStructuredQueuedMessageControls(args: {
   queueCapable: boolean
+  sessionKey: string
   queuedMessages: MobileQueuedMessageFeed
   queuePause: MobileQueuePause
   submissions: readonly AgentJournalSubmission[]
@@ -62,6 +65,7 @@ export function useMobileStructuredQueuedMessageControls(args: {
     queueCapable,
     queuedMessages,
     queuePause,
+    sessionKey,
     submissions
   } = args
   const cards = useMemo(
@@ -155,5 +159,5 @@ export function useMobileStructuredQueuedMessageControls(args: {
     [mutate, resolved]
   )
   const pause = queueCapable ? queuePause : null
-  return { cards, send, delete: deleteDraft, edit, pause, resume }
+  return { cards, send, delete: deleteDraft, edit, pause, resume, sessionKey }
 }

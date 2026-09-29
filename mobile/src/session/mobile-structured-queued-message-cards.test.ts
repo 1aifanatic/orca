@@ -63,6 +63,19 @@ describe('mobileQueuedMessageCards', () => {
     expect(card?.paused).toBe(false)
   })
 
+  it("keeps a card's own failed send and reads a prompt's wait as queued under a paused queue", () => {
+    const cards = mobileQueuedMessageCards(
+      [
+        draft({ messageId: 'a', paused: true, pausedReason: QUEUED_MESSAGE_PAUSED_SEND_FAILED }),
+        draft({ messageId: 'b', position: 2 })
+      ],
+      [],
+      { pendingPrompt: true, queuePaused: true }
+    )
+    expect(cards.map((card) => card.label)).toEqual(["Couldn't send — tap Send to retry", 'Queued'])
+    expect(cards[0]?.paused).toBe(true)
+  })
+
   it('words the paused queue by reason, and one this build does not know as a plain pause', () => {
     expect(mobileQueuePauseLabel({ reason: 'stopped' })).toBe(
       'Queue paused because you interrupted'

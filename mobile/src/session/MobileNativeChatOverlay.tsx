@@ -67,7 +67,8 @@ export function MobileNativeChatOverlay({
     onDelete: queued.delete,
     onEdit: queued.edit,
     pause: queued.pause,
-    onResume: queued.resume
+    onResume: queued.resume,
+    sessionKey: queued.sessionKey
   })
   if (!controller.showNativeChat) {
     return null

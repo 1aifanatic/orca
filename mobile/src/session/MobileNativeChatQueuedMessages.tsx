@@ -9,7 +9,7 @@ import {
 import type { MobileQueuePause } from './mobile-structured-queued-message-feed'
 import type { MobileQueuedMessageEdit } from './use-mobile-structured-queued-message-controls'
 
-/** The Resume row's in-flight key: NUL never appears in a draft's operation id. */
+/** The Resume row's in-flight key beside the cards' message ids, which never contain NUL. */
 const RESUME_KEY = '\u0000resume'
 
 export type MobileNativeChatQueuedMessagesProps = {
@@ -59,7 +59,8 @@ export function MobileNativeChatQueuedMessages({
   return (
     <View style={styles.list}>
       {pause ? (
-        <View style={styles.pauseRow}>
+        // A polite region, as the app's other notices: React Native has no status role.
+        <View testID="queued-pause-row" style={styles.pauseRow} accessibilityLiveRegion="polite">
           <Text style={styles.pauseLabel}>{mobileQueuePauseLabel(pause)}</Text>
           <Pressable
             accessibilityRole="button"
@@ -149,12 +150,12 @@ const ACTION_TARGET_INSET_VERTICAL = (MIN_TOUCH_TARGET - ACTION_ROW_HEIGHT) / 2
 const ACTION_TARGET_INSET_HORIZONTAL = spacing.md / 2
 
 const styles = StyleSheet.create({
+  // No negative margins: the row tops a list with no padding, and Android drops touches outside
+  // the parent, so Resume's whole 44pt target has to sit inside the row.
   pauseRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
-    marginVertical: -ACTION_TARGET_INSET_VERTICAL,
-    marginRight: -ACTION_TARGET_INSET_HORIZONTAL
+    gap: spacing.xs
   },
   pauseLabel: {
     flex: 1,

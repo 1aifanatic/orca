@@ -173,17 +173,48 @@ describe('MobileNativeChatQueuedMessages', () => {
       expect(empty.toJSON()).toBeNull()
     })
 
-    it('Resume asks the host to lift the pause, once per tap', async () => {
-      const onResume = vi.fn(async () => true)
+    function resumeButton(mounted: ReactTestRenderer) {
+      return mounted.root.findByProps({ accessibilityLabel: 'Resume sending the queued messages' })
+    }
+
+    it('Resume asks the host to lift the pause once, however fast it is tapped twice', async () => {
+      let answer: (resumed: boolean) => void = () => undefined
+      const onResume = vi.fn(() => new Promise<boolean>((resolve) => (answer = resolve)))
       const mounted = await mountPaused({ pause: { reason: 'restarted' }, onResume })
-      const resume = mounted.root.findByProps({
-        accessibilityLabel: 'Resume sending the queued messages'
-      })
-      const resolved: unknown = resume.props.style({ pressed: false })
+      const resolved: unknown = resumeButton(mounted).props.style({ pressed: false })
       const style = Object.assign({}, ...(Array.isArray(resolved) ? resolved : [resolved]))
       expect(style.minHeight).toBeGreaterThanOrEqual(44)
-      await act(async () => resume.props.onPress())
+      // Both taps land in one frame, before the disabled state can render.
+      await act(async () => {
+        resumeButton(mounted).props.onPress()
+        resumeButton(mounted).props.onPress()
+      })
       expect(onResume).toHaveBeenCalledTimes(1)
+      await act(async () => answer(true))
+    })
+
+    it('re-enables Resume when its answer is lost, so it can be tried again', async () => {
+      let answer: (resumed: boolean) => void = () => undefined
+      const onResume = vi.fn(() => new Promise<boolean>((resolve) => (answer = resolve)))
+      const mounted = await mountPaused({ pause: { reason: 'stopped' }, onResume })
+      await act(async () => resumeButton(mounted).props.onPress())
+      expect(resumeButton(mounted).props.disabled).toBe(true)
+      // A lost answer reads as not resumed.
+      await act(async () => answer(false))
+      expect(resumeButton(mounted).props.disabled).toBe(false)
+      await act(async () => resumeButton(mounted).props.onPress())
+      expect(onResume).toHaveBeenCalledTimes(2)
+    })
+
+    it('keeps the whole Resume target inside its row, and announces the row', async () => {
+      const mounted = await mountPaused({ pause: { reason: 'stopped' } })
+      const row = mounted.root.findByProps({ testID: 'queued-pause-row' })
+      // Android drops touches outside the parent: no margin may pull the row past the list's edge.
+      const margins = Object.entries(Object.assign({}, row.props.style)).filter(([key]) =>
+        key.startsWith('margin')
+      )
+      expect(margins.filter(([, value]) => typeof value === 'number' && value < 0)).toEqual([])
+      expect(row.props.accessibilityLiveRegion).toBe('polite')
     })
 
     it('keeps Steer on its cards: one card can still go beside the paused rest', async () => {

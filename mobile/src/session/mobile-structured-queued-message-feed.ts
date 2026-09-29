@@ -26,6 +26,10 @@ export function reduceMobileQueuePause(
     return previous
   }
   const next = event.queuePause ?? null
+  // Presence first: a pause with no reason, or one this build does not know, is still a pause.
+  if ((next === null) !== (previous === null)) {
+    return next
+  }
   return next?.reason === previous?.reason ? previous : next
 }
 
