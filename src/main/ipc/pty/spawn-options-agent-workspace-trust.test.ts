@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ClaudeRuntimeAuthPreparation } from '../../claude-accounts/runtime-auth/runtime-auth-types'
+import { getDefaultSettings } from '../../../shared/constants'
+import type { TuiAgent } from '../../../shared/tui-agent'
 
 const applyAgentWorkspaceTrust = vi.hoisted(() =>
   vi.fn<(preset: string, path: string, context: unknown) => Promise<object>>(async () => ({}))
@@ -7,7 +9,7 @@ const applyAgentWorkspaceTrust = vi.hoisted(() =>
 vi.mock('../../agent-workspace-trust', () => ({ applyAgentWorkspaceTrust }))
 
 import { buildPtyIpcSpawnOptions } from './ipc/spawn-options'
-import { createPtyIpcSpawnState } from './ipc/spawn-state'
+import { createPtyIpcSpawnState, type PtyIpcSpawnState } from './ipc/spawn-state'
 import type { AdoptStablePaneResult, PtySpawnIpcDeps } from './ipc/spawn-types'
 import { buildRuntimePtySpawnOptions } from './runtime/spawn-options'
 import { createRuntimePtySpawnState } from './runtime/spawn-state'
@@ -15,26 +17,57 @@ import type { PtyRuntimeControllerDeps } from './runtime/controller-deps'
 
 type BuildInput = {
   connectionId?: string
-  launchAgent?: string
+  launchAgent?: TuiAgent
   command?: string
   restored?: boolean
   claudeAuth?: ClaudeRuntimeAuthPreparation | null
   wslDistro?: string | null
 }
 
-// oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the builders only test this for truthiness before the trust hook runs.
-const RESTORED_PANE = {} as AdoptStablePaneResult
+const RESTORED_PANE: AdoptStablePaneResult = {
+  result: { id: 'pty-restored' },
+  owner: { tabId: 'tab-1', leafId: 'leaf-1', ptyId: 'pty-restored' }
+}
 
-const DEPS = { getSettings: () => ({ agentWorkspaceTrustEnabled: true }) }
+function notReachedByOptionBuilding(): never {
+  throw new Error('spawn option building must not call this dependency')
+}
 
+function makeDeps(): PtySpawnIpcDeps & PtyRuntimeControllerDeps {
+  return {
+    getSettings: () => ({ ...getDefaultSettings('/tmp'), agentWorkspaceTrustEnabled: true }),
+    getLocalPtyStartupPromise: notReachedByOptionBuilding,
+    getLocalPtyProviderStartupPromise: notReachedByOptionBuilding,
+    adoptStablePane: notReachedByOptionBuilding,
+    assertFolderWorkspacePtyPathUsable: notReachedByOptionBuilding,
+    resolvePtySpawnStartupCwd: notReachedByOptionBuilding,
+    localStartupCwdDirectoryExists: notReachedByOptionBuilding,
+    prepareCodexResumeHome: notReachedByOptionBuilding,
+    noCodexResumeLaunch: notReachedByOptionBuilding,
+    resolveCodexResumeLaunch: notReachedByOptionBuilding,
+    reconcileSharedRuntimeResumeHome: notReachedByOptionBuilding,
+    stripSequencedStartupResumeArgv: notReachedByOptionBuilding,
+    transitionSpawnHiddenRendererPtyDeliveryState: notReachedByOptionBuilding,
+    trustedTerminalHandleEnv: new Set(),
+    sendPtySpawnedToRenderer: notReachedByOptionBuilding,
+    syncPtyBackgroundedDelivery: notReachedByOptionBuilding,
+    stopReplacedPty: notReachedByOptionBuilding,
+    requestSerializedBuffer: notReachedByOptionBuilding,
+    shutdownProviderAndDetectExit: notReachedByOptionBuilding,
+    rememberSyntheticKillExit: notReachedByOptionBuilding,
+    rememberRetiredRejectedPty: notReachedByOptionBuilding,
+    sendPtyExitToRenderer: notReachedByOptionBuilding,
+    finishPtyShutdown: notReachedByOptionBuilding,
+    retiredRejectedPtyIds: new Map()
+  }
+}
+
+/** What preflight and env assembly leave for the option builders; both spawn states share it. */
 function seed(
-  ctx: {
-    env: Record<string, string>
-    launchCommand: string | undefined
-    claudeAuth: ClaudeRuntimeAuthPreparation | null
-    expectedWslDistro: string | null
-    preAdoptedStablePane: AdoptStablePaneResult | null
-  },
+  ctx: Pick<
+    PtyIpcSpawnState,
+    'env' | 'launchCommand' | 'claudeAuth' | 'expectedWslDistro' | 'preAdoptedStablePane'
+  >,
   input: BuildInput
 ): void {
   ctx.env = { CLAUDE_CONFIG_DIR: '/cfg' }
@@ -54,15 +87,13 @@ async function build(route: 'renderer' | 'runtime', input: BuildInput) {
     command: input.command
   }
   if (route === 'renderer') {
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: option building reads only getSettings from deps with no hidden pane or runtime.
-    const ctx = createPtyIpcSpawnState(DEPS as unknown as PtySpawnIpcDeps, args)
+    const ctx = createPtyIpcSpawnState(makeDeps(), args)
     seed(ctx, input)
     await buildPtyIpcSpawnOptions(ctx)
     ctx.finishTerminalInstall()
     return ctx.spawnOptions
   }
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: option building reads only getSettings from deps with no hidden pane or runtime.
-  const ctx = createRuntimePtySpawnState(DEPS as unknown as PtyRuntimeControllerDeps, args)
+  const ctx = createRuntimePtySpawnState(makeDeps(), args)
   seed(ctx, input)
   await buildRuntimePtySpawnOptions(ctx)
   ctx.finishTerminalInstall()
@@ -87,6 +118,24 @@ describe.each(['renderer', 'runtime'] as const)('%s spawn builder agent trust', 
       wslDistro: 'Ubuntu',
       connectionId: null
     })
+  })
+
+  it('holds the spawn until the trust write settles', async () => {
+    let settleTrust = (): void => {}
+    applyAgentWorkspaceTrust.mockReturnValueOnce(
+      new Promise((resolve) => {
+        settleTrust = () => resolve({})
+      })
+    )
+    let built = false
+    const building = build(route, { launchAgent: 'claude', command: 'claude' }).then(() => {
+      built = true
+    })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(built).toBe(false)
+    settleTrust()
+    await building
+    expect(built).toBe(true)
   })
 
   it('keys on the declared agent even when setup sequencing rewrote the command', async () => {
