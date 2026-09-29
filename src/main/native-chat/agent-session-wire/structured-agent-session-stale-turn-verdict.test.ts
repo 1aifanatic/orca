@@ -448,12 +448,11 @@ describe('stale session state on a cold acquire', () => {
         state: 'interrupted',
         completedAt: 650
       })
-      // The probe's detail is Orca's, so the row carries none.
+      // A probe proves death only once the Orca that held the agent is gone: the restart's row,
+      // without the probe's detail, which is Orca's.
       expect(
         items.flatMap((item) => (item.body.kind === 'status' ? [item.body.text] : []))
-      ).toEqual([
-        'The agent stopped while this response was in progress. You can continue in this conversation.'
-      ])
+      ).toEqual(["The agent's session didn't survive the restart. Send a message to continue."])
     } finally {
       await journals.closeAll()
       await rm(root, { recursive: true, force: true })
@@ -790,6 +789,25 @@ describe('stale session state on a cold acquire', () => {
       expect(await settle([unverifiable, boundaryRow])).toEqual([])
       // A turn some other release left unverifiable has no row yet: the proof's is the one.
       expect(await settle([unverifiable])).toMatchObject([
+        {
+          identity: { clientMessageId: 'crash-boundary:session-1:1' },
+          body: { failure: { kind: 'hostRestarted' } }
+        }
+      ])
+    })
+
+    it('says an observed exit stopped the agent even with no crash boundary', async () => {
+      const { journal, appendLifecycleBatch } = journalWith([
+        lifecycleItem('turn-2', 'running', 2, { startedAt: 30 })
+      ])
+      await settleStaleStructuredAgentSessionState({
+        journal,
+        sessionId: 'session-1',
+        fence: 2,
+        acquisitionGeneration: 'generation-2',
+        deathEvidence: { kind: 'exit-observed', detail: 'exit', observedAt: 500, ownerFence: 1 }
+      })
+      expect(boundaryRows(appendLifecycleBatch)).toMatchObject([
         { body: { failure: { kind: 'providerExited' } } }
       ])
     })

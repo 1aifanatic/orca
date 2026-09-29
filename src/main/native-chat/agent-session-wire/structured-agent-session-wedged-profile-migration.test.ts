@@ -351,17 +351,17 @@ describe('already-wedged profiles become usable on load', () => {
         ...verdict
       })
       expect(activeStructuredAgentSessionTurnId(restoredJournal().snapshot().items)).toBe(null)
-      // The row never carries the proof's detail, which is Orca's log text. With no proof, the
-      // crash boundary's row is the one.
+      // The row never carries the proof's detail, which is Orca's log text. Only an exit the host
+      // watched says the agent stopped; a probe's proof, or none, is the restart the chat crossed.
       const statusRows = restoredJournal()
         .snapshot()
         .items.flatMap((item) => (item.body.kind === 'status' ? [item.body.text] : []))
       expect(statusRows).toEqual(
-        remote
-          ? ["Codex's session didn't survive the restart. Send a message to continue."]
-          : [
+        deathEvidence?.kind === 'exit-observed'
+          ? [
               'Codex stopped while this response was in progress. You can continue in this conversation.'
             ]
+          : ["Codex's session didn't survive the restart. Send a message to continue."]
       )
       // What the sidebar reads: every status this restart published says the chat is not working.
       expect(published.filter((summary) => summary.sessionId === SESSION)).not.toEqual([])
