@@ -1,4 +1,5 @@
 // What Codex's own verdict frames mean beyond the row they print.
+// Shared by journal translation and background-task projection.
 //
 // Both are decoration to the transcript and load-bearing to the session's state,
 // which is why they are read here rather than left to the generic-frame fallback.
