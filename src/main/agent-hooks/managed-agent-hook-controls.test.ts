@@ -178,6 +178,19 @@ describe('managed agent hook controls', () => {
     expect(mocks.installClaude).toHaveBeenCalledWith({ cliVersion: '2.1.261' })
   })
 
+  it('reports each detected CLI to the caller without probing it itself', async () => {
+    mocks.detect.mockResolvedValue({
+      claude: { state: 'missing' },
+      codex: { state: 'found', executablePath: '/opt/bin/codex' }
+    })
+    const onCliFound = vi.fn()
+
+    await installManagedAgentHooks({ agentCmdOverrides: {} }, { onCliFound })
+
+    expect(onCliFound).toHaveBeenCalledTimes(1)
+    expect(onCliFound).toHaveBeenCalledWith('codex', '/opt/bin/codex')
+  })
+
   it('only refreshes scripts for the selected agents', async () => {
     mocks.detect.mockResolvedValue({ codex: { state: 'found' } })
 

@@ -6,7 +6,6 @@ import {
 import { normalizeDisabledTuiAgents } from '../../shared/tui-agent-selection'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import { probeClaudeCliVersion } from '../claude/claude-hook-event-versions'
-import { codexExecutableCapability } from '../codex/codex-native-terminal-capability'
 import { detectLocalManagedAgentCliPresence } from './local-agent-cli-presence'
 import {
   MANAGED_AGENT_HOOK_ASYNC_REMOVERS,
@@ -32,6 +31,8 @@ type InstallOptions = {
   onInstallError?: (agent: AgentHookTarget, error: unknown) => void
   shouldContinue?: (agent: AgentHookTarget) => boolean
   agents?: readonly AgentHookTarget[]
+  /** Why injected: this module is also bundled into the CLI, where warming main-process caches is wasted work. */
+  onCliFound?: (agent: AgentHookTarget, executablePath: string) => void
 }
 
 type RemoveOptions = {
@@ -207,9 +208,7 @@ export async function installManagedAgentHooks(
       agent === 'claude' && presence.executablePath
         ? await probeClaudeCliVersion(presence.executablePath)
         : null
-    if (agent === 'codex') {
-      void codexExecutableCapability.supportsNoDaemon(presence.executablePath)
-    }
+    options.onCliFound?.(agent, presence.executablePath)
     results.push(
       await runInstaller(entry, options.onInstallError, {
         ...(options.userInitiated !== undefined ? { userInitiated: options.userInitiated } : {}),
