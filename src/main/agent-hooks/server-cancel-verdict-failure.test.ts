@@ -165,7 +165,15 @@ const openCode: Lane = {
   plainSettle: { hook_event_name: 'SessionIdle', root_state: 'done' }
 }
 
-describe.each([relayedClaude, grok, openCode])(
+// Orca's OpenCode 2 launch entry posts the same plugin reports on its own hook path.
+const openCode2LaunchEntry: Lane = {
+  ...openCode,
+  name: 'OpenCode 2 launch entry',
+  agentType: 'opencode2',
+  start: () => startLocal('/hook/opencode2')
+}
+
+describe.each([relayedClaude, grok, openCode, openCode2LaunchEntry])(
   'a same-turn failure after an inferred cancel ($name)',
   (lane) => {
     it('keeps the cancellation, the interrupted flag, and no turn-completion stamp', async () => {
