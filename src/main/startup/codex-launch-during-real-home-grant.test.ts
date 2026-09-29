@@ -1,16 +1,14 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import type * as Os from 'node:os'
 import { join } from 'node:path'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CodexHookTrustGrantRequest } from '../codex/codex-app-server-client'
-import type { CodexSessionResumePreparation } from '../codex/codex-session-resume-home'
-import type { CodexTrustEntry } from '../codex/config-toml-trust'
 import { isCodexManagedCommand, setupCodexHookHomes } from '../codex/hook-service-test-harness'
 
 // Why this file (QA case 4, full launch path): Codex's approval of the real-home
 // entry runs in the background. A launch during it must settle on the managed
 // home at once, with that home's hook install and the project trust write done.
-// A resume has no other home, so it spawns at once and trusts Orca's entries for itself.
+// A resume has no other home, so it must not spawn beside an unapproved entry.
 
 const { getPathMock, homedirMock, resolveCodexCommandMock } = vi.hoisted(() => ({
   getPathMock: vi.fn<(name: string) => string>(),
@@ -75,17 +73,14 @@ vi.mock('./main-process-state', async () => {
   }
 })
 
-const { _internals: grantInternals } = await import('../codex/codex-hook-trust-grant')
-const { codexAppServerCapabilityCache, getCodexAppServerHostKey } =
-  await import('../codex/codex-app-server-capability-cache')
+const { CODEX_BACKGROUND_TRUST_GRANT_TIMEOUT_MS, _internals: grantInternals } =
+  await import('../codex/codex-hook-trust-grant')
 const { _internals: realHomeInternals } = await import('../codex/codex-real-home-hook-install')
 const { getOrcaManagedCodexHomePath } = await import('../codex/codex-home-paths')
 const { prepareCodexRuntimeHomeForLaunch } = await import('./codex-launch-preparation')
 const { prepareCodexSessionResumeForLaunch } = await import('./codex-session-resume-launch')
 const {
   computeTrustedHash,
-  computeTrustKey,
-  getCodexExplicitHomeHookSourcePath,
   normalizeHookTrustKeyForLookup,
   parseTrustKey,
   readHookTrustEntries,
@@ -110,44 +105,36 @@ type HookDefinition = {
   hooks?: { command?: string }[]
 }
 
-/** Orca's entries in the real ~/.codex/hooks.json. */
-function realHomeOrcaEntries(): CodexTrustEntry[] {
+/** How Codex will treat each Orca entry in the real ~/.codex/hooks.json. */
+function realHomeOrcaEntryTrust(): string[] {
   const hooksPath = join(homes.tmpHome, '.codex', 'hooks.json')
   const hooks: Record<string, HookDefinition[]> = JSON.parse(readFileSync(hooksPath, 'utf-8')).hooks
+  const trust = readHookTrustEntries(join(homes.tmpHome, '.codex', 'config.toml'))
   return Object.entries(hooks).flatMap(([eventName, definitions]) =>
     definitions.flatMap((definition, groupIndex) =>
       (definition.hooks ?? []).flatMap((hook, handlerIndex) => {
-        const entry = isCodexManagedCommand(hook.command)
-          ? createCodexHookTrustEntry(
-              hooksPath,
-              eventName,
-              groupIndex,
-              handlerIndex,
-              definition,
-              hook
-            )
-          : null
-        return entry ? [entry] : []
+        if (!isCodexManagedCommand(hook.command)) {
+          return []
+        }
+        const entry = createCodexHookTrustEntry(
+          hooksPath,
+          eventName,
+          groupIndex,
+          handlerIndex,
+          definition,
+          hook
+        )
+        return [entry ? readOrcaEntryTrust(entry, trust) : 'untrusted']
       })
     )
   )
 }
 
-/** How Codex will treat each Orca entry in the real ~/.codex/hooks.json. */
-function realHomeOrcaEntryTrust(): string[] {
-  const trust = readHookTrustEntries(join(homes.tmpHome, '.codex', 'config.toml'))
-  return realHomeOrcaEntries().map((entry) => readOrcaEntryTrust(entry, trust))
-}
-
-async function resume(): Promise<Extract<CodexSessionResumePreparation, { outcome: 'resume' }>> {
-  const prepared = await prepareCodexSessionResumeForLaunch({
+function resume(): Promise<unknown> {
+  return prepareCodexSessionResumeForLaunch({
     providerSession: { key: 'session_id', id: 'abc' },
     target: { runtime: 'host' }
   })
-  if (prepared?.outcome !== 'resume') {
-    throw new Error('expected the session to resume')
-  }
-  return prepared
 }
 
 function launch(workspacePath: string): Promise<string | null> {
@@ -157,9 +144,12 @@ function launch(workspacePath: string): Promise<string | null> {
   })
 }
 
+afterEach(() => {
+  vi.useRealTimers()
+})
+
 beforeEach(() => {
   realHomeInternals.setLaneForTesting('pending')
-  codexAppServerCapabilityCache.clear()
   resolveCodexCommandMock.mockReturnValue(process.execPath)
   mkdirSync(join(homes.tmpHome, '.codex'), { recursive: true })
   writeFileSync(join(homes.tmpHome, '.codex', 'hooks.json'), '{"hooks":{}}\n')
@@ -210,65 +200,54 @@ describe('a Codex launch while the real-home approval hangs', () => {
   })
 })
 
-/** Codex approving every requested entry once `approval` resolves, as the grant session does. */
-function installApprovingRunner(approval: Promise<void>): void {
-  grantInternals.setGrantSessionRunner(async (request: CodexHookTrustGrantRequest) => {
-    await approval
-    const entries = request.expectedTrustKeys.map((key) => {
-      const entry = { ...parseTrustKey(key)!, command: request.managedCommand, timeoutSec: 10 }
-      return { key, entry, trustedHash: computeTrustedHash(entry) }
-    })
-    upsertHookTrustEntries(
-      join(homes.tmpHome, '.codex', 'config.toml'),
-      entries.map(({ entry, trustedHash }) => ({ ...entry, trustedHash }))
-    )
-    return {
-      outcome: 'granted' as const,
-      wroteTrust: true,
-      entries: entries.map(({ key, trustedHash }) => ({
-        key,
-        normalizedKey: normalizeHookTrustKeyForLookup(key),
-        trustedHash
-      }))
-    }
-  })
-}
-
 describe('a Codex resume into the real ~/.codex while its approval runs', () => {
-  it("spawns at once, trusting exactly Orca's entries for that one process", async () => {
-    writeFileSync(
-      join(homes.tmpHome, '.codex', 'hooks.json'),
-      `${JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: 'command', command: 'user.sh' }] }] } })}\n`
-    )
-    grantInternals.setGrantSessionRunner(() => new Promise(() => {}))
+  it('spawns once Codex approves the entry, never beside an unapproved one', async () => {
+    let approve: () => void = () => {}
+    const approval = new Promise<void>((resolve) => {
+      approve = resolve
+    })
+    grantInternals.setGrantSessionRunner(async (request: CodexHookTrustGrantRequest) => {
+      await approval
+      const entries = request.expectedTrustKeys.map((key) => {
+        const entry = { ...parseTrustKey(key)!, command: request.managedCommand, timeoutSec: 10 }
+        return { key, entry, trustedHash: computeTrustedHash(entry) }
+      })
+      upsertHookTrustEntries(
+        join(homes.tmpHome, '.codex', 'config.toml'),
+        entries.map(({ entry, trustedHash }) => ({ ...entry, trustedHash }))
+      )
+      return {
+        outcome: 'granted' as const,
+        wroteTrust: true,
+        entries: entries.map(({ key, trustedHash }) => ({
+          key,
+          normalizedKey: normalizeHookTrustKeyForLookup(key),
+          trustedHash
+        }))
+      }
+    })
 
     const resumed = resume()
-    expect(await settlesWithin(resumed, 2_000)).toBe(true)
-    const trust = (await resumed).sessionHookTrust ?? []
-    expect(realHomeOrcaEntryTrust().every((state) => state === 'untrusted')).toBe(true)
-    const hooksPath = join(homes.tmpHome, '.codex', 'hooks.json')
-    const orcaKeys = realHomeOrcaEntries().flatMap((entry) => [
-      computeTrustKey(entry),
-      computeTrustKey({ ...entry, sourcePath: getCodexExplicitHomeHookSourcePath(hooksPath) })
-    ])
-    expect(orcaKeys.length).toBeGreaterThan(0)
-    expect(trust.map(({ key }) => key).sort()).toEqual([...new Set(orcaKeys)].sort())
-    expect(trust.some(({ key }) => key.endsWith(':stop:0:0'))).toBe(false)
+    expect(await settlesWithin(resumed, 200)).toBe(false)
+    approve()
+    await resumed
+    const trust = realHomeOrcaEntryTrust()
+    expect(trust.length).toBeGreaterThan(0)
+    expect(trust.every((state) => state === 'trusted')).toBe(true)
   })
 
-  it("passes nothing extra once Codex has approved Orca's entries", async () => {
-    installApprovingRunner(Promise.resolve())
-    await resume()
-    await realHomeInternals.settledLaneForTesting()
-    expect(realHomeOrcaEntryTrust().every((state) => state === 'trusted')).toBe(true)
-
-    expect((await resume()).sessionHookTrust).toBeUndefined()
-  })
-
-  it('passes nothing to a Codex known to lack hook trust', async () => {
-    codexAppServerCapabilityCache.rememberUnsupported(getCodexAppServerHostKey({ kind: 'native' }))
+  it('spawns at the approval deadline with the unapproved entries withdrawn', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
     grantInternals.setGrantSessionRunner(() => new Promise(() => {}))
+    let spawned = false
+    const resumed = resume().then(() => {
+      spawned = true
+    })
 
-    expect((await resume()).sessionHookTrust).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(CODEX_BACKGROUND_TRUST_GRANT_TIMEOUT_MS - 1)
+    expect(spawned).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+    await resumed
+    expect(realHomeOrcaEntryTrust()).toEqual([])
   })
 })

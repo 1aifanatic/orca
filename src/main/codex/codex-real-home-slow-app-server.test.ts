@@ -4,7 +4,6 @@ import type * as Os from 'node:os'
 import { dirname, join } from 'node:path'
 import type { HookDefinition } from '../agent-hooks/installer-utils'
 import type { CodexHookTrustGrantRequest } from './codex-app-server-client'
-import type { CodexTrustEntry } from './config-toml-trust'
 import { CodexAppServerTimeoutError } from './codex-app-server-session'
 import {
   CODEX_BACKGROUND_TRUST_GRANT_TIMEOUT_MS,
@@ -13,7 +12,6 @@ import {
 import {
   computeTrustedHash,
   computeTrustKey,
-  getCodexExplicitHomeHookSourcePath,
   normalizeHookTrustKeyForLookup,
   parseTrustKey,
   readHookTrustEntries,
@@ -36,6 +34,7 @@ vi.mock('../codex-cli/command', () => ({ resolveCodexCommand: resolveCodexComman
 
 import {
   _internals as realHomeInternals,
+  awaitRealHomeCodexHookTrust,
   ensureRealHomeCodexHookState,
   isRealHomeCodexHookLaneUsable
 } from './codex-real-home-hook-install'
@@ -44,7 +43,6 @@ import { getCodexManagedHookInstallMaterial } from './codex-hook-definition'
 import { createCodexHookTrustEntry } from './codex-hook-identity'
 import { getOrcaManagedCodexHomePath } from './codex-home-paths'
 import { readOrcaEntryTrust } from './codex-real-home-entry-trust'
-import { readRealHomeCodexSessionHookTrust } from './codex-real-home-session-hook-trust'
 
 // Why this file (QA case 4): a cold `codex app-server` on a loaded Mac took over
 // 10 s. A launch must never wait on that approval, the approval must still land,
@@ -75,29 +73,26 @@ function orcaHandlerCount(): number {
     .filter((hook) => isCodexManagedCommand(hook.command)).length
 }
 
-function orcaEntries(): CodexTrustEntry[] {
+function orcaEntryTrust(): string[] {
+  const trust = readHookTrustEntries(configPath())
   return Object.entries(readHooks()).flatMap(([eventName, definitions]) =>
     definitions.flatMap((definition, groupIndex) =>
       (definition.hooks ?? []).flatMap((hook, handlerIndex) => {
-        const entry = isCodexManagedCommand(hook.command)
-          ? createCodexHookTrustEntry(
-              hooksPath(),
-              eventName,
-              groupIndex,
-              handlerIndex,
-              definition,
-              hook
-            )
-          : null
-        return entry ? [entry] : []
+        if (!isCodexManagedCommand(hook.command)) {
+          return []
+        }
+        const entry = createCodexHookTrustEntry(
+          hooksPath(),
+          eventName,
+          groupIndex,
+          handlerIndex,
+          definition,
+          hook
+        )
+        return [entry ? readOrcaEntryTrust(entry, trust) : 'untrusted']
       })
     )
   )
-}
-
-function orcaEntryTrust(): string[] {
-  const trust = readHookTrustEntries(configPath())
-  return orcaEntries().map((entry) => readOrcaEntryTrust(entry, trust))
 }
 
 type AppServer = { sessions: number; start: () => void }
@@ -187,31 +182,20 @@ describe('a slow codex app-server start', () => {
     expect(server.sessions).toBe(1)
   })
 
-  it("lets a resume trust exactly Orca's entries, with the hashes the grant then writes", async () => {
+  it('lets a resume into the real home wait until the grant settles', async () => {
     const server = installAppServer(15_000)
     expect(await launch()).toBe('granting')
 
-    const trust = readRealHomeCodexSessionHookTrust()
-    const explicitHooksPath = getCodexExplicitHomeHookSourcePath(hooksPath())
-    const expectedKeys = orcaEntries().flatMap((entry) => [
-      computeTrustKey(entry),
-      computeTrustKey({ ...entry, sourcePath: explicitHooksPath })
-    ])
-    expect(trust.map(({ key }) => key).sort()).toEqual([...new Set(expectedKeys)].sort())
-    // Why: the user's own Stop hook is untrusted too, and must stay for the user to review.
-    expect(trust.some(({ key }) => key.endsWith(':stop:0:0'))).toBe(false)
+    let settled = false
+    const resumed = awaitRealHomeCodexHookTrust().then((lane) => {
+      settled = true
+      return lane
+    })
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(settled).toBe(false)
 
     server.start()
-    expect(await realHomeInternals.settledLaneForTesting()).toBe('installed')
-    const stored = readHookTrustEntries(configPath())
-    for (const entry of orcaEntries()) {
-      const key = computeTrustKey(entry)
-      expect(trust.find((record) => record.key === key)?.trustedHash).toBe(
-        stored.get(key)?.trustedHash
-      )
-    }
-    // Why: once approved, a resume passes nothing extra.
-    expect(readRealHomeCodexSessionHookTrust()).toEqual([])
+    expect(await resumed).toBe('installed')
   })
 
   it('starts no cooldown after a timeout: the next launch tries again at once', async () => {

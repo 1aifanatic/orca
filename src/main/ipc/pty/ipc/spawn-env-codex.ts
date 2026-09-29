@@ -40,8 +40,7 @@ export async function assemblePtyIpcSpawnCodexEnv(ctx: PtyIpcSpawnState): Promis
         providerSession: args.resumeProviderSession,
         target: ctx.codexSelectionTarget,
         launchEnv: ctx.baseEnv,
-        workspacePath: ctx.cwd,
-        shellOverride: ctx.effectiveShellOverride
+        workspacePath: ctx.cwd
       })
   ctx.codexResumeLaunch = codexResumePreparation
     ? await ctx.deps.resolveCodexResumeLaunch(args.command, codexResumePreparation)
@@ -52,7 +51,7 @@ export async function assemblePtyIpcSpawnCodexEnv(ctx: PtyIpcSpawnState): Promis
   ctx.spawnTiming.mark('codex_resume')
   const codexResumeHome = ctx.codexResumeLaunch.codexResumeHome
   ctx.launchCommand = ctx.codexResumeLaunch.command
-  ctx.baseEnv = ctx.deps.rewriteSequencedStartupResumeArgv(ctx.baseEnv, ctx.codexResumeLaunch)
+  ctx.baseEnv = ctx.deps.stripSequencedStartupResumeArgv(ctx.baseEnv, ctx.codexResumeLaunch)
   // Why: declared after the strip so a local-provider spawn cannot capture the
   // pre-strip env — only the daemon branch below re-derives this from baseEnv.
   ctx.env = ctx.baseEnv

@@ -20,7 +20,7 @@ const mocks = vi.hoisted(() => {
     installForLaunchPrep: vi.fn(async () => {}),
     refreshRuntimeUserHooksForLaunchPrep: vi.fn(async () => {}),
     ensureRealHomeCodexHookState: vi.fn(async () => 'installed' as const),
-    readRealHomeCodexSessionHookTrust: vi.fn(() => [{ key: 'k', trustedHash: 'sha256:h' }]),
+    awaitRealHomeCodexHookTrust: vi.fn(async () => 'installed' as const),
     prepareCodexSessionResume: vi.fn()
   }
 })
@@ -35,10 +35,8 @@ vi.mock('../codex/hook-service', () => ({
   }
 }))
 vi.mock('../codex/codex-real-home-hook-install', () => ({
+  awaitRealHomeCodexHookTrust: mocks.awaitRealHomeCodexHookTrust,
   ensureRealHomeCodexHookState: mocks.ensureRealHomeCodexHookState
-}))
-vi.mock('../codex/codex-real-home-session-hook-trust', () => ({
-  readRealHomeCodexSessionHookTrust: mocks.readRealHomeCodexSessionHookTrust
 }))
 // Why: the real predicate, without loading every agent's hook service.
 vi.mock(
@@ -99,7 +97,7 @@ const HOOK_SETTINGS: readonly {
   }
 ]
 
-function resumeFrom(homePath: string): ReturnType<typeof prepareCodexSessionResumeForLaunch> {
+function resumeFrom(homePath: string): Promise<unknown> {
   mocks.prepareCodexSessionResume.mockImplementation(
     async (args: {
       resolveVerifiedResumeHome: (source: VerifiedCodexResumeSource) => Promise<string>
@@ -162,16 +160,14 @@ describe('Codex launch prep honours the per-agent hook opt-out', () => {
     async ({ settings, codexHooksOn }) => {
       mocks.settings = settings
 
-      const prepared = await resumeFrom(SYSTEM_HOME)
+      await resumeFrom(SYSTEM_HOME)
 
       expect(mocks.ensureRealHomeCodexHookState).toHaveBeenCalledTimes(1)
       expect(mocks.ensureRealHomeCodexHookState).toHaveBeenCalledWith(
         expect.objectContaining({ hooksEnabled: codexHooksOn, writePolicy: 'add-missing-only' })
       )
-      // Why: with hooks off this Orca's entries are not its business to trust.
-      expect(prepared?.outcome === 'resume' ? prepared.sessionHookTrust : null).toEqual(
-        codexHooksOn ? [{ key: 'k', trustedHash: 'sha256:h' }] : undefined
-      )
+      // Why: a resume has no managed home to fall back to, so it waits for the grant to settle.
+      expect(mocks.awaitRealHomeCodexHookTrust).toHaveBeenCalledOnce()
       expect(mocks.installForLaunchPrep).not.toHaveBeenCalled()
       expect(mocks.refreshRuntimeUserHooksForLaunchPrep).not.toHaveBeenCalled()
     }
