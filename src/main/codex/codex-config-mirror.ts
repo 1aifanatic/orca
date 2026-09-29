@@ -41,7 +41,7 @@ export function syncSystemConfigIntoManagedCodexHome(
 ): void {
   if (!mirrorSystemConfigIntoManagedCodexHome(homes)) {
     // Why: a stalled settings mirror must not also withhold the daemon guard,
-    // or Codex cannot start at all in a long home.
+    // or Codex starts a shared server here (or cannot start at all in a long home).
     ensureCodexDaemonSocketGuard(homes.runtimeHomePath)
   }
 }

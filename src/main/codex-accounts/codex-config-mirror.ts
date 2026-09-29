@@ -109,7 +109,7 @@ export class CodexConfigMirror {
     expectedAccountId?: string
   ): void {
     if (canonicalConfig === null) {
-      // Why: with no ~/.codex/config.toml there is nothing to mirror, but Codex still cannot start in a long home without the daemon guard.
+      // Why: with no ~/.codex/config.toml there is nothing to mirror, but the account home still needs the daemon guard.
       // WSL homes are skipped: their ownership check is a blocking wsl.exe call (startup, account switch), and WSL launch prep guards the home it launches.
       if (!parseWslUncPath(managedHomePath)) {
         ensureCodexDaemonSocketGuard(this.assertManagedHomePath(managedHomePath, expectedAccountId))

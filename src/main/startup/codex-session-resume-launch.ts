@@ -8,6 +8,7 @@ import { ManagedCodexHomeTemporarilyUnavailableError } from '../codex-accounts/h
 import { codexHookService } from '../codex/hook-service'
 import { ensureRealHomeCodexHookState } from '../codex/codex-real-home-hook-install'
 import { ensureCodexDaemonSocketGuard } from '../codex/codex-config-mirror'
+import { reportCodexSharedServerInOwnedHome } from '../codex/codex-shared-server-probe'
 import { isAgentStatusHooksEnabledForAgent } from '../agent-hooks/managed-agent-hook-controls'
 import { markCodexProjectTrusted } from '../agent-trust-presets'
 import { awaitAgentTrustWriteWithinDeadline } from '../agent-trust-write-deadline'
@@ -115,6 +116,7 @@ export async function prepareCodexSessionResumeForLaunch(args: {
       if (!isSystemHome) {
         // Why: this pins the resumed pane's CODEX_HOME, and hook repair above can skip or fail before its config mirror applies the daemon guard.
         ensureCodexDaemonSocketGuard(resumeHome)
+        void reportCodexSharedServerInOwnedHome(resumeHome)
       }
       return resumeHome
     }

@@ -13,6 +13,7 @@ vi.mock('electron', () => ({
 
 import {
   applyCodexDaemonSocketGuard,
+  CODEX_DAEMON_OVERRIDE_MARKER,
   codexDaemonSocketPath,
   codexDaemonSocketPathExceedsLimit,
   stripCodexDaemonOverride
@@ -27,7 +28,10 @@ import { extractOrdinaryCodexSettings } from './config-toml-runtime-owned-sectio
 
 const UUID = '9dd962e2-449d-44c4-9733-0633f255064a'
 const MAC_MANAGED_HOME = `/Users/john/Library/Application Support/orca/codex-accounts/${UUID}/home`
-const OVERRIDE_LINE = 'daemon_auto_start = false # orca: CODEX_HOME too long for the daemon socket'
+const OVERRIDE_LINE = `daemon_auto_start = false ${CODEX_DAEMON_OVERRIDE_MARKER}`
+const LEGACY_OVERRIDE_LINE =
+  'daemon_auto_start = false # orca: CODEX_HOME too long for the daemon socket'
+const WINDOWS_MANAGED_HOME = 'C:\\Users\\neil\\AppData\\Roaming\\orca\\codex-runtime-home\\home'
 
 // The socket suffix is 43 bytes: sun_path 104 (macOS) / 108 (Linux) leaves 60 / 64 for the home.
 function homeOfLength(length: number): string {
@@ -107,12 +111,62 @@ describe('applyCodexDaemonSocketGuard', () => {
     expect(stripCodexDaemonOverride(guarded)).toBe(crlf)
   })
 
-  it('removes a stale override once the home fits', () => {
+  it('turns auto-start off in homes whose socket path fits, too', () => {
+    expect(codexDaemonSocketPathExceedsLimit(WINDOWS_MANAGED_HOME, 'win32')).toBe(false)
+    expect(applyCodexDaemonSocketGuard('model = "m"\n', WINDOWS_MANAGED_HOME, 'win32')).toBe(
+      `model = "m"\n\n[features]\n${OVERRIDE_LINE}\n`
+    )
     const guarded = applyCodexDaemonSocketGuard('model = "m"\n', MAC_MANAGED_HOME, 'darwin')
-    expect(applyCodexDaemonSocketGuard(guarded, homeOfLength(20), 'darwin')).toBe('model = "m"\n')
-    expect(applyCodexDaemonSocketGuard('model = "m"\n', homeOfLength(20), 'darwin')).toBe(
+    expect(applyCodexDaemonSocketGuard(guarded, homeOfLength(20), 'darwin')).toBe(guarded)
+  })
+
+  it("never writes the override into the user's own .codex home, and strips a stray one", () => {
+    const longUserHome = `${homeOfLength(70)}/.codex`
+    expect(codexDaemonSocketPathExceedsLimit(longUserHome, 'darwin')).toBe(true)
+    expect(applyCodexDaemonSocketGuard('model = "m"\n', longUserHome, 'darwin')).toBe(
       'model = "m"\n'
     )
+    expect(applyCodexDaemonSocketGuard('', 'C:\\Users\\neil\\.codex\\', 'win32')).toBe('')
+    expect(
+      applyCodexDaemonSocketGuard('', '\\\\wsl.localhost\\Ubuntu\\home\\u\\.codex', 'win32')
+    ).toBe('')
+    const stray = `model = "m"\n\n[features]\n${OVERRIDE_LINE}\n`
+    expect(applyCodexDaemonSocketGuard(stray, '/home/u/.codex', 'linux')).toBe('model = "m"\n')
+  })
+
+  it("keeps the user's explicit value when the socket fits, in every TOML form", () => {
+    for (const config of [
+      '[features]\ndaemon_auto_start = true\n',
+      'features.daemon_auto_start = true\n',
+      'features = { hooks = true, daemon_auto_start = true }\n',
+      '[features]\ndaemon_auto_start = false\n'
+    ]) {
+      expect(applyCodexDaemonSocketGuard(config, homeOfLength(20), 'linux')).toBe(config)
+    }
+  })
+
+  it("drops Orca's line once the user's own value arrives beside it", () => {
+    const config = `features.daemon_auto_start = true\n\n[features]\n${OVERRIDE_LINE}\n`
+    expect(applyCodexDaemonSocketGuard(config, homeOfLength(20), 'linux')).toBe(
+      'features.daemon_auto_start = true\n'
+    )
+  })
+
+  it('ignores a same-named key outside [features] or inside a multiline string', () => {
+    const config =
+      '[tui]\ndaemon_auto_start = true\nnote = """\n[features]\ndaemon_auto_start = true\n"""\n'
+    expect(applyCodexDaemonSocketGuard(config, homeOfLength(20), 'linux')).toBe(
+      `${config}\n[features]\n${OVERRIDE_LINE}\n`
+    )
+  })
+
+  it('rewrites a line marked by an older Orca in place and strips it like its own', () => {
+    const legacy = `model = "m"\n\n[features]\n${LEGACY_OVERRIDE_LINE}\n`
+    expect(applyCodexDaemonSocketGuard(legacy, homeOfLength(20), 'linux')).toBe(
+      `model = "m"\n\n[features]\n${OVERRIDE_LINE}\n`
+    )
+    expect(stripCodexDaemonOverride(legacy)).toBe('model = "m"\n')
+    expect(extractOrdinaryCodexSettings(legacy)).toBe('model = "m"')
   })
 
   it('warns once instead of failing silently when inline features block the override', () => {
@@ -234,10 +288,40 @@ describe('syncSystemConfigIntoManagedCodexHome daemon guard', () => {
     expect(readFileSync(join(systemHomePath, 'config.toml'), 'utf-8')).toBe('model = "gpt-5"\n')
   })
 
-  it('leaves a short home on the default daemon behavior', () => {
-    writeFileSync(join(systemHomePath, 'config.toml'), 'model = "gpt-5"\n')
+  it('turns auto-start off in a short managed home too, leaving ~/.codex untouched', () => {
+    const systemConfig = 'model = "gpt-5"\n'
+    writeFileSync(join(systemHomePath, 'config.toml'), systemConfig)
     const runtimeHomePath = makeHome('h')
     syncSystemConfigIntoManagedCodexHome({ runtimeHomePath, systemHomePath })
-    expect(readFileSync(join(runtimeHomePath, 'config.toml'), 'utf-8')).toBe('model = "gpt-5"\n')
+    expect(readFileSync(join(runtimeHomePath, 'config.toml'), 'utf-8')).toBe(
+      `model = "gpt-5"\n\n[features]\n${OVERRIDE_LINE}\n`
+    )
+    expect(readFileSync(join(systemHomePath, 'config.toml'), 'utf-8')).toBe(systemConfig)
+    expect(getCodexConfigSyncStatus({ runtimeHomePath, systemHomePath }).state).toBe('synced')
+  })
+
+  it('lets an explicit daemon_auto_start in ~/.codex win in a short managed home', () => {
+    const systemConfig = 'model = "gpt-5"\n\n[features]\ndaemon_auto_start = true\n'
+    writeFileSync(join(systemHomePath, 'config.toml'), systemConfig)
+    const runtimeHomePath = makeHome('h')
+    writeFileSync(
+      join(runtimeHomePath, 'config.toml'),
+      `model = "gpt-5"\n\n[features]\n${OVERRIDE_LINE}\n`
+    )
+    syncSystemConfigIntoManagedCodexHome({ runtimeHomePath, systemHomePath })
+    expect(readFileSync(join(runtimeHomePath, 'config.toml'), 'utf-8')).toBe(systemConfig)
+    expect(readFileSync(join(systemHomePath, 'config.toml'), 'utf-8')).toBe(systemConfig)
+  })
+
+  it('still overrides an explicit true where the socket cannot be bound at all', () => {
+    writeFileSync(
+      join(systemHomePath, 'config.toml'),
+      'model = "gpt-5"\n\n[features]\ndaemon_auto_start = true\n'
+    )
+    const runtimeHomePath = longHome()
+    syncSystemConfigIntoManagedCodexHome({ runtimeHomePath, systemHomePath })
+    expect(readFileSync(join(runtimeHomePath, 'config.toml'), 'utf-8')).toBe(
+      `model = "gpt-5"\n\n[features]\n${OVERRIDE_LINE}\n`
+    )
   })
 })
