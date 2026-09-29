@@ -128,6 +128,58 @@ describe('/clear', () => {
     }
   })
 
+  it('carries drafts to a replacement no agent has started, before it answers; the first send starts the agent ahead of them', async () => {
+    const working = await rig.workingSend()
+    const firstId = await queuedId(rig.send('first draft', 'queue-if-active').result)
+    const secondId = await queuedId(rig.send('second draft', 'queue-if-active').result)
+    await rig.stop()
+    await rig.settleAccepted(working, 'a')
+    const cleared = await command('clear')
+    const replacementId = cleared.ok ? cleared.value.replacementSessionId : undefined
+    if (!replacementId) {
+      throw new Error('expected a replacement session')
+    }
+    // The clear started nothing, yet the drafts had already moved when it answered.
+    expect(rig.store.getRecord(replacementId)).toMatchObject({
+      providerHandleChain: [],
+      lease: { claimStatus: 'released' }
+    })
+    expect(rig.host.collaboratorsForTests().sessions.get(replacementId)?.child ?? null).toBeNull()
+    expect(await rig.drafts()).toHaveLength(0)
+    expect(await rig.drafts(replacementId)).toEqual([
+      { messageId: firstId, state: 'waiting' },
+      { messageId: secondId, state: 'waiting' }
+    ])
+    expect(await rig.queuePause(replacementId)).toEqual({ reason: 'cleared' })
+
+    const body = hostTestMessage('first in the new chat')
+    const fields = { body, delivery: 'queue-if-active' as const }
+    const sentId = hostTestOperationId()
+    expect(
+      await rig.host.send(CALLER, {
+        envelope: rig.envelope(fields, 'agentSession.send', sentId, replacementId),
+        ...fields,
+        userSend: true
+      })
+    ).toMatchObject({ ok: true, value: { submission: expect.anything() } })
+    await eventually(() =>
+      expect(rig.store.getRecord(replacementId)?.providerHandleChain).toHaveLength(1)
+    )
+    await rig.host.settleLateDispatch({
+      sessionId: replacementId,
+      clientMessageId: sentId,
+      providerIdentity: { provider: 'codex', threadId: THREAD, turnId: 'turn-first', ordinal: 0 }
+    })
+    await eventually(async () =>
+      expect(
+        (await rig.host.journalSnapshot(replacementId)).submissions.map((entry) =>
+          entry.clientMessageId === sentId ? 'sent' : entry.queuedMessageId
+        )
+      ).toEqual(['sent', firstId])
+    )
+    expect(await rig.queuePause(replacementId)).toBeNull()
+  })
+
   it("a carried draft sent on the replacement: the provider's echo folds into its one bubble", async () => {
     const working = await rig.workingSend()
     const draftId = await queuedId(rig.send('carried text', 'queue-if-active').result)
