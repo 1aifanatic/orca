@@ -59,12 +59,21 @@ export class OrcaRuntimeWithCreateManagedWorktree extends OrcaRuntimeWithGetWork
             repo,
             args.startupAgent,
             args.startupPrompt,
-            args.startupLaunchPreferences
+            args.startupLaunchPreferences,
+            {
+              ...(args.startupAgentArgs !== undefined ? { agentArgs: args.startupAgentArgs } : {}),
+              ...(args.startupLaunchSource ? { launchSource: args.startupLaunchSource } : {})
+            }
           )
         : null
     const draftStartup =
       !args.startup && !agentStartup && args.startupDraft
-        ? await this.buildStartupForDraft(repo, args.startupDraft, requestedAgent)
+        ? await this.buildStartupForDraft(
+            repo,
+            args.startupDraft,
+            requestedAgent,
+            args.startupLaunchSource
+          )
         : null
     const effectiveStartup = args.startup ?? agentStartup?.startup ?? draftStartup?.startup
     const effectiveStartupFollowup = agentStartup?.followup

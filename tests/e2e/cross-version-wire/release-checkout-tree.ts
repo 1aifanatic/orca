@@ -13,13 +13,15 @@ const CHECKOUT_MAX_OUTPUT_BYTES = 1024 * 1024
 // codec, and the relay daemon — which an auto-update leaves running at its old version
 // while the bridge that connects to it is new, so both sides of that pairing must be
 // extractable. `src/cli` is still skipped; nothing it owns crosses a version boundary.
+// The phone's `worktree ps` row reader is one self-contained file, so it rides along alone.
 const ARCHIVE_PATHS = [
   'src/main',
   'src/shared',
   'src/preload',
   'src/relay',
   'src/renderer',
-  'src/types'
+  'src/types',
+  'mobile/src/worktree/agent-row-display.ts'
 ]
 
 const ALIAS_SPECIFIER =

@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { parse } from 'yaml'
+import { UNIT_EXCLUDE } from './ci-unit-files.mjs'
 import { classifyPrJobs } from './pr-code-change-scope.mjs'
 
 /**
@@ -98,13 +99,15 @@ describe('cross-version wire suites run somewhere', () => {
   it('keeps the unit shards excluding the directory, which is what makes this lane the only one', () => {
     const workflow = readWorkflow(UNIT_TEST_WORKFLOW)
     const shardStep = (workflow.jobs?.test?.steps ?? []).find(
-      (step) => typeof step?.run === 'string' && step.run.includes('vitest run')
+      (step) => typeof step?.run === 'string' && step.run.includes('--shard=')
     )
     expect(shardStep, `no sharded vitest step in ${UNIT_TEST_WORKFLOW}`).toBeDefined()
     // If this exclusion is ever dropped the suites gain a second lane, and the argv stops
     // being the only thing that decides whether a file runs. Revisit this guard, do not
     // delete it: the shallow shard clone has no tags for an extracted release to skew against.
-    expect(String(shardStep.run)).toContain(`--exclude=${LANE_DIRECTORY}/**`)
+    // The shard applies UNIT_EXCLUDE only under this env flag; the lane's own run does not set it.
+    expect(shardStep.env?.ORCA_BALANCE_UNIT_SHARDS).toBe('1')
+    expect(UNIT_EXCLUDE).toContain(`${LANE_DIRECTORY}/**`)
   })
 
   it('runs the lane for a change to any suite it owns', () => {
