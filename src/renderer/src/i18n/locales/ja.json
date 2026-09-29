@@ -18071,6 +18071,9 @@
           }
         }
       }
+    },
+    "agentChildRow": {
+      "ended": "終了"
     }
   },
   "dashboardPopout": {

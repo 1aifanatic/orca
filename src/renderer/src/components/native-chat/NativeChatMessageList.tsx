@@ -46,6 +46,7 @@ import {
   selectNativeChatActiveTurnKey,
   type NativeChatSettledTurns
 } from '../../../../shared/native-chat-turn-status'
+import { nativeChatRowTurnKeys } from '../../../../shared/native-chat-turn-grouping'
 import {
   nativeChatTurnDiffs,
   type NativeChatDiffReveal,
@@ -78,6 +79,7 @@ export function NativeChatMessageList({
   workingStartedAt,
   settledTurns,
   activeTurnOpenedBy,
+  turnKeysByItemId = null,
   deliveryNotices,
   awaitingInput = null,
   turnActivity,
@@ -97,8 +99,11 @@ export function NativeChatMessageList({
   /** Recorded turn durations keyed by user message id (the host's, or the transcript's).
    *  A turn missing here shows the duration this list observed, if it saw the turn run. */
   settledTurns?: NativeChatSettledTurns
-  /** The user message the host says opened the running turn (structured lane). */
+  /** The key the host says anchors the running turn's bar (structured lane). */
   activeTurnOpenedBy?: string | null
+  /** Host-attributed turn ownership per journal item id (structured lane).
+   *  Rows it does not name keep positional preceding-user grouping. */
+  turnKeysByItemId?: ReadonlyMap<string, string> | null
   onLinkClick?: CommentMarkdownLinkClickHandler
   allowFileUriLinks?: boolean
   deliveryNotices?: ReadonlyMap<string, NativeChatDeliveryNotice>
@@ -158,18 +163,12 @@ export function NativeChatMessageList({
   const subagentLabels = useMemo(() => nativeChatSubagentLabels(messages), [messages])
   const taskListPredecessors = useMemo(() => nativeChatTaskListPredecessors(messages), [messages])
   const taskListState = useMemo(() => nativeChatTaskListState(messages), [messages])
-  const currentTurnKey = messages.findLast((message) => message.role === 'user')?.id ?? undefined
-  // Resolve each row's turn boundary once. Prefix slice/findLast in the render
+  // Resolve each row's owning turn once. Prefix slice/findLast in the render
   // loop becomes quadratic for long transcripts.
-  const turnKeys = useMemo(() => {
-    let currentTurnKey: string | undefined
-    return messages.map((message) => {
-      if (message.role === 'user') {
-        currentTurnKey = message.id
-      }
-      return currentTurnKey
-    })
-  }, [messages])
+  const turnKeys = useMemo(
+    () => nativeChatRowTurnKeys(messages, turnKeysByItemId),
+    [messages, turnKeysByItemId]
+  )
   const turnDiffs = useMemo(
     () =>
       journalItems
@@ -207,7 +206,6 @@ export function NativeChatMessageList({
         messages,
         turnKeys,
         activeTurnKey,
-        currentTurnKey,
         receipts,
         turnStatuses,
         turnDiffs,
@@ -218,7 +216,6 @@ export function NativeChatMessageList({
       }),
     [
       activeTurnKey,
-      currentTurnKey,
       expandedTurnIds,
       isWorking,
       lifecycleWorking,

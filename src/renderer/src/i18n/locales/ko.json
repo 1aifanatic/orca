@@ -18071,6 +18071,9 @@
           }
         }
       }
+    },
+    "agentChildRow": {
+      "ended": "종료됨"
     }
   },
   "dashboardPopout": {
