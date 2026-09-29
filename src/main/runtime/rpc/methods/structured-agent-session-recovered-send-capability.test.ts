@@ -133,15 +133,14 @@ describe('a recovered send at the RPC boundary', () => {
         [STRUCTURED_CLIENT, AS_ACCEPTED],
         [CURRENT_CLIENT, RECOVERED]
       ] as const) {
-        const reply = await call('agentSession.subscribe', { sessionId: SESSION }, client)
-        const event = (reply.ok ? reply.result : null) as AgentSessionSubscribeEvent
-        const submissions =
-          event.type === 'batch'
-            ? event.batch.submissions
-            : 'page' in event
-              ? event.page.submissions
-              : []
-        expect(submissions).toEqual([expected])
+        const carrier = expect.objectContaining({ submissions: [expected] })
+        expect(await call('agentSession.subscribe', { sessionId: SESSION }, client)).toEqual(
+          expect.objectContaining({
+            result: expect.objectContaining(
+              type === 'batch' ? { batch: carrier } : { page: carrier }
+            )
+          })
+        )
       }
     }
   )
