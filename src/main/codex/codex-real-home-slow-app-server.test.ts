@@ -182,16 +182,20 @@ describe('a slow codex app-server start', () => {
     expect(server.sessions).toBe(1)
   })
 
-  it('lets a resume into the real home wait for the grant, but only as long as allowed', async () => {
+  it('lets a resume into the real home wait until the grant settles', async () => {
     const server = installAppServer(15_000)
     expect(await launch()).toBe('granting')
 
-    const startedAt = performance.now()
-    expect(await awaitRealHomeCodexHookTrust(50)).toBe('granting')
-    expect(performance.now() - startedAt).toBeLessThan(1_000)
+    let settled = false
+    const resumed = awaitRealHomeCodexHookTrust().then((lane) => {
+      settled = true
+      return lane
+    })
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(settled).toBe(false)
 
     server.start()
-    expect(await awaitRealHomeCodexHookTrust(60_000)).toBe('installed')
+    expect(await resumed).toBe('installed')
   })
 
   it('starts no cooldown after a timeout: the next launch tries again at once', async () => {

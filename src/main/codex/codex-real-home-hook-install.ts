@@ -118,22 +118,11 @@ export function ensureRealHomeCodexHookState(args: {
 
 /**
  * For a resume that must run in the real home, with no managed home to fall
- * back to: waits for a background grant, but no longer than `timeoutMs`.
+ * back to: waits until a background grant settles, which its deadline bounds.
+ * Settled means Codex approved the entry or the grant withdrew it.
  */
-export async function awaitRealHomeCodexHookTrust(
-  timeoutMs: number
-): Promise<RealHomeCodexHookLane> {
-  const grant = backgroundGrant
-  if (grant) {
-    let timer: ReturnType<typeof setTimeout> | undefined
-    await Promise.race([
-      grant,
-      new Promise<void>((resolve) => {
-        timer = setTimeout(resolve, timeoutMs)
-      })
-    ])
-    clearTimeout(timer)
-  }
+export async function awaitRealHomeCodexHookTrust(): Promise<RealHomeCodexHookLane> {
+  await backgroundGrant
   return currentLane
 }
 

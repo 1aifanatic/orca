@@ -17,8 +17,6 @@ import { getOrcaManagedCodexHomePath, getSystemCodexHomePath } from '../codex/co
 import { normalizeRuntimePathForComparison } from '../../shared/cross-platform-path'
 import { mainProcessState as state } from './main-process-state'
 
-const REAL_HOME_RESUME_TRUST_WAIT_MS = 10_000
-
 export async function prepareCodexSessionResumeForLaunch(args: {
   providerSession: AgentProviderSessionMetadata
   target: CodexAccountSelectionTarget
@@ -108,9 +106,9 @@ export async function prepareCodexSessionResumeForLaunch(args: {
             userDataPath: app.getPath('userData'),
             writePolicy: 'add-missing-only'
           })
-          // Why bounded: a resume has no managed home to fall back to, so it waits
-          // for Codex's approval as long as a launch always has, and no longer.
-          await awaitRealHomeCodexHookTrust(REAL_HOME_RESUME_TRUST_WAIT_MS)
+          // Why wait: an unapproved entry would show hook review in this pane, and
+          // the grant's own settle is the only one that cannot race Codex's write.
+          await awaitRealHomeCodexHookTrust()
         } else if (hooksEnabled) {
           await codexHookService.installForLaunchPrep(resumeHome)
         } else {

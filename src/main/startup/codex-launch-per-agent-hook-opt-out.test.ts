@@ -166,8 +166,8 @@ describe('Codex launch prep honours the per-agent hook opt-out', () => {
       expect(mocks.ensureRealHomeCodexHookState).toHaveBeenCalledWith(
         expect.objectContaining({ hooksEnabled: codexHooksOn, writePolicy: 'add-missing-only' })
       )
-      // Why: a resume has no managed home to fall back to, so it waits, bounded as before.
-      expect(mocks.awaitRealHomeCodexHookTrust).toHaveBeenCalledExactlyOnceWith(10_000)
+      // Why: a resume has no managed home to fall back to, so it waits for the grant to settle.
+      expect(mocks.awaitRealHomeCodexHookTrust).toHaveBeenCalledOnce()
       expect(mocks.installForLaunchPrep).not.toHaveBeenCalled()
       expect(mocks.refreshRuntimeUserHooksForLaunchPrep).not.toHaveBeenCalled()
     }
