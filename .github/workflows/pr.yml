@@ -439,6 +439,8 @@ jobs:
     runs-on: ubuntu-24.04-arm
     env:
       CODEX_CLI_VERSION: '0.150.1'
+      # Why a second pin: --no-daemon only exists from 0.156, and Orca's codex wrapper relies on it.
+      CODEX_NO_DAEMON_CLI_VERSION: '0.158.0'
 
     steps:
       - name: Checkout
@@ -466,6 +468,22 @@ jobs:
           ORCA_CODEX_CONTRACT_BINARY="$RUNNER_TEMP/codex-cli/node_modules/.bin/codex" \
             pnpm exec vitest run --config config/vitest.config.ts \
             src/main/codex/codex-index-heal-binary-contract.test.ts
+
+      - name: Install pinned no-daemon Codex CLI
+        run: |
+          set -euo pipefail
+          npm install --no-audit --no-fund --prefix "$RUNNER_TEMP/codex-cli-no-daemon" \
+            "@openai/codex@$CODEX_NO_DAEMON_CLI_VERSION"
+
+      - name: Verify Codex --no-daemon contract
+        env:
+          ORCA_CODEX_NO_DAEMON_CONTRACT_REQUIRED: '1'
+          ORCA_CODEX_NO_DAEMON_CONTRACT_VERSION: ${{ env.CODEX_NO_DAEMON_CLI_VERSION }}
+        run: |
+          set -euo pipefail
+          ORCA_CODEX_NO_DAEMON_CONTRACT_BINARY="$RUNNER_TEMP/codex-cli-no-daemon/node_modules/.bin/codex" \
+            pnpm exec vitest run --config config/vitest.config.ts \
+            src/main/pty/codex-no-daemon-binary-contract.test.ts
 
   xterm_patch_sync:
     name: xterm patch sync
@@ -513,6 +531,8 @@ jobs:
       # and its fish lane is the only end-to-end guard for #9993, so a skip would
       # report green with nothing exercised. Turns those skips into failures.
       ORCA_REQUIRE_FISH: '1'
+      # Why: the runner image ships pwsh, and the codex wrapper's PowerShell lane must not skip.
+      ORCA_REQUIRE_PWSH: '1'
 
     steps:
       - name: Checkout
@@ -607,6 +627,7 @@ jobs:
             src/main/providers/local-pty-shell-ready-zsh-launch-environment.test.ts \
             src/main/providers/__tests__/shell-ready-framework-example.test.ts \
             src/main/pty/codex-shell-launch-preflight.test.ts \
+            src/main/pty/codex-shell-no-daemon.test.ts \
             src/main/pty/omp-shell-wrapper-alias-safety.test.ts \
             src/main/pty/omp-shell-wrapper.node-pty.test.ts \
             src/main/shell-startup-feature-channel.test.ts \
@@ -640,12 +661,24 @@ jobs:
           native-runtime: node
           node-version: '24'
 
+  # Why hoisted out of unit-tests.yml: a caller's `needs` gate the whole called workflow, so
+  # while planning lived in there it queued behind static analysis and typecheck and the shards
+  # then queued behind it. Planning needs none of their output, so running it against
+  # code_paths alone overlaps it with the gate. Measured a median 93s off the matrix's start.
+  unit_plan:
+    needs: [code_paths]
+    if: needs.code_paths.outputs.test == 'true'
+    uses: ./.github/workflows/unit-plan.yml
+    with:
+      selection_mode: ${{ vars.ORCA_UNIT_SELECTION_MODE || 'shadow' }}
+
   test:
-    needs: [code_paths, test_native_cache, static_analysis, typecheck]
+    needs: [code_paths, unit_plan, test_native_cache, static_analysis, typecheck]
     # Honor cancellation while allowing the optional native-cache primer to skip.
     if: >-
       !cancelled() &&
       needs.code_paths.outputs.test == 'true' &&
+      needs.unit_plan.result == 'success' &&
       needs.static_analysis.result == 'success' &&
       needs.typecheck.result == 'success' &&
       (needs.test_native_cache.result == 'success' || needs.test_native_cache.result == 'skipped')
@@ -653,7 +686,15 @@ jobs:
     with:
       node_versions: '["24"]'
       runner: ubuntu-24.04-arm
-      selection_mode: ${{ vars.ORCA_UNIT_SELECTION_MODE || 'shadow' }}
+      shards: ${{ needs.unit_plan.outputs.shards }}
+
+  # Why a sibling and not part of the test workflow: it is advisory, so it must not delay the
+  # gate. Inside unit-tests.yml a caller's `needs: test` waited for it, holding verify ~36s
+  # after the last shard. Deliberately absent from verify's needs for the same reason.
+  unit_selection_evidence:
+    needs: [test]
+    if: ${{ !cancelled() && needs.test.result == 'success' }}
+    uses: ./.github/workflows/unit-selection-evidence.yml
 
   # Why a separate job: the test needs a real Chrome, and the sharded `test` matrix
   # would pay for it on every shard to run one file in whichever shard it landed in.
