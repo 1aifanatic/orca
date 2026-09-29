@@ -341,8 +341,9 @@ export class StructuredAgentSessionStatusFeed {
         )
       }
       this.journalProjections.set(journal, projection)
-      journal.saveListingStatus(projection.state.summary)
     }
+    // Also on a cached projection, so a failed save is retried; an unchanged one is skipped.
+    journal.saveListingStatus(projection.state.summary)
     return projection.state
   }
 

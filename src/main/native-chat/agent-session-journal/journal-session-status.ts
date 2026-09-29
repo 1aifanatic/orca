@@ -32,6 +32,9 @@ export function writeJournalSessionStatus(
 export class JournalListingStatusWriter {
   /** The epoch and projection last saved or in flight. */
   private saved: string | null = null
+  /** The projection object behind `saved`: the status feed re-offers its cached one on every read. */
+  private offered: { epoch: string; projection: StructuredAgentSessionStatusProjection } | null =
+    null
 
   constructor(
     private readonly deps: {
@@ -46,8 +49,13 @@ export class JournalListingStatusWriter {
     projection: StructuredAgentSessionStatusProjection,
     lastActivityAt: number
   ): void {
+    if (this.offered?.projection === projection && this.offered.epoch === cursor.epoch) {
+      return
+    }
     const key = `${cursor.epoch}\n${JSON.stringify(projection)}`
+    const offered = { epoch: cursor.epoch, projection }
     if (key === this.saved) {
+      this.offered = offered
       return
     }
     const status: StructuredAgentSessionSavedStatus = {
@@ -56,6 +64,7 @@ export class JournalListingStatusWriter {
       lastActivityAt
     }
     this.saved = key
+    this.offered = offered
     this.deps
       .serialize(async () =>
         writeJournalSessionStatus(
@@ -68,6 +77,7 @@ export class JournalListingStatusWriter {
       .catch((error: unknown) => {
         if (this.saved === key) {
           this.saved = null
+          this.offered = null
         }
         if (!(error instanceof AgentSessionJournalError && error.code === 'journal_closed')) {
           console.warn('[agent-session-journal] saving the listing status failed', error)
