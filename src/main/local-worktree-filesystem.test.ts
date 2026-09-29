@@ -84,7 +84,8 @@ describe('local worktree filesystem runtime access', () => {
       expect.objectContaining({
         recursive: true,
         force: true
-      })
+      }),
+      'interactive'
     )
     expect(runProcessMock).not.toHaveBeenCalled()
   })
@@ -103,7 +104,8 @@ describe('local worktree filesystem runtime access', () => {
           force: true,
           maxRetries: expect.any(Number),
           retryDelay: expect.any(Number)
-        })
+        }),
+        'interactive'
       )
     })
   })
@@ -148,7 +150,8 @@ describe('local worktree filesystem runtime access', () => {
           force: true,
           maxRetries: expect.any(Number),
           retryDelay: expect.any(Number)
-        })
+        }),
+        'interactive'
       )
       expect(removeTreeMock).toHaveBeenNthCalledWith(
         2,
@@ -158,7 +161,8 @@ describe('local worktree filesystem runtime access', () => {
           force: true,
           maxRetries: expect.any(Number),
           retryDelay: expect.any(Number)
-        })
+        }),
+        'interactive'
       )
     })
   })
