@@ -13,6 +13,7 @@ import {
   type LocalBaseBranchGit
 } from '../../shared/worktree/local-base-branch-fast-forward'
 import { gitExecFileAsync, translateWslOutputPaths } from './runner'
+import { runWithGitReadCacheInvalidation } from './status'
 import type { AddWorktreeOptions, GitWorktreeExecOptions } from './worktree-operation-options'
 
 // Why: the create reports the refresh result, and a mutating git process has no timeout; past this
@@ -70,8 +71,11 @@ export async function refreshLocalBaseRefForWorktreeCreate(
   const key = `${options.wslDistro ?? ''}\0${normalizeRuntimePathForComparison(repoPath)}\0${parsed.fullRef}`
   const git = localBaseBranchGit(options)
   const outcome = await waitAtMost(
+    // Why: the run can outlive this create's wait, so it clears git read caches itself when it moves main.
     runPerLocalBaseBranch(key, () =>
-      fastForwardLocalBaseBranch(git, { repoPath, fullRef: parsed.fullRef, remoteTrackingRef })
+      runWithGitReadCacheInvalidation(() =>
+        fastForwardLocalBaseBranch(git, { repoPath, fullRef: parsed.fullRef, remoteTrackingRef })
+      )
     ),
     LOCAL_BASE_REF_REFRESH_WAIT_MS
   )

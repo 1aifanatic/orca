@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as gitRunner from './runner'
 import { refreshLocalBaseRefForWorktreeCreate } from './worktree-base-refresh'
 
@@ -76,7 +76,14 @@ function refresh(repoPath: string) {
   return refreshLocalBaseRefForWorktreeCreate(repoPath, 'origin/main', 'refs/remotes/origin/main')
 }
 
+beforeEach(() => {
+  // Why: a developer's global config (e.g. merge.verifySignatures) must not change what these repos do.
+  vi.stubEnv('GIT_CONFIG_NOSYSTEM', '1')
+  vi.stubEnv('GIT_CONFIG_GLOBAL', join(tmpdir(), `orca-no-global-gitconfig-${process.pid}`))
+})
+
 afterEach(async () => {
+  vi.unstubAllEnvs()
   vi.restoreAllMocks()
   await Promise.all(tempRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
 })
