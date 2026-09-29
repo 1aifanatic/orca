@@ -132,5 +132,73 @@ describe('host-stamped remote foreground resolver', () => {
         shellForeground: false
       })
     })
+
+    // Shape captured from `ps` on macOS: login(1) is the PTY root and forks the shell into its own group.
+    const loginRooted = (extra: ProcessTableRow[] = [], tpgid = 101): ProcessTableRow[] => [
+      {
+        pid: 100,
+        ppid: 1,
+        pgid: 100,
+        tpgid,
+        tty: 'ttys001',
+        startTime: 'root-start',
+        stat: 'Ss',
+        command:
+          '/usr/bin/login -flpq user /bin/bash --noprofile --norc -p -c export SHELL="$1"; shift; exec -l -- "$@" orca-tcc-login /bin/zsh /bin/zsh -l'
+      },
+      {
+        pid: 101,
+        ppid: 100,
+        pgid: 101,
+        tpgid,
+        tty: 'ttys001',
+        startTime: 'shell-start',
+        stat: 'S+',
+        command: '-/bin/zsh -l'
+      },
+      ...extra
+    ]
+    const child = (pid: number, ppid: number, command: string, tpgid: number): ProcessTableRow => ({
+      pid,
+      ppid,
+      pgid: pid,
+      tpgid,
+      tty: 'ttys001',
+      startTime: `start-${pid}`,
+      stat: 'S+',
+      command
+    })
+
+    it('marks a shell at its prompt under a login(1) PTY root', () => {
+      expect(resolve(loginRooted())).toMatchObject({
+        verdict: 'live',
+        processName: null,
+        shellForeground: true
+      })
+    })
+
+    it('marks a nested shell back at its prompt after the agent it ran exits', () => {
+      expect(resolve(loginRooted([child(102, 101, 'bash', 102)], 102))).toMatchObject({
+        verdict: 'live',
+        processName: null,
+        shellForeground: true
+      })
+    })
+
+    it('does not mark an interactive shell an agent hosts', () => {
+      const rows = loginRooted(
+        [child(102, 101, 'node /opt/claude', 103), child(103, 102, 'bash', 103)],
+        103
+      )
+      expect(resolve(rows)).toMatchObject({ verdict: 'live', shellForeground: false })
+    })
+
+    it('does not mark a login(1) root whose shell runs another program', () => {
+      expect(resolve(loginRooted([child(102, 101, 'vim notes.md', 102)], 102))).toMatchObject({
+        verdict: 'live',
+        processName: null,
+        shellForeground: false
+      })
+    })
   })
 })

@@ -79,9 +79,9 @@ export type RemoteForegroundEvidence =
       verdict: 'live'
       processName: string | null
       fence: PosixFence | WindowsFence
-      /** Host-computed: the PTY root is a shell that owns the terminal's foreground group and no
-       *  agent is recognized in it. Absent on hosts that predate the field, which then cannot
-       *  certify an agent exit by read. */
+      /** Host-computed: a shell leads the terminal's foreground group with no agent in or above
+       *  it. Absent on hosts that predate the field, which then cannot certify an agent exit by
+       *  read. */
       shellForeground?: boolean
     } & HostObservation)
   | ({ verdict: 'unverifiable'; reason: string } & HostObservation)

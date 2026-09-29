@@ -122,12 +122,41 @@ export function resolveRemoteForegroundEvidenceFromRows(
     verdict: 'live',
     processName: candidate?.name.processName ?? null,
     fence,
-    // Why the root's own name: an agent exec'd as the PTY command also owns its foreground group.
-    shellForeground:
-      !candidate &&
-      root.tpgid === root.pgid &&
-      isShellProcess(getFirstCommandToken(root.command).replace(/^-/, ''))
+    shellForeground: !candidate && shellLeadsForegroundGroup(index, root)
   }
+}
+
+/**
+ * The terminal's foreground group leader is a shell with no agent above it up to the PTY root.
+ * Why the leader, not the root: macOS PTYs are rooted at login(1), and a nested shell leads its
+ * own group. Why the ancestor walk: an agent exec'd as the PTY command, or one hosting an
+ * interactive shell, is still the process the user is working in.
+ */
+function shellLeadsForegroundGroup(index: ProcessTableIndex, root: ProcessTableRow): boolean {
+  const leader = index.byPid.get(root.tpgid ?? -1)
+  if (
+    !leader ||
+    leader.pgid !== root.tpgid ||
+    leader.tty !== root.tty ||
+    !isShellProcess(getFirstCommandToken(leader.command).replace(/^-/, ''))
+  ) {
+    return false
+  }
+  let row = leader
+  for (let depth = 0; depth < index.rows.length; depth += 1) {
+    if (recognizeAgentProcessFromCommandLine(row.command)) {
+      return false
+    }
+    if (row.pid === root.pid) {
+      return true
+    }
+    const parent = index.byPid.get(row.ppid)
+    if (!parent) {
+      return false
+    }
+    row = parent
+  }
+  return false
 }
 
 function collectDescendantRows(index: ProcessTableIndex, rootPid: number): ProcessTableRow[] {
