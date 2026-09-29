@@ -34,11 +34,14 @@ describe('installed OpenCode plugin currency', () => {
     expect(isOverlayOpenCodePluginCurrent(pluginPath, 'plugin')).toBe(true)
   })
 
-  it('follows a symlink except in an overlay, where a link is a mirrored user entry', () => {
-    const targetPath = join(dir, 'target.js')
-    writeFileSync(targetPath, 'plugin')
-    symlinkSync(targetPath, pluginPath)
-    expect(isInstalledOpenCodePluginCurrent(pluginPath, 'plugin')).toBe(true)
-    expect(isOverlayOpenCodePluginCurrent(pluginPath, 'plugin')).toBe(false)
-  })
+  it.skipIf(process.platform === 'win32')(
+    'follows a symlink except in an overlay, where a link is a mirrored user entry',
+    () => {
+      const targetPath = join(dir, 'target.js')
+      writeFileSync(targetPath, 'plugin')
+      symlinkSync(targetPath, pluginPath)
+      expect(isInstalledOpenCodePluginCurrent(pluginPath, 'plugin')).toBe(true)
+      expect(isOverlayOpenCodePluginCurrent(pluginPath, 'plugin')).toBe(false)
+    }
+  )
 })

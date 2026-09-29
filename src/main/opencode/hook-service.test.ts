@@ -311,26 +311,33 @@ describe('OpenCodeHookService buildPtyEnv / clearPty round-trip', () => {
   })
 
   // Why: OpenCode 2 loads through a file-level symlink (dotfile managers) and stats its target.
-  it('compares a symlinked plugin by its target and writes through only when stale', () => {
-    const service = new OpenCodeHookService()
-    const pluginPath = join(resolveOpenCodeConfigDirectory(), 'plugins', 'orca-opencode-status.js')
-    const targetPath = join(userDataDir, 'dotfiles-orca-opencode-status.js')
-    writeFileSync(targetPath, _internals.getOpenCodePluginSource())
-    rmSync(pluginPath, { force: true })
-    symlinkSync(targetPath, pluginPath)
-    const past = new Date('2020-01-01T00:00:00Z')
-    utimesSync(targetPath, past, past)
+  it.skipIf(process.platform === 'win32')(
+    'compares a symlinked plugin by its target and writes through only when stale',
+    () => {
+      const service = new OpenCodeHookService()
+      const pluginPath = join(
+        resolveOpenCodeConfigDirectory(),
+        'plugins',
+        'orca-opencode-status.js'
+      )
+      const targetPath = join(userDataDir, 'dotfiles-orca-opencode-status.js')
+      writeFileSync(targetPath, _internals.getOpenCodePluginSource())
+      rmSync(pluginPath, { force: true })
+      symlinkSync(targetPath, pluginPath)
+      const past = new Date('2020-01-01T00:00:00Z')
+      utimesSync(targetPath, past, past)
 
-    service.buildPtyEnv(daemonSessionId)
-    expect(statSync(targetPath).mtimeMs).toBe(past.getTime())
+      service.buildPtyEnv(daemonSessionId)
+      expect(statSync(targetPath).mtimeMs).toBe(past.getTime())
 
-    writeFileSync(targetPath, 'stale plugin')
-    service.buildPtyEnv(daemonSessionId)
-    expect(lstatSync(pluginPath).isSymbolicLink()).toBe(true)
-    expect(readFileSync(targetPath, 'utf8')).toBe(_internals.getOpenCodePluginSource())
-    rmSync(pluginPath, { force: true })
-    rmSync(targetPath, { force: true })
-  })
+      writeFileSync(targetPath, 'stale plugin')
+      service.buildPtyEnv(daemonSessionId)
+      expect(lstatSync(pluginPath).isSymbolicLink()).toBe(true)
+      expect(readFileSync(targetPath, 'utf8')).toBe(_internals.getOpenCodePluginSource())
+      rmSync(pluginPath, { force: true })
+      rmSync(targetPath, { force: true })
+    }
+  )
 
   // Why: #22234 — OpenCode 2 installs under the plain `opencode` name, and its loader
   // rejects a default export that only has server(). Asserting the emitted *source* is
