@@ -13,6 +13,10 @@ import { GestureDetector, GestureHandlerRootView } from 'react-native-gesture-ha
 import { ArrowDown, ChevronsDownUp, ChevronsUpDown, Square } from 'lucide-react-native'
 import type { AskAnswerSelection, AskPrompt } from '../../../src/shared/native-chat-ask'
 import type { NativeChatMessage } from '../../../src/shared/native-chat-types'
+import {
+  nativeChatSubagentLabel,
+  nativeChatSubagentLabels
+} from '../../../src/shared/native-chat-subagent-attribution'
 import type {
   NativeChatLiveTurnIndicator,
   NativeChatSettledTurns
@@ -28,7 +32,7 @@ import { useMobileNativeChatPinchGesture } from './use-mobile-native-chat-pinch-
 import { useMobileNativeChatTailFollow } from './use-mobile-native-chat-tail-follow'
 import { useMobileNativeChatTurnDisclosure } from './use-mobile-native-chat-turn-disclosure'
 import { useSettledMobileNativeChatInputLock } from './use-mobile-native-chat-input-lease'
-import { MobileNativeChatTurnStatus } from './MobileNativeChatTurnStatus'
+import { MobileNativeChatTurnActivity } from './MobileNativeChatTurnStatus'
 import { MobileAgentWorkingIndicator } from './MobileAgentWorkingIndicator'
 import type { PendingNativeChatImage } from './mobile-native-chat-image-attachment'
 import { MobileNativeChatComposer } from './MobileNativeChatComposer'
@@ -209,6 +213,7 @@ export function MobileNativeChatView({
       }),
     [messages, folded, streaming, pending, imagePreviewsByMessageId]
   )
+  const subagentLabels = useMemo(() => nativeChatSubagentLabels(messages), [messages])
   const {
     listRef,
     showJumpToTail,
@@ -281,10 +286,11 @@ export function MobileNativeChatView({
         onOpenFile={onOpenFile}
         structuredActivityUi={structuredActivityUi}
         onToggleTurn={turns.onToggleTurn}
+        subagentLabel={nativeChatSubagentLabel(subagentLabels, item)}
         {...turns.resolveRow(index, item)}
       />
     ),
-    [toolsExpanded, fontScale, onOpenFile, structuredActivityUi, turns]
+    [toolsExpanded, fontScale, onOpenFile, structuredActivityUi, subagentLabels, turns]
   )
 
   const emptyState = mobileNativeChatEmptyState(status, agent ?? null, error)
@@ -338,10 +344,8 @@ export function MobileNativeChatView({
                 agentWorking &&
                 !hasPendingStructuredInteraction &&
                 turns.active ? (
-                  <MobileNativeChatTurnStatus
-                    startedAt={turns.active.startedAt}
+                  <MobileNativeChatTurnActivity
                     thinking={turns.active.thinking}
-                    workedSeconds={turns.active.workedSeconds}
                     activityText={turns.activeActivityText}
                   />
                 ) : null

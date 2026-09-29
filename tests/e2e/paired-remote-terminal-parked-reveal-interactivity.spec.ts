@@ -171,7 +171,7 @@ async function openClientTab(page: Page, worktreeId: string, webTabId: string): 
       state?.setActiveView('terminal')
       state?.setActiveWorktree(worktreeId)
       state?.setActiveTab(webTabId)
-      state?.setActiveTabType('terminal')
+      state?.setActiveTabType('terminal', worktreeId)
     },
     { webTabId, worktreeId }
   )
@@ -288,6 +288,12 @@ async function probeInteractivity(
   )
   const paneGrid = await readActivePaneGrid(page, target.webTabId)
   const diagnostics = await readPaneDiagnostics(page, worktreeId, target.webTabId)
+  const screenshotPath = test.info().outputPath(`paired-terminal-${name}.png`)
+  await page.screenshot({ path: screenshotPath })
+  await test.info().attach(`paired-terminal-${name}`, {
+    path: screenshotPath,
+    contentType: 'image/png'
+  })
   let paintedAfterFlip = paintedLive
   if (!paintedLive) {
     await openClientTab(page, worktreeId, flipTo.webTabId)
