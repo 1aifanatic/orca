@@ -6,6 +6,12 @@ import {
   updateTomlLineScanState
 } from './config-toml-line-scan'
 import { parseTomlTableHeaderPath } from './config-toml-key-path'
+import { parseStandardTableHeaderSegments } from './config-toml-syntax'
+import {
+  readTomlAssignmentValue,
+  scanTomlStructure,
+  tomlKeyPathsEqual
+} from './codex-config-toml-structure'
 import {
   normalizeCodexProjectPathForLookup,
   normalizeCodexProjectPathForRevocationLookup,
@@ -82,10 +88,15 @@ export function isRuntimePreservedTomlSection(header: string): boolean {
 }
 
 export function isRuntimeHookTrustTomlSection(header: string): boolean {
-  const trimmed = header.trim()
+  const segments = parseStandardTableHeaderSegments(header)
   // Why: Codex's config writer materializes the parent table on Windows. It is
   // part of runtime-owned trust and must survive the next config mirror too.
-  return trimmed === '[hooks.state]' || trimmed.startsWith('[hooks.state.')
+  return (
+    segments !== null &&
+    (segments.length === 2 || segments.length === 3) &&
+    segments[0] === 'hooks' &&
+    segments[1] === 'state'
+  )
 }
 
 export function isRuntimeProjectTomlSection(header: string): boolean {
@@ -106,8 +117,16 @@ export function getMcpServerTomlSectionName(header: string): string | null {
 export function getTomlSectionHeaderKey(header: string): string {
   const projectPath = parseCodexProjectHeaderPath(header)
   return projectPath === null
-    ? header.trim()
+    ? getDecodedTomlSectionIdentity(header)
     : `project:${normalizeCodexProjectPathForLookup(projectPath)}`
+}
+
+// Why (#22592): spellings of one table share one identity, as they do for Codex.
+function getDecodedTomlSectionIdentity(header: string): string {
+  const table = parseTomlTableHeaderPath(header)
+  return table
+    ? `${table.isArray ? 'array' : 'table'}:${JSON.stringify(table.segments)}`
+    : header.trim()
 }
 
 // Why: configs written before WSL tails compared case-sensitively can hold a
@@ -115,7 +134,7 @@ export function getTomlSectionHeaderKey(header: string): string {
 export function getRevocationTomlSectionHeaderKey(header: string): string {
   const projectPath = parseCodexProjectHeaderPath(header)
   return projectPath === null
-    ? header.trim()
+    ? getDecodedTomlSectionIdentity(header)
     : `project:${normalizeCodexProjectPathForRevocationLookup(projectPath)}`
 }
 
@@ -124,7 +143,17 @@ export function getRevocationTomlSectionHeaderKey(header: string): string {
 export function deduplicateProjectTomlSections(sections: TomlSection[]): TomlSection[] {
   const deduplicated: TomlSection[] = []
   const projectIndexes = new Map<string, number>()
+  const hookTrustIdentities = new Set<string>()
   for (const section of sections) {
+    if (isRuntimeHookTrustTomlSection(section.header)) {
+      // Why: two definitions of one hooks.state table make the whole file unreadable to Codex.
+      const identity = getDecodedTomlSectionIdentity(section.header)
+      if (!hookTrustIdentities.has(identity)) {
+        hookTrustIdentities.add(identity)
+        deduplicated.push(section)
+      }
+      continue
+    }
     if (!isRuntimeProjectTomlSection(section.header)) {
       deduplicated.push(section)
       continue
@@ -150,12 +179,15 @@ export function deduplicateProjectTomlSections(sections: TomlSection[]): TomlSec
 }
 
 export function getProjectTrustLevel(block: string): 'trusted' | 'untrusted' | null {
-  const match =
-    /^[ \t]*trust_level[ \t]*=[ \t]*(?:"(trusted|untrusted)"|'(trusted|untrusted)')[ \t\r]*(?:#.*)?$/m.exec(
-      block
-    )
-  const trustLevel = match?.[1] ?? match?.[2] ?? null
-  return trustLevel === 'trusted' || trustLevel === 'untrusted' ? trustLevel : null
+  for (const line of scanTomlStructure(block)) {
+    if (line.kind === 'assignment' && tomlKeyPathsEqual(line.keySegments, ['trust_level'])) {
+      const value = readTomlAssignmentValue(line)
+      if (value === 'trusted' || value === 'untrusted') {
+        return value
+      }
+    }
+  }
+  return null
 }
 
 export function joinTomlBlocks(blocks: string[]): string {

@@ -1,6 +1,7 @@
 import { markRemoteQoderWorkspaceTrusted } from './qoder/workspace-trust'
 import type { AgentTrustPreset } from './agent-trust-presets'
 import { upsertProjectTrustLevelInContent } from './codex/config-toml-trust'
+import { CodexConfigTomlEditRefusedError } from './codex/codex-config-toml-checked-edit'
 import { getActiveMultiplexer } from './ssh/ssh-target-registry'
 import { getSshFilesystemProvider } from './providers/ssh-filesystem-dispatch'
 import type { FileReadResult, IFilesystemProvider } from './providers/types'
@@ -101,11 +102,17 @@ async function markRemoteCodexProjectTrusted(
   const codexDir = `${remoteHome}/.codex`
   const configPath = `${codexDir}/config.toml`
   const existing = await readRemoteTextFile(fsProvider, configPath)
-  const updated = upsertProjectTrustLevelInContent(existing, workspacePath, 'trusted', {
-    // Why: workspacePath was resolved by the remote filesystem provider; local
-    // realpath would canonicalize the wrong machine on SSH.
-    alreadyCanonical: true
-  })
+  let updated: string
+  try {
+    // Why: the checked edit runs here because this process holds the parser; the remote gets only validated bytes.
+    updated = upsertProjectTrustLevelInContent(existing, workspacePath, 'trusted', {
+      // Why: workspacePath was resolved by the remote filesystem provider; local
+      // realpath would canonicalize the wrong machine on SSH.
+      alreadyCanonical: true
+    })
+  } catch (error) {
+    throw error instanceof CodexConfigTomlEditRefusedError ? error.forConfigPath(configPath) : error
+  }
   if (updated === existing) {
     return
   }

@@ -213,7 +213,7 @@ function cleanupLegacyCodexProfileHooks(): void {
   if (next.trim().length === 0) {
     unlinkSync(profilePath)
   } else {
-    writeConfigAtomically(profilePath, next)
+    writeConfigAtomically(profilePath, next, existing)
   }
 }
 

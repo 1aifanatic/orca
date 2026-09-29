@@ -214,6 +214,41 @@ describe('markRemoteAgentWorkspaceTrusted', () => {
       '[projects."/real/repo"]\ntrust_level = "trusted"\n'
     )
   })
+
+  it('edits the remote host’s quoted ["projects"."…"] table instead of appending a duplicate (#22592)', async () => {
+    const existing = '["projects"."/real/repo"]\ntrust_level = "untrusted"\n'
+    const fsProvider = makeFsProvider({
+      readFile: vi.fn(async () => ({ content: existing, isBinary: false }))
+    })
+    mocks.getSshFilesystemProvider.mockReturnValue(fsProvider)
+
+    await markRemoteAgentWorkspaceTrusted({
+      preset: 'codex',
+      connectionId: 'ssh-1',
+      workspacePath: '/repo'
+    })
+
+    expect(fsProvider.writeFile).toHaveBeenCalledWith(
+      '/home/u/.codex/config.toml',
+      '["projects"."/real/repo"]\ntrust_level = "trusted"\n'
+    )
+  })
+
+  it('never writes an unreadable remote config and names the remote file', async () => {
+    const fsProvider = makeFsProvider({
+      readFile: vi.fn(async () => ({ content: '[a]\nx = 1\n[a]\ny = 2\n', isBinary: false }))
+    })
+    mocks.getSshFilesystemProvider.mockReturnValue(fsProvider)
+
+    await expect(
+      markRemoteAgentWorkspaceTrusted({
+        preset: 'codex',
+        connectionId: 'ssh-1',
+        workspacePath: '/repo'
+      })
+    ).rejects.toThrow('/home/u/.codex/config.toml')
+    expect(fsProvider.writeFile).not.toHaveBeenCalled()
+  })
 })
 
 describe('remote Qoder trust', () => {

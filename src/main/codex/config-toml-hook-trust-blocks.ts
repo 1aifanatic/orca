@@ -5,6 +5,11 @@ import {
 } from './config-toml-line-scan'
 import { normalizeCodexHookTrustLookupKey } from './codex-trust-identity'
 import { findNextTomlTableHeader, parseHookStateTomlHeaderKey } from './config-toml-syntax'
+import {
+  scanTomlStructure,
+  tomlKeyPathsEqual,
+  type TomlTableLine
+} from './codex-config-toml-structure'
 
 export type HookTrustBlockRange = {
   start: number
@@ -38,7 +43,12 @@ export function findHookTrustBlockRanges(
       const headerLineEnd = rawLine.endsWith('\r') ? lineEnd - 1 : lineEnd
       const nextHeaderOffset = findNextTomlTableHeader(content.slice(nextCursor))
       const blockEnd = nextHeaderOffset === -1 ? content.length : nextCursor + nextHeaderOffset
-      ranges.push({ start: cursor, headerLineEnd, contentStart: nextCursor, end: blockEnd })
+      ranges.push({
+        start: cursor,
+        headerLineEnd,
+        contentStart: nextCursor,
+        end: excludeTrailingComments(content, nextCursor, blockEnd)
+      })
       cursor = Math.max(blockEnd, nextCursor)
       continue
     }
@@ -46,6 +56,29 @@ export function findHookTrustBlockRanges(
     cursor = nextCursor
   }
   return ranges
+}
+
+/** Comments directly above the next table describe that table, so an edit of this block keeps them. */
+function excludeTrailingComments(content: string, contentStart: number, blockEnd: number): number {
+  const lines = content.slice(contentStart, blockEnd).split('\n')
+  if (lines.at(-1) === '') {
+    lines.pop()
+  }
+  let firstKept = lines.length
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index]?.trim() ?? ''
+    if (line.startsWith('#')) {
+      firstKept = index
+    } else if (line !== '') {
+      break
+    }
+  }
+  if (firstKept === lines.length) {
+    return blockEnd
+  }
+  return (
+    contentStart + lines.slice(0, firstKept).reduce((length, line) => length + line.length + 1, 0)
+  )
 }
 
 export function findAllHookTrustBlocks(content: string): (HookTrustBlockRange & { key: string })[] {
@@ -83,14 +116,20 @@ export function findAllHookTrustBlocks(content: string): (HookTrustBlockRange & 
 }
 
 export function ensureHooksStateParentTable(content: string): string {
-  if (/^[ \t]*\[hooks\.state\][ \t]*(?:#[^\r\n]*)?$/m.test(content)) {
+  const tables = scanTomlStructure(content).filter(
+    (line): line is TomlTableLine => line.kind === 'table' && !line.isArray
+  )
+  if (tables.some((line) => tomlKeyPathsEqual(line.segments, ['hooks', 'state']))) {
     return content
   }
   const eol = content.includes('\r\n') ? '\r\n' : '\n'
   const parent = `[hooks.state]${eol}`
-  const hookHeader = /^[ \t]*\[hooks\.state\.(?:"|')/m.exec(content)
-  if (hookHeader) {
-    return `${content.slice(0, hookHeader.index)}${parent}${eol}${content.slice(hookHeader.index)}`
+  const firstHookHeader = tables.find(
+    (line) =>
+      line.segments.length === 3 && line.segments[0] === 'hooks' && line.segments[1] === 'state'
+  )
+  if (firstHookHeader) {
+    return `${content.slice(0, firstHookHeader.lineStart)}${parent}${eol}${content.slice(firstHookHeader.lineStart)}`
   }
   if (content.length === 0) {
     return parent

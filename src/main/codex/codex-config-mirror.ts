@@ -1,15 +1,8 @@
 import { readMcpServerTomlOwnership } from './config-toml-mcp-servers'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import { observeAgentStateFile } from './codex-path-observation'
-import {
-  recoverInterruptedGuardedFileOperation,
-  writeFileAtomically,
-  writeFileAtomicallyIfUnchanged
-} from '../codex-accounts/fs-utils'
+import { writeFileAtomically, writeFileAtomicallyIfUnchanged } from '../codex-accounts/fs-utils'
 import { getOrcaManagedCodexHomePath, getSystemCodexHomePath } from './codex-home-paths'
-import { rewriteRelativePathConfigValues } from './codex-config-path-reference-rewrite'
-import { normalizeDeprecatedCodexHookFeatureFlag } from './config-toml-deprecated-hook-flag'
-import { parseWslUncPath } from '../../shared/wsl-paths'
 import {
   promoteCodexRuntimeSettingsToSystem,
   snapshotCodexRuntimeSettingsBaseline,
@@ -21,17 +14,29 @@ import { getCodexConfigSyncStatus, reportCodexConfigSyncOutcome } from './config
 import { preserveRuntimeConflictValues } from './codex-config-settings-preservation'
 import { applyCodexDaemonSocketGuard } from './codex-daemon-socket-path-guard'
 import {
-  deduplicateProjectTomlSections,
-  getMcpServerTomlSectionName,
-  getProjectTrustLevel,
-  getRevocationTomlSectionHeaderKey,
-  getTomlSectionHeaderKey,
-  getTomlSections,
-  isRuntimePreservedTomlSection,
-  isRuntimeProjectTomlSection,
-  joinTomlBlocks,
-  stripRuntimeOwnedTomlSections
-} from './config-toml-runtime-owned-sections'
+  clearCodexConfigTomlEditRefusalReport,
+  type CodexConfigTomlEditRefusedError,
+  reportCodexConfigTomlEditRefusal
+} from './codex-config-toml-checked-edit'
+import {
+  findManagedConfigRefusal,
+  applyUnparseableCodexSourceRule,
+  backUpDiscardedManagedConfig,
+  findUnparseableManagedCodexConfig,
+  refuseUnparseableManagedConfig
+} from './codex-managed-config-validity'
+import { mergeSystemCodexConfigIntoRuntime } from './codex-config-mirror-merge'
+import {
+  prepareSystemConfigForFreshRuntimeMirror,
+  prepareSystemConfigForRuntimeMirror,
+  resolveCodexConfigMirrorSourceDirectory
+} from './codex-config-mirror-source'
+
+export { syncSystemConfigIntoLegacySharedCodexHome } from './codex-config-legacy-shared-home-mirror'
+export {
+  prepareSystemConfigForFreshRuntimeMirror,
+  resolveCodexConfigMirrorSourceDirectory
+} from './codex-config-mirror-source'
 
 export function syncSystemConfigIntoManagedCodexHome(
   homes: CodexSettingsPromotionHomes = {
@@ -77,6 +82,23 @@ function mirrorSystemConfigIntoManagedCodexHome(homes: CodexSettingsPromotionHom
     // reaches the user.
     reportCodexConfigSyncOutcome(homes.runtimeHomePath, getCodexConfigSyncStatus(homes), error)
     return false
+  }
+  if (mirrorResult.status === 'refused-invalid') {
+    // Why: writing a config Codex cannot parse breaks every managed-home launch;
+    // keep the last good copy and advance nothing, like an unreadable source.
+    reportCodexConfigTomlEditRefusal(
+      mirrorResult.error,
+      'Skipped mirroring the Codex config into a managed home'
+    )
+    return false
+  }
+  if (mirrorResult.status === 'refused-unparseable-source') {
+    // Why: the managed home keeps its own state; nothing mirrored, so nothing advances.
+    return false
+  }
+  if (mirrorResult.status === 'copied-unparseable') {
+    // Why: a mirror ran (the verbatim copy), so no daemon guard may edit it and no baseline advances from it.
+    return true
   }
   if (mirrorResult.status === 'refused-indeterminate') {
     // Why: no mirror ran, so this must behave exactly like the throwing path
@@ -136,68 +158,20 @@ export function ensureCodexDaemonSocketGuard(runtimeHomePath: string): void {
 function writeCodexDaemonSocketGuard(runtimeHomePath: string, runtimeConfig: string | null): void {
   const guarded = applyCodexDaemonSocketGuard(runtimeConfig ?? '', runtimeHomePath)
   if (guarded !== (runtimeConfig ?? '')) {
-    writeFileAtomicallyIfUnchanged(join(runtimeHomePath, 'config.toml'), runtimeConfig, guarded)
+    const runtimeConfigPath = join(runtimeHomePath, 'config.toml')
+    if (refuseUnparseableManagedConfig(runtimeConfigPath, guarded)) {
+      return
+    }
+    writeFileAtomicallyIfUnchanged(runtimeConfigPath, runtimeConfig, guarded)
   }
-}
-
-/**
- * Refreshes the retired shared home for PTYs that survived real-home rollout.
- *
- * This is deliberately one-way: a retained PTY may hold pre-rollout settings,
- * so treating that home as a promotion source could overwrite the live config.
- */
-export function syncSystemConfigIntoLegacySharedCodexHome(
-  homes: CodexSettingsPromotionHomes = {
-    runtimeHomePath: getOrcaManagedCodexHomePath(),
-    systemHomePath: getSystemCodexHomePath()
-  }
-): void {
-  const systemConfigPath = join(homes.systemHomePath, 'config.toml')
-  const runtimeConfigPath = join(homes.runtimeHomePath, 'config.toml')
-  recoverInterruptedGuardedFileOperation(runtimeConfigPath)
-  const systemConfigObservation = observeAgentStateFile(systemConfigPath)
-  if (systemConfigObservation.kind === 'indeterminate') {
-    throw systemConfigObservation.error
-  }
-  const rawSystemConfig =
-    systemConfigObservation.kind === 'present' ? systemConfigObservation.value : ''
-  const runtimeConfigObservation = observeAgentStateFile(runtimeConfigPath)
-  if (runtimeConfigObservation.kind === 'indeterminate') {
-    throw runtimeConfigObservation.error
-  }
-  const runtimeConfigBeforeMirror =
-    runtimeConfigObservation.kind === 'present' ? runtimeConfigObservation.value : null
-  // Why: a missing cloud-synced source is not proof the user cleared config.
-  let mirroredRuntimeConfig = runtimeConfigBeforeMirror ?? ''
-  if (rawSystemConfig.trim() !== '') {
-    const sourceConfigDir = resolveCodexConfigMirrorSourceDirectory(homes.systemHomePath)
-    // The retired home has no ownership baseline; its entire MCP root stays canonical.
-    mirroredRuntimeConfig =
-      runtimeConfigBeforeMirror !== null
-        ? mergeSystemCodexConfigIntoRuntime(
-            runtimeConfigBeforeMirror,
-            prepareSystemConfigForRuntimeMirror(rawSystemConfig, sourceConfigDir),
-            new Set(),
-            true
-          )
-        : prepareSystemConfigForFreshRuntimeMirror(rawSystemConfig, sourceConfigDir)
-  }
-  // Why: retained pre-rollout panes still use this home, so a refresh must keep the daemon guard.
-  const nextRuntimeConfig = applyCodexDaemonSocketGuard(
-    mirroredRuntimeConfig,
-    homes.runtimeHomePath
-  )
-  if ((runtimeConfigBeforeMirror ?? '') === nextRuntimeConfig) {
-    return
-  }
-  // Why: stage first, then compare immediately before replace so a retained
-  // Codex trust write during mirror preparation wins.
-  writeFileAtomicallyIfUnchanged(runtimeConfigPath, runtimeConfigBeforeMirror, nextRuntimeConfig)
 }
 
 type CodexConfigMirrorResult =
   | { status: 'skipped-missing-source' }
+  | { status: 'copied-unparseable' }
+  | { status: 'refused-unparseable-source' }
   | { status: 'refused-indeterminate'; error: unknown }
+  | { status: 'refused-invalid'; error: CodexConfigTomlEditRefusedError }
   | {
       status: 'mirrored'
       preservedConflictKeys: ReadonlySet<string>
@@ -245,13 +219,41 @@ function syncSystemConfigIntoManagedCodexHomeUnsafe(
         }
   }
 
+  const existingRuntimeConfig =
+    runtimeConfigObservation.kind === 'present' ? runtimeConfigObservation.value : null
+  const unparseableSource = applyUnparseableCodexSourceRule({
+    sourcePath: systemConfigPath,
+    runtimeConfigPath,
+    source: rawSystemConfig,
+    runtime: existingRuntimeConfig,
+    writeVerbatimCopy: () => writeFileAtomically(runtimeConfigPath, rawSystemConfig)
+  })
+  if (unparseableSource) {
+    return {
+      status: unparseableSource === 'copied' ? 'copied-unparseable' : 'refused-unparseable-source'
+    }
+  }
+  const runtimeParses =
+    existingRuntimeConfig !== null &&
+    findUnparseableManagedCodexConfig(existingRuntimeConfig) === null
   const sourceConfigDir = resolveCodexConfigMirrorSourceDirectory(systemHomePath, systemConfigDir)
-  if (!runtimeConfigExists) {
+  // Why: a managed config Codex cannot parse (the verbatim copy of a broken ~/.codex) holds nothing to keep; reseed it.
+  if (!runtimeParses || existingRuntimeConfig === null) {
     const freshRuntimeConfig = applyCodexDaemonSocketGuard(
       prepareSystemConfigForFreshRuntimeMirror(rawSystemConfig, sourceConfigDir),
       runtimeHomePath
     )
+    const refusal = findManagedConfigRefusal(runtimeConfigPath, freshRuntimeConfig)
+    if (refusal) {
+      return { status: 'refused-invalid', error: refusal }
+    }
     const ownership = readMcpServerTomlOwnership(freshRuntimeConfig)
+    backUpDiscardedManagedConfig({
+      sourcePath: systemConfigPath,
+      runtimeConfigPath,
+      source: rawSystemConfig,
+      discarded: existingRuntimeConfig
+    })
     writeFileAtomically(runtimeConfigPath, freshRuntimeConfig)
     return {
       status: 'mirrored',
@@ -266,7 +268,7 @@ function syncSystemConfigIntoManagedCodexHomeUnsafe(
     readMcpServerTomlOwnership(systemConfig)
   // Why: reuse the bytes already observed above rather than re-reading. A second
   // read could succeed where the first failed and re-open the gap this closes.
-  const runtimeConfig = runtimeConfigObservation.value
+  const runtimeConfig = existingRuntimeConfig
   const preserved = preserveRuntimeConflictValues(
     mergeSystemCodexConfigIntoRuntime(
       runtimeConfig,
@@ -278,100 +280,17 @@ function syncSystemConfigIntoManagedCodexHomeUnsafe(
   )
   const nextRuntimeConfig = applyCodexDaemonSocketGuard(preserved.content, runtimeHomePath)
   if (nextRuntimeConfig !== runtimeConfig) {
+    const refusal = findManagedConfigRefusal(runtimeConfigPath, nextRuntimeConfig)
+    if (refusal) {
+      return { status: 'refused-invalid', error: refusal }
+    }
     writeFileAtomically(runtimeConfigPath, nextRuntimeConfig)
   }
+  clearCodexConfigTomlEditRefusalReport(runtimeConfigPath)
   return {
     status: 'mirrored',
     preservedConflictKeys: preserved.keys,
     mirroredMcpServerNames,
     mirroredMcpServerRoot
   }
-}
-
-export function resolveCodexConfigMirrorSourceDirectory(
-  systemHomePath: string,
-  systemConfigDir?: string
-): string {
-  return (
-    systemConfigDir ??
-    parseWslUncPath(systemHomePath)?.linuxPath ??
-    dirname(join(systemHomePath, 'config.toml'))
-  )
-}
-
-function prepareSystemConfigForRuntimeMirror(config: string, systemConfigDir: string): string {
-  return rewriteRelativePathConfigValues(
-    normalizeDeprecatedCodexHookFeatureFlag(config),
-    systemConfigDir
-  )
-}
-
-// Why: trust blocks reference a hooks.json path, so system-home hook trust
-// entries are not valid in a fresh runtime CODEX_HOME until install remaps
-// them. Also seeds WSL runtime homes, where systemConfigDir must be the
-// Linux-side ~/.codex the config resolves against inside the distro.
-export function prepareSystemConfigForFreshRuntimeMirror(
-  config: string,
-  systemConfigDir: string
-): string {
-  return stripRuntimeOwnedTomlSections(prepareSystemConfigForRuntimeMirror(config, systemConfigDir))
-}
-
-function mergeSystemCodexConfigIntoRuntime(
-  runtimeConfig: string,
-  systemConfig: string,
-  mirroredMcpServerNames: ReadonlySet<string> = new Set(),
-  mirroredMcpServerRoot = false
-): string {
-  const runtimeSections = deduplicateProjectTomlSections(getTomlSections(runtimeConfig))
-  const runtimeProjectHeaders = new Set(
-    runtimeSections
-      .filter((section) => isRuntimeProjectTomlSection(section.header))
-      .map((section) => getTomlSectionHeaderKey(section.header))
-  )
-  const systemProjectSections = deduplicateProjectTomlSections(
-    getTomlSections(systemConfig)
-  ).filter((section) => isRuntimeProjectTomlSection(section.header))
-  const systemUntrustedProjectHeaders = new Set(
-    systemProjectSections
-      .filter((section) => getProjectTrustLevel(section.block) === 'untrusted')
-      .map((section) => getRevocationTomlSectionHeaderKey(section.header))
-  )
-  // Why: an exact-cased trusted entry in ~/.codex is the user's latest explicit
-  // decision for that exact project; a loosely-matched (case-drifted) revocation
-  // must not override it, or re-granting trust would be reverted every mirror.
-  const systemTrustedProjectHeaders = new Set(
-    systemProjectSections
-      .filter((section) => getProjectTrustLevel(section.block) === 'trusted')
-      .map((section) => getTomlSectionHeaderKey(section.header))
-  )
-  const systemMcpServers = readMcpServerTomlOwnership(systemConfig)
-  // Why: ordinary Codex settings should mirror ~/.codex exactly; runtime hook
-  // trust and project trust are written under Orca's managed CODEX_HOME and
-  // must survive the copy unless the user explicitly revoked project trust in
-  // the system config.
-  return joinTomlBlocks([
-    stripRuntimeOwnedTomlSections(systemConfig, runtimeProjectHeaders),
-    ...runtimeSections
-      .filter((section) => {
-        if (isRuntimePreservedTomlSection(section.header)) {
-          return true
-        }
-        const mcpServerName = getMcpServerTomlSectionName(section.header)
-        return (
-          mcpServerName !== null &&
-          !systemMcpServers.ownsRoot &&
-          !mirroredMcpServerRoot &&
-          !systemMcpServers.names.has(mcpServerName) &&
-          !mirroredMcpServerNames.has(mcpServerName)
-        )
-      })
-      .filter(
-        (section) =>
-          !isRuntimeProjectTomlSection(section.header) ||
-          !systemUntrustedProjectHeaders.has(getRevocationTomlSectionHeaderKey(section.header)) ||
-          systemTrustedProjectHeaders.has(getTomlSectionHeaderKey(section.header))
-      )
-      .map((section) => section.block)
-  ])
 }
