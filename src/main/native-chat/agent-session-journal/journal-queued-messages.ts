@@ -10,10 +10,7 @@ import {
   AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS,
   AGENT_SESSION_OPERATION_FUTURE_SKEW_MS
 } from '../../../shared/agent-session-host-authority'
-import {
-  consumedSubmissionWasRejected,
-  journalDispatchRowNewlyRejects
-} from './journal-dispatch-settlement'
+import { journalDispatchRowNewlyRejects } from './journal-dispatch-settlement'
 import type { JournalReducerState } from './journal-reducer'
 import type { JournalRow } from './journal-row-schema'
 import {
@@ -34,6 +31,7 @@ import {
   type QueuedMessageRow
 } from './queued-message-table'
 import { pruneQueuedMessages } from './queued-message-retention'
+import { queuedMessageSettlementOwed, settleOwedQueuedMessages } from './queued-message-settlement'
 import { AgentSessionJournalError, assertJournalWritable } from './journal-write-guards'
 
 /** Tombstones must outlive the window in which their operation id could still be admitted as new. */
@@ -274,6 +272,24 @@ export class JournalQueuedMessages {
     this.changeRevision++
   }
 
+  /** A skipped live settlement the journal already decided (`queued-message-settlement.ts`). */
+  settlementOwed(): boolean {
+    return queuedMessageSettlementOwed(this.list(), this.deps.state().submissions)
+  }
+
+  /** Applies owed settlements now, so a skipped live transition heals without a reopen. */
+  settleOwed(): Promise<void> {
+    return this.transact(
+      (db) =>
+        settleOwedQueuedMessages(db, {
+          sessionId: this.deps.sessionId,
+          submissions: this.deps.state().submissions,
+          now: this.deps.now()
+        }),
+      (settled) => settled > 0
+    ).then(() => undefined)
+  }
+
   /** Bookkeeping at open: a failure is reported and retried at the next open,
    *  never allowed to fail opening the chat. */
   repairAndPruneAtOpen(): Promise<void> {
@@ -286,9 +302,8 @@ export class JournalQueuedMessages {
   }
 
   /**
-   * Open-time reconciliation, a re-derivation behind the stored fact: any
-   * `dispatched` row whose loaded current submission is rejected settles
-   * exactly as the live hook would have (covers a skipped hook, and consume →
+   * Open-time reconciliation, a re-derivation behind the stored fact: owed
+   * settlements apply exactly as the live hook would have (covers consume →
    * crash → downgrade → upgrade, where the old build rejected the leftover with
    * no hook), then retention runs.
    */
@@ -303,25 +318,11 @@ export class JournalQueuedMessages {
       let changed = 0
       db.exec('BEGIN IMMEDIATE')
       try {
-        for (const row of listQueuedMessages(db, this.deps.sessionId)) {
-          if (row.state !== 'dispatched') {
-            continue
-          }
-          const submission = submissions.get(row.consumedAs ?? row.messageId)
-          if (consumedSubmissionWasRejected(submission)) {
-            if (
-              settleRejectedQueuedMessage(db, {
-                sessionId: this.deps.sessionId,
-                consumedRef: row.consumedAs ?? row.messageId,
-                reason: submission?.reason ?? null,
-                rejection: submission?.rejection,
-                now
-              })
-            ) {
-              changed += 1
-            }
-          }
-        }
+        changed += settleOwedQueuedMessages(db, {
+          sessionId: this.deps.sessionId,
+          submissions,
+          now
+        })
         changed += pruneQueuedMessages(db, {
           sessionId: this.deps.sessionId,
           now,

@@ -285,12 +285,13 @@ export class StructuredAgentSessionQueuedMessageDrain {
     // that schedules again, and the step re-reads every gate after its flush.
     try {
       if (
-        oldestActionableQueuedMessage(journal.queuedMessages.list()) === null ||
-        isStructuredAgentSessionMainAgentWorking(
-          journal.activeTurnId(),
-          journal.submissions(),
-          this.deps.conversationFence(sessionId)
-        )
+        !journal.queuedMessages.settlementOwed() &&
+        (oldestActionableQueuedMessage(journal.queuedMessages.list()) === null ||
+          isStructuredAgentSessionMainAgentWorking(
+            journal.activeTurnId(),
+            journal.submissions(),
+            this.deps.conversationFence(sessionId)
+          ))
       ) {
         return
       }
@@ -320,6 +321,12 @@ export class StructuredAgentSessionQueuedMessageDrain {
     }
     await this.deps.flushStreamedEvents(sessionId)
     const journal = session.journal
+    if (journal.queuedMessages.settlementOwed()) {
+      // The live settlement hook was skipped; heal now rather than at the next open.
+      await journal.queuedMessages.settleOwed().catch((error: unknown) => {
+        this.deps.onError(sessionId, error)
+      })
+    }
     const next = oldestActionableQueuedMessage(journal.queuedMessages.list())
     if (!next) {
       return

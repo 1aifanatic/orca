@@ -207,6 +207,32 @@ describe('drain', () => {
     )
   })
 
+  it('a skipped settlement hook heals on the next drain step, not only at the next open', async () => {
+    const working = await workingSend()
+    const queued = await send('refused while the hook fails', 'queue-if-active').result
+    if (!queued.ok || !('queued' in queued.value)) {
+      throw new Error('expected a queued receipt')
+    }
+    const draftId = queued.value.queued.messageId
+    await settleAccepted(working, 'a')
+    await eventually(async () => expect(await submission(draftId)).toBeDefined())
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const hook = vi
+      .spyOn(JournalQueuedMessages.prototype, 'onRowInTransaction')
+      .mockImplementationOnce(() => {
+        throw new Error('bookkeeping failed')
+      })
+    try {
+      await settleRejected(draftId, 'provider refused this payload')
+      await eventually(async () =>
+        expect(await drafts()).toMatchObject([{ messageId: draftId, state: 'returned' }])
+      )
+    } finally {
+      hook.mockRestore()
+      warn.mockRestore()
+    }
+  })
+
   it('a waiting draft behind a returned card does not drain until the card is acted on (S5)', async () => {
     const working = await workingSend()
     const first = await send('to be refused', 'queue-if-active').result
