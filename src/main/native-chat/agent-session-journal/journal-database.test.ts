@@ -73,7 +73,13 @@ describe('the host journal database open', () => {
         .all()
         .map((entry) => (entry as { name: string }).name)
       expect(tables).toEqual(
-        expect.arrayContaining(['journal_repairs', 'journal_rows', 'journal_sessions'])
+        expect.arrayContaining([
+          'journal_imports',
+          'journal_repairs',
+          'journal_rows',
+          'journal_sessions',
+          'journal_set_aside'
+        ])
       )
       expect(db.pragma('journal_mode', { simple: true })).toBe('wal')
       expect(journalPragmaNumber(db, 'synchronous')).toBe(2)

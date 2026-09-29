@@ -177,7 +177,8 @@ describe('axis 1: the database shape', () => {
     expect(reopened.isReadOnly).toBe(true)
   })
 
-  it('migrates an older user_version forward on reopen', async () => {
+  // The only older version brought forward; 1 and 2 are refused (journal-database.test.ts).
+  it('stamps the current user_version on a version-0 file that already has its tables', async () => {
     const journal = await open()
     await journal.appendItem(item(0), body('a'), {
       fence: 1,
