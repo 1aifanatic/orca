@@ -239,20 +239,24 @@ describe('against a capable host', () => {
   })
 
   it('a mid-turn queue send is never a transcript bubble, before or after the host holds it', () => {
-    const entry = (id: string, text: string, delivery?: 'queue-if-active') => ({
-      ...createStructuredAgentSessionOutboxEntry({
+    const entry = (id: string, text: string) =>
+      createStructuredAgentSessionOutboxEntry({
         clientMessageId: id,
         sessionId: 'session-1',
         text,
         attachments: [],
         queuedAt: 1
-      }),
-      ...(delivery ? { delivery } : {})
-    })
+      })
     outboxEntries = [
-      entry('pending-queue', 'awaiting the answer', 'queue-if-active'),
+      // Not sent yet: against a host that queues, with the setting on, it will ask to be queued.
+      entry('pending-queue', 'awaiting the answer'),
       // Sent plain: a bubble, whatever the capability now says.
-      { ...entry('plain', 'immediate send'), state: 'dispatching', lastAttemptAt: 2, sentDelivery: null }
+      {
+        ...entry('plain', 'immediate send'),
+        state: 'dispatching',
+        lastAttemptAt: 2,
+        sentDelivery: null
+      }
     ]
     const working = render()
     const workingText = JSON.stringify(working.result.current.messages)

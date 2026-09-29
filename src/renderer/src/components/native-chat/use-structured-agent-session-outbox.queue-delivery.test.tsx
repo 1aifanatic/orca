@@ -200,8 +200,10 @@ describe('outbox queue delivery selection', () => {
     })
     // The unissued entry came back to the composer; the issued one stayed put.
     expect(readNativeChatDraftCache('stop-scope')).toBe('never left')
-    // The issued one waits for its answer, and only the user's Retry sends it again.
-    expect(view.result.current.outbox.map((entry) => entry.state)).toEqual(['unconfirmed'])
+    // The issued one waits for its answer, marked: only the user's Retry sends it again.
+    expect(view.result.current.outbox.map((entry) => [entry.state, entry.outlivedStop])).toEqual([
+      ['dispatching', true]
+    ])
     // The host publishes the issued send as a card: retired, still nothing restored.
     const entryId = mocks.call.mock.calls[0]?.[2]?.envelope.clientOperationId
     view.rerender({ queuedMessageIds: [entryId ?? ''] })
@@ -267,7 +269,7 @@ describe('outbox queue delivery selection', () => {
     }
   })
 
-  it('a host known not to queue gets the Retry without `delivery`; the entry keeps the intent', async () => {
+  it('a host known not to queue gets the Retry without `delivery`; the entry keeps what it sent', async () => {
     // Such a host rejects the strict field before its operation ledger, so a replay carrying it
     // again could only fail the same way.
     const view = await attemptedQueueSend()
@@ -287,7 +289,7 @@ describe('outbox queue delivery selection', () => {
         fields: { body: params?.body }
       })
     )
-    expect(readOutbox('session-1')[0]?.delivery).toBe('queue-if-active')
+    expect(readOutbox('session-1')[0]?.sentDelivery).toBe('queue-if-active')
   })
 })
 

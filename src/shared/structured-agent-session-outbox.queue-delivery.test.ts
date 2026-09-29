@@ -1,19 +1,24 @@
-// `delivery: 'queue-if-active'` on an outbox entry: stamped once at enqueue,
-// persisted, replayed identically, and absent — key and all — from any send an
-// incapable host could see (its strict schema refuses unknown keys).
+// `delivery: 'queue-if-active'` on a send: recorded as the entry's `sentDelivery` by its first
+// attempt, persisted, replayed identically, and absent — key and all — from any send an incapable
+// host could see (its strict schema refuses unknown keys).
 
 import { describe, expect, it } from 'vitest'
 import { structuredAgentSessionPayloadFingerprint } from './structured-agent-session-mutation'
 import {
+  admitStructuredAgentSessionOutboxEntry,
   createStructuredAgentSessionOutboxEntry,
   parseStructuredAgentSessionOutboxEntry,
+  stageStructuredAgentSessionOutboxEntryForSend,
   structuredAgentSessionSendMutation,
   structuredAgentSessionSendRequest,
+  type StructuredAgentSessionOutboxEntry,
   type StructuredAgentSessionOutboxState
 } from './structured-agent-session-outbox'
+import { structuredAgentSessionEntryAttempt } from './structured-agent-session-outbox-delivery'
+import { disposeStructuredAgentSessionSendResult } from './structured-agent-session-send-disposition'
 import { withdrawUnsentStructuredAgentSessionOutboxEntries } from './structured-agent-session-outbox-stop-withdrawal'
 
-function entry(delivery?: 'queue-if-active') {
+function entry(sentDelivery?: 'queue-if-active') {
   return {
     ...createStructuredAgentSessionOutboxEntry({
       clientMessageId: 'client-1',
@@ -22,7 +27,7 @@ function entry(delivery?: 'queue-if-active') {
       attachments: [],
       queuedAt: 1
     }),
-    ...(delivery ? { delivery } : {})
+    ...(sentDelivery ? { sentDelivery } : {})
   }
 }
 
@@ -57,20 +62,20 @@ describe('outbox queue delivery', () => {
       JSON.parse(JSON.stringify(entry('queue-if-active'))),
       'session-1'
     )
-    expect(parsed?.delivery).toBe('queue-if-active')
+    expect(parsed?.sentDelivery).toBe('queue-if-active')
     const plain = parseStructuredAgentSessionOutboxEntry(
       JSON.parse(JSON.stringify(entry())),
       'session-1'
     )
-    expect(plain !== null && 'delivery' in plain).toBe(false)
+    expect(plain !== null && 'sentDelivery' in plain).toBe(false)
     const foreign = parseStructuredAgentSessionOutboxEntry(
-      { ...JSON.parse(JSON.stringify(entry())), delivery: 'something-newer' },
+      { ...JSON.parse(JSON.stringify(entry())), sentDelivery: 'something-newer' },
       'session-1'
     )
-    expect(foreign !== null && 'delivery' in foreign).toBe(false)
+    expect(foreign !== null && 'sentDelivery' in foreign).toBe(false)
   })
 
-  it('Stop keeps every queue send that has gone out, in any state, and parks it for Retry', () => {
+  it('Stop keeps every queue send that has gone out, in any state, and marks it for Retry', () => {
     // An attempted queue send may already be a host-held draft: withdrawing it locally too would
     // put the same text in the composer AND on a card. Read from what went on the wire.
     const at = (
@@ -85,7 +90,6 @@ describe('outbox queue delivery', () => {
         attachments: [],
         queuedAt: 1
       }),
-      delivery: 'queue-if-active' as const,
       ...(sent !== undefined ? { lastAttemptAt: 2, sentDelivery: sent } : {}),
       state
     })
@@ -103,10 +107,55 @@ describe('outbox queue delivery', () => {
       null,
       null
     )
+    // Its state is left to its answer: only the mark holds it back.
     expect(next.map((entry) => [entry.clientMessageId, entry.state, entry.outlivedStop])).toEqual([
-      ['in-flight', 'unconfirmed', true],
+      ['in-flight', 'dispatching', true],
       ['in-doubt', 'unconfirmed', true],
-      ['probed', 'unconfirmed', true]
+      ['probed', 'queued', true]
     ])
+    // The drain never admits the marked one it would otherwise send.
+    expect(admitStructuredAgentSessionOutboxEntry(next.slice(2), null)).toEqual({
+      state: 'blocked',
+      entry: next[2]
+    })
+  })
+
+  it('Stop during a first queue attempt, then a settled refusal: rotated and rejected, as without it', () => {
+    const operations = ['rotated-1', 'rotated-2']
+    const attempt = structuredAgentSessionEntryAttempt(entry(), {
+      capability: 'supported',
+      enabled: true
+    })
+    const staged = stageStructuredAgentSessionOutboxEntryForSend(attempt.stored, 10)
+    const refusal = {
+      ok: false as const,
+      refusal: {
+        code: 'agent_session_operation_invalid' as const,
+        message: 'The message queue is full.'
+      }
+    }
+    const answer = (entries: StructuredAgentSessionOutboxEntry[]) =>
+      disposeStructuredAgentSessionSendResult({
+        entries,
+        entry: attempt.wire,
+        blockedClientMessageId: null,
+        result: refusal,
+        createOperationId: () => operations.shift() ?? 'spent'
+      })
+    const stopped = withdrawUnsentStructuredAgentSessionOutboxEntries(
+      [staged],
+      [],
+      null,
+      'client-1'
+    )
+    const withStop = answer(stopped)
+    const withoutStop = answer([staged])
+    expect(
+      withStop.entries.map((candidate) => [candidate.clientMessageId, candidate.state])
+    ).toEqual([['rotated-1', 'rejected']])
+    expect(
+      withoutStop.entries.map((candidate) => [candidate.clientMessageId, candidate.state])
+    ).toEqual([['rotated-2', 'rejected']])
+    expect(withStop.blockedClientMessageId).toBeNull()
   })
 })

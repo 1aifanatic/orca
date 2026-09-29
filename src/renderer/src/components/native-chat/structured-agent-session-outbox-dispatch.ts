@@ -58,14 +58,14 @@ export function readMountedStructuredAgentSessionOutbox(
 }
 
 /** A send left dispatching when its owner changed goes out again, under the same id; one a Stop
- *  outlived waits for the user's Retry instead. */
+ *  outlived is held from there by its mark, until the user's Retry. */
 export function requeueInterruptedStructuredAgentSessionDispatches(
   entries: StructuredAgentSessionOutboxEntry[],
   fence: number | null
 ): StructuredAgentSessionOutboxEntry[] {
   return entries.map((entry) =>
     entry.state === 'dispatching' && !hasInFlightLaunchDispatch(entry, fence)
-      ? { ...entry, state: entry.outlivedStop === true ? 'unconfirmed' : 'queued' }
+      ? { ...entry, state: 'queued' as const }
       : entry
   )
 }

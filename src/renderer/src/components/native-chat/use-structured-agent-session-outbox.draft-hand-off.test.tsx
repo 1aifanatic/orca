@@ -61,7 +61,7 @@ function seed(clientMessageId: string, queued: boolean): void {
         attachments: [],
         queuedAt: 1
       }),
-      ...(queued ? { delivery: 'queue-if-active' as const } : {}),
+      sentDelivery: queued ? ('queue-if-active' as const) : null,
       state: 'unconfirmed',
       lastAttemptAt: 5
     }

@@ -22,7 +22,7 @@ const entry: StructuredAgentSessionOutboxEntry = {
     attachments: [],
     queuedAt: 1
   }),
-  delivery: 'queue-if-active',
+  sentDelivery: 'queue-if-active',
   state: 'unconfirmed',
   lastAttemptAt: 5
 }

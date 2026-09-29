@@ -29,7 +29,6 @@ import {
 } from '../../../../shared/structured-agent-session-draft-hand-off'
 import {
   structuredAgentSessionEntryAttempt,
-  structuredAgentSessionEntryDeliveryIntent,
   type StructuredAgentSessionQueueDelivery
 } from '../../../../shared/structured-agent-session-outbox-delivery'
 import { retryStructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox-retry'
@@ -221,17 +220,7 @@ export function useStructuredAgentSessionOutbox(args: {
       setOutbox(persisted)
       return
     }
-    // A Stop outlived it: only the user's Retry, which clears the mark, sends it again.
-    if (persistedEntry.outlivedStop === true) {
-      const parked = persisted.map((entry) =>
-        entry === persistedEntry ? { ...entry, state: 'unconfirmed' as const } : entry
-      )
-      outboxRef.current = parked
-      setOutbox(parked)
-      writeOutbox(sessionId, parked)
-      return
-    }
-    // The request reads the capability; the entry keeps the intent and what it first sent.
+    // The request reads the capability; the entry keeps only what its first attempt sent.
     const attempt = structuredAgentSessionEntryAttempt(persistedEntry, {
       capability: queueCapability,
       enabled: queueEnabled
@@ -274,16 +263,14 @@ export function useStructuredAgentSessionOutbox(args: {
       if (!text.trim() && attachments.length === 0) {
         return false
       }
-      const entry = structuredAgentSessionEntryDeliveryIntent(
-        createStructuredAgentSessionOutboxEntry({
-          clientMessageId: structuredSessionOperationId(),
-          sessionId,
-          text,
-          attachments,
-          queuedAt: Date.now()
-        }),
-        { capability: queueCapability, enabled: queueEnabled }
-      )
+      // Whether it asks to be queued is decided when it first goes out.
+      const entry = createStructuredAgentSessionOutboxEntry({
+        clientMessageId: structuredSessionOperationId(),
+        sessionId,
+        text,
+        attachments,
+        queuedAt: Date.now()
+      })
       const next = [...outboxRef.current, entry]
       if (!writeOutbox(sessionId, next)) {
         setError('Message could not be saved to the outbox')
@@ -294,7 +281,7 @@ export function useStructuredAgentSessionOutbox(args: {
       setError(null)
       return true
     },
-    [queueCapability, queueEnabled, sessionId]
+    [sessionId]
   )
 
   const { withdrawUnsent } = useStructuredAgentSessionOutboxOwnership({

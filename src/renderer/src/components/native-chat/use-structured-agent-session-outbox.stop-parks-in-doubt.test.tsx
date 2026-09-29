@@ -55,7 +55,6 @@ describe('a Stop with a queued send in doubt', () => {
           attachments: [],
           queuedAt: 1
         }),
-        delivery: 'queue-if-active',
         sentDelivery: 'queue-if-active',
         lastAttemptAt: 5,
         state: 'queued'
@@ -78,7 +77,10 @@ describe('a Stop with a queued send in doubt', () => {
     })
     // The host may hold it as a paused card: the composer gets nothing.
     expect(readNativeChatDraftCache('scope')).toBe('')
-    expect(view.result.current.outbox.map((entry) => entry.state)).toEqual(['unconfirmed'])
+    // Marked, state untouched: the mark alone holds it.
+    expect(view.result.current.outbox.map((entry) => [entry.state, entry.outlivedStop])).toEqual([
+      ['queued', true]
+    ])
     view.rerender({ fence: 1 })
     // Past the probe's longest backoff several times over.
     await act(async () => {
@@ -176,6 +178,7 @@ describe('a Stop with a queued send in doubt', () => {
       await vi.advanceTimersByTimeAsync(60_000)
     })
     expect(mocks.call).not.toHaveBeenCalled()
-    expect(result.current.outbox.map((entry) => entry.state)).toEqual(['unconfirmed'])
+    // Held by the mark alone; its state, and so its notice, stays what its answer made it.
+    expect(result.current.outbox.map((entry) => entry.state)).toEqual(['queued'])
   })
 })

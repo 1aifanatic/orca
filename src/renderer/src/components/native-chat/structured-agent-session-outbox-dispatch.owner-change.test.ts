@@ -1,11 +1,12 @@
-// An owner change sends a send left dispatching again under its id, except one a Stop outlived:
-// only the user's Retry sends that one again.
+// An owner change sends a send left dispatching again under its id. One a Stop outlived is put
+// back the same way, and its mark alone holds it: the drain never admits it.
 
 import { describe, expect, it } from 'vitest'
 import {
   createStructuredAgentSessionOutboxEntry,
   type StructuredAgentSessionOutboxEntry
 } from '../../../../shared/structured-agent-session-outbox'
+import { admitStructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
 import { requeueInterruptedStructuredAgentSessionDispatches } from './structured-agent-session-outbox-dispatch'
 
 function dispatching(
@@ -27,14 +28,13 @@ function dispatching(
 }
 
 describe('requeue after an owner change', () => {
-  it('resends an interrupted send, but parks one a Stop outlived for Retry', () => {
-    const next = requeueInterruptedStructuredAgentSessionDispatches(
-      [dispatching('plain'), dispatching('stopped', { outlivedStop: true })],
+  it('resends an interrupted send, but never one a Stop outlived', () => {
+    const [stopped] = requeueInterruptedStructuredAgentSessionDispatches(
+      [dispatching('stopped', { outlivedStop: true })],
       1
     )
-    expect(next.map((entry) => [entry.clientMessageId, entry.state])).toEqual([
-      ['plain', 'queued'],
-      ['stopped', 'unconfirmed']
-    ])
+    expect(admitStructuredAgentSessionOutboxEntry([stopped], null).state).toBe('blocked')
+    const [plain] = requeueInterruptedStructuredAgentSessionDispatches([dispatching('plain')], 1)
+    expect(admitStructuredAgentSessionOutboxEntry([plain], null).state).toBe('dispatch')
   })
 })

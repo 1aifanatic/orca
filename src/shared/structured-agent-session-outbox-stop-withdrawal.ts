@@ -1,7 +1,6 @@
 import type { AgentJournalSubmission } from './agent-session-journal-types'
 import type { StructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox'
 import { handedOffQueuedMessageIds } from './structured-agent-session-draft-hand-off'
-import { structuredAgentSessionSentDelivery } from './structured-agent-session-outbox-delivery'
 
 /** Whether only the user's Retry sends this entry again: a refused one, the one the drain stopped
  *  on, one a Stop outlived, or one in doubt the unconfirmed probe leaves alone. `NativeChatDeliveryRetry` offers it. */
@@ -35,20 +34,21 @@ function unsentStructuredAgentSessionOutboxEntry(
  *  in two places. Read from what went on the wire, never from the intent alone. */
 function attemptedQueueSend(entry: StructuredAgentSessionOutboxEntry): boolean {
   return (
-    structuredAgentSessionSentDelivery(entry) === 'queue-if-active' &&
+    entry.sentDelivery === 'queue-if-active' &&
     entry.lastAttemptAt !== null &&
     entry.state !== 'rejected'
   )
 }
 
-/** An attempted queue send a Stop keeps is marked and waits, `unconfirmed`, for the user's
- *  Retry: nothing else resends it (the drain, the probe and an owner change all skip the mark), since
- *  a resend onto the session the user just stopped would start a turn if the host never got it. */
+/** An attempted queue send a Stop keeps is marked, and its state is left to its answer: nothing
+ *  but the user's Retry sends it again (the drain holds a marked `queued` entry, and the probe
+ *  skips the mark), since a resend onto the session the user just stopped would start a turn if
+ *  the host never got it. */
 function markedOutlivingStop(
   entry: StructuredAgentSessionOutboxEntry
 ): StructuredAgentSessionOutboxEntry {
-  return attemptedQueueSend(entry) && (entry.outlivedStop !== true || entry.state !== 'unconfirmed')
-    ? { ...entry, outlivedStop: true, state: 'unconfirmed' }
+  return attemptedQueueSend(entry) && entry.outlivedStop !== true
+    ? { ...entry, outlivedStop: true }
     : entry
 }
 

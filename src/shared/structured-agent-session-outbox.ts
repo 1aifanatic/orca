@@ -32,13 +32,12 @@ export type StructuredAgentSessionOutboxEntry = {
   lastAttemptAt: number | null
   retryAfterUnknownSubmittedAt: number | null
   source?: 'launch'
-  /** The user's intent to have the host hold the send as a draft while the agent is working.
-   *  Each request decides the wire field from it (structured-agent-session-outbox-delivery). */
-  delivery?: 'queue-if-active'
-  /** A Stop landed while this queue send's answer was out: only the user's Retry sends it again,
-   *  never the unconfirmed probe, which would start a turn on the session the user stopped. */
+  /** A Stop landed after this queue send went out: only the user's Retry sends it again, never the
+   *  drain, the unconfirmed probe or an owner change, which would start a turn the user stopped. */
   outlivedStop?: true
-  /** What the first attempt put on the wire (`null`: plain); every replay of this id sends it. */
+  /** Whether the first attempt asked the host to hold it as a draft (`null`: plain); every replay
+   *  of this id asks the same (structured-agent-session-outbox-delivery). On a request's own copy,
+   *  what that request carries. */
   sentDelivery?: 'queue-if-active' | null
   /** Why the last attempt did not go through. Lives on the message so it goes when the message
    *  is sent again or delivered, instead of outliving it as a separate error. */
@@ -264,8 +263,9 @@ export function admitStructuredAgentSessionOutboxEntry(
     if (entry.state === 'unconfirmed' || entry.clientMessageId === blockedClientMessageId) {
       return { state: 'blocked', entry }
     }
+    // A queue send a Stop outlived goes again only on the user's Retry.
     if (entry.state === 'queued') {
-      return { state: 'dispatch', entry }
+      return { state: entry.outlivedStop === true ? 'blocked' : 'dispatch', entry }
     }
   }
   return { state: 'idle', entry: null }
@@ -327,7 +327,8 @@ export function structuredAgentSessionSendMutation(
   expectedRuntimeFence: number
 ): StructuredAgentSessionSendMutation {
   // `delivery` joins the OPERATION fingerprint exactly as the host digests it; never the body's.
-  const fields = { body: entry.body, ...(entry.delivery ? { delivery: entry.delivery } : {}) }
+  const delivery = entry.sentDelivery ?? undefined
+  const fields = { body: entry.body, ...(delivery ? { delivery } : {}) }
   return {
     envelope: {
       sessionId: entry.sessionId,

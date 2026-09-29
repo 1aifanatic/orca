@@ -155,7 +155,6 @@ describe('queued message cards', () => {
       queuedAt: 1,
       lastAttemptAt: null,
       retryAfterUnknownSubmittedAt: null,
-      delivery: 'queue-if-active',
       ...overrides
     })
     const ids = (entries: readonly StructuredAgentSessionOutboxEntry[]): string[] =>
@@ -194,7 +193,6 @@ describe('queued message cards', () => {
       queuedAt: 1,
       lastAttemptAt: null,
       retryAfterUnknownSubmittedAt: null,
-      delivery: 'queue-if-active',
       ...overrides
     })
     const ids = (entries: readonly StructuredAgentSessionOutboxEntry[]): string[] =>
