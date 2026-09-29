@@ -1,8 +1,7 @@
 import {
-  getOpenCode2SetupSource,
+  getOpenCode2ModuleSource,
   getOpenCode2EventNormalizationSource
 } from '../opencode2/status-plugin-setup-source'
-import { openCodeTuiPluginDirName } from '../../shared/opencode-tui-plugin-install'
 
 export function getStatusPluginFactorySource(options: {
   emitSessionStart: boolean
@@ -287,12 +286,7 @@ export function getStatusPluginFactorySource(options: {
     '  },',
     '  };',
     '};',
-    ...(options.emitNextEvents
-      ? [
-          `const ORCA_TUI_PLUGIN_ENTRY = new URL("./${openCodeTuiPluginDirName(`${pluginID}.js`)}/tui.js", import.meta.url);`,
-          ...getOpenCode2SetupSource()
-        ]
-      : []),
+    ...(options.emitNextEvents ? getOpenCode2ModuleSource(pluginID, expectedAgent) : []),
     '',
     '// Why: OpenCode also resolves plugins through the module default export, and that',
     '// loader rejects the module unless the default exposes `server()` ("must default',

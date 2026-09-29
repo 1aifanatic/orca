@@ -66,12 +66,41 @@ function turn(sessionID: string, text: string): { start: BusEvent[]; finish: Bus
   }
 }
 
+type Blocker = { id: string; sessionID: string; [key: string]: unknown }
+
+function toBlocker(value: unknown): Blocker {
+  const record = typeof value === 'object' && value !== null ? { ...value } : {}
+  const id = 'id' in record ? String(record.id) : ''
+  const sessionID = 'sessionID' in record ? String(record.sessionID) : ''
+  return { ...record, id, sessionID }
+}
+
 /** One pane's TUI: its route, its view of the shared session store, and the shared event bus. */
 function fakeTui(version = '2.0.14') {
   const listeners = new Set<(event: { details: BusEvent }) => void>()
   const sessions = new Map<string, { id: string; parentID?: string }>()
   const running = new Set<string>()
+  const permissions = new Map<string, Blocker[]>()
+  const forms = new Map<string, Blocker[]>()
+  // What the server answers when the TUI re-fetches a permission list (reconnect).
+  const serverPermissions = new Map<string, Blocker[]>()
+  let permissionFetch: Promise<void> = Promise.resolve()
+  // Why: OpenCode keeps storage.memory across plugin hot reloads within one TUI process.
+  const memories = new Map<string, unknown>()
   let route: { type: string; sessionID?: string } = { type: 'home' }
+  const rootOf = (id: string): string => {
+    let current = sessions.get(id)
+    while (current?.parentID && sessions.has(current.parentID)) {
+      current = sessions.get(current.parentID)
+    }
+    return current?.id ?? id
+  }
+  const without = (map: Map<string, Blocker[]>, sessionID: string, id: unknown): void => {
+    map.set(
+      sessionID,
+      (map.get(sessionID) ?? []).filter((item) => item.id !== id)
+    )
+  }
   const listen = vi.fn((handler: (event: { details: BusEvent }) => void) => {
     listeners.add(handler)
     return () => listeners.delete(handler)
@@ -79,6 +108,15 @@ function fakeTui(version = '2.0.14') {
   const ctx = {
     app: { version, channel: 'latest' },
     ui: { router: { current: () => route } },
+    storage: {
+      memory: (key: string, options: { initial: Record<string, unknown> }) => {
+        if (!memories.has(key)) {
+          const value = structuredClone(options.initial)
+          memories.set(key, [value, (mutate: (draft: typeof value) => void) => mutate(value)])
+        }
+        return memories.get(key)
+      }
+    },
     client: {
       session: { get: async ({ sessionID }: { sessionID: string }) => sessions.get(sessionID) }
     },
@@ -86,23 +124,26 @@ function fakeTui(version = '2.0.14') {
       listen,
       session: {
         get: (id: string) => sessions.get(id),
-        root: (id: string) => {
-          let current = sessions.get(id)
-          while (current?.parentID && sessions.has(current.parentID)) {
-            current = sessions.get(current.parentID)
-          }
-          return current?.id ?? id
-        },
-        family: () => [],
+        root: rootOf,
+        family: (id: string) =>
+          [...sessions.keys()].filter((member) => rootOf(member) === rootOf(id)),
         status: (id: string) => (running.has(id) ? 'running' : 'idle'),
-        permission: { list: () => [] },
-        form: { list: () => [] }
+        permission: {
+          list: (id: string) => permissions.get(id),
+          sync: async (id: string) => {
+            await permissionFetch
+            permissions.set(id, [...(serverPermissions.get(id) ?? [])])
+          }
+        },
+        form: { list: (id: string) => forms.get(id), sync: async () => {} }
       }
     }
   }
   return {
     ctx,
     listen,
+    serverPermissions,
+    permissions,
     navigate(sessionID: string) {
       route = { type: 'session', sessionID }
     },
@@ -114,14 +155,33 @@ function fakeTui(version = '2.0.14') {
     loseStart(sessionID: string) {
       running.add(sessionID)
     },
+    // Holds the next permission list fetch until the returned release is called.
+    holdPermissionFetch(): () => void {
+      let release = (): void => {}
+      permissionFetch = new Promise((resolve) => {
+        release = resolve
+      })
+      return release
+    },
+    // Applies an event to the session data first, then to plugin listeners, as OpenCode does.
     emit(event: BusEvent) {
       const sessionID = String(event.data.sessionID)
       if (event.type === 'session.created') {
-        sessions.set(sessionID, { id: sessionID })
+        const parentID = typeof event.data.parentID === 'string' ? event.data.parentID : undefined
+        sessions.set(sessionID, { id: sessionID, parentID })
       } else if (event.type === 'session.execution.started') {
         running.add(sessionID)
       } else if (event.type === 'session.execution.succeeded') {
         running.delete(sessionID)
+      } else if (event.type === 'permission.asked') {
+        permissions.set(sessionID, [...(permissions.get(sessionID) ?? []), toBlocker(event.data)])
+      } else if (event.type === 'permission.replied') {
+        without(permissions, sessionID, event.data.requestID)
+      } else if (event.type === 'form.created') {
+        const form = toBlocker(event.data.form)
+        forms.set(form.sessionID, [...(forms.get(form.sessionID) ?? []), form])
+      } else if (event.type === 'form.replied' || event.type === 'form.cancelled') {
+        without(forms, sessionID, event.data.id)
       }
       for (const handler of listeners) {
         handler({ details: event })
@@ -130,12 +190,14 @@ function fakeTui(version = '2.0.14') {
   }
 }
 
-describe('OpenCode 2 TUI adapter: each pane reports its own sessions', () => {
+describe('OpenCode 2 TUI reporter: each pane reports its own sessions', () => {
   let tempDir: string
   let savedFetch: typeof globalThis.fetch
   let savedEnv: Record<string, string | undefined>
   let savedArgv: string[]
   let posts: Post[]
+  let failPosts: boolean
+  let postDelayMs: number
 
   beforeEach(() => {
     tempDir = mkdtempSync(join(tmpdir(), 'orca-opencode-tui-adapter-'))
@@ -150,8 +212,17 @@ describe('OpenCode 2 TUI adapter: each pane reports its own sessions', () => {
     process.env.ORCA_AGENT_HOOK_PORT = '59999'
     process.env.ORCA_AGENT_HOOK_TOKEN = 'test-token'
     posts = []
+    failPosts = false
+    postDelayMs = 0
     globalThis.fetch = vi.fn(async (_input, init) => {
-      posts.push(JSON.parse(String(init?.body)))
+      const body = JSON.parse(String(init?.body))
+      if (postDelayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, postDelayMs))
+      }
+      if (failPosts) {
+        return new Response('{}', { status: 500 })
+      }
+      posts.push(body)
       return new Response('{}', { status: 200 })
     })
   })
@@ -295,7 +366,7 @@ describe('OpenCode 2 TUI adapter: each pane reports its own sessions', () => {
     await cleanup?.()
   })
 
-  // Why: the session data applies events before this plugin's queued handling catches up.
+  // Why: a turn that fails fast arrives as one burst; each level must post once, not flicker.
   it('does not settle a turn early while its events are still queued', async () => {
     process.env.ORCA_PANE_KEY = PANE_A
     const tui = fakeTui()
@@ -336,6 +407,210 @@ describe('OpenCode 2 TUI adapter: each pane reports its own sessions', () => {
       expect(summary(posts).at(-1)).toBe(`SessionIdle:${SES_A}`)
     })
     await cleanup?.()
+  })
+
+  describe('derived from the session data', () => {
+    const SES_CHILD = 'ses_f161fe00affeChildSubagent1'
+    const statuses = (list: Post[]): string[] =>
+      summary(list).filter((name) =>
+        /^(SessionBusy|SessionIdle|PermissionRequest|AskUserQuestion):/.test(name)
+      )
+    const start = async (
+      tui: ReturnType<typeof fakeTui>
+    ): Promise<(() => Promise<void>) | undefined> => {
+      process.env.ORCA_PANE_KEY = PANE_A
+      return (await loadPlugin()).default?.setup?.(tui.ctx)
+    }
+    const childStart = (parentID: string): BusEvent[] => [
+      { type: 'session.created', data: { sessionID: SES_CHILD, parentID } },
+      { type: 'session.execution.started', data: { sessionID: SES_CHILD } }
+    ]
+    const permission = (sessionID: string): BusEvent => ({
+      type: 'permission.asked',
+      data: { id: 'per_1', sessionID, action: 'bash', resources: ['rm -rf build'] }
+    })
+
+    // Why: #23700 left this for TUI panes; a reload that misses the end must still reach Done.
+    it('shows Done for a turn that ended while the plugin was reloading', async () => {
+      const tui = fakeTui()
+      const firstGeneration = await start(tui)
+      tui.navigate(SES_A)
+      const a = turn(SES_A, 'A')
+      await pump(tui, a.start)
+      await vi.waitFor(() => expect(statuses(posts)).toEqual([`SessionBusy:${SES_A}`]))
+      const beforeReload = posts.length
+      await firstGeneration?.()
+      expect(posts).toHaveLength(beforeReload)
+      await pump(tui, a.finish)
+      const secondGeneration = await start(tui)
+      await vi.waitFor(() => expect(summary(posts).at(-1)).toBe(`SessionIdle:${SES_A}`))
+      await secondGeneration?.()
+      expect(statuses(posts)).toEqual([`SessionBusy:${SES_A}`, `SessionIdle:${SES_A}`])
+    })
+
+    it('keeps a navigated-away turn across a reload and settles it after', async () => {
+      const tui = fakeTui()
+      const firstGeneration = await start(tui)
+      tui.navigate(SES_A)
+      const a = turn(SES_A, 'A')
+      await pump(tui, a.start)
+      tui.navigate(SES_B)
+      await tick(150)
+      await firstGeneration?.()
+      const secondGeneration = await start(tui)
+      await tick(150)
+      expect(statuses(posts)).toEqual([`SessionBusy:${SES_A}`])
+      await pump(tui, a.finish)
+      await vi.waitFor(() => expect(summary(posts).at(-1)).toBe(`SessionIdle:${SES_A}`))
+      await secondGeneration?.()
+    })
+
+    it('re-posts a level the previous generation could not deliver', async () => {
+      const tui = fakeTui()
+      failPosts = true
+      const firstGeneration = await start(tui)
+      tui.navigate(SES_A)
+      await pump(tui, turn(SES_A, 'A').start)
+      await tick(50)
+      await firstGeneration?.()
+      failPosts = false
+      const secondGeneration = await start(tui)
+      await vi.waitFor(() => expect(statuses(posts)).toEqual([`SessionBusy:${SES_A}`]))
+      await secondGeneration?.()
+    })
+
+    // Why: with posts slower than events, the old adapter's decisions trailed the data and flickered.
+    it('posts each level once and in order while posts are slow', async () => {
+      postDelayMs = 120
+      const tui = fakeTui()
+      const cleanup = await start(tui)
+      tui.navigate(SES_A)
+      const a = turn(SES_A, 'A')
+      const b = turn(SES_B, 'another pane')
+      for (const event of [...a.start, ...b.start, ...b.finish, ...a.finish]) {
+        tui.emit(event)
+      }
+      await vi.waitFor(() => expect(summary(posts).at(-1)).toBe(`SessionIdle:${SES_A}`), {
+        timeout: 3000
+      })
+      await tick(300)
+      await cleanup?.()
+      // The reply text lands after Busy and before Idle, so Done shows it.
+      expect(summary(posts)).toEqual([
+        `SessionStart:${SES_A}`,
+        `MessagePart:${SES_A}`,
+        `SessionBusy:${SES_A}`,
+        `MessagePart:${SES_A}`,
+        `SessionIdle:${SES_A}`
+      ])
+      expect(posts.at(-2)?.payload).toMatchObject({ role: 'assistant', text: 'tick0 tick1 ' })
+    })
+
+    it('stays Working while a child session holds the turn, even if its end is missed', async () => {
+      const tui = fakeTui()
+      const cleanup = await start(tui)
+      tui.navigate(SES_A)
+      const a = turn(SES_A, 'A spawns a background task')
+      await pump(tui, [...a.start, ...childStart(SES_A), ...a.finish])
+      await tick(250)
+      expect(statuses(posts)).toEqual([`SessionBusy:${SES_A}`])
+      tui.loseEnd(SES_CHILD)
+      await vi.waitFor(() => expect(summary(posts).at(-1)).toBe(`SessionIdle:${SES_A}`))
+      await cleanup?.()
+      expect(posts.every((post) => post.payload?.sessionID === SES_A)).toBe(true)
+    })
+
+    it("shows a child's permission as Needs input on the root, then Working after the reply", async () => {
+      const tui = fakeTui()
+      const cleanup = await start(tui)
+      tui.navigate(SES_A)
+      const a = turn(SES_A, 'A')
+      await pump(tui, [...a.start, ...childStart(SES_A), permission(SES_CHILD)])
+      await vi.waitFor(() => expect(summary(posts).at(-1)).toBe(`PermissionRequest:${SES_A}`))
+      await pump(tui, [
+        { type: 'permission.replied', data: { sessionID: SES_CHILD, requestID: 'per_1' } },
+        { type: 'session.execution.succeeded', data: { sessionID: SES_CHILD } },
+        ...a.finish
+      ])
+      await vi.waitFor(() => expect(summary(posts).at(-1)).toBe(`SessionIdle:${SES_A}`))
+      await cleanup?.()
+      expect(statuses(posts)).toEqual([
+        `SessionBusy:${SES_A}`,
+        `PermissionRequest:${SES_A}`,
+        `SessionBusy:${SES_A}`,
+        `SessionIdle:${SES_A}`
+      ])
+    })
+
+    it('clears Needs input answered while disconnected once the TUI reconnects', async () => {
+      const tui = fakeTui()
+      const cleanup = await start(tui)
+      tui.navigate(SES_A)
+      await pump(tui, [...turn(SES_A, 'A').start, permission(SES_A)])
+      await vi.waitFor(() => expect(summary(posts).at(-1)).toBe(`PermissionRequest:${SES_A}`))
+      // The user browses away; the reply lands while this TUI is disconnected.
+      tui.navigate(SES_B)
+      await pump(tui, [{ type: 'server.connected', data: {} }])
+      await vi.waitFor(() => expect(summary(posts).at(-1)).toBe(`SessionBusy:${SES_A}`))
+      await cleanup?.()
+    })
+
+    it('ignores a reply that a reconnect fetch restores', async () => {
+      const tui = fakeTui()
+      const cleanup = await start(tui)
+      tui.navigate(SES_A)
+      await pump(tui, [...turn(SES_A, 'A').start, permission(SES_A)])
+      await vi.waitFor(() => expect(summary(posts).at(-1)).toBe(`PermissionRequest:${SES_A}`))
+      const release = tui.holdPermissionFetch()
+      tui.serverPermissions.set(SES_A, [...(tui.permissions.get(SES_A) ?? [])])
+      await pump(tui, [
+        { type: 'server.connected', data: {} },
+        { type: 'permission.replied', data: { sessionID: SES_A, requestID: 'per_1' } }
+      ])
+      release()
+      await tick(250)
+      expect(tui.permissions.get(SES_A)).toHaveLength(1)
+      expect(summary(posts).at(-1)).toBe(`SessionBusy:${SES_A}`)
+      await cleanup?.()
+    })
+
+    // Why: an Orca restart moves the hook endpoint while the pane's level stays the same.
+    it('re-posts the current level once the hook endpoint moves', async () => {
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+      try {
+        const tui = fakeTui()
+        const cleanup = await start(tui)
+        tui.navigate(SES_A)
+        await pump(tui, turn(SES_A, 'A').start)
+        vi.advanceTimersByTime(200)
+        await vi.waitFor(() => expect(statuses(posts)).toEqual([`SessionBusy:${SES_A}`]))
+        process.env.ORCA_AGENT_HOOK_PORT = '59998'
+        vi.advanceTimersByTime(5000)
+        await vi.waitFor(() =>
+          expect(statuses(posts)).toEqual([`SessionBusy:${SES_A}`, `SessionBusy:${SES_A}`])
+        )
+        vi.advanceTimersByTime(5000)
+        await tick(50)
+        expect(statuses(posts)).toHaveLength(2)
+        await cleanup?.()
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('does not pin Needs input on a request the data kept after its turn ended', async () => {
+      const tui = fakeTui()
+      const cleanup = await start(tui)
+      tui.navigate(SES_A)
+      const a = turn(SES_A, 'A')
+      await pump(tui, [...a.start, permission(SES_A)])
+      await vi.waitFor(() => expect(summary(posts).at(-1)).toBe(`PermissionRequest:${SES_A}`))
+      await pump(tui, a.finish)
+      await vi.waitFor(() => expect(summary(posts).at(-1)).toBe(`SessionIdle:${SES_A}`))
+      await tick(250)
+      expect(summary(posts).at(-1)).toBe(`SessionIdle:${SES_A}`)
+      await cleanup?.()
+    })
   })
 
   it.each([

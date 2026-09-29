@@ -1,4 +1,14 @@
 import { getOpenCode2TuiSource } from './status-plugin-tui-source'
+import { openCodeTuiPluginDirName } from '../../shared/opencode-tui-plugin-install'
+
+/** The OpenCode 2 entry points (server setup and TUI reporter) plus the constants they share. */
+export function getOpenCode2ModuleSource(pluginID: string, expectedAgent: string): string[] {
+  return [
+    `const ORCA_TUI_PLUGIN_ENTRY = new URL("./${openCodeTuiPluginDirName(`${pluginID}.js`)}/tui.js", import.meta.url);`,
+    `const ORCA_STATUS_AGENT = "${expectedAgent}";`,
+    ...getOpenCode2SetupSource()
+  ]
+}
 
 export function getOpenCode2SetupSource(): string[] {
   return String.raw`
@@ -10,8 +20,8 @@ export function getOpenCode2SetupSource(): string[] {
 // session ids; when it does, this set stops matching and those forms block.
 const NON_SESSION_FORM_OWNERS = new Set(["global"]);
 
-// Why one translation: the server subscription and the TUI listener must feed the engine
-// identically, or a pane's status would depend on which process observed the event.
+// Why one translation: the TUI reporter builds its Needs input payloads with it, so a blocker
+// reaches Orca in the same shape whichever process reported it.
 function translateOpenCode2Event(inputType, data) {
   let type = inputType;
   let properties = data || {};
