@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process'
 import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
@@ -613,6 +613,8 @@ describeBinaryCompatibility('real Git binary compatibility', () => {
     await runGit(['update-ref', `refs/remotes/origin/${branch}`, remoteOid])
     await runGit(['-C', worktree, 'reset', '-q', '--hard', localOid])
     await runGit(['config', `branch.${branch}.mergeOptions`, '-s ours'])
+    // Why: an uninstalled source-built Git (the CI baseline) has no templates, so no hooks dir.
+    await mkdir(dirname(hookPath), { recursive: true })
     await writeFile(hookPath, '#!/bin/sh\necho ran > compat-ff-hook-ran\n', { mode: 0o755 })
     const merges: string[][] = []
     // Why `-C`: in the Docker lane, paths Git reports are container paths, not host ones.
