@@ -98,9 +98,10 @@ export function setRealHomeCodexHooksEnabledReader(read: () => boolean): void {
 }
 
 /**
- * Routing gate consumed by CodexRuntimeHomeService. Both a failed install and
- * a failed opt-out cleanup use the managed lane so no half-mutated hook state
- * can diverge from PTY, rate-limit, or commit-message routing.
+ * Routing gate consumed by CodexRuntimeHomeService. Never usable while an
+ * approval runs, whatever the verdict says. Both a failed install and a failed
+ * opt-out cleanup use the managed lane so no half-mutated hook state can
+ * diverge from PTY, rate-limit, or commit-message routing.
  */
 export function isRealHomeCodexHookLaneUsable(): boolean {
   return approval === null && verdict !== 'unavailable' && verdict !== 'approving'
@@ -185,8 +186,10 @@ function startApproval(grant: RealHomeBackgroundGrant): Approval {
         settleApproval(adds, outcome)
       )
     } catch (error) {
-      // Why: a settle that cannot run must still end the flight, or every check answers 'approving'.
-      approval = null
+      // Why: a settle that cannot run must still end its own flight, or every check answers 'approving'.
+      if (approval?.done === done) {
+        approval = null
+      }
       failRealHomeCodexHookCheck(error)
     }
   })
@@ -211,8 +214,13 @@ async function settleApproval(
   }
   installRetryAfterMs = recordRealHomeApprovalOutcome(outcome)
   approval = null
-  // Why from the settings: hooks turned off during the session must not read as usable.
-  verdict = !readCodexHooksEnabled() ? 'removed' : approved ? 'installed' : 'unavailable'
+  // Why from the settings: hooks turned off during the session must not read as
+  // installed, and an opt-out that failed meanwhile may have left the entry.
+  if (readCodexHooksEnabled()) {
+    verdict = approved ? 'installed' : 'unavailable'
+  } else if (verdict !== 'unavailable') {
+    verdict = 'removed'
+  }
   if (outcome?.lane !== 'rpc') {
     console.warn(
       `[codex-real-home-hooks] Codex did not approve Orca's entry (${outcome?.reason ?? 'error'}); ` +

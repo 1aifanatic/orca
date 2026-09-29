@@ -425,6 +425,22 @@ describe('a slow codex app-server start', () => {
     expect(server.sessions).toBe(1)
   })
 
+  it('keeps the lane unusable when an approval settles after an opt-out that failed', async () => {
+    let hooksOn = true
+    setRealHomeCodexHooksEnabledReader(() => hooksOn)
+    const server = installAppServer(0)
+    expect(await launch()).toBe('approving')
+
+    hooksOn = false
+    // Why: an opt-out that cannot parse hooks.json cannot prove the entry gone.
+    writeFileSync(hooksPath(), '{ "hooks": ')
+    expect(await removeRealHomeCodexHookForOptOut()).toBe('unavailable')
+
+    server.start()
+    expect(await realHomeInternals.settledVerdictForTesting()).toBe('unavailable')
+    expect(isRealHomeCodexHookLaneUsable()).toBe(false)
+  })
+
   it('settles under the config.toml lane, after a writer that holds it', async () => {
     const failing = installAppServer(
       0,
