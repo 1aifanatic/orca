@@ -75,11 +75,11 @@ export function useNativeChatComposerPaste({
   pasteFromClipboard: () => void
 } {
   const disabledRef = useRef(disabled)
-  disabledRef.current = disabled
-  const insertTextRef = useRef(insertTypedText)
-  insertTextRef.current = insertTypedText
   const dropPendingRef = useRef(dropPendingImageAttachment)
-  dropPendingRef.current = dropPendingImageAttachment
+  useLayoutEffect(() => {
+    disabledRef.current = disabled
+    dropPendingRef.current = dropPendingImageAttachment
+  }, [disabled, dropPendingImageAttachment])
   const lifetime = useMemo(
     () => ({ targetKey, active: false, pending: new Map<string, string>() }),
     [targetKey]
@@ -186,7 +186,7 @@ export function useNativeChatComposerPaste({
       if (text) {
         try {
           assertClipboardTextWithinLimit(text, { maxBytes: NATIVE_CHAT_CONTEXT_PASTE_MAX_BYTES })
-          insertTextRef.current(text)
+          insertTypedText(text)
         } catch (error) {
           setNotice(extractIpcErrorMessage(error, 'Paste failed.'))
         }
@@ -195,6 +195,10 @@ export function useNativeChatComposerPaste({
         return
       }
       const owner = resolveAttachmentOwner()
+      // Rich-text copies often carry an image rendition; a refusal notice beside pasted text reads as a failed paste.
+      if (text && !ownerAcceptsClipboardImage(owner)) {
+        return
+      }
       if (owner.kind === 'not-ready') {
         setNotice(nativeChatWorktreeNotReadyNotice())
         return
@@ -235,6 +239,7 @@ export function useNativeChatComposerPaste({
       lifetime,
       caret,
       dropPendingImageAttachment,
+      insertTypedText,
       resolveAttachmentOwner,
       saveClipboardImageForOwner,
       setCaret,
@@ -249,21 +254,27 @@ export function useNativeChatComposerPaste({
     }
     setNotice(null)
     // Text belongs to the editor even when the attachment host is unavailable.
-    void window.api.ui
+    const textRead = window.api.ui
       .readClipboardText({ maxBytes: NATIVE_CHAT_CONTEXT_PASTE_MAX_BYTES })
       .then((text) => {
         if (text && canPaste()) {
-          insertTextRef.current(text)
+          insertTypedText(text)
         }
+        return text
       })
       .catch((error) => {
         if (canPaste()) {
           setNotice(extractIpcErrorMessage(error, 'Paste failed.'))
         }
+        return null
       })
     void (async () => {
       const owner = resolveAttachmentOwner()
       if (!ownerAcceptsClipboardImage(owner)) {
+        // Probe only an empty text read: in a browser each clipboard read can prompt the user.
+        if ((await textRead) !== '') {
+          return
+        }
         const hasImage = await window.api.ui.clipboardHasImage().catch(() => null)
         if (hasImage && canPaste()) {
           setNotice(
@@ -297,6 +308,7 @@ export function useNativeChatComposerPaste({
     canPaste,
     lifetime,
     dropPendingImageAttachment,
+    insertTypedText,
     resolveAttachmentOwner,
     saveClipboardImageForOwner,
     setNotice,

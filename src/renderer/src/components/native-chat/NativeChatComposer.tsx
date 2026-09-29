@@ -1,7 +1,4 @@
-import {
-  insertNativeChatPastedText,
-  type NativeChatComposerInput
-} from './native-chat-composer-input'
+import type { NativeChatComposerInput } from './native-chat-composer-input'
 import { forwardRef, useCallback, useImperativeHandle, useState } from 'react'
 import { useAppStore } from '../../store'
 import { useNativeChatComposerInterrupt } from './use-native-chat-composer-interrupt'
@@ -188,7 +185,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       ? !hasPty || !onStop
       : disabled || hasPendingAttachment || (draft.trim() === '' && imageAttachments.length === 0)
 
-    const { insertTypedText, focus } = useNativeChatTypedInsertion({
+    const { insertTypedText, insertPastedText, focus } = useNativeChatTypedInsertion({
       textareaRef,
       caret,
       draft,
@@ -222,7 +219,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       beginPendingImageAttachment,
       resolvePendingImageAttachment,
       dropPendingImageAttachment,
-      insertTypedText: (text) => insertNativeChatPastedText(textareaRef.current, text),
+      insertTypedText: insertPastedText,
       setCaret,
       setNotice
     })

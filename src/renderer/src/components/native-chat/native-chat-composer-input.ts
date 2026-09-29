@@ -21,6 +21,8 @@ export function insertNativeChatPastedText(
   if (!input || input.disabled || !input.insertText) {
     return false
   }
+  // A paste routed from a hidden terminal or a transcript click must leave the caret in the composer.
+  input.focus()
   input.insertText(text)
   return true
 }

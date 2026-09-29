@@ -511,9 +511,21 @@ describe('composer paste intake regressions', () => {
       })
       await act(async () => probe.latest().pasteFromClipboard())
       expect(insertTypedText).toHaveBeenCalledExactlyOnceWith('hello')
-      expect(setNotice.mock.calls.filter(([notice]) => notice !== null)).toHaveLength(
-        presence === true ? 1 : 0
-      )
+      // Text wins: no second (browser-prompting) clipboard read and no refusal beside the text.
+      expect(mocks.clipboardHasImage).not.toHaveBeenCalled()
+      expect(setNotice.mock.calls.filter(([notice]) => notice !== null)).toHaveLength(0)
+    }
+  )
+
+  it.each(['runtime', 'not-ready'] as const)(
+    'still explains an image-only menu paste on %s',
+    async (kind) => {
+      mocks.clipboardHasImage.mockResolvedValue(true)
+      const setNotice = vi.fn()
+      const probe = await renderProbe({ resolveAttachmentOwner: () => ({ kind }), setNotice })
+      await act(async () => probe.latest().pasteFromClipboard())
+      expect(mocks.clipboardHasImage).toHaveBeenCalledTimes(1)
+      expect(setNotice.mock.calls.filter(([notice]) => notice !== null)).toHaveLength(1)
     }
   )
 
@@ -521,9 +533,11 @@ describe('composer paste intake regressions', () => {
     'preserves mixed event text with %s attachments and deduplicates capture',
     async (kind) => {
       const insertTypedText = vi.fn(() => true)
+      const setNotice = vi.fn()
       const probe = await renderProbe({
         resolveAttachmentOwner: () => (kind === 'ssh' ? sshOwner : { kind }),
-        insertTypedText
+        insertTypedText,
+        setNotice
       })
       const event = imagePasteEvent('caption')
       await act(async () => {
@@ -532,6 +546,7 @@ describe('composer paste intake regressions', () => {
       })
       expect(insertTypedText).toHaveBeenCalledExactlyOnceWith('caption')
       expect(mocks.readClipboardText).not.toHaveBeenCalled()
+      expect(setNotice.mock.calls.filter(([notice]) => notice !== null)).toHaveLength(0)
     }
   )
 
