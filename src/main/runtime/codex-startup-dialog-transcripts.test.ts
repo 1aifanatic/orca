@@ -2,10 +2,9 @@ import { describe, expect, it, vi } from 'vitest'
 import type { RuntimeTerminalWaitBlockedReason } from '../../shared/runtime-types'
 import { createTranscriptPane } from './agent-transcript-pane-test-harness'
 import {
-  finalTranscriptFrame,
-  readTranscriptFixture,
+  readRuntimeFixture,
   replayTranscript,
-  type ReplayFrame
+  type TranscriptReplayFrame
 } from './agent-transcript-replay-test-harness'
 import { detectTerminalWaitBlockedReason, isKnownReadyPromptBody } from './terminal-wait-detection'
 
@@ -61,6 +60,12 @@ const DIALOGS: StartupDialog[] = [
     reason: 'codex-model-migration-prompt',
     heading: 'is no longer offered',
     keyRow: 'enter/esc continue · ctrl+c quit'
+  },
+  {
+    name: 'codex-0158-model-announcement-dialog',
+    reason: 'codex-model-migration-prompt',
+    heading: 'Try new model',
+    keyRow: 'Use existing model'
   }
 ]
 const DIALOGS_0158 = DIALOGS.filter((dialog) => dialog.name.startsWith('codex-0158-'))
@@ -73,15 +78,23 @@ const LIVE_CHAT_FIXTURES = [
   'codex-0158-fresh-home-greeting'
 ]
 
-function screenText(frame: ReplayFrame): string {
+function screenText(frame: TranscriptReplayFrame): string {
   return frame.screenLines.join('\n')
+}
+
+async function lastFrame(data: string): Promise<TranscriptReplayFrame | null> {
+  let last: TranscriptReplayFrame | null = null
+  for await (const frame of replayTranscript(data, 120, 40)) {
+    last = frame
+  }
+  return last
 }
 
 // Why stitched: no capture spans answering a dialog. Codex repaints every cell once a startup
 // dialog closes, so the 0.158 greeting capture's paints stand in for that repaint.
 function answered(name: string): string {
-  const greeting = readTranscriptFixture('codex-0158-fresh-home-greeting')
-  return readTranscriptFixture(name) + greeting.slice(greeting.indexOf('\x1b[?2026h'))
+  const greeting = readRuntimeFixture('codex-0158-fresh-home-greeting')
+  return readRuntimeFixture(name) + greeting.slice(greeting.indexOf('\x1b[?2026h'))
 }
 
 describe('Codex 0.157/0.158 startup dialogs from captured bytes', () => {
@@ -90,7 +103,7 @@ describe('Codex 0.157/0.158 startup dialogs from captured bytes', () => {
     async ({ name, reason, heading, keyRow }) => {
       let headingFrames = 0
       let keyRowFrames = 0
-      for await (const frame of replayTranscript(readTranscriptFixture(name), 120, 40)) {
+      for await (const frame of replayTranscript(readRuntimeFixture(name), 120, 40)) {
         const screen = screenText(frame)
         if (screen.includes(heading)) {
           headingFrames += 1
@@ -112,10 +125,7 @@ describe('Codex 0.157/0.158 startup dialogs from captured bytes', () => {
   it.each(DIALOGS_0158)(
     '$name: stops reporting once Codex repaints its chat after it',
     async ({ name, heading }) => {
-      let last: ReplayFrame | null = null
-      for await (const frame of replayTranscript(answered(name), 120, 40)) {
-        last = frame
-      }
+      const last = await lastFrame(answered(name))
       // Presence precondition: the answered dialog is still in the text copy.
       expect(last?.waitText).toContain(heading.replace(' ·', ''))
       expect(detectTerminalWaitBlockedReason(last?.waitText ?? '')).toBeNull()
@@ -126,15 +136,8 @@ describe('Codex 0.157/0.158 startup dialogs from captured bytes', () => {
     '$name: still reports $reason when Codex is relaunched in the same pane and shows it again',
     async ({ name, reason }) => {
       // Why: quitting Codex from a dialog leaves that copy in the text copy ahead of the relaunch.
-      const dialog = readTranscriptFixture(name)
-      let last: ReplayFrame | null = null
-      for await (const frame of replayTranscript(
-        `${dialog}\x1b[?1049l\r\n% codex\r\n${dialog}`,
-        120,
-        40
-      )) {
-        last = frame
-      }
+      const dialog = readRuntimeFixture(name)
+      const last = await lastFrame(`${dialog}\x1b[?1049l\r\n% codex\r\n${dialog}`)
       expect(detectTerminalWaitBlockedReason(last?.waitText ?? '')).toBe(reason)
       expect(
         isKnownReadyPromptBody(last?.waitText ?? '', 'codex', () => last?.screenLines ?? null)
@@ -143,7 +146,7 @@ describe('Codex 0.157/0.158 startup dialogs from captured bytes', () => {
   )
 
   it.each(LIVE_CHAT_FIXTURES)('%s: a live chat reports no dialog', async (name) => {
-    const { waitText } = await finalTranscriptFrame(name, 120, 40)
+    const waitText = (await lastFrame(readRuntimeFixture(name)))?.waitText ?? ''
     expect(detectTerminalWaitBlockedReason(waitText)).toBeNull()
     // Why these lines: chat can name a dialog, and Codex's own update notice and footer draw `·`.
     const chat = [
@@ -164,7 +167,7 @@ describe('Codex 0.157/0.158 startup dialogs from captured bytes', () => {
           paneTitle: 'Terminal',
           foregroundProcess: 'codex',
           launchAgent: 'codex',
-          data: readTranscriptFixture(name),
+          data: readRuntimeFixture(name),
           size: { cols: 120, rows: 40 }
         })
         await expect(

@@ -1,13 +1,51 @@
-// Codex readiness from its startup screens: the provisional screen must never count as ready.
+// Why both shapes: 0.150-0.157 paint `model: loading` in a box, 0.158 a bare `loading` under the title.
+const CODEX_HEADER_LOADING_RE = /(?:model|directory):\s+loading|^\s*loading\s*$/m
+// Why a line cap: 0.158 draws no box, so nothing else ends its header before the chat.
+const CODEX_HEADER_LINES = 6
+// Why the whole line: a pager, a `cat`ed transcript, or chat can quote the placeholder mid-line.
+const CODEX_EMPTY_COMPOSER_RE = /^› ask codex to do anything\s*$/
+// Why not "working": reasoning summaries replace it, and a remapped key still ends this way.
+const CODEX_BUSY_STATUS_MARKER = 'to interrupt)'
+// Why only a tip: it is the one line Codex draws between its status row and the composer (120x40 corpus).
+const CODEX_STATUS_TIP_PREFIX = '└ tip:'
 
-export function findCodexReadyPromptIndex(normalized: string): number | null {
-  const headerIndex = normalized.lastIndexOf('openai codex')
-  if (headerIndex === -1) {
+// Why the header only: chat below it can mention "OpenAI Codex" or `model: loading`.
+function findCodexHeader(screen: string): { index: number; text: string } | null {
+  const index = screen.indexOf('openai codex')
+  if (index === -1) {
     return null
   }
-  const readySegment = normalized.slice(headerIndex)
-  // Why: Codex prints permissions only in YOLO mode; the stable ready header is OpenAI Codex + model + directory.
-  return readySegment.includes('model:') && readySegment.includes('directory:') ? headerIndex : null
+  const boxEnd = screen.indexOf('╰', index)
+  const text = screen
+    .slice(index, boxEnd === -1 ? undefined : boxEnd)
+    .split('\n', CODEX_HEADER_LINES)
+    .join('\n')
+  return { index, text }
+}
+
+/** Tier 1: the 0.150-0.157 header, which only a grid reassembles (see isKnownReadyPromptBody). */
+export function findCodexScreenReadyPromptIndex(screen: string): number | null {
+  const header = findCodexHeader(screen)
+  return header !== null &&
+    header.text.includes('model:') &&
+    header.text.includes('directory:') &&
+    !CODEX_HEADER_LOADING_RE.test(header.text)
+    ? header.index
+    : null
+}
+
+// Why the text copy: 0.157 leaves its alternate screen while it starts its daemon, so the live
+// screen shows no header then, while the text copy keeps the provisional one until the live chat
+// paints its footer after it (a later model repaint rewrites only the value, never the label).
+// Why `·`: every live footer row draws one (status row, `← for agents · ?`, `⚠ N warning · f2`);
+// startup dialogs draw one too, which is why startup-dialog-blocked-signals.ts matches them first.
+export function isCodexProvisionalStartupText(normalized: string): boolean {
+  const headerIndex = normalized.lastIndexOf('openai codex')
+  if (headerIndex === -1) {
+    return false
+  }
+  const loading = /model:\s+loading/.exec(normalized.slice(headerIndex))
+  return loading !== null && !normalized.includes('·', headerIndex + loading.index)
 }
 
 // Why: Codex repaints its whole screen, header included, once a startup dialog closes, and the
@@ -17,66 +55,30 @@ export function findCodexHeaderIndex(normalized: string): number | null {
   return index === -1 ? null : index
 }
 
-const CODEX_HEADER_LOADING_RE = /(?:model|directory):\s+loading/
-// Codex 0.158+ greeting layout: an unboxed `>_ OpenAI Codex (vX)` row, then the bare directory.
-const CODEX_COMPACT_HEADER_RE = /^\s*>_ openai codex \(v[^)]*\)\s*$/m
-
-// Why the header box only: chat below it can mention "OpenAI Codex" or `model: loading`.
-function readCodexHeaderBox(screen: string): { index: number; header: string } | null {
-  const index = screen.indexOf('openai codex')
-  if (index === -1) {
-    return null
-  }
-  const boxEnd = screen.indexOf('╰', index)
-  return { index, header: screen.slice(index, boxEnd === -1 ? undefined : boxEnd) }
-}
-
-// Why the text copy: Codex 0.157 leaves its alternate screen while it starts its daemon, so the live
-// screen shows no header then; the text copy keeps the provisional header until the live chat paints
-// its footer after it (a later model repaint rewrites only the value, never the `model:` label).
-export function isCodexProvisionalStartupText(normalized: string): boolean {
-  const headerIndex = normalized.lastIndexOf('openai codex')
-  if (headerIndex === -1) {
+/**
+ * Tier 1b, codex panes only: the empty composer with no busy status row just above it and no
+ * header load. Codex 0.158 dropped `model:`/`directory:`, and a long session scrolls the header
+ * away, so this is its only version-stable rest body. No dialog check: every Codex dialog
+ * replaces the composer, while an answer ending "Would you like to…?" must not block the lane.
+ * The mid-turn guard is the caller's quiescence, fed by the ~100 ms title spinner and status
+ * timer; `tui.animations=false` (set by a screen reader), `tui.effects.progress=false`, or a
+ * `tui.terminal_title` without activity/spinner removes it.
+ */
+export function isCodexComposerReadyScreen(screen: string): boolean {
+  const lines = screen.split('\n')
+  const composer = lines.findLastIndex((line) => CODEX_EMPTY_COMPOSER_RE.test(line))
+  if (composer === -1 || hasBusyStatusRowAbove(lines, composer)) {
     return false
   }
-  const loading = /model:\s+loading/.exec(normalized.slice(headerIndex))
-  return loading !== null && !hasCodexLiveFooterBelow(normalized, headerIndex + loading.index)
+  const header = findCodexHeader(screen)
+  return header === null || !CODEX_HEADER_LOADING_RE.test(header.text)
 }
 
-// Why: the live chat draws a `·` below the header: the status row (items joined by `·`),
-// `← for agents · ? for shortcuts` on daemon sessions, or `⚠ N warning · f2 to view`. Startup
-// dialogs draw one too (`Update available · …`, `enter continue · esc skip`); the blocked matchers in
-// startup-dialog-blocked-signals.ts match each from that first `·`, so those never read as ready.
-function hasCodexLiveFooterBelow(text: string, from: number): boolean {
-  return text.includes('·', from)
-}
-
-// Why `loading`: a header still loading is not ready; the screen must not add readiness early.
-export function findCodexScreenReadyPromptIndex(screen: string): number | null {
-  const compactHeader = CODEX_COMPACT_HEADER_RE.exec(screen)
-  if (compactHeader) {
-    return findCodexCompactScreenReadyIndex(screen, compactHeader.index + compactHeader[0].length)
-      ? compactHeader.index
-      : null
-  }
-  const box = readCodexHeaderBox(screen)
-  if (!box) {
-    return null
-  }
-  return box.header.includes('model:') &&
-    box.header.includes('directory:') &&
-    !CODEX_HEADER_LOADING_RE.test(box.header)
-    ? box.index
-    : null
-}
-
-// Why the live footer: the compact header looks the same on the provisional startup screen, which
-// can still give way to a startup dialog (model announcement) before the live chat takes over.
-function findCodexCompactScreenReadyIndex(screen: string, headerEnd: number): boolean {
-  const directory = screen
-    .slice(headerEnd)
-    .split('\n')
-    .find((row) => row.trim() !== '')
-    ?.trim()
-  return Boolean(directory) && directory !== 'loading' && hasCodexLiveFooterBelow(screen, headerEnd)
+// Why only the row above the composer: a finished answer (or one above 0.158's timestamp) can quote it.
+function hasBusyStatusRowAbove(lines: readonly string[], composer: number): boolean {
+  const above = lines.slice(0, composer).filter((line) => line.trim() !== '')
+  const row = above.at(-1)?.trimStart().startsWith(CODEX_STATUS_TIP_PREFIX)
+    ? above.at(-2)
+    : above.at(-1)
+  return row?.includes(CODEX_BUSY_STATUS_MARKER) ?? false
 }

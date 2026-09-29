@@ -11,8 +11,7 @@ import {
 import { withTimeout } from './runtime-async-boundaries'
 import {
   detectTerminalWaitBlockedReason,
-  isKnownReadyPromptBody,
-  isKnownReadyPromptPreview
+  isKnownReadyPromptSettled
 } from './terminal-wait-detection'
 import type {
   RuntimeTerminalWait,
@@ -78,15 +77,10 @@ export class OrcaRuntimeWithStartTuiIdleVisibleReadProbe extends OrcaRuntimeWith
             ? [...projection.tail, projection.draft ?? ''].join('\n')
             : projection.tail.join('\n')
         const blockedReason = detectTerminalWaitBlockedReason(snapshotText)
-        // Why the body rule: this snapshot is the visible screen, where Codex's provisional startup
-        // header already matches the text rules; the body rule reads it as a screen.
-        // Why not Qoder: its composer is painted mid-turn too, and this one-shot read has no working veto.
         const ready =
           agent === 'antigravity'
             ? isAntigravityReadyPromptSnapshot(snapshotText)
-            : agent === 'codex' || agent === null
-              ? isKnownReadyPromptBody(snapshotText, agent, () => projection.tail)
-              : isKnownReadyPromptPreview(snapshotText)
+            : isKnownReadyPromptSettled(snapshotText)
         if (!blockedReason && !ready) {
           return
         }

@@ -54,6 +54,11 @@ const KNOWN_PREEXISTING_I2_FAILURES: Record<string, number> = {
   'codex-0158-hooks-review-dialog': 8,
   'codex-0157-model-retired-dialog': 22,
   'codex-0158-model-retired-dialog': 6,
+  // Same extra dim bit on the 0.157/0.158 header row (STA-8834 fixtures).
+  'codex-0-157-1-update-dialog': 16,
+  'codex-0-158-0-approval': 12,
+  'codex-0-158-0-timed-turn': 20,
+  'codex-0-158-0-trustprompt': 36,
   'claude-dialog-trust-workspace-answered': 13,
   // DSH-TUI's whale intro paints whole rows of 24-bit background, and every one of this
   // transcript's divergences is the same shape: `visible-grid row=0`, a true-colour

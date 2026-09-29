@@ -7,8 +7,7 @@ import {
 import { codexChildTurnState } from './codex-subagent-executions'
 import { readRecord } from './codex-item-field-readers'
 import { readCodexThreadItem } from './codex-structured-item-translation'
-import { readCodexProviderVerdict } from './codex-structured-journal-provider-verdicts'
-import { readCodexTurnId } from './codex-structured-thread-facts'
+import { readCodexErrorWillRetry, readCodexTurnId } from './codex-structured-thread-facts'
 
 export type CodexBackgroundTaskFrame =
   | {
@@ -43,15 +42,18 @@ export type CodexBackgroundTaskEvent = {
 
 /**
  * The two ways Codex ends a child's turn without `turn/completed`. An `error` it will not retry is
- * that turn's own end: the verdict the transcript settles the same turn on. A closed thread ran
- * its last turn, and Codex never said how it went. A `systemError` status is neither: Codex raises
- * it for errors that leave the turn running too (a refused steer), and a turn one ends also
- * carries the `error`.
+ * that turn's own end: for a child, `turn/completed` may never follow, and without this end the
+ * child's lifecycle row latches on `working` for the life of the session. A closed thread ran its
+ * last turn, and Codex never said how it went.
+ *
+ * #23682 dropped the equivalent reading from the primary journal path, where Codex's own failed
+ * `turn/completed` always follows within ~32 ms and carries the duration the error lacks. A child
+ * has no such guarantee, which is why this path still settles on the error.
  */
 function readCodexChildTurnEnding(
   event: CodexBackgroundTaskEvent
 ): CodexBackgroundTaskFrame | null {
-  if (readCodexProviderVerdict(event.method, event.params) === 'turn-failed') {
+  if (event.method === 'error' && !readCodexErrorWillRetry(event.params)) {
     const turnId = readCodexTurnId(event.params)
     return { kind: 'turn-ended', threadId: event.threadId, turnId, state: 'failed' }
   }

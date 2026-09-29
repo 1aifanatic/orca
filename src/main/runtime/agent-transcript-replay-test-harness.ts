@@ -1,4 +1,4 @@
-// Replays a captured agent transcript the way onPtyData consumes it, frame by frame.
+// Replays captured PTY bytes the way onPtyData does, for suites asserting a rule on every frame.
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { HeadlessEmulator } from '../daemon/headless-emulator'
@@ -8,28 +8,28 @@ import { appendNormalizedToTailBuffer } from './terminal-tail-buffer'
 import { buildPreview } from './terminal-tail-state'
 import { buildTerminalWaitText } from './terminal-wait-tail-state'
 
-const CHUNK_CHARS = 64
+const DEFAULT_CHUNK_CHARS = 64
 
-export function readTranscriptFixture(name: string): string {
+export type TranscriptReplayFrame = { screenLines: string[]; waitText: string }
+
+export function readRuntimeFixture(name: string): string {
   return readFileSync(join(__dirname, '__fixtures__', `${name}.txt`), 'utf8')
 }
 
-export type ReplayFrame = { screenLines: string[]; waitText: string }
-
-/** Feeds the bytes the way onPtyData does: one emulator grid, one line-folded wait text. */
+/** A string is cut into fixed 64-char chunks; an array replays the recorded PTY chunks as-is. */
 export async function* replayTranscript(
-  data: string,
+  data: string | readonly string[],
   cols: number,
   rows: number
-): AsyncGenerator<ReplayFrame> {
+): AsyncGenerator<TranscriptReplayFrame> {
+  const chunks = typeof data === 'string' ? splitIntoChunks(data) : data
   const emulator = new HeadlessEmulator({ cols, rows })
   let lines: string[] = []
   let partialLine = ''
   let pendingAnsi = ''
   let redrawCursor: ReturnType<typeof appendNormalizedToTailBuffer>['redrawCursor'] = null
   try {
-    for (let offset = 0; offset < data.length; offset += CHUNK_CHARS) {
-      const chunk = data.slice(offset, offset + CHUNK_CHARS)
+    for (const chunk of chunks) {
       await emulator.write(chunk)
       const normalized = normalizeTerminalChunk(chunk, pendingAnsi)
       pendingAnsi = normalized.pendingAnsi
@@ -47,17 +47,10 @@ export async function* replayTranscript(
   }
 }
 
-export async function finalTranscriptFrame(
-  name: string,
-  cols: number,
-  rows: number
-): Promise<ReplayFrame> {
-  let last: ReplayFrame | null = null
-  for await (const frame of replayTranscript(readTranscriptFixture(name), cols, rows)) {
-    last = frame
+function splitIntoChunks(data: string): string[] {
+  const chunks: string[] = []
+  for (let offset = 0; offset < data.length; offset += DEFAULT_CHUNK_CHARS) {
+    chunks.push(data.slice(offset, offset + DEFAULT_CHUNK_CHARS))
   }
-  if (!last) {
-    throw new Error(`empty fixture ${name}`)
-  }
-  return last
+  return chunks
 }

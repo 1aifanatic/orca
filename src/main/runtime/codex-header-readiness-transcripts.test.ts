@@ -1,13 +1,15 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createTranscriptPane } from './agent-transcript-pane-test-harness'
 import {
-  finalTranscriptFrame as finalFrame,
-  readTranscriptFixture as readFixture,
-  replayTranscript as replay,
-  type ReplayFrame
+  readRuntimeFixture,
+  replayTranscript,
+  type TranscriptReplayFrame
 } from './agent-transcript-replay-test-harness'
-import { isCodexProvisionalStartupText } from './codex-terminal-readiness'
-import { isKnownReadyPromptBody, isKnownReadyPromptPreview } from './terminal-wait-detection'
+import {
+  isKnownReadyPromptBody,
+  isKnownReadyPromptPreview,
+  isKnownReadyPromptSettled
+} from './terminal-wait-detection'
 
 vi.mock('electron', () => ({
   BrowserWindow: { fromId: vi.fn(() => null) },
@@ -16,7 +18,7 @@ vi.mock('electron', () => ({
   app: { getPath: vi.fn(() => '/tmp') }
 }))
 
-// codex-cli 0.157 recordings at 120x40 (see each .meta.json); STA-8628.
+// codex-cli 0.157.1 recordings at 120x40 (see each .meta.json); STA-8628.
 const PLAIN = 'codex-0157-plain-ready'
 const EFFORT_OVERRIDE = 'codex-0157-effort-override-embedded-warning'
 const CONFIG_OVERRIDE = 'codex-0157-config-override-embedded-warning'
@@ -24,6 +26,22 @@ const NO_DAEMON = 'codex-0157-no-daemon-effort-override'
 // Fresh CODEX_HOME: the provisional header stays up while Codex installs and starts its daemon.
 const FRESH_HOME = 'codex-0157-fresh-home-daemon-install'
 const ALL_FIXTURES = [PLAIN, EFFORT_OVERRIDE, CONFIG_OVERRIDE, NO_DAEMON, FRESH_HOME]
+
+async function finalFrame(
+  name: string,
+  cols: number,
+  rows: number
+): Promise<TranscriptReplayFrame> {
+  let last: TranscriptReplayFrame | null = null
+  for await (const frame of replayTranscript(readRuntimeFixture(name), cols, rows)) {
+    last = frame
+  }
+  if (!last) {
+    throw new Error(`empty fixture ${name}`)
+  }
+  return last
+}
+
 function screenShowsLoadingHeader(screenLines: string[]): boolean {
   const screen = screenLines.join('\n').toLowerCase()
   return screen.includes('openai codex') && /(?:model|directory):\s+loading/.test(screen)
@@ -54,8 +72,8 @@ describe('Codex 0.157 header readiness from captured bytes', () => {
     '%s: the screen never adds readiness while loading, and is ready at the final screen',
     async (name) => {
       let sawLoadingHeader = false
-      let last: ReplayFrame | null = null
-      for await (const frame of replay(readFixture(name), 120, 40)) {
+      let last: TranscriptReplayFrame | null = null
+      for await (const frame of replayTranscript(readRuntimeFixture(name), 120, 40)) {
         if (screenShowsLoadingHeader(frame.screenLines)) {
           sawLoadingHeader = true
           expect(isKnownReadyPromptBody('', 'codex', () => frame.screenLines)).toBe(false)
@@ -74,7 +92,7 @@ describe('Codex 0.157 header readiness from captured bytes', () => {
     '%s: never ready while the screen shows the provisional `model: loading` startup screen',
     async (name) => {
       let sawTextOnlyReadiness = false
-      for await (const frame of replay(readFixture(name), 120, 40)) {
+      for await (const frame of replayTranscript(readRuntimeFixture(name), 120, 40)) {
         if (screenShowsProvisionalStartup(frame.screenLines)) {
           sawTextOnlyReadiness ||= isKnownReadyPromptPreview(frame.waitText)
           expect(isKnownReadyPromptBody(frame.waitText, 'codex', () => frame.screenLines)).toBe(
@@ -99,14 +117,12 @@ describe('Codex 0.157 header readiness from captured bytes', () => {
   ])('at %ix%i the screen never takes a settled header away from the text rules', (cols, rows) => {
     it.each(ALL_FIXTURES)('%s', async (name) => {
       let settledFrames = 0
-      for await (const frame of replay(readFixture(name), cols, rows)) {
-        const waitText = frame.waitText
-        if (
-          isKnownReadyPromptPreview(waitText) &&
-          !isCodexProvisionalStartupText(waitText.toLowerCase())
-        ) {
+      for await (const frame of replayTranscript(readRuntimeFixture(name), cols, rows)) {
+        if (isKnownReadyPromptSettled(frame.waitText)) {
           settledFrames += 1
-          expect(isKnownReadyPromptBody(waitText, 'codex', () => frame.screenLines)).toBe(true)
+          expect(isKnownReadyPromptBody(frame.waitText, 'codex', () => frame.screenLines)).toBe(
+            true
+          )
         }
       }
       // Presence precondition: the text-copy fixtures reach a settled header.
@@ -184,7 +200,7 @@ describe('Codex 0.157 header readiness from captured bytes', () => {
         paneTitle: 'Terminal',
         foregroundProcess: 'codex',
         launchAgent: 'codex',
-        data: readFixture(name),
+        data: readRuntimeFixture(name),
         size
       })
     }
@@ -202,7 +218,7 @@ describe('Codex 0.157 header readiness from captured bytes', () => {
     )
 
     it('does not settle while Codex is still installing its daemon behind the provisional screen', async () => {
-      const data = readFixture(FRESH_HOME)
+      const data = readRuntimeFixture(FRESH_HOME)
       const install = data.indexOf('Installing daemon')
       // Presence precondition: the cut keeps the provisional header and stops before the live chat.
       expect(install).toBeGreaterThan(0)
