@@ -32,6 +32,12 @@ const REFUSAL = agentSessionFailureWords(
   { surface: 'rejection' }
 )
 
+const BODY: AgentJournalMessageItem = {
+  kind: 'message',
+  role: 'user',
+  blocks: [{ type: 'text', text: 'queued text' }]
+}
+
 let root: string
 let clock = 1_000
 const journals = createTrackedJournalOpener()
@@ -136,6 +142,72 @@ describe('draft bookkeeping inside a journal append', () => {
     expect(journal.queuedMessages.get('draft-1')).toMatchObject({
       state: 'returned',
       returnedRejection: { kind: 'providerRejected' }
+    })
+  })
+
+  describe('a failed COMMIT', () => {
+    /** The append's own COMMIT fails once, after its hooks ran. */
+    function failNextCommit() {
+      const exec = Database.prototype.exec
+      let armed = true
+      return vi.spyOn(Database.prototype, 'exec').mockImplementation(function (
+        this: Database,
+        sql: string
+      ) {
+        if (armed && sql === 'COMMIT') {
+          armed = false
+          throw new Error('SQLITE_FULL')
+        }
+        return exec.call(this, sql)
+      })
+    }
+
+    async function consumeFailingCommit(journal: AgentSessionJournal): Promise<void> {
+      await journal.queuedMessages.insert({
+        messageId: 'draft-1',
+        body: BODY,
+        fingerprint: 'fp-draft-1',
+        hostInstance: 'proc-1'
+      })
+      expect(journal.queuedMessages.list()).toMatchObject([{ state: 'waiting' }])
+      const commit = failNextCommit()
+      try {
+        await expect(
+          journal.appendSubmission(
+            { clientMessageId: 'sub-draft-1', payloadFingerprint: 'fp', body: BODY, fence: 0 },
+            { messageId: 'draft-1', expect: 'waiting', settledByOp: null }
+          )
+        ).rejects.toThrow('SQLITE_FULL')
+      } finally {
+        commit.mockRestore()
+      }
+    }
+
+    it('leaves no uncommitted draft state cached: the per-row hook reads drafts only for an echo', async () => {
+      const journal = await open()
+      const list = vi.spyOn(JournalQueuedMessages.prototype, 'list')
+      await consumeFailingCommit(journal)
+      // Once by the test itself before the append; never inside it.
+      expect(list).toHaveBeenCalledTimes(1)
+      list.mockRestore()
+      expect(journal.submissions()).toHaveLength(0)
+      expect(journal.queuedMessages.list()).toMatchObject([
+        { messageId: 'draft-1', state: 'waiting' }
+      ])
+    })
+
+    it('invalidates what any read inside the rolled-back transaction cached', async () => {
+      const journal = await open()
+      // Some other bookkeeping reads the list inside the transaction, after the consume wrote.
+      vi.spyOn(JournalQueuedMessages.prototype, 'onRowInTransaction').mockImplementation(function (
+        this: JournalQueuedMessages
+      ) {
+        this.list()
+      })
+      await consumeFailingCommit(journal)
+      expect(journal.queuedMessages.list()).toMatchObject([
+        { messageId: 'draft-1', state: 'waiting' }
+      ])
     })
   })
 })
