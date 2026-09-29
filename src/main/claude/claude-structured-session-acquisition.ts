@@ -118,7 +118,7 @@ export async function acquireClaudeSession({
       if (message.type === 'result' && sessions.get(sessionId) === liveSession) {
         persistClaudeTurnResumePoint(sessionId, liveSession, deps)
       }
-      // The CLI's idle re-derives the doubted sends it can no longer answer.
+      // The CLI's idle releases its doubted sends; a late echo still accepts one it goes on to run.
       if (claudeSessionStateEndsTurn(message) && sessions.get(sessionId) === liveSession) {
         deps.onSessionIdle?.({ sessionId })
       }

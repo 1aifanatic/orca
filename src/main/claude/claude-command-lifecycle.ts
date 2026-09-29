@@ -2,9 +2,9 @@
 //
 // A terminal state for a command that never started is a verdict: `cancelled` was withdrawn,
 // `discarded` was dropped when the CLI ended its session, `refused` was declined before it
-// queued. None ran. Once a command has started, the same states only mean its turn ended — an
-// interrupt or a hard failure (measured on 2.1.280) — so it may be in the conversation: doubt.
-// These frames land ahead of the control answer, so they settle a send even when that is lost.
+// queued. None ran. After `started`, 2.1.280 sends only `cancelled`, when an interrupt or a hard
+// failure ends the turn (measured), so the send may be in the conversation: any end is doubt.
+// An unstarted send's `cancelled` lands before the Stop's answer, so it settles if that is lost.
 
 import {
   agentSessionFailureFact,
@@ -73,7 +73,7 @@ export function claudeHoldsDispatch(session: ClaudeSession): boolean {
 
 /**
  * At idle, only a `started` send still unanswered is doubt: a turn that threw leaves it with no
- * terminal state. A `queued` one may still start; the CLI can idle before it re-reads its queue.
+ * terminal state. A `queued` one may still start: 2.1.280's code idles before re-reading its queue.
  */
 export function releaseClaudeDispatchesUnansweredAtIdle(
   session: ClaudeSession,
