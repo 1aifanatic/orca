@@ -41,7 +41,7 @@ export function useStructuredAgentSessionOutboxOwnership(args: {
     if (next.length === current.length && next.every((entry, index) => entry === current[index])) {
       return
     }
-    // By id: a kept entry may come back parked, as a new object.
+    // By id: a kept entry comes back marked, as a new object.
     const kept = new Set(next.map((entry) => entry.clientMessageId))
     restoreWithdrawn.byStop(current.filter((entry) => !kept.has(entry.clientMessageId)))
     outboxRef.current = next

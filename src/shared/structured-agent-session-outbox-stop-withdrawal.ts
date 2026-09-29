@@ -31,7 +31,7 @@ function unsentStructuredAgentSessionOutboxEntry(
 
 /** A queue send that has gone out at least once and was not refused, in whatever state it now
  *  waits: the host may hold it as a paused draft, so a local restore too would put the same text
- *  in two places. Read from what went on the wire, never from the intent alone. */
+ *  in two places. Read from what went on the wire (`sentDelivery`). */
 function attemptedQueueSend(entry: StructuredAgentSessionOutboxEntry): boolean {
   return (
     entry.sentDelivery === 'queue-if-active' &&

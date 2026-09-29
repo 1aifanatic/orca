@@ -95,7 +95,7 @@ export function newestSteerableQueuedMessageCard(
 /**
  * The outbox entries the transcript may show as pending bubbles. A send the host holds
  * as a draft (same id) is a card, and so is a send on its way out asking to be queued —
- * read from what its request carries, never from the intent alone — otherwise it paints
+ * read from what its request carries — otherwise it paints
  * in the transcript until the queued answer retires it. A plain send stays a bubble. From
  * the entry the drain is stopped on (read through the drain's own rule), nothing is on its
  * way: those stay bubbles so their text is visible beside the Retry row.
