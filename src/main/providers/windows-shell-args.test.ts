@@ -10,7 +10,7 @@ import { getShellReadyWrapperRoot } from './local-pty-shell-ready-wrapper-root'
 
 const CODEX_LAUNCH_PREFLIGHT = 'C:\\Program Files\\Orca\\orca.exe'
 const CMD_CODEX_LAUNCH_PREFLIGHT =
-  'if defined ORCA_CODEX_LAUNCH_PREFLIGHT call %ORCA_CODEX_LAUNCH_PREFLIGHT_CMD_QUOTE%%ORCA_CODEX_LAUNCH_PREFLIGHT%%ORCA_CODEX_LAUNCH_PREFLIGHT_CMD_QUOTE% agent hooks prepare-codex > nul 2>&1'
+  'if defined ORCA_CODEX_LAUNCH_PREFLIGHT if defined ORCA_CODEX_HOME call %ORCA_CODEX_LAUNCH_PREFLIGHT_CMD_QUOTE%%ORCA_CODEX_LAUNCH_PREFLIGHT%%ORCA_CODEX_LAUNCH_PREFLIGHT_CMD_QUOTE% agent hooks prepare-codex > nul 2>&1'
 
 function expectedWslArgs(linuxCwd: string, distro?: string): string[] {
   const command = `cd '${linuxCwd}' && export PATH="$HOME/.local/bin:$PATH" && ${buildWslInteractiveLoginShellCommand()}`

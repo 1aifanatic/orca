@@ -20,7 +20,8 @@ const STARTUP_COMMAND_TEXT_MAX_CHARS = 6000
 const POWERSHELL_ENCODED_COMMAND_ARG_MAX_CHARS = 28_000
 const CMD_UTF8_SETUP_COMMAND = 'chcp 65001 > nul'
 export const ORCA_CODEX_LAUNCH_PREFLIGHT_CMD_QUOTE_ENV = 'ORCA_CODEX_LAUNCH_PREFLIGHT_CMD_QUOTE'
-const CMD_CODEX_LAUNCH_PREFLIGHT = `if defined ORCA_CODEX_LAUNCH_PREFLIGHT call %${ORCA_CODEX_LAUNCH_PREFLIGHT_CMD_QUOTE_ENV}%%ORCA_CODEX_LAUNCH_PREFLIGHT%%${ORCA_CODEX_LAUNCH_PREFLIGHT_CMD_QUOTE_ENV}% agent hooks prepare-codex > nul 2>&1`
+// Why ORCA_CODEX_HOME: hook prep only repairs an Orca-managed home; cmd.exe gets no launch policy.
+const CMD_CODEX_LAUNCH_PREFLIGHT = `if defined ORCA_CODEX_LAUNCH_PREFLIGHT if defined ORCA_CODEX_HOME call %${ORCA_CODEX_LAUNCH_PREFLIGHT_CMD_QUOTE_ENV}%%ORCA_CODEX_LAUNCH_PREFLIGHT%%${ORCA_CODEX_LAUNCH_PREFLIGHT_CMD_QUOTE_ENV}% agent hooks prepare-codex > nul 2>&1`
 // Why: Git for Windows' bash inherits the ConPTY console's OEM code page
 // (CP437), so a TUI that writes UTF-8 bytes straight to the console — agents
 // like Claude Code use WriteFile, not WriteConsoleW — renders as mojibake
