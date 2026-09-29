@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
   antigravity: vi.fn<(path: string) => void>(),
   qoder: vi.fn<(path: string) => void>(),
   remote: vi.fn<(args: unknown) => Promise<void>>(async () => {}),
-  claudeGrant: vi.fn<(target: unknown, workspacePath: string) => Promise<unknown>>()
+  claudeGrant: vi.fn<typeof ClaudeFolderTrustFile.grantClaudeWorkspaceTrust>()
 }))
 
 vi.mock('./agent-trust-presets', () => ({
@@ -200,7 +200,7 @@ describe('applyAgentWorkspaceTrust for Claude', () => {
     vi.useFakeTimers()
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const grant = pending()
-    mocks.claudeGrant.mockReturnValueOnce(grant.promise)
+    mocks.claudeGrant.mockReturnValueOnce(grant.promise.then(() => 'granted' as const))
     let settled = false
     const claude = applyAgentWorkspaceTrust('claude', root, {
       ...local,
