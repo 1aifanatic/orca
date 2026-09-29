@@ -8,6 +8,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { structuredAgentSessionPayloadFingerprint } from '../../../../shared/structured-agent-session-mutation'
+import type { StructuredAgentSessionQueueCapability } from '../../../../shared/structured-agent-session-outbox-delivery'
 import {
   clearNativeChatDraftCacheForTests,
   readNativeChatDraftCache
@@ -28,8 +29,10 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
 }))
 
 import { useStructuredAgentSessionOutbox } from './use-structured-agent-session-outbox'
+import { readOutbox } from './structured-agent-session-outbox-storage'
 
 const LOCAL_TARGET = { kind: 'local' } as const
+const QUEUEING = { capability: 'supported', enabled: true } as const
 
 function queuedReceipt(clientMessageId: string) {
   return {
@@ -44,14 +47,14 @@ function queuedReceipt(clientMessageId: string) {
   }
 }
 
-function renderOutbox(queueDelivery: boolean) {
+function renderOutbox(queue: boolean) {
   return renderHook(() =>
     useStructuredAgentSessionOutbox({
       sessionId: 'session-1',
       target: LOCAL_TARGET,
       fence: 1,
       submissions: [],
-      queueDelivery
+      queueDelivery: queue ? QUEUEING : { capability: 'unsupported', enabled: true }
     })
   )
 }
@@ -152,7 +155,7 @@ describe('outbox queue delivery selection', () => {
           target: LOCAL_TARGET,
           fence: 1,
           submissions: [],
-          queueDelivery: true,
+          queueDelivery: { capability: 'supported' as const, enabled: true },
           queuedMessageIds: props.queuedMessageIds
         }),
       { initialProps: { queuedMessageIds: Array.of<string>() } }
@@ -183,7 +186,7 @@ describe('outbox queue delivery selection', () => {
           fence: 1,
           submissions: [],
           composerScopeKey: 'stop-scope',
-          queueDelivery: true,
+          queueDelivery: { capability: 'supported' as const, enabled: true },
           queuedMessageIds: props.queuedMessageIds
         }),
       { initialProps: { queuedMessageIds: Array.of<string>() } }
@@ -205,29 +208,32 @@ describe('outbox queue delivery selection', () => {
     expect(readNativeChatDraftCache('stop-scope')).toBe('never left')
   })
 
-  it('a Retry after the host lost the capability goes out without `delivery`', async () => {
-    // A host rolled back past the capability rejects the strict field before its operation
-    // ledger, so a replay carrying it again could only fail the same way.
-    mocks.call.mockImplementationOnce(async () => {
-      throw new Error('invalid_argument: Unrecognized key: "delivery"')
+  it('an attempted queue send waits while the capability is unknown, then replays unchanged', async () => {
+    const view = await attemptedQueueSend()
+    view.rerender({ capability: 'unknown' })
+    const id = view.result.current.outbox[0]?.clientMessageId ?? ''
+    act(() => {
+      view.result.current.retry(id)
     })
-    const view = renderHook(
-      (props: { capable: boolean }) =>
-        useStructuredAgentSessionOutbox({
-          sessionId: 'session-1',
-          target: LOCAL_TARGET,
-          fence: 1,
-          submissions: [],
-          queueDelivery: props.capable,
-          queueCapable: props.capable
-        }),
-      { initialProps: { capable: true } }
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 50)))
+    expect(mocks.call).toHaveBeenCalledTimes(1)
+    expect(readOutbox('session-1')[0]?.delivery).toBe('queue-if-active')
+
+    view.rerender({ capability: 'supported' })
+    await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(2))
+    const params = mocks.call.mock.calls[1]?.[2]
+    expect(params?.envelope.clientOperationId).toBe(id)
+    expect(params?.delivery).toBe('queue-if-active')
+    expect(params?.envelope.payloadFingerprint).toBe(
+      mocks.call.mock.calls[0]?.[2]?.envelope.payloadFingerprint
     )
-    expect(view.result.current.send('follow-up')).toBe(true)
-    await waitFor(() => expect(view.result.current.blockedClientMessageId).not.toBeNull())
-    expect(mocks.call.mock.calls[0]?.[2]?.delivery).toBe('queue-if-active')
-    mocks.call.mockImplementation(() => new Promise(() => {}))
-    view.rerender({ capable: false })
+  })
+
+  it('a host known not to queue gets the Retry without `delivery`; the entry keeps the intent', async () => {
+    // Such a host rejects the strict field before its operation ledger, so a replay carrying it
+    // again could only fail the same way.
+    const view = await attemptedQueueSend()
+    view.rerender({ capability: 'unsupported' })
     const id = view.result.current.outbox[0]?.clientMessageId ?? ''
     act(() => {
       view.result.current.retry(id)
@@ -243,5 +249,31 @@ describe('outbox queue delivery selection', () => {
         fields: { body: params?.body }
       })
     )
+    expect(readOutbox('session-1')[0]?.delivery).toBe('queue-if-active')
   })
 })
+
+const SUPPORTED: StructuredAgentSessionQueueCapability = 'supported'
+
+/** A queue send whose first attempt failed and now waits on the user's Retry. */
+async function attemptedQueueSend() {
+  mocks.call.mockImplementationOnce(async () => {
+    throw new Error('invalid_argument: Unrecognized key: "delivery"')
+  })
+  const view = renderHook(
+    (props: { capability: StructuredAgentSessionQueueCapability }) =>
+      useStructuredAgentSessionOutbox({
+        sessionId: 'session-1',
+        target: LOCAL_TARGET,
+        fence: 1,
+        submissions: [],
+        queueDelivery: { capability: props.capability, enabled: true }
+      }),
+    { initialProps: { capability: SUPPORTED } }
+  )
+  expect(view.result.current.send('follow-up')).toBe(true)
+  await waitFor(() => expect(view.result.current.blockedClientMessageId).not.toBeNull())
+  expect(mocks.call.mock.calls[0]?.[2]?.delivery).toBe('queue-if-active')
+  mocks.call.mockImplementation(() => new Promise(() => {}))
+  return view
+}

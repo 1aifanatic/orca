@@ -57,7 +57,7 @@ describe('a Stop with a queued send in doubt', () => {
         fence: 1,
         submissions: [],
         composerScopeKey: 'scope',
-        queueDelivery: true
+        queueDelivery: { capability: 'supported' as const, enabled: true }
       })
     )
     act(() => {

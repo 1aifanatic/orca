@@ -18,7 +18,7 @@ import {
 
 const mocks = vi.hoisted(() => ({
   call: vi.fn(),
-  outboxArgs: Array.of<{ queueDelivery?: boolean }>(),
+  outboxArgs: Array.of<{ queueDelivery?: { capability: string; enabled: boolean } }>(),
   operations: 0
 }))
 let items: AgentJournalRenderItem[] = []
@@ -48,7 +48,9 @@ vi.mock('./use-structured-agent-session-read', () => ({
 
 vi.mock('./use-structured-agent-session-outbox', () => ({
   structuredSessionOperationId: () => `operation-${++mocks.operations}`,
-  useStructuredAgentSessionOutbox: (args: { queueDelivery?: boolean }) => {
+  useStructuredAgentSessionOutbox: (args: {
+    queueDelivery?: { capability: string; enabled: boolean }
+  }) => {
     mocks.outboxArgs.push(args)
     return {
       outbox: outboxEntries,
@@ -145,10 +147,16 @@ describe('against a capable host', () => {
 
   it('queues sends while the setting is on, immediately when it is off', () => {
     render()
-    expect(mocks.outboxArgs.at(-1)?.queueDelivery).toBe(true)
+    expect(mocks.outboxArgs.at(-1)?.queueDelivery).toEqual({
+      capability: 'supported',
+      enabled: true
+    })
     mocks.outboxArgs.length = 0
     render(false)
-    expect(mocks.outboxArgs.at(-1)?.queueDelivery).toBe(false)
+    expect(mocks.outboxArgs.at(-1)?.queueDelivery).toEqual({
+      capability: 'supported',
+      enabled: false
+    })
   })
 
   it('Stop is a plain cancel: drafts stay as cards and no text lands in the composer', async () => {
@@ -274,7 +282,7 @@ describe('against a host without the capability', () => {
 
   it('never asks for queue delivery, whatever the setting says', () => {
     render()
-    expect(mocks.outboxArgs.at(-1)?.queueDelivery).toBe(false)
+    expect(mocks.outboxArgs.at(-1)?.queueDelivery?.capability).toBe('unsupported')
   })
 
   it("Stop stays exactly today's conversation Stop — no withdrawQueued key at all", async () => {

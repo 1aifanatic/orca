@@ -77,7 +77,7 @@ describe('a withdrawn send the host returns as a card', () => {
           fence: 1,
           submissions: props.submissions,
           composerScopeKey: 'scope',
-          queueDelivery: true,
+          queueDelivery: { capability: 'supported' as const, enabled: true },
           queuedMessageIds: props.queuedMessageIds
         }),
       { initialProps }

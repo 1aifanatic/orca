@@ -13,7 +13,7 @@ import {
   supportsStructuredAgentSessionQuestionAnswers
 } from '@/runtime/structured-agent-session-client'
 import {
-  useStructuredAgentSessionHostQueuesMessages,
+  useStructuredAgentSessionHostQueuesMessagesState,
   useStructuredAgentSessionHostStopsConversation
 } from '@/runtime/structured-agent-session-host-capability'
 import { hasUnsentStructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox-stop-withdrawal'
@@ -98,7 +98,8 @@ export function useStructuredAgentSession(args: {
   })
   // Only a capable host may see `delivery` or the queuedMessage RPCs; against
   // anything older this client must look exactly like today's.
-  const queueCapable = useStructuredAgentSessionHostQueuesMessages(target)
+  const queueCapability = useStructuredAgentSessionHostQueuesMessagesState(target)
+  const queueCapable = queueCapability === 'supported'
   const queuedMessageIds = useMemo(
     () => (transportState.queuedMessages ?? []).map((message) => message.messageId),
     [transportState.queuedMessages]
@@ -109,8 +110,7 @@ export function useStructuredAgentSession(args: {
     fence: transportState.fence,
     submissions: transportState.submissions,
     composerScopeKey,
-    queueDelivery: queueCapable && queueFollowUps,
-    queueCapable,
+    queueDelivery: { capability: queueCapability, enabled: queueFollowUps },
     queuedMessageIds
   })
 
