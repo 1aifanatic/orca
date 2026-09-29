@@ -10,6 +10,7 @@ import PinnedTabCloseDialog from './components/terminal-pane/PinnedTabCloseDialo
 import RunningTerminalCloseDialog from './components/terminal-pane/RunningTerminalCloseDialog'
 import WorktreeBaseFallbackDialog from './components/WorktreeBaseFallbackDialog'
 import { useUnreadDockBadge } from './hooks/useUnreadDockBadge'
+import { installActiveWorktreeRemovalHandoff } from './lib/active-worktree-removal-handoff'
 import { AppBackgroundServices } from './app-shell/AppBackgroundServices'
 import { AppRootSurfaces } from './app-shell/AppRootSurfaces'
 import { AppWorkspaceShell } from './app-shell/AppWorkspaceShell'
@@ -50,6 +51,7 @@ function App(): React.JSX.Element {
   useDocumentAppearance()
   useWindowVisibilityEffects()
   useGlobalKeybindings({ layout, floatingWorkspace })
+  useEffect(() => installActiveWorktreeRemovalHandoff(), [])
 
   // Why: the same vars are set inline on .app-layout below, but portaled surfaces
   // (sheets, dialogs) mount outside it and would otherwise fall back to 0px and

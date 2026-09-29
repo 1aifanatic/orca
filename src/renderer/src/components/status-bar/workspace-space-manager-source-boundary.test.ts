@@ -70,7 +70,6 @@ describe('workspace space manager source boundaries', () => {
 
     expect(controller).toContain('runWorktreeBatchDelete(identities, {')
     expect(controller).toContain('forceConfirm: true')
-    expect(controller).toContain('prepareActiveWorktreeFocusAfterDelete(worktree.worktreeId)')
     expect(controller).toContain(
       'removeWorktree(\n        { id: worktree.worktreeId, executionHostId: worktree.executionHostId ?? null },\n        true,\n        { allowUnverifiedPtyStop: true }\n      )'
     )

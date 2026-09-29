@@ -144,8 +144,14 @@ export type BrowserSlice = {
     url: string,
     profileId: string | null
   ) => Promise<boolean>
-  closeBrowserTab: (tabId: string, options?: { reason?: 'cleanup' }) => void
-  shutdownWorktreeBrowsers: (worktreeId: string) => Promise<void>
+  closeBrowserTab: (
+    tabId: string,
+    options?: { reason?: 'cleanup'; preserveWorktreeSelection?: boolean }
+  ) => void
+  shutdownWorktreeBrowsers: (
+    worktreeId: string,
+    options?: { preserveWorktreeSelection?: boolean }
+  ) => Promise<void>
   reopenClosedBrowserTab: (worktreeId: string) => BrowserWorkspace | null
   setActiveBrowserTab: (tabId: string) => void
   createBrowserPage: (

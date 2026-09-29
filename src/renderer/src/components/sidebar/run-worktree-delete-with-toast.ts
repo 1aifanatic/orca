@@ -3,7 +3,6 @@ import { useAppStore } from '@/store'
 import { activateAndRevealWorktree } from '@/lib/worktree-activation'
 import { translate } from '@/i18n/i18n'
 import type { WorktreeRemovalTarget } from '../../../../shared/worktree/removal'
-import { prepareActiveWorktreeFocusAfterDelete } from './active-worktree-focus-after-delete'
 import { showDeleteWorktreeFailureToast } from './delete-worktree-failure-toast'
 import type { WorktreeDeleteWithToastOptions } from './worktree-delete-request'
 import { getDeleteStateForWorktreeHost } from './worktree-delete-state-host-match'
@@ -31,8 +30,6 @@ export function runWorktreeDeleteWithToast(
 ): Promise<boolean> {
   const worktreeId = target.id
   const removeWorktree = useAppStore.getState().removeWorktree
-  const commitFocus = prepareActiveWorktreeFocusAfterDelete(worktreeId)
-  const focusSuccessor = options.focusSuccessorOnDelete !== false
 
   const removeOptions = {
     ...(options.suppressPreservedBranchToast ? { suppressPreservedBranchToast: true } : {}),
@@ -72,9 +69,8 @@ export function runWorktreeDeleteWithToast(
     })
   }
 
-  // Both toast buttons do the same thing: recapture focus (the user may have navigated while the
-  // toast was open), retry with one waiver added, and report a success through `onForceDeleted` so
-  // the caller's bookkeeping runs. Only the waiver and the failure copy differ.
+  // Both toast buttons do the same thing: retry with one waiver added, and report a success through
+  // `onForceDeleted` so the caller's bookkeeping runs. Only the waiver and the failure copy differ.
   const retryFromToast = (retry: {
     force: boolean
     allowUnverifiedPtyStop?: boolean
@@ -82,7 +78,6 @@ export function runWorktreeDeleteWithToast(
     failedTitle?: string
     withViewAction?: boolean
   }): void => {
-    const commitRetryFocus = prepareActiveWorktreeFocusAfterDelete(worktreeId)
     const viewAction = retry.withViewAction
       ? {
           action: {
@@ -125,7 +120,6 @@ export function runWorktreeDeleteWithToast(
           failed(result.error)
           return
         }
-        commitRetryFocus()
         // "A retry started from this toast completed the delete" — callers hang their bookkeeping
         // off it, so without this a batch or Space-panel delete keeps listing what it removed.
         options.onForceDeleted?.(target)
@@ -150,9 +144,6 @@ export function runWorktreeDeleteWithToast(
               ? { runtimeEnvironmentId: result.preservedBranch.runtimeEnvironmentId }
               : {})
           })
-        }
-        if (focusSuccessor) {
-          commitFocus()
         }
         return true
       }
