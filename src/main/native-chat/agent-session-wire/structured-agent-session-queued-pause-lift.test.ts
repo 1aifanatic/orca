@@ -191,6 +191,27 @@ describe('a failed Stop', () => {
     await eventually(async () => expect(await rig.submission(fresh)).toBeDefined())
     expect(await rig.submission(earlier)).toBeUndefined()
   })
+
+  it('keeps its holds when it fails after the interrupt reached the agent', async () => {
+    await rig.workingSend()
+    const draftId = await queuedDraft('paused by stop')
+    const append = AgentSessionJournal.prototype.appendItem
+    const failing = vi
+      .spyOn(AgentSessionJournal.prototype, 'appendItem')
+      .mockImplementation(async function (this: AgentSessionJournal, ...args) {
+        // The status note written after the provider was asked to stop.
+        if (args[1].kind === 'status') {
+          throw new Error('disk full')
+        }
+        return append.apply(this, args)
+      })
+    try {
+      await expect(rig.stop()).rejects.toThrow('disk full')
+    } finally {
+      failing.mockRestore()
+    }
+    await expectNeverSent(draftId)
+  })
 })
 
 describe('user sends awaiting their turn', () => {
