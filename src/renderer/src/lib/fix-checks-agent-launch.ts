@@ -202,7 +202,6 @@ export async function startFixChecksAgent(args: StartFixChecksAgentArgs): Promis
     const hosted = await launchSourceControlAgent({
       agent,
       worktreeId: targetWorktreeId,
-      groupId: args.groupId ?? targetWorktreeId,
       prompt: commandInput,
       agentArgs: recipe.agentArgs,
       launchSource: args.launchSource,

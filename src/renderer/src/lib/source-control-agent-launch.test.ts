@@ -2,7 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as RuntimeRpcClientModule from '@/runtime/runtime-rpc-client'
 
 const mocks = vi.hoisted(() => {
-  const state: { settings: Record<string, unknown> } = { settings: {} }
+  const state: {
+    settings: Record<string, unknown>
+    activeGroupIdByWorktree: Record<string, string>
+  } = { settings: {}, activeGroupIdByWorktree: {} }
   return {
     callRuntimeRpc: vi.fn(),
     runtimeEnvironmentSupportsCapability: vi.fn(),
@@ -50,6 +53,7 @@ vi.mock('@/lib/agent-launch-prompt-not-delivered-notice', () => ({
 import { RuntimeRpcCallError } from '@/runtime/runtime-rpc-client'
 import {
   type AgentLaunchTabReservation,
+  agentLaunchReservedGroupIds,
   agentLaunchTabReservationCountForTests,
   claimAgentLaunchTabReservation
 } from './agent-launch-tab-reservations'
@@ -82,7 +86,6 @@ const PROMPT = 'Fix the failing checks.\nLog tail:\nerror TS2322'
 const ARGS: SourceControlAgentLaunchArgs = {
   agent: 'claude',
   worktreeId: 'wt-1',
-  groupId: 'group-2',
   prompt: `  ${PROMPT}  `,
   agentArgs: '--model opus',
   launchSource: 'conflict_resolution'
@@ -110,7 +113,7 @@ beforeEach(() => {
   vi.resetAllMocks()
   resetWebSessionFocusIntentForTests()
   resetWebSessionTerminalPlacementsForTests()
-  mocks.state = { settings: {} }
+  mocks.state = { settings: {}, activeGroupIdByWorktree: { 'wt-1': 'group-2' } }
   mocks.settleTerminalPlacement.mockResolvedValue(undefined)
   mocks.refreshSessionTabs.mockResolvedValue(undefined)
   mocks.getRuntimeEnvironmentIdForWorktree.mockReturnValue(null)
@@ -154,7 +157,8 @@ describe('launching a source-control button’s agent through the host', () => {
     expect(sentParams()).not.toHaveProperty('agentArgs')
   })
 
-  it('reserves the placement under the tab it asks for, so the reveal lands it in the button’s group', async () => {
+  // Why: each button once passed its own group id, and some passed none or a workspace id.
+  it('reserves the workspace’s focused group under the tab it asks for, so the reveal lands it there', async () => {
     let placement: AgentLaunchTabReservation | null = null
     mocks.callRuntimeRpc.mockImplementation(async (_t, _m, params) => {
       placement =
@@ -169,7 +173,10 @@ describe('launching a source-control button’s agent through the host', () => {
   })
 
   it('sends the view mode the button would have opened the tab in, so the host reveals it that way', async () => {
-    mocks.state = { settings: { experimentalNativeChat: true, openAgentTabsInChatByDefault: true } }
+    mocks.state = {
+      ...mocks.state,
+      settings: { experimentalNativeChat: true, openAgentTabsInChatByDefault: true }
+    }
 
     await launchSourceControlAgent(ARGS)
 
@@ -385,6 +392,20 @@ describe('launching a source-control button’s agent through the host', () => {
     beforeLaunch.mockClear()
     await launchSourceControlAgent({ ...ARGS, beforeLaunch })
     expect(beforeLaunch).not.toHaveBeenCalled()
+  })
+
+  // Why: a workspace reveal reconciles tabs, which drops an empty split nothing holds.
+  it('holds the focused group while the caller’s pre-launch step runs, and lets go when it says no', async () => {
+    let heldDuringStep: ReadonlySet<string> = new Set()
+    const beforeLaunch = vi.fn(() => {
+      heldDuringStep = agentLaunchReservedGroupIds('wt-1')
+      return false
+    })
+
+    await launchSourceControlAgent({ ...ARGS, beforeLaunch })
+
+    expect([...heldDuringStep]).toEqual(['group-2'])
+    expect(agentLaunchTabReservationCountForTests()).toBe(0)
   })
 })
 

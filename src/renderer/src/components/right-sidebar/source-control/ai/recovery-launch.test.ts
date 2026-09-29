@@ -63,7 +63,6 @@ describe('commit-failure recovery on a host that takes the launch', () => {
       expect.objectContaining({
         agent: 'claude',
         worktreeId: 'wt-1',
-        groupId: 'group-1',
         agentArgs: '--model opus',
         launchSource: 'source_control_recovery',
         prompt: expect.stringContaining('The commit failed:\nhook output')

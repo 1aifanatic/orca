@@ -201,7 +201,6 @@ describe('startFixChecksAgent', () => {
       expect(mocks.launchSourceControlAgent).toHaveBeenCalledWith({
         agent: 'codex',
         worktreeId: 'wt-1',
-        groupId: 'group-1',
         prompt: 'Fix checks\nlog tail',
         agentArgs: undefined,
         launchSource: 'task_page',

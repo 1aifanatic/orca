@@ -57,7 +57,7 @@ beforeEach(() => {
 })
 
 describe('a source-control action started through the host', () => {
-  it('asks the host for this agent, workspace, group and prompt', async () => {
+  it('asks the host for this agent, workspace and prompt', async () => {
     mocks.launchSourceControlAgent.mockResolvedValue({ kind: 'launched', promptDelivered: true })
 
     await runSourceControlAgentActionStart(buildArgs())
@@ -65,7 +65,6 @@ describe('a source-control action started through the host', () => {
     expect(mocks.launchSourceControlAgent).toHaveBeenCalledWith({
       agent: 'claude',
       worktreeId: 'wt-1',
-      groupId: 'group-1',
       prompt: 'Resolve the conflicts.\nFiles: a.ts',
       agentArgs: '--model opus',
       launchSource: 'conflict_resolution',

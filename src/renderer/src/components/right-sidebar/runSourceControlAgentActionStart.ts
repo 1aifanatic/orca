@@ -111,7 +111,6 @@ export async function runSourceControlAgentActionStart({
         ? await launchSourceControlAgent({
             agent: selectedAgent,
             worktreeId,
-            groupId: groupId ?? worktreeId,
             prompt: trimmedCommandInput,
             ...(launchAgentArgs !== undefined ? { agentArgs: launchAgentArgs } : {}),
             launchSource,

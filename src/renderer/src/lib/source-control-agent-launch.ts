@@ -57,15 +57,14 @@ export const SOURCE_CONTROL_AGENT_LAUNCH_UNCONFIRMED_MESSAGE =
 export type SourceControlAgentLaunchArgs = {
   agent: TuiAgent
   worktreeId: string
-  /** The tab group the button was used from; the revealed tab joins it. */
-  groupId?: string
   prompt: string
   /** Absent uses the settings default; `null` means no arguments. */
   agentArgs?: string | null
   launchSource: LaunchSource
   /** The agent's surface exists; its prompt may still be on the way. */
   onLaunchAccepted?: () => void
-  /** Runs once the host is known to take the launch, before anything is minted; false aborts. */
+  /** Runs once the host is known to take the launch and the tab's group is held, before anything
+   *  is sent; false aborts. */
   beforeLaunch?: () => boolean
 }
 
@@ -118,6 +117,11 @@ function launchViewOptions(args: SourceControlAgentLaunchArgs) {
   }
 }
 
+/** The workspace's focused group, read here so no button can name a wrong one; the tab joins it. */
+function launchTargetGroupId(worktreeId: string): string | undefined {
+  return useAppStore.getState().activeGroupIdByWorktree[worktreeId]
+}
+
 async function sendReplayingAmbiguousLaunch(
   target: RuntimeClientTarget,
   params: Record<string, unknown>
@@ -147,6 +151,7 @@ export async function launchSourceControlAgent(
   args: SourceControlAgentLaunchArgs
 ): Promise<SourceControlAgentLaunchResult> {
   const trimmedPrompt = args.prompt.trim()
+  const groupId = launchTargetGroupId(args.worktreeId)
   let target: RuntimeClientTarget | null
   try {
     target = await resolveLaunchTarget(args.worktreeId)
@@ -156,9 +161,6 @@ export async function launchSourceControlAgent(
   }
   if (!target) {
     return { kind: 'unsupported' }
-  }
-  if (args.beforeLaunch?.() === false) {
-    return { kind: 'aborted' }
   }
   const tabId = createBrowserUuid()
   const leafId = createBrowserUuid()
@@ -176,12 +178,17 @@ export async function launchSourceControlAgent(
   const placement = placeAgentLaunchTab({
     target,
     worktreeId: args.worktreeId,
-    ...(args.groupId ? { groupId: args.groupId } : {}),
+    ...(groupId ? { groupId } : {}),
     tabId,
     leafId,
     ...(sessionId ? { sessionId } : {}),
     onRevealed: accept
   })
+  // After the hold: a workspace reveal reconciles tabs, which drops an unheld empty split.
+  if (args.beforeLaunch?.() === false) {
+    placement.settle(null)
+    return { kind: 'aborted' }
+  }
   let launched: AgentLaunchResult | null = null
   const params = {
     agent: args.agent,

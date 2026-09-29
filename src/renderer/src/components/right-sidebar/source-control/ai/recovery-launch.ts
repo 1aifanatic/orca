@@ -162,7 +162,6 @@ export async function launchSourceControlRecoveryAgentWithDefault({
   const hosted = await launchSourceControlAgent({
     agent,
     worktreeId: activeWorktreeId,
-    groupId: activeGroupId ?? activeWorktreeId,
     prompt,
     agentArgs: savedRecipe.agentArgs,
     launchSource: 'source_control_recovery'
