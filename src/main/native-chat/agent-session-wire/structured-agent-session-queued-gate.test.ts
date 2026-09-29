@@ -41,14 +41,14 @@ const settleRejected: QueuedMessageTestRig['settleRejected'] = (...args) =>
   rig.settleRejected(...args)
 
 describe('the one queue gate', () => {
-  it("Send-now sends past an older build's unconfirmed clear, as any send does", async () => {
-    const working = await workingSend()
+  it('a clear an older build left prepared holds nothing: Send-now sends the draft', async () => {
+    await workingSend()
     const queued = await send('queued behind the clear', 'queue-if-active').result
     if (!queued.ok || !('queued' in queued.value)) {
       throw new Error('expected a queued receipt')
     }
     const draftId = queued.value.queued.messageId
-    // A clear that never committed changed nothing, so it holds nothing back.
+    // An unfinished /clear changed nothing the chat reads, so it refuses no send.
     await store.setConversationCommand(SESSION, 1, {
       command: 'clear',
       runtimeFence: 1,
@@ -58,7 +58,6 @@ describe('the one queue gate', () => {
       state: 'unknown'
     })
     expect(await sendNow(draftId)).toMatchObject({ ok: true })
-    await settleAccepted(working, 'a')
     await eventually(async () => expect(await rig.handoff(draftId)).toBeDefined())
   })
 

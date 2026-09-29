@@ -702,14 +702,13 @@ describe('/clear', () => {
     expect(await drafts()).toHaveLength(0)
   })
 
-  it("a draft behind an older build's unconfirmed clear drains when the turn settles", async () => {
+  it('a clear an older build left prepared holds no draft: it drains when the turn settles', async () => {
     const working = await workingSend()
     const queued = await send('behind the clear', 'queue-if-active').result
     if (!queued.ok || !('queued' in queued.value)) {
       throw new Error('expected a queued receipt')
     }
     const draftId = queued.value.queued.messageId
-    // A clear that never committed changed nothing, so it holds nothing back.
     await store.setConversationCommand(SESSION, 1, {
       command: 'clear',
       runtimeFence: 1,
