@@ -109,6 +109,7 @@ export async function useIpcEventsForCloseRouting({
         browserPagesByWorkspace: {},
         openFiles: [],
         unifiedTabsByWorktree: {},
+        deleteStateByWorktreeId: {},
         closeBrowserTab: vi.fn(),
         closeBrowserPage: vi.fn(),
         requestPinnedTabCloseConfirm: vi.fn(),

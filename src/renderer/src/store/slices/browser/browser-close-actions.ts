@@ -194,11 +194,7 @@ export function createBrowserCloseActions(
         if (workspaceItem) {
           get().closeUnifiedTab(
             workspaceItem.id,
-            isCleanup
-              ? { preserveWorktreeSelection: true, recordInteraction: false }
-              : options?.preserveWorktreeSelection
-                ? { preserveWorktreeSelection: true }
-                : undefined
+            isCleanup ? { preserveWorktreeSelection: true, recordInteraction: false } : undefined
           )
         }
       }
@@ -233,13 +229,13 @@ export function createBrowserCloseActions(
       }
     },
 
-    shutdownWorktreeBrowsers: async (worktreeId, options) => {
+    shutdownWorktreeBrowsers: async (worktreeId) => {
       const workspaces = get().browserTabsByWorktree[worktreeId] ?? []
       // Why: snapshot before the loop — closeBrowserTab empties the array, so set() below couldn't recompute hadBrowserTabs.
       const hadBrowserTabs = workspaces.length > 0
       for (const workspace of workspaces) {
         const browserPagesByWorkspace = get().browserPagesByWorkspace
-        get().closeBrowserTab(workspace.id, options)
+        get().closeBrowserTab(workspace.id)
         destroyWorkspaceWebviews(browserPagesByWorkspace, workspace.id)
       }
       set((s) => {

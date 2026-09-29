@@ -4,11 +4,8 @@ import { activateAndRevealWorktree } from '@/lib/worktree-activation'
 import { isRuntimeOwnedSshTargetId, parseExecutionHostId } from '../../../shared/execution-host'
 import type { Repo } from '../../../shared/repo-types'
 import type { Worktree } from '../../../shared/worktree/types'
-import {
-  getWorktreeIdFromHostIdentity,
-  isWorktreeHostIdentity
-} from '../../../shared/worktree/host-qualified-identity'
 import { getWorktreeVisitTimestamp } from '@/lib/worktree-visit-recency'
+import { collectLeavingWorktreeIds } from '@/store/slices/worktrees/teardown/worktree-delete-state'
 
 type AppStoreState = ReturnType<typeof useAppStore.getState>
 
@@ -39,18 +36,6 @@ function isHostedOnRuntimeOwnedSshTarget(
   })
 }
 
-// Why any key shape: a cleanup batch queues local rows under `local|<id>` while their record
-// carries no host, so a host-matched read misses them. Skipping a maybe-leaving row is always safe.
-function collectLeavingWorktreeIds(state: AppStoreState): Set<string> {
-  const ids = new Set<string>()
-  for (const [key, deleteState] of Object.entries(state.deleteStateByWorktreeId)) {
-    if (deleteState.isDeleting) {
-      ids.add(isWorktreeHostIdentity(key) ? getWorktreeIdFromHostIdentity(key) : key)
-    }
-  }
-  return ids
-}
-
 // Why: removing the workspace the user is viewing should behave like closing a tab — prefer
 // another non-base/primary workspace of the same project (most-recently-visited first), and
 // fall back to the project's base/primary workspace when no other workspace remains.
@@ -59,7 +44,8 @@ function pickSuccessorWorktree(
   repoId: string,
   removedWorktreeId: string
 ): Worktree | null {
-  const leavingIds = collectLeavingWorktreeIds(state)
+  // Skipping a row that may be leaving is always safe; the next sibling or main takes its place.
+  const leavingIds = collectLeavingWorktreeIds(state.deleteStateByWorktreeId)
   const repoById = getRepoMapFromState(state)
   const siblings = (state.worktreesByRepo[repoId] ?? []).filter(
     (worktree) =>

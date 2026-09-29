@@ -140,9 +140,6 @@ describe('active workspace removal hand-off, through the real removal writers', 
     await flushMicrotasks()
 
     expect(result.ok).toBe(true)
-    expect(store.getState().shutdownWorktreeBrowsers).toHaveBeenCalledWith(viewed.id, {
-      preserveWorktreeSelection: true
-    })
     expect(activateAndRevealWorktree).toHaveBeenCalledTimes(1)
     expect(store.getState().activeWorktreeId).toBe(recent.id)
   })
