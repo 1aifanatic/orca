@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, realpathSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { writeFileAtomically } from './codex-accounts/fs-utils'
@@ -179,18 +179,17 @@ export function markCodexProjectTrusted(workspacePath: string): Promise<void> {
   )
 }
 
+// Mirrors resolve_root_git_project_for_trust in codex-rs/git-utils/src/trust.rs:
+// when it returns no repo root, Codex keys trust on the workspace itself.
 function resolveCodexProjectTrustRoot(workspacePath: string): string {
   const absPath = canonicalize(workspacePath)
   try {
-    const gitDirReference = readFileSync(join(absPath, '.git'), 'utf-8').trim()
-    if (!gitDirReference.startsWith('gitdir:')) {
-      return absPath
-    }
-    const gitDirPath = gitDirReference.slice('gitdir:'.length).trim()
+    const workspaceGitFile = join(absPath, '.git')
+    const gitDirPath = readGitDirPointer(workspaceGitFile)
     if (!gitDirPath) {
       return absPath
     }
-    const gitDir = resolve(absPath, gitDirPath)
+    const gitDir = canonicalize(gitDirPath)
     const worktreesDir = dirname(gitDir)
     if (basename(worktreesDir) !== 'worktrees') {
       return absPath
@@ -201,18 +200,44 @@ function resolveCodexProjectTrustRoot(workspacePath: string): string {
       return absPath
     }
     const resolvedBacklink = resolve(gitDir, gitDirBacklink)
-    const workspaceGitFile = join(absPath, '.git')
     if (
       resolvedBacklink !== workspaceGitFile &&
       canonicalize(resolvedBacklink) !== canonicalize(workspaceGitFile)
     ) {
       return absPath
     }
-    // Why: mirror Codex's validated .git/worktrees/<name> traversal instead of trusting arbitrary commondir contents.
-    return canonicalize(dirname(dirname(worktreesDir)))
+    const commonDir = dirname(worktreesDir)
+    const commonDirReference = readFileSync(join(gitDir, 'commondir'), 'utf-8').trim()
+    if (!commonDirReference || canonicalize(resolve(gitDir, commonDirReference)) !== commonDir) {
+      return absPath
+    }
+    // Why: Codex only trusts the main checkout when its own .git leads back to the
+    // common dir; bare repos and --separate-git-dir layouts key on the worktree.
+    const mainRoot = dirname(dirname(dirname(gitDirPath)))
+    const mainDotGit = join(mainRoot, '.git')
+    const mainGitDir = statSync(mainDotGit).isDirectory()
+      ? mainDotGit
+      : readGitDirPointer(mainDotGit)
+    if (!mainGitDir || canonicalize(mainGitDir) !== commonDir) {
+      return absPath
+    }
+    return canonicalize(mainRoot)
   } catch {
     return absPath
   }
+}
+
+/** Resolves a `gitdir:` pointer file; like Codex, symlinked pointers are ignored. */
+function readGitDirPointer(dotGitPath: string): string | null {
+  if (!lstatSync(dotGitPath).isFile()) {
+    return null
+  }
+  const reference = readFileSync(dotGitPath, 'utf-8').trim()
+  if (!reference.startsWith('gitdir:')) {
+    return null
+  }
+  const target = reference.slice('gitdir:'.length).trim()
+  return target ? resolve(dirname(dotGitPath), target) : null
 }
 
 function canonicalize(p: string): string {

@@ -11,6 +11,8 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { runProcessSync } from '../shared/child-process/run-process'
+import { runCodexAppServerSession } from './codex/codex-app-server-session'
 
 const testState = {
   fakeHomeDir: '',
@@ -46,6 +48,20 @@ const {
 } = await import('./agent-trust-presets')
 const { runExclusivelyForCodexTrustConfig } =
   await import('./codex/codex-trust-config-mutation-queue')
+
+// Why: fixture tests pin Orca's half; only the real binary proves Codex reads the key
+// Orca writes. CI sets REQUIRED so a missing binary fails instead of skipping.
+const codexTrustContract = {
+  binary: process.env.ORCA_CODEX_TRUST_CONTRACT_BINARY,
+  version: process.env.ORCA_CODEX_TRUST_CONTRACT_VERSION
+}
+describe.runIf(
+  process.env.ORCA_CODEX_TRUST_CONTRACT_REQUIRED === '1' && !codexTrustContract.binary
+)('codex project-trust contract prerequisites', () => {
+  it('was given a Codex binary to run against', () => {
+    expect.fail('ORCA_CODEX_TRUST_CONTRACT_REQUIRED=1 but no binary was given')
+  })
+})
 
 beforeEach(() => {
   testState.fakeHomeDir = mkdtempSync(join(tmpdir(), 'orca-trust-presets-'))
@@ -237,38 +253,123 @@ describe('markCodexProjectTrusted', () => {
     }
   })
 
-  it('trusts the main repository root for a linked worktree without reading commondir', async () => {
-    const fixtureRoot = mkdtempSync(join(tmpdir(), 'orca-codex-linked-ws-'))
-    const repository = join(fixtureRoot, 'repo')
-    const workspace = join(fixtureRoot, 'worktrees', 'feature')
-    const worktreeGitDir = join(repository, '.git', 'worktrees', 'feature')
-    try {
-      mkdirSync(worktreeGitDir, { recursive: true })
-      mkdirSync(workspace, { recursive: true })
-      writeFileSync(join(workspace, '.git'), `gitdir: ${worktreeGitDir}\n`, 'utf-8')
-      writeFileSync(join(worktreeGitDir, 'gitdir'), join(workspace, '.git'), 'utf-8')
-
-      await markCodexProjectTrusted(workspace)
-
-      const repositoryRoot = realpathSync.native(repository)
-      const workspaceRoot = realpathSync.native(workspace)
-      const configPath = join(testState.fakeHomeDir, '.codex', 'config.toml')
-      const runtimeConfigPath = join(
-        testState.userDataDir,
-        'codex-runtime-home',
-        'home',
-        'config.toml'
-      )
-      for (const written of [
-        readFileSync(configPath, 'utf-8'),
-        readFileSync(runtimeConfigPath, 'utf-8')
-      ]) {
-        expect(written).toContain(`[projects."${escapeTomlBasicString(repositoryRoot)}"]`)
-        expect(written).not.toContain(`[projects."${escapeTomlBasicString(workspaceRoot)}"]`)
-      }
-    } finally {
+  // Why: the key must be the one Codex's trust.rs looks up, which is the main
+  // checkout only when that checkout's .git leads back to the common git dir.
+  describe('linked worktree trust key', { timeout: 120_000 }, () => {
+    let fixtureRoot = ''
+    beforeEach(() => {
+      fixtureRoot = realpathSync.native(mkdtempSync(join(tmpdir(), 'orca-codex-layout-')))
+    })
+    afterEach(() => {
       rmSync(fixtureRoot, { recursive: true, force: true })
+    })
+
+    function git(cwd: string, ...args: string[]): void {
+      const result = runProcessSync({
+        program: 'git',
+        args: ['-c', 'user.name=Orca', '-c', 'user.email=orca@example.com', ...args],
+        cwd
+      })
+      expect(result.code, result.stderr).toBe(0)
     }
+
+    function initRepoWithCommit(repo: string, ...initArgs: string[]): void {
+      mkdirSync(repo, { recursive: true })
+      git(repo, 'init', '-q', ...initArgs)
+      git(repo, '-c', 'commit.gpgsign=false', 'commit', '-q', '--allow-empty', '-m', 'init')
+    }
+
+    async function expectTrustKey(workspace: string, expected: string): Promise<void> {
+      await markCodexProjectTrusted(workspace)
+      const runtimeHome = join(testState.userDataDir, 'codex-runtime-home', 'home')
+      const [system, runtime] = [
+        join(testState.fakeHomeDir, '.codex', 'config.toml'),
+        join(runtimeHome, 'config.toml')
+      ].map((path) =>
+        [...readFileSync(path, 'utf-8').matchAll(/^\[projects\."(.*)"\]$/gm)].map((m) =>
+          m[1].replaceAll('\\\\', '\\')
+        )
+      )
+      expect(system).toEqual([expected])
+      expect(runtime).toEqual([expected])
+      if (codexTrustContract.binary) {
+        expect(await codexSandboxFor(workspace, runtimeHome)).toBe('workspaceWrite')
+        const emptyHome = join(fixtureRoot, 'empty-codex-home')
+        mkdirSync(emptyHome, { recursive: true })
+        expect(await codexSandboxFor(workspace, emptyHome)).toBe('readOnly')
+      }
+    }
+
+    // Why thread/start: its default sandbox and the TUI trust prompt read the same
+    // project lookup, so workspaceWrite (not readOnly) means no prompt.
+    async function codexSandboxFor(cwd: string, codexHome: string): Promise<unknown> {
+      const binary = codexTrustContract.binary!
+      const version = runProcessSync({ program: binary, args: ['--version'] })
+      expect(version.stdout.trim()).toBe(`codex-cli ${codexTrustContract.version}`)
+      return runCodexAppServerSession(
+        {
+          command: binary,
+          args: ['-c', 'features.plugins=false', 'app-server'],
+          cliPath: binary,
+          env: { CODEX_HOME: codexHome, HOME: testState.fakeHomeDir },
+          timeoutMs: 60_000
+        },
+        async (rpc) => {
+          const started = await rpc.request('thread/start', { cwd })
+          const sandbox = isRecord(started) ? started.sandbox : undefined
+          return isRecord(sandbox) ? sandbox.type : undefined
+        }
+      )
+    }
+
+    it('trusts the main checkout of a standard repository', async () => {
+      const repo = join(fixtureRoot, 'repo')
+      initRepoWithCommit(repo)
+      git(repo, 'worktree', 'add', '-q', join(fixtureRoot, 'wt'))
+      await expectTrustKey(join(fixtureRoot, 'wt'), repo)
+    })
+
+    it('trusts the main checkout when its .git points at a sibling .bare dir', async () => {
+      const source = join(fixtureRoot, 'source')
+      const project = join(fixtureRoot, 'project')
+      initRepoWithCommit(source)
+      git(fixtureRoot, 'clone', '-q', '--bare', source, join(project, '.bare'))
+      writeFileSync(join(project, '.git'), 'gitdir: ./.bare\n', 'utf-8')
+      git(project, 'worktree', 'add', '-q', join(project, 'wt'))
+      await expectTrustKey(join(project, 'wt'), project)
+    })
+
+    it('trusts the worktree itself for a bare repository', async () => {
+      const source = join(fixtureRoot, 'source')
+      const bare = join(fixtureRoot, 'proj.git')
+      initRepoWithCommit(source)
+      git(fixtureRoot, 'clone', '-q', '--bare', source, bare)
+      git(bare, 'worktree', 'add', '-q', join(fixtureRoot, 'wt'))
+      await expectTrustKey(join(fixtureRoot, 'wt'), join(fixtureRoot, 'wt'))
+    })
+
+    it('trusts the worktree itself for a --separate-git-dir repository', async () => {
+      const repo = join(fixtureRoot, 'repo')
+      initRepoWithCommit(repo, `--separate-git-dir=${join(fixtureRoot, 'repo.git')}`)
+      git(repo, 'worktree', 'add', '-q', join(fixtureRoot, 'wt'))
+      await expectTrustKey(join(fixtureRoot, 'wt'), join(fixtureRoot, 'wt'))
+    })
+
+    it('trusts the worktree itself when the main .git points at another repository', async () => {
+      const source = join(fixtureRoot, 'source')
+      initRepoWithCommit(source)
+      git(fixtureRoot, 'clone', '-q', '--bare', source, join(fixtureRoot, 'proj.git'))
+      git(fixtureRoot, 'clone', '-q', '--bare', source, join(fixtureRoot, 'other.git'))
+      writeFileSync(join(fixtureRoot, '.git'), 'gitdir: ./other.git\n', 'utf-8')
+      git(join(fixtureRoot, 'proj.git'), 'worktree', 'add', '-q', join(fixtureRoot, 'wt'))
+      await expectTrustKey(join(fixtureRoot, 'wt'), join(fixtureRoot, 'wt'))
+    })
+
+    it('trusts a plain folder workspace itself', async () => {
+      const folder = join(fixtureRoot, 'folder')
+      mkdirSync(folder)
+      await expectTrustKey(folder, folder)
+    })
   })
 
   it('does not broaden trust through arbitrary or adversarial Git metadata', async () => {
@@ -380,4 +481,8 @@ describe('markCodexProjectTrusted', () => {
 
 function escapeTomlBasicString(value: string): string {
   return value.replaceAll('\\', '\\\\').replaceAll('"', '\\"')
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
 }

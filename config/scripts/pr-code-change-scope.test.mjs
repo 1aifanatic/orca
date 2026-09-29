@@ -153,6 +153,11 @@ describe('per-job path classification', () => {
     expectClassification(['src/main/codex/codex-index-heal-binary-contract.test.ts'], {
       codex_index_heal_contract: true
     })
+    expectClassification(['src/main/agent-trust-presets.ts'], {
+      codex_index_heal_contract: true,
+      package: true,
+      package_windows: true
+    })
     // Keep the real-binary gate live when a transport or launch dependency changes.
     for (const file of [
       'src/main/codex/codex-app-server-capability-signal.ts',
