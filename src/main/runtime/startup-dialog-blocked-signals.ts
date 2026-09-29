@@ -1,21 +1,14 @@
 import type { RuntimeTerminalWaitBlockedReason } from '../../shared/runtime-types'
 
-// Why rows: Codex 0.157+ draws `enter continue · esc skip` where older builds wrote `press enter to
-// continue`, and the text copy can drop the spaces around `·`. Each row matches by the dialog's
-// first `·`, which codex-terminal-readiness.ts would otherwise take for the live chat's footer.
-const CODEX_UPDATE_DIALOG_ROW_RE = /^update available\s*·|enter\s*continue\s*·/
-const CODEX_HOOKS_REVIEW_KEY_ROW_RE = /enter\s*confirm\s*·/
-// Why the key row alone: the retired-model notice's heading comes from the model catalog.
-const CODEX_MODEL_NOTICE_KEY_ROW_RE = /enter\/esc\s*continue\s*·/g
-
-function hasDialogRowAfter(
-  normalized: string,
-  from: number,
-  legacyWording: string,
-  row: RegExp
-): boolean {
-  return normalized.includes(legacyWording, from) || row.test(normalized.slice(from))
-}
+// Why rows, from each dialog's first `·` on: codex-terminal-readiness.ts takes a `·` after the
+// startup header for the live chat's footer, so each dialog must be matched by the time that `·`
+// lands. Why not headings: Codex 0.157+ paints them by cell diff over its startup screen, so the
+// text copy can lose letters and spaces (`updat available`); these rows are fixed literals.
+// Update: `Update available · 0.157.1 → 0.158.0`, then `enter continue · esc skip`.
+const CODEX_UPDATE_ROW_RE = /available\s*·\s*\d+\.\d+|enter\s*continue\s*·\s*esc\s*skip/g
+const CODEX_HOOKS_REVIEW_KEY_ROW_RE = /enter\s*confirm\s*·/g
+// Why both verbs: the retired-model notice says `continue`, the new-model announcement `confirm`.
+const CODEX_MODEL_MIGRATION_KEY_ROW_RE = /enter\/esc\s*(?:continue|confirm)\s*·/g
 
 function lastMatchIndex(text: string, row: RegExp): number {
   let index = -1
@@ -25,55 +18,56 @@ function lastMatchIndex(text: string, row: RegExp): number {
   return index
 }
 
+// Why the last match, and the legacy wording too: an answered dialog stays in the text copy, and
+// builds before 0.157 wrote `Press enter to continue/confirm`.
+function findDialogIndex(
+  normalized: string,
+  legacyHeading: string,
+  legacyKeys: string,
+  row: RegExp
+): number {
+  const rowIndex = lastMatchIndex(normalized, row)
+  const headingIndex = normalized.lastIndexOf(legacyHeading)
+  const legacyIndex =
+    headingIndex !== -1 && normalized.includes(legacyKeys, headingIndex) ? headingIndex : -1
+  return Math.max(rowIndex, legacyIndex)
+}
+
 // Why together: each startup dialog owns Enter before the chat exists, so a brief typed into one
 // answers it (Codex's update dialog defaults to `Update now`).
 export function findStartupDialogBlockedSignals(
   normalized: string
 ): { reason: RuntimeTerminalWaitBlockedReason; index: number }[] {
   const candidates: { reason: RuntimeTerminalWaitBlockedReason; index: number }[] = []
-  const updateIndex = normalized.lastIndexOf('update available')
-  if (
-    updateIndex !== -1 &&
-    hasDialogRowAfter(
-      normalized,
-      updateIndex,
-      'press enter to continue',
-      CODEX_UPDATE_DIALOG_ROW_RE
-    )
-  ) {
+  const updateIndex = findDialogIndex(
+    normalized,
+    'update available',
+    'press enter to continue',
+    CODEX_UPDATE_ROW_RE
+  )
+  if (updateIndex !== -1) {
     candidates.push({ reason: 'agent-update-prompt', index: updateIndex })
   }
   const cwdIndex = normalized.lastIndexOf('choose working directory to')
   if (cwdIndex !== -1 && normalized.includes('press enter to continue', cwdIndex)) {
     candidates.push({ reason: 'agent-cwd-prompt', index: cwdIndex })
   }
-  const modelMigrationIndex = normalized.lastIndexOf('codex just got an upgrade')
-  if (
-    modelMigrationIndex !== -1 &&
-    normalized.includes('press enter to continue', modelMigrationIndex)
-  ) {
+  const modelMigrationIndex = findDialogIndex(
+    normalized,
+    'codex just got an upgrade',
+    'press enter to continue',
+    CODEX_MODEL_MIGRATION_KEY_ROW_RE
+  )
+  if (modelMigrationIndex !== -1) {
     candidates.push({ reason: 'codex-model-migration-prompt', index: modelMigrationIndex })
   }
-  // Why the last: an earlier notice quit with ctrl+c stays in the text copy before a relaunch's header.
-  const modelNoticeIndex = lastMatchIndex(normalized, CODEX_MODEL_NOTICE_KEY_ROW_RE)
-  if (modelNoticeIndex !== -1) {
-    candidates.push({ reason: 'codex-model-migration-prompt', index: modelNoticeIndex })
-  }
-  // Why the choices: Codex 0.158's announcement heading names the model; its two choices do not change.
-  const modelChoiceIndex = normalized.lastIndexOf('try new model')
-  if (modelChoiceIndex !== -1 && normalized.includes('use existing model', modelChoiceIndex)) {
-    candidates.push({ reason: 'codex-model-migration-prompt', index: modelChoiceIndex })
-  }
-  const hooksIndex = normalized.lastIndexOf('hooks need review')
-  if (
-    hooksIndex !== -1 &&
-    hasDialogRowAfter(
-      normalized,
-      hooksIndex,
-      'press enter to confirm',
-      CODEX_HOOKS_REVIEW_KEY_ROW_RE
-    )
-  ) {
+  const hooksIndex = findDialogIndex(
+    normalized,
+    'hooks need review',
+    'press enter to confirm',
+    CODEX_HOOKS_REVIEW_KEY_ROW_RE
+  )
+  if (hooksIndex !== -1) {
     // Why neutral: this matcher never inspects the agent -- 'hooks need review' is not Codex-only wording.
     candidates.push({ reason: 'agent-hooks-review-prompt', index: hooksIndex })
   }

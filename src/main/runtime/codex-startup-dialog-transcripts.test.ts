@@ -26,6 +26,13 @@ type StartupDialog = {
 // Each dialog owns Enter, and none prints the `Press enter to …` wording older builds did.
 const DIALOGS: StartupDialog[] = [
   {
+    // Recorded separately on 0.157.1 (STA-8834).
+    name: 'codex-0-157-1-update-dialog',
+    reason: 'agent-update-prompt',
+    heading: 'Update available ·',
+    keyRow: 'enter continue · esc skip'
+  },
+  {
     name: 'codex-0157-update-available-dialog',
     reason: 'agent-update-prompt',
     heading: 'Update available ·',
@@ -65,7 +72,7 @@ const DIALOGS: StartupDialog[] = [
     name: 'codex-0158-model-announcement-dialog',
     reason: 'codex-model-migration-prompt',
     heading: 'Try new model',
-    keyRow: 'Use existing model'
+    keyRow: 'enter/esc confirm · ctrl+c quit'
   }
 ]
 const DIALOGS_0158 = DIALOGS.filter((dialog) => dialog.name.startsWith('codex-0158-'))

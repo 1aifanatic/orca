@@ -216,7 +216,7 @@ function findCodexReadyPromptIndex(normalized: string): number | null {
 }
 
 export const TERMINAL_WAIT_BLOCKED_SENTINEL_RE =
-  /update available|choose working directory to|codex just got an upgrade|try new model|enter\/esc\s*continue|hooks need review|do you trust|trust this|trusted workspace|press enter to (?:confirm|continue|view|insert)|press t to trust|permission required|requires permission|allow once|allow always|run this command\?/i
+  /update available|choose working directory to|codex just got an upgrade|available\s*·|esc\s*skip|enter\s*confirm\s*·|enter\/esc\s*(?:continue|confirm)|hooks need review|do you trust|trust this|trusted workspace|press enter to (?:confirm|continue|view|insert)|press t to trust|permission required|requires permission|allow once|allow always|run this command\?/i
 
 // Why text at all: cursor-agent has no approval hook, so the key-bound menu is the only authority.
 const CURSOR_APPROVAL_CHOICE_MARKERS = [
