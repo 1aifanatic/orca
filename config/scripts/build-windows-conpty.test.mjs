@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  realpathSync,
   readFileSync,
   rmSync,
   writeFileSync
@@ -32,6 +33,7 @@ vi.mock('./zip-extractor-command.mjs', () => ({
 vi.mock('./script-child-process.mjs', () => ({ runProcessSync: vi.fn() }))
 import { runProcessSync } from './script-child-process.mjs'
 import { stageWindowsRelayConpty } from './relay-conpty-packaging.mjs'
+import { relayDaemonLaunchEnvironment } from './relay-daemon-launch-environment.mjs'
 import { RELAY_WINDOWS_CONPTY_FILENAMES } from '../../src/shared/relay-artifacts.ts'
 import {
   downloadConptyArchive,
@@ -204,4 +206,64 @@ describe('Windows relay provider packaging', () => {
       expect(fetcher).not.toHaveBeenCalled()
     }
   )
+})
+
+describe('relay fault-harness provider environment', () => {
+  it.each(['x64', 'arm64'])('selects verified adjacent %s binaries before launch', async (arch) => {
+    mkdirSync(output)
+    await stageWindowsRelayConpty(`win32-${arch}`, output, { cacheDir, fetcher })
+    const entry = join(output, 'relay.js')
+    writeFileSync(entry, '')
+    const env = { BUN_CONPTY_LIBRARY: 'foreign.dll', ORCA_WATCHER_CHILD_PID_FILE: 'watcher.pid' }
+    expect(relayDaemonLaunchEnvironment(entry, { platform: 'win32', arch, env })).toEqual({
+      ...env,
+      BUN_CONPTY_LIBRARY: join(realpathSync(output), 'conpty.dll')
+    })
+    expect(env.BUN_CONPTY_LIBRARY).toBe('foreign.dll')
+    writeFileSync(join(output, 'OpenConsole.exe'), 'modified by signing')
+    expect(() => relayDaemonLaunchEnvironment(entry, { platform: 'win32', arch, env })).toThrow(
+      'checksum mismatch'
+    )
+    rmSync(join(output, 'OpenConsole.exe'))
+    expect(() => relayDaemonLaunchEnvironment(entry, { platform: 'win32', arch, env })).toThrow()
+  })
+
+  it('leaves POSIX launches independent of Windows artifacts', () => {
+    const env = { ORCA_WATCHER_CHILD_PID_FILE: 'watcher.pid' }
+    expect(relayDaemonLaunchEnvironment('/missing/relay.js', { platform: 'linux', env })).toEqual(
+      env
+    )
+  })
+
+  it('wires verified environment into the fault harness daemon spawn', () => {
+    const source = readFileSync(
+      new URL('./relay-watcher-fault-harness.mjs', import.meta.url),
+      'utf8'
+    )
+    expect(source).toContain(
+      "import { relayDaemonLaunchEnvironment } from './relay-daemon-launch-environment.mjs'"
+    )
+    expect(source).toMatch(
+      /env: relayDaemonLaunchEnvironment\(relayEntry, \{\s*env: \{ \.\.\.process.env, ORCA_WATCHER_CHILD_PID_FILE: pidFile \}/
+    )
+  })
+
+  it('gates both relay providers after signing and before installer rebuild', () => {
+    const source = readFileSync(
+      new URL('../../.github/workflows/release-cut.yml', import.meta.url),
+      'utf8'
+    )
+    const start = source.indexOf('      - name: Verify relay provider identity after signing')
+    expect(start).toBeGreaterThan(
+      source.indexOf('      - name: Restore signed inner binaries into unpacked app')
+    )
+    expect(start).toBeLessThan(source.indexOf('        id: rebuild-nsis-signed'))
+    const step = source.slice(start, source.indexOf('      - name:', start + 1))
+    expect(step).toContain(
+      "for (const arch of ['x64', 'arm64']) verifyConptyDirectory('dist/win-unpacked/resources/relay/win32-' + arch, arch)"
+    )
+    expect(step).toContain('if ($LASTEXITCODE -ne 0) { throw')
+    expect(step).not.toContain('continue-on-error')
+    expect(step).not.toContain('restore-signed-inner.outcome')
+  })
 })

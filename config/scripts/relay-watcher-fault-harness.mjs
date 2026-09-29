@@ -1,4 +1,5 @@
 import { build } from 'esbuild'
+import { relayDaemonLaunchEnvironment } from './relay-daemon-launch-environment.mjs'
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { createRequire } from 'node:module'
@@ -275,7 +276,9 @@ async function main() {
       ],
       {
         cwd: dirname(relayEntry),
-        env: { ...process.env, ORCA_WATCHER_CHILD_PID_FILE: pidFile },
+        env: relayDaemonLaunchEnvironment(relayEntry, {
+          env: { ...process.env, ORCA_WATCHER_CHILD_PID_FILE: pidFile }
+        }),
         stdio: ['ignore', 'pipe', 'pipe']
       }
     )
