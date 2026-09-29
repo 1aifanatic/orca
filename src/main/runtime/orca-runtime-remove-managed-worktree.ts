@@ -6,6 +6,7 @@ import {
 } from '../worktree-removal-repo-owner'
 import type { RemoveWorktreeResult } from '../../shared/worktree/create-types'
 import { getRepoExecutionHostId, parseExecutionHostId } from '../../shared/execution-host'
+import { isWorktreeRemovalPending } from '../worktree-background-removal'
 import { preservedBranchCleanupScopeKey } from '../../shared/preserved-branch-cleanup'
 import {
   getRuntimeWorktreeRemovalOptionsKey,
@@ -50,6 +51,16 @@ export class OrcaRuntimeWithRemoveManagedWorktree extends OrcaRuntimeWithCreateM
     const store = this.store
     const cleanupHostId = parseExecutionHostId(hostId)?.id
     const removalTarget = await this.resolveWorktreeRemovalTarget(worktreeSelector, cleanupHostId)
+    // Why: a retry or a second client asking while Git still deletes joins that removal.
+    if (isWorktreeRemovalPending(removalTarget.id, cleanupHostId)) {
+      return { removing: true }
+    }
+    const emitRemoved = (): void =>
+      this.emitWorktreeLifecycle({
+        kind: 'removed',
+        worktreeId: removalTarget.id,
+        path: removalTarget.path
+      })
     const cleanupScopeKey = preservedBranchCleanupScopeKey({
       worktreeId: removalTarget.id,
       hostId: cleanupHostId
@@ -82,6 +93,14 @@ export class OrcaRuntimeWithRemoveManagedWorktree extends OrcaRuntimeWithCreateM
         }
         const repo = repoOwner.kind === 'resolved' ? repoOwner.repo : undefined
         const removalHostId = repo ? (cleanupHostId ?? getRepoExecutionHostId(repo)) : cleanupHostId
+        // Host state every removal path drops once Git has let go of the checkout.
+        const purgeRemovedWorktree = (): void => {
+          this.clearOptimisticReconcileToken(removalTarget.id)
+          this.removeWorktreeMetadataAndHistory(store, removalTarget.id, removalHostId)
+          this.invalidateResolvedWorktreeCache()
+          this.invalidateWorktreeScanCacheForRepo(removalTarget.repoId)
+          invalidateAuthorizedRootsCache()
+        }
         const orphanOrFolderResult = await removeOrphanOrFolderWorktree({
           runtime: this,
           store,
@@ -140,12 +159,8 @@ export class OrcaRuntimeWithRemoveManagedWorktree extends OrcaRuntimeWithCreateM
                 removalTarget.id
               ),
             finishRemoval: () => {
-              this.clearOptimisticReconcileToken(removalTarget.id)
-              this.removeWorktreeMetadataAndHistory(store, removalTarget.id, removalHostId)
               this.preservedBranchCleanup.delete(removalTarget.id, cleanupHostId)
-              this.invalidateResolvedWorktreeCache()
-              this.invalidateWorktreeScanCacheForRepo(removalTarget.repoId)
-              invalidateAuthorizedRootsCache()
+              purgeRemovedWorktree()
               this.notifyWorktreesChanged(repo.id)
             }
           })
@@ -192,11 +207,7 @@ export class OrcaRuntimeWithRemoveManagedWorktree extends OrcaRuntimeWithCreateM
             registeredWorktree.head,
             removedPushTarget
           )
-          this.clearOptimisticReconcileToken(removalTarget.id)
-          this.removeWorktreeMetadataAndHistory(store, removalTarget.id, removalHostId)
-          this.invalidateResolvedWorktreeCache()
-          this.invalidateWorktreeScanCacheForRepo(removalTarget.repoId)
-          invalidateAuthorizedRootsCache()
+          purgeRemovedWorktree()
           this.notifyWorktreesChanged(repo.id)
           return removalResult ?? {}
         }
@@ -235,11 +246,7 @@ export class OrcaRuntimeWithRemoveManagedWorktree extends OrcaRuntimeWithCreateM
                 registeredWorktree.head,
                 removedPushTarget
               )
-              this.clearOptimisticReconcileToken(removalTarget.id)
-              this.removeWorktreeMetadataAndHistory(store, removalTarget.id, removalHostId)
-              this.invalidateResolvedWorktreeCache()
-              this.invalidateWorktreeScanCacheForRepo(removalTarget.repoId)
-              invalidateAuthorizedRootsCache()
+              purgeRemovedWorktree()
               this.notifyWorktreesChanged(repo.id)
             }
           })
@@ -277,24 +284,20 @@ export class OrcaRuntimeWithRemoveManagedWorktree extends OrcaRuntimeWithCreateM
             } else {
               this.preservedBranchCleanup.delete(removalTarget.id, cleanupHostId)
             }
-            this.clearOptimisticReconcileToken(removalTarget.id)
-            this.removeWorktreeMetadataAndHistory(store, removalTarget.id, removalHostId)
-            this.invalidateResolvedWorktreeCache()
-            this.invalidateWorktreeScanCacheForRepo(removalTarget.repoId)
-            invalidateAuthorizedRootsCache()
-            this.notifyWorktreesChanged(repo.id)
-          }
+            purgeRemovedWorktree()
+          },
+          onRemoved: emitRemoved,
+          publish: (outcome) => this.publishWorktreeRemovalChange(repo.id, outcome)
         })
       })
     })()
     this.removeManagedWorktreeInFlight.track(cleanupScopeKey, optionsKey, removal)
     try {
       const result = await removal
-      this.emitWorktreeLifecycle({
-        kind: 'removed',
-        worktreeId: removalTarget.id,
-        path: removalTarget.path
-      })
+      // A background removal emits this when Git finishes instead.
+      if (!result.removing) {
+        emitRemoved()
+      }
       return result
     } finally {
       this.removeManagedWorktreeInFlight.release(cleanupScopeKey, removal)

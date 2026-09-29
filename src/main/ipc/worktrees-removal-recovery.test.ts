@@ -452,9 +452,11 @@ describe('registerWorktreeHandlers', () => {
         expect.anything()
       )
       expect(store.removeWorktreeMeta).not.toHaveBeenCalled()
-      expect(mainWindow.webContents.send).not.toHaveBeenCalledWith('worktrees:changed', {
-        repoId: 'repo-1'
-      })
+      // The only publications are the accepted delete and its failure; nothing reports it removed.
+      expect(mainWindow.webContents.send).not.toHaveBeenCalledWith(
+        'worktrees:changed',
+        expect.objectContaining({ removalOutcome: expect.objectContaining({ status: 'removed' }) })
+      )
     } finally {
       removePathSpy.mockRestore()
     }

@@ -26,6 +26,10 @@ import { findRegisteredDeletableWorktree } from '../worktree-removal-safety'
 import { CLIENT_REMOVAL_HOME } from '../worktree-removal-home-guard'
 import type { RuntimeStore } from './runtime-store-contract'
 import type { RuntimeWorktreeRemovalTarget } from './runtime-worktree-selection'
+import type { WorktreeRemovalOutcome } from '../../shared/worktree/removal-outcome'
+import { normalizeLocalBranchRef } from '../git/worktree-operation-options'
+import { getLocalWorktreeCatalogVersion } from '../local-worktree-scan-generation'
+import { removesInBackground, startBackgroundWorktreeRemoval } from '../worktree-background-removal'
 
 export async function removeRuntimeRegisteredLocalWorktree(args: {
   repo: Repo
@@ -54,6 +58,9 @@ export async function removeRuntimeRegisteredLocalWorktree(args: {
     // Why: re-read after the archive hook, which can move the branch out from under the pre-hook row.
     fallbackHead: string | undefined
   ) => void
+  /** Fired when Git finished, not on acceptance. */
+  onRemoved: () => void
+  publish: (outcome?: WorktreeRemovalOutcome) => void
 }): Promise<RemoveWorktreeResult & { warning?: string }> {
   const { repo, registeredWorktree, localOptions } = args
   const canonicalPath = registeredWorktree.path
@@ -121,14 +128,59 @@ export async function removeRuntimeRegisteredLocalWorktree(args: {
     }
   }
 
-  let removalResult: RemoveWorktreeResult | undefined
   const gate = await args.acquireWatcherRemoval(canonicalPath)
-  let completed = false
+  let accepted = false
   try {
     await args.stopPtys()
     if (linkedPaths.length > 0) {
       await removeWorktreeLinkedPaths(canonicalPath, linkedPaths)
     }
+    accepted = true
+  } finally {
+    if (!accepted) {
+      await gate.finish(false)
+    }
+  }
+  const acceptedFields = {
+    ...(archiveHookOverride ? { archiveHookOverride } : {}),
+    ...(warning ? { warning } : {})
+  }
+  if (!removesInBackground(canonicalPath, localOptions)) {
+    const result = await finishRuntimeLocalWorktreeRemoval(args, refreshed, gate)
+    args.publish()
+    return { ...result, ...acceptedFields }
+  }
+  // Why background: every refusal above already ran; Git's 20-35 s delete must not outlast client
+  // request timeouts, and clients read the host's `removing` marker until it finishes.
+  startBackgroundWorktreeRemoval({
+    removal: {
+      worktreeId: args.target.id,
+      repoId: repo.id,
+      repoPath: repo.path,
+      worktreePath: canonicalPath,
+      branch: normalizeLocalBranchRef(refreshed.branch)
+    },
+    run: async () => {
+      const result = await finishRuntimeLocalWorktreeRemoval(args, refreshed, gate)
+      args.onRemoved()
+      return result
+    },
+    catalogVersion: () => getLocalWorktreeCatalogVersion(repo.id),
+    publish: (outcome) => args.publish(outcome)
+  })
+  return { removing: true, ...acceptedFields }
+}
+
+async function finishRuntimeLocalWorktreeRemoval(
+  args: Parameters<typeof removeRuntimeRegisteredLocalWorktree>[0],
+  refreshed: GitWorktreeInfo,
+  gate: { finish: (removed: boolean) => Promise<void> }
+): Promise<RemoveWorktreeResult> {
+  const { repo, localOptions } = args
+  const canonicalPath = refreshed.path
+  let removalResult: RemoveWorktreeResult | undefined
+  let completed = false
+  try {
     try {
       removalResult = args.preserveBranchHead(
         await removeWorktree(repo.path, canonicalPath, args.force, {
@@ -165,10 +217,7 @@ export async function removeRuntimeRegisteredLocalWorktree(args: {
         await cleanupPushTarget(args)
         args.finishRemoval(undefined, false, refreshed.head)
         completed = true
-        return {
-          ...(archiveHookOverride ? { archiveHookOverride } : {}),
-          ...(warning ? { warning } : {})
-        }
+        return {}
       } else {
         throw new Error(formatWorktreeRemovalError(error, canonicalPath, args.force))
       }
@@ -181,11 +230,7 @@ export async function removeRuntimeRegisteredLocalWorktree(args: {
   }
   await cleanupPushTarget(args)
   args.finishRemoval(removalResult, true, refreshed.head)
-  return {
-    ...removalResult,
-    ...(archiveHookOverride ? { archiveHookOverride } : {}),
-    ...(warning ? { warning } : {})
-  }
+  return removalResult ?? {}
 }
 
 async function cleanupPushTarget(

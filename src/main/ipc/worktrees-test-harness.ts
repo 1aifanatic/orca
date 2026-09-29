@@ -10,6 +10,7 @@ import { resetRetirementCollisionKeyCacheForTests } from '../worktree-name-retir
 import { resetSshProviderAuthorities } from '../ssh/ssh-provider-authority'
 import { createWorktreeRuntimeStub, type WorktreeRuntimeStub } from './worktrees-test-runtime-stub'
 import { handlers, mainWindow, store } from './worktrees-test-ipc-surface'
+import { registerHarnessHandler } from './worktrees-test-background-removal'
 import { configureMetadataPruningStoreMocks } from './worktrees-test-metadata-pruning-store'
 import { resetWorktreeTestSshHostHome } from '../worktree-removal-test-ssh-host-home'
 import {
@@ -192,9 +193,7 @@ export function setupWorktreeHandlers(): WorktreeRuntimeStub {
     delete handlers[key]
   }
 
-  handleMock.mockImplementation((channel, handler) => {
-    handlers[channel] = handler
-  })
+  handleMock.mockImplementation(registerHarnessHandler)
 
   store.getRepos.mockReturnValue([harnessRepo])
   store.getRepo.mockReturnValue({ ...harnessRepo, worktreeBaseRef: null })
@@ -306,7 +305,7 @@ export function setupWorktreeHandlers(): WorktreeRuntimeStub {
   // Default: no direct-read recovery, so a listing that omits the row still fails the create.
   describeCreatedWorktreeMock.mockResolvedValue(undefined)
   forceDeleteLocalBranchMock.mockResolvedValue(undefined)
-  const runtimeStub = createWorktreeRuntimeStub()
+  const runtimeStub = createWorktreeRuntimeStub(mainWindow)
   registerWorktreeHandlers(mainWindow as never, store as never, runtimeStub as never)
   return runtimeStub
 }

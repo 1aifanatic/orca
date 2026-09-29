@@ -3,6 +3,8 @@ import { OrcaRuntimeWithGetStatus } from './orca-runtime-get-status'
 import type { SshConnectionState } from '../../shared/ssh-types'
 import { getPublicSshState } from './public-ssh-state'
 import { splitWorktreeId } from '../../shared/worktree/id'
+import { runWorktreeChangeInvalidators } from '../ipc/worktree-change-invalidators'
+import type { WorktreeRemovalOutcome } from '../../shared/worktree/removal-outcome'
 import type { CreateWorktreeResult } from '../../shared/worktree/create-types'
 import type { WorktreeStartupLaunch } from '../../shared/worktree/launch-types'
 import type { RuntimeNavigationTarget } from '../../shared/runtime-navigation'
@@ -132,6 +134,19 @@ export class OrcaRuntimeWithNotifySshStateChanged extends OrcaRuntimeWithGetStat
   notifyWorktreesChangedForRemoteClients(repoId: string): void {
     this.invalidateResolvedWorktreeCache()
     this.emitClientEvent({ type: 'worktreesChanged', repoId })
+  }
+
+  /** A background removal started (no outcome) or ended; every client refetches, and the outcome
+   *  rides the same event so the client that asked can finish its flow. */
+  publishWorktreeRemovalChange(repoId: string, removalOutcome?: WorktreeRemovalOutcome): void {
+    this.invalidateResolvedWorktreeCache()
+    runWorktreeChangeInvalidators(repoId)
+    this.notifier?.worktreesChanged(repoId, undefined, removalOutcome)
+    this.emitClientEvent({
+      type: 'worktreesChanged',
+      repoId,
+      ...(removalOutcome ? { removalOutcome } : {})
+    })
   }
 
   // Why: structural catalog changes require a fresh Git scan; renderer metadata edits do not.

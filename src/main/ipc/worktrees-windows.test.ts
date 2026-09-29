@@ -148,6 +148,7 @@ vi.mock('./worktree-logic', async (importOriginal) => {
 })
 
 import { registerWorktreeHandlers } from './worktrees'
+import { _settlePendingWorktreeRemovalsForTests } from '../worktree-background-removal'
 import { resetRetirementCollisionKeyCacheForTests } from '../worktree-name-retirement'
 
 type HandlerMap = Record<string, (_event: unknown, args: unknown) => unknown>
@@ -311,7 +312,13 @@ describe('registerWorktreeHandlers – Windows path handling', () => {
       closeFileWatchersForRemoval: vi.fn().mockResolvedValue(undefined),
       acquireFileWatcherRemoval: vi.fn().mockResolvedValue({
         finish: vi.fn().mockResolvedValue(undefined)
-      })
+      }),
+      publishWorktreeRemovalChange: vi.fn((repoId: string, removalOutcome?: unknown) =>
+        mainWindow.webContents.send('worktrees:changed', {
+          repoId,
+          ...(removalOutcome ? { removalOutcome } : {})
+        })
+      )
     }
     registerWorktreeHandlers(mainWindow as never, store as never, runtimeStub as never)
   })
@@ -583,6 +590,7 @@ describe('registerWorktreeHandlers – Windows path handling', () => {
     await handlers['worktrees:remove'](null, {
       worktreeId: 'repo-1::C:/workspaces/improve-dashboard'
     })
+    await _settlePendingWorktreeRemovalsForTests()
 
     expect(assertWorktreeCleanForRemovalMock).toHaveBeenCalledWith(registeredWorktree.path, false)
     expect(removeWorktreeMock).toHaveBeenCalledWith(
@@ -602,7 +610,8 @@ describe('registerWorktreeHandlers – Windows path handling', () => {
       'repo-1::C:/workspaces/improve-dashboard'
     )
     expect(mainWindow.webContents.send).toHaveBeenCalledWith('worktrees:changed', {
-      repoId: 'repo-1'
+      repoId: 'repo-1',
+      removalOutcome: expect.objectContaining({ status: 'removed' })
     })
   })
   it('gives the issue-command runner the same setup shell as the setup runner', () => {

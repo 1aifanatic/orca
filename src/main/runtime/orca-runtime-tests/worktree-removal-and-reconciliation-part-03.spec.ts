@@ -273,7 +273,7 @@ describe('OrcaRuntimeService', () => {
     }
   })
 
-  it('rejects concurrent runtime worktree removals for the same id with different options', async () => {
+  it('joins a runtime removal Git is already deleting, even with different options', async () => {
     const runtime = createWorktreeRemovalRuntime()
     const removeStarted = deferred<void>()
     const finishRemoval = deferred<void>()
@@ -283,16 +283,18 @@ describe('OrcaRuntimeService', () => {
       return {}
     })
 
+    const resolveTarget = vi.spyOn(runtime as never, 'resolveWorktreeRemovalTarget')
     const first = runtime.removeManagedWorktree(TEST_WORKTREE_ID)
 
     await removeStarted.promise
-    await expect(runtime.removeManagedWorktree(TEST_WORKTREE_ID, { force: true })).rejects.toThrow(
-      'Worktree deletion already in progress'
-    )
-
-    expect(removeWorktree).toHaveBeenCalledTimes(1)
+    // Accepted means every refusal already ran; a Force Delete retry has nothing left to waive.
+    const second = runtime.removeManagedWorktree(TEST_WORKTREE_ID, { force: true })
+    await vi.waitFor(() => expect(resolveTarget).toHaveBeenCalledTimes(2))
+    // The retry checks the removal table right after this resolves, before Git is let finish.
+    await resolveTarget.mock.results[1]?.value
     finishRemoval.resolve()
-    await expect(first).resolves.toEqual({})
+    await expect(Promise.all([first, second])).resolves.toEqual([{}, {}])
+    expect(removeWorktree).toHaveBeenCalledTimes(1)
   })
 
   it('treats forced runtime deletion of an already-missing unregistered worktree as cleanup', async () => {

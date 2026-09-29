@@ -32,10 +32,17 @@ import {
   readAllWorktreeMetaForRepo
 } from '../../../persistence/host-qualified-worktree-meta'
 import type { WorktreeMeta } from '../../../../shared/worktree/meta-types'
+import type { Worktree } from '../../../../shared/worktree/types'
+import { projectPendingWorktreeRemovals } from '../../../worktree-background-removal'
 import { getLocalWorktreeScanGeneration } from '../../../local-worktree-scan-generation'
 import { getRegisteredWorktreeRootsRevision } from '../../registered-worktree-roots-cache'
 
 const WORKTREE_LIST_ALL_CONCURRENCY = 8
+
+// Why always marked: the desktop renderer ships with this main process, so it reads the marker.
+function markLocalWorktreesUnderRemoval<T extends Worktree>(worktrees: T[]): T[] {
+  return projectPendingWorktreeRemovals(worktrees, (worktree) => worktree.id, true)
+}
 
 async function mapWithConcurrency<T, R>(
   items: readonly T[],
@@ -152,9 +159,10 @@ export function registerWorktreeCatalogHandlers(context: WorktreeIpcContext): vo
         }
         loggedWorktreeListFailures.delete(`${repo.id}:${repo.path}`)
         const metadata = metadataForRepo(repo)
-        return buildDetectedGitWorktrees(store, repo, gitWorktrees, metadata)
+        const worktrees = buildDetectedGitWorktrees(store, repo, gitWorktrees, metadata)
           .filter((worktree) => worktree.visible)
           .map((worktree) => stampAndMergeVisibleDetectedWorktree(store, repo, worktree, metadata))
+        return connectionId ? worktrees : markLocalWorktreesUnderRemoval(worktrees)
       } catch (err) {
         warnOnce(
           loggedWorktreeListFailures,
@@ -244,9 +252,10 @@ export function registerWorktreeCatalogHandlers(context: WorktreeIpcContext): vo
       }
       loggedWorktreeListFailures.delete(`${repo.id}:${repo.path}`)
       const metadata = allMeta ?? readAllWorktreeMetaForRepo(store, repo)
-      return buildDetectedGitWorktrees(store, repo, gitWorktrees, metadata)
+      const worktrees = buildDetectedGitWorktrees(store, repo, gitWorktrees, metadata)
         .filter((worktree) => worktree.visible)
         .map((worktree) => stampAndMergeVisibleDetectedWorktree(store, repo, worktree, metadata))
+      return connectionId ? worktrees : markLocalWorktreesUnderRemoval(worktrees)
     } catch (err) {
       warnOnce(
         loggedWorktreeListFailures,

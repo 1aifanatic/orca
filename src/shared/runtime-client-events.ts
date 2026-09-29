@@ -1,4 +1,5 @@
 import type { CreateWorktreeResult } from './worktree/create-types'
+import type { WorktreeRemovalOutcome } from './worktree/removal-outcome'
 import type {
   WorktreeDefaultTabsLaunch,
   WorktreeSetupLaunch,
@@ -10,7 +11,7 @@ import type { RuntimeNativeChatLaunchDraftResolution } from './runtime-types'
 
 export type RuntimeClientEvent =
   | { type: 'reposChanged' }
-  | { type: 'worktreesChanged'; repoId: string }
+  | { type: 'worktreesChanged'; repoId: string; removalOutcome?: WorktreeRemovalOutcome }
   | ({ type: 'nativeChatLaunchDraftResolved' } & RuntimeNativeChatLaunchDraftResolution)
   | { type: 'terminalSideEffects'; batch: TerminalSideEffectBatch }
   // Why: SSH connections live on the runtime host; paired clients have no IPC

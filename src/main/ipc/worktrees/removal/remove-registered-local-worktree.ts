@@ -1,7 +1,7 @@
 import type { Repo } from '../../../../shared/repo-types'
 import type { ExecutionHostId } from '../../../../shared/execution-host'
 import type { RemoveWorktreeResult } from '../../../../shared/worktree/create-types'
-import type { GitPushTarget } from '../../../../shared/worktree/types'
+import type { GitPushTarget, GitWorktreeInfo } from '../../../../shared/worktree/types'
 import { assertWorktreeUnlockedForRemoval } from '../../../../shared/worktree/removal'
 import type { LocalProjectWorktreeGitOptions } from '../../../project-runtime-git-options'
 import {
@@ -16,10 +16,7 @@ import { recoverLocalWindowsWorktreeRemoval } from '../../../local-worktree-remo
 import { withWorktreeRemoveStageSpan } from '../../../observability/instrumentation'
 import { findRegisteredDeletableWorktree } from '../../../worktree-removal-safety'
 import { CLIENT_REMOVAL_HOME } from '../../../worktree-removal-home-guard'
-import {
-  cleanupUnusedWorktreePushTargetRemote,
-  notifyWorktreesChanged
-} from '../../worktree-remote'
+import { cleanupUnusedWorktreePushTargetRemote } from '../../worktree-remote'
 import {
   findExistingWorktreeSymlinkPaths,
   removeWorktreeLinkedPaths
@@ -43,6 +40,12 @@ import {
   stopPtysForDestructiveWorktreeRemoval
 } from './worktree-removal-ownership'
 import { preservedBranchCleanupScopeKey } from '../../../../shared/preserved-branch-cleanup'
+import { normalizeLocalBranchRef } from '../../../git/worktree-operation-options'
+import { getLocalWorktreeCatalogVersion } from '../../../local-worktree-scan-generation'
+import {
+  removesInBackground,
+  startBackgroundWorktreeRemoval
+} from '../../../worktree-background-removal'
 
 export async function removeRegisteredLocalWorktree(
   context: WorktreeIpcContext,
@@ -56,7 +59,7 @@ export async function removeRegisteredLocalWorktree(
   hasLocalWorktreeGitOptions: boolean,
   deleteBranch: boolean
 ): Promise<RemoveWorktreeResult> {
-  const { mainWindow, store, runtime } = context
+  const { runtime } = context
   const refreshedWorktrees = hasLocalWorktreeGitOptions
     ? await listGitWorktreesStrict(repo.path, localWorktreeGitOptions)
     : await listGitWorktreesStrict(repo.path)
@@ -103,11 +106,10 @@ export async function removeRegisteredLocalWorktree(
     // Why: Git can still classify this as an orphan after preflight; keep strict PTY teardown before any recursive fallback deletion.
   }
 
-  let removalResult: RemoveWorktreeResult | undefined
   const removalGate = await withWorktreeRemoveStageSpan('watcher_gate', 'local', async () =>
     runtime.acquireFileWatcherRemoval(canonicalWorktreePath)
   )
-  let removalCompleted = false
+  let accepted = false
   try {
     // Why: hold the watcher/terminal gate through Git and any recursive fallback so no late spawn recreates a native handle.
     // Linked-path deletion is destructive too, so PTYs must release every handle before Windows or WSL filesystem cleanup starts.
@@ -121,7 +123,89 @@ export async function removeRegisteredLocalWorktree(
     if (linkedPaths.length > 0) {
       await removeWorktreeLinkedPaths(canonicalWorktreePath, linkedPaths)
     }
+    accepted = true
+  } finally {
+    if (!accepted) {
+      await removalGate.finish(false)
+    }
+  }
 
+  const finish = (): Promise<RemoveWorktreeResult> =>
+    finishLocalWorktreeRemoval({
+      context,
+      args,
+      repo,
+      repoId,
+      canonicalWorktreePath,
+      removalHostId,
+      removedPushTarget,
+      localWorktreeGitOptions,
+      hasLocalWorktreeGitOptions,
+      deleteBranch,
+      refreshedRegisteredWorktree,
+      removalGate
+    })
+  if (!removesInBackground(canonicalWorktreePath, localWorktreeGitOptions)) {
+    const result = await finish()
+    runtime.publishWorktreeRemovalChange(repoId)
+    return result
+  }
+  // Why background: Git deletes the checkout in its own process for 20-35 s on a large tree; every
+  // refusal above already ran, and clients read the host's `removing` marker until it finishes.
+  startBackgroundWorktreeRemoval({
+    removal: {
+      worktreeId: args.worktreeId,
+      repoId,
+      repoPath: repo.path,
+      worktreePath: canonicalWorktreePath,
+      branch: normalizeLocalBranchRef(refreshedRegisteredWorktree.branch)
+    },
+    run: async () => {
+      const result = await finish()
+      context.options?.onWorktreeLifecycle?.({
+        kind: 'removed',
+        worktreeId: args.worktreeId,
+        path: canonicalWorktreePath
+      })
+      return result
+    },
+    catalogVersion: () => getLocalWorktreeCatalogVersion(repoId),
+    publish: (outcome) => runtime.publishWorktreeRemovalChange(repoId, outcome)
+  })
+  return { removing: true }
+}
+
+async function finishLocalWorktreeRemoval({
+  context,
+  args,
+  repo,
+  repoId,
+  canonicalWorktreePath,
+  removalHostId,
+  removedPushTarget,
+  localWorktreeGitOptions,
+  hasLocalWorktreeGitOptions,
+  deleteBranch,
+  refreshedRegisteredWorktree,
+  removalGate
+}: {
+  context: WorktreeIpcContext
+  args: RemoveWorktreeArgs
+  repo: Repo
+  repoId: string
+  canonicalWorktreePath: string
+  removalHostId: ExecutionHostId
+  removedPushTarget: GitPushTarget | undefined
+  localWorktreeGitOptions: LocalProjectWorktreeGitOptions
+  hasLocalWorktreeGitOptions: boolean
+  deleteBranch: boolean
+  refreshedRegisteredWorktree: GitWorktreeInfo
+  removalGate: { finish: (removed: boolean) => Promise<void> }
+}): Promise<RemoveWorktreeResult> {
+  const { store, runtime } = context
+  let removalResult: RemoveWorktreeResult | undefined
+  let removalCompleted = false
+  try {
     try {
       const removeOptions = {
         ...(!deleteBranch ? { deleteBranch } : {}),
@@ -187,7 +271,6 @@ export async function removeRegisteredLocalWorktree(
           })
         )
         invalidateAuthorizedRootsCache()
-        notifyWorktreesChanged(mainWindow, repoId)
         removalCompleted = true
         return {}
       } else {
@@ -228,7 +311,5 @@ export async function removeRegisteredLocalWorktree(
   await withWorktreeRemoveStageSpan('cache_invalidation', 'local', async () => {
     invalidateAuthorizedRootsCache()
   })
-
-  notifyWorktreesChanged(mainWindow, repoId)
   return removalResult ?? {}
 }

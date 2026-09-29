@@ -215,6 +215,9 @@ export type RemoveWorktreeResult = {
   preservedBranch?: PreservedWorktreeBranch
   /** Present only when a FAILED archive hook was explicitly waived for this removal (#19334). */
   archiveHookOverride?: ArchiveHookOverride
+  /** The host accepted the removal and deletes in the background; the result arrives as the
+   *  `removalOutcome` of a later worktrees-changed event. Older hosts omit it and reply when done. */
+  removing?: true
 }
 
 export type ForceDeleteWorktreeBranchResult = {

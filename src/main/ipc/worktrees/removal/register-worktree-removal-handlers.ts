@@ -12,6 +12,7 @@ import {
   getWorktreeRemovalOptionsKey
 } from './worktree-removal-coordinator'
 import { resolveRepoForExecutionHost } from '../repo-host-ownership'
+import { isWorktreeRemovalPending } from '../../../worktree-background-removal'
 
 export function registerWorktreeRemovalHandlers(context: WorktreeIpcContext): void {
   const { store, options, worktreeRemovalsInFlight } = context
@@ -26,6 +27,10 @@ export function registerWorktreeRemovalHandlers(context: WorktreeIpcContext): vo
       }
       // The resolved repo supplies host ownership when legacy callers omit args.hostId.
       const removalHostId = getRepoExecutionHostId(repo)
+      // Why: a retry or a second client asking while Git still deletes joins that removal.
+      if (isWorktreeRemovalPending(args.worktreeId, removalHostId)) {
+        return { removing: true, catalogVersion: getLocalWorktreeCatalogVersion(repoId) }
+      }
       const inFlightKey = getWorktreeRemovalInFlightKey(args.worktreeId, removalHostId)
       const optionsKey = getWorktreeRemovalOptionsKey(args)
       const inFlightRemoval = worktreeRemovalsInFlight.get(inFlightKey)
@@ -53,6 +58,10 @@ export function registerWorktreeRemovalHandlers(context: WorktreeIpcContext): vo
       worktreeRemovalsInFlight.set(inFlightKey, { optionsKey, promise: removal })
       try {
         const result = await removal
+        if (result.removing) {
+          // The background job reports its own lifecycle when Git finishes.
+          return result
+        }
         options?.onWorktreeLifecycle?.({
           kind: 'removed',
           worktreeId: args.worktreeId,
