@@ -1,5 +1,5 @@
 import type * as FsPromises from 'node:fs/promises'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 
 const {
   gitExecFileAsyncMock,
@@ -46,8 +46,16 @@ import { forceDeleteLocalBranch, removeWorktree } from './worktree'
 const mockGitCommands = createGitCommandMocker(gitExecFileAsyncMock)
 const getGitCalls = createGitCallReader(gitExecFileAsyncMock)
 
+// Why: removal argv carries core.longpaths on Windows; pin a non-Windows default for exact argv.
+let platformSpy: MockInstance<() => NodeJS.Platform>
+
 beforeEach(() => {
   resetWorktreeRemovalState()
+  platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
+})
+
+afterEach(() => {
+  platformSpy.mockRestore()
 })
 
 describe('removeWorktree', () => {

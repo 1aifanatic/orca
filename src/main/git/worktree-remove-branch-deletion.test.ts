@@ -1,5 +1,5 @@
 // removeWorktree: branch deletion safety after the checkout is removed.
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 
 const { gitExecFileAsyncMock, gitExecFileSyncMock, translateWslOutputPathsMock } = vi.hoisted(
   () => ({
@@ -24,10 +24,18 @@ describe('removeWorktree', () => {
   const beforeRemoval =
     'worktree /repo\nHEAD abc123\nbranch refs/heads/main\n\nworktree /repo-feature\nHEAD def456\nbranch refs/heads/feature/test\n'
 
+  // Why: removal argv carries core.longpaths on Windows; pin a non-Windows default for exact argv.
+  let platformSpy: MockInstance<() => NodeJS.Platform>
+
   beforeEach(() => {
     gitExecFileAsyncMock.mockReset()
     gitExecFileSyncMock.mockReset()
     translateWslOutputPathsMock.mockClear()
+    platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
+  })
+
+  afterEach(() => {
+    platformSpy.mockRestore()
   })
 
   it('uses safe `branch -d` and preserves a branch with unmerged commits', async () => {

@@ -3,7 +3,7 @@ import type * as FsPromises from 'node:fs/promises'
 import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 
 const {
   gitExecFileAsyncMock,
@@ -54,8 +54,17 @@ import {
 const mockGitCommands = createGitCommandMocker(gitExecFileAsyncMock)
 const getGitCalls = createGitCallReader(gitExecFileAsyncMock)
 
+// Why: removal argv carries core.longpaths on Windows, so pin a non-Windows default or the
+// exact-argv assertions below fail for a maintainer running vitest on Windows.
+let platformSpy: MockInstance<() => NodeJS.Platform>
+
 beforeEach(() => {
   resetWorktreeRemovalState()
+  platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
+})
+
+afterEach(() => {
+  platformSpy.mockRestore()
 })
 
 describe('removeWorktree', () => {
@@ -355,20 +364,15 @@ branch refs/heads/main
   })
 
   it('removes a WSL checkout configured for a native Windows repo with Git alone', async () => {
-    const originalPlatform = process.platform
     const worktreePath = '\\\\wsl.localhost\\Ubuntu\\home\\dev\\feature'
-    Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
-    try {
-      mockGitCommands({})
+    platformSpy.mockReturnValue('win32')
+    mockGitCommands({})
 
-      await removeWorktree('C:\\repo', worktreePath, false, {
-        knownRemovedWorktree: { branch: '', head: '', locked: false }
-      })
+    await removeWorktree('C:\\repo', worktreePath, false, {
+      knownRemovedWorktree: { branch: '', head: '', locked: false }
+    })
 
-      expect(getGitCalls()).toEqual([`git -c core.longpaths=true worktree remove ${worktreePath}`])
-    } finally {
-      Object.defineProperty(process, 'platform', { configurable: true, value: originalPlatform })
-    }
+    expect(getGitCalls()).toEqual([`git -c core.longpaths=true worktree remove ${worktreePath}`])
   })
 
   it('passes one --force before the worktree path for dirty-file removal', async () => {
