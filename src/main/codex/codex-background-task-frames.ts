@@ -36,8 +36,12 @@ export type CodexBackgroundTaskEvent = {
   params: unknown
 }
 
-// A child's turn ends on its own `turn/completed`, a failed one included: Codex follows every
-// turn-ending `error` with a failed completion for that turn, on child threads as on the primary.
+/**
+ * The one way Codex ends a child's turn without `turn/completed`: a closed thread ran its last
+ * turn and Codex never said how it went. A turn-ending `error` is not one — Codex follows it with
+ * a failed `turn/completed` for the same turn, which is that turn's end and carries the duration
+ * and receipt time the error does not.
+ */
 function readCodexChildThreadClosed(
   event: CodexBackgroundTaskEvent
 ): CodexBackgroundTaskFrame | null {
