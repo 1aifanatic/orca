@@ -29,7 +29,7 @@ export function journalDirectoryFor(
   )
 }
 
-export const LEGACY_JOURNAL_DATABASE_FILE = 'journal.db'
+const LEGACY_JOURNAL_DATABASE_FILE = 'journal.db'
 
 /** The per-chat SQLite file inside the directory `journalDirectoryFor` names. */
 export function legacyJournalDatabaseFile(journalDir: string): string {

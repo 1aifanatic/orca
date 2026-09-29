@@ -14,7 +14,7 @@ export function structuredAgentSessionHostRefusal(): AgentSessionRefusalError | 
 }
 
 /** Whether `error` is the refusal structured requests are getting right now. */
-export function isStructuredAgentSessionHostRefusal(error: unknown): boolean {
+function isStructuredAgentSessionHostRefusal(error: unknown): boolean {
   const refusal = installRefusal
   return (
     refusal !== null &&

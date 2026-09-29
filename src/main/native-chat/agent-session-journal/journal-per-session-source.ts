@@ -24,7 +24,7 @@ const HAS_LEGACY_TABLE = "SELECT 1 AS present FROM sqlite_master WHERE type = 't
 const SELECT_LEGACY_REPAIR =
   'SELECT epoch, content_from, repaired_at FROM journal_repairs WHERE session_id = ?'
 
-export type ImportedRow = { seq: number; ts: number; rowJson: string }
+type ImportedRow = { seq: number; ts: number; rowJson: string }
 export type ImportBatch = { rows: ImportedRow[]; last: boolean }
 
 /** A plain read-only connection: it sees committed WAL frames without checkpointing them. */

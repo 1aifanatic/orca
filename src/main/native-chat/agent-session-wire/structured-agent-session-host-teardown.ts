@@ -98,7 +98,7 @@ export function structuredAgentSessionHostTeardownPhases(collaborators: {
   ]
 }
 
-export async function tearDownStructuredAgentSessionHost(input: {
+async function tearDownStructuredAgentSessionHost(input: {
   phases: readonly StructuredAgentSessionTeardownPhase[]
   sessions: Map<string, StructuredAgentSessionHostSession>
   retainSessionIds?: ReadonlySet<string>

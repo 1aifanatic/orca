@@ -62,7 +62,7 @@ VALUES (?, ?, ?, ?)
 ON CONFLICT(session_id) DO UPDATE SET
   epoch = excluded.epoch, content_from = excluded.content_from, repaired_at = excluded.repaired_at`
 
-export type PerSessionJournalImportDeps = {
+type PerSessionJournalImportDeps = {
   openSource?: (path: string) => Database.Database
   /** Deletes one of the per-chat files. */
   remove?: (path: string) => void

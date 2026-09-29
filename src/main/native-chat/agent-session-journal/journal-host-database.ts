@@ -18,7 +18,7 @@ import { journalOpenRefusalError } from './journal-open-failure'
 import { journalDirectoryFor } from './journal-paths'
 import { AgentSessionJournalError } from './journal-write-guards'
 
-export const JOURNAL_DATABASE_FILE = 'agent-session-journal.db'
+const JOURNAL_DATABASE_FILE = 'agent-session-journal.db'
 
 export function journalDatabasePath(stateDirectory: string): string {
   return join(stateDirectory, JOURNAL_DATABASE_FILE)

@@ -53,7 +53,7 @@ export function replayJournal(db: Database.Database, sessionId: string): Journal
 }
 
 /** Folds one epoch's stored rows, in sequence order, wherever they are stored. */
-export function foldJournalRows(
+function foldJournalRows(
   input: JournalRowFoldInput & { rows: Iterable<{ seq: number; rowJson: string }> }
 ): JournalLoad {
   const fold = startJournalRowFold(input)
@@ -65,7 +65,7 @@ export function foldJournalRows(
   return fold.finish()
 }
 
-export type JournalRowFoldInput = {
+type JournalRowFoldInput = {
   sessionId: string
   epoch: string
   /** The sequence a pending repair on this epoch left free. */
