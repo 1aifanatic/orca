@@ -2,12 +2,19 @@ import {
   terminalOscColorQueryReplies,
   type TerminalOscColorQueryReplyColors
 } from './terminal-osc-color-reply'
+import { resolveConfiguredTerminalColors } from './terminal-theme-selection'
 
-// Orca's default dark terminal theme ('Ghostty Default Style Dark'), used until a viewer reports one.
-export const ORCA_DEFAULT_COLOR_QUERY_REPLY_COLORS = {
-  foreground: '#ffffff',
-  background: '#282c34'
-} as const satisfies TerminalOscColorQueryReplyColors
+// Last resort before this process is told anything: Orca's default dark terminal theme.
+export const ORCA_DEFAULT_COLOR_QUERY_REPLY_COLORS: TerminalOscColorQueryReplyColors =
+  resolveConfiguredTerminalColors(
+    {
+      theme: 'dark',
+      terminalThemeDark: '',
+      terminalUseSeparateLightTheme: false,
+      terminalThemeLight: ''
+    },
+    true
+  )
 
 function answersBothSlots(
   colors: TerminalOscColorQueryReplyColors | null | undefined
@@ -49,19 +56,16 @@ export function _resetPtyOwnerHostColorsForTest(): void {
 }
 
 /**
- * The PTY owner always answers. The host-wide viewer theme wins over the colours the
- * creating viewer sent at spawn, so every pane on a host agrees and a theme change reaches
- * old panes; Orca's default theme answers when no viewer has reported anything yet.
+ * The PTY owner always answers. The host-wide theme wins over the colours the creating
+ * viewer sent at spawn, so a theme change reaches old panes — except when that viewer is
+ * a paired client on another machine, whose own theme is what its pane is painted with.
+ * Orca's default theme answers when nothing has been reported yet.
  */
 export function resolvePtyOwnerColorQueryColors(
   host: TerminalOscColorQueryReplyColors | null | undefined,
-  spawn: TerminalOscColorQueryReplyColors | null | undefined
+  spawn: TerminalOscColorQueryReplyColors | null | undefined,
+  spawnFromRemoteViewer = false
 ): TerminalOscColorQueryReplyColors {
-  if (answersBothSlots(host)) {
-    return host
-  }
-  if (answersBothSlots(spawn)) {
-    return spawn
-  }
-  return ORCA_DEFAULT_COLOR_QUERY_REPLY_COLORS
+  const ordered = spawnFromRemoteViewer ? [spawn, host] : [host, spawn]
+  return ordered.find(answersBothSlots) ?? ORCA_DEFAULT_COLOR_QUERY_REPLY_COLORS
 }

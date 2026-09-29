@@ -37,6 +37,7 @@ export type PtyStartupIngressOperation =
   | { kind: 'teardown' }
   | { kind: 'expire' }
   | { kind: 'release-echo' }
+  | { kind: 'release-query' }
 
 export function slicePtyIngressSourceSpan(
   span: PtyIngressSourceSpan,

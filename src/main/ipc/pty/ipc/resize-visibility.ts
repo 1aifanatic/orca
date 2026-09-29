@@ -283,7 +283,7 @@ export function installPtyResizeVisibilityIpc(session: PtyIpcSession): void {
     }
   })
 
-  installTerminalViewAttributesIpc()
+  installTerminalViewAttributesIpc(session)
 
   ipcMain.removeAllListeners('pty:setPtyDeliveryInterest')
   ipcMain.on('pty:setPtyDeliveryInterest', (_event, args: { id: string; interested: boolean }) => {

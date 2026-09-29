@@ -340,9 +340,12 @@ describe('registerPtyHandlers', () => {
 
       const query = '\x1b]11;?\x1b\\'
       mockProc.emitData(`${query}ready`)
-      const pushViewAttributes = onMock.mock.calls.find(
+      const pushViewAttributes: unknown = onMock.mock.calls.find(
         (call: unknown[]) => call[0] === 'pty:terminalViewAttributes'
-      )![1] as (event: unknown, args: unknown) => void
+      )?.[1]
+      if (typeof pushViewAttributes !== 'function') {
+        throw new Error('pty:terminalViewAttributes listener was not registered')
+      }
       pushViewAttributes(null, {
         foreground: [0, 0, 0],
         background: [0x12, 0x34, 0x56],

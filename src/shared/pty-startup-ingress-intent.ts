@@ -5,6 +5,8 @@ import {
 
 export type PtyStartupIngressIntent = {
   colors: TerminalOscColorQueryReplyColors
+  /** The colours came from a paired client on another machine, so they outrank the host's. */
+  colorSource?: 'remote-viewer'
   kittyKeyboardProtocol?: boolean
   deadlineMs: number
 }
@@ -17,6 +19,7 @@ export function parsePtyStartupIngressIntent(value: unknown): PtyStartupIngressI
   }
   const kittyKeyboardProtocol =
     'kittyKeyboardProtocol' in value && value.kittyKeyboardProtocol === true
+  const fromRemoteViewer = 'colorSource' in value && value.colorSource === 'remote-viewer'
   const colors = 'colors' in value ? value.colors : undefined
   const normalizedColors = {
     ...(colors &&
@@ -44,6 +47,7 @@ export function parsePtyStartupIngressIntent(value: unknown): PtyStartupIngressI
   }
   return {
     colors: normalizedColors,
+    ...(fromRemoteViewer ? { colorSource: 'remote-viewer' as const } : {}),
     ...(kittyKeyboardProtocol ? { kittyKeyboardProtocol: true } : {}),
     deadlineMs
   }

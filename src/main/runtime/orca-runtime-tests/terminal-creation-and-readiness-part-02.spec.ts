@@ -199,6 +199,30 @@ describe('OrcaRuntimeService', () => {
         }
       })
     )
+    expect(spawn.mock.calls[0]?.[0]).not.toHaveProperty('terminalColorQuerySource')
+  })
+
+  it("marks a caller's own colours so the PTY owner prefers them over the host theme", async () => {
+    const spawn = vi.fn().mockResolvedValue({ id: 'pty-remote-colors' })
+    const runtime = new OrcaRuntimeService(store)
+    runtime.setPtyController({
+      spawn,
+      write: () => true,
+      kill: () => true,
+      getForegroundProcess: async () => null
+    })
+
+    await runtime.createTerminal(`path:${TEST_WORKTREE_PATH}`, {
+      command: 'codex',
+      terminalColorQueryReplies: { foreground: '#2e3434', background: '#ffffff' }
+    })
+
+    expect(spawn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        terminalColorQueryReplies: { foreground: '#2e3434', background: '#ffffff' },
+        terminalColorQuerySource: 'remote-viewer'
+      })
+    )
   })
 
   it('does not register or publish a PTY incarnation that exited before spawn resolved', async () => {

@@ -31,12 +31,14 @@ export function getStartupTerminalIngressIntent(args: {
   command?: string
   launchConfig?: SleepingAgentLaunchConfig
   terminalColorQueryReplies?: unknown
+  terminalColorQuerySource?: 'remote-viewer'
   terminalKittyKeyboardProtocol?: boolean
 }) {
   // Why colours for every PTY: an agent typed into a plain shell later queries too, and the
   // creating viewer's theme is the owner's best seed until a host-wide theme is pushed.
   return parsePtyStartupIngressIntent({
     colors: normalizeColorQueryReplyColors(args.terminalColorQueryReplies) ?? {},
+    colorSource: args.terminalColorQuerySource,
     kittyKeyboardProtocol: args.terminalKittyKeyboardProtocol === true && isAgentLaunch(args),
     deadlineMs: 5_000
   })

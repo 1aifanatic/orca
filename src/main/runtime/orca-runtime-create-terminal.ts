@@ -149,6 +149,10 @@ export class OrcaRuntimeWithCreateTerminal extends OrcaRuntimeWithTerminalCreate
             leafId,
             ...(launchOpts.shellOverride ? { shellOverride: launchOpts.shellOverride } : {}),
             ...(terminalColorQueryReplies ? { terminalColorQueryReplies } : {}),
+            // Why: an RPC caller's colours are its own screen's, which the host theme must not override.
+            ...(launchOpts.terminalColorQueryReplies
+              ? { terminalColorQuerySource: 'remote-viewer' as const }
+              : {}),
             terminalKittyKeyboardProtocol: launchOpts.terminalKittyKeyboardProtocol,
             ...(launchOpts.agentSessionClaim
               ? {

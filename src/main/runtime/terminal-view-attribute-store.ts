@@ -4,10 +4,11 @@
  * push. One app-global snapshot, not per-PTY — per-pane font zoom never
  * affects these attributes and the color/cursor settings are global.
  *
- * Null until the first push, and the responder answers NO view-attribute
- * query while null (silent-until-first-push): a fabricated default would
- * resurrect the default-black OSC-11 bug. Staleness is bounded by one IPC
- * hop; subscribed TUIs are corrected by the renderer-owned 2031/997 flip.
+ * Null until the first push; the hidden-pane model responder answers its
+ * OSC 4/12 and ?996n queries only once it is set. OSC 10/11 never reach it
+ * from a current PTY owner, which answers them itself from colours seeded
+ * from settings and then replaced by this push. Staleness is bounded by one
+ * IPC hop; subscribed TUIs are corrected by the renderer-owned 2031/997 flip.
  */
 import {
   terminalViewAttributesEqual,

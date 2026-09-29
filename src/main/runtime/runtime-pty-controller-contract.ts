@@ -68,6 +68,7 @@ export type RuntimePtyController = {
     expectedSourceBinding?: PtyBindingSourceExpectation
     terminalKittyKeyboardProtocol?: boolean
     terminalColorQueryReplies?: { foreground?: string; background?: string }
+    terminalColorQuerySource?: 'remote-viewer'
     agentSessionEnsure?: {
       claim: AgentSessionExecutionClaim
       surface: AgentSessionSurfaceBinding

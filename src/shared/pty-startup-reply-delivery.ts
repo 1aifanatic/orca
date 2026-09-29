@@ -40,6 +40,9 @@ type ExpectedEcho = { projections: readonly EchoProjection[]; remainingBytes: nu
 // per-read budget is then spent inside the echo itself. This is a backstop against a
 // pathological stream, set well above any splash an echo could arrive behind.
 const ECHO_SEARCH_BUDGET_BYTES = 256 * 1024
+// Why far tighter after startup: past the launch splash nothing large sits between a reply
+// and its echo, so a long watch only risks deleting a matching span from later output.
+const ECHO_POST_STARTUP_BUDGET_BYTES = 512
 // Live replies make the queue session-lived, so cap it under query floods.
 const MAX_TRACKED_ECHOES = 64
 
@@ -47,10 +50,13 @@ const MAX_TRACKED_ECHOES = 64
 export class PtyStartupReplyDelivery {
   private readonly expectedEchoes: ExpectedEcho[] = []
   private closed = false
+  private echoBudgetBytes = ECHO_SEARCH_BUDGET_BYTES
 
+  /** Why a clock and not a timer: a timer per PTY for the whole session would outlive its use. */
   constructor(
     private readonly ownerBackend: PtyOwnerBackend,
-    private readonly writeProvider: (data: string) => void
+    private readonly writeProvider: (data: string) => void,
+    private startupWindowEndsAt: number
   ) {}
 
   get hasExpectedEcho(): boolean {
@@ -66,11 +72,12 @@ export class PtyStartupReplyDelivery {
     if (this.closed) {
       return false
     }
+    this.endStartupWindowIfDue()
     const projections = replyEchoProjections(reply, this.ownerBackend)
     // Why register before the write: node-pty can synchronously re-enter onData, so the
     // echo can arrive inside `writeProvider` itself.
     const expected: ExpectedEcho | null =
-      projections.length > 0 ? { projections, remainingBytes: ECHO_SEARCH_BUDGET_BYTES } : null
+      projections.length > 0 ? { projections, remainingBytes: this.echoBudgetBytes } : null
     if (expected) {
       this.expectedEchoes.push(expected)
     }
@@ -114,6 +121,7 @@ export class PtyStartupReplyDelivery {
    * read rather than per `matchEcho` call, which runs several times over one span.
    */
   chargeEchoSearch(byteCount: number): void {
+    this.endStartupWindowIfDue()
     for (let index = this.expectedEchoes.length - 1; index >= 0; index -= 1) {
       const expected = this.expectedEchoes[index]
       if (!expected) {
@@ -123,6 +131,18 @@ export class PtyStartupReplyDelivery {
       if (expected.remainingBytes <= 0) {
         this.expectedEchoes.splice(index, 1)
       }
+    }
+  }
+
+  /** Startup window closed: in-flight and later replies are watched for a short span only. */
+  private endStartupWindowIfDue(): void {
+    if (Date.now() < this.startupWindowEndsAt) {
+      return
+    }
+    this.startupWindowEndsAt = Number.POSITIVE_INFINITY
+    this.echoBudgetBytes = ECHO_POST_STARTUP_BUDGET_BYTES
+    for (const expected of this.expectedEchoes) {
+      expected.remainingBytes = Math.min(expected.remainingBytes, ECHO_POST_STARTUP_BUDGET_BYTES)
     }
   }
 

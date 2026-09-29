@@ -8,11 +8,15 @@ import {
   terminalCustomThemeToXtermTheme,
   type TerminalCustomTheme
 } from '../../../shared/terminal-custom-themes'
+import {
+  DEFAULT_TERMINAL_THEME_DARK,
+  DEFAULT_TERMINAL_THEME_LIGHT,
+  selectTerminalTheme
+} from '../../../shared/terminal-theme-selection'
 
 export const BUILTIN_TERMINAL_THEME_NAMES = getThemeNames()
 
-export const DEFAULT_TERMINAL_THEME_DARK = 'Ghostty Default Style Dark'
-export const DEFAULT_TERMINAL_THEME_LIGHT = 'Builtin Tango Light'
+export { DEFAULT_TERMINAL_THEME_DARK, DEFAULT_TERMINAL_THEME_LIGHT }
 export const DEFAULT_TERMINAL_DIVIDER_DARK = '#3f3f46'
 const DEFAULT_TERMINAL_DIVIDER_LIGHT = '#d4d4d8'
 
@@ -121,12 +125,11 @@ export function resolveEffectiveTerminalAppearance(
   >,
   systemPrefersDark = getSystemPrefersDark()
 ): EffectiveTerminalAppearance {
-  const sourceTheme =
-    settings.theme === 'system' ? (systemPrefersDark ? 'dark' : 'light') : settings.theme
-  const useLightVariant = sourceTheme === 'light' && settings.terminalUseSeparateLightTheme
-  const themeName = useLightVariant
-    ? settings.terminalThemeLight || DEFAULT_TERMINAL_THEME_LIGHT
-    : settings.terminalThemeDark || DEFAULT_TERMINAL_THEME_DARK
+  const {
+    mode: sourceTheme,
+    useLightVariant,
+    themeName
+  } = selectTerminalTheme(settings, systemPrefersDark)
   const dividerColor = useLightVariant
     ? normalizeColor(settings.terminalDividerColorLight, DEFAULT_TERMINAL_DIVIDER_LIGHT)
     : normalizeColor(settings.terminalDividerColorDark, DEFAULT_TERMINAL_DIVIDER_DARK)

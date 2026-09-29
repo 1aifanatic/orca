@@ -202,7 +202,8 @@ describe('PtyStartupIngress', () => {
     for (const barrier of ['close', 'expire', 'snapshot'] as const) {
       const emissions: PtyIngressEmission[] = []
       const ingress = new PtyStartupIngress({
-        ...(barrier === 'expire' ? { intent: { colors: COLORS, deadlineMs: 5_000 } } : {}),
+        // Why a short window: the torn query's own 500 ms hold must not be what ends it here.
+        ...(barrier === 'expire' ? { intent: { colors: COLORS, deadlineMs: 100 } } : {}),
         ownerBackend: 'windows-conpty',
         write: () => {},
         onEmission: (emission) => emissions.push(emission)
@@ -211,7 +212,7 @@ describe('PtyStartupIngress', () => {
       if (barrier === 'close') {
         ingress.closeQueryAuthority()
       } else if (barrier === 'expire') {
-        vi.advanceTimersByTime(5_000)
+        vi.advanceTimersByTime(100)
       } else {
         ingress.snapshotBarrier()
       }
