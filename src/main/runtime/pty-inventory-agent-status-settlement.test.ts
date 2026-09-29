@@ -59,6 +59,8 @@ function createRuntime(
     withoutListProcesses?: boolean
     /** False reproduces a session running on the in-process fallback after the daemon failed. */
     canRecoverPersistentLocalPtys?: boolean
+    /** The local layout persisted by the previous run, keyed `tabId -> leafId -> ptyId`. */
+    persistedPtyIdsByLeafIdByTabId?: Record<string, Record<string, string>>
   } = {}
 ): {
   internals: RuntimeInternals
@@ -78,7 +80,21 @@ function createRuntime(
     },
     getFolderWorkspace: () => undefined,
     getProjectGroups: () => [],
-    getWorkspaceSession: () => getDefaultWorkspaceSession(),
+    getWorkspaceSession: (hostId?: string | null) => {
+      const session = getDefaultWorkspaceSession()
+      if (hostId !== 'local' || !options.persistedPtyIdsByLeafIdByTabId) {
+        return session
+      }
+      return {
+        ...session,
+        terminalLayoutsByTabId: Object.fromEntries(
+          Object.entries(options.persistedPtyIdsByLeafIdByTabId).map(([tabId, ptyIdsByLeafId]) => [
+            tabId,
+            { root: null, activeLeafId: null, expandedLeafId: null, ptyIdsByLeafId }
+          ])
+        )
+      }
+    },
     setWorkspaceSession: () => {},
     flushOrThrow: () => {}
   } as never
@@ -179,13 +195,31 @@ describe('agent status settles from the host PTY inventory', () => {
     expect(calls[0]!.connectionId).toBeUndefined()
   })
 
-  it('settles a pane whose persisted PTY the answering host does not list', async () => {
+  it('settles a pane whose bound PTY the answering host does not list', async () => {
     const { internals, settle } = createRuntime({ candidates: [candidate()] })
     // The pane's PTY is bound in this runtime and absent from the listing.
     internals.recordPtyWorktree(`${WORKSPACE}@@dead-pty`, WORKSPACE, {
       connected: true,
       tabId: TAB_ID,
       paneKey: PANE_KEY
+    })
+
+    await internals.refreshPtyWorktreeRecordsWithControllerInventory(
+      [internals.buildResolvedWorktreeFromId(WORKSPACE)],
+      null,
+      undefined,
+      null
+    )
+
+    await vi.waitFor(() => expect(settle).toHaveBeenCalledTimes(1))
+    expect(settle.mock.calls[0]![0]).toEqual([candidate()])
+  })
+
+  it('settles an unmounted pane from the PTY the previous run persisted for it', async () => {
+    // The cross-restart case: nothing binds the pane in this runtime, so only the layout names it.
+    const { internals, settle } = createRuntime({
+      candidates: [candidate()],
+      persistedPtyIdsByLeafIdByTabId: { [TAB_ID]: { [LEAF_ID]: `${WORKSPACE}@@dead-pty` } }
     })
 
     await internals.refreshPtyWorktreeRecordsWithControllerInventory(
