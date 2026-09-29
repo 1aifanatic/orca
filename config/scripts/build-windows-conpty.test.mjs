@@ -267,3 +267,20 @@ describe('relay fault-harness provider environment', () => {
     expect(step).not.toContain('restore-signed-inner.outcome')
   })
 })
+
+it('removes runtime injection flags without mutating controller environment', () => {
+  const env = {
+    NODE_OPTIONS: '--require=foreign',
+    NODE_PATH: '/foreign',
+    BUN_OPTIONS: 'foreign',
+    BUN_INSPECT: '1',
+    ELECTRON_RUN_AS_NODE: '1',
+    PATH: '/keep',
+    ORCA_BACKGROUND_LAUNCH: '1'
+  }
+  expect(relayDaemonLaunchEnvironment('/missing/relay.js', { platform: 'linux', env })).toEqual({
+    PATH: '/keep',
+    ORCA_BACKGROUND_LAUNCH: '1'
+  })
+  expect(env.NODE_OPTIONS).toBe('--require=foreign')
+})
