@@ -170,18 +170,24 @@ describe('patchDashboardSnapshotFromAgentStatus', () => {
     expect(next.snapshot.cards[0]?.bucket).toBe('working')
   })
 
-  it('keeps a user stop reading interrupted once the card is seen', () => {
-    const result = patchDashboardSnapshotFromAgentStatus(
+  it('files a new user stop under Done, then settles it into Idle once seen, still interrupted', () => {
+    const stop = {
+      state: 'done' as const,
+      interactivePrompt: undefined,
+      mainAgent: { state: 'done' as const, outcome: 'cancellation' as const, stateStartedAt: 250 }
+    }
+    const fresh = patchDashboardSnapshotFromAgentStatus(
       snapshot([card({ unseen: false })]),
-      event({
-        state: 'done',
-        interactivePrompt: undefined,
-        mainAgent: { state: 'done', outcome: 'cancellation', stateStartedAt: 250 },
-        stateStartedAt: 100
-      })
+      event({ ...stop, stateStartedAt: 250 })
     )
-    expect(result.snapshot.cards[0]).toMatchObject({ bucket: 'done', verdictMark: 'interrupted' })
-    expect(dashboardCardDisplayState(result.snapshot.cards[0]!)).toBe('interrupted')
+    expect(fresh.snapshot.cards[0]).toMatchObject({ bucket: 'done', verdictMark: 'interrupted' })
+
+    const seen = patchDashboardSnapshotFromAgentStatus(
+      snapshot([card({ unseen: false })]),
+      event({ ...stop, stateStartedAt: 100 })
+    )
+    expect(seen.snapshot.cards[0]).toMatchObject({ bucket: 'idle', verdictMark: 'interrupted' })
+    expect(dashboardCardDisplayState(seen.snapshot.cards[0]!)).toBe('interrupted')
   })
 
   it('outranks a waiting row with the failed main agent, as the agent row does', () => {

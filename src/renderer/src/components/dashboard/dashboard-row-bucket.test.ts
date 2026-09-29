@@ -26,12 +26,34 @@ describe('dashboardRowBucketProjection', () => {
     expect(projected).toMatchObject({ dotState: 'working', verdictMark: 'failed', bucket: 'done' })
   })
 
-  it('keeps a seen user stop interrupted instead of settling it into idle', () => {
-    const projected = dashboardRowBucketProjection(
+  it('files an unseen verdict under Done', () => {
+    for (const outcome of ['failure', 'cancellation'] as const) {
+      const projected = dashboardRowBucketProjection(
+        row('done', { state: 'done', outcome, stateStartedAt: 1_000 })
+      )
+      expect(projected).toMatchObject({ unseen: true, bucket: 'done' })
+    }
+  })
+
+  it('settles a seen verdict into Idle like a seen completion, keeping its mark', () => {
+    const stopped = dashboardRowBucketProjection(
       row('done', { state: 'done', outcome: 'cancellation', stateStartedAt: 1_000 }),
       { [PANE_KEY]: 5_000 }
     )
-    expect(projected).toMatchObject({ unseen: false, verdictMark: 'interrupted', bucket: 'done' })
+    expect(stopped).toMatchObject({ unseen: false, verdictMark: 'interrupted', bucket: 'idle' })
+    const failed = dashboardRowBucketProjection(
+      row('done', { state: 'done', outcome: 'failure', stateStartedAt: 1_000 }),
+      { [PANE_KEY]: 5_000 }
+    )
+    expect(failed).toMatchObject({ unseen: false, verdictMark: 'failed', bucket: 'idle' })
+  })
+
+  it('keeps a seen failure under Done while its subagents still work', () => {
+    const projected = dashboardRowBucketProjection(
+      row('working', { state: 'done', outcome: 'failure', stateStartedAt: 1_500 }),
+      { [PANE_KEY]: 5_000 }
+    )
+    expect(projected).toMatchObject({ unseen: false, verdictMark: 'failed', bucket: 'done' })
   })
 
   it('projects a row without a verdict exactly as before', () => {

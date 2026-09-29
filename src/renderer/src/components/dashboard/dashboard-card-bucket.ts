@@ -1,6 +1,8 @@
-import type {
-  DashboardBucket,
-  DashboardCardDisplayState
+import {
+  dashboardCardDisplayState,
+  type DashboardBucket,
+  type DashboardCard,
+  type DashboardCardDisplayState
 } from '../../../../shared/dashboard-snapshot'
 
 export function dashboardBucketForDotState(state: DashboardCardDisplayState): DashboardBucket {
@@ -19,4 +21,15 @@ export function dashboardBucketForDotState(state: DashboardCardDisplayState): Da
     case 'waiting':
       return 'attention'
   }
+}
+
+/** The card's column. A seen verdict on a finished row settles into Idle like a seen completion,
+ *  while its dot keeps the mark. */
+export function dashboardCardBucket(
+  card: Pick<DashboardCard, 'dotState' | 'workingMode' | 'unseen' | 'verdictMark'>
+): DashboardBucket {
+  if (card.verdictMark && card.dotState === 'done' && !card.unseen) {
+    return 'idle'
+  }
+  return dashboardBucketForDotState(dashboardCardDisplayState(card))
 }
