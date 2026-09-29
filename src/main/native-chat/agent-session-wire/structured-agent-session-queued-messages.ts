@@ -7,10 +7,7 @@
 // serialized step, so there is no loop state to disagree with the journal.
 
 import { randomUUID } from 'node:crypto'
-import type {
-  AgentJournalMessageItem,
-  AgentJournalRenderItem
-} from '../../../shared/agent-session-journal-types'
+import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
 import {
   QUEUED_MESSAGE_PAUSED_SEND_FAILED,
   type AgentSessionWireRefusal
@@ -42,17 +39,20 @@ export function queuedMessageBodyIsTextOnly(body: AgentJournalMessageItem): bool
   return body.blocks.every((block) => block.type === 'text')
 }
 
-export function pendingPromptExists(items: Iterable<AgentJournalRenderItem>): boolean {
-  for (const item of items) {
-    const body = item.body
+/** Walks the reduced items in place: the gate runs on every admission and
+ *  drain step, so it must not render a snapshot of the whole journal. */
+export function pendingPromptExists(journal: Pick<AgentSessionJournal, 'visitItems'>): boolean {
+  let pending = false
+  journal.visitItems((_itemId, _sequence, body) => {
     if (
+      !pending &&
       (body.kind === 'approval' || body.kind === 'question') &&
       body.resolution.state === 'pending'
     ) {
-      return true
+      pending = true
     }
-  }
-  return false
+  })
+  return pending
 }
 
 /** Waiting, unpaused, and not positioned behind a returned card. The admission
@@ -114,7 +114,7 @@ export function structuredQueueHold(input: {
   const { journal } = input
   // `prompt` outranks `working`: it is the one wait Send-now may not override,
   // so a prompt raised mid-turn must not read as merely `working`.
-  if (pendingPromptExists(journal.snapshot().items)) {
+  if (pendingPromptExists(journal)) {
     return 'prompt'
   }
   if (
