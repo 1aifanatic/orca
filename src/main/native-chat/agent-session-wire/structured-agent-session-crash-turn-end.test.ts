@@ -12,6 +12,7 @@ import type { AgentSessionOwnerProbe } from '../../../shared/agent-session-lease
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { AgentSessionSubscribeEvent } from '../../../shared/agent-session-wire'
 import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
+import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import {
   completedStructuredAgentTurnSeconds,
@@ -133,10 +134,16 @@ async function seedClaudeToolTurn(): Promise<void> {
     body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'run the loop' }] },
     fence: 13
   })
+  const turnIdentity = {
+    provider: 'claude' as const,
+    sessionId: PROVIDER_SESSION,
+    uuid: 'uuid-turn'
+  }
+  const turnScope = { kind: 'turn' as const, turnItemId: agentJournalItemKey(turnIdentity) }
   await journal.appendItem(
-    { provider: 'claude', sessionId: PROVIDER_SESSION, uuid: 'uuid-turn' },
+    turnIdentity,
     { kind: 'turn', turnId: 'turn-1', state: 'running', startedAt: now },
-    { fence: 13 }
+    { fence: 13, turnScope }
   )
   now = TOOL_STARTED_AT
   await journal.appendItem(
@@ -147,7 +154,7 @@ async function seedClaudeToolTurn(): Promise<void> {
       input: { command: 'for i in $(seq 90); do sleep 1; done' },
       state: 'running'
     },
-    { fence: 13 }
+    { fence: 13, turnScope }
   )
   await journal.close()
 }

@@ -413,7 +413,12 @@ describe('deferred structured agent-session event sink', () => {
     const log: Recorded[] = []
     const deferred = createDeferredStructuredAgentSessionEventSink()
     const batch = (ordinal: number) => [
-      { kind: 'item' as const, identity: identity(ordinal), body: BODY }
+      {
+        kind: 'item' as const,
+        identity: identity(ordinal),
+        body: BODY,
+        turnScope: AGENT_JOURNAL_THREAD_SCOPE
+      }
     ]
 
     deferred.sink.appendLifecycleBatch?.('turn-completed:turn-1', batch(0))
