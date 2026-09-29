@@ -13,15 +13,13 @@ import {
   type TabStripScrollAnchor
 } from './tab-strip-scroll-anchor'
 import {
-  findOffscreenOpenedTabSide,
+  findOffscreenOpenedTab,
+  getActiveTabDock,
   getActiveTabDockSide,
   readTabStripTabIds,
   revealTabStripElement,
   type ActiveTabDockSide
 } from './tab-strip-slot-geometry'
-
-/** A tab opened out of view on `side`; `seq` changes so the same side can signal twice in a row. */
-export type TabStripOffscreenOpen = { side: ActiveTabDockSide; seq: number }
 
 const TAB_STRIP_SCROLL_FRACTION = 0.75
 const TAB_STRIP_MIN_SCROLL_STEP_PX = 120
@@ -68,8 +66,6 @@ export function useTabStripOverflowNavigation({
   tabStripRef: RefObject<HTMLDivElement | null>
   tabStripOverflowState: TabStripScrollMetrics
   activeTabDockSide: ActiveTabDockSide | null
-  offscreenTabOpen: TabStripOffscreenOpen | null
-  clearOffscreenTabOpen: () => void
   scrollTabStrip: (direction: 'start' | 'end', behavior?: ScrollBehavior) => void
 } {
   const tabStripRef = useRef<HTMLDivElement>(null)
@@ -84,9 +80,7 @@ export function useTabStripOverflowNavigation({
     EMPTY_TAB_STRIP_OVERFLOW_STATE
   )
   const [activeTabDockSide, setActiveTabDockSide] = useState<ActiveTabDockSide | null>(null)
-  const [offscreenTabOpen, setOffscreenTabOpen] = useState<TabStripOffscreenOpen | null>(null)
   const knownTabIdsRef = useRef<ReadonlySet<string> | null>(null)
-  const clearOffscreenTabOpen = useCallback((): void => setOffscreenTabOpen(null), [])
   const updateTabStripOverflowState = useCallback((): void => {
     const el = tabStripRef.current
     if (!el) {
@@ -199,10 +193,18 @@ export function useTabStripOverflowNavigation({
     const recorded = scrollAnchorRef.current
     if (tabCount > prev.len && !pointerGestureActive) {
       if (recorded?.activeTabId === activeTabIdRef.current) {
-        // Why: a background open must not move the tab the user is looking at; insertions
-        // around it keep its on-screen x, the way VS Code and Chrome leave the viewed tab still.
+        // Why: insertions around the viewed tab keep its on-screen x, the way VS Code and Chrome
+        // leave it still; only a tab that lands out of view scrolls, and the active tab docks.
         if (recorded.anchor) {
           restoreTabStripScrollAnchor(strip, recorded.anchor)
+        }
+        // Why not while hovered: an unprompted open (agent, remote host) would slide tabs under the cursor.
+        const opened =
+          knownTabIdsRef.current && !strip.matches(':hover')
+            ? findOffscreenOpenedTab(strip, knownTabIdsRef.current, activeTabIdRef.current)
+            : null
+        if (opened) {
+          revealTabStripElement(strip, opened, getActiveTabDock(strip))
         }
         stickToEndRef.current = isTabStripScrolledToEnd(strip)
       } else if (isLastTabStripTab(strip, activeTabIdRef.current)) {
@@ -213,13 +215,6 @@ export function useTabStripOverflowNavigation({
     } else if (stickToEndRef.current && !pointerGestureActive) {
       scrollToEnd(false)
       requestAnimationFrame(() => scrollToEnd(false))
-    }
-    const knownTabIds = knownTabIdsRef.current
-    if (tabCount > prev.len && !pointerGestureActive && knownTabIds) {
-      const side = findOffscreenOpenedTabSide(strip, knownTabIds, activeTabIdRef.current)
-      if (side) {
-        setOffscreenTabOpen((previous) => ({ side, seq: (previous?.seq ?? 0) + 1 }))
-      }
     }
     knownTabIdsRef.current = readTabStripTabIds(strip)
     prevStripLenRef.current = { worktreeId, len: tabCount }
@@ -259,8 +254,6 @@ export function useTabStripOverflowNavigation({
     tabStripRef,
     tabStripOverflowState,
     activeTabDockSide,
-    offscreenTabOpen,
-    clearOffscreenTabOpen,
     scrollTabStrip
   }
 }

@@ -48,7 +48,7 @@ export function getTabStripSlotOffscreenSide(
 }
 
 export function getActiveTabDockSide(strip: HTMLElement): ActiveTabDockSide | null {
-  const dock = strip.querySelector<HTMLElement>(`:scope > ${ACTIVE_TAB_DOCK_SELECTOR}`)
+  const dock = getActiveTabDock(strip)
   return dock ? getTabStripSlotOffscreenSide(strip, dock) : null
 }
 
@@ -62,18 +62,39 @@ export function isDockedTabStripElement(strip: HTMLElement, el: Element): boolea
   )
 }
 
+function getSlotNaturalSpan(strip: HTMLElement, slot: HTMLElement): [number, number] {
+  const left = getSlotNaturalLeft(strip, slot)
+  return [left, left + slot.getBoundingClientRect().width]
+}
+
 /**
  * Scroll the least distance that shows `el` at its real spot. Why not scrollIntoView: a docked
  * tab already looks on screen, so it would not scroll and a new neighbour would stay hidden.
+ * `keep` is shown alongside when both fit; otherwise room is left for it to dock beside `el`.
  */
-export function revealTabStripElement(strip: HTMLElement, el: Element): void {
+export function revealTabStripElement(
+  strip: HTMLElement,
+  el: Element,
+  keep: Element | null = null
+): void {
   const slot = getTabStripSlot(strip, el)
   if (!slot) {
     return
   }
+  let [left, right] = getSlotNaturalSpan(strip, slot)
+  const keepSlot = keep ? getTabStripSlot(strip, keep) : null
+  if (keepSlot && keepSlot !== slot) {
+    const [keepLeft, keepRight] = getSlotNaturalSpan(strip, keepSlot)
+    if (Math.max(right, keepRight) - Math.min(left, keepLeft) <= strip.clientWidth) {
+      left = Math.min(left, keepLeft)
+      right = Math.max(right, keepRight)
+    } else if (keepRight <= left) {
+      left -= keepRight - keepLeft
+    } else if (keepLeft >= right) {
+      right += keepRight - keepLeft
+    }
+  }
   const viewLeft = strip.getBoundingClientRect().left + strip.clientLeft
-  const left = getSlotNaturalLeft(strip, slot)
-  const right = left + slot.getBoundingClientRect().width
   if (left < viewLeft) {
     strip.scrollLeft -= viewLeft - left
   } else if (right > viewLeft + strip.clientWidth) {
@@ -91,22 +112,25 @@ export function readTabStripTabIds(strip: HTMLElement): ReadonlySet<string> {
   return ids
 }
 
-/** The edge past which a newly added background tab landed; null when every new tab is on screen. */
-export function findOffscreenOpenedTabSide(
+/** The first newly added background tab whose real spot is off screen; null when all are visible. */
+export function findOffscreenOpenedTab(
   strip: HTMLElement,
   knownTabIds: ReadonlySet<string>,
   activeTabId: string | null
-): ActiveTabDockSide | null {
+): HTMLElement | null {
   for (const tab of strip.querySelectorAll<HTMLElement>('[data-tab-id]')) {
     const id = tab.dataset.tabId
     if (!id || id === activeTabId || knownTabIds.has(id)) {
       continue
     }
     const slot = getTabStripSlot(strip, tab)
-    const side = slot ? getTabStripSlotOffscreenSide(strip, slot) : null
-    if (side) {
-      return side
+    if (slot && getTabStripSlotOffscreenSide(strip, slot)) {
+      return tab
     }
   }
   return null
+}
+
+export function getActiveTabDock(strip: HTMLElement): HTMLElement | null {
+  return strip.querySelector<HTMLElement>(`:scope > ${ACTIVE_TAB_DOCK_SELECTOR}`)
 }

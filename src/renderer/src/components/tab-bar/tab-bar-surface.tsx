@@ -88,18 +88,8 @@ export function renderTabBarSurface({
   } = createMenu
   const { orderedItems, sortableIds, dropIndicatorByVisibleId } = itemProjection
   const clientHostedBrowserRows = props.clientHostedBrowserRows ?? EMPTY_CLIENT_HOSTED_ROWS
-  const {
-    tabStripRef,
-    tabStripOverflowState,
-    activeTabDockSide,
-    offscreenTabOpen,
-    clearOffscreenTabOpen,
-    scrollTabStrip
-  } = tabStripNavigation
-  // Why: a background tab that lands out of view would otherwise open with no visible change.
-  const arrowNudges = (side: 'start' | 'end'): boolean => offscreenTabOpen?.side === side
-  const arrowNudgeKey = (side: 'start' | 'end'): string =>
-    `${side}-${offscreenTabOpen?.side === side ? offscreenTabOpen.seq : 0}`
+  const { tabStripRef, tabStripOverflowState, activeTabDockSide, scrollTabStrip } =
+    tabStripNavigation
   const includeTopTabBorder = tabStripChrome !== 'floating-panel'
   const renderedItems = renderTabBarItems({
     items: orderedItems,
@@ -119,14 +109,12 @@ export function renderTabBarSurface({
       data-native-file-drop-target="editor"
     >
       {tabStripOverflowState.hasOverflow ? (
-        <Tooltip key={arrowNudgeKey('start')}>
+        <Tooltip>
           <TooltipTrigger asChild>
             <Button
               variant="ghost"
               size="icon-xs"
               className="mx-0.5 my-auto h-6 w-5 text-muted-foreground hover:bg-accent/50 hover:text-foreground disabled:opacity-35"
-              data-tab-strip-arrow-nudge={arrowNudges('start') ? '' : undefined}
-              onAnimationEnd={clearOffscreenTabOpen}
               style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
               aria-label={translate(
                 'auto.components.tab.bar.TabBar.7a9b4af2af',
@@ -185,14 +173,12 @@ export function renderTabBarSurface({
         </div>
       </SortableContext>
       {tabStripOverflowState.hasOverflow ? (
-        <Tooltip key={arrowNudgeKey('end')}>
+        <Tooltip>
           <TooltipTrigger asChild>
             <Button
               variant="ghost"
               size="icon-xs"
               className="mx-0.5 my-auto h-6 w-5 text-muted-foreground hover:bg-accent/50 hover:text-foreground disabled:opacity-35"
-              data-tab-strip-arrow-nudge={arrowNudges('end') ? '' : undefined}
-              onAnimationEnd={clearOffscreenTabOpen}
               style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
               aria-label={translate(
                 'auto.components.tab.bar.TabBar.232e075b07',

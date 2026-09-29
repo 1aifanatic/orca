@@ -744,17 +744,6 @@ body:has(> [data-slot='dialog-overlay'], > [data-slot='sheet-overlay']) {
   z-index: 30;
 }
 
-@keyframes tab-strip-arrow-nudge {
-  35% {
-    background-color: var(--accent);
-    color: var(--foreground);
-  }
-}
-
-[data-tab-strip-arrow-nudge] {
-  animation: tab-strip-arrow-nudge 700ms ease-in-out 2;
-}
-
 /* Tab activity affordance (amber wash) is rendered as a React DOM child in
    SortableTab.tsx rather than via ::after here, so the drop-indicator
    ::before/::after pseudo-elements stay free for drag-and-drop feedback. See
