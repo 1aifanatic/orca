@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -15,17 +15,11 @@ afterEach(() => {
   }
 })
 
-function runGate(startupCommand: string, help: string, env: Record<string, string> = {}): string {
+function prepareGate(startupCommand: string) {
   const root = mkdtempSync(join(tmpdir(), 'orca-gate-codex-'))
   roots.push(root)
   const bin = join(root, 'bin')
   mkdirSync(bin)
-  const codex = join(bin, 'codex')
-  writeFileSync(
-    codex,
-    `#!/bin/sh\n[ "$1" = --help ] && { printf '%s\\n' '${help}'; exit 0; }\nprintf 'ARGV:%s\\n' "$*"\n`
-  )
-  chmodSync(codex, 0o755)
   const runner = join(root, 'setup-runner.sh')
   const sequenced = createSequencedSetupAgentCommands({
     runnerScriptPath: runner,
@@ -33,13 +27,29 @@ function runGate(startupCommand: string, help: string, env: Record<string, strin
     platform: 'posix',
     nonce: 'n1'
   })
-  writeFileSync(`${runner}.n1.done`, 'n1:0\n')
-  const result = spawnSync('bash', ['-c', sequenced.startupCommand], {
-    encoding: 'utf8',
+  return {
+    sequenced,
     // Why HOME and PATH: `bash -l` must read no real profile and resolve only the fake codex.
-    env: { HOME: root, PATH: `${bin}:/usr/bin:/bin`, ...sequenced.startupEnv, ...env }
-  })
-  return result.stdout
+    env: { HOME: root, PATH: `${bin}:/usr/bin:/bin`, ...sequenced.startupEnv },
+    finishSetup: (help: string) => {
+      const codex = join(bin, 'codex')
+      writeFileSync(
+        codex,
+        `#!/bin/sh\n[ "$1" = --help ] && { printf '%s\\n' '${help}'; exit 0; }\nprintf 'ARGV:%s\\n' "$*"\n`
+      )
+      chmodSync(codex, 0o755)
+      writeFileSync(`${runner}.n1.done`, 'n1:0\n')
+    }
+  }
+}
+
+function runGate(startupCommand: string, help: string, env: Record<string, string> = {}): string {
+  const gate = prepareGate(startupCommand)
+  gate.finishSetup(help)
+  return spawnSync('bash', ['-c', gate.sequenced.startupCommand], {
+    encoding: 'utf8',
+    env: { ...gate.env, ...env }
+  }).stdout
 }
 
 describe.skipIf(process.platform === 'win32')('sequenced setup gate runs codex', () => {
@@ -53,5 +63,18 @@ describe.skipIf(process.platform === 'win32')('sequenced setup gate runs codex',
     ['the opt-out', 'codex --yolo', '--no-daemon', { ORCA_CODEX_ISOLATE: '0' }]
   ])('unchanged for %s', (_case, command, help, env) => {
     expect(runGate(command, help, env)).toBe(`ARGV:${command.slice('codex '.length)}\n`)
+  })
+
+  it('with --no-daemon when setup is what installs codex', async () => {
+    const gate = prepareGate('codex --yolo')
+    const child = spawn('bash', ['-c', gate.sequenced.startupCommand], { env: gate.env })
+    let stdout = ''
+    child.stdout.on('data', (chunk: Buffer) => (stdout += chunk.toString()))
+    const exited = new Promise((resolve) => child.on('close', resolve))
+    // Why after spawn: the gate is already waiting when setup puts codex on PATH.
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    gate.finishSetup('--no-daemon')
+    await exited
+    expect(stdout).toBe('ARGV:--no-daemon --yolo\n')
   })
 })

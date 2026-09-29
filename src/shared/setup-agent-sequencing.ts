@@ -129,7 +129,9 @@ function buildPosixStartupScript(
     `rm -f ${marker} ${tmp} 2>/dev/null;`,
     // Why: failure and timeout announce themselves; a silent success left
     // "Waiting for setup..." as the pane's last line forever.
-    `if [ "$status" = "0" ]; then echo ${quotePosixArg(SETUP_COMPLETE_MESSAGE)} >&2; if [ -n "\${${SETUP_AGENT_SEQUENCE_STARTUP_COMMAND_ENV}:-}" ]; then eval "\$${SETUP_AGENT_SEQUENCE_STARTUP_COMMAND_ENV}"; exit "$?"; else ${startupSuccessCommand}; fi; fi;`,
+    // Why here and not first: setup may be what puts codex on PATH, and this
+    // `bash -lc` never reads Orca's shell wrapper, so it defines the function itself.
+    `if [ "$status" = "0" ]; then echo ${quotePosixArg(SETUP_COMPLETE_MESSAGE)} >&2;\n${getPosixCodexShellLaunchPreflight()}if [ -n "\${${SETUP_AGENT_SEQUENCE_STARTUP_COMMAND_ENV}:-}" ]; then eval "\$${SETUP_AGENT_SEQUENCE_STARTUP_COMMAND_ENV}"; exit "$?"; else ${startupSuccessCommand}; fi; fi;`,
     'echo "Setup failed; skipping agent startup." >&2;',
     'exit "${status:-1}";',
     'fi;',
@@ -142,8 +144,7 @@ function buildPosixStartupScript(
     'done'
   ].join(' ')
 
-  // Why: this `bash -lc` never reads Orca's shell wrapper, so it defines the codex function itself.
-  return `${getPosixCodexShellLaunchPreflight()}${script}`
+  return script
 }
 
 function buildPosixStartupSuccessCommand(startupCommand: string): string {
