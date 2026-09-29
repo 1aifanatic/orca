@@ -116,6 +116,19 @@ export function ensureRealHomeCodexHookState(args: {
   return ensureInFlight
 }
 
+/**
+ * For a resume that must run in the real home, with no managed home to fall
+ * back to: while Orca's entry there awaits Codex's approval, waits for that one
+ * in-flight grant, which its session's 30 s limit bounds. It settles only once
+ * Codex approved the entry or the grant withdrew its own unapproved adds.
+ */
+export async function awaitRealHomeCodexHookTrust(): Promise<RealHomeCodexHookLane> {
+  if (currentLane === 'granting') {
+    await backgroundGrant
+  }
+  return currentLane
+}
+
 async function runRealHomeCodexHookEnsure(args: {
   hooksEnabled: boolean
   userDataPath: string

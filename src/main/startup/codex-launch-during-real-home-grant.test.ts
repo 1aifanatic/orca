@@ -13,7 +13,7 @@ import { isCodexManagedCommand, setupCodexHookHomes } from '../codex/hook-servic
 // Why this file (QA case 4, full launch path): Codex's approval of the real-home
 // entry runs in the background. A launch during it goes to the managed home and
 // waits only on that home's own setup, which is bounded by its inline approval.
-// A resume has no other home, so it starts at once.
+// A resume has no other home, so it waits for that one approval to settle.
 
 const { getPathMock, homedirMock, resolveCodexCommandMock } = vi.hoisted(() => ({
   getPathMock: vi.fn<(name: string) => string>(),
@@ -78,7 +78,8 @@ vi.mock('./main-process-state', async () => {
   }
 })
 
-const { _internals: grantInternals } = await import('../codex/codex-hook-trust-grant')
+const { CODEX_BACKGROUND_TRUST_GRANT_TIMEOUT_MS, _internals: grantInternals } =
+  await import('../codex/codex-hook-trust-grant')
 const { _internals: realHomeInternals } = await import('../codex/codex-real-home-hook-install')
 const { getOrcaManagedCodexHomePath } = await import('../codex/codex-home-paths')
 const { prepareCodexRuntimeHomeForLaunch } = await import('./codex-launch-preparation')
@@ -287,19 +288,66 @@ describe('a Codex launch while the real-home approval hangs', () => {
 })
 
 describe('a Codex resume into the real ~/.codex while its approval runs', () => {
-  it('starts at once, and the entry is approved when the grant lands', async () => {
+  it('waits for a warm approval, and spawns with the entries approved', async () => {
+    grantInternals.setGrantSessionRunner(async (request: CodexHookTrustGrantRequest) => {
+      await new Promise((resolve) => setTimeout(resolve, 100))
+      return approveAll(request)
+    })
+    let trustAtSpawn: string[] = []
+    const resumed = resume().then(() => {
+      trustAtSpawn = realHomeOrcaEntryTrust()
+    })
+
+    expect(await settlesWithin(resumed, 50)).toBe(false)
+    expect(await settlesWithin(resumed, 2_000)).toBe(true)
+    expect(trustAtSpawn.length).toBeGreaterThan(0)
+    expect(trustAtSpawn.every((state) => state === 'trusted')).toBe(true)
+  })
+
+  it('spawns at the approval session limit with Orca entries withdrawn', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    grantInternals.setGrantSessionRunner(
+      (request: CodexHookTrustGrantRequest) =>
+        new Promise<never>((_resolve, reject) =>
+          setTimeout(
+            () => reject(new CodexAppServerTimeoutError('codex app-server session timed out')),
+            request.invocation.timeoutMs
+          )
+        )
+    )
+    let spawned = false
+    let trustAtSpawn: string[] | null = null
+    const resumed = resume().then(() => {
+      spawned = true
+      trustAtSpawn = realHomeOrcaEntryTrust()
+    })
+
+    await vi.advanceTimersByTimeAsync(CODEX_BACKGROUND_TRUST_GRANT_TIMEOUT_MS - 1)
+    expect(spawned).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+    await resumed
+    // Why empty: no unapproved Orca entry is left for Codex to put up for review.
+    expect(trustAtSpawn).toEqual([])
+  })
+
+  it('makes panes restored together wait on one approval session', async () => {
     let approve: () => void = () => {}
     const approval = new Promise<void>((resolve) => {
       approve = resolve
     })
+    let sessions = 0
     grantInternals.setGrantSessionRunner(async (request: CodexHookTrustGrantRequest) => {
+      sessions += 1
       await approval
       return approveAll(request)
     })
 
-    expect(await settlesWithin(resume(), 200)).toBe(true)
+    const restored = Promise.all([resume(), resume(), resume()])
+    expect(await settlesWithin(restored, 200)).toBe(false)
+    expect(sessions).toBe(1)
     approve()
-    await realHomeInternals.settledLaneForTesting()
+    await restored
+    expect(sessions).toBe(1)
     const trust = realHomeOrcaEntryTrust()
     expect(trust.length).toBeGreaterThan(0)
     expect(trust.every((state) => state === 'trusted')).toBe(true)

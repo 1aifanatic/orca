@@ -6,7 +6,10 @@ import { prepareCodexSessionResume } from '../codex/codex-session-resume-prepara
 import { prepareLegacySharedCodexSessionResume } from '../codex/codex-legacy-session-resume'
 import { ManagedCodexHomeTemporarilyUnavailableError } from '../codex-accounts/host-codex-managed-home-ownership'
 import { codexHookService } from '../codex/hook-service'
-import { ensureRealHomeCodexHookState } from '../codex/codex-real-home-hook-install'
+import {
+  awaitRealHomeCodexHookTrust,
+  ensureRealHomeCodexHookState
+} from '../codex/codex-real-home-hook-install'
 import { isAgentStatusHooksEnabledForAgent } from '../agent-hooks/managed-agent-hook-controls'
 import { markCodexProjectTrusted } from '../agent-trust-presets'
 import { awaitAgentTrustWriteWithinDeadline } from '../agent-trust-write-deadline'
@@ -103,6 +106,9 @@ export async function prepareCodexSessionResumeForLaunch(args: {
             userDataPath: app.getPath('userData'),
             writePolicy: 'add-missing-only'
           })
+          // Why: beside an unapproved entry Codex opens a blocking hook-review screen,
+          // and only the grant's own settle cannot race Codex's approval write.
+          await awaitRealHomeCodexHookTrust()
         } else if (hooksEnabled) {
           await codexHookService.installForLaunchPrep(resumeHome)
         } else {
