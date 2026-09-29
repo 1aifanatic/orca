@@ -44,3 +44,10 @@ it('drops app-set colours when the theme they were set over changes', () => {
   expect(tracker.resolve(light)).toEqual(light)
   expect(tracker.resolve(THEME)).toEqual(THEME)
 })
+
+it('finds a colour set behind a run of ST-terminated hyperlinks', () => {
+  const tracker = new TerminalOscColorOverrideTracker()
+  const links = '\x1b]8;;file:///a\x1b\\a\x1b]8;;\x1b\\ '.repeat(200)
+  tracker.scan(`${links}\x1b]11;#010203\x07${links}`, () => THEME)
+  expect(tracker.resolve(THEME)).toEqual({ foreground: '#ffffff', background: '#010203' })
+})

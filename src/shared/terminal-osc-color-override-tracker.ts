@@ -13,6 +13,16 @@ const SET_SLOTS: Record<string, readonly ColorSlot[]> = {
 }
 const RESET_SLOTS: Record<string, ColorSlot> = { '110': 'foreground', '111': 'background' }
 
+// Why one scan for either terminator: two indexOf calls go quadratic on long runs of
+// ST-terminated OSCs with no BEL (OSC 8 hyperlinks), and this runs on every PTY chunk.
+// oxlint-disable-next-line no-control-regex -- BEL and ESC are the terminators being matched.
+const OSC_TERMINATOR = /[\x07\x1b]/g
+
+/** Cheap prefilter so non-colour OSCs (titles, hyperlinks) are never sliced. */
+function mayBeColorOsc(input: string, bodyStart: number): boolean {
+  return input[bodyStart] === '1' && (input[bodyStart + 1] === '0' || input[bodyStart + 1] === '1')
+}
+
 function toCssHex(rgb: readonly [number, number, number]): string {
   return `#${rgb.map((channel) => channel.toString(16).padStart(2, '0')).join('')}`
 }
@@ -34,18 +44,18 @@ export class TerminalOscColorOverrideTracker {
     let offset = input.indexOf('\x1b]')
     while (offset !== -1) {
       const bodyStart = offset + 2
-      const bel = input.indexOf('\x07', bodyStart)
-      const esc = input.indexOf('\x1b', bodyStart)
-      const terminator = bel !== -1 && (esc === -1 || bel < esc) ? bel : esc
-      if (terminator === -1 || (terminator === esc && esc === input.length - 1)) {
+      OSC_TERMINATOR.lastIndex = bodyStart
+      const terminator = OSC_TERMINATOR.exec(input)?.index ?? -1
+      const isBel = input[terminator] === '\x07'
+      if (terminator === -1 || (!isBel && terminator === input.length - 1)) {
         const tail = input.slice(offset)
         this.pending = tail.length <= MAX_PENDING_OSC_CHARS ? tail : ''
         return
       }
-      if (terminator === bel || input[esc + 1] === '\\') {
+      if ((isBel || input[terminator + 1] === '\\') && mayBeColorOsc(input, bodyStart)) {
         this.apply(input.slice(bodyStart, terminator), currentBase)
       }
-      offset = input.indexOf('\x1b]', terminator === bel ? bel + 1 : esc)
+      offset = input.indexOf('\x1b]', isBel ? terminator + 1 : terminator)
     }
     if (input.endsWith('\x1b')) {
       this.pending = '\x1b'
