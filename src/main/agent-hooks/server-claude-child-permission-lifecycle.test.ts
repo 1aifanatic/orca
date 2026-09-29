@@ -154,6 +154,96 @@ describe('Claude child permission lifecycle', () => {
     }
   })
 
+  describe('at a main agent turn end', () => {
+    const TURN = { prompt_id: '00000000-0000-4000-8000-000000000001' }
+    const CHILD_ID = 'a6324370b7bede0c7'
+
+    async function raiseChildPrompt(
+      postClaudeHook: (payload: Record<string, unknown>) => Promise<Response>
+    ): Promise<void> {
+      await postClaudeHook({ ...TURN, hook_event_name: 'UserPromptSubmit', prompt: 'research' })
+      await postClaudeHook({ ...TURN, hook_event_name: 'SubagentStart', agent_id: CHILD_ID })
+      await postClaudeHook({
+        ...TURN,
+        hook_event_name: 'PermissionRequest',
+        agent_id: CHILD_ID,
+        agent_type: 'general-purpose',
+        tool_name: 'Bash',
+        tool_input: { command: 'false' }
+      })
+    }
+
+    it('keeps a child permission while the Stop inventory lists that child running', async () => {
+      const { server, postClaudeHook } = await createServer()
+      try {
+        await raiseChildPrompt(postClaudeHook)
+        await postClaudeHook({
+          ...TURN,
+          hook_event_name: 'Stop',
+          background_tasks: [{ id: CHILD_ID, type: 'subagent', status: 'running' }]
+        })
+
+        expect(server.getStatusSnapshot()[0]).toMatchObject({
+          state: 'waiting',
+          toolName: 'Bash',
+          mainAgent: { state: 'done' }
+        })
+      } finally {
+        server.stop()
+      }
+    })
+
+    // Why: the child's own end went unobserved (a dropped hook); the inventory is the only evidence left.
+    it('clears a child permission once the Stop inventory shows that child finished', async () => {
+      const { server, postClaudeHook } = await createServer()
+      try {
+        await raiseChildPrompt(postClaudeHook)
+        await postClaudeHook({
+          ...TURN,
+          hook_event_name: 'Stop',
+          background_tasks: [{ id: CHILD_ID, type: 'subagent', status: 'completed' }]
+        })
+
+        const status = server.getStatusSnapshot()[0]
+        expect(status).toMatchObject({ state: 'done', agentType: 'claude' })
+        expect(status?.interactivePrompt).toBeUndefined()
+        expect(status?.subagents).toBeUndefined()
+      } finally {
+        server.stop()
+      }
+    })
+
+    it('keeps a child permission through a manual compact while other child work runs', async () => {
+      const { server, postClaudeHook } = await createServer()
+      try {
+        await raiseChildPrompt(postClaudeHook)
+        await postClaudeHook({ ...TURN, hook_event_name: 'SubagentStart', agent_id: 'aother' })
+        await postClaudeHook({ ...TURN, hook_event_name: 'Stop' })
+        await postClaudeHook({ ...TURN, hook_event_name: 'PostCompact', trigger: 'manual' })
+        await postClaudeHook({
+          ...TURN,
+          hook_event_name: 'PreToolUse',
+          agent_id: 'aother',
+          tool_name: 'Read',
+          tool_input: { file_path: 'notes.md' },
+          tool_use_id: 'toolu-other'
+        })
+        expect(server.getStatusSnapshot()[0]).toMatchObject({ state: 'waiting', toolName: 'Bash' })
+
+        await postClaudeHook({
+          ...TURN,
+          hook_event_name: 'PostToolUse',
+          agent_id: CHILD_ID,
+          tool_name: 'Bash',
+          tool_input: { command: 'false' }
+        })
+        expect(server.getStatusSnapshot()[0]).toMatchObject({ state: 'working' })
+      } finally {
+        server.stop()
+      }
+    })
+  })
+
   it('clears a teammate permission when that teammate idles', async () => {
     const { server, postClaudeHook } = await createServer()
     try {

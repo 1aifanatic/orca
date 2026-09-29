@@ -212,15 +212,18 @@ function sweepClaudeApprovalsAtTurnBoundary(
   records: readonly ClaudeApprovalRecord[],
   eventName: unknown,
   endsTurn: boolean,
-  opensUserTurn: boolean
+  opensUserTurn: boolean,
+  childWorkOutlivesTurn: boolean
 ): readonly ClaudeApprovalRecord[] | undefined {
-  if (endsTurn || opensUserTurn || eventName === 'SessionStart') {
+  if (opensUserTurn || eventName === 'SessionStart') {
     return []
   }
-  if (eventName === 'Stop' || eventName === 'StopFailure') {
-    // Why: the main agent's turn ending answers none of a background child's prompts; that
-    // child's own completion, its stop, or the next user prompt does.
-    const childOwned = records.filter((record) => record.agentId !== undefined)
+  if (endsTurn || eventName === 'Stop' || eventName === 'StopFailure') {
+    // Why: the main agent's turn ending answers none of a background child's prompts, but one
+    // outlives it only while the pane still shows child work; a child the inventory retired asks nothing.
+    const childOwned = childWorkOutlivesTurn
+      ? records.filter((record) => record.agentId !== undefined)
+      : []
     return childOwned.length === records.length ? records : childOwned
   }
   return undefined
@@ -273,8 +276,10 @@ export function foldClaudeApprovalEvent(input: {
   raisedCard?: ClaudeApprovalCard
   /** That wait is an AskUserQuestion, which IS its call's PreToolUse rather than following it. */
   raisesQuestionWait: boolean
-  /** This event closes the turn, so the ledger is swept whatever state it is in. */
+  /** This event closes the main agent's turn with no Stop (a manual compact), so it sweeps as one. */
   endsTurn: boolean
+  /** At a main agent turn end, the pane still shows child work after this event's inventory. */
+  childWorkOutlivesTurn: boolean
   /** A prompt the user typed, which opens a new turn. A harness-injected `UserPromptSubmit` does not:
    *  it arrives inside the running turn (reusing its prompt_id) and answers no permission prompt. */
   opensUserTurn: boolean
@@ -297,7 +302,8 @@ export function foldClaudeApprovalEvent(input: {
     carriedOver?.approvals ?? [],
     eventName,
     input.endsTurn,
-    input.opensUserTurn
+    input.opensUserTurn,
+    input.childWorkOutlivesTurn
   )
   if (swept) {
     // Why: whatever the turn never answered for died with it, and nothing may be inherited by the

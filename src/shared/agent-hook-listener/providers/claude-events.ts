@@ -5,9 +5,7 @@ import { readClaudeBackgroundAgentTasks } from '../../claude-background-task-inv
 import {
   claudeRosterHasRestoredSnapshotSubagent,
   claudeRosterHasRuntimeWorkingSubagent,
-  foldClaudeBackgroundTasksIntoRoster,
   isClaudeChildTurnEndEvent,
-  reapUnconfirmedRestoredClaudeSubagents,
   upsertWorkingClaudeSubagent
 } from '../../claude-subagent-roster'
 import type { HookReplayEvidence } from '../listener-event'
@@ -38,6 +36,7 @@ import {
 } from './claude-roster-state'
 import { buildClaudeStatusPayload } from './claude-status-build'
 import { extractClaudeToolFields } from './claude-tool-fields'
+import { foldClaudeTurnEndChildWork } from './claude-turn-end-child-work'
 import { holdClaudeWait, recordClaudeChildToolCall } from './claude-wait-lifecycle'
 
 export function normalizeClaudeEvent(
@@ -157,6 +156,15 @@ export function normalizeClaudeEvent(
     state.claudeActiveSessionCronPaneKeys.delete(paneKey)
   }
 
+  // Why before the ledger fold: which child prompts outlive a main agent turn end is this event's inventory.
+  const childWorkOutlivesTurn =
+    (isTurnBoundary || isManualCompactCompletion) &&
+    eventAgentId === undefined &&
+    foldClaudeTurnEndChildWork(state, paneKey, {
+      backgroundTasks,
+      manualCompact: isManualCompactCompletion
+    })
+
   const eventToolUseId = readFirstString(hookPayload, ['tool_use_id', 'toolUseId'])
   const raisedTool =
     reportedStateName === 'waiting' ? extractClaudeToolFields(eventName, hookPayload) : undefined
@@ -179,6 +187,7 @@ export function normalizeClaudeEvent(
       : {}),
     raisesQuestionWait: isAskUserQuestionWait,
     endsTurn: isManualCompactCompletion,
+    childWorkOutlivesTurn,
     // Why the row's own classifier: an injected prompt (a task notification, a teammate's message)
     // lands inside the running turn, so it must answer exactly what it did when the server held the row.
     opensUserTurn:
@@ -258,18 +267,6 @@ export function normalizeClaudeEvent(
     })
   }
 
-  if (isTurnBoundary && eventAgentId === undefined) {
-    // Why: background_tasks is trusted only where unambiguous (see foldClaudeBackgroundTasksIntoRoster) — teammates report "running" here even while idle.
-    // Older Claude builds without the field keep the incrementally tracked roster.
-    if (backgroundTasks.present) {
-      foldClaudeBackgroundTasksIntoRoster(
-        getOrCreateClaudeSubagentRoster(state, paneKey),
-        backgroundTasks.tasks,
-        Date.now(),
-        { inventoryComplete: !backgroundTasks.truncated }
-      )
-    }
-  }
   // Why: a child-induced wait displaces the lead state; stash it so clearing restores reality (lead may be done). A 2nd child wait carries the ORIGINAL stash, not the intermediate waiting state.
   const stateBeforeWait =
     isWaitingInducing && eventAgentId && previousLead
@@ -287,22 +284,6 @@ export function normalizeClaudeEvent(
               : {})
           }
       : undefined
-
-  if (isManualCompactCompletion) {
-    // Why: a manual /compact only ever completes at an idle prompt, so a child that exists ONLY as
-    // a disk snapshot has nothing live behind it and must not keep the pane spinning — that
-    // restored child is what holds the stuck row STA-2915 actually reports. Everything else the
-    // done-gate consults is live evidence (a child observed in this runtime, an unclassifiable
-    // running background task, a registered session cron) and still holds the pane.
-    const restoredRoster = state.claudeSubagentRosterByPaneKey.get(paneKey)
-    if (
-      restoredRoster &&
-      reapUnconfirmedRestoredClaudeSubagents(restoredRoster) &&
-      restoredRoster.size === 0
-    ) {
-      state.claudeSubagentRosterByPaneKey.delete(paneKey)
-    }
-  }
 
   const resolvedStatus = resolveClaudePaneStatus(state, paneKey, { state: reportedStateName })
   // Why: #15202's compact-completion guard reads the resolved state; this branch replaced the
@@ -323,7 +304,7 @@ export function normalizeClaudeEvent(
       ? Date.now()
       : undefined
 
-  // Why: only a main agent turn end or an injected prompt reaches here with a wait outstanding.
+  // Why: only a main agent turn end (a compact included) or an injected prompt reaches here with a wait outstanding.
   const holdsChildWait =
     previousLead !== undefined && !isWaitingInducing && claudeHasOutstandingApproval(approvals)
   if (holdsChildWait) {
@@ -358,7 +339,10 @@ export function normalizeClaudeEvent(
   }
 
   if (holdsChildWait) {
-    return buildClaudeCachedLeadStatusPayload(state, eventName, paneKey, hookPayload)
+    // Why: a compact completion clears a row or says nothing, and the held wait is already on it.
+    return isManualCompactCompletion
+      ? null
+      : buildClaudeCachedLeadStatusPayload(state, eventName, paneKey, hookPayload)
   }
 
   if (isManualCompactCompletion && effectiveState !== 'done') {
