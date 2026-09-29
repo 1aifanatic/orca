@@ -2,10 +2,11 @@
  * Guards the two claims `mobile/rpc-foundation/goldens` makes about its pin.
  *
  * `reachable` — `baseline` names a commit this repository keeps: one in this history, or one in
- *               the head of the pull request whose squash wrote it into the manifest. A
- *               behaviour-change branch pins its own last fenced commit, which the squash leaves out
- *               of main's history; `refs/pull/<n>/head` outlives the branch, so the pin stays
- *               checkable out. Ordinary product drift past a kept pin is normal and is not a failure.
+ *               the head of a pull request GitHub associates with that commit. A behaviour-change
+ *               branch pins its own last fenced commit, which the squash leaves out of main's
+ *               history; `refs/pull/<n>/head` outlives the branch, so the pin stays checkable out.
+ *               GitHub only names the candidates; git's ancestry check decides. Ordinary product
+ *               drift past a kept pin is normal and is not a failure.
  * `reproduce` — the goldens on disk are what the recorder produces from the PINNED tree. The
  *               recording suites replay the corpus against the CURRENT tree on every run, which is
  *               the same claim only while the fenced tree still matches the pin.

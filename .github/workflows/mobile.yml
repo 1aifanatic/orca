@@ -181,6 +181,10 @@ jobs:
     name: RPC recording pin
     # Why ARM: pure Node plus git; the golden comparison masks `platform`.
     runs-on: ubuntu-24.04-arm
+    # Why pull-requests: the guard asks GitHub which pull requests hold a pin main's history lacks.
+    permissions:
+      contents: read
+      pull-requests: read
 
     defaults:
       run:
@@ -211,9 +215,12 @@ jobs:
       # pull request that is the merge preview, which already carries main's repins; judging the
       # branch head instead fails every branch cut before the day's repin, and its instruction would
       # tell the author to pin their own head. A branch that pins its own commit still passes on the
-      # push after the squash: the guard fetches `refs/pull/<n>/head`, which GitHub keeps for good.
+      # push after the squash: the guard asks GitHub which pull requests hold the pin and fetches
+      # their `refs/pull/<n>/head`, which GitHub keeps for good. The token lifts the API rate limit.
       - name: Check the recording pin is reachable
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: pnpm exec tsx scripts/rpc-recording-pin-guard.mts reachable
 
       # ~2 min locally for the record itself, so it is gated rather than run twice over. A pull
@@ -224,6 +231,7 @@ jobs:
       - name: Reproduce the corpus from the pinned tree
         shell: bash
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           PIN_GUARD_BASE: ${{ github.event.pull_request.base.sha }}
         run: |
           if [ -n "$PIN_GUARD_BASE" ]; then

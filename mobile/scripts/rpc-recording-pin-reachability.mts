@@ -1,20 +1,20 @@
 /**
  * Whether the RPC recording pin names a commit this repository keeps: one in this history, or one in
- * the head of the pull request whose squash wrote it into the manifest.
+ * the head of a pull request that GitHub associates with the pinned commit.
  */
 import { runProcess } from '../../src/shared/child-process/run-process.ts'
 
 export const PIN_MANIFEST = 'mobile/rpc-foundation/pilot-scenarios.json'
 const PIN_REMOTE = 'origin'
-// A blobless clone fetches the manifest's blobs one commit at a time, a few seconds each, so the
-// 30 s process default kills the walk after a handful of commits that touched the manifest.
-const PIN_LOOKUP_TIMEOUT_MS = 600_000
 const PIN_FETCH_TIMEOUT_MS = 180_000
+const PULL_REQUEST_LOOKUP_TIMEOUT_MS = 30_000
 
 export type PinReachabilityFailure = 'shallow' | 'unreachable' | 'not-an-ancestor'
 export type PinReachabilityVerdict =
   | { ok: true; baseline: string; ref: string; pullRequest: number | null }
   | { ok: false; baseline: string; ref: string; failure: PinReachabilityFailure; message: string }
+/** Only nominates pull requests; git's ancestry check decides, so a wrong answer can only fail. */
+export type PullRequestLookup = (root: string, commit: string) => Promise<number[]>
 
 async function git(cwd: string, args: readonly string[], timeoutMs?: number) {
   return await runProcess({ program: 'git', args: [...args], cwd, timeoutMs })
@@ -60,32 +60,64 @@ async function isAncestor(root: string, commit: string, of: string): Promise<boo
   return ancestor.code === 0
 }
 
-/**
- * The pull request whose squash wrote `baseline` into the manifest, from its `(#n)` subject.
- * First-parent, so a merge preview resolves through the base branch the squash will land on.
- */
-async function landingPullRequest(root: string, baseline: string, ref: string) {
-  const landed = await git(
-    root,
-    [
-      'log',
-      '--first-parent',
-      '--max-count=1',
-      '--format=%s',
-      `-S${baseline}`,
-      ref,
-      '--',
-      PIN_MANIFEST
-    ],
-    PIN_LOOKUP_TIMEOUT_MS
-  )
-  if (landed.code !== 0) {
+/** `owner/repo` from a GitHub remote URL, https or ssh. */
+export function gitHubRepositoryFromRemote(url: string): string | null {
+  const match = /github\.com[:/]([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/.exec(url.trim())
+  return match ? `${match[1]}/${match[2]}` : null
+}
+async function gitHubRepository(root: string): Promise<string> {
+  if (process.env.GITHUB_REPOSITORY) {
+    return process.env.GITHUB_REPOSITORY
+  }
+  const remote = await git(root, ['remote', 'get-url', PIN_REMOTE])
+  const repository = remote.code === 0 ? gitHubRepositoryFromRemote(remote.stdout) : null
+  if (!repository) {
     throw new Error(
-      `Could not find the commit that pinned ${baseline}: ${failureDetail(landed, PIN_LOOKUP_TIMEOUT_MS)}`
+      `Cannot tell which GitHub repository ${PIN_REMOTE} is ` +
+        `(${remote.stdout.trim() || remote.stderr.trim()}); set GITHUB_REPOSITORY=<owner>/<repo>`
     )
   }
-  const number = /\(#(\d+)\)\s*$/.exec(landed.stdout.trim())?.[1]
-  return number ? Number(number) : null
+  return repository
+}
+
+/** The pull requests GitHub associates with `commit`, whatever the squash title says. */
+export async function pullRequestsWithCommit(root: string, commit: string): Promise<number[]> {
+  const url = `https://api.github.com/repos/${await gitHubRepository(root)}/commits/${commit}/pulls`
+  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN
+  const response = await fetch(url, {
+    headers: {
+      Accept: 'application/vnd.github+json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    },
+    signal: AbortSignal.timeout(PULL_REQUEST_LOOKUP_TIMEOUT_MS)
+  }).catch((error: unknown) => {
+    // Node's fetch hides the network reason (DNS, TLS, reset) in `cause`.
+    const cause = error instanceof Error && error.cause ? ` (${String(error.cause)})` : ''
+    throw new Error(
+      `Could not ask GitHub which pull requests hold ${commit} (${url}): ${String(error)}${cause}`
+    )
+  })
+  const body = await response.text()
+  // GitHub's answer for a commit it has never seen, which no pull request can hold.
+  if (response.status === 422 && body.includes('No commit found')) {
+    return []
+  }
+  if (!response.ok) {
+    const rateLimited = !token && (response.status === 403 || response.status === 429)
+    throw new Error(
+      `GitHub answered ${response.status} to ${url}: ${body.slice(0, 300)}` +
+        (rateLimited
+          ? '\nUnauthenticated GitHub API calls are rate-limited; set GITHUB_TOKEN or GH_TOKEN.'
+          : '')
+    )
+  }
+  const pulls: unknown = JSON.parse(body)
+  if (!Array.isArray(pulls)) {
+    throw new Error(
+      `GitHub answered ${url} with something other than a list: ${body.slice(0, 300)}`
+    )
+  }
+  return pulls.flatMap((pull) => (typeof pull?.number === 'number' ? [pull.number] : []))
 }
 
 /** Fetches a pull request's head into a ref of our own, so no other fetch can move it under us. */
@@ -97,9 +129,10 @@ async function fetchPullRequestHead(root: string, pullRequest: number): Promise<
     PIN_FETCH_TIMEOUT_MS
   )
   if (fetched.code !== 0) {
+    const detail = failureDetail(fetched, PIN_FETCH_TIMEOUT_MS)
     throw new Error(
-      `Could not fetch refs/pull/${pullRequest}/head from ${PIN_REMOTE}, the head of the pull ` +
-        `request that pinned the recording corpus: ${failureDetail(fetched, PIN_FETCH_TIMEOUT_MS)}`
+      `Could not fetch refs/pull/${pullRequest}/head from ${PIN_REMOTE}, the head of a pull ` +
+        `request GitHub associates with the recording pin: ${detail}`
     )
   }
   return local
@@ -108,7 +141,8 @@ async function fetchPullRequestHead(root: string, pullRequest: number): Promise<
 export async function checkPinReachable(
   root: string,
   baseline: string,
-  ref: string
+  ref: string,
+  pullRequestsHolding: PullRequestLookup = pullRequestsWithCommit
 ): Promise<PinReachabilityVerdict> {
   const shallow = await git(root, ['rev-parse', '--is-shallow-repository'])
   if (shallow.code !== 0) {
@@ -131,20 +165,29 @@ export async function checkPinReachable(
   }
   // A squash drops the branch commit the pin names, and the branch may already be deleted, but
   // GitHub keeps the pull request's head ref for good.
-  const pullRequest = await landingPullRequest(root, baseline, ref)
-  if (pullRequest !== null) {
+  const pullRequests = await pullRequestsHolding(root, baseline)
+  for (const pullRequest of pullRequests) {
     const pullRequestHead = await fetchPullRequestHead(root, pullRequest)
     if ((await present()) && (await isAncestor(root, baseline, pullRequestHead))) {
       return { ok: true, baseline, ref, pullRequest }
     }
   }
+  const pullRequestCause =
+    pullRequests.length === 0
+      ? 'and GitHub associates no pull request with it'
+      : 'and no head of a pull request GitHub associates with it holds it ' +
+        `(${pullRequests.map((pullRequest) => `refs/pull/${pullRequest}/head`).join(', ')})`
   if (!(await present())) {
     return {
       ok: false,
       baseline,
       ref,
       failure: 'unreachable',
-      message: repinInstruction(baseline, resolved, 'is not a commit in this repository at all')
+      message: repinInstruction(
+        baseline,
+        resolved,
+        `is not a commit in this clone, ${pullRequestCause}`
+      )
     }
   }
   return {
@@ -155,10 +198,7 @@ export async function checkPinReachable(
     message: repinInstruction(
       baseline,
       resolved,
-      pullRequest === null
-        ? 'is not an ancestor of this commit, and the commit that pinned it names no pull request'
-        : `is neither an ancestor of this commit nor in refs/pull/${pullRequest}/head, the pull ` +
-            'request that pinned it'
+      `is not an ancestor of this commit, ${pullRequestCause}`
     )
   }
 }
