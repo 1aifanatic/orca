@@ -10,10 +10,6 @@ interface TargetedEvent {
   target: Int32
 }
 
-interface TextLayoutEvent extends TargetedEvent {
-  lines: string[]
-}
-
 /**
  * Event fired when text selection changes in the UITextView.
  * @property target - The view tag identifier
@@ -32,7 +28,6 @@ interface NativeProps extends ViewProps {
   allowFontScaling?: WithDefault<boolean, true>
   ellipsizeMode?: WithDefault<EllipsizeMode, 'tail'>
   selectable?: boolean
-  onTextLayout?: BubblingEventHandler<TextLayoutEvent>
   /**
    * Callback fired when the text selection changes.
    *

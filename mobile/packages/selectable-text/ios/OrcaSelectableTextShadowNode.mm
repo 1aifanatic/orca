@@ -87,14 +87,32 @@ Size measureWithTextKit(const OrcaSelectableTextMeasureKey &key)
   [layoutManager addTextContainer:textContainer];
   [textStorage addLayoutManager:layoutManager];
   [layoutManager ensureLayoutForTextContainer:textContainer];
-  const CGRect usedRect = [layoutManager usedRectForTextContainer:textContainer];
+  // Like React Native's measurer (RCTTextLayoutManager), wrapped text takes the full width.
+  NSString *string = textStorage.string;
+  __block BOOL textDidWrap = NO;
+  [layoutManager
+      enumerateLineFragmentsForGlyphRange:[layoutManager glyphRangeForTextContainer:textContainer]
+                               usingBlock:^(CGRect, CGRect, NSTextContainer *, NSRange lineGlyphRange, BOOL *stop) {
+                                 const NSRange range = [layoutManager characterRangeForGlyphRange:lineGlyphRange
+                                                                                 actualGlyphRange:nil];
+                                 const NSUInteger lastCharacterIndex = NSMaxRange(range) - 1;
+                                 if ([string characterAtIndex:lastCharacterIndex] != '\n' &&
+                                     string.length > lastCharacterIndex + 1) {
+                                   textDidWrap = YES;
+                                   *stop = YES;
+                                 }
+                               }];
+  CGSize usedSize = [layoutManager usedRectForTextContainer:textContainer].size;
+  if (textDidWrap) {
+    usedSize.width = textContainer.size.width;
+  }
   return {
       std::clamp(
-          static_cast<Float>(std::ceil(usedRect.size.width)),
+          static_cast<Float>(std::ceil(usedSize.width)),
           constraints.minimumSize.width,
           constraints.maximumSize.width),
       std::clamp(
-          static_cast<Float>(std::ceil(usedRect.size.height)),
+          static_cast<Float>(std::ceil(usedSize.height)),
           constraints.minimumSize.height,
           constraints.maximumSize.height),
   };

@@ -107,8 +107,7 @@ using namespace facebook::react;
   [super layoutSubviews];
   // _textView's frame is assigned inside drawRect, which only fires when
   // state changes. Trigger a redraw whenever the host frame moves out from
-  // under it (rotation, parent relayout) so the text view resizes and
-  // onTextLayout re-fires with the new line wrapping.
+  // under it (rotation, parent relayout) so the text view resizes.
   if (!CGRectEqualToRect(_textView.frame, _view.frame)) {
     [self setNeedsDisplay];
   }
@@ -119,8 +118,6 @@ using namespace facebook::react;
   if (!_state) {
     return;
   }
-
-  const auto &props = *std::static_pointer_cast<OrcaSelectableTextProps const>(_props);
 
   const auto &stateData = _state->getData();
   const auto convertedAttrString =
@@ -151,28 +148,6 @@ using namespace facebook::react;
   if (frameChanged) {
     _textView.frame = _view.frame;
   }
-
-  __block std::vector<std::string> lines;
-  const int maxLines = props.numberOfLines;
-  [_textView.layoutManager enumerateLineFragmentsForGlyphRange:NSMakeRange(0, convertedAttrString.string.length) usingBlock:^(CGRect rect,
-                                                                                              CGRect usedRect,
-                                                                                              NSTextContainer * _Nonnull textContainer,
-                                                                                              NSRange glyphRange,
-                                                                                              BOOL * _Nonnull stop) {
-    const auto charRange = [self->_textView.layoutManager characterRangeForGlyphRange:glyphRange actualGlyphRange:nil];
-    const auto line = [self->_textView.text substringWithRange:charRange];
-    lines.push_back(line.UTF8String);
-    // enumerateLineFragments overshoots maximumNumberOfLines by one on iOS
-    // 18, so cap explicitly.
-    if (maxLines > 0 && lines.size() >= (size_t)maxLines) {
-      *stop = YES;
-    }
-  }];
-
-  if (_eventEmitter != nullptr) {
-    std::dynamic_pointer_cast<const facebook::react::OrcaSelectableTextEventEmitter>(_eventEmitter)
-    ->onTextLayout(facebook::react::OrcaSelectableTextEventEmitter::OnTextLayout{static_cast<int>(self.tag), lines});
-  };
 }
 
 - (void)updateProps:(Props::Shared const &)props oldProps:(Props::Shared const &)oldProps
@@ -267,10 +242,24 @@ using namespace facebook::react;
 
 - (OrcaSelectableTextRun*)getTouchChild:(CGPoint)location
 {
-  const auto charIndex = [_textView.layoutManager characterIndexForPoint:location
-                                                         inTextContainer:_textView.textContainer
-                                fractionOfDistanceBetweenInsertionPoints:nil
-  ];
+  NSLayoutManager *layoutManager = _textView.layoutManager;
+  NSTextContainer *textContainer = _textView.textContainer;
+  if (layoutManager.numberOfGlyphs == 0) {
+    return nil;
+  }
+  // The nearest glyph can be across a paragraph gap or hanging indent; only a tap on it counts.
+  const NSUInteger glyphIndex = [layoutManager glyphIndexForPoint:location
+                                                  inTextContainer:textContainer
+                                   fractionOfDistanceThroughGlyph:nil];
+  const CGRect glyphRect = [layoutManager boundingRectForGlyphRange:NSMakeRange(glyphIndex, 1)
+                                                    inTextContainer:textContainer];
+  // The line fragment rect includes paragraph spacing; its used rect does not.
+  const CGRect lineRect = [layoutManager lineFragmentUsedRectForGlyphAtIndex:glyphIndex effectiveRange:nil];
+  if (location.x < CGRectGetMinX(glyphRect) || location.x > CGRectGetMaxX(glyphRect) ||
+      location.y < CGRectGetMinY(lineRect) || location.y > CGRectGetMaxY(lineRect)) {
+    return nil;
+  }
+  const auto charIndex = [layoutManager characterIndexForGlyphAtIndex:glyphIndex];
 
   int currIndex = -1;
   for (UIView* child in self.subviews) {
