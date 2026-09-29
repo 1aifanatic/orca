@@ -27,8 +27,12 @@ export function useNativeChatInteractivePromptCard({
     (s) => s.agentStatusByPaneKey[paneKey]?.interactivePrompt ?? null
   )
   // The sibling `toolName` lets the question parser dispatch through the tool's
-  // registered parser (mobile parity).
-  const interactiveToolName = useAppStore((s) => s.agentStatusByPaneKey[paneKey]?.toolName ?? null)
+  // registered parser (mobile parity). Read only beside a prompt: it changes on
+  // every tool call, and this hook re-renders the whole pane.
+  const interactiveToolName = useAppStore((s) => {
+    const entry = s.agentStatusByPaneKey[paneKey]
+    return entry?.interactivePrompt ? (entry.toolName ?? null) : null
+  })
   return useMemo(() => {
     const statusCard = parseInteractivePrompt(interactivePrompt, interactiveToolName ?? undefined)
     if (statusCard?.kind === 'approval') {
