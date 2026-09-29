@@ -105,6 +105,13 @@ function rawRemoveHandler(): RawHandler {
   return call?.[1] as RawHandler
 }
 
+type ListedRow = { id: string; removing?: true }
+
+async function listRepoRows(): Promise<ListedRow[]> {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: worktrees:list resolves the repo's Worktree rows.
+  return (await handlers['worktrees:list'](null, { repoId: 'repo-1' })) as ListedRow[]
+}
+
 function blockGitRemove(): {
   release: (result?: RemoveWorktreeResult) => void
   fail: (error: Error) => void
@@ -147,10 +154,7 @@ describe('worktrees:remove in the background', () => {
     await vi.waitFor(() => expect(removeWorktreeMock).toHaveBeenCalledTimes(1))
     expect(store.removeWorktreeMeta).not.toHaveBeenCalled()
 
-    const during = (await handlers['worktrees:list'](null, { repoId: 'repo-1' })) as {
-      id: string
-      removing?: true
-    }[]
+    const during = await listRepoRows()
     expect(during.find((row) => row.id === featureId)?.removing).toBe(true)
     expect(during.find((row) => row.id === 'repo-1::/workspace/repo')?.removing).toBeUndefined()
 
@@ -163,9 +167,7 @@ describe('worktrees:remove in the background', () => {
       status: 'removed',
       preservedBranch: { branchName: 'feature', head: 'feature' }
     })
-    const after = (await handlers['worktrees:list'](null, { repoId: 'repo-1' })) as {
-      id: string
-    }[]
+    const after = await listRepoRows()
     expect(after.map((row) => row.id)).not.toContain(featureId)
   })
 
@@ -184,10 +186,7 @@ describe('worktrees:remove in the background', () => {
       error: expect.stringContaining('permission denied')
     })
     expect(store.removeWorktreeMeta).not.toHaveBeenCalled()
-    const rows = (await handlers['worktrees:list'](null, { repoId: 'repo-1' })) as {
-      id: string
-      removing?: true
-    }[]
+    const rows = await listRepoRows()
     expect(rows.find((row) => row.id === featureId)).toBeDefined()
     expect(rows.find((row) => row.id === featureId)?.removing).toBeUndefined()
 

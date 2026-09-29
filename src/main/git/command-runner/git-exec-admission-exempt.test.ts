@@ -17,12 +17,13 @@ import {
 } from './git-subprocess-admission'
 
 function mockChild(pid: number): ChildProcess {
-  const child = new EventEmitter() as EventEmitter & Record<string, unknown>
-  child.pid = pid
-  child.kill = vi.fn(() => true)
-  child.stdin = Object.assign(new EventEmitter(), { end: vi.fn() })
-  child.stdout = new EventEmitter()
-  child.stderr = new EventEmitter()
+  const child = Object.assign(new EventEmitter(), {
+    pid,
+    kill: vi.fn(() => true),
+    stdin: Object.assign(new EventEmitter(), { end: vi.fn() }),
+    stdout: new EventEmitter(),
+    stderr: new EventEmitter()
+  })
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the exec wrapper only reads pid, kill, stdio and events.
   return child as unknown as ChildProcess
 }

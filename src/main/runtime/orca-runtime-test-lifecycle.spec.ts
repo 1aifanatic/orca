@@ -59,6 +59,7 @@ const { sshProviderGenerations, unregisterSshGitProviderMock, updateGitHubIssueM
 const { updateGitHubPRDetailsMock, updateGitHubPRStateMock, updateGitHubPRTitleMock } = mocks
 const { updateGitLabIssueMock, updateGitLabMRMock, updateGitLabMRReviewersMock, vi } = mocks
 
+// oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the prototype carries both methods the removal wrapper replaces.
 awaitBackgroundRemovalsInRuntimeTests(mocks.OrcaRuntimeService.prototype as never)
 
 function resetRuntimeTestMocks(): void {

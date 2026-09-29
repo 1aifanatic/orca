@@ -284,6 +284,7 @@ describe('OrcaRuntimeService', () => {
     })
 
     const resolveTarget: MockInstance<(...args: unknown[]) => Promise<unknown>> = vi.spyOn(
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: resolveWorktreeRemovalTarget is a protected runtime method the spy only observes.
       runtime as never,
       'resolveWorktreeRemovalTarget'
     )

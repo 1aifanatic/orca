@@ -2,9 +2,8 @@
 // meanwhile. Opt in (it builds ~100k files): ORCA_WORKTREE_REMOVAL_BENCH=1 ./node_modules/.bin/vitest \
 //   run --config config/vitest.config.ts src/main/git/worktree-removal-large-tree.bench.test.ts
 import { execFile } from 'node:child_process'
-import { appendFileSync, statSync } from 'node:fs'
+import { appendFileSync, existsSync, statSync } from 'node:fs'
 import { link, mkdir, mkdtemp, open, readFile, rename, rm, writeFile } from 'node:fs/promises'
-import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { performance } from 'node:perf_hooks'
