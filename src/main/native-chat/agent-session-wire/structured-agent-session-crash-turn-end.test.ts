@@ -10,8 +10,12 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentSessionOwnerProbe } from '../../../shared/agent-session-lease-adjudication'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
-import type { AgentSessionSubscribeEvent } from '../../../shared/agent-session-wire'
+import type {
+  AgentSessionStatusSummary,
+  AgentSessionSubscribeEvent
+} from '../../../shared/agent-session-wire'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
+import { describeNativeChatTurnStatus } from '../../../shared/native-chat-turn-status'
 import {
   completedStructuredAgentTurnSeconds,
   selectStructuredAgentTurnTimings
@@ -290,6 +294,36 @@ describe('a turn a read reached before the reconcile proved its owner dead', () 
     expect(completedStructuredAgentTurnSeconds(timing)).toBe(27)
     expect(items.filter((item) => item.body.kind === 'status')).toHaveLength(1)
     unsubscribe()
+  })
+
+  it('reports the revision to the status feed and the chat as an interruption', async () => {
+    const published: AgentSessionStatusSummary[] = []
+    openHost({
+      probeOwner: async () => ({ outcome: 'pid-absent' }),
+      statusSink: { publish: (summary) => published.push(summary), forget: () => {} }
+    })
+    await host.history({ sessionId: SESSION, direction: 'tail' })
+    const outcomes = () =>
+      published
+        .filter((summary) => summary.sessionId === SESSION && summary.turnOutcome)
+        .map((summary) => summary.turnOutcome)
+    expect(outcomes().at(-1)).toBe('unconfirmed')
+
+    await host.reconcileRestartLeases()
+    await drainSession()
+
+    // The sidebar's red Interrupted, then the folded "Interrupted after 27s".
+    await vi.waitFor(() => expect(outcomes().at(-1)).toBe('interruption'))
+    const [timing] = selectStructuredAgentTurnTimings(
+      (await host.journalSnapshot(SESSION)).items
+    ).values()
+    expect(
+      describeNativeChatTurnStatus({
+        elapsedSeconds: 0,
+        workedSeconds: completedStructuredAgentTurnSeconds(timing),
+        verdict: timing?.verdict
+      })
+    ).toEqual({ key: 'interruptedAfter', duration: '27s' })
   })
 
   it('revises nothing twice, whoever re-runs the settle', async () => {
