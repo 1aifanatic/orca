@@ -22,6 +22,8 @@ const OWNER_MERGE_ARGS = [
   'maintenance.auto=false',
   '-c',
   'merge.autoStash=false',
+  '-c',
+  'merge.verifySignatures=false',
   'merge',
   '--ff-only',
   '--no-stat',

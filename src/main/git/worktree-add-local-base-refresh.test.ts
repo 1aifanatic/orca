@@ -506,6 +506,8 @@ function ownerFastForwardArgs(remoteOid: string): string[] {
     'maintenance.auto=false',
     '-c',
     'merge.autoStash=false',
+    '-c',
+    'merge.verifySignatures=false',
     'merge',
     '--ff-only',
     '--no-stat',

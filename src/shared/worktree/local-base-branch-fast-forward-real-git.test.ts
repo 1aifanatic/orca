@@ -129,6 +129,21 @@ describe('fastForwardLocalBaseBranch against real Git', () => {
     expect(existsSync(marker)).toBe(true)
   })
 
+  it('moves main to an unsigned tip when the repo requires signed merges', async () => {
+    const fixture = await createBehindRepo()
+    fixture.git(['config', 'merge.verifySignatures', 'true'])
+
+    const outcome = await fastForward(fixture, realGit(fixture).git)
+
+    expect(outcome).toMatchObject({ status: 'updated' })
+    expect(fixture.git(['rev-parse', 'main'])).toBe(fixture.remoteOid)
+    // Control: the setting is live, so only the override let the move through.
+    fixture.git(['reset', '--quiet', '--hard', fixture.localOid])
+    expect(() => fixture.git(['merge', '--ff-only', '--quiet', fixture.remoteOid])).toThrow(
+      /does not have a GPG signature/
+    )
+  })
+
   it('keeps a tracked edit made after the inspection instead of overwriting it', async () => {
     const fixture = await createBehindRepo()
     const edited = join(fixture.repoPath, 'version.txt')
