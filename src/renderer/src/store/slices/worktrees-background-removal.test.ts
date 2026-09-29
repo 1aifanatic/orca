@@ -5,6 +5,7 @@ import { createStoreCascadesMockApi } from './store-cascades-test-harness'
 import { clearRuntimeCompatibilityCacheForTests } from '../../runtime/runtime-rpc-client'
 import {
   _resetBackgroundWorktreeRemovalsForTests,
+  noteBackgroundWorktreeRemovalEventGap,
   setBackgroundWorktreeRemovalRowsLookup,
   settleBackgroundWorktreeRemoval
 } from './worktrees/teardown/background-worktree-removal'
@@ -120,7 +121,33 @@ describe('removing a worktree the host deletes in the background', () => {
     expect(store.getState().worktreesByRepo.repo1?.map((row) => row.id)).toEqual([worktreeId])
   })
 
-  it('finishes from the listing when the outcome event never arrives', async () => {
+  it('waits for the outcome when Git unlists the row before the host finishes the removal', async () => {
+    seedRow(store)
+    const removal = store.getState().removeWorktree({ id: worktreeId, executionHostId: null })
+    await vi.waitFor(() => expect(mockApi.worktrees.remove).toHaveBeenCalled())
+    await Promise.resolve()
+
+    // The worktree-directory watcher refetches as soon as Git drops the registration, while the
+    // host is still deleting the branch.
+    seedRow(store, { removing: true })
+    reconcileHostWorktreeRemovals(store)
+    seedStore(store, { worktreesByRepo: { repo1: [] } })
+    reconcileHostWorktreeRemovals(store)
+    expect(deleteState(store)?.isDeleting).toBe(true)
+
+    settleBackgroundWorktreeRemoval('local', {
+      worktreeId,
+      status: 'removed',
+      preservedBranch: { branchName: 'feature', head: 'abc123' }
+    })
+    await expect(removal).resolves.toMatchObject({
+      ok: true,
+      preservedBranch: { branchName: 'feature', head: 'abc123' }
+    })
+    expect(toast.warning).toHaveBeenCalledTimes(1)
+  })
+
+  it('finishes from the listing when the event stream had a gap', async () => {
     seedRow(store)
     const removal = store.getState().removeWorktree({ id: worktreeId, executionHostId: null })
     await vi.waitFor(() => expect(mockApi.worktrees.remove).toHaveBeenCalled())
@@ -130,8 +157,25 @@ describe('removing a worktree the host deletes in the background', () => {
     reconcileHostWorktreeRemovals(store)
     seedStore(store, { worktreesByRepo: { repo1: [] } })
     reconcileHostWorktreeRemovals(store)
+    noteBackgroundWorktreeRemovalEventGap('local')
 
     await expect(removal).resolves.toEqual({ ok: true })
+  })
+
+  it('reports a delete the host dropped once a gap shows the row back unmarked', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    seedRow(store)
+    const removal = store.getState().removeWorktree({ id: worktreeId, executionHostId: null })
+    await vi.waitFor(() => expect(mockApi.worktrees.remove).toHaveBeenCalled())
+    await Promise.resolve()
+
+    noteBackgroundWorktreeRemovalEventGap('local')
+    seedRow(store, { removing: true })
+    reconcileHostWorktreeRemovals(store)
+    seedRow(store)
+    reconcileHostWorktreeRemovals(store)
+
+    await expect(removal).resolves.toMatchObject({ ok: false })
   })
 
   it('shows Deleting on a client that did not start the delete, from the host marker alone', () => {

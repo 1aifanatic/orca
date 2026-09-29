@@ -6,7 +6,7 @@ import type { RemoveWorktreeOptions } from '../../worktree-removal-options'
 import { ARCHIVE_HOOK_TIMEOUT_MS } from '../../../../../../shared/worktree/archive-hook-removal-gate'
 import {
   backgroundRemovalHostId,
-  discardEarlierWorktreeRemovalOutcome,
+  beginBackgroundWorktreeRemovalRequest,
   waitForBackgroundWorktreeRemoval
 } from './background-worktree-removal'
 
@@ -29,13 +29,13 @@ export async function dispatchWorktreeRemoval(args: {
   assertCurrent: () => void
 }): Promise<RemoveWorktreeResult> {
   const removalHostId = backgroundRemovalHostId(args.target)
-  // Why: a buffered failure from an earlier attempt would otherwise fail this retry on acceptance.
-  discardEarlierWorktreeRemovalOutcome(removalHostId, args.worktreeId)
+  const eventGapGeneration = beginBackgroundWorktreeRemovalRequest(removalHostId, args.worktreeId)
   const accepted = await requestWorktreeRemoval(args)
   // The card stays Deleting while the host's Git finishes; its outcome settles this.
   return accepted?.removing
     ? waitForBackgroundWorktreeRemoval({
         hostId: removalHostId,
+        eventGapGeneration,
         worktreeId: args.worktreeId,
         accepted
       })

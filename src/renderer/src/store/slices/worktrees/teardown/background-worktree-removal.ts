@@ -14,6 +14,8 @@ type Waiter = {
   accepted: RemoveWorktreeResult
   knownToRenderer: boolean
   observedRemoving: boolean
+  /** Set once this host's event stream had a gap, so the outcome event may never arrive. */
+  eventsMayBeLost: boolean
   resolve: (result: RemoveWorktreeResult) => void
   reject: (error: Error) => void
 }
@@ -29,6 +31,7 @@ const waiters = new Map<string, Waiter>()
 // Why injected: this slice cannot import the store; the app bridge that watches listings supplies it.
 let rowsLookup: RowsLookup | null = null
 const earlyOutcomes = new Map<string, { outcome: WorktreeRemovalOutcome; expiresAt: number }>()
+const eventGapGenerationByHost = new Map<ExecutionHostId, number>()
 
 function removalKey(hostId: ExecutionHostId, worktreeId: string): string {
   return `${hostId}\0${worktreeId}`
@@ -73,14 +76,32 @@ function finishedResult(
 }
 
 /**
- * Drops any outcome buffered for this workspace before a new removal request is sent: it belongs
- * to an earlier removal (another client's, or one settled from listings), never to this request.
+ * Call just before sending a removal request. Drops any outcome buffered for this workspace (it
+ * belongs to an earlier removal, never to this request) and returns the host's event-gap
+ * generation for `waitForBackgroundWorktreeRemoval`.
  */
-export function discardEarlierWorktreeRemovalOutcome(
+export function beginBackgroundWorktreeRemovalRequest(
   hostId: ExecutionHostId,
   worktreeId: string
-): void {
+): number {
   earlyOutcomes.delete(removalKey(hostId, worktreeId))
+  return eventGapGenerationByHost.get(hostId) ?? 0
+}
+
+/**
+ * Records that events from this host may have been dropped (a reconnect or a new subscription).
+ * Only then may listings settle a waiting removal, since its outcome event may never come.
+ */
+export function noteBackgroundWorktreeRemovalEventGap(hostId: ExecutionHostId): void {
+  eventGapGenerationByHost.set(hostId, (eventGapGenerationByHost.get(hostId) ?? 0) + 1)
+  for (const waiter of waiters.values()) {
+    if (waiter.hostId === hostId) {
+      waiter.eventsMayBeLost = true
+    }
+  }
+  if (rowsLookup) {
+    settleBackgroundWorktreeRemovalsFromRows(rowsLookup)
+  }
 }
 
 /**
@@ -91,6 +112,8 @@ export function waitForBackgroundWorktreeRemoval(args: {
   hostId: ExecutionHostId
   worktreeId: string
   accepted: RemoveWorktreeResult
+  /** From `beginBackgroundWorktreeRemovalRequest`; a gap since then may have dropped the outcome. */
+  eventGapGeneration: number
 }): Promise<RemoveWorktreeResult> {
   const key = removalKey(args.hostId, args.worktreeId)
   const early = earlyOutcomes.get(key)
@@ -112,6 +135,7 @@ export function waitForBackgroundWorktreeRemoval(args: {
       knownToRenderer:
         findRow(rowsLookup?.(args.worktreeId) ?? [], args.hostId, args.worktreeId) !== undefined,
       observedRemoving: false,
+      eventsMayBeLost: (eventGapGenerationByHost.get(args.hostId) ?? 0) !== args.eventGapGeneration,
       resolve,
       reject
     })
@@ -145,11 +169,16 @@ export function settleBackgroundWorktreeRemoval(
 }
 
 /**
- * Settles waiters from listings when the outcome event never arrives (a dropped runtime
- * connection): a row seen removing that then vanishes finished, one that returns unmarked did not.
+ * Settles waiters from listings when the outcome event may have been lost: a row seen removing
+ * that then vanishes finished, one that returns unmarked did not.
  */
 export function settleBackgroundWorktreeRemovalsFromRows(rowsFor: RowsLookup): void {
   for (const [key, waiter] of waiters) {
+    // Why: Git unlists the row before the branch delete and metadata purge finish, so while the
+    // event stream is intact only the outcome carries the preserved branch or a late failure.
+    if (!waiter.eventsMayBeLost) {
+      continue
+    }
     const row = findRow(rowsFor(waiter.worktreeId), waiter.hostId, waiter.worktreeId)
     if (row?.removing) {
       waiter.observedRemoving = true
@@ -171,5 +200,6 @@ export function settleBackgroundWorktreeRemovalsFromRows(rowsFor: RowsLookup): v
 export function _resetBackgroundWorktreeRemovalsForTests(): void {
   waiters.clear()
   earlyOutcomes.clear()
+  eventGapGenerationByHost.clear()
   rowsLookup = null
 }
