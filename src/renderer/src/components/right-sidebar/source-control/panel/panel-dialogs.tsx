@@ -64,7 +64,8 @@ export function SourceControlPanelDialogs({
       baseRefRepoId={activeRepo.id}
       pickerBaseRef={pickerBaseRef}
       onSelectBaseRef={(ref) => {
-        if (baseRefOwnedByWorktree && activeWorktreeId) {
+        // Why: a repo-wide write here retargeted every sibling worktree without its own pin; the repo default lives in project settings.
+        if (activeWorktreeId) {
           void updateWorktreeMeta(activeWorktreeId, { baseRef: ref })
         } else {
           void updateRepo(activeRepo.id, { worktreeBaseRef: ref })
@@ -72,15 +73,15 @@ export function SourceControlPanelDialogs({
         setBaseRefDialogOpen(false)
         window.setTimeout(() => void refreshBranchCompare(), 0)
       }}
-      onUsePrimaryBaseRef={() => {
-        if (baseRefOwnedByWorktree && activeWorktreeId) {
-          void updateWorktreeMeta(activeWorktreeId, { baseRef: undefined })
-        } else {
-          void updateRepo(activeRepo.id, { worktreeBaseRef: undefined })
-        }
-        setBaseRefDialogOpen(false)
-        window.setTimeout(() => void refreshBranchCompare(), 0)
-      }}
+      onUsePrimaryBaseRef={
+        baseRefOwnedByWorktree && activeWorktreeId
+          ? () => {
+              void updateWorktreeMeta(activeWorktreeId, { baseRef: undefined })
+              setBaseRefDialogOpen(false)
+              window.setTimeout(() => void refreshBranchCompare(), 0)
+            }
+          : undefined
+      }
       sourceControlAiActionsVisible={sourceControlAiActionsVisible}
       resolveConflictsComposerOpen={resolveConflictsComposerOpen}
       onResolveConflictsComposerOpenChange={setResolveConflictsComposerOpen}
