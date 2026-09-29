@@ -43,6 +43,7 @@ vi.mock('./delete-worktree-failure-toast', () => ({
 }))
 
 import { activateAndRevealWorktree } from '@/lib/worktree-activation'
+import { showDeleteWorktreeFailureToast } from './delete-worktree-failure-toast'
 import { runWorktreeDeleteWithToast, runWorktreeDeletesInParallel } from './delete-worktree-flow'
 import { runDialogForceDelete } from './delete-worktree-dialog-force-delete'
 
@@ -113,6 +114,46 @@ describe('deleting the viewed workspace when the delete partly fails', () => {
 
     expect(activateAndRevealWorktree).not.toHaveBeenCalled()
     expect(store.getState().activeWorktreeId).toBe(viewed.id)
+  })
+
+  it('stays on the empty screen, as on main, when the shells were stopped but git kept the worktree', async () => {
+    const store = seed()
+    mockApi.worktrees.remove.mockImplementationOnce(async () => {
+      // Stopping the workspace's shells closed its last tab before git failed.
+      store.setState({ activeWorktreeId: null })
+      throw new Error('fatal: cannot remove a locked working tree')
+    })
+    mockApi.worktrees.list.mockResolvedValue([main, older, recent, viewed])
+
+    await runWorktreeDeleteWithToast({ id: viewed.id, executionHostId: null }, 'viewed')
+    await settle()
+
+    expect(activateAndRevealWorktree).not.toHaveBeenCalled()
+    expect(store.getState().activeWorktreeId).toBeNull()
+  })
+
+  it('a Force Delete retry from the failure toast lands on the sibling once the worktree is gone', async () => {
+    const store = seed()
+    mockApi.worktrees.remove
+      .mockRejectedValueOnce(new Error('workspace has uncommitted changes'))
+      .mockImplementationOnce(async () => {
+        store.setState({ activeWorktreeId: null })
+        throw PARTIAL_FAILURE
+      })
+    mockApi.worktrees.list
+      .mockResolvedValueOnce([main, older, recent, viewed])
+      .mockResolvedValue([main, older, recent])
+
+    await runWorktreeDeleteWithToast({ id: viewed.id, executionHostId: null }, 'viewed')
+    await settle()
+    expect(store.getState().activeWorktreeId).toBe(viewed.id)
+
+    vi.mocked(showDeleteWorktreeFailureToast).mock.calls[0][0].onForceDelete?.()
+    await settle()
+    await settle()
+
+    expect(activateAndRevealWorktree).toHaveBeenCalledWith(recent.id, { revealInSidebar: false })
+    expect(store.getState().activeWorktreeId).toBe(recent.id)
   })
 
   it('leaves the user in place when the follow-up refresh itself fails', async () => {
