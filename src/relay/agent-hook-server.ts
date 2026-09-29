@@ -46,7 +46,7 @@ import { MAX_CACHED_PANES, selectReplayableCachedPanes } from './agent-hook-cach
 
 /** A spool record is durable re-delivery, never a live observation: ownership stays the client's,
  *  and no provider fold may read it as evidence that something is happening right now. */
-const SPOOL_REPLAY = { deferCompactOwnershipToClient: true, isReplay: true } as const
+const SPOOL_REPLAY = { deferCompactOwnershipToClient: true, replay: {} } as const
 
 export type RelayHookForward = (envelope: AgentHookRelayEnvelope) => void
 

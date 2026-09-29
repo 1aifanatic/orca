@@ -44,6 +44,30 @@ export function holdClaudeWait(
   })
 }
 
+/** Keep what a child's tool event changed on the lead record, since the child path returns before
+ *  the main one stores it: a prompt its completion settled, and the id its call announced — even
+ *  with nothing outstanding, so the prompt it raises next adopts that id as the main agent's does. */
+export function recordClaudeChildToolCall(
+  state: HookListenerState,
+  paneKey: string,
+  lead: ClaudeLeadTurnState,
+  approvals: readonly ClaudeApprovalRecord[],
+  announcedCalls: ClaudeAnnouncedCalls | undefined
+): void {
+  if (
+    approvals.length === (lead.approvals?.length ?? 0) &&
+    announcedCalls === lead.announcedCalls
+  ) {
+    return
+  }
+  const { approvals: _settled, ...record } = lead
+  setClaudeMainAgentTurnState(state, paneKey, {
+    ...record,
+    ...(approvals.length > 0 ? { approvals } : {}),
+    ...(announcedCalls ? { announcedCalls } : {})
+  })
+}
+
 /** Clear an AskUserQuestion wait after the answer is typed (answering emits no hook event; the caller infers it from the submit keystroke). Restores the stashed pre-wait lead state or 'working', drops the cached card, and returns the pane state to emit (gated up to 'working' while children run). With another prompt still outstanding, releases only the question and returns that prompt's card. */
 export function clearClaudeAnsweredQuestionWait(
   state: HookListenerState,

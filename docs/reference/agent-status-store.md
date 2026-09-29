@@ -213,8 +213,8 @@ persisted `claudeLeadBoundaryChildOnly` flag) now reads `mainAgent` instead of a
 stored copy. A Claude row whose `mainAgent` is `done` while a child agent still
 works (including a child's permission wait) refuses OSC, which carries no child
 identity; the children's own lifecycle hooks settle it. A hook-raised Claude permission
-wait also refuses an OSC `working`, which names no tool call; the prompt's own
-completion hook settles it. `outcome` is the recorded verdict on
+wait also refuses a Claude (or untyped) OSC `working`, which names no tool call; the
+prompt's own completion hook settles it. `outcome` is the recorded verdict on
 the main agent's most recent finished turn, present only while `mainAgent.state` is
 `done`. It is reported by the provider, or is a `cancellation` Orca inferred
 from the user's own interrupt keystroke (the journal's turn outcome, by

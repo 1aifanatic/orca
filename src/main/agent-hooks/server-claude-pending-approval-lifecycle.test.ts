@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { AgentHookServer, _internals } from './server'
 import { buildBody, PANE, postHookEvent } from './server.test-fixtures'
 import type { SpoolRecord } from '../../shared/agent-hook-spool'
@@ -305,6 +308,122 @@ describe('Claude pending-approval lifecycle', () => {
     } finally {
       server.stop()
     }
+  })
+
+  describe('a prompt spooled while Orca was down', () => {
+    const ALPHA_CALL = { tool_name: 'Bash', tool_input: { command: 'chmod 644 alpha.txt' } }
+    const PERMISSION = { hook_event_name: 'PermissionRequest', ...ALPHA_CALL }
+    let userDataPath: string
+    let live: AgentHookServer
+    let restarted: AgentHookServer | undefined
+
+    beforeEach(async () => {
+      userDataPath = mkdtempSync(join(tmpdir(), 'orca-claude-spooled-prompt-'))
+      live = new AgentHookServer()
+      await live.start({ env: 'production', userDataPath })
+      await postClaudeHook(live, { hook_event_name: 'UserPromptSubmit', prompt: 'set perms' })
+      await postClaudeHook(live, {
+        hook_event_name: 'PreToolUse',
+        ...ALPHA_CALL,
+        tool_use_id: 'toolu-alpha'
+      })
+    })
+
+    afterEach(() => {
+      live.stop()
+      restarted?.stop()
+      restarted = undefined
+    })
+
+    /** Quit a minute before relaunch, spool what the hooks could not POST meanwhile (whole seconds,
+     *  as the shell writes it), relaunch. */
+    async function relaunchWithSpooled(
+      records: { payload: Record<string, unknown>; secondsAfterLastLive: number }[]
+    ): Promise<AgentHookServer> {
+      live.flushStatusPersistSync()
+      const statusPath = live.lastStatusPath!
+      live.stop()
+      const persisted = JSON.parse(readFileSync(statusPath, 'utf8'))
+      const row = persisted.entries[PANE]
+      row.receivedAt -= 60_000
+      row.stateStartedAt = Math.min(row.stateStartedAt, row.receivedAt)
+      writeFileSync(statusPath, JSON.stringify(persisted))
+      const lastLiveSecond = Math.floor(row.receivedAt / 1000) * 1000
+      const spoolDir = join(userDataPath, 'agent-hooks', 'spool')
+      mkdirSync(spoolDir, { recursive: true })
+      const lines = records.map(({ payload, secondsAfterLastLive }) =>
+        JSON.stringify({
+          paneKey: PANE,
+          tabId: 'tab-1',
+          worktreeId: 'wt-1',
+          env: 'production',
+          source: 'claude',
+          receivedAt: lastLiveSecond + secondsAfterLastLive * 1000,
+          payload
+        } satisfies SpoolRecord)
+      )
+      writeFileSync(join(spoolDir, 'pane-tab-1.jsonl'), `\n${lines.join('\n')}\n`)
+      restarted = new AgentHookServer()
+      await restarted.start({ env: 'production', userDataPath })
+      return restarted
+    }
+
+    // No dialog can be answered while Orca's UI is down, so a prompt raised in that window is still
+    // on screen at relaunch and must show its card; the answer can only arrive live, which settles it.
+    it('shows the prompt after relaunch and releases it with the live completion', async () => {
+      const server = await relaunchWithSpooled([{ payload: PERMISSION, secondsAfterLastLive: 2 }])
+      expect(server.getStatusSnapshot()[0]).toMatchObject({
+        state: 'waiting',
+        toolInput: 'chmod 644 alpha.txt'
+      })
+
+      await postClaudeHook(server, {
+        hook_event_name: 'PostToolUse',
+        ...ALPHA_CALL,
+        tool_use_id: 'toolu-alpha'
+      })
+
+      expect(server.getStatusSnapshot()[0]?.state).toBe('working')
+    })
+
+    // Replaying the first prompt restamps the row; the second must still be judged by the last
+    // live observation, not by that restamp.
+    it('raises every prompt spooled while Orca was down', async () => {
+      const server = await relaunchWithSpooled([
+        { payload: PERMISSION, secondsAfterLastLive: 2 },
+        {
+          payload: { ...PERMISSION, tool_input: { command: 'chmod 644 beta.txt' } },
+          secondsAfterLastLive: 3
+        }
+      ])
+
+      expect(server.getStatusSnapshot()[0]).toMatchObject({
+        state: 'waiting',
+        toolInput: 'chmod 644 beta.txt'
+      })
+    })
+
+    // A prompt whose POST timed out while Orca was up is older than the pane's later live evidence;
+    // its call was answered live and its completion is never spooled, so it must not raise.
+    it('does not raise a spooled prompt older than the pane last live observation', async () => {
+      await postClaudeHook(live, {
+        hook_event_name: 'PostToolUse',
+        ...ALPHA_CALL,
+        tool_use_id: 'toolu-alpha'
+      })
+      const server = await relaunchWithSpooled([{ payload: PERMISSION, secondsAfterLastLive: -5 }])
+
+      expect(server.getStatusSnapshot()[0]?.state).not.toBe('waiting')
+    })
+
+    it('releases a raised spooled prompt at a later spooled Stop', async () => {
+      const server = await relaunchWithSpooled([
+        { payload: PERMISSION, secondsAfterLastLive: 2 },
+        { payload: { hook_event_name: 'Stop' }, secondsAfterLastLive: 3 }
+      ])
+
+      expect(server.getStatusSnapshot()[0]?.state).toBe('done')
+    })
   })
 
   // STA-3049 — every turn-ending path funnels through one sweep. A path that kept its own copy of

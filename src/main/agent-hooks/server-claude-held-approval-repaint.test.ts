@@ -42,11 +42,11 @@ describe('a held Claude approval under repaint and re-statement', () => {
   const post = (payload: Record<string, unknown>): Promise<Response> =>
     postHookEvent(server, buildBody(payload))
 
-  function osc(state: 'working' | 'done'): void {
+  function osc(state: 'working' | 'done', agentType: 'claude' | 'freebuff' = 'claude'): void {
     server.ingestTerminalStatus({
       paneKey: PANE,
       connectionId: null,
-      payload: { state, prompt: '', agentType: 'claude' }
+      payload: { state, prompt: '', agentType }
     })
   }
 
@@ -79,6 +79,16 @@ describe('a held Claude approval under repaint and re-statement', () => {
     expect(row()?.state).toBe('working')
   })
 
+  // Deny emits no hook, so a denied prompt's record outlives its Claude; the next agent the user
+  // runs in that pane must still be able to report itself.
+  it('lets another agent working on the pane replace a lingering Claude prompt', async () => {
+    await raiseAlphaBesideBeta()
+    osc('working', 'freebuff')
+
+    // The row keeps its fresh `claude` identity (resolveAgentStatusIdentity); only the wait ends.
+    expect(row()?.state).toBe('working')
+  })
+
   it('still lets OSC working clear an answered question, which emits no hook of its own', async () => {
     await post({ hook_event_name: 'UserPromptSubmit', prompt: 'ask me' })
     await post({
@@ -108,6 +118,28 @@ describe('a held Claude approval under repaint and re-statement', () => {
     await post({ hook_event_name: 'PostToolUse', ...BETA, tool_use_id: 'toolu-beta' })
 
     expect(row()).toMatchObject({ state: 'waiting', toolInput: 'chmod 644 alpha.txt' })
+  })
+
+  // PermissionRequest carries no id, so a child's prompt must adopt the one its call announced, as
+  // the main agent's does: an input-less completion of another call names only the tool.
+  it('matches a child prompt by the id its call announced', async () => {
+    const child = { agent_id: 'agent-child-a' }
+    await post({ hook_event_name: 'UserPromptSubmit', prompt: 'delegate' })
+    await post({ hook_event_name: 'SubagentStart', ...child, agent_type: 'general-purpose' })
+    await post({ hook_event_name: 'PreToolUse', ...child, ...ALPHA, tool_use_id: 'toolu-child' })
+    await post({ hook_event_name: 'PermissionRequest', ...child, ...ALPHA })
+    expect(row()?.state).toBe('waiting')
+
+    await post({
+      hook_event_name: 'PostToolUse',
+      ...child,
+      tool_name: 'Bash',
+      tool_use_id: 'toolu-other'
+    })
+    expect(row()?.state).toBe('waiting')
+
+    await post({ hook_event_name: 'PostToolUseFailure', ...child, tool_use_id: 'toolu-child' })
+    expect(row()?.state).toBe('working')
   })
 
   it('releases a re-delivered prompt with the one completion of its call', async () => {

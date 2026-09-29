@@ -5,6 +5,7 @@ import type { AgentHookSource } from '../agent-hook-relay'
 import { readLastCommandCodeUserPromptEntryFromTranscript } from './command-code-transcript'
 import { readGrokHomeEnvelope } from './grok-result-discovery'
 import { readFirstString } from './interactive-tool'
+import type { HookReplayEvidence } from './listener-event'
 import type { HookListenerState } from './listener-state'
 import type { ExtractedPromptText } from './prompt-fields'
 import { isNewTurnEvent } from './provider-event-routing'
@@ -45,8 +46,8 @@ export function normalizeProviderEvent(input: {
   hookPayload: Record<string, unknown>
   envelope: Record<string, unknown>
   extractedPrompt: ExtractedPromptText
-  /** Durable re-delivery from the spool, not a live observation. */
-  isReplay?: boolean
+  /** Present for a durable re-delivery from the spool, not a live observation. */
+  replay?: HookReplayEvidence
 }): ProviderDispatchResult {
   const { state, source, eventName, promptText, paneKey, hookPayload, envelope, extractedPrompt } =
     input
@@ -73,7 +74,7 @@ export function normalizeProviderEvent(input: {
         promptText,
         paneKey,
         hookPayload,
-        input.isReplay === true
+        input.replay
       )
       break
     case 'codex':

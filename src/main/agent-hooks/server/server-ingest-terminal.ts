@@ -107,13 +107,22 @@ export abstract class AgentHookServerIngestTerminal extends AgentHookServerInges
       }
       return
     }
+    // Why: mirror resolveAgentStatusIdentity, which treats a literal 'unknown' exactly like an
+    // omitted type — an OSC ping that names no agent makes no claim about the pane's identity, so
+    // it must not be read as a mismatch and strip the session the renderer would have kept.
+    const claimedAgentType =
+      event.payload.agentType && event.payload.agentType !== 'unknown'
+        ? event.payload.agentType
+        : undefined
     if (
       previous !== undefined &&
       isClaudeHookApprovalWait(previous) &&
       event.payload.state === 'working' &&
+      (claimedAgentType === undefined || claimedAgentType === 'claude') &&
       !previous.restoredUnconfirmed
     ) {
       // Why: OSC names no tool call, so it cannot answer a live prompt; the call's completion hook will.
+      // Another agent naming itself passes: the pane has moved on from that prompt's Claude.
       if (mutationBefore !== undefined) {
         this.commitStatusRowMutation(mutationBefore, previous)
         this.emitEnrichedStatus(previous)
@@ -144,13 +153,6 @@ export abstract class AgentHookServerIngestTerminal extends AgentHookServerInges
     // That erased it from persisted rows (lost across restart) and from headless `orca serve`, which
     // serves these rows to mobile directly instead of the renderer store, blanking Chat UI (#10630).
     // A new turn after `done` still starts clean so a reused pane cannot inherit a finished session.
-    // Why: mirror resolveAgentStatusIdentity, which treats a literal 'unknown' exactly like an
-    // omitted type — an OSC ping that names no agent makes no claim about the pane's identity, so
-    // it must not be read as a mismatch and strip the session the renderer would have kept.
-    const claimedAgentType =
-      event.payload.agentType && event.payload.agentType !== 'unknown'
-        ? event.payload.agentType
-        : undefined
     const preservedProviderSession =
       previous?.providerSession &&
       (claimedAgentType === undefined || claimedAgentType === previous.payload.agentType) &&

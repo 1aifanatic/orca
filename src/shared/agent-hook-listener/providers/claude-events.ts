@@ -10,6 +10,7 @@ import {
   reapUnconfirmedRestoredClaudeSubagents,
   upsertWorkingClaudeSubagent
 } from '../../claude-subagent-roster'
+import type { HookReplayEvidence } from '../listener-event'
 import type { HookListenerState } from '../listener-state'
 import { readFirstString } from '../interactive-tool'
 import { shouldIgnoreCompactContinuationUserPromptSubmit } from '../prompt-fields'
@@ -21,6 +22,7 @@ import {
 import {
   claudeApprovalOwnedBy,
   claudeHasOutstandingApproval,
+  claudeReplayMayRaiseWait,
   foldClaudeApprovalEvent
 } from './claude-approval-ledger'
 import {
@@ -32,7 +34,7 @@ import {
 } from './claude-roster-state'
 import { buildClaudeStatusPayload } from './claude-status-build'
 import { extractClaudeToolFields } from './claude-tool-fields'
-import { holdClaudeWait } from './claude-wait-lifecycle'
+import { holdClaudeWait, recordClaudeChildToolCall } from './claude-wait-lifecycle'
 
 export function normalizeClaudeEvent(
   state: HookListenerState,
@@ -40,8 +42,8 @@ export function normalizeClaudeEvent(
   promptText: string,
   paneKey: string,
   hookPayload: Record<string, unknown>,
-  /** Durable re-delivery from the spool, not a live observation. */
-  isReplay = false
+  /** Present for a durable re-delivery from the spool, not a live observation. */
+  replay?: HookReplayEvidence
 ): ParsedAgentStatusPayload | null {
   const eventAgentId = readString(hookPayload, 'agent_id')
   if (
@@ -173,35 +175,24 @@ export function normalizeClaudeEvent(
       : {}),
     raisesQuestionWait: isAskUserQuestionWait,
     endsTurn: isManualCompactCompletion,
-    isReplay
+    replay
   })
-  // Why: a replayed prompt is durable evidence one was once raised, never that one is outstanding
-  // now — and the spool that re-delivers it structurally never carries the completion that would
-  // settle it, so honouring it would pin an amber row nothing could ever release. Re-state the
-  // pane's last live status instead of fabricating a wait from a prior runtime.
-  if (isReplay && reportedStateName === 'waiting') {
+  // Why: a replayed prompt the ledger refused (see claudeReplayMayRaiseWait) re-states the pane's
+  // last status instead of fabricating a wait nothing could ever release.
+  if (reportedStateName === 'waiting' && !claudeReplayMayRaiseWait(replay)) {
     return buildClaudeCachedLeadStatusPayload(state, eventName, paneKey, hookPayload)
   }
   // A tool event that is not itself a prompt, arriving while one is outstanding, is work — never
   // an answer. Re-state the card rather than letting the activity overwrite it.
-  if (
-    previousLead &&
-    toolCall &&
-    reportedStateName !== 'waiting' &&
-    claudeHasOutstandingApproval(approvals)
-  ) {
-    if (eventAgentId === undefined) {
+  if (previousLead && toolCall && reportedStateName !== 'waiting') {
+    if (eventAgentId === undefined && claudeHasOutstandingApproval(approvals)) {
       holdClaudeWait(state, paneKey, previousLead, approvals, announcedCalls, {
         state: 'working'
       })
       return buildClaudeCachedLeadStatusPayload(state, eventName, paneKey, hookPayload)
     }
-    if (approvals !== previousLead.approvals || announcedCalls !== previousLead.announcedCalls) {
-      setClaudeMainAgentTurnState(state, paneKey, {
-        ...previousLead,
-        approvals,
-        ...(announcedCalls ? { announcedCalls } : {})
-      })
+    if (eventAgentId !== undefined) {
+      recordClaudeChildToolCall(state, paneKey, previousLead, approvals, announcedCalls)
     }
   }
 

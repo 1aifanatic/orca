@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import type { ToolSnapshot } from '../listener-event'
+import type { HookReplayEvidence, ToolSnapshot } from '../listener-event'
 
 /** What kind of evidence settles a prompt.
  *
@@ -241,6 +241,22 @@ export type ClaudeApprovalFold = {
   readonly approvals: readonly ClaudeApprovalRecord[]
 }
 
+/** Whether an event may raise a wait. A replay normally may not: Orca's hook transport is
+ *  at-least-once, and the shell spool skips PreToolUse/PostToolUse, so it can re-deliver a prompt
+ *  whose POST timed out while never re-delivering the completion that settled it — a wait nothing
+ *  could discharge. The exception is a prompt spooled after the pane's last observation, i.e. while
+ *  no listener was up: its dialog is almost certainly still on screen, and the answer can only come
+ *  once this runtime is live, so its completion arrives live. The spool's whole-second clock fails
+ *  toward not raising; a relay supplies no times, so its replays never raise. */
+export function claudeReplayMayRaiseWait(replay: HookReplayEvidence | undefined): boolean {
+  return (
+    replay === undefined ||
+    (replay.observedAt !== undefined &&
+      replay.lastLiveAt !== undefined &&
+      replay.observedAt > replay.lastLiveAt)
+  )
+}
+
 /** Derive the pane's outstanding prompts from one hook event, with no latch behind them: a prompt
  *  exists because it was raised and has not been answered for, and nothing else. */
 export function foldClaudeApprovalEvent(input: {
@@ -258,8 +274,8 @@ export function foldClaudeApprovalEvent(input: {
   raisesQuestionWait: boolean
   /** This event closes the turn, so the ledger is swept whatever state it is in. */
   endsTurn: boolean
-  /** Durable re-delivery of an event from a prior runtime, not a live observation. */
-  isReplay: boolean
+  /** Present for a durable re-delivery of an event from a prior runtime. */
+  replay?: HookReplayEvidence
 }): ClaudeApprovalFold {
   const { carriedOver, eventName, agentId, toolUseId } = input
   const call = claudeToolCallIdentity(input.toolName, input.toolInput)
@@ -295,13 +311,7 @@ export function foldClaudeApprovalEvent(input: {
     ...(announcedCalls ? { announcedCalls } : {})
   }
   const settled = settleObservedCall(carriedOver?.approvals ?? [], toolCall)
-  // Why a replay may not raise: Orca's hook transport is at-least-once, but the shell spool
-  // deliberately skips PreToolUse/PostToolUse, so it can re-deliver a prompt while structurally
-  // never re-delivering the completion that settles it. A wait raised from replay is therefore an
-  // obligation nothing can discharge — the exact stranding this ledger exists to remove. A replay
-  // is evidence a prompt was once raised, never that one is outstanding now; only a live hook can
-  // say that. The cost: a prompt raised while no listener was up shows no card.
-  if (!input.raisesWait || input.isReplay) {
+  if (!input.raisesWait || !claudeReplayMayRaiseWait(input.replay)) {
     return { ...carried, approvals: settled }
   }
   const announcedOwner = announcedCalls?.[key]

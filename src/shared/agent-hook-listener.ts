@@ -8,7 +8,10 @@ import {
 } from './claude-compact-completion'
 import { parseHookEnvelope } from './agent-hook-listener/hook-envelope'
 import { readFirstString } from './agent-hook-listener/interactive-tool'
-import type { AgentHookEventPayload } from './agent-hook-listener/listener-event'
+import type {
+  AgentHookEventPayload,
+  HookReplayEvidence
+} from './agent-hook-listener/listener-event'
 import {
   normalizeClaudePromptId,
   normalizeGrokPromptId
@@ -29,7 +32,7 @@ export function normalizeHookPayload(
   source: AgentHookSource,
   body: unknown,
   expectedEnv: string,
-  options: { deferCompactOwnershipToClient?: boolean; isReplay?: boolean } = {}
+  options: { deferCompactOwnershipToClient?: boolean; replay?: HookReplayEvidence } = {}
 ): AgentHookEventPayload | null {
   const envelope = parseHookEnvelope(state, source, body, expectedEnv)
   if (!envelope) {
@@ -147,7 +150,7 @@ export function normalizeHookPayload(
     hookPayload: hookPayloadRecord,
     envelope: record,
     extractedPrompt,
-    isReplay: options.isReplay === true
+    replay: options.replay
   })
   const providerSessionOnly =
     (source === 'pi' || source === 'prime-agent') &&
