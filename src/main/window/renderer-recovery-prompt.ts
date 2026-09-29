@@ -25,7 +25,8 @@ export async function presentRendererRecoveryPrompt(
   const lowCommit = deps.failure === 'low-commit'
   // Copying must preserve the only available recovery surface.
   while (!deps.isQuitting()) {
-    const diagnosis = deps.diagnose()
+    // Why skip: the low-commit text replaces diagnosis.detail, which would leave Copy Commands unexplained.
+    const diagnosis = lowCommit ? null : deps.diagnose()
     const buttons = [translateMain('rendererRecovery.reload', 'Reload')]
     if (diagnosis) {
       buttons.push(translateMain('rendererRecovery.copyCommands', 'Copy Commands'))

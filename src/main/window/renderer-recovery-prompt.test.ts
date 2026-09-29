@@ -115,6 +115,19 @@ describe('presentRendererRecoveryPrompt', () => {
     expect(reload).toHaveBeenCalledOnce()
   })
 
+  it('omits Copy Commands on low commit, since its detail would not be shown', async () => {
+    const { run, shown, quit, copied } = harness({
+      failure: 'low-commit',
+      availableCommitMB: 60,
+      diagnose: () => POISON,
+      responses: [1]
+    })
+    await run()
+    expect(shown[0].buttons).toEqual(['Reload', 'Quit'])
+    expect(copied).toEqual([])
+    expect(quit).toHaveBeenCalledOnce()
+  })
+
   it('quits on the last button', async () => {
     const { run, reload, quit } = harness({ responses: [1] })
     await run()

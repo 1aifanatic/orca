@@ -61,14 +61,18 @@ function hostWithAvailableCommit(swapFreeMB: number): void {
 
 async function runOomSequence(
   platform: NodeJS.Platform,
-  commitAtEachOomMB: readonly number[]
+  commitAtEachOomMB: readonly (number | null)[]
 ): Promise<{ reloads: number; onRendererRecoveryExhausted: ReturnType<typeof vi.fn> }> {
   const onRendererRecoveryExhausted = vi.fn()
   const { browserWindowInstance, windowHandlers } = createRendererRecoveryWindowHarness()
   createMainWindow(null, { onRendererRecoveryExhausted })
   for (const [index, goneAt] of OOM_AT.entries()) {
-    vi.setSystemTime(goneAt - 2_000)
-    withPlatform(platform, () => hostWithAvailableCommit(commitAtEachOomMB[index]))
+    const commitMB = commitAtEachOomMB[index]
+    // null: no sampler tick since the previous OOM.
+    if (commitMB !== null) {
+      vi.setSystemTime(goneAt - 2_000)
+      withPlatform(platform, () => hostWithAvailableCommit(commitMB))
+    }
     vi.setSystemTime(goneAt)
     withPlatform(platform, () => windowHandlers['render-process-gone']?.({}, OOM))
     await vi.advanceTimersByTimeAsync(250)
@@ -113,6 +117,23 @@ describe('Windows renderer OOM recovery under exhausted commit', () => {
         details: OOM,
         cause: 'low-commit',
         lowCommit: { availableCommitMB: EXHAUSTED_COMMIT_MB, sincePreviousOomMs: 3_458 }
+      })
+    )
+  })
+
+  it('does not trust a reading taken before the previous OOM released its commit', async () => {
+    const { reloads, onRendererRecoveryExhausted } = await runOomSequence('win32', [
+      HEALTHY_FIRST_OOM_COMMIT_MB,
+      EXHAUSTED_COMMIT_MB,
+      null,
+      EXHAUSTED_COMMIT_MB
+    ])
+    expect(reloads).toBe(3)
+    expect(onRendererRecoveryExhausted).toHaveBeenCalledOnce()
+    expect(onRendererRecoveryExhausted).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cause: 'low-commit',
+        lowCommit: { availableCommitMB: EXHAUSTED_COMMIT_MB, sincePreviousOomMs: 139_310 }
       })
     )
   })

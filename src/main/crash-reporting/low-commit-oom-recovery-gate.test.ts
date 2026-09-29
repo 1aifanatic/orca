@@ -26,7 +26,9 @@ function observeTwice(
 ) {
   return withPlatform(platform, () => {
     const gate = createLowCommitOomRecoveryGate(read)
-    return [gate.observe(OOM, FIRST_OOM), gate.observe(second, FIRST_OOM + gapMs)]
+    const first = gate.assess(OOM, FIRST_OOM)
+    gate.recordRecoveredDeath(OOM, FIRST_OOM)
+    return [first, gate.assess(second, FIRST_OOM + gapMs)]
   })
 }
 
@@ -63,14 +65,38 @@ describe('createLowCommitOomRecoveryGate', () => {
   // Launch 13084 (Scan-31): 12:20:37.207 then 12:22:59.975; each OOM restarts the window.
   it('measures the window from the most recent OOM', () => {
     const verdicts = withPlatform('win32', () => {
-      const gate = createLowCommitOomRecoveryGate(sample(60))
+      const gate = createLowCommitOomRecoveryGate(sample(60, 2_000))
       return [
         '2026-09-29T12:06:19.869Z',
         '2026-09-29T12:20:37.207Z',
         '2026-09-29T12:20:40.665Z',
         '2026-09-29T12:22:59.975Z'
-      ].map((iso) => gate.observe(OOM, Date.parse(iso)))
+      ].map((iso) => {
+        const verdict = gate.assess(OOM, Date.parse(iso))
+        gate.recordRecoveredDeath(OOM, Date.parse(iso))
+        return verdict
+      })
     })
     expect(verdicts.map((v) => v?.sincePreviousOomMs ?? null)).toEqual([null, null, 3_458, 139_310])
+  })
+
+  // Launch 13084: the repeat OOM came 3.458 s after the previous one, inside one 10 s sampler tick.
+  it('ignores a reading taken before the previous OOM released its commit', () => {
+    const gapMs = 3_458
+    expect(observeTwice(sample(60, 5_000), OOM, gapMs)[1]).toBeNull()
+    expect(observeTwice(sample(60, gapMs), OOM, gapMs)[1]).toBeNull()
+    expect(observeTwice(sample(60, 1_000), OOM, gapMs)[1]).toEqual({
+      availableCommitMB: 60,
+      sincePreviousOomMs: gapMs
+    })
+  })
+
+  it('does not start the repeat window for an OOM that was never recovered', () => {
+    const verdict = withPlatform('win32', () => {
+      const gate = createLowCommitOomRecoveryGate(sample(60, 2_000))
+      gate.assess(OOM, FIRST_OOM)
+      return gate.assess(OOM, RELOAD_OOM)
+    })
+    expect(verdict).toBeNull()
   })
 })

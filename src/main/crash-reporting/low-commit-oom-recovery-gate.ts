@@ -16,8 +16,10 @@ export type LowCommitOomVerdict = {
 }
 
 export type LowCommitOomRecoveryGate = {
-  /** Call on every renderer death; returns a verdict only when auto-reload would run straight back into the OOM. */
-  observe: (details: Electron.RenderProcessGoneDetails, now: number) => LowCommitOomVerdict | null
+  /** Read at gone time; returns a verdict only when auto-reload would run straight back into the OOM. */
+  assess: (details: Electron.RenderProcessGoneDetails, now: number) => LowCommitOomVerdict | null
+  /** Call only once the death is actually recovered, so a skipped teardown OOM cannot start the repeat window. */
+  recordRecoveredDeath: (details: Electron.RenderProcessGoneDetails, goneAt: number) => void
 }
 
 export function createLowCommitOomRecoveryGate(
@@ -27,14 +29,15 @@ export function createLowCommitOomRecoveryGate(
 ): LowCommitOomRecoveryGate {
   let previousOomAt: number | null = null
   return {
-    observe: (details, now) => {
-      // Only win32 swapFree is available commit; elsewhere it is not a verdict.
-      if (process.platform !== 'win32' || details.reason !== 'oom') {
-        return null
-      }
+    assess: (details, now) => {
       const previous = previousOomAt
-      previousOomAt = now
-      if (previous === null || now - previous > LOW_COMMIT_REPEAT_OOM_WINDOW_MS) {
+      if (
+        // Only win32 swapFree is available commit; elsewhere it is not a verdict.
+        process.platform !== 'win32' ||
+        details.reason !== 'oom' ||
+        previous === null ||
+        now - previous > LOW_COMMIT_REPEAT_OOM_WINDOW_MS
+      ) {
         return null
       }
       const sample = readPreGoneDetails(now)
@@ -44,11 +47,18 @@ export function createLowCommitOomRecoveryGate(
         typeof availableCommitMB !== 'number' ||
         typeof sampleAgeMs !== 'number' ||
         sampleAgeMs > LOW_COMMIT_MAX_SAMPLE_AGE_MS ||
+        // Why: a reading from before the previous OOM misses the commit that corpse released.
+        sampleAgeMs >= now - previous ||
         availableCommitMB >= LOW_COMMIT_AVAILABLE_MB_THRESHOLD
       ) {
         return null
       }
       return { availableCommitMB, sincePreviousOomMs: now - previous }
+    },
+    recordRecoveredDeath: (details, goneAt) => {
+      if (details.reason === 'oom') {
+        previousOomAt = goneAt
+      }
     }
   }
 }
