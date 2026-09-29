@@ -29,8 +29,12 @@ const CMD_CODEX_LAUNCH_PREFLIGHT = `if defined ORCA_CODEX_LAUNCH_PREFLIGHT call 
 // `&&`) keeps startup working even if chcp.com is missing.
 const GIT_BASH_UTF8_LOGIN_COMMAND = 'chcp.com 65001 >/dev/null 2>&1; exec "$BASH" --login -i'
 
-// Why always the rcfile: it defines the codex wrapper every Git Bash pane needs.
-function getGitBashLaunchCommand(): string {
+// Why the rcfile for a startup command: it defines the codex wrapper Orca's launches need.
+function getGitBashLaunchCommand(useWrapper: boolean): string {
+  if (!useWrapper) {
+    return GIT_BASH_UTF8_LOGIN_COMMAND
+  }
+
   ensureShellReadyWrappersAt()
   const wrapperArgs = getBashWrapperLaunchArgs()
   if (!wrapperArgs) {
@@ -213,7 +217,10 @@ export function resolveWindowsShellLaunchArgs(
 
   if (isWindowsGitBashShellPath(shellPath)) {
     return {
-      shellArgs: ['-c', getGitBashLaunchCommand()],
+      shellArgs: [
+        '-c',
+        getGitBashLaunchCommand(Boolean(codexLaunchPreflightCommand) || Boolean(startupCommand))
+      ],
       effectiveCwd: nativeCwd,
       validationCwd: nativeCwd
     }

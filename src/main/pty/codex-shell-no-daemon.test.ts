@@ -1,4 +1,12 @@
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -10,9 +18,11 @@ import {
 } from './codex-shell-launch-preflight'
 import { resolveFishBinary } from '../../shared/fish-binary-requirement'
 
+const isWindows = process.platform === 'win32'
 const fishLookup = resolveFishBinary()
-const pwshAvailable =
-  spawnSync('pwsh', ['-NoLogo', '-NoProfile', '-Command', 'exit 0']).status === 0
+const canRun = (command: string): boolean =>
+  spawnSync(command, ['-NoLogo', '-NoProfile', '-Command', 'exit 0']).status === 0
+const pwshAvailable = canRun('pwsh')
 
 const HELP_WITH_FLAG = 'Usage: codex [OPTIONS] [PROMPT]\n      --no-daemon  Run in-process\n'
 const HELP_WITHOUT_FLAG = 'Usage: codex [OPTIONS] [PROMPT]\n      --no-alt-screen\n'
@@ -58,7 +68,8 @@ const UNCHANGED: string[][] = [
 ]
 const ALL = [...ADDED, ...UNCHANGED]
 
-type Shell = 'bash' | 'zsh' | 'fish' | 'pwsh'
+type Shell = 'bash' | 'zsh' | 'fish' | 'pwsh' | 'powershell'
+const isPowerShell = (shell: Shell): boolean => shell === 'pwsh' || shell === 'powershell'
 const roots: string[] = []
 
 afterEach(() => {
@@ -72,18 +83,44 @@ function writeExecutable(path: string, content: string): void {
   chmodSync(path, 0o755)
 }
 
-/** Fake codex: `--help` prints the help file; any other call prints its argv. */
-function makeSandbox(help: string): { bin: string; helpFile: string } {
+type Sandbox = { bin: string; codex: string; helpFile: string; helpLog: string }
+
+/** Fake codex: `--help` prints the help file and logs the probe; any other call prints its argv. */
+function makeSandbox(help: string): Sandbox {
   const root = mkdtempSync(join(tmpdir(), 'orca-codex-no-daemon-'))
   roots.push(root)
   const bin = join(root, 'bin')
   mkdirSync(bin)
   const helpFile = join(root, 'help.txt')
+  const helpLog = join(root, 'help.log')
   writeFileSync(helpFile, help)
+  writeFileSync(helpLog, '')
+  if (isWindows) {
+    // Why a .cmd shim over node: the shape npm installs, and what Get-Command resolves.
+    writeFileSync(
+      join(bin, 'fake.js'),
+      `const fs = require('fs')
+const a = process.argv.slice(2)
+if (a.length === 1 && a[0] === '--help') {
+  fs.appendFileSync(${JSON.stringify(helpLog)}, 'help\\n')
+  process.stdout.write(fs.readFileSync(${JSON.stringify(helpFile)}, 'utf8'))
+  process.exit(0)
+}
+let out = ['ARGV', ...a].join('|')
+if (process.env.FAKE_CODEX_READ_STDIN === '1') out += '|stdin=' + fs.readFileSync(0, 'utf8').trim()
+console.log(out)
+process.exit(Number(process.env.FAKE_CODEX_EXIT || 0))
+`
+    )
+    const codex = join(bin, 'codex.cmd')
+    writeFileSync(codex, '@node "%~dp0fake.js" %*\r\n')
+    return { bin, codex, helpFile, helpLog }
+  }
+  const codex = join(bin, 'codex')
   writeExecutable(
-    join(bin, 'codex'),
+    codex,
     `#!/bin/sh
-if [ "$#" -eq 1 ] && [ "$1" = --help ]; then cat ${JSON.stringify(helpFile)}; exit 0; fi
+if [ "$#" -eq 1 ] && [ "$1" = --help ]; then echo help >> ${JSON.stringify(helpLog)}; cat ${JSON.stringify(helpFile)}; exit 0; fi
 out=ARGV
 for a in "$@"; do out="$out|$a"; done
 [ "\${FAKE_CODEX_READ_STDIN:-}" = 1 ] && out="$out|stdin=$(cat)"
@@ -91,11 +128,15 @@ printf '%s\\n' "$out"
 exit "\${FAKE_CODEX_EXIT:-0}"
 `
   )
-  return { bin, helpFile }
+  return { bin, codex, helpFile, helpLog }
+}
+
+function helpProbes(sandbox: Sandbox): number {
+  return readFileSync(sandbox.helpLog, 'utf8').split('\n').filter(Boolean).length
 }
 
 function quote(shell: Shell, word: string): string {
-  if (shell === 'pwsh') {
+  if (isPowerShell(shell)) {
     return `'${word.replace(/'/g, "''")}'`
   }
   if (shell === 'fish') {
@@ -111,26 +152,25 @@ function codexCall(shell: Shell, argv: string[]): string {
 function run(
   shell: Shell,
   script: string,
-  bin: string,
+  sandbox: Sandbox,
   env: Record<string, string> = {},
   preamble = ''
 ): { status: number | null; stdout: string; stderr: string } {
   const template =
     shell === 'fish'
       ? getFishCodexShellLaunchPreflight()
-      : shell === 'pwsh'
+      : isPowerShell(shell)
         ? getPowerShellCodexShellLaunchPreflight()
         : getPosixCodexShellLaunchPreflight()
   // Why the guard: rows include `login`, which a real codex would run against the host's account.
-  const guard =
-    shell === 'pwsh'
-      ? `if ((Get-Command codex -CommandType Application | Select-Object -First 1).Source -ne ${quote(shell, join(bin, 'codex'))}) { exit 97 }`
-      : shell === 'fish'
-        ? `test (command -s codex) = ${quote(shell, join(bin, 'codex'))}; or exit 97`
-        : `[ "$(command -v codex)" = ${quote(shell, join(bin, 'codex'))} ] || exit 97`
+  const guard = isPowerShell(shell)
+    ? `if ((Get-Command codex -CommandType Application | Select-Object -First 1).Source -ne ${quote(shell, sandbox.codex)}) { exit 97 }`
+    : shell === 'fish'
+      ? `test (command -s codex) = ${quote(shell, sandbox.codex)}; or exit 97`
+      : `[ "$(command -v codex)" = ${quote(shell, sandbox.codex)} ] || exit 97`
   const body = `${guard}\n${preamble}\n${template}\n${script}`
   // Why a file for bash/zsh: it is read line by line like a startup file, so an alias it defines applies.
-  const scriptFile = join(bin, '..', 'script.sh')
+  const scriptFile = join(sandbox.bin, '..', 'script.sh')
   writeFileSync(scriptFile, body)
   const [command, args]: [string, string[]] =
     shell === 'bash'
@@ -138,18 +178,22 @@ function run(
       : shell === 'zsh'
         ? ['/bin/zsh', ['-f', scriptFile]]
         : shell === 'fish'
-          ? [fishLookup.path ?? 'fish', ['--no-config', '-c', body]]
-          : ['pwsh', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', body]]
+          ? [String(fishLookup.path), ['--no-config', '-c', body]]
+          : [shell, ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', body]]
   const result = spawnSync(command, args, {
     encoding: 'utf-8',
     env: {
       ...process.env,
-      PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`,
-      CODEX_HOME: join(bin, '..', 'codex-home'),
+      PATH: `${sandbox.bin}${delimiter}${process.env.PATH ?? ''}`,
+      CODEX_HOME: join(sandbox.bin, '..', 'codex-home'),
       ...env
     }
   })
   return { status: result.status, stdout: result.stdout, stderr: result.stderr }
+}
+
+function lines(output: string): string[] {
+  return output.trimEnd().split(/\r?\n/)
 }
 
 function expectedLine(argv: string[], added: boolean): string {
@@ -157,13 +201,15 @@ function expectedLine(argv: string[], added: boolean): string {
 }
 
 const shells: [Shell, boolean][] = [
-  ['bash', existsSync('/bin/bash')],
-  ['zsh', existsSync('/bin/zsh')],
+  ['bash', !isWindows && existsSync('/bin/bash')],
+  ['zsh', !isWindows && existsSync('/bin/zsh')],
   ['fish', fishLookup.available],
-  ['pwsh', pwshAvailable]
+  ['pwsh', pwshAvailable],
+  // Why: Windows PowerShell 5.1 turns redirected native stderr into errors, unlike pwsh.
+  ['powershell', isWindows && canRun('powershell')]
 ]
 
-describe.skipIf(process.platform === 'win32')('codex wrapper --no-daemon rule', () => {
+describe('codex wrapper --no-daemon rule', () => {
   it('has pwsh when CI demanded it', () => {
     expect(process.env.ORCA_REQUIRE_PWSH !== '1' || pwshAvailable).toBe(true)
   })
@@ -171,29 +217,29 @@ describe.skipIf(process.platform === 'win32')('codex wrapper --no-daemon rule', 
   for (const [shell, available] of shells) {
     describe.skipIf(!available)(shell, () => {
       it('adds --no-daemon first unless an argument is denylisted', () => {
-        const { bin } = makeSandbox(HELP_WITH_FLAG)
-        const result = run(shell, ALL.map((argv) => codexCall(shell, argv)).join('\n'), bin)
+        const sandbox = makeSandbox(HELP_WITH_FLAG)
+        const result = run(shell, ALL.map((argv) => codexCall(shell, argv)).join('\n'), sandbox)
 
         expect(result.stderr).toBe('')
-        expect(result.stdout.trimEnd().split('\n')).toEqual([
+        expect(lines(result.stdout)).toEqual([
           ...ADDED.map((argv) => expectedLine(argv, true)),
           ...UNCHANGED.map((argv) => expectedLine(argv, false))
         ])
+        // Why: a denylisted launch must not pay for, or depend on, the --help probe.
+        expect(helpProbes(sandbox)).toBe(ADDED.length)
       })
 
       it('adds nothing when --help does not list the flag (0.155 and older)', () => {
-        const { bin } = makeSandbox(HELP_WITHOUT_FLAG)
-        const result = run(shell, ALL.map((argv) => codexCall(shell, argv)).join('\n'), bin)
+        const sandbox = makeSandbox(HELP_WITHOUT_FLAG)
+        const result = run(shell, ALL.map((argv) => codexCall(shell, argv)).join('\n'), sandbox)
 
-        expect(result.stdout.trimEnd().split('\n')).toEqual(
-          ALL.map((argv) => expectedLine(argv, false))
-        )
+        expect(lines(result.stdout)).toEqual(ALL.map((argv) => expectedLine(argv, false)))
       })
 
       it('adds nothing with ORCA_CODEX_ISOLATE=0, read on every call', () => {
-        const { bin } = makeSandbox(HELP_WITH_FLAG)
+        const sandbox = makeSandbox(HELP_WITH_FLAG)
         const setIsolate = (value: string): string =>
-          shell === 'pwsh'
+          isPowerShell(shell)
             ? `$env:ORCA_CODEX_ISOLATE = '${value}'`
             : shell === 'fish'
               ? `set -gx ORCA_CODEX_ISOLATE ${value}`
@@ -201,52 +247,43 @@ describe.skipIf(process.platform === 'win32')('codex wrapper --no-daemon rule', 
         const result = run(
           shell,
           ['codex a', setIsolate('1'), 'codex b', setIsolate('0'), 'codex c'].join('\n'),
-          bin,
+          sandbox,
           { ORCA_CODEX_ISOLATE: '0' }
         )
 
-        expect(result.stdout.trimEnd().split('\n')).toEqual([
-          'ARGV|a',
-          'ARGV|--no-daemon|b',
-          'ARGV|c'
-        ])
+        expect(lines(result.stdout)).toEqual(['ARGV|a', 'ARGV|--no-daemon|b', 'ARGV|c'])
       })
 
       it('re-probes --help when Codex changes version mid-shell', () => {
-        const { bin, helpFile } = makeSandbox(HELP_WITH_FLAG)
+        const sandbox = makeSandbox(HELP_WITH_FLAG)
         const swap = (help: string): string =>
-          shell === 'pwsh'
-            ? `Set-Content -NoNewline -LiteralPath ${quote(shell, helpFile)} -Value ${quote(shell, help)}`
-            : `printf '%s' ${quote(shell, help)} > ${quote(shell, helpFile)}`
+          isPowerShell(shell)
+            ? `Set-Content -NoNewline -LiteralPath ${quote(shell, sandbox.helpFile)} -Value ${quote(shell, help)}`
+            : `printf '%s' ${quote(shell, help)} > ${quote(shell, sandbox.helpFile)}`
         const result = run(
           shell,
           ['codex a', swap(HELP_WITHOUT_FLAG), 'codex b', swap(HELP_WITH_FLAG), 'codex c'].join(
             '\n'
           ),
-          bin
+          sandbox
         )
 
-        expect(result.stdout.trimEnd().split('\n')).toEqual([
-          'ARGV|--no-daemon|a',
-          'ARGV|b',
-          'ARGV|--no-daemon|c'
-        ])
+        expect(lines(result.stdout)).toEqual(['ARGV|--no-daemon|a', 'ARGV|b', 'ARGV|--no-daemon|c'])
       })
 
       it("keeps piped stdin for Codex and returns Codex's exit status", () => {
-        const { bin } = makeSandbox(HELP_WITH_FLAG)
-        const script =
-          shell === 'pwsh'
-            ? `'piped' | codex exec -\n"status=$LASTEXITCODE"`
-            : shell === 'fish'
-              ? `printf piped | codex exec -\necho status=$status`
-              : `printf piped | codex exec -\necho status=$?`
-        const result = run(shell, script, bin, { FAKE_CODEX_READ_STDIN: '1', FAKE_CODEX_EXIT: '3' })
+        const sandbox = makeSandbox(HELP_WITH_FLAG)
+        const script = isPowerShell(shell)
+          ? `'piped' | codex exec -\n"status=$LASTEXITCODE"`
+          : shell === 'fish'
+            ? `printf piped | codex exec -\necho status=$status`
+            : `printf piped | codex exec -\necho status=$?`
+        const result = run(shell, script, sandbox, {
+          FAKE_CODEX_READ_STDIN: '1',
+          FAKE_CODEX_EXIT: '3'
+        })
 
-        expect(result.stdout.trimEnd().split('\n')).toEqual([
-          'ARGV|--no-daemon|exec|-|stdin=piped',
-          'status=3'
-        ])
+        expect(lines(result.stdout)).toEqual(['ARGV|--no-daemon|exec|-|stdin=piped', 'status=3'])
       })
     })
   }
@@ -255,17 +292,16 @@ describe.skipIf(process.platform === 'win32')('codex wrapper --no-daemon rule', 
     ['bash', 'shopt -s expand_aliases'],
     ['zsh', 'setopt aliases']
   ] as const) {
-    it.skipIf(!existsSync(`/bin/${shell}`))(
+    it.skipIf(isWindows || !existsSync(`/bin/${shell}`))(
       `applies a user alias named codex defined before the wrapper in ${shell}`,
       () => {
-        const { bin } = makeSandbox(HELP_WITH_FLAG)
-        // Why `if true`: the shell parses the whole compound first, so the alias is live while the wrapper parses.
+        const sandbox = makeSandbox(HELP_WITH_FLAG)
         const result = run(
           shell,
-          'fi\ncodex x',
-          bin,
+          'codex x',
+          sandbox,
           {},
-          `${enableAliases}\nalias codex='codex --alias-flag'\nif true; then`
+          `${enableAliases}\nalias codex='codex --alias-flag'`
         )
 
         expect(result.status, result.stderr).toBe(0)
@@ -274,33 +310,44 @@ describe.skipIf(process.platform === 'win32')('codex wrapper --no-daemon rule', 
     )
   }
 
-  it.skipIf(!existsSync('/bin/zsh'))('creates no globals under warn_create_global', () => {
-    const { bin } = makeSandbox(HELP_WITH_FLAG)
-    const result = run('zsh', 'setopt warn_create_global no_unset\ncodex x', bin)
-
-    expect(result.stderr).toBe('')
-    expect(result.stdout.trim()).toBe('ARGV|--no-daemon|x')
-  })
-
-  it.skipIf(!pwshAvailable)(
-    'runs under StrictMode and Stop with a failing, noisy hook prep that leaves $LASTEXITCODE alone',
+  it.skipIf(isWindows || !existsSync('/bin/zsh'))(
+    'creates no globals under warn_create_global',
     () => {
-      const { bin } = makeSandbox(HELP_WITH_FLAG)
-      writeExecutable(join(bin, 'orca-prep'), '#!/bin/sh\necho prep-noise >&2\nexit 7\n')
-      const result = run(
-        'pwsh',
-        'codex x\n"status=$LASTEXITCODE"',
-        bin,
-        { ORCA_CODEX_LAUNCH_PREFLIGHT: join(bin, 'orca-prep') },
-        [
-          'Set-StrictMode -Version Latest',
-          '$ErrorActionPreference = "Stop"',
-          '$PSNativeCommandUseErrorActionPreference = $true'
-        ].join('\n')
-      )
+      const sandbox = makeSandbox(HELP_WITH_FLAG)
+      const result = run('zsh', 'setopt warn_create_global no_unset\ncodex x', sandbox)
 
-      expect(result.status, result.stderr).toBe(0)
-      expect(result.stdout.trimEnd().split('\n')).toEqual(['ARGV|--no-daemon|x', 'status=0'])
+      expect(result.stderr).toBe('')
+      expect(result.stdout.trim()).toBe('ARGV|--no-daemon|x')
     }
   )
+
+  for (const [shell, available] of shells.filter(([name]) => isPowerShell(name))) {
+    it.skipIf(!available)(
+      `${shell} runs under StrictMode and Stop with a failing, noisy hook prep`,
+      () => {
+        const sandbox = makeSandbox(HELP_WITH_FLAG)
+        const prep = join(sandbox.bin, isWindows ? 'orca-prep.cmd' : 'orca-prep')
+        writeExecutable(
+          prep,
+          isWindows
+            ? '@echo prep-noise 1>&2\r\n@exit /b 7\r\n'
+            : '#!/bin/sh\necho prep-noise >&2\nexit 7\n'
+        )
+        const result = run(
+          shell,
+          'codex x\n"status=$LASTEXITCODE"',
+          sandbox,
+          { ORCA_CODEX_LAUNCH_PREFLIGHT: prep },
+          [
+            'Set-StrictMode -Version Latest',
+            '$ErrorActionPreference = "Stop"',
+            '$PSNativeCommandUseErrorActionPreference = $true'
+          ].join('\n')
+        )
+
+        expect(result.status, result.stderr).toBe(0)
+        expect(lines(result.stdout)).toEqual(['ARGV|--no-daemon|x', 'status=0'])
+      }
+    )
+  }
 })

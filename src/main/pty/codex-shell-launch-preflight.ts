@@ -65,18 +65,12 @@ function isExecutableFileOnDisk(path: string, platform: NodeJS.Platform): boolea
   }
 }
 
-// Why --no-daemon: from 0.156 Codex joins (0.157+ also starts) one shared server per
-// CODEX_HOME that runs every tab's hooks and tools with the first tab's Orca env and
-// dies with that tab (#22873). agents/queue need that server; --remote or a second
-// --no-daemon make Codex exit 2. ORCA_CODEX_ISOLATE=0 opts out.
-export function getPosixCodexShellLaunchPreflight(options: { hookPrep?: boolean } = {}): string {
-  const hookPrep =
-    options.hookPrep === false
-      ? ''
-      : `    if [[ -n "\${ORCA_CODEX_LAUNCH_PREFLIGHT:-}" && -x "\${ORCA_CODEX_LAUNCH_PREFLIGHT}" ]]; then
-      "\${ORCA_CODEX_LAUNCH_PREFLIGHT}" agent hooks prepare-codex >/dev/null 2>&1 || :
-    fi
-`
+// Why --no-daemon: Codex 0.156+ otherwise shares one server per CODEX_HOME that runs every tab's
+// hooks with the first tab's Orca env and dies with it (#22873). These args need that server or exit 2.
+export const CODEX_SHARED_SERVER_ARGS = ['agents', 'queue', '--no-daemon', '--remote'] as const
+const CODEX_SHARED_SERVER_ARG_PATTERN = `^(${CODEX_SHARED_SERVER_ARGS.join('|')}|--remote=.*)$`
+
+export function getPosixCodexShellLaunchPreflight(): string {
   return `# Why: a typed alias expands inside the shell, after pane launch prep.
 # Why unalias inside the substitution: an alias named codex makes command -v
 # report the alias text, and the subshell leaves the user's own alias intact.
@@ -89,18 +83,17 @@ if [[ -n "\${__orca_codex_binary:-}" && -x "\${__orca_codex_binary}" ]]; then
   function codex {
     # Why local: zsh's warn_create_global warns for each global a function creates.
     local __orca_codex_arg __orca_codex_isolate="\${ORCA_CODEX_ISOLATE:-1}"
-${hookPrep}    for __orca_codex_arg in "$@"; do
-      case "$__orca_codex_arg" in agents|queue|--no-daemon|--remote|--remote=*) __orca_codex_isolate=0 ;; esac
+    if [[ -n "\${ORCA_CODEX_LAUNCH_PREFLIGHT:-}" && -x "\${ORCA_CODEX_LAUNCH_PREFLIGHT}" ]]; then
+      "\${ORCA_CODEX_LAUNCH_PREFLIGHT}" agent hooks prepare-codex >/dev/null 2>&1 || :
+    fi
+    for __orca_codex_arg in "$@"; do
+      case "$__orca_codex_arg" in ${CODEX_SHARED_SERVER_ARGS.join('|')}|--remote=*) __orca_codex_isolate=0 ;; esac
     done
     # Why probe every launch: a cached answer goes stale across an upgrade, and 0.155 and older exit 2 on the flag.
     if [[ "$__orca_codex_isolate" != 0 ]]; then
-      case "$(command codex --help 2>/dev/null </dev/null)" in *--no-daemon*) ;; *) __orca_codex_isolate=0 ;; esac
+      case "$(command codex --help 2>/dev/null </dev/null)" in *--no-daemon*) set -- --no-daemon "$@" ;; esac
     fi
-    if [[ "$__orca_codex_isolate" != 0 ]]; then
-      command codex --no-daemon "$@"
-    else
-      command codex "$@"
-    fi
+    command codex "$@"
   }
 fi
 unset __orca_codex_binary
@@ -117,11 +110,10 @@ if test "$__orca_codex_type" = file
     if test -x "$ORCA_CODEX_LAUNCH_PREFLIGHT"
       command "$ORCA_CODEX_LAUNCH_PREFLIGHT" agent hooks prepare-codex >/dev/null 2>&1; or true
     end
-    if test "$ORCA_CODEX_ISOLATE" != 0; and not string match -qr -- '^(agents|queue|--no-daemon|--remote(=.*)?)$' $argv; and command codex --help 2>/dev/null </dev/null | string match -q -- '*--no-daemon*'
-      command codex --no-daemon $argv
-    else
-      command codex $argv
+    if test "$ORCA_CODEX_ISOLATE" != 0; and not string match -qr -- '${CODEX_SHARED_SERVER_ARG_PATTERN}' $argv; and command codex --help 2>/dev/null </dev/null | string match -q -- '*--no-daemon*'
+      set argv --no-daemon $argv
     end
+    command codex $argv
   end
 end
 set -e __orca_codex_type`
@@ -138,27 +130,22 @@ if ($orcaCodexCommand -and
             $global:LASTEXITCODE = 127
             return
         }
-        $orcaCodexArgs = $args
-        # Why a child scope: the user's StrictMode and ErrorActionPreference must not
-        # abort hook prep or the flag probe, and neither may leak its exit code.
-        $orcaCodexFlags = @(& {
-            Set-StrictMode -Off
-            $ErrorActionPreference = 'Continue'
-            $PSNativeCommandUseErrorActionPreference = $false
-            $priorExitCode = $global:LASTEXITCODE
-            if ($env:ORCA_CODEX_LAUNCH_PREFLIGHT) {
-                try {
-                    & $env:ORCA_CODEX_LAUNCH_PREFLIGHT agent hooks prepare-codex *> $null
-                } catch {
+        $orcaCodexFlags = @()
+        # Why try/catch: under the user's $ErrorActionPreference = 'Stop', a failing prep or probe must not abort the launch.
+        if ($env:ORCA_CODEX_LAUNCH_PREFLIGHT) {
+            try {
+                & $env:ORCA_CODEX_LAUNCH_PREFLIGHT agent hooks prepare-codex *> $null
+            } catch {
+            }
+        }
+        if ($env:ORCA_CODEX_ISOLATE -ne '0' -and -not (@($args) -cmatch '${CODEX_SHARED_SERVER_ARG_PATTERN}')) {
+            try {
+                if ((& $orcaCodexExecutable.Source --help 2>$null) -match '--no-daemon') {
+                    $orcaCodexFlags = @('--no-daemon')
                 }
+            } catch {
             }
-            if ($env:ORCA_CODEX_ISOLATE -ne '0' -and
-                -not ($orcaCodexArgs | Where-Object { $_ -cin 'agents', 'queue', '--no-daemon', '--remote' -or "$_" -clike '--remote=*' }) -and
-                ((& $orcaCodexExecutable.Source --help 2>$null) -match '--no-daemon')) {
-                '--no-daemon'
-            }
-            $global:LASTEXITCODE = $priorExitCode
-        })
+        }
         # Why: a native command inside a function never sees the function's pipeline input on its own.
         if ($MyInvocation.ExpectingInput) {
             $input | & $orcaCodexExecutable.Source @orcaCodexFlags @args

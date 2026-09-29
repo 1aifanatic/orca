@@ -36,9 +36,7 @@ function getRelayZshWrapperSpec(): ZshStartupHookSpec {
       managedWslCli: false,
       agentTeamsPath: false,
       remoteCliBinDir: true,
-      codexHome: false,
-      // Why no hook prep: relay panes never set a preflight, so any present was inherited by the relay.
-      codexLaunchPreflight: false
+      codexHome: false
     }
   }
 }
@@ -76,7 +74,7 @@ fi
 [[ -n "\${ORCA_MIMOCODE_HOME:-}" ]] && export MIMOCODE_HOME="\${ORCA_MIMOCODE_HOME}"
 [[ -n "\${ORCA_REMOTE_CLI_BIN_DIR:-}" ]] && case ":$PATH:" in *:"\${ORCA_REMOTE_CLI_BIN_DIR}":*) ;; *) export PATH="\${ORCA_REMOTE_CLI_BIN_DIR}:$PATH" ;; esac
 ${getPosixOmpShellWrapper()}
-${getPosixCodexShellLaunchPreflight({ hookPrep: false })}${BASH_HISTFILE_RESTORE_BLOCK}
+${getPosixCodexShellLaunchPreflight()}${BASH_HISTFILE_RESTORE_BLOCK}
 # Why: SSH bash sessions need the same command lifecycle markers as local
 # bash so agent rows stop showing "working" when the foreground command exits.
 __orca_initializing_wrapper=1

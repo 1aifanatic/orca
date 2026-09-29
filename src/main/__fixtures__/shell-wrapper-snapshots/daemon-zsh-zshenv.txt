@@ -157,13 +157,9 @@ __orca_deferred_init() {
       done
       # Why probe every launch: a cached answer goes stale across an upgrade, and 0.155 and older exit 2 on the flag.
       if [[ "$__orca_codex_isolate" != 0 ]]; then
-        case "$(command codex --help 2>/dev/null </dev/null)" in *--no-daemon*) ;; *) __orca_codex_isolate=0 ;; esac
+        case "$(command codex --help 2>/dev/null </dev/null)" in *--no-daemon*) set -- --no-daemon "$@" ;; esac
       fi
-      if [[ "$__orca_codex_isolate" != 0 ]]; then
-        command codex --no-daemon "$@"
-      else
-        command codex "$@"
-      fi
+      command codex "$@"
     }
   fi
   unset __orca_codex_binary
