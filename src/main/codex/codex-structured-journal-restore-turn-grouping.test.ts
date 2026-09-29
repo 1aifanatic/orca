@@ -95,7 +95,8 @@ describe('grouping a Codex thread restored from full history', () => {
           turnKey: turnKeys[index],
           role: message.role,
           rendersProse: true,
-          outlivesTurn: false
+          outlivesTurn: false,
+          reportsTurnOutcome: false
         })),
         settledTurnKeys: new Set(bars.settledTurns.keys()),
         expandedTurnKeys: new Set()

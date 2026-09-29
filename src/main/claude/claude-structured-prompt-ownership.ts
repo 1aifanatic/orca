@@ -207,7 +207,7 @@ export async function cancelClaudeStructuredTurn(input: {
         const current = isCurrent()
         // Read with the result that ends it: a stopped command reports no compaction.
         if (current && compactionOwnsTurn()) {
-          session.translator?.commandInterruptRequested(request.turnId)
+          session.translator?.commandInterruptRequested(requestedTurnId)
         }
         return current
       },
