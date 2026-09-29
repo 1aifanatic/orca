@@ -6,9 +6,9 @@ import { resolve, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 export const SOURCE = '744846f844374847c902b5e7fd59b4342a51ef99'
-export const PRODUCER = '34d1c11c67cbd1a653da1d07796daf7a1b0f2a7d'
-export const PRODUCT = '2084c58ba5410106ce61153a9fb16cdb4b6e5301'
-export const PATCH = '276f475c90c6761c58b9f56b3f4bfafa079d0c29c5861b23d2320c9ff39c35fb'
+export const PRODUCER = 'dfb15cae6ba7a5dceabb6d3d66f93be1a6c13328'
+export const PRODUCT = '2e65b114802f4cd1803cee9483c141e80d73453e'
+export const PATCH = '920a6f0398bf9ae3528538255a1cceb23e11ded30097099e597c5ab5fff3ed05'
 export const SUCCESS = 'Both patched Bun Windows targets built with network disabled. Native Windows behavior, signatures and production runtime promotion remain unqualified.'
 const digest = file => createHash('sha256').update(readFileSync(file)).digest('hex')
 const json = file => JSON.parse(readFileSync(file, 'utf8'))
