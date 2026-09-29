@@ -243,6 +243,31 @@ describe('a Codex send its turn ended without answering', () => {
     expect(after.owesWork).toBe(false)
   })
 
+  // A subagent's thread ends its own turns; only the primary thread's turn-over ends a user's send.
+  it('keeps the send owed through a child thread ending its turn', async () => {
+    const opening = await send('look around')
+    await vi.waitFor(() => expect(answers).toBe(1))
+    turns.start()
+    turns.echo(opening)
+    const followUp = await send('and check the tests')
+    await vi.waitFor(() => expect(answers).toBe(2))
+
+    const child = { threadId: 'child-thread', turn: { id: 'child-turn-1', status: 'completed' } }
+    handlers?.onNotification?.('turn/started', {
+      ...child,
+      turn: { ...child.turn, status: 'inProgress' }
+    })
+    handlers?.onNotification?.('turn/completed', child)
+    const during = await settled()
+    expect(verdictOf(during.submissions, followUp)).toBe('pending')
+    expect(during.owesWork).toBe(true)
+
+    turns.end('completed')
+    await vi.waitFor(async () =>
+      expect(verdictOf((await settled()).submissions, followUp)).toBe('unknown')
+    )
+  })
+
   // Codex follows every error it will not retry with its turn's failed completion.
   it('settles in doubt after an error Codex will not retry ends its turn', async () => {
     answerWithoutTurn = true
