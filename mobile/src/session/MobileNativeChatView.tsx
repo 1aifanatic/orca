@@ -32,16 +32,12 @@ import { useMobileNativeChatPinchGesture } from './use-mobile-native-chat-pinch-
 import { useMobileNativeChatTailFollow } from './use-mobile-native-chat-tail-follow'
 import { useMobileNativeChatTurnDisclosure } from './use-mobile-native-chat-turn-disclosure'
 import { useSettledMobileNativeChatInputLock } from './use-mobile-native-chat-input-lease'
-import { useMobileNativeChatQueuedEditFocus } from './use-mobile-native-chat-queued-edit-focus'
 import { MobileNativeChatTurnActivity } from './MobileNativeChatTurnStatus'
 import { MobileAgentWorkingIndicator } from './MobileAgentWorkingIndicator'
 import type { PendingNativeChatImage } from './mobile-native-chat-image-attachment'
 import { MobileNativeChatComposer } from './MobileNativeChatComposer'
 import { MobileNativeChatPromptCard } from './MobileNativeChatPromptCard'
-import {
-  MobileNativeChatQueuedMessages,
-  type MobileNativeChatQueuedMessagesProps
-} from './MobileNativeChatQueuedMessages'
+import { NO_QUEUED_SLOT, type MobileQueuedSlotProps } from './use-mobile-native-chat-queued-slot'
 import type { MobileChatPermission } from './mobile-native-chat-permission'
 import type { MobileChatQuestion } from './mobile-native-chat-question'
 import type { MobileNativeChatSessionOptionPickersProps } from './MobileNativeChatSessionOptionPickers'
@@ -52,7 +48,7 @@ import type { MobileNativeChatStatus } from './use-mobile-native-chat-session'
  *  terminal subscription has not acknowledged its input lease yet. */
 export type MobileNativeChatInputLockReason = 'disconnected' | 'waiting'
 
-type Props = {
+type Props = MobileQueuedSlotProps & {
   /** Raw transcript, only for telling "still loading" from "loaded and empty". */
   messages: NativeChatMessage[]
   /** `messages` with noise stripped and tool turns folded in, from the overlay. */
@@ -141,8 +137,6 @@ type Props = {
   onAnswerQuestion?: (text: string) => Promise<boolean>
   permission?: MobileChatPermission | null
   onRespondPermission?: (send: string) => Promise<boolean>
-  /** Host-held queued drafts rendered as cards between transcript and composer. */
-  queuedMessages?: MobileNativeChatQueuedMessagesProps
   /** Open a worktree file tapped in agent markdown. */
   onOpenFile?: (relativePath: string) => void
   /** Pixels to lift the composer by when the soft keyboard is open. The route
@@ -202,7 +196,7 @@ export function MobileNativeChatView({
   onAnswerQuestion,
   permission,
   onRespondPermission,
-  queuedMessages,
+  queuedSlot: { cards: queuedCards, composerInputRef: inputRef } = NO_QUEUED_SLOT,
   onOpenFile,
   keyboardInset = 0
 }: Props): React.JSX.Element {
@@ -256,10 +250,6 @@ export function MobileNativeChatView({
       return true
     },
     [onSend, onClearSendError, jumpToTail]
-  )
-
-  const { composerInputRef, editQueuedMessage } = useMobileNativeChatQueuedEditFocus(
-    queuedMessages?.onEdit
   )
 
   const loadEarlier = useCallback(() => {
@@ -392,7 +382,7 @@ export function MobileNativeChatView({
           ) : null}
         </GestureHandlerRootView>
       )}
-      <MobileNativeChatQueuedMessages {...queuedMessages} onEdit={editQueuedMessage} />
+      {queuedCards}
       <MobileNativeChatPromptCard
         ask={ask}
         askKey={askKey}
@@ -444,7 +434,6 @@ export function MobileNativeChatView({
         </View>
       ) : null}
       <MobileNativeChatComposer
-        inputRef={composerInputRef}
         structuredCommands={
           structuredActivityUi ? (sessionOptions?.controller.conversationCommands ?? []) : undefined
         }
@@ -452,7 +441,7 @@ export function MobileNativeChatView({
         onChangeText={onComposerTextChange}
         onSend={handleSend}
         sendSurfaceId={sendSurfaceId}
-        {...{ getSendCompletionGeneration, getComposerEditGeneration }}
+        {...{ getSendCompletionGeneration, getComposerEditGeneration, inputRef }}
         agent={agent}
         sessionOptions={sessionOptions}
         onAttachImage={onAttachImage}
