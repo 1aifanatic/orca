@@ -203,6 +203,7 @@ describe('OrcaRuntimeService', () => {
           ],
           {
             cwd: TEST_REPO_PATH,
+            admissionTier: 'interactive',
             useConfiguredSshCommandForNetwork: true,
             timeout: 60_000
           }

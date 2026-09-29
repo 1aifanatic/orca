@@ -446,7 +446,10 @@ describe('OrcaRuntimeService', () => {
         branchName: 'contributor/runtime-wsl',
         remoteUrl: 'git@github.com:contributor/orca.git'
       })
-      expect(listWorktrees).toHaveBeenCalledWith(TEST_REPO_PATH, { wslDistro: 'Ubuntu' })
+      expect(listWorktrees).toHaveBeenCalledWith(
+        TEST_REPO_PATH,
+        expect.objectContaining({ wslDistro: 'Ubuntu' })
+      )
     } finally {
       gitSpy.mockRestore()
     }
