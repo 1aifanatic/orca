@@ -26,6 +26,7 @@ const BETA = { tool_name: 'Bash', tool_input: { command: 'chmod 644 beta.txt' } 
 
 // STA-3049. With the ledger deciding every hook, the row must still survive the evidence that
 // names no tool call (an OSC repaint) and re-statements must not re-alert.
+// Hook bodies here are hand-built; server-claude-permission-captures.test.ts replays real captures.
 describe('a held Claude approval under repaint and re-statement', () => {
   let server: AgentHookServer
 

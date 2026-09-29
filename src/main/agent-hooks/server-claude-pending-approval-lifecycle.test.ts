@@ -52,6 +52,8 @@ const postClaudeHook = async (
 // STA-3049. A Claude permission prompt is held for exactly as long as it is outstanding: it is
 // raised by the PermissionRequest and destroyed when the approved call's completion is observed,
 // with the turn boundary as an unconditional sweep. Nothing latches on the row behind that.
+// Hook bodies here are hand-built to the captured shape; server-claude-permission-captures.test.ts
+// replays real 2.1.284 captures.
 describe('Claude pending-approval lifecycle', () => {
   // STA-3049 — the approved tool's own completion must release the wait. Captured live on Claude
   // Code 2.1.270: PermissionRequest carries no tool_use_id, and Claude announces a parallel batch's
