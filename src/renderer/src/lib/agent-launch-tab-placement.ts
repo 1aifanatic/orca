@@ -92,19 +92,26 @@ function placePairedLaunchTab(
   // a chat answers fast and takes the intent over on the reply.
   recordWebSessionFocusIntent(owner, worktreeId, tabId, leafId, visibleTabId)
   const placement = { environmentId, worktreeId, hostTabId: tabId }
+  let releaseGroup = (): void => {}
   if (groupId) {
+    // Held as a local launch holds it: a workspace reveal before the send reconciles tabs, which
+    // drops an empty split nothing holds, and the tab would then arrive in another group.
+    releaseGroup = reserveAgentLaunchTab(tabId, { worktreeId, groupId })
     recordWebSessionTerminalPlacement({ ...placement, groupId })
     // Consumed once the tab materializes: a record left for the prompt's wait would yank a tab
     // the user drags back into this group.
     void settleWebRuntimeTerminalPlacement(environmentId, worktreeId, tabId, {
       groupId,
       activate: true
-    }).catch((error: unknown) => {
-      console.warn('[agent-launch] placing the launched tab failed', error)
     })
+      .catch((error: unknown) => {
+        console.warn('[agent-launch] placing the launched tab failed', error)
+      })
+      .finally(releaseGroup)
   }
   return {
     settle: (result) => {
+      releaseGroup()
       if (result?.outcome.kind === 'terminal') {
         return
       }

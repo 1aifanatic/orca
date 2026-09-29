@@ -451,6 +451,20 @@ describe('a launch on a paired host', () => {
     })
   })
 
+  // Why: Fix checks reveals its workspace first, and that reconcile drops an empty split nothing holds.
+  it('holds the focused group through the caller’s pre-launch step, and lets go once it settles', async () => {
+    let heldDuringStep: ReadonlySet<string> = new Set()
+    const beforeLaunch = vi.fn(() => {
+      heldDuringStep = agentLaunchReservedGroupIds('wt-1')
+      return true
+    })
+
+    await launchSourceControlAgent({ ...ARGS, beforeLaunch })
+
+    expect([...heldDuringStep]).toEqual(['group-2'])
+    expect(agentLaunchTabReservationCountForTests()).toBe(0)
+  })
+
   it.each([
     [
       'refused',
