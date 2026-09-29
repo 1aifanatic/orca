@@ -30,7 +30,6 @@ import {
 } from './structured-agent-session-provider-child'
 import { releaseStoredStructuredAgentSessionOwner } from './structured-agent-session-lease-release'
 import { settleStructuredAgentSessionDeadGeneration } from './structured-agent-session-dead-generation-settlement'
-import { structuredAgentSessionFailureWordsContext } from './structured-agent-session-send-preparation'
 
 export type StructuredAgentSessionLifetimeContext = {
   deps: StructuredAgentSessionHostDeps
@@ -139,9 +138,6 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
         pendingSubmissionReason: 'provider_closed_before_acknowledgement',
         verdict: { state: 'interrupted', completedAt: context.now() },
         showUnexpectedExitOutcome: false,
-        failureTextContext: structuredAgentSessionFailureWordsContext(
-          context.deps.store.getRecord(sessionId)
-        ),
         onError: (id, error) => {
           settlementError = error
           context.deps.onEventSinkError?.({ sessionId: id, error })

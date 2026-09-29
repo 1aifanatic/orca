@@ -208,8 +208,6 @@ const FAILURE_SENTENCES = {
   compactionUnconfirmed: () => 'Compaction completion is unconfirmed.',
   cancelUnconfirmed: () => 'Cancellation was not confirmed.',
   answerUnconfirmed: () => 'Your answer was recorded but the agent did not confirm it.',
-  messageUnanswered: ({ agentName }) =>
-    `${agentName ?? 'The agent'} didn't respond to your last message. Send a message to continue.`,
   hostFault: ({ retryControl }) =>
     `Orca ran into a problem, so this didn't go through.${retryControl ? '' : ' Try again.'}`,
   hostStopped: ({ agentName }) =>

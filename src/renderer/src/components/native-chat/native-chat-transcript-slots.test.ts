@@ -212,10 +212,7 @@ describe('a send the host rejected', () => {
 
 describe('a turn a crash or a dead agent cut off', () => {
   // The row the host writes at the boundary, as the journal projection draws it.
-  function statusRow(
-    id: string,
-    kind: 'hostRestarted' | 'providerExited' | 'messageUnanswered' | 'providerRetrying'
-  ) {
+  function statusRow(id: string, kind: 'hostRestarted' | 'providerExited' | 'providerRetrying') {
     const words = agentSessionFailureWords(agentSessionFailureFact(kind), {
       surface: 'row',
       agentName: 'Claude'
@@ -233,7 +230,7 @@ describe('a turn a crash or a dead agent cut off', () => {
     completedByTurn: { u: { startedAt: 1, thinking: false, workedSeconds: 7 } }
   }
 
-  it.each(['hostRestarted', 'providerExited', 'messageUnanswered'] as const)(
+  it.each(['hostRestarted', 'providerExited'] as const)(
     'keeps the %s row outside the settled turn it landed in',
     (kind) => {
       const slots = build(

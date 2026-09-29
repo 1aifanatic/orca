@@ -19,14 +19,6 @@ import {
 const UNEXPECTED_PROVIDER_EXIT_OUTCOME =
   'The agent stopped while this response was in progress. You can continue in this conversation.'
 
-const UNANSWERED_OUTCOME = "Codex didn't respond to your last message. Send a message to continue."
-
-function statusRows() {
-  return journal
-    .snapshot()
-    .items.flatMap((item) => (item.body.kind === 'status' ? [item.body] : []))
-}
-
 const SESSION = 'session-dead-generation'
 const THREAD = 'thread-1'
 let root: string
@@ -93,7 +85,7 @@ async function seedUnfinishedWork(): Promise<void> {
 }
 
 describe('dead structured-session generation settlement', () => {
-  it('settles probe-proven work as unverifiable without a technical row or fake end time', async () => {
+  it('settles probe-proven work as unverifiable without a technical chat row or fake end time', async () => {
     await seedUnfinishedWork()
 
     await expect(
@@ -126,15 +118,7 @@ describe('dead structured-session generation settlement', () => {
         { kind: 'turn', turnId: 'turn-1', state: 'unverifiable', startedAt: 900 }
       ])
     )
-    // The send it retired in doubt gets the one plain row, never an exit reason.
-    expect(statusRows()).toEqual([
-      {
-        kind: 'status',
-        tone: 'notice',
-        text: "The agent didn't respond to your last message. Send a message to continue.",
-        failure: { kind: 'messageUnanswered' }
-      }
-    ])
+    expect(snapshot.items.some((item) => item.body.kind === 'status')).toBe(false)
   })
 
   it('adds one actionable outcome for observed active-work failure and is idempotent', async () => {
@@ -154,8 +138,14 @@ describe('dead structured-session generation settlement', () => {
     await expect(settleStructuredAgentSessionDeadGeneration(input)).resolves.toBe(true)
 
     expect(journal.cursor()).toEqual(settledCursor)
-    // The exit row alone explains the send it left in doubt: one row for one boundary.
-    expect(statusRows().map((row) => row.text)).toEqual([UNEXPECTED_PROVIDER_EXIT_OUTCOME])
+    expect(
+      journal
+        .snapshot()
+        .items.filter(
+          (item) =>
+            item.body.kind === 'status' && item.body.text === UNEXPECTED_PROVIDER_EXIT_OUTCOME
+        )
+    ).toHaveLength(1)
   })
 
   it('keeps a stderr wall out of the sentence, as a bounded detail for a log', async () => {
@@ -304,79 +294,6 @@ describe('dead structured-session generation settlement', () => {
     ])
   })
 
-  it('says once that the agent did not respond when an expected close retires a send in doubt', async () => {
-    await journal.appendSubmission({
-      clientMessageId: 'client-unknown',
-      payloadFingerprint: 'fingerprint',
-      body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'did this land?' }] },
-      fence: 7
-    })
-    await journal.resolveDispatch({
-      clientMessageId: 'client-unknown',
-      state: 'unknown',
-      reason: 'provider write outcome unknown',
-      fence: 7
-    })
-    const close = () =>
-      settleStructuredAgentSessionDeadGeneration({
-        journal,
-        sessionId: SESSION,
-        fence: 7,
-        settlementId: `expected-close:${SESSION}:7:generation-1`,
-        pendingSubmissionReason: 'provider_closed_before_acknowledgement',
-        verdict: { state: 'interrupted', completedAt: 1_000 },
-        showUnexpectedExitOutcome: false,
-        failureTextContext: { agentName: 'Codex' }
-      })
-
-    await expect(close()).resolves.toBe(true)
-    await expect(close()).resolves.toBe(true)
-
-    expect(statusRows()).toEqual([
-      {
-        kind: 'status',
-        tone: 'notice',
-        text: UNANSWERED_OUTCOME,
-        failure: { kind: 'messageUnanswered' }
-      }
-    ])
-  })
-
-  it('writes no row for an expected close that left nothing in doubt', async () => {
-    await journal.appendSubmission({
-      clientMessageId: 'client-answered',
-      payloadFingerprint: 'fingerprint',
-      body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'hello' }] },
-      fence: 7
-    })
-    await journal.resolveDispatch({
-      clientMessageId: 'client-answered',
-      state: 'unknown',
-      reason: 'provider write outcome unknown',
-      fence: 7,
-      recovered: true
-    })
-    await journal.appendItem(
-      { provider: 'codex', threadId: THREAD, turnId: 'turn-1', ordinal: 1 },
-      { kind: 'turn', turnId: 'turn-1', state: 'running', startedAt: 900 },
-      { fence: 7 }
-    )
-
-    await expect(
-      settleStructuredAgentSessionDeadGeneration({
-        journal,
-        sessionId: SESSION,
-        fence: 7,
-        settlementId: `expected-close:${SESSION}:7:generation-1`,
-        pendingSubmissionReason: 'provider_closed_before_acknowledgement',
-        verdict: { state: 'interrupted', completedAt: 1_000 },
-        showUnexpectedExitOutcome: false
-      })
-    ).resolves.toBe(true)
-
-    expect(statusRows()).toEqual([])
-  })
-
   it('rejects a send a child that never started left pending with its diagnostic, in words', async () => {
     await journal.appendSubmission({
       clientMessageId: 'client-held',
@@ -473,9 +390,7 @@ describe('dead structured-session generation settlement', () => {
       ['question', 2, undefined],
       ['turn', 2, undefined],
       ['tool-call', 2, 'thread-child'],
-      ['approval', 2, 'thread-child'],
-      // The seeded send's session row is Orca's, never the subagent's.
-      ['status', 1, undefined]
+      ['approval', 2, 'thread-child']
     ])
 
     await journal.close()
