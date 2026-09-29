@@ -54,6 +54,19 @@ describe('foreground identity on unknown observations', () => {
       expect(h.touched).toHaveBeenCalledOnce()
     }
   )
+  it('keeps a live local agent on the cached read without a fresh scan', async () => {
+    const h = setup()
+    h.pty.foregroundAgent = null
+    h.replace({
+      write: () => true,
+      kill: () => true,
+      getForegroundProcess: async () => 'claude',
+      confirmForegroundProcess: h.confirm
+    })
+    await h.agent.refresh('pty-1')
+    expect(h.pty.foregroundAgent).toBe('claude')
+    expect(h.confirm).not.toHaveBeenCalled()
+  })
   it('rejects a result for a replaced terminal incarnation', async () => {
     const h = setup()
     let answer: (value: string) => void = () => {}
@@ -64,6 +77,7 @@ describe('foreground identity on unknown observations', () => {
         })
     )
     const pending = h.agent.refresh('pty-1')
+    await vi.waitFor(() => expect(h.confirm).toHaveBeenCalled())
     h.pty.incarnationId = 'generation-2'
     answer('zsh')
     await pending

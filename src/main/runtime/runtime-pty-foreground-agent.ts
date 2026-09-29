@@ -163,12 +163,12 @@ export class RuntimePtyForegroundAgent {
   ): Promise<string | null> {
     const pty = this.deps.getPty(ptyId)
     if (!pty?.connectionId) {
+      const cached = await controller.getForegroundProcess(ptyId)
+      if (recognizeAgentProcess(cached)) {
+        return cached
+      }
       // Cached display names cannot certify that the agent returned to its shell.
-      return controller.confirmForegroundProcess
-        ? controller.confirmForegroundProcess(ptyId)
-        : controller
-            .getForegroundProcess(ptyId)
-            .then((name) => (recognizeAgentProcess(name) ? name : null))
+      return controller.confirmForegroundProcess ? controller.confirmForegroundProcess(ptyId) : null
     }
     const incarnationId = pty.incarnationId
     const started = performance.now()
