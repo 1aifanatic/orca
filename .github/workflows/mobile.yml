@@ -8,6 +8,11 @@ on:
       - reopened
     paths:
       - 'mobile/**'
+      # Why all of src/shared: mobile imports hundreds of its modules, directly and through the RPC
+      # recordings and the host params check, so any shared edit can move a golden or break mobile's
+      # typecheck. Why the root lockfile: those modules resolve their packages from the root install.
+      - 'src/shared/**'
+      - 'pnpm-lock.yaml'
       # Mobile launch contracts exercise the real host dispatcher and durable receipt store.
       - 'src/main/agent-launch/**'
       - 'src/main/runtime/rpc/**'
@@ -17,21 +22,6 @@ on:
       - 'src/main/runtime/orca-runtime.ts'
       - 'src/main/runtime/agent-session-*.ts'
       - 'src/main/native-chat/agent-session-wire/**'
-      - 'src/shared/agent-launch-*.ts'
-      - 'src/shared/agent-session-*.ts'
-      - 'src/shared/new-workspace/worktree-create-collision.ts'
-      # Why: the mobile terminal link parsers are conformance-tested against
-      # these shared fixtures; desktop-side fixture edits must re-run this suite.
-      - 'src/shared/terminal-file-link-conformance.ts'
-      # Why: mobile imports the negotiated capability names directly and records
-      # the whole capability read verbatim in its goldens, so a capability added
-      # desktop-side rewrites a mobile fixture and must re-run this suite.
-      - 'src/shared/protocol-version.ts'
-      # Why: mobile's rpc-params-contract.ts is a type-only re-export of the
-      # generated params catalog, and mobile/tsconfig.json includes **/*.ts. A
-      # schema edit anywhere under here changes mobile's types, so a desktop-only
-      # change can break mobile's typecheck with no other mobile signal.
-      - 'src/shared/rpc-contract/**'
       # Why: this job holds the only checks that load the Fastfile, so edits to
       # it or to the release workflow it guards must re-run them.
       - '.github/workflows/mobile.yml'
@@ -41,8 +31,8 @@ on:
       - 'config/scripts/mobile-test-change-scope*'
       - 'config/scripts/pr-code-change-scope.mjs'
   # Why main too: two pull requests can each pass against their own base and disagree once both
-  # land, and `verify` never runs on main. The recordings import ~500 modules under src/shared, so a
-  # desktop-only merge there or to the root lockfile can move them as well.
+  # land, and `verify` never runs on main. The same source paths as above, less the CI inputs only
+  # `verify` reads.
   push:
     branches:
       - main

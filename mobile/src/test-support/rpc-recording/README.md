@@ -360,8 +360,8 @@ distinct request the corpus puts on the wire with the host dispatcher's own
 fails on a method the host does not have, params the host refuses, params sent to a method that
 takes none (the dispatcher never reads them), and keys the schema silently strips, unless an entry
 in its inventory gives the reason; an entry nothing strips fails too. It runs in the Mobile Checks
-suite and in the recording replay a desktop pull request to `src/shared/` triggers, so tightening a
-host schema that today's phone requests do not satisfy fails there. It checks against the current
+suite, which a desktop pull request to `src/shared/` triggers, so tightening a host schema that
+today's phone requests do not satisfy fails there. It checks against the current
 host only, and it does not check the scripted replies against real host results.
 
 When it landed it found twelve requests the host would refuse, all from invented fixture values
@@ -481,8 +481,8 @@ a product change with its own re-record.
   each golden and the command; whoever merged last re-records in a follow-up.
 
 A desktop pull request can move a golden too: the recordings import a few hundred modules under
-`src/shared`. The `Mobile RPC Recording Replay` workflow replays them on any pull request that
-touches `src/shared/**` or the root lockfile and nothing under `mobile/`.
+`src/shared`. Mobile Checks therefore runs on any pull request that touches `src/shared/**` or the
+root lockfile, not only on changes under `mobile/`.
 
 A subscription scenario names its payload `<method>#<n>` by per-method occurrence, and every
 `frame` step names it too — so a change that moves the subscribe past another send of the same
