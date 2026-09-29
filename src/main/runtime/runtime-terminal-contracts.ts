@@ -118,7 +118,7 @@ export type PtyForegroundProcessRead = {
 export type PtyForegroundProcessReadEntry = {
   controller: RuntimePtyController
   startedAfterTitleObservation: number
-  /** Bypassed the cached foreground name, so it can answer an exit decision. */
+  /** The answer does not rest on the cached foreground name, so it can answer an exit decision. */
   fresh: boolean
   promise: Promise<PtyForegroundProcessRead>
 }

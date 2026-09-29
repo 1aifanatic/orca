@@ -24,6 +24,8 @@ type ForegroundPty = Pick<
   | 'foregroundAgentIncarnationId'
 >
 
+type ProcessRead = { judgement: ForegroundAgentJudgement; fresh: boolean }
+
 type Dependencies = {
   getController(): RuntimePtyController | null
   getPty(ptyId: string): ForegroundPty | null
@@ -50,27 +52,27 @@ export class RuntimePtyForegroundAgent {
     // Every remote read is a host inspection, so only a local read can be cached.
     const fresh = requireFresh || Boolean(this.deps.getPty(ptyId)?.connectionId)
     const pending = this.reads.get(ptyId)
-    if (
-      pending?.controller === controller &&
-      pending.startedAfterTitleObservation >= afterTitle &&
-      (pending.fresh || !fresh)
-    ) {
+    const answers = (entry: PtyForegroundProcessReadEntry): boolean =>
+      entry.startedAfterTitleObservation >= afterTitle && (entry.fresh || !fresh)
+    if (pending?.controller === controller && answers(pending)) {
       return pending.promise
     }
     if (pending?.controller === controller) {
-      return pending.promise.then(
-        () =>
-          this.read(ptyId, afterTitle, requireFresh) ?? {
-            controller,
-            judgement: judgeForegroundAgent({ kind: 'unavailable' })
-          }
+      // Why re-judge once settled: a cached read whose name was no agent fell through to a fresh one.
+      return pending.promise.then((settled) =>
+        answers(pending)
+          ? settled
+          : (this.read(ptyId, afterTitle, requireFresh) ?? {
+              controller,
+              judgement: judgeForegroundAgent({ kind: 'unavailable' })
+            })
       )
     }
     const unavailable: PtyForegroundProcessRead = {
       controller,
       judgement: judgeForegroundAgent({ kind: 'unavailable' })
     }
-    let processRead: Promise<ForegroundAgentJudgement>
+    let processRead: Promise<ProcessRead>
     try {
       processRead = this.readProcess(controller, ptyId, fresh)
     } catch {
@@ -87,11 +89,13 @@ export class RuntimePtyForegroundAgent {
     let entry: PtyForegroundProcessReadEntry
     const incarnationId = this.deps.getPty(ptyId)?.incarnationId
     const promise = processRead
-      .then((judgement) =>
-        this.deps.getPty(ptyId)?.incarnationId === incarnationId
-          ? { controller, judgement }
-          : unavailable
-      )
+      .then((read) => {
+        if (this.deps.getPty(ptyId)?.incarnationId !== incarnationId) {
+          return unavailable
+        }
+        entry.fresh = read.fresh
+        return { controller, judgement: read.judgement }
+      })
       .catch(() => unavailable)
       .finally(() => this.deleteRead(ptyId, entry))
     entry = { controller, startedAfterTitleObservation: afterTitle, fresh, promise }
@@ -234,21 +238,31 @@ export class RuntimePtyForegroundAgent {
     controller: RuntimePtyController,
     ptyId: string,
     fresh: boolean
-  ): Promise<ForegroundAgentJudgement> {
+  ): Promise<ProcessRead> {
     const pty = this.deps.getPty(ptyId)
     if (!pty?.connectionId) {
       if (!fresh || !controller.confirmForegroundProcess) {
         const cached = await controller.getForegroundProcess(ptyId)
         if (recognizeAgentProcess(cached)) {
-          return judgeForegroundAgent({ kind: 'process-name', processName: cached })
+          return {
+            judgement: judgeForegroundAgent({ kind: 'process-name', processName: cached }),
+            // With no fresh read to take, the cached name is the best this host answers.
+            fresh: !controller.confirmForegroundProcess
+          }
         }
       }
       // Cached display names cannot certify that the agent returned to its shell.
-      return judgeForegroundAgent(
-        controller.confirmForegroundProcess
-          ? { kind: 'process-name', processName: await controller.confirmForegroundProcess(ptyId) }
-          : { kind: 'unavailable' }
-      )
+      return {
+        judgement: judgeForegroundAgent(
+          controller.confirmForegroundProcess
+            ? {
+                kind: 'process-name',
+                processName: await controller.confirmForegroundProcess(ptyId)
+              }
+            : { kind: 'unavailable' }
+        ),
+        fresh: true
+      }
     }
     const incarnationId = pty.incarnationId
     const started = performance.now()
@@ -256,18 +270,21 @@ export class RuntimePtyForegroundAgent {
       ptyId,
       incarnationId ? { expectedIncarnationId: incarnationId } : {}
     )
-    return judgeForegroundAgent(
-      observeHostInspection(inspection, (evidence) =>
-        admitRemoteForegroundEvidence(evidence, {
-          expectedPtyId: parseAppSshPtyId(ptyId)?.relayPtyId ?? ptyId,
-          expectedIncarnationId: incarnationId,
-          requestStartedAtMonotonic: started,
-          receivedAtMonotonic: performance.now(),
-          lastAuthorityGeneration: null,
-          lastObservationEpoch: -1
-        })
-      )
-    )
+    return {
+      judgement: judgeForegroundAgent(
+        observeHostInspection(inspection, (evidence) =>
+          admitRemoteForegroundEvidence(evidence, {
+            expectedPtyId: parseAppSshPtyId(ptyId)?.relayPtyId ?? ptyId,
+            expectedIncarnationId: incarnationId,
+            requestStartedAtMonotonic: started,
+            receivedAtMonotonic: performance.now(),
+            lastAuthorityGeneration: null,
+            lastObservationEpoch: -1
+          })
+        )
+      ),
+      fresh: true
+    }
   }
 
   private deleteRead(ptyId: string, entry: PtyForegroundProcessReadEntry): void {

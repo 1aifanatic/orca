@@ -486,6 +486,45 @@ describe('terminal side-effect fact channel', () => {
     }
   )
 
+  it.each(['cmd.exe', 'zsh'])(
+    'confirms an exit with one fresh read when the cached name already says %s',
+    async (shell) => {
+      const { runtime, batches } = createSideEffectRuntime()
+      syncSinglePty(runtime)
+      const getForegroundProcess = vi.fn().mockResolvedValue(shell)
+      const confirmForegroundProcess = vi.fn().mockResolvedValue(shell)
+      runtime.setPtyController({
+        write: () => true,
+        kill: () => true,
+        getForegroundProcess,
+        confirmForegroundProcess
+      })
+      runtime.ingestSyntheticTitleFrame('pty-1', '\x1b]0;✳ Claude Code\x07')
+      const pty = runtime['ptysById'].get('pty-1')
+      if (!pty) {
+        throw new Error('expected the synced PTY record')
+      }
+      pty.foregroundAgent = 'claude'
+      await vi.waitFor(() => expect(getForegroundProcess).toHaveBeenCalled())
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      getForegroundProcess.mockClear()
+      confirmForegroundProcess.mockClear()
+      batches.length = 0
+
+      runtime.onPtyData('pty-1', `\x1b]0;${shell}\x07`, 100)
+
+      await vi.waitFor(() =>
+        expect(batches.flatMap((batch) => batch.facts)).toContainEqual({
+          kind: 'agent-exited',
+          evidence: 'foreground-shell'
+        })
+      )
+      // The title's own cached refresh already fell through to the fresh read.
+      expect(getForegroundProcess).toHaveBeenCalledOnce()
+      expect(confirmForegroundProcess).toHaveBeenCalledOnce()
+    }
+  )
+
   it('does not confirm an agent exit from a foreground read predating its title', async () => {
     const { runtime, batches } = createSideEffectRuntime()
     syncSinglePty(runtime)

@@ -120,6 +120,31 @@ describe('foreground identity on unknown observations', () => {
     expect(h.pty.foregroundAgent).toBeNull()
     expect(h.confirm).toHaveBeenCalledOnce()
   })
+  it('lets an exit confirmation reuse a pending refresh that fell through to a fresh read', async () => {
+    const h = setup()
+    let answerCached: (value: string) => void = () => {}
+    const getForegroundProcess = vi.fn(
+      () =>
+        new Promise<string>((resolve) => {
+          answerCached = resolve
+        })
+    )
+    h.confirm.mockResolvedValue('cmd.exe')
+    h.replace({
+      write: () => true,
+      kill: () => true,
+      getForegroundProcess,
+      confirmForegroundProcess: h.confirm
+    })
+    const refreshed = h.agent.refresh('pty-1')
+    await vi.waitFor(() => expect(getForegroundProcess).toHaveBeenCalledOnce())
+    const confirmed = h.agent.confirm('pty-1')
+    answerCached('cmd.exe')
+    await refreshed
+    expect((await confirmed)?.judgement.verdict).toBe('exited')
+    expect(h.pty.foregroundAgent).toBeNull()
+    expect(h.confirm).toHaveBeenCalledOnce()
+  })
   it('lets a refresh reuse a pending fresh exit read', async () => {
     const h = setup()
     const getForegroundProcess = vi.fn(async () => 'claude')
