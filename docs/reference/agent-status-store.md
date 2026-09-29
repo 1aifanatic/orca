@@ -240,18 +240,21 @@ the verdict through `agentVerdictFields`, which carries `interrupted` and the
 whole `mainAgent` (state, outcome and its own clock) together, so a copy agrees
 with the row and can date a failure by `mainAgent.stateStartedAt`.
 
-Display reads the verdict through `agentVerdictDisplayMark`: a failure marks the
+Display reads the verdict through `agentVerdictDisplayMark`. A fault marks the
 agent failed whatever the combined state, because it is news the user must see
-even while subagents run; an `interruption` marks it interrupted and
-`unconfirmed` marks it unconfirmed, only on a `done` row, so a stopped or
-finished main agent with live child work still reads working. A user's stop
-(`cancellation`) marks it done: interrupted means cut short by something other
-than the user, and the row's text still says "Interrupted by user".
+even while subagents run: a `failure`, and an `interruption`, a turn cut short
+by anything other than the user. A user's stop (`cancellation`) marks it
+interrupted, drawn in the muted tone with the row text "Interrupted by user",
+and `unconfirmed` marks it unconfirmed, both only on a `done` row, so a stopped
+or finished main agent with live child work still reads working. The folded
+turn header follows the same mark: "Failed after N", "Interrupted after N", or
+"Worked for N".
 Each subagent keeps its own row and state. Container rollups (worktree card,
 terminal tab, Cmd+J) rank a pending question first, then a failure, then live
-work, then an interruption, then an unconfirmed end, then done, which includes
-a user's stop. On the worktree card, a failure retained after its agent's pane
-went away has no expiry, so it ranks below live work and above an interruption. Lifecycle waiters keep reading the combined `state`.
+work, then an unconfirmed end, then a user's stop, then done. On the worktree
+card, a failure retained after its agent's pane went away has no expiry, so it
+ranks below live work and above an unconfirmed end. Lifecycle waiters keep
+reading the combined `state`.
 
 Policy splits the verdict two ways. Clean-finish policy (hibernation, pane
 ownership, the star-nag value moment) treats a failure, an interruption and an

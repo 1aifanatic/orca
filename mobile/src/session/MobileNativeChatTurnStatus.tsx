@@ -28,8 +28,8 @@ function useElapsedSeconds(startedAt: number | null, counting: boolean): number 
 }
 
 /** The turn bar under the user's message: "Working for 12s" while the turn runs,
- *  settling in place to a tappable "Worked for 3m 4s" ("Interrupted after 3m 4s" for a
- *  turn a crash cut off) that discloses the turn's tool activity. Desktop parity:
+ *  settling in place to a tappable "Worked for 3m 4s" ("Interrupted after" for a Stop,
+ *  "Failed after" for a fault) that discloses the turn's tool activity. Desktop parity:
  *  `NativeChatWorkingStatus`. */
 export function MobileNativeChatTurnStatus({
   startedAt,
@@ -40,7 +40,7 @@ export function MobileNativeChatTurnStatus({
 }: {
   startedAt: number | null
   workedSeconds?: number | null
-  /** How a settled turn ended; a death nobody asked for reads "Interrupted after N". */
+  /** How a settled turn ended; it picks the settled label. */
   verdict?: AgentTurnOutcome
   expanded?: boolean
   onToggleExpanded?: () => void
