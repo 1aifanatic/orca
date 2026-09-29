@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { parse } from 'yaml'
@@ -19,7 +19,8 @@ import { classifyPrJobs } from './pr-code-change-scope.mjs'
  *
  * Both halves matter and being in one is not enough: `CROSS_VERSION_WIRE_PREFIXES` in
  * pr-code-change-scope.mjs decides whether the job RUNS for a diff, and the argv decides
- * whether the FILE runs once the job started.
+ * whether the FILE runs once the job started. So every module a suite pairs has to start the
+ * job too, or a change to it breaks the pairing on a PR that never runs the lane.
  */
 
 const projectDir = resolve(import.meta.dirname, '../..')
@@ -36,6 +37,25 @@ const SUITE_PATTERN = /\.unit\.test\.ts$/
  * below vacuous by finding nothing. Only ever lowered when a suite is genuinely deleted.
  */
 const SUITE_FLOOR = 9
+
+/**
+ * The release-checkout machinery extracts a tree and pairs nothing; `release-checkout.unit.test.ts`
+ * feeds it made-up paths on purpose.
+ */
+const CHECKOUT_MACHINERY = new Set([
+  'release-checkout.ts',
+  'release-checkout-tree.ts',
+  'release-checkout.unit.test.ts'
+])
+
+/** A working-tree import, static or dynamic, from a suite or a wire helper it loads through. */
+const WORKING_TREE_IMPORT = /['"]\.\.\/\.\.\/\.\.\/((?:src|mobile)\/[^'"]+)['"]/g
+
+/** A repo path handed to `importReleaseCheckoutModule`, inline or through a constant. */
+const CHECKOUT_MODULE_PATH = /['"]\/?((?:src|mobile)\/[^'"\s]+\.tsx?)['"]/g
+
+/** Floor for the paired modules found, so a scanner that stops matching cannot pass empty. */
+const PAIRED_MODULE_FLOOR = 25
 
 function readWorkflow(relativePath) {
   return parse(readFileSync(join(projectDir, relativePath), 'utf8'))
@@ -68,6 +88,36 @@ const suites = readdirSync(join(projectDir, LANE_DIRECTORY))
   .filter((name) => SUITE_PATTERN.test(name))
   .map((name) => `${LANE_DIRECTORY}/${name}`)
   .sort()
+
+function resolveModule(specifier) {
+  if (/\.tsx?$/.test(specifier)) {
+    return specifier
+  }
+  const candidates = [`${specifier}.ts`, `${specifier}.tsx`, `${specifier}/index.ts`]
+  return candidates.find((path) => existsSync(join(projectDir, path))) ?? specifier
+}
+
+/** Each module the suites load for pairing, with the first file that loads it. */
+function readPairedModules() {
+  const modules = new Map()
+  for (const name of readdirSync(join(projectDir, LANE_DIRECTORY)).sort()) {
+    if (!name.endsWith('.ts') || CHECKOUT_MACHINERY.has(name)) {
+      continue
+    }
+    const source = readFileSync(join(projectDir, LANE_DIRECTORY, name), 'utf8')
+    for (const pattern of [WORKING_TREE_IMPORT, CHECKOUT_MODULE_PATH]) {
+      for (const [, specifier] of source.matchAll(pattern)) {
+        const path = resolveModule(specifier)
+        if (!modules.has(path)) {
+          modules.set(path, name)
+        }
+      }
+    }
+  }
+  return modules
+}
+
+const pairedModules = readPairedModules()
 
 /** A vitest positional selects a file when it names the file or a directory above it. */
 function selectedByLane(path) {
@@ -102,5 +152,29 @@ describe('cross-version wire suites run somewhere', () => {
     for (const path of suites) {
       expect(classifyPrJobs([path])[LANE_JOB], path).toBe(true)
     }
+  })
+
+  it('finds a plausible number of paired modules', () => {
+    expect(
+      pairedModules.size,
+      `Only ${pairedModules.size} paired modules were recognized; the floor is ` +
+        `${PAIRED_MODULE_FLOOR}. The scanner has probably stopped matching a load shape.`
+    ).toBeGreaterThanOrEqual(PAIRED_MODULE_FLOOR)
+  })
+
+  it('pairs only modules that exist', () => {
+    const missing = [...pairedModules]
+      .filter(([path]) => !existsSync(join(projectDir, path)))
+      .map(([path, loader]) => `${path} (loaded by ${loader})`)
+    expect(missing).toEqual([])
+  })
+
+  it('runs the lane for a change to any module a suite pairs', () => {
+    const ungated = [...pairedModules]
+      .filter(([path]) => !classifyPrJobs([path])[LANE_JOB])
+      .map(([path, loader]) => `${path} (loaded by ${loader})`)
+    expect(ungated, 'add each to CROSS_VERSION_WIRE_PREFIXES in pr-code-change-scope.mjs').toEqual(
+      []
+    )
   })
 })

@@ -138,11 +138,6 @@ function changesMobileWebApp(changedFiles) {
 const CROSS_VERSION_WIRE_PREFIXES = [
   'tests/e2e/cross-version-wire/',
   'src/shared/protocol-version',
-  // A persisted status row is re-admitted by the other build's normalizeAgentStatusPayload after
-  // an update or a downgrade; these decide which rows and fields it admits.
-  'src/shared/agent-status-types',
-  'src/shared/agent-status-field-normalization',
-  'src/shared/agent-turn-outcome',
   'src/shared/terminal-stream-protocol',
   'src/shared/browser-client-host-protocol',
   'src/shared/browser-network-tunnel-protocol',
@@ -169,7 +164,16 @@ const CROSS_VERSION_WIRE_PREFIXES = [
   'src/main/runtime/runtime-worktree-agent-',
   'src/main/runtime/runtime-worktree-pty-agent-sources',
   'src/shared/runtime-worktree-contracts',
-  'src/renderer/src/runtime/remote-runtime-terminal-multiplexer'
+  'src/renderer/src/runtime/remote-runtime-terminal-multiplexer',
+  'src/main/runtime/rpc/methods/index.ts',
+  'src/main/runtime/runtime-subscription-registry.ts',
+  'src/shared/terminal-retirement-proof-ledger.ts',
+  'src/main/runtime/mobile-session-terminal-retirement.ts',
+  'src/main/runtime/mobile-session-terminal-retirement-proof.ts',
+  'src/main/persistence/tracking-repos/worktree-identity-migration.ts',
+  'src/main/runtime/orchestration/db.ts',
+  'src/main/runtime/orchestration/db/contract-constants.ts',
+  'mobile/src/worktree/agent-row-display.ts'
 ]
 
 const MANAGED_HOOK_PREFIXES = [
@@ -411,6 +415,10 @@ export function classifyPrJobs(changedFiles) {
   // that is exactly the diff that changes the page this job builds. Gated on should_run it would
   // skip on every PR that can break it and run on none.
   jobs.mobile_web_app = jobs.mobile_web_app || changesMobileWebApp(changedFiles)
+  // Why outside should_run, for the same reason: the phone's `worktree ps` row reader is paired
+  // against the host, and a change to it is a mobile-only diff.
+  jobs['cross-version-wire'] =
+    jobs['cross-version-wire'] || jobDetector('cross-version-wire')(changedFiles)
   return {
     should_run: shouldRun,
     native_cache_changed: shouldRun && (emptyDiff || changedFiles.some(isNativeCacheInputPath)),

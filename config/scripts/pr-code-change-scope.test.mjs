@@ -353,10 +353,15 @@ describe('per-job path classification', () => {
       'src/main/runtime/runtime-worktree-agent-rows.ts',
       'src/main/runtime/runtime-worktree-pty-agent-sources.ts',
       'src/shared/runtime-worktree-contracts.ts',
-      'src/shared/agent-status-types.ts',
-      'src/shared/agent-status-field-normalization.ts',
-      'src/shared/agent-turn-outcome.ts',
-      'src/renderer/src/runtime/remote-runtime-terminal-multiplexer.ts'
+      'src/renderer/src/runtime/remote-runtime-terminal-multiplexer.ts',
+      'src/main/runtime/rpc/methods/index.ts',
+      'src/main/runtime/runtime-subscription-registry.ts',
+      'src/shared/terminal-retirement-proof-ledger.ts',
+      'src/main/runtime/mobile-session-terminal-retirement.ts',
+      'src/main/runtime/mobile-session-terminal-retirement-proof.ts',
+      'src/main/persistence/tracking-repos/worktree-identity-migration.ts',
+      'src/main/runtime/orchestration/db.ts',
+      'src/main/runtime/orchestration/db/contract-constants.ts'
     ]) {
       expectClassification([file], {
         'cross-version-wire': true,
@@ -368,6 +373,9 @@ describe('per-job path classification', () => {
       ['tests/e2e/cross-version-wire/cross-version-terminal-wire.unit.test.ts'],
       { 'cross-version-wire': true }
     )
+    const phoneRowReader = classifyPrJobs(['mobile/src/worktree/agent-row-display.ts'])
+    expect(phoneRowReader.should_run).toBe(false)
+    expect(phoneRowReader['cross-version-wire']).toBe(true)
   })
 
   it('runs workflow-self-change and lockfile diffs as force-all', () => {

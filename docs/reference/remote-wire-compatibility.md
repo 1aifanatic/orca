@@ -192,32 +192,19 @@ Run it with:
 pnpm exec vitest run --config config/vitest.config.ts tests/e2e/cross-version-wire/cross-version-agent-session-wire.unit.test.ts
 ```
 
-`tests/e2e/cross-version-wire/cross-version-agent-status-payload.unit.test.ts` pairs the same
-two builds over the agent-status payload. Its version boundary is the hook server's status file:
-after an update or a downgrade the other build re-admits every persisted row with its own
-`normalizeAgentStatusPayload`, which refuses a status arm it does not know. The suite writes a
-row in every baseline arm with one build and reads it with the other, in both directions, and
-checks that current code still writes every arm and field the baseline writes.
-
-Two nearby surfaces have no pairing because nothing of another version reads them. The
-canonical agent-status store's snapshot and mutation envelope never leave the process that owns
-the store, and their decoders refuse unknown keys; a transport that carries them to a replica
-must add a version check or lenient decoding, and a pairing, when it ships. The SSH relay is
-always the desktop's own build: each build installs it under its own content-hashed directory,
-binds its socket there, and the handshake refuses any other build's version (see
-`src/main/ssh/ssh-relay-superseded-endpoints.ts`).
-
-The harness does **not** cover the session-tab sync channel (which also carries each terminal
-tab's agent status to paired clients), legacy agent-session
-publications, file or Git RPCs, or mobile/E2EE framing. A change on those paths still needs its
-own reasoning against the rules above.
+The harness covers the terminal stream and the structured agent-session surface. The one
+agent-status path it pairs is the `worktree ps` row (`cross-version-worktree-ps-verdict.unit.test.ts`).
+It does **not** cover the session-tab sync channel, including the `agentStatus` each terminal
+tab carries to paired desktops and phones, legacy agent-session publications, file or Git RPCs,
+mobile/E2EE framing, or the relay transport. A change on those paths still needs its own
+reasoning against the three rules above.
 
 Every suite in `tests/e2e/cross-version-wire/` runs in the `cross-version-wire` PR job and
 nowhere else — the unit shards exclude the directory, because a shallow shard clone has no tags
 for an extracted release to skew against. The job therefore names the directory rather than a
-list of files, and `config/scripts/cross-version-wire-lane-registration.test.mjs` holds that
-shut. Which diffs start the job is a separate list, `CROSS_VERSION_WIRE_PREFIXES` in
-`config/scripts/pr-code-change-scope.mjs`; a wire module missing from it runs no pairing at all.
+list of files. Which diffs start the job is a separate list, `CROSS_VERSION_WIRE_PREFIXES` in
+`config/scripts/pr-code-change-scope.mjs`, and every module a suite pairs must be on it.
+`config/scripts/cross-version-wire-lane-registration.test.mjs` holds both.
 
 ## Worked example: `agentWait` on terminal and worker reads
 
