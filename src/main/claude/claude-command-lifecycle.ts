@@ -66,6 +66,11 @@ export function observeClaudeCommandLifecycle(
   }
 }
 
+/** A send the CLI has taken and neither echoed nor ended: the idle sweep must not rest its child. */
+export function claudeHoldsDispatch(session: ClaudeSession): boolean {
+  return session.dispatchWaiters.some((waiter) => waiter.commandLifecycle !== undefined)
+}
+
 /**
  * `session_state_changed idle` comes only once the CLI's queue has drained, so a send it took that
  * is still unanswered here left without an echo — a turn that threw can leave `started` with no

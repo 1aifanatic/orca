@@ -143,6 +143,7 @@ describe('a live Claude chat whose CLI took a send and let it go without an echo
     expect(await submission(host, taken)).toMatchObject({ dispatchState: 'pending' })
     child.handlers.onMessage?.(lifecycle(sentUuid, 'queued'))
     child.handlers.onMessage?.(lifecycle(sentUuid, 'started'))
+    expect(host.deps.adapter.holdsDispatch?.(SESSION)).toBe(true)
 
     child.handlers.onMessage?.(
       ending === 'idle' ? sessionState('idle') : lifecycle(sentUuid, ending)
@@ -155,6 +156,7 @@ describe('a live Claude chat whose CLI took a send and let it go without an echo
         reason
       })
     )
+    expect(host.deps.adapter.holdsDispatch?.(SESSION)).toBe(false)
     // Released doubt: the chat stops reading working, and nothing re-sends it.
     expect(
       hasUnansweredStructuredAgentSessionDispatch((await host.journalSnapshot(SESSION)).submissions)

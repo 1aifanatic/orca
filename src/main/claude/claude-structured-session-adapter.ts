@@ -7,6 +7,7 @@ import type {
 } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import { stopClaudeBackgroundTasks } from './claude-structured-control-actions'
 import { dispatchClaudeTurn } from './claude-structured-dispatch'
+import { claudeHoldsDispatch } from './claude-command-lifecycle'
 import { StructuredSessionCompaction } from '../native-chat/agent-session-wire/structured-session-compaction'
 import { releaseClaudeAcquisition } from './claude-structured-acquisition-release'
 import { acquireClaudeSession } from './claude-structured-session-acquisition'
@@ -230,6 +231,10 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
   }
   readCommands: NonNullable<StructuredAgentSessionAdapter['readCommands']> = (sessionId) =>
     this.sessions.get(sessionId)?.commands.commands
+  holdsDispatch = (sessionId: string): boolean => {
+    const session = this.sessions.get(sessionId)
+    return session ? claudeHoldsDispatch(session) : false
+  }
   answerPrompt: StructuredAgentSessionAdapter['answerPrompt'] = (request) =>
     answerClaudeStructuredPrompt({ request, sessions: this.sessions })
   setOption: StructuredAgentSessionAdapter['setOption'] = (input) =>

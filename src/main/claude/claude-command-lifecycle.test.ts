@@ -409,6 +409,7 @@ describe('a send the CLI started, then cancelled', () => {
     const replay = await replayCapture('auth-failed', { omitFrame: isTurnOutput })
 
     expect(replay.settlementsFor('client-A')).toEqual([ENDED_IN_DOUBT])
+    expect(replay.adapter.holdsDispatch('session-1')).toBe(false)
   })
 
   it('stays started when a redelivered command re-emits queued before its cancelled frame', async () => {
@@ -474,13 +475,14 @@ describe('a send the CLI ended before starting it', () => {
   })
 })
 
-describe('a send the CLI took when it goes idle', () => {
-  it('is released as doubt when its started turn threw with no terminal state', async () => {
+describe('a send the CLI holds', () => {
+  it('holds its child from the idle sweep until the CLI idles, then is released as doubt', async () => {
     // Started, then its turn threw: no echo and no terminal state, as the schema allows.
     const replay = await replayCapture('auth-failed', {
       omitFrame: (frame) =>
         isTurnOutput(frame) || isLifecycleFrame(frame, 'cancelled') || isIdleFrame(frame)
     })
+    expect(replay.adapter.holdsDispatch('session-1')).toBe(true)
     expect(replay.settlementsFor('client-A')).toEqual([])
 
     replay.connection.handlers.onMessage?.({
@@ -492,7 +494,17 @@ describe('a send the CLI took when it goes idle', () => {
     })
 
     expect(replay.settlementsFor('client-A')).toEqual([IDLE_IN_DOUBT])
+    expect(replay.adapter.holdsDispatch('session-1')).toBe(false)
   })
+
+  it.each(['interrupt-lost', 'cancel-async', 'batch-lead', 'auth-failed'])(
+    'holds nothing once the %s capture has run to its idle',
+    async (name) => {
+      const replay = await replayCapture(name)
+
+      expect(replay.adapter.holdsDispatch('session-1')).toBe(false)
+    }
+  )
 })
 
 describe('a Stop on a CLI that reports no lifecycle', () => {
