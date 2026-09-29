@@ -166,6 +166,17 @@ describe('Codex 0.157/0.158 startup dialogs from captured bytes', () => {
     expect(detectTerminalWaitBlockedReason(`${waitText}\n${chat}`)).toBeNull()
   })
 
+  it('does not name a mid-session Codex popup a hooks review', () => {
+    // Why: Codex's rate-limit reset popup (and other pickers) ends `enter confirm · esc back`.
+    const popup = [
+      '  Use this reset?',
+      '  1. Yes, use reset  Reset your weekly and 5-hour usage limits.',
+      '› 2. No, go back     Choose a different reset',
+      '  enter confirm · esc back'
+    ].join('\n')
+    expect(detectTerminalWaitBlockedReason(popup)).not.toBe('agent-hooks-review-prompt')
+  })
+
   describe('through the runtime', () => {
     it.each(DIALOGS)(
       '$name: stops a tui-idle wait as $reason instead of typing into it',
