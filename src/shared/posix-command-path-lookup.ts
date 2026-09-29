@@ -18,6 +18,8 @@ export type PosixCommandPathLookupOptions = {
    * configurable, and `/mnt` is an ordinary directory name on a Linux box.
    */
   skipWindowsMountDirs?: boolean
+  /** Variable that receives the result; defaults to `resolved`. */
+  resultVariable?: string
 }
 
 export function buildPosixCommandPathLookupScript(
@@ -25,6 +27,10 @@ export function buildPosixCommandPathLookupScript(
   options: PosixCommandPathLookupOptions = {}
 ): string {
   const commandAssignment = buildCommandAssignment(target)
+  const result = options.resultVariable ?? 'resolved'
+  if (!SHELL_VARIABLE_NAME_PATTERN.test(result)) {
+    throw new Error(`Invalid shell variable name: ${result}`)
+  }
   // `drvfs` is what WSL mounts a Windows drive as, wherever the automount root
   // is; 9p/virtiofs cover the WSL2 shapes.
   //
@@ -55,7 +61,7 @@ export function buildPosixCommandPathLookupScript(
   // Shell command resolution can be masked by aliases, functions, and builtins, so inspect PATH.
   return [
     `_orca_lookup_command=${commandAssignment}`,
-    'resolved=',
+    `${result}=`,
     ...mountPrelude,
     'case "$_orca_lookup_command" in',
     '  */*)',
@@ -64,7 +70,7 @@ export function buildPosixCommandPathLookupScript(
     '      *) _orca_lookup_candidate=${PWD%/}/$_orca_lookup_command ;;',
     '    esac',
     '    if [ -x "$_orca_lookup_candidate" ] && [ ! -d "$_orca_lookup_candidate" ]; then',
-    '      resolved=$_orca_lookup_candidate',
+    `      ${result}=$_orca_lookup_candidate`,
     '    fi',
     '    ;;',
     '  *)',
@@ -88,7 +94,7 @@ export function buildPosixCommandPathLookupScript(
     '        *) _orca_lookup_candidate=${PWD%/}/$_orca_lookup_component/$_orca_lookup_command ;;',
     '      esac',
     '      if [ -x "$_orca_lookup_candidate" ] && [ ! -d "$_orca_lookup_candidate" ]; then',
-    '        resolved=$_orca_lookup_candidate',
+    `        ${result}=$_orca_lookup_candidate`,
     '        break',
     '      fi',
     '      [ -n "$_orca_lookup_has_more" ] || break',

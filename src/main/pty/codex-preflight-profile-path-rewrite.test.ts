@@ -124,9 +124,7 @@ describe.skipIf(!bashAvailable)('Codex preflight under a profile-rewritten PATH'
   it('runs the bundled CLI the resolver picked, not the impostor the profile put first', () => {
     const fixture = buildFixture()
     const preflightCommand = resolveCodexShellLaunchPreflightCommand({
-      hooksEnabled: true,
       isPackaged: true,
-      managedHomePath: join(fixture.root, 'codex-home'),
       userDataPath: join(fixture.root, 'user-data'),
       resourcesPath: fixture.resourcesPath
     })
@@ -146,9 +144,7 @@ describe.skipIf(!bashAvailable)('Codex preflight under a profile-rewritten PATH'
   it('finishes the rcfile and preserves the alias when the user aliased the name codex', () => {
     const fixture = buildFixture({ aliasCodex: true })
     const preflightCommand = resolveCodexShellLaunchPreflightCommand({
-      hooksEnabled: true,
       isPackaged: true,
-      managedHomePath: join(fixture.root, 'codex-home'),
       userDataPath: join(fixture.root, 'user-data'),
       resourcesPath: fixture.resourcesPath
     })

@@ -434,9 +434,7 @@ describe('Codex shell launch preflight command', () => {
 
     expect(
       resolveCodexShellLaunchPreflightCommand({
-        hooksEnabled: true,
         isPackaged: true,
-        managedHomePath: '/managed/home',
         userDataPath,
         resourcesPath,
         platform: config.platform
@@ -451,9 +449,7 @@ describe('Codex shell launch preflight command', () => {
 
     expect(
       resolveCodexShellLaunchPreflightCommand({
-        hooksEnabled: true,
         isPackaged: false,
-        managedHomePath: '/managed/home',
         userDataPath,
         resourcesPath,
         platform: 'darwin'
@@ -468,10 +464,8 @@ describe('Codex shell launch preflight command', () => {
 
     expect(
       resolveCodexShellLaunchPreflightCommand({
-        hooksEnabled: true,
         isPackaged: true,
         isWsl: true,
-        managedHomePath: '/home/jin/.local/share/orca/codex-runtime-home/home',
         userDataPath,
         resourcesPath,
         platform: 'win32'
@@ -486,9 +480,7 @@ describe('Codex shell launch preflight command', () => {
 
     for (const isPackaged of [true, false]) {
       const command = resolveCodexShellLaunchPreflightCommand({
-        hooksEnabled: true,
         isPackaged,
-        managedHomePath: '/managed/home',
         userDataPath,
         resourcesPath,
         platform: 'darwin'
@@ -510,9 +502,7 @@ describe('Codex shell launch preflight command', () => {
 
     expect(
       resolveCodexShellLaunchPreflightCommand({
-        hooksEnabled: true,
         isPackaged: true,
-        managedHomePath: '/managed/home',
         userDataPath,
         resourcesPath,
         platform: 'darwin'
@@ -530,9 +520,7 @@ describe('Codex shell launch preflight command', () => {
 
       expect(
         resolveCodexShellLaunchPreflightCommand({
-          hooksEnabled: true,
           isPackaged: true,
-          managedHomePath: '/managed/home',
           userDataPath,
           resourcesPath,
           platform: 'darwin'
@@ -546,9 +534,7 @@ describe('Codex shell launch preflight command', () => {
 
     expect(
       resolveCodexShellLaunchPreflightCommand({
-        hooksEnabled: true,
         isPackaged: true,
-        managedHomePath: '/managed/home',
         userDataPath,
         resourcesPath: null,
         platform: 'darwin'
@@ -556,41 +542,37 @@ describe('Codex shell launch preflight command', () => {
     ).toBeNull()
   })
 
-  it.each([false, true])(
-    'enables capability checks with hooks=%s and system-default home',
-    (hooksEnabled) => {
-      const { userDataPath, resourcesPath } = makeCliRoot()
-      const launcher = join(resourcesPath, 'bin', 'orca')
-      writeExecutable(launcher, '#!/bin/sh\nexit 0\n')
-      expect(
-        resolveCodexShellLaunchPreflightCommand({
-          hooksEnabled,
-          isPackaged: true,
-          managedHomePath: null,
-          userDataPath,
-          resourcesPath,
-          platform: 'darwin'
-        })
-      ).toBe(launcher)
-    }
-  )
-
-  it.each([
-    { hooksEnabled: true, isWsl: true, managedHomePath: '/managed/home', isPackaged: false }
-  ])('does not enable an unsupported preflight for %o', (options) => {
+  it('enables the launch policy without consulting hooks or the selected Codex home', () => {
     const { userDataPath, resourcesPath } = makeCliRoot()
-    writeExecutable(join(resourcesPath, 'bin', 'orca'), '#!/bin/sh\nexit 0\n')
-
+    const launcher = join(resourcesPath, 'bin', 'orca')
+    writeExecutable(launcher, '#!/bin/sh\nexit 0\n')
     expect(
       resolveCodexShellLaunchPreflightCommand({
-        ...options,
-        isPackaged: options.isPackaged ?? true,
+        isPackaged: true,
         userDataPath,
         resourcesPath,
         platform: 'darwin'
       })
-    ).toBeNull()
+    ).toBe(launcher)
   })
+
+  it.each([{ isWsl: true, isPackaged: false }])(
+    'does not enable an unsupported preflight for %o',
+    (options) => {
+      const { userDataPath, resourcesPath } = makeCliRoot()
+      writeExecutable(join(resourcesPath, 'bin', 'orca'), '#!/bin/sh\nexit 0\n')
+
+      expect(
+        resolveCodexShellLaunchPreflightCommand({
+          ...options,
+          isPackaged: options.isPackaged ?? true,
+          userDataPath,
+          resourcesPath,
+          platform: 'darwin'
+        })
+      ).toBeNull()
+    }
+  )
 })
 
 // Why: the resolved value is now an absolute path, and app bundles (macOS) and

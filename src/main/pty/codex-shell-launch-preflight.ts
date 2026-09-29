@@ -12,10 +12,8 @@ const DEV_LAUNCHER_DIR = ['cli', 'bin']
 const DEV_COMMAND_NAME = 'orca-dev'
 
 export type CodexShellLaunchPreflightCommandOptions = {
-  hooksEnabled: boolean
   isPackaged: boolean
   isWsl?: boolean
-  managedHomePath: string | null
   /** Where the dev launcher is written; `join(userDataPath, 'cli', 'bin')` is also what managed dev PTYs prepend to PATH. */
   userDataPath: string
   /** Packaged app resources root; the bundled launcher lives under it. */
@@ -71,7 +69,7 @@ function isExecutableFileOnDisk(path: string, platform: NodeJS.Platform): boolea
 export function getPosixCodexShellLaunchPreflight(): string {
   return `${posixCodexInteractiveArgv()}
 __orca_codex_path() {
-${buildPosixCommandPathLookupScript({ kind: 'literal', value: 'codex' }).replace(/\bresolved\b/g, '__orca_lookup_result')}
+${buildPosixCommandPathLookupScript({ kind: 'literal', value: 'codex' }, { resultVariable: '__orca_lookup_result' })}
   printf '%s' "$__orca_lookup_result"
 }
 # Why: a typed alias expands inside the shell, after pane launch prep.

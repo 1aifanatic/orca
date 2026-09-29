@@ -220,6 +220,24 @@ describe('buildPosixCommandPathLookupScript', () => {
     }
   )
 
+  it.skipIf(isWindows)('writes the result to a caller-named variable only', () => {
+    const script = buildPosixCommandPathLookupScript(
+      { kind: 'literal', value: 'sh' },
+      { resultVariable: '__orca_lookup_result' }
+    )
+    const output = execFileSync(
+      '/bin/sh',
+      ['-c', `resolved=kept\n${script}\nprintf '%s|%s' "$resolved" "$__orca_lookup_result"`],
+      { encoding: 'utf8' }
+    )
+    const [kept, found] = output.split('|')
+    expect(kept).toBe('kept')
+    expect(isAbsolute(found)).toBe(true)
+    expect(() =>
+      buildPosixCommandPathLookupScript({ kind: 'literal', value: 'sh' }, { resultVariable: 'a-b' })
+    ).toThrow('Invalid shell variable name')
+  })
+
   it('quotes literal targets before assigning them in the generated shell fragment', () => {
     const script = buildPosixCommandPathLookupScript({
       kind: 'literal',
