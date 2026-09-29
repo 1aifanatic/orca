@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 import { resetWorktreeTestSshHostHome } from '../../worktree-removal-test-ssh-host-home'
 
 import {
@@ -283,7 +283,10 @@ describe('OrcaRuntimeService', () => {
       return {}
     })
 
-    const resolveTarget = vi.spyOn(runtime as never, 'resolveWorktreeRemovalTarget')
+    const resolveTarget: MockInstance<(...args: unknown[]) => Promise<unknown>> = vi.spyOn(
+      runtime as never,
+      'resolveWorktreeRemovalTarget'
+    )
     const first = runtime.removeManagedWorktree(TEST_WORKTREE_ID)
 
     await removeStarted.promise

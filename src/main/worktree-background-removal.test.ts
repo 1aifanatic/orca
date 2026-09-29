@@ -170,7 +170,7 @@ describe('background worktree removal', () => {
   })
 
   it('returns listings untouched when nothing is being removed', () => {
-    const rows = [{ id: removal.worktreeId }]
+    const rows: { id: string; hostId?: undefined }[] = [{ id: removal.worktreeId }]
     expect(projectPendingWorktreeRemovals(rows, (row) => row.id, false)).toBe(rows)
   })
 })

@@ -28,7 +28,7 @@ export type WorktreeRuntimeStub = {
 
 /** Why: create-flow tests need a minimal runtime; full fetchRemoteWithCache behavior lives in fetch-remote-cache.test.ts. */
 export function createWorktreeRuntimeStub(mainWindow?: {
-  webContents: { send: (...args: unknown[]) => unknown }
+  webContents: { send: (channel: string, ...args: unknown[]) => unknown }
 }): WorktreeRuntimeStub {
   // Why here: every harness setup builds a stub, so no removal from an earlier test leaks in.
   _resetPendingWorktreeRemovalsForTests()

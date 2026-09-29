@@ -18,7 +18,7 @@ function readsWorktreeRemovalMarker(context: Pick<RpcContext, 'clientCapabilitie
 export function projectWorktreeListRemovals<
   T extends RuntimeWorktreeListResult | DetectedWorktreeListResult
 >(result: T, context: Pick<RpcContext, 'clientCapabilities'>): T {
-  const worktrees = projectPendingWorktreeRemovals(
+  const worktrees = projectPendingWorktreeRemovals<T['worktrees'][number]>(
     result.worktrees,
     (worktree) => worktree.id,
     readsWorktreeRemovalMarker(context)
