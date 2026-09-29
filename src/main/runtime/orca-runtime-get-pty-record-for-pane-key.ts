@@ -206,10 +206,18 @@ export class OrcaRuntimeWithGetPtyRecordForPaneKey extends OrcaRuntimeWithPruneM
     if (summary.status === 'working' || summary.status === 'attention') {
       return
     }
-    this.notifyStructuredSessionJournalActivity(summary.sessionId)
-    const openDb = () => this.getExistingOrchestrationDb()
-    const deliver = (mailbox: string) => this.deliverPendingMessagesForHandle(mailbox)
-    structuredSessionIdleEdgeMailboxes(summary.sessionId, openDb).forEach(deliver)
+    // Logged, never thrown: the same status callback goes on to the first-turn workspace rename.
+    try {
+      this.notifyStructuredSessionJournalActivity(summary.sessionId)
+      const openDb = () => this.getExistingOrchestrationDb()
+      const deliver = (mailbox: string) => this.deliverPendingMessagesForHandle(mailbox)
+      structuredSessionIdleEdgeMailboxes(summary.sessionId, openDb).forEach(deliver)
+    } catch (error) {
+      console.warn('[orchestration] structured session mail redrive failed', {
+        sessionId: summary.sessionId,
+        error: error instanceof Error ? error.message : String(error)
+      })
+    }
   }
 
   /** Settlement drops anything parked for the session; nothing will ever redrive it again. */

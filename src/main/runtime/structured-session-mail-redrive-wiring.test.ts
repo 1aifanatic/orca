@@ -20,6 +20,7 @@ vi.mock('./structured-agent-session-runtime', async (importOriginal) => ({
 }))
 
 const { OrcaRuntimeService } = await import('./orca-runtime')
+const { OrchestrationDb } = await import('./orchestration/db')
 
 describe("the runtime's own structured host install", () => {
   it('reports every session status change to the mail redrive', async () => {
@@ -42,5 +43,23 @@ describe("the runtime's own structured host install", () => {
       // The same callback's rename half needs a store this bare runtime does not have.
     }
     expect(redrive).toHaveBeenCalledWith(summary)
+  })
+
+  it('logs a redrive the database fails, so the status callback goes on to the workspace rename', () => {
+    const runtime = new OrcaRuntimeService()
+    const closed = new OrchestrationDb(':memory:')
+    closed.close()
+    vi.spyOn(runtime, 'getExistingOrchestrationDb').mockReturnValue(closed)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(() =>
+      runtime.onStructuredSessionStatusForMail({
+        sessionId: '4a1f6c2e-8b3d-4e7a-9c15-0d2b6e8f1a37',
+        status: 'idle'
+      })
+    ).not.toThrow()
+    expect(warn).toHaveBeenCalledWith(
+      '[orchestration] structured session mail redrive failed',
+      expect.objectContaining({ sessionId: '4a1f6c2e-8b3d-4e7a-9c15-0d2b6e8f1a37' })
+    )
   })
 })
