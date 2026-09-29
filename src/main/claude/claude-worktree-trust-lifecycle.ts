@@ -2,6 +2,7 @@ import type { GlobalSettings } from '../../shared/global-settings-types'
 import type { Repo } from '../../shared/repo-types'
 import {
   CLAUDE_TRUST_CONVERGE_METHOD,
+  readClaudeTrustConfigEnv,
   type ClaudeFolderTrustSpawnRequest
 } from '../../shared/claude-folder-trust-spawn-request'
 import { resolveTuiAgentLaunchEnv } from '../../shared/tui-agent-launch-defaults'
@@ -23,6 +24,8 @@ async function revokeOne(store: LifecycleStore, worktreeId: string): Promise<voi
   if (!target) {
     return
   }
+  // Why: a user-set CLAUDE_CONFIG_DIR moved the grant into another file; revoke must find it there.
+  const claudeLaunchEnv = resolveTuiAgentLaunchEnv('claude', store.getSettings().agentDefaultEnv)
   if (target.connectionId) {
     const mux = getActiveMultiplexer(target.connectionId)
     if (!mux || mux.isDisposed?.()) {
@@ -34,15 +37,17 @@ async function revokeOne(store: LifecycleStore, worktreeId: string): Promise<voi
       trusted: false
     }
     // Why: relays predating this method reject it; the entry then lingers harmlessly.
-    await mux.request(CLAUDE_TRUST_CONVERGE_METHOD, { request }).catch(() => {})
+    await mux
+      .request(CLAUDE_TRUST_CONVERGE_METHOD, {
+        request,
+        env: readClaudeTrustConfigEnv(claudeLaunchEnv)
+      })
+      .catch(() => {})
     return
   }
   const request = resolveLocalClaudeTrustRequest(
     { ...target, trusted: false },
-    {
-      ...process.env,
-      ...resolveTuiAgentLaunchEnv('claude', store.getSettings().agentDefaultEnv)
-    },
+    { ...process.env, ...claudeLaunchEnv },
     null,
     null
   )

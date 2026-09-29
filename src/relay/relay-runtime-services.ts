@@ -24,7 +24,7 @@ import { RelayPtySourcePublication } from './relay-pty-source-publication'
 import { SkillInstallHandler } from './skill-install-handler'
 import { relayLogLine } from './relay-diagnostic-log'
 import { remoteCliRequestTimeoutMs } from './remote-cli-timeout'
-import { applyRelayClaudeFolderTrust } from './claude-folder-trust-spawn'
+import { applyRelayClaudeTrustConverge } from './claude-folder-trust-spawn'
 import { CLAUDE_TRUST_CONVERGE_METHOD } from '../shared/claude-folder-trust-spawn-request'
 
 export class RelayRuntimeServices {
@@ -156,7 +156,7 @@ export class RelayRuntimeServices {
       return { ok: true }
     })
     this.dispatcher.onRequest(CLAUDE_TRUST_CONVERGE_METHOD, async (params) => {
-      await applyRelayClaudeFolderTrust(params.request, process.env)
+      await applyRelayClaudeTrustConverge(params)
       return { ok: true }
     })
     this.dispatcher.onRequest('session.resolveHome', async (params) => ({

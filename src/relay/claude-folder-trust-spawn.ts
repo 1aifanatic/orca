@@ -1,6 +1,9 @@
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { parseClaudeFolderTrustSpawnRequest } from '../shared/claude-folder-trust-spawn-request'
+import {
+  parseClaudeFolderTrustSpawnRequest,
+  readClaudeTrustConfigEnv
+} from '../shared/claude-folder-trust-spawn-request'
 import { resolveClaudeGlobalConfigFile } from '../main/claude/claude-folder-trust-file'
 import { convergeClaudeWorktreeTrustOnHost } from '../main/claude/claude-worktree-trust-host'
 
@@ -27,5 +30,15 @@ export async function applyRelayClaudeFolderTrust(
       exists: existsSync
     }),
     keyStyle: style
+  })
+}
+
+/** `claudeTrust.converge`: resolve the same config file a spawn with the desktop's Claude env would. */
+export async function applyRelayClaudeTrustConverge(
+  params: Record<string, unknown>
+): Promise<void> {
+  await applyRelayClaudeFolderTrust(params.request, {
+    ...process.env,
+    ...readClaudeTrustConfigEnv(params.env)
   })
 }

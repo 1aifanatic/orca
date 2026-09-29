@@ -50,12 +50,16 @@ const meta: WorktreeMeta = {
   orcaCreationContentOrigin: 'repo-ref'
 }
 
-function store(repo: Repo, worktreeId: string) {
+function store(
+  repo: Repo,
+  worktreeId: string,
+  agentDefaultEnv: { claude?: Record<string, string> } = {}
+) {
   return {
     getRepo: (id: string) => (id === repo.id ? repo : undefined),
     getWorktreeMeta: (id: string) => (id === worktreeId ? meta : undefined),
     getAllWorktreeMeta: () => ({ [worktreeId]: meta }),
-    getSettings: () => ({ claudeTrustOrcaWorktrees: true, agentDefaultEnv: {} })
+    getSettings: () => ({ claudeTrustOrcaWorktrees: true, agentDefaultEnv })
   }
 }
 
@@ -89,7 +93,21 @@ describe('Claude worktree trust lifecycle', () => {
     const worktree = '/remote/wt'
     await revokeAllClaudeWorktreeTrust(store(repo({ connectionId: 'ssh-1' }), `r::${worktree}`))
     expect(request).toHaveBeenCalledWith('claudeTrust.converge', {
-      request: { worktreeRoot: worktree, mainCheckoutPath: join(root, 'repo'), trusted: false }
+      request: { worktreeRoot: worktree, mainCheckoutPath: join(root, 'repo'), trusted: false },
+      env: {}
+    })
+  })
+
+  it("sends the relay the Claude config dir a launch would use, and nothing else from Claude's env", async () => {
+    const worktree = '/remote/wt'
+    await revokeAllClaudeWorktreeTrust(
+      store(repo({ connectionId: 'ssh-1' }), `r::${worktree}`, {
+        claude: { CLAUDE_CONFIG_DIR: '/remote/cfg', ANTHROPIC_MODEL: 'x' }
+      })
+    )
+    expect(request).toHaveBeenCalledWith('claudeTrust.converge', {
+      request: { worktreeRoot: worktree, mainCheckoutPath: join(root, 'repo'), trusted: false },
+      env: { CLAUDE_CONFIG_DIR: '/remote/cfg' }
     })
   })
 })

@@ -2,8 +2,11 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { applyRelayClaudeFolderTrust } from './claude-folder-trust-spawn'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  applyRelayClaudeFolderTrust,
+  applyRelayClaudeTrustConverge
+} from './claude-folder-trust-spawn'
 import { buildSshPtySpawnRequest } from '../main/providers/ssh-pty-spawn-request'
 
 let root: string
@@ -28,6 +31,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.unstubAllEnvs()
   rmSync(root, { recursive: true, force: true })
 })
 
@@ -50,6 +54,25 @@ describe('applyRelayClaudeFolderTrust', () => {
       { CLAUDE_CONFIG_DIR: configDir, HOME: root }
     )
     expect(readFileSync(join(configDir, '.claude.json'), 'utf-8')).toBe('{"oauthAccount":{"x":1}}')
+  })
+})
+
+describe('applyRelayClaudeTrustConverge', () => {
+  it('revokes in the config file named by the forwarded Claude env, not the default', async () => {
+    // Why: the relay merges its own env; pin HOME so the default file is a temp one too.
+    vi.stubEnv('HOME', root)
+    vi.stubEnv('USERPROFILE', root)
+    vi.stubEnv('CLAUDE_CONFIG_DIR', undefined)
+    const configFile = join(configDir, '.claude.json')
+    writeFileSync(
+      configFile,
+      JSON.stringify({ projects: { [worktree]: { hasTrustDialogAccepted: true } } })
+    )
+    await applyRelayClaudeTrustConverge({
+      request: { worktreeRoot: worktree, mainCheckoutPath: join(root, 'repo'), trusted: false },
+      env: { CLAUDE_CONFIG_DIR: configDir, HOME: '/elsewhere' }
+    })
+    expect(JSON.parse(readFileSync(configFile, 'utf-8'))).toEqual({ projects: {} })
   })
 })
 

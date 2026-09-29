@@ -19,6 +19,20 @@ const claudeFolderTrustSpawnRequestSchema = z.object({
   trusted: z.boolean()
 })
 
+// Why: outside a spawn the relay has no launch env, so a converge carries the keys that name Claude's config file.
+const claudeTrustConfigEnvSchema = z.object({
+  CLAUDE_CONFIG_DIR: z.string().optional(),
+  CLAUDE_CODE_CUSTOM_OAUTH_URL: z.string().optional()
+})
+
+export type ClaudeTrustConfigEnv = z.infer<typeof claudeTrustConfigEnvSchema>
+
+/** Only the config-file keys; anything else, or a malformed value, yields none. */
+export function readClaudeTrustConfigEnv(value: unknown): ClaudeTrustConfigEnv {
+  const parsed = claudeTrustConfigEnvSchema.safeParse(value)
+  return parsed.success ? parsed.data : {}
+}
+
 export function parseClaudeFolderTrustSpawnRequest(
   value: unknown
 ): ClaudeFolderTrustSpawnRequest | null {
