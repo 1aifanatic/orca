@@ -194,6 +194,35 @@ describe('replay preference', () => {
   })
 })
 
+describe('the hand-off link on answers', () => {
+  it('a replayed queued send, once drained, answers with the hand-off that names its draft', async () => {
+    const working = await workingSend()
+    const body = hostTestMessage('drained later')
+    const clientOperationId = hostTestOperationId()
+    const params = {
+      envelope: envelope(
+        { body, delivery: 'queue-if-active' },
+        'agentSession.send',
+        clientOperationId
+      ),
+      body,
+      delivery: 'queue-if-active' as const
+    }
+    await host.send(CALLER, params)
+    await settleAccepted(working, 'a')
+    await eventually(async () =>
+      expect((await rig.handoff(clientOperationId))?.queuedMessageId).toBe(clientOperationId)
+    )
+    expect(await host.send(CALLER, params)).toMatchObject({
+      ok: true,
+      replayed: true,
+      value: { submission: { queuedMessageId: clientOperationId } }
+    })
+    // The first send, direct, names no draft.
+    expect(await submission(working)).not.toHaveProperty('queuedMessageId')
+  })
+})
+
 describe('Send-now rerun', () => {
   it('a Send whose answer never settled answers again with the submission it made, never re-sending it', async () => {
     const working = await workingSend()

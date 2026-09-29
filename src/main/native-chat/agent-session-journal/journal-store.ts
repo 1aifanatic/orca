@@ -313,7 +313,7 @@ export class AgentSessionJournal {
     consume?: JournalSubmissionConsume
   ): Promise<AgentJournalCursor> {
     return this.appendRow(
-      journalSubmissionRowBuilder(() => this.state, this.identity.providerHandle, input),
+      journalSubmissionRowBuilder(() => this.state, this.identity.providerHandle, input, consume),
       consume && queuedMessageConsumeHook(this.queuedMessages, input.clientMessageId, consume)
     )
   }

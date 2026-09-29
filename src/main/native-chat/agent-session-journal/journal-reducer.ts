@@ -282,7 +282,11 @@ function applySubmission(
     reason: null,
     submittedAt: row.ts,
     resolvedAt: null,
-    ...(row.handoverRecorded ? { handoverRecorded: true, acceptedSequence: row.seq } : {})
+    ...(row.handoverRecorded ? { handoverRecorded: true, acceptedSequence: row.seq } : {}),
+    // A malformed stored link is dropped, never the row.
+    ...(typeof row.queuedMessageId === 'string' && row.queuedMessageId.length > 0
+      ? { queuedMessageId: row.queuedMessageId }
+      : {})
   })
   const itemId = agentJournalSubmissionKey(row.clientMessageId)
   upsertItem(state, itemId, 0, journalRenderItem(itemId, 0, row.body, row), row.fence)

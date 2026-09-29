@@ -79,6 +79,10 @@ it('Stop, then a user send: the withdrawn draft and the paused cards behind it d
     resentA = fresh[0] ?? ''
   })
   expect((await rig.submission(a))?.dispatchState).toBe('rejected')
+  // Both hand-offs of A name it; D, a direct send, names no draft.
+  expect((await rig.submission(resentA))?.queuedMessageId).toBe(a)
+  expect((await rig.submission(a))?.queuedMessageId).toBe(a)
+  expect(await rig.submission(d.id)).not.toHaveProperty('queuedMessageId')
   expect((await rig.submission(resentA))?.payloadFingerprint).toBe(
     (await rig.submission(a))?.payloadFingerprint
   )
@@ -89,8 +93,8 @@ it('Stop, then a user send: the withdrawn draft and the paused cards behind it d
 
   await handedOver(resentA)
   await rig.settleAccepted(resentA, 'a')
-  await eventually(async () => expect(await rig.submission(b)).toBeDefined())
-  expect(await rig.submission(c)).toBeUndefined()
+  await eventually(async () => expect((await rig.handoff(b))?.queuedMessageId).toBe(b))
+  expect(await rig.handoff(c)).toBeUndefined()
   await handedOver(b)
   await rig.settleAccepted(b, 'b')
   await eventually(async () => expect(await rig.submission(c)).toBeDefined())

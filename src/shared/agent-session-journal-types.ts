@@ -398,6 +398,9 @@ export type AgentJournalSubmission = {
   handedOverAt?: number
   /** Host-only: the submission row's sequence, which tells which host process accepted it. */
   acceptedSequence?: number
+  /** The queued draft this submission hands off; absent for a direct send. Read this, never
+   *  a draft id compared with `clientMessageId`. */
+  queuedMessageId?: string
 }
 
 /** Durable answer to "did my send land?", keyed by client message id. Only an

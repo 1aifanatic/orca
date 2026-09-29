@@ -180,7 +180,9 @@ export const AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY =
 // capable client can render the `queued` result arm, the draft list, and returned cards. DARK ON
 // PURPOSE — not in RUNTIME_CAPABILITIES: advertising still requires the integrated Codex steer
 // matrix (#21062) in the shipped host, and the desktop and phone clients that render the queue.
-// The host mechanism lands first; the constant gates the rollout.
+// v1 includes `submission.queuedMessageId` on every draft hand-off: a client reads that link and
+// never compares a draft id with a submission id. The host mechanism lands first; the constant
+// gates the rollout.
 export const AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY =
   'agent-session.queued-messages.v1' as const
 // Why: paired clients advertise Claude-structured support so the host can gate its agent-specific

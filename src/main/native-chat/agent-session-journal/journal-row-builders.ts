@@ -66,11 +66,26 @@ export function journalSubmissionRowBuilder(
     body: AgentJournalMessageItem
     fence: number
     handoverRecorded?: true
-  }
+    queuedMessageId?: string
+  },
+  /** Present when the append hands off a queued draft: the row names that draft, stamped here
+   *  from the consume itself so no hand-off path can leave the link off. */
+  consume?: { messageId: string }
 ): RowBuilder<JournalSubmissionRow> {
   return (seq, ts) => {
     assertSubmissionIdUnused(state().submissions, input.clientMessageId)
-    return buildJournalSubmissionRow({ state: state(), providerHandle, ...input, seq, ts })
+    if (consume && (input.queuedMessageId ?? consume.messageId) !== consume.messageId) {
+      throw new Error(`submission ${input.clientMessageId} names a draft it does not consume`)
+    }
+    const queuedMessageId = consume?.messageId ?? input.queuedMessageId
+    return buildJournalSubmissionRow({
+      state: state(),
+      providerHandle,
+      ...input,
+      ...(queuedMessageId !== undefined ? { queuedMessageId } : {}),
+      seq,
+      ts
+    })
   }
 }
 
@@ -270,6 +285,7 @@ export function buildJournalSubmissionRow(input: {
   fence: number
   ts: number
   handoverRecorded?: true
+  queuedMessageId?: string
 }): JournalSubmissionRow {
   return {
     kind: 'submission',
@@ -278,6 +294,7 @@ export function buildJournalSubmissionRow(input: {
     providerHandle: input.providerHandle,
     body: input.body,
     ...journalRowBase(input.state.epoch, input.seq, input.fence, input.ts),
-    ...(input.handoverRecorded ? { handoverRecorded: true } : {})
+    ...(input.handoverRecorded ? { handoverRecorded: true } : {}),
+    ...(input.queuedMessageId !== undefined ? { queuedMessageId: input.queuedMessageId } : {})
   }
 }

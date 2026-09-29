@@ -65,6 +65,8 @@ export type JournalSubmissionInput = {
   fence: number
   /** The send is accepted now and handed over later, by a `dispatch{pending}` row. */
   handoverRecorded?: true
+  /** Stamped by `appendSubmission` from its consume; a caller-passed value must match it. */
+  queuedMessageId?: string
 }
 
 /** A submission append that converts a queued draft, in one transaction. */

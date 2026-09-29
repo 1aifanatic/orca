@@ -199,6 +199,8 @@ describe('drain', () => {
       throw new Error('expected the submission arm')
     }
     expect(resent.value.submission.clientMessageId).not.toBe(draftId)
+    // The answer names the card it sent; clients read that, never id equality.
+    expect(resent.value.submission.queuedMessageId).toBe(draftId)
     expect(await drafts()).toHaveLength(0)
     // Refused again: the card returns, matched through its current submission (N4).
     await settleRejected(resent.value.submission.clientMessageId, 'refused again')

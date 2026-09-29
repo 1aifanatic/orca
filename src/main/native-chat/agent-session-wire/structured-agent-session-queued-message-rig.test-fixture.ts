@@ -149,6 +149,13 @@ export async function createQueuedMessageTestRig() {
     )
   }
 
+  /** The latest submission that hands off this draft, found by its link. */
+  async function handoff(draftId: string): Promise<AgentJournalSubmission | undefined> {
+    return (await host.journalSnapshot(SESSION)).submissions.findLast(
+      (entry) => entry.queuedMessageId === draftId
+    )
+  }
+
   async function drafts(
     sessionId = SESSION
   ): Promise<{ messageId: string; state: string; paused?: true }[]> {
@@ -225,6 +232,7 @@ export async function createQueuedMessageTestRig() {
     sendNow,
     deleteQueued,
     submission,
+    handoff,
     drafts,
     workingSend,
     settleAccepted,
