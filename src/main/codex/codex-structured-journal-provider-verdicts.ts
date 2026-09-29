@@ -1,4 +1,4 @@
-// What Codex's own verdict frames mean beyond the row they print.
+// What Codex's own verdict frames mean beyond the row they print; shared by journal consumers.
 //
 // Both are decoration to the transcript and load-bearing to the session's state,
 // which is why they are read here rather than left to the generic-frame fallback.
