@@ -14,7 +14,7 @@ function makeGuest(state: { crashed?: boolean; destroyed?: boolean } = {}) {
     }),
     debugger: { sendCommand }
   }
-  return { guest: guest as unknown as Electron.WebContents, sendCommand }
+  return { guest, sendCommand }
 }
 
 describe('sendGuestCdpCommand', () => {

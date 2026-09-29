@@ -9,13 +9,17 @@ const VIEW_RESIZING_CDP_METHODS: ReadonlySet<string> = new Set([
   'Emulation.setVisibleSize'
 ])
 
+type GuestCdpTarget = Pick<WebContents, 'isDestroyed' | 'isCrashed'> & {
+  debugger: Pick<WebContents['debugger'], 'sendCommand'>
+}
+
 /**
  * The gate for guest CDP commands: every viewport writer and every sender that forwards a caller's
  * method (agent bridge, CDP proxy) goes through here, so none can hand Chromium a command that
  * crashes the app while the guest's renderer is dead.
  */
 export function sendGuestCdpCommand(
-  guest: WebContents,
+  guest: GuestCdpTarget,
   method: string,
   params?: Record<string, unknown>,
   sessionId?: string

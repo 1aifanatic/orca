@@ -57,10 +57,11 @@ describe('browserManager viewport on a guest whose renderer crashed', () => {
   it('never resizes the dead guest, and applies the preset once the page reloads', async () => {
     const { guest, debuggerSendCommand, setRendererCrashed } = makeGuest(42501)
     mocks.webContentsFromIdMock.mockReturnValue(guest)
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the viewport fixture implements every WebContents member these paths touch.
     browserManager.attachGuestPolicies(guest as never)
     browserManager.registerGuest({
       browserPageId: 'tab-crashed',
-      webContentsId: guest.id as number,
+      webContentsId: 42501,
       rendererWebContentsId
     })
 
