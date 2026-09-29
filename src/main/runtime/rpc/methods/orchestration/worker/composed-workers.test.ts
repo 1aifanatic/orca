@@ -493,19 +493,47 @@ describe('orchestration RPC methods', () => {
           exitCode: null,
           blockedReason
         })
+        vi.spyOn(runtime, 'showTerminalWorkspaceLaunchScope').mockResolvedValue({
+          id: 'repo::worktree',
+          path: '/srv/worktree',
+          connectionId: 'ssh-1',
+          repo: null,
+          folderWorkspace: null
+        })
+        const diagnose = vi
+          .spyOn(runtime, 'diagnoseWorkspaceTrustForAgent')
+          .mockResolvedValue({ kind: 'failed', detail: 'could not write /srv/.codex/config.toml.' })
         const task = db.createTask({ spec: 'blocked startup prompt' })
 
-        const result = (await call('orchestration.workerStart', {
+        const result: unknown = await call('orchestration.workerStart', {
           task: task.id,
           from: 'term_coord',
           agent: 'codex'
-        })) as { state: string; failedStage: string; lastError: string }
-
-        expect(result).toMatchObject({
-          state: 'failed',
-          failedStage: 'agent_readiness',
-          lastError: `Agent startup blocked: ${expectedReason}`
         })
+
+        expect(result).toMatchObject(
+          blockedReason === 'codex-update-prompt'
+            ? {
+                state: 'failed',
+                failedStage: 'agent_readiness',
+                lastError: `Agent startup blocked: ${expectedReason}`
+              }
+            : {
+                state: 'failed',
+                failedStage: 'agent_readiness',
+                // Why (#23847): scripts still parse the prefix; the rest names the cause and the way out.
+                lastError: expect.stringMatching(
+                  new RegExp(
+                    `^Agent startup blocked: ${escapeRegExp(expectedReason)}\\. .*Orca could not pre-trust it: could not write /srv/\\.codex/config\\.toml\\.$`
+                  )
+                ),
+                recovery: expect.stringContaining('choose to trust the folder')
+              }
+        )
+        if (blockedReason !== 'codex-update-prompt') {
+          // The retry runs on the launch's own host and path, not a stored guess.
+          expect(diagnose).toHaveBeenCalledWith('codex', 'ssh-1', '/srv/worktree')
+        }
         expect(runtime.sendTerminalAgentPrompt).not.toHaveBeenCalled()
       }
     )
@@ -585,3 +613,7 @@ describe('orchestration RPC methods', () => {
     })
   })
 })
+
+function escapeRegExp(value: string): string {
+  return value.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}

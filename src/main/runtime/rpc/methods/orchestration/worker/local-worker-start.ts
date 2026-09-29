@@ -29,6 +29,10 @@ import { tearDownFailedWorkerStart } from './failed-worker-start-teardown'
 import { requireWorkerAuthority, type WorkerEffect } from './worker-topology'
 import { prepareLocalWorkerStart } from './worker-start-validation'
 import { deliverAndSettleWorkerStartReadiness } from './worker-start-readiness-settlement'
+import {
+  createWorkerStartTrustBlockedError,
+  isAgentTrustBlockedReason
+} from './worker-start-trust-block'
 
 type WorkerStartMutation = {
   callerFingerprint: string
@@ -204,6 +208,25 @@ export async function startLocalWorker(args: {
       if (!wait.satisfied) {
         if (setupReceipt.state === 'failed') {
           failedStage = 'setup_wait'
+        }
+        if (wait.blockedReason && isAgentTrustBlockedReason(wait.blockedReason)) {
+          // Same scope the launch's trust write used, so the retry lands on that host and path.
+          const workspace = await runtime
+            .showTerminalWorkspaceLaunchScope(`id:${resolvedWorktree.id}`)
+            .catch(() => null)
+          throw createWorkerStartTrustBlockedError({
+            reason: wait.blockedReason,
+            agent: agent ?? null,
+            workspacePath: workspace?.path ?? null,
+            diagnosis:
+              agent && workspace
+                ? await runtime.diagnoseWorkspaceTrustForAgent(
+                    agent,
+                    workspace.connectionId,
+                    workspace.path
+                  )
+                : null
+          })
         }
         throw new Error(
           wait.blockedReason

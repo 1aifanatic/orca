@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { VerifiedCodexResumeSource } from '../codex/codex-session-resume-preparation'
+import type * as CodexProjectTrustWrite from '../codex/codex-project-trust-write'
 
 /**
  * Why this file exists: both Codex launch-prep entry points await the trust
@@ -10,6 +11,7 @@ import type { VerifiedCodexResumeSource } from '../codex/codex-session-resume-pr
  */
 const mocks = vi.hoisted(() => ({
   markCodexProjectTrusted: vi.fn(),
+  markCodexProjectTrustedInHome: vi.fn(async () => {}),
   prepareForCodexLaunchAsync: vi.fn(),
   isHostSystemDefaultRealHomeSelected: vi.fn(() => false),
   isHostSystemDefaultRealHome: vi.fn(() => false),
@@ -27,6 +29,10 @@ vi.mock('electron', () => ({ app: { getPath: vi.fn(() => '/tmp/orca-user-data') 
 vi.mock('../agent-trust-presets', () => ({
   markCodexProjectTrusted: mocks.markCodexProjectTrusted
 }))
+vi.mock('../codex/codex-project-trust-write', async (importOriginal) => ({
+  ...(await importOriginal<typeof CodexProjectTrustWrite>()),
+  markCodexProjectTrustedInHome: mocks.markCodexProjectTrustedInHome
+}))
 vi.mock('../codex/hook-service', () => ({
   codexHookService: {
     prepareRuntimeHomeForLaunch: mocks.prepareRuntimeHomeForLaunch,
@@ -43,7 +49,8 @@ vi.mock('../agent-hooks/managed-agent-hook-controls', () => ({
 vi.mock('../wsl', () => ({ getDefaultWslDistro: () => 'Ubuntu' }))
 vi.mock('../codex/codex-home-paths', () => ({
   getSystemCodexHomePath: () => '/home/user/.codex',
-  getOrcaManagedCodexHomePath: () => '/managed/.codex'
+  getOrcaManagedCodexHomePath: () => '/managed/.codex',
+  resolveOrcaManagedCodexHomePath: () => '/managed/.codex'
 }))
 vi.mock('../codex/codex-session-resume-preparation', () => ({
   prepareCodexSessionResume: mocks.prepareCodexSessionResume
@@ -154,6 +161,57 @@ describe('Codex launch-prep trust writes', () => {
     expect(mocks.markCodexProjectTrusted.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.prepareForCodexLaunchAsync.mock.invocationCallOrder[0] ?? Infinity
     )
+  })
+
+  it('also trusts the exact Codex home the launch resolved (#23847)', async () => {
+    mocks.markCodexProjectTrusted.mockRejectedValue(new Error('~/.codex is read-only'))
+    await expect(
+      prepareCodexRuntimeHomeForLaunch(
+        undefined,
+        {},
+        { launchAgent: 'codex', workspacePath: WORKSPACE }
+      )
+    ).resolves.toBe(RESUME_HOME)
+    expect(mocks.markCodexProjectTrustedInHome).toHaveBeenCalledWith(WORKSPACE, RESUME_HOME)
+    expect(mocks.markCodexProjectTrustedInHome.mock.invocationCallOrder[0]).toBeGreaterThan(
+      mocks.prepareForCodexLaunchAsync.mock.invocationCallOrder[0] ?? Infinity
+    )
+  })
+
+  it('waits on both trust writes within one deadline, not one each', async () => {
+    vi.useFakeTimers()
+    const shared = neverSettlingWrite()
+    const account = neverSettlingWrite()
+    mocks.markCodexProjectTrusted.mockReturnValue(shared.promise)
+    mocks.markCodexProjectTrustedInHome.mockReturnValue(account.promise)
+    let settled = false
+    const prep = prepareCodexRuntimeHomeForLaunch(
+      undefined,
+      {},
+      { launchAgent: 'codex', workspacePath: WORKSPACE }
+    ).then((home) => {
+      settled = true
+      return home
+    })
+
+    await vi.advanceTimersByTimeAsync(AGENT_TRUST_WRITE_DEADLINE_MS + 1)
+    expect(settled).toBe(true)
+    await expect(prep).resolves.toBe(RESUME_HOME)
+    expect(mocks.markCodexProjectTrustedInHome).toHaveBeenCalledWith(WORKSPACE, RESUME_HOME)
+    shared.release()
+    account.release()
+  })
+
+  it('does not rewrite the shared runtime home the first trust write already covered', async () => {
+    mocks.markCodexProjectTrusted.mockResolvedValue(undefined)
+    mocks.prepareForCodexLaunchAsync.mockResolvedValue('/managed/.codex')
+    await prepareCodexRuntimeHomeForLaunch(
+      undefined,
+      {},
+      { launchAgent: 'codex', workspacePath: WORKSPACE }
+    )
+    expect(mocks.markCodexProjectTrusted).toHaveBeenCalledTimes(1)
+    expect(mocks.markCodexProjectTrustedInHome).not.toHaveBeenCalled()
   })
 
   it('bounds a never-settling write in resume prep and still resolves the resume home', async () => {

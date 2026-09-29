@@ -2,7 +2,14 @@ import { app } from 'electron'
 import type { CodexHomeLaunchContext } from '../ipc/pty'
 import type { CodexAccountSelectionTarget } from '../codex-accounts/runtime-selection'
 import { markCodexProjectTrusted } from '../agent-trust-presets'
-import { awaitAgentTrustWriteWithinDeadline } from '../agent-trust-write-deadline'
+import {
+  isSeparateCodexLaunchHome,
+  markCodexProjectTrustedInHome
+} from '../codex/codex-project-trust-write'
+import {
+  AGENT_TRUST_WRITE_DEADLINE_MS,
+  awaitAgentTrustWriteWithinDeadline
+} from '../agent-trust-write-deadline'
 import { reportCodexTrustWriteRefusals } from '../codex/codex-config-toml-checked-edit'
 import { codexHookService } from '../codex/hook-service'
 import { getDefaultWslDistro } from '../wsl'
@@ -19,18 +26,22 @@ export async function prepareCodexRuntimeHomeForLaunch(
   if (!runtimeHome) {
     throw new Error('Codex runtime home service is not initialized')
   }
+  // Why: both trust writes below share one deadline, so launch prep waits at most one deadline on trust.
+  let trustWaitBudgetMs = AGENT_TRUST_WRITE_DEADLINE_MS
   if (
     target?.runtime !== 'wsl' &&
     launchContext?.launchAgent === 'codex' &&
     launchContext.workspacePath
   ) {
+    const trustWaitStartedAt = Date.now()
     try {
       // Why: renderer quick-launch cannot await trust IPC before its PTY mounts; launch prep runs before every recognized Codex spawn. Bounded so a wedged config lane cannot hang the spawn that waits on this prep.
       await awaitAgentTrustWriteWithinDeadline(
         markCodexProjectTrusted(launchContext.workspacePath),
         {
           preset: 'codex',
-          workspacePath: launchContext.workspacePath
+          workspacePath: launchContext.workspacePath,
+          deadlineMs: trustWaitBudgetMs
         }
       )
     } catch (error) {
@@ -39,6 +50,7 @@ export async function prepareCodexRuntimeHomeForLaunch(
         console.warn('[codex-project-trust] failed to pre-mark launch workspace:', ...unreported)
       }
     }
+    trustWaitBudgetMs = Math.max(0, trustWaitBudgetMs - (Date.now() - trustWaitStartedAt))
   }
   const ensureRealHomeHooksIfSelected = async (): Promise<boolean> => {
     if (target?.runtime === 'wsl' || !runtimeHome.isHostSystemDefaultRealHomeSelected(launchEnv)) {
@@ -76,6 +88,33 @@ export async function prepareCodexRuntimeHomeForLaunch(
     // Why: Codex runs on the user's real ~/.codex; the managed-home hook
     // install below would target a home Codex never reads on this lane.
     return null
+  }
+  if (
+    // Why: the shared runtime home was just written above on the same lane; a second pass there only adds a wait.
+    isSeparateCodexLaunchHome(runtimeHomePath) &&
+    target?.runtime !== 'wsl' &&
+    launchContext?.launchAgent === 'codex' &&
+    launchContext.workspacePath
+  ) {
+    try {
+      // Why (#23847): write the home this launch actually reads; a per-account home otherwise waits on a copy from ~/.codex.
+      await awaitAgentTrustWriteWithinDeadline(
+        markCodexProjectTrustedInHome(launchContext.workspacePath, runtimeHomePath),
+        {
+          preset: 'codex',
+          workspacePath: launchContext.workspacePath,
+          deadlineMs: trustWaitBudgetMs
+        }
+      )
+    } catch (error) {
+      const unreported = reportCodexTrustWriteRefusals(error)
+      if (unreported.length > 0) {
+        console.warn(
+          '[codex-project-trust] failed to pre-mark the launch Codex home:',
+          ...unreported
+        )
+      }
+    }
   }
   const hookTarget =
     target?.runtime === 'wsl'

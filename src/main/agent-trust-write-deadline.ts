@@ -18,15 +18,15 @@ import type { AgentTrustPreset } from './agent-trust-presets'
 export const AGENT_TRUST_WRITE_DEADLINE_MS = 20_000
 
 /**
- * Awaits a trust write but never longer than the deadline. Rejections
- * propagate to the caller's best-effort catch; a deadline miss is reported as
- * a named warning rather than an exception, because every caller treats a
- * failed trust write as "let the agent ask the user".
+ * Awaits a trust write but never longer than the deadline, and says which came
+ * first. Rejections propagate to the caller's best-effort catch; a deadline miss
+ * is reported as a named warning rather than an exception, because every caller
+ * treats a failed trust write as "let the agent ask the user".
  */
 export async function awaitAgentTrustWriteWithinDeadline(
-  write: Promise<void>,
+  write: Promise<unknown>,
   context: { preset: AgentTrustPreset; workspacePath: string; deadlineMs?: number }
-): Promise<void> {
+): Promise<'written' | 'expired'> {
   const deadlineMs = context.deadlineMs ?? AGENT_TRUST_WRITE_DEADLINE_MS
   let timer: ReturnType<typeof setTimeout> | undefined
   const expiry = new Promise<'expired'>((resolve) => {
@@ -41,6 +41,7 @@ export async function awaitAgentTrustWriteWithinDeadline(
         `[agent-trust] ${context.preset} trust write for ${context.workspacePath} did not settle within ${deadlineMs}ms; continuing untrusted so the agent can prompt`
       )
     }
+    return outcome
   } finally {
     clearTimeout(timer)
   }

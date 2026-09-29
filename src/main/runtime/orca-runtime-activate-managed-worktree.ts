@@ -32,6 +32,11 @@ import {
 } from './runtime-worktree-startup-readiness'
 import type { CreateWorktreeResult } from '../../shared/worktree/create-types'
 import { provisionWorktreeTerminals } from './runtime-worktree-terminal-provisioning'
+import { resolveTuiAgentLaunchEnv } from '../../shared/tui-agent-launch-defaults'
+import {
+  diagnoseAgentWorkspaceTrust,
+  type WorkspaceTrustDiagnosis
+} from './agent-workspace-trust-diagnosis'
 
 export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListManagedWorktrees {
   async activateManagedWorktree(
@@ -181,6 +186,32 @@ export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListM
       return
     }
     await this.markLocalWorkspaceTrustedForAgent(agent, workspacePath)
+  }
+
+  /** For a worker stalled at the agent's trust screen: re-runs the launch's trust write for this host. */
+  async diagnoseWorkspaceTrustForAgent(
+    agent: TuiAgent,
+    connectionId: string | null | undefined,
+    workspacePath: string
+  ): Promise<WorkspaceTrustDiagnosis> {
+    return await diagnoseAgentWorkspaceTrust({
+      agent,
+      connectionId: connectionId ?? null,
+      workspacePath,
+      resolveCodexLaunchHome: async () => {
+        const resolveLaunchHome = this.resolveCodexStructuredLaunchHomeFn
+        if (!resolveLaunchHome) {
+          return null
+        }
+        return await resolveLaunchHome({
+          workspacePath,
+          launchEnv: resolveTuiAgentLaunchEnv(
+            'codex',
+            this.requireStore().getSettings().agentDefaultEnv
+          )
+        })
+      }
+    })
   }
 
   protected async markRemoteWorkspaceTrustedForAgent(

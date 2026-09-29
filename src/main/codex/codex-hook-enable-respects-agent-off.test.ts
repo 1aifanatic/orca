@@ -45,19 +45,20 @@ describe('Orca turning its own Codex hook on respects the per-agent off switch (
         readFileSync(runtimeToml, 'utf-8').replaceAll('enabled = true', 'enabled = false'),
         'utf-8'
       )
-    disableAll()
 
-    // Codex turned off per agent: launch prep passes hooksEnabled = false.
+    // Codex hooks on: the next launch prep turns Orca's existing disabled entries back on.
+    disableAll()
+    await service.prepareRuntimeHomeForLaunch(runtimeHome, undefined, true)
+    const states = orcaHookStates(runtimeToml)
+    expect(states.length).toBeGreaterThan(0)
+    expect(states).not.toContainEqual(expect.objectContaining({ enabled: false }))
+
+    // Codex turned off per agent: launch prep passes hooksEnabled = false and nothing turns back on.
+    disableAll()
     await service.prepareRuntimeHomeForLaunch(runtimeHome, undefined, false)
     expect(readFileSync(join(runtimeHome, 'hooks.json'), 'utf-8')).not.toContain('codex-hook')
     expect(orcaHookStates(runtimeToml)).not.toContainEqual(
       expect.objectContaining({ enabled: true })
     )
-
-    // Codex back on: the next launch prep turns Orca's entries back on.
-    await service.prepareRuntimeHomeForLaunch(runtimeHome, undefined, true)
-    const states = orcaHookStates(runtimeToml)
-    expect(states.length).toBeGreaterThan(0)
-    expect(states).not.toContainEqual(expect.objectContaining({ enabled: false }))
   })
 })

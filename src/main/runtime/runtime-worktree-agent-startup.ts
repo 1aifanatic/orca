@@ -11,6 +11,7 @@ import { isTuiAgentEnabled, pickTuiAgent } from '../../shared/tui-agent-selectio
 import { resolveAgentStartupPlanInputs } from '../../shared/agent-startup-plan-inputs'
 import { buildAgentDraftLaunchPlan, buildAgentStartupPlan } from '../../shared/tui-agent-startup'
 import {
+  type AgentTrustPreset,
   markAntigravityWorkspaceTrusted,
   markCodexProjectTrusted,
   markCopilotFolderTrusted,
@@ -193,24 +194,35 @@ export async function markLocalWorktreeTrusted(
     return
   }
   try {
-    if (preset === 'qoder') {
-      markQoderWorkspaceTrusted(workspacePath)
-    } else if (preset === 'cursor') {
-      markCursorWorkspaceTrusted(workspacePath)
-    } else if (preset === 'copilot') {
-      markCopilotFolderTrusted(workspacePath)
-    } else if (preset === 'codex') {
-      // Why: the Codex write queues behind any in-flight hook grant, so the agent must not launch until it lands. Bounded so a wedged lane degrades to the agent's own prompt instead of stalling the launch.
-      await awaitAgentTrustWriteWithinDeadline(markCodexProjectTrusted(workspacePath), {
-        preset,
-        workspacePath
-      })
-    } else if (preset === 'antigravity') {
-      markAntigravityWorkspaceTrusted(workspacePath)
-    }
+    // Why: the Codex write queues behind any in-flight hook grant, so the agent must not launch until it lands. Bounded so a wedged lane degrades to the agent's own prompt instead of stalling the launch.
+    await awaitAgentTrustWriteWithinDeadline(writeLocalAgentWorkspaceTrust(preset, workspacePath), {
+      preset,
+      workspacePath
+    })
   } catch (error) {
-    // Best-effort: the user can still accept the agent trust prompt manually.
-    reportCodexTrustWriteRefusals(error)
+    // Why (#23847): the launch still goes ahead, but the cause must not vanish.
+    const unreported = reportCodexTrustWriteRefusals(error)
+    if (unreported.length > 0) {
+      console.warn(`[agent-trust] ${preset} could not pre-trust ${workspacePath}:`, ...unreported)
+    }
+  }
+}
+
+/** The local trust write a launch runs; throws on failure so a stalled worker can re-run it and say why. */
+export async function writeLocalAgentWorkspaceTrust(
+  preset: AgentTrustPreset,
+  workspacePath: string
+): Promise<void> {
+  if (preset === 'qoder') {
+    markQoderWorkspaceTrusted(workspacePath)
+  } else if (preset === 'cursor') {
+    markCursorWorkspaceTrusted(workspacePath)
+  } else if (preset === 'copilot') {
+    markCopilotFolderTrusted(workspacePath)
+  } else if (preset === 'codex') {
+    await markCodexProjectTrusted(workspacePath)
+  } else if (preset === 'antigravity') {
+    markAntigravityWorkspaceTrusted(workspacePath)
   }
 }
 
@@ -226,7 +238,13 @@ export async function markRemoteWorktreeTrusted(
   try {
     await markRemoteAgentWorkspaceTrusted({ preset, connectionId, workspacePath })
   } catch (error) {
-    // Best-effort: the user can still accept the remote agent trust prompt manually.
-    reportCodexTrustWriteRefusals(error)
+    // Why (#23847): the user can still accept the remote prompt, but the cause must not vanish.
+    const unreported = reportCodexTrustWriteRefusals(error)
+    if (unreported.length > 0) {
+      console.warn(
+        `[agent-trust] ${preset} could not pre-trust remote ${workspacePath}:`,
+        ...unreported
+      )
+    }
   }
 }
