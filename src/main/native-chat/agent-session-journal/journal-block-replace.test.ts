@@ -7,7 +7,7 @@
 import { mkdtemp, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, expect, it } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { AgentSessionJournalIdentity } from '../../../shared/agent-session-journal-types'
 import { journalDatabasePath } from './journal-host-database'
 import {
@@ -59,7 +59,12 @@ it('replaces one chat among 19 interleaved peers with a write-ahead log a fracti
       )
     }
   }
-  const { db } = openTestJournalHostDatabase(root)
+  const database = openTestJournalHostDatabase(root)
+  // A free-page pass writes its own WAL frames a turn after a delete; this measures the replace alone.
+  // The seed never yields a turn, so the pass opening the chats started is still waiting: drain it first.
+  await database.reclaimFreePages()
+  vi.spyOn(database, 'reclaimFreePages').mockResolvedValue()
+  const { db } = database
   db.pragma('synchronous = FULL')
   db.pragma('wal_autocheckpoint = 0')
   db.pragma('wal_checkpoint(TRUNCATE)')
