@@ -98,6 +98,7 @@ export class OrcaRuntimeWithSyncWindowGraph extends OrcaRuntimeWithAttachWindow 
     // Why: renderer reloads can briefly republish the same leaf with no ptyId;
     // keep live CLI handles usable while the UI graph rebuilds.
     const preserveLivePtysDuringReload = this.graphStatus === 'reloading'
+    const incomingPtyIds = new Set(lifecycleLeaves.map((leaf) => leaf.ptyId))
     for (const leaf of lifecycleLeaves) {
       if (leaf.ptyId) {
         if (leaf.parked) {
@@ -108,8 +109,20 @@ export class OrcaRuntimeWithSyncWindowGraph extends OrcaRuntimeWithAttachWindow 
       }
       const leafKey = this.getLeafKey(leaf.tabId, leaf.leafId)
       const existing = this.leaves.get(leafKey)
+      const recordedPty = existing?.ptyId ? this.ptysById.get(existing.ptyId) : undefined
+      // A mounting renderer's empty projection cannot orphan the host-owned PTY in this exact pane.
+      const preserveRuntimeOwnedPty =
+        recordedPty?.runtimeSessionOwned === true &&
+        recordedPty.worktreeId === leaf.worktreeId &&
+        existing?.worktreeId === leaf.worktreeId &&
+        recordedPty.tabId === leaf.tabId &&
+        recordedPty.paneKey === this.makeRuntimePaneKey(leaf) &&
+        !incomingPtyIds.has(existing.ptyId) &&
+        this.getPtyLivenessVerdict(existing.ptyId)?.status !== 'exited'
       const ptyId =
-        preserveLivePtysDuringReload && leaf.ptyId === null && existing?.ptyId
+        (preserveLivePtysDuringReload || preserveRuntimeOwnedPty) &&
+        leaf.ptyId === null &&
+        existing?.ptyId
           ? existing.ptyId
           : leaf.ptyId
       const ptyGeneration =
