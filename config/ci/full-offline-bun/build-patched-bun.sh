@@ -32,11 +32,13 @@ rustc --version --verbose > /results/rustc.txt
 cmake --version > /results/cmake.txt
 ninja --version > /results/ninja.txt
 for arch in x64 aarch64; do
-  args=(--profile=release --os=windows "--arch=$arch" --lto=off "--build-dir=build/conpty-$arch" -j2)
+  args=(--profile=release --canary=false --os=windows "--arch=$arch" --lto=off "--build-dir=build/conpty-$arch" -j2)
   if test "$arch" = x64; then args+=(--baseline=true); fi
   printf '%s\n' "${args[@]}" > "/results/$arch-args.txt"
   timeout --kill-after=30s 5400s bun scripts/build.ts "${args[@]}" 2>&1 | tee "/results/$arch.log"
   test -s "build/conpty-$arch/bun.exe"
+  grep -Fx 'pub const IS_CANARY: bool = false;' "build/conpty-$arch/codegen/build_options.rs"
+  cp "build/conpty-$arch/codegen/build_options.rs" "/results/$arch-build-options.rs"
   cp "build/conpty-$arch/bun.exe" "/results/bun-windows-$arch.exe"
   llvm-readobj --file-headers --coff-imports "/results/bun-windows-$arch.exe" > "/results/$arch-pe.txt"
   if test "$arch" = x64; then machine=AMD64; else machine=ARM64; fi
