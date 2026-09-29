@@ -682,7 +682,7 @@ describe("the queue's Stop fact", () => {
   it('records where the Stop took effect, survives reopen, and the latest Stop replaces an earlier one', async () => {
     let journal = await open()
     await queueDraft(journal, 'draft-1')
-    await journal.queuedMessages.recordPause()
+    await journal.queuedMessages.recordPause('stopped')
     const first = journal.queuedMessages.pause()
     expect(first).toMatchObject({ reason: 'stopped', sequence: journal.cursor().sequence })
     await journal.appendItem(
@@ -690,7 +690,7 @@ describe("the queue's Stop fact", () => {
       { kind: 'status', text: 'later' },
       { fence: 0 }
     )
-    await journal.queuedMessages.recordPause()
+    await journal.queuedMessages.recordPause('stopped')
     expect(journal.queuedMessages.pause()?.sequence).toBe((first?.sequence ?? 0) + 1)
     await journal.close()
     journal = await open()
@@ -699,16 +699,24 @@ describe("the queue's Stop fact", () => {
     expect(journal.queuedMessages.get('draft-1')?.holdReason).toBeNull()
   })
 
+  it("a /clear's replacement records its pause as 'cleared', read back the same way", async () => {
+    let journal = await open()
+    await journal.queuedMessages.recordPause('cleared')
+    await journal.close()
+    journal = await open()
+    expect(journal.queuedMessages.pause()).toMatchObject({ reason: 'cleared' })
+  })
+
   it('lifting retires only the Stop fact it judged, never one recorded since', async () => {
     const journal = await open()
-    await journal.queuedMessages.recordPause()
+    await journal.queuedMessages.recordPause('stopped')
     const judged = journal.queuedMessages.pause()
     await journal.appendItem(
       { provider: 'orca', clientMessageId: 'later' },
       { kind: 'status', text: 'later' },
       { fence: 0 }
     )
-    await journal.queuedMessages.recordPause()
+    await journal.queuedMessages.recordPause('stopped')
     expect(await journal.queuedMessages.liftPause({ stop: judged, adoptInto: null })).toBe(false)
     expect(journal.queuedMessages.pause()).not.toBeNull()
     expect(

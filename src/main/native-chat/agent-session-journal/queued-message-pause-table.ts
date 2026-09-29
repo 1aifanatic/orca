@@ -1,13 +1,15 @@
-// The queue-level Stop fact: where in the journal the user's last Stop took
-// effect. The pause itself is never stored — it is derived from this fact and
+// The queue-level pause fact: where in the journal the user's last Stop (or a
+// /clear, which starts its replacement paused) took effect. The pause itself is never stored — it is derived from this fact and
 // the journal rows after it (a user-requested turn that started ends it); the
 // fact only records the one event the journal's closed row kinds cannot carry.
 // An explicit Resume retires it.
 
 import type Database from '../../sqlite/sync-database'
 
+export type QueuePauseReason = 'stopped' | 'cleared'
+
 export type QueuePauseFact = {
-  reason: 'stopped'
+  reason: QueuePauseReason
   /** The journal position the Stop took effect at: rows after it are later. */
   epoch: string
   sequence: number
@@ -24,7 +26,7 @@ export function readQueuePause(db: Database.Database, sessionId: string): QueueP
     typeof row !== 'object' ||
     row === null ||
     !('reason' in row) ||
-    row.reason !== 'stopped' ||
+    (row.reason !== 'stopped' && row.reason !== 'cleared') ||
     !('epoch' in row) ||
     typeof row.epoch !== 'string' ||
     !('sequence' in row) ||
