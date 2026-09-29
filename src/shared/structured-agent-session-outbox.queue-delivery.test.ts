@@ -14,14 +14,16 @@ import {
 import { withdrawUnsentStructuredAgentSessionOutboxEntries } from './structured-agent-session-outbox-stop-withdrawal'
 
 function entry(delivery?: 'queue-if-active') {
-  return createStructuredAgentSessionOutboxEntry({
-    clientMessageId: 'client-1',
-    sessionId: 'session-1',
-    text: 'hello',
-    attachments: [],
-    queuedAt: 1,
+  return {
+    ...createStructuredAgentSessionOutboxEntry({
+      clientMessageId: 'client-1',
+      sessionId: 'session-1',
+      text: 'hello',
+      attachments: [],
+      queuedAt: 1
+    }),
     ...(delivery ? { delivery } : {})
-  })
+  }
 }
 
 describe('outbox queue delivery', () => {
@@ -68,36 +70,43 @@ describe('outbox queue delivery', () => {
     expect(foreign !== null && 'delivery' in foreign).toBe(false)
   })
 
-  it('Stop withdraws a queue send that never left, but never one whose answer is still out', () => {
-    // An issued queue send may already be a host-held draft: withdrawing it locally too
-    // would put the same text in the composer AND on a card. Its answer settles it.
+  it('Stop keeps every queue send that has gone out, in any state, and parks it for Retry', () => {
+    // An attempted queue send may already be a host-held draft: withdrawing it locally too would
+    // put the same text in the composer AND on a card. Read from what went on the wire.
     const at = (
       id: string,
       state: StructuredAgentSessionOutboxState,
-      delivery?: 'queue-if-active'
+      sent?: 'queue-if-active' | null
     ) => ({
       ...createStructuredAgentSessionOutboxEntry({
         clientMessageId: id,
         sessionId: 'session-1',
         text: `text of ${id}`,
         attachments: [],
-        queuedAt: 1,
-        ...(delivery ? { delivery } : {})
+        queuedAt: 1
       }),
+      delivery: 'queue-if-active' as const,
+      ...(sent !== undefined ? { lastAttemptAt: 2, sentDelivery: sent } : {}),
       state
     })
     const next = withdrawUnsentStructuredAgentSessionOutboxEntries(
       [
-        at('never-left', 'queued', 'queue-if-active'),
+        at('never-left', 'queued'),
         // No in-flight id: a `pending` answer freed single-flight before its journal row landed.
         at('in-flight', 'dispatching', 'queue-if-active'),
         at('in-doubt', 'unconfirmed', 'queue-if-active'),
-        at('plain-in-flight', 'dispatching')
+        // Probed back to queued after a lost answer: still out there, not unsent.
+        at('probed', 'queued', 'queue-if-active'),
+        at('sent-plain', 'dispatching', null)
       ],
       [],
       null,
       null
     )
-    expect(next.map((entry) => entry.clientMessageId)).toEqual(['in-flight', 'in-doubt'])
+    expect(next.map((entry) => [entry.clientMessageId, entry.state, entry.outlivedStop])).toEqual([
+      ['in-flight', 'unconfirmed', true],
+      ['in-doubt', 'unconfirmed', true],
+      ['probed', 'unconfirmed', true]
+    ])
   })
 })

@@ -1,6 +1,5 @@
-// The entry stores the user's intent to queue; each request decides the wire field. An attempted id
-// replays its first attempt's fields, waits while the capability is unknown, and drops the field
-// only for a host known not to read it.
+// The entry keeps the user's intent and what its first attempt sent; each request decides the wire
+// field from those and the host's capability. Nothing ever waits on the capability.
 
 import { describe, expect, it } from 'vitest'
 import {
@@ -8,8 +7,9 @@ import {
   type StructuredAgentSessionOutboxEntry
 } from './structured-agent-session-outbox'
 import {
+  structuredAgentSessionEntryAttempt,
   structuredAgentSessionEntryDeliveryIntent,
-  structuredAgentSessionEntryOnWire
+  type StructuredAgentSessionQueueCapability
 } from './structured-agent-session-outbox-delivery'
 
 function entry(
@@ -22,39 +22,25 @@ function entry(
       sessionId: 'session-1',
       text: 'hello',
       attachments: [],
-      queuedAt: 1,
-      ...(delivery ? { delivery } : {})
+      queuedAt: 1
     }),
+    ...(delivery ? { delivery } : {}),
     ...overrides
   }
 }
 
-const QUEUEING = { capability: 'supported', enabled: true } as const
-const SETTING_OFF = { capability: 'supported', enabled: false } as const
+function host(capability: StructuredAgentSessionQueueCapability, enabled = true) {
+  return { capability, enabled }
+}
 
-describe('outbox delivery intent', () => {
-  it('an id never attempted, new or rotated, takes the current choice of a host known to queue', () => {
-    expect(structuredAgentSessionEntryDeliveryIntent(entry(), QUEUEING).delivery).toBe(
+describe('the intent at enqueue', () => {
+  it('asks to queue only of a host known to queue, with the setting on, for plain text', () => {
+    expect(structuredAgentSessionEntryDeliveryIntent(entry(), host('supported')).delivery).toBe(
       'queue-if-active'
     )
-    expect(
-      'delivery' in
-        structuredAgentSessionEntryDeliveryIntent(entry({}, 'queue-if-active'), SETTING_OFF)
-    ).toBe(false)
-  })
-
-  it('is never decided by an unanswered or negative capability, nor for an attempted id', () => {
-    const queued = entry({}, 'queue-if-active')
-    for (const capability of ['unknown', 'unsupported'] as const) {
-      expect(
-        structuredAgentSessionEntryDeliveryIntent(queued, { capability, enabled: false })
-      ).toBe(queued)
+    for (const off of [host('unknown'), host('unsupported'), host('supported', false)]) {
+      expect('delivery' in structuredAgentSessionEntryDeliveryIntent(entry(), off)).toBe(false)
     }
-    const attempted = entry({ lastAttemptAt: 5 }, 'queue-if-active')
-    expect(structuredAgentSessionEntryDeliveryIntent(attempted, SETTING_OFF)).toBe(attempted)
-  })
-
-  it('an image send and a launch prompt never queue', () => {
     const image = {
       ...entry(),
       body: {
@@ -63,29 +49,71 @@ describe('outbox delivery intent', () => {
         blocks: [{ type: 'image-ref' as const, path: '/tmp/a.png' }]
       }
     }
-    expect('delivery' in structuredAgentSessionEntryDeliveryIntent(image, QUEUEING)).toBe(false)
+    expect('delivery' in structuredAgentSessionEntryDeliveryIntent(image, host('supported'))).toBe(
+      false
+    )
     const launch = entry({ source: 'launch' })
-    expect(structuredAgentSessionEntryDeliveryIntent(launch, QUEUEING)).toBe(launch)
+    expect(structuredAgentSessionEntryDeliveryIntent(launch, host('supported'))).toBe(launch)
   })
 })
 
-describe('outbox delivery on the wire', () => {
-  const queued = entry({ lastAttemptAt: 5 }, 'queue-if-active')
+describe('a first attempt', () => {
+  it('records what it sent, and sends plain and immediate while the capability is unknown', () => {
+    const queued = structuredAgentSessionEntryAttempt(
+      entry({}, 'queue-if-active'),
+      host('supported')
+    )
+    expect(queued.wire.delivery).toBe('queue-if-active')
+    expect(queued.stored.sentDelivery).toBe('queue-if-active')
 
-  it('replays the first attempt unchanged to a host known to queue', () => {
-    expect(structuredAgentSessionEntryOnWire(queued, 'supported')).toBe(queued)
+    const unknown = structuredAgentSessionEntryAttempt(
+      entry({}, 'queue-if-active'),
+      host('unknown')
+    )
+    expect('delivery' in unknown.wire).toBe(false)
+    expect(unknown.stored.sentDelivery).toBeNull()
+    // The capability never rewrites the intent.
+    expect(unknown.stored.delivery).toBe('queue-if-active')
   })
 
-  it('holds a queue send while the capability is unknown; a plain send goes', () => {
-    expect(structuredAgentSessionEntryOnWire(queued, 'unknown')).toBeNull()
-    const plain = entry({ lastAttemptAt: 5 })
-    expect(structuredAgentSessionEntryOnWire(plain, 'unknown')).toBe(plain)
+  it('with the setting off drops the intent too, whatever the capability', () => {
+    for (const capability of ['supported', 'unknown', 'unsupported'] as const) {
+      const attempt = structuredAgentSessionEntryAttempt(
+        entry({}, 'queue-if-active'),
+        host(capability, false)
+      )
+      expect('delivery' in attempt.wire).toBe(false)
+      expect('delivery' in attempt.stored).toBe(false)
+      expect(attempt.stored.sentDelivery).toBeNull()
+    }
+  })
+})
+
+describe('a replay of an attempted id', () => {
+  const sentQueued = entry({ lastAttemptAt: 5, sentDelivery: 'queue-if-active' }, 'queue-if-active')
+  const sentPlain = entry({ lastAttemptAt: 5, sentDelivery: null }, 'queue-if-active')
+
+  it('sends exactly what it first sent, while the capability is unknown or the setting off', () => {
+    for (const current of [host('unknown'), host('supported', false), host('supported')]) {
+      expect(structuredAgentSessionEntryAttempt(sentQueued, current).wire.delivery).toBe(
+        'queue-if-active'
+      )
+      expect('delivery' in structuredAgentSessionEntryAttempt(sentPlain, current).wire).toBe(false)
+      expect(structuredAgentSessionEntryAttempt(sentQueued, current).stored).toBe(sentQueued)
+    }
   })
 
-  it('drops the field for a host known not to read it, whatever the id', () => {
-    const wire = structuredAgentSessionEntryOnWire(queued, 'unsupported')
-    expect(wire !== null && 'delivery' in wire).toBe(false)
-    expect(wire?.clientMessageId).toBe('op-1')
-    expect(queued.delivery).toBe('queue-if-active')
+  it('drops the field for a host known not to read it, and keeps what was sent', () => {
+    const attempt = structuredAgentSessionEntryAttempt(sentQueued, host('unsupported'))
+    expect('delivery' in attempt.wire).toBe(false)
+    expect(attempt.wire.clientMessageId).toBe('op-1')
+    expect(attempt.stored).toBe(sentQueued)
+  })
+
+  it('an entry attempted before the field was recorded replays its intent', () => {
+    const legacy = entry({ lastAttemptAt: 5 }, 'queue-if-active')
+    expect(structuredAgentSessionEntryAttempt(legacy, host('unknown')).wire.delivery).toBe(
+      'queue-if-active'
+    )
   })
 })

@@ -1,9 +1,9 @@
 // Whether an outbox entry asks the host to hold it as a draft (`delivery: 'queue-if-active'`).
 //
-// The entry stores the user's intent; what goes on the wire is decided per request. An attempted
-// id replays exactly its first attempt's fields for fingerprint parity, so nothing the capability
-// says is ever written back onto the entry: a strip stored during an unanswered probe would outlive
-// it, and the host's ledger would refuse every later replay of that id.
+// Two facts, kept apart: `delivery` is the user's intent, and `sentDelivery` is what the first
+// attempt put on the wire. An attempted id replays what it sent, for fingerprint parity with what
+// the host may have recorded; nothing the capability says is written back over either. Nothing
+// here ever holds a send: an unknown capability sends plain, as a host without queueing always has.
 
 import type { StructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox'
 
@@ -28,39 +28,74 @@ function withDelivery(
   return queue ? { ...rest, delivery: 'queue-if-active' } : rest
 }
 
-/**
- * The intent an entry is stored with. Decided at enqueue, and again for an id never attempted
- * (new, or rotated after a refusal): that is the first attempt's choice. Only a host known to queue
- * decides it, text-only and never for a launch prompt; otherwise the intent stays as it is.
- */
+/** What an attempted entry sent. One attempted before `sentDelivery` was recorded sent its intent. */
+export function structuredAgentSessionSentDelivery(
+  entry: StructuredAgentSessionOutboxEntry
+): 'queue-if-active' | null {
+  return entry.sentDelivery !== undefined ? entry.sentDelivery : (entry.delivery ?? null)
+}
+
+/** Whether this entry's next request asks to be queued. An attempted id asks exactly what it sent,
+ *  except of a host known not to queue, which rejects the field before its operation ledger, so
+ *  nothing there was recorded with it. A first attempt asks only of a host known to queue, with
+ *  the setting on, for plain text that is not a launch prompt. */
+export function structuredAgentSessionEntryAsksToQueue(
+  entry: StructuredAgentSessionOutboxEntry,
+  host: StructuredAgentSessionQueueDelivery
+): boolean {
+  if (entry.lastAttemptAt !== null) {
+    return (
+      structuredAgentSessionSentDelivery(entry) === 'queue-if-active' &&
+      host.capability !== 'unsupported'
+    )
+  }
+  return (
+    host.capability === 'supported' &&
+    host.enabled &&
+    entry.source !== 'launch' &&
+    entry.body.blocks.every((block) => block.type === 'text')
+  )
+}
+
+/** The user's intent at enqueue: what a first attempt would ask right now. */
 export function structuredAgentSessionEntryDeliveryIntent(
   entry: StructuredAgentSessionOutboxEntry,
   host: StructuredAgentSessionQueueDelivery
 ): StructuredAgentSessionOutboxEntry {
-  if (
-    entry.lastAttemptAt !== null ||
-    entry.source === 'launch' ||
-    host.capability !== 'supported'
-  ) {
-    return entry
-  }
-  return withDelivery(
-    entry,
-    host.enabled && entry.body.blocks.every((block) => block.type === 'text')
-  )
+  return withDelivery(entry, structuredAgentSessionEntryAsksToQueue(entry, host))
 }
 
 /**
- * The entry as this request sends it, or null while it must wait: one that asks to be queued waits
- * for the host to answer the capability probe. A host known not to queue rejects the field before
- * its operation ledger, so no request to it carries one, whatever the id.
+ * The next attempt: `wire` is what the request sends, `stored` what the entry keeps. A first
+ * attempt records what it sent; the setting off also drops the intent, which is plain and valid on
+ * any host. The capability never rewrites the intent or what was sent.
  */
-export function structuredAgentSessionEntryOnWire(
+export function structuredAgentSessionEntryAttempt(
   entry: StructuredAgentSessionOutboxEntry,
-  capability: StructuredAgentSessionQueueCapability
-): StructuredAgentSessionOutboxEntry | null {
-  if (entry.delivery !== 'queue-if-active' || capability === 'supported') {
-    return entry
+  host: StructuredAgentSessionQueueDelivery
+): { stored: StructuredAgentSessionOutboxEntry; wire: StructuredAgentSessionOutboxEntry } {
+  const queue = structuredAgentSessionEntryAsksToQueue(entry, host)
+  const stored: StructuredAgentSessionOutboxEntry =
+    entry.lastAttemptAt !== null
+      ? entry
+      : {
+          ...withDelivery(entry, host.enabled && (queue || entry.delivery === 'queue-if-active')),
+          sentDelivery: queue ? 'queue-if-active' : null
+        }
+  return { stored, wire: withDelivery(stored, queue) }
+}
+
+/** The queue fields a stored entry carries, read back from storage. */
+export function parseStructuredAgentSessionOutboxQueueFields(entry: {
+  delivery?: unknown
+  sentDelivery?: unknown
+  outlivedStop?: unknown
+}): Pick<StructuredAgentSessionOutboxEntry, 'delivery' | 'sentDelivery' | 'outlivedStop'> {
+  return {
+    ...(entry.delivery === 'queue-if-active' ? { delivery: 'queue-if-active' as const } : {}),
+    ...(entry.sentDelivery === 'queue-if-active' || entry.sentDelivery === null
+      ? { sentDelivery: entry.sentDelivery }
+      : {}),
+    ...(entry.outlivedStop === true ? { outlivedStop: true as const } : {})
   }
-  return capability === 'unknown' ? null : withDelivery(entry, false)
 }

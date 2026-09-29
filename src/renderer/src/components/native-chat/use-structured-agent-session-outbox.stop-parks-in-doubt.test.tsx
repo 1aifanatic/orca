@@ -8,7 +8,7 @@ import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createStructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
 
-type SentParams = { envelope: { clientOperationId: string } }
+type SentParams = { envelope: { clientOperationId: string }; delivery?: string }
 
 const mocks = vi.hoisted(() => ({
   call: vi.fn<(target: unknown, method: string, params: SentParams) => Promise<unknown>>()
@@ -20,11 +20,18 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
 
 import { useStructuredAgentSessionOutbox } from './use-structured-agent-session-outbox'
 import { readOutbox, writeOutbox } from './structured-agent-session-outbox-storage'
+import {
+  clearNativeChatDraftCacheForTests,
+  readNativeChatDraftCache
+} from './native-chat-draft-cache'
 
 const TARGET = { kind: 'local' } as const
+const REMOTE = { kind: 'environment', environmentId: 'env-1' } as const
+const NOT_ATTACHED: { fence: number | null } = { fence: null }
 
 beforeEach(() => {
   localStorage.clear()
+  clearNativeChatDraftCacheForTests()
   mocks.call.mockReset()
   mocks.call.mockImplementation(() => new Promise(() => {}))
   vi.useFakeTimers({ shouldAdvanceTime: true })
@@ -36,51 +43,61 @@ afterEach(() => {
 })
 
 describe('a Stop with a queued send in doubt', () => {
-  it('never resends it on its own, and the user can still Retry it', async () => {
+  it('a remote send probed back to queued after a lost answer: Stop keeps it for Retry', async () => {
+    // Lost answer, a re-probe that failed (capability unknown), and the probe flipped the entry
+    // back to `queued`; the Stop lands before the drain sends it again.
     writeOutbox('session-1', [
       {
         ...createStructuredAgentSessionOutboxEntry({
-          clientMessageId: 'in-doubt',
+          clientMessageId: 'probed',
           sessionId: 'session-1',
           text: 'follow-up',
           attachments: [],
-          queuedAt: 1,
-          delivery: 'queue-if-active'
+          queuedAt: 1
         }),
-        state: 'unconfirmed'
+        delivery: 'queue-if-active',
+        sentDelivery: 'queue-if-active',
+        lastAttemptAt: 5,
+        state: 'queued'
       }
     ])
-    const { result } = renderHook(() =>
-      useStructuredAgentSessionOutbox({
-        sessionId: 'session-1',
-        target: TARGET,
-        fence: 1,
-        submissions: [],
-        composerScopeKey: 'scope',
-        queueDelivery: { capability: 'supported' as const, enabled: true }
-      })
+    const view = renderHook(
+      (props: { fence: number | null }) =>
+        useStructuredAgentSessionOutbox({
+          sessionId: 'session-1',
+          target: REMOTE,
+          fence: props.fence,
+          submissions: [],
+          composerScopeKey: 'scope',
+          queueDelivery: { capability: 'unknown', enabled: true }
+        }),
+      { initialProps: NOT_ATTACHED }
     )
     act(() => {
-      result.current.withdrawUnsent()
+      view.result.current.withdrawUnsent()
     })
+    // The host may hold it as a paused card: the composer gets nothing.
+    expect(readNativeChatDraftCache('scope')).toBe('')
+    expect(view.result.current.outbox.map((entry) => entry.state)).toEqual(['unconfirmed'])
+    view.rerender({ fence: 1 })
     // Past the probe's longest backoff several times over.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(60_000)
     })
     expect(mocks.call).not.toHaveBeenCalled()
-    expect(result.current.outbox.map((entry) => entry.state)).toEqual(['unconfirmed'])
-    expect(readOutbox('session-1').map((entry) => entry.clientMessageId)).toEqual(['in-doubt'])
+    expect(readOutbox('session-1').map((entry) => entry.clientMessageId)).toEqual(['probed'])
 
     act(() => {
-      result.current.retry('in-doubt')
+      view.result.current.retry('probed')
     })
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0)
     })
-    // The same operation: a host that got the first attempt replays its answer.
+    // The same operation with what it first sent, though the capability is still unknown.
     expect(mocks.call.mock.calls.map((call) => call[2].envelope.clientOperationId)).toEqual([
-      'in-doubt'
+      'probed'
     ])
+    expect(mocks.call.mock.calls[0]?.[2].delivery).toBe('queue-if-active')
   })
 
   it('never resends one a Stop found in flight whose answer later comes back unknown', async () => {
@@ -128,5 +145,37 @@ describe('a Stop with a queued send in doubt', () => {
       id,
       id
     ])
+  })
+
+  it('the drain never sends one a Stop outlived, even after a reload left it queued', async () => {
+    writeOutbox('session-1', [
+      {
+        ...createStructuredAgentSessionOutboxEntry({
+          clientMessageId: 'outlived',
+          sessionId: 'session-1',
+          text: 'follow-up',
+          attachments: [],
+          queuedAt: 1
+        }),
+        sentDelivery: 'queue-if-active',
+        lastAttemptAt: 5,
+        outlivedStop: true,
+        state: 'queued'
+      }
+    ])
+    const { result } = renderHook(() =>
+      useStructuredAgentSessionOutbox({
+        sessionId: 'session-1',
+        target: TARGET,
+        fence: 1,
+        submissions: [],
+        queueDelivery: { capability: 'supported', enabled: true }
+      })
+    )
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000)
+    })
+    expect(mocks.call).not.toHaveBeenCalled()
+    expect(result.current.outbox.map((entry) => entry.state)).toEqual(['unconfirmed'])
   })
 })

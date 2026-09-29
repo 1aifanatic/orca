@@ -59,9 +59,9 @@ function seed(clientMessageId: string, queued: boolean): void {
         sessionId: 'session-1',
         text: 'follow-up',
         attachments: [],
-        queuedAt: 1,
-        ...(queued ? { delivery: 'queue-if-active' as const } : {})
+        queuedAt: 1
       }),
+      ...(queued ? { delivery: 'queue-if-active' as const } : {}),
       state: 'unconfirmed',
       lastAttemptAt: 5
     }

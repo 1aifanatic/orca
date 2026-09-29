@@ -54,6 +54,7 @@ function handOff(
 }
 
 const IDLE = { hasPendingPrompt: false }
+const QUEUEING = { capability: 'supported', enabled: true } as const
 
 describe('queued message cards', () => {
   it('orders by host position whatever order the list arrives in', () => {
@@ -159,21 +160,53 @@ describe('queued message cards', () => {
     })
     const ids = (entries: readonly StructuredAgentSessionOutboxEntry[]): string[] =>
       entries.map((candidate) => candidate.clientMessageId)
-    const inFlight = [entry('a', { state: 'dispatching' }), entry('b')]
-    expect(ids(outboxOutsideQueuedCards(inFlight, [], true, null))).toEqual([])
-    expect(ids(outboxOutsideQueuedCards(inFlight, [], false, null))).toEqual(['a', 'b'])
+    const inFlight = [
+      entry('a', { state: 'dispatching', lastAttemptAt: 2, sentDelivery: 'queue-if-active' }),
+      entry('b')
+    ]
+    expect(ids(outboxOutsideQueuedCards(inFlight, [], true, null, QUEUEING))).toEqual([])
+    expect(ids(outboxOutsideQueuedCards(inFlight, [], false, null, QUEUEING))).toEqual(['a', 'b'])
     // Refused and held for Retry: its text, and everything waiting behind it, stays in view.
     const refused = [entry('a', { lastFailure: { kind: 'failed' } }), entry('b')]
-    expect(ids(outboxOutsideQueuedCards(refused, [], true, 'a'))).toEqual(['a', 'b'])
+    expect(ids(outboxOutsideQueuedCards(refused, [], true, 'a', QUEUEING))).toEqual(['a', 'b'])
     // A rejected send holds nothing up: what follows it is still on its way to a card.
     const rejected = [
       entry('a', { state: 'rejected', lastFailure: { kind: 'rejected', reason: null } }),
       entry('b')
     ]
-    expect(ids(outboxOutsideQueuedCards(rejected, [], true, null))).toEqual(['a'])
+    expect(ids(outboxOutsideQueuedCards(rejected, [], true, null, QUEUEING))).toEqual(['a'])
     const unconfirmed = [entry('a', { state: 'unconfirmed' }), entry('b')]
-    expect(ids(outboxOutsideQueuedCards(unconfirmed, [], true, null))).toEqual(['a', 'b'])
+    expect(ids(outboxOutsideQueuedCards(unconfirmed, [], true, null, QUEUEING))).toEqual(['a', 'b'])
     // Once the host visibly holds it, it is a card whatever this queue last heard.
-    expect(ids(outboxOutsideQueuedCards(unconfirmed, ['a'], true, null))).toEqual(['b'])
+    expect(ids(outboxOutsideQueuedCards(unconfirmed, ['a'], true, null, QUEUEING))).toEqual(['b'])
+  })
+
+  it('hides a send only by what its request carries: a plain one is always a bubble', () => {
+    const entry = (
+      clientMessageId: string,
+      overrides: Partial<StructuredAgentSessionOutboxEntry> = {}
+    ): StructuredAgentSessionOutboxEntry => ({
+      clientMessageId,
+      sessionId: 'session-1',
+      body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: clientMessageId }] },
+      previewUris: [],
+      state: 'queued',
+      queuedAt: 1,
+      lastAttemptAt: null,
+      retryAfterUnknownSubmittedAt: null,
+      delivery: 'queue-if-active',
+      ...overrides
+    })
+    const ids = (entries: readonly StructuredAgentSessionOutboxEntry[]): string[] =>
+      entries.map((candidate) => candidate.clientMessageId)
+    // The capability is unknown: a new send goes out plain, so it stays in view.
+    const unknown = { capability: 'unknown', enabled: true } as const
+    expect(ids(outboxOutsideQueuedCards([entry('new')], [], true, null, unknown))).toEqual(['new'])
+    // A send that went out plain stays a bubble; one that went out queued replays queued.
+    const sent = [
+      entry('plain', { state: 'dispatching', lastAttemptAt: 2, sentDelivery: null }),
+      entry('queued', { state: 'dispatching', lastAttemptAt: 2, sentDelivery: 'queue-if-active' })
+    ]
+    expect(ids(outboxOutsideQueuedCards(sent, [], true, null, unknown))).toEqual(['plain'])
   })
 })

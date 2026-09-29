@@ -12,6 +12,7 @@ import {
 import type { AgentSessionMutationEnvelope } from './agent-session-wire'
 import { structuredAgentSessionPayloadFingerprint } from './structured-agent-session-mutation'
 import { classifyDispatchRejection } from './structured-agent-session-dispatch-rejection'
+import { parseStructuredAgentSessionOutboxQueueFields } from './structured-agent-session-outbox-delivery'
 
 /** `rejected`: the host settled the send as not delivered. The drain never sends it again on its
  *  own and nothing queues behind it; only the user's Retry does. */
@@ -37,6 +38,8 @@ export type StructuredAgentSessionOutboxEntry = {
   /** A Stop landed while this queue send's answer was out: only the user's Retry sends it again,
    *  never the unconfirmed probe, which would start a turn on the session the user stopped. */
   outlivedStop?: true
+  /** What the first attempt put on the wire (`null`: plain); every replay of this id sends it. */
+  sentDelivery?: 'queue-if-active' | null
   /** Why the last attempt did not go through. Lives on the message so it goes when the message
    *  is sent again or delivered, instead of outliving it as a separate error. */
   lastFailure?: StructuredAgentSessionAttemptFailure
@@ -122,7 +125,6 @@ export function createStructuredAgentSessionOutboxEntry(args: {
   text: string
   attachments: readonly StructuredAgentSessionAttachment[]
   queuedAt: number
-  delivery?: 'queue-if-active'
 }): StructuredAgentSessionOutboxEntry {
   return {
     clientMessageId: args.clientMessageId,
@@ -132,8 +134,7 @@ export function createStructuredAgentSessionOutboxEntry(args: {
     state: 'queued',
     queuedAt: args.queuedAt,
     lastAttemptAt: null,
-    retryAfterUnknownSubmittedAt: null,
-    ...(args.delivery ? { delivery: args.delivery } : {})
+    retryAfterUnknownSubmittedAt: null
   }
 }
 
@@ -308,8 +309,7 @@ export function parseStructuredAgentSessionOutboxEntry(
         ? entry.retryAfterUnknownSubmittedAt
         : null,
     ...(entry.source === 'launch' ? { source: 'launch' as const } : {}),
-    ...(entry.delivery === 'queue-if-active' ? { delivery: 'queue-if-active' as const } : {}),
-    ...(entry.outlivedStop === true ? { outlivedStop: true as const } : {}),
+    ...parseStructuredAgentSessionOutboxQueueFields(entry),
     ...(lastFailure ? { lastFailure } : {})
   }
 }

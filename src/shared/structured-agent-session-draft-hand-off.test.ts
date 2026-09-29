@@ -20,9 +20,9 @@ const entry: StructuredAgentSessionOutboxEntry = {
     sessionId: 'session-1',
     text: 'hello',
     attachments: [],
-    queuedAt: 1,
-    delivery: 'queue-if-active'
+    queuedAt: 1
   }),
+  delivery: 'queue-if-active',
   state: 'unconfirmed',
   lastAttemptAt: 5
 }

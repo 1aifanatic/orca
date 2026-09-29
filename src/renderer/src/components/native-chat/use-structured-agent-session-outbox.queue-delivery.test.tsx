@@ -200,7 +200,8 @@ describe('outbox queue delivery selection', () => {
     })
     // The unissued entry came back to the composer; the issued one stayed put.
     expect(readNativeChatDraftCache('stop-scope')).toBe('never left')
-    expect(view.result.current.outbox.map((entry) => entry.state)).toEqual(['dispatching'])
+    // The issued one waits for its answer, and only the user's Retry sends it again.
+    expect(view.result.current.outbox.map((entry) => entry.state)).toEqual(['unconfirmed'])
     // The host publishes the issued send as a card: retired, still nothing restored.
     const entryId = mocks.call.mock.calls[0]?.[2]?.envelope.clientOperationId
     view.rerender({ queuedMessageIds: [entryId ?? ''] })
@@ -208,18 +209,13 @@ describe('outbox queue delivery selection', () => {
     expect(readNativeChatDraftCache('stop-scope')).toBe('never left')
   })
 
-  it('an attempted queue send waits while the capability is unknown, then replays unchanged', async () => {
+  it('while the capability is unknown, an attempted queue send replays what it sent', async () => {
     const view = await attemptedQueueSend()
     view.rerender({ capability: 'unknown' })
     const id = view.result.current.outbox[0]?.clientMessageId ?? ''
     act(() => {
       view.result.current.retry(id)
     })
-    await act(async () => new Promise((resolve) => setTimeout(resolve, 50)))
-    expect(mocks.call).toHaveBeenCalledTimes(1)
-    expect(readOutbox('session-1')[0]?.delivery).toBe('queue-if-active')
-
-    view.rerender({ capability: 'supported' })
     await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(2))
     const params = mocks.call.mock.calls[1]?.[2]
     expect(params?.envelope.clientOperationId).toBe(id)
@@ -227,6 +223,48 @@ describe('outbox queue delivery selection', () => {
     expect(params?.envelope.payloadFingerprint).toBe(
       mocks.call.mock.calls[0]?.[2]?.envelope.payloadFingerprint
     )
+  })
+
+  it('while the capability is unknown, a new send goes out plain and holds up nothing', async () => {
+    mocks.call.mockImplementation(async (_target, _method, params) => ({
+      ok: true,
+      replayed: false,
+      fence: 1,
+      cursor: { epoch: 'epoch-1', sequence: 1 },
+      value: {
+        clientMessageId: params.envelope.clientOperationId,
+        submission: {
+          clientMessageId: params.envelope.clientOperationId,
+          fence: 1,
+          payloadFingerprint: 'fingerprint',
+          dispatchState: 'accepted',
+          providerItemId: 'provider-1',
+          reason: null,
+          submittedAt: 1,
+          resolvedAt: 1
+        }
+      }
+    }))
+    const { result } = renderHook(() =>
+      useStructuredAgentSessionOutbox({
+        sessionId: 'session-1',
+        target: LOCAL_TARGET,
+        fence: 1,
+        submissions: [],
+        queueDelivery: { capability: 'unknown', enabled: true }
+      })
+    )
+    act(() => {
+      result.current.send('first')
+    })
+    await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(1))
+    act(() => {
+      result.current.send('second')
+    })
+    await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(2))
+    for (const call of mocks.call.mock.calls) {
+      expect('delivery' in call[2]).toBe(false)
+    }
   })
 
   it('a host known not to queue gets the Retry without `delivery`; the entry keeps the intent', async () => {

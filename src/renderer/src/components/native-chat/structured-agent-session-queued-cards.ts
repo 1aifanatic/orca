@@ -6,6 +6,10 @@ import type { AgentJournalSubmission } from '../../../../shared/agent-session-jo
 import type { AgentSessionQueuedMessage } from '../../../../shared/agent-session-wire'
 import { handedOffQueuedMessageIds } from '../../../../shared/structured-agent-session-draft-hand-off'
 import {
+  structuredAgentSessionEntryAsksToQueue,
+  type StructuredAgentSessionQueueDelivery
+} from '../../../../shared/structured-agent-session-outbox-delivery'
+import {
   admitStructuredAgentSessionOutboxEntry,
   type StructuredAgentSessionOutboxEntry
 } from '../../../../shared/structured-agent-session-outbox'
@@ -90,16 +94,18 @@ export function newestSteerableQueuedMessageCard(
 
 /**
  * The outbox entries the transcript may show as pending bubbles. A send the host holds
- * as a draft (same id) is a card, and so is a mid-turn queue send on its way out —
- * otherwise it paints in the transcript until the queued answer retires it. From the
- * entry the drain is stopped on (read through the drain's own rule), nothing is on its
+ * as a draft (same id) is a card, and so is a send on its way out asking to be queued —
+ * read from what its request carries, never from the intent alone — otherwise it paints
+ * in the transcript until the queued answer retires it. A plain send stays a bubble. From
+ * the entry the drain is stopped on (read through the drain's own rule), nothing is on its
  * way: those stay bubbles so their text is visible beside the Retry row.
  */
 export function outboxOutsideQueuedCards(
   outbox: readonly StructuredAgentSessionOutboxEntry[],
   heldIds: readonly string[],
   isWorking: boolean,
-  blockedClientMessageId: string | null
+  blockedClientMessageId: string | null,
+  host: StructuredAgentSessionQueueDelivery
 ): readonly StructuredAgentSessionOutboxEntry[] {
   const held = new Set(heldIds)
   const admission = admitStructuredAgentSessionOutboxEntry(outbox, blockedClientMessageId)
@@ -108,8 +114,8 @@ export function outboxOutsideQueuedCards(
     const onItsWay =
       isWorking &&
       (stalledFrom === -1 || index < stalledFrom) &&
-      entry.delivery === 'queue-if-active' &&
-      (entry.state === 'queued' || entry.state === 'dispatching')
+      (entry.state === 'queued' || entry.state === 'dispatching') &&
+      structuredAgentSessionEntryAsksToQueue(entry, host)
     return !held.has(entry.clientMessageId) && !onItsWay
   })
   return next.length === outbox.length ? outbox : next

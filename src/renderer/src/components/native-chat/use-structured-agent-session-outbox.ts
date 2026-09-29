@@ -28,8 +28,8 @@ import {
   reconcileStructuredAgentSessionOutboxWithQueue
 } from '../../../../shared/structured-agent-session-draft-hand-off'
 import {
+  structuredAgentSessionEntryAttempt,
   structuredAgentSessionEntryDeliveryIntent,
-  structuredAgentSessionEntryOnWire,
   type StructuredAgentSessionQueueDelivery
 } from '../../../../shared/structured-agent-session-outbox-delivery'
 import { retryStructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox-retry'
@@ -221,20 +221,25 @@ export function useStructuredAgentSessionOutbox(args: {
       setOutbox(persisted)
       return
     }
-    // The stored entry keeps the intent; only the request reads the capability. Held while the
-    // capability is unknown: the probe answering re-runs this drain.
-    const intended = structuredAgentSessionEntryDeliveryIntent(persistedEntry, {
+    // A Stop outlived it: only the user's Retry, which clears the mark, sends it again.
+    if (persistedEntry.outlivedStop === true) {
+      const parked = persisted.map((entry) =>
+        entry === persistedEntry ? { ...entry, state: 'unconfirmed' as const } : entry
+      )
+      outboxRef.current = parked
+      setOutbox(parked)
+      writeOutbox(sessionId, parked)
+      return
+    }
+    // The request reads the capability; the entry keeps the intent and what it first sent.
+    const attempt = structuredAgentSessionEntryAttempt(persistedEntry, {
       capability: queueCapability,
       enabled: queueEnabled
     })
-    const attempt = structuredAgentSessionEntryOnWire(intended, queueCapability)
-    if (attempt === null) {
-      return
-    }
     const dispatchGeneration = dispatchGenerationRef.current
     const dispatch = dispatchStructuredAgentSessionOutboxEntry({
-      next: attempt,
-      persisted: persisted.map((entry) => (entry === persistedEntry ? intended : entry)),
+      next: attempt.wire,
+      persisted: persisted.map((entry) => (entry === persistedEntry ? attempt.stored : entry)),
       sessionId,
       target,
       fence,

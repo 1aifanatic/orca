@@ -154,9 +154,17 @@ export function useStructuredAgentSession(args: {
         outbox,
         queuedMessageIds,
         isWorking,
-        outboxController.blockedClientMessageId
+        outboxController.blockedClientMessageId,
+        { capability: queueCapability, enabled: queueFollowUps }
       ),
-    [isWorking, outbox, outboxController.blockedClientMessageId, queuedMessageIds]
+    [
+      isWorking,
+      outbox,
+      outboxController.blockedClientMessageId,
+      queueCapability,
+      queueFollowUps,
+      queuedMessageIds
+    ]
   )
   const messages = useStructuredAgentSessionMessages(
     transportState.journalItems,

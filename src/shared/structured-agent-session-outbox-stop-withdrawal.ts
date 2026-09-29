@@ -1,6 +1,7 @@
 import type { AgentJournalSubmission } from './agent-session-journal-types'
 import type { StructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox'
 import { handedOffQueuedMessageIds } from './structured-agent-session-draft-hand-off'
+import { structuredAgentSessionSentDelivery } from './structured-agent-session-outbox-delivery'
 
 /** Whether only the user's Retry sends this entry again: a refused one, the one the drain stopped
  *  on, one a Stop outlived, or one in doubt the unconfirmed probe leaves alone. `NativeChatDeliveryRetry` offers it. */
@@ -29,26 +30,25 @@ function unsentStructuredAgentSessionOutboxEntry(
     !awaitsStructuredAgentSessionRetry(entry, blockedClientMessageId)
 }
 
-/** An issued mid-turn queue send whose answer is still out: `dispatching` or left in doubt as
- *  `unconfirmed`. The host may already hold it as a paused draft, so a local restore too would
- *  put the same text in two places. A `queued` entry never left, and a requeued refusal was
- *  answered, so both restore safely. `dispatching` is not only the in-flight id: a `pending`
- *  answer frees single-flight but leaves the entry `dispatching` until its journal row arrives. */
-function issuedQueueDeliverySendAwaitingAnswer(entry: StructuredAgentSessionOutboxEntry): boolean {
+/** A queue send that has gone out at least once and was not refused, in whatever state it now
+ *  waits: the host may hold it as a paused draft, so a local restore too would put the same text
+ *  in two places. Read from what went on the wire, never from the intent alone. */
+function attemptedQueueSend(entry: StructuredAgentSessionOutboxEntry): boolean {
   return (
-    entry.delivery === 'queue-if-active' &&
-    (entry.state === 'dispatching' || entry.state === 'unconfirmed')
+    structuredAgentSessionSentDelivery(entry) === 'queue-if-active' &&
+    entry.lastAttemptAt !== null &&
+    entry.state !== 'rejected'
   )
 }
 
-/** A queue send whose answer is out when a Stop lands is marked, so no later unknown answer
- *  leaves it to the probe: resent onto the session the user just stopped, it would start a turn
- *  if the host never got the first attempt. */
+/** An attempted queue send a Stop keeps is marked and waits, `unconfirmed`, for the user's
+ *  Retry: nothing else resends it (the drain, the probe and an owner change all skip the mark), since
+ *  a resend onto the session the user just stopped would start a turn if the host never got it. */
 function markedOutlivingStop(
   entry: StructuredAgentSessionOutboxEntry
 ): StructuredAgentSessionOutboxEntry {
-  return issuedQueueDeliverySendAwaitingAnswer(entry) && entry.outlivedStop !== true
-    ? { ...entry, outlivedStop: true }
+  return attemptedQueueSend(entry) && (entry.outlivedStop !== true || entry.state !== 'unconfirmed')
+    ? { ...entry, outlivedStop: true, state: 'unconfirmed' }
     : entry
 }
 
@@ -57,8 +57,8 @@ function markedOutlivingStop(
  * so every such entry goes, as a message the host withdraws leaves the chat. The send on its way
  * stays: it reaches the host ahead of the Stop, and it comes back from the host's answer, since
  * the agent may already have it. One waiting on Retry keeps it, and so does an issued queue send
- * whose answer is out (a queued receipt retires it against the published card; a withdrawn
- * submission restores it from the journal); one in doubt waits for Retry from then on.
+ * that has gone out (a queued receipt or hand-off retires it against the published card), and it
+ * waits for the user's Retry from then on.
  */
 export function withdrawUnsentStructuredAgentSessionOutboxEntries(
   entries: readonly StructuredAgentSessionOutboxEntry[],
@@ -72,7 +72,7 @@ export function withdrawUnsentStructuredAgentSessionOutboxEntries(
       (entry) =>
         entry.clientMessageId === inFlightClientMessageId ||
         !unsent(entry) ||
-        issuedQueueDeliverySendAwaitingAnswer(entry)
+        attemptedQueueSend(entry)
     )
     .map(markedOutlivingStop)
 }
