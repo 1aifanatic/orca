@@ -142,6 +142,27 @@ describe('CodexBackgroundTaskTracker child execution ownership', () => {
     }
   )
 
+  it('keeps a child working through an error until its failed turn completion', () => {
+    const tracker = runningChild()
+    tracker.observe(turn('turn/completed', PRIMARY, PARENT_TURN))
+    const error = {
+      method: 'error',
+      threadId: CHILD,
+      params: { threadId: CHILD, turnId: CHILD_TURN, willRetry: false }
+    }
+    expect(tracker.observe(error)).toBe(false)
+    expect(tracker.state?.tasks).toHaveLength(1)
+    expect(tracker.observe(turn('turn/completed', CHILD, CHILD_TURN, 'failed'))).toBe(true)
+    expect(tracker.state).toBeNull()
+  })
+
+  it('ends a child as unverifiable if its thread closes without turn completion', () => {
+    const tracker = runningChild()
+    tracker.observe(turn('turn/completed', PRIMARY, PARENT_TURN))
+    expect(tracker.observe({ method: 'thread/closed', threadId: CHILD, params: {} })).toBe(true)
+    expect(tracker.state).toBeNull()
+  })
+
   it('does not mistake late activity completion for the current child execution', () => {
     const tracker = runningChild()
     tracker.observe(turn('turn/completed', PRIMARY, PARENT_TURN))

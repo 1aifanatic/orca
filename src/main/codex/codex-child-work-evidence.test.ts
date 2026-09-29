@@ -179,24 +179,31 @@ describe('Codex child-work evidence', () => {
   }
 
   it.each([
-    ['an error naming its turn that Codex will not retry', childError('c1', false), 'failed'],
-    ['an error naming no turn that Codex will not retry', childError(undefined, false), 'failed'],
-    ['its thread closing', childClosed, 'unknown']
+    ['its turn', 'c1'],
+    ['no turn', undefined]
   ])(
-    'settles a working child whose turn ended with no turn/completed, by %s, in the strip and the record together',
-    (_label, ending, outcome) => {
+    'keeps a child working through a non-retried error naming %s until Codex completes the turn',
+    (_label, turnId) => {
       const { send, tracker, records } = runningChild()
+      send(childError(turnId, false))
+      expect(records()).toEqual([expect.objectContaining({ membership: 'live', state: 'working' })])
       expect(tracker.state?.tasks).toHaveLength(1)
-      send(ending)
+      send(turn('turn/completed', CHILD, 'c1', 'failed'))
       expect(records()).toEqual([
-        expect.objectContaining({ membership: 'settled', state: 'done', outcome })
+        expect.objectContaining({ membership: 'settled', state: 'done', outcome: 'failed' })
       ])
       expect(tracker.state).toBeNull()
-      // The first ending a turn gets stands.
-      send(turn('turn/completed', CHILD, 'c1', 'completed'))
-      expect(records()).toEqual([expect.objectContaining({ outcome })])
     }
   )
+
+  it('settles a child as unknown when its thread closes without turn completion', () => {
+    const { send, tracker, records } = runningChild()
+    send(childClosed)
+    expect(records()).toEqual([
+      expect.objectContaining({ membership: 'settled', state: 'done', outcome: 'unknown' })
+    ])
+    expect(tracker.state).toBeNull()
+  })
 
   it('keeps a child working through a retried error and a systemError status: its turn runs on', () => {
     const { send, tracker, records } = runningChild()
@@ -207,7 +214,7 @@ describe('Codex child-work evidence', () => {
     })
     expect(records()).toEqual([expect.objectContaining({ membership: 'live', state: 'working' })])
     expect(tracker.state?.tasks).toHaveLength(1)
-    // A fatal error naming a turn the child already finished ends nothing.
+    // A late error naming a turn the child already finished ends nothing.
     send(turn('turn/completed', CHILD, 'c1'), childError('c1', false))
     expect(records()).toEqual([expect.objectContaining({ outcome: 'succeeded' })])
   })
