@@ -10,9 +10,8 @@ import { nativeChatTaskListPredecessors } from './native-chat-task-list-history'
 import { NativeChatTaskList } from './NativeChatTaskList'
 import { projectNativeChatTaskListFrames } from './native-chat-task-list-frames'
 import { omitNativeChatThreadGoalRows } from './native-chat-thread-goal-rows'
-import { shouldShowNativeChatTypingIndicator } from './native-chat-typing-indicator'
 import { useNativeChatTurnStatus } from './use-native-chat-turn-status'
-import { NativeChatTypingIndicatorRow } from './NativeChatTypingIndicatorRow'
+import { NativeChatAwaitingInputRow } from './NativeChatAwaitingInputRow'
 import type { RuntimeFileOperationArgs } from '@/runtime/runtime-file-client'
 import type { NativeChatTurnActivity } from '../../../../shared/native-chat-turn-activity'
 import { NativeChatTurnActivityLine } from './NativeChatTurnActivityLine'
@@ -47,6 +46,7 @@ import {
   selectNativeChatActiveTurnKey,
   type NativeChatSettledTurns
 } from '../../../../shared/native-chat-turn-status'
+import { nativeChatRowTurnKeys } from '../../../../shared/native-chat-turn-grouping'
 import {
   nativeChatTurnDiffs,
   type NativeChatDiffReveal,
@@ -57,6 +57,10 @@ import {
 export { ProviderFrameRow } from './NativeChatTranscriptChrome'
 
 const MAX_EXPANDED_TURNS = 128
+
+/** The turn is blocked on the reader. `shown`: the pane draws the prompt itself, as a card;
+ *  `unshown`: it cannot (the prompt is only in the agent's terminal). */
+export type NativeChatAwaitingInput = 'shown' | 'unshown'
 
 type NativeChatNavigationRequest =
   | { kind: 'diff'; target: NativeChatDiffReveal }
@@ -75,9 +79,9 @@ export function NativeChatMessageList({
   workingStartedAt,
   settledTurns,
   activeTurnOpenedBy,
+  turnKeysByItemId = null,
   deliveryNotices,
-  showTurnStatus = true,
-  showLiveTurnActivity = true,
+  awaitingInput = null,
   turnActivity,
   runtimeContext
 }: {
@@ -92,17 +96,19 @@ export function NativeChatMessageList({
   /** Chat-only text multiplier (1 = default), driven by the zoom shortcuts. */
   fontScale: number
   workingStartedAt?: number | null
-  /** Host-recorded turn durations keyed by user message id (structured lane). */
+  /** Recorded turn durations keyed by user message id (the host's, or the transcript's).
+   *  A turn missing here shows the duration this list observed, if it saw the turn run. */
   settledTurns?: NativeChatSettledTurns
-  /** The user message the host says opened the running turn (structured lane). */
+  /** The key the host says anchors the running turn's bar (structured lane). */
   activeTurnOpenedBy?: string | null
+  /** Host-attributed turn ownership per journal item id (structured lane).
+   *  Rows it does not name keep positional preceding-user grouping. */
+  turnKeysByItemId?: ReadonlyMap<string, string> | null
   onLinkClick?: CommentMarkdownLinkClickHandler
   allowFileUriLinks?: boolean
   deliveryNotices?: ReadonlyMap<string, NativeChatDeliveryNotice>
-  /** Turn timing and disclosure are available on structured agent sessions. */
-  showTurnStatus?: boolean
-  /** Whether the active turn's foreground activity row should be visible. */
-  showLiveTurnActivity?: boolean
+  /** Set while the turn waits on the reader; the live activity line yields to it. */
+  awaitingInput?: NativeChatAwaitingInput | null
   turnActivity?: NativeChatTurnActivity | null
   runtimeContext?: RuntimeFileOperationArgs | null
 }): React.JSX.Element {
@@ -157,21 +163,12 @@ export function NativeChatMessageList({
   const subagentLabels = useMemo(() => nativeChatSubagentLabels(messages), [messages])
   const taskListPredecessors = useMemo(() => nativeChatTaskListPredecessors(messages), [messages])
   const taskListState = useMemo(() => nativeChatTaskListState(messages), [messages])
-  const showTypingIndicator = showTurnStatus
-    ? isWorking
-    : shouldShowNativeChatTypingIndicator({ messages, isWorking })
-  const currentTurnKey = messages.findLast((message) => message.role === 'user')?.id ?? undefined
-  // Resolve each row's turn boundary once. Prefix slice/findLast in the render
+  // Resolve each row's owning turn once. Prefix slice/findLast in the render
   // loop becomes quadratic for long transcripts.
-  const turnKeys = useMemo(() => {
-    let currentTurnKey: string | undefined
-    return messages.map((message) => {
-      if (message.role === 'user') {
-        currentTurnKey = message.id
-      }
-      return currentTurnKey
-    })
-  }, [messages])
+  const turnKeys = useMemo(
+    () => nativeChatRowTurnKeys(messages, turnKeysByItemId),
+    [messages, turnKeysByItemId]
+  )
   const turnDiffs = useMemo(
     () =>
       journalItems
@@ -189,11 +186,19 @@ export function NativeChatMessageList({
   const turnStatuses = useNativeChatTurnStatus({
     messages,
     activeTurnKey,
-    isWorking: showTurnStatus && isWorking,
-    workingStartedAt: showTurnStatus ? workingStartedAt : null,
-    settledTurns: showTurnStatus ? settledTurns : null,
+    isWorking,
+    workingStartedAt,
+    settledTurns,
     thinking
   })
+  // The transcript tail: what the running turn is doing, or that it waits on a
+  // prompt nothing else on screen shows. A prompt card says so itself.
+  const tailRow =
+    awaitingInput === 'unshown'
+      ? 'awaiting-input'
+      : isWorking && awaitingInput === null
+        ? 'activity'
+        : null
   const lifecycleWorking = session.transcriptLifecycle?.state === 'working'
   const slots = useMemo(
     () =>
@@ -201,11 +206,9 @@ export function NativeChatMessageList({
         messages,
         turnKeys,
         activeTurnKey,
-        currentTurnKey,
         receipts,
         turnStatuses,
         turnDiffs,
-        showTurnStatus,
         expandedTurnKeys: expandedTurnIds,
         isWorking,
         lifecycleWorking,
@@ -213,13 +216,11 @@ export function NativeChatMessageList({
       }),
     [
       activeTurnKey,
-      currentTurnKey,
       expandedTurnIds,
       isWorking,
       lifecycleWorking,
       messages,
       receipts,
-      showTurnStatus,
       subagentLabels,
       turnDiffs,
       turnKeys,
@@ -239,7 +240,7 @@ export function NativeChatMessageList({
     contentRef,
     itemCount: slots.length,
     isWorking,
-    showTypingIndicator,
+    showsTailRow: tailRow !== null,
     isVisible,
     alignToViewportTop: transcriptWindow.alignToViewportTop,
     scrollToEnd: transcriptWindow.scrollToEnd,
@@ -334,7 +335,6 @@ export function NativeChatMessageList({
   const rowContext = useMemo<NativeChatTranscriptRowContext>(
     () => ({
       expandSignal,
-      showTurnStatus,
       revealedDiff,
       taskListPredecessors,
       expandedTurnIds,
@@ -356,7 +356,6 @@ export function NativeChatMessageList({
       revealedDiff,
       runtimeContext,
       scrollMessageToTop,
-      showTurnStatus,
       taskListPredecessors,
       toggleExpandedTurn
     ]
@@ -401,13 +400,14 @@ export function NativeChatMessageList({
                   context={rowContext}
                   window={transcriptWindow}
                 />
-                {showTurnStatus && showLiveTurnActivity && isWorking ? (
+                {tailRow === 'activity' ? (
                   <NativeChatTurnActivityLine
                     activity={turnActivity}
                     thinking={turnStatuses.active?.thinking === true}
                   />
+                ) : tailRow === 'awaiting-input' ? (
+                  <NativeChatAwaitingInputRow subject={null} pending />
                 ) : null}
-                {!showTurnStatus && showTypingIndicator ? <NativeChatTypingIndicatorRow /> : null}
               </div>
             </div>
           </div>
