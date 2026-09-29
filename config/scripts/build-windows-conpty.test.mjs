@@ -1,5 +1,13 @@
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -23,6 +31,8 @@ vi.mock('./zip-extractor-command.mjs', () => ({
 }))
 vi.mock('./script-child-process.mjs', () => ({ runProcessSync: vi.fn() }))
 import { runProcessSync } from './script-child-process.mjs'
+import { stageWindowsRelayConpty } from './relay-conpty-packaging.mjs'
+import { RELAY_WINDOWS_CONPTY_FILENAMES } from '../../src/shared/relay-artifacts.ts'
 import {
   downloadConptyArchive,
   materializeWindowsConpty,
@@ -144,4 +154,54 @@ describe('independent ConPTY payload builder', () => {
     fetcher.mockResolvedValue(new Response('missing', { status: 404 }))
     await expect(downloadConptyArchive(join(root, 'download'), fetcher)).rejects.toThrow('HTTP 404')
   })
+})
+
+describe('Windows relay provider packaging', () => {
+  it.each(['x64', 'arm64'])('stages the verified %s pair and metadata flat', async (arch) => {
+    mkdirSync(output)
+    await stageWindowsRelayConpty(`win32-${arch}`, output, { cacheDir, fetcher })
+    expect(readdirSync(output).sort()).toEqual([...RELAY_WINDOWS_CONPTY_FILENAMES].sort())
+    verifyConptyDirectory(output, arch)
+    expect(readFileSync(join(output, 'conpty-LICENSE.txt'), 'utf8')).toContain('MIT License')
+    expect(JSON.parse(readFileSync(join(output, 'conpty.json'), 'utf8'))).toMatchObject({
+      arch,
+      archiveSha256: fixture.archiveHash,
+      files: fixture.files[arch]
+    })
+  })
+
+  it.each(['conpty.dll', 'OpenConsole.exe'])(
+    'rejects corrupt %s and removes staging',
+    async (filename) => {
+      mkdirSync(output)
+      fixture.files.x64[filename] = digest('wrong binary')
+      await expect(
+        stageWindowsRelayConpty('win32-x64', output, { cacheDir, fetcher })
+      ).rejects.toThrow('checksum mismatch')
+      expect(readdirSync(output)).toEqual([])
+    }
+  )
+
+  it('rejects a missing companion and removes staging', async () => {
+    mkdirSync(output)
+    const extract = vi.mocked(runProcessSync).getMockImplementation()
+    vi.mocked(runProcessSync).mockImplementation((command) => {
+      const result = extract(command)
+      rmSync(join(command.args[1], 'build', 'native', 'runtimes', 'x64', 'OpenConsole.exe'))
+      return result
+    })
+    await expect(
+      stageWindowsRelayConpty('win32-x64', output, { cacheDir, fetcher })
+    ).rejects.toThrow()
+    expect(readdirSync(output)).toEqual([])
+  })
+
+  it.each(['linux-x64', 'linux-arm64', 'darwin-x64', 'darwin-arm64'])(
+    'does not touch %s packaging',
+    async (platform) => {
+      await stageWindowsRelayConpty(platform, output, { cacheDir, fetcher })
+      expect(existsSync(output)).toBe(false)
+      expect(fetcher).not.toHaveBeenCalled()
+    }
+  )
 })
