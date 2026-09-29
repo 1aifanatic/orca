@@ -196,10 +196,12 @@ describe('connectPanePty', () => {
       sendTerminalInputThroughPane(pane, 'droid\r')
       dataCallbackRef.current?.('\x1b]133;C\x07')
 
-      expect(mockStoreState.paneForegroundAgentByPaneKey[paneKey]).toEqual({
-        agent: null,
-        shellForeground: false
-      })
+      // Display identity waits for the command read; only routing is revoked.
+      expect(mockStoreState.paneForegroundAgentByPaneKey[paneKey]).toEqual(
+        identitySource === 'process'
+          ? { agent: 'antigravity', shellForeground: false, routingRevoked: true }
+          : undefined
+      )
       expect(resolveMockPaneWindowsShiftEnterEncoding(mockStoreState, paneKey)).toBe('alt-enter')
     }
   )
@@ -510,11 +512,10 @@ describe('connectPanePty', () => {
     await vi.advanceTimersByTimeAsync(350 + 1200 + 6000)
     await flushAsyncTicks()
 
-    // The unavailable branch really ran: it publishes an unproven foreground before settling.
-    expect(mockStoreState.paneForegroundAgentByPaneKey[paneKey]).toEqual({
-      agent: null,
-      shellForeground: false
-    })
+    // The whole unavailable ladder ran and left the launch identity in place.
+    expect(window.api.pty.confirmForegroundProcess).toHaveBeenCalledTimes(3)
+    expect(mockStoreState.paneForegroundAgentByPaneKey[paneKey]).toBeUndefined()
+    expect(mockStoreState.agentLaunchConfigByPaneKey[paneKey]?.identity.agentType).toBe('droid')
     expect(window.api.agentStatus.reconcileEndedProcess).not.toHaveBeenCalled()
   })
 
@@ -662,7 +663,7 @@ describe('connectPanePty', () => {
     expect(deps.paneKittyKeyboardModesRef.current.get(pane.id)?.flags).toBe(5)
   })
 
-  it('retires stale routing after unavailable command-finish reads without asserting shell', async () => {
+  it('keeps launch identity display-only after unavailable command-finish reads', async () => {
     vi.useFakeTimers()
     const { connectPanePty } = await import('./pty-connection')
     vi.mocked(window.api.pty.confirmForegroundProcess).mockResolvedValue(null)
@@ -695,11 +696,8 @@ describe('connectPanePty', () => {
     dataCallbackRef.current?.('\x1b]133;D;0\x07')
     await vi.advanceTimersByTimeAsync(350 + 1200 + 6000)
 
-    expect(mockStoreState.clearAgentLaunchConfig).toHaveBeenCalledExactlyOnceWith(paneKey)
-    expect(mockStoreState.paneForegroundAgentByPaneKey[paneKey]).toEqual({
-      agent: null,
-      shellForeground: false
-    })
+    expect(mockStoreState.clearAgentLaunchConfig).not.toHaveBeenCalled()
+    expect(mockStoreState.paneForegroundAgentByPaneKey[paneKey]).toBeUndefined()
     expect(resolveMockPaneWindowsShiftEnterEncoding(mockStoreState, paneKey)).toBe('alt-enter')
   })
 

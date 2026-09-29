@@ -703,7 +703,8 @@ describe('connectPanePty', () => {
   })
 
   // Why: agent-row removal belongs to process/PTY lifecycle, not title reversion, so interrupts can't disappear the activity row.
-  it('clears the cache timer without removing agent status when the title tracker sees exit', async () => {
+  it('clears the cache timer without removing agent status once a title exit is confirmed', async () => {
+    vi.useFakeTimers()
     const { connectPanePty } = await import('./pty-connection')
     const transport = createMockTransport()
     transportFactoryQueue.push(transport)
@@ -711,17 +712,34 @@ describe('connectPanePty', () => {
     const pane = createPane(1)
     const manager = createManager(1)
     const deps = createDeps()
+    const paneKey = makePaneKey('tab-1', LEAF_1)
 
     connectPanePty(pane as never, manager as never, deps as never)
+    await vi.advanceTimersByTimeAsync(20)
+    await flushAsyncTicks()
 
-    const agentExitedHandler = createdTransportOptions[0]?.onAgentExited as (() => void) | undefined
-    if (!agentExitedHandler) {
-      throw new Error('Expected onAgentExited to be registered')
+    const exitCandidate = createdTransportOptions[0]?.onAgentExitCandidate
+    if (typeof exitCandidate !== 'function') {
+      throw new Error('Expected onAgentExitCandidate to be registered')
     }
+    mockStoreState.paneForegroundAgentByPaneKey[paneKey] = {
+      agent: 'claude',
+      shellForeground: false
+    }
+    vi.mocked(window.api.pty.getForegroundProcess).mockResolvedValue('claude')
 
-    agentExitedHandler()
+    // A neutral title is only a candidate while the agent still owns the foreground.
+    exitCandidate()
+    await vi.advanceTimersByTimeAsync(400)
+    expect(deps.onAgentExitedRef.current).not.toHaveBeenCalled()
+    expect(deps.setCacheTimerStartedAt).not.toHaveBeenCalledWith(paneKey, null)
 
-    expect(deps.setCacheTimerStartedAt).toHaveBeenCalledWith(makePaneKey('tab-1', LEAF_1), null)
+    vi.mocked(window.api.pty.getForegroundProcess).mockResolvedValue('zsh')
+    exitCandidate()
+    // Why: an expected-agent visibility read retries a shell result through the wrapper ladder.
+    await vi.advanceTimersByTimeAsync(350 + 1200 + 6000)
+
+    expect(deps.setCacheTimerStartedAt).toHaveBeenCalledWith(paneKey, null)
     expect(deps.onAgentExitedRef.current).toHaveBeenCalledWith(LEAF_1)
     expect(mockStoreState.removeAgentStatus).not.toHaveBeenCalled()
   })

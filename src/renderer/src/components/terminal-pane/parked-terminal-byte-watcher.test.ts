@@ -636,7 +636,7 @@ describe('startParkedTerminalByteWatcher', () => {
           pending.push({ kind: 'title', normalizedTitle, rawTitle }),
         onAgentBecameWorking: () => pending.push({ kind: 'agent-working' }),
         onAgentBecameIdle: (title) => pending.push({ kind: 'agent-idle', title }),
-        onAgentExited: () => pending.push({ kind: 'agent-exited' }),
+        onAgentExitCandidate: () => pending.push({ kind: 'agent-exited' }),
         onBell: () => pending.push({ kind: 'bell' })
       })
       let seq = 0
