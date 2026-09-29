@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  hasControlByte,
   planStartupWithPromptCandidate,
   TYPED_STARTUP_LINE_PROMPT_BUDGET_BYTES
 } from './startup-line-prompt-carry'
@@ -68,6 +69,21 @@ describe('whether a launch prompt rides the typed startup line', () => {
     expect(plan?.launchCommand).not.toContain('first line')
     expect(plan?.followupPrompt).toBeNull()
   })
+
+  it.each([
+    ['TAB', 'see\tthis'],
+    ['ESC', 'red \x1b[31mtext'],
+    ['^C', 'stop\x03here'],
+    ['^U', 'kill\x15line'],
+    ['DEL', 'erase\x7fme']
+  ])(
+    'never types a %s-bearing prompt, which a line editor would read as a key',
+    (_label, prompt) => {
+      const { plan, promptCarried } = offer('claude', prompt)
+      expect(promptCarried).toBe(false)
+      expect(hasControlByte(plan?.launchCommand ?? '')).toBe(false)
+    }
+  )
 
   it('counts the launcher toward the line, so a long configured one leaves no room for the prompt', () => {
     const launcher = `claude ${'--add-dir /very/long/path '.repeat(30)}`.trim()

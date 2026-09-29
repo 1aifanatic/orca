@@ -4,7 +4,8 @@
  *
  * Measured on the built line, not the raw prompt: quoting, the launcher, its arguments and session
  * options all land on that line, and every failure a long or multi-line typed line has is a property
- * of the line — macOS bash 3.2 reads each newline as Enter, a canonical-mode write truncates a line
+ * of the line — macOS bash 3.2 reads each newline as Enter, a line editor reads any other control
+ * byte as a key, a canonical-mode write truncates a line
  * past MAX_CANON (1024 on macOS), and cmd caps a line at 8191. Decided here, where the line exists,
  * so the answer is a fact about what was built rather than a prediction of it.
  */
@@ -37,7 +38,19 @@ export function startupLineCarriesPrompt(args: {
     return true
   }
   const line = withPrompt.launchCommand
-  return !/[\r\n]/.test(line) && typedLineBytes(line) <= TYPED_STARTUP_LINE_PROMPT_BUDGET_BYTES
+  return !hasControlByte(line) && typedLineBytes(line) <= TYPED_STARTUP_LINE_PROMPT_BUDGET_BYTES
+}
+
+/** Any C0 byte or DEL, not just CR/LF: no quoter escapes them, and a single-line command is written
+ *  raw, so a TAB completes, ESC starts a key sequence, and ^C/^U/^W kill or edit the line. */
+export function hasControlByte(line: string): boolean {
+  for (let i = 0; i < line.length; i += 1) {
+    const code = line.charCodeAt(i)
+    if (code < 0x20 || code === 0x7f) {
+      return true
+    }
+  }
+  return false
 }
 
 type StartupPlanInputs = Omit<
