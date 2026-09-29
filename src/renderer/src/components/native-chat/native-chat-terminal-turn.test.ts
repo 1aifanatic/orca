@@ -102,6 +102,71 @@ describe('nativeChatHookTurnStartedAt', () => {
     ).toBe(3_000)
   })
 
+  // A background task held the row 'working' across the last turn's end and into this one.
+  it("dates the turn by the main agent's clock when child work held the row open", () => {
+    expect(
+      nativeChatHookTurnStartedAt({
+        ...entry,
+        stateStartedAt: 500,
+        mainAgent: { state: 'working', stateStartedAt: 8_000 },
+        stateHistory: [
+          {
+            state: 'done',
+            prompt: 'Earlier ask',
+            startedAt: 100,
+            mainAgent: { state: 'done', stateStartedAt: 100 }
+          }
+        ]
+      })
+    ).toBe(8_000)
+  })
+
+  // The row's working leg began with the background task at 500; this turn began at 4s.
+  it("runs the main agent's clock across a wait", () => {
+    expect(
+      nativeChatHookTurnStartedAt({
+        ...entry,
+        stateStartedAt: 6_000,
+        mainAgent: { state: 'working', stateStartedAt: 6_000 },
+        stateHistory: [
+          {
+            state: 'working',
+            prompt: 'Rename the module',
+            startedAt: 500,
+            mainAgent: { state: 'working', stateStartedAt: 4_000 }
+          },
+          {
+            state: 'waiting',
+            prompt: 'Rename the module',
+            startedAt: 5_000,
+            mainAgent: { state: 'waiting', stateStartedAt: 5_000 }
+          }
+        ]
+      })
+    ).toBe(4_000)
+  })
+
+  // The main agent finished at 2.5s; its subagent then asked for approval. That wait is still the
+  // turn that began at 1s.
+  it('keeps the row run once the main agent is done', () => {
+    expect(
+      nativeChatHookTurnStartedAt({
+        ...entry,
+        state: 'waiting',
+        mainAgent: { state: 'done', stateStartedAt: 2_500 },
+        stateHistory: [
+          { state: 'done', prompt: 'Earlier ask', startedAt: 500 },
+          {
+            state: 'working',
+            prompt: 'Rename the module',
+            startedAt: 1_000,
+            mainAgent: { state: 'done', stateStartedAt: 2_500 }
+          }
+        ]
+      })
+    ).toBe(1_000)
+  })
+
   it('knows nothing without a status row', () => {
     expect(nativeChatHookTurnStartedAt(undefined)).toBeNull()
   })
@@ -149,6 +214,21 @@ describe('nativeChatTranscriptSettledTurns', () => {
       row('u2', 'user', 3_601_000)
     ])
     expect(settled.get('u1')).toEqual({ startedAt: 0, workedSeconds: 5 })
+  })
+
+  // A harness notice (task notification, reminder) is user-role in the transcript but not a prompt.
+  it('times a turn across a harness notice injected mid-turn', () => {
+    const settled = nativeChatTranscriptSettledTurns([
+      row('u1', 'user', 0),
+      row('a1', 'assistant', 5_000),
+      {
+        ...row('notice', 'user', 10_000),
+        blocks: [{ type: 'text', text: '<task-notification>\n<task-id>b1</task-id>' }]
+      },
+      row('a2', 'assistant', 30_000),
+      row('u2', 'user', 60_000)
+    ])
+    expect([...settled]).toEqual([['u1', { startedAt: 0, workedSeconds: 30 }]])
   })
 
   // Absent, not null: null would also hide the duration the pane measured itself.

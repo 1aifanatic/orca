@@ -7,6 +7,7 @@ import type {
   NativeChatSettledTurn,
   NativeChatSettledTurns
 } from '../../../../shared/native-chat-turn-status'
+import { isNoiseMessage } from '../../../../shared/native-chat-noise'
 import type { NativeChatAwaitingInput } from './NativeChatMessageList'
 import { shouldShowNativeChatWorking } from './native-chat-working-suppression'
 
@@ -52,21 +53,27 @@ export function resolveNativeChatTerminalTurn(args: {
  * A changed prompt ends the run: an interrupted wait leaves no hook, so the next turn follows it.
  */
 export function nativeChatHookTurnStartedAt(
-  entry: Pick<AgentStatusEntry, 'state' | 'prompt' | 'stateStartedAt' | 'stateHistory'> | undefined
+  entry:
+    | Pick<AgentStatusEntry, 'state' | 'prompt' | 'stateStartedAt' | 'stateHistory' | 'mainAgent'>
+    | undefined
 ): number | null {
   if (!entry) {
     return null
   }
-  let startedAt = entry.stateStartedAt
   if (entry.state === 'done') {
-    return startedAt
+    return entry.stateStartedAt
   }
+  // Child work can hold the row mid-turn from one main-agent turn into the next, so while the main
+  // agent runs, its own clock dates the turn. Once it is done, the row's run is the turn's tail.
+  const mainAgent = entry.mainAgent?.state === 'done' ? undefined : entry.mainAgent
+  let startedAt = mainAgent?.stateStartedAt ?? entry.stateStartedAt
   for (let index = entry.stateHistory.length - 1; index >= 0; index -= 1) {
     const previous = entry.stateHistory[index]!
-    if (previous.state === 'done' || previous.prompt !== entry.prompt) {
+    const leg = mainAgent ? previous.mainAgent : undefined
+    if ((leg?.state ?? previous.state) === 'done' || previous.prompt !== entry.prompt) {
       break
     }
-    startedAt = Math.min(startedAt, previous.startedAt)
+    startedAt = Math.min(startedAt, leg?.stateStartedAt ?? previous.startedAt)
   }
   return startedAt
 }
@@ -84,8 +91,10 @@ export function nativeChatTranscriptSettledTurns(
   const settled = new Map<string, NativeChatSettledTurn>()
   let turn: { id: string; startedAt: number | null; endedAt: number | null } | null = null
   for (const message of messages) {
-    if (message.role !== 'user') {
-      const agentRow = message.role !== 'system' || isInterruptedStatusMessage(message)
+    // A harness notice is user-role but draws no row, so it neither starts nor extends a turn.
+    if (message.role !== 'user' || isNoiseMessage(message)) {
+      const agentRow =
+        message.role === 'system' ? isInterruptedStatusMessage(message) : message.role !== 'user'
       if (turn && agentRow && message.timestamp != null) {
         turn.endedAt = Math.max(turn.endedAt ?? message.timestamp, message.timestamp)
       }

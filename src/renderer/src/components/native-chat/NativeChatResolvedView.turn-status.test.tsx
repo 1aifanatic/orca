@@ -205,6 +205,30 @@ describe('NativeChatResolvedView turn status', () => {
     expect(screen.getByText('Working for 1m 30s')).toBeInTheDocument()
   })
 
+  // A background task holds the row 'working' past the last turn's end, so the row's own epoch is
+  // that turn's; the main agent's clock restarts with the new one.
+  it('counts a new turn from the main agent, not a row held open by background work', () => {
+    retained.session = transcript('working', false)
+    setStatus({ state: 'working' })
+    const live = useAppStore.getState().agentStatusByPaneKey[paneKey]!
+    const now = Date.now()
+    useAppStore.setState((store) => ({
+      agentStatusByPaneKey: {
+        ...store.agentStatusByPaneKey,
+        [paneKey]: {
+          ...live,
+          stateStartedAt: now - 45 * 60_000,
+          mainAgent: { state: 'working', stateStartedAt: now - 5_000 },
+          stateHistory: []
+        }
+      }
+    }))
+
+    renderPane()
+
+    expect(screen.getByText('Working for 5s')).toBeInTheDocument()
+  })
+
   it('folds finished turns from history behind their transcript duration', () => {
     const at = Date.parse('2026-09-28T10:00:00.000Z')
     retained.session = transcript('ready', false, [
@@ -231,6 +255,42 @@ describe('NativeChatResolvedView turn status', () => {
     expect(screen.getByText('Worked for 45s')).toBeInTheDocument()
     // The latest turn has no recorded end, and this pane never watched it.
     expect(screen.getAllByText(/Work(ing|ed) for/)).toHaveLength(1)
+  })
+
+  // The transcript draws no row for harness notices, so they cannot end a turn either.
+  it('keeps a running turn open across a harness notice injected mid-turn', () => {
+    const at = Date.parse('2026-09-28T10:00:00.000Z')
+    retained.session = transcript('working', false, [
+      { ...userTurn, timestamp: at },
+      {
+        id: 'progress-1',
+        role: 'assistant',
+        blocks: [{ type: 'text', text: 'Starting the build.' }],
+        timestamp: at + 10_000,
+        source: 'transcript'
+      },
+      {
+        id: 'notice-1',
+        role: 'user',
+        blocks: [{ type: 'text', text: '<task-notification>\n<task-id>b1</task-id>' }],
+        timestamp: at + 20_000,
+        source: 'transcript'
+      },
+      {
+        id: 'progress-2',
+        role: 'assistant',
+        blocks: [{ type: 'text', text: 'Build finished, checking output.' }],
+        timestamp: at + 25_000,
+        source: 'transcript'
+      }
+    ])
+    setStatus({ state: 'working' }, 30_000)
+
+    renderPane()
+
+    expect(screen.getByText('Working for 30s')).toBeInTheDocument()
+    expect(screen.getByText('Starting the build.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Toggle turn details' })).toBeNull()
   })
 
   it('stays quiet on a settled turn it never watched', () => {
