@@ -15,6 +15,7 @@ import {
   eventually,
   type QueuedMessageTestRig
 } from './structured-agent-session-queued-message-rig.test-fixture'
+import { structuredQueuePause } from './structured-agent-session-queued-pause'
 
 let rig: QueuedMessageTestRig
 
@@ -170,6 +171,34 @@ describe("a Stop's queue pause", () => {
     await mail.result
     await rig.settleAccepted(mail.id, 'mail')
     await expectPaused(draftId)
+  })
+})
+
+describe('the pause read', () => {
+  it("costs no scan of the submissions: the reducer keeps the latest person's accepted turn", async () => {
+    const draftId = await stoppedDraft()
+    const journal = rig.host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)?.journal
+    if (!journal) {
+      throw new Error('expected the conversation open')
+    }
+    const scan = vi.spyOn(journal, 'submissions')
+    // Read on every publish, per subscriber: it must not walk the submissions.
+    expect(structuredQueuePause(journal)).toEqual({ reason: 'stopped' })
+    expect(scan).not.toHaveBeenCalled()
+    scan.mockRestore()
+    const before = journal.queuedMessages.latestPersonTurnSequence()
+    const mail = rig.send('coordinator mail', undefined, { internal: true })
+    await mail.result
+    await rig.settleAccepted(mail.id, 'mail')
+    // Orca's own turn moves nothing; a person's does, and lifts the pause.
+    expect(journal.queuedMessages.latestPersonTurnSequence()).toBe(before)
+    const next = rig.send('user starts a new turn')
+    await next.result
+    await rig.settleAccepted(next.id, 'next')
+    expect(journal.queuedMessages.latestPersonTurnSequence()).toBe(
+      journal.submission(next.id)?.acceptedSequence
+    )
+    await eventually(async () => expect(await rig.handoff(draftId)).toBeDefined())
   })
 })
 

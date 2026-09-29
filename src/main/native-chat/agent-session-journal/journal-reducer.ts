@@ -28,7 +28,7 @@ import {
 import { structuredAgentSessionPayloadFingerprint } from '../../../shared/structured-agent-session-mutation'
 import { journalItemRevisionIsStale } from './journal-item-revision'
 import type { JournalRow } from './journal-row-schema'
-import { applyJournalDispatchRow } from './journal-dispatch-reducer'
+import { applyJournalDispatchRow, notePersonTurnAccepted } from './journal-dispatch-reducer'
 import { isWriteFailureSubmission } from '../../../shared/structured-agent-session-dispatch-rejection'
 import { journalDispatchRowApplies } from './journal-dispatch-settlement'
 
@@ -53,6 +53,9 @@ export type JournalReducerState = {
    *  echo from appending a second copy of the user's own message. */
   aliases: Map<string, string>
   appliedSettlementIds: Set<string>
+  /** The submission row of the latest turn a person asked for (`origin: 'client'`) that the
+   *  provider accepted; 0 when none. Kept as it folds so the queue's pause reads it in O(1). */
+  latestPersonTurnSequence: number
 }
 
 export function createJournalReducerState(sessionId: string, epoch: string): JournalReducerState {
@@ -69,7 +72,8 @@ export function createJournalReducerState(sessionId: string, epoch: string): Jou
     submissions: new Map(),
     receipts: new Map(),
     aliases: new Map(),
-    appliedSettlementIds: new Set()
+    appliedSettlementIds: new Set(),
+    latestPersonTurnSequence: 0
   }
 }
 
@@ -310,6 +314,7 @@ function acceptSubmissionFromProviderItem(
   }
   submission.fence = row.fence
   submission.dispatchState = 'accepted'
+  notePersonTurnAccepted(state, submission)
   submission.providerItemId = providerItemId
   submission.reason = null
   submission.resolvedAt = row.ts

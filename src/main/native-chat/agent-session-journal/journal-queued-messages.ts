@@ -70,6 +70,12 @@ export class JournalQueuedMessages {
     return this.changeRevision
   }
 
+  /** The submission row of the latest accepted turn a person asked for; 0 when none. What
+   *  ends the queue's pause, read from the reducer in O(1). */
+  latestPersonTurnSequence(): number {
+    return this.deps.state().latestPersonTurnSequence
+  }
+
   /** A journal transaction rolled back: nothing read inside it may stay cached. */
   invalidate(): void {
     this.changeRevision++

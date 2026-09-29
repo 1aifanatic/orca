@@ -12,7 +12,6 @@
 // queue's own drain are `host` and never lift it. An explicit Resume lifts any.
 
 import { randomUUID } from 'node:crypto'
-import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionQueuePause } from '../../../shared/agent-session-wire'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { QueuePauseFact } from '../agent-session-journal/queued-message-pause-table'
@@ -32,32 +31,15 @@ export function rotateStructuredAgentSessionHostInstanceForTests(): string {
   return hostInstance
 }
 
-type PauseJournal = Pick<
-  AgentSessionJournal,
-  'queuedMessages' | 'submissions' | 'cursor' | 'wroteBeforeOpen'
->
+type PauseJournal = Pick<AgentSessionJournal, 'queuedMessages' | 'cursor' | 'wroteBeforeOpen'>
 
-function personTurnStarted(
-  journal: PauseJournal,
-  since: (submission: AgentJournalSubmission) => boolean
-): boolean {
-  return journal
-    .submissions()
-    .some(
-      (submission) =>
-        submission.origin === 'client' &&
-        submission.dispatchState === 'accepted' &&
-        since(submission)
-    )
-}
+// Both read the reducer's latest accepted person turn (its submission row), so a
+// derivation on every publish costs no scan of the submissions.
 
 function stopEnded(journal: PauseJournal, stop: QueuePauseFact): boolean {
-  const { epoch } = journal.cursor()
+  const latest = journal.queuedMessages.latestPersonTurnSequence()
   // Sent after the Stop: a send made before it no longer lifts it, even if its turn starts later.
-  return personTurnStarted(
-    journal,
-    (submission) => stop.epoch !== epoch || (submission.acceptedSequence ?? 0) > stop.sequence
-  )
+  return stop.epoch !== journal.cursor().epoch ? latest > 0 : latest > stop.sequence
 }
 
 function restartPending(journal: PauseJournal): boolean {
@@ -67,10 +49,8 @@ function restartPending(journal: PauseJournal): boolean {
 }
 
 function restartEnded(journal: PauseJournal): boolean {
-  return personTurnStarted(
-    journal,
-    (submission) => !journal.wroteBeforeOpen(submission.acceptedSequence)
-  )
+  const latest = journal.queuedMessages.latestPersonTurnSequence()
+  return latest > 0 && !journal.wroteBeforeOpen(latest)
 }
 
 /** The queue's pause, derived; null when the queue sends on its own. */
