@@ -1,10 +1,11 @@
 // The one queue gate: admission, the drain step and Send-now consume a single
-// typed hold decision, so the lists cannot drift — pinned here with a clear in
-// doubt, Send-now's override set, and the replay-preference rule for a refused
-// draft.
+// typed hold decision, so the lists cannot drift — pinned here with a source a
+// clear superseded, Send-now's override set, and the replay-preference rule for
+// a refused draft.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
+import { JournalQueuedMessages } from '../agent-session-journal/journal-queued-messages'
 import { structuredQueueHold } from './structured-agent-session-queued-messages'
 import {
   createQueuedMessageTestRig,
@@ -40,25 +41,40 @@ const settleAccepted: QueuedMessageTestRig['settleAccepted'] = (...args) =>
 const settleRejected: QueuedMessageTestRig['settleRejected'] = (...args) =>
   rig.settleRejected(...args)
 
+function clear() {
+  const fields = { command: 'clear' as const }
+  return host.conversationCommand(CALLER, {
+    envelope: envelope(fields, 'agentSession.conversationCommand', hostTestOperationId()),
+    ...fields
+  })
+}
+
 describe('the one queue gate', () => {
-  it('Send-now refuses while a clear is in doubt, with the refusal any send gets', async () => {
+  it('Send-now refuses on a source a clear superseded, with the refusal any send gets', async () => {
     const working = await workingSend()
     const queued = await send('queued behind the clear', 'queue-if-active').result
     if (!queued.ok || !('queued' in queued.value)) {
       throw new Error('expected a queued receipt')
     }
     const draftId = queued.value.queued.messageId
-    await store.setConversationCommand(SESSION, 1, {
-      command: 'clear',
-      runtimeFence: 1,
-      operationId: hostTestOperationId(),
-      callerKey: CALLER.callerKey,
-      phase: 'prepared',
-      state: 'unknown'
-    })
-    expect(await sendNow(draftId)).toMatchObject({ ok: false })
+    await rig.stop()
     await settleAccepted(working, 'a')
-    await new Promise((resolve) => setTimeout(resolve, 150))
+    // A clear whose carry failed leaves the card on the source it superseded.
+    const warned = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const insert = vi
+      .spyOn(JournalQueuedMessages.prototype, 'insert')
+      .mockRejectedValueOnce(new Error('disk full'))
+    try {
+      expect(await clear()).toMatchObject({ ok: true, value: { state: 'completed' } })
+    } finally {
+      insert.mockRestore()
+      warned.mockRestore()
+    }
+    expect(await drafts()).toEqual([{ messageId: draftId, state: 'waiting' }])
+    expect(await sendNow(draftId)).toMatchObject({
+      ok: false,
+      refusal: { details: { reason: 'conversationCleared' } }
+    })
     expect(await rig.handoff(draftId)).toBeUndefined()
   })
 

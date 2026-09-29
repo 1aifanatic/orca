@@ -29,13 +29,12 @@ import {
 
 let rig: QueuedMessageTestRig
 let host: QueuedMessageTestRig['host']
-let store: QueuedMessageTestRig['store']
 let dispatch: QueuedMessageTestRig['dispatch']
 let awaitStarted: QueuedMessageTestRig['awaitStarted']
 
 beforeEach(async () => {
   rig = await createQueuedMessageTestRig()
-  ;({ host, store, dispatch, awaitStarted } = rig)
+  ;({ host, dispatch, awaitStarted } = rig)
 })
 
 afterEach(() => rig.dispose())
@@ -700,42 +699,6 @@ describe('/clear', () => {
     expect(await drafts(replacementId)).toEqual([{ messageId: draftId, state: 'waiting' }])
     expect(await rig.queuePause(replacementId)).toEqual({ reason: 'cleared' })
     expect(await drafts()).toHaveLength(0)
-  })
-
-  it('a draft held by a clear left prepared drains when the retried clear fails with no journal commit', async () => {
-    const working = await workingSend()
-    const queued = await send('behind the clear', 'queue-if-active').result
-    if (!queued.ok || !('queued' in queued.value)) {
-      throw new Error('expected a queued receipt')
-    }
-    const draftId = queued.value.queued.messageId
-    // A clear that threw left its prepared phase behind; the settling turn's drain step meets it.
-    const operationId = hostTestOperationId()
-    await store.setConversationCommand(SESSION, 1, {
-      command: 'clear',
-      runtimeFence: 1,
-      operationId,
-      callerKey: CALLER.callerKey,
-      phase: 'prepared',
-      state: 'unknown'
-    })
-    await settleAccepted(working, 'a')
-    await new Promise((resolve) => setTimeout(resolve, 250))
-    expect(await rig.handoff(draftId)).toBeUndefined()
-    // The retried clear fails definitively: it settles on the record alone.
-    const attach = vi.spyOn(host, 'attach').mockResolvedValueOnce({
-      ok: false,
-      refusal: { code: 'structured_agent_session_unsupported', message: 'unsupported' }
-    })
-    try {
-      expect(await clear(operationId)).toMatchObject({
-        ok: true,
-        value: { command: 'clear', state: 'completed', error: expect.any(String) }
-      })
-    } finally {
-      attach.mockRestore()
-    }
-    await eventually(async () => expect(await rig.handoff(draftId)).toBeDefined())
   })
 
   it('a clear with no drafts carries nothing and answers exactly as before', async () => {

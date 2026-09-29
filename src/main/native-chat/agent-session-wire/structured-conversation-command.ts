@@ -266,15 +266,6 @@ export function runStructuredConversationCommand(
               await store.setConversationCommand(sessionId, ctx.fence, failed)
               return { ok: true, value: failed }
             }
-            // Carry the source's drafts to the replacement, the same for every client version:
-            // the cards stay visible where the user now is, and no text rides the wire.
-            // Bookkeeping — a failure is reported and never fails the clear.
-            await carryQueuedMessagesToClearReplacement(ctx, {
-              replacementSessionId,
-              replacementJournal: context.sessions.get(replacementSessionId)?.journal,
-              callerKey: caller.callerKey,
-              operationId: clientOperationId
-            })
           }
           const completed = {
             ...base,
@@ -282,6 +273,18 @@ export function runStructuredConversationCommand(
             state: 'completed' as const
           }
           await store.setConversationCommand(sessionId, ctx.fence, completed)
+          if (ids) {
+            // Carry the source's drafts only once the clear committed: an unfinished clear
+            // changed nothing, so its drafts stay on the source. The same for every client
+            // version, and no text rides the wire. Bookkeeping — a failure is reported and never
+            // fails the clear.
+            await carryQueuedMessagesToClearReplacement(ctx, {
+              replacementSessionId: ids.sessionId,
+              replacementJournal: context.sessions.get(ids.sessionId)?.journal,
+              callerKey: caller.callerKey,
+              operationId: clientOperationId
+            })
+          }
           return { ok: true, value: completed }
         }
       }

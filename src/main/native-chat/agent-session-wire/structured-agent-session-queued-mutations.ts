@@ -78,14 +78,14 @@ export async function withdrawQueuedMessagesForOperation(
  * discarded, so they wait for the user's next turn there, or Resume, rather than
  * sending into the fresh context unasked. Each card lands with the pause in one
  * transaction, so the drain never sees a carried card unpaused and no pause is
- * left over an empty queue if an insert fails. Runs after the
- * replacement's attach succeeded and before the clear commits. Each insert is
- * idempotent on (session, message), so the clear's rerun-while-prepared replays
- * it safely; the source rows are then tombstoned. Bookkeeping around the clear:
- * a failure leaves the cards on the superseded source — whose supersession
- * fence already blocks the drain — reported, never gating the clear. A crash
- * between the copy and the tombstone leaves both, which the fence also makes
- * harmless: nothing is lost and nothing runs.
+ * left over an empty queue if an insert fails. Runs only after the clear
+ * committed: one that never committed changed nothing, so its drafts stay on the
+ * source and drain there. Each insert is idempotent on (session, message); the
+ * source rows are then tombstoned. Bookkeeping around the clear: a failure leaves
+ * the cards on the superseded source — whose supersession fence already blocks
+ * the drain — reported, never gating the clear. A crash between the copy and the
+ * tombstone leaves both, which the fence also makes harmless: nothing is lost
+ * and nothing runs.
  */
 export async function carryQueuedMessagesToClearReplacement(
   ctx: AgentSessionTurnContext,
@@ -151,7 +151,7 @@ function mutateQueued<TValue>(
 /**
  * Send-now. It overrides ONLY queue policy — FIFO order, pause, the busy-turn
  * wait — through the same send block and pending-prompt gates as any send;
- * supersession, Stop and prepared commands are never overridden. The card goes
+ * supersession, an uncertain rewind and Stop are never overridden. The card goes
  * out under this operation's id, never its own, and the submission names it by
  * `queuedMessageId`; one id still means one delivery.
  */

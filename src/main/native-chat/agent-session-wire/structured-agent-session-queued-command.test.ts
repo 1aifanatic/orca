@@ -1,9 +1,10 @@
 // Queued drafts across conversation commands: a /compact is a queued message
 // and then a turn, so a capable send during it becomes a card that waits for it
 // like any turn, while Delete and Send-now answer at once; a /clear in flight
-// admits no draft onto the source it is superseding; and a draft /clear carries
-// to its replacement is fingerprinted for the replacement, so the provider's
-// echo folds into its sent bubble.
+// admits no draft onto the source it may supersede; a /clear that never
+// committed leaves the drafts on the source as they were; and a draft /clear
+// carries to its replacement is fingerprinted for the replacement, so the
+// provider's echo folds into its sent bubble.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
@@ -98,6 +99,16 @@ describe('a /compact in flight', () => {
 })
 
 describe('/clear', () => {
+  /** Two drafts paused by a Stop, then the work settled so command admission has nothing pending. */
+  async function pausedDrafts(): Promise<[string, string]> {
+    const working = await rig.workingSend()
+    const first = await queuedId(rig.send('first text', 'queue-if-active').result)
+    const second = await queuedId(rig.send('second text', 'queue-if-active').result)
+    await rig.stop()
+    await rig.settleAccepted(working, 'a')
+    return [first, second]
+  }
+
   it('in flight, refuses a capable send as today: no card lands on the source it supersedes', async () => {
     const attach = rig.host.attach.bind(rig.host)
     let release: (() => void) | undefined
@@ -110,13 +121,9 @@ describe('/clear', () => {
     })
     try {
       const cleared = command('clear')
-      await eventually(() =>
-        expect(rig.store.getRecord(SESSION)?.conversationCommand).toMatchObject({
-          command: 'clear',
-          phase: 'prepared',
-          replacementSessionId: expect.any(String)
-        })
-      )
+      await eventually(() => expect(spy).toHaveBeenCalledOnce())
+      // Nothing the chat reads is written before the commit; the command controller refuses.
+      expect(rig.store.getRecord(SESSION)?.conversationCommand).toBeUndefined()
       expect(await rig.send('sent while clearing', 'queue-if-active').result).toEqual(WAIT_REFUSAL)
       release?.()
       const done = await cleared
@@ -163,5 +170,72 @@ describe('/clear', () => {
     expect(snapshot.submissions.find((entry) => entry.queuedMessageId === draftId)).toMatchObject({
       dispatchState: 'accepted'
     })
+  })
+
+  it("an older build's unfinished clear record holds nothing: the draft drains on the source", async () => {
+    const working = await rig.workingSend()
+    const draftId = await queuedId(rig.send('behind the clear', 'queue-if-active').result)
+    await rig.store.setConversationCommand(SESSION, 1, {
+      command: 'clear',
+      runtimeFence: 1,
+      operationId: hostTestOperationId(),
+      callerKey: CALLER.callerKey,
+      phase: 'prepared',
+      state: 'unknown'
+    })
+    await rig.settleAccepted(working, 'a')
+    await eventually(async () => expect(await rig.handoff(draftId)).toBeDefined())
+  })
+
+  it('a clear that fails to start its replacement leaves the drafts on the source as they were', async () => {
+    const [firstId, secondId] = await pausedDrafts()
+    const attach = vi.spyOn(rig.host, 'attach').mockResolvedValueOnce({
+      ok: false,
+      refusal: { code: 'structured_agent_session_unsupported', message: 'unsupported' }
+    })
+    try {
+      expect(await command('clear')).toMatchObject({
+        ok: true,
+        value: { command: 'clear', state: 'completed', error: expect.any(String) }
+      })
+    } finally {
+      attach.mockRestore()
+    }
+    expect(await rig.drafts()).toEqual([
+      { messageId: firstId, state: 'waiting' },
+      { messageId: secondId, state: 'waiting' }
+    ])
+    // Still the Stop's pause, never the clear's.
+    expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
+  })
+
+  it('a clear whose commit failed carries nothing; its retry commits and carries then', async () => {
+    const [firstId, secondId] = await pausedDrafts()
+    const commit = vi
+      .spyOn(rig.store, 'setConversationCommand')
+      .mockRejectedValueOnce(new Error('disk full'))
+    try {
+      expect(await command('clear').catch(() => null)).not.toMatchObject({ ok: true })
+    } finally {
+      commit.mockRestore()
+    }
+    // The clear changed nothing: the drafts are still the source's, under the Stop's pause.
+    expect(rig.store.getRecord(SESSION)?.conversationCommand).toBeUndefined()
+    expect(await rig.drafts()).toEqual([
+      { messageId: firstId, state: 'waiting' },
+      { messageId: secondId, state: 'waiting' }
+    ])
+    expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
+    const cleared = await command('clear')
+    const replacementId = cleared.ok ? cleared.value.replacementSessionId : undefined
+    if (!replacementId) {
+      throw new Error('expected a replacement session')
+    }
+    expect(await rig.drafts()).toHaveLength(0)
+    expect(await rig.drafts(replacementId)).toEqual([
+      { messageId: firstId, state: 'waiting' },
+      { messageId: secondId, state: 'waiting' }
+    ])
+    expect(await rig.queuePause(replacementId)).toEqual({ reason: 'cleared' })
   })
 })
