@@ -13,15 +13,11 @@ import {
 } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { mirrorEntry, safeRemoveTree } from '../pty/overlay-mirror'
-import { getStatusPluginEndpointSource } from './status-plugin-endpoint-source'
-import { getStatusPluginRuntimeStateSource } from './status-plugin-runtime-state-source'
-import { getStatusPluginMessagePreviewSource } from './status-plugin-message-preview-source'
-import { getStatusPluginSessionLineageSource } from './status-plugin-session-lineage-source'
-import { getStatusPluginPostSource } from './status-plugin-post-source'
-import { getStatusPluginDeliverySource } from './status-plugin-delivery-source'
-import { getStatusPluginOwnershipSource } from './status-plugin-ownership-source'
-import { getStatusPluginLifecycleSource } from './status-plugin-lifecycle-source'
-import { getStatusPluginFactorySource } from './status-plugin-factory-source'
+import {
+  getOpenCode2PluginSource,
+  getOpenCodeFamilyPluginSource,
+  getOpenCodePluginSource
+} from './status-plugin-module-source'
 import { resolveOpenCodeConfigDirectory } from '../../shared/opencode-config-directory'
 import {
   getOpenCodeLegacySharedConfigDir,
@@ -36,6 +32,8 @@ import {
   openCodeTuiPluginDirName,
   writeOpenCodeTuiPlugin
 } from '../../shared/opencode-tui-plugin-install'
+
+export { getOpenCode2PluginSource, getOpenCodeFamilyPluginSource, getOpenCodePluginSource }
 
 const ORCA_OPENCODE_PLUGIN_FILE = 'orca-opencode-status.js'
 const OPENCODE_OVERLAY_DIR = 'opencode-config-overlays'
@@ -63,44 +61,6 @@ function isUsableId(id: string): boolean {
 function toSafeDirName(id: string): string {
   // Why: 32 hex chars (128 bits) makes collisions negligible and stays filesystem-portable (no base64 padding or `/`).
   return createHash('sha256').update(id).digest('hex').slice(0, 32)
-}
-
-// Both major versions install as `opencode`; let the loader choose server() or setup().
-export function getOpenCodePluginSource(): string {
-  return getOpenCodeFamilyPluginSource('/hook/opencode', {
-    emitSessionStart: true,
-    emitNextEvents: true,
-    expectedAgent: 'opencode'
-  })
-}
-
-export function getOpenCode2PluginSource(): string {
-  return getOpenCodeFamilyPluginSource('/hook/opencode2', {
-    emitSessionStart: true,
-    emitNextEvents: true
-  })
-}
-
-export function getOpenCodeFamilyPluginSource(
-  hookPathname: string,
-  options: {
-    emitSessionStart: boolean
-    emitNextEvents?: boolean
-    expectedAgent?: 'opencode' | 'opencode2'
-  }
-): string {
-  // Why: the plugin posts PTY environment data from OpenCode to the shared hooks server.
-  return [
-    ...getStatusPluginEndpointSource(),
-    ...getStatusPluginRuntimeStateSource(),
-    ...getStatusPluginMessagePreviewSource(),
-    ...getStatusPluginSessionLineageSource(),
-    ...getStatusPluginPostSource(hookPathname),
-    ...getStatusPluginDeliverySource(),
-    ...getStatusPluginOwnershipSource(),
-    ...getStatusPluginLifecycleSource(),
-    ...getStatusPluginFactorySource(options)
-  ].join('\n')
 }
 
 // Why: installs the plugin into OpenCode's config discovery path so it POSTs to the shared agent-hooks server, unifying OpenCode status with Claude/Codex/Gemini.
@@ -186,6 +146,31 @@ export class OpenCodeHookService {
         return
       }
       console.warn('[OpenCode] Failed to repair legacy status plugin:', pluginPath, error)
+    }
+  }
+
+  // Why: a running OpenCode 2 service reloads a changed plugin file, so refreshing Orca's existing
+  // installs at app start upgrades it without waiting for the next pane. Never creates an install.
+  refreshInstalledPlugins(): void {
+    this.refreshLegacySharedPlugin()
+    const overlayRoot = this.getOverlayRoot()
+    const overlays = existsSync(overlayRoot)
+      ? readdirSync(overlayRoot).map((name) => join(overlayRoot, name))
+      : []
+    const configDir = resolveOpenCodeConfigDirectory()
+    for (const dir of [configDir, ...overlays]) {
+      if (!existsSync(join(dir, 'plugins', this.pluginFileName))) {
+        continue
+      }
+      try {
+        if (dir === configDir) {
+          this.writePluginToConfigDir(dir)
+        } else {
+          this.writePluginIntoOverlay(dir)
+        }
+      } catch (error) {
+        console.warn('[OpenCode] Failed to refresh status plugin:', dir, error)
+      }
     }
   }
 
