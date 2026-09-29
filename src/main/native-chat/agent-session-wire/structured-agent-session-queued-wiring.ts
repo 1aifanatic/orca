@@ -10,21 +10,23 @@ import type {
 } from './structured-agent-session-host-types'
 import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
 import { StructuredAgentSessionQueuedMessageDrain } from './structured-agent-session-queued-messages'
-import { releaseQueuePauseOnUserTurnStart } from './structured-agent-session-queued-stop'
+import { retireEndedQueuePause } from './structured-agent-session-queued-pause'
 import {
   deleteQueuedStructuredAgentMessage,
+  resumeStructuredAgentQueue,
   sendQueuedStructuredAgentMessage
 } from './structured-agent-session-queued-mutations'
 
 export function wireStructuredAgentSessionQueuedMessages(host: {
-  sessions: ReadonlyMap<string, StructuredAgentSessionHostSession>
+  /** The live conversations; `touch` is the idle sweep's activity renewal, which the drain's schedule rides. */
+  sessions: ReadonlyMap<string, StructuredAgentSessionHostSession> & {
+    touch: (sessionId: string) => void
+  }
   /** Lazy: the host's `deps` parameter property is not yet assigned while its fields initialize. */
   deps: () => StructuredAgentSessionHostDeps
   serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
   flushStreamedEvents: (sessionId: string) => Promise<void>
   wakeDelivery: (sessionId: string) => void
-  /** The idle sweep's activity renewal, which the drain's schedule rides. */
-  touch: (sessionId: string) => void
   mutationContext: () => StructuredAgentSessionMutationContext
 }) {
   const drain = new StructuredAgentSessionQueuedMessageDrain({
@@ -41,10 +43,13 @@ export function wireStructuredAgentSessionQueuedMessages(host: {
     drain,
     /** Every journal publish: turn, submission, prompt, command and Stop
      *  settlements are all commits, and each re-derives the drain's gates —
-     *  and whether a user send's turn has started, lifting the Stop pause. */
+     *  and retires a queue pause a person's started turn already ended. */
     onJournalActivity: (sessionId: string) => {
-      host.touch(sessionId)
-      releaseQueuePauseOnUserTurnStart(sessionId, host.sessions.get(sessionId))
+      host.sessions.touch(sessionId)
+      const journal = host.sessions.get(sessionId)?.journal
+      if (journal && !journal.isReadOnly) {
+        void retireEndedQueuePause(sessionId, journal)
+      }
       drain.schedule(sessionId)
     },
     queuedMessageSend: (
@@ -54,6 +59,10 @@ export function wireStructuredAgentSessionQueuedMessages(host: {
     queuedMessageDelete: (
       caller: StructuredAgentSessionCaller,
       params: Parameters<typeof deleteQueuedStructuredAgentMessage>[2]
-    ) => deleteQueuedStructuredAgentMessage(host.mutationContext(), caller, params)
+    ) => deleteQueuedStructuredAgentMessage(host.mutationContext(), caller, params),
+    queuedMessagesResume: (
+      caller: StructuredAgentSessionCaller,
+      params: Parameters<typeof resumeStructuredAgentQueue>[2]
+    ) => resumeStructuredAgentQueue(host.mutationContext(), caller, params)
   }
 }

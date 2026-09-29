@@ -1,12 +1,16 @@
-import type { UnreadAgentSessionFailureFact } from './agent-session-failure'
 import type {
   AgentSessionBackgroundTask,
   AgentSessionBackgroundTaskState
 } from './agent-session-background-task-wire'
 import type { AgentSessionRewindReason, AgentSessionRewindSupport } from './agent-session-rewind'
 import type { AgentSessionWireRefusal } from './agent-session-wire-refusals'
+import type {
+  AgentSessionQueuedMessage,
+  AgentSessionQueuePause
+} from './agent-session-queued-message-wire'
 
 export * from './agent-session-wire-refusals'
+export * from './agent-session-queued-message-wire'
 import type { AgentSessionConversationCommand } from './agent-session-conversation-command'
 import type { AgentSessionContextUsage } from './agent-session-context-usage'
 // ─── Structured agent-session wire contract ─────────────────────────────────
@@ -18,7 +22,6 @@ import type { AgentSessionContextUsage } from './agent-session-context-usage'
 
 import type {
   AgentJournalCursor,
-  AgentJournalMessageItem,
   AgentJournalRenderItem,
   AgentJournalResetReason,
   AgentJournalResolution,
@@ -108,6 +111,9 @@ export type AgentSessionHistoryPage = {
   /** The host's queued drafts. Absent = no claim (older host); `[]`/null = empty.
    *  Live subscription state stays authoritative over a stale history answer. */
   queuedMessages?: AgentSessionQueuedMessage[] | null
+  /** The queue's pause, published with the list: present whenever `queuedMessages` is, null
+   *  when the queue sends on its own. */
+  queuePause?: AgentSessionQueuePause | null
   /** Host wall clock (ms epoch) when the page was read, so a client attaching mid-turn
    *  can anchor a live counter on the real start. Absent from older hosts. */
   hostNow?: number
@@ -147,6 +153,8 @@ export type AgentSessionSubscribeEvent =
       backgroundTasks?: AgentSessionBackgroundTaskState | null
       /** Whole-list draft publication; omitted when unchanged since the last frame sent. */
       queuedMessages?: AgentSessionQueuedMessage[] | null
+      /** Rides with `queuedMessages`; null when the queue sends on its own. */
+      queuePause?: AgentSessionQueuePause | null
       /** Omitted when unchanged; null clears a previous provider catalog. */
       commands?: AgentSessionSlashCommand[] | null
       /** Latest provider-authored turn activity; optional for mixed-version hosts. */
@@ -162,6 +170,8 @@ export type AgentSessionSubscribeEvent =
       /** Whole-list draft publication. On a multi-page catch-up it rides only the
        *  final page, so a consumed card never vanishes before its bubble arrives. */
       queuedMessages?: AgentSessionQueuedMessage[] | null
+      /** Rides with `queuedMessages`; null when the queue sends on its own. */
+      queuePause?: AgentSessionQueuePause | null
       /** Omitted when unchanged; null clears a previous provider catalog. */
       commands?: AgentSessionSlashCommand[] | null
       /** Additive ephemeral state; it never creates or advances journal rows. */
@@ -176,6 +186,8 @@ export type AgentSessionSubscribeEvent =
       backgroundTasks?: AgentSessionBackgroundTaskState | null
       /** Whole-list draft publication; a reset re-hydrates it with the page. */
       queuedMessages?: AgentSessionQueuedMessage[] | null
+      /** Rides with `queuedMessages`; null when the queue sends on its own. */
+      queuePause?: AgentSessionQueuePause | null
       /** Omitted when unchanged; null clears a previous provider catalog. */
       commands?: AgentSessionSlashCommand[] | null
       activity?: AgentSessionTurnActivity | null
@@ -351,49 +363,6 @@ export type AgentSessionCancelResult = {
   turnId?: string
   cancelled: boolean
 }
-
-/** The draft could not be converted into a send; an explicit Send retries it. */
-export const QUEUED_MESSAGE_PAUSED_SEND_FAILED = 'send_failed' as const
-
-/** Held by a Stop, a /clear carry, or a host restart: the user's next send —
- *  typed, or a queued card sent or drained — lifts it once that send's turn
- *  starts, and Send-now overrides it per card. */
-export const QUEUED_MESSAGE_PAUSED_STOPPED = 'stopped' as const
-
-export type AgentSessionQueuedMessagePausedReason =
-  | typeof QUEUED_MESSAGE_PAUSED_STOPPED
-  | typeof QUEUED_MESSAGE_PAUSED_SEND_FAILED
-
-/** One draft the host holds for this conversation, published whole-list on the
- *  subscribe stream and on history pages. Text-only v1. */
-export type AgentSessionQueuedMessage = {
-  messageId: string
-  position: number
-  body: AgentJournalMessageItem
-  state: 'waiting' | 'returned'
-  /** Derived at publish: a Stop, a pre-consume failure, or a host restart holds it. */
-  paused?: true
-  /** Why it is held, as a marker the client localizes: 'stopped' (a Stop, a
-   *  /clear carry, or a restart — "sends after your next message"), or
-   *  'send_failed' ("couldn't send"; only an explicit Send releases it). A
-   *  client must treat an unknown marker as a plain pause, so a newer host can
-   *  add one. */
-  pausedReason?: AgentSessionQueuedMessagePausedReason
-  /** A returned card's refusal: the `reason` and `rejection` pair its submission settled with.
-   *  Only a failure returns a card; a draft a Stop or restart took back waits again. Clients classify it from `returnedRejection` (falling back to `returnedReason` when a host
-   *  wrote no fact) exactly as they classify a rejected submission's `rejection`, e.g.
-   *  `classifyDispatchRejection({ reason: returnedReason, rejection: returnedRejection })`. */
-  returnedReason?: string | null
-  returnedRejection?: UnreadAgentSessionFailureFact
-}
-
-/** No body: the card leaving the published list IS the outcome, so a lost
- *  answer needs no re-ask and no text ever rides the wire back. */
-export type AgentSessionQueuedMessageDeleteResult =
-  | { deleted: true; messageId: string }
-  /** `dispatched` means it already became a submission; `missing` covers a
-   *  pruned tombstone. Replays answer from tombstone receipts. */
-  | { deleted: false; messageId: string; disposition: 'dispatched' | 'withdrawn' | 'missing' }
 
 export type AgentSessionPromptResult = {
   itemId: string

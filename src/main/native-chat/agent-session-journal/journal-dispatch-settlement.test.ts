@@ -17,21 +17,19 @@ function settle(kind: SubmissionRejectionKind) {
 }
 
 describe('what a rejection does to the draft it was consumed from', () => {
-  it("a Stop's withdrawal sends it back to waiting under the Stop's hold", () => {
-    expect(settle('cancelled')).toEqual({ state: 'waiting', holdReason: 'stopped' })
+  it("a Stop's withdrawal sends it back to waiting, under the queue's pause rather than a hold of its own", () => {
+    expect(settle('cancelled')).toEqual({ state: 'waiting' })
     expect(rejectedDraftSettlement({ reason: DISPATCH_REJECTED_CANCELLED })).toEqual({
-      state: 'waiting',
-      holdReason: 'stopped'
+      state: 'waiting'
     })
   })
 
-  it("a restart or close before hand-over sends it back to waiting with no stored hold, under the restart's own", () => {
+  it('a restart or close before hand-over sends it back to waiting too', () => {
     for (const kind of ['hostRestarted', 'chatClosed', 'notDelivered'] as const) {
-      expect(settle(kind)).toEqual({ state: 'waiting', holdReason: null })
+      expect(settle(kind)).toEqual({ state: 'waiting' })
     }
     expect(rejectedDraftSettlement({ reason: DISPATCH_REJECTED_HOST_RESTARTED })).toEqual({
-      state: 'waiting',
-      holdReason: null
+      state: 'waiting'
     })
   })
 

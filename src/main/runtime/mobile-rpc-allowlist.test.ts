@@ -163,6 +163,7 @@ describe('mobile RPC allowlist', () => {
       'agentSession.cancel',
       'agentSession.queuedMessageSend',
       'agentSession.queuedMessageDelete',
+      'agentSession.queuedMessagesResume',
       'agentSession.close',
       'agentSession.respondToApproval',
       'agentSession.respondToQuestion',

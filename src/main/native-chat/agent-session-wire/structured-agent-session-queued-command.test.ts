@@ -185,7 +185,8 @@ describe('a /compact in flight', () => {
       await stopped
       parked.mockRestore()
     }
-    expect(await rig.handoff(keptId)).toBeUndefined()
+    // Refused, it sent nothing: no hand-off the user asked for exists.
+    expect((await rig.handoff(keptId))?.origin).not.toBe('client')
   })
 
   it('an immediate or image send keeps the refusal it gets today', async () => {

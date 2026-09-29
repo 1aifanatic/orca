@@ -34,6 +34,7 @@ import {
 } from './structured-agent-session-create'
 import { STRUCTURED_AGENT_SESSION_HOLD_METHODS } from './structured-agent-session-hold'
 import { STRUCTURED_AGENT_SESSION_REVEAL_METHODS } from './structured-agent-session-reveal'
+import { STRUCTURED_AGENT_SESSION_QUEUED_METHODS } from './structured-agent-session-queued-methods'
 import { STRUCTURED_AGENT_SESSION_RESTART_RESUME_METHODS } from './structured-agent-session-restart-resume'
 import { resolveUncommittedStructuredCreate } from './structured-agent-session-precommit-refusal'
 import {
@@ -60,7 +61,6 @@ import {
   RespondParams,
   RespondToQuestionParams,
   RewindParams,
-  QueuedMessageActionParams,
   SendParams,
   SetOptionParams,
   SubscribeParams,
@@ -207,17 +207,7 @@ export const STRUCTURED_AGENT_SESSION_METHODS = [
     params: CancelParams,
     handler: async (params, ctx) => requireStructuredCleanupHost(ctx).cancel(callerFor(ctx), params)
   }),
-  defineMethod({
-    // Send-now on a host-held draft; gated on agent-session.queued-messages.v1.
-    name: 'agentSession.queuedMessageSend',
-    params: QueuedMessageActionParams,
-    handler: async (params, ctx) => requireHost(ctx).queuedMessageSend(callerFor(ctx), params)
-  }),
-  defineMethod({
-    name: 'agentSession.queuedMessageDelete',
-    params: QueuedMessageActionParams,
-    handler: async (params, ctx) => requireHost(ctx).queuedMessageDelete(callerFor(ctx), params)
-  }),
+  ...STRUCTURED_AGENT_SESSION_QUEUED_METHODS,
   defineMethod({
     // Releasing a chat view, not ending a conversation: the record and journal stay on disk so the
     // same session can be attached again. Only the provider child and the in-memory entry go.
