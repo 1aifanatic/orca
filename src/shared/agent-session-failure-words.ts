@@ -206,6 +206,9 @@ const FAILURE_SENTENCES = {
     `This command didn't run.${retryControl ? '' : ' Try it again.'}`,
   compactionFailed: (_, fact) => quotingPersonDetail('Compaction failed', fact.detail),
   compactionUnconfirmed: () => 'Compaction completion is unconfirmed.',
+  // A Retry control resends the same operation, which replays this; only a new /clear runs.
+  clearUnfinished: () =>
+    "This /clear didn't finish, so the chat is unchanged. Run /clear again to start fresh.",
   cancelUnconfirmed: () => 'Cancellation was not confirmed.',
   // The agent was reached and declined, so the sentence says that, not that the Stop was lost.
   stopRefused: ({ agentName }, fact) =>

@@ -7,7 +7,8 @@ import type {
 } from '../../../shared/agent-session-conversation-command'
 import type {
   AgentSessionMutationEnvelope,
-  AgentSessionMutationResult
+  AgentSessionMutationResult,
+  AgentSessionWireRefusal
 } from '../../../shared/agent-session-wire'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import {
@@ -23,7 +24,10 @@ import {
 import type { StructuredAgentSessionCaller } from './structured-agent-session-host-types'
 import type { StructuredAgentSessionHost } from './structured-agent-session-host'
 import { conversationCommandBlocked } from './structured-conversation-command-admission'
-import type { AgentSessionFailureFact } from '../../../shared/agent-session-failure'
+import {
+  agentSessionFailureFact,
+  type AgentSessionFailureFact
+} from '../../../shared/agent-session-failure'
 import {
   agentSessionFailureWords,
   type AgentSessionFailureWordsContext
@@ -40,6 +44,15 @@ export function conversationCommandFailure(
   }
   const words = agentSessionFailureWords(failure, { ...context, surface: 'row' })
   return { error: words.text, failure: words.failure }
+}
+
+/** Why a /clear's new conversation did not start. Its id comes from this operation, so an agent
+ *  Orca can't prove stopped is one an earlier try of this /clear started. */
+function clearStartFailure(refusal: AgentSessionWireRefusal): AgentSessionFailureFact {
+  const fact = structuredAgentSessionStartFailureFact({ refusal, newSession: true })
+  return fact.refusal?.details?.reason === 'ownerUnproven'
+    ? agentSessionFailureFact('clearUnfinished', { refusal: fact.refusal })
+    : fact
 }
 
 export type ConversationCommandParams = {
@@ -157,13 +170,10 @@ export function runStructuredConversationCommand(
                 replacementSessionId: undefined,
                 phase: 'committed' as const,
                 state: 'completed' as const,
-                ...conversationCommandFailure(
-                  structuredAgentSessionStartFailureFact({
-                    refusal: acquired.refusal,
-                    newSession: true
-                  }),
-                  { ...structuredAgentSessionFailureWordsContext(record), command: 'clear' }
-                )
+                ...conversationCommandFailure(clearStartFailure(acquired.refusal), {
+                  ...structuredAgentSessionFailureWordsContext(record),
+                  command: 'clear'
+                })
               }
               await store.setConversationCommand(sessionId, ctx.fence, failed)
               return { ok: true, value: failed }

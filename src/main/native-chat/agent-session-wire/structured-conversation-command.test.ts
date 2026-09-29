@@ -428,13 +428,27 @@ describe('a clear that never committed', () => {
   })
 
   // The replacement's start cannot be replayed once the crash released it, so the retry clears
-  // nothing; what matters here is that it starts no second replacement and latches nothing.
+  // nothing; it starts no second replacement, latches nothing, and says a new /clear will run.
   it('retried under the same operation id after a crash, starts no second replacement and leaves the chat usable', async () => {
     const params = commandParams('clear')
     const orphan = await clearThatDiesBeforeItsCommit(params)
     await restartHost()
     await host.restoreReadableSessions(store.listVisibleSessionIds())
-    expect(await host.conversationCommand(caller, params)).toMatchObject({ ok: true })
+    expect(await host.conversationCommand(caller, params)).toMatchObject({
+      ok: true,
+      value: {
+        state: 'completed',
+        error:
+          "This /clear didn't finish, so the chat is unchanged. Run /clear again to start fresh.",
+        failure: {
+          kind: 'clearUnfinished',
+          refusal: {
+            code: 'agent_session_ownership_unknown',
+            details: { reason: 'ownerUnproven' }
+          }
+        }
+      }
+    })
     expect(
       store
         .listRecords()

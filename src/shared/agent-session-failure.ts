@@ -38,6 +38,9 @@ export const AGENT_SESSION_FAILURE_KINDS = [
   'commandRefused',
   'compactionFailed',
   'compactionUnconfirmed',
+  /** A /clear whose earlier try started a new conversation it never switched to; the chat is
+   *  unchanged, and a new /clear runs. */
+  'clearUnfinished',
   'cancelUnconfirmed',
   /** A Stop naming no turn reached the agent, which ended nothing while the chat read working. */
   'stopRefused',
@@ -58,6 +61,7 @@ export function isAgentSessionFailureKind(value: unknown): value is AgentSession
 const STATUS_ROW_ONLY_FAILURE_KINDS = [
   'compactionFailed',
   'compactionUnconfirmed',
+  'clearUnfinished',
   'cancelUnconfirmed',
   'stopRefused',
   'answerUnconfirmed',
@@ -122,7 +126,8 @@ export type AgentSessionFailureFact = {
   /** Provider-authored only; absent whenever Orca wrote the words. */
   detail?: ProviderDiagnostic
   /** On `restartFailed` and `startFailed`: the refusal that kept the agent from starting. On
-   *  `commandRefused`: the refusal that kept the command from running. */
+   *  `commandRefused`: the refusal that kept the command from running. On `clearUnfinished`: the
+   *  refusal the new conversation's start met. */
   refusal?: AgentSessionRefusalReference
   /** On `attachmentInvalid`: which check the attachment failed. */
   attachment?: AgentSessionAttachmentProblem
