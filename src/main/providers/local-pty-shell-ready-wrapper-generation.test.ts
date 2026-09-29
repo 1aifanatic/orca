@@ -187,12 +187,24 @@ describePosix('local PTY shell-ready launch config', () => {
     expect(init).toContain('functions -e __orca_shell_ready_marker')
   })
 
-  it('keeps markerless fish spawns unwrapped', async () => {
-    const { getMarkerlessShellLaunchConfig } = await importFreshLocalPtyShellReady()
+  it('wraps markerless fish only to install the Codex launch policy', async () => {
+    const { getMarkerlessShellLaunchConfig, getShellLaunchConfig } =
+      await importFreshLocalPtyShellReady()
 
     const config = getMarkerlessShellLaunchConfig('/opt/homebrew/bin/fish')
 
-    expect(config).toEqual({ args: null, env: {}, supportsReadyMarker: false })
+    // Why: a typed codex in an overlay pane needs the codex function, but no
+    // ready barrier exists, so the init must not print the readiness marker.
+    expect(config.supportsReadyMarker).toBe(false)
+    expect(config.env).toEqual({})
+    expect(config.args?.slice(0, 2)).toEqual(['-l', '-C'])
+    expect(config.args?.[2]).toContain('function codex')
+    expect(config.args?.[2]).not.toContain('orca-shell-ready')
+    expect(getShellLaunchConfig('/opt/homebrew/bin/fish', [])).toEqual({
+      args: null,
+      env: {},
+      supportsReadyMarker: false
+    })
   })
 
   it('falls back to HOME for ORCA_ORIG_ZDOTDIR when inherited ZDOTDIR points at a wrapper dir', async () => {
