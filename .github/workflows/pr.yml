@@ -460,6 +460,8 @@ jobs:
           # reports success. This turns a failed or missing install into a red test
           # instead of a green no-op.
           ORCA_CODEX_CONTRACT_REQUIRED: '1'
+          # Why: real-agent tests skip unless opted in; this job exists to run one.
+          ORCA_RUN_REAL_AGENT_TESTS: '1'
           ORCA_CODEX_CONTRACT_VERSION: ${{ env.CODEX_CLI_VERSION }}
         run: |
           set -euo pipefail

@@ -2,9 +2,13 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { runProcess } from '../../shared/child-process/run-process'
 import { resolveSessionFilePath } from '../native-chat/session-file-resolver'
+import {
+  REAL_AGENT_TESTS_SKIP_NOTE,
+  realAgentTestsEnabled
+} from '../real-agent-tests-opt-in-test-support'
 import { SUPERVISED_GRACEFUL_EXIT_MS } from './claude-child-exit-proof-ladder'
 import {
   openClaudeStreamJsonConnection,
@@ -16,7 +20,7 @@ import {
 } from './claude-structured-launch-resolution'
 
 // Opt-in only: spends a real (haiku) turn per case. Run it in an isolated HOME with
-// ORCA_REAL_CLAUDE_BIN set, and ORCA_REAL_CLAUDE_SETTINGS when auth lives in a settings file.
+// ORCA_RUN_REAL_AGENT_TESTS=1 and ORCA_REAL_CLAUDE_BIN set, and ORCA_REAL_CLAUDE_SETTINGS when auth lives in a settings file.
 const CLAUDE_BIN = process.env.ORCA_REAL_CLAUDE_BIN ?? ''
 const enabled =
   process.env.ORCA_REAL_CLAUDE_SUPERVISED_STOP === '1' &&
@@ -183,6 +187,10 @@ afterEach(async () => {
 })
 
 describe.runIf(enabled)('real Claude stopped through the POSIX supervisor', () => {
+  beforeEach((ctx) => {
+    ctx.skip(!realAgentTestsEnabled(), REAL_AGENT_TESTS_SKIP_NOTE)
+  })
+
   it.each<StopCase>(['close mid-tool', 'SIGTERM to the supervisor mid-tool', 'close while idle'])(
     '%s: stops Claude and its tool, keeps the transcript line-atomic, and resumes',
     async (stopCase) => {
