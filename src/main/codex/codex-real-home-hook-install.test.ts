@@ -35,6 +35,8 @@ vi.mock('node:os', async () => {
 
 vi.mock('./codex-hook-trust-grant', () => ({
   CODEX_TRUST_GRANT_TRANSIENT_RETRY_INTERVAL_MS: 300_000,
+  CODEX_BACKGROUND_TRUST_GRANT_RETRY_INTERVAL_MS: 10_000,
+  CODEX_BACKGROUND_TRUST_GRANT_TIMEOUT_MS: 30_000,
   findCurrentManagedCodexHookTrust: async () => null,
   grantManagedCodexHookTrust: grantMock
 }))

@@ -10,6 +10,7 @@ import {
 import { codexAppServerCapabilityCache } from './codex-app-server-capability-cache'
 import {
   _internals,
+  CODEX_BACKGROUND_TRUST_GRANT_RETRY_INTERVAL_MS,
   CODEX_TRUST_GRANT_TRANSIENT_RETRY_INTERVAL_MS,
   getCodexTrustGrantDiagnostics,
   grantManagedCodexHookTrust,
@@ -271,11 +272,38 @@ describe('grantManagedCodexHookTrust', () => {
     })
     expect(runner).toHaveBeenCalledTimes(1)
     expect(codexAppServerCapabilityCache.shouldTry('native')).toBe(true)
+    // Why: an inline grant costs its launch the full timeout, so it keeps the long cooldown.
+    vi.setSystemTime(1_000 + CODEX_BACKGROUND_TRUST_GRANT_RETRY_INTERVAL_MS + 1)
+    expect(await grantManagedCodexHookTrust(plan)).toMatchObject({ reason: 'retry-cached' })
+    expect(runner).toHaveBeenCalledTimes(1)
 
     runner.mockImplementation(async () => grantedSessionResult(entries))
     vi.setSystemTime(1_000 + CODEX_TRUST_GRANT_TRANSIENT_RETRY_INTERVAL_MS)
     expect(await grantManagedCodexHookTrust(plan)).toMatchObject({ lane: 'rpc' })
     expect(runner).toHaveBeenCalledTimes(2)
+  })
+
+  it('retries a background grant after seconds, apart from the inline cooldown', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(1_000)
+    const entries = [managedEntry('session_start')]
+    const runner = vi.fn((): Promise<CodexHookTrustGrantSessionResult> => {
+      throw new Error('codex app-server exited before completing the session')
+    })
+    _internals.setGrantSessionRunner(runner)
+    const background: CodexManagedTrustGrantPlan = { ...buildPlan(entries), background: true }
+    const inline = buildPlan(entries)
+
+    expect(await grantManagedCodexHookTrust(background)).toMatchObject({ reason: 'error' })
+    expect(await grantManagedCodexHookTrust(background)).toMatchObject({ reason: 'retry-cached' })
+    // Why: the background failure does not cool down an inline grant, nor the reverse.
+    expect(await grantManagedCodexHookTrust(inline)).toMatchObject({ reason: 'error' })
+    expect(runner).toHaveBeenCalledTimes(2)
+
+    vi.setSystemTime(1_000 + CODEX_BACKGROUND_TRUST_GRANT_RETRY_INTERVAL_MS)
+    expect(await grantManagedCodexHookTrust(background)).toMatchObject({ reason: 'error' })
+    expect(await grantManagedCodexHookTrust(inline)).toMatchObject({ reason: 'retry-cached' })
+    expect(runner).toHaveBeenCalledTimes(3)
   })
 
   it('bounds transient cooldowns when host identities churn', async () => {

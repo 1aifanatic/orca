@@ -36,14 +36,22 @@ import {
   type ExpectedManagedEntry
 } from './codex-managed-trust-grant-plan'
 import { isCodexStateDbBackfillPending } from './codex-state-db'
+import {
+  clearCodexTrustGrantCooldowns,
+  countCodexTrustGrantCooldowns,
+  isCodexTrustGrantCoolingDown,
+  resetCodexTrustGrantCooldowns,
+  startCodexTrustGrantCooldown
+} from './codex-trust-grant-cooldown'
 
-// Why seconds: a failing app-server must not cost a session on every pane
-// launch, but a long latch at boot blocks the grant long after it recovers.
-export const CODEX_TRUST_GRANT_TRANSIENT_RETRY_INTERVAL_MS = 10_000
+export {
+  CODEX_BACKGROUND_TRUST_GRANT_RETRY_INTERVAL_MS,
+  CODEX_TRUST_GRANT_TRANSIENT_RETRY_INTERVAL_MS
+} from './codex-trust-grant-cooldown'
+
 // Why: a cold `codex app-server` on a loaded Mac took over 10 s; a background
 // grant blocks no launch, so it can wait for one.
 export const CODEX_BACKGROUND_TRUST_GRANT_TIMEOUT_MS = 30_000
-const MAX_TRANSIENT_TRUST_COOLDOWNS = 256
 
 /** Ops escape hatch (not a setting): forces the fallback lane for every trust grant. */
 const DISABLE_ENV_FLAG = 'ORCA_DISABLE_CODEX_TRUST_RPC'
@@ -67,7 +75,6 @@ const diagnostics = {
   lastFallbackReason: null as CodexTrustGrantFallbackReason | null
 }
 export type CodexTrustGrantDiagnostics = typeof diagnostics
-const transientRetryAfterByHost = new Map<string, number>()
 
 export const getCodexTrustGrantDiagnostics = (): CodexTrustGrantDiagnostics => ({ ...diagnostics })
 
@@ -107,18 +114,6 @@ function fallback(
   return { lane: 'fallback', reason, ...(errorClass !== undefined ? { errorClass } : {}) }
 }
 
-function startTransientCooldown(hostKey: CodexAppServerHostKey): void {
-  transientRetryAfterByHost.delete(hostKey)
-  transientRetryAfterByHost.set(hostKey, Date.now() + CODEX_TRUST_GRANT_TRANSIENT_RETRY_INTERVAL_MS)
-  while (transientRetryAfterByHost.size > MAX_TRANSIENT_TRUST_COOLDOWNS) {
-    const oldest = transientRetryAfterByHost.keys().next().value
-    if (oldest === undefined) {
-      break
-    }
-    transientRetryAfterByHost.delete(oldest)
-  }
-}
-
 type GrantAttempt = {
   plan: CodexManagedTrustGrantPlan
   expected: ExpectedManagedEntry[]
@@ -138,7 +133,7 @@ function completeGrant(
     detail: unknown,
     verifyClass: CodexTrustGrantVerifyClass
   ): CodexManagedTrustGrantOutcome => {
-    startTransientCooldown(hostKey)
+    startCodexTrustGrantCooldown(plan, hostKey)
     return fallback(plan, 'verify-failed', detail, verifyClass)
   }
   if (result.outcome === 'verify-failed') {
@@ -167,7 +162,7 @@ function completeGrant(
   if (seenNormalizedKeys.size !== expected.length) {
     return rejectGrant('granted entry set did not cover expected entries', 'coverage')
   }
-  transientRetryAfterByHost.delete(hostKey)
+  clearCodexTrustGrantCooldowns(hostKey)
   try {
     writeCodexTrustGrantLedgerHome(plan.runtimeHomePath, {
       binary: attempt.currentStamp,
@@ -240,7 +235,7 @@ async function runGrantAttempt(
           // this one waited behind it.
           return fallback(plan, 'unsupported-cached')
         }
-        transientRetryAfterByHost.delete(hostKey)
+        clearCodexTrustGrantCooldowns(hostKey)
         return fallback(plan, 'unsupported', unsupportedError)
       },
       (error) => {
@@ -254,7 +249,7 @@ async function runGrantAttempt(
   } catch (error) {
     // Why: a background grant that timed out is retried on the next launch.
     if (!plan.background || classifyCodexTrustGrantError(error) !== 'timeout') {
-      startTransientCooldown(hostKey)
+      startCodexTrustGrantCooldown(plan, hostKey)
     }
     return fallback(plan, 'error', error)
   }
@@ -312,12 +307,8 @@ export async function grantManagedCodexHookTrust(
     if (!codexAppServerCapabilityCache.shouldTry(hostKey)) {
       return fallback(plan, 'unsupported-cached')
     }
-    const transientRetryAfter = transientRetryAfterByHost.get(hostKey)
-    if (transientRetryAfter !== undefined) {
-      if (Date.now() < transientRetryAfter) {
-        return fallback(plan, 'retry-cached')
-      }
-      transientRetryAfterByHost.delete(hostKey)
+    if (isCodexTrustGrantCoolingDown(plan, hostKey)) {
+      return fallback(plan, 'retry-cached')
     }
     // Why no lane across the session: Codex writes its own records, and a held
     // lane would queue every launch's config.toml write behind a cold app-server.
@@ -337,9 +328,9 @@ export const _internals = {
     diagnostics.fellBack = 0
     diagnostics.verifyFailed = 0
     diagnostics.lastFallbackReason = null
-    transientRetryAfterByHost.clear()
+    resetCodexTrustGrantCooldowns()
   },
   transientCooldownCountForTests(): number {
-    return transientRetryAfterByHost.size
+    return countCodexTrustGrantCooldowns()
   }
 }

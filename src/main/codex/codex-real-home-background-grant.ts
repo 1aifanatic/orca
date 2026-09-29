@@ -1,7 +1,7 @@
 import { getRealHomeConfigTomlPath } from './codex-real-home-hooks-json'
 import {
+  CODEX_BACKGROUND_TRUST_GRANT_RETRY_INTERVAL_MS,
   CODEX_BACKGROUND_TRUST_GRANT_TIMEOUT_MS,
-  CODEX_TRUST_GRANT_TRANSIENT_RETRY_INTERVAL_MS,
   grantManagedCodexHookTrust,
   type CodexManagedTrustGrantOutcome,
   type CodexManagedTrustGrantPlan
@@ -53,7 +53,7 @@ export function runRealHomeBackgroundGrant(
     )
   }).catch((error: unknown) => {
     console.warn('[codex-real-home-hooks] background trust grant failed:', error)
-    settle('unavailable', Date.now() + CODEX_TRUST_GRANT_TRANSIENT_RETRY_INTERVAL_MS)
+    settle('unavailable', Date.now() + CODEX_BACKGROUND_TRUST_GRANT_RETRY_INTERVAL_MS)
   })
 }
 
@@ -89,7 +89,7 @@ function getInstallRetryAfterMs(
   // Why: a slow cold start retries on the next launch instead of latching for minutes.
   return grant.errorClass === 'timeout'
     ? 0
-    : Date.now() + CODEX_TRUST_GRANT_TRANSIENT_RETRY_INTERVAL_MS
+    : Date.now() + CODEX_BACKGROUND_TRUST_GRANT_RETRY_INTERVAL_MS
 }
 
 function describeRetry(retryAfterMs: number): string {
