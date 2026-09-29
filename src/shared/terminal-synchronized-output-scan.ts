@@ -113,6 +113,12 @@ export function advanceDroppedSynchronizedOutputLatch(
  * Returns the largest length <= `limit` that ends outside an open frame, or
  * `limit` when no such point exists (a frame genuinely longer than the window;
  * the latch release still rides along via the reset profiles).
+ *
+ * KNOWN LIMITATION: no caller threads `markerTail`/`wasActive`, so a buffer that
+ * begins INSIDE an already-open frame is scanned as if closed. That degrades to
+ * the blind offset this replaced — never worse, and byte-exact either way — but
+ * it means cross-chunk alignment is best-effort. Threading per-PTY latch state
+ * through the split sites would close it.
  */
 export function resolveSynchronizedOutputSafeSplit(
   data: string,
