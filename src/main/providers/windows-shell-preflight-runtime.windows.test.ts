@@ -144,6 +144,8 @@ describeWindows('Windows Codex shell preflight runtime', () => {
       env: {
         ...process.env,
         ORCA_CODEX_LAUNCH_PREFLIGHT: preflight,
+        // Hook prep runs only for an Orca-managed Codex home.
+        ORCA_CODEX_HOME: root,
         [ORCA_CODEX_LAUNCH_PREFLIGHT_CMD_QUOTE_ENV]: '"',
         ORCA_PREFLIGHT_MARKER: preflightMarker
       }
@@ -191,6 +193,7 @@ describeWindows('Windows Codex shell preflight runtime', () => {
           CHERE_INVOKING: '1',
           HOME: root,
           ORCA_CODEX_LAUNCH_PREFLIGHT: preflight,
+          ORCA_CODEX_HOME: root,
           ORCA_PREFLIGHT_MARKER: preflightMarker,
           ORCA_CODEX_MARKER: codexMarker,
           TERM: 'xterm-256color'

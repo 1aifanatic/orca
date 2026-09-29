@@ -31,8 +31,6 @@ type InstallOptions = {
   onInstallError?: (agent: AgentHookTarget, error: unknown) => void
   shouldContinue?: (agent: AgentHookTarget) => boolean
   agents?: readonly AgentHookTarget[]
-  /** Why injected: this module is also bundled into the CLI, where warming main-process caches is wasted work. */
-  onCliFound?: (agent: AgentHookTarget, executablePath: string) => void
 }
 
 type RemoveOptions = {
@@ -208,7 +206,6 @@ export async function installManagedAgentHooks(
       agent === 'claude' && presence.executablePath
         ? await probeClaudeCliVersion(presence.executablePath)
         : null
-    options.onCliFound?.(agent, presence.executablePath)
     results.push(
       await runInstaller(entry, options.onInstallError, {
         ...(options.userInitiated !== undefined ? { userInitiated: options.userInitiated } : {}),

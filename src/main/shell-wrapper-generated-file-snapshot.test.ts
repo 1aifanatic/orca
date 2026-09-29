@@ -169,7 +169,7 @@ describePosix('generated shell wrapper files', () => {
   it('installs the Codex wrapper in markerless fish terminals with an overlay', () => {
     for (const getConfig of [getLocalShellLaunchConfig, getDaemonShellLaunchConfig]) {
       const config = getConfig('/usr/bin/fish', ['overlay'])
-      expect(config.args?.[2]).toContain('prepare-codex --launch-executable')
+      expect(config.args?.[2]).toContain('__orca_codex_supports_no_daemon "$executable"')
       expect(config.supportsReadyMarker).toBe(false)
       expect(config.args?.[2]).not.toContain('orca-shell-ready')
     }

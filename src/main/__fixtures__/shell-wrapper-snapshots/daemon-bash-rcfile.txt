@@ -117,6 +117,24 @@ __orca_codex_interactive() {
   done
   return 0
 }
+__orca_codex_supports_no_daemon() {
+  local __orca_out __orca_rest __orca_major __orca_minor __orca_patch __orca_part
+  __orca_out="$("$1" --version </dev/null 2>/dev/null)" || return 1
+  __orca_out=${__orca_out%$'\r'}
+  case "$__orca_out" in "codex-cli "*.*.*) ;; *) return 1 ;; esac
+  __orca_rest=${__orca_out#codex-cli }
+  __orca_major=${__orca_rest%%.*}
+  __orca_rest=${__orca_rest#*.}
+  __orca_minor=${__orca_rest%%.*}
+  __orca_rest=${__orca_rest#*.}
+  __orca_patch=${__orca_rest%%-*}
+  __orca_rest=${__orca_rest#"$__orca_patch"}
+  for __orca_part in "$__orca_major" "$__orca_minor" "$__orca_patch"; do
+    case "$__orca_part" in ''|*[!0-9]*|??????????*) return 1 ;; esac
+  done
+  case "$__orca_rest" in '') ;; -|-*[!0-9A-Za-z.]*) return 1 ;; -*) ;; *) return 1 ;; esac
+  [ "$__orca_major" -gt 0 ] || { [ "$__orca_major" -eq 0 ] && [ "$__orca_minor" -ge 156 ]; }
+}
 __orca_codex_path() {
 _orca_lookup_command='codex'
 __orca_lookup_result=
@@ -169,16 +187,13 @@ if [[ -n "${ORCA_CODEX_LAUNCH_PREFLIGHT:-}" && -x "${ORCA_CODEX_LAUNCH_PREFLIGHT
   # Why the function reserved word: it suppresses alias expansion of the name,
   # which otherwise rewrites this header at parse time and aborts the whole file.
   function codex {
-    local __orca_executable __orca_flag=''
-    __orca_executable="$(__orca_codex_path)"
-    # Why one CLI call: it prepares hooks and answers capability together.
-    if [ -n "$__orca_executable" ] && [ -x "$__orca_executable" ] && __orca_codex_interactive "$@"; then
-      __orca_flag="$("${ORCA_CODEX_LAUNCH_PREFLIGHT}" agent hooks prepare-codex --launch-executable "$__orca_executable" --launch-wsl-distro "${WSL_DISTRO_NAME:-}" 2>/dev/null)" || __orca_flag=''
-    else
+    local __orca_executable
+    # Why gated: hook prep only repairs an Orca-managed home, so other panes skip the CLI start.
+    if [ -n "${ORCA_CODEX_HOME:-}" ]; then
       "${ORCA_CODEX_LAUNCH_PREFLIGHT}" agent hooks prepare-codex >/dev/null 2>&1 || :
     fi
-    # Why the last line: hook prep may log to stdout before the verdict.
-    if [ "${__orca_flag##*$'\n'}" = --no-daemon ]; then
+    __orca_executable="$(__orca_codex_path)"
+    if [ -n "$__orca_executable" ] && [ -x "$__orca_executable" ] && __orca_codex_interactive "$@" && __orca_codex_supports_no_daemon "$__orca_executable"; then
       "$__orca_executable" --no-daemon "$@"
       return $?
     fi

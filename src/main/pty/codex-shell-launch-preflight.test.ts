@@ -177,7 +177,8 @@ function expectNamedAliasSurvives(shell: string, enableAliases: string): void {
       env: {
         ...process.env,
         PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`,
-        ORCA_CODEX_LAUNCH_PREFLIGHT: join(bin, 'orca-test')
+        ORCA_CODEX_LAUNCH_PREFLIGHT: join(bin, 'orca-test'),
+        ORCA_CODEX_HOME: '/orca/managed/home'
       }
     }
   )
@@ -333,7 +334,14 @@ describe.skipIf(process.platform === 'win32')('Codex shell launch preflight', ()
     const output = execFileSync(
       join(bin, 'fish'),
       ['--no-config', '-l', '-C', getFishCodexShellLaunchPreflight(), '-c', 'codex hi'],
-      { encoding: 'utf-8', env: { PATH: bin, ORCA_CODEX_LAUNCH_PREFLIGHT: preflight } }
+      {
+        encoding: 'utf-8',
+        env: {
+          PATH: bin,
+          ORCA_CODEX_LAUNCH_PREFLIGHT: preflight,
+          ORCA_CODEX_HOME: '/orca/managed/home'
+        }
+      }
     )
 
     expect(output.trim()).toBe('real codex hi')
@@ -402,7 +410,8 @@ describe('PowerShell Codex shell launch preflight', () => {
         env: {
           ...process.env,
           PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`,
-          ORCA_CODEX_LAUNCH_PREFLIGHT: join(bin, `orca-test${executableSuffix}`)
+          ORCA_CODEX_LAUNCH_PREFLIGHT: join(bin, `orca-test${executableSuffix}`),
+          ORCA_CODEX_HOME: '/orca/managed/home'
         }
       }
     )
@@ -605,7 +614,8 @@ describe.skipIf(process.platform === 'win32')('Codex preflight paths containing 
         env: {
           ...process.env,
           PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`,
-          ORCA_CODEX_LAUNCH_PREFLIGHT: preflightPath
+          ORCA_CODEX_LAUNCH_PREFLIGHT: preflightPath,
+          ORCA_CODEX_HOME: '/orca/managed/home'
         }
       }
     )
@@ -625,7 +635,8 @@ describe.skipIf(process.platform === 'win32')('Codex preflight paths containing 
       env: {
         ...process.env,
         PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`,
-        ORCA_CODEX_LAUNCH_PREFLIGHT: preflightPath
+        ORCA_CODEX_LAUNCH_PREFLIGHT: preflightPath,
+        ORCA_CODEX_HOME: '/orca/managed/home'
       }
     })
 
@@ -650,7 +661,8 @@ describe.skipIf(process.platform === 'win32')('Codex preflight paths containing 
           env: {
             ...process.env,
             PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`,
-            ORCA_CODEX_LAUNCH_PREFLIGHT: preflightPath
+            ORCA_CODEX_LAUNCH_PREFLIGHT: preflightPath,
+            ORCA_CODEX_HOME: '/orca/managed/home'
           }
         }
       )

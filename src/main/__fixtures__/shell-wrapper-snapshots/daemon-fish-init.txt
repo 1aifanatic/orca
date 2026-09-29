@@ -28,20 +28,23 @@ function __orca_codex_interactive
   end
   return 0
 end
+function __orca_codex_supports_no_daemon
+  set -l out (command $argv[1] --version </dev/null 2>/dev/null); or return 1
+  test (count $out) -eq 1; or return 1
+  set -l parts (string match -r -- '^codex-cli ([0-9]{1,9})\.([0-9]{1,9})\.[0-9]{1,9}(-[0-9A-Za-z.]+)?\r?$' $out); or return 1
+  test $parts[2] -gt 0; or begin; test $parts[2] -eq 0; and test $parts[3] -ge 156; end
+end
 # Why captured: an unquoted (type -t codex) expands to zero words when codex is
 # absent, leaving "test = file" — fish then errors instead of failing closed.
 # Quoting in place is not the fix; fish never substitutes inside double quotes.
 set -l __orca_codex_type (type -t codex 2>/dev/null)
 if test -x "$ORCA_CODEX_LAUNCH_PREFLIGHT"; and test "$__orca_codex_type" = file
   function codex
-    set -l executable (command -v codex 2>/dev/null)
-    set -l flag
-    if test -n "$executable"; and __orca_codex_interactive $argv
-      set flag (command "$ORCA_CODEX_LAUNCH_PREFLIGHT" agent hooks prepare-codex --launch-executable "$executable" --launch-wsl-distro "$WSL_DISTRO_NAME" 2>/dev/null)
-    else
+    if test -n "$ORCA_CODEX_HOME"
       command "$ORCA_CODEX_LAUNCH_PREFLIGHT" agent hooks prepare-codex >/dev/null 2>&1; or true
     end
-    if set -q flag[1]; and test "$flag[-1]" = --no-daemon
+    set -l executable (command -v codex 2>/dev/null)
+    if test -n "$executable"; and __orca_codex_interactive $argv; and __orca_codex_supports_no_daemon "$executable"
       command "$executable" --no-daemon $argv
       return $status
     end

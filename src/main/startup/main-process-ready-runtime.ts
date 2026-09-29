@@ -14,7 +14,6 @@ import { recordProcessGoneCrash } from './main-window-lifecycle-flags'
 import { handleGpuChildCrash } from './gpu-lifecycle'
 import { isGpuFallbackCrashCandidate } from '../crash-reporting/gpu-crash-fallback-decision'
 import { ensureRealHomeCodexHookState } from '../codex/codex-real-home-hook-install'
-import { codexExecutableCapability } from '../codex/codex-native-terminal-capability'
 import {
   installManagedAgentHooks,
   resolveStartupManagedHookAction,
@@ -119,11 +118,6 @@ export async function initializeReadyRuntimeServices(): Promise<void> {
         installManagedAgentHooks(managedHookStore.getSettings(), {
           shouldHydrateShellPath: app.isPackaged,
           onInstallError: recordManagedHookInstallFailure,
-          onCliFound: (agent, executablePath) => {
-            if (agent === 'codex') {
-              void codexExecutableCapability.supportsNoDaemon(executablePath)
-            }
-          },
           shouldContinue: (agent) =>
             shouldContinueManagedHookStartup(
               state.isQuitting,

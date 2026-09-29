@@ -88,14 +88,14 @@ describe('getRelayShellLaunchConfig', () => {
     rmSync(homeDir, { recursive: true, force: true })
   })
 
-  it('installs Codex capability checks for a login fish', () => {
+  it('installs the Codex version gate for a login fish', () => {
     const config = getRelayShellLaunchConfig(
       '/usr/bin/fish',
       { ORCA_CODEX_LAUNCH_PREFLIGHT: '/remote/orca' },
       'linux'
     )
     expect(config.args.slice(0, 2)).toEqual(['-l', '-C'])
-    expect(config.args.join(' ')).toContain('prepare-codex --launch-executable')
+    expect(config.args.join(' ')).toContain('__orca_codex_supports_no_daemon "$executable"')
     expect(config.supportsReadyMarker).toBe(false)
   })
 
@@ -107,7 +107,7 @@ describe('getRelayShellLaunchConfig', () => {
     },
     { shell: '/usr/bin/pwsh', platform: 'linux' as const, leading: ['-l', '-NoLogo'] }
   ])(
-    'installs encoded Codex capability checks for $shell on $platform',
+    'installs the encoded Codex version gate for $shell on $platform',
     ({ shell, platform, leading }) => {
       const config = getRelayShellLaunchConfig(
         shell,
@@ -117,7 +117,7 @@ describe('getRelayShellLaunchConfig', () => {
       expect(config.args.slice(0, leading.length)).toEqual(leading)
       expect(config.args.slice(-2, -1)).toEqual(['-EncodedCommand'])
       const script = Buffer.from(config.args.at(-1) ?? '', 'base64').toString('utf16le')
-      expect(script).toContain('prepare-codex --launch-executable')
+      expect(script).toContain('__OrcaCodexSupportsNoDaemon $orcaCodexExecutable.Source')
       expect(config.supportsReadyMarker).toBe(false)
     }
   )

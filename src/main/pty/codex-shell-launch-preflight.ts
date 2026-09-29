@@ -7,6 +7,11 @@ import {
   posixCodexInteractiveArgv,
   powerShellCodexInteractiveArgv
 } from './codex-terminal-argv-policy'
+import {
+  fishCodexVersionGate,
+  posixCodexVersionGate,
+  powerShellCodexVersionGate
+} from './codex-terminal-version-gate'
 
 const DEV_LAUNCHER_DIR = ['cli', 'bin']
 const DEV_COMMAND_NAME = 'orca-dev'
@@ -68,6 +73,7 @@ function isExecutableFileOnDisk(path: string, platform: NodeJS.Platform): boolea
 
 export function getPosixCodexShellLaunchPreflight(): string {
   return `${posixCodexInteractiveArgv()}
+${posixCodexVersionGate()}
 __orca_codex_path() {
 ${buildPosixCommandPathLookupScript({ kind: 'literal', value: 'codex' }, { resultVariable: '__orca_lookup_result' })}
   printf '%s' "$__orca_lookup_result"
@@ -82,16 +88,13 @@ if [[ -n "\${ORCA_CODEX_LAUNCH_PREFLIGHT:-}" && -x "\${ORCA_CODEX_LAUNCH_PREFLIG
   # Why the function reserved word: it suppresses alias expansion of the name,
   # which otherwise rewrites this header at parse time and aborts the whole file.
   function codex {
-    local __orca_executable __orca_flag=''
-    __orca_executable="$(__orca_codex_path)"
-    # Why one CLI call: it prepares hooks and answers capability together.
-    if [ -n "$__orca_executable" ] && [ -x "$__orca_executable" ] && __orca_codex_interactive "$@"; then
-      __orca_flag="$("\${ORCA_CODEX_LAUNCH_PREFLIGHT}" agent hooks prepare-codex --launch-executable "$__orca_executable" --launch-wsl-distro "\${WSL_DISTRO_NAME:-}" 2>/dev/null)" || __orca_flag=''
-    else
+    local __orca_executable
+    # Why gated: hook prep only repairs an Orca-managed home, so other panes skip the CLI start.
+    if [ -n "\${ORCA_CODEX_HOME:-}" ]; then
       "\${ORCA_CODEX_LAUNCH_PREFLIGHT}" agent hooks prepare-codex >/dev/null 2>&1 || :
     fi
-    # Why the last line: hook prep may log to stdout before the verdict.
-    if [ "\${__orca_flag##*$'\\n'}" = --no-daemon ]; then
+    __orca_executable="$(__orca_codex_path)"
+    if [ -n "$__orca_executable" ] && [ -x "$__orca_executable" ] && __orca_codex_interactive "$@" && __orca_codex_supports_no_daemon "$__orca_executable"; then
       "$__orca_executable" --no-daemon "$@"
       return $?
     fi
@@ -104,20 +107,18 @@ unset __orca_codex_binary
 
 export function getFishCodexShellLaunchPreflight(): string {
   return `${fishCodexInteractiveArgv()}
+${fishCodexVersionGate()}
 # Why captured: an unquoted (type -t codex) expands to zero words when codex is
 # absent, leaving "test = file" — fish then errors instead of failing closed.
 # Quoting in place is not the fix; fish never substitutes inside double quotes.
 set -l __orca_codex_type (type -t codex 2>/dev/null)
 if test -x "$ORCA_CODEX_LAUNCH_PREFLIGHT"; and test "$__orca_codex_type" = file
   function codex
-    set -l executable (command -v codex 2>/dev/null)
-    set -l flag
-    if test -n "$executable"; and __orca_codex_interactive $argv
-      set flag (command "$ORCA_CODEX_LAUNCH_PREFLIGHT" agent hooks prepare-codex --launch-executable "$executable" --launch-wsl-distro "$WSL_DISTRO_NAME" 2>/dev/null)
-    else
+    if test -n "$ORCA_CODEX_HOME"
       command "$ORCA_CODEX_LAUNCH_PREFLIGHT" agent hooks prepare-codex >/dev/null 2>&1; or true
     end
-    if set -q flag[1]; and test "$flag[-1]" = --no-daemon
+    set -l executable (command -v codex 2>/dev/null)
+    if test -n "$executable"; and __orca_codex_interactive $argv; and __orca_codex_supports_no_daemon "$executable"
       command "$executable" --no-daemon $argv
       return $status
     end
@@ -129,25 +130,26 @@ set -e __orca_codex_type`
 
 export function getPowerShellCodexShellLaunchPreflight(): string {
   return `${powerShellCodexInteractiveArgv()}
+${powerShellCodexVersionGate()}
 $orcaCodexCommand = Get-Command codex -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($env:ORCA_CODEX_LAUNCH_PREFLIGHT -and $orcaCodexCommand -and
     $orcaCodexCommand.CommandType -in @("Application", "ExternalScript")) {
     function Global:codex {
-        $orcaCodexExecutable = Get-Command codex -CommandType Application,ExternalScript -ErrorAction SilentlyContinue | Select-Object -First 1
-        $orcaCodexFlags = @()
-        try {
-            if ($orcaCodexExecutable -and (__OrcaCodexInteractive -Tokens $args)) {
-                $flag = & $env:ORCA_CODEX_LAUNCH_PREFLIGHT agent hooks prepare-codex --launch-executable $orcaCodexExecutable.Source 2>$null
-                if ($LASTEXITCODE -eq 0 -and @($flag)[-1] -eq '--no-daemon') { $orcaCodexFlags = @('--no-daemon') }
-            } else {
+        if ($env:ORCA_CODEX_HOME) {
+            try {
                 & $env:ORCA_CODEX_LAUNCH_PREFLIGHT agent hooks prepare-codex *> $null
+            } catch {
             }
-        } catch {
         }
+        $orcaCodexExecutable = Get-Command codex -CommandType Application,ExternalScript -ErrorAction SilentlyContinue | Select-Object -First 1
         if (-not $orcaCodexExecutable) {
             Write-Error "codex executable not found"
             $global:LASTEXITCODE = 127
             return
+        }
+        $orcaCodexFlags = @()
+        if ((__OrcaCodexInteractive -Tokens $args) -and (__OrcaCodexSupportsNoDaemon $orcaCodexExecutable.Source)) {
+            $orcaCodexFlags = @('--no-daemon')
         }
         & $orcaCodexExecutable.Source @orcaCodexFlags @args
         $global:LASTEXITCODE = $LASTEXITCODE
