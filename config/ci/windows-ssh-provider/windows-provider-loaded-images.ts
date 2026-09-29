@@ -46,7 +46,12 @@ export async function inspectProviderImages(
     env: { ORCA_BACKGROUND_LAUNCH: '1' },
     maxOutputBytes: 65536
   })
-  assert(!result.timedOut && result.code === 0, 'scoped provider module inspection failed')
+  if (result.timedOut || result.code !== 0) {
+    const stderr = result.stderr.replace(/[^\x20-\x7e\r\n]/g, '').slice(0, 512)
+    throw new Error(
+      `scoped provider module inspection failed (code=${String(result.code)} timedOut=${String(result.timedOut)} stderr=${stderr})`
+    )
+  }
   const evidence = JSON.parse(result.stdout)
   assert(Array.isArray(evidence.modules) && evidence.modules.length === 1)
   const samePath = (a: string, b: string) =>
