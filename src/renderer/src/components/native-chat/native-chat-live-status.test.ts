@@ -154,6 +154,36 @@ describe('mergeNativeChatLiveSession', () => {
     expect(session.status).toBe('ready')
   })
 
+  it("keeps omp working while its latest row is a tool call written after the turn's start", () => {
+    // Shaped as decodeOmpTranscriptLine emits them: every omp row carries its timestamp.
+    const turnStartedAt = Date.parse('2026-09-28T10:00:00.000Z')
+    const toolCall: NativeChatMessage = {
+      id: 'rec-2',
+      role: 'assistant',
+      blocks: [
+        { type: 'text', text: 'Running the suite.' },
+        { type: 'tool-call', name: 'bash', input: { command: 'pnpm test' } }
+      ],
+      timestamp: turnStartedAt + 4_000,
+      source: 'transcript'
+    }
+    const session = mergeNativeChatLiveSession({
+      messages: [{ ...user('rec-1', 'run the tests'), timestamp: turnStartedAt }, toolCall],
+      sessionId: 'sess',
+      agent: 'omp',
+      hookState: 'working',
+      stateStartedAt: turnStartedAt
+    })
+    expect(session.status).toBe('working')
+    expect(
+      shouldShowNativeChatWorking({
+        isConversation: true,
+        working: session.status === 'working',
+        interrupted: false
+      })
+    ).toBe(true)
+  })
+
   it('keeps working while the hook reports a live background child', () => {
     const session = mergeNativeChatLiveSession({
       messages: [assistant('a-1', 'lead done')],
