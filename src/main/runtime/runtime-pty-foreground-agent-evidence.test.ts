@@ -4,6 +4,8 @@ import type { RuntimePtyController } from './runtime-pty-controller-contract'
 import type { RuntimePtyWorktreeRecord } from './runtime-terminal-state-records'
 import { resolveRemoteForegroundEvidence } from '../providers/agent-foreground-process-batch'
 import type { ProcessTableRow } from '../../shared/process-table-snapshot'
+import type { RemoteForegroundEvidence } from '../../shared/foreground-process-evidence'
+import type { TerminalProcessInspection } from '../../shared/terminal-process-inspection'
 
 function setup(remote = false) {
   const pty: Pick<
@@ -99,7 +101,7 @@ describe('foreground identity on unknown observations', () => {
       write: () => true,
       kill: () => true,
       getForegroundProcess: async () => 'zsh',
-      inspectProcess: async () => ({
+      inspectProcess: async (): Promise<TerminalProcessInspection> => ({
         foregroundProcess: 'zsh',
         hasChildProcesses: false,
         ...(kind === 'missing' ? {} : { foregroundProcessEvidence: hostEvidence(kind) })
@@ -121,7 +123,7 @@ describe('foreground identity on unknown observations', () => {
 /** Host evidence built by the same builder the relay and daemon use, from one process table. */
 function hostEvidence(
   kind: 'stale' | 'wrong-incarnation' | 'windows' | 'vim' | 'old-host-shell' | 'shell'
-): unknown {
+): RemoteForegroundEvidence {
   const shell: ProcessTableRow = {
     pid: 10,
     ppid: 1,

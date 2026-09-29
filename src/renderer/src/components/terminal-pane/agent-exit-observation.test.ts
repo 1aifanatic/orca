@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createPtyOutputTitleObserver } from './pty-output-title-observer'
 import { createPaneForegroundAgentTracker } from './pane-foreground-agent-tracker'
 import type { RemoteForegroundEvidence } from '../../../../shared/foreground-process-evidence'
+import type { TerminalProcessInspection } from '../../../../shared/terminal-process-inspection'
 import {
   _dispatchTerminalSideEffectBatchForTest,
   _resetTerminalSideEffectFactConsumersForTest,
@@ -71,9 +72,11 @@ describe('agent exit observation', () => {
     const SSH_PTY_ID = 'ssh:conn-1@@pty-1'
     let epoch = 0
 
-    function remoteTracker(evidence: (rows: 'shell' | 'agent') => unknown) {
+    function remoteTracker(
+      evidence: (rows: 'shell' | 'agent') => RemoteForegroundEvidence | undefined
+    ) {
       let foreground: 'shell' | 'agent' = 'agent'
-      const read = vi.fn(async () => ({
+      const read = vi.fn(async (): Promise<TerminalProcessInspection> => ({
         foregroundProcess: null,
         hasChildProcesses: false,
         foregroundProcessEvidence: evidence(foreground)
