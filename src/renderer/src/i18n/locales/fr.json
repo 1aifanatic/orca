@@ -10866,7 +10866,7 @@
         },
         "agent-workspace-trust-copy": {
           "title": "Faire confiance au dossier quand Orca lance un agent",
-          "description": "Les agents lancés par Orca ignorent leur question « trust this folder? » dans ce worktree ou ce dossier : les hooks et paramètres d'agent du projet s'exécutent donc sans demander d'abord. Désactiver cette option arrête toute nouvelle confiance ; les dossiers déjà approuvés le restent. Tant qu'elle est désactivée, les agents qu'Orca lance sans surveillance, comme les workers d'orchestration, les automatisations et les agents lancés depuis votre téléphone, s'arrêtent à la question de confiance jusqu'à ce que quelqu'un y réponde."
+          "description": "Les agents lancés par Orca ignorent leur question « Do you trust this folder? » : les hooks et paramètres d'agent du projet s'exécutent donc tout de suite. Sans cette option, chaque agent pose la question la première fois qu'il s'exécute dans un dossier. Les agents qui tournent sans que vous les surveilliez, comme les workers d'orchestration, les automatisations et les agents lancés depuis votre téléphone, attendront à cette question jusqu'à ce que vous y répondiez dans leur terminal. Les dossiers déjà approuvés le restent."
         },
         "agent-generated-tab-title-copy": {
           "19ad21615a": "Générer automatiquement les titres des onglets",

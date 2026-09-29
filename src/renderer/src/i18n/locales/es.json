@@ -9493,7 +9493,7 @@
         },
         "agent-workspace-trust-copy": {
           "title": "Confiar en la carpeta cuando Orca inicia un agente",
-          "description": "Los agentes que inicia Orca omiten su pregunta \"trust this folder?\" en ese worktree o carpeta, así que los hooks y ajustes de agente del proyecto se ejecutan sin preguntar antes. Si lo desactivas, Orca deja de añadir confianza nueva; las carpetas que ya son de confianza lo siguen siendo. Mientras esté desactivado, los agentes que Orca inicia sin supervisión, como los workers de orquestación, las automatizaciones y los agentes iniciados desde tu teléfono, se detienen en la pregunta de confianza hasta que alguien la responda."
+          "description": "Los agentes que inicia Orca omiten su pregunta \"Do you trust this folder?\", así que los hooks y ajustes de agente del proyecto se ejecutan de inmediato. Sin esto, cada agente pregunta la primera vez que se ejecuta en una carpeta. Los agentes que se ejecutan sin que estés mirando, como los workers de orquestación, las automatizaciones y los agentes iniciados desde tu teléfono, esperarán en esa pregunta hasta que la respondas en su terminal. Las carpetas que ya son de confianza lo siguen siendo."
         },
         "agent-generated-tab-title-copy": {
           "19ad21615a": "Generar títulos de pestañas automáticamente",

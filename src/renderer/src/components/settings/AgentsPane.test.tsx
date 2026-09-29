@@ -396,7 +396,7 @@ describe('AgentsPane', () => {
     expect(trustSwitch.props.checked).toBe(true)
     expect(getAgentWorkspaceTrustDescription()).toContain('hooks')
     expect(getAgentWorkspaceTrustDescription()).toContain('already trusted stay trusted')
-    expect(getAgentWorkspaceTrustDescription()).toContain('unattended')
+    expect(getAgentWorkspaceTrustDescription()).toContain('without you watching')
 
     const onChange: unknown = trustSwitch.props.onChange
     expect(typeof onChange).toBe('function')
