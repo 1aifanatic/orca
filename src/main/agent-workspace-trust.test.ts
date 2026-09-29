@@ -124,12 +124,18 @@ describe('applyAgentWorkspaceTrust on this machine', () => {
     warn.mockRestore()
   })
 
+  // Why: a config dir that does not exist keeps a regression here from writing a real config.
+  const noConfig = { ...local, env: { CLAUDE_CONFIG_DIR: join(tmpdir(), 'orca-no-claude-config') } }
   it.each([
-    ['the home folder', homedir(), local],
-    ['the home the spawn env names', '/home/agent', { ...local, env: { HOME: '/home/agent' } }],
-    ['a filesystem root', '/', local],
-    ['a drive root', 'C:\\', local],
-    ['a filesystem root over SSH', '/', { ...local, connectionId: 'ssh-1' }]
+    ['the home folder', homedir(), noConfig],
+    [
+      'the home the spawn env names',
+      '/home/agent',
+      { ...noConfig, env: { ...noConfig.env, HOME: '/home/agent' } }
+    ],
+    ['a filesystem root', '/', noConfig],
+    ['a drive root', 'C:\\', noConfig],
+    ['a filesystem root over SSH', '/', { ...noConfig, connectionId: 'ssh-1' }]
   ])('never pre-trusts %s for any preset', async (_label, workspacePath, context) => {
     for (const preset of [
       'claude',
