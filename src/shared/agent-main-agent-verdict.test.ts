@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   agentMainAgentVerdict,
   agentTurnEndedUncleanly,
-  agentTurnStoppedByUser,
+  agentTurnEndedOnRequest,
   agentVerdictDisplayMark,
   agentVerdictFields,
   type AgentMainAgentVerdictSource
@@ -47,13 +47,15 @@ describe('agentMainAgentVerdict', () => {
       const label = JSON.stringify(row)
       expect(agentMainAgentVerdict(row), label).toBe(verdict)
       expect(agentTurnEndedUncleanly(row), label).toBe(verdict !== null && verdict !== 'success')
-      expect(agentTurnStoppedByUser(row), label).toBe(verdict === 'cancellation')
+      expect(agentTurnEndedOnRequest(row), label).toBe(
+        verdict === 'cancellation' || verdict === 'superseded'
+      )
       expect(agentVerdictDisplayMark(row), label).toBe(
         verdict === 'failure' || verdict === 'interruption'
           ? 'failed'
           : row.state !== 'done'
             ? null
-            : verdict === 'cancellation'
+            : verdict === 'cancellation' || verdict === 'superseded'
               ? 'interrupted'
               : verdict === 'unconfirmed'
                 ? 'unconfirmed'
@@ -100,6 +102,8 @@ describe('agentMainAgentVerdict', () => {
       ['success', null],
       ['failure', 'failed'],
       ['cancellation', 'interrupted'],
+      // A newer request replaced it: not news, and no one to name.
+      ['superseded', 'interrupted'],
       ['interruption', 'failed'],
       ['unconfirmed', 'unconfirmed']
     ] as const) {
@@ -119,7 +123,7 @@ describe('agentMainAgentVerdict', () => {
       expect(agentVerdictDisplayMark(row)).toBe(mark)
       expect(agentTurnEndedUncleanly(row)).toBe(true)
       // Nobody asked for it, so attention ranks it as news, like a completion or a failure.
-      expect(agentTurnStoppedByUser(row)).toBe(false)
+      expect(agentTurnEndedOnRequest(row)).toBe(false)
     }
   })
 

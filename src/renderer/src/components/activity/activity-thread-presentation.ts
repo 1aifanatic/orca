@@ -78,6 +78,7 @@ export function agentTitle(event: ActivityEvent): string {
       case 'interruption':
         return 'Agent failed'
       case 'cancellation':
+      case 'superseded':
         return 'Agent interrupted'
       case 'unconfirmed':
         return 'Couldn’t confirm agent finished'
@@ -112,6 +113,7 @@ export function agentMeta(event: ActivityEvent): string {
       case 'interruption':
         return `${agent} failed`
       case 'cancellation':
+      case 'superseded':
         return `${agent} interrupted`
       case 'unconfirmed':
         return `${agent} unconfirmed`

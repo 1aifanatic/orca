@@ -89,12 +89,17 @@ export class ClaudeOpenTurn {
 
   /** Open a turn, ending whichever one was still open. A new turn starting is the
    *  only end the previous one gets when its result never arrives; settling it
-   *  later would sweep THIS turn. */
+   *  later would sweep THIS turn. The replaced turn is recorded superseded: a newer
+   *  request ended it, whoever sent that request. */
   open(turn: ClaudeCurrentTurn, observedAt: number): void {
     this.deps.onOpen?.()
     if (this.current) {
       this.deps.settleChildren(this.groupKey)
-      this.publish(this.current, { state: 'interrupted', completedAt: observedAt })
+      this.publish(this.current, {
+        state: 'interrupted',
+        completedAt: observedAt,
+        outcome: 'superseded'
+      })
     }
     this.current = turn
     this.publish(turn)

@@ -3,10 +3,17 @@ import type { AgentJournalTurnLifecycleState } from './agent-session-journal-typ
 /** The verdict on what became of a turn, kept separate from any lifecycle state
  *  so those stay a report on what the HOST observed. `cancellation` is a stop
  *  somebody asked for, `failure` is the provider's own error, and the two are
- *  never interchangeable: only `failure` is a fault. The journal's turn record
- *  holds only these provider verdicts and never infers one. Absent always means
- *  UNKNOWN, never success. */
-export const AGENT_JOURNAL_TURN_OUTCOMES = ['success', 'failure', 'cancellation'] as const
+ *  never interchangeable: only `failure` is a fault. `superseded` is a turn a newer
+ *  request replaced before it ended, which the host records at the replacement; it
+ *  names no sender. The journal's turn record holds only these recorded verdicts and
+ *  never infers one. Absent always means UNKNOWN, never success. Older builds read an
+ *  arm they do not know as absent. */
+export const AGENT_JOURNAL_TURN_OUTCOMES = [
+  'success',
+  'failure',
+  'cancellation',
+  'superseded'
+] as const
 export type AgentJournalTurnOutcome = (typeof AGENT_JOURNAL_TURN_OUTCOMES)[number]
 
 export function isAgentJournalTurnOutcome(value: unknown): value is AgentJournalTurnOutcome {

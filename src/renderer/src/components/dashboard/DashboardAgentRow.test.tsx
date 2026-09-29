@@ -347,6 +347,17 @@ describe('DashboardAgentRow', () => {
     }
   )
 
+  it('renders a turn a newer request replaced as interrupted, naming no one', () => {
+    const markup = renderEndedRow({
+      mainAgent: { state: 'done', outcome: 'superseded', stateStartedAt: 2_000 }
+    })
+
+    expect(markup).toContain('aria-label="Interrupted"')
+    expect(markup).not.toContain('Interrupted by user')
+    expect(markup).toContain('>interrupted<')
+    expect(markup).toContain('bg-muted-foreground')
+  })
+
   it('reserves a real working tool line before tool metadata arrives', () => {
     const emptyToolMarkup = renderRow(makeAgent())
     const activeToolMarkup = renderRow(

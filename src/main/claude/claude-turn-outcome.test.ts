@@ -166,23 +166,12 @@ describe('claudeTurnLifecycleItem', () => {
 })
 
 describe('a turn end the host inferred', () => {
-  it.each([
-    [
-      'the child ending',
-      (translator: ReturnType<typeof createClaudeJournalTranslator>) =>
-        translator.handle({ type: 'ended', sessionId: 'orca-session', reason: 'closed' })
-    ],
-    [
-      'a new turn superseding it',
-      (translator: ReturnType<typeof createClaudeJournalTranslator>) =>
-        translator.handle(userTurn('user-2'))
-    ]
-  ])('records no outcome for a turn ended by %s', (_label, end) => {
+  it('records no outcome for a turn ended by the child ending', () => {
     const state = sinkState()
     const translator = createClaudeJournalTranslator({ sink: state.sink })
 
     translator.handle(userTurn('user-1'))
-    end(translator)
+    translator.handle({ type: 'ended', sessionId: 'orca-session', reason: 'closed' })
 
     // No result frame arrived, so the provider never said what became of the
     // turn. The host observed the END — the arm stays `interrupted` — but the
@@ -200,8 +189,8 @@ describe('a turn end the host inferred', () => {
   })
 
   // The supersede fires for any send Orca dispatched, and nothing here says whether the user or
-  // another agent sent it, so it can never be recorded as the user's stop.
-  it('reads a turn a newer send superseded as cut short by something else, never as a stop', () => {
+  // another agent sent it, so it is recorded as replaced, never as the user's stop or a fault.
+  it('records a turn a newer send superseded as superseded, folded as interrupted', () => {
     const state = sinkState()
     const translator = createClaudeJournalTranslator({ sink: state.sink })
     let observedAt = 1_000
@@ -230,14 +219,17 @@ describe('a turn end the host inferred', () => {
         : [row]
     })
     const superseded = items.find((item) => readAgentJournalTurn(item.body)?.turnId === 'user-1')
-    expect(superseded?.body).not.toHaveProperty('outcome')
+    expect(readAgentJournalTurn(superseded?.body)).toMatchObject({
+      state: 'interrupted',
+      outcome: 'superseded'
+    })
     const settled = selectStructuredAgentSettledTurns(items).get(
       readAgentJournalTurn(superseded?.body)?.userItemId ?? ''
     )
-    expect(settled).toMatchObject({ verdict: 'interruption', workedSeconds: 12 })
+    expect(settled).toMatchObject({ verdict: 'superseded', workedSeconds: 12 })
     expect(
       settled && describeNativeChatTurnStatus({ elapsedSeconds: 0, ...settled })
-    ).toMatchObject({ key: 'failedAfter', duration: '12s' })
+    ).toMatchObject({ key: 'interruptedAfter', duration: '12s' })
   })
 })
 

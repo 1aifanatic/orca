@@ -41,6 +41,7 @@ describe('describeNativeChatTurnStatus', () => {
 
   it.each([
     ['cancellation', 'interruptedAfter'],
+    ['superseded', 'interruptedAfter'],
     // A turn anything but the user cut short reads as a failure does.
     ['interruption', 'failedAfter'],
     ['failure', 'failedAfter'],

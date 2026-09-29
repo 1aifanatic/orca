@@ -114,6 +114,15 @@ describe('worktree card agent summary', () => {
     expect(getCompactAgentSecondary(interrupted, 0)).toBe('Failed')
     expect(getAgentDotState(stopped)).toBe('interrupted')
     expect(getCompactAgentSecondary(stopped, 0)).toBe('Interrupted by user')
+    const replaced = {
+      ...done,
+      entry: {
+        ...done.entry,
+        mainAgent: { state: 'done' as const, outcome: 'superseded' as const, stateStartedAt: 1 }
+      }
+    }
+    expect(getAgentDotState(replaced)).toBe('interrupted')
+    expect(getCompactAgentSecondary(replaced, 0)).toBe('Interrupted')
     expect(summarizeAgents([done, interrupted, stopped], 'Agents')).toBe(
       'Agents: 1 failed, 1 interrupted, 1 done'
     )

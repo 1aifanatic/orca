@@ -218,7 +218,9 @@ works (including a child's permission wait) refuses OSC, which carries no child
 identity; the children's own lifecycle hooks settle it. `outcome` is the recorded verdict on
 the main agent's most recent finished turn, present only while `mainAgent.state` is
 `done`. It is reported by the provider, or is a `cancellation` Orca inferred
-from the user's own interrupt keystroke, or, on a structured row whose turn the
+from the user's own interrupt keystroke, or a `superseded` the host recorded when
+a newer request replaced a structured Claude turn before it ended (it names no
+sender, and sets no legacy flag), or, on a structured row whose turn the
 provider gave no verdict, is what the host observed of its end: `interruption`
 (a proven death nobody asked for) or `unconfirmed` (an end it cannot prove,
 never success). The journal's turn outcome, by contrast, is never inferred. A plain end of turn carries none, because absent
@@ -260,7 +262,8 @@ Policy splits the verdict two ways. Clean-finish policy (hibernation, pane
 ownership, the star-nag value moment) treats a failure, an interruption and an
 unconfirmed end like a cancellation (`agentTurnEndedUncleanly`). Attention
 (completion time, Smart Sort, sticky retention, Cmd+J Recent) demotes only a
-turn the user stopped (`agentTurnStoppedByUser`); a failure, an interruption or
+turn a request ended, the user's stop or a newer request that replaced it
+(`agentTurnEndedOnRequest`); a failure, an interruption or
 an unconfirmed end ranks like a completion.
 
 Admission is one function, `normalizeAgentStatusPayload`, on the relay wire,

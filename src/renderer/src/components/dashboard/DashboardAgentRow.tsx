@@ -10,7 +10,10 @@ import { DashboardAgentRowToolStep } from './DashboardAgentRowToolStep'
 import { showsAgentToolPreview } from '@/lib/agent-row-tool-preview'
 import { agentNoUpdateLabel, formatCompactDuration } from '@/lib/agent-row-decay-state'
 import { agentRowDotState as asDotState } from '@/lib/agent-row-dot-state'
-import { agentVerdictDisplayMark } from '../../../../shared/agent-main-agent-verdict'
+import {
+  agentMainAgentVerdict,
+  agentVerdictDisplayMark
+} from '../../../../shared/agent-main-agent-verdict'
 import { agentVerdictStatusLine } from '@/lib/agent-verdict-status-line'
 import type { DashboardAgentRow as DashboardAgentRowData } from './useDashboardData'
 import { getAgentRowPrimaryText } from '@/lib/agent-row-primary-text'
@@ -301,6 +304,7 @@ const DashboardAgentRow = React.memo(function DashboardAgentRow({
       <DashboardAgentRowMessage
         expanded={expanded}
         isInterrupted={isInterrupted}
+        stoppedByUser={agentMainAgentVerdict(agent.entry) === 'cancellation'}
         lastAssistantMessage={lastAssistantMessage}
       />
     </div>

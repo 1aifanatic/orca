@@ -81,6 +81,11 @@ const SNAPSHOTS: HookSnapshot[] = [
   snapshot('unproven', {
     state: 'done',
     mainAgent: { state: 'done', outcome: 'unconfirmed', stateStartedAt: NOW - 600_000 }
+  }),
+  // A turn a newer request replaced: recorded, not a user's stop, so it sets no flag either.
+  snapshot('replaced', {
+    state: 'done',
+    mainAgent: { state: 'done', outcome: 'superseded', stateStartedAt: NOW - 600_000 }
   })
 ]
 
@@ -178,10 +183,12 @@ describe('cross-version worktree ps verdict', () => {
       'failed-working': 'working',
       stopped: 'interrupted',
       'crash-cut': 'done',
-      unproven: 'done'
+      unproven: 'done',
+      replaced: 'done'
     })
     expect(rows['crash-cut']).toMatchObject({ interrupted: false })
     expect(rows.unproven).toMatchObject({ interrupted: false })
+    expect(rows.replaced).toMatchObject({ interrupted: false })
   })
 
   it('a NEW phone reads an old host row, which has no mainAgent, by the same flag', () => {
@@ -192,7 +199,8 @@ describe('cross-version worktree ps verdict', () => {
       // Both phones draw a user's Stop interrupted; only the new one draws it muted.
       stopped: 'interrupted',
       'crash-cut': 'done',
-      unproven: 'done'
+      unproven: 'done',
+      replaced: 'done'
     })
     // Without the main agent's clock the row dates itself, as it always did.
     expect(agentRowTimeAt(rows['failed-working'])).toBe(NOW - 600_000)
@@ -205,7 +213,8 @@ describe('cross-version worktree ps verdict', () => {
       'failed-working': 'failed',
       stopped: 'interrupted',
       'crash-cut': 'failed',
-      unproven: 'unconfirmed'
+      unproven: 'unconfirmed',
+      replaced: 'interrupted'
     })
     expect(rows['failed-working']).toMatchObject({
       state: 'working',

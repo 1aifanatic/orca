@@ -84,8 +84,10 @@ function formatAgentNotificationStatusText(args: NotificationDispatchRequest): s
     case 'failure':
     case 'interruption':
       return translateMain('notifications.agentStatus.failed', 'failed')
-    // Why: a Stop the user asked for, or an end Orca cannot prove, still never reads finished.
+    // Why: a Stop the user asked for, a turn a newer request replaced, or an end Orca cannot
+    // prove, still never reads finished.
     case 'cancellation':
+    case 'superseded':
     case 'unconfirmed':
       return translateMain('notifications.agentStatus.stopped', 'stopped')
     case 'success':

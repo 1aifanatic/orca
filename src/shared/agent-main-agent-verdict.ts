@@ -49,8 +49,9 @@ export function agentMainAgentVerdict(row: AgentMainAgentVerdictSource): AgentTu
 /**
  * What the verdict marks on the agent's own display. A fault, whether the turn failed or something
  * other than the user cut it short, reads failed and outranks every combined state: it is news the
- * user must see even while subagents still run. A user's Stop reads interrupted, and an unproven
- * end unconfirmed, only on a row that is itself done, so live child work still reads working.
+ * user must see even while subagents still run. A user's Stop, or a turn a newer request replaced,
+ * reads interrupted, and an unproven end unconfirmed, only on a row that is itself done, so live
+ * child work still reads working.
  */
 export function agentVerdictDisplayMark(
   row: AgentMainAgentVerdictSource
@@ -60,6 +61,7 @@ export function agentVerdictDisplayMark(
     case 'interruption':
       return 'failed'
     case 'cancellation':
+    case 'superseded':
       return row.state === 'done' ? 'interrupted' : null
     case 'unconfirmed':
       return row.state === 'done' ? 'unconfirmed' : null
@@ -69,12 +71,13 @@ export function agentVerdictDisplayMark(
   }
 }
 
-/** The turn ended without finishing its work: stopped, failed, cut off, or unproven. Clean-finish
- *  policy (hibernation, pane ownership, the value moment) treats them all alike. */
+/** The turn ended without finishing its work: stopped, replaced, failed, cut off, or unproven.
+ *  Clean-finish policy (hibernation, pane ownership, the value moment) treats them all alike. */
 export function agentTurnEndedUncleanly(row: AgentMainAgentVerdictSource): boolean {
   const verdict = agentMainAgentVerdict(row)
   switch (verdict) {
     case 'cancellation':
+    case 'superseded':
     case 'failure':
     case 'interruption':
     case 'unconfirmed':
@@ -85,13 +88,15 @@ export function agentTurnEndedUncleanly(row: AgentMainAgentVerdictSource): boole
   }
 }
 
-/** The user stopped the turn. Attention (completion time, Smart Sort, sticky retention) demotes
- *  only this: a failure, or a turn cut off or ended in a way nobody asked for, is news the user has
- *  not seen, so it ranks like a completion. */
-export function agentTurnStoppedByUser(row: AgentMainAgentVerdictSource): boolean {
+/** A request ended the turn: the user's Stop, or a newer request that replaced it. Attention
+ *  (completion time, Smart Sort, sticky retention) demotes only this: a failure, or a turn cut off
+ *  or ended in a way nobody asked for, is news the user has not seen, so it ranks like a
+ *  completion. */
+export function agentTurnEndedOnRequest(row: AgentMainAgentVerdictSource): boolean {
   const verdict = agentMainAgentVerdict(row)
   switch (verdict) {
     case 'cancellation':
+    case 'superseded':
       return true
     case 'success':
     case 'failure':

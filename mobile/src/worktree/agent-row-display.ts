@@ -30,6 +30,7 @@ const AGENT_TURN_OUTCOMES: readonly AgentTurnOutcome[] = [
   'success',
   'failure',
   'cancellation',
+  'superseded',
   'interruption',
   'unconfirmed'
 ]
@@ -49,7 +50,8 @@ export function agentRowVerdict(row: AgentRowVerdictSource): AgentTurnOutcome | 
 }
 
 // A fault (a failure, or a turn cut short by something other than the user) reads failed and
-// outranks every state; a user's Stop and an unproven end mark only a row that is itself done.
+// outranks every state; a user's Stop, a turn a newer request replaced, and an unproven end mark
+// only a row that is itself done.
 export function agentRowVerdictMark(
   row: AgentRowVerdictSource
 ): 'failed' | 'interrupted' | 'unconfirmed' | null {
@@ -58,6 +60,7 @@ export function agentRowVerdictMark(
     case 'interruption':
       return 'failed'
     case 'cancellation':
+    case 'superseded':
       return row.state === 'done' ? 'interrupted' : null
     case 'unconfirmed':
       return row.state === 'done' ? 'unconfirmed' : null

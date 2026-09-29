@@ -57,6 +57,10 @@ describe('agentDotState', () => {
       agentDotState(row({ state: 'done', ...mainAgentDone('cancellation'), interrupted: true }), 0)
     ).toBe('interrupted')
     expect(agentDotState(row({ state: 'done', ...mainAgentDone('success') }), 0)).toBe('done')
+    // A turn a newer request replaced reads as a Stop does.
+    expect(agentDotState(row({ state: 'done', ...mainAgentDone('superseded') }), 0)).toBe(
+      'interrupted'
+    )
   })
 
   it('reads a crash-cut turn as failed and an unproven end as unconfirmed', () => {

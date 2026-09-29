@@ -41,8 +41,8 @@ export function describeNativeChatTurnStatus({
 }: {
   workedSeconds?: number | null
   elapsedSeconds: number
-  /** How the settled turn ended: a user's Stop reads interrupted, and a failure or a turn anything
-   *  else cut short reads failed. */
+  /** How the settled turn ended: a user's Stop or a newer request's replacement reads interrupted,
+   *  and a failure or a turn anything else cut short reads failed. */
   verdict?: AgentTurnOutcome
 }): {
   key: 'workingFor' | 'workedFor' | 'interruptedAfter' | 'failedAfter'
@@ -58,6 +58,7 @@ function settledTurnStatusKey(
 ): 'workedFor' | 'interruptedAfter' | 'failedAfter' {
   switch (verdict) {
     case 'cancellation':
+    case 'superseded':
       return 'interruptedAfter'
     case 'failure':
     case 'interruption':
