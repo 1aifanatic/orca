@@ -4,6 +4,7 @@
 import type { UnreadAgentSessionFailureFact } from '../../../../shared/agent-session-failure'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 import type { AgentSessionQueuedMessage } from '../../../../shared/agent-session-wire'
+import { handedOffQueuedMessageIds } from '../../../../shared/structured-agent-session-draft-hand-off'
 import {
   admitStructuredAgentSessionOutboxEntry,
   type StructuredAgentSessionOutboxEntry
@@ -35,27 +36,23 @@ function queuedMessageCardText(body: AgentSessionQueuedMessage['body']): string 
 }
 
 /**
- * Cards in queue order. A waiting card whose submission already arrived is
- * suppressed locally: on a multi-page catch-up the shrunk list rides only the
- * final page, so the bubble and the card would otherwise briefly coexist.
- * Presentation only — no durable state. Returned cards never suppress: their
- * consumed submission exists precisely because it was refused. Nor does a rejected
- * submission hide a waiting card: beside one, it is a draft a Stop put back under the
- * same id, and the transcript does not show a rejected submission either.
+ * Cards in queue order. A waiting card is hidden once a submission hands it off
+ * (`queuedMessageId`) and that hand-off is live: on a multi-page catch-up the shrunk
+ * list rides only the final page, so the bubble and the card would otherwise briefly
+ * coexist. A rejected hand-off is exactly what sent the draft back, so it hides
+ * nothing. Presentation only — no durable state. Returned cards never hide.
  */
 export function projectQueuedMessageCards(
   queuedMessages: readonly AgentSessionQueuedMessage[] | null | undefined,
   submissions: readonly AgentJournalSubmission[],
   session: { hasPendingPrompt: boolean }
 ): QueuedMessageCard[] {
-  const consumed = new Set(
-    submissions
-      .filter((submission) => submission.dispatchState !== 'rejected')
-      .map((submission) => submission.clientMessageId)
+  const handedOff = handedOffQueuedMessageIds(
+    submissions.filter((submission) => submission.dispatchState !== 'rejected')
   )
   const ordered = [...(queuedMessages ?? [])]
     .sort((left, right) => left.position - right.position)
-    .filter((message) => message.state === 'returned' || !consumed.has(message.messageId))
+    .filter((message) => message.state === 'returned' || !handedOff.has(message.messageId))
   let behindReturned = false
   return ordered.map((message) => {
     const hold: QueuedMessageCardHold =

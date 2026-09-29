@@ -1,5 +1,6 @@
 import type { AgentJournalSubmission } from './agent-session-journal-types'
 import type { StructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox'
+import { handedOffQueuedMessageIds } from './structured-agent-session-draft-hand-off'
 
 /** Whether only the user's Retry sends this entry again: a refused one, the one the drain stopped
  *  on, one a Stop outlived, or one in doubt the unconfirmed probe leaves alone. `NativeChatDeliveryRetry` offers it. */
@@ -19,7 +20,10 @@ function unsentStructuredAgentSessionOutboxEntry(
   submissions: readonly AgentJournalSubmission[],
   blockedClientMessageId: string | null
 ): (entry: StructuredAgentSessionOutboxEntry) => boolean {
-  const held = new Set(submissions.map((submission) => submission.clientMessageId))
+  const held = handedOffQueuedMessageIds(submissions)
+  for (const submission of submissions) {
+    held.add(submission.clientMessageId)
+  }
   return (entry) =>
     !held.has(entry.clientMessageId) &&
     !awaitsStructuredAgentSessionRetry(entry, blockedClientMessageId)

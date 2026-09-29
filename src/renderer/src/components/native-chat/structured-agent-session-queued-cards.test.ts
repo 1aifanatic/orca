@@ -28,7 +28,8 @@ function draft(
 
 function submission(
   clientMessageId: string,
-  dispatchState: AgentJournalSubmission['dispatchState'] = 'pending'
+  dispatchState: AgentJournalSubmission['dispatchState'] = 'pending',
+  queuedMessageId?: string
 ): AgentJournalSubmission {
   return {
     clientMessageId,
@@ -38,8 +39,18 @@ function submission(
     providerItemId: null,
     reason: null,
     submittedAt: 1,
-    resolvedAt: null
+    resolvedAt: null,
+    ...(queuedMessageId !== undefined ? { queuedMessageId } : {})
   }
+}
+
+/** The host's hand-off of draft `draftId`, always under a submission id of its own. */
+function handOff(
+  draftId: string,
+  dispatchState: AgentJournalSubmission['dispatchState'] = 'pending',
+  id = `${draftId}-hand-off`
+): AgentJournalSubmission {
+  return submission(id, dispatchState, draftId)
 }
 
 const IDLE = { hasPendingPrompt: false }
@@ -89,28 +100,36 @@ describe('queued message cards', () => {
     expect(cards[0]).toMatchObject({ hold: 'paused', pausedReason: 'send_failed' })
   })
 
-  it('shows a draft a Stop put back beside its rejected first submission', () => {
-    // The Stop withdrew the consumed draft and requeued it under the same id; the journal keeps
-    // the first submission as rejected, and the transcript hides that one too.
+  it('shows a draft a Stop put back: its rejected hand-off is what sent it back', () => {
     const requeued = draft('requeued', 1, { paused: true, pausedReason: 'stopped' })
     expect(
-      projectQueuedMessageCards([requeued], [submission('requeued', 'rejected')], IDLE)
+      projectQueuedMessageCards([requeued], [handOff('requeued', 'rejected')], IDLE)
     ).toMatchObject([{ messageId: 'requeued', state: 'waiting', hold: 'paused' }])
     for (const dispatchState of ['pending', 'accepted'] as const) {
       expect(
-        projectQueuedMessageCards([requeued], [submission('requeued', dispatchState)], IDLE)
+        projectQueuedMessageCards([requeued], [handOff('requeued', dispatchState)], IDLE)
       ).toEqual([])
     }
   })
 
-  it('suppresses a waiting card whose submission already arrived, but never a returned one', () => {
+  it('requeued and drained again under a fresh id, the card and the bubble never show together', () => {
+    // A multi-page catch-up: the new hand-off's bubble arrives before the list that drops the card.
+    const cards = projectQueuedMessageCards(
+      [draft('requeued', 1)],
+      [handOff('requeued', 'rejected', 'first'), handOff('requeued', 'pending', 'second')],
+      IDLE
+    )
+    expect(cards).toEqual([])
+  })
+
+  it('hides a waiting card only by the link, never by a submission id that equals the draft id', () => {
     const cards = projectQueuedMessageCards(
       [
         draft('consumed', 1),
         draft('kept', 2),
         draft('refused', 3, { state: 'returned', returnedReason: null })
       ],
-      [submission('consumed'), submission('refused')],
+      [handOff('consumed'), submission('kept'), handOff('refused', 'rejected')],
       IDLE
     )
     expect(cards.map((card) => card.messageId)).toEqual(['kept', 'refused'])
