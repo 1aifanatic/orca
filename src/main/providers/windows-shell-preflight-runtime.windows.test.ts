@@ -155,6 +155,33 @@ describeWindows('Windows Codex shell preflight runtime', () => {
     expect(readFileSync(startupMarker, 'utf8').trim()).toBe('launched')
   })
 
+  it('still runs the cmd.exe startup command when hook prep is skipped without a managed home', async () => {
+    const root = makeTempDir()
+    const preflight = writeFailingPreflight(root)
+    const preflightMarker = join(root, 'cmd-preflight-ran')
+    const startupMarker = join(root, 'cmd-started')
+    const resolved = resolveWindowsShellLaunchArgs(
+      'cmd.exe',
+      root,
+      root,
+      undefined,
+      'echo launched>cmd-started & exit /b 0',
+      preflight
+    )
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      ORCA_CODEX_LAUNCH_PREFLIGHT: preflight,
+      [ORCA_CODEX_LAUNCH_PREFLIGHT_CMD_QUOTE_ENV]: '"',
+      ORCA_PREFLIGHT_MARKER: preflightMarker
+    }
+    delete env.ORCA_CODEX_HOME
+
+    await runPty({ shellPath: 'cmd.exe', shellArgs: resolved.shellArgs, cwd: root, env })
+
+    expect(existsSync(preflightMarker)).toBe(false)
+    expect(readFileSync(startupMarker, 'utf8').trim()).toBe('launched')
+  })
+
   it('runs the typed-Codex wrapper through Git Bash without MSYS switch rewriting', async () => {
     const gitBash = resolveGitBashPath()
     expect(gitBash).not.toBeNull()
