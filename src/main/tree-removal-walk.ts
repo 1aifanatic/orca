@@ -41,9 +41,8 @@ export async function removeTreeWithBoundedFsCalls(
   lane: TreeRemovalLane
 ): Promise<void> {
   const fs = asarTransparentFs()
-  // Why shared: after the first failure the whole delete stops taking entries, and rejects only
-  // once in-flight calls settle, so a Windows retry never overlaps the failed attempt.
-  const failures: unknown[] = []
+  // Why reject only after every call settles: a Windows retry must never overlap the failed attempt.
+  let firstFailure: { error: unknown } | undefined
 
   // Why unlink/rmdir first: one pool op per entry. `rm` (lstat, Windows read-only fix, lock
   // retries) runs only when that fails.
@@ -67,22 +66,26 @@ export async function removeTreeWithBoundedFsCalls(
       }
     }
     let next = 0
+    // Why siblings still go after a failure: as with Node's `rm`, one stuck entry (e.g. a
+    // root-owned folder) must not strand the rest of the tree, which every later sweep would hit too.
+    let childFailed = false
     const drain = async (): Promise<void> => {
-      while (failures.length === 0 && next < children.length) {
+      while (next < children.length) {
         const child = children[next++]
         const childPath = join(path, child.name)
         try {
           await (child.isDirectory() ? removeTree(childPath) : removeEntry(childPath, false))
         } catch (error) {
-          failures.push(error)
+          firstFailure ??= { error }
+          childFailed = true
         }
       }
     }
     await Promise.all(
       Array.from({ length: Math.min(CHILD_REMOVAL_FAN_OUT, children.length) }, drain)
     )
-    if (failures.length > 0) {
-      throw failures[0]
+    if (childFailed && firstFailure) {
+      throw firstFailure.error
     }
     await removeEntry(path, isDirectory)
   }

@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   symlinkSync,
   writeFileSync
 } from 'node:fs'
@@ -222,12 +223,12 @@ describe('removeTreeWithBoundedFsCalls', () => {
   })
 
   it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
-    'rejects with the fs code and the stuck entry, with no fs call left running',
+    'rejects with the fs code and the stuck entry after removing everything else',
     async () => {
-      useCountedRealFs()
       const root = makeRoot()
-      const target = buildTree(join(root, 'tree'), 3, 4)
+      const target = buildTree(join(root, 'tree'), 6, 4)
       const locked = join(target, 'pkg-1', 'lib')
+      useCountedRealFs()
       chmodSync(locked, 0o500)
       try {
         await expect(
@@ -237,6 +238,8 @@ describe('removeTreeWithBoundedFsCalls', () => {
           path: expect.stringContaining(join('pkg-1', 'lib'))
         })
         expect(walkFs.inFlight).toBe(0)
+        expect(readdirSync(target)).toEqual(['pkg-1'])
+        expect(readdirSync(locked)).toHaveLength(4)
       } finally {
         chmodSync(locked, 0o700)
       }
