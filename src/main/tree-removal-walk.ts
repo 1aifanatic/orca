@@ -2,8 +2,8 @@
 // libuv's 4-thread pool, so every other async fs call in the process (the agent-session store
 // behind chat sends) waited minutes behind it. Every fs call a tree delete makes holds one of two
 // process-wide slots, which keeps the rest of the pool free.
-// Why `rm` per entry and not native recursive `rmSync`: on Windows the native walk follows junctions
-// out of the tree and fails on read-only files; Node's JS `rm` unlinks the link and clears the flag.
+// Why not native recursive `rmSync`: on Windows it follows junctions out of the tree and fails on
+// read-only files. Here lstat keeps links from being followed, and the `rm` fallback clears the flag.
 
 import type { Dirent, RmOptions } from 'node:fs'
 import { join } from 'node:path'
@@ -34,30 +34,6 @@ function isVanishedEntryError(error: unknown): boolean {
   return code === 'ENOENT' || code === 'ENOTDIR'
 }
 
-/** Runs `remove` over `items`, `width` at a time; stops taking items after a failure and rethrows it once all lanes settle. */
-async function removeEach<T>(
-  items: readonly T[],
-  width: number,
-  remove: (item: T) => Promise<void>
-): Promise<void> {
-  const failures: unknown[] = []
-  let next = 0
-  const lane = async (): Promise<void> => {
-    while (failures.length === 0 && next < items.length) {
-      const item = items[next++]
-      try {
-        await remove(item)
-      } catch (error) {
-        failures.push(error)
-      }
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(width, items.length) }, lane))
-  if (failures.length > 0) {
-    throw failures[0]
-  }
-}
-
 /** Recursive remove whose fs calls never take more than two pool threads; rejects with the stuck entry's fs error. */
 export async function removeTreeWithBoundedFsCalls(
   targetPath: string,
@@ -65,6 +41,9 @@ export async function removeTreeWithBoundedFsCalls(
   lane: TreeRemovalLane
 ): Promise<void> {
   const fs = asarTransparentFs()
+  // Why shared: after the first failure the whole delete stops taking entries, and rejects only
+  // once in-flight calls settle, so a Windows retry never overlaps the failed attempt.
+  const failures: unknown[] = []
 
   // Why unlink/rmdir first: one pool op per entry. `rm` (lstat, Windows read-only fix, lock
   // retries) runs only when that fails.
@@ -87,10 +66,24 @@ export async function removeTreeWithBoundedFsCalls(
         throw error
       }
     }
-    await removeEach(children, CHILD_REMOVAL_FAN_OUT, (child) => {
-      const childPath = join(path, child.name)
-      return child.isDirectory() ? removeTree(childPath) : removeEntry(childPath, false)
-    })
+    let next = 0
+    const drain = async (): Promise<void> => {
+      while (failures.length === 0 && next < children.length) {
+        const child = children[next++]
+        const childPath = join(path, child.name)
+        try {
+          await (child.isDirectory() ? removeTree(childPath) : removeEntry(childPath, false))
+        } catch (error) {
+          failures.push(error)
+        }
+      }
+    }
+    await Promise.all(
+      Array.from({ length: Math.min(CHILD_REMOVAL_FAN_OUT, children.length) }, drain)
+    )
+    if (failures.length > 0) {
+      throw failures[0]
+    }
     await removeEntry(path, isDirectory)
   }
 
