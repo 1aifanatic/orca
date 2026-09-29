@@ -11,6 +11,7 @@ vi.mock('@/store', () => ({ useAppStore: () => undefined }))
 const STORE_WRITES = 2_000
 
 function storeState(): AppState {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the selector reads only the slices listed here; the rest of AppState is never touched in this test.
   return {
     repos: [],
     worktreesByRepo: {},
