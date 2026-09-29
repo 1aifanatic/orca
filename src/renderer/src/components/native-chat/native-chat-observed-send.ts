@@ -45,10 +45,9 @@ export function sendNativeChatObservedWrites(
               }
               writeAt(index + 1)
             })
-            .catch(() => {
-              // An acknowledgment may have been lost; do not retry the bytes or claim rejection.
-              markSubmitted()
-            })
+            // A lost acknowledgment is not a refusal: never re-send these bytes, but still submit
+            // a body that may have landed, as the unobserved path does.
+            .catch(() => writeAt(index + 1))
         }
         if (write.delayBeforeMs > 0) {
           delay(write.delayBeforeMs, send)
