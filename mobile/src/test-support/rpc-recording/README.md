@@ -219,11 +219,12 @@ early request every downstream checkpoint re-states — touches the same 16 file
 under version 2 that is ±17,100 lines and 1.03 MB of diff, and under version 3 ±3,764 lines and
 0.20 MB, because a moved entry no longer rewrites every field value that contains it.
 
-`readGolden` refuses any other `goldenFormatVersion`, checks that every pooled entry hashes to its
-own key and that no entry sits in the pool unreferenced — content addressing is what keeps an entry
-shared across checkpoints honest, and an unread entry would be content in the file that nothing
-compares. It then resolves hashes back to values, and `compareGolden` reports the scenario, the
-checkpoint id, the field, the JSON path inside it, and both resolved values.
+`readGolden` refuses any other `goldenFormatVersion` and any top-level key a recording never writes,
+checks that every pooled entry hashes to its own key and that no entry sits in the pool unreferenced
+— content addressing is what keeps an entry shared across checkpoints honest, and an unread entry
+would be content in the file that nothing compares. It then resolves hashes back to values, and
+`compareGolden` reports the scenario, the checkpoint id, the field, the JSON path inside it, and
+both resolved values.
 
 ### Prelude checkpoints
 

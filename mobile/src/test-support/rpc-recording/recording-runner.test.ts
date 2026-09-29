@@ -129,7 +129,7 @@ describe('recording boundaries', () => {
     }
   })
 
-  it('writes only in record mode and names the command for a missing or stale golden', async () => {
+  it('writes only in record mode and names the command for a missing, stale or hand-merged golden', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'rpc-recording-'))
     const golden = sampleGolden('test')
     try {
@@ -149,6 +149,16 @@ describe('recording boundaries', () => {
       )
       expect(() => readGolden(directory, 'stale')).toThrow(
         `format version 5; this reader requires ${GOLDEN_FORMAT_VERSION}`
+      )
+      writeFileSync(
+        join(directory, 'merged.json'),
+        JSON.stringify({
+          ...JSON.parse(readFileSync(join(directory, 'test.json'), 'utf8')),
+          baseline: 'abc123'
+        })
+      )
+      expect(() => readGolden(directory, 'merged')).toThrow(
+        'Golden merged has keys a recording never writes: baseline.'
       )
     } finally {
       rmSync(directory, { recursive: true })

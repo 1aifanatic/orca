@@ -17,6 +17,14 @@ import type { Recording, RecordingScenario } from './recording-scenario'
 export const GOLDEN_FORMAT_VERSION = 6
 /** How many grouped differences one failure prints in full. */
 const REPORTED_DIFFERENCES = 8
+const GOLDEN_FILE_KEYS = new Set([
+  'goldenFormatVersion',
+  'operation',
+  'family',
+  'namedDeltas',
+  'values',
+  'recording'
+])
 export type GoldenRecording = {
   goldenFormatVersion: number
   operation: string
@@ -62,6 +70,14 @@ export function readGolden(directory: string, id: string): GoldenRecording {
   if (version !== GOLDEN_FORMAT_VERSION) {
     throw new Error(
       `Golden ${id} has format version ${JSON.stringify(version)}; this reader requires ${GOLDEN_FORMAT_VERSION}.\n${recordHint(id)}`
+    )
+  }
+  // Decoding drops any other top-level key, so one left behind (a hand-merged old header) would sit
+  // in the file uncompared.
+  const unknownKeys = Object.keys(file ?? {}).filter((key) => !GOLDEN_FILE_KEYS.has(key))
+  if (unknownKeys.length) {
+    throw new Error(
+      `Golden ${id} has keys a recording never writes: ${unknownKeys.join(', ')}.\n${recordHint(id)}`
     )
   }
   return { goldenFormatVersion: GOLDEN_FORMAT_VERSION, ...decodeGoldenFile(file, id) }
@@ -116,8 +132,7 @@ export function compareGolden(expected: GoldenRecording, actual: GoldenRecording
   if (differences.length > REPORTED_DIFFERENCES) {
     problems.push(`… ${differences.length - REPORTED_DIFFERENCES} more differences`)
   }
-  // The field compares ignore key order and the bytes do not; the committed bytes are what a
-  // re-record would write, so they decide last.
+  // The field compares ignore key order and the re-encoded bytes do not, so the bytes decide last.
   if (!problems.length && goldenBytes(expected) !== goldenBytes(actual)) {
     problems.push('encoding: every field matches but the file bytes do not')
   }
