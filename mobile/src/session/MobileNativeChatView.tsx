@@ -13,6 +13,10 @@ import { GestureDetector, GestureHandlerRootView } from 'react-native-gesture-ha
 import { ArrowDown, ChevronsDownUp, ChevronsUpDown, Square } from 'lucide-react-native'
 import type { AskAnswerSelection, AskPrompt } from '../../../src/shared/native-chat-ask'
 import type { NativeChatMessage } from '../../../src/shared/native-chat-types'
+import {
+  nativeChatSubagentLabel,
+  nativeChatSubagentLabels
+} from '../../../src/shared/native-chat-subagent-attribution'
 import type {
   NativeChatLiveTurnIndicator,
   NativeChatSettledTurns
@@ -62,6 +66,8 @@ type Props = {
   /** Structured lane: host-recorded turn timing feeding the per-turn status rows. */
   workingStartedAt?: number | null
   settledTurns?: NativeChatSettledTurns | null
+  /** Structured lane: the user message the host says opened the running turn. */
+  activeTurnOpenedBy?: string | null
   /** Interrupt the agent mid-turn (shown as a Stop button on the working bar). */
   /** Interrupt a provider turn. */
   onStop?: () => void
@@ -147,6 +153,7 @@ export function MobileNativeChatView({
   turnIndicator = null,
   workingStartedAt,
   settledTurns,
+  activeTurnOpenedBy = null,
   onStop,
   streaming,
   hasMore,
@@ -209,6 +216,7 @@ export function MobileNativeChatView({
       }),
     [messages, folded, streaming, pending, imagePreviewsByMessageId]
   )
+  const subagentLabels = useMemo(() => nativeChatSubagentLabels(messages), [messages])
   const {
     listRef,
     showJumpToTail,
@@ -265,6 +273,7 @@ export function MobileNativeChatView({
     isWorking: agentWorking === true,
     workingStartedAt,
     settledTurns,
+    activeTurnOpenedBy,
     thinking: turnIndicator?.thinking === true,
     activityText: turnIndicator?.activityText ?? null,
     scopeKey: sendSurfaceId
@@ -281,10 +290,11 @@ export function MobileNativeChatView({
         onOpenFile={onOpenFile}
         structuredActivityUi={structuredActivityUi}
         onToggleTurn={turns.onToggleTurn}
+        subagentLabel={nativeChatSubagentLabel(subagentLabels, item)}
         {...turns.resolveRow(index, item)}
       />
     ),
-    [toolsExpanded, fontScale, onOpenFile, structuredActivityUi, turns]
+    [toolsExpanded, fontScale, onOpenFile, structuredActivityUi, subagentLabels, turns]
   )
 
   const emptyState = mobileNativeChatEmptyState(status, agent ?? null, error)
