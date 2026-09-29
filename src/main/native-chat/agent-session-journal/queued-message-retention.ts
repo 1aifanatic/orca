@@ -2,6 +2,7 @@
 // as long as anything could still read it — a replayed operation, or a late refusal returning it.
 
 import type Database from '../../sqlite/sync-database'
+import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import { listQueuedMessages } from './queued-message-table'
 
 /** What the loaded journal says about a dispatched draft's consumed submission. */
@@ -53,4 +54,21 @@ export function pruneQueuedMessages(
     }
   }
   return pruned
+}
+
+/** How retention reads a consumed submission from the loaded journal. Run after the
+ *  owed settlements, which already settled every rejected row. */
+export function retainedSubmissionVerdict(
+  submissions: ReadonlyMap<string, AgentJournalSubmission>
+): (consumedRef: string) => QueuedMessageSubmissionVerdict {
+  return (consumedRef) => {
+    const submission = submissions.get(consumedRef)
+    if (!submission) {
+      return 'absent'
+    }
+    if (submission.dispatchState === 'accepted' || submission.dispatchState === 'unknown') {
+      return 'terminal-not-refused'
+    }
+    return submission.dispatchState === 'rejected' ? 'rejected' : 'pending'
+  }
 }

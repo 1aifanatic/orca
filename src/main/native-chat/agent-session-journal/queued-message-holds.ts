@@ -4,7 +4,6 @@
 // conversion that failed, which an explicit Send releases.
 
 import type Database from '../../sqlite/sync-database'
-import { retireQueuePauseIfEmpty } from './queued-message-pause-table'
 import type { QueuedMessageHoldReason } from './queued-message-table'
 
 /** Hold waiting drafts from auto-sending. The hold retires with the row: consume
@@ -25,9 +24,6 @@ export function holdQueuedMessages(
   let held = 0
   for (const messageId of input.messageIds) {
     held += Number(update.run(input.reason, input.sessionId, messageId, input.reason).changes ?? 0)
-  }
-  if (held > 0) {
-    retireQueuePauseIfEmpty(db, input.sessionId)
   }
   return held
 }
