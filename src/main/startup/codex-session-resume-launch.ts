@@ -6,10 +6,11 @@ import { prepareCodexSessionResume } from '../codex/codex-session-resume-prepara
 import { prepareLegacySharedCodexSessionResume } from '../codex/codex-legacy-session-resume'
 import { ManagedCodexHomeTemporarilyUnavailableError } from '../codex-accounts/host-codex-managed-home-ownership'
 import { codexHookService } from '../codex/hook-service'
+import { ensureRealHomeCodexHookState } from '../codex/codex-real-home-hook-install'
 import {
-  awaitRealHomeCodexHookTrust,
-  ensureRealHomeCodexHookState
-} from '../codex/codex-real-home-hook-install'
+  readRealHomeCodexSessionHookTrust,
+  type CodexSessionHookTrust
+} from '../codex/codex-real-home-session-hook-trust'
 import { isAgentStatusHooksEnabledForAgent } from '../agent-hooks/managed-agent-hook-controls'
 import { markCodexProjectTrusted } from '../agent-trust-presets'
 import { awaitAgentTrustWriteWithinDeadline } from '../agent-trust-write-deadline'
@@ -39,6 +40,7 @@ export async function prepareCodexSessionResumeForLaunch(args: {
   // readable alias wins. A throw here refuses the whole resume instead
   // (#STA-4422).
   const selectedAccountCodexHome = runtimeHome.resolveSelectedHostAccountCodexHomePathForResume()
+  let sessionHookTrust: CodexSessionHookTrust[] = []
   // Why: a `fresh` outcome must skip migration, trust and hook repair entirely — there is
   // no verified origin home to prepare, so the PTY layer drops the resume argv (#10793).
   const preparation = await prepareCodexSessionResume({
@@ -106,9 +108,9 @@ export async function prepareCodexSessionResumeForLaunch(args: {
             userDataPath: app.getPath('userData'),
             writePolicy: 'add-missing-only'
           })
-          // Why wait: an unapproved entry would show hook review in this pane, and
-          // the grant's own settle is the only one that cannot race Codex's write.
-          await awaitRealHomeCodexHookTrust()
+          // Why no wait: the session lives here, so instead of waiting on Codex's
+          // approval this process alone trusts Orca's entries while it runs.
+          sessionHookTrust = hooksEnabled ? readRealHomeCodexSessionHookTrust() : []
         } else if (hooksEnabled) {
           await codexHookService.installForLaunchPrep(resumeHome)
         } else {
@@ -126,7 +128,8 @@ export async function prepareCodexSessionResumeForLaunch(args: {
         ...preparation,
         reconcileSharedRuntimeAuth:
           normalizeRuntimePathForComparison(preparation.codexHomePath) ===
-          normalizeRuntimePathForComparison(getOrcaManagedCodexHomePath())
+          normalizeRuntimePathForComparison(getOrcaManagedCodexHomePath()),
+        ...(sessionHookTrust.length > 0 ? { sessionHookTrust } : {})
       }
     : preparation
 }

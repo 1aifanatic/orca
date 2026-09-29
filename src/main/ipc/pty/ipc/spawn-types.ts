@@ -115,7 +115,7 @@ export type PtySpawnIpcDeps = {
     resumeHome: Extract<CodexSessionResumePreparation, { outcome: 'resume' }>,
     resolveCurrent: () => string | null | Promise<string | null>
   ) => Promise<string>
-  stripSequencedStartupResumeArgv: <T extends Record<string, string> | undefined>(
+  rewriteSequencedStartupResumeArgv: <T extends Record<string, string> | undefined>(
     env: T,
     launch: CodexResumeLaunch
   ) => T

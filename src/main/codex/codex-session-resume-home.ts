@@ -7,6 +7,7 @@ import {
 } from '../../shared/cross-platform-path'
 import { listCodexSessionRolloutFilesIncrementally } from './codex-session-file-listing'
 import { ManagedCodexHomeTemporarilyUnavailableError } from '../codex-accounts/host-codex-managed-home-ownership'
+import type { CodexSessionHookTrust } from './codex-real-home-session-hook-trust'
 
 // Why: only Codex's dated rollout layout may establish account-home provenance; nested/misplaced JSONL must not select credentials.
 const CLAIMED_CODEX_ROLLOUT_TAIL = String.raw`\d{4}/\d{2}/\d{2}/rollout-[^/]+\.jsonl(?:\.zst)?`
@@ -20,9 +21,15 @@ const CODEX_ROLLOUT_LAYOUT_PATH = new RegExp(`(?:^|/)sessions/${CLAIMED_CODEX_RO
  *  unverifiable rollout must never resume under whichever account is selected now.
  *  `reconcileSharedRuntimeAuth` revalidates mutable shared-home auth before spawn.
  *  `claimedCodexProvenance` gates the user-facing notice: a path that claimed real
- *  Codex layout is worth reporting, stale cross-agent metadata is not. */
+ *  Codex layout is worth reporting, stale cross-agent metadata is not.
+ *  `sessionHookTrust` trusts Orca's own not-yet-approved entries for this one process. */
 export type CodexSessionResumePreparation =
-  | { outcome: 'resume'; codexHomePath: string; reconcileSharedRuntimeAuth?: boolean }
+  | {
+      outcome: 'resume'
+      codexHomePath: string
+      reconcileSharedRuntimeAuth?: boolean
+      sessionHookTrust?: readonly CodexSessionHookTrust[]
+    }
   | { outcome: 'fresh'; claimedCodexProvenance: boolean }
 
 // Why: fold only Win32's extended drive spelling; \\.\ device namespaces and every other \\?\ form

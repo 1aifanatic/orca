@@ -33,6 +33,34 @@ function stripSuffix(command: string, suffix: string): string | null {
   return trimmed.length > 0 ? trimmed : null
 }
 
+/** Where `buildAgentResumeStartupPlan` appended the resume argv: `base` is the
+ *  plain agent launch and `suffix` the argv exactly as it was quoted. */
+export type AgentResumeArgvSuffix =
+  | { status: 'found'; base: string; suffix: string }
+  | { status: 'absent' }
+  | { status: 'unrecognized' }
+
+export function findAgentResumeArgvSuffix(args: {
+  command: string
+  agent: ResumableTuiAgent
+  providerSession: AgentProviderSessionMetadata
+}): AgentResumeArgvSuffix {
+  const argv = getAgentResumeArgv(args.agent, args.providerSession)
+  const resumeArgs = argv?.slice(1) ?? []
+  const locator = resumeArgs.at(-1)
+  const command = args.command.trimEnd()
+  if (!locator || !command.includes(locator)) {
+    return { status: 'absent' }
+  }
+  for (const suffix of resumeArgvSuffixCandidates(resumeArgs)) {
+    const base = stripSuffix(command, suffix)
+    if (base !== null && !base.includes(locator)) {
+      return { status: 'found', base, suffix }
+    }
+  }
+  return { status: 'unrecognized' }
+}
+
 /**
  * Remove the resume argv `buildAgentResumeStartupPlan` appended, leaving the plain
  * agent launch. Main uses this when it cannot verify which account owns the session,
@@ -46,18 +74,6 @@ export function dropAgentResumeArgvFromCommand(args: {
   agent: ResumableTuiAgent
   providerSession: AgentProviderSessionMetadata
 }): AgentResumeArgvDrop {
-  const argv = getAgentResumeArgv(args.agent, args.providerSession)
-  const resumeArgs = argv?.slice(1) ?? []
-  const locator = resumeArgs.at(-1)
-  const command = args.command.trimEnd()
-  if (!locator || !command.includes(locator)) {
-    return { status: 'absent' }
-  }
-  for (const suffix of resumeArgvSuffixCandidates(resumeArgs)) {
-    const base = stripSuffix(command, suffix)
-    if (base !== null && !base.includes(locator)) {
-      return { status: 'dropped', command: base }
-    }
-  }
-  return { status: 'unrecognized' }
+  const found = findAgentResumeArgvSuffix(args)
+  return found.status === 'found' ? { status: 'dropped', command: found.base } : found
 }

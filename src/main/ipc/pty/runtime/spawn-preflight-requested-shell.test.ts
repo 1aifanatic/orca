@@ -16,7 +16,8 @@ function makeDeps(): PtyRuntimeControllerDeps {
     command,
     notifyResumeUnavailable: false,
     droppedResumeArgv: false,
-    providerSession: null
+    providerSession: null,
+    sessionHookTrustArgs: null
   })
   return {
     store: undefined,
@@ -31,7 +32,7 @@ function makeDeps(): PtyRuntimeControllerDeps {
     resolveCodexResumeLaunch: async (command) => noCodexResumeLaunch(command),
     noCodexResumeLaunch,
     reconcileSharedRuntimeResumeHome: async (resumeHome) => resumeHome.codexHomePath,
-    stripSequencedStartupResumeArgv: (env) => env,
+    rewriteSequencedStartupResumeArgv: (env) => env,
     assertFolderWorkspacePtyPathUsable: () => undefined,
     resolvePtySpawnStartupCwd: (_worktreeId, cwd) => cwd,
     requestSerializedBuffer: async () => null,

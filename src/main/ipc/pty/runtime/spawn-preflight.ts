@@ -137,7 +137,8 @@ export async function prepareRuntimePtySpawn(
         providerSession: args.resumeProviderSession,
         target: ctx.codexSelectionTarget,
         launchEnv: args.env,
-        workspacePath: ctx.cwd
+        workspacePath: ctx.cwd,
+        shellOverride: ctx.terminalRuntimeOptions.shellOverride
       })
   const codexResumeLaunch = codexResumePreparation
     ? await ctx.deps.resolveCodexResumeLaunch(args.command, codexResumePreparation)
@@ -182,7 +183,7 @@ export async function prepareRuntimePtySpawn(
   ctx.requestedAgentTeamsPath = ctx.env?.ORCA_AGENT_TEAMS_TEAM_ID
     ? ctx.env[resolvePathEnvKey(ctx.env, process.platform)]
     : undefined
-  ctx.env = ctx.deps.stripSequencedStartupResumeArgv(ctx.env, codexResumeLaunch)
+  ctx.env = ctx.deps.rewriteSequencedStartupResumeArgv(ctx.env, codexResumeLaunch)
   if (args.preAllocatedHandle) {
     ctx.env = { ...ctx.env, ORCA_TERMINAL_HANDLE: args.preAllocatedHandle }
   }
