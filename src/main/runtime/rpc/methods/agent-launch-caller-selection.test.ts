@@ -47,6 +47,8 @@ const CREATE_LAUNCH = {
   target: { kind: 'create-worktree', create: { repo: 'id:repo-1', name: 'task' } }
 }
 const CALLER = 'device-1'
+const REVEAL_WARNING =
+  'Terminal term_1 is running, but Orca could not make it discoverable. Run `orca terminal focus --terminal term_1` to reveal and focus it.'
 
 function selectionRuntime(options: Parameters<typeof runtimeStub>[0]) {
   return Object.assign(runtimeStub(options), {
@@ -135,6 +137,20 @@ describe('a paired client launching into an existing workspace', () => {
     warn.mockRestore()
   })
 
+  // Why: a headless `--serve` host has no window to reveal into; the caller mirrors the tab anyway.
+  it('does not pass on the host’s own reveal warning, since the caller shows the tab itself', async () => {
+    const runtime = selectionRuntime({
+      settings: {},
+      terminalPaneKey: PANE_KEY,
+      terminalWarning: REVEAL_WARNING
+    })
+
+    const result = await launch(EXISTING_LAUNCH, runtime)
+
+    expect(result.outcome).toMatchObject({ kind: 'terminal', handle: 'term_1' })
+    expect(result.warning).toBeUndefined()
+  })
+
   it('selects nothing when the runtime reported no pane for the terminal', async () => {
     const runtime = selectionRuntime({ settings: {} })
 
@@ -152,6 +168,14 @@ describe('launches that keep the host-wide behaviour', () => {
 
     expect(chatActivation()).toBe(true)
     expect(runtime.selectCreatedMobileSessionTabForClient).not.toHaveBeenCalled()
+  })
+
+  it('an in-process caller still hears that the host could not reveal the tab', async () => {
+    const runtime = selectionRuntime({ settings: {}, terminalWarning: REVEAL_WARNING })
+
+    const result = await launch(EXISTING_LAUNCH, runtime, {})
+
+    expect(result.warning).toBe(REVEAL_WARNING)
   })
 
   it("the host's own desktop window, a runtime client with no paired device, still activates the chat", async () => {

@@ -42,8 +42,8 @@ export function agentLaunchSurfaceFactory(
   context: RpcContext,
   attachOperationId?: string,
   operationCallerKey?: string,
-  // False when the launch selects the chat for its paired caller instead of for everyone.
-  activateChat = true,
+  // True when the launch shows its surface to the paired caller itself rather than to everyone.
+  callerPresentsSurface = false,
   terminalSpawn: TerminalSpawnDispatch = trackTerminalSpawnDispatch()
 ): AgentLaunchSurfaceFactory {
   return {
@@ -80,7 +80,7 @@ export function agentLaunchSurfaceFactory(
         ...(seeded ? { options: seeded } : {}),
         ...(tabId ? { tabId } : {}),
         // The user asked for this chat, so it takes the surface — unlike a dispatched worker.
-        activate: activateChat
+        activate: !callerPresentsSurface
       })
       if (!created.ok) {
         // The caller named this session, so a taken id is its answer, not an opaque refusal; and not
@@ -154,7 +154,8 @@ export function agentLaunchSurfaceFactory(
         // The runtime already minted this pane and baked it into the PTY's env and its own reveal;
         // dropping it here was what left a client with no way to name the tab it just asked for.
         ...(terminal.paneKey ? { paneKey: terminal.paneKey } : {}),
-        ...(terminal.warning ? { warning: terminal.warning } : {}),
+        // Its only warning is that the host could not reveal the tab, which the caller shows itself.
+        ...(terminal.warning && !callerPresentsSurface ? { warning: terminal.warning } : {}),
         ...(promptRodeLaunchCommand ? { promptRodeLaunchCommand } : {})
       }
     },

@@ -158,7 +158,7 @@ async function runAgentLaunch(
       context,
       attachOperationId,
       operationCallerKey,
-      callerNavigationId === null,
+      callerNavigationId !== null,
       terminalSpawn
     ),
     workspaces: agentLaunchWorkspaceFactory(context, intent.agent),
