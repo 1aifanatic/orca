@@ -173,8 +173,24 @@ export function markCodexProjectTrusted(workspacePath: string): Promise<void> {
   // reverted. Same runtime-before-system lock order the installer takes.
   return runExclusivelyForCodexTrustConfig(runtimeTomlPath, () =>
     runExclusivelyForCodexTrustConfig(systemTomlPath, async () => {
-      upsertProjectTrustLevel(systemTomlPath, absPath, 'trusted')
-      upsertProjectTrustLevel(runtimeTomlPath, absPath, 'trusted')
+      // Why: a ~/.codex Orca refuses to edit must not also leave Orca-launched Codex untrusted.
+      const failures: unknown[] = []
+      for (const tomlPath of [systemTomlPath, runtimeTomlPath]) {
+        try {
+          upsertProjectTrustLevel(tomlPath, absPath, 'trusted')
+        } catch (error) {
+          failures.push(error)
+        }
+      }
+      if (failures.length === 1) {
+        throw failures[0]
+      }
+      if (failures.length > 1) {
+        throw new AggregateError(
+          failures,
+          'Orca could not mark the project trusted in either Codex home'
+        )
+      }
     })
   )
 }

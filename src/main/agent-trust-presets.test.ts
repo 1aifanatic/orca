@@ -327,6 +327,34 @@ describe('markCodexProjectTrusted', () => {
     }
   })
 
+  it('still trusts the managed home when ~/.codex cannot be parsed', async () => {
+    const workspace = mkdtempSync(join(tmpdir(), 'orca-codex-ws-'))
+    try {
+      const codexDir = join(testState.fakeHomeDir, '.codex')
+      mkdirSync(codexDir, { recursive: true })
+      const brokenSystemConfig = 'model = "o3"\nmodel_reasoning_effort = \n'
+      writeFileSync(join(codexDir, 'config.toml'), brokenSystemConfig, 'utf-8')
+
+      await expect(markCodexProjectTrusted(workspace)).rejects.toMatchObject({
+        name: 'CodexConfigTomlEditRefusedError',
+        reason: 'input-invalid'
+      })
+
+      const runtimeConfigPath = join(
+        testState.userDataDir,
+        'codex-runtime-home',
+        'home',
+        'config.toml'
+      )
+      expect(readFileSync(join(codexDir, 'config.toml'), 'utf-8')).toBe(brokenSystemConfig)
+      expect(readFileSync(runtimeConfigPath, 'utf-8')).toContain(
+        `[projects."${escapeTomlBasicString(realpathSync.native(workspace))}"]`
+      )
+    } finally {
+      rmSync(workspace, { recursive: true, force: true })
+    }
+  })
+
   it('preserves existing config keys and updates an existing project block', async () => {
     const workspace = mkdtempSync(join(tmpdir(), 'orca-codex-ws-'))
     const realpath = realpathSync.native(workspace)
