@@ -23,6 +23,7 @@ import { ptySizes } from '../delivery/visibility-state'
 import { shouldSeedPreAttachPtySize } from '../delivery/attached-pty-size'
 import { getStartupTerminalIngressIntent } from '../../terminal-startup-color-query-replies'
 import { resolveConfiguredTerminalShellArgs } from '../configured-terminal-shell-args'
+import { withCodexTerminalServerIsolationEnv } from '../../../../shared/codex-terminal-server-isolation'
 import type { PtyIpcSpawnState } from './spawn-state'
 
 /** Carries deletions to provider-owned environments, including persistent older daemons. */
@@ -30,9 +31,11 @@ export async function buildPtyIpcSpawnOptions(
   ctx: PtyIpcSpawnState
 ): Promise<{ isReattach: true } | null> {
   const args = ctx.args
-  ctx.spawnEnv = ctx.preAllocatedHandle
-    ? { ...ctx.env, ORCA_TERMINAL_HANDLE: ctx.preAllocatedHandle }
-    : ctx.env
+  // Why here: every provider (local, daemon, SSH relay, WSL) spawns from this env.
+  ctx.spawnEnv = withCodexTerminalServerIsolationEnv(
+    ctx.preAllocatedHandle ? { ...ctx.env, ORCA_TERMINAL_HANDLE: ctx.preAllocatedHandle } : ctx.env,
+    ctx.deps.getSettings?.()
+  )
   const envToDelete = ctx.claudeAuth?.stripAuthEnv
     ? [...CLAUDE_AUTH_ENV_VARS, 'ANTHROPIC_CUSTOM_HEADERS']
     : undefined

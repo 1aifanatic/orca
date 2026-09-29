@@ -15,6 +15,11 @@ import {
   getAgentStatusHooksTitle
 } from './agent-status-hooks-copy'
 import { getAgentCacheTimerSearchEntries } from './agent-cache-timer-search'
+import {
+  getCodexTerminalServerIsolationDescription,
+  getCodexTerminalServerIsolationSearchKeywords,
+  getCodexTerminalServerIsolationTitle
+} from './codex-terminal-server-isolation-copy'
 import { translate } from '@/i18n/i18n'
 import { searchKeywords, translateSearchKeyword, uniqueKeywords } from './settings-search-keywords'
 import { createLocalizedCatalog } from '@/i18n/localized-catalog'
@@ -107,6 +112,11 @@ const getAllAgentsPaneSearchEntries = createLocalizedCatalog(() => [
     title: getAgentStatusHooksTitle(),
     description: getAgentStatusHooksDescription(),
     keywords: getAgentStatusHooksSearchKeywords()
+  },
+  {
+    title: getCodexTerminalServerIsolationTitle(),
+    description: getCodexTerminalServerIsolationDescription(),
+    keywords: getCodexTerminalServerIsolationSearchKeywords()
   },
   {
     title: getAgentGeneratedTabTitlesTitle(),
