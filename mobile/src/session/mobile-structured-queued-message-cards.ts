@@ -61,16 +61,21 @@ function pausedLabel(reason: string | undefined): string {
 /** Cards in published order. A waiting card whose submission already arrived is hidden, as the
  *  desktop hides it: on a multi-page catch-up the shrunk list rides only the final page, so the
  *  bubble and the card would otherwise briefly show together. Returned cards always show: their
- *  submission exists precisely because it was refused. */
+ *  submission exists precisely because it was refused. A rejected submission hides nothing: beside
+ *  a waiting draft it means a Stop requeued it, and the transcript does not show it either. */
 export function mobileQueuedMessageCards(
   queuedMessages: readonly AgentSessionQueuedMessage[] | null,
-  submissions: readonly Pick<AgentJournalSubmission, 'clientMessageId'>[],
+  submissions: readonly Pick<AgentJournalSubmission, 'clientMessageId' | 'dispatchState'>[],
   facts: { pendingPrompt: boolean }
 ): MobileQueuedMessageCard[] {
   if (!queuedMessages || queuedMessages.length === 0) {
     return []
   }
-  const consumed = new Set(submissions.map((submission) => submission.clientMessageId))
+  const consumed = new Set(
+    submissions.flatMap((submission) =>
+      submission.dispatchState === 'rejected' ? [] : [submission.clientMessageId]
+    )
+  )
   let behindReturned = false
   const cards: MobileQueuedMessageCard[] = []
   for (const draft of queuedMessages) {

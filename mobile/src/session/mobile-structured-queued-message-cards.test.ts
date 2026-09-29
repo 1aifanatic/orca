@@ -92,11 +92,33 @@ describe('mobileQueuedMessageCards', () => {
         draft({ messageId: 'drained', position: 2 }),
         draft({ messageId: 'waiting', position: 3 })
       ],
-      [{ clientMessageId: 'returned' }, { clientMessageId: 'drained' }],
+      [
+        { clientMessageId: 'returned', dispatchState: 'rejected' },
+        { clientMessageId: 'drained', dispatchState: 'pending' }
+      ],
       { pendingPrompt: false }
     )
     expect(cards.map((card) => card.messageId)).toEqual(['returned', 'waiting'])
     expect(cards[1]?.label).toBe('Waiting — a message ahead needs attention')
+  })
+
+  it('shows a draft a Stop requeued beside its rejected first submission', () => {
+    // The requeued draft keeps its id; its withdrawn submission stays in the journal as rejected
+    // and the transcript hides it, so hiding the card too would leave the text unreachable.
+    const cards = mobileQueuedMessageCards(
+      [
+        draft({ messageId: 'requeued' }),
+        draft({ messageId: 'sending', position: 2 }),
+        draft({ messageId: 'sent', position: 3 })
+      ],
+      [
+        { clientMessageId: 'requeued', dispatchState: 'rejected' },
+        { clientMessageId: 'sending', dispatchState: 'pending' },
+        { clientMessageId: 'sent', dispatchState: 'accepted' }
+      ],
+      { pendingPrompt: false }
+    )
+    expect(cards.map((card) => card.messageId)).toEqual(['requeued'])
   })
 
   it('maps a Stop-withdrawn returned card to its own English copy', () => {
