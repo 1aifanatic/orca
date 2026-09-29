@@ -25,9 +25,10 @@ function boundedSet(set, value, max) {
 // Why storage.memory: OpenCode keeps it across plugin hot reloads and drops it when the TUI
 // exits, so a reload mid-turn keeps this pane's sessions and what it last reported.
 function paneStatusMemory(ctx) {
-  const initial = { owned: [], last: "idle:", lastRoot: "" };
+  const initial = { owned: [], last: "idle:", lastRoot: "", started: false };
   if (typeof ctx.storage?.memory === "function") return ctx.storage.memory("pane-status", { initial });
-  const local = initial;
+  // Why started: without memory a reload looks like a TUI start, and must not reset the pane.
+  const local = { ...initial, started: true };
   return [local, (mutate) => mutate(local)];
 }
 
@@ -230,6 +231,15 @@ async function setupOpenCode2Tui(ctx) {
     }, TUI_TICK_MS);
     if (tick.unref) tick.unref();
     publish();
+    if (!memory.started) {
+      setMemory((draft) => { draft.started = true; });
+      // Why: clears a status an earlier process left on this pane (e.g. a pre-upgrade shared service
+      // posting another pane's turn here). Connected idle, never a completion; reloads skip it.
+      if (memory.last === "idle:") {
+        const route = currentRoute();
+        void enqueueLifecycle(() => post("SessionStart", route ? { sessionID: route } : {}));
+      }
+    }
     return async () => {
       try {
         disposed = true;

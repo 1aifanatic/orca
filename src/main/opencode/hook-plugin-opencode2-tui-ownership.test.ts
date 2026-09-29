@@ -196,6 +196,8 @@ describe('OpenCode 2 TUI reporter: each pane reports its own sessions', () => {
   let savedEnv: Record<string, string | undefined>
   let savedArgv: string[]
   let posts: Post[]
+  // Every post in arrival order, including the start boundary each fresh TUI lands.
+  let allPosts: Post[]
   let failPosts: boolean
   let postDelayMs: number
 
@@ -212,6 +214,7 @@ describe('OpenCode 2 TUI reporter: each pane reports its own sessions', () => {
     process.env.ORCA_AGENT_HOOK_PORT = '59999'
     process.env.ORCA_AGENT_HOOK_TOKEN = 'test-token'
     posts = []
+    allPosts = []
     failPosts = false
     postDelayMs = 0
     globalThis.fetch = vi.fn(async (_input, init) => {
@@ -222,7 +225,14 @@ describe('OpenCode 2 TUI reporter: each pane reports its own sessions', () => {
       if (failPosts) {
         return new Response('{}', { status: 500 })
       }
-      posts.push(body)
+      allPosts.push(body)
+      // Why apart: a fresh TUI's start boundary names no session; per-session cases assert what follows it.
+      if (
+        body.payload?.hook_event_name !== 'SessionStart' ||
+        body.payload.sessionID !== undefined
+      ) {
+        posts.push(body)
+      }
       return new Response('{}', { status: 200 })
     })
   })
@@ -504,6 +514,68 @@ describe('OpenCode 2 TUI reporter: each pane reports its own sessions', () => {
         `SessionIdle:${SES_A}`
       ])
       expect(posts.at(-2)?.payload).toMatchObject({ role: 'assistant', text: 'tick0 tick1 ' })
+      expect(summary(allPosts)[0]).toBe('SessionStart:undefined')
+    })
+
+    // Why: Orca may still show this pane a status another process left, e.g. an older shared-service
+    // plugin that posted another pane's turn here before an upgrade.
+    it('lands one start boundary in a freshly started TUI, and none on a reload after Done', async () => {
+      const tui = fakeTui()
+      const firstGeneration = await start(tui)
+      await vi.waitFor(() => expect(summary(allPosts)).toEqual(['SessionStart:undefined']))
+      tui.navigate(SES_A)
+      const a = turn(SES_A, 'A')
+      await pump(tui, [...a.start, ...a.finish])
+      await vi.waitFor(() => expect(summary(allPosts).at(-1)).toBe(`SessionIdle:${SES_A}`))
+      await firstGeneration?.()
+      const secondGeneration = await start(tui)
+      await tick(250)
+      await secondGeneration?.()
+      expect(summary(allPosts).at(-1)).toBe(`SessionIdle:${SES_A}`)
+      expect(summary(allPosts).filter((name) => name.startsWith('SessionStart:'))).toEqual([
+        'SessionStart:undefined',
+        `SessionStart:${SES_A}`
+      ])
+    })
+
+    it('lands the start boundary only once across reloads of an idle pane', async () => {
+      const tui = fakeTui()
+      const firstGeneration = await start(tui)
+      await vi.waitFor(() => expect(summary(allPosts)).toEqual(['SessionStart:undefined']))
+      await firstGeneration?.()
+      const secondGeneration = await start(tui)
+      await tick(150)
+      await secondGeneration?.()
+      expect(summary(allPosts)).toEqual(['SessionStart:undefined'])
+    })
+
+    it('names the idle session a freshly started TUI shows', async () => {
+      const tui = fakeTui()
+      tui.navigate(SES_B)
+      const cleanup = await start(tui)
+      await vi.waitFor(() => expect(summary(allPosts)).toEqual([`SessionStart:${SES_B}`]))
+      await cleanup?.()
+    })
+
+    it('posts Working instead of the start boundary when the route shows a running turn', async () => {
+      const tui = fakeTui()
+      tui.navigate(SES_A)
+      tui.loseStart(SES_A)
+      const cleanup = await start(tui)
+      await vi.waitFor(() => expect(summary(allPosts)).toEqual([`SessionBusy:${SES_A}`]))
+      await tick(150)
+      await cleanup?.()
+      expect(summary(allPosts)).toEqual([`SessionBusy:${SES_A}`])
+    })
+
+    // Why: without plugin memory a reload cannot be told from a start, so it must not reset a Done.
+    it('lands no start boundary where OpenCode keeps no plugin memory', async () => {
+      const tui = fakeTui()
+      Reflect.deleteProperty(tui.ctx, 'storage')
+      const cleanup = await start(tui)
+      await tick(150)
+      await cleanup?.()
+      expect(allPosts).toEqual([])
     })
 
     it('stays Working while a child session holds the turn, even if its end is missed', async () => {
