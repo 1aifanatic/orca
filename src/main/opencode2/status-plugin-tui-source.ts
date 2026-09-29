@@ -51,7 +51,8 @@ async function setupOpenCode2Tui(ctx) {
         },
       },
     };
-    hooks = await OrcaOpenCodeStatusPlugin({ client });
+    // Why: a TUI plugin hot reload disposes it while turns keep running.
+    hooks = await OrcaOpenCodeStatusPlugin({ client, sessionsOutliveDispose: true });
     if (!hooks || typeof hooks.event !== "function") return noop;
     const engine = hooks;
 
