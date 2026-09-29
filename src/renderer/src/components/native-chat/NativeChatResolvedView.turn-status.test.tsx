@@ -145,7 +145,8 @@ describe('NativeChatResolvedView turn status', () => {
 
       renderPane()
 
-      expect(screen.getByText('Awaiting user input:')).toBeInTheDocument()
+      // A whole phrase: there is no question to name after a colon.
+      expect(screen.getByText('Awaiting user input')).toBeInTheDocument()
       expect(liveActivityLine()).toBeNull()
       // The turn runs on behind the wait, as a structured turn does behind its card.
       expect(screen.getByText('Working for 20s')).toBeInTheDocument()
@@ -162,7 +163,7 @@ describe('NativeChatResolvedView turn status', () => {
     renderPane()
 
     expect(screen.getByText('Allow Bash?')).toBeInTheDocument()
-    expect(screen.queryByText('Awaiting user input:')).toBeNull()
+    expect(screen.queryByText(/Awaiting user input/)).toBeNull()
     expect(liveActivityLine()).toBeNull()
     expect(screen.getByText('Working for 0s')).toBeInTheDocument()
   })
@@ -174,7 +175,8 @@ describe('NativeChatResolvedView turn status', () => {
     renderPane()
 
     // One row says it: the question's own, not a second one at the tail.
-    expect(screen.getAllByText('Awaiting user input:')).toHaveLength(1)
+    expect(document.querySelectorAll('[data-native-chat-ask-row="awaiting"]')).toHaveLength(1)
+    expect(screen.getByText('Awaiting user input:')).toBeInTheDocument()
     expect(screen.getAllByText('Which name?').length).toBeGreaterThan(0)
     expect(screen.queryByText('Asked:')).toBeNull()
   })
@@ -185,7 +187,7 @@ describe('NativeChatResolvedView turn status', () => {
 
     renderPane()
 
-    expect(screen.queryByText('Awaiting user input:')).toBeNull()
+    expect(screen.queryByText(/Awaiting user input/)).toBeNull()
     expect(screen.queryByText(/Work(ing|ed) for/)).toBeNull()
     expect(liveActivityLine()).toBeNull()
   })
@@ -195,7 +197,7 @@ describe('NativeChatResolvedView turn status', () => {
 
     renderPane()
 
-    expect(screen.queryByText('Awaiting user input:')).toBeNull()
+    expect(screen.queryByText(/Awaiting user input/)).toBeNull()
     expect(screen.queryByText(/Work(ing|ed) for/)).toBeNull()
     expect(liveActivityLine()).toBeNull()
   })

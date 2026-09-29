@@ -204,7 +204,7 @@ describe('NativeChatMessageList turn indicator', () => {
     )
 
     expect(container.querySelector('[data-native-chat-ask-row="awaiting"]')).toHaveTextContent(
-      'Awaiting user input:'
+      /^Awaiting user input$/
     )
     expect(container.querySelector('[data-native-chat-turn-activity]')).toBeNull()
     expect(screen.getByText('Working for 5s')).toBeInTheDocument()
