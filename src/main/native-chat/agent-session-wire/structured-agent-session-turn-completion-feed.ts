@@ -147,7 +147,7 @@ export class StructuredAgentSessionTurnCompletionFeed {
         outcome: request.outcome,
         completedAt: this.deps.now(),
         // Stated here, not joined from the status stream: remote clients receive the two unordered.
-        ...(state.summary.status === 'attention' ? { awaitingUser: true } : {})
+        ...(state.awaitsUser ? { awaitingUser: true } : {})
       }
     })
   }

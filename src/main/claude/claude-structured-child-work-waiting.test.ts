@@ -108,7 +108,7 @@ async function replay(name: string, options: { withoutAgentId?: boolean } = {}) 
         sessionId: 'session-1',
         itemId: `item-${requestId}`,
         kind: 'approval',
-        optionId: behavior === 'deny' ? 'deny' : 'allow',
+        response: { kind: 'option', optionId: behavior === 'deny' ? 'deny' : 'allow' },
         fence: 7,
         commit: async () => undefined
       })

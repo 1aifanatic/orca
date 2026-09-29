@@ -247,11 +247,22 @@ export function projectStructuredAgentSessionStatusState(
   latestRequest: StructuredAgentSessionLatestRequest | null
   /** Whether a running turn or an unanswered send is still owed, even beneath a pending prompt. */
   owesWork: boolean
+  /** Whether a human must answer a prompt: the session's own, or a subagent's, which the status
+   *  leaves to that subagent's child record. */
+  awaitsUser: boolean
 } {
   if (!hasStructuredAgentSessionRequest(items, submissions, currentFence)) {
-    return { summary: { status: null, latestPrompt: '' }, latestRequest: null, owesWork: false }
+    return {
+      summary: { status: null, latestPrompt: '' },
+      latestRequest: null,
+      owesWork: false,
+      awaitsUser: false
+    }
   }
   const status = projectStructuredAgentSessionStatus(items, submissions, currentFence, 'main-agent')
+  const awaitsUser =
+    status === 'attention' ||
+    projectStructuredAgentSessionStatus(items, submissions, currentFence) === 'attention'
   const statusToolCall = status === 'working' ? statusStructuredAgentSessionToolCall(items) : null
   const toolName = statusToolCall
     ? normalizeOptionalField(statusToolCall.name, AGENT_STATUS_TOOL_NAME_MAX_LENGTH)
@@ -282,6 +293,7 @@ export function projectStructuredAgentSessionStatusState(
   return {
     latestRequest,
     owesWork: status !== 'idle' && owesStructuredAgentSessionWork(items, submissions, currentFence),
+    awaitsUser,
     summary: {
       status,
       latestPrompt: normalizePromptField(latestStructuredAgentSessionPrompt(items)),
