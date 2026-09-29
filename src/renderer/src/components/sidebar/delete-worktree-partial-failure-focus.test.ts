@@ -116,7 +116,7 @@ describe('deleting the viewed workspace when the delete partly fails', () => {
     expect(store.getState().activeWorktreeId).toBe(viewed.id)
   })
 
-  it('stays on the empty screen, as on main, when the shells were stopped but git kept the worktree', async () => {
+  it('does not move the user when the shells were stopped but git kept the worktree', async () => {
     const store = seed()
     mockApi.worktrees.remove.mockImplementationOnce(async () => {
       // Stopping the workspace's shells closed its last tab before git failed.

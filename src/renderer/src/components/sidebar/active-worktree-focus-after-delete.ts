@@ -98,7 +98,7 @@ function focusNextWorktreeAfterActiveDelete(
 
 /**
  * Capture, before a delete runs, whether the target is the workspace the user is
- * currently viewing. Returns a committer to call after a successful delete: it
+ * currently viewing. Returns a committer to call once the delete removed the workspace: it
  * focuses the next-best workspace only when the deleted one was active, so
  * deleting a background workspace never steals the user's current focus.
  *
