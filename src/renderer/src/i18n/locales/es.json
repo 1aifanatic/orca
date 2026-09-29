@@ -7902,6 +7902,9 @@
             "0d1c334987": "tapa",
             "ff8de8a2ad": "pantalla",
             "0d752916f8": "hooks",
+            "claude-trust-trust": "confianza",
+            "claude-trust-folder": "carpeta",
+            "claude-trust-worktree": "worktree",
             "6984d4291a": "estado",
             "13b20636a6": "esperando",
             "8599603496": "hecho",
@@ -10495,6 +10498,10 @@
           "usageDescription": "Cursor factura dos cuotas que se restablecen con tu ciclo de facturación, más gasto bajo demanda cuando se agotan.",
           "usageLabel": "Uso",
           "usageTitle": "Uso mensual del plan"
+        },
+        "claude-worktree-trust-copy": {
+          "title": "Confiar en los worktrees que Orca crea para Claude",
+          "description": "Claude Code omite su pregunta \"trust this folder?\" en los worktrees que creó Orca, así que los hooks y ajustes de Claude del repositorio se ejecutan sin que Claude pregunte antes. Las carpetas y los checkouts que agregaste tú, y los worktrees de pull requests de forks, siguen preguntando."
         }
       },
       "right": {

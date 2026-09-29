@@ -9111,6 +9111,9 @@
             "0d1c334987": "couvercle",
             "ff8de8a2ad": "écran",
             "0d752916f8": "hooks",
+            "claude-trust-trust": "confiance",
+            "claude-trust-folder": "dossier",
+            "claude-trust-worktree": "worktree",
             "6984d4291a": "statut",
             "13b20636a6": "en attente",
             "8599603496": "terminé",
@@ -12159,6 +12162,10 @@
           "usageDescription": "Cursor facture deux enveloppes qui se réinitialisent avec votre cycle de facturation, plus des dépenses à la demande une fois épuisées.",
           "usageLabel": "Utilisation",
           "usageTitle": "Utilisation mensuelle du forfait"
+        },
+        "claude-worktree-trust-copy": {
+          "title": "Faire confiance aux worktrees créés par Orca pour Claude",
+          "description": "Claude Code ignore sa question « trust this folder? » dans les worktrees créés par Orca : les hooks et paramètres Claude du dépôt s'exécutent donc sans que Claude demande d'abord. Les dossiers et checkouts que vous avez ajoutés vous-même, ainsi que les worktrees de pull requests provenant de forks, continuent de demander."
         }
       },
       "right": {

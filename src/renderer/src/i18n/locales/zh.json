@@ -8951,6 +8951,9 @@
             "0d1c334987": "合盖",
             "ff8de8a2ad": "显示器",
             "0d752916f8": "钩子",
+            "claude-trust-trust": "信任",
+            "claude-trust-folder": "文件夹",
+            "claude-trust-worktree": "工作树",
             "6984d4291a": "状态",
             "13b20636a6": "等待",
             "8599603496": "完成",
@@ -12056,6 +12059,10 @@
           "usageDescription": "Cursor 按两个随账单周期重置的额度池计费，用完后按需计费。",
           "usageLabel": "用量",
           "usageTitle": "每月套餐用量"
+        },
+        "claude-worktree-trust-copy": {
+          "title": "为 Claude 信任 Orca 创建的工作树",
+          "description": "在 Orca 创建的工作树中，Claude Code 会跳过“trust this folder?”提示，因此仓库的 Claude 钩子和设置会在 Claude 未先询问的情况下运行。您自己添加的文件夹和检出目录，以及来自派生仓库的拉取请求的工作树，仍会询问。"
         }
       },
       "right": {
