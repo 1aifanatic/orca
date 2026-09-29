@@ -229,7 +229,7 @@ describe('CodexHookService app-server trust grant lane', () => {
 
   // Why: ordinary Windows CI tokens cannot create file symlinks without Developer Mode.
   it.skipIf(process.platform === 'win32')(
-    'keeps a real-home symlink and rebases later user trust during an explicit opt-out',
+    'keeps a real-home symlink and moves later user trust during an explicit opt-out',
     async () => {
       prepareSystemHome()
       const systemHome = join(tmpHome, '.codex')

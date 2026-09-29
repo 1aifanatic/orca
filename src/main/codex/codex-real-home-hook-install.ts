@@ -27,7 +27,7 @@ import {
 import { removeSystemManagedHookTrustEntries } from './codex-hook-trust-cleanup'
 import { getCodexManagedHookInstallMaterial } from './codex-hook-definition'
 import { getSystemCodexHomePath } from './codex-home-paths'
-import { mutateRealHomeHooksPreservingUserTrust } from './codex-user-hook-trust-rebase'
+import { mutateRealHomeHooksPreservingUserTrust } from './codex-user-hook-trust-moves'
 import { runExclusivelyForCodexTrustConfig } from './codex-trust-config-mutation-queue'
 import {
   planRealHomeCodexHookEntries,
@@ -96,8 +96,8 @@ export function ensureRealHomeCodexHookState(args: {
   userDataPath: string
   writePolicy: RealHomeCodexHookWritePolicy
 }): Promise<RealHomeCodexHookLane> {
-  // Why: the grant client caches failed probes, but mutating and rolling back
-  // hooks.json before consulting it still adds work to every pane launch.
+  // Why: the grant client caches failed probes, but writing and withdrawing the
+  // entry before consulting it still adds work to every pane launch.
   if (args.hooksEnabled && currentLane === 'unavailable' && Date.now() < installRetryAfterMs) {
     return Promise.resolve(currentLane)
   }

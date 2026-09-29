@@ -12,14 +12,14 @@ import {
 import {
   getMovedCodexUserHookTrust,
   mutateRealHomeHooksPreservingUserTrust
-} from './codex-user-hook-trust-rebase'
+} from './codex-user-hook-trust-moves'
 
 let root: string
 let hooksPath: string
 let configPath: string
 
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), 'orca-user-hook-rebase-'))
+  root = mkdtempSync(join(tmpdir(), 'orca-user-hook-trust-moves-'))
   hooksPath = join(root, 'hooks.json')
   configPath = join(root, 'config.toml')
 })

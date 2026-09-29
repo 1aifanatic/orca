@@ -168,9 +168,9 @@ export function markCodexProjectTrusted(workspacePath: string): Promise<void> {
   // Why: Orca-launched Codex runs with an Orca-owned CODEX_HOME, so the trust
   // preset must also update the runtime config Codex will actually read.
   const runtimeTomlPath = join(getOrcaManagedCodexHomePath(), 'config.toml')
-  // Why (#16441): hook installs now await a codex app-server grant, so an
-  // unqueued write here can land inside their capture->restore window and be
-  // reverted. Same runtime-before-system lock order the installer takes.
+  // Why (#16441): hook installs read and rewrite these files across awaits, so
+  // an unqueued write here could land between their read and their write and be
+  // lost. Same runtime-before-system lock order the installer takes.
   return runExclusivelyForCodexTrustConfig(runtimeTomlPath, () =>
     runExclusivelyForCodexTrustConfig(systemTomlPath, async () => {
       upsertProjectTrustLevel(systemTomlPath, absPath, 'trusted')

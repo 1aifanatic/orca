@@ -33,9 +33,9 @@ import type {
   WslCanonicalPathSettlement
 } from './codex-wsl-hook-install-plan'
 
-// Why (#16441): the grant inside awaits a codex app-server session, so a
-// concurrent pane launch could write this config.toml between this run's
-// capture and its restore. One lane per file keeps the sequence atomic.
+// Why (#16441): this run clears Orca's computed trust, awaits Codex's grant, and
+// may write computed trust back; a concurrent pane launch must not interleave
+// with that sequence. One lane per file keeps it atomic.
 export function installManagedHooksIntoWslRuntime(
   plan: CodexWslRuntimeHookInstallPlan
 ): Promise<AgentHookInstallStatus> {

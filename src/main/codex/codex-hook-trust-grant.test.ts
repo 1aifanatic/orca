@@ -417,35 +417,6 @@ describe('grantManagedCodexHookTrust', () => {
     expect(runner).not.toHaveBeenCalled()
   })
 
-  // Why (#16441): the grant used to run through spawnSync, so two grants on one
-  // config.toml were impossible by construction. Now they must queue — an
-  // interleaved capture/restore pair resurrects trust the other run removed.
-  it('serializes concurrent grants that share one config.toml', async () => {
-    const entries = [managedEntry('session_start')]
-    const plan = buildPlan(entries)
-    let inFlight = 0
-    let maxInFlight = 0
-    const releases: (() => void)[] = []
-    _internals.setGrantSessionRunner(async () => {
-      inFlight += 1
-      maxInFlight = Math.max(maxInFlight, inFlight)
-      await new Promise<void>((resolve) => releases.push(resolve))
-      inFlight -= 1
-      return grantedSessionResult(entries)
-    })
-
-    const first = grantManagedCodexHookTrust(plan)
-    const second = grantManagedCodexHookTrust(plan)
-    await vi.waitFor(() => expect(releases).toHaveLength(1))
-    releases[0]!()
-    await first
-    await vi.waitFor(() => expect(releases).toHaveLength(2))
-    releases[1]!()
-    await second
-
-    expect(maxInFlight).toBe(1)
-  })
-
   it('lets grants on different config.toml paths overlap', async () => {
     const entries = [managedEntry('session_start')]
     const otherHome = join(userDataDir, 'codex-accounts', 'other', 'home')

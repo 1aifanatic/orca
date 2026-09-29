@@ -14,7 +14,7 @@ import {
 } from './codex-real-home-hooks-json'
 import { readHookTrustEntries } from './config-toml-trust'
 import { readOrcaEntryTrust } from './codex-real-home-entry-trust'
-import { mutateRealHomeHooksPreservingUserTrust } from './codex-user-hook-trust-rebase'
+import { mutateRealHomeHooksPreservingUserTrust } from './codex-user-hook-trust-moves'
 
 function withdrawHandler(
   definitions: HookDefinition[],

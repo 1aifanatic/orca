@@ -21,7 +21,7 @@ import {
   removeSelfComputedMatchingTrustEntries
 } from './codex-hook-trust-cleanup'
 import { runExclusivelyForCodexTrustConfig } from './codex-trust-config-mutation-queue'
-import { mutateRealHomeHooksPreservingUserTrust } from './codex-user-hook-trust-rebase'
+import { mutateRealHomeHooksPreservingUserTrust } from './codex-user-hook-trust-moves'
 
 const LEGACY_ORCA_PROFILE_NAME = 'orca-agent-status'
 const LEGACY_ORCA_PROFILE_BLOCK_START = '# BEGIN ORCA AGENT STATUS HOOKS'
