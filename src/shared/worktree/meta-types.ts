@@ -12,6 +12,7 @@ import type {
 import type { TuiAgent } from '../tui-agent'
 import type { OrcaWorkspaceLayout } from '../global-settings-types'
 import type { DiffComment, MobileDiffReviewState } from '../diff-comment-types'
+import type { OrcaCreationContentOrigin } from './content-origin'
 
 // ─── Worktree metadata (persisted user-authored fields only) ─────────
 export type WorktreeMeta = {
@@ -77,6 +78,8 @@ export type WorktreeMeta = {
   /** Explicit marker stamped when Orca creates the worktree. */
   orcaCreatedAt?: number
   orcaCreationSource?: 'desktop' | 'runtime' | 'cli' | 'ssh'
+  /** Where the worktree's starting content came from; absent on worktrees created before it existed. */
+  orcaCreationContentOrigin?: OrcaCreationContentOrigin
   /** Workspace layout active when Orca created the worktree. */
   orcaCreationWorkspaceLayout?: OrcaWorkspaceLayout
   /** User-assigned workspace board status for manual sidebar organization. */

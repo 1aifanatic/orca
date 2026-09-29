@@ -23,6 +23,7 @@ import type {
   WorktreeCreateBaseFallback
 } from '../../shared/worktree/create-types'
 import type { WorktreeMeta } from '../../shared/worktree/meta-types'
+import { classifyWorktreeContentOrigin } from '../../shared/worktree/content-origin'
 import type {
   AutomationWorkspaceProvenance,
   CliWorkspaceProvenance,
@@ -2195,6 +2196,10 @@ export async function createRemoteWorktree(
     createdAt: now,
     orcaCreatedAt: now,
     orcaCreationSource: 'ssh',
+    orcaCreationContentOrigin: classifyWorktreeContentOrigin({
+      baseBranch: args.baseBranch,
+      pushTarget: preparedPushTarget
+    }),
     creatorProvenance: { kind: 'host' },
     orcaCreationWorkspaceLayout: getWorktreeCreationLayout(repo, settings),
     ...(args.automationProvenance ? { automationProvenance: args.automationProvenance } : {}),
@@ -2894,6 +2899,10 @@ async function performLocalWorktreeCreate(
     createdAt: now,
     orcaCreatedAt: now,
     orcaCreationSource: 'desktop',
+    orcaCreationContentOrigin: classifyWorktreeContentOrigin({
+      baseBranch: args.baseBranch,
+      pushTarget: preparedPushTarget
+    }),
     creatorProvenance: { kind: 'host' },
     orcaCreationWorkspaceLayout: getWorktreeCreationLayout(repo, settings),
     ...(args.automationProvenance ? { automationProvenance: args.automationProvenance } : {}),

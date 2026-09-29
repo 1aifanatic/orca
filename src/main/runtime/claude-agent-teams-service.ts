@@ -10,6 +10,7 @@ import type {
   AgentTeamsTmuxCompatResponse,
   TeamPane
 } from './claude-agent-teams-types'
+import { CLAUDE_TRUST_BYPASS_ENV } from '../../shared/claude-skip-permissions-trust'
 
 export type {
   AgentTeamsLaunchEnv,
@@ -28,6 +29,8 @@ export class ClaudeAgentTeamsService {
     shimDir: string
     /** Absolute path only; null leaves the var unset so the shim refuses to guess a cwd-relative CLI. */
     shimBin: string | null
+    /** The leader launched with Claude's skip-permissions flag, so its teammates skip the trust prompt too. */
+    trustBypass?: boolean
   }): AgentTeamsLaunchEnv {
     const teamId = `team-${randomUUID()}`
     const token = randomBytes(32).toString('base64url')
@@ -52,6 +55,10 @@ export class ClaudeAgentTeamsService {
     }
     if (args.shimBin) {
       env.ORCA_AGENT_TEAMS_SHIM_BIN = args.shimBin
+    }
+    if (args.trustBypass) {
+      // Why: only this team's panes get it; teammates would otherwise hang on the prompt.
+      env[CLAUDE_TRUST_BYPASS_ENV] = '1'
     }
     if (args.baseEnv.ORCA_PAIRING_CODE) {
       env.ORCA_PAIRING_CODE = args.baseEnv.ORCA_PAIRING_CODE

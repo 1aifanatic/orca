@@ -4,6 +4,7 @@ import { isTuiAgent } from '../../../../shared/tui-agent-config'
 import { CLAUDE_AUTH_ENV_VARS } from '../../../claude-accounts/environment'
 import { LEGACY_TERMINAL_SHIM_REMOTE_ENV_KEYS } from '../../../pty/legacy-terminal-shim-dir'
 import { PI_PROCESS_OWNER_ENV_KEYS } from '../../../pty/pi-process-owner-env'
+import { CLAUDE_TRUST_BYPASS_ENV } from '../../../../shared/claude-skip-permissions-trust'
 import { CODEX_HOME_ENV_KEYS } from '../host-env/codex-home'
 import {
   mergePtyEnvDeletions,
@@ -24,6 +25,7 @@ import { shouldSeedPreAttachPtySize } from '../delivery/attached-pty-size'
 import { getStartupTerminalIngressIntent } from '../../terminal-startup-color-query-replies'
 import { resolveConfiguredTerminalShellArgs } from '../configured-terminal-shell-args'
 import type { PtyIpcSpawnState } from './spawn-state'
+import { applyClaudeWorktreeTrustToSpawn } from '../../../claude/claude-worktree-trust-spawn'
 
 /** Carries deletions to provider-owned environments, including persistent older daemons. */
 export async function buildPtyIpcSpawnOptions(
@@ -41,6 +43,8 @@ export async function buildPtyIpcSpawnOptions(
     args.envToDelete ?? [],
     // Persistent daemons and older SSH hosts must not resurrect a parent Pi's ownership.
     PI_PROCESS_OWNER_ENV_KEYS,
+    // Why: an inherited trust bypass would let any later `claude` in this shell skip Claude's prompt.
+    ctx.spawnEnv?.[CLAUDE_TRUST_BYPASS_ENV] === undefined ? [CLAUDE_TRUST_BYPASS_ENV] : [],
     ctx.agentTeamsEnvToDelete ?? [],
     // Why: disable old hosts without removing ORCA_REAL_* while their Windows shim remains on PATH.
     ctx.isDaemonHostSpawn || args.connectionId ? LEGACY_TERMINAL_SHIM_REMOTE_ENV_KEYS : [],
@@ -92,6 +96,18 @@ export async function buildPtyIpcSpawnOptions(
   if (args.worktreeId !== undefined) {
     ctx.spawnOptions.worktreeId = args.worktreeId
   }
+  await applyClaudeWorktreeTrustToSpawn({
+    store: ctx.deps.store,
+    connectionId: args.connectionId,
+    worktreeId: args.worktreeId,
+    launchAgent: args.launchAgent,
+    command: ctx.launchCommand,
+    env: ctx.spawnEnv,
+    claudeAuth: ctx.claudeAuth,
+    wslDistro: ctx.expectedWslDistro,
+    isFreshLaunch: !ctx.preAdoptedStablePane && ctx.launchCommand !== undefined,
+    spawnOptions: ctx.spawnOptions
+  })
   if (ctx.reservationPaneKey) {
     ctx.spawnOptions.paneKey = ctx.reservationPaneKey
   }

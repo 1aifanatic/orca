@@ -124,7 +124,8 @@ describe('launchAgentBackgroundSession', () => {
     expect(mockSpawn).toHaveBeenCalledWith(
       expect.objectContaining({
         cwd: '/repo/worktree',
-        command: "claude '--dangerously-skip-permissions' 'run the automation'",
+        command:
+          "CLAUDE_CODE_SANDBOXED=1 claude '--dangerously-skip-permissions' 'run the automation'",
         env: expect.objectContaining({
           ORCA_TAB_ID: tabId,
           ORCA_WORKTREE_ID: 'wt-1'
@@ -147,7 +148,7 @@ describe('launchAgentBackgroundSession', () => {
     expect(mockSetTabLayout.mock.calls.at(-1)?.[1]).not.toHaveProperty('titlesByLeafId')
     expect(mockSpawn.mock.calls[0]?.[0]).toMatchObject({
       launchConfig: {
-        agentCommand: "claude '--dangerously-skip-permissions'",
+        agentCommand: "CLAUDE_CODE_SANDBOXED=1 claude '--dangerously-skip-permissions'",
         agentArgs: '--dangerously-skip-permissions',
         agentEnv: {}
       },
@@ -277,14 +278,15 @@ describe('launchAgentBackgroundSession', () => {
       expect.objectContaining({
         cwd: folderPath,
         shellOverride: 'wsl.exe',
-        command: "claude '--dangerously-skip-permissions' 'run the automation'"
+        command:
+          "CLAUDE_CODE_SANDBOXED=1 claude '--dangerously-skip-permissions' 'run the automation'"
       })
     )
   })
 
   it('records effective launch config returned by local PTY spawn', async () => {
     const effectiveLaunchConfig = {
-      agentCommand: "claude '--dangerously-skip-permissions'",
+      agentCommand: "CLAUDE_CODE_SANDBOXED=1 claude '--dangerously-skip-permissions'",
       agentArgs: '--dangerously-skip-permissions',
       agentEnv: { ORCA_AGENT_TEAMS_TEAM_ID: 'team-fresh' }
     }
@@ -339,7 +341,7 @@ describe('launchAgentBackgroundSession', () => {
     expect(mockSpawn).toHaveBeenCalledWith(
       expect.objectContaining({
         cwd: 'C:\\Users\\jinwo\\repo\\feature',
-        command: `claude '--dangerously-skip-permissions' 'don'"'"'t use powershell quoting'`,
+        command: `CLAUDE_CODE_SANDBOXED=1 claude '--dangerously-skip-permissions' 'don'"'"'t use powershell quoting'`,
         connectionId: null,
         worktreeId: 'wt-1',
         tabId: expect.stringMatching(UUID_RE)

@@ -355,11 +355,13 @@ describe('ai vault resume command runtime', () => {
         }
       })
     ).toEqual({
-      command: "claude '--dangerously-skip-permissions' '--effort' 'max' '--resume' 'session-1'",
+      command:
+        "CLAUDE_CODE_SANDBOXED=1 claude '--dangerously-skip-permissions' '--effort' 'max' '--resume' 'session-1'",
       cwd: '/home/alice/repo',
       env: { ANTHROPIC_BASE_URL: 'https://claude.example.test' },
       launchConfig: {
-        agentCommand: "claude '--dangerously-skip-permissions' '--effort' 'max'",
+        agentCommand:
+          "CLAUDE_CODE_SANDBOXED=1 claude '--dangerously-skip-permissions' '--effort' 'max'",
         agentArgs: '--dangerously-skip-permissions --effort max',
         agentEnv: { ANTHROPIC_BASE_URL: 'https://claude.example.test' }
       },

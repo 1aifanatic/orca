@@ -11,6 +11,7 @@ import {
   type AgentStartupShell
 } from './tui-agent-startup-shell'
 import type { TuiAgent } from './tui-agent'
+import { claudeTrustBypassCommandPrefix } from './claude-skip-permissions-trust'
 
 export type ResolvedAgentLaunchCommand =
   | {
@@ -88,16 +89,37 @@ export function resolveAgentLaunchCommand(args: {
   const commandWithOverrides = overrideTokens.length
     ? `${command} ${overrideTokens.map((token) => quoteStartupArg(token, args.shell)).join(' ')}`
     : command
+  const trustBypassPrefix = claudeTrustBypassCommandPrefix({
+    agent: args.agent,
+    shell: args.shell,
+    argTokens: [
+      ...tokenizeCommandOverride(override, args.shell),
+      ...trailingTokens.tokens,
+      ...resolvedOptions.args
+    ]
+  })
+  const launchCommand = args.sessionOptionsOverrideAgentArgs
+    ? commandWithOverrides
+    : suffix.suffix
+      ? `${commandWithOptions} ${suffix.suffix}`
+      : commandWithOptions
   return {
     ok: true,
-    command: args.sessionOptionsOverrideAgentArgs
-      ? commandWithOverrides
-      : suffix.suffix
-        ? `${commandWithOptions} ${suffix.suffix}`
-        : commandWithOptions,
-    commandWithoutSessionOptions,
+    command: `${trustBypassPrefix}${launchCommand}`,
+    commandWithoutSessionOptions: `${trustBypassPrefix}${commandWithoutSessionOptions}`,
     appliedSessionOptions: resolvedOptions.appliedValues
   }
+}
+
+function tokenizeCommandOverride(
+  override: string | undefined,
+  shell: AgentStartupShell
+): readonly string[] {
+  if (!override) {
+    return []
+  }
+  const tokens = tokenizeStartupCommand(override, shell)
+  return tokens.ok ? tokens.tokens : []
 }
 
 function insertBeforeTerminator(tokens: readonly string[], inserted: readonly string[]): string[] {

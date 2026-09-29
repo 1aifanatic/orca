@@ -59,8 +59,11 @@ describe('tui agent startup plans', () => {
       allowEmptyPromptLaunch: true
     })
 
-    // Every token, in order, shell-quoted as the terminal path has always quoted them.
-    expect(plan?.launchCommand).toBe("claude '--dangerously-skip-permissions' '--model' 'Opus'")
+    // Every token, in order, shell-quoted as the terminal path has always quoted them; the
+    // skip-permissions flag also scopes Claude's trust bypass to this one process.
+    expect(plan?.launchCommand).toBe(
+      "CLAUDE_CODE_SANDBOXED=1 claude '--dangerously-skip-permissions' '--model' 'Opus'"
+    )
   })
 
   it('uses POSIX quoting when the target shell is Linux', () => {
@@ -421,7 +424,9 @@ describe('tui agent startup plans', () => {
       platform: 'linux'
     })
 
-    expect(plan?.launchCommand).toBe("claude --dangerously-skip-permissions 'fix it'")
+    expect(plan?.launchCommand).toBe(
+      "CLAUDE_CODE_SANDBOXED=1 claude --dangerously-skip-permissions 'fix it'"
+    )
   })
 
   it('leaves Codex command overrides untouched', () => {

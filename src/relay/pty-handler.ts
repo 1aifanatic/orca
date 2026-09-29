@@ -1,4 +1,5 @@
 import { FreebuffStatusProjection } from './freebuff-status-projection'
+import { applyRelayClaudeFolderTrust } from './claude-folder-trust-spawn'
 /* oxlint-disable max-lines */
 import type { IPty } from 'node-pty'
 import { killWithDescendantSweep } from '../main/pty-descendant-termination'
@@ -1920,6 +1921,7 @@ export class PtyHandler {
       { id, paneKey, shell, command, launchAgent },
       envToDelete
     )
+    await applyRelayClaudeFolderTrust(params.claudeFolderTrust, spawnEnv)
     const worktreeId =
       typeof params.worktreeId === 'string' ? params.worktreeId : env?.ORCA_WORKTREE_ID
     const historyIsolationEnabled = params.historyIsolationEnabled === true

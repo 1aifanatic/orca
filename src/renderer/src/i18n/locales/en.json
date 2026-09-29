@@ -9174,6 +9174,9 @@
             "0d1c334987": "lid",
             "ff8de8a2ad": "display",
             "0d752916f8": "hooks",
+            "claude-trust-trust": "trust",
+            "claude-trust-folder": "folder",
+            "claude-trust-worktree": "worktree",
             "6984d4291a": "status",
             "13b20636a6": "waiting",
             "8599603496": "done",
@@ -12222,6 +12225,10 @@
           "usageLabel": "Usage",
           "noAllowance": "Cursor reported no usage allowance for this account.",
           "staleUsage": "Last known usage — the latest refresh failed: {{reason}}"
+        },
+        "claude-worktree-trust-copy": {
+          "title": "Trust worktrees Orca creates for Claude",
+          "description": "Claude Code skips its \"trust this folder?\" prompt in worktrees Orca created, so the repo's Claude hooks and settings run without Claude asking first. Folders and checkouts you added yourself, and worktrees of pull requests from forks, still ask."
         }
       },
       "right": {

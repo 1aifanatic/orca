@@ -15,6 +15,10 @@ import {
 } from './agent-generated-tab-title-copy'
 import { getAgentStatusHooksDescription, getAgentStatusHooksTitle } from './agent-status-hooks-copy'
 import {
+  getClaudeWorktreeTrustDescription,
+  getClaudeWorktreeTrustTitle
+} from './claude-worktree-trust-copy'
+import {
   SettingsSegmentedControl,
   SettingsSubsectionHeader,
   SettingsSwitchRow
@@ -255,6 +259,9 @@ export function AgentsPane({
         wslCapabilitiesLoading={wslCapabilitiesLoading}
       />
       <AgentStatusHooksSetting settings={settings} updateSettings={updateSettings} />
+      {!isPairedWebClientWindow() ? (
+        <ClaudeWorktreeTrustSetting settings={settings} updateSettings={updateSettings} />
+      ) : null}
       <AgentGeneratedTabTitlesSetting settings={settings} updateSettings={updateSettings} />
       {!isPairedWebClientWindow() ? (
         <AgentAwakeSetting settings={settings} updateSettings={updateSettings} />
@@ -291,6 +298,21 @@ export function AgentStatusHooksSetting({ settings, updateSettings }: AgentsPane
         checked={enabled}
         onChange={() => updateSettings({ agentStatusHooksEnabled: !enabled })}
         ariaLabel={getAgentStatusHooksTitle()}
+      />
+    </section>
+  )
+}
+
+export function ClaudeWorktreeTrustSetting({ settings, updateSettings }: AgentsPaneProps) {
+  const enabled = settings.claudeTrustOrcaWorktrees !== false
+  return (
+    <section className="space-y-3">
+      <SettingsSwitchRow
+        label={getClaudeWorktreeTrustTitle()}
+        description={getClaudeWorktreeTrustDescription()}
+        checked={enabled}
+        onChange={() => updateSettings({ claudeTrustOrcaWorktrees: !enabled })}
+        ariaLabel={getClaudeWorktreeTrustTitle()}
       />
     </section>
   )

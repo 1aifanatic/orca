@@ -14,6 +14,7 @@ import { pruneWorktreePRRefreshAliases } from '../../../github/pr-refresh-coordi
 import { recordWorkspaceCleanupRemovalSnapshotPrune } from '../../../workspace-cleanup-removal-snapshot-prune'
 import { pruneWorkspaceCleanupScanSnapshot } from '../../../workspace-cleanup-scan-snapshot'
 import { pruneWorkspaceSpaceAnalysisSnapshot } from '../../../workspace-space-analysis-snapshot'
+import { revokeClaudeWorktreeTrustForRemoval } from '../../../claude/claude-worktree-trust-lifecycle'
 
 export async function stopPtysForDestructiveWorktreeRemoval(
   runtime: OrcaRuntimeService,
@@ -75,6 +76,8 @@ export function removeWorktreeMetadataAndTransientState(
   hostId?: ExecutionHostId,
   snapshotPruneBatchId?: string
 ): void {
+  // Why: must read the worktree's provenance before its metadata is dropped below.
+  revokeClaudeWorktreeTrustForRemoval(store, worktreeId)
   const persistedHostId = store.getWorktreeMeta(worktreeId)?.hostId
   const repoId = getRepoIdFromWorktreeId(worktreeId)
   const preservesSameIdOwner = Boolean(
