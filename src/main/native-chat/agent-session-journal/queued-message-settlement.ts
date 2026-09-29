@@ -12,7 +12,7 @@ import {
 } from './journal-dispatch-settlement'
 import type { JournalReducerState } from './journal-reducer'
 import type { JournalRow } from './journal-row-schema'
-import { draftDeliveredByEcho } from './queued-message-delivered-echo'
+import { draftDeliveredByEcho, draftsDeliveredByAppliedEcho } from './queued-message-delivered-echo'
 import {
   listQueuedMessages,
   settleRejectedQueuedMessage,
@@ -35,15 +35,17 @@ export function queuedMessageSettlementOwed(
   )
 }
 
-/** Applies each owed settlement; returns how many drafts it settled. */
+/** Applies each owed settlement, and withdraws each waiting draft an applied echo proves
+ *  delivered (`draftsDeliveredByAppliedEcho`); returns how many drafts changed. */
 export function settleOwedQueuedMessages(
   db: Database.Database,
-  input: { sessionId: string; submissions: Submissions; now: number }
+  input: { sessionId: string; state: JournalReducerState; now: number }
 ): number {
+  const { submissions } = input.state
   let settled = 0
   for (const row of listQueuedMessages(db, input.sessionId)) {
     const consumedRef = row.consumedAs
-    const submission = consumedRef === null ? undefined : input.submissions.get(consumedRef)
+    const submission = consumedRef === null ? undefined : submissions.get(consumedRef)
     if (
       row.state !== 'dispatched' ||
       consumedRef === null ||
@@ -59,6 +61,18 @@ export function settleOwedQueuedMessages(
       now: input.now
     })
     settled += changed ? 1 : 0
+  }
+  const delivered = draftsDeliveredByAppliedEcho(
+    input.state,
+    listQueuedMessages(db, input.sessionId)
+  )
+  if (delivered.length > 0) {
+    settled += withdrawQueuedMessages(db, {
+      sessionId: input.sessionId,
+      messageIds: delivered,
+      settledByOp: null,
+      now: input.now
+    }).length
   }
   return settled
 }
@@ -77,7 +91,9 @@ export function settleQueuedMessagesForRow(
   input: {
     sessionId: string
     state: JournalReducerState
-    drafts: readonly QueuedMessageRow[]
+    /** Read only once the row holds an unclaimed echo: a list read inside the append's
+     *  transaction must not be cached under state a rollback could undo. */
+    drafts: () => readonly QueuedMessageRow[]
     row: JournalRow
     now: number
   }

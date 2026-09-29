@@ -21,6 +21,8 @@ export type JournalRowWriterDeps = {
    *  transition rides here so no rejection path can bypass it. Bookkeeping: it
    *  runs in its own savepoint, so its failure is reported and never vetoes the row. */
   inTransaction?: JournalRowTransactionHook
+  /** After any rollback, so a cache filled inside the transaction cannot outlive it. */
+  rolledBack?: () => void
 }
 
 const BOOKKEEPING_SAVEPOINT = 'journal_row_bookkeeping'
@@ -46,6 +48,7 @@ export class JournalRowWriter {
         db.exec('COMMIT')
       } catch (error) {
         db.exec('ROLLBACK')
+        this.deps.rolledBack?.()
         throw error
       }
       // COMMIT landed, so the row is durable: adopt it before anything that can
@@ -68,7 +71,9 @@ export class JournalRowWriter {
     } catch (error) {
       db.exec(`ROLLBACK TO ${BOOKKEEPING_SAVEPOINT}`)
       db.exec(`RELEASE ${BOOKKEEPING_SAVEPOINT}`)
-      // The open-time repair re-derives what this missed from the committed row.
+      this.deps.rolledBack?.()
+      // The draft store re-derives what this missed from the committed rows: at open, and in
+      // the drain step before a draft sends.
       console.warn('[journal-append] row bookkeeping skipped:', {
         sessionId: this.deps.sessionId,
         kind: row.kind,

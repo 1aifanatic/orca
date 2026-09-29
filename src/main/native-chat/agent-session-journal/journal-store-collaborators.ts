@@ -92,7 +92,8 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
       commit: host.commit,
       // Every rejection is a dispatch row through this one writer; the draft
       // returned-transition rides it so no path can bypass the hook.
-      inTransaction: (db, row) => queuedMessages.onRowInTransaction(db, row)
+      inTransaction: (db, row) => queuedMessages.onRowInTransaction(db, row),
+      rolledBack: () => queuedMessages.invalidate()
     }),
     itemAppender: new JournalItemAppender({
       state: host.state,
