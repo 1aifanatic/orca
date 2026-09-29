@@ -80,7 +80,12 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
   return {
     epochController,
     queuedMessages,
-    restore: () => restoreJournalStore(host, { epochController }),
+    // Behind the stored fact: settles drafts whose consumed submission the loaded journal shows
+    // refused (a downgrade wrote no hook), then prunes. Bookkeeping, never failing the open.
+    restore: () =>
+      restoreJournalStore(host, { epochController }).then(() =>
+        queuedMessages.repairAndPruneAtOpen()
+      ),
     rowWriter: new JournalRowWriter({
       sessionId: host.identity.sessionId,
       now: host.now,

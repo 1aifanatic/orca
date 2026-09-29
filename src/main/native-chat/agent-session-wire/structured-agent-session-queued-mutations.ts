@@ -17,7 +17,6 @@ import type {
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { QueuedMessageNotConsumableError } from '../agent-session-journal/journal-queued-messages'
 import type { QueuedMessageRow } from '../agent-session-journal/queued-message-table'
-import { admitAndRunAgentSessionMutation } from './structured-agent-session-mutation-admission'
 import type { MutationPlan } from './structured-agent-session-mutation-plans'
 import {
   queuedMessageFingerprint,
@@ -28,17 +27,16 @@ import {
   structuredAgentSessionHostInstance
 } from './structured-agent-session-queued-pause'
 import { unsettledQueuedMessages } from './structured-agent-session-queued-stop'
-import type { StructuredAgentSessionMutationContext } from './structured-agent-session-host-mutations'
+import {
+  mutateStructuredAgentSession,
+  type StructuredAgentSessionMutationContext
+} from './structured-agent-session-host-mutations'
 import type { StructuredAgentSessionCaller } from './structured-agent-session-host-types'
 import {
   openForWrite,
   structuredAgentSessionSendBlock
 } from './structured-agent-session-send-preparation'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
-import {
-  compactInFlightContext,
-  conversationOperationWaitRefusal
-} from './structured-conversation-command-lane'
 
 function invalid(message: string): {
   ok: false
@@ -133,27 +131,20 @@ export async function carryQueuedMessagesToClearReplacement(
   }
 }
 
+/** Draft actions run like any mutation: admitted on the session's lane, the
+ *  conversation opened for the write. */
 function mutateQueued<TValue>(
   context: StructuredAgentSessionMutationContext,
-  lane: StructuredAgentSessionMutationContext,
   caller: StructuredAgentSessionCaller,
   envelope: AgentSessionMutationEnvelope,
   plan: MutationPlan<TValue>
 ): Promise<AgentSessionMutationResult<TValue>> {
-  return lane.serialize(envelope.sessionId, () =>
-    admitAndRunAgentSessionMutation({
-      store: context.deps.store,
-      adapter: context.deps.adapter,
-      callerKey: caller.callerKey,
-      envelope,
-      plan,
-      journal: () => context.sessions.get(envelope.sessionId)?.journal,
-      prepareSession: openForWrite(context, envelope),
-      publish: (journal) => context.publish(envelope.sessionId, journal),
-      flushStreamedEvents: context.flushStreamedEvents,
-      providerChildPhase: () => context.sessions.get(envelope.sessionId)?.child?.phase,
-      now: () => context.now()
-    })
+  return mutateStructuredAgentSession(
+    context,
+    caller,
+    envelope,
+    plan,
+    openForWrite(context, envelope)
   )
 }
 
@@ -188,9 +179,6 @@ export function sendQueuedStructuredAgentMessage(
       const hold = structuredQueueHold({ journal: ctx.journal, record, fence: ctx.fence })
       if (hold === 'blocked') {
         return structuredAgentSessionSendBlock(record) ?? invalid('This conversation cannot send.')
-      }
-      if (hold === 'command') {
-        return invalid('Wait for the conversation operation to finish.')
       }
       if (hold === 'prompt') {
         return invalid('Answer the pending request before sending this message.')
@@ -253,13 +241,7 @@ export function sendQueuedStructuredAgentMessage(
       return submission ? { clientMessageId: submission.clientMessageId, submission } : null
     }
   }
-  // A /compact holds the main lane for its whole provider call, so the refusal
-  // is answered before any lane: a Send queued on the side lane could outlive
-  // the compaction and append unserialized against the main lane.
-  if (compactInFlightContext(context, params.envelope.sessionId)) {
-    return Promise.resolve(conversationOperationWaitRefusal())
-  }
-  return mutateQueued(context, context, caller, params.envelope, plan)
+  return mutateQueued(context, caller, params.envelope, plan)
 }
 
 /** Delete = discard, with no body in the answer: the card leaving the published
@@ -307,16 +289,12 @@ export function deleteQueuedStructuredAgentMessage(
       return replayed ? { deleted: true, messageId } : null
     }
   }
-  // Answers at once during a /compact on the side lane draft-only sends use; its
-  // compare-and-set withdrawal is safe on either lane. The drain stays behind it.
-  const lane = compactInFlightContext(context, params.envelope.sessionId) ?? context
-  return mutateQueued(context, lane, caller, params.envelope, plan)
+  return mutateQueued(context, caller, params.envelope, plan)
 }
 
 /** Resume: ends the queue's pause — a Stop's, or a restart's — so the cards send
  *  again, oldest first, as the session goes idle. A no-op when nothing is paused,
- *  and a per-card `send_failed` hold stays for its own Send. Answers on the side
- *  lane during a /compact, like Delete: the drain stays behind the compaction. */
+ *  and a per-card `send_failed` hold stays for its own Send. */
 export function resumeStructuredAgentQueue(
   context: StructuredAgentSessionMutationContext,
   caller: StructuredAgentSessionCaller,
@@ -335,6 +313,5 @@ export function resumeStructuredAgentQueue(
     // Like Stop's replay: the Resume already ran, so this one lifts nothing.
     replay: () => ({ resumed: false })
   }
-  const lane = compactInFlightContext(context, params.envelope.sessionId) ?? context
-  return mutateQueued(context, lane, caller, params.envelope, plan)
+  return mutateQueued(context, caller, params.envelope, plan)
 }

@@ -11,6 +11,7 @@ import type {
   AgentJournalSubmission,
   AgentJournalThreadGoal,
   AgentJournalTurnLifecycle,
+  AgentJournalTurnScope,
   AgentSessionJournalIdentity
 } from '../../../shared/agent-session-journal-types'
 import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
@@ -19,6 +20,7 @@ import type { AgentSessionContextUsage } from '../../../shared/agent-session-con
 import { latestStructuredAgentContextFacts } from '../../../shared/structured-agent-session-context-usage'
 import {
   activeStructuredAgentSessionTurnIdBySequence,
+  liveStructuredAgentSessionTurnScope,
   newestStructuredAgentSessionTurnBySequence
 } from '../../../shared/structured-agent-session-live-turn'
 import { agentSessionJournalCloseRetries } from './journal-close-retry'
@@ -56,9 +58,9 @@ import type {
   ResolveDispatchInput
 } from './journal-store-contracts'
 import { queuedMessageConsumeHook, type JournalQueuedMessages } from './journal-queued-messages'
-import type { AgentJournalEpochReason, JournalRow } from './journal-row-schema'
+import type { AgentJournalEpochReason } from './journal-row-schema'
 import { AgentSessionJournalError } from './journal-write-guards'
-import type { JournalRowTransactionHook, JournalRowWriter } from './journal-row-writer'
+import type { JournalRowWriter } from './journal-row-writer'
 import type { JournalEpochController } from './journal-epoch-controller'
 import { JournalConnectionCloser, JournalWriteQueue } from './journal-store-close'
 import { createJournalStoreCollaborators } from './journal-store-collaborators'
@@ -176,9 +178,6 @@ export class AgentSessionJournal {
     this.database = openJournalDatabase(this.dbPath)
     try {
       await this.restore()
-      // Behind the stored fact: returns drafts whose consumed submission the
-      // loaded journal shows refused (a downgrade wrote no hook), then prunes.
-      await this.queuedMessages.repairAndPruneAtOpen()
       this.openedThrough = this.cursor()
     } catch (error) {
       // Nothing else holds a reference to this connection, so a throw here is
@@ -227,6 +226,10 @@ export class AgentSessionJournal {
    *  without materialising one. */
   activeTurnId = (): string | null =>
     activeStructuredAgentSessionTurnIdBySequence(this.state.items.values())
+
+  /** Where a row written now belongs: the running turn, or the conversation. */
+  liveTurnScope = (): AgentJournalTurnScope =>
+    liveStructuredAgentSessionTurnScope(this.state.items.values())
 
   /** The newest turn record whatever state it settled in, for readers that need the outcome. */
   newestTurn = (): AgentJournalTurnLifecycle | null =>
@@ -284,7 +287,7 @@ export class AgentSessionJournal {
   appendItem(
     identity: AgentJournalItemIdentity,
     body: AgentJournalItemBody,
-    options: JournalItemAppendOptions = { fence: 0 }
+    options: JournalItemAppendOptions
   ): Promise<JournalAppendResult> {
     return this.itemAppender.append(identity, body, options)
   }
@@ -294,7 +297,9 @@ export class AgentSessionJournal {
     options: JournalTombstoneInput
   ): Promise<AgentJournalCursor> {
     const itemId = agentJournalItemKey(identity)
-    return this.appendRow(journalTombstoneRowBuilder(() => this.state, itemId, options.fence))
+    return this.rowWriter.append(
+      journalTombstoneRowBuilder(() => this.state, itemId, options.fence)
+    )
   }
 
   appendLifecycleBatch(input: JournalLifecycleBatchInput): Promise<AgentJournalCursor> {
@@ -312,7 +317,7 @@ export class AgentSessionJournal {
      *  state transition commits in the SAME transaction — exactly-once consume. */
     consume?: JournalSubmissionConsume
   ): Promise<AgentJournalCursor> {
-    return this.appendRow(
+    return this.rowWriter.append(
       journalSubmissionRowBuilder(() => this.state, this.identity.providerHandle, input, consume),
       consume && queuedMessageConsumeHook(this.queuedMessages, input.clientMessageId, consume)
     )
@@ -326,7 +331,7 @@ export class AgentSessionJournal {
    * string here would silently give the user a second copy of their own message.
    */
   resolveDispatch(input: ResolveDispatchInput): Promise<AgentJournalCursor> {
-    return this.appendRow(journalDispatchRowBuilder(() => this.state, input))
+    return this.rowWriter.append(journalDispatchRowBuilder(() => this.state, input))
   }
 
   /** Retire unanswered sends after their execution owner ended, without assuming delivery. */
@@ -377,19 +382,5 @@ export class AgentSessionJournal {
       )
     }
     return this.database
-  }
-
-  /**
-   * Assign the next sequence, make the row durable, and fold it through the
-   * SAME reducer replay uses — all inside one serialized step, so concurrent
-   * callers cannot interleave and mint the same sequence.
-   */
-  private appendRow(
-    build: (seq: number, ts: number) => JournalRow,
-    inTransaction?: JournalRowTransactionHook
-  ): Promise<AgentJournalCursor> {
-    return this.rowWriter
-      .enqueue(build, inTransaction)
-      .then((row) => ({ epoch: row.epoch, sequence: row.seq }))
   }
 }

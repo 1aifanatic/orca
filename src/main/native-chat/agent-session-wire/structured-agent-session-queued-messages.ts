@@ -18,6 +18,7 @@ import {
   structuredAgentSessionPayloadFingerprint
 } from '../../../shared/structured-agent-session-mutation'
 import { queuedSendAnswer } from './structured-agent-session-queued-send-answer'
+import { structuredAgentSessionSendBlock } from './structured-agent-session-send-preparation'
 import { isUnsettledQueuedMessage } from '../agent-session-journal/queued-message-table'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import { isStructuredAgentSessionMainAgentWorking } from '../../../shared/structured-agent-session-main-agent-working'
@@ -89,32 +90,25 @@ function oldestActionableQueuedMessage(
  *   drain step: any hold returns early; whatever clears it publishes or
  *     commits, which re-derives.
  *   Send-now: overrides only `working` (plus FIFO order and the stored hold);
- *     `blocked`, `command` and `prompt` refuse readably.
+ *     `blocked` and `prompt` refuse readably.
  *
- * `blocked` is permanent-shaped (an uncertain rewind, a cleared or clearing
- * source); the rest are waits. Host-local vocabulary — never on the wire.
+ * `blocked` is whatever refuses any send (an uncertain rewind, a clear in doubt,
+ * a cleared source); the rest are waits. A /compact is a queued message and then a turn,
+ * so it holds the queue as `working`; an older build's compaction record belongs
+ * to a child this host no longer runs and holds nothing. Host-local vocabulary —
+ * never on the wire.
  */
-export type StructuredQueueHold = 'blocked' | 'command' | 'working' | 'prompt'
+export type StructuredQueueHold = 'blocked' | 'working' | 'prompt'
 
 export function structuredQueueHold(input: {
   journal: AgentSessionJournal
   record: AgentSessionRecord | null
   fence: number
 }): StructuredQueueHold | null {
-  const rewind = input.record?.rewind
-  if (rewind?.phase === 'prepared' || rewind?.phase === 'provider-succeeded') {
+  // Whatever refuses any send refuses the queue too: an uncertain rewind, a clear in
+  // doubt, or a source a clear superseded. One rule, the immediate path's own.
+  if (structuredAgentSessionSendBlock(input.record)) {
     return 'blocked'
-  }
-  const command = input.record?.conversationCommand
-  if (command?.command === 'clear' && command.replacementSessionId !== undefined) {
-    // Superseded, or mid-supersession: the fence, not a wait.
-    return 'blocked'
-  }
-  if (command?.phase === 'prepared') {
-    // A /compact in flight (a prepared command is always `state: 'unknown'`);
-    // its settlement re-derives the drain — the command controller's wake,
-    // because a command can settle on the record alone, with no commit.
-    return 'command'
   }
   const { journal } = input
   // `prompt` outranks `working`: it is the one wait Send-now may not override,
