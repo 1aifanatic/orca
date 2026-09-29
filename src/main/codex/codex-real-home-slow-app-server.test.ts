@@ -276,6 +276,28 @@ describe('a slow codex app-server start', () => {
     expect(failing.sessions).toBe(2)
   })
 
+  it('has one retry schedule: turning hooks off and on after a failure retries at once', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    const failing = installAppServer(
+      0,
+      new Error('codex app-server exited before completing the session')
+    )
+    failing.start()
+    expect(await launch()).toBe('granting')
+    expect(await realHomeInternals.settledLaneForTesting()).toBe('unavailable')
+
+    await ensureRealHomeCodexHookState({
+      hooksEnabled: false,
+      userDataPath: homes.userDataDir,
+      writePolicy: 'add-missing-only'
+    })
+    const recovered = installAppServer(0)
+    recovered.start()
+    expect(await launch()).toBe('granting')
+    expect(await realHomeInternals.settledLaneForTesting()).toBe('installed')
+    expect(recovered.sessions).toBe(1)
+  })
+
   it.skipIf(process.platform === 'win32')(
     'removes a retired entry and moves the user trust behind it with no Codex session',
     async () => {

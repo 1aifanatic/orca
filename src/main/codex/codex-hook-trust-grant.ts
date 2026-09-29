@@ -37,17 +37,14 @@ import {
 } from './codex-managed-trust-grant-plan'
 import { isCodexStateDbBackfillPending } from './codex-state-db'
 import {
-  clearCodexTrustGrantCooldowns,
+  clearCodexTrustGrantCooldown,
   countCodexTrustGrantCooldowns,
   isCodexTrustGrantCoolingDown,
   resetCodexTrustGrantCooldowns,
   startCodexTrustGrantCooldown
 } from './codex-trust-grant-cooldown'
 
-export {
-  CODEX_BACKGROUND_TRUST_GRANT_RETRY_INTERVAL_MS,
-  CODEX_TRUST_GRANT_TRANSIENT_RETRY_INTERVAL_MS
-} from './codex-trust-grant-cooldown'
+export { CODEX_TRUST_GRANT_TRANSIENT_RETRY_INTERVAL_MS } from './codex-trust-grant-cooldown'
 
 // Why: a cold `codex app-server` on a loaded Mac took over 10 s; a background
 // grant blocks no launch, so it can wait for one. The session's own kill timer
@@ -134,7 +131,9 @@ function completeGrant(
     detail: unknown,
     verifyClass: CodexTrustGrantVerifyClass
   ): CodexManagedTrustGrantOutcome => {
-    startCodexTrustGrantCooldown(plan, hostKey)
+    if (!plan.background) {
+      startCodexTrustGrantCooldown(hostKey)
+    }
     return fallback(plan, 'verify-failed', detail, verifyClass)
   }
   if (result.outcome === 'verify-failed') {
@@ -163,7 +162,7 @@ function completeGrant(
   if (seenNormalizedKeys.size !== expected.length) {
     return rejectGrant('granted entry set did not cover expected entries', 'coverage')
   }
-  clearCodexTrustGrantCooldowns(hostKey)
+  clearCodexTrustGrantCooldown(hostKey)
   try {
     writeCodexTrustGrantLedgerHome(plan.runtimeHomePath, {
       binary: attempt.currentStamp,
@@ -236,7 +235,7 @@ async function runGrantAttempt(
           // this one waited behind it.
           return fallback(plan, 'unsupported-cached')
         }
-        clearCodexTrustGrantCooldowns(hostKey)
+        clearCodexTrustGrantCooldown(hostKey)
         return fallback(plan, 'unsupported', unsupportedError)
       },
       (error) => {
@@ -248,9 +247,8 @@ async function runGrantAttempt(
       }
     )
   } catch (error) {
-    // Why: a background grant that timed out is retried on the next launch.
-    if (!plan.background || classifyCodexTrustGrantError(error) !== 'timeout') {
-      startCodexTrustGrantCooldown(plan, hostKey)
+    if (!plan.background) {
+      startCodexTrustGrantCooldown(hostKey)
     }
     return fallback(plan, 'error', error)
   }
@@ -308,7 +306,7 @@ export async function grantManagedCodexHookTrust(
     if (!codexAppServerCapabilityCache.shouldTry(hostKey)) {
       return fallback(plan, 'unsupported-cached')
     }
-    if (isCodexTrustGrantCoolingDown(plan, hostKey)) {
+    if (!plan.background && isCodexTrustGrantCoolingDown(hostKey)) {
       return fallback(plan, 'retry-cached')
     }
     // Why no lane across the session: Codex writes its own records, and a held

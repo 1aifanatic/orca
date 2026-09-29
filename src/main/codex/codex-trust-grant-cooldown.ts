@@ -3,69 +3,45 @@ import type { CodexAppServerHostKey } from './codex-app-server-capability-cache'
 // Why: a transiently hung app-server must not block launch prep on every pane.
 // The legacy lane remains available while a short, host-scoped cooldown runs.
 export const CODEX_TRUST_GRANT_TRANSIENT_RETRY_INTERVAL_MS = 5 * 60_000
-// Why seconds: a background grant blocks no launch, and a long latch at boot
-// keeps ~/.codex off its hooks long after the app-server recovers.
-export const CODEX_BACKGROUND_TRUST_GRANT_RETRY_INTERVAL_MS = 10_000
 const MAX_TRANSIENT_TRUST_COOLDOWNS = 256
 
-type CooldownLane = { background?: boolean }
+// Why launch-path grants only: a background grant's retry is scheduled by its
+// caller's lane, so a second schedule here could only disagree with it.
+const retryAfterByHost = new Map<string, number>()
 
-const retryAfterByLane = new Map<string, number>()
-
-// Why per lane: a background failure's short retry must not let inline grants
-// pay their launch-path timeout every few seconds.
-function laneKey(lane: CooldownLane, hostKey: CodexAppServerHostKey): string {
-  return lane.background ? `${hostKey}#background` : hostKey
-}
-
-export function isCodexTrustGrantCoolingDown(
-  lane: CooldownLane,
-  hostKey: CodexAppServerHostKey
-): boolean {
-  const key = laneKey(lane, hostKey)
-  const retryAfter = retryAfterByLane.get(key)
+export function isCodexTrustGrantCoolingDown(hostKey: CodexAppServerHostKey): boolean {
+  const retryAfter = retryAfterByHost.get(hostKey)
   if (retryAfter === undefined) {
     return false
   }
   if (Date.now() < retryAfter) {
     return true
   }
-  retryAfterByLane.delete(key)
+  retryAfterByHost.delete(hostKey)
   return false
 }
 
-export function startCodexTrustGrantCooldown(
-  lane: CooldownLane,
-  hostKey: CodexAppServerHostKey
-): void {
-  const key = laneKey(lane, hostKey)
-  retryAfterByLane.delete(key)
-  retryAfterByLane.set(
-    key,
-    Date.now() +
-      (lane.background
-        ? CODEX_BACKGROUND_TRUST_GRANT_RETRY_INTERVAL_MS
-        : CODEX_TRUST_GRANT_TRANSIENT_RETRY_INTERVAL_MS)
-  )
-  while (retryAfterByLane.size > MAX_TRANSIENT_TRUST_COOLDOWNS) {
-    const oldest = retryAfterByLane.keys().next().value
+export function startCodexTrustGrantCooldown(hostKey: CodexAppServerHostKey): void {
+  retryAfterByHost.delete(hostKey)
+  retryAfterByHost.set(hostKey, Date.now() + CODEX_TRUST_GRANT_TRANSIENT_RETRY_INTERVAL_MS)
+  while (retryAfterByHost.size > MAX_TRANSIENT_TRUST_COOLDOWNS) {
+    const oldest = retryAfterByHost.keys().next().value
     if (oldest === undefined) {
       break
     }
-    retryAfterByLane.delete(oldest)
+    retryAfterByHost.delete(oldest)
   }
 }
 
-/** A success or a proven-missing surface ends both lanes' cooldowns for the host. */
-export function clearCodexTrustGrantCooldowns(hostKey: CodexAppServerHostKey): void {
-  retryAfterByLane.delete(laneKey({}, hostKey))
-  retryAfterByLane.delete(laneKey({ background: true }, hostKey))
+/** A success or a proven-missing surface, from either lane, ends the host's cooldown. */
+export function clearCodexTrustGrantCooldown(hostKey: CodexAppServerHostKey): void {
+  retryAfterByHost.delete(hostKey)
 }
 
 export function resetCodexTrustGrantCooldowns(): void {
-  retryAfterByLane.clear()
+  retryAfterByHost.clear()
 }
 
 export function countCodexTrustGrantCooldowns(): number {
-  return retryAfterByLane.size
+  return retryAfterByHost.size
 }

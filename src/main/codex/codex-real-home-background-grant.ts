@@ -1,6 +1,5 @@
 import { getRealHomeConfigTomlPath } from './codex-real-home-hooks-json'
 import {
-  CODEX_BACKGROUND_TRUST_GRANT_RETRY_INTERVAL_MS,
   grantManagedCodexHookTrust,
   type CodexManagedTrustGrantOutcome,
   type CodexManagedTrustGrantPlan
@@ -11,6 +10,10 @@ import {
   runExclusivelyForCodexTrustConfig,
   runOutsideCodexTrustConfigLanes
 } from './codex-trust-config-mutation-queue'
+
+// Why seconds: a background grant blocks no launch, and a long latch at boot
+// keeps ~/.codex off its hooks long after the app-server recovers.
+const CODEX_BACKGROUND_TRUST_GRANT_RETRY_INTERVAL_MS = 10_000
 
 export type RealHomeBackgroundGrant = {
   plan: CodexManagedTrustGrantPlan

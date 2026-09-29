@@ -27,7 +27,7 @@ export type CodexManagedTrustGrantPlan = {
   telemetryLane: CodexTrustGrantTelemetryLane
   /** Match a pane where CODEX_HOME is absent instead of an explicit managed home. */
   useDefaultCodexHome?: boolean
-  /** Off the launch path: a cold-start budget, and a timeout starts no cooldown. */
+  /** Off the launch path: a cold-start budget, and no cooldown; the caller schedules retries. */
   background?: boolean
   /** This home's fallback writes computeTrustedHash trust, so a grant first clears
    *  it; the fallback rewrites it if the grant fails. Never set for the real home,
