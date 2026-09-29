@@ -5,7 +5,18 @@ import { terminalStatusPayloadMatchesHook } from '../../../shared/agent-terminal
 import type { ParsedAgentStatusPayload } from '../../../shared/agent-status-types'
 import type { EnrichedAgentHookEventPayload } from './server-types'
 import { isAgentStatusHeldOpenByChildWork } from '../../../shared/agent-lead-status-fold'
+import { isAskUserQuestionTool } from '../../../shared/agent-question-answered-intent'
 import { AgentHookServerIngestNormalization } from './server-ingest-normalization'
+
+/** A Claude permission wait a hook raised. A question is excluded: answering one emits no hook. */
+function isClaudeHookApprovalWait(row: EnrichedAgentHookEventPayload): boolean {
+  return (
+    row.payload.agentType === 'claude' &&
+    row.payload.state === 'waiting' &&
+    row.hookEventName !== undefined &&
+    !isAskUserQuestionTool(row.payload.toolName)
+  )
+}
 
 export abstract class AgentHookServerIngestTerminal extends AgentHookServerIngestNormalization {
   ingestTerminalStatus(event: {
@@ -90,6 +101,19 @@ export abstract class AgentHookServerIngestTerminal extends AgentHookServerInges
     ) {
       // Why: OSC carries no child identity, so it cannot settle or repaint a row child agents hold open
       // (working, or waiting on a child's prompt); their lifecycle hooks will.
+      if (mutationBefore !== undefined) {
+        this.commitStatusRowMutation(mutationBefore, previous)
+        this.emitEnrichedStatus(previous)
+      }
+      return
+    }
+    if (
+      previous !== undefined &&
+      isClaudeHookApprovalWait(previous) &&
+      event.payload.state === 'working' &&
+      !previous.restoredUnconfirmed
+    ) {
+      // Why: OSC names no tool call, so it cannot answer a live prompt; the call's completion hook will.
       if (mutationBefore !== undefined) {
         this.commitStatusRowMutation(mutationBefore, previous)
         this.emitEnrichedStatus(previous)

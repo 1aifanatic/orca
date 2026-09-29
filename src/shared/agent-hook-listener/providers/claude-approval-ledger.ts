@@ -300,8 +300,9 @@ export function foldClaudeApprovalEvent(input: {
         : {}),
     settledBy: input.raisesQuestionWait ? 'any-tool-event' : 'completion'
   }
-  // Why: a duplicate delivery of the same live prompt must not stack a second obligation.
-  if (settled.some((record) => sameApproval(record, raised))) {
+  // Why: a duplicate delivery of the same live prompt must not stack a second obligation — unless
+  // this turn announced two identical calls, where a second prompt is real and merging would hide it.
+  if (announcedOwner !== null && settled.some((record) => sameApproval(record, raised))) {
     return { ...carried, approvals: settled }
   }
   const next = [...settled, raised]
