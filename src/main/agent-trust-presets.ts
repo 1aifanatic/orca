@@ -2,11 +2,11 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, statSync 
 import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { writeFileAtomically } from './codex-accounts/fs-utils'
-import { getOrcaManagedCodexHomePath } from './codex/codex-home-paths'
 import { upsertProjectTrustLevel } from './codex/config-toml-trust'
 import { runExclusivelyForCodexTrustConfig } from './codex/codex-trust-config-mutation-queue'
+import type { TuiAgentConfig } from '../shared/tui-agent-config'
 
-export type AgentTrustPreset = 'cursor' | 'copilot' | 'codex' | 'antigravity' | 'qoder'
+export type AgentTrustPreset = NonNullable<TuiAgentConfig['preflightTrust']>
 
 /**
  * Pre-mark a workspace as trusted for cursor-agent, GitHub Copilot CLI, or
@@ -161,27 +161,31 @@ export function markAntigravityWorkspaceTrusted(workspacePath: string): void {
  *
  * Verified against codex-rs/tui/src/onboarding/trust_directory.rs and
  * codex-rs/core/src/config/config_tests.rs in the Codex CLI source.
+ *
+ * `configFiles` names every config.toml the launched Codex may read, in the
+ * hook installer's lock order (an Orca-owned CODEX_HOME before the system one).
  */
-export function markCodexProjectTrusted(workspacePath: string): Promise<void> {
+export function markCodexProjectTrusted(
+  workspacePath: string,
+  configFiles: readonly string[]
+): Promise<void> {
   const absPath = resolveCodexProjectTrustRoot(workspacePath)
-  const systemTomlPath = join(homedir(), '.codex', 'config.toml')
-  // Why: Orca-launched Codex runs with an Orca-owned CODEX_HOME, so the trust
-  // preset must also update the runtime config Codex will actually read.
-  const runtimeTomlPath = join(getOrcaManagedCodexHomePath(), 'config.toml')
   // Why (#16441): hook installs now await a codex app-server grant, so an
   // unqueued write here can land inside their capture->restore window and be
   // reverted. Same runtime-before-system lock order the installer takes.
-  return runExclusivelyForCodexTrustConfig(runtimeTomlPath, () =>
-    runExclusivelyForCodexTrustConfig(systemTomlPath, async () => {
-      upsertProjectTrustLevel(systemTomlPath, absPath, 'trusted')
-      upsertProjectTrustLevel(runtimeTomlPath, absPath, 'trusted')
-    })
+  const write = configFiles.reduceRight<() => Promise<void>>(
+    (inner, configFile) => () => runExclusivelyForCodexTrustConfig(configFile, inner),
+    async () => {
+      for (const configFile of configFiles) {
+        upsertProjectTrustLevel(configFile, absPath, 'trusted')
+      }
+    }
   )
+  return write()
 }
 
-// Mirrors resolve_root_git_project_for_trust in codex-rs/git-utils/src/trust.rs:
-// when it returns no repo root, Codex keys trust on the workspace itself.
-function resolveCodexProjectTrustRoot(workspacePath: string): string {
+// Mirrors resolve_root_git_project_for_trust (codex-rs/git-utils/src/trust.rs); no repo root keys trust on the workspace.
+export function resolveCodexProjectTrustRoot(workspacePath: string): string {
   const absPath = canonicalize(workspacePath)
   try {
     const workspaceGitFile = join(absPath, '.git')
