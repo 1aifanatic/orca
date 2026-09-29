@@ -257,6 +257,10 @@ describe('OpenCodeHookService buildPtyEnv / clearPty round-trip', () => {
     expect(module.default?.id).toBe('orca-opencode-status')
     expect(module.default?.server).toBeTypeOf('function')
     expect(module.default?.setup).toBeTypeOf('function')
+    // A service loading this dir stands down only when the TUI copy sits beside it.
+    expect(
+      readFileSync(join(legacyPluginPath, '..', 'orca-opencode-status-tui', 'tui.js'), 'utf8')
+    ).toBe(getOpenCodePluginSource())
   })
 
   it('repairs late and overwritten legacy plugins atomically on the same service', () => {
@@ -271,7 +275,10 @@ describe('OpenCodeHookService buildPtyEnv / clearPty round-trip', () => {
         service.refreshLegacySharedPlugin()
         expect(readFileSync(path, 'utf8')).toBe(getOpenCodePluginSource())
         expect(readFileSync(reader, 'utf8')).toBe(stale)
-        expect(readdirSync(join(path, '..'))).toEqual(['orca-opencode-status.js'])
+        expect(readdirSync(join(path, '..')).sort()).toEqual([
+          'orca-opencode-status-tui',
+          'orca-opencode-status.js'
+        ])
       } finally {
         closeSync(reader)
       }
