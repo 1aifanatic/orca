@@ -8,7 +8,7 @@ import {
   writeFileSync
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, sep } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as Os from 'node:os'
 import type { AgentTrustPreset } from './agent-trust-presets'
@@ -80,6 +80,11 @@ describe('applyWorkspaceTrustOnThisHost', () => {
         symlinkSync(state.home, join(root, 'home-link'), 'junction')
         return { workspace: join(root, 'home-link') }
       }
+    ],
+    [
+      // Why a missing segment: realpath fails there, and join() would collapse the `..` itself.
+      'a missing path that resolves to the home through ..',
+      () => ({ workspace: [state.home, 'missing', '..'].join(sep) })
     ],
     [
       'the home, when the host names it through a symlink',

@@ -1,4 +1,5 @@
 import { realpathSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { markQoderWorkspaceTrusted } from './qoder/workspace-trust'
 import {
   type AgentTrustPreset,
@@ -29,11 +30,12 @@ export type WorkspaceTrustHost = {
   deadlineMs: number
 }
 
+// Why resolve() too: Claude stores it, and it collapses `..` even where realpath fails.
 function withResolvedForm(path: string): string[] {
   try {
-    return [path, realpathSync.native(path)]
+    return [path, resolve(path), realpathSync.native(path)]
   } catch {
-    return [path]
+    return [path, resolve(path)]
   }
 }
 
