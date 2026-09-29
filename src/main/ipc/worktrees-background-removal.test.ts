@@ -8,6 +8,7 @@ import {
 import { handlers, setupWorktreeHandlers, store } from './worktrees-test-harness'
 import { mockKnownFeatureWorktree } from './worktrees-test-fixtures'
 import type { WorktreeRuntimeStub } from './worktrees-test-runtime-stub'
+import type { RemoveWorktreeResult } from '../../shared/worktree/create-types'
 import {
   _resetPendingWorktreeRemovalsForTests,
   _settlePendingWorktreeRemovalsForTests
@@ -104,8 +105,11 @@ function rawRemoveHandler(): RawHandler {
   return call?.[1] as RawHandler
 }
 
-function blockGitRemove(): { release: (result?: object) => void; fail: (error: Error) => void } {
-  let release!: (result?: object) => void
+function blockGitRemove(): {
+  release: (result?: RemoveWorktreeResult) => void
+  fail: (error: Error) => void
+} {
+  let release!: (result?: RemoveWorktreeResult) => void
   let fail!: (error: Error) => void
   removeWorktreeMock.mockImplementation(
     () =>
