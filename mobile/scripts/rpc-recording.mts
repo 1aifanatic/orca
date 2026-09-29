@@ -16,8 +16,8 @@ import { derivedGoldens } from '../src/test-support/rpc-recording/derived-golden
 import { RECORDING_DRIVERS } from '../src/test-support/rpc-recording/recording-drivers.ts'
 import { readScenarios } from '../src/test-support/rpc-recording/scenario-input.ts'
 
-// Ten minutes, not two: the corpus already records in ~110s, so the old 120s budget killed the run
-// on any cold cache and reported it as a truncated failure rather than as a timeout.
+// Ten minutes, not two: the corpus records in 150-290s, so the old 120s budget killed every run and
+// reported it as a truncated failure rather than as a timeout.
 const RECORDING_TIMEOUT_MS = 600_000
 const root = resolve(import.meta.dirname, '../..')
 const goldens = resolve(root, 'mobile/rpc-foundation/goldens')
@@ -41,41 +41,50 @@ if (unknownIds.length) {
   throw new Error(`The manifest derives no golden named ${unknownIds.join(', ')}`)
 }
 
-const escape = (id: string) => id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-const require = createRequire(resolve(root, 'mobile/package.json'))
-const result = await runProcess({
-  program: process.execPath,
-  args: [
-    resolve(require.resolve('vitest/package.json'), '../vitest.mjs'),
-    'run',
-    ...RECORDING_DRIVERS.map((driver) => `src/test-support/rpc-recording/${driver}`),
-    ...(ids.length ? ['-t', `(?:^| )(?:${ids.map(escape).join('|')}): `] : [])
-  ],
-  cwd: resolve(root, 'mobile'),
-  timeoutMs: RECORDING_TIMEOUT_MS,
-  env: { ...process.env, ORCA_BACKGROUND_LAUNCH: '1', RPC_FOUNDATION_MODE: '--record' },
-  // Streamed, not captured: a capture holds a ~2 min run silent and clips its tail past 8 MB.
-  stdio: 'inherit'
-})
-if (result.timedOut) {
-  // Why: a killed run writes a partial reporter line and nothing else, which reads as a failing
-  // test rather than as a run that never finished.
-  throw new Error(`Recording did not finish within ${RECORDING_TIMEOUT_MS / 1000}s and was killed.`)
-}
-if (result.code !== 0) {
-  process.exitCode = 1
+// Orphans come from the manifest, not the run, so a failed or killed run still lists or prunes them.
+function handleOrphans(): void {
+  const orphans = readdirSync(goldens)
+    .filter((file) => file.endsWith('.json') && !derived.has(file.replace(/\.json$/, '')))
+    .sort()
+  for (const file of orphans) {
+    if (prune) {
+      rmSync(resolve(goldens, file))
+      process.stdout.write(`pruned ${file}: the manifest no longer derives it\n`)
+    } else {
+      process.stdout.write(
+        `orphaned ${file}: the manifest no longer derives it (--prune deletes it)\n`
+      )
+    }
+  }
 }
 
-const orphans = readdirSync(goldens)
-  .filter((file) => file.endsWith('.json') && !derived.has(file.replace(/\.json$/, '')))
-  .sort()
-for (const file of orphans) {
-  if (prune) {
-    rmSync(resolve(goldens, file))
-    process.stdout.write(`pruned ${file}: the manifest no longer derives it\n`)
-  } else {
-    process.stdout.write(
-      `orphaned ${file}: the manifest no longer derives it (--prune deletes it)\n`
+const escape = (id: string) => id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const require = createRequire(resolve(root, 'mobile/package.json'))
+try {
+  const result = await runProcess({
+    program: process.execPath,
+    args: [
+      resolve(require.resolve('vitest/package.json'), '../vitest.mjs'),
+      'run',
+      ...RECORDING_DRIVERS.map((driver) => `src/test-support/rpc-recording/${driver}`),
+      ...(ids.length ? ['-t', `(?:^| )(?:${ids.map(escape).join('|')}): `] : [])
+    ],
+    cwd: resolve(root, 'mobile'),
+    timeoutMs: RECORDING_TIMEOUT_MS,
+    env: { ...process.env, ORCA_BACKGROUND_LAUNCH: '1', RPC_FOUNDATION_MODE: '--record' },
+    // Streamed, not captured: a capture holds a multi-minute run silent and clips its tail past 8 MB.
+    stdio: 'inherit'
+  })
+  if (result.timedOut) {
+    // Why: a killed run writes a partial reporter line and nothing else, which reads as a failing
+    // test rather than as a run that never finished.
+    throw new Error(
+      `Recording did not finish within ${RECORDING_TIMEOUT_MS / 1000}s and was killed.`
     )
   }
+  if (result.code !== 0) {
+    process.exitCode = 1
+  }
+} finally {
+  handleOrphans()
 }

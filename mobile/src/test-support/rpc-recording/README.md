@@ -147,10 +147,10 @@ recording branch's own commit, which a squash merge then made unreachable. Every
 rewrote all 787 headers and needed a follow-up pull request to repin main; version 6 dropped all of
 it. `rpc:diff` still reads the old files, so a diff across the change is a real diff.
 
-A failed replay reports every difference at once rather than the first: the identity fields
-by name, the checkpoint list, then each (checkpoint, field, JSON path) with both resolved values,
-grouped where an append-only field re-states the same moved entry at later checkpoints. The failure
-ends with the command that re-records that golden.
+A failed replay reports the identity fields that moved by name, the checkpoint list, then each
+differing (checkpoint, field) at its first differing JSON path with both resolved values, grouped
+where an append-only field re-states the same moved entry at later checkpoints; past eight groups it
+counts the rest. The failure ends with the command that re-records that golden.
 
 `mutants/` is unreachable from the recording drivers by rule, not by convention:
 `mutants/mutant-seam.test.ts` walks the static import graph from the two drivers and fails if any
@@ -317,6 +317,9 @@ pnpm --dir mobile rpc:record <golden-id> ...    # re-record only these (ids as t
 pnpm --dir mobile rpc:record --prune            # also delete goldens the manifest no longer derives
 pnpm --dir mobile rpc:diff [<base>]             # decode what moved against <base> (default: merge base with origin/main)
 ```
+
+With no base, `rpc:diff` includes the moves the branch already committed; `rpc:diff HEAD` shows
+only the uncommitted ones.
 
 Recording is deterministic and carries no header, so an unchanged behaviour re-records to the same
 bytes on any machine: recording everything is always safe, and `git diff` shows only what moved.
