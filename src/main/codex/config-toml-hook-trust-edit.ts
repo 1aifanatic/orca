@@ -53,7 +53,7 @@ export function removeHookTrustContent(content: string, keys: readonly string[])
 
 // Why: Codex's hook_key is `<path>:<event>:<group>:<handler>` (checked unchanged
 // from 0.141 to 0.158). Any other shape means the format moved under us.
-const HOOK_TRUST_KEY_SHAPE = /^.+:[a-z][a-z0-9_]*:(?:0|[1-9]\d*):(?:0|[1-9]\d*)$/
+const CODEX_HOOK_TRUST_KEY = /^.+:[a-z][a-z0-9_]*:(?:0|[1-9]\d*):(?:0|[1-9]\d*)$/
 
 /**
  * Moves each hook's trust block to the hook's new key, body bytes unchanged:
@@ -67,7 +67,7 @@ export function moveHookTrustContent(
   moves: readonly { oldKey: string; newKey: string }[]
 ): string {
   const content = stripLeadingBom(existingContent)
-  if (findAllHookTrustBlocks(content).some(({ key }) => !HOOK_TRUST_KEY_SHAPE.test(key))) {
+  if (findAllHookTrustBlocks(content).some(({ key }) => !CODEX_HOOK_TRUST_KEY.test(key))) {
     return existingContent
   }
   const bodies = moves.flatMap(({ oldKey, newKey }) => {
