@@ -526,4 +526,18 @@ describe('tab identity ownership', () => {
       expect(observed.requestIdentity).toEqual({ kind: 'process', userAgent: processUA })
     })
   })
+
+  // Why: a sign-in tab usually has no debugger, so a redirect off the auth host leaves the Firefox
+  // WebContents UA on the header with no override standing. That is ours, not an automation client's.
+  it('restamps a Firefox header left by a sign-in redirect when no override can be written', async () => {
+    mocks.processUserAgentMode = 'clean'
+    mocks.processUserAgent = GUEST_CLEAN_UA
+    const opened = openTab(AUTH_URL)
+    opened.handle.debuggerIsAttached.mockReturnValue(false)
+    redirectTo(ORDINARY_URL)
+
+    const observed = await observe(opened, ORDINARY_URL)
+    expect(observed.presented).toBe(googleAuthUserAgent())
+    expect(observed.requestIdentity).toEqual({ kind: 'process', userAgent: GUEST_CLEAN_UA })
+  })
 })
