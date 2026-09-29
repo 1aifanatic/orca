@@ -8,7 +8,7 @@ import { ManagedCodexHomeTemporarilyUnavailableError } from '../codex-accounts/h
 import { codexHookService } from '../codex/hook-service'
 import { ensureRealHomeCodexHookState } from '../codex/codex-real-home-hook-install'
 import { ensureCodexDaemonSocketGuard } from '../codex/codex-config-mirror'
-import { isAgentStatusHooksEnabled } from '../agent-hooks/managed-agent-hook-controls'
+import { isAgentStatusHooksEnabledForAgent } from '../agent-hooks/managed-agent-hook-controls'
 import { getOrcaManagedCodexHomePath, getSystemCodexHomePath } from '../codex/codex-home-paths'
 import { normalizeRuntimePathForComparison } from '../../shared/cross-platform-path'
 import { mainProcessState as state } from './main-process-state'
@@ -82,7 +82,7 @@ export async function prepareCodexSessionResumeForLaunch(args: {
       const isSystemHome =
         normalizeRuntimePathForComparison(resumeHome) ===
         normalizeRuntimePathForComparison(systemHomePath)
-      const hooksEnabled = isAgentStatusHooksEnabled(store.getSettings())
+      const hooksEnabled = isAgentStatusHooksEnabledForAgent(store.getSettings(), 'codex')
       try {
         if (isSystemHome) {
           await ensureRealHomeCodexHookState({
