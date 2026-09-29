@@ -21,23 +21,6 @@ import type { OrcaRuntimeService } from './orca-runtime'
  */
 const COMPOSER_MARKER_READINESS_AGENTS: ReadonlySet<TuiAgent> = new Set(['zcode', 'dsh', 'grok'])
 
-/**
- * What a launch does for an agent that shows no readiness evidence within its budget.
- *
- * The single decision point for that case: `report-not-ready` hands back the unsatisfied wait, so
- * the caller keeps its text (`agent.launch` answers `not-delivered`; a worker start fails). Any
- * other readiness for such agents is a new arm here, which the switch below forces to be handled.
- */
-export type LaunchReadinessWithoutEvidence = 'report-not-ready'
-export const LAUNCH_READINESS_WITHOUT_EVIDENCE: LaunchReadinessWithoutEvidence = 'report-not-ready'
-
-function settleWithoutReadinessEvidence(wait: RuntimeTerminalWait): RuntimeTerminalWait {
-  switch (LAUNCH_READINESS_WITHOUT_EVIDENCE) {
-    case 'report-not-ready':
-      return wait
-  }
-}
-
 export type LaunchedAgentReadinessRuntime = Pick<
   OrcaRuntimeService,
   'waitForTerminal' | 'waitForFreshWorkerComposer'
@@ -57,13 +40,10 @@ export async function waitForLaunchedAgentComposer(
     await runtime.waitForFreshWorkerComposer(handle, agent, timeoutMs)
     return undefined
   }
-  const wait = await runtime.waitForTerminal(handle, {
+  // An agent that shows no readiness evidence comes back unsatisfied, so the caller keeps its text.
+  return runtime.waitForTerminal(handle, {
     condition: 'tui-idle',
     timeoutMs,
     launchReadiness: true
   })
-  // A blocked prompt and an exited agent are evidence; only a silent timeout is its absence.
-  return wait && !wait.satisfied && !wait.blockedReason && wait.status === 'running'
-    ? settleWithoutReadinessEvidence(wait)
-    : wait
 }
