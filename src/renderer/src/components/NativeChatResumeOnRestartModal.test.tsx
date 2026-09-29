@@ -703,6 +703,62 @@ it.each(['footer', 'row'] as const)(
   }
 )
 
+// A row action acts on its row, as Dismiss does: a retry that clears the last failure must not close
+// the dialog over a chat still offered.
+it('keeps the dialog open over the chats still offered after a row Retry succeeds', async () => {
+  let failed = [failure('b', 'agent_session_conflict')]
+  rpc.mockImplementation(async (_target, method) =>
+    method === 'agentSession.restartResumable'
+      ? { sessions: [offered[0]], failed }
+      : ((failed = []),
+        {
+          resumed: [{ sessionId: 'b', outcome: 'resumed' }],
+          continued: [{ sessionId: 'b', outcome: 'continued' }],
+          sessions: [offered[0]],
+          failed
+        })
+  )
+  await mount(<NativeChatResumeOnRestartModal />)
+  await act(async () => button('Retry').click())
+  const dialog = document.querySelector('[role="dialog"]')
+  expect(dialog?.textContent).toContain('Prompt a')
+  expect(dialog?.textContent).not.toContain('Prompt b')
+})
+
+// A dialog closed and reopened mid-retry is the user's again: the retry settling must not close it.
+it('keeps a dialog reopened mid-retry open when the retry settles', async () => {
+  const continued = Promise.withResolvers<unknown>()
+  rpc.mockImplementation((_target, method) =>
+    method === 'agentSession.restartResumable'
+      ? Promise.resolve({
+          sessions: [offered[0]],
+          failed: [failure('b', 'agent_session_conflict')]
+        })
+      : continued.promise
+  )
+  await mount(
+    <>
+      <NativeChatResumeOnRestartModal />
+      <NativeChatResumeStatusSegment iconOnly={false} />
+    </>
+  )
+  await act(async () => button('Retry').click())
+  await act(async () => button('Close').click())
+  expect(document.querySelector('[role="dialog"]')).toBeNull()
+  await act(async () => button('1 chat to resume').click())
+  expect(document.querySelector('[role="dialog"]')).not.toBeNull()
+
+  await act(async () =>
+    continued.resolve({
+      resumed: [{ sessionId: 'b', outcome: 'resumed' }],
+      continued: [{ sessionId: 'b', outcome: 'continued' }],
+      sessions: [offered[0]],
+      failed: []
+    })
+  )
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Prompt a')
+})
+
 // The user's case: the only row is a failure the host says a retry cannot fix. Ticking it could
 // only fail again, so the row's own action is the way on and the box cannot be ticked.
 it('keeps a failure the host marks unretryable out of Resume, even after a tick', async () => {

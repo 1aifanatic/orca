@@ -28,7 +28,6 @@ import {
 import {
   continueNativeChatRestartOffer,
   dismissNativeChatRestartOffer,
-  getNativeChatRestartOffer,
   useNativeChatRestartOffer,
   useNativeChatRestartResuming
 } from './native-chat-resume-on-restart-store'
@@ -48,7 +47,8 @@ import {
  *
  * A chat an earlier resume could not carry on is listed too, as the same row plus what went wrong
  * and what to do; selecting it and resuming is a retry, unless the host says a retry cannot run.
- * A row's own retry keeps the dialog open while failures remain, since that is the list being read.
+ * Row actions (Retry, Dismiss) act on their row and leave the dialog open. It closes only on the
+ * user's own way out, or once the host confirms nothing is left; a resume settling never closes it.
  *
  * Closing is a SNOOZE, so looking around before deciding cannot remove the recovery. Dismiss all is
  * the explicit path that deletes the durable records.
@@ -116,21 +116,11 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
     }
   }, [dontAskAgain, updateSettings])
 
+  // Never closes the dialog: only the user's own ways out do, and the store once nothing is left.
   const resume = useCallback(
-    async (sessionIds: string[], { handOff }: { handOff: boolean }): Promise<void> => {
+    async (sessionIds: string[]): Promise<void> => {
       void persistPreference()
-      if (handOff) {
-        consumeNativeChatResumeOnRestartDialogRequest()
-        // Any dialog open when it settles was reopened by the user and is theirs to close; the
-        // store retires the request itself once the host confirms nothing is left.
-        await continueNativeChatRestartOffer(sessionIds)
-        return
-      }
       await continueNativeChatRestartOffer(sessionIds)
-      // A row retry keeps its dialog open while a chat did not carry on: that row says what to do.
-      if (getNativeChatRestartOffer().failed.length === 0) {
-        consumeNativeChatResumeOnRestartDialogRequest()
-      }
     },
     [persistPreference]
   )
@@ -155,7 +145,7 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
       return
     }
     if (action === 'retry') {
-      await resume([sessionId], { handOff: false })
+      await resume([sessionId])
       return
     }
     const failure = failureBySession.get(sessionId)
@@ -265,7 +255,11 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
             variant="default"
             size="sm"
             disabled={busy || chosen.length === 0}
-            onClick={() => void resume(chosen, { handOff: true })}
+            onClick={() => {
+              // Resume hands the run to the status bar.
+              consumeNativeChatResumeOnRestartDialogRequest()
+              void resume(chosen)
+            }}
           >
             {busy
               ? translate('auto.components.NativeChatResumeOnRestartModal.resuming', 'Resuming…')
