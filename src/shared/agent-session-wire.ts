@@ -380,7 +380,7 @@ export type AgentSessionQueuedMessage = {
    *  add one. */
   pausedReason?: AgentSessionQueuedMessagePausedReason
   /** A returned card's refusal: the `reason` and `rejection` pair its submission settled with.
-   *  Clients classify it from `returnedRejection` (falling back to `returnedReason` when a host
+   *  Only a failure returns a card; a draft a Stop or restart took back waits again. Clients classify it from `returnedRejection` (falling back to `returnedReason` when a host
    *  wrote no fact) exactly as they classify a rejected submission's `rejection`, e.g.
    *  `classifyDispatchRejection({ reason: returnedReason, rejection: returnedRejection })`. */
   returnedReason?: string | null

@@ -18,9 +18,12 @@ export type JournalRowWriterDeps = {
   nextSequence: () => number
   commit: (row: JournalRow) => void
   /** Standing hook run for EVERY appended row — the queued-draft returned
-   *  transition rides here so no rejection path can bypass it. */
+   *  transition rides here so no rejection path can bypass it. Bookkeeping: it
+   *  runs in its own savepoint, so its failure is reported and never vetoes the row. */
   inTransaction?: JournalRowTransactionHook
 }
+
+const BOOKKEEPING_SAVEPOINT = 'journal_row_bookkeeping'
 
 export class JournalRowWriter {
   constructor(private readonly deps: JournalRowWriterDeps) {}
@@ -39,7 +42,7 @@ export class JournalRowWriter {
         insertJournalRow(db, this.deps.sessionId, row)
         upsertJournalSessionRow(db, this.deps.sessionId, row.epoch, row.ts)
         hook?.(db, row)
-        this.deps.inTransaction?.(db, row)
+        this.runBookkeeping(db, row)
         db.exec('COMMIT')
       } catch (error) {
         db.exec('ROLLBACK')
@@ -51,5 +54,26 @@ export class JournalRowWriter {
       this.deps.commit(row)
       return row
     })
+  }
+
+  private runBookkeeping(db: Database.Database, row: JournalRow): void {
+    const hook = this.deps.inTransaction
+    if (!hook) {
+      return
+    }
+    db.exec(`SAVEPOINT ${BOOKKEEPING_SAVEPOINT}`)
+    try {
+      hook(db, row)
+      db.exec(`RELEASE ${BOOKKEEPING_SAVEPOINT}`)
+    } catch (error) {
+      db.exec(`ROLLBACK TO ${BOOKKEEPING_SAVEPOINT}`)
+      db.exec(`RELEASE ${BOOKKEEPING_SAVEPOINT}`)
+      // The open-time repair re-derives what this missed from the committed row.
+      console.warn('[journal-append] row bookkeeping skipped:', {
+        sessionId: this.deps.sessionId,
+        kind: row.kind,
+        error: error instanceof Error ? error.message : String(error)
+      })
+    }
   }
 }

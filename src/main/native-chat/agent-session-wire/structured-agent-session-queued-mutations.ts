@@ -15,7 +15,10 @@ import type {
 } from '../../../shared/agent-session-wire'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { QueuedMessageNotConsumableError } from '../agent-session-journal/journal-queued-messages'
-import type { QueuedMessageRow } from '../agent-session-journal/queued-message-table'
+import {
+  queuedMessageNeedsFreshSubmissionId,
+  type QueuedMessageRow
+} from '../agent-session-journal/queued-message-table'
 import { admitAndRunAgentSessionMutation } from './structured-agent-session-mutation-admission'
 import type { MutationPlan } from './structured-agent-session-mutation-plans'
 import {
@@ -31,6 +34,7 @@ import {
   structuredAgentSessionSendBlock
 } from './structured-agent-session-send-preparation'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
+import { compactInFlightContext } from './structured-conversation-command-lane'
 
 function invalid(message: string): {
   ok: false
@@ -128,7 +132,11 @@ function mutateQueued<TValue>(
   envelope: AgentSessionMutationEnvelope,
   plan: MutationPlan<TValue>
 ): Promise<AgentSessionMutationResult<TValue>> {
-  return context.serialize(envelope.sessionId, () =>
+  // A /compact holds the main lane for its whole provider call: Delete answers
+  // at once, and Send-now reaches its `command` refusal at once, on the side
+  // lane draft-only sends use. The drain stays on the main lane, behind it.
+  const lane = compactInFlightContext(context, envelope.sessionId) ?? context
+  return lane.serialize(envelope.sessionId, () =>
     admitAndRunAgentSessionMutation({
       store: context.deps.store,
       adapter: context.deps.adapter,
@@ -148,9 +156,10 @@ function mutateQueued<TValue>(
 /**
  * Send-now. It overrides ONLY queue policy — FIFO order, pause, the busy-turn
  * wait — through the same send block and pending-prompt gates as any send;
- * supersession, Stop and prepared commands are never overridden. A returned
- * card re-consumes under a fresh submission id (this operation's id), recorded
- * as `consumed_as`, so one id still means one delivery.
+ * supersession, Stop and prepared commands are never overridden. A draft whose
+ * own id is spent — a returned card, or one a withdrawal sent back to waiting —
+ * re-consumes under a fresh submission id (this operation's id), recorded as
+ * `consumed_as`, so one id still means one delivery.
  */
 export function sendQueuedStructuredAgentMessage(
   context: StructuredAgentSessionMutationContext,
@@ -191,7 +200,7 @@ export function sendQueuedStructuredAgentMessage(
           ? { ok: true, value: { clientMessageId: submission.clientMessageId, submission } }
           : invalid('This queued message was already sent.')
       }
-      const submissionId = row.state === 'returned' ? operationId : row.messageId
+      const submissionId = queuedMessageNeedsFreshSubmissionId(row) ? operationId : row.messageId
       try {
         await ctx.journal.appendSubmission(
           {
