@@ -131,6 +131,26 @@ describe('Codex session options through the host catalog store', () => {
     expect(modelListCalls(request)).toBe(1)
   })
 
+  it("shares one listing between a chat's own concurrent reads", async () => {
+    const store = new AgentModelCatalogStore()
+    let answer!: () => void
+    const answered = new Promise<void>((resolve) => (answer = resolve))
+    const request = vi.fn(async () => {
+      await answered
+      return listAnswer('gpt-live')
+    })
+    const session = storeSession(request, store)
+    const reads = [
+      readLiveCodexSessionOptions(session, undefined),
+      readLiveCodexSessionOptions(session, undefined)
+    ]
+    answer()
+    for (const result of await Promise.all(reads)) {
+      expect(result.models.map((model) => model.id)).toEqual(['gpt-live'])
+    }
+    expect(modelListCalls(request)).toBe(1)
+  })
+
   it('answers the picker with zero provider fetches when the store is already warm', async () => {
     const store = new AgentModelCatalogStore()
     seedEntry(store, 'gpt-live', 'gpt-next')
