@@ -1,3 +1,4 @@
+import { useMobileNativeChatDeliveryTracking } from './mobile-native-chat-delivery-read'
 import { useLayoutEffect, useRef, type MutableRefObject } from 'react'
 import type { RpcClient } from '../transport/rpc-client'
 import type { ConnectionState } from '../transport/types'
@@ -97,6 +98,13 @@ export function useMobileNativeChatController(args: {
       hostSupport: agentSessionHostSupport,
       onSendError
     })
+  const deliveryTracking = useMobileNativeChatDeliveryTracking(
+    client,
+    activeChatSessionId,
+    activeChatResolution?.transcriptPath ?? null,
+    !activeChatStructured && activeChatAgent === 'claude',
+    nativeChatStatus
+  )
   const {
     composerText: chatComposerText,
     setComposerText: setChatComposerText,
@@ -123,7 +131,8 @@ export function useMobileNativeChatController(args: {
     // terminal view would permanently decline the prefill.
     chatActive: showNativeChat,
     transcriptLoading: nativeChatSession.transcriptLoading,
-    transcriptSettled: nativeChatSession.status === 'ready'
+    transcriptSettled: nativeChatSession.status === 'ready',
+    deliveryTracking
   })
 
   // Deliberately not gated on the chat view being visible: the streaming gate

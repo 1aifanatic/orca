@@ -1,3 +1,4 @@
+import { sendNativeChatObservedWrites } from './native-chat-observed-send'
 // Runtime send for native chat: clear any unsubmitted TUI line, write the framed
 // body, then Enter as a SEPARATE delayed pty write. Kept apart from the pure
 // byte builders in native-chat-send.ts so those stay IO-free and unit-testable.
@@ -44,6 +45,7 @@ export const NATIVE_CHAT_CLEAR_UNSUBMITTED_INPUT = '\x15'
 export const NATIVE_CHAT_CLEAR_CONFIRM_MS = 140
 
 export type NativeChatSendOptions = {
+  onWriteRejected?: () => void
   /** Bytes that empty the agent's input line. Defaults to a single Ctrl+U. */
   clearInput?: string
   /**
@@ -134,6 +136,17 @@ export function sendNativeChatMessage(
   text: string,
   options?: NativeChatSendOptions
 ): NativeChatSendHandle {
+  if (options?.onWriteRejected) {
+    return sendNativeChatObservedWrites(
+      settings,
+      ptyId,
+      [
+        { data: buildNativeChatPasteBytes(text), delayBeforeMs: 0 },
+        { data: NATIVE_CHAT_SUBMIT, delayBeforeMs: NATIVE_CHAT_SUBMIT_DELAY_MS }
+      ],
+      options
+    )
+  }
   return enqueueNativeChatPtySend(
     ptyId,
     NATIVE_CHAT_SUBMIT_DELAY_MS + clearConfirmDurationMs(options),
