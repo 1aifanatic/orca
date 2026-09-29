@@ -8,7 +8,10 @@ import type { WorktreeMeta } from '../../shared/worktree/meta-types'
 import { SETUP_AGENT_SEQUENCE_STARTUP_COMMAND_ENV } from '../../shared/setup-agent-sequencing'
 import type { ClaudeFolderTrustSpawnRequest } from '../../shared/claude-folder-trust-spawn-request'
 import { resolveClaudeWorktreeTrustTarget } from './claude-worktree-trust-eligibility'
-import { applyClaudeWorktreeTrustToSpawn } from './claude-worktree-trust-spawn'
+import {
+  applyClaudeWorktreeTrustToSpawn,
+  resolveLocalClaudeTrustRequest
+} from './claude-worktree-trust-spawn'
 
 let root: string
 let configDir: string
@@ -192,5 +195,39 @@ describe('applyClaudeWorktreeTrustToSpawn', () => {
       trusted: true
     })
     expect(trustedKeys()).toEqual([])
+  })
+})
+
+describe('resolveLocalClaudeTrustRequest for a WSL guest', () => {
+  const target = {
+    worktreeId: 'repo::wt',
+    worktreeRoot: '//wsl.localhost/Ubuntu/home/dev/wt',
+    mainCheckoutPath: '//wsl.localhost/Ubuntu/home/dev/repo',
+    connectionId: null,
+    trusted: true
+  }
+  const guestAuth = {
+    configDir: '//wsl.localhost/Ubuntu/home/dev/.claude',
+    runtime: 'wsl' as const,
+    wslDistro: 'Ubuntu',
+    wslLinuxConfigDir: '/home/dev/.claude',
+    envPatch: {},
+    stripAuthEnv: true,
+    provenance: 'wsl:Ubuntu:system'
+  }
+
+  it("targets the guest's own config with Linux keys", () => {
+    const request = resolveLocalClaudeTrustRequest(target, {}, guestAuth, 'Ubuntu')
+    expect(request?.configFile).toBe(join('//wsl.localhost/Ubuntu/home/dev', '.claude.json'))
+    expect(request?.keyStyle).toBe('posix')
+    expect(request?.toClaudePath?.(target.worktreeRoot)).toBe('/home/dev/wt')
+  })
+
+  it("never writes the Windows host's config when the guest config dir is unknown", () => {
+    const hostFallback = { ...guestAuth, configDir: join(root, '.claude'), wslLinuxConfigDir: null }
+    expect(resolveLocalClaudeTrustRequest(target, {}, hostFallback, 'Ubuntu')).toBeNull()
+    expect(resolveLocalClaudeTrustRequest(target, {}, null, 'Ubuntu')).toBeNull()
+    // Agent Teams leaders and removal know neither the distro nor the guest auth.
+    expect(resolveLocalClaudeTrustRequest(target, {}, null, null)).toBeNull()
   })
 })

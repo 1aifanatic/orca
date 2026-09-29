@@ -52,9 +52,14 @@ export function resolveLocalClaudeTrustRequest(
     mainCheckoutPath: target.mainCheckoutPath,
     trusted: target.trusted
   }
-  if (claudeAuth?.runtime === 'wsl' || wslDistro) {
+  if (claudeAuth?.runtime === 'wsl' || wslDistro || parseWslUncPath(target.worktreeRoot)) {
     // Why: a WSL guest reads its own config, reachable only through the auth prep's UNC dir.
-    if (claudeAuth?.runtime !== 'wsl' || !parseWslUncPath(target.worktreeRoot)) {
+    // Without a guest config dir, the prep's `configDir` is the Windows host's own file.
+    if (
+      claudeAuth?.runtime !== 'wsl' ||
+      !claudeAuth.wslLinuxConfigDir ||
+      !parseWslUncPath(target.worktreeRoot)
+    ) {
       return null
     }
     const configDir = claudeAuth.configDir
