@@ -123,8 +123,9 @@ export function runStructuredConversationCommand(
           // Bookkeeping — a failure is reported and never fails the clear.
           await carryQueuedMessagesToClearReplacement(ctx, {
             replacementSessionId: completed.replacementSessionId,
+            // Opened under its own lock, as every open is.
             openReplacementJournal: async () =>
-              (await context.openConversation(completed.replacementSessionId))?.journal,
+              (await context.conversation(completed.replacementSessionId)).journal,
             callerKey: caller.callerKey,
             operationId: clientOperationId
           })
