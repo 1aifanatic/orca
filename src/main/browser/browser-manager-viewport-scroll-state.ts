@@ -7,7 +7,7 @@ import type {
 type ViewportPresetState = {
   guestWebContentsId: number
   requested: BrowserViewportOverride | null
-  /** The device metrics override Chromium holds for this guest; null when none stands. */
+  /** The preset's device metrics Chromium accepted for this guest; null when none stands. */
   applied: BrowserViewportOverride | null
 }
 
