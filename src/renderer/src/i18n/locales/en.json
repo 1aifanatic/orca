@@ -388,13 +388,23 @@
             "10898045f3": "Shortcut for \"{{value0}}\" was ignored: Use a string array.",
             "36761d9604": "Unknown keybinding action \"{{value0}}\" was ignored.",
             "d2e43e426a": "{{value0}} must be an object.",
-            "fb290366b2": "Unavailable on web.",
-            "76122208ca": "Shortcut for \"{{value0}}\" was ignored: {{value1}}"
+            "fb290366b2": "Unavailable on web."
           }
         },
         "runtime": {
           "environment": {
             "07f788de83": "WebSocket"
+          }
+        }
+      },
+      "preload": {
+        "api": {
+          "web": {
+            "keybinding": {
+              "normalization": {
+                "472bb127b6": "Shortcut \"{{value0}}\" for \"{{value1}}\" was ignored: {{value2}}"
+              }
+            }
           }
         }
       }
@@ -3278,7 +3288,7 @@
             "missing": {
               "tui": {
                 "title": "This ZCode build has no terminal UI",
-                "description": "Orca's hooks installed correctly \u2014 the zcode on your PATH just cannot open a session. The ZCode desktop app bundles the agent runtime without its terminal UI. Install a zcode that ships the TUI, then run zcode outside Orca to confirm."
+                "description": "Orca's hooks installed correctly — the zcode on your PATH just cannot open a session. The ZCode desktop app bundles the agent runtime without its terminal UI. Install a zcode that ships the TUI, then run zcode outside Orca to confirm."
               }
             }
           },
@@ -3977,7 +3987,9 @@
             }
           },
           "tooltip": {
-            "zcode": { "mcp": "MCP" },
+            "zcode": {
+              "mcp": "MCP"
+            },
             "cedb7b99e3": "% used",
             "6d6df77f41": "No data available",
             "7f7f208060": "Monthly",
@@ -11154,7 +11166,7 @@
           "e27c8d45bf": "Diagnostics are disabled by an environment variable."
         },
         "ShortcutCommandBlock": {
-          "eb72c52c28": "Press a shortcut, or double-tap a modifier (e.g. {{value0}}). Esc cancels.",
+          "eb72c52c28": "Press keys, a mouse Back/Forward button, or double-tap a modifier (e.g. {{value0}}). Esc cancels.",
           "70b5d25583": "{{value0}} shortcut",
           "287e07ddde": "Modified",
           "3c83cd7d1c": "Disabled",
