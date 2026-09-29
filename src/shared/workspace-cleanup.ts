@@ -172,8 +172,8 @@ const WORKSPACE_CLEANUP_QUEUE_BLOCKERS: ReadonlySet<WorkspaceCleanupBlocker> = n
 export const WORKSPACE_CLEANUP_FORCE_REMOVE_BLOCKERS: ReadonlySet<WorkspaceCleanupBlocker> =
   new Set(['dirty-files', 'unpushed-commits', 'unknown-base'])
 
-// Why (STA-4686): the active workspace hands focus off before deletion, and a live agent gets
-// an explicit stop confirmation at delete time, so both are plain labels here.
+// Why (STA-4686): deleting the active workspace hands focus off like a sidebar delete, and a live
+// agent gets an explicit stop confirmation at delete time, so both are plain labels here.
 export const WORKSPACE_CLEANUP_BULK_SELECT_EXCLUSIONS: ReadonlySet<WorkspaceCleanupBlocker> =
   new Set(['dismissed'])
 
