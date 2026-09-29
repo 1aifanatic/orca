@@ -131,34 +131,41 @@ end
 set -e __orca_codex_type`
 }
 
-// Why $LASTEXITCODE is restored before the launch: hook prep and the probe must not leak their
-// status past a Codex the shell refuses to run (a policy-blocked codex.ps1). Why Get-Variable:
-// it is unset before any native command, and Set-StrictMode throws on reading it.
+// Why one helper with pinned preferences: the user's StrictMode and $ErrorActionPreference
+// (5.1: Stop on any stderr line) must not cut Orca's own steps short; only the launch keeps them.
+// Why $LASTEXITCODE is restored: prep and the probe must not leak their status past a Codex the
+// shell refuses to run (a policy-blocked codex.ps1).
 export function getPowerShellCodexShellLaunchPreflight(): string {
   return `${powerShellCodexInteractiveArgv()}
 ${powerShellCodexNoDaemonProbe()}
 $orcaCodexCommand = Get-Command codex -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($env:ORCA_CODEX_LAUNCH_POLICY -and $orcaCodexCommand -and
     $orcaCodexCommand.CommandType -in @("Application", "ExternalScript")) {
-    function Global:codex {
-        $orcaPriorExitCode = Get-Variable -Name LASTEXITCODE -Scope Global -ValueOnly -ErrorAction Ignore
+    function Global:__OrcaCodexLaunchFlags {
+        param([string]$Executable, [string[]]$Tokens)
+        Set-StrictMode -Off
+        $ErrorActionPreference = 'Continue'
+        $PSNativeCommandUseErrorActionPreference = $false
+        $priorExitCode = $global:LASTEXITCODE
         if ($env:ORCA_CODEX_HOME -and $env:ORCA_CODEX_LAUNCH_PREFLIGHT) {
             try {
                 & $env:ORCA_CODEX_LAUNCH_PREFLIGHT agent hooks prepare-codex *> $null
             } catch {
             }
         }
+        if ((__OrcaCodexInteractive -Tokens $Tokens) -and (__OrcaCodexSupportsNoDaemon $Executable)) {
+            '--no-daemon'
+        }
+        $global:LASTEXITCODE = $priorExitCode
+    }
+    function Global:codex {
         $orcaCodexExecutable = Get-Command codex -CommandType Application,ExternalScript -ErrorAction SilentlyContinue | Select-Object -First 1
         if (-not $orcaCodexExecutable) {
             Write-Error "codex executable not found"
             $global:LASTEXITCODE = 127
             return
         }
-        $orcaCodexFlags = @()
-        if ((__OrcaCodexInteractive -Tokens $args) -and (__OrcaCodexSupportsNoDaemon $orcaCodexExecutable.Source)) {
-            $orcaCodexFlags = @('--no-daemon')
-        }
-        $global:LASTEXITCODE = $orcaPriorExitCode
+        $orcaCodexFlags = @(__OrcaCodexLaunchFlags -Executable $orcaCodexExecutable.Source -Tokens $args)
         # Why: a native command inside a function never sees the function's pipeline input on its own.
         if ($MyInvocation.ExpectingInput) {
             $input | & $orcaCodexExecutable.Source @orcaCodexFlags @args

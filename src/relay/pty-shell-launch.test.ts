@@ -113,7 +113,7 @@ describe('getRelayShellLaunchConfig', () => {
       expect(config.args.slice(0, leading.length)).toEqual(leading)
       expect(config.args.slice(-2, -1)).toEqual(['-EncodedCommand'])
       const script = Buffer.from(config.args.at(-1) ?? '', 'base64').toString('utf16le')
-      expect(script).toContain('__OrcaCodexSupportsNoDaemon $orcaCodexExecutable.Source')
+      expect(script).toContain('__OrcaCodexLaunchFlags -Executable $orcaCodexExecutable.Source')
       expect(config.supportsReadyMarker).toBe(false)
     }
   )
