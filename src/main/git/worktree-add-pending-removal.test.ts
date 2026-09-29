@@ -29,8 +29,9 @@ function startDeleting(): void {
       worktreeId: 'repo-1::/repo-feature',
       repoId: 'repo-1',
       repoPath: '/repo',
-      worktreePath: '/repo-feature',
-      branch: 'feature/test'
+      worktree: { path: '/repo-feature', branch: 'refs/heads/feature/test', head: 'abc' },
+      deleteBranch: true,
+      force: false
     },
     run: () => new Promise(() => {}),
     catalogVersion: () => ({ epoch: 'e', sequence: 1 }),

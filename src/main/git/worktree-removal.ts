@@ -72,6 +72,7 @@ async function performRemoveWorktree(
   const longPathArgs = windowsLongPathGitArgs(repoPath)
   const execOptions = {
     ...gitExecOptions(repoPath, options),
+    ...(options.checkoutDeleteSignal ? { signal: options.checkoutDeleteSignal } : {}),
     ...removalGitEnv(),
     admissionExempt: true as const
   }
@@ -104,6 +105,15 @@ async function performRemoveWorktree(
     return {}
   }
 
+  return deleteBranchOfRemovedWorktree(repoPath, branchName, branchHead, options)
+}
+
+function deleteBranchOfRemovedWorktree(
+  repoPath: string,
+  branchName: string,
+  branchHead: string,
+  options: RemoveWorktreeOptions
+): Promise<RemoveWorktreeResult> {
   // Why its own span: branch cleanup can reach the network (`fetch --prune`), so a stall here reads as
   // `git worktree remove` being slow unless it is timed separately.
   // Why serialized per repo: concurrent removals in one repo race `packed-refs.lock` and the
@@ -113,6 +123,49 @@ async function performRemoveWorktree(
       deleteBranchAfterWorktreeRemoval(repoPath, branchName, branchHead, options)
     )
   )
+}
+
+/**
+ * Finishes a removal whose checkout Git no longer registers (it finished deleting, or an earlier
+ * run did): leftover files, stale admin records, then the branch. Already-gone parts are done.
+ */
+export async function finishUnregisteredWorktreeRemoval(
+  repoPath: string,
+  worktreePath: string,
+  branch: { name: string; head: string } | null,
+  options: RemoveWorktreeOptions = {}
+): Promise<RemoveWorktreeResult> {
+  try {
+    await runUnderWorktreeDeleteLimit(() => removeCheckoutLeftByGit(worktreePath, options))
+    await gitExecFileAsync(['worktree', 'prune'], gitExecOptions(repoPath, options)).catch(
+      (error: unknown) => console.warn(`[git] worktree prune failed in ${repoPath}`, error)
+    )
+    if (!branch?.name || !(await localBranchExists(repoPath, branch.name, options))) {
+      return {}
+    }
+    return await withRepoRefMaintenancePaused('worktree-remove', () =>
+      deleteBranchOfRemovedWorktree(repoPath, branch.name, branch.head, options)
+    )
+  } finally {
+    invalidateSparseCheckoutState(repoPath, worktreePath)
+    bumpWorktreeScanGeneration(repoPath)
+  }
+}
+
+async function localBranchExists(
+  repoPath: string,
+  branchName: string,
+  options: RemoveWorktreeOptions
+): Promise<boolean> {
+  try {
+    await gitExecFileAsync(
+      ['show-ref', '--verify', '--quiet', '--', `refs/heads/${branchName}`],
+      gitExecOptions(repoPath, options)
+    )
+    return true
+  } catch {
+    return false
+  }
 }
 
 // Why: Git for Windows runs $GIT_ASK_YESNO when a file stays locked mid-delete; no prompt program may run here.

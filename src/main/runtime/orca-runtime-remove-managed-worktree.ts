@@ -13,7 +13,6 @@ import {
   type RemoveManagedWorktreeOptions
 } from './runtime-worktree-selection'
 import { withWorktreeSpan } from '../observability/instrumentation'
-import { invalidateAuthorizedRootsCache } from '../ipc/filesystem-auth'
 import {
   resolveWorktreeRemovalHome,
   resolveWorktreeRemovalRoute
@@ -93,14 +92,8 @@ export class OrcaRuntimeWithRemoveManagedWorktree extends OrcaRuntimeWithCreateM
         }
         const repo = repoOwner.kind === 'resolved' ? repoOwner.repo : undefined
         const removalHostId = repo ? (cleanupHostId ?? getRepoExecutionHostId(repo)) : cleanupHostId
-        // Host state every removal path drops once Git has let go of the checkout.
-        const purgeRemovedWorktree = (): void => {
-          this.clearOptimisticReconcileToken(removalTarget.id)
-          this.removeWorktreeMetadataAndHistory(store, removalTarget.id, removalHostId)
-          this.invalidateResolvedWorktreeCache()
-          this.invalidateWorktreeScanCacheForRepo(removalTarget.repoId)
-          invalidateAuthorizedRootsCache()
-        }
+        const purgeRemovedWorktree = (): void =>
+          this.purgeRemovedWorktree(store, removalTarget.id, removalTarget.repoId, removalHostId)
         const orphanOrFolderResult = await removeOrphanOrFolderWorktree({
           runtime: this,
           store,

@@ -259,6 +259,38 @@ branch refs/heads/main
     expect(getGitCalls()).toContain('git branch -d -- feature/test')
   })
 
+  it('lets a quit stop only the checkout delete, not the branch cleanup that holds ref locks', async () => {
+    mockGitCommands({
+      'git worktree list --porcelain': {
+        stdout: `worktree /repo
+HEAD abc123
+branch refs/heads/main
+
+worktree /repo-feature
+HEAD def456
+branch refs/heads/feature/test
+`
+      },
+      'git worktree list --porcelain#2': {
+        stdout: `worktree /repo
+HEAD abc123
+branch refs/heads/main
+`
+      }
+    })
+    const stop = new AbortController()
+
+    await removeWorktree('/repo', '/repo-feature', false, {
+      checkoutDeleteSignal: stop.signal
+    })
+
+    const optionsOf = (command: string): { signal?: AbortSignal } | undefined =>
+      gitExecFileAsyncMock.mock.calls.find((call) => call[0].join(' ') === command)?.[1]
+    expect(optionsOf('worktree remove /repo-feature')?.signal).toBe(stop.signal)
+    expect(optionsOf('branch -d -- feature/test')).toBeDefined()
+    expect(optionsOf('branch -d -- feature/test')?.signal).toBeUndefined()
+  })
+
   it('never lets Git run an inherited yes/no prompt program during the delete', async () => {
     vi.stubEnv('GIT_ASK_YESNO', '/usr/local/bin/prompt')
     try {

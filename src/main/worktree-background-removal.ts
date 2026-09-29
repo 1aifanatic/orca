@@ -2,22 +2,50 @@ import { LOCAL_EXECUTION_HOST_ID, type ExecutionHostId } from '../shared/executi
 import type { RemoveWorktreeResult } from '../shared/worktree/create-types'
 import type { WorktreeCatalogVersion } from '../shared/worktree/catalog-version'
 import type { WorktreeRemovalOutcome } from '../shared/worktree/removal-outcome'
+import type { GitWorktreeInfo } from '../shared/worktree/types'
+import { normalizeLocalBranchRef } from './git/worktree-operation-options'
 import { areWorktreePathsEqual } from './git/worktree-path-comparison'
 import { parseWslPath } from './wsl'
+import {
+  readWorktreeRemovalRecords,
+  writeWorktreeRemovalRecords,
+  type WorktreeRemovalRecord
+} from './worktree-removal-records'
 
-export type PendingWorktreeRemoval = {
-  worktreeId: string
-  repoId: string
-  repoPath: string
-  worktreePath: string
-  /** Short branch name the checkout had; empty when detached. */
-  branch: string
+export type BackgroundWorktreeRemovalJob = {
+  /** `stopSignal` aborts on an orderly quit; pass it only to the checkout delete. */
+  run: (stopSignal: AbortSignal) => Promise<RemoveWorktreeResult>
+  catalogVersion: () => WorktreeCatalogVersion
+  publish: (outcome?: WorktreeRemovalOutcome) => void
 }
 
-// Why in memory only: after a crash Git still lists the checkout, so it returns as a normal row
-// and a second remove finishes it. Nothing here outlives the process that runs the delete.
-const pendingByWorktreeId = new Map<string, PendingWorktreeRemoval>()
-const runningJobs = new Set<Promise<void>>()
+// The accepted removals, mirrored to disk on every change; listings and joins read only this.
+const pendingByWorktreeId = new Map<string, WorktreeRemovalRecord>()
+const jobsByWorktreeId = new Map<string, Promise<void>>()
+const stopControllers = new Set<AbortController>()
+let recordsDirectory: string | null = null
+
+/** Loads removals a quit or crash interrupted, so listings mark them before the first paint. */
+export async function loadWorktreeRemovalRecords(directory: string): Promise<void> {
+  recordsDirectory = directory
+  for (const record of await readWorktreeRemovalRecords(directory)) {
+    if (!pendingByWorktreeId.has(record.worktreeId)) {
+      pendingByWorktreeId.set(record.worktreeId, record)
+    }
+  }
+}
+
+function persistRecords(): Promise<void> {
+  if (!recordsDirectory) {
+    return Promise.resolve()
+  }
+  return writeWorktreeRemovalRecords(recordsDirectory, () => [
+    ...pendingByWorktreeId.values()
+  ]).catch((error: unknown) => {
+    // Why: bookkeeping must not gate the delete; a lost write only costs resuming it after a quit.
+    console.warn('[worktrees] failed to persist worktree removal records', error)
+  })
+}
 
 /** Only this host's local checkouts are removed in the background. */
 export function isWorktreeRemovalPending(worktreeId: string, hostId?: ExecutionHostId): boolean {
@@ -41,7 +69,7 @@ export function hasPendingWorktreeRemovals(): boolean {
 export function findPendingWorktreeRemovalConflict(
   repoPath: string,
   target: { worktreePath?: string; branch?: string }
-): PendingWorktreeRemoval | undefined {
+): WorktreeRemovalRecord | undefined {
   const branch = target.branch?.replace(/^refs\/heads\//, '')
   for (const removal of pendingByWorktreeId.values()) {
     if (!areWorktreePathsEqual(removal.repoPath, repoPath)) {
@@ -73,45 +101,104 @@ export function assertNoPendingWorktreeRemovalConflict(
  * Records an accepted removal and runs its delete off the request. `publish` fires once when the
  * row starts showing as removing, and once with the outcome after the row has left the table.
  */
-export function startBackgroundWorktreeRemoval(args: {
-  removal: PendingWorktreeRemoval
-  run: () => Promise<RemoveWorktreeResult>
-  catalogVersion: () => WorktreeCatalogVersion
-  publish: (outcome?: WorktreeRemovalOutcome) => void
-}): void {
-  const { removal } = args
-  pendingByWorktreeId.set(removal.worktreeId, removal)
-  const job = settleBackgroundWorktreeRemoval(args)
-  runningJobs.add(job)
-  void job.finally(() => runningJobs.delete(job))
+export function startBackgroundWorktreeRemoval(
+  args: {
+    removal: Pick<
+      WorktreeRemovalRecord,
+      'worktreeId' | 'repoId' | 'repoPath' | 'deleteBranch' | 'force'
+    > & { worktree: Pick<GitWorktreeInfo, 'path' | 'branch' | 'head'> }
+  } & BackgroundWorktreeRemovalJob
+): void {
+  const { worktree, ...accepted } = args.removal
+  const record: WorktreeRemovalRecord = {
+    ...accepted,
+    worktreePath: worktree.path,
+    branch: normalizeLocalBranchRef(worktree.branch),
+    head: worktree.head,
+    requestedAt: Date.now()
+  }
+  pendingByWorktreeId.set(record.worktreeId, record)
+  runBackgroundWorktreeRemoval(record, args, persistRecords())
   publishSafely(args.publish, undefined)
 }
 
+/** Runs the same delete again for every record a quit or crash left without a running job. */
+export function resumeInterruptedWorktreeRemovals(
+  jobFor: (record: WorktreeRemovalRecord) => BackgroundWorktreeRemovalJob
+): void {
+  for (const record of pendingByWorktreeId.values()) {
+    if (!jobsByWorktreeId.has(record.worktreeId)) {
+      runBackgroundWorktreeRemoval(record, jobFor(record), Promise.resolve())
+    }
+  }
+}
+
+/** Orderly quit: stops each checkout delete Git is running, without waiting for it to exit. */
+export function stopBackgroundWorktreeRemovals(): void {
+  for (const controller of stopControllers) {
+    controller.abort()
+  }
+}
+
+function runBackgroundWorktreeRemoval(
+  record: WorktreeRemovalRecord,
+  job: BackgroundWorktreeRemovalJob,
+  recorded: Promise<void>
+): void {
+  const controller = new AbortController()
+  stopControllers.add(controller)
+  const settled: Promise<void> = settleBackgroundWorktreeRemoval(
+    record,
+    job,
+    recorded,
+    controller.signal
+  ).finally(() => {
+    stopControllers.delete(controller)
+    if (jobsByWorktreeId.get(record.worktreeId) === settled) {
+      jobsByWorktreeId.delete(record.worktreeId)
+    }
+  })
+  jobsByWorktreeId.set(record.worktreeId, settled)
+}
+
 async function settleBackgroundWorktreeRemoval(
-  args: Parameters<typeof startBackgroundWorktreeRemoval>[0]
+  record: WorktreeRemovalRecord,
+  job: BackgroundWorktreeRemovalJob,
+  recorded: Promise<void>,
+  stopSignal: AbortSignal
 ): Promise<void> {
-  const { removal } = args
+  // Why: the record is the commit point, so Git starts deleting only once it is on disk.
+  await recorded
   let outcome: WorktreeRemovalOutcome
   try {
-    const result = await args.run()
+    if (stopSignal.aborted) {
+      return
+    }
+    const result = await job.run(stopSignal)
     outcome = {
-      worktreeId: removal.worktreeId,
+      worktreeId: record.worktreeId,
       status: 'removed',
       ...(result.preservedBranch ? { preservedBranch: result.preservedBranch } : {}),
-      catalogVersion: args.catalogVersion()
+      catalogVersion: job.catalogVersion()
     }
   } catch (error) {
-    console.warn(`[worktrees] background removal of ${removal.worktreePath} failed`, error)
+    if (stopSignal.aborted) {
+      // Why: quit stopped Git; the record stays so the next start finishes this delete.
+      return
+    }
+    console.warn(`[worktrees] background removal of ${record.worktreePath} failed`, error)
     outcome = {
-      worktreeId: removal.worktreeId,
+      worktreeId: record.worktreeId,
       status: 'failed',
       error: error instanceof Error ? error.message : String(error)
     }
   }
-  if (pendingByWorktreeId.get(removal.worktreeId) === removal) {
-    pendingByWorktreeId.delete(removal.worktreeId)
+  // Why clear on failure too: the row returns live and retryable instead of retrying unseen.
+  if (pendingByWorktreeId.get(record.worktreeId) === record) {
+    pendingByWorktreeId.delete(record.worktreeId)
+    await persistRecords()
   }
-  publishSafely(args.publish, outcome)
+  publishSafely(job.publish, outcome)
 }
 
 function publishSafely(
@@ -151,12 +238,14 @@ export function projectPendingWorktreeRemovals<
 }
 
 export async function _settlePendingWorktreeRemovalsForTests(): Promise<void> {
-  while (runningJobs.size > 0) {
-    await Promise.all(runningJobs)
+  while (jobsByWorktreeId.size > 0) {
+    await Promise.all(jobsByWorktreeId.values())
   }
 }
 
 export function _resetPendingWorktreeRemovalsForTests(): void {
   pendingByWorktreeId.clear()
-  runningJobs.clear()
+  jobsByWorktreeId.clear()
+  stopControllers.clear()
+  recordsDirectory = null
 }

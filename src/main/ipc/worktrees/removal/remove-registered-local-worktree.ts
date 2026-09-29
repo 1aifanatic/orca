@@ -40,7 +40,6 @@ import {
   stopPtysForDestructiveWorktreeRemoval
 } from './worktree-removal-ownership'
 import { preservedBranchCleanupScopeKey } from '../../../../shared/preserved-branch-cleanup'
-import { normalizeLocalBranchRef } from '../../../git/worktree-operation-options'
 import { getLocalWorktreeCatalogVersion } from '../../../local-worktree-scan-generation'
 import {
   removesInBackground,
@@ -130,7 +129,7 @@ export async function removeRegisteredLocalWorktree(
     }
   }
 
-  const finish = (): Promise<RemoveWorktreeResult> =>
+  const finish = (checkoutDeleteSignal?: AbortSignal): Promise<RemoveWorktreeResult> =>
     finishLocalWorktreeRemoval({
       context,
       args,
@@ -143,7 +142,8 @@ export async function removeRegisteredLocalWorktree(
       hasLocalWorktreeGitOptions,
       deleteBranch,
       refreshedRegisteredWorktree,
-      removalGate
+      removalGate,
+      checkoutDeleteSignal
     })
   if (!removesInBackground(canonicalWorktreePath, localWorktreeGitOptions)) {
     const result = await finish()
@@ -157,11 +157,12 @@ export async function removeRegisteredLocalWorktree(
       worktreeId: args.worktreeId,
       repoId,
       repoPath: repo.path,
-      worktreePath: canonicalWorktreePath,
-      branch: normalizeLocalBranchRef(refreshedRegisteredWorktree.branch)
+      worktree: refreshedRegisteredWorktree,
+      deleteBranch,
+      force: args.force ?? false
     },
-    run: async () => {
-      const result = await finish()
+    run: async (stopSignal) => {
+      const result = await finish(stopSignal)
       context.options?.onWorktreeLifecycle?.({
         kind: 'removed',
         worktreeId: args.worktreeId,
@@ -187,7 +188,8 @@ async function finishLocalWorktreeRemoval({
   hasLocalWorktreeGitOptions,
   deleteBranch,
   refreshedRegisteredWorktree,
-  removalGate
+  removalGate,
+  checkoutDeleteSignal
 }: {
   context: WorktreeIpcContext
   args: RemoveWorktreeArgs
@@ -201,6 +203,7 @@ async function finishLocalWorktreeRemoval({
   deleteBranch: boolean
   refreshedRegisteredWorktree: GitWorktreeInfo
   removalGate: { finish: (removed: boolean) => Promise<void> }
+  checkoutDeleteSignal?: AbortSignal
 }): Promise<RemoveWorktreeResult> {
   const { store, runtime } = context
   let removalResult: RemoveWorktreeResult | undefined
@@ -211,7 +214,8 @@ async function finishLocalWorktreeRemoval({
         ...(!deleteBranch ? { deleteBranch } : {}),
         // Why: reuse the authoritative worktree list already computed here instead of rescanning siblings on the hot delete path.
         knownRemovedWorktree: refreshedRegisteredWorktree,
-        ...(hasLocalWorktreeGitOptions ? localWorktreeGitOptions : {})
+        ...(hasLocalWorktreeGitOptions ? localWorktreeGitOptions : {}),
+        checkoutDeleteSignal
       }
       removalResult = preserveBranchHeadFallback(
         await withWorktreeRemoveStageSpan('git_remove', 'local', async () =>

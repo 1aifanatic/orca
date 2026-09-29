@@ -52,8 +52,9 @@ describe('worktree listings while a checkout is being deleted', () => {
         worktreeId: removingId,
         repoId: 'repo-1',
         repoPath: '/work/repo',
-        worktreePath: '/work/feature',
-        branch: 'feature'
+        worktree: { path: '/work/feature', branch: 'refs/heads/feature', head: 'abc' },
+        deleteBranch: true,
+        force: false
       },
       run: () => new Promise(() => {}),
       catalogVersion: () => ({ epoch: 'e', sequence: 1 }),

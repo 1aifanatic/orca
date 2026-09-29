@@ -27,7 +27,6 @@ import { CLIENT_REMOVAL_HOME } from '../worktree-removal-home-guard'
 import type { RuntimeStore } from './runtime-store-contract'
 import type { RuntimeWorktreeRemovalTarget } from './runtime-worktree-selection'
 import type { WorktreeRemovalOutcome } from '../../shared/worktree/removal-outcome'
-import { normalizeLocalBranchRef } from '../git/worktree-operation-options'
 import { getLocalWorktreeCatalogVersion } from '../local-worktree-scan-generation'
 import { removesInBackground, startBackgroundWorktreeRemoval } from '../worktree-background-removal'
 
@@ -157,11 +156,12 @@ export async function removeRuntimeRegisteredLocalWorktree(args: {
       worktreeId: args.target.id,
       repoId: repo.id,
       repoPath: repo.path,
-      worktreePath: canonicalPath,
-      branch: normalizeLocalBranchRef(refreshed.branch)
+      worktree: refreshed,
+      deleteBranch: args.deleteBranch,
+      force: args.force
     },
-    run: async () => {
-      const result = await finishRuntimeLocalWorktreeRemoval(args, refreshed, gate)
+    run: async (stopSignal) => {
+      const result = await finishRuntimeLocalWorktreeRemoval(args, refreshed, gate, stopSignal)
       args.onRemoved()
       return result
     },
@@ -171,10 +171,25 @@ export async function removeRuntimeRegisteredLocalWorktree(args: {
   return { removing: true, ...acceptedFields }
 }
 
-async function finishRuntimeLocalWorktreeRemoval(
-  args: Parameters<typeof removeRuntimeRegisteredLocalWorktree>[0],
+export type RuntimeLocalWorktreeRemovalFinishArgs = Pick<
+  Parameters<typeof removeRuntimeRegisteredLocalWorktree>[0],
+  | 'repo'
+  | 'removedPushTarget'
+  | 'store'
+  | 'localOptions'
+  | 'force'
+  | 'deleteBranch'
+  | 'closeWatchers'
+  | 'preserveBranchHead'
+  | 'finishRemoval'
+> & { target: { id: string } }
+
+/** Git's delete and everything after it; the refusals and teardown before it already ran. */
+export async function finishRuntimeLocalWorktreeRemoval(
+  args: RuntimeLocalWorktreeRemovalFinishArgs,
   refreshed: GitWorktreeInfo,
-  gate: { finish: (removed: boolean) => Promise<void> }
+  gate: { finish: (removed: boolean) => Promise<void> },
+  checkoutDeleteSignal?: AbortSignal
 ): Promise<RemoveWorktreeResult> {
   const { repo, localOptions } = args
   const canonicalPath = refreshed.path
@@ -186,7 +201,8 @@ async function finishRuntimeLocalWorktreeRemoval(
         await removeWorktree(repo.path, canonicalPath, args.force, {
           ...(!args.deleteBranch ? { deleteBranch: args.deleteBranch } : {}),
           knownRemovedWorktree: refreshed,
-          ...localOptions
+          ...localOptions,
+          ...(checkoutDeleteSignal ? { checkoutDeleteSignal } : {})
         }),
         refreshed.head
       )
@@ -214,7 +230,7 @@ async function finishRuntimeLocalWorktreeRemoval(
         await gitExecFileAsync(['worktree', 'prune'], { cwd: repo.path, ...localOptions }).catch(
           () => {}
         )
-        await cleanupPushTarget(args)
+        await cleanupRemovedWorktreePushTarget(args)
         args.finishRemoval(undefined, false, refreshed.head)
         completed = true
         return {}
@@ -228,13 +244,13 @@ async function finishRuntimeLocalWorktreeRemoval(
   } finally {
     await gate.finish(completed)
   }
-  await cleanupPushTarget(args)
+  await cleanupRemovedWorktreePushTarget(args)
   args.finishRemoval(removalResult, true, refreshed.head)
   return removalResult ?? {}
 }
 
-async function cleanupPushTarget(
-  args: Parameters<typeof removeRuntimeRegisteredLocalWorktree>[0]
+export async function cleanupRemovedWorktreePushTarget(
+  args: RuntimeLocalWorktreeRemovalFinishArgs
 ): Promise<void> {
   await cleanupUnusedWorktreePushTargetRemote(
     args.repo.path,
