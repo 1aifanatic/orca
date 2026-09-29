@@ -1,3 +1,4 @@
+import { toast } from 'sonner'
 import { readSourceControlLaunchRecipeAgentId } from '../../../../../../shared/source-control-launch-agent-selection'
 import { SourceControlDialogLayer } from './dialog-layer'
 import type { SourceControlPanelReadyProps } from './panel-props'
@@ -48,6 +49,14 @@ export function SourceControlPanelDialogs({
     updateWorktreeMeta
   } = model
 
+  const writeWorktreeBaseRef = async (worktreeId: string, baseRef: string | undefined) => {
+    const result = await updateWorktreeMeta(worktreeId, { baseRef })
+    // Why: a failed write is reverted by a refetch, so without this the pick silently undoes itself.
+    if (!result.ok) {
+      toast.error(result.error)
+    }
+  }
+
   return (
     <SourceControlDialogLayer
       clearNotesOpen={resolvedPendingDiffCommentsClear !== null}
@@ -66,7 +75,7 @@ export function SourceControlPanelDialogs({
       onSelectBaseRef={(ref) => {
         // Why: a repo-wide write here retargeted every sibling worktree without its own pin; the repo default lives in project settings.
         if (activeWorktreeId) {
-          void updateWorktreeMeta(activeWorktreeId, { baseRef: ref })
+          void writeWorktreeBaseRef(activeWorktreeId, ref)
         } else {
           void updateRepo(activeRepo.id, { worktreeBaseRef: ref })
         }
@@ -76,7 +85,7 @@ export function SourceControlPanelDialogs({
       onUsePrimaryBaseRef={
         baseRefOwnedByWorktree && activeWorktreeId
           ? () => {
-              void updateWorktreeMeta(activeWorktreeId, { baseRef: undefined })
+              void writeWorktreeBaseRef(activeWorktreeId, undefined)
               setBaseRefDialogOpen(false)
               window.setTimeout(() => void refreshBranchCompare(), 0)
             }

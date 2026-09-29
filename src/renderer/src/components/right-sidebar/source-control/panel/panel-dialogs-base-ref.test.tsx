@@ -3,6 +3,8 @@ import type { SourceControlPanelReadyProps } from './panel-props'
 
 vi.stubGlobal('window', { setTimeout: () => 0 })
 vi.mock('./dialog-layer', () => ({ SourceControlDialogLayer: () => null }))
+const toastError = vi.hoisted(() => vi.fn())
+vi.mock('sonner', () => ({ toast: { error: toastError } }))
 
 import { SourceControlPanelDialogs } from './panel-dialogs'
 
@@ -12,7 +14,9 @@ type DialogLayerProps = {
 }
 
 const updateRepo = vi.fn(async () => undefined)
-const updateWorktreeMeta = vi.fn(async () => ({ ok: true }))
+const updateWorktreeMeta = vi.fn(
+  async (): Promise<{ ok: true } | { ok: false; error: string }> => ({ ok: true })
+)
 
 function renderDialogLayerProps(opts: {
   activeWorktreeId: string | null
@@ -42,6 +46,7 @@ describe('SourceControlPanelDialogs base ref', () => {
   beforeEach(() => {
     updateRepo.mockClear()
     updateWorktreeMeta.mockClear()
+    toastError.mockClear()
   })
 
   it('pins the active worktree, not the repo, when the worktree has no own base ref', () => {
@@ -70,5 +75,15 @@ describe('SourceControlPanelDialogs base ref', () => {
       baseRefOwnedByWorktree: false
     })
     expect(props.onUsePrimaryBaseRef).toBeUndefined()
+  })
+
+  it('surfaces a refused reset instead of letting it silently revert', async () => {
+    updateWorktreeMeta.mockResolvedValueOnce({ ok: false, error: 'update required' })
+    const props = renderDialogLayerProps({
+      activeWorktreeId: 'r1::/a',
+      baseRefOwnedByWorktree: true
+    })
+    props.onUsePrimaryBaseRef?.()
+    await vi.waitFor(() => expect(toastError).toHaveBeenCalledWith('update required'))
   })
 })
