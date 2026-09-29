@@ -93,6 +93,21 @@ describe('markRemoteAgentWorkspaceTrusted', () => {
     expect(fsProvider.writeFile).not.toHaveBeenCalled()
   })
 
+  it('spends no SSH round trip on Antigravity, which it cannot trust remotely yet', async () => {
+    const fsProvider = makeFsProvider()
+    mocks.getSshFilesystemProvider.mockReturnValue(fsProvider)
+
+    await markRemoteAgentWorkspaceTrusted({
+      preset: 'antigravity',
+      connectionId: 'ssh-1',
+      workspacePath: '/repo/worktree'
+    })
+
+    expect(mocks.getActiveMultiplexer).not.toHaveBeenCalled()
+    expect(fsProvider.realpath).not.toHaveBeenCalled()
+    expect(fsProvider.writeFile).not.toHaveBeenCalled()
+  })
+
   it('writes Cursor trust marker on the remote host', async () => {
     const fsProvider = makeFsProvider()
     mocks.getSshFilesystemProvider.mockReturnValue(fsProvider)

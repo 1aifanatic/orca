@@ -16,6 +16,15 @@ export async function markRemoteAgentWorkspaceTrusted(args: {
   connectionId: string
   workspacePath: string
 }): Promise<void> {
+  // KNOWN GAP: 'antigravity' is deliberately absent. The local preset writes
+  // ~/.gemini/antigravity-cli/settings.json, and the remote equivalent has not been verified
+  // against an SSH execution host, so an agy worker launched over SSH still raises its
+  // first-launch trust prompt and will stall at agent_readiness. Returning before any SSH
+  // round trip keeps its launch as fast as before; it is recorded here rather than left as an
+  // unexplained omission. Mirror markRemoteCopilotFolderTrusted once it can be tested.
+  if (args.preset === 'antigravity') {
+    return
+  }
   const home = await resolveRemoteHome(args.connectionId)
   const fsProvider = getSshFilesystemProvider(args.connectionId)
   if (!home || !fsProvider) {
@@ -35,12 +44,6 @@ export async function markRemoteAgentWorkspaceTrusted(args: {
   } else if (args.preset === 'copilot') {
     await markRemoteCopilotFolderTrusted(fsProvider, home, workspacePath)
   }
-  // KNOWN GAP: 'antigravity' is deliberately absent. The local preset writes
-  // ~/.gemini/antigravity-cli/settings.json, and the remote equivalent has not been verified
-  // against an SSH execution host, so an agy worker launched over SSH still raises its
-  // first-launch trust prompt and will stall at agent_readiness. Falling through silently
-  // matches the pre-existing behaviour for agy; it is recorded here rather than left as an
-  // unexplained omission. Mirror markRemoteCopilotFolderTrusted once it can be tested.
 }
 
 async function resolveRemoteHome(connectionId: string): Promise<string | null> {
