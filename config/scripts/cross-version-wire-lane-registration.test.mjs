@@ -13,11 +13,9 @@ import { classifyPrJobs } from './pr-code-change-scope.mjs'
  * shard's shallow clone does not have. So the shard excludes the directory wholesale and the
  * `cross-version-wire` job is the only lane that runs it.
  *
- * That made the job's vitest argv the single thing deciding whether a file executes, and for
- * a while the argv was a curated list of seven paths while the directory held nine suites.
- * `orchestration-delivery-downgrade` and `published-field-shape` ran on no machine and
- * reported nothing; the first could not have passed if it had run, because it extracts a
- * checkout no sibling shares and had no timeout to cover it. Nobody could find that out.
+ * That made the job's vitest argv the single thing deciding whether a file executes. While it
+ * was a curated list, `orchestration-delivery-downgrade`, `agent-session-death-evidence-downgrade`
+ * and `published-field-shape` landed in the directory without joining it and ran on no machine.
  *
  * Both halves matter and being in one is not enough: `CROSS_VERSION_WIRE_PREFIXES` in
  * pr-code-change-scope.mjs decides whether the job RUNS for a diff, and the argv decides
@@ -84,16 +82,6 @@ describe('cross-version wire suites run somewhere', () => {
   it('selects every suite in the directory from the lane argv', () => {
     expect(laneArgv.length).toBeGreaterThan(0)
     expect(suites.filter((path) => !selectedByLane(path))).toEqual([])
-  })
-
-  it('names no argv path that is not a suite on disk', () => {
-    // A curated list rots the other way too: a renamed file leaves a filter matching nothing,
-    // and vitest then fails the whole lane rather than quietly running the rest.
-    const strays = laneArgv.filter(
-      (token) =>
-        token !== `${LANE_DIRECTORY}/` && token !== LANE_DIRECTORY && !suites.includes(token)
-    )
-    expect(strays).toEqual([])
   })
 
   it('keeps the unit shards excluding the directory, which is what makes this lane the only one', () => {

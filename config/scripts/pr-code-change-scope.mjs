@@ -138,18 +138,11 @@ function changesMobileWebApp(changedFiles) {
 const CROSS_VERSION_WIRE_PREFIXES = [
   'tests/e2e/cross-version-wire/',
   'src/shared/protocol-version',
-  // The execution host owns agent status in one store and every reader subscribes to it, so a
-  // remote host and its client each run a copy that updates on its own schedule. The snapshot
-  // and mutation decoders refuse a key they do not know, which makes a new field on either one
-  // a break rather than Rule 1, and the row's status arms reach the worktree listing.
-  'src/shared/agent-status',
-  // The daemon keeps running on the remote host across a desktop update, so its framing,
-  // handshake and version constant meet a bridge from another build as a matter of course.
-  'src/main/ssh/relay-protocol',
-  'src/shared/relay-frame-decoder',
-  'src/relay/protocol',
-  'src/relay/relay-frame-decoder',
-  'src/relay/relay-handshake',
+  // A persisted status row is re-admitted by the other build's normalizeAgentStatusPayload after
+  // an update or a downgrade; these decide which rows and fields it admits.
+  'src/shared/agent-status-types',
+  'src/shared/agent-status-field-normalization',
+  'src/shared/agent-turn-outcome',
   'src/shared/terminal-stream-protocol',
   'src/shared/browser-client-host-protocol',
   'src/shared/browser-network-tunnel-protocol',

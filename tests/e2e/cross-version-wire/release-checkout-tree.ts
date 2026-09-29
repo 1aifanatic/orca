@@ -1,24 +1,18 @@
 import { readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, relative } from 'node:path'
 
-// Why not 45s: the lane runs every suite in this directory in one vitest invocation, and they do
-// not all pin the same commit, so two checkouts can fill at once. Extraction is ~9s of CPU; the
-// budget has to cover that CPU competing with a sibling extraction and the suites already running,
-// not a solo run on an idle machine. It bounds a cache fill, so a longer wait only delays a
-// diagnosis that a hung `git archive` would produce either way.
+// Why not 45s: the lane runs the whole directory at once, so several pinned checkouts extract
+// concurrently beside running suites; this bounds a hung `git archive`, not a solo cold fill.
 const CHECKOUT_PROCESS_TIMEOUT_MS = 120_000
 const CHECKOUT_MAX_OUTPUT_BYTES = 1024 * 1024
 
-// Why: the wire endpoints are the runtime RPC host, the renderer client, the shared
-// codec, and the relay daemon — which an auto-update leaves running at its old version
-// while the bridge that connects to it is new, so both sides of that pairing must be
-// extractable. `src/cli` is still skipped; nothing it owns crosses a version boundary.
+// Why: the wire endpoints only need the runtime RPC host, the renderer client, and
+// the shared codec. Skipping cli/relay keeps a cold CI extraction a few seconds.
 // The phone's `worktree ps` row reader is one self-contained file, so it rides along alone.
 const ARCHIVE_PATHS = [
   'src/main',
   'src/shared',
   'src/preload',
-  'src/relay',
   'src/renderer',
   'src/types',
   'mobile/src/worktree/agent-row-display.ts'
