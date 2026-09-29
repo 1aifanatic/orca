@@ -120,10 +120,12 @@ export function getWorktreeStatus(w: Worktree, now = Date.now()): WorktreeDispla
   let failed = false
   let interrupted = false
   for (const row of w.agents ?? []) {
+    // Why: the desktop card reads only fresh rows, so a stale verdict decays like a stale done.
+    if (row.structuredHostOwned !== true && now - row.updatedAt > AGENT_STATUS_STALE_AFTER_MS) {
+      continue
+    }
     // Why: a subagent's question on a failed main agent's row still needs the user first.
-    humanWait ||=
-      (row.state === 'waiting' || row.state === 'blocked') &&
-      now - row.updatedAt <= AGENT_STATUS_STALE_AFTER_MS
+    humanWait ||= row.state === 'waiting' || row.state === 'blocked'
     const dot = agentDotState(row, now)
     failed ||= dot === 'failed'
     interrupted ||= dot === 'interrupted'

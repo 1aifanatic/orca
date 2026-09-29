@@ -69,10 +69,21 @@ describe('getWorktreeStatus', () => {
     ).toBe('failed')
   })
 
-  it('keeps showing failed once the row is past the staleness window', () => {
+  it('lets a verdict decay past the staleness window, as the desktop card does', () => {
+    const failed = agent({ state: 'done', mainAgent: failedMain })
+    const stopped = agent({ state: 'done', mainAgent: { ...failedMain, outcome: 'cancellation' } })
+    for (const row of [failed, stopped]) {
+      expect(
+        getWorktreeStatus(
+          worktree({ status: 'active', agents: [row] }),
+          AGENT_STATUS_STALE_AFTER_MS + 1
+        )
+      ).toBe('active')
+    }
+    // A structured session's host keeps its row fresh past the window.
     expect(
       getWorktreeStatus(
-        worktree({ status: 'done', agents: [agent({ state: 'done', mainAgent: failedMain })] }),
+        worktree({ status: 'active', agents: [{ ...failed, structuredHostOwned: true }] }),
         AGENT_STATUS_STALE_AFTER_MS + 1
       )
     ).toBe('failed')
