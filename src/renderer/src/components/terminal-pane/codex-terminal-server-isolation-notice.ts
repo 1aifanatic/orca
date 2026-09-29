@@ -58,7 +58,7 @@ function showCodexTerminalServerIsolationNotice(): void {
       'Orca now runs Codex without its shared server'
     ),
     {
-      // Why a stable id: StrictMode can run the effect twice before the seen flag lands.
+      // Why a stable id: a late sync that resets the flag can't stack a second toast.
       id: 'codex-terminal-server-isolation-notice',
       description: translate(
         'terminal.codexTerminalServerIsolationNotice.description',

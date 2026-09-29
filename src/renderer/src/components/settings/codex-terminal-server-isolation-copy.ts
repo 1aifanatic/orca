@@ -22,14 +22,11 @@ export function getCodexTerminalServerIsolationSearchKeywords(): string[] {
       fallback: 'codex',
       englishOnly: true
     },
-    { key: 'settings.agents.codexTerminalServerIsolation.search.server', fallback: 'server' },
-    { key: 'settings.agents.codexTerminalServerIsolation.search.daemon', fallback: 'daemon' },
-    { key: 'settings.agents.codexTerminalServerIsolation.search.shared', fallback: 'shared' },
-    { key: 'settings.agents.codexTerminalServerIsolation.search.isolate', fallback: 'isolate' },
-    {
-      key: 'settings.agents.codexTerminalServerIsolation.search.agentsOverview',
-      fallback: 'agents overview'
-    },
+    { key: 'auto.components.settings.agents.search.7e15b89f6e', fallback: 'server' },
+    { key: 'auto.components.settings.agents.search.ff457e1e7b', fallback: 'daemon' },
+    { key: 'auto.components.settings.agents.search.9f3becc4e8', fallback: 'shared' },
+    { key: 'auto.components.settings.agents.search.34337ed5c7', fallback: 'isolate' },
+    { key: 'auto.components.settings.agents.search.9a84e65118', fallback: 'agents overview' },
     { key: 'auto.components.settings.agents.search.6984d4291a', fallback: 'status' }
   ])
 }
