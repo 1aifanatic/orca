@@ -1,6 +1,7 @@
 import { lstat } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { RemoveWorktreeResult } from '../../shared/worktree/create-types'
+import type { GitWorktreeInfo } from '../../shared/worktree/types'
 import { assertWorktreeUnlockedForRemoval } from '../../shared/worktree/removal'
 import type { WorktreeRemovalOutcome } from '../../shared/worktree/removal-outcome'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
@@ -11,7 +12,8 @@ import { resolveWorktreeRemovalMetadata } from '../worktree-removal-repo-owner'
 import type { RuntimePreservedBranchCleanup } from './runtime-preserved-branch-cleanup'
 import { listWorktreesStrict } from '../git/worktree'
 import { finishUnregisteredWorktreeRemoval } from '../git/worktree-removal'
-import { getErrorCode } from '../git/worktree-operation-options'
+import { getErrorCode, normalizeLocalBranchRef } from '../git/worktree-operation-options'
+import { restoreMissingWorktreeGitFile } from '../git/worktree-git-file-restore'
 import { areWorktreePathsEqual } from '../git/worktree-path-comparison'
 import { getLocalProjectWorktreeGitOptions } from '../project-runtime-git-options'
 import { findRegisteredDeletableWorktree } from '../worktree-removal-safety'
@@ -130,16 +132,28 @@ async function finishInterruptedLocalWorktreeRemoval(
       `Worktree registration changed during deletion: ${record.worktreePath}. Retry deletion.`
     )
   }
+  const gitLink = await readCheckoutGitLink(record.worktreePath)
+  // Why: the finish forces, so a checkout created at this path since the quit must not be taken.
+  // Git deletes the checkout, `.git` included, before it drops the registration, so a `.git` at an
+  // unregistered path belongs to a new checkout.
+  if (deletable ? !isRecordedCheckout(deletable, record) : gitLink === 'present') {
+    throw new Error(
+      `A different checkout is now at ${record.worktreePath}; Orca left it in place. Delete it again to remove it.`
+    )
+  }
   // Why: Git deletes `.git` wherever it falls in directory order (early on NTFS) and refuses to
-  // remove a checkout left without it; its registration and this record prove the rest is ours.
-  const lostGitLink = deletable ? await isCheckoutMissingGitLink(record.worktreePath) : false
-  if (lostGitLink) {
+  // remove a checkout left without it; restoring the link from Git's admin entry lets Git finish.
+  let gitCanRemove = !!deletable
+  if (deletable && gitLink === 'missing') {
     assertWorktreeUnlockedForRemoval(deletable)
+    gitCanRemove = await restoreMissingWorktreeGitFile(repo.path, deletable.path, localOptions)
   }
   const gate = await args.acquireWatcherRemoval(record.worktreePath)
-  if (deletable && !lostGitLink) {
+  if (deletable && gitCanRemove) {
     return finishRuntimeLocalWorktreeRemoval(finishArgs, deletable, gate, args.stopSignal)
   }
+  // Unregistered, or no admin entry claims the checkout so Git cannot validate it: the leftover is
+  // deleted in this process as a last resort, then pruned.
   let result: RemoveWorktreeResult
   let removed = false
   try {
@@ -158,16 +172,26 @@ async function finishInterruptedLocalWorktreeRemoval(
   return result
 }
 
-async function isCheckoutMissingGitLink(worktreePath: string): Promise<boolean> {
+function isRecordedCheckout(worktree: GitWorktreeInfo, record: WorktreeRemovalRecord): boolean {
+  return (
+    normalizeLocalBranchRef(worktree.branch) === record.branch &&
+    (!record.head || worktree.head === record.head)
+  )
+}
+
+/** `missing`: the checkout directory is there without its `.git`; unreadable counts as present. */
+async function readCheckoutGitLink(
+  worktreePath: string
+): Promise<'no-checkout' | 'missing' | 'present'> {
   try {
     await lstat(worktreePath)
   } catch {
-    return false
+    return 'no-checkout'
   }
   try {
     await lstat(join(worktreePath, '.git'))
-    return false
+    return 'present'
   } catch (error) {
-    return getErrorCode(error) === 'ENOENT'
+    return getErrorCode(error) === 'ENOENT' ? 'missing' : 'present'
   }
 }

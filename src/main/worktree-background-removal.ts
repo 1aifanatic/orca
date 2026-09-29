@@ -167,8 +167,7 @@ async function settleBackgroundWorktreeRemoval(
   recorded: Promise<void>,
   stopSignal: AbortSignal
 ): Promise<void> {
-  // Why: the record is the commit point, so Git starts deleting only once it is on disk.
-  await recorded
+  await waitForRecordWrite(record, recorded)
   let outcome: WorktreeRemovalOutcome
   try {
     if (stopSignal.aborted) {
@@ -194,11 +193,39 @@ async function settleBackgroundWorktreeRemoval(
     }
   }
   // Why clear on failure too: the row returns live and retryable instead of retrying unseen.
-  if (pendingByWorktreeId.get(record.worktreeId) === record) {
+  const cleared = pendingByWorktreeId.get(record.worktreeId) === record
+  if (cleared) {
     pendingByWorktreeId.delete(record.worktreeId)
+  }
+  // Why publish first: the clear is bookkeeping; a crash before it lands only re-runs a finish that
+  // re-derives what is left from Git.
+  publishSafely(job.publish, outcome)
+  if (cleared) {
     await persistRecords()
   }
-  publishSafely(job.publish, outcome)
+}
+
+// Why: the record should be on disk before Git deletes, so a quit resumes the delete, but a disk or
+// file pool stall must not hold the user's delete; past this, a crash only loses the resume.
+const RECORD_WRITE_WAIT_MS = 2_000
+
+async function waitForRecordWrite(
+  record: WorktreeRemovalRecord,
+  recorded: Promise<void>
+): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timedOut = await Promise.race([
+    recorded.then(() => false),
+    new Promise<boolean>((resolve) => {
+      timer = setTimeout(() => resolve(true), RECORD_WRITE_WAIT_MS)
+    })
+  ])
+  clearTimeout(timer)
+  if (timedOut) {
+    console.warn(
+      `[worktrees] removal record for ${record.worktreePath} not on disk after ${RECORD_WRITE_WAIT_MS} ms; deleting anyway`
+    )
+  }
 }
 
 function publishSafely(

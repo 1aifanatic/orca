@@ -13,7 +13,20 @@ import {
   startBackgroundWorktreeRemoval,
   stopBackgroundWorktreeRemovals
 } from './worktree-background-removal'
-import { readWorktreeRemovalRecords, worktreeRemovalRecordsFile } from './worktree-removal-records'
+import type * as WorktreeRemovalRecords from './worktree-removal-records'
+import {
+  readWorktreeRemovalRecords,
+  worktreeRemovalRecordsFile,
+  writeWorktreeRemovalRecords
+} from './worktree-removal-records'
+
+vi.mock('./worktree-removal-records', async (importOriginal) => {
+  const actual = await importOriginal<typeof WorktreeRemovalRecords>()
+  return {
+    ...actual,
+    writeWorktreeRemovalRecords: vi.fn(actual.writeWorktreeRemovalRecords)
+  }
+})
 
 const removal = {
   worktreeId: 'repo-1::/work/feature',
@@ -32,6 +45,7 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
+  vi.useRealTimers()
   _resetPendingWorktreeRemovalsForTests()
   await rm(directory, { recursive: true, force: true })
 })
@@ -110,6 +124,50 @@ describe('durable worktree removal records', () => {
     expect(publish).toHaveBeenLastCalledWith(
       expect.objectContaining({ status: 'failed', error: 'Permission denied' })
     )
+  })
+
+  it('starts Git after a bounded wait when the record write stalls', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    vi.mocked(writeWorktreeRemovalRecords).mockReturnValueOnce(new Promise(() => {}))
+    const run = vi.fn(async () => ({}))
+    startBackgroundWorktreeRemoval({
+      removal,
+      run,
+      catalogVersion: () => catalogVersion,
+      publish: () => {}
+    })
+
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(run).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(run).toHaveBeenCalledTimes(1)
+    vi.useRealTimers()
+    await _settlePendingWorktreeRemovalsForTests()
+  })
+
+  it('publishes the outcome without waiting for the record to be cleared on disk', async () => {
+    let finishClear = (): void => {}
+    const publish = vi.fn()
+    startBackgroundWorktreeRemoval({
+      removal,
+      run: async () => {
+        vi.mocked(writeWorktreeRemovalRecords).mockReturnValueOnce(
+          new Promise<void>((resolve) => {
+            finishClear = resolve
+          })
+        )
+        return {}
+      },
+      catalogVersion: () => catalogVersion,
+      publish
+    })
+
+    await vi.waitFor(() =>
+      expect(publish).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'removed' }))
+    )
+    finishClear()
+    await _settlePendingWorktreeRemovalsForTests()
   })
 
   it('stops Git on quit without waiting and keeps the record for the next start', async () => {
