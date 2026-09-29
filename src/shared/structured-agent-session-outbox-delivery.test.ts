@@ -80,7 +80,7 @@ describe('a replay of an attempted id', () => {
 
   it('stores no intent: a stale `delivery` key is dropped on read, and a main entry sends plain', () => {
     const read = parseStructuredAgentSessionOutboxEntry(
-      { ...JSON.parse(JSON.stringify(entry({ lastAttemptAt: 5 }))), delivery: 'queue-if-active' },
+      { ...entry({ lastAttemptAt: 5 }), delivery: 'queue-if-active' },
       'session-1'
     )
     expect(read !== null && 'delivery' in read).toBe(false)
