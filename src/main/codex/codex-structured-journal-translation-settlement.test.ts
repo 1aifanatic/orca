@@ -110,7 +110,6 @@ function deferredTarget(
         return { cursor: { epoch: 'e', sequence: log.length } }
       }),
       appendTombstone: vi.fn(async () => ({ epoch: 'e', sequence: log.length })),
-      markPendingSubmissionsUnknown: vi.fn(async () => []),
       appendLifecycleBatch: vi.fn(
         async (input: { mutations: readonly JournalLifecycleMutationInput[] }) => {
           for (const mutation of input.mutations) {
