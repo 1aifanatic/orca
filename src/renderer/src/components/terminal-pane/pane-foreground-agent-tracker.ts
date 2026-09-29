@@ -81,6 +81,8 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
   // cannot remove the identity that authorizes the bounded retry ladder.
   let hasKnownAgentEvidence = false
   let hasAgentExpectation = false
+  // True while the pending visible-pty read answers the agent's own idle-to-neutral title.
+  let agentTitleExitCandidate = false
   const readProcess = createPaneForegroundProcessReader(deps)
 
   const trackablePtyId = (): string | null => {
@@ -96,6 +98,7 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
     }
     scheduledReadReason = null
     activeReadReason = null
+    agentTitleExitCandidate = false
   }
 
   const scheduleRead = (
@@ -214,7 +217,14 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
       return
     }
     if (reason === 'visible-pty') {
-      if ((hasForegroundAgentEvidence || hasKnownAgentEvidence) && verdict === 'exited') {
+      // Why: a remote host that can never show a shell leaves the agent's own title as its exit
+      // signal (base behaviour; main applies the same rule to SSH facts).
+      const titleIsOnlyExitSignal =
+        agentTitleExitCandidate && remote && verdict === 'unverifiable' && !judgement.canCertifyExit
+      if (
+        (hasForegroundAgentEvidence || hasKnownAgentEvidence) &&
+        (verdict === 'exited' || titleIsOnlyExitSignal)
+      ) {
         confirmShellForeground(reason)
         deps.onVisibleForegroundSettled?.('shell')
       } else {
@@ -291,7 +301,9 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
     },
     onAgentExitCandidate() {
       // Why: the title tracker saw the agent's own status title, so the agent was observed.
-      return bindVisiblePty(true, true)
+      const scheduled = bindVisiblePty(true, true)
+      agentTitleExitCandidate = scheduled
+      return scheduled
     },
     onCommandStarted(expectedAgent = null) {
       const hadReadBeforeCommandStart = hasPendingRead()

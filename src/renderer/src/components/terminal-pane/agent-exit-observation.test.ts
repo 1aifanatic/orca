@@ -215,6 +215,36 @@ describe('agent exit observation', () => {
       h.tracker.dispose()
     })
 
+    it('retires the agent on its own neutral title where a Windows host marks no commands', async () => {
+      vi.useFakeTimers()
+      const h = remoteTracker(() => posixEvidence('shell', 'windows'))
+      h.tracker.onAgentExitCandidate()
+      await vi.advanceTimersByTimeAsync(400)
+      expect(h.shell).toHaveBeenCalledExactlyOnceWith('visible-pty', true)
+      expect(h.read).toHaveBeenCalledOnce()
+      h.tracker.dispose()
+    })
+
+    it.each([
+      ['a visible-pane sample on a Windows host', () => posixEvidence('shell', 'windows'), false],
+      ['a neutral title with the agent still in front', () => posixEvidence('agent'), true],
+      ['a neutral title the host could not answer', () => posixEvidence('shell', 'windows'), true]
+    ])('keeps the agent on %s', async (label, evidence, titleCandidate) => {
+      vi.useFakeTimers()
+      const h = remoteTracker(evidence)
+      if (label.includes('could not answer')) {
+        h.read.mockRejectedValue(new Error('transport lost'))
+      }
+      if (titleCandidate) {
+        h.tracker.onAgentExitCandidate()
+      } else {
+        h.tracker.onVisiblePtyBound(true)
+      }
+      await vi.advanceTimersByTimeAsync(8000)
+      expect(h.shell).not.toHaveBeenCalled()
+      h.tracker.dispose()
+    })
+
     it('keeps the agent when the host could not be read at the 133;D', async () => {
       vi.useFakeTimers()
       const h = remoteTracker(() => undefined)
