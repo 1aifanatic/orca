@@ -67,8 +67,10 @@ describe('a withdrawn send the host returns as a card', () => {
         state: 'unconfirmed'
       }
     ])
+    type Props = { submissions: AgentJournalSubmission[]; queuedMessageIds: string[] }
+    const initialProps: Props = { submissions: [], queuedMessageIds: [] }
     const view = renderHook(
-      (props: { submissions: AgentJournalSubmission[]; queuedMessageIds: string[] }) =>
+      (props: Props) =>
         useStructuredAgentSessionOutbox({
           sessionId: 'session-1',
           target: TARGET,
@@ -78,7 +80,7 @@ describe('a withdrawn send the host returns as a card', () => {
           queueDelivery: true,
           queuedMessageIds: props.queuedMessageIds
         }),
-      { initialProps: { submissions: [], queuedMessageIds: [] } }
+      { initialProps }
     )
     view.rerender({ submissions: [withdrawn('returned')], queuedMessageIds: ['returned'] })
     await waitFor(() => expect(view.result.current.outbox).toHaveLength(0))
