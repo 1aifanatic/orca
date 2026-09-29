@@ -104,12 +104,16 @@ describe('orchestration fleet attention', () => {
   })
 
   it('raises failure exactly when the agent display draws the main agent as Failed', () => {
+    // Why: the fleet sees only the main agent's record, so the row's combined state (subagents
+    // working or asking) must not change the display's answer.
     for (const state of AGENT_STATUS_STATES) {
       for (const outcome of [undefined, ...AGENT_JOURNAL_TURN_OUTCOMES]) {
         const mainAgent = { state, stateStartedAt: 1, ...(outcome ? { outcome } : {}) }
-        expect(isFleetMainTurnFailed(mainAgent)).toBe(
-          agentVerdictDisplayMark({ state, mainAgent }) === 'failed'
-        )
+        for (const rowState of AGENT_STATUS_STATES) {
+          expect(isFleetMainTurnFailed(mainAgent)).toBe(
+            agentVerdictDisplayMark({ state: rowState, mainAgent }) === 'failed'
+          )
+        }
       }
     }
     expect(isFleetMainTurnFailed({ state: 'done', outcome: 'failure', stateStartedAt: 1 })).toBe(
