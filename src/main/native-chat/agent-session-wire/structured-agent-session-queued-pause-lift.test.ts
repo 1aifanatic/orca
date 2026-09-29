@@ -15,6 +15,7 @@ import {
   eventually,
   type QueuedMessageTestRig
 } from './structured-agent-session-queued-message-rig.test-fixture'
+import { sameQueuePause } from './structured-agent-session-queued-publication'
 import {
   structuredAgentSessionHostInstance,
   structuredQueuePause
@@ -244,6 +245,55 @@ describe('a pause is over the cards it paused', () => {
     const later = await queuedDraft('typed during the mail turn')
     await rig.settleAccepted(mail.id, 'mail')
     await eventually(async () => expect(await rig.handoff(later)).toBeDefined())
+  })
+})
+
+describe('a pause only over cards Resume could send', () => {
+  it('a Stop that leaves only a returned card publishes no pause and keeps no fact', async () => {
+    const working = await rig.workingSend()
+    const draftId = await queuedDraft('refused before the stop')
+    await rig.settleAccepted(working, 'a')
+    await eventually(async () => expect(await rig.handoff(draftId)).toBeDefined())
+    await rig.settleRejected(await rig.handoffId(draftId), 'provider refused this payload')
+    await eventually(async () =>
+      expect(await rig.drafts()).toEqual([{ messageId: draftId, state: 'returned' }])
+    )
+    // A lone returned card traps nothing: this send goes now, and the Stop interrupts it.
+    const next = await handedOverUserSend('sent past the card')
+    expect(await rig.stop()).toMatchObject({ ok: true })
+    await rig.settleAccepted(next, 'stopped')
+    expect(await rig.queuePause()).toBeNull()
+    const journal = rig.host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)?.journal
+    expect(journal?.queuedMessages.pause()).toBeNull()
+  })
+
+  it('a restart over only a card held by its own failed send publishes no pause', async () => {
+    const working = await rig.workingSend()
+    const draftId = await queuedDraft('conversion fails once')
+    const append = vi
+      .spyOn(AgentSessionJournal.prototype, 'appendSubmission')
+      .mockImplementationOnce(async () => {
+        throw new Error('disk full')
+      })
+    try {
+      await rig.settleAccepted(working, 'a')
+      await eventually(async () =>
+        expect(await rig.drafts()).toEqual([{ messageId: draftId, state: 'waiting', paused: true }])
+      )
+    } finally {
+      append.mockRestore()
+    }
+    await rig.restartHostProcess()
+    // Only its own Send releases that card: a queue-level Resume would send nothing.
+    expect(await rig.queuePause()).toBeNull()
+  })
+
+  it('compares a pause by presence before reason, so appearing or clearing is always a change', () => {
+    expect(sameQueuePause(null, {})).toBe(false)
+    expect(sameQueuePause({}, null)).toBe(false)
+    expect(sameQueuePause(null, null)).toBe(true)
+    expect(sameQueuePause({ reason: 'stopped' }, { reason: 'stopped' })).toBe(true)
+    expect(sameQueuePause({ reason: 'stopped' }, { reason: 'cleared' })).toBe(false)
   })
 })
 

@@ -11,6 +11,7 @@ import {
   isUnsettledQueuedMessage,
   type QueuedMessageRow
 } from '../agent-session-journal/queued-message-table'
+import { isPausableQueuedMessage } from '../agent-session-journal/queued-message-pause-table'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
 
 /** The one unsettled-card predicate /clear's carry and the budget share:
@@ -35,9 +36,9 @@ export async function runStopWithQueuePause<TValue>(
 ): Promise<TurnOutcome<TValue>> {
   let recorded = false
   return stop(async () => {
-    // A pause is over the cards it paused: with none — the withdrawal's sent-back
-    // hand-offs included — it would only catch a card typed long after.
-    if (recorded || unsettledQueuedMessages(ctx.journal).length === 0) {
+    // A pause is over the cards it can hold back — the withdrawal's sent-back
+    // hand-offs included. With none it would only catch a card typed long after.
+    if (recorded || !ctx.journal.queuedMessages.list().some(isPausableQueuedMessage)) {
       return
     }
     recorded = true

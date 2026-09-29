@@ -249,6 +249,9 @@ export function settleRejectedQueuedMessage(
             input.sessionId,
             input.consumedRef
           )
+  if (settlement.state === 'returned') {
+    retireQueuePauseIfEmpty(db, input.sessionId)
+  }
   return Number(changed.changes ?? 0) > 0
 }
 
