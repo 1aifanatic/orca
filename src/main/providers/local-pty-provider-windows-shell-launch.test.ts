@@ -617,7 +617,7 @@ describe('LocalPtyProvider', () => {
         [
           '-c',
           expect.stringMatching(
-            /^chcp\.com 65001 >\/dev\/null 2>&1; exec "\$BASH" --rcfile '.*shell-ready\/bash\/rcfile' -i$/
+            /^chcp\.com 65001 >\/dev\/null 2>&1; export ORCA_SHELL_FEATURES=markers; exec "\$BASH" --rcfile '.*shell-ready\/bash\/rcfile' -i$/
           )
         ],
         expect.objectContaining({

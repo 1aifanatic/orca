@@ -122,19 +122,16 @@ const UNWRAPPED: ShellLaunchConfig = {
 
 /**
  * The one launch-config entry point: args + env for a shell that should start
- * with exactly `features` enabled. An empty selection is never wrapped.
+ * with exactly `features` enabled.
  */
 export function getShellLaunchConfig(
   shellPath: string,
-  features: readonly ShellStartupFeature[],
-  options: { hasStartupCommand?: boolean } = {}
+  features: readonly ShellStartupFeature[]
 ): ShellLaunchConfig {
   const shellName = pathWin32.basename(basename(shellPath)).toLowerCase()
 
+  // Why zsh, bash and fish wrap with no feature: the wrapper defines the codex function a typed launch needs.
   if (shellName === 'zsh') {
-    if (features.length === 0) {
-      return UNWRAPPED
-    }
     if (!ensureShellReadyWrappers()) {
       // Why plain login zsh: ZDOTDIR pointed at an incomplete wrapper dir makes
       // zsh skip the user's whole config. Losing Orca's features is recoverable.
@@ -152,7 +149,7 @@ export function getShellLaunchConfig(
   }
 
   if (shellName === 'bash') {
-    if (features.length === 0 || !ensureShellReadyWrappers()) {
+    if (!ensureShellReadyWrappers()) {
       return UNWRAPPED
     }
     return {
@@ -178,10 +175,9 @@ export function getShellLaunchConfig(
     }
   }
 
-  // Why: mirrors local-pty-shell-ready.ts; markerless fish stays unwrapped unless a
-  // startup command (e.g. Orca's Codex launch) needs the codex wrapper. The selection
-  // is baked into the init command, so fish needs no feature env var.
-  if (shellName === 'fish' && (features.includes('ready') || options.hasStartupCommand)) {
+  // Why: mirrors local-pty-shell-ready.ts. The selection is baked into the init
+  // command, so fish needs no feature env var.
+  if (shellName === 'fish') {
     return {
       args: [
         '-l',

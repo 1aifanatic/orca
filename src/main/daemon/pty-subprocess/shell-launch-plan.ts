@@ -206,8 +206,7 @@ export function createPtyShellLaunchPlan(
         hasStartupCommand: Boolean(opts.command),
         waitsForShellReady,
         emitsStartupIdentity: waitsForShellReady
-      }),
-      { hasStartupCommand: Boolean(opts.command) }
+      })
     )
     Object.assign(env, shellLaunch.env)
     shellArgs =

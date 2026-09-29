@@ -127,6 +127,8 @@ export function buildWslInteractiveLoginShellCommand(): string {
     'case "$_orca_wsl_shell_name" in',
     '  bash)',
     '    if [ -n "${_orca_shell_ready_root:-}" ] && [ -f "${_orca_shell_ready_root}/bash/rcfile" ]; then',
+    // Why markers: WSL bash panes have always run the rcfile's OSC 133 lifecycle.
+    '      export ORCA_SHELL_FEATURES=markers',
     '      exec "$_orca_wsl_shell" --rcfile "${_orca_shell_ready_root}/bash/rcfile"',
     '    fi',
     '    ;;',
