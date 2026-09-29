@@ -499,3 +499,38 @@ describe('a send the host refused by throwing', () => {
     )
   })
 })
+
+describe('a send refused on a journal a newer Orca wrote', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.clear()
+  })
+
+  it('says to update Orca, not to try again', async () => {
+    // As the host answers it (pinned in `journal-open-failure.test.ts`).
+    mocks.call.mockResolvedValue({
+      ok: false,
+      refusal: {
+        code: 'agent_session_journal_unreadable',
+        message: 'Chats were saved by a newer Orca. Update Orca to keep using them.',
+        details: { reason: 'journalWrittenByNewerOrca' }
+      }
+    })
+    const { result } = renderHook(() =>
+      useStructuredAgentSessionOutbox({
+        sessionId: 'session-1',
+        target: { kind: 'local' },
+        fence: 1,
+        submissions: []
+      })
+    )
+
+    act(() => expect(result.current.send('hello')).toBe(true))
+
+    await waitFor(() =>
+      expect(shownFailure(result.current.outbox[0])).toBe(
+        'Chats were saved by a newer Orca. Your message was not sent. Update Orca to keep using them.'
+      )
+    )
+  })
+})

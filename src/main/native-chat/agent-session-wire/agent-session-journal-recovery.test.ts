@@ -250,7 +250,7 @@ describe('openAgentSessionJournalWithRecovery', () => {
       ok: false,
       refusal: {
         code: 'agent_session_journal_unreadable',
-        details: { reason: 'journalUnavailable' },
+        details: { reason: 'journalWrittenByNewerOrca' },
         message: JOURNAL_NEWER_SCHEMA_MESSAGE
       }
     })
@@ -297,7 +297,7 @@ describe('openAgentSessionJournalWithRecovery', () => {
       ok: false,
       refusal: {
         code: 'agent_session_journal_unreadable',
-        details: { reason: 'journalUnavailable' },
+        details: { reason: 'journalWrittenByNewerOrca' },
         message: JOURNAL_NEWER_SCHEMA_MESSAGE
       }
     })

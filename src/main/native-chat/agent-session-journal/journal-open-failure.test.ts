@@ -7,8 +7,11 @@ import { openJournalDatabase } from './journal-database'
 import {
   classifyJournalOpenFailure,
   createJournalOpenReadRefusals,
-  journalOpenReadRefusal
+  journalOpenReadRefusal,
+  journalOpenRefusal,
+  journalOpenRefusalError
 } from './journal-open-failure'
+import { AgentSessionJournalError } from './journal-write-guards'
 import { journalDatabasePath } from './journal-host-database'
 import { replayJournal } from './journal-open'
 
@@ -159,6 +162,36 @@ describe('createJournalOpenReadRefusals', () => {
     refusals.forget('session-1')
     refusals.refusal('session-1', corrupt)
     expect(warn).toHaveBeenCalledTimes(4)
+    vi.restoreAllMocks()
+  })
+})
+
+// Only an update gets past a journal a newer Orca wrote, so it has a reason of its own: a client
+// that chose words by `journalUnavailable` said to try again, and retrying never cleared it.
+describe('a journal a newer Orca wrote', () => {
+  const readOnly = () =>
+    new AgentSessionJournalError('journal_read_only', 'the journal uses a newer schema')
+
+  it('refuses a write with its own reason, and the words released clients print', () => {
+    // As the wire carries it (the mobile and older-client tests read this shape).
+    expect(JSON.parse(JSON.stringify(journalOpenRefusal(readOnly())))).toEqual({
+      code: 'agent_session_journal_unreadable',
+      message: 'Chats were saved by a newer Orca. Update Orca to keep using them.',
+      details: { reason: 'journalWrittenByNewerOrca' }
+    })
+    expect(journalOpenRefusalError(readOnly()).refusal).toMatchObject({
+      details: { reason: 'journalWrittenByNewerOrca' }
+    })
+  })
+
+  it('refuses a read with the same reason', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    expect(journalOpenReadRefusal(readOnly()).refusal).toMatchObject({
+      details: { reason: 'journalWrittenByNewerOrca' }
+    })
+    expect(createJournalOpenReadRefusals().refusal('session-1', readOnly()).refusal).toMatchObject({
+      details: { reason: 'journalWrittenByNewerOrca' }
+    })
     vi.restoreAllMocks()
   })
 })

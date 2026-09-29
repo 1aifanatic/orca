@@ -62,3 +62,52 @@ describe('a refusal the host threw', () => {
     })
   })
 })
+
+describe('a write refused on a journal a newer Orca wrote', () => {
+  // As the host answers it (pinned in `journal-open-failure.test.ts`).
+  const newerOrcaClient = (): RpcClient => {
+    const sendRequest = async () => ({
+      id: 'req-1',
+      ok: true,
+      result: {
+        ok: false,
+        refusal: {
+          code: 'agent_session_journal_unreadable',
+          message: 'Chats were saved by a newer Orca. Update Orca to keep using them.',
+          details: { reason: 'journalWrittenByNewerOrca' }
+        }
+      }
+    })
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the paths under test reach only `sendRequest`.
+    return { sendRequest } as unknown as RpcClient
+  }
+
+  it.each([
+    [
+      'agentSession.send',
+      { body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'hello' }] } },
+      'Chats were saved by a newer Orca. Your message was not sent. Update Orca to keep using them.'
+    ],
+    [
+      'agentSession.cancel',
+      { turnId: 'turn-1' },
+      "Chats were saved by a newer Orca. The agent wasn't stopped. Update Orca to keep using them."
+    ]
+  ] as const)('says to update Orca for %s', async (method, fields, message) => {
+    const result = await requestStructuredAgentSessionMutation({
+      client: newerOrcaClient(),
+      method,
+      fingerprintMethod: method,
+      sessionId: 'session-1',
+      expectedRuntimeFence: 3,
+      fields,
+      clientOperationId: `1900000000000-${'d'.repeat(32)}`
+    })
+
+    expect(result).toEqual({
+      status: 'refused',
+      code: 'agent_session_journal_unreadable',
+      message
+    })
+  })
+})

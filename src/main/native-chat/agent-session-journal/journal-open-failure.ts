@@ -1,5 +1,6 @@
 // What a failed journal open means for the chat: its history is damaged, which no retry reads
-// past, or the open failed in a way that can clear (a lock, permissions, too many open files).
+// past; a newer Orca wrote it, which only an update gets past; or the open failed in a way that can
+// clear (a lock, permissions, too many open files).
 
 import type { AgentSessionRefusalReason } from '../../../shared/agent-session-refusal-details'
 import { agentSessionWriteNoticeEnglish } from '../../../shared/agent-session-refusal-notice'
@@ -13,7 +14,10 @@ import {
 import { isSqliteCorruption } from '../../sqlite/sqlite-read-failure'
 import { AgentSessionJournalError } from './journal-write-guards'
 
-export type JournalOpenFailure = AgentSessionRefusalReason<'agent_session_journal_unreadable'>
+type JournalRefusalReason = AgentSessionRefusalReason<'agent_session_journal_unreadable'>
+
+/** Why an open failed, as the storage shows it; a newer Orca's journal is told apart first. */
+export type JournalOpenFailure = Exclude<JournalRefusalReason, 'journalWrittenByNewerOrca'>
 
 /** A per-chat file whose copy did not read back as the file: the history is not usable here. */
 export class JournalImportMismatchError extends Error {
@@ -36,26 +40,36 @@ export function classifyJournalOpenFailure(error: unknown): JournalOpenFailure {
 }
 
 // Released clients print a refusal's message for a send; it fits a Stop too.
-const JOURNAL_OPEN_MESSAGE: Record<JournalOpenFailure, string> = {
+const JOURNAL_OPEN_MESSAGE: Record<JournalRefusalReason, string> = {
   journalCorrupt: agentSessionWriteNoticeEnglish(['historyUnusable']),
-  journalUnavailable: agentSessionWriteNoticeEnglish(['historyUnavailable', 'tryAgain'])
+  journalUnavailable: agentSessionWriteNoticeEnglish(['historyUnavailable', 'tryAgain']),
+  journalWrittenByNewerOrca: agentSessionWriteNoticeEnglish([
+    'savedByNewerOrca',
+    'updateOrcaToKeepUsing'
+  ])
 }
 
-export const JOURNAL_NEWER_SCHEMA_MESSAGE =
-  'Chats were saved by a newer Orca. Update Orca to keep using them.'
+export const JOURNAL_NEWER_SCHEMA_MESSAGE = JOURNAL_OPEN_MESSAGE.journalWrittenByNewerOrca
 
 /** A newer Orca wrote the database, or one of this chat's rows: an update is what gets past it. */
 export function isJournalWrittenByNewerOrca(error: unknown): boolean {
   return error instanceof AgentSessionJournalError && error.code === 'journal_read_only'
 }
 
+/** Why a journal open failed. A newer Orca's journal clears when this Orca is updated, so it is
+ *  not damage. */
+function journalRefusalReason(error: unknown): JournalRefusalReason {
+  return isJournalWrittenByNewerOrca(error)
+    ? 'journalWrittenByNewerOrca'
+    : classifyJournalOpenFailure(error)
+}
+
 /** Why a journal open failed, and the words a released client prints for it. */
-function journalOpenFailureWords(error: unknown): { reason: JournalOpenFailure; message: string } {
-  if (isJournalWrittenByNewerOrca(error)) {
-    // Clears when this Orca is updated, so it is not damage.
-    return { reason: 'journalUnavailable', message: JOURNAL_NEWER_SCHEMA_MESSAGE }
-  }
-  const reason = classifyJournalOpenFailure(error)
+function journalOpenFailureWords(error: unknown): {
+  reason: JournalRefusalReason
+  message: string
+} {
+  const reason = journalRefusalReason(error)
   return { reason, message: JOURNAL_OPEN_MESSAGE[reason] }
 }
 
@@ -87,7 +101,7 @@ export function journalOpenReadRefusal(error: unknown): AgentSessionRefusalError
   if (isAgentSessionRefusalError(error)) {
     return error
   }
-  return unreadableRefusal(error, classifyJournalOpenFailure(error), true)
+  return unreadableRefusal(error, journalRefusalReason(error), true)
 }
 
 const MAX_LOGGED_SESSIONS = 256
@@ -103,7 +117,7 @@ export function createJournalOpenReadRefusals() {
       if (isAgentSessionRefusalError(error)) {
         return error
       }
-      const reason = classifyJournalOpenFailure(error)
+      const reason = journalRefusalReason(error)
       const failure = `${reason}:${error instanceof Error ? error.message : String(error)}`
       const repeat = logged.get(sessionId) === failure
       // Past the cap a new session logs every failure rather than evict another's.
@@ -121,7 +135,7 @@ export function createJournalOpenReadRefusals() {
 
 function unreadableRefusal(
   error: unknown,
-  reason: JournalOpenFailure,
+  reason: JournalRefusalReason,
   log: boolean
 ): AgentSessionRefusalError {
   if (log) {
