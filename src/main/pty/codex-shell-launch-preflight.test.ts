@@ -563,6 +563,39 @@ describe('PowerShell Codex shell launch preflight', () => {
     }
   )
 
+  it.skipIf(!pwshAvailable)('passes piped input through to Codex', () => {
+    const root = mkdtempSync(join(tmpdir(), 'orca-codex-pwsh-stdin-'))
+    const bin = join(root, 'bin')
+    roots.push(root)
+    mkdirSync(bin)
+    const isWindows = process.platform === 'win32'
+    writeExecutable(
+      join(bin, isWindows ? 'codex.cmd' : 'codex'),
+      isWindows ? '@findstr "^"\r\n' : '#!/bin/sh\ncat\n'
+    )
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`,
+      ORCA_CODEX_LAUNCH_POLICY: '1'
+    }
+    delete env.ORCA_CODEX_HOME
+    delete env.ORCA_CODEX_LAUNCH_PREFLIGHT
+
+    const result = spawnSync(
+      'pwsh',
+      [
+        '-NoLogo',
+        '-NoProfile',
+        '-Command',
+        `${getPowerShellCodexShellLaunchPreflight()}\n'piped prompt' | codex exec -`
+      ],
+      { encoding: 'utf-8', env }
+    )
+
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.stdout.trim()).toBe('piped prompt')
+  })
+
   it.skipIf(!pwshAvailable)('fails open when native errors are promoted', () => {
     const root = mkdtempSync(join(tmpdir(), 'orca-codex-pwsh-failure-'))
     const bin = join(root, 'bin')

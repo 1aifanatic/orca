@@ -159,7 +159,12 @@ if ($env:ORCA_CODEX_LAUNCH_POLICY -and $orcaCodexCommand -and
             $orcaCodexFlags = @('--no-daemon')
         }
         $global:LASTEXITCODE = $orcaPriorExitCode
-        & $orcaCodexExecutable.Source @orcaCodexFlags @args
+        # Why: a native command inside a function never sees the function's pipeline input on its own.
+        if ($MyInvocation.ExpectingInput) {
+            $input | & $orcaCodexExecutable.Source @orcaCodexFlags @args
+        } else {
+            & $orcaCodexExecutable.Source @orcaCodexFlags @args
+        }
         $global:LASTEXITCODE = $LASTEXITCODE
     }
 }
