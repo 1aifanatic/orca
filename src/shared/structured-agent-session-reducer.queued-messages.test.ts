@@ -60,7 +60,8 @@ function snapshot(
 
 function batch(
   sequence: number,
-  queuedMessages?: AgentSessionQueuedMessage[] | null
+  queuedMessages?: AgentSessionQueuedMessage[] | null,
+  queuePause?: AgentSessionQueuePause | null
 ): AgentSessionSubscribeEvent {
   return {
     type: 'batch',
@@ -71,7 +72,8 @@ function batch(
       removedItemIds: [],
       submissions: []
     },
-    ...(queuedMessages !== undefined ? { queuedMessages } : {})
+    ...(queuedMessages !== undefined ? { queuedMessages } : {}),
+    ...(queuePause !== undefined ? { queuePause } : {})
   }
 }
 
@@ -180,11 +182,7 @@ describe('structured agent session reducer: queuedMessages', () => {
     })
     const after = reduceStructuredAgentSession(state, {
       type: 'event',
-      event: {
-        ...batch(1),
-        queuedMessages: state.queuedMessages ?? null,
-        queuePause: { reason: 'stopped' }
-      }
+      event: batch(1, state.queuedMessages ?? null, { reason: 'stopped' })
     })
     expect(after.queuePause).toEqual({ reason: 'stopped' })
   })
