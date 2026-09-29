@@ -179,6 +179,15 @@ export function useTabStripOverflowNavigation({
       return
     }
     const pointerGestureActive = isTabStripPointerGestureActive()
+    const recorded = scrollAnchorRef.current
+    // Compare identities so a replacement is revealed even when the strip count is unchanged.
+    const offscreenOpenedTab =
+      recorded?.activeTabId === activeTabIdRef.current &&
+      knownTabIdsRef.current &&
+      !pointerGestureActive &&
+      !strip.matches(':hover')
+        ? findOffscreenOpenedTab(strip, knownTabIdsRef.current, activeTabIdRef.current)
+        : null
     const scrollToEnd = (stick: boolean): void => {
       const el = tabStripRef.current
       if (!el) {
@@ -190,21 +199,12 @@ export function useTabStripOverflowNavigation({
       }
       updateTabStripOverflowState()
     }
-    const recorded = scrollAnchorRef.current
     if (tabCount > prev.len && !pointerGestureActive) {
       if (recorded?.activeTabId === activeTabIdRef.current) {
         // Why: insertions around the viewed tab keep its on-screen x, the way VS Code and Chrome
         // leave it still; only a tab that lands out of view scrolls, and the active tab docks.
         if (recorded.anchor) {
           restoreTabStripScrollAnchor(strip, recorded.anchor)
-        }
-        // Why not while hovered: an unprompted open (agent, remote host) would slide tabs under the cursor.
-        const opened =
-          knownTabIdsRef.current && !strip.matches(':hover')
-            ? findOffscreenOpenedTab(strip, knownTabIdsRef.current, activeTabIdRef.current)
-            : null
-        if (opened) {
-          revealTabStripElement(strip, opened, getActiveTabDock(strip))
         }
         stickToEndRef.current = isTabStripScrolledToEnd(strip)
       } else if (isLastTabStripTab(strip, activeTabIdRef.current)) {
@@ -215,6 +215,10 @@ export function useTabStripOverflowNavigation({
     } else if (stickToEndRef.current && !pointerGestureActive) {
       scrollToEnd(false)
       requestAnimationFrame(() => scrollToEnd(false))
+    }
+    if (offscreenOpenedTab) {
+      revealTabStripElement(strip, offscreenOpenedTab, getActiveTabDock(strip))
+      stickToEndRef.current = isTabStripScrolledToEnd(strip)
     }
     knownTabIdsRef.current = readTabStripTabIds(strip)
     prevStripLenRef.current = { worktreeId, len: tabCount }

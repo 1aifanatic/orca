@@ -79,11 +79,19 @@ function restoreStripLayout(): void {
   }
 }
 
-function Strip({ tabs, active }: { tabs: string[]; active: string }): React.JSX.Element {
+function Strip({
+  tabs,
+  active,
+  tabCount = tabs.length
+}: {
+  tabs: string[]
+  active: string
+  tabCount?: number
+}): React.JSX.Element {
   const navigation = useTabStripOverflowNavigation({
     activeVisibleTabId: active,
     layoutKey: tabs.join(','),
-    tabCount: tabs.length,
+    tabCount,
     worktreeId: 'wt-1'
   })
   return (
@@ -152,6 +160,22 @@ describe('tab strip scroll when tabs are added', () => {
     rerender(<Strip tabs={[...TABS, 'N']} active="J" />)
     expect(tabX(strip, 'J')).toBe(100)
     expect(tabX(strip, 'N')).toBe(200)
+  })
+
+  it('reveals a client-hosted row appended past the end', () => {
+    const { strip, rerender } = mountScrolled('J', 700)
+    rerender(<Strip tabs={[...TABS, 'remote']} active="J" tabCount={TABS.length + 1} />)
+    expect(strip.scrollLeft).toBe(800)
+    expect(tabX(strip, 'J')).toBe(100)
+    expect(tabX(strip, 'remote')).toBe(200)
+  })
+
+  it('reveals a newly replaced row even when the strip count stays the same', () => {
+    const { strip, rerender } = mountScrolled('B', 0)
+    rerender(<Strip tabs={['A', 'B', ...TABS.slice(3), 'remote']} active="B" />)
+    expect(strip.scrollLeft).toBe(700)
+    expect(tabX(strip, 'B')).toBe(0)
+    expect(tabX(strip, 'remote')).toBe(200)
   })
 
   it('does not scroll for a background tab while the pointer is over the strip', () => {
