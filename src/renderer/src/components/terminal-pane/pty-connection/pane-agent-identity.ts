@@ -181,6 +181,7 @@ export function installPaneAgentIdentity(session: ConnectPanePtySession): void {
       }
     },
     hasKnownAgentIdentity: session.paneHasKnownAgentIdentity,
+    seesShellCommandMarks: () => !session.mainSideEffectAuthority,
     onConfirmedShellForeground: (reason, agentExit) => {
       // Why: main publishes marked exits from its own facts; our own read-confirmed exit also
       // covers main's reads failing at that exit. A second exit signal is a no-op downstream.

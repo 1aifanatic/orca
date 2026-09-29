@@ -159,6 +159,59 @@ describe('agent exit observation', () => {
       tracker.dispose()
     })
 
+    it.each([
+      ['claude inside tmux', 'tmux', false],
+      ['claude over ssh', 'ssh', false],
+      ['another program, where the shell marks no commands', 'vim', false],
+      ['another program, where the shell marks commands', 'vim', true]
+    ])('on its own neutral title with %s in front', async (_label, process, marks) => {
+      vi.useFakeTimers()
+      const shell = vi.fn()
+      const read = vi.fn().mockResolvedValue(process)
+      const tracker = createPaneForegroundAgentTracker({
+        getPtyId: () => 'pty-1',
+        isTrackablePtyId: () => true,
+        readForegroundProcess: read,
+        confirmForegroundProcess: read,
+        publish: vi.fn(),
+        onConfirmedShellForeground: shell
+      })
+      if (marks) {
+        tracker.onCommandFinished()
+        await vi.advanceTimersByTimeAsync(8000)
+      }
+      tracker.onAgentExitCandidate()
+      await vi.advanceTimersByTimeAsync(8000)
+      if (marks) {
+        // A shell that marks commands ends the agent at its own 133;D instead.
+        expect(shell).not.toHaveBeenCalled()
+      } else {
+        expect(shell).toHaveBeenCalledExactlyOnceWith('visible-pty', 'marked')
+        expect(read).toHaveBeenCalledOnce()
+      }
+      tracker.dispose()
+    })
+
+    it('leaves the marks judgement to main when main parses the bytes', async () => {
+      vi.useFakeTimers()
+      const shell = vi.fn()
+      const read = vi.fn().mockResolvedValue('vim')
+      const tracker = createPaneForegroundAgentTracker({
+        getPtyId: () => 'pty-1',
+        isTrackablePtyId: () => true,
+        readForegroundProcess: read,
+        confirmForegroundProcess: read,
+        publish: vi.fn(),
+        seesShellCommandMarks: () => false,
+        onConfirmedShellForeground: shell
+      })
+      // Main saw the launch's 133;C, which never reaches this pane, so vim in front is not blindness.
+      tracker.onAgentExitCandidate()
+      await vi.advanceTimersByTimeAsync(8000)
+      expect(shell).not.toHaveBeenCalled()
+      tracker.dispose()
+    })
+
     it('calls a shell after an observed agent title an exit', async () => {
       vi.useFakeTimers()
       const shell = vi.fn()

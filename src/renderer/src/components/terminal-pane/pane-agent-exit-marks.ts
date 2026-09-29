@@ -6,11 +6,12 @@ export type ConfirmedShellAgentExit = 'none' | 'marked' | 'read-confirmed'
  * What lets a confirmed shell count as an agent exit. Each mark keeps the PTY key (id plus host
  * incarnation) it was seen in, because the pane's tracker outlives a PTY replacement.
  */
-export function createPaneAgentExitMarks(): {
+export function createPaneAgentExitMarks(seesShellCommandMarks?: () => boolean): {
   agentSeenLive: (ptyKey: string) => void
   agentTitleObserved: (ptyKey: string) => void
   commandStarted: (shellMarkedPtyKey: string | null) => void
-  commandFinished: () => void
+  commandFinished: (ptyKey: string | null) => void
+  marksCommands: (ptyKey: string) => boolean
   classifyConfirmedShell: (
     ptyKey: string,
     reason: 'visible-pty' | 'command-finished'
@@ -21,6 +22,8 @@ export function createPaneAgentExitMarks(): {
   // Why: a user shell integration can print 133;D at the first prompt, before the launch runs.
   let runningCommand: string | null = null
   let closedCommand: string | null = null
+  // The PTY key whose shell has printed an OSC 133 mark; see isAgentExitBlind.
+  let marked: string | null = null
   return {
     agentSeenLive(ptyKey) {
       seenLive = ptyKey
@@ -33,10 +36,16 @@ export function createPaneAgentExitMarks(): {
       // Why: a new command means an earlier sighting describes the previous one.
       seenLive = null
       runningCommand = shellMarkedPtyKey ?? runningCommand
+      marked = shellMarkedPtyKey ?? marked
     },
-    commandFinished() {
+    commandFinished(ptyKey) {
       closedCommand = runningCommand
       runningCommand = null
+      marked = ptyKey ?? marked
+    },
+    marksCommands(ptyKey) {
+      // Why: a pane that cannot see its shell's marks never calls itself blind for lacking them.
+      return seesShellCommandMarks?.() === false || marked === ptyKey
     },
     classifyConfirmedShell(ptyKey, reason) {
       const exit =

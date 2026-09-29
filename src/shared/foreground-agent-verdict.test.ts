@@ -4,6 +4,7 @@ import {
   type RemoteForegroundEvidence
 } from './foreground-process-evidence'
 import {
+  isAgentExitBlind,
   judgeForegroundAgent,
   observeHostInspection,
   type ForegroundAgentObservation
@@ -98,5 +99,46 @@ describe('observeHostInspection', () => {
         admit
       )
     ).toEqual({ kind: 'unavailable' })
+  })
+})
+
+describe('the shared blindness rule', () => {
+  const processName = (name: string | null) =>
+    judgeForegroundAgent({ kind: 'process-name', processName: name })
+  const host = (evidence: RemoteForegroundEvidence | null) =>
+    judgeForegroundAgent({ kind: 'host-evidence', evidence })
+  it.each([
+    [
+      'a host that can never read the foreground',
+      host(unverifiable('windows_ssh_foreground_unavailable')),
+      true,
+      true
+    ],
+    [
+      'an old host without the shell field',
+      judgeForegroundAgent({ kind: 'host-without-evidence' }),
+      true,
+      true
+    ],
+    ['tmux in front', processName('tmux'), true, true],
+    ['ssh.exe in front', processName('C:\\Windows\\System32\\OpenSSH\\ssh.exe'), true, true],
+    ['a remote multiplexer', host(unverifiable('multiplexer_boundary')), true, true],
+    ['the WSL bridge', processName('wsl.exe'), false, true],
+    ['another program', processName('vim'), false, true],
+    [
+      'another program on a remote host',
+      host(live({ processName: null, shellForeground: false })),
+      false,
+      true
+    ],
+    ['an agent wrapper that a re-read may resolve', processName('node'), false, false],
+    ['no answer', judgeForegroundAgent({ kind: 'unavailable' }), false, false],
+    ['an inadmissible host record', host(null), false, false],
+    ['a transient host reason', host(unverifiable('process_table_unreadable')), false, false],
+    ['a live agent', processName('claude'), false, false],
+    ['a shell', processName('zsh'), false, false]
+  ])('%s: blind with marks %s, without marks %s', (_label, judgement, withMarks, withoutMarks) => {
+    expect(isAgentExitBlind(judgement, true)).toBe(withMarks)
+    expect(isAgentExitBlind(judgement, false)).toBe(withoutMarks)
   })
 })

@@ -92,8 +92,8 @@ export type RuntimePtyWorktreeRecord = RuntimeTerminalTailState & {
   lastOutputAt: number | null
   /** See terminal-command-paint.ts; absent until the pane's first output, and again after a gap or a new process. */
   commandPaint?: TerminalCommandPaint
-  /** The shell's OSC 133;C command no 133;D has ended yet, and the incarnation it ran in. */
-  runningShellCommand?: { incarnationId: PtyIncarnationId | null }
+  /** The incarnation whose shell printed OSC 133 marks, and whether a 133;C awaits its 133;D. */
+  shellCommandMarks?: { incarnationId: PtyIncarnationId | null; commandRunning: boolean }
 }
 
 export type RuntimePtyTabCloseAuthority = {

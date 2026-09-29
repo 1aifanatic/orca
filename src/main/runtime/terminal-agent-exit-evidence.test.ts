@@ -1,7 +1,7 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createTerminalTitleTracker } from '../../shared/terminal-output-side-effects'
 import type { TerminalSideEffectFact } from '../../shared/terminal-side-effect-facts'
-import { OrcaRuntimeWithSerializeAgentPromptSubmission } from './orca-runtime-serialize-agent-prompt-submission'
+import { OrcaRuntimeWithAgentExitConfirmation } from './orca-runtime-agent-exit-confirmation'
 import { judgeForegroundAgent } from '../../shared/foreground-agent-verdict'
 import { noteShellCommandStarted } from './shell-command-agent-hold'
 
@@ -11,10 +11,17 @@ const readResult = (controller: object, processName: string | null) => ({
 })
 
 vi.mock('./orca-runtime-controller-knows-pty-is-live', () => ({
-  OrcaRuntimeWithControllerKnowsPtyIsLive: class {}
+  OrcaRuntimeWithControllerKnowsPtyIsLive: class {
+    markPtyLivenessLive(): void {}
+    disposePtyTitleTracker(): void {}
+  }
 }))
 
-class ExitHarness extends OrcaRuntimeWithSerializeAgentPromptSubmission {
+afterEach(() => {
+  vi.useRealTimers()
+})
+
+class ExitHarness extends OrcaRuntimeWithAgentExitConfirmation {
   confirm(): void {
     this.confirmPtyAgentExit('pty-1')
   }
@@ -26,6 +33,9 @@ class ExitHarness extends OrcaRuntimeWithSerializeAgentPromptSubmission {
   }
   commandFinished(): void {
     this.confirmPtyAgentExitAtCommandFinished('pty-1')
+  }
+  dispose(): void {
+    this.disposePtyTitleTracker('pty-1')
   }
 }
 
@@ -43,6 +53,7 @@ function setup() {
     foregroundAgent: string | null
     foregroundAgentIncarnationId?: string | null
     connectionId?: string
+    shellCommandMarks?: { incarnationId: string | null; commandRunning: boolean }
   } = {
     connected: true,
     incarnationId: 'inc-1',
@@ -50,7 +61,9 @@ function setup() {
     lastAgentStatus: null,
     lastAgentStatusObservedLive: false,
     launchAgent: null,
-    foregroundAgent: null
+    foregroundAgent: null,
+    // A shell with Orca's integration has marked commands before the agent ran.
+    shellCommandMarks: { incarnationId: 'inc-1', commandRunning: false }
   }
   const markExited = vi.fn()
   const tracker = createTerminalTitleTracker(
@@ -66,6 +79,7 @@ function setup() {
     readPtyForegroundProcessFromController: read,
     recordTerminalSideEffectFact: (_id: string, fact: TerminalSideEffectFact) => facts.push(fact),
     getLeavesForPty: () => [],
+    resolvePtyTuiIdleWaiters: () => {},
     titleObservationSequence: 1,
     ptyForegroundAgent: { markExited }
   })
@@ -76,14 +90,16 @@ describe('host-confirmed agent exit', () => {
   it.each([null, '', 'node.exe', 'other-tool'])(
     'retains Claude after %j and observes a later shell',
     async (process) => {
+      vi.useFakeTimers()
       const h = setup()
       h.read.mockResolvedValue(readResult(h.controller, process))
       h.tracker.handleChunk('\x1b]0;workspace\x07')
-      await Promise.resolve()
+      await vi.advanceTimersByTimeAsync(0)
       expect(h.facts).toEqual([])
+      // The later shell arrives by a re-read or by the next neutral title, whichever is owed.
       h.read.mockResolvedValue(readResult(h.controller, 'zsh'))
       h.tracker.handleChunk('\x1b]0;next workspace\x07')
-      await Promise.resolve()
+      await vi.advanceTimersByTimeAsync(8000)
       expect(h.facts).toEqual([{ kind: 'agent-exited', evidence: 'foreground-shell' }])
       h.tracker.dispose()
     }
@@ -91,6 +107,7 @@ describe('host-confirmed agent exit', () => {
   it.each(['missing', 'unavailable', 'replaced'] as const)(
     'does not publish exit for a %s controller observation',
     async (kind) => {
+      vi.useFakeTimers()
       const h = setup()
       h.read.mockReturnValue(
         kind === 'missing'
@@ -102,11 +119,11 @@ describe('host-confirmed agent exit', () => {
             )
       )
       h.tracker.handleChunk('\x1b]0;workspace\x07')
-      await Promise.resolve()
+      await vi.advanceTimersByTimeAsync(0)
       expect(h.facts).toEqual([])
       h.read.mockResolvedValue(readResult(h.controller, 'zsh'))
       h.tracker.handleChunk('\x1b]0;next workspace\x07')
-      await Promise.resolve()
+      await vi.advanceTimersByTimeAsync(8000)
       expect(h.facts).toHaveLength(1)
       h.tracker.dispose()
     }
@@ -135,13 +152,43 @@ describe('host-confirmed agent exit', () => {
     expect(h.markExited).toHaveBeenCalledWith('pty-1')
     h.tracker.dispose()
   })
-  it('keeps a local WSL agent through a neutral title; its shell marks the exit', async () => {
+  it('keeps a local WSL agent through a neutral title where its shell marks commands', async () => {
     const h = setup()
     h.read.mockResolvedValue(readResult(h.controller, 'wsl.exe'))
     h.tracker.handleChunk('\x1b]0;workspace\x07')
     await Promise.resolve()
     expect(h.facts).toEqual([])
     expect(h.markExited).not.toHaveBeenCalled()
+    h.tracker.dispose()
+  })
+  it.each([
+    ['a WSL shell that marks no commands', 'wsl.exe', false],
+    ['claude inside tmux', 'tmux', true],
+    ['claude over ssh', 'ssh', true],
+    ['another program, where the shell marks no commands', 'vim', false]
+  ])('retires the agent on its own title for %s', async (_label, process, marks) => {
+    const h = setup()
+    if (!marks) {
+      h.pty.shellCommandMarks = undefined
+    }
+    h.read.mockResolvedValue(readResult(h.controller, process))
+    h.tracker.handleChunk('\x1b]0;workspace\x07')
+    await Promise.resolve()
+    expect(h.facts).toEqual([{ kind: 'agent-exited', evidence: 'agent-title' }])
+    expect(h.markExited).toHaveBeenCalledWith('pty-1')
+    h.tracker.dispose()
+  })
+  it('keeps the agent through a failed read on a pane that marks no commands', async () => {
+    vi.useFakeTimers()
+    const h = setup()
+    h.pty.shellCommandMarks = undefined
+    h.read.mockResolvedValue({
+      controller: h.controller,
+      judgement: judgeForegroundAgent({ kind: 'unavailable' })
+    })
+    h.tracker.handleChunk('\x1b]0;workspace\x07')
+    await vi.advanceTimersByTimeAsync(8000)
+    expect(h.facts).toEqual([])
     h.tracker.dispose()
   })
   it('ignores an observation after terminal incarnation replacement', async () => {
@@ -289,5 +336,82 @@ describe('a 133;D printed before the launched agent starts', () => {
     h.runtime.commandFinished()
     await vi.waitFor(() => expect(h.read).toHaveBeenCalledOnce())
     h.tracker.dispose()
+  })
+})
+
+describe('re-deriving an exit candidate the first read could not answer', () => {
+  const unanswered = (h: ReturnType<typeof setup>) => ({
+    controller: h.controller,
+    judgement: judgeForegroundAgent({ kind: 'unavailable' })
+  })
+
+  it('leaves Chat when a read fails once and the re-read shows the shell', async () => {
+    vi.useFakeTimers()
+    const h = setup()
+    h.read.mockResolvedValueOnce(unanswered(h))
+    h.read.mockResolvedValue(readResult(h.controller, 'zsh'))
+    h.tracker.handleChunk('\x1b]0;workspace\x07')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(h.facts).toEqual([])
+    await vi.advanceTimersByTimeAsync(1200)
+    expect(h.facts).toEqual([{ kind: 'agent-exited', evidence: 'foreground-shell' }])
+    expect(h.read).toHaveBeenCalledTimes(2)
+    h.tracker.dispose()
+  })
+
+  it('stops after the bounded ladder, then re-reads once when the host is reached again', async () => {
+    vi.useFakeTimers()
+    const h = setup()
+    h.read.mockResolvedValue(unanswered(h))
+    h.tracker.handleChunk('\x1b]0;workspace\x07')
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(h.read).toHaveBeenCalledTimes(3)
+    expect(h.facts).toEqual([])
+    h.read.mockResolvedValue(readResult(h.controller, 'zsh'))
+    h.runtime.markPtyLivenessLive('pty-1')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(h.facts).toEqual([{ kind: 'agent-exited', evidence: 'foreground-shell' }])
+    h.runtime.markPtyLivenessLive('pty-1')
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(h.read).toHaveBeenCalledTimes(4)
+    h.tracker.dispose()
+  })
+
+  it('re-reads only once on contact, even when that read fails too', async () => {
+    vi.useFakeTimers()
+    const h = setup()
+    h.read.mockResolvedValue(unanswered(h))
+    h.tracker.handleChunk('\x1b]0;workspace\x07')
+    await vi.advanceTimersByTimeAsync(60_000)
+    h.runtime.markPtyLivenessLive('pty-1')
+    await vi.advanceTimersByTimeAsync(60_000)
+    h.runtime.markPtyLivenessLive('pty-1')
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(h.read).toHaveBeenCalledTimes(4)
+    expect(h.facts).toEqual([])
+    h.tracker.dispose()
+  })
+
+  it('ends the ladder at a live answer, and drops it when the PTY is disposed', async () => {
+    vi.useFakeTimers()
+    const live = setup()
+    live.read.mockResolvedValueOnce(unanswered(live))
+    live.read.mockResolvedValue(readResult(live.controller, 'claude'))
+    live.tracker.handleChunk('\x1b]0;workspace\x07')
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(live.read).toHaveBeenCalledTimes(2)
+    live.runtime.markPtyLivenessLive('pty-1')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(live.read).toHaveBeenCalledTimes(2)
+    live.tracker.dispose()
+
+    const disposed = setup()
+    disposed.read.mockResolvedValue(unanswered(disposed))
+    disposed.tracker.handleChunk('\x1b]0;workspace\x07')
+    await vi.advanceTimersByTimeAsync(0)
+    disposed.runtime.dispose()
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(disposed.read).toHaveBeenCalledOnce()
+    disposed.tracker.dispose()
   })
 })

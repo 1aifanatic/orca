@@ -1,7 +1,8 @@
 // @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
-import { startSpan } from '../observability/tracer'
 import { selectFreshExplicitAgentStatus } from './runtime-hook-agent-row-selection'
-import { takeShellCommandFinishedAgentHold } from './shell-command-agent-hold'
+import { ptyMarksShellCommands } from './shell-command-agent-hold'
+import { isAgentExitBlind } from '../../shared/foreground-agent-verdict'
+import { SPENT_AGENT_EXIT_RECHECK, type AgentExitRecheck } from './agent-exit-candidate-recheck'
 import { OrcaRuntimeWithControllerKnowsPtyIsLive } from './orca-runtime-controller-knows-pty-is-live'
 import type { RuntimeTerminalAgentStatus } from '../../shared/runtime-types'
 import type { RuntimeTerminalAgentStatusSnapshot } from './runtime-terminal-agent-status-query'
@@ -72,7 +73,11 @@ export class OrcaRuntimeWithSerializeAgentPromptSubmission extends OrcaRuntimeWi
     return this.ptyForegroundAgent.confirm(ptyId, afterTitleObservation)
   }
 
-  protected confirmPtyAgentExit(ptyId: string, recoverCompletedHook = false): void {
+  protected confirmPtyAgentExit(
+    ptyId: string,
+    recoverCompletedHook = false,
+    recheck?: AgentExitRecheck
+  ): void {
     const pty = this.ptysById.get(ptyId)
     const handle = this.handleByPtyId.get(ptyId)
     if (
@@ -83,20 +88,38 @@ export class OrcaRuntimeWithSerializeAgentPromptSubmission extends OrcaRuntimeWi
     }
     const incarnationId = pty?.incarnationId
     const generation = recoverCompletedHook ? this.getPtyLifecycleGeneration(ptyId) : null
-    const titleObservedAt = pty?.lastOscTitleAt ?? null
-    const foregroundRead = this.readPtyForegroundProcessFromController(ptyId, titleObservedAt ?? 0)
-    if (!pty?.connected || !foregroundRead) {
+    const titleObservedAt = recheck ? recheck.titleObservedAt : (pty?.lastOscTitleAt ?? null)
+    const foregroundRead = this.readPtyForegroundProcessFromController(
+      ptyId,
+      pty?.lastOscTitleAt ?? 0
+    )
+    // Why: no host to ask now; the next contact with it re-reads once.
+    const awaitHostContact = (): void => {
+      if (pty && !recoverCompletedHook) {
+        this.agentExitRechecks.scheduleNext(
+          ptyId,
+          pty.incarnationId,
+          titleObservedAt,
+          Math.max(recheck?.attempt ?? 0, SPENT_AGENT_EXIT_RECHECK)
+        )
+      }
       this.ptyTitleTrackersByPtyId.get(ptyId)?.tracker.restoreLastAgentExit()
+    }
+    if (!pty?.connected || !foregroundRead) {
+      awaitHostContact()
       return
     }
     void foregroundRead.then((result) => {
       const current = this.ptysById.get(ptyId)
       if (
         current !== pty ||
-        !current.connected ||
         current.incarnationId !== incarnationId ||
         (recoverCompletedHook && this.getPtyLifecycleGeneration(ptyId) !== generation)
       ) {
+        return
+      }
+      if (!current.connected) {
+        awaitHostContact()
         return
       }
       if (current.lastOscTitleAt !== titleObservedAt && current.lastAgentStatus !== null) {
@@ -114,6 +137,9 @@ export class OrcaRuntimeWithSerializeAgentPromptSubmission extends OrcaRuntimeWi
         return
       }
       const { verdict, processName } = result.judgement
+      if (!recoverCompletedHook) {
+        this.agentExitRechecks.clear(ptyId)
+      }
       if (result.controller === this.ptyController && verdict === 'live') {
         // Codex's final native spinner can arrive after its done hook, then clear to the cwd.
         const confirmedStatus =
@@ -146,89 +172,35 @@ export class OrcaRuntimeWithSerializeAgentPromptSubmission extends OrcaRuntimeWi
         }
         return
       }
-      // Why: an SSH relay on Windows neither reads the foreground nor marks commands (OSC 133),
-      // so there the agent's own idle-to-neutral title is the only exit signal (base behaviour).
-      const titleIsOnlyExitSignal =
-        verdict === 'unverifiable' &&
-        !result.judgement.canCertifyExit &&
-        Boolean(current.connectionId)
-      if (
-        !recoverCompletedHook &&
-        result.controller === this.ptyController &&
-        (verdict === 'exited' || titleIsOnlyExitSignal)
-      ) {
-        if (titleIsOnlyExitSignal) {
+      const decides = !recoverCompletedHook && result.controller === this.ptyController
+      // Why: where no read can show this pane's shell, the agent's own title is its exit (base).
+      const blind = isAgentExitBlind(result.judgement, ptyMarksShellCommands(current))
+      if (decides && (verdict === 'exited' || blind)) {
+        if (blind) {
           this.ptyForegroundAgent.markExited(ptyId)
         }
         this.publishPtyAgentExit(
           ptyId,
           'title-exit-candidate',
-          titleIsOnlyExitSignal ? 'agent-title' : 'foreground-shell'
+          blind ? 'agent-title' : 'foreground-shell'
         )
-      } else {
-        this.ptyTitleTrackersByPtyId.get(ptyId)?.tracker.restoreLastAgentExit()
+        return
       }
-    })
-  }
-
-  /**
-   * The shell's own 133;D ends an agent this PTY held once a read shows a shell, or at once on a
-   * host that can never show one. A PTY that held no agent pays no read.
-   */
-  protected confirmPtyAgentExitAtCommandFinished(ptyId: string): void {
-    const pty = this.ptysById.get(ptyId)
-    const heldAgent = pty ? takeShellCommandFinishedAgentHold(pty) : false
-    if (!pty?.connected || !heldAgent) {
-      return
-    }
-    const incarnationId = pty.incarnationId
-    // Why +0.5: newer than every title seen so far and older than the next, so a read begun
-    // before this 133;D is never reused and a later title never reuses this one.
-    const afterBoundary = this.titleObservationSequence + 0.5
-    void this.readPtyForegroundProcessFromController(ptyId, afterBoundary)?.then((result) => {
-      const current = this.ptysById.get(ptyId)
-      const { verdict, canCertifyExit } = result.judgement
+      // Why: an unanswered read re-derives on the bounded ladder; the candidate stays until then.
       if (
-        current !== pty ||
-        !current.connected ||
-        current.incarnationId !== incarnationId ||
-        result.controller !== this.ptyController ||
-        verdict === 'live' ||
-        (verdict === 'unverifiable' && canCertifyExit)
+        decides &&
+        result.judgement.blindness === undefined &&
+        this.agentExitRechecks.scheduleNext(
+          ptyId,
+          incarnationId,
+          titleObservedAt,
+          recheck?.attempt ?? 0
+        )
       ) {
         return
       }
-      if (verdict === 'unverifiable') {
-        this.ptyForegroundAgent.markExited(ptyId)
-      }
-      // Why: a stale agent title would otherwise make every later 133;D look like an agent's.
-      current.lastAgentStatus = null
-      this.publishPtyAgentExit(
-        ptyId,
-        'command-finished',
-        verdict === 'exited' ? 'foreground-shell' : 'command-finished'
-      )
+      this.ptyTitleTrackersByPtyId.get(ptyId)?.tracker.restoreLastAgentExit()
     })
-  }
-
-  private publishPtyAgentExit(
-    ptyId: string,
-    reason: 'title-exit-candidate' | 'command-finished',
-    evidence: 'foreground-shell' | 'command-finished' | 'agent-title'
-  ): void {
-    startSpan('terminal.agent-exit-decision', {
-      attributes: {
-        reason,
-        evidenceSource:
-          evidence === 'foreground-shell'
-            ? 'host-foreground-confirmation'
-            : evidence === 'agent-title'
-              ? 'osc-title'
-              : 'osc-133',
-        verdict: 'exited'
-      }
-    }).end()
-    this.recordTerminalSideEffectFact(ptyId, { kind: 'agent-exited', evidence })
   }
 
   /**
