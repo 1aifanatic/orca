@@ -112,7 +112,7 @@ describe('daemon foreground confirmation composes with pane tracking', () => {
     expect(resolveForegroundMock).toHaveBeenCalledTimes(1)
   })
 
-  it('fails closed without claiming shell when every fresh scan is unavailable', async () => {
+  it('keeps agent identity without claiming shell when every fresh scan is unavailable', async () => {
     spawnMock.mockReturnValue(mockWindowsPty())
     resolveForegroundMock.mockResolvedValue({
       available: false,
@@ -124,7 +124,8 @@ describe('daemon foreground confirmation composes with pane tracking', () => {
     tracker.onCommandFinished()
     await vi.advanceTimersByTimeAsync(350 + 1_200 + 6_000)
 
-    expect(publish).toHaveBeenCalledExactlyOnceWith({ agent: null, shellForeground: false })
+    // An unreadable process table is missing evidence, not an exit.
+    expect(publish).not.toHaveBeenCalled()
     expect(resolveForegroundMock).toHaveBeenCalledTimes(3)
   })
 })
