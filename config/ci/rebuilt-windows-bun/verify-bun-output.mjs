@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url'
 
 export const SOURCE = '744846f844374847c902b5e7fd59b4342a51ef99'
 export const PRODUCER = 'dfb15cae6ba7a5dceabb6d3d66f93be1a6c13328'
-export const PRODUCT = '2e65b114802f4cd1803cee9483c141e80d73453e'
+export const PRODUCT = '25b0b1f3cccad41918f13181a627c26c01ea39e1'
 export const PATCH = '920a6f0398bf9ae3528538255a1cceb23e11ded30097099e597c5ab5fff3ed05'
 export const SUCCESS = 'Both patched Bun Windows targets built with network disabled. Native Windows behavior, signatures and production runtime promotion remain unqualified.'
 const digest = file => createHash('sha256').update(readFileSync(file)).digest('hex')
