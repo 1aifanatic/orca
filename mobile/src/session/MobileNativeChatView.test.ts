@@ -50,6 +50,8 @@ vi.mock('./MobileNativeChatMessage', () => ({ MobileNativeChatMessage: 'ChatMess
 vi.mock('./MobileNativeChatAsk', () => ({ MobileNativeChatAsk: 'ChatAsk' }))
 vi.mock('./MobileNativeChatPermission', () => ({ MobileNativeChatPermission: 'ChatPermission' }))
 vi.mock('./MobileNativeChatQuestion', () => ({ MobileNativeChatQuestion: 'ChatQuestion' }))
+// The queue's action sheet pulls in the animation runtime, which this react-native mock can't host.
+vi.mock('../components/ActionSheetModal', () => ({ ActionSheetModal: 'ActionSheetModal' }))
 vi.mock('./MobileAgentWorkingIndicator', () => ({
   MobileAgentWorkingIndicator: 'WorkingIndicator'
 }))
