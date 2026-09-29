@@ -4,7 +4,15 @@ import {
   useMobileNativeChatPendingDeliveryState,
   type MobileNativeChatDeliveryTracking
 } from './use-mobile-native-chat-pending-delivery'
-import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction
+} from 'react'
 import type { NativeChatMessage } from '../../../src/shared/native-chat-types'
 import {
   countUserTextOccurrences,
@@ -279,15 +287,24 @@ export function useMobileNativeChatDrafts(args: {
     })
   }, [messages, pending, pendingKey, transcriptSettled])
 
+  // Why memoized: the view keys its list data and renderItem on this array's identity.
+  const renderedPending = useMemo(
+    () =>
+      pending.some((entry) => entry.delivery)
+        ? pending.map((entry) =>
+            entry.delivery === 'unconfirmed'
+              ? { ...entry, onDismiss: () => settleDelivery(new Set([entry.id]), new Set(), true) }
+              : { ...entry, delivery: undefined }
+          )
+        : pending,
+    [pending, settleDelivery]
+  )
+
   return {
     composerText: draftKey ? (drafts[draftKey] ?? '') : '',
     setComposerText,
     getComposerEditGeneration: draftEditGenerationsRef.current.readComposer,
-    pending: pending.map((entry) =>
-      entry.delivery === 'unconfirmed'
-        ? { ...entry, onDismiss: () => settleDelivery(new Set([entry.id]), new Set(), true) }
-        : { ...entry, delivery: undefined }
-    ),
+    pending: renderedPending,
     imagePreviewsByMessageId: pendingKey
       ? (imagePreviewsBySession[pendingKey] ?? NO_IMAGE_PREVIEWS)
       : NO_IMAGE_PREVIEWS,

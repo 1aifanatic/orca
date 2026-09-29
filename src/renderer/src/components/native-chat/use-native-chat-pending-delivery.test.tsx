@@ -177,3 +177,15 @@ it('bounds a missing-status send even when its confirmation read rejects', async
   expect(result.current.pending[0]?.delivery).toBe('unconfirmed')
   expect(result.current.pending[0]?.text).toBe('recover me')
 })
+it('keeps pending and notices referentially stable across status and stream updates', () => {
+  const { result, rerender } = renderHook(
+    ({ messages }) => useNativeChatPendingDelivery({ ...args, messages }),
+    { initialProps: { messages: [boundary] } }
+  )
+  act(() => result.current.record('stable'))
+  const { pending, notices } = result.current
+  mocks.status = status('working', 5)
+  rerender({ messages: [boundary, { ...boundary, id: 'streamed' }] })
+  expect(result.current.pending).toBe(pending)
+  expect(result.current.notices).toBe(notices)
+})

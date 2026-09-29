@@ -20,6 +20,8 @@ import {
 import { getNativeChatSessionTransport } from './native-chat-session-transport'
 import type { NativeChatDeliveryNotice } from './NativeChatMessageRow'
 
+const NO_NOTICES: ReadonlyMap<string, NativeChatDeliveryNotice> = new Map()
+
 /** Pending presentation follows the existing status store; a fresh read checks each completed turn. */
 export function useNativeChatPendingDelivery(args: {
   paneKey: string
@@ -36,7 +38,12 @@ export function useNativeChatPendingDelivery(args: {
   useEffect(() => setPending(readPendingSendCache(scope)), [scope])
   const save = useCallback(
     (update: (entries: NativeChatPendingSend[]) => NativeChatPendingSend[]) => {
-      setPending(writePendingSendCache(scope, update(readPendingSendCache(scope))))
+      const current = readPendingSendCache(scope)
+      const next = update(current)
+      // Why: prune and status observation run on every stream/status update; a no-op must not re-render.
+      if (next !== current) {
+        setPending(writePendingSendCache(scope, next))
+      }
     },
     [scope]
   )
@@ -44,8 +51,8 @@ export function useNativeChatPendingDelivery(args: {
     save((entries) => prunePendingSends(entries, messages))
   }, [messages, save])
   useEffect(() => {
-    save((entries) =>
-      entries.map((entry) => {
+    save((entries) => {
+      const next = entries.map((entry) => {
         if (
           !entry.deliveryOrigin ||
           entry.delivery === 'rejected' ||
@@ -58,7 +65,8 @@ export function useNativeChatPendingDelivery(args: {
           ? entry
           : { ...entry, deliveryOrigin: origin, delivery: undefined }
       })
-    )
+      return next.every((entry, index) => entry === entries[index]) ? entries : next
+    })
   }, [status, save])
   const record = useCallback(
     (text: string, imagePaths?: string[]) => {
@@ -161,6 +169,9 @@ export function useNativeChatPendingDelivery(args: {
   }, [agent, pending, status, sessionId, transcriptPath, runtimeEnvironmentId, messages, save])
 
   const notices = useMemo(() => {
+    if (!pending.some((entry) => entry.delivery && entry.delivery !== 'confirmed')) {
+      return NO_NOTICES
+    }
     const result = new Map<string, NativeChatDeliveryNotice>()
     for (const entry of pending) {
       if (!entry.delivery || entry.delivery === 'confirmed') {

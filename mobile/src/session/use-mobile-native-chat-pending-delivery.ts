@@ -44,6 +44,9 @@ export function useMobileNativeChatPendingDelivery(
                 nativeChatDeliveryCheckDelay(entry.deliveryOrigin, tracking.status) === 0
             )
             .map(({ entry }) => entry)
+          if (due.length === 0) {
+            return
+          }
           const messages = await tracking.readTranscript().catch(() => null)
           if (cancelled || (tracking.status && !tracking.status.restoredUnconfirmed && !messages)) {
             return

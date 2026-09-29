@@ -217,6 +217,14 @@ export function NativeChatResolvedView({
     paneLaunchPrompt?.failed ? launchPromptMessage?.id : null,
     sessionAfterCommandBoundaries.messages
   )
+  // Why memoized: a fresh map each render would re-render every memoized transcript row.
+  const deliveryNotices = useMemo(
+    () =>
+      delivery.notices.size === 0
+        ? launchPromptDeliveryNotices
+        : new Map([...(launchPromptDeliveryNotices ?? []), ...delivery.notices]),
+    [launchPromptDeliveryNotices, delivery.notices]
+  )
 
   // The streaming preview bubble (if any) sits after the transcript but before
   // the optimistic user echoes — same order mobile uses.
@@ -372,7 +380,7 @@ export function NativeChatResolvedView({
             showTurnStatus={false}
             onLinkClick={onLinkClick}
             allowFileUriLinks={fileLinkContext !== null}
-            deliveryNotices={new Map([...(launchPromptDeliveryNotices ?? []), ...delivery.notices])}
+            deliveryNotices={deliveryNotices}
           />
         )}
       </div>
