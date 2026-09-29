@@ -104,20 +104,6 @@ describe('deleting the viewed workspace when the delete partly fails', () => {
     expect(store.getState().activeWorktreeId).toBe(recent.id)
   })
 
-  it('lands on the sibling when the first refresh answers from a listing that predates the failure', async () => {
-    const store = seed()
-    mockApi.worktrees.remove.mockRejectedValueOnce(PARTIAL_FAILURE)
-    // The first answer comes from a listing already in flight before git dropped the worktree.
-    mockApi.worktrees.list
-      .mockResolvedValueOnce([main, older, recent, viewed])
-      .mockResolvedValue([main, older, recent])
-
-    await runWorktreeDeleteWithToast({ id: viewed.id, executionHostId: null }, 'viewed')
-    await settle()
-
-    expect(store.getState().activeWorktreeId).toBe(recent.id)
-  })
-
   it('stays on the workspace when the refresh still lists it (an ordinary failure)', async () => {
     const store = seed()
     mockApi.worktrees.remove.mockRejectedValueOnce(new Error('workspace has uncommitted changes'))
@@ -154,9 +140,7 @@ describe('deleting the viewed workspace when the delete partly fails', () => {
         store.setState({ activeWorktreeId: null })
         throw PARTIAL_FAILURE
       })
-    // The ordinary failure's refresh and its relist both still list the workspace.
     mockApi.worktrees.list
-      .mockResolvedValueOnce([main, older, recent, viewed])
       .mockResolvedValueOnce([main, older, recent, viewed])
       .mockResolvedValue([main, older, recent])
 

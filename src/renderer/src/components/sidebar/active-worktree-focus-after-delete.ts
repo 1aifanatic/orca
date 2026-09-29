@@ -125,27 +125,18 @@ export async function commitFocusIfFailedDeleteRemovedWorktree(
   commitFocus: () => void
 ): Promise<void> {
   const hostId = target.executionHostId ?? undefined
-  const isListed = (): boolean =>
-    getWorktreeOnHostFromState(useAppStore.getState(), target.id, hostId) !== undefined
   const row = getWorktreeOnHostFromState(useAppStore.getState(), target.id, hostId)
   if (row) {
-    const refresh = (): Promise<unknown> =>
-      useAppStore.getState().fetchWorktrees(row.repoId, {
+    try {
+      await useAppStore.getState().fetchWorktrees(row.repoId, {
         requireAuthoritative: true,
         ...(hostId ? { executionHostId: hostId } : {})
       })
-    try {
-      await refresh()
-      // Why relist once: the refresh can join a listing that started before git dropped the
-      // worktree and still lists it; the next one starts after the failure.
-      if (isListed()) {
-        await refresh()
-      }
     } catch (error) {
       console.warn('Failed to refresh workspaces after a failed delete:', error)
       return
     }
-    if (isListed()) {
+    if (getWorktreeOnHostFromState(useAppStore.getState(), target.id, hostId)) {
       return
     }
   }

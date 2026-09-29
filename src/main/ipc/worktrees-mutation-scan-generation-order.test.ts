@@ -255,3 +255,42 @@ describe('worktree mutation scan-generation ordering', () => {
     expect(replySequence(result)).toBeGreaterThanOrEqual(witness.after ?? Infinity)
   })
 })
+
+describe('listing after a local removal that partly fails', () => {
+  beforeEach(() => {
+    setupWorktreeHandlers()
+  })
+
+  it('does not answer from a listing cached before git dropped the worktree', async () => {
+    mockKnownFeatureWorktree()
+    const listedPaths = async (): Promise<string[]> => {
+      const result = (await handlers['worktrees:listDetected'](null, { repoId: 'repo-1' })) as {
+        worktrees: { path: string }[]
+      }
+      return result.worktrees.map((worktree) => worktree.path)
+    }
+    expect(await listedPaths()).toContain('/workspace/feature-wt')
+    removeWorktreeMock.mockImplementation(async () => {
+      // Git dropped the registration, then failed deleting the folder.
+      listWorktreesMock.mockResolvedValue([
+        {
+          path: '/workspace/repo',
+          head: 'main',
+          branch: 'main',
+          isBare: false,
+          isMainWorktree: true
+        }
+      ])
+      throw new Error("error: failed to delete '/workspace/feature-wt': Operation not permitted")
+    })
+
+    await expect(
+      handlers['worktrees:remove'](null, {
+        worktreeId: 'repo-1::/workspace/feature-wt',
+        force: true
+      })
+    ).rejects.toThrow()
+
+    expect(await listedPaths()).not.toContain('/workspace/feature-wt')
+  })
+})

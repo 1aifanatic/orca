@@ -170,6 +170,9 @@ export async function removeRuntimeRegisteredLocalWorktree(args: {
           ...(warning ? { warning } : {})
         }
       } else {
+        // Why: git can drop the worktree before failing (its folder can't be deleted), so a cached
+        // listing must not keep answering with it.
+        runWorktreeChangeInvalidators(repo.id)
         throw new Error(formatWorktreeRemovalError(error, canonicalPath, args.force))
       }
     }

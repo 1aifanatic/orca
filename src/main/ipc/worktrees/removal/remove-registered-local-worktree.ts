@@ -191,6 +191,9 @@ export async function removeRegisteredLocalWorktree(
         removalCompleted = true
         return {}
       } else {
+        // Why: git can drop the worktree before failing (its folder can't be deleted), so a cached
+        // listing must not keep answering with it.
+        runWorktreeChangeInvalidators(repoId)
         throw new Error(
           formatWorktreeRemovalError(error, canonicalWorktreePath, args.force ?? false)
         )
