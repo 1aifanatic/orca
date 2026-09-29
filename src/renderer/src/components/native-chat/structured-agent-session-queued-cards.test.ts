@@ -137,6 +137,28 @@ describe('queued message cards', () => {
     expect(cards.map((card) => card.messageId)).toEqual(['kept', 'refused'])
   })
 
+  it('a paused queue outranks a pending prompt: an answer does not drain it', () => {
+    const cards = projectQueuedMessageCards(
+      [
+        draft('waiting', 1),
+        draft('failed', 2, { paused: true, pausedReason: 'send_failed' }),
+        draft('refused', 3, { state: 'returned', returnedReason: null }),
+        draft('behind', 4)
+      ],
+      [],
+      { hasPendingPrompt: true, queuePaused: true }
+    )
+    expect(cards.map((card) => card.hold)).toEqual([
+      'queue-paused',
+      'paused',
+      'returned',
+      'behind-returned'
+    ])
+    expect(
+      projectQueuedMessageCards([draft('waiting', 1)], [], { hasPendingPrompt: true })[0]?.hold
+    ).toBe('awaiting-answer')
+  })
+
   it('steers the newest card', () => {
     const cards = projectQueuedMessageCards([draft('a', 1), draft('b', 2)], [], IDLE)
     expect(newestSteerableQueuedMessageCard(cards)?.messageId).toBe('b')

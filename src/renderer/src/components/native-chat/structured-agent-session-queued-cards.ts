@@ -17,6 +17,9 @@ import {
 /** Why a card is not on its way right now; decides the caption under the text. */
 export type QueuedMessageCardHold =
   | 'turn'
+  /** The whole queue is paused: the header row says why and offers Resume, so the card makes
+   *  no promise about when it sends — not even after an answer, which does not drain it. */
+  | 'queue-paused'
   | 'awaiting-answer'
   | 'paused'
   | 'behind-returned'
@@ -49,7 +52,7 @@ function queuedMessageCardText(body: AgentSessionQueuedMessage['body']): string 
 export function projectQueuedMessageCards(
   queuedMessages: readonly AgentSessionQueuedMessage[] | null | undefined,
   submissions: readonly AgentJournalSubmission[],
-  session: { hasPendingPrompt: boolean }
+  session: { hasPendingPrompt: boolean; queuePaused?: boolean }
 ): QueuedMessageCard[] {
   const handedOff = handedOffQueuedMessageIds(
     submissions.filter((submission) => submission.dispatchState !== 'rejected')
@@ -66,9 +69,11 @@ export function projectQueuedMessageCards(
           ? 'paused'
           : behindReturned
             ? 'behind-returned'
-            : session.hasPendingPrompt
-              ? 'awaiting-answer'
-              : 'turn'
+            : session.queuePaused
+              ? 'queue-paused'
+              : session.hasPendingPrompt
+                ? 'awaiting-answer'
+                : 'turn'
     behindReturned = behindReturned || message.state === 'returned'
     return {
       messageId: message.messageId,

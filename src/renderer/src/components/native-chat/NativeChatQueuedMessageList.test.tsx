@@ -57,6 +57,7 @@ function controller(
     cards,
     pause,
     resume: vi.fn(async () => {}),
+    resuming: false,
     steer: vi.fn(async () => {}),
     remove: vi.fn(async () => {}),
     edit: vi.fn(async () => {}),
@@ -222,7 +223,7 @@ describe('NativeChatQueuedMessageList', () => {
       ['some-newer-reason', 'Queue paused']
     ] as const
     for (const [reason, text] of cases) {
-      const owner = controller([card({ messageId: 'waiting' })], { reason })
+      const owner = controller([card({ messageId: 'waiting', hold: 'queue-paused' })], { reason })
       const view = renderList(owner)
       expect(view.container.textContent).toContain(text)
       // The row sits above the list, not inside it: it is not a queued message.
@@ -242,8 +243,74 @@ describe('NativeChatQueuedMessageList', () => {
     expect(container.textContent).toBe('')
   })
 
+  it('no header row over cards Resume would not send: returned, held on their own, or behind', () => {
+    renderList(
+      controller(
+        [
+          card({ messageId: 'refused', state: 'returned', hold: 'returned', returnedReason: null }),
+          card({ messageId: 'behind', hold: 'behind-returned', position: 2 }),
+          card({ messageId: 'failed', hold: 'paused', pausedReason: 'send_failed', position: 3 })
+        ],
+        { reason: 'stopped' }
+      )
+    )
+    expect(screen.queryByRole('button', { name: 'Resume' })).toBeNull()
+  })
+
+  it('Resume shows it is pending, keeps the full text for a truncated line, and hands focus back', async () => {
+    const focusComposer = vi.fn()
+    const owner = {
+      ...controller([card({ messageId: 'waiting', hold: 'queue-paused' })], { reason: 'stopped' }),
+      resuming: true
+    }
+    render(
+      <TooltipProvider delayDuration={0}>
+        <NativeChatQueuedMessageList controller={owner} focusComposer={focusComposer} />
+      </TooltipProvider>
+    )
+    const resume = screen.getByRole('button', { name: 'Resume' })
+    expect(resume).toHaveProperty('disabled', true)
+    expect(screen.getByTitle('Queue paused because you interrupted')).toBeTruthy()
+    cleanup()
+    const idle = controller([card({ messageId: 'waiting', hold: 'queue-paused' })], {
+      reason: 'stopped'
+    })
+    render(
+      <TooltipProvider delayDuration={0}>
+        <NativeChatQueuedMessageList controller={idle} focusComposer={focusComposer} />
+      </TooltipProvider>
+    )
+    const enabled = screen.getByRole('button', { name: 'Resume' })
+    enabled.focus()
+    fireEvent.click(enabled)
+    await waitFor(() => expect(focusComposer).toHaveBeenCalledTimes(1))
+  })
+
+  it('Steer carries the ↳ icon; a card leads with the queue glyph, a failed one with the alert', () => {
+    const { container } = renderList(
+      controller([
+        card({ messageId: 'waiting' }),
+        card({ messageId: 'failed', hold: 'paused', pausedReason: 'send_failed', position: 2 })
+      ])
+    )
+    const [waiting, failed] = screen.getAllByRole('listitem')
+    expect(
+      within(waiting!)
+        .getByRole('button', { name: 'Steer' })
+        .querySelector('.lucide-corner-down-right')
+    ).not.toBeNull()
+    expect(waiting!.firstElementChild?.classList.contains('lucide-list-end')).toBe(true)
+    expect(
+      within(failed!).getByRole('button', { name: 'Send' }).querySelector('.lucide-send')
+    ).not.toBeNull()
+    expect(failed!.firstElementChild?.classList.contains('lucide-circle-alert')).toBe(true)
+    expect(container.querySelectorAll('.lucide-list-end')).toHaveLength(1)
+  })
+
   it('cards keep Steer, Delete and More actions while the queue is paused', () => {
-    const owner = controller([card({ messageId: 'waiting' })], { reason: 'stopped' })
+    const owner = controller([card({ messageId: 'waiting', hold: 'queue-paused' })], {
+      reason: 'stopped'
+    })
     renderList(owner)
     const row = screen.getByRole('listitem')
     expect(within(row).getByRole('button', { name: 'Steer' })).toBeTruthy()
@@ -257,12 +324,14 @@ describe('NativeChatQueuedMessageList', () => {
   it('only a card still waiting on the turn promises to skip the wait', () => {
     for (const hold of ['turn', 'awaiting-answer', 'behind-returned'] as const) {
       expect(queuedMessageCardSendNow(card({ messageId: hold, hold }))).toEqual({
+        steers: true,
         label: 'Steer',
         hint: 'Submit without interrupting the model'
       })
     }
     for (const hold of ['paused', 'returned'] as const) {
       expect(queuedMessageCardSendNow(card({ messageId: hold, hold }))).toEqual({
+        steers: false,
         label: 'Send',
         hint: 'Send this message now'
       })

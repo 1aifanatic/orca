@@ -20,14 +20,18 @@ export function NativeChatQueuedMessageList({
   focusComposer?: () => void
 }): React.JSX.Element {
   const updateSettings = useAppStore((store) => store.updateSettings)
-  const listRef = useRef<HTMLUListElement>(null)
+  const queueRef = useRef<HTMLDivElement>(null)
   const { cards } = controller
   const newest = cards.at(-1)
-  // Only when focus was on the card (now gone) — never pull it from wherever the user moved on to.
+  // A pause over cards Resume would not send (returned, held on their own, or behind a returned
+  // one) offers nothing to press.
+  const pause = cards.some((card) => card.hold === 'queue-paused') ? controller.pause : null
+  // Only when focus was on the queue (a card, or Resume) — never pull it from wherever the user
+  // moved on to.
   const refocusAfter = (action: Promise<void>): void => {
     void action.then(() => {
       const active = document.activeElement
-      if (!active || active === document.body || listRef.current?.contains(active)) {
+      if (!active || active === document.body || queueRef.current?.contains(active)) {
         focusComposer?.()
       }
     })
@@ -35,15 +39,15 @@ export function NativeChatQueuedMessageList({
   return (
     <div aria-live="polite">
       {cards.length > 0 ? (
-        <div className="mx-auto flex w-full max-w-4xl flex-col gap-1 px-4 py-1">
-          {controller.pause ? (
+        <div ref={queueRef} className="mx-auto flex w-full max-w-4xl flex-col gap-1 px-4 py-1">
+          {pause ? (
             <NativeChatQueuePauseRow
-              pause={controller.pause}
-              onResume={() => void controller.resume()}
+              pause={pause}
+              resuming={controller.resuming}
+              onResume={() => refocusAfter(controller.resume())}
             />
           ) : null}
           <ul
-            ref={listRef}
             aria-label={translate(
               'components.native-chat.queuedMessages.listLabel',
               'Queued messages'
@@ -93,16 +97,21 @@ function queuePauseText(pause: { reason: string }): string {
 
 function NativeChatQueuePauseRow({
   pause,
+  resuming,
   onResume
 }: {
   pause: { reason: string }
+  resuming: boolean
   onResume: () => void
 }): React.JSX.Element {
+  const text = queuePauseText(pause)
   return (
     <div className="flex items-center gap-2 px-2.5 text-xs text-muted-foreground">
       <Pause className="size-3.5 shrink-0" aria-hidden />
-      <p className="min-w-0 flex-1 truncate">{queuePauseText(pause)}</p>
-      <Button type="button" variant="ghost" size="xs" onClick={onResume}>
+      <p className="min-w-0 flex-1 truncate" title={text}>
+        {text}
+      </p>
+      <Button type="button" variant="ghost" size="xs" disabled={resuming} onClick={onResume}>
         <Play className="size-3" />
         {translate('components.native-chat.queuedMessages.resume', 'Resume')}
       </Button>

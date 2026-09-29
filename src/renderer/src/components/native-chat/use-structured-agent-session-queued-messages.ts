@@ -4,7 +4,7 @@
 // text the card already shows into the composer, locally, before deleting the
 // draft, so no RPC outcome can lose it.
 
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { translate } from '@/i18n/i18n'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
@@ -30,6 +30,8 @@ export type StructuredAgentSessionQueuedMessagesController = {
   pause: { reason: string } | null
   /** Lift the queue's pause; a failure is a toast, and the Resume button is the retry. */
   resume: () => Promise<void>
+  /** A Resume is in flight. */
+  resuming: boolean
   /** Send-now into the running turn; the transcript shows it at delivery position. */
   steer: (messageId: string) => Promise<void>
   remove: (messageId: string) => Promise<void>
@@ -59,8 +61,12 @@ export function useStructuredAgentSessionQueuedMessages(args: {
   const pause = args.queuePause
 
   const cards = useMemo(
-    () => projectQueuedMessageCards(queuedMessages, submissions, { hasPendingPrompt }),
-    [hasPendingPrompt, queuedMessages, submissions]
+    () =>
+      projectQueuedMessageCards(queuedMessages, submissions, {
+        hasPendingPrompt,
+        queuePaused: pause !== null
+      }),
+    [hasPendingPrompt, pause, queuedMessages, submissions]
   )
   const cardsRef = useRef(cards)
   useEffect(() => {
@@ -141,11 +147,13 @@ export function useStructuredAgentSessionQueuedMessages(args: {
   )
 
   const resumingRef = useRef(false)
+  const [resuming, setResuming] = useState(false)
   const resume = useCallback(async (): Promise<void> => {
     if (resumingRef.current) {
       return
     }
     resumingRef.current = true
+    setResuming(true)
     try {
       await mutate<AgentSessionQueuedMessagesResumeResult>(
         'agentSession.queuedMessagesResume',
@@ -154,6 +162,7 @@ export function useStructuredAgentSessionQueuedMessages(args: {
       )
     } finally {
       resumingRef.current = false
+      setResuming(false)
     }
   }, [mutate])
 
@@ -169,5 +178,5 @@ export function useStructuredAgentSessionQueuedMessages(args: {
     return true
   }, [enabled, steer])
 
-  return { cards, pause, resume, steer, remove, edit, steerNewest }
+  return { cards, pause, resume, resuming, steer, remove, edit, steerNewest }
 }

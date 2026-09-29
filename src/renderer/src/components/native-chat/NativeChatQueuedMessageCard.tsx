@@ -1,4 +1,12 @@
-import { AlertCircle, CornerDownRight, MoreHorizontal, Pencil, Send, Trash2 } from 'lucide-react'
+import {
+  AlertCircle,
+  CornerDownRight,
+  ListEnd,
+  MoreHorizontal,
+  Pencil,
+  Send,
+  Trash2
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -64,7 +72,8 @@ export function queuedMessageCardCaption(card: QueuedMessageCard): string | null
         'Waiting for your answer'
       )
     case 'turn':
-      // The default hold; the row reads as plainly queued without a caption.
+    case 'queue-paused':
+      // Plainly queued; a paused queue's header row carries the why.
       return null
   }
 }
@@ -72,16 +81,20 @@ export function queuedMessageCardCaption(card: QueuedMessageCard): string | null
 /** Steer names the mid-turn jump, also while the whole queue is paused; a card held on its own
  *  or returned is not waiting on the turn, so its action and tooltip are plainly Send. */
 export function queuedMessageCardSendNow(card: QueuedMessageCard): {
+  /** Steer's ↳, or Send's paper plane. */
+  steers: boolean
   label: string
   hint: string
 } {
   if (card.hold === 'paused' || card.hold === 'returned') {
     return {
+      steers: false,
       label: translate('components.native-chat.queuedMessages.send', 'Send'),
       hint: translate('components.native-chat.queuedMessages.sendHint', 'Send this message now')
     }
   }
   return {
+    steers: true,
     label: translate('components.native-chat.queuedMessages.steer', 'Steer'),
     hint: translate(
       'components.native-chat.queuedMessages.steerHint',
@@ -116,10 +129,10 @@ export function NativeChatQueuedMessageCard({
       data-queued-message-state={card.state}
       className="flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-card-foreground"
     >
-      {returned ? (
+      {returned || card.pausedReason === QUEUED_MESSAGE_PAUSED_SEND_FAILED ? (
         <AlertCircle className="size-3.5 shrink-0 text-destructive" aria-hidden />
       ) : (
-        <CornerDownRight className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+        <ListEnd className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
       )}
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm" title={card.text}>
@@ -140,7 +153,7 @@ export function NativeChatQueuedMessageCard({
       <Tooltip>
         <TooltipTrigger asChild>
           <Button type="button" variant="ghost" size="xs" onClick={onSteer}>
-            <Send className="size-3" />
+            {sendNow.steers ? <CornerDownRight className="size-3" /> : <Send className="size-3" />}
             {sendNow.label}
           </Button>
         </TooltipTrigger>
