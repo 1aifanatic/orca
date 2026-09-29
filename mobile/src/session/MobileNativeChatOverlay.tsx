@@ -91,10 +91,10 @@ export function MobileNativeChatOverlay({
         permission={controller.nativeChatPermission}
         onRespondPermission={controller.handleNativeChatRespondPermission}
         queuedMessages={{
-          cards: controller.nativeChatQueuedMessages,
-          onSend: controller.handleQueuedMessageSend,
-          onDelete: controller.handleQueuedMessageDelete,
-          onEdit: controller.handleQueuedMessageEdit
+          cards: controller.nativeChatQueued.cards,
+          onSend: controller.nativeChatQueued.send,
+          onDelete: controller.nativeChatQueued.delete,
+          onEdit: controller.nativeChatQueued.edit
         }}
         onOpenFile={onOpenFile}
         hasMore={session.hasMore}

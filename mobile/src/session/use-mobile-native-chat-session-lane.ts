@@ -37,7 +37,7 @@ export function useMobileNativeChatSessionLane({
   hostSupport: StructuredAgentSessionHostSupport | null
   /** The active pane's live composer; a queued card's Edit copies through it.
    *  A ref because the drafts (and their append) mount after this lane. */
-  appendComposerTextRef: { readonly current: (text: string) => void }
+  appendComposerTextRef: { readonly current: (text: string) => boolean }
   enabled: boolean
   connState: ConnectionState
   onSendError: (message: string) => void

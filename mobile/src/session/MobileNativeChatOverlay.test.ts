@@ -38,7 +38,8 @@ function overlayElement(tick: Tick): ReturnType<typeof createElement> {
     chatPending: [],
     chatImagePreviewsByMessageId: {},
     chatComposerText: '',
-    setChatComposerText: vi.fn()
+    setChatComposerText: vi.fn(),
+    nativeChatQueued: { cards: [], send: vi.fn(), delete: vi.fn(), edit: vi.fn() }
   } as unknown as MobileNativeChatController
   return createElement(MobileNativeChatOverlay, {
     controller,

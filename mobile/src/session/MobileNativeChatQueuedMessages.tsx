@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { Clock, RotateCcw } from 'lucide-react-native'
 import { colors, radii, spacing, typography } from '../theme/mobile-theme'
 import type { MobileQueuedMessageCard } from './mobile-structured-queued-message-cards'
+import type { MobileQueuedMessageEdit } from './use-mobile-structured-queued-message-controls'
 
 export type MobileNativeChatQueuedMessagesProps = {
   cards?: MobileQueuedMessageCard[]
@@ -10,7 +11,7 @@ export type MobileNativeChatQueuedMessagesProps = {
   onSend?: (messageId: string) => Promise<boolean>
   onDelete?: (messageId: string) => Promise<boolean>
   /** Copy the card's text into the composer, then delete the card. */
-  onEdit?: (messageId: string) => Promise<boolean>
+  onEdit?: MobileQueuedMessageEdit
 }
 
 /** The host-held queued drafts, as editable cards between transcript and
@@ -56,7 +57,8 @@ export function MobileNativeChatQueuedMessages({
               ) : (
                 <Clock size={13} color={colors.textMuted} strokeWidth={2.2} />
               )}
-              <Text style={styles.label} numberOfLines={1}>
+              {/* A returned card's reason only reads whole, often at its end; a hold is one line. */}
+              <Text style={styles.label} numberOfLines={returned ? undefined : 1}>
                 {card.label}
               </Text>
             </View>

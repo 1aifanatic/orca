@@ -61,8 +61,9 @@ export function useMobileNativeChatDrafts(args: {
 }): {
   composerText: string
   setComposerText: Dispatch<SetStateAction<string>>
-  /** Append after existing typing (newline-joined); a queued card's Edit copy lands here. */
-  appendComposerText: (text: string) => void
+  /** Append after existing typing (newline-joined); a queued card's Edit copy lands here.
+   *  False when nothing was appended: no active draft, or no text. */
+  appendComposerText: (text: string) => boolean
   getComposerEditGeneration: () => number
   pending: MobileNativeChatPendingMessage[]
   /** Phone-local previews rebound to the transcript message that replaced the
@@ -146,9 +147,9 @@ export function useMobileNativeChatDrafts(args: {
   )
   // Copied queued-card text goes after whatever is there, so newer typing is preserved.
   const appendComposerText = useCallback(
-    (text: string) => {
+    (text: string): boolean => {
       if (!draftKey || text.length === 0) {
-        return
+        return false
       }
       draftEditGenerationsRef.current.advance(draftKey)
       setDrafts((previous) => {
@@ -156,6 +157,7 @@ export function useMobileNativeChatDrafts(args: {
         const next = current.length === 0 ? text : `${current}\n${text}`
         return { ...previous, [draftKey]: next }
       })
+      return true
     },
     [draftKey]
   )

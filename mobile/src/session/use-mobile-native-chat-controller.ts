@@ -84,7 +84,8 @@ export function useMobileNativeChatController(args: {
 
   // The lane runs before the drafts hook (fixed hook order); Edit's composer
   // append reaches the drafts state through this ref, set below once they exist.
-  const appendComposerTextRef = useRef<(text: string) => void>(() => {})
+  // Until the drafts mount, nothing is copied, so Edit deletes nothing.
+  const appendComposerTextRef = useRef<(text: string) => boolean>(() => false)
   const { structuredSession: structuredNativeChat, session: nativeChatSession } =
     useMobileNativeChatSessionLane({
       client,
@@ -321,10 +322,7 @@ export function useMobileNativeChatController(args: {
     handleNativeChatRespondPermission: respond,
     handleNativeChatStop: activeChatStructured ? structuredNativeChat.cancel : handleNativeChatStop,
     // The inactive lane's session is starved of identity, so its cards stay empty.
-    nativeChatQueuedMessages: structuredNativeChat.queued.cards,
-    handleQueuedMessageSend: structuredNativeChat.queued.send,
-    handleQueuedMessageDelete: structuredNativeChat.queued.delete,
-    handleQueuedMessageEdit: structuredNativeChat.queued.edit,
+    nativeChatQueued: structuredNativeChat.queued,
     nativeChatFilePaths,
     loadNativeChatFiles,
     handleNativeChatQuestionAnswer: activeChatStructured

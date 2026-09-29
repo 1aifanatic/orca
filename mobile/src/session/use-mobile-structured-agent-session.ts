@@ -76,7 +76,7 @@ export function useMobileStructuredAgentSession(args: {
   hostSupport: StructuredAgentSessionHostSupport | null
   agent: string | null
   /** The active pane's live composer; Edit copies a card's text through it. */
-  appendComposerText?: (text: string) => void
+  appendComposerText?: (text: string) => boolean
   onSendError: (message: string) => void
   /** Called on any accepted queued-card action; retires the route's failure banner. */
   onActionResolved?: () => void

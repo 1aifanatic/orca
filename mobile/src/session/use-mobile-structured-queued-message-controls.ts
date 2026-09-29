@@ -16,6 +16,9 @@ import {
 import type { MobileQueuedMessageFeed } from './mobile-structured-queued-message-feed'
 import type { MobileStructuredAgentMutate } from './use-mobile-structured-agent-mutation'
 
+/** `onCopied` runs once the card's text is in the composer, before its Delete leaves. */
+export type MobileQueuedMessageEdit = (messageId: string, onCopied?: () => void) => Promise<boolean>
+
 export type MobileStructuredQueuedMessageControls = {
   /** Host-held drafts as cards above the composer; empty off capable hosts. */
   cards: MobileQueuedMessageCard[]
@@ -24,7 +27,7 @@ export type MobileStructuredQueuedMessageControls = {
   /** Discard the draft. */
   delete: (messageId: string) => Promise<boolean>
   /** Copy the card's shown text into the composer, then delete the card. */
-  edit: (messageId: string) => Promise<boolean>
+  edit: MobileQueuedMessageEdit
 }
 
 export function useMobileStructuredQueuedMessageControls(args: {
@@ -32,8 +35,9 @@ export function useMobileStructuredQueuedMessageControls(args: {
   queuedMessages: MobileQueuedMessageFeed
   pendingPrompt: boolean
   mutate: MobileStructuredAgentMutate
-  /** The active pane's live composer, Edit's copy target; absent = Edit refuses. */
-  appendComposerText: ((text: string) => void) | undefined
+  /** The active pane's live composer, Edit's copy target; absent = Edit refuses. False when
+   *  nothing was copied. */
+  appendComposerText: ((text: string) => boolean) | undefined
   onSendError: (message: string) => void
   /** Called on any accepted card action, so the route can retire a held failure banner. */
   onActionResolved?: () => void
@@ -73,8 +77,8 @@ export function useMobileStructuredQueuedMessageControls(args: {
       ),
     [mutate, resolved]
   )
-  const deleteDraft = useCallback(
-    async (messageId: string): Promise<boolean> => {
+  const deleteQueued = useCallback(
+    async (messageId: string, copied: boolean): Promise<boolean> => {
       const result = await mutate<AgentSessionQueuedMessageDeleteResult>(
         'agentSession.queuedMessageDelete',
         'agentSession.queuedMessageDelete',
@@ -84,27 +88,38 @@ export function useMobileStructuredQueuedMessageControls(args: {
         return false
       }
       if (!result.value.deleted && result.value.disposition === 'dispatched') {
-        // Delete raced the drain; the message went out and is in the transcript.
-        onSendError('This message was already sent.')
+        // Delete raced the drain; the message went out and is in the transcript. After Edit's
+        // copy, say so, or the composer's text reads as unsent and goes out twice.
+        onSendError(
+          copied
+            ? 'Already sent — your text is still in the composer.'
+            : 'This message was already sent.'
+        )
         return false
       }
       return resolved(true)
     },
     [mutate, onSendError, resolved]
   )
-  const edit = useCallback(
-    async (messageId: string): Promise<boolean> => {
+  const deleteDraft = useCallback(
+    (messageId: string) => deleteQueued(messageId, false),
+    [deleteQueued]
+  )
+  const edit = useCallback<MobileQueuedMessageEdit>(
+    async (messageId, onCopied) => {
       const card = cards.find((candidate) => candidate.messageId === messageId)
-      if (!card || !appendComposerText) {
-        return false
-      }
       // Copy-first: the text is in the composer before any RPC can fail, so no
       // Delete outcome — including a lost answer — can lose it. A failed Delete
-      // leaves the card beside the copy, visibly, never a silent duplicate.
-      appendComposerText(card.text)
-      return deleteDraft(messageId)
+      // leaves the card beside the copy, visibly, never a silent duplicate. No
+      // copy (no composer yet, or an empty card) means no Delete: Edit never
+      // removes text it did not keep.
+      if (!card || !appendComposerText?.(card.text)) {
+        return false
+      }
+      onCopied?.()
+      return deleteQueued(messageId, true)
     },
-    [appendComposerText, cards, deleteDraft]
+    [appendComposerText, cards, deleteQueued]
   )
   return { cards, send, delete: deleteDraft, edit }
 }

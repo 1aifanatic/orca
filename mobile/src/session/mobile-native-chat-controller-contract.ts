@@ -11,7 +11,7 @@ import type {
   NativeChatSettledTurns
 } from '../../../src/shared/native-chat-turn-status'
 import type { MobileNativeChatSendOutcome } from './mobile-native-chat-send'
-import type { MobileQueuedMessageCard } from './mobile-structured-queued-message-cards'
+import type { MobileStructuredQueuedMessageControls } from './use-mobile-structured-queued-message-controls'
 import type { MobileNativeChatPendingMessage } from './use-mobile-native-chat-drafts'
 import type { useMobileNativeChatSession } from './use-mobile-native-chat-session'
 import type { MobileNativeChatSessionOptionPickersProps } from './MobileNativeChatSessionOptionPickers'
@@ -70,10 +70,7 @@ export type MobileNativeChatController = {
   handleNativeChatStop: () => void
   /** Host-held queued drafts shown as cards above the composer (structured lane,
    *  capable host only; empty otherwise). */
-  nativeChatQueuedMessages: MobileQueuedMessageCard[]
-  handleQueuedMessageSend: (messageId: string) => Promise<boolean>
-  handleQueuedMessageDelete: (messageId: string) => Promise<boolean>
-  handleQueuedMessageEdit: (messageId: string) => Promise<boolean>
+  nativeChatQueued: MobileStructuredQueuedMessageControls
   nativeChatFilePaths: string[]
   loadNativeChatFiles: (query: string) => void
   handleNativeChatQuestionAnswer: (text: string) => Promise<boolean>

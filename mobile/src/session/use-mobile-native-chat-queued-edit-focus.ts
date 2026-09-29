@@ -1,24 +1,22 @@
 import { useMemo, useRef, type RefObject } from 'react'
 import type { TextInput } from 'react-native'
-
-type QueuedEdit = (messageId: string) => Promise<boolean>
+import type { MobileQueuedMessageEdit } from './use-mobile-structured-queued-message-controls'
 
 /** Wraps a queued card's Edit so the composer it fills takes focus, and typing continues
- *  without another tap. */
-export function useMobileNativeChatQueuedEditFocus(onEdit: QueuedEdit | undefined): {
+ *  without another tap. An Edit that copied nothing leaves focus where it is. */
+export function useMobileNativeChatQueuedEditFocus(onEdit: MobileQueuedMessageEdit | undefined): {
   composerInputRef: RefObject<TextInput | null>
-  editQueuedMessage: QueuedEdit | undefined
+  editQueuedMessage: MobileQueuedMessageEdit | undefined
 } {
   const composerInputRef = useRef<TextInput>(null)
-  const editQueuedMessage = useMemo<QueuedEdit | undefined>(
+  const editQueuedMessage = useMemo<MobileQueuedMessageEdit | undefined>(
     () =>
       onEdit
-        ? (messageId) => {
-            const edited = onEdit(messageId)
-            // Next frame, so the copied text has landed in the field before it takes focus.
-            requestAnimationFrame(() => composerInputRef.current?.focus())
-            return edited
-          }
+        ? (messageId) =>
+            onEdit(messageId, () =>
+              // Next frame, so the copied text has landed in the field before it takes focus.
+              requestAnimationFrame(() => composerInputRef.current?.focus())
+            )
         : undefined,
     [onEdit]
   )

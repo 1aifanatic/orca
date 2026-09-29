@@ -50,6 +50,34 @@ describe('MobileNativeChatQueuedMessages', () => {
     expect(onEdit).toHaveBeenCalledWith('returned-1')
   })
 
+  it("lets a returned card's reason wrap whole while a waiting card's hold stays one line", async () => {
+    const reason =
+      'The provider did not accept this message: Claude does not support the image type .bmp in a steering message.'
+    const mounted = create(createElement('View'))
+    renderer = mounted
+    await act(async () => {
+      mounted.update(
+        createElement(MobileNativeChatQueuedMessages, {
+          cards: [
+            { messageId: 'r', text: 'fix me', state: 'returned', paused: false, label: reason },
+            {
+              messageId: 'w',
+              text: 'later',
+              state: 'waiting',
+              paused: false,
+              label: 'Queued — sends when the current turn ends'
+            }
+          ]
+        })
+      )
+    })
+    const lineCap = (label: string) =>
+      mounted.root.findAll((node) => node.type === 'Text' && node.props.children === label)[0]
+        ?.props.numberOfLines
+    expect(lineCap(reason)).toBeUndefined()
+    expect(lineCap('Queued — sends when the current turn ends')).toBe(1)
+  })
+
   it('reads Steer on a waiting card and plain Send on a paused one, which has no turn to jump', async () => {
     const mounted = create(createElement('View'))
     renderer = mounted

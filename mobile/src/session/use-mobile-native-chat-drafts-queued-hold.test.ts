@@ -65,6 +65,20 @@ describe('useMobileNativeChatDrafts unconfirmed hold with queued cards', () => {
     }
   }
 
+  it("reports whether a queued card's Edit copy landed, so Edit never deletes text it did not keep", async () => {
+    await render([])
+    let copied: boolean | undefined
+    act(() => {
+      copied = state?.appendComposerText('')
+    })
+    expect(copied).toBe(false)
+    act(() => {
+      copied = state?.appendComposerText('edited text')
+    })
+    expect(copied).toBe(true)
+    expect(state?.composerText).toBe('edited text')
+  })
+
   it('stays quiet when the lost send appears as a queued card', async () => {
     await render([])
     const settle = holdLostSend('after this turn')

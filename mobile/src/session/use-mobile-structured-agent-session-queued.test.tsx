@@ -132,7 +132,7 @@ describe('mobile structured queued messages', () => {
   let listener: ((value: unknown) => void) | null = null
   let stored: Map<string, string>
   const onSendError = vi.fn()
-  const appendText = vi.fn()
+  const appendText = vi.fn((_text: string) => true)
   const sendRequest = vi.fn<RpcClient['sendRequest']>()
   const subscribe = vi.fn<RpcClient['subscribe']>((_method, _params, onData) => {
     listener = onData
@@ -627,7 +627,27 @@ describe('mobile structured queued messages', () => {
         expect(await hook!.queued.edit('draft-1')).toBe(false)
       })
       expect(appendText.mock.calls).toEqual([['text of draft-1']])
-      expect(onSendError).toHaveBeenCalledWith('This message was already sent.')
+      // The copy is still in the composer: say so, or it reads as unsent and goes out twice.
+      expect(onSendError).toHaveBeenCalledWith('Already sent — your text is still in the composer.')
+    })
+
+    it('Edit that copied nothing deletes nothing and does not report a copy', async () => {
+      sendRequest.mockImplementation(async (method) =>
+        method === 'agentSession.options' ? ok({ models: [], current: {} }) : ok({})
+      )
+      await mountSession(
+        CAPABLE,
+        snapshotEvent({ queuedMessages: [queuedDraft({ messageId: 'draft-1' })] })
+      )
+      appendText.mockReturnValueOnce(false)
+      const onCopied = vi.fn()
+      await act(async () => {
+        expect(await hook!.queued.edit('draft-1', onCopied)).toBe(false)
+      })
+      expect(appendText.mock.calls).toEqual([['text of draft-1']])
+      expect(onCopied).not.toHaveBeenCalled()
+      expect(callOrderOf('agentSession.queuedMessageDelete')).toBeUndefined()
+      expect(hook!.queued.cards.map((card) => card.messageId)).toEqual(['draft-1'])
     })
   })
 
