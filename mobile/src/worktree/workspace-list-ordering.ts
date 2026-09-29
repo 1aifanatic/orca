@@ -1,4 +1,5 @@
-import type { Worktree } from './workspace-list-types'
+import { AGENT_STATUS_STALE_AFTER_MS, agentDotState } from './agent-row-display'
+import type { Worktree, WorktreeDisplayStatus } from './workspace-list-types'
 import type { MobileSortMode } from './workspace-view-settings'
 
 export const CREATE_GRACE_MS = 5 * 60 * 1000
@@ -42,12 +43,21 @@ function compareByRecent(a: Worktree, b: Worktree, now: number): number {
   )
 }
 
-const AGENT_ATTENTION_STATUS_ORDER = { permission: 0, working: 1, done: 2, active: 3, inactive: 4 }
+// A user's stop ranks with no signal, as desktop Smart Sort demotes it.
+const AGENT_ATTENTION_STATUS_ORDER: Record<WorktreeDisplayStatus, number> = {
+  permission: 0,
+  failed: 1,
+  working: 2,
+  done: 3,
+  interrupted: 4,
+  active: 4,
+  inactive: 5
+}
 
 function compareByAgentAttention(a: Worktree, b: Worktree, now: number): number {
   return (
-    AGENT_ATTENTION_STATUS_ORDER[getWorktreeStatus(a)] -
-      AGENT_ATTENTION_STATUS_ORDER[getWorktreeStatus(b)] || compareByRecent(a, b, now)
+    AGENT_ATTENTION_STATUS_ORDER[getWorktreeStatus(a, now)] -
+      AGENT_ATTENTION_STATUS_ORDER[getWorktreeStatus(b, now)] || compareByRecent(a, b, now)
   )
 }
 
@@ -100,9 +110,31 @@ export function sortWorktrees(
   })
 }
 
-export function getWorktreeStatus(
-  w: Worktree
-): 'working' | 'active' | 'permission' | 'done' | 'inactive' {
+/** Mirrors desktop resolveWorktreeStatus: a human wait > failed > working > interrupted > the rest. */
+export function getWorktreeStatus(w: Worktree, now = Date.now()): WorktreeDisplayStatus {
+  const base = getWorktreeLifecycleStatus(w)
+  if (base === 'permission' || w.hasHostSidebarActivity === false) {
+    return base
+  }
+  let humanWait = false
+  let failed = false
+  let interrupted = false
+  for (const row of w.agents ?? []) {
+    // Why: a subagent's question on a failed main agent's row still needs the user first.
+    humanWait ||=
+      (row.state === 'waiting' || row.state === 'blocked') &&
+      now - row.updatedAt <= AGENT_STATUS_STALE_AFTER_MS
+    const dot = agentDotState(row, now)
+    failed ||= dot === 'failed'
+    interrupted ||= dot === 'interrupted'
+  }
+  if (failed) {
+    return humanWait ? 'permission' : 'failed'
+  }
+  return interrupted && base !== 'working' ? 'interrupted' : base
+}
+
+function getWorktreeLifecycleStatus(w: Worktree): NonNullable<Worktree['status']> {
   // Why: desktop's sidebar activity is the parity source. Runtime status may
   // still report retained/background PTYs as active after desktop hides them.
   if (w.hasHostSidebarActivity === false) {

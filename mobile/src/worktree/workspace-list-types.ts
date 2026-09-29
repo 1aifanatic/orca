@@ -54,6 +54,9 @@ export type Worktree = {
   agents?: RuntimeWorktreeAgentRow[]
 }
 
+/** The list-row dot: the host rollup plus the turn verdicts its agent rows carry. */
+export type WorktreeDisplayStatus = NonNullable<Worktree['status']> | 'failed' | 'interrupted'
+
 export type FilterState = {
   filterRepoIds: Set<string>
   hideSleeping: boolean
