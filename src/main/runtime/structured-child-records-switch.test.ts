@@ -1,6 +1,7 @@
 // The switch, end to end on a host with no renderer: a Codex session's frames reach the host's
-// canonical store, and the status summary every session list reads and the chat strip's channel
-// both carry the same child records from it, while the parent row is folded from them too.
+// canonical store; the status summary every session list reads carries the running children, the
+// chat strip's channel carries those and the finished ones, and the parent row is folded from the
+// same records.
 //
 // Deliberately NOT a comparison against the provider tracker's task list: that tracker and the
 // record producer read the same child executions, so agreeing with it could not catch a defect in
@@ -91,7 +92,7 @@ describe('the chat strip and the session list read the same host child records',
     await rm(root, { recursive: true, force: true })
   })
 
-  it('carries one record per child to both, and folds the parent row from them', async () => {
+  it('carries running children to both and finished ones to the strip, and folds the parent row from them', async () => {
     const connections: CodexAppServerConnectionHandlers[] = []
     const openConnection: typeof openCodexAppServerConnection = async (_launch, handlers = {}) => {
       connections.push(handlers)
@@ -293,9 +294,10 @@ describe('the chat strip and the session list read the same host child records',
       exitCode: 0
     })
     expect(parentRow()).toMatchObject({ state: 'done' })
-    // The finished child stays listed, with how it ended, until the session's next turn; the dev
-    // server's record went when its process exited.
-    both([
+    // The sidebar lists running children only; the finished child stays in the strip, with how it
+    // ended, until the session's next turn. The dev server's record went when its process exited.
+    expect(summaries.at(-1)).not.toHaveProperty('children')
+    expect(stripRows()).toEqual([
       {
         kind: 'agent',
         description: 'review',
@@ -310,12 +312,13 @@ describe('the chat strip and the session list read the same host child records',
     expect(strip.at(-1)).toBeNull()
 
     // The reviewer's next run is still going when the provider exits: it settles with an outcome
-    // nobody reported, and both keep listing it.
+    // nobody reported, and leaves the sidebar while the strip keeps listing it.
     await notify('turn/started', { threadId: REVIEWER, turn: { id: 'r2', status: 'inProgress' } })
     both([{ kind: 'agent', description: 'review', state: 'working', membership: 'live' }])
     connections[0]?.onExit?.(new Error('scripted provider exit'))
     await settle()
-    both([
+    expect(summaries.at(-1)).not.toHaveProperty('children')
+    expect(stripRows()).toEqual([
       {
         kind: 'agent',
         description: 'review',
@@ -325,7 +328,8 @@ describe('the chat strip and the session list read the same host child records',
       }
     ])
 
-    // Closing its tab lets go of the session: its row, and every child record with it, leave both.
+    // Closing its tab lets go of the session: its row, and every child record with it, leave the
+    // store.
     const subject = parentSubject(summaries)
     await host.setSessionTabVisibility(SESSION, false)
     await host.close(SESSION)

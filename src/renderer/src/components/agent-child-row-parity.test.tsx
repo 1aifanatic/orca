@@ -8,6 +8,7 @@ import {
 import type { AgentSessionBackgroundTask } from '../../../shared/agent-session-wire'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import type { AgentStatusEntry } from '../../../shared/agent-status-types'
+import { structuredSidebarChildWork } from '../../../shared/structured-agent-session-child-work-selection'
 import type { TerminalTab } from '../../../shared/terminal-tab-types'
 import DashboardAgentRow from '@/components/dashboard/DashboardAgentRow'
 import { NativeChatBackgroundTasksStatus } from '@/components/native-chat/NativeChatBackgroundTasksStatus'
@@ -283,13 +284,20 @@ const FULL_ROW_DETAIL: Record<string, { shows: string[]; hides?: string[] }> = {
   'parked, still live': { shows: [] }
 }
 
+// The sidebar lists what the host's summary carries: running children only. A finished child is
+// read on the strip, and leaves the sidebar.
 describe('a child reads the same in the sidebar and the chat strip', () => {
   it.each(SCENARIOS)('%s', (name, children, expected) => {
-    const [sidebar] = sidebarRows(parentWith(children))
+    const listed = structuredSidebarChildWork(children)
     const [strip] = stripRows(children)
-    expect(sidebar).toEqual(expected)
     expect(strip).toEqual(expected)
-    const full = fullRow(parentWith(children))
+    if (listed.length === 0) {
+      expect(sidebarRows(parentWith(listed))).toEqual([])
+      return
+    }
+    const [sidebar] = sidebarRows(parentWith(listed))
+    expect(sidebar).toEqual(expected)
+    const full = fullRow(parentWith(listed))
     expect(full.labels).toContain(expected.dot)
     expect(full.text).toContain(expected.lead === expected.dot ? expected.trail : expected.lead)
     for (const text of FULL_ROW_DETAIL[name].shows) {
@@ -300,15 +308,22 @@ describe('a child reads the same in the sidebar and the chat strip', () => {
     }
   })
 
-  it('names an unlabeled child by the same state on every surface', () => {
+  it('names an unlabeled finished child by its state on the strip, and leaves it off the sidebar', () => {
     const children = [
       settled('failed', { description: undefined, agentType: undefined, lastMessage: 'Exit 2' })
     ]
-    const [sidebar] = sidebarRows(parentWith(children))
     const [strip] = stripRows(children)
-    expect(sidebar.lead).toBe('Failed')
     expect(strip.lead).toBe('Failed')
-    expect(fullRow(parentWith(children)).text).toContain('Failed')
+    expect(sidebarRows(parentWith(structuredSidebarChildWork(children)))).toEqual([])
+  })
+
+  it('names an unlabeled running child by the same state on every surface', () => {
+    const children = [view('child', { description: undefined, agentType: undefined })]
+    const [sidebar] = sidebarRows(parentWith(structuredSidebarChildWork(children)))
+    const [strip] = stripRows(children)
+    expect(sidebar.lead).toBe('Working')
+    expect(strip.lead).toBe('Working')
+    expect(fullRow(parentWith(children)).text).toContain('Working')
   })
 
   it('shows the monitoring icon on the full sidebar row too', () => {

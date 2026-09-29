@@ -218,12 +218,13 @@ export class StructuredAgentSessionStatusFeed {
     }
   }
 
-  /** A finished child stays listed, with its outcome, until the session's own next turn begins,
+  /** A finished child's record stays, with its outcome, until the session's own next turn begins,
    *  unless it still owns live work. The provider ending the session removes nothing: children
    *  still live settle `unknown`, and settled ones stay. The one earlier death is the host letting
    *  go of the session, whose row takes every child record with it (see `forget`). Nothing caps how
-   *  many settle within a turn, and a command never settles: its record goes when it stops. The
-   *  summary and the strip both re-read the store, so each step removes a child from both. */
+   *  many records a turn keeps, and a command never settles: its record goes when it stops. What
+   *  each surface lists of them is picked on every read (`structured-agent-session-child-work-
+   *  selection`): the sidebar only running children, the strip running then newest finished. */
   private retireSettledChildrenOnNewTurn(
     sessionId: string,
     session: StatusFeedSession,

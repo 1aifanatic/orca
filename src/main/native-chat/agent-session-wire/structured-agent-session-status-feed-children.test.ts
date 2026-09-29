@@ -186,7 +186,8 @@ describe('structured status summary child records', () => {
     })
   })
 
-  it('lists a finished child on the summary, never in the task list an older client folds', async () => {
+  // The sidebar lists running children only; a finished one stays in the chat's strip.
+  it('lists only running children on the summary, and no finished one in any of its lists', async () => {
     const { feed, events, views } = await feedWithChildren()
     const failed = childView({
       id: 'child-2',
@@ -203,8 +204,26 @@ describe('structured status summary child records', () => {
     // An older client reads a failed task's legacy `blocked` as still running.
     expect(lastSummary(events)).toMatchObject({
       backgroundTasks: [LEGACY_TASK],
-      children: [childView(), failed]
+      children: [childView()]
     })
+    views.current = () => [failed]
+    feed.publish(SESSION)
+    expect(lastSummary(events)).not.toHaveProperty('children')
+    expect(lastSummary(events)).not.toHaveProperty('backgroundTasks')
+  })
+
+  it('keeps a finished child on the summary while a shell it launched still runs', async () => {
+    const { feed, events, views } = await feedWithChildren()
+    const owner = childView({ state: 'done', membership: 'settled', outcome: 'succeeded' })
+    const shell = childView({
+      id: 'child-2',
+      providerId: 'task-2',
+      kind: 'command',
+      parentChildWorkId: 'child-1'
+    })
+    views.current = () => [owner, shell]
+    feed.publish(SESSION)
+    expect(lastSummary(events)?.children).toEqual([owner, shell])
   })
 
   it("keeps a Claude child's own id, and a Codex subagent's the id its row always carried", async () => {
@@ -285,9 +304,7 @@ describe('structured status summary child records', () => {
 
   it('stops listing children once the row leaves the sink, even with no close', async () => {
     const { feed, events, views } = await feedWithChildren()
-    views.current = () => [
-      childView({ membership: 'settled', state: 'done', outcome: 'succeeded' })
-    ]
+    views.current = () => [childView()]
     feed.publish(SESSION)
     expect(lastSummary(events)?.children).toHaveLength(1)
     feed.forget(SESSION)

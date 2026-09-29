@@ -5,6 +5,7 @@ import type {
 } from '../../../shared/agent-session-wire'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import { structuredChildWorkLegacyTasks } from '../../../shared/structured-agent-session-child-work-legacy'
+import { structuredStripChildWork } from '../../../shared/structured-agent-session-child-work-selection'
 import { readStructuredAgentSessionHistoryResult } from './structured-agent-session-history-result'
 import type {
   AgentSessionSubscribers,
@@ -16,8 +17,9 @@ import type {
 } from './structured-agent-session-host-types'
 import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
 
-/** The chat strip's roster: the host's child records for one session, as the same views the status
- *  summary carries, with the legacy task rows an older client reads derived from them. */
+/** The chat strip's roster: the host's child records for one session (every running child, then
+ *  the newest finished ones, up to the strip's row budget), with the legacy task rows an older
+ *  client reads derived from them. */
 export class StructuredAgentSessionBackgroundTaskChannel {
   private readonly published = new Map<string, string>()
 
@@ -90,10 +92,11 @@ export class StructuredAgentSessionBackgroundTaskChannel {
 
   private state(sessionId: string): AgentSessionBackgroundTaskState | null | undefined {
     const session = this.sessions.get(sessionId)
-    const views = session ? this.readChildWork(sessionId) : undefined
-    if (!session || views === undefined) {
+    const stored = session ? this.readChildWork(sessionId) : undefined
+    if (!session || stored === undefined) {
       return undefined
     }
+    const views = structuredStripChildWork(stored)
     const stops = this.deps.adapter.backgroundTaskStops?.(sessionId)
     if (views.length === 0) {
       // As before: a session no live provider holds says nothing, a live one says "none".

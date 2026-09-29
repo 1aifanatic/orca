@@ -14,6 +14,7 @@ import type { AgentSessionBackgroundTask } from '../../../shared/agent-session-w
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import { agentChildWorkViewsEqual } from '../../../shared/agent-status-child-work-view-wire'
 import { structuredChildWorkLegacyTasks } from '../../../shared/structured-agent-session-child-work-legacy'
+import { structuredSidebarChildWork } from '../../../shared/structured-agent-session-child-work-selection'
 
 /** An evidence clock that advanced by less than this does not re-broadcast a summary.
  *  Invariant: every reader of the summary's child clocks shows staleness no finer than this (today,
@@ -27,16 +28,18 @@ export type StructuredStatusChildWork = {
   backgroundTasks?: AgentSessionBackgroundTask[]
 }
 
-/** The summary's child fields: the views without usage, and the live legacy tasks an older client
- *  reads, derived from the same views so the two cannot disagree. */
+/** The summary's child fields: the running views without usage, since the sidebar lists running
+ *  children only, and the live legacy tasks an older client reads, derived from the same views so
+ *  the two cannot disagree. */
 export function structuredStatusChildWork(
   views: readonly AgentChildWorkView[] | undefined,
   provider: AgentSessionHandleProvider
 ): StructuredStatusChildWork {
-  if (!views || views.length === 0) {
+  const running = views ? structuredSidebarChildWork(views) : []
+  if (running.length === 0) {
     return {}
   }
-  const children = views.map(({ totalTokens: _totalTokens, ...view }) => view)
+  const children = running.map(({ totalTokens: _totalTokens, ...view }) => view)
   // `tasks` only, the live rows: an old client folds every listed task into the parent, and
   // reads a failed one's legacy `blocked` as still running. Dies with the legacy shapes; see the
   // death condition in `structured-agent-session-child-work-legacy`.
