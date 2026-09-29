@@ -1,3 +1,10 @@
+declare global {
+  // oxlint-disable-next-line typescript/consistent-type-definitions -- Window augmentation requires an interface.
+  interface Window {
+    __startDiffBurstTrace: () => Promise<void>
+  }
+}
+
 import { execFileSync } from 'node:child_process'
 import { rmSync, writeFileSync } from 'node:fs'
 import type { Page } from '@stablyai/playwright-test'
@@ -214,11 +221,14 @@ test.describe('Combined diff invalidation freeze repro (STA-3420)', () => {
       const traceComplete = new Promise<string>((resolve) => {
         cdp.once('Tracing.tracingComplete', (event) => resolve(event.stream ?? ''))
       })
-      await cdp.send('Tracing.start', {
-        categories:
-          'devtools.timeline,blink.user_timing,disabled-by-default-devtools.timeline.invalidationTracking',
-        transferMode: 'ReturnAsStream'
-      })
+      await orcaPage.exposeFunction('__startDiffBurstTrace', () =>
+        cdp.send('Tracing.start', {
+          categories:
+            'devtools.timeline,disabled-by-default-devtools.timeline.invalidationTracking',
+          options: 'record-continuously',
+          transferMode: 'ReturnAsStream'
+        })
+      )
       const measurement = await orcaPage.evaluate(
         async ({ wId, repoPath, relativePaths, burstDurationMs }) => {
           const intervalMs = 50
@@ -265,6 +275,7 @@ test.describe('Combined diff invalidation freeze repro (STA-3420)', () => {
           await new Promise((resolve) => window.setTimeout(resolve, burstDurationMs))
           const baseline = stopBaseline()
 
+          await window.__startDiffBurstTrace()
           const stopBurst = startLagMeter()
           const startedAt = performance.now()
           // Why: a rebase rewrites the worktree in bursts. The watcher debounces per
