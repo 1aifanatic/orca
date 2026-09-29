@@ -29,6 +29,7 @@ import {
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import type { AgentSessionPromptRequest } from './structured-agent-session-turns-prompt'
 import { threadGoalPlan } from './structured-agent-session-thread-goal'
+import { performCancel } from './structured-agent-session-turns'
 import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
 import {
   admitAndRunAgentSessionMutation,
@@ -196,10 +197,14 @@ export function cancelStructuredAgentSessionTurn(
           )
         const record = context.deps.store.getRecord(ctx.sessionId)
         return child && inFlight
-          ? plan.run({
-              ...ctx,
-              failureTextContext: structuredAgentSessionFailureWordsContext(record)
-            })
+          ? performCancel(
+              { ...ctx, failureTextContext: structuredAgentSessionFailureWordsContext(record) },
+              {
+                clientOperationId: params.envelope.clientOperationId,
+                ...named,
+                withdrewQueued: withdrawn.length > 0
+              }
+            )
           : { ok: true, value: { ...named, cancelled: withdrawn.length > 0 } }
       }
     },

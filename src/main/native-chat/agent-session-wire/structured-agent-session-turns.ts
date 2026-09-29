@@ -247,6 +247,8 @@ export async function performCancel(
     scope?: 'background-tasks'
     taskId?: string
     prompt?: { itemId: string; expectedRevision: number }
+    /** The host already withdrew queued messages for this Stop. */
+    withdrewQueued?: boolean
   }
 ): Promise<TurnOutcome<AgentSessionCancelResult>> {
   if (input.prompt) {
@@ -280,7 +282,11 @@ export async function performCancel(
           ...(input.prompt ? { prompt: { itemId: input.prompt.itemId } } : {})
         })
     cancelled = outcome.cancelled
-    if (!cancelled && input.turnId !== undefined) {
+    if (!cancelled && input.turnId !== undefined && input.withdrewQueued) {
+      // The Stop ended what was queued, which is how a Stop naming no turn reports the same case.
+      cancelled = true
+      note = null
+    } else if (!cancelled && input.turnId !== undefined) {
       note = { kind: 'status', text: 'The provider had already finished this turn.' }
     } else if (!cancelled && input.prompt) {
       note = null

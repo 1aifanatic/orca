@@ -260,7 +260,8 @@ it('withdraws a follow-up still queued on the host when the turn the Stop names 
   )
   expect(submission && isQueuedAgentJournalSubmission(submission)).toBe(true)
 
-  expect(await stop(turnId)).toMatchObject({ ok: true })
+  // Nothing reached Claude, so the host's withdrawal is the whole Stop, as with no turn named.
+  expect(await stop(turnId)).toMatchObject({ ok: true, value: { cancelled: true } })
   release()
   await eventually(async () =>
     expect(await dispatch(followUp)).toEqual({
@@ -270,4 +271,8 @@ it('withdraws a follow-up still queued on the host when the turn the Stop names 
   )
   expect(connection.sent).toHaveLength(1)
   await eventually(async () => expect(await status()).toBe('idle'))
+  const rows = (await host.journalSnapshot(SESSION)).items.flatMap((item) =>
+    item.body.kind === 'status' ? [item.body.text] : []
+  )
+  expect(rows).not.toContain('The provider had already finished this turn.')
 }, 15_000)
