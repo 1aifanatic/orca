@@ -29,6 +29,10 @@ export type CodexManagedTrustGrantPlan = {
   useDefaultCodexHome?: boolean
   /** Off the launch path: a cold-start budget, and a timeout starts no cooldown. */
   background?: boolean
+  /** This home's fallback writes computeTrustedHash trust, so a grant first clears
+   *  it; the fallback rewrites it if the grant fails. Never set for the real home,
+   *  where a matching record is Codex's own and nothing would put it back. */
+  fallbackWritesSelfComputedTrust?: boolean
 }
 
 export type ExpectedManagedEntry = {

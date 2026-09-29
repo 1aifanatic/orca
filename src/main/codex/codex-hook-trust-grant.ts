@@ -216,9 +216,11 @@ async function runGrantAttempt(
     return await runWithCapability(
       hostKey,
       async () => {
-        await runExclusivelyForCodexTrustConfig(plan.tomlPath, async () =>
-          removeSelfComputedTrustBeforeGrant(plan)
-        )
+        if (plan.fallbackWritesSelfComputedTrust) {
+          await runExclusivelyForCodexTrustConfig(plan.tomlPath, async () =>
+            removeSelfComputedTrustBeforeGrant(plan)
+          )
+        }
         return completeGrant(
           attempt,
           await runSession(

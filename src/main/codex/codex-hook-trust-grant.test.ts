@@ -164,7 +164,12 @@ describe('grantManagedCodexHookTrust', () => {
       ...managedEntry('stop'),
       sourcePath: String.raw`C:\Users\Alice\.codex\hooks.json`
     }
-    const plan = buildPlan([entry])
+    const plan: CodexManagedTrustGrantPlan = {
+      ...buildPlan([entry]),
+      telemetryLane: 'managed',
+      fallbackWritesSelfComputedTrust: true
+    }
+    // Why: the managed fallback lane's write, both separator variants.
     upsertHookTrustEntries(plan.tomlPath, [entry])
     expect(readHookTrustEntries(plan.tomlPath).get(computeTrustKey(entry))?.trustedHash).toBe(
       computeTrustedHash(entry)

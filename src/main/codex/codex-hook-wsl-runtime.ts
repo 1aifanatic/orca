@@ -115,7 +115,8 @@ async function installManagedHooksIntoWslRuntimeExclusively(
       managedCommand: command,
       managedEntries: trustEntries,
       host: { kind: 'wsl', distro: plan.wslDistro, linuxRuntimeHome: plan.linuxRuntimeHome },
-      telemetryLane: 'managed'
+      telemetryLane: 'managed',
+      fallbackWritesSelfComputedTrust: true
     })
     if (grant.lane === 'fallback') {
       // Why: WSL runtime homes may carry user hook approvals we did not rebuild

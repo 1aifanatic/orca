@@ -151,7 +151,8 @@ export async function installCodexHooksExclusively(
       managedCommand: command,
       managedEntries: managedTrustEntries,
       host: { kind: 'native' },
-      telemetryLane: 'managed'
+      telemetryLane: 'managed',
+      fallbackWritesSelfComputedTrust: true
     })
     if (grant.lane === 'rpc') {
       recentGrantEntries = grant.entries

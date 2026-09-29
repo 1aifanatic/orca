@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import type * as Os from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import type { HookDefinition } from '../agent-hooks/installer-utils'
 import type { CodexHookTrustGrantRequest } from './codex-app-server-client'
 import { CodexAppServerTimeoutError } from './codex-app-server-session'
@@ -40,6 +40,9 @@ import {
 } from './codex-real-home-hook-install'
 import { cleanupLegacySystemManagedHooks } from './codex-hook-legacy-cleanup'
 import { getCodexManagedHookInstallMaterial } from './codex-hook-definition'
+import { createCodexHookTrustEntry } from './codex-hook-identity'
+import { getOrcaManagedCodexHomePath } from './codex-home-paths'
+import { readOrcaEntryTrust } from './codex-real-home-entry-trust'
 
 // Why this file (QA case 4): a cold `codex app-server` on a loaded Mac took over
 // 10 s. A launch must never wait on that approval, the approval must still land,
@@ -68,6 +71,28 @@ function orcaHandlerCount(): number {
     .flat()
     .flatMap((definition) => definition.hooks ?? [])
     .filter((hook) => isCodexManagedCommand(hook.command)).length
+}
+
+function orcaEntryTrust(): string[] {
+  const trust = readHookTrustEntries(configPath())
+  return Object.entries(readHooks()).flatMap(([eventName, definitions]) =>
+    definitions.flatMap((definition, groupIndex) =>
+      (definition.hooks ?? []).flatMap((hook, handlerIndex) => {
+        if (!isCodexManagedCommand(hook.command)) {
+          return []
+        }
+        const entry = createCodexHookTrustEntry(
+          hooksPath(),
+          eventName,
+          groupIndex,
+          handlerIndex,
+          definition,
+          hook
+        )
+        return [entry ? readOrcaEntryTrust(entry, trust) : 'untrusted']
+      })
+    )
+  )
 }
 
 type AppServer = { sessions: number; start: () => void }
@@ -205,6 +230,28 @@ describe('a slow codex app-server start', () => {
     recovered.start()
     expect(await launch()).toBe('granting')
     expect(await realHomeInternals.settledLaneForTesting()).toBe('installed')
+  })
+
+  it('keeps already-trusted Orca entries trusted when a later re-grant fails', async () => {
+    installAppServer(0).start()
+    expect(await launch()).toBe('granting')
+    expect(await realHomeInternals.settledLaneForTesting()).toBe('installed')
+    const events = getCodexManagedHookInstallMaterial().events.length
+    expect(orcaEntryTrust()).toEqual(Array(events).fill('trusted'))
+
+    // Why a ledger miss: another Orca profile keeps its own ledger for this shared home.
+    rmSync(join(dirname(getOrcaManagedCodexHomePath()), 'trust-grant-ledger.json'))
+    realHomeInternals.setLaneForTesting('pending')
+    const failing = installAppServer(
+      0,
+      new Error('codex app-server exited before completing the session')
+    )
+    failing.start()
+    expect(await launch()).toBe('granting')
+    expect(await realHomeInternals.settledLaneForTesting()).toBe('unavailable')
+
+    expect(failing.sessions).toBe(1)
+    expect(orcaEntryTrust()).toEqual(Array(events).fill('trusted'))
   })
 
   it('backs off for seconds, not minutes, after any other failure', async () => {
