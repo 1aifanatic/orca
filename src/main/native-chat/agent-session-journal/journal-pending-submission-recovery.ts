@@ -4,14 +4,13 @@ import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-qu
 import { DISPATCH_DOUBT_HOST_RESTARTED } from './journal-dispatch-doubt-reasons'
 import type { AgentSessionJournal } from './journal-store'
 
-/** Settles every submission a process fact left unanswerable, optionally only those `which`
- *  names. Doubt is never proof of non-delivery, so nothing here ever becomes re-deliverable. A
- *  queued submission was never handed over, so it is not in doubt and is left alone. */
+/** Settles every submission a process fact left unanswerable. Doubt is never
+ *  proof of non-delivery, so nothing here ever becomes re-deliverable. A queued
+ *  submission was never handed over, so it is not in doubt and is left alone. */
 export async function markJournalPendingSubmissionsUnknown(
   journal: AgentSessionJournal,
   fence: number,
-  reason: string = DISPATCH_DOUBT_HOST_RESTARTED,
-  which: (submission: AgentJournalSubmission) => boolean = () => true
+  reason: string = DISPATCH_DOUBT_HOST_RESTARTED
 ): Promise<string[]> {
   const unresolved = journal
     .submissions()
@@ -19,8 +18,7 @@ export async function markJournalPendingSubmissionsUnknown(
       (entry) =>
         !isQueuedAgentJournalSubmission(entry) &&
         (entry.dispatchState === 'pending' ||
-          (entry.dispatchState === 'unknown' && entry.recovered !== true)) &&
-        which(entry)
+          (entry.dispatchState === 'unknown' && entry.recovered !== true))
     )
   for (const entry of unresolved) {
     // An earlier reason already names a sharper fact than "the host restarted".

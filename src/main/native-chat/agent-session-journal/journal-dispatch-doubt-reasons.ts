@@ -23,7 +23,8 @@ export const DISPATCH_DOUBT_PERSISTENCE_FAILED = 'dispatch_result_persistence_fa
 /** The operation tombstone survived recovery but its journal submission did not. */
 export const DISPATCH_DOUBT_SUBMISSION_MISSING = 'durable_send_submission_missing'
 
-/** The provider ended the turn it was running without answering the message. */
+/** The provider said its turn was over (Claude's idle, Codex's `turn/completed`) without
+ *  answering the message. */
 export const DISPATCH_DOUBT_TURN_SETTLED = 'turn_settled_before_acknowledgement'
 
 /** The user stopped the session before the message was answered. */

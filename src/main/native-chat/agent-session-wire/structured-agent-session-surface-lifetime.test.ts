@@ -398,8 +398,9 @@ describe('a session with a turn in flight', () => {
     await waitForEviction()
   })
 
-  // The provider ending its turn ends what a send handed to it was owed; a late echo still lands.
-  it('settles an unanswered send in doubt when its turn ends, and is then stopped', async () => {
+  // The provider declaring its turn over ends what a send handed to it was owed; a late echo
+  // still lands.
+  it('settles an unanswered send in doubt when its turn is over, and is then stopped', async () => {
     await attach()
     emitTurnLifecycle('running', 1)
     await host.flushStreamedEvents(SESSION)
@@ -407,6 +408,7 @@ describe('a session with a turn in flight', () => {
     await vi.waitFor(() => expect(dispatch).toHaveBeenCalledOnce())
 
     emitTurnLifecycle('completed', 2)
+    sink?.settleSendsAtTurnOver?.()
     await host.flushStreamedEvents(SESSION)
     const [sent] = (await host.journalSnapshot(SESSION)).submissions
     expect(sent).toMatchObject({
@@ -427,22 +429,21 @@ describe('a session with a turn in flight', () => {
     await waitForEviction()
   })
 
-  it('keeps an unanswered send owed when only an earlier turn is revised', async () => {
+  // A turn row ending is not the provider's turn-over: Claude ends one request cycle per result
+  // and runs a send written during it as the next cycle.
+  it('keeps an unanswered send owed when a turn row ends without the provider saying so', async () => {
     await attach()
     emitTurnLifecycle('running', 1)
-    emitTurnLifecycle('completed', 2)
-    sink?.appendItem(
-      { provider: 'codex', threadId: THREAD, turnId: 'turn-2', ordinal: 3 },
-      { kind: 'turn', turnId: 'turn-2', state: 'running' }
-    )
     await host.flushStreamedEvents(SESSION)
-    await sendPending('steered into turn-2')
+    await sendPending('runs as the next cycle')
     await vi.waitFor(() => expect(dispatch).toHaveBeenCalledOnce())
 
     emitTurnLifecycle('completed', 2)
     await host.flushStreamedEvents(SESSION)
 
-    expect((await host.journalSnapshot(SESSION)).submissions[0]?.dispatchState).toBe('pending')
+    const snapshot = await host.journalSnapshot(SESSION)
+    expect(snapshot.submissions[0]?.dispatchState).toBe('pending')
+    expect(hasUnansweredStructuredAgentSessionDispatch(snapshot.submissions)).toBe(true)
   })
 
   // Stop is never gated on what the provider answers: it ends whatever a send was still owed.
