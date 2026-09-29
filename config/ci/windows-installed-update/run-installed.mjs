@@ -451,6 +451,13 @@ try {
   const control = await terminal(worktrees.git)
   await observe(control, true)
   await expectHostReleased('A (before update)', ownerA, control)
+  // Same install, serve restarted: isolates reattach from the update itself.
+  const reattached = await terminal(worktrees.git)
+  await observe(reattached, true)
+  await stopServe(serve)
+  serve = await startServe(installLocation, profile, env)
+  await observe(reattached)
+  await expectHostReleased('A (after serve restart, no update)', ownerA, reattached)
   for (const path of [
     sentinels.legacyHostFile,
     sentinels.hostSibling,
