@@ -398,7 +398,7 @@ describe('a launch on a paired host', () => {
   })
 
   function pairedRecords() {
-    const pane = parsePaneKey(sentParams().paneKey)!
+    const pane = parsePaneKey(String(sentParams().paneKey))!
     return {
       pane,
       focus: peekWebSessionFocusIntent(PAIRED, 'wt-1'),
