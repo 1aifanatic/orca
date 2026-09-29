@@ -194,6 +194,49 @@ describe('replay preference', () => {
   })
 })
 
+describe('replay of a deleted card', () => {
+  it('answers withdrawn once its row is pruned, never with the rejected hand-off it came back from', async () => {
+    const working = await workingSend()
+    const body = hostTestMessage('refused, then deleted')
+    const clientOperationId = hostTestOperationId()
+    const params = {
+      envelope: envelope(
+        { body, delivery: 'queue-if-active' },
+        'agentSession.send',
+        clientOperationId
+      ),
+      body,
+      delivery: 'queue-if-active' as const
+    }
+    await host.send(CALLER, params)
+    await settleAccepted(working, 'a')
+    await eventually(async () => expect(await rig.handoff(clientOperationId)).toBeDefined())
+    await settleRejected(await rig.handoffId(clientOperationId), 'provider refused this payload')
+    await eventually(async () =>
+      expect(await drafts()).toMatchObject([{ messageId: clientOperationId, state: 'returned' }])
+    )
+    expect(await rig.deleteQueued(clientOperationId)).toMatchObject({
+      ok: true,
+      value: { deleted: true }
+    })
+    // Retention later drops the tombstone; the rejected hand-off still names the draft.
+    const journal = host.collaboratorsForTests().sessions.get(SESSION)?.journal
+    if (!journal) {
+      throw new Error('expected the conversation open')
+    }
+    vi.spyOn(journal.queuedMessages, 'get').mockReturnValue(null)
+    const replay = await host.send(CALLER, params)
+    expect(replay).toMatchObject({
+      ok: true,
+      replayed: true,
+      value: { queued: { messageId: clientOperationId, state: 'withdrawn' } }
+    })
+    if (replay.ok && 'submission' in replay.value) {
+      throw new Error('replay answered with the rejected hand-off')
+    }
+  })
+})
+
 describe('the hand-off link on answers', () => {
   it('a replayed queued send, once drained, answers with the hand-off that names its draft', async () => {
     const working = await workingSend()
