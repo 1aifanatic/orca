@@ -496,6 +496,7 @@
           "mimo_code_label": "MiMo Code",
           "muse_label": "Muse",
           "opencode2_label": "OpenCode 2",
+          "codebuddy_label": "CodeBuddy",
           "zcode_label": "ZCode"
         },
         "skill": {
@@ -17670,7 +17671,9 @@
         "startedN": "启动 {{value0}} 子代理",
         "ranOne": "Ran 1 子代理",
         "ranN": "Ran {{value0}} 子代理",
-        "tokens": "{{value0}} 代币"
+        "tokens": "{{value0}} 代币",
+        "unnamed": "子代理",
+        "writtenBy": "由子代理 {{value0}} 输出"
       },
       "conversationCommand": {
         "pendingWork": "在使用此命令之前，请等待挂起的工作和消息完成。",
