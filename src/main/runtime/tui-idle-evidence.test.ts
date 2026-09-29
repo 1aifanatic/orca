@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  hasQuietMuseReadyPrompt,
+  hasQuietReadyScreen,
   isTuiIdleSatisfied,
   type TuiIdleEvidenceRecord,
   type TuiIdleSatisfactionInput
@@ -21,7 +21,7 @@ function input(overrides: Partial<TuiIdleSatisfactionInput> = {}): TuiIdleSatisf
   return {
     record: record(),
     readPositiveBodyEvidence: () => false,
-    readMuseReadyBodyEvidence: () => true,
+    readQuietReadyBodyEvidence: () => true,
     agent: 'muse',
     firstPartyStatus: null,
     quiescenceMs: QUIESCENCE_MS,
@@ -29,39 +29,38 @@ function input(overrides: Partial<TuiIdleSatisfactionInput> = {}): TuiIdleSatisf
   }
 }
 
-describe('hasQuietMuseReadyPrompt', () => {
+describe('hasQuietReadyScreen', () => {
   it('settles a Muse ready screen once the stream has gone quiet', () => {
-    expect(hasQuietMuseReadyPrompt(record(), 'muse', () => true, QUIESCENCE_MS)).toBe(true)
+    expect(hasQuietReadyScreen(record(), 'muse', () => true, QUIESCENCE_MS)).toBe(true)
   })
 
   it('refuses while the pane is still streaming', () => {
     expect(
-      hasQuietMuseReadyPrompt(
-        record({ lastOutputAt: Date.now() }),
-        'muse',
-        () => true,
-        QUIESCENCE_MS
-      )
+      hasQuietReadyScreen(record({ lastOutputAt: Date.now() }), 'muse', () => true, QUIESCENCE_MS)
     ).toBe(false)
   })
 
   it('refuses without an output clock, like the tier-3 lane', () => {
     expect(
-      hasQuietMuseReadyPrompt(record({ lastOutputAt: null }), 'muse', () => true, QUIESCENCE_MS)
+      hasQuietReadyScreen(record({ lastOutputAt: null }), 'muse', () => true, QUIESCENCE_MS)
     ).toBe(false)
   })
 
   it('refuses without a ready screen', () => {
-    expect(hasQuietMuseReadyPrompt(record(), 'muse', () => false, QUIESCENCE_MS)).toBe(false)
+    expect(hasQuietReadyScreen(record(), 'muse', () => false, QUIESCENCE_MS)).toBe(false)
   })
 
   it('covers adopted panes that carry no launch metadata', () => {
-    expect(hasQuietMuseReadyPrompt(record(), null, () => true, QUIESCENCE_MS)).toBe(true)
-    expect(hasQuietMuseReadyPrompt(record(), undefined, () => true, QUIESCENCE_MS)).toBe(true)
+    expect(hasQuietReadyScreen(record(), null, () => true, QUIESCENCE_MS)).toBe(true)
+    expect(hasQuietReadyScreen(record(), undefined, () => true, QUIESCENCE_MS)).toBe(true)
   })
 
-  it('refuses another agent quoting Muse in its scrollback', () => {
-    expect(hasQuietMuseReadyPrompt(record(), 'codex', () => true, QUIESCENCE_MS)).toBe(false)
+  it('covers Codex, whose title carries no rest signal once idle', () => {
+    expect(hasQuietReadyScreen(record(), 'codex', () => true, QUIESCENCE_MS)).toBe(true)
+  })
+
+  it('refuses another agent quoting Muse or Codex in its scrollback', () => {
+    expect(hasQuietReadyScreen(record(), 'claude', () => true, QUIESCENCE_MS)).toBe(false)
   })
 })
 

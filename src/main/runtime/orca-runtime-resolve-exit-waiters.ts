@@ -7,7 +7,7 @@ import type { AgentStatus } from '../../shared/agent-detection'
 import {
   detectExplicitIdleStatusFromTitle,
   isKnownReadyPromptBody,
-  isMuseReadyPromptPreview
+  isQuietReadyScreenBody
 } from './terminal-wait-detection'
 import { buildTerminalWaitText } from './terminal-wait-tail-state'
 import { isTuiIdleSatisfied } from './tui-idle-evidence'
@@ -114,9 +114,11 @@ export class OrcaRuntimeWithResolveExitWaiters extends OrcaRuntimeWithBindPtyInc
           agent,
           () => this.readLiveTerminalScreenLines(leaf.ptyId)
         ),
-      readMuseReadyBodyEvidence: () =>
-        isMuseReadyPromptPreview(
-          buildTerminalWaitText(leaf.tailBuffer, leaf.tailPartialLine, leaf.preview)
+      readQuietReadyBodyEvidence: () =>
+        isQuietReadyScreenBody(
+          buildTerminalWaitText(leaf.tailBuffer, leaf.tailPartialLine, leaf.preview),
+          agent,
+          () => this.readLiveTerminalScreenLines(leaf.ptyId)
         ),
       agent,
       firstPartyStatus:
@@ -206,9 +208,11 @@ export class OrcaRuntimeWithResolveExitWaiters extends OrcaRuntimeWithBindPtyInc
           agent,
           () => this.readLiveTerminalScreenLines(pty.ptyId)
         ),
-      readMuseReadyBodyEvidence: () =>
-        isMuseReadyPromptPreview(
-          buildTerminalWaitText(pty.tailBuffer, pty.tailPartialLine, pty.preview)
+      readQuietReadyBodyEvidence: () =>
+        isQuietReadyScreenBody(
+          buildTerminalWaitText(pty.tailBuffer, pty.tailPartialLine, pty.preview),
+          agent,
+          () => this.readLiveTerminalScreenLines(pty.ptyId)
         ),
       agent,
       firstPartyStatus: pty.lastExplicitAgentStatus ?? null,

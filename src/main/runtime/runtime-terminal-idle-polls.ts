@@ -3,7 +3,7 @@ import type { RuntimeTerminalWait } from '../../shared/runtime-types'
 import {
   detectTerminalWaitBlockedReason,
   isKnownReadyPromptBody,
-  isMuseReadyPromptPreview
+  isQuietReadyScreenBody
 } from './terminal-wait-detection'
 import {
   buildPtyTerminalWaitBlockedResult,
@@ -131,7 +131,8 @@ export class RuntimeTerminalIdlePolls {
           rendererTitle: leaf.paneTitle ?? this.deps.getTabTitle(leaf.tabId),
           readPositiveBodyEvidence: () =>
             isKnownReadyPromptBody(waitText, agent, () => this.deps.readScreenLines(leaf.ptyId)),
-          readMuseReadyBodyEvidence: () => isMuseReadyPromptPreview(waitText),
+          readQuietReadyBodyEvidence: () =>
+            isQuietReadyScreenBody(waitText, agent, () => this.deps.readScreenLines(leaf.ptyId)),
           agent,
           firstPartyStatus: this.deps.getFirstPartyAgentStatus(leaf.ptyId),
           quiescenceMs: this.deps.quiescenceMs
@@ -199,7 +200,8 @@ export class RuntimeTerminalIdlePolls {
           readPositiveBodyEvidence: () =>
             this.deps.getAdoptedPtyIdleStatus(pty) === 'idle' ||
             isKnownReadyPromptBody(waitText, agent, () => this.deps.readScreenLines(pty.ptyId)),
-          readMuseReadyBodyEvidence: () => isMuseReadyPromptPreview(waitText),
+          readQuietReadyBodyEvidence: () =>
+            isQuietReadyScreenBody(waitText, agent, () => this.deps.readScreenLines(pty.ptyId)),
           agent,
           firstPartyStatus: this.deps.getFirstPartyAgentStatus(pty.ptyId),
           quiescenceMs: this.deps.quiescenceMs

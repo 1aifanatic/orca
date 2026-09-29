@@ -37,7 +37,12 @@ const KNOWN_PREEXISTING_I2_FAILURES: Record<string, number> = {
   'codex-0157-config-override-embedded-warning': 22,
   'codex-0157-effort-override-embedded-warning': 4,
   'codex-0157-no-daemon-effort-override': 16,
-  'codex-0157-plain-ready': 18
+  'codex-0157-plain-ready': 18,
+  // Same extra dim bit on the 0.157/0.158 header row (STA-8834 fixtures).
+  'codex-0-157-1-update-dialog': 16,
+  'codex-0-158-0-approval': 12,
+  'codex-0-158-0-timed-turn': 20,
+  'codex-0-158-0-trustprompt': 36
 }
 
 type Transcript = { name: string; data: string; cols: number; rows: number }
