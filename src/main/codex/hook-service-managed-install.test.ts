@@ -28,7 +28,7 @@ vi.mock('os', async (importOriginal) => {
 })
 
 import { CodexHookService } from './hook-service'
-import { buildWindowsHookPowerShellCommand } from '../agent-hooks/installer-utils'
+import { getManagedCommand } from './codex-hook-definition'
 import { runExclusivelyForCodexTrustConfig } from './codex-trust-config-mutation-queue'
 
 const homes = setupCodexHookHomes(homedirMock, getPathMock)
@@ -182,7 +182,7 @@ describe('CodexHookService', () => {
     expect(Object.keys(hooksConfig)).toEqual(['hooks'])
   })
 
-  // #6078: the existing PowerShell host must still quote spaced profile paths.
+  // #6078: a spaced profile path must still reach the script through Windows' own cmd.exe.
   it.skipIf(process.platform !== 'win32')(
     'wraps the managed hook command when the profile path contains a space (#6078)',
     async () => {
@@ -204,9 +204,7 @@ describe('CodexHookService', () => {
         for (const eventName of localManagedCodexEvents()) {
           const command = hooksConfig.hooks[eventName]?.[0]?.hooks?.[0]?.command
           expect(command).toBe(
-            buildWindowsHookPowerShellCommand(
-              join(homedir(), '.orca', 'agent-hooks', 'codex-hook.cmd')
-            )
+            getManagedCommand(join(homedir(), '.orca', 'agent-hooks', 'codex-hook.cmd'))
           )
         }
       } finally {
@@ -237,9 +235,7 @@ describe('CodexHookService', () => {
         for (const eventName of localManagedCodexEvents()) {
           const command = hooksConfig.hooks[eventName]?.[0]?.hooks?.[0]?.command
           expect(command).toBe(
-            buildWindowsHookPowerShellCommand(
-              join(homedir(), '.orca', 'agent-hooks', 'codex-hook.cmd')
-            )
+            getManagedCommand(join(homedir(), '.orca', 'agent-hooks', 'codex-hook.cmd'))
           )
         }
       } finally {
@@ -268,12 +264,10 @@ describe('CodexHookService', () => {
       const cmdSafe = /^[A-Za-z0-9_.:\\~-]+$/.test(join(homes.tmpHome, '.orca', 'agent-hooks'))
       if (cmdSafe) {
         expect(command).not.toMatch(/powershell/i)
-        expect(command).toMatch(/\\agent-hooks\\codex-hook\.cmd$/)
+        expect(command).toMatch(/\/agent-hooks\/codex-hook\.cmd$/)
       } else {
         expect(command).toBe(
-          buildWindowsHookPowerShellCommand(
-            join(homedir(), '.orca', 'agent-hooks', 'codex-hook.cmd')
-          )
+          getManagedCommand(join(homedir(), '.orca', 'agent-hooks', 'codex-hook.cmd'))
         )
       }
     }

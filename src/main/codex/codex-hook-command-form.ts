@@ -62,8 +62,8 @@ function buildWindowsCommand(scriptPath: string, env: WindowsDirectoryEnv): stri
     return forwardSlashPath
   }
   // Why: `--%` passes the rest to cmd.exe verbatim under PowerShell, /v:off keeps
-  // a registry-enabled delayed expansion from dropping a `!` in the path, and the
-  // `@` stops cmd.exe stripping the quotes around a path holding & or ^.
+  // a registry-enabled delayed expansion from expanding a `!NAME!` pair in the path,
+  // and the `@` stops cmd.exe stripping the quotes around a path holding & or ^.
   const cmdExe = `${resolveWindowsDirectory(env)}/System32/cmd.exe`.replaceAll('/', '\\')
   return `${cmdExe} --% /d /v:off /c @"${forwardSlashPath}"`
 }

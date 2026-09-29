@@ -79,7 +79,7 @@ describe('frozen Codex hook command', () => {
     }
   })
 
-  it('names the system cmd.exe from %SystemRoot%, on any drive, with forward slashes', () => {
+  it('names the system cmd.exe from %SystemRoot%, on any drive, with backslashes', () => {
     expect(windowsCommandFor('First Last', { SystemRoot: 'D:\\Windows' })).toBe(
       'D:\\Windows\\System32\\cmd.exe --% /d /v:off /c @"C:/Users/First Last/.orca/agent-hooks/codex-hook.cmd"'
     )
