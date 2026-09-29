@@ -63,7 +63,8 @@ export function createTerminalTabAgentTypeSelector(
         }
       }
       for (const [paneKey, entry] of Object.entries(foreground)) {
-        if (!entry.agent || entry.shellForeground || entry.routingRevoked) {
+        // Why: routingRevoked withholds agent-specific input only; it is not evidence the agent left.
+        if (!entry.agent || entry.shellForeground) {
           continue
         }
         const separator = paneKey.indexOf(':')

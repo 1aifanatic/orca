@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentStatusEntry } from '../../../../shared/agent-status-types'
 import { createTerminalTabAgentTypeSelector } from './terminal-tab-agent-type-index'
+import { hasCtrlEnterCsiUAuthorityForPane } from './terminal-ctrl-enter'
+import { resolveWindowsShiftEnterEncodingForPane } from './terminal-windows-shift-enter'
 
 function entry(agentType: AgentStatusEntry['agentType'], state = 'working'): AgentStatusEntry {
   return { agentType, state, updatedAt: 0 } as AgentStatusEntry
@@ -91,10 +93,22 @@ describe('createTerminalTabAgentTypeSelector', () => {
         'tab-1:leaf-a': { ...foreground['tab-1:leaf-a'], shellForeground: true }
       })
     ).toEqual({})
-    expect(
-      select({}, 'tab-1', {
-        'tab-1:leaf-a': { ...foreground['tab-1:leaf-a'], routingRevoked: true }
-      })
-    ).toEqual({})
+  })
+
+  it('keeps a pane whose input routing was revoked, while that input stays withheld', () => {
+    const select = createTerminalTabAgentTypeSelector()
+    const trusted = { agent: 'droid' as const, shellForeground: false, routingTrusted: true }
+    // What a 133;C leaves while the agent is still held: identity kept, byte authority revoked.
+    const revoked = { agent: 'droid' as const, shellForeground: false, routingRevoked: true }
+    const pane = (entry: typeof trusted | typeof revoked) => ({
+      paneForegroundAgentByPaneKey: { 'tab-1:leaf-a': entry },
+      agentLaunchConfigByPaneKey: {}
+    })
+
+    expect(select({}, 'tab-1', { 'tab-1:leaf-a': revoked })).toEqual({ 'leaf-a': 'droid' })
+    expect(hasCtrlEnterCsiUAuthorityForPane(pane(trusted), 'tab-1:leaf-a')).toBe(true)
+    expect(hasCtrlEnterCsiUAuthorityForPane(pane(revoked), 'tab-1:leaf-a')).toBe(false)
+    expect(resolveWindowsShiftEnterEncodingForPane(pane(trusted), 'tab-1:leaf-a')).toBe('csi-u')
+    expect(resolveWindowsShiftEnterEncodingForPane(pane(revoked), 'tab-1:leaf-a')).toBe('alt-enter')
   })
 })

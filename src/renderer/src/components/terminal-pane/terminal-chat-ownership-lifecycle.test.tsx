@@ -9,6 +9,7 @@ import { resolveNativeChatLeafRoute } from '../native-chat/native-chat-leaf-rout
 import { detachTerminalLayoutLeaf } from './terminal-layout-leaf-detach'
 import { parseWorkspaceSession } from '../../../../shared/workspace-session-schema'
 import type { RemotePaneLayoutPusher } from './remote-pane-layout-push'
+import { useAppStore } from '../../store'
 
 const LEFT = '11111111-1111-4111-8111-111111111111'
 const RIGHT = '22222222-2222-4222-8222-222222222222'
@@ -248,6 +249,32 @@ describe('terminal chat ownership lifecycle', () => {
       expect(mocks.state.unifiedTabsByWorktree.wt[0].viewMode).toBe('terminal')
     } finally {
       mocks.state.runtimePaneTitlesByTabId.tab = titles
+    }
+  })
+
+  it('binds an unbound chat request to the active agent after a command start revokes its routing', () => {
+    const titles = mocks.state.runtimePaneTitlesByTabId.tab
+    const foreground = useAppStore.getState().paneForegroundAgentByPaneKey
+    mocks.state.runtimePaneTitlesByTabId.tab = { 1: 'zsh', 2: 'zsh' }
+    try {
+      const fixture = makeFixture()
+      const hook = renderHook(() => useFixture(fixture, null))
+      expect(hook.result.current.chatLeafId).toBeNull()
+      // A 133;C while Claude is held keeps its identity but withholds agent-specific input.
+      act(() => {
+        useAppStore.setState({
+          paneForegroundAgentByPaneKey: {
+            [`tab:${LEFT}`]: { agent: 'claude', shellForeground: false, routingRevoked: true }
+          }
+        })
+      })
+      hook.rerender()
+      expect(hook.result.current.isChatEligibleForLeaf(LEFT)).toBe(true)
+      expect(hook.result.current.chatLeafId).toBe(LEFT)
+      expect(mocks.state.unifiedTabsByWorktree.wt[0].viewMode).toBe('chat')
+    } finally {
+      mocks.state.runtimePaneTitlesByTabId.tab = titles
+      useAppStore.setState({ paneForegroundAgentByPaneKey: foreground })
     }
   })
 
