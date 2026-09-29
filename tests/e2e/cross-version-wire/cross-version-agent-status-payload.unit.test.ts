@@ -3,9 +3,10 @@
 // The hook server persists every row's payload to its status file, and after an update or a
 // downgrade the other build re-admits it with its own `normalizeAgentStatusPayload`
 // (server-persistence-validation.ts). A payload that normalizer refuses loses the row on
-// restart; a field it reads differently is a row misread. That is the version boundary this
-// surface has. The canonical status store never leaves the process that owns it, and the relay
-// that forwards hook envelopes is always the desktop's own build.
+// restart; a field it reads differently is a row misread. That is the boundary this suite pairs.
+// The canonical status store never leaves the process that owns it, and the relay that forwards
+// hook envelopes is always the desktop's own build. Session-tab sync also carries each tab's
+// status to paired clients of any version; it is not paired here.
 
 import { beforeAll, describe, expect, it } from 'vitest'
 import {

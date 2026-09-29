@@ -207,7 +207,8 @@ always the desktop's own build: each build installs it under its own content-has
 binds its socket there, and the handshake refuses any other build's version (see
 `src/main/ssh/ssh-relay-superseded-endpoints.ts`).
 
-The harness does **not** cover the session-tab sync channel, legacy agent-session
+The harness does **not** cover the session-tab sync channel (which also carries each terminal
+tab's agent status to paired clients), legacy agent-session
 publications, file or Git RPCs, or mobile/E2EE framing. A change on those paths still needs its
 own reasoning against the rules above.
 
