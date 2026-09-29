@@ -44,11 +44,10 @@ function build(
   return buildNativeChatTranscriptSlots({
     messages,
     turnKeys,
-    currentTurnKey: undefined,
+    liveTurnKey: undefined,
     receipts: new Map<string, NativeChatResolvedPrompt>(),
     turnStatuses: NO_STATUSES,
     turnDiffs: new Map<string, NativeChatTurnDiff>(),
-    showTurnStatus: true,
     expandedTurnKeys: new Set<string>(),
     isWorking: false,
     lifecycleWorking: false,
@@ -117,7 +116,7 @@ describe('transcript slots', () => {
   it('keeps a message whose only content is a turn status under it', () => {
     const status: NativeChatTurnStatus = { startedAt: 1, thinking: false, workedSeconds: 4 }
     const slots = build([text('u', '', 'user')], {
-      currentTurnKey: 'u',
+      liveTurnKey: 'u',
       turnStatuses: { active: status, completedByTurn: {} }
     })
     expect(slots).toHaveLength(1)
@@ -147,7 +146,7 @@ describe('transcript slots', () => {
   it('puts the running turn bar under the prompt it answers', () => {
     const status: NativeChatTurnStatus = { startedAt: 1, thinking: false, workedSeconds: null }
     const slots = build([text('u', 'ask', 'user'), text('a', 'answer')], {
-      currentTurnKey: 'u',
+      liveTurnKey: 'u',
       turnStatuses: { active: status, completedByTurn: {} },
       isWorking: true
     })
@@ -315,7 +314,7 @@ describe('the live turn', () => {
       rows,
       journal ? { items: journal, submissions: [] } : null
     )
-    return build(rows, { turnKeys, currentTurnKey: liveTurnKey, ...overrides })
+    return build(rows, { turnKeys, liveTurnKey, ...overrides })
   }
   const slotOf = (slots: ReturnType<typeof build>, id: string) =>
     slots.find((slot) => slot.message.id === id)
@@ -391,21 +390,210 @@ describe('the live turn', () => {
     expect(slotOf(stopped, 'u1')?.status?.workedSeconds).toBe(3)
   })
 
-  it('keeps the newest user row live when the host states no scope, or there is no journal', () => {
+  it('reads a turn the provider opened by journal order where the host states no scope', () => {
     const unscoped = wakeJournal('running').map(({ turnScope: _scope, ...rest }) => rest)
-    for (const journal of [unscoped, null]) {
-      const slots = buildLive(messages, journal, {
-        isWorking: true,
-        turnStatuses: { active: settled(2), completedByTurn: {} }
-      })
-      expect(
-        slots.map((slot) => [slot.turnKey, slot.status?.workedSeconds, slot.activeTurnIsWorking])
-      ).toEqual([
-        ['u1', 2, true],
-        ['u1', undefined, true],
-        ['u1', undefined, true],
-        ['u1', undefined, true]
+    const slots = buildLive(messages, unscoped, {
+      isWorking: true,
+      turnStatuses: { active: working, completedByTurn: { u1: settled(4) } }
+    })
+    expect(
+      slots.map((slot) => [slot.turnKey, slot.status?.workedSeconds, slot.activeTurnIsWorking])
+    ).toEqual([
+      ['u1', 4, false],
+      ['u1', undefined, false],
+      ['wake', null, true],
+      ['wake', undefined, true]
+    ])
+  })
+
+  it('keeps the newest user row live with no journal', () => {
+    const slots = buildLive(messages, null, {
+      isWorking: true,
+      turnStatuses: { active: settled(2), completedByTurn: {} }
+    })
+    expect(
+      slots.map((slot) => [slot.turnKey, slot.status?.workedSeconds, slot.activeTurnIsWorking])
+    ).toEqual([
+      ['u1', 2, true],
+      ['u1', undefined, true],
+      ['u1', undefined, true],
+      ['u1', undefined, true]
+    ])
+  })
+})
+
+// Rows belong to the turn the host says owns them, not to the nearest preceding
+// user bubble. The owned turn keys reshape the fold, the bar and liveness.
+describe('turn-owned grouping', () => {
+  const settled: NativeChatTurnStatus = { startedAt: 1, thinking: false, workedSeconds: 70 }
+  // The #23621 shape: B lands mid-turn, three tool calls follow, one turn.
+  const midTurn = [
+    text('A', 'go', 'user'),
+    toolRun('t1'),
+    text('B', 'and also this', 'user'),
+    toolRun('t2'),
+    toolRun('t3'),
+    toolRun('t4'),
+    text('answer', 'Done.')
+  ]
+  const ownedKeys = midTurn.map(() => 'A')
+
+  it("folds every row of a settled turn behind its opener's bar, across a mid-turn send", () => {
+    const slots = build(midTurn, {
+      turnKeys: ownedKeys,
+      turnStatuses: { active: null, completedByTurn: { A: settled } }
+    })
+    // All four tool rows fold; the steered bubble stays visible with no bar of its own.
+    expect(slots.map((slot) => [slot.message.id, slot.status ?? null])).toEqual([
+      ['A', settled],
+      ['B', null],
+      ['answer', null]
+    ])
+    expect(slots[0]?.turnFolds).toBe(true)
+  })
+
+  it('returns every row of the turn when the reader opens it', () => {
+    const slots = build(midTurn, {
+      turnKeys: ownedKeys,
+      turnStatuses: { active: null, completedByTurn: { A: settled } },
+      expandedTurnKeys: new Set(['A'])
+    })
+    expect(slots.map((slot) => slot.message.id)).toEqual([
+      'A',
+      't1',
+      'B',
+      't2',
+      't3',
+      't4',
+      'answer'
+    ])
+  })
+
+  it("anchors a provider-opened turn's bar above its first row", () => {
+    const messages = [text('u1', 'earlier', 'user'), toolRun('w1'), text('done', 'Woke up.')]
+    const slots = build(messages, {
+      turnKeys: ['u1', 'wake', 'wake'],
+      liveTurnKey: 'wake',
+      turnStatuses: { active: settled, completedByTurn: {} },
+      isWorking: true
+    })
+    expect(slots.map((slot) => [slot.message.id, slot.status ?? null, slot.statusAbove])).toEqual([
+      ['u1', null, false],
+      ['w1', settled, true],
+      ['done', null, false]
+    ])
+  })
+
+  it("rolls a turn's diff up once, under its last row, when another prompt lands among its rows", () => {
+    // B opens its own turn but was sent before A's last row was written.
+    const messages = [
+      text('A', 'go', 'user'),
+      toolRun('t1'),
+      text('B', 'next', 'user'),
+      text('a-answer', 'Done with A.'),
+      toolRun('b1')
+    ]
+    const diff = (added: number): NativeChatTurnDiff => ({
+      files: [],
+      added,
+      removed: 0,
+      truncated: false
+    })
+    const slots = build(messages, {
+      turnKeys: ['A', 'A', 'B', 'A', 'B'],
+      turnDiffs: new Map([
+        ['A', diff(1)],
+        ['B', diff(2)]
       ])
-    }
+    })
+    expect(
+      slots.filter((slot) => slot.turnDiff).map((slot) => [slot.message.id, slot.turnDiff?.added])
+    ).toEqual([
+      ['a-answer', 1],
+      ['b1', 2]
+    ])
+  })
+
+  it("keeps a running turn's rows live while a newer message waits behind it", () => {
+    const messages = [text('A', 'go', 'user'), toolRun('t1'), text('C', 'next up', 'user')]
+    const slots = build(messages, {
+      turnKeys: ['A', 'A', 'C'],
+      liveTurnKey: 'A',
+      isWorking: true
+    })
+    expect(slots.map((slot) => [slot.message.id, slot.activeTurnIsWorking])).toEqual([
+      ['A', true],
+      ['t1', true],
+      ['C', false]
+    ])
+  })
+})
+
+describe("a subagent's rows speak as that subagent", () => {
+  const settled: NativeChatTurnStatus = { startedAt: 1, thinking: false, workedSeconds: 5 }
+  const roster: NativeChatMessage = {
+    id: 'roster',
+    role: 'system',
+    blocks: [
+      {
+        type: 'subagent-group',
+        groupId: 'group-1',
+        agents: [{ id: 'task-1', label: 'explore the lane', state: 'working' }]
+      }
+    ],
+    timestamp: 1,
+    source: 'transcript'
+  }
+  const child = (id: string, body: string, agentId = 'task-1'): NativeChatMessage => ({
+    ...text(id, body),
+    agentId
+  })
+  const messages = [
+    text('ask', 'summarise the repo', 'user'),
+    text('answer', 'Delegated; the summary follows.'),
+    roster,
+    child('child-said', 'The PR is CLEAN.')
+  ]
+
+  it("keeps the parent's answer on a settled turn and folds the subagent's later words", () => {
+    const slots = build(messages, {
+      turnStatuses: { active: null, completedByTurn: { ask: settled } },
+      subagentLabels: new Map([['task-1', 'explore the lane']])
+    })
+    const drawn = slots.filter((slot) => !slot.folded).map((slot) => slot.message.id)
+    expect(drawn).toContain('answer')
+    expect(drawn).not.toContain('child-said')
+  })
+
+  it("names the subagent on its row from the roster, and only on a subagent's row", () => {
+    const slots = build(messages, {
+      subagentLabels: new Map([['task-1', 'explore the lane']])
+    })
+    const labelOf = (id: string) => slots.find((slot) => slot.message.id === id)?.subagentLabel
+    expect(labelOf('child-said')).toBe('explore the lane')
+    expect(labelOf('answer')).toBeUndefined()
+  })
+
+  it("keeps the parent's run live while its subagent works below it", () => {
+    const trailing = (rows: NativeChatMessage[]) =>
+      build(rows)
+        .filter((slot) => slot.trailingRun)
+        .map((slot) => slot.message.id)
+    const childRun: NativeChatMessage = { ...toolRun('child-run'), agentId: 'task-1' }
+    // The parent is still inside its spawn call; the child's work does not move it past.
+    expect(trailing([text('ask', 'go', 'user'), toolRun('spawn'), childRun])).toEqual([
+      'spawn',
+      'child-run'
+    ])
+    // The parent answering does move it past its own run, whatever the child does.
+    expect(
+      trailing([text('ask', 'go', 'user'), toolRun('spawn'), text('said', 'Done.'), childRun])
+    ).toEqual(['said', 'child-run'])
+  })
+
+  it('reserves room for the caption on a subagent row', () => {
+    const [parentSlot] = build([text('mine', 'same words')])
+    const [childSlot] = build([child('theirs', 'same words')])
+    expect(childSlot!.estimatedHeight).toBeGreaterThan(parentSlot!.estimatedHeight)
   })
 })

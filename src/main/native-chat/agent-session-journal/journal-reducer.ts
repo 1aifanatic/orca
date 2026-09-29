@@ -27,12 +27,9 @@ import { JournalDerivedTurnScope } from './journal-derived-turn-scope'
 import { removeJournalItem, statedOrDerivedTurnScope, upsertJournalItem } from './journal-item-fold'
 import { journalItemRevisionIsStale } from './journal-item-revision'
 import type { JournalRow } from './journal-row-schema'
-import {
-  acceptSubmissionFromProviderItem,
-  applyJournalDispatch,
-  applyJournalSubmission
-} from './journal-submission-fold'
-import { dispatchRejectionWasTransportWriteFailure } from '../../../shared/structured-agent-session-dispatch-rejection'
+import { acceptSubmissionFromProviderItem, applyJournalSubmission } from './journal-submission-fold'
+import { applyJournalDispatchRow } from './journal-dispatch-reducer'
+import { isWriteFailureSubmission } from '../../../shared/structured-agent-session-dispatch-rejection'
 
 export const MAX_JOURNAL_APPLIED_SETTLEMENT_IDS = 4_096
 
@@ -45,6 +42,8 @@ export type JournalReducerState = {
   oldestSequence: number
   highestFence: number
   items: Map<string, AgentJournalRenderItem>
+  /** Fence of the writer that created each item: the generation a running turn belongs to. */
+  itemFences: Map<string, number>
   /** Revision of a removed item, so a late lower revision cannot resurrect it. */
   tombstones: Map<string, number>
   submissions: Map<string, AgentJournalSubmission>
@@ -66,6 +65,7 @@ export function createJournalReducerState(sessionId: string, epoch: string): Jou
     oldestSequence: 1,
     highestFence: 0,
     items: new Map(),
+    itemFences: new Map(),
     tombstones: new Map(),
     submissions: new Map(),
     receipts: new Map(),
@@ -92,7 +92,8 @@ export function applyJournalRow(state: JournalReducerState, row: JournalRow): vo
       state,
       itemId,
       row.revision,
-      journalRenderItem(itemId, row.revision, row.body, row, statedOrDerivedTurnScope(state, row))
+      journalRenderItem(itemId, row.revision, row.body, row, statedOrDerivedTurnScope(state, row)),
+      row.fence
     )
     return
   }
@@ -115,7 +116,7 @@ export function applyJournalRow(state: JournalReducerState, row: JournalRow): vo
         const producer = journalBatchMutationProducer(row, mutation)
         const scope = statedOrDerivedTurnScope(state, mutation)
         const item = journalRenderItem(itemId, revision, body, row, scope, producer, sequenceIndex)
-        upsertJournalItem(state, itemId, revision, item)
+        upsertJournalItem(state, itemId, revision, item, row.fence)
       } else {
         removeJournalItem(state, resolveItemId(state, mutation.itemId), mutation.revision)
       }
@@ -127,7 +128,7 @@ export function applyJournalRow(state: JournalReducerState, row: JournalRow): vo
     applyJournalSubmission(state, row)
     return
   }
-  applyJournalDispatch(state, row)
+  applyJournalDispatchRow(state, row)
 }
 
 export function rememberAppliedSettlementId(
@@ -179,7 +180,7 @@ export function resolveJournalItemId(
     .find(
       (candidate) =>
         candidate.dispatchState !== 'rejected' &&
-        !dispatchRejectionWasTransportWriteFailure(candidate.reason) &&
+        !isWriteFailureSubmission(candidate) &&
         candidate.payloadFingerprint === fingerprint &&
         state.items.get(agentJournalSubmissionKey(candidate.clientMessageId))?.revision === 0
     )

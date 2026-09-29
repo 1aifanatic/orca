@@ -1,8 +1,15 @@
 // How a conversation command the provider ran ended, read the same way for every provider.
 
+import {
+  agentSessionFailureFact,
+  type AgentSessionFailureFact,
+  type ProviderDiagnostic
+} from '../../../shared/agent-session-failure'
+
 export type StructuredConversationCommandOutcome = {
   outcome: 'success' | 'failure' | 'cancellation'
-  error?: string
+  /** On a failure: what its row reports. */
+  failure?: AgentSessionFailureFact
 }
 
 /** What the provider showed of one compaction while it ran. */
@@ -11,13 +18,14 @@ export type StructuredCompactionEvidence = {
   compacted: boolean
   /** Orca asked the provider to stop the command. */
   interruptRequested: boolean
-  /** Why the provider said it failed, when it said. */
-  error?: string | null
+  /** The provider said the compaction failed, with its words for a person when it gave any. */
+  failed?: { detail?: ProviderDiagnostic } | null
 }
 
 /** Only a compaction the provider reported doing is a success: Claude answers a stopped `/compact`
  *  with the same success result as a finished one, so the result's own verdict cannot decide. With
- *  none, one Orca asked to stop is the user's cancellation; anything else failed. */
+ *  none, one Orca asked to stop is the user's cancellation; anything else failed — reported as the
+ *  provider's failure when it said so, and otherwise as a compaction it never confirmed. */
 export function structuredCompactionOutcome(
   evidence: StructuredCompactionEvidence
 ): StructuredConversationCommandOutcome {
@@ -29,6 +37,8 @@ export function structuredCompactionOutcome(
   }
   return {
     outcome: 'failure',
-    error: evidence.error || 'Compaction was not confirmed by the provider.'
+    failure: evidence.failed
+      ? agentSessionFailureFact('compactionFailed', { detail: evidence.failed.detail })
+      : agentSessionFailureFact('compactionUnconfirmed')
   }
 }

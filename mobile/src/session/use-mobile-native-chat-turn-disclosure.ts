@@ -4,22 +4,25 @@ import type { NativeChatSettledTurns } from '../../../src/shared/native-chat-tur
 import {
   nativeChatMessagesWaitingBehindLiveTurn,
   nativeChatTurnMembership,
-  type NativeChatTurnJournal,
-  type NativeChatTurnMembership
+  type NativeChatTurnJournal
 } from '../../../src/shared/native-chat-turn-membership'
 import {
-  MOBILE_UNANCHORED_TURN_KEY,
+  nativeChatRowsInDrawOrder,
+  nativeChatTurnBarRows
+} from '../../../src/shared/native-chat-turn-grouping'
+import {
   useMobileNativeChatTurnStatus,
   type NativeChatTurnStatus
 } from './use-mobile-native-chat-turn-status'
 
 const EMPTY_TURN_IDS: ReadonlySet<string> = new Set()
-const NONE_WAITING = { listMessages: null, waitingRows: [], indexById: null } as const
-const NO_MEMBERSHIP: NativeChatTurnMembership = { turnKeys: [], liveTurnKey: undefined }
+const NO_TURN_KEYS: readonly undefined[] = []
 const MAX_EXPANDED_TURNS = 128
 
 export type MobileNativeChatTurnRow = {
   turnStatus: NativeChatTurnStatus | null
+  /** The bar renders above the row: its turn has no user bubble of its own. */
+  turnStatusAbove?: boolean
   turnExpanded: boolean
   /** Set only on a settled turn — the one row that has activity to disclose. */
   turnKey?: string
@@ -60,31 +63,36 @@ export function useMobileNativeChatTurnDisclosure({
   activeActivityText: string | null
   onToggleTurn: (turnKey: string) => void
   resolveRow: (index: number, message: NativeChatMessage) => MobileNativeChatTurnRow
-  /** The list's rows: `messages` less those waiting behind the live turn. */
+  /** The list's rows, in the order they draw, less those waiting behind the live turn. */
   listMessages: readonly NativeChatMessage[]
-  /** Rows waiting behind the live turn, drawn after its live status; `index` is in `messages`. */
+  /** Rows waiting behind the live turn, drawn after its live status. */
   waitingRows: readonly { item: NativeChatMessage; index: number }[]
 } {
-  // Resolve each row's turn, and which turn is live, once from the turn record when the host
-  // states scopes.
-  const { turnKeys, liveTurnKey } = useMemo(
-    () => (enabled ? nativeChatTurnMembership(messages, turnJournal) : NO_MEMBERSHIP),
-    [enabled, messages, turnJournal]
-  )
-  // A message waiting behind the live turn draws after that turn's live status, not in the list.
-  const waiting = useMemo(() => {
-    const ids = enabled
-      ? nativeChatMessagesWaitingBehindLiveTurn(messages, turnJournal?.items)
-      : null
-    if (!ids?.size) {
-      return NONE_WAITING
+  // Resolve each row's turn, which turn is live, and the order the rows draw in, once: from the
+  // turn record when the host states scopes, else by journal order.
+  const { rows, turnKeys, liveTurnKey } = useMemo(() => {
+    if (!enabled) {
+      return { rows: messages, turnKeys: NO_TURN_KEYS, liveTurnKey: undefined }
     }
+    const membership = nativeChatTurnMembership(messages, turnJournal)
     return {
-      listMessages: messages.filter((message) => !ids.has(message.id)),
-      waitingRows: messages.flatMap((item, index) => (ids.has(item.id) ? [{ item, index }] : [])),
-      indexById: new Map(messages.map((message, index) => [message.id, index]))
+      rows: nativeChatRowsInDrawOrder(messages, membership.drawOrder),
+      turnKeys: nativeChatRowsInDrawOrder(membership.turnKeys, membership.drawOrder),
+      liveTurnKey: membership.liveTurnKey
     }
   }, [enabled, messages, turnJournal])
+  // A message waiting behind the live turn draws after that turn's live status, not in the list.
+  const waiting = useMemo(() => {
+    const ids = enabled ? nativeChatMessagesWaitingBehindLiveTurn(rows, turnJournal?.items) : null
+    if (!ids?.size) {
+      return { listMessages: rows, waitingRows: [], indexById: null }
+    }
+    return {
+      listMessages: rows.filter((message) => !ids.has(message.id)),
+      waitingRows: rows.flatMap((item, index) => (ids.has(item.id) ? [{ item, index }] : [])),
+      indexById: new Map(rows.map((message, index) => [message.id, index]))
+    }
+  }, [enabled, rows, turnJournal])
   const turnStatuses = useMobileNativeChatTurnStatus({
     turnKeys,
     liveTurnKey,
@@ -119,16 +127,7 @@ export function useMobileNativeChatTurnDisclosure({
     },
     [scopeKey]
   )
-  // A turn's bar draws at its first row.
-  const firstRowOfTurn = useMemo(() => {
-    const first = new Map<string, number>()
-    for (const [index, turnKey] of turnKeys.entries()) {
-      if (turnKey !== undefined && !first.has(turnKey)) {
-        first.set(turnKey, index)
-      }
-    }
-    return first
-  }, [turnKeys])
+  const bars = useMemo(() => nativeChatTurnBarRows(rows, turnKeys), [rows, turnKeys])
 
   const { active, activeTurnKey, completedByTurn } = turnStatuses
   const activeActivityText = enabled && isWorking ? (activityText ?? null) : null
@@ -136,34 +135,34 @@ export function useMobileNativeChatTurnDisclosure({
     (listIndex: number, message: NativeChatMessage): MobileNativeChatTurnRow => {
       const index = waiting.indexById?.get(message.id) ?? listIndex
       const turnKey = turnKeys[index]
-      // The live turn's bar carries its running clock; it settles in place.
+      const bar = turnKey === undefined ? undefined : bars.get(turnKey)
+      // A turn's bar draws at its first row; the live turn's carries its running clock and settles
+      // in place. A message folded into a turn (a steer) carries none.
       const turnStatus =
-        enabled && turnKey !== undefined && firstRowOfTurn.get(turnKey) === index
+        enabled && turnKey !== undefined && bar?.index === index
           ? turnKey === activeTurnKey
             ? active
             : (completedByTurn[turnKey] ?? null)
           : null
       return {
         turnStatus,
+        ...(bar?.above === true && turnStatus !== null ? { turnStatusAbove: true } : {}),
         turnExpanded: turnKey ? expandedTurnIds.has(turnKey) : false,
         // Why: the key travels and the row calls one stable handler with it. A
         // closure per row would be a new identity every render of a streaming
         // transcript, defeating the row's memo; caching one per turn would mean
         // writing a ref during render, which react-freeze can discard.
         turnKey: turnKey && turnStatus?.workedSeconds != null ? turnKey : undefined,
-        // With no user boundary at all, the session's working state stays authoritative.
-        activeTurnIsWorking:
-          enabled &&
-          isWorking &&
-          (liveTurnKey !== undefined
-            ? turnKey === liveTurnKey
-            : turnKey === undefined && activeTurnKey === MOBILE_UNANCHORED_TURN_KEY)
+        // Liveness is the live turn's rows, not the newest prompt's: a running turn's rows stay live
+        // while a newer message waits behind it. With no user boundary at all, the session's
+        // working state stays authoritative.
+        activeTurnIsWorking: enabled && isWorking && turnKey === liveTurnKey
       }
     },
     [
       turnKeys,
       waiting,
-      firstRowOfTurn,
+      bars,
       liveTurnKey,
       enabled,
       activeTurnKey,
@@ -180,7 +179,7 @@ export function useMobileNativeChatTurnDisclosure({
     /** Stable for a given chat scope, so it never disturbs a row's memo. */
     onToggleTurn: toggleExpandedTurn,
     resolveRow,
-    listMessages: waiting.listMessages ?? messages,
+    listMessages: waiting.listMessages,
     waitingRows: waiting.waitingRows
   }
 }

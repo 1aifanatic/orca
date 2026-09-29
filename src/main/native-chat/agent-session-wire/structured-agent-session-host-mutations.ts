@@ -21,7 +21,12 @@ import type {
   AgentSessionThreadGoalChange,
   AgentSessionThreadGoalResult
 } from '../../../shared/agent-session-wire'
-import { DISPATCH_REJECTED_CANCELLED } from '../../../shared/structured-agent-session-dispatch-rejection'
+import { isStructuredAgentSessionMainAgentWorking } from '../../../shared/structured-agent-session-main-agent-working'
+import {
+  agentSessionFailureWords,
+  type AgentJournalDispatchRejection
+} from '../../../shared/agent-session-failure-words'
+import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import type { AgentSessionPromptRequest } from './structured-agent-session-turns-prompt'
 import { threadGoalPlan } from './structured-agent-session-thread-goal'
 import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
@@ -34,6 +39,7 @@ import {
   openForWrite,
   openWithAgent,
   sendPreparation,
+  structuredAgentSessionFailureWordsContext,
   structuredAgentSessionSendBlock
 } from './structured-agent-session-send-preparation'
 import {
@@ -135,7 +141,7 @@ export function cancelStructuredAgentSessionTurn(
   caller: StructuredAgentSessionCaller,
   params: {
     envelope: AgentSessionMutationEnvelope
-    turnId: string
+    turnId?: string
     scope?: 'background-tasks'
     taskId?: string
     prompt?: { itemId: string; expectedRevision: number }
@@ -164,17 +170,31 @@ export function cancelStructuredAgentSessionTurn(
         // Stop withdraws every queued message first, whatever the start or the child is doing.
         const withdrawn = await ctx.journal.rejectQueuedSubmissions(
           ctx.fence,
-          DISPATCH_REJECTED_CANCELLED
+          agentSessionFailureWords(agentSessionFailureFact('cancelled'), { surface: 'rejection' })
         )
+        const named = params.turnId !== undefined ? { turnId: params.turnId } : {}
         const child = context.sessions.get(ctx.sessionId)?.child
         if (child?.phase === 'starting') {
           // A start that may never land is the one thing here Stop has to end; the chat stays.
           await context.stopAgent(ctx.sessionId)
-          return { ok: true, value: { turnId: params.turnId, cancelled: true } }
+          return { ok: true, value: { ...named, cancelled: true } }
         }
-        return child
-          ? plan.run(ctx)
-          : { ok: true, value: { turnId: params.turnId, cancelled: withdrawn.length > 0 } }
+        // A Stop naming no turn ends nothing more unless the session reads working, by the rule
+        // every session list and the chat's own Stop read it.
+        const inFlight =
+          params.turnId !== undefined ||
+          isStructuredAgentSessionMainAgentWorking(
+            ctx.journal.activeTurnId(),
+            ctx.journal.submissions(),
+            ctx.fence
+          )
+        const record = context.deps.store.getRecord(ctx.sessionId)
+        return child && inFlight
+          ? plan.run({
+              ...ctx,
+              failureTextContext: structuredAgentSessionFailureWordsContext(record)
+            })
+          : { ok: true, value: { ...named, cancelled: withdrawn.length > 0 } }
       }
     },
     openForWrite(context, params.envelope)
@@ -244,7 +264,10 @@ export async function settleStructuredAgentSessionLateDispatch(
   input: {
     sessionId: string
     clientMessageId: string
-  } & ({ providerIdentity: AgentJournalItemIdentity } | { state: 'rejected'; reason: string })
+  } & (
+    | { providerIdentity: AgentJournalItemIdentity }
+    | ({ state: 'rejected' } & AgentJournalDispatchRejection)
+  )
 ): Promise<void> {
   const session = context.sessions.get(input.sessionId)
   if (!session) {
@@ -264,49 +287,10 @@ export async function settleStructuredAgentSessionLateDispatch(
           clientMessageId: input.clientMessageId,
           state: 'rejected',
           reason: input.reason,
+          rejection: input.rejection,
           fence
         }
   )
-}
-
-/**
- * Releases sends the provider can no longer be holding.
- *
- * A dispatch whose RPC timed out is recorded `unknown` — doubt, never proof of
- * non-delivery — and a live `unknown` reads as work still owed, so the session
- * shows working until something re-derives it. The provider reporting its thread
- * not running, with no turn open, IS that re-derivation.
- *
- * `pending` is deliberately untouched: that send's dispatch has not returned yet
- * and may be in flight right now. And `recovered` only retires the obligation —
- * it never makes a send re-deliverable, because the provider may well have run it.
- */
-export async function releaseStructuredAgentSessionUnansweredDispatches(
-  context: Pick<StructuredAgentSessionMutationContext, 'sessions'> & {
-    deps: { store: Pick<StructuredAgentSessionHostDeps['store'], 'getRecord'> }
-  },
-  input: { sessionId: string; reason: string }
-): Promise<void> {
-  const session = context.sessions.get(input.sessionId)
-  if (!session) {
-    return
-  }
-  const stranded = session.journal
-    .submissions()
-    .filter((entry) => entry.dispatchState === 'unknown' && entry.recovered !== true)
-  if (stranded.length === 0) {
-    return
-  }
-  for (const entry of stranded) {
-    await session.journal.resolveDispatch({
-      clientMessageId: entry.clientMessageId,
-      state: 'unknown',
-      // The earlier reason names a sharper fact than this one does.
-      reason: entry.reason ?? input.reason,
-      fence: structuredAgentSessionConversationFence(context.deps.store, input.sessionId),
-      recovered: true
-    })
-  }
 }
 
 /** The host's thin mutation surface. Each call re-reads the context, so a session

@@ -5,7 +5,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
-import { unexpectedProviderExitOutcome } from './structured-agent-session-dead-generation-settlement'
 import { setStructuredAgentSessionHost } from './structured-agent-session-registry'
 import {
   collectSubscriber,
@@ -30,8 +29,9 @@ afterEach(async () => {
   await rig.dispose()
 })
 
-/** A turn in flight whose agent exits, and whose exit settlement the journal refuses. */
-async function exitWithUnwrittenSettlement(): Promise<void> {
+/** A turn in flight whose agent exits, and whose exit settlement the journal refuses: by default
+ *  also the retry that recording the exit queues, so only an open is left to settle it. */
+async function exitWithUnwrittenSettlement(refusedWrites = 2): Promise<void> {
   await foundRestTestChat(rig)
   const open = rig.host.collaboratorsForTests().sessions.get(SESSION)!
   const running = open.child!
@@ -43,7 +43,10 @@ async function exitWithUnwrittenSettlement(): Promise<void> {
       { turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     )
   await rig.host.flushStreamedEvents(SESSION)
-  vi.spyOn(open.journal, 'appendLifecycleBatch').mockRejectedValueOnce(new Error('disk full'))
+  const append = vi.spyOn(open.journal, 'appendLifecycleBatch')
+  for (let refused = 0; refused < refusedWrites; refused += 1) {
+    append.mockRejectedValueOnce(new Error('disk full'))
+  }
   await rig.host.handleAdapterEvent({
     type: 'ended',
     sessionId: SESSION,
@@ -58,6 +61,7 @@ async function exitWithUnwrittenSettlement(): Promise<void> {
       deathEvidence: { kind: 'exit-observed' }
     })
   )
+  await rig.host.collaboratorsForTests().serialize(SESSION, async () => {})
 }
 
 async function workingTurnState(): Promise<string | undefined> {
@@ -68,6 +72,18 @@ async function workingTurnState(): Promise<string | undefined> {
 }
 
 describe('a turn its gone agent left running', () => {
+  it('is settled in place by the retry recording the exit queues, with no reopen', async () => {
+    await exitWithUnwrittenSettlement(1)
+
+    expect(rig.host.collaboratorsForTests().sessions.has(SESSION)).toBe(true)
+    expect(await workingTurnState()).toBe('interrupted')
+    const { items } = await rig.host.journalSnapshot(SESSION)
+    expect(JSON.stringify(items)).toContain(
+      'Codex stopped while this response was in progress. You can continue in this conversation.'
+    )
+    expect(rig.adapter.acquire).toHaveBeenCalledOnce()
+  })
+
   it('is settled when the idle-closed conversation is opened again, and its reader sees it', async () => {
     await exitWithUnwrittenSettlement()
     expect(await workingTurnState()).toBe('running')
@@ -79,7 +95,10 @@ describe('a turn its gone agent left running', () => {
     await rig.host.subscribe({ id: 'reader', sessionId: SESSION, emit: reader.emit })
 
     expect(await workingTurnState()).toBe('interrupted')
-    expect(JSON.stringify(reader.events)).toContain(unexpectedProviderExitOutcome('killed'))
+    // The death evidence is Orca's log text: the row says only that the provider stopped.
+    expect(JSON.stringify(reader.events)).toContain(
+      'Codex stopped while this response was in progress. You can continue in this conversation.'
+    )
     expect(rig.adapter.acquire).toHaveBeenCalledOnce()
   })
 

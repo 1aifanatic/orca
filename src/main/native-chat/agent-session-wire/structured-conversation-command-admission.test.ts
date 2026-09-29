@@ -29,12 +29,12 @@ describe('conversationCommandBlocked background tasks', () => {
       contextWith({ state: 'monitoring', supportsTaskStop: true }),
       RECORD
     )
-    expect(blocked).toBe('Stop background tasks before using this command.')
+    expect(blocked?.message).toBe('Stop background tasks before using this command.')
   })
 
   it('asks for a stop on a host that predates the stop-capability field', () => {
     const blocked = conversationCommandBlocked(contextWith({ state: 'monitoring' }), RECORD)
-    expect(blocked).toBe('Stop background tasks before using this command.')
+    expect(blocked?.message).toBe('Stop background tasks before using this command.')
   })
 
   it('asks the user to wait when the provider exposes no stop at all', () => {
@@ -43,7 +43,7 @@ describe('conversationCommandBlocked background tasks', () => {
       contextWith({ state: 'monitoring', supportsStopAll: false }),
       RECORD
     )
-    expect(blocked).toBe('Wait for background tasks to finish before using this command.')
+    expect(blocked?.message).toBe('Wait for background tasks to finish before using this command.')
   })
 
   it('still refuses on the open turn, not on the work the strip now shows', () => {
@@ -63,7 +63,7 @@ describe('conversationCommandBlocked background tasks', () => {
           }
         ]
       }) as unknown as ReturnType<typeof ctx.journal.snapshot>
-    expect(conversationCommandBlocked(ctx, RECORD)).toBe(
+    expect(conversationCommandBlocked(ctx, RECORD)?.message).toBe(
       'Wait for the current turn to finish before using this command.'
     )
   })
@@ -79,9 +79,10 @@ describe('conversationCommandBlocked for a command sent at rest (C6, B3)', () =>
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the admission reads only each item's body.
     ctx.journal.snapshot = () => staleTurn as never
     expect(conversationCommandBlocked(ctx, RECORD, 'at-rest')).toBeNull()
-    expect(conversationCommandBlocked(ctx, RECORD)).toBe(
-      'Wait for the current turn to finish before using this command.'
-    )
+    expect(conversationCommandBlocked(ctx, RECORD)).toMatchObject({
+      details: { reason: 'turnActive' },
+      message: 'Wait for the current turn to finish before using this command.'
+    })
   })
 
   it("ignores an older build's compaction record", () => {
@@ -119,9 +120,10 @@ describe('conversationCommandBlocked for a command sent at rest (C6, B3)', () =>
         replacementSessionId: 'clear-replacement'
       }
     } as unknown as AgentSessionRecord
-    expect(conversationCommandBlocked(contextWith(null), record)).toBe(
-      'This conversation has been cleared. Open the current conversation to continue.'
-    )
+    expect(conversationCommandBlocked(contextWith(null), record)).toMatchObject({
+      code: 'agent_session_operation_invalid',
+      details: { reason: 'conversationCleared' }
+    })
   })
 
   it('at handover, lets the command itself and messages queued behind it wait', () => {

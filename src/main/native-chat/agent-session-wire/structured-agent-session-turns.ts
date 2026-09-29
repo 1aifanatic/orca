@@ -6,36 +6,38 @@
 // row the next attach settles as `unknown`, whereas the reverse would lose a
 // turn the provider already accepted.
 
+import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
+import {
+  agentSessionFailureWords,
+  type AgentSessionFailureWordsContext
+} from '../../../shared/agent-session-failure-words'
 import type {
   AgentJournalMessageItem,
   AgentJournalSubmission
 } from '../../../shared/agent-session-journal-types'
-import type {
-  AgentSessionCancelResult,
-  AgentSessionSendResult,
-  AgentSessionWireRefusal
+import {
+  refuse,
+  type AgentSessionRefusalReason,
+  type AgentSessionSendResult,
+  type AgentSessionWireRefusal
 } from '../../../shared/agent-session-wire'
 import { DISPATCH_DOUBT_PERSISTENCE_FAILED } from '../agent-session-journal/journal-dispatch-doubt-reasons'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
-import { latestJournalDispatchObservation } from '../agent-session-journal/journal-dispatch-observation'
 import type {
   AgentSessionDispatchOutcome,
   StructuredAgentSessionAdapter,
   StructuredAgentSessionProviderChildPhase
 } from './structured-agent-session-adapter'
-import { providerStartupFailureRejection } from './structured-agent-session-dead-generation-settlement'
-import { validatePendingPrompt } from './structured-agent-session-prompt-state'
+import { structuredAgentSessionStartFailure } from './structured-agent-session-failure-text'
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
 import {
   handOverStructuredAgentSessionCommand,
-  isStructuredAgentSessionCommandTurnId,
-  structuredAgentSessionCommandWasStopped,
   structuredAgentSessionHandoverOrigin,
-  structuredAgentSessionStopNoteIdentity,
   type StructuredAgentSessionCommandHandoverContext
 } from './structured-agent-session-command-turn'
 export { performSetOption } from './structured-agent-session-turns-options'
 export { performPrompt } from './structured-agent-session-turns-prompt'
+export { performCancel } from './structured-agent-session-turns-cancel'
 
 export type AgentSessionTurnContext = {
   sessionId: string
@@ -53,6 +55,8 @@ export type AgentSessionTurnContext = {
   flushStreamedEvents: () => Promise<void>
   /** What the host holds about the child this dispatch is for, read at the moment it is needed. */
   providerChildPhase?: () => StructuredAgentSessionProviderChildPhase | undefined
+  /** Who a Stop's refusal row names. */
+  failureTextContext?: AgentSessionFailureWordsContext
   now: () => number
 }
 
@@ -60,8 +64,11 @@ export type TurnOutcome<TValue> =
   | { ok: true; value: TValue }
   | { ok: false; refusal: AgentSessionWireRefusal }
 
-function invalid(message: string): { ok: false; refusal: AgentSessionWireRefusal } {
-  return { ok: false, refusal: { code: 'agent_session_operation_invalid', message } }
+function invalid(
+  reason: AgentSessionRefusalReason<'agent_session_operation_invalid'>,
+  message: string
+): { ok: false; refusal: AgentSessionWireRefusal } {
+  return { ok: false, refusal: refuse('agent_session_operation_invalid', { reason }, message) }
 }
 
 /** A thrown adapter error is indistinguishable from a lost reply, so it settles as `unknown`
@@ -84,7 +91,10 @@ async function dispatchSafely(
     })
   } catch (error) {
     if (ctx.providerChildPhase?.() === 'starting') {
-      return { state: 'rejected', reason: providerStartupFailureRejection(error) }
+      return {
+        state: 'rejected',
+        ...structuredAgentSessionStartFailure({ error }, ctx.failureTextContext)
+      }
     }
     return { state: 'unknown', reason: error instanceof Error ? error.message : String(error) }
   }
@@ -112,7 +122,10 @@ export async function performSend(
     .submissions()
     .find((entry) => entry.clientMessageId === input.clientMessageId)
   if (existing && existing.payloadFingerprint !== input.payloadFingerprint) {
-    return invalid(`Message id ${input.clientMessageId} was already used for another send.`)
+    return invalid(
+      'messageIdReused',
+      `Message id ${input.clientMessageId} was already used for another send.`
+    )
   }
   if (existing) {
     return {
@@ -123,7 +136,7 @@ export async function performSend(
   try {
     await ctx.journal.appendSubmission({ ...input, fence: ctx.fence, handoverRecorded: true })
   } catch {
-    return invalid('The message could not be recorded and was not sent.')
+    return invalid('journalWriteFailed', 'The message could not be recorded and was not sent.')
   }
   return {
     ok: true,
@@ -150,7 +163,7 @@ export async function handOverSubmission(
     await ctx.journal.resolveDispatch({
       clientMessageId,
       state: 'rejected',
-      reason: 'The message could not be read back and was not sent.',
+      ...agentSessionFailureWords(agentSessionFailureFact('hostFault'), { surface: 'rejection' }),
       fence: ctx.fence
     })
     return
@@ -187,7 +200,15 @@ export async function handOverSubmission(
             providerIdentity: outcome.providerIdentity,
             fence: ctx.fence
           }
-        : { clientMessageId, state: outcome.state, reason: outcome.reason, fence: ctx.fence }
+        : outcome.state === 'rejected'
+          ? {
+              clientMessageId,
+              state: 'rejected',
+              reason: outcome.reason,
+              rejection: outcome.rejection,
+              fence: ctx.fence
+            }
+          : { clientMessageId, state: 'unknown', reason: outcome.reason, fence: ctx.fence }
     )
   } catch (error) {
     // A failed resolution must not strand a pending row; an unknown result is
@@ -217,88 +238,4 @@ function requireSubmission(
     throw new Error('agent_session_submission_lost')
   }
   return submission
-}
-
-export async function performCancel(
-  ctx: AgentSessionTurnContext,
-  input: {
-    clientOperationId: string
-    turnId: string
-    scope?: 'background-tasks'
-    taskId?: string
-    prompt?: { itemId: string; expectedRevision: number }
-    /** Ends the provider child, for a running command the provider did not take the Stop on. */
-    stopChild?: () => Promise<void>
-  }
-): Promise<TurnOutcome<AgentSessionCancelResult>> {
-  if (input.prompt) {
-    const validated = validatePendingPrompt(ctx, input.prompt)
-    if (!validated.ok) {
-      return validated
-    }
-  }
-  let cancelled = false
-  let unconfirmed: string | null = null
-  // The turn the Stop named, read before the cancel settles it: the note reports on that turn.
-  const turnScope = ctx.journal.liveTurnScope()
-  // Only the provider's end or the child's ends a command. A command the provider has not opened a
-  // turn for, would not interrupt, or was already asked to stop, ends with its child; that child's
-  // dead-generation settlement writes the command's verdict.
-  const runningCommand =
-    input.stopChild !== undefined &&
-    isStructuredAgentSessionCommandTurnId(input.turnId) &&
-    ctx.journal.activeTurnId() === input.turnId
-  const stoppedBefore =
-    runningCommand && structuredAgentSessionCommandWasStopped(ctx.journal, input.turnId)
-  try {
-    const dispatchStatus = latestJournalDispatchObservation(ctx.journal, ctx.fence)
-    cancelled = stoppedBefore
-      ? false
-      : input.scope
-        ? (
-            await ctx.adapter.stopBackgroundTasks?.({
-              sessionId: ctx.sessionId,
-              fence: ctx.fence,
-              ...(input.taskId ? { taskId: input.taskId } : {})
-            })
-          )?.cancelled === true
-        : (
-            await ctx.adapter.cancelTurn({
-              sessionId: ctx.sessionId,
-              turnId: input.turnId,
-              fence: ctx.fence,
-              // The journal is what the client read to name a turn, so it is what judges the request.
-              resolveLiveTurnId: () => ctx.journal.activeTurnId(),
-              ...(dispatchStatus ? { dispatchStatus } : {}),
-              ...(input.prompt ? { prompt: { itemId: input.prompt.itemId } } : {})
-            })
-          ).cancelled
-  } catch (error) {
-    if (input.prompt) {
-      throw error
-    }
-    unconfirmed = error instanceof Error ? error.message : String(error)
-  }
-  if (runningCommand && !cancelled) {
-    await input.stopChild?.()
-    cancelled = true
-  }
-  const note = cancelled
-    ? 'Cancellation requested.'
-    : unconfirmed !== null
-      ? `Cancellation was not confirmed: ${unconfirmed}`
-      : 'The provider had already finished this turn.'
-  if (cancelled && input.prompt) {
-    await ctx.flushStreamedEvents()
-  }
-  if (input.scope) {
-    return { ok: true, value: { turnId: input.turnId, cancelled } }
-  }
-  // Keyed by the operation id so a replayed cancel upserts one item, not two.
-  await ctx.journal.appendItem(
-    structuredAgentSessionStopNoteIdentity(input.clientOperationId),
-    { kind: 'status', text: note },
-    { fence: ctx.fence, turnScope }
-  )
-  return { ok: true, value: { turnId: input.turnId, cancelled } }
 }

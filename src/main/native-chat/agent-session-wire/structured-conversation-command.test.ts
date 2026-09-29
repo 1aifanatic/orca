@@ -6,7 +6,10 @@ import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-ses
 import type { AgentSessionConversationCommand } from '../../../shared/agent-session-conversation-command'
 import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
-import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
+import {
+  AgentSessionAcquisitionRefusal,
+  type StructuredAgentSessionAdapter
+} from './structured-agent-session-adapter'
 import { STRUCTURED_AGENT_SESSION_IDLE_MS } from './structured-agent-session-idle-sweep'
 import {
   HOST_TEST_NOW,
@@ -229,13 +232,44 @@ describe('host conversation commands', () => {
     })
     expect(await host.conversationCommand(caller, commandParams('clear'))).toMatchObject({
       ok: true,
-      value: { state: 'completed', replacementSessionId: undefined, error: expect.any(String) }
+      value: {
+        state: 'completed',
+        replacementSessionId: undefined,
+        // The refusal's message is Orca's log text; the result words its situation.
+        error: "Codex couldn't start. Start a new chat to continue.",
+        failure: { kind: 'startFailed', refusal: { code: 'structured_agent_session_unsupported' } }
+      }
     })
     expect(store.listVisibleSessionIds()).toEqual([HOST_TEST_SESSION])
     expect(acquisitions).toBe(1)
     expect(await host.conversationCommand(caller, commandParams('compact'))).toMatchObject({
       ok: true
     })
+  })
+
+  it('tells the user to run /clear again when the replacement could not start', async () => {
+    vi.mocked(adapter.acquire).mockRejectedValueOnce(new Error('spawn codex ENOENT'))
+    expect(await host.conversationCommand(caller, commandParams('clear'))).toMatchObject({
+      ok: true,
+      value: { state: 'completed', error: "Codex couldn't start. Run /clear again." }
+    })
+  })
+
+  it('keeps the situation a refused replacement start named', async () => {
+    vi.mocked(adapter.acquire).mockRejectedValueOnce(
+      new AgentSessionAcquisitionRefusal('Codex is not signed in.', 'notSignedIn')
+    )
+    expect(await host.conversationCommand(caller, commandParams('clear'))).toMatchObject({
+      ok: true,
+      value: {
+        state: 'completed',
+        replacementSessionId: undefined,
+        // The next step is the command the user ran, not a message into the old conversation.
+        error: 'Codex is not signed in for the selected account. Sign in, then run /clear again.',
+        failure: { kind: 'notSignedIn' }
+      }
+    })
+    expect(store.listVisibleSessionIds()).toEqual([HOST_TEST_SESSION])
   })
 
   it('runs a command whose fence the client has not caught up to', async () => {

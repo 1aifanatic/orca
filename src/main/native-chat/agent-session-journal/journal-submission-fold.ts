@@ -1,5 +1,5 @@
-// Folding submission and dispatch rows: the queue entry, its message row, and the provider item
-// an accepted message adopts.
+// Folding submission rows: the queue entry, its message row, where a handover places it, and the
+// provider item an accepted message adopts.
 
 import {
   AGENT_JOURNAL_THREAD_SCOPE,
@@ -31,52 +31,20 @@ export function applyJournalSubmission(
   const turnScope = row.handoverRecorded
     ? AGENT_JOURNAL_THREAD_SCOPE
     : statedOrDerivedTurnScope(state, row)
-  upsertJournalItem(state, itemId, 0, journalRenderItem(itemId, 0, row.body, row, turnScope))
-}
-
-export function applyJournalDispatch(
-  state: JournalReducerState,
-  row: Extract<JournalRow, { kind: 'dispatch' }>
-): void {
-  const submission = state.submissions.get(row.clientMessageId)
-  if (!submission) {
-    return
-  }
-  // `rejected` is terminal; a late `unknown` must not reopen a settled answer.
-  if (submission.dispatchState === 'rejected' || submission.dispatchState === 'accepted') {
-    return
-  }
-  submission.fence = row.fence
-  submission.dispatchState = row.state
-  submission.providerItemId = row.providerItemId
-  submission.reason = row.reason
-  submission.resolvedAt = row.state === 'pending' ? null : row.ts
-  if (row.state === 'pending') {
-    submission.handedOverAt = row.ts
-    placeHandedOverMessage(state, submission, row)
-  }
-  if (row.recovered) {
-    submission.recovered = row.recovered
-  } else {
-    delete submission.recovered
-  }
-  if (row.state !== 'accepted' || !row.providerItemId) {
-    return
-  }
-  state.aliases.set(row.providerItemId, agentJournalSubmissionKey(row.clientMessageId))
-  state.receipts.set(row.clientMessageId, {
-    clientMessageId: row.clientMessageId,
-    providerItemId: row.providerItemId,
-    cursor: { epoch: row.epoch, sequence: row.seq },
-    acceptedAt: row.ts
-  })
+  upsertJournalItem(
+    state,
+    itemId,
+    0,
+    journalRenderItem(itemId, 0, row.body, row, turnScope),
+    row.fence
+  )
 }
 
 /** A queued message joins the conversation where it was handed over, not where it was accepted:
  *  what the agent did meanwhile — a command it waited behind, say — happened before it. It joins
  *  the turn that handover delivered it into — a steer — or none. Rows from hosts that predate the
  *  stated scope are scoped at the handover, as their creation would have been. */
-function placeHandedOverMessage(
+export function placeHandedOverMessage(
   state: JournalReducerState,
   submission: AgentJournalSubmission,
   row: Extract<JournalRow, { kind: 'dispatch' }>
