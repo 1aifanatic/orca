@@ -46,10 +46,7 @@ import { getBranchConflictKindViaExec } from '../git/repo-branch-conflict'
 import { WorktreeCreateCollisionError } from '../../shared/new-workspace/worktree-create-collision'
 import { resolveLocalGitUsername, getSshGitUsername } from '../git/git-username'
 import { hasCommitObjectViaGitExec } from '../git/commit-object-ref'
-import {
-  hasLocalWorktreeBaseRef,
-  probeWorktreeBaseRefPresence
-} from '../git/worktree-base-ref-probe'
+import { hasLocalWorktreeBaseRef } from '../git/worktree-base-ref-probe'
 import { resolveWorktreeCreateBase } from '../worktree-create-base'
 import { resolveWorktreeAddBaseRef } from '../../shared/worktree/base-ref'
 import { getHostedReviewForBranch } from '../source-control/hosted-review'
@@ -177,9 +174,8 @@ import {
   retireGeneratedWorktreeName
 } from '../worktree-name-retirement'
 import { createRetiredNameLookup } from '../../shared/worktree/retired-name-registry'
-import { retryOnGitLockContention } from '../../shared/git-lock-contention'
-import { createKeyedSerialRunner } from '../../shared/keyed-serial-runner'
-import { LOCAL_BASE_REF_REFRESH_QUEUE_MAX_WAIT_MS } from '../git/worktree-base-refresh'
+import { toLocalBaseRefRefreshResult } from '../../shared/worktree/local-base-branch-fast-forward'
+import { isSshRequestOutcomeUnverifiable } from '../ssh/ssh-channel-multiplexer'
 
 const SSH_WORKTREE_CREATE_FETCH_FRESHNESS_MS = 30_000
 const SSH_WORKTREE_CREATE_FETCH_CACHE_MAX = 512
@@ -231,22 +227,6 @@ type StagedStartupResult = {
   didSpawnSetup: boolean
   warning?: string
 }
-
-type RemoteLocalBaseRefRefreshability =
-  | {
-      refreshable: true
-      baseRef: string
-      localBranch: string
-      fullRef: string
-      remoteTrackingRef: string
-      behind: number
-      ownerWorktreePath?: string
-    }
-  | {
-      refreshable: false
-      // undefined = nothing to refresh (no local branch yet), so the caller reports no status at all.
-      result: LocalBaseRefRefreshResult | undefined
-    }
 
 function appendWorktreeCreateWarning(current: string | undefined, next: string): string {
   return current ? `${current} Also ${next[0]?.toLowerCase() ?? ''}${next.slice(1)}` : next
@@ -393,10 +373,6 @@ export function recordWorkspaceLineageForCreatedWorktree(
     createdAt
   })
   return { lineage, workspaceLineage }
-}
-
-function countNonEmptyGitOutputLines(output: string): number {
-  return output.split(/\r?\n/).filter((line) => line.trim().length > 0).length
 }
 
 async function spawnLocalStartupAndSetupTerminals(args: {
@@ -1667,178 +1643,28 @@ export async function prefetchRemoteWorktreeCreateBase(
   await fetchRemoteForWorktreeCreate(provider, repo, 'origin')
 }
 
-const runPerRemoteRepo = createKeyedSerialRunner({
-  maxWaitMs: LOCAL_BASE_REF_REFRESH_QUEUE_MAX_WAIT_MS
-})
-
-function refreshLocalBaseRefForRemoteWorktreeCreate(
-  provider: SshGitProvider,
-  repo: Repo,
-  remoteTrackingBase: RemoteTrackingBase
-): Promise<LocalBaseRefRefreshResult | undefined> {
-  // Why: two creates racing to reset the same remote checkout collide on index.lock; queued, the second finds local already current.
-  return runPerRemoteRepo(`${repo.connectionId}\0${repo.path}`, () =>
-    performRemoteLocalBaseRefRefresh(provider, repo.path, remoteTrackingBase)
-  )
-}
-
-async function performRemoteLocalBaseRefRefresh(
+/** Never rejects: the create may already have succeeded when this settles. */
+async function refreshLocalBaseRefForRemoteWorktreeCreate(
   provider: SshGitProvider,
   repoPath: string,
   remoteTrackingBase: RemoteTrackingBase
 ): Promise<LocalBaseRefRefreshResult | undefined> {
-  const evaluation = await evaluateRemoteLocalBaseRefRefreshability(
-    provider,
-    repoPath,
-    remoteTrackingBase,
-    // Why: an already-current local ref needs no owner check or reset; skipping both avoids a spurious dirty warning and index.lock churn.
-    (behind) => behind > 0
-  )
-  if (!evaluation.refreshable) {
-    return evaluation.result
-  }
-  if (evaluation.behind <= 0) {
-    return undefined
-  }
-
-  const resultBase = { baseRef: evaluation.baseRef, localBranch: evaluation.localBranch }
+  const names = { baseRef: remoteTrackingBase.base, localBranch: remoteTrackingBase.branch }
   try {
-    // Why: each relay call repeats its owner/cleanliness checks, so a lock retry never resets a checkout that turned dirty.
-    await retryOnGitLockContention(() =>
-      provider
-        .refreshLocalBaseRefForWorktreeCreate({
-          repoPath,
-          fullRef: evaluation.fullRef,
-          remoteTrackingRef: evaluation.remoteTrackingRef,
-          ...(evaluation.ownerWorktreePath
-            ? { ownerWorktreePath: evaluation.ownerWorktreePath }
-            : {})
-        })
-        .catch(async (error: unknown) => {
-          // Why: a concurrent refresh may already have fast-forwarded local; that is success, not a warning.
-          if (
-            !(await isRemoteLocalRefAtRemoteTracking(
-              provider,
-              repoPath,
-              evaluation.fullRef,
-              evaluation.remoteTrackingRef
-            ))
-          ) {
-            throw error
-          }
-        })
-    )
-    return {
-      ...resultBase,
-      status: 'updated',
-      ...(evaluation.ownerWorktreePath ? { ownerWorktreePath: evaluation.ownerWorktreePath } : {})
+    // Why: the relay owns the whole refresh on the execution host, one run per branch at a time.
+    const outcome = await provider.refreshLocalBaseRefForWorktreeCreate({
+      repoPath,
+      fullRef: `refs/heads/${remoteTrackingBase.branch}`,
+      remoteTrackingRef: remoteTrackingBase.ref
+    })
+    return toLocalBaseRefRefreshResult(names, outcome)
+  } catch (error) {
+    if (isSshRequestOutcomeUnverifiable(error)) {
+      // Why: the host may still finish it; claiming it failed would be a guess.
+      console.warn('[worktree-create] local base ref refresh outcome unknown', error)
+      return undefined
     }
-  } catch {
-    return { ...resultBase, status: 'skipped_error' }
-  }
-}
-
-async function isRemoteLocalRefAtRemoteTracking(
-  provider: SshGitProvider,
-  repoPath: string,
-  fullRef: string,
-  remoteTrackingRef: string
-): Promise<boolean> {
-  try {
-    const { stdout } = await provider.exec(
-      ['rev-parse', `${fullRef}^{commit}`, `${remoteTrackingRef}^{commit}`],
-      repoPath
-    )
-    const [localOid, remoteOid] = stdout.trim().split(/\s+/)
-    return Boolean(localOid) && localOid === remoteOid
-  } catch {
-    return false
-  }
-}
-
-async function evaluateRemoteLocalBaseRefRefreshability(
-  provider: SshGitProvider,
-  repoPath: string,
-  remoteTrackingBase: RemoteTrackingBase,
-  shouldInspectOwner: (behind: number) => boolean = () => true
-): Promise<RemoteLocalBaseRefRefreshability> {
-  const resultBase = {
-    baseRef: remoteTrackingBase.base,
-    localBranch: remoteTrackingBase.branch
-  }
-  const fullRef = `refs/heads/${remoteTrackingBase.branch}`
-
-  let behind = 0
-  try {
-    // Why: SSH generic git.exec is allowlisted — merge-base and log are permitted read-only probes; rev-list is intentionally not exposed.
-    await provider.exec(['merge-base', '--is-ancestor', fullRef, remoteTrackingBase.ref], repoPath)
-    const { stdout } = await provider.exec(
-      ['log', '--format=%H', `${fullRef}..${remoteTrackingBase.ref}`],
-      repoPath
-    )
-    behind = countNonEmptyGitOutputLines(stdout)
-    if (!shouldInspectOwner(behind)) {
-      // Why: no behind commits means no update to advise; skip remote worktree/status round trips.
-      return {
-        refreshable: true,
-        ...resultBase,
-        fullRef,
-        remoteTrackingRef: remoteTrackingBase.ref,
-        behind
-      }
-    }
-  } catch {
-    // Why (#15331): the probes above also fail when refs/heads/<branch> is simply absent; the relay's
-    // `worktree add -b` is about to create it, so there is nothing stale to warn about. Only a proven
-    // absence suppresses: a dropped relay connection is not evidence the branch is missing.
-    const presence = await probeWorktreeBaseRefPresence(
-      (args) => provider.exec(args, repoPath),
-      fullRef
-    )
-    if (presence === 'absent') {
-      return { refreshable: false, result: undefined }
-    }
-    return { refreshable: false, result: { ...resultBase, status: 'skipped_not_fast_forward' } }
-  }
-
-  try {
-    const worktrees = await provider.listWorktrees(repoPath)
-    const ownerWorktree = worktrees.find((wt) => wt.branch === fullRef)
-
-    if (ownerWorktree) {
-      const status = await provider.worktreeIsClean(ownerWorktree.path, {
-        includeUntracked: false
-      })
-      if (!status.clean) {
-        return {
-          refreshable: false,
-          result: {
-            ...resultBase,
-            status: 'skipped_dirty_worktree',
-            ownerWorktreePath: ownerWorktree.path
-          }
-        }
-      }
-      return {
-        refreshable: true,
-        ...resultBase,
-        fullRef,
-        remoteTrackingRef: remoteTrackingBase.ref,
-        behind,
-        ownerWorktreePath: ownerWorktree.path
-      }
-    }
-
-    // Why: not checked out anywhere, so a bare-ref fast-forward is safe; omitting ownerWorktreePath tells the relay to update-ref, not reset --hard.
-    return {
-      refreshable: true,
-      ...resultBase,
-      fullRef,
-      remoteTrackingRef: remoteTrackingBase.ref,
-      behind
-    }
-  } catch {
-    return { refreshable: false, result: { ...resultBase, status: 'skipped_error' } }
+    return toLocalBaseRefRefreshResult(names, { status: 'skipped_error' })
   }
 }
 
@@ -1847,30 +1673,17 @@ async function getRemoteLocalBaseRefUpdateSuggestionForWorktreeCreate(
   repoPath: string,
   remoteTrackingBase: RemoteTrackingBase
 ): Promise<LocalBaseRefUpdateSuggestion | undefined> {
-  const evaluation = await evaluateRemoteLocalBaseRefRefreshability(
-    provider,
-    repoPath,
-    remoteTrackingBase,
-    (behind) => behind > 0
-  )
-  if (!evaluation.refreshable || evaluation.behind <= 0) {
-    return undefined
-  }
   try {
-    await provider.refreshLocalBaseRefForWorktreeCreate({
+    const behind = await provider.getLocalBaseRefFastForwardableBehind({
       repoPath,
-      fullRef: evaluation.fullRef,
-      remoteTrackingRef: evaluation.remoteTrackingRef,
-      ...(evaluation.ownerWorktreePath ? { ownerWorktreePath: evaluation.ownerWorktreePath } : {}),
-      checkOnly: true
+      fullRef: `refs/heads/${remoteTrackingBase.branch}`,
+      remoteTrackingRef: remoteTrackingBase.ref
     })
+    return behind === undefined
+      ? undefined
+      : { baseRef: remoteTrackingBase.base, localBranch: remoteTrackingBase.branch, behind }
   } catch {
     return undefined
-  }
-  return {
-    baseRef: evaluation.baseRef,
-    localBranch: evaluation.localBranch,
-    behind: evaluation.behind
   }
 }
 
@@ -2132,12 +1945,7 @@ export async function createRemoteWorktree(
     !checkoutExistingBranch &&
     remoteTrackingBase &&
     remoteTrackingBase.branch !== branchName
-      ? refreshLocalBaseRefForRemoteWorktreeCreate(provider, repo, remoteTrackingBase).catch(
-          (error: unknown) => {
-            console.warn('[worktree-create] local base ref refresh failed unexpectedly', error)
-            return undefined
-          }
-        )
+      ? refreshLocalBaseRefForRemoteWorktreeCreate(provider, repo.path, remoteTrackingBase)
       : undefined
   const localBaseRefUpdateSuggestion =
     !settings.refreshLocalBaseRefOnWorktreeCreate &&
@@ -2187,7 +1995,7 @@ export async function createRemoteWorktree(
     }
     throw err
   } finally {
-    // Why: a sparse rollback below must not race a refresh still resetting the owner checkout.
+    // Why: a sparse rollback below must not race a refresh still moving the owner checkout.
     localBaseRefRefresh = await pendingLocalBaseRefRefresh
   }
   // Why: the worktree is listable from here on; a scan that began before it appeared is overtaken.

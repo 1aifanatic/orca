@@ -39,7 +39,7 @@ export function localBaseRefRefreshFailureDetail(result: LocalBaseRefRefreshResu
 
 export function showLocalBaseRefRefreshToast(
   result: LocalBaseRefRefreshResult | undefined,
-  createdWorktree?: Pick<Worktree, 'id' | 'displayName' | 'branch' | 'path'>
+  createdWorktree?: Pick<Worktree, 'id' | 'repoId' | 'displayName' | 'branch' | 'path'>
 ): void {
   if (!result || result.status === 'updated') {
     return
@@ -48,7 +48,7 @@ export function showLocalBaseRefRefreshToast(
   const worktreeName = createdWorktree ? resolveWorktreeDisplayName(createdWorktree).trim() : ''
   const detail = localBaseRefRefreshFailureDetail(result)
 
-  // Why: Infinity so create-time failures aren't buried; id is per worktree so each create stays attributable.
+  // Why: Infinity so create-time failures aren't buried; one id per repo and branch because every create that joined the same refresh reports the same fact.
   toast.warning(
     worktreeName
       ? translate(
@@ -60,7 +60,7 @@ export function showLocalBaseRefRefreshToast(
           value0: result.localBranch
         }),
     {
-      id: `local-base-ref-refresh-failed:${createdWorktree?.id ?? 'unknown'}:${result.localBranch}`,
+      id: `local-base-ref-refresh-failed:${createdWorktree?.repoId ?? 'unknown'}:${result.localBranch}`,
       description: worktreeName
         ? translate(
             'auto.store.slices.worktrees.localBaseRefRefreshFailedDescriptionNamed',

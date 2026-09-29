@@ -10,9 +10,9 @@ import { runWithGitReadCacheInvalidation } from './status'
 import { invalidateWslLinkedWorktreeGitRouting } from './wsl-linked-worktree-git-routing'
 import {
   getLocalBaseRefUpdateSuggestionForWorktreeCreate,
+  parseRemoteTrackingLocalBaseRef,
   refreshLocalBaseRefForWorktreeCreate
 } from './worktree-base-refresh'
-import { parseRemoteTrackingLocalBaseRef } from './worktree-base-refresh-analysis'
 import { resolveWorktreeBaseCommitOid } from './worktree-base-ref-probe'
 import type {
   AddWorktreeOptions,

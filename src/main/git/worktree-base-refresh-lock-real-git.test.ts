@@ -20,6 +20,7 @@ function git(cwd: string, args: string[]): string {
 async function createBehindRepoWithIndexLock(): Promise<{
   repoPath: string
   lockPath: string
+  localOid: string
   remoteOid: string
 }> {
   const root = await mkdtemp(join(tmpdir(), 'orca-base-refresh-lock-'))
@@ -33,6 +34,7 @@ async function createBehindRepoWithIndexLock(): Promise<{
   await writeFile(join(repoPath, 'version.txt'), 'one\n')
   git(repoPath, ['add', 'version.txt'])
   git(repoPath, ['commit', '--quiet', '-m', 'one'])
+  const localOid = git(repoPath, ['rev-parse', 'HEAD'])
   git(repoPath, ['checkout', '--quiet', '-b', 'upstream'])
   await writeFile(join(repoPath, 'version.txt'), 'two\n')
   git(repoPath, ['commit', '--quiet', '-am', 'two'])
@@ -42,17 +44,24 @@ async function createBehindRepoWithIndexLock(): Promise<{
   git(repoPath, ['branch', '--quiet', '-D', 'upstream'])
   const lockPath = join(repoPath, '.git', 'index.lock')
   await writeFile(lockPath, '')
-  return { repoPath, lockPath, remoteOid }
+  return { repoPath, lockPath, localOid, remoteOid }
 }
 
-function spyOnFailedResets(onFailure: () => Promise<void> | void): { resets: () => number } {
+function isOwnerFastForward(args: readonly string[]): boolean {
+  return args.includes('merge') && args.includes('--ff-only')
+}
+
+/** Counts owner fast-forwards; `onFailure` runs after each failed one, before it is reported. */
+function spyOnFastForwards(onFailure: () => Promise<void> | void = () => {}): {
+  merges: () => number
+} {
   const original = gitRunner.gitExecFileAsync
-  let resets = 0
+  let merges = 0
   vi.spyOn(gitRunner, 'gitExecFileAsync').mockImplementation(async (args, options) => {
-    if (args[0] !== 'reset') {
+    if (!isOwnerFastForward(args)) {
       return original(args, options)
     }
-    resets += 1
+    merges += 1
     try {
       return await original(args, options)
     } catch (error) {
@@ -60,7 +69,11 @@ function spyOnFailedResets(onFailure: () => Promise<void> | void): { resets: () 
       throw error
     }
   })
-  return { resets: () => resets }
+  return { merges: () => merges }
+}
+
+function refresh(repoPath: string) {
+  return refreshLocalBaseRefForWorktreeCreate(repoPath, 'origin/main', 'refs/remotes/origin/main')
 }
 
 afterEach(async () => {
@@ -71,48 +84,54 @@ afterEach(async () => {
 describe('local base refresh against a held index.lock with real Git', () => {
   it('retries once the other git process releases the lock', async () => {
     const { repoPath, lockPath, remoteOid } = await createBehindRepoWithIndexLock()
-    const spy = spyOnFailedResets(() => rm(lockPath, { force: true }))
+    const spy = spyOnFastForwards(() => rm(lockPath, { force: true }))
 
-    const result = await refreshLocalBaseRefForWorktreeCreate(
-      repoPath,
-      'origin/main',
-      'refs/remotes/origin/main'
-    )
+    const result = await refresh(repoPath)
 
     expect(result).toMatchObject({ status: 'updated' })
-    expect(spy.resets()).toBe(2)
+    expect(spy.merges()).toBe(2)
     expect(git(repoPath, ['rev-parse', 'main'])).toBe(remoteOid)
     expect(await readFile(join(repoPath, 'version.txt'), 'utf8')).toBe('two\n')
   })
 
   it('reports updated when another process fast-forwarded local while holding the lock', async () => {
     const { repoPath, remoteOid } = await createBehindRepoWithIndexLock()
-    const spy = spyOnFailedResets(() => {
+    spyOnFastForwards(() => {
       git(repoPath, ['update-ref', 'refs/heads/main', remoteOid])
     })
 
-    const result = await refreshLocalBaseRefForWorktreeCreate(
-      repoPath,
-      'origin/main',
-      'refs/remotes/origin/main'
-    )
+    const result = await refresh(repoPath)
 
     expect(result).toMatchObject({ status: 'updated' })
-    expect(spy.resets()).toBe(1)
+    expect(git(repoPath, ['rev-parse', 'main'])).toBe(remoteOid)
   })
 
   it('reports skipped_error when the lock outlives every retry', async () => {
-    const { repoPath, remoteOid } = await createBehindRepoWithIndexLock()
-    const spy = spyOnFailedResets(() => {})
+    const { repoPath, localOid } = await createBehindRepoWithIndexLock()
+    const spy = spyOnFastForwards()
 
-    const result = await refreshLocalBaseRefForWorktreeCreate(
-      repoPath,
-      'origin/main',
-      'refs/remotes/origin/main'
-    )
+    const result = await refresh(repoPath)
 
     expect(result).toMatchObject({ status: 'skipped_error' })
-    expect(spy.resets()).toBe(4)
-    expect(git(repoPath, ['rev-parse', 'main'])).not.toBe(remoteOid)
+    expect(spy.merges()).toBe(4)
+    expect(git(repoPath, ['rev-parse', 'main'])).toBe(localOid)
+  })
+})
+
+describe('concurrent local base refreshes of one repo with real Git', () => {
+  it('runs one fast-forward and resolves every create without a warning', async () => {
+    const { repoPath, lockPath, remoteOid } = await createBehindRepoWithIndexLock()
+    await rm(lockPath, { force: true })
+    const spy = spyOnFastForwards()
+    const warn = vi.spyOn(console, 'warn')
+
+    const results = await Promise.all([refresh(repoPath), refresh(repoPath), refresh(repoPath)])
+
+    expect(results[0]).toMatchObject({ status: 'updated', ownerWorktreePath: expect.any(String) })
+    // The joiners share one follow-up run, which finds local already current.
+    expect(results.slice(1)).toEqual([undefined, undefined])
+    expect(spy.merges()).toBe(1)
+    expect(warn).not.toHaveBeenCalled()
+    expect(git(repoPath, ['rev-parse', 'main'])).toBe(remoteOid)
   })
 })

@@ -1,129 +1,134 @@
-import type { LocalBaseRefRefreshResult } from '../../shared/worktree/base-ref-drift-types'
+import type {
+  LocalBaseRefRefreshResult,
+  LocalBaseRefUpdateSuggestion
+} from '../../shared/worktree/base-ref-drift-types'
 import { normalizeRuntimePathForComparison } from '../../shared/cross-platform-path'
-import { retryOnGitLockContention } from '../../shared/git-lock-contention'
-import { createKeyedSerialRunner } from '../../shared/keyed-serial-runner'
-import { gitExecFileAsync, translateWslOutputPaths } from './runner'
-import {
-  evaluateLocalBaseRefRefreshability,
-  getLocalBaseRefUpdateSuggestionForWorktreeCreate
-} from './worktree-base-refresh-analysis'
+import { createCoalescingKeyedRunner } from '../../shared/coalescing-keyed-runner'
 import { parseWorktreeList } from '../../shared/git-worktree-porcelain-parser'
+import {
+  fastForwardLocalBaseBranch,
+  inspectLocalBaseBranch,
+  toLocalBaseRefRefreshResult,
+  type LocalBaseBranchFastForwardOutcome,
+  type LocalBaseBranchGit
+} from '../../shared/worktree/local-base-branch-fast-forward'
+import { gitExecFileAsync, translateWslOutputPaths } from './runner'
 import type { AddWorktreeOptions, GitWorktreeExecOptions } from './worktree-operation-options'
-import { gitExecOptions } from './worktree-operation-options'
 
-export { getLocalBaseRefUpdateSuggestionForWorktreeCreate }
+// Why: the create reports the refresh result, and a mutating git process has no timeout; past this
+// a create stops waiting and reports nothing, while the one in-flight refresh keeps its checkout.
+export const LOCAL_BASE_REF_REFRESH_WAIT_MS = 30_000
 
-// Why: mutating git has no timeout, so a wedged refresh must not hold every later create of the repo; past this the next one runs alongside it and may warn.
-export const LOCAL_BASE_REF_REFRESH_QUEUE_MAX_WAIT_MS = 30_000
-const runPerRepo = createKeyedSerialRunner({ maxWaitMs: LOCAL_BASE_REF_REFRESH_QUEUE_MAX_WAIT_MS })
+// Why: two creates racing to move the same checkout collide on index.lock; one owned run per
+// branch, joined by later creates, leaves nothing to race.
+const runPerLocalBaseBranch = createCoalescingKeyedRunner<LocalBaseBranchFastForwardOutcome>()
 
-export function refreshLocalBaseRefForWorktreeCreate(
+export function parseRemoteTrackingLocalBaseRef(
+  baseBranch: string,
+  remoteTrackingRef: string,
+  remoteTrackingBase?: AddWorktreeOptions['remoteTrackingBase']
+): { baseRef: string; localBranch: string; fullRef: string } | undefined {
+  if (remoteTrackingBase?.ref === remoteTrackingRef) {
+    return {
+      baseRef: remoteTrackingBase.base,
+      localBranch: remoteTrackingBase.branch,
+      fullRef: `refs/heads/${remoteTrackingBase.branch}`
+    }
+  }
+
+  const remoteRefPrefix = 'refs/remotes/'
+  if (!remoteTrackingRef.startsWith(remoteRefPrefix)) {
+    return undefined
+  }
+
+  // Why: only proven remote-tracking refs get refresh status; slash-containing local branches (release/2026) must not fake a "not refreshed" warning.
+  const shortRemoteRef = remoteTrackingRef.slice(remoteRefPrefix.length)
+  const slashIndex = shortRemoteRef.indexOf('/')
+  if (slashIndex <= 0) {
+    return undefined
+  }
+
+  const localBranch = shortRemoteRef.slice(slashIndex + 1)
+  return {
+    baseRef: baseBranch,
+    localBranch,
+    fullRef: `refs/heads/${localBranch}`
+  }
+}
+
+export async function refreshLocalBaseRefForWorktreeCreate(
   repoPath: string,
   baseBranch: string,
   remoteTrackingRef: string,
   remoteTrackingBase?: AddWorktreeOptions['remoteTrackingBase'],
   options: GitWorktreeExecOptions = {}
 ): Promise<LocalBaseRefRefreshResult | undefined> {
-  // Why: two creates racing to reset the same checkout collide on index.lock; queued, the second sees local already current and does nothing.
-  const repoKey = `${options.wslDistro ?? ''}\0${normalizeRuntimePathForComparison(repoPath)}`
-  return runPerRepo(repoKey, () =>
-    performLocalBaseRefRefresh(repoPath, baseBranch, remoteTrackingRef, remoteTrackingBase, options)
+  const parsed = parseRemoteTrackingLocalBaseRef(baseBranch, remoteTrackingRef, remoteTrackingBase)
+  if (!parsed) {
+    return undefined
+  }
+  const key = `${options.wslDistro ?? ''}\0${normalizeRuntimePathForComparison(repoPath)}\0${parsed.fullRef}`
+  const git = localBaseBranchGit(options)
+  const outcome = await waitAtMost(
+    runPerLocalBaseBranch(key, () =>
+      fastForwardLocalBaseBranch(git, { repoPath, fullRef: parsed.fullRef, remoteTrackingRef })
+    ),
+    LOCAL_BASE_REF_REFRESH_WAIT_MS
   )
+  if (!outcome) {
+    console.warn(
+      `addWorktree: stopped waiting for the local ${parsed.localBranch} refresh after ${LOCAL_BASE_REF_REFRESH_WAIT_MS}ms`
+    )
+  }
+  return toLocalBaseRefRefreshResult(parsed, outcome)
 }
 
-async function performLocalBaseRefRefresh(
+export async function getLocalBaseRefUpdateSuggestionForWorktreeCreate(
   repoPath: string,
   baseBranch: string,
   remoteTrackingRef: string,
-  remoteTrackingBase: AddWorktreeOptions['remoteTrackingBase'],
-  options: GitWorktreeExecOptions
-): Promise<LocalBaseRefRefreshResult | undefined> {
-  const evaluation = await evaluateLocalBaseRefRefreshability(
-    repoPath,
-    baseBranch,
-    remoteTrackingRef,
-    remoteTrackingBase,
-    options,
-    // Why: an already-current local ref needs no owner check or reset; skipping both avoids a spurious dirty warning and index.lock churn.
-    (behind) => behind > 0
-  )
-  if (!evaluation) {
+  remoteTrackingBase?: AddWorktreeOptions['remoteTrackingBase'],
+  options: GitWorktreeExecOptions = {}
+): Promise<LocalBaseRefUpdateSuggestion | undefined> {
+  const parsed = parseRemoteTrackingLocalBaseRef(baseBranch, remoteTrackingRef, remoteTrackingBase)
+  if (!parsed) {
     return undefined
   }
-  if (!evaluation.refreshable) {
-    return evaluation.result
-  }
+  const inspection = await inspectLocalBaseBranch(localBaseBranchGit(options), {
+    repoPath,
+    fullRef: parsed.fullRef,
+    remoteTrackingRef
+  })
+  return inspection.status === 'behind'
+    ? { baseRef: parsed.baseRef, localBranch: parsed.localBranch, behind: inspection.behind }
+    : undefined
+}
 
-  const resultBase = { baseRef: evaluation.baseRef, localBranch: evaluation.localBranch }
-  const { fullRef, remoteOid, localOid, ownerWorktreePath } = evaluation
-  // Why: a failed mutation is only an error if local is still behind; a concurrent refresh may already have fast-forwarded it.
-  const rethrowUnlessAlreadyCurrent = async (error: unknown): Promise<void> => {
-    if (!(await isLocalRefAt(repoPath, fullRef, remoteOid, options))) {
-      throw error
-    }
-  }
-
-  const attemptRefresh = async (): Promise<LocalBaseRefRefreshResult> => {
-    if (ownerWorktreePath) {
-      // Why: re-checked on every attempt; a lock-retry wait is long enough for the owner to change or get dirty.
-      const { stdout: worktreeListOutput } = await gitExecFileAsync(
+function localBaseBranchGit(options: GitWorktreeExecOptions): LocalBaseBranchGit {
+  // Why: the run is shared by every create that joins it, so no one create's abort signal or timeout may cut it short.
+  const execOptions = (cwd: string) => ({
+    cwd,
+    ...(options.wslDistro ? { wslDistro: options.wslDistro } : {}),
+    ...(options.admissionTier ? { admissionTier: options.admissionTier } : {})
+  })
+  return {
+    exec: (args, cwd) => gitExecFileAsync(args, execOptions(cwd)),
+    listWorktrees: async (repoPath) => {
+      const { stdout } = await gitExecFileAsync(
         ['worktree', 'list', '--porcelain'],
-        gitExecOptions(repoPath, options)
+        execOptions(repoPath)
       )
-      const worktrees = parseWorktreeList(
-        translateWslOutputPaths(worktreeListOutput, repoPath, options)
-      )
-      const currentOwner = worktrees.find((wt) => wt.branch === fullRef)
-      if (!currentOwner || currentOwner.path !== ownerWorktreePath) {
-        return { ...resultBase, status: 'skipped_error' }
-      }
-      const { stdout: status } = await gitExecFileAsync(
-        ['status', '--porcelain', '--untracked-files=no'],
-        gitExecOptions(currentOwner.path, options)
-      )
-      if (status.trim()) {
-        return {
-          ...resultBase,
-          status: 'skipped_dirty_worktree',
-          ownerWorktreePath: currentOwner.path
-        }
-      }
-      await gitExecFileAsync(
-        ['reset', '--hard', remoteOid],
-        gitExecOptions(currentOwner.path, options)
-      ).catch(rethrowUnlessAlreadyCurrent)
-      return { ...resultBase, status: 'updated', ownerWorktreePath: currentOwner.path }
+      return parseWorktreeList(translateWslOutputPaths(stdout, repoPath, options))
     }
-
-    // Why: no owner worktree — fast-forward the bare ref; the expected-old-OID form is a no-op-safe CAS if the ref moved since evaluation.
-    await gitExecFileAsync(
-      ['update-ref', fullRef, remoteOid, localOid],
-      gitExecOptions(repoPath, options)
-    ).catch(rethrowUnlessAlreadyCurrent)
-    return { ...resultBase, status: 'updated' }
-  }
-
-  try {
-    return await retryOnGitLockContention(attemptRefresh)
-  } catch {
-    // update-ref/reset can fail on locked refs or odd worktree states; worktree creation should still proceed.
-    return { ...resultBase, status: 'skipped_error' }
   }
 }
 
-async function isLocalRefAt(
-  repoPath: string,
-  fullRef: string,
-  oid: string,
-  options: GitWorktreeExecOptions
-): Promise<boolean> {
-  try {
-    const { stdout } = await gitExecFileAsync(
-      ['rev-parse', '--verify', `${fullRef}^{commit}`],
-      gitExecOptions(repoPath, options)
-    )
-    return stdout.trim() === oid
-  } catch {
-    return false
-  }
+function waitAtMost<T>(promise: Promise<T>, timeoutMs: number): Promise<T | undefined> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  return Promise.race([
+    promise,
+    new Promise<undefined>((resolve) => {
+      timer = setTimeout(() => resolve(undefined), timeoutMs)
+    })
+  ]).finally(() => clearTimeout(timer))
 }

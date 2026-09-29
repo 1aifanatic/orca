@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getSshGitProviderMock, getActiveMultiplexerMock } from './worktrees-test-module-mocks'
 import { handlers, setupWorktreeHandlers, store } from './worktrees-test-harness'
+import { SSH_MUX_REQUEST_TIMEOUT_CODE } from '../ssh/ssh-channel-multiplexer'
 
 vi.mock('electron', async () =>
   (await import('./worktrees-test-module-mocks')).electronModuleMock()
@@ -93,13 +94,16 @@ const REPO = {
   connectionId: 'conn-1',
   worktreeBaseRef: 'origin/main'
 }
-const INDEX_LOCK_ERROR = new Error(
-  "Command failed: git reset --hard abc\nfatal: Unable to create '/remote/repo/.git/index.lock': File exists."
-)
+const REFRESH_UPDATED = { status: 'updated', ownerWorktreePath: '/remote/repo' }
+const UPDATED = {
+  status: 'updated',
+  baseRef: 'origin/main',
+  localBranch: 'main',
+  ownerWorktreePath: '/remote/repo'
+}
 
 function createProvider(overrides: {
   refreshLocalBaseRefForWorktreeCreate: ReturnType<typeof vi.fn>
-  localOid?: () => string
   addWorktree?: ReturnType<typeof vi.fn>
 }) {
   return {
@@ -110,36 +114,19 @@ function createProvider(overrides: {
       if (args[0] === 'show-ref') {
         throw Object.assign(new Error('missing remote ref'), { code: 1 })
       }
-      if (args[0] === 'log') {
-        return { stdout: 'commit-a\n', stderr: '' }
-      }
-      if (args[0] === 'rev-parse' && args[1] === 'refs/heads/main^{commit}') {
-        return { stdout: `${overrides.localOid?.() ?? 'old-main'}\nremote-main\n`, stderr: '' }
-      }
       return { stdout: '', stderr: '' }
     }),
     fetchRemoteTrackingRef: vi.fn().mockResolvedValue(undefined),
     addWorktree: overrides.addWorktree ?? vi.fn().mockResolvedValue(undefined),
-    listWorktrees: vi
-      .fn()
-      .mockResolvedValueOnce([
-        {
-          path: '/remote/repo',
-          head: 'old-main',
-          branch: 'refs/heads/main',
-          isBare: false,
-          isMainWorktree: true
-        }
-      ])
-      .mockResolvedValueOnce([
-        {
-          path: '/remote/repo-improve-dashboard',
-          head: 'remote-main',
-          branch: 'refs/heads/improve-dashboard',
-          isBare: false,
-          isMainWorktree: false
-        }
-      ]),
+    listWorktrees: vi.fn().mockResolvedValue([
+      {
+        path: '/remote/repo-improve-dashboard',
+        head: 'remote-main',
+        branch: 'refs/heads/improve-dashboard',
+        isBare: false,
+        isMainWorktree: false
+      }
+    ]),
     worktreeIsClean: vi.fn().mockResolvedValue({ clean: true }),
     refreshLocalBaseRefForWorktreeCreate: overrides.refreshLocalBaseRefForWorktreeCreate
   }
@@ -171,78 +158,65 @@ async function createWith(
   return result
 }
 
-const UPDATED = {
-  status: 'updated',
-  baseRef: 'origin/main',
-  localBranch: 'main',
-  ownerWorktreePath: '/remote/repo'
-}
-
-describe('SSH local base refresh under lock contention', () => {
+describe('SSH local base refresh failures', () => {
   beforeEach(() => {
     setupWorktreeHandlers()
   })
 
-  it('retries the relay refresh after an index.lock failure', async () => {
-    const refresh = vi.fn().mockRejectedValueOnce(INDEX_LOCK_ERROR).mockResolvedValueOnce(undefined)
-
-    const result = await createWith(
-      createProvider({ refreshLocalBaseRefForWorktreeCreate: refresh })
-    )
-
-    expect(refresh).toHaveBeenCalledTimes(2)
-    expect(result).toMatchObject({ localBaseRefRefresh: UPDATED })
-  })
-
-  it('reports updated, not a warning, when local already reached the remote-tracking commit', async () => {
-    const refresh = vi.fn().mockRejectedValue(INDEX_LOCK_ERROR)
-
-    const result = await createWith(
-      createProvider({
-        refreshLocalBaseRefForWorktreeCreate: refresh,
-        localOid: () => 'remote-main'
-      })
-    )
-
-    expect(refresh).toHaveBeenCalledTimes(1)
-    expect(result).toMatchObject({ localBaseRefRefresh: UPDATED })
-  })
-
-  it('does not retry a relay refusal that is not lock contention', async () => {
-    const refresh = vi
-      .fn()
-      .mockRejectedValue(new Error('Local base ref worktree has tracked changes.'))
+  // The relay may still finish the refresh; reporting it failed would be a guess.
+  it.each([
+    ['the request timed out', { code: SSH_MUX_REQUEST_TIMEOUT_CODE }],
+    ['the connection was lost', { code: 'CONNECTION_LOST' }]
+  ])('reports no refresh status when %s', async (_case, fields) => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const refresh = vi.fn(async () => {
+      throw Object.assign(new Error('relay did not answer'), fields)
+    })
 
     const result = await createWith(
       createProvider({ refreshLocalBaseRefForWorktreeCreate: refresh })
     )
 
     expect(refresh).toHaveBeenCalledTimes(1)
-    expect(result).toMatchObject({ localBaseRefRefresh: { status: 'skipped_error' } })
+    expect(result).toMatchObject({ worktree: expect.anything() })
+    expect(result).not.toHaveProperty('localBaseRefRefresh')
+    warn.mockRestore()
+  })
+
+  it('reports an error once, without retrying, when the relay rejects the refresh', async () => {
+    const refresh = vi.fn(async () => {
+      throw new Error('Invalid local base ref refresh refs.')
+    })
+
+    const result = await createWith(
+      createProvider({ refreshLocalBaseRefForWorktreeCreate: refresh })
+    )
+
+    expect(refresh).toHaveBeenCalledTimes(1)
+    expect(result).toMatchObject({
+      localBaseRefRefresh: { status: 'skipped_error', baseRef: 'origin/main', localBranch: 'main' }
+    })
+  })
+})
+
+describe('SSH local base refresh overlap', () => {
+  beforeEach(() => {
+    setupWorktreeHandlers()
   })
 
   // #15331: `-b feature-x` proves there was no local feature-x to refresh; probing it would race the relay add.
-  it('does not probe or warn when the create makes the local base branch itself', async () => {
-    let markAdded!: () => void
-    const added = new Promise<void>((resolve) => (markAdded = resolve))
-    const provider = createProvider({
-      refreshLocalBaseRefForWorktreeCreate: vi.fn(),
-      addWorktree: vi.fn(async () => markAdded())
-    })
+  it('does not refresh or warn when the create makes the local base branch itself', async () => {
+    const provider = createProvider({ refreshLocalBaseRefForWorktreeCreate: vi.fn() })
     provider.exec.mockImplementation(async (args: string[]) => {
       if (args[0] === 'remote') {
         return { stdout: 'origin\n', stderr: '' }
       }
-      if (args[0] === 'merge-base') {
-        // Without the skip, the presence probe after this lands once the add wrote refs/heads/feature-x.
-        await added
-        throw new Error('fatal: Not a valid object name refs/heads/feature-x')
-      }
-      if (args[0] === 'show-ref') {
-        return { stdout: '', stderr: '' }
-      }
+      // Only the remote-tracking base resolves; refs/heads/feature-x does not exist yet.
       const ref = args.at(-1) ?? ''
-      return { stdout: ref.startsWith('refs/heads/') ? '' : 'remote-x\n', stderr: '' }
+      return {
+        stdout: args[0] === 'rev-parse' && ref.startsWith('refs/remotes/') ? 'remote-x\n' : '',
+        stderr: ''
+      }
     })
     provider.listWorktrees
       .mockReset()
@@ -255,9 +229,10 @@ describe('SSH local base refresh under lock contention', () => {
       name: 'feature-x'
     })
 
+    expect(provider.addWorktree.mock.calls[0]?.[3]).toMatchObject({ base: 'origin/feature-x' })
     expect(provider.addWorktree).toHaveBeenCalledTimes(1)
+    expect(provider.refreshLocalBaseRefForWorktreeCreate).not.toHaveBeenCalled()
     expect(result).not.toHaveProperty('localBaseRefRefresh')
-    expect(provider.exec.mock.calls.map(([args]) => args[0])).not.toContain('merge-base')
   })
 
   it('starts the relay worktree add while the refresh is still running', async () => {
@@ -268,8 +243,8 @@ describe('SSH local base refresh under lock contention', () => {
     })
     const refresh = vi.fn(
       () =>
-        new Promise<void>((resolve) => {
-          finishRefresh = resolve
+        new Promise((resolve) => {
+          finishRefresh = () => resolve(REFRESH_UPDATED)
           markRefreshStarted()
         })
     )
@@ -286,102 +261,49 @@ describe('SSH local base refresh under lock contention', () => {
     expect(addWorktree).toHaveBeenCalledTimes(1)
     expect(result).toMatchObject({ localBaseRefRefresh: UPDATED })
   })
-})
 
-describe('SSH local base refresh queue', () => {
-  beforeEach(() => {
-    setupWorktreeHandlers()
-  })
-
-  // One provider per connection; every list includes the owner checkout and each created worktree.
-  function startConcurrentCreates(
-    requests: { repo: typeof REPO; name: string }[],
-    refresh: ReturnType<typeof vi.fn>
-  ) {
-    const providers = new Map<string, ReturnType<typeof createProvider>>()
-    for (const { repo } of requests) {
-      if (!providers.has(repo.connectionId)) {
-        const provider = createProvider({ refreshLocalBaseRefForWorktreeCreate: refresh })
-        provider.listWorktrees.mockReset().mockResolvedValue([
-          { path: repo.path, head: 'old-main', branch: 'refs/heads/main', isMainWorktree: true },
-          ...requests.map(({ repo: r, name }) => ({
-            path: `${r.path}-${name}`,
-            head: 'remote-main',
-            branch: `refs/heads/${name}`
-          }))
-        ])
-        providers.set(repo.connectionId, provider)
-      }
-    }
+  // The relay runs one refresh per branch host-side, so the app adds no queue of its own.
+  it('hands every concurrent create straight to the relay', async () => {
+    const settlers: (() => void)[] = []
+    const refresh = vi.fn(
+      () => new Promise((resolve) => settlers.push(() => resolve(REFRESH_UPDATED)))
+    )
+    const repos = [
+      { repo: REPO, name: 'improve-dashboard' },
+      { repo: REPO, name: 'fix-login' },
+      { repo: { ...REPO, id: 'repo-ssh-other', path: '/remote/other' }, name: 'add-search' }
+    ]
+    const provider = createProvider({ refreshLocalBaseRefForWorktreeCreate: refresh })
+    provider.listWorktrees.mockResolvedValue(
+      repos.map(({ repo, name }) => ({
+        path: `${repo.path}-${name}`,
+        head: 'remote-main',
+        branch: `refs/heads/${name}`
+      }))
+    )
     store.getSettings.mockReturnValue({
       branchPrefix: 'none',
       nestWorkspaces: false,
       refreshLocalBaseRefOnWorktreeCreate: true,
       workspaceDir: '/workspace'
     })
-    store.getRepos.mockReturnValue(requests.map(({ repo }) => repo))
-    store.getRepo.mockImplementation((id: string) => requests.find((r) => r.repo.id === id)?.repo)
-    getSshGitProviderMock.mockImplementation((connectionId: string) => providers.get(connectionId))
+    store.getRepos.mockReturnValue(repos.map(({ repo }) => repo))
+    store.getRepo.mockImplementation((id: string) => repos.find((r) => r.repo.id === id)?.repo)
+    getSshGitProviderMock.mockReturnValue(provider)
     getActiveMultiplexerMock.mockReturnValue({
       request: vi.fn().mockResolvedValue(undefined),
       notify: vi.fn()
     })
     store.setWorktreeMeta.mockImplementation((_worktreeId, meta) => meta)
-    const results = requests.map(({ repo, name }) =>
+
+    const results = repos.map(({ repo, name }) =>
       handlers['worktrees:create'](null, { repoId: repo.id, name })
-    )
-    const addCalls = () =>
-      [...providers.values()].reduce((sum, p) => sum + p.addWorktree.mock.calls.length, 0)
-    return { results, addCalls }
-  }
-
-  function deferredRefresh() {
-    const settlers: (() => void)[] = []
-    const refresh = vi.fn(
-      () =>
-        new Promise<void>((resolve) => {
-          settlers.push(resolve)
-        })
-    )
-    return { refresh, settle: (index: number) => settlers[index]() }
-  }
-
-  it('starts a second relay refresh of the same repo only after the first has settled', async () => {
-    const { refresh, settle } = deferredRefresh()
-    const { results, addCalls } = startConcurrentCreates(
-      [
-        { repo: REPO, name: 'improve-dashboard' },
-        { repo: REPO, name: 'fix-login' }
-      ],
-      refresh
-    )
-
-    // Both adds ran, so the second create is past the point where it starts its refresh.
-    await vi.waitFor(() => expect(addCalls()).toBe(2))
-    await new Promise((resolve) => setTimeout(resolve, 20))
-    expect(refresh).toHaveBeenCalledTimes(1)
-
-    settle(0)
-    await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(2))
-    settle(1)
-    for (const result of await Promise.all(results)) {
-      expect(result).toMatchObject({ localBaseRefRefresh: UPDATED })
-    }
-  })
-
-  it('does not make refreshes of other repos or connections wait', async () => {
-    const { refresh, settle } = deferredRefresh()
-    const { results } = startConcurrentCreates(
-      [
-        { repo: REPO, name: 'improve-dashboard' },
-        { repo: { ...REPO, id: 'repo-ssh-other', path: '/remote/other' }, name: 'fix-login' },
-        { repo: { ...REPO, id: 'repo-ssh-conn-2', connectionId: 'conn-2' }, name: 'add-search' }
-      ],
-      refresh
     )
 
     await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(3))
-    ;[0, 1, 2].forEach(settle)
-    await Promise.all(results)
+    settlers.forEach((settle) => settle())
+    for (const result of await Promise.all(results)) {
+      expect(result).toMatchObject({ localBaseRefRefresh: { status: 'updated' } })
+    }
   })
 })

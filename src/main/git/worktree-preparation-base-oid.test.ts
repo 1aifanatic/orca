@@ -1,8 +1,10 @@
 import { beforeEach, expect, it, vi } from 'vitest'
+import type * as WorktreeBaseRefresh from './worktree-base-refresh'
 
 const gitExec = vi.hoisted(() => vi.fn())
 vi.mock('./runner', () => ({ gitExecFileAsync: gitExec }))
-vi.mock('./worktree-base-refresh', () => ({
+vi.mock('./worktree-base-refresh', async (importOriginal) => ({
+  ...(await importOriginal<typeof WorktreeBaseRefresh>()),
   refreshLocalBaseRefForWorktreeCreate: vi.fn(async () => undefined),
   getLocalBaseRefUpdateSuggestionForWorktreeCreate: vi.fn()
 }))
