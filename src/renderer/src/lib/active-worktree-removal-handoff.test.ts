@@ -9,8 +9,8 @@ import {
   resetWorktreeSliceModuleMemory
 } from '@/store/slices/worktrees-slice-test-harness'
 
-const holder = vi.hoisted(() => ({
-  store: null as ReturnType<typeof createTestStore> | null
+const holder = vi.hoisted((): { store: ReturnType<typeof createTestStore> | null } => ({
+  store: null
 }))
 
 vi.mock('@/store', () => ({
@@ -70,7 +70,7 @@ function seed(rows: Worktree[], state: Partial<AppState> = {}): ReturnType<typeo
     lastVisitedAtByWorktreeId: { [older.id]: 100, [recent.id]: 200 },
     deleteStateByWorktreeId: {},
     ...state
-  } as Partial<AppState>)
+  })
   return store
 }
 
@@ -264,7 +264,7 @@ describe('when the hand-off must not move the user', () => {
 
   it('does not steal focus from a non-terminal view', async () => {
     // Top-level views can retain the last terminal workspace id without showing it.
-    const store = seed([main, viewed], { activeView: 'space' } as Partial<AppState>)
+    const store = seed([main, viewed], { activeView: 'space' })
     install()
 
     dropRow(store, viewed.id)
@@ -288,7 +288,7 @@ describe('when the hand-off must not move the user', () => {
     install()
 
     dropRow(store, viewed.id)
-    store.setState({ activeView: 'settings' } as Partial<AppState>)
+    store.setState({ activeView: 'settings' })
     await flushMicrotasks()
 
     expect(activateAndRevealWorktree).not.toHaveBeenCalled()
