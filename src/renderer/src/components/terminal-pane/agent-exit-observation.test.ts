@@ -312,7 +312,32 @@ describe('agent exit observation', () => {
       tracker.onCommandFinished()
       await vi.advanceTimersByTimeAsync(8000)
       expect(shell).toHaveBeenCalledTimes(2)
-      expect(shell.mock.calls.at(-1)?.[1]).not.toBe('read-confirmed')
+      // Nor does the earlier PTY's evidence make the new PTY's first-prompt D a marked exit.
+      expect(shell.mock.calls.at(-1)?.[1]).toBe('none')
+      tracker.dispose()
+    })
+
+    it('does not count a command the previous PTY started as closed by the next PTY', async () => {
+      vi.useFakeTimers()
+      let ptyId = 'pty-1'
+      const shell = vi.fn()
+      const read = vi.fn().mockResolvedValue('zsh')
+      const tracker = createPaneForegroundAgentTracker({
+        getPtyId: () => ptyId,
+        isTrackablePtyId: () => true,
+        readForegroundProcess: read,
+        confirmForegroundProcess: read,
+        publish: vi.fn(),
+        hasKnownAgentIdentity: () => true,
+        onConfirmedShellForeground: shell
+      })
+      // The agent's command started in pty-1, which then died with no 133;D.
+      tracker.onCommandStarted(null, { shellMarked: true })
+      ptyId = 'pty-2'
+      // The replacement shell's first-prompt D, before the relaunched agent starts.
+      tracker.onCommandFinished()
+      await vi.advanceTimersByTimeAsync(8000)
+      expect(shell).toHaveBeenCalledExactlyOnceWith('command-finished', 'none')
       tracker.dispose()
     })
 

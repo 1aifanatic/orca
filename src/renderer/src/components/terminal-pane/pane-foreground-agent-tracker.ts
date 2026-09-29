@@ -6,6 +6,9 @@ import type { TuiAgent } from '../../../../shared/tui-agent'
 import type { PaneForegroundAgentEntry } from '@/store/slices/pane-foreground-agent'
 import type { RuntimeTerminalProcessInspection } from '@/runtime/runtime-terminal-inspection'
 import { createPaneForegroundProcessReader } from './pane-foreground-process-reader'
+import { createPaneAgentExitMarks, type ConfirmedShellAgentExit } from './pane-agent-exit-marks'
+
+export type { ConfirmedShellAgentExit } from './pane-agent-exit-marks'
 
 // Why: settle after exec, then place the final generic retry beyond sequential
 // 3s PowerShell and WMIC enrichment scans.
@@ -14,9 +17,6 @@ const VISIBLE_PTY_SETTLE_MS = 350
 const WRAPPER_RESOLVE_RETRY_DELAYS_MS = [1200, 6000] as const
 type ForegroundReadReason = 'command' | 'visible-pty' | 'command-finished'
 type ShellConfirmReason = Exclude<ForegroundReadReason, 'command'>
-/** 'read-confirmed': a read in this PTY saw the agent live first. 'marked': its own title, or a
- *  133;D closing a command the shell started, brackets the exit. 'none': only an expectation. */
-export type ConfirmedShellAgentExit = 'none' | 'marked' | 'read-confirmed'
 
 type PaneForegroundAgentTrackerDeps = {
   getPtyId: () => string | null
@@ -87,11 +87,7 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
   let hasAgentExpectation = false
   // True while the pending visible-pty read answers the agent's own idle-to-neutral title.
   let agentTitleExitCandidate = false
-  // Why: a user shell integration can print 133;D at the first prompt, before the launch runs.
-  // 'closed': the latest 133;D ended a command the shell's own 133;C started.
-  let shellCommandMark: 'running' | 'closed' | null = null
-  // The PTY (and host incarnation) where a read last saw the agent live.
-  let agentSeenLiveInPtyKey: string | null = null
+  const exitMarks = createPaneAgentExitMarks()
   const ptyKey = (id: string): string => `${id}\n${deps.getExpectedIncarnationId?.() ?? ''}`
   const readProcess = createPaneForegroundProcessReader(deps)
 
@@ -181,7 +177,7 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
     const recognized = verdict === 'live' ? recognizeAgentProcess(processName) : null
     if (recognized) {
       hasForegroundAgentEvidence = true
-      agentSeenLiveInPtyKey = ptyKey(ptyId)
+      exitMarks.agentSeenLive(ptyKey(ptyId))
       hasAgentExpectation = false
       deps.publish({
         agent: recognized.agent,
@@ -259,14 +255,10 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
 
   const confirmShellForeground = (reason: ShellConfirmReason, ptyId: string): void => {
     // Why: an exit needs an agent seen in this pane, or the shell's own 133;D ending its command.
-    const agentExit: ConfirmedShellAgentExit =
-      agentSeenLiveInPtyKey === ptyKey(ptyId)
-        ? 'read-confirmed'
-        : hasForegroundAgentEvidence ||
-            (reason === 'command-finished' && shellCommandMark === 'closed')
-          ? 'marked'
-          : 'none'
-    agentSeenLiveInPtyKey = null
+    const agentExit: ConfirmedShellAgentExit = exitMarks.classifyConfirmedShell(
+      ptyKey(ptyId),
+      reason
+    )
     // Why: reset the evidence so the pane's ordinary shell commands go back to
     // the no-RPC finished path.
     hasForegroundAgentEvidence = false
@@ -291,7 +283,8 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
     }
     const hadReadBeforeVisibleBind = hasPendingRead()
     cancelPendingRead()
-    if (!trackablePtyId()) {
+    const ptyId = trackablePtyId()
+    if (!ptyId) {
       releaseRetainedCapability(hadReadBeforeVisibleBind)
       return false
     }
@@ -300,6 +293,7 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
     }
     if (agentObserved) {
       hasForegroundAgentEvidence = true
+      exitMarks.agentTitleObserved(ptyKey(ptyId))
     }
     // Why: restored/manual agent panes can become visible while Codex is
     // already foreground, so no OSC 133 command-start event will seed the tab icon.
@@ -326,10 +320,8 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
     onCommandStarted(expectedAgent = null, options = {}) {
       const hadReadBeforeCommandStart = hasPendingRead()
       cancelPendingRead()
-      shellCommandMark = options.shellMarked ? 'running' : shellCommandMark
-      // Why: a new command means an earlier sighting describes the previous one.
-      agentSeenLiveInPtyKey = null
       const ptyId = trackablePtyId()
+      exitMarks.commandStarted(options.shellMarked && ptyId ? ptyKey(ptyId) : null)
       if (!ptyId) {
         releaseRetainedCapability(hadReadBeforeCommandStart)
         return
@@ -354,7 +346,7 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
       scheduleRead(COMMAND_SETTLE_MS, 0, 'command')
     },
     onCommandFinished() {
-      shellCommandMark = shellCommandMark === 'running' ? 'closed' : null
+      exitMarks.commandFinished()
       if (deps.hasKnownAgentIdentity?.() === true) {
         hasKnownAgentEvidence = true
       }
