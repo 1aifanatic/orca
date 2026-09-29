@@ -121,7 +121,8 @@ describe('createGitObjectQuarantine', () => {
     ['/plain/objects', '/plain/objects'],
     ['/odd:dir/objects', '"/odd:dir/objects"'],
     ['/quo"te\\dir/objects', '"/quo\\"te\\\\dir/objects"'],
-    ['C:\\repo\\.git\\objects', 'C:\\repo\\.git\\objects']
+    ['C:\\repo\\.git\\objects', 'C:\\repo\\.git\\objects'],
+    ['C:\\a;b\\.git\\objects', '"C:\\\\a;b\\\\.git\\\\objects"']
   ])('spells alternates for %s so Git reads one entry', async (gitPath, expected) => {
     let seen: GitObjectQuarantineEnv | undefined
 

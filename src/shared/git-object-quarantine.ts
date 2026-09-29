@@ -42,9 +42,10 @@ export function pathApiForGitPath(value: string): typeof posix {
   return isWindowsAbsolutePathLike(value) ? win32 : posix
 }
 
-// Why: Git splits this variable on `:` (`;` on Windows) and C-unquotes a leading `"`.
+// Why: Git splits this variable on `:` (`;` for Git for Windows) and C-unquotes a leading `"`.
 function alternateObjectDirectoriesValue(gitPath: string): string {
-  if (isWindowsAbsolutePathLike(gitPath) || !/[:"\\]/.test(gitPath)) {
+  const needsQuoting = isWindowsAbsolutePathLike(gitPath) ? /[;"]/ : /[:"\\]/
+  if (!needsQuoting.test(gitPath)) {
     return gitPath
   }
   return `"${gitPath.replace(/[\\"]/g, (char) => `\\${char}`)}"`
@@ -96,8 +97,9 @@ async function keepFetchedPacks(scratchHostPath: string, objectsHostPath: string
       for (const file of ordered) {
         await rename(path.join(scratchPackDir, file), path.join(objectsHostPath, 'pack', file))
       }
-    } catch {
+    } catch (error) {
       // Why: a pack without its index is invisible to Git; the next lookup fetches it again.
+      console.warn('[git-object-quarantine] could not keep a fetched pack', packName, error)
     }
   }
 }
@@ -137,7 +139,14 @@ export function createGitObjectQuarantine(
         })
       } finally {
         await keepFetchedPacks(scratchHostPath, objects.hostPath)
-        await removeTree(scratchHostPath).catch(() => {})
+        await removeTree(scratchHostPath).catch((error: unknown) => {
+          // Why: the stale sweep removes it on a later run; the check's result still stands.
+          console.warn(
+            '[git-object-quarantine] could not remove scratch dir',
+            scratchHostPath,
+            error
+          )
+        })
       }
     }
   }
