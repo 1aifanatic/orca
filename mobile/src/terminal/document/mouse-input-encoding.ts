@@ -61,7 +61,6 @@ export function buildMouseWheelSequence(
   clientX: number,
   clientY: number
 ) {
-  // Tracking alone does not prove the legacy encoding after a partial replay.
   if (!scope.mouseEncodingKnown) {
     return ''
   }
@@ -109,7 +108,7 @@ export function buildMouseClickInput(
   clientY: number
 ) {
   const mouseTrackingMode = getMouseTrackingMode(scope)
-  if (!isClickMouseTrackingMode(mouseTrackingMode)) {
+  if (!isClickMouseTrackingMode(mouseTrackingMode) || !scope.mouseEncodingKnown) {
     return ''
   }
   const cell = viewportToMouseReportCell(scope, clientX, clientY)
@@ -172,9 +171,15 @@ export function isWheelMouseTrackingMode(mode: string) {
   return mode !== 'none' && mode !== 'x10'
 }
 
+// Why: a replay can carry tracking without its encoding (?1006h/?1016h); a guessed
+// legacy report would type `ESC[M` bytes into the program, so scroll locally instead.
+export function isWheelEncodingUnproven(scope: TerminalDocumentScope, mode: string) {
+  return isWheelMouseTrackingMode(mode) && !scope.mouseEncodingKnown
+}
+
 export function shouldRouteScrollToTerminalInput(scope: TerminalDocumentScope) {
   const mode = getMouseTrackingMode(scope)
-  if (mode !== 'none' && !scope.mouseEncodingKnown) {
+  if (isWheelEncodingUnproven(scope, mode)) {
     return false
   }
   return isWheelMouseTrackingMode(mode) || isAlternateBufferActive(scope)
@@ -229,7 +234,7 @@ export function routeScrollLines(
   }
   const mouseTrackingMode = getMouseTrackingMode(scope)
   const alternateBufferActive = isAlternateBufferActive(scope)
-  if (mouseTrackingMode !== 'none' && !scope.mouseEncodingKnown) {
+  if (isWheelEncodingUnproven(scope, mouseTrackingMode)) {
     scope.term.scrollLines(lines)
     return
   }
