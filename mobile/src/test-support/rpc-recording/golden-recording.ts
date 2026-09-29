@@ -54,7 +54,7 @@ export function readGolden(directory: string, id: string): GoldenRecording {
   if (!existsSync(path)) {
     throw new Error(`No golden recorded for ${id}. Record it: pnpm --dir mobile rpc:record ${id}`)
   }
-  const file: unknown = JSON.parse(readFileSync(path, 'utf8'))
+  const file: unknown = withRecordHint(id, () => JSON.parse(readFileSync(path, 'utf8')))
   const version =
     file && typeof file === 'object' && 'goldenFormatVersion' in file
       ? file.goldenFormatVersion
@@ -64,7 +64,20 @@ export function readGolden(directory: string, id: string): GoldenRecording {
       `Golden ${id} has format version ${JSON.stringify(version)}; this reader requires ${GOLDEN_FORMAT_VERSION}.\n${recordHint(id)}`
     )
   }
-  return { goldenFormatVersion: GOLDEN_FORMAT_VERSION, ...decodeGoldenFile(file, id) }
+  return withRecordHint(id, () => ({
+    goldenFormatVersion: GOLDEN_FORMAT_VERSION,
+    ...decodeGoldenFile(file, id)
+  }))
+}
+/** A corrupt or hand-edited golden names itself and the command that rewrites it. */
+function withRecordHint<T>(id: string, read: () => T): T {
+  try {
+    return read()
+  } catch (error) {
+    throw new Error(
+      `Golden ${id}: ${error instanceof Error ? error.message : String(error)}\n${recordHint(id)}`
+    )
+  }
 }
 export async function writeGolden(
   directory: string,

@@ -183,7 +183,15 @@ describe('recording boundaries', () => {
         JSON.stringify({ ...file, values: { ...file.values, [valueHash('unread')]: 'unread' } })
       )
       await expect(expectGoldenFile(directory, 'exact', golden)).rejects.toThrow(
-        'Golden pool holds unreferenced values'
+        /Golden exact: Golden pool holds unreferenced values[\s\S]*pnpm --dir mobile rpc:record exact/
+      )
+      writeFileSync(path, written.replace('"idle"', '"edited"'))
+      await expect(expectGoldenFile(directory, 'exact', golden)).rejects.toThrow(
+        /does not hash to its pool key[\s\S]*pnpm --dir mobile rpc:record exact/
+      )
+      writeFileSync(path, written.slice(0, -10))
+      await expect(expectGoldenFile(directory, 'exact', golden)).rejects.toThrow(
+        /Golden exact: [\s\S]*pnpm --dir mobile rpc:record exact/
       )
       writeFileSync(path, written)
       const moved = sampleGolden('exact')

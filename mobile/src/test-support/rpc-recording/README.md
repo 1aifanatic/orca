@@ -222,10 +222,11 @@ Replay passes only if the committed file is exactly the text `rpc:record` would 
 so nothing the file carries goes uncompared: a leftover header key, a stale pool entry, reordered
 keys or a hand edit all fail with the re-record command. When the text differs, `readGolden` decodes
 the file for the report: it refuses any other `goldenFormatVersion`, checks that every pooled entry
-hashes to its own key and that no entry sits in the pool unreferenced, and resolves hashes back to
-values; the report names the scenario, the checkpoint id, the field, the JSON path inside it, and
-both resolved values, or says every field matches and only the file text differs. `rpc:diff` decodes
-leniently instead, so it still reads the old formats.
+hashes to its own key and that no entry sits in the pool unreferenced (a file it cannot decode fails
+with the re-record command too), and resolves hashes back to values; the report names the scenario,
+the checkpoint id, the field, the JSON path inside it, and both resolved values, or says every field
+matches and only the file text differs. `rpc:diff` decodes leniently instead, so it still reads the
+old formats.
 
 ### Prelude checkpoints
 

@@ -6,8 +6,8 @@
  *   pnpm --dir mobile rpc:diff [<base>] [--summary <file>]
  *
  * `<base>` defaults to the merge base with origin/main. `--summary` also appends a capped Markdown
- * report to that file (CI passes `$GITHUB_STEP_SUMMARY`). Always exits 0: this reports, the
- * recording suites judge.
+ * report to that file (CI passes `$GITHUB_STEP_SUMMARY`). A behaviour change exits 0: this reports,
+ * the recording suites judge. It exits non-zero only when git or a golden cannot be read.
  */
 import { appendFileSync, readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
