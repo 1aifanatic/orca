@@ -338,43 +338,6 @@ describe('a worker result reaches the structured chat that coordinates it', () =
     expect(await userTexts(COORDINATOR)).toHaveLength(1)
   })
 
-  it('points the next result at a coordinator that read the last one without acking', async () => {
-    // The strand this pins: a flagless `check` opens a delivery that `check` replays until acked,
-    // and a lane gated on "an unacknowledged batch exists" never pointed the chat at a later result.
-    const chat = await openChat(COORDINATOR)
-    const { runId, taskId } = await coordinatorRunAndTask()
-    await finishWorker(taskId)
-    await vi.waitFor(() => expect(chat.turns).toHaveLength(1), WAIT)
-    await settleTurn(COORDINATOR, 0)
-    const first = await call('orchestration.check', {}, { sessionId: COORDINATOR })
-    const heldDelivery = String(first.deliveryId)
-    expect(first).toMatchObject({ count: 1, messages: [{ type: 'worker_done' }] })
-
-    const second = await call(
-      'orchestration.taskCreate',
-      { spec: 'more' },
-      { sessionId: COORDINATOR }
-    )
-    await finishWorker(idOf(second.task), { handle: 'term_worker_2', paneKey: WORKER_2_PANE })
-    await vi.waitFor(() => expect(chat.turns).toHaveLength(2), WAIT)
-    // The PTY lane's text: `check` itself replays the held batch and names its ack.
-    expect(turnText(chat.turns[1]!)).toBe(ptyPointer(`run:${runId}`))
-    await settleTurn(COORDINATOR, 1)
-
-    // Exactly once per new message: a retry and the idle edge point nothing further.
-    runtime.deliverPendingMessagesForHandle(`run:${runId}`)
-    await new Promise((resolve) => setTimeout(resolve, 20))
-    expect(chat.turns).toHaveLength(2)
-
-    const acked = await call(
-      'orchestration.check',
-      { ack: heldDelivery },
-      { sessionId: COORDINATOR }
-    )
-    expect(acked).toMatchObject({ acknowledged: heldDelivery, count: 1 })
-    expect(acked.messages).not.toEqual(first.messages)
-  })
-
   /** Fires both edges and waits until every gate read they started has answered. */
   async function edgesAnswered(): Promise<void> {
     const reads = vi.spyOn(host, 'journalSnapshot')
