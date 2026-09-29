@@ -10,6 +10,8 @@ const MAX_GLOB_READABILITY_PATHS = 256
 // larger allowance. A ~/.ssh holding hundreds of keys and control sockets is ordinary, and charging
 // its entries against the path budget reported a perfectly readable directory as unopenable.
 const MAX_GLOB_READABILITY_ENTRIES = 16_384
+// Caps the directories a single Include glob may walk on the main process before we stop collecting.
+export const MAX_INCLUDE_GLOB_TRAVERSAL = 1024
 const GLOB_READABILITY_LIMIT_REACHED = Symbol('glob-readability-limit-reached')
 
 /**
@@ -173,4 +175,26 @@ function getGlobDirectoryPrefixes(pattern: string, pathApi: PathApi): string[] {
     }
   }
   return prefixes
+}
+
+/** Stops descending once the walk exceeds its budget, keeping the matches already found. */
+export function globWithTraversalLimit(
+  pattern: string,
+  pathApi: PathApi
+): { matches: string[]; traversalLimited: boolean } {
+  const walkedDirectories = new Set<string>()
+  let traversalLimited = false
+  const matches = globSync(pattern, {
+    withFileTypes: true,
+    exclude: (entry) => {
+      // Only descents cost a readdir; counting plain files would let a busy ~/.ssh trip the budget.
+      if (!traversalLimited && (entry.isDirectory() || entry.isSymbolicLink())) {
+        walkedDirectories.add(pathApi.join(entry.parentPath, entry.name))
+        traversalLimited = walkedDirectories.size > MAX_INCLUDE_GLOB_TRAVERSAL
+      }
+      return traversalLimited
+    }
+  })
+  const paths = matches.map((entry) => pathApi.join(entry.parentPath, entry.name))
+  return { matches: paths, traversalLimited }
 }

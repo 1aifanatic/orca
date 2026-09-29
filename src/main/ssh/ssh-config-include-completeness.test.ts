@@ -181,6 +181,19 @@ describe('SSH config Include completeness', () => {
     expect(expandSshConfigIncludes(configPath).fullyExpanded).toBe(true)
   })
 
+  it('does not charge plain files in a busy directory against the traversal budget', () => {
+    const home = makeTemporaryHome()
+    const configPath = writeFile(home, '.ssh/config', 'Include **/50-*\n')
+    writeFile(home, '.ssh/zz/50-prod', 'Host prod\n  HostName prod.example.com\n')
+    for (let index = 0; index < 1100; index += 1) {
+      writeFile(home, `.ssh/id_key_${index}`, '')
+    }
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    expect(expandSshConfigIncludes(configPath).content).toContain('prod.example.com')
+    expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('walks more than'))
+  })
+
   it('stops a glob that walks too many directories and marks it incomplete', () => {
     const home = makeTemporaryHome()
     const configPath = writeFile(home, '.ssh/config', 'Include conf.d/*/config\n')

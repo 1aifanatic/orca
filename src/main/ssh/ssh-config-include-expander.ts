@@ -1,10 +1,12 @@
-import { globSync, readFileSync, realpathSync, statSync } from 'node:fs'
+import { readFileSync, realpathSync, statSync } from 'node:fs'
 import { homedir, hostname } from 'node:os'
 import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
 import {
   createGlobReadabilityProofs,
   findGlobExpansionUncertainty,
+  globWithTraversalLimit,
   hasGlobPattern,
+  MAX_INCLUDE_GLOB_TRAVERSAL,
   type GlobExpansionUncertainty,
   type GlobReadabilityProofs
 } from './ssh-config-include-glob-readability'
@@ -43,8 +45,6 @@ type ResolvedIncludePaths = {
 }
 
 const MAX_INCLUDE_GLOB_MATCHES = 256
-// Caps the directories a single Include glob may walk on the main process before we stop collecting.
-const MAX_INCLUDE_GLOB_TRAVERSAL = 1024
 const MAX_INCLUDE_FILE_BYTES = 1024 * 1024
 
 export function expandSshConfigIncludes(configPath: string): SshConfigExpansion {
@@ -249,7 +249,7 @@ function resolveIncludePaths(
   const absolutePattern = resolveIncludePatternPath(withTokens, context)
   if (hasGlobPattern(absolutePattern)) {
     try {
-      const { matches, traversalLimited } = globWithTraversalLimit(absolutePattern)
+      const { matches, traversalLimited } = globWithTraversalLimit(absolutePattern, context.pathApi)
       matches.sort((left, right) => left.localeCompare(right))
       if (traversalLimited) {
         console.warn(
@@ -299,25 +299,6 @@ function resolveIncludePaths(
     }
     return { paths: [], redactedLabel }
   }
-}
-
-/** Stops descending once the walk exceeds its budget, keeping the matches already found. */
-function globWithTraversalLimit(pattern: string): {
-  matches: string[]
-  traversalLimited: boolean
-} {
-  let remaining = MAX_INCLUDE_GLOB_TRAVERSAL
-  let traversalLimited = false
-  const matches = globSync(pattern, {
-    exclude: () => {
-      remaining -= 1
-      if (remaining < 0) {
-        traversalLimited = true
-      }
-      return traversalLimited
-    }
-  })
-  return { matches, traversalLimited }
 }
 
 function getCanonicalPath(
