@@ -72,7 +72,12 @@ it('gates Ruby independently and retains mobile static validation', () => {
   expect(steps.indexOf(detector)).toBeGreaterThan(
     steps.findIndex((step) => step.uses === './.github/actions/install-node-dependencies')
   )
-  const gated = steps.filter((step) => step.if !== undefined && step.name !== 'Test')
+  const gated = steps.filter(
+    (step) =>
+      step.if !== undefined &&
+      step.name !== 'Test' &&
+      step.name !== 'Summarize RPC recording changes'
+  )
   expect(gated.map((step) => step.name)).toEqual([
     'Setup Ruby and fastlane',
     'Test iOS release version resolution',
