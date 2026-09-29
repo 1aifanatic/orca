@@ -1080,6 +1080,8 @@ jobs:
           src/main/windows/windows-process-table-native-addon.win32.test.ts
           src/main/persistence/profile-state/profile-state-access-windows-native.win32.test.ts
           src/main/windows-live-tree-kill.win32.test.ts
+          src/main/tree-removal-walk.test.ts
+          src/main/host-tree-removal.test.ts
           src/main/wsl/wsl-runner.test.ts
           src/main/wsl/wsl-guest-environment.test.ts
           src/main/wsl/wsl-invocation-boundary.test.ts
