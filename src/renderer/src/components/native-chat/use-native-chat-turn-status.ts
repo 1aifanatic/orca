@@ -12,7 +12,7 @@ export type { NativeChatTurnStatus }
 
 export function useNativeChatTurnStatus({
   turnKeys,
-  barTurnKey,
+  liveTurnKey,
   isWorking,
   workingStartedAt,
   settledTurns,
@@ -20,11 +20,11 @@ export function useNativeChatTurnStatus({
 }: {
   /** Each row's turn, as `nativeChatTurnMembership` places it. */
   turnKeys: readonly (string | undefined)[]
-  /** The turn whose bar carries the live clock (`nativeChatTurnMembership`). */
-  barTurnKey: string | undefined
+  /** The live turn, whose bar carries the running clock (`nativeChatTurnMembership`). */
+  liveTurnKey: string | undefined
   isWorking: boolean
   workingStartedAt?: number | null
-  /** Host-recorded durations; they outrank whatever this client observed. */
+  /** Recorded durations (the host's journal or the transcript); they outrank what this client observed. */
   settledTurns?: NativeChatSettledTurns | null
   /** Whether the turn is reasoning right now, derived from its journal content. */
   thinking?: boolean
@@ -32,7 +32,7 @@ export function useNativeChatTurnStatus({
   active: NativeChatTurnStatus | null
   completedByTurn: Readonly<Record<string, NativeChatTurnStatus>>
 } {
-  const activeTurnKey = barTurnKey ?? NATIVE_CHAT_UNANCHORED_TURN_KEY
+  const activeTurnKey = liveTurnKey ?? NATIVE_CHAT_UNANCHORED_TURN_KEY
   const [timingByTurn, setTimingByTurn] = useState<NativeChatTurnTimingByTurn>({})
   const validTurnKeys = useMemo(
     () => new Set(turnKeys.filter((turnKey) => turnKey !== undefined)),

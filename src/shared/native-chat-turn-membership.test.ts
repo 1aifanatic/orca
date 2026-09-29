@@ -6,6 +6,7 @@ import type {
   AgentJournalSubmission,
   AgentJournalTurnScope
 } from './agent-session-journal-types'
+import { nativeChatRowsInDrawOrder } from './native-chat-turn-grouping'
 import { nativeChatTurnMembership, structuredAgentTurnAnchors } from './native-chat-turn-membership'
 import type { NativeChatRole } from './native-chat-types'
 
@@ -196,5 +197,46 @@ describe('the live turn', () => {
     expect(liveTurnKey(items)).toBe('u2')
     expect(nativeChatTurnMembership(rows(items)).liveTurnKey).toBe('u2')
     expect(nativeChatTurnMembership([]).liveTurnKey).toBeUndefined()
+  })
+})
+
+// A message sent while A runs, which the provider queued behind A: its turn opens only after A's
+// remaining rows, which the journal wrote after it.
+describe('a message the provider answered after the running turn', () => {
+  const journal = (statesScope: boolean) => {
+    const scope = (turnItemId?: string) =>
+      statesScope ? (turnItemId ? inTurn(turnItemId) : THREAD) : null
+    return [
+      user('A', scope()),
+      turn('tA', 'A', scope()),
+      assistant('a1', scope('tA')),
+      user('B', scope('tA')),
+      assistant('a-tool', scope('tA')),
+      assistant('FIRST DONE', scope('tA')),
+      turn('tB', 'B', scope(), 'running'),
+      assistant('b1', scope('tB'))
+    ]
+  }
+
+  it.each([
+    ['states each row’s turn', true],
+    ['states no scope', false]
+  ])("draws A's remaining rows in A's turn, then B, on a host that %s", (_host, statesScope) => {
+    const items = journal(statesScope)
+    const transcript = rows(items)
+    const membership = nativeChatTurnMembership(transcript, { items, submissions: [] })
+    const drawn = nativeChatRowsInDrawOrder(
+      transcript.map((row, index) => [row.id, membership.turnKeys[index]]),
+      membership.drawOrder
+    )
+    expect(drawn).toEqual([
+      ['A', 'A'],
+      ['a1', 'A'],
+      ['a-tool', 'A'],
+      ['FIRST DONE', 'A'],
+      ['B', 'B'],
+      ['b1', 'B']
+    ])
+    expect(membership.liveTurnKey).toBe('B')
   })
 })
