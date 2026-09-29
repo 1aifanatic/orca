@@ -1,4 +1,5 @@
 import { useAppStore } from '@/store'
+import { hasWorktreeTeardownStarted } from '@/store/slices/worktree-delete-state-types'
 import { hasPtySerializer } from '../pty-buffer-serializer'
 import { writeTerminalOutput } from '@/lib/pane-manager/pane-terminal-output-scheduler'
 
@@ -35,9 +36,11 @@ export function bindStartFreshSpawn(session: ConnectPanePtySession): void {
       }
     }
 
-    const deleteState = useAppStore.getState().deleteStateByWorktreeId?.[session.deps.worktreeId]
-    // Queued rows keep their PTYs until their own removal starts, and can still fail and stay.
-    if (deleteState?.isDeleting && deleteState.phase !== 'queued') {
+    if (
+      hasWorktreeTeardownStarted(
+        useAppStore.getState().deleteStateByWorktreeId?.[session.deps.worktreeId]
+      )
+    ) {
       // Why: the worktree is being deleted; its PTYs were just killed for the
       // filesystem teardown. A fresh shell must not spawn into a directory the
       // removal is about to delete (main fences it anyway), and the pane is
