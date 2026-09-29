@@ -339,6 +339,8 @@ describe('DashboardAgentRow', () => {
     expect(markup).toContain('aria-label="Interrupted by user"')
     expect(markup).not.toContain('data-slot="badge"')
     expect(interruptedIndex).toBeGreaterThan(promptIndex)
+    expect(markup).toContain('bg-muted-foreground')
+    expect(markup).not.toContain('bg-red-500')
     expect(markup).not.toContain('lucide-circle-check')
   })
 

@@ -61,13 +61,23 @@ const StatusIndicator = React.memo(function StatusIndicator({
         <Activity className="size-3 text-yellow-500" aria-hidden="true" />
       </span>
     )
-  } else if (status === 'failed' || status === 'interrupted') {
+  } else if (status === 'failed') {
     indicator = (
       <span
         className={cn('inline-flex h-3 w-3 shrink-0 items-center justify-center', className)}
         {...rest}
       >
         <span className="block size-1.5 rounded-full bg-red-500" />
+      </span>
+    )
+  } else if (status === 'interrupted') {
+    // Why: a user's Stop is not news; muted, never the fault red or the finished green.
+    indicator = (
+      <span
+        className={cn('inline-flex h-3 w-3 shrink-0 items-center justify-center', className)}
+        {...rest}
+      >
+        <span className="block size-1.5 rounded-full bg-muted-foreground" />
       </span>
     )
   } else if (status === 'unconfirmed') {

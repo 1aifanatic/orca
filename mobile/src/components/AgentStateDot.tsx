@@ -6,15 +6,15 @@ import { colors } from '../theme/mobile-theme'
 
 // Per-agent state indicator, 1:1 with desktop AgentStateDot
 // (src/renderer/src/components/AgentStateDot.tsx): yellow spinner for 'working',
-// emerald for 'done', red for blocked/waiting/interrupted/failed (attention), amber for
-// 'unconfirmed' (desktop's missing-evidence tone), neutral for idle. Distinct from the
+// emerald for 'done', red for blocked/waiting/failed (attention), muted for a user's Stop
+// ('interrupted'), amber for 'unconfirmed' (desktop's missing-evidence tone), neutral for idle. Distinct from the
 // worktree-level AgentSpinner, which collapses the agent vocabulary into the 5-state
 // rollup the sidebar dot uses.
 const DOT_COLORS: Record<Exclude<AgentDotState, 'working' | 'monitoring'>, string> = {
   done: '#10b981',
   blocked: '#ef4444',
   waiting: '#ef4444',
-  interrupted: '#ef4444',
+  interrupted: colors.textMuted,
   failed: '#ef4444',
   unconfirmed: colors.statusAmber,
   idle: 'rgba(115,115,115,0.4)'

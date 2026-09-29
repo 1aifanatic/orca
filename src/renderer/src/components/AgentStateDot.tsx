@@ -158,9 +158,12 @@ export const AgentStateDot = React.memo(function AgentStateDot({
           className={cn(
             'block rounded-full',
             inner,
-            state === 'blocked' || state === 'interrupted' || state === 'failed'
+            state === 'blocked' || state === 'failed'
               ? 'bg-red-500'
-              : 'bg-neutral-500/40'
+              : // Why: a user's Stop is not news; muted, never the fault red or the finished green.
+                state === 'interrupted'
+                ? 'bg-muted-foreground'
+                : 'bg-neutral-500/40'
           )}
         />
       </span>
