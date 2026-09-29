@@ -117,7 +117,7 @@ async function daemon() {
   check('daemon process identity verifiable', Boolean(row?.exe), { pid: identity.pid })
   const generation = generationOfImage(row.exe, managedRoot)
   check('daemon image is a managed runtime generation', Boolean(generation), { pid: identity.pid })
-  return { ...identity, created: row.created, generation }
+  return { ...identity, created: row.created, command: row.command, generation }
 }
 const sameOwner = (a, b) =>
   a.pid === b.pid &&
@@ -134,13 +134,22 @@ async function expectGeneration(owner, label) {
   if (owner.appVersion) {
     check(`${label} daemon reports ${label} version`, owner.appVersion === builds[label].version)
   }
+  // The fork runs the relocated copy; the reported identity keeps the installed entry for freshness checks.
+  const relocatedEntry = join(managedRoot, owner.generation, 'daemon-entry.js')
+  check(
+    `${label} daemon runs the entry inside its generation`,
+    Boolean(owner.command?.toLowerCase().includes(relocatedEntry.toLowerCase())),
+    { command: owner.command, relocatedEntry }
+  )
   if (owner.entryPath) {
+    const installedEntry = join(installLocation, 'resources', 'terminal-daemon', 'daemon-entry.js')
     check(
-      `${label} daemon entry is inside its generation`,
-      owner.entryPath.toLowerCase().startsWith(join(managedRoot, owner.generation).toLowerCase()),
-      { entryPath: owner.entryPath, generationRoot: join(managedRoot, owner.generation) }
+      `${label} daemon reports the installed entry`,
+      owner.entryPath.toLowerCase() === installedEntry.toLowerCase(),
+      { entryPath: owner.entryPath, installedEntry }
     )
   }
+
 }
 async function terminal(worktreeId) {
   const handle = (

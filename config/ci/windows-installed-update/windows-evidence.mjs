@@ -18,7 +18,7 @@ export function powershellPath(env = process.env) {
 export const PROCESS_TABLE_SCRIPT = [
   "$ErrorActionPreference='Stop'",
   '$rows=@(Get-CimInstance Win32_Process | ForEach-Object {',
-  "  [pscustomobject]@{pid=[int]$_.ProcessId;ppid=[int]$_.ParentProcessId;name=[string]$_.Name;exe=[string]$_.ExecutablePath;created=$(if($_.CreationDate){$_.CreationDate.ToUniversalTime().ToString('o')}else{''})}",
+  "  [pscustomobject]@{pid=[int]$_.ProcessId;ppid=[int]$_.ParentProcessId;name=[string]$_.Name;exe=[string]$_.ExecutablePath;command=[string]$_.CommandLine;created=$(if($_.CreationDate){$_.CreationDate.ToUniversalTime().ToString('o')}else{''})}",
   '})',
   'ConvertTo-Json -InputObject @{rows=$rows} -Depth 3 -Compress'
 ].join('\n')
@@ -45,6 +45,7 @@ export function parseProcessTable(stdout) {
       ppid: Number.isSafeInteger(row.ppid) ? row.ppid : null,
       name: row.name,
       exe: typeof row.exe === 'string' && row.exe ? row.exe : null,
+      command: typeof row.command === 'string' && row.command ? row.command : null,
       created: typeof row.created === 'string' && row.created ? row.created : null
     })
   }
@@ -57,7 +58,7 @@ export function processIdentity(table, pid) {
     return null
   }
   const row = table.find((candidate) => candidate.pid === pid)
-  return row?.created ? { pid, created: row.created, exe: row.exe } : null
+  return row?.created ? { pid, created: row.created, exe: row.exe, command: row.command } : null
 }
 
 export function processVerdict(table, identity) {
