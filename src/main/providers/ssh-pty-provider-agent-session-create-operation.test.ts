@@ -123,7 +123,10 @@ describe('SSH fresh agent-session create operations', () => {
         cols: 80,
         rows: 24,
         cwd: undefined,
-        env: { POWERLEVEL9K_DISABLE_CONFIGURATION_WIZARD: 'true' },
+        env: {
+          ORCA_CODEX_LAUNCH_POLICY: '1',
+          POWERLEVEL9K_DISABLE_CONFIGURATION_WIZARD: 'true'
+        },
         command: 'codex',
         agentSessionCreateOperationId: 'a'.repeat(43)
       },
@@ -163,7 +166,11 @@ describe('SSH fresh agent-session create operations', () => {
         cols: 80,
         rows: 24,
         cwd: undefined,
-        env: { POWERLEVEL9K_DISABLE_CONFIGURATION_WIZARD: 'true' },
+        // Legacy means no agent-session fields; pane env is opaque to every relay version.
+        env: {
+          ORCA_CODEX_LAUNCH_POLICY: '1',
+          POWERLEVEL9K_DISABLE_CONFIGURATION_WIZARD: 'true'
+        },
         command: 'codex'
       },
       expect.objectContaining({ beforeResolve: expect.any(Function) })
