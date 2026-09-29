@@ -19,7 +19,10 @@ describe('native chat layering', () => {
     expect(css).toMatch(
       /\[data-sonner-toaster\][^{]*\{[^}]*z-index:\s*var\(--toaster-z-index,\s*40\)\s*!important;/s
     )
-    // A :has() before the toaster in one selector froze large diffs; it must stay on body alone.
+    // A :has() in the toaster's selector, or one scanning below body's children, froze large diffs.
+    expect(css).toMatch(
+      /body:has\(>\s*\[data-slot='dialog-overlay'\],\s*>\s*\[data-slot='sheet-overlay'\]\)\s*\{\s*--toaster-z-index:\s*60;/
+    )
     expect(css).not.toMatch(/:has\([^{]*\)\s+\[data-sonner-toaster\]/)
   })
 
