@@ -337,12 +337,7 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
       // Why: trust the 133;D and mark shell without an RPC only when nothing hints
       // at an agent — no prior agent evidence, no launch/hook identity, and no
       // identity read racing this finish.
-      if (
-        !hasForegroundAgentEvidence &&
-        !hasKnownAgentEvidence &&
-        !hasAgentExpectation &&
-        !hadReadBeforeCommandFinish
-      ) {
+      if (!hasForegroundAgentEvidence && !hasKnownAgentEvidence && !hasAgentExpectation) {
         if (deps.isRemotePtyId?.(ptyId) !== true) {
           deps.publish({ agent: null, shellForeground: true })
         }

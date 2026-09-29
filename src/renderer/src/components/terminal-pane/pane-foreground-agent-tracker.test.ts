@@ -415,7 +415,7 @@ describe('createPaneForegroundAgentTracker', () => {
     expect(readForegroundProcess).not.toHaveBeenCalled()
   })
 
-  it('confirms a rapid finish before discarding unidentified agent evidence', async () => {
+  it('trusts a rapid ordinary command finish without forcing a fresh scan', async () => {
     readForegroundProcess.mockResolvedValue('claude')
     const tracker = makeTracker()
 
@@ -423,15 +423,11 @@ describe('createPaneForegroundAgentTracker', () => {
     tracker.onCommandFinished()
     await flushSettleRead(COMMAND_SETTLE_MS)
 
-    expect(readForegroundProcess).toHaveBeenCalledExactlyOnceWith('pty-1')
-    expect(publish).toHaveBeenLastCalledWith({
-      agent: 'claude',
-      shellForeground: false,
-      routingTrusted: true
-    })
+    expect(readForegroundProcess).not.toHaveBeenCalled()
+    expect(publish).toHaveBeenLastCalledWith({ agent: null, shellForeground: true })
   })
 
-  it('confirms duplicate finish markers while identity is still being read', async () => {
+  it('keeps duplicate ordinary 133;D pairs on the no-scan shell path', async () => {
     readForegroundProcess.mockResolvedValue('grok')
     const tracker = makeTracker()
 
@@ -442,12 +438,8 @@ describe('createPaneForegroundAgentTracker', () => {
     tracker.onCommandFinished()
     await flushSettleRead(COMMAND_SETTLE_MS)
 
-    expect(readForegroundProcess).toHaveBeenCalledExactlyOnceWith('pty-1')
-    expect(publish).toHaveBeenLastCalledWith({
-      agent: 'grok',
-      shellForeground: false,
-      routingTrusted: true
-    })
+    expect(readForegroundProcess).not.toHaveBeenCalled()
+    expect(publish).toHaveBeenLastCalledWith({ agent: null, shellForeground: true })
   })
 
   it('still marks shell without a read for a duplicate D pair on an idle pane', async () => {
@@ -473,8 +465,10 @@ describe('createPaneForegroundAgentTracker', () => {
     tracker.onCommandFinished()
     await flushSettleRead(COMMAND_SETTLE_MS)
 
-    expect(readForegroundProcess).toHaveBeenCalledExactlyOnceWith('pty-1')
+    expect(readForegroundProcess).not.toHaveBeenCalled()
     expect(publish).toHaveBeenLastCalledWith({ agent: null, shellForeground: true })
+    // Why: an ordinary fast command is not an agent exit; the exit routine resets xterm modes.
+    expect(onConfirmedShellForeground).not.toHaveBeenCalled()
   })
 
   it('confirms the foreground before clearing a pane an agent has owned', async () => {
