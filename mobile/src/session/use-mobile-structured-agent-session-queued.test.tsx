@@ -494,6 +494,35 @@ describe('mobile structured queued messages', () => {
     expect(ids[2]).not.toBe(ids[0])
   })
 
+  it('a withdrawn replay whose id cannot be released goes back to the composer, never silent', async () => {
+    let attempts = 0
+    sendRequest.mockImplementation(async (method) => {
+      if (method === 'agentSession.send') {
+        attempts += 1
+        if (attempts === 1) {
+          throw markRpcDeliveryUnknown(new Error('Connection closed'))
+        }
+        return mutationOk({
+          clientMessageId: `client-${attempts}`,
+          queued: { messageId: `client-${attempts}`, position: 1, state: 'withdrawn' }
+        })
+      }
+      return method === 'agentSession.options' ? ok({ models: [], current: {} }) : ok({})
+    })
+    await mountSession(CAPABLE)
+    await act(async () => {
+      expect(await hook!.sendWithOutcome('again')).toBe('unknown')
+    })
+    // The retained id cannot be cleared, so the fresh resend is off the table.
+    asyncStorage.setItem.mockRejectedValue(new Error('disk full'))
+    asyncStorage.removeItem.mockRejectedValue(new Error('disk full'))
+    await act(async () => {
+      expect(await hook!.sendWithOutcome('again')).toBe('rejected')
+    })
+    expect(attempts).toBe(2)
+    expect(onSendError).toHaveBeenCalledWith('Message not sent')
+  })
+
   describe('cards from the published list', () => {
     it('renders published drafts as cards and follows later frames', async () => {
       await mountSession(

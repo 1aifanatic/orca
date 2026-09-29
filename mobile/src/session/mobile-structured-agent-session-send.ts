@@ -129,17 +129,20 @@ export async function sendMobileStructuredAgentSessionMessage(input: {
       // duplicate this one; the next replay gets another clear chance.
     }
   }
-  if (
-    released &&
-    operation.retained &&
-    !input.resendingAfterWithdrawal &&
+  const withdrawnReplay =
     result.status === 'accepted' &&
     'queued' in result.value &&
     result.value.queued?.state === 'withdrawn'
-  ) {
+  if (withdrawnReplay && released && operation.retained && !input.resendingAfterWithdrawal) {
     // The retained id's draft was withdrawn, so it never reached the agent:
     // this identical message is a new one, not a replay to swallow.
     return sendMobileStructuredAgentSessionMessage({ ...input, resendingAfterWithdrawal: true })
+  }
+  if (withdrawnReplay) {
+    // Not resent (its id could not be released): no card and no bubble holds the text, so it
+    // goes back to the composer rather than vanishing.
+    input.onError('Message not sent')
+    return 'rejected'
   }
   if (outcome.error !== null) {
     input.onError(outcome.error)
