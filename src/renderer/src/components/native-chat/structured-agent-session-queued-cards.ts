@@ -39,14 +39,20 @@ function queuedMessageCardText(body: AgentSessionQueuedMessage['body']): string 
  * suppressed locally: on a multi-page catch-up the shrunk list rides only the
  * final page, so the bubble and the card would otherwise briefly coexist.
  * Presentation only — no durable state. Returned cards never suppress: their
- * consumed submission exists precisely because it was refused.
+ * consumed submission exists precisely because it was refused. Nor does a rejected
+ * submission hide a waiting card: beside one, it is a draft a Stop put back under the
+ * same id, and the transcript does not show a rejected submission either.
  */
 export function projectQueuedMessageCards(
   queuedMessages: readonly AgentSessionQueuedMessage[] | null | undefined,
   submissions: readonly AgentJournalSubmission[],
   session: { hasPendingPrompt: boolean }
 ): QueuedMessageCard[] {
-  const consumed = new Set(submissions.map((submission) => submission.clientMessageId))
+  const consumed = new Set(
+    submissions
+      .filter((submission) => submission.dispatchState !== 'rejected')
+      .map((submission) => submission.clientMessageId)
+  )
   const ordered = [...(queuedMessages ?? [])]
     .sort((left, right) => left.position - right.position)
     .filter((message) => message.state === 'returned' || !consumed.has(message.messageId))

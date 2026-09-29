@@ -26,12 +26,15 @@ function draft(
   }
 }
 
-function submission(clientMessageId: string): AgentJournalSubmission {
+function submission(
+  clientMessageId: string,
+  dispatchState: AgentJournalSubmission['dispatchState'] = 'pending'
+): AgentJournalSubmission {
   return {
     clientMessageId,
     fence: 1,
     payloadFingerprint: 'fingerprint',
-    dispatchState: 'pending',
+    dispatchState,
     providerItemId: null,
     reason: null,
     submittedAt: 1,
@@ -84,6 +87,20 @@ describe('queued message cards', () => {
       IDLE
     )
     expect(cards[0]).toMatchObject({ hold: 'paused', pausedReason: 'send_failed' })
+  })
+
+  it('shows a draft a Stop put back beside its rejected first submission', () => {
+    // The Stop withdrew the consumed draft and requeued it under the same id; the journal keeps
+    // the first submission as rejected, and the transcript hides that one too.
+    const requeued = draft('requeued', 1, { paused: true, pausedReason: 'stopped' })
+    expect(
+      projectQueuedMessageCards([requeued], [submission('requeued', 'rejected')], IDLE)
+    ).toMatchObject([{ messageId: 'requeued', state: 'waiting', hold: 'paused' }])
+    for (const dispatchState of ['pending', 'accepted'] as const) {
+      expect(
+        projectQueuedMessageCards([requeued], [submission('requeued', dispatchState)], IDLE)
+      ).toEqual([])
+    }
   })
 
   it('suppresses a waiting card whose submission already arrived, but never a returned one', () => {
