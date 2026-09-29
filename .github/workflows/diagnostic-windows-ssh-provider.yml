@@ -1,0 +1,138 @@
+name: Diagnostic stable Bun ARM SSH provider qualification
+on:
+  push:
+    branches: [OrcaWin/np-windows-ssh-provider-diagnostic]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: arm-ssh-provider-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  windows_watcher:
+    if: github.repository == 'stablyai/orca' && github.ref == 'refs/heads/OrcaWin/np-windows-ssh-provider-diagnostic'
+    uses: ./.github/workflows/windows-watcher-artifacts.yml
+    with:
+      ref: 2084c58ba5410106ce61153a9fb16cdb4b6e5301
+  qualify:
+    needs: windows_watcher
+    runs-on: windows-11-arm
+    timeout-minutes: 45
+    env:
+      ORCA_BACKGROUND_LAUNCH: '1'
+      ORCA_ISOLATED_SSH_CI: '1'
+      QUALIFICATION_SOURCE_SHA: 2084c58ba5410106ce61153a9fb16cdb4b6e5301
+      PRODUCER_RUN: '36503596770'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: 2084c58ba5410106ce61153a9fb16cdb4b6e5301
+          persist-credentials: false
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          path: .build/qualification-tools
+          sparse-checkout: config/ci/windows-ssh-provider
+          persist-credentials: false
+      - name: Require matching product and watcher source
+        shell: pwsh
+        env:
+          WATCHER_SOURCE_SHA: ${{ needs.windows_watcher.outputs.source_sha }}
+        run: |
+          if((git rev-parse HEAD).Trim() -ne $env:QUALIFICATION_SOURCE_SHA -or $env:WATCHER_SOURCE_SHA -ne $env:QUALIFICATION_SOURCE_SHA){throw 'Product/watcher source mismatch'}
+          New-Item -ItemType Directory -Force .build/ssh-provider-receipts | Out-Null
+      - uses: actions/download-artifact@v8
+        with:
+          github-token: ${{ github.token }}
+          run-id: '36503596770'
+          name: full-offline-patched-bun
+          path: .build/producer
+      - name: Retain real producer run identity
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/stablyai/orca/actions/runs/$env:PRODUCER_RUN" | Out-File -Encoding utf8NoBOM .build/producer/producer-run.json
+          if($LASTEXITCODE -ne 0){throw 'Producer identity lookup failed'}
+      - uses: ./.github/actions/load-windows-watcher-artifacts
+      - uses: ./.github/actions/install-node-dependencies
+        with:
+          native-runtime: node
+      - name: Admit exact stable candidate before provisioning
+        shell: pwsh
+        run: |
+          $tools=Join-Path $pwd '.build/qualification-tools/config/ci/windows-ssh-provider'
+          node (Join-Path $tools 'verify-bun-output.mjs') candidate .build/producer . arm64 .build/ssh-provider-receipts/candidate.json $env:PRODUCER_RUN
+          if($LASTEXITCODE -ne 0){throw 'Stable producer/candidate admission failed'}
+          $receipt=(Resolve-Path .build/ssh-provider-receipts/candidate.json).Path
+          $hash=(Get-FileHash -Algorithm SHA256 -LiteralPath $receipt).Hash.ToLowerInvariant()
+          "CANDIDATE_RECEIPT=$receipt" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "CANDIDATE_RECEIPT_SHA256=$hash" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          @{candidateReceiptSha256=$hash;producerRun=$env:PRODUCER_RUN;product=$env:QUALIFICATION_SOURCE_SHA;candidateOverride=$true;expectedSourcePin=$false;scope='diagnostic in-memory ARM executable pin and private cache only'} | ConvertTo-Json | Set-Content .build/ssh-provider-receipts/admission.json
+      - name: Build production relay artifacts and native process table
+        shell: pwsh
+        run: |
+          node config/scripts/build-cli-runtime.mjs --platform win32 --arch arm64
+          if($LASTEXITCODE -ne 0){throw 'CLI runtime build failed'}
+          node config/scripts/build-windows-process-tree-relay-addon.mjs --arch=arm64
+          if($LASTEXITCODE -ne 0){throw 'Native process-table build failed'}
+          $env:ORCA_REQUIRE_RELAY_NATIVE_ADDONS='arm64'
+          node config/scripts/build-relay.mjs
+          if($LASTEXITCODE -ne 0){throw 'Relay build failed'}
+      - name: Run watcher fault harness with production-pinned CLI Bun
+        shell: pwsh
+        timeout-minutes: 5
+        run: |
+          Write-Output 'Scope: production-pinned bundled CLI Bun; actual SSH provider qualification separately uses the admitted stable candidate.' | Tee-Object .build/ssh-provider-receipts/watcher-fault-arm64.log
+          node config/scripts/relay-watcher-fault-harness.mjs 2>&1 | Tee-Object -Append .build/ssh-provider-receipts/watcher-fault-arm64.log
+          if($LASTEXITCODE -ne 0){throw 'Production-pinned CLI Bun watcher fault harness failed'}
+      - name: Parse and typecheck all fixture code before provisioning
+        shell: pwsh
+        run: |
+          $tools=Join-Path $pwd '.build/qualification-tools/config/ci/windows-ssh-provider'
+          foreach($file in @((Join-Path $tools 'preview-ssh/prove-preview-openssh.ps1'),(Join-Path $tools 'preview-ssh/test-preview-diagnostics.ps1'),(Join-Path $tools 'invoke-provider-route.ps1'))){
+            $errors=$null;$tokens=$null
+            [Management.Automation.Language.Parser]::ParseFile($file,[ref]$tokens,[ref]$errors)|Out-Null
+            if($errors.Count){throw "PowerShell parse failed: $file"}
+          }
+          & (Join-Path $tools 'preview-ssh/test-preview-diagnostics.ps1')
+          $copied=[Collections.Generic.List[string]]::new()
+          try {
+            foreach($name in @('windows-arm-provider-route.test.ts','windows-provider-candidate.ts','windows-provider-repaint.ts','windows-provider-loaded-images.ts')){
+              $destination=Join-Path $pwd "src/main/ssh/$name"
+              if(Test-Path -LiteralPath $destination){throw 'Fixture destination already exists'}
+              Copy-Item -LiteralPath (Join-Path $tools $name) -Destination $destination
+              $copied.Add($destination)
+            }
+            node node_modules/typescript/bin/tsc --noEmit -p config/tsconfig.node.json 2>&1 | Tee-Object .build/ssh-provider-receipts/typecheck.log
+            if($LASTEXITCODE -ne 0){throw 'Fixture typecheck failed'}
+          } finally {
+            foreach($destination in $copied){Remove-Item -LiteralPath $destination -Force}
+          }
+      - name: Qualify standard-user SSH deployment, loaded provider and exact resize replay
+        shell: pwsh
+        timeout-minutes: 18
+        run: |
+          $tools=Join-Path $pwd '.build/qualification-tools/config/ci/windows-ssh-provider'
+          $sourceRoot=$pwd.Path
+          $archive=Join-Path $env:RUNNER_TEMP 'preview-OpenSSH-ARM64.zip'
+          & "$env:WINDIR\System32\curl.exe" --fail --location --connect-timeout 15 --max-time 90 --output $archive 'https://github.com/PowerShell/Win32-OpenSSH/releases/download/10.0.0.0p2-Preview/OpenSSH-ARM64.zip'
+          if($LASTEXITCODE -ne 0){throw 'SSH archive fetch failed'}
+          $callback={param($user,$port,$identity,$known)
+            & (Join-Path $tools 'invoke-provider-route.ps1') -SourceRoot $sourceRoot -SourceCommit $env:QUALIFICATION_SOURCE_SHA -Username $user -Port $port -IdentityFile $identity -KnownHosts $known -ReceiptRoot "$env:RUNNER_TEMP\arm-provider-route" -CandidateReceipt $env:CANDIDATE_RECEIPT -CandidateReceiptSha256 $env:CANDIDATE_RECEIPT_SHA256
+          }.GetNewClosure()
+          & (Join-Path $tools 'preview-ssh/prove-preview-openssh.ps1') -Archive $archive -Receipt "$env:RUNNER_TEMP\arm-provider-server.json" -ProductionRouteProbe $callback 2>&1 | Tee-Object .build/ssh-provider-receipts/native-route.log
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: stable-bun-arm-ssh-provider-receipts
+          path: |
+            .build/ssh-provider-receipts/
+            .build/producer/results/
+            .build/producer/work/source-cache-receipt.json
+            .build/producer/producer-run.json
+            ${{ runner.temp }}/arm-provider-server.json
+            ${{ runner.temp }}/arm-provider-route/production-route.json
+            ${{ runner.temp }}/arm-provider-route/repaint-events.json
+          retention-days: 7
