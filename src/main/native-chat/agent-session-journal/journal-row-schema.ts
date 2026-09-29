@@ -12,6 +12,7 @@ import {
   type AgentJournalItemBody,
   type AgentJournalMessageItem,
   type AgentJournalProducerLinkage,
+  type AgentJournalTurnScope,
   type AgentSessionProviderHandle
 } from '../../../shared/agent-session-journal-types'
 import {
@@ -37,6 +38,10 @@ type JournalRowBase = AgentJournalProducerLinkage & {
   ts: number
   /** Set when crash reconciliation appended the row after the fact. */
   recovered?: true
+  /** Which turn the item this row creates belongs to. Rides the base, and is not a `v` bump,
+   *  for the reason linkage does. Absent on rows from hosts that predate it: the reducer
+   *  derives one for them on read. */
+  turnScope?: AgentJournalTurnScope
 }
 
 /** First row of every epoch: binds the epoch to a provider handle and records why it opened. */
@@ -100,6 +105,8 @@ export type JournalDispatchRow = JournalRowBase & {
   /** Provider item identity adopted on accept. */
   providerItemId: string | null
   reason: string | null
+  /** On `pending`: the turn the message was handed into, which becomes its row's scope. */
+  turnScope?: AgentJournalTurnScope
   /** On `rejected`: why, typed. Older readers keep the key and ignore it; a malformed one is
    *  dropped when read, never the row. */
   rejection?: AgentSessionFailureFact
@@ -115,6 +122,7 @@ export type JournalLifecycleMutation =
       itemId: string
       revision: number
       body: AgentJournalItemBody
+      turnScope?: AgentJournalTurnScope
     })
   | { kind: 'tombstone'; itemId: string; revision: number }
 
@@ -180,10 +188,12 @@ export function parseJournalRow(line: string): JournalRowParse {
   }
   const upcast = upcastRow(record, version)
   dropUnusableProducerLinkage(upcast)
+  dropUnusableTurnScope(upcast)
   if (upcast.kind === 'lifecycle-batch' && Array.isArray(upcast.mutations)) {
     for (const mutation of upcast.mutations) {
       if (isPlainObject(mutation)) {
         dropUnusableProducerLinkage(mutation)
+        dropUnusableTurnScope(mutation)
       }
     }
   }
@@ -209,6 +219,24 @@ function dropUnusableProducerLinkage(record: Record<string, unknown>): void {
   }
   if (record.attempt !== undefined && !Number.isInteger(record.attempt)) {
     delete record.attempt
+  }
+}
+
+/** A scope this build cannot place, removed like unusable linkage: the row then reads as one
+ *  written before scopes existed, and the reducer derives its scope. */
+function dropUnusableTurnScope(record: Record<string, unknown>): void {
+  const scope = record.turnScope
+  if (
+    scope !== undefined &&
+    !(
+      isPlainObject(scope) &&
+      (scope.kind === 'thread' ||
+        (scope.kind === 'turn' &&
+          typeof scope.turnItemId === 'string' &&
+          scope.turnItemId.length > 0))
+    )
+  ) {
+    delete record.turnScope
   }
 }
 

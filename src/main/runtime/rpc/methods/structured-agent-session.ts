@@ -256,11 +256,14 @@ export const STRUCTURED_AGENT_SESSION_METHODS = [
   defineMethod({
     name: 'agentSession.history',
     params: HistoryParams,
-    handler: async (params, ctx) =>
-      projectTurnItemHistory(
-        projectBackgroundTaskHistory(await (await requireInstalledHost(ctx)).history(params), ctx),
-        ctx
+    handler: async (params, ctx) => {
+      const host = await requireInstalledHost(ctx)
+      return projectTurnItemHistory(
+        projectBackgroundTaskHistory(await host.history(params), ctx),
+        ctx,
+        host.sessionAgent(params.sessionId)
       )
+    }
   }),
   defineStreamingMethod({
     name: 'agentSession.subscribe',
@@ -279,7 +282,14 @@ export const STRUCTURED_AGENT_SESSION_METHODS = [
       dispose = await host.subscribe({
         id: subscriptionId,
         sessionId: params.sessionId,
-        emit: (event) => emit(projectTurnItemEvent(projectBackgroundTaskEvent(event, ctx), ctx)),
+        emit: (event) =>
+          emit(
+            projectTurnItemEvent(
+              projectBackgroundTaskEvent(event, ctx),
+              ctx,
+              host.sessionAgent(params.sessionId)
+            )
+          ),
         ...(params.cursor ? { cursor: params.cursor } : {})
       })
       if (stream.isClosed()) {

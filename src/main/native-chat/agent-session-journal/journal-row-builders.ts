@@ -3,6 +3,8 @@ import type {
   AgentJournalItemIdentity,
   AgentJournalMessageItem,
   AgentJournalProducerLinkage,
+  AgentJournalRowAttribution,
+  AgentJournalTurnScope,
   AgentSessionProviderHandle
 } from '../../../shared/agent-session-journal-types'
 import { journalRowSchemaVersion } from '../../../shared/agent-session-journal-types'
@@ -34,7 +36,7 @@ export function journalItemRowBuilder(
   state: () => JournalReducerState,
   identity: AgentJournalItemIdentity,
   body: AgentJournalItemBody,
-  options: AgentJournalProducerLinkage & { fence: number; observedAt?: number; recovered?: true }
+  options: AgentJournalRowAttribution & { fence: number; observedAt?: number; recovered?: true }
 ): RowBuilder<JournalItemRow> {
   return (seq, ts) =>
     buildJournalItemRow({
@@ -45,7 +47,8 @@ export function journalItemRowBuilder(
       fence: options.fence,
       ts: options.observedAt ?? ts,
       recovered: options.recovered,
-      linkage: options
+      linkage: options,
+      turnScope: options.turnScope
     })
 }
 
@@ -95,7 +98,9 @@ export function journalDispatchRowBuilder(
   input: ResolveDispatchInput
 ): RowBuilder<JournalDispatchRow> {
   const providerItemId =
-    input.state === 'accepted' ? agentJournalItemKey(input.providerIdentity) : null
+    input.state === 'accepted' && input.providerIdentity
+      ? agentJournalItemKey(input.providerIdentity)
+      : null
   // The only dispatch-row builder: its input type is what makes a rejected row carry its fact.
   return (seq, ts) => ({
     kind: 'dispatch',
@@ -105,7 +110,8 @@ export function journalDispatchRowBuilder(
     reason: boundedDispatchReason(input),
     ...(input.state === 'rejected' ? { rejection: input.rejection } : {}),
     ...journalRowBase(state().epoch, seq, input.fence, ts),
-    ...(input.recovered ? { recovered: input.recovered } : {})
+    ...(input.recovered ? { recovered: input.recovered } : {}),
+    ...(input.state === 'pending' ? { turnScope: input.turnScope } : {})
   })
 }
 
@@ -128,6 +134,8 @@ export type JournalLifecycleMutationInput =
       /** Who wrote the row. Absent ⇒ the session's own agent on a first write,
        *  and the row's existing producer on a revision. */
       linkage?: AgentJournalProducerLinkage
+      /** Which turn the row belongs to. Kept from the write that creates the row. */
+      turnScope: AgentJournalTurnScope
     }
   | { kind: 'tombstone'; identity: AgentJournalItemIdentity }
 
@@ -136,13 +144,14 @@ export type JournalLifecycleMutationInput =
  *  settled before any checkpoint landed — and one batch can mix producers.
  *  The session's own rows carry no key at all: absence is the claim. */
 export function journalLifecycleItemMutation(
-  producer: AgentJournalProducerLinkage,
+  attribution: AgentJournalRowAttribution,
   identity: AgentJournalItemIdentity,
   body: AgentJournalItemBody
 ): JournalLifecycleMutationInput {
-  return namesAgentJournalProducer(producer)
-    ? { kind: 'item', identity, body, linkage: agentJournalLinkageFields(producer) }
-    : { kind: 'item', identity, body }
+  const { turnScope } = attribution
+  return namesAgentJournalProducer(attribution)
+    ? { kind: 'item', identity, body, turnScope, linkage: agentJournalLinkageFields(attribution) }
+    : { kind: 'item', identity, body, turnScope }
 }
 
 /** The persisted form of one mutation, shared with the partitioner's size probe
@@ -158,6 +167,7 @@ export function journalLifecycleMutationRow(
         itemId,
         revision,
         body: mutation.body,
+        turnScope: mutation.turnScope,
         ...agentJournalLinkageFields(mutation.linkage)
       }
     : { kind: 'tombstone', itemId, revision }
@@ -231,6 +241,7 @@ export function buildJournalItemRow(input: {
   ts: number
   recovered?: true
   linkage?: AgentJournalProducerLinkage
+  turnScope: AgentJournalTurnScope
 }): JournalItemRow {
   const itemId = agentJournalItemKey(input.identity)
   const resolved = input.state.aliases.get(itemId) ?? itemId
@@ -248,6 +259,7 @@ export function buildJournalItemRow(input: {
     body: input.body,
     ...journalRowBase(input.state.epoch, input.seq, input.fence, input.ts, [input.body]),
     ...(input.recovered ? { recovered: input.recovered } : {}),
+    turnScope: input.turnScope,
     ...agentJournalLinkageFields(input.linkage)
   }
 }
