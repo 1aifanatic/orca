@@ -77,8 +77,8 @@ export async function initializeReadyRuntimeServices(): Promise<void> {
   // Why: externally started serve-sim processes must stay independent — only Orca-managed/attached helpers belong to a workspace.
   state.emulatorBridge = new EmulatorBridge()
   runtime.setEmulatorBridge(state.emulatorBridge)
-  // Why: worktree deletion renames the checkout aside and deletes it in the background, so a quit or
-  // crash mid-delete can leave the moved directory on disk. Why deferred: the sweep's recursive
+  // Why: older releases renamed removed checkouts into a trash root and deleted them in the background,
+  // so a quit mid-delete left directories on disk; drain them. Why deferred: the sweep's recursive
   // readdir/rm runs on the same libuv threadpool the window's first paint and worktree-catalog
   // hydration are reading disk on, and nothing on the startup path consumes its result.
   runAfterFirstWindowShown(() => {

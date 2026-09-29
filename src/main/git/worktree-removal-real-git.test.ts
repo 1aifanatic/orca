@@ -1,22 +1,17 @@
-// Real-binary coverage for deferred worktree deletion: the mocked-runner suite cannot prove that Git
-// accepts `worktree remove --force` on a path Orca just renamed away.
+// Real-binary coverage for worktree removal: the mocked-runner suite cannot prove what Git deletes,
+// deregisters and refuses, or that deleting a checkout leaves Node's file pool free.
 import { execFile } from 'node:child_process'
-import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises'
+import { existsSync, statSync } from 'node:fs'
+import { link, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { performance } from 'node:perf_hooks'
 import { promisify } from 'node:util'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { listWorktreesStrict, removeWorktree } from './worktree'
 import { isPrunableGitFileWorktree } from '../worktree-prunable-git-file'
 import { removeStaleLocalWorktreeRegistration } from '../local-worktree-removal-recovery'
-import {
-  getWorktreeTrashRoot,
-  isWorktreeTrashEntryName,
-  sweepStaleWorktreeTrash,
-  whenWorktreeTrashDeletionsSettled,
-  WORKTREE_TRASH_DIR_NAME
-} from '../worktree-trash'
+import { sweepStaleWorktreeTrash, WORKTREE_TRASH_DIR_NAME } from '../worktree-trash'
 
 const execFileAsync = promisify(execFile)
 
@@ -33,15 +28,15 @@ async function git(args: string[], cwd: string): Promise<string> {
 beforeEach(async () => {
   // realpath: macOS hands out /var/... temp paths while Git reports /private/var/..., and Orca
   // matches the worktree it is removing against Git's own list.
-  scratchDir = await realpath(await mkdtemp(join(tmpdir(), 'orca-deferred-worktree-removal-')))
+  scratchDir = await realpath(await mkdtemp(join(tmpdir(), 'orca-worktree-removal-')))
   repoPath = join(scratchDir, 'repo')
   workspaceRoot = join(scratchDir, 'workspaces')
   worktreePath = join(workspaceRoot, 'repo', 'feature')
   await mkdir(repoPath, { recursive: true })
   await mkdir(join(workspaceRoot, 'repo'), { recursive: true })
   await git(['init', '-q'], repoPath)
-  await git(['config', 'user.email', 'deferred@example.invalid'], repoPath)
-  await git(['config', 'user.name', 'Deferred Removal'], repoPath)
+  await git(['config', 'user.email', 'removal@example.invalid'], repoPath)
+  await git(['config', 'user.name', 'Worktree Removal'], repoPath)
   await writeFile(join(repoPath, 'seed.txt'), 'seed\n')
   // Committed before the worktree exists so its branch stays merged and branch cleanup can run.
   await mkdir(join(repoPath, 'node_modules', 'pkg'), { recursive: true })
@@ -52,25 +47,16 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
-  await whenWorktreeTrashDeletionsSettled()
   await rm(scratchDir, { recursive: true, force: true })
 })
 
-describe('deferred worktree removal against the real Git binary', () => {
-  it('clears the registration and deletes the renamed checkout in the background', async () => {
-    const trashRoot = getWorktreeTrashRoot(worktreePath)
-
+describe('worktree removal against the real Git binary', () => {
+  it('deletes the checkout and its registration before returning', async () => {
     await removeWorktree(repoPath, worktreePath, false, { deleteBranch: false })
 
-    // The user-visible removal is complete: nothing on disk, nothing registered.
     expect(existsSync(worktreePath)).toBe(false)
     expect(await git(['worktree', 'list'], repoPath)).not.toContain(worktreePath)
-    // Only the rename path creates this root, so its presence proves the deletion was deferred.
-    expect(existsSync(trashRoot)).toBe(true)
-    expect((await readdir(trashRoot)).every(isWorktreeTrashEntryName)).toBe(true)
-
-    await whenWorktreeTrashDeletionsSettled()
-    expect(await readdir(trashRoot)).toEqual([])
+    expect(existsSync(join(workspaceRoot, 'repo', WORKTREE_TRASH_DIR_NAME))).toBe(false)
   })
 
   it('leaves sibling worktrees registered', async () => {
@@ -89,16 +75,15 @@ describe('deferred worktree removal against the real Git binary', () => {
     expect(await git(['branch', '--list', 'feature'], repoPath)).toBe('')
   })
 
-  it('refuses to move a dirty checkout aside', async () => {
+  it('refuses to delete a dirty checkout', async () => {
     await writeFile(join(worktreePath, 'seed.txt'), 'edited\n')
 
     await expect(removeWorktree(repoPath, worktreePath, false)).rejects.toThrow()
     expect(existsSync(join(worktreePath, 'seed.txt'))).toBe(true)
     expect(await git(['worktree', 'list'], repoPath)).toContain(worktreePath)
-    expect(existsSync(getWorktreeTrashRoot(worktreePath))).toBe(false)
   })
 
-  it('does not rename a malformed registration that points at the checkout git file', async () => {
+  it('does not delete a checkout through a malformed registration that names its git file', async () => {
     const markerPath = join(worktreePath, '.git')
     const marker = await readFile(markerPath, 'utf8')
     const adminPath = marker.trim().replace(/^gitdir: /, '')
@@ -108,12 +93,10 @@ describe('deferred worktree removal against the real Git binary', () => {
     await expect(
       removeWorktree(repoPath, markerPath, true, { deleteBranch: false })
     ).rejects.toThrow()
-    await whenWorktreeTrashDeletionsSettled()
 
     expect(await readFile(markerPath, 'utf8')).toBe(marker)
     expect(await readFile(join(worktreePath, 'untracked.txt'), 'utf8')).toBe('keep this work\n')
     expect(await git(['branch', '--list', 'feature'], repoPath)).toContain('feature')
-    expect(existsSync(getWorktreeTrashRoot(markerPath))).toBe(false)
   })
 
   it('prunes a proven malformed registration while retaining checkout files and its branch', async () => {
@@ -147,7 +130,7 @@ describe('deferred worktree removal against the real Git binary', () => {
     expect(existsSync(adminPath)).toBe(false)
   })
 
-  it('sweeps trash a previous run left behind', async () => {
+  it('sweeps trash an older release left behind', async () => {
     const stalePath = join(
       workspaceRoot,
       'repo',
@@ -161,4 +144,80 @@ describe('deferred worktree removal against the real Git binary', () => {
     expect(existsSync(stalePath)).toBe(false)
     expect(existsSync(worktreePath)).toBe(true)
   })
+})
+
+const POOL_FIXTURE_FILES = 3_000
+const POOL_SENTINEL_EVERY = 100
+
+function queuedFsRequests(): number {
+  return process
+    .getActiveResourcesInfo()
+    .filter((resource) => resource === 'FSReqPromise' || resource === 'FSReqCallback').length
+}
+
+describe('worktree removal and the Node file pool', () => {
+  it('keeps async file I/O responsive while the checkout is deleted', async () => {
+    // One flat directory: a recursive delete through the pool would queue every entry at once.
+    const bulkPath = join(worktreePath, 'bulk')
+    await mkdir(bulkPath)
+    for (let start = 0; start < POOL_FIXTURE_FILES; start += 500) {
+      await Promise.all(
+        Array.from({ length: 500 }, (_unused, offset) =>
+          writeFile(
+            join(bulkPath, `file-${start + offset}.js`),
+            `module.exports = ${start + offset}\n`
+          )
+        )
+      )
+    }
+    await git(['add', '-A'], worktreePath)
+    await git(['commit', '-qm', 'bulk'], worktreePath)
+    // Outside hard links drop to one link only once the checkout's copies are gone, wherever the
+    // delete runs, so the window below covers the whole delete rather than just the call.
+    const sentinelRoot = join(scratchDir, 'sentinels')
+    await mkdir(sentinelRoot)
+    const sentinels: string[] = []
+    for (let index = 0; index < POOL_FIXTURE_FILES; index += POOL_SENTINEL_EVERY) {
+      const sentinel = join(sentinelRoot, `file-${index}`)
+      await link(join(bulkPath, `file-${index}.js`), sentinel)
+      sentinels.push(sentinel)
+    }
+    const checkoutDeleted = (): boolean => sentinels.every((path) => statSync(path).nlink === 1)
+    const probePath = join(repoPath, 'seed.txt')
+
+    let removalSettled = false
+    const removal = removeWorktree(repoPath, worktreePath, false, { deleteBranch: false }).finally(
+      () => {
+        removalSettled = true
+      }
+    )
+    const startedAt = performance.now()
+    let maxQueued = 0
+    let maxStatMs = 0
+    let statCount = 0
+    const sampler = setInterval(() => {
+      maxQueued = Math.max(maxQueued, queuedFsRequests())
+    }, 1)
+    try {
+      while (!removalSettled || !checkoutDeleted()) {
+        expect(performance.now() - startedAt).toBeLessThan(60_000)
+        maxQueued = Math.max(maxQueued, queuedFsRequests())
+        const statStartedAt = performance.now()
+        await stat(probePath)
+        maxStatMs = Math.max(maxStatMs, performance.now() - statStartedAt)
+        statCount += 1
+      }
+    } finally {
+      clearInterval(sampler)
+    }
+    const deletionMs = performance.now() - startedAt
+    await removal
+
+    console.log(
+      `[pool] files=${POOL_FIXTURE_FILES} delete=${deletionMs.toFixed(0)}ms stats=${statCount} maxStat=${maxStatMs.toFixed(1)}ms maxQueuedFsRequests=${maxQueued}`
+    )
+    expect(existsSync(worktreePath)).toBe(false)
+    expect(maxQueued).toBeLessThan(32)
+    expect(maxStatMs).toBeLessThan(deletionMs / 4)
+  }, 120_000)
 })

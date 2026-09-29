@@ -1,29 +1,18 @@
 // removeWorktree: branch deletion safety after the checkout is removed.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const {
-  gitExecFileAsyncMock,
-  gitExecFileSyncMock,
-  translateWslOutputPathsMock,
-  moveWorktreeDirectoryToTrashMock
-} = vi.hoisted(() => ({
-  gitExecFileAsyncMock: vi.fn(),
-  gitExecFileSyncMock: vi.fn(),
-  translateWslOutputPathsMock: vi.fn((output: string) => output),
-  moveWorktreeDirectoryToTrashMock: vi.fn()
-}))
+const { gitExecFileAsyncMock, gitExecFileSyncMock, translateWslOutputPathsMock } = vi.hoisted(
+  () => ({
+    gitExecFileAsyncMock: vi.fn(),
+    gitExecFileSyncMock: vi.fn(),
+    translateWslOutputPathsMock: vi.fn((output: string) => output)
+  })
+)
 
 vi.mock('./runner', () => ({
   gitExecFileAsync: gitExecFileAsyncMock,
   gitExecFileSync: gitExecFileSyncMock,
   translateWslOutputPaths: translateWslOutputPathsMock
-}))
-
-// Default: the checkout cannot be renamed aside, so removal deletes it in place.
-vi.mock('../worktree-trash', () => ({
-  moveWorktreeDirectoryToTrash: moveWorktreeDirectoryToTrashMock.mockResolvedValue(undefined),
-  restoreWorktreeDirectoryFromTrash: vi.fn().mockResolvedValue(true),
-  scheduleWorktreeTrashDeletion: vi.fn()
 }))
 
 import { removeWorktree } from './worktree'
@@ -43,7 +32,6 @@ describe('removeWorktree', () => {
 
   it('uses safe `branch -d` and preserves a branch with unmerged commits', async () => {
     gitExecFileAsyncMock.mockResolvedValueOnce({ stdout: beforeRemoval }) // list before
-    gitExecFileAsyncMock.mockResolvedValueOnce({ stdout: '' }) // clean probe before the rename attempt
     gitExecFileAsyncMock.mockResolvedValueOnce({ stdout: '' }) // worktree remove
     // Git refuses to delete an unmerged branch with `-d`.
     gitExecFileAsyncMock.mockRejectedValueOnce(new Error('not fully merged')) // branch -d
@@ -60,7 +48,6 @@ describe('removeWorktree', () => {
 
   it('deletes the branch when `branch -d` succeeds (fully merged)', async () => {
     gitExecFileAsyncMock.mockResolvedValueOnce({ stdout: beforeRemoval }) // list before
-    gitExecFileAsyncMock.mockResolvedValueOnce({ stdout: '' }) // clean probe before the rename attempt
     gitExecFileAsyncMock.mockResolvedValueOnce({ stdout: '' }) // worktree remove
     gitExecFileAsyncMock.mockResolvedValueOnce({ stdout: '' }) // branch -d succeeds
 
@@ -75,7 +62,6 @@ describe('removeWorktree', () => {
   })
 
   it('reuses known removed worktree metadata instead of relisting before removal', async () => {
-    gitExecFileAsyncMock.mockResolvedValueOnce({ stdout: '' }) // clean probe before the rename attempt
     gitExecFileAsyncMock.mockResolvedValueOnce({ stdout: '' }) // worktree remove
     gitExecFileAsyncMock.mockResolvedValueOnce({ stdout: '' }) // branch -d succeeds
 
@@ -87,7 +73,6 @@ describe('removeWorktree', () => {
     })
 
     expect(gitExecFileAsyncMock.mock.calls.map((call) => call[0])).toEqual([
-      ['status', '--porcelain', '--untracked-files=all'],
       ['worktree', 'remove', '/repo-feature'],
       ['branch', '-d', '--', 'feature/test']
     ])
@@ -95,7 +80,6 @@ describe('removeWorktree', () => {
 
   it('prunes and retries branch deletion only when Git reports a checked-out branch', async () => {
     gitExecFileAsyncMock.mockResolvedValueOnce({ stdout: beforeRemoval }) // list before
-    gitExecFileAsyncMock.mockResolvedValueOnce({ stdout: '' }) // clean probe before the rename attempt
     gitExecFileAsyncMock.mockResolvedValueOnce({ stdout: '' }) // worktree remove
     gitExecFileAsyncMock.mockRejectedValueOnce(
       new Error("error: cannot delete branch 'feature/test' used by worktree at '/repo-stale'")
@@ -107,7 +91,6 @@ describe('removeWorktree', () => {
 
     expect(gitExecFileAsyncMock.mock.calls.map((call) => call[0])).toEqual([
       ['worktree', 'list', '--porcelain', '-z'],
-      ['status', '--porcelain', '--untracked-files=all'],
       ['worktree', 'remove', '/repo-feature'],
       ['branch', '-d', '--', 'feature/test'],
       ['worktree', 'prune'],
