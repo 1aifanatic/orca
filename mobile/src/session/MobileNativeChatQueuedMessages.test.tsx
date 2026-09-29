@@ -72,8 +72,9 @@ describe('MobileNativeChatQueuedMessages', () => {
       )
     })
     const lineCap = (label: string) =>
-      mounted.root.findAll((node) => node.type === 'Text' && node.props.children === label)[0]
-        ?.props.numberOfLines
+      mounted.root.findAll(
+        (node) => String(node.type) === 'Text' && node.props.children === label
+      )[0]?.props.numberOfLines
     expect(lineCap(reason)).toBeUndefined()
     expect(lineCap('Queued — sends when the current turn ends')).toBe(1)
   })
