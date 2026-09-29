@@ -109,6 +109,10 @@ vi.mock('./delete-worktree-flow', () => ({
   runWorktreeDeletesInParallel: vi.fn()
 }))
 
+vi.mock('./active-worktree-focus-after-delete', () => ({
+  prepareActiveWorktreeFocusAfterDelete: () => vi.fn()
+}))
+
 vi.mock('./stale-workspace-list-toast', () => ({
   showWorkspaceListChangedToast: vi.fn()
 }))

@@ -1,9 +1,4 @@
-import {
-  getRepoExecutionHostId,
-  toSshExecutionHostId,
-  type ExecutionHostId
-} from '../../../../shared/execution-host'
-import { getWorktreeHostIdentity } from '../../../../shared/worktree/host-qualified-identity'
+import { getRepoExecutionHostId, toSshExecutionHostId } from '../../../../shared/execution-host'
 import { useAppStore } from '@/store'
 import type { SshHostRemoveResolution } from './ssh-host-remove-resolution'
 
@@ -32,41 +27,12 @@ export async function clearSshHostWorkspaces(
 ): Promise<ClearSshHostWorkspacesResult> {
   const store = useAppStore.getState()
   const forgetLocalOnly = mode === 'forget-local'
+  const failedIds: string[] = []
   // Every workspace in this resolution is pinned to the SSH target being
   // removed, so that target is the host each removal is confirmed against
   // (STA-4343) — a bare id could land on a local checkout at the same path.
   const hostId = toSshExecutionHostId(resolution.targetId)
-  // Why: queue every row this removal takes, main rows included, so the active-workspace
-  // hand-off never moves the user onto (and spawns a terminal in) a row about to go.
-  const leavingRows = [
-    ...resolution.workspaceWorktreeIds,
-    ...resolution.hostRepoIds.flatMap((repoId) =>
-      (store.worktreesByRepo[repoId] ?? [])
-        .filter((w) => w.isMainWorktree && w.hostId === hostId)
-        .map((w) => w.id)
-    )
-  ].map((id) => ({ id, hostId }))
-  store.markWorktreesQueuedForDeletion(leavingRows)
-  try {
-    return await removeSshHostRows(store, resolution, hostId, forgetLocalOnly)
-  } finally {
-    // A row still only queued was never taken (refused or kept): release it.
-    const deleteState = useAppStore.getState().deleteStateByWorktreeId
-    for (const row of leavingRows) {
-      if (deleteState[getWorktreeHostIdentity(row)]?.phase === 'queued') {
-        useAppStore.getState().clearWorktreeDeleteState(row.id, hostId)
-      }
-    }
-  }
-}
 
-async function removeSshHostRows(
-  store: ReturnType<typeof useAppStore.getState>,
-  resolution: SshHostRemoveResolution,
-  hostId: ExecutionHostId,
-  forgetLocalOnly: boolean
-): Promise<ClearSshHostWorkspacesResult> {
-  const failedIds: string[] = []
   for (const worktreeId of resolution.workspaceWorktreeIds) {
     // Why: sequential, not parallel — deletes on the same repo contend on git
     // ref locks, and forget is cheap enough that ordering keeps failures legible.

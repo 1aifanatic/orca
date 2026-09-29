@@ -113,8 +113,8 @@ describe('activateAndRevealWorktree', () => {
     const target = { ...makeWorktree(), id: 'wt-handoff', displayName: 'handoff' }
     seedEmptyActivatableWorktree(target, { extraWorktrees: [sibling] })
 
-    // The shape the removal hand-off produces for a local sibling: no startup payload —
-    // asserted directly in active-worktree-removal-handoff.test.ts.
+    // The shape post-delete focus handoff produces. That caller passes no opts at all —
+    // asserted directly in active-worktree-focus-after-delete.test.ts.
     activateAndExpectNoRelaunch(target.id)
   })
 

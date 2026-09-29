@@ -6,9 +6,7 @@ import type {
 import type { WorktreeSliceGet, WorktreeSliceSet } from '../listing/worktree-slice-types'
 import {
   composeWorktreeHostIdentity,
-  getWorktreeHostIdentity,
-  getWorktreeIdFromHostIdentity,
-  isWorktreeHostIdentity
+  getWorktreeHostIdentity
 } from '../../../../../../shared/worktree/host-qualified-identity'
 import type { ExecutionHostId } from '../../../../../../shared/execution-host'
 
@@ -23,22 +21,6 @@ function getDeleteStateTargetHostId(
   target: string | WorktreeDeleteStateTarget
 ): ExecutionHostId | undefined {
   return typeof target === 'string' ? undefined : target.hostId
-}
-
-/**
- * Ids an in-flight delete names, under either key shape. Why any shape: a cleanup batch queues
- * local rows as `local|<id>` while their record carries no host, so a host-matched read misses them.
- */
-export function collectLeavingWorktreeIds(
-  states: Readonly<Record<string, WorktreeDeleteState>>
-): Set<string> {
-  const ids = new Set<string>()
-  for (const [key, state] of Object.entries(states)) {
-    if (state.isDeleting) {
-      ids.add(isWorktreeHostIdentity(key) ? getWorktreeIdFromHostIdentity(key) : key)
-    }
-  }
-  return ids
 }
 
 export function removeDeleteStatesForWorktreeIds(

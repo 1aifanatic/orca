@@ -13,6 +13,10 @@ import {
   toWorktreeRemovalTarget,
   type WorktreeRemovalTarget
 } from '../../../../shared/worktree/removal'
+import {
+  commitFocusIfFailedDeleteRemovedWorktree,
+  prepareActiveWorktreeFocusAfterDelete
+} from './active-worktree-focus-after-delete'
 import { showWorkspaceListChangedToast } from './stale-workspace-list-toast'
 import { showPreservedBranchBatchToast } from './preserved-branch-batch-toast'
 import type { PreservedBranchCleanup } from '@/lib/preserved-branch-cleanup'
@@ -47,8 +51,12 @@ export async function runWorktreeDeletesInParallel(
   const uniqueTargets = Array.from(
     new Map(targets.map((target) => [getWorktreeHostIdentity(target), target])).values()
   )
-  // Mark all targets up front so the sidebar shows immediate progress, and so a successor
-  // chosen when the active target goes is never another target still in this batch.
+  // Batch focus is committed once after every target settles.
+  const activeWorktreeIdBefore = useAppStore.getState().activeWorktreeId
+  const commitBatchFocus = activeWorktreeIdBefore
+    ? prepareActiveWorktreeFocusAfterDelete(activeWorktreeIdBefore)
+    : null
+  // Mark all targets up front so the sidebar shows immediate progress.
   useAppStore
     .getState()
     .markWorktreesDeleting(uniqueTargets.map((target) => (target.hostId ? target : target.id)))
@@ -128,6 +136,7 @@ export async function runWorktreeDeletesInParallel(
               target.displayName,
               {
                 ...options,
+                focusSuccessorOnDelete: false,
                 suppressPreservedBranchToast: aggregatePreservedBranches,
                 ...(snapshotPruneBatch ? { snapshotPruneBatchId: snapshotPruneBatch.batchId } : {}),
                 onPreservedBranch: (branch) => {
@@ -164,6 +173,30 @@ export async function runWorktreeDeletesInParallel(
       .flat()
       .map((target) => composeWorktreeHostIdentity(target.executionHostId ?? undefined, target.id))
   )
+  // Intermediate focus can spawn a terminal in another target that is still queued.
+  if (activeWorktreeIdBefore) {
+    const state = useAppStore.getState()
+    const activeRow = getWorktreeOnHostFromState(
+      state,
+      activeWorktreeIdBefore,
+      state.activeWorkspaceExecutionHostId ?? undefined
+    )
+    if (!activeRow) {
+      commitBatchFocus?.()
+    } else if (commitBatchFocus) {
+      const failedActiveTarget = uniqueTargets.find(
+        (target) =>
+          target.id === activeWorktreeIdBefore &&
+          !deletedIdentities.has(getWorktreeHostIdentity(target))
+      )
+      if (failedActiveTarget) {
+        void commitFocusIfFailedDeleteRemovedWorktree(
+          toWorktreeRemovalTarget(failedActiveTarget),
+          commitBatchFocus
+        )
+      }
+    }
+  }
   if (aggregatePreservedBranches && preservedBranches.length > 0) {
     const targetOrder = new Map(
       uniqueTargets.map((target, index) => [getWorktreeHostIdentity(target), index])
