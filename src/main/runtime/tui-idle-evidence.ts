@@ -138,12 +138,15 @@ export function nameOnlyIdleNeedsCorroboration(
 export function hasSustainedTitleIdle(
   record: TuiIdleEvidenceRecord,
   agent: TuiAgent | null | undefined,
-  quiescenceMs: number
+  quiescenceMs: number,
+  launchReadiness = false
 ): boolean {
   if (record.lastAgentStatus !== 'idle') {
     return false
   }
-  if (!nameOnlyIdleNeedsCorroboration(agent, record.lastOscTitle)) {
+  // Why launch readiness always corroborates: a shell auto-title (`grok`, `gemini`) names the
+  // agent before its TUI mounts, and a paste then lands in a booting TUI or the shell itself.
+  if (!launchReadiness && !nameOnlyIdleNeedsCorroboration(agent, record.lastOscTitle)) {
     // The title is the only rest signal this agent emits, so there is nothing to wait for.
     return true
   }
@@ -192,6 +195,9 @@ export type TuiIdleEvaluationInput = {
   agent: TuiAgent | null | undefined
   firstPartyStatus: FirstPartyAgentStatus
   quiescenceMs: number
+  /** Waiting for a just-launched agent to open its composer, where a name-only title proves
+   *  nothing until the stream goes quiet. */
+  launchReadiness?: boolean
 }
 
 export type TuiIdleVerdict =
@@ -286,7 +292,7 @@ export function evaluateTuiIdle(input: TuiIdleEvaluationInput): TuiIdleVerdict {
   if (input.record.lastAgentStatus === 'working') {
     return WORKING
   }
-  if (hasSustainedTitleIdle(input.record, input.agent, input.quiescenceMs)) {
+  if (hasSustainedTitleIdle(input.record, input.agent, input.quiescenceMs, input.launchReadiness)) {
     return READY_WEAK
   }
   return {

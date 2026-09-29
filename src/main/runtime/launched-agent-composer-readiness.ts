@@ -13,9 +13,13 @@ import type { TuiAgent } from '../../shared/tui-agent'
 import type { RuntimeTerminalWait } from '../../shared/runtime-terminal-contracts'
 import type { OrcaRuntimeService } from './orca-runtime'
 
-/** Agents whose only launch readiness is a composer marker pinned by a captured transcript
- *  (`zcode-readiness-transcript.test.ts`, `dsh-readiness-transcript.test.ts`). */
-const COMPOSER_MARKER_READINESS_AGENTS: ReadonlySet<TuiAgent> = new Set(['zcode', 'dsh'])
+/**
+ * Agents whose launch readiness is a composer marker pinned by a captured transcript
+ * (`zcode-readiness-transcript.test.ts`, `dsh-readiness-transcript.test.ts`,
+ * `draft-paste-ready-scanner-grok-trace-replay.test.ts`). Grok is here because its only other
+ * evidence is its bare name, which a shell auto-title also writes, and its screen never quiets.
+ */
+const COMPOSER_MARKER_READINESS_AGENTS: ReadonlySet<TuiAgent> = new Set(['zcode', 'dsh', 'grok'])
 
 /**
  * What a launch does for an agent that shows no readiness evidence within its budget.
@@ -53,7 +57,11 @@ export async function waitForLaunchedAgentComposer(
     await runtime.waitForFreshWorkerComposer(handle, agent, timeoutMs)
     return undefined
   }
-  const wait = await runtime.waitForTerminal(handle, { condition: 'tui-idle', timeoutMs })
+  const wait = await runtime.waitForTerminal(handle, {
+    condition: 'tui-idle',
+    timeoutMs,
+    launchReadiness: true
+  })
   // A blocked prompt and an exited agent are evidence; only a silent timeout is its absence.
   return wait && !wait.satisfied && !wait.blockedReason && wait.status === 'running'
     ? settleWithoutReadinessEvidence(wait)

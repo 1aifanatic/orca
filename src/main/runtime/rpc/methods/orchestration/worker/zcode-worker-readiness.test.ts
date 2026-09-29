@@ -5,8 +5,9 @@ describe('composer-marker first dispatch readiness', () => {
   const h = createOrchestrationWorkerReleaseHarness()
   afterEach(() => h.cleanup())
 
-  // DSH's idle hook fires only after a turn, so like ZCode its captured composer is its readiness.
-  it.each(['zcode', 'dsh'] as const)(
+  // DSH's idle hook fires only after a turn, and Grok's only other signal is its bare name, which a
+  // shell auto-title also writes; like ZCode, their captured composer is their readiness.
+  it.each(['zcode', 'dsh', 'grok'] as const)(
     'waits for %s’s new composer before delivering exactly one dispatch',
     async (agent) => {
       h.setup()

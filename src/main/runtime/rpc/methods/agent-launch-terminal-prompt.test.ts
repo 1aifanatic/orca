@@ -63,7 +63,9 @@ describe('writing a launch prompt into a terminal agent', () => {
     expect(delivered).toBe(true)
     expect(stub.waitForTerminal).toHaveBeenCalledWith('term_1', {
       condition: 'tui-idle',
-      timeoutMs: 60_000
+      timeoutMs: 60_000,
+      // A name-only title proves nothing about a just-launched agent until its stream is quiet.
+      launchReadiness: true
     })
     const [handle, text, options] = stub.sendTerminalAgentPrompt.mock.calls[0]!
     expect(handle).toBe('term_1')
@@ -188,7 +190,7 @@ describe('writing a launch prompt into a terminal agent', () => {
     expect(stub.waitForTerminal.mock.calls.length).toBeLessThanOrEqual(60)
   })
 
-  it.each(['zcode', 'dsh'] as const)(
+  it.each(['zcode', 'dsh', 'grok'] as const)(
     'waits for %s’s composer marker, its only launch readiness',
     async (agent) => {
       const stub = runtimeStub({})
