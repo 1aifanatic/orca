@@ -1,10 +1,10 @@
 // The one queue gate: admission, the drain step and Send-now consume a single
-// typed hold decision, so the lists cannot drift — pinned here with the
-// late-result /compact journey, Send-now's override set, and the
-// replay-preference rule for a refused draft.
+// typed hold decision, so the lists cannot drift — pinned here with a clear in
+// doubt, Send-now's override set, and the replay-preference rule for a refused
+// draft.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { StructuredSessionCompactionResult } from './structured-session-compaction'
+import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 import { structuredQueueHold } from './structured-agent-session-queued-messages'
 import {
   createQueuedMessageTestRig,
@@ -21,11 +21,10 @@ import {
 let rig: QueuedMessageTestRig
 let host: QueuedMessageTestRig['host']
 let store: QueuedMessageTestRig['store']
-let compact: QueuedMessageTestRig['compact']
 
 beforeEach(async () => {
   rig = await createQueuedMessageTestRig()
-  ;({ host, store, compact } = rig)
+  ;({ host, store } = rig)
 })
 
 afterEach(() => rig.dispose())
@@ -42,63 +41,25 @@ const settleRejected: QueuedMessageTestRig['settleRejected'] = (...args) =>
   rig.settleRejected(...args)
 
 describe('the one queue gate', () => {
-  /** A /compact whose request failed but whose result arrives later: the record
-   *  holds `phase: 'prepared'` with no journal commit until the late result. */
-  async function compactWithLateResult(): Promise<
-    (result: StructuredSessionCompactionResult) => Promise<void>
-  > {
-    let late: ((result: StructuredSessionCompactionResult) => Promise<void>) | undefined
-    compact.mockImplementationOnce(async (input) => {
-      late = input.onLateResult
-      throw new Error('compact request timed out')
-    })
-    const operationId = hostTestOperationId()
-    await host
-      .conversationCommand(CALLER, {
-        envelope: envelope({ command: 'compact' }, 'agentSession.conversationCommand', operationId),
-        command: 'compact'
-      })
-      .catch(() => undefined)
-    expect(store.getRecord(SESSION)?.conversationCommand).toMatchObject({
-      command: 'compact',
+  it('Send-now refuses while a clear is in doubt, with the refusal any send gets', async () => {
+    const working = await workingSend()
+    const queued = await send('queued behind the clear', 'queue-if-active').result
+    if (!queued.ok || !('queued' in queued.value)) {
+      throw new Error('expected a queued receipt')
+    }
+    const draftId = queued.value.queued.messageId
+    await store.setConversationCommand(SESSION, 1, {
+      command: 'clear',
+      runtimeFence: 1,
+      operationId: hostTestOperationId(),
+      callerKey: CALLER.callerKey,
       phase: 'prepared',
       state: 'unknown'
     })
-    if (!late) {
-      throw new Error('compact never offered a late result')
-    }
-    return late
-  }
-
-  it('a capable send during a late-result compact queues, and drains once the result lands (PLAN §3.1)', async () => {
-    const late = await compactWithLateResult()
-    const queued = await send('sent during the compact', 'queue-if-active').result
-    expect(queued).toMatchObject({ ok: true, value: { queued: { state: 'waiting' } } })
-    if (!queued.ok || !('queued' in queued.value)) {
-      throw new Error('expected a queued receipt')
-    }
-    const draftId = queued.value.queued.messageId
-    // Nothing drains while the command is in doubt.
-    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(await sendNow(draftId)).toMatchObject({ ok: false })
+    await settleAccepted(working, 'a')
+    await new Promise((resolve) => setTimeout(resolve, 150))
     expect(await rig.handoff(draftId)).toBeUndefined()
-    await late({ outcome: 'compacted' })
-    await eventually(async () => expect(await rig.handoff(draftId)).toBeDefined())
-    expect(await drafts()).toHaveLength(0)
-  })
-
-  it("Send-now refuses on a command in flight — it overrides only the queue's own policy", async () => {
-    const late = await compactWithLateResult()
-    const queued = await send('queued behind the compact', 'queue-if-active').result
-    if (!queued.ok || !('queued' in queued.value)) {
-      throw new Error('expected a queued receipt')
-    }
-    const draftId = queued.value.queued.messageId
-    expect(await sendNow(draftId)).toMatchObject({
-      ok: false,
-      refusal: { message: expect.stringContaining('conversation operation') }
-    })
-    await late({ outcome: 'compacted' })
-    await eventually(async () => expect(await rig.handoff(draftId)).toBeDefined())
   })
 
   it('Send-now refuses on a pending prompt and overrides a running turn', async () => {
@@ -118,7 +79,7 @@ describe('the one queue gate', () => {
         options: [],
         resolution: { state: 'pending', selectedOptionId: null, resolvedBy: null, resolvedAt: null }
       },
-      { fence: 1 }
+      { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     )
     expect(await sendNow(draftId)).toMatchObject({
       ok: false,
@@ -145,7 +106,7 @@ describe('the one queue gate', () => {
           resolvedAt: 1
         }
       },
-      { fence: 1 }
+      { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     )
     // The turn still runs (`working`), which Send-now alone may override.
     expect(await submission(working)).toMatchObject({ dispatchState: 'pending' })

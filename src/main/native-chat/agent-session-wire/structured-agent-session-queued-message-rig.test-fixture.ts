@@ -12,6 +12,8 @@ import type { AgentJournalSubmission } from '../../../shared/agent-session-journ
 import type { AgentSessionQueuePause } from '../../../shared/agent-session-wire'
 import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
+import type { StructuredAgentSessionEventSink } from './structured-agent-session-event-sink'
+import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
 import { rotateStructuredAgentSessionHostInstanceForTests } from './structured-agent-session-queued-pause'
 import {
@@ -43,9 +45,12 @@ export async function createQueuedMessageTestRig() {
   const awaitStarted: Mock<NonNullable<StructuredAgentSessionAdapter['awaitStarted']>> = vi.fn(
     async () => undefined
   )
+  // The provider's receipt of a /compact; its end arrives later, as `finishCompact` writes it.
   const compact: Mock<NonNullable<StructuredAgentSessionAdapter['compact']>> = vi.fn(async () => ({
-    outcome: 'compacted' as const
+    state: 'accepted' as const,
+    providerIdentity: null
   }))
+  let events: StructuredAgentSessionEventSink | undefined
   const store = await AgentSessionRecordStore.open({
     directory: join(root, 'store'),
     hostId: 'local'
@@ -53,17 +58,25 @@ export async function createQueuedMessageTestRig() {
   const host = new StructuredAgentSessionHost({
     store,
     adapter: {
-      acquire: async ({ fence, spawnToken }) => ({
-        process: { hostId: 'local', pid: 4242, processStartTimeMs: 1_700_000_000_000, spawnToken },
-        acquisitionGeneration: 'generation-1',
-        link: {
-          linkId: `link-${fence}`,
-          handle: { provider: 'codex' as const, threadId: THREAD },
-          origin: 'created' as const,
-          mintedAtFence: fence,
-          observedAt: NOW
+      acquire: async ({ fence, spawnToken, events: sink }) => {
+        events = sink
+        return {
+          process: {
+            hostId: 'local',
+            pid: 4242,
+            processStartTimeMs: 1_700_000_000_000,
+            spawnToken
+          },
+          acquisitionGeneration: 'generation-1',
+          link: {
+            linkId: `link-${fence}`,
+            handle: { provider: 'codex' as const, threadId: THREAD },
+            origin: 'created' as const,
+            mintedAtFence: fence,
+            observedAt: NOW
+          }
         }
-      }),
+      },
       dispatch,
       awaitStarted,
       closeSession: vi.fn(async () => true),
@@ -214,6 +227,23 @@ export async function createQueuedMessageTestRig() {
     })
   }
 
+  /** What the provider's translator writes when a /compact's turn ends, as a success. */
+  function finishCompact(): void {
+    const { command } = compact.mock.calls.at(-1)![0]
+    events!.appendLifecycleBatch!(
+      `turn-completed:${command.clientMessageId}`,
+      [
+        {
+          kind: 'item',
+          identity: command.identity,
+          body: { ...command.running, state: 'completed', outcome: 'success', completedAt: NOW },
+          turnScope: AGENT_JOURNAL_THREAD_SCOPE
+        }
+      ],
+      { lifecycle: true }
+    )
+  }
+
   /** A host-process restart, as the queue sees it: the conversation closes, and
    *  opens afresh under a new instance id while its rows survive. */
   async function restartHostProcess(): Promise<void> {
@@ -248,6 +278,7 @@ export async function createQueuedMessageTestRig() {
     dispatch,
     awaitStarted,
     compact,
+    finishCompact,
     envelope,
     send,
     stop,

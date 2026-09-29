@@ -1,5 +1,6 @@
 import type Database from '../../sqlite/sync-database'
 import { insertJournalRow, upsertJournalSessionRow } from './journal-row-table'
+import type { AgentJournalCursor } from '../../../shared/agent-session-journal-types'
 import type { JournalRow } from './journal-row-schema'
 import { assertJournalFence, assertJournalWritable } from './journal-write-guards'
 
@@ -57,6 +58,15 @@ export class JournalRowWriter {
       this.deps.commit(row)
       return row
     })
+  }
+
+  /** Assign the next sequence, make the row durable, and fold it through the SAME reducer
+   *  replay uses — all inside one serialized step — answering where the row landed. */
+  append(
+    build: (seq: number, ts: number) => JournalRow,
+    hook?: JournalRowTransactionHook
+  ): Promise<AgentJournalCursor> {
+    return this.enqueue(build, hook).then((row) => ({ epoch: row.epoch, sequence: row.seq }))
   }
 
   private runBookkeeping(db: Database.Database, row: JournalRow): void {

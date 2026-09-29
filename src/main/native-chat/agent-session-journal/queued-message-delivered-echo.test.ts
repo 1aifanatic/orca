@@ -6,6 +6,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 import type {
   AgentJournalMessageItem,
   AgentSessionJournalIdentity
@@ -38,7 +39,8 @@ function message(text: string): AgentJournalMessageItem {
 
 function echo(journal: AgentSessionJournal, uuid: string, text: string) {
   return journal.appendItem({ provider: 'claude', sessionId: 'native-1', uuid }, message(text), {
-    fence: 0
+    fence: 0,
+    turnScope: AGENT_JOURNAL_THREAD_SCOPE
   })
 }
 
@@ -87,7 +89,12 @@ async function handOffAndReject(
     { messageId: 'draft-1', expect: 'waiting', settledByOp: null }
   )
   if (options.handedOver) {
-    await journal.resolveDispatch({ clientMessageId: 'sub-draft-1', state: 'pending', fence: 0 })
+    await journal.resolveDispatch({
+      clientMessageId: 'sub-draft-1',
+      state: 'pending',
+      fence: 0,
+      turnScope: AGENT_JOURNAL_THREAD_SCOPE
+    })
     await journal.resolveDispatch({
       clientMessageId: 'sub-draft-1',
       state: 'rejected',
