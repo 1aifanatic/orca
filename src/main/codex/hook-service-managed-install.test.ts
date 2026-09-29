@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { removeTreeSync } from '../../shared/windows-transient-lock-removal'
 import { homedir, tmpdir } from 'node:os'
 import type * as Os from 'node:os'
 import { join } from 'node:path'
@@ -208,7 +209,7 @@ describe('CodexHookService', () => {
           )
         }
       } finally {
-        rmSync(spaceHome, { recursive: true, force: true })
+        removeTreeSync(spaceHome)
       }
     }
   )
@@ -239,7 +240,7 @@ describe('CodexHookService', () => {
           )
         }
       } finally {
-        rmSync(metacharHome, { recursive: true, force: true })
+        removeTreeSync(metacharHome)
       }
     }
   )
@@ -410,8 +411,8 @@ describe('CodexHookService', () => {
       expect(readFileSync(systemHooksPath, 'utf-8')).toBe(existingSystemHooks)
     } finally {
       process.env.ORCA_USER_DATA_PATH = homes.userDataDir
-      rmSync(devUserDataDir, { recursive: true, force: true })
-      rmSync(prodUserDataDir, { recursive: true, force: true })
+      removeTreeSync(devUserDataDir)
+      removeTreeSync(prodUserDataDir)
     }
   })
 })
