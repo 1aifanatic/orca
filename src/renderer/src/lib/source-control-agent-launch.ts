@@ -27,6 +27,12 @@ import { createAgentSessionOperationId } from '@/runtime/agent-session-operation
 import { isAmbiguousCreateFailure } from '@/runtime/agent-session-create-operation'
 import { reserveAgentLaunchTab } from '@/lib/agent-launch-tab-reservations'
 import { createBrowserUuid } from '@/lib/browser-uuid'
+import {
+  clearWebSessionFocusIntentIfMatches,
+  recordWebSessionFocusIntent,
+  resolveWebSessionVisibleTabId
+} from '@/runtime/web-session-focus-intent'
+import { LOCAL_STRUCTURED_SESSION_OWNER } from '@/runtime/local-structured-session-owner'
 import { isAgentLaunchResult, type AgentLaunchResult } from '../../../shared/agent-launch-intent'
 import { classifyAgentLaunchReplayRefusal } from '../../../shared/agent-launch-replay-refusal'
 import { isRecoverableRemoteRuntimeConnectionError } from '../../../shared/remote-runtime-client-error-classification'
@@ -180,6 +186,23 @@ export async function launchSourceControlAgent(
           onRevealed: accept
         })
       : () => {}
+  const sessionId = isAgentSessionHandleProvider(args.agent)
+    ? createStructuredAgentSessionId(args.agent, createBrowserUuid)
+    : undefined
+  // Why: a chat the host starts arrives through the session-tabs mirror, which focuses only a tab
+  // the client asked for; the terminal reveal reads the reservation instead.
+  const chatHostTabId = target.kind === 'local' && sessionId ? `agent-session:${sessionId}` : null
+  const chatFocusOwner = { environmentId: LOCAL_STRUCTURED_SESSION_OWNER }
+  if (chatHostTabId) {
+    recordWebSessionFocusIntent(
+      chatFocusOwner,
+      args.worktreeId,
+      chatHostTabId,
+      undefined,
+      resolveWebSessionVisibleTabId(useAppStore.getState(), args.worktreeId)
+    )
+  }
+  let startedChat = false
   const params = {
     agent: args.agent,
     operationId: createAgentSessionOperationId(),
@@ -189,9 +212,7 @@ export async function launchSourceControlAgent(
     ...(sessionOptions ? { sessionOptions } : {}),
     launchSource: args.launchSource,
     paneKey: makePaneKey(tabId, createBrowserUuid()),
-    ...(isAgentSessionHandleProvider(args.agent)
-      ? { sessionId: createStructuredAgentSessionId(args.agent, createBrowserUuid) }
-      : {})
+    ...(sessionId ? { sessionId } : {})
   }
   try {
     const sent = await sendReplayingAmbiguousLaunch(target, params)
@@ -204,6 +225,7 @@ export async function launchSourceControlAgent(
     if (!isAgentLaunchResult(sent.result)) {
       return { kind: 'unknown', message: SOURCE_CONTROL_AGENT_LAUNCH_UNCONFIRMED_MESSAGE }
     }
+    startedChat = sent.result.outcome.kind === 'structured'
     // A chat, a reused pane or a missed reveal never reads the reservation; the reply still means
     // the surface exists.
     accept()
@@ -212,6 +234,9 @@ export async function launchSourceControlAgent(
     return { kind: 'failed', message: error instanceof Error ? error.message : String(error) }
   } finally {
     release()
+    if (chatHostTabId && !startedChat) {
+      clearWebSessionFocusIntentIfMatches(chatFocusOwner, args.worktreeId, chatHostTabId)
+    }
   }
 }
 

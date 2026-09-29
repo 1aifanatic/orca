@@ -52,6 +52,8 @@ import {
   AGENT_LAUNCH_REPLAY_REQUIRED_RUNTIME_CAPABILITY
 } from '../../../shared/protocol-version'
 import { parsePaneKey } from '../../../shared/stable-pane-id'
+import { peekWebSessionFocusIntent } from '@/runtime/web-session-focus-intent'
+import { LOCAL_STRUCTURED_SESSION_OWNER } from '@/runtime/local-structured-session-owner'
 
 const HOST_CAPABILITIES = [
   AGENT_LAUNCH_REPLAY_REQUIRED_RUNTIME_CAPABILITY,
@@ -186,6 +188,29 @@ describe('launching a source-control button’s agent through the host', () => {
     await launchSourceControlAgent(ARGS)
 
     expect(agentLaunchTabReservationCountForTests()).toBe(0)
+  })
+
+  it('asks the tab mirror to focus the chat the host starts, as a button-started chat always was', async () => {
+    mocks.callRuntimeRpc.mockImplementation(async (_t, _m, params) => ({
+      ...launchResult({ delivery: 'submit', outcome: 'journaled', messageId: 'm1' }),
+      outcome: { kind: 'structured', sessionId: params.sessionId, handle: 'chat_1' }
+    }))
+
+    await launchSourceControlAgent(ARGS)
+
+    expect(
+      peekWebSessionFocusIntent({ environmentId: LOCAL_STRUCTURED_SESSION_OWNER }, 'wt-1')
+    ).toMatchObject({
+      hostTabId: `agent-session:${sentParams().sessionId}`
+    })
+  })
+
+  it('withdraws the chat focus request when the host starts a terminal instead', async () => {
+    await launchSourceControlAgent(ARGS)
+
+    expect(
+      peekWebSessionFocusIntent({ environmentId: LOCAL_STRUCTURED_SESSION_OWNER }, 'wt-1')
+    ).toBeNull()
   })
 
   it('replays a lost reply under the same operation, never as a new launch', async () => {
