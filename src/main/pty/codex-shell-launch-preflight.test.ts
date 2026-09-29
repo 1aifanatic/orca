@@ -377,6 +377,46 @@ describe('PowerShell Codex shell launch preflight', () => {
     )
   })
 
+  it.skipIf(!pwshAvailable).each([
+    { version: '0.158.0', expected: 'args=--no-daemon hi' },
+    { version: '0.156.0-alpha.1', expected: 'args=--no-daemon hi' },
+    { version: '0.155.0', expected: 'args=hi' },
+    { version: 'unknown', expected: 'args=hi' }
+  ])('adds --no-daemon only for a proven Codex version: $version', ({ version, expected }) => {
+    const root = mkdtempSync(join(tmpdir(), 'orca-codex-pwsh-version-'))
+    const bin = join(root, 'bin')
+    roots.push(root)
+    mkdirSync(bin)
+    const isWindows = process.platform === 'win32'
+    writeExecutable(
+      join(bin, isWindows ? 'codex.cmd' : 'codex'),
+      isWindows
+        ? '@echo off\r\nif "%~1"=="--version" (\r\n  echo codex-cli %TEST_CODEX_VERSION%\r\n  exit /b 0\r\n)\r\necho args=%*\r\n'
+        : '#!/bin/sh\nif [ "$1" = --version ]; then echo "codex-cli $TEST_CODEX_VERSION"; exit 0; fi\necho "args=$*"\n'
+    )
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`,
+      ORCA_CODEX_LAUNCH_PREFLIGHT: join(bin, 'unused-preflight'),
+      TEST_CODEX_VERSION: version
+    }
+    delete env.ORCA_CODEX_HOME
+
+    const result = spawnSync(
+      'pwsh',
+      [
+        '-NoLogo',
+        '-NoProfile',
+        '-Command',
+        `${getPowerShellCodexShellLaunchPreflight()}\ncodex hi`
+      ],
+      { encoding: 'utf-8', env }
+    )
+
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.stdout.trim()).toBe(expected)
+  })
+
   it.skipIf(!pwshAvailable)('fails open when native errors are promoted', () => {
     const root = mkdtempSync(join(tmpdir(), 'orca-codex-pwsh-failure-'))
     const bin = join(root, 'bin')
