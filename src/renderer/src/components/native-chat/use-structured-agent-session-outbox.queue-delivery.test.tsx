@@ -204,4 +204,44 @@ describe('outbox queue delivery selection', () => {
     await waitFor(() => expect(view.result.current.outbox).toHaveLength(0))
     expect(readNativeChatDraftCache('stop-scope')).toBe('never left')
   })
+
+  it('a Retry after the host lost the capability goes out without `delivery`', async () => {
+    // A host rolled back past the capability rejects the strict field before its operation
+    // ledger, so a replay carrying it again could only fail the same way.
+    mocks.call.mockImplementationOnce(async () => {
+      throw new Error('invalid_argument: Unrecognized key: "delivery"')
+    })
+    const view = renderHook(
+      (props: { capable: boolean }) =>
+        useStructuredAgentSessionOutbox({
+          sessionId: 'session-1',
+          target: LOCAL_TARGET,
+          fence: 1,
+          submissions: [],
+          queueDelivery: props.capable,
+          queueCapable: props.capable
+        }),
+      { initialProps: { capable: true } }
+    )
+    expect(view.result.current.send('follow-up')).toBe(true)
+    await waitFor(() => expect(view.result.current.blockedClientMessageId).not.toBeNull())
+    expect(mocks.call.mock.calls[0]?.[2]?.delivery).toBe('queue-if-active')
+    mocks.call.mockImplementation(() => new Promise(() => {}))
+    view.rerender({ capable: false })
+    const id = view.result.current.outbox[0]?.clientMessageId ?? ''
+    act(() => {
+      view.result.current.retry(id)
+    })
+    await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(2))
+    const params = mocks.call.mock.calls[1]?.[2]
+    expect(params?.envelope.clientOperationId).toBe(id)
+    expect(params && 'delivery' in params).toBe(false)
+    expect(params?.envelope.payloadFingerprint).toBe(
+      structuredAgentSessionPayloadFingerprint({
+        method: 'agentSession.send',
+        sessionId: 'session-1',
+        fields: { body: params?.body }
+      })
+    )
+  })
 })

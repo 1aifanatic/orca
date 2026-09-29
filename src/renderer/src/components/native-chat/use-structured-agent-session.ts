@@ -110,6 +110,7 @@ export function useStructuredAgentSession(args: {
     submissions: transportState.submissions,
     composerScopeKey,
     queueDelivery: queueCapable && queueFollowUps,
+    queueCapable,
     queuedMessageIds
   })
 

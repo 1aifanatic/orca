@@ -24,6 +24,7 @@ import { useStructuredAgentSessionOutboxUnconfirmedProbe } from './use-structure
 import { createBrowserUuid } from '@/lib/browser-uuid'
 import { useStructuredAgentSessionWithdrawnRestore } from './structured-agent-session-withdrawn-message-restore'
 import { useStructuredAgentSessionOutboxOwnership } from './use-structured-agent-session-outbox-ownership'
+import { decideStructuredAgentSessionEntryDelivery } from '../../../../shared/structured-agent-session-outbox-delivery'
 import { retryStructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox-retry'
 
 export function structuredSessionOperationId(): string {
@@ -40,6 +41,8 @@ export function useStructuredAgentSessionOutbox(args: {
   /** Stamp new sends `delivery: 'queue-if-active'` (capable host + setting on); the host
    *  holds one as a draft only while the agent is working. */
   queueDelivery?: boolean
+  /** The host advertises queued messages (setting aside); defaults to `queueDelivery`. */
+  queueCapable?: boolean
   /** Ids of the host's published drafts. A queued send whose acknowledgement was lost keeps
    *  its entry here under the draft's own id; once the host visibly holds the draft, the
    *  entry retires so the same text can never come back twice. */
@@ -49,6 +52,7 @@ export function useStructuredAgentSessionOutbox(args: {
     composerScopeKey,
     fence,
     queueDelivery = false,
+    queueCapable = queueDelivery,
     queuedMessageIds,
     sessionId,
     submissions,
@@ -212,10 +216,15 @@ export function useStructuredAgentSessionOutbox(args: {
       setOutbox(persisted)
       return
     }
+    // Re-decided per attempt from what the host offers now; see the rule for when an id keeps it.
+    const attempt = decideStructuredAgentSessionEntryDelivery(persistedEntry, {
+      capable: queueCapable,
+      enabled: queueDelivery
+    })
     const dispatchGeneration = dispatchGenerationRef.current
     const dispatch = dispatchStructuredAgentSessionOutboxEntry({
-      next: persistedEntry,
-      persisted,
+      next: attempt,
+      persisted: persisted.map((entry) => (entry === persistedEntry ? attempt : entry)),
       sessionId,
       target,
       fence,
@@ -234,7 +243,7 @@ export function useStructuredAgentSessionOutbox(args: {
       // local state, so mirror the settled state once the shared admission finishes.
       void dispatch.promise.then(mirrorPersisted)
     }
-  }, [applyDisposition, fence, outbox, sessionId, target])
+  }, [applyDisposition, fence, outbox, queueCapable, queueDelivery, sessionId, target])
 
   useStructuredAgentSessionOutboxUnconfirmedProbe({
     sessionId,
@@ -250,17 +259,16 @@ export function useStructuredAgentSessionOutbox(args: {
       if (!text.trim() && attachments.length === 0) {
         return false
       }
-      const entry = createStructuredAgentSessionOutboxEntry({
-        clientMessageId: structuredSessionOperationId(),
-        sessionId,
-        text,
-        attachments,
-        queuedAt: Date.now(),
-        // Text-only: an image send keeps today's immediate path (host routes it there anyway).
-        ...(queueDelivery && attachments.length === 0
-          ? { delivery: 'queue-if-active' as const }
-          : {})
-      })
+      const entry = decideStructuredAgentSessionEntryDelivery(
+        createStructuredAgentSessionOutboxEntry({
+          clientMessageId: structuredSessionOperationId(),
+          sessionId,
+          text,
+          attachments,
+          queuedAt: Date.now()
+        }),
+        { capable: queueCapable, enabled: queueDelivery }
+      )
       const next = [...outboxRef.current, entry]
       if (!writeOutbox(sessionId, next)) {
         setError('Message could not be saved to the outbox')
@@ -271,7 +279,7 @@ export function useStructuredAgentSessionOutbox(args: {
       setError(null)
       return true
     },
-    [queueDelivery, sessionId]
+    [queueCapable, queueDelivery, sessionId]
   )
 
   const { withdrawUnsent } = useStructuredAgentSessionOutboxOwnership({
