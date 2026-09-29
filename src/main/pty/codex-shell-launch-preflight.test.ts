@@ -414,9 +414,10 @@ describe('PowerShell Codex shell launch preflight', () => {
       ...process.env,
       PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`,
       ORCA_CODEX_LAUNCH_POLICY: '1',
-      ORCA_CODEX_LAUNCH_PREFLIGHT: join(bin, 'unused-preflight'),
       TEST_CODEX_ACCEPTS: accepts
     }
+    // Why no launcher: the launch policy must not depend on a CLI this build can verify.
+    delete env.ORCA_CODEX_LAUNCH_PREFLIGHT
     delete env.ORCA_CODEX_HOME
 
     const result = spawnSync(
