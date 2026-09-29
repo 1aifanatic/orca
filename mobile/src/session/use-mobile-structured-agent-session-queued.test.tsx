@@ -604,17 +604,17 @@ describe('mobile structured queued messages', () => {
       expect(requestOf('agentSession.send', 1).envelope.clientOperationId).not.toBe(lostId)
     })
 
-    it('reads a replay answered by the hand-off as unconfirmed, and the linked stream spends it', async () => {
+    it('spends the record from a replay answered by the hand-off, which no page carries', async () => {
       await mountSession(CAPABLE)
       await act(async () => {
         expect(await hook!.sendWithOutcome('again')).toBe('unknown')
       })
-      // The host holds that message now; the phone paints no bubble for it.
+      // The host holds that message now; the phone paints no bubble for it. The stream never
+      // carries the hand-off, so the answer's link is what spends the record.
       await act(async () => {
         expect(await hook!.sendWithOutcome('again')).toBe('unknown')
       })
       expect(requestOf('agentSession.send', 1).envelope.clientOperationId).toBe(lostId)
-      act(() => listener?.(batchEvent(undefined, [acceptedSubmission('fresh-hand-off', lostId)])))
       await vi.waitFor(() => expect(stored.has(journalKey)).toBe(false))
       await act(async () => {
         expect(await hook!.sendWithOutcome('again')).toBe('queued')

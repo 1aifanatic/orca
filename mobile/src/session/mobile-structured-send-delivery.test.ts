@@ -65,9 +65,9 @@ describe('mobileStructuredSendDelivery', () => {
     }
   })
 
-  it("reads a replay answered by its draft's hand-off as unconfirmed; the stream spends the id", () => {
-    // The hand-off names the replayed id as its draft; it paints no optimistic bubble, and the
-    // record is spent once the live submissions carry that link.
+  it("reads a replay answered by its draft's hand-off as unconfirmed, and spends the id", () => {
+    // The hand-off names the replayed id as its draft: the host's answer states the link, so the
+    // id is spent without waiting for a stream that may never carry the hand-off.
     const handedOff = structuredSendResultFixture('accepted')
     if (!('submission' in handedOff)) {
       throw new Error('expected a submission answer')
@@ -85,7 +85,7 @@ describe('mobileStructuredSendDelivery', () => {
     }
     expect(mobileStructuredSendDelivery(replay, true)).toEqual({
       outcome: 'unknown',
-      operationIdSpent: false,
+      operationIdSpent: true,
       error: null
     })
   })
