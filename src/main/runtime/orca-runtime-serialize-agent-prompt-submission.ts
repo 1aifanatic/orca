@@ -1,4 +1,6 @@
 // @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
+import { startSpan } from '../observability/tracer'
+import { foregroundAgentVerdict } from '../../shared/foreground-agent-verdict'
 import { selectFreshExplicitAgentStatus } from './runtime-hook-agent-row-selection'
 import { OrcaRuntimeWithControllerKnowsPtyIsLive } from './orca-runtime-controller-knows-pty-is-live'
 import type { RuntimeTerminalAgentStatus } from '../../shared/runtime-types'
@@ -84,9 +86,7 @@ export class OrcaRuntimeWithSerializeAgentPromptSubmission extends OrcaRuntimeWi
     const titleObservedAt = pty?.lastOscTitleAt ?? null
     const foregroundRead = this.readPtyForegroundProcessFromController(ptyId, titleObservedAt ?? 0)
     if (!pty?.connected || !foregroundRead) {
-      if (!recoverCompletedHook) {
-        this.recordTerminalSideEffectFact(ptyId, { kind: 'agent-exited' })
-      }
+      this.ptyTitleTrackersByPtyId.get(ptyId)?.tracker.restoreLastAgentExit()
       return
     }
     void foregroundRead.then((result) => {
@@ -149,8 +149,25 @@ export class OrcaRuntimeWithSerializeAgentPromptSubmission extends OrcaRuntimeWi
         }
         return
       }
-      if (!recoverCompletedHook) {
-        this.recordTerminalSideEffectFact(ptyId, { kind: 'agent-exited' })
+      if (
+        !recoverCompletedHook &&
+        result.controller === this.ptyController &&
+        result.available &&
+        foregroundAgentVerdict(result.process) === 'exited'
+      ) {
+        startSpan('terminal.agent-exit-decision', {
+          attributes: {
+            reason: 'title-exit-candidate',
+            evidenceSource: 'host-foreground-confirmation',
+            verdict: 'exited'
+          }
+        }).end()
+        this.recordTerminalSideEffectFact(ptyId, {
+          kind: 'agent-exited',
+          evidence: 'foreground-shell'
+        })
+      } else {
+        this.ptyTitleTrackersByPtyId.get(ptyId)?.tracker.restoreLastAgentExit()
       }
     })
   }

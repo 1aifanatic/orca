@@ -13,6 +13,7 @@ const SECOND_WRAPPER_RETRY_MS = 6000
 describe('createPaneForegroundAgentTracker', () => {
   const readForegroundProcess = vi.fn<(ptyId: string) => Promise<string | null>>()
   const confirmForegroundProcess = vi.fn<(ptyId: string) => Promise<string | null>>()
+  const revokeRouting = vi.fn()
   const publish = vi.fn<(entry: PaneForegroundAgentEntry) => void>()
   const onConfirmedShellForeground = vi.fn<() => void>()
   const onCommandFinishedUnavailable = vi.fn<() => void>()
@@ -28,6 +29,7 @@ describe('createPaneForegroundAgentTracker', () => {
       readForegroundProcess,
       confirmForegroundProcess,
       publish,
+      revokeRouting,
       hasKnownAgentIdentity,
       onConfirmedShellForeground,
       onCommandFinishedUnavailable,
@@ -45,6 +47,7 @@ describe('createPaneForegroundAgentTracker', () => {
     confirmForegroundProcess.mockReset()
     confirmForegroundProcess.mockImplementation((id) => readForegroundProcess(id))
     publish.mockReset()
+    revokeRouting.mockReset()
     onConfirmedShellForeground.mockReset()
     onCommandFinishedUnavailable.mockReset()
     onVisibleForegroundSettled.mockReset()
@@ -259,7 +262,8 @@ describe('createPaneForegroundAgentTracker', () => {
 
     tracker.onCommandStarted('droid')
 
-    expect(publish).toHaveBeenCalledExactlyOnceWith({ agent: null, shellForeground: false })
+    expect(publish).not.toHaveBeenCalled()
+    expect(revokeRouting).toHaveBeenCalledOnce()
   })
 
   it('revokes stale routing immediately while a known pane confirms a new command', () => {
@@ -267,7 +271,8 @@ describe('createPaneForegroundAgentTracker', () => {
 
     tracker.onCommandStarted()
 
-    expect(publish).toHaveBeenCalledExactlyOnceWith({ agent: null, shellForeground: false })
+    expect(publish).not.toHaveBeenCalled()
+    expect(revokeRouting).toHaveBeenCalledOnce()
     expect(confirmForegroundProcess).not.toHaveBeenCalled()
   })
 
@@ -410,7 +415,7 @@ describe('createPaneForegroundAgentTracker', () => {
     expect(readForegroundProcess).not.toHaveBeenCalled()
   })
 
-  it('trusts a rapid ordinary command finish without forcing a fresh scan', async () => {
+  it('confirms a rapid finish before discarding unidentified agent evidence', async () => {
     readForegroundProcess.mockResolvedValue('claude')
     const tracker = makeTracker()
 
@@ -418,11 +423,15 @@ describe('createPaneForegroundAgentTracker', () => {
     tracker.onCommandFinished()
     await flushSettleRead(COMMAND_SETTLE_MS)
 
-    expect(readForegroundProcess).not.toHaveBeenCalled()
-    expect(publish).toHaveBeenLastCalledWith({ agent: null, shellForeground: true })
+    expect(readForegroundProcess).toHaveBeenCalledExactlyOnceWith('pty-1')
+    expect(publish).toHaveBeenLastCalledWith({
+      agent: 'claude',
+      shellForeground: false,
+      routingTrusted: true
+    })
   })
 
-  it('keeps duplicate ordinary 133;D pairs on the no-scan shell path', async () => {
+  it('confirms duplicate finish markers while identity is still being read', async () => {
     readForegroundProcess.mockResolvedValue('grok')
     const tracker = makeTracker()
 
@@ -433,8 +442,12 @@ describe('createPaneForegroundAgentTracker', () => {
     tracker.onCommandFinished()
     await flushSettleRead(COMMAND_SETTLE_MS)
 
-    expect(readForegroundProcess).not.toHaveBeenCalled()
-    expect(publish).toHaveBeenLastCalledWith({ agent: null, shellForeground: true })
+    expect(readForegroundProcess).toHaveBeenCalledExactlyOnceWith('pty-1')
+    expect(publish).toHaveBeenLastCalledWith({
+      agent: 'grok',
+      shellForeground: false,
+      routingTrusted: true
+    })
   })
 
   it('still marks shell without a read for a duplicate D pair on an idle pane', async () => {
@@ -460,7 +473,7 @@ describe('createPaneForegroundAgentTracker', () => {
     tracker.onCommandFinished()
     await flushSettleRead(COMMAND_SETTLE_MS)
 
-    expect(readForegroundProcess).not.toHaveBeenCalled()
+    expect(readForegroundProcess).toHaveBeenCalledExactlyOnceWith('pty-1')
     expect(publish).toHaveBeenLastCalledWith({ agent: null, shellForeground: true })
   })
 
@@ -556,6 +569,7 @@ describe('createPaneForegroundAgentTracker', () => {
       readForegroundProcess,
       confirmForegroundProcess,
       publish,
+      revokeRouting,
       hasKnownAgentIdentity: () => true
     })
 
@@ -642,7 +656,7 @@ describe('createPaneForegroundAgentTracker', () => {
     })
   })
 
-  it('retires known identity when the bounded command-finish ladder remains unavailable', async () => {
+  it('retains known identity when the bounded command-finish ladder remains unavailable', async () => {
     readForegroundProcess.mockResolvedValue(null)
     const tracker = makeTracker(() => true)
 
@@ -655,7 +669,7 @@ describe('createPaneForegroundAgentTracker', () => {
     await flushSettleRead(SECOND_WRAPPER_RETRY_MS)
 
     expect(readForegroundProcess).toHaveBeenCalledTimes(3)
-    expect(publish).toHaveBeenCalledExactlyOnceWith({ agent: null, shellForeground: false })
+    expect(publish).not.toHaveBeenCalled()
     expect(onConfirmedShellForeground).not.toHaveBeenCalled()
     expect(onCommandFinishedUnavailable).toHaveBeenCalledTimes(1)
   })
@@ -712,6 +726,7 @@ describe('createPaneForegroundAgentTracker', () => {
       readForegroundProcess: remoteRead,
       confirmForegroundProcess: remoteRead,
       publish,
+      revokeRouting,
       onCommandFinishedUnavailable,
       onConfirmedShellForeground,
       onVisibleForegroundSettled
@@ -759,6 +774,7 @@ describe('createPaneForegroundAgentTracker', () => {
 
     tracker.onCommandStarted()
     publish.mockReset()
+    revokeRouting.mockReset()
     tracker.dispose()
     await flushSettleRead(COMMAND_SETTLE_MS + WRAPPER_RESOLVE_RETRY_MS)
 

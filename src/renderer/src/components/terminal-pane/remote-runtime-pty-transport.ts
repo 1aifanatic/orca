@@ -169,7 +169,7 @@ export function createRemoteRuntimePtyTransport(
     onBell,
     onAgentBecameIdle,
     onAgentBecameWorking,
-    onAgentExited,
+    onAgentExitCandidate,
     onAgentStatus
   } = opts
   let connected = false
@@ -414,7 +414,7 @@ export function createRemoteRuntimePtyTransport(
     onBell,
     onAgentBecameIdle,
     onAgentBecameWorking,
-    onAgentExited,
+    onAgentExitCandidate,
     onAgentStatus
   })
   const shutdownDataHandler = (

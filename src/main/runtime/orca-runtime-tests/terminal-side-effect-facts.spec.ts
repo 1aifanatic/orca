@@ -418,7 +418,8 @@ describe('terminal side-effect fact channel', () => {
     runtime.setPtyController({
       write: () => true,
       kill: () => true,
-      getForegroundProcess
+      getForegroundProcess,
+      confirmForegroundProcess: getForegroundProcess
     })
     runtime.onPtyData('pty-1', '\x1b]0;bichir\x07', 101)
 
@@ -443,7 +444,10 @@ describe('terminal side-effect fact channel', () => {
     runtime.onPtyData('pty-1', '\x1b]0;other cwd\x07', 102)
 
     await vi.waitFor(() =>
-      expect(batches.flatMap((batch) => batch.facts)).toContainEqual({ kind: 'agent-exited' })
+      expect(batches.flatMap((batch) => batch.facts)).toContainEqual({
+        kind: 'agent-exited',
+        evidence: 'foreground-shell'
+      })
     )
     expect(getForegroundProcess).toHaveBeenCalledTimes(2)
   })
@@ -459,7 +463,8 @@ describe('terminal side-effect fact channel', () => {
     runtime.setPtyController({
       write: () => true,
       kill: () => true,
-      getForegroundProcess
+      getForegroundProcess,
+      confirmForegroundProcess: getForegroundProcess
     })
 
     runtime.ingestSyntheticTitleFrame('pty-1', '\x1b]0;Codex ready\x07')
@@ -470,7 +475,10 @@ describe('terminal side-effect fact channel', () => {
 
     await vi.waitFor(() => expect(getForegroundProcess).toHaveBeenCalledTimes(2))
     await vi.waitFor(() =>
-      expect(batches.flatMap((batch) => batch.facts)).toContainEqual({ kind: 'agent-exited' })
+      expect(batches.flatMap((batch) => batch.facts)).toContainEqual({
+        kind: 'agent-exited',
+        evidence: 'foreground-shell'
+      })
     )
   })
 
@@ -484,15 +492,16 @@ describe('terminal side-effect fact channel', () => {
     runtime.setPtyController({
       write: () => true,
       kill: () => true,
-      getForegroundProcess
+      getForegroundProcess,
+      confirmForegroundProcess: getForegroundProcess
     })
 
     runtime.onPtyData('pty-1', '\x1b]0;bichir\x07', 100)
 
-    await vi.waitFor(() =>
-      expect(batches.flatMap((batch) => batch.facts)).toContainEqual({ kind: 'agent-exited' })
+    await vi.waitFor(() => expect(getForegroundProcess).toHaveBeenCalledOnce())
+    expect(batches.flatMap((batch) => batch.facts)).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: 'agent-exited' })])
     )
-    expect(getForegroundProcess).toHaveBeenCalledOnce()
   })
 
   it('aligns a restored session and pre-response bytes to the provider sequence', async () => {

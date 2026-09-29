@@ -2488,20 +2488,22 @@ export class PtyHandler {
    * silent (docs/reference/ssh-execution-boundary.md).
    */
   private reapExitedPty(managed: ManagedPty, evidence: 'exited' | 'record-torn-down'): void {
-    managed.physicalExit?.markExited()
     this.releaseRelayIngress(managed)
     this.flushPtyOutput(managed.id)
     if (evidence === 'exited') {
+      managed.physicalExit?.markExited()
       this.publishReapedExit(managed)
+      this.notifyExitListener(managed)
     }
-    this.notifyExitListener(managed)
     this.agentSessionOwners.release(managed.id)
-    this.retiredIncarnations.set(managed.id, {
-      id: managed.id,
-      code: 0,
-      incarnationId: managed.incarnationId,
-      expiresAt: Date.now() + 5_000
-    })
+    if (evidence === 'exited') {
+      this.retiredIncarnations.set(managed.id, {
+        id: managed.id,
+        code: 0,
+        incarnationId: managed.incarnationId,
+        expiresAt: Date.now() + 5_000
+      })
+    }
     pruneRetiredPtyIncarnations(this.retiredIncarnations)
     disposeManagedPty(managed)
     this.removePty(managed.id)

@@ -46,8 +46,8 @@ export function createPaneForegroundProcessReader(deps: {
         // adapter that lost its provider while the pane stayed mounted.
         remoteEvidenceVerdict = 'unverifiable'
       } else if (typeof inspection === 'string' || inspection === null) {
-        processName = inspection
-        remoteEvidenceVerdict = remote ? 'unverifiable' : null
+        processName = remote ? null : inspection
+        remoteEvidenceVerdict = remote || !inspection?.trim() ? 'unverifiable' : null
       } else if (remote) {
         const admitted = admitRemoteForegroundEvidence(inspection.foregroundProcessEvidence, {
           expectedPtyId:

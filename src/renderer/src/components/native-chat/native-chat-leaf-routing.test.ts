@@ -209,6 +209,18 @@ describe('resolveNativeChatLeafRoute', () => {
     ).toEqual({ chatLeafId: 'agent-sibling', exitChat: false })
   })
 
+  it('keeps an unbound chat request through unavailable foreground evidence', () => {
+    expect(
+      resolveNativeChatLeafRoute({
+        isChatViewMode: true,
+        chatLeafId: null,
+        activeLeafId: 'starting-agent',
+        chatLeafStillMounted: false,
+        activeLeafIsEligible: false
+      })
+    ).toEqual({ chatLeafId: null, exitChat: false })
+  })
+
   it('attaches a tab-level chat request to the eligible active leaf', () => {
     expect(
       resolveNativeChatLeafRoute({

@@ -55,7 +55,7 @@ export type TerminalTitleTrackerCallbacks = {
   onTitle?: (normalizedTitle: string, rawTitle: string, meta?: TerminalTitleFactMeta) => void
   onAgentBecameIdle?: (title: string, meta?: TerminalTitleFactMeta) => void
   onAgentBecameWorking?: () => void
-  onAgentExited?: () => void
+  onAgentExitCandidate?: () => void
   /** Fired once per chunk containing a real BEL (OSC-aware, cross-chunk escape state), after the chunk's titles (renderer drain order). */
   onBell?: () => void
   /**
@@ -116,7 +116,7 @@ export function createTerminalTitleTracker(
     onTitle,
     onAgentBecameIdle,
     onAgentBecameWorking,
-    onAgentExited,
+    onAgentExitCandidate,
     onBell,
     onCommandFinished,
     onPrLink,
@@ -143,7 +143,7 @@ export function createTerminalTitleTracker(
       ? options.initialTitle
       : undefined
   const agentTracker =
-    onAgentBecameIdle || onAgentBecameWorking || onAgentExited
+    onAgentBecameIdle || onAgentBecameWorking || onAgentExitCandidate
       ? createAgentStatusTracker(
           (title) => {
             onAgentBecameIdle?.(
@@ -152,7 +152,7 @@ export function createTerminalTitleTracker(
             )
           },
           onAgentBecameWorking,
-          onAgentExited,
+          onAgentExitCandidate,
           initialAgentStatusTitle
         )
       : null

@@ -2,7 +2,7 @@ import {
   isAgentForegroundWrapperProcess,
   recognizeAgentProcess
 } from '../../../../shared/agent-process-recognition'
-import { isShellProcess } from '../../../../shared/shell-process-detection'
+import { foregroundAgentVerdict } from '../../../../shared/foreground-agent-verdict'
 import type { TuiAgent } from '../../../../shared/tui-agent'
 import type { PaneForegroundAgentEntry } from '@/store/slices/pane-foreground-agent'
 import type { RuntimeTerminalProcessInspection } from '@/runtime/runtime-terminal-inspection'
@@ -33,6 +33,7 @@ type PaneForegroundAgentTrackerDeps = {
   isRemotePtyId?: (ptyId: string) => boolean
   getExpectedIncarnationId?: () => string | null
   publish: (entry: PaneForegroundAgentEntry) => void
+  revokeRouting?: () => void
   /** True when the pane is otherwise known to run an agent (launchAgent, live
    *  hook status). Lets a restored agent pane confirm — rather than trust — a
    *  133;D before any command-start read has recorded its own evidence. */
@@ -198,19 +199,19 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
       return
     }
     if (reason === 'command') {
-      if (remoteEvidenceVerdict !== null && remoteEvidenceVerdict !== 'live') {
-        hasAgentExpectation = false
+      if (!processName?.trim() || remoteEvidenceVerdict === 'unverifiable') {
         return
       }
       hasAgentExpectation = false
-      deps.publish({ agent: null, shellForeground: false })
+      if (!hasForegroundAgentEvidence && !hasKnownAgentEvidence) {
+        deps.publish({ agent: null, shellForeground: false })
+      }
       return
     }
     if (reason === 'visible-pty') {
       if (
         (hasForegroundAgentEvidence || hasKnownAgentEvidence) &&
-        processName !== null &&
-        isShellProcess(processName)
+        foregroundAgentVerdict(processName) === 'exited'
       ) {
         hasForegroundAgentEvidence = false
         hasKnownAgentEvidence = false
@@ -229,16 +230,11 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
           deps.onCommandFinishedUnavailable?.()
           return
         }
-        // Why: client-only unverifiable inspection is not confirmed shell evidence; retire
-        // stale routing after the bounded D ladder without asserting shell truth.
-        hasForegroundAgentEvidence = false
-        hasKnownAgentEvidence = false
-        hasAgentExpectation = false
-        deps.publish({ agent: null, shellForeground: false })
         deps.onCommandFinishedUnavailable?.()
         return
       }
-      if ((hasForegroundAgentEvidence || hasKnownAgentEvidence) && !isShellProcess(processName)) {
+      if (foregroundAgentVerdict(processName) !== 'exited') {
+        deps.onCommandFinishedUnavailable?.()
         // Why: this read may have replaced a cancelled visible-pty confirmation.
         // It publishes nothing, so without settling here the capability it was
         // asked to revalidate would be retained with no read left to clear it.
@@ -298,6 +294,7 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
         releaseRetainedCapability(hadReadBeforeCommandStart)
         return
       }
+      deps.revokeRouting?.()
       const alreadyHasKnownIdentity = deps.hasKnownAgentIdentity?.() === true
       hasAgentExpectation = expectedAgent !== null
       if (alreadyHasKnownIdentity) {
@@ -307,7 +304,11 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
       // Launch/hook identity remains only an expectation until fresh evidence.
       // Remote marker bytes are turn boundaries only; do not mutate a remote
       // identity from an OSC stream before the host evidence read completes.
-      if (deps.isRemotePtyId?.(ptyId) !== true) {
+      if (
+        deps.isRemotePtyId?.(ptyId) !== true &&
+        !hasForegroundAgentEvidence &&
+        !hasKnownAgentEvidence
+      ) {
         deps.publish({ agent: null, shellForeground: false })
       }
       scheduleRead(COMMAND_SETTLE_MS, 0, 'command')
@@ -336,7 +337,12 @@ export function createPaneForegroundAgentTracker(deps: PaneForegroundAgentTracke
       // Why: trust the 133;D and mark shell without an RPC only when nothing hints
       // at an agent — no prior agent evidence, no launch/hook identity, and no
       // identity read racing this finish.
-      if (!hasForegroundAgentEvidence && !hasKnownAgentEvidence && !hasAgentExpectation) {
+      if (
+        !hasForegroundAgentEvidence &&
+        !hasKnownAgentEvidence &&
+        !hasAgentExpectation &&
+        !hadReadBeforeCommandFinish
+      ) {
         if (deps.isRemotePtyId?.(ptyId) !== true) {
           deps.publish({ agent: null, shellForeground: true })
         }

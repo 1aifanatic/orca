@@ -40,7 +40,7 @@ export function createIpcPtyTransport(opts: IpcPtyTransportOptions = {}): PtyTra
     onBell,
     onAgentBecameIdle,
     onAgentBecameWorking,
-    onAgentExited,
+    onAgentExitCandidate,
     onAgentStatus
   } = opts
   let connected = false
@@ -81,7 +81,7 @@ export function createIpcPtyTransport(opts: IpcPtyTransportOptions = {}): PtyTra
       }
     },
     onAgentBecameWorking,
-    onAgentExited,
+    onAgentExitCandidate,
     onAgentStatus
   })
   const handlers = createIpcPtySessionHandlers({

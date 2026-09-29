@@ -18,7 +18,7 @@ export type TerminalSideEffectFact =
   | { kind: 'bell' }
   | { kind: 'agent-working' }
   | { kind: 'agent-idle'; title: string; staleWorkingTitleClear?: boolean }
-  | { kind: 'agent-exited' }
+  | { kind: 'agent-exited'; evidence?: 'foreground-shell' }
   /** OSC 133;D — foreground shell command exited (exit code best-effort). */
   | { kind: 'command-finished'; exitCode: number | null }
   /** Carries the parsed link so the renderer store consumer never re-parses

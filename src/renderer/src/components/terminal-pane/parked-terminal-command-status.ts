@@ -6,7 +6,6 @@
  */
 import type { AgentStatusEntry } from '../../../../shared/agent-status-types'
 import { resolvePaneAgentOwner } from '../../../../shared/pane-agent-owner'
-import { parseAppSshPtyId } from '../../../../shared/ssh-pty-id'
 import { dispatchTerminalCommandFinishedEvent } from '@/hooks/terminal-command-finished-event'
 import { resolveLiveAgentStatusConnectionRouting } from '@/lib/agent-status-connection-ownership'
 import { getConnectionIdFromState } from '@/lib/connection-owner-resolution'
@@ -21,6 +20,7 @@ import { canCommandCodeOutputOwnPane } from './command-code-output-ownership'
 
 export type ParkedTerminalCommandStatusPolicy = {
   onCommandFinished: (bestEffortExitCode: number | null) => void
+  onAgentExited: () => void
   onCommandCodeWorking: (prompt: string) => void
   onCommandCodeDone: (prompt: string) => void
   dispose: () => void
@@ -151,6 +151,11 @@ export function createParkedTerminalCommandStatusPolicy(options: {
   )
 
   return {
+    onAgentExited: (): void => {
+      if (!disposed) {
+        dropCommandFinishedStatusIfSameTurn(useAppStore.getState().agentStatusByPaneKey[paneKey])
+      }
+    },
     onCommandFinished: (bestEffortExitCode: number | null): void => {
       if (disposed) {
         return
@@ -158,14 +163,6 @@ export function createParkedTerminalCommandStatusPolicy(options: {
       // Why: the finished command may have moved HEAD or the index (an agent running
       // `git checkout` in a parked worktree); nudge git UI now instead of waiting for a poll.
       dispatchTerminalCommandFinishedEvent(worktreeId, bestEffortExitCode)
-      // Why: drop the same-turn status row only for SSH PTYs — exact parity with the mounted
-      // path, whose foreground tracker refuses SSH ids and drops un-probed. Local PTYs need
-      // pty-connection's process-confirm ladder to tell a leaked nested-shell 133;D from a
-      // real agent exit, so their drop stays with the mounted pane.
-      if (parseAppSshPtyId(ptyId) === null) {
-        return
-      }
-      dropCommandFinishedStatusIfSameTurn(useAppStore.getState().agentStatusByPaneKey[paneKey])
     },
 
     // Port of pty-connection's seedCommandCodeOutputWorkingStatus (store-level only).

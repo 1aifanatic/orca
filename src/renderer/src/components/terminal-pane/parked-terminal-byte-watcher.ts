@@ -179,7 +179,8 @@ export function startParkedTerminalByteWatcher(
       }
     },
     onAgentExited: (): void => {
-      // Why: title reverting to a plain shell means the agent session ended; clear the countdown so it doesn't survive in the sidebar while parked.
+      commandStatusPolicy.onAgentExited()
+      // Only a host-confirmed exit retires the parked session.
       useAppStore.getState().setCacheTimerStartedAt(paneKey, null)
     }
   }

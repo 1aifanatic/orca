@@ -31,16 +31,16 @@ export function installAgentIdleWorkingHandlers(session: ConnectPanePtySession):
       session.scheduleTerminalBellNotification()
     }
   }
+  session.onAgentExitCandidate = (): void => {
+    session.paneForegroundAgentTracker?.onVisiblePtyBound(true)
+  }
   session.onAgentExited = (): void => {
-    // Why: eligibility can disappear transiently during reconnect, but a
-    // confirmed shell-title transition is authoritative for native-chat exit.
+    // Only host-confirmed shell evidence reaches this callback.
     session.deps.onAgentExitedRef.current(session.pane.leafId)
     session.clearSuppressedTitleSideEffects()
     session.clearCommandInferredPaneAgent()
     session.requestKnownWindowsShiftEnterReconfirmation()
-    // Why: when the terminal title reverts to a plain shell (e.g., "bash", "zsh"),
-    // the agent has exited. Clear any running cache timer so the sidebar doesn't
-    // show a stale countdown for a tab that no longer has an active Claude session.
+    // Confirmed exit retires the previous session's cache timer.
     session.deps.setCacheTimerStartedAt(session.cacheKey, null)
     session.clearTitleOnlyInterruptTimer()
     // Why: title reversion alone is not process death. The process/PTY tracker

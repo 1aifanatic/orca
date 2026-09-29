@@ -40,7 +40,7 @@ function createRendererPath(initialTitle?: string, deferDrain = false): TitleFac
     onTitleChange: (normalized, raw) => events.push({ kind: 'title', normalized, raw }),
     onAgentBecameWorking: () => events.push({ kind: 'became-working' }),
     onAgentBecameIdle: (title) => events.push({ kind: 'became-idle', title }),
-    onAgentExited: () => events.push({ kind: 'agent-exited' }),
+    onAgentExitCandidate: () => events.push({ kind: 'agent-exited' }),
     onBell: () => events.push({ kind: 'bell' }),
     initialAgentTitle: initialTitle
   })
@@ -70,7 +70,7 @@ function createMainPath(initialTitle?: string): TitleFactPath {
       onTitle: (normalized, raw) => events.push({ kind: 'title', normalized, raw }),
       onAgentBecameWorking: () => events.push({ kind: 'became-working' }),
       onAgentBecameIdle: (title) => events.push({ kind: 'became-idle', title }),
-      onAgentExited: () => events.push({ kind: 'agent-exited' }),
+      onAgentExitCandidate: () => events.push({ kind: 'agent-exited' }),
       onBell: () => events.push({ kind: 'bell' })
     },
     initialTitle !== undefined ? { initialTitle } : undefined

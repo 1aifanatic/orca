@@ -13,7 +13,7 @@ const STALE_TITLE_TIMEOUT = 3_000
 
 type PtyOutputTitleObserverOptions = Pick<
   IpcPtyTransportOptions,
-  'onTitleChange' | 'onAgentBecameIdle' | 'onAgentBecameWorking' | 'onAgentExited'
+  'onTitleChange' | 'onAgentBecameIdle' | 'onAgentBecameWorking' | 'onAgentExitCandidate'
 > & {
   initialAgentTitle?: string
 }
@@ -34,7 +34,7 @@ export function createPtyOutputTitleObserver({
   onTitleChange,
   onAgentBecameIdle,
   onAgentBecameWorking,
-  onAgentExited,
+  onAgentExitCandidate,
   initialAgentTitle
 }: PtyOutputTitleObserverOptions): PtyOutputTitleObserver {
   let lastEmittedTitle: string | null =
@@ -45,11 +45,14 @@ export function createPtyOutputTitleObserver({
       ? initialAgentTitle
       : undefined
   const agentTracker =
-    onAgentBecameIdle || onAgentBecameWorking || onAgentExited
+    onAgentBecameIdle || onAgentBecameWorking || onAgentExitCandidate
       ? createAgentStatusTracker(
           (title) => onAgentBecameIdle?.(title),
           onAgentBecameWorking,
-          onAgentExited,
+          () => {
+            agentTracker?.restoreLastExit()
+            onAgentExitCandidate?.()
+          },
           initialTrackerTitle
         )
       : null

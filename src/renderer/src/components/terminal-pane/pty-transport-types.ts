@@ -290,5 +290,6 @@ export type IpcPtyTransportOptions = {
   onAgentBecameIdle?: (title: string) => void
   onAgentBecameWorking?: () => void
   onAgentExited?: () => void
+  onAgentExitCandidate?: () => void
   onAgentStatus?: (payload: ParsedAgentStatusPayload) => void
 }

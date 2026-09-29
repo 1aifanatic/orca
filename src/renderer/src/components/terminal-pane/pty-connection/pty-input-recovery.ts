@@ -128,7 +128,7 @@ export function installPtyInputRecovery(session: ConnectPanePtySession): void {
           onBell: session.onBell,
           onAgentBecameIdle: session.onAgentBecameIdle,
           onAgentBecameWorking: session.onAgentBecameWorking,
-          onAgentExited: session.onAgentExited
+          onAgentExitCandidate: session.onAgentExitCandidate
         }),
     // Why: local IPC terminals are now model-owned in main: OrcaRuntimeService
     // parses OSC 9999 before renderer delivery and forwards through the hook

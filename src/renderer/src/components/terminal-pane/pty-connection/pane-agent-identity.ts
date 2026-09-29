@@ -63,7 +63,8 @@ export function installPaneAgentIdentity(session: ConnectPanePtySession): void {
     return (
       Boolean(state.paneForegroundAgentByPaneKey[session.cacheKey]?.agent) ||
       session.paneHasLiveHookAgentIcon(state) ||
-      isTuiAgent(registeredLaunchAgent)
+      isTuiAgent(registeredLaunchAgent) ||
+      Boolean(session.commandInferredPaneAgent)
     )
   }
   // Why: a plain `codex`/`grok` sets its OSC title and the shell never repaints
@@ -122,8 +123,9 @@ export function installPaneAgentIdentity(session: ConnectPanePtySession): void {
     const reconcile = session.deferredConfirmedShellReconcile
     session.deferredCommandFinishedStatusDrop = null
     session.deferredConfirmedShellReconcile = null
-    dropStatus?.()
     if (options.confirmedShell) {
+      session.clearCommandInferredPaneAgentAfterPtySideEffects()
+      dropStatus?.()
       reconcile?.()
     }
   }
@@ -167,8 +169,20 @@ export function installPaneAgentIdentity(session: ConnectPanePtySession): void {
     isRemotePtyId,
     getExpectedIncarnationId: () => session.remotePtyIncarnationId ?? null,
     publish: (entry) => useAppStore.getState().setPaneForegroundAgent(session.cacheKey, entry),
+    revokeRouting: () => {
+      const state = useAppStore.getState()
+      const foreground = state.paneForegroundAgentByPaneKey[session.cacheKey]
+      if (foreground) {
+        state.setPaneForegroundAgent(session.cacheKey, {
+          agent: foreground.agent,
+          shellForeground: false,
+          routingRevoked: true
+        })
+      }
+    },
     hasKnownAgentIdentity: session.paneHasKnownAgentIdentity,
     onConfirmedShellForeground: (reason) => {
+      session.onAgentExited?.()
       // Why: a confirmed local shell proves any hibernation record for this pane is stale;
       // otherwise the tab resolver can repaint the exited agent from sleeping occupancy.
       const state = useAppStore.getState()
@@ -212,7 +226,6 @@ export function installPaneAgentIdentity(session: ConnectPanePtySession): void {
   // routing both through this handler keeps the drop/interrupt semantics
   // identical across authority modes.
   session.handleCommandFinished = (bestEffortExitCode: number | null): void => {
-    session.clearCommandInferredPaneAgentAfterPtySideEffects()
     session.visibleForegroundSamplePending = false
     const shouldDeferStatusDrop = session.paneForegroundAgentTracker.onCommandFinished()
     // Why: the finished command may have moved HEAD or the index (e.g.

@@ -1,3 +1,4 @@
+import { foregroundAgentVerdict } from '../../shared/foreground-agent-verdict'
 import {
   detectAgentStatusFromTitle,
   isOpenCodeNativeTitle,
@@ -5,14 +6,10 @@ import {
   isShellProcess,
   type AgentStatus
 } from '../../shared/agent-detection'
-import { recognizeAgentProcess } from '../../shared/agent-process-recognition'
 import type { RuntimeTerminalAgentStatus } from '../../shared/runtime-types'
 import type { RuntimePtyController } from './runtime-pty-controller-contract'
 import type { RuntimeLeafRecord, RuntimePtyWorktreeRecord } from './runtime-terminal-state-records'
-import {
-  terminalTitleBlocksExplicitAgentStatus,
-  getLatestAgentCandidateTitleInfo
-} from './runtime-worktree-status-projection'
+import { getLatestAgentCandidateTitleInfo } from './runtime-worktree-status-projection'
 import { detectTerminalWaitBlockedReason } from './terminal-wait-detection'
 import { getTerminalState } from './terminal-wait-results'
 import { buildTerminalWaitText } from './terminal-wait-tail-state'
@@ -96,9 +93,7 @@ export class RuntimeTerminalAgentStatusQuery {
     if (explicitStatus) {
       // Why: permission titles can linger after hooks report the agent resumed.
       // Fresh hook state is tighter, but current shell/management evidence wins.
-      const isRunningAgent =
-        !terminalTitleBlocksExplicitAgentStatus(terminal.title) &&
-        !(await this.terminalHasShellForegroundProcess(handle, ptyId))
+      const isRunningAgent = !(await this.terminalHasShellForegroundProcess(handle, ptyId))
       this.assertTerminalAgentStatusPtyBinding(handle, ptyId)
       return {
         handle,
@@ -241,19 +236,25 @@ export class RuntimeTerminalAgentStatusQuery {
       return false
     }
     const confirmationController = this.deps.getController()
-    if (!confirmationController?.confirmForegroundProcess) {
-      return true
+    if (
+      confirmationController !== controller ||
+      !confirmationController?.confirmForegroundProcess
+    ) {
+      return false
     }
     let confirmedProcess: string | null
     try {
       confirmedProcess = await confirmationController.confirmForegroundProcess(ptyId)
     } catch {
       this.assertTerminalAgentStatusPtyBinding(handle, ptyId)
-      return true
+      return false
     }
     this.assertTerminalAgentStatusPtyBinding(handle, ptyId)
     // Why: hook identity is generic; strong provider evidence only needs to
     // prove that some recognized agent still owns this exact PTY.
-    return recognizeAgentProcess(confirmedProcess) === null
+    return (
+      this.deps.getController() === controller &&
+      foregroundAgentVerdict(confirmedProcess) === 'exited'
+    )
   }
 }

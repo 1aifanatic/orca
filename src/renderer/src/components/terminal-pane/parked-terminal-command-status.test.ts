@@ -369,7 +369,7 @@ describe('createParkedTerminalCommandStatusPolicy', () => {
     expect(dispatchTerminalCommandFinishedEvent).toHaveBeenCalledWith(WORKTREE_ID, 0)
   })
 
-  it('drops a same-turn status row on command finished for SSH PTYs only', async () => {
+  it('preserves local and SSH status until a confirmed agent exit', async () => {
     mockStoreState.agentStatusByPaneKey[PANE_KEY] = makeStatusEntry()
     const local = await createPolicy(PTY_ID_LOCAL)
     local.onCommandFinished(0)
@@ -380,15 +380,18 @@ describe('createParkedTerminalCommandStatusPolicy', () => {
 
     const ssh = await createPolicy(PTY_ID_SSH)
     ssh.onCommandFinished(0)
+    expect(mockStoreState.dropAgentStatus).not.toHaveBeenCalled()
+    ssh.onAgentExited()
     expect(mockStoreState.dropAgentStatus).toHaveBeenCalledWith(PANE_KEY)
     ssh.dispose()
   })
 
-  it('clears the launch registry on SSH command finished when no status row exists', async () => {
+  it('clears the launch registry only on a confirmed SSH exit when no status row exists', async () => {
     const ssh = await createPolicy(PTY_ID_SSH)
 
     ssh.onCommandFinished(0)
-
+    expect(mockStoreState.clearAgentLaunchConfig).not.toHaveBeenCalled()
+    ssh.onAgentExited()
     expect(mockStoreState.clearAgentLaunchConfig).toHaveBeenCalledWith(PANE_KEY)
     expect(mockStoreState.dropAgentStatus).not.toHaveBeenCalled()
     ssh.dispose()

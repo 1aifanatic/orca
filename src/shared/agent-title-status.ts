@@ -70,7 +70,7 @@ export function clearWorkingIndicators(title: string): string {
 export function createAgentStatusTracker(
   onBecameIdle: (title: string) => void,
   onBecameWorking?: () => void,
-  onAgentExited?: () => void,
+  onAgentExitCandidate?: () => void,
   initialTitle?: string
 ): {
   handleTitle: (title: string) => void
@@ -96,12 +96,11 @@ export function createAgentStatusTracker(
       if (lastStatus !== 'working' && newStatus === 'working') {
         onBecameWorking?.()
       }
-      // Why: reverting to a plain shell prompt after idle/permission means the
-      // agent exited; while working it can just be a transient internal title.
+      // A neutral title requests a process check; it never proves the agent exited.
       if (lastStatus !== null && lastStatus !== 'working' && newStatus === null) {
         restorableExitStatus = lastStatus
         lastStatus = null
-        onAgentExited?.()
+        onAgentExitCandidate?.()
       }
       if (newStatus !== null) {
         lastStatus = newStatus

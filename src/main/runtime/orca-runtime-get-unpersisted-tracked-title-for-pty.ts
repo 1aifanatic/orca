@@ -140,7 +140,7 @@ export class OrcaRuntimeWithGetUnpersistedTrackedTitleForPty extends OrcaRuntime
             ...(meta?.staleWorkingTitleClear ? { staleWorkingTitleClear: true } : {})
           })
         },
-        onAgentExited: () => {
+        onAgentExitCandidate: () => {
           this.confirmPtyAgentExit(ptyId)
         },
         onCommandFinished: (exitCode: number | null) => {

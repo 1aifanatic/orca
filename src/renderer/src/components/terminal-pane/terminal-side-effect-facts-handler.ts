@@ -77,6 +77,7 @@ export type TerminalSideEffectFactConsumerCallbacks = {
   onAgentBecameIdle?: (title: string, meta?: { staleWorkingTitleClear?: boolean }) => void
   onAgentBecameWorking?: () => void
   onAgentExited?: () => void
+  onAgentExitCandidate?: () => void
   /** OSC 133;D — same policy hook the byte-mode commandLifecycle drove
    *  (stale agent-status row drop + interrupt-inference coordination). */
   onCommandFinished?: (bestEffortExitCode: number | null) => void
@@ -130,7 +131,11 @@ function applyLiveFact(entry: ConsumerEntry, fact: TerminalSideEffectFact, seq: 
       )
       return
     case 'agent-exited':
-      entry.callbacks.onAgentExited?.()
+      if (fact.evidence === 'foreground-shell') {
+        entry.callbacks.onAgentExited?.()
+      } else {
+        entry.callbacks.onAgentExitCandidate?.()
+      }
       return
     case 'command-finished':
       entry.callbacks.onCommandFinished?.(fact.exitCode)

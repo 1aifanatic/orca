@@ -23,7 +23,7 @@ export type PtyOutputProcessorOptions = Pick<
   | 'onBell'
   | 'onAgentBecameIdle'
   | 'onAgentBecameWorking'
-  | 'onAgentExited'
+  | 'onAgentExitCandidate'
   | 'onAgentStatus'
 > & {
   initialAgentTitle?: string
@@ -66,7 +66,7 @@ export function createPtyOutputProcessor({
   onBell,
   onAgentBecameIdle,
   onAgentBecameWorking,
-  onAgentExited,
+  onAgentExitCandidate,
   onAgentStatus,
   initialAgentTitle
 }: PtyOutputProcessorOptions) {
@@ -77,7 +77,7 @@ export function createPtyOutputProcessor({
     onTitleChange,
     onAgentBecameIdle,
     onAgentBecameWorking,
-    onAgentExited,
+    onAgentExitCandidate,
     initialAgentTitle
   })
   const sideEffects = createPtyOutputSideEffectQueue({
