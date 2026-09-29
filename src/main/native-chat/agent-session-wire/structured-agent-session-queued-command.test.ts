@@ -6,6 +6,7 @@
 // echo folds into its sent bubble.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 import {
   createQueuedMessageTestRig,
   eventually,
@@ -152,7 +153,7 @@ describe('/clear', () => {
     await journal.appendItem(
       { provider: 'codex', threadId: THREAD, turnId: 'turn-echo', ordinal: 0 },
       hostTestMessage('carried text'),
-      { fence: sent.fence }
+      { fence: sent.fence, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     )
     const snapshot = await rig.host.journalSnapshot(replacementId)
     const userBubbles = snapshot.items.filter(

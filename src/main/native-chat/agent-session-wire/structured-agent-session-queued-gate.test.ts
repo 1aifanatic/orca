@@ -4,6 +4,7 @@
 // draft.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 import { structuredQueueHold } from './structured-agent-session-queued-messages'
 import {
   createQueuedMessageTestRig,
@@ -78,7 +79,7 @@ describe('the one queue gate', () => {
         options: [],
         resolution: { state: 'pending', selectedOptionId: null, resolvedBy: null, resolvedAt: null }
       },
-      { fence: 1 }
+      { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     )
     expect(await sendNow(draftId)).toMatchObject({
       ok: false,
@@ -105,7 +106,7 @@ describe('the one queue gate', () => {
           resolvedAt: 1
         }
       },
-      { fence: 1 }
+      { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     )
     // The turn still runs (`working`), which Send-now alone may override.
     expect(await submission(working)).toMatchObject({ dispatchState: 'pending' })

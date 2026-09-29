@@ -6,6 +6,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 import type {
   AgentJournalMessageItem,
   AgentSessionJournalIdentity
@@ -136,7 +137,7 @@ describe('draft rows', () => {
     await first.appendItem(
       { provider: 'orca', clientMessageId: 'seed' },
       { kind: 'status', text: 'seed' },
-      { fence: 0 }
+      { fence: 0, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     )
     await first.close()
     const db = new Database(journalDatabaseFile(root))
@@ -688,7 +689,7 @@ describe("the queue's Stop fact", () => {
     await journal.appendItem(
       { provider: 'orca', clientMessageId: 'later' },
       { kind: 'status', text: 'later' },
-      { fence: 0 }
+      { fence: 0, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     )
     await journal.queuedMessages.recordPause('stopped')
     expect(journal.queuedMessages.pause()?.sequence).toBe((first?.sequence ?? 0) + 1)
@@ -760,7 +761,7 @@ describe("the queue's Stop fact", () => {
     await journal.appendItem(
       { provider: 'orca', clientMessageId: 'later' },
       { kind: 'status', text: 'later' },
-      { fence: 0 }
+      { fence: 0, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     )
     await journal.queuedMessages.recordPause('stopped')
     expect(await journal.queuedMessages.liftPause({ stop: judged, adoptInto: null })).toBe(false)
