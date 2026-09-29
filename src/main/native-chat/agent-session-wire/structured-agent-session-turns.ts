@@ -239,6 +239,16 @@ function requireSubmission(
   return submission
 }
 
+/** Claude's echo accepts a send one sink write before its turn row lands, so read after the drain. */
+async function isMainAgentWorkingOnceFlushed(ctx: AgentSessionTurnContext): Promise<boolean> {
+  await ctx.flushStreamedEvents()
+  return isStructuredAgentSessionMainAgentWorking(
+    ctx.journal.activeTurnId(),
+    ctx.journal.submissions(),
+    ctx.fence
+  )
+}
+
 export async function performCancel(
   ctx: AgentSessionTurnContext,
   input: {
@@ -287,11 +297,7 @@ export async function performCancel(
       !cancelled &&
       input.withdrewQueued &&
       !outcome.unconfirmed &&
-      !isStructuredAgentSessionMainAgentWorking(
-        ctx.journal.activeTurnId(),
-        ctx.journal.submissions(),
-        ctx.fence
-      )
+      !(await isMainAgentWorkingOnceFlushed(ctx))
     ) {
       // A Stop that withdrew what was queued and left nothing working ended what it was sent for,
       // named or not. The journal judges it: providers differ on refusing a turn that has ended.

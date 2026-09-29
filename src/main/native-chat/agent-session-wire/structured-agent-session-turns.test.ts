@@ -249,12 +249,12 @@ describe('what a conversation Stop reports when the provider stopped nothing', (
   async function cancelWith(
     outcome: Awaited<ReturnType<StructuredAgentSessionAdapter['cancelTurn']>>,
     input: { turnId?: string; withdrewQueued?: boolean },
-    running = false
+    turnRow: 'none' | 'running' | 'lands-on-flush' = 'none'
   ) {
     root = await mkdtemp(join(tmpdir(), 'orca-turn-cancel-report-'))
     const journal = await journals.open({ identity: IDENTITY, journalDir: root })
-    if (running) {
-      await journal.appendItem(
+    const openTurn = () =>
+      journal.appendItem(
         {
           provider: 'legacy',
           agent: 'codex',
@@ -268,6 +268,8 @@ describe('what a conversation Stop reports when the provider stopped nothing', (
         },
         { fence: 1 }
       )
+    if (turnRow === 'running') {
+      await openTurn()
     }
     const ctx: AgentSessionTurnContext = {
       sessionId: 'session-1',
@@ -284,7 +286,11 @@ describe('what a conversation Stop reports when the provider stopped nothing', (
       persistOptions: async () => undefined,
       resolvedBy: 'client-1',
       publish: vi.fn(),
-      flushStreamedEvents: async () => undefined,
+      flushStreamedEvents: async () => {
+        if (turnRow === 'lands-on-flush') {
+          await openTurn()
+        }
+      },
       now: () => 1
     }
     const result = await performCancel(ctx, { clientOperationId: 'cancel-report-1', ...input })
@@ -304,10 +310,22 @@ describe('what a conversation Stop reports when the provider stopped nothing', (
   })
 
   it('keeps a Stop naming no turn not cancelled while the journal still reads working', async () => {
-    const reported = await cancelWith({ cancelled: false }, { withdrewQueued: true }, true)
+    const reported = await cancelWith({ cancelled: false }, { withdrewQueued: true }, 'running')
     expect(reported.cancelled).toBe(false)
     expect(reported.rows).toHaveLength(1)
     expect(reported.rows).not.toContain('The provider had already finished this turn.')
+  })
+
+  it('reads the journal after its streamed rows land: a turn whose send was accepted first is still working', async () => {
+    const reported = await cancelWith(
+      { cancelled: false },
+      { turnId: 'turn-0', withdrewQueued: true },
+      'lands-on-flush'
+    )
+    expect(reported).toEqual({
+      cancelled: false,
+      rows: ['The provider had already finished this turn.']
+    })
   })
 
   it.each([false, true])(
