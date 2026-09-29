@@ -295,6 +295,21 @@ describe('a Stop that names its turn, as an older client sends it', () => {
     expect(await statusRows()).toEqual([])
   })
 
+  // Codex refuses an interrupt for a turn that has ended.
+  it('reports success with no row when the provider refused a turn that had ended', async () => {
+    const queued = await queueOnHost()
+    cancelTurn.mockResolvedValueOnce({
+      cancelled: false,
+      refusal: { detail: { text: 'no such turn', audience: 'person' } }
+    })
+
+    expect(await stop('turn-1')).toMatchObject({ ok: true, value: { cancelled: true } })
+    queued.release()
+
+    expect(await submission(queued.id)).toMatchObject({ dispatchState: 'rejected' })
+    expect(await statusRows()).toEqual([])
+  })
+
   it('does not report success when the provider left the interrupt unconfirmed', async () => {
     const queued = await queueOnHost()
     cancelTurn.mockResolvedValueOnce({ cancelled: false, unconfirmed: true })

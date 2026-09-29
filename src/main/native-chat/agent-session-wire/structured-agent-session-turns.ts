@@ -35,6 +35,7 @@ import type {
 import { structuredAgentSessionStartFailure } from './structured-agent-session-failure-text'
 import { validatePendingPrompt } from './structured-agent-session-prompt-state'
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
+import { isStructuredAgentSessionMainAgentWorking } from '../../../shared/structured-agent-session-main-agent-working'
 export { performSetOption } from './structured-agent-session-turns-options'
 export { performPrompt } from './structured-agent-session-turns-prompt'
 
@@ -287,10 +288,15 @@ export async function performCancel(
       input.turnId !== undefined &&
       input.withdrewQueued &&
       !outcome.unconfirmed &&
-      !outcome.refusal
+      !isStructuredAgentSessionMainAgentWorking(
+        ctx.journal.activeTurnId(),
+        ctx.journal.submissions(),
+        ctx.fence
+      )
     ) {
       // The Stop ended what was queued, which is how a Stop naming no turn reports the same case.
-      // A provider that took or refused the interrupt still has a turn the withdrawal did not end.
+      // Whether anything still runs is read from the journal: providers differ on refusing a turn
+      // that has ended, and an unconfirmed interrupt may have left the turn running.
       cancelled = true
       note = null
     } else if (!cancelled && input.turnId !== undefined) {

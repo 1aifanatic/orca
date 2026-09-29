@@ -276,3 +276,41 @@ it('withdraws a follow-up still queued on the host when the turn the Stop names 
   )
   expect(rows).not.toContain('The provider had already finished this turn.')
 }, 15_000)
+
+it('withdraws a host-queued follow-up but leaves a newer turn running when the Stop names an older one', async () => {
+  const connection = claude.connections[0]!
+  const olderTurnId = await openFirstTurn(connection)
+  await endFirstTurn(connection)
+  const second = await send('Now this.')
+  await eventually(() => expect(connection.sent).toHaveLength(2))
+  connection.handlers.onMessage?.({
+    ...connection.sent.at(-1)!,
+    uuid: connection.sent.at(-1)!.uuid
+  })
+  await eventually(async () => expect((await dispatch(second)).state).toBe('accepted'))
+  const newerTurnId = await liveTurnId()
+  expect(newerTurnId).not.toBeNull()
+  expect(newerTurnId).not.toBe(olderTurnId)
+  let release!: () => void
+  const held = new Promise<void>((resolve) => (release = resolve))
+  const awaitStarted = vi.spyOn(adapter, 'awaitStarted').mockImplementationOnce(async () => {
+    await held
+  })
+  const followUp = await send('And then this.')
+  await eventually(() => expect(awaitStarted).toHaveBeenCalled())
+
+  expect(await stop(olderTurnId)).toMatchObject({ ok: true, value: { cancelled: false } })
+  release()
+  await eventually(async () =>
+    expect(await dispatch(followUp)).toEqual({
+      state: 'rejected',
+      reason: DISPATCH_REJECTED_CANCELLED
+    })
+  )
+  expect(connection.calls.some((call) => call.subtype === 'interrupt')).toBe(false)
+  expect(await liveTurnId()).toBe(newerTurnId)
+  const rows = (await host.journalSnapshot(SESSION)).items.flatMap((item) =>
+    item.body.kind === 'status' ? [item.body.text] : []
+  )
+  expect(rows).toContain('The provider had already finished this turn.')
+}, 15_000)
