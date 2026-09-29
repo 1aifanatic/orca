@@ -21103,7 +21103,7 @@
             "agent": "claude",
             "sessionId": "session-1",
             "limit": 40,
-            "subscriptionId": "claude:session-1",
+            "subscriptionId": "claude:session-1:00000000-0000-4000-8000-000000000001",
             "capabilities": {
               "transcriptPending": 1
             },
@@ -21214,7 +21214,7 @@
             "agent": "claude",
             "sessionId": "session-1",
             "limit": 40,
-            "subscriptionId": "claude:session-1",
+            "subscriptionId": "claude:session-1:00000000-0000-4000-8000-000000000001",
             "capabilities": {
               "transcriptPending": 1
             },
