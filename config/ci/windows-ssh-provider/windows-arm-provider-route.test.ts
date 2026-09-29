@@ -8,6 +8,7 @@ vi.mock('electron', () => ({
   app: { getAppPath: () => process.cwd(), getPath: () => process.env.ORCA_SSH_PROBE_STATE }
 }))
 import { ORCAD_BUN_RELEASE_ASSETS } from '../../shared/orcad-bun-runtime'
+import { setAppEnvironment } from '../../shared/app-environment'
 import { SshConnection } from './ssh-connection'
 import { decodeRemotePowerShellScript, powerShellCommand } from './ssh-remote-powershell'
 import { deployAndLaunchRelay } from './ssh-relay-deploy'
@@ -444,7 +445,18 @@ it(
       return id
     }
     try {
-      candidate = installCandidateOverride(config, process.env.ORCA_SSH_PROBE_STATE)
+      const stateRoot = process.env.ORCA_SSH_PROBE_STATE
+      if (!stateRoot) throw new Error('Missing isolated SSH probe state root')
+      setAppEnvironment({
+        getPath: (name) => (name === 'userData' ? stateRoot : stateRoot),
+        getAppPath: () => process.cwd(),
+        getVersion: () => 'diagnostic',
+        isPackaged: () => false,
+        onWillQuit: () => {},
+        exit: (code) => { throw new Error(`unexpected app exit: ${code ?? 0}`) },
+        getAppMetrics: () => []
+      })
+      candidate = installCandidateOverride(config, stateRoot)
       receipts.candidateAdmission = candidate.receipt
       await conn.connect()
       await deploy()
