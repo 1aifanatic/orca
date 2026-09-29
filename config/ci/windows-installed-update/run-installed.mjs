@@ -240,6 +240,24 @@ async function continuity(stage, owner, live, worktreeId) {
   receipt.stages.push({ stage, owner: current, terminals })
 }
 // Pre-PTY stale-bundle replacement is darwin-only (resolvePackagedDarwinAppVersion); on Windows a
+// Why: a daemon only idles out with zero sessions and zero clients; name what is still attached.
+async function drainEvidence(verdict) {
+  const table = await processTable()
+  const survivors = (table ? processesUnder(table, [installLocation, managedRoot]) : []).map(
+    (row) => ({ pid: row.pid, ppid: row.ppid, name: row.name, command: row.command?.slice(0, 400) })
+  )
+  const logs = join(profile, 'logs')
+  const daemonLog = existsSync(join(logs, 'daemon.log'))
+    ? readFileSync(join(logs, 'daemon.log'), 'utf8').slice(-6000)
+    : null
+  return {
+    verdict,
+    snapshot: table ? 'complete' : 'unverifiable',
+    survivors,
+    logFiles: existsSync(logs) ? readdirSync(logs) : [],
+    daemonLog
+  }
+}
 // drained owner self-retires when its last client leaves, so the next launch is the only prune.
 async function switchGeneration(stage, owner, live, worktreeId, label) {
   for (const item of live) {
@@ -247,9 +265,11 @@ async function switchGeneration(stage, owner, live, worktreeId, label) {
   }
   await stopServe(serve)
   serve = null
+  const drained = await waitVerdict(owner, 'exited', 60_000)
   check(
     `${stage}: drained owner exited before relaunch`,
-    (await waitVerdict(owner, 'exited', 60_000)) === 'exited'
+    drained === 'exited',
+    drained === 'exited' ? {} : await drainEvidence(drained)
   )
   serve = await startServe(installLocation, profile, env)
   const item = await terminal(worktreeId)
