@@ -1,0 +1,134 @@
+name: Diagnostic stable Windows Bun qualification
+on:
+  push:
+    branches: [OrcaWin/np-stable-bun-native-diagnostic]
+  workflow_dispatch:
+    inputs:
+      producer_run:
+        description: Successful exact offline Bun producer run
+        required: true
+        type: string
+        default: '36503596770'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  windows_watcher:
+    if: github.repository == 'stablyai/orca' && github.ref == 'refs/heads/OrcaWin/np-stable-bun-native-diagnostic'
+    uses: ./.github/workflows/windows-watcher-artifacts.yml
+    with:
+      ref: 2084c58ba5410106ce61153a9fb16cdb4b6e5301
+  windows:
+    needs: windows_watcher
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            arch: x64
+          - os: windows-11-arm
+            arch: arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    env:
+      ORCA_BACKGROUND_LAUNCH: '1'
+      PRODUCER_RUN: ${{ inputs.producer_run || '36503596770' }}
+      QUALIFICATION_ARCH: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: 2084c58ba5410106ce61153a9fb16cdb4b6e5301
+          persist-credentials: false
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          path: .build/qualification-tools
+          sparse-checkout: config/ci/rebuilt-windows-bun
+          persist-credentials: false
+      - name: Require matching watcher source
+        shell: pwsh
+        env:
+          WATCHER_SOURCE: ${{ needs.windows_watcher.outputs.source_sha }}
+        run: |
+          if ($env:WATCHER_SOURCE -ne '2084c58ba5410106ce61153a9fb16cdb4b6e5301') { throw 'Watcher source mismatch' }
+          if ((git rev-parse HEAD) -ne $env:WATCHER_SOURCE) { throw 'Product checkout mismatch' }
+      - uses: actions/download-artifact@v8
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.producer_run || '36503596770' }}
+          name: full-offline-patched-bun
+          path: .build/producer
+      - name: Retain producer run identity
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ($env:PRODUCER_RUN -notmatch '^[0-9]+$') { throw 'Invalid producer run' }
+          gh api "repos/stablyai/orca/actions/runs/$env:PRODUCER_RUN" | Out-File -Encoding utf8NoBOM .build/producer/producer-run.json
+          if ($LASTEXITCODE -ne 0) { throw 'Producer lookup failed' }
+      - uses: ./.github/actions/load-windows-watcher-artifacts
+      - uses: ./.github/actions/install-node-dependencies
+        with:
+          native-runtime: node
+      - name: Prepare native relay and production-pinned CLI runtime
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force .build/native-qualification | Out-Null
+          node config/scripts/build-cli-runtime.mjs --platform win32 --arch $env:QUALIFICATION_ARCH
+          if($LASTEXITCODE -ne 0){throw 'CLI runtime build failed'}
+          node config/scripts/build-windows-process-tree-relay-addon.mjs --arch=$env:QUALIFICATION_ARCH
+          if($LASTEXITCODE -ne 0){throw 'Native process-table build failed'}
+          $env:ORCA_REQUIRE_RELAY_NATIVE_ADDONS=$env:QUALIFICATION_ARCH
+          node config/scripts/build-relay.mjs
+          if($LASTEXITCODE -ne 0){throw 'Relay build failed'}
+      - name: Run watcher fault harness with production-pinned CLI Bun
+        shell: pwsh
+        timeout-minutes: 5
+        run: |
+          $log=".build/native-qualification/watcher-fault-$($env:QUALIFICATION_ARCH).log"
+          Write-Output 'Scope: production-pinned bundled CLI Bun; the following packaged-runtime tests separately use the admitted stable candidate.' | Tee-Object $log
+          node config/scripts/relay-watcher-fault-harness.mjs 2>&1 | Tee-Object -Append $log
+          if($LASTEXITCODE -ne 0){throw 'Production-pinned CLI Bun watcher fault harness failed'}
+      - name: Verify candidate and select it for the direct build
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force .build/native-qualification | Out-Null
+          node .build/qualification-tools/config/ci/rebuilt-windows-bun/verify-bun-output.mjs candidate .build/producer . $env:QUALIFICATION_ARCH .build/native-qualification/candidate.json $env:PRODUCER_RUN
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate verification failed' }
+          $candidate = Get-Content .build/native-qualification/candidate.json -Raw | ConvertFrom-Json
+          "ORCAD_BUN_RUNTIME_PATH=$($candidate.binary)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "ORCAD_BUILD_TARGET=win32-$env:QUALIFICATION_ARCH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          'ORCAD_BUILD_TARGET_IS_CURRENT=1' | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Build using the admitted binary
+        run: node config/scripts/build-orcad.mjs
+      - name: Verify packaged binary and complete provider
+        shell: pwsh
+        run: |
+          node .build/qualification-tools/config/ci/rebuilt-windows-bun/verify-bun-output.mjs package .build/producer . $env:QUALIFICATION_ARCH .build/native-qualification/package.json $env:PRODUCER_RUN
+          if ($LASTEXITCODE -ne 0) { throw 'Package verification failed' }
+      - name: Run existing Bun artifact tests
+        shell: pwsh
+        run: |
+          $package = Get-Content .build/native-qualification/package.json -Raw | ConvertFrom-Json
+          if ($package.architecture -ne $env:QUALIFICATION_ARCH) { throw 'Provider architecture mismatch' }
+          $expected = (Resolve-Path out/orcad/conpty/conpty.dll).Path
+          if ($package.conptyLibrary -ne $expected) { throw 'Provider selector mismatch' }
+          $env:BUN_CONPTY_LIBRARY = $package.conptyLibrary
+          Write-Output "Direct Bun test provider: $env:BUN_CONPTY_LIBRARY"
+          pnpm test:bun:profile --artifact 2>&1 | Tee-Object .build/native-qualification/profile.log
+          exit $LASTEXITCODE
+      - name: Run packaged companion tests
+        shell: pwsh
+        run: |
+          node node_modules/vitest/vitest.mjs run --config config/vitest.config.ts config/scripts/orcad-companion-artifacts.test.mjs 2>&1 | Tee-Object .build/native-qualification/companions.log
+          exit $LASTEXITCODE
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: stable-bun-native-${{ matrix.arch }}
+          path: |
+            .build/native-qualification/
+            .build/producer/results/
+            .build/producer/work/source-cache-receipt.json
+            .build/producer/producer-run.json
+          retention-days: 7
