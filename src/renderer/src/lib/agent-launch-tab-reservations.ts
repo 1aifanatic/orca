@@ -67,6 +67,25 @@ export function takeAgentLaunchTabReservation(
   return entry.reservation
 }
 
+/**
+ * Tab groups a live launch will place its tab into. Reconciliation drops empty groups, and the
+ * group a user launched from is often an empty split that must survive until its tab arrives; it is
+ * released with the reservation, so a launch that never reveals leaves nothing behind.
+ */
+export function agentLaunchReservedGroupIds(
+  worktreeId: string,
+  now = Date.now()
+): ReadonlySet<string> {
+  sweepExpired(now)
+  const groupIds = new Set<string>()
+  for (const { reservation } of reservations.values()) {
+    if (reservation.worktreeId === worktreeId && reservation.groupId) {
+      groupIds.add(reservation.groupId)
+    }
+  }
+  return groupIds
+}
+
 export function agentLaunchTabReservationCountForTests(): number {
   return reservations.size
 }
