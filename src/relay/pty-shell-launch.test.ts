@@ -88,21 +88,39 @@ describe('getRelayShellLaunchConfig', () => {
     rmSync(homeDir, { recursive: true, force: true })
   })
 
-  it.each([
-    { shell: '/usr/bin/fish', platform: 'linux' as const },
-    {
-      shell: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
-      platform: 'win32' as const
-    }
-  ])('installs Codex capability checks for $shell', ({ shell, platform }) => {
+  it('installs Codex capability checks for a login fish', () => {
     const config = getRelayShellLaunchConfig(
-      shell,
+      '/usr/bin/fish',
       { ORCA_CODEX_LAUNCH_PREFLIGHT: '/remote/orca' },
-      platform
+      'linux'
     )
+    expect(config.args.slice(0, 2)).toEqual(['-l', '-C'])
     expect(config.args.join(' ')).toContain('prepare-codex --launch-executable')
     expect(config.supportsReadyMarker).toBe(false)
   })
+
+  it.each([
+    {
+      shell: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+      platform: 'win32' as const,
+      leading: ['-NoLogo']
+    },
+    { shell: '/usr/bin/pwsh', platform: 'linux' as const, leading: ['-l', '-NoLogo'] }
+  ])(
+    'installs encoded Codex capability checks for $shell on $platform',
+    ({ shell, platform, leading }) => {
+      const config = getRelayShellLaunchConfig(
+        shell,
+        { ORCA_CODEX_LAUNCH_PREFLIGHT: '/remote/orca' },
+        platform
+      )
+      expect(config.args.slice(0, leading.length)).toEqual(leading)
+      expect(config.args.slice(-2, -1)).toEqual(['-EncodedCommand'])
+      const script = Buffer.from(config.args.at(-1) ?? '', 'base64').toString('utf16le')
+      expect(script).toContain('prepare-codex --launch-executable')
+      expect(config.supportsReadyMarker).toBe(false)
+    }
+  )
 
   it.skipIf(process.platform === 'win32')(
     'preserves a user ZDOTDIR exported from .zshenv for later startup files',

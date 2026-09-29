@@ -3,6 +3,7 @@ import {
   getPowerShellCodexShellLaunchPreflight
 } from '../main/pty/codex-shell-launch-preflight'
 import { isPowerShellExecutableName } from '../main/powershell-osc133-bootstrap'
+import { encodePowerShellCommand } from '../shared/powershell-command-encoding'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -81,7 +82,15 @@ export function getRelayShellLaunchConfig(
   }
   if (env.ORCA_CODEX_LAUNCH_PREFLIGHT && isPowerShellExecutableName(shellName)) {
     return {
-      args: ['-NoLogo', '-NoExit', '-Command', getPowerShellCodexShellLaunchPreflight()],
+      args: [
+        // Why: pwsh on a POSIX host is a login shell only when -l comes first.
+        ...(platform === 'win32' ? [] : POSIX_LOGIN_ARGS),
+        '-NoLogo',
+        '-NoExit',
+        // Why encoded: same payload delivery as every other PowerShell PTY site.
+        '-EncodedCommand',
+        encodePowerShellCommand(getPowerShellCodexShellLaunchPreflight())
+      ],
       env: {},
       supportsReadyMarker: false
     }
