@@ -370,6 +370,42 @@ describe('structured mailbox pointer delivery', () => {
     }
   })
 
+  it('does not read a turn from before a backward clock step as one that ran after its pointer', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      const { delivery, send, setSubmissions } = harness({
+        journal: idleJournal(),
+        dispatchState: 'unknown'
+      })
+      const personTurn = {
+        clientMessageId: 'user-turn',
+        dispatchState: 'accepted' as const,
+        submittedAt: Date.now()
+      }
+      setSubmissions([personTurn])
+      vi.setSystemTime(Date.now() - 2 * 60 * 1000)
+      delivery.deliverForHandle('dispatch:d1')
+      await flush()
+      const first = send.mock.calls[0]![0].operationId
+      setSubmissions([
+        personTurn,
+        { clientMessageId: first, dispatchState: 'unknown', submittedAt: Date.now() }
+      ])
+      for (let edge = 0; edge < 3; edge++) {
+        delivery.onJournalActivity('session-1')
+        await flush()
+      }
+      expect(send.mock.calls.map(([input]) => input.operationId)).toEqual([
+        first,
+        first,
+        first,
+        first
+      ])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('stamps a pointer whose echo arrived after the lane stopped waiting, sending nothing more', async () => {
     const { delivery, send, markAsDelivered, stored, setSubmissions } = harness({
       journal: idleJournal(),

@@ -145,7 +145,11 @@ export function resolveStructuredPointerOperation(args: {
     session_id: args.sessionId,
     operation_id: operationId,
     batch_fingerprint: batchFingerprint,
-    minted_at_ms: now
+    // On the journal's clock too, so a backward clock step cannot date an earlier turn after it.
+    minted_at_ms: args.submissions.reduce(
+      (latest, entry) => Math.max(latest, entry.submittedAt),
+      now
+    )
   })
   return { kind: 'send', operationId, payloadFingerprint }
 }
